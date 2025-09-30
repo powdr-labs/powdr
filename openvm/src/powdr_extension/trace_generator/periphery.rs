@@ -1,4 +1,3 @@
-use crate::powdr_extension::executor::inventory::DummyExecutor;
 use itertools::Itertools;
 use openvm_circuit::arch::{
     AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecutorInventoryBuilder,
@@ -18,6 +17,8 @@ use openvm_stark_backend::{
     prover::cpu::{CpuBackend, CpuDevice},
 };
 use openvm_stark_sdk::engine::StarkEngine;
+
+use crate::powdr_extension::trace_generator::inventory::DummyExecutor;
 
 /// The shared chips which can be used by the PowdrChip.
 #[derive(Clone)]

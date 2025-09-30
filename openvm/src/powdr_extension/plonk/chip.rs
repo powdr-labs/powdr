@@ -1,43 +1,40 @@
 use std::borrow::BorrowMut;
+use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::bus_map::BusMap;
 use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
 use crate::plonk::air_to_plonkish::build_circuit;
 use crate::plonk::{Gate, Variable};
-use crate::powdr_extension::executor::{PowdrExecutor, PowdrPeripheryInstances};
+use crate::powdr_extension::executor::OriginalArenas;
 use crate::powdr_extension::plonk::air::PlonkColumns;
 use crate::powdr_extension::plonk::copy_constraint::generate_permutation_columns;
-use crate::powdr_extension::PowdrOpcode;
+use crate::powdr_extension::trace_generator::{PowdrPeripheryInstances, PowdrTraceGenerator};
 use crate::powdr_extension::PowdrPrecompile;
-use crate::{BabyBearSC, Instr};
+use crate::Instr;
 use itertools::Itertools;
 use openvm_circuit::utils::next_power_of_two_or_zero;
-use openvm_instructions::LocalOpcode;
 use openvm_stark_backend::{
-    p3_air::BaseAir,
     p3_field::{FieldAlgebra, PrimeField32},
     p3_matrix::{
         dense::{DenseMatrix, RowMajorMatrix},
         Matrix,
     },
     prover::{hal::ProverBackend, types::AirProvingContext},
-    Chip, ChipUsageGetter,
+    Chip,
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::expression::AlgebraicReference;
 use powdr_autoprecompiles::Apc;
 
-use super::air::PlonkAir;
-
 pub struct PlonkChip {
     name: String,
-    opcode: PowdrOpcode,
-    air: Arc<PlonkAir<BabyBear>>,
-    executor: PowdrExecutor,
     apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
     bus_map: BusMap,
+    trace_generator: PowdrTraceGenerator,
+    record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
 }
 
 impl PlonkChip {
@@ -45,56 +42,41 @@ impl PlonkChip {
     pub(crate) fn new(
         precompile: PowdrPrecompile<BabyBear>,
         original_airs: OriginalAirs<BabyBear>,
-<<<<<<< HEAD
         base_config: OriginalVmConfig,
         periphery: PowdrPeripheryInstances,
-=======
-        base_config: ExtendedVmConfig,
->>>>>>> 54d39f001e6dd430927af0b065937ddd72b83638
+        record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
         bus_map: BusMap,
-        copy_constraint_bus_id: u16,
     ) -> Self {
-        let PowdrPrecompile {
-            name, opcode, apc, ..
-        } = precompile;
-        let air = Arc::new(PlonkAir {
-            copy_constraint_bus_id,
-            bus_map: bus_map.clone(),
-            _marker: std::marker::PhantomData,
-        });
-        let executor = PowdrExecutor::new(original_airs, base_config, apc.clone());
+        let PowdrPrecompile { name, apc, .. } = precompile;
+        let trace_generator = PowdrTraceGenerator::new(
+            apc.clone(),
+            original_airs.clone(),
+            base_config.clone(),
+            periphery.clone(),
+        );
 
         Self {
             name,
-            opcode,
-            air,
-            executor,
             bus_map,
             apc,
+            trace_generator,
+            record_arena_by_air_name,
         }
     }
 }
 
-impl ChipUsageGetter for PlonkChip {
-    fn air_name(&self) -> String {
-        format!("powdr_plonk_air_for_opcode_{}", self.opcode.global_opcode()).to_string()
-    }
-    fn current_trace_height(&self) -> usize {
-        self.executor.number_of_calls()
-    }
-
-    fn trace_width(&self) -> usize {
-        self.air.width()
-    }
-}
-
-impl<PB: ProverBackend<Matrix = DenseMatrix<BabyBear>>> Chip<BabyBearSC, PB> for PlonkChip {
-    fn generate_proving_ctx(&self, records: BabyBearSC) -> AirProvingContext<PB> {
+impl<R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB> for PlonkChip {
+    fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
         tracing::debug!("Generating air proof input for PlonkChip {}", self.name);
 
         let plonk_circuit = build_circuit(self.apc.machine(), &self.bus_map);
-        let number_of_calls = self.executor.number_of_calls();
-        let width = self.trace_width();
+        let number_of_calls = match &*self.record_arena_by_air_name.as_ref().borrow() {
+            OriginalArenas::Uninitialized => todo!(),
+            OriginalArenas::Initialized(initialized_original_arenas) => {
+                initialized_original_arenas.number_of_calls
+            }
+        };
+        let width = self.apc.machine().main_columns().count();
         let height = next_power_of_two_or_zero(number_of_calls * plonk_circuit.len());
         tracing::debug!("   Number of calls: {number_of_calls}");
         tracing::debug!("   Plonk gates: {}", plonk_circuit.len());
@@ -111,7 +93,9 @@ impl<PB: ProverBackend<Matrix = DenseMatrix<BabyBear>>> Chip<BabyBearSC, PB> for
             .enumerate()
             .map(|(index, c)| (c.id, index))
             .collect();
-        let witness = self.executor.generate_witness();
+        let witness = self
+            .trace_generator
+            .generate_witness(&mut self.record_arena_by_air_name.as_ref().borrow_mut());
 
         // TODO: This should be parallelized.
         let mut values = BabyBear::zero_vec(height * width);
@@ -182,7 +166,7 @@ impl<PB: ProverBackend<Matrix = DenseMatrix<BabyBear>>> Chip<BabyBearSC, PB> for
 
         generate_permutation_columns(&mut values, &plonk_circuit, number_of_calls, width);
 
-        AirProvingContext::simple(RowMajorMatrix::new(values, width), vec![])
+        AirProvingContext::simple(Arc::new(RowMajorMatrix::new(values, width)), vec![])
     }
 }
 

@@ -131,14 +131,6 @@ impl<F> OriginalAirs<F> {
     }
 }
 
-fn to_option<T>(mut iter: impl Iterator<Item = T>) -> Option<T> {
-    match (iter.next(), iter.next()) {
-        (None, None) => None,
-        (None, Some(elem)) => Some(elem),
-        _ => panic!("Expected at most one element, got multiple"),
-    }
-}
-
 pub fn record_arena_dimension_by_air_name_per_apc_call<F>(
     apc: &Apc<F, Instr<F>>,
     air_by_opcode_id: &OriginalAirs<F>,

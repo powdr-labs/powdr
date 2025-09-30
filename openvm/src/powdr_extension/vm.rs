@@ -15,6 +15,7 @@ use crate::customize_exe::OvmApcStats;
 use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
 use crate::powdr_extension::chip::PowdrAir;
 use crate::powdr_extension::executor::{OriginalArenas, PowdrExecutor};
+use crate::powdr_extension::PlonkAir;
 use openvm_circuit::{
     arch::{AirInventory, AirInventoryError, VmCircuitExtension, VmExecutionExtension},
     circuit_derive::Chip,
@@ -121,8 +122,21 @@ where
     Val<SC>: PrimeField32,
 {
     fn extend_circuit(&self, inventory: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {
-        for apc in self.precompiles.iter() {
-            inventory.add_air(PowdrAir::new(apc.apc.clone()));
+        for precompile in &self.precompiles {
+            match self.implementation {
+                PrecompileImplementation::SingleRowChip => {
+                    inventory.add_air(PowdrAir::new(precompile.apc.clone()));
+                }
+                PrecompileImplementation::PlonkChip => {
+                    let copy_constraint_bus_id = inventory.new_bus_idx();
+                    let plonk_air = PlonkAir {
+                        copy_constraint_bus_id,
+                        bus_map: self.bus_map.clone(),
+                        _marker: std::marker::PhantomData,
+                    };
+                    inventory.add_air(plonk_air);
+                }
+            }
         }
         Ok(())
     }

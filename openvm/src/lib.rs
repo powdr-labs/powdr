@@ -61,14 +61,14 @@ use std::{
 use crate::customize_exe::OpenVmApcCandidate;
 pub use crate::customize_exe::Prog;
 use crate::powdr_extension::chip::{PowdrAir, PowdrChip};
-use crate::powdr_extension::executor::PowdrPeripheryInstances;
+use crate::powdr_extension::trace_generator::PowdrPeripheryInstances;
 use tracing::{info_span, Level};
 
 #[cfg(test)]
 use crate::extraction_utils::AirWidthsDiff;
 use crate::extraction_utils::{export_pil, AirWidths, OriginalVmConfig};
 use crate::instruction_formatter::openvm_opcode_formatter;
-use crate::powdr_extension::{PowdrExtensionExecutor, PowdrPrecompile};
+use crate::powdr_extension::{PlonkChip, PowdrExtensionExecutor, PowdrPrecompile};
 
 mod air_builder;
 pub mod bus_map;
@@ -190,17 +190,29 @@ where
 
         for precompile in extension.precompiles.iter() {
             inventory.next_air::<PowdrAir<BabyBear>>()?;
-            let powdr_chip = match extension.implementation {
-                PrecompileImplementation::SingleRowChip => PowdrChip::new(
-                    precompile.clone(),
-                    extension.airs.clone(),
-                    extension.base_config.clone(),
-                    shared_chips_pair.clone(),
-                    extension.record_arena_by_air_name.clone(),
-                ),
-                PrecompileImplementation::PlonkChip => todo!(),
+            match extension.implementation {
+                PrecompileImplementation::SingleRowChip => {
+                    let chip = PowdrChip::new(
+                        precompile.clone(),
+                        extension.airs.clone(),
+                        extension.base_config.clone(),
+                        shared_chips_pair.clone(),
+                        extension.record_arena_by_air_name.clone(),
+                    );
+                    inventory.add_executor_chip(chip);
+                }
+                PrecompileImplementation::PlonkChip => {
+                    let chip = PlonkChip::new(
+                        precompile.clone(),
+                        extension.airs.clone(),
+                        extension.base_config.clone(),
+                        shared_chips_pair.clone(),
+                        extension.record_arena_by_air_name.clone(),
+                        extension.bus_map.clone(),
+                    );
+                    inventory.add_executor_chip(chip);
+                }
             };
-            inventory.add_executor_chip(powdr_chip);
         }
 
         Ok(())
@@ -1616,8 +1628,6 @@ mod tests {
         expected_metrics: MachineTestMetrics,
         expected_columns_saved: Option<Expect>,
     ) {
-        // TODO: remove this early return and actually run the test
-        return;
         let apc_candidates_dir = tempfile::tempdir().unwrap();
         let apc_candidates_dir_path = apc_candidates_dir.path();
         let config = default_powdr_openvm_config(guest.apc, guest.skip)
