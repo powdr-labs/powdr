@@ -822,7 +822,7 @@ mod tests {
     }
 
     #[test]
-    fn substitute_in_deried_columns() {
+    fn substitute_in_derived_columns() {
         let mut system: IndexedConstraintSystem<_, _> =
             ConstraintSystem::<GoldilocksField, &'static str> {
                 algebraic_constraints: vec![],
