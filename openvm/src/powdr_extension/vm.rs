@@ -16,7 +16,7 @@ use crate::bus_map::BusMap;
 use crate::customize_exe::OvmApcStats;
 use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
 use crate::powdr_extension::chip::PowdrAir;
-use crate::powdr_extension::executor::PowdrPeripheryInstances;
+use crate::powdr_extension::executor::{OriginalArenas, PowdrPeripheryInstances};
 use openvm_circuit::{
     arch::{AirInventory, AirInventoryError, VmCircuitExtension, VmExecutionExtension},
     circuit_derive::Chip,
@@ -44,9 +44,8 @@ pub struct PowdrExtension<F> {
     pub implementation: PrecompileImplementation,
     pub bus_map: BusMap,
     pub airs: OriginalAirs<F>,
-    pub number_of_calls: Rc<RefCell<usize>>,
     #[serde(skip)]
-    pub record_arena_by_air_name: Rc<RefCell<Vec<HashMap<String, MatrixRecordArena<BabyBear>>>>>,
+    pub record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -88,7 +87,6 @@ impl<F> PowdrExtension<F> {
             implementation,
             bus_map,
             airs,
-            number_of_calls: Default::default(),
             record_arena_by_air_name: Default::default(),
         }
     }
@@ -114,7 +112,6 @@ impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear> {
                     self.airs.clone(),
                     self.base_config.config().clone(),
                     precompile.apc.clone(),
-                    self.number_of_calls.clone(),
                     self.record_arena_by_air_name.clone(),
                 ));
             inventory.add_executor(powdr_executor, once(precompile.opcode.global_opcode()))?;

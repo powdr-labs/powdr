@@ -76,8 +76,85 @@ pub struct PowdrExecutor {
     // periphery: SharedPeripheryChips,
     pub apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
     pub record_arena_dimensions: HashMap<String, RecordArenaDimension>,
-    pub number_of_calls: Rc<RefCell<usize>>,
-    pub record_arena_by_air_name: Rc<RefCell<Vec<HashMap<String, MatrixRecordArena<BabyBear>>>>>,
+    pub record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
+}
+
+#[derive(Default)]
+pub enum OriginalArenas {
+    #[default]
+    Uninitialized,
+    Initialized(InitializedOriginalArenas),
+}
+
+impl OriginalArenas {
+    fn initialize(
+        &mut self,
+        apc_call_count_estimate: usize,
+        record_arena_dimensions: &HashMap<String, RecordArenaDimension>,
+    ) {
+        match self {
+            OriginalArenas::Uninitialized => {
+                *self = OriginalArenas::Initialized(InitializedOriginalArenas::new(
+                    apc_call_count_estimate,
+                    record_arena_dimensions,
+                ));
+            }
+            OriginalArenas::Initialized(_) => {}
+        }
+    }
+
+    pub fn arenas(&mut self) -> &mut HashMap<String, MatrixRecordArena<BabyBear>> {
+        match self {
+            OriginalArenas::Uninitialized => unreachable!(),
+            OriginalArenas::Initialized(initialized) => &mut initialized.arenas,
+        }
+    }
+
+    pub fn number_of_calls(&mut self) -> &mut usize {
+        match self {
+            OriginalArenas::Uninitialized => unreachable!(),
+            OriginalArenas::Initialized(initialized) => &mut initialized.number_of_calls,
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct InitializedOriginalArenas {
+    pub arenas: HashMap<String, MatrixRecordArena<BabyBear>>,
+    pub number_of_calls: usize,
+}
+
+impl InitializedOriginalArenas {
+    pub fn new(
+        apc_call_count_estimate: usize,
+        record_arena_dimensions: &HashMap<String, RecordArenaDimension>,
+    ) -> Self {
+        Self {
+            arenas: record_arena_dimensions
+                .iter()
+                .map(
+                    |(
+                        air_name,
+                        RecordArenaDimension {
+                            num_calls,
+                            air_width,
+                        },
+                    )| {
+                        (
+                            air_name.clone(),
+                            MatrixRecordArena::with_capacity(
+                                *num_calls * apc_call_count_estimate,
+                                *air_width,
+                            ),
+                        )
+                    },
+                )
+                .collect(),
+            // This is the actual number of calls, which we still don't know yet at this point
+            // We only have `apc_call_count_estimate`, which is `next_power_of_two(number_of_calls)`, if using `MatrixRecordArena`
+            number_of_calls: 0,
+        }
+    }
 }
 
 pub struct RecordArenaDimension {
@@ -249,9 +326,6 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
         state: VmStateMut<BabyBear, TracingMemory, MatrixRecordArena<BabyBear>>,
         instruction: &Instruction<BabyBear>,
     ) -> Result<(), ExecutionError> {
-        // check if this is run
-        println!("powdr preflight execute pc: {}", state.pc);
-
         // This is pretty much done, just need to move up from `execute()` below with very small modifications
         // Extract the state components, since `execute` consumes the state but we need to pass it to each instruction execution
         let VmStateMut {
@@ -265,35 +339,19 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
             ctx: original_ctx,
         } = state;
 
-        // Create dummy record arenas by air name, initialized with number of original air calls as height and original air width as width
-        let mut record_arena_by_air_name_for_this_call: HashMap<
-            String,
-            MatrixRecordArena<BabyBear>,
-        > = self
-            .record_arena_dimensions
-            .iter()
-            .map(
-                |(
-                    air_name,
-                    RecordArenaDimension {
-                        num_calls,
-                        air_width,
-                    },
-                )| {
-                    (
-                        air_name.clone(),
-                        MatrixRecordArena::with_capacity(*num_calls, *air_width),
-                    )
-                },
-            )
-            .collect();
+        // Initialize the original arenas if not already initialized
+        let mut record_arena_by_air_name = self.record_arena_by_air_name.as_ref().borrow_mut();
+
+        record_arena_by_air_name.initialize(
+            // initialized height, not avail as API, is really `next_power_of_two(apc_call_count)`, if using `MatrixRecordArena` impl of `RA`
+            original_ctx.trace_buffer.len() / original_ctx.width,
+            &self.record_arena_dimensions,
+        );
+
+        let arenas = record_arena_by_air_name.arenas();
 
         // execute the original instructions one by one
         for instruction in self.apc.instructions().iter() {
-            println!(
-                "powdr preflight execute original instruction at pc: {}",
-                *pc
-            );
             let executor = self
                 .executor_inventory
                 .get_executor(instruction.0.opcode)
@@ -312,33 +370,13 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
                 rng,
                 custom_pvs,
                 // We execute in the context of the relevant dummy table
-                ctx: record_arena_by_air_name_for_this_call
-                    .get_mut(&air_name)
-                    .unwrap(),
+                ctx: arenas.get_mut(&air_name).unwrap(),
             };
 
             executor.execute(state, &instruction.0)?;
         }
 
-        // print dummy record arena
-        record_arena_by_air_name_for_this_call
-            .iter()
-            .for_each(|(air_name, arena)| {
-                println!(
-                    "powdr preflight execute dummy record arena for air: {}",
-                    air_name
-                );
-                println!(
-                    "powdr preflight execute dummy record arena: {:?}",
-                    arena.trace_buffer
-                );
-            });
-
-        *self.number_of_calls.as_ref().borrow_mut() += 1;
-        self.record_arena_by_air_name
-            .as_ref()
-            .borrow_mut()
-            .push(record_arena_by_air_name_for_this_call);
+        *record_arena_by_air_name.number_of_calls() += 1;
 
         // After execution, put back the original ctx
         // TODO: `original_ctx` might just be useless and tossed away, so there's no need to put it back?
@@ -362,8 +400,7 @@ impl PowdrExecutor {
         air_by_opcode_id: OriginalAirs<BabyBear>,
         base_config: ExtendedVmConfig,
         apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
-        number_of_calls: Rc<RefCell<usize>>,
-        record_arena_by_air_name: Rc<RefCell<Vec<HashMap<String, MatrixRecordArena<BabyBear>>>>>,
+        record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
     ) -> Self {
         let record_arena_dimensions =
             record_arena_dimension_by_air_name_per_apc_call(&apc, &air_by_opcode_id);
@@ -372,7 +409,6 @@ impl PowdrExecutor {
             executor_inventory: base_config.sdk_vm_config.create_executors().unwrap(),
             apc,
             record_arena_dimensions,
-            number_of_calls,
             record_arena_by_air_name,
         }
     }

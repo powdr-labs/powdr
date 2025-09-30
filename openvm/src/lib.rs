@@ -196,7 +196,6 @@ where
                     extension.airs.clone(),
                     extension.base_config.clone(),
                     shared_chips_pair.clone(),
-                    extension.number_of_calls.clone(),
                     extension.record_arena_by_air_name.clone(),
                 ),
                 PrecompileImplementation::PlonkChip => todo!(),

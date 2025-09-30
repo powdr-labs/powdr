@@ -13,7 +13,8 @@ use crate::{
         record_arena_dimension_by_air_name_per_apc_call, OriginalAirs, OriginalVmConfig,
     },
     powdr_extension::executor::{
-        create_dummy_airs, create_dummy_chip_complex, PowdrPeripheryInstances, RecordArenaDimension,
+        create_dummy_airs, create_dummy_chip_complex, OriginalArenas, PowdrPeripheryInstances,
+        RecordArenaDimension,
     },
     BabyBearSC, ExtendedVmConfig, Instr,
 };
@@ -58,8 +59,7 @@ pub struct PowdrChip {
     pub original_airs: OriginalAirs<BabyBear>,
     pub config: ExtendedVmConfig,
     pub periphery: PowdrPeripheryInstances,
-    pub number_of_calls: Rc<RefCell<usize>>,
-    pub record_arena_by_air_name: Rc<RefCell<Vec<HashMap<String, MatrixRecordArena<BabyBear>>>>>,
+    pub record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
 }
 
 impl PowdrChip {
@@ -68,8 +68,7 @@ impl PowdrChip {
         original_airs: OriginalAirs<BabyBear>,
         base_config: OriginalVmConfig,
         periphery: PowdrPeripheryInstances,
-        number_of_calls: Rc<RefCell<usize>>,
-        record_arena_by_air_name: Rc<RefCell<Vec<HashMap<String, MatrixRecordArena<BabyBear>>>>>,
+        record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
     ) -> Self {
         let PowdrPrecompile {
             name, opcode, apc, ..
@@ -84,7 +83,6 @@ impl PowdrChip {
             apc,
             periphery,
             air,
-            number_of_calls,
             record_arena_by_air_name,
         }
     }
@@ -93,67 +91,6 @@ impl PowdrChip {
     /// size `next_power_of_two(number_of_calls) * width`, where `width` is the number of
     /// nodes in the APC circuit.
     pub fn generate_witness<R>(&self, records: R) -> RowMajorMatrix<BabyBear> {
-        let num_apc_calls: usize = *self.number_of_calls.as_ref().borrow();
-
-        let mut record_arena_by_air_name = self.record_arena_by_air_name.as_ref().borrow_mut();
-        let ra_dimensions =
-            record_arena_dimension_by_air_name_per_apc_call(&self.apc, &self.original_airs);
-
-        let mut merged_record_arena_by_air_name = ra_dimensions
-            .iter()
-            .map(
-                |(
-                    air_name,
-                    RecordArenaDimension {
-                        num_calls,
-                        air_width,
-                    },
-                )| {
-                    // height is padded to next power of two
-                    let merged_record_arena =
-                        MatrixRecordArena::with_capacity(num_apc_calls * num_calls, *air_width);
-                    (air_name.clone(), merged_record_arena)
-                },
-            )
-            .collect::<HashMap<String, MatrixRecordArena<BabyBear>>>();
-
-        for record_arena_for_this_call in record_arena_by_air_name.iter_mut() {
-            for (air_name, src_arena) in record_arena_for_this_call.drain() {
-                // Compute number of rows actually used (trace_offset is in elements)
-                let rows_used = src_arena.trace_offset / src_arena.width;
-                if rows_used == 0 {
-                    continue;
-                }
-
-                let dst_arena = merged_record_arena_by_air_name
-                    .get_mut(&air_name)
-                    .expect("destination arena missing for air name");
-
-                // Ensure widths match
-                debug_assert_eq!(dst_arena.width, src_arena.width);
-
-                // Allocate pre-initialized empty mutable buffer in the destination for these rows
-                // This also increases `dst_arena.trace_offset`
-                let dst_bytes = dst_arena.alloc_buffer(rows_used);
-
-                // Copy the used portion of the source buffer (as bytes)
-                let src_slice = &src_arena.trace_buffer[0..src_arena.trace_offset];
-                // `src_size` is different from `src_arena.trace_offset`, which is number of `F`, whereas here we need the number of bytes
-                let src_size = core::mem::size_of_val(src_slice);
-                let src_ptr = src_slice.as_ptr() as *const u8;
-                let src_bytes = unsafe { core::slice::from_raw_parts(src_ptr, src_size) };
-                dst_bytes.copy_from_slice(src_bytes);
-            }
-        }
-
-        // Assert the `trace_offset` of `merged_record_arena_by_air_name`
-        merged_record_arena_by_air_name
-            .iter()
-            .for_each(|(air_name, arena)| {
-                let height = ra_dimensions.get(air_name).unwrap().num_calls;
-                assert_eq!(arena.trace_offset, arena.width * height * num_apc_calls);
-            });
-
         let chip_inventory = {
             let airs: AirInventory<BabyBearSC> =
                 create_dummy_airs(&self.config.sdk_vm_config, self.periphery.dummy.clone())
@@ -168,6 +105,10 @@ impl PowdrChip {
             .inventory
         };
 
+        let mut original_arenas = self.record_arena_by_air_name.as_ref().borrow_mut();
+        let num_apc_calls = *original_arenas.number_of_calls();
+        let arenas = original_arenas.arenas();
+
         let dummy_trace_by_air_name: HashMap<String, Trace<BabyBear>> = chip_inventory
             .chips()
             .iter()
@@ -177,7 +118,6 @@ impl PowdrChip {
                 let air_name = chip_inventory.airs().ext_airs()[insertion_idx].name();
 
                 let record_arena = {
-                    let arenas = &mut merged_record_arena_by_air_name;
                     match arenas.remove(&air_name) {
                         Some(ra) => ra,
                         None => return None, // skip this iteration, because we only have record arena for chips that are used
@@ -264,9 +204,7 @@ impl PowdrChip {
                 // (these are either new columns or for example the "is_valid" column).
                 for (col_index, computation_method) in &columns_to_compute {
                     row_slice[*col_index] = match computation_method {
-                        ComputationMethod::Constant(c) => {
-                            BabyBear::from_canonical_u64(*c)
-                        },
+                        ComputationMethod::Constant(c) => BabyBear::from_canonical_u64(*c),
                         ComputationMethod::InverseOfSum(columns_to_sum) => columns_to_sum
                             .iter()
                             .map(|col| row_slice[*col])
