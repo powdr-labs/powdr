@@ -152,15 +152,6 @@ impl PowdrChip {
             .for_each(|(air_name, arena)| {
                 let height = ra_dimensions.get(air_name).unwrap().num_calls;
                 assert_eq!(arena.trace_offset, arena.width * height * num_apc_calls);
-                println!("merged record arena assert_eq passes for air: {}", air_name);
-            });
-
-        // print merged record arena
-        merged_record_arena_by_air_name
-            .iter()
-            .for_each(|(air_name, arena)| {
-                println!("merged record arena for air: {}", air_name);
-                println!("merged record arena: {:?}", arena.trace_buffer);
             });
 
         let chip_inventory = {
@@ -267,8 +258,6 @@ impl PowdrChip {
                     for (dummy_trace_index, apc_index) in dummy_trace_index_to_apc_index {
                         row_slice[*apc_index] = dummy_row[*dummy_trace_index];
                     }
-
-                    println!("apc row_slice: {:?}", row_slice);
                 }
 
                 // Fill in the columns we have to compute from other columns
@@ -276,7 +265,6 @@ impl PowdrChip {
                 for (col_index, computation_method) in &columns_to_compute {
                     row_slice[*col_index] = match computation_method {
                         ComputationMethod::Constant(c) => {
-                            println!("set index {} to constant: {}", *col_index, *c);
                             BabyBear::from_canonical_u64(*c)
                         },
                         ComputationMethod::InverseOfSum(columns_to_sum) => columns_to_sum
@@ -304,8 +292,6 @@ impl PowdrChip {
                             args.map(|arg| arg.as_canonical_u32()),
                         );
                     });
-
-                println!("apc row_slice: {:?}", row_slice);
             });
 
         RowMajorMatrix::new(values, width)
