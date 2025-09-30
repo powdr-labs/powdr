@@ -1,22 +1,20 @@
 // Mostly taken from [this openvm extension](https://github.com/openvm-org/openvm/blob/1b76fd5a900a7d69850ee9173969f70ef79c4c76/extensions/rv32im/circuit/src/extension.rs#L185) and simplified to only handle a single opcode with its necessary dependencies
 
+use std::cell::RefCell;
 use std::iter::once;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use derive_more::From;
 use openvm_circuit_derive::{Executor, MeteredExecutor, PreflightExecutor};
-use openvm_circuit_primitives::{
-    bitwise_op_lookup::SharedBitwiseOperationLookupChip, range_tuple::SharedRangeTupleCheckerChip,
-    var_range::SharedVariableRangeCheckerChip,
-};
 use openvm_instructions::LocalOpcode;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 
 use crate::customize_exe::OvmApcStats;
 use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
 use crate::powdr_extension::chip::PowdrAir;
-use crate::powdr_extension::executor::PowdrExecutor;
-use crate::{bus_map::BusMap, powdr_extension::executor::PowdrPeripheryInstances};
+use crate::powdr_extension::executor::{OriginalArenas, PowdrExecutor};
+use crate::bus_map::BusMap;
 use openvm_circuit::{
     arch::{AirInventory, AirInventoryError, VmCircuitExtension, VmExecutionExtension},
     circuit_derive::Chip,
@@ -41,6 +39,8 @@ pub struct PowdrExtension<F> {
     pub implementation: PrecompileImplementation,
     pub bus_map: BusMap,
     pub airs: OriginalAirs<F>,
+    #[serde(skip)]
+    pub record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -82,6 +82,7 @@ impl<F> PowdrExtension<F> {
             implementation,
             bus_map,
             airs,
+            record_arena_by_air_name: Default::default(),
         }
     }
 }
@@ -100,38 +101,12 @@ impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear> {
         &self,
         inventory: &mut openvm_circuit::arch::ExecutorInventoryBuilder<BabyBear, Self::Executor>,
     ) -> Result<(), openvm_circuit::arch::ExecutorInventoryError> {
-        // cached instance
-        let chip_complex = &self.base_config.chip_complex();
-
-        let chip_inventory = &chip_complex.inventory;
-
-        // TODO: here we make assumptions about the existence of some chips in the periphery. Make this more flexible
-        let bitwise_lookup = chip_inventory
-            .find_chip::<SharedBitwiseOperationLookupChip<8>>()
-            .next()
-            .cloned();
-        let range_checker = chip_inventory
-            .find_chip::<SharedVariableRangeCheckerChip>()
-            .next()
-            .unwrap();
-        let tuple_range_checker = chip_inventory
-            .find_chip::<SharedRangeTupleCheckerChip<2>>()
-            .next()
-            .cloned();
-
-        // Create the shared chips and the dummy shared chips
-        let shared_chips_pair = PowdrPeripheryInstances::new(
-            range_checker.clone(),
-            bitwise_lookup,
-            tuple_range_checker,
-        );
-
         for precompile in self.precompiles.iter() {
             let powdr_executor = PowdrExtensionExecutor::Powdr(PowdrExecutor::new(
                 self.airs.clone(),
                 self.base_config.clone(),
-                shared_chips_pair.clone(),
                 precompile.apc.clone(),
+                self.record_arena_by_air_name.clone(),
             ));
             inventory.add_executor(powdr_executor, once(precompile.opcode.global_opcode()))?;
         }

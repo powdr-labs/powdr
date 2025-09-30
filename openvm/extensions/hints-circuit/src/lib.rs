@@ -1,5 +1,6 @@
 use openvm_circuit::arch::{
-    AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecutorInventoryBuilder, ExecutorInventoryError, VmCircuitExtension, VmExecutionExtension, VmProverExtension
+    AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecutorInventoryBuilder,
+    ExecutorInventoryError, VmCircuitExtension, VmExecutionExtension, VmProverExtension,
 };
 use openvm_circuit::derive::{AnyEnum, Executor, MeteredExecutor, PreflightExecutor};
 use openvm_circuit::system::phantom::PhantomExecutor;
@@ -58,7 +59,10 @@ impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for HintsExtension {
 
 pub struct HintsCpuProverExt;
 
-impl<E, RA> VmProverExtension<E, RA, HintsExtension> for HintsCpuProverExt where E: StarkEngine, Val<E::SC>: PrimeField32
+impl<E, RA> VmProverExtension<E, RA, HintsExtension> for HintsCpuProverExt
+where
+    E: StarkEngine,
+    Val<E::SC>: PrimeField32,
 {
     fn extend_prover(
         &self,

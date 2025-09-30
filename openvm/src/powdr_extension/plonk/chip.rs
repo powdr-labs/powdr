@@ -45,8 +45,12 @@ impl PlonkChip {
     pub(crate) fn new(
         precompile: PowdrPrecompile<BabyBear>,
         original_airs: OriginalAirs<BabyBear>,
+<<<<<<< HEAD
         base_config: OriginalVmConfig,
         periphery: PowdrPeripheryInstances,
+=======
+        base_config: ExtendedVmConfig,
+>>>>>>> 54d39f001e6dd430927af0b065937ddd72b83638
         bus_map: BusMap,
         copy_constraint_bus_id: u16,
     ) -> Self {
@@ -58,7 +62,7 @@ impl PlonkChip {
             bus_map: bus_map.clone(),
             _marker: std::marker::PhantomData,
         });
-        let executor = PowdrExecutor::new(original_airs, base_config, periphery, apc.clone());
+        let executor = PowdrExecutor::new(original_airs, base_config, apc.clone());
 
         Self {
             name,
