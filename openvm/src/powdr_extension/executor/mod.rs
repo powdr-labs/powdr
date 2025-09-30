@@ -69,14 +69,13 @@ pub use periphery::PowdrPeripheryInstances;
 
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
 pub struct PowdrExecutor {
-    air_by_opcode_id: OriginalAirs<BabyBear>,
-    chip_inventory: ChipInventory<BabyBearSC, MatrixRecordArena<BabyBear>, CpuBackend<BabyBearSC>>,
-    executor_inventory: ExecutorInventory<SdkVmConfigExecutor<BabyBear>>,
-    number_of_calls: RefCell<usize>,
-    periphery: SharedPeripheryChips,
-    apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
-    record_arena_dimension_by_air_name_for_each_call: HashMap<String, RecordArenaDimension>,
-    record_arena_by_air_name: RefCell<Vec<HashMap<String, MatrixRecordArena<BabyBear>>>>,
+    pub air_by_opcode_id: OriginalAirs<BabyBear>,
+    // chip_inventory: ChipInventory<BabyBearSC, MatrixRecordArena<BabyBear>, CpuBackend<BabyBearSC>>,
+    pub executor_inventory: ExecutorInventory<SdkVmConfigExecutor<BabyBear>>,
+    // periphery: SharedPeripheryChips,
+    pub apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
+    pub record_arena_dimension_by_air_name_for_each_call: HashMap<String, RecordArenaDimension>,
+    // record_arena_by_air_name: RefCell<Vec<HashMap<String, MatrixRecordArena<BabyBear>>>>,
 }
 
 pub struct RecordArenaDimension {
@@ -338,13 +337,6 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
         // `original_ctx` is the trace initialized for APC, but we really only generate the dummy traces here and assemble them to APC trace in `generate_witness`
         // state.ctx = original_ctx;
 
-        // Add dummy record arena to PowdrExecutor for `generate_proving_ctx` later
-        self.record_arena_by_air_name
-            .borrow_mut()
-            .push(record_arena_by_air_name_for_this_call);
-
-        *self.number_of_calls.borrow_mut() += 1;
-
         Ok(())
     }
 
@@ -360,9 +352,7 @@ use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
 impl PowdrExecutor {
     pub fn new(
         air_by_opcode_id: OriginalAirs<BabyBear>,
-        // memory: Arc<Mutex<TracingMemory>>,
         base_config: ExtendedVmConfig,
-        periphery: PowdrPeripheryInstances,
         apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
     ) -> Self {
         let record_arena_dimension_by_air_name_for_each_call =
@@ -386,257 +376,15 @@ impl PowdrExecutor {
                 });
         Self {
             air_by_opcode_id,
-            chip_inventory: {
-                let airs: AirInventory<BabyBearSC> =
-                    create_dummy_airs(&base_config.sdk_vm_config, periphery.dummy.clone())
-                        .expect("Failed to create dummy airs");
-
-                create_dummy_chip_complex(&base_config.sdk_vm_config, airs, periphery.dummy)
-                    .expect("Failed to create chip complex")
-                    .inventory
-            },
             executor_inventory: base_config.sdk_vm_config.create_executors().unwrap(),
-            number_of_calls: RefCell::new(0),
-            periphery: periphery.real,
             apc,
             record_arena_dimension_by_air_name_for_each_call,
-            record_arena_by_air_name: RefCell::new(Default::default()),
         }
-    }
-
-    pub fn number_of_calls(&self) -> usize {
-        *self.number_of_calls.borrow()
-    }
-
-    /// Generates the witness for the autoprecompile. The result will be a matrix of
-    /// size `next_power_of_two(number_of_calls) * width`, where `width` is the number of
-    /// nodes in the APC circuit.
-    pub fn generate_witness(&self) -> RowMajorMatrix<BabyBear> {
-        assert_eq!(
-            *self.number_of_calls.borrow(),
-            0,
-            "program is not modified to run apcs yet, so this should be zero"
-        );
-
-        // zip(self.inventory.chips.iter().enumerate().rev(), record_arenas).map(
-        //     |((insertion_idx, chip), records)| {
-        //         // Only create a span if record is not empty:
-        //         let _span = (!records.is_empty()).then(|| {
-        //             let air_name = self.inventory.airs.ext_airs[insertion_idx].name();
-        //             info_span!("single_trace_gen", air = air_name).entered()
-        //         });
-        //         chip.generate_proving_ctx(records)
-        //     },
-
-        // merge record arenas, taking care of padding during initialization
-        let mut record_arena_by_air_name = self.record_arena_by_air_name.borrow_mut();
-
-        let mut merged_record_arena_by_air_name = self
-            .record_arena_dimension_by_air_name_for_each_call
-            .iter()
-            .map(
-                |(
-                    air_name,
-                    RecordArenaDimension {
-                        num_calls,
-                        air_width,
-                    },
-                )| {
-                    // height is padded to next power of two
-                    let merged_record_arena = MatrixRecordArena::with_capacity(
-                        *num_calls * self.number_of_calls(),
-                        *air_width,
-                    );
-                    (air_name.clone(), merged_record_arena)
-                },
-            )
-            .collect::<HashMap<String, MatrixRecordArena<BabyBear>>>();
-
-        for record_arena_for_this_call in record_arena_by_air_name.iter_mut() {
-            for (air_name, src_arena) in record_arena_for_this_call.drain() {
-                // Compute number of rows actually used (trace_offset is in elements)
-                let rows_used = src_arena.trace_offset / src_arena.width;
-                if rows_used == 0 {
-                    continue;
-                }
-
-                let dst_arena = merged_record_arena_by_air_name
-                    .get_mut(&air_name)
-                    .expect("destination arena missing for air name");
-
-                // Ensure widths match
-                debug_assert_eq!(dst_arena.width, src_arena.width);
-
-                // Allocate pre-initialized empty mutable buffer in the destination for these rows
-                // This also increases `dst_arena.trace_offset`
-                let dst_bytes = dst_arena.alloc_buffer(rows_used);
-
-                // Copy the used portion of the source buffer (as bytes)
-                let src_slice = &src_arena.trace_buffer[0..src_arena.trace_offset];
-                // `src_size` is different from `src_arena.trace_offset`, which is number of `F`, whereas here we need the number of bytes
-                let src_size = core::mem::size_of_val(src_slice);
-                let src_ptr = src_slice.as_ptr() as *const u8;
-                let src_bytes = unsafe { core::slice::from_raw_parts(src_ptr, src_size) };
-                dst_bytes.copy_from_slice(src_bytes);
-            }
-        }
-
-        // Assert the `trace_offset` of `merged_record_arena_by_air_name`
-        merged_record_arena_by_air_name
-            .iter()
-            .for_each(|(air_name, arena)| {
-                let height = self
-                    .record_arena_dimension_by_air_name_for_each_call
-                    .get(air_name)
-                    .unwrap()
-                    .num_calls;
-                assert_eq!(
-                    arena.trace_offset,
-                    arena.width * height * self.number_of_calls()
-                );
-                println!("merged record arena assert_eq passes for air: {}", air_name);
-            });
-
-        // print merged record arena
-        merged_record_arena_by_air_name
-            .iter()
-            .for_each(|(air_name, arena)| {
-                println!("merged record arena for air: {}", air_name);
-                println!("merged record arena: {:?}", arena.trace_buffer);
-            });
-
-        let dummy_trace_by_air_name: HashMap<String, Trace<BabyBear>> = self
-            .chip_inventory
-            .chips()
-            .iter()
-            .enumerate()
-            .rev()
-            .filter_map(|(insertion_idx, chip)| {
-                let air_name = self.chip_inventory.airs().ext_airs()[insertion_idx].name();
-
-                let record_arena = {
-                    let arenas = merged_record_arena_by_air_name.borrow_mut();
-                    match arenas.remove(&air_name) {
-                        Some(ra) => ra,
-                        None => return None, // skip this iteration, because we only have record arena for chips that are used
-                    }
-                };
-
-                // Arc<DenseMatrix>
-                let shared_trace = chip.generate_proving_ctx(record_arena).common_main.unwrap();
-                // Reference count should be 1 here as it's just created
-                let DenseMatrix { values, width, .. } =
-                    Arc::try_unwrap(shared_trace).expect("Can't unwrap shared Arc<DenseMatrix>");
-
-                Some((air_name, Trace::new(values, width)))
-            })
-            .collect();
-
-        let TraceData {
-            dummy_values,
-            dummy_trace_index_to_apc_index_by_instruction,
-            apc_poly_id_to_index,
-            columns_to_compute,
-        } = generate_trace::<OriginalAirs<BabyBear>>(
-            &dummy_trace_by_air_name,
-            &self.air_by_opcode_id,
-            *self.number_of_calls.borrow(),
-            &self.apc,
-        );
-
-        // precompute the symbolic bus sends to the range checker for each original instruction
-        let range_checker_sends_per_original_instruction = self
-            .apc
-            .instructions()
-            .iter()
-            .map(|instruction| {
-                self.air_by_opcode_id
-                    .get_instruction_air_and_id(instruction)
-                    .1
-                    .bus_interactions
-                    .iter()
-                    .filter(|interaction| interaction.id == DEFAULT_VARIABLE_RANGE_CHECKER)
-                    .collect_vec()
-            })
-            .collect_vec();
-
-        // allocate for apc trace
-        let width = apc_poly_id_to_index.len();
-        let height = next_power_of_two_or_zero(*self.number_of_calls.borrow());
-        let mut values = <BabyBear as FieldAlgebra>::zero_vec(height * width);
-
-        // go through the final table and fill in the values
-        values
-            // a record is `width` values
-            // TODO: optimize by parallelizing on chunks of rows, currently fails because `dyn AnyChip<MatrixRecordArena<Val<SC>>>` is not `Senf`
-            .chunks_mut(width)
-            .zip(dummy_values)
-            .for_each(|(row_slice, dummy_values)| {
-                // map the dummy rows to the autoprecompile row
-                for ((dummy_row, range_checker_sends), dummy_trace_index_to_apc_index) in
-                    dummy_values
-                        .iter()
-                        .zip_eq(&range_checker_sends_per_original_instruction)
-                        .zip_eq(&dummy_trace_index_to_apc_index_by_instruction)
-                {
-                    let evaluator = RowEvaluator::new(dummy_row);
-
-                    range_checker_sends.iter().for_each(|interaction| {
-                        let ConcreteBusInteraction { mult, .. } =
-                            evaluator.eval_bus_interaction(interaction);
-                        for _ in 0..mult.as_canonical_u32() {
-                            // TODO: remove count is not implemented in openvm 1.4.0
-                            // self.periphery.range_checker.remove_count(
-                            //     args.next().unwrap().as_canonical_u32(),
-                            //     args.next().unwrap().as_canonical_u32() as usize,
-                            // );
-                        }
-                    });
-
-                    for (dummy_trace_index, apc_index) in dummy_trace_index_to_apc_index {
-                        row_slice[*apc_index] = dummy_row[*dummy_trace_index];
-                    }
-
-                    println!("apc row_slice: {:?}", row_slice);
-                }
-
-                // Fill in the columns we have to compute from other columns
-                // (these are either new columns or for example the "is_valid" column).
-                for (col_index, computation_method) in &columns_to_compute {
-                    row_slice[*col_index] = match computation_method {
-                        ComputationMethod::Constant(c) => BabyBear::from_canonical_u64(*c),
-                        ComputationMethod::InverseOfSum(columns_to_sum) => columns_to_sum
-                            .iter()
-                            .map(|col| row_slice[*col])
-                            .reduce(|a, b| a + b)
-                            .unwrap()
-                            .inverse(),
-                    };
-                }
-
-                let evaluator = MappingRowEvaluator::new(row_slice, &apc_poly_id_to_index);
-
-                // replay the side effects of this row on the main periphery
-                self.apc
-                    .machine()
-                    .bus_interactions
-                    .iter()
-                    .for_each(|interaction| {
-                        let ConcreteBusInteraction { id, mult, args } =
-                            evaluator.eval_bus_interaction(interaction);
-                        self.periphery.apply(
-                            id as u16,
-                            mult.as_canonical_u32(),
-                            args.map(|arg| arg.as_canonical_u32()),
-                        );
-                    });
-            });
-
-        RowMajorMatrix::new(values, width)
     }
 }
 
-fn create_dummy_airs(
+// TODO: maybe move somewhere else
+pub fn create_dummy_airs(
     config: &SdkVmConfig,
     shared_chips: SharedPeripheryChips,
 ) -> Result<AirInventory<BabyBearSC>, AirInventoryError> {
@@ -687,7 +435,7 @@ fn create_dummy_airs(
     Ok(inventory)
 }
 
-fn create_dummy_chip_complex(
+pub fn create_dummy_chip_complex(
     config: &SdkVmConfig,
     circuit: AirInventory<BabyBearSC>,
     shared_chips: SharedPeripheryChips,
