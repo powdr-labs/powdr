@@ -10,11 +10,11 @@ use openvm_circuit_derive::{Executor, MeteredExecutor, PreflightExecutor};
 use openvm_instructions::LocalOpcode;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 
+use crate::bus_map::BusMap;
 use crate::customize_exe::OvmApcStats;
 use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
 use crate::powdr_extension::chip::PowdrAir;
 use crate::powdr_extension::executor::{OriginalArenas, PowdrExecutor};
-use crate::bus_map::BusMap;
 use openvm_circuit::{
     arch::{AirInventory, AirInventoryError, VmCircuitExtension, VmExecutionExtension},
     circuit_derive::Chip,

@@ -8,10 +8,7 @@ use std::{
 };
 
 use crate::{
-    bus_map::DEFAULT_VARIABLE_RANGE_CHECKER,
-    extraction_utils::{
-        OriginalAirs, OriginalVmConfig,
-    },
+    extraction_utils::{OriginalAirs, OriginalVmConfig},
     powdr_extension::executor::{
         create_dummy_airs, create_dummy_chip_complex, OriginalArenas, PowdrPeripheryInstances,
     },
@@ -20,10 +17,7 @@ use crate::{
 
 use super::{opcode::PowdrOpcode, PowdrPrecompile};
 use itertools::Itertools;
-use openvm_circuit::{
-    arch::AirInventory,
-    utils::next_power_of_two_or_zero,
-};
+use openvm_circuit::{arch::AirInventory, utils::next_power_of_two_or_zero};
 use openvm_stark_backend::{
     p3_air::{Air, BaseAir},
     p3_field::{Field, FieldAlgebra},
@@ -42,10 +36,10 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
     expression::{
         AlgebraicEvaluator, AlgebraicReference, ConcreteBusInteraction, MappingRowEvaluator,
-        RowEvaluator, WitnessEvaluator,
+        WitnessEvaluator,
     },
     trace_handler::{generate_trace, ComputationMethod, Trace, TraceData},
-    Apc, InstructionHandler,
+    Apc,
 };
 
 pub struct PowdrChip {
@@ -87,7 +81,7 @@ impl PowdrChip {
     /// Generates the witness for the autoprecompile. The result will be a matrix of
     /// size `next_power_of_two(number_of_calls) * width`, where `width` is the number of
     /// nodes in the APC circuit.
-    pub fn generate_witness<R>(&self, records: R) -> RowMajorMatrix<BabyBear> {
+    pub fn generate_witness<R>(&self, _: R) -> RowMajorMatrix<BabyBear> {
         let chip_inventory = {
             let airs: AirInventory<BabyBearSC> =
                 create_dummy_airs(&self.config.sdk, self.periphery.dummy.clone())
@@ -139,22 +133,6 @@ impl PowdrChip {
             &self.apc,
         );
 
-        // precompute the symbolic bus sends to the range checker for each original instruction
-        let range_checker_sends_per_original_instruction = self
-            .apc
-            .instructions()
-            .iter()
-            .map(|instruction| {
-                self.original_airs
-                    .get_instruction_air_and_id(instruction)
-                    .1
-                    .bus_interactions
-                    .iter()
-                    .filter(|interaction| interaction.id == DEFAULT_VARIABLE_RANGE_CHECKER)
-                    .collect_vec()
-            })
-            .collect_vec();
-
         // allocate for apc trace
         let width = apc_poly_id_to_index.len();
         let height = next_power_of_two_or_zero(num_apc_calls);
@@ -168,26 +146,10 @@ impl PowdrChip {
             .zip(dummy_values)
             .for_each(|(row_slice, dummy_values)| {
                 // map the dummy rows to the autoprecompile row
-                for ((dummy_row, range_checker_sends), dummy_trace_index_to_apc_index) in
-                    dummy_values
-                        .iter()
-                        .zip_eq(&range_checker_sends_per_original_instruction)
-                        .zip_eq(&dummy_trace_index_to_apc_index_by_instruction)
+                for (dummy_row, dummy_trace_index_to_apc_index) in dummy_values
+                    .iter()
+                    .zip_eq(&dummy_trace_index_to_apc_index_by_instruction)
                 {
-                    let evaluator = RowEvaluator::new(dummy_row);
-
-                    range_checker_sends.iter().for_each(|interaction| {
-                        let ConcreteBusInteraction { mult, .. } =
-                            evaluator.eval_bus_interaction(interaction);
-                        for _ in 0..mult.as_canonical_u32() {
-                            // TODO: remove count is not implemented in openvm 1.4.0
-                            // self.periphery.range_checker.remove_count(
-                            //     args.next().unwrap().as_canonical_u32(),
-                            //     args.next().unwrap().as_canonical_u32() as usize,
-                            // );
-                        }
-                    });
-
                     for (dummy_trace_index, apc_index) in dummy_trace_index_to_apc_index {
                         row_slice[*apc_index] = dummy_row[*dummy_trace_index];
                     }

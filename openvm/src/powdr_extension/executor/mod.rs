@@ -36,19 +36,19 @@ use openvm_stark_backend::p3_field::Field;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::Apc;
 
+use openvm_circuit::arch::{Arena, MatrixRecordArena};
 use openvm_circuit::{
     arch::{
-        AirInventory, AirInventoryError, ChipInventoryError, ExecuteFunc,
-        ExecutionCtxTrait, ExecutionError, Executor, ExecutorInventory, MeteredExecutionCtxTrait,
-        MeteredExecutor, StaticProgramError, VmBuilder, VmCircuitExtension, VmExecState,
-        VmProverExtension, VmStateMut,
+        AirInventory, AirInventoryError, ChipInventoryError, ExecuteFunc, ExecutionCtxTrait,
+        ExecutionError, Executor, ExecutorInventory, MeteredExecutionCtxTrait, MeteredExecutor,
+        StaticProgramError, VmBuilder, VmCircuitExtension, VmExecState, VmProverExtension,
+        VmStateMut,
     },
     system::{
         memory::online::{GuestMemory, TracingMemory},
         SystemCpuBuilder,
     },
 };
-use openvm_circuit::arch::{Arena, MatrixRecordArena};
 use powdr_autoprecompiles::InstructionHandler;
 
 /// The inventory of the PowdrExecutor, which contains the executors for each opcode.
