@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 use crate::air_builder::AirKeygenBuilder;
 use crate::bus_map::{BusMap, OpenVmBusType};
 use crate::opcode::branch_opcodes_set;
+use crate::powdr_extension::executor::RecordArenaDimension;
 use crate::BabyBearPoseidon2Engine;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
 use crate::{AirMetrics, ExtendedVmConfig, ExtendedVmConfigExecutor, Instr};
@@ -36,7 +37,7 @@ use openvm_stark_sdk::p3_baby_bear::{self, BabyBear};
 use powdr_autoprecompiles::bus_map::BusType;
 use powdr_autoprecompiles::evaluation::AirStats;
 use powdr_autoprecompiles::expression::try_convert;
-use powdr_autoprecompiles::{InstructionHandler, SymbolicMachine};
+use powdr_autoprecompiles::{Apc, InstructionHandler, SymbolicMachine};
 use serde::{Deserialize, Serialize};
 use std::iter::Sum;
 use std::ops::Deref;
@@ -132,6 +133,30 @@ fn to_option<T>(mut iter: impl Iterator<Item = T>) -> Option<T> {
         (None, Some(elem)) => Some(elem),
         _ => panic!("Expected at most one element, got multiple"),
     }
+}
+
+pub fn record_arena_dimension_by_air_name_per_apc_call<F>(
+    apc: &Apc<F, Instr<F>>,
+    air_by_opcode_id: &OriginalAirs<F>,
+) -> HashMap<String, RecordArenaDimension> {
+    apc.instructions()
+        .iter()
+        .fold(HashMap::new(), |mut acc, instruction| {
+            let air_name = air_by_opcode_id.get_instruction_air_and_id(instruction).0;
+            // TODO: main_columns might not be correct, as the RA::with_capacity() uses the following `main_width()`
+            // pub fn main_width(&self) -> usize {
+            //     self.cached_mains.iter().sum::<usize>() + self.common_main
+            // }
+            acc.entry(air_name.clone())
+                .or_insert(RecordArenaDimension {
+                    num_calls: 0, // initialize with 0, which can still be incremented by 1 immediately after
+                    air_width: air_by_opcode_id
+                        .get_instruction_air_stats(instruction)
+                        .main_columns,
+                })
+                .num_calls += 1;
+            acc
+        })
 }
 
 /// A lazy chip complex that is initialized on the first access

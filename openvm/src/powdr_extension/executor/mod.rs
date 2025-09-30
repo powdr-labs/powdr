@@ -2,12 +2,13 @@ use std::{
     borrow::{Borrow, BorrowMut},
     cell::RefCell,
     collections::HashMap,
+    rc::Rc,
     sync::Arc,
 };
 
 use crate::{
     bus_map::DEFAULT_VARIABLE_RANGE_CHECKER,
-    extraction_utils::OriginalAirs,
+    extraction_utils::{record_arena_dimension_by_air_name_per_apc_call, OriginalAirs},
     powdr_extension::executor::{inventory::DummyChipComplex, periphery::SharedPeripheryChips},
     BabyBearSC, ExtendedVmConfig, Instr,
 };
@@ -74,8 +75,9 @@ pub struct PowdrExecutor {
     pub executor_inventory: ExecutorInventory<SdkVmConfigExecutor<BabyBear>>,
     // periphery: SharedPeripheryChips,
     pub apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
-    pub record_arena_dimension_by_air_name_for_each_call: HashMap<String, RecordArenaDimension>,
-    // record_arena_by_air_name: RefCell<Vec<HashMap<String, MatrixRecordArena<BabyBear>>>>,
+    pub record_arena_dimensions: HashMap<String, RecordArenaDimension>,
+    pub number_of_calls: Rc<RefCell<usize>>,
+    pub record_arena_by_air_name: Rc<RefCell<Vec<HashMap<String, MatrixRecordArena<BabyBear>>>>>,
 }
 
 pub struct RecordArenaDimension {
@@ -268,7 +270,7 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
             String,
             MatrixRecordArena<BabyBear>,
         > = self
-            .record_arena_dimension_by_air_name_for_each_call
+            .record_arena_dimensions
             .iter()
             .map(
                 |(
@@ -332,6 +334,12 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
                 );
             });
 
+        *self.number_of_calls.as_ref().borrow_mut() += 1;
+        self.record_arena_by_air_name
+            .as_ref()
+            .borrow_mut()
+            .push(record_arena_by_air_name_for_this_call);
+
         // After execution, put back the original ctx
         // TODO: `original_ctx` might just be useless and tossed away, so there's no need to put it back?
         // `original_ctx` is the trace initialized for APC, but we really only generate the dummy traces here and assemble them to APC trace in `generate_witness`
@@ -354,31 +362,18 @@ impl PowdrExecutor {
         air_by_opcode_id: OriginalAirs<BabyBear>,
         base_config: ExtendedVmConfig,
         apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
+        number_of_calls: Rc<RefCell<usize>>,
+        record_arena_by_air_name: Rc<RefCell<Vec<HashMap<String, MatrixRecordArena<BabyBear>>>>>,
     ) -> Self {
-        let record_arena_dimension_by_air_name_for_each_call =
-            apc.instructions()
-                .iter()
-                .fold(HashMap::new(), |mut acc, instruction| {
-                    let air_name = air_by_opcode_id.get_instruction_air_and_id(instruction).0;
-                    // TODO: main_columns might not be correct, as the RA::with_capacity() uses the following `main_width()`
-                    // pub fn main_width(&self) -> usize {
-                    //     self.cached_mains.iter().sum::<usize>() + self.common_main
-                    // }
-                    acc.entry(air_name.clone())
-                        .or_insert(RecordArenaDimension {
-                            num_calls: 0, // initialize with 0, which can still be incremented by 1 immediately after
-                            air_width: air_by_opcode_id
-                                .get_instruction_air_stats(instruction)
-                                .main_columns,
-                        })
-                        .num_calls += 1;
-                    acc
-                });
+        let record_arena_dimensions =
+            record_arena_dimension_by_air_name_per_apc_call(&apc, &air_by_opcode_id);
         Self {
             air_by_opcode_id,
             executor_inventory: base_config.sdk_vm_config.create_executors().unwrap(),
             apc,
-            record_arena_dimension_by_air_name_for_each_call,
+            record_arena_dimensions,
+            number_of_calls,
+            record_arena_by_air_name,
         }
     }
 }

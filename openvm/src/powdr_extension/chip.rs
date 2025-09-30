@@ -1,13 +1,17 @@
 // Mostly taken from [this openvm extension](https://github.com/openvm-org/openvm/blob/1b76fd5a900a7d69850ee9173969f70ef79c4c76/extensions/rv32im/circuit/src/auipc/core.rs#L1)
 
 use std::{
+    cell::RefCell,
     collections::{BTreeMap, HashMap},
+    rc::Rc,
     sync::Arc,
 };
 
 use crate::{
     bus_map::DEFAULT_VARIABLE_RANGE_CHECKER,
-    extraction_utils::{OriginalAirs, OriginalVmConfig},
+    extraction_utils::{
+        record_arena_dimension_by_air_name_per_apc_call, OriginalAirs, OriginalVmConfig,
+    },
     powdr_extension::executor::{
         create_dummy_airs, create_dummy_chip_complex, PowdrPeripheryInstances, RecordArenaDimension,
     },
@@ -54,6 +58,8 @@ pub struct PowdrChip {
     pub original_airs: OriginalAirs<BabyBear>,
     pub config: ExtendedVmConfig,
     pub periphery: PowdrPeripheryInstances,
+    pub number_of_calls: Rc<RefCell<usize>>,
+    pub record_arena_by_air_name: Rc<RefCell<Vec<HashMap<String, MatrixRecordArena<BabyBear>>>>>,
 }
 
 impl PowdrChip {
@@ -62,6 +68,8 @@ impl PowdrChip {
         original_airs: OriginalAirs<BabyBear>,
         base_config: OriginalVmConfig,
         periphery: PowdrPeripheryInstances,
+        number_of_calls: Rc<RefCell<usize>>,
+        record_arena_by_air_name: Rc<RefCell<Vec<HashMap<String, MatrixRecordArena<BabyBear>>>>>,
     ) -> Self {
         let PowdrPrecompile {
             name, opcode, apc, ..
@@ -76,6 +84,8 @@ impl PowdrChip {
             apc,
             periphery,
             air,
+            number_of_calls,
+            record_arena_by_air_name,
         }
     }
 
@@ -83,30 +93,13 @@ impl PowdrChip {
     /// size `next_power_of_two(number_of_calls) * width`, where `width` is the number of
     /// nodes in the APC circuit.
     pub fn generate_witness<R>(&self, records: R) -> RowMajorMatrix<BabyBear> {
-        let mut record_arena_by_air_name: Vec<HashMap<String, MatrixRecordArena<BabyBear>>> =
-            unimplemented!("recover from records");
-        let num_apc_calls: usize = unimplemented!("recover from records");
-        let mut merged_record_arena_by_air_name = unimplemented!("initialise");
-        let record_arena_dimension_by_air_name_for_each_call: HashMap<
-            String,
-            RecordArenaDimension,
-        > = unimplemented!("compute from apc and original airs");
+        let num_apc_calls: usize = *self.number_of_calls.as_ref().borrow();
 
-        let chip_inventory = {
-            let airs: AirInventory<BabyBearSC> =
-                create_dummy_airs(&self.config.sdk_vm_config, self.periphery.dummy.clone())
-                    .expect("Failed to create dummy airs");
+        let mut record_arena_by_air_name = self.record_arena_by_air_name.as_ref().borrow_mut();
+        let ra_dimensions =
+            record_arena_dimension_by_air_name_per_apc_call(&self.apc, &self.original_airs);
 
-            create_dummy_chip_complex(
-                &self.config.sdk_vm_config,
-                airs,
-                self.periphery.dummy.clone(),
-            )
-            .expect("Failed to create chip complex")
-            .inventory
-        };
-
-        let mut merged_record_arena_by_air_name = record_arena_dimension_by_air_name_for_each_call
+        let mut merged_record_arena_by_air_name = ra_dimensions
             .iter()
             .map(
                 |(
@@ -157,10 +150,7 @@ impl PowdrChip {
         merged_record_arena_by_air_name
             .iter()
             .for_each(|(air_name, arena)| {
-                let height = record_arena_dimension_by_air_name_for_each_call
-                    .get(air_name)
-                    .unwrap()
-                    .num_calls;
+                let height = ra_dimensions.get(air_name).unwrap().num_calls;
                 assert_eq!(arena.trace_offset, arena.width * height * num_apc_calls);
                 println!("merged record arena assert_eq passes for air: {}", air_name);
             });
@@ -172,6 +162,20 @@ impl PowdrChip {
                 println!("merged record arena for air: {}", air_name);
                 println!("merged record arena: {:?}", arena.trace_buffer);
             });
+
+        let chip_inventory = {
+            let airs: AirInventory<BabyBearSC> =
+                create_dummy_airs(&self.config.sdk_vm_config, self.periphery.dummy.clone())
+                    .expect("Failed to create dummy airs");
+
+            create_dummy_chip_complex(
+                &self.config.sdk_vm_config,
+                airs,
+                self.periphery.dummy.clone(),
+            )
+            .expect("Failed to create chip complex")
+            .inventory
+        };
 
         let dummy_trace_by_air_name: HashMap<String, Trace<BabyBear>> = chip_inventory
             .chips()
@@ -271,7 +275,10 @@ impl PowdrChip {
                 // (these are either new columns or for example the "is_valid" column).
                 for (col_index, computation_method) in &columns_to_compute {
                     row_slice[*col_index] = match computation_method {
-                        ComputationMethod::Constant(c) => BabyBear::from_canonical_u64(*c),
+                        ComputationMethod::Constant(c) => {
+                            println!("set index {} to constant: {}", *col_index, *c);
+                            BabyBear::from_canonical_u64(*c)
+                        },
                         ComputationMethod::InverseOfSum(columns_to_sum) => columns_to_sum
                             .iter()
                             .map(|col| row_slice[*col])
@@ -297,6 +304,8 @@ impl PowdrChip {
                             args.map(|arg| arg.as_canonical_u32()),
                         );
                     });
+
+                println!("apc row_slice: {:?}", row_slice);
             });
 
         RowMajorMatrix::new(values, width)
