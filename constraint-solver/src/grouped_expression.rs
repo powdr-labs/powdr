@@ -6,9 +6,7 @@ use std::{
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub},
 };
 
-use crate::runtime_constant::{
-    ReferencedSymbols, RuntimeConstant, Substitutable, VarTransformable,
-};
+use crate::runtime_constant::{RuntimeConstant, Substitutable, VarTransformable};
 use itertools::Itertools;
 use num_traits::One;
 use num_traits::Zero;
@@ -39,12 +37,22 @@ pub struct GroupedExpression<T, V> {
     /// Quadratic terms of the form `a * X * Y`, where `a` is a (symbolically)
     /// known value and `X` and `Y` are grouped expressions that
     /// have at least one unknown.
-    pub(crate) quadratic: Vec<(Self, Self)>,
+    quadratic: Vec<(Self, Self)>,
     /// Linear terms of the form `a * X`, where `a` is a (symbolically) known
     /// value and `X` is an unknown variable.
-    pub(crate) linear: BTreeMap<V, T>,
+    linear: BTreeMap<V, T>,
     /// Constant term, a (symbolically) known value.
-    pub(crate) constant: T,
+    constant: T,
+}
+
+/// A component of a grouped expression.
+pub enum GroupedExpressionComponent<T, V> {
+    /// A quadratic component `(c1, c1)`, representing `c1 * c2`.
+    Quadratic(GroupedExpression<T, V>, GroupedExpression<T, V>),
+    /// A linear component `(v, c)`, representing `c * v`.
+    Linear(V, T),
+    /// A constant component `c`.
+    Constant(T),
 }
 
 impl<F: FieldElement, T: RuntimeConstant<FieldType = F>, V> GroupedExpression<T, V> {
@@ -196,19 +204,37 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
         }
     }
 
-    /// Returns the quadratic, linear and constant components of this expression.
-    pub fn components(
-        &self,
-    ) -> (
-        &[(Self, Self)],
-        impl DoubleEndedIterator<Item = (&V, &T)> + Clone,
-        &T,
-    ) {
-        (&self.quadratic, self.linear.iter(), &self.constant)
+    /// Returns the linear components of this expression, i.e. summands that we were
+    /// able to determine to be only a runtime constant times a single variable.
+    /// If `is_affine()` returns true, this returns all summands except the constant offset.
+    /// Otherwise, the variables returned here might also appear inside the higher order terms
+    /// and this the dependency on these variables might be more complicated than just a
+    /// runtime constant factor.
+    pub fn linear_components(&self) -> impl DoubleEndedIterator<Item = (&V, &T)> + Clone {
+        self.linear.iter()
     }
 
-    pub fn into_components(self) -> (Vec<(Self, Self)>, impl Iterator<Item = (V, T)>, T) {
-        (self.quadratic, self.linear.into_iter(), self.constant)
+    /// Returns the constant offset in this expression.
+    pub fn constant_offset(&self) -> &T {
+        &self.constant
+    }
+
+    /// Returns a slice of the quadratic components of this expression.
+    pub fn quadratic_components(&self) -> &[(Self, Self)] {
+        &self.quadratic
+    }
+
+    /// Turns this expression into an iterator over its summands.
+    pub fn into_summands(self) -> impl Iterator<Item = GroupedExpressionComponent<T, V>> {
+        self.quadratic
+            .into_iter()
+            .map(|(l, r)| GroupedExpressionComponent::Quadratic(l, r))
+            .chain(
+                self.linear
+                    .into_iter()
+                    .map(|(v, c)| GroupedExpressionComponent::Linear(v, c)),
+            )
+            .chain(once(GroupedExpressionComponent::Constant(self.constant)))
     }
 
     /// Computes the degree of a GroupedExpression in the unknown variables.
@@ -236,10 +262,13 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
             .unwrap()
     }
 
-    /// Returns the coefficient of the variable `variable` if this is an affine expression.
-    /// Panics if the expression is quadratic.
-    pub fn coefficient_of_variable<'a>(&'a self, var: &V) -> Option<&'a T> {
-        assert!(!self.is_quadratic());
+    /// Returns the coefficient of the variable `variable` in the affine part of this
+    /// expression.
+    /// If the expression is affine, this is the actual coefficient of the variable
+    /// in the expression. Otherwise, the quadratic part of the expression could
+    /// also contain the variable and thus the actual coefficient might be different
+    /// (even zero).
+    pub fn coefficient_of_variable_in_affine_part<'a>(&'a self, var: &V) -> Option<&'a T> {
         self.linear.get(var)
     }
 
@@ -358,23 +387,6 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq> GroupedExpressi
         remove_quadratic_terms_adding_to_zero(&mut self.quadratic);
 
         *self += to_add;
-    }
-}
-
-impl<T: ReferencedSymbols<V>, V> GroupedExpression<T, V> {
-    /// Returns the set of referenced variables, both know and unknown. Might contain repetitions.
-    pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
-        let quadr = self
-            .quadratic
-            .iter()
-            .flat_map(|(a, b)| a.referenced_variables().chain(b.referenced_variables()));
-
-        let linear = self
-            .linear
-            .iter()
-            .flat_map(|(var, coeff)| std::iter::once(var).chain(coeff.referenced_symbols()));
-        let constant = self.constant.referenced_symbols();
-        Box::new(quadr.chain(linear).chain(constant))
     }
 }
 

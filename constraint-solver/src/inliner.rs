@@ -61,10 +61,9 @@ pub fn replace_constrained_witness_columns<
     });
 
     // sanity check
-    assert!(constraint_system.expressions().all(|expr| {
-        expr.referenced_unknown_variables()
-            .all(|var| !inlined_vars.contains(var))
-    }));
+    assert!(constraint_system
+        .referenced_unknown_variables()
+        .all(|var| { !inlined_vars.contains(var) }));
 
     constraint_system
 }
@@ -118,8 +117,9 @@ fn find_inlinable_variables<
 >(
     constraint: &AlgebraicConstraint<GroupedExpression<T, V>>,
 ) -> Vec<(V, GroupedExpression<T, V>)> {
-    let (_, linear, _) = constraint.expression.components();
-    linear
+    constraint
+        .expression
+        .linear_components()
         .rev()
         .filter_map(|(target_var, _)| {
             let rhs_expr = constraint.as_ref().try_solve_for(target_var)?;
@@ -136,8 +136,8 @@ fn expression_degree_with_virtual_substitution<T: RuntimeConstant, V: Ord + Clon
     var: &V,
     replacement_deg: usize,
 ) -> usize {
-    let (quadratic, linear, _) = expr.components();
-
+    let quadratic = expr.quadratic_components();
+    let linear = expr.linear_components();
     quadratic
         .iter()
         .map(|(l, r)| {

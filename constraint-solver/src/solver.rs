@@ -5,9 +5,7 @@ use crate::constraint_system::{
 };
 use crate::grouped_expression::GroupedExpression;
 use crate::range_constraint::RangeConstraint;
-use crate::runtime_constant::{
-    ReferencedSymbols, RuntimeConstant, Substitutable, VarTransformable,
-};
+use crate::runtime_constant::{RuntimeConstant, Substitutable, VarTransformable};
 use crate::solver::base::{BaseSolver, VarDispenserImpl};
 use crate::solver::var_transformation::{VarTransformation, Variable};
 
@@ -35,7 +33,6 @@ where
     T: RuntimeConstant + VarTransformable<V, Variable<V>> + Hash + Display,
     T::Transformed: RuntimeConstant<FieldType = T::FieldType>
         + VarTransformable<Variable<V>, V, Transformed = T>
-        + ReferencedSymbols<Variable<V>>
         + Display
         + Hash
         + ExpressionConvertible<T::FieldType, Variable<V>>
@@ -55,7 +52,6 @@ where
     T: RuntimeConstant + VarTransformable<V, Variable<V>> + Hash + Display,
     T::Transformed: RuntimeConstant<FieldType = T::FieldType>
         + VarTransformable<Variable<V>, V, Transformed = T>
-        + ReferencedSymbols<Variable<V>>
         + Display
         + Hash
         + ExpressionConvertible<T::FieldType, Variable<V>>

@@ -8,7 +8,7 @@ use crate::effect::Effect;
 use crate::grouped_expression::{GroupedExpression, RangeConstraintProvider};
 use crate::indexed_constraint_system::IndexedConstraintSystemWithQueue;
 use crate::range_constraint::RangeConstraint;
-use crate::runtime_constant::{ReferencedSymbols, RuntimeConstant, Substitutable};
+use crate::runtime_constant::{RuntimeConstant, Substitutable};
 use crate::solver::boolean_extractor::BooleanExtractor;
 use crate::solver::constraint_splitter::try_split_constraint;
 use crate::solver::linearizer::Linearizer;
@@ -127,12 +127,7 @@ impl<T, V, BusInter: BusInteractionHandler<T::FieldType>, VD: VarDispenser<V>> S
     for BaseSolver<T, V, BusInter, VD>
 where
     V: Ord + Clone + Hash + Eq + Display,
-    T: RuntimeConstant
-        + ReferencedSymbols<V>
-        + Display
-        + Hash
-        + ExpressionConvertible<T::FieldType, V>
-        + Substitutable<V>,
+    T: RuntimeConstant + Display + Hash + ExpressionConvertible<T::FieldType, V> + Substitutable<V>,
 {
     fn solve(&mut self) -> Result<Vec<VariableAssignment<T, V>>, Error> {
         self.equivalent_expressions_cache.clear();
@@ -207,19 +202,19 @@ where
         variables_to_keep.extend(self.var_dispenser.all_linearized_vars());
 
         self.constraint_system.retain_algebraic_constraints(|c| {
-            c.referenced_variables()
+            c.referenced_unknown_variables()
                 .any(|v| variables_to_keep.contains(v))
         });
         self.constraint_system
             .retain_bus_interactions(|bus_interaction| {
                 bus_interaction
-                    .referenced_variables()
+                    .referenced_unknown_variables()
                     .any(|v| variables_to_keep.contains(v))
             });
         let remaining_variables = self
             .constraint_system
             .system()
-            .variables()
+            .referenced_unknown_variables()
             .collect::<HashSet<_>>();
         self.range_constraints
             .range_constraints
@@ -261,12 +256,7 @@ impl<T, V, BusInter: BusInteractionHandler<T::FieldType>, VD: VarDispenser<V>>
     BaseSolver<T, V, BusInter, VD>
 where
     V: Ord + Clone + Hash + Eq + Display,
-    T: RuntimeConstant
-        + ReferencedSymbols<V>
-        + Display
-        + Hash
-        + ExpressionConvertible<T::FieldType, V>
-        + Substitutable<V>,
+    T: RuntimeConstant + Display + Hash + ExpressionConvertible<T::FieldType, V> + Substitutable<V>,
 {
     /// Tries to performs boolean extraction on `constr`, i.e. tries to turn quadratic constraints into affine constraints
     /// by introducing new boolean variables.
@@ -330,12 +320,7 @@ where
 impl<T, V, BusInter: BusInteractionHandler<T::FieldType>, VD> BaseSolver<T, V, BusInter, VD>
 where
     V: Ord + Clone + Hash + Eq + Display,
-    T: RuntimeConstant
-        + ReferencedSymbols<V>
-        + Display
-        + Hash
-        + ExpressionConvertible<T::FieldType, V>
-        + Substitutable<V>,
+    T: RuntimeConstant + Display + Hash + ExpressionConvertible<T::FieldType, V> + Substitutable<V>,
     VD: VarDispenser<V>,
 {
     fn loop_until_no_progress(&mut self) -> Result<(), Error> {
@@ -608,10 +593,10 @@ fn try_to_simple_equivalence<T: RuntimeConstant, V: Clone + Ord + Eq>(
     if !constr.expression.is_affine() {
         return None;
     }
-    let (_, linear, offset) = constr.expression.components();
-    if !offset.is_zero() {
+    if !constr.expression.constant_offset().is_zero() {
         return None;
     }
+    let linear = constr.expression.linear_components();
     let [(v1, c1), (v2, c2)] = linear.collect_vec().try_into().ok()?;
     // c1 = 1, c2 = -1 or vice-versa
     if (c1.is_one() || c2.is_one()) && (c1.clone() + c2.clone()).is_zero() {
