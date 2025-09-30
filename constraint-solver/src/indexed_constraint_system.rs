@@ -692,6 +692,8 @@ impl ConstraintSystemQueue {
 mod tests {
     use powdr_number::GoldilocksField;
 
+    use crate::constraint_system::ComputationMethod;
+
     use super::*;
 
     fn format_system(s: &IndexedConstraintSystem<GoldilocksField, &'static str>) -> String {
