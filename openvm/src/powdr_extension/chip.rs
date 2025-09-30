@@ -1,6 +1,11 @@
 // Mostly taken from [this openvm extension](https://github.com/openvm-org/openvm/blob/1b76fd5a900a7d69850ee9173969f70ef79c4c76/extensions/rv32im/circuit/src/auipc/core.rs#L1)
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, HashMap},
+    rc::Rc,
+    sync::Arc,
+};
 
 use crate::{
     extraction_utils::OriginalAirs, powdr_extension::executor::PowdrPeripheryInstances,
@@ -9,6 +14,7 @@ use crate::{
 
 use super::{executor::PowdrExecutor, opcode::PowdrOpcode, PowdrPrecompile};
 use itertools::Itertools;
+use openvm_circuit::arch::MatrixRecordArena;
 use openvm_instructions::LocalOpcode;
 use openvm_stark_backend::{
     p3_air::{Air, BaseAir},
@@ -45,12 +51,21 @@ impl PowdrChip {
         // memory: Arc<Mutex<TracingMemory>>,
         base_config: ExtendedVmConfig,
         periphery: PowdrPeripheryInstances,
+        record_arena_by_air_name: Rc<RefCell<Vec<HashMap<String, MatrixRecordArena<BabyBear>>>>>,
+        number_of_calls: Rc<RefCell<usize>>,
     ) -> Self {
         let PowdrPrecompile {
             name, opcode, apc, ..
         } = precompile;
         let air = Arc::new(PowdrAir::new(apc.clone()));
-        let executor = PowdrExecutor::new(original_airs, base_config, periphery, apc);
+        let executor = PowdrExecutor::new(
+            original_airs,
+            base_config,
+            periphery,
+            apc,
+            record_arena_by_air_name,
+            number_of_calls,
+        );
 
         Self {
             name,

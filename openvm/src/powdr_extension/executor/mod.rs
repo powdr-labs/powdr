@@ -2,6 +2,7 @@ use std::{
     borrow::{Borrow, BorrowMut},
     cell::RefCell,
     collections::HashMap,
+    rc::Rc,
     sync::Arc,
 };
 
@@ -72,11 +73,11 @@ pub struct PowdrExecutor {
     air_by_opcode_id: OriginalAirs<BabyBear>,
     chip_inventory: ChipInventory<BabyBearSC, MatrixRecordArena<BabyBear>, CpuBackend<BabyBearSC>>,
     executor_inventory: ExecutorInventory<SdkVmConfigExecutor<BabyBear>>,
-    number_of_calls: RefCell<usize>,
+    number_of_calls: Rc<RefCell<usize>>,
     periphery: SharedPeripheryChips,
     apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
     record_arena_dimension_by_air_name_for_each_call: HashMap<String, RecordArenaDimension>,
-    record_arena_by_air_name: RefCell<Vec<HashMap<String, MatrixRecordArena<BabyBear>>>>,
+    record_arena_by_air_name: Rc<RefCell<Vec<HashMap<String, MatrixRecordArena<BabyBear>>>>>,
 }
 
 pub struct RecordArenaDimension {
@@ -339,11 +340,10 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
         // state.ctx = original_ctx;
 
         // Add dummy record arena to PowdrExecutor for `generate_proving_ctx` later
-        self.record_arena_by_air_name
-            .borrow_mut()
-            .push(record_arena_by_air_name_for_this_call);
+        let mut record_arena_by_air_name = self.record_arena_by_air_name.as_ref().borrow_mut();
+        record_arena_by_air_name.push(record_arena_by_air_name_for_this_call);
 
-        *self.number_of_calls.borrow_mut() += 1;
+        *self.number_of_calls.as_ref().borrow_mut() += 1;
 
         Ok(())
     }
@@ -364,6 +364,8 @@ impl PowdrExecutor {
         base_config: ExtendedVmConfig,
         periphery: PowdrPeripheryInstances,
         apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
+        record_arena_by_air_name: Rc<RefCell<Vec<HashMap<String, MatrixRecordArena<BabyBear>>>>>,
+        number_of_calls: Rc<RefCell<usize>>,
     ) -> Self {
         let record_arena_dimension_by_air_name_for_each_call =
             apc.instructions()
@@ -396,41 +398,26 @@ impl PowdrExecutor {
                     .inventory
             },
             executor_inventory: base_config.sdk_vm_config.create_executors().unwrap(),
-            number_of_calls: RefCell::new(0),
+            number_of_calls,
             periphery: periphery.real,
             apc,
             record_arena_dimension_by_air_name_for_each_call,
-            record_arena_by_air_name: RefCell::new(Default::default()),
+            record_arena_by_air_name,
         }
     }
 
     pub fn number_of_calls(&self) -> usize {
-        *self.number_of_calls.borrow()
+        *self.number_of_calls.as_ref().borrow()
     }
 
     /// Generates the witness for the autoprecompile. The result will be a matrix of
     /// size `next_power_of_two(number_of_calls) * width`, where `width` is the number of
     /// nodes in the APC circuit.
     pub fn generate_witness(&self) -> RowMajorMatrix<BabyBear> {
-        assert_eq!(
-            *self.number_of_calls.borrow(),
-            0,
-            "program is not modified to run apcs yet, so this should be zero"
-        );
-
-        // zip(self.inventory.chips.iter().enumerate().rev(), record_arenas).map(
-        //     |((insertion_idx, chip), records)| {
-        //         // Only create a span if record is not empty:
-        //         let _span = (!records.is_empty()).then(|| {
-        //             let air_name = self.inventory.airs.ext_airs[insertion_idx].name();
-        //             info_span!("single_trace_gen", air = air_name).entered()
-        //         });
-        //         chip.generate_proving_ctx(records)
-        //     },
-
         // merge record arenas, taking care of padding during initialization
-        let mut record_arena_by_air_name = self.record_arena_by_air_name.borrow_mut();
+        let mut record_arena_by_air_name = self.record_arena_by_air_name.as_ref().borrow_mut();
 
+        println!("number of apc calls: {}", self.number_of_calls());
         let mut merged_record_arena_by_air_name = self
             .record_arena_dimension_by_air_name_for_each_call
             .iter()
@@ -442,6 +429,9 @@ impl PowdrExecutor {
                         air_width,
                     },
                 )| {
+                    println!("init merged num_calls: {}", num_calls);
+                    println!("init merged air_name: {}", air_name);
+                    println!("init merged air_width: {}", air_width);
                     // height is padded to next power of two
                     let merged_record_arena = MatrixRecordArena::with_capacity(
                         *num_calls * self.number_of_calls(),
@@ -453,7 +443,13 @@ impl PowdrExecutor {
             .collect::<HashMap<String, MatrixRecordArena<BabyBear>>>();
 
         for record_arena_for_this_call in record_arena_by_air_name.iter_mut() {
+            println!(
+                "generate_witness dummy record_arena_for_this_call: {:?}",
+                record_arena_for_this_call
+            );
             for (air_name, src_arena) in record_arena_for_this_call.drain() {
+                println!("generate_witness air_name: {}", air_name);
+                println!("generate_witness src_arena: {:?}", src_arena);
                 // Compute number of rows actually used (trace_offset is in elements)
                 let rows_used = src_arena.trace_offset / src_arena.width;
                 if rows_used == 0 {
@@ -472,7 +468,9 @@ impl PowdrExecutor {
                 let dst_bytes = dst_arena.alloc_buffer(rows_used);
 
                 // Copy the used portion of the source buffer (as bytes)
+                println!("works here");
                 let src_slice = &src_arena.trace_buffer[0..src_arena.trace_offset];
+                println!("works here 1");
                 // `src_size` is different from `src_arena.trace_offset`, which is number of `F`, whereas here we need the number of bytes
                 let src_size = core::mem::size_of_val(src_slice);
                 let src_ptr = src_slice.as_ptr() as *const u8;
@@ -514,12 +512,9 @@ impl PowdrExecutor {
             .filter_map(|(insertion_idx, chip)| {
                 let air_name = self.chip_inventory.airs().ext_airs()[insertion_idx].name();
 
-                let record_arena = {
-                    let arenas = merged_record_arena_by_air_name.borrow_mut();
-                    match arenas.remove(&air_name) {
-                        Some(ra) => ra,
-                        None => return None, // skip this iteration, because we only have record arena for chips that are used
-                    }
+                let record_arena = match merged_record_arena_by_air_name.remove(&air_name) {
+                    Some(ra) => ra,
+                    None => return None, // skip this iteration, because we only have record arena for chips that are used
                 };
 
                 // Arc<DenseMatrix>
@@ -540,7 +535,7 @@ impl PowdrExecutor {
         } = generate_trace::<OriginalAirs<BabyBear>>(
             &dummy_trace_by_air_name,
             &self.air_by_opcode_id,
-            *self.number_of_calls.borrow(),
+            *self.number_of_calls.as_ref().borrow(),
             &self.apc,
         );
 
@@ -562,7 +557,7 @@ impl PowdrExecutor {
 
         // allocate for apc trace
         let width = apc_poly_id_to_index.len();
-        let height = next_power_of_two_or_zero(*self.number_of_calls.borrow());
+        let height = next_power_of_two_or_zero(*self.number_of_calls.as_ref().borrow());
         let mut values = <BabyBear as FieldAlgebra>::zero_vec(height * width);
 
         // go through the final table and fill in the values
@@ -596,15 +591,16 @@ impl PowdrExecutor {
                     for (dummy_trace_index, apc_index) in dummy_trace_index_to_apc_index {
                         row_slice[*apc_index] = dummy_row[*dummy_trace_index];
                     }
-
-                    println!("apc row_slice: {:?}", row_slice);
                 }
 
                 // Fill in the columns we have to compute from other columns
                 // (these are either new columns or for example the "is_valid" column).
                 for (col_index, computation_method) in &columns_to_compute {
                     row_slice[*col_index] = match computation_method {
-                        ComputationMethod::Constant(c) => BabyBear::from_canonical_u64(*c),
+                        ComputationMethod::Constant(c) => {
+                            println!("set col_index: {} to {}", col_index, c);
+                            BabyBear::from_canonical_u64(*c)
+                        }
                         ComputationMethod::InverseOfSum(columns_to_sum) => columns_to_sum
                             .iter()
                             .map(|col| row_slice[*col])
@@ -630,6 +626,8 @@ impl PowdrExecutor {
                             args.map(|arg| arg.as_canonical_u32()),
                         );
                     });
+
+                println!("apc row_slice: {:?}", row_slice);
             });
 
         RowMajorMatrix::new(values, width)

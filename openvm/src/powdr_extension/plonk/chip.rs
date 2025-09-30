@@ -1,5 +1,7 @@
 use std::borrow::BorrowMut;
-use std::collections::BTreeMap;
+use std::cell::RefCell;
+use std::collections::{BTreeMap, HashMap};
+use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::bus_map::BusMap;
@@ -13,6 +15,7 @@ use crate::powdr_extension::PowdrOpcode;
 use crate::powdr_extension::PowdrPrecompile;
 use crate::{BabyBearSC, ExtendedVmConfig, Instr};
 use itertools::Itertools;
+use openvm_circuit::arch::MatrixRecordArena;
 use openvm_circuit::utils::next_power_of_two_or_zero;
 use openvm_instructions::LocalOpcode;
 use openvm_stark_backend::p3_air::BaseAir;
@@ -48,6 +51,8 @@ impl PlonkChip {
         periphery: PowdrPeripheryInstances,
         bus_map: BusMap,
         copy_constraint_bus_id: u16,
+        record_arena_by_air_name: Rc<RefCell<Vec<HashMap<String, MatrixRecordArena<BabyBear>>>>>,
+        number_of_calls: Rc<RefCell<usize>>,
     ) -> Self {
         let PowdrPrecompile {
             name, opcode, apc, ..
@@ -57,7 +62,14 @@ impl PlonkChip {
             bus_map: bus_map.clone(),
             _marker: std::marker::PhantomData,
         });
-        let executor = PowdrExecutor::new(original_airs, base_config, periphery, apc.clone());
+        let executor = PowdrExecutor::new(
+            original_airs,
+            base_config,
+            periphery,
+            apc.clone(),
+            record_arena_by_air_name,
+            number_of_calls,
+        );
 
         Self {
             name,
