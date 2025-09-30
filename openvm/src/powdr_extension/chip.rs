@@ -1,15 +1,20 @@
 // Mostly taken from [this openvm extension](https://github.com/openvm-org/openvm/blob/1b76fd5a900a7d69850ee9173969f70ef79c4c76/extensions/rv32im/circuit/src/auipc/core.rs#L1)
 
 use std::{
+    cell::RefCell,
     collections::{BTreeMap, HashMap},
+    rc::Rc,
     sync::Arc,
 };
 
 use crate::{
     bus_map::DEFAULT_VARIABLE_RANGE_CHECKER,
-    extraction_utils::{OriginalAirs, OriginalVmConfig},
+    extraction_utils::{
+        record_arena_dimension_by_air_name_per_apc_call, OriginalAirs, OriginalVmConfig,
+    },
     powdr_extension::executor::{
-        create_dummy_airs, create_dummy_chip_complex, PowdrPeripheryInstances, RecordArenaDimension,
+        create_dummy_airs, create_dummy_chip_complex, OriginalArenas, PowdrPeripheryInstances,
+        RecordArenaDimension,
     },
     BabyBearSC, ExtendedVmConfig, Instr,
 };
@@ -54,6 +59,7 @@ pub struct PowdrChip {
     pub original_airs: OriginalAirs<BabyBear>,
     pub config: ExtendedVmConfig,
     pub periphery: PowdrPeripheryInstances,
+    pub record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
 }
 
 impl PowdrChip {
@@ -62,6 +68,7 @@ impl PowdrChip {
         original_airs: OriginalAirs<BabyBear>,
         base_config: OriginalVmConfig,
         periphery: PowdrPeripheryInstances,
+        record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
     ) -> Self {
         let PowdrPrecompile {
             name, opcode, apc, ..
@@ -76,6 +83,7 @@ impl PowdrChip {
             apc,
             periphery,
             air,
+            record_arena_by_air_name,
         }
     }
 
@@ -83,15 +91,6 @@ impl PowdrChip {
     /// size `next_power_of_two(number_of_calls) * width`, where `width` is the number of
     /// nodes in the APC circuit.
     pub fn generate_witness<R>(&self, records: R) -> RowMajorMatrix<BabyBear> {
-        let mut record_arena_by_air_name: Vec<HashMap<String, MatrixRecordArena<BabyBear>>> =
-            unimplemented!("recover from records");
-        let num_apc_calls: usize = unimplemented!("recover from records");
-        let mut merged_record_arena_by_air_name = unimplemented!("initialise");
-        let record_arena_dimension_by_air_name_for_each_call: HashMap<
-            String,
-            RecordArenaDimension,
-        > = unimplemented!("compute from apc and original airs");
-
         let chip_inventory = {
             let airs: AirInventory<BabyBearSC> =
                 create_dummy_airs(&self.config.sdk_vm_config, self.periphery.dummy.clone())
@@ -106,72 +105,9 @@ impl PowdrChip {
             .inventory
         };
 
-        let mut merged_record_arena_by_air_name = record_arena_dimension_by_air_name_for_each_call
-            .iter()
-            .map(
-                |(
-                    air_name,
-                    RecordArenaDimension {
-                        num_calls,
-                        air_width,
-                    },
-                )| {
-                    // height is padded to next power of two
-                    let merged_record_arena =
-                        MatrixRecordArena::with_capacity(num_apc_calls * num_calls, *air_width);
-                    (air_name.clone(), merged_record_arena)
-                },
-            )
-            .collect::<HashMap<String, MatrixRecordArena<BabyBear>>>();
-
-        for record_arena_for_this_call in record_arena_by_air_name.iter_mut() {
-            for (air_name, src_arena) in record_arena_for_this_call.drain() {
-                // Compute number of rows actually used (trace_offset is in elements)
-                let rows_used = src_arena.trace_offset / src_arena.width;
-                if rows_used == 0 {
-                    continue;
-                }
-
-                let dst_arena = merged_record_arena_by_air_name
-                    .get_mut(&air_name)
-                    .expect("destination arena missing for air name");
-
-                // Ensure widths match
-                debug_assert_eq!(dst_arena.width, src_arena.width);
-
-                // Allocate pre-initialized empty mutable buffer in the destination for these rows
-                // This also increases `dst_arena.trace_offset`
-                let dst_bytes = dst_arena.alloc_buffer(rows_used);
-
-                // Copy the used portion of the source buffer (as bytes)
-                let src_slice = &src_arena.trace_buffer[0..src_arena.trace_offset];
-                // `src_size` is different from `src_arena.trace_offset`, which is number of `F`, whereas here we need the number of bytes
-                let src_size = core::mem::size_of_val(src_slice);
-                let src_ptr = src_slice.as_ptr() as *const u8;
-                let src_bytes = unsafe { core::slice::from_raw_parts(src_ptr, src_size) };
-                dst_bytes.copy_from_slice(src_bytes);
-            }
-        }
-
-        // Assert the `trace_offset` of `merged_record_arena_by_air_name`
-        merged_record_arena_by_air_name
-            .iter()
-            .for_each(|(air_name, arena)| {
-                let height = record_arena_dimension_by_air_name_for_each_call
-                    .get(air_name)
-                    .unwrap()
-                    .num_calls;
-                assert_eq!(arena.trace_offset, arena.width * height * num_apc_calls);
-                println!("merged record arena assert_eq passes for air: {}", air_name);
-            });
-
-        // print merged record arena
-        merged_record_arena_by_air_name
-            .iter()
-            .for_each(|(air_name, arena)| {
-                println!("merged record arena for air: {}", air_name);
-                println!("merged record arena: {:?}", arena.trace_buffer);
-            });
+        let mut original_arenas = self.record_arena_by_air_name.as_ref().borrow_mut();
+        let num_apc_calls = *original_arenas.number_of_calls();
+        let arenas = original_arenas.arenas();
 
         let dummy_trace_by_air_name: HashMap<String, Trace<BabyBear>> = chip_inventory
             .chips()
@@ -182,7 +118,6 @@ impl PowdrChip {
                 let air_name = chip_inventory.airs().ext_airs()[insertion_idx].name();
 
                 let record_arena = {
-                    let arenas = &mut merged_record_arena_by_air_name;
                     match arenas.remove(&air_name) {
                         Some(ra) => ra,
                         None => return None, // skip this iteration, because we only have record arena for chips that are used
@@ -263,8 +198,6 @@ impl PowdrChip {
                     for (dummy_trace_index, apc_index) in dummy_trace_index_to_apc_index {
                         row_slice[*apc_index] = dummy_row[*dummy_trace_index];
                     }
-
-                    println!("apc row_slice: {:?}", row_slice);
                 }
 
                 // Fill in the columns we have to compute from other columns

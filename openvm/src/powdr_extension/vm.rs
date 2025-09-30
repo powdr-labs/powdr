@@ -1,9 +1,13 @@
 // Mostly taken from [this openvm extension](https://github.com/openvm-org/openvm/blob/1b76fd5a900a7d69850ee9173969f70ef79c4c76/extensions/rv32im/circuit/src/extension.rs#L185) and simplified to only handle a single opcode with its necessary dependencies
 
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::iter::once;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use derive_more::From;
+use openvm_circuit::arch::MatrixRecordArena;
 use openvm_circuit_derive::{Executor, MeteredExecutor, PreflightExecutor};
 use openvm_instructions::LocalOpcode;
 use openvm_stark_sdk::{engine::StarkEngine, p3_baby_bear::BabyBear};
@@ -12,7 +16,7 @@ use crate::bus_map::BusMap;
 use crate::customize_exe::OvmApcStats;
 use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
 use crate::powdr_extension::chip::PowdrAir;
-use crate::powdr_extension::executor::PowdrPeripheryInstances;
+use crate::powdr_extension::executor::{OriginalArenas, PowdrPeripheryInstances};
 use openvm_circuit::{
     arch::{AirInventory, AirInventoryError, VmCircuitExtension, VmExecutionExtension},
     circuit_derive::Chip,
@@ -40,6 +44,8 @@ pub struct PowdrExtension<F> {
     pub implementation: PrecompileImplementation,
     pub bus_map: BusMap,
     pub airs: OriginalAirs<F>,
+    #[serde(skip)]
+    pub record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -81,6 +87,7 @@ impl<F> PowdrExtension<F> {
             implementation,
             bus_map,
             airs,
+            record_arena_by_air_name: Default::default(),
         }
     }
 }
@@ -105,6 +112,7 @@ impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear> {
                     self.airs.clone(),
                     self.base_config.config().clone(),
                     precompile.apc.clone(),
+                    self.record_arena_by_air_name.clone(),
                 ));
             inventory.add_executor(powdr_executor, once(precompile.opcode.global_opcode()))?;
         }
