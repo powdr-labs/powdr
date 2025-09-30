@@ -197,8 +197,9 @@ where
                 PrecompileImplementation::SingleRowChip => PowdrChip::new(
                     precompile.clone(),
                     extension.airs.clone(),
-                    extension.base_config.sdk_config.clone(),
+                    extension.base_config.clone(),
                     shared_chips_pair.clone(),
+                    extension.record_arena_by_air_name.clone(),
                 ),
                 PrecompileImplementation::PlonkChip => todo!(),
             };
