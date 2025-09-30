@@ -75,7 +75,6 @@ pub struct PowdrExecutor {
     pub executor_inventory: ExecutorInventory<SdkVmConfigExecutor<BabyBear>>,
     // periphery: SharedPeripheryChips,
     pub apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
-    pub record_arena_dimensions: HashMap<String, RecordArenaDimension>,
     pub record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
 }
 
@@ -90,13 +89,15 @@ impl OriginalArenas {
     fn initialize(
         &mut self,
         apc_call_count_estimate: usize,
-        record_arena_dimensions: &HashMap<String, RecordArenaDimension>,
+        original_airs: &OriginalAirs<BabyBear>,
+        apc: &Arc<Apc<BabyBear, Instr<BabyBear>>>,
     ) {
         match self {
             OriginalArenas::Uninitialized => {
                 *self = OriginalArenas::Initialized(InitializedOriginalArenas::new(
                     apc_call_count_estimate,
-                    record_arena_dimensions,
+                    original_airs,
+                    apc,
                 ));
             }
             OriginalArenas::Initialized(_) => {}
@@ -127,8 +128,11 @@ pub struct InitializedOriginalArenas {
 impl InitializedOriginalArenas {
     pub fn new(
         apc_call_count_estimate: usize,
-        record_arena_dimensions: &HashMap<String, RecordArenaDimension>,
+        original_airs: &OriginalAirs<BabyBear>,
+        apc: &Arc<Apc<BabyBear, Instr<BabyBear>>>,
     ) -> Self {
+        let record_arena_dimensions =
+            record_arena_dimension_by_air_name_per_apc_call(apc, original_airs);
         Self {
             arenas: record_arena_dimensions
                 .iter()
@@ -343,9 +347,10 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
         let mut record_arena_by_air_name = self.record_arena_by_air_name.as_ref().borrow_mut();
 
         record_arena_by_air_name.initialize(
-            // initialized height, not avail as API, is really `next_power_of_two(apc_call_count)`, if using `MatrixRecordArena` impl of `RA`
+            // initialized height, not available as API, is really `next_power_of_two(apc_call_count)`, if using `MatrixRecordArena` impl of `RA`
             original_ctx.trace_buffer.len() / original_ctx.width,
-            &self.record_arena_dimensions,
+            &self.air_by_opcode_id,
+            &self.apc,
         );
 
         let arenas = record_arena_by_air_name.arenas();
@@ -402,13 +407,10 @@ impl PowdrExecutor {
         apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
         record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
     ) -> Self {
-        let record_arena_dimensions =
-            record_arena_dimension_by_air_name_per_apc_call(&apc, &air_by_opcode_id);
         Self {
             air_by_opcode_id,
             executor_inventory: base_config.sdk_vm_config.create_executors().unwrap(),
             apc,
-            record_arena_dimensions,
             record_arena_by_air_name,
         }
     }
