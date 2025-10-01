@@ -6,7 +6,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use derive_more::From;
-use itertools::Itertools;
 use openvm_circuit_derive::{Executor, MeteredExecutor, PreflightExecutor};
 use openvm_instructions::LocalOpcode;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
