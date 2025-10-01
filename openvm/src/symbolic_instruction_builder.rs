@@ -114,11 +114,16 @@ macro_rules! branch_ops {
                 rs2_ptr: u32,
                 imm: i32,
             ) -> Instruction<T> {
+                let imm = if imm >= 0 {
+                    T::from_canonical_u32(imm as u32)
+                } else {
+                    -T::from_canonical_u32((-imm) as u32)
+                };
                 Instruction {
                     opcode: VmOpcode::from_usize($code as usize),
                     a: T::from_canonical_u32(rs1_ptr),
                     b: T::from_canonical_u32(rs2_ptr),
-                    c: T::from_canonical_u32(imm as u32),
+                    c: imm,
                     d: T::ONE,
                     e: T::ONE,
                     f: T::ZERO,
