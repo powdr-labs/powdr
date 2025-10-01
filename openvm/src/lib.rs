@@ -5,14 +5,13 @@ use openvm_build::{build_guest_package, find_unique_executable, get_package, Tar
 use openvm_circuit::arch::execution_mode::metered::segment_ctx::SegmentationLimits;
 use openvm_circuit::arch::execution_mode::Segment;
 use openvm_circuit::arch::instructions::exe::VmExe;
+use openvm_circuit::arch::RowMajorMatrixArena;
 use openvm_circuit::arch::{
     debug_proving_ctx, AirInventory, AirInventoryError, ChipInventory, ChipInventoryError,
     ExecutorInventory, ExecutorInventoryError, InitFileGenerator, MatrixRecordArena,
     PreflightExecutionOutput, SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig,
     VmCircuitExtension, VmExecutionConfig, VmInstance, VmProverExtension,
 };
-use openvm_circuit::arch::{RowMajorMatrixArena, VirtualMachine};
-use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::config::StarkGenericConfig;
 use openvm_circuit::system::SystemChipInventory;
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
 use openvm_circuit_derive::{Executor, MeteredExecutor, PreflightExecutor};
@@ -38,7 +37,6 @@ use openvm_stark_sdk::config::{
     baby_bear_poseidon2::{BabyBearPoseidon2Config, BabyBearPoseidon2Engine},
     FriParameters,
 };
-use openvm_stark_sdk::engine::StarkFriEngine;
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
@@ -46,8 +44,7 @@ use powdr_autoprecompiles::evaluation::AirStats;
 use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::PowdrExtension;
-use powdr_openvm_hints_circuit::{HintsExecutor, HintsExtension};
-// use powdr_openvm_hints_circuit::{HintsExecutor, HintsExtension, HintsPeriphery};
+use powdr_openvm_hints_circuit::{HintsCpuProverExt, HintsExtension, HintsExtensionExecutor};
 use powdr_openvm_hints_transpiler::HintsTranspilerExtension;
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
@@ -64,14 +61,14 @@ use std::{
 use crate::customize_exe::OpenVmApcCandidate;
 pub use crate::customize_exe::Prog;
 use crate::powdr_extension::chip::{PowdrAir, PowdrChip};
-use crate::powdr_extension::executor::PowdrPeripheryInstances;
+use crate::powdr_extension::trace_generator::PowdrPeripheryInstances;
 use tracing::{info_span, Level};
 
 #[cfg(test)]
 use crate::extraction_utils::AirWidthsDiff;
 use crate::extraction_utils::{export_pil, AirWidths, OriginalVmConfig};
 use crate::instruction_formatter::openvm_opcode_formatter;
-use crate::powdr_extension::{PowdrExecutor, PowdrPrecompile};
+use crate::powdr_extension::{PlonkChip, PowdrExtensionExecutor, PowdrPrecompile};
 
 mod air_builder;
 pub mod bus_map;
@@ -124,7 +121,7 @@ mod plonk;
 /// A custom VmConfig that wraps the SdkVmConfig, adding our custom extension.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SpecializedConfig {
-    pub sdk_config: OriginalVmConfig,
+    pub sdk: OriginalVmConfig,
     pub powdr: PowdrExtension<BabyBear>,
 }
 
@@ -149,7 +146,7 @@ where
     > {
         let mut chip_complex = VmBuilder::<E>::create_chip_complex(
             &SdkVmCpuBuilder,
-            &config.sdk_config.sdk_config.sdk_vm_config,
+            &config.sdk.sdk_config.sdk,
             circuit,
         )?;
         let inventory = &mut chip_complex.inventory;
@@ -193,17 +190,29 @@ where
 
         for precompile in extension.precompiles.iter() {
             inventory.next_air::<PowdrAir<BabyBear>>()?;
-            let powdr_chip = match extension.implementation {
-                PrecompileImplementation::SingleRowChip => PowdrChip::new(
-                    precompile.clone(),
-                    extension.airs.clone(),
-                    extension.base_config.clone(),
-                    shared_chips_pair.clone(),
-                    extension.record_arena_by_air_name.clone(),
-                ),
-                PrecompileImplementation::PlonkChip => todo!(),
+            match extension.implementation {
+                PrecompileImplementation::SingleRowChip => {
+                    let chip = PowdrChip::new(
+                        precompile.clone(),
+                        extension.airs.clone(),
+                        extension.base_config.clone(),
+                        shared_chips_pair.clone(),
+                        extension.record_arena_by_air_name.clone(),
+                    );
+                    inventory.add_executor_chip(chip);
+                }
+                PrecompileImplementation::PlonkChip => {
+                    let chip = PlonkChip::new(
+                        precompile.clone(),
+                        extension.airs.clone(),
+                        extension.base_config.clone(),
+                        shared_chips_pair.clone(),
+                        extension.record_arena_by_air_name.clone(),
+                        extension.bus_map.clone(),
+                    );
+                    inventory.add_executor_chip(chip);
+                }
             };
-            inventory.add_executor_chip(powdr_chip);
         }
 
         Ok(())
@@ -212,14 +221,14 @@ where
 
 impl TranspilerConfig<BabyBear> for SpecializedConfig {
     fn transpiler(&self) -> Transpiler<BabyBear> {
-        self.sdk_config.config().sdk_vm_config.transpiler()
+        self.sdk.config().transpiler()
     }
 }
 
 // For generation of the init file, we delegate to the underlying SdkVmConfig.
 impl InitFileGenerator for SpecializedConfig {
     fn generate_init_file_contents(&self) -> Option<String> {
-        self.sdk_config.config().generate_init_file_contents()
+        self.sdk.config().generate_init_file_contents()
     }
 
     fn write_to_init_file(
@@ -227,7 +236,7 @@ impl InitFileGenerator for SpecializedConfig {
         manifest_dir: &Path,
         init_file_name: Option<&str>,
     ) -> std::io::Result<()> {
-        self.sdk_config
+        self.sdk
             .config()
             .write_to_init_file(manifest_dir, init_file_name)
     }
@@ -235,13 +244,13 @@ impl InitFileGenerator for SpecializedConfig {
 
 impl AsRef<SystemConfig> for SpecializedConfig {
     fn as_ref(&self) -> &SystemConfig {
-        self.sdk_config.as_ref()
+        self.sdk.as_ref()
     }
 }
 
 impl AsMut<SystemConfig> for SpecializedConfig {
     fn as_mut(&mut self) -> &mut SystemConfig {
-        self.sdk_config.as_mut()
+        self.sdk.as_mut()
     }
 }
 
@@ -251,14 +260,14 @@ pub enum SpecializedExecutor {
     #[any_enum]
     SdkExecutor(ExtendedVmConfigExecutor<BabyBear>),
     #[any_enum]
-    PowdrExecutor(PowdrExecutor),
+    PowdrExecutor(PowdrExtensionExecutor),
 }
 
 // TODO: derive VmCircuitConfig, currently not possible because we don't have SC/F everywhere
 // Also `start_new_extension` is normally only used in derive
 impl VmCircuitConfig<BabyBearSC> for SpecializedConfig {
     fn create_airs(&self) -> Result<AirInventory<BabyBearSC>, AirInventoryError> {
-        let mut inventory = self.sdk_config.create_airs()?;
+        let mut inventory = self.sdk.create_airs()?;
         inventory.start_new_extension();
         self.powdr.extend_circuit(&mut inventory)?;
         Ok(inventory)
@@ -271,7 +280,7 @@ impl VmExecutionConfig<BabyBear> for SpecializedConfig {
     fn create_executors(
         &self,
     ) -> Result<ExecutorInventory<Self::Executor>, ExecutorInventoryError> {
-        let mut inventory = self.sdk_config.create_executors()?.transmute();
+        let mut inventory = self.sdk.create_executors()?.transmute();
         inventory = inventory.extend(&self.powdr)?;
         Ok(inventory)
     }
@@ -294,7 +303,7 @@ impl SpecializedConfig {
             airs,
         );
         Self {
-            sdk_config: base_config,
+            sdk: base_config,
             powdr: powdr_extension,
         }
     }
@@ -372,7 +381,10 @@ pub fn compile_openvm(
     // Transpile the ELF into a VmExe.
     let exe = sdk.convert_to_exe(elf)?;
 
-    let vm_config = ExtendedVmConfig { sdk_vm_config };
+    let vm_config = ExtendedVmConfig {
+        sdk: sdk_vm_config,
+        hints: HintsExtension,
+    };
 
     Ok(OriginalCompiledProgram { exe, vm_config })
 }
@@ -554,77 +566,53 @@ pub struct OriginalCompiledProgram {
     pub vm_config: ExtendedVmConfig,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+use openvm_circuit_derive::VmConfig;
+
+#[derive(Clone, Debug, Serialize, Deserialize, VmConfig)]
 // SdkVmConfig plus custom openvm extensions, before autoprecompile transformations.
 // For now, only includes custom hints.
 pub struct ExtendedVmConfig {
-    pub sdk_vm_config: SdkVmConfig,
+    #[config]
+    pub sdk: SdkVmConfig,
+    #[extension(executor = "HintsExtensionExecutor<F>")]
+    pub hints: HintsExtension,
 }
 
-impl AsRef<SystemConfig> for ExtendedVmConfig {
-    fn as_ref(&self) -> &SystemConfig {
-        self.sdk_vm_config.as_ref()
+impl TranspilerConfig<BabyBear> for ExtendedVmConfig {
+    fn transpiler(&self) -> Transpiler<BabyBear> {
+        self.sdk.transpiler()
     }
 }
 
-impl AsMut<SystemConfig> for ExtendedVmConfig {
-    fn as_mut(&mut self) -> &mut SystemConfig {
-        self.sdk_vm_config.as_mut()
-    }
-}
+pub struct ExtendedVmConfigCpuBuilder;
 
-// impl VmConfig<BabyBear> for ExtendedVmConfig {
-//     type Executor = ExtendedVmConfigExecutor<BabyBear>;
-//     type Periphery = ExtendedVmConfigPeriphery<BabyBear>;
-
-//     fn system(&self) -> &SystemConfig {
-//         &self.sdk_vm_config.system.config
-//     }
-
-//     fn system_mut(&mut self) -> &mut SystemConfig {
-//         &mut self.sdk_vm_config.system.config
-//     }
-
-//     fn create_chip_complex(
-//         &self,
-//     ) -> Result<
-//         VmChipComplex<BabyBear, Self::Executor, Self::Periphery>,
-//         VmInventoryError,
-//     > {
-//         let mut complex = self.sdk_vm_config.create_chip_complex()?.transmute();
-//         complex = complex.extend(&HintsExtension)?;
-//         Ok(complex)
-//     }
-// }
-
-// TODO: derive VmCircuitConfig, currently not possible because we don't have SC/F everywhere
-impl<SC: StarkGenericConfig> VmCircuitConfig<SC> for ExtendedVmConfig
+impl<E> VmBuilder<E> for ExtendedVmConfigCpuBuilder
 where
-    Val<SC>: PrimeField32,
+    E: StarkEngine<SC = BabyBearSC, PB = CpuBackend<BabyBearSC>, PD = CpuDevice<BabyBearSC>>,
 {
-    fn create_airs(&self) -> Result<AirInventory<SC>, AirInventoryError> {
-        let mut inventory = self.sdk_vm_config.create_airs()?;
-        let hints_extension = HintsExtension;
-        hints_extension.extend_circuit(&mut inventory)?;
-        Ok(inventory)
-    }
-}
+    type VmConfig = ExtendedVmConfig;
+    type SystemChipInventory = SystemChipInventory<BabyBearSC>;
+    type RecordArena = MatrixRecordArena<Val<BabyBearSC>>;
 
-impl<F: PrimeField32> VmExecutionConfig<F> for ExtendedVmConfig {
-    type Executor = ExtendedVmConfigExecutor<F>;
-
-    fn create_executors(
+    fn create_chip_complex(
         &self,
-    ) -> Result<ExecutorInventory<Self::Executor>, ExecutorInventoryError> {
-        let mut inventory = self.sdk_vm_config.create_executors()?.transmute();
-        inventory = inventory.extend(&HintsExtension)?;
-        Ok(inventory)
+        config: &ExtendedVmConfig,
+        circuit: AirInventory<BabyBearSC>,
+    ) -> Result<
+        VmChipComplex<BabyBearSC, Self::RecordArena, E::PB, Self::SystemChipInventory>,
+        ChipInventoryError,
+    > {
+        let mut chip_complex =
+            VmBuilder::<E>::create_chip_complex(&SdkVmCpuBuilder, &config.sdk, circuit)?;
+        let inventory = &mut chip_complex.inventory;
+        VmProverExtension::<E, _, _>::extend_prover(&HintsCpuProverExt, &config.hints, inventory)?;
+        Ok(chip_complex)
     }
 }
 
 impl InitFileGenerator for ExtendedVmConfig {
     fn generate_init_file_contents(&self) -> Option<String> {
-        self.sdk_vm_config.generate_init_file_contents()
+        self.sdk.generate_init_file_contents()
     }
 
     fn write_to_init_file(
@@ -632,18 +620,8 @@ impl InitFileGenerator for ExtendedVmConfig {
         manifest_dir: &Path,
         init_file_name: Option<&str>,
     ) -> std::io::Result<()> {
-        self.sdk_vm_config
-            .write_to_init_file(manifest_dir, init_file_name)
+        self.sdk.write_to_init_file(manifest_dir, init_file_name)
     }
-}
-
-#[derive(From, AnyEnum, PreflightExecutor, Executor, MeteredExecutor)]
-#[allow(clippy::large_enum_variant)]
-pub enum ExtendedVmConfigExecutor<F: PrimeField32> {
-    #[any_enum]
-    Sdk(SdkVmConfigExecutor<F>),
-    #[any_enum]
-    Hints(HintsExecutor<F>),
 }
 
 #[derive(Clone, Serialize, Deserialize, Default, Debug, Eq, PartialEq)]
@@ -694,7 +672,7 @@ impl CompiledProgram {
         &self,
         max_degree: usize,
     ) -> (Vec<(AirMetrics, Option<AirWidthsDiff>)>, Vec<AirMetrics>) {
-        let inventory = &self.vm_config.sdk_config.chip_complex().inventory;
+        let inventory = &self.vm_config.sdk.chip_complex().inventory;
 
         // Order of precompile is the same as that of Powdr executors in chip inventory
         let mut apc_stats = self
@@ -755,9 +733,9 @@ pub fn prove(
     // DefaultSegmentationStrategy { max_segment_len: 4194204, max_cells_per_chip_in_segment: 503304480 }
     if let Some(segment_height) = segment_height {
         vm_config
-            .sdk_config
+            .sdk
             .config_mut()
-            .sdk_vm_config
+            .sdk
             .system
             .config
             .segmentation_limits =
@@ -788,7 +766,7 @@ pub fn prove(
 
         vm_instance.reset_state(inputs.clone());
         let metered_ctx = vm_instance.vm.build_metered_ctx();
-        let metered_interpreter = vm_instance.vm.metered_interpreter(&vm_instance.exe())?;
+        let metered_interpreter = vm_instance.vm.metered_interpreter(vm_instance.exe())?;
         let (segments, _) = metered_interpreter.execute_metered(inputs.clone(), metered_ctx)?;
         let mut state = vm_instance.state_mut().take();
 
@@ -913,7 +891,7 @@ mod tests {
         pgo_config: PgoConfig,
         segment_height: Option<usize>,
     ) {
-        let result = compile_and_prove(
+        compile_and_prove(
             guest,
             config,
             implementation,
@@ -1650,8 +1628,6 @@ mod tests {
         expected_metrics: MachineTestMetrics,
         expected_columns_saved: Option<Expect>,
     ) {
-        // TODO: remove this early return and actually run the test
-        return;
         let apc_candidates_dir = tempfile::tempdir().unwrap();
         let apc_candidates_dir_path = apc_candidates_dir.path();
         let config = default_powdr_openvm_config(guest.apc, guest.skip)

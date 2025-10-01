@@ -1,4 +1,3 @@
-use crate::powdr_extension::executor::inventory::DummyExecutor;
 use itertools::Itertools;
 use openvm_circuit::arch::{
     AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecutorInventoryBuilder,
@@ -18,6 +17,8 @@ use openvm_stark_backend::{
     prover::cpu::{CpuBackend, CpuDevice},
 };
 use openvm_stark_sdk::engine::StarkEngine;
+
+use crate::powdr_extension::trace_generator::inventory::DummyExecutor;
 
 /// The shared chips which can be used by the PowdrChip.
 #[derive(Clone)]
@@ -72,9 +73,9 @@ impl<F: PrimeField32> VmExecutionExtension<F> for SharedPeripheryChips {
 
     fn extend_execution(
         &self,
-        inventory: &mut ExecutorInventoryBuilder<F, Self::Executor>,
+        _: &mut ExecutorInventoryBuilder<F, Self::Executor>,
     ) -> Result<(), ExecutorInventoryError> {
-        // TODO: what should go here? It seems like periphery chips should not change the executor inventory.
+        // No executor to add for periphery chips
         Ok(())
     }
 }
@@ -112,10 +113,12 @@ impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChips {
     }
 }
 
+pub struct SharedPeripheryChipsCpuProverExt;
+
 /// We implement an extension to make it easy to pre-load the shared chips into the VM inventory.
 // This implementation is specific to CpuBackend because the lookup chips (VariableRangeChecker,
 // BitwiseOperationLookupChip) are specific to CpuBackend.
-impl<E, SC, RA> VmProverExtension<E, RA, SharedPeripheryChips> for SharedPeripheryChips
+impl<E, SC, RA> VmProverExtension<E, RA, SharedPeripheryChips> for SharedPeripheryChipsCpuProverExt
 where
     SC: StarkGenericConfig,
     E: StarkEngine<SC = SC, PB = CpuBackend<SC>, PD = CpuDevice<SC>>,
@@ -128,7 +131,7 @@ where
         inventory: &mut ChipInventory<SC, RA, CpuBackend<SC>>,
     ) -> Result<(), ChipInventoryError> {
         // Sanity check that the shared chips are not already present in the builder.
-        if let Some(bitwise_lookup_8) = &self.bitwise_lookup_8 {
+        if let Some(bitwise_lookup_8) = &extension.bitwise_lookup_8 {
             assert!(inventory
                 .find_chip::<SharedBitwiseOperationLookupChip<8>>()
                 .next()
@@ -136,7 +139,7 @@ where
             inventory.add_periphery_chip(bitwise_lookup_8.clone());
         }
 
-        if let Some(tuple_checker) = &self.tuple_range_checker {
+        if let Some(tuple_checker) = &extension.tuple_range_checker {
             assert!(inventory
                 .find_chip::<SharedRangeTupleCheckerChip<2>>()
                 .next()

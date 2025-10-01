@@ -1,30 +1,26 @@
 // Mostly taken from [this openvm extension](https://github.com/openvm-org/openvm/blob/1b76fd5a900a7d69850ee9173969f70ef79c4c76/extensions/rv32im/circuit/src/extension.rs#L185) and simplified to only handle a single opcode with its necessary dependencies
 
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::iter::once;
 use std::rc::Rc;
 use std::sync::Arc;
 
 use derive_more::From;
-use openvm_circuit::arch::MatrixRecordArena;
 use openvm_circuit_derive::{Executor, MeteredExecutor, PreflightExecutor};
 use openvm_instructions::LocalOpcode;
-use openvm_stark_sdk::{engine::StarkEngine, p3_baby_bear::BabyBear};
+use openvm_stark_sdk::p3_baby_bear::BabyBear;
 
 use crate::bus_map::BusMap;
 use crate::customize_exe::OvmApcStats;
 use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
 use crate::powdr_extension::chip::PowdrAir;
-use crate::powdr_extension::executor::{OriginalArenas, PowdrPeripheryInstances};
+use crate::powdr_extension::executor::{OriginalArenas, PowdrExecutor};
+use crate::powdr_extension::PlonkAir;
 use openvm_circuit::{
     arch::{AirInventory, AirInventoryError, VmCircuitExtension, VmExecutionExtension},
     circuit_derive::Chip,
     derive::AnyEnum,
 };
-use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
-use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
-use openvm_circuit_primitives::var_range::SharedVariableRangeCheckerChip;
 use openvm_stark_backend::{
     config::{StarkGenericConfig, Val},
     p3_field::{Field, PrimeField32},
@@ -94,12 +90,12 @@ impl<F> PowdrExtension<F> {
 
 #[derive(From, AnyEnum, PreflightExecutor, Executor, MeteredExecutor, Chip)]
 #[allow(clippy::large_enum_variant)]
-pub enum PowdrExecutor {
-    Powdr(crate::powdr_extension::executor::PowdrExecutor),
+pub enum PowdrExtensionExecutor {
+    Powdr(PowdrExecutor),
 }
 
 impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear> {
-    type Executor = PowdrExecutor;
+    type Executor = PowdrExtensionExecutor;
 
     // TODO: this part seems duplicated to `extend_prover`, so need to study the split of functionalities between them
     fn extend_execution(
@@ -107,13 +103,12 @@ impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear> {
         inventory: &mut openvm_circuit::arch::ExecutorInventoryBuilder<BabyBear, Self::Executor>,
     ) -> Result<(), openvm_circuit::arch::ExecutorInventoryError> {
         for precompile in self.precompiles.iter() {
-            let powdr_executor =
-                PowdrExecutor::Powdr(crate::powdr_extension::executor::PowdrExecutor::new(
-                    self.airs.clone(),
-                    self.base_config.config().clone(),
-                    precompile.apc.clone(),
-                    self.record_arena_by_air_name.clone(),
-                ));
+            let powdr_executor = PowdrExtensionExecutor::Powdr(PowdrExecutor::new(
+                self.airs.clone(),
+                self.base_config.clone(),
+                precompile.apc.clone(),
+                self.record_arena_by_air_name.clone(),
+            ));
             inventory.add_executor(powdr_executor, once(precompile.opcode.global_opcode()))?;
         }
 
@@ -127,8 +122,21 @@ where
     Val<SC>: PrimeField32,
 {
     fn extend_circuit(&self, inventory: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {
-        for apc in self.precompiles.iter() {
-            inventory.add_air(PowdrAir::new(apc.apc.clone()));
+        for precompile in &self.precompiles {
+            match self.implementation {
+                PrecompileImplementation::SingleRowChip => {
+                    inventory.add_air(PowdrAir::new(precompile.apc.clone()));
+                }
+                PrecompileImplementation::PlonkChip => {
+                    let copy_constraint_bus_id = inventory.new_bus_idx();
+                    let plonk_air = PlonkAir {
+                        copy_constraint_bus_id,
+                        bus_map: self.bus_map.clone(),
+                        _marker: std::marker::PhantomData,
+                    };
+                    inventory.add_air(plonk_air);
+                }
+            }
         }
         Ok(())
     }
