@@ -68,6 +68,10 @@ fn stack_accesses() {
 fn aligned_memcpy() {
     // Block 0x200a1c of the Reth benchmark.
     // => 1.1B trace cells, executed 986.1K times, effectiveness 3.48x.
+    // C code:
+    // https://github.com/kraj/musl/blob/d1c1058ee7a61cf86dc0292590e3f7eb09212d70/src/string/memcpy.c#L27-L30
+    // RISC-V assembly:
+    // https://github.com/openvm-org/openvm/blob/13362dc64fc2ec6f585018b408061bf56e7b7429/crates/toolchain/openvm/src/memcpy.s#L291-L302
     let program = [
         loadw(60, 56, 0, 2, 1, 0),
         loadw(64, 56, 4, 2, 1, 0),
@@ -89,6 +93,10 @@ fn aligned_memcpy() {
 fn unaligned_memcpy() {
     // Block 0x200914 of the Reth benchmark.
     // => 484.1M trace cells, executed 442.9K times, effectiveness 4.61x.
+    // C code:
+    // https://github.com/kraj/musl/blob/d1c1058ee7a61cf86dc0292590e3f7eb09212d70/src/string/memcpy.c#L23
+    // RISC-V assembly:
+    // https://github.com/openvm-org/openvm/blob/13362dc64fc2ec6f585018b408061bf56e7b7429/crates/toolchain/openvm/src/memcpy.s#L220-L232
     // Circuit visualization:
     // https://docs.google.com/drawings/d/1JfLRuoWCyAsN3pht27W6UXUgtE_AiNx6r36lf-cAIfs/edit?usp=sharing
     let program = [
