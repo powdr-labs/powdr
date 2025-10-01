@@ -189,23 +189,14 @@ where
             tuple_range_checker,
         );
 
-        let is_plonk = matches!(
-            extension.implementation,
-            PrecompileImplementation::PlonkChip
-        );
-
         for (precompile, record_arenas) in extension
             .precompiles
             .iter()
-            .zip_eq(extension.record_arena_by_air_name.iter())
+            .zip_eq(extension.apc_record_arenas.iter())
         {
-            if is_plonk {
-                inventory.next_air::<PlonkAir<BabyBear>>()?;
-            } else {
-                inventory.next_air::<PowdrAir<BabyBear>>()?;
-            }
             match extension.implementation {
                 PrecompileImplementation::SingleRowChip => {
+                    inventory.next_air::<PowdrAir<BabyBear>>()?;
                     let chip = PowdrChip::new(
                         precompile.clone(),
                         extension.airs.clone(),
@@ -216,6 +207,7 @@ where
                     inventory.add_executor_chip(chip);
                 }
                 PrecompileImplementation::PlonkChip => {
+                    inventory.next_air::<PlonkAir<BabyBear>>()?;
                     let chip = PlonkChip::new(
                         precompile.clone(),
                         extension.airs.clone(),

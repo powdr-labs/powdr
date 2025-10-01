@@ -42,7 +42,7 @@ pub struct PowdrExtension<F> {
     pub bus_map: BusMap,
     pub airs: OriginalAirs<F>,
     #[serde(skip)]
-    pub record_arena_by_air_name: Vec<Rc<RefCell<OriginalArenas>>>,
+    pub apc_record_arenas: Vec<Rc<RefCell<OriginalArenas>>>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -79,14 +79,14 @@ impl<F> PowdrExtension<F> {
         airs: OriginalAirs<F>,
     ) -> Self {
         // Initialize with empty Rc (default to OriginalArenas::Uninitialized), one for each APC
-        let record_arena_by_air_name = (0..precompiles.len()).map(|_| Default::default()).collect();
+        let apc_record_arenas = (0..precompiles.len()).map(|_| Default::default()).collect();
         Self {
             precompiles,
             base_config,
             implementation,
             bus_map,
             airs,
-            record_arena_by_air_name,
+            apc_record_arenas,
         }
     }
 }
@@ -108,7 +108,7 @@ impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear> {
         for (precompile, record_arenas) in self
             .precompiles
             .iter()
-            .zip_eq(self.record_arena_by_air_name.iter())
+            .zip_eq(self.apc_record_arenas.iter())
         {
             let powdr_executor = PowdrExtensionExecutor::Powdr(PowdrExecutor::new(
                 self.airs.clone(),

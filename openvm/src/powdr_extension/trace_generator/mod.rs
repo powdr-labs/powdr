@@ -61,7 +61,8 @@ impl PowdrTraceGenerator {
         let num_apc_calls = original_arenas.number_of_calls();
         if num_apc_calls == 0 {
             // If the APC isn't called, early return with an empty trace.
-            return RowMajorMatrix::new(vec![], 0);
+            let width = self.apc.machine().main_columns().count();
+            return RowMajorMatrix::new(vec![], width);
         }
 
         let chip_inventory = {
