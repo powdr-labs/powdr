@@ -41,8 +41,6 @@ pub struct PowdrExtension<F> {
     pub implementation: PrecompileImplementation,
     pub bus_map: BusMap,
     pub airs: OriginalAirs<F>,
-    #[serde(skip)]
-    pub apc_record_arenas: Vec<Rc<RefCell<OriginalArenas>>>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -52,6 +50,8 @@ pub struct PowdrPrecompile<F> {
     pub opcode: PowdrOpcode,
     pub apc: Arc<Apc<F, Instr<F>>>,
     pub apc_stats: Option<OvmApcStats>,
+    #[serde(skip)]
+    pub apc_record_arena: Rc<RefCell<OriginalArenas>>,
 }
 
 impl<F> PowdrPrecompile<F> {
@@ -66,6 +66,8 @@ impl<F> PowdrPrecompile<F> {
             opcode,
             apc,
             apc_stats,
+            // Initialize with empty Rc (default to OriginalArenas::Uninitialized) for each APC
+            apc_record_arena: Default::default(),
         }
     }
 }
@@ -78,15 +80,12 @@ impl<F> PowdrExtension<F> {
         bus_map: BusMap,
         airs: OriginalAirs<F>,
     ) -> Self {
-        // Initialize with empty Rc (default to OriginalArenas::Uninitialized), one for each APC
-        let apc_record_arenas = (0..precompiles.len()).map(|_| Default::default()).collect();
         Self {
             precompiles,
             base_config,
             implementation,
             bus_map,
             airs,
-            apc_record_arenas,
         }
     }
 }
@@ -105,16 +104,12 @@ impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear> {
         &self,
         inventory: &mut openvm_circuit::arch::ExecutorInventoryBuilder<BabyBear, Self::Executor>,
     ) -> Result<(), openvm_circuit::arch::ExecutorInventoryError> {
-        for (precompile, record_arenas) in self
-            .precompiles
-            .iter()
-            .zip_eq(self.apc_record_arenas.iter())
-        {
+        for precompile in self.precompiles.iter() {
             let powdr_executor = PowdrExtensionExecutor::Powdr(PowdrExecutor::new(
                 self.airs.clone(),
                 self.base_config.clone(),
                 precompile.apc.clone(),
-                record_arenas.clone(),
+                precompile.apc_record_arena.clone(),
             ));
             inventory.add_executor(powdr_executor, once(precompile.opcode.global_opcode()))?;
         }

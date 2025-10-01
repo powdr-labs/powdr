@@ -189,11 +189,7 @@ where
             tuple_range_checker,
         );
 
-        for (precompile, record_arenas) in extension
-            .precompiles
-            .iter()
-            .zip_eq(extension.apc_record_arenas.iter())
-        {
+        for precompile in extension.precompiles.iter() {
             match extension.implementation {
                 PrecompileImplementation::SingleRowChip => {
                     inventory.next_air::<PowdrAir<BabyBear>>()?;
@@ -202,7 +198,7 @@ where
                         extension.airs.clone(),
                         extension.base_config.clone(),
                         shared_chips_pair.clone(),
-                        record_arenas.clone(),
+                        precompile.apc_record_arena.clone(),
                     );
                     inventory.add_executor_chip(chip);
                 }
@@ -213,7 +209,7 @@ where
                         extension.airs.clone(),
                         extension.base_config.clone(),
                         shared_chips_pair.clone(),
-                        record_arenas.clone(),
+                        precompile.apc_record_arena.clone(),
                         extension.bus_map.clone(),
                     );
                     inventory.add_executor_chip(chip);
