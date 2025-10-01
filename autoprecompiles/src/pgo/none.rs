@@ -30,6 +30,15 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
         // cost = number_of_original_instructions
         blocks.sort_by(|a, b| b.statements.len().cmp(&a.statements.len()));
 
+        // print blocks by len
+        blocks.iter().for_each(|b| {
+            println!(
+                "block len: {}, instructions: {:?}",
+                b.statements.len(),
+                b.statements
+            );
+        });
+
         // Debug print blocks by descending cost
         for block in &blocks {
             tracing::debug!(

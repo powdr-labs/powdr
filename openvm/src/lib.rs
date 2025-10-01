@@ -62,6 +62,7 @@ use crate::customize_exe::OpenVmApcCandidate;
 pub use crate::customize_exe::Prog;
 use crate::powdr_extension::chip::{PowdrAir, PowdrChip};
 use crate::powdr_extension::trace_generator::PowdrPeripheryInstances;
+use crate::powdr_extension::PlonkAir;
 use tracing::{info_span, Level};
 
 #[cfg(test)]
@@ -188,8 +189,17 @@ where
             tuple_range_checker,
         );
 
+        let is_plonk = matches!(
+            extension.implementation,
+            PrecompileImplementation::PlonkChip
+        );
+
         for precompile in extension.precompiles.iter() {
-            inventory.next_air::<PowdrAir<BabyBear>>()?;
+            if is_plonk {
+                inventory.next_air::<PlonkAir<BabyBear>>()?;
+            } else {
+                inventory.next_air::<PowdrAir<BabyBear>>()?;
+            }
             match extension.implementation {
                 PrecompileImplementation::SingleRowChip => {
                     let chip = PowdrChip::new(
@@ -923,7 +933,8 @@ mod tests {
             pgo_config,
             segment_height,
         );
-        assert!(result.is_ok());
+        result.unwrap();
+        // assert!(result.is_ok());
     }
 
     fn prove_recursion(
@@ -1000,15 +1011,13 @@ mod tests {
     fn guest_prove_simple() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        // No skip because we are using instruction mode.
-        let config = default_powdr_openvm_config(GUEST_APC, 0);
-        let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
+        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP);
         prove_simple(
             GUEST,
             config,
             PrecompileImplementation::SingleRowChip,
             stdin,
-            PgoConfig::Instruction(pgo_data),
+            PgoConfig::None,
             None,
         );
     }
@@ -1866,14 +1875,16 @@ mod tests {
 
     #[test]
     fn guest_machine_plonk() {
-        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP);
+        let config = default_powdr_openvm_config(GUEST_APC, 0);
         let max_degree = config.degree_bound.identities;
+        let pgo_data =
+            execution_profile_from_guest(GUEST, GuestOptions::default(), StdIn::default());
         let (powdr_metrics, _) = compile_guest(
             GUEST,
             GuestOptions::default(),
             config,
             PrecompileImplementation::PlonkChip,
-            PgoConfig::None,
+            PgoConfig::Instruction(pgo_data),
         )
         .unwrap()
         .air_metrics(max_degree);
@@ -1882,6 +1893,8 @@ mod tests {
             .into_iter()
             .map(|(metrics, _)| metrics)
             .sum::<AirMetrics>();
+
+        println!("powdr_metrics sum: {:?}", powdr_metrics_sum);
         assert_eq!(
             powdr_metrics_sum,
             AirMetrics {
