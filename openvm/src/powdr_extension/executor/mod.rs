@@ -68,17 +68,29 @@ impl OriginalArenas {
         }
     }
 
-    pub fn arenas(&mut self) -> &mut HashMap<String, MatrixRecordArena<BabyBear>> {
+    /// Returns a mutable reference to the arenas.
+    /// Should only be called after `initialize` is called.
+    pub fn arenas_mut(&mut self) -> &mut HashMap<String, MatrixRecordArena<BabyBear>> {
         match self {
             OriginalArenas::Uninitialized => unreachable!(),
             OriginalArenas::Initialized(initialized) => &mut initialized.arenas,
         }
     }
 
-    pub fn number_of_calls(&mut self) -> &mut usize {
+    /// Returns a mutable reference to the number of calls.
+    /// Should only be called after `initialize` is called.
+    pub fn number_of_calls_mut(&mut self) -> &mut usize {
         match self {
             OriginalArenas::Uninitialized => unreachable!(),
             OriginalArenas::Initialized(initialized) => &mut initialized.number_of_calls,
+        }
+    }
+
+    /// Returns the number of calls. If not initialized, `Preflight::execute` is never called, and thus return 0.
+    pub fn number_of_calls(&self) -> usize {
+        match self {
+            OriginalArenas::Uninitialized => 0,
+            OriginalArenas::Initialized(initialized) => initialized.number_of_calls,
         }
     }
 }
@@ -309,6 +321,14 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
         // Initialize the original arenas if not already initialized
         let mut record_arena_by_air_name = self.record_arena_by_air_name.as_ref().borrow_mut();
 
+        println!("execute initialize");
+        println!(
+            "original_ctx trace_buffer len: {:?}",
+            original_ctx.trace_buffer.len()
+        );
+        println!("original_ctx width: {:?}", original_ctx.width);
+        println!("apc block len: {:?}", self.apc.block);
+
         record_arena_by_air_name.initialize(
             // initialized height, not available as API, is really `next_power_of_two(apc_call_count)`, if using `MatrixRecordArena` impl of `RA`
             original_ctx.trace_buffer.len() / original_ctx.width,
@@ -316,7 +336,7 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
             &self.apc,
         );
 
-        let arenas = record_arena_by_air_name.arenas();
+        let arenas = record_arena_by_air_name.arenas_mut();
 
         // execute the original instructions one by one
         for instruction in self.apc.instructions().iter() {
@@ -344,7 +364,7 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
             executor.execute(state, &instruction.0)?;
         }
 
-        *record_arena_by_air_name.number_of_calls() += 1;
+        *record_arena_by_air_name.number_of_calls_mut() += 1;
 
         // After execution, put back the original ctx
         // TODO: `original_ctx` might just be useless and tossed away, so there's no need to put it back?

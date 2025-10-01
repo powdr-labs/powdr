@@ -71,7 +71,7 @@ impl<R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB> for 
 
         let plonk_circuit = build_circuit(self.apc.machine(), &self.bus_map);
         let mut record_arena_by_air_name = self.record_arena_by_air_name.as_ref().borrow_mut();
-        let number_of_calls = *record_arena_by_air_name.number_of_calls();
+        let number_of_calls = record_arena_by_air_name.number_of_calls();
         let width = self.apc.machine().main_columns().count();
         let height = next_power_of_two_or_zero(number_of_calls * plonk_circuit.len());
         tracing::debug!("   Number of calls: {number_of_calls}");

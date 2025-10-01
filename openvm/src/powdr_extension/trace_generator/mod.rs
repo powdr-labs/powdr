@@ -72,8 +72,10 @@ impl PowdrTraceGenerator {
             .inventory
         };
 
-        let num_apc_calls = *original_arenas.number_of_calls();
-        let arenas = original_arenas.arenas();
+        assert!(matches!(original_arenas, OriginalArenas::Initialized(_)));
+
+        let num_apc_calls = original_arenas.number_of_calls();
+        let arenas = original_arenas.arenas_mut();
 
         let dummy_trace_by_air_name: HashMap<String, Trace<BabyBear>> = chip_inventory
             .chips()
@@ -164,6 +166,8 @@ impl PowdrTraceGenerator {
                             args.map(|arg| arg.as_canonical_u32()),
                         );
                     });
+
+                println!("row_slice: {:?}", row_slice);
             });
 
         RowMajorMatrix::new(values, width)
