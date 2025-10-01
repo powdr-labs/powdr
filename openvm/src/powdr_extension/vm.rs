@@ -6,6 +6,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use derive_more::From;
+use itertools::Itertools;
 use openvm_circuit_derive::{Executor, MeteredExecutor, PreflightExecutor};
 use openvm_instructions::LocalOpcode;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
@@ -41,7 +42,7 @@ pub struct PowdrExtension<F> {
     pub bus_map: BusMap,
     pub airs: OriginalAirs<F>,
     #[serde(skip)]
-    pub record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
+    pub record_arena_by_air_name: Vec<Rc<RefCell<OriginalArenas>>>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -77,13 +78,15 @@ impl<F> PowdrExtension<F> {
         bus_map: BusMap,
         airs: OriginalAirs<F>,
     ) -> Self {
+        // Initialize with empty Rc (default to OriginalArenas::Uninitialized), one for each APC
+        let record_arena_by_air_name = (0..precompiles.len()).map(|_| Default::default()).collect();
         Self {
             precompiles,
             base_config,
             implementation,
             bus_map,
             airs,
-            record_arena_by_air_name: Default::default(),
+            record_arena_by_air_name,
         }
     }
 }
@@ -102,12 +105,16 @@ impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear> {
         &self,
         inventory: &mut openvm_circuit::arch::ExecutorInventoryBuilder<BabyBear, Self::Executor>,
     ) -> Result<(), openvm_circuit::arch::ExecutorInventoryError> {
-        for precompile in self.precompiles.iter() {
+        for (precompile, record_arenas) in self
+            .precompiles
+            .iter()
+            .zip_eq(self.record_arena_by_air_name.iter())
+        {
             let powdr_executor = PowdrExtensionExecutor::Powdr(PowdrExecutor::new(
                 self.airs.clone(),
                 self.base_config.clone(),
                 precompile.apc.clone(),
-                self.record_arena_by_air_name.clone(),
+                record_arenas.clone(),
             ));
             inventory.add_executor(powdr_executor, once(precompile.opcode.global_opcode()))?;
         }

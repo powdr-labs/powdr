@@ -194,7 +194,11 @@ where
             PrecompileImplementation::PlonkChip
         );
 
-        for precompile in extension.precompiles.iter() {
+        for (precompile, record_arenas) in extension
+            .precompiles
+            .iter()
+            .zip_eq(extension.record_arena_by_air_name.iter())
+        {
             if is_plonk {
                 inventory.next_air::<PlonkAir<BabyBear>>()?;
             } else {
@@ -207,7 +211,7 @@ where
                         extension.airs.clone(),
                         extension.base_config.clone(),
                         shared_chips_pair.clone(),
-                        extension.record_arena_by_air_name.clone(),
+                        record_arenas.clone(),
                     );
                     inventory.add_executor_chip(chip);
                 }
@@ -217,7 +221,7 @@ where
                         extension.airs.clone(),
                         extension.base_config.clone(),
                         shared_chips_pair.clone(),
-                        extension.record_arena_by_air_name.clone(),
+                        record_arenas.clone(),
                         extension.bus_map.clone(),
                     );
                     inventory.add_executor_chip(chip);

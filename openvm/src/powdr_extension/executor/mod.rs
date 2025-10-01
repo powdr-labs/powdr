@@ -58,6 +58,10 @@ impl OriginalArenas {
     ) {
         match self {
             OriginalArenas::Uninitialized => {
+                println!(
+                    "initialize originalarenas for apc with start pc: {:?}",
+                    apc.start_pc()
+                );
                 *self = OriginalArenas::Initialized(InitializedOriginalArenas::new(
                     apc_call_count_estimate,
                     original_airs,
@@ -74,6 +78,13 @@ impl OriginalArenas {
         match self {
             OriginalArenas::Uninitialized => unreachable!(),
             OriginalArenas::Initialized(initialized) => &mut initialized.arenas,
+        }
+    }
+
+    pub fn arenas(&self) -> &HashMap<String, MatrixRecordArena<BabyBear>> {
+        match self {
+            OriginalArenas::Uninitialized => unreachable!(),
+            OriginalArenas::Initialized(initialized) => &initialized.arenas,
         }
     }
 
@@ -321,14 +332,16 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
         // Initialize the original arenas if not already initialized
         let mut record_arena_by_air_name = self.record_arena_by_air_name.as_ref().borrow_mut();
 
-        println!("execute initialize");
+        // println!("record_arena_by_air_name keys: {:?}", record_arena_by_air_name.arenas().keys());
+
         println!(
             "original_ctx trace_buffer len: {:?}",
             original_ctx.trace_buffer.len()
         );
         println!("original_ctx width: {:?}", original_ctx.width);
-        println!("apc block len: {:?}", self.apc.block);
+        println!("apc block: {:?}", self.apc.block);
 
+        println!("execute apc with start pc: {:?}", self.apc.start_pc());
         record_arena_by_air_name.initialize(
             // initialized height, not available as API, is really `next_power_of_two(apc_call_count)`, if using `MatrixRecordArena` impl of `RA`
             original_ctx.trace_buffer.len() / original_ctx.width,
@@ -337,6 +350,8 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
         );
 
         let arenas = record_arena_by_air_name.arenas_mut();
+
+        println!("arena air_names: {:?}", arenas.keys());
 
         // execute the original instructions one by one
         for instruction in self.apc.instructions().iter() {
@@ -350,6 +365,12 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
                 .air_by_opcode_id
                 .get_instruction_air_and_id(instruction)
                 .0;
+
+            println!(
+                "air_name to fetch: {:?} apc start pc: {:?}",
+                air_name,
+                self.apc.start_pc()
+            );
 
             let state = VmStateMut {
                 pc,
