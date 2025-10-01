@@ -682,7 +682,10 @@ impl CompiledProgram {
         &self,
         max_degree: usize,
     ) -> (Vec<(AirMetrics, Option<AirWidthsDiff>)>, Vec<AirMetrics>) {
-        let inventory = &self.vm_config.sdk.chip_complex().inventory;
+        let air_inventory = self.vm_config.create_airs().unwrap();
+        let builder = SpecializedConfigCpuBuilder;
+        let chip_complex = <SpecializedConfigCpuBuilder as VmBuilder<BabyBearPoseidon2Engine>>::create_chip_complex(&builder, &self.vm_config, air_inventory).unwrap();
+        let inventory = chip_complex.inventory;
 
         // Order of precompile is the same as that of Powdr executors in chip inventory
         let mut apc_stats = self
@@ -692,10 +695,15 @@ impl CompiledProgram {
             .iter()
             .map(|precompile| precompile.apc_stats.clone());
 
+        apc_stats.clone().for_each(|s| {
+            println!("apc_stats: {:?}", s);
+        });
+
         inventory.airs().ext_airs().iter().fold(
             (Vec::new(), Vec::new()),
             |(mut powdr_air_metrics, mut non_powdr_air_metrics), air| {
                 let name = air.name();
+                println!("air name: {:?}", name);
 
                 // We actually give name "powdr_air_for_opcode_<opcode>" to the AIRs,
                 // but OpenVM uses the actual Rust type (PowdrAir) as the name in this method.
@@ -703,10 +711,11 @@ impl CompiledProgram {
                 if name.starts_with("PowdrAir") || name.starts_with("PlonkAir") {
                     use crate::extraction_utils::get_air_metrics;
 
-                    powdr_air_metrics.push((
-                        get_air_metrics(air.clone(), max_degree),
-                        apc_stats.next().unwrap().map(|stats| stats.widths),
-                    ));
+                    powdr_air_metrics.push({
+                        let metrics = get_air_metrics(air.clone(), max_degree);
+                        println!("metrics: {:?}", metrics);
+                        (metrics, apc_stats.next().unwrap().map(|stats| stats.widths))
+                    });
                 } else {
                     use crate::extraction_utils::get_air_metrics;
 
@@ -1875,16 +1884,14 @@ mod tests {
 
     #[test]
     fn guest_machine_plonk() {
-        let config = default_powdr_openvm_config(GUEST_APC, 0);
+        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP);
         let max_degree = config.degree_bound.identities;
-        let pgo_data =
-            execution_profile_from_guest(GUEST, GuestOptions::default(), StdIn::default());
         let (powdr_metrics, _) = compile_guest(
             GUEST,
             GuestOptions::default(),
             config,
             PrecompileImplementation::PlonkChip,
-            PgoConfig::Instruction(pgo_data),
+            PgoConfig::None,
         )
         .unwrap()
         .air_metrics(max_degree);

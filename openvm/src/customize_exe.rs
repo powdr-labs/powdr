@@ -314,7 +314,7 @@ pub struct OpenVmApcCandidate<F, I> {
     stats: EvaluationResult,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct OvmApcStats {
     pub widths: AirWidthsDiff,
 }
