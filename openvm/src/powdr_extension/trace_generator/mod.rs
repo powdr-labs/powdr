@@ -58,6 +58,13 @@ impl PowdrTraceGenerator {
         &self,
         original_arenas: &mut OriginalArenas,
     ) -> RowMajorMatrix<BabyBear> {
+        let num_apc_calls = original_arenas.number_of_calls();
+        if num_apc_calls == 0 {
+            // If the APC isn't called, early return with an empty trace.
+            let width = self.apc.machine().main_columns().count();
+            return RowMajorMatrix::new(vec![], width);
+        }
+
         let chip_inventory = {
             let airs: AirInventory<BabyBearSC> =
                 create_dummy_airs(&self.config.sdk_config.sdk, self.periphery.dummy.clone())
@@ -72,8 +79,7 @@ impl PowdrTraceGenerator {
             .inventory
         };
 
-        let num_apc_calls = *original_arenas.number_of_calls();
-        let arenas = original_arenas.arenas();
+        let arenas = original_arenas.arenas_mut();
 
         let dummy_trace_by_air_name: HashMap<String, Trace<BabyBear>> = chip_inventory
             .chips()

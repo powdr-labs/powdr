@@ -447,12 +447,13 @@ pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>, max_degree: usize) -> A
         interactions,
     } = symbolic_rap_builder.constraints();
 
-    let log_up = 0; // TODO: replace by :point_down:
-                    // (find_interaction_chunks(&interactions, max_degree)
-                    //     .interaction_partitions()
-                    //     .len()
-                    //     + 1)
-                    //     * EXT_DEGREE;
+    let log_up = 0;
+    // TODO: fix this
+    // (find_interaction_chunks(&interactions, max_degree)
+    //     .interaction_partitions()
+    //     .len()
+    //     + 1)
+    //     * EXT_DEGREE;
 
     AirMetrics {
         widths: AirWidths {

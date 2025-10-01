@@ -77,7 +77,12 @@ where
         + RangeConstraintHandler<Self::PowdrField>
         + Sync;
     type Program: Program<Self::Instruction> + Send;
-    type Instruction: Instruction<Self::Field> + Serialize + for<'de> Deserialize<'de> + Send + Sync;
+    type Instruction: Instruction<Self::Field>
+        + Serialize
+        + for<'de> Deserialize<'de>
+        + Send
+        + Sync
+        + std::fmt::Debug;
     type MemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash>: MemoryBusInteraction<
         Self::PowdrField,
         V,

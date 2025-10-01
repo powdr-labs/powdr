@@ -6,6 +6,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use derive_more::From;
+use itertools::Itertools;
 use openvm_circuit_derive::{Executor, MeteredExecutor, PreflightExecutor};
 use openvm_instructions::LocalOpcode;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
@@ -40,8 +41,6 @@ pub struct PowdrExtension<F> {
     pub implementation: PrecompileImplementation,
     pub bus_map: BusMap,
     pub airs: OriginalAirs<F>,
-    #[serde(skip)]
-    pub record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -51,6 +50,8 @@ pub struct PowdrPrecompile<F> {
     pub opcode: PowdrOpcode,
     pub apc: Arc<Apc<F, Instr<F>>>,
     pub apc_stats: Option<OvmApcStats>,
+    #[serde(skip)]
+    pub apc_record_arena: Rc<RefCell<OriginalArenas>>,
 }
 
 impl<F> PowdrPrecompile<F> {
@@ -65,6 +66,8 @@ impl<F> PowdrPrecompile<F> {
             opcode,
             apc,
             apc_stats,
+            // Initialize with empty Rc (default to OriginalArenas::Uninitialized) for each APC
+            apc_record_arena: Default::default(),
         }
     }
 }
@@ -83,7 +86,6 @@ impl<F> PowdrExtension<F> {
             implementation,
             bus_map,
             airs,
-            record_arena_by_air_name: Default::default(),
         }
     }
 }
@@ -107,7 +109,7 @@ impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear> {
                 self.airs.clone(),
                 self.base_config.clone(),
                 precompile.apc.clone(),
-                self.record_arena_by_air_name.clone(),
+                precompile.apc_record_arena.clone(),
             ));
             inventory.add_executor(powdr_executor, once(precompile.opcode.global_opcode()))?;
         }

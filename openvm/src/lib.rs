@@ -62,6 +62,7 @@ use crate::customize_exe::OpenVmApcCandidate;
 pub use crate::customize_exe::Prog;
 use crate::powdr_extension::chip::{PowdrAir, PowdrChip};
 use crate::powdr_extension::trace_generator::PowdrPeripheryInstances;
+use crate::powdr_extension::PlonkAir;
 use tracing::{info_span, Level};
 
 #[cfg(test)]
@@ -189,25 +190,26 @@ where
         );
 
         for precompile in extension.precompiles.iter() {
-            inventory.next_air::<PowdrAir<BabyBear>>()?;
             match extension.implementation {
                 PrecompileImplementation::SingleRowChip => {
+                    inventory.next_air::<PowdrAir<BabyBear>>()?;
                     let chip = PowdrChip::new(
                         precompile.clone(),
                         extension.airs.clone(),
                         extension.base_config.clone(),
                         shared_chips_pair.clone(),
-                        extension.record_arena_by_air_name.clone(),
+                        precompile.apc_record_arena.clone(),
                     );
                     inventory.add_executor_chip(chip);
                 }
                 PrecompileImplementation::PlonkChip => {
+                    inventory.next_air::<PlonkAir<BabyBear>>()?;
                     let chip = PlonkChip::new(
                         precompile.clone(),
                         extension.airs.clone(),
                         extension.base_config.clone(),
                         shared_chips_pair.clone(),
-                        extension.record_arena_by_air_name.clone(),
+                        precompile.apc_record_arena.clone(),
                         extension.bus_map.clone(),
                     );
                     inventory.add_executor_chip(chip);
@@ -672,7 +674,10 @@ impl CompiledProgram {
         &self,
         max_degree: usize,
     ) -> (Vec<(AirMetrics, Option<AirWidthsDiff>)>, Vec<AirMetrics>) {
-        let inventory = &self.vm_config.sdk.chip_complex().inventory;
+        let air_inventory = self.vm_config.create_airs().unwrap();
+        let builder = SpecializedConfigCpuBuilder;
+        let chip_complex = <SpecializedConfigCpuBuilder as VmBuilder<BabyBearPoseidon2Engine>>::create_chip_complex(&builder, &self.vm_config, air_inventory).unwrap();
+        let inventory = chip_complex.inventory;
 
         // Order of precompile is the same as that of Powdr executors in chip inventory
         let mut apc_stats = self
@@ -686,7 +691,6 @@ impl CompiledProgram {
             (Vec::new(), Vec::new()),
             |(mut powdr_air_metrics, mut non_powdr_air_metrics), air| {
                 let name = air.name();
-
                 // We actually give name "powdr_air_for_opcode_<opcode>" to the AIRs,
                 // but OpenVM uses the actual Rust type (PowdrAir) as the name in this method.
                 // TODO this is hacky but not sure how to do it better rn.
@@ -923,7 +927,8 @@ mod tests {
             pgo_config,
             segment_height,
         );
-        assert!(result.is_ok());
+        result.unwrap();
+        // assert!(result.is_ok());
     }
 
     fn prove_recursion(
@@ -1880,6 +1885,7 @@ mod tests {
             .into_iter()
             .map(|(metrics, _)| metrics)
             .sum::<AirMetrics>();
+
         assert_eq!(
             powdr_metrics_sum,
             AirMetrics {
