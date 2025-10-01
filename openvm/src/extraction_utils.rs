@@ -139,11 +139,6 @@ pub fn record_arena_dimension_by_air_name_per_apc_call<F>(
         .iter()
         .fold(HashMap::new(), |mut acc, instruction| {
             let air_name = air_by_opcode_id.get_instruction_air_and_id(instruction).0;
-            println!(
-                "apc start pc: {}, initialized air name: {:?}",
-                apc.start_pc(),
-                air_name
-            );
             // TODO: main_columns might not be correct, as the RA::with_capacity() uses the following `main_width()`
             // pub fn main_width(&self) -> usize {
             //     self.cached_mains.iter().sum::<usize>() + self.common_main

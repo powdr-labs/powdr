@@ -699,27 +699,20 @@ impl CompiledProgram {
             .iter()
             .map(|precompile| precompile.apc_stats.clone());
 
-        apc_stats.clone().for_each(|s| {
-            println!("apc_stats: {:?}", s);
-        });
-
         inventory.airs().ext_airs().iter().fold(
             (Vec::new(), Vec::new()),
             |(mut powdr_air_metrics, mut non_powdr_air_metrics), air| {
                 let name = air.name();
-                println!("air name: {:?}", name);
-
                 // We actually give name "powdr_air_for_opcode_<opcode>" to the AIRs,
                 // but OpenVM uses the actual Rust type (PowdrAir) as the name in this method.
                 // TODO this is hacky but not sure how to do it better rn.
                 if name.starts_with("PowdrAir") || name.starts_with("PlonkAir") {
                     use crate::extraction_utils::get_air_metrics;
 
-                    powdr_air_metrics.push({
-                        let metrics = get_air_metrics(air.clone(), max_degree);
-                        println!("metrics: {:?}", metrics);
-                        (metrics, apc_stats.next().unwrap().map(|stats| stats.widths))
-                    });
+                    powdr_air_metrics.push((
+                        get_air_metrics(air.clone(), max_degree),
+                        apc_stats.next().unwrap().map(|stats| stats.widths),
+                    ));
                 } else {
                     use crate::extraction_utils::get_air_metrics;
 
@@ -1905,7 +1898,6 @@ mod tests {
             .map(|(metrics, _)| metrics)
             .sum::<AirMetrics>();
 
-        println!("powdr_metrics sum: {:?}", powdr_metrics_sum);
         assert_eq!(
             powdr_metrics_sum,
             AirMetrics {

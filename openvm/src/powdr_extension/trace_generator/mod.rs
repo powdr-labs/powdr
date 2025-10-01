@@ -169,8 +169,6 @@ impl PowdrTraceGenerator {
                             args.map(|arg| arg.as_canonical_u32()),
                         );
                     });
-
-                println!("row_slice: {:?}", row_slice);
             });
 
         RowMajorMatrix::new(values, width)
