@@ -713,7 +713,7 @@ impl CompiledProgram {
 }
 
 pub fn execute(program: CompiledProgram, inputs: StdIn) -> Result<(), Box<dyn std::error::Error>> {
-    let CompiledProgram { exe,.. } = program;
+    let CompiledProgram { exe, .. } = program;
 
     let sdk = Sdk::riscv32();
 
