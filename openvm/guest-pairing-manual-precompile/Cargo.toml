@@ -7,10 +7,10 @@ edition = "2021"
 members = []
 
 [dependencies]
-openvm = { git = "https://github.com/openvm-org/openvm.git", features = ["std"] }
+openvm = { git = "https://github.com/openvm-org/openvm.git", branch = "1.4.0-wip", features = ["std"] }
 
-openvm-algebra-guest = { git = "https://github.com/openvm-org/openvm.git", default-features = false  }
-openvm-ecc-guest = { git = "https://github.com/openvm-org/openvm.git", default-features = false  }
-openvm-pairing = { git = "https://github.com/openvm-org/openvm.git", default-features = false, features = ["bn254"] }
+openvm-algebra-guest = { git = "https://github.com/openvm-org/openvm.git", branch = "1.4.0-wip", default-features = false  }
+openvm-ecc-guest = { git = "https://github.com/openvm-org/openvm.git", branch = "1.4.0-wip", default-features = false  }
+openvm-pairing = { git = "https://github.com/openvm-org/openvm.git", branch = "1.4.0-wip", default-features = false, features = ["bn254"] }
 
 hex = { version = "0.4.3", default-features = false, features = ["alloc"] }

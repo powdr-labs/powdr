@@ -2139,8 +2139,8 @@ mod tests {
                 AirWidthsDiff {
                     before: AirWidths {
                         preprocessed: 0,
-                        main: 33079,
-                        log_up: 42664,
+                        main: 33065,
+                        log_up: 42660,
                     },
                     after: AirWidths {
                         preprocessed: 0,
