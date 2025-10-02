@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use openvm_instructions::instruction::Instruction;
 use openvm_stark_backend::p3_field::PrimeField32;
@@ -62,7 +62,6 @@ pub fn control_flow_graph<F: PrimeField32>(
                     "Unknown target {target} from block starting at {id}"
                 );
             }
-            log::info!("{id} -> {targets:?}");
             (id, targets)
         })
         .collect()
@@ -249,4 +248,73 @@ fn instruction_reads_writes<F: PrimeField32>(instruction: &Instruction<F>) -> (V
     let reads = reads.into_iter().map(normalize_reg).collect();
     let writes = writes.into_iter().map(normalize_reg).collect();
     (reads, writes)
+}
+
+pub fn find_tmp_registers<F: PrimeField32>(basic_blocks: &[BasicBlock<Instr<F>>], pc_step: u64) {
+    let graph = control_flow_graph(basic_blocks, pc_step);
+    let mut register_access_types = basic_blocks
+        .iter()
+        .map(|block| (block.start_pc, register_access_types(block)))
+        .collect::<BTreeMap<_, _>>();
+    let block_ids = register_access_types.keys().copied().collect::<Vec<_>>();
+    for i in 0.. {
+        let mut changed = false;
+        if i % 100 == 0 {
+            log::info!("Iteration {i} of register access type fixpoint");
+        }
+        for block_id in &block_ids {
+            // Propagate register access types from successors to predecessors.
+            let successors = graph.get(block_id).unwrap();
+            let mut successor_access_types = [RegisterAccessType::Unused; 32];
+            for succ in successors {
+                let succ_access_types = register_access_types.get(succ).unwrap();
+                for (r, succ_access_type) in succ_access_types.iter().enumerate() {
+                    if *succ_access_type == RegisterAccessType::Read {
+                        // Read overrides any previous state.
+                        successor_access_types[r] = RegisterAccessType::Read;
+                    } else if *succ_access_type == RegisterAccessType::Write {
+                        // Write only overrides Unused.
+                        if successor_access_types[r] == RegisterAccessType::Unused {
+                            successor_access_types[r] = RegisterAccessType::Write;
+                        }
+                    }
+                }
+            }
+            for (r, succ) in successor_access_types.iter().enumerate() {
+                let current = register_access_types.get(block_id).unwrap()[r];
+                if current == RegisterAccessType::Unused && *succ != RegisterAccessType::Unused {
+                    // Unused becomes whatever the successor is.
+                    changed = true;
+                    register_access_types.get_mut(block_id).unwrap()[r] = *succ;
+                }
+            }
+        }
+        if !changed {
+            log::info!("Reached fixpoint after {i} iterations");
+            break;
+        }
+    }
+    for (block_id, access_types) in &register_access_types {
+        let written_regs = access_types
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| **t == RegisterAccessType::Write)
+            .map(|(i, _)| i)
+            .collect::<Vec<_>>();
+        let removable_regs = written_regs
+            .iter()
+            .copied()
+            .filter(|r| {
+                // We can remove it if all successor have it as write.
+                let successors = graph.get(block_id).unwrap();
+                successors.iter().all(|succ| {
+                    let succ_access_types = register_access_types.get(succ).unwrap();
+                    succ_access_types[*r] == RegisterAccessType::Write
+                })
+            })
+            .collect::<Vec<_>>();
+        log::info!(
+            "Block at {block_id} writes to: {written_regs:?} (removable: {removable_regs:?})",
+        );
+    }
 }
