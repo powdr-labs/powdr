@@ -402,22 +402,6 @@ impl OriginalVmConfig {
                 (name, metrics)
             })
             .collect()
-
-        // inventory
-        // .executors()
-        // .iter()
-        // .map(|executor| executor.air())
-        // .chain(
-        //     inventory
-        //         .periphery()
-        //         .iter()
-        //         .map(|periphery| periphery.air()),
-        // )
-        // .map(|air| {
-        //     // both executors and periphery implement the same `air()` API
-        //     (air.name(), get_air_metrics(air, max_degree))
-        // })
-        // .collect()
     }
 }
 
