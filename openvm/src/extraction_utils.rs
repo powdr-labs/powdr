@@ -388,6 +388,37 @@ impl OriginalVmConfig {
             .map(|(id, bus_type)| (id as u64, bus_type)),
         )
     }
+
+    pub fn chip_inventory_air_metrics(&self, max_degree: usize) -> HashMap<String, AirMetrics> {
+        let inventory = &self.chip_complex().inventory;
+
+        inventory
+            .airs()
+            .ext_airs()
+            .iter()
+            .map(|air| {
+                let name = air.name();
+                let metrics = get_air_metrics(air.clone(), max_degree);
+                (name, metrics)
+            })
+            .collect()
+
+        // inventory
+        // .executors()
+        // .iter()
+        // .map(|executor| executor.air())
+        // .chain(
+        //     inventory
+        //         .periphery()
+        //         .iter()
+        //         .map(|periphery| periphery.air()),
+        // )
+        // .map(|air| {
+        //     // both executors and periphery implement the same `air()` API
+        //     (air.name(), get_air_metrics(air, max_degree))
+        // })
+        // .collect()
+    }
 }
 
 pub fn export_pil(writer: &mut impl std::io::Write, vm_config: &SpecializedConfig) {

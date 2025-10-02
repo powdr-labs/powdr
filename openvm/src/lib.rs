@@ -509,12 +509,11 @@ pub fn compile_exe_with_elf(
             let max_total_apc_columns: Option<usize> = max_total_columns.map(|max_total_columns| {
                 let original_config = OriginalVmConfig::new(original_program.vm_config.clone());
 
-                let total_non_apc_columns: usize = unimplemented!();
-                // original_config
-                //     .chip_inventory_air_metrics(config.degree_bound.identities)
-                //     .values()
-                //     .map(|m| m.total_width())
-                //     .sum::<usize>();
+                let total_non_apc_columns: usize = original_config
+                    .chip_inventory_air_metrics(config.degree_bound.identities)
+                    .values()
+                    .map(|m| m.total_width())
+                    .sum::<usize>();
                 max_total_columns - total_non_apc_columns
             });
 
@@ -1715,9 +1714,6 @@ mod tests {
         bus_interactions: 253,
     };
 
-    // AirMetrics { widths: AirWidths { preprocessed: 7, main: 798, log_up: 684 }, constraints: 604, bus_interactions: 253 }
-    // non_powdr_air_metrics for air VariableRangeCheckerAir: AirMetrics { widths: AirWidths { preprocessed: 2, main: 1, log_up: 8 }, constraints: 0, bus_interactions: 1 }
-
     #[test]
     fn guest_machine_pgo_modes() {
         let mut stdin = StdIn::default();
@@ -2126,11 +2122,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 3268,
-                            log_up: 5244,
+                            main: 3254,
+                            log_up: 5224,
                         },
-                        constraints: 746,
-                        bus_interactions: 2524,
+                        constraints: 730,
+                        bus_interactions: 2515,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2148,8 +2144,8 @@ mod tests {
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 3268,
-                        log_up: 5244,
+                        main: 3254,
+                        log_up: 5224,
                     },
                 }
             "#]]),
