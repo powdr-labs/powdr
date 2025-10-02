@@ -56,7 +56,7 @@ impl PowdrTraceGenerator {
     /// nodes in the APC circuit.
     pub fn generate_witness(
         &self,
-        original_arenas: &mut OriginalArenas,
+        mut original_arenas: OriginalArenas,
     ) -> RowMajorMatrix<BabyBear> {
         let num_apc_calls = original_arenas.number_of_calls();
         if num_apc_calls == 0 {

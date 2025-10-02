@@ -278,13 +278,15 @@ unsafe fn execute_e12_impl<CTX: ExecutionCtxTrait>(
     pre_compute: &PowdrPreCompute<CTX>,
     vm_state: &mut VmExecState<BabyBear, GuestMemory, CTX>,
 ) {
-    pre_compute
+    let instret = vm_state.vm_state.instret;
+    let vm_state = pre_compute
         .original_instructions
         .iter()
         .fold(vm_state, |vm_state, (executor, data)| {
             executor(data, vm_state);
             vm_state
         });
+    vm_state.vm_state.instret = instret + 1;
 }
 
 unsafe fn execute_e1_impl<CTX: ExecutionCtxTrait>(
@@ -310,7 +312,7 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
     fn execute(
         &self,
         state: VmStateMut<BabyBear, TracingMemory, MatrixRecordArena<BabyBear>>,
-        instruction: &Instruction<BabyBear>,
+        _: &Instruction<BabyBear>,
     ) -> Result<(), ExecutionError> {
         // This is pretty much done, just need to move up from `execute()` below with very small modifications
         // Extract the state components, since `execute` consumes the state but we need to pass it to each instruction execution

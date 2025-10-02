@@ -68,7 +68,7 @@ impl<R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB> for 
 
         let trace = self
             .trace_generator
-            .generate_witness(&mut self.record_arena_by_air_name.as_ref().borrow_mut());
+            .generate_witness(self.record_arena_by_air_name.take());
 
         AirProvingContext::simple(Arc::new(trace), vec![])
     }

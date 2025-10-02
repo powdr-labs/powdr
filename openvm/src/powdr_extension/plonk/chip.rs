@@ -70,7 +70,7 @@ impl<R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB> for 
         tracing::debug!("Generating air proof input for PlonkChip {}", self.name);
 
         let plonk_circuit = build_circuit(self.apc.machine(), &self.bus_map);
-        let mut record_arena_by_air_name = self.record_arena_by_air_name.as_ref().borrow_mut();
+        let record_arena_by_air_name = self.record_arena_by_air_name.take();
         let number_of_calls = record_arena_by_air_name.number_of_calls();
         let width = self.apc.machine().main_columns().count();
         let height = next_power_of_two_or_zero(number_of_calls * plonk_circuit.len());
@@ -91,7 +91,7 @@ impl<R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB> for 
             .collect();
         let witness = self
             .trace_generator
-            .generate_witness(&mut record_arena_by_air_name);
+            .generate_witness(record_arena_by_air_name);
 
         // TODO: This should be parallelized.
         let mut values = BabyBear::zero_vec(height * width);
