@@ -1704,16 +1704,19 @@ mod tests {
         }
     }
 
-    const NON_POWDR_EXPECTED_MACHINE_COUNT: usize = 18;
+    const NON_POWDR_EXPECTED_MACHINE_COUNT: usize = 19;
     const NON_POWDR_EXPECTED_SUM: AirMetrics = AirMetrics {
         widths: AirWidths {
-            preprocessed: 5,
-            main: 797,
-            log_up: 676,
+            preprocessed: 7,
+            main: 798,
+            log_up: 684,
         },
         constraints: 604,
-        bus_interactions: 252,
+        bus_interactions: 253,
     };
+
+    // AirMetrics { widths: AirWidths { preprocessed: 7, main: 798, log_up: 684 }, constraints: 604, bus_interactions: 253 }
+    // non_powdr_air_metrics for air VariableRangeCheckerAir: AirMetrics { widths: AirWidths { preprocessed: 2, main: 1, log_up: 8 }, constraints: 0, bus_interactions: 1 }
 
     #[test]
     fn guest_machine_pgo_modes() {

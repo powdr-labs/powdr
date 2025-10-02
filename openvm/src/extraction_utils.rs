@@ -18,12 +18,12 @@ use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupCh
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_instructions::VmOpcode;
 
+use crate::utils::get_pil;
 use openvm_stark_backend::air_builders::symbolic::SymbolicRapBuilder;
 use openvm_stark_backend::config::Val;
+use openvm_stark_backend::interaction::fri_log_up::find_interaction_chunks;
 use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_backend::prover::cpu::CpuBackend;
-// use openvm_stark_backend::interaction::fri_log_up::find_interaction_chunks;
-use crate::utils::get_pil;
 use openvm_stark_backend::{
     air_builders::symbolic::SymbolicConstraints, config::StarkGenericConfig, rap::AnyRap,
 };
@@ -447,13 +447,11 @@ pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>, max_degree: usize) -> A
         interactions,
     } = symbolic_rap_builder.constraints();
 
-    let log_up = 0;
-    // TODO: fix this
-    // (find_interaction_chunks(&interactions, max_degree)
-    //     .interaction_partitions()
-    //     .len()
-    //     + 1)
-    //     * EXT_DEGREE;
+    let log_up = (find_interaction_chunks(&interactions, max_degree)
+        .interaction_partitions()
+        .len()
+        + 1)
+        * EXT_DEGREE;
 
     AirMetrics {
         widths: AirWidths {
