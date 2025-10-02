@@ -800,6 +800,7 @@ pub fn prove(
                 from_state,
                 Some(num_insns),
                 &trace_heights,
+                seg_idx,
             )?;
             state = Some(to_state);
 

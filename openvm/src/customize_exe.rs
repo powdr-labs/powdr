@@ -236,7 +236,11 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
 
             // We encode in the program that the prover should execute the apc instruction instead of the original software version.
             // This is only for witgen: the program in the program chip is left unchanged.
-            program.add_apc_instruction_at_pc_index(start_index, VmOpcode::from_usize(opcode));
+            program.add_apc_instruction_with_block_size_at_pc_index(
+                start_index,
+                VmOpcode::from_usize(opcode),
+                apc.block.statements.len(),
+            );
 
             PowdrPrecompile::new(
                 format!("PowdrAutoprecompile_{}", apc.start_pc()),

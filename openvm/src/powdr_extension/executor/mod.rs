@@ -21,6 +21,7 @@ use openvm_circuit_primitives::AlignedBytesBorrow;
 use openvm_instructions::instruction::Instruction;
 use openvm_sdk::config::SdkVmConfigExecutor;
 use openvm_stark_backend::p3_field::Field;
+use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::Apc;
 
@@ -55,6 +56,7 @@ impl OriginalArenas {
         apc_call_count_estimate: usize,
         original_airs: &OriginalAirs<BabyBear>,
         apc: &Arc<Apc<BabyBear, Instr<BabyBear>>>,
+        segment_idx: usize,
     ) {
         match self {
             OriginalArenas::Uninitialized => {
@@ -62,9 +64,23 @@ impl OriginalArenas {
                     apc_call_count_estimate,
                     original_airs,
                     apc,
+                    segment_idx,
                 ));
             }
-            OriginalArenas::Initialized(_) => {}
+            OriginalArenas::Initialized(initialized) => {
+                if initialized.segment_idx != segment_idx {
+                    // Reinitialize if we are in a different segment
+                    // TODO: I'm not sure what's the memory implication of the old `InitailizedOriginalArenas`.
+                    // Does it get deallocated or stay in memory?
+                    // It's only attached to `OriginalArenas` so I assume it's just dropped now that nothing points to it?
+                    *self = OriginalArenas::Initialized(InitializedOriginalArenas::new(
+                        apc_call_count_estimate,
+                        original_airs,
+                        apc,
+                        segment_idx,
+                    ));
+                }
+            }
         }
     }
 
@@ -106,6 +122,7 @@ impl OriginalArenas {
 pub struct InitializedOriginalArenas {
     pub arenas: HashMap<String, MatrixRecordArena<BabyBear>>,
     pub number_of_calls: usize,
+    pub segment_idx: usize,
 }
 
 impl InitializedOriginalArenas {
@@ -113,6 +130,7 @@ impl InitializedOriginalArenas {
         apc_call_count_estimate: usize,
         original_airs: &OriginalAirs<BabyBear>,
         apc: &Arc<Apc<BabyBear, Instr<BabyBear>>>,
+        segment_idx: usize,
     ) -> Self {
         let record_arena_dimensions =
             record_arena_dimension_by_air_name_per_apc_call(apc, original_airs);
@@ -132,6 +150,7 @@ impl InitializedOriginalArenas {
                             MatrixRecordArena::with_capacity(
                                 *num_calls * apc_call_count_estimate,
                                 *air_width,
+                                segment_idx,
                             ),
                         )
                     },
@@ -140,6 +159,7 @@ impl InitializedOriginalArenas {
             // This is the actual number of calls, which we still don't know yet at this point
             // We only have `apc_call_count_estimate`, which is `next_power_of_two(number_of_calls)`, if using `MatrixRecordArena`
             number_of_calls: 0,
+            segment_idx,
         }
     }
 }
@@ -232,8 +252,11 @@ impl PowdrExecutor {
 
         // TODO: assert that the opcode is the one we expect
 
-        if !a.is_zero()
-            || !b.is_zero()
+        // The first operand should be length of the APC
+        // This is passed to OVM to increment `instret` during preflight execution
+        assert_eq!(a.as_canonical_u32(), self.apc.instructions().len() as u32);
+
+        if !b.is_zero()
             || !c.is_zero()
             || !d.is_zero()
             || !e.is_zero()
@@ -333,6 +356,7 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
             original_ctx.trace_buffer.len() / original_ctx.width,
             &self.air_by_opcode_id,
             &self.apc,
+            original_ctx.segment_idx,
         );
 
         let arenas = record_arena_by_air_name.arenas_mut();
@@ -350,6 +374,8 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
                 .get_instruction_air_and_id(instruction)
                 .0;
 
+            let ctx = arenas.get_mut(&air_name).unwrap();
+
             let state = VmStateMut {
                 pc,
                 memory,
@@ -357,7 +383,7 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
                 rng,
                 custom_pvs,
                 // We execute in the context of the relevant dummy table
-                ctx: arenas.get_mut(&air_name).unwrap(),
+                ctx,
             };
 
             executor.execute(state, &instruction.0)?;
