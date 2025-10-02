@@ -223,7 +223,7 @@ fn instruction_reads_writes<F: PrimeField32>(instruction: &Instruction<F>) -> (V
         0 => (vec![], vec![]),
         // PHANTOM
         1 => {
-            // TODO
+            // TODO: Not sure what should happen here.
             log::error!(
                 "Unhandled PHANTOM instruction: {}",
                 openvm_instruction_formatter(instruction)
@@ -231,10 +231,12 @@ fn instruction_reads_writes<F: PrimeField32>(instruction: &Instruction<F>) -> (V
             (vec![], vec![])
         }
         _ => {
-            panic!(
+            // Probably manual precompiles.
+            log::error!(
                 "Unhandled opcode {opcode} in register_accesses, instruction: {}",
                 openvm_instruction_formatter(instruction)
             );
+            (vec![], vec![])
         }
     };
     let normalize_reg = |r: u32| {
