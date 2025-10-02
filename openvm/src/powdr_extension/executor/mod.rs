@@ -376,7 +376,7 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
         Ok(())
     }
 
-    fn get_opcode_name(&self, opcode: usize) -> String {
+    fn get_opcode_name(&self, _opcode: usize) -> String {
         todo!()
     }
 }

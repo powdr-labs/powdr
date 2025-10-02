@@ -713,7 +713,7 @@ impl CompiledProgram {
 }
 
 pub fn execute(program: CompiledProgram, inputs: StdIn) -> Result<(), Box<dyn std::error::Error>> {
-    let CompiledProgram { exe, vm_config } = program;
+    let CompiledProgram { exe,.. } = program;
 
     let sdk = Sdk::riscv32();
 
@@ -846,7 +846,7 @@ pub fn execution_profile_from_guest(
     guest_opts: GuestOptions,
     inputs: StdIn,
 ) -> HashMap<u64, u32> {
-    let OriginalCompiledProgram { exe, vm_config } = compile_openvm(guest, guest_opts).unwrap();
+    let OriginalCompiledProgram { exe, .. } = compile_openvm(guest, guest_opts).unwrap();
     let program = Prog::from(&exe.program);
 
     // prepare for execute
