@@ -126,6 +126,13 @@ pub struct SpecializedConfig {
     pub powdr: PowdrExtension<BabyBear>,
 }
 
+impl std::fmt::Debug for SpecializedConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // just use debug of oriignalvmconfig
+        write!(f, "{:?}", self.sdk)
+    }
+}
+
 #[derive(Default, Clone)]
 pub struct SpecializedConfigCpuBuilder;
 
@@ -282,6 +289,7 @@ impl VmExecutionConfig<BabyBear> for SpecializedConfig {
     fn create_executors(
         &self,
     ) -> Result<ExecutorInventory<Self::Executor>, ExecutorInventoryError> {
+        println!("specializedconfig create_executors");
         let mut inventory = self.sdk.create_executors()?.transmute();
         inventory = inventory.extend(&self.powdr)?;
         Ok(inventory)
@@ -585,6 +593,7 @@ impl TranspilerConfig<BabyBear> for ExtendedVmConfig {
     }
 }
 
+#[derive(Default, Clone)]
 pub struct ExtendedVmConfigCpuBuilder;
 
 impl<E> VmBuilder<E> for ExtendedVmConfigCpuBuilder
@@ -750,6 +759,8 @@ pub fn prove(
     let app_fri_params =
         FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
     let app_config = AppConfig::new(app_fri_params, vm_config.clone());
+    println!("run prove");
+    println!("app_config: {:?}", app_config);
 
     // Create the SDK
     let sdk: GenericSdk<_, SpecializedConfigCpuBuilder, _> = GenericSdk::new(app_config).unwrap();
@@ -846,11 +857,19 @@ pub fn execution_profile_from_guest(
     guest_opts: GuestOptions,
     inputs: StdIn,
 ) -> HashMap<u64, u32> {
-    let OriginalCompiledProgram { exe, .. } = compile_openvm(guest, guest_opts).unwrap();
+    let OriginalCompiledProgram { exe, vm_config } = compile_openvm(guest, guest_opts).unwrap();
     let program = Prog::from(&exe.program);
 
+    // Set app configuration
+    let app_fri_params =
+        FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
+    let app_config = AppConfig::new(app_fri_params, vm_config.clone());
+
     // prepare for execute
-    let sdk = Sdk::riscv32();
+    let sdk: GenericSdk<BabyBearPoseidon2Engine, ExtendedVmConfigCpuBuilder, NativeCpuBuilder> =
+        GenericSdk::new(app_config).unwrap();
+
+    println!("start execution profile");
 
     execution_profile::<BabyBearOpenVmApcAdapter>(&program, || {
         sdk.execute(exe.clone(), inputs.clone()).unwrap();
@@ -1522,6 +1541,7 @@ mod tests {
             GuestOptions::default(),
             stdin.clone(),
         );
+        println!("finish execution profile");
         let config = default_powdr_openvm_config(GUEST_ECRECOVER_APC_PGO, GUEST_ECRECOVER_SKIP);
         prove_simple(
             GUEST_ECRECOVER_HINTS,

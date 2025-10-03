@@ -192,6 +192,13 @@ pub struct OriginalVmConfig {
     pub chip_complex: CachedChipComplex,
 }
 
+impl std::fmt::Debug for OriginalVmConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // just use debug of extendedvmconfig
+        write!(f, "{:?}", self.sdk_config)
+    }
+}
+
 // TODO: derive VmCircuitConfig, currently not possible because we don't have SC/F everywhere
 impl<SC: StarkGenericConfig> VmCircuitConfig<SC> for OriginalVmConfig
 where
@@ -208,6 +215,7 @@ impl<F: PrimeField32> VmExecutionConfig<F> for OriginalVmConfig {
     fn create_executors(
         &self,
     ) -> Result<ExecutorInventory<Self::Executor>, ExecutorInventoryError> {
+        println!("originalvmconfig create_executors");
         self.sdk_config.create_executors()
     }
 }

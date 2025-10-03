@@ -31,6 +31,7 @@ impl<F: PrimeField32> VmExecutionExtension<F> for HintsExtension {
         &self,
         inventory: &mut ExecutorInventoryBuilder<F, Self::Executor>,
     ) -> Result<(), ExecutorInventoryError> {
+        println!("run extend_execution for HintsExtension");
         inventory.add_phantom_sub_executor(
             executors::ReverseBytesSubEx,
             PhantomDiscriminant(HintsPhantom::HintReverseBytes as u16),
