@@ -268,20 +268,31 @@ pub fn find_tmp_registers<F: PrimeField32>(basic_blocks: &[BasicBlock<Instr<F>>]
             // Propagate register access types from successors to predecessors.
             let successors = graph.get(block_id).unwrap();
             let mut successor_access_types = [RegisterAccessType::Unused; 32];
+            let mut all_writes = [true; 32];
             for succ in successors {
                 let succ_access_types = register_access_types.get(succ).unwrap();
                 for (r, succ_access_type) in succ_access_types.iter().enumerate() {
-                    if *succ_access_type == RegisterAccessType::Read {
-                        // Read overrides any previous state.
-                        successor_access_types[r] = RegisterAccessType::Read;
-                    } else if *succ_access_type == RegisterAccessType::Write {
-                        // Write only overrides Unused.
-                        if successor_access_types[r] == RegisterAccessType::Unused {
-                            successor_access_types[r] = RegisterAccessType::Write;
+                    match *succ_access_type {
+                        RegisterAccessType::Read => {
+                            // Read overrides any previous state.
+                            successor_access_types[r] = RegisterAccessType::Read;
+                            all_writes[r] = false;
+                        }
+                        RegisterAccessType::Write => {}
+                        RegisterAccessType::Unused => {
+                            all_writes[r] = false;
                         }
                     }
                 }
             }
+
+            for r in 0..32 {
+                if all_writes[r] {
+                    // If all successors write, then we can consider it a write.
+                    successor_access_types[r] = RegisterAccessType::Write;
+                }
+            }
+
             for (r, succ) in successor_access_types.iter().enumerate() {
                 let current = register_access_types.get(block_id).unwrap()[r];
                 if current == RegisterAccessType::Unused && *succ != RegisterAccessType::Unused {
