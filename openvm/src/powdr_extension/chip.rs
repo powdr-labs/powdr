@@ -17,6 +17,7 @@ use openvm_stark_backend::{
     p3_air::{Air, BaseAir},
     p3_matrix::dense::DenseMatrix,
     prover::{hal::ProverBackend, types::AirProvingContext},
+    rap::ColumnsAir,
 };
 
 use openvm_stark_backend::{
@@ -80,11 +81,11 @@ pub struct PowdrAir<F> {
     apc: Arc<Apc<F, Instr<F>>>,
 }
 
-// impl<F: PrimeField32> ColumnsAir<F> for PowdrAir<F> {
-//     fn columns(&self) -> Option<Vec<String>> {
-//         Some(self.columns.iter().map(|c| (*c.name).clone()).collect())
-//     }
-// }
+impl<F: PrimeField32> ColumnsAir<F> for PowdrAir<F> {
+    fn columns(&self) -> Option<Vec<String>> {
+        Some(self.columns.iter().map(|c| (*c.name).clone()).collect())
+    }
+}
 
 impl<F: PrimeField32> PowdrAir<F> {
     pub fn new(apc: Arc<Apc<F, Instr<F>>>) -> Self {

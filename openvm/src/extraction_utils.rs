@@ -434,9 +434,13 @@ pub fn export_pil(writer: &mut impl std::io::Write, vm_config: &SpecializedConfi
 
 pub fn get_columns(air: Arc<dyn AnyRap<BabyBearSC>>) -> Vec<Arc<String>> {
     let width = air.width();
-    // TODO: add back ColumnsAir
-    (0..width)
-        .map(|i| Arc::new(format!("unknown_{i}")))
+    air.columns()
+        .inspect(|columns| {
+            assert_eq!(columns.len(), width);
+        })
+        .unwrap_or_else(|| (0..width).map(|i| format!("unknown_{i}")).collect())
+        .into_iter()
+        .map(Arc::new)
         .collect()
 }
 
