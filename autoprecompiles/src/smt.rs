@@ -107,8 +107,8 @@ fn solve_ff<T: FieldElement>(
     let output = Command::new("cvc5")
         .arg(file.path())
         .arg("--produce-models")
-        .arg("--tlimit-per=500")
-        .arg("--tlimit=1000")
+        .arg("--tlimit-per=5000")
+        .arg("--tlimit=10000")
         .output()
         .expect("Failed to run cvc5");
 
@@ -374,6 +374,20 @@ fn negate_constraints_smtlib2_ff<T: FieldElement>(
         .collect::<Vec<_>>()
         .join(" ");
     format!("(assert (not (and {inner})))")
+}
+
+pub fn check_equivalence<T: FieldElement>(machine: &SymbolicMachine<T>) -> Option<bool> {
+    let r = solve_ff(
+        machine,
+        Default::default(),
+        None,
+        None,
+        SmtBusInteractionConfig::All,
+    );
+
+    println!("Result: {r:?}");
+
+    None
 }
 
 pub fn detect_equalities<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
