@@ -374,8 +374,9 @@ pub fn build<A: Adapter>(
         &vm_config.bus_map,
     )?;
 
-    let machine = smt::detect_equalities(machine);
+    // let machine = smt::detect_equalities(machine);
     // let machine = smt::detect_redundant_constraints_ff(machine);
+    smt::check_equivalence(&machine);
 
     let machine = optimizer::optimize::<A>(
         machine,
