@@ -252,6 +252,22 @@ pub fn find_tmp_registers<F: PrimeField32>(basic_blocks: &[BasicBlock<Instr<F>>]
         .iter()
         .map(|block| (block.start_pc, register_access_types(block)))
         .collect::<BTreeMap<_, _>>();
+
+    let mut all_write_or_unused = [true; 32];
+    for access_types in register_access_types.values() {
+        for (r, access_type) in access_types.iter().enumerate() {
+            if *access_type == RegisterAccessType::Read {
+                all_write_or_unused[r] = false;
+            }
+        }
+    }
+
+    for r in 0..32 {
+        if all_write_or_unused[r] {
+            tracing::info!("Register {r} is never read in any block");
+        }
+    }
+
     // Fixpoint iteration to propagate register access types through the control flow graph.
     // A read or write here means that either this block or one of its successors reads/writes the register.
     let mut register_access_types_with_succ = register_access_types.clone();
