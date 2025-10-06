@@ -77,6 +77,12 @@ pub enum RegisterAccessType {
     Unused,
 }
 
+/// Finds the register access types, looking at a basic block in isolation.
+///
+/// Finds the first instruction that accesses the register. Then:
+/// - If it reads, return Read (even if it also writes in the same instruction). The block ID is stored.
+/// - If it only writes, return Write.
+/// - If it is never accessed, return Unused.
 fn register_access_types<F: PrimeField32>(
     basic_block: &BasicBlock<Instr<F>>,
 ) -> [RegisterAccessType; 32] {
@@ -101,6 +107,7 @@ fn register_access_types<F: PrimeField32>(
     access_types
 }
 
+/// Returns the registers read and written by the instruction.
 fn instruction_reads_writes<F: PrimeField32>(instruction: &Instruction<F>) -> (Vec<u32>, Vec<u32>) {
     let opcode = instruction.opcode.as_usize();
     let (reads, writes) = match opcode {
@@ -209,7 +216,7 @@ fn instruction_reads_writes<F: PrimeField32>(instruction: &Instruction<F>) -> (V
 }
 
 /// Given a *non-empty* list of access types, compute the intersection, meaning:
-/// - If *any* item reads, return Read.
+/// - If *any* item reads, return Read. The block ID is taken from the first reading item.
 /// - If *all* items write, return Write.
 /// - Otherwise, return Unused.
 fn intersect_access_types<'a>(
@@ -250,23 +257,26 @@ fn intersect_access_types<'a>(
 
 pub fn find_tmp_registers<F: PrimeField32>(basic_blocks: &[BasicBlock<Instr<F>>], pc_step: u64) {
     let graph = control_flow_graph(basic_blocks, pc_step);
+    let block_ids = graph.keys().copied().collect::<Vec<_>>();
+
     // Register access types for each block in isolation
     let register_access_types = basic_blocks
         .iter()
         .map(|block| (block.start_pc, register_access_types(block)))
         .collect::<BTreeMap<_, _>>();
 
-    let mut all_write_or_unused = [true; 32];
+    // Check whether any register has the property that it is never read.
+    // This is not used later, but interesting to know.
+    let mut never_read = [true; 32];
     for access_types in register_access_types.values() {
         for (r, access_type) in access_types.iter().enumerate() {
             if matches!(access_type, RegisterAccessType::Read(_)) {
-                all_write_or_unused[r] = false;
+                never_read[r] = false;
             }
         }
     }
-
-    for r in 0..32 {
-        if all_write_or_unused[r] {
+    for (r, never_read) in never_read.iter().enumerate() {
+        if *never_read {
             tracing::info!("Register {r} is never read in any block");
         }
     }
@@ -274,10 +284,6 @@ pub fn find_tmp_registers<F: PrimeField32>(basic_blocks: &[BasicBlock<Instr<F>>]
     // Fixpoint iteration to propagate register access types through the control flow graph.
     // A read or write here means that either this block or one of its successors reads/writes the register.
     let mut register_access_types_with_succ = register_access_types.clone();
-    let block_ids = register_access_types_with_succ
-        .keys()
-        .copied()
-        .collect::<Vec<_>>();
     tracing::info!("Block IDs: {block_ids:?}");
     for i in 0.. {
         let mut changed = false;
@@ -291,20 +297,21 @@ pub fn find_tmp_registers<F: PrimeField32>(basic_blocks: &[BasicBlock<Instr<F>>]
                 // We don't know anything, assume the worst case (all registers are read).
                 [RegisterAccessType::Read(*block_id); 32]
             } else {
-                intersect_access_types(graph.get(block_id).unwrap().iter().map(|succ| {
-                    (
-                        *block_id,
-                        register_access_types_with_succ.get(succ).unwrap(),
-                    )
-                }))
+                intersect_access_types(
+                    successors
+                        .iter()
+                        .map(|succ| (*succ, register_access_types_with_succ.get(succ).unwrap())),
+                )
             };
 
-            for (r, succ) in successor_access_types.iter().enumerate() {
+            for (r, access_type) in successor_access_types.iter().enumerate() {
                 let current = register_access_types_with_succ.get(block_id).unwrap()[r];
-                if current == RegisterAccessType::Unused && *succ != RegisterAccessType::Unused {
+                if current == RegisterAccessType::Unused
+                    && *access_type != RegisterAccessType::Unused
+                {
                     // Unused becomes whatever the successor is.
                     changed = true;
-                    register_access_types_with_succ.get_mut(block_id).unwrap()[r] = *succ;
+                    register_access_types_with_succ.get_mut(block_id).unwrap()[r] = *access_type;
                 }
             }
         }
@@ -313,6 +320,7 @@ pub fn find_tmp_registers<F: PrimeField32>(basic_blocks: &[BasicBlock<Instr<F>>]
             break;
         }
     }
+
     for (block_id, access_types) in &register_access_types {
         let written_regs = access_types
             .iter()
@@ -325,7 +333,7 @@ pub fn find_tmp_registers<F: PrimeField32>(basic_blocks: &[BasicBlock<Instr<F>>]
             .copied()
             .filter(|r| {
                 // We can remove it if no successor reads.
-                // If the successor list is empty, we cannot remove it.
+                // If the successor list is empty (JALR), we cannot remove it.
                 let successors = graph.get(block_id).unwrap();
                 !successors.is_empty()
                     && !successors.iter().any(|succ| {
@@ -340,6 +348,7 @@ pub fn find_tmp_registers<F: PrimeField32>(basic_blocks: &[BasicBlock<Instr<F>>]
         );
         for r in &written_regs {
             if !removable_regs.contains(r) {
+                // Explain why we cannot remove it by printing a path to a reading block.
                 let successors = graph.get(block_id).unwrap();
                 if successors.is_empty() {
                     tracing::info!("  Register {r} might be read after dynamic jump (JALR)");
