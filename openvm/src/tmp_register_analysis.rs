@@ -69,7 +69,9 @@ pub fn control_flow_graph<F: PrimeField32>(
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegisterAccessType {
-    /// The register is read. Stores the start_pc of the block where it is first read.
+    /// The register is read.
+    /// If the register is read in the current block, stores the ID of the current block.
+    /// Otherwise, stores the next hop on a path to a reading block.
     Read(u64),
     Write,
     Unused,
@@ -333,37 +335,52 @@ pub fn find_tmp_registers<F: PrimeField32>(basic_blocks: &[BasicBlock<Instr<F>>]
             })
             .collect::<Vec<_>>();
         tracing::info!(
-            "Block at {block_id} writes to: {written_regs:?}, removable: {} ({removable_regs:?})",
+            "Block at 0x{block_id:x} writes to: {written_regs:?}, removable: {} ({removable_regs:?})",
             removable_regs.len()
         );
         for r in &written_regs {
             if !removable_regs.contains(r) {
-                // Find the first successor that reads it.
                 let successors = graph.get(block_id).unwrap();
                 if successors.is_empty() {
-                    tracing::info!(
-                        "  We don't know the next block, no register access can be removed."
-                    );
-                } else {
-                    let reading_successor = graph
-                        .get(block_id)
-                        .unwrap()
-                        .iter()
-                        .filter_map(|succ| {
-                            let succ_access_types =
-                                register_access_types_with_succ.get(succ).unwrap();
-                            if let RegisterAccessType::Read(start_pc) = succ_access_types[*r] {
-                                Some(start_pc)
-                            } else {
-                                None
-                            }
-                        })
-                        .next()
-                        .unwrap();
-                    tracing::info!(
-                        "  Register {r} is read in successor block at 0x{reading_successor:x}"
-                    );
+                    tracing::info!("  Register {r} might be read after dynamic jump (JALR)");
+                    continue;
                 }
+
+                // Pick the first reading successor (which must exist)
+                let first_reading_successor = *successors
+                    .iter()
+                    .find(|succ| {
+                        let succ_access_types = register_access_types_with_succ.get(succ).unwrap();
+                        matches!(succ_access_types[*r], RegisterAccessType::Read(_))
+                    })
+                    .unwrap();
+
+                let mut path = [*block_id, first_reading_successor]
+                    .into_iter()
+                    .collect::<Vec<_>>();
+
+                loop {
+                    let last = *path.last().unwrap();
+                    let RegisterAccessType::Read(reading_successor) =
+                        register_access_types_with_succ.get(&last).unwrap()[*r]
+                    else {
+                        unreachable!()
+                    };
+
+                    if reading_successor == last {
+                        // We have reached the block that reads the register.
+                        break;
+                    }
+
+                    path.push(reading_successor);
+                }
+                let path = path
+                    .into_iter()
+                    .map(|block_id| format!("0x{block_id:x}"))
+                    .collect::<Vec<_>>();
+                tracing::info!(
+                    "  Register {r} might be read in the future via the following path: {path:?}"
+                );
             }
         }
     }
