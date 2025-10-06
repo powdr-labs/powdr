@@ -211,18 +211,18 @@ fn instruction_reads_writes<F: PrimeField32>(instruction: &Instruction<F>) -> (V
 /// - If *all* items write, return Write.
 /// - Otherwise, return Unused.
 fn intersect_access_types<'a>(
-    all_access_types: impl Iterator<Item = &'a [RegisterAccessType; 32]>,
+    all_access_types: impl Iterator<Item = (u64, &'a [RegisterAccessType; 32])>,
 ) -> [RegisterAccessType; 32] {
     let mut result = [RegisterAccessType::Unused; 32];
     let mut all_writes = [true; 32];
     let mut is_empty = true;
-    for access_types in all_access_types {
+    for (block_id, access_types) in all_access_types {
         is_empty = false;
         for (r, access_type) in access_types.iter().enumerate() {
             match *access_type {
-                RegisterAccessType::Read(start_pc) => {
+                RegisterAccessType::Read(_) => {
                     // Read overrides any previous state.
-                    result[r] = RegisterAccessType::Read(start_pc);
+                    result[r] = RegisterAccessType::Read(block_id);
                     all_writes[r] = false;
                 }
                 RegisterAccessType::Write => {}
