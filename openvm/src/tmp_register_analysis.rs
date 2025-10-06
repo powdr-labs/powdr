@@ -327,7 +327,8 @@ pub fn find_tmp_registers<F: PrimeField32>(basic_blocks: &[BasicBlock<Instr<F>>]
             })
             .collect::<Vec<_>>();
         tracing::info!(
-            "Block at {block_id} writes to: {written_regs:?} (removable: {removable_regs:?})",
+            "Block at {block_id} writes to: {written_regs:?}, removable: {} ({removable_regs:?})",
+            removable_regs.len()
         );
     }
 }
