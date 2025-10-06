@@ -279,13 +279,14 @@ unsafe fn execute_e12_impl<CTX: ExecutionCtxTrait>(
     vm_state: &mut VmExecState<BabyBear, GuestMemory, CTX>,
 ) {
     let instret = vm_state.vm_state.instret;
-    let vm_state = pre_compute
-        .original_instructions
-        .iter()
-        .fold(vm_state, |vm_state, (executor, data)| {
-            executor(data, vm_state);
-            vm_state
-        });
+    let vm_state =
+        pre_compute
+            .original_instructions
+            .iter()
+            .fold(vm_state, |vm_state, (executor, data)| {
+                executor(data, vm_state);
+                vm_state
+            });
     vm_state.vm_state.instret = instret + 1;
 }
 
@@ -375,7 +376,7 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
         Ok(())
     }
 
-    fn get_opcode_name(&self, opcode: usize) -> String {
+    fn get_opcode_name(&self, _opcode: usize) -> String {
         todo!()
     }
 }

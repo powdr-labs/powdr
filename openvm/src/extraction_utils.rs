@@ -18,13 +18,12 @@ use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupCh
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_instructions::VmOpcode;
 
+use crate::utils::get_pil;
 use openvm_stark_backend::air_builders::symbolic::SymbolicRapBuilder;
 use openvm_stark_backend::config::Val;
+use openvm_stark_backend::interaction::fri_log_up::find_interaction_chunks;
 use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_backend::prover::cpu::CpuBackend;
-// use openvm_stark_backend::interaction::fri_log_up::find_interaction_chunks;
-use crate::utils::get_pil;
-use openvm_stark_backend::interaction::fri_log_up::find_interaction_chunks;
 use openvm_stark_backend::{
     air_builders::symbolic::SymbolicConstraints, config::StarkGenericConfig, rap::AnyRap,
 };
@@ -389,6 +388,21 @@ impl OriginalVmConfig {
             .map(|(id, bus_type)| (id as u64, bus_type)),
         )
     }
+
+    pub fn chip_inventory_air_metrics(&self, max_degree: usize) -> HashMap<String, AirMetrics> {
+        let inventory = &self.chip_complex().inventory;
+
+        inventory
+            .airs()
+            .ext_airs()
+            .iter()
+            .map(|air| {
+                let name = air.name();
+                let metrics = get_air_metrics(air.clone(), max_degree);
+                (name, metrics)
+            })
+            .collect()
+    }
 }
 
 pub fn export_pil(writer: &mut impl std::io::Write, vm_config: &SpecializedConfig) {
@@ -420,9 +434,13 @@ pub fn export_pil(writer: &mut impl std::io::Write, vm_config: &SpecializedConfi
 
 pub fn get_columns(air: Arc<dyn AnyRap<BabyBearSC>>) -> Vec<Arc<String>> {
     let width = air.width();
-    // TODO: add back ColumnsAir
-    (0..width)
-        .map(|i| Arc::new(format!("unknown_{i}")))
+    air.columns()
+        .inspect(|columns| {
+            assert_eq!(columns.len(), width);
+        })
+        .unwrap_or_else(|| (0..width).map(|i| format!("unknown_{i}")).collect())
+        .into_iter()
+        .map(Arc::new)
         .collect()
 }
 

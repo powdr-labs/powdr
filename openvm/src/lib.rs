@@ -509,12 +509,11 @@ pub fn compile_exe_with_elf(
             let max_total_apc_columns: Option<usize> = max_total_columns.map(|max_total_columns| {
                 let original_config = OriginalVmConfig::new(original_program.vm_config.clone());
 
-                let total_non_apc_columns: usize = unimplemented!();
-                // original_config
-                //     .chip_inventory_air_metrics(config.degree_bound.identities)
-                //     .values()
-                //     .map(|m| m.total_width())
-                //     .sum::<usize>();
+                let total_non_apc_columns: usize = original_config
+                    .chip_inventory_air_metrics(config.degree_bound.identities)
+                    .values()
+                    .map(|m| m.total_width())
+                    .sum::<usize>();
                 max_total_columns - total_non_apc_columns
             });
 
@@ -714,7 +713,7 @@ impl CompiledProgram {
 }
 
 pub fn execute(program: CompiledProgram, inputs: StdIn) -> Result<(), Box<dyn std::error::Error>> {
-    let CompiledProgram { exe, vm_config } = program;
+    let CompiledProgram { exe, .. } = program;
 
     let sdk = Sdk::riscv32();
 
@@ -847,7 +846,7 @@ pub fn execution_profile_from_guest(
     guest_opts: GuestOptions,
     inputs: StdIn,
 ) -> HashMap<u64, u32> {
-    let OriginalCompiledProgram { exe, vm_config } = compile_openvm(guest, guest_opts).unwrap();
+    let OriginalCompiledProgram { exe, .. } = compile_openvm(guest, guest_opts).unwrap();
     let program = Prog::from(&exe.program);
 
     // prepare for execute
@@ -1704,15 +1703,15 @@ mod tests {
         }
     }
 
-    const NON_POWDR_EXPECTED_MACHINE_COUNT: usize = 18;
+    const NON_POWDR_EXPECTED_MACHINE_COUNT: usize = 19;
     const NON_POWDR_EXPECTED_SUM: AirMetrics = AirMetrics {
         widths: AirWidths {
-            preprocessed: 5,
-            main: 797,
-            log_up: 676,
+            preprocessed: 7,
+            main: 798,
+            log_up: 684,
         },
         constraints: 604,
-        bus_interactions: 252,
+        bus_interactions: 253,
     };
 
     #[test]
@@ -2123,11 +2122,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 3268,
-                            log_up: 5244,
+                            main: 3254,
+                            log_up: 5224,
                         },
-                        constraints: 746,
-                        bus_interactions: 2524,
+                        constraints: 730,
+                        bus_interactions: 2515,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2140,13 +2139,13 @@ mod tests {
                 AirWidthsDiff {
                     before: AirWidths {
                         preprocessed: 0,
-                        main: 33079,
-                        log_up: 42664,
+                        main: 33065,
+                        log_up: 42660,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 3268,
-                        log_up: 5244,
+                        main: 3254,
+                        log_up: 5224,
                     },
                 }
             "#]]),
