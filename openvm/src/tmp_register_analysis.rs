@@ -339,19 +339,31 @@ pub fn find_tmp_registers<F: PrimeField32>(basic_blocks: &[BasicBlock<Instr<F>>]
         for r in &written_regs {
             if !removable_regs.contains(r) {
                 // Find the first successor that reads it.
-                let reading_successor = graph
-                    .get(block_id)
-                    .unwrap()
-                    .iter()
-                    .filter(|succ| {
-                        let succ_access_types = register_access_types_with_succ.get(succ).unwrap();
-                        succ_access_types[*r] != RegisterAccessType::Write
-                    })
-                    .next()
-                    .unwrap();
-                tracing::info!(
-                    "  Register {r} is read in successor block at 0x{reading_successor:x}"
-                );
+                let successors = graph.get(block_id).unwrap();
+                if successors.is_empty() {
+                    tracing::info!(
+                        "  We don't know the next block, no register access can be removed."
+                    );
+                } else {
+                    let reading_successor = graph
+                        .get(block_id)
+                        .unwrap()
+                        .iter()
+                        .filter_map(|succ| {
+                            let succ_access_types =
+                                register_access_types_with_succ.get(succ).unwrap();
+                            if let RegisterAccessType::Read(start_pc) = succ_access_types[*r] {
+                                Some(start_pc)
+                            } else {
+                                None
+                            }
+                        })
+                        .next()
+                        .unwrap();
+                    tracing::info!(
+                        "  Register {r} is read in successor block at 0x{reading_successor:x}"
+                    );
+                }
             }
         }
     }
