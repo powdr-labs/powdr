@@ -276,6 +276,7 @@ pub fn find_tmp_registers<F: PrimeField32>(basic_blocks: &[BasicBlock<Instr<F>>]
         .keys()
         .copied()
         .collect::<Vec<_>>();
+    tracing::info!("Block IDs: {block_ids:?}");
     for i in 0.. {
         let mut changed = false;
         if i % 100 == 0 {
