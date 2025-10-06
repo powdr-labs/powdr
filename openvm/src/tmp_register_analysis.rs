@@ -69,7 +69,8 @@ pub fn control_flow_graph<F: PrimeField32>(
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegisterAccessType {
-    Read,
+    /// The register is read. Stores the start_pc of the block where it is first read.
+    Read(u64),
     Write,
     Unused,
 }
@@ -84,7 +85,7 @@ fn register_access_types<F: PrimeField32>(
             assert!(r < 32);
             let r = r as usize;
             if access_types[r] == RegisterAccessType::Unused {
-                access_types[r] = RegisterAccessType::Read;
+                access_types[r] = RegisterAccessType::Read(basic_block.start_pc);
             }
         }
         for w in writes {
@@ -219,9 +220,9 @@ fn intersect_access_types<'a>(
         is_empty = false;
         for (r, access_type) in access_types.iter().enumerate() {
             match *access_type {
-                RegisterAccessType::Read => {
+                RegisterAccessType::Read(start_pc) => {
                     // Read overrides any previous state.
-                    result[r] = RegisterAccessType::Read;
+                    result[r] = RegisterAccessType::Read(start_pc);
                     all_writes[r] = false;
                 }
                 RegisterAccessType::Write => {}
@@ -256,7 +257,7 @@ pub fn find_tmp_registers<F: PrimeField32>(basic_blocks: &[BasicBlock<Instr<F>>]
     let mut all_write_or_unused = [true; 32];
     for access_types in register_access_types.values() {
         for (r, access_type) in access_types.iter().enumerate() {
-            if *access_type == RegisterAccessType::Read {
+            if matches!(access_type, RegisterAccessType::Read(_)) {
                 all_write_or_unused[r] = false;
             }
         }
@@ -285,7 +286,7 @@ pub fn find_tmp_registers<F: PrimeField32>(basic_blocks: &[BasicBlock<Instr<F>>]
             let successors = graph.get(block_id).unwrap();
             let successor_access_types = if successors.is_empty() {
                 // We don't know anything, assume the worst case (all registers are read).
-                [RegisterAccessType::Read; 32]
+                [RegisterAccessType::Read(*block_id); 32]
             } else {
                 intersect_access_types(
                     graph
@@ -321,17 +322,37 @@ pub fn find_tmp_registers<F: PrimeField32>(basic_blocks: &[BasicBlock<Instr<F>>]
             .iter()
             .copied()
             .filter(|r| {
-                // We can remove it if all successor have it as write.
+                // We can remove it if no successor reads.
+                // If the successor list is empty, we cannot remove it.
                 let successors = graph.get(block_id).unwrap();
-                successors.iter().all(|succ| {
-                    let succ_access_types = register_access_types_with_succ.get(succ).unwrap();
-                    succ_access_types[*r] == RegisterAccessType::Write
-                })
+                !successors.is_empty()
+                    && !successors.iter().any(|succ| {
+                        let succ_access_types = register_access_types_with_succ.get(succ).unwrap();
+                        matches!(succ_access_types[*r], RegisterAccessType::Read(_))
+                    })
             })
             .collect::<Vec<_>>();
         tracing::info!(
             "Block at {block_id} writes to: {written_regs:?}, removable: {} ({removable_regs:?})",
             removable_regs.len()
         );
+        for r in &written_regs {
+            if !removable_regs.contains(r) {
+                // Find the first successor that reads it.
+                let reading_successor = graph
+                    .get(block_id)
+                    .unwrap()
+                    .iter()
+                    .filter(|succ| {
+                        let succ_access_types = register_access_types_with_succ.get(succ).unwrap();
+                        succ_access_types[*r] != RegisterAccessType::Write
+                    })
+                    .next()
+                    .unwrap();
+                tracing::info!(
+                    "  Register {r} is read in successor block at 0x{reading_successor:x}"
+                );
+            }
+        }
     }
 }
