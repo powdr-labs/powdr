@@ -12,9 +12,7 @@ use crate::instruction_formatter::openvm_instruction_formatter;
 use crate::memory_bus_interaction::OpenVmMemoryBusInteraction;
 use crate::opcode::branch_opcodes_bigint_set;
 use crate::powdr_extension::chip::PowdrAir;
-use crate::tmp_register_analysis::{
-    control_flow_graph, find_tmp_registers, print_register_access_type_stats,
-};
+use crate::tmp_register_analysis::find_tmp_registers;
 use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::OriginalCompiledProgram;
 use crate::PrecompileImplementation;
@@ -197,8 +195,6 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         .collect::<BTreeSet<_>>();
 
     let blocks = collect_basic_blocks::<BabyBearOpenVmApcAdapter>(&program, &jumpdest_set, &airs);
-    let _graph = control_flow_graph(&blocks, exe.program.step as u64);
-    print_register_access_type_stats(&blocks);
     find_tmp_registers(&blocks, exe.program.step as u64);
     tracing::info!(
         "Got {} basic blocks from `collect_basic_blocks`",

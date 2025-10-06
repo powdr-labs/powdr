@@ -74,49 +74,6 @@ pub enum RegisterAccessType {
     Unused,
 }
 
-pub fn print_register_access_type_stats<F: PrimeField32>(basic_blocks: &[BasicBlock<Instr<F>>]) {
-    let mut global_state = [RegisterAccessType::Unused; 32];
-    for basic_block in basic_blocks {
-        let access_types = register_access_types(basic_block);
-        for (i, access_type) in access_types.iter().enumerate() {
-            if *access_type == RegisterAccessType::Read {
-                // Read overrides any previous state.
-                global_state[i] = RegisterAccessType::Read;
-            } else if *access_type == RegisterAccessType::Write {
-                // Write only overrides Unused.
-                if global_state[i] == RegisterAccessType::Unused {
-                    global_state[i] = RegisterAccessType::Write;
-                }
-            }
-        }
-        let written_regs = access_types
-            .iter()
-            .enumerate()
-            .filter(|(_, t)| **t == RegisterAccessType::Write)
-            .map(|(i, _)| i)
-            .collect::<Vec<_>>();
-        tracing::info!(
-            "Block at {} writes to: {:?}",
-            basic_block.start_pc,
-            written_regs
-        );
-    }
-    let unused = global_state
-        .iter()
-        .enumerate()
-        .filter(|(_, &t)| t == RegisterAccessType::Unused)
-        .map(|(i, _)| i)
-        .collect::<Vec<_>>();
-    tracing::info!("Registers never accessed: {unused:?}");
-    let only_written = global_state
-        .iter()
-        .enumerate()
-        .filter(|(_, &t)| t == RegisterAccessType::Write)
-        .map(|(i, _)| i)
-        .collect::<Vec<_>>();
-    tracing::info!("Registers only written to, never read: {only_written:?}");
-}
-
 fn register_access_types<F: PrimeField32>(
     basic_block: &BasicBlock<Instr<F>>,
 ) -> [RegisterAccessType; 32] {
@@ -126,19 +83,15 @@ fn register_access_types<F: PrimeField32>(
         for r in reads {
             assert!(r < 32);
             let r = r as usize;
-            match access_types[r] {
-                RegisterAccessType::Unused => access_types[r] = RegisterAccessType::Read,
-                RegisterAccessType::Read => {}
-                RegisterAccessType::Write => {}
+            if access_types[r] == RegisterAccessType::Unused {
+                access_types[r] = RegisterAccessType::Read;
             }
         }
         for w in writes {
             assert!(w < 32);
             let w = w as usize;
-            match access_types[w] {
-                RegisterAccessType::Unused => access_types[w] = RegisterAccessType::Write,
-                RegisterAccessType::Read => {}
-                RegisterAccessType::Write => {}
+            if access_types[w] == RegisterAccessType::Unused {
+                access_types[w] = RegisterAccessType::Write;
             }
         }
     }
@@ -254,11 +207,18 @@ fn instruction_reads_writes<F: PrimeField32>(instruction: &Instruction<F>) -> (V
 
 pub fn find_tmp_registers<F: PrimeField32>(basic_blocks: &[BasicBlock<Instr<F>>], pc_step: u64) {
     let graph = control_flow_graph(basic_blocks, pc_step);
-    let mut register_access_types = basic_blocks
+    // Register access types for each block in isolation
+    let register_access_types = basic_blocks
         .iter()
         .map(|block| (block.start_pc, register_access_types(block)))
         .collect::<BTreeMap<_, _>>();
-    let block_ids = register_access_types.keys().copied().collect::<Vec<_>>();
+    // Fixpoint iteration to propagate register access types through the control flow graph.
+    // A read or write here means that either this block or one of its successors reads/writes the register.
+    let mut register_access_types_with_succ = register_access_types.clone();
+    let block_ids = register_access_types_with_succ
+        .keys()
+        .copied()
+        .collect::<Vec<_>>();
     for i in 0.. {
         let mut changed = false;
         if i % 100 == 0 {
@@ -267,38 +227,45 @@ pub fn find_tmp_registers<F: PrimeField32>(basic_blocks: &[BasicBlock<Instr<F>>]
         for block_id in &block_ids {
             // Propagate register access types from successors to predecessors.
             let successors = graph.get(block_id).unwrap();
-            let mut successor_access_types = [RegisterAccessType::Unused; 32];
-            let mut all_writes = [true; 32];
-            for succ in successors {
-                let succ_access_types = register_access_types.get(succ).unwrap();
-                for (r, succ_access_type) in succ_access_types.iter().enumerate() {
-                    match *succ_access_type {
-                        RegisterAccessType::Read => {
-                            // Read overrides any previous state.
-                            successor_access_types[r] = RegisterAccessType::Read;
-                            all_writes[r] = false;
-                        }
-                        RegisterAccessType::Write => {}
-                        RegisterAccessType::Unused => {
-                            all_writes[r] = false;
+
+            let successor_access_types = if successors.is_empty() {
+                // If we don't know the successors (JALR), we have to assume the worst (all registers are read).
+                [RegisterAccessType::Read; 32]
+            } else {
+                let mut successor_access_types = [RegisterAccessType::Unused; 32];
+                let mut all_writes = [true; 32];
+                for succ in successors {
+                    let succ_access_types = register_access_types_with_succ.get(succ).unwrap();
+                    for (r, succ_access_type) in succ_access_types.iter().enumerate() {
+                        match *succ_access_type {
+                            RegisterAccessType::Read => {
+                                // Read overrides any previous state.
+                                successor_access_types[r] = RegisterAccessType::Read;
+                                all_writes[r] = false;
+                            }
+                            RegisterAccessType::Write => {}
+                            RegisterAccessType::Unused => {
+                                all_writes[r] = false;
+                            }
                         }
                     }
                 }
-            }
 
-            for r in 0..32 {
-                if all_writes[r] {
-                    // If all successors write, then we can consider it a write.
-                    successor_access_types[r] = RegisterAccessType::Write;
+                for r in 0..32 {
+                    if all_writes[r] {
+                        // If all successors write, then we can consider it a write.
+                        successor_access_types[r] = RegisterAccessType::Write;
+                    }
                 }
-            }
+                successor_access_types
+            };
 
             for (r, succ) in successor_access_types.iter().enumerate() {
-                let current = register_access_types.get(block_id).unwrap()[r];
+                let current = register_access_types_with_succ.get(block_id).unwrap()[r];
                 if current == RegisterAccessType::Unused && *succ != RegisterAccessType::Unused {
                     // Unused becomes whatever the successor is.
                     changed = true;
-                    register_access_types.get_mut(block_id).unwrap()[r] = *succ;
+                    register_access_types_with_succ.get_mut(block_id).unwrap()[r] = *succ;
                 }
             }
         }
@@ -321,7 +288,7 @@ pub fn find_tmp_registers<F: PrimeField32>(basic_blocks: &[BasicBlock<Instr<F>>]
                 // We can remove it if all successor have it as write.
                 let successors = graph.get(block_id).unwrap();
                 successors.iter().all(|succ| {
-                    let succ_access_types = register_access_types.get(succ).unwrap();
+                    let succ_access_types = register_access_types_with_succ.get(succ).unwrap();
                     succ_access_types[*r] == RegisterAccessType::Write
                 })
             })
