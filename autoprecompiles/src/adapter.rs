@@ -15,7 +15,7 @@ use crate::{
 
 #[derive(Serialize, Deserialize)]
 pub struct ApcWithStats<F, I, S> {
-    apc: Arc<Apc<F, I>>,
+    pub apc: Arc<Apc<F, I>>,
     stats: Option<S>,
 }
 impl<F, I, S> ApcWithStats<F, I, S> {

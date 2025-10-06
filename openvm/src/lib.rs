@@ -525,6 +525,8 @@ pub fn compile_exe_with_elf(
                 max_total_columns - total_non_apc_columns
             });
 
+            panic!();
+
             customize(
                 original_program,
                 elf.text_labels(),
@@ -860,10 +862,14 @@ pub fn execution_profile_from_guest(
     let OriginalCompiledProgram { exe, vm_config } = compile_openvm(guest, guest_opts).unwrap();
     let program = Prog::from(&exe.program);
 
+    println!("compile openvm done");
+
     // Set app configuration
     let app_fri_params =
         FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
     let app_config = AppConfig::new(app_fri_params, vm_config.clone());
+
+    println!("app config done");
 
     // prepare for execute
     let sdk: GenericSdk<BabyBearPoseidon2Engine, ExtendedVmConfigCpuBuilder, NativeCpuBuilder> =
@@ -1536,11 +1542,15 @@ mod tests {
     fn ecrecover_prove() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ECRECOVER_ITER);
+        eprintln!("test print");
         let pgo_data = execution_profile_from_guest(
             GUEST_ECRECOVER_HINTS,
             GuestOptions::default(),
             stdin.clone(),
         );
+
+        panic!();
+
         println!("finish execution profile");
         let config = default_powdr_openvm_config(GUEST_ECRECOVER_APC_PGO, GUEST_ECRECOVER_SKIP);
         prove_simple(
