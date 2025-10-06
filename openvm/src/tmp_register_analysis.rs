@@ -95,7 +95,7 @@ pub fn print_register_access_type_stats<F: PrimeField32>(basic_blocks: &[BasicBl
             .filter(|(_, t)| **t == RegisterAccessType::Write)
             .map(|(i, _)| i)
             .collect::<Vec<_>>();
-        log::info!(
+        tracing::info!(
             "Block at {} writes to: {:?}",
             basic_block.start_pc,
             written_regs
@@ -107,14 +107,14 @@ pub fn print_register_access_type_stats<F: PrimeField32>(basic_blocks: &[BasicBl
         .filter(|(_, &t)| t == RegisterAccessType::Unused)
         .map(|(i, _)| i)
         .collect::<Vec<_>>();
-    log::info!("Registers never accessed: {unused:?}");
+    tracing::info!("Registers never accessed: {unused:?}");
     let only_written = global_state
         .iter()
         .enumerate()
         .filter(|(_, &t)| t == RegisterAccessType::Write)
         .map(|(i, _)| i)
         .collect::<Vec<_>>();
-    log::info!("Registers only written to, never read: {only_written:?}");
+    tracing::info!("Registers only written to, never read: {only_written:?}");
 }
 
 fn register_access_types<F: PrimeField32>(
@@ -224,7 +224,7 @@ fn instruction_reads_writes<F: PrimeField32>(instruction: &Instruction<F>) -> (V
         // PHANTOM
         1 => {
             // TODO: Not sure what should happen here.
-            log::error!(
+            tracing::error!(
                 "Unhandled PHANTOM instruction: {}",
                 openvm_instruction_formatter(instruction)
             );
@@ -232,7 +232,7 @@ fn instruction_reads_writes<F: PrimeField32>(instruction: &Instruction<F>) -> (V
         }
         _ => {
             // Probably manual precompiles.
-            log::error!(
+            tracing::error!(
                 "Unhandled opcode {opcode} in register_accesses, instruction: {}",
                 openvm_instruction_formatter(instruction)
             );
@@ -262,7 +262,7 @@ pub fn find_tmp_registers<F: PrimeField32>(basic_blocks: &[BasicBlock<Instr<F>>]
     for i in 0.. {
         let mut changed = false;
         if i % 100 == 0 {
-            log::info!("Iteration {i} of register access type fixpoint");
+            tracing::info!("Iteration {i} of register access type fixpoint");
         }
         for block_id in &block_ids {
             // Propagate register access types from successors to predecessors.
@@ -303,7 +303,7 @@ pub fn find_tmp_registers<F: PrimeField32>(basic_blocks: &[BasicBlock<Instr<F>>]
             }
         }
         if !changed {
-            log::info!("Reached fixpoint after {i} iterations");
+            tracing::info!("Reached fixpoint after {i} iterations");
             break;
         }
     }
@@ -326,7 +326,7 @@ pub fn find_tmp_registers<F: PrimeField32>(basic_blocks: &[BasicBlock<Instr<F>>]
                 })
             })
             .collect::<Vec<_>>();
-        log::info!(
+        tracing::info!(
             "Block at {block_id} writes to: {written_regs:?} (removable: {removable_regs:?})",
         );
     }
