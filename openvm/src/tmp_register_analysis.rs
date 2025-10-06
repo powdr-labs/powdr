@@ -289,13 +289,12 @@ pub fn find_tmp_registers<F: PrimeField32>(basic_blocks: &[BasicBlock<Instr<F>>]
                 // We don't know anything, assume the worst case (all registers are read).
                 [RegisterAccessType::Read(*block_id); 32]
             } else {
-                intersect_access_types(
-                    graph
-                        .get(block_id)
-                        .unwrap()
-                        .iter()
-                        .map(|succ| register_access_types_with_succ.get(succ).unwrap()),
-                )
+                intersect_access_types(graph.get(block_id).unwrap().iter().map(|succ| {
+                    (
+                        *block_id,
+                        register_access_types_with_succ.get(succ).unwrap(),
+                    )
+                }))
             };
 
             for (r, succ) in successor_access_types.iter().enumerate() {
