@@ -205,6 +205,46 @@ fn instruction_reads_writes<F: PrimeField32>(instruction: &Instruction<F>) -> (V
     (reads, writes)
 }
 
+/// Given a *non-empty* list of access types, compute the intersection, meaning:
+/// - If *any* item reads, return Read.
+/// - If *all* items write, return Write.
+/// - Otherwise, return Unused.
+fn intersect_access_types<'a>(
+    all_access_types: impl Iterator<Item = &'a [RegisterAccessType; 32]>,
+) -> [RegisterAccessType; 32] {
+    let mut result = [RegisterAccessType::Unused; 32];
+    let mut all_writes = [true; 32];
+    let mut is_empty = true;
+    for access_types in all_access_types {
+        is_empty = false;
+        for (r, access_type) in access_types.iter().enumerate() {
+            match *access_type {
+                RegisterAccessType::Read => {
+                    // Read overrides any previous state.
+                    result[r] = RegisterAccessType::Read;
+                    all_writes[r] = false;
+                }
+                RegisterAccessType::Write => {}
+                RegisterAccessType::Unused => {
+                    all_writes[r] = false;
+                }
+            }
+        }
+    }
+
+    if is_empty {
+        panic!("intersect_access_types called with empty iterator");
+    }
+
+    for r in 0..32 {
+        if all_writes[r] {
+            // If all blocks write, then we can consider it a write.
+            result[r] = RegisterAccessType::Write;
+        }
+    }
+    result
+}
+
 pub fn find_tmp_registers<F: PrimeField32>(basic_blocks: &[BasicBlock<Instr<F>>], pc_step: u64) {
     let graph = control_flow_graph(basic_blocks, pc_step);
     // Register access types for each block in isolation
@@ -227,37 +267,17 @@ pub fn find_tmp_registers<F: PrimeField32>(basic_blocks: &[BasicBlock<Instr<F>>]
         for block_id in &block_ids {
             // Propagate register access types from successors to predecessors.
             let successors = graph.get(block_id).unwrap();
-
             let successor_access_types = if successors.is_empty() {
-                // If we don't know the successors (JALR), we have to assume the worst (all registers are read).
+                // We don't know anything, assume the worst case (all registers are read).
                 [RegisterAccessType::Read; 32]
             } else {
-                let mut successor_access_types = [RegisterAccessType::Unused; 32];
-                let mut all_writes = [true; 32];
-                for succ in successors {
-                    let succ_access_types = register_access_types_with_succ.get(succ).unwrap();
-                    for (r, succ_access_type) in succ_access_types.iter().enumerate() {
-                        match *succ_access_type {
-                            RegisterAccessType::Read => {
-                                // Read overrides any previous state.
-                                successor_access_types[r] = RegisterAccessType::Read;
-                                all_writes[r] = false;
-                            }
-                            RegisterAccessType::Write => {}
-                            RegisterAccessType::Unused => {
-                                all_writes[r] = false;
-                            }
-                        }
-                    }
-                }
-
-                for r in 0..32 {
-                    if all_writes[r] {
-                        // If all successors write, then we can consider it a write.
-                        successor_access_types[r] = RegisterAccessType::Write;
-                    }
-                }
-                successor_access_types
+                intersect_access_types(
+                    graph
+                        .get(block_id)
+                        .unwrap()
+                        .iter()
+                        .map(|succ| register_access_types_with_succ.get(succ).unwrap()),
+                )
             };
 
             for (r, succ) in successor_access_types.iter().enumerate() {
