@@ -585,6 +585,7 @@ impl TranspilerConfig<BabyBear> for ExtendedVmConfig {
     }
 }
 
+#[derive(Default, Clone)]
 pub struct ExtendedVmConfigCpuBuilder;
 
 impl<E> VmBuilder<E> for ExtendedVmConfigCpuBuilder
@@ -846,11 +847,17 @@ pub fn execution_profile_from_guest(
     guest_opts: GuestOptions,
     inputs: StdIn,
 ) -> HashMap<u64, u32> {
-    let OriginalCompiledProgram { exe, .. } = compile_openvm(guest, guest_opts).unwrap();
+    let OriginalCompiledProgram { exe, vm_config } = compile_openvm(guest, guest_opts).unwrap();
     let program = Prog::from(&exe.program);
 
+    // Set app configuration
+    let app_fri_params =
+        FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
+    let app_config = AppConfig::new(app_fri_params, vm_config.clone());
+
     // prepare for execute
-    let sdk = Sdk::riscv32();
+    let sdk: GenericSdk<BabyBearPoseidon2Engine, ExtendedVmConfigCpuBuilder, NativeCpuBuilder> =
+        GenericSdk::new(app_config).unwrap();
 
     execution_profile::<BabyBearOpenVmApcAdapter>(&program, || {
         sdk.execute(exe.clone(), inputs.clone()).unwrap();
