@@ -29,7 +29,11 @@ impl<F: PrimeField32> PhantomSubExecutor<F> for ReverseBytesSubEx {
         // read memory
         let bytes = unsafe { memory.read::<u8, 4>(RV32_MEMORY_AS, rs1) };
         // write hint as bytes in reverse
-        let hint_bytes = bytes.into_iter().rev().map(|b| F::from_canonical_u8(b)).collect();
+        let hint_bytes = bytes
+            .into_iter()
+            .rev()
+            .map(|b| F::from_canonical_u8(b))
+            .collect();
         streams.hint_stream = hint_bytes;
         Ok(())
     }
@@ -112,7 +116,8 @@ impl<F: PrimeField32> PhantomSubExecutor<F> for K256InverseField10x26SubEx {
         // read register
         let rs1 = read_rv32_register(memory, a);
         // read the k256 field_10x26 as raw bytes
-        let bytes: [u8; FIELD10X26_BYTES] = unsafe { memory.read::<u8, { FIELD10X26_BYTES }>(RV32_MEMORY_AS, rs1) };
+        let bytes: [u8; FIELD10X26_BYTES] =
+            unsafe { memory.read::<u8, { FIELD10X26_BYTES }>(RV32_MEMORY_AS, rs1) };
 
         // we just reinterpret the bytes as a k256 field element. We don't use mem::transmute to avoid alignment issues
         let mut elem = [0u32; 10];
@@ -161,7 +166,8 @@ impl<F: PrimeField32> PhantomSubExecutor<F> for K256SqrtField10x26SubEx {
         // read register
         let rs1 = read_rv32_register(memory, a);
         // read the k256 field_10x26 as raw bytes
-        let bytes: [u8; FIELD10X26_BYTES] = unsafe { memory.read::<u8, { FIELD10X26_BYTES }>(RV32_MEMORY_AS, rs1) };
+        let bytes: [u8; FIELD10X26_BYTES] =
+            unsafe { memory.read::<u8, { FIELD10X26_BYTES }>(RV32_MEMORY_AS, rs1) };
 
         // we just reinterpret the bytes as a k256 field element. Can't use mem::transmute due to alighment requirements
         let mut elem = [0u32; 10];
