@@ -212,8 +212,6 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         }
     }
 
-    panic!();
-
     let start = std::time::Instant::now();
     let apcs = pgo.filter_blocks_and_create_apcs_with_pgo(blocks, &config, vm_config);
     metrics::gauge!("total_apc_gen_time_ms").set(start.elapsed().as_millis() as f64);
@@ -222,8 +220,6 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
     apcs.iter().enumerate().for_each(|(i, apc)| {
         tracing::debug!("apc #{}: len: {}, start_pc: {}, instr: {:?}", i, apc.apc.block.statements.len(), apc.apc.block.start_pc, apc.apc.block.statements);
     });
-
-    panic!();
 
     let pc_base = exe.program.pc_base;
     let pc_step = DEFAULT_PC_STEP;

@@ -525,8 +525,6 @@ pub fn compile_exe_with_elf(
                 max_total_columns - total_non_apc_columns
             });
 
-            panic!();
-
             customize(
                 original_program,
                 elf.text_labels(),
@@ -1549,9 +1547,6 @@ mod tests {
             stdin.clone(),
         );
 
-        panic!();
-
-        println!("finish execution profile");
         let config = default_powdr_openvm_config(GUEST_ECRECOVER_APC_PGO, GUEST_ECRECOVER_SKIP);
         prove_simple(
             GUEST_ECRECOVER_HINTS,
