@@ -9,7 +9,9 @@ use bitvec::vec::BitVec;
 use itertools::Itertools;
 
 use crate::{
-    constraint_system::{AlgebraicConstraint, BusInteraction, ConstraintRef, ConstraintSystem},
+    constraint_system::{
+        AlgebraicConstraint, BusInteraction, ConstraintRef, ConstraintSystem, DerivedVariable,
+    },
     grouped_expression::GroupedExpression,
     runtime_constant::{RuntimeConstant, Substitutable},
 };
@@ -39,6 +41,7 @@ pub fn apply_substitutions_to_expressions<
                 .map(AlgebraicConstraint::assert_zero)
                 .collect(),
             bus_interactions: Vec::new(),
+            derived_variables: Vec::new(),
         },
         substitutions,
     )
@@ -90,34 +93,60 @@ impl<T, V> Default for IndexedConstraintSystemWithQueue<T, V> {
     }
 }
 
-/// A reference to an item in the constraint system.
+/// A reference to an item in the constraint system, based on the index.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
 enum ConstraintSystemItem {
+    /// A reference to an algebraic constraint.
     AlgebraicConstraint(usize),
+    /// A reference to a bus interaction.
     BusInteraction(usize),
+    /// A reference to a derived variable. This is only used internally to the
+    /// IndexedConstraintSystem.
+    DerivedVariable(usize),
 }
 
 impl ConstraintSystemItem {
     /// Returns an index that is unique across both algebraic constraints and bus interactions.
-    fn flat_id(&self) -> usize {
+    /// Panics for derived variables.
+    fn flat_constraint_id(&self) -> usize {
         match self {
             ConstraintSystemItem::AlgebraicConstraint(i) => 2 * i,
             ConstraintSystemItem::BusInteraction(i) => 2 * i + 1,
+            ConstraintSystemItem::DerivedVariable(_) => panic!(),
         }
     }
 
+    /// Returns the index of the item. Note that the indices are not disjoint between different kinds
+    /// of items.
+    fn index(&self) -> usize {
+        match self {
+            ConstraintSystemItem::AlgebraicConstraint(index)
+            | ConstraintSystemItem::BusInteraction(index)
+            | ConstraintSystemItem::DerivedVariable(index) => *index,
+        }
+    }
+
+    /// Returns true if this constraint system item is a derived variable instead of an actual constraint.
+    fn is_derived_variable(&self) -> bool {
+        matches!(self, ConstraintSystemItem::DerivedVariable(_))
+    }
+
     /// Turns this indexed-based item into a reference to the actual constraint.
-    fn to_constraint_ref<'a, T, V>(
+    /// Fails for derived variables.
+    fn try_to_constraint_ref<'a, T, V>(
         self,
         constraint_system: &'a ConstraintSystem<T, V>,
-    ) -> ConstraintRef<'a, T, V> {
+    ) -> Option<ConstraintRef<'a, T, V>> {
         match self {
-            ConstraintSystemItem::AlgebraicConstraint(i) => ConstraintRef::AlgebraicConstraint(
-                constraint_system.algebraic_constraints[i].as_ref(),
-            ),
-            ConstraintSystemItem::BusInteraction(i) => {
-                ConstraintRef::BusInteraction(&constraint_system.bus_interactions[i])
+            ConstraintSystemItem::AlgebraicConstraint(i) => {
+                Some(ConstraintRef::AlgebraicConstraint(
+                    constraint_system.algebraic_constraints[i].as_ref(),
+                ))
             }
+            ConstraintSystemItem::BusInteraction(i) => Some(ConstraintRef::BusInteraction(
+                &constraint_system.bus_interactions[i],
+            )),
+            ConstraintSystemItem::DerivedVariable(_) => None,
         }
     }
 }
@@ -194,6 +223,16 @@ impl<T: RuntimeConstant, V: Clone + Eq> IndexedConstraintSystem<T, V> {
             ConstraintSystemItem::BusInteraction,
         );
     }
+
+    /// Removes all derived variables that do not fulfill the predicate.
+    pub fn retain_derived_variables(&mut self, mut f: impl FnMut(&DerivedVariable<T, V>) -> bool) {
+        retain(
+            &mut self.constraint_system.derived_variables,
+            &mut self.variable_occurrences,
+            &mut f,
+            ConstraintSystemItem::DerivedVariable,
+        );
+    }
 }
 
 /// Behaves like `list.retain(f)` but also updates the variable occurrences
@@ -207,6 +246,7 @@ fn retain<V, Item>(
     constraint_kind_constructor: impl Fn(usize) -> ConstraintSystemItem + Copy,
 ) {
     let mut counter = 0usize;
+    // `replacement_map[i]` = `Some(j)` if item at index `i` is kept and is now at index `j`
     let mut replacement_map = vec![];
     list.retain(|c| {
         let retain = f(c);
@@ -219,24 +259,21 @@ fn retain<V, Item>(
         retain
     });
     assert_eq!(counter, list.len());
-    // We call it once on zero just to find out which type it returns
-    // so we know which one to use in the match below.
-    let is_algebraic_constraint = matches!(
-        constraint_kind_constructor(0),
-        ConstraintSystemItem::AlgebraicConstraint(_)
-    );
+    // We call it once on zero just to find out which enum variant it returns,
+    // so we can compare the discriminants below.
+    let discriminant = std::mem::discriminant(&constraint_kind_constructor(0));
     occurrences.values_mut().for_each(|occurrences| {
         *occurrences = occurrences
             .iter()
-            .filter_map(|item| match item {
-                ConstraintSystemItem::AlgebraicConstraint(i) if is_algebraic_constraint => {
-                    replacement_map[*i].map(constraint_kind_constructor)
+            .filter_map(|item| {
+                if std::mem::discriminant(item) == discriminant {
+                    // We have an item of the kind we are modifying, so apply
+                    // the replacement map
+                    replacement_map[item.index()].map(constraint_kind_constructor)
+                } else {
+                    // This is a constraint of the wrong kind, do not modify it.
+                    Some(*item)
                 }
-                ConstraintSystemItem::BusInteraction(i) if !is_algebraic_constraint => {
-                    replacement_map[*i].map(constraint_kind_constructor)
-                }
-                ConstraintSystemItem::AlgebraicConstraint(_)
-                | ConstraintSystemItem::BusInteraction(_) => Some(*item),
             })
             .collect();
     });
@@ -252,6 +289,7 @@ impl<T: RuntimeConstant, V: Clone + Eq + Hash> IndexedConstraintSystem<T, V> {
         self.extend(ConstraintSystem {
             algebraic_constraints: constraints.into_iter().collect(),
             bus_interactions: Vec::new(),
+            derived_variables: Vec::new(),
         });
     }
 
@@ -263,6 +301,7 @@ impl<T: RuntimeConstant, V: Clone + Eq + Hash> IndexedConstraintSystem<T, V> {
         self.extend(ConstraintSystem {
             algebraic_constraints: Vec::new(),
             bus_interactions: bus_interactions.into_iter().collect(),
+            derived_variables: Vec::new(),
         });
     }
 
@@ -270,6 +309,7 @@ impl<T: RuntimeConstant, V: Clone + Eq + Hash> IndexedConstraintSystem<T, V> {
     pub fn extend(&mut self, system: ConstraintSystem<T, V>) {
         let algebraic_constraint_count = self.constraint_system.algebraic_constraints.len();
         let bus_interactions_count = self.constraint_system.bus_interactions.len();
+        let derived_variables_count = self.constraint_system.derived_variables.len();
         // Compute the occurrences of the variables in the new constraints,
         // but update their indices.
         // Iterating over hash map here is fine because we are just extending another hash map.
@@ -281,6 +321,9 @@ impl<T: RuntimeConstant, V: Clone + Eq + Hash> IndexedConstraintSystem<T, V> {
                 }
                 ConstraintSystemItem::BusInteraction(i) => {
                     ConstraintSystemItem::BusInteraction(i + bus_interactions_count)
+                }
+                ConstraintSystemItem::DerivedVariable(i) => {
+                    ConstraintSystemItem::DerivedVariable(i + derived_variables_count)
                 }
             });
             self.variable_occurrences
@@ -303,7 +346,7 @@ impl<T: RuntimeConstant, V: Hash + Ord + Eq> IndexedConstraintSystem<T, V> {
             .filter_map(|v| self.variable_occurrences.get(v))
             .flatten()
             .unique()
-            .map(|&item| item.to_constraint_ref(&self.constraint_system))
+            .flat_map(|&item| item.try_to_constraint_ref(&self.constraint_system))
     }
 }
 
@@ -392,8 +435,29 @@ fn variable_occurrences<T: RuntimeConstant, V: Hash + Eq + Clone>(
                 .unique()
                 .map(move |v| (v.clone(), ConstraintSystemItem::BusInteraction(i)))
         });
+    let occurrences_in_derived_variables = constraint_system
+        .derived_variables
+        .iter()
+        .enumerate()
+        // We ignore the derived variable itself because it is not a constraint
+        // and does not matter in substitutions (if we substitute the derived
+        // variable it is deleted in a later step).
+        .flat_map(
+            |(
+                i,
+                DerivedVariable {
+                    computation_method, ..
+                },
+            )| {
+                computation_method
+                    .referenced_unknown_variables()
+                    .unique()
+                    .map(move |v| (v.clone(), ConstraintSystemItem::DerivedVariable(i)))
+            },
+        );
     occurrences_in_algebraic_constraints
         .chain(occurrences_in_bus_interactions)
+        .chain(occurrences_in_derived_variables)
         .into_grouping_map()
         .collect()
 }
@@ -415,6 +479,9 @@ fn substitute_by_known_in_item<T: RuntimeConstant + Substitutable<V>, V: Ord + C
                 .fields_mut()
                 .for_each(|expr| expr.substitute_by_known(variable, substitution));
         }
+        ConstraintSystemItem::DerivedVariable(i) => constraint_system.derived_variables[i]
+            .computation_method
+            .substitute_by_known(variable, substitution),
     }
 }
 
@@ -435,6 +502,9 @@ fn substitute_by_unknown_in_item<T: RuntimeConstant + Substitutable<V>, V: Ord +
                 .fields_mut()
                 .for_each(|expr| expr.substitute_by_unknown(variable, substitution));
         }
+        ConstraintSystemItem::DerivedVariable(i) => constraint_system.derived_variables[i]
+            .computation_method
+            .substitute_by_unknown(variable, substitution),
     }
 }
 
@@ -471,9 +541,11 @@ where
 
     /// Removes the next item from the queue and returns it.
     pub fn pop_front<'a>(&'a mut self) -> Option<ConstraintRef<'a, T, V>> {
-        self.queue
-            .pop_front()
-            .map(|item| item.to_constraint_ref(&self.constraint_system.constraint_system))
+        self.queue.pop_front().map(|item| {
+            item.try_to_constraint_ref(&self.constraint_system.constraint_system)
+                // Derived variables should never be in the queue.
+                .unwrap()
+        })
     }
 
     /// Notifies the system that a variable has been updated and causes all constraints
@@ -483,7 +555,9 @@ where
     pub fn variable_updated(&mut self, variable: &V) {
         if let Some(items) = self.constraint_system.variable_occurrences.get(variable) {
             for item in items {
-                self.queue.push(*item);
+                if !item.is_derived_variable() {
+                    self.queue.push(*item);
+                }
             }
         }
     }
@@ -589,25 +663,26 @@ impl ConstraintSystemQueue {
         let mut in_queue = BitVec::repeat(false, 2 * cmp::max(num_algebraic, num_bus) + 2);
         for item in &queue {
             let item: &ConstraintSystemItem = item;
-            in_queue.set(item.flat_id(), true);
+            in_queue.set(item.flat_constraint_id(), true);
         }
         Self { queue, in_queue }
     }
 
     fn push(&mut self, item: ConstraintSystemItem) {
-        if self.in_queue.len() <= item.flat_id() {
-            self.in_queue.resize(item.flat_id() + 1, false);
+        assert!(!item.is_derived_variable());
+        if self.in_queue.len() <= item.flat_constraint_id() {
+            self.in_queue.resize(item.flat_constraint_id() + 1, false);
         }
-        if !self.in_queue[item.flat_id()] {
+        if !self.in_queue[item.flat_constraint_id()] {
             self.queue.push_back(item);
-            self.in_queue.set(item.flat_id(), true);
+            self.in_queue.set(item.flat_constraint_id(), true);
         }
     }
 
     fn pop_front(&mut self) -> Option<ConstraintSystemItem> {
         let item = self.queue.pop_front();
         if let Some(item) = &item {
-            self.in_queue.set(item.flat_id(), false);
+            self.in_queue.set(item.flat_constraint_id(), false);
         }
         item
     }
@@ -616,6 +691,8 @@ impl ConstraintSystemQueue {
 #[cfg(test)]
 mod tests {
     use powdr_number::GoldilocksField;
+
+    use crate::constraint_system::ComputationMethod;
 
     use super::*;
 
@@ -742,5 +819,41 @@ mod tests {
             .format(", ")
             .to_string();
         assert_eq!(items_with_z, "x - z = 0");
+    }
+
+    #[test]
+    fn substitute_in_derived_columns() {
+        let mut system: IndexedConstraintSystem<_, _> =
+            ConstraintSystem::<GoldilocksField, &'static str> {
+                algebraic_constraints: vec![],
+                bus_interactions: vec![],
+                derived_variables: vec![
+                    DerivedVariable {
+                        variable: "d1",
+                        computation_method: ComputationMethod::InverseOrZero(
+                            GroupedExpression::from_unknown_variable("x"),
+                        ),
+                    },
+                    DerivedVariable {
+                        variable: "d2",
+                        computation_method: ComputationMethod::InverseOrZero(
+                            GroupedExpression::from_unknown_variable("y"),
+                        ),
+                    },
+                ],
+            }
+            .into();
+        // We first substitute `y` by an expression that contains `x` such that when we
+        // substitute `x` in the next step, `d2` has to be updated again.
+        system.substitute_by_unknown(
+            &"y",
+            &(GroupedExpression::from_unknown_variable("x")
+                + GroupedExpression::from_number(7.into())),
+        );
+        system.substitute_by_known(&"x", &1.into());
+        assert_eq!(
+            format!("{system}"),
+            "d1 := InverseOrZero(1)\nd2 := InverseOrZero(8)"
+        );
     }
 }
