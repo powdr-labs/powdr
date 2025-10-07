@@ -322,6 +322,7 @@ impl OriginalVmConfig {
                         SymbolicMachine {
                             constraints: powdr_exprs.into_iter().map(Into::into).collect(),
                             bus_interactions: powdr_bus_interactions,
+                            derived_columns: vec![],
                         },
                         metrics,
                     ))

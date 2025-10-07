@@ -163,11 +163,39 @@ pub enum BusInteractionKind {
     Receive,
 }
 
+/// A machine comprised of algebraic constraints, bus interactions and potentially derived columns.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SymbolicMachine<T> {
+    /// Constraints whose expressions have to evaluate to zero for an assignment to be satisfying.
     pub constraints: Vec<SymbolicConstraint<T>>,
+    /// Bus interactions that model communication with other machines / chips or static lookups.
+    pub bus_interactions: Vec<SymbolicBusInteraction<T>>,
+    /// Columns that have been newly created during the optimization process with a method
+    /// to compute their values from other columns.
+    pub derived_columns: Vec<(AlgebraicReference, ComputationMethod<T>)>,
+}
+
+/// A machine comprised of algebraic constraints, bus interactions and potentially derived columns.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SymbolicMachineOld<T> {
+    /// Constraints whose expressions have to evaluate to zero for an assignment to be satisfying.
+    pub constraints: Vec<SymbolicConstraint<T>>,
+    /// Bus interactions that model communication with other machines / chips or static lookups.
     pub bus_interactions: Vec<SymbolicBusInteraction<T>>,
 }
+
+impl<T> From<SymbolicMachineOld<T>> for SymbolicMachine<T> {
+    fn from(old: SymbolicMachineOld<T>) -> Self {
+        Self {
+            constraints: old.constraints,
+            bus_interactions: old.bus_interactions,
+            derived_columns: Vec::new(),
+        }
+    }
+}
+
+type ComputationMethod<T> =
+    powdr_constraint_solver::constraint_system::ComputationMethod<T, AlgebraicExpression<T>>;
 
 impl<T> SymbolicMachine<T> {
     pub fn main_columns(&self) -> impl Iterator<Item = AlgebraicReference> + use<'_, T> {

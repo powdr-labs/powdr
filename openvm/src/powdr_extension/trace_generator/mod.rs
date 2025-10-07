@@ -9,9 +9,11 @@ use openvm_stark_backend::{
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
     expression::{AlgebraicEvaluator, ConcreteBusInteraction, MappingRowEvaluator},
-    trace_handler::{generate_trace, ComputationMethod, Trace, TraceData},
+    trace_handler::{generate_trace, Trace, TraceData},
     Apc,
 };
+use powdr_constraint_solver::constraint_system::ComputationMethod;
+use powdr_number::ExpressionConvertible;
 
 use crate::{
     extraction_utils::{OriginalAirs, OriginalVmConfig},
@@ -116,6 +118,7 @@ impl PowdrTraceGenerator {
             &self.original_airs,
             num_apc_calls,
             &self.apc,
+            BabyBear::ONE,
         );
 
         // allocate for apc trace
@@ -142,15 +145,20 @@ impl PowdrTraceGenerator {
 
                 // Fill in the columns we have to compute from other columns
                 // (these are either new columns or for example the "is_valid" column).
-                for (col_index, computation_method) in &columns_to_compute {
-                    row_slice[*col_index] = match computation_method {
-                        ComputationMethod::Constant(c) => BabyBear::from_canonical_u64(*c),
-                        ComputationMethod::InverseOfSum(columns_to_sum) => columns_to_sum
-                            .iter()
-                            .map(|col| row_slice[*col])
-                            .reduce(|a, b| a + b)
-                            .unwrap()
-                            .inverse(),
+                for (column, computation_method) in &columns_to_compute {
+                    let col_index = apc_poly_id_to_index[&column.id];
+                    row_slice[col_index] = match computation_method {
+                        ComputationMethod::Constant(c) => *c,
+                        ComputationMethod::InverseOrZero(expr) => {
+                            let expr_val = expr.to_expression(&|n| *n, &|column_ref| {
+                                row_slice[apc_poly_id_to_index[&column_ref.id]]
+                            });
+                            if expr_val.is_zero() {
+                                BabyBear::ZERO
+                            } else {
+                                expr_val.inverse()
+                            }
+                        }
                     };
                 }
 

@@ -112,6 +112,7 @@ mod tests {
         let machine = SymbolicMachine {
             constraints: vec![SymbolicConstraint { expr }],
             bus_interactions: vec![],
+            derived_columns: vec![],
         };
 
         let plonk_circuit = build_circuit(&machine, &bus_map);

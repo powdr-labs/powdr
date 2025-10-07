@@ -36,7 +36,6 @@ use openvm_circuit::{
     system::memory::online::{GuestMemory, TracingMemory},
 };
 use powdr_autoprecompiles::InstructionHandler;
-
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
 pub struct PowdrExecutor {
     pub air_by_opcode_id: OriginalAirs<BabyBear>,
