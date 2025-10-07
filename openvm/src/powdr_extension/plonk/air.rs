@@ -79,6 +79,9 @@ where
         let local = main.row_slice(0);
         let local_next = main.row_slice(1);
 
+        println!("borrowed length: {}", (*local).len());
+        println!("plonk columns width: {}", PlonkColumns::<AB::F>::width());
+
         let PlonkColumns {
             q_l,
             q_r,
