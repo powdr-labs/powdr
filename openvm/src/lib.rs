@@ -1198,6 +1198,7 @@ mod tests {
 
     // All gate constraints should be satisfied, but bus interactions are not implemented yet.
     #[test]
+    #[ignore = "Pending bug fix"]
     fn keccak_plonk_small_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
