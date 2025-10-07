@@ -823,26 +823,25 @@ mod tests {
 
     #[test]
     fn substitute_in_derived_columns() {
-        let mut system: IndexedConstraintSystem<_, _> =
-            ConstraintSystem::<GoldilocksField, &'static str> {
-                algebraic_constraints: vec![],
-                bus_interactions: vec![],
-                derived_variables: vec![
-                    DerivedVariable {
-                        variable: "d1",
-                        computation_method: ComputationMethod::InverseOrZero(
-                            GroupedExpression::from_unknown_variable("x"),
-                        ),
-                    },
-                    DerivedVariable {
-                        variable: "d2",
-                        computation_method: ComputationMethod::InverseOrZero(
-                            GroupedExpression::from_unknown_variable("y"),
-                        ),
-                    },
-                ],
-            }
-            .into();
+        let mut system: IndexedConstraintSystem<_, _> = ConstraintSystem::<GoldilocksField, _> {
+            algebraic_constraints: vec![],
+            bus_interactions: vec![],
+            derived_variables: vec![
+                DerivedVariable {
+                    variable: "d1",
+                    computation_method: ComputationMethod::InverseOrZero(
+                        GroupedExpression::from_unknown_variable("x"),
+                    ),
+                },
+                DerivedVariable {
+                    variable: "d2",
+                    computation_method: ComputationMethod::InverseOrZero(
+                        GroupedExpression::from_unknown_variable("y"),
+                    ),
+                },
+            ],
+        }
+        .into();
         // We first substitute `y` by an expression that contains `x` such that when we
         // substitute `x` in the next step, `d2` has to be updated again.
         system.substitute_by_unknown(
