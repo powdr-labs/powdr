@@ -204,4 +204,16 @@ where
     }
 }
 
-impl<F: PrimeField32> PartitionedBaseAir<F> for PlonkAir<F> {}
+impl<F: PrimeField32> PartitionedBaseAir<F> for PlonkAir<F> {
+    /// By default, an AIR has no cached main trace.
+    fn cached_main_widths(&self) -> Vec<usize> {
+        println!("plonk air cached main widths");
+        vec![]
+    }
+    /// By default, an AIR has only one private main trace.
+    fn common_main_width(&self) -> usize {
+        let width = self.width();
+        println!("plonk air common main widths: {}", width);
+        width
+    }
+}
