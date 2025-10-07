@@ -145,12 +145,12 @@ pub fn record_arena_dimension_by_air_name_per_apc_call<F>(
             // }
             acc.entry(air_name.clone())
                 .or_insert(RecordArenaDimension {
-                    num_calls: 0, // initialize with 0, which can still be incremented by 1 immediately after
-                    air_width: air_by_opcode_id
+                    height: 0, // initialize with 0, which can still be incremented by 1 immediately after
+                    width: air_by_opcode_id
                         .get_instruction_air_stats(instruction)
                         .main_columns,
                 })
-                .num_calls += 1;
+                .height += 1;
             acc
         })
 }

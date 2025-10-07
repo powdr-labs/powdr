@@ -20,7 +20,10 @@ use openvm_circuit::arch::{
 use openvm_circuit_primitives::AlignedBytesBorrow;
 use openvm_instructions::instruction::Instruction;
 use openvm_sdk::config::SdkVmConfigExecutor;
-use openvm_stark_backend::p3_field::Field;
+use openvm_stark_backend::{
+    p3_field::Field,
+    p3_maybe_rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator},
+};
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::Apc;
 
@@ -39,9 +42,16 @@ pub struct PowdrExecutor {
     pub air_by_opcode_id: OriginalAirs<BabyBear>,
     pub executor_inventory: ExecutorInventory<SdkVmConfigExecutor<BabyBear>>,
     pub apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
-    pub record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
+    pub original_arenas: Rc<RefCell<OriginalArenas>>,
 }
 
+/// A shared mutable reference to the arenas used to store the traces of the original instructions, accessed during preflight execution and trace generation.
+/// The same reference is reused for all segments, under the assumption that segments are executed sequentially: preflight_0, tracegen_0, preflight_1, tracegen_1, ...
+/// It goes through the following cycle for each segment:
+/// - initialized at the beginning of preflight execution with the correct sizes for this segment
+/// - written to during preflight execution
+/// - read from during trace generation
+/// - reset to uninitialized after trace generation
 #[derive(Default)]
 pub enum OriginalArenas {
     #[default]
@@ -50,7 +60,9 @@ pub enum OriginalArenas {
 }
 
 impl OriginalArenas {
-    fn initialize(
+    /// Given an estimate of how many times the APC is called in this segment, and the original airs and apc,
+    /// initializes the arenas iff not already initialized.
+    fn ensure_initialized(
         &mut self,
         apc_call_count_estimate: usize,
         original_airs: &OriginalAirs<BabyBear>,
@@ -102,6 +114,9 @@ impl OriginalArenas {
     }
 }
 
+/// A collection of arenas used to store the records of the original instructions, one per air name.
+/// Each arena is initialized with a capacity based on an estimate of how many times the APC is called in this segment
+/// and how many calls to each air are made per APC call.
 #[derive(Default)]
 pub struct InitializedOriginalArenas {
     pub arenas: HashMap<String, MatrixRecordArena<BabyBear>>,
@@ -109,6 +124,7 @@ pub struct InitializedOriginalArenas {
 }
 
 impl InitializedOriginalArenas {
+    /// Creates a new instance of `InitializedOriginalArenas`.
     pub fn new(
         apc_call_count_estimate: usize,
         original_airs: &OriginalAirs<BabyBear>,
@@ -123,8 +139,8 @@ impl InitializedOriginalArenas {
                     |(
                         air_name,
                         RecordArenaDimension {
-                            num_calls,
-                            air_width,
+                            height: num_calls,
+                            width: air_width,
                         },
                     )| {
                         (
@@ -137,18 +153,19 @@ impl InitializedOriginalArenas {
                     },
                 )
                 .collect(),
-            // This is the actual number of calls, which we still don't know yet at this point
-            // We only have `apc_call_count_estimate`, which is `next_power_of_two(number_of_calls)`, if using `MatrixRecordArena`
+            // This is the actual number of calls, which we don't know yet. It will be updated during preflight execution.
             number_of_calls: 0,
         }
     }
 }
 
+/// The dimensions of a record arena for a given air name, used to initialize the arenas.
 pub struct RecordArenaDimension {
-    pub num_calls: usize,
-    pub air_width: usize,
+    pub height: usize,
+    pub width: usize,
 }
 
+/// A struct to interpret the pre-compute data as for PowdrExecutor.
 #[derive(AlignedBytesBorrow, Clone)]
 #[repr(C)]
 struct PowdrPreCompute<Ctx> {
@@ -156,12 +173,9 @@ struct PowdrPreCompute<Ctx> {
 }
 
 impl Executor<BabyBear> for PowdrExecutor {
-    // Note: this is only used in `get_pre_compute_max_size` in OVM to pre allocate buffers for precomputed instructions.
-    // `get_pre_compute_max_size` takes the max of the pre compute sizes of all instructions (including Powdr instruction) and pad to next power of two.
-    // Then, `alloc_pre_compute_buf` allocates the calculated max size * length of the program.
-    // TODO: it might be a concern that Powdr pre_compute_size might be too long, as it aggregates those of all original instructions.
     fn pre_compute_size(&self) -> usize {
         // TODO: do we know `ExecutionCtx` is correct? It's only one implementation of `ExecutionCtxTrait`.
+        // A clean fix would be to add `Ctx` as a generic parameter to this method in the `Executor` trait, but that would be a breaking change.
         size_of::<PowdrPreCompute<ExecutionCtx>>()
     }
 
@@ -183,9 +197,9 @@ impl Executor<BabyBear> for PowdrExecutor {
 }
 
 impl MeteredExecutor<BabyBear> for PowdrExecutor {
-    // TODO: it might be a concern that Powdr metered_pre_compute_size might be too long, as it aggregates those of all original instructions.
     fn metered_pre_compute_size(&self) -> usize {
         // TODO: do we know `MeteredCtx` is correct? It's only one implementation of `MeteredExecutionCtxTrait`.
+        // A clean fix would be to add `Ctx` as a generic parameter to this method in the `MeteredExecutor` trait, but that would be a breaking change.
         size_of::<E2PreCompute<PowdrPreCompute<MeteredCtx>>>()
     }
 
@@ -209,6 +223,7 @@ impl MeteredExecutor<BabyBear> for PowdrExecutor {
 }
 
 impl PowdrExecutor {
+    /// The implementation of pre_compute, shared between Executor and MeteredExecutor.
     #[inline]
     fn pre_compute_impl<Ctx>(
         &self,
@@ -230,7 +245,7 @@ impl PowdrExecutor {
             ..
         } = inst;
 
-        // TODO: assert that the opcode is the one we expect
+        // TODO: debug_assert that the opcode is the one we expect
 
         if !a.is_zero()
             || !b.is_zero()
@@ -243,16 +258,17 @@ impl PowdrExecutor {
             return Err(StaticProgramError::InvalidInstruction(pc));
         }
 
-        // TODO: we can parallelize this now?
+        let executor_inventory = &self.executor_inventory;
+        // Set the data using the original instructions
         *data = PowdrPreCompute {
             original_instructions: self
                 .apc
-                .instructions()
-                .iter()
+                .block
+                .statements
+                .par_iter()
                 .enumerate()
                 .map(|(idx, instruction)| {
-                    let executor = self
-                        .executor_inventory
+                    let executor = executor_inventory
                         .get_executor(instruction.0.opcode)
                         .ok_or(StaticProgramError::ExecutorNotFound {
                             opcode: instruction.0.opcode,
@@ -273,11 +289,13 @@ impl PowdrExecutor {
     }
 }
 
+/// The implementation of the execute function, shared between Executor and MeteredExecutor.
 #[inline(always)]
 unsafe fn execute_e12_impl<CTX: ExecutionCtxTrait>(
     pre_compute: &PowdrPreCompute<CTX>,
     vm_state: &mut VmExecState<BabyBear, GuestMemory, CTX>,
 ) {
+    // Save the current instret, as we will overwrite it during execution of original instructions
     let instret = vm_state.vm_state.instret;
     let vm_state =
         pre_compute
@@ -287,6 +305,7 @@ unsafe fn execute_e12_impl<CTX: ExecutionCtxTrait>(
                 executor(data, vm_state);
                 vm_state
             });
+    // Restore the instret and increment it by one, since we executed a single apc instruction
     vm_state.vm_state.instret = instret + 1;
 }
 
@@ -315,7 +334,6 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
         state: VmStateMut<BabyBear, TracingMemory, MatrixRecordArena<BabyBear>>,
         _: &Instruction<BabyBear>,
     ) -> Result<(), ExecutionError> {
-        // This is pretty much done, just need to move up from `execute()` below with very small modifications
         // Extract the state components, since `execute` consumes the state but we need to pass it to each instruction execution
         let VmStateMut {
             pc,
@@ -323,31 +341,28 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
             streams,
             rng,
             custom_pvs,
-            // Swap off the original ctx
-            // TODO: `original_ctx` here is initialized for the APC at the start of preflight execution but probably is useless and just tossed away
-            ctx: original_ctx,
+            ctx,
         } = state;
 
         // Initialize the original arenas if not already initialized
-        let mut record_arena_by_air_name = self.record_arena_by_air_name.as_ref().borrow_mut();
+        let mut original_arenas = self.original_arenas.as_ref().borrow_mut();
 
-        record_arena_by_air_name.initialize(
-            // initialized height, not available as API, is really `next_power_of_two(apc_call_count)`, if using `MatrixRecordArena` impl of `RA`
-            original_ctx.trace_buffer.len() / original_ctx.width,
+        original_arenas.ensure_initialized(
+            // Recover an estimate of how many times the APC is called in this segment based on the current ctx height and width
+            ctx.trace_buffer.len() / ctx.width,
             &self.air_by_opcode_id,
             &self.apc,
         );
 
-        let arenas = record_arena_by_air_name.arenas_mut();
+        let arenas = original_arenas.arenas_mut();
 
         // execute the original instructions one by one
-        for instruction in self.apc.instructions().iter() {
+        for instruction in self.apc.instructions() {
             let executor = self
                 .executor_inventory
                 .get_executor(instruction.0.opcode)
                 .unwrap();
 
-            // TODO: this chunk is a bit repetitive
             let air_name = self
                 .air_by_opcode_id
                 .get_instruction_air_and_id(instruction)
@@ -359,19 +374,15 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
                 streams,
                 rng,
                 custom_pvs,
-                // We execute in the context of the relevant dummy table
+                // We execute in the context of the relevant original table
                 ctx: arenas.get_mut(&air_name).unwrap(),
             };
 
             executor.execute(state, &instruction.0)?;
         }
 
-        *record_arena_by_air_name.number_of_calls_mut() += 1;
-
-        // After execution, put back the original ctx
-        // TODO: `original_ctx` might just be useless and tossed away, so there's no need to put it back?
-        // `original_ctx` is the trace initialized for APC, but we really only generate the dummy traces here and assemble them to APC trace in `generate_witness`
-        // state.ctx = original_ctx;
+        // Update the real number of calls to the APC
+        *original_arenas.number_of_calls_mut() += 1;
 
         Ok(())
     }
@@ -394,7 +405,7 @@ impl PowdrExecutor {
             air_by_opcode_id,
             executor_inventory: base_config.sdk_config.sdk.create_executors().unwrap(),
             apc,
-            record_arena_by_air_name,
+            original_arenas: record_arena_by_air_name,
         }
     }
 }
