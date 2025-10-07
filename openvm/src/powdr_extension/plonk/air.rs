@@ -64,6 +64,7 @@ impl<F: PrimeField32> ColumnsAir<F> for PlonkAir<F> {
 
 impl<F: PrimeField32> BaseAir<F> for PlonkAir<F> {
     fn width(&self) -> usize {
+        // <PlonkAir<F> as ColumnsAir<F>>::columns(self).unwrap().len()
         PlonkColumns::<F>::width()
     }
 }

@@ -433,6 +433,7 @@ pub fn export_pil(writer: &mut impl std::io::Write, vm_config: &SpecializedConfi
 }
 
 pub fn get_columns(air: Arc<dyn AnyRap<BabyBearSC>>) -> Vec<Arc<String>> {
+    println!("get_columns for air: {:?} width: {} columns len: {}", air.name(), air.width(), air.columns().unwrap().len());
     let width = air.width();
     air.columns()
         .inspect(|columns| {
