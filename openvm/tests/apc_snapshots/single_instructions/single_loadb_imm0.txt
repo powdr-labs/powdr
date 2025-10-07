@@ -1,5 +1,5 @@
 Instructions:
-  LOADB rd_rs2_ptr = 8, rs1_ptr = 2, imm = 3, mem_as = 2, needs_write = 1, imm_sign = 0
+  LOADB rd_rs2_ptr = 8, rs1_ptr = 2, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
 
 APC advantage:
   - Main columns: 36 -> 25 (1.44x reduction)
@@ -60,6 +60,6 @@ mult=is_valid * 1, args=[15360 * write_base_aux__prev_timestamp_0 + 15360 * writ
 opcode_loadb_flag0_0 * (opcode_loadb_flag0_0 - 1) = 0
 data_most_sig_bit_0 * (data_most_sig_bit_0 - 1) = 0
 shift_most_sig_bit_0 * (shift_most_sig_bit_0 - 1) = 0
-(30720 * mem_ptr_limbs__0_0 - (30720 * rs1_data__0_0 + 7864320 * rs1_data__1_0 + 92160 * is_valid)) * (30720 * mem_ptr_limbs__0_0 - (30720 * rs1_data__0_0 + 7864320 * rs1_data__1_0 + 92161)) = 0
-(943718400 * rs1_data__0_0 + 30720 * mem_ptr_limbs__1_0 + 817889279 * is_valid - (120 * rs1_data__1_0 + 30720 * rs1_data__2_0 + 7864320 * rs1_data__3_0 + 943718400 * mem_ptr_limbs__0_0)) * (943718400 * rs1_data__0_0 + 30720 * mem_ptr_limbs__1_0 + 817889278 - (120 * rs1_data__1_0 + 30720 * rs1_data__2_0 + 7864320 * rs1_data__3_0 + 943718400 * mem_ptr_limbs__0_0)) = 0
+(30720 * mem_ptr_limbs__0_0 - (30720 * rs1_data__0_0 + 7864320 * rs1_data__1_0)) * (30720 * mem_ptr_limbs__0_0 - (30720 * rs1_data__0_0 + 7864320 * rs1_data__1_0 + 1)) = 0
+(943718400 * rs1_data__0_0 + 30720 * mem_ptr_limbs__1_0 - (120 * rs1_data__1_0 + 30720 * rs1_data__2_0 + 7864320 * rs1_data__3_0 + 943718400 * mem_ptr_limbs__0_0)) * (943718400 * rs1_data__0_0 + 30720 * mem_ptr_limbs__1_0 - (120 * rs1_data__1_0 + 30720 * rs1_data__2_0 + 7864320 * rs1_data__3_0 + 943718400 * mem_ptr_limbs__0_0 + 1)) = 0
 is_valid * (is_valid - 1) = 0
