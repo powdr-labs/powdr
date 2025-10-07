@@ -189,7 +189,7 @@ where
             tuple_range_checker,
         );
 
-        for precompile in extension.precompiles.iter() {
+        for precompile in &extension.precompiles {
             match extension.implementation {
                 PrecompileImplementation::SingleRowChip => {
                     inventory.next_air::<PowdrAir<BabyBear>>()?;
@@ -714,11 +714,19 @@ impl CompiledProgram {
 }
 
 pub fn execute(program: CompiledProgram, inputs: StdIn) -> Result<(), Box<dyn std::error::Error>> {
-    let CompiledProgram { exe, .. } = program;
+    let CompiledProgram { exe, vm_config } = program;
 
-    let sdk = Sdk::riscv32();
+    // Set app configuration
+    let app_fri_params =
+        FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
+    let app_config = AppConfig::new(app_fri_params, vm_config.clone());
 
-    let output = sdk.execute(exe.clone(), inputs)?;
+    // prepare for execute
+    let sdk: GenericSdk<BabyBearPoseidon2Engine, SpecializedConfigCpuBuilder, NativeCpuBuilder> =
+        GenericSdk::new(app_config).unwrap();
+
+    let output = sdk.execute(exe.clone(), inputs.clone()).unwrap();
+
     tracing::info!("Public values output: {:?}", output);
 
     Ok(())
@@ -901,7 +909,7 @@ mod tests {
         pgo_config: PgoConfig,
         segment_height: Option<usize>,
     ) {
-        compile_and_prove(
+        let result = compile_and_prove(
             guest,
             config,
             implementation,
@@ -910,9 +918,8 @@ mod tests {
             stdin,
             pgo_config,
             segment_height,
-        )
-        .unwrap();
-        // assert!(result.is_ok());
+        );
+        assert!(result.is_ok());
     }
 
     fn prove_mock(
@@ -933,8 +940,7 @@ mod tests {
             pgo_config,
             segment_height,
         );
-        result.unwrap();
-        // assert!(result.is_ok());
+        assert!(result.is_ok());
     }
 
     fn prove_recursion(
@@ -1892,7 +1898,6 @@ mod tests {
             .into_iter()
             .map(|(metrics, _)| metrics)
             .sum::<AirMetrics>();
-
         assert_eq!(
             powdr_metrics_sum,
             AirMetrics {

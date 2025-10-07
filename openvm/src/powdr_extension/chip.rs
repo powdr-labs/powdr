@@ -48,12 +48,7 @@ impl PowdrChip {
         record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
     ) -> Self {
         let PowdrPrecompile { name, apc, .. } = precompile;
-        let trace_generator = PowdrTraceGenerator::new(
-            apc.clone(),
-            original_airs.clone(),
-            base_config.clone(),
-            periphery.clone(),
-        );
+        let trace_generator = PowdrTraceGenerator::new(apc, original_airs, base_config, periphery);
 
         Self {
             name,

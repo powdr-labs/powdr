@@ -101,7 +101,7 @@ impl<'a, F> From<&'a OpenVmProgram<F>> for Prog<'a, F> {
 
 /// A newtype wrapper around `OpenVmInstruction` to implement the `Instruction` trait.
 /// This is necessary because we cannot implement a foreign trait for a foreign type.
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Instr<F>(pub OpenVmInstruction<F>);
 
 impl<F: PrimeField32> Display for Instr<F> {
@@ -314,7 +314,7 @@ pub struct OpenVmApcCandidate<F, I> {
     stats: EvaluationResult,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct OvmApcStats {
     pub widths: AirWidthsDiff,
 }

@@ -98,12 +98,11 @@ pub enum PowdrExtensionExecutor {
 impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear> {
     type Executor = PowdrExtensionExecutor;
 
-    // TODO: this part seems duplicated to `extend_prover`, so need to study the split of functionalities between them
     fn extend_execution(
         &self,
         inventory: &mut openvm_circuit::arch::ExecutorInventoryBuilder<BabyBear, Self::Executor>,
     ) -> Result<(), openvm_circuit::arch::ExecutorInventoryError> {
-        for precompile in self.precompiles.iter() {
+        for precompile in &self.precompiles {
             let powdr_executor = PowdrExtensionExecutor::Powdr(PowdrExecutor::new(
                 self.airs.clone(),
                 self.base_config.clone(),

@@ -131,6 +131,8 @@ impl<F> OriginalAirs<F> {
     }
 }
 
+/// For each air name, the dimension of a record arena needed to store the
+/// records for a single APC call.
 pub fn record_arena_dimension_by_air_name_per_apc_call<F>(
     apc: &Apc<F, Instr<F>>,
     air_by_opcode_id: &OriginalAirs<F>,
@@ -138,14 +140,14 @@ pub fn record_arena_dimension_by_air_name_per_apc_call<F>(
     apc.instructions()
         .iter()
         .fold(HashMap::new(), |mut acc, instruction| {
-            let air_name = air_by_opcode_id.get_instruction_air_and_id(instruction).0;
+            let (air_name, _) = air_by_opcode_id.get_instruction_air_and_id(instruction);
             // TODO: main_columns might not be correct, as the RA::with_capacity() uses the following `main_width()`
             // pub fn main_width(&self) -> usize {
             //     self.cached_mains.iter().sum::<usize>() + self.common_main
             // }
-            acc.entry(air_name.clone())
+            acc.entry(air_name)
                 .or_insert(RecordArenaDimension {
-                    height: 0, // initialize with 0, which can still be incremented by 1 immediately after
+                    height: 0,
                     width: air_by_opcode_id
                         .get_instruction_air_stats(instruction)
                         .main_columns,
@@ -192,7 +194,7 @@ pub struct OriginalVmConfig {
     pub chip_complex: CachedChipComplex,
 }
 
-// TODO: derive VmCircuitConfig, currently not possible because we don't have SC/F everywhere
+// TODO: derive `VmCircuitConfig`, currently not possible because we don't have SC/F everywhere
 impl<SC: StarkGenericConfig> VmCircuitConfig<SC> for OriginalVmConfig
 where
     Val<SC>: PrimeField32,
@@ -243,7 +245,7 @@ impl OriginalVmConfig {
     }
 
     /// Returns a guard that provides access to the chip complex, initializing it if necessary.
-    pub fn chip_complex(&self) -> ChipComplexGuard {
+    fn chip_complex(&self) -> ChipComplexGuard {
         let mut guard = self.chip_complex.lock().expect("Mutex poisoned");
 
         if guard.is_none() {
