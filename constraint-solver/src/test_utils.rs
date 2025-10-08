@@ -4,11 +4,10 @@ use crate::{
     constraint_system::{AlgebraicConstraint, BusInteraction, ConstraintSystem},
     grouped_expression::GroupedExpression,
     runtime_constant::RuntimeConstant,
-    symbolic_expression::SymbolicExpression,
 };
 
 pub type Var = &'static str;
-pub type Qse = GroupedExpression<SymbolicExpression<GoldilocksField, Var>, Var>;
+pub type Qse = GroupedExpression<GoldilocksField, Var>;
 
 pub fn var(name: Var) -> Qse {
     Qse::from_unknown_variable(name)

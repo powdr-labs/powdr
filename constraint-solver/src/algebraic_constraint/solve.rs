@@ -2,7 +2,7 @@ use std::{collections::HashSet, fmt::Display, hash::Hash};
 
 use itertools::Itertools;
 use num_traits::Zero;
-use powdr_number::ExpressionConvertible;
+use powdr_number::FieldElement;
 
 use crate::{
     algebraic_constraint::AlgebraicConstraint,
@@ -13,12 +13,12 @@ use crate::{
 };
 
 #[derive(Default)]
-pub struct ProcessResult<T: RuntimeConstant, V> {
+pub struct ProcessResult<T: FieldElement, V> {
     pub effects: Vec<Effect<T, V>>,
     pub complete: bool,
 }
 
-impl<T: RuntimeConstant, V> ProcessResult<T, V> {
+impl<T: FieldElement, V> ProcessResult<T, V> {
     pub fn empty() -> Self {
         Self {
             effects: vec![],
@@ -43,7 +43,7 @@ pub enum Error {
 
 impl<T, V> AlgebraicConstraint<&GroupedExpression<T, V>>
 where
-    T: RuntimeConstant + Display + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>,
+    T: FieldElement,
     V: Ord + Clone + Eq + Hash + Display,
 {
     /// Solves the equation `self = 0` and returns how to compute the solution.
@@ -54,7 +54,7 @@ where
     /// If the equation is known to be unsolvable, returns an error.
     pub fn solve(
         &self,
-        range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
+        range_constraints: &impl RangeConstraintProvider<T, V>,
     ) -> Result<ProcessResult<T, V>, Error> {
         let expression = self.expression;
 
@@ -162,7 +162,7 @@ where
 
     fn solve_affine(
         &self,
-        range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
+        range_constraints: &impl RangeConstraintProvider<T, V>,
     ) -> Result<ProcessResult<T, V>, Error> {
         Ok(
             if let Ok((var, coeff)) = self.expression.linear_components().exactly_one() {
@@ -211,7 +211,7 @@ where
     /// - The expression is linear
     fn transfer_constraints(
         &self,
-        range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
+        range_constraints: &impl RangeConstraintProvider<T, V>,
     ) -> Vec<Effect<T, V>> {
         // Solve for each of the variables in the linear component and
         // compute the range constraints.
@@ -229,7 +229,7 @@ where
 
     fn solve_quadratic(
         &self,
-        range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
+        range_constraints: &impl RangeConstraintProvider<T, V>,
     ) -> Result<ProcessResult<T, V>, Error> {
         let expression = self.expression;
         let Some((left, right)) = expression.try_as_single_product() else {
@@ -265,13 +265,10 @@ where
 
 /// Tries to combine two process results from alternative branches into a
 /// conditional assignment.
-fn combine_to_conditional_assignment<
-    T: RuntimeConstant + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>,
-    V: Ord + Clone + Eq + Display,
->(
+fn combine_to_conditional_assignment<T: FieldElement, V: Ord + Clone + Eq + Display>(
     left: &ProcessResult<T, V>,
     right: &ProcessResult<T, V>,
-    range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
+    range_constraints: &impl RangeConstraintProvider<T, V>,
 ) -> Option<ProcessResult<T, V>> {
     let [Effect::Assignment(first_var, first_assignment)] = left.effects.as_slice() else {
         return None;
@@ -290,13 +287,6 @@ fn combine_to_conditional_assignment<
     // conditional assignment.
 
     let diff = first_assignment.clone() + -second_assignment.clone();
-    let diff: GroupedExpression<T::FieldType, V> = diff.try_to_expression(
-        &|n| GroupedExpression::from_number(*n),
-        &|v| GroupedExpression::from_unknown_variable(v.clone()),
-        &|e| e.try_to_number(),
-    )?;
-
-    let diff = diff.try_to_known()?.try_to_number()?;
     // `diff = A - B` is a compile-time known number, i.e. `A = B + diff`.
     // Now if `rc + diff` is disjoint from `rc`, it means
     // that if the value that `A` evaluates to falls into the allowed range for `X`,
@@ -325,9 +315,9 @@ fn combine_to_conditional_assignment<
 }
 
 /// Turns an effect into a range constraint on a variable.
-fn effect_to_range_constraint<T: RuntimeConstant, V: Ord + Clone + Eq>(
+fn effect_to_range_constraint<T: FieldElement, V: Ord + Clone + Eq>(
     effect: &Effect<T, V>,
-) -> Option<(V, RangeConstraint<T::FieldType>)> {
+) -> Option<(V, RangeConstraint<T>)> {
     match effect {
         Effect::RangeConstraint(var, rc) => Some((var.clone(), rc.clone())),
         Effect::Assignment(var, value) => Some((var.clone(), value.range_constraint())),
@@ -338,7 +328,7 @@ fn effect_to_range_constraint<T: RuntimeConstant, V: Ord + Clone + Eq>(
 /// Tries to combine range constraint results from two alternative branches.
 /// In some cases, if both branches produce a complete range constraint for the same variable,
 /// and those range constraints can be combined without loss, the result is complete as well.
-fn combine_range_constraints<T: RuntimeConstant, V: Ord + Clone + Eq + Hash + Display>(
+fn combine_range_constraints<T: FieldElement, V: Ord + Clone + Eq + Hash + Display>(
     left: &ProcessResult<T, V>,
     right: &ProcessResult<T, V>,
 ) -> ProcessResult<T, V> {
@@ -386,10 +376,10 @@ fn combine_range_constraints<T: RuntimeConstant, V: Ord + Clone + Eq + Hash + Di
     }
 }
 
-fn assignment_if_satisfies_range_constraints<T: RuntimeConstant, V: Ord + Clone + Eq>(
+fn assignment_if_satisfies_range_constraints<T: FieldElement, V: Ord + Clone + Eq>(
     var: V,
     value: T,
-    range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
+    range_constraints: &impl RangeConstraintProvider<T, V>,
 ) -> Result<Effect<T, V>, Error> {
     let rc = range_constraints.get(&var);
     if rc.is_disjoint(&value.range_constraint()) {
@@ -404,7 +394,6 @@ mod tests {
 
     use crate::{
         grouped_expression::NoRangeConstraints,
-        symbolic_expression::SymbolicExpression,
         test_utils::{constant, var},
     };
 
@@ -413,15 +402,15 @@ mod tests {
 
     use pretty_assertions::assert_eq;
 
-    type Qse = GroupedExpression<SymbolicExpression<GoldilocksField, &'static str>, &'static str>;
+    type Qse = GroupedExpression<GoldilocksField, &'static str>;
 
     #[test]
     fn test_mul() {
         let x = Qse::from_unknown_variable("X");
         let y = Qse::from_unknown_variable("Y");
-        let a = Qse::from_known_symbol("A", RangeConstraint::default());
+        let a = Qse::from_number(GoldilocksField::from(3));
         let t = x * y + a;
-        assert_eq!(t.to_string(), "(X) * (Y) + A");
+        assert_eq!(t.to_string(), "(X) * (Y) + 3");
     }
 
     #[test]
@@ -429,33 +418,23 @@ mod tests {
         let x = Qse::from_unknown_variable("X");
         let y = Qse::from_unknown_variable("Y");
         let a = Qse::from_unknown_variable("A");
-        let b = Qse::from_known_symbol("B", RangeConstraint::default());
+        let b = Qse::from_number(GoldilocksField::from(7));
         let t: Qse = x * y - a + b;
-        assert_eq!(t.to_string(), "(X) * (Y) - A + B");
+        assert_eq!(t.to_string(), "(X) * (Y) - A + 7");
         assert_eq!(
             (t.clone() + t).to_string(),
-            "(X) * (Y) + (X) * (Y) - 2 * A + (B + B)"
+            "(X) * (Y) + (X) * (Y) - 2 * A + 14"
         );
-    }
-
-    #[test]
-    fn test_mul_by_known() {
-        let x = Qse::from_unknown_variable("X");
-        let y = Qse::from_unknown_variable("Y");
-        let a = Qse::from_known_symbol("A", RangeConstraint::default());
-        let b = Qse::from_known_symbol("B", RangeConstraint::default());
-        let t: Qse = (x * y + a) * b;
-        assert_eq!(t.to_string(), "(B * X) * (Y) + (A * B)");
     }
 
     #[test]
     fn test_mul_by_zero() {
         let x = Qse::from_unknown_variable("X");
         let y = Qse::from_unknown_variable("Y");
-        let a = Qse::from_known_symbol("A", RangeConstraint::default());
+        let a = Qse::from_number(GoldilocksField::from(3));
         let zero = Qse::zero();
         let t: Qse = x * y + a;
-        assert_eq!(t.to_string(), "(X) * (Y) + A");
+        assert_eq!(t.to_string(), "(X) * (Y) + 3");
         assert_eq!((t.clone() * zero).to_string(), "0");
     }
 
@@ -463,70 +442,14 @@ mod tests {
     fn test_apply_update() {
         let x = Qse::from_unknown_variable("X");
         let y = Qse::from_unknown_variable("Y");
-        let a = Qse::from_known_symbol("A", RangeConstraint::default());
-        let b = Qse::from_known_symbol("B", RangeConstraint::default());
+        let a = Qse::from_number(GoldilocksField::from(2));
+        let b = Qse::from_number(GoldilocksField::from(7));
         let mut t: Qse = (x * y + a) * b;
-        assert_eq!(t.to_string(), "(B * X) * (Y) + (A * B)");
-        t.substitute_by_known(
-            &"B",
-            &SymbolicExpression::from_symbol("B", RangeConstraint::from_value(7.into())),
-        );
         assert!(t.is_quadratic());
-        assert_eq!(t.to_string(), "(7 * X) * (Y) + (A * 7)");
-        t.substitute_by_known(
-            &"X",
-            &SymbolicExpression::from_symbol("X", RangeConstraint::from_range(1.into(), 2.into())),
-        );
-        assert!(!t.is_quadratic());
-        assert_eq!(t.to_string(), "(7 * X) * Y + (A * 7)");
-        t.substitute_by_known(
-            &"Y",
-            &SymbolicExpression::from_symbol("Y", RangeConstraint::from_value(3.into())),
-        );
+        assert_eq!(t.to_string(), "(7 * X) * (Y) + 14");
+        t.substitute_by_known(&"Y", &GoldilocksField::from(3).into());
         assert!(t.try_to_known().is_some());
         assert_eq!(t.to_string(), "((A * 7) + ((7 * X) * 3))");
-    }
-
-    #[test]
-    fn test_apply_update_inner_zero() {
-        let x = Qse::from_unknown_variable("X");
-        let y = Qse::from_unknown_variable("Y");
-        let a = Qse::from_known_symbol("A", RangeConstraint::default());
-        let b = Qse::from_known_symbol("B", RangeConstraint::default());
-        let mut t: Qse = (x * a + y) * b;
-        assert_eq!(t.to_string(), "(A * B) * X + B * Y");
-        t.substitute_by_known(
-            &"B",
-            &SymbolicExpression::from_symbol("B", RangeConstraint::from_value(7.into())),
-        );
-        assert_eq!(t.to_string(), "(A * 7) * X + 7 * Y");
-        t.substitute_by_known(
-            &"A",
-            &SymbolicExpression::from_symbol("A", RangeConstraint::from_value(0.into())),
-        );
-        assert_eq!(t.to_string(), "7 * Y");
-    }
-
-    #[test]
-    fn substitute_known() {
-        let x = Qse::from_unknown_variable("X");
-        let y = Qse::from_unknown_variable("Y");
-        let a = Qse::from_known_symbol("A", RangeConstraint::default());
-        let b = Qse::from_known_symbol("B", RangeConstraint::default());
-        let mut t: Qse = (x * a + y) * b.clone() + b;
-        assert_eq!(t.to_string(), "(A * B) * X + B * Y + B");
-        // We substitute B by an expression containing B on purpose.
-        t.substitute_by_known(
-            &"B",
-            &(SymbolicExpression::from_symbol("B", Default::default())
-                + SymbolicExpression::from(GoldilocksField::from(1))),
-        );
-        assert_eq!(t.to_string(), "(A * (B + 1)) * X + (B + 1) * Y + (B + 1)");
-        t.substitute_by_known(
-            &"B",
-            &SymbolicExpression::from_symbol("B", RangeConstraint::from_value(10.into())),
-        );
-        assert_eq!(t.to_string(), "(A * 11) * X + 11 * Y + 11");
     }
 
     impl<T: FieldElement> RangeConstraintProvider<T, &'static str>
@@ -545,38 +468,6 @@ mod tests {
     }
 
     #[test]
-    fn unsolvable_with_vars() {
-        let x = &Qse::from_known_symbol("X", Default::default());
-        let y = &Qse::from_known_symbol("Y", Default::default());
-        let mut constr = x + y - constant(10);
-        // We cannot solve it, but we can also not learn anything new from it.
-        let result = AlgebraicConstraint::assert_zero(&constr)
-            .solve(&NoRangeConstraints)
-            .unwrap();
-        assert!(result.complete && result.effects.is_empty());
-        // But if we know the values, we can be sure there is a conflict.
-        assert!(AlgebraicConstraint::assert_zero(&constant(10))
-            .solve(&NoRangeConstraints)
-            .is_err());
-
-        // The same with range constraints that disallow zero.
-        constr.substitute_by_known(
-            &"X",
-            &SymbolicExpression::from_symbol("X", RangeConstraint::from_value(5.into())),
-        );
-        constr.substitute_by_known(
-            &"Y",
-            &SymbolicExpression::from_symbol(
-                "Y",
-                RangeConstraint::from_range(100.into(), 102.into()),
-            ),
-        );
-        assert!(AlgebraicConstraint::assert_zero(&constant(10))
-            .solve(&NoRangeConstraints)
-            .is_err());
-    }
-
-    #[test]
     fn solvable_without_vars() {
         let constr = constant(0);
         let result = AlgebraicConstraint::assert_zero(&constr)
@@ -587,9 +478,9 @@ mod tests {
 
     #[test]
     fn solve_simple_eq() {
-        let y = Qse::from_known_symbol("y", Default::default());
+        let y = Qse::from_number(GoldilocksField::from(3));
         let x = Qse::from_unknown_variable("X");
-        // 2 * X + 7 * y - 10 = 0
+        // 2 * X + 7 * 3 - 10 = 0
         let two = constant(2);
         let seven = constant(7);
         let ten = constant(10);
@@ -604,45 +495,6 @@ mod tests {
         };
         assert_eq!(var.to_string(), "X");
         assert_eq!(expr.to_string(), "(((7 * y) + -10) / -2)");
-    }
-
-    #[test]
-    fn solve_div_by_range_constrained_var() {
-        let y = Qse::from_known_symbol("y", Default::default());
-        let z = Qse::from_known_symbol("z", Default::default());
-        let x = Qse::from_unknown_variable("X");
-        // z * X + 7 * y - 10 = 0
-        let seven = constant(7);
-        let ten = constant(10);
-        let mut constr = z * x + seven * y - ten.clone();
-        // If we do not range-constrain z, we cannot solve since we don't know if it might be zero.
-        let result = AlgebraicConstraint::assert_zero(&constr)
-            .solve(&NoRangeConstraints)
-            .unwrap();
-        assert!(!result.complete && result.effects.is_empty());
-        let z_rc = RangeConstraint::from_range(1.into(), 2.into());
-        let range_constraints: HashMap<&'static str, RangeConstraint<GoldilocksField>> =
-            HashMap::from([("z", z_rc.clone())]);
-        // Just solving without applying the update to the known symbolic expressions
-        // does not help either. Note that the argument `&range_constraints` to
-        // `solve()` is only used for unknown variables and not for known variables.
-        // For the latter to take effect, we need to call `apply_update`.
-        let result = AlgebraicConstraint::assert_zero(&constr)
-            .solve(&range_constraints)
-            .unwrap();
-        assert!(!result.complete && result.effects.is_empty());
-        constr.substitute_by_known(&"z", &SymbolicExpression::from_symbol("z", z_rc.clone()));
-        // Now it should work.
-        let result = AlgebraicConstraint::assert_zero(&constr)
-            .solve(&range_constraints)
-            .unwrap();
-        assert!(result.complete);
-        let effects = result.effects;
-        let Effect::Assignment(var, expr) = &effects[0] else {
-            panic!("Expected assignment");
-        };
-        assert_eq!(var.to_string(), "X");
-        assert_eq!(expr.to_string(), "(((7 * y) + -10) / -z)");
     }
 
     #[test]
@@ -681,61 +533,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn solve_quadratic() {
-        let rc = RangeConstraint::from_mask(0xffu32);
-        let a = Qse::from_unknown_variable("a");
-        let b = Qse::from_known_symbol("b", rc.clone());
-        let range_constraints = HashMap::from([("a", rc.clone()), ("b", rc.clone())]);
-        let ten = constant(10);
-        let two_pow8 = constant(0x100);
-        let constr = (a.clone() - b.clone() + two_pow8 - ten.clone()) * (a - b - ten);
-        let result = AlgebraicConstraint::assert_zero(&constr)
-            .solve(&range_constraints)
-            .unwrap();
-        assert!(result.complete);
-        let effects = result
-            .effects
-            .into_iter()
-            .map(|effect| match effect {
-                Effect::ConditionalAssignment {
-                    variable,
-                    condition: Condition { value, condition },
-                    in_range_value,
-                    out_of_range_value,
-                } => {
-                    format!("{variable} = if {value} in {condition} {{ {in_range_value} }} else {{ {out_of_range_value} }}\n")
-                }
-                _ => panic!(),
-            })
-            .format("")
-            .to_string();
-        assert_eq!(
-            effects,
-            "a = if ((b + -256) + 10) in [0, 255] & 0xff { ((b + -256) + 10) } else { (b + 10) }
-"
-        );
-
-        // Do the same, but setting b to a concrete value (2).
-        // The result should be an unconditional assignment to b + 10 = 12.
-        let mut constr = constr;
-        constr.substitute_by_known(&"b", &GoldilocksField::from(2).into());
-        let result = AlgebraicConstraint::assert_zero(&constr)
-            .solve(&range_constraints)
-            .unwrap();
-        assert!(result.complete);
-        let [Effect::Assignment(var, expr)] = result.effects.as_slice() else {
-            panic!("Expected 1 assignment");
-        };
-        assert_eq!(var, &"a");
-        assert_eq!(expr.to_string(), "12");
-    }
-
     fn unpack_range_constraint(
-        process_result: &ProcessResult<
-            SymbolicExpression<GoldilocksField, &'static str>,
-            &'static str,
-        >,
+        process_result: &ProcessResult<GoldilocksField, &'static str>,
     ) -> (&'static str, RangeConstraint<GoldilocksField>) {
         let [effect] = &process_result.effects[..] else {
             panic!();
@@ -1000,11 +799,11 @@ mod tests {
     #[test]
     fn solve_for_expr_normalization() {
         // Test normalization
-        let t = SymbolicExpression::from_symbol("t", Default::default());
-        let r = SymbolicExpression::from_symbol("r", Default::default());
-        let expr = var("x") * r.clone() + var("y") * t;
+        let t = GoldilocksField::from(3);
+        let r = GoldilocksField::from(2);
+        let expr = var("x") * r + var("y") * t;
         let constr = AlgebraicConstraint::assert_zero(&expr);
-        assert_eq!(constr.to_string(), "r * x + t * y = 0");
+        assert_eq!(constr.to_string(), "2 * x + 3 * y = 0");
         assert_eq!(
             constr
                 .try_solve_for_expr(&(var("x") * r))
