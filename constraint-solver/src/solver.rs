@@ -1,4 +1,4 @@
-use powdr_number::ExpressionConvertible;
+use powdr_number::{ExpressionConvertible, FieldElement};
 
 use crate::constraint_system::{
     AlgebraicConstraint, BusInteraction, BusInteractionHandler, ConstraintSystem,
@@ -27,17 +27,10 @@ mod var_transformation;
 /// Solve a constraint system, i.e. derive assignments for variables in the system.
 pub fn solve_system<T, V>(
     constraint_system: ConstraintSystem<T, V>,
-    bus_interaction_handler: impl BusInteractionHandler<T::FieldType>,
+    bus_interaction_handler: impl BusInteractionHandler<T>,
 ) -> Result<Vec<VariableAssignment<T, V>>, Error>
 where
-    T: RuntimeConstant + VarTransformable<V, Variable<V>> + Hash + Display,
-    T::Transformed: RuntimeConstant<FieldType = T::FieldType>
-        + VarTransformable<Variable<V>, V, Transformed = T>
-        + Display
-        + Hash
-        + ExpressionConvertible<T::FieldType, Variable<V>>
-        + Substitutable<Variable<V>>
-        + Hash,
+    T: FieldElement,
     V: Ord + Clone + Hash + Eq + Display,
 {
     new_solver(constraint_system, bus_interaction_handler).solve()
