@@ -5,6 +5,6 @@ version = "0.0.0"
 edition = "2021"
 
 [dependencies]
-openvm = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "e9695be" }
 k256 = { version = "0.13", default-features = false, features = ["arithmetic"] }
 hex-literal = "1.0.0"

@@ -5,7 +5,7 @@ version = "0.0.0"
 edition = "2021"
 
 [dependencies]
-openvm = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip" }
+openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "e9695be" }
 
 [profile.release-with-debug]
 inherits = "release"

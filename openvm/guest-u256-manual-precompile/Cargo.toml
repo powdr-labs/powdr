@@ -7,10 +7,10 @@ edition = "2021"
 members = []
 
 [dependencies]
-openvm = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip", features = [
+openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "e9695be", features = [
     "std",
 ] }
-openvm-ruint = { git = "https://github.com/powdr-labs/openvm.git", branch = "1.4.0-wip", package = "ruint" }
+openvm-ruint = { git = "https://github.com/powdr-labs/openvm.git", rev = "e9695be", package = "ruint" }
 
 [features]
 default = []
