@@ -1,10 +1,10 @@
 use crate::constraint_system::{AlgebraicConstraint, ConstraintRef};
 use crate::grouped_expression::GroupedExpression;
 use crate::indexed_constraint_system::IndexedConstraintSystem;
-use crate::runtime_constant::{RuntimeConstant, Substitutable};
+use crate::runtime_constant::RuntimeConstant;
 
 use itertools::Itertools;
-use powdr_number::ExpressionConvertible;
+use powdr_number::{ExpressionConvertible, FieldElement};
 
 use std::collections::HashSet;
 use std::fmt::Display;
@@ -19,7 +19,7 @@ pub struct DegreeBound {
 /// Reduce variables in the constraint system by inlining them,
 /// if the callback `should_inline` returns true.
 pub fn replace_constrained_witness_columns<
-    T: RuntimeConstant + ExpressionConvertible<T::FieldType, V> + Substitutable<V> + Display,
+    T: FieldElement,
     V: Ord + Clone + Hash + Eq + Display,
 >(
     mut constraint_system: IndexedConstraintSystem<T, V>,
@@ -151,16 +151,22 @@ fn expression_degree_with_virtual_substitution<T: RuntimeConstant, V: Ord + Clon
 
 #[cfg(test)]
 mod test {
-    use crate::{
-        constraint_system::{BusInteraction, ConstraintSystem},
-        test_utils::{constant, var},
-    };
+    use crate::constraint_system::{BusInteraction, ConstraintSystem};
 
     use super::*;
 
+    use powdr_number::GoldilocksField;
     use test_log::test;
 
-    fn bounds<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
+    pub fn var(name: &'static str) -> GroupedExpression<GoldilocksField, &'static str> {
+        GroupedExpression::from_unknown_variable(name)
+    }
+
+    pub fn constant(value: u64) -> GroupedExpression<GoldilocksField, &'static str> {
+        GroupedExpression::from_number(GoldilocksField::from(value))
+    }
+
+    fn bounds<T: FieldElement, V: Ord + Clone + Hash + Eq>(
         identities: usize,
         bus_interactions: usize,
     ) -> impl Fn(&V, &GroupedExpression<T, V>, &IndexedConstraintSystem<T, V>) -> bool {
