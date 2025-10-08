@@ -1,13 +1,12 @@
-use powdr_number::{ExpressionConvertible, FieldElement};
+use powdr_number::FieldElement;
 
 use crate::constraint_system::{
     AlgebraicConstraint, BusInteraction, BusInteractionHandler, ConstraintSystem,
 };
 use crate::grouped_expression::GroupedExpression;
 use crate::range_constraint::RangeConstraint;
-use crate::runtime_constant::{RuntimeConstant, Substitutable, VarTransformable};
 use crate::solver::base::{BaseSolver, VarDispenserImpl};
-use crate::solver::var_transformation::{VarTransformation, Variable};
+use crate::solver::var_transformation::VarTransformation;
 
 use super::grouped_expression::RangeConstraintProvider;
 
@@ -39,17 +38,10 @@ where
 /// Creates a new solver for the given system and bus interaction handler.
 pub fn new_solver<T, V>(
     constraint_system: ConstraintSystem<T, V>,
-    bus_interaction_handler: impl BusInteractionHandler<T::FieldType>,
+    bus_interaction_handler: impl BusInteractionHandler<T>,
 ) -> impl Solver<T, V>
 where
-    T: RuntimeConstant + VarTransformable<V, Variable<V>> + Hash + Display,
-    T::Transformed: RuntimeConstant<FieldType = T::FieldType>
-        + VarTransformable<Variable<V>, V, Transformed = T>
-        + Display
-        + Hash
-        + ExpressionConvertible<T::FieldType, Variable<V>>
-        + Substitutable<Variable<V>>
-        + Hash,
+    T: FieldElement,
     V: Ord + Clone + Hash + Eq + Display,
 {
     let mut solver = VarTransformation::new(BaseSolver::<_, _, _, VarDispenserImpl>::new(
@@ -60,7 +52,7 @@ where
     solver
 }
 
-pub trait Solver<T: RuntimeConstant, V>: RangeConstraintProvider<T::FieldType, V> + Sized {
+pub trait Solver<T: FieldElement, V>: RangeConstraintProvider<T, V> + Sized {
     /// Solves the constraints as far as possible, returning concrete variable
     /// assignments. Does not return the same assignments again if called more than once.
     fn solve(&mut self) -> Result<Vec<VariableAssignment<T, V>>, Error>;
@@ -78,17 +70,15 @@ pub trait Solver<T: RuntimeConstant, V>: RangeConstraintProvider<T::FieldType, V
     );
 
     /// Adds a new range constraint for the variable.
-    fn add_range_constraint(&mut self, var: &V, constraint: RangeConstraint<T::FieldType>);
+    fn add_range_constraint(&mut self, var: &V, constraint: RangeConstraint<T>);
 
     /// Permits the solver to remove all variables except those in `variables_to_keep`.
     /// This should only keep the constraints that reference at least one of the variables.
     fn retain_variables(&mut self, variables_to_keep: &HashSet<V>);
 
     /// Returns the best known range constraint for the given expression.
-    fn range_constraint_for_expression(
-        &self,
-        expr: &GroupedExpression<T, V>,
-    ) -> RangeConstraint<T::FieldType>;
+    fn range_constraint_for_expression(&self, expr: &GroupedExpression<T, V>)
+        -> RangeConstraint<T>;
 
     /// Returns `true` if `a` and `b` are different for all satisfying assignments.
     /// In other words, `a - b` does not allow the value zero.
