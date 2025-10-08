@@ -175,25 +175,6 @@ pub struct SymbolicMachine<T> {
     pub derived_columns: Vec<(AlgebraicReference, ComputationMethod<T>)>,
 }
 
-/// A machine comprised of algebraic constraints, bus interactions and potentially derived columns.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SymbolicMachineOld<T> {
-    /// Constraints whose expressions have to evaluate to zero for an assignment to be satisfying.
-    pub constraints: Vec<SymbolicConstraint<T>>,
-    /// Bus interactions that model communication with other machines / chips or static lookups.
-    pub bus_interactions: Vec<SymbolicBusInteraction<T>>,
-}
-
-impl<T> From<SymbolicMachineOld<T>> for SymbolicMachine<T> {
-    fn from(old: SymbolicMachineOld<T>) -> Self {
-        Self {
-            constraints: old.constraints,
-            bus_interactions: old.bus_interactions,
-            derived_columns: Vec::new(),
-        }
-    }
-}
-
 type ComputationMethod<T> =
     powdr_constraint_solver::constraint_system::ComputationMethod<T, AlgebraicExpression<T>>;
 
