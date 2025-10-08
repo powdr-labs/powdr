@@ -3,7 +3,7 @@ use powdr_number::FieldElement;
 use crate::constraint_system::{AlgebraicConstraint, BusInteraction};
 use crate::grouped_expression::{GroupedExpression, RangeConstraintProvider};
 use crate::range_constraint::RangeConstraint;
-use crate::runtime_constant::{RuntimeConstant, VarTransformable};
+use crate::runtime_constant::VarTransformable;
 use crate::solver::{Error, Solver, VariableAssignment};
 
 use std::collections::HashSet;
@@ -166,20 +166,14 @@ where
     }
 }
 
-fn transform_expr<T, V: Ord + Clone>(
+fn transform_expr<T: FieldElement, V: Ord + Clone>(
     expr: &GroupedExpression<T, V>,
-) -> GroupedExpression<T::Transformed, Variable<V>>
-where
-    T: RuntimeConstant + VarTransformable<V, Variable<V>>,
-{
+) -> GroupedExpression<T, Variable<V>> {
     expr.transform_var_type(&mut |v| v.into())
 }
 
-fn transform_constraint<T, V: Ord + Clone>(
+fn transform_constraint<T: FieldElement, V: Ord + Clone>(
     constraint: &AlgebraicConstraint<GroupedExpression<T, V>>,
-) -> AlgebraicConstraint<GroupedExpression<T::Transformed, Variable<V>>>
-where
-    T: RuntimeConstant + VarTransformable<V, Variable<V>>,
-{
+) -> AlgebraicConstraint<GroupedExpression<T, Variable<V>>> {
     AlgebraicConstraint::assert_zero(transform_expr(&constraint.expression))
 }

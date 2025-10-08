@@ -3,18 +3,18 @@
 use std::{collections::HashSet, fmt::Display, hash::Hash};
 
 use itertools::Itertools;
+use powdr_number::FieldElement;
 
 use crate::{
     constraint_system::AlgebraicConstraint,
     grouped_expression::{GroupedExpression, RangeConstraintProvider},
     range_constraint::RangeConstraint,
-    runtime_constant::RuntimeConstant,
 };
 
 /// Given a list of constraints, tries to determine pairs of equivalent variables.
-pub fn find_quadratic_equalities<T: RuntimeConstant, V: Ord + Clone + Hash + Eq + Display>(
+pub fn find_quadratic_equalities<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
     constraints: &[AlgebraicConstraint<GroupedExpression<T, V>>],
-    range_constraints: impl RangeConstraintProvider<T::FieldType, V>,
+    range_constraints: impl RangeConstraintProvider<T, V>,
 ) -> Vec<(V, V)> {
     let candidates = constraints
         .iter()
@@ -37,12 +37,12 @@ pub fn find_quadratic_equalities<T: RuntimeConstant, V: Ord + Clone + Hash + Eq 
 /// `expr` or `expr + offset` (see [`QuadraticSymbolicExpression::solve_quadratic`]),
 /// then `X` and `Y` must be equal and are returned.
 fn process_quadratic_equality_candidate_pair<
-    T: RuntimeConstant,
+    T: FieldElement,
     V: Ord + Clone + Hash + Eq + Display,
 >(
     c1: &QuadraticEqualityCandidate<T, V>,
     c2: &QuadraticEqualityCandidate<T, V>,
-    range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
+    range_constraints: &impl RangeConstraintProvider<T, V>,
 ) -> Option<(V, V)> {
     if c1.variables.len() != c2.variables.len() || c1.variables.len() < 2 {
         return None;
@@ -61,16 +61,13 @@ fn process_quadratic_equality_candidate_pair<
     let c1 = c1.normalized_for_var(c1_var);
     let c2 = c2.normalized_for_var(c2_var);
 
-    let c1_offset = c1.offset.try_to_number()?;
-    let c2_offset = c2.offset.try_to_number()?;
-
-    if c1_offset != c2_offset {
+    if c1.offset != c2.offset {
         return None;
     }
 
     // And the offset (the difference between the two alternatives) determines if
     // we are inside the range constraint or not.
-    if !rc1.is_disjoint(&rc1.combine_sum(&RangeConstraint::from_value(c1_offset))) {
+    if !rc1.is_disjoint(&rc1.combine_sum(&RangeConstraint::from_value(c1.offset))) {
         return None;
     }
 
@@ -97,21 +94,21 @@ fn process_quadratic_equality_candidate_pair<
 /// where `expr` is an affine expression and `offset` is a runtime constant.
 ///
 /// All unknown variables appearing in `expr` are stored in `variables`.
-struct QuadraticEqualityCandidate<T: RuntimeConstant, V: Ord + Clone + Hash + Eq> {
+struct QuadraticEqualityCandidate<T: FieldElement, V: Ord + Clone + Hash + Eq> {
     expr: GroupedExpression<T, V>,
     offset: T,
     /// All unknown variables in `expr`.
     variables: HashSet<V>,
 }
 
-impl<T: RuntimeConstant, V: Ord + Clone + Hash + Eq> QuadraticEqualityCandidate<T, V> {
+impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticEqualityCandidate<T, V> {
     fn try_from_constraint(constr: &AlgebraicConstraint<GroupedExpression<T, V>>) -> Option<Self> {
         let (left, right) = constr.expression.try_as_single_product()?;
         if !left.is_affine() || !right.is_affine() {
             return None;
         }
         // `constr = 0` is equivalent to `left * right = 0`
-        let offset = (left - right).try_to_known()?.try_to_number()?;
+        let offset = *(left - right).try_to_known()?;
         // `offset + right = left`
         // `constr = 0` is equivalent to `right * (right + offset) = 0`
         let variables = right
@@ -120,7 +117,7 @@ impl<T: RuntimeConstant, V: Ord + Clone + Hash + Eq> QuadraticEqualityCandidate<
             .collect::<HashSet<_>>();
         Some(Self {
             expr: right.clone(),
-            offset: offset.into(),
+            offset,
             variables,
         })
     }
@@ -128,7 +125,7 @@ impl<T: RuntimeConstant, V: Ord + Clone + Hash + Eq> QuadraticEqualityCandidate<
     /// Returns an equivalent candidate that is normalized
     /// such that `var` has a coefficient of `1`.
     fn normalized_for_var(&self, var: &V) -> Self {
-        let coefficient = self
+        let coefficient = *self
             .expr
             .coefficient_of_variable_in_affine_part(var)
             .unwrap();
@@ -137,8 +134,8 @@ impl<T: RuntimeConstant, V: Ord + Clone + Hash + Eq> QuadraticEqualityCandidate<
         // `(coeff * var + X) * (coeff * var + X + offset) = 0`
         // Dividing by `coeff` twice results in
         // `(var + X / coeff) * (var + X / coeff + offset / coeff) = 0`
-        let offset = self.offset.field_div(coefficient);
-        let expr = self.expr.clone() * coefficient.field_inverse();
+        let offset = self.offset / coefficient;
+        let expr = self.expr.clone() * (T::from(1) / coefficient);
         Self {
             expr,
             offset,

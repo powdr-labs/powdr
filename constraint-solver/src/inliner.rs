@@ -70,7 +70,7 @@ pub fn replace_constrained_witness_columns<
 
 /// Returns an inlining discriminator that allows everything to be inlined as long as
 /// the given degree bound is not violated.
-pub fn inline_everything_below_degree_bound<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
+pub fn inline_everything_below_degree_bound<T: FieldElement, V: Ord + Clone + Hash + Eq>(
     degree_bound: DegreeBound,
 ) -> impl Fn(&V, &GroupedExpression<T, V>, &IndexedConstraintSystem<T, V>) -> bool {
     move |var, expr, constraint_system| {
@@ -80,10 +80,7 @@ pub fn inline_everything_below_degree_bound<T: RuntimeConstant, V: Ord + Clone +
 
 /// Returns true if substituting `var` by `expr` inside `constraint_system` would
 /// not create new constraints with a degree larger than `degree_bound`
-pub fn substitution_would_not_violate_degree_bound<
-    T: RuntimeConstant,
-    V: Ord + Clone + Hash + Eq,
->(
+pub fn substitution_would_not_violate_degree_bound<T: FieldElement, V: Ord + Clone + Hash + Eq>(
     var: &V,
     expr: &GroupedExpression<T, V>,
     constraint_system: &IndexedConstraintSystem<T, V>,

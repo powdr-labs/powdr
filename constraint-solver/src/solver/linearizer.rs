@@ -2,13 +2,13 @@ use std::collections::HashMap;
 use std::hash::Hash;
 
 use itertools::Itertools;
+use powdr_number::FieldElement;
 
 use crate::constraint_system::AlgebraicConstraint;
+use crate::grouped_expression::GroupedExpression;
 use crate::grouped_expression::GroupedExpressionComponent;
 use crate::indexed_constraint_system::apply_substitutions_to_expressions;
-use crate::runtime_constant::Substitutable;
 use crate::solver::VariableAssignment;
-use crate::{grouped_expression::GroupedExpression, runtime_constant::RuntimeConstant};
 
 /// Solver component that substitutes non-affine sub-expressions
 /// by new variables.
@@ -24,7 +24,7 @@ impl<T, V> Default for Linearizer<T, V> {
     }
 }
 
-impl<T: RuntimeConstant + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
+impl<T: FieldElement, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
     /// Linearizes the expression by introducing new variables for
     /// non-affine parts. The new constraints are appended to
     /// `constraint_collection` and must be added to the system.
@@ -162,7 +162,7 @@ impl<T: RuntimeConstant + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
     }
 }
 
-impl<T: RuntimeConstant + Substitutable<V> + Hash, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
+impl<T: FieldElement, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
     /// Applies the assignments to the stored substitutions.
     pub fn apply_assignments(&mut self, assignments: &[VariableAssignment<T, V>]) {
         if assignments.is_empty() {

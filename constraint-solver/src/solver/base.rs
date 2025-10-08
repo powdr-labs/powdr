@@ -8,7 +8,6 @@ use crate::effect::Effect;
 use crate::grouped_expression::{GroupedExpression, RangeConstraintProvider};
 use crate::indexed_constraint_system::IndexedConstraintSystemWithQueue;
 use crate::range_constraint::RangeConstraint;
-use crate::runtime_constant::RuntimeConstant;
 use crate::solver::boolean_extractor::BooleanExtractor;
 use crate::solver::constraint_splitter::try_split_constraint;
 use crate::solver::linearizer::Linearizer;
@@ -238,7 +237,7 @@ where
         b: &GroupedExpression<T, V>,
     ) -> bool {
         if let (Some(a), Some(b)) = (a.try_to_known(), b.try_to_known()) {
-            return (*a - *b).is_known_nonzero();
+            return a != b;
         }
         let equivalent_to_a = self.equivalent_expressions(a);
         let equivalent_to_b = self.equivalent_expressions(b);
@@ -247,7 +246,7 @@ where
             .cartesian_product(&equivalent_to_b)
             .any(|(a_eq, b_eq)| {
                 possible_concrete_values(&(a_eq - b_eq), self, 20)
-                    .is_some_and(|mut values| values.all(|value| value.is_known_nonzero()))
+                    .is_some_and(|mut values| values.all(|value| !value.is_zero()))
             })
     }
 }
@@ -586,7 +585,7 @@ where
 /// for the variable.
 ///
 /// Note: Does not find all cases of equivalence.
-fn try_to_simple_equivalence<T: RuntimeConstant, V: Clone + Ord + Eq>(
+fn try_to_simple_equivalence<T: FieldElement, V: Clone + Ord + Eq>(
     constr: AlgebraicConstraint<&GroupedExpression<T, V>>,
 ) -> Option<(V, GroupedExpression<T, V>)> {
     if !constr.expression.is_affine() {
@@ -598,7 +597,7 @@ fn try_to_simple_equivalence<T: RuntimeConstant, V: Clone + Ord + Eq>(
     let linear = constr.expression.linear_components();
     let [(v1, c1), (v2, c2)] = linear.collect_vec().try_into().ok()?;
     // c1 = 1, c2 = -1 or vice-versa
-    if (c1.is_one() || c2.is_one()) && (c1.clone() + c2.clone()).is_zero() {
+    if (c1.is_one() || c2.is_one()) && (*c1 + *c2).is_zero() {
         Some((
             v2.clone(),
             GroupedExpression::from_unknown_variable(v1.clone()),
