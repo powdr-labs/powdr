@@ -14,9 +14,11 @@ use powdr_number::{log2_exact, FieldElement, LargeInt};
 /// Note that the same constraint can have multiple representations.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct RangeConstraint<T: FieldElement> {
-    /// Bit-mask.
+    /// Bit-mask. A value `x` is allowed only if `x & mask == x` (when seen as unsigned integer).
     mask: T::Integer,
     /// Min-max inclusive range. Note that `max` can be smaller than `min`. In this case the range wraps.
+    /// If min <= max (seen as unsigned integers), then the constraint on `x` is `min <= x && x <= max`.
+    /// If min > max, then the constraint is `min <= x || x <= max`.
     min: T,
     max: T,
 }
@@ -57,7 +59,7 @@ impl<T: FieldElement> RangeConstraint<T> {
         let mask = if min <= max {
             mask_from_bits::<T>(max.to_integer().num_bits())
         } else {
-            !T::Integer::from(0)
+            Self::unconstrained().mask
         };
         Self { mask, min, max }
     }
@@ -67,6 +69,8 @@ impl<T: FieldElement> RangeConstraint<T> {
         Self::from_mask(!T::Integer::zero())
     }
 
+    /// Returns true if the range constraint does not impose any
+    /// restrictions on the field elements.
     pub fn is_unconstrained(&self) -> bool {
         self.range_width() == Self::unconstrained().range_width()
             && self.mask == Self::unconstrained().mask
@@ -109,38 +113,15 @@ impl<T: FieldElement> RangeConstraint<T> {
         in_range && in_mask
     }
 
-    /// Splits this range constraint into a disjoint union with roughly the same number of allowed values.
-    /// The two ranges will be disjoint, and the union of the two will be the same as the original range
-    /// (or at least include the original range).
-    /// This is useful for branching on a variable.
-    /// Panics if the range is a single value.
-    pub fn bisect(&self) -> (Self, Self) {
-        assert!(self.try_to_single_value().is_none());
-        // TODO we could also try to bisect according to the masks, but this code currently does not
-        // support complements of masks.
-        // Better to bisect according to min/max.
-        let half_width = T::from(self.range_width() >> 1);
-        assert!(half_width > T::zero());
-        (
-            Self {
-                max: self.min + half_width - 1.into(),
-                ..self.clone()
-            },
-            Self {
-                min: self.min + half_width,
-                ..self.clone()
-            },
-        )
-    }
-
     /// The range constraint of the sum of two expressions.
     pub fn combine_sum(&self, other: &Self) -> Self {
+        let unconstrained = Self::unconstrained();
         // TODO we could use "add_with_carry" to see if this created an overflow.
         // it might even be enough to check if certain bits are set in the masks.
         let mask = if self.mask.to_arbitrary_integer() + other.mask.to_arbitrary_integer()
             >= T::modulus().to_arbitrary_integer()
         {
-            !T::Integer::from(0)
+            unconstrained.mask
         } else {
             // This could be made stricter.
             (self.mask + other.mask) | self.mask | other.mask
@@ -148,11 +129,11 @@ impl<T: FieldElement> RangeConstraint<T> {
 
         let (min, max) = if self.range_width().to_arbitrary_integer()
             + other.range_width().to_arbitrary_integer()
-            <= T::modulus().to_arbitrary_integer()
+            <= unconstrained.range_width().to_arbitrary_integer()
         {
             (self.min + other.min, self.max + other.max)
         } else {
-            (T::one(), T::zero())
+            unconstrained.range()
         };
         Self { min, max, mask }
     }
@@ -170,7 +151,7 @@ impl<T: FieldElement> RangeConstraint<T> {
         {
             Self::from_range(self.min * other.min, self.max * other.max)
         } else {
-            Default::default()
+            Self::unconstrained()
         }
     }
 
@@ -788,39 +769,6 @@ mod test {
                 }
             }
         }
-    }
-
-    fn range_constraint(min: u64, max: u64) -> RangeConstraint<GoldilocksField> {
-        RangeConstraint::from_range(min.into(), max.into())
-    }
-
-    #[test]
-    fn bisect_regular() {
-        let (b, c) = range_constraint(10, 20).bisect();
-        assert_eq!(b.range(), (10.into(), 14.into()));
-        assert_eq!(c.range(), (15.into(), 20.into()));
-
-        let (b, c) = range_constraint(0, 1).bisect();
-        assert_eq!(b.try_to_single_value(), Some(0.into()));
-        assert_eq!(c.try_to_single_value(), Some(1.into()));
-
-        let (b, c) = range_constraint(0, 2).bisect();
-        assert_eq!(b.try_to_single_value(), Some(0.into()));
-        assert_eq!(c.range(), (1.into(), 2.into()));
-    }
-
-    #[test]
-    fn bisect_inverted() {
-        let (b, c) = range_constraint(20, 10).bisect();
-        assert_eq!(b.range(), (20.into(), 9223372034707292175_u64.into()));
-        assert_eq!(c.range(), (9223372034707292176_u64.into(), 10.into()));
-    }
-
-    #[test]
-    #[should_panic]
-    fn bisect_single() {
-        let a = RangeConstraint::<GoldilocksField>::from_range(10.into(), 10.into());
-        a.bisect();
     }
 
     #[test]
