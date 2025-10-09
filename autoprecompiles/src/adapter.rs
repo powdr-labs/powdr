@@ -1,4 +1,5 @@
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
+use std::collections::{BTreeMap, BTreeSet};
 use std::hash::Hash;
 use std::io::BufWriter;
 use std::{fmt::Display, sync::Arc};
@@ -47,6 +48,13 @@ impl<F, I, S> From<Arc<Apc<F, I>>> for ApcWithStats<F, I, S> {
     }
 }
 
+#[derive(Serialize, Deserialize)]
+struct JsonExport {
+    apcs: Vec<ApcCandidateJsonExport>,
+    labels: BTreeMap<u32, Vec<String>>,
+    other_blocks: Vec<BasicBlock<String>>,
+}
+
 pub trait PgoAdapter {
     type Adapter: Adapter;
 
@@ -55,23 +63,46 @@ pub trait PgoAdapter {
         blocks: Vec<BasicBlock<<Self::Adapter as Adapter>::Instruction>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
+        labels: BTreeMap<u32, Vec<String>>,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
         let filtered_blocks = blocks
-            .into_iter()
+            .iter()
             .filter(|block| !Self::Adapter::should_skip_block(block))
+            .cloned()
             .collect();
         let apcs = self.create_apcs_with_pgo(filtered_blocks, config, vm_config);
 
         // Write the APC candidates JSON to disk if the directory is specified.
         if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
-            let apc_candidates_json_file = apcs
+            let apcs = apcs
                 .iter()
                 .filter_map(|apc_with_stats| apc_with_stats.json_export.clone())
                 .collect::<Vec<_>>();
+            let compiled_blocks = apcs
+                .iter()
+                .map(|apc| apc.original_block.start_pc)
+                .collect::<BTreeSet<_>>();
+            let other_blocks = blocks
+                .into_iter()
+                .filter(|block| !compiled_blocks.contains(&block.start_pc))
+                .map(|block| BasicBlock {
+                    start_pc: block.start_pc,
+                    statements: block
+                        .statements
+                        .iter()
+                        .map(|instr| format!("{}", instr))
+                        .collect(),
+                })
+                .collect::<Vec<_>>();
+            let json_export = JsonExport {
+                apcs,
+                labels,
+                other_blocks,
+            };
             let json_path = apc_candidates_dir_path.join("apc_candidates.json");
             let file = std::fs::File::create(&json_path)
                 .expect("Failed to create file for APC candidates JSON");
-            serde_json::to_writer(BufWriter::new(file), &*apc_candidates_json_file)
+            serde_json::to_writer(BufWriter::new(file), &json_export)
                 .expect("Failed to write APC candidates JSON to file");
         }
 

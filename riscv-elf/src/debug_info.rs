@@ -479,6 +479,10 @@ impl SymbolTable {
             .chain(default)
     }
 
+    pub fn table(&self) -> &BTreeMap<u32, Vec<String>> {
+        &self.0
+    }
+
     /// Returns a symbol at the address or at the first address before this one that has a symbol.
     /// Also returns the offset of the provided address relative to that symbol.
     pub fn try_get_one_or_preceding(&self, addr: u64) -> Option<(&str, u32)> {
