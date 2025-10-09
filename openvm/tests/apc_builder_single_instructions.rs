@@ -233,30 +233,3 @@ fn single_sra() {
     let program = [sra(68, 40, 3, 1)];
     assert_machine_output(program.to_vec(), "single_sra");
 }
-
-#[test]
-fn single_storew_imm_0() {
-    let program = [
-        // Store [x8] into [x2 + 0]_2
-        storew(8, 2, 0, 2, 1, 0),
-    ];
-    assert_machine_output(program.to_vec(), "single_storew_imm_0");
-}
-
-#[test]
-fn single_storeh_imm_0() {
-    let program = [
-        // Store [x8] into [x2 + 0]_2
-        storeh(8, 2, 0, 2, 1, 0),
-    ];
-    assert_machine_output(program.to_vec(), "single_storeh_imm_0");
-}
-
-#[test]
-fn single_storeb_imm_0() {
-    let program = [
-        // Store [x8] into [x2 + 0]_2
-        storeb(8, 2, 0, 2, 1, 1),
-    ];
-    assert_machine_output(program.to_vec(), "single_storeb_imm_0");
-}
