@@ -1,10 +1,9 @@
 use crate::constraint_system::{AlgebraicConstraint, ConstraintRef};
 use crate::grouped_expression::GroupedExpression;
 use crate::indexed_constraint_system::IndexedConstraintSystem;
-use crate::runtime_constant::RuntimeConstant;
 
 use itertools::Itertools;
-use powdr_number::{ExpressionConvertible, FieldElement};
+use powdr_number::FieldElement;
 
 use std::collections::HashSet;
 use std::fmt::Display;
@@ -108,10 +107,7 @@ pub fn substitution_would_not_violate_degree_bound<T: FieldElement, V: Ord + Clo
 }
 
 /// Returns substitutions of variables that appear linearly and do not depend on themselves.
-fn find_inlinable_variables<
-    T: RuntimeConstant + ExpressionConvertible<T::FieldType, V> + Display,
-    V: Ord + Clone + Hash + Eq + Display,
->(
+fn find_inlinable_variables<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
     constraint: &AlgebraicConstraint<GroupedExpression<T, V>>,
 ) -> Vec<(V, GroupedExpression<T, V>)> {
     constraint
@@ -128,7 +124,7 @@ fn find_inlinable_variables<
 
 /// Calculate the degree of a GroupedExpression assuming a variable is
 /// replaced by an expression of known degree.
-fn expression_degree_with_virtual_substitution<T: RuntimeConstant, V: Ord + Clone + Eq>(
+fn expression_degree_with_virtual_substitution<T: FieldElement, V: Ord + Clone + Eq>(
     expr: &GroupedExpression<T, V>,
     var: &V,
     replacement_deg: usize,
