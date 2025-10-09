@@ -2,7 +2,7 @@ use std::{collections::HashSet, fmt::Display, hash::Hash};
 
 use itertools::Itertools;
 use num_traits::Zero;
-use powdr_number::ExpressionConvertible;
+use powdr_number::{ExpressionConvertible, FieldElement};
 
 use crate::{
     algebraic_constraint::AlgebraicConstraint,
@@ -13,12 +13,12 @@ use crate::{
 };
 
 #[derive(Default)]
-pub struct ProcessResult<T: RuntimeConstant, V> {
+pub struct ProcessResult<T: FieldElement, V> {
     pub effects: Vec<Effect<T, V>>,
     pub complete: bool,
 }
 
-impl<T: RuntimeConstant, V> ProcessResult<T, V> {
+impl<T: FieldElement, V> ProcessResult<T, V> {
     pub fn empty() -> Self {
         Self {
             effects: vec![],
@@ -43,7 +43,7 @@ pub enum Error {
 
 impl<T, V> AlgebraicConstraint<&GroupedExpression<T, V>>
 where
-    T: RuntimeConstant + Display + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>,
+    T: FieldElement,
     V: Ord + Clone + Eq + Hash + Display,
 {
     /// Solves the equation `self = 0` and returns how to compute the solution.
@@ -54,7 +54,7 @@ where
     /// If the equation is known to be unsolvable, returns an error.
     pub fn solve(
         &self,
-        range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
+        range_constraints: &impl RangeConstraintProvider<T, V>,
     ) -> Result<ProcessResult<T, V>, Error> {
         let expression = self.expression;
 
@@ -162,7 +162,7 @@ where
 
     fn solve_affine(
         &self,
-        range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
+        range_constraints: &impl RangeConstraintProvider<T, V>,
     ) -> Result<ProcessResult<T, V>, Error> {
         Ok(
             if let Ok((var, coeff)) = self.expression.linear_components().exactly_one() {
@@ -211,7 +211,7 @@ where
     /// - The expression is linear
     fn transfer_constraints(
         &self,
-        range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
+        range_constraints: &impl RangeConstraintProvider<T, V>,
     ) -> Vec<Effect<T, V>> {
         // Solve for each of the variables in the linear component and
         // compute the range constraints.
@@ -229,7 +229,7 @@ where
 
     fn solve_quadratic(
         &self,
-        range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
+        range_constraints: &impl RangeConstraintProvider<T, V>,
     ) -> Result<ProcessResult<T, V>, Error> {
         let expression = self.expression;
         let Some((left, right)) = expression.try_as_single_product() else {
@@ -265,13 +265,10 @@ where
 
 /// Tries to combine two process results from alternative branches into a
 /// conditional assignment.
-fn combine_to_conditional_assignment<
-    T: RuntimeConstant + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>,
-    V: Ord + Clone + Eq + Display,
->(
+fn combine_to_conditional_assignment<T: FieldElement, V: Ord + Clone + Eq + Display>(
     left: &ProcessResult<T, V>,
     right: &ProcessResult<T, V>,
-    range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
+    range_constraints: &impl RangeConstraintProvider<T, V>,
 ) -> Option<ProcessResult<T, V>> {
     let [Effect::Assignment(first_var, first_assignment)] = left.effects.as_slice() else {
         return None;
@@ -290,13 +287,7 @@ fn combine_to_conditional_assignment<
     // conditional assignment.
 
     let diff = first_assignment.clone() + -second_assignment.clone();
-    let diff: GroupedExpression<T::FieldType, V> = diff.try_to_expression(
-        &|n| GroupedExpression::from_number(*n),
-        &|v| GroupedExpression::from_unknown_variable(v.clone()),
-        &|e| e.try_to_number(),
-    )?;
 
-    let diff = diff.try_to_known()?.try_to_number()?;
     // `diff = A - B` is a compile-time known number, i.e. `A = B + diff`.
     // Now if `rc + diff` is disjoint from `rc`, it means
     // that if the value that `A` evaluates to falls into the allowed range for `X`,
@@ -325,9 +316,9 @@ fn combine_to_conditional_assignment<
 }
 
 /// Turns an effect into a range constraint on a variable.
-fn effect_to_range_constraint<T: RuntimeConstant, V: Ord + Clone + Eq>(
+fn effect_to_range_constraint<T: FieldElement, V: Ord + Clone + Eq>(
     effect: &Effect<T, V>,
-) -> Option<(V, RangeConstraint<T::FieldType>)> {
+) -> Option<(V, RangeConstraint<T>)> {
     match effect {
         Effect::RangeConstraint(var, rc) => Some((var.clone(), rc.clone())),
         Effect::Assignment(var, value) => Some((var.clone(), value.range_constraint())),
@@ -338,7 +329,7 @@ fn effect_to_range_constraint<T: RuntimeConstant, V: Ord + Clone + Eq>(
 /// Tries to combine range constraint results from two alternative branches.
 /// In some cases, if both branches produce a complete range constraint for the same variable,
 /// and those range constraints can be combined without loss, the result is complete as well.
-fn combine_range_constraints<T: RuntimeConstant, V: Ord + Clone + Eq + Hash + Display>(
+fn combine_range_constraints<T: FieldElement, V: Ord + Clone + Eq + Hash + Display>(
     left: &ProcessResult<T, V>,
     right: &ProcessResult<T, V>,
 ) -> ProcessResult<T, V> {
@@ -386,10 +377,10 @@ fn combine_range_constraints<T: RuntimeConstant, V: Ord + Clone + Eq + Hash + Di
     }
 }
 
-fn assignment_if_satisfies_range_constraints<T: RuntimeConstant, V: Ord + Clone + Eq>(
+fn assignment_if_satisfies_range_constraints<T: FieldElement, V: Ord + Clone + Eq>(
     var: V,
     value: T,
-    range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
+    range_constraints: &impl RangeConstraintProvider<T, V>,
 ) -> Result<Effect<T, V>, Error> {
     let rc = range_constraints.get(&var);
     if rc.is_disjoint(&value.range_constraint()) {
@@ -413,15 +404,15 @@ mod tests {
 
     use pretty_assertions::assert_eq;
 
-    type Qse = GroupedExpression<SymbolicExpression<GoldilocksField, &'static str>, &'static str>;
+    type Qse = GroupedExpression<GoldilocksField, &'static str>;
 
     #[test]
     fn test_mul() {
         let x = Qse::from_unknown_variable("X");
         let y = Qse::from_unknown_variable("Y");
-        let a = Qse::from_known_symbol("A", RangeConstraint::default());
+        let a = Qse::from_number(GoldilocksField::from(3));
         let t = x * y + a;
-        assert_eq!(t.to_string(), "(X) * (Y) + A");
+        assert_eq!(t.to_string(), "(X) * (Y) + 3");
     }
 
     #[test]
