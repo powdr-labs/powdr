@@ -148,7 +148,7 @@ impl<T: FieldElement> RangeConstraint<T> {
 
         let (min, max) = if self.range_width().to_arbitrary_integer()
             + other.range_width().to_arbitrary_integer()
-            <= T::modulus().to_arbitrary_integer()
+            < T::modulus().to_arbitrary_integer()
         {
             (self.min + other.min, self.max + other.max)
         } else {
@@ -313,7 +313,7 @@ fn mask_from_bits<T: FieldElement>(bits: usize) -> T::Integer {
 fn range_multiple<T: FieldElement>(min: T, max: T, factor: T) -> (T, T) {
     // This is correct by iterated addition.
     if range_width(min, max).to_arbitrary_integer() * factor.to_arbitrary_integer()
-        <= T::modulus().to_arbitrary_integer()
+        < T::modulus().to_arbitrary_integer()
     {
         (min * factor, max * factor)
     } else {
