@@ -2,11 +2,11 @@ Instructions:
   SRA rd_ptr = 68, rs1_ptr = 40, rs2 = 3, rs2_as = 1
 
 APC advantage:
-  - Main columns: 53 -> 40 (1.32x reduction)
-  - Bus interactions: 24 -> 22 (1.09x reduction)
-  - Constraints: 76 -> 38 (2.00x reduction)
+  - Main columns: 53 -> 32 (1.66x reduction)
+  - Bus interactions: 24 -> 21 (1.14x reduction)
+  - Constraints: 76 -> 22 (3.45x reduction)
 
-Symbolic machine using 40 unique main columns:
+Symbolic machine using 32 unique main columns:
   from_state__timestamp_0
   reads_aux__0__base__prev_timestamp_0
   reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0
@@ -30,15 +30,7 @@ Symbolic machine using 40 unique main columns:
   c__1_0
   c__2_0
   c__3_0
-  bit_multiplier_right_0
   b_sign_0
-  bit_shift_marker__0_0
-  bit_shift_marker__1_0
-  bit_shift_marker__2_0
-  bit_shift_marker__3_0
-  bit_shift_marker__4_0
-  bit_shift_marker__5_0
-  bit_shift_marker__6_0
   limb_shift_marker__0_0
   limb_shift_marker__1_0
   limb_shift_marker__2_0
@@ -61,11 +53,11 @@ mult=is_valid * -1, args=[1, 68, writes_aux__prev_data__0_0, writes_aux__prev_da
 mult=is_valid * 1, args=[1, 68, a__0_0, a__1_0, a__2_0, a__3_0, from_state__timestamp_0 + 2]
 
 // Bus 3 (VARIABLE_RANGE_CHECKER):
-mult=is_valid * 1, args=[bit_shift_carry__0_0, 7 - (7 * bit_shift_marker__0_0 + 6 * bit_shift_marker__1_0 + 5 * bit_shift_marker__2_0 + 4 * bit_shift_marker__3_0 + 3 * bit_shift_marker__4_0 + 2 * bit_shift_marker__5_0 + bit_shift_marker__6_0)]
-mult=is_valid * 1, args=[bit_shift_carry__1_0, 7 - (7 * bit_shift_marker__0_0 + 6 * bit_shift_marker__1_0 + 5 * bit_shift_marker__2_0 + 4 * bit_shift_marker__3_0 + 3 * bit_shift_marker__4_0 + 2 * bit_shift_marker__5_0 + bit_shift_marker__6_0)]
-mult=is_valid * 1, args=[bit_shift_carry__2_0, 7 - (7 * bit_shift_marker__0_0 + 6 * bit_shift_marker__1_0 + 5 * bit_shift_marker__2_0 + 4 * bit_shift_marker__3_0 + 3 * bit_shift_marker__4_0 + 2 * bit_shift_marker__5_0 + bit_shift_marker__6_0)]
-mult=is_valid * 1, args=[bit_shift_carry__3_0, 7 - (7 * bit_shift_marker__0_0 + 6 * bit_shift_marker__1_0 + 5 * bit_shift_marker__2_0 + 4 * bit_shift_marker__3_0 + 3 * bit_shift_marker__4_0 + 2 * bit_shift_marker__5_0 + bit_shift_marker__6_0)]
-mult=is_valid * 1, args=[503316481 * limb_shift_marker__0_0 - (62914560 * c__0_0 + 440401920 * bit_shift_marker__0_0 + 377487360 * bit_shift_marker__1_0 + 314572800 * bit_shift_marker__2_0 + 251658240 * bit_shift_marker__3_0 + 188743680 * bit_shift_marker__4_0 + 125829120 * bit_shift_marker__5_0 + 62914560 * bit_shift_marker__6_0 + 1006632960 * limb_shift_marker__1_0 + 503316480 * limb_shift_marker__2_0 + 62914561), 3]
+mult=is_valid * 1, args=[503316481 * limb_shift_marker__0_0 - (62914560 * c__0_0 + 1006632960 * limb_shift_marker__1_0 + 503316480 * limb_shift_marker__2_0 + 62914561), 3]
+mult=is_valid * 1, args=[bit_shift_carry__0_0, 7]
+mult=is_valid * 1, args=[bit_shift_carry__1_0, 7]
+mult=is_valid * 1, args=[bit_shift_carry__2_0, 7]
+mult=is_valid * 1, args=[bit_shift_carry__3_0, 7]
 mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0, 17]
 mult=is_valid * 1, args=[15360 * reads_aux__0__base__prev_timestamp_0 + 15360 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0 + 15360 - 15360 * from_state__timestamp_0, 12]
 mult=is_valid * 1, args=[reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0, 17]
@@ -75,43 +67,26 @@ mult=is_valid * 1, args=[15360 * writes_aux__base__prev_timestamp_0 + 15360 * wr
 
 // Bus 6 (BITWISE_LOOKUP):
 mult=is_valid * 1, args=[b__3_0, 128, b__3_0 + 128 - 256 * b_sign_0, 1]
-mult=is_valid * 1, args=[a__0_0, a__1_0, 0, 0]
-mult=is_valid * 1, args=[a__2_0, a__3_0, 0, 0]
+mult=is_valid * 1, args=[a__0_0, 0, 0, 0]
 
 // Algebraic constraints:
-bit_shift_marker__0_0 * (bit_shift_marker__0_0 - 1) = 0
-bit_shift_marker__0_0 * (bit_multiplier_right_0 - 1) = 0
-bit_shift_marker__1_0 * (bit_shift_marker__1_0 - 1) = 0
-bit_shift_marker__1_0 * (bit_multiplier_right_0 - 2) = 0
-bit_shift_marker__2_0 * (bit_shift_marker__2_0 - 1) = 0
-bit_shift_marker__2_0 * (bit_multiplier_right_0 - 4) = 0
-bit_shift_marker__3_0 * (bit_shift_marker__3_0 - 1) = 0
-bit_shift_marker__3_0 * (bit_multiplier_right_0 - 8) = 0
-bit_shift_marker__4_0 * (bit_shift_marker__4_0 - 1) = 0
-bit_shift_marker__4_0 * (bit_multiplier_right_0 - 16) = 0
-bit_shift_marker__5_0 * (bit_shift_marker__5_0 - 1) = 0
-bit_shift_marker__5_0 * (bit_multiplier_right_0 - 32) = 0
-bit_shift_marker__6_0 * (bit_shift_marker__6_0 - 1) = 0
-bit_shift_marker__6_0 * (bit_multiplier_right_0 - 64) = 0
-(1 - (bit_shift_marker__0_0 + bit_shift_marker__1_0 + bit_shift_marker__2_0 + bit_shift_marker__3_0 + bit_shift_marker__4_0 + bit_shift_marker__5_0 + bit_shift_marker__6_0)) * (bit_shift_marker__0_0 + bit_shift_marker__1_0 + bit_shift_marker__2_0 + bit_shift_marker__3_0 + bit_shift_marker__4_0 + bit_shift_marker__5_0 + bit_shift_marker__6_0) = 0
-(1 * is_valid - (bit_shift_marker__0_0 + bit_shift_marker__1_0 + bit_shift_marker__2_0 + bit_shift_marker__3_0 + bit_shift_marker__4_0 + bit_shift_marker__5_0 + bit_shift_marker__6_0)) * (bit_multiplier_right_0 - 128) = 0
 limb_shift_marker__0_0 * (limb_shift_marker__0_0 - 1) = 0
-limb_shift_marker__0_0 * (a__0_0 * bit_multiplier_right_0 + bit_shift_carry__0_0 - (b__0_0 + 256 * bit_shift_carry__1_0)) = 0
-limb_shift_marker__0_0 * (a__1_0 * bit_multiplier_right_0 + bit_shift_carry__1_0 - (b__1_0 + 256 * bit_shift_carry__2_0)) = 0
-limb_shift_marker__0_0 * (a__2_0 * bit_multiplier_right_0 + bit_shift_carry__2_0 - (b__2_0 + 256 * bit_shift_carry__3_0)) = 0
-limb_shift_marker__0_0 * (a__3_0 * bit_multiplier_right_0 + bit_shift_carry__3_0 - (256 * b_sign_0 * (bit_multiplier_right_0 - 1) + b__3_0)) = 0
+limb_shift_marker__0_0 * (128 * a__0_0 + bit_shift_carry__0_0 - (b__0_0 + 256 * bit_shift_carry__1_0)) = 0
+limb_shift_marker__0_0 * (128 * a__1_0 + bit_shift_carry__1_0 - (b__1_0 + 256 * bit_shift_carry__2_0)) = 0
+limb_shift_marker__0_0 * (128 * a__2_0 + bit_shift_carry__2_0 - (b__2_0 + 256 * bit_shift_carry__3_0)) = 0
+limb_shift_marker__0_0 * (128 * a__3_0 + bit_shift_carry__3_0 - (b__3_0 + 32512 * b_sign_0)) = 0
 limb_shift_marker__1_0 * (limb_shift_marker__1_0 - 1) = 0
-limb_shift_marker__1_0 * (a__0_0 * bit_multiplier_right_0 + bit_shift_carry__1_0 - (b__1_0 + 256 * bit_shift_carry__2_0)) = 0
-limb_shift_marker__1_0 * (a__1_0 * bit_multiplier_right_0 + bit_shift_carry__2_0 - (b__2_0 + 256 * bit_shift_carry__3_0)) = 0
-limb_shift_marker__1_0 * (a__2_0 * bit_multiplier_right_0 + bit_shift_carry__3_0 - (256 * b_sign_0 * (bit_multiplier_right_0 - 1) + b__3_0)) = 0
+limb_shift_marker__1_0 * (128 * a__0_0 + bit_shift_carry__1_0 - (b__1_0 + 256 * bit_shift_carry__2_0)) = 0
+limb_shift_marker__1_0 * (128 * a__1_0 + bit_shift_carry__2_0 - (b__2_0 + 256 * bit_shift_carry__3_0)) = 0
+limb_shift_marker__1_0 * (128 * a__2_0 + bit_shift_carry__3_0 - (b__3_0 + 32512 * b_sign_0)) = 0
 limb_shift_marker__1_0 * (a__3_0 - 255 * b_sign_0) = 0
 limb_shift_marker__2_0 * (limb_shift_marker__2_0 - 1) = 0
-limb_shift_marker__2_0 * (a__0_0 * bit_multiplier_right_0 + bit_shift_carry__2_0 - (b__2_0 + 256 * bit_shift_carry__3_0)) = 0
-limb_shift_marker__2_0 * (a__1_0 * bit_multiplier_right_0 + bit_shift_carry__3_0 - (256 * b_sign_0 * (bit_multiplier_right_0 - 1) + b__3_0)) = 0
+limb_shift_marker__2_0 * (128 * a__0_0 + bit_shift_carry__2_0 - (b__2_0 + 256 * bit_shift_carry__3_0)) = 0
+limb_shift_marker__2_0 * (128 * a__1_0 + bit_shift_carry__3_0 - (b__3_0 + 32512 * b_sign_0)) = 0
 limb_shift_marker__2_0 * (a__2_0 - 255 * b_sign_0) = 0
 limb_shift_marker__2_0 * (a__3_0 - 255 * b_sign_0) = 0
 (1 - (limb_shift_marker__0_0 + limb_shift_marker__1_0 + limb_shift_marker__2_0)) * (limb_shift_marker__0_0 + limb_shift_marker__1_0 + limb_shift_marker__2_0) = 0
-(1 - (limb_shift_marker__0_0 + limb_shift_marker__1_0 + limb_shift_marker__2_0)) * (a__0_0 * bit_multiplier_right_0 + bit_shift_carry__3_0 - (256 * b_sign_0 * (bit_multiplier_right_0 - 1) + b__3_0)) = 0
+(1 - (limb_shift_marker__0_0 + limb_shift_marker__1_0 + limb_shift_marker__2_0)) * (128 * a__0_0 + bit_shift_carry__3_0 - (b__3_0 + 32512 * b_sign_0)) = 0
 (1 - (limb_shift_marker__0_0 + limb_shift_marker__1_0 + limb_shift_marker__2_0)) * (a__1_0 - 255 * b_sign_0) = 0
 (1 - (limb_shift_marker__0_0 + limb_shift_marker__1_0 + limb_shift_marker__2_0)) * (a__2_0 - 255 * b_sign_0) = 0
 (1 - (limb_shift_marker__0_0 + limb_shift_marker__1_0 + limb_shift_marker__2_0)) * (a__3_0 - 255 * b_sign_0) = 0
