@@ -6,6 +6,11 @@ license.workspace = true
 homepage.workspace = true
 repository.workspace = true
 
+[features]
+default = []
+tco = ["openvm-sdk/tco"]
+metrics = ["openvm-sdk/metrics"]
+
 [dependencies]
 openvm.workspace = true
 openvm-build.workspace = true

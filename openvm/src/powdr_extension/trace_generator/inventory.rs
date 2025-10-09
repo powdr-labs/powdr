@@ -6,16 +6,10 @@ use openvm_circuit::{
         AirInventory, AirInventoryError, ChipInventoryError, MatrixRecordArena, VmBuilder,
         VmChipComplex, VmCircuitConfig, VmCircuitExtension, VmProverExtension,
     },
-    system::{
-        phantom::{PhantomChip, PhantomExecutor},
-        SystemChipInventory, SystemCpuBuilder, SystemExecutor,
-    },
+    system::{phantom::PhantomExecutor, SystemChipInventory, SystemCpuBuilder, SystemExecutor},
 };
 use openvm_circuit_derive::{AnyEnum, Executor, MeteredExecutor, PreflightExecutor};
-use openvm_circuit_primitives::{
-    bitwise_op_lookup::SharedBitwiseOperationLookupChip, range_tuple::SharedRangeTupleCheckerChip,
-    var_range::SharedVariableRangeCheckerChip, Chip,
-};
+use openvm_circuit_primitives::Chip;
 use openvm_ecc_circuit::EccCpuProverExt;
 use openvm_keccak256_circuit::Keccak256CpuProverExt;
 use openvm_native_circuit::NativeCpuProverExt;
@@ -55,14 +49,6 @@ pub enum DummyExecutor<F: PrimeField32> {
 #[derive(Chip, PreflightExecutor, Executor, MeteredExecutor, From, AnyEnum)]
 pub enum SharedExecutor<F: PrimeField32> {
     Phantom(PhantomExecutor<F>),
-}
-
-#[derive(From, Chip, AnyEnum)]
-pub enum SharedPeriphery<F: PrimeField32> {
-    BitwiseLookup8(SharedBitwiseOperationLookupChip<8>),
-    RangeChecker(SharedRangeTupleCheckerChip<2>),
-    VariableRangeChecker(SharedVariableRangeCheckerChip),
-    Phantom(PhantomChip<F>),
 }
 
 mod from_implementations {

@@ -1,3 +1,6 @@
+#![cfg_attr(feature = "tco", allow(incomplete_features))]
+#![cfg_attr(feature = "tco", feature(explicit_tail_calls))]
+
 use derive_more::From;
 use eyre::Result;
 use itertools::Itertools;
