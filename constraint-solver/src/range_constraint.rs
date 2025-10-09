@@ -11,6 +11,10 @@ use powdr_number::{log2_exact, FieldElement, LargeInt};
 /// Currently, we can represent interval ranges (both "wrapping" and "non-wrapping" ones)
 /// and bit masks. The actual constraint is the conjunction of the two.
 ///
+/// The idea behing wrapping intervals is that we want to represent both signed and
+/// unsigned numbers. Furthermore, by supporting wrapping intervals we do not lose
+/// any information when adding or substracting constants.
+///
 /// Note that the same constraint can have multiple representations.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct RangeConstraint<T: FieldElement> {
