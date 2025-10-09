@@ -1,7 +1,6 @@
 use std::{
     collections::HashMap,
     io::BufWriter,
-    path::Path,
     sync::{Arc, Mutex},
 };
 
@@ -32,7 +31,7 @@ pub trait Candidate<A: Adapter>: Sized + KnapsackItem {
     ) -> Self;
 
     /// Return a JSON export of the APC candidate.
-    fn to_json_export(&self, apc_candidates_dir_path: &Path) -> ApcCandidateJsonExport;
+    fn to_json_export(&self) -> ApcCandidateJsonExport;
 
     /// Convert the candidate into an autoprecompile and its statistics.
     fn into_apc_and_stats(self) -> AdapterApcWithStats<A>;
@@ -54,8 +53,6 @@ pub struct ApcCandidateJsonExport {
     pub cost_before: f64,
     // cost after optimization, used for effectiveness calculation and ranking of candidates
     pub cost_after: f64,
-    // path to the apc candidate file
-    pub apc_candidate_file: String,
 }
 
 pub struct CellPgo<A, C> {
@@ -109,10 +106,10 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
         // calculate number of trace cells saved per row for each basic block to sort them by descending cost
         let max_cache = (config.autoprecompiles + config.skip_autoprecompiles) as usize;
         tracing::info!(
-        "Generating autoprecompiles for all ({}) basic blocks in parallel and caching costliest {}",
-        blocks.len(),
-        max_cache,
-    );
+            "Generating autoprecompiles for all ({}) basic blocks in parallel and caching costliest {}",
+            blocks.len(),
+            max_cache,
+        );
 
         let apc_candidates = Arc::new(Mutex::new(vec![]));
 
@@ -132,8 +129,8 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
                     vm_config.clone(),
                     config.degree_bound.identities,
                 );
-                if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
-                    let json_export = candidate.to_json_export(apc_candidates_dir_path);
+                if let Some(_) = &config.apc_candidates_dir_path {
+                    let json_export = candidate.to_json_export();
                     apc_candidates.lock().unwrap().push(json_export);
                 }
                 Some(candidate)

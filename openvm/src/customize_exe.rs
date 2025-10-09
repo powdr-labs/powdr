@@ -3,7 +3,6 @@ use std::collections::{BTreeSet, HashMap};
 use std::fmt::Display;
 use std::hash::Hash;
 use std::iter::once;
-use std::path::Path;
 use std::sync::Arc;
 
 use crate::bus_map::OpenVmBusType;
@@ -230,7 +229,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         .into_iter()
         .map(ApcWithStats::into_parts)
         .enumerate()
-        .map(|(i, (apc, apc_stats))| {
+        .map(|(i, (apc, apc_stats, _json_export))| {
             let opcode = POWDR_OPCODE + i;
             let start_index = ((apc.start_pc() - pc_base as u64) / pc_step as u64)
                 .try_into()
@@ -368,7 +367,7 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
     }
 
     /// Return a JSON export of the APC candidate.
-    fn to_json_export(&self, apc_candidates_dir_path: &Path) -> ApcCandidateJsonExport {
+    fn to_json_export(&self) -> ApcCandidateJsonExport {
         ApcCandidateJsonExport {
             execution_frequency: self.execution_frequency,
             original_block: BasicBlock {
@@ -386,15 +385,14 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
             value: self.value(),
             cost_before: self.widths.before.total() as f64,
             cost_after: self.widths.after.total() as f64,
-            apc_candidate_file: apc_candidates_dir_path
-                .join(format!("apc_{}.cbor", self.apc.start_pc()))
-                .display()
-                .to_string(),
         }
     }
 
     fn into_apc_and_stats(self) -> AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a>> {
-        ApcWithStats::from(self.apc).with_stats(OvmApcStats::new(self.widths))
+        let json_export = self.to_json_export();
+        ApcWithStats::from(self.apc)
+            .with_stats(OvmApcStats::new(self.widths))
+            .with_json_export(json_export)
     }
 }
 

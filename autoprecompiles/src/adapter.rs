@@ -5,6 +5,7 @@ use std::{fmt::Display, sync::Arc};
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
+use crate::pgo::ApcCandidateJsonExport;
 use crate::{
     blocks::{BasicBlock, Instruction, Program},
     constraint_optimizer::IsBusStateful,
@@ -17,6 +18,7 @@ use crate::{
 pub struct ApcWithStats<F, I, S> {
     apc: Arc<Apc<F, I>>,
     stats: Option<S>,
+    json_export: Option<ApcCandidateJsonExport>,
 }
 impl<F, I, S> ApcWithStats<F, I, S> {
     pub fn with_stats(mut self, stats: S) -> Self {
@@ -24,14 +26,23 @@ impl<F, I, S> ApcWithStats<F, I, S> {
         self
     }
 
-    pub fn into_parts(self) -> (Arc<Apc<F, I>>, Option<S>) {
-        (self.apc, self.stats)
+    pub fn with_json_export(mut self, json_export: ApcCandidateJsonExport) -> Self {
+        self.json_export = Some(json_export);
+        self
+    }
+
+    pub fn into_parts(self) -> (Arc<Apc<F, I>>, Option<S>, Option<ApcCandidateJsonExport>) {
+        (self.apc, self.stats, self.json_export)
     }
 }
 
 impl<F, I, S> From<Arc<Apc<F, I>>> for ApcWithStats<F, I, S> {
     fn from(apc: Arc<Apc<F, I>>) -> Self {
-        Self { apc, stats: None }
+        Self {
+            apc,
+            stats: None,
+            json_export: None,
+        }
     }
 }
 
