@@ -5,12 +5,12 @@ version = "0.0.0"
 edition = "2021"
 
 [dependencies]
-openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "e9695be" }
-openvm-algebra-guest = { git = "https://github.com/powdr-labs/openvm.git", rev = "e9695be" }
-openvm-algebra-moduli-macros = { git = "https://github.com/powdr-labs/openvm.git", rev = "e9695be" }
-openvm-ecc-guest = { git = "https://github.com/powdr-labs/openvm.git", rev = "e9695be" }
-openvm-ecc-sw-macros = { git = "https://github.com/powdr-labs/openvm.git", rev = "e9695be" }
-openvm-k256 = { git = "https://github.com/powdr-labs/openvm.git", rev = "e9695be", package = "k256" }
+openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "623f24f" }
+openvm-algebra-guest = { git = "https://github.com/powdr-labs/openvm.git", rev = "623f24f" }
+openvm-algebra-moduli-macros = { git = "https://github.com/powdr-labs/openvm.git", rev = "623f24f" }
+openvm-ecc-guest = { git = "https://github.com/powdr-labs/openvm.git", rev = "623f24f" }
+openvm-ecc-sw-macros = { git = "https://github.com/powdr-labs/openvm.git", rev = "623f24f" }
+openvm-k256 = { git = "https://github.com/powdr-labs/openvm.git", rev = "623f24f", package = "k256" }
 
 elliptic-curve = { version = "0.13.8" }
 ecdsa = { version = "0.16.9" }
