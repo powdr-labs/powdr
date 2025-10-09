@@ -1,8 +1,4 @@
-use std::{
-    collections::HashMap,
-    io::BufWriter,
-    sync::{Arc, Mutex},
-};
+use std::{collections::HashMap, sync::Arc};
 
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
@@ -37,7 +33,7 @@ pub trait Candidate<A: Adapter>: Sized + KnapsackItem {
     fn into_apc_and_stats(self) -> AdapterApcWithStats<A>;
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct ApcCandidateJsonExport {
     // execution_frequency
     pub execution_frequency: usize,
@@ -111,8 +107,6 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
             max_cache,
         );
 
-        let apc_candidates = Arc::new(Mutex::new(vec![]));
-
         // map–reduce over blocks into a single BinaryHeap<ApcCandidate<P>> capped at max_cache
         let res = parallel_fractional_knapsack(
             blocks.into_par_iter().filter_map(|block| {
@@ -129,10 +123,6 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
                     vm_config.clone(),
                     config.degree_bound.identities,
                 );
-                if let Some(_) = &config.apc_candidates_dir_path {
-                    let json_export = candidate.to_json_export();
-                    apc_candidates.lock().unwrap().push(json_export);
-                }
                 Some(candidate)
             }),
             max_cache,
@@ -141,16 +131,6 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
         .skip(config.skip_autoprecompiles as usize)
         .map(C::into_apc_and_stats)
         .collect();
-
-        // Write the APC candidates JSON to disk if the directory is specified.
-        if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
-            let apc_candidates_json_file = apc_candidates.lock().unwrap();
-            let json_path = apc_candidates_dir_path.join("apc_candidates.json");
-            let file = std::fs::File::create(&json_path)
-                .expect("Failed to create file for APC candidates JSON");
-            serde_json::to_writer(BufWriter::new(file), &*apc_candidates_json_file)
-                .expect("Failed to write APC candidates JSON to file");
-        }
 
         res
     }

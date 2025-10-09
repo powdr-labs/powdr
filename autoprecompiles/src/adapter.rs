@@ -1,5 +1,6 @@
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
 use std::hash::Hash;
+use std::io::BufWriter;
 use std::{fmt::Display, sync::Arc};
 
 use powdr_number::FieldElement;
@@ -59,7 +60,22 @@ pub trait PgoAdapter {
             .into_iter()
             .filter(|block| !Self::Adapter::should_skip_block(block))
             .collect();
-        self.create_apcs_with_pgo(filtered_blocks, config, vm_config)
+        let apcs = self.create_apcs_with_pgo(filtered_blocks, config, vm_config);
+
+        // Write the APC candidates JSON to disk if the directory is specified.
+        if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
+            let apc_candidates_json_file = apcs
+                .iter()
+                .filter_map(|apc_with_stats| apc_with_stats.json_export.clone())
+                .collect::<Vec<_>>();
+            let json_path = apc_candidates_dir_path.join("apc_candidates.json");
+            let file = std::fs::File::create(&json_path)
+                .expect("Failed to create file for APC candidates JSON");
+            serde_json::to_writer(BufWriter::new(file), &*apc_candidates_json_file)
+                .expect("Failed to write APC candidates JSON to file");
+        }
+
+        apcs
     }
 
     fn create_apcs_with_pgo(
