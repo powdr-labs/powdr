@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use powdr_number::{ExpressionConvertible, FieldElement};
+use powdr_number::FieldElement;
 
 use crate::constraint_system::{
     AlgebraicConstraint, BusInteraction, BusInteractionHandler, ConstraintRef,
@@ -8,7 +8,6 @@ use crate::effect::Effect;
 use crate::grouped_expression::{GroupedExpression, RangeConstraintProvider};
 use crate::indexed_constraint_system::IndexedConstraintSystemWithQueue;
 use crate::range_constraint::RangeConstraint;
-use crate::runtime_constant::{RuntimeConstant, Substitutable};
 use crate::solver::boolean_extractor::BooleanExtractor;
 use crate::solver::constraint_splitter::try_split_constraint;
 use crate::solver::linearizer::Linearizer;
@@ -32,14 +31,14 @@ use std::iter::once;
 /// It also replaces bus interaction fields by new variables.
 ///
 /// For both of these transforming components, the original constraints are also kept unmodified.
-pub struct BaseSolver<T: RuntimeConstant, V, BusInterHandler, VarDisp> {
+pub struct BaseSolver<T: FieldElement, V, BusInterHandler, VarDisp> {
     /// The constraint system to solve. During the solving process, any expressions will
     /// be simplified as much as possible.
     constraint_system: IndexedConstraintSystemWithQueue<T, V>,
     /// The handler for bus interactions.
     bus_interaction_handler: BusInterHandler,
     /// The currently known range constraints of the variables.
-    range_constraints: RangeConstraints<T::FieldType, V>,
+    range_constraints: RangeConstraints<T, V>,
     /// The concrete variable assignments or replacements that were derived for variables
     /// that do not occur in the constraints any more.
     /// This is cleared with every call to `solve()`.
@@ -90,7 +89,7 @@ impl<V> VarDispenser<Variable<V>> for VarDispenserImpl {
     }
 }
 
-impl<T: RuntimeConstant, V, B, VD: Default> BaseSolver<T, V, B, VD> {
+impl<T: FieldElement, V, B, VD: Default> BaseSolver<T, V, B, VD> {
     pub fn new(bus_interaction_handler: B) -> Self {
         BaseSolver {
             constraint_system: Default::default(),
@@ -105,17 +104,17 @@ impl<T: RuntimeConstant, V, B, VD: Default> BaseSolver<T, V, B, VD> {
     }
 }
 
-impl<T, V, BusInter, VD> RangeConstraintProvider<T::FieldType, V> for BaseSolver<T, V, BusInter, VD>
+impl<T, V, BusInter, VD> RangeConstraintProvider<T, V> for BaseSolver<T, V, BusInter, VD>
 where
     V: Clone + Hash + Eq,
-    T: RuntimeConstant,
+    T: FieldElement,
 {
-    fn get(&self, var: &V) -> RangeConstraint<T::FieldType> {
+    fn get(&self, var: &V) -> RangeConstraint<T> {
         self.range_constraints.get(var)
     }
 }
 
-impl<T: RuntimeConstant + Display, V: Clone + Ord + Hash + Display, BusInter, VD> Display
+impl<T: FieldElement + Display, V: Clone + Ord + Hash + Display, BusInter, VD> Display
     for BaseSolver<T, V, BusInter, VD>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -123,11 +122,11 @@ impl<T: RuntimeConstant + Display, V: Clone + Ord + Hash + Display, BusInter, VD
     }
 }
 
-impl<T, V, BusInter: BusInteractionHandler<T::FieldType>, VD: VarDispenser<V>> Solver<T, V>
+impl<T, V, BusInter: BusInteractionHandler<T>, VD: VarDispenser<V>> Solver<T, V>
     for BaseSolver<T, V, BusInter, VD>
 where
     V: Ord + Clone + Hash + Eq + Display,
-    T: RuntimeConstant + Display + Hash + ExpressionConvertible<T::FieldType, V> + Substitutable<V>,
+    T: FieldElement,
 {
     fn solve(&mut self) -> Result<Vec<VariableAssignment<T, V>>, Error> {
         self.equivalent_expressions_cache.clear();
@@ -186,7 +185,7 @@ where
             .add_bus_interactions(bus_interactions);
     }
 
-    fn add_range_constraint(&mut self, variable: &V, constraint: RangeConstraint<T::FieldType>) {
+    fn add_range_constraint(&mut self, variable: &V, constraint: RangeConstraint<T>) {
         self.equivalent_expressions_cache.clear();
         self.apply_range_constraint_update(variable, constraint);
     }
@@ -224,7 +223,7 @@ where
     fn range_constraint_for_expression(
         &self,
         expr: &GroupedExpression<T, V>,
-    ) -> RangeConstraint<T::FieldType> {
+    ) -> RangeConstraint<T> {
         self.linearizer
             .internalized_versions_of_expression(expr)
             .fold(RangeConstraint::default(), |acc, expr| {
@@ -238,7 +237,7 @@ where
         b: &GroupedExpression<T, V>,
     ) -> bool {
         if let (Some(a), Some(b)) = (a.try_to_known(), b.try_to_known()) {
-            return (a.clone() - b.clone()).is_known_nonzero();
+            return a != b;
         }
         let equivalent_to_a = self.equivalent_expressions(a);
         let equivalent_to_b = self.equivalent_expressions(b);
@@ -247,16 +246,15 @@ where
             .cartesian_product(&equivalent_to_b)
             .any(|(a_eq, b_eq)| {
                 possible_concrete_values(&(a_eq - b_eq), self, 20)
-                    .is_some_and(|mut values| values.all(|value| value.is_known_nonzero()))
+                    .is_some_and(|mut values| values.all(|value| !value.is_zero()))
             })
     }
 }
 
-impl<T, V, BusInter: BusInteractionHandler<T::FieldType>, VD: VarDispenser<V>>
-    BaseSolver<T, V, BusInter, VD>
+impl<T, V, BusInter: BusInteractionHandler<T>, VD: VarDispenser<V>> BaseSolver<T, V, BusInter, VD>
 where
     V: Ord + Clone + Hash + Eq + Display,
-    T: RuntimeConstant + Display + Hash + ExpressionConvertible<T::FieldType, V> + Substitutable<V>,
+    T: FieldElement,
 {
     /// Tries to performs boolean extraction on `constr`, i.e. tries to turn quadratic constraints into affine constraints
     /// by introducing new boolean variables.
@@ -317,10 +315,10 @@ where
     }
 }
 
-impl<T, V, BusInter: BusInteractionHandler<T::FieldType>, VD> BaseSolver<T, V, BusInter, VD>
+impl<T, V, BusInter: BusInteractionHandler<T>, VD> BaseSolver<T, V, BusInter, VD>
 where
     V: Ord + Clone + Hash + Eq + Display,
-    T: RuntimeConstant + Display + Hash + ExpressionConvertible<T::FieldType, V> + Substitutable<V>,
+    T: FieldElement,
     VD: VarDispenser<V>,
 {
     fn loop_until_no_progress(&mut self) -> Result<(), Error> {
@@ -501,7 +499,7 @@ where
     fn apply_range_constraint_update(
         &mut self,
         variable: &V,
-        range_constraint: RangeConstraint<T::FieldType>,
+        range_constraint: RangeConstraint<T>,
     ) -> bool {
         if self.range_constraints.update(variable, &range_constraint) {
             let new_rc = self.range_constraints.get(variable);
@@ -587,7 +585,7 @@ where
 /// for the variable.
 ///
 /// Note: Does not find all cases of equivalence.
-fn try_to_simple_equivalence<T: RuntimeConstant, V: Clone + Ord + Eq>(
+fn try_to_simple_equivalence<T: FieldElement, V: Clone + Ord + Eq>(
     constr: AlgebraicConstraint<&GroupedExpression<T, V>>,
 ) -> Option<(V, GroupedExpression<T, V>)> {
     if !constr.expression.is_affine() {
@@ -599,7 +597,7 @@ fn try_to_simple_equivalence<T: RuntimeConstant, V: Clone + Ord + Eq>(
     let linear = constr.expression.linear_components();
     let [(v1, c1), (v2, c2)] = linear.collect_vec().try_into().ok()?;
     // c1 = 1, c2 = -1 or vice-versa
-    if (c1.is_one() || c2.is_one()) && (c1.clone() + c2.clone()).is_zero() {
+    if (c1.is_one() || c2.is_one()) && (*c1 + *c2).is_zero() {
         Some((
             v2.clone(),
             GroupedExpression::from_unknown_variable(v1.clone()),
