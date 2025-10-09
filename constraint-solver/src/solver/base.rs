@@ -15,7 +15,7 @@ use crate::solver::var_transformation::Variable;
 use crate::solver::{exhaustive_search, quadratic_equivalences, Error, Solver, VariableAssignment};
 use crate::utils::possible_concrete_values;
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::Hash;
 use std::iter::once;
