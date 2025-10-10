@@ -90,6 +90,9 @@ openvm-stark-backend = { git = "https://github.com/powdr-labs/stark-backend.git"
   "parallel",
   "jemalloc",
 ] }
+openvm-cuda-backend = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "e27de8b", default-features = false }
+openvm-cuda-builder = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "e27de8b", default-features = false }
+openvm-cuda-common = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "e27de8b", default-features = false }
 
 [profile.pr-tests]
 inherits = "dev"
@@ -115,6 +118,9 @@ iter_over_hash_type = "deny"
 # [patch."https://github.com/powdr-labs/stark-backend.git"]
 # openvm-stark-sdk = { path = "../stark-backend/crates/stark-sdk", default-features = false }
 # openvm-stark-backend = { path = "../stark-backend/crates/stark-backend", default-features = false }
+# openvm-cuda-backend = { path = "../stark-backend/crates/cuda-backend", default-features = false }
+# openvm-cuda-builder = { path = "../stark-backend/crates/cuda-builder", default-features = false }
+# openvm-cuda-common = { path = "../stark-backend/crates/cuda-common", default-features = false }
 
 # [patch."https://github.com/powdr-labs/openvm.git"]
 # openvm = { path = "../openvm/crates/toolchain/openvm" }

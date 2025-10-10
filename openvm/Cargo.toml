@@ -37,6 +37,7 @@ openvm-native-recursion.workspace = true
 
 openvm-stark-sdk.workspace = true
 openvm-stark-backend.workspace = true
+openvm-cuda-backend.workspace = true
 
 powdr-expression.workspace = true
 powdr-number.workspace = true
@@ -67,6 +68,8 @@ toml = "0.8.14"
 
 rustc-demangle = "0.1.25"
 
+cfg-if = "1.0.0"
+
 [dev-dependencies]
 flate2 = "1.1.2"
 test-log = "0.2.12"
@@ -85,7 +88,9 @@ criterion = { version = "0.4", features = ["html_reports"] }
 bench = false # See https://github.com/bheisler/criterion.rs/issues/458
 
 [features]
-cuda = ["openvm-sdk/cuda"]
+default = ["cuda"]
+
+cuda = ["openvm-sdk/cuda", "openvm-circuit-primitives/cuda"]
 
 [[bench]]
 name = "optimizer_benchmark"
