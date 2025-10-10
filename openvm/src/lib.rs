@@ -84,7 +84,7 @@ cfg_if::cfg_if! {
     if #[cfg(feature = "cuda")] {
         pub use openvm_cuda_backend::engine::GpuBabyBearPoseidon2Engine;
         use openvm_native_circuit::NativeGpuBuilder;
-        pub use GenericSdk<GpuBabyBearPoseidon2Engine, SpecializedConfigGpuBuilder, NativeGpuBuilder> as PowdrSdk;
+        pub type PowdrSdk = GenericSdk<GpuBabyBearPoseidon2Engine, SpecializedConfigGpuBuilder, NativeGpuBuilder>;
 
         pub use openvm_circuit::system::cuda::{extensions::SystemGpuBuilder, SystemChipInventoryGPU};
         pub use openvm_sdk::config::SdkVmGpuBuilder;
@@ -95,7 +95,7 @@ cfg_if::cfg_if! {
     } else {
         use openvm_stark_backend::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
         use openvm_native_circuit::NativeCpuBuilder;
-        pub use GenericSdk<BabyBearPoseidon2Engine, SpecializedConfigCpuBuilder, NativeCpuBuilder> as PowdrSdk;
+        pub type PowdrSdk = GenericSdk<BabyBearPoseidon2Engine, SpecializedConfigCpuBuilder, NativeCpuBuilder>;
     }
 }
 
