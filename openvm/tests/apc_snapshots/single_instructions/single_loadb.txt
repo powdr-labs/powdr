@@ -2,18 +2,29 @@ Instructions:
   LOADB rd_rs2_ptr = 8, rs1_ptr = 2, imm = 3, mem_as = 2, needs_write = 1, imm_sign = 0
 
 APC advantage:
-  - Main columns: 36 -> 14 (2.57x reduction)
-  - Bus interactions: 18 -> 14 (1.29x reduction)
-  - Constraints: 18 -> 1 (18.00x reduction)
+  - Main columns: 36 -> 25 (1.44x reduction)
+  - Bus interactions: 18 -> 17 (1.06x reduction)
+  - Constraints: 18 -> 6 (3.00x reduction)
 
-Symbolic machine using 14 unique main columns:
+Symbolic machine using 25 unique main columns:
   from_state__timestamp_0
+  rs1_data__0_0
+  rs1_data__1_0
+  rs1_data__2_0
+  rs1_data__3_0
   rs1_aux_cols__base__prev_timestamp_0
   rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0_0
   read_data_aux__base__prev_timestamp_0
   read_data_aux__base__timestamp_lt_aux__lower_decomp__0_0
+  mem_ptr_limbs__0_0
+  mem_ptr_limbs__1_0
   write_base_aux__prev_timestamp_0
   write_base_aux__timestamp_lt_aux__lower_decomp__0_0
+  opcode_loadb_flag0_0
+  shift_most_sig_bit_0
+  data_most_sig_bit_0
+  shifted_read_data__0_0
+  shifted_read_data__1_0
   shifted_read_data__2_0
   shifted_read_data__3_0
   prev_data__0_0
@@ -27,20 +38,28 @@ mult=is_valid * -1, args=[0, from_state__timestamp_0]
 mult=is_valid * 1, args=[4, from_state__timestamp_0 + 3]
 
 // Bus 1 (MEMORY):
-mult=is_valid * -1, args=[1, 2, 253, 255, 255, 255, rs1_aux_cols__base__prev_timestamp_0]
-mult=is_valid * 1, args=[1, 2, 253, 255, 255, 255, from_state__timestamp_0]
-mult=is_valid * -1, args=[2, 0, 0, 0, shifted_read_data__2_0, shifted_read_data__3_0, read_data_aux__base__prev_timestamp_0]
-mult=is_valid * 1, args=[2, 0, 0, 0, shifted_read_data__2_0, shifted_read_data__3_0, from_state__timestamp_0 + 1]
+mult=is_valid * -1, args=[1, 2, rs1_data__0_0, rs1_data__1_0, rs1_data__2_0, rs1_data__3_0, rs1_aux_cols__base__prev_timestamp_0]
+mult=is_valid * 1, args=[1, 2, rs1_data__0_0, rs1_data__1_0, rs1_data__2_0, rs1_data__3_0, from_state__timestamp_0]
+mult=is_valid * -1, args=[2, mem_ptr_limbs__0_0 + 65536 * mem_ptr_limbs__1_0 + opcode_loadb_flag0_0 - (2 * shift_most_sig_bit_0 + 1), shift_most_sig_bit_0 * shifted_read_data__2_0 + (1 - shift_most_sig_bit_0) * shifted_read_data__0_0, shift_most_sig_bit_0 * shifted_read_data__3_0 + (1 - shift_most_sig_bit_0) * shifted_read_data__1_0, shift_most_sig_bit_0 * shifted_read_data__0_0 + (1 - shift_most_sig_bit_0) * shifted_read_data__2_0, shift_most_sig_bit_0 * shifted_read_data__1_0 + (1 - shift_most_sig_bit_0) * shifted_read_data__3_0, read_data_aux__base__prev_timestamp_0]
+mult=is_valid * 1, args=[2, mem_ptr_limbs__0_0 + 65536 * mem_ptr_limbs__1_0 + opcode_loadb_flag0_0 - (2 * shift_most_sig_bit_0 + 1), shift_most_sig_bit_0 * shifted_read_data__2_0 + (1 - shift_most_sig_bit_0) * shifted_read_data__0_0, shift_most_sig_bit_0 * shifted_read_data__3_0 + (1 - shift_most_sig_bit_0) * shifted_read_data__1_0, shift_most_sig_bit_0 * shifted_read_data__0_0 + (1 - shift_most_sig_bit_0) * shifted_read_data__2_0, shift_most_sig_bit_0 * shifted_read_data__1_0 + (1 - shift_most_sig_bit_0) * shifted_read_data__3_0, from_state__timestamp_0 + 1]
 mult=is_valid * -1, args=[1, 8, prev_data__0_0, prev_data__1_0, prev_data__2_0, prev_data__3_0, write_base_aux__prev_timestamp_0]
-mult=is_valid * 1, args=[1, 8, 0, 0, 0, 0, from_state__timestamp_0 + 2]
+mult=is_valid * 1, args=[1, 8, opcode_loadb_flag0_0 * shifted_read_data__0_0 + (1 - opcode_loadb_flag0_0) * shifted_read_data__1_0, 255 * data_most_sig_bit_0, 255 * data_most_sig_bit_0, 255 * data_most_sig_bit_0, from_state__timestamp_0 + 2]
 
 // Bus 3 (VARIABLE_RANGE_CHECKER):
+mult=is_valid * 1, args=[shifted_read_data__0_0 * opcode_loadb_flag0_0 + shifted_read_data__1_0 * (1 - opcode_loadb_flag0_0) - 128 * data_most_sig_bit_0, 7]
 mult=is_valid * 1, args=[rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0_0, 17]
 mult=is_valid * 1, args=[15360 * rs1_aux_cols__base__prev_timestamp_0 + 15360 * rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0_0 + 15360 - 15360 * from_state__timestamp_0, 12]
+mult=is_valid * 1, args=[1006632960 * shift_most_sig_bit_0 + 503316480 - (503316480 * mem_ptr_limbs__0_0 + 503316480 * opcode_loadb_flag0_0), 14]
+mult=is_valid * 1, args=[mem_ptr_limbs__1_0, 13]
 mult=is_valid * 1, args=[read_data_aux__base__timestamp_lt_aux__lower_decomp__0_0, 17]
 mult=is_valid * 1, args=[15360 * read_data_aux__base__prev_timestamp_0 + 15360 * read_data_aux__base__timestamp_lt_aux__lower_decomp__0_0 - 15360 * from_state__timestamp_0, 12]
 mult=is_valid * 1, args=[write_base_aux__timestamp_lt_aux__lower_decomp__0_0, 17]
 mult=is_valid * 1, args=[15360 * write_base_aux__prev_timestamp_0 + 15360 * write_base_aux__timestamp_lt_aux__lower_decomp__0_0 - (15360 * from_state__timestamp_0 + 15360), 12]
 
 // Algebraic constraints:
+opcode_loadb_flag0_0 * (opcode_loadb_flag0_0 - 1) = 0
+data_most_sig_bit_0 * (data_most_sig_bit_0 - 1) = 0
+shift_most_sig_bit_0 * (shift_most_sig_bit_0 - 1) = 0
+(30720 * mem_ptr_limbs__0_0 - (30720 * rs1_data__0_0 + 7864320 * rs1_data__1_0 + 92160 * is_valid)) * (30720 * mem_ptr_limbs__0_0 - (30720 * rs1_data__0_0 + 7864320 * rs1_data__1_0 + 92161)) = 0
+(943718400 * rs1_data__0_0 + 30720 * mem_ptr_limbs__1_0 + 817889279 * is_valid - (120 * rs1_data__1_0 + 30720 * rs1_data__2_0 + 7864320 * rs1_data__3_0 + 943718400 * mem_ptr_limbs__0_0)) * (943718400 * rs1_data__0_0 + 30720 * mem_ptr_limbs__1_0 + 817889278 - (120 * rs1_data__1_0 + 30720 * rs1_data__2_0 + 7864320 * rs1_data__3_0 + 943718400 * mem_ptr_limbs__0_0)) = 0
 is_valid * (is_valid - 1) = 0

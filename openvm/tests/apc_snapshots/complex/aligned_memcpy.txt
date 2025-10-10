@@ -13,11 +13,11 @@ Instructions:
   BLTU 44 48 -44 1 1
 
 APC advantage:
-  - Main columns: 468 -> 122 (3.84x reduction)
-  - Bus interactions: 209 -> 86 (2.43x reduction)
-  - Constraints: 291 -> 29 (10.03x reduction)
+  - Main columns: 468 -> 132 (3.55x reduction)
+  - Bus interactions: 209 -> 89 (2.35x reduction)
+  - Constraints: 291 -> 45 (6.47x reduction)
 
-Symbolic machine using 122 unique main columns:
+Symbolic machine using 132 unique main columns:
   from_state__timestamp_0
   rs1_data__0_0
   rs1_data__1_0
@@ -139,11 +139,21 @@ Symbolic machine using 122 unique main columns:
   a__3_10
   reads_aux__0__base__prev_timestamp_11
   reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_11
+  a__0_11
+  a__1_11
+  a__2_11
+  a__3_11
+  cmp_result_11
+  diff_marker__0_11
+  diff_marker__1_11
+  diff_marker__2_11
+  diff_marker__3_11
+  diff_val_11
   is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):
 mult=is_valid * -1, args=[0, from_state__timestamp_0]
-mult=is_valid * 1, args=[48, from_state__timestamp_0 + 35]
+mult=is_valid * 1, args=[48 - 48 * cmp_result_11, from_state__timestamp_0 + 35]
 
 // Bus 1 (MEMORY):
 mult=is_valid * -1, args=[1, 56, rs1_data__0_0, rs1_data__1_0, rs1_data__2_0, rs1_data__3_0, rs1_aux_cols__base__prev_timestamp_0]
@@ -175,8 +185,8 @@ mult=is_valid * 1, args=[2, mem_ptr_limbs__0_7 + 65536 * mem_ptr_limbs__1_7, rea
 mult=is_valid * 1, args=[1, 56, a__0_8, a__1_8, a__2_8, a__3_8, from_state__timestamp_0 + 26]
 mult=is_valid * -1, args=[1, 48, writes_aux__prev_data__0_9, writes_aux__prev_data__1_9, writes_aux__prev_data__2_9, writes_aux__prev_data__3_9, reads_aux__0__base__prev_timestamp_9]
 mult=is_valid * 1, args=[1, 52, a__0_10, a__1_10, a__2_10, a__3_10, from_state__timestamp_0 + 32]
-mult=is_valid * -1, args=[1, 44, a__0_9, a__1_9, a__2_9, a__3_9, reads_aux__0__base__prev_timestamp_11]
-mult=is_valid * 1, args=[1, 44, a__0_9, a__1_9, a__2_9, a__3_9, from_state__timestamp_0 + 33]
+mult=is_valid * -1, args=[1, 44, a__0_11, a__1_11, a__2_11, a__3_11, reads_aux__0__base__prev_timestamp_11]
+mult=is_valid * 1, args=[1, 44, a__0_11, a__1_11, a__2_11, a__3_11, from_state__timestamp_0 + 33]
 mult=is_valid * 1, args=[1, 48, a__0_9, a__1_9, a__2_9, a__3_9, from_state__timestamp_0 + 34]
 
 // Bus 3 (VARIABLE_RANGE_CHECKER):
@@ -230,8 +240,11 @@ mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_1
 mult=is_valid * 1, args=[15360 * reads_aux__0__base__prev_timestamp_11 + 15360 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_11 - (15360 * from_state__timestamp_0 + 491520), 12]
 
 // Bus 6 (BITWISE_LOOKUP):
+mult=diff_marker__0_11 + diff_marker__1_11 + diff_marker__2_11 + diff_marker__3_11, args=[diff_val_11 - 1, 0, 0, 0]
 mult=is_valid * 1, args=[a__0_8, a__1_8, 0, 0]
 mult=is_valid * 1, args=[a__2_8, a__3_8, 0, 0]
+mult=is_valid * 1, args=[a__0_9, a__1_9, 0, 0]
+mult=is_valid * 1, args=[a__2_9, a__3_9, 0, 0]
 mult=is_valid * 1, args=[a__0_10, a__1_10, 0, 0]
 mult=is_valid * 1, args=[a__2_10, a__3_10, 0, 0]
 
@@ -264,4 +277,20 @@ mult=is_valid * 1, args=[a__2_10, a__3_10, 0, 0]
 (30720 * a__0_10 + 7864320 * a__1_10 - (30720 * rs1_data__0_4 + 7864320 * rs1_data__1_4 + 491520 * is_valid)) * (30720 * a__0_10 + 7864320 * a__1_10 - (30720 * rs1_data__0_4 + 7864320 * rs1_data__1_4 + 491521)) = 0
 (120 * a__0_10 + 30720 * a__1_10 + 7864320 * a__2_10 - (120 * rs1_data__0_4 + 30720 * rs1_data__1_4 + 7864320 * rs1_data__2_4 + 1920 * is_valid)) * (120 * a__0_10 + 30720 * a__1_10 + 7864320 * a__2_10 - (120 * rs1_data__0_4 + 30720 * rs1_data__1_4 + 7864320 * rs1_data__2_4 + 1921)) = 0
 (943718400 * rs1_data__0_4 + 120 * a__1_10 + 30720 * a__2_10 + 7864320 * a__3_10 + 1006632953 * is_valid - (120 * rs1_data__1_4 + 30720 * rs1_data__2_4 + 7864320 * rs1_data__3_4 + 943718400 * a__0_10)) * (943718400 * rs1_data__0_4 + 120 * a__1_10 + 30720 * a__2_10 + 7864320 * a__3_10 + 1006632952 - (120 * rs1_data__1_4 + 30720 * rs1_data__2_4 + 7864320 * rs1_data__3_4 + 943718400 * a__0_10)) = 0
+cmp_result_11 * (cmp_result_11 - 1) = 0
+diff_marker__3_11 * (diff_marker__3_11 - 1) = 0
+(1 - diff_marker__3_11) * ((a__3_9 - a__3_11) * (2 * cmp_result_11 - 1)) = 0
+diff_marker__3_11 * ((a__3_11 - a__3_9) * (2 * cmp_result_11 - 1) + diff_val_11) = 0
+diff_marker__2_11 * (diff_marker__2_11 - 1) = 0
+(1 - (diff_marker__2_11 + diff_marker__3_11)) * ((a__2_9 - a__2_11) * (2 * cmp_result_11 - 1)) = 0
+diff_marker__2_11 * ((a__2_11 - a__2_9) * (2 * cmp_result_11 - 1) + diff_val_11) = 0
+diff_marker__1_11 * (diff_marker__1_11 - 1) = 0
+(1 - (diff_marker__1_11 + diff_marker__2_11 + diff_marker__3_11)) * ((a__1_9 - a__1_11) * (2 * cmp_result_11 - 1)) = 0
+diff_marker__1_11 * ((a__1_11 - a__1_9) * (2 * cmp_result_11 - 1) + diff_val_11) = 0
+diff_marker__0_11 * (diff_marker__0_11 - 1) = 0
+(1 - (diff_marker__0_11 + diff_marker__1_11 + diff_marker__2_11 + diff_marker__3_11)) * ((a__0_9 - a__0_11) * (2 * cmp_result_11 - 1)) = 0
+diff_marker__0_11 * ((a__0_11 - a__0_9) * (2 * cmp_result_11 - 1) + diff_val_11) = 0
+(diff_marker__0_11 + diff_marker__1_11 + diff_marker__2_11 + diff_marker__3_11) * (diff_marker__0_11 + diff_marker__1_11 + diff_marker__2_11 + diff_marker__3_11 - 1) = 0
+(1 - (diff_marker__0_11 + diff_marker__1_11 + diff_marker__2_11 + diff_marker__3_11)) * cmp_result_11 = 0
+(1 - is_valid) * (diff_marker__0_11 + diff_marker__1_11 + diff_marker__2_11 + diff_marker__3_11) = 0
 is_valid * (is_valid - 1) = 0
