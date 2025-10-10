@@ -84,7 +84,7 @@ cfg_if::cfg_if! {
     if #[cfg(feature = "cuda")] {
         pub use openvm_cuda_backend::engine::GpuBabyBearPoseidon2Engine;
         use openvm_native_circuit::NativeGpuBuilder;
-        pub use GenericSdk<GpuBabyBearPoseidon2Engine, SpecializedConfigGpuBuilder, NativeGpuBuilder> as Sdk;
+        pub use GenericSdk<GpuBabyBearPoseidon2Engine, SpecializedConfigGpuBuilder, NativeGpuBuilder> as PowdrSdk;
 
         pub use openvm_circuit::system::cuda::{extensions::SystemGpuBuilder, SystemChipInventoryGPU};
         pub use openvm_sdk::config::SdkVmGpuBuilder;
@@ -95,7 +95,7 @@ cfg_if::cfg_if! {
     } else {
         use openvm_stark_backend::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
         use openvm_native_circuit::NativeCpuBuilder;
-        pub use GenericSdk<BabyBearPoseidon2Engine, SpecializedConfigCpuBuilder, NativeCpuBuilder> as Sdk;
+        pub use GenericSdk<BabyBearPoseidon2Engine, SpecializedConfigCpuBuilder, NativeCpuBuilder> as PowdrSdk;
     }
 }
 
@@ -832,7 +832,7 @@ pub fn execute(program: CompiledProgram, inputs: StdIn) -> Result<(), Box<dyn st
     let app_config = AppConfig::new(app_fri_params, vm_config.clone());
 
     // prepare for execute
-    let sdk = Sdk::new(app_config).unwrap();
+    let sdk = PowdrSdk::new(app_config).unwrap();
 
     let output = sdk.execute(exe.clone(), inputs.clone()).unwrap();
 
@@ -870,7 +870,7 @@ pub fn prove(
     let app_config = AppConfig::new(app_fri_params, vm_config.clone());
 
     // Create the SDK
-    let sdk = Sdk::new(app_config).unwrap();
+    let sdk = PowdrSdk::new(app_config).unwrap();
 
     let mut app_prover = sdk.app_prover(exe.clone())?;
 
@@ -973,7 +973,7 @@ pub fn execution_profile_from_guest(
     let app_config = AppConfig::new(app_fri_params, vm_config.clone());
 
     // prepare for execute
-    let sdk = Sdk::new(app_config).unwrap();
+    let sdk = PowdrSdk::new(app_config).unwrap();
 
     execution_profile::<BabyBearOpenVmApcAdapter>(&program, || {
         sdk.execute(exe.clone(), inputs.clone()).unwrap();
