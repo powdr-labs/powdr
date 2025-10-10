@@ -1,5 +1,5 @@
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::hash::Hash;
 use std::io::BufWriter;
 use std::{fmt::Display, sync::Arc};
@@ -52,7 +52,6 @@ impl<F, I, S> From<Arc<Apc<F, I>>> for ApcWithStats<F, I, S> {
 struct JsonExport {
     apcs: Vec<ApcCandidateJsonExport>,
     labels: BTreeMap<u32, Vec<String>>,
-    other_blocks: Vec<BasicBlock<String>>,
 }
 
 pub trait PgoAdapter {
@@ -78,23 +77,7 @@ pub trait PgoAdapter {
                 .iter()
                 .filter_map(|apc_with_stats| apc_with_stats.json_export.clone())
                 .collect::<Vec<_>>();
-            let compiled_blocks = apcs
-                .iter()
-                .map(|apc| apc.original_block.start_pc)
-                .collect::<BTreeSet<_>>();
-            let other_blocks = blocks
-                .into_iter()
-                .filter(|block| !compiled_blocks.contains(&block.start_pc))
-                .map(|block| BasicBlock {
-                    start_pc: block.start_pc,
-                    statements: block.statements.iter().map(ToString::to_string).collect(),
-                })
-                .collect::<Vec<_>>();
-            let json_export = JsonExport {
-                apcs,
-                labels,
-                other_blocks,
-            };
+            let json_export = JsonExport { apcs, labels };
             let json_path = apc_candidates_dir_path.join("apc_candidates.json");
             let file = std::fs::File::create(&json_path)
                 .expect("Failed to create file for APC candidates JSON");
