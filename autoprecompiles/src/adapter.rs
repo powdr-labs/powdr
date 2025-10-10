@@ -87,11 +87,7 @@ pub trait PgoAdapter {
                 .filter(|block| !compiled_blocks.contains(&block.start_pc))
                 .map(|block| BasicBlock {
                     start_pc: block.start_pc,
-                    statements: block
-                        .statements
-                        .iter()
-                        .map(|instr| format!("{}", instr))
-                        .collect(),
+                    statements: block.statements.iter().map(ToString::to_string).collect(),
                 })
                 .collect::<Vec<_>>();
             let json_export = JsonExport {
