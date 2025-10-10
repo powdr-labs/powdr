@@ -46,9 +46,8 @@ pub fn find_unique_assignment_for_set<T: FieldElement, V: Clone + Hash + Ord + E
     // but even if there are multiple, they might agree on a subset of their assignments.
     Ok(assignments.fold(first_assignments, |mut acc, assignments| {
         for (var, rc) in &mut acc {
-            if let Some(other_rc) = assignments.get(var) {
-                *rc = rc.disjunction(other_rc)
-            }
+            let other_rc = assignments.get(var).cloned().unwrap_or_default();
+            *rc = rc.disjunction(&other_rc)
         }
         // acc.retain(|variable, value| assignments.get(variable) == Some(value));
         // if acc.is_empty() {
