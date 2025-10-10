@@ -761,7 +761,7 @@ pub fn prove(
     let app_config = AppConfig::new(app_fri_params, vm_config.clone());
 
     // Create the SDK
-    let sdk: GenericSdk<_, SpecializedConfigCpuBuilder, _> = GenericSdk::new(app_config).unwrap();
+    let sdk = Sdk::new(app_config).unwrap();
 
     let mut app_prover = sdk.app_prover(exe.clone())?;
 
@@ -864,8 +864,7 @@ pub fn execution_profile_from_guest(
     let app_config = AppConfig::new(app_fri_params, vm_config.clone());
 
     // prepare for execute
-    let sdk: GenericSdk<BabyBearPoseidon2Engine, ExtendedVmConfigCpuBuilder, NativeCpuBuilder> =
-        GenericSdk::new(app_config).unwrap();
+    let sdk = Sdk::new(app_config).unwrap();
 
     execution_profile::<BabyBearOpenVmApcAdapter>(&program, || {
         sdk.execute(exe.clone(), inputs.clone()).unwrap();
