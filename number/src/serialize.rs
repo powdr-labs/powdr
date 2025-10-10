@@ -11,15 +11,13 @@ use serde_with::{DeserializeAs, SerializeAs};
 
 use crate::FieldElement;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
 pub enum CsvRenderMode {
     SignedBase10,
     UnsignedBase10,
     #[default]
     Hex,
 }
-
 
 const ROW_NAME: &str = "Row";
 
