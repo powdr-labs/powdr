@@ -29,34 +29,54 @@ cfg_if::cfg_if! {
         use crate::GpuBackend;
         use crate::DenseRecordArena;
         use crate::BabyBearSC;
+        use crate::GpuBabyBearPoseidon2Engine;
     }
+}
+
+pub trait PeripheryType {
+    type Bitwise8;
+    type RangeChecker;
+    type TupleRangeChecker2;
+}
+
+pub struct CpuPeripheryType;
+impl PeripheryType for CpuPeripheryType {
+    type Bitwise8 = Option<SharedBitwiseOperationLookupChip<8>>;
+    type RangeChecker = SharedVariableRangeCheckerChip;
+    type TupleRangeChecker2 = Option<SharedRangeTupleCheckerChip<2>>;
+}
+
+#[cfg(feature = "cuda")]
+pub struct GpuPeripheryType;
+#[cfg(feature = "cuda")]
+impl PeripheryType for GpuPeripheryType {
+    type Bitwise8 = Option<std::sync::Arc<BitwiseOperationLookupChipGPU<8>>>;
+    type RangeChecker = std::sync::Arc<VariableRangeCheckerChipGPU>;
+    type TupleRangeChecker2 = Option<std::sync::Arc<RangeTupleCheckerChipGPU<2>>>;
 }
 
 /// The shared chips which can be used by the PowdrChip.
 #[derive(Clone)]
-pub struct PowdrPeripheryInstances<C> {
+pub struct PowdrPeripheryInstances<T: PeripheryType> {
     /// The real chips used for the main execution.
-    pub real: C,
+    pub real: SharedPeripheryChips<T>,
     /// The dummy chips used for all APCs. They share the range checker but create new instances of the bitwise lookup chip and the tuple range checker.
-    pub dummy: C,
+    pub dummy: SharedPeripheryChips<T>,
 }
+
+pub type SharedPeripheryChipsCpu = SharedPeripheryChips<CpuPeripheryType>;
+#[cfg(feature = "cuda")]
+pub type SharedPeripheryChipsGpu = SharedPeripheryChips<GpuPeripheryType>;
 
 #[derive(Clone)]
-pub struct SharedPeripheryChipsCpu {
-    pub bitwise_lookup_8: Option<SharedBitwiseOperationLookupChip<8>>,
-    pub range_checker: SharedVariableRangeCheckerChip,
-    pub tuple_range_checker: Option<SharedRangeTupleCheckerChip<2>>,
+pub struct SharedPeripheryChips<T: PeripheryType> {
+    pub bitwise_lookup_8: T::Bitwise8,
+    pub range_checker: T::RangeChecker,
+    pub tuple_range_checker: T::TupleRangeChecker2,
 }
 
 #[cfg(feature = "cuda")]
-pub struct SharedPeripheryChipsGpu {
-    pub bitwise_lookup_8: Option<Arc<BitwiseOperationLookupChipGPU<8>>>,
-    pub range_checker: Arc<VariableRangeCheckerChipGPU>,
-    pub tuple_range_checker: Option<Arc<RangeTupleCheckerChipGPU<2>>>,
-}
-
-#[cfg(feature = "cuda")]
-impl PowdrPeripheryInstances<SharedPeripheryChipsGpu> {
+impl PowdrPeripheryInstances<GpuPeripheryType> {
     pub(crate) fn new(
         range_checker: Arc<VariableRangeCheckerChipGPU>,
         bitwise_8: Option<Arc<BitwiseOperationLookupChipGPU<8>>>,
@@ -112,9 +132,7 @@ impl PowdrPeripheryInstances<SharedPeripheryChipsCpu> {
     }
 }
 
-// TODO: `VmExecutionExtension` is generic to CPU/GPU, so we can make SharedPeripheryChips<Arch> and save code duplication for this impl.
-#[cfg(feature = "cuda")]
-impl<F: PrimeField32> VmExecutionExtension<F> for SharedPeripheryChipsGpu {
+impl<F: PrimeField32> VmExecutionExtension<F> for SharedPeripheryChips<GpuPeripheryType> {
     type Executor = DummyExecutor<F>;
 
     fn extend_execution(
@@ -126,54 +144,7 @@ impl<F: PrimeField32> VmExecutionExtension<F> for SharedPeripheryChipsGpu {
     }
 }
 
-impl<F: PrimeField32> VmExecutionExtension<F> for SharedPeripheryChipsCpu {
-    type Executor = DummyExecutor<F>;
-
-    fn extend_execution(
-        &self,
-        _: &mut ExecutorInventoryBuilder<F, Self::Executor>,
-    ) -> Result<(), ExecutorInventoryError> {
-        // No executor to add for periphery chips
-        Ok(())
-    }
-}
-
-// TODO: `VmCircuitExtension` is generic to CPU/GPU, so we can make SharedPeripheryChips<Arch> and save code duplication for this impl.
-#[cfg(feature = "cuda")]
-impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChipsGpu {
-    fn extend_circuit(&self, inventory: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {
-        // create dummy airs
-        if let Some(bitwise_lookup_8) = &self.bitwise_lookup_8 {
-            assert!(inventory
-                .find_air::<BitwiseOperationLookupAir<8>>()
-                .next()
-                .is_none());
-            inventory.add_air(BitwiseOperationLookupAir::<8>::new(
-                bitwise_lookup_8.air.bus,
-            ));
-        }
-
-        if let Some(tuple_range_checker) = &self.tuple_range_checker {
-            assert!(inventory
-                .find_air::<RangeTupleCheckerAir<2>>()
-                .next()
-                .is_none());
-            inventory.add_air(RangeTupleCheckerAir::<2> {
-                bus: tuple_range_checker.air.bus,
-            });
-        }
-
-        // The range checker is already present in the builder because it's is used by the system, so we don't add it again.
-        assert!(inventory
-            .find_air::<VariableRangeCheckerAir>()
-            .nth(1)
-            .is_none());
-
-        Ok(())
-    }
-}
-
-impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChipsCpu {
+impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChips<GpuPeripheryType> {
     fn extend_circuit(&self, inventory: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {
         // create dummy airs
         if let Some(bitwise_lookup_8) = &self.bitwise_lookup_8 {

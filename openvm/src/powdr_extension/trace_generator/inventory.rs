@@ -27,7 +27,7 @@ use openvm_stark_backend::{config::Val, p3_field::PrimeField32, prover::cpu::Cpu
 
 use crate::{
     powdr_extension::trace_generator::periphery::{
-        SharedPeripheryChipsCpu, SharedPeripheryChipsCpuProverExt,
+        SharedPeripheryChips, SharedPeripheryChipsCpuProverExt, PeripheryType,
     },
     BabyBearSC, ExtendedVmConfigExecutor,
 };
@@ -122,9 +122,9 @@ mod from_implementations {
     );
 }
 
-pub fn create_dummy_airs(
+pub fn create_dummy_airs<T: PeripheryType>(
     config: &SdkVmConfig,
-    shared_chips: SharedPeripheryChipsCpu,
+    shared_chips: SharedPeripheryChips<T>,
 ) -> Result<AirInventory<BabyBearSC>, AirInventoryError> {
     let config = config.to_inner();
     let mut inventory = config.system.create_airs()?;
@@ -173,10 +173,10 @@ pub fn create_dummy_airs(
     Ok(inventory)
 }
 
-pub fn create_dummy_chip_complex(
+pub fn create_dummy_chip_complex<T: PeripheryType>(
     config: &SdkVmConfig,
     circuit: AirInventory<BabyBearSC>,
-    shared_chips: SharedPeripheryChipsCpu,
+    shared_chips: SharedPeripheryChips<T>,
 ) -> Result<DummyChipComplex<BabyBearSC>, ChipInventoryError> {
     let config = config.to_inner();
     let mut chip_complex = VmBuilder::<BabyBearPoseidon2Engine>::create_chip_complex(

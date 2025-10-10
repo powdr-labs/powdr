@@ -832,8 +832,7 @@ pub fn execute(program: CompiledProgram, inputs: StdIn) -> Result<(), Box<dyn st
     let app_config = AppConfig::new(app_fri_params, vm_config.clone());
 
     // prepare for execute
-    let sdk: GenericSdk<BabyBearPoseidon2Engine, SpecializedConfigCpuBuilder, NativeCpuBuilder> =
-        GenericSdk::new(app_config).unwrap();
+    let sdk = Sdk::new(app_config).unwrap();
 
     let output = sdk.execute(exe.clone(), inputs.clone()).unwrap();
 
@@ -883,7 +882,7 @@ pub fn prove(
         let vm_builder = sdk.app_vm_builder().clone();
         let vm_pk = sdk.app_pk().app_vm_pk.clone();
         let exe = sdk.convert_to_exe(exe.clone())?;
-        let mut vm_instance: VmInstance<BabyBearPoseidon2Engine, _> =
+        let mut vm_instance: VmInstance<_, _> =
             new_local_prover(vm_builder, &vm_pk, exe)?;
 
         vm_instance.reset_state(inputs.clone());
@@ -942,7 +941,7 @@ pub fn prove(
         tracing::info!("App proof verification done.");
 
         if recursion {
-            let mut agg_prover: AggStarkProver<BabyBearPoseidon2Engine, NativeCpuBuilder> =
+            let mut agg_prover: AggStarkProver<_, _> =
                 sdk.prover(exe.clone())?.agg_prover;
 
             // Note that this proof is not verified. We assume that any valid app proof
