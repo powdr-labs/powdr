@@ -15,7 +15,7 @@ use crate::solver::var_transformation::Variable;
 use crate::solver::{exhaustive_search, quadratic_equivalences, Error, Solver, VariableAssignment};
 use crate::utils::possible_concrete_values;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::Hash;
 use std::iter::once;
@@ -401,6 +401,7 @@ where
         );
 
         let mut progress = false;
+        let mut unsuccessful_variable_sets = BTreeSet::new();
 
         for mut variable_set in variable_sets {
             variable_set.retain(|v| {
@@ -409,12 +410,26 @@ where
                     .try_to_single_value()
                     .is_none()
             });
+            if unsuccessful_variable_sets.contains(&variable_set) {
+                // It can happen that we process the same variable set twice because
+                // assignments can make previously different sets equal.
+                // We have processed this variable set before, and it did not
+                // yield a unique assignment.
+                // It could be that other assignments created in the meantime
+                // make it unique but this is rare and we will catch it in the
+                // next loop iteration.
+                continue;
+            }
             match exhaustive_search::find_unique_assignment_for_set(
                 self.constraint_system.system(),
                 &variable_set,
                 &*self,
                 &self.bus_interaction_handler,
             ) {
+                Ok(assignments) if assignments.is_empty() => {
+                    // No unique assignment was found.
+                    unsuccessful_variable_sets.insert(variable_set);
+                }
                 Ok(assignments) => {
                     for (var, rc) in assignments {
                         progress |= self.apply_range_constraint_update(&var, rc);
