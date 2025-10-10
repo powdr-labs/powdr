@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     io::BufWriter,
     path::Path,
     sync::{Arc, Mutex},
@@ -77,6 +77,12 @@ impl<A, C> CellPgo<A, C> {
     }
 }
 
+#[derive(Serialize, Deserialize)]
+struct JsonExport {
+    apcs: Vec<ApcCandidateJsonExport>,
+    labels: BTreeMap<u64, Vec<String>>,
+}
+
 impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for CellPgo<A, C> {
     type Adapter = A;
 
@@ -85,6 +91,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
         mut blocks: Vec<BasicBlock<<Self::Adapter as Adapter>::Instruction>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
+        labels: BTreeMap<u64, Vec<String>>,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
         tracing::info!(
             "Generating autoprecompiles with cell PGO for {} blocks",
@@ -147,11 +154,12 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
 
         // Write the APC candidates JSON to disk if the directory is specified.
         if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
-            let apc_candidates_json_file = apc_candidates.lock().unwrap();
+            let apcs = apc_candidates.lock().unwrap().drain(..).collect();
+            let json = JsonExport { apcs, labels };
             let json_path = apc_candidates_dir_path.join("apc_candidates.json");
             let file = std::fs::File::create(&json_path)
                 .expect("Failed to create file for APC candidates JSON");
-            serde_json::to_writer(BufWriter::new(file), &*apc_candidates_json_file)
+            serde_json::to_writer(BufWriter::new(file), &json)
                 .expect("Failed to write APC candidates JSON to file");
         }
 
