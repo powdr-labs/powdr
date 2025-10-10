@@ -1,4 +1,5 @@
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
+use std::collections::BTreeMap;
 use std::hash::Hash;
 use std::{fmt::Display, sync::Arc};
 
@@ -43,12 +44,13 @@ pub trait PgoAdapter {
         blocks: Vec<BasicBlock<<Self::Adapter as Adapter>::Instruction>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
+        labels: BTreeMap<u64, Vec<String>>,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
         let filtered_blocks = blocks
             .into_iter()
             .filter(|block| !Self::Adapter::should_skip_block(block))
             .collect();
-        self.create_apcs_with_pgo(filtered_blocks, config, vm_config)
+        self.create_apcs_with_pgo(filtered_blocks, config, vm_config, labels)
     }
 
     fn create_apcs_with_pgo(
@@ -56,6 +58,7 @@ pub trait PgoAdapter {
         blocks: Vec<BasicBlock<<Self::Adapter as Adapter>::Instruction>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
+        labels: BTreeMap<u64, Vec<String>>,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>>;
 
     fn pc_execution_count(&self, _pc: u64) -> Option<u32> {
