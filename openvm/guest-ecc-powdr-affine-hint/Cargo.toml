@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "623f24f" }
-k256 = { git = "https://github.com/powdr-labs/elliptic-curves-k256", branch = "ovm-1.4", default-features = false, features = [
+k256 = { git = "https://github.com/powdr-labs/elliptic-curves-k256", rev = "bc672cb", default-features = false, features = [
   "expose-field",
   "arithmetic",
 ] }
