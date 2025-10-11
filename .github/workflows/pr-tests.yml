@@ -106,7 +106,7 @@ jobs:
         run: rustup install nightly-2025-02-14 --component rust-src
       - uses: taiki-e/install-action@nextest
       - name: Run default tests
-        run: RUST_LOG=openvm_circuit=debug RUST_BACKTRACE=1 cargo nextest run -r --no-capture --package powdr-openvm -- keccak_small_prove_mock
+        run: RUST_LOG=openvm_circuit=debug RUST_BACKTRACE=1 cargo nextest run --cargo-profile pr-tests --no-capture --package powdr-openvm
 
   udeps:
     runs-on: ubuntu-22.04
