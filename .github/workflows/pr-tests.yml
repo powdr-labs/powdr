@@ -106,14 +106,15 @@ jobs:
         run: rustup install nightly-2025-02-14 --component rust-src
       - uses: taiki-e/install-action@nextest
       - name: Run default tests
-        run: cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/7 --no-tests=warn --test-threads=1 --test keccak_small_prove_mock
+        run: cargo test -r keccak_small_prove_mock
 
   udeps:
     runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4gp
+        
 
       - name: Install nightly toolchain
         uses: actions-rs/toolchain@v1
