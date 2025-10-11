@@ -62,38 +62,38 @@ jobs:
         run: cargo build --all-targets --all --all-features --profile pr-tests --verbose
       ###############################################################################
 
-      - uses: taiki-e/install-action@nextest
-      - name: Create tests archive
-        run: cargo nextest archive --archive-file tests.tar.zst --cargo-profile pr-tests --workspace --all-features
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: tests_archive
-          path: |
-            tests.tar.zst
+      # - uses: taiki-e/install-action@nextest
+      # - name: Create tests archive
+      #   run: cargo nextest archive --archive-file tests.tar.zst --cargo-profile pr-tests --workspace --all-features
+      # - name: Upload build artifacts
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: tests_archive
+      #     path: |
+      #       tests.tar.zst
 
   test_quick:
     needs: build
     runs-on: ubuntu-24.04
-    strategy:
-      matrix:
-        test:
-          - "1"
-          - "2"
-          - "3"
-          - "4"
-          - "5"
-          - "6"
-          - "7"
+    # strategy:
+    #   matrix:
+    #     test:
+    #       - "1"
+    #       - "2"
+    #       - "3"
+    #       - "4"
+    #       - "5"
+    #       - "6"
+    #       - "7"
 
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: tests_archive
+      # - name: Download build artifacts
+      #   uses: actions/download-artifact@v4
+      #   with:
+      #     name: tests_archive
       - name: Install Rust toolchain nightly-2025-10-01 (with clippy and rustfmt)
         run: rustup toolchain install nightly-2025-10-01 --component clippy,rustfmt,rust-src
       - name: Install riscv target
@@ -106,15 +106,14 @@ jobs:
         run: rustup install nightly-2025-02-14 --component rust-src
       - uses: taiki-e/install-action@nextest
       - name: Run default tests
-        run: cargo test -r keccak_small_prove_mock
+        run: RUST_LOG=openvm_circuit=debug RUST_BACKTRACE=1 cargo nextest run -r --no-capture --package powdr-openvm -- keccak_small_prove_mock
 
   udeps:
     runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4gp
-        
+        uses: actions/checkout@v4
 
       - name: Install nightly toolchain
         uses: actions-rs/toolchain@v1

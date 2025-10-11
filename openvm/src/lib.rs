@@ -1190,8 +1190,24 @@ mod tests {
         );
     }
 
+    use std::sync::Once;
+    use tracing_subscriber::{fmt, EnvFilter};
+
+    static INIT: Once = Once::new();
+
+    pub fn init_logs() {
+        INIT.call_once(|| {
+            let _ = tracing_log::LogTracer::init(); // bridge `log` -> `tracing`
+            let _ = fmt()
+                .with_env_filter(EnvFilter::from_default_env())
+                .with_test_writer()
+                .try_init();
+        });
+    }
+
     #[test]
     fn keccak_small_prove_mock() {
+        init_logs();
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
 

@@ -428,8 +428,8 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
         Ok(())
     }
 
-    fn get_opcode_name(&self, _opcode: usize) -> String {
-        todo!()
+    fn get_opcode_name(&self, opcode: usize) -> String {
+        format!("APC_{opcode}")
     }
 }
 
