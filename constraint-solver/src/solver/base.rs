@@ -401,7 +401,6 @@ where
         );
 
         let mut progress = false;
-
         let mut unsuccessful_variable_sets = BTreeSet::new();
 
         for mut variable_set in variable_sets {
@@ -427,17 +426,14 @@ where
                 &*self,
                 &self.bus_interaction_handler,
             ) {
-                Ok(Some(assignments)) => {
-                    for (var, value) in assignments.iter() {
-                        progress |= self.apply_range_constraint_update(
-                            var,
-                            RangeConstraint::from_value(*value),
-                        );
-                    }
+                Ok(assignments) if assignments.is_empty() => {
+                    // No unique assignment was found.
+                    unsuccessful_variable_sets.insert(variable_set);
                 }
-                // Might return None if the assignment is not unique.
-                Ok(None) => {
-                    unsuccessful_variable_sets.insert(variable_set.clone());
+                Ok(assignments) => {
+                    for (var, rc) in assignments {
+                        progress |= self.apply_range_constraint_update(&var, rc);
+                    }
                 }
                 // Might error out if a contradiction was found.
                 Err(e) => return Err(e),
