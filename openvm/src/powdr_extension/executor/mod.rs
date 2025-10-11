@@ -195,20 +195,20 @@ impl Executor<BabyBear> for PowdrExecutor {
         Ok(execute_e1_impl::<BabyBear, Ctx>)
     }
 
-    #[cfg(feature = "tco")]
-    fn handler<Ctx>(
-        &self,
-        pc: u32,
-        inst: &Instruction<BabyBear>,
-        data: &mut [u8],
-    ) -> Result<openvm_circuit::arch::Handler<BabyBear, Ctx>, StaticProgramError>
-    where
-        Ctx: ExecutionCtxTrait,
-    {
-        let pre_compute: &mut PowdrPreCompute<BabyBear, Ctx> = data.borrow_mut();
-        self.pre_compute_impl::<Ctx>(pc, inst, pre_compute)?;
-        Ok(execute_e1_tco_handler::<BabyBear, Ctx>)
-    }
+    // #[cfg(feature = "tco")]
+    // fn handler<Ctx>(
+    //     &self,
+    //     pc: u32,
+    //     inst: &Instruction<BabyBear>,
+    //     data: &mut [u8],
+    // ) -> Result<openvm_circuit::arch::Handler<BabyBear, Ctx>, StaticProgramError>
+    // where
+    //     Ctx: ExecutionCtxTrait,
+    // {
+    //     let pre_compute: &mut PowdrPreCompute<BabyBear, Ctx> = data.borrow_mut();
+    //     self.pre_compute_impl::<Ctx>(pc, inst, pre_compute)?;
+    //     Ok(execute_e1_tco_handler::<BabyBear, Ctx>)
+    // }
 }
 
 impl MeteredExecutor<BabyBear> for PowdrExecutor {
@@ -236,24 +236,24 @@ impl MeteredExecutor<BabyBear> for PowdrExecutor {
         Ok(execute_e2_impl::<BabyBear, Ctx>)
     }
 
-    #[cfg(feature = "tco")]
-    fn metered_handler<Ctx>(
-        &self,
-        chip_idx: usize,
-        pc: u32,
-        inst: &Instruction<BabyBear>,
-        data: &mut [u8],
-    ) -> Result<openvm_circuit::arch::Handler<BabyBear, Ctx>, StaticProgramError>
-    where
-        Ctx: MeteredExecutionCtxTrait,
-    {
-        let pre_compute: &mut E2PreCompute<PowdrPreCompute<BabyBear, Ctx>> = data.borrow_mut();
-        pre_compute.chip_idx = chip_idx as u32;
+    // #[cfg(feature = "tco")]
+    // fn metered_handler<Ctx>(
+    //     &self,
+    //     chip_idx: usize,
+    //     pc: u32,
+    //     inst: &Instruction<BabyBear>,
+    //     data: &mut [u8],
+    // ) -> Result<openvm_circuit::arch::Handler<BabyBear, Ctx>, StaticProgramError>
+    // where
+    //     Ctx: MeteredExecutionCtxTrait,
+    // {
+    //     let pre_compute: &mut E2PreCompute<PowdrPreCompute<BabyBear, Ctx>> = data.borrow_mut();
+    //     pre_compute.chip_idx = chip_idx as u32;
 
-        self.pre_compute_impl::<Ctx>(pc, inst, &mut pre_compute.data)?;
+    //     self.pre_compute_impl::<Ctx>(pc, inst, &mut pre_compute.data)?;
 
-        Ok(execute_e2_tco_handler::<BabyBear, Ctx>)
-    }
+    //     Ok(execute_e2_tco_handler::<BabyBear, Ctx>)
+    // }
 }
 
 impl PowdrExecutor {
