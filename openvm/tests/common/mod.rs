@@ -1,5 +1,6 @@
 use openvm_sdk::config::SdkVmConfig;
 use powdr_openvm::{extraction_utils::OriginalVmConfig, ExtendedVmConfig};
+use powdr_openvm_hints_circuit::HintsExtension;
 
 pub fn original_vm_config() -> OriginalVmConfig {
     let sdk_vm_config = SdkVmConfig::builder()
@@ -9,7 +10,10 @@ pub fn original_vm_config() -> OriginalVmConfig {
         .io(Default::default())
         .build();
 
-    let ext_vm_config = ExtendedVmConfig { sdk_vm_config };
+    let ext_vm_config = ExtendedVmConfig {
+        sdk: sdk_vm_config,
+        hints: HintsExtension,
+    };
     OriginalVmConfig::new(ext_vm_config)
 }
 
