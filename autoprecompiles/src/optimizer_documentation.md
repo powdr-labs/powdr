@@ -4,7 +4,7 @@
 
 ### Field Elements
 
-Throughout this document, we will be working in a finite field of prime order `p`. Often, we use operators or concept that are only defined
+Throughout this document, we will be working in a finite field of prime order `p`. Often, we use operators or concepts that are only defined
 in the integers. In this case, we use the natural number representation
 of the field element, i.e. the unique integer `x` such that `0 <= x < p`
 where the field operations are defined as `x + y = (x + y) mod p`
