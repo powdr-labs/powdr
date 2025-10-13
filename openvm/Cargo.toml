@@ -8,8 +8,7 @@ repository.workspace = true
 
 [features]
 default = []
-# TODO: add support for TCO, currently fails with an empty arena
-# tco = ["openvm-sdk/tco"]
+tco = ["openvm-sdk/tco"]
 metrics = ["openvm-sdk/metrics"]
 
 [dependencies]

@@ -6,10 +6,10 @@ version = "0.0.0"
 edition = "2021"
 
 [dependencies]
-openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "623f24f" }
-openvm-ecc-guest = { git = "https://github.com/powdr-labs/openvm.git", rev = "623f24f", subdirectory = "extensions/ecc/guest", default-features = false }
-openvm-algebra-guest = { git = "https://github.com/powdr-labs/openvm.git", rev = "623f24f", subdirectory = "extensions/algebra/guest", default-features = false }
-openvm-k256 = { git = "https://github.com/powdr-labs/openvm.git", rev = "623f24f", subdirectory = "guest-libs/k256", package = "k256", features = [
+openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "4e380d9" }
+openvm-ecc-guest = { git = "https://github.com/powdr-labs/openvm.git", rev = "4e380d9", subdirectory = "extensions/ecc/guest", default-features = false }
+openvm-algebra-guest = { git = "https://github.com/powdr-labs/openvm.git", rev = "4e380d9", subdirectory = "extensions/algebra/guest", default-features = false }
+openvm-k256 = { git = "https://github.com/powdr-labs/openvm.git", rev = "4e380d9", subdirectory = "guest-libs/k256", package = "k256", features = [
     "ecdsa",
 ]}
 
