@@ -37,7 +37,7 @@ cfg_if::cfg_if! {
 
 /// The shared chips which can be used by the PowdrChip.
 #[derive(Clone)]
-pub struct PowdrPeripheryInstances<PPB: PowdrProverBackend> {
+pub struct PowdrPeripheryInstances<PPB: PowdrProverBackend + Clone> {
     /// The real chips used for the main execution.
     pub real: SharedPeripheryChips<PPB>,
     /// The dummy chips used for all APCs. They share the range checker but create new instances of the bitwise lookup chip and the tuple range checker.
