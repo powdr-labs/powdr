@@ -269,6 +269,8 @@ impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, PowdrExtens
                 }
             };
         }
+
+        Ok(())
     }
 }
 
