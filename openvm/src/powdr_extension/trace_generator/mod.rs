@@ -19,7 +19,7 @@ use crate::{
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     powdr_extension::{
         executor::OriginalArenas,
-        trace_generator::{inventory::{create_dummy_airs, create_dummy_chip_complex}, periphery::PeripheryType},
+        trace_generator::inventory::{create_dummy_airs, create_dummy_chip_complex},
     },
     BabyBearSC, Instr,
 };
@@ -29,7 +29,7 @@ mod inventory;
 /// The shared periphery chips used by the PowdrTraceGenerator
 mod periphery;
 
-pub use periphery::PowdrPeripheryInstances;
+pub use periphery::{PeripheryType, PowdrPeripheryInstances};
 
 pub struct PowdrTraceGenerator<PT: PeripheryType> {
     pub apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,

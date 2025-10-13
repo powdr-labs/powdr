@@ -6,7 +6,7 @@ use crate::{
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     powdr_extension::{
         executor::OriginalArenas,
-        trace_generator::{PowdrPeripheryInstances, PowdrTraceGenerator},
+        trace_generator::{PowdrPeripheryInstances, PowdrTraceGenerator, PeripheryType},
     },
     Instr,
 };

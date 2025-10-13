@@ -11,7 +11,7 @@ use crate::plonk::{Gate, Variable};
 use crate::powdr_extension::executor::OriginalArenas;
 use crate::powdr_extension::plonk::air::PlonkColumns;
 use crate::powdr_extension::plonk::copy_constraint::generate_permutation_columns;
-use crate::powdr_extension::trace_generator::{PowdrPeripheryInstances, PowdrTraceGenerator};
+use crate::powdr_extension::trace_generator::{PowdrPeripheryInstances, PowdrTraceGenerator, PeripheryType};
 use crate::powdr_extension::PowdrPrecompile;
 use crate::Instr;
 use itertools::Itertools;
@@ -29,21 +29,21 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::expression::AlgebraicReference;
 use powdr_autoprecompiles::Apc;
 
-pub struct PlonkChip {
+pub struct PlonkChip<PT: PeripheryType> {
     name: String,
     apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
     bus_map: BusMap,
-    trace_generator: PowdrTraceGenerator,
+    trace_generator: PowdrTraceGenerator<PT>,
     record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
 }
 
-impl PlonkChip {
+impl<PT: PeripheryType> PlonkChip<PT> {
     #[allow(dead_code)]
     pub(crate) fn new(
         precompile: PowdrPrecompile<BabyBear>,
         original_airs: OriginalAirs<BabyBear>,
         base_config: OriginalVmConfig,
-        periphery: PowdrPeripheryInstances,
+        periphery: PowdrPeripheryInstances<PT>,
         record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
         bus_map: BusMap,
     ) -> Self {
@@ -65,7 +65,7 @@ impl PlonkChip {
     }
 }
 
-impl<R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB> for PlonkChip {
+impl<PT: PeripheryType, R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB> for PlonkChip<PT> {
     fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
         tracing::debug!("Generating air proof input for PlonkChip {}", self.name);
 
