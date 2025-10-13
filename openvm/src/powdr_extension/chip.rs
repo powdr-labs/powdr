@@ -6,7 +6,7 @@ use crate::{
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     powdr_extension::{
         executor::OriginalArenas,
-        trace_generator::{PowdrPeripheryInstances, PowdrTraceGenerator, PeripheryType},
+        trace_generator::{PeripheryType, PowdrPeripheryInstances, PowdrTraceGenerator},
     },
     Instr,
 };
@@ -58,7 +58,9 @@ impl<PT: PeripheryType> PowdrChip<PT> {
     }
 }
 
-impl<PT: PeripheryType, R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB> for PowdrChip<PT> {
+impl<PT: PeripheryType, R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB>
+    for PowdrChip<PT>
+{
     fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
         tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
 

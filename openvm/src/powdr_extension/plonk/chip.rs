@@ -11,7 +11,9 @@ use crate::plonk::{Gate, Variable};
 use crate::powdr_extension::executor::OriginalArenas;
 use crate::powdr_extension::plonk::air::PlonkColumns;
 use crate::powdr_extension::plonk::copy_constraint::generate_permutation_columns;
-use crate::powdr_extension::trace_generator::{PowdrPeripheryInstances, PowdrTraceGenerator, PeripheryType};
+use crate::powdr_extension::trace_generator::{
+    PeripheryType, PowdrPeripheryInstances, PowdrTraceGenerator,
+};
 use crate::powdr_extension::PowdrPrecompile;
 use crate::Instr;
 use itertools::Itertools;
@@ -65,7 +67,9 @@ impl<PT: PeripheryType> PlonkChip<PT> {
     }
 }
 
-impl<PT: PeripheryType, R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB> for PlonkChip<PT> {
+impl<PT: PeripheryType, R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB>
+    for PlonkChip<PT>
+{
     fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
         tracing::debug!("Generating air proof input for PlonkChip {}", self.name);
 

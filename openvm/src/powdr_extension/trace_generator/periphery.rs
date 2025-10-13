@@ -131,7 +131,7 @@ impl PowdrPeripheryInstances<CpuBackend<BabyBearSC>> {
     }
 }
 
-impl<F: PrimeField32> VmExecutionExtension<F> for SharedPeripheryChipsGpu {
+impl<F: PrimeField32, PT: PeripheryType> VmExecutionExtension<F> for SharedPeripheryChips<PT> {
     type Executor = DummyExecutor<F>;
 
     fn extend_execution(
@@ -163,6 +163,39 @@ impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChipsGpu 
                 .is_none());
             inventory.add_air(RangeTupleCheckerAir::<2> {
                 bus: tuple_range_checker.cpu_chip.as_ref().unwrap().bus(),
+            });
+        }
+
+        // The range checker is already present in the builder because it's is used by the system, so we don't add it again.
+        assert!(inventory
+            .find_air::<VariableRangeCheckerAir>()
+            .nth(1)
+            .is_none());
+
+        Ok(())
+    }
+}
+
+impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChipsCpu {
+    fn extend_circuit(&self, inventory: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {
+        // create dummy airs
+        if let Some(bitwise_lookup_8) = &self.bitwise_lookup_8 {
+            assert!(inventory
+                .find_air::<BitwiseOperationLookupAir<8>>()
+                .next()
+                .is_none());
+            inventory.add_air(BitwiseOperationLookupAir::<8>::new(
+                bitwise_lookup_8.air.bus,
+            ));
+        }
+
+        if let Some(tuple_range_checker) = &self.tuple_range_checker {
+            assert!(inventory
+                .find_air::<RangeTupleCheckerAir<2>>()
+                .next()
+                .is_none());
+            inventory.add_air(RangeTupleCheckerAir::<2> {
+                bus: tuple_range_checker.air.bus,
             });
         }
 
