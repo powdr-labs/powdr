@@ -155,7 +155,7 @@ impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChips<Gpu
                 .next()
                 .is_none());
             inventory.add_air(BitwiseOperationLookupAir::<8>::new(
-                bitwise_lookup_8.air.bus,
+                bitwise_lookup_8.cpu_chip.as_ref().unwrap().bus(),
             ));
         }
 
@@ -165,7 +165,7 @@ impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChips<Gpu
                 .next()
                 .is_none());
             inventory.add_air(RangeTupleCheckerAir::<2> {
-                bus: tuple_range_checker.air.bus,
+                bus: tuple_range_checker.cpu_chip.as_ref().unwrap().bus(),
             });
         }
 

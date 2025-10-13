@@ -41,7 +41,7 @@ use powdr_autoprecompiles::evaluation::AirStats;
 use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::PowdrExtension;
-use powdr_openvm_hints_circuit::{HintsCpuProverExt, HintsExtension, HintsExtensionExecutor};
+use powdr_openvm_hints_circuit::{HintsCpuProverExt, HintsExtension, HintsExtensionExecutor, HintsGpuProverExt};
 use powdr_openvm_hints_transpiler::HintsTranspilerExtension;
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
@@ -750,7 +750,7 @@ impl VmBuilder<GpuBabyBearPoseidon2Engine> for ExtendedVmConfigGpuBuilder {
             circuit,
         )?;
         let inventory = &mut chip_complex.inventory;
-        VmProverExtension::<E, _, _>::extend_prover(&HintsGpuProverExt, &config.hints, inventory)?;
+        VmProverExtension::<GpuBabyBearPoseidon2Engine, _, _>::extend_prover(&HintsGpuProverExt, &config.hints, inventory)?;
         Ok(chip_complex)
     }
 }
