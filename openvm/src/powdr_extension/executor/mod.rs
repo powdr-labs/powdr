@@ -31,7 +31,8 @@ use openvm_circuit::arch::{Arena, MatrixRecordArena};
 use openvm_circuit::{
     arch::{
         ExecuteFunc, ExecutionCtxTrait, ExecutionError, Executor, ExecutorInventory,
-        MeteredExecutionCtxTrait, MeteredExecutor, StaticProgramError, VmExecState, VmStateMut,
+        MeteredExecutionCtxTrait, MeteredExecutor, StaticProgramError, VmExecState,
+        VmExecutionConfig, VmStateMut,
     },
     system::memory::online::{GuestMemory, TracingMemory},
 };
@@ -139,7 +140,7 @@ pub struct InitializedOriginalArenas {
     #[cfg(not(feature = "cuda"))]
     pub arenas: HashMap<String, MatrixRecordArena<BabyBear>>,
     #[cfg(feature = "cuda")]
-    pub arenas: HashMap<String, DenseRecordArena<BabyBear>>,
+    pub arenas: HashMap<String, DenseRecordArena>,
     pub number_of_calls: usize,
 }
 
@@ -424,7 +425,7 @@ const MAX_ALIGNMENT: usize = 32;
 impl PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExecutor {
     fn execute(
         &self,
-        state: VmStateMut<BabyBear, TracingMemory, DenseRecordArena<BabyBear>>,
+        state: VmStateMut<BabyBear, TracingMemory, DenseRecordArena>,
         _: &Instruction<BabyBear>,
     ) -> Result<(), ExecutionError> {
         // Extract the state components, since `execute` consumes the state but we need to pass it to each instruction execution
