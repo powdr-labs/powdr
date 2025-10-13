@@ -236,7 +236,7 @@ impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, PowdrExtens
             .cloned();
 
         // Create the shared chips and the dummy shared chips
-        let shared_chips_pair = PowdrPeripheryInstances::<GpuBackend>::new(
+        let shared_chips_pair = PowdrPeripheryInstances::new(
             range_checker.clone(),
             bitwise_lookup,
             tuple_range_checker,
@@ -246,7 +246,7 @@ impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, PowdrExtens
             match extension.implementation {
                 PrecompileImplementation::SingleRowChip => {
                     inventory.next_air::<PowdrAir<BabyBear>>()?;
-                    let chip = PowdrChip::<GpuBackend>::new(
+                    let chip = PowdrChip::new(
                         precompile.clone(),
                         extension.airs.clone(),
                         extension.base_config.clone(),
@@ -257,7 +257,7 @@ impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, PowdrExtens
                 }
                 PrecompileImplementation::PlonkChip => {
                     inventory.next_air::<PlonkAir<BabyBear>>()?;
-                    let chip = PlonkChip::<GpuBackend>::new(
+                    let chip = PlonkChip::new(
                         precompile.clone(),
                         extension.airs.clone(),
                         extension.base_config.clone(),
@@ -301,7 +301,7 @@ where
             .cloned();
 
         // Create the shared chips and the dummy shared chips
-        let shared_chips_pair = PowdrPeripheryInstances::<CpuBackend<BabyBearSC>>::new(
+        let shared_chips_pair = PowdrPeripheryInstances::new(
             range_checker.clone(),
             bitwise_lookup,
             tuple_range_checker,
@@ -311,7 +311,7 @@ where
             match extension.implementation {
                 PrecompileImplementation::SingleRowChip => {
                     inventory.next_air::<PowdrAir<BabyBear>>()?;
-                    let chip = PowdrChip::<CpuBackend<BabyBearSC>>::new(
+                    let chip = PowdrChip::new(
                         precompile.clone(),
                         extension.airs.clone(),
                         extension.base_config.clone(),
@@ -322,7 +322,7 @@ where
                 }
                 PrecompileImplementation::PlonkChip => {
                     inventory.next_air::<PlonkAir<BabyBear>>()?;
-                    let chip = PlonkChip::<CpuBackend<BabyBearSC>>::new(
+                    let chip = PlonkChip::new(
                         precompile.clone(),
                         extension.airs.clone(),
                         extension.base_config.clone(),
