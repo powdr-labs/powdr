@@ -20,7 +20,7 @@ use openvm_stark_backend::{
 };
 use openvm_stark_sdk::engine::StarkEngine;
 
-use crate::powdr_extension::trace_generator::inventory::DummyExecutor;
+use crate::{powdr_extension::trace_generator::inventory::DummyExecutor, PowdrProverBackend};
 use std::sync::Arc;
 
 cfg_if::cfg_if! {
@@ -35,32 +35,13 @@ cfg_if::cfg_if! {
     }
 }
 
-pub trait PeripheryType {
-    type Bitwise8;
-    type RangeChecker;
-    type TupleRangeChecker2;
-}
-
-impl PeripheryType for CpuBackend<BabyBearSC> {
-    type Bitwise8 = Option<SharedBitwiseOperationLookupChip<8>>;
-    type RangeChecker = SharedVariableRangeCheckerChip;
-    type TupleRangeChecker2 = Option<SharedRangeTupleCheckerChip<2>>;
-}
-
-#[cfg(feature = "cuda")]
-impl PeripheryType for GpuBackend {
-    type Bitwise8 = Option<std::sync::Arc<BitwiseOperationLookupChipGPU<8>>>;
-    type RangeChecker = std::sync::Arc<VariableRangeCheckerChipGPU>;
-    type TupleRangeChecker2 = Option<std::sync::Arc<RangeTupleCheckerChipGPU<2>>>;
-}
-
 /// The shared chips which can be used by the PowdrChip.
 #[derive(Clone)]
-pub struct PowdrPeripheryInstances<PT: PeripheryType> {
+pub struct PowdrPeripheryInstances<PPB: PowdrProverBackend> {
     /// The real chips used for the main execution.
-    pub real: SharedPeripheryChips<PT>,
+    pub real: SharedPeripheryChips<PPB>,
     /// The dummy chips used for all APCs. They share the range checker but create new instances of the bitwise lookup chip and the tuple range checker.
-    pub dummy: SharedPeripheryChips<PT>,
+    pub dummy: SharedPeripheryChips<PPB>,
 }
 
 pub type SharedPeripheryChipsCpu = SharedPeripheryChips<CpuBackend<BabyBearSC>>;
@@ -68,10 +49,10 @@ pub type SharedPeripheryChipsCpu = SharedPeripheryChips<CpuBackend<BabyBearSC>>;
 pub type SharedPeripheryChipsGpu = SharedPeripheryChips<GpuBackend>;
 
 #[derive(Clone)]
-pub struct SharedPeripheryChips<PT: PeripheryType> {
-    pub bitwise_lookup_8: PT::Bitwise8,
-    pub range_checker: PT::RangeChecker,
-    pub tuple_range_checker: PT::TupleRangeChecker2,
+pub struct SharedPeripheryChips<PPB: PowdrProverBackend> {
+    pub bitwise_lookup_8: PPB::Bitwise8,
+    pub range_checker: PPB::RangeChecker,
+    pub tuple_range_checker: PPB::TupleRangeChecker2,
 }
 
 #[cfg(feature = "cuda")]
@@ -131,7 +112,9 @@ impl PowdrPeripheryInstances<CpuBackend<BabyBearSC>> {
     }
 }
 
-impl<F: PrimeField32, PT: PeripheryType> VmExecutionExtension<F> for SharedPeripheryChips<PT> {
+impl<F: PrimeField32, PPB: PowdrProverBackend> VmExecutionExtension<F>
+    for SharedPeripheryChips<PPB>
+{
     type Executor = DummyExecutor<F>;
 
     fn extend_execution(

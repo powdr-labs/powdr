@@ -11,11 +11,10 @@ use crate::plonk::{Gate, Variable};
 use crate::powdr_extension::executor::OriginalArenas;
 use crate::powdr_extension::plonk::air::PlonkColumns;
 use crate::powdr_extension::plonk::copy_constraint::generate_permutation_columns;
-use crate::powdr_extension::trace_generator::{
-    PeripheryType, PowdrPeripheryInstances, PowdrTraceGenerator,
-};
+use crate::powdr_extension::trace_generator::{PowdrPeripheryInstances, PowdrTraceGenerator};
 use crate::powdr_extension::PowdrPrecompile;
 use crate::Instr;
+use crate::PowdrProverBackend;
 use itertools::Itertools;
 use openvm_circuit::utils::next_power_of_two_or_zero;
 use openvm_stark_backend::{
@@ -31,21 +30,21 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::expression::AlgebraicReference;
 use powdr_autoprecompiles::Apc;
 
-pub struct PlonkChip<PT: PeripheryType> {
+pub struct PlonkChip<PBB: PowdrProverBackend> {
     name: String,
     apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
     bus_map: BusMap,
-    trace_generator: PowdrTraceGenerator<PT>,
+    trace_generator: PowdrTraceGenerator<PBB>,
     record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
 }
 
-impl<PT: PeripheryType> PlonkChip<PT> {
+impl<PBB: PowdrProverBackend> PlonkChip<PBB> {
     #[allow(dead_code)]
     pub(crate) fn new(
         precompile: PowdrPrecompile<BabyBear>,
         original_airs: OriginalAirs<BabyBear>,
         base_config: OriginalVmConfig,
-        periphery: PowdrPeripheryInstances<PT>,
+        periphery: PowdrPeripheryInstances<PBB>,
         record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
         bus_map: BusMap,
     ) -> Self {
@@ -67,8 +66,8 @@ impl<PT: PeripheryType> PlonkChip<PT> {
     }
 }
 
-impl<PT: PeripheryType, R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB>
-    for PlonkChip<PT>
+impl<PBB: PowdrProverBackend, R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB>
+    for PlonkChip<PBB>
 {
     fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
         tracing::debug!("Generating air proof input for PlonkChip {}", self.name);

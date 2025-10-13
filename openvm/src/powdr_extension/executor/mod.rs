@@ -15,7 +15,7 @@ use crate::{
 
 use openvm_circuit::arch::{
     execution_mode::{ExecutionCtx, MeteredCtx},
-    E2PreCompute, PreflightExecutor,
+    DenseRecordArena, E2PreCompute, PreflightExecutor,
 };
 use openvm_circuit_primitives::AlignedBytesBorrow;
 use openvm_instructions::instruction::Instruction;
@@ -391,7 +391,20 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
     }
 }
 
-use openvm_circuit::arch::VmExecutionConfig;
+impl PreflightExecutor<BabyBear, DenseRecordArena<BabyBear>> for PowdrExecutor {
+    fn execute(
+        &self,
+        state: VmStateMut<BabyBear, TracingMemory, DenseRecordArena<BabyBear>>,
+        instruction: &Instruction<BabyBear>,
+    ) -> Result<(), ExecutionError> {
+        // TODO
+        self.execute(state, instruction)
+    }
+
+    fn get_opcode_name(&self, opcode: usize) -> String {
+        todo!()
+    }
+}
 
 impl PowdrExecutor {
     pub fn new(

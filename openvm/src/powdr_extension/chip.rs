@@ -6,7 +6,7 @@ use crate::{
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     powdr_extension::{
         executor::OriginalArenas,
-        trace_generator::{PeripheryType, PowdrPeripheryInstances, PowdrTraceGenerator},
+        trace_generator::{PowdrPeripheryInstances, PowdrTraceGenerator},
     },
     Instr,
 };
@@ -33,18 +33,18 @@ use powdr_autoprecompiles::{
     Apc,
 };
 
-pub struct PowdrChip<PT: PeripheryType> {
+pub struct PowdrChip<PPB: PowdrProverBackend> {
     pub name: String,
     pub record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
-    pub trace_generator: PowdrTraceGenerator<PT>,
+    pub trace_generator: PowdrTraceGenerator<PBB>,
 }
 
-impl<PT: PeripheryType> PowdrChip<PT> {
+impl<PBB: PowdrProverBackend> PowdrChip<PBB> {
     pub(crate) fn new(
         precompile: PowdrPrecompile<BabyBear>,
         original_airs: OriginalAirs<BabyBear>,
         base_config: OriginalVmConfig,
-        periphery: PowdrPeripheryInstances<PT>,
+        periphery: PowdrPeripheryInstances<PBB>,
         record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
     ) -> Self {
         let PowdrPrecompile { name, apc, .. } = precompile;
@@ -58,8 +58,8 @@ impl<PT: PeripheryType> PowdrChip<PT> {
     }
 }
 
-impl<PT: PeripheryType, R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB>
-    for PowdrChip<PT>
+impl<PBB: PowdrProverBackend, R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB>
+    for PowdrChip<PBB>
 {
     fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
         tracing::trace!("Generating air proof input for PowdrChip {}", self.name);

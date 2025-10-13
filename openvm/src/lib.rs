@@ -139,6 +139,25 @@ pub mod memory_bus_interaction;
 
 mod plonk;
 
+pub trait PowdrProverBackend {
+    type Bitwise8;
+    type RangeChecker;
+    type TupleRangeChecker2;
+}
+
+impl PowdrProverBackend for CpuBackend<BabyBearSC> {
+    type Bitwise8 = Option<SharedBitwiseOperationLookupChip<8>>;
+    type RangeChecker = SharedVariableRangeCheckerChip;
+    type TupleRangeChecker2 = Option<SharedRangeTupleCheckerChip<2>>;
+}
+
+#[cfg(feature = "cuda")]
+impl PowdrProverBackend for GpuBackend {
+    type Bitwise8 = Option<std::sync::Arc<BitwiseOperationLookupChipGPU<8>>>;
+    type RangeChecker = std::sync::Arc<VariableRangeCheckerChipGPU>;
+    type TupleRangeChecker2 = Option<std::sync::Arc<RangeTupleCheckerChipGPU<2>>>;
+}
+
 /// A custom VmConfig that wraps the SdkVmConfig, adding our custom extension.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SpecializedConfig {
