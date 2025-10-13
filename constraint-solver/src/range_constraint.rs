@@ -249,7 +249,7 @@ impl<T: FieldElement> RangeConstraint<T> {
     /// If only a single value satisfies this condition, returns this value.
     pub fn try_to_single_value(&self) -> Option<T> {
         if self.min == self.max && self.min.to_integer() & self.mask == self.min.to_integer() {
-            return Some(self.min);
+            Some(self.min)
         } else {
             None
         }
