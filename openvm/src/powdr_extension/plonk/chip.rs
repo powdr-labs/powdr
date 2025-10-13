@@ -14,7 +14,6 @@ use crate::powdr_extension::plonk::copy_constraint::generate_permutation_columns
 use crate::powdr_extension::trace_generator::{PowdrPeripheryInstances, PowdrTraceGenerator};
 use crate::powdr_extension::PowdrPrecompile;
 use crate::Instr;
-use crate::PowdrProverBackend;
 use itertools::Itertools;
 use openvm_circuit::utils::next_power_of_two_or_zero;
 use openvm_stark_backend::{
@@ -30,21 +29,21 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::expression::AlgebraicReference;
 use powdr_autoprecompiles::Apc;
 
-pub struct PlonkChip<PBB: PowdrProverBackend> {
+pub struct PlonkChip {
     name: String,
     apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
     bus_map: BusMap,
-    trace_generator: PowdrTraceGenerator<PBB>,
+    trace_generator: PowdrTraceGenerator,
     record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
 }
 
-impl<PBB: PowdrProverBackend> PlonkChip<PBB> {
+impl PlonkChip {
     #[allow(dead_code)]
     pub(crate) fn new(
         precompile: PowdrPrecompile<BabyBear>,
         original_airs: OriginalAirs<BabyBear>,
         base_config: OriginalVmConfig,
-        periphery: PowdrPeripheryInstances<PBB>,
+        periphery: PowdrPeripheryInstances,
         record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
         bus_map: BusMap,
     ) -> Self {
@@ -66,9 +65,7 @@ impl<PBB: PowdrProverBackend> PlonkChip<PBB> {
     }
 }
 
-impl<PBB: PowdrProverBackend, R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB>
-    for PlonkChip<PBB>
-{
+impl<R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB> for PlonkChip {
     fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
         tracing::debug!("Generating air proof input for PlonkChip {}", self.name);
 

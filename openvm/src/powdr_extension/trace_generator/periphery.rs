@@ -20,7 +20,7 @@ use openvm_stark_backend::{
 };
 use openvm_stark_sdk::engine::StarkEngine;
 
-use crate::{powdr_extension::trace_generator::inventory::DummyExecutor, PowdrProverBackend};
+use crate::powdr_extension::trace_generator::inventory::DummyExecutor;
 use std::sync::Arc;
 
 cfg_if::cfg_if! {
@@ -37,38 +37,43 @@ cfg_if::cfg_if! {
 
 /// The shared chips which can be used by the PowdrChip.
 #[derive(Clone)]
-pub struct PowdrPeripheryInstances<PPB: PowdrProverBackend + Clone> {
+pub struct PowdrPeripheryInstances {
     /// The real chips used for the main execution.
-    pub real: SharedPeripheryChips<PPB>,
+    pub real: SharedPeripheryChips,
     /// The dummy chips used for all APCs. They share the range checker but create new instances of the bitwise lookup chip and the tuple range checker.
-    pub dummy: SharedPeripheryChips<PPB>,
+    pub dummy: SharedPeripheryChips,
 }
 
-pub type SharedPeripheryChipsCpu = SharedPeripheryChips<CpuBackend<BabyBearSC>>;
 #[cfg(feature = "cuda")]
-pub type SharedPeripheryChipsGpu = SharedPeripheryChips<GpuBackend>;
-
 #[derive(Clone)]
-pub struct SharedPeripheryChips<PPB: PowdrProverBackend> {
-    pub bitwise_lookup_8: PPB::Bitwise8,
-    pub range_checker: PPB::RangeChecker,
-    pub tuple_range_checker: PPB::TupleRangeChecker2,
+pub struct SharedPeripheryChips {
+    pub bitwise_lookup_8: Option<std::sync::Arc<BitwiseOperationLookupChipGPU<8>>>,
+    pub range_checker: std::sync::Arc<VariableRangeCheckerChipGPU>,
+    pub tuple_range_checker: Option<std::sync::Arc<RangeTupleCheckerChipGPU<2>>>,
+}
+
+#[cfg(not(feature = "cuda"))]
+#[derive(Clone)]
+pub struct SharedPeripheryChips {
+    pub bitwise_lookup_8: Option<SharedBitwiseOperationLookupChip<8>>,
+    pub range_checker: SharedVariableRangeCheckerChip,
+    pub tuple_range_checker: Option<SharedRangeTupleCheckerChip<2>>,
 }
 
 #[cfg(feature = "cuda")]
-impl PowdrPeripheryInstances<GpuBackend> {
+impl PowdrPeripheryInstances {
     pub(crate) fn new(
         range_checker: Arc<VariableRangeCheckerChipGPU>,
         bitwise_8: Option<Arc<BitwiseOperationLookupChipGPU<8>>>,
         tuple_range_checker: Option<Arc<RangeTupleCheckerChipGPU<2>>>,
     ) -> Self {
         Self {
-            real: SharedPeripheryChipsGpu {
+            real: SharedPeripheryChips {
                 bitwise_lookup_8: bitwise_8.clone(),
                 range_checker: range_checker.clone(),
                 tuple_range_checker: tuple_range_checker.clone(),
             },
-            dummy: SharedPeripheryChipsGpu {
+            dummy: SharedPeripheryChips {
                 bitwise_lookup_8: bitwise_8
                     .map(|bitwise_8| Arc::new(BitwiseOperationLookupChipGPU::new())),
                 range_checker: range_checker.clone(),
@@ -80,14 +85,15 @@ impl PowdrPeripheryInstances<GpuBackend> {
     }
 }
 
-impl PowdrPeripheryInstances<CpuBackend<BabyBearSC>> {
+#[cfg(not(feature = "cuda"))]
+impl PowdrPeripheryInstances {
     pub(crate) fn new(
         range_checker: SharedVariableRangeCheckerChip,
         bitwise_8: Option<SharedBitwiseOperationLookupChip<8>>,
         tuple_range_checker: Option<SharedRangeTupleCheckerChip<2>>,
     ) -> Self {
         Self {
-            real: SharedPeripheryChipsCpu {
+            real: SharedPeripheryChips {
                 bitwise_lookup_8: bitwise_8.clone(),
                 range_checker: range_checker.clone(),
                 tuple_range_checker: tuple_range_checker.clone(),
@@ -95,7 +101,7 @@ impl PowdrPeripheryInstances<CpuBackend<BabyBearSC>> {
             // Bitwise lookup and tuple range checker do not need to be shared with the main execution:
             // If we did share, we'd have to roll back the side effects of execution and apply the side effects from the apc air onto the main periphery.
             // By not sharing them, we can throw away the dummy ones after execution and only apply the side effects from the apc air onto the main periphery.
-            dummy: SharedPeripheryChipsCpu {
+            dummy: SharedPeripheryChips {
                 bitwise_lookup_8: bitwise_8.map(|bitwise_8| {
                     SharedBitwiseOperationLookupChip::new(BitwiseOperationLookupChip::new(
                         bitwise_8.bus(),
@@ -112,9 +118,7 @@ impl PowdrPeripheryInstances<CpuBackend<BabyBearSC>> {
     }
 }
 
-impl<F: PrimeField32, PPB: PowdrProverBackend> VmExecutionExtension<F>
-    for SharedPeripheryChips<PPB>
-{
+impl<F: PrimeField32> VmExecutionExtension<F> for SharedPeripheryChips {
     type Executor = DummyExecutor<F>;
 
     fn extend_execution(
@@ -126,7 +130,8 @@ impl<F: PrimeField32, PPB: PowdrProverBackend> VmExecutionExtension<F>
     }
 }
 
-impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChipsGpu {
+#[cfg(feature = "cuda")]
+impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChips {
     fn extend_circuit(&self, inventory: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {
         // create dummy airs
         if let Some(bitwise_lookup_8) = &self.bitwise_lookup_8 {
@@ -159,7 +164,8 @@ impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChipsGpu 
     }
 }
 
-impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChipsCpu {
+#[cfg(not(feature = "cuda"))]
+impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChips {
     fn extend_circuit(&self, inventory: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {
         // create dummy airs
         if let Some(bitwise_lookup_8) = &self.bitwise_lookup_8 {
@@ -196,12 +202,12 @@ impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChipsCpu 
 pub struct SharedPeripheryChipsGpuProverExt;
 
 #[cfg(feature = "cuda")]
-impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, SharedPeripheryChipsGpu>
+impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, SharedPeripheryChips>
     for SharedPeripheryChipsGpuProverExt
 {
     fn extend_prover(
         &self,
-        extension: &SharedPeripheryChipsGpu,
+        extension: &SharedPeripheryChips,
         inventory: &mut ChipInventory<BabyBearSC, DenseRecordArena, GpuBackend>,
     ) -> Result<(), ChipInventoryError> {
         // Sanity check that the shared chips are not already present in the builder.
@@ -231,13 +237,14 @@ impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, SharedPerip
     }
 }
 
+#[cfg(not(feature = "cuda"))]
 pub struct SharedPeripheryChipsCpuProverExt;
 
-/// We implement an extension to make it easy to pre-load the shared chips into the VM inventory.
+#[cfg(not(feature = "cuda"))]
+// We implement an extension to make it easy to pre-load the shared chips into the VM inventory.
 // This implementation is specific to CpuBackend because the lookup chips (VariableRangeChecker,
 // BitwiseOperationLookupChip) are specific to CpuBackend.
-impl<E, SC, RA> VmProverExtension<E, RA, SharedPeripheryChipsCpu>
-    for SharedPeripheryChipsCpuProverExt
+impl<E, SC, RA> VmProverExtension<E, RA, SharedPeripheryChips> for SharedPeripheryChipsCpuProverExt
 where
     SC: StarkGenericConfig,
     E: StarkEngine<SC = SC, PB = CpuBackend<SC>, PD = CpuDevice<SC>>,
@@ -246,7 +253,7 @@ where
 {
     fn extend_prover(
         &self,
-        extension: &SharedPeripheryChipsCpu,
+        extension: &SharedPeripheryChips,
         inventory: &mut ChipInventory<SC, RA, CpuBackend<SC>>,
     ) -> Result<(), ChipInventoryError> {
         // Sanity check that the shared chips are not already present in the builder.
@@ -278,7 +285,7 @@ where
 
 // Note: `apply` implementations are specific to GPU/CPU, so we can't consolidate them
 #[cfg(feature = "cuda")]
-impl SharedPeripheryChipsGpu {
+impl SharedPeripheryChips {
     /// Sends concrete values to the shared chips using a given bus id.
     /// Panics if the bus id doesn't match any of the chips' bus ids.
     pub fn apply(&self, bus_id: u16, mult: u32, mut args: impl Iterator<Item = u32>) {
@@ -370,7 +377,8 @@ impl SharedPeripheryChipsGpu {
     }
 }
 
-impl SharedPeripheryChipsCpu {
+#[cfg(not(feature = "cuda"))]
+impl SharedPeripheryChips {
     /// Sends concrete values to the shared chips using a given bus id.
     /// Panics if the bus id doesn't match any of the chips' bus ids.
     pub fn apply(&self, bus_id: u16, mult: u32, mut args: impl Iterator<Item = u32>) {

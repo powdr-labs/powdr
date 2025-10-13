@@ -21,7 +21,7 @@ use crate::{
         executor::OriginalArenas,
         trace_generator::inventory::{create_dummy_airs, create_dummy_chip_complex},
     },
-    BabyBearSC, Instr, PowdrProverBackend,
+    BabyBearSC, Instr,
 };
 
 /// The inventory of the PowdrExecutor, which contains the executors for each opcode.
@@ -31,19 +31,19 @@ mod periphery;
 
 pub use periphery::PowdrPeripheryInstances;
 
-pub struct PowdrTraceGenerator<PBB: PowdrProverBackend> {
+pub struct PowdrTraceGenerator {
     pub apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
     pub original_airs: OriginalAirs<BabyBear>,
     pub config: OriginalVmConfig,
-    pub periphery: PowdrPeripheryInstances<PBB>,
+    pub periphery: PowdrPeripheryInstances,
 }
 
-impl<PBB: PowdrProverBackend> PowdrTraceGenerator<PBB> {
+impl PowdrTraceGenerator {
     pub fn new(
         apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
         original_airs: OriginalAirs<BabyBear>,
         config: OriginalVmConfig,
-        periphery: PowdrPeripheryInstances<PBB>,
+        periphery: PowdrPeripheryInstances,
     ) -> Self {
         Self {
             apc,

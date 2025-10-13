@@ -26,11 +26,14 @@ use openvm_sha256_circuit::Sha2CpuProverExt;
 use openvm_stark_backend::{config::Val, p3_field::PrimeField32, prover::cpu::CpuBackend};
 
 use crate::{
-    powdr_extension::trace_generator::periphery::{
-        SharedPeripheryChips, SharedPeripheryChipsCpuProverExt,
-    },
-    BabyBearSC, ExtendedVmConfigExecutor, PowdrProverBackend,
+    powdr_extension::trace_generator::periphery::SharedPeripheryChips, BabyBearSC,
+    ExtendedVmConfigExecutor,
 };
+
+#[cfg(not(feature = "cuda"))]
+use crate::powdr_extension::trace_generator::periphery::SharedPeripheryChipsCpuProverExt;
+#[cfg(feature = "cuda")]
+use crate::powdr_extension::trace_generator::periphery::SharedPeripheryChipsGpuProverExt;
 
 use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
 
@@ -122,9 +125,9 @@ mod from_implementations {
     );
 }
 
-pub fn create_dummy_airs<PBB: PowdrProverBackend>(
+pub fn create_dummy_airs(
     config: &SdkVmConfig,
-    shared_chips: SharedPeripheryChips<PBB>,
+    shared_chips: SharedPeripheryChips,
 ) -> Result<AirInventory<BabyBearSC>, AirInventoryError> {
     let config = config.to_inner();
     let mut inventory = config.system.create_airs()?;
@@ -173,10 +176,10 @@ pub fn create_dummy_airs<PBB: PowdrProverBackend>(
     Ok(inventory)
 }
 
-pub fn create_dummy_chip_complex<PBB: PowdrProverBackend>(
+pub fn create_dummy_chip_complex(
     config: &SdkVmConfig,
     circuit: AirInventory<BabyBearSC>,
-    shared_chips: SharedPeripheryChips<PBB>,
+    shared_chips: SharedPeripheryChips,
 ) -> Result<DummyChipComplex<BabyBearSC>, ChipInventoryError> {
     let config = config.to_inner();
     let mut chip_complex = VmBuilder::<BabyBearPoseidon2Engine>::create_chip_complex(
@@ -188,7 +191,10 @@ pub fn create_dummy_chip_complex<PBB: PowdrProverBackend>(
 
     // CHANGE: inject the periphery chips so that they are not created by the extensions. This is done for memory footprint: the dummy periphery chips are thrown away anyway, so we reuse a single one for all APCs.
     VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(
+        #[cfg(not(feature = "cuda"))]
         &SharedPeripheryChipsCpuProverExt,
+        #[cfg(feature = "cuda")]
+        &SharedPeripheryChipsGpuProverExt,
         &shared_chips,
         inventory,
     )?;
