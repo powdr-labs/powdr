@@ -83,8 +83,9 @@ pub type BabyBearSC = BabyBearPoseidon2Config;
 cfg_if::cfg_if! {
     if #[cfg(feature = "cuda")] {
         pub use openvm_cuda_backend::engine::GpuBabyBearPoseidon2Engine;
-        use openvm_native_circuit::NativeGpuBuilder;
+        pub use openvm_native_circuit::NativeGpuBuilder;
         pub type PowdrSdk = GenericSdk<GpuBabyBearPoseidon2Engine, SpecializedConfigGpuBuilder, NativeGpuBuilder>;
+        pub type PowdrExecutionProfileSdk = GenericSdk<GpuBabyBearPoseidon2Engine, ExtendedVmConfigGpuBuilder, NativeGpuBuilder>;
 
         pub use openvm_circuit::system::cuda::{extensions::SystemGpuBuilder, SystemChipInventoryGPU};
         pub use openvm_sdk::config::SdkVmGpuBuilder;
@@ -96,6 +97,7 @@ cfg_if::cfg_if! {
         use openvm_stark_backend::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
         use openvm_native_circuit::NativeCpuBuilder;
         pub type PowdrSdk = GenericSdk<BabyBearPoseidon2Engine, SpecializedConfigCpuBuilder, NativeCpuBuilder>;
+        pub type PowdrExecutionProfileSdk = GenericSdk<BabyBearPoseidon2Engine, ExtendedVmConfigCpuBuilder, NativeCpuBuilder>;
     }
 }
 
@@ -784,7 +786,9 @@ impl CompiledProgram {
         &self,
         max_degree: usize,
     ) -> (Vec<(AirMetrics, Option<AirWidthsDiff>)>, Vec<AirMetrics>) {
+        use openvm_stark_backend::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
         let air_inventory = self.vm_config.create_airs().unwrap();
+        // TODO: make this work for GPU
         let builder = SpecializedConfigCpuBuilder;
         let chip_complex = <SpecializedConfigCpuBuilder as VmBuilder<BabyBearPoseidon2Engine>>::create_chip_complex(&builder, &self.vm_config, air_inventory).unwrap();
         let inventory = chip_complex.inventory;
@@ -973,7 +977,7 @@ pub fn execution_profile_from_guest(
     let app_config = AppConfig::new(app_fri_params, vm_config.clone());
 
     // prepare for execute
-    let sdk = PowdrSdk::new(app_config).unwrap();
+    let sdk = PowdrExecutionProfileSdk::new(app_config).unwrap();
 
     execution_profile::<BabyBearOpenVmApcAdapter>(&program, || {
         sdk.execute(exe.clone(), inputs.clone()).unwrap();
