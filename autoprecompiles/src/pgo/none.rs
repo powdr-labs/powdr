@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use crate::{
     adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, PgoAdapter},
     blocks::BasicBlock,
@@ -26,6 +28,7 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
         mut blocks: Vec<BasicBlock<<Self::Adapter as Adapter>::Instruction>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
+        _labels: BTreeMap<u64, Vec<String>>,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
         // cost = number_of_original_instructions
         blocks.sort_by(|a, b| b.statements.len().cmp(&a.statements.len()));
