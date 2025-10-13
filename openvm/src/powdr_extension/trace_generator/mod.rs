@@ -19,7 +19,7 @@ use crate::{
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     powdr_extension::{
         executor::OriginalArenas,
-        trace_generator::inventory::{create_dummy_airs, create_dummy_chip_complex},
+        trace_generator::{inventory::{create_dummy_airs, create_dummy_chip_complex}, periphery::PeripheryType},
     },
     BabyBearSC, Instr,
 };
@@ -31,19 +31,19 @@ mod periphery;
 
 pub use periphery::PowdrPeripheryInstances;
 
-pub struct PowdrTraceGenerator {
+pub struct PowdrTraceGenerator<PT: PeripheryType> {
     pub apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
     pub original_airs: OriginalAirs<BabyBear>,
     pub config: OriginalVmConfig,
-    pub periphery: PowdrPeripheryInstances,
+    pub periphery: PowdrPeripheryInstances<PT>,
 }
 
-impl PowdrTraceGenerator {
+impl<PT: PeripheryType> PowdrTraceGenerator<PT> {
     pub fn new(
         apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
         original_airs: OriginalAirs<BabyBear>,
         config: OriginalVmConfig,
-        periphery: PowdrPeripheryInstances,
+        periphery: PowdrPeripheryInstances<PT>,
     ) -> Self {
         Self {
             apc,
