@@ -9,7 +9,9 @@ use openvm_circuit_primitives::{
         BitwiseOperationLookupAir, BitwiseOperationLookupChip, SharedBitwiseOperationLookupChip,
     },
     range_tuple::{RangeTupleCheckerAir, RangeTupleCheckerChip, SharedRangeTupleCheckerChip},
-    var_range::{SharedVariableRangeCheckerChip, VariableRangeCheckerAir, VariableRangeCheckerChip},
+    var_range::{
+        SharedVariableRangeCheckerChip, VariableRangeCheckerAir, VariableRangeCheckerChip,
+    },
 };
 use openvm_stark_backend::{
     config::{StarkGenericConfig, Val},

@@ -27,7 +27,7 @@ use openvm_stark_backend::{config::Val, p3_field::PrimeField32, prover::cpu::Cpu
 
 use crate::{
     powdr_extension::trace_generator::periphery::{
-        SharedPeripheryChips, SharedPeripheryChipsCpuProverExt, PeripheryType,
+        PeripheryType, SharedPeripheryChips, SharedPeripheryChipsCpuProverExt,
     },
     BabyBearSC, ExtendedVmConfigExecutor,
 };

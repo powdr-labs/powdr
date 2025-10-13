@@ -11,6 +11,15 @@ use openvm_stark_sdk::engine::StarkEngine;
 use powdr_openvm_hints_transpiler::HintsPhantom;
 use serde::{Deserialize, Serialize};
 
+cfg_if::cfg_if! {
+    if #[cfg(feature = "cuda")] {
+        use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Config as BabyBearSC;
+        use openvm_cuda_backend::prover_backend::GpuBackend;
+        use openvm_cuda_backend::engine::GpuBabyBearPoseidon2Engine;
+        use openvm_circuit::arch::DenseRecordArena;
+    }
+}
+
 // this module is mostly copy/pasted code from k256 for the field element representation in 32-bit architectures
 mod executors;
 mod field10x26_k256;
@@ -68,6 +77,23 @@ where
         &self,
         _: &HintsExtension,
         _: &mut ChipInventory<E::SC, RA, E::PB>,
+    ) -> Result<(), ChipInventoryError> {
+        // No chips to add for hints
+        Ok(())
+    }
+}
+
+#[cfg(feature = "cuda")]
+pub struct HintsGpuProverExt;
+
+#[cfg(feature = "cuda")]
+impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, HintsExtension>
+    for HintsGpuProverExt
+{
+    fn extend_prover(
+        &self,
+        _: &HintsExtension,
+        _: &mut ChipInventory<BabyBearSC, DenseRecordArena, GpuBackend>,
     ) -> Result<(), ChipInventoryError> {
         // No chips to add for hints
         Ok(())

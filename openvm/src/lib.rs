@@ -162,15 +162,17 @@ impl VmBuilder<GpuBabyBearPoseidon2Engine> for SpecializedConfigGpuBuilder {
         VmChipComplex<BabyBearSC, Self::RecordArena, GpuBackend, Self::SystemChipInventory>,
         ChipInventoryError,
     > {
-        type E = GpuBabyBearPoseidon2Engine;
-
-        let mut chip_complex = VmBuilder::<E>::create_chip_complex(
+        let mut chip_complex = VmBuilder::<GpuBabyBearPoseidon2Engine>::create_chip_complex(
             &SdkVmGpuBuilder,
             &config.sdk.sdk_config.sdk,
             circuit,
         )?;
         let inventory = &mut chip_complex.inventory;
-        VmProverExtension::<E, _, _>::extend_prover(&PowdrGpuProverExt, &config.powdr, inventory)?;
+        VmProverExtension::<GpuBabyBearPoseidon2Engine, _, _>::extend_prover(
+            &PowdrGpuProverExt,
+            &config.powdr,
+            inventory,
+        )?;
         Ok(chip_complex)
     }
 }
@@ -724,6 +726,35 @@ where
     }
 }
 
+#[cfg(feature = "cuda")]
+#[derive(Default, Clone)]
+pub struct ExtendedVmConfigGpuBuilder;
+
+#[cfg(feature = "cuda")]
+impl VmBuilder<GpuBabyBearPoseidon2Engine> for ExtendedVmConfigGpuBuilder {
+    type VmConfig = ExtendedVmConfig;
+    type SystemChipInventory = SystemChipInventoryGPU;
+    type RecordArena = DenseRecordArena;
+
+    fn create_chip_complex(
+        &self,
+        config: &ExtendedVmConfig,
+        circuit: AirInventory<BabyBearSC>,
+    ) -> Result<
+        VmChipComplex<BabyBearSC, Self::RecordArena, GpuBackend, Self::SystemChipInventory>,
+        ChipInventoryError,
+    > {
+        let mut chip_complex = VmBuilder::<GpuBabyBearPoseidon2Engine>::create_chip_complex(
+            &SdkVmGpuBuilder,
+            &config.sdk,
+            circuit,
+        )?;
+        let inventory = &mut chip_complex.inventory;
+        VmProverExtension::<E, _, _>::extend_prover(&HintsGpuProverExt, &config.hints, inventory)?;
+        Ok(chip_complex)
+    }
+}
+
 impl InitFileGenerator for ExtendedVmConfig {
     fn generate_init_file_contents(&self) -> Option<String> {
         self.sdk.generate_init_file_contents()
@@ -786,7 +817,7 @@ impl CompiledProgram {
         &self,
         max_degree: usize,
     ) -> (Vec<(AirMetrics, Option<AirWidthsDiff>)>, Vec<AirMetrics>) {
-        use openvm_stark_backend::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
+        use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
         let air_inventory = self.vm_config.create_airs().unwrap();
         // TODO: make this work for GPU
         let builder = SpecializedConfigCpuBuilder;
@@ -886,8 +917,7 @@ pub fn prove(
         let vm_builder = sdk.app_vm_builder().clone();
         let vm_pk = sdk.app_pk().app_vm_pk.clone();
         let exe = sdk.convert_to_exe(exe.clone())?;
-        let mut vm_instance: VmInstance<_, _> =
-            new_local_prover(vm_builder, &vm_pk, exe)?;
+        let mut vm_instance: VmInstance<_, _> = new_local_prover(vm_builder, &vm_pk, exe)?;
 
         vm_instance.reset_state(inputs.clone());
         let metered_ctx = vm_instance.vm.build_metered_ctx();
@@ -945,8 +975,7 @@ pub fn prove(
         tracing::info!("App proof verification done.");
 
         if recursion {
-            let mut agg_prover: AggStarkProver<_, _> =
-                sdk.prover(exe.clone())?.agg_prover;
+            let mut agg_prover: AggStarkProver<_, _> = sdk.prover(exe.clone())?.agg_prover;
 
             // Note that this proof is not verified. We assume that any valid app proof
             // (verified above) also leads to a valid aggregation proof.
