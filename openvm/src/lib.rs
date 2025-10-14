@@ -95,6 +95,7 @@ cfg_if::cfg_if! {
         pub use openvm_circuit_primitives::bitwise_op_lookup::BitwiseOperationLookupChipGPU;
         pub use openvm_circuit_primitives::range_tuple::RangeTupleCheckerChipGPU;
         pub use openvm_circuit_primitives::var_range::VariableRangeCheckerChipGPU;
+        pub use openvm_cuda_backend::base::DeviceMatrix;
     } else {
         use openvm_stark_backend::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
         use openvm_native_circuit::NativeCpuBuilder;

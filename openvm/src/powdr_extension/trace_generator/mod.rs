@@ -21,8 +21,11 @@ use crate::{
         executor::OriginalArenas,
         trace_generator::inventory::{create_dummy_airs, create_dummy_chip_complex},
     },
-    BabyBearSC, Instr,
+    BabyBearSC, DeviceMatrix, Instr,
 };
+
+#[cfg(feature = "cuda")]
+use crate::DeviceMatrix;
 
 /// The inventory of the PowdrExecutor, which contains the executors for each opcode.
 mod inventory;
@@ -98,11 +101,32 @@ impl PowdrTraceGenerator {
                     }
                 };
 
-                // Arc<DenseMatrix>
-                let shared_trace = chip.generate_proving_ctx(record_arena).common_main.unwrap();
-                // Reference count should be 1 here as it's just created
-                let DenseMatrix { values, width, .. } =
-                    Arc::try_unwrap(shared_trace).expect("Can't unwrap shared Arc<DenseMatrix>");
+                let (values, width) = {
+                    #[cfg(not(feature = "cuda"))]
+                    {
+                        // Arc<DenseMatrix>
+                        let shared_trace =
+                            chip.generate_proving_ctx(record_arena).common_main.unwrap();
+                        // Reference count should be 1 here as it's just created
+                        let DenseMatrix { values, width, .. } = Arc::try_unwrap(shared_trace)
+                            .expect("Can't unwrap shared Arc<DenseMatrix>");
+
+                        (values, width)
+                    }
+
+                    #[cfg(feature = "cuda")]
+                    {
+                        // DeviceMatrix
+                        let trace = chip.generate_proving_ctx(record_arena).common_main.unwrap();
+                        // TODO: this does a memcpy from the device (GPU) to the host (CPU), and therefore isn't efficient.
+                        // I'm not sure if we can simply reinterpret the device buffer's pointer as it might not be host accessible
+                        let values = trace.to_host().unwrap();
+                        // Width is the `T` count, NOT byte count, exactly what we need here
+                        let width = trace.width();
+
+                        (values, width)
+                    }
+                };
 
                 Some((air_name, Trace::new(values, width)))
             })

@@ -34,7 +34,7 @@ use powdr_autoprecompiles::{
 };
 
 #[cfg(feature = "cuda")]
-use openvm_cuda_backend::base::DeviceMatrix;
+use crate::DeviceMatrix;
 
 pub struct PowdrChip {
     pub name: String,
@@ -82,6 +82,8 @@ impl<R, PB: ProverBackend<Matrix = DeviceMatrix<BabyBear>>> Chip<R, PB> for Powd
         let trace = self
             .trace_generator
             .generate_witness(self.record_arena_by_air_name.take());
+
+        AirProvingContext::simple(Arc::new(trace), vec![])
     }
 }
 
