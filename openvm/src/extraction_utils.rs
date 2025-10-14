@@ -140,7 +140,7 @@ pub fn record_arena_dimension_by_air_name_per_apc_call<F>(
     apc.instructions().iter().map(|instr| &instr.0.opcode).fold(
         HashMap::new(),
         |mut acc, opcode| {
-            // Get the air for this opcode
+            // Get the air name for this opcode
             let air_name = air_by_opcode_id.opcode_to_air.get(opcode).unwrap();
 
             // Increment the height for this air name, initializing if necessary
