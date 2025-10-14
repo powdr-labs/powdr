@@ -52,7 +52,7 @@ cfg_if::cfg_if! {
         use openvm_rv32im_circuit::Rv32ImGpuProverExt;
         use openvm_sha256_circuit::Sha256GpuProverExt;
         pub type DummyChipComplex<SC> =
-            VmChipComplex<SC, DenseRecordArena<Val<SC>>, GpuBackend<SC>, SystemChipInventory<SC>>;
+            VmChipComplex<SC, DenseRecordArena, GpuBackend, SystemChipInventory<SC>>;
     }
 }
 
