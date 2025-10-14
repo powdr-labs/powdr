@@ -91,7 +91,7 @@ The concept of _Bus Interaction_ is a bit more complicated. The concrete
 semantics of a bus interaction depends on the environment, i.e. the
 zkVM we are operating inside and the chips it has.
 
-A _Bus Interaction_ consists of a _Bus ID_, the _Multiplicity_ and
+A _Bus Interaction_ consists of a _Bus ID_, a _Multiplicity_ and
 a _Payload_. The _Bus ID_ is an Algebraic Expression and specifies
 which bus to interact with. The _Multiplicity_ is an Algebraic Expression
 and in most cases it should evaluate either to 1 or -1. The _Payload_ is
