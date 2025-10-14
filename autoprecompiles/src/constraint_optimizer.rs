@@ -93,7 +93,6 @@ pub fn optimize_constraints<
         bus_interaction_handler.clone(),
         stats_logger,
     );
-    stats_logger.log("removing trivial constraints", &constraint_system);
 
     // At this point, we throw away the index and only keep the constraint system, since the rest of the optimisations are defined on the system alone
     let constraint_system: ConstraintSystem<P, V> = constraint_system.into();
