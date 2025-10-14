@@ -27,9 +27,15 @@ use crate::{
 #[cfg(feature = "cuda")]
 use crate::DeviceMatrix;
 #[cfg(feature = "cuda")]
-use openvm_cuda_common::copy::MemCopyD2H;
+use openvm_cuda_common::copy::{MemCopyD2H, MemCopyH2D};
 #[cfg(feature = "cuda")]
 use openvm_stark_backend::prover::hal::MatrixDimensions;
+
+#[cfg(feature = "cuda")]
+pub type Witness<T> = DeviceMatrix<T>;
+
+#[cfg(not(feature = "cuda"))]
+pub type Witness<T> = RowMajorMatrix<T>;
 
 /// The inventory of the PowdrExecutor, which contains the executors for each opcode.
 mod inventory;
@@ -63,15 +69,13 @@ impl PowdrTraceGenerator {
     /// Generates the witness for the autoprecompile. The result will be a matrix of
     /// size `next_power_of_two(number_of_calls) * width`, where `width` is the number of
     /// nodes in the APC circuit.
-    pub fn generate_witness(
-        &self,
-        mut original_arenas: OriginalArenas,
-    ) -> RowMajorMatrix<BabyBear> {
+    pub fn generate_witness(&self, mut original_arenas: OriginalArenas) -> Witness<BabyBear> {
         let num_apc_calls = original_arenas.number_of_calls();
         if num_apc_calls == 0 {
             // If the APC isn't called, early return with an empty trace.
             let width = self.apc.machine().main_columns().count();
-            return RowMajorMatrix::new(vec![], width);
+            #[cfg(not(feature = "cuda"))]
+            return Witness::new(vec![], width);
         }
 
         let chip_inventory = {
@@ -208,6 +212,24 @@ impl PowdrTraceGenerator {
                     });
             });
 
-        RowMajorMatrix::new(values, width)
+        #[cfg(not(feature = "cuda"))]
+        {
+            Witness::new(values, width)
+        }
+        #[cfg(feature = "cuda")]
+        {
+            device_matrix_from_values(values, width, height)
+        }
     }
+}
+
+#[cfg(feature = "cuda")]
+fn device_matrix_from_values(
+    values: Vec<BabyBear>,
+    width: usize,
+    height: usize,
+) -> DeviceMatrix<BabyBear> {
+    // TODO: we copy the values from host (CPU) to device (GPU), and should study how to generate APC trace natively in GPU
+    let device_buffer = values.to_device().unwrap();
+    DeviceMatrix::new(Arc::new(device_buffer), height, width)
 }
