@@ -38,6 +38,7 @@ openvm-native-recursion.workspace = true
 openvm-stark-sdk.workspace = true
 openvm-stark-backend.workspace = true
 openvm-cuda-backend.workspace = true
+openvm-cuda-common.workspace = true
 
 powdr-expression.workspace = true
 powdr-number.workspace = true

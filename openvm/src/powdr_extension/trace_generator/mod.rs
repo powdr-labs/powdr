@@ -26,6 +26,10 @@ use crate::{
 
 #[cfg(feature = "cuda")]
 use crate::DeviceMatrix;
+#[cfg(feature = "cuda")]
+use openvm_cuda_common::copy::MemCopyD2H;
+#[cfg(feature = "cuda")]
+use openvm_stark_backend::prover::hal::MatrixDimensions;
 
 /// The inventory of the PowdrExecutor, which contains the executors for each opcode.
 mod inventory;

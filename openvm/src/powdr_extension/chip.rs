@@ -83,7 +83,7 @@ impl<R, PB: ProverBackend<Matrix = DeviceMatrix<BabyBear>>> Chip<R, PB> for Powd
             .trace_generator
             .generate_witness(self.record_arena_by_air_name.take());
 
-        AirProvingContext::simple(Arc::new(trace), vec![])
+        AirProvingContext::simple(trace, vec![])
     }
 }
 
