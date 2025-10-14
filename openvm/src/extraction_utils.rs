@@ -137,24 +137,32 @@ pub fn record_arena_dimension_by_air_name_per_apc_call<F>(
     apc: &Apc<F, Instr<F>>,
     air_by_opcode_id: &OriginalAirs<F>,
 ) -> HashMap<String, RecordArenaDimension> {
-    apc.instructions()
-        .iter()
-        .fold(HashMap::new(), |mut acc, instruction| {
-            let (air_name, _) = air_by_opcode_id.get_instruction_air_and_id(instruction);
-            // TODO: main_columns might not be correct, as the RA::with_capacity() uses the following `main_width()`
-            // pub fn main_width(&self) -> usize {
-            //     self.cached_mains.iter().sum::<usize>() + self.common_main
-            // }
-            acc.entry(air_name)
-                .or_insert(RecordArenaDimension {
-                    height: 0,
-                    width: air_by_opcode_id
-                        .get_instruction_air_stats(instruction)
-                        .main_columns,
+    apc.instructions().iter().map(|instr| &instr.0.opcode).fold(
+        HashMap::new(),
+        |mut acc, opcode| {
+            // Get the air for this opcode
+            let air_name = air_by_opcode_id.opcode_to_air.get(opcode).unwrap();
+
+            // Increment the height for this air name, initializing if necessary
+            acc.entry(air_name.clone())
+                .or_insert_with(|| {
+                    let (_, air_metrics) =
+                        air_by_opcode_id.air_name_to_machine.get(air_name).unwrap();
+
+                    // TODO: main_columns might not be correct, as the RA::with_capacity() uses the following `main_width()`
+                    // pub fn main_width(&self) -> usize {
+                    //     self.cached_mains.iter().sum::<usize>() + self.common_main
+                    // }
+
+                    RecordArenaDimension {
+                        height: 0,
+                        width: air_metrics.widths.main,
+                    }
                 })
                 .height += 1;
             acc
-        })
+        },
+    )
 }
 
 type ChipComplex = VmChipComplex<
