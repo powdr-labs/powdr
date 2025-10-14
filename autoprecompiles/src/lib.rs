@@ -341,15 +341,6 @@ impl<T, I> Apc<T, I> {
     pub fn instructions(&self) -> &[I] {
         &self.block.statements
     }
-
-    /// The `is_valid` polynomial id
-    pub fn is_valid_poly_id(&self) -> u64 {
-        self.machine
-            .main_columns()
-            .find(|c| &*c.name == "is_valid")
-            .unwrap()
-            .id
-    }
 }
 
 pub fn build<A: Adapter>(
