@@ -21,7 +21,7 @@ use crate::{
         executor::OriginalArenas,
         trace_generator::inventory::{create_dummy_airs, create_dummy_chip_complex},
     },
-    BabyBearSC, DeviceMatrix, Instr,
+    BabyBearSC, Instr,
 };
 
 #[cfg(feature = "cuda")]
