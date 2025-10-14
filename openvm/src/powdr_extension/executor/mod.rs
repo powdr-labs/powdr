@@ -27,7 +27,7 @@ use openvm_stark_backend::{
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::Apc;
 
-use openvm_circuit::arch::{Arena, MatrixRecordArena};
+use openvm_circuit::arch::Arena;
 use openvm_circuit::{
     arch::{
         ExecuteFunc, ExecutionCtxTrait, ExecutionError, Executor, ExecutorInventory,
@@ -64,14 +64,14 @@ impl OriginalArenas {
     /// initializes the arenas iff not already initialized.
     fn ensure_initialized(
         &mut self,
-        apc_call_count_estimate: usize,
+        apc_call_count_estimate: impl Fn() -> usize,
         original_airs: &OriginalAirs<BabyBear>,
         apc: &Arc<Apc<BabyBear, Instr<BabyBear>>>,
     ) {
         match self {
             OriginalArenas::Uninitialized => {
                 *self = OriginalArenas::Initialized(InitializedOriginalArenas::new(
-                    apc_call_count_estimate,
+                    apc_call_count_estimate(),
                     original_airs,
                     apc,
                 ));
@@ -80,34 +80,16 @@ impl OriginalArenas {
         }
     }
 
-    #[cfg(not(feature = "cuda"))]
     /// Returns a mutable reference to the arenas.
     /// Should only be called after `initialize` is called.
-    pub fn arenas_mut(&mut self) -> &mut HashMap<String, MatrixRecordArena<BabyBear>> {
+    pub fn arenas_mut(&mut self) -> &mut HashMap<String, ArenaType> {
         match self {
             OriginalArenas::Uninitialized => unreachable!(),
             OriginalArenas::Initialized(initialized) => &mut initialized.arenas,
         }
     }
 
-    #[cfg(feature = "cuda")]
-    pub fn arenas_mut(&mut self) -> &mut HashMap<String, DenseRecordArena> {
-        match self {
-            OriginalArenas::Uninitialized => unreachable!(),
-            OriginalArenas::Initialized(initialized) => &mut initialized.arenas,
-        }
-    }
-
-    #[cfg(not(feature = "cuda"))]
-    pub fn arenas(&self) -> &HashMap<String, MatrixRecordArena<BabyBear>> {
-        match self {
-            OriginalArenas::Uninitialized => unreachable!(),
-            OriginalArenas::Initialized(initialized) => &initialized.arenas,
-        }
-    }
-
-    #[cfg(feature = "cuda")]
-    pub fn arenas(&self) -> &HashMap<String, DenseRecordArena> {
+    pub fn arenas(&self) -> &HashMap<String, ArenaType> {
         match self {
             OriginalArenas::Uninitialized => unreachable!(),
             OriginalArenas::Initialized(initialized) => &initialized.arenas,
@@ -132,15 +114,17 @@ impl OriginalArenas {
     }
 }
 
+#[cfg(not(feature = "cuda"))]
+type ArenaType = MatrixRecordArena<BabyBear>;
+#[cfg(feature = "cuda")]
+type ArenaType = DenseRecordArena;
+
 /// A collection of arenas used to store the records of the original instructions, one per air name.
 /// Each arena is initialized with a capacity based on an estimate of how many times the APC is called in this segment
 /// and how many calls to each air are made per APC call.
 #[derive(Default)]
 pub struct InitializedOriginalArenas {
-    #[cfg(not(feature = "cuda"))]
-    pub arenas: HashMap<String, MatrixRecordArena<BabyBear>>,
-    #[cfg(feature = "cuda")]
-    pub arenas: HashMap<String, DenseRecordArena>,
+    pub arenas: HashMap<String, ArenaType>,
     pub number_of_calls: usize,
 }
 
@@ -166,13 +150,7 @@ impl InitializedOriginalArenas {
                     )| {
                         (
                             air_name.clone(),
-                            #[cfg(not(feature = "cuda"))]
-                            MatrixRecordArena::with_capacity(
-                                *num_calls * apc_call_count_estimate,
-                                *air_width,
-                            ),
-                            #[cfg(feature = "cuda")]
-                            DenseRecordArena::with_capacity(
+                            ArenaType::with_capacity(
                                 *num_calls * apc_call_count_estimate,
                                 *air_width,
                             ),
@@ -355,10 +333,10 @@ unsafe fn execute_e2_impl<CTX: MeteredExecutionCtxTrait>(
     execute_e12_impl::<CTX>(&pre_compute.data, vm_state);
 }
 
-impl PreflightExecutor<BabyBear> for PowdrExecutor {
+impl PreflightExecutor<BabyBear, ArenaType> for PowdrExecutor {
     fn execute(
         &self,
-        state: VmStateMut<BabyBear, TracingMemory, MatrixRecordArena<BabyBear>>,
+        state: VmStateMut<BabyBear, TracingMemory, ArenaType>,
         _: &Instruction<BabyBear>,
     ) -> Result<(), ExecutionError> {
         // Extract the state components, since `execute` consumes the state but we need to pass it to each instruction execution
@@ -374,79 +352,18 @@ impl PreflightExecutor<BabyBear> for PowdrExecutor {
         // Initialize the original arenas if not already initialized
         let mut original_arenas = self.original_arenas.as_ref().borrow_mut();
 
-        original_arenas.ensure_initialized(
-            // Recover an estimate of how many times the APC is called in this segment based on the current ctx height and width
-            ctx.trace_buffer.len() / ctx.width,
-            &self.air_by_opcode_id,
-            &self.apc,
-        );
+        #[cfg(feature = "cuda")]
+        let apc_call_count = || {
+            const MAX_ALIGNMENT: usize = 32;
+            let apc_width = self.apc.machine().main_columns().count();
+            let row_bytes = apc_width * std::mem::size_of::<u32>();
+            let buf = ctx.records_buffer.get_ref();
+            // Note that the `apc_call_count` here should be exact, because `DenseMatrixRecordArena::with_capacity()` doesn't pad the height to next power of two
+            (buf.len() - MAX_ALIGNMENT) / row_bytes
+        };
 
-        let arenas = original_arenas.arenas_mut();
-
-        // execute the original instructions one by one
-        for instruction in self.apc.instructions() {
-            let executor = self
-                .executor_inventory
-                .get_executor(instruction.0.opcode)
-                .unwrap();
-
-            let air_name = self
-                .air_by_opcode_id
-                .get_instruction_air_and_id(instruction)
-                .0;
-
-            let state = VmStateMut {
-                pc,
-                memory,
-                streams,
-                rng,
-                custom_pvs,
-                // We execute in the context of the relevant original table
-                ctx: arenas.get_mut(&air_name).unwrap(),
-            };
-
-            executor.execute(state, &instruction.0)?;
-        }
-
-        // Update the real number of calls to the APC
-        *original_arenas.number_of_calls_mut() += 1;
-
-        Ok(())
-    }
-
-    fn get_opcode_name(&self, _opcode: usize) -> String {
-        todo!()
-    }
-}
-
-const MAX_ALIGNMENT: usize = 32;
-
-#[cfg(feature = "cuda")]
-impl PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExecutor {
-    fn execute(
-        &self,
-        state: VmStateMut<BabyBear, TracingMemory, DenseRecordArena>,
-        _: &Instruction<BabyBear>,
-    ) -> Result<(), ExecutionError> {
-        // Extract the state components, since `execute` consumes the state but we need to pass it to each instruction execution
-        let VmStateMut {
-            pc,
-            memory,
-            streams,
-            rng,
-            custom_pvs,
-            ctx,
-        } = state;
-
-        // Initialize the original arenas if not already initialized
-        let mut original_arenas = self.original_arenas.as_ref().borrow_mut();
-
-        // TODO: can this be cached in APC?
-        let apc_width = self.apc.machine().main_columns().count();
-        let row_bytes = apc_width * std::mem::size_of::<u32>();
-        let buf = ctx.records_buffer.get_ref();
-        // Note that the `apc_call_count` here should be exact, because `DenseMatrixRecordArena::with_capacity()` doesn't pad the height to next power of two
-        let apc_call_count = (buf.len() - MAX_ALIGNMENT) / row_bytes;
+        #[cfg(not(feature = "cuda"))]
+        let apc_call_count = || ctx.trace_buffer.len() / ctx.width;
 
         original_arenas.ensure_initialized(
             // Recover an estimate of how many times the APC is called in this segment based on the current ctx height and width
