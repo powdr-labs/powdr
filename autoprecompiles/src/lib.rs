@@ -466,6 +466,14 @@ fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachi
         id: max_id,
     });
 
+    machine.derived_columns.push((
+        AlgebraicReference {
+            name: Arc::new("is_valid".to_string()),
+            id: max_id,
+        },
+        ComputationMethod::Constant(T::one()),
+    ));
+
     machine.constraints = machine
         .constraints
         .into_iter()
