@@ -9,7 +9,7 @@ import argparse
 def load_apc_data(json_path, effectiveness_type='cost'):
     """Load APC candidates and compute effectiveness."""
     with open(json_path, 'r') as f:
-        data = json.load(f)
+        data = json.load(f)["apcs"]
     
     def calculate_effectiveness(item, eff_type):
         if eff_type == 'cost':

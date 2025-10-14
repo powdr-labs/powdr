@@ -128,3 +128,12 @@ fn load_two_bytes_compare() {
     ];
     assert_machine_output(program.to_vec(), "load_two_bytes_compare");
 }
+
+#[test]
+fn store_to_same_address() {
+    // Store two different values to the same memory address.
+    // The memory optimizer should realize the two memory addresses are the same,
+    // and eliminate creating two separate memory columns.
+    let program = [storeb(4, 8, 8, 2, 1, 0), storeb(32, 8, 8, 2, 1, 0)];
+    assert_machine_output(program.to_vec(), "store_to_same_memory_address");
+}

@@ -11,7 +11,6 @@ use crate::{
     constraint_system::AlgebraicConstraint,
     grouped_expression::{GroupedExpression, RangeConstraintProvider},
     range_constraint::RangeConstraint,
-    runtime_constant::RuntimeConstant,
 };
 
 /// Tries to split the given algebraic constraint into a list of equivalent
@@ -31,9 +30,9 @@ use crate::{
 /// `x % k + c % k = 0`. If this equation has a unique solution `s` in the range
 /// constraints for `x`, we get a new constraint `x - s = 0`. We can subtract
 /// that constraint from the original to get `k * y + c - s = 0` and iterate.
-pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
+pub fn try_split_constraint<T: FieldElement, V: Clone + Ord + Display>(
     constraint: &AlgebraicConstraint<&GroupedExpression<T, V>>,
-    range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
+    range_constraints: &impl RangeConstraintProvider<T, V>,
 ) -> Option<Vec<AlgebraicConstraint<GroupedExpression<T, V>>>> {
     let expression = constraint.expression;
     if expression.is_quadratic() {
@@ -48,7 +47,7 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
         return None;
     }
 
-    let mut constant = expression.constant_offset().try_to_number()?;
+    let mut constant = *expression.constant_offset();
 
     // Turn the linear part into components ("coefficient * expression"),
     // and combine components with the same coefficient, ending up with
@@ -137,7 +136,7 @@ pub fn try_split_constraint<T: RuntimeConstant + Display, V: Clone + Ord + Displ
 /// Before grouping, the components are normalized such that the coefficient is always
 /// in the lower half of the field (and the expression might be negated to compensate).
 /// The list is sorted by the coefficient.
-fn group_components_by_coefficients<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
+fn group_components_by_coefficients<T: FieldElement, V: Clone + Ord + Display>(
     components: impl IntoIterator<Item = Component<T, V>>,
 ) -> impl Iterator<Item = Component<T, V>> {
     components
@@ -156,17 +155,17 @@ fn group_components_by_coefficients<T: RuntimeConstant + Display, V: Clone + Ord
 /// It does not make assumptions about its inputs.
 /// We try to translate the equation to an equation in the natural numbers
 /// and try to find a unique solution.
-fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
+fn find_solution<T: FieldElement, V: Clone + Ord + Display>(
     expr: &GroupedExpression<T, V>,
-    coefficient: T::FieldType,
+    coefficient: T,
     rest: GroupedExpression<T, V>,
-    constant: T::FieldType,
-    range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
-) -> Option<T::FieldType> {
+    constant: T,
+    range_constraints: &impl RangeConstraintProvider<T, V>,
+) -> Option<T> {
     let expr_rc = expr.range_constraint(range_constraints);
     let rest_rc = rest.range_constraint(range_constraints);
 
-    let unconstrained_range_width = RangeConstraint::<T::FieldType>::unconstrained().range_width();
+    let unconstrained_range_width = RangeConstraint::<T>::unconstrained().range_width();
     if expr_rc.range_width() == unconstrained_range_width
         || rest_rc.range_width() == unconstrained_range_width
     {
@@ -208,7 +207,7 @@ fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
     // and see if it wraps around in the field.
     if max_expr.to_arbitrary_integer()
         + coefficient.to_arbitrary_integer() * max_rest.to_arbitrary_integer()
-        >= T::FieldType::modulus().to_arbitrary_integer()
+        >= T::modulus().to_arbitrary_integer()
     {
         return None;
     }
@@ -229,7 +228,7 @@ fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
     }
 
     // TODO this only works for fields that fit 64 bits, but that is probably fine for now.
-    let rhs = T::FieldType::from(
+    let rhs = T::from(
         (-constant).to_integer().try_into_u64().unwrap()
             % coefficient.to_integer().try_into_u64().unwrap(),
     );
@@ -237,7 +236,7 @@ fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
     // Now we try `rhs`, `rhs + coefficient`, `rhs + 2 * coefficient`, ...
     // But because of the check above, we can stop at `2 * coefficient`.
     (0..=1)
-        .map(|i| rhs + T::FieldType::from(i) * coefficient)
+        .map(|i| rhs + T::from(i) * coefficient)
         .filter(|candidate| expr_rc.allows_value(*candidate))
         .exactly_one()
         .ok()
@@ -246,9 +245,9 @@ fn find_solution<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
 /// Turns the remaining components and constant into a single constraint,
 /// i.e. returns an algebraic constraint that is equivalent to
 /// `sum of components + constant = 0`.
-fn recombine_components<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
+fn recombine_components<T: FieldElement, V: Clone + Ord + Display>(
     components: Vec<Component<T, V>>,
-    constant: T::FieldType,
+    constant: T,
 ) -> AlgebraicConstraint<GroupedExpression<T, V>> {
     let remaining = components
         .into_iter()
@@ -271,27 +270,27 @@ fn recombine_components<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
 
 /// A component of a constraint. Equivalent to the expression `coeff * expr`.
 #[derive(Clone)]
-struct Component<T: RuntimeConstant, V> {
-    coeff: T::FieldType,
+struct Component<T, V> {
+    coeff: T,
     expr: GroupedExpression<T, V>,
 }
 
-impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display for Component<T, V> {
+impl<T: FieldElement, V: Clone + Ord + Display> Display for Component<T, V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} * ({})", self.coeff, self.expr)
     }
 }
 
-impl<'a, T: RuntimeConstant, V: Ord + Clone + Eq> TryFrom<(&'a V, &'a T)> for Component<T, V> {
+impl<'a, T: FieldElement, V: Ord + Clone + Eq> TryFrom<(&'a V, &'a T)> for Component<T, V> {
     type Error = ();
     fn try_from((var, coeff): (&'a V, &'a T)) -> Result<Self, ()> {
-        let coeff = coeff.try_to_number().ok_or(())?;
+        let coeff = *coeff;
         let expr = GroupedExpression::from_unknown_variable(var.clone());
         Ok(Self { coeff, expr })
     }
 }
 
-impl<T: RuntimeConstant, V: Ord + Clone + Eq> Component<T, V> {
+impl<T: FieldElement, V: Ord + Clone + Eq> Component<T, V> {
     /// Normalize the component such that the coefficient is positive.
     fn normalize(self) -> Self {
         if self.coeff.is_in_lower_half() {
@@ -305,7 +304,7 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> Component<T, V> {
     }
 }
 
-impl<T: RuntimeConstant, V: Ord + Clone + Eq> Add for Component<T, V> {
+impl<T: FieldElement, V: Ord + Clone + Eq> Add for Component<T, V> {
     type Output = Self;
 
     fn add(self, other: Self) -> Self {
@@ -317,10 +316,10 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> Add for Component<T, V> {
     }
 }
 
-impl<T: RuntimeConstant, V: Ord + Clone + Eq> Div<T::FieldType> for Component<T, V> {
+impl<T: FieldElement, V: Ord + Clone + Eq> Div<T> for Component<T, V> {
     type Output = Self;
 
-    fn div(self, rhs: T::FieldType) -> Self {
+    fn div(self, rhs: T) -> Self {
         assert!(!rhs.is_zero());
         Self {
             coeff: self.coeff / rhs,
@@ -329,16 +328,16 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> Div<T::FieldType> for Component<T,
     }
 }
 
-impl<T: RuntimeConstant, V: Ord + Clone + Eq> From<Component<T, V>> for GroupedExpression<T, V> {
+impl<T: FieldElement, V: Ord + Clone + Eq> From<Component<T, V>> for GroupedExpression<T, V> {
     fn from(comp: Component<T, V>) -> Self {
-        comp.expr * T::from(comp.coeff)
+        comp.expr * comp.coeff
     }
 }
 
-impl<T: RuntimeConstant, V: Clone + Ord> Zero for Component<T, V> {
+impl<T: FieldElement, V: Clone + Ord> Zero for Component<T, V> {
     fn zero() -> Self {
         Self {
-            coeff: T::FieldType::zero(),
+            coeff: T::zero(),
             expr: GroupedExpression::zero(),
         }
     }
@@ -354,17 +353,25 @@ mod test {
 
     use expect_test::expect;
     use itertools::Itertools;
-    use powdr_number::BabyBearField;
+    use powdr_number::{BabyBearField, GoldilocksField};
 
     use super::*;
-    use crate::{
-        range_constraint::RangeConstraint,
-        test_utils::{constant, var},
-    };
+    use crate::range_constraint::RangeConstraint;
 
-    fn try_split<T: RuntimeConstant + Display, V: Clone + Ord + Display>(
+    type Var = &'static str;
+    type Qse = GroupedExpression<GoldilocksField, Var>;
+
+    fn var(name: Var) -> Qse {
+        Qse::from_unknown_variable(name)
+    }
+
+    fn constant(value: u64) -> Qse {
+        Qse::from_number(GoldilocksField::from(value))
+    }
+
+    fn try_split<T: FieldElement, V: Clone + Ord + Display>(
         expr: GroupedExpression<T, V>,
-        rcs: &impl RangeConstraintProvider<T::FieldType, V>,
+        rcs: &impl RangeConstraintProvider<T, V>,
     ) -> Option<Vec<AlgebraicConstraint<GroupedExpression<T, V>>>> {
         try_split_constraint(&AlgebraicConstraint::assert_zero(&expr), rcs)
     }
