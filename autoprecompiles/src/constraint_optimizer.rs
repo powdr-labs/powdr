@@ -499,6 +499,8 @@ fn remove_unreferenced_derived_variables<P: FieldElement, V: Clone + Ord + Hash 
         .cloned()
         .collect::<HashSet<_>>();
 
-    constraint_system.retain_derived_variables(|(var, _)| referenced_variables.contains(var));
+    constraint_system.retain_derived_variables(|derived_var| {
+        referenced_variables.contains(&derived_var.variable)
+    });
     constraint_system
 }

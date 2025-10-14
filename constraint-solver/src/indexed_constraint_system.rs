@@ -11,6 +11,7 @@ use itertools::Itertools;
 use crate::{
     constraint_system::{
         AlgebraicConstraint, BusInteraction, ComputationMethod, ConstraintRef, ConstraintSystem,
+        DerivedVariable,
     },
     grouped_expression::GroupedExpression,
     runtime_constant::{RuntimeConstant, Substitutable},
@@ -100,7 +101,7 @@ enum ConstraintSystemItem {
     AlgebraicConstraint(usize),
     /// A reference to a bus interaction.
     BusInteraction(usize),
-    /// A reference to a derived variable. This is only used internal to the
+    /// A reference to a derived variable. This is only used internally to the
     /// IndexedConstraintSystem.
     DerivedVariable(usize),
 }
@@ -126,12 +127,9 @@ impl ConstraintSystemItem {
         }
     }
 
-    /// Returns true if this constraint system item is an actual constraint and not a derived variable.
-    fn is_constraint(&self) -> bool {
-        matches!(
-            self,
-            ConstraintSystemItem::AlgebraicConstraint(_) | ConstraintSystemItem::BusInteraction(_)
-        )
+    /// Returns true if this constraint system item is a derived variable instead of an actual constraint.
+    fn is_derived_variable(&self) -> bool {
+        matches!(self, ConstraintSystemItem::DerivedVariable(_))
     }
 
     /// Turns this indexed-based item into a reference to the actual constraint.
@@ -234,10 +232,7 @@ impl<T: RuntimeConstant, V: Clone + Eq> IndexedConstraintSystem<T, V> {
     }
 
     /// Removes all derived variables that do not fulfill the predicate.
-    pub fn retain_derived_variables(
-        &mut self,
-        mut f: impl FnMut(&(V, ComputationMethod<T, GroupedExpression<T, V>>)) -> bool,
-    ) {
+    pub fn retain_derived_variables(&mut self, mut f: impl FnMut(&DerivedVariable<T, V>) -> bool) {
         retain(
             &mut self.constraint_system.derived_variables,
             &mut self.variable_occurrences,
@@ -327,7 +322,10 @@ impl<T: RuntimeConstant, V: Clone + Eq + Hash> IndexedConstraintSystem<T, V> {
         self.extend(ConstraintSystem {
             algebraic_constraints: Vec::new(),
             bus_interactions: Vec::new(),
-            derived_variables: vec![(variable, method)],
+            derived_variables: vec![DerivedVariable {
+                variable,
+                computation_method: method,
+            }],
         });
     }
 
@@ -465,14 +463,22 @@ fn variable_occurrences<T: RuntimeConstant, V: Hash + Eq + Clone>(
         .derived_variables
         .iter()
         .enumerate()
-        // We ignore the derived variables itself because it is not a constraint
+        // We ignore the derived variable itself because it is not a constraint
         // and does not matter in substitutions (if we substitute the derived
         // variable it is deleted in a later step).
-        .flat_map(|(i, (_, expr))| {
-            expr.referenced_unknown_variables()
-                .unique()
-                .map(move |v| (v.clone(), ConstraintSystemItem::DerivedVariable(i)))
-        });
+        .flat_map(
+            |(
+                i,
+                DerivedVariable {
+                    computation_method, ..
+                },
+            )| {
+                computation_method
+                    .referenced_unknown_variables()
+                    .unique()
+                    .map(move |v| (v.clone(), ConstraintSystemItem::DerivedVariable(i)))
+            },
+        );
     occurrences_in_algebraic_constraints
         .chain(occurrences_in_bus_interactions)
         .chain(occurrences_in_derived_variables)
@@ -497,13 +503,9 @@ fn substitute_by_known_in_item<T: RuntimeConstant + Substitutable<V>, V: Ord + C
                 .fields_mut()
                 .for_each(|expr| expr.substitute_by_known(variable, substitution));
         }
-        ConstraintSystemItem::DerivedVariable(i) => match &mut constraint_system.derived_variables
-            [i]
-            .1
-        {
-            ComputationMethod::InverseOrZero(e) => e.substitute_by_known(variable, substitution),
-            ComputationMethod::Constant(_) => {}
-        },
+        ConstraintSystemItem::DerivedVariable(i) => constraint_system.derived_variables[i]
+            .computation_method
+            .substitute_by_known(variable, substitution),
     }
 }
 
@@ -524,13 +526,9 @@ fn substitute_by_unknown_in_item<T: RuntimeConstant + Substitutable<V>, V: Ord +
                 .fields_mut()
                 .for_each(|expr| expr.substitute_by_unknown(variable, substitution));
         }
-        ConstraintSystemItem::DerivedVariable(i) => match &mut constraint_system.derived_variables
-            [i]
-            .1
-        {
-            ComputationMethod::InverseOrZero(e) => e.substitute_by_unknown(variable, substitution),
-            ComputationMethod::Constant(_) => {}
-        },
+        ConstraintSystemItem::DerivedVariable(i) => constraint_system.derived_variables[i]
+            .computation_method
+            .substitute_by_unknown(variable, substitution),
     }
 }
 
@@ -581,7 +579,7 @@ where
     pub fn variable_updated(&mut self, variable: &V) {
         if let Some(items) = self.constraint_system.variable_occurrences.get(variable) {
             for item in items {
-                if item.is_constraint() {
+                if !item.is_derived_variable() {
                     self.queue.push(*item);
                 }
             }
@@ -695,7 +693,7 @@ impl ConstraintSystemQueue {
     }
 
     fn push(&mut self, item: ConstraintSystemItem) {
-        assert!(item.is_constraint());
+        assert!(!item.is_derived_variable());
         if self.in_queue.len() <= item.flat_constraint_id() {
             self.in_queue.resize(item.flat_constraint_id() + 1, false);
         }
@@ -717,6 +715,8 @@ impl ConstraintSystemQueue {
 #[cfg(test)]
 mod tests {
     use powdr_number::GoldilocksField;
+
+    use crate::constraint_system::ComputationMethod;
 
     use super::*;
 
@@ -846,22 +846,23 @@ mod tests {
     }
 
     #[test]
-    fn substitute_in_deried_columns() {
-        let mut system: IndexedConstraintSystem<_, _> = ConstraintSystem::<
-            GoldilocksField,
-            &'static str,
-        > {
+    fn substitute_in_derived_columns() {
+        let mut system: IndexedConstraintSystem<_, _> = ConstraintSystem::<GoldilocksField, _> {
             algebraic_constraints: vec![],
             bus_interactions: vec![],
             derived_variables: vec![
-                (
-                    "d1",
-                    ComputationMethod::InverseOrZero(GroupedExpression::from_unknown_variable("x")),
-                ),
-                (
-                    "d2",
-                    ComputationMethod::InverseOrZero(GroupedExpression::from_unknown_variable("y")),
-                ),
+                DerivedVariable {
+                    variable: "d1",
+                    computation_method: ComputationMethod::InverseOrZero(
+                        GroupedExpression::from_unknown_variable("x"),
+                    ),
+                },
+                DerivedVariable {
+                    variable: "d2",
+                    computation_method: ComputationMethod::InverseOrZero(
+                        GroupedExpression::from_unknown_variable("y"),
+                    ),
+                },
             ],
         }
         .into();

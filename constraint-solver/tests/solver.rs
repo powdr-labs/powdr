@@ -10,20 +10,24 @@ use powdr_constraint_solver::{
     indexed_constraint_system::apply_substitutions,
     range_constraint::RangeConstraint,
     solver::{solve_system, Error},
-    symbolic_expression::SymbolicExpression,
-    test_utils::{constant, var, Qse},
 };
 use powdr_number::{FieldElement, GoldilocksField, LargeInt};
 use test_log::test;
 
 use pretty_assertions::assert_eq;
 
-pub type Var = &'static str;
+type Var = &'static str;
 
-pub type QuadraticSymbolicExpression<T, V> = GroupedExpression<SymbolicExpression<T, V>, V>;
+fn var(name: Var) -> GroupedExpression<GoldilocksField, Var> {
+    GroupedExpression::from_unknown_variable(name)
+}
+
+fn constant(value: u64) -> GroupedExpression<GoldilocksField, Var> {
+    GroupedExpression::from_number(GoldilocksField::from(value))
+}
 
 pub fn assert_solve_result<B: BusInteractionHandler<GoldilocksField>>(
-    system: ConstraintSystem<SymbolicExpression<GoldilocksField, Var>, Var>,
+    system: ConstraintSystem<GoldilocksField, Var>,
     bus_interaction_handler: B,
     expected_assignments: Vec<(Var, GoldilocksField)>,
 ) {
@@ -32,18 +36,8 @@ pub fn assert_solve_result<B: BusInteractionHandler<GoldilocksField>>(
     assert_expected_state(final_state, expected_final_state);
 }
 
-pub fn assert_conflicting<B: BusInteractionHandler<GoldilocksField>>(
-    system: ConstraintSystem<SymbolicExpression<GoldilocksField, Var>, Var>,
-    bus_interaction_handler: B,
-) {
-    match solve_system(system, bus_interaction_handler) {
-        Err(_) => {}
-        Ok(_) => panic!("Expected error, but got a solution!"),
-    }
-}
-
 fn assert_expected_state(
-    final_state: impl IntoIterator<Item = (Var, QuadraticSymbolicExpression<GoldilocksField, Var>)>,
+    final_state: impl IntoIterator<Item = (Var, GroupedExpression<GoldilocksField, Var>)>,
     expected_final_state: BTreeMap<Var, GoldilocksField>,
 ) {
     let final_state = final_state.into_iter().collect::<BTreeMap<_, _>>();
@@ -185,8 +179,8 @@ impl BusInteractionHandler<GoldilocksField> for TestBusInteractionHandler {
 
 fn send(
     bus_id: u64,
-    payload: Vec<QuadraticSymbolicExpression<GoldilocksField, Var>>,
-) -> BusInteraction<QuadraticSymbolicExpression<GoldilocksField, Var>> {
+    payload: Vec<GroupedExpression<GoldilocksField, Var>>,
+) -> BusInteraction<GroupedExpression<GoldilocksField, Var>> {
     BusInteraction {
         multiplicity: constant(1),
         bus_id: constant(bus_id),
@@ -331,7 +325,7 @@ fn binary_flags() {
         true => var,
         false => constant(1) - var,
     };
-    let index_to_expression = |i: usize| -> Qse {
+    let index_to_expression = |i: usize| -> GroupedExpression<GoldilocksField, Var> {
         (0..3)
             .map(move |j| bit_to_expression(i & (1 << j) != 0, var(format!("flag{j}").leak())))
             .fold(constant(1), |acc, x| acc * x)
@@ -367,8 +361,8 @@ fn binary_flags() {
 fn ternary_flags() {
     // Implementing this logic in the OpenVM load/store chip:
     // https://github.com/openvm-org/openvm/blob/v1.2.0/extensions/rv32im/circuit/src/loadstore/core.rs#L110-L139
-    let two_inv = Qse::from_number(GoldilocksField::one() / GoldilocksField::from(2));
-    let neg_one = Qse::from_number(-GoldilocksField::one());
+    let two_inv = GroupedExpression::from_number(GoldilocksField::one() / GoldilocksField::from(2));
+    let neg_one = GroupedExpression::from_number(-GoldilocksField::one());
     let sum = var("flag0") + var("flag1") + var("flag2") + var("flag3");
     // The flags must be 0, 1, or 2, and their sum must be 1 or 2.
     // Given these constraints, there are 14 possible assignments. The following

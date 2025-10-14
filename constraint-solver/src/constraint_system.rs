@@ -2,7 +2,7 @@ use crate::{
     effect::Effect,
     grouped_expression::{GroupedExpression, RangeConstraintProvider},
     range_constraint::RangeConstraint,
-    runtime_constant::RuntimeConstant,
+    runtime_constant::{RuntimeConstant, Substitutable},
 };
 use itertools::Itertools;
 use powdr_number::{ExpressionConvertible, FieldElement};
@@ -23,7 +23,70 @@ pub struct ConstraintSystem<T, V> {
     pub derived_variables: Vec<DerivedVariable<T, V>>,
 }
 
-pub type DerivedVariable<T, V> = (V, ComputationMethod<T, GroupedExpression<T, V>>);
+impl<T, V> Default for ConstraintSystem<T, V> {
+    fn default() -> Self {
+        ConstraintSystem {
+            algebraic_constraints: Vec::new(),
+            bus_interactions: Vec::new(),
+            derived_variables: Vec::new(),
+        }
+    }
+}
+
+impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display for ConstraintSystem<T, V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            self.algebraic_constraints
+                .iter()
+                .map(|constraint| format!("{constraint}"))
+                .chain(
+                    self.bus_interactions
+                        .iter()
+                        .map(|bus_inter| format!("{bus_inter}"))
+                )
+                .chain(self.derived_variables.iter().map(
+                    |DerivedVariable {
+                         variable,
+                         computation_method,
+                     }| { format!("{variable} := {computation_method}") }
+                ))
+                .format("\n")
+        )
+    }
+}
+
+impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
+    /// Returns all referenced unknown variables in the system. Might contain repetitions.
+    ///
+    /// Variables referenced in derived variables are not included, as they are not part of the constraints.
+    pub fn referenced_unknown_variables(&self) -> impl Iterator<Item = &V> {
+        self.algebraic_constraints
+            .iter()
+            .flat_map(|c| c.referenced_unknown_variables())
+            .chain(
+                self.bus_interactions
+                    .iter()
+                    .flat_map(|b| b.referenced_unknown_variables()),
+            )
+    }
+
+    /// Extends the constraint system by the constraints of another system.
+    /// No de-duplication of constraints or disambiguation of variables is performed.
+    pub fn extend(&mut self, system: ConstraintSystem<T, V>) {
+        self.algebraic_constraints
+            .extend(system.algebraic_constraints);
+        self.bus_interactions.extend(system.bus_interactions);
+        self.derived_variables.extend(system.derived_variables);
+    }
+}
+
+#[derive(Clone)]
+pub struct DerivedVariable<T, V> {
+    pub variable: V,
+    pub computation_method: ComputationMethod<T, GroupedExpression<T, V>>,
+}
 
 /// Specifies a way to compute the value of a variable from other variables.
 /// It is generic over the field `T` and the expression type `E`.
@@ -54,61 +117,31 @@ impl<T, F> ComputationMethod<T, GroupedExpression<T, F>> {
     }
 }
 
-impl<T, V> Default for ConstraintSystem<T, V> {
-    fn default() -> Self {
-        ConstraintSystem {
-            algebraic_constraints: Vec::new(),
-            bus_interactions: Vec::new(),
-            derived_variables: Vec::new(),
+impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq>
+    ComputationMethod<T, GroupedExpression<T, V>>
+{
+    /// Substitute a variable by a symbolically known expression. The variable can be known or unknown.
+    /// If it was already known, it will be substituted in the known expressions.
+    pub fn substitute_by_known(&mut self, variable: &V, substitution: &T) {
+        match self {
+            ComputationMethod::Constant(_) => {}
+            ComputationMethod::InverseOrZero(e) => {
+                e.substitute_by_known(variable, substitution);
+            }
         }
     }
-}
 
-impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display for ConstraintSystem<T, V> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            self.algebraic_constraints
-                .iter()
-                .map(|constraint| format!("{constraint}"))
-                .chain(
-                    self.bus_interactions
-                        .iter()
-                        .map(|bus_inter| format!("{bus_inter}"))
-                )
-                .chain(
-                    self.derived_variables
-                        .iter()
-                        .map(|(var, method)| { format!("{var} := {method}") })
-                )
-                .format("\n")
-        )
-    }
-}
-
-impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
-    /// Returns all referenced unknown variables in the system. Might contain repetitions.
+    /// Substitute an unknown variable by a GroupedExpression.
     ///
-    /// Variables referenced in derived variables are not included, as they are not part of the constraints.
-    pub fn referenced_unknown_variables(&self) -> impl Iterator<Item = &V> {
-        self.algebraic_constraints
-            .iter()
-            .flat_map(|c| c.referenced_unknown_variables())
-            .chain(
-                self.bus_interactions
-                    .iter()
-                    .flat_map(|b| b.referenced_unknown_variables()),
-            )
-    }
-
-    /// Extends the constraint system by the constraints of another system.
-    /// No de-duplication of constraints or disambiguation of variables is performed.
-    pub fn extend(&mut self, system: ConstraintSystem<T, V>) {
-        self.algebraic_constraints
-            .extend(system.algebraic_constraints);
-        self.bus_interactions.extend(system.bus_interactions);
-        self.derived_variables.extend(system.derived_variables);
+    /// Note this does NOT work properly if the variable is used inside a
+    /// known SymbolicExpression.
+    pub fn substitute_by_unknown(&mut self, variable: &V, substitution: &GroupedExpression<T, V>) {
+        match self {
+            ComputationMethod::Constant(_) => {}
+            ComputationMethod::InverseOrZero(e) => {
+                e.substitute_by_unknown(variable, substitution);
+            }
+        }
     }
 }
 
