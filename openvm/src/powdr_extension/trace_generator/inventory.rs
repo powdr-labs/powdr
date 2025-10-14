@@ -46,13 +46,14 @@ cfg_if::cfg_if! {
 
         use openvm_algebra_circuit::AlgebraProverExt;
         use openvm_bigint_circuit::Int256GpuProverExt;
+        use openvm_circuit::system::cuda::SystemChipInventoryGPU;
         use openvm_ecc_circuit::EccProverExt;
         use openvm_keccak256_circuit::Keccak256GpuProverExt;
         use openvm_native_circuit::NativeGpuProverExt;
         use openvm_rv32im_circuit::Rv32ImGpuProverExt;
         use openvm_sha256_circuit::Sha256GpuProverExt;
         pub type DummyChipComplex<SC> =
-            VmChipComplex<SC, DenseRecordArena, GpuBackend, SystemChipInventory<SC>>;
+            VmChipComplex<SC, DenseRecordArena, GpuBackend, SystemChipInventoryGPU>;
     }
 }
 
@@ -193,7 +194,7 @@ pub fn create_dummy_airs(
 }
 
 #[cfg(feature = "cuda")]
-fn create_dummy_chip_complex(
+pub fn create_dummy_chip_complex(
     config: &SdkVmConfig,
     circuit: AirInventory<BabyBearSC>,
     shared_chips: SharedPeripheryChips,
