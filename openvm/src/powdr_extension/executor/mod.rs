@@ -43,6 +43,7 @@ pub struct PowdrExecutor {
     pub executor_inventory: ExecutorInventory<SdkVmConfigExecutor<BabyBear>>,
     pub apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
     pub original_arenas: Rc<RefCell<OriginalArenas>>,
+    pub height_change: u32,
 }
 
 /// A shared mutable reference to the arenas used to store the traces of the original instructions, accessed during preflight execution and trace generation.
@@ -169,6 +170,7 @@ pub struct RecordArenaDimension {
 #[derive(AlignedBytesBorrow, Clone)]
 #[repr(C)]
 struct PowdrPreCompute<F, Ctx> {
+    height_change: u32,
     original_instructions: Vec<(ExecuteFunc<F, Ctx>, Vec<u8>)>,
 }
 
@@ -295,6 +297,7 @@ impl PowdrExecutor {
         let executor_inventory = &self.executor_inventory;
         // Set the data using the original instructions
         *data = PowdrPreCompute {
+            height_change: self.height_change,
             original_instructions: self
                 .apc
                 .block
@@ -358,9 +361,10 @@ unsafe fn execute_e2_impl<F: PrimeField32, CTX: MeteredExecutionCtxTrait>(
     vm_state: &mut VmExecState<F, GuestMemory, CTX>,
 ) {
     let pre_compute: &E2PreCompute<PowdrPreCompute<F, CTX>> = pre_compute.borrow();
-    vm_state
-        .ctx
-        .on_height_change(pre_compute.chip_idx as usize, 1);
+    vm_state.ctx.on_height_change(
+        pre_compute.chip_idx as usize,
+        pre_compute.data.height_change,
+    );
     execute_e12_impl::<F, CTX>(&pre_compute.data, vm_state);
 }
 
@@ -441,12 +445,14 @@ impl PowdrExecutor {
         base_config: OriginalVmConfig,
         apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
         record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
+        height_change: u32,
     ) -> Self {
         Self {
             air_by_opcode_id,
             executor_inventory: base_config.sdk_config.sdk.create_executors().unwrap(),
             apc,
             original_arenas: record_arena_by_air_name,
+            height_change,
         }
     }
 }

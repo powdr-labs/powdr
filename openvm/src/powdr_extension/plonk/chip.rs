@@ -38,7 +38,6 @@ pub struct PlonkChip {
 }
 
 impl PlonkChip {
-    #[allow(dead_code)]
     pub(crate) fn new(
         precompile: PowdrPrecompile<BabyBear>,
         original_airs: OriginalAirs<BabyBear>,

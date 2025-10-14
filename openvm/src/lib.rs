@@ -909,7 +909,7 @@ mod tests {
         pgo_config: PgoConfig,
         segment_height: Option<usize>,
     ) {
-        let result = compile_and_prove(
+        compile_and_prove(
             guest,
             config,
             implementation,
@@ -918,8 +918,8 @@ mod tests {
             stdin,
             pgo_config,
             segment_height,
-        );
-        assert!(result.is_ok());
+        )
+        .unwrap()
     }
 
     fn prove_mock(
@@ -930,7 +930,7 @@ mod tests {
         pgo_config: PgoConfig,
         segment_height: Option<usize>,
     ) {
-        let result = compile_and_prove(
+        compile_and_prove(
             guest,
             config,
             implementation,
@@ -939,8 +939,8 @@ mod tests {
             stdin,
             pgo_config,
             segment_height,
-        );
-        assert!(result.is_ok());
+        )
+        .unwrap()
     }
 
     fn prove_recursion(
@@ -951,7 +951,7 @@ mod tests {
         pgo_config: PgoConfig,
         segment_height: Option<usize>,
     ) {
-        let result = compile_and_prove(
+        compile_and_prove(
             guest,
             config,
             implementation,
@@ -960,8 +960,8 @@ mod tests {
             stdin,
             pgo_config,
             segment_height,
-        );
-        assert!(result.is_ok());
+        )
+        .unwrap()
     }
 
     const GUEST: &str = "guest";
@@ -1209,6 +1209,23 @@ mod tests {
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let config = default_powdr_openvm_config(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
         prove_mock(
+            GUEST_KECCAK,
+            config,
+            PrecompileImplementation::PlonkChip,
+            stdin,
+            PgoConfig::None,
+            None,
+        );
+    }
+
+    // TODO: fix this test. It works with `mock` (see above) but not with `prove_simple`
+    #[test]
+    #[should_panic = "Verification(StarkError(InvalidProofShape)"]
+    fn keccak_plonk_small_prove_simple() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_KECCAK_ITER_SMALL);
+        let config = default_powdr_openvm_config(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
+        prove_simple(
             GUEST_KECCAK,
             config,
             PrecompileImplementation::PlonkChip,

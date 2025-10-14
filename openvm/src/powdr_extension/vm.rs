@@ -13,6 +13,7 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use crate::bus_map::BusMap;
 use crate::customize_exe::OvmApcStats;
 use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
+use crate::plonk::air_to_plonkish::build_circuit;
 use crate::powdr_extension::chip::PowdrAir;
 use crate::powdr_extension::executor::{OriginalArenas, PowdrExecutor};
 use crate::powdr_extension::PlonkAir;
@@ -103,11 +104,20 @@ impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear> {
         inventory: &mut openvm_circuit::arch::ExecutorInventoryBuilder<BabyBear, Self::Executor>,
     ) -> Result<(), openvm_circuit::arch::ExecutorInventoryError> {
         for precompile in &self.precompiles {
+            let height_change = match self.implementation {
+                PrecompileImplementation::SingleRowChip => 1,
+                PrecompileImplementation::PlonkChip => {
+                    let plonk_circuit = build_circuit(precompile.apc.machine(), &self.bus_map);
+                    plonk_circuit.len() as u32
+                }
+            };
+
             let powdr_executor = PowdrExtensionExecutor::Powdr(PowdrExecutor::new(
                 self.airs.clone(),
                 self.base_config.clone(),
                 precompile.apc.clone(),
                 precompile.apc_record_arena.clone(),
+                height_change,
             ));
             inventory.add_executor(powdr_executor, once(precompile.opcode.global_opcode()))?;
         }
