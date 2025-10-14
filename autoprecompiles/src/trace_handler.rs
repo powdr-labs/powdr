@@ -1,19 +1,18 @@
 use itertools::Itertools;
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 use rayon::prelude::*;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::Display;
 use std::{cmp::Eq, hash::Hash};
 
 use crate::expression::{AlgebraicExpression, AlgebraicReference};
 use crate::{Apc, InstructionHandler};
 
-/// Returns data needed for constructing the APC trace.
 pub struct TraceData<'a, F> {
-    /// The dummy trace values for each instruction.
+    /// For each call of the apc, the values of each original instruction's dummy trace.
     pub dummy_values: Vec<Vec<&'a [F]>>,
     /// The mapping from dummy trace index to APC index for each instruction.
-    pub dummy_trace_index_to_apc_index_by_instruction: Vec<HashMap<usize, usize>>,
+    pub dummy_trace_index_to_apc_index_by_instruction: Vec<Vec<(usize, usize)>>,
     /// The mapping from poly_id to the index in the list of apc columns.
     /// The values are always unique and contiguous.
     pub apc_poly_id_to_index: BTreeMap<u64, usize>,
@@ -79,23 +78,22 @@ where
         )
         .collect::<Vec<_>>();
 
-    // The Poly IDs for which we have found a column in the dummy trace.
-    let mut mapped_poly_ids = BTreeSet::new();
-
     let dummy_trace_index_to_apc_index_by_instruction = apc
         .subs
         .iter()
         .map(|subs| {
-            let mut dummy_trace_index_to_apc_index = HashMap::new();
-            for (dummy_index, poly_id) in subs.iter().enumerate() {
-                if let Some(apc_index) = apc_poly_id_to_index.get(poly_id) {
-                    dummy_trace_index_to_apc_index.insert(dummy_index, *apc_index);
-                    mapped_poly_ids.insert(*poly_id);
-                }
-            }
-            dummy_trace_index_to_apc_index
+            subs.iter()
+                .enumerate()
+                .filter_map(|(dummy_index, poly_id)| {
+                    // Check if this dummy column is present in the final apc row
+                    apc_poly_id_to_index
+                        .get(poly_id)
+                        // If it is, map the dummy index to the apc index
+                        .map(|apc_index| (dummy_index, *apc_index))
+                })
+                .collect()
         })
-        .collect::<Vec<_>>();
+        .collect();
 
     let dummy_values = (0..apc_call_count)
         .into_par_iter()
