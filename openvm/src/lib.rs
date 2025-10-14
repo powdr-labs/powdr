@@ -766,12 +766,6 @@ pub fn prove(
 
     // Create the SDK
     let sdk: GenericSdk<_, SpecializedConfigCpuBuilder, _> = GenericSdk::new(app_config).unwrap();
-
-    let mut app_prover = sdk.app_prover(exe.clone())?;
-
-    // Generate an AppProvingKey
-    sdk.app_keygen();
-
     if mock {
         // Build owned vm instance, so we can mutate it later
         let vm_builder = sdk.app_vm_builder().clone();
@@ -822,6 +816,8 @@ pub fn prove(
             debug_proving_ctx(vm, &pk, &ctx);
         }
     } else {
+        let mut app_prover = sdk.app_prover(exe.clone())?;
+
         // Generate a proof
         tracing::info!("Generating app proof...");
         let start = std::time::Instant::now();

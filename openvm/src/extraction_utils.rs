@@ -295,7 +295,7 @@ impl OriginalVmConfig {
 
         let instruction_allowlist = instruction_allowlist();
 
-        let res = instruction_allowlist
+        instruction_allowlist
             .into_iter()
             .filter_map(|op| {
                 executor_inventory
@@ -337,9 +337,7 @@ impl OriginalVmConfig {
                 })?;
 
                 Ok(airs)
-            });
-
-        res
+            })
     }
 
     pub fn bus_map(&self) -> BusMap {
