@@ -7,7 +7,7 @@ use std::sync::Arc;
 use crate::bus_map::BusMap;
 use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
 use crate::plonk::air_to_plonkish::build_circuit;
-use crate::plonk::{Gate, Variable};
+use crate::plonk::{Gate, PlonkCircuit, Variable};
 use crate::powdr_extension::executor::OriginalArenas;
 use crate::powdr_extension::plonk::air::PlonkColumns;
 use crate::powdr_extension::plonk::copy_constraint::generate_permutation_columns;
@@ -28,6 +28,11 @@ use openvm_stark_backend::{
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::expression::AlgebraicReference;
 use powdr_autoprecompiles::Apc;
+
+#[cfg(feature = "cuda")]
+use crate::powdr_extension::trace_generator::device_matrix_from_values;
+#[cfg(feature = "cuda")]
+use crate::DeviceMatrix;
 
 pub struct PlonkChip {
     name: String,
@@ -65,8 +70,28 @@ impl PlonkChip {
     }
 }
 
+#[cfg(not(feature = "cuda"))]
 impl<R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB> for PlonkChip {
     fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
+        let (values, width, _) = self.generate_plonk_values();
+        let trace = RowMajorMatrix::new(values, width);
+
+        AirProvingContext::simple(Arc::new(trace), vec![])
+    }
+}
+
+#[cfg(feature = "cuda")]
+impl<R, PB: ProverBackend<Matrix = DeviceMatrix<BabyBear>>> Chip<R, PB> for PlonkChip {
+    fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
+        let (values, width, height) = self.generate_plonk_values();
+        let trace = device_matrix_from_values(values, width, height);
+
+        AirProvingContext::simple(trace, vec![])
+    }
+}
+
+impl PlonkChip {
+    fn generate_plonk_values(&self) -> (Vec<BabyBear>, usize, usize) {
         tracing::debug!("Generating air proof input for PlonkChip {}", self.name);
 
         let plonk_circuit = build_circuit(self.apc.machine(), &self.bus_map);
@@ -89,9 +114,13 @@ impl<R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB> for 
             .enumerate()
             .map(|(index, c)| (c.id, index))
             .collect();
-        let witness = self
+
+        // Generate APC witness values
+        let (witness_values, _, _) = self
             .trace_generator
-            .generate_witness(record_arena_by_air_name);
+            .generate_witness_values(record_arena_by_air_name);
+        // TODO: confirm that this is the same width as that returned by `generate_witness_values`
+        let witness = RowMajorMatrix::new(witness_values, width);
 
         // TODO: This should be parallelized.
         let mut values = BabyBear::zero_vec(height * width);
@@ -162,7 +191,7 @@ impl<R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB> for 
 
         generate_permutation_columns(&mut values, &plonk_circuit, number_of_calls, width);
 
-        AirProvingContext::simple(Arc::new(RowMajorMatrix::new(values, width)), vec![])
+        (values, width, height)
     }
 }
 

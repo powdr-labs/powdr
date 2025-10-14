@@ -66,10 +66,25 @@ impl PowdrTraceGenerator {
         }
     }
 
+    #[cfg(not(feature = "cuda"))]
+    pub fn generate_witness(&self, mut original_arenas: OriginalArenas) -> Witness<BabyBear> {
+        let (values, width, _) = self.generate_witness_values(original_arenas);
+        Witness::new(values, width)
+    }
+
+    #[cfg(feature = "cuda")]
+    pub fn generate_witness(&self, mut original_arenas: OriginalArenas) -> Witness<BabyBear> {
+        let (values, width, height) = self.generate_witness_values(original_arenas);
+        device_matrix_from_values(values, width, height)
+    }
+
     /// Generates the witness for the autoprecompile. The result will be a matrix of
     /// size `next_power_of_two(number_of_calls) * width`, where `width` is the number of
     /// nodes in the APC circuit.
-    pub fn generate_witness(&self, mut original_arenas: OriginalArenas) -> Witness<BabyBear> {
+    pub fn generate_witness_values(
+        &self,
+        mut original_arenas: OriginalArenas,
+    ) -> (Vec<BabyBear>, usize, usize) {
         let num_apc_calls = original_arenas.number_of_calls();
         if num_apc_calls == 0 {
             // If the APC isn't called, early return with an empty trace.
@@ -212,19 +227,12 @@ impl PowdrTraceGenerator {
                     });
             });
 
-        #[cfg(not(feature = "cuda"))]
-        {
-            Witness::new(values, width)
-        }
-        #[cfg(feature = "cuda")]
-        {
-            device_matrix_from_values(values, width, height)
-        }
+        (values, width, height)
     }
 }
 
 #[cfg(feature = "cuda")]
-fn device_matrix_from_values(
+pub fn device_matrix_from_values(
     values: Vec<BabyBear>,
     width: usize,
     height: usize,
