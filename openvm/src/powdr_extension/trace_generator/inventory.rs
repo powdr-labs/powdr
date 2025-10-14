@@ -30,17 +30,33 @@ use crate::{
     ExtendedVmConfigExecutor,
 };
 
-#[cfg(not(feature = "cuda"))]
-use crate::powdr_extension::trace_generator::periphery::SharedPeripheryChipsCpuProverExt;
-#[cfg(feature = "cuda")]
-use crate::powdr_extension::trace_generator::periphery::SharedPeripheryChipsGpuProverExt;
+cfg_if::cfg_if! {
+    if #[cfg(not(feature = "cuda"))] {
+        use crate::powdr_extension::trace_generator::periphery::SharedPeripheryChipsCpuProverExt;
+        /// A dummy inventory used for execution of autoprecompiles
+        /// It extends the `SdkVmConfigExecutor` and `SdkVmConfigPeriphery`, providing them with shared, pre-loaded periphery chips to avoid memory allocations by each SDK chip
+        pub type DummyChipComplex<SC> =
+            VmChipComplex<SC, MatrixRecordArena<Val<SC>>, CpuBackend<SC>, SystemChipInventory<SC>>;
+    } else {
+        use crate::powdr_extension::trace_generator::periphery::SharedPeripheryChipsGpuProverExt;
+        use crate::GpuBackend;
+        use crate::DenseRecordArena;
+        use crate::GpuBabyBearPoseidon2Engine;
+        use crate::SystemGpuBuilder;
+
+        use openvm_algebra_circuit::AlgebraProverExt;
+        use openvm_bigint_circuit::Int256GpuProverExt;
+        use openvm_ecc_circuit::EccProverExt;
+        use openvm_keccak256_circuit::Keccak256GpuProverExt;
+        use openvm_native_circuit::NativeGpuProverExt;
+        use openvm_rv32im_circuit::Rv32ImGpuProverExt;
+        use openvm_sha256_circuit::Sha256GpuProverExt;
+        pub type DummyChipComplex<SC> =
+            VmChipComplex<SC, DenseRecordArena<Val<SC>>, GpuBackend<SC>, SystemChipInventory<SC>>;
+    }
+}
 
 use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
-
-/// A dummy inventory used for execution of autoprecompiles
-/// It extends the `SdkVmConfigExecutor` and `SdkVmConfigPeriphery`, providing them with shared, pre-loaded periphery chips to avoid memory allocations by each SDK chip
-pub type DummyChipComplex<SC> =
-    VmChipComplex<SC, MatrixRecordArena<Val<SC>>, CpuBackend<SC>, SystemChipInventory<SC>>;
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Chip, PreflightExecutor, Executor, MeteredExecutor, From, AnyEnum)]
@@ -176,6 +192,67 @@ pub fn create_dummy_airs(
     Ok(inventory)
 }
 
+#[cfg(feature = "cuda")]
+fn create_dummy_chip_complex(
+    config: &SdkVmConfig,
+    circuit: AirInventory<BabyBearSC>,
+    shared_chips: SharedPeripheryChips,
+) -> Result<DummyChipComplex<BabyBearSC>, ChipInventoryError> {
+    type E = GpuBabyBearPoseidon2Engine;
+
+    let config = config.to_inner();
+    let mut chip_complex =
+        VmBuilder::<E>::create_chip_complex(&SystemGpuBuilder, &config.system, circuit)?;
+    let inventory = &mut chip_complex.inventory;
+
+    // CHANGE: inject the periphery chips so that they are not created by the extensions. This is done for memory footprint: the dummy periphery chips are thrown away anyway, so we reuse a single one for all APCs.
+    VmProverExtension::<E, _, _>::extend_prover(
+        &SharedPeripheryChipsGpuProverExt,
+        &shared_chips,
+        inventory,
+    )?;
+    // END CHANGE
+
+    if let Some(rv32i) = &config.rv32i {
+        VmProverExtension::<E, _, _>::extend_prover(&Rv32ImGpuProverExt, rv32i, inventory)?;
+    }
+    if let Some(io) = &config.io {
+        VmProverExtension::<E, _, _>::extend_prover(&Rv32ImGpuProverExt, io, inventory)?;
+    }
+    if let Some(keccak) = &config.keccak {
+        VmProverExtension::<E, _, _>::extend_prover(&Keccak256GpuProverExt, keccak, inventory)?;
+    }
+    if let Some(sha256) = &config.sha256 {
+        VmProverExtension::<E, _, _>::extend_prover(&Sha256GpuProverExt, sha256, inventory)?;
+    }
+    if let Some(native) = &config.native {
+        VmProverExtension::<E, _, _>::extend_prover(&NativeGpuProverExt, native, inventory)?;
+    }
+    if let Some(castf) = &config.castf {
+        VmProverExtension::<E, _, _>::extend_prover(&NativeGpuProverExt, castf, inventory)?;
+    }
+    if let Some(rv32m) = &config.rv32m {
+        VmProverExtension::<E, _, _>::extend_prover(&Rv32ImGpuProverExt, rv32m, inventory)?;
+    }
+    if let Some(bigint) = &config.bigint {
+        VmProverExtension::<E, _, _>::extend_prover(&Int256GpuProverExt, bigint, inventory)?;
+    }
+    if let Some(modular) = &config.modular {
+        VmProverExtension::<E, _, _>::extend_prover(&AlgebraProverExt, modular, inventory)?;
+    }
+    if let Some(fp2) = &config.fp2 {
+        VmProverExtension::<E, _, _>::extend_prover(&AlgebraProverExt, fp2, inventory)?;
+    }
+    if let Some(pairing) = &config.pairing {
+        VmProverExtension::<E, _, _>::extend_prover(&PairingProverExt, pairing, inventory)?;
+    }
+    if let Some(ecc) = &config.ecc {
+        VmProverExtension::<E, _, _>::extend_prover(&EccProverExt, ecc, inventory)?;
+    }
+    Ok(chip_complex)
+}
+
+#[cfg(not(feature = "cuda"))]
 pub fn create_dummy_chip_complex(
     config: &SdkVmConfig,
     circuit: AirInventory<BabyBearSC>,
@@ -191,10 +268,7 @@ pub fn create_dummy_chip_complex(
 
     // CHANGE: inject the periphery chips so that they are not created by the extensions. This is done for memory footprint: the dummy periphery chips are thrown away anyway, so we reuse a single one for all APCs.
     VmProverExtension::<BabyBearPoseidon2Engine, _, _>::extend_prover(
-        #[cfg(not(feature = "cuda"))]
         &SharedPeripheryChipsCpuProverExt,
-        #[cfg(feature = "cuda")]
-        &SharedPeripheryChipsGpuProverExt,
         &shared_chips,
         inventory,
     )?;
