@@ -150,7 +150,7 @@ impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChips {
                 .next()
                 .is_none());
             inventory.add_air(RangeTupleCheckerAir::<2> {
-                bus: tuple_range_checker.cpu_chip.as_ref().unwrap().bus(),
+                bus: *tuple_range_checker.cpu_chip.as_ref().unwrap().bus(),
             });
         }
 

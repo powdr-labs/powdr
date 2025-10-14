@@ -179,9 +179,11 @@ impl VmBuilder<GpuBabyBearPoseidon2Engine> for SpecializedConfigGpuBuilder {
     }
 }
 
+#[cfg(not(feature = "cuda"))]
 #[derive(Default, Clone)]
 pub struct SpecializedConfigCpuBuilder;
 
+#[cfg(not(feature = "cuda"))]
 impl<E> VmBuilder<E> for SpecializedConfigCpuBuilder
 where
     E: StarkEngine<SC = BabyBearSC, PB = CpuBackend<BabyBearSC>, PD = CpuDevice<BabyBearSC>>,
@@ -274,8 +276,10 @@ impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, PowdrExtens
     }
 }
 
+#[cfg(not(feature = "cuda"))]
 struct PowdrCpuProverExt;
 
+#[cfg(not(feature = "cuda"))]
 impl<E, RA> VmProverExtension<E, RA, PowdrExtension<BabyBear>> for PowdrCpuProverExt
 where
     E: StarkEngine<SC = BabyBearSC, PB = CpuBackend<BabyBearSC>, PD = CpuDevice<BabyBearSC>>,
