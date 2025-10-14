@@ -74,7 +74,7 @@ A _Bitmask_ is a natural number `bitmask` that is interpreted as a
 bitmask for the natural number representation of field elements.
 It allows a value `x` if and only if `x & bitmask == x`, i.e. all
 bits that are set in `x` are also set in `bitmask`.
-Note that the bitmask can never disallow the value zero.
+Note that in particular, the bitmask can never disallow the value zero.
 
 A _Range Constraint_ allows a value if and only if both the bitmask
 and the wrapping interval allow it.
