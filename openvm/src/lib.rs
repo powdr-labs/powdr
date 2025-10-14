@@ -825,11 +825,13 @@ impl CompiledProgram {
         &self,
         max_degree: usize,
     ) -> (Vec<(AirMetrics, Option<AirWidthsDiff>)>, Vec<AirMetrics>) {
-        use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
         let air_inventory = self.vm_config.create_airs().unwrap();
-        // TODO: make this work for GPU
-        let builder = SpecializedConfigCpuBuilder;
-        let chip_complex = <SpecializedConfigCpuBuilder as VmBuilder<BabyBearPoseidon2Engine>>::create_chip_complex(&builder, &self.vm_config, air_inventory).unwrap();
+
+        #[cfg(feature = "cuda")]
+        let chip_complex = <SpecializedConfigGpuBuilder as VmBuilder<GpuBabyBearPoseidon2Engine>>::create_chip_complex(&SpecializedConfigGpuBuilder, &self.vm_config, air_inventory).unwrap();
+        #[cfg(not(feature = "cuda"))]
+        let chip_complex = <SpecializedConfigCpuBuilder as VmBuilder<BabyBearPoseidon2Engine>>::create_chip_complex(&SpecializedConfigCpuBuilder, &self.vm_config, air_inventory).unwrap();
+
         let inventory = chip_complex.inventory;
 
         // Order of precompile is the same as that of Powdr executors in chip inventory
