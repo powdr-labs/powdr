@@ -4,11 +4,8 @@ use itertools::Itertools;
 use powdr_number::{FieldElement, LargeInt};
 
 use crate::{
-    constraint_system::AlgebraicConstraint,
-    grouped_expression::GroupedExpression,
-    indexed_constraint_system::apply_substitutions_to_expressions,
-    runtime_constant::{RuntimeConstant, Substitutable},
-    solver::VariableAssignment,
+    constraint_system::AlgebraicConstraint, grouped_expression::GroupedExpression,
+    indexed_constraint_system::apply_substitutions_to_expressions, solver::VariableAssignment,
 };
 
 pub struct BooleanExtractor<T, V> {
@@ -37,7 +34,7 @@ pub struct BooleanExtractionValue<T, V> {
     pub new_unconstrained_boolean_variable: Option<V>,
 }
 
-impl<T: RuntimeConstant + Hash, V: Ord + Clone + Hash + Eq> BooleanExtractor<T, V> {
+impl<T: FieldElement, V: Ord + Clone + Hash + Eq> BooleanExtractor<T, V> {
     /// Tries to simplify a quadratic constraint by transforming it into an affine
     /// constraint that makes use of a new boolean variable.
     /// NOTE: The boolean constraint is not part of the output.
@@ -83,16 +80,16 @@ impl<T: RuntimeConstant + Hash, V: Ord + Clone + Hash + Eq> BooleanExtractor<T, 
             (Some((left_var, left_coeff)), Some((right_var, right_coeff)))
                 if left_var == right_var =>
             {
-                right_coeff.field_div(left_coeff)
+                *right_coeff / *left_coeff
             }
             _ => T::one(),
         };
 
         // `constr = 0` is equivalent to `left * right = 0`
-        let offset = &(left.clone() * &factor) - right;
+        let offset = &(left.clone() * factor) - right;
         // We only do the transformation if `offset` is known, because
         // otherwise the constraint stays quadratic.
-        let offset = offset.try_to_known()?;
+        let offset = *offset.try_to_known()?;
         // We know that `offset + right = left` and thus
         // `constr = 0` is equivalent to `right * (right + offset) = 0`
         // which is equivalent to `right + z * offset = 0` for a new
@@ -120,16 +117,16 @@ impl<T: RuntimeConstant + Hash, V: Ord + Clone + Hash + Eq> BooleanExtractor<T, 
             // We use the one that has a smaller constant offset in the resulting expression.
             let expr = [
                 right.clone(),
-                -right - GroupedExpression::from_runtime_constant(offset.clone()),
+                -right - GroupedExpression::from_runtime_constant(offset),
             ]
             .into_iter()
             .min_by_key(|e| {
                 // Return the abs of the constant offset, or None on larger fields.
-                e.constant_offset().try_to_number().and_then(try_to_abs_u64)
+                try_to_abs_u64(*e.constant_offset())
             })
             .unwrap();
 
-            let key = -&expr * T::one().field_div(offset);
+            let key = -&expr * (T::one() / offset);
             if self.substitutions.contains_key(&key) {
                 // We have already performed this transformation before.
                 return None;
@@ -162,9 +159,7 @@ fn try_to_abs_u64<T: FieldElement>(x: T) -> Option<u64> {
     Some(min(x, modulus - x))
 }
 
-impl<T: RuntimeConstant + Substitutable<V> + Hash, V: Clone + Eq + Ord + Hash>
-    BooleanExtractor<T, V>
-{
+impl<T: FieldElement, V: Clone + Eq + Ord + Hash> BooleanExtractor<T, V> {
     /// Applies the assignments to the stored substitutions.
     pub fn apply_assignments(&mut self, assignments: &[VariableAssignment<T, V>]) {
         if assignments.is_empty() {
@@ -178,10 +173,20 @@ impl<T: RuntimeConstant + Substitutable<V> + Hash, V: Clone + Eq + Ord + Hash>
 
 #[cfg(test)]
 mod tests {
-
-    use crate::test_utils::{constant, var};
+    use powdr_number::GoldilocksField;
 
     use super::*;
+
+    type Var = &'static str;
+    type Qse = GroupedExpression<GoldilocksField, Var>;
+
+    fn var(name: Var) -> Qse {
+        Qse::from_unknown_variable(name)
+    }
+
+    fn constant(value: u64) -> Qse {
+        Qse::from_number(GoldilocksField::from(value))
+    }
 
     #[test]
     fn test_extract_boolean() {

@@ -43,16 +43,19 @@ pub struct PlonkChip {
 }
 
 impl PlonkChip {
-    #[allow(dead_code)]
     pub(crate) fn new(
         precompile: PowdrPrecompile<BabyBear>,
         original_airs: OriginalAirs<BabyBear>,
         base_config: OriginalVmConfig,
         periphery: PowdrPeripheryInstances,
-        record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
         bus_map: BusMap,
     ) -> Self {
-        let PowdrPrecompile { name, apc, .. } = precompile;
+        let PowdrPrecompile {
+            name,
+            apc,
+            apc_record_arena,
+            ..
+        } = precompile;
         let trace_generator = PowdrTraceGenerator::new(
             apc.clone(),
             original_airs.clone(),
@@ -65,7 +68,7 @@ impl PlonkChip {
             bus_map,
             apc,
             trace_generator,
-            record_arena_by_air_name,
+            record_arena_by_air_name: apc_record_arena,
         }
     }
 }
