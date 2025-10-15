@@ -6,6 +6,10 @@ license.workspace = true
 homepage.workspace = true
 repository.workspace = true
 
+[features]
+default = []
+metrics = ["powdr-openvm/metrics", "openvm-sdk/metrics", "openvm-stark-backend/metrics", "openvm-stark-sdk/metrics"]
+
 [[bin]]
 name = "powdr_openvm"
 path = "src/main.rs"
