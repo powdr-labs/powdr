@@ -95,7 +95,7 @@ impl PowdrPeripheryInstances {
                             // None is the expected case
                             None => RangeTupleCheckerChipGPU::new(tuple_range_checker.sizes),
                             Some(cpu_chip) => RangeTupleCheckerChipGPU::hybrid(Arc::new(
-                                RangeTupleCheckerChip::new(cpu_chip.bus()),
+                                RangeTupleCheckerChip::new(*cpu_chip.bus()),
                             )),
                         }
                     })
