@@ -88,9 +88,14 @@ impl PowdrTraceGenerator {
         let num_apc_calls = original_arenas.number_of_calls();
         if num_apc_calls == 0 {
             // If the APC isn't called, early return with an empty trace.
-            let width = self.apc.machine().main_columns().count();
             #[cfg(not(feature = "cuda"))]
-            return Witness::new(vec![], width);
+            {
+                let width = self.apc.machine().main_columns().count();
+                return (vec![], width, 0);
+            }
+            #[cfg(feature = "cuda")]
+            // Should have early returned in caller via `get_empty_air_proving_ctx::<GpuBackend>`, which is a "cuda"-only API.
+            unreachable!();
         }
 
         let chip_inventory = {
