@@ -5,9 +5,9 @@ use crate::air_builder::AirKeygenBuilder;
 use crate::bus_map::{BusMap, OpenVmBusType};
 use crate::opcode::branch_opcodes_set;
 use crate::powdr_extension::executor::RecordArenaDimension;
+use crate::ExtendedVmConfigCpuBuilder;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
 use crate::{AirMetrics, ExtendedVmConfig, ExtendedVmConfigExecutor, Instr};
-use crate::{BabyBearPoseidon2Engine, ExtendedVmConfigCpuBuilder};
 use openvm_circuit::arch::{
     AirInventory, AirInventoryError, ExecutorInventory, ExecutorInventoryError, MatrixRecordArena,
     SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig, VmExecutionConfig,
@@ -28,7 +28,7 @@ use openvm_stark_backend::{
     air_builders::symbolic::SymbolicConstraints, config::StarkGenericConfig, rap::AnyRap,
 };
 use openvm_stark_sdk::config::{
-    baby_bear_poseidon2::{config_from_perm, default_perm},
+    baby_bear_poseidon2::{config_from_perm, default_perm, BabyBearPoseidon2Engine},
     fri_params::SecurityParameters,
 };
 use openvm_stark_sdk::p3_baby_bear::{self, BabyBear};

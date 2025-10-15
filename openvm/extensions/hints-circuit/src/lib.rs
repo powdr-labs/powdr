@@ -57,9 +57,9 @@ impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for HintsExtension {
     }
 }
 
-pub struct HintsCpuProverExt;
+pub struct HintsProverExt;
 
-impl<E, RA> VmProverExtension<E, RA, HintsExtension> for HintsCpuProverExt
+impl<E, RA> VmProverExtension<E, RA, HintsExtension> for HintsProverExt
 where
     E: StarkEngine,
     Val<E::SC>: PrimeField32,

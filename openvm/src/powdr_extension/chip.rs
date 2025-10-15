@@ -33,6 +33,9 @@ use powdr_autoprecompiles::{
     Apc,
 };
 
+#[cfg(feature = "cuda")]
+use crate::DeviceMatrix;
+
 pub struct PowdrChip {
     pub name: String,
     pub record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
@@ -62,6 +65,7 @@ impl PowdrChip {
     }
 }
 
+#[cfg(not(feature = "cuda"))]
 impl<R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB> for PowdrChip {
     fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
         tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
@@ -71,6 +75,19 @@ impl<R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB> for 
             .generate_witness(self.record_arena_by_air_name.take());
 
         AirProvingContext::simple(Arc::new(trace), vec![])
+    }
+}
+
+#[cfg(feature = "cuda")]
+impl<R, PB: ProverBackend<Matrix = DeviceMatrix<BabyBear>>> Chip<R, PB> for PowdrChip {
+    fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
+        tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
+
+        let trace = self
+            .trace_generator
+            .generate_witness(self.record_arena_by_air_name.take());
+
+        AirProvingContext::simple(trace, vec![])
     }
 }
 

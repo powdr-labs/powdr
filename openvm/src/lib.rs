@@ -8,13 +8,13 @@ use openvm_build::{build_guest_package, find_unique_executable, get_package, Tar
 use openvm_circuit::arch::execution_mode::metered::segment_ctx::SegmentationLimits;
 use openvm_circuit::arch::execution_mode::Segment;
 use openvm_circuit::arch::instructions::exe::VmExe;
-use openvm_circuit::arch::RowMajorMatrixArena;
 use openvm_circuit::arch::{
     debug_proving_ctx, AirInventory, AirInventoryError, ChipInventory, ChipInventoryError,
     ExecutorInventory, ExecutorInventoryError, InitFileGenerator, MatrixRecordArena,
     PreflightExecutionOutput, SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig,
     VmCircuitExtension, VmExecutionConfig, VmInstance, VmProverExtension,
 };
+use openvm_circuit::arch::{DenseRecordArena, RowMajorMatrixArena};
 use openvm_circuit::system::SystemChipInventory;
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
 use openvm_circuit_derive::{Executor, MeteredExecutor, PreflightExecutor};
@@ -36,10 +36,7 @@ use openvm_sdk::{
 use openvm_stark_backend::config::Val;
 use openvm_stark_backend::engine::StarkEngine;
 use openvm_stark_backend::prover::cpu::{CpuBackend, CpuDevice};
-use openvm_stark_sdk::config::{
-    baby_bear_poseidon2::{BabyBearPoseidon2Config, BabyBearPoseidon2Engine},
-    FriParameters,
-};
+use openvm_stark_sdk::config::{baby_bear_poseidon2::BabyBearPoseidon2Config, FriParameters};
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
@@ -47,8 +44,7 @@ use powdr_autoprecompiles::evaluation::AirStats;
 use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::PowdrExtension;
-pub use powdr_openvm_hints_circuit::HintsExtension;
-use powdr_openvm_hints_circuit::{HintsCpuProverExt, HintsExtensionExecutor};
+use powdr_openvm_hints_circuit::{HintsExtension, HintsExtensionExecutor, HintsProverExt};
 use powdr_openvm_hints_transpiler::HintsTranspilerExtension;
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
@@ -85,7 +81,29 @@ pub use opcode::instruction_allowlist;
 pub use powdr_autoprecompiles::DegreeBound;
 pub use powdr_autoprecompiles::PgoConfig;
 
-type BabyBearSC = BabyBearPoseidon2Config;
+pub type BabyBearSC = BabyBearPoseidon2Config;
+
+cfg_if::cfg_if! {
+    if #[cfg(feature = "cuda")] {
+        pub use openvm_cuda_backend::engine::GpuBabyBearPoseidon2Engine;
+        pub use openvm_native_circuit::NativeGpuBuilder;
+        pub type PowdrSdk = GenericSdk<GpuBabyBearPoseidon2Engine, SpecializedConfigGpuBuilder, NativeGpuBuilder>;
+        pub type PowdrExecutionProfileSdk = GenericSdk<GpuBabyBearPoseidon2Engine, ExtendedVmConfigGpuBuilder, NativeGpuBuilder>;
+
+        pub use openvm_circuit::system::cuda::{extensions::SystemGpuBuilder, SystemChipInventoryGPU};
+        pub use openvm_sdk::config::SdkVmGpuBuilder;
+        pub use openvm_cuda_backend::prover_backend::GpuBackend;
+        pub use openvm_circuit_primitives::bitwise_op_lookup::BitwiseOperationLookupChipGPU;
+        pub use openvm_circuit_primitives::range_tuple::RangeTupleCheckerChipGPU;
+        pub use openvm_circuit_primitives::var_range::VariableRangeCheckerChipGPU;
+        pub use openvm_cuda_backend::base::DeviceMatrix;
+    } else {
+        use openvm_stark_backend::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
+        use openvm_native_circuit::NativeCpuBuilder;
+        pub type PowdrSdk = GenericSdk<BabyBearPoseidon2Engine, SpecializedConfigCpuBuilder, NativeCpuBuilder>;
+        pub type PowdrExecutionProfileSdk = GenericSdk<BabyBearPoseidon2Engine, ExtendedVmConfigCpuBuilder, NativeCpuBuilder>;
+    }
+}
 
 pub const DEFAULT_OPENVM_DEGREE_BOUND: usize = 2 * DEFAULT_APP_LOG_BLOWUP + 1;
 pub const DEFAULT_DEGREE_BOUND: DegreeBound = DegreeBound {
@@ -130,9 +148,44 @@ pub struct SpecializedConfig {
     pub powdr: PowdrExtension<BabyBear>,
 }
 
+#[cfg(feature = "cuda")]
+#[derive(Default, Clone)]
+pub struct SpecializedConfigGpuBuilder;
+
+#[cfg(feature = "cuda")]
+impl VmBuilder<GpuBabyBearPoseidon2Engine> for SpecializedConfigGpuBuilder {
+    type VmConfig = SpecializedConfig;
+    type SystemChipInventory = SystemChipInventoryGPU;
+    type RecordArena = DenseRecordArena;
+
+    fn create_chip_complex(
+        &self,
+        config: &SpecializedConfig,
+        circuit: AirInventory<BabyBearSC>,
+    ) -> Result<
+        VmChipComplex<BabyBearSC, Self::RecordArena, GpuBackend, Self::SystemChipInventory>,
+        ChipInventoryError,
+    > {
+        let mut chip_complex = VmBuilder::<GpuBabyBearPoseidon2Engine>::create_chip_complex(
+            &SdkVmGpuBuilder,
+            &config.sdk.sdk_config.sdk,
+            circuit,
+        )?;
+        let inventory = &mut chip_complex.inventory;
+        VmProverExtension::<GpuBabyBearPoseidon2Engine, _, _>::extend_prover(
+            &PowdrGpuProverExt,
+            &config.powdr,
+            inventory,
+        )?;
+        Ok(chip_complex)
+    }
+}
+
+#[cfg(not(feature = "cuda"))]
 #[derive(Default, Clone)]
 pub struct SpecializedConfigCpuBuilder;
 
+#[cfg(not(feature = "cuda"))]
 impl<E> VmBuilder<E> for SpecializedConfigCpuBuilder
 where
     E: StarkEngine<SC = BabyBearSC, PB = CpuBackend<BabyBearSC>, PD = CpuDevice<BabyBearSC>>,
@@ -160,8 +213,73 @@ where
     }
 }
 
+#[cfg(feature = "cuda")]
+struct PowdrGpuProverExt;
+
+#[cfg(feature = "cuda")]
+impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, PowdrExtension<BabyBear>>
+    for PowdrGpuProverExt
+{
+    fn extend_prover(
+        &self,
+        extension: &PowdrExtension<BabyBear>,
+        inventory: &mut ChipInventory<BabyBearSC, DenseRecordArena, GpuBackend>,
+    ) -> Result<(), ChipInventoryError> {
+        // TODO: here we make assumptions about the existence of some chips in the periphery. Make this more flexible
+        let bitwise_lookup = inventory
+            .find_chip::<Arc<BitwiseOperationLookupChipGPU<8>>>()
+            .next()
+            .cloned();
+        let range_checker = inventory
+            .find_chip::<Arc<VariableRangeCheckerChipGPU>>()
+            .next()
+            .unwrap();
+        let tuple_range_checker = inventory
+            .find_chip::<Arc<RangeTupleCheckerChipGPU<2>>>()
+            .next()
+            .cloned();
+
+        // Create the shared chips and the dummy shared chips
+        let shared_chips_pair = PowdrPeripheryInstances::new(
+            range_checker.clone(),
+            bitwise_lookup,
+            tuple_range_checker,
+        );
+
+        for precompile in &extension.precompiles {
+            match extension.implementation {
+                PrecompileImplementation::SingleRowChip => {
+                    inventory.next_air::<PowdrAir<BabyBear>>()?;
+                    let chip = PowdrChip::new(
+                        precompile.clone(),
+                        extension.airs.clone(),
+                        extension.base_config.clone(),
+                        shared_chips_pair.clone(),
+                    );
+                    inventory.add_executor_chip(chip);
+                }
+                PrecompileImplementation::PlonkChip => {
+                    inventory.next_air::<PlonkAir<BabyBear>>()?;
+                    let chip = PlonkChip::new(
+                        precompile.clone(),
+                        extension.airs.clone(),
+                        extension.base_config.clone(),
+                        shared_chips_pair.clone(),
+                        extension.bus_map.clone(),
+                    );
+                    inventory.add_executor_chip(chip);
+                }
+            };
+        }
+
+        Ok(())
+    }
+}
+
+#[cfg(not(feature = "cuda"))]
 struct PowdrCpuProverExt;
 
+#[cfg(not(feature = "cuda"))]
 impl<E, RA> VmProverExtension<E, RA, PowdrExtension<BabyBear>> for PowdrCpuProverExt
 where
     E: StarkEngine<SC = BabyBearSC, PB = CpuBackend<BabyBearSC>, PD = CpuDevice<BabyBearSC>>,
@@ -609,7 +727,40 @@ where
         let mut chip_complex =
             VmBuilder::<E>::create_chip_complex(&SdkVmCpuBuilder, &config.sdk, circuit)?;
         let inventory = &mut chip_complex.inventory;
-        VmProverExtension::<E, _, _>::extend_prover(&HintsCpuProverExt, &config.hints, inventory)?;
+        VmProverExtension::<E, _, _>::extend_prover(&HintsProverExt, &config.hints, inventory)?;
+        Ok(chip_complex)
+    }
+}
+
+#[cfg(feature = "cuda")]
+#[derive(Default, Clone)]
+pub struct ExtendedVmConfigGpuBuilder;
+
+#[cfg(feature = "cuda")]
+impl VmBuilder<GpuBabyBearPoseidon2Engine> for ExtendedVmConfigGpuBuilder {
+    type VmConfig = ExtendedVmConfig;
+    type SystemChipInventory = SystemChipInventoryGPU;
+    type RecordArena = DenseRecordArena;
+
+    fn create_chip_complex(
+        &self,
+        config: &ExtendedVmConfig,
+        circuit: AirInventory<BabyBearSC>,
+    ) -> Result<
+        VmChipComplex<BabyBearSC, Self::RecordArena, GpuBackend, Self::SystemChipInventory>,
+        ChipInventoryError,
+    > {
+        let mut chip_complex = VmBuilder::<GpuBabyBearPoseidon2Engine>::create_chip_complex(
+            &SdkVmGpuBuilder,
+            &config.sdk,
+            circuit,
+        )?;
+        let inventory = &mut chip_complex.inventory;
+        VmProverExtension::<GpuBabyBearPoseidon2Engine, _, _>::extend_prover(
+            &HintsProverExt,
+            &config.hints,
+            inventory,
+        )?;
         Ok(chip_complex)
     }
 }
@@ -677,8 +828,12 @@ impl CompiledProgram {
         max_degree: usize,
     ) -> (Vec<(AirMetrics, Option<AirWidthsDiff>)>, Vec<AirMetrics>) {
         let air_inventory = self.vm_config.create_airs().unwrap();
-        let builder = SpecializedConfigCpuBuilder;
-        let chip_complex = <SpecializedConfigCpuBuilder as VmBuilder<BabyBearPoseidon2Engine>>::create_chip_complex(&builder, &self.vm_config, air_inventory).unwrap();
+
+        #[cfg(feature = "cuda")]
+        let chip_complex = <SpecializedConfigGpuBuilder as VmBuilder<GpuBabyBearPoseidon2Engine>>::create_chip_complex(&SpecializedConfigGpuBuilder, &self.vm_config, air_inventory).unwrap();
+        #[cfg(not(feature = "cuda"))]
+        let chip_complex = <SpecializedConfigCpuBuilder as VmBuilder<BabyBearPoseidon2Engine>>::create_chip_complex(&SpecializedConfigCpuBuilder, &self.vm_config, air_inventory).unwrap();
+
         let inventory = chip_complex.inventory;
 
         // Order of precompile is the same as that of Powdr executors in chip inventory
@@ -724,8 +879,7 @@ pub fn execute(program: CompiledProgram, inputs: StdIn) -> Result<(), Box<dyn st
     let app_config = AppConfig::new(app_fri_params, vm_config.clone());
 
     // prepare for execute
-    let sdk: GenericSdk<BabyBearPoseidon2Engine, SpecializedConfigCpuBuilder, NativeCpuBuilder> =
-        GenericSdk::new(app_config).unwrap();
+    let sdk = PowdrSdk::new(app_config).unwrap();
 
     let output = sdk.execute(exe.clone(), inputs.clone()).unwrap();
 
@@ -763,14 +917,14 @@ pub fn prove(
     let app_config = AppConfig::new(app_fri_params, vm_config.clone());
 
     // Create the SDK
-    let sdk: GenericSdk<_, SpecializedConfigCpuBuilder, _> = GenericSdk::new(app_config).unwrap();
+    let sdk = PowdrSdk::new(app_config).unwrap();
+
     if mock {
         // Build owned vm instance, so we can mutate it later
         let vm_builder = sdk.app_vm_builder().clone();
         let vm_pk = sdk.app_pk().app_vm_pk.clone();
         let exe = sdk.convert_to_exe(exe.clone())?;
-        let mut vm_instance: VmInstance<BabyBearPoseidon2Engine, _> =
-            new_local_prover(vm_builder, &vm_pk, exe)?;
+        let mut vm_instance: VmInstance<_, _> = new_local_prover(vm_builder, &vm_pk, exe)?;
 
         vm_instance.reset_state(inputs.clone());
         let metered_ctx = vm_instance.vm.build_metered_ctx();
@@ -830,8 +984,7 @@ pub fn prove(
         tracing::info!("App proof verification done.");
 
         if recursion {
-            let mut agg_prover: AggStarkProver<BabyBearPoseidon2Engine, NativeCpuBuilder> =
-                sdk.prover(exe.clone())?.agg_prover;
+            let mut agg_prover: AggStarkProver<_, _> = sdk.prover(exe.clone())?.agg_prover;
 
             // Note that this proof is not verified. We assume that any valid app proof
             // (verified above) also leads to a valid aggregation proof.
@@ -862,8 +1015,7 @@ pub fn execution_profile_from_guest(
     let app_config = AppConfig::new(app_fri_params, vm_config.clone());
 
     // prepare for execute
-    let sdk: GenericSdk<BabyBearPoseidon2Engine, ExtendedVmConfigCpuBuilder, NativeCpuBuilder> =
-        GenericSdk::new(app_config).unwrap();
+    let sdk = PowdrExecutionProfileSdk::new(app_config).unwrap();
 
     execution_profile::<BabyBearOpenVmApcAdapter>(&program, || {
         sdk.execute(exe.clone(), inputs.clone()).unwrap();

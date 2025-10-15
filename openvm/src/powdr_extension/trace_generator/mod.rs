@@ -2,6 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use itertools::Itertools;
 use openvm_circuit::{arch::AirInventory, utils::next_power_of_two_or_zero};
+use openvm_cuda_common::d_buffer::DeviceBuffer;
 use openvm_stark_backend::{
     p3_field::{Field, FieldAlgebra, PrimeField32},
     p3_matrix::dense::{DenseMatrix, RowMajorMatrix},
@@ -23,6 +24,19 @@ use crate::{
     },
     BabyBearSC, Instr,
 };
+
+#[cfg(feature = "cuda")]
+use crate::DeviceMatrix;
+#[cfg(feature = "cuda")]
+use openvm_cuda_common::copy::{MemCopyD2H, MemCopyH2D};
+#[cfg(feature = "cuda")]
+use openvm_stark_backend::prover::hal::MatrixDimensions;
+
+#[cfg(feature = "cuda")]
+pub type Witness<T> = DeviceMatrix<T>;
+
+#[cfg(not(feature = "cuda"))]
+pub type Witness<T> = RowMajorMatrix<T>;
 
 /// The inventory of the PowdrExecutor, which contains the executors for each opcode.
 mod inventory;
@@ -54,6 +68,34 @@ impl<F> From<Arc<DenseMatrix<F>>> for SharedCpuTrace<F> {
     }
 }
 
+/// A wrapper around a DeviceMatrix to implement `TraceTrait` which is required for `generate_trace`.
+pub struct SharedGpuTrace<F> {
+    matrix: DeviceMatrix<F>,
+}
+
+impl<F: Send + Sync> TraceTrait<F> for SharedGpuTrace<F> {
+    type Values = DeviceBuffer<F>;
+
+    fn width(&self) -> usize {
+        self.matrix.width()
+    }
+
+    fn values(&self) -> &Self::Values {
+        self.matrix.buffer()
+    }
+}
+
+impl<F> From<DeviceMatrix<F>> for SharedGpuTrace<F> {
+    fn from(matrix: DeviceMatrix<F>) -> Self {
+        Self { matrix }
+    }
+}
+
+#[cfg(feature = "cuda")]
+type SharedTrace<F> = SharedGpuTrace<F>;
+#[cfg(not(feature = "cuda"))]
+type SharedTrace<F> = SharedCpuTrace<F>;
+
 pub struct PowdrTraceGenerator {
     pub apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
     pub original_airs: OriginalAirs<BabyBear>,
@@ -76,18 +118,31 @@ impl PowdrTraceGenerator {
         }
     }
 
+    #[cfg(not(feature = "cuda"))]
+    pub fn generate_witness(&self, mut original_arenas: OriginalArenas) -> Witness<BabyBear> {
+        let (values, width, _) = self.generate_witness_values(original_arenas);
+        Witness::new(values, width)
+    }
+
+    #[cfg(feature = "cuda")]
+    pub fn generate_witness(&self, mut original_arenas: OriginalArenas) -> Witness<BabyBear> {
+        let (values, width, height) = self.generate_witness_values(original_arenas);
+        device_matrix_from_values(values, width, height)
+    }
+
     /// Generates the witness for the autoprecompile. The result will be a matrix of
     /// size `next_power_of_two(number_of_calls) * width`, where `width` is the number of
     /// nodes in the APC circuit.
-    pub fn generate_witness(
+    pub fn generate_witness_values(
         &self,
         mut original_arenas: OriginalArenas,
-    ) -> RowMajorMatrix<BabyBear> {
+    ) -> (Vec<BabyBear>, usize, usize) {
         let num_apc_calls = original_arenas.number_of_calls();
         if num_apc_calls == 0 {
             // If the APC isn't called, early return with an empty trace.
-            let width = self.apc.machine().main_columns().count();
-            return RowMajorMatrix::new(vec![], width);
+            let _width = self.apc.machine().main_columns().count();
+            #[cfg(not(feature = "cuda"))]
+            return Witness::new(vec![], width);
         }
 
         let chip_inventory = {
@@ -106,7 +161,7 @@ impl PowdrTraceGenerator {
 
         let arenas = original_arenas.arenas_mut();
 
-        let dummy_trace_by_air_name: HashMap<String, SharedCpuTrace<BabyBear>> = chip_inventory
+        let dummy_trace_by_air_name: HashMap<String, SharedTrace<BabyBear>> = chip_inventory
             .chips()
             .iter()
             .enumerate()
@@ -123,7 +178,7 @@ impl PowdrTraceGenerator {
 
                 let shared_trace = chip.generate_proving_ctx(record_arena).common_main.unwrap();
 
-                Some((air_name, SharedCpuTrace::from(shared_trace)))
+                Some((air_name, SharedTrace::from(shared_trace)))
             })
             .collect();
 
@@ -152,13 +207,15 @@ impl PowdrTraceGenerator {
             .zip(dummy_values)
             .for_each(|(row_slice, dummy_values)| {
                 // map the dummy rows to the autoprecompile row
-                for (dummy_row, dummy_trace_index_to_apc_index) in dummy_values
+                for (device_ref, dummy_trace_index_to_apc_index) in dummy_values
                     .iter()
-                    .map(|r| &r.data[r.start..r.start + r.length])
                     .zip_eq(&dummy_trace_index_to_apc_index_by_instruction)
                 {
+                    let host_ref = &device_ref.data.to_host().unwrap()
+                        [device_ref.start..device_ref.start + device_ref.length];
+
                     for (dummy_trace_index, apc_index) in dummy_trace_index_to_apc_index {
-                        row_slice[*apc_index] = dummy_row[*dummy_trace_index];
+                        row_slice[*apc_index] = host_ref[*dummy_trace_index];
                     }
                 }
 
@@ -199,6 +256,17 @@ impl PowdrTraceGenerator {
                     });
             });
 
-        RowMajorMatrix::new(values, width)
+        (values, width, height)
     }
+}
+
+#[cfg(feature = "cuda")]
+pub fn device_matrix_from_values(
+    values: Vec<BabyBear>,
+    width: usize,
+    height: usize,
+) -> DeviceMatrix<BabyBear> {
+    // TODO: we copy the values from host (CPU) to device (GPU), and should study how to generate APC trace natively in GPU
+    let device_buffer = values.to_device().unwrap();
+    DeviceMatrix::new(Arc::new(device_buffer), height, width)
 }
