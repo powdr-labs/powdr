@@ -20,7 +20,16 @@ as signed integers instead of natural numbers, but this will be clarified.
 
 The optimizer is operating on an abstraction of a chip we call
 _Constraint System_, which consists of a set of _Algebraic Constraints_
-and _Bus Interactions_.
+and _Bus Interactions_. Both of them contain expressions involving variables.
+A Constraint System is _satisfied_ by an assignment
+of its variables if the assignment satisfies all Algebraic Constraints
+and Bus Interactions in the system.
+
+The purpose of the optimizer is to simplify a Constraint System
+into a Constraint System that has the same satisfying assignments.
+This is not the exact definition of correctness for the optimizer because
+it is also allowed to remove variables and introduce new ones, but
+it is a good guideline for now until we have all the definitions.
 
 ### Algebraic Constraint
 
@@ -36,40 +45,49 @@ if it evaluates to zero under this assignment.
 
 Example: `x * (x - 1) = 0` is an algebraic constraint that forces
 the variable `x` to be either zero or one, meaning that an
-assignment only satisfies this constraint if it has `x = 0` or `x = 1`.
+assignment satisfies this constraint if and only if it has `x = 0` or `x = 1`.
 
 ### Range Constraint
 
 The task of the optimizer is hugely simplified by the concept of
-_Range Constraints_. In an abstract way, a _Range Constraint_ is
-the set of possible values for a specific algebraic expression.
-During optimization, we store the currently best-known Range Constraint
-for every variable and they are also used to allow a uniform abstraction
+_Range Constraints_. Range Constraints allow us to combine the effects of
+different Algebraic Constraints (and Bus Interactions) on the same variable.
+In an abstract way, a _Range Constraint_ is just
+a restrictions on values and we can say that a value _satisfies_ a Range Constraint
+or not. We also say that a Range Constraint _allows_ a value if that value satisfies it.
+We can connect Range Constraints and variables (a Range Constraint _on_ a
+variable) and say that an assignment of a variable `v` _satisfies_ a Range Constraint
+`r` on `v` if the value assigned to `v` satisfies `r`.
+A Range Constraint `r` on a variable `v` is _valid_ in a Constraint System if any
+satisfying assignment of the Constraint System also satisfies `r`.
+
+During optimization, we derive Range Constraints for expressions and variables
+from Algebraic Constraints and Bus Interactions and use them to simplify
+the Constraint System. We also use Range Constraints for a uniform abstraction
 of Bus Interactions.
 
-In the example above, `x * (x - 1) = 0`, we can derive a Range Constraint
-of `{0, 1}` for the variable `x`.
+As an example, let us consider the Constraint System consisting of the
+Algebraic Constraint `x * (x - 1) = 0`. From this Algebraic Constraint the optimizer
+will synthesize a Range Constraint `r1` on `x` that only allows the values `0` and `1`.
+The Range Constraint is valid in the Constraint System because, as we saw at the end of
+the previous section, any satisfying assignment for the Algebraic Constraint
+must have `x = 0` or `x = 1`. Note that a Range Constraint that allows all values
+in the field is always valid, but not very useful.
 
-Note that whether or not a certain value is possible for an
-Algebraic Expression depends on the context. For example, if in addition
-to `x * (x - 1) = 0`, we also have the Algebraic Constraint
-`(x - 7) * (x - 1) = 0`,
-then the set of possible values for `x` shrinks to just `{1}`.
-What we can certainly say, though, is that if you derive the set of possible
-values from a set of constraints, then adding an Algebraic Constraint
-or Bus Interaction can only reduce the set of possible values.
+Now assume we extend the Constraint System by an additional constraint
+`(x - 2) * (x - 1) = 0`. The Range Constraint `r1` on `x` is still valid in the extended
+system because additional constraints can only reduce the set of satisfying assignments.
+If we look at the second constraint in isolation, we can get a Range Constraint `r2` on `x`
+that allows exactly the values `1` and `2`. Both `r1` and `r2` are valid in the extended
+system, and so is their intersection, which only allows the value `1`.
 
-Because of that, we always view Range Constraints as an over-approximation
-or "upper bound": If from the Range Constraint we can say that a value is not
-allowed, then it is certainly not allowed. But if the Range Constraint
-allows a value, it might still be disallowed by another Algebraic Constraint.
+From this simple example, one can already see the power of these Range Constraints.
+In a later section we will talk about the various computations that can be performed
+on Range Constraints including the intersection.
 
-Due to this reason, our concrete implementation of Range Constraints
-can also be sloppy: It is fine if we do not derive the tightest possible
-Range Constraint, either because it is too difficult to compute
-or too expensive to represent.
+#### Concrete Implementation of Range Constraints
 
-The approximation we use for Range Constraints is a combination
+The abstract concept of Range Constraints is implemented in the optimizer by a combination
 of a _Wrapping Interval_ and a _Bitmask_.
 
 A _Wrapping Interval_ is a pair of field elements `min` and `max`.
@@ -142,22 +160,25 @@ implement the following methods:
   of course you should return Range Constraints that are as tight
   as possible such that the optimizer gets the most out of it.
 
-As an example, let us assume we are modeling a bus that implements a byte range
+As an example, let us assume we are modeling a bus that implements a byte
 constraint, i.e. a bus that takes a single payload item and enforces that it is
 in the range `0..=255`. The bus is not stateful since it does not depend on any
 parts of the system. A simple correct implementation of
 `handle_bus_interaction` would be to always return a `0xff`-mask Range Constraint
-for the payload and ignore the input. But this implementation is also the best
-possible, since even if the input Range Constraint (i.e. the currently best known
-to the optimizer) is something like `200..=300`, the optimizer will not forget it but
+for the payload and ignore the input. It is correct because any assignment that
+satisfies the bus semantics must have the payload in the range `0..=255`.
+Even though this implementation ignores the input Range Constraints, is also the best
+possible, since even if the input Range Constraint
+is something like `200..=300`, the optimizer will not forget it but
 instead combine it with the one returned by `handle_bus_interaction` and derive
 `200..=255` as the new Range Constraint for the payload.
 
-Another example would be an XOR-bus that takes three payload items `a, b, c`
+Another example is an XOR-bus that takes three payload items `a, b, c`
 and ensures that all of them are bytes and `a ^ b = c`. This bus is also not stateful.
 Here, one would implement `handle_bus_interaction` by returning the three byte constraints
 for the payload items if the input has no restrictions. If two inputs are fully
-determined, we can compute the third and return that as a Range Constraint.
+determined (i.e. only a single values satisfies the Range Constraints),
+we can compute the third and return that as a Range Constraint.
 
 We will see later how we can fully optimize away XOR bus interactions using just this
 abstraction.
