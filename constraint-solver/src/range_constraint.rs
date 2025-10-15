@@ -5,13 +5,13 @@ use num_traits::Zero;
 
 use powdr_number::{log2_exact, FieldElement, LargeInt};
 
-/// Constraint on the values of a variable X.
-/// It does not have to be an interval.
+/// In an abstract way, a RangeConstraint is just a set of values. It is mainly used to
+/// combine the effects of multiple AlgebraicConstraints on the same variable.
 ///
 /// Currently, we can represent interval ranges (both "wrapping" and "non-wrapping" ones)
 /// and bit masks. The actual constraint is the conjunction of the two.
 ///
-/// The idea behing wrapping intervals is that we want to represent both signed and
+/// The idea behind wrapping intervals is that we want to represent both signed and
 /// unsigned numbers. Furthermore, by supporting wrapping intervals we do not lose
 /// any information when adding or substracting constants.
 ///
@@ -22,7 +22,20 @@ use powdr_number::{log2_exact, FieldElement, LargeInt};
 /// also under-approximates in contrast to this constraint being in the context
 /// of the full system.
 ///
-/// Note that the same constraint can have multiple representations.
+/// The semantics and correctness of RangeConstraints is mainly defined by the following notion:
+///
+/// We say a RangeConstraint `r` on an expression `e` is `valid` in a ConstraintSystem
+/// if for every satisfying assignment of the ConstraintSystem, the value of `e`
+/// under this assignment is allowed by `r`.
+///
+/// All the operations on RangeConstraints (like combine_sum, conjunction, ...) preserve
+/// validity, i.e. if we have an expression `e1 + e2` and we know that `r1` is a valid
+/// RangeConstraint for `e1` and `r2` is a valid RangeConstraint for `e2`, then
+/// the result of `r1.combine_sum(r2)` is a valid RangeConstraint for `e1 + e2`.
+///
+/// Note that the unconstrained RangeConstraint is always valid for every expression.
+///
+/// Finally, please be aware that same constraint can have multiple representations.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct RangeConstraint<T: FieldElement> {
     /// Bit-mask. A value `x` is allowed only if `x & mask == x` (when seen as unsigned integer).
@@ -62,9 +75,11 @@ impl<T: FieldElement> RangeConstraint<T> {
         }
     }
 
-    /// Constraint that allows values from min to max.
-    /// If min <= max, this means min <= x && x <= max.
-    /// If min > max, this means min <= x || x <= max.
+    /// Constraint that allows the values `min`, `min + 1`, ..., `max`.
+    /// Since this sequence can wrap around the field modulus, it means that
+    /// `x` is allowed if and only if:
+    /// - min <= x && x <= max  if min <= max
+    /// - min <= x || x <= max  if min > max,
     #[inline]
     pub fn from_range(min: T, max: T) -> Self {
         let mask = if min <= max {
@@ -81,7 +96,7 @@ impl<T: FieldElement> RangeConstraint<T> {
     }
 
     /// Returns true if the range constraint does not impose any
-    /// restrictions on the field elements.
+    /// restrictions on the values.
     pub fn is_unconstrained(&self) -> bool {
         self.range_width() == Self::unconstrained().range_width()
             && self.mask == Self::unconstrained().mask
@@ -94,7 +109,8 @@ impl<T: FieldElement> RangeConstraint<T> {
         &self.mask
     }
 
-    /// Returns a min-max inclusive range. Note that `max` can be smaller than `min`. In this case the range wraps.
+    /// Returns the interval part [min..=max] of the Range Constraint.
+    /// Note that `max` can be smaller than `min`. In this case the range wraps.
     /// Semantics, with (min, max) = range():
     /// If min <= max, this means min <= x && x <= max.
     /// If min > max, this means min <= x || x <= max.
@@ -113,9 +129,6 @@ impl<T: FieldElement> RangeConstraint<T> {
         self.range_width()
     }
 
-    /// If this returns false, then no satisfying assignment can have the value `v` for the
-    /// expression this range constraint represents.
-    /// The function might return true even if no satisfying assignment can have this value.
     pub fn allows_value(&self, v: T) -> bool {
         let in_range = if self.min <= self.max {
             self.min <= v && v <= self.max
@@ -126,7 +139,9 @@ impl<T: FieldElement> RangeConstraint<T> {
         in_range && in_mask
     }
 
-    /// The range constraint of the sum of two expressions.
+    /// The range constraint of the sum of two expressions:
+    /// If `r1` is a valid RangeConstraint for `e1` and `r2` is a valid RangeConstraint for `e2`,
+    /// then `r1.combine_sum(r2)` is a valid RangeConstraint for `e1 + e2`.
     pub fn combine_sum(&self, other: &Self) -> Self {
         let unconstrained = Self::unconstrained();
         // TODO we could use "add_with_carry" to see if this created an overflow.
@@ -151,7 +166,9 @@ impl<T: FieldElement> RangeConstraint<T> {
         Self { min, max, mask }
     }
 
-    /// The range constraint of the product of two expressions.
+    /// The range constraint of the product of two expressions:
+    /// If `r1` is a valid RangeConstraint for `e1` and `r2` is a valid RangeConstraint for `e2`,
+    /// then `r1.combine_product(r2)` is a valid RangeConstraint for `e1 * e2`.
     pub fn combine_product(&self, other: &Self) -> Self {
         if let Some(v) = other.try_to_single_value() {
             self.multiple(v)
@@ -169,6 +186,11 @@ impl<T: FieldElement> RangeConstraint<T> {
     }
 
     /// Returns the conjunction of this constraint and the other.
+    /// This operation is not lossless, but if `r1` and `r2` allow
+    /// a value `x`, then `r1.conjunction(r2)` also allows `x`.
+    /// Furthermore, if `r1` and `r2` are valid RangeConstraints for
+    /// the same expression `e`, then `r1.conjunction(r2)` is also a valid
+    /// RangeConstraint for `e`.
     pub fn conjunction(&self, other: &Self) -> Self {
         let mut mask = self.mask & other.mask;
         // We might lose information because the intersection of two potentially wrapping
@@ -203,6 +225,11 @@ impl<T: FieldElement> RangeConstraint<T> {
     }
 
     /// Returns the disjunction of this constraint and the other.
+    /// This operation is not lossless, but if `r1` or `r2` allow
+    /// a value `x`, then `r1.disjunction(r2)` also allows `x`.
+    /// Furthermore, if `r1` OR `r2` is a valid RangeConstraint for
+    /// the same expression `e`, then `r1.disjunction(r2)` is a valid
+    /// RangeConstraint for `e`.
     pub fn disjunction(&self, other: &Self) -> Self {
         let mask = self.mask | other.mask;
         match (self.min <= self.max, other.min <= other.max) {
@@ -229,6 +256,8 @@ impl<T: FieldElement> RangeConstraint<T> {
     }
 
     /// The constraint of an integer multiple of an expression.
+    /// If `r` is a valid RangeConstraint for `e`, then `r.multiple(factor)`
+    /// is a valid RangeConstraint for `factor * e`.
     pub fn multiple(&self, factor: T) -> Self {
         let mask = log2_exact(factor.to_arbitrary_integer()).and_then(|exponent| {
             (self.mask.to_arbitrary_integer() << exponent < T::modulus().to_arbitrary_integer())
