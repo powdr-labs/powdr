@@ -129,7 +129,7 @@ implement the following methods:
 - `is_stateful`: For a given Bus ID (a field element), returns if the bus
   with the given ID is stateful or not. If a bus interaction is not stateful,
   it only affects the payload passed to it and no other elements of the system.
-  A memory bus or the execution bridge are examples of a stateful busses,
+  A memory bus or the execution bridge are examples of stateful busses,
   while range constraint busses, busses modeling arithmetic operations or
   lookup tables are not stateful.
 
