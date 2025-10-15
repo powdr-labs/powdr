@@ -172,7 +172,6 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             &self.air_by_opcode_id,
             self.number_of_calls,
             &self.apc,
-            F::ONE, // TODO this is stupid but I did not find a way to get the 1 in the field.
         );
 
         // precompute the symbolic bus sends to the range checker for each original instruction
@@ -229,7 +228,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
 
                 // Fill in the columns we have to compute from other columns
                 // (these are either new columns or for example the "is_valid" column).
-                for (column, computation_method) in &columns_to_compute {
+                for (column, computation_method) in columns_to_compute {
                     let col_index = apc_poly_id_to_index[&column.id];
                     row_slice[col_index] = match computation_method {
                         ComputationMethod::Constant(c) => *c,
