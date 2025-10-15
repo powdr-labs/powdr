@@ -38,6 +38,7 @@ powdr-riscv-types = { path = "./riscv-types", version = "0.1.4" }
 powdr-syscalls = { path = "./syscalls", version = "0.1.4" }
 powdr-autoprecompiles = { path = "./autoprecompiles", version = "0.1.4" }
 powdr-openvm = { path = "./openvm", version = "0.1.4" }
+powdr-cli-openvm = { path = "./cli-openvm", version = "0.1.4" }
 
 powdr-openvm-hints-guest = { path = "./openvm/extensions/hints-guest", version = "0.1.4" }
 powdr-openvm-hints-transpiler = { path = "./openvm/extensions/hints-transpiler", version = "0.1.4" }

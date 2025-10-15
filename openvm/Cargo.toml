@@ -9,7 +9,7 @@ repository.workspace = true
 [features]
 default = []
 tco = ["openvm-sdk/tco"]
-metrics = ["openvm-sdk/metrics"]
+metrics = ["openvm-sdk/metrics", "openvm-stark-backend/metrics", "openvm-stark-sdk/metrics"]
 
 [dependencies]
 openvm.workspace = true
