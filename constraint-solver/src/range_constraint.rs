@@ -489,15 +489,9 @@ mod test {
         );
 
         // Test overflow of masks. Modulus is: 0xffffffff00000001
-        assert_eq!(
-            RCg::from_mask(0xefffffff00000001u64)
-                .combine_sum(&RCg::from_mask(0x7ffffffff0000000u64)),
-            RCg {
-                min: 1.into(),
-                max: 0.into(),
-                mask: u64::MAX.into()
-            }
-        );
+        assert!(RCg::from_mask(0xefffffff00000001u64)
+            .combine_sum(&RCg::from_mask(0x7ffffffff0000000u64))
+            .is_unconstrained());
     }
 
     #[test]
@@ -539,14 +533,9 @@ mod test {
         // Sum of range widths is larger than modulus.
         let two_range = RCg::from_range(50.into(), 51.into());
         let half_modulus_plus_one_range = half_modulus_range.combine_sum(&two_range);
-        assert_eq!(
-            half_modulus_range.combine_sum(&half_modulus_plus_one_range.combine_sum(&two_range)),
-            RCg {
-                min: 1.into(),
-                max: 0.into(),
-                mask: u64::MAX.into(),
-            }
-        );
+        assert!(half_modulus_range
+            .combine_sum(&half_modulus_plus_one_range.combine_sum(&two_range))
+            .is_unconstrained());
     }
 
     #[test]
