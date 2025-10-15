@@ -106,8 +106,8 @@ impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChips {
         // The range checker is already present in the builder because it's is used by the system, so we don't add it again.
         assert!(inventory
             .find_air::<VariableRangeCheckerAir>()
-            .nth(1)
-            .is_none());
+            .next()
+            .is_some());
 
         Ok(())
     }
@@ -150,8 +150,8 @@ where
         // The range checker is already present in the builder because it's is used by the system, so we don't add it again.
         assert!(inventory
             .find_chip::<SharedVariableRangeCheckerChip>()
-            .nth(1)
-            .is_none());
+            .next()
+            .is_some());
 
         Ok(())
     }

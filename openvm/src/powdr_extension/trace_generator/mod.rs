@@ -128,7 +128,7 @@ impl PowdrTraceGenerator {
         // go through the final table and fill in the values
         values
             // a record is `width` values
-            // TODO: optimize by parallelizing on chunks of rows, currently fails because `dyn AnyChip<MatrixRecordArena<Val<SC>>>` is not `Senf`
+            // TODO: optimize by parallelizing on chunks of rows, currently fails because `dyn AnyChip<MatrixRecordArena<Val<SC>>>` is not `Send`
             .chunks_mut(width)
             .zip(dummy_values)
             .for_each(|(row_slice, dummy_values)| {

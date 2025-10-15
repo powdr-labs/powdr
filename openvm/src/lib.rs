@@ -202,7 +202,6 @@ where
                         extension.airs.clone(),
                         extension.base_config.clone(),
                         shared_chips_pair.clone(),
-                        precompile.apc_record_arena.clone(),
                     );
                     inventory.add_executor_chip(chip);
                 }
@@ -213,7 +212,6 @@ where
                         extension.airs.clone(),
                         extension.base_config.clone(),
                         shared_chips_pair.clone(),
-                        precompile.apc_record_arena.clone(),
                         extension.bus_map.clone(),
                     );
                     inventory.add_executor_chip(chip);

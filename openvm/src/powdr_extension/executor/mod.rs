@@ -19,7 +19,7 @@ use openvm_circuit::arch::{
 };
 use openvm_circuit_derive::create_tco_handler;
 use openvm_circuit_primitives::AlignedBytesBorrow;
-use openvm_instructions::instruction::Instruction;
+use openvm_instructions::{instruction::Instruction, program::DEFAULT_PC_STEP};
 use openvm_sdk::config::SdkVmConfigExecutor;
 use openvm_stark_backend::{
     p3_field::{Field, PrimeField32},
@@ -82,26 +82,28 @@ impl OriginalArenas {
     }
 
     /// Returns a mutable reference to the arenas.
-    /// Should only be called after `initialize` is called.
+    /// - Panics if the arenas are not initialized.
     pub fn arenas_mut(&mut self) -> &mut HashMap<String, MatrixRecordArena<BabyBear>> {
         match self {
-            OriginalArenas::Uninitialized => unreachable!(),
+            OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
             OriginalArenas::Initialized(initialized) => &mut initialized.arenas,
         }
     }
 
+    /// Returns a reference to the arenas.
+    /// - Panics if the arenas are not initialized.
     pub fn arenas(&self) -> &HashMap<String, MatrixRecordArena<BabyBear>> {
         match self {
-            OriginalArenas::Uninitialized => unreachable!(),
+            OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
             OriginalArenas::Initialized(initialized) => &initialized.arenas,
         }
     }
 
     /// Returns a mutable reference to the number of calls.
-    /// Should only be called after `initialize` is called.
+    /// - Panics if the arenas are not initialized.
     pub fn number_of_calls_mut(&mut self) -> &mut usize {
         match self {
-            OriginalArenas::Uninitialized => unreachable!(),
+            OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
             OriginalArenas::Initialized(initialized) => &mut initialized.number_of_calls,
         }
     }
@@ -313,7 +315,7 @@ impl PowdrExecutor {
                     let pre_compute_size = executor.pre_compute_size();
                     let mut pre_compute_data = vec![0u8; pre_compute_size];
                     let execute_func = executor.pre_compute::<Ctx>(
-                        pc + idx as u32 * 4,
+                        pc + idx as u32 * DEFAULT_PC_STEP,
                         &instruction.0,
                         &mut pre_compute_data,
                     )?;
