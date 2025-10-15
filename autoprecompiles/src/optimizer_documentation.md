@@ -59,7 +59,7 @@ What we can certainly say, though, is that if you derive the set of possible
 values from a set of constraints, then adding an Algebraic Constraint
 or Bus Interaction can only reduce the set of possible values.
 
-Because of that, we always view Range Constraints as an under-approximation
+Because of that, we always view Range Constraints as an over-approximation
 or "upper bound": If from the Range Constraint we can say that a value is not
 allowed, then it is certainly not allowed. But if the Range Constraint
 allows a value, it might still be disallowed by another Algebraic Constraint.
@@ -149,7 +149,7 @@ parts of the system. A simple correct implementation of
 `handle_bus_interaction` would be to always return a `0xff`-mask Range Constraint
 for the payload and ignore the input. But this implementation is also the best
 possible, since even if the input Range Constraint (i.e. the currently best known
-to the solver) is something like `200..=300`, the solver will not forget it but
+to the optimizer) is something like `200..=300`, the optimizer will not forget it but
 instead combine it with the one returned by `handle_bus_interaction` and derive
 `200..=255` as the new Range Constraint for the payload.
 
