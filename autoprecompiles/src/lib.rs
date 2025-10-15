@@ -450,20 +450,15 @@ fn add_guards_constraint<T: FieldElement>(
 fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
     let pre_degree = machine.degree();
 
-    let max_id = machine.unique_references().map(|c| c.id).max().unwrap() + 1;
-
-    let is_valid = AlgebraicExpression::Reference(AlgebraicReference {
+    let is_valid_ref = AlgebraicReference {
         name: Arc::new("is_valid".to_string()),
-        id: max_id,
-    });
+        id: machine.unique_references().map(|c| c.id).max().unwrap() + 1,
+    };
+    let is_valid = AlgebraicExpression::Reference(is_valid_ref.clone());
 
-    machine.derived_columns.push((
-        AlgebraicReference {
-            name: Arc::new("is_valid".to_string()),
-            id: max_id,
-        },
-        ComputationMethod::Constant(T::one()),
-    ));
+    machine
+        .derived_columns
+        .push((is_valid_ref, ComputationMethod::Constant(T::one())));
 
     machine.constraints = machine
         .constraints
