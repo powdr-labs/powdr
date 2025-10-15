@@ -92,7 +92,7 @@ A _Bitmask_ is a natural number `bitmask` that is interpreted as a
 bitmask for the natural number representation of field elements.
 It allows a value `x` if and only if `x & bitmask == x`, i.e. all
 bits that are set in `x` are also set in `bitmask`.
-Note that the bitmask can never disallow the value zero.
+Note that in particular, the bitmask can never disallow the value zero.
 
 A _Range Constraint_ allows a value if and only if both the bitmask
 and the wrapping interval allow it.
@@ -103,7 +103,7 @@ The concept of _Bus Interaction_ is a bit more complicated. The concrete
 semantics of a bus interaction depends on the environment, i.e. the
 zkVM we are operating inside and the chips it has.
 
-A _Bus Interaction_ consists of a _Bus ID_, the _Multiplicity_ and
+A _Bus Interaction_ consists of a _Bus ID_, a _Multiplicity_ and
 a _Payload_. The _Bus ID_ is an Algebraic Expression and specifies
 which bus to interact with. The _Multiplicity_ is an Algebraic Expression
 and in most cases it should evaluate either to 1 or -1. The _Payload_ is
@@ -128,7 +128,7 @@ implement the following methods:
 
 - `is_stateful`: For a given Bus ID (a field element), returns if the bus
   with the given ID is stateful or not. If a bus interaction is not stateful,
-  if it only affects the payload passed to it and no other elements of the system.
+  it only affects the payload passed to it and no other elements of the system.
   A memory bus or the execution bridge are examples of a stateful busses,
   while range constraint busses, busses modeling arithmetic operations or
   lookup tables are not stateful.
