@@ -341,15 +341,6 @@ impl<T, I> Apc<T, I> {
     pub fn instructions(&self) -> &[I] {
         &self.block.statements
     }
-
-    /// The `is_valid` polynomial id
-    pub fn is_valid_poly_id(&self) -> u64 {
-        self.machine
-            .main_columns()
-            .find(|c| &*c.name == "is_valid")
-            .unwrap()
-            .id
-    }
 }
 
 pub fn build<A: Adapter>(
@@ -465,6 +456,14 @@ fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachi
         name: Arc::new("is_valid".to_string()),
         id: max_id,
     });
+
+    machine.derived_columns.push((
+        AlgebraicReference {
+            name: Arc::new("is_valid".to_string()),
+            id: max_id,
+        },
+        ComputationMethod::Constant(T::one()),
+    ));
 
     machine.constraints = machine
         .constraints

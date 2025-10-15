@@ -118,7 +118,6 @@ impl PowdrTraceGenerator {
             &self.original_airs,
             num_apc_calls,
             &self.apc,
-            BabyBear::ONE,
         );
 
         // allocate for apc trace
@@ -145,7 +144,7 @@ impl PowdrTraceGenerator {
 
                 // Fill in the columns we have to compute from other columns
                 // (these are either new columns or for example the "is_valid" column).
-                for (column, computation_method) in &columns_to_compute {
+                for (column, computation_method) in columns_to_compute {
                     let col_index = apc_poly_id_to_index[&column.id];
                     row_slice[col_index] = match computation_method {
                         ComputationMethod::Constant(c) => *c,
