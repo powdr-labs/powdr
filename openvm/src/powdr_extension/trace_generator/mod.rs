@@ -9,7 +9,7 @@ use openvm_stark_backend::{
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
     expression::{AlgebraicEvaluator, ConcreteBusInteraction, MappingRowEvaluator},
-    trace_handler::{generate_trace, Trace, TraceData},
+    trace_handler::{generate_trace, TraceData, TraceTrait},
     Apc,
 };
 use powdr_constraint_solver::constraint_system::ComputationMethod;
@@ -30,6 +30,29 @@ mod inventory;
 mod periphery;
 
 pub use periphery::PowdrPeripheryInstances;
+
+/// A wrapper around a DenseMatrix to implement `TraceTrait` which is required for `generate_trace`.
+pub struct SharedCpuTrace<F> {
+    matrix: Arc<DenseMatrix<F>>,
+}
+
+impl<F: Send + Sync> TraceTrait<F> for SharedCpuTrace<F> {
+    type Values = Vec<F>;
+
+    fn width(&self) -> usize {
+        self.matrix.width
+    }
+
+    fn values(&self) -> &Self::Values {
+        &self.matrix.values
+    }
+}
+
+impl<F> From<Arc<DenseMatrix<F>>> for SharedCpuTrace<F> {
+    fn from(matrix: Arc<DenseMatrix<F>>) -> Self {
+        Self { matrix }
+    }
+}
 
 pub struct PowdrTraceGenerator {
     pub apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
@@ -83,7 +106,7 @@ impl PowdrTraceGenerator {
 
         let arenas = original_arenas.arenas_mut();
 
-        let dummy_trace_by_air_name: HashMap<String, Trace<BabyBear>> = chip_inventory
+        let dummy_trace_by_air_name: HashMap<String, SharedCpuTrace<BabyBear>> = chip_inventory
             .chips()
             .iter()
             .enumerate()
@@ -98,13 +121,9 @@ impl PowdrTraceGenerator {
                     }
                 };
 
-                // Arc<DenseMatrix>
                 let shared_trace = chip.generate_proving_ctx(record_arena).common_main.unwrap();
-                // Reference count should be 1 here as it's just created
-                let DenseMatrix { values, width, .. } =
-                    Arc::try_unwrap(shared_trace).expect("Can't unwrap shared Arc<DenseMatrix>");
 
-                Some((air_name, Trace::new(values, width)))
+                Some((air_name, SharedCpuTrace::from(shared_trace)))
             })
             .collect();
 
@@ -135,6 +154,7 @@ impl PowdrTraceGenerator {
                 // map the dummy rows to the autoprecompile row
                 for (dummy_row, dummy_trace_index_to_apc_index) in dummy_values
                     .iter()
+                    .map(|r| &r.data[r.start..r.start + r.length])
                     .zip_eq(&dummy_trace_index_to_apc_index_by_instruction)
                 {
                     for (dummy_trace_index, apc_index) in dummy_trace_index_to_apc_index {

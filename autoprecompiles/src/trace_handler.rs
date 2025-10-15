@@ -8,9 +8,15 @@ use std::{cmp::Eq, hash::Hash};
 use crate::expression::{AlgebraicExpression, AlgebraicReference};
 use crate::{Apc, InstructionHandler};
 
-pub struct TraceData<'a, F> {
+pub struct OriginalRowReference<'a, D> {
+    pub data: &'a D,
+    pub start: usize,
+    pub length: usize,
+}
+
+pub struct TraceData<'a, F, D> {
     /// For each call of the apc, the values of each original instruction's dummy trace.
-    pub dummy_values: Vec<Vec<&'a [F]>>,
+    pub dummy_values: Vec<Vec<OriginalRowReference<'a, D>>>,
     /// The mapping from dummy trace index to APC index for each instruction.
     pub dummy_trace_index_to_apc_index_by_instruction: Vec<Vec<(usize, usize)>>,
     /// The mapping from poly_id to the index in the list of apc columns.
@@ -24,23 +30,20 @@ pub struct TraceData<'a, F> {
     )],
 }
 
-pub struct Trace<F> {
-    pub values: Vec<F>,
-    pub width: usize,
+pub trait TraceTrait<F>: Send + Sync {
+    type Values: Send + Sync;
+
+    fn width(&self) -> usize;
+
+    fn values(&self) -> &Self::Values;
 }
 
-impl<F> Trace<F> {
-    pub fn new(values: Vec<F>, width: usize) -> Self {
-        Self { values, width }
-    }
-}
-
-pub fn generate_trace<'a, IH>(
-    air_id_to_dummy_trace: &'a HashMap<IH::AirId, Trace<IH::Field>>,
+pub fn generate_trace<'a, IH, M: TraceTrait<IH::Field>>(
+    air_id_to_dummy_trace: &'a HashMap<IH::AirId, M>,
     instruction_handler: &'a IH,
     apc_call_count: usize,
     apc: &'a Apc<IH::Field, IH::Instruction>,
-) -> TraceData<'a, IH::Field>
+) -> TraceData<'a, IH::Field, M::Values>
 where
     IH: InstructionHandler,
     IH::Field: Display + Clone + Send + Sync,
@@ -103,11 +106,16 @@ where
                 .iter()
                 .zip_eq(original_instruction_table_offsets.iter())
                 .map(|(air_id, dummy_table_offset)| {
-                    let Trace { values, width } = air_id_to_dummy_trace.get(air_id).unwrap();
+                    let trace = air_id_to_dummy_trace.get(air_id).unwrap();
+                    let values = trace.values();
+                    let width = trace.width();
                     let occurrences_per_record = air_id_occurrences.get(air_id).unwrap();
                     let start = (trace_row * occurrences_per_record + dummy_table_offset) * width;
-                    let end = start + width;
-                    &values[start..end]
+                    OriginalRowReference {
+                        data: values,
+                        start,
+                        length: width,
+                    }
                 })
                 .collect_vec()
         })
