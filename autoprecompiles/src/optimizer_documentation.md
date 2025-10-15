@@ -4,7 +4,8 @@
 
 ### Field Elements
 
-Throughout this document, we will be working in a finite field of prime order `p`. Often, we use operators or concepts that are only defined
+Throughout this document, we will be working in a finite field of prime order `p`.
+Often, we use operators or concepts that are only defined
 in the integers. In this case, we use the natural number representation
 of the field element, i.e. the unique integer `x` such that `0 <= x < p`
 where the field operations are defined as `x + y = (x + y) mod p`
@@ -42,29 +43,46 @@ assignment only satisfies this constraint if it has `x = 0` or `x = 1`.
 The task of the optimizer is hugely simplified by the concept of
 _Range Constraints_. In an abstract way, a _Range Constraint_ is
 the set of possible values for a specific algebraic expression.
-The solver can derive new Range Constraints from Algebraic Constraints
-but they are also used to allow a uniform abstraction of Bus Interactions.
+During optimization, we store the currently best-known Range Constraint
+for every variable and they are also used to allow a uniform abstraction
+of Bus Interactions.
 
 In the example above, `x * (x - 1) = 0`, we can derive a Range Constraint
 of `{0, 1}` for the variable `x`.
 
-In our concrete implementation, we do not represent the exact set
-of allowed values. Instead, we use an under-approximation, i.e.
-a superset of the set of allowed values. This means we can only use
-the information if the Range Constraints says that a value is not
-allowed. This also makes sense since we are looking at Algebraic
-Constraints in isolation and there can always be another Algebraic
-Constraint that further restricts the set of allowed values.
+Note that whether or not a certain value is possible for an
+Algebraic Expression depends on the context. For example, if in addition
+to `x * (x - 1) = 0`, we also have the Algebraic Constraint
+`(x - 7) * (x - 1) = 0`,
+then the set of possible values for `x` shrinks to just `{1}`.
+What we can certainly say, though, is that if you derive the set of possible
+values from a set of constraints, then adding an Algebraic Constraint
+or Bus Interaction can only reduce the set of possible values.
+
+Because of that, we always view Range Constraints as an under-approximation
+or "upper bound": If from the Range Constraint we can say that a value is not
+allowed, then it is certainly not allowed. But if the Range Constraint
+allows a value, it might still be disallowed by another Algebraic Constraint.
+
+Due to this reason, our concrete implementation of Range Constraints
+can also be sloppy: It is fine if we do not derive the tightest possible
+Range Constraint, either because it is too difficult to compute
+or too expensive to represent.
 
 The approximation we use for Range Constraints is a combination
 of a _Wrapping Interval_ and a _Bitmask_.
 
 A _Wrapping Interval_ is a pair of field elements `min` and `max`.
+A value `x` is allowed by the Wrapping Interval if and only if it is
+part of the sequence `min`, `min + 1`, `min + 2`, ..., `max`.
+Note that this sequence wraps around the prime `p` of the field.
+
+The following is an equivalent definition:
 If `min <= max` (as seen in the natural numbers), the Wrapping
-Interval allows a value `x` if and only if `min <= x <= max`.
-This is the non-wrapping case.
+Interval allows a value `x` if and only if `min <= x <= max`
+(the non-wrapping case).
 If `min > max`, the Wrapping Interval allows a value `x`
-if and only if `x >= min` or `x <= max`. This is the wrapping case.
+if and only if `x >= min` or `x <= max` (the wrapping case).
 
 The reason we allow these wrapping intervals is that we can compute
 the Range Constraint interval of an expression `x + k` for any constant `k`
@@ -78,12 +96,6 @@ Note that the bitmask can never disallow the value zero.
 
 A _Range Constraint_ allows a value if and only if both the bitmask
 and the wrapping interval allow it.
-
-We use `RC(x)` to denote the Range Constraint of an algebraic
-expression `x`.
-
-TODO It is not clear if this is the currently best-known range constraint,
-the theoretical optimum or the one we can just directly compute from `x`.
 
 ### Bus Interaction
 
@@ -122,11 +134,13 @@ implement the following methods:
   lookup tables are not stateful.
 
 - `handle_bus_interaction`: Takes a Bus Interaction where its items are represented
-  by Range Constraints instead of expressions or field elements and returns
-  an equivalent Bus Interaction where the Range Constraints are possibly
-  tightened. A correct implementation would be one that always returns
-  its input (or also just fully unconstrained Range Constraints), but the tighter
-  the Range Constraints are, the more powerful the optimizer will be.
+  by Range Constraints instead of expressions. It returns
+  a Bus Interaction with Range Constraints such that all payloads that satisfy
+  the input Range Constraints and the bus semantics also satisfy the output
+  Range Constraints. An implementation that always returns its inputs
+  (or also just fully unconstrained Range Constraints) would be correct, but
+  of course you should return Range Constraints that are as tight
+  as possible such that the optimizer gets the most out of it.
 
 As an example, let us assume we are modeling a bus that implements a byte range
 constraint, i.e. a bus that takes a single payload item and enforces that it is
@@ -140,10 +154,8 @@ like `200..=300`, the solver will combine the two Range Constraints and derive
 Another example would be an XOR-bus that takes three payload items `a, b, c`
 and ensures that all of them are bytes and `a ^ b = c`. This bus is also not stateful.
 Here, one would implement `handle_bus_interaction` by returning the three byte constraints
-for the payload items if the input has no restrictiens. But if the value of the same bit
-in two inputs is known, we can compute the value of the same bit in the third input.
-Since our Range Constraints do not model individual bits well enough, it is sufficient
-to only compute the third item if two of them are fully known.
+for the payload items if the input has no restrictions. If two inputs are fully
+determined, we can compute the third and return that as a Range Constraint.
 
 We will see later how we can fully optimize away XOR bus interactions using just this
 abstraction.
