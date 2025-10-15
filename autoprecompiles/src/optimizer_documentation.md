@@ -145,10 +145,12 @@ implement the following methods:
 As an example, let us assume we are modeling a bus that implements a byte range
 constraint, i.e. a bus that takes a single payload item and enforces that it is
 in the range `0..=255`. The bus is not stateful since it does not depend on any
-parts of the system. A simple (and also best possible) implementation of
-`handle_bus_interaction` would be to always return the `0xff`-mask Range Constraint
-for the payload and ignore the input. Even if the input Range Constraint is something
-like `200..=300`, the solver will combine the two Range Constraints and derive
+parts of the system. A simple correct implementation of
+`handle_bus_interaction` would be to always return a `0xff`-mask Range Constraint
+for the payload and ignore the input. But this implementation is also the best
+possible, since even if the input Range Constraint (i.e. the currently best known
+to the solver) is something like `200..=300`, the solver will not forget it but
+instead combine it with the one returned by `handle_bus_interaction` and derive
 `200..=255` as the new Range Constraint for the payload.
 
 Another example would be an XOR-bus that takes three payload items `a, b, c`
