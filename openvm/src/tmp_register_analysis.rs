@@ -19,12 +19,25 @@ fn possible_targets<F: PrimeField32>(
     instruction: &Instruction<F>,
     instruction_pc: u64,
     pc_step: u64,
+    auipc_address: Option<(u8, u32)>,
 ) -> Vec<u64> {
     let opcode = instruction.opcode.as_usize();
 
     if opcode == OPCODE_JALR {
-        // For JALR, we don't know the target statically.
-        return vec![];
+        // If the instruction just before was AUIPC, we can compute the target.
+        let rs1: u8 = instruction.b.as_canonical_u32().try_into().unwrap();
+        match auipc_address {
+            Some((rd, address)) if rd == rs1 => {
+                tracing::debug!("Detected AUIPC + JALR!");
+                let imm = instruction.c.as_canonical_u32();
+                let imm_sign = instruction.g.as_canonical_u32();
+                let imm_extended = imm + imm_sign * 0xffff0000;
+                let address = address.wrapping_add(imm_extended) & !1;
+                return vec![instruction_pc + pc_step, address as u64];
+            }
+            // We don't know the target statically.
+            _ => return vec![],
+        }
     }
 
     if BRANCH_OPCODES_BIGINT.contains(&opcode) || BRANCH_OPCODES.contains(&opcode) {
@@ -41,6 +54,28 @@ fn possible_targets<F: PrimeField32>(
     [instruction_pc + pc_step].into_iter().collect()
 }
 
+/// If the second last instruction is an AUIPC, return the target address it computes.
+/// Returns Some((rd, address)), or None.
+fn auipc_address<F: PrimeField32>(basic_block: &BasicBlock<Instr<F>>) -> Option<(u8, u32)> {
+    if basic_block.statements.len() < 2 {
+        return None;
+    }
+    let second_last = &basic_block.statements[basic_block.statements.len() - 2].0;
+    if second_last.opcode.as_usize() != OPCODE_AUIPC {
+        return None;
+    }
+
+    let pc = basic_block.start_pc + (basic_block.statements.len() as u64 - 2) * 4;
+    let pc: u32 = pc.try_into().unwrap();
+    let imm = second_last.c.as_canonical_u32();
+    let address = pc.wrapping_add((imm as u32) << 8);
+
+    Some((
+        second_last.a.as_canonical_u32().try_into().unwrap(),
+        address,
+    ))
+}
+
 pub fn control_flow_graph<F: PrimeField32>(
     basic_blocks: &[BasicBlock<Instr<F>>],
     pc_step: u64,
@@ -55,7 +90,8 @@ pub fn control_flow_graph<F: PrimeField32>(
             let id = block.start_pc;
             let last_pc = id + (block.statements.len() as u64 - 1) * pc_step;
             let last_instr = block.statements.last().unwrap();
-            let targets = possible_targets(&last_instr.0, last_pc, pc_step);
+            let auipc_address = auipc_address(block);
+            let targets = possible_targets(&last_instr.0, last_pc, pc_step, auipc_address);
             for target in &targets {
                 assert!(
                     known_targets.contains(target),
