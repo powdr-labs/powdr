@@ -457,7 +457,7 @@ impl SymbolTable {
     }
 
     /// Get a symbol, or a default label formed from the address value.
-    pub fn get_one(&self, addr: u32) -> Cow<str> {
+    pub fn get_one(&self, addr: u32) -> Cow<'_, str> {
         match self.try_get_one(addr) {
             Some(s) => Cow::Borrowed(s),
             None => Self::default_label(addr),
@@ -465,7 +465,7 @@ impl SymbolTable {
     }
 
     /// Get all symbol, or a default label formed from the address value.
-    pub fn get_all(&self, addr: u32) -> impl Iterator<Item = Cow<str>> {
+    pub fn get_all(&self, addr: u32) -> impl Iterator<Item = Cow<'_, str>> {
         static EMPTY: Vec<String> = Vec::new();
         let elems = self.0.get(&addr).unwrap_or(&EMPTY);
         let default = if elems.is_empty() {
@@ -477,6 +477,11 @@ impl SymbolTable {
             .iter()
             .map(|s| Cow::Borrowed(s.as_str()))
             .chain(default)
+    }
+
+    /// Returns a reference to the raw symbol table, mapping addresses to symbol names.
+    pub fn table(&self) -> &BTreeMap<u32, Vec<String>> {
+        &self.0
     }
 
     /// Returns a symbol at the address or at the first address before this one that has a symbol.

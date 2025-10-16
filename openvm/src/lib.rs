@@ -1,3 +1,6 @@
+#![cfg_attr(feature = "tco", allow(incomplete_features))]
+#![cfg_attr(feature = "tco", feature(explicit_tail_calls))]
+
 use derive_more::From;
 use eyre::Result;
 use itertools::Itertools;
@@ -252,7 +255,6 @@ impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, PowdrExtens
                         extension.airs.clone(),
                         extension.base_config.clone(),
                         shared_chips_pair.clone(),
-                        precompile.apc_record_arena.clone(),
                     );
                     inventory.add_executor_chip(chip);
                 }
@@ -263,7 +265,6 @@ impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, PowdrExtens
                         extension.airs.clone(),
                         extension.base_config.clone(),
                         shared_chips_pair.clone(),
-                        precompile.apc_record_arena.clone(),
                         extension.bus_map.clone(),
                     );
                     inventory.add_executor_chip(chip);
@@ -319,7 +320,6 @@ where
                         extension.airs.clone(),
                         extension.base_config.clone(),
                         shared_chips_pair.clone(),
-                        precompile.apc_record_arena.clone(),
                     );
                     inventory.add_executor_chip(chip);
                 }
@@ -330,7 +330,6 @@ where
                         extension.airs.clone(),
                         extension.base_config.clone(),
                         shared_chips_pair.clone(),
-                        precompile.apc_record_arena.clone(),
                         extension.bus_map.clone(),
                     );
                     inventory.add_executor_chip(chip);
@@ -920,11 +919,6 @@ pub fn prove(
     // Create the SDK
     let sdk = PowdrSdk::new(app_config).unwrap();
 
-    let mut app_prover = sdk.app_prover(exe.clone())?;
-
-    // Generate an AppProvingKey
-    sdk.app_keygen();
-
     if mock {
         // Build owned vm instance, so we can mutate it later
         let vm_builder = sdk.app_vm_builder().clone();
@@ -974,6 +968,8 @@ pub fn prove(
             debug_proving_ctx(vm, &pk, &ctx);
         }
     } else {
+        let mut app_prover = sdk.app_prover(exe.clone())?;
+
         // Generate a proof
         tracing::info!("Generating app proof...");
         let start = std::time::Instant::now();
@@ -1063,7 +1059,7 @@ mod tests {
         pgo_config: PgoConfig,
         segment_height: Option<usize>,
     ) {
-        let result = compile_and_prove(
+        compile_and_prove(
             guest,
             config,
             implementation,
@@ -1072,8 +1068,8 @@ mod tests {
             stdin,
             pgo_config,
             segment_height,
-        );
-        assert!(result.is_ok());
+        )
+        .unwrap()
     }
 
     fn prove_mock(
@@ -1084,7 +1080,7 @@ mod tests {
         pgo_config: PgoConfig,
         segment_height: Option<usize>,
     ) {
-        let result = compile_and_prove(
+        compile_and_prove(
             guest,
             config,
             implementation,
@@ -1093,8 +1089,8 @@ mod tests {
             stdin,
             pgo_config,
             segment_height,
-        );
-        assert!(result.is_ok());
+        )
+        .unwrap()
     }
 
     fn prove_recursion(
@@ -1105,7 +1101,7 @@ mod tests {
         pgo_config: PgoConfig,
         segment_height: Option<usize>,
     ) {
-        let result = compile_and_prove(
+        compile_and_prove(
             guest,
             config,
             implementation,
@@ -1114,8 +1110,8 @@ mod tests {
             stdin,
             pgo_config,
             segment_height,
-        );
-        assert!(result.is_ok());
+        )
+        .unwrap()
     }
 
     const GUEST: &str = "guest";
@@ -1358,12 +1354,30 @@ mod tests {
 
     // All gate constraints should be satisfied, but bus interactions are not implemented yet.
     #[test]
-    #[ignore = "Pending bug fix"]
+    #[ignore = "Passes without debug assertions, but fails with it"]
     fn keccak_plonk_small_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let config = default_powdr_openvm_config(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
         prove_mock(
+            GUEST_KECCAK,
+            config,
+            PrecompileImplementation::PlonkChip,
+            stdin,
+            PgoConfig::None,
+            None,
+        );
+    }
+
+    // TODO: fix this test. It works with `mock` (see above) but not with `prove_simple`
+    #[test]
+    #[ignore = "Panics with a verifier error like below without debug assertions, but fails with it"]
+    #[should_panic = "Verification(StarkError(InvalidProofShape)"]
+    fn keccak_plonk_small_prove_simple() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_KECCAK_ITER_SMALL);
+        let config = default_powdr_openvm_config(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
+        prove_simple(
             GUEST_KECCAK,
             config,
             PrecompileImplementation::PlonkChip,

@@ -47,17 +47,6 @@ use crate::{
 
 pub const POWDR_OPCODE: usize = 0x10ff;
 
-#[derive(Debug)]
-pub enum Error {
-    AutoPrecompileError,
-}
-
-impl From<powdr_autoprecompiles::constraint_optimizer::Error> for Error {
-    fn from(_e: powdr_autoprecompiles::constraint_optimizer::Error) -> Self {
-        Error::AutoPrecompileError
-    }
-}
-
 /// An adapter for the BabyBear OpenVM precompiles.
 /// Note: This could be made generic over the field, but the implementation of `Candidate` is BabyBear-specific.
 /// The lifetime parameter is used because we use a reference to the `OpenVmProgram` in the `Prog` type.
@@ -212,8 +201,23 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         }
     }
 
+    let labels = debug_info
+        .symbols
+        .table()
+        .iter()
+        .map(|(addr, names)| {
+            (
+                *addr as u64,
+                names
+                    .iter()
+                    .map(|name| rustc_demangle::demangle(name).to_string())
+                    .collect(),
+            )
+        })
+        .collect();
+
     let start = std::time::Instant::now();
-    let apcs = pgo.filter_blocks_and_create_apcs_with_pgo(blocks, &config, vm_config);
+    let apcs = pgo.filter_blocks_and_create_apcs_with_pgo(blocks, &config, vm_config, labels);
     metrics::gauge!("total_apc_gen_time_ms").set(start.elapsed().as_millis() as f64);
 
     let pc_base = exe.program.pc_base;

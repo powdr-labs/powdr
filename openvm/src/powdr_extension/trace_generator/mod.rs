@@ -2,6 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use itertools::Itertools;
 use openvm_circuit::{arch::AirInventory, utils::next_power_of_two_or_zero};
+use openvm_cuda_common::d_buffer::DeviceBuffer;
 use openvm_stark_backend::{
     p3_field::{Field, FieldAlgebra, PrimeField32},
     p3_matrix::dense::{DenseMatrix, RowMajorMatrix},
@@ -9,7 +10,7 @@ use openvm_stark_backend::{
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
     expression::{AlgebraicEvaluator, ConcreteBusInteraction, MappingRowEvaluator},
-    trace_handler::{generate_trace, Trace, TraceData},
+    trace_handler::{generate_trace, TraceData, TraceTrait},
     Apc,
 };
 use powdr_constraint_solver::constraint_system::ComputationMethod;
@@ -43,6 +44,57 @@ mod inventory;
 mod periphery;
 
 pub use periphery::PowdrPeripheryInstances;
+
+/// A wrapper around a DenseMatrix to implement `TraceTrait` which is required for `generate_trace`.
+pub struct SharedCpuTrace<F> {
+    matrix: Arc<DenseMatrix<F>>,
+}
+
+impl<F: Send + Sync> TraceTrait<F> for SharedCpuTrace<F> {
+    type Values = Vec<F>;
+
+    fn width(&self) -> usize {
+        self.matrix.width
+    }
+
+    fn values(&self) -> &Self::Values {
+        &self.matrix.values
+    }
+}
+
+impl<F> From<Arc<DenseMatrix<F>>> for SharedCpuTrace<F> {
+    fn from(matrix: Arc<DenseMatrix<F>>) -> Self {
+        Self { matrix }
+    }
+}
+
+/// A wrapper around a DeviceMatrix to implement `TraceTrait` which is required for `generate_trace`.
+pub struct SharedGpuTrace<F> {
+    matrix: DeviceMatrix<F>,
+}
+
+impl<F: Send + Sync> TraceTrait<F> for SharedGpuTrace<F> {
+    type Values = DeviceBuffer<F>;
+
+    fn width(&self) -> usize {
+        self.matrix.width()
+    }
+
+    fn values(&self) -> &Self::Values {
+        self.matrix.buffer()
+    }
+}
+
+impl<F> From<DeviceMatrix<F>> for SharedGpuTrace<F> {
+    fn from(matrix: DeviceMatrix<F>) -> Self {
+        Self { matrix }
+    }
+}
+
+#[cfg(feature = "cuda")]
+type SharedTrace<F> = SharedGpuTrace<F>;
+#[cfg(not(feature = "cuda"))]
+type SharedTrace<F> = SharedCpuTrace<F>;
 
 pub struct PowdrTraceGenerator {
     pub apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
@@ -111,7 +163,7 @@ impl PowdrTraceGenerator {
 
         let arenas = original_arenas.arenas_mut();
 
-        let dummy_trace_by_air_name: HashMap<String, Trace<BabyBear>> = chip_inventory
+        let dummy_trace_by_air_name: HashMap<String, SharedTrace<BabyBear>> = chip_inventory
             .chips()
             .iter()
             .enumerate()
@@ -126,34 +178,9 @@ impl PowdrTraceGenerator {
                     }
                 };
 
-                let (values, width) = {
-                    #[cfg(not(feature = "cuda"))]
-                    {
-                        // Arc<DenseMatrix>
-                        let shared_trace =
-                            chip.generate_proving_ctx(record_arena).common_main.unwrap();
-                        // Reference count should be 1 here as it's just created
-                        let DenseMatrix { values, width, .. } = Arc::try_unwrap(shared_trace)
-                            .expect("Can't unwrap shared Arc<DenseMatrix>");
+                let shared_trace = chip.generate_proving_ctx(record_arena).common_main.unwrap();
 
-                        (values, width)
-                    }
-
-                    #[cfg(feature = "cuda")]
-                    {
-                        // DeviceMatrix
-                        let trace = chip.generate_proving_ctx(record_arena).common_main.unwrap();
-                        // TODO: this does a memcpy from the device (GPU) to the host (CPU), and therefore isn't efficient.
-                        // I'm not sure if we can simply reinterpret the device buffer's pointer as it might not be host accessible
-                        let values = trace.to_host().unwrap();
-                        // Width is the `T` count, NOT byte count, exactly what we need here
-                        let width = trace.width();
-
-                        (values, width)
-                    }
-                };
-
-                Some((air_name, Trace::new(values, width)))
+                Some((air_name, SharedTrace::from(shared_trace)))
             })
             .collect();
 
@@ -167,7 +194,6 @@ impl PowdrTraceGenerator {
             &self.original_airs,
             num_apc_calls,
             &self.apc,
-            BabyBear::ONE,
         );
 
         // allocate for apc trace
@@ -178,23 +204,26 @@ impl PowdrTraceGenerator {
         // go through the final table and fill in the values
         values
             // a record is `width` values
-            // TODO: optimize by parallelizing on chunks of rows, currently fails because `dyn AnyChip<MatrixRecordArena<Val<SC>>>` is not `Senf`
+            // TODO: optimize by parallelizing on chunks of rows, currently fails because `dyn AnyChip<MatrixRecordArena<Val<SC>>>` is not `Send`
             .chunks_mut(width)
             .zip(dummy_values)
             .for_each(|(row_slice, dummy_values)| {
                 // map the dummy rows to the autoprecompile row
-                for (dummy_row, dummy_trace_index_to_apc_index) in dummy_values
+                for (device_ref, dummy_trace_index_to_apc_index) in dummy_values
                     .iter()
                     .zip_eq(&dummy_trace_index_to_apc_index_by_instruction)
                 {
+                    let host_ref = &device_ref.data.to_host().unwrap()
+                        [device_ref.start..device_ref.start + device_ref.length];
+
                     for (dummy_trace_index, apc_index) in dummy_trace_index_to_apc_index {
-                        row_slice[*apc_index] = dummy_row[*dummy_trace_index];
+                        row_slice[*apc_index] = host_ref[*dummy_trace_index];
                     }
                 }
 
                 // Fill in the columns we have to compute from other columns
                 // (these are either new columns or for example the "is_valid" column).
-                for (column, computation_method) in &columns_to_compute {
+                for (column, computation_method) in columns_to_compute {
                     let col_index = apc_poly_id_to_index[&column.id];
                     row_slice[col_index] = match computation_method {
                         ComputationMethod::Constant(c) => *c,

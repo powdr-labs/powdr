@@ -17,11 +17,12 @@ use openvm_circuit::arch::{
     execution_mode::{ExecutionCtx, MeteredCtx},
     DenseRecordArena, E2PreCompute, PreflightExecutor,
 };
+use openvm_circuit_derive::create_tco_handler;
 use openvm_circuit_primitives::AlignedBytesBorrow;
-use openvm_instructions::instruction::Instruction;
+use openvm_instructions::{instruction::Instruction, program::DEFAULT_PC_STEP};
 use openvm_sdk::config::SdkVmConfigExecutor;
 use openvm_stark_backend::{
-    p3_field::Field,
+    p3_field::{Field, PrimeField32},
     p3_maybe_rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator},
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
@@ -37,12 +38,14 @@ use openvm_circuit::{
     system::memory::online::{GuestMemory, TracingMemory},
 };
 use powdr_autoprecompiles::InstructionHandler;
+
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
 pub struct PowdrExecutor {
     pub air_by_opcode_id: OriginalAirs<BabyBear>,
     pub executor_inventory: ExecutorInventory<SdkVmConfigExecutor<BabyBear>>,
     pub apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
     pub original_arenas: Rc<RefCell<OriginalArenas>>,
+    pub height_change: u32,
 }
 
 /// A shared mutable reference to the arenas used to store the traces of the original instructions, accessed during preflight execution and trace generation.
@@ -81,26 +84,28 @@ impl OriginalArenas {
     }
 
     /// Returns a mutable reference to the arenas.
-    /// Should only be called after `initialize` is called.
+    /// - Panics if the arenas are not initialized.
     pub fn arenas_mut(&mut self) -> &mut HashMap<String, ArenaType> {
         match self {
-            OriginalArenas::Uninitialized => unreachable!(),
+            OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
             OriginalArenas::Initialized(initialized) => &mut initialized.arenas,
         }
     }
 
+    /// Returns a reference to the arenas.
+    /// - Panics if the arenas are not initialized.
     pub fn arenas(&self) -> &HashMap<String, ArenaType> {
         match self {
-            OriginalArenas::Uninitialized => unreachable!(),
+            OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
             OriginalArenas::Initialized(initialized) => &initialized.arenas,
         }
     }
 
     /// Returns a mutable reference to the number of calls.
-    /// Should only be called after `initialize` is called.
+    /// - Panics if the arenas are not initialized.
     pub fn number_of_calls_mut(&mut self) -> &mut usize {
         match self {
-            OriginalArenas::Uninitialized => unreachable!(),
+            OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
             OriginalArenas::Initialized(initialized) => &mut initialized.number_of_calls,
         }
     }
@@ -173,15 +178,16 @@ pub struct RecordArenaDimension {
 /// A struct to interpret the pre-compute data as for PowdrExecutor.
 #[derive(AlignedBytesBorrow, Clone)]
 #[repr(C)]
-struct PowdrPreCompute<Ctx> {
-    original_instructions: Vec<(ExecuteFunc<BabyBear, Ctx>, Vec<u8>)>,
+struct PowdrPreCompute<F, Ctx> {
+    height_change: u32,
+    original_instructions: Vec<(ExecuteFunc<F, Ctx>, Vec<u8>)>,
 }
 
 impl Executor<BabyBear> for PowdrExecutor {
     fn pre_compute_size(&self) -> usize {
         // TODO: do we know `ExecutionCtx` is correct? It's only one implementation of `ExecutionCtxTrait`.
         // A clean fix would be to add `Ctx` as a generic parameter to this method in the `Executor` trait, but that would be a breaking change.
-        size_of::<PowdrPreCompute<ExecutionCtx>>()
+        size_of::<PowdrPreCompute<BabyBear, ExecutionCtx>>()
     }
 
     fn pre_compute<Ctx>(
@@ -193,11 +199,26 @@ impl Executor<BabyBear> for PowdrExecutor {
     where
         Ctx: ExecutionCtxTrait,
     {
-        let pre_compute: &mut PowdrPreCompute<Ctx> = data.borrow_mut();
+        let pre_compute: &mut PowdrPreCompute<BabyBear, Ctx> = data.borrow_mut();
 
         self.pre_compute_impl::<Ctx>(pc, inst, pre_compute)?;
 
-        Ok(execute_e1_impl::<Ctx>)
+        Ok(execute_e1_impl::<BabyBear, Ctx>)
+    }
+
+    #[cfg(feature = "tco")]
+    fn handler<Ctx>(
+        &self,
+        pc: u32,
+        inst: &Instruction<BabyBear>,
+        data: &mut [u8],
+    ) -> Result<openvm_circuit::arch::Handler<BabyBear, Ctx>, StaticProgramError>
+    where
+        Ctx: ExecutionCtxTrait,
+    {
+        let pre_compute: &mut PowdrPreCompute<BabyBear, Ctx> = data.borrow_mut();
+        self.pre_compute_impl::<Ctx>(pc, inst, pre_compute)?;
+        Ok(execute_e1_tco_handler::<BabyBear, Ctx>)
     }
 }
 
@@ -205,7 +226,7 @@ impl MeteredExecutor<BabyBear> for PowdrExecutor {
     fn metered_pre_compute_size(&self) -> usize {
         // TODO: do we know `MeteredCtx` is correct? It's only one implementation of `MeteredExecutionCtxTrait`.
         // A clean fix would be to add `Ctx` as a generic parameter to this method in the `MeteredExecutor` trait, but that would be a breaking change.
-        size_of::<E2PreCompute<PowdrPreCompute<MeteredCtx>>>()
+        size_of::<E2PreCompute<PowdrPreCompute<BabyBear, MeteredCtx>>>()
     }
 
     fn metered_pre_compute<Ctx>(
@@ -218,12 +239,31 @@ impl MeteredExecutor<BabyBear> for PowdrExecutor {
     where
         Ctx: MeteredExecutionCtxTrait,
     {
-        let pre_compute: &mut E2PreCompute<PowdrPreCompute<Ctx>> = data.borrow_mut();
+        let pre_compute: &mut E2PreCompute<PowdrPreCompute<BabyBear, Ctx>> = data.borrow_mut();
         pre_compute.chip_idx = chip_idx as u32;
 
         self.pre_compute_impl::<Ctx>(pc, inst, &mut pre_compute.data)?;
 
-        Ok(execute_e2_impl::<Ctx>)
+        Ok(execute_e2_impl::<BabyBear, Ctx>)
+    }
+
+    #[cfg(feature = "tco")]
+    fn metered_handler<Ctx>(
+        &self,
+        chip_idx: usize,
+        pc: u32,
+        inst: &Instruction<BabyBear>,
+        data: &mut [u8],
+    ) -> Result<openvm_circuit::arch::Handler<BabyBear, Ctx>, StaticProgramError>
+    where
+        Ctx: MeteredExecutionCtxTrait,
+    {
+        let pre_compute: &mut E2PreCompute<PowdrPreCompute<BabyBear, Ctx>> = data.borrow_mut();
+        pre_compute.chip_idx = chip_idx as u32;
+
+        self.pre_compute_impl::<Ctx>(pc, inst, &mut pre_compute.data)?;
+
+        Ok(execute_e2_tco_handler::<BabyBear, Ctx>)
     }
 }
 
@@ -234,7 +274,7 @@ impl PowdrExecutor {
         &self,
         pc: u32,
         inst: &Instruction<BabyBear>,
-        data: &mut PowdrPreCompute<Ctx>,
+        data: &mut PowdrPreCompute<BabyBear, Ctx>,
     ) -> Result<(), StaticProgramError>
     where
         Ctx: ExecutionCtxTrait,
@@ -266,6 +306,7 @@ impl PowdrExecutor {
         let executor_inventory = &self.executor_inventory;
         // Set the data using the original instructions
         *data = PowdrPreCompute {
+            height_change: self.height_change,
             original_instructions: self
                 .apc
                 .block
@@ -281,7 +322,7 @@ impl PowdrExecutor {
                     let pre_compute_size = executor.pre_compute_size();
                     let mut pre_compute_data = vec![0u8; pre_compute_size];
                     let execute_func = executor.pre_compute::<Ctx>(
-                        pc + idx as u32 * 4,
+                        pc + idx as u32 * DEFAULT_PC_STEP,
                         &instruction.0,
                         &mut pre_compute_data,
                     )?;
@@ -296,9 +337,9 @@ impl PowdrExecutor {
 
 /// The implementation of the execute function, shared between Executor and MeteredExecutor.
 #[inline(always)]
-unsafe fn execute_e12_impl<CTX: ExecutionCtxTrait>(
-    pre_compute: &PowdrPreCompute<CTX>,
-    vm_state: &mut VmExecState<BabyBear, GuestMemory, CTX>,
+unsafe fn execute_e12_impl<F, CTX: ExecutionCtxTrait>(
+    pre_compute: &PowdrPreCompute<F, CTX>,
+    vm_state: &mut VmExecState<F, GuestMemory, CTX>,
 ) {
     // Save the current instret, as we will overwrite it during execution of original instructions
     let instret = vm_state.vm_state.instret;
@@ -314,23 +355,26 @@ unsafe fn execute_e12_impl<CTX: ExecutionCtxTrait>(
     vm_state.vm_state.instret = instret + 1;
 }
 
-unsafe fn execute_e1_impl<CTX: ExecutionCtxTrait>(
+#[create_tco_handler]
+unsafe fn execute_e1_impl<F: PrimeField32, CTX: ExecutionCtxTrait>(
     pre_compute: &[u8],
-    vm_state: &mut VmExecState<BabyBear, GuestMemory, CTX>,
+    vm_state: &mut VmExecState<F, GuestMemory, CTX>,
 ) {
-    let pre_compute: &PowdrPreCompute<CTX> = pre_compute.borrow();
-    execute_e12_impl::<CTX>(pre_compute, vm_state);
+    let pre_compute: &PowdrPreCompute<F, CTX> = pre_compute.borrow();
+    execute_e12_impl::<F, CTX>(pre_compute, vm_state);
 }
 
-unsafe fn execute_e2_impl<CTX: MeteredExecutionCtxTrait>(
+#[create_tco_handler]
+unsafe fn execute_e2_impl<F: PrimeField32, CTX: MeteredExecutionCtxTrait>(
     pre_compute: &[u8],
-    vm_state: &mut VmExecState<BabyBear, GuestMemory, CTX>,
+    vm_state: &mut VmExecState<F, GuestMemory, CTX>,
 ) {
-    let pre_compute: &E2PreCompute<PowdrPreCompute<CTX>> = pre_compute.borrow();
-    vm_state
-        .ctx
-        .on_height_change(pre_compute.chip_idx as usize, 1);
-    execute_e12_impl::<CTX>(&pre_compute.data, vm_state);
+    let pre_compute: &E2PreCompute<PowdrPreCompute<F, CTX>> = pre_compute.borrow();
+    vm_state.ctx.on_height_change(
+        pre_compute.chip_idx as usize,
+        pre_compute.data.height_change,
+    );
+    execute_e12_impl::<F, CTX>(&pre_compute.data, vm_state);
 }
 
 impl PreflightExecutor<BabyBear, ArenaType> for PowdrExecutor {
@@ -347,6 +391,8 @@ impl PreflightExecutor<BabyBear, ArenaType> for PowdrExecutor {
             rng,
             custom_pvs,
             ctx,
+            #[cfg(feature = "metrics")]
+            metrics,
         } = state;
 
         // Initialize the original arenas if not already initialized
@@ -394,6 +440,9 @@ impl PreflightExecutor<BabyBear, ArenaType> for PowdrExecutor {
                 custom_pvs,
                 // We execute in the context of the relevant original table
                 ctx: arenas.get_mut(&air_name).unwrap(),
+                // TODO: should we pass around the same metrics object, or snapshot it at the beginning of this method and apply a single update at the end?
+                #[cfg(feature = "metrics")]
+                metrics,
             };
 
             executor.execute(state, &instruction.0)?;
@@ -405,8 +454,8 @@ impl PreflightExecutor<BabyBear, ArenaType> for PowdrExecutor {
         Ok(())
     }
 
-    fn get_opcode_name(&self, _opcode: usize) -> String {
-        todo!()
+    fn get_opcode_name(&self, opcode: usize) -> String {
+        format!("APC_{opcode}")
     }
 }
 
@@ -416,12 +465,14 @@ impl PowdrExecutor {
         base_config: OriginalVmConfig,
         apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
         record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
+        height_change: u32,
     ) -> Self {
         Self {
             air_by_opcode_id,
             executor_inventory: base_config.sdk_config.sdk.create_executors().unwrap(),
             apc,
             original_arenas: record_arena_by_air_name,
+            height_change,
         }
     }
 }

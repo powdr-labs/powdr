@@ -175,25 +175,6 @@ pub struct SymbolicMachine<T> {
     pub derived_columns: Vec<(AlgebraicReference, ComputationMethod<T>)>,
 }
 
-/// A machine comprised of algebraic constraints, bus interactions and potentially derived columns.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SymbolicMachineOld<T> {
-    /// Constraints whose expressions have to evaluate to zero for an assignment to be satisfying.
-    pub constraints: Vec<SymbolicConstraint<T>>,
-    /// Bus interactions that model communication with other machines / chips or static lookups.
-    pub bus_interactions: Vec<SymbolicBusInteraction<T>>,
-}
-
-impl<T> From<SymbolicMachineOld<T>> for SymbolicMachine<T> {
-    fn from(old: SymbolicMachineOld<T>) -> Self {
-        Self {
-            constraints: old.constraints,
-            bus_interactions: old.bus_interactions,
-            derived_columns: Vec::new(),
-        }
-    }
-}
-
 type ComputationMethod<T> =
     powdr_constraint_solver::constraint_system::ComputationMethod<T, AlgebraicExpression<T>>;
 
@@ -360,15 +341,6 @@ impl<T, I> Apc<T, I> {
     pub fn instructions(&self) -> &[I] {
         &self.block.statements
     }
-
-    /// The `is_valid` polynomial id
-    pub fn is_valid_poly_id(&self) -> u64 {
-        self.machine
-            .main_columns()
-            .find(|c| &*c.name == "is_valid")
-            .unwrap()
-            .id
-    }
 }
 
 pub fn build<A: Adapter>(
@@ -478,12 +450,15 @@ fn add_guards_constraint<T: FieldElement>(
 fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
     let pre_degree = machine.degree();
 
-    let max_id = machine.unique_references().map(|c| c.id).max().unwrap() + 1;
-
-    let is_valid = AlgebraicExpression::Reference(AlgebraicReference {
+    let is_valid_ref = AlgebraicReference {
         name: Arc::new("is_valid".to_string()),
-        id: max_id,
-    });
+        id: machine.unique_references().map(|c| c.id).max().unwrap() + 1,
+    };
+    let is_valid = AlgebraicExpression::Reference(is_valid_ref.clone());
+
+    machine
+        .derived_columns
+        .push((is_valid_ref, ComputationMethod::Constant(T::one())));
 
     machine.constraints = machine
         .constraints

@@ -50,14 +50,18 @@ impl PowdrChip {
         original_airs: OriginalAirs<BabyBear>,
         base_config: OriginalVmConfig,
         periphery: PowdrPeripheryInstances,
-        record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
     ) -> Self {
-        let PowdrPrecompile { name, apc, .. } = precompile;
+        let PowdrPrecompile {
+            name,
+            apc,
+            apc_record_arena,
+            ..
+        } = precompile;
         let trace_generator = PowdrTraceGenerator::new(apc, original_airs, base_config, periphery);
 
         Self {
             name,
-            record_arena_by_air_name,
+            record_arena_by_air_name: apc_record_arena,
             trace_generator,
         }
     }

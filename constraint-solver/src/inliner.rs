@@ -1,10 +1,9 @@
 use crate::constraint_system::{AlgebraicConstraint, ConstraintRef};
 use crate::grouped_expression::GroupedExpression;
 use crate::indexed_constraint_system::IndexedConstraintSystem;
-use crate::runtime_constant::{RuntimeConstant, Substitutable};
 
 use itertools::Itertools;
-use powdr_number::ExpressionConvertible;
+use powdr_number::FieldElement;
 
 use std::collections::HashSet;
 use std::fmt::Display;
@@ -19,7 +18,7 @@ pub struct DegreeBound {
 /// Reduce variables in the constraint system by inlining them,
 /// if the callback `should_inline` returns true.
 pub fn replace_constrained_witness_columns<
-    T: RuntimeConstant + ExpressionConvertible<T::FieldType, V> + Substitutable<V> + Display,
+    T: FieldElement,
     V: Ord + Clone + Hash + Eq + Display,
 >(
     mut constraint_system: IndexedConstraintSystem<T, V>,
@@ -70,7 +69,7 @@ pub fn replace_constrained_witness_columns<
 
 /// Returns an inlining discriminator that allows everything to be inlined as long as
 /// the given degree bound is not violated.
-pub fn inline_everything_below_degree_bound<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
+pub fn inline_everything_below_degree_bound<T: FieldElement, V: Ord + Clone + Hash + Eq>(
     degree_bound: DegreeBound,
 ) -> impl Fn(&V, &GroupedExpression<T, V>, &IndexedConstraintSystem<T, V>) -> bool {
     move |var, expr, constraint_system| {
@@ -80,10 +79,7 @@ pub fn inline_everything_below_degree_bound<T: RuntimeConstant, V: Ord + Clone +
 
 /// Returns true if substituting `var` by `expr` inside `constraint_system` would
 /// not create new constraints with a degree larger than `degree_bound`
-pub fn substitution_would_not_violate_degree_bound<
-    T: RuntimeConstant,
-    V: Ord + Clone + Hash + Eq,
->(
+pub fn substitution_would_not_violate_degree_bound<T: FieldElement, V: Ord + Clone + Hash + Eq>(
     var: &V,
     expr: &GroupedExpression<T, V>,
     constraint_system: &IndexedConstraintSystem<T, V>,
@@ -111,10 +107,7 @@ pub fn substitution_would_not_violate_degree_bound<
 }
 
 /// Returns substitutions of variables that appear linearly and do not depend on themselves.
-fn find_inlinable_variables<
-    T: RuntimeConstant + ExpressionConvertible<T::FieldType, V> + Display,
-    V: Ord + Clone + Hash + Eq + Display,
->(
+fn find_inlinable_variables<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
     constraint: &AlgebraicConstraint<GroupedExpression<T, V>>,
 ) -> Vec<(V, GroupedExpression<T, V>)> {
     constraint
@@ -131,7 +124,7 @@ fn find_inlinable_variables<
 
 /// Calculate the degree of a GroupedExpression assuming a variable is
 /// replaced by an expression of known degree.
-fn expression_degree_with_virtual_substitution<T: RuntimeConstant, V: Ord + Clone + Eq>(
+fn expression_degree_with_virtual_substitution<T: FieldElement, V: Ord + Clone + Eq>(
     expr: &GroupedExpression<T, V>,
     var: &V,
     replacement_deg: usize,
@@ -151,16 +144,22 @@ fn expression_degree_with_virtual_substitution<T: RuntimeConstant, V: Ord + Clon
 
 #[cfg(test)]
 mod test {
-    use crate::{
-        constraint_system::{BusInteraction, ConstraintSystem},
-        test_utils::{constant, var},
-    };
+    use crate::constraint_system::{BusInteraction, ConstraintSystem};
 
     use super::*;
 
+    use powdr_number::GoldilocksField;
     use test_log::test;
 
-    fn bounds<T: RuntimeConstant, V: Ord + Clone + Hash + Eq>(
+    pub fn var(name: &'static str) -> GroupedExpression<GoldilocksField, &'static str> {
+        GroupedExpression::from_unknown_variable(name)
+    }
+
+    pub fn constant(value: u64) -> GroupedExpression<GoldilocksField, &'static str> {
+        GroupedExpression::from_number(GoldilocksField::from(value))
+    }
+
+    fn bounds<T: FieldElement, V: Ord + Clone + Hash + Eq>(
         identities: usize,
         bus_interactions: usize,
     ) -> impl Fn(&V, &GroupedExpression<T, V>, &IndexedConstraintSystem<T, V>) -> bool {

@@ -1,7 +1,9 @@
+use powdr_number::FieldElement;
+
 use crate::constraint_system::{AlgebraicConstraint, BusInteraction};
 use crate::grouped_expression::{GroupedExpression, RangeConstraintProvider};
 use crate::range_constraint::RangeConstraint;
-use crate::runtime_constant::{RuntimeConstant, VarTransformable};
+use crate::runtime_constant::VarTransformable;
 use crate::solver::{Error, Solver, VariableAssignment};
 
 use std::collections::HashSet;
@@ -61,10 +63,9 @@ pub struct VarTransformation<T, V, S> {
 
 impl<T, V, S> VarTransformation<T, V, S>
 where
-    T: RuntimeConstant + VarTransformable<V, Variable<V>>,
-    T::Transformed: RuntimeConstant<FieldType = T::FieldType>,
+    T: FieldElement,
     V: Clone + Eq,
-    S: Solver<T::Transformed, Variable<V>>,
+    S: Solver<T, Variable<V>>,
 {
     pub fn new(solver: S) -> Self {
         Self {
@@ -74,13 +75,13 @@ where
     }
 }
 
-impl<T, V, S> RangeConstraintProvider<T::FieldType, V> for VarTransformation<T, V, S>
+impl<T, V, S> RangeConstraintProvider<T, V> for VarTransformation<T, V, S>
 where
-    T: RuntimeConstant,
-    S: RangeConstraintProvider<T::FieldType, Variable<V>>,
+    T: FieldElement,
+    S: RangeConstraintProvider<T, Variable<V>>,
     V: Clone,
 {
-    fn get(&self, var: &V) -> RangeConstraint<T::FieldType> {
+    fn get(&self, var: &V) -> RangeConstraint<T> {
         self.solver.get(&Variable::from(var))
     }
 }
@@ -93,12 +94,9 @@ impl<T, V, S: Display> Display for VarTransformation<T, V, S> {
 
 impl<T, V, S> Solver<T, V> for VarTransformation<T, V, S>
 where
-    T: RuntimeConstant + VarTransformable<V, Variable<V>> + Display,
-    T::Transformed: RuntimeConstant<FieldType = T::FieldType>
-        + VarTransformable<Variable<V>, V, Transformed = T>
-        + Display,
+    T: FieldElement,
     V: Ord + Clone + Eq + Hash + Display,
-    S: Solver<T::Transformed, Variable<V>>,
+    S: Solver<T, Variable<V>>,
 {
     /// Solves the system and ignores all assignments that contain a new variable
     /// (either on the LHS or the RHS).
@@ -134,7 +132,7 @@ where
         )
     }
 
-    fn add_range_constraint(&mut self, variable: &V, constraint: RangeConstraint<T::FieldType>) {
+    fn add_range_constraint(&mut self, variable: &V, constraint: RangeConstraint<T>) {
         self.solver
             .add_range_constraint(&variable.into(), constraint);
     }
@@ -152,7 +150,7 @@ where
     fn range_constraint_for_expression(
         &self,
         expr: &GroupedExpression<T, V>,
-    ) -> RangeConstraint<T::FieldType> {
+    ) -> RangeConstraint<T> {
         self.solver
             .range_constraint_for_expression(&transform_expr(expr))
     }
@@ -168,20 +166,14 @@ where
     }
 }
 
-fn transform_expr<T, V: Ord + Clone>(
+fn transform_expr<T: FieldElement, V: Ord + Clone>(
     expr: &GroupedExpression<T, V>,
-) -> GroupedExpression<T::Transformed, Variable<V>>
-where
-    T: RuntimeConstant + VarTransformable<V, Variable<V>>,
-{
+) -> GroupedExpression<T, Variable<V>> {
     expr.transform_var_type(&mut |v| v.into())
 }
 
-fn transform_constraint<T, V: Ord + Clone>(
+fn transform_constraint<T: FieldElement, V: Ord + Clone>(
     constraint: &AlgebraicConstraint<GroupedExpression<T, V>>,
-) -> AlgebraicConstraint<GroupedExpression<T::Transformed, Variable<V>>>
-where
-    T: RuntimeConstant + VarTransformable<V, Variable<V>>,
-{
+) -> AlgebraicConstraint<GroupedExpression<T, Variable<V>>> {
     AlgebraicConstraint::assert_zero(transform_expr(&constraint.expression))
 }
