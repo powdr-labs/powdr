@@ -10,7 +10,8 @@ use itertools::Itertools;
 
 use crate::{
     constraint_system::{
-        AlgebraicConstraint, BusInteraction, ConstraintRef, ConstraintSystem, DerivedVariable,
+        AlgebraicConstraint, BusInteraction, ComputationMethod, ConstraintRef, ConstraintSystem,
+        DerivedVariable,
     },
     grouped_expression::GroupedExpression,
     runtime_constant::{RuntimeConstant, Substitutable},
@@ -163,6 +164,12 @@ impl<T: RuntimeConstant, V: Hash + Eq + Clone + Ord> From<ConstraintSystem<T, V>
     }
 }
 
+impl<T: RuntimeConstant, V: Clone + Eq> IndexedConstraintSystem<T, V> {
+    pub fn unknown_variables(&self) -> impl Iterator<Item = &V> {
+        self.variable_occurrences.keys()
+    }
+}
+
 impl<T: RuntimeConstant, V: Clone + Eq> From<IndexedConstraintSystem<T, V>>
     for ConstraintSystem<T, V>
 {
@@ -302,6 +309,23 @@ impl<T: RuntimeConstant, V: Clone + Eq + Hash> IndexedConstraintSystem<T, V> {
             algebraic_constraints: Vec::new(),
             bus_interactions: bus_interactions.into_iter().collect(),
             derived_variables: Vec::new(),
+        });
+    }
+
+    /// Adds a derived variable. The variable is not created with this function, it only adds
+    /// a method to compute it.
+    pub fn add_derived_variable(
+        &mut self,
+        variable: V,
+        method: ComputationMethod<T, GroupedExpression<T, V>>,
+    ) {
+        self.extend(ConstraintSystem {
+            algebraic_constraints: Vec::new(),
+            bus_interactions: Vec::new(),
+            derived_variables: vec![DerivedVariable {
+                variable,
+                computation_method: method,
+            }],
         });
     }
 

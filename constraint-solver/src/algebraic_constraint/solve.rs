@@ -46,39 +46,6 @@ where
     T: RuntimeConstant + Display + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>,
     V: Ord + Clone + Eq + Hash + Display,
 {
-    /// Solves the equation `self = 0` and returns how to compute the solution.
-    /// The solution can contain assignments to multiple variables.
-    /// If no way to solve the equation (and no way to derive new range
-    /// constraints) has been found, but it still contains
-    /// unknown variables, returns an empty, incomplete result.
-    /// If the equation is known to be unsolvable, returns an error.
-    pub fn solve(
-        &self,
-        range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
-    ) -> Result<ProcessResult<T, V>, Error> {
-        let expression = self.expression;
-
-        if !expression
-            .range_constraint(range_constraints)
-            .allows_value(Zero::zero())
-        {
-            return Err(Error::ConstraintUnsatisfiable(self.to_string()));
-        }
-
-        if expression.is_quadratic() {
-            self.solve_quadratic(range_constraints)
-        } else if let Some(k) = expression.try_to_known() {
-            // If we know `expression` to be nonzero, we should have returned
-            // Err already in the range constraint check above.
-            assert!(!k.is_known_nonzero());
-            // TODO we could still process more information
-            // and reach "unsatisfiable" here.
-            Ok(ProcessResult::complete(vec![]))
-        } else {
-            self.solve_affine(range_constraints)
-        }
-    }
-
     /// Solves the constraint for `variable`. This is only possible if
     /// `variable` does not appear in the quadratic component and
     /// has a coefficient which is known to be not zero.
@@ -158,6 +125,45 @@ where
             return None;
         }
         Some(result)
+    }
+}
+
+impl<
+        T: RuntimeConstant + Display + ExpressionConvertible<<T as RuntimeConstant>::FieldType, V>,
+        V: Ord + Clone + Eq + Hash + Display,
+    > AlgebraicConstraint<&GroupedExpression<T, V>>
+{
+    /// Solves the equation `self = 0` and returns how to compute the solution.
+    /// The solution can contain assignments to multiple variables.
+    /// If no way to solve the equation (and no way to derive new range
+    /// constraints) has been found, but it still contains
+    /// unknown variables, returns an empty, incomplete result.
+    /// If the equation is known to be unsolvable, returns an error.
+    pub fn solve(
+        &self,
+        range_constraints: &impl RangeConstraintProvider<T::FieldType, V>,
+    ) -> Result<ProcessResult<T, V>, Error> {
+        let expression = self.expression;
+
+        if !expression
+            .range_constraint(range_constraints)
+            .allows_value(Zero::zero())
+        {
+            return Err(Error::ConstraintUnsatisfiable(self.to_string()));
+        }
+
+        if expression.is_quadratic() {
+            self.solve_quadratic(range_constraints)
+        } else if let Some(k) = expression.try_to_known() {
+            // If we know `expression` to be nonzero, we should have returned
+            // Err already in the range constraint check above.
+            assert!(!k.is_known_nonzero());
+            // TODO we could still process more information
+            // and reach "unsatisfiable" here.
+            Ok(ProcessResult::complete(vec![]))
+        } else {
+            self.solve_affine(range_constraints)
+        }
     }
 
     fn solve_affine(
