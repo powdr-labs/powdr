@@ -6,6 +6,9 @@ use powdr_autoprecompiles::blocks::BasicBlock;
 
 use crate::{instruction_formatter::openvm_instruction_formatter, opcode::*, Instr};
 
+/// If true, assumes that after JALR, all registers are written to before being read.
+static OPTIMISTIC: bool = false;
+
 fn f_to_i64<F: PrimeField32>(f: &F) -> i64 {
     let u = f.as_canonical_u32();
     if u < F::ORDER_U32 / 2 {
@@ -330,8 +333,13 @@ pub fn find_tmp_registers<F: PrimeField32>(basic_blocks: &[BasicBlock<Instr<F>>]
             // Propagate register access types from successors to predecessors.
             let successors = graph.get(block_id).unwrap();
             let successor_access_types = if successors.is_empty() {
-                // We don't know anything, assume the worst case (all registers are read).
-                [RegisterAccessType::Read(*block_id); 32]
+                if OPTIMISTIC {
+                    // If there are no successors, assume the best case (all registers are written).
+                    [RegisterAccessType::Write; 32]
+                } else {
+                    // If there are no successors, assume the worst case (all registers are read).
+                    [RegisterAccessType::Read(*block_id); 32]
+                }
             } else {
                 intersect_access_types(
                     successors
@@ -368,14 +376,14 @@ pub fn find_tmp_registers<F: PrimeField32>(basic_blocks: &[BasicBlock<Instr<F>>]
             .iter()
             .copied()
             .filter(|r| {
-                // We can remove it if no successor reads.
-                // If the successor list is empty (JALR), we cannot remove it.
                 let successors = graph.get(block_id).unwrap();
-                !successors.is_empty()
-                    && !successors.iter().any(|succ| {
-                        let succ_access_types = register_access_types_with_succ.get(succ).unwrap();
-                        matches!(succ_access_types[*r], RegisterAccessType::Read(_))
-                    })
+                if successors.is_empty() {
+                    return OPTIMISTIC;
+                }
+                !successors.iter().any(|succ| {
+                    let succ_access_types = register_access_types_with_succ.get(succ).unwrap();
+                    matches!(succ_access_types[*r], RegisterAccessType::Read(_))
+                })
             })
             .collect::<Vec<_>>();
         tracing::info!(
@@ -386,7 +394,7 @@ pub fn find_tmp_registers<F: PrimeField32>(basic_blocks: &[BasicBlock<Instr<F>>]
             if !removable_regs.contains(r) {
                 // Explain why we cannot remove it by printing a path to a reading block.
                 let successors = graph.get(block_id).unwrap();
-                if successors.is_empty() {
+                if successors.is_empty() && !OPTIMISTIC {
                     tracing::info!("  Register {r} might be read after dynamic jump (JALR)");
                     continue;
                 }
