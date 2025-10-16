@@ -7,7 +7,7 @@ homepage.workspace = true
 repository.workspace = true
 
 [features]
-default = []
+default = ["metrics"]
 metrics = ["powdr-openvm/metrics", "openvm-sdk/metrics", "openvm-stark-backend/metrics", "openvm-stark-sdk/metrics"]
 
 [[bin]]
