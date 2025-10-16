@@ -35,6 +35,8 @@ use powdr_autoprecompiles::{
 
 #[cfg(feature = "cuda")]
 use crate::DeviceMatrix;
+#[cfg(feature = "cuda")]
+use openvm_cuda_backend::chip::get_empty_air_proving_ctx;
 
 pub struct PowdrChip {
     pub name: String,
@@ -70,11 +72,15 @@ impl<R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB> for 
     fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
         tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
 
-        let trace = self
-            .trace_generator
-            .generate_witness(self.record_arena_by_air_name.take());
+        if self.record_arena_by_air_name.borrow().number_of_calls() == 0 {
+            get_empty_air_proving_ctx::<PB>()
+        } else {
+            let trace = self
+                .trace_generator
+                .generate_witness(self.record_arena_by_air_name.take());
 
-        AirProvingContext::simple(Arc::new(trace), vec![])
+            AirProvingContext::simple(Arc::new(trace), vec![])
+        }
     }
 }
 
@@ -83,11 +89,15 @@ impl<R, PB: ProverBackend<Matrix = DeviceMatrix<BabyBear>>> Chip<R, PB> for Powd
     fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
         tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
 
-        let trace = self
-            .trace_generator
-            .generate_witness(self.record_arena_by_air_name.take());
+        if self.record_arena_by_air_name.borrow().number_of_calls() == 0 {
+            get_empty_air_proving_ctx::<PB>()
+        } else {
+            let trace = self
+                .trace_generator
+                .generate_witness(self.record_arena_by_air_name.take());
 
-        AirProvingContext::simple(trace, vec![])
+            AirProvingContext::simple(trace, vec![])
+        }
     }
 }
 

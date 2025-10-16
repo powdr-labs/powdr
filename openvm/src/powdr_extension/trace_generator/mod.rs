@@ -120,12 +120,20 @@ impl PowdrTraceGenerator {
 
     #[cfg(not(feature = "cuda"))]
     pub fn generate_witness(&self, mut original_arenas: OriginalArenas) -> Witness<BabyBear> {
+        assert!(
+            original_arenas.number_of_calls() > 0,
+            "APC must be called to generate witness"
+        );
         let (values, width, _) = self.generate_witness_values(original_arenas);
         Witness::new(values, width)
     }
 
     #[cfg(feature = "cuda")]
     pub fn generate_witness(&self, mut original_arenas: OriginalArenas) -> Witness<BabyBear> {
+        assert!(
+            original_arenas.number_of_calls() > 0,
+            "APC must be called to generate witness"
+        );
         let (values, width, height) = self.generate_witness_values(original_arenas);
         device_matrix_from_values(values, width, height)
     }
@@ -138,12 +146,6 @@ impl PowdrTraceGenerator {
         mut original_arenas: OriginalArenas,
     ) -> (Vec<BabyBear>, usize, usize) {
         let num_apc_calls = original_arenas.number_of_calls();
-        if num_apc_calls == 0 {
-            // If the APC isn't called, early return with an empty trace.
-            let _width = self.apc.machine().main_columns().count();
-            #[cfg(not(feature = "cuda"))]
-            return Witness::new(vec![], width);
-        }
 
         let chip_inventory = {
             let airs: AirInventory<BabyBearSC> =
