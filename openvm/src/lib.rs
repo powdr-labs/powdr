@@ -906,7 +906,7 @@ mod tests {
     fn guest_prove_simple() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        let config = default_powdr_openvm_config(GUEST_APC, 0);
+        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP_PGO);
         let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
         prove_simple(
             GUEST,
@@ -922,7 +922,7 @@ mod tests {
     fn guest_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        let config = default_powdr_openvm_config(GUEST_APC, 0);
+        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP_PGO);
         let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
         prove_mock(
             GUEST,
@@ -939,7 +939,7 @@ mod tests {
     fn guest_plonk_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        let config = default_powdr_openvm_config(GUEST_APC, 0);
+        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP_PGO);
         let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
         prove_mock(
             GUEST,
@@ -956,7 +956,7 @@ mod tests {
     fn guest_prove_recursion() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        let config = default_powdr_openvm_config(GUEST_APC, 0);
+        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP_PGO);
         let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
         prove_recursion(
             GUEST,
@@ -1773,14 +1773,18 @@ mod tests {
 
     #[test]
     fn guest_machine_plonk() {
-        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP);
+        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP_PGO);
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ITER);
+        let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin);
+
         let max_degree = config.degree_bound.identities;
         let (powdr_metrics, _) = compile_guest(
             GUEST,
             GuestOptions::default(),
             config,
             PrecompileImplementation::PlonkChip,
-            PgoConfig::None,
+            PgoConfig::Instruction(pgo_data),
         )
         .unwrap()
         .air_metrics(max_degree);
