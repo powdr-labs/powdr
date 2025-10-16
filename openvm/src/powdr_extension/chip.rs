@@ -80,7 +80,7 @@ impl<R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB> for 
 impl<R, PB: ProverBackend<Matrix = DeviceMatrix<BabyBear>>> Chip<R, PB> for PowdrChip {
     fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
         tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
-
+  
         if self.record_arena_by_air_name.borrow().number_of_calls() == 0 {
             get_empty_air_proving_ctx::<PB>()
         } else {
