@@ -824,7 +824,7 @@ mod tests {
     const GUEST: &str = "guest";
     const GUEST_ITER: u32 = 1 << 10;
     const GUEST_APC: u64 = 1;
-    const GUEST_SKIP: u64 = 56;
+    const GUEST_SKIP_NO_APC_EXECUTED: u64 = 56;
     const GUEST_SKIP_PGO: u64 = 0;
 
     const GUEST_KECCAK: &str = "guest-keccak";
@@ -878,7 +878,7 @@ mod tests {
         // Create execution profile but don't prove with it, just to assert that the APC we select isn't executed
         let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
 
-        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP);
+        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP_NO_APC_EXECUTED);
         let program = compile_guest(
             GUEST,
             GuestOptions::default(),
@@ -906,7 +906,7 @@ mod tests {
     fn guest_prove_simple() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP);
+        let config = default_powdr_openvm_config(GUEST_APC, 0);
         let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
         prove_simple(
             GUEST,
@@ -922,7 +922,7 @@ mod tests {
     fn guest_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP);
+        let config = default_powdr_openvm_config(GUEST_APC, 0);
         prove_mock(
             GUEST,
             config,
@@ -938,7 +938,7 @@ mod tests {
     fn guest_plonk_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP);
+        let config = default_powdr_openvm_config(GUEST_APC, 0);
         prove_mock(
             GUEST,
             config,
@@ -954,7 +954,7 @@ mod tests {
     fn guest_prove_recursion() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP);
+        let config = default_powdr_openvm_config(GUEST_APC, 0);
         let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
         prove_recursion(
             GUEST,
