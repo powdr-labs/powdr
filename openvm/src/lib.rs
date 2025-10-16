@@ -923,12 +923,13 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
         let config = default_powdr_openvm_config(GUEST_APC, 0);
+        let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
         prove_mock(
             GUEST,
             config,
             PrecompileImplementation::SingleRowChip,
             stdin,
-            PgoConfig::None,
+            PgoConfig::Instruction(pgo_data),
             None,
         );
     }
@@ -939,12 +940,13 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
         let config = default_powdr_openvm_config(GUEST_APC, 0);
+        let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
         prove_mock(
             GUEST,
             config,
             PrecompileImplementation::PlonkChip,
             stdin,
-            PgoConfig::None,
+            PgoConfig::Instruction(pgo_data),
             None,
         );
     }
