@@ -201,20 +201,27 @@ impl PowdrTraceGenerator {
         let height = next_power_of_two_or_zero(num_apc_calls);
         let mut values = <BabyBear as FieldAlgebra>::zero_vec(height * width);
 
+        println!("values height: {:?}, width: {:?}", height, width);
+        println!("dummy values length: {:?}", dummy_values.len());
+
         // go through the final table and fill in the values
         values
             // a record is `width` values
             // TODO: optimize by parallelizing on chunks of rows, currently fails because `dyn AnyChip<MatrixRecordArena<Val<SC>>>` is not `Send`
             .chunks_mut(width)
             .zip(dummy_values)
-            .for_each(|(row_slice, dummy_values)| {
+            .enumerate()
+            .for_each(|(apc_row, (row_slice, dummy_values))| {
                 // map the dummy rows to the autoprecompile row
-                for (device_ref, dummy_trace_index_to_apc_index) in dummy_values
+                for (original_instruction_idx, (device_ref, dummy_trace_index_to_apc_index)) in dummy_values
                     .iter()
                     .zip_eq(&dummy_trace_index_to_apc_index_by_instruction)
+                    .enumerate()
                 {
                     let host_ref = &device_ref.data.to_host().unwrap()
                         [device_ref.start..device_ref.start + device_ref.length];
+
+                    println!("apc_row: {:?}, original_instruction_idx: {:?}, dummy: {:?}", apc_row, original_instruction_idx, host_ref);
 
                     for (dummy_trace_index, apc_index) in dummy_trace_index_to_apc_index {
                         row_slice[*apc_index] = host_ref[*dummy_trace_index];
@@ -225,6 +232,7 @@ impl PowdrTraceGenerator {
                 // (these are either new columns or for example the "is_valid" column).
                 for (column, computation_method) in columns_to_compute {
                     let col_index = apc_poly_id_to_index[&column.id];
+                    println!("column: {:?}, computation_method: {:?}, col_index: {:?}", column, computation_method, col_index);
                     row_slice[col_index] = match computation_method {
                         ComputationMethod::Constant(c) => *c,
                         ComputationMethod::InverseOrZero(expr) => {
@@ -250,12 +258,15 @@ impl PowdrTraceGenerator {
                     .for_each(|interaction| {
                         let ConcreteBusInteraction { id, mult, args } =
                             evaluator.eval_bus_interaction(interaction);
-                        self.periphery.real.apply(
-                            id as u16,
-                            mult.as_canonical_u32(),
-                            args.map(|arg| arg.as_canonical_u32()),
-                        );
+                        // self.periphery.real.apply(
+                        //     id as u16,
+                        //     mult.as_canonical_u32(),
+                        //     args.map(|arg| arg.as_canonical_u32()),
+                        // );
                     });
+
+                // print final row slice
+                println!("final row slice: {:?}", row_slice);
             });
 
         (values, width, height)
