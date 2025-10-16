@@ -71,7 +71,7 @@ fn auipc_address<F: PrimeField32>(basic_block: &BasicBlock<Instr<F>>) -> Option<
     let pc = basic_block.start_pc + (basic_block.statements.len() as u64 - 2) * 4;
     let pc: u32 = pc.try_into().unwrap();
     let imm = second_last.c.as_canonical_u32();
-    let address = pc.wrapping_add((imm as u32) << 8);
+    let address = pc.wrapping_add(imm << 8);
 
     Some((
         second_last.a.as_canonical_u32().try_into().unwrap(),
