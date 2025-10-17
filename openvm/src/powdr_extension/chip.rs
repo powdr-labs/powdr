@@ -14,7 +14,7 @@ use crate::{
 use super::PowdrPrecompile;
 use itertools::Itertools;
 use openvm_stark_backend::{
-    p3_air::{Air, AirBuilder, BaseAir},
+    p3_air::{Air, BaseAir},
     p3_matrix::dense::DenseMatrix,
     prover::{hal::ProverBackend, types::AirProvingContext},
     rap::ColumnsAir,

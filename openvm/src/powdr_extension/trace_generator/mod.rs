@@ -213,7 +213,6 @@ impl PowdrTraceGenerator {
         let height = next_power_of_two_or_zero(num_apc_calls);
         let mut values = <BabyBear as FieldAlgebra>::zero_vec(height * width);
 
-
         // go through the final table and fill in the values
         values
             // a record is `width` values
