@@ -155,3 +155,19 @@ fn many_stores_relative_to_same_register() {
     ];
     assert_machine_output(program.to_vec(), "many_stores_relative_to_same_register");
 }
+
+#[test]
+fn copy_byte() {
+    // Copies a byte from one memory location to another, using loadb and storeb.
+    // See this real-world example with a similar pattern:
+    // https://georgwiese.github.io/autoprecompile-analyzer/?data=https%3A%2F%2Fgist.githubusercontent.com%2Fgeorgwiese%2Faa85dcc145f26d37f8f03f9a04665971%2Fraw%2F6ce661ec86302d2fef0282908117c0427d9888db%2Freth_with_labels.json&block=0x200914
+
+    let program = [
+        loadb(8, 2, 0, 2, 1, 0),
+        storeb(8, 3, 0, 2, 1, 0),
+        // Overwrite r8 with value 3.
+        // Something similar happens in the block above: The sign extension of `loadb` is not actually needed.
+        add(8, 0, 3, 0),
+    ];
+    assert_machine_output(program.to_vec(), "copy_byte");
+}
