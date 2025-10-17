@@ -64,6 +64,7 @@ impl<F: PrimeField32> ColumnsAir<F> for PlonkAir<F> {
 
 impl<F: PrimeField32> BaseAir<F> for PlonkAir<F> {
     fn width(&self) -> usize {
+        // <PlonkAir<F> as ColumnsAir<F>>::columns(self).unwrap().len()
         PlonkColumns::<F>::width()
     }
 }
@@ -77,6 +78,9 @@ where
         let main = builder.main();
         let local = main.row_slice(0);
         let local_next = main.row_slice(1);
+
+        println!("borrowed length: {}", (*local).len());
+        println!("plonk columns width: {}", PlonkColumns::<AB::F>::width());
 
         let PlonkColumns {
             q_l,
@@ -200,4 +204,16 @@ where
     }
 }
 
-impl<F: PrimeField32> PartitionedBaseAir<F> for PlonkAir<F> {}
+impl<F: PrimeField32> PartitionedBaseAir<F> for PlonkAir<F> {
+    /// By default, an AIR has no cached main trace.
+    fn cached_main_widths(&self) -> Vec<usize> {
+        println!("plonk air cached main widths");
+        vec![]
+    }
+    /// By default, an AIR has only one private main trace.
+    fn common_main_width(&self) -> usize {
+        let width = self.width();
+        println!("plonk air common main widths: {}", width);
+        width
+    }
+}
