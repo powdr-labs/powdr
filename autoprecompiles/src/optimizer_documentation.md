@@ -53,7 +53,7 @@ The task of the optimizer is hugely simplified by the concept of
 _Range Constraints_. Range Constraints allow us to combine the effects of
 different Algebraic Constraints (and Bus Interactions) on the same variable.
 In an abstract way, a _Range Constraint_ is just
-a restrictions on values and we can say that a value _satisfies_ a Range Constraint
+a restriction on values and we can say that a value _satisfies_ a Range Constraint
 or not. We also say that a Range Constraint _allows_ a value if that value satisfies it.
 We can connect Range Constraints and variables (a Range Constraint _on_ a
 variable) and say that an assignment of a variable `v` _satisfies_ a Range Constraint
@@ -176,7 +176,7 @@ implement the following methods:
 
 As an example, let us assume we are modeling a bus that implements a byte
 constraint, i.e. a bus that takes a single payload item and enforces that it is
-in the range `0..=255`. The bus is not stateful since it does not depend on any
+in the range `0..=255`. The bus is not stateful since it does not depend on nor affects any
 parts of the system. A simple correct implementation of
 `handle_bus_interaction` would be to always return a `0xff`-mask Range Constraint
 for the payload and ignore the input. It is correct because any assignment that
