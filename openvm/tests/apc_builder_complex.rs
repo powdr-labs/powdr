@@ -145,6 +145,9 @@ fn many_stores_relative_to_same_register() {
     // For a real-world example of something similar, see:
     // https://georgwiese.github.io/autoprecompile-analyzer/?data=https%3A%2F%2Fgist.githubusercontent.com%2Fgeorgwiese%2Faa85dcc145f26d37f8f03f9a04665971%2Fraw%2F6ce661ec86302d2fef0282908117c0427d9888db%2Freth_with_labels.json&block=0x260648
 
+    // Reproduces issue: Compute memory pointers in the field for intermediate pointers
+    // https://github.com/powdr-labs/powdr/issues/3365
+
     let program = [
         storew(5, 2, 12, 2, 1, 0),
         storew(6, 2, 16, 2, 1, 0),
