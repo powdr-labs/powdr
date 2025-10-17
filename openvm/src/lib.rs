@@ -1164,16 +1164,49 @@ mod tests {
     const GUEST_ECRECOVER_ITER: u32 = 1;
 
     #[test]
+    fn guest_prove_simple_no_apc_executed() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ITER);
+
+        // Create execution profile but don't prove with it, just to assert that the APC we select isn't executed
+        let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
+
+        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP);
+        let program = compile_guest(
+            GUEST,
+            GuestOptions::default(),
+            config,
+            PrecompileImplementation::SingleRowChip,
+            PgoConfig::None,
+        )
+        .unwrap();
+
+        // Assert that all APCs aren't executed
+        program
+            .vm_config
+            .powdr
+            .precompiles
+            .iter()
+            .for_each(|precompile| {
+                assert!(!pgo_data.keys().contains(&precompile.apc.block.start_pc));
+            });
+
+        let result = prove(&program, false, false, stdin, None);
+        assert!(result.is_ok());
+    }
+
+    #[test]
     fn guest_prove_simple() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP);
+        let config = default_powdr_openvm_config(GUEST_APC, 0);
+        let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
         prove_simple(
             GUEST,
             config,
             PrecompileImplementation::SingleRowChip,
             stdin,
-            PgoConfig::None,
+            PgoConfig::Instruction(pgo_data),
             None,
         );
     }
@@ -1182,13 +1215,14 @@ mod tests {
     fn guest_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP);
+        let config = default_powdr_openvm_config(GUEST_APC, 0);
+        let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
         prove_mock(
             GUEST,
             config,
             PrecompileImplementation::SingleRowChip,
             stdin,
-            PgoConfig::None,
+            PgoConfig::Instruction(pgo_data),
             None,
         );
     }

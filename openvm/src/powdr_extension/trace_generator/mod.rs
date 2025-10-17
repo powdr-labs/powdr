@@ -70,24 +70,35 @@ impl<F> From<Arc<DenseMatrix<F>>> for SharedCpuTrace<F> {
 
 /// A wrapper around a DeviceMatrix to implement `TraceTrait` which is required for `generate_trace`.
 pub struct SharedGpuTrace<F> {
-    matrix: DeviceMatrix<F>,
+    matrix: DenseMatrix<F>,
 }
 
 impl<F: Send + Sync> TraceTrait<F> for SharedGpuTrace<F> {
-    type Values = DeviceBuffer<F>;
+    type Values = Vec<F>;
 
     fn width(&self) -> usize {
-        self.matrix.width()
+        self.matrix.width
     }
 
     fn values(&self) -> &Self::Values {
-        self.matrix.buffer()
+        &self.matrix.values
     }
 }
 
-impl<F> From<DeviceMatrix<F>> for SharedGpuTrace<F> {
+impl<F: Clone + Send + Sync + Copy + Default> From<DeviceMatrix<F>> for SharedGpuTrace<F> {
     fn from(matrix: DeviceMatrix<F>) -> Self {
-        Self { matrix }
+        let width = matrix.width();
+        let height = matrix.height();
+        let values = matrix.buffer().to_host().unwrap();
+
+        // Create column major matrix to transpose
+        let column_major_matrix = DenseMatrix::new(values, height);
+        // Transpose
+        let row_major_matrix = column_major_matrix.transpose();
+
+        Self {
+            matrix: row_major_matrix,
+        }
     }
 }
 
@@ -134,6 +145,7 @@ impl PowdrTraceGenerator {
             original_arenas.number_of_calls() > 0,
             "APC must be called to generate witness"
         );
+        // Values are already padded
         let (values, width, height) = self.generate_witness_values(original_arenas);
         device_matrix_from_values(values, width, height)
     }
@@ -209,15 +221,15 @@ impl PowdrTraceGenerator {
             .zip(dummy_values)
             .for_each(|(row_slice, dummy_values)| {
                 // map the dummy rows to the autoprecompile row
-                for (device_ref, dummy_trace_index_to_apc_index) in dummy_values
+                for (dummy_row, dummy_trace_index_to_apc_index) in dummy_values
                     .iter()
                     .zip_eq(&dummy_trace_index_to_apc_index_by_instruction)
                 {
-                    let host_ref = &device_ref.data.to_host().unwrap()
-                        [device_ref.start..device_ref.start + device_ref.length];
+                    let dummy_row =
+                        &dummy_row.data[dummy_row.start..(dummy_row.start + dummy_row.length)];
 
                     for (dummy_trace_index, apc_index) in dummy_trace_index_to_apc_index {
-                        row_slice[*apc_index] = host_ref[*dummy_trace_index];
+                        row_slice[*apc_index] = dummy_row[*dummy_trace_index];
                     }
                 }
 
@@ -250,11 +262,11 @@ impl PowdrTraceGenerator {
                     .for_each(|interaction| {
                         let ConcreteBusInteraction { id, mult, args } =
                             evaluator.eval_bus_interaction(interaction);
-                        self.periphery.real.apply(
-                            id as u16,
-                            mult.as_canonical_u32(),
-                            args.map(|arg| arg.as_canonical_u32()),
-                        );
+                        // self.periphery.real.apply(
+                        //     id as u16,
+                        //     mult.as_canonical_u32(),
+                        //     args.map(|arg| arg.as_canonical_u32()),
+                        // );
                     });
             });
 
@@ -269,6 +281,9 @@ pub fn device_matrix_from_values(
     height: usize,
 ) -> DeviceMatrix<BabyBear> {
     // TODO: we copy the values from host (CPU) to device (GPU), and should study how to generate APC trace natively in GPU
-    let device_buffer = values.to_device().unwrap();
+    // Transpose back to column major matrix before sending to device
+    let row_major_matrix = DenseMatrix::new(values, width);
+    let column_major_matrix = row_major_matrix.transpose();
+    let device_buffer = column_major_matrix.values.to_device().unwrap();
     DeviceMatrix::new(Arc::new(device_buffer), height, width)
 }
