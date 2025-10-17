@@ -381,7 +381,7 @@ impl SharedPeripheryChips {
                 // We pass a slice. It is checked inside `add_count`.
 
                 // Expect exactly two values, because we have RangeTupleCheckerChipGPU<2> only
-                let vals = [args.next().unwrap(), args.next.unwrap()];
+                let vals = [args.next().unwrap(), args.next().unwrap()];
                 assert!(args.next().is_none());
                 for _ in 0..mult {
                     // self.tuple_range_checker
