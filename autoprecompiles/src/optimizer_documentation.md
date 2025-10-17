@@ -64,7 +64,7 @@ satisfying assignment of the Constraint System also satisfies `r`.
 During optimization, we derive Range Constraints for expressions and variables
 from Algebraic Constraints and Bus Interactions and use them to simplify
 the Constraint System. We also use Range Constraints for a uniform abstraction
-of Bus Interactions.
+of Bus Interactions as we will see in a later section.
 
 As an example, let us consider the Constraint System consisting of the
 Algebraic Constraint `x * (x - 1) = 0`. From this Algebraic Constraint the optimizer
@@ -127,6 +127,20 @@ which bus to interact with. The _Multiplicity_ is an Algebraic Expression
 and in most cases it should evaluate either to 1 or -1. The _Payload_ is
 the data that is sent to the bus or received from the bus and is a list
 of Algebraic Expressions.
+
+Usually, one can think of a Bus Interaction to constrain the items in
+the payload as a tuple. For example, if you have an XOR bus, then
+a Bus Interaction with payload `(a, b, c)` ensures that
+`c = a ^ b`. In a bus interaction, there is no intrinsic concept of
+inputs and outputs (even though some buses can be seen like that).
+
+In the example of the XOR bus, it is perfectly fine to use
+`(a, b, 0xff)` and thus ensure that (on the lower most byte),
+`b` is the bitwise negation of `a`.
+
+Buses can only be properly described across a system of chips or
+constraint systems. What we want to achieve is that all the buses
+are balanced:
 
 A Bus is _balanced_ if across the whole system and for all payloads,
 the sum of the multiplicities is zero. Intuitively, with a multiplicity
