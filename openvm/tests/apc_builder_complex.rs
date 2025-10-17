@@ -1,5 +1,4 @@
 mod common;
-use openvm_circuit::system::program;
 use openvm_instructions::instruction::Instruction;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_openvm::symbolic_instruction_builder::*;
