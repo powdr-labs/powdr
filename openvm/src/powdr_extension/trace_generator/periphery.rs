@@ -23,6 +23,7 @@ use openvm_stark_backend::{
 };
 use openvm_stark_sdk::engine::StarkEngine;
 
+use crate::bus_map::DEFAULT_TUPLE_RANGE_CHECKER;
 use crate::powdr_extension::trace_generator::inventory::DummyExecutor;
 use std::sync::Arc;
 
@@ -173,9 +174,10 @@ impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChips {
             // Therefore we create a new bus index, following a similar scenario in `Rv32M::extend_circuit`.
             let bus = match tuple_range_checker.cpu_chip.as_ref() {
                 // None is the expected case
-                None => {
-                    RangeTupleCheckerBus::new(inventory.new_bus_idx(), tuple_range_checker.sizes)
-                }
+                None => RangeTupleCheckerBus::new(
+                    DEFAULT_TUPLE_RANGE_CHECKER as u16,
+                    tuple_range_checker.sizes,
+                ),
                 Some(cpu_chip) => *cpu_chip.bus(),
             };
             inventory.add_air(RangeTupleCheckerAir::<2> { bus });
@@ -316,6 +318,7 @@ impl SharedPeripheryChips {
     /// Sends concrete values to the shared chips using a given bus id.
     /// Panics if the bus id doesn't match any of the chips' bus ids.
     pub fn apply(&self, bus_id: u16, mult: u32, mut args: impl Iterator<Item = u32>) {
+        println!("Applying bus id {} with mult={}", bus_id, mult);
         match bus_id {
             // TODO: here we assume all GPU chips has a `Some(CPUChip)` field, so it might panic on `unwrap()`.
             // Don't really see a reason why it would be `None` though.
@@ -374,23 +377,30 @@ impl SharedPeripheryChips {
                         .add_count(value, max_bits as usize);
                 }
             }
-            id if Some(id)
-                == self
-                    .tuple_range_checker
-                    .as_ref()
-                    .map(|c| c.cpu_chip.as_ref().unwrap().bus().inner.index) =>
-            {
+            id if id == DEFAULT_TUPLE_RANGE_CHECKER as u16 => {
                 // tuple range checker
                 // We pass a slice. It is checked inside `add_count`.
-                let args = args.collect_vec();
+
+                // Expect exactly two values, because we have RangeTupleCheckerChipGPU<2> only
+                let vals = [args.next().unwrap(), args.next.unwrap()];
+                assert!(args.next().is_none());
                 for _ in 0..mult {
-                    self.tuple_range_checker
-                        .as_ref()
-                        .unwrap()
-                        .cpu_chip
-                        .as_ref()
-                        .unwrap()
-                        .add_count(&args);
+                    // self.tuple_range_checker
+                    //     .as_ref()
+                    //     .unwrap()
+                    //     .cpu_chip
+                    //     .as_ref()
+                    //     .unwrap()
+                    //     .add_count(&args);
+
+                    // TODO: This is never called in practice, even in Keccak, so we should check that it works, maybe by creating a wrapper for range checker `add_count`
+                    unsafe {
+                        crate::cuda_abi::range_tuple2_add_count_on_chip(
+                            self.tuple_range_checker.as_ref().unwrap(),
+                            vals,
+                        )
+                        .unwrap();
+                    }
                 }
             }
             0..=2 => {
