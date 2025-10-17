@@ -70,24 +70,35 @@ impl<F> From<Arc<DenseMatrix<F>>> for SharedCpuTrace<F> {
 
 /// A wrapper around a DeviceMatrix to implement `TraceTrait` which is required for `generate_trace`.
 pub struct SharedGpuTrace<F> {
-    matrix: DeviceMatrix<F>,
+    matrix: DenseMatrix<F>,
 }
 
 impl<F: Send + Sync> TraceTrait<F> for SharedGpuTrace<F> {
-    type Values = DeviceBuffer<F>;
+    type Values = Vec<F>;
 
     fn width(&self) -> usize {
-        self.matrix.width()
+        self.matrix.width
     }
 
     fn values(&self) -> &Self::Values {
-        self.matrix.buffer()
+        &self.matrix.values
     }
 }
 
-impl<F> From<DeviceMatrix<F>> for SharedGpuTrace<F> {
+impl<F: Clone + Send + Sync + Copy + Default> From<DeviceMatrix<F>> for SharedGpuTrace<F> {
     fn from(matrix: DeviceMatrix<F>) -> Self {
-        Self { matrix }
+        let width = matrix.width();
+        let height = matrix.height();
+        let values = matrix.buffer().to_host().unwrap();
+
+        // Create column major matrix to transpose
+        let column_major_matrix = DenseMatrix::new(values, height);
+        // Transpose
+        let row_major_matrix = column_major_matrix.transpose();
+
+        Self {
+            matrix: row_major_matrix,
+        }
     }
 }
 
@@ -213,18 +224,26 @@ impl PowdrTraceGenerator {
             .enumerate()
             .for_each(|(apc_row, (row_slice, dummy_values))| {
                 // map the dummy rows to the autoprecompile row
-                for (original_instruction_idx, (device_ref, dummy_trace_index_to_apc_index)) in dummy_values
-                    .iter()
-                    .zip_eq(&dummy_trace_index_to_apc_index_by_instruction)
-                    .enumerate()
+                for (original_instruction_idx, (dummy_row, dummy_trace_index_to_apc_index)) in
+                    dummy_values
+                        .iter()
+                        .zip_eq(&dummy_trace_index_to_apc_index_by_instruction)
+                        .enumerate()
                 {
-                    let host_ref = &device_ref.data.to_host().unwrap()
-                        [device_ref.start..device_ref.start + device_ref.length];
+                    let dummy_row_full = dummy_row.data;
 
-                    println!("apc_row: {:?}, original_instruction_idx: {:?}, dummy: {:?}", apc_row, original_instruction_idx, host_ref);
+                    println!("full dummy values: {:?}", dummy_row_full);
+
+                    let dummy_row =
+                        &dummy_row_full[dummy_row.start..(dummy_row.start + dummy_row.length)];
+
+                    println!(
+                        "apc_row: {:?}, original_instruction_idx: {:?}, dummy: {:?}",
+                        apc_row, original_instruction_idx, dummy_row
+                    );
 
                     for (dummy_trace_index, apc_index) in dummy_trace_index_to_apc_index {
-                        row_slice[*apc_index] = host_ref[*dummy_trace_index];
+                        row_slice[*apc_index] = dummy_row[*dummy_trace_index];
                     }
                 }
 
@@ -232,7 +251,10 @@ impl PowdrTraceGenerator {
                 // (these are either new columns or for example the "is_valid" column).
                 for (column, computation_method) in columns_to_compute {
                     let col_index = apc_poly_id_to_index[&column.id];
-                    println!("column: {:?}, computation_method: {:?}, col_index: {:?}", column, computation_method, col_index);
+                    println!(
+                        "column: {:?}, computation_method: {:?}, col_index: {:?}",
+                        column, computation_method, col_index
+                    );
                     row_slice[col_index] = match computation_method {
                         ComputationMethod::Constant(c) => *c,
                         ComputationMethod::InverseOrZero(expr) => {

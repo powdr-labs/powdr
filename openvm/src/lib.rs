@@ -1210,11 +1210,11 @@ mod tests {
             None,
         );
     }
-    
+
     #[test]
     fn guest_prove_mock() {
         let mut stdin = StdIn::default();
-        stdin.write(&GUEST_ITER);
+        stdin.write(&2);
         let config = default_powdr_openvm_config(GUEST_APC, 0);
         let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
         prove_mock(
