@@ -162,7 +162,7 @@ implement the following methods:
 
 As an example, let us assume we are modeling a bus that implements a byte
 constraint, i.e. a bus that takes a single payload item and enforces that it is
-in the range `0..=255`. The bus is not stateful since it does not depend on any
+in the range `0..=255`. The bus is not stateful since it does not depend on nor affects any
 parts of the system. A simple correct implementation of
 `handle_bus_interaction` would be to always return a `0xff`-mask Range Constraint
 for the payload and ignore the input. It is correct because any assignment that
