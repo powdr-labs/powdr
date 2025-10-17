@@ -131,6 +131,19 @@ fn load_two_bytes_compare() {
 }
 
 #[test]
+fn load_two_bytes_compare_unsigned() {
+    // Similar to `load_two_bytes_compare`, but using `loadbu` instead of `loadb`.
+    // Note that the two tests are largely equivalent; the sign extension of `loadb` does not
+    // change the comparison result (though the contents of r52 and r56 will differ between the two).
+    let program = [
+        loadbu(52, 40, 0, 2, 1, 0),
+        loadbu(56, 44, 0, 2, 1, 0),
+        bne(52, 56, 28),
+    ];
+    assert_machine_output(program.to_vec(), "load_two_bytes_compare_unsigned");
+}
+
+#[test]
 fn store_to_same_address() {
     // Store two different values to the same memory address.
     // The memory optimizer should realize the two memory addresses are the same,
