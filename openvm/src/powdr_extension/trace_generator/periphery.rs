@@ -318,7 +318,6 @@ impl SharedPeripheryChips {
     /// Sends concrete values to the shared chips using a given bus id.
     /// Panics if the bus id doesn't match any of the chips' bus ids.
     pub fn apply(&self, bus_id: u16, mult: u32, mut args: impl Iterator<Item = u32>) {
-        println!("Applying bus id {} with mult={}", bus_id, mult);
         match bus_id {
             // TODO: here we assume all GPU chips has a `Some(CPUChip)` field, so it might panic on `unwrap()`.
             // Don't really see a reason why it would be `None` though.

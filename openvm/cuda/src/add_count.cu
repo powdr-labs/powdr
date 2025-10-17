@@ -1,6 +1,6 @@
 #include <cuda_runtime.h>
 #include <stdint.h>
-#include "primitives/histogram.cuh"  // Histogram (in lookup::), RangeTupleChecker (global)
+#include "primitives/histogram.cuh"
 
 template <uint32_t N>
 __global__ void rt_add_count_kernel(uint32_t* global_hist,
@@ -11,7 +11,6 @@ __global__ void rt_add_count_kernel(uint32_t* global_hist,
         #pragma unroll
         for (uint32_t i = 0; i < N; ++i) sz[i] = sizes[i];
 
-        // RangeTupleChecker is in the global namespace (not lookup::)
         RangeTupleChecker<N> rtc(global_hist, sz);
 
         uint32_t vals[N];
