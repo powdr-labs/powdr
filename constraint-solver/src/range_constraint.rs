@@ -15,13 +15,6 @@ use powdr_number::{log2_exact, FieldElement, LargeInt};
 /// unsigned numbers. Furthermore, by supporting wrapping intervals we do not lose
 /// any information when adding or substracting constants.
 ///
-/// In general, range constraints under-approximate, i.e. they might be less strict
-/// than the expressions they model. They might allow a value that is actually not
-/// possible, but if the range constraint disallows a value, this value is definitely
-/// not possible. This is consistent because e.g. an algebraic constraint is isolation
-/// also under-approximates in contrast to this constraint being in the context
-/// of the full system.
-///
 /// The semantics and correctness of RangeConstraints is mainly defined by the following notion:
 ///
 /// We say a RangeConstraint `r` on an expression `e` is `valid` in a ConstraintSystem
@@ -33,7 +26,13 @@ use powdr_number::{log2_exact, FieldElement, LargeInt};
 /// RangeConstraint for `e1` and `r2` is a valid RangeConstraint for `e2`, then
 /// the result of `r1.combine_sum(r2)` is a valid RangeConstraint for `e1 + e2`.
 ///
-/// Note that the unconstrained RangeConstraint is always valid for every expression.
+/// Of course, a fully unconstrained RangeConstraint is always valid for every expression.
+/// in this way, range constraints are an over-approximation, i.e. they can be less strict
+/// than the expressions they model. They might allow a value that is actually not
+/// possible, but if the range constraint disallows a value, this value is definitely
+/// not possible. This is consistent because e.g. an algebraic constraint in isolation
+/// also over-approximates in contrast to this constraint being in the context
+/// of the full system.
 ///
 /// Finally, please be aware that same constraint can have multiple representations.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
