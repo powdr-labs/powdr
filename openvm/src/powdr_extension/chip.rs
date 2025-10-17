@@ -152,8 +152,7 @@ where
 
         for constraint in &self.apc.machine().constraints {
             let constraint = witness_evaluator.eval_constraint(constraint);
-            println!("constraint: {:?}", constraint.expr);
-            // builder.assert_zero(constraint.expr);
+            builder.assert_zero(constraint.expr);
         }
 
         for interaction in &self.apc.machine().bus_interactions {
