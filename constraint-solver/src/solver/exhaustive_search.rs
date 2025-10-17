@@ -7,8 +7,10 @@ use crate::constraint_system::ConstraintRef;
 use crate::effect::Effect;
 use crate::grouped_expression::RangeConstraintProvider;
 use crate::indexed_constraint_system::IndexedConstraintSystem;
+use crate::range_constraint::RangeConstraint;
 use crate::utils::{get_all_possible_assignments, has_few_possible_assignments};
 
+use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Display;
 use std::hash::Hash;
@@ -28,14 +30,21 @@ const MAX_VAR_RANGE_WIDTH: u64 = 5;
 pub fn find_unique_assignment_for_set<T: FieldElement, V: Clone + Hash + Ord + Eq + Display>(
     constraint_system: &IndexedConstraintSystem<T, V>,
     variables: &BTreeSet<V>,
-    rc: impl RangeConstraintProvider<T, V> + Clone,
+    range_constraints: impl RangeConstraintProvider<T, V> + Clone,
     bus_interaction_handler: &impl BusInteractionHandler<T>,
-) -> Result<Option<BTreeMap<V, T>>, Error> {
+) -> Result<BTreeMap<V, RangeConstraint<T>>, Error> {
     let mut assignments =
-        get_all_possible_assignments(variables.iter().cloned(), &rc).filter_map(|assignments| {
-            derive_more_assignments(constraint_system, assignments, &rc, bus_interaction_handler)
+        get_all_possible_assignments(variables.iter().cloned(), &range_constraints).filter_map(
+            |assignments| {
+                derive_more_assignments(
+                    constraint_system,
+                    assignments,
+                    &range_constraints,
+                    bus_interaction_handler,
+                )
                 .ok()
-        });
+            },
+        );
     let Some(first_assignments) = assignments.next() else {
         // No assignment satisfied the constraint system.
         return Err(Error::ExhaustiveSearchError);
@@ -43,16 +52,25 @@ pub fn find_unique_assignment_for_set<T: FieldElement, V: Clone + Hash + Ord + E
     // Intersect all assignments.
     // A special case of this is that only one of the possible assignments satisfies the constraint system,
     // but even if there are multiple, they might agree on a subset of their assignments.
-    Ok(assignments
-        .try_fold(first_assignments, |mut acc, assignments| {
-            acc.retain(|variable, value| assignments.get(variable) == Some(value));
-            if acc.is_empty() {
-                // Exiting early here is crucial for performance.
-                return Err(());
-            }
-            Ok(acc)
-        })
-        .ok())
+    let result = assignments.try_fold(first_assignments, |mut acc, assignments| {
+        for (var, rc) in &mut acc {
+            let other_rc = assignments.get(var).cloned().unwrap_or_default();
+            *rc = rc.disjunction(&other_rc)
+        }
+        // TODO could also compute "conjunction changes"
+        acc.retain(|v, rc| range_constraints.get(v) != *rc);
+        // acc.retain(|variable, value| assignments.get(variable) == Some(value));
+        if acc.is_empty() {
+            // Exiting early here is crucial for performance.
+            // This is not an error though, it only means we could not find an improvement.
+            return Err(());
+        }
+        Ok(acc)
+    });
+    match result {
+        Ok(assignments) => Ok(assignments),
+        Err(_) => Ok(Default::default()),
+    }
 }
 
 /// Returns all unique sets of variables that appear together in an identity
@@ -136,7 +154,7 @@ fn derive_more_assignments<T: FieldElement, V: Clone + Hash + Ord + Eq + Display
     assignments: BTreeMap<V, T>,
     range_constraints: &impl RangeConstraintProvider<T, V>,
     bus_interaction_handler: &impl BusInteractionHandler<T>,
-) -> Result<BTreeMap<V, T>, ContradictingConstraintError> {
+) -> Result<BTreeMap<V, RangeConstraint<T>>, ContradictingConstraintError> {
     let effects = constraint_system
         .constraints_referencing_variables(assignments.keys())
         .map(|constraint| match constraint {
@@ -171,18 +189,33 @@ fn derive_more_assignments<T: FieldElement, V: Clone + Hash + Ord + Eq + Display
         .flatten()
         .filter_map(|effect| {
             if let Effect::Assignment(variable, value) = effect {
-                Some((variable, value))
+                Some((variable, RangeConstraint::from_value(value)))
+            } else if let Effect::RangeConstraint(variable, rc) = effect {
+                Some((variable, rc))
             } else {
                 None
             }
         })
-        .chain(assignments)
+        .chain(
+            assignments
+                .into_iter()
+                .map(|(v, val)| (v, RangeConstraint::from_value(val))),
+        )
         // Union of all unique assignments, but returning an error if there are any contradictions.
-        .try_fold(BTreeMap::new(), |mut map, (variable, value)| {
-            if let Some(existing) = map.insert(variable, value) {
-                if existing != value {
-                    // Duplicate assignment with different value.
-                    return Err(ContradictingConstraintError);
+        // TODO update
+        .try_fold(BTreeMap::new(), |mut map, (variable, rc)| {
+            // TODO similar code is in base.rs
+
+            match map.entry(variable.clone()) {
+                Entry::Vacant(entry) => {
+                    entry.insert(rc);
+                }
+                Entry::Occupied(mut entry) => {
+                    let existing = entry.get();
+                    if existing.is_disjoint(&rc) {
+                        return Err(ContradictingConstraintError);
+                    }
+                    entry.insert(existing.conjunction(&rc));
                 }
             }
             Ok(map)
