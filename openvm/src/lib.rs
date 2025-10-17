@@ -73,6 +73,7 @@ use crate::powdr_extension::{PlonkChip, PowdrExtensionExecutor, PowdrPrecompile}
 
 mod air_builder;
 pub mod bus_map;
+pub mod cuda_abi;
 pub mod extraction_utils;
 pub mod opcode;
 pub mod symbolic_instruction_builder;

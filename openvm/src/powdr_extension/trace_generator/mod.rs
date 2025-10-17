@@ -262,11 +262,11 @@ impl PowdrTraceGenerator {
                     .for_each(|interaction| {
                         let ConcreteBusInteraction { id, mult, args } =
                             evaluator.eval_bus_interaction(interaction);
-                        // self.periphery.real.apply(
-                        //     id as u16,
-                        //     mult.as_canonical_u32(),
-                        //     args.map(|arg| arg.as_canonical_u32()),
-                        // );
+                        self.periphery.real.apply(
+                            id as u16,
+                            mult.as_canonical_u32(),
+                            args.map(|arg| arg.as_canonical_u32()),
+                        );
                     });
             });
 
