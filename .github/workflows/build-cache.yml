@@ -22,8 +22,8 @@ jobs:
       run: git rev-parse HEAD > target/cache-commit-hash.txt
 
     ##### The block below is shared between cache build and PR build workflows #####
-    - name: Install Rust toolchain nightly-2025-05-14 (with clippy and rustfmt)
-      run: rustup toolchain install nightly-2025-05-14 --component clippy,rustfmt
+    - name: Install Rust toolchain nightly-2025-10-01 (with clippy and rustfmt)
+      run: rustup toolchain install nightly-2025-10-01 --component clippy,rustfmt
     - name: Install Rust toolchain
       run: rustup toolchain install nightly-2025-02-14 --component rust-src
     - name: Install Rust toolchain 1.88 (stable)

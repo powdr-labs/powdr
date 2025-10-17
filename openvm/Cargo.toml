@@ -6,6 +6,11 @@ license.workspace = true
 homepage.workspace = true
 repository.workspace = true
 
+[features]
+default = []
+tco = ["openvm-sdk/tco"]
+metrics = ["openvm-sdk/metrics", "openvm-stark-backend/metrics", "openvm-stark-sdk/metrics"]
+
 [dependencies]
 openvm.workspace = true
 openvm-build.workspace = true
@@ -80,6 +85,7 @@ openvm-pairing-transpiler.workspace = true
 serde_cbor = "0.11.2"
 expect-test = "1.5.1"
 criterion = { version = "0.4", features = ["html_reports"] }
+tracing-log = "0.2.0"
 
 [lib]
 bench = false # See https://github.com/bheisler/criterion.rs/issues/458

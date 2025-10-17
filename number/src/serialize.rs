@@ -11,17 +11,12 @@ use serde_with::{DeserializeAs, SerializeAs};
 
 use crate::FieldElement;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
 pub enum CsvRenderMode {
     SignedBase10,
     UnsignedBase10,
+    #[default]
     Hex,
-}
-
-impl Default for CsvRenderMode {
-    fn default() -> Self {
-        Self::Hex
-    }
 }
 
 const ROW_NAME: &str = "Row";

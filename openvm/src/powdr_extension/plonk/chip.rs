@@ -1,130 +1,81 @@
 use std::borrow::BorrowMut;
+use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex};
+use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::bus_map::BusMap;
-use crate::extraction_utils::OriginalAirs;
+use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
 use crate::plonk::air_to_plonkish::build_circuit;
 use crate::plonk::{Gate, Variable};
-use crate::powdr_extension::executor::{PowdrExecutor, PowdrPeripheryInstances};
+use crate::powdr_extension::executor::OriginalArenas;
 use crate::powdr_extension::plonk::air::PlonkColumns;
 use crate::powdr_extension::plonk::copy_constraint::generate_permutation_columns;
-use crate::powdr_extension::PowdrOpcode;
+use crate::powdr_extension::trace_generator::{PowdrPeripheryInstances, PowdrTraceGenerator};
 use crate::powdr_extension::PowdrPrecompile;
-use crate::{ExtendedVmConfig, Instr};
+use crate::Instr;
 use itertools::Itertools;
 use openvm_circuit::utils::next_power_of_two_or_zero;
-use openvm_circuit::{
-    arch::{ExecutionState, InstructionExecutor, Result as ExecutionResult},
-    system::memory::{MemoryController, OfflineMemory},
-};
-use openvm_instructions::instruction::Instruction;
-use openvm_instructions::LocalOpcode;
-use openvm_stark_backend::p3_air::BaseAir;
-use openvm_stark_backend::p3_field::FieldAlgebra;
-use openvm_stark_backend::p3_matrix::dense::RowMajorMatrix;
-use openvm_stark_backend::p3_matrix::Matrix;
 use openvm_stark_backend::{
-    config::{StarkGenericConfig, Val},
-    p3_field::PrimeField32,
-    prover::types::AirProofInput,
-    rap::AnyRap,
-    Chip, ChipUsageGetter,
+    p3_field::{FieldAlgebra, PrimeField32},
+    p3_matrix::{
+        dense::{DenseMatrix, RowMajorMatrix},
+        Matrix,
+    },
+    prover::{hal::ProverBackend, types::AirProvingContext},
+    Chip,
 };
+use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::expression::AlgebraicReference;
 use powdr_autoprecompiles::Apc;
 
-use super::air::PlonkAir;
-
-pub struct PlonkChip<F: PrimeField32> {
+pub struct PlonkChip {
     name: String,
-    opcode: PowdrOpcode,
-    air: Arc<PlonkAir<F>>,
-    executor: PowdrExecutor<F>,
-    apc: Arc<Apc<F, Instr<F>>>,
+    apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
     bus_map: BusMap,
+    trace_generator: PowdrTraceGenerator,
+    record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
 }
 
-impl<F: PrimeField32> PlonkChip<F> {
-    #[allow(dead_code)]
+impl PlonkChip {
     pub(crate) fn new(
-        precompile: PowdrPrecompile<F>,
-        original_airs: OriginalAirs<F>,
-        memory: Arc<Mutex<OfflineMemory<F>>>,
-        base_config: ExtendedVmConfig,
+        precompile: PowdrPrecompile<BabyBear>,
+        original_airs: OriginalAirs<BabyBear>,
+        base_config: OriginalVmConfig,
         periphery: PowdrPeripheryInstances,
         bus_map: BusMap,
-        copy_constraint_bus_id: u16,
     ) -> Self {
         let PowdrPrecompile {
-            name, opcode, apc, ..
+            name,
+            apc,
+            apc_record_arena,
+            ..
         } = precompile;
-        let air = Arc::new(PlonkAir {
-            copy_constraint_bus_id,
-            bus_map: bus_map.clone(),
-            _marker: std::marker::PhantomData,
-        });
-        let executor =
-            PowdrExecutor::new(original_airs, memory, base_config, periphery, apc.clone());
+        let trace_generator = PowdrTraceGenerator::new(
+            apc.clone(),
+            original_airs.clone(),
+            base_config.clone(),
+            periphery.clone(),
+        );
 
         Self {
             name,
-            opcode,
-            air,
-            executor,
             bus_map,
             apc,
+            trace_generator,
+            record_arena_by_air_name: apc_record_arena,
         }
     }
 }
 
-impl<F: PrimeField32> InstructionExecutor<F> for PlonkChip<F> {
-    fn execute(
-        &mut self,
-        memory: &mut MemoryController<F>,
-        instruction: &Instruction<F>,
-        from_state: ExecutionState<u32>,
-    ) -> ExecutionResult<ExecutionState<u32>> {
-        let &Instruction { opcode, .. } = instruction;
-        assert_eq!(opcode.as_usize(), self.opcode.global_opcode().as_usize());
-
-        let execution_state = self.executor.execute(memory, from_state)?;
-
-        Ok(execution_state)
-    }
-
-    fn get_opcode_name(&self, _opcode: usize) -> String {
-        self.name.clone()
-    }
-}
-
-impl<F: PrimeField32> ChipUsageGetter for PlonkChip<F> {
-    fn air_name(&self) -> String {
-        format!("powdr_plonk_air_for_opcode_{}", self.opcode.global_opcode()).to_string()
-    }
-    fn current_trace_height(&self) -> usize {
-        self.executor.number_of_calls()
-    }
-
-    fn trace_width(&self) -> usize {
-        self.air.width()
-    }
-}
-
-impl<SC: StarkGenericConfig> Chip<SC> for PlonkChip<Val<SC>>
-where
-    Val<SC>: PrimeField32,
-{
-    fn air(&self) -> Arc<dyn AnyRap<SC>> {
-        self.air.clone()
-    }
-
-    fn generate_air_proof_input(self) -> AirProofInput<SC> {
+impl<R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB> for PlonkChip {
+    fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
         tracing::debug!("Generating air proof input for PlonkChip {}", self.name);
 
         let plonk_circuit = build_circuit(self.apc.machine(), &self.bus_map);
-        let number_of_calls = self.executor.number_of_calls();
-        let width = self.trace_width();
+        let record_arena_by_air_name = self.record_arena_by_air_name.take();
+        let number_of_calls = record_arena_by_air_name.number_of_calls();
+        let width = self.apc.machine().main_columns().count();
         let height = next_power_of_two_or_zero(number_of_calls * plonk_circuit.len());
         tracing::debug!("   Number of calls: {number_of_calls}");
         tracing::debug!("   Plonk gates: {}", plonk_circuit.len());
@@ -141,10 +92,12 @@ where
             .enumerate()
             .map(|(index, c)| (c.id, index))
             .collect();
-        let witness = self.executor.generate_witness::<SC>();
+        let witness = self
+            .trace_generator
+            .generate_witness(record_arena_by_air_name);
 
         // TODO: This should be parallelized.
-        let mut values = <Val<SC>>::zero_vec(height * width);
+        let mut values = BabyBear::zero_vec(height * width);
         let num_tmp_vars = plonk_circuit.num_tmp_vars();
         for (call_index, witness) in witness.rows().take(number_of_calls).enumerate() {
             // Computing the trace values for the current call (starting at row call_index * circuit_length).
@@ -212,7 +165,7 @@ where
 
         generate_permutation_columns(&mut values, &plonk_circuit, number_of_calls, width);
 
-        AirProofInput::simple(RowMajorMatrix::new(values, width), vec![])
+        AirProvingContext::simple(Arc::new(RowMajorMatrix::new(values, width)), vec![])
     }
 }
 

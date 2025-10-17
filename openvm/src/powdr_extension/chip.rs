@@ -1,125 +1,76 @@
 // Mostly taken from [this openvm extension](https://github.com/openvm-org/openvm/blob/1b76fd5a900a7d69850ee9173969f70ef79c4c76/extensions/rv32im/circuit/src/auipc/core.rs#L1)
 
-use std::{
-    collections::BTreeMap,
-    sync::{Arc, Mutex},
-};
+use std::{cell::RefCell, collections::BTreeMap, rc::Rc, sync::Arc};
 
 use crate::{
-    extraction_utils::OriginalAirs, powdr_extension::executor::PowdrPeripheryInstances,
-    ExtendedVmConfig, Instr,
+    extraction_utils::{OriginalAirs, OriginalVmConfig},
+    powdr_extension::{
+        executor::OriginalArenas,
+        trace_generator::{PowdrPeripheryInstances, PowdrTraceGenerator},
+    },
+    Instr,
 };
 
-use super::{executor::PowdrExecutor, opcode::PowdrOpcode, PowdrPrecompile};
+use super::PowdrPrecompile;
 use itertools::Itertools;
-use openvm_circuit::system::memory::MemoryController;
-use openvm_circuit::{
-    arch::{ExecutionState, InstructionExecutor, Result as ExecutionResult},
-    system::memory::OfflineMemory,
-};
-use openvm_instructions::{instruction::Instruction, LocalOpcode};
 use openvm_stark_backend::{
     p3_air::{Air, BaseAir},
+    p3_matrix::dense::DenseMatrix,
+    prover::{hal::ProverBackend, types::AirProvingContext},
     rap::ColumnsAir,
 };
 
 use openvm_stark_backend::{
-    config::{StarkGenericConfig, Val},
     interaction::InteractionBuilder,
     p3_field::PrimeField32,
     p3_matrix::Matrix,
-    prover::types::AirProofInput,
-    rap::{AnyRap, BaseAirWithPublicValues, PartitionedBaseAir},
-    Chip, ChipUsageGetter,
+    rap::{BaseAirWithPublicValues, PartitionedBaseAir},
+    Chip,
 };
+use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
     expression::{AlgebraicEvaluator, AlgebraicReference, WitnessEvaluator},
     Apc,
 };
 
-pub struct PowdrChip<F: PrimeField32> {
+pub struct PowdrChip {
     pub name: String,
-    pub opcode: PowdrOpcode,
-    /// An "executor" for this chip, based on the original instructions in the basic block
-    pub executor: PowdrExecutor<F>,
-    pub air: Arc<PowdrAir<F>>,
+    pub record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
+    pub trace_generator: PowdrTraceGenerator,
 }
 
-impl<F: PrimeField32> PowdrChip<F> {
+impl PowdrChip {
     pub(crate) fn new(
-        precompile: PowdrPrecompile<F>,
-        original_airs: OriginalAirs<F>,
-        memory: Arc<Mutex<OfflineMemory<F>>>,
-        base_config: ExtendedVmConfig,
+        precompile: PowdrPrecompile<BabyBear>,
+        original_airs: OriginalAirs<BabyBear>,
+        base_config: OriginalVmConfig,
         periphery: PowdrPeripheryInstances,
     ) -> Self {
         let PowdrPrecompile {
-            name, opcode, apc, ..
+            name,
+            apc,
+            apc_record_arena,
+            ..
         } = precompile;
-        let air = Arc::new(PowdrAir::new(apc.clone()));
-        let executor = PowdrExecutor::new(original_airs, memory, base_config, periphery, apc);
+        let trace_generator = PowdrTraceGenerator::new(apc, original_airs, base_config, periphery);
 
         Self {
             name,
-            opcode,
-            executor,
-            air,
+            record_arena_by_air_name: apc_record_arena,
+            trace_generator,
         }
     }
 }
 
-impl<F: PrimeField32> InstructionExecutor<F> for PowdrChip<F> {
-    fn execute(
-        &mut self,
-        memory: &mut MemoryController<F>,
-        instruction: &Instruction<F>,
-        from_state: ExecutionState<u32>,
-    ) -> ExecutionResult<ExecutionState<u32>> {
-        let &Instruction { opcode, .. } = instruction;
-        assert_eq!(opcode.as_usize(), self.opcode.global_opcode().as_usize());
-
-        let execution_state = self.executor.execute(memory, from_state)?;
-
-        Ok(execution_state)
-    }
-
-    fn get_opcode_name(&self, _: usize) -> String {
-        self.name.clone()
-    }
-}
-
-impl<F: PrimeField32> ChipUsageGetter for PowdrChip<F> {
-    fn air_name(&self) -> String {
-        format!("powdr_air_for_opcode_{}", self.opcode.global_opcode()).to_string()
-    }
-    fn current_trace_height(&self) -> usize {
-        self.executor.number_of_calls()
-    }
-
-    fn trace_width(&self) -> usize {
-        <PowdrAir<_> as BaseAir<_>>::width(&self.air)
-    }
-}
-
-impl<SC: StarkGenericConfig> Chip<SC> for PowdrChip<Val<SC>>
-where
-    Val<SC>: PrimeField32,
-{
-    fn air(&self) -> Arc<dyn AnyRap<SC>> {
-        self.air.clone()
-    }
-
-    fn generate_air_proof_input(self) -> AirProofInput<SC> {
+impl<R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB> for PowdrChip {
+    fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
         tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
 
-        let width = self.trace_width();
-        let labels = [("apc_opcode", self.opcode.global_opcode().to_string())];
-        metrics::counter!("num_calls", &labels).absolute(self.executor.number_of_calls() as u64);
-        let trace = self.executor.generate_witness::<SC>();
+        let trace = self
+            .trace_generator
+            .generate_witness(self.record_arena_by_air_name.take());
 
-        assert_eq!(trace.width(), width);
-
-        AirProofInput::simple(trace, vec![])
+        AirProvingContext::simple(Arc::new(trace), vec![])
     }
 }
 

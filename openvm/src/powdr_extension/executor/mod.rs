@@ -1,375 +1,461 @@
 use std::{
+    borrow::{Borrow, BorrowMut},
+    cell::RefCell,
     collections::HashMap,
-    sync::{Arc, Mutex},
+    rc::Rc,
+    sync::Arc,
 };
 
 use crate::{
-    bus_map::DEFAULT_VARIABLE_RANGE_CHECKER,
-    extraction_utils::{get_name, OriginalAirs},
-    powdr_extension::executor::{
-        inventory::{DummyChipComplex, DummyInventory},
-        periphery::SharedPeripheryChips,
+    extraction_utils::{
+        record_arena_dimension_by_air_name_per_apc_call, OriginalAirs, OriginalVmConfig,
     },
-    ExtendedVmConfig, Instr,
+    Instr,
 };
 
-use powdr_autoprecompiles::{
-    expression::{AlgebraicEvaluator, ConcreteBusInteraction, MappingRowEvaluator, RowEvaluator},
-    trace_handler::{generate_trace, TraceData, TraceTrait},
-    Apc,
+use openvm_circuit::arch::{
+    execution_mode::{ExecutionCtx, MeteredCtx},
+    E2PreCompute, PreflightExecutor,
 };
-
-use itertools::Itertools;
-use openvm_circuit::{
-    arch::VmConfig, system::memory::MemoryController, utils::next_power_of_two_or_zero,
-};
-use openvm_circuit::{
-    arch::{ExecutionState, InstructionExecutor, Result as ExecutionResult, VmInventoryError},
-    system::memory::{online::MemoryLogEntry, OfflineMemory},
-};
-use openvm_native_circuit::CastFExtension;
+use openvm_circuit_derive::create_tco_handler;
+use openvm_circuit_primitives::AlignedBytesBorrow;
+use openvm_instructions::{instruction::Instruction, program::DEFAULT_PC_STEP};
+use openvm_sdk::config::SdkVmConfigExecutor;
 use openvm_stark_backend::{
-    p3_field::FieldAlgebra, p3_matrix::dense::DenseMatrix,
-    p3_maybe_rayon::prelude::ParallelIterator,
+    p3_field::{Field, PrimeField32},
+    p3_maybe_rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator},
 };
+use openvm_stark_sdk::p3_baby_bear::BabyBear;
+use powdr_autoprecompiles::Apc;
 
-use openvm_stark_backend::p3_maybe_rayon::prelude::IndexedParallelIterator;
-use openvm_stark_backend::{
-    config::StarkGenericConfig,
-    p3_commit::{Pcs, PolynomialSpace},
-    p3_maybe_rayon::prelude::ParallelSliceMut,
-    Chip,
+use openvm_circuit::arch::{Arena, MatrixRecordArena};
+use openvm_circuit::{
+    arch::{
+        ExecuteFunc, ExecutionCtxTrait, ExecutionError, Executor, ExecutorInventory,
+        MeteredExecutionCtxTrait, MeteredExecutor, StaticProgramError, VmExecState, VmStateMut,
+    },
+    system::memory::online::{GuestMemory, TracingMemory},
 };
-use openvm_stark_backend::{p3_field::PrimeField32, p3_matrix::dense::RowMajorMatrix};
 use powdr_autoprecompiles::InstructionHandler;
 
-/// The inventory of the PowdrExecutor, which contains the executors for each opcode.
-mod inventory;
-/// The shared periphery chips used by the PowdrExecutor
-mod periphery;
-
-pub use periphery::PowdrPeripheryInstances;
-use powdr_constraint_solver::constraint_system::ComputationMethod;
-use powdr_number::ExpressionConvertible;
-use powdr_openvm_hints_circuit::HintsExtension;
-
-/// A wrapper around a DenseMatrix to implement `TraceTrait` which is required for `generate_trace`.
-pub struct CpuTrace<F> {
-    matrix: DenseMatrix<F>,
-}
-
-impl<F: Send + Sync> TraceTrait<F> for CpuTrace<F> {
-    type Values = Vec<F>;
-
-    fn width(&self) -> usize {
-        self.matrix.width
-    }
-
-    fn values(&self) -> &Self::Values {
-        &self.matrix.values
-    }
-}
-
-impl<F> From<DenseMatrix<F>> for CpuTrace<F> {
-    fn from(matrix: DenseMatrix<F>) -> Self {
-        Self { matrix }
-    }
-}
-
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
-pub struct PowdrExecutor<F: PrimeField32> {
-    air_by_opcode_id: OriginalAirs<F>,
-    inventory: DummyInventory<F>,
-    number_of_calls: usize,
-    periphery: SharedPeripheryChips,
-    apc: Arc<Apc<F, Instr<F>>>,
+pub struct PowdrExecutor {
+    pub air_by_opcode_id: OriginalAirs<BabyBear>,
+    pub executor_inventory: ExecutorInventory<SdkVmConfigExecutor<BabyBear>>,
+    pub apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
+    pub original_arenas: Rc<RefCell<OriginalArenas>>,
+    pub height_change: u32,
 }
 
-impl<F: PrimeField32> PowdrExecutor<F> {
-    pub fn new(
-        air_by_opcode_id: OriginalAirs<F>,
-        memory: Arc<Mutex<OfflineMemory<F>>>,
-        base_config: ExtendedVmConfig,
-        periphery: PowdrPeripheryInstances,
-        apc: Arc<Apc<F, Instr<F>>>,
-    ) -> Self {
-        Self {
-            air_by_opcode_id,
-            inventory: create_chip_complex_with_memory(
-                memory,
-                periphery.dummy,
-                base_config.clone(),
-            )
-            .unwrap()
-            .inventory,
-            number_of_calls: 0,
-            periphery: periphery.real,
-            apc,
+/// A shared mutable reference to the arenas used to store the traces of the original instructions, accessed during preflight execution and trace generation.
+/// The same reference is reused for all segments, under the assumption that segments are executed sequentially: preflight_0, tracegen_0, preflight_1, tracegen_1, ...
+/// It goes through the following cycle for each segment:
+/// - initialized at the beginning of preflight execution with the correct sizes for this segment
+/// - written to during preflight execution
+/// - read from during trace generation
+/// - reset to uninitialized after trace generation
+#[derive(Default)]
+pub enum OriginalArenas {
+    #[default]
+    Uninitialized,
+    Initialized(InitializedOriginalArenas),
+}
+
+impl OriginalArenas {
+    /// Given an estimate of how many times the APC is called in this segment, and the original airs and apc,
+    /// initializes the arenas iff not already initialized.
+    fn ensure_initialized(
+        &mut self,
+        apc_call_count_estimate: usize,
+        original_airs: &OriginalAirs<BabyBear>,
+        apc: &Arc<Apc<BabyBear, Instr<BabyBear>>>,
+    ) {
+        match self {
+            OriginalArenas::Uninitialized => {
+                *self = OriginalArenas::Initialized(InitializedOriginalArenas::new(
+                    apc_call_count_estimate,
+                    original_airs,
+                    apc,
+                ));
+            }
+            OriginalArenas::Initialized(_) => {}
         }
     }
 
+    /// Returns a mutable reference to the arenas.
+    /// - Panics if the arenas are not initialized.
+    pub fn arenas_mut(&mut self) -> &mut HashMap<String, MatrixRecordArena<BabyBear>> {
+        match self {
+            OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
+            OriginalArenas::Initialized(initialized) => &mut initialized.arenas,
+        }
+    }
+
+    /// Returns a reference to the arenas.
+    /// - Panics if the arenas are not initialized.
+    pub fn arenas(&self) -> &HashMap<String, MatrixRecordArena<BabyBear>> {
+        match self {
+            OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
+            OriginalArenas::Initialized(initialized) => &initialized.arenas,
+        }
+    }
+
+    /// Returns a mutable reference to the number of calls.
+    /// - Panics if the arenas are not initialized.
+    pub fn number_of_calls_mut(&mut self) -> &mut usize {
+        match self {
+            OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
+            OriginalArenas::Initialized(initialized) => &mut initialized.number_of_calls,
+        }
+    }
+
+    /// Returns the number of calls. If not initialized, `Preflight::execute` is never called, and thus return 0.
     pub fn number_of_calls(&self) -> usize {
-        self.number_of_calls
+        match self {
+            OriginalArenas::Uninitialized => 0,
+            OriginalArenas::Initialized(initialized) => initialized.number_of_calls,
+        }
     }
+}
 
-    pub fn execute(
-        &mut self,
-        memory: &mut MemoryController<F>,
-        from_state: ExecutionState<u32>,
-    ) -> ExecutionResult<ExecutionState<u32>> {
-        // save the next available `RecordId`
-        let from_record_id = memory.get_memory_logs().len();
+/// A collection of arenas used to store the records of the original instructions, one per air name.
+/// Each arena is initialized with a capacity based on an estimate of how many times the APC is called in this segment
+/// and how many calls to each air are made per APC call.
+#[derive(Default)]
+pub struct InitializedOriginalArenas {
+    pub arenas: HashMap<String, MatrixRecordArena<BabyBear>>,
+    pub number_of_calls: usize,
+}
 
-        // execute the original instructions one by one
-        let res =
-            self.apc
-                .instructions()
+impl InitializedOriginalArenas {
+    /// Creates a new instance of `InitializedOriginalArenas`.
+    pub fn new(
+        apc_call_count_estimate: usize,
+        original_airs: &OriginalAirs<BabyBear>,
+        apc: &Arc<Apc<BabyBear, Instr<BabyBear>>>,
+    ) -> Self {
+        let record_arena_dimensions =
+            record_arena_dimension_by_air_name_per_apc_call(apc, original_airs);
+        Self {
+            arenas: record_arena_dimensions
                 .iter()
-                .try_fold(from_state, |execution_state, instruction| {
-                    let executor = self
-                        .inventory
-                        .get_mut_executor(&instruction.0.opcode)
-                        .unwrap();
-                    executor.execute(memory, &instruction.0, execution_state)
-                });
-
-        self.number_of_calls += 1;
-        let memory_logs = memory.get_memory_logs(); // exclusive range
-
-        let to_record_id = memory_logs.len();
-
-        let last_read_write = memory_logs[from_record_id..to_record_id]
-            .iter()
-            .rposition(|entry| {
-                matches!(
-                    entry,
-                    MemoryLogEntry::Read { .. } | MemoryLogEntry::Write { .. }
+                .map(
+                    |(
+                        air_name,
+                        RecordArenaDimension {
+                            height: num_calls,
+                            width: air_width,
+                        },
+                    )| {
+                        (
+                            air_name.clone(),
+                            MatrixRecordArena::with_capacity(
+                                *num_calls * apc_call_count_estimate,
+                                *air_width,
+                            ),
+                        )
+                    },
                 )
-            })
-            .map(|idx| idx + from_record_id);
+                .collect(),
+            // This is the actual number of calls, which we don't know yet. It will be updated during preflight execution.
+            number_of_calls: 0,
+        }
+    }
+}
 
-        tracing::trace!(
-            "APC range (exclusive): {}..{} (last read/write at {})",
-            from_record_id,
-            to_record_id,
-            last_read_write.unwrap_or(to_record_id)
-        );
+/// The dimensions of a record arena for a given air name, used to initialize the arenas.
+pub struct RecordArenaDimension {
+    pub height: usize,
+    pub width: usize,
+}
 
-        res
+/// A struct to interpret the pre-compute data as for PowdrExecutor.
+#[derive(AlignedBytesBorrow, Clone)]
+#[repr(C)]
+struct PowdrPreCompute<F, Ctx> {
+    height_change: u32,
+    original_instructions: Vec<(ExecuteFunc<F, Ctx>, Vec<u8>)>,
+}
+
+impl Executor<BabyBear> for PowdrExecutor {
+    fn pre_compute_size(&self) -> usize {
+        // TODO: do we know `ExecutionCtx` is correct? It's only one implementation of `ExecutionCtxTrait`.
+        // A clean fix would be to add `Ctx` as a generic parameter to this method in the `Executor` trait, but that would be a breaking change.
+        size_of::<PowdrPreCompute<BabyBear, ExecutionCtx>>()
     }
 
-    /// Generates the witness for the autoprecompile. The result will be a matrix of
-    /// size `next_power_of_two(number_of_calls) * width`, where `width` is the number of
-    /// nodes in the APC circuit.
-    pub fn generate_witness<SC>(self) -> RowMajorMatrix<F>
+    fn pre_compute<Ctx>(
+        &self,
+        pc: u32,
+        inst: &Instruction<BabyBear>,
+        data: &mut [u8],
+    ) -> Result<ExecuteFunc<BabyBear, Ctx>, StaticProgramError>
     where
-        SC: StarkGenericConfig,
-        <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Domain: PolynomialSpace<Val = F>,
+        Ctx: ExecutionCtxTrait,
     {
-        let dummy_trace_by_air_name: HashMap<_, _> = self
-            .inventory
-            .executors
-            .into_iter()
-            .map(|executor| {
-                let air_name = get_name::<SC>(executor.air());
-                let matrix = tracing::debug_span!("dummy trace", air_name = air_name.clone())
-                    .in_scope(|| {
-                        Chip::<SC>::generate_air_proof_input(executor)
-                            .raw
-                            .common_main
-                            .unwrap()
-                    });
-                (air_name.clone(), CpuTrace::from(matrix))
-            })
-            .collect();
+        let pre_compute: &mut PowdrPreCompute<BabyBear, Ctx> = data.borrow_mut();
 
-        let TraceData {
-            dummy_values,
-            dummy_trace_index_to_apc_index_by_instruction,
-            apc_poly_id_to_index,
-            columns_to_compute,
-        } = generate_trace(
-            &dummy_trace_by_air_name,
+        self.pre_compute_impl::<Ctx>(pc, inst, pre_compute)?;
+
+        Ok(execute_e1_impl::<BabyBear, Ctx>)
+    }
+
+    #[cfg(feature = "tco")]
+    fn handler<Ctx>(
+        &self,
+        pc: u32,
+        inst: &Instruction<BabyBear>,
+        data: &mut [u8],
+    ) -> Result<openvm_circuit::arch::Handler<BabyBear, Ctx>, StaticProgramError>
+    where
+        Ctx: ExecutionCtxTrait,
+    {
+        let pre_compute: &mut PowdrPreCompute<BabyBear, Ctx> = data.borrow_mut();
+        self.pre_compute_impl::<Ctx>(pc, inst, pre_compute)?;
+        Ok(execute_e1_tco_handler::<BabyBear, Ctx>)
+    }
+}
+
+impl MeteredExecutor<BabyBear> for PowdrExecutor {
+    fn metered_pre_compute_size(&self) -> usize {
+        // TODO: do we know `MeteredCtx` is correct? It's only one implementation of `MeteredExecutionCtxTrait`.
+        // A clean fix would be to add `Ctx` as a generic parameter to this method in the `MeteredExecutor` trait, but that would be a breaking change.
+        size_of::<E2PreCompute<PowdrPreCompute<BabyBear, MeteredCtx>>>()
+    }
+
+    fn metered_pre_compute<Ctx>(
+        &self,
+        chip_idx: usize,
+        pc: u32,
+        inst: &Instruction<BabyBear>,
+        data: &mut [u8],
+    ) -> Result<ExecuteFunc<BabyBear, Ctx>, StaticProgramError>
+    where
+        Ctx: MeteredExecutionCtxTrait,
+    {
+        let pre_compute: &mut E2PreCompute<PowdrPreCompute<BabyBear, Ctx>> = data.borrow_mut();
+        pre_compute.chip_idx = chip_idx as u32;
+
+        self.pre_compute_impl::<Ctx>(pc, inst, &mut pre_compute.data)?;
+
+        Ok(execute_e2_impl::<BabyBear, Ctx>)
+    }
+
+    #[cfg(feature = "tco")]
+    fn metered_handler<Ctx>(
+        &self,
+        chip_idx: usize,
+        pc: u32,
+        inst: &Instruction<BabyBear>,
+        data: &mut [u8],
+    ) -> Result<openvm_circuit::arch::Handler<BabyBear, Ctx>, StaticProgramError>
+    where
+        Ctx: MeteredExecutionCtxTrait,
+    {
+        let pre_compute: &mut E2PreCompute<PowdrPreCompute<BabyBear, Ctx>> = data.borrow_mut();
+        pre_compute.chip_idx = chip_idx as u32;
+
+        self.pre_compute_impl::<Ctx>(pc, inst, &mut pre_compute.data)?;
+
+        Ok(execute_e2_tco_handler::<BabyBear, Ctx>)
+    }
+}
+
+impl PowdrExecutor {
+    /// The implementation of pre_compute, shared between Executor and MeteredExecutor.
+    #[inline]
+    fn pre_compute_impl<Ctx>(
+        &self,
+        pc: u32,
+        inst: &Instruction<BabyBear>,
+        data: &mut PowdrPreCompute<BabyBear, Ctx>,
+    ) -> Result<(), StaticProgramError>
+    where
+        Ctx: ExecutionCtxTrait,
+    {
+        let &Instruction {
+            a,
+            b,
+            c,
+            d,
+            e,
+            f,
+            g,
+            ..
+        } = inst;
+
+        // TODO: debug_assert that the opcode is the one we expect
+
+        if !a.is_zero()
+            || !b.is_zero()
+            || !c.is_zero()
+            || !d.is_zero()
+            || !e.is_zero()
+            || !f.is_zero()
+            || !g.is_zero()
+        {
+            return Err(StaticProgramError::InvalidInstruction(pc));
+        }
+
+        let executor_inventory = &self.executor_inventory;
+        // Set the data using the original instructions
+        *data = PowdrPreCompute {
+            height_change: self.height_change,
+            original_instructions: self
+                .apc
+                .block
+                .statements
+                .par_iter()
+                .enumerate()
+                .map(|(idx, instruction)| {
+                    let executor = executor_inventory
+                        .get_executor(instruction.0.opcode)
+                        .ok_or(StaticProgramError::ExecutorNotFound {
+                            opcode: instruction.0.opcode,
+                        })?;
+                    let pre_compute_size = executor.pre_compute_size();
+                    let mut pre_compute_data = vec![0u8; pre_compute_size];
+                    let execute_func = executor.pre_compute::<Ctx>(
+                        pc + idx as u32 * DEFAULT_PC_STEP,
+                        &instruction.0,
+                        &mut pre_compute_data,
+                    )?;
+                    Ok((execute_func, pre_compute_data.to_vec()))
+                })
+                .collect::<Result<Vec<_>, StaticProgramError>>()?,
+        };
+
+        Ok(())
+    }
+}
+
+/// The implementation of the execute function, shared between Executor and MeteredExecutor.
+#[inline(always)]
+unsafe fn execute_e12_impl<F, CTX: ExecutionCtxTrait>(
+    pre_compute: &PowdrPreCompute<F, CTX>,
+    vm_state: &mut VmExecState<F, GuestMemory, CTX>,
+) {
+    // Save the current instret, as we will overwrite it during execution of original instructions
+    let instret = vm_state.vm_state.instret;
+    let vm_state =
+        pre_compute
+            .original_instructions
+            .iter()
+            .fold(vm_state, |vm_state, (executor, data)| {
+                executor(data, vm_state);
+                vm_state
+            });
+    // Restore the instret and increment it by one, since we executed a single apc instruction
+    vm_state.vm_state.instret = instret + 1;
+}
+
+#[create_tco_handler]
+unsafe fn execute_e1_impl<F: PrimeField32, CTX: ExecutionCtxTrait>(
+    pre_compute: &[u8],
+    vm_state: &mut VmExecState<F, GuestMemory, CTX>,
+) {
+    let pre_compute: &PowdrPreCompute<F, CTX> = pre_compute.borrow();
+    execute_e12_impl::<F, CTX>(pre_compute, vm_state);
+}
+
+#[create_tco_handler]
+unsafe fn execute_e2_impl<F: PrimeField32, CTX: MeteredExecutionCtxTrait>(
+    pre_compute: &[u8],
+    vm_state: &mut VmExecState<F, GuestMemory, CTX>,
+) {
+    let pre_compute: &E2PreCompute<PowdrPreCompute<F, CTX>> = pre_compute.borrow();
+    vm_state.ctx.on_height_change(
+        pre_compute.chip_idx as usize,
+        pre_compute.data.height_change,
+    );
+    execute_e12_impl::<F, CTX>(&pre_compute.data, vm_state);
+}
+
+impl PreflightExecutor<BabyBear> for PowdrExecutor {
+    fn execute(
+        &self,
+        state: VmStateMut<BabyBear, TracingMemory, MatrixRecordArena<BabyBear>>,
+        _: &Instruction<BabyBear>,
+    ) -> Result<(), ExecutionError> {
+        // Extract the state components, since `execute` consumes the state but we need to pass it to each instruction execution
+        let VmStateMut {
+            pc,
+            memory,
+            streams,
+            rng,
+            custom_pvs,
+            ctx,
+            #[cfg(feature = "metrics")]
+            metrics,
+        } = state;
+
+        // Initialize the original arenas if not already initialized
+        let mut original_arenas = self.original_arenas.as_ref().borrow_mut();
+
+        original_arenas.ensure_initialized(
+            // Recover an estimate of how many times the APC is called in this segment based on the current ctx height and width
+            ctx.trace_buffer.len() / ctx.width,
             &self.air_by_opcode_id,
-            self.number_of_calls,
             &self.apc,
         );
 
-        // precompute the symbolic bus sends to the range checker for each original instruction
-        let range_checker_sends_per_original_instruction = self
-            .apc
-            .instructions()
-            .iter()
-            .map(|instruction| {
-                self.air_by_opcode_id
-                    .get_instruction_air_and_id(instruction)
-                    .1
-                    .bus_interactions
-                    .iter()
-                    .filter(|interaction| interaction.id == DEFAULT_VARIABLE_RANGE_CHECKER)
-                    .collect_vec()
-            })
-            .collect_vec();
+        let arenas = original_arenas.arenas_mut();
 
-        // allocate for apc trace
-        let width = apc_poly_id_to_index.len();
-        let height = next_power_of_two_or_zero(self.number_of_calls);
-        let mut values = <F as FieldAlgebra>::zero_vec(height * width);
+        // execute the original instructions one by one
+        for instruction in self.apc.instructions() {
+            let executor = self
+                .executor_inventory
+                .get_executor(instruction.0.opcode)
+                .unwrap();
 
-        // go through the final table and fill in the values
-        values
-            // a record is `width` values
-            .par_chunks_mut(width)
-            .zip(dummy_values)
-            .for_each(|(row_slice, dummy_values)| {
-                // map the dummy rows to the autoprecompile row
-                for ((dummy_row, range_checker_sends), dummy_trace_index_to_apc_index) in
-                    dummy_values
-                        .iter()
-                        .map(|r| &r.data[r.start..r.start + r.length])
-                        .zip_eq(&range_checker_sends_per_original_instruction)
-                        .zip_eq(&dummy_trace_index_to_apc_index_by_instruction)
-                {
-                    let evaluator = RowEvaluator::new(dummy_row);
+            let air_name = self
+                .air_by_opcode_id
+                .get_instruction_air_and_id(instruction)
+                .0;
 
-                    range_checker_sends.iter().for_each(|interaction| {
-                        let ConcreteBusInteraction { mult, mut args, .. } =
-                            evaluator.eval_bus_interaction(interaction);
-                        for _ in 0..mult.as_canonical_u32() {
-                            self.periphery.range_checker.remove_count(
-                                args.next().unwrap().as_canonical_u32(),
-                                args.next().unwrap().as_canonical_u32() as usize,
-                            );
-                        }
-                    });
+            let state = VmStateMut {
+                pc,
+                memory,
+                streams,
+                rng,
+                custom_pvs,
+                // We execute in the context of the relevant original table
+                ctx: arenas.get_mut(&air_name).unwrap(),
+                // TODO: should we pass around the same metrics object, or snapshot it at the beginning of this method and apply a single update at the end?
+                #[cfg(feature = "metrics")]
+                metrics,
+            };
 
-                    for (dummy_trace_index, apc_index) in dummy_trace_index_to_apc_index {
-                        row_slice[*apc_index] = dummy_row[*dummy_trace_index];
-                    }
-                }
+            executor.execute(state, &instruction.0)?;
+        }
 
-                // Fill in the columns we have to compute from other columns
-                // (these are either new columns or for example the "is_valid" column).
-                for (column, computation_method) in columns_to_compute {
-                    let col_index = apc_poly_id_to_index[&column.id];
-                    row_slice[col_index] = match computation_method {
-                        ComputationMethod::Constant(c) => *c,
-                        ComputationMethod::InverseOrZero(expr) => {
-                            let expr_val = expr.to_expression(&|n| *n, &|column_ref| {
-                                row_slice[apc_poly_id_to_index[&column_ref.id]]
-                            });
-                            if expr_val.is_zero() {
-                                F::ZERO
-                            } else {
-                                expr_val.inverse()
-                            }
-                        }
-                    };
-                }
+        // Update the real number of calls to the APC
+        *original_arenas.number_of_calls_mut() += 1;
 
-                let evaluator = MappingRowEvaluator::new(row_slice, &apc_poly_id_to_index);
-                // replay the side effects of this row on the main periphery
-                self.apc
-                    .machine()
-                    .bus_interactions
-                    .iter()
-                    .for_each(|interaction| {
-                        let ConcreteBusInteraction { id, mult, args } =
-                            evaluator.eval_bus_interaction(interaction);
-                        self.periphery.apply(
-                            id as u16,
-                            mult.as_canonical_u32(),
-                            args.map(|arg| arg.as_canonical_u32()),
-                        );
-                    });
-            });
+        Ok(())
+    }
 
-        RowMajorMatrix::new(values, width)
+    fn get_opcode_name(&self, opcode: usize) -> String {
+        format!("APC_{opcode}")
     }
 }
 
-// Extracted from openvm, extended to create an inventory with the correct memory and periphery chips.
-fn create_chip_complex_with_memory<F: PrimeField32>(
-    memory: Arc<Mutex<OfflineMemory<F>>>,
-    shared_chips: SharedPeripheryChips,
-    base_config: ExtendedVmConfig,
-) -> std::result::Result<DummyChipComplex<F>, VmInventoryError> {
-    use openvm_keccak256_circuit::Keccak256;
-    use openvm_native_circuit::Native;
-    use openvm_rv32im_circuit::{Rv32I, Rv32Io};
-    use openvm_sha256_circuit::Sha256;
+use openvm_circuit::arch::VmExecutionConfig;
 
-    let this = base_config;
-    let mut complex: DummyChipComplex<F> = this
-        .sdk_vm_config
-        .system
-        .config
-        .create_chip_complex()?
-        .transmute();
-
-    // CHANGE: inject the correct memory here to be passed to the chips, to be accessible in their get_proof_input
-    complex.base.memory_controller.offline_memory = memory.clone();
-    complex.base.range_checker_chip = shared_chips.range_checker.clone();
-    // END CHANGE
-
-    // CHANGE: inject the periphery chips so that they are not created by the extensions. This is done for memory footprint: the dummy periphery chips are thrown away anyway, so we reuse a single one for all APCs.
-    complex = complex.extend(&shared_chips)?;
-    // END CHANGE
-
-    if this.sdk_vm_config.rv32i.is_some() {
-        complex = complex.extend(&Rv32I)?;
-    }
-    if this.sdk_vm_config.io.is_some() {
-        complex = complex.extend(&Rv32Io)?;
-    }
-    if this.sdk_vm_config.keccak.is_some() {
-        complex = complex.extend(&Keccak256)?;
-    }
-    if this.sdk_vm_config.sha256.is_some() {
-        complex = complex.extend(&Sha256)?;
-    }
-    if this.sdk_vm_config.native.is_some() {
-        complex = complex.extend(&Native)?;
-    }
-    if this.sdk_vm_config.castf.is_some() {
-        complex = complex.extend(&CastFExtension)?;
-    }
-
-    if let Some(rv32m) = this.sdk_vm_config.rv32m {
-        let mut rv32m = rv32m;
-        if let Some(ref bigint) = this.sdk_vm_config.bigint {
-            rv32m.range_tuple_checker_sizes[0] =
-                rv32m.range_tuple_checker_sizes[0].max(bigint.range_tuple_checker_sizes[0]);
-            rv32m.range_tuple_checker_sizes[1] =
-                rv32m.range_tuple_checker_sizes[1].max(bigint.range_tuple_checker_sizes[1]);
+impl PowdrExecutor {
+    pub fn new(
+        air_by_opcode_id: OriginalAirs<BabyBear>,
+        base_config: OriginalVmConfig,
+        apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
+        record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
+        height_change: u32,
+    ) -> Self {
+        Self {
+            air_by_opcode_id,
+            executor_inventory: base_config.sdk_config.sdk.create_executors().unwrap(),
+            apc,
+            original_arenas: record_arena_by_air_name,
+            height_change,
         }
-        complex = complex.extend(&rv32m)?;
     }
-    if let Some(bigint) = this.sdk_vm_config.bigint {
-        let mut bigint = bigint;
-        if let Some(ref rv32m) = this.sdk_vm_config.rv32m {
-            bigint.range_tuple_checker_sizes[0] =
-                rv32m.range_tuple_checker_sizes[0].max(bigint.range_tuple_checker_sizes[0]);
-            bigint.range_tuple_checker_sizes[1] =
-                rv32m.range_tuple_checker_sizes[1].max(bigint.range_tuple_checker_sizes[1]);
-        }
-        complex = complex.extend(&bigint)?;
-    }
-    if let Some(ref modular) = this.sdk_vm_config.modular {
-        complex = complex.extend(modular)?;
-    }
-    if let Some(ref fp2) = this.sdk_vm_config.fp2 {
-        complex = complex.extend(fp2)?;
-    }
-    if let Some(ref pairing) = this.sdk_vm_config.pairing {
-        complex = complex.extend(pairing)?;
-    }
-    if let Some(ref ecc) = this.sdk_vm_config.ecc {
-        complex = complex.extend(ecc)?;
-    }
-
-    // add custom extensions
-    complex = complex.extend(&HintsExtension)?;
-
-    Ok(complex)
 }
