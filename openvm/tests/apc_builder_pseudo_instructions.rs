@@ -177,7 +177,8 @@ fn ret() {
 }
 
 #[test]
-fn add_constant() {
+fn load_immediate() {
+    // [x48] = [x0] + 216 = 216
     let program = [add(48, 0, 216, 0)];
-    assert_machine_output(program.to_vec(), "add_constant");
+    assert_machine_output(program.to_vec(), "load_immediate");
 }
