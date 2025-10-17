@@ -177,7 +177,7 @@ implement the following methods:
 As an example, let us assume we are modeling a bus that implements a byte
 constraint, i.e. a bus that takes a single payload item and enforces that it is
 in the range `0..=255`. The bus is not stateful since it does not depend on nor affects any
-parts of the system. A simple correct implementation of
+other parts of the system. A simple correct implementation of
 `handle_bus_interaction` would be to always return a `0xff`-mask Range Constraint
 for the payload and ignore the input. It is correct because any assignment that
 satisfies the bus semantics must have the payload in the range `0..=255`.
@@ -191,7 +191,7 @@ Another example is an XOR-bus that takes three payload items `a, b, c`
 and ensures that all of them are bytes and `a ^ b = c`. This bus is also not stateful.
 Here, one would implement `handle_bus_interaction` by returning the three byte constraints
 for the payload items if the input has no restrictions. If two inputs are fully
-determined (i.e. only a single values satisfies the Range Constraints),
+determined (i.e. only a single value satisfies the Range Constraints),
 we can compute the third and return that as a Range Constraint.
 
 We will see later how we can fully optimize away XOR bus interactions using just this
