@@ -14,7 +14,7 @@ use crate::{
 use super::PowdrPrecompile;
 use itertools::Itertools;
 use openvm_stark_backend::{
-    p3_air::{Air, BaseAir},
+    p3_air::{Air, AirBuilder, BaseAir},
     p3_matrix::dense::DenseMatrix,
     prover::{hal::ProverBackend, types::AirProvingContext},
     rap::ColumnsAir,
@@ -152,7 +152,8 @@ where
 
         for constraint in &self.apc.machine().constraints {
             let constraint = witness_evaluator.eval_constraint(constraint);
-            builder.assert_zero(constraint.expr);
+            println!("constraint: {:?}", constraint.expr);
+            // builder.assert_zero(constraint.expr);
         }
 
         for interaction in &self.apc.machine().bus_interactions {

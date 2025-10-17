@@ -145,6 +145,7 @@ impl PowdrTraceGenerator {
             original_arenas.number_of_calls() > 0,
             "APC must be called to generate witness"
         );
+        // Values are already padded
         let (values, width, height) = self.generate_witness_values(original_arenas);
         device_matrix_from_values(values, width, height)
     }
@@ -232,7 +233,7 @@ impl PowdrTraceGenerator {
                 {
                     let dummy_row_full = dummy_row.data;
 
-                    println!("full dummy values: {:?}", dummy_row_full);
+                    // println!("full dummy values: {:?}", dummy_row_full);
 
                     let dummy_row =
                         &dummy_row_full[dummy_row.start..(dummy_row.start + dummy_row.length)];
@@ -302,6 +303,9 @@ pub fn device_matrix_from_values(
     height: usize,
 ) -> DeviceMatrix<BabyBear> {
     // TODO: we copy the values from host (CPU) to device (GPU), and should study how to generate APC trace natively in GPU
-    let device_buffer = values.to_device().unwrap();
+    // Transpose back to column major matrix before sending to device
+    let row_major_matrix = DenseMatrix::new(values, width);
+    let column_major_matrix = row_major_matrix.transpose();
+    let device_buffer = column_major_matrix.values.to_device().unwrap();
     DeviceMatrix::new(Arc::new(device_buffer), height, width)
 }
