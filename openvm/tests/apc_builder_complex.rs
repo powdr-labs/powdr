@@ -1,4 +1,5 @@
 mod common;
+use openvm_circuit::system::program;
 use openvm_instructions::instruction::Instruction;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_openvm::symbolic_instruction_builder::*;
@@ -136,4 +137,18 @@ fn store_to_same_address() {
     // and eliminate creating two separate memory columns.
     let program = [storeb(4, 8, 8, 2, 1, 0), storeb(32, 8, 8, 2, 1, 0)];
     assert_machine_output(program.to_vec(), "store_to_same_memory_address");
+}
+
+#[test]
+fn many_stores_relative_to_same_register() {
+    // Many stores to different offsets relative to the same base register.
+    // For a real-world example of something similar, see:
+    // https://georgwiese.github.io/autoprecompile-analyzer/?data=https%3A%2F%2Fgist.githubusercontent.com%2Fgeorgwiese%2Faa85dcc145f26d37f8f03f9a04665971%2Fraw%2F6ce661ec86302d2fef0282908117c0427d9888db%2Freth_with_labels.json&block=0x260648
+
+    let program = [
+        storew(5, 2, 12, 2, 1, 0),
+        storew(6, 2, 16, 2, 1, 0),
+        storew(7, 2, 20, 2, 1, 0),
+    ];
+    assert_machine_output(program.to_vec(), "many_stores_relative_to_same_register");
 }
