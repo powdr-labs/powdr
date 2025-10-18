@@ -30,8 +30,6 @@ use powdr_autoprecompiles::expression::AlgebraicReference;
 use powdr_autoprecompiles::Apc;
 
 #[cfg(feature = "cuda")]
-use crate::powdr_extension::trace_generator::device_matrix_from_values;
-#[cfg(feature = "cuda")]
 use crate::DeviceMatrix;
 
 pub struct PlonkChip {
@@ -86,117 +84,117 @@ impl<R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB> for 
 #[cfg(feature = "cuda")]
 impl<R, PB: ProverBackend<Matrix = DeviceMatrix<BabyBear>>> Chip<R, PB> for PlonkChip {
     fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
-        let (values, width, height) = self.generate_plonk_values();
-        let trace = device_matrix_from_values(values, width, height);
+        todo!()
+        // let trace = self.generate_plonk_values();
 
-        AirProvingContext::simple(trace, vec![])
+        // AirProvingContext::simple(trace.matrix, vec![])
     }
 }
 
-impl PlonkChip {
-    fn generate_plonk_values(&self) -> (Vec<BabyBear>, usize, usize) {
-        tracing::debug!("Generating air proof input for PlonkChip {}", self.name);
+// impl PlonkChip {
+//     fn generate_plonk_values(&self) -> SharedTrace<BabyBear> {
+//         tracing::debug!("Generating air proof input for PlonkChip {}", self.name);
 
-        let plonk_circuit = build_circuit(self.apc.machine(), &self.bus_map);
-        let record_arena_by_air_name = self.record_arena_by_air_name.take();
-        let number_of_calls = record_arena_by_air_name.number_of_calls();
-        let width = self.apc.machine().main_columns().count();
-        let height = next_power_of_two_or_zero(number_of_calls * plonk_circuit.len());
-        tracing::debug!("   Number of calls: {number_of_calls}");
-        tracing::debug!("   Plonk gates: {}", plonk_circuit.len());
-        tracing::debug!("   Trace width: {width}");
-        tracing::debug!("   Trace height: {height}");
+//         let plonk_circuit = build_circuit(self.apc.machine(), &self.bus_map);
+//         let record_arena_by_air_name = self.record_arena_by_air_name.take();
+//         let number_of_calls = record_arena_by_air_name.number_of_calls();
+//         let width = self.apc.machine().main_columns().count();
+//         let height = next_power_of_two_or_zero(number_of_calls * plonk_circuit.len());
+//         tracing::debug!("   Number of calls: {number_of_calls}");
+//         tracing::debug!("   Plonk gates: {}", plonk_circuit.len());
+//         tracing::debug!("   Trace width: {width}");
+//         tracing::debug!("   Trace height: {height}");
 
-        // Get witness in a calls x variables matrix.
-        // TODO: Currently, the #rows of this matrix is padded to the next power of 2,
-        // which is unnecessary.
-        let column_index_by_poly_id = self
-            .apc
-            .machine()
-            .main_columns()
-            .enumerate()
-            .map(|(index, c)| (c.id, index))
-            .collect();
+//         // Get witness in a calls x variables matrix.
+//         // TODO: Currently, the #rows of this matrix is padded to the next power of 2,
+//         // which is unnecessary.
+//         let column_index_by_poly_id = self
+//             .apc
+//             .machine()
+//             .main_columns()
+//             .enumerate()
+//             .map(|(index, c)| (c.id, index))
+//             .collect();
 
-        // Generate APC witness values
-        let (witness_values, _, _) = self
-            .trace_generator
-            .generate_witness_values(record_arena_by_air_name);
-        // TODO: confirm that this is the same width as that returned by `generate_witness_values`
-        let witness = RowMajorMatrix::new(witness_values, width);
+//         // Generate APC witness values
+//         let witness_values = self
+//             .trace_generator
+//             .generate_witness_values(record_arena_by_air_name);
+//         // TODO: confirm that this is the same width as that returned by `generate_witness_values`
+//         let witness = RowMajorMatrix::new(witness_values, width);
 
-        // TODO: This should be parallelized.
-        let mut values = BabyBear::zero_vec(height * width);
-        let num_tmp_vars = plonk_circuit.num_tmp_vars();
-        for (call_index, witness) in witness.rows().take(number_of_calls).enumerate() {
-            // Computing the trace values for the current call (starting at row call_index * circuit_length).
-            let witness = witness.collect_vec();
-            let mut vars = PlonkVariables::new(num_tmp_vars, &witness, &column_index_by_poly_id);
-            for (gate_index, gate) in plonk_circuit.gates().iter().enumerate() {
-                let index = call_index * plonk_circuit.len() + gate_index;
-                let columns: &mut PlonkColumns<_> =
-                    values[index * width..(index + 1) * width].borrow_mut();
-                let gate = Gate {
-                    a: gate.a.clone(),
-                    b: gate.b.clone(),
-                    c: gate.c.clone(),
-                    d: gate.d.clone(),
-                    e: gate.e.clone(),
+//         // TODO: This should be parallelized.
+//         let mut values = BabyBear::zero_vec(height * width);
+//         let num_tmp_vars = plonk_circuit.num_tmp_vars();
+//         for (call_index, witness) in witness.rows().take(number_of_calls).enumerate() {
+//             // Computing the trace values for the current call (starting at row call_index * circuit_length).
+//             let witness = witness.collect_vec();
+//             let mut vars = PlonkVariables::new(num_tmp_vars, &witness, &column_index_by_poly_id);
+//             for (gate_index, gate) in plonk_circuit.gates().iter().enumerate() {
+//                 let index = call_index * plonk_circuit.len() + gate_index;
+//                 let columns: &mut PlonkColumns<_> =
+//                     values[index * width..(index + 1) * width].borrow_mut();
+//                 let gate = Gate {
+//                     a: gate.a.clone(),
+//                     b: gate.b.clone(),
+//                     c: gate.c.clone(),
+//                     d: gate.d.clone(),
+//                     e: gate.e.clone(),
 
-                    q_bitwise: gate.q_bitwise,
-                    q_memory: gate.q_memory,
-                    q_execution: gate.q_execution,
-                    q_pc: gate.q_pc,
-                    q_range_tuple: gate.q_range_tuple,
-                    q_range_check: gate.q_range_check,
+//                     q_bitwise: gate.q_bitwise,
+//                     q_memory: gate.q_memory,
+//                     q_execution: gate.q_execution,
+//                     q_pc: gate.q_pc,
+//                     q_range_tuple: gate.q_range_tuple,
+//                     q_range_check: gate.q_range_check,
 
-                    q_l: gate.q_l,
-                    q_r: gate.q_r,
-                    q_o: gate.q_o,
-                    q_mul: gate.q_mul,
-                    q_const: gate.q_const,
-                };
+//                     q_l: gate.q_l,
+//                     q_r: gate.q_r,
+//                     q_o: gate.q_o,
+//                     q_mul: gate.q_mul,
+//                     q_const: gate.q_const,
+//                 };
 
-                // TODO: These should be pre-processed columns (for soundness and efficiency).
-                columns.q_bitwise = gate.q_bitwise;
-                columns.q_memory = gate.q_memory;
-                columns.q_execution = gate.q_execution;
-                columns.q_pc = gate.q_pc;
-                columns.q_range_tuple = gate.q_range_tuple;
-                columns.q_range_check = gate.q_range_check;
+//                 // TODO: These should be pre-processed columns (for soundness and efficiency).
+//                 columns.q_bitwise = gate.q_bitwise;
+//                 columns.q_memory = gate.q_memory;
+//                 columns.q_execution = gate.q_execution;
+//                 columns.q_pc = gate.q_pc;
+//                 columns.q_range_tuple = gate.q_range_tuple;
+//                 columns.q_range_check = gate.q_range_check;
 
-                columns.q_l = gate.q_l;
-                columns.q_r = gate.q_r;
-                columns.q_o = gate.q_o;
-                columns.q_mul = gate.q_mul;
-                columns.q_const = gate.q_const;
+//                 columns.q_l = gate.q_l;
+//                 columns.q_r = gate.q_r;
+//                 columns.q_o = gate.q_o;
+//                 columns.q_mul = gate.q_mul;
+//                 columns.q_const = gate.q_const;
 
-                // We currently assume that:
-                // - We can always solve for temporary variables, by processing the gates in order.
-                // - Temporary variables appear in `c` for the first time.
-                // TODO: Solve for tmp variables of other columns too.
-                vars.derive_tmp_values_for_c(&gate);
-                vars.assert_all_known_or_unused(&gate);
+//                 // We currently assume that:
+//                 // - We can always solve for temporary variables, by processing the gates in order.
+//                 // - Temporary variables appear in `c` for the first time.
+//                 // TODO: Solve for tmp variables of other columns too.
+//                 vars.derive_tmp_values_for_c(&gate);
+//                 vars.assert_all_known_or_unused(&gate);
 
-                for (witness_in_gate, witness_col) in [
-                    (&gate.a, &mut columns.a),
-                    (&gate.b, &mut columns.b),
-                    (&gate.c, &mut columns.c),
-                    (&gate.d, &mut columns.d),
-                    (&gate.e, &mut columns.e),
-                ] {
-                    if let Some(value) = vars.get(witness_in_gate) {
-                        *witness_col = value;
-                    }
-                }
-            }
-        }
+//                 for (witness_in_gate, witness_col) in [
+//                     (&gate.a, &mut columns.a),
+//                     (&gate.b, &mut columns.b),
+//                     (&gate.c, &mut columns.c),
+//                     (&gate.d, &mut columns.d),
+//                     (&gate.e, &mut columns.e),
+//                 ] {
+//                     if let Some(value) = vars.get(witness_in_gate) {
+//                         *witness_col = value;
+//                     }
+//                 }
+//             }
+//         }
 
-        generate_permutation_columns(&mut values, &plonk_circuit, number_of_calls, width);
+//         generate_permutation_columns(&mut values, &plonk_circuit, number_of_calls, width);
 
-        (values, width, height)
-    }
-}
+//         (values, width, height)
+//     }
+// }
 
 /// Variables of the PlonK circuit.
 struct PlonkVariables<'a, F> {

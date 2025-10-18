@@ -52,8 +52,8 @@ const EXT_DEGREE: usize = 4;
 
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct OriginalAirs<F> {
-    opcode_to_air: HashMap<VmOpcode, String>,
-    air_name_to_machine: BTreeMap<String, (SymbolicMachine<F>, AirMetrics)>,
+    pub(crate) opcode_to_air: HashMap<VmOpcode, String>,
+    pub(crate) air_name_to_machine: BTreeMap<String, (SymbolicMachine<F>, AirMetrics)>,
 }
 
 impl<F> InstructionHandler for OriginalAirs<F> {
