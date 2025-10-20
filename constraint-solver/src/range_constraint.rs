@@ -26,7 +26,7 @@ use powdr_number::{log2_exact, FieldElement, LargeInt};
 /// RangeConstraint for `e1` and `r2` is a valid RangeConstraint for `e2`, then
 /// the result of `r1.combine_sum(r2)` is a valid RangeConstraint for `e1 + e2`.
 ///
-/// Of course, a fully unconstrained RangeConstraint is always valid for every expression.
+/// In particular, a fully unconstrained RangeConstraint is always valid for every expression.
 /// in this way, range constraints are an over-approximation, i.e. they can be less strict
 /// than the expressions they model. They might allow a value that is actually not
 /// possible, but if the range constraint disallows a value, this value is definitely
