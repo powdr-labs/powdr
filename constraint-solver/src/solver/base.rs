@@ -385,8 +385,9 @@ where
     }
 
     /// Find groups of variables with a small set of possible assignments.
-    /// If there is exactly one assignment that does not lead to a contradiction,
-    /// apply it. This might be expensive.
+    /// For each group, performs an exhaustive search in the possible assignments
+    /// to deduce new range constraints (also on other variables).
+    /// This might be expensive.
     fn exhaustive_search(&mut self) -> Result<bool, Error> {
         log::debug!("Starting exhaustive search...");
         let mut variable_sets =
@@ -414,9 +415,9 @@ where
                 // It can happen that we process the same variable set twice because
                 // assignments can make previously different sets equal.
                 // We have processed this variable set before, and it did not
-                // yield a unique assignment.
+                // yield new information.
                 // It could be that other assignments created in the meantime
-                // make it unique but this is rare and we will catch it in the
+                // lead to progress but this is rare and we will catch it in the
                 // next loop iteration.
                 continue;
             }
@@ -427,7 +428,7 @@ where
                 &self.bus_interaction_handler,
             ) {
                 Ok(assignments) if assignments.is_empty() => {
-                    // No unique assignment was found.
+                    // No new information was found.
                     unsuccessful_variable_sets.insert(variable_set);
                 }
                 Ok(assignments) => {

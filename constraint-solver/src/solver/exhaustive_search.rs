@@ -22,10 +22,11 @@ const MAX_SEARCH_WIDTH: u64 = 1 << 10;
 /// The maximum range width of a variable to be considered for exhaustive search.
 const MAX_VAR_RANGE_WIDTH: u64 = 5;
 
-/// Goes through all possible assignments for the given variables and checks whether they satisfy
-/// all constraints. If exactly one assignment satisfies the constraint system (and all others
-/// lead to a contradiction), it returns that assignment.
-/// If multiple assignments satisfy the constraint system, it returns `None`.
+/// Goes through all possible assignments for the given variables and tries no deduce
+/// new range constraints (on any variable) for each of the assignments. Returns the union of the obtained
+/// range constraints over all assignments.
+/// Can also return range constraints for the input variables if some of them lead
+/// to a contradiction.
 /// Returns an error if all assignments are contradictory.
 pub fn find_unique_assignment_for_set<T: FieldElement, V: Clone + Hash + Ord + Eq + Display>(
     constraint_system: &IndexedConstraintSystem<T, V>,
@@ -144,8 +145,9 @@ fn has_small_max_range_constraint_size<T: FieldElement, V: Clone + Ord>(
 /// The provided assignments lead to a contradiction in the constraint system.
 struct ContradictingConstraintError;
 
-/// Given a list of assignments, tries to extend it with more assignments, based on the
-/// constraints in the constraint system.
+/// Given a list of assignments of concrete values to variables, tries to derive
+/// new range constraints from them. To keep this function relatively fast,
+/// only tries to each algebraic or bus constraint it isolation.
 /// Fails if any of the assignments *directly* contradicts any of the constraints.
 /// Note that getting an OK(_) here does not mean that there is no contradiction, as
 /// this function only does one step of the derivation.
@@ -189,6 +191,7 @@ fn derive_more_assignments<T: FieldElement, V: Clone + Hash + Ord + Eq + Display
         .flatten()
         .filter_map(|effect| {
             if let Effect::Assignment(variable, value) = effect {
+                // Turn assignment into range constraint, we can recover it later.
                 Some((variable, RangeConstraint::from_value(value)))
             } else if let Effect::RangeConstraint(variable, rc) = effect {
                 Some((variable, rc))
@@ -201,11 +204,9 @@ fn derive_more_assignments<T: FieldElement, V: Clone + Hash + Ord + Eq + Display
                 .into_iter()
                 .map(|(v, val)| (v, RangeConstraint::from_value(val))),
         )
-        // Union of all unique assignments, but returning an error if there are any contradictions.
-        // TODO update
+        // All range constraints in this iterator hold simultaneously,
+        // so we compute the intersection for each variable.
         .try_fold(BTreeMap::new(), |mut map, (variable, rc)| {
-            // TODO similar code is in base.rs
-
             match map.entry(variable.clone()) {
                 Entry::Vacant(entry) => {
                     entry.insert(rc);
