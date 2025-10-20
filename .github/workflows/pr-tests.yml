@@ -44,8 +44,8 @@ jobs:
         run: git checkout "$(cat target/cache-commit-hash.txt || echo 'f02fd626e2bb9e46a22ea1cda96b4feb5c6bda43')" && git ls-files -z | xargs -0 -n1 touch -d "Fri, 18 Apr 2025 03:30:58 +0000" && git checkout HEAD@{1}
 
       ##### The block below is shared between cache build and PR build workflows #####
-      - name: Install Rust toolchain nightly-2025-05-14 (with clippy and rustfmt)
-        run: rustup toolchain install nightly-2025-05-14 --component clippy,rustfmt
+      - name: Install Rust toolchain nightly-2025-10-01 (with clippy and rustfmt)
+        run: rustup toolchain install nightly-2025-10-01 --component clippy,rustfmt
       - name: Install Rust toolchain 1.88 (stable)
         run: rustup toolchain install 1.88
       - name: Set cargo to perform shallow clones
@@ -97,11 +97,11 @@ jobs:
       - name: Install Rust toolchain nightly-2025-05-14 (with clippy and rustfmt)
         run: rustup toolchain install nightly-2025-05-14 --component clippy,rustfmt,rust-src
       - name: Install riscv target
-        run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2025-05-14
+        run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2025-10-01
       - name: Install test dependencies
         run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
       - name: Install Rust deps
-        run: rustup install nightly-2025-05-14 --component rust-src
+        run: rustup install nightly-2025-10-01 --component rust-src
       - name: Install Rust deps
         run: rustup install nightly-2025-02-14 --component rust-src
       - uses: taiki-e/install-action@nextest
@@ -146,16 +146,15 @@ jobs:
 
       - name: Install cargo openvm
         # Rust 1.88 is needed by fresher versions of dependencies of cargo-openvm.
-        # For now we point to the powdr-labs/openvm commit that switches to Rust 1.88.
         run: |
           rustup toolchain install 1.88
-          cargo +1.88 install --git 'http://github.com/powdr-labs/openvm.git' --rev fbd69da cargo-openvm
+          cargo +1.88 install --git 'http://github.com/openvm-org/openvm.git' cargo-openvm
 
       - name: Checkout openvm-reth-benchmark
         uses: actions/checkout@v4
         with:
           repository: powdr-labs/openvm-reth-benchmark
-          ref: main
+          ref: 9641a47c70e4003e54a96947d4138c63825f1b12
           path: openvm-reth-benchmark
 
       - name: Patch openvm-reth-benchmark to use local powdr

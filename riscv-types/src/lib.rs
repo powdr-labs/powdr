@@ -102,7 +102,7 @@ pub struct SourceFileInfo<'a> {
 /// A RISC-V program that can be translated to POWDR ASM.
 pub trait RiscVProgram {
     /// Takes the listing of source files, to be used in the debug statements.
-    fn take_source_files_info(&mut self) -> impl Iterator<Item = SourceFileInfo>;
+    fn take_source_files_info(&mut self) -> impl Iterator<Item = SourceFileInfo<'_>>;
 
     /// Takes the initial memory snapshot.
     fn take_initial_mem(&mut self) -> impl Iterator<Item = MemEntry>;
@@ -110,7 +110,7 @@ pub trait RiscVProgram {
     /// Takes the executable statements and labels.
     fn take_executable_statements(
         &mut self,
-    ) -> impl Iterator<Item = Statement<impl AsRef<str>, impl InstructionArgs>>;
+    ) -> impl Iterator<Item = Statement<'_, impl AsRef<str>, impl InstructionArgs>>;
 
     /// Returns the addresses of the start and end of prover data.
     fn prover_data_bounds(&self) -> (u32, u32);
