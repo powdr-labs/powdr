@@ -18,7 +18,7 @@ use powdr_autoprecompiles::{
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 
 use crate::{
-    cuda_abi::{self, OriginalAir, Subst},
+    cuda_abi::{self, OriginalAir, Subst, OpCode, DevInteraction, DevArgSpan},
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     powdr_extension::{
         executor::OriginalArenas,
@@ -26,6 +26,9 @@ use crate::{
     },
     BabyBearSC, Instr,
 };
+use powdr_autoprecompiles::{SymbolicBusInteraction, expression::AlgebraicExpression};
+use powdr_expression::{AlgebraicBinaryOperation, AlgebraicUnaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperator};
+use openvm_stark_backend::p3_field::PrimeField32;
 
 #[cfg(feature = "cuda")]
 use crate::DeviceMatrix;
@@ -273,6 +276,89 @@ impl PowdrTraceGenerator {
 
         cuda_abi::apc_tracegen(&mut output, airs, substitutions, num_apc_calls).unwrap();
 
+        // Encode bus interactions for GPU consumption
+        let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(&self.apc.machine.bus_interactions, &apc_poly_id_to_index, height);
+        let bus_interactions = bus_interactions.to_device().unwrap();
+        let arg_spans = arg_spans.to_device().unwrap();
+        let bytecode = bytecode.to_device().unwrap();
+
+        // `apc_tracegen` is host non-blocking, but by launching `apc_apply_bus` after that, we serialize output access
+        // Also note that Kernel launches on the same CUDA stream are ordered (here we use the default stream), 
+        // so even if two kernel calls use different blocks/warps, they are still ordered, 
+        // i.e. the second won't run till the first is finished.
+        cuda_abi::apc_apply_bus(&output, bus_interactions, arg_spans, bytecode, num_apc_calls).unwrap();
+
         output.into()
     }
 }
+
+fn emit_expr(
+    bc: &mut Vec<u32>,
+    expr: &AlgebraicExpression<BabyBear>,
+    id_to_apc_index: &BTreeMap<u64, usize>,
+    apc_height: usize,
+) {
+    match expr {
+        AlgebraicExpression::Number(c) => {
+            bc.push(OpCode::PushConst as u32);
+            bc.push(c.as_canonical_u32());
+        }
+        AlgebraicExpression::Reference(r) => {
+            let idx = (id_to_apc_index[&r.id] * apc_height) as u32;
+            bc.push(OpCode::PushApc as u32);
+            bc.push(idx);
+        }
+        AlgebraicExpression::UnaryOperation(u) => {
+            emit_expr(bc, &u.expr, id_to_apc_index, apc_height);
+            match u.op {
+                AlgebraicUnaryOperator::Minus => bc.push(OpCode::Neg as u32),
+            }
+        }
+        AlgebraicExpression::BinaryOperation(b) => {
+            emit_expr(bc, &b.left, id_to_apc_index, apc_height);
+            emit_expr(bc, &b.right, id_to_apc_index, apc_height);
+            match b.op {
+                AlgebraicBinaryOperator::Add => bc.push(OpCode::Add as u32),
+                AlgebraicBinaryOperator::Sub => bc.push(OpCode::Sub as u32),
+                AlgebraicBinaryOperator::Mul => bc.push(OpCode::Mul as u32),
+            }
+        }
+    }
+}
+
+pub fn compile_bus_to_gpu(
+    bus: &[SymbolicBusInteraction<BabyBear>],
+    apc_poly_id_to_index: &BTreeMap<u64, usize>,
+    apc_height: usize,
+) -> (Vec<DevInteraction>, Vec<DevArgSpan>, Vec<u32>) {
+    let mut interactions = Vec::with_capacity(bus.len());
+    let mut arg_spans = Vec::new();
+    let mut bytecode = Vec::new();
+
+    for bi in bus {
+        // mult
+        let mult_off = bytecode.len() as u32;
+        emit_expr(&mut bytecode, &bi.mult, apc_poly_id_to_index, apc_height);
+        let mult_len = (bytecode.len() as u32) - mult_off;
+
+        // args
+        let args_index_off = arg_spans.len() as u32;
+        for arg in &bi.args {
+            let off = bytecode.len() as u32;
+            emit_expr(&mut bytecode, arg, apc_poly_id_to_index, apc_height);
+            let len = (bytecode.len() as u32) - off;
+            arg_spans.push(DevArgSpan { off, len });
+        }
+
+        interactions.push(DevInteraction {
+            id: (bi.id as u32),
+            num_args: bi.args.len() as u32,
+            mult_off,
+            mult_len,
+            args_index_off,
+        });
+    }
+
+    (interactions, arg_spans, bytecode)
+}
+

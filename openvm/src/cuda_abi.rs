@@ -16,6 +16,18 @@ extern "C" {
         d_subs: *const Subst,    // device array of all substitutions
         num_apc_calls: i32,      // number of APC calls
     ) -> i32;
+
+    pub fn _apc_apply_bus(
+        d_output: *const BabyBear, // column-major
+        output_height: usize,
+        d_interactions: *const DevInteraction,
+        n_interactions: usize,
+        d_arg_spans: *const DevArgSpan,
+        n_arg_spans: usize,
+        d_bytecode: *const u32,
+        bytecode_len: usize,
+        num_apc_calls: i32,
+    ) -> i32;
 }
 
 // Mutates chip.count (device histogram) in place using __device__ RangeTupleChecker<2>::add_count
@@ -81,6 +93,57 @@ pub fn apc_tracegen(
             original_airs.as_ptr(),
             n_airs,
             substitutions.as_ptr(),
+            num_apc_calls as i32,
+        ))
+    }
+}
+
+
+// GPU Bus Compiler: Compile SymbolicBusInteraction<BabyBear> into device-friendly buffers
+#[repr(u32)]
+pub enum OpCode {
+    PushApc = 0,
+    PushConst = 1,
+    Add = 2,
+    Sub = 3,
+    Mul = 4,
+    Neg = 5,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct DevInteraction {
+    pub id: u32,
+    pub num_args: u32,
+    pub mult_off: u32,
+    pub mult_len: u32,
+    pub args_index_off: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct DevArgSpan {
+    pub off: u32,
+    pub len: u32,
+}
+
+pub fn apc_apply_bus(
+    output: &DeviceMatrix<BabyBear>, // column-major
+    interactions: DeviceBuffer<DevInteraction>,
+    arg_spans: DeviceBuffer<DevArgSpan>,
+    bytecode: DeviceBuffer<u32>,
+    num_apc_calls: usize,
+) -> Result<(), CudaError> {
+    unsafe {
+        CudaError::from_result(_apc_apply_bus(
+            output.buffer().as_ptr(),
+            output.height(),
+            interactions.as_ptr(),
+            interactions.len(),
+            arg_spans.as_ptr(),
+            arg_spans.len(),
+            bytecode.as_ptr(),
+            bytecode.len(),
             num_apc_calls as i32,
         ))
     }
