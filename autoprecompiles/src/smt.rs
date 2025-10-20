@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use powdr_expression::visitors::AllChildren;
 use powdr_expression::visitors::Children;
 use powdr_number::FieldElement;
 use powdr_number::LargeInt;
@@ -180,11 +181,15 @@ impl SmtRangeConstraint {
     }
 
     pub fn to_smt(&self) -> String {
-        assert!(self.bits <= 8);
+        // assert!(self.bits <= 8);
         let terms = (0..(1 << self.bits))
             .map(|i| format!("(ff.add {} (ff.neg (as ff{i} BB)))", self.var))
             .collect::<Vec<_>>();
-        format!("(ff.mul {})", terms.join(" "))
+        if terms.len() > 1 {
+            format!("(ff.mul {})", terms.join(" "))
+        } else {
+            terms[0].clone()
+        }
     }
 }
 
@@ -224,11 +229,16 @@ fn range_check_interaction_to_smt<T: FieldElement>(
     assert_eq!(b.args.len(), 2);
     let v = algebraic_to_smt_ff(&b.args[0]);
     let bits = try_algebraic_number(&b.args[1])
-        .unwrap()
+        .unwrap_or_else(|| {
+            panic!(
+                "Expected range check bits to be a number, got {}",
+                b.args[1]
+            )
+        })
         .to_integer()
         .try_into_u32()
         .unwrap();
-    if bits <= 8 {
+    if bits <= 800 {
         let max_range = 1 << bits;
         // vec![range_check_to_smt(v, max_range)]
         vec![SmtRangeConstraint::new(v, max_range)]
@@ -292,7 +302,7 @@ fn symbolic_machine_to_smtlib2_ff<T: FieldElement>(
     bus_interaction_config: SmtBusInteractionConfig,
 ) -> String {
     let mut smt2 = String::new();
-    smt2.push_str("(set-logic QF_FF)\n");
+    smt2.push_str("(set-logic QF_FFUF)\n");
     smt2.push_str("(set-option :incremental true)\n");
     smt2.push_str(&format!("(define-sort BB () (_ FiniteField {P}))\n"));
 
@@ -311,9 +321,12 @@ fn symbolic_machine_to_smtlib2_ff<T: FieldElement>(
         .collect::<Vec<String>>()
         .join("\n");
 
-    smt2.push_str(&decls);
-    smt2.push('\n');
+    // smt2.push_str(&decls);
+    // smt2.push('\n');
 
+    let mut inputs = Vec::new();
+    let mut outputs = Vec::new();
+    let mut smt2_circuit = String::new();
     match bus_interaction_config {
         SmtBusInteractionConfig::None => {
             // No bus interactions.
@@ -323,9 +336,44 @@ fn symbolic_machine_to_smtlib2_ff<T: FieldElement>(
             for bus_int in &machine.bus_interactions {
                 let bus_int_smt = symbolic_bus_interaction_to_smt_ff(bus_int);
                 for bus_constraint in bus_int_smt {
-                    let a = format!("(assert (= (as ff0 BB) {}))", bus_constraint.to_smt());
-                    smt2.push_str(&a);
-                    smt2.push('\n');
+                    let a = format!("(= (as ff0 BB) {})", bus_constraint.to_smt());
+                    smt2_circuit.push_str(&a);
+                    smt2_circuit.push('\n');
+                }
+                match bus_int.id {
+                    // Execution bridge and memory
+                    0 | 1 => {
+                        let mult = bus_int.try_multiplicity_to_number().unwrap_or_else(|| {
+                            panic!(
+                                "Expected multiplicity to be a number, got {:?}",
+                                bus_int.mult
+                            )
+                        });
+                        let minus_one = T::from(-1i32);
+                        let one = T::from(1u32);
+                        if mult == minus_one {
+                            inputs.push(bus_int.args.clone());
+                        } else if mult == one {
+                            outputs.push(bus_int.args.clone());
+                        } else {
+                            panic!("Expected multiplicity to be 1 or -1, got {mult}");
+                        }
+
+                        let a = format!(
+                            "(bus_int_{} (as ff{} BB) {} {})",
+                            bus_int.args.len() + 2,
+                            bus_int.id,
+                            algebraic_to_smt_ff(&bus_int.mult),
+                            bus_int
+                                .args
+                                .iter()
+                                .map(|arg| algebraic_to_smt_ff(arg))
+                                .join(" ")
+                        );
+                        smt2_circuit.push_str(&a);
+                        smt2_circuit.push('\n');
+                    }
+                    _ => {}
                 }
             }
         }
@@ -338,21 +386,133 @@ fn symbolic_machine_to_smtlib2_ff<T: FieldElement>(
             for bus_constraint in &bus_ints {
                 if vars.iter().any(|v| &bus_constraint.var == v) {
                     let a = format!("(assert (= (as ff0 BB) {}))", bus_constraint.to_smt());
-                    smt2.push_str(&a);
-                    smt2.push('\n');
+                    smt2_circuit.push_str(&a);
+                    smt2_circuit.push('\n');
                 }
             }
         }
     }
 
+    let bus_int_fs = inputs
+        .iter()
+        .chain(outputs.iter())
+        .map(|args| args.len())
+        .unique()
+        .map(|l| {
+            format!(
+                "(declare-fun bus_int_{} ({}) Bool)",
+                l + 2,
+                vec!["BB"; l + 2].join(" ")
+            )
+        })
+        .collect::<Vec<_>>();
+
+    smt2.push_str(&bus_int_fs.join("\n"));
+    smt2.push('\n');
+
     for poly in &machine.constraints {
         let c_smt = algebraic_to_smt_ff(&poly.expr);
-        let a = format!("(assert (= (as ff0 BB) {c_smt}))");
-        smt2.push_str(&a);
-        smt2.push('\n');
+        let a = format!("(= (as ff0 BB) {c_smt})");
+        smt2_circuit.push_str(&a);
+        smt2_circuit.push('\n');
     }
 
+    let input_cols: BTreeSet<String> =
+        inputs.iter().flatten().fold(BTreeSet::new(), |mut acc, a| {
+            acc.extend(expr_cols(a));
+            acc
+        });
+
+    println!("input cols: {input_cols:?}");
+    let output_cols: BTreeSet<String> = outputs
+        .iter()
+        .flatten()
+        .flat_map(|a| expr_cols(a))
+        .filter(|c| !input_cols.contains(c))
+        .collect();
+    println!("output cols: {output_cols:?}");
+
+    let circuit_def = format!(
+        "(define-fun f (\n{}\n) Bool (and true\n{}\n))",
+        input_cols
+            .iter()
+            .chain(output_cols.iter())
+            .map(|a| format!("({a} BB)"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        smt2_circuit
+    );
+
+    let outer_input_cols = input_cols
+        .iter()
+        .map(|c| format!("outer_{c}"))
+        .collect::<Vec<_>>();
+    let outer_output_cols = output_cols
+        .iter()
+        .map(|c| format!("outer_{c}"))
+        .collect::<Vec<_>>();
+    let nondet_output_cols = outer_output_cols
+        .iter()
+        .map(|a| format!("nondet_{a}"))
+        .collect::<Vec<_>>();
+
+    let outer_decls = outer_input_cols
+        .iter()
+        .chain(outer_output_cols.iter())
+        .chain(nondet_output_cols.iter())
+        .map(|c| format!("(declare-fun {c} () BB)"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let appl_f_0 = format!(
+        "(assert (f {}))",
+        outer_input_cols
+            .iter()
+            .chain(outer_output_cols.iter())
+            .join("\n")
+    );
+
+    let appl_f_1 = format!(
+        "(assert (f {}))",
+        outer_input_cols
+            .iter()
+            .chain(nondet_output_cols.iter())
+            .join("\n")
+    );
+    let outputs_eq = outer_output_cols
+        .iter()
+        .zip_eq(nondet_output_cols.iter())
+        .map(|(a, b)| format!("(= {a} {b})"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let assert_nondet = format!("(assert (not (and {outputs_eq})))");
+
+    smt2.push_str(&circuit_def);
+    smt2.push('\n');
+    smt2.push_str(&outer_decls);
+    smt2.push('\n');
+    smt2.push_str(&appl_f_0);
+    smt2.push('\n');
+    smt2.push_str(&appl_f_1);
+    smt2.push('\n');
+    smt2.push_str(&assert_nondet);
+    smt2.push('\n');
+
     smt2
+}
+
+fn expr_cols<F>(expr: &AlgebraicExpression<F>) -> BTreeSet<String> {
+    expr.all_children()
+        .filter_map(|e| {
+            if let AlgebraicExpression::Reference(r) = e {
+                Some((*r.name).clone())
+            } else {
+                None
+            }
+        })
+        .unique()
+        .collect()
 }
 
 fn symbolic_bus_interaction_has_ref<T: FieldElement>(
@@ -377,6 +537,7 @@ fn negate_constraints_smtlib2_ff<T: FieldElement>(
 }
 
 pub fn check_equivalence<T: FieldElement>(machine: &SymbolicMachine<T>) -> Option<bool> {
+    println!("Checking machine\n{machine}");
     let r = solve_ff(
         machine,
         Default::default(),

@@ -140,10 +140,17 @@ impl<T: Display> Display for SymbolicBusInteraction<T> {
     }
 }
 
-impl<T: Copy> SymbolicBusInteraction<T> {
+impl<T: Copy + FieldElement> SymbolicBusInteraction<T> {
     pub fn try_multiplicity_to_number(&self) -> Option<T> {
-        match self.mult {
-            AlgebraicExpression::Number(n) => Some(n),
+        match &self.mult {
+            AlgebraicExpression::Number(ref n) => Some(*n),
+            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation {
+                op: AlgebraicUnaryOperator::Minus,
+                ref expr,
+            }) => match **expr {
+                AlgebraicExpression::Number(n) => Some(-n),
+                _ => None,
+            },
             _ => None,
         }
     }
