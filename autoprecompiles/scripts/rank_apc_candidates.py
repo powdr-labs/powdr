@@ -29,7 +29,7 @@ def main():
     
     try:
         with open(json_file, 'r') as f:
-            data = json.load(f)
+            data = json.load(f)["apcs"]
     except Exception as e:
         print(f"Error reading file: {e}")
         sys.exit(1)

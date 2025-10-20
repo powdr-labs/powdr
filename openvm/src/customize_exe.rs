@@ -216,8 +216,23 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         }
     }
 
+    let labels = debug_info
+        .symbols
+        .table()
+        .iter()
+        .map(|(addr, names)| {
+            (
+                *addr as u64,
+                names
+                    .iter()
+                    .map(|name| rustc_demangle::demangle(name).to_string())
+                    .collect(),
+            )
+        })
+        .collect();
+
     let start = std::time::Instant::now();
-    let apcs = pgo.filter_blocks_and_create_apcs_with_pgo(blocks, &config, vm_config);
+    let apcs = pgo.filter_blocks_and_create_apcs_with_pgo(blocks, &config, vm_config, labels);
     metrics::gauge!("total_apc_gen_time_ms").set(start.elapsed().as_millis() as f64);
 
     let pc_base = exe.program.pc_base;

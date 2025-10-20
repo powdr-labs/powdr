@@ -15,7 +15,7 @@ use crate::{
 
 use powdr_autoprecompiles::{
     expression::{AlgebraicEvaluator, ConcreteBusInteraction, MappingRowEvaluator, RowEvaluator},
-    trace_handler::{generate_trace, Trace, TraceData},
+    trace_handler::{generate_trace, TraceData, TraceTrait},
     Apc,
 };
 
@@ -52,6 +52,29 @@ pub use periphery::PowdrPeripheryInstances;
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 use powdr_number::ExpressionConvertible;
 use powdr_openvm_hints_circuit::HintsExtension;
+
+/// A wrapper around a DenseMatrix to implement `TraceTrait` which is required for `generate_trace`.
+pub struct CpuTrace<F> {
+    matrix: DenseMatrix<F>,
+}
+
+impl<F: Send + Sync> TraceTrait<F> for CpuTrace<F> {
+    type Values = Vec<F>;
+
+    fn width(&self) -> usize {
+        self.matrix.width
+    }
+
+    fn values(&self) -> &Self::Values {
+        &self.matrix.values
+    }
+}
+
+impl<F> From<DenseMatrix<F>> for CpuTrace<F> {
+    fn from(matrix: DenseMatrix<F>) -> Self {
+        Self { matrix }
+    }
+}
 
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
 pub struct PowdrExecutor<F: PrimeField32> {
@@ -149,16 +172,14 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             .into_iter()
             .map(|executor| {
                 let air_name = get_name::<SC>(executor.air());
-                let DenseMatrix { values, width, .. } =
-                    tracing::debug_span!("dummy trace", air_name = air_name.clone()).in_scope(
-                        || {
-                            Chip::<SC>::generate_air_proof_input(executor)
-                                .raw
-                                .common_main
-                                .unwrap()
-                        },
-                    );
-                (air_name.clone(), Trace::new(values, width))
+                let matrix = tracing::debug_span!("dummy trace", air_name = air_name.clone())
+                    .in_scope(|| {
+                        Chip::<SC>::generate_air_proof_input(executor)
+                            .raw
+                            .common_main
+                            .unwrap()
+                    });
+                (air_name.clone(), CpuTrace::from(matrix))
             })
             .collect();
 
@@ -172,7 +193,6 @@ impl<F: PrimeField32> PowdrExecutor<F> {
             &self.air_by_opcode_id,
             self.number_of_calls,
             &self.apc,
-            F::ONE, // TODO this is stupid but I did not find a way to get the 1 in the field.
         );
 
         // precompute the symbolic bus sends to the range checker for each original instruction
@@ -206,6 +226,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
                 for ((dummy_row, range_checker_sends), dummy_trace_index_to_apc_index) in
                     dummy_values
                         .iter()
+                        .map(|r| &r.data[r.start..r.start + r.length])
                         .zip_eq(&range_checker_sends_per_original_instruction)
                         .zip_eq(&dummy_trace_index_to_apc_index_by_instruction)
                 {
@@ -229,7 +250,7 @@ impl<F: PrimeField32> PowdrExecutor<F> {
 
                 // Fill in the columns we have to compute from other columns
                 // (these are either new columns or for example the "is_valid" column).
-                for (column, computation_method) in &columns_to_compute {
+                for (column, computation_method) in columns_to_compute {
                     let col_index = apc_poly_id_to_index[&column.id];
                     row_slice[col_index] = match computation_method {
                         ComputationMethod::Constant(c) => *c,
