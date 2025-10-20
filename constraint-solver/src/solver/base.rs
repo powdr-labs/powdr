@@ -421,7 +421,7 @@ where
                 // next loop iteration.
                 continue;
             }
-            match exhaustive_search::find_unique_assignment_for_set(
+            match exhaustive_search::exhaustive_search_on_variable_set(
                 self.constraint_system.system(),
                 &variable_set,
                 &*self,

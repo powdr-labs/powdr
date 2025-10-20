@@ -28,7 +28,7 @@ const MAX_VAR_RANGE_WIDTH: u64 = 5;
 /// Can also return range constraints for the input variables if some of them lead
 /// to a contradiction.
 /// Returns an error if all assignments are contradictory.
-pub fn find_unique_assignment_for_set<T: FieldElement, V: Clone + Hash + Ord + Eq + Display>(
+pub fn exhaustive_search_on_variable_set<T: FieldElement, V: Clone + Hash + Ord + Eq + Display>(
     constraint_system: &IndexedConstraintSystem<T, V>,
     variables: &BTreeSet<V>,
     range_constraints: impl RangeConstraintProvider<T, V> + Clone,
@@ -37,7 +37,7 @@ pub fn find_unique_assignment_for_set<T: FieldElement, V: Clone + Hash + Ord + E
     let mut assignments =
         get_all_possible_assignments(variables.iter().cloned(), &range_constraints).filter_map(
             |assignments| {
-                derive_more_assignments(
+                derive_new_range_constraints(
                     constraint_system,
                     assignments,
                     &range_constraints,
@@ -151,7 +151,7 @@ struct ContradictingConstraintError;
 /// Fails if any of the assignments *directly* contradicts any of the constraints.
 /// Note that getting an OK(_) here does not mean that there is no contradiction, as
 /// this function only does one step of the derivation.
-fn derive_more_assignments<T: FieldElement, V: Clone + Hash + Ord + Eq + Display>(
+fn derive_new_range_constraints<T: FieldElement, V: Clone + Hash + Ord + Eq + Display>(
     constraint_system: &IndexedConstraintSystem<T, V>,
     assignments: BTreeMap<V, T>,
     range_constraints: &impl RangeConstraintProvider<T, V>,
