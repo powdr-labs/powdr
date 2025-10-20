@@ -149,11 +149,6 @@ pub fn record_arena_dimension_by_air_name_per_apc_call<F>(
                     let (_, air_metrics) =
                         air_by_opcode_id.air_name_to_machine.get(air_name).unwrap();
 
-                    // TODO: main_columns might not be correct, as the RA::with_capacity() uses the following `main_width()`
-                    // pub fn main_width(&self) -> usize {
-                    //     self.cached_mains.iter().sum::<usize>() + self.common_main
-                    // }
-
                     RecordArenaDimension {
                         height: 0,
                         width: air_metrics.widths.main,
