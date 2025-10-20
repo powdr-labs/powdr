@@ -4,20 +4,28 @@ use std::sync::{Arc, Mutex};
 use crate::air_builder::AirKeygenBuilder;
 use crate::bus_map::{BusMap, OpenVmBusType};
 use crate::opcode::branch_opcodes_set;
+use crate::powdr_extension::executor::RecordArenaDimension;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
-use crate::{
-    AirMetrics, ExtendedVmConfig, ExtendedVmConfigExecutor, ExtendedVmConfigPeriphery, Instr,
-    SpecializedExecutor,
+use crate::{AirMetrics, ExtendedVmConfig, ExtendedVmConfigExecutor, Instr};
+use crate::{BabyBearPoseidon2Engine, ExtendedVmConfigCpuBuilder};
+use openvm_circuit::arch::{
+    AirInventory, AirInventoryError, ExecutorInventory, ExecutorInventoryError, MatrixRecordArena,
+    SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig, VmExecutionConfig,
 };
-use openvm_circuit::arch::{VmChipComplex, VmConfig, VmInventoryError};
+use openvm_circuit::system::memory::interface::MemoryInterfaceAirs;
+use openvm_circuit::system::SystemChipInventory;
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_instructions::VmOpcode;
 
+use crate::utils::get_pil;
 use openvm_stark_backend::air_builders::symbolic::SymbolicRapBuilder;
+use openvm_stark_backend::config::Val;
 use openvm_stark_backend::interaction::fri_log_up::find_interaction_chunks;
+use openvm_stark_backend::p3_field::PrimeField32;
+use openvm_stark_backend::prover::cpu::CpuBackend;
 use openvm_stark_backend::{
-    air_builders::symbolic::SymbolicConstraints, config::StarkGenericConfig, rap::AnyRap, Chip,
+    air_builders::symbolic::SymbolicConstraints, config::StarkGenericConfig, rap::AnyRap,
 };
 use openvm_stark_sdk::config::{
     baby_bear_poseidon2::{config_from_perm, default_perm},
@@ -27,14 +35,14 @@ use openvm_stark_sdk::p3_baby_bear::{self, BabyBear};
 use powdr_autoprecompiles::bus_map::BusType;
 use powdr_autoprecompiles::evaluation::AirStats;
 use powdr_autoprecompiles::expression::try_convert;
-use powdr_autoprecompiles::{InstructionHandler, SymbolicMachine};
+use powdr_autoprecompiles::{Apc, InstructionHandler, SymbolicMachine};
 use serde::{Deserialize, Serialize};
 use std::iter::Sum;
 use std::ops::Deref;
 use std::ops::{Add, Sub};
 use std::sync::MutexGuard;
 
-use crate::utils::{get_pil, UnsupportedOpenVmReferenceError};
+use crate::utils::UnsupportedOpenVmReferenceError;
 
 use crate::customize_exe::openvm_bus_interaction_to_powdr;
 use crate::utils::symbolic_to_algebraic;
@@ -123,22 +131,49 @@ impl<F> OriginalAirs<F> {
     }
 }
 
-fn to_option<T>(mut v: Vec<T>) -> Option<T> {
-    match v.len() {
-        0 => None,
-        1 => Some(v.pop().unwrap()),
-        _ => panic!("Expected at most one element, got multiple"),
-    }
+/// For each air name, the dimension of a record arena needed to store the
+/// records for a single APC call.
+pub fn record_arena_dimension_by_air_name_per_apc_call<F>(
+    apc: &Apc<F, Instr<F>>,
+    air_by_opcode_id: &OriginalAirs<F>,
+) -> HashMap<String, RecordArenaDimension> {
+    apc.instructions().iter().map(|instr| &instr.0.opcode).fold(
+        HashMap::new(),
+        |mut acc, opcode| {
+            // Get the air name for this opcode
+            let air_name = air_by_opcode_id.opcode_to_air.get(opcode).unwrap();
+
+            // Increment the height for this air name, initializing if necessary
+            acc.entry(air_name.clone())
+                .or_insert_with(|| {
+                    let (_, air_metrics) =
+                        air_by_opcode_id.air_name_to_machine.get(air_name).unwrap();
+
+                    // TODO: main_columns might not be correct, as the RA::with_capacity() uses the following `main_width()`
+                    // pub fn main_width(&self) -> usize {
+                    //     self.cached_mains.iter().sum::<usize>() + self.common_main
+                    // }
+
+                    RecordArenaDimension {
+                        height: 0,
+                        width: air_metrics.widths.main,
+                    }
+                })
+                .height += 1;
+            acc
+        },
+    )
 }
 
-/// A lazy chip complex that is initialized on the first access
-type LazyChipComplex = Option<
-    VmChipComplex<
-        BabyBear,
-        ExtendedVmConfigExecutor<BabyBear>,
-        ExtendedVmConfigPeriphery<BabyBear>,
-    >,
+type ChipComplex = VmChipComplex<
+    BabyBearSC,
+    MatrixRecordArena<Val<BabyBearSC>>,
+    CpuBackend<BabyBearSC>,
+    SystemChipInventory<BabyBearSC>,
 >;
+
+/// A lazy chip complex that is initialized on the first access
+type LazyChipComplex = Option<ChipComplex>;
 
 /// A shared and mutable reference to a `LazyChipComplex`.
 type CachedChipComplex = Arc<Mutex<LazyChipComplex>>;
@@ -149,11 +184,7 @@ pub struct ChipComplexGuard<'a> {
 }
 
 impl<'a> Deref for ChipComplexGuard<'a> {
-    type Target = VmChipComplex<
-        BabyBear,
-        ExtendedVmConfigExecutor<BabyBear>,
-        ExtendedVmConfigPeriphery<BabyBear>,
-    >;
+    type Target = ChipComplex;
 
     fn deref(&self) -> &Self::Target {
         // Unwrap is safe here because we ensure that the chip complex is initialized
@@ -166,9 +197,41 @@ impl<'a> Deref for ChipComplexGuard<'a> {
 /// A wrapper around the `ExtendedVmConfig` that caches a chip complex.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct OriginalVmConfig {
-    sdk_config: ExtendedVmConfig,
+    pub sdk_config: ExtendedVmConfig,
     #[serde(skip)]
-    chip_complex: CachedChipComplex,
+    pub chip_complex: CachedChipComplex,
+}
+
+// TODO: derive `VmCircuitConfig`, currently not possible because we don't have SC/F everywhere
+impl<SC: StarkGenericConfig> VmCircuitConfig<SC> for OriginalVmConfig
+where
+    Val<SC>: PrimeField32,
+{
+    fn create_airs(&self) -> Result<AirInventory<SC>, AirInventoryError> {
+        self.sdk_config.create_airs()
+    }
+}
+
+impl<F: PrimeField32> VmExecutionConfig<F> for OriginalVmConfig {
+    type Executor = ExtendedVmConfigExecutor<F>;
+
+    fn create_executors(
+        &self,
+    ) -> Result<ExecutorInventory<Self::Executor>, ExecutorInventoryError> {
+        self.sdk_config.create_executors()
+    }
+}
+
+impl AsRef<SystemConfig> for OriginalVmConfig {
+    fn as_ref(&self) -> &SystemConfig {
+        self.sdk_config.as_ref()
+    }
+}
+
+impl AsMut<SystemConfig> for OriginalVmConfig {
+    fn as_mut(&mut self) -> &mut SystemConfig {
+        self.sdk_config.as_mut()
+    }
 }
 
 impl OriginalVmConfig {
@@ -190,14 +253,22 @@ impl OriginalVmConfig {
     }
 
     /// Returns a guard that provides access to the chip complex, initializing it if necessary.
-    fn chip_complex(&self) -> ChipComplexGuard {
+    fn chip_complex(&self) -> ChipComplexGuard<'_> {
         let mut guard = self.chip_complex.lock().expect("Mutex poisoned");
 
         if guard.is_none() {
             // This is the expensive part that we want to run a single time: create the chip complex
-            let complex = self
+            let airs = self
                 .sdk_config
-                .create_chip_complex()
+                .sdk
+                .create_airs()
+                .expect("Failed to create air inventory");
+            let complex =
+                <ExtendedVmConfigCpuBuilder as VmBuilder<BabyBearPoseidon2Engine>>::create_chip_complex(
+                    &ExtendedVmConfigCpuBuilder,
+                    &self.sdk_config,
+                    airs,
+                )
                 .expect("Failed to create chip complex");
             // Store the complex in the guard
             *guard = Some(complex);
@@ -215,24 +286,33 @@ impl OriginalVmConfig {
         &self,
         max_degree: usize,
     ) -> Result<OriginalAirs<BabyBear>, UnsupportedOpenVmReferenceError> {
-        let chip_complex = self.chip_complex();
+        let chip_complex = &self.chip_complex();
+
+        let chip_inventory = &chip_complex.inventory;
+
+        let executor_inventory: ExecutorInventory<ExtendedVmConfigExecutor<Val<BabyBearSC>>> =
+            self.create_executors().unwrap();
 
         let instruction_allowlist = instruction_allowlist();
 
-        let res = chip_complex
-            .inventory
-            .available_opcodes()
-            .filter(|op| {
-                // Filter out the opcode that we are not interested in
-                instruction_allowlist.contains(op)
+        instruction_allowlist
+            .into_iter()
+            .filter_map(|op| {
+                executor_inventory
+                    .instruction_lookup
+                    .get(&op)
+                    .map(|id| (op, *id as usize))
             })
-            .filter_map(|op| Some((op, chip_complex.inventory.get_executor(op)?)))
-            .try_fold(OriginalAirs::default(), |mut airs, (op, executor)| {
-                airs.insert_opcode(op, get_name::<BabyBearSC>(executor.air()), || {
-                    let air = executor.air();
-                    let columns = get_columns(air.clone());
-                    let constraints = get_constraints(air.clone());
-                    let metrics = get_air_metrics(air, max_degree);
+            .map(|(op, executor_id)| {
+                let insertion_index = chip_inventory.executor_idx_to_insertion_idx[executor_id];
+                let air_ref = &chip_inventory.airs().ext_airs()[insertion_index];
+                (op, air_ref)
+            }) // find executor for opcode
+            .try_fold(OriginalAirs::default(), |mut airs, (op, air_ref)| {
+                airs.insert_opcode(op, air_ref.name(), || {
+                    let columns = get_columns(air_ref.clone());
+                    let constraints = get_constraints(air_ref.clone());
+                    let metrics = get_air_metrics(air_ref.clone(), max_degree);
 
                     let powdr_exprs = constraints
                         .constraints
@@ -257,29 +337,46 @@ impl OriginalVmConfig {
                 })?;
 
                 Ok(airs)
-            });
-
-        res
+            })
     }
 
     pub fn bus_map(&self) -> BusMap {
         let chip_complex = self.chip_complex();
-        let builder = chip_complex.inventory_builder();
+        let inventory = &chip_complex.inventory;
 
-        let shared_bitwise_lookup =
-            to_option(builder.find_chip::<SharedBitwiseOperationLookupChip<8>>());
-        let shared_range_tuple_checker =
-            to_option(builder.find_chip::<SharedRangeTupleCheckerChip<2>>());
+        let shared_bitwise_lookup = inventory
+            .find_chip::<SharedBitwiseOperationLookupChip<8>>()
+            .next();
+        let shared_range_tuple_checker = inventory
+            .find_chip::<SharedRangeTupleCheckerChip<2>>()
+            .next();
+
+        let system_air_inventory = inventory.airs().system();
+        let connector_air = system_air_inventory.connector;
+        let memory_air = &system_air_inventory.memory;
 
         BusMap::from_id_type_pairs(
             {
-                let base = &chip_complex.base;
                 [
-                    (base.execution_bus().inner.index, BusType::ExecutionBridge),
-                    (base.memory_bus().inner.index, BusType::Memory),
-                    (base.program_bus().inner.index, BusType::PcLookup),
                     (
-                        base.range_checker_bus().inner.index,
+                        connector_air.execution_bus.index(),
+                        BusType::ExecutionBridge,
+                    ),
+                    (
+                        // TODO: make getting memory bus index a helper function
+                        match &memory_air.interface {
+                            MemoryInterfaceAirs::Volatile { boundary } => {
+                                boundary.memory_bus.inner.index
+                            }
+                            MemoryInterfaceAirs::Persistent { boundary, .. } => {
+                                boundary.memory_bus.inner.index
+                            }
+                        },
+                        BusType::Memory,
+                    ),
+                    (connector_air.program_bus.index(), BusType::PcLookup),
+                    (
+                        connector_air.range_bus.index(),
                         BusType::Other(OpenVmBusType::VariableRangeChecker),
                     ),
                 ]
@@ -301,39 +398,17 @@ impl OriginalVmConfig {
         )
     }
 
-    pub fn create_chip_complex(
-        &self,
-    ) -> Result<
-        VmChipComplex<
-            BabyBear,
-            ExtendedVmConfigExecutor<BabyBear>,
-            ExtendedVmConfigPeriphery<BabyBear>,
-        >,
-        VmInventoryError,
-    > {
-        // Clear the cache
-        let mut guard = self.chip_complex.lock().expect("Mutex poisoned");
-        *guard = None; // Invalidate cache
-                       // Create a new chip complex
-        self.sdk_config.create_chip_complex()
-    }
-
     pub fn chip_inventory_air_metrics(&self, max_degree: usize) -> HashMap<String, AirMetrics> {
         let inventory = &self.chip_complex().inventory;
 
         inventory
-            .executors()
+            .airs()
+            .ext_airs()
             .iter()
-            .map(|executor| executor.air())
-            .chain(
-                inventory
-                    .periphery()
-                    .iter()
-                    .map(|periphery| periphery.air()),
-            )
             .map(|air| {
-                // both executors and periphery implement the same `air()` API
-                (air.name(), get_air_metrics(air, max_degree))
+                let name = air.name();
+                let metrics = get_air_metrics(air.clone(), max_degree);
+                (name, metrics)
             })
             .collect()
     }
@@ -341,17 +416,16 @@ impl OriginalVmConfig {
 
 pub fn export_pil(writer: &mut impl std::io::Write, vm_config: &SpecializedConfig) {
     let blacklist = ["KeccakVmAir"];
-    let bus_map = vm_config.sdk_config.bus_map();
-    let chip_complex: VmChipComplex<_, _, _> = vm_config.create_chip_complex().unwrap();
+    let bus_map = vm_config.sdk.bus_map();
+    let chip_complex = vm_config.sdk.chip_complex();
 
-    for executor in chip_complex.inventory.executors().iter() {
-        let air = executor.air();
-        let name = match executor {
-            SpecializedExecutor::PowdrExecutor(powdr_executor) => {
-                powdr_executor.air_name() // name with opcode
-            }
-            _ => air.name(),
-        };
+    for air in chip_complex
+        .inventory
+        .executor_idx_to_insertion_idx
+        .iter()
+        .map(|insertion_idx| &chip_complex.inventory.airs().ext_airs()[*insertion_idx])
+    {
+        let name = get_name(air.clone());
 
         if blacklist.contains(&name.as_str()) {
             log::warn!("Skipping blacklisted AIR: {name}");
@@ -360,7 +434,7 @@ pub fn export_pil(writer: &mut impl std::io::Write, vm_config: &SpecializedConfi
 
         let columns = get_columns(air.clone());
 
-        let constraints = get_constraints(air);
+        let constraints = get_constraints(air.clone());
 
         let pil = get_pil(&name, &constraints, &columns, vec![], &bus_map);
         writeln!(writer, "{pil}\n").unwrap();
@@ -528,7 +602,8 @@ mod tests {
     use openvm_ecc_circuit::{WeierstrassExtension, SECP256K1_CONFIG};
     use openvm_pairing_circuit::{PairingCurve, PairingExtension};
     use openvm_rv32im_circuit::Rv32M;
-    use openvm_sdk::config::{SdkSystemConfig, SdkVmConfig};
+    use openvm_sdk::config::SdkVmConfig;
+    use powdr_openvm_hints_circuit::HintsExtension;
 
     #[test]
     fn test_get_bus_map() {
@@ -576,16 +651,19 @@ mod tests {
             .pairing(PairingExtension::new(supported_pairing_curves))
             .build();
 
-        let _ = OriginalVmConfig::new(ExtendedVmConfig { sdk_vm_config }).bus_map();
+        let _ = OriginalVmConfig::new(ExtendedVmConfig {
+            sdk: sdk_vm_config,
+            hints: HintsExtension,
+        })
+        .bus_map();
     }
 
     #[test]
     fn test_export_pil() {
         let writer = &mut Vec::new();
         let ext_config = ExtendedVmConfig {
-            sdk_vm_config: SdkVmConfig::builder()
-                .system(SdkSystemConfig::default())
-                .build(),
+            sdk: SdkVmConfig::riscv32(),
+            hints: HintsExtension,
         };
         let base_config = OriginalVmConfig::new(ext_config);
         let specialized_config = SpecializedConfig::new(

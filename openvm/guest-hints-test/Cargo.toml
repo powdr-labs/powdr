@@ -7,7 +7,7 @@ edition = "2021"
 [dependencies]
 # The `rev` here must point to the same version used in the workspace.
 # Otherwise, there is conflict with the `powdr-openvm-hints-guest` dependency (which is part of the workspace).
-openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "62c5d26" }
+openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "2d03a6a" }
 powdr-openvm-hints-guest = { path = "../extensions/hints-guest/" }
 
 [profile.release-with-debug]

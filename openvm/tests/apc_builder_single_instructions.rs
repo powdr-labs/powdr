@@ -10,12 +10,12 @@ fn assert_machine_output(program: Vec<Instruction<BabyBear>>, test_name: &str) {
 
 // ALU Chip instructions
 #[test]
-fn single_add_0() {
+fn single_add_1() {
     let program = [
-        // [x8] = [x0] + 5
-        add(8, 0, 5, 0),
+        // [x8] = [x8] + 1
+        add(8, 8, 1, 0),
     ];
-    assert_machine_output(program.to_vec(), "single_add_0");
+    assert_machine_output(program.to_vec(), "single_add_1");
 }
 
 #[test]

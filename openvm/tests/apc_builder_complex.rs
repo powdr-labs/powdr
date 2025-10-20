@@ -130,10 +130,56 @@ fn load_two_bytes_compare() {
 }
 
 #[test]
+fn load_two_bytes_compare_unsigned() {
+    // Similar to `load_two_bytes_compare`, but using `loadbu` instead of `loadb`.
+    // Note that the two tests are largely equivalent; the sign extension of `loadb` does not
+    // change the comparison result (though the contents of r52 and r56 will differ between the two).
+    let program = [
+        loadbu(52, 40, 0, 2, 1, 0),
+        loadbu(56, 44, 0, 2, 1, 0),
+        bne(52, 56, 28),
+    ];
+    assert_machine_output(program.to_vec(), "load_two_bytes_compare_unsigned");
+}
+
+#[test]
 fn store_to_same_address() {
     // Store two different values to the same memory address.
     // The memory optimizer should realize the two memory addresses are the same,
     // and eliminate creating two separate memory columns.
     let program = [storeb(4, 8, 8, 2, 1, 0), storeb(32, 8, 8, 2, 1, 0)];
     assert_machine_output(program.to_vec(), "store_to_same_memory_address");
+}
+
+#[test]
+fn many_stores_relative_to_same_register() {
+    // Many stores to different offsets relative to the same base register.
+    // For a real-world example of something similar, see:
+    // https://georgwiese.github.io/autoprecompile-analyzer/?data=https%3A%2F%2Fgist.githubusercontent.com%2Fgeorgwiese%2Faa85dcc145f26d37f8f03f9a04665971%2Fraw%2F6ce661ec86302d2fef0282908117c0427d9888db%2Freth_with_labels.json&block=0x260648
+
+    // Reproduces issue: Compute memory pointers in the field for intermediate pointers
+    // https://github.com/powdr-labs/powdr/issues/3365
+
+    let program = [
+        storew(5, 2, 12, 2, 1, 0),
+        storew(6, 2, 16, 2, 1, 0),
+        storew(7, 2, 20, 2, 1, 0),
+    ];
+    assert_machine_output(program.to_vec(), "many_stores_relative_to_same_register");
+}
+
+#[test]
+fn copy_byte() {
+    // Copies a byte from one memory location to another, using loadb and storeb.
+    // See this real-world example with a similar pattern:
+    // https://georgwiese.github.io/autoprecompile-analyzer/?data=https%3A%2F%2Fgist.githubusercontent.com%2Fgeorgwiese%2Faa85dcc145f26d37f8f03f9a04665971%2Fraw%2F6ce661ec86302d2fef0282908117c0427d9888db%2Freth_with_labels.json&block=0x200914
+
+    let program = [
+        loadb(8, 2, 0, 2, 1, 0),
+        storeb(8, 3, 0, 2, 1, 0),
+        // Overwrite r8 with value 3.
+        // Something similar happens in the block above: The sign extension of `loadb` is not actually needed.
+        add(8, 0, 3, 0),
+    ];
+    assert_machine_output(program.to_vec(), "copy_byte");
 }
