@@ -34,7 +34,7 @@ pub fn exhaustive_search_on_variable_set<T: FieldElement, V: Clone + Hash + Ord 
     range_constraints: impl RangeConstraintProvider<T, V> + Clone,
     bus_interaction_handler: &impl BusInteractionHandler<T>,
 ) -> Result<BTreeMap<V, RangeConstraint<T>>, Error> {
-    let mut assignments =
+    let mut new_constraints =
         get_all_possible_assignments(variables.iter().cloned(), &range_constraints).filter_map(
             |assignments| {
                 derive_new_range_constraints(
@@ -46,21 +46,18 @@ pub fn exhaustive_search_on_variable_set<T: FieldElement, V: Clone + Hash + Ord 
                 .ok()
             },
         );
-    let Some(first_assignments) = assignments.next() else {
+    let Some(first_assignment_constraints) = new_constraints.next() else {
         // No assignment satisfied the constraint system.
         return Err(Error::ExhaustiveSearchError);
     };
-    // Intersect all assignments.
-    // A special case of this is that only one of the possible assignments satisfies the constraint system,
-    // but even if there are multiple, they might agree on a subset of their assignments.
-    let result = assignments.try_fold(first_assignments, |mut acc, assignments| {
+    // Compute the disjunction of the effects af each assignment.
+    let result = new_constraints.try_fold(first_assignment_constraints, |mut acc, new_constr| {
         for (var, rc) in &mut acc {
-            let other_rc = assignments.get(var).cloned().unwrap_or_default();
+            let other_rc = new_constr.get(var).cloned().unwrap_or_default();
             *rc = rc.disjunction(&other_rc)
         }
-        // TODO could also compute "conjunction changes"
+        // Remove the constraints that are not better than the ones we already know.
         acc.retain(|v, rc| range_constraints.get(v) != *rc);
-        // acc.retain(|variable, value| assignments.get(variable) == Some(value));
         if acc.is_empty() {
             // Exiting early here is crucial for performance.
             // This is not an error though, it only means we could not find an improvement.
@@ -189,15 +186,13 @@ fn derive_new_range_constraints<T: FieldElement, V: Clone + Hash + Ord + Eq + Di
     effects
         .into_iter()
         .flatten()
-        .filter_map(|effect| {
-            if let Effect::Assignment(variable, value) = effect {
+        .filter_map(|effect| match effect {
+            Effect::Assignment(variable, value) => {
                 // Turn assignment into range constraint, we can recover it later.
                 Some((variable, RangeConstraint::from_value(value)))
-            } else if let Effect::RangeConstraint(variable, rc) = effect {
-                Some((variable, rc))
-            } else {
-                None
             }
+            Effect::RangeConstraint(variable, rc) => Some((variable, rc)),
+            _ => None,
         })
         .chain(
             assignments
