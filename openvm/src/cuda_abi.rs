@@ -9,12 +9,12 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 extern "C" {
     fn _range_tuple2_add_count(d_hist: *mut u32, sizes2: *const u32, values2: *const u32) -> i32;
     pub fn _apc_tracegen(
-        d_output: *mut BabyBear, // column-major
-        output_height: usize,    // H_out
+        d_output: *mut BabyBear,             // column-major
+        output_height: usize,                // H_out
         d_original_airs: *const OriginalAir, // device array, len = n_original_airs
-        n_original_airs: usize,           // 
-        d_subs: *const Subst,    // device array of all substitutions
-        num_apc_calls: i32,      // number of APC calls
+        n_original_airs: usize,              //
+        d_subs: *const Subst,                // device array of all substitutions
+        num_apc_calls: i32,                  // number of APC calls
     ) -> i32;
 
     pub fn _apc_apply_bus(
@@ -79,20 +79,20 @@ pub struct OriginalAir {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]   
+#[derive(Clone, Copy, Debug)]
 pub struct Subst {
     /// Source column within this AIR
-    pub col: i32,     
+    pub col: i32,
     /// Base row offset within the row-block
-    pub row: i32,     
+    pub row: i32,
     /// Destination APC column
-    pub apc_col: i32, 
+    pub apc_col: i32,
 }
 
 pub fn apc_tracegen(
-    output: &mut DeviceMatrix<BabyBear>, // column-major
+    output: &mut DeviceMatrix<BabyBear>,      // column-major
     original_airs: DeviceBuffer<OriginalAir>, // device array, len = n_airs
-    substitutions: DeviceBuffer<Subst>,  // device array of all substitutions
+    substitutions: DeviceBuffer<Subst>,       // device array of all substitutions
     num_apc_calls: usize,
 ) -> Result<(), CudaError> {
     let output_height = output.height();

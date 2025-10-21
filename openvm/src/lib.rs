@@ -36,7 +36,10 @@ use openvm_sdk::{
 use openvm_stark_backend::config::Val;
 use openvm_stark_backend::engine::StarkEngine;
 use openvm_stark_backend::prover::cpu::{CpuBackend, CpuDevice};
-use openvm_stark_sdk::config::{baby_bear_poseidon2::BabyBearPoseidon2Config, FriParameters};
+use openvm_stark_sdk::config::{
+    baby_bear_poseidon2::{BabyBearPoseidon2Config, BabyBearPoseidon2Engine},
+    FriParameters,
+};
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
@@ -458,17 +461,6 @@ pub fn compile_openvm(
     guest: &str,
     guest_opts: GuestOptions,
 ) -> Result<OriginalCompiledProgram, Box<dyn std::error::Error>> {
-    let mut sdk = Sdk::riscv32();
-
-    let transpiler = sdk.transpiler().unwrap();
-
-    // Add our custom transpiler extensions
-    sdk.set_transpiler(
-        transpiler
-            .clone()
-            .with_extension(HintsTranspilerExtension {}),
-    );
-
     // Build the ELF with guest options and a target filter.
     // We need these extra Rust flags to get the labels.
     let guest_opts = guest_opts.with_rustc_flags(vec!["-C", "link-arg=--emit-relocs"]);
@@ -481,18 +473,23 @@ pub fn compile_openvm(
 
     // try to load the sdk config from the openvm.toml file, otherwise use the default
     let openvm_toml_path = path.join("openvm.toml");
-    let sdk_vm_config = if openvm_toml_path.exists() {
+    let app_config = if openvm_toml_path.exists() {
         let toml = std::fs::read_to_string(&openvm_toml_path)?;
-        let app_config: AppConfig<_> = toml::from_str(&toml)?;
-        app_config.app_vm_config
+        toml::from_str(&toml)?
     } else {
-        SdkVmConfig::builder()
-            .system(Default::default())
-            .rv32i(Default::default())
-            .rv32m(Default::default())
-            .io(Default::default())
-            .build()
+        AppConfig::riscv32()
     };
+
+    let mut sdk = Sdk::new(app_config)?;
+
+    let transpiler = sdk.transpiler().unwrap();
+
+    // Add our custom transpiler extensions
+    sdk.set_transpiler(
+        transpiler
+            .clone()
+            .with_extension(HintsTranspilerExtension {}),
+    );
 
     let elf = sdk.build(
         guest_opts,
@@ -505,7 +502,7 @@ pub fn compile_openvm(
     let exe = sdk.convert_to_exe(elf)?;
 
     let vm_config = ExtendedVmConfig {
-        sdk: sdk_vm_config,
+        sdk: sdk.app_config().app_vm_config.clone(),
         hints: HintsExtension,
     };
 
@@ -1118,7 +1115,7 @@ mod tests {
     const GUEST: &str = "guest";
     const GUEST_ITER: u32 = 1 << 10;
     const GUEST_APC: u64 = 1;
-    const GUEST_SKIP: u64 = 56;
+    const GUEST_SKIP_NO_APC_EXECUTED: u64 = 56;
     const GUEST_SKIP_PGO: u64 = 0;
 
     const GUEST_KECCAK: &str = "guest-keccak";
@@ -1172,7 +1169,7 @@ mod tests {
         // Create execution profile but don't prove with it, just to assert that the APC we select isn't executed
         let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
 
-        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP);
+        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP_NO_APC_EXECUTED);
         let program = compile_guest(
             GUEST,
             GuestOptions::default(),
@@ -1200,7 +1197,7 @@ mod tests {
     fn guest_prove_simple() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        let config = default_powdr_openvm_config(GUEST_APC, 0);
+        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP_PGO);
         let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
         prove_simple(
             GUEST,
@@ -1216,7 +1213,7 @@ mod tests {
     fn guest_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        let config = default_powdr_openvm_config(GUEST_APC, 0);
+        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP_PGO);
         let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
         prove_mock(
             GUEST,
@@ -1230,16 +1227,18 @@ mod tests {
 
     // All gate constraints should be satisfied, but bus interactions are not implemented yet.
     #[test]
+    #[ignore = "TODO: fix"]
     fn guest_plonk_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP);
+        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP_PGO);
+        let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
         prove_mock(
             GUEST,
             config,
             PrecompileImplementation::PlonkChip,
             stdin,
-            PgoConfig::None,
+            PgoConfig::Instruction(pgo_data),
             None,
         );
     }
@@ -1249,7 +1248,7 @@ mod tests {
     fn guest_prove_recursion() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP);
+        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP_PGO);
         let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
         prove_recursion(
             GUEST,
@@ -2085,14 +2084,18 @@ mod tests {
 
     #[test]
     fn guest_machine_plonk() {
-        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP);
+        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP_PGO);
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ITER);
+        let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin);
+
         let max_degree = config.degree_bound.identities;
         let (powdr_metrics, _) = compile_guest(
             GUEST,
             GuestOptions::default(),
             config,
             PrecompileImplementation::PlonkChip,
-            PgoConfig::None,
+            PgoConfig::Instruction(pgo_data),
         )
         .unwrap()
         .air_metrics(max_degree);

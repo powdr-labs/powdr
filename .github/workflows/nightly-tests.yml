@@ -8,7 +8,7 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-C target-cpu=native"
   RUST_BACKTRACE: 1
-  JEMALLOC_SYS_WITH_MALLOC_CONF: "retain:true,background_thread:true,metadata_thp:always,thp:always,dirty_decay_ms:-1,muzzy_decay_ms:-1,abort_conf:true"
+  JEMALLOC_SYS_WITH_MALLOC_CONF: "retain:true,background_thread:true,metadata_thp:always,dirty_decay_ms:10000,muzzy_decay_ms:10000,abort_conf:true"
   POWDR_OPENVM_SEGMENT_DELTA: 10000
 
 jobs:
@@ -147,7 +147,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: powdr-labs/openvm-reth-benchmark
-          ref: 15a1cb1533036f1b5284ddf79b3cadd644778398
+          ref: 9641a47c70e4003e54a96947d4138c63825f1b12
           path: openvm-reth-benchmark
 
       - name: Patch openvm-reth-benchmark to use local powdr

@@ -6,15 +6,9 @@ use std::{
 use itertools::Itertools;
 use openvm_circuit::{arch::AirInventory, utils::next_power_of_two_or_zero};
 use openvm_cuda_common::d_buffer::DeviceBuffer;
-use openvm_stark_backend::{
-    p3_field::{FieldAlgebra},
-    p3_matrix::dense::{DenseMatrix},
-};
+use openvm_stark_backend::{p3_field::FieldAlgebra, p3_matrix::dense::DenseMatrix};
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
-use powdr_autoprecompiles::{
-    trace_handler::{TraceTrait},
-    Apc,
-};
+use powdr_autoprecompiles::{trace_handler::TraceTrait, Apc};
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 
 use crate::{
@@ -34,7 +28,7 @@ use openvm_stark_backend::p3_field::PrimeField32;
 #[cfg(feature = "cuda")]
 use crate::DeviceMatrix;
 #[cfg(feature = "cuda")]
-use openvm_cuda_common::copy::{MemCopyH2D};
+use openvm_cuda_common::copy::MemCopyH2D;
 #[cfg(feature = "cuda")]
 use openvm_stark_backend::prover::hal::MatrixDimensions;
 
