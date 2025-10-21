@@ -9,7 +9,7 @@ repository.workspace = true
 [features]
 default = ["cuda"]
 tco = ["openvm-sdk/tco"]
-metrics = ["openvm-sdk/metrics"]
+metrics = ["openvm-sdk/metrics", "openvm-stark-backend/metrics", "openvm-stark-sdk/metrics"]
 cuda = ["openvm-sdk/cuda", "openvm-circuit-primitives/cuda"]
 
 [dependencies]
