@@ -214,7 +214,7 @@ For affine Algebraic Expressions, the Grouped Expression provides a normal form 
 It even provides a normal form for affine Algebraic Constraints if multiplied by a factor such that
 the constant term is zero or one.
 
-This normal fom makes it easy to compare affine Algebraic Expressions for equality,
+This normal form makes it easy to compare affine Algebraic Expressions for equality,
 check if they have a constant difference, etc.
 
 If a map data structure is used for the linear terms, substitution of variables is also quick.
