@@ -27,6 +27,18 @@ extern "C" {
         d_bytecode: *const u32,
         bytecode_len: usize,
         num_apc_calls: i32,
+        // bus ids
+        var_range_bus_id: u32,
+        tuple2_bus_id: u32,
+        bitwise_bus_id: u32,
+        // histograms and params
+        d_var_hist: *mut u32,
+        var_num_bins: usize,
+        d_tuple2_hist: *mut u32,
+        tuple2_sz0: u32,
+        tuple2_sz1: u32,
+        d_bitwise_hist: *mut u32,
+        bitwise_num_bits: u32,
     ) -> i32;
 }
 
@@ -132,6 +144,15 @@ pub fn apc_apply_bus(
     interactions: DeviceBuffer<DevInteraction>,
     arg_spans: DeviceBuffer<DevArgSpan>,
     bytecode: DeviceBuffer<u32>,
+    // periphery-related data
+    var_range_bus_id: u32,
+    tuple2_bus_id: u32,
+    bitwise_bus_id: u32,
+    var_range_count: &DeviceBuffer<BabyBear>,
+    tuple2_count: &DeviceBuffer<BabyBear>,
+    tuple2_sizes: [u32; 2],
+    bitwise_count: &DeviceBuffer<BabyBear>,
+    bitwise_num_bits: u32,
     num_apc_calls: usize,
 ) -> Result<(), CudaError> {
     unsafe {
@@ -145,6 +166,16 @@ pub fn apc_apply_bus(
             bytecode.as_ptr(),
             bytecode.len(),
             num_apc_calls as i32,
+            var_range_bus_id,
+            tuple2_bus_id,
+            bitwise_bus_id,
+            var_range_count.as_mut_ptr() as *mut u32,
+            var_range_count.len(),
+            tuple2_count.as_mut_ptr() as *mut u32,
+            tuple2_sizes[0],
+            tuple2_sizes[1],
+            bitwise_count.as_mut_ptr() as *mut u32,
+            bitwise_num_bits,
         ))
     }
 }

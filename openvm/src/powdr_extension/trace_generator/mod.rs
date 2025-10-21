@@ -26,6 +26,7 @@ use crate::{
     },
     BabyBearSC, Instr,
 };
+use crate::bus_map::DEFAULT_TUPLE_RANGE_CHECKER;
 use powdr_autoprecompiles::{SymbolicBusInteraction, expression::AlgebraicExpression};
 use powdr_expression::{AlgebraicBinaryOperation, AlgebraicUnaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 use openvm_stark_backend::p3_field::PrimeField32;
@@ -282,11 +283,48 @@ impl PowdrTraceGenerator {
         let arg_spans = arg_spans.to_device().unwrap();
         let bytecode = bytecode.to_device().unwrap();
 
-        // `apc_tracegen` is host non-blocking, but by launching `apc_apply_bus` after that, we serialize output access
-        // Also note that Kernel launches on the same CUDA stream are ordered (here we use the default stream), 
-        // so even if two kernel calls use different blocks/warps, they are still ordered, 
-        // i.e. the second won't run till the first is finished.
-        cuda_abi::apc_apply_bus(&output, bus_interactions, arg_spans, bytecode, num_apc_calls).unwrap();
+        // Gather GPU inputs for periphery (bus ids, count device buffers)
+        let periphery = &self.periphery.real;
+
+        // Range checker
+        let var_range_bus_id = periphery
+            .range_checker
+            .cpu_chip
+            .as_ref()
+            .unwrap()
+            .bus()
+            .index() as u32;
+        let var_range_count = &periphery.range_checker.count;
+
+        // Tuple checker
+        let chip = periphery.tuple_range_checker.as_ref().unwrap();
+        let tuple2_bus_id = DEFAULT_TUPLE_RANGE_CHECKER as u32;
+        let tuple2_sizes = chip.sizes;
+        let tuple2_count_u32 = chip.count.as_ref();
+
+        // Bitwise lookup; NUM_BITS is 8 in our setup
+        let chip = periphery.bitwise_lookup_8.as_ref().unwrap();
+        let bitwise_bus_id = chip.cpu_chip.as_ref().unwrap().bus().inner.index as u32;
+        let bitwise_count_u32 = chip.count.as_ref();
+        let bitwise_num_bits = 8u32;
+
+        // Launch GPU apply-bus to update periphery histograms on device
+        cuda_abi::apc_apply_bus(
+            &output,
+            bus_interactions,
+            arg_spans,
+            bytecode,
+            var_range_bus_id,
+            tuple2_bus_id,
+            bitwise_bus_id,
+            var_range_count,
+            tuple2_count_u32,
+            tuple2_sizes,
+            bitwise_count_u32,
+            bitwise_num_bits,
+            num_apc_calls,
+        )
+        .unwrap();
 
         output.into()
     }
