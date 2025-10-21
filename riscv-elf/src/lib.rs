@@ -286,7 +286,7 @@ impl ElfProgram {
 }
 
 impl RiscVProgram for ElfProgram {
-    fn take_source_files_info(&mut self) -> impl Iterator<Item = SourceFileInfo> {
+    fn take_source_files_info(&mut self) -> impl Iterator<Item = SourceFileInfo<'_>> {
         self.dbg
             .file_list
             .iter()
@@ -326,7 +326,7 @@ impl RiscVProgram for ElfProgram {
 
     fn take_executable_statements(
         &mut self,
-    ) -> impl Iterator<Item = Statement<impl AsRef<str>, impl InstructionArgs>> {
+    ) -> impl Iterator<Item = Statement<'_, impl AsRef<str>, impl InstructionArgs>> {
         // In the output, the precedence is labels, locations, and then instructions.
         // We merge the 3 iterators with this operations: merge(labels, merge(locs, instructions)), where each is sorted by address.
 
@@ -1095,7 +1095,7 @@ struct RiscVInstructionIterator<'a> {
 }
 
 impl RiscVInstructionIterator<'_> {
-    fn new(base_addr: u32, data: &[u8]) -> RiscVInstructionIterator {
+    fn new(base_addr: u32, data: &[u8]) -> RiscVInstructionIterator<'_> {
         RiscVInstructionIterator {
             curr_address: base_addr,
             remaining_data: data,

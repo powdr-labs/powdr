@@ -8,7 +8,7 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-C target-cpu=native"
   RUST_BACKTRACE: 1
-  JEMALLOC_SYS_WITH_MALLOC_CONF: "retain:true,background_thread:true,metadata_thp:always,thp:always,dirty_decay_ms:-1,muzzy_decay_ms:-1,abort_conf:true"
+  JEMALLOC_SYS_WITH_MALLOC_CONF: "retain:true,background_thread:true,metadata_thp:always,dirty_decay_ms:10000,muzzy_decay_ms:10000,abort_conf:true"
   POWDR_OPENVM_SEGMENT_DELTA: 10000
 
 jobs:
@@ -43,11 +43,11 @@ jobs:
       - name: Install Rust toolchain 1.88
         run: rustup toolchain install 1.88
       - name: Install nightly
-        run: rustup toolchain install nightly-2025-05-14 --component rust-src
+        run: rustup toolchain install nightly-2025-10-01 --component rust-src
       - name: Install nightly
         run: rustup toolchain install nightly-2025-02-14 --component rust-src
       - name: Install riscv target
-        run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2025-05-14
+        run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2025-10-01
       - name: Install test dependencies
         run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
       - name: Build
@@ -77,12 +77,12 @@ jobs:
             target/
             Cargo.lock
           key: ${{ runner.os }}-cargo-pr-tests
-      - name: Install Rust toolchain nightly-2025-05-14 (with clippy and rustfmt)
-        run: rustup toolchain install nightly-2025-05-14 --component clippy,rustfmt,rust-src
+      - name: Install Rust toolchain nightly-2025-10-01 (with clippy and rustfmt)
+        run: rustup toolchain install nightly-2025-10-01 --component clippy,rustfmt,rust-src
       - name: Install Rust toolchain 1.88
         run: rustup toolchain install 1.88
       - name: Install riscv target
-        run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2025-05-14
+        run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2025-10-01
       - name: Install test dependencies
         run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
       - name: Run benchmarks
@@ -122,10 +122,9 @@ jobs:
 
       - name: Install cargo openvm
         # Rust 1.88 is needed by fresher versions of dependencies of cargo-openvm.
-        # For now we point to the powdr-labs/openvm commit that switches to Rust 1.88.
         run: |
           rustup toolchain install 1.88
-          cargo +1.88 install --git 'http://github.com/powdr-labs/openvm.git' --rev fbd69da cargo-openvm
+          cargo +1.88 install --git 'http://github.com/openvm-org/openvm.git' cargo-openvm
 
       - name: Setup python venv
         run: |
@@ -148,7 +147,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: powdr-labs/openvm-reth-benchmark
-          ref: main
+          ref: 9641a47c70e4003e54a96947d4138c63825f1b12
           path: openvm-reth-benchmark
 
       - name: Patch openvm-reth-benchmark to use local powdr

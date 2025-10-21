@@ -5,18 +5,43 @@ use num_traits::Zero;
 
 use powdr_number::{log2_exact, FieldElement, LargeInt};
 
-/// Constraint on the values of a variable X.
-/// It does not have to be an interval.
+/// In an abstract way, a RangeConstraint is just a set of values. It is mainly used to
+/// combine the effects of multiple AlgebraicConstraints on the same variable.
 ///
 /// Currently, we can represent interval ranges (both "wrapping" and "non-wrapping" ones)
 /// and bit masks. The actual constraint is the conjunction of the two.
 ///
-/// Note that the same constraint can have multiple representations.
+/// The idea behind wrapping intervals is that we want to represent both signed and
+/// unsigned numbers. Furthermore, by supporting wrapping intervals we do not lose
+/// any information when adding or substracting constants.
+///
+/// The semantics and correctness of RangeConstraints is mainly defined by the following notion:
+///
+/// We say a RangeConstraint `r` on an expression `e` is `valid` in a ConstraintSystem
+/// if for every satisfying assignment of the ConstraintSystem, the value of `e`
+/// under this assignment is allowed by `r`.
+///
+/// All the operations on RangeConstraints (like combine_sum, conjunction, ...) preserve
+/// validity, i.e. if we have an expression `e1 + e2` and we know that `r1` is a valid
+/// RangeConstraint for `e1` and `r2` is a valid RangeConstraint for `e2`, then
+/// the result of `r1.combine_sum(r2)` is a valid RangeConstraint for `e1 + e2`.
+///
+/// In particular, a fully unconstrained RangeConstraint is always valid for every expression.
+/// in this way, range constraints are an over-approximation, i.e. they can be less strict
+/// than the expressions they model. They might allow a value that is actually not
+/// possible, but if the range constraint disallows a value, this value is definitely
+/// not possible. This is consistent because e.g. an algebraic constraint in isolation
+/// also over-approximates in contrast to this constraint being in the context
+/// of the full system.
+///
+/// Finally, please be aware that same constraint can have multiple representations.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct RangeConstraint<T: FieldElement> {
-    /// Bit-mask.
+    /// Bit-mask. A value `x` is allowed only if `x & mask == x` (when seen as unsigned integer).
     mask: T::Integer,
     /// Min-max inclusive range. Note that `max` can be smaller than `min`. In this case the range wraps.
+    /// If min <= max (seen as unsigned integers), then the constraint on `x` is `min <= x && x <= max`.
+    /// If min > max, then the constraint is `min <= x || x <= max`.
     min: T,
     max: T,
 }
@@ -49,15 +74,17 @@ impl<T: FieldElement> RangeConstraint<T> {
         }
     }
 
-    /// Constraint that allows values from min to max.
-    /// If min <= max, this means min <= x && x <= max.
-    /// If min > max, this means min <= x || x <= max.
+    /// Constraint that allows the values `min`, `min + 1`, ..., `max`.
+    /// Since this sequence can wrap around the field modulus, it means that
+    /// `x` is allowed if and only if:
+    /// - min <= x && x <= max  if min <= max
+    /// - min <= x || x <= max  if min > max,
     #[inline]
     pub fn from_range(min: T, max: T) -> Self {
         let mask = if min <= max {
             mask_from_bits::<T>(max.to_integer().num_bits())
         } else {
-            !T::Integer::from(0)
+            Self::unconstrained().mask
         };
         Self { mask, min, max }
     }
@@ -67,6 +94,8 @@ impl<T: FieldElement> RangeConstraint<T> {
         Self::from_mask(!T::Integer::zero())
     }
 
+    /// Returns true if the range constraint does not impose any
+    /// restrictions on the values.
     pub fn is_unconstrained(&self) -> bool {
         self.range_width() == Self::unconstrained().range_width()
             && self.mask == Self::unconstrained().mask
@@ -79,7 +108,8 @@ impl<T: FieldElement> RangeConstraint<T> {
         &self.mask
     }
 
-    /// Returns a min-max inclusive range. Note that `max` can be smaller than `min`. In this case the range wraps.
+    /// Returns the interval part [min..=max] of the Range Constraint.
+    /// Note that `max` can be smaller than `min`. In this case the range wraps.
     /// Semantics, with (min, max) = range():
     /// If min <= max, this means min <= x && x <= max.
     /// If min > max, this means min <= x || x <= max.
@@ -98,7 +128,6 @@ impl<T: FieldElement> RangeConstraint<T> {
         self.range_width()
     }
 
-    /// Returns true if `v` is an allowed value for this range constraint.
     pub fn allows_value(&self, v: T) -> bool {
         let in_range = if self.min <= self.max {
             self.min <= v && v <= self.max
@@ -109,38 +138,17 @@ impl<T: FieldElement> RangeConstraint<T> {
         in_range && in_mask
     }
 
-    /// Splits this range constraint into a disjoint union with roughly the same number of allowed values.
-    /// The two ranges will be disjoint, and the union of the two will be the same as the original range
-    /// (or at least include the original range).
-    /// This is useful for branching on a variable.
-    /// Panics if the range is a single value.
-    pub fn bisect(&self) -> (Self, Self) {
-        assert!(self.try_to_single_value().is_none());
-        // TODO we could also try to bisect according to the masks, but this code currently does not
-        // support complements of masks.
-        // Better to bisect according to min/max.
-        let half_width = T::from(self.range_width() >> 1);
-        assert!(half_width > T::zero());
-        (
-            Self {
-                max: self.min + half_width - 1.into(),
-                ..self.clone()
-            },
-            Self {
-                min: self.min + half_width,
-                ..self.clone()
-            },
-        )
-    }
-
-    /// The range constraint of the sum of two expressions.
+    /// The range constraint of the sum of two expressions:
+    /// If `r1` is a valid RangeConstraint for `e1` and `r2` is a valid RangeConstraint for `e2`,
+    /// then `r1.combine_sum(r2)` is a valid RangeConstraint for `e1 + e2`.
     pub fn combine_sum(&self, other: &Self) -> Self {
+        let unconstrained = Self::unconstrained();
         // TODO we could use "add_with_carry" to see if this created an overflow.
         // it might even be enough to check if certain bits are set in the masks.
         let mask = if self.mask.to_arbitrary_integer() + other.mask.to_arbitrary_integer()
             >= T::modulus().to_arbitrary_integer()
         {
-            !T::Integer::from(0)
+            unconstrained.mask
         } else {
             // This could be made stricter.
             (self.mask + other.mask) | self.mask | other.mask
@@ -148,16 +156,18 @@ impl<T: FieldElement> RangeConstraint<T> {
 
         let (min, max) = if self.range_width().to_arbitrary_integer()
             + other.range_width().to_arbitrary_integer()
-            <= T::modulus().to_arbitrary_integer()
+            <= unconstrained.range_width().to_arbitrary_integer()
         {
             (self.min + other.min, self.max + other.max)
         } else {
-            (T::one(), T::zero())
+            unconstrained.range()
         };
         Self { min, max, mask }
     }
 
-    /// The range constraint of the product of two expressions.
+    /// The range constraint of the product of two expressions:
+    /// If `r1` is a valid RangeConstraint for `e1` and `r2` is a valid RangeConstraint for `e2`,
+    /// then `r1.combine_product(r2)` is a valid RangeConstraint for `e1 * e2`.
     pub fn combine_product(&self, other: &Self) -> Self {
         if let Some(v) = other.try_to_single_value() {
             self.multiple(v)
@@ -170,11 +180,16 @@ impl<T: FieldElement> RangeConstraint<T> {
         {
             Self::from_range(self.min * other.min, self.max * other.max)
         } else {
-            Default::default()
+            Self::unconstrained()
         }
     }
 
     /// Returns the conjunction of this constraint and the other.
+    /// This operation is not lossless, but if `r1` and `r2` allow
+    /// a value `x`, then `r1.conjunction(r2)` also allows `x`.
+    /// Furthermore, if `r1` and `r2` are valid RangeConstraints for
+    /// the same expression `e`, then `r1.conjunction(r2)` is also a valid
+    /// RangeConstraint for `e`.
     pub fn conjunction(&self, other: &Self) -> Self {
         let mut mask = self.mask & other.mask;
         // We might lose information because the intersection of two potentially wrapping
@@ -209,6 +224,11 @@ impl<T: FieldElement> RangeConstraint<T> {
     }
 
     /// Returns the disjunction of this constraint and the other.
+    /// This operation is not lossless, but if `r1` or `r2` allow
+    /// a value `x`, then `r1.disjunction(r2)` also allows `x`.
+    /// Furthermore, if `r1` OR `r2` is a valid RangeConstraint for
+    /// the same expression `e`, then `r1.disjunction(r2)` is a valid
+    /// RangeConstraint for `e`.
     pub fn disjunction(&self, other: &Self) -> Self {
         let mask = self.mask | other.mask;
         match (self.min <= self.max, other.min <= other.max) {
@@ -235,6 +255,8 @@ impl<T: FieldElement> RangeConstraint<T> {
     }
 
     /// The constraint of an integer multiple of an expression.
+    /// If `r` is a valid RangeConstraint for `e`, then `r.multiple(factor)`
+    /// is a valid RangeConstraint for `factor * e`.
     pub fn multiple(&self, factor: T) -> Self {
         let mask = log2_exact(factor.to_arbitrary_integer()).and_then(|exponent| {
             (self.mask.to_arbitrary_integer() << exponent < T::modulus().to_arbitrary_integer())
@@ -252,15 +274,17 @@ impl<T: FieldElement> RangeConstraint<T> {
         }
     }
 
+    /// If only a single value satisfies this condition, returns this value.
     pub fn try_to_single_value(&self) -> Option<T> {
-        if self.min == self.max {
+        if self.min == self.max && self.min.to_integer() & self.mask == self.min.to_integer() {
             Some(self.min)
         } else {
             None
         }
     }
 
-    /// Returns true if no value can satisfy both range constraints at the same time.
+    /// If this function returns true, then no value can satisfy both range constraints at the same time.
+    /// If it returns false, this might also be the case, but we cannot be sure.
     pub fn is_disjoint(&self, other: &RangeConstraint<T>) -> bool {
         // True if the intersection allows zero.
         let zero_allowed = self.allows_value(T::zero()) && other.allows_value(T::zero());
@@ -310,6 +334,10 @@ fn mask_from_bits<T: FieldElement>(bits: usize) -> T::Integer {
     }
 }
 
+/// If an expression `x` is in the range `[min, max]`, returns
+/// an a range `[min', max']` such that `factor * x` is in that range.
+///
+/// Inverted ranges are possible for both the input and the output.
 fn range_multiple<T: FieldElement>(min: T, max: T, factor: T) -> (T, T) {
     // This is correct by iterated addition.
     if range_width(min, max).to_arbitrary_integer() * factor.to_arbitrary_integer()
@@ -317,38 +345,44 @@ fn range_multiple<T: FieldElement>(min: T, max: T, factor: T) -> (T, T) {
     {
         (min * factor, max * factor)
     } else {
+        // The range that allows all values
         (T::one(), T::zero())
     }
 }
 
 /// Computes the intersection of two intervals.
 /// There are cases where the intersection cannot be represented as a single internal.
-/// in that case, it returns the smaller of the two inputs.
+/// in that case, it returns the smaller of the two inputs (which is a correct
+/// range constraint in the sense that they can always be under-approximations,
+/// but it loses some information).
 /// If the intersection is empty, returns None.
 fn interval_intersection<T: FieldElement>(a: (T, T), b: (T, T)) -> Option<(T, T)> {
     // We shift both intervals until they are both non-wrapping intervals.
     // If we do not succeed after shifting both of them by the smallest amount,
     // it means that the intersection cannot be expressed as a single interval.
     // In that case we just choose the smaller of the two inputs.
-    if let Some((shift, (a_shifted, b_shifted))) = [a.0, b.0].into_iter().find_map(|shift| {
+    match [a.0, b.0].into_iter().find_map(|shift| {
         let a_shifted = shifted_interval(a, -shift);
         let b_shifted = shifted_interval(b, -shift);
         (a_shifted.0 <= a_shifted.1 && b_shifted.0 <= b_shifted.1)
             .then_some((shift, (a_shifted, b_shifted)))
     }) {
-        let intersection = (
-            cmp::max(a_shifted.0, b_shifted.0),
-            cmp::min(a_shifted.1, b_shifted.1),
-        );
-        // If min is larger than max, the intersection is empty.
-        (intersection.0 <= intersection.1).then_some(shifted_interval(intersection, shift))
-    } else {
-        // The intersection consists of two intervals. We cannot represent that,
-        // so we return the smaller of the input intervals.
-        if range_width(a.0, a.1) <= range_width(b.0, b.1) {
-            Some(a)
-        } else {
-            Some(b)
+        Some((shift, (a_shifted, b_shifted))) => {
+            let intersection = (
+                cmp::max(a_shifted.0, b_shifted.0),
+                cmp::min(a_shifted.1, b_shifted.1),
+            );
+            // If min is larger than max, the intersection is empty.
+            (intersection.0 <= intersection.1).then_some(shifted_interval(intersection, shift))
+        }
+        None => {
+            // The intersection consists of two intervals. We cannot represent that,
+            // so we return the smaller of the input intervals.
+            if range_width(a.0, a.1) <= range_width(b.0, b.1) {
+                Some(a)
+            } else {
+                Some(b)
+            }
         }
     }
 }
@@ -483,15 +517,9 @@ mod test {
         );
 
         // Test overflow of masks. Modulus is: 0xffffffff00000001
-        assert_eq!(
-            RCg::from_mask(0xefffffff00000001u64)
-                .combine_sum(&RCg::from_mask(0x7ffffffff0000000u64)),
-            RCg {
-                min: 1.into(),
-                max: 0.into(),
-                mask: u64::MAX.into()
-            }
-        );
+        assert!(RCg::from_mask(0xefffffff00000001u64)
+            .combine_sum(&RCg::from_mask(0x7ffffffff0000000u64))
+            .is_unconstrained());
     }
 
     #[test]
@@ -533,14 +561,9 @@ mod test {
         // Sum of range widths is larger than modulus.
         let two_range = RCg::from_range(50.into(), 51.into());
         let half_modulus_plus_one_range = half_modulus_range.combine_sum(&two_range);
-        assert_eq!(
-            half_modulus_range.combine_sum(&half_modulus_plus_one_range.combine_sum(&two_range)),
-            RCg {
-                min: 1.into(),
-                max: 0.into(),
-                mask: u64::MAX.into(),
-            }
-        );
+        assert!(half_modulus_range
+            .combine_sum(&half_modulus_plus_one_range.combine_sum(&two_range))
+            .is_unconstrained());
     }
 
     #[test]
@@ -788,39 +811,6 @@ mod test {
                 }
             }
         }
-    }
-
-    fn range_constraint(min: u64, max: u64) -> RangeConstraint<GoldilocksField> {
-        RangeConstraint::from_range(min.into(), max.into())
-    }
-
-    #[test]
-    fn bisect_regular() {
-        let (b, c) = range_constraint(10, 20).bisect();
-        assert_eq!(b.range(), (10.into(), 14.into()));
-        assert_eq!(c.range(), (15.into(), 20.into()));
-
-        let (b, c) = range_constraint(0, 1).bisect();
-        assert_eq!(b.try_to_single_value(), Some(0.into()));
-        assert_eq!(c.try_to_single_value(), Some(1.into()));
-
-        let (b, c) = range_constraint(0, 2).bisect();
-        assert_eq!(b.try_to_single_value(), Some(0.into()));
-        assert_eq!(c.range(), (1.into(), 2.into()));
-    }
-
-    #[test]
-    fn bisect_inverted() {
-        let (b, c) = range_constraint(20, 10).bisect();
-        assert_eq!(b.range(), (20.into(), 9223372034707292175_u64.into()));
-        assert_eq!(c.range(), (9223372034707292176_u64.into(), 10.into()));
-    }
-
-    #[test]
-    #[should_panic]
-    fn bisect_single() {
-        let a = RangeConstraint::<GoldilocksField>::from_range(10.into(), 10.into());
-        a.bisect();
     }
 
     #[test]

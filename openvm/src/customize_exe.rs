@@ -18,7 +18,7 @@ use crate::PrecompileImplementation;
 use crate::{CompiledProgram, SpecializedConfig};
 use itertools::Itertools;
 use openvm_instructions::instruction::Instruction as OpenVmInstruction;
-use openvm_instructions::program::Program as OpenVmProgram;
+use openvm_instructions::program::{Program as OpenVmProgram, DEFAULT_PC_STEP};
 use openvm_instructions::VmOpcode;
 use openvm_stark_backend::{
     interaction::SymbolicInteraction,
@@ -46,17 +46,6 @@ use crate::{
 };
 
 pub const POWDR_OPCODE: usize = 0x10ff;
-
-#[derive(Debug)]
-pub enum Error {
-    AutoPrecompileError,
-}
-
-impl From<powdr_autoprecompiles::constraint_optimizer::Error> for Error {
-    fn from(_e: powdr_autoprecompiles::constraint_optimizer::Error) -> Self {
-        Error::AutoPrecompileError
-    }
-}
 
 /// An adapter for the BabyBear OpenVM precompiles.
 /// Note: This could be made generic over the field, but the implementation of `Candidate` is BabyBear-specific.
@@ -135,7 +124,7 @@ impl<'a, F: PrimeField32> Program<Instr<F>> for Prog<'a, F> {
     }
 
     fn pc_step(&self) -> u32 {
-        self.0.step
+        DEFAULT_PC_STEP
     }
 
     fn instructions(&self) -> Box<dyn Iterator<Item = Instr<F>> + '_> {
@@ -153,7 +142,7 @@ impl<'a, F: PrimeField32> Program<Instr<F>> for Prog<'a, F> {
 }
 
 pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
-    OriginalCompiledProgram { mut exe, vm_config }: OriginalCompiledProgram,
+    OriginalCompiledProgram { exe, vm_config }: OriginalCompiledProgram,
     labels: &BTreeSet<u32>,
     debug_info: &DebugInfo,
     config: PowdrConfig,
@@ -168,16 +157,12 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         &exe.program,
         labels.clone(),
         exe.program.pc_base,
-        exe.program.step,
+        DEFAULT_PC_STEP,
     );
 
     let program = Prog(&exe.program);
 
-    let range_tuple_checker_sizes = vm_config
-        .sdk_vm_config
-        .rv32m
-        .unwrap()
-        .range_tuple_checker_sizes;
+    let range_tuple_checker_sizes = vm_config.sdk.rv32m.unwrap().range_tuple_checker_sizes;
     let vm_config = VmConfig {
         instruction_handler: &airs,
         bus_interaction_handler: OpenVmBusInteractionHandler::new(
@@ -236,7 +221,9 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
     metrics::gauge!("total_apc_gen_time_ms").set(start.elapsed().as_millis() as f64);
 
     let pc_base = exe.program.pc_base;
-    let pc_step = exe.program.step;
+    let pc_step = DEFAULT_PC_STEP;
+    // We need to clone the program because we need to modify it to add the apc instructions.
+    let mut exe = (*exe).clone();
     let program = &mut exe.program;
 
     tracing::info!("Adjust the program with the autoprecompiles");
@@ -267,7 +254,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         .collect();
 
     CompiledProgram {
-        exe,
+        exe: Arc::new(exe),
         vm_config: SpecializedConfig::new(
             original_config,
             extensions,
