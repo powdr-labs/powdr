@@ -92,6 +92,9 @@ expect-test = "1.5.1"
 criterion = { version = "0.4", features = ["html_reports"] }
 tracing-log = "0.2.0"
 
+[build-dependencies]
+openvm-cuda-builder.workspace = true
+
 [lib]
 bench = false # See https://github.com/bheisler/criterion.rs/issues/458
 

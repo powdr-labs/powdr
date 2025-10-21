@@ -1,22 +1,24 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+};
 
 use itertools::Itertools;
 use openvm_circuit::{arch::AirInventory, utils::next_power_of_two_or_zero};
 use openvm_cuda_common::d_buffer::DeviceBuffer;
 use openvm_stark_backend::{
-    p3_field::{Field, FieldAlgebra, PrimeField32},
-    p3_matrix::dense::{DenseMatrix, RowMajorMatrix},
+    p3_field::{FieldAlgebra},
+    p3_matrix::dense::{DenseMatrix},
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
-    expression::{AlgebraicEvaluator, ConcreteBusInteraction, MappingRowEvaluator},
-    trace_handler::{generate_trace, TraceData, TraceTrait},
+    trace_handler::{TraceTrait},
     Apc,
 };
 use powdr_constraint_solver::constraint_system::ComputationMethod;
-use powdr_number::ExpressionConvertible;
 
 use crate::{
+    cuda_abi::{self, OriginalAir, Subst},
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     powdr_extension::{
         executor::OriginalArenas,
@@ -28,15 +30,9 @@ use crate::{
 #[cfg(feature = "cuda")]
 use crate::DeviceMatrix;
 #[cfg(feature = "cuda")]
-use openvm_cuda_common::copy::{MemCopyD2H, MemCopyH2D};
+use openvm_cuda_common::copy::{MemCopyH2D};
 #[cfg(feature = "cuda")]
 use openvm_stark_backend::prover::hal::MatrixDimensions;
-
-#[cfg(feature = "cuda")]
-pub type Witness<T> = DeviceMatrix<T>;
-
-#[cfg(not(feature = "cuda"))]
-pub type Witness<T> = RowMajorMatrix<T>;
 
 /// The inventory of the PowdrExecutor, which contains the executors for each opcode.
 mod inventory;
@@ -70,35 +66,24 @@ impl<F> From<Arc<DenseMatrix<F>>> for SharedCpuTrace<F> {
 
 /// A wrapper around a DeviceMatrix to implement `TraceTrait` which is required for `generate_trace`.
 pub struct SharedGpuTrace<F> {
-    matrix: DenseMatrix<F>,
+    pub matrix: DeviceMatrix<F>,
 }
 
 impl<F: Send + Sync> TraceTrait<F> for SharedGpuTrace<F> {
-    type Values = Vec<F>;
+    type Values = DeviceBuffer<F>;
 
     fn width(&self) -> usize {
-        self.matrix.width
+        self.matrix.width()
     }
 
     fn values(&self) -> &Self::Values {
-        &self.matrix.values
+        &self.matrix.buffer()
     }
 }
 
-impl<F: Clone + Send + Sync + Copy + Default> From<DeviceMatrix<F>> for SharedGpuTrace<F> {
+impl<F> From<DeviceMatrix<F>> for SharedGpuTrace<F> {
     fn from(matrix: DeviceMatrix<F>) -> Self {
-        let width = matrix.width();
-        let height = matrix.height();
-        let values = matrix.buffer().to_host().unwrap();
-
-        // Create column major matrix to transpose
-        let column_major_matrix = DenseMatrix::new(values, height);
-        // Transpose
-        let row_major_matrix = column_major_matrix.transpose();
-
-        Self {
-            matrix: row_major_matrix,
-        }
+        Self { matrix }
     }
 }
 
@@ -129,25 +114,13 @@ impl PowdrTraceGenerator {
         }
     }
 
-    #[cfg(not(feature = "cuda"))]
-    pub fn generate_witness(&self, mut original_arenas: OriginalArenas) -> Witness<BabyBear> {
-        assert!(
-            original_arenas.number_of_calls() > 0,
-            "APC must be called to generate witness"
-        );
-        let (values, width, _) = self.generate_witness_values(original_arenas);
-        Witness::new(values, width)
-    }
-
-    #[cfg(feature = "cuda")]
-    pub fn generate_witness(&self, mut original_arenas: OriginalArenas) -> Witness<BabyBear> {
+    pub fn generate_witness(&self, original_arenas: OriginalArenas) -> SharedTrace<BabyBear> {
         assert!(
             original_arenas.number_of_calls() > 0,
             "APC must be called to generate witness"
         );
         // Values are already padded
-        let (values, width, height) = self.generate_witness_values(original_arenas);
-        device_matrix_from_values(values, width, height)
+        self.generate_witness_values(original_arenas)
     }
 
     /// Generates the witness for the autoprecompile. The result will be a matrix of
@@ -156,7 +129,7 @@ impl PowdrTraceGenerator {
     pub fn generate_witness_values(
         &self,
         mut original_arenas: OriginalArenas,
-    ) -> (Vec<BabyBear>, usize, usize) {
+    ) -> SharedTrace<BabyBear> {
         let num_apc_calls = original_arenas.number_of_calls();
 
         let chip_inventory = {
@@ -196,94 +169,110 @@ impl PowdrTraceGenerator {
             })
             .collect();
 
-        let TraceData {
-            dummy_values,
-            dummy_trace_index_to_apc_index_by_instruction,
-            apc_poly_id_to_index,
-            columns_to_compute,
-        } = generate_trace(
-            &dummy_trace_by_air_name,
-            &self.original_airs,
-            num_apc_calls,
-            &self.apc,
-        );
+        // Map from apc poly id to its index in the final apc trace
+        let apc_poly_id_to_index: BTreeMap<u64, usize> = self
+            .apc
+            .machine
+            .main_columns()
+            .enumerate()
+            .map(|(index, c)| (c.id, index))
+            .collect();
 
         // allocate for apc trace
         let width = apc_poly_id_to_index.len();
         let height = next_power_of_two_or_zero(num_apc_calls);
-        let mut values = <BabyBear as FieldAlgebra>::zero_vec(height * width);
 
-        // go through the final table and fill in the values
-        values
-            // a record is `width` values
-            // TODO: optimize by parallelizing on chunks of rows, currently fails because `dyn AnyChip<MatrixRecordArena<Val<SC>>>` is not `Send`
-            .chunks_mut(width)
-            .zip(dummy_values)
-            .for_each(|(row_slice, dummy_values)| {
-                // map the dummy rows to the autoprecompile row
-                for (dummy_row, dummy_trace_index_to_apc_index) in dummy_values
-                    .iter()
-                    .zip_eq(&dummy_trace_index_to_apc_index_by_instruction)
-                {
-                    let dummy_row =
-                        &dummy_row.data[dummy_row.start..(dummy_row.start + dummy_row.length)];
+        // Create a host-side buffer to prefill the output, column major, zero-initialized
+        // TODO: do this on GPU instead, to avoid large host<->device copies
+        let mut h_output = vec![BabyBear::ZERO; height * width];
 
-                    for (dummy_trace_index, apc_index) in dummy_trace_index_to_apc_index {
-                        row_slice[*apc_index] = dummy_row[*dummy_trace_index];
+        // Prefill `is_valid` column to 1 for the number of calls
+        for (column_idx, computation_method) in &self.apc.machine.derived_columns {
+            let col_index = apc_poly_id_to_index[&column_idx.id];
+            match computation_method {
+                ComputationMethod::Constant(c) => {
+                    for row in 0..num_apc_calls {
+                        h_output[row + col_index * height] = *c;
                     }
                 }
-
-                // Fill in the columns we have to compute from other columns
-                // (these are either new columns or for example the "is_valid" column).
-                for (column, computation_method) in columns_to_compute {
-                    let col_index = apc_poly_id_to_index[&column.id];
-                    row_slice[col_index] = match computation_method {
-                        ComputationMethod::Constant(c) => *c,
-                        ComputationMethod::InverseOrZero(expr) => {
-                            let expr_val = expr.to_expression(&|n| *n, &|column_ref| {
-                                row_slice[apc_poly_id_to_index[&column_ref.id]]
-                            });
-                            if expr_val.is_zero() {
-                                BabyBear::ZERO
-                            } else {
-                                expr_val.inverse()
-                            }
-                        }
-                    };
+                ComputationMethod::InverseOrZero(_) => {
+                    unimplemented!("Cannot prefill inverse_or_zero without full row data")
                 }
+            }
+        }
 
-                let evaluator = MappingRowEvaluator::new(row_slice, &apc_poly_id_to_index);
+        let d_output = h_output.to_device().unwrap();
 
-                // replay the side effects of this row on the main periphery
-                self.apc
-                    .machine()
-                    .bus_interactions
-                    .iter()
-                    .for_each(|interaction| {
-                        let ConcreteBusInteraction { id, mult, args } =
-                            evaluator.eval_bus_interaction(interaction);
-                        // self.periphery.real.apply(
-                        //     id as u16,
-                        //     mult.as_canonical_u32(),
-                        //     args.map(|arg| arg.as_canonical_u32()),
-                        // );
-                    });
-            });
+        let mut output = DeviceMatrix::<BabyBear>::new(Arc::new(d_output), height, width);
 
-        (values, width, height)
+        // Prepare `OriginalAir` and `Subst` arrays
+        let (airs, substitutions) = {
+            self.apc
+                // go through original instructions
+                .instructions()
+                .iter()
+                // along with their substitutions
+                .zip_eq(self.apc.subs())
+                // map to `(air_name, substitutions)`
+                .map(|(instr, subs)| (&self.original_airs.opcode_to_air[&instr.0.opcode], subs))
+                // group by air name. This results in `HashMap<air_name, Vec<subs>>` where the length of the vector is the number of rows which are created in this air, per apc call
+                .into_group_map()
+                // go through each air and its substitutions
+                .iter()
+                .fold(
+                    (Vec::new(), Vec::new()),
+                    |(mut airs, mut substitutions), (air_name, subs_by_row)| {
+                        // Find the substitutions that map to an apc column
+                        let filtered_substitutions: Vec<Subst> = subs_by_row
+                            .iter()
+                            // enumerate over them to get the row index inside the air block
+                            .enumerate()
+                            .flat_map(|(row, subs)| {
+                                // for each substitution, map to `Subst` struct if it exists in apc
+                                subs.iter()
+                                    .enumerate()
+                                    .filter_map(|(dummy_index, poly_id)| {
+                                        // Check if this dummy column is present in the final apc row
+                                        apc_poly_id_to_index
+                                            .get(poly_id)
+                                            // If it is, map the dummy index to the apc index
+                                            .map(|apc_index| Subst {
+                                                col: dummy_index as i32,
+                                                row: row as i32,
+                                                apc_col: *apc_index as i32,
+                                            })
+                                    })
+                                    .collect_vec()
+                            })
+                            // sort by column so that reads to the same column are coalesced, as the table is column major
+                            .sorted_by(|left, right| left.col.cmp(&right.col))
+                            .collect();
+
+                        // get the device dummy trace for this air
+                        let dummy_trace = &dummy_trace_by_air_name[*air_name];
+
+                        airs.push(OriginalAir {
+                            width: dummy_trace.matrix.width() as i32,
+                            height: dummy_trace.matrix.height() as i32,
+                            buffer: dummy_trace.matrix.buffer().as_ptr(),
+                            row_block_size: subs_by_row.len() as i32,
+                            substitutions_offset: substitutions.len() as i32,
+                            substitutions_length: filtered_substitutions.len() as i32,
+                        });
+
+                        substitutions.extend(filtered_substitutions);
+
+                        (airs, substitutions)
+                    },
+                )
+        };
+
+        // Send the airs and substitutions to device
+        let airs = airs.to_device().unwrap();
+        let substitutions = substitutions.to_device().unwrap();
+
+        cuda_abi::apc_tracegen(&mut output, airs, substitutions, num_apc_calls).unwrap();
+
+        output.into()
     }
-}
-
-#[cfg(feature = "cuda")]
-pub fn device_matrix_from_values(
-    values: Vec<BabyBear>,
-    width: usize,
-    height: usize,
-) -> DeviceMatrix<BabyBear> {
-    // TODO: we copy the values from host (CPU) to device (GPU), and should study how to generate APC trace natively in GPU
-    // Transpose back to column major matrix before sending to device
-    let row_major_matrix = DenseMatrix::new(values, width);
-    let column_major_matrix = row_major_matrix.transpose();
-    let device_buffer = column_major_matrix.values.to_device().unwrap();
-    DeviceMatrix::new(Arc::new(device_buffer), height, width)
 }
