@@ -135,6 +135,65 @@ fn solve_ff<T: FieldElement>(
     (res, stdout.to_string(), stderr.to_string())
 }
 
+fn solve_intmod<T: FieldElement>(
+    machine: &SymbolicMachine<T>,
+    decls: BTreeSet<String>,
+    extra_before_check: Option<String>,
+    extra_after_check: Option<String>,
+    bus_interaction_config: SmtBusInteractionConfig,
+) -> (SmtResult, String, String) {
+    let mut smt2 = symbolic_machine_to_smtlib2_intmod(machine, decls, bus_interaction_config);
+
+    let mut file = NamedTempFile::new().unwrap();
+
+    if let Some(extra) = extra_before_check {
+        println!("adding before check: {extra}");
+        smt2 = format!("{smt2}\n{extra}\n");
+    }
+
+    smt2 = format!("{smt2}\n(check-sat)");
+
+    if let Some(extra) = extra_after_check {
+        println!("adding after check {extra}");
+        smt2 = format!("{smt2}\n{extra}\n");
+    }
+
+    writeln!(file, "{smt2}").unwrap();
+
+    println!("Solving for\n{smt2}");
+
+    let output = Command::new("cvc5")
+        .arg(file.path())
+        .arg("--mod-range-solver")
+        .arg("--nia-intro-mm-mod")
+        .arg("--produce-models")
+        .arg("--tlimit-per=5000")
+        .arg("--tlimit=10000")
+        .output()
+        .expect("Failed to run cvc5");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    if !stdout.is_empty() {
+        eprintln!("cvc5 stdout: {stdout}");
+    }
+    if !stderr.is_empty() {
+        eprintln!("cvc5 stderr: {stderr}");
+    }
+
+    let res = if stdout.contains("timeout") || stdout.contains("unknown") {
+        SmtResult::Unknown
+    } else if stdout.contains("unsat") {
+        SmtResult::Unsat
+    } else {
+        SmtResult::Sat
+    };
+
+    println!("SMT result = {res:?}");
+    (res, stdout.to_string(), stderr.to_string())
+}
+
 fn algebraic_to_smt_ff<T: FieldElement>(expr: &AlgebraicExpression<T>) -> String {
     match expr {
         AlgebraicExpression::Number(x) => format!("(as ff{x} BB)"),
@@ -152,6 +211,29 @@ fn algebraic_to_smt_ff<T: FieldElement>(expr: &AlgebraicExpression<T>) -> String
             let expr = algebraic_to_smt_ff(expr);
             let op_str = match op {
                 AlgebraicUnaryOperator::Minus => "ff.neg",
+            };
+            format!("({op_str} {expr})")
+        }
+    }
+}
+
+fn algebraic_to_smt_intmod<T: FieldElement>(expr: &AlgebraicExpression<T>) -> String {
+    match expr {
+        AlgebraicExpression::Number(x) => format!("{x}"),
+        AlgebraicExpression::Reference(AlgebraicReference { name, .. }) => (**name).clone(),
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+            let left = algebraic_to_smt_intmod(left);
+            let right = algebraic_to_smt_intmod(right);
+            match op {
+                AlgebraicBinaryOperator::Add => format!("(+ {left} {right})"),
+                AlgebraicBinaryOperator::Sub => format!("(- {left} {right})"),
+                AlgebraicBinaryOperator::Mul => format!("(* {left} {right})"),
+            }
+        }
+        AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
+            let expr = algebraic_to_smt_intmod(expr);
+            let op_str = match op {
+                AlgebraicUnaryOperator::Minus => "-",
             };
             format!("({op_str} {expr})")
         }
@@ -180,7 +262,7 @@ impl SmtRangeConstraint {
         SmtRangeConstraint { var, bits }
     }
 
-    pub fn to_smt(&self) -> String {
+    pub fn to_smt_ff(&self) -> String {
         // assert!(self.bits <= 8);
         let terms = (0..(1 << self.bits))
             .map(|i| format!("(ff.add {} (ff.neg (as ff{i} BB)))", self.var))
@@ -191,25 +273,50 @@ impl SmtRangeConstraint {
             terms[0].clone()
         }
     }
+
+    pub fn to_smt_intmod(&self) -> String {
+        format!(
+            "(and (>= {} 0) (< {} {}))",
+            self.var,
+            self.var,
+            1 << self.bits
+        )
+    }
 }
 
-fn symbolic_bus_interaction_to_smt_ff<T: FieldElement>(
+fn symbolic_bus_interaction_to_smt_range_ff<T: FieldElement>(
     b: &SymbolicBusInteraction<T>,
 ) -> Vec<SmtRangeConstraint> {
     if b.id == 1 {
-        memory_interaction_to_smt(b)
+        memory_interaction_to_smt_ff(b)
     } else if b.id == 3 {
-        range_check_interaction_to_smt(b)
+        range_check_interaction_to_smt_ff(b)
     } else if b.id == 6 {
-        byte_check_interaction_to_smt(b)
+        byte_check_interaction_to_smt_ff(b)
     } else if b.id == 7 {
-        tuple_range_check_interaction_to_smt(b)
+        tuple_range_check_interaction_to_smt_ff(b)
     } else {
         vec![]
     }
 }
 
-fn memory_interaction_to_smt<T: FieldElement>(
+fn symbolic_bus_interaction_to_smt_range_intmod<T: FieldElement>(
+    b: &SymbolicBusInteraction<T>,
+) -> Vec<SmtRangeConstraint> {
+    if b.id == 1 {
+        memory_interaction_to_smt_intmod(b)
+    } else if b.id == 3 {
+        range_check_interaction_to_smt_intmod(b)
+    } else if b.id == 6 {
+        byte_check_interaction_to_smt_intmod(b)
+    } else if b.id == 7 {
+        tuple_range_check_interaction_to_smt_intmod(b)
+    } else {
+        vec![]
+    }
+}
+
+fn memory_interaction_to_smt_ff<T: FieldElement>(
     b: &SymbolicBusInteraction<T>,
 ) -> Vec<SmtRangeConstraint> {
     assert_eq!(b.id, 1);
@@ -222,7 +329,20 @@ fn memory_interaction_to_smt<T: FieldElement>(
     ]
 }
 
-fn range_check_interaction_to_smt<T: FieldElement>(
+fn memory_interaction_to_smt_intmod<T: FieldElement>(
+    b: &SymbolicBusInteraction<T>,
+) -> Vec<SmtRangeConstraint> {
+    assert_eq!(b.id, 1);
+    assert!(b.args.len() > 5);
+    vec![
+        byte_check_to_smt(algebraic_to_smt_intmod(&b.args[2])),
+        byte_check_to_smt(algebraic_to_smt_intmod(&b.args[3])),
+        byte_check_to_smt(algebraic_to_smt_intmod(&b.args[4])),
+        byte_check_to_smt(algebraic_to_smt_intmod(&b.args[5])),
+    ]
+}
+
+fn range_check_interaction_to_smt_ff<T: FieldElement>(
     b: &SymbolicBusInteraction<T>,
 ) -> Vec<SmtRangeConstraint> {
     assert_eq!(b.id, 3);
@@ -247,7 +367,32 @@ fn range_check_interaction_to_smt<T: FieldElement>(
     }
 }
 
-fn tuple_range_check_interaction_to_smt<T: FieldElement>(
+fn range_check_interaction_to_smt_intmod<T: FieldElement>(
+    b: &SymbolicBusInteraction<T>,
+) -> Vec<SmtRangeConstraint> {
+    assert_eq!(b.id, 3);
+    assert_eq!(b.args.len(), 2);
+    let v = algebraic_to_smt_intmod(&b.args[0]);
+    let bits = try_algebraic_number(&b.args[1])
+        .unwrap_or_else(|| {
+            panic!(
+                "Expected range check bits to be a number, got {}",
+                b.args[1]
+            )
+        })
+        .to_integer()
+        .try_into_u32()
+        .unwrap();
+    if bits <= 800 {
+        let max_range = 1 << bits;
+        // vec![range_check_to_smt(v, max_range)]
+        vec![SmtRangeConstraint::new(v, max_range)]
+    } else {
+        vec![]
+    }
+}
+
+fn tuple_range_check_interaction_to_smt_ff<T: FieldElement>(
     b: &SymbolicBusInteraction<T>,
 ) -> Vec<SmtRangeConstraint> {
     assert_eq!(b.id, 7);
@@ -257,7 +402,17 @@ fn tuple_range_check_interaction_to_smt<T: FieldElement>(
     vec![byte_check_to_smt(v1), byte_check_to_smt(v2)]
 }
 
-fn byte_check_interaction_to_smt<T: FieldElement>(
+fn tuple_range_check_interaction_to_smt_intmod<T: FieldElement>(
+    b: &SymbolicBusInteraction<T>,
+) -> Vec<SmtRangeConstraint> {
+    assert_eq!(b.id, 7);
+    assert_eq!(b.args.len(), 2);
+    let v1 = algebraic_to_smt_intmod(&b.args[0]);
+    let v2 = algebraic_to_smt_intmod(&b.args[1]);
+    vec![byte_check_to_smt(v1), byte_check_to_smt(v2)]
+}
+
+fn byte_check_interaction_to_smt_ff<T: FieldElement>(
     b: &SymbolicBusInteraction<T>,
 ) -> Vec<SmtRangeConstraint> {
     assert_eq!(b.id, 6);
@@ -266,6 +421,23 @@ fn byte_check_interaction_to_smt<T: FieldElement>(
     let v2 = algebraic_to_smt_ff(&b.args[1]);
     let v3 = algebraic_to_smt_ff(&b.args[2]);
     let v4 = algebraic_to_smt_ff(&b.args[3]);
+    vec![
+        byte_check_to_smt(v1),
+        byte_check_to_smt(v2),
+        byte_check_to_smt(v3),
+        byte_check_to_smt(v4),
+    ]
+}
+
+fn byte_check_interaction_to_smt_intmod<T: FieldElement>(
+    b: &SymbolicBusInteraction<T>,
+) -> Vec<SmtRangeConstraint> {
+    assert_eq!(b.id, 6);
+    assert_eq!(b.args.len(), 4);
+    let v1 = algebraic_to_smt_intmod(&b.args[0]);
+    let v2 = algebraic_to_smt_intmod(&b.args[1]);
+    let v3 = algebraic_to_smt_intmod(&b.args[2]);
+    let v4 = algebraic_to_smt_intmod(&b.args[3]);
     vec![
         byte_check_to_smt(v1),
         byte_check_to_smt(v2),
@@ -334,9 +506,9 @@ fn symbolic_machine_to_smtlib2_ff<T: FieldElement>(
         SmtBusInteractionConfig::All => {
             // All bus interactions.
             for bus_int in &machine.bus_interactions {
-                let bus_int_smt = symbolic_bus_interaction_to_smt_ff(bus_int);
+                let bus_int_smt = symbolic_bus_interaction_to_smt_range_ff(bus_int);
                 for bus_constraint in bus_int_smt {
-                    let a = format!("(= (as ff0 BB) {})", bus_constraint.to_smt());
+                    let a = format!("(= (as ff0 BB) {})", bus_constraint.to_smt_ff());
                     smt2_circuit.push_str(&a);
                     smt2_circuit.push('\n');
                 }
@@ -381,11 +553,11 @@ fn symbolic_machine_to_smtlib2_ff<T: FieldElement>(
             let bus_ints: BTreeSet<_> = machine
                 .bus_interactions
                 .iter()
-                .flat_map(|bus_int| symbolic_bus_interaction_to_smt_ff(bus_int))
+                .flat_map(|bus_int| symbolic_bus_interaction_to_smt_range_ff(bus_int))
                 .collect();
             for bus_constraint in &bus_ints {
                 if vars.iter().any(|v| &bus_constraint.var == v) {
-                    let a = format!("(assert (= (as ff0 BB) {}))", bus_constraint.to_smt());
+                    let a = format!("(assert (= (as ff0 BB) {}))", bus_constraint.to_smt_ff());
                     smt2_circuit.push_str(&a);
                     smt2_circuit.push('\n');
                 }
@@ -502,6 +674,210 @@ fn symbolic_machine_to_smtlib2_ff<T: FieldElement>(
     smt2
 }
 
+fn symbolic_machine_to_smtlib2_intmod<T: FieldElement>(
+    machine: &SymbolicMachine<T>,
+    decls: BTreeSet<String>,
+    bus_interaction_config: SmtBusInteractionConfig,
+) -> String {
+    let mut smt2 = String::new();
+    smt2.push_str("(set-option :incremental true)\n");
+
+    let mut this_decls = machine
+        .main_columns()
+        .map(|c|
+                // Variable declarations.
+                format!("{c}"))
+        .collect::<BTreeSet<String>>();
+
+    this_decls.extend(decls);
+
+    let decls = this_decls
+        .into_iter()
+        .map(|c| format!("(declare-fun {c} () Int)"))
+        .collect::<Vec<String>>()
+        .join("\n");
+
+    // smt2.push_str(&decls);
+    // smt2.push('\n');
+
+    let mut inputs = Vec::new();
+    let mut outputs = Vec::new();
+    let mut smt2_circuit = String::new();
+    match bus_interaction_config {
+        SmtBusInteractionConfig::None => {
+            // No bus interactions.
+        }
+        SmtBusInteractionConfig::All => {
+            // All bus interactions.
+            for bus_int in &machine.bus_interactions {
+                let bus_int_smt = symbolic_bus_interaction_to_smt_range_intmod(bus_int);
+                for bus_constraint in bus_int_smt {
+                    let a = bus_constraint.to_smt_intmod();
+                    smt2_circuit.push_str(&a);
+                    smt2_circuit.push('\n');
+                }
+                match bus_int.id {
+                    // Execution bridge and memory
+                    0 | 1 => {
+                        let mult = bus_int.try_multiplicity_to_number().unwrap_or_else(|| {
+                            panic!(
+                                "Expected multiplicity to be a number, got {:?}",
+                                bus_int.mult
+                            )
+                        });
+                        let minus_one = T::from(-1i32);
+                        let one = T::from(1u32);
+                        if mult == minus_one {
+                            inputs.push(bus_int.args.clone());
+                        } else if mult == one {
+                            outputs.push(bus_int.args.clone());
+                        } else {
+                            panic!("Expected multiplicity to be 1 or -1, got {mult}");
+                        }
+
+                        let a = format!(
+                            "(bus_int_{} {} {} {})",
+                            bus_int.args.len() + 2,
+                            bus_int.id,
+                            algebraic_to_smt_intmod(&bus_int.mult),
+                            bus_int
+                                .args
+                                .iter()
+                                .map(|arg| format!("(mod {} {P})", algebraic_to_smt_intmod(arg)))
+                                .join(" ")
+                        );
+                        smt2_circuit.push_str(&a);
+                        smt2_circuit.push('\n');
+                    }
+                    _ => {}
+                }
+            }
+        }
+        SmtBusInteractionConfig::Partial(vars) => {
+            let bus_ints: BTreeSet<_> = machine
+                .bus_interactions
+                .iter()
+                .flat_map(|bus_int| symbolic_bus_interaction_to_smt_range_intmod(bus_int))
+                .collect();
+            for bus_constraint in &bus_ints {
+                if vars.iter().any(|v| &bus_constraint.var == v) {
+                    let a = format!("(assert {})", bus_constraint.to_smt_intmod());
+                    smt2_circuit.push_str(&a);
+                    smt2_circuit.push('\n');
+                }
+            }
+        }
+    }
+
+    let bus_int_fs = inputs
+        .iter()
+        .chain(outputs.iter())
+        .map(|args| args.len())
+        .unique()
+        .map(|l| {
+            format!(
+                "(declare-fun bus_int_{} ({}) Bool)",
+                l + 2,
+                vec!["Int"; l + 2].join(" ")
+            )
+        })
+        .collect::<Vec<_>>();
+
+    smt2.push_str(&bus_int_fs.join("\n"));
+    smt2.push('\n');
+
+    for poly in &machine.constraints {
+        let c_smt = algebraic_to_smt_intmod(&poly.expr);
+        let a = format!("(= 0 (mod {c_smt} {P}))");
+        smt2_circuit.push_str(&a);
+        smt2_circuit.push('\n');
+    }
+
+    let input_cols: BTreeSet<String> =
+        inputs.iter().flatten().fold(BTreeSet::new(), |mut acc, a| {
+            acc.extend(expr_cols(a));
+            acc
+        });
+
+    println!("input cols: {input_cols:?}");
+    let output_cols: BTreeSet<String> = outputs
+        .iter()
+        .flatten()
+        .flat_map(|a| expr_cols(a))
+        .filter(|c| !input_cols.contains(c))
+        .collect();
+    println!("output cols: {output_cols:?}");
+
+    let circuit_def = format!(
+        "(define-fun f (\n{}\n) Bool (and true\n{}\n))",
+        input_cols
+            .iter()
+            .chain(output_cols.iter())
+            .map(|a| format!("({a} Int)"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        smt2_circuit
+    );
+
+    let outer_input_cols = input_cols
+        .iter()
+        .map(|c| format!("outer_{c}"))
+        .collect::<Vec<_>>();
+    let outer_output_cols = output_cols
+        .iter()
+        .map(|c| format!("outer_{c}"))
+        .collect::<Vec<_>>();
+    let nondet_output_cols = outer_output_cols
+        .iter()
+        .map(|a| format!("nondet_{a}"))
+        .collect::<Vec<_>>();
+
+    let outer_decls = outer_input_cols
+        .iter()
+        .chain(outer_output_cols.iter())
+        .chain(nondet_output_cols.iter())
+        .map(|c| format!("(declare-fun {c} () Int)"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let appl_f_0 = format!(
+        "(assert (f {}))",
+        outer_input_cols
+            .iter()
+            .chain(outer_output_cols.iter())
+            .join("\n")
+    );
+
+    let appl_f_1 = format!(
+        "(assert (f {}))",
+        outer_input_cols
+            .iter()
+            .chain(nondet_output_cols.iter())
+            .join("\n")
+    );
+    let outputs_eq = outer_output_cols
+        .iter()
+        .zip_eq(nondet_output_cols.iter())
+        .map(|(a, b)| format!("(= {a} {b})"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let assert_nondet = format!("(assert (not (and {outputs_eq})))");
+
+    smt2.push_str(&circuit_def);
+    smt2.push('\n');
+    smt2.push_str(&outer_decls);
+    smt2.push('\n');
+    smt2.push_str(&appl_f_0);
+    smt2.push('\n');
+    smt2.push_str(&appl_f_1);
+    smt2.push('\n');
+    smt2.push_str(&assert_nondet);
+    smt2.push('\n');
+
+    smt2
+}
+
 fn expr_cols<F>(expr: &AlgebraicExpression<F>) -> BTreeSet<String> {
     expr.all_children()
         .filter_map(|e| {
@@ -536,9 +912,24 @@ fn negate_constraints_smtlib2_ff<T: FieldElement>(
     format!("(assert (not (and {inner})))")
 }
 
-pub fn check_equivalence<T: FieldElement>(machine: &SymbolicMachine<T>) -> Option<bool> {
+pub fn check_equivalence_ff<T: FieldElement>(machine: &SymbolicMachine<T>) -> Option<bool> {
     println!("Checking machine\n{machine}");
     let r = solve_ff(
+        machine,
+        Default::default(),
+        None,
+        None,
+        SmtBusInteractionConfig::All,
+    );
+
+    println!("Result: {r:?}");
+
+    None
+}
+
+pub fn check_equivalence_intmod<T: FieldElement>(machine: &SymbolicMachine<T>) -> Option<bool> {
+    println!("Checking machine\n{machine}");
+    let r = solve_intmod(
         machine,
         Default::default(),
         None,

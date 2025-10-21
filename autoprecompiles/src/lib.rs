@@ -383,7 +383,8 @@ pub fn build<A: Adapter>(
 
     // let machine = smt::detect_equalities(machine);
     // let machine = smt::detect_redundant_constraints_ff(machine);
-    smt::check_equivalence(&machine);
+    // smt::check_equivalence_ff(&machine);
+    smt::check_equivalence_intmod(&machine);
 
     let machine = optimizer::optimize::<A>(
         machine,
