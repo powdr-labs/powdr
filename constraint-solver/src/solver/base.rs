@@ -596,8 +596,9 @@ fn try_to_simple_equivalence<T: FieldElement, V: Clone + Ord + Eq>(
     }
     let linear = constr.expression.linear_components();
     let [(v1, c1), (v2, c2)] = linear.collect_vec().try_into().ok()?;
-    // c1 = 1, c2 = -1 or vice-versa
-    if (c1.is_one() || c2.is_one()) && (*c1 + *c2).is_zero() {
+    // We have `c1 * v1 + c2 * v2 = 0`, which is equivalent to
+    // `v1 = -c2 / c1 * v2`
+    if (-*c2 / *c1).is_one() {
         Some((
             v2.clone(),
             GroupedExpression::from_unknown_variable(v1.clone()),
