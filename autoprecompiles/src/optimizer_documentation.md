@@ -219,7 +219,7 @@ check if they have a constant difference, etc.
 
 If a map data structure is used for the linear terms, substitution of variables is also quick.
 
-Addition and subtraction of Grouped Expressions is implemented to remove linear terms that cancel each other out,
+Addition and subtraction of Grouped Expressions are implemented to remove linear terms that cancel each other out,
 and it performs some checks also in the quadratic terms, but this part is not complete for performance reasons.
 
 ## Equivalence Notion
