@@ -206,7 +206,7 @@ TODO Continue with the abstraction using Range Constraints.
 
 ## Grouped Expressions
 
-The main data structure used for algebraic expressions the _Grouped Expression_.
+The main data structure used for algebraic expressions is the _Grouped Expression_.
 A Grouped Expression consists of a constant term, a list of linear terms (a list of pairs of a non-zero coefficient
 and a variable) and a list of quadratic terms (a list of pairs of Grouped Expressions).
 
