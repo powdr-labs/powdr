@@ -339,17 +339,6 @@ pub fn compile_openvm(
     guest: &str,
     guest_opts: GuestOptions,
 ) -> Result<OriginalCompiledProgram, Box<dyn std::error::Error>> {
-    let mut sdk = Sdk::riscv32();
-
-    let transpiler = sdk.transpiler().unwrap();
-
-    // Add our custom transpiler extensions
-    sdk.set_transpiler(
-        transpiler
-            .clone()
-            .with_extension(HintsTranspilerExtension {}),
-    );
-
     // Build the ELF with guest options and a target filter.
     // We need these extra Rust flags to get the labels.
     let guest_opts = guest_opts.with_rustc_flags(vec!["-C", "link-arg=--emit-relocs"]);
@@ -362,18 +351,23 @@ pub fn compile_openvm(
 
     // try to load the sdk config from the openvm.toml file, otherwise use the default
     let openvm_toml_path = path.join("openvm.toml");
-    let sdk_vm_config = if openvm_toml_path.exists() {
+    let app_config = if openvm_toml_path.exists() {
         let toml = std::fs::read_to_string(&openvm_toml_path)?;
-        let app_config: AppConfig<_> = toml::from_str(&toml)?;
-        app_config.app_vm_config
+        toml::from_str(&toml)?
     } else {
-        SdkVmConfig::builder()
-            .system(Default::default())
-            .rv32i(Default::default())
-            .rv32m(Default::default())
-            .io(Default::default())
-            .build()
+        AppConfig::riscv32()
     };
+
+    let mut sdk = Sdk::new(app_config)?;
+
+    let transpiler = sdk.transpiler().unwrap();
+
+    // Add our custom transpiler extensions
+    sdk.set_transpiler(
+        transpiler
+            .clone()
+            .with_extension(HintsTranspilerExtension {}),
+    );
 
     let elf = sdk.build(
         guest_opts,
@@ -386,7 +380,7 @@ pub fn compile_openvm(
     let exe = sdk.convert_to_exe(elf)?;
 
     let vm_config = ExtendedVmConfig {
-        sdk: sdk_vm_config,
+        sdk: sdk.app_config().app_vm_config.clone(),
         hints: HintsExtension,
     };
 
