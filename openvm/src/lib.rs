@@ -14,17 +14,12 @@ use openvm_circuit::arch::{
     PreflightExecutionOutput, SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig,
     VmCircuitExtension, VmExecutionConfig, VmInstance, VmProverExtension,
 };
-use openvm_circuit::arch::{DenseRecordArena, RowMajorMatrixArena};
 use openvm_circuit::system::SystemChipInventory;
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
 use openvm_circuit_derive::{Executor, MeteredExecutor, PreflightExecutor};
-use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
-use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
-use openvm_circuit_primitives::var_range::SharedVariableRangeCheckerChip;
 use openvm_sdk::config::SdkVmCpuBuilder;
 
 use openvm_instructions::program::{Program, DEFAULT_PC_STEP};
-use openvm_native_circuit::NativeCpuBuilder;
 use openvm_sdk::config::TranspilerConfig;
 use openvm_sdk::prover::vm::new_local_prover;
 use openvm_sdk::prover::{verify_app_proof, AggStarkProver};
@@ -101,8 +96,12 @@ cfg_if::cfg_if! {
         pub use openvm_circuit_primitives::range_tuple::RangeTupleCheckerChipGPU;
         pub use openvm_circuit_primitives::var_range::VariableRangeCheckerChipGPU;
         pub use openvm_cuda_backend::base::DeviceMatrix;
+        pub use openvm_circuit::arch::DenseRecordArena;
     } else {
-        use openvm_stark_backend::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
+        use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
+        use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
+        use openvm_circuit_primitives::var_range::SharedVariableRangeCheckerChip;
+        use openvm_circuit::arch::RowMajorMatrixArena;
         use openvm_native_circuit::NativeCpuBuilder;
         pub type PowdrSdk = GenericSdk<BabyBearPoseidon2Engine, SpecializedConfigCpuBuilder, NativeCpuBuilder>;
         pub type PowdrExecutionProfileSdk = GenericSdk<BabyBearPoseidon2Engine, ExtendedVmConfigCpuBuilder, NativeCpuBuilder>;
@@ -893,6 +892,11 @@ pub fn prove(
     inputs: StdIn,
     segment_height: Option<usize>, // uses the default height if None
 ) -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(feature = "cuda")]
+    type Engine = GpuBabyBearPoseidon2Engine;
+    #[cfg(not(feature = "cuda"))]
+    type Engine = BabyBearPoseidon2Engine;
+
     let exe = &program.exe;
     let mut vm_config = program.vm_config.clone();
 
@@ -933,7 +937,7 @@ pub fn prove(
         // Get reusable inputs for `debug_proving_ctx`, the mock prover API from OVM.
         let vm = &mut vm_instance.vm;
         let air_inv = vm.config().create_airs().unwrap();
-        let pk = air_inv.keygen(&vm.engine);
+        let pk = air_inv.keygen::<Engine>(&vm.engine);
 
         for (seg_idx, segment) in segments.into_iter().enumerate() {
             let _segment_span = info_span!("prove_segment", segment = seg_idx).entered();

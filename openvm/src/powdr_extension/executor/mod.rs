@@ -13,9 +13,14 @@ use crate::{
     Instr,
 };
 
+#[cfg(feature = "cuda")]
+use openvm_circuit::arch::DenseRecordArena;
+#[cfg(not(feature = "cuda"))]
+use openvm_circuit::arch::MatrixRecordArena;
+
 use openvm_circuit::arch::{
     execution_mode::{ExecutionCtx, MeteredCtx},
-    DenseRecordArena, E2PreCompute, PreflightExecutor,
+    E2PreCompute, PreflightExecutor,
 };
 use openvm_circuit_derive::create_tco_handler;
 use openvm_circuit_primitives::AlignedBytesBorrow;

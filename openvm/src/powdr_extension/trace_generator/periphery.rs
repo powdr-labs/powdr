@@ -1,31 +1,15 @@
-use itertools::Itertools;
 use openvm_circuit::arch::{
     AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecutorInventoryBuilder,
-    ExecutorInventoryError, RowMajorMatrixArena, VmCircuitExtension, VmExecutionExtension,
-    VmProverExtension,
+    ExecutorInventoryError, VmCircuitExtension, VmExecutionExtension, VmProverExtension,
 };
 use openvm_circuit_primitives::{
-    bitwise_op_lookup::{
-        BitwiseOperationLookupAir, BitwiseOperationLookupChip, SharedBitwiseOperationLookupChip,
-    },
-    range_tuple::{
-        RangeTupleCheckerAir, RangeTupleCheckerBus, RangeTupleCheckerChip,
-        SharedRangeTupleCheckerChip,
-    },
-    var_range::{
-        SharedVariableRangeCheckerChip, VariableRangeCheckerAir, VariableRangeCheckerChip,
-    },
+    bitwise_op_lookup::{BitwiseOperationLookupAir, BitwiseOperationLookupChip},
+    range_tuple::{RangeTupleCheckerAir, RangeTupleCheckerChip},
+    var_range::VariableRangeCheckerAir,
 };
-use openvm_stark_backend::{
-    config::{StarkGenericConfig, Val},
-    p3_field::PrimeField32,
-    prover::cpu::{CpuBackend, CpuDevice},
-};
-use openvm_stark_sdk::engine::StarkEngine;
+use openvm_stark_backend::{config::StarkGenericConfig, p3_field::PrimeField32};
 
-use crate::bus_map::DEFAULT_TUPLE_RANGE_CHECKER;
 use crate::powdr_extension::trace_generator::inventory::DummyExecutor;
-use std::sync::Arc;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "cuda")] {
@@ -36,6 +20,17 @@ cfg_if::cfg_if! {
         use crate::DenseRecordArena;
         use crate::BabyBearSC;
         use crate::GpuBabyBearPoseidon2Engine;
+        use openvm_circuit_primitives::var_range::VariableRangeCheckerChip;
+        use std::sync::Arc;
+    } else {
+        use crate::SharedBitwiseOperationLookupChip;
+        use crate::SharedVariableRangeCheckerChip;
+        use crate::SharedRangeTupleCheckerChip;
+        use itertools::Itertools;
+        use openvm_stark_backend::prover::cpu::{CpuBackend, CpuDevice};
+        use openvm_stark_backend::engine::StarkEngine;
+        use openvm_stark_backend::config::Val;
+        use openvm_circuit::arch::RowMajorMatrixArena;
     }
 }
 
@@ -166,6 +161,10 @@ impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChips {
         }
 
         if let Some(tuple_range_checker) = &self.tuple_range_checker {
+            use openvm_circuit_primitives::range_tuple::RangeTupleCheckerBus;
+
+            use crate::bus_map::DEFAULT_TUPLE_RANGE_CHECKER;
+
             assert!(inventory
                 .find_air::<RangeTupleCheckerAir<2>>()
                 .next()
@@ -309,107 +308,6 @@ where
             .is_some());
 
         Ok(())
-    }
-}
-
-// Note: `apply` implementations are specific to GPU/CPU, so we can't consolidate them
-#[cfg(feature = "cuda")]
-impl SharedPeripheryChips {
-    /// Sends concrete values to the shared chips using a given bus id.
-    /// Panics if the bus id doesn't match any of the chips' bus ids.
-    pub fn apply(&self, bus_id: u16, mult: u32, mut args: impl Iterator<Item = u32>) {
-        match bus_id {
-            // TODO: here we assume all GPU chips has a `Some(CPUChip)` field, so it might panic on `unwrap()`.
-            // Don't really see a reason why it would be `None` though.
-            id if Some(id)
-                == self
-                    .bitwise_lookup_8
-                    .as_ref()
-                    .map(|c| c.cpu_chip.as_ref().unwrap().bus().inner.index) =>
-            {
-                // bitwise operation lookup
-                // interpret the arguments, see `Air<AB> for BitwiseOperationLookupAir<NUM_BITS>`
-                let [x, y, x_xor_y, selector] = [
-                    args.next().unwrap(),
-                    args.next().unwrap(),
-                    args.next().unwrap(),
-                    args.next().unwrap(),
-                ];
-
-                for _ in 0..mult {
-                    match selector {
-                        0 => {
-                            self.bitwise_lookup_8
-                                .as_ref()
-                                .unwrap()
-                                .cpu_chip
-                                .as_ref()
-                                .unwrap()
-                                .request_range(x, y);
-                        }
-                        1 => {
-                            let res = self
-                                .bitwise_lookup_8
-                                .as_ref()
-                                .unwrap()
-                                .cpu_chip
-                                .as_ref()
-                                .unwrap()
-                                .request_xor(x, y);
-                            debug_assert_eq!(res, x_xor_y);
-                        }
-                        _ => {
-                            unreachable!("Invalid selector");
-                        }
-                    }
-                }
-            }
-            id if id == self.range_checker.cpu_chip.as_ref().unwrap().bus().index() => {
-                // interpret the arguments, see `Air<AB> for VariableRangeCheckerAir`
-                let [value, max_bits] = [args.next().unwrap(), args.next().unwrap()];
-
-                for _ in 0..mult {
-                    self.range_checker
-                        .cpu_chip
-                        .as_ref()
-                        .unwrap()
-                        .add_count(value, max_bits as usize);
-                }
-            }
-            id if id == DEFAULT_TUPLE_RANGE_CHECKER as u16 => {
-                // tuple range checker
-                // We pass a slice. It is checked inside `add_count`.
-
-                // Expect exactly two values, because we have RangeTupleCheckerChipGPU<2> only
-                let vals = [args.next().unwrap(), args.next().unwrap()];
-                assert!(args.next().is_none());
-                for _ in 0..mult {
-                    // self.tuple_range_checker
-                    //     .as_ref()
-                    //     .unwrap()
-                    //     .cpu_chip
-                    //     .as_ref()
-                    //     .unwrap()
-                    //     .add_count(&args);
-
-                    // TODO: This is never called in practice, even in Keccak, so we should check that it works, maybe by creating a wrapper for range checker `add_count`
-                    unsafe {
-                        crate::cuda_abi::range_tuple2_add_count_on_chip(
-                            self.tuple_range_checker.as_ref().unwrap(),
-                            vals,
-                        )
-                        .unwrap();
-                    }
-                }
-            }
-            0..=2 => {
-                // execution bridge, memory, pc lookup
-                // do nothing
-            }
-            _ => {
-                unreachable!("Bus interaction {} not implemented", bus_id);
-            }
-        }
     }
 }
 

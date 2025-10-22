@@ -1,19 +1,15 @@
-use std::{
-    collections::{BTreeMap, HashMap},
-    sync::Arc,
-};
+#[cfg(feature = "cuda")]
+use std::collections::BTreeMap;
+use std::{collections::HashMap, sync::Arc};
 
 use itertools::Itertools;
 use openvm_circuit::{arch::AirInventory, utils::next_power_of_two_or_zero};
-use openvm_cuda_common::d_buffer::DeviceBuffer;
-use openvm_stark_backend::{p3_field::FieldAlgebra, p3_matrix::dense::DenseMatrix};
+use openvm_stark_backend::{p3_field::FieldAlgebra, p3_matrix::dense::RowMajorMatrix};
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{trace_handler::TraceTrait, Apc};
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 
-use crate::bus_map::DEFAULT_TUPLE_RANGE_CHECKER;
 use crate::{
-    cuda_abi::{self, DevArgSpan, DevInteraction, OpCode, OriginalAir, Subst},
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     powdr_extension::{
         executor::OriginalArenas,
@@ -22,19 +18,27 @@ use crate::{
     BabyBearSC, Instr,
 };
 use openvm_stark_backend::p3_field::PrimeField32;
-use powdr_autoprecompiles::{expression::AlgebraicExpression, SymbolicBusInteraction};
-use powdr_expression::{
-    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
-    AlgebraicUnaryOperator,
-};
 
+#[cfg(feature = "cuda")]
+use crate::bus_map::DEFAULT_TUPLE_RANGE_CHECKER;
+#[cfg(feature = "cuda")]
+use crate::cuda_abi::{self, DevArgSpan, DevInteraction, OpCode, OriginalAir, Subst};
 #[cfg(feature = "cuda")]
 use crate::DeviceMatrix;
 #[cfg(feature = "cuda")]
 use openvm_cuda_common::copy::MemCopyH2D;
 #[cfg(feature = "cuda")]
+use openvm_cuda_common::d_buffer::DeviceBuffer;
+#[cfg(not(feature = "cuda"))]
+use openvm_stark_backend::p3_field::Field;
+#[cfg(feature = "cuda")]
 use openvm_stark_backend::prover::hal::MatrixDimensions;
+#[cfg(feature = "cuda")]
+use powdr_autoprecompiles::{expression::AlgebraicExpression, SymbolicBusInteraction};
+#[cfg(feature = "cuda")]
+use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 
+#[cfg(feature = "cuda")]
 const GPU_STACK_CAP: usize = 16; // This should match `stack[16]` in `apc_apply_bus.cu`.
 
 /// The inventory of the PowdrExecutor, which contains the executors for each opcode.
@@ -46,7 +50,7 @@ pub use periphery::PowdrPeripheryInstances;
 
 /// A wrapper around a DenseMatrix to implement `TraceTrait` which is required for `generate_trace`.
 pub struct SharedCpuTrace<F> {
-    matrix: Arc<DenseMatrix<F>>,
+    pub matrix: Arc<RowMajorMatrix<F>>,
 }
 
 impl<F: Send + Sync> TraceTrait<F> for SharedCpuTrace<F> {
@@ -61,17 +65,19 @@ impl<F: Send + Sync> TraceTrait<F> for SharedCpuTrace<F> {
     }
 }
 
-impl<F> From<Arc<DenseMatrix<F>>> for SharedCpuTrace<F> {
-    fn from(matrix: Arc<DenseMatrix<F>>) -> Self {
+impl<F> From<Arc<RowMajorMatrix<F>>> for SharedCpuTrace<F> {
+    fn from(matrix: Arc<RowMajorMatrix<F>>) -> Self {
         Self { matrix }
     }
 }
 
 /// A wrapper around a DeviceMatrix to implement `TraceTrait` which is required for `generate_trace`.
+#[cfg(feature = "cuda")]
 pub struct SharedGpuTrace<F> {
     pub matrix: DeviceMatrix<F>,
 }
 
+#[cfg(feature = "cuda")]
 impl<F: Send + Sync> TraceTrait<F> for SharedGpuTrace<F> {
     type Values = DeviceBuffer<F>;
 
@@ -84,6 +90,7 @@ impl<F: Send + Sync> TraceTrait<F> for SharedGpuTrace<F> {
     }
 }
 
+#[cfg(feature = "cuda")]
 impl<F> From<DeviceMatrix<F>> for SharedGpuTrace<F> {
     fn from(matrix: DeviceMatrix<F>) -> Self {
         Self { matrix }
@@ -91,9 +98,14 @@ impl<F> From<DeviceMatrix<F>> for SharedGpuTrace<F> {
 }
 
 #[cfg(feature = "cuda")]
-type SharedTrace<F> = SharedGpuTrace<F>;
+pub type Trace<F> = DeviceMatrix<F>;
 #[cfg(not(feature = "cuda"))]
-type SharedTrace<F> = SharedCpuTrace<F>;
+pub type Trace<F> = Arc<RowMajorMatrix<F>>;
+
+#[cfg(feature = "cuda")]
+pub type SharedTrace<F> = SharedGpuTrace<F>;
+#[cfg(not(feature = "cuda"))]
+pub type SharedTrace<F> = SharedCpuTrace<F>;
 
 pub struct PowdrTraceGenerator {
     pub apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
@@ -117,23 +129,157 @@ impl PowdrTraceGenerator {
         }
     }
 
-    pub fn generate_witness(&self, original_arenas: OriginalArenas) -> SharedTrace<BabyBear> {
-        assert!(
-            original_arenas.number_of_calls() > 0,
-            "APC must be called to generate witness"
+    #[cfg(not(feature = "cuda"))]
+    pub fn generate_witness(&self, mut original_arenas: OriginalArenas) -> SharedTrace<BabyBear> {
+        use powdr_autoprecompiles::trace_handler::{generate_trace, TraceData};
+
+        let num_apc_calls = original_arenas.number_of_calls();
+        if num_apc_calls == 0 {
+            // If the APC isn't called, early return with an empty trace.
+            let width = self.apc.machine().main_columns().count();
+            return SharedTrace {
+                matrix: Arc::new(RowMajorMatrix::new(vec![], width)),
+            };
+        }
+
+        let chip_inventory = {
+            let airs: AirInventory<BabyBearSC> =
+                create_dummy_airs(&self.config.sdk_config.sdk, self.periphery.dummy.clone())
+                    .expect("Failed to create dummy airs");
+
+            create_dummy_chip_complex(
+                &self.config.sdk_config.sdk,
+                airs,
+                self.periphery.dummy.clone(),
+            )
+            .expect("Failed to create chip complex")
+            .inventory
+        };
+
+        let arenas = original_arenas.arenas_mut();
+
+        let dummy_trace_by_air_name: HashMap<String, SharedCpuTrace<BabyBear>> = chip_inventory
+            .chips()
+            .iter()
+            .enumerate()
+            .rev()
+            .filter_map(|(insertion_idx, chip)| {
+                let air_name = chip_inventory.airs().ext_airs()[insertion_idx].name();
+
+                let record_arena = {
+                    match arenas.remove(&air_name) {
+                        Some(ra) => ra,
+                        None => return None, // skip this iteration, because we only have record arena for chips that are used
+                    }
+                };
+
+                let shared_trace = chip.generate_proving_ctx(record_arena).common_main.unwrap();
+
+                Some((air_name, SharedCpuTrace::from(shared_trace)))
+            })
+            .collect();
+
+        let TraceData {
+            dummy_values,
+            dummy_trace_index_to_apc_index_by_instruction,
+            apc_poly_id_to_index,
+            columns_to_compute,
+        } = generate_trace(
+            &dummy_trace_by_air_name,
+            &self.original_airs,
+            num_apc_calls,
+            &self.apc,
         );
-        // Values are already padded
-        self.generate_witness_values(original_arenas)
+
+        // allocate for apc trace
+        let width = apc_poly_id_to_index.len();
+        let height = next_power_of_two_or_zero(num_apc_calls);
+        let mut values = <BabyBear as FieldAlgebra>::zero_vec(height * width);
+
+        // go through the final table and fill in the values
+        values
+            // a record is `width` values
+            // TODO: optimize by parallelizing on chunks of rows, currently fails because `dyn AnyChip<MatrixRecordArena<Val<SC>>>` is not `Send`
+            .chunks_mut(width)
+            .zip(dummy_values)
+            .for_each(|(row_slice, dummy_values)| {
+                // map the dummy rows to the autoprecompile row
+
+                use powdr_autoprecompiles::expression::MappingRowEvaluator;
+                for (dummy_row, dummy_trace_index_to_apc_index) in dummy_values
+                    .iter()
+                    .map(|r| &r.data[r.start..r.start + r.length])
+                    .zip_eq(&dummy_trace_index_to_apc_index_by_instruction)
+                {
+                    for (dummy_trace_index, apc_index) in dummy_trace_index_to_apc_index {
+                        row_slice[*apc_index] = dummy_row[*dummy_trace_index];
+                    }
+                }
+
+                // Fill in the columns we have to compute from other columns
+                // (these are either new columns or for example the "is_valid" column).
+                for (column, computation_method) in columns_to_compute {
+                    let col_index = apc_poly_id_to_index[&column.id];
+                    row_slice[col_index] = match computation_method {
+                        ComputationMethod::Constant(c) => *c,
+                        ComputationMethod::InverseOrZero(expr) => {
+                            use powdr_number::ExpressionConvertible;
+
+                            let expr_val = expr.to_expression(&|n| *n, &|column_ref| {
+                                row_slice[apc_poly_id_to_index[&column_ref.id]]
+                            });
+                            if expr_val.is_zero() {
+                                BabyBear::ZERO
+                            } else {
+                                expr_val.inverse()
+                            }
+                        }
+                    };
+                }
+
+                let evaluator = MappingRowEvaluator::new(row_slice, &apc_poly_id_to_index);
+
+                // replay the side effects of this row on the main periphery
+                self.apc
+                    .machine()
+                    .bus_interactions
+                    .iter()
+                    .for_each(|interaction| {
+                        use powdr_autoprecompiles::expression::{
+                            AlgebraicEvaluator, ConcreteBusInteraction,
+                        };
+
+                        let ConcreteBusInteraction { id, mult, args } =
+                            evaluator.eval_bus_interaction(interaction);
+                        self.periphery.real.apply(
+                            id as u16,
+                            mult.as_canonical_u32(),
+                            args.map(|arg| arg.as_canonical_u32()),
+                        );
+                    });
+            });
+
+        SharedTrace {
+            matrix: Arc::new(RowMajorMatrix::new(values, width)),
+        }
     }
 
+    #[cfg(feature = "cuda")]
     /// Generates the witness for the autoprecompile. The result will be a matrix of
     /// size `next_power_of_two(number_of_calls) * width`, where `width` is the number of
     /// nodes in the APC circuit.
-    pub fn generate_witness_values(
-        &self,
-        mut original_arenas: OriginalArenas,
-    ) -> SharedTrace<BabyBear> {
+    pub fn generate_witness(&self, mut original_arenas: OriginalArenas) -> SharedTrace<BabyBear> {
+        use std::collections::BTreeMap;
+
         let num_apc_calls = original_arenas.number_of_calls();
+
+        if num_apc_calls == 0 {
+            // If the APC isn't called, early return with an empty trace.
+            let width = self.apc.machine().main_columns().count();
+            return SharedTrace {
+                matrix: DeviceMatrix::new(Arc::new(vec![].to_device().unwrap()), 0, width),
+            };
+        }
 
         let chip_inventory = {
             let airs: AirInventory<BabyBearSC> =
@@ -331,6 +477,7 @@ impl PowdrTraceGenerator {
     }
 }
 
+#[cfg(feature = "cuda")]
 fn emit_expr_with_depth(
     bc: &mut Vec<u32>,
     expr: &AlgebraicExpression<BabyBear>,
@@ -369,6 +516,7 @@ fn emit_expr_with_depth(
     }
 }
 
+#[cfg(feature = "cuda")]
 pub fn compile_bus_to_gpu(
     bus_interactions: &[SymbolicBusInteraction<BabyBear>],
     apc_poly_id_to_index: &BTreeMap<u64, usize>,

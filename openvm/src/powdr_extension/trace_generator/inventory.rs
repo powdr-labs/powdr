@@ -1,23 +1,16 @@
 use derive_more::From;
-use openvm_algebra_circuit::AlgebraCpuProverExt;
-use openvm_bigint_circuit::Int256CpuProverExt;
 use openvm_circuit::{
     arch::{
-        AirInventory, AirInventoryError, ChipInventoryError, MatrixRecordArena, VmBuilder,
-        VmChipComplex, VmCircuitConfig, VmCircuitExtension, VmProverExtension,
+        AirInventory, AirInventoryError, ChipInventoryError, VmBuilder, VmChipComplex,
+        VmCircuitConfig, VmCircuitExtension, VmProverExtension,
     },
-    system::{phantom::PhantomExecutor, SystemChipInventory, SystemCpuBuilder, SystemExecutor},
+    system::{phantom::PhantomExecutor, SystemExecutor},
 };
 use openvm_circuit_derive::{AnyEnum, Executor, MeteredExecutor, PreflightExecutor};
 use openvm_circuit_primitives::Chip;
-use openvm_ecc_circuit::EccCpuProverExt;
-use openvm_keccak256_circuit::Keccak256CpuProverExt;
-use openvm_native_circuit::NativeCpuProverExt;
 use openvm_pairing_circuit::PairingProverExt;
-use openvm_rv32im_circuit::Rv32ImCpuProverExt;
 use openvm_sdk::config::SdkVmConfig;
-use openvm_sha256_circuit::Sha2CpuProverExt;
-use openvm_stark_backend::{config::Val, p3_field::PrimeField32, prover::cpu::CpuBackend};
+use openvm_stark_backend::p3_field::PrimeField32;
 
 use crate::{
     powdr_extension::trace_generator::periphery::SharedPeripheryChips, BabyBearSC,
@@ -26,32 +19,28 @@ use crate::{
 
 cfg_if::cfg_if! {
     if #[cfg(not(feature = "cuda"))] {
+        use openvm_circuit::arch::MatrixRecordArena;
         use crate::powdr_extension::trace_generator::periphery::SharedPeripheryChipsCpuProverExt;
+        use openvm_stark_backend::config::Val;
+        use openvm_circuit::system::SystemChipInventory;
+        use openvm_stark_backend::prover::cpu::CpuBackend;
         /// A dummy inventory used for execution of autoprecompiles
         /// It extends the `SdkVmConfigExecutor` and `SdkVmConfigPeriphery`, providing them with shared, pre-loaded periphery chips to avoid memory allocations by each SDK chip
         pub type DummyChipComplex<SC> =
             VmChipComplex<SC, MatrixRecordArena<Val<SC>>, CpuBackend<SC>, SystemChipInventory<SC>>;
+            use openvm_ecc_circuit::EccCpuProverExt;
+        use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
     } else {
         use crate::powdr_extension::trace_generator::periphery::SharedPeripheryChipsGpuProverExt;
         use crate::GpuBackend;
         use crate::DenseRecordArena;
         use crate::GpuBabyBearPoseidon2Engine;
         use crate::SystemGpuBuilder;
-
-        use openvm_algebra_circuit::AlgebraProverExt;
-        use openvm_bigint_circuit::Int256GpuProverExt;
         use openvm_circuit::system::cuda::SystemChipInventoryGPU;
-        use openvm_ecc_circuit::EccProverExt;
-        use openvm_keccak256_circuit::Keccak256GpuProverExt;
-        use openvm_native_circuit::NativeGpuProverExt;
-        use openvm_rv32im_circuit::Rv32ImGpuProverExt;
-        use openvm_sha256_circuit::Sha256GpuProverExt;
         pub type DummyChipComplex<SC> =
             VmChipComplex<SC, DenseRecordArena, GpuBackend, SystemChipInventoryGPU>;
     }
 }
-
-use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Chip, PreflightExecutor, Executor, MeteredExecutor, From, AnyEnum)]
@@ -185,6 +174,14 @@ pub fn create_dummy_chip_complex(
     circuit: AirInventory<BabyBearSC>,
     shared_chips: SharedPeripheryChips,
 ) -> Result<DummyChipComplex<BabyBearSC>, ChipInventoryError> {
+    use openvm_algebra_circuit::AlgebraProverExt;
+    use openvm_bigint_circuit::Int256GpuProverExt;
+    use openvm_ecc_circuit::EccProverExt;
+    use openvm_keccak256_circuit::Keccak256GpuProverExt;
+    use openvm_native_circuit::NativeGpuProverExt;
+    use openvm_rv32im_circuit::Rv32ImGpuProverExt;
+    use openvm_sha256_circuit::Sha256GpuProverExt;
+
     type E = GpuBabyBearPoseidon2Engine;
 
     let config = config.to_inner();
@@ -245,6 +242,14 @@ pub fn create_dummy_chip_complex(
     circuit: AirInventory<BabyBearSC>,
     shared_chips: SharedPeripheryChips,
 ) -> Result<DummyChipComplex<BabyBearSC>, ChipInventoryError> {
+    use openvm_algebra_circuit::AlgebraCpuProverExt;
+    use openvm_bigint_circuit::Int256CpuProverExt;
+    use openvm_circuit::system::SystemCpuBuilder;
+    use openvm_keccak256_circuit::Keccak256CpuProverExt;
+    use openvm_native_circuit::NativeCpuProverExt;
+    use openvm_rv32im_circuit::Rv32ImCpuProverExt;
+    use openvm_sha256_circuit::Sha2CpuProverExt;
+
     let config = config.to_inner();
     let mut chip_complex = VmBuilder::<BabyBearPoseidon2Engine>::create_chip_complex(
         &SystemCpuBuilder,

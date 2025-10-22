@@ -6,7 +6,7 @@ use crate::{
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     powdr_extension::{
         executor::OriginalArenas,
-        trace_generator::{PowdrPeripheryInstances, PowdrTraceGenerator},
+        trace_generator::{PowdrPeripheryInstances, PowdrTraceGenerator, Trace},
     },
     Instr,
 };
@@ -15,7 +15,6 @@ use super::PowdrPrecompile;
 use itertools::Itertools;
 use openvm_stark_backend::{
     p3_air::{Air, BaseAir},
-    p3_matrix::dense::DenseMatrix,
     prover::{hal::ProverBackend, types::AirProvingContext},
     rap::ColumnsAir,
 };
@@ -32,11 +31,6 @@ use powdr_autoprecompiles::{
     expression::{AlgebraicEvaluator, AlgebraicReference, WitnessEvaluator},
     Apc,
 };
-
-#[cfg(feature = "cuda")]
-use crate::DeviceMatrix;
-#[cfg(feature = "cuda")]
-use openvm_cuda_backend::chip::get_empty_air_proving_ctx;
 
 pub struct PowdrChip {
     pub name: String,
@@ -67,37 +61,15 @@ impl PowdrChip {
     }
 }
 
-#[cfg(not(feature = "cuda"))]
-impl<R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB> for PowdrChip {
+impl<R, PB: ProverBackend<Matrix = Trace<BabyBear>>> Chip<R, PB> for PowdrChip {
     fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
         tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
 
-        if self.record_arena_by_air_name.borrow().number_of_calls() == 0 {
-            get_empty_air_proving_ctx::<PB>()
-        } else {
-            let trace = self
-                .trace_generator
-                .generate_witness(self.record_arena_by_air_name.take());
+        let trace = self
+            .trace_generator
+            .generate_witness(self.record_arena_by_air_name.take());
 
-            AirProvingContext::simple(Arc::new(trace), vec![])
-        }
-    }
-}
-
-#[cfg(feature = "cuda")]
-impl<R, PB: ProverBackend<Matrix = DeviceMatrix<BabyBear>>> Chip<R, PB> for PowdrChip {
-    fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
-        tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
-
-        if self.record_arena_by_air_name.borrow().number_of_calls() == 0 {
-            get_empty_air_proving_ctx::<PB>()
-        } else {
-            let trace = self
-                .trace_generator
-                .generate_witness(self.record_arena_by_air_name.take());
-
-            AirProvingContext::simple(trace.matrix, vec![])
-        }
+        AirProvingContext::simple(trace.matrix, vec![])
     }
 }
 
