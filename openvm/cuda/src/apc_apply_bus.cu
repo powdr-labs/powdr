@@ -1,30 +1,42 @@
 #include <stdint.h>
+#include <assert.h>
+#include <stdio.h>
 #include "primitives/buffer_view.cuh"
 #include "primitives/constants.h"
 #include "primitives/trace_access.h"
 #include "primitives/histogram.cuh"
 
 extern "C" {
-typedef struct {
-  uint32_t id;
-  uint32_t num_args;
-  uint32_t mult_off;
-  uint32_t mult_len;
-  uint32_t args_index_off;
-} DevInteraction;
+  typedef struct {
+    uint32_t bus_id; // Bus id this interaction targets (matches periphery chip bus id)
+    uint32_t num_args; // Number of argument expressions for this interaction
+    uint32_t mult_off; // Offset (in u32 words) into `bytecode` where the multiplicity expression starts
+    uint32_t mult_len; // Length (instruction count) of the multiplicity expression
+    uint32_t args_index_off; // Starting index into the `DevArgSpan` array for this interaction's args
+  } DevInteraction;
 
-typedef struct {
-  uint32_t off;
-  uint32_t len;
-} DevArgSpan;
+  typedef struct {
+    uint32_t off; // Offset (in u32 words) into `bytecode` where this arg expression starts
+    uint32_t len; // Length (instruction count) of this arg expression
+  } DevArgSpan;
 }
 
-enum OpCode : uint32_t { OP_PUSH_APC = 0, OP_PUSH_CONST = 1, OP_ADD = 2, OP_SUB = 3, OP_MUL = 4, OP_NEG = 5 };
+enum OpCode : uint32_t { 
+  OP_PUSH_APC = 0, // Push the APC value onto the stack, followed by the index of the value in the APC device buffer.
+  OP_PUSH_CONST = 1, // Push a constant value onto the stack, followed by the constant value.
+  OP_ADD = 2, // Add the top two values on the stack.
+  OP_SUB = 3, // Subtract the top two values on the stack.
+  OP_MUL = 4, // Multiply the top two values on the stack.
+  OP_NEG = 5, // Negate the top value on the stack.
+};
 
-__device__ __forceinline__ Fp eval_prog(const uint32_t* prog, uint32_t len,
+// Fixed number of bits for bitwise lookup
+static constexpr uint32_t kBitwiseNumBits = 8u;
+
+__device__ __forceinline__ Fp eval_expr(const uint32_t* prog, uint32_t len,
                                         const Fp* __restrict__ col_major,
                                         size_t H, size_t r) {
-  Fp stack[16]; int sp = 0; // not sure if enough or what's the typical stack size for our expressions
+  Fp stack[16]; int sp = 0; // No stack overflow is asserted during bytecode compilation in Rust. Preferably keep small as it's per thread.
   for (uint32_t ip = 0; ip < len; ) {
     uint32_t op = prog[ip++];
     switch (op) {
@@ -47,6 +59,16 @@ __device__ __forceinline__ Fp eval_prog(const uint32_t* prog, uint32_t len,
   return stack[sp - 1];
 }
 
+__device__ __forceinline__ Fp eval_arg(
+  const DevArgSpan& span,
+  const uint32_t* __restrict__ d_bytecode,
+  const Fp* __restrict__ col_major,
+  size_t H,
+  size_t r
+) {
+  return eval_expr(d_bytecode + span.off, span.len, col_major, H, r);
+}
+
 __global__ void apc_apply_bus_kernel(
   const Fp* __restrict__ d_output, size_t H,
   const DevInteraction* __restrict__ d_interactions, size_t n_interactions,
@@ -63,62 +85,71 @@ __global__ void apc_apply_bus_kernel(
     uint32_t* __restrict__ d_tuple2_hist,
     uint32_t tuple2_sz0,
     uint32_t tuple2_sz1,
-    uint32_t* __restrict__ d_bitwise_hist,
-    uint32_t bitwise_num_bits
+    uint32_t* __restrict__ d_bitwise_hist
 ) {
   const int warp = (threadIdx.x >> 5);
   const int lane = (threadIdx.x & 31);
   const int warps_per_block = (blockDim.x >> 5);
+
+  // Each block processes a bus interaction and each thread within a block process an apc call, which evaluates multiple expressions.
+  // TODO: can we parallelize over expression evaluation?
   for (int base = blockIdx.x * warps_per_block; base < (int)n_interactions; base += gridDim.x * warps_per_block) {
     int i = base + warp;
     if (i >= (int)n_interactions) return;
     DevInteraction intr = d_interactions[i];
 
     for (int r = lane; r < num_apc_calls; r += 32) {
-      const uint32_t* mult_prog = d_bytecode + intr.mult_off;
-      Fp mult = eval_prog(mult_prog, intr.mult_len, d_output, H, (size_t)r);
+      const uint32_t* mult_expr = d_bytecode + intr.mult_off;
+      Fp mult = eval_expr(mult_expr, intr.mult_len, d_output, H, (size_t)r);
       // Evaluate args and apply based on bus id
-      if (intr.id == var_range_bus_id) {
+      if (intr.bus_id == var_range_bus_id) {
         // expect [value, max_bits]
         DevArgSpan s0 = d_arg_spans[intr.args_index_off + 0];
         DevArgSpan s1 = d_arg_spans[intr.args_index_off + 1];
-        Fp v_fp = eval_prog(d_bytecode + s0.off, s0.len, d_output, H, (size_t)r);
-        Fp b_fp = eval_prog(d_bytecode + s1.off, s1.len, d_output, H, (size_t)r);
+        Fp v_fp = eval_arg(s0, d_bytecode, d_output, H, (size_t)r);
+        Fp b_fp = eval_arg(s1, d_bytecode, d_output, H, (size_t)r);
+        
+        // histogram `num_bins` and index calculation depend on the `VariableRangeCheckerChipGPU` implementation
         uint32_t value = v_fp.asUInt32();
         uint32_t max_bits = b_fp.asUInt32();
         lookup::Histogram hist(d_var_hist, (uint32_t)var_num_bins);
-        uint32_t idx = (1u << max_bits) + value;
+        uint32_t idx = (1u << max_bits) + value; // `max_bit` 
+
         // apply multiplicity by looping; warp-level dedup in Histogram minimizes contention
         for (uint32_t k = 0; k < (uint32_t)mult.asUInt32(); ++k) hist.add_count(idx);
-      } else if (intr.id == tuple2_bus_id) {
+      } else if (intr.bus_id == tuple2_bus_id) {
         // expect [v0, v1]
         DevArgSpan s0 = d_arg_spans[intr.args_index_off + 0];
         DevArgSpan s1 = d_arg_spans[intr.args_index_off + 1];
-        Fp v0_fp = eval_prog(d_bytecode + s0.off, s0.len, d_output, H, (size_t)r);
-        Fp v1_fp = eval_prog(d_bytecode + s1.off, s1.len, d_output, H, (size_t)r);
+        Fp v0_fp = eval_arg(s0, d_bytecode, d_output, H, (size_t)r);
+        Fp v1_fp = eval_arg(s1, d_bytecode, d_output, H, (size_t)r);
+        
+        // histogram `num_bins` and index calculation depend on the `RangeTupleCheckerChipGpu<2>` implementation
         uint32_t v0 = v0_fp.asUInt32();
         uint32_t v1 = v1_fp.asUInt32();
         lookup::Histogram hist(d_tuple2_hist, tuple2_sz0 * tuple2_sz1);
         uint32_t idx = v0 * tuple2_sz1 + v1;
+        
         for (uint32_t k = 0; k < (uint32_t)mult.asUInt32(); ++k) hist.add_count(idx);
-      } else if (intr.id == bitwise_bus_id) {
+      } else if (intr.bus_id == bitwise_bus_id) {
         // expect [x, y, x_xor_y, selector]; we only update histogram if selector==range(0) or xor(1)
         DevArgSpan s0 = d_arg_spans[intr.args_index_off + 0];
         DevArgSpan s1 = d_arg_spans[intr.args_index_off + 1];
         DevArgSpan s2 = d_arg_spans[intr.args_index_off + 2];
         DevArgSpan s3 = d_arg_spans[intr.args_index_off + 3];
-        Fp x_fp = eval_prog(d_bytecode + s0.off, s0.len, d_output, H, (size_t)r);
-        Fp y_fp = eval_prog(d_bytecode + s1.off, s1.len, d_output, H, (size_t)r);
-        Fp xy_fp = eval_prog(d_bytecode + s2.off, s2.len, d_output, H, (size_t)r);
-        Fp sel_fp = eval_prog(d_bytecode + s3.off, s3.len, d_output, H, (size_t)r);
+        Fp x_fp = eval_arg(s0, d_bytecode, d_output, H, (size_t)r);
+        Fp y_fp = eval_arg(s1, d_bytecode, d_output, H, (size_t)r);
+        Fp xy_fp = eval_arg(s2, d_bytecode, d_output, H, (size_t)r);
+        Fp sel_fp = eval_arg(s3, d_bytecode, d_output, H, (size_t)r);
         uint32_t x = x_fp.asUInt32();
         uint32_t y = y_fp.asUInt32();
         uint32_t xy = xy_fp.asUInt32();
         uint32_t selector = sel_fp.asUInt32();
-        BitwiseOperationLookup bl(d_bitwise_hist, bitwise_num_bits);
+        BitwiseOperationLookup bl(d_bitwise_hist, kBitwiseNumBits);
         for (uint32_t k = 0; k < (uint32_t)mult.asUInt32(); ++k) {
           if (selector == 0u) bl.add_range(x, y);
           else if (selector == 1u) { bl.add_xor(x, y); /* could assert xy correctness on device if needed */ }
+          else { assert(false && "Invalid selector"); }
         }
         (void)xy;
       }
@@ -144,8 +175,7 @@ extern "C" int _apc_apply_bus(
   uint32_t* d_tuple2_hist,
   uint32_t tuple2_sz0,
   uint32_t tuple2_sz1,
-  uint32_t* d_bitwise_hist,
-  uint32_t bitwise_num_bits
+  uint32_t* d_bitwise_hist
 ) {
   const int block_x = 128; // 4 warps
   const dim3 block(block_x, 1, 1);
@@ -167,8 +197,7 @@ extern "C" int _apc_apply_bus(
     d_tuple2_hist,
     tuple2_sz0,
     tuple2_sz1,
-    d_bitwise_hist,
-    bitwise_num_bits
+    d_bitwise_hist
   );
   return (int)cudaGetLastError();
 }

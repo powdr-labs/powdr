@@ -11,8 +11,9 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{trace_handler::TraceTrait, Apc};
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 
+use crate::bus_map::DEFAULT_TUPLE_RANGE_CHECKER;
 use crate::{
-    cuda_abi::{self, OriginalAir, Subst, OpCode, DevInteraction, DevArgSpan},
+    cuda_abi::{self, DevArgSpan, DevInteraction, OpCode, OriginalAir, Subst},
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     powdr_extension::{
         executor::OriginalArenas,
@@ -20,10 +21,12 @@ use crate::{
     },
     BabyBearSC, Instr,
 };
-use crate::bus_map::DEFAULT_TUPLE_RANGE_CHECKER;
-use powdr_autoprecompiles::{SymbolicBusInteraction, expression::AlgebraicExpression};
-use powdr_expression::{AlgebraicBinaryOperation, AlgebraicUnaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 use openvm_stark_backend::p3_field::PrimeField32;
+use powdr_autoprecompiles::{expression::AlgebraicExpression, SymbolicBusInteraction};
+use powdr_expression::{
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
+    AlgebraicUnaryOperator,
+};
 
 #[cfg(feature = "cuda")]
 use crate::DeviceMatrix;
@@ -31,6 +34,8 @@ use crate::DeviceMatrix;
 use openvm_cuda_common::copy::MemCopyH2D;
 #[cfg(feature = "cuda")]
 use openvm_stark_backend::prover::hal::MatrixDimensions;
+
+const GPU_STACK_CAP: usize = 16; // This should match `stack[16]` in `apc_apply_bus.cu`.
 
 /// The inventory of the PowdrExecutor, which contains the executors for each opcode.
 mod inventory;
@@ -272,7 +277,11 @@ impl PowdrTraceGenerator {
         cuda_abi::apc_tracegen(&mut output, airs, substitutions, num_apc_calls).unwrap();
 
         // Encode bus interactions for GPU consumption
-        let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(&self.apc.machine.bus_interactions, &apc_poly_id_to_index, height);
+        let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
+            &self.apc.machine.bus_interactions,
+            &apc_poly_id_to_index,
+            height,
+        );
         let bus_interactions = bus_interactions.to_device().unwrap();
         let arg_spans = arg_spans.to_device().unwrap();
         let bytecode = bytecode.to_device().unwrap();
@@ -296,11 +305,10 @@ impl PowdrTraceGenerator {
         let tuple2_sizes = chip.sizes;
         let tuple2_count_u32 = chip.count.as_ref();
 
-        // Bitwise lookup; NUM_BITS is 8 in our setup
+        // Bitwise lookup; NUM_BITS is fixed at 8 in CUDA
         let chip = periphery.bitwise_lookup_8.as_ref().unwrap();
         let bitwise_bus_id = chip.cpu_chip.as_ref().unwrap().bus().inner.index as u32;
         let bitwise_count_u32 = chip.count.as_ref();
-        let bitwise_num_bits = 8u32;
 
         // Launch GPU apply-bus to update periphery histograms on device
         cuda_abi::apc_apply_bus(
@@ -315,7 +323,6 @@ impl PowdrTraceGenerator {
             tuple2_count_u32,
             tuple2_sizes,
             bitwise_count_u32,
-            bitwise_num_bits,
             num_apc_calls,
         )
         .unwrap();
@@ -324,66 +331,84 @@ impl PowdrTraceGenerator {
     }
 }
 
-fn emit_expr(
+fn emit_expr_with_depth(
     bc: &mut Vec<u32>,
     expr: &AlgebraicExpression<BabyBear>,
     id_to_apc_index: &BTreeMap<u64, usize>,
     apc_height: usize,
-) {
+) -> usize {
     match expr {
         AlgebraicExpression::Number(c) => {
             bc.push(OpCode::PushConst as u32);
             bc.push(c.as_canonical_u32());
+            1
         }
         AlgebraicExpression::Reference(r) => {
             let idx = (id_to_apc_index[&r.id] * apc_height) as u32;
             bc.push(OpCode::PushApc as u32);
             bc.push(idx);
+            1
         }
         AlgebraicExpression::UnaryOperation(u) => {
-            emit_expr(bc, &u.expr, id_to_apc_index, apc_height);
+            let d = emit_expr_with_depth(bc, &u.expr, id_to_apc_index, apc_height);
             match u.op {
                 AlgebraicUnaryOperator::Minus => bc.push(OpCode::Neg as u32),
             }
+            d
         }
         AlgebraicExpression::BinaryOperation(b) => {
-            emit_expr(bc, &b.left, id_to_apc_index, apc_height);
-            emit_expr(bc, &b.right, id_to_apc_index, apc_height);
+            let dl = emit_expr_with_depth(bc, &b.left, id_to_apc_index, apc_height);
+            let dr = emit_expr_with_depth(bc, &b.right, id_to_apc_index, apc_height);
             match b.op {
                 AlgebraicBinaryOperator::Add => bc.push(OpCode::Add as u32),
                 AlgebraicBinaryOperator::Sub => bc.push(OpCode::Sub as u32),
                 AlgebraicBinaryOperator::Mul => bc.push(OpCode::Mul as u32),
             }
+            dl.max(1 + dr) // add one to depth of the right operand because the left operand is already on the stack
         }
     }
 }
 
 pub fn compile_bus_to_gpu(
-    bus: &[SymbolicBusInteraction<BabyBear>],
+    bus_interactions: &[SymbolicBusInteraction<BabyBear>],
     apc_poly_id_to_index: &BTreeMap<u64, usize>,
     apc_height: usize,
 ) -> (Vec<DevInteraction>, Vec<DevArgSpan>, Vec<u32>) {
-    let mut interactions = Vec::with_capacity(bus.len());
+    let mut interactions = Vec::with_capacity(bus_interactions.len());
     let mut arg_spans = Vec::new();
     let mut bytecode = Vec::new();
 
-    for bi in bus {
+    for bi in bus_interactions {
         // mult
         let mult_off = bytecode.len() as u32;
-        emit_expr(&mut bytecode, &bi.mult, apc_poly_id_to_index, apc_height);
+        let mult_depth =
+            emit_expr_with_depth(&mut bytecode, &bi.mult, apc_poly_id_to_index, apc_height);
         let mult_len = (bytecode.len() as u32) - mult_off;
+        assert!(
+            mult_depth <= GPU_STACK_CAP,
+            "GPU stack overflow risk: mult expression depth {} exceeds {}",
+            mult_depth,
+            GPU_STACK_CAP
+        );
 
         // args
         let args_index_off = arg_spans.len() as u32;
         for arg in &bi.args {
             let off = bytecode.len() as u32;
-            emit_expr(&mut bytecode, arg, apc_poly_id_to_index, apc_height);
+            let arg_depth =
+                emit_expr_with_depth(&mut bytecode, arg, apc_poly_id_to_index, apc_height);
             let len = (bytecode.len() as u32) - off;
+            assert!(
+                arg_depth <= GPU_STACK_CAP,
+                "GPU stack overflow risk: arg expression depth {} exceeds {}",
+                arg_depth,
+                GPU_STACK_CAP
+            );
             arg_spans.push(DevArgSpan { off, len });
         }
 
         interactions.push(DevInteraction {
-            id: (bi.id as u32),
+            bus_id: (bi.id as u32),
             num_args: bi.args.len() as u32,
             mult_off,
             mult_len,
@@ -393,4 +418,3 @@ pub fn compile_bus_to_gpu(
 
     (interactions, arg_spans, bytecode)
 }
-

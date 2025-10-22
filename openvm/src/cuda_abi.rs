@@ -38,7 +38,6 @@ extern "C" {
         tuple2_sz0: u32,
         tuple2_sz1: u32,
         d_bitwise_hist: *mut u32,
-        bitwise_num_bits: u32,
     ) -> i32;
 }
 
@@ -110,32 +109,39 @@ pub fn apc_tracegen(
     }
 }
 
-
-// GPU Bus Compiler: Compile SymbolicBusInteraction<BabyBear> into device-friendly buffers
+/// OpCode enum for the GPU stack machine bus evaluator.
 #[repr(u32)]
 pub enum OpCode {
-    PushApc = 0,
-    PushConst = 1,
-    Add = 2,
-    Sub = 3,
-    Mul = 4,
-    Neg = 5,
+    PushApc = 0, // Push the APC value onto the stack, followed by the index of the value in the APC device buffer.
+    PushConst = 1, // Push a constant value onto the stack, followed by the constant value.
+    Add = 2,     // Add the top two values on the stack.
+    Sub = 3,     // Subtract the top two values on the stack.
+    Mul = 4,     // Multiply the top two values on the stack.
+    Neg = 5,     // Negate the top value on the stack.
 }
 
+/// GPU device representation of a bus interaction.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct DevInteraction {
-    pub id: u32,
+    /// Bus id this interaction targets (matches periphery chip bus id)
+    pub bus_id: u32,
+    /// Number of argument expressions for this interaction
     pub num_args: u32,
+    /// Offset (in u32 words) into `bytecode` where the multiplicity expression starts
     pub mult_off: u32,
+    /// Length (instruction count) of the multiplicity expression
     pub mult_len: u32,
+    /// Starting index into the `DevArgSpan` array for this interaction's args
     pub args_index_off: u32,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct DevArgSpan {
+    /// Offset (in u32 words) into `bytecode` where this arg expression starts
     pub off: u32,
+    /// Length (instruction count) of this arg expression
     pub len: u32,
 }
 
@@ -152,7 +158,6 @@ pub fn apc_apply_bus(
     tuple2_count: &DeviceBuffer<BabyBear>,
     tuple2_sizes: [u32; 2],
     bitwise_count: &DeviceBuffer<BabyBear>,
-    bitwise_num_bits: u32,
     num_apc_calls: usize,
 ) -> Result<(), CudaError> {
     unsafe {
@@ -175,7 +180,6 @@ pub fn apc_apply_bus(
             tuple2_sizes[0],
             tuple2_sizes[1],
             bitwise_count.as_mut_ptr() as *mut u32,
-            bitwise_num_bits,
         ))
     }
 }
