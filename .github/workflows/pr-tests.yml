@@ -154,7 +154,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: powdr-labs/openvm-reth-benchmark
-          ref: 9641a47c70e4003e54a96947d4138c63825f1b12
+          ref: 3ec7a9ca33608b772c8d919fdd4804d66bf27b1e
           path: openvm-reth-benchmark
 
       - name: Patch openvm-reth-benchmark to use local powdr
