@@ -11,11 +11,11 @@ use crate::plonk::{Gate, Variable};
 use crate::powdr_extension::executor::OriginalArenas;
 use crate::powdr_extension::plonk::air::PlonkColumns;
 use crate::powdr_extension::plonk::copy_constraint::generate_permutation_columns;
-use crate::powdr_extension::trace_generator::{PowdrPeripheryInstances, PowdrTraceGenerator};
-use crate::powdr_extension::trace_generator::{SharedTrace, Trace};
+use crate::powdr_extension::trace_generator::cpu::{PowdrPeripheryInstancesCpu, PowdrTraceGeneratorCpu, SharedCpuTrace};
 use crate::powdr_extension::PowdrPrecompile;
 use crate::Instr;
 use itertools::Itertools;
+use openvm_circuit::arch::MatrixRecordArena;
 use openvm_circuit::utils::next_power_of_two_or_zero;
 use openvm_stark_backend::{
     p3_field::{FieldAlgebra, PrimeField32},
@@ -30,29 +30,29 @@ use powdr_autoprecompiles::Apc;
 #[cfg(feature = "cuda")]
 use crate::DeviceMatrix;
 
-pub struct PlonkChip {
+pub struct PlonkChipCpu {
     name: String,
     apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
     bus_map: BusMap,
-    trace_generator: PowdrTraceGenerator,
-    record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
+    trace_generator: PowdrTraceGeneratorCpu,
+    record_arena_by_air_name: Rc<RefCell<OriginalArenas<MatrixRecordArena<BabyBear>>>>,
 }
 
-impl PlonkChip {
+impl PlonkChipCpu {
     pub(crate) fn new(
         precompile: PowdrPrecompile<BabyBear>,
         original_airs: OriginalAirs<BabyBear>,
         base_config: OriginalVmConfig,
-        periphery: PowdrPeripheryInstances,
+        periphery: PowdrPeripheryInstancesCpu,
         bus_map: BusMap,
     ) -> Self {
         let PowdrPrecompile {
             name,
             apc,
-            apc_record_arena,
+            apc_record_arena_cpu: apc_record_arena,
             ..
         } = precompile;
-        let trace_generator = PowdrTraceGenerator::new(
+        let trace_generator = PowdrTraceGeneratorCpu::new(
             apc.clone(),
             original_airs.clone(),
             base_config.clone(),
@@ -69,7 +69,7 @@ impl PlonkChip {
     }
 }
 
-impl<R, PB: ProverBackend<Matrix = Trace<BabyBear>>> Chip<R, PB> for PlonkChip {
+impl<R, PB: ProverBackend<Matrix = Arc<RowMajorMatrix<BabyBear>>>> Chip<R, PB> for PlonkChipCpu {
     fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
         let trace = self.generate_plonk_values();
 
@@ -77,15 +77,9 @@ impl<R, PB: ProverBackend<Matrix = Trace<BabyBear>>> Chip<R, PB> for PlonkChip {
     }
 }
 
-impl PlonkChip {
-    #[cfg(feature = "cuda")]
-    fn generate_plonk_values(&self) -> SharedTrace<BabyBear> {
-        todo!("CUDA Plonk trace generation is not yet implemented");
-    }
-
-    #[cfg(not(feature = "cuda"))]
-    fn generate_plonk_values(&self) -> SharedTrace<BabyBear> {
-        tracing::debug!("Generating air proof input for PlonkChip {}", self.name);
+impl PlonkChipCpu {
+    fn generate_plonk_values(&self) -> SharedCpuTrace<BabyBear> {
+        tracing::debug!("Generating air proof input for PlonkChipCpu {}", self.name);
 
         let plonk_circuit = build_circuit(self.apc.machine(), &self.bus_map);
         let record_arena_by_air_name = self.record_arena_by_air_name.take();
@@ -183,7 +177,7 @@ impl PlonkChip {
 
         generate_permutation_columns(&mut values, &plonk_circuit, number_of_calls, width);
 
-        SharedTrace {
+        SharedCpuTrace {
             matrix: Arc::new(RowMajorMatrix::new(values, width)),
         }
     }

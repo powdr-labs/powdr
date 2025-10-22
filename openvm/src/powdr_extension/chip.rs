@@ -5,18 +5,17 @@ use std::{cell::RefCell, collections::BTreeMap, rc::Rc, sync::Arc};
 use crate::{
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     powdr_extension::{
-        executor::OriginalArenas,
-        trace_generator::{PowdrPeripheryInstances, PowdrTraceGenerator, Trace},
+        executor::OriginalArenas, trace_generator::cpu::{PowdrPeripheryInstancesCpu, PowdrTraceGeneratorCpu}, PowdrPrecompile,
     },
     Instr,
 };
 
-use super::PowdrPrecompile;
 use itertools::Itertools;
+#[cfg(feature = "cuda")]
+use openvm_circuit::arch::DenseRecordArena;
+use openvm_circuit::arch::{MatrixRecordArena};
 use openvm_stark_backend::{
-    p3_air::{Air, BaseAir},
-    prover::{hal::ProverBackend, types::AirProvingContext},
-    rap::ColumnsAir,
+    p3_air::{Air, BaseAir}, rap::ColumnsAir
 };
 
 use openvm_stark_backend::{
@@ -32,26 +31,26 @@ use powdr_autoprecompiles::{
     Apc,
 };
 
-pub struct PowdrChip {
+pub struct PowdrChipCpu {
     pub name: String,
-    pub record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
-    pub trace_generator: PowdrTraceGenerator,
+    pub record_arena_by_air_name: Rc<RefCell<OriginalArenas<MatrixRecordArena<BabyBear>>>>,
+    pub trace_generator: PowdrTraceGeneratorCpu,
 }
 
-impl PowdrChip {
+impl PowdrChipCpu {
     pub(crate) fn new(
         precompile: PowdrPrecompile<BabyBear>,
         original_airs: OriginalAirs<BabyBear>,
         base_config: OriginalVmConfig,
-        periphery: PowdrPeripheryInstances,
+        periphery: PowdrPeripheryInstancesCpu,
     ) -> Self {
         let PowdrPrecompile {
             name,
             apc,
-            apc_record_arena,
+            apc_record_arena_cpu: apc_record_arena,
             ..
         } = precompile;
-        let trace_generator = PowdrTraceGenerator::new(apc, original_airs, base_config, periphery);
+        let trace_generator = PowdrTraceGeneratorCpu::new(apc, original_airs, base_config, periphery);
 
         Self {
             name,
@@ -61,15 +60,37 @@ impl PowdrChip {
     }
 }
 
-impl<R, PB: ProverBackend<Matrix = Trace<BabyBear>>> Chip<R, PB> for PowdrChip {
-    fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
-        tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
+#[cfg(feature = "cuda")]
+use crate::powdr_extension::trace_generator::cuda::{PowdrPeripheryInstancesGpu, PowdrTraceGeneratorGpu};
 
-        let trace = self
-            .trace_generator
-            .generate_witness(self.record_arena_by_air_name.take());
+#[cfg(feature = "cuda")]
+pub struct PowdrChipGpu {
+    pub name: String,
+    pub record_arena_by_air_name: Rc<RefCell<OriginalArenas<DenseRecordArena>>>,
+    pub trace_generator: PowdrTraceGeneratorGpu,
+}
 
-        AirProvingContext::simple(trace.matrix, vec![])
+#[cfg(feature = "cuda")]
+impl PowdrChipGpu {
+    pub(crate) fn new(
+        precompile: PowdrPrecompile<BabyBear>,
+        original_airs: OriginalAirs<BabyBear>,
+        base_config: OriginalVmConfig,
+        periphery: PowdrPeripheryInstancesGpu,
+    ) -> Self {
+        let PowdrPrecompile {
+            name,
+            apc,
+            apc_record_arena_gpu: apc_record_arena,
+            ..
+        } = precompile;
+        let trace_generator = PowdrTraceGeneratorGpu::new(apc, original_airs, base_config, periphery);
+
+        Self {
+            name,
+            record_arena_by_air_name: apc_record_arena,
+            trace_generator,
+        }
     }
 }
 
