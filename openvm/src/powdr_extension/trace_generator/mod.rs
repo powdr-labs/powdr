@@ -331,6 +331,17 @@ impl PowdrTraceGenerator {
     }
 }
 
+
+/// Encodes an algebraic expression into GPU stack-machine bytecode.
+///
+/// Appends instructions to `bc` representing `expr` using the opcodes in `OpCode`.
+/// References are encoded as `PushApc` with a column-major offset computed from
+/// `id_to_apc_index` and `apc_height` (offset = apc_col_index * apc_height).
+/// Constants are encoded as `PushConst` followed by the field element as `u32`.
+/// Unary minus and binary operations map to `Neg`, `Add`, `Sub`, and `Mul`.
+///
+/// Note: This function does not track or enforce the evaluation stack depth,
+/// which is done in device code.
 fn emit_expr(
     bc: &mut Vec<u32>,
     expr: &AlgebraicExpression<BabyBear>,
