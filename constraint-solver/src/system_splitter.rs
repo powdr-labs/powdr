@@ -48,6 +48,9 @@ pub fn split_system<T: RuntimeConstant, V: Clone + Ord + Hash + Display>(
             bus_interactions,
             derived_variables: Vec::new(),
         });
+        // Fine to iterate over a hash set here since the order in which we remove
+        // is not relevant.
+        #[allow(clippy::iter_over_hash_type)]
         for v in variables_to_extract {
             remaining_variables.remove(&v);
         }
