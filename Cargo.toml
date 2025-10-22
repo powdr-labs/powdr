@@ -61,7 +61,6 @@ openvm-sdk = { git = "https://github.com/powdr-labs/openvm.git", rev = "db693ab"
   "jemalloc",
   "nightly-features",
   "evm-prove",
-  "cuda",
 ] }
 openvm-ecc-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "db693ab" }
 openvm-ecc-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "db693ab" }

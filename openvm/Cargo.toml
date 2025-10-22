@@ -7,10 +7,10 @@ homepage.workspace = true
 repository.workspace = true
 
 [features]
-default = ["cuda"]
+default = []
 tco = ["openvm-sdk/tco"]
 metrics = ["openvm-sdk/metrics", "openvm-stark-backend/metrics", "openvm-stark-sdk/metrics"]
-cuda = ["openvm-sdk/cuda", "openvm-circuit-primitives/cuda"]
+cuda = ["openvm-sdk/cuda", "openvm-circuit-primitives/cuda", "openvm-cuda-backend", "openvm-cuda-common"]
 
 [dependencies]
 openvm.workspace = true
@@ -43,8 +43,8 @@ openvm-native-recursion.workspace = true
 
 openvm-stark-sdk.workspace = true
 openvm-stark-backend.workspace = true
-openvm-cuda-backend.workspace = true
-openvm-cuda-common.workspace = true
+openvm-cuda-backend = { workspace = true, optional = true }
+openvm-cuda-common = { workspace = true, optional = true }
 
 powdr-expression.workspace = true
 powdr-number.workspace = true
