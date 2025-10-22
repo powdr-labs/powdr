@@ -27,8 +27,6 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::expression::AlgebraicReference;
 use powdr_autoprecompiles::Apc;
 
-#[cfg(feature = "cuda")]
-use crate::DeviceMatrix;
 
 pub struct PlonkChipCpu {
     name: String,

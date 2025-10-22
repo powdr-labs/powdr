@@ -10,7 +10,7 @@ use openvm_stark_backend::{p3_field::PrimeField32, prover::{hal::ProverBackend, 
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 
-use crate::{bus_map::DEFAULT_TUPLE_RANGE_CHECKER, cuda_abi::{self, DevArgSpan, DevInteraction, OpCode, OriginalAir, Subst}, extraction_utils::{OriginalAirs, OriginalVmConfig}, powdr_extension::{chip::PowdrChipGpu, executor::OriginalArenas, trace_generator::{common::create_dummy_airs, cpu::PowdrTraceGeneratorCpu, cuda::inventory::create_dummy_chip_complex}}, BabyBearSC, Instr};
+use crate::{bus_map::DEFAULT_TUPLE_RANGE_CHECKER, cuda_abi::{self, DevArgSpan, DevInteraction, OpCode, OriginalAir, Subst}, extraction_utils::{OriginalAirs, OriginalVmConfig}, powdr_extension::{chip::PowdrChipGpu, executor::OriginalArenas, trace_generator::{common::create_dummy_airs, cuda::inventory::create_dummy_chip_complex}}, BabyBearSC, Instr};
 
 mod inventory;
 mod periphery;
@@ -137,7 +137,7 @@ impl PowdrTraceGeneratorGpu {
         if num_apc_calls == 0 {
             // If the APC isn't called, early return with an empty trace.
             let width = self.apc.machine().main_columns().count();
-            return DeviceMatrix::new(Arc::new(vec![].to_device().unwrap()), 0, width);
+            return DeviceMatrix::new(Arc::new([].to_device().unwrap()), 0, width);
         }
 
         let chip_inventory = {
@@ -339,7 +339,7 @@ impl PowdrTraceGeneratorGpu {
         )
         .unwrap();
 
-        output.into()
+        output
     }
 }
 

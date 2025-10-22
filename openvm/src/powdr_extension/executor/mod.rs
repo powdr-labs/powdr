@@ -17,7 +17,7 @@ use openvm_circuit::arch::DenseRecordArena;
 use openvm_circuit::arch::MatrixRecordArena;
 
 use openvm_circuit::arch::{
-    execution_mode::{ExecutionCtx, MeteredCtx}, Arena, E2PreCompute, PreflightExecutor, RecordArena
+    execution_mode::{ExecutionCtx, MeteredCtx}, Arena, E2PreCompute, PreflightExecutor
 };
 use openvm_circuit_derive::create_tco_handler;
 use openvm_circuit_primitives::AlignedBytesBorrow;

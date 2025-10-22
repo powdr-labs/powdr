@@ -23,7 +23,6 @@ use openvm_stark_backend::{
     p3_field::PrimeField32,
     p3_matrix::Matrix,
     rap::{BaseAirWithPublicValues, PartitionedBaseAir},
-    Chip,
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{

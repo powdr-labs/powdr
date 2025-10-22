@@ -10,7 +10,7 @@ use powdr_constraint_solver::constraint_system::ComputationMethod;
 use crate::{
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     powdr_extension::{
-        chip::PowdrChipCpu, executor::OriginalArenas, trace_generator::cpu::inventory::{create_dummy_airs, create_dummy_chip_complex},
+        chip::PowdrChipCpu, executor::OriginalArenas, trace_generator::{common::create_dummy_airs, cpu::inventory::create_dummy_chip_complex},
     },
     BabyBearSC, Instr,
 };
