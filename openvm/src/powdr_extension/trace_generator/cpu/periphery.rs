@@ -11,12 +11,13 @@ use openvm_circuit_primitives::{
 };
 use openvm_stark_backend::{config::StarkGenericConfig, p3_field::PrimeField32};
 
-use crate::powdr_extension::trace_generator::cpu::inventory::DummyExecutor;
 use itertools::Itertools;
 use openvm_circuit::arch::RowMajorMatrixArena;
 use openvm_stark_backend::config::Val;
 use openvm_stark_backend::engine::StarkEngine;
 use openvm_stark_backend::prover::cpu::{CpuBackend, CpuDevice};
+
+use crate::powdr_extension::trace_generator::common::DummyExecutor;
 
 /// The shared chips which can be used by the PowdrChip.
 #[derive(Clone)]
