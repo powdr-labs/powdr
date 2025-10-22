@@ -11,14 +11,25 @@ use crate::{
 /// Splits the constraint system into independent subsets.
 /// Each variable occurs in exactly one subset and all constraints referencing a
 /// certain variable have to be in the same subsystem.
+/// Note that this ignores derived variables, i.e. the returned systems all have
+/// no derived variables.
 pub fn split_system<T: RuntimeConstant, V: Clone + Ord + Hash + Display>(
-    mut constraint_system: IndexedConstraintSystem<T, V>,
+    constraint_system: IndexedConstraintSystem<T, V>,
 ) -> Vec<ConstraintSystem<T, V>> {
+    // We cleanup and re-index the constraint system, otherwise we get too many
+    // empty systems due to variables that have already been substituted.
+    let mut constraint_system: ConstraintSystem<T, V> = constraint_system.into();
+    constraint_system
+        .algebraic_constraints
+        .retain(|constr| !constr.is_redundant());
+    let mut constraint_system: IndexedConstraintSystem<T, V> = constraint_system.into();
+
     let mut systems = Vec::new();
     let mut remaining_variables: BTreeSet<_> = constraint_system.variables().cloned().collect();
 
     while let Some(v) = remaining_variables.pop_first() {
         let variables_to_extract = reachable_variables([v.clone()], &constraint_system);
+        assert!(!variables_to_extract.is_empty());
 
         let mut algebraic_constraints = Vec::new();
         let mut bus_interactions = Vec::new();
@@ -46,7 +57,7 @@ pub fn split_system<T: RuntimeConstant, V: Clone + Ord + Hash + Display>(
         systems.push(ConstraintSystem {
             algebraic_constraints,
             bus_interactions,
-            derived_variables: Vec::new(), // TODO As long as we re-compine the system later on it does not matter much where we put them.
+            derived_variables: Vec::new(),
         });
         remaining_variables.retain(|var| !variables_to_extract.contains(var));
     }
