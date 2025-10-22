@@ -115,8 +115,8 @@ pub fn apc_tracegen(
 /// OpCode enum for the GPU stack machine bus evaluator.
 #[repr(u32)]
 pub enum OpCode {
-    PushApc = 0, // Push the APC value onto the stack, followed by the index of the value in the APC device buffer.
-    PushConst = 1, // Push a constant value onto the stack, followed by the constant value.
+    PushApc = 0, // Push the APC value onto the stack. Must be followed by the index of the value in the APC device buffer.
+    PushConst = 1, // Push a constant value onto the stack. Must be followed by the constant value.
     Add = 2,     // Add the top two values on the stack.
     Sub = 3,     // Subtract the top two values on the stack.
     Mul = 4,     // Multiply the top two values on the stack.
@@ -131,11 +131,8 @@ pub struct DevInteraction {
     pub bus_id: u32,
     /// Number of argument expressions for this interaction
     pub num_args: u32,
-    /// Offset (in u32 words) into `bytecode` where the multiplicity expression starts
-    pub mult_off: u32,
-    /// Length (instruction count) of the multiplicity expression
-    pub mult_len: u32,
     /// Starting index into the `DevArgSpan` array for this interaction's args
+    /// Layout: [ multiplicity span, arg0, arg1, ... ]
     pub args_index_off: u32,
 }
 
