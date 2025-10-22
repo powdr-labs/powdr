@@ -11,14 +11,21 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{trace_handler::TraceTrait, Apc};
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 
+use crate::bus_map::DEFAULT_TUPLE_RANGE_CHECKER;
 use crate::{
-    cuda_abi::{self, OriginalAir, Subst},
+    cuda_abi::{self, DevArgSpan, DevInteraction, OpCode, OriginalAir, Subst},
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     powdr_extension::{
         executor::OriginalArenas,
         trace_generator::inventory::{create_dummy_airs, create_dummy_chip_complex},
     },
     BabyBearSC, Instr,
+};
+use openvm_stark_backend::p3_field::PrimeField32;
+use powdr_autoprecompiles::{expression::AlgebraicExpression, SymbolicBusInteraction};
+use powdr_expression::{
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
+    AlgebraicUnaryOperator,
 };
 
 #[cfg(feature = "cuda")]
@@ -27,6 +34,8 @@ use crate::DeviceMatrix;
 use openvm_cuda_common::copy::MemCopyH2D;
 #[cfg(feature = "cuda")]
 use openvm_stark_backend::prover::hal::MatrixDimensions;
+
+const GPU_STACK_CAP: usize = 16; // This should match `stack[16]` in `apc_apply_bus.cu`.
 
 /// The inventory of the PowdrExecutor, which contains the executors for each opcode.
 mod inventory;
@@ -267,6 +276,154 @@ impl PowdrTraceGenerator {
 
         cuda_abi::apc_tracegen(&mut output, airs, substitutions, num_apc_calls).unwrap();
 
+        // Encode bus interactions for GPU consumption
+        let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
+            &self.apc.machine.bus_interactions,
+            &apc_poly_id_to_index,
+            height,
+        );
+        let bus_interactions = bus_interactions.to_device().unwrap();
+        let arg_spans = arg_spans.to_device().unwrap();
+        let bytecode = bytecode.to_device().unwrap();
+
+        // Gather GPU inputs for periphery (bus ids, count device buffers)
+        let periphery = &self.periphery.real;
+
+        // Range checker
+        let var_range_bus_id = periphery
+            .range_checker
+            .cpu_chip
+            .as_ref()
+            .unwrap()
+            .bus()
+            .index() as u32;
+        let var_range_count = &periphery.range_checker.count;
+
+        // Tuple checker
+        let chip = periphery.tuple_range_checker.as_ref().unwrap();
+        let tuple2_bus_id = DEFAULT_TUPLE_RANGE_CHECKER as u32;
+        let tuple2_sizes = chip.sizes;
+        let tuple2_count_u32 = chip.count.as_ref();
+
+        // Bitwise lookup; NUM_BITS is fixed at 8 in CUDA
+        let chip = periphery.bitwise_lookup_8.as_ref().unwrap();
+        let bitwise_bus_id = chip.cpu_chip.as_ref().unwrap().bus().inner.index as u32;
+        let bitwise_count_u32 = chip.count.as_ref();
+
+        // Launch GPU apply-bus to update periphery histograms on device
+        cuda_abi::apc_apply_bus(
+            // APC related
+            &output,
+            num_apc_calls,
+            // Interaction related
+            bytecode,
+            bus_interactions,
+            arg_spans,
+            // Variable range checker related
+            var_range_bus_id,
+            var_range_count,
+            // Tuple range checker related
+            tuple2_bus_id,
+            tuple2_count_u32,
+            tuple2_sizes,
+            // Bitwise related
+            bitwise_bus_id,
+            bitwise_count_u32,
+        )
+        .unwrap();
+
         output.into()
     }
+}
+
+/// Encodes an algebraic expression into GPU stack-machine bytecode.
+///
+/// Appends instructions to `bc` representing `expr` using the opcodes in `OpCode`.
+/// References are encoded as `PushApc` with a column-major offset computed from
+/// `id_to_apc_index` and `apc_height` (offset = apc_col_index * apc_height).
+/// Constants are encoded as `PushConst` followed by the field element as `u32`.
+/// Unary minus and binary operations map to `Neg`, `Add`, `Sub`, and `Mul`.
+///
+/// Note: This function does not track or enforce the evaluation stack depth,
+/// which is done in device code.
+fn emit_expr(
+    bc: &mut Vec<u32>,
+    expr: &AlgebraicExpression<BabyBear>,
+    id_to_apc_index: &BTreeMap<u64, usize>,
+    apc_height: usize,
+) {
+    match expr {
+        AlgebraicExpression::Number(c) => {
+            bc.push(OpCode::PushConst as u32);
+            bc.push(c.as_canonical_u32());
+        }
+        AlgebraicExpression::Reference(r) => {
+            let idx = (id_to_apc_index[&r.id] * apc_height) as u32;
+            bc.push(OpCode::PushApc as u32);
+            bc.push(idx);
+        }
+        AlgebraicExpression::UnaryOperation(u) => {
+            emit_expr(bc, &u.expr, id_to_apc_index, apc_height);
+            match u.op {
+                AlgebraicUnaryOperator::Minus => bc.push(OpCode::Neg as u32),
+            }
+        }
+        AlgebraicExpression::BinaryOperation(b) => {
+            emit_expr(bc, &b.left, id_to_apc_index, apc_height);
+            emit_expr(bc, &b.right, id_to_apc_index, apc_height);
+            match b.op {
+                AlgebraicBinaryOperator::Add => bc.push(OpCode::Add as u32),
+                AlgebraicBinaryOperator::Sub => bc.push(OpCode::Sub as u32),
+                AlgebraicBinaryOperator::Mul => bc.push(OpCode::Mul as u32),
+            }
+        }
+    }
+}
+
+fn emit_dev_arg_span(
+    bc: &mut Vec<u32>,
+    expr: &AlgebraicExpression<BabyBear>,
+    id_to_apc_index: &BTreeMap<u64, usize>,
+    apc_height: usize,
+) -> DevArgSpan {
+    let off = bc.len() as u32;
+    emit_expr(bc, expr, id_to_apc_index, apc_height);
+    let len = (bc.len() as u32) - off;
+    DevArgSpan { off, len }
+}
+
+pub fn compile_bus_to_gpu(
+    bus_interactions: &[SymbolicBusInteraction<BabyBear>],
+    apc_poly_id_to_index: &BTreeMap<u64, usize>,
+    apc_height: usize,
+) -> (Vec<DevInteraction>, Vec<DevArgSpan>, Vec<u32>) {
+    let mut interactions = Vec::with_capacity(bus_interactions.len());
+    let mut arg_spans = Vec::new();
+    let mut bytecode = Vec::new();
+
+    for bus_interaction in bus_interactions {
+        // multiplicity as first arg span
+        let args_index_off = arg_spans.len() as u32;
+        let mult_span = emit_dev_arg_span(
+            &mut bytecode,
+            &bus_interaction.mult,
+            apc_poly_id_to_index,
+            apc_height,
+        );
+        arg_spans.push(mult_span);
+
+        // args
+        for arg in &bus_interaction.args {
+            let span = emit_dev_arg_span(&mut bytecode, arg, apc_poly_id_to_index, apc_height);
+            arg_spans.push(span);
+        }
+
+        interactions.push(DevInteraction {
+            bus_id: (bus_interaction.id as u32),
+            num_args: bus_interaction.args.len() as u32,
+            args_index_off,
+        });
+    }
+
+    (interactions, arg_spans, bytecode)
 }

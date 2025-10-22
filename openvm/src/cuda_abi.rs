@@ -16,6 +16,39 @@ extern "C" {
         d_subs: *const Subst,                // device array of all substitutions
         num_apc_calls: i32,                  // number of APC calls
     ) -> i32;
+
+    /// Launches the GPU kernel that applies bus interactions to periphery histograms.
+    ///
+    /// Safety: All pointers must be valid device pointers for the specified lengths.
+    pub fn _apc_apply_bus(
+        // APC related
+        d_output: *const BabyBear, // APC trace buffer (column-major), device pointer
+        output_height: usize,      // APC trace height (rows)
+        num_apc_calls: i32,        // number of APC calls (rows to process)
+
+        // Interaction related
+        d_bytecode: *const u32, // device bytecode buffer for stack-machine expressions
+        bytecode_len: usize,    // length of bytecode buffer (u32 words)
+        d_interactions: *const DevInteraction, // device array of interactions
+        n_interactions: usize,  // number of interactions
+        d_arg_spans: *const DevArgSpan, // device array of arg spans into `d_bytecode`
+        n_arg_spans: usize,     // number of arg spans
+
+        // Variable range checker related
+        var_range_bus_id: u32, // bus id for the variable range checker
+        d_var_hist: *mut u32,  // device histogram for variable range checker
+        var_num_bins: usize,   // number of bins in variable range histogram
+
+        // Tuple range checker related
+        tuple2_bus_id: u32,      // bus id for the 2-tuple range checker
+        d_tuple2_hist: *mut u32, // device histogram for tuple2 checker
+        tuple2_sz0: u32,         // tuple2 dimension 0 size
+        tuple2_sz1: u32,         // tuple2 dimension 1 size
+
+        // Bitwise related
+        bitwise_bus_id: u32,      // bus id for the bitwise lookup
+        d_bitwise_hist: *mut u32, // device histogram for bitwise lookup
+    ) -> i32;
 }
 
 // Mutates chip.count (device histogram) in place using __device__ RangeTupleChecker<2>::add_count
@@ -82,6 +115,93 @@ pub fn apc_tracegen(
             n_airs,
             substitutions.as_ptr(),
             num_apc_calls as i32,
+        ))
+    }
+}
+
+/// OpCode enum for the GPU stack machine bus evaluator.
+#[repr(u32)]
+pub enum OpCode {
+    PushApc = 0, // Push the APC value onto the stack. Must be followed by the index of the value in the APC device buffer.
+    PushConst = 1, // Push a constant value onto the stack. Must be followed by the constant value.
+    Add = 2,     // Add the top two values on the stack.
+    Sub = 3,     // Subtract the top two values on the stack.
+    Mul = 4,     // Multiply the top two values on the stack.
+    Neg = 5,     // Negate the top value on the stack.
+}
+
+/// GPU device representation of a bus interaction.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct DevInteraction {
+    /// Bus id this interaction targets (matches periphery chip bus id)
+    pub bus_id: u32,
+    /// Number of argument expressions for this interaction
+    pub num_args: u32,
+    /// Starting index into the `DevArgSpan` array for this interaction's args
+    /// Layout: [ multiplicity span, arg0, arg1, ... ]
+    pub args_index_off: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct DevArgSpan {
+    /// Offset (in u32 words) into `bytecode` where this arg expression starts
+    pub off: u32,
+    /// Length (instruction count) of this arg expression
+    pub len: u32,
+}
+
+/// High-level safe wrapper for `_apc_apply_bus`. Applies bus interactions on the GPU,
+/// updating periphery histograms in-place.
+pub fn apc_apply_bus(
+    // APC related
+    output: &DeviceMatrix<BabyBear>, // APC trace matrix (column-major) on device
+    num_apc_calls: usize,            // number of APC calls (rows to process)
+
+    // Interaction related
+    bytecode: DeviceBuffer<u32>,                // device bytecode buffer
+    interactions: DeviceBuffer<DevInteraction>, // device array of interactions
+    arg_spans: DeviceBuffer<DevArgSpan>,        // device array of arg spans
+
+    // Variable range checker related
+    var_range_bus_id: u32, // bus id for variable range checker
+    var_range_count: &DeviceBuffer<BabyBear>, // device histogram for variable range
+
+    // Tuple range checker related
+    tuple2_bus_id: u32, // bus id for tuple range checker (2-ary)
+    tuple2_count: &DeviceBuffer<BabyBear>, // device histogram for tuple2
+    tuple2_sizes: [u32; 2], // tuple2 sizes (dim0, dim1)
+
+    // Bitwise related
+    bitwise_bus_id: u32,                    // bus id for bitwise lookup
+    bitwise_count: &DeviceBuffer<BabyBear>, // device histogram for bitwise lookup
+) -> Result<(), CudaError> {
+    unsafe {
+        CudaError::from_result(_apc_apply_bus(
+            // APC related
+            output.buffer().as_ptr(),
+            output.height(),
+            num_apc_calls as i32,
+            // Interaction related
+            bytecode.as_ptr(),
+            bytecode.len(),
+            interactions.as_ptr(),
+            interactions.len(),
+            arg_spans.as_ptr(),
+            arg_spans.len(),
+            // Variable range checker related
+            var_range_bus_id,
+            var_range_count.as_mut_ptr() as *mut u32,
+            var_range_count.len(),
+            // Tuple range checker related
+            tuple2_bus_id,
+            tuple2_count.as_mut_ptr() as *mut u32,
+            tuple2_sizes[0],
+            tuple2_sizes[1],
+            // Bitwise related
+            bitwise_bus_id,
+            bitwise_count.as_mut_ptr() as *mut u32,
         ))
     }
 }
