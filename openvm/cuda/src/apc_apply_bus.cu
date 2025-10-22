@@ -31,22 +31,22 @@ enum OpCode : uint32_t {
 };
 
 // Fixed number of bits for bitwise lookup
-static constexpr uint32_t kBitwiseNumBits = 8u;
+static constexpr uint32_t BITWISE_NUM_BITS = 8u;
 
-__device__ __forceinline__ Fp eval_expr(const uint32_t* prog, uint32_t len,
-                                        const Fp* __restrict__ col_major,
+__device__ __forceinline__ Fp eval_expr(const uint32_t* expr, uint32_t len,
+                                        const Fp* __restrict__ apc_trace,
                                         size_t H, size_t r) {
   Fp stack[16]; int sp = 0; // No stack overflow is asserted during bytecode compilation in Rust. Preferably keep small as it's per thread.
   for (uint32_t ip = 0; ip < len; ) {
-    uint32_t op = prog[ip++];
+    uint32_t op = expr[ip++];
     switch (op) {
       case OP_PUSH_APC: {
-        uint32_t base = prog[ip++];
-        stack[sp++] = col_major[base + r];
+        uint32_t base = expr[ip++];
+        stack[sp++] = apc_trace[base + r];
         break;
       }
       case OP_PUSH_CONST: {
-        uint32_t u = prog[ip++];
+        uint32_t u = expr[ip++];
         stack[sp++] = Fp(u);
         break;
       }
@@ -62,30 +62,35 @@ __device__ __forceinline__ Fp eval_expr(const uint32_t* prog, uint32_t len,
 __device__ __forceinline__ Fp eval_arg(
   const DevArgSpan& span,
   const uint32_t* __restrict__ d_bytecode,
-  const Fp* __restrict__ col_major,
+  const Fp* __restrict__ apc_trace,
   size_t H,
   size_t r
 ) {
-  return eval_expr(d_bytecode + span.off, span.len, col_major, H, r);
+  return eval_expr(d_bytecode + span.off, span.len, apc_trace, H, r);
 }
 
+// Applies bus interactions to periphery histograms for a batch of APC rows
 __global__ void apc_apply_bus_kernel(
-  const Fp* __restrict__ d_output, size_t H,
-  const DevInteraction* __restrict__ d_interactions, size_t n_interactions,
-  const DevArgSpan* __restrict__ d_arg_spans, size_t n_arg_spans,
-  const uint32_t* __restrict__ d_bytecode, size_t bc_len,
-    int num_apc_calls,
+  const Fp* __restrict__ d_output, // APC trace (column-major)
+  size_t H, // APC trace height (rows)
+  const DevInteraction* __restrict__ d_interactions, // interactions array
+  size_t n_interactions, // number of interactions
+  const DevArgSpan* __restrict__ d_arg_spans, // argument spans array
+  size_t n_arg_spans, // number of arg spans
+  const uint32_t* __restrict__ d_bytecode, // bytecode for stack-machine expressions
+  size_t bc_len, // bytecode length (u32 words)
+    int num_apc_calls, // number of APC calls (rows)
     // bus ids
-    uint32_t var_range_bus_id,
-    uint32_t tuple2_bus_id,
-    uint32_t bitwise_bus_id,
+    uint32_t var_range_bus_id, // variable range checker bus id
+    uint32_t tuple2_bus_id, // 2-tuple range checker bus id
+    uint32_t bitwise_bus_id, // bitwise lookup bus id
     // histograms and params
-    uint32_t* __restrict__ d_var_hist,
-    size_t var_num_bins,
-    uint32_t* __restrict__ d_tuple2_hist,
-    uint32_t tuple2_sz0,
-    uint32_t tuple2_sz1,
-    uint32_t* __restrict__ d_bitwise_hist
+    uint32_t* __restrict__ d_var_hist, // variable range histogram buffer
+    size_t var_num_bins, // variable range histogram bin count
+    uint32_t* __restrict__ d_tuple2_hist, // tuple2 histogram buffer
+    uint32_t tuple2_sz0, // tuple2 size dim0
+    uint32_t tuple2_sz1, // tuple2 size dim1
+    uint32_t* __restrict__ d_bitwise_hist // bitwise lookup histogram buffer
 ) {
   const int warp = (threadIdx.x >> 5);
   const int lane = (threadIdx.x & 31);
@@ -141,11 +146,13 @@ __global__ void apc_apply_bus_kernel(
         Fp y_fp = eval_arg(s1, d_bytecode, d_output, H, (size_t)r);
         Fp xy_fp = eval_arg(s2, d_bytecode, d_output, H, (size_t)r);
         Fp sel_fp = eval_arg(s3, d_bytecode, d_output, H, (size_t)r);
+
         uint32_t x = x_fp.asUInt32();
         uint32_t y = y_fp.asUInt32();
         uint32_t xy = xy_fp.asUInt32();
         uint32_t selector = sel_fp.asUInt32();
-        BitwiseOperationLookup bl(d_bitwise_hist, kBitwiseNumBits);
+        BitwiseOperationLookup bl(d_bitwise_hist, BITWISE_NUM_BITS);
+        
         for (uint32_t k = 0; k < (uint32_t)mult.asUInt32(); ++k) {
           if (selector == 0u) bl.add_range(x, y);
           else if (selector == 1u) { bl.add_xor(x, y); /* could assert xy correctness on device if needed */ }
@@ -157,25 +164,26 @@ __global__ void apc_apply_bus_kernel(
   }
 }
 
+// Host entry point to launch the kernel that applies bus interactions
 extern "C" int _apc_apply_bus(
-  const Fp* d_output,
-  size_t output_height,
-  const DevInteraction* d_interactions,
-  size_t n_interactions,
-  const DevArgSpan* d_arg_spans,
-  size_t n_arg_spans,
-  const uint32_t* d_bytecode,
-  size_t bytecode_len,
-  int num_apc_calls,
-  uint32_t var_range_bus_id,
-  uint32_t tuple2_bus_id,
-  uint32_t bitwise_bus_id,
-  uint32_t* d_var_hist,
-  size_t var_num_bins,
-  uint32_t* d_tuple2_hist,
-  uint32_t tuple2_sz0,
-  uint32_t tuple2_sz1,
-  uint32_t* d_bitwise_hist
+  const Fp* d_output, // APC trace (column-major), device pointer
+  size_t output_height, // APC trace height (rows)
+  const DevInteraction* d_interactions, // interactions array (device)
+  size_t n_interactions, // number of interactions
+  const DevArgSpan* d_arg_spans, // argument spans (device)
+  size_t n_arg_spans, // number of arg spans
+  const uint32_t* d_bytecode, // bytecode buffer (device)
+  size_t bytecode_len, // length of bytecode (u32 words)
+  int num_apc_calls, // number of APC calls (rows)
+  uint32_t var_range_bus_id, // variable range checker bus id
+  uint32_t tuple2_bus_id, // 2-tuple range checker bus id
+  uint32_t bitwise_bus_id, // bitwise lookup bus id
+  uint32_t* d_var_hist, // variable range histogram (device)
+  size_t var_num_bins, // number of bins in variable range histogram
+  uint32_t* d_tuple2_hist, // tuple2 histogram (device)
+  uint32_t tuple2_sz0, // tuple2 size dim0
+  uint32_t tuple2_sz1, // tuple2 size dim1
+  uint32_t* d_bitwise_hist // bitwise lookup histogram (device)
 ) {
   const int block_x = 128; // 4 warps
   const dim3 block(block_x, 1, 1);

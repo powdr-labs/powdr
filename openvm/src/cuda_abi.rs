@@ -17,27 +17,30 @@ extern "C" {
         num_apc_calls: i32,                  // number of APC calls
     ) -> i32;
 
+    /// Launches the GPU kernel that applies bus interactions to periphery histograms.
+    ///
+    /// Safety: All pointers must be valid device pointers for the specified lengths.
     pub fn _apc_apply_bus(
-        d_output: *const BabyBear, // column-major
-        output_height: usize,
-        d_interactions: *const DevInteraction,
-        n_interactions: usize,
-        d_arg_spans: *const DevArgSpan,
-        n_arg_spans: usize,
-        d_bytecode: *const u32,
-        bytecode_len: usize,
-        num_apc_calls: i32,
+        d_output: *const BabyBear, // APC trace buffer (column-major), device pointer
+        output_height: usize,      // APC trace height (rows)
+        d_interactions: *const DevInteraction, // device array of interactions
+        n_interactions: usize,     // number of interactions
+        d_arg_spans: *const DevArgSpan, // device array of arg spans into `d_bytecode`
+        n_arg_spans: usize,        // number of arg spans
+        d_bytecode: *const u32,    // device bytecode buffer for stack-machine expressions
+        bytecode_len: usize,       // length of bytecode buffer (u32 words)
+        num_apc_calls: i32,        // number of APC calls (rows to process)
         // bus ids
-        var_range_bus_id: u32,
-        tuple2_bus_id: u32,
-        bitwise_bus_id: u32,
+        var_range_bus_id: u32, // bus id for the variable range checker
+        tuple2_bus_id: u32,    // bus id for the 2-tuple range checker
+        bitwise_bus_id: u32,   // bus id for the bitwise lookup
         // histograms and params
-        d_var_hist: *mut u32,
-        var_num_bins: usize,
-        d_tuple2_hist: *mut u32,
-        tuple2_sz0: u32,
-        tuple2_sz1: u32,
-        d_bitwise_hist: *mut u32,
+        d_var_hist: *mut u32,     // device histogram for variable range checker
+        var_num_bins: usize,      // number of bins in variable range histogram
+        d_tuple2_hist: *mut u32,  // device histogram for tuple2 checker
+        tuple2_sz0: u32,          // tuple2 dimension 0 size
+        tuple2_sz1: u32,          // tuple2 dimension 1 size
+        d_bitwise_hist: *mut u32, // device histogram for bitwise lookup
     ) -> i32;
 }
 
@@ -145,20 +148,22 @@ pub struct DevArgSpan {
     pub len: u32,
 }
 
+/// High-level safe wrapper for `_apc_apply_bus`. Applies bus interactions on the GPU,
+/// updating periphery histograms in-place.
 pub fn apc_apply_bus(
-    output: &DeviceMatrix<BabyBear>, // column-major
-    interactions: DeviceBuffer<DevInteraction>,
-    arg_spans: DeviceBuffer<DevArgSpan>,
-    bytecode: DeviceBuffer<u32>,
+    output: &DeviceMatrix<BabyBear>, // APC trace matrix (column-major) on device
+    interactions: DeviceBuffer<DevInteraction>, // device array of interactions
+    arg_spans: DeviceBuffer<DevArgSpan>, // device array of arg spans
+    bytecode: DeviceBuffer<u32>,     // device bytecode buffer
     // periphery-related data
-    var_range_bus_id: u32,
-    tuple2_bus_id: u32,
-    bitwise_bus_id: u32,
-    var_range_count: &DeviceBuffer<BabyBear>,
-    tuple2_count: &DeviceBuffer<BabyBear>,
-    tuple2_sizes: [u32; 2],
-    bitwise_count: &DeviceBuffer<BabyBear>,
-    num_apc_calls: usize,
+    var_range_bus_id: u32, // bus id for variable range checker
+    tuple2_bus_id: u32,    // bus id for tuple range checker (2-ary)
+    bitwise_bus_id: u32,   // bus id for bitwise lookup
+    var_range_count: &DeviceBuffer<BabyBear>, // device histogram for variable range
+    tuple2_count: &DeviceBuffer<BabyBear>, // device histogram for tuple2
+    tuple2_sizes: [u32; 2], // tuple2 sizes (dim0, dim1)
+    bitwise_count: &DeviceBuffer<BabyBear>, // device histogram for bitwise lookup
+    num_apc_calls: usize,  // number of APC calls (rows to process)
 ) -> Result<(), CudaError> {
     unsafe {
         CudaError::from_result(_apc_apply_bus(
