@@ -17,19 +17,18 @@ pub fn split_system<T: RuntimeConstant, V: Clone + Ord + Hash + Display>(
     constraint_system: IndexedConstraintSystem<T, V>,
 ) -> Vec<ConstraintSystem<T, V>> {
     // We cleanup and re-index the constraint system, otherwise we get too many
-    // empty systems due to variables that have already been substituted.
+    // empty systems due to variables that have already been substituted.\
     let mut constraint_system: ConstraintSystem<T, V> = constraint_system.into();
     constraint_system
         .algebraic_constraints
         .retain(|constr| !constr.is_redundant());
-    let mut constraint_system: IndexedConstraintSystem<T, V> = constraint_system.into();
+    let constraint_system: IndexedConstraintSystem<T, V> = constraint_system.into();
 
     let mut systems = Vec::new();
     let mut remaining_variables: BTreeSet<_> = constraint_system.variables().cloned().collect();
 
     while let Some(v) = remaining_variables.pop_first() {
         let variables_to_extract = reachable_variables([v.clone()], &constraint_system);
-        assert!(!variables_to_extract.is_empty());
 
         let mut algebraic_constraints = Vec::new();
         let mut bus_interactions = Vec::new();
@@ -44,22 +43,14 @@ pub fn split_system<T: RuntimeConstant, V: Clone + Ord + Hash + Display>(
                 }
             }
         }
-        constraint_system.retain_algebraic_constraints(|constr| {
-            !constr
-                .referenced_unknown_variables()
-                .any(|var| variables_to_extract.contains(var))
-        });
-        constraint_system.retain_bus_interactions(|constr| {
-            !constr
-                .referenced_unknown_variables()
-                .any(|var| variables_to_extract.contains(var))
-        });
         systems.push(ConstraintSystem {
             algebraic_constraints,
             bus_interactions,
             derived_variables: Vec::new(),
         });
-        remaining_variables.retain(|var| !variables_to_extract.contains(var));
+        for v in variables_to_extract {
+            remaining_variables.remove(&v);
+        }
     }
     systems
 }

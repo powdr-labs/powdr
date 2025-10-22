@@ -36,10 +36,6 @@ pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Displa
         + Clone,
     new_var: &mut impl FnMut() -> V,
 ) -> IndexedConstraintSystem<T, V> {
-    println!(
-        "Starting equal zero check optimization on system with {} variables",
-        constraint_system.referenced_unknown_variables().count()
-    );
     let binary_range_constraint = RangeConstraint::from_mask(1);
     // To keep performance reasonable, we split the system at stateful bus interactions
     // into smaller sub-systems and optimize each of them separately.
@@ -47,10 +43,6 @@ pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Displa
         constraint_system.clone(),
         bus_interaction_handler.clone(),
     ) {
-        println!(
-            "Subsystem with {} variables",
-            subsystem.referenced_unknown_variables().count()
-        );
         if subsystem.referenced_unknown_variables().count() > 200 {
             // Searching for equal zero checks in such a large
             // system would take too long.
@@ -98,6 +90,15 @@ fn split_at_stateful_bus_interactions<T: FieldElement, V: Clone + Ord + Hash + D
         }
         true
     });
+    let stateful_bus_interactions_by_var = stateful_bus_interactions
+        .iter()
+        .enumerate()
+        .flat_map(|(i, bus_int)| {
+            bus_int
+                .referenced_unknown_variables()
+                .map(move |v| (v.clone(), i))
+        })
+        .into_group_map();
     split_system(constraint_system)
         .into_iter()
         .map(|mut subsystem| {
@@ -109,16 +110,14 @@ fn split_at_stateful_bus_interactions<T: FieldElement, V: Clone + Ord + Hash + D
             // Re-add the stateful bus interactions that are connected to this subsystem.
             // This will lead to bus interactions potentially being added to multiple
             // subsystems.
-            // TODO this could be slow
             subsystem.bus_interactions.extend(
-                stateful_bus_interactions
-                    .iter()
-                    .filter(|bus_int| {
-                        bus_int
-                            .referenced_unknown_variables()
-                            .any(|v| vars.contains(v))
-                    })
-                    .cloned(),
+                vars.iter()
+                    .flat_map(|v| stateful_bus_interactions_by_var.get(v))
+                    .flatten()
+                    .cloned()
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .map(|i| stateful_bus_interactions[i].clone()),
             );
             subsystem
         })
