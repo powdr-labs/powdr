@@ -312,25 +312,29 @@ impl PowdrTraceGenerator {
 
         // Launch GPU apply-bus to update periphery histograms on device
         cuda_abi::apc_apply_bus(
+            // APC related
             &output,
+            num_apc_calls,
+            // Interaction related
+            bytecode,
             bus_interactions,
             arg_spans,
-            bytecode,
+            // Variable range checker related
             var_range_bus_id,
-            tuple2_bus_id,
-            bitwise_bus_id,
             var_range_count,
+            // Tuple range checker related
+            tuple2_bus_id,
             tuple2_count_u32,
             tuple2_sizes,
+            // Bitwise related
+            bitwise_bus_id,
             bitwise_count_u32,
-            num_apc_calls,
         )
         .unwrap();
 
         output.into()
     }
 }
-
 
 /// Encodes an algebraic expression into GPU stack-machine bytecode.
 ///

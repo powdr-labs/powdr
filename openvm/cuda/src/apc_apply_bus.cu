@@ -81,26 +81,33 @@ __device__ __forceinline__ Fp eval_arg(
 
 // Applies bus interactions to periphery histograms for a batch of APC rows
 __global__ void apc_apply_bus_kernel(
+  // APC related
   const Fp* __restrict__ d_output, // APC trace (column-major)
   size_t H, // APC trace height (rows)
+  int num_apc_calls, // number of APC calls (rows)
+
+  // Interaction related
+  const uint32_t* __restrict__ d_bytecode, // bytecode for stack-machine expressions
+  size_t bc_len, // bytecode length (u32 words)
   const DevInteraction* __restrict__ d_interactions, // interactions array
   size_t n_interactions, // number of interactions
   const DevArgSpan* __restrict__ d_arg_spans, // argument spans array
   size_t n_arg_spans, // number of arg spans
-  const uint32_t* __restrict__ d_bytecode, // bytecode for stack-machine expressions
-  size_t bc_len, // bytecode length (u32 words)
-    int num_apc_calls, // number of APC calls (rows)
-    // bus ids
-    uint32_t var_range_bus_id, // variable range checker bus id
-    uint32_t tuple2_bus_id, // 2-tuple range checker bus id
-    uint32_t bitwise_bus_id, // bitwise lookup bus id
-    // histograms and params
-    uint32_t* __restrict__ d_var_hist, // variable range histogram buffer
-    size_t var_num_bins, // variable range histogram bin count
-    uint32_t* __restrict__ d_tuple2_hist, // tuple2 histogram buffer
-    uint32_t tuple2_sz0, // tuple2 size dim0
-    uint32_t tuple2_sz1, // tuple2 size dim1
-    uint32_t* __restrict__ d_bitwise_hist // bitwise lookup histogram buffer
+
+  // Variable range checker related
+  uint32_t var_range_bus_id, // variable range checker bus id
+  uint32_t* __restrict__ d_var_hist, // variable range histogram buffer
+  size_t var_num_bins, // variable range histogram bin count
+
+  // Tuple range checker related
+  uint32_t tuple2_bus_id, // 2-tuple range checker bus id
+  uint32_t* __restrict__ d_tuple2_hist, // tuple2 histogram buffer
+  uint32_t tuple2_sz0, // tuple2 size dim0
+  uint32_t tuple2_sz1, // tuple2 size dim1
+
+  // Bitwise related
+  uint32_t bitwise_bus_id, // bitwise lookup bus id
+  uint32_t* __restrict__ d_bitwise_hist // bitwise lookup histogram buffer
 ) {
   const int warp = (threadIdx.x >> 5);
   const int lane = (threadIdx.x & 31);
@@ -177,23 +184,32 @@ __global__ void apc_apply_bus_kernel(
 
 // Host entry point to launch the kernel that applies bus interactions
 extern "C" int _apc_apply_bus(
+  // APC related
   const Fp* d_output, // APC trace (column-major), device pointer
   size_t output_height, // APC trace height (rows)
+  int num_apc_calls, // number of APC calls (rows)
+
+  // Interaction related
+  const uint32_t* d_bytecode, // bytecode buffer (device)
+  size_t bytecode_len, // length of bytecode (u32 words)
   const DevInteraction* d_interactions, // interactions array (device)
   size_t n_interactions, // number of interactions
   const DevArgSpan* d_arg_spans, // argument spans (device)
   size_t n_arg_spans, // number of arg spans
-  const uint32_t* d_bytecode, // bytecode buffer (device)
-  size_t bytecode_len, // length of bytecode (u32 words)
-  int num_apc_calls, // number of APC calls (rows)
+
+  // Variable range checker related
   uint32_t var_range_bus_id, // variable range checker bus id
-  uint32_t tuple2_bus_id, // 2-tuple range checker bus id
-  uint32_t bitwise_bus_id, // bitwise lookup bus id
   uint32_t* d_var_hist, // variable range histogram (device)
   size_t var_num_bins, // number of bins in variable range histogram
+
+  // Tuple range checker related
+  uint32_t tuple2_bus_id, // 2-tuple range checker bus id
   uint32_t* d_tuple2_hist, // tuple2 histogram (device)
   uint32_t tuple2_sz0, // tuple2 size dim0
   uint32_t tuple2_sz1, // tuple2 size dim1
+
+  // Bitwise related
+  uint32_t bitwise_bus_id, // bitwise lookup bus id
   uint32_t* d_bitwise_hist // bitwise lookup histogram (device)
 ) {
   const int block_x = 128; // 4 warps
@@ -203,20 +219,20 @@ extern "C" int _apc_apply_bus(
   const dim3 grid(g, 1, 1); // each warp processes an interaction
 
   apc_apply_bus_kernel<<<grid, block>>>(
-    d_output, output_height,
-    d_interactions, n_interactions,
-    d_arg_spans, n_arg_spans,
-    d_bytecode, bytecode_len,
-    num_apc_calls,
-    var_range_bus_id,
-    tuple2_bus_id,
-    bitwise_bus_id,
-    d_var_hist,
-    var_num_bins,
-    d_tuple2_hist,
-    tuple2_sz0,
-    tuple2_sz1,
-    d_bitwise_hist
+    // APC related
+    d_output, output_height, num_apc_calls,
+
+    // Interaction related
+    d_bytecode, bytecode_len, d_interactions, n_interactions, d_arg_spans, n_arg_spans,
+
+    // Variable range checker related
+    var_range_bus_id, d_var_hist, var_num_bins,
+
+    // Tuple range checker related
+    tuple2_bus_id, d_tuple2_hist, tuple2_sz0, tuple2_sz1,
+
+    // Bitwise related
+    bitwise_bus_id, d_bitwise_hist
   );
   return (int)cudaGetLastError();
 }
