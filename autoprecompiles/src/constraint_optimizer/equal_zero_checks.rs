@@ -136,8 +136,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     output: V,
     value: T,
 ) {
-    // First, we try to find input and output variables that satisfy the equal zero check property,
-    // but we only search in the smaller subsystem. Later, we verify in the full system.
+    // First, we try to find input and output variables that satisfy the equal zero check property.
     let Ok(solution) = solve_with_assignments(
         &subsystem,
         bus_interaction_handler.clone(),
@@ -149,8 +148,8 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     if inputs.is_empty() {
         return;
     }
-    // We know: if `var = value`, then `inputs` are all zero.
-    // Now check that `var == 1 - value` is inconsistent with `inputs` all being zero.
+    // Here we know: if `output = value`, then `inputs` are all zero.
+    // Now check that `output = 1 - value` is inconsistent with `inputs` all being zero.
     if solve_with_assignments(
         &subsystem,
         bus_interaction_handler.clone(),
@@ -163,19 +162,20 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     {
         return;
     }
+    // Here we know: `output = value` if and only if all variables in `inputs` are zero.
     log::debug!(
         "Candidate found: {output} == {value} <=> all of {{{}}} are zero",
         inputs.iter().format(", ")
     );
 
-    // We have our variables, let's move to the full system.
-
-    // Ok, we can replace the constraints by a potentially more efficient version.
-    // Let's find out which are the constraints that we need to replace.
+    // We might replace some constraints by a potentially more efficient version,
+    // but we need to find out which are the constraints that we need to replace.
     // We do a reachability search starting from stateful bus interactions, but we stop
     // the search as soon as we reach an input or the output variable.
-    // The variables that are not reachable in this sense can be removed, because they are only
-    // connected to a stateful bus interaction via the input or output.
+    // The variables that are not reachable in this sense lie "between" the inputs
+    // and the output. They can be removed (and replaced by our more efficient
+    // is-equal-zero constraint) because they are only connected to a stateful
+    // bus interaction via the input or output.
     let blocking_variables = inputs.iter().chain([&output]).cloned();
     let outside_variables = reachable_variables_except_blocked(
         variables_in_stateful_bus_interactions(
@@ -210,6 +210,8 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     }
 
     // Check that each input is non-negative and that the sum of inputs cannot wrap.
+    // TODO we do not need this. If this property is false, we can still find
+    // a better constraint that also models is-equal-zero.
     let min_input = inputs
         .iter()
         .map(|v| solver.get(v))
