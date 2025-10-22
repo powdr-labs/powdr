@@ -20,23 +20,19 @@ use crate::{
 use openvm_stark_backend::p3_field::PrimeField32;
 
 #[cfg(feature = "cuda")]
-use crate::bus_map::DEFAULT_TUPLE_RANGE_CHECKER;
-#[cfg(feature = "cuda")]
-use crate::cuda_abi::{self, DevArgSpan, DevInteraction, OpCode, OriginalAir, Subst};
-#[cfg(feature = "cuda")]
-use crate::DeviceMatrix;
-#[cfg(feature = "cuda")]
-use openvm_cuda_common::copy::MemCopyH2D;
-#[cfg(feature = "cuda")]
-use openvm_cuda_common::d_buffer::DeviceBuffer;
+use {
+    crate::bus_map::DEFAULT_TUPLE_RANGE_CHECKER,
+    crate::cuda_abi::{self, DevArgSpan, DevInteraction, OpCode, OriginalAir, Subst},
+    crate::DeviceMatrix,
+    openvm_cuda_common::copy::MemCopyH2D,
+    openvm_cuda_common::d_buffer::DeviceBuffer,
+    openvm_stark_backend::prover::hal::MatrixDimensions,
+    powdr_autoprecompiles::{expression::AlgebraicExpression, SymbolicBusInteraction},
+    powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator},
+};
+
 #[cfg(not(feature = "cuda"))]
 use openvm_stark_backend::p3_field::Field;
-#[cfg(feature = "cuda")]
-use openvm_stark_backend::prover::hal::MatrixDimensions;
-#[cfg(feature = "cuda")]
-use powdr_autoprecompiles::{expression::AlgebraicExpression, SymbolicBusInteraction};
-#[cfg(feature = "cuda")]
-use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 
 #[cfg(feature = "cuda")]
 const GPU_STACK_CAP: usize = 16; // This should match `stack[16]` in `apc_apply_bus.cu`.
