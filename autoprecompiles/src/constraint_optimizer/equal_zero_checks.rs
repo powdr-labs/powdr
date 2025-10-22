@@ -37,6 +37,8 @@ pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Displa
     new_var: &mut impl FnMut() -> V,
 ) -> IndexedConstraintSystem<T, V> {
     let binary_range_constraint = RangeConstraint::from_mask(1);
+    // To keep performance reasonable, we split the system at stateful bus interactions
+    // into smaller sub-systems and optimize each of them separately.
     for subsystem in split_at_stateful_bus_interactions(
         constraint_system.clone(),
         bus_interaction_handler.clone(),
@@ -50,10 +52,6 @@ pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Displa
             );
             continue;
         }
-        // println!(
-        //     "Searching for equal zero checks in subsystem with {} variables",
-        //     subsystem.unknown_variables().count()
-        // );
         let binary_variables = subsystem
             .referenced_unknown_variables()
             .filter(|v| solver.get(v) == binary_range_constraint)
@@ -100,6 +98,8 @@ fn split_at_stateful_bus_interactions<T: FieldElement, V: Clone + Ord + Hash + D
                 .cloned()
                 .collect::<BTreeSet<_>>();
             // Re-add the stateful bus interactions that are connected to this subsystem.
+            // This will lead to bus interactions potentially being added to multiple
+            // subsystems.
             subsystem.bus_interactions.extend(
                 stateful_bus_interactions
                     .iter()
@@ -127,8 +127,6 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     output: V,
     value: T,
 ) {
-    // println!("============ Handling subsystem\n{subsystem}");
-    // println!("=============== FULL SYSTEM:\n{constraint_system}");
     // First, we try to find input and output variables that satisfy the equal zero check property,
     // but we only search in the smaller subsystem. Later, we verify in the full system.
     let Ok(solution) = solve_with_assignments(
@@ -136,12 +134,10 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
         bus_interaction_handler.clone(),
         [(output.clone(), value)],
     ) else {
-        // println!("================= NOPE");
         return;
     };
     let inputs: BTreeSet<_> = zero_assigments(&solution).collect();
     if inputs.is_empty() {
-        // println!("================= NOPE");
         return;
     }
     // We know: if `var = value`, then `inputs` are all zero.
@@ -156,7 +152,6 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     )
     .is_ok()
     {
-        // println!("================= NOPE");
         return;
     }
     log::debug!(
@@ -377,8 +372,6 @@ fn check_redundancy<T: FieldElement, V: Clone + Ord + Hash + Display>(
         .cloned()
         .collect::<BTreeSet<_>>();
     booleans.remove(output);
-    // println!("Checking\n-------------------------\n{isolated_system}--------------------");
-    // println!("Booleans: {}", booleans.iter().format(", "));
     {
         if let Some(restrictions) = is_satisfiable(
             isolated_system,
@@ -391,19 +384,9 @@ fn check_redundancy<T: FieldElement, V: Clone + Ord + Hash + Display>(
             bus_interaction_handler.clone(),
         ) {
             if !restrictions.is_empty() {
-                // println!(
-                //     "WARNING: Isolated system has restrictions even when inputs are zero: {}",
-                //     restrictions
-                //         .iter()
-                //         .map(|(v, rc)| format!("{v}: {rc}"))
-                //         .format(", ")
-                // );
                 return false;
             }
         } else {
-            // println!(
-            //     "Isolated system is not satisfiable when inputs are zero and output is {value}"
-            // );
             return false;
         }
     }
@@ -435,13 +418,6 @@ fn check_redundancy<T: FieldElement, V: Clone + Ord + Hash + Display>(
         let restrictions = reduce_range_constraints(restrictions, &range_constraints);
         for result in restrictions {
             if !result.is_empty() {
-                // println!(
-                //     "  - satisfiable with restrictions: {}",
-                //     result
-                //         .iter()
-                //         .map(|(v, rc)| format!("{v}: {rc}"))
-                //         .format(", ")
-                // );
                 return false;
             }
         }
@@ -506,17 +482,10 @@ fn is_satisfiable<T: FieldElement, V: Clone + Ord + Hash + Display>(
         output_rc.insert(v, rc);
     }
     if system.algebraic_constraints.is_empty() && system.bus_interactions.is_empty() {
-        return Some(output_rc);
+        Some(output_rc)
     } else {
-        // println!(
-        //     "Non-empty system:\n-----\n{system}\nDetermined RCS: {}\n-----",
-        //     output_rc
-        //         .iter()
-        //         .map(|(v, rc)| format!("{v}: {rc}"))
-        //         .format(", ")
-        // );
+        None
     }
-    None
 }
 
 fn inline_non_input_variables<T: FieldElement, V: Clone + Ord + Hash + Display>(
