@@ -5,7 +5,7 @@ use crate::{
     runtime_constant::{RuntimeConstant, Substitutable},
 };
 use itertools::Itertools;
-use powdr_number::{ExpressionConvertible, FieldElement};
+use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 use std::{fmt::Display, hash::Hash};
 
@@ -215,10 +215,8 @@ impl<T: RuntimeConstant, V: Clone + Ord + Eq> BusInteraction<GroupedExpression<T
     }
 }
 
-impl<
-        T: RuntimeConstant + Display + ExpressionConvertible<T::FieldType, V>,
-        V: Clone + Hash + Ord + Eq + Display,
-    > BusInteraction<GroupedExpression<T, V>>
+impl<T: FieldElement, V: Clone + Hash + Ord + Eq + Display>
+    BusInteraction<GroupedExpression<T, V>>
 {
     /// Refines range constraints of the bus interaction's fields
     /// using the provided `BusInteractionHandler`.
@@ -226,8 +224,8 @@ impl<
     /// Forwards and error by the bus interaction handler.
     pub fn solve(
         &self,
-        bus_interaction_handler: &dyn BusInteractionHandler<T::FieldType>,
-        range_constraint_provider: &impl RangeConstraintProvider<T::FieldType, V>,
+        bus_interaction_handler: &dyn BusInteractionHandler<T>,
+        range_constraint_provider: &impl RangeConstraintProvider<T, V>,
     ) -> Result<Vec<Effect<T, V>>, ViolatesBusRules> {
         let range_constraints = self.to_range_constraints(range_constraint_provider);
         let range_constraints =
@@ -247,7 +245,7 @@ impl<
                         .try_to_number()?;
                     let expr = AlgebraicConstraint::assert_zero(expr).try_solve_for(var)?;
                     let rc = rc
-                        .multiple(T::FieldType::from(1) / k)
+                        .multiple(T::from(1) / k)
                         .combine_sum(&expr.range_constraint(range_constraint_provider));
                     (!rc.is_unconstrained()).then(|| Effect::RangeConstraint(var.clone(), rc))
                 })
