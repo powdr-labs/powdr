@@ -1,16 +1,36 @@
-use std::{collections::{BTreeMap, HashMap}, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+};
 
 use itertools::Itertools;
-use openvm_circuit::{arch::{AirInventory, DenseRecordArena}, utils::next_power_of_two_or_zero};
+use openvm_circuit::{
+    arch::{AirInventory, DenseRecordArena},
+    utils::next_power_of_two_or_zero,
+};
 use openvm_cuda_backend::base::DeviceMatrix;
 use openvm_cuda_common::copy::MemCopyH2D;
+use openvm_stark_backend::{
+    p3_field::PrimeField32,
+    prover::{hal::ProverBackend, types::AirProvingContext},
+    Chip,
+};
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{expression::AlgebraicExpression, Apc, SymbolicBusInteraction};
-use openvm_stark_backend::{p3_field::PrimeField32, prover::{hal::ProverBackend, types::AirProvingContext}, Chip};
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 
-use crate::{bus_map::DEFAULT_TUPLE_RANGE_CHECKER, cuda_abi::{self, DevArgSpan, DevInteraction, OpCode, OriginalAir, Subst}, extraction_utils::{OriginalAirs, OriginalVmConfig}, powdr_extension::{chip::PowdrChipGpu, executor::OriginalArenas, trace_generator::{common::create_dummy_airs, cuda::inventory::create_dummy_chip_complex}}, BabyBearSC, Instr};
+use crate::{
+    bus_map::DEFAULT_TUPLE_RANGE_CHECKER,
+    cuda_abi::{self, DevArgSpan, DevInteraction, OpCode, OriginalAir, Subst},
+    extraction_utils::{OriginalAirs, OriginalVmConfig},
+    powdr_extension::{
+        chip::PowdrChipGpu,
+        executor::OriginalArenas,
+        trace_generator::{common::create_dummy_airs, cuda::inventory::create_dummy_chip_complex},
+    },
+    BabyBearSC, Instr,
+};
 
 mod inventory;
 mod periphery;
@@ -131,8 +151,11 @@ impl PowdrTraceGeneratorGpu {
         }
     }
 
-    fn generate_witness(&self, mut original_arenas: OriginalArenas<DenseRecordArena>) -> DeviceMatrix<BabyBear> {
-    let num_apc_calls = original_arenas.number_of_calls();
+    fn generate_witness(
+        &self,
+        mut original_arenas: OriginalArenas<DenseRecordArena>,
+    ) -> DeviceMatrix<BabyBear> {
+        let num_apc_calls = original_arenas.number_of_calls();
 
         if num_apc_calls == 0 {
             // If the APC isn't called, early return with an empty trace.

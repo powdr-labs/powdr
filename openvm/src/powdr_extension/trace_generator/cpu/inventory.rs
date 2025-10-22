@@ -1,8 +1,6 @@
 use derive_more::From;
 use openvm_circuit::{
-    arch::{
-        AirInventory, ChipInventoryError, VmBuilder, VmChipComplex, VmProverExtension,
-    },
+    arch::{AirInventory, ChipInventoryError, VmBuilder, VmChipComplex, VmProverExtension},
     system::{phantom::PhantomExecutor, SystemExecutor},
 };
 use openvm_circuit_derive::{AnyEnum, Executor, MeteredExecutor, PreflightExecutor};
@@ -12,21 +10,18 @@ use openvm_sdk::config::SdkVmConfig;
 use openvm_stark_backend::p3_field::PrimeField32;
 
 use super::periphery::SharedPeripheryChipsCpu;
-use crate::{
-    BabyBearSC,
-    ExtendedVmConfigExecutor,
-};
+use crate::{BabyBearSC, ExtendedVmConfigExecutor};
 
-use openvm_circuit::arch::MatrixRecordArena;
 use super::periphery::SharedPeripheryChipsCpuProverExt;
-use openvm_stark_backend::config::Val;
+use openvm_circuit::arch::MatrixRecordArena;
 use openvm_circuit::system::SystemChipInventory;
+use openvm_stark_backend::config::Val;
 use openvm_stark_backend::prover::cpu::CpuBackend;
 /// A dummy inventory used for execution of autoprecompiles
 /// It extends the `SdkVmConfigExecutor` and `SdkVmConfigPeriphery`, providing them with shared, pre-loaded periphery chips to avoid memory allocations by each SDK chip
 pub type DummyChipComplex<SC> =
     VmChipComplex<SC, MatrixRecordArena<Val<SC>>, CpuBackend<SC>, SystemChipInventory<SC>>;
-    use openvm_ecc_circuit::EccCpuProverExt;
+use openvm_ecc_circuit::EccCpuProverExt;
 use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
 
 #[allow(clippy::large_enum_variant)]

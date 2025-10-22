@@ -1,8 +1,16 @@
 use std::{collections::HashMap, sync::Arc};
 
 use itertools::Itertools;
-use openvm_circuit::{arch::{AirInventory, MatrixRecordArena}, utils::next_power_of_two_or_zero};
-use openvm_stark_backend::{p3_field::FieldAlgebra, p3_matrix::dense::RowMajorMatrix, prover::{hal::ProverBackend, types::AirProvingContext}, Chip};
+use openvm_circuit::{
+    arch::{AirInventory, MatrixRecordArena},
+    utils::next_power_of_two_or_zero,
+};
+use openvm_stark_backend::{
+    p3_field::FieldAlgebra,
+    p3_matrix::dense::{DenseMatrix, RowMajorMatrix},
+    prover::{hal::ProverBackend, types::AirProvingContext},
+    Chip,
+};
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{trace_handler::TraceTrait, Apc};
 use powdr_constraint_solver::constraint_system::ComputationMethod;
@@ -10,7 +18,9 @@ use powdr_constraint_solver::constraint_system::ComputationMethod;
 use crate::{
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     powdr_extension::{
-        chip::PowdrChipCpu, executor::OriginalArenas, trace_generator::{common::create_dummy_airs, cpu::inventory::create_dummy_chip_complex},
+        chip::PowdrChipCpu,
+        executor::OriginalArenas,
+        trace_generator::{common::create_dummy_airs, cpu::inventory::create_dummy_chip_complex},
     },
     BabyBearSC, Instr,
 };
@@ -56,7 +66,7 @@ impl<R, PB: ProverBackend<Matrix = Arc<RowMajorMatrix<BabyBear>>>> Chip<R, PB> f
             .trace_generator
             .generate_witness(self.record_arena_by_air_name.take());
 
-        AirProvingContext::simple(trace.matrix, vec![])
+        AirProvingContext::simple(Arc::new(trace), vec![])
     }
 }
 
@@ -82,16 +92,17 @@ impl PowdrTraceGeneratorCpu {
         }
     }
 
-    pub fn generate_witness(&self, mut original_arenas: OriginalArenas<MatrixRecordArena<BabyBear>>) -> SharedCpuTrace<BabyBear> {
+    pub fn generate_witness(
+        &self,
+        mut original_arenas: OriginalArenas<MatrixRecordArena<BabyBear>>,
+    ) -> DenseMatrix<BabyBear> {
         use powdr_autoprecompiles::trace_handler::{generate_trace, TraceData};
 
         let num_apc_calls = original_arenas.number_of_calls();
         if num_apc_calls == 0 {
             // If the APC isn't called, early return with an empty trace.
             let width = self.apc.machine().main_columns().count();
-            return SharedCpuTrace {
-                matrix: Arc::new(RowMajorMatrix::new(vec![], width)),
-            };
+            return RowMajorMatrix::new(vec![], width);
         }
 
         let chip_inventory = {
@@ -211,8 +222,6 @@ impl PowdrTraceGeneratorCpu {
                     });
             });
 
-        SharedCpuTrace {
-            matrix: Arc::new(RowMajorMatrix::new(values, width)),
-        }
+        RowMajorMatrix::new(values, width)
     }
 }

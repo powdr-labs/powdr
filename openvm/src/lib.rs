@@ -9,7 +9,10 @@ use openvm_circuit::arch::execution_mode::metered::segment_ctx::SegmentationLimi
 use openvm_circuit::arch::execution_mode::Segment;
 use openvm_circuit::arch::instructions::exe::VmExe;
 use openvm_circuit::arch::{
-    debug_proving_ctx, AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecutorInventory, ExecutorInventoryError, InitFileGenerator, MatrixRecordArena, PreflightExecutionOutput, RowMajorMatrixArena, SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig, VmCircuitExtension, VmExecutionConfig, VmInstance, VmProverExtension
+    debug_proving_ctx, AirInventory, AirInventoryError, ChipInventory, ChipInventoryError,
+    ExecutorInventory, ExecutorInventoryError, InitFileGenerator, MatrixRecordArena,
+    PreflightExecutionOutput, RowMajorMatrixArena, SystemConfig, VmBuilder, VmChipComplex,
+    VmCircuitConfig, VmCircuitExtension, VmExecutionConfig, VmInstance, VmProverExtension,
 };
 use openvm_circuit::system::SystemChipInventory;
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
@@ -55,7 +58,8 @@ use std::{
 
 use crate::customize_exe::OpenVmApcCandidate;
 pub use crate::customize_exe::Prog;
-use crate::powdr_extension::chip::{PowdrAir};
+use crate::powdr_extension::chip::PowdrAir;
+use crate::powdr_extension::PlonkAir;
 use tracing::{info_span, Level};
 
 #[cfg(test)]
@@ -99,8 +103,10 @@ use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupCh
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_circuit_primitives::var_range::SharedVariableRangeCheckerChip;
 use openvm_native_circuit::NativeCpuBuilder;
-pub type PowdrSdkCpu = GenericSdk<BabyBearPoseidon2Engine, SpecializedConfigCpuBuilder, NativeCpuBuilder>;
-pub type PowdrExecutionProfileSdkCpu = GenericSdk<BabyBearPoseidon2Engine, ExtendedVmConfigCpuBuilder, NativeCpuBuilder>;
+pub type PowdrSdkCpu =
+    GenericSdk<BabyBearPoseidon2Engine, SpecializedConfigCpuBuilder, NativeCpuBuilder>;
+pub type PowdrExecutionProfileSdkCpu =
+    GenericSdk<BabyBearPoseidon2Engine, ExtendedVmConfigCpuBuilder, NativeCpuBuilder>;
 
 pub const DEFAULT_OPENVM_DEGREE_BOUND: usize = 2 * DEFAULT_APP_LOG_BLOWUP + 1;
 pub const DEFAULT_DEGREE_BOUND: DegreeBound = DegreeBound {
@@ -267,7 +273,6 @@ impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, PowdrExtens
     }
 }
 
-
 struct PowdrCpuProverExt;
 
 impl<E, RA> VmProverExtension<E, RA, PowdrExtension<BabyBear>> for PowdrCpuProverExt
@@ -318,7 +323,7 @@ where
                     inventory.add_executor_chip(chip);
                 }
                 PrecompileImplementation::PlonkChip => {
-                    use crate::powdr_extension::{PlonkAir, PlonkChipCpu};
+                    use crate::powdr_extension::PlonkChipCpu;
 
                     inventory.next_air::<PlonkAir<BabyBear>>()?;
                     let chip = PlonkChipCpu::new(
@@ -819,9 +824,6 @@ impl CompiledProgram {
     ) -> (Vec<(AirMetrics, Option<AirWidthsDiff>)>, Vec<AirMetrics>) {
         let air_inventory = self.vm_config.create_airs().unwrap();
 
-        #[cfg(feature = "cuda")]
-        let chip_complex = <SpecializedConfigGpuBuilder as VmBuilder<GpuBabyBearPoseidon2Engine>>::create_chip_complex(&SpecializedConfigGpuBuilder, &self.vm_config, air_inventory).unwrap();
-        #[cfg(not(feature = "cuda"))]
         let chip_complex = <SpecializedConfigCpuBuilder as VmBuilder<BabyBearPoseidon2Engine>>::create_chip_complex(&SpecializedConfigCpuBuilder, &self.vm_config, air_inventory).unwrap();
 
         let inventory = chip_complex.inventory;
@@ -908,7 +910,6 @@ pub fn prove(
 
     // Create the SDK
     let sdk = PowdrSdkCpu::new(app_config).unwrap();
-
     if mock {
         // Build owned vm instance, so we can mutate it later
         let vm_builder = sdk.app_vm_builder().clone();

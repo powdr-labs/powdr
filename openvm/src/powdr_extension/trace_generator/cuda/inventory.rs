@@ -1,8 +1,6 @@
 use derive_more::From;
 use openvm_circuit::{
-    arch::{
-        AirInventory, ChipInventoryError, VmBuilder, VmChipComplex, VmProverExtension,
-    },
+    arch::{AirInventory, ChipInventoryError, VmBuilder, VmChipComplex, VmProverExtension},
     system::{phantom::PhantomExecutor, SystemExecutor},
 };
 use openvm_circuit_derive::{AnyEnum, Executor, MeteredExecutor, PreflightExecutor};
@@ -11,15 +9,17 @@ use openvm_pairing_circuit::PairingProverExt;
 use openvm_sdk::config::SdkVmConfig;
 use openvm_stark_backend::p3_field::PrimeField32;
 
-use crate::{powdr_extension::trace_generator::cuda::periphery::SharedPeripheryChipsGpuProverExt, BabyBearSC, ExtendedVmConfigExecutor
+use crate::{
+    powdr_extension::trace_generator::cuda::periphery::SharedPeripheryChipsGpuProverExt,
+    BabyBearSC, ExtendedVmConfigExecutor,
 };
 
-use crate::GpuBackend;
+use crate::powdr_extension::trace_generator::cuda::periphery::SharedPeripheryChipsGpu;
 use crate::DenseRecordArena;
 use crate::GpuBabyBearPoseidon2Engine;
+use crate::GpuBackend;
 use crate::SystemGpuBuilder;
 use openvm_circuit::system::cuda::SystemChipInventoryGPU;
-use crate::powdr_extension::trace_generator::cuda::periphery::SharedPeripheryChipsGpu;
 pub type GpuDummyChipComplex<SC> =
     VmChipComplex<SC, DenseRecordArena, GpuBackend, SystemChipInventoryGPU>;
 

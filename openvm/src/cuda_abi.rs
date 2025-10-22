@@ -1,13 +1,14 @@
 #![cfg(feature = "cuda")]
 
-use openvm_circuit_primitives::range_tuple::RangeTupleCheckerChipGPU;
 use openvm_cuda_backend::base::DeviceMatrix;
 use openvm_cuda_common::{d_buffer::DeviceBuffer, error::CudaError};
 use openvm_stark_backend::prover::hal::MatrixDimensions;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 
 extern "C" {
-    fn _range_tuple2_add_count(d_hist: *mut u32, sizes2: *const u32, values2: *const u32) -> i32;
+    /// Launches the GPU kernel that maps original AIR traces into the APC trace buffer.
+    ///
+    /// Safety: All pointers must be valid device pointers for the specified lengths.
     pub fn _apc_tracegen(
         d_output: *mut BabyBear,             // column-major
         output_height: usize,                // H_out
@@ -49,31 +50,6 @@ extern "C" {
         bitwise_bus_id: u32,      // bus id for the bitwise lookup
         d_bitwise_hist: *mut u32, // device histogram for bitwise lookup
     ) -> i32;
-}
-
-// Mutates chip.count (device histogram) in place using __device__ RangeTupleChecker<2>::add_count
-pub unsafe fn range_tuple2_add_count_on_chip(
-    chip: &RangeTupleCheckerChipGPU<2>,
-    values: [u32; 2],
-) -> Result<(), CudaError> {
-    CudaError::from_result(_range_tuple2_add_count(
-        chip.count.as_mut_ptr() as *mut u32,
-        chip.sizes.as_ptr(),
-        values.as_ptr(),
-    ))
-}
-
-// Optional raw variant
-pub unsafe fn range_tuple2_add_count_raw(
-    d_hist: &DeviceBuffer<u32>,
-    sizes2: &[u32; 2],
-    values2: &[u32; 2],
-) -> Result<(), CudaError> {
-    CudaError::from_result(_range_tuple2_add_count(
-        d_hist.as_mut_ptr(),
-        sizes2.as_ptr(),
-        values2.as_ptr(),
-    ))
 }
 
 #[repr(C)]
@@ -154,6 +130,7 @@ pub struct DevArgSpan {
 
 /// High-level safe wrapper for `_apc_apply_bus`. Applies bus interactions on the GPU,
 /// updating periphery histograms in-place.
+#[allow(clippy::too_many_arguments)]
 pub fn apc_apply_bus(
     // APC related
     output: &DeviceMatrix<BabyBear>, // APC trace matrix (column-major) on device

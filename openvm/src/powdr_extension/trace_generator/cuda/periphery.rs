@@ -9,15 +9,17 @@ use openvm_circuit_primitives::{
 };
 use openvm_stark_backend::{config::StarkGenericConfig, p3_field::PrimeField32};
 
-        use crate::{powdr_extension::trace_generator::cuda::inventory::DummyExecutor, BitwiseOperationLookupChipGPU};
-        use crate::VariableRangeCheckerChipGPU;
-        use crate::RangeTupleCheckerChipGPU;
-        use crate::GpuBackend;
-        use crate::DenseRecordArena;
-        use crate::BabyBearSC;
-        use crate::GpuBabyBearPoseidon2Engine;
-        use openvm_circuit_primitives::var_range::VariableRangeCheckerChip;
-        use std::sync::Arc;
+use crate::BabyBearSC;
+use crate::DenseRecordArena;
+use crate::GpuBabyBearPoseidon2Engine;
+use crate::GpuBackend;
+use crate::RangeTupleCheckerChipGPU;
+use crate::VariableRangeCheckerChipGPU;
+use crate::{
+    powdr_extension::trace_generator::cuda::inventory::DummyExecutor, BitwiseOperationLookupChipGPU,
+};
+use openvm_circuit_primitives::var_range::VariableRangeCheckerChip;
+use std::sync::Arc;
 
 /// The shared chips which can be used by the PowdrChipGpu.
 #[derive(Clone)]

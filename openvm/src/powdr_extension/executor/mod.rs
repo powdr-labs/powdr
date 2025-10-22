@@ -13,11 +13,9 @@ use crate::{
     Instr,
 };
 
-use openvm_circuit::arch::DenseRecordArena;
-use openvm_circuit::arch::MatrixRecordArena;
-
 use openvm_circuit::arch::{
-    execution_mode::{ExecutionCtx, MeteredCtx}, Arena, E2PreCompute, PreflightExecutor
+    execution_mode::{ExecutionCtx, MeteredCtx},
+    Arena, DenseRecordArena, E2PreCompute, MatrixRecordArena, PreflightExecutor,
 };
 use openvm_circuit_derive::create_tco_handler;
 use openvm_circuit_primitives::AlignedBytesBorrow;
@@ -41,6 +39,8 @@ use openvm_circuit::{
 use powdr_autoprecompiles::InstructionHandler;
 
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
+/// It holds arenas for each original use for both cpu and gpu execution, so that this struct can be agnostic to the execution backend.
+/// When using the cpu backend, only `original_arenas_cpu` is used, and vice versa for gpu execution.
 pub struct PowdrExecutor {
     pub air_by_opcode_id: OriginalAirs<BabyBear>,
     pub executor_inventory: ExecutorInventory<SdkVmConfigExecutor<BabyBear>>,
@@ -152,10 +152,7 @@ impl<A: Arena> InitializedOriginalArenas<A> {
                     )| {
                         (
                             air_name.clone(),
-                            A::with_capacity(
-                                *num_calls * apc_call_count_estimate,
-                                *air_width,
-                            ),
+                            A::with_capacity(*num_calls * apc_call_count_estimate, *air_width),
                         )
                     },
                 )
@@ -374,6 +371,8 @@ unsafe fn execute_e2_impl<F: PrimeField32, CTX: MeteredExecutionCtxTrait>(
     execute_e12_impl::<F, CTX>(&pre_compute.data, vm_state);
 }
 
+// Preflight execution is implemented separately for CPU and GPU backends, because they use a different arena from `self`
+// TODO: reduce code duplication between the two implementations. The main issue now is we need to use the concrete arena types.
 impl PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>> for PowdrExecutor {
     fn execute(
         &self,
@@ -445,6 +444,7 @@ impl PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>> for PowdrExecutor 
     }
 }
 
+// The GPU preflight executor implementation
 impl PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExecutor {
     fn execute(
         &self,

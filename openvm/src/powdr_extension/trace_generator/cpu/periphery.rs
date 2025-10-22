@@ -3,18 +3,20 @@ use openvm_circuit::arch::{
     ExecutorInventoryError, VmCircuitExtension, VmExecutionExtension, VmProverExtension,
 };
 use openvm_circuit_primitives::{
-    bitwise_op_lookup::{BitwiseOperationLookupAir, BitwiseOperationLookupChip, SharedBitwiseOperationLookupChip},
+    bitwise_op_lookup::{
+        BitwiseOperationLookupAir, BitwiseOperationLookupChip, SharedBitwiseOperationLookupChip,
+    },
     range_tuple::{RangeTupleCheckerAir, RangeTupleCheckerChip, SharedRangeTupleCheckerChip},
     var_range::{SharedVariableRangeCheckerChip, VariableRangeCheckerAir},
 };
 use openvm_stark_backend::{config::StarkGenericConfig, p3_field::PrimeField32};
 
-use crate::{powdr_extension::trace_generator::cpu::inventory::DummyExecutor};
+use crate::powdr_extension::trace_generator::cpu::inventory::DummyExecutor;
 use itertools::Itertools;
-use openvm_stark_backend::prover::cpu::{CpuBackend, CpuDevice};
-use openvm_stark_backend::engine::StarkEngine;
-use openvm_stark_backend::config::Val;
 use openvm_circuit::arch::RowMajorMatrixArena;
+use openvm_stark_backend::config::Val;
+use openvm_stark_backend::engine::StarkEngine;
+use openvm_stark_backend::prover::cpu::{CpuBackend, CpuDevice};
 
 /// The shared chips which can be used by the PowdrChip.
 #[derive(Clone)]
@@ -114,7 +116,8 @@ pub struct SharedPeripheryChipsCpuProverExt;
 // We implement an extension to make it easy to pre-load the shared chips into the VM inventory.
 // This implementation is specific to CpuBackend because the lookup chips (VariableRangeChecker,
 // BitwiseOperationLookupChip) are specific to CpuBackend.
-impl<E, SC, RA> VmProverExtension<E, RA, SharedPeripheryChipsCpu> for SharedPeripheryChipsCpuProverExt
+impl<E, SC, RA> VmProverExtension<E, RA, SharedPeripheryChipsCpu>
+    for SharedPeripheryChipsCpuProverExt
 where
     SC: StarkGenericConfig,
     E: StarkEngine<SC = SC, PB = CpuBackend<SC>, PD = CpuDevice<SC>>,
