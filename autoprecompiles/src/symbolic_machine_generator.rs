@@ -7,8 +7,8 @@ use crate::{
     adapter::Adapter,
     blocks::{BasicBlock, Instruction},
     expression::AlgebraicExpression,
-    powdr, BusMap, BusType, InstructionHandler, SymbolicBusInteraction, SymbolicConstraint,
-    SymbolicMachine,
+    powdr, BusMap, BusType, ColumnAllocator, InstructionHandler, SymbolicBusInteraction,
+    SymbolicConstraint, SymbolicMachine,
 };
 
 /// Converts the field type of a symbolic machine.
@@ -106,7 +106,7 @@ pub fn statements_to_symbolic_machine<A: Adapter>(
     block: &BasicBlock<A::Instruction>,
     instruction_handler: &A::InstructionHandler,
     bus_map: &BusMap<A::CustomBusTypes>,
-) -> (SymbolicMachine<A::PowdrField>, Vec<Vec<u64>>) {
+) -> (SymbolicMachine<A::PowdrField>, ColumnAllocator) {
     let mut constraints: Vec<SymbolicConstraint<_>> = Vec::new();
     let mut bus_interactions: Vec<SymbolicBusInteraction<_>> = Vec::new();
     let mut col_subs: Vec<Vec<u64>> = Vec::new();
@@ -184,7 +184,10 @@ pub fn statements_to_symbolic_machine<A: Adapter>(
             bus_interactions,
             derived_columns: vec![],
         },
-        col_subs,
+        ColumnAllocator {
+            subs: col_subs,
+            next_poly_id: global_idx,
+        },
     )
 }
 
