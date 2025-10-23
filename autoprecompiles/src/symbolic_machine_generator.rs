@@ -102,7 +102,7 @@ fn convert_expression<T, U>(
 /// that contains, for each instruction in the basic block,
 /// a mapping from local column IDs to global column IDs
 /// (in the form of a vector).
-pub fn statements_to_symbolic_machine<A: Adapter>(
+pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
     block: &BasicBlock<A::Instruction>,
     instruction_handler: &A::InstructionHandler,
     bus_map: &BusMap<A::CustomBusTypes>,
