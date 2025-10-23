@@ -231,7 +231,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
         return;
     }
 
-    // Now that we have a reduce set of inputs, we can focus again on finding the
+    // Now that we have a reduced set of inputs, we can focus again on finding the
     // inner variables to remove.
     // We could still have constraints that are only connected to the inputs but not the output, which constrain
     // the inputs.
@@ -250,10 +250,13 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
         variables_to_remove.remove(input);
     }
 
+    // If we remove at most two variables, it is not worth it.
     if variables_to_remove.len() <= 2 {
         return;
     }
 
+    // Now build an isolated system with only the constraints we want to remove
+    // to verify that it does not do anything apart from computing the equal-zero check.
     let mut isolated_system = ConstraintSystem {
         algebraic_constraints: vec![],
         bus_interactions: vec![],
@@ -291,16 +294,19 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
         }
         !remove
     });
-    check_redundancy(
+    // Now verify that the isolated system indeed only computes the is-equal-zero check.
+    if !check_redundancy(
         &isolated_system,
         &inputs,
         &output,
         value,
         &inputs.iter().map(|v| (v.clone(), solver.get(v))).collect(),
         bus_interaction_handler.clone(),
-    );
+    ) {
+        return;
+    }
 
-    // New we build the more efficient version of the function.
+    // Now we build the more efficient version of the function.
     let output_expr = GroupedExpression::from_unknown_variable(output.clone());
     let output_expr = if value == T::from(1) {
         output_expr
@@ -355,10 +361,10 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
 }
 
 /// Checks if the isolated system is indeed redundant given the inputs and output.
-/// More formally, the system is satisfiable in the following two cases:
+/// More formally, the system is satisfiable exactly in the following two cases:
 /// 1) if the inputs are all zero and the output is `value`
 /// 2) if at least one input is not zero (but all satisfy the given range constraints)
-///    and the output is `1 - value`j
+///    and the output is `1 - value`
 ///
 /// In particular, this holds for all input assignments, i.e. the system should
 /// not impose any further restrictions on the inputs in the second case.
@@ -376,37 +382,35 @@ fn check_redundancy<T: FieldElement, V: Clone + Ord + Hash + Display>(
     let solver = solver::new_solver(isolated_system.clone(), bus_interaction_handler.clone());
     let mut booleans = isolated_system
         .referenced_unknown_variables()
-        .filter(|v| {
-            let range = solver.get(v);
-            range == RangeConstraint::from_mask(1)
-        })
+        .filter(|v| solver.get(v) == RangeConstraint::from_mask(1))
         .cloned()
         .collect::<BTreeSet<_>>();
     booleans.remove(output);
-    {
-        if let Some(restrictions) = is_satisfiable(
-            isolated_system,
-            inputs
-                .iter()
-                .map(|v| (v.clone(), T::from(0)))
-                .chain([(output.clone(), value)])
-                .collect(),
-            input_range_constraints,
-            bus_interaction_handler.clone(),
-        ) {
-            if !restrictions.is_empty() {
-                return false;
-            }
-        } else {
+
+    if let Some(restrictions) = is_satisfiable(
+        isolated_system,
+        inputs
+            .iter()
+            .map(|v| (v.clone(), T::from(0)))
+            .chain([(output.clone(), value)])
+            .collect(),
+        input_range_constraints,
+        bus_interaction_handler.clone(),
+    ) {
+        if !restrictions.is_empty() {
             return false;
         }
+    } else {
+        return false;
     }
+
     for nonzero_var in inputs {
         let range_constraints = inputs
             .iter()
             .map(|v| {
                 let rc = input_range_constraints[v].clone();
                 let rc = if v == nonzero_var {
+                    // force it to be not zero.
                     rc.conjunction(&RangeConstraint::from_range(T::from(1), -T::from(1)))
                 } else {
                     rc
@@ -457,9 +461,7 @@ fn is_satisfiable<T: FieldElement, V: Clone + Ord + Hash + Display>(
     for (v, rc) in range_constraints {
         solver.add_range_constraint(v, rc.clone());
     }
-    let Ok(solution) = solver.solve() else {
-        return None;
-    };
+    let solution = solver.solve().ok()?;
     let mut output_rc: BTreeMap<_, _> = solution
         .iter()
         .filter_map(|(v, val)| {
