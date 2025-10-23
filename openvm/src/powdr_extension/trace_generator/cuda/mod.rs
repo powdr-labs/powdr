@@ -151,7 +151,7 @@ impl PowdrTraceGeneratorGpu {
         }
     }
 
-    fn generate_witness(
+    fn try_generate_witness(
         &self,
         mut original_arenas: OriginalArenas<DenseRecordArena>,
     ) -> Option<DeviceMatrix<BabyBear>> {
@@ -387,7 +387,7 @@ impl<R, PB: ProverBackend<Matrix = DeviceMatrix<BabyBear>>> Chip<R, PB> for Powd
 
         let trace = self
             .trace_generator
-            .generate_witness(self.record_arena_by_air_name.take());
+            .try_generate_witness(self.record_arena_by_air_name.take());
 
         AirProvingContext::new(vec![], trace, vec![])
     }
