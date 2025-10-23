@@ -341,6 +341,10 @@ impl PowdrTraceGeneratorGpu {
         let bitwise_count_u32 = chip.count.as_ref();
 
         // Launch GPU apply-bus to update periphery histograms on device
+        // Note that this is implicitly serialized after `apc_tracegen`, 
+        // because we use the default host to device stream, which only launches
+        // the next kernel function after the prior (`apc_tracegen`) returns.
+        // This is important because bus evaluation depends on trace results.
         cuda_abi::apc_apply_bus(
             // APC related
             &output,
