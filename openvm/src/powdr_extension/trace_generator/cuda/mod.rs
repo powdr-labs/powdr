@@ -151,16 +151,15 @@ impl PowdrTraceGeneratorGpu {
         }
     }
 
-    fn generate_witness(
+    fn try_generate_witness(
         &self,
         mut original_arenas: OriginalArenas<DenseRecordArena>,
-    ) -> DeviceMatrix<BabyBear> {
+    ) -> Option<DeviceMatrix<BabyBear>> {
         let num_apc_calls = original_arenas.number_of_calls();
 
         if num_apc_calls == 0 {
             // If the APC isn't called, early return with an empty trace.
-            let width = self.apc.machine().main_columns().count();
-            return DeviceMatrix::new(Arc::new([].to_device().unwrap()), 0, width);
+            return None;
         }
 
         let chip_inventory = {
@@ -237,6 +236,14 @@ impl PowdrTraceGeneratorGpu {
 
         let mut output = DeviceMatrix::<BabyBear>::new(Arc::new(d_output), height, width);
 
+        let derived_column_poly_ids = self
+            .apc
+            .machine
+            .derived_columns
+            .iter()
+            .map(|(column, _)| column.id)
+            .collect::<Vec<_>>();
+
         // Prepare `OriginalAir` and `Subst` arrays
         let (airs, substitutions) = {
             self.apc
@@ -264,6 +271,10 @@ impl PowdrTraceGeneratorGpu {
                                 subs.iter()
                                     .enumerate()
                                     .filter_map(|(dummy_index, poly_id)| {
+                                        // Filter out poly_id of derived columns, because they will be set separately
+                                        if derived_column_poly_ids.contains(poly_id) {
+                                            return None;
+                                        }
                                         // Check if this dummy column is present in the final apc row
                                         apc_poly_id_to_index
                                             .get(poly_id)
@@ -341,7 +352,7 @@ impl PowdrTraceGeneratorGpu {
         let bitwise_count_u32 = chip.count.as_ref();
 
         // Launch GPU apply-bus to update periphery histograms on device
-        // Note that this is implicitly serialized after `apc_tracegen`, 
+        // Note that this is implicitly serialized after `apc_tracegen`,
         // because we use the default host to device stream, which only launches
         // the next kernel function after the prior (`apc_tracegen`) returns.
         // This is important because bus evaluation depends on trace results.
@@ -366,7 +377,7 @@ impl PowdrTraceGeneratorGpu {
         )
         .unwrap();
 
-        output
+        Some(output)
     }
 }
 
@@ -376,8 +387,8 @@ impl<R, PB: ProverBackend<Matrix = DeviceMatrix<BabyBear>>> Chip<R, PB> for Powd
 
         let trace = self
             .trace_generator
-            .generate_witness(self.record_arena_by_air_name.take());
+            .try_generate_witness(self.record_arena_by_air_name.take());
 
-        AirProvingContext::simple(trace, vec![])
+        AirProvingContext::new(vec![], trace, vec![])
     }
 }
