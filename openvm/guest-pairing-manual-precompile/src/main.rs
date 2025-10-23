@@ -1,7 +1,7 @@
 use openvm_algebra_guest::IntMod;
 use openvm_ecc_guest::AffinePoint;
 use {
-    openvm_pairing::bn254::{Bn254, Bn254G1Affine, Fp, Fp2},
+    openvm_pairing::bn254::{Bn254, Fp, Fp2},
     openvm_pairing::PairingCheck,
 };
 
@@ -40,12 +40,12 @@ pub fn main() {
             let slice = unsafe { input.get_unchecked(start..start + 32) };
             Fp::from_be_bytes(&slice[..32])
         };
-        let g1_x = read_fq_at(0);
-        let g1_y = read_fq_at(1);
-        let g2_x_c1 = read_fq_at(2);
-        let g2_x_c0 = read_fq_at(3);
-        let g2_y_c1 = read_fq_at(4);
-        let g2_y_c0 = read_fq_at(5);
+        let g1_x = read_fq_at(0).unwrap();
+        let g1_y = read_fq_at(1).unwrap();
+        let g2_x_c1 = read_fq_at(2).unwrap();
+        let g2_x_c0 = read_fq_at(3).unwrap();
+        let g2_y_c1 = read_fq_at(4).unwrap();
+        let g2_y_c0 = read_fq_at(5).unwrap();
 
         let g1 = AffinePoint::new(g1_x, g1_y);
         let g2_x = Fp2::new(g2_x_c0, g2_x_c1);

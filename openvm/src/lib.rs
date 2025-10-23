@@ -805,6 +805,7 @@ pub fn prove(
             let ctx = vm.generate_proving_ctx(system_records, record_arenas)?;
 
             // Run the mock prover for each segment
+            println!("execute segment {seg_idx} done at insns start {instret_start} num_insns {num_insns}");
             debug_proving_ctx(vm, &pk, &ctx);
         }
     } else {
@@ -1141,7 +1142,7 @@ mod tests {
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let config = default_powdr_openvm_config(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
         // should create two segments
-        prove_simple(
+        prove_mock(
             GUEST_KECCAK,
             config,
             PrecompileImplementation::SingleRowChip,
@@ -1199,7 +1200,7 @@ mod tests {
     #[ignore = "Too much RAM"]
     fn keccak_prove_large() {
         let mut stdin = StdIn::default();
-        stdin.write(&GUEST_KECCAK_ITER_LARGE);
+        stdin.write(&10_600);
         let pgo_data =
             execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
 
@@ -1212,6 +1213,14 @@ mod tests {
             PgoConfig::Instruction(pgo_data),
             None,
         );
+        // prove_mock(
+        //     GUEST_KECCAK,
+        //     config,
+        //     PrecompileImplementation::SingleRowChip,
+        //     stdin,
+        //     PgoConfig::Instruction(pgo_data),
+        //     None,
+        // );
     }
 
     #[test]
