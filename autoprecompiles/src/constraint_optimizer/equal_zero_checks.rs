@@ -536,51 +536,48 @@ fn remove_range_constraint_bus_interactions<
         if bus_int.multiplicity != GroupedExpression::from_number(T::one()) {
             return true;
         }
-        match bus_interaction_handler.pure_range_constraints(bus_int) {
-            Some(new_range_constraints) => {
-                let mut to_constrain = vec![];
-                for (expr, rc) in new_range_constraints {
-                    if !expr.is_affine() {
+        let Some(new_range_constraints) = bus_interaction_handler.pure_range_constraints(bus_int)
+        else {
+            return true;
+        };
+        let mut to_constrain = vec![];
+        for (expr, rc) in new_range_constraints {
+            if !expr.is_affine() {
+                // Keep the bus interaction
+                return true;
+            }
+            match expr.referenced_unknown_variables().count() {
+                0 => {
+                    assert!(rc.allows_value(expr.try_to_number().unwrap()));
+                }
+                1 => {
+                    let var = expr.referenced_unknown_variables().next().unwrap();
+                    if expr.coefficient_of_variable_in_affine_part(var).unwrap() != &T::one() {
                         // Keep the bus interaction
                         return true;
                     }
-                    match expr.referenced_unknown_variables().count() {
-                        0 => { /* TODO assert that it matches rc */ }
-                        1 => {
-                            let var = expr.referenced_unknown_variables().next().unwrap();
-                            if expr.coefficient_of_variable_in_affine_part(var).unwrap()
-                                != &T::one()
-                            {
-                                // Keep the bus interaction
-                                return true;
-                            }
-                            // This is lossles, at least for the range.
-                            // TODO is it ok? If we model a mask?
-                            // TODO we could check if undoing it results in the same.
-                            let rc = rc.combine_sum(&RangeConstraint::from_value(
-                                -*expr.constant_offset(),
-                            ));
-                            to_constrain.push((var.clone(), rc));
-                        }
-                        _ => {
-                            //  Keep the bus interaction
-                            return true;
-                        }
-                    }
+                    // This is lossles, at least for the range.
+                    // TODO is it ok? If we model a mask?
+                    // TODO we could check if undoing it results in the same.
+                    let rc = rc.combine_sum(&RangeConstraint::from_value(-*expr.constant_offset()));
+                    to_constrain.push((var.clone(), rc));
                 }
-                for (v, rc) in to_constrain {
-                    let rc = resulting_range_constraints
-                        .get(&v)
-                        .cloned()
-                        .unwrap_or_default()
-                        // TODO this conjunction might be lossy
-                        .conjunction(&rc);
-                    resulting_range_constraints.insert(v, rc);
+                _ => {
+                    //  Keep the bus interaction
+                    return true;
                 }
-                false
             }
-            None => true,
         }
+        for (v, rc) in to_constrain {
+            let rc = resulting_range_constraints
+                .get(&v)
+                .cloned()
+                .unwrap_or_default()
+                // TODO this conjunction might be lossy
+                .conjunction(&rc);
+            resulting_range_constraints.insert(v, rc);
+        }
+        false
     });
     (system, resulting_range_constraints)
 }
