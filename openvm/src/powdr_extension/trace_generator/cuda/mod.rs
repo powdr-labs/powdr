@@ -9,7 +9,7 @@ use openvm_circuit::{
     utils::next_power_of_two_or_zero,
 };
 use openvm_cuda_backend::base::DeviceMatrix;
-use openvm_cuda_common::copy::MemCopyH2D;
+use openvm_cuda_common::copy::{MemCopyD2H, MemCopyH2D};
 use openvm_stark_backend::{
     p3_field::PrimeField32,
     prover::{hal::ProverBackend, types::AirProvingContext},
@@ -220,6 +220,10 @@ impl PowdrTraceGeneratorGpu {
         // Prefill `is_valid` column to 1 for the number of calls
         for (column_idx, computation_method) in &self.apc.machine.derived_columns {
             let col_index = apc_poly_id_to_index[&column_idx.id];
+            // println!(
+            //     "derived: column id {} to col_index: {}",
+            //     column_idx.id, col_index
+            // );
             match computation_method {
                 ComputationMethod::Constant(c) => {
                     for row in 0..num_apc_calls {
@@ -232,9 +236,19 @@ impl PowdrTraceGeneratorGpu {
             }
         }
 
+        // println!("h_output initialized: {:?}", h_output);
+
         let d_output = h_output.to_device().unwrap();
 
         let mut output = DeviceMatrix::<BabyBear>::new(Arc::new(d_output), height, width);
+
+        let derived_column_poly_ids = self
+            .apc
+            .machine
+            .derived_columns
+            .iter()
+            .map(|(column, _)| column.id)
+            .collect::<Vec<_>>();
 
         // Prepare `OriginalAir` and `Subst` arrays
         let (airs, substitutions) = {
@@ -263,14 +277,24 @@ impl PowdrTraceGeneratorGpu {
                                 subs.iter()
                                     .enumerate()
                                     .filter_map(|(dummy_index, poly_id)| {
+                                        // Filter out poly_id of derived columns, because they will be set separately
+                                        if derived_column_poly_ids.contains(poly_id) {
+                                            return None;
+                                        }
                                         // Check if this dummy column is present in the final apc row
                                         apc_poly_id_to_index
                                             .get(poly_id)
                                             // If it is, map the dummy index to the apc index
-                                            .map(|apc_index| Subst {
-                                                col: dummy_index as i32,
-                                                row: row as i32,
-                                                apc_col: *apc_index as i32,
+                                            .map(|apc_index| {
+                                                // println!(
+                                                //     "substitution: dummy_index {} to apc_index: {}",
+                                                //     dummy_index, apc_index
+                                                // );
+                                                Subst {
+                                                    col: dummy_index as i32,
+                                                    row: row as i32,
+                                                    apc_col: *apc_index as i32,
+                                                }
                                             })
                                     })
                                     .collect_vec()
@@ -304,6 +328,10 @@ impl PowdrTraceGeneratorGpu {
         let substitutions = substitutions.to_device().unwrap();
 
         cuda_abi::apc_tracegen(&mut output, airs, substitutions, num_apc_calls).unwrap();
+
+        // copy output from device and print
+        // let h_output = output.buffer().to_host().unwrap();
+        // println!("h_output: {:?}", h_output);
 
         // Encode bus interactions for GPU consumption
         let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(

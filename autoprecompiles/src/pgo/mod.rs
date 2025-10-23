@@ -86,6 +86,12 @@ fn create_apcs_for_all_blocks<A: Adapter>(
         .skip(config.skip_autoprecompiles as usize)
         .take(n_acc)
         .map(|block| {
+            // truncate block to first 10 instructions
+            // let block = BasicBlock {
+            //     start_pc: block.start_pc,
+            //     statements: block.statements.into_iter().take(10).collect(),
+            // };
+
             tracing::debug!(
                 "Accelerating block of length {} and start pc {}",
                 block.statements.len(),

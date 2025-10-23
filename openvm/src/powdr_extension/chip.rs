@@ -111,6 +111,7 @@ where
         let witness_evaluator = WitnessEvaluator::new(&witness_values);
 
         for constraint in &self.apc.machine().constraints {
+            // println!("constraint: {constraint}");
             let constraint = witness_evaluator.eval_constraint(constraint);
             builder.assert_zero(constraint.expr);
         }
