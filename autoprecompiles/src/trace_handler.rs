@@ -1,6 +1,7 @@
 use itertools::Itertools;
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 use rayon::prelude::*;
+use std::collections::HashSet;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Display;
 use std::{cmp::Eq, hash::Hash};
@@ -86,7 +87,7 @@ where
     let derived_column_poly_ids = columns_to_compute
         .iter()
         .map(|(column, _)| column.id)
-        .collect::<Vec<_>>();
+        .collect::<HashSet<_>>();
 
     let dummy_trace_index_to_apc_index_by_instruction = apc
         .subs
