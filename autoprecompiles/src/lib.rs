@@ -373,7 +373,14 @@ impl<T, I> Apc<T, I> {
             .map(|subs| {
                 subs.into_iter()
                     .enumerate()
-                    .filter_map(|(original_poly_index, apc_poly_id)| all_references.contains(&apc_poly_id).then_some(Substitution { original_poly_index, apc_poly_id }))
+                    .filter_map(|(original_poly_index, apc_poly_id)| {
+                        all_references
+                            .contains(&apc_poly_id)
+                            .then_some(Substitution {
+                                original_poly_index,
+                                apc_poly_id,
+                            })
+                    })
                     .collect_vec()
             })
             .collect();
