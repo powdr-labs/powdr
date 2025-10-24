@@ -170,3 +170,104 @@ jobs:
           cd openvm-reth-benchmark
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
           MODE="compile" APC=10 PGO_TYPE="instruction" /usr/bin/time -v ./run.sh
+
+  # ===================== GPU PLACEHOLDER JOBS (disabled) =====================
+  # build_gpu:
+  #   if: ${{ false }} # TODO: set to a condition matching our GPU runner, e.g. startsWith(runner.name, 'gpu-')
+  #   runs-on: [self-hosted, linux, gpu] # placeholder labels; ensure our GPU runner has these labels
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         fetch-depth: 0
+  #         submodules: recursive
+  #     - name: ⚡ Restore rust cache
+  #       id: cache
+  #       uses: WarpBuilds/cache/restore@v1
+  #       with:
+  #         path: |
+  #           ~/.cargo/registry/index/
+  #           ~/.cargo/registry/cache/
+  #           ~/.cargo/git/db/
+  #           target/
+  #           Cargo.lock
+  #         key: ${{ runner.os }}-cargo-pr-tests
+  #     - name: Install Rust toolchains
+  #       run: |
+  #         rustup toolchain install nightly-2025-10-01 --component clippy,rustfmt
+  #         rustup toolchain install 1.88
+  #     - name: Set cargo to perform shallow clones
+  #       run: echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
+  #     - name: Lint (GPU, cuda)
+  #       run: cargo clippy --all --all-targets --features cuda --profile pr-tests --verbose -- -D warnings
+  #     - name: Build (GPU, cuda)
+  #       run: cargo build --workspace --all-targets --features cuda --profile pr-tests --verbose
+  #     - uses: taiki-e/install-action@nextest
+  #     - name: Create tests archive (GPU)
+  #       run: cargo nextest archive --archive-file tests_gpu.tar.zst --cargo-profile pr-tests --workspace --features cuda
+  #     - name: Upload build artifacts (GPU)
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: tests_archive_gpu
+  #         path: |
+  #           tests_gpu.tar.zst
+# 
+  # test_quick_gpu:
+  #   if: ${{ false }}
+  #   needs: build_gpu
+  #   runs-on: [self-hosted, linux, gpu]
+  #   strategy:
+  #     matrix:
+  #       test: ["1","2","3","4","5","6","7"]
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         submodules: recursive
+  #     - name: Download build artifacts (GPU)
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: tests_archive_gpu
+  #     - uses: taiki-e/install-action@nextest
+  #     - name: Run tests (GPU)
+  #       run: cargo nextest run --archive-file tests_gpu.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/7 --no-tests=warn
+# 
+  # test_apc_reth_compilation_gpu:
+  #   if: ${{ false }}
+  #   runs-on: [self-hosted, linux, gpu]
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         submodules: recursive
+  #     - name: ⚡ Cache rust
+  #       uses: actions/cache@v4
+  #       with:
+  #         path: |
+  #           ~/.cargo/registry
+  #           ~/.cargo/git
+  #           target
+  #         key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.toml') }}
+  #     - name: Build (GPU, cuda)
+  #       run: cargo build --release -p powdr-openvm --features cuda
+  #     - name: Install cargo openvm
+  #       run: |
+  #         rustup toolchain install 1.88
+  #         cargo +1.88 install --git 'http://github.com/openvm-org/openvm.git' cargo-openvm
+  #     - name: Checkout openvm-reth-benchmark
+  #       uses: actions/checkout@v4
+  #       with:
+  #         repository: powdr-labs/openvm-reth-benchmark
+  #         ref: 3ec7a9ca33608b772c8d919fdd4804d66bf27b1e
+  #         path: openvm-reth-benchmark
+  #     - name: Patch openvm-reth-benchmark to use local powdr
+  #       run: |
+  #         cd openvm-reth-benchmark
+  #         mkdir -p .cargo
+  #         echo '[patch."https://github.com/powdr-labs/powdr.git"]' > .cargo/config.toml
+  #         echo 'powdr-openvm = { path = "../openvm" }' >> .cargo/config.toml
+  #         echo 'powdr-riscv-elf = { path = "../riscv-elf" }' >> .cargo/config.toml
+  #         echo 'powdr-number = { path = "../number" }' >> .cargo/config.toml
+  #         echo 'powdr-autoprecompiles = { path = "../autoprecompiles" }' >> .cargo/config.toml
+  #     - name: Run small execution test with APCs (GPU)
+  #       run: |
+  #         cd openvm-reth-benchmark
+  #         echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
+  #         MODE="compile" APC=10 PGO_TYPE="instruction" /usr/bin/time -v ./run.sh
