@@ -6,6 +6,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use derive_more::From;
+use openvm_circuit::arch::{DenseRecordArena, MatrixRecordArena};
 use openvm_circuit_derive::{Executor, MeteredExecutor, PreflightExecutor};
 use openvm_instructions::LocalOpcode;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
@@ -51,7 +52,9 @@ pub struct PowdrPrecompile<F> {
     pub apc: Arc<Apc<F, Instr<F>>>,
     pub apc_stats: Option<OvmApcStats>,
     #[serde(skip)]
-    pub apc_record_arena: Rc<RefCell<OriginalArenas>>,
+    pub apc_record_arena_cpu: Rc<RefCell<OriginalArenas<MatrixRecordArena<F>>>>,
+    #[serde(skip)]
+    pub apc_record_arena_gpu: Rc<RefCell<OriginalArenas<DenseRecordArena>>>,
 }
 
 impl<F> PowdrPrecompile<F> {
@@ -67,7 +70,8 @@ impl<F> PowdrPrecompile<F> {
             apc,
             apc_stats,
             // Initialize with empty Rc (default to OriginalArenas::Uninitialized) for each APC
-            apc_record_arena: Default::default(),
+            apc_record_arena_cpu: Default::default(),
+            apc_record_arena_gpu: Default::default(),
         }
     }
 }
@@ -116,7 +120,8 @@ impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear> {
                 self.airs.clone(),
                 self.base_config.clone(),
                 precompile.apc.clone(),
-                precompile.apc_record_arena.clone(),
+                precompile.apc_record_arena_cpu.clone(),
+                precompile.apc_record_arena_gpu.clone(),
                 height_change,
             ));
             inventory.add_executor(powdr_executor, once(precompile.opcode.global_opcode()))?;
