@@ -310,10 +310,10 @@ impl PowdrTraceGeneratorGpu {
                 }
             }
         }
-        if !derived_cols.is_empty() {
-            let d_cols = derived_cols.to_device().unwrap();
-            cuda_abi::apc_apply_derived(&mut output, d_cols, num_apc_calls).unwrap();
-        }
+
+        // In practice `d_cols` is never empty, because we will always have `is_valid`
+        let d_cols = derived_cols.to_device().unwrap();
+        cuda_abi::apc_apply_derived(&mut output, d_cols, num_apc_calls).unwrap();
 
         // Encode bus interactions for GPU consumption
         let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
