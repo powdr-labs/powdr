@@ -318,14 +318,25 @@ pub trait InstructionHandler {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct Substitution {
+    /// The index of the original column in the original air
+    original_poly_index: usize,
+    /// The `poly_id` of the target column in the APC air
+    apc_poly_id: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Apc<T, I> {
+    /// The basic block this APC is based on
     pub block: BasicBlock<I>,
+    /// The symbolic machine for this APC
     pub machine: SymbolicMachine<T>,
-    pub subs: Vec<Vec<u64>>,
+    /// For each original air, the substitutions from original columns to APC columns
+    pub subs: Vec<Vec<Substitution>>,
 }
 
 impl<T, I> Apc<T, I> {
-    pub fn subs(&self) -> &[Vec<u64>] {
+    pub fn subs(&self) -> &[Vec<Substitution>] {
         &self.subs
     }
 
@@ -361,7 +372,8 @@ impl<T, I> Apc<T, I> {
             .into_iter()
             .map(|subs| {
                 subs.into_iter()
-                    .filter(|apc_poly_id| all_references.contains(apc_poly_id))
+                    .enumerate()
+                    .filter_map(|(original_poly_index, apc_poly_id)| all_references.contains(&apc_poly_id).then_some(Substitution { original_poly_index, apc_poly_id }))
                     .collect_vec()
             })
             .collect();
@@ -375,7 +387,9 @@ impl<T, I> Apc<T, I> {
 
 /// Allocates global poly_ids and keeps track of substitutions
 struct ColumnAllocator {
+    /// For each original air, for each original column index, the associated poly_id in the APC air
     subs: Vec<Vec<u64>>,
+    /// The next poly_id to issue
     next_poly_id: u64,
 }
 
