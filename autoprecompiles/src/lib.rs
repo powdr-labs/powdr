@@ -473,7 +473,8 @@ fn add_guards<T: FieldElement>(
 ) -> SymbolicMachine<T> {
     let pre_degree = machine.degree();
 
-    // `poly_id` if `is_valid` should be never used before, and thus calculated as:
+    // `poly_id` of `is_valid` should be never used before to avoid "double assignment" of dummy columns and derived columns,
+    // and thus should be calculated as:
     // 1. Max of all `poly_id` in original `subs`, which are mappings from dummy column index to `poly_id`
     // 2. PLUS number of derived columns, which are newly created columns during optimization
     let is_valid_ref = AlgebraicReference {
