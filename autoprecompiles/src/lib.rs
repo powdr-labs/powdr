@@ -12,6 +12,7 @@ use powdr_expression::{
     visitors::Children, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fmt::Display;
 use std::io::BufWriter;
 use std::iter::once;
@@ -373,7 +374,7 @@ pub fn build<A: Adapter>(
     )?;
 
     // add guards to constraints that are not satisfied by zeroes
-    let machine = add_guards(machine);
+    let machine = add_guards(machine, &subs);
 
     metrics::counter!("after_opt_cols", &labels)
         .absolute(machine.unique_references().count() as u64);
@@ -384,10 +385,26 @@ pub fn build<A: Adapter>(
 
     let machine = convert_machine_field_type(machine, &A::into_field);
 
+    // Remove optimized away and derived columns from `subs`, because they will not be assigned from dummy traces to apc trace
+    let poly_id_to_remove = machine
+        .unique_references()
+        .map(|col| col.id)
+        .chain(machine.derived_columns.iter().map(|(c, _)| c.id))
+        .collect::<HashSet<_>>();
+
+    let filtered_subs = subs
+        .into_iter()
+        .map(|sub| {
+            sub.into_iter()
+                .filter(|poly_id| !poly_id_to_remove.contains(poly_id))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+
     let apc = Apc {
         block,
         machine,
-        subs,
+        subs: filtered_subs,
     };
 
     if let Some(path) = apc_candidates_dir_path {
@@ -447,12 +464,23 @@ fn add_guards_constraint<T: FieldElement>(
 }
 
 /// Adds an `is_valid` guard to all constraints and bus interactions, if needed.
-fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
+fn add_guards<T: FieldElement>(
+    mut machine: SymbolicMachine<T>,
+    original_subs: &[Vec<u64>],
+) -> SymbolicMachine<T> {
     let pre_degree = machine.degree();
 
+    // `poly_id` if `is_valid` should be never used before, and thus calculated as:
+    // 1. Max of all `poly_id` in original `subs`, which are mappings from dummy column index to `poly_id`
+    // 2. PLUS number of derived columns, which are newly created columns during optimization
     let is_valid_ref = AlgebraicReference {
         name: Arc::new("is_valid".to_string()),
-        id: machine.unique_references().map(|c| c.id).max().unwrap() + 1,
+        id: original_subs
+            .iter()
+            .map(|s| s.iter().max().unwrap())
+            .max()
+            .unwrap()
+            + machine.derived_columns.len() as u64,
     };
     let is_valid = AlgebraicExpression::Reference(is_valid_ref.clone());
 
