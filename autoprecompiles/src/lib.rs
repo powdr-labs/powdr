@@ -386,20 +386,7 @@ pub fn build<A: Adapter>(
     let machine = convert_machine_field_type(machine, &A::into_field);
 
     // Remove optimized away and derived columns from `subs`, because they will not be assigned from dummy traces to apc trace
-    let poly_id_to_remove = machine
-        .unique_references()
-        .map(|col| col.id)
-        .chain(machine.derived_columns.iter().map(|(c, _)| c.id))
-        .collect::<HashSet<_>>();
-
-    let filtered_subs = subs
-        .into_iter()
-        .map(|sub| {
-            sub.into_iter()
-                .filter(|poly_id| !poly_id_to_remove.contains(poly_id))
-                .collect::<Vec<_>>()
-        })
-        .collect::<Vec<_>>();
+    let filtered_subs = filter_subs::<A::Field>(subs, &machine);
 
     let apc = Apc {
         block,
@@ -421,6 +408,22 @@ pub fn build<A: Adapter>(
     metrics::gauge!("apc_gen_time_ms", &labels).set(start.elapsed().as_millis() as f64);
 
     Ok(apc)
+}
+
+fn filter_subs<T>(subs: Vec<Vec<u64>>, machine: &SymbolicMachine<T>) -> Vec<Vec<u64>> {
+    let poly_id_to_remove = machine
+        .unique_references()
+        .map(|col| col.id)
+        .chain(machine.derived_columns.iter().map(|(c, _)| c.id))
+        .collect::<HashSet<_>>();
+
+    subs.into_iter()
+        .map(|sub| {
+            sub.into_iter()
+                .filter(|poly_id| !poly_id_to_remove.contains(poly_id))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>()
 }
 
 fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
