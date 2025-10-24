@@ -85,7 +85,7 @@ fn test_sha256() {
     "#]]
     .assert_debug_eq(&machine.main_columns().count());
     expect![[r#"
-        9781
+        9753
     "#]]
     .assert_debug_eq(&machine.bus_interactions.len());
     expect![[r#"
