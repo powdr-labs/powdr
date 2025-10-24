@@ -1,7 +1,6 @@
 use itertools::Itertools;
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 use rayon::prelude::*;
-use std::collections::HashSet;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Display;
 use std::{cmp::Eq, hash::Hash};
@@ -83,12 +82,6 @@ where
         )
         .collect::<Vec<_>>();
 
-    let columns_to_compute = &apc.machine.derived_columns;
-    let derived_column_poly_ids = columns_to_compute
-        .iter()
-        .map(|(column, _)| column.id)
-        .collect::<HashSet<_>>();
-
     let dummy_trace_index_to_apc_index_by_instruction = apc
         .subs
         .iter()
@@ -96,10 +89,6 @@ where
             subs.iter()
                 .enumerate()
                 .filter_map(|(dummy_index, poly_id)| {
-                    // Filter out poly_id of derived columns, because they will be set separately
-                    if derived_column_poly_ids.contains(poly_id) {
-                        return None;
-                    }
                     // Check if this dummy column is present in the final apc row
                     apc_poly_id_to_index
                         .get(poly_id)
@@ -131,6 +120,8 @@ where
                 .collect_vec()
         })
         .collect();
+
+    let columns_to_compute = &apc.machine.derived_columns;
 
     TraceData {
         dummy_values,
