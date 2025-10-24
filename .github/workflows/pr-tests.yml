@@ -15,7 +15,7 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  POWDR_OPENVM_SEGMENT_DELTA: 10000
+  POWDR_OPENVM_SEGMENT_DELTA: 50000
 
 jobs:
   build:

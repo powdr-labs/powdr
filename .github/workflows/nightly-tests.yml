@@ -9,7 +9,7 @@ env:
   RUSTFLAGS: "-C target-cpu=native"
   RUST_BACKTRACE: 1
   JEMALLOC_SYS_WITH_MALLOC_CONF: "retain:true,background_thread:true,metadata_thp:always,dirty_decay_ms:10000,muzzy_decay_ms:10000,abort_conf:true"
-  POWDR_OPENVM_SEGMENT_DELTA: 10000
+  POWDR_OPENVM_SEGMENT_DELTA: 50000
 
 jobs:
   check_if_needs_running:
