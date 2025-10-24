@@ -21,6 +21,11 @@ struct Subst {
     int apc_col;  // destination APC column
 };
 
+struct DerivedColumn {
+    int index; // destination APC column index
+    Fp  value; // constant value for valid rows
+};
+
 // ============================================================================================
 // Kernel: one block per OriginalAir; each warp handles one substitution (APC column).
 // ============================================================================================
@@ -55,14 +60,65 @@ __global__ void apc_tracegen_kernel(
         const size_t src_col_base = (size_t)sub.col     * (size_t)Ha;
 
         // Each lane writes rows lane, lane+32, lane+64, ... (coalesced per warp)
-        for (size_t r = (size_t)lane; r < num_apc_calls; r += 32) {
-            const size_t src_r = (size_t)sub.row + r * (size_t)RBS;
-            if (src_r < (size_t)Ha) {
-                d_output[dst_col_base + r] = src_base[src_col_base + src_r];
+        // Loop over full output height; zero-pad rows beyond `num_apc_calls`.
+        for (size_t r = (size_t)lane; r < (size_t)output_height; r += 32) {
+            if (r < (size_t)num_apc_calls) {
+                const size_t src_r = (size_t)sub.row + r * (size_t)RBS;
+                if (src_r < (size_t)Ha) {
+                    d_output[dst_col_base + r] = src_base[src_col_base + src_r];
+                }
+            } else {
+                d_output[dst_col_base + r] = Fp(0);
             }
         }
         // Warps are independent for different substitutions; no syncthreads needed here.
     }
+}
+
+// ============================================================================================
+// Derived columns application: warp-per-derived-column, lane-per-row
+// ============================================================================================
+
+__global__ void apc_apply_derived_kernel(
+    Fp* __restrict__ d_output,   // APC trace (column-major)
+    size_t H,                    // rows (height)
+    int num_apc_calls,           // number of valid rows
+    const DerivedColumn* __restrict__ d_cols, // derived specs
+    size_t n_cols
+) {
+    const int warps_per_block = (blockDim.x >> 5);
+    const int warp = (threadIdx.x >> 5);
+    const int lane = (threadIdx.x & 31);
+
+    for (int base = (int)blockIdx.x * warps_per_block; base < (int)n_cols; base += (int)gridDim.x * warps_per_block) {
+        const int i = base + warp;
+        if (i >= (int)n_cols) return;
+        const int col = d_cols[i].index;
+        const Fp val = d_cols[i].value;
+        const size_t col_base = (size_t)col * H;
+        for (size_t r = (size_t)lane; r < H; r += 32) {
+            d_output[col_base + r] = (r < (size_t)num_apc_calls) ? val : Fp(0);
+        }
+    }
+}
+
+extern "C" int _apc_apply_derived(
+    Fp*                d_output,
+    size_t             output_height,
+    int                num_apc_calls,
+    const DerivedColumn* d_cols,
+    size_t             n_cols
+) {
+    if (n_cols == 0) return 0;
+    const int block_x = 128; // 4 warps per block
+    const dim3 block(block_x, 1, 1);
+    unsigned g = (unsigned)((n_cols + 3) / 4);
+    if (g == 0u) g = 1u;
+    const dim3 grid(g, 1, 1);
+    apc_apply_derived_kernel<<<grid, block>>>(
+        d_output, output_height, num_apc_calls, d_cols, n_cols
+    );
+    return (int)cudaGetLastError();
 }
 
 // ============================================================================================
