@@ -871,6 +871,9 @@ pub fn execute(program: CompiledProgram, inputs: StdIn) -> Result<(), Box<dyn st
     let app_config = AppConfig::new(app_fri_params, vm_config.clone());
 
     // prepare for execute
+    #[cfg(feature = "cuda")]
+    let sdk = PowdrSdkGpu::new(app_config).unwrap();
+    #[cfg(not(feature = "cuda"))]
     let sdk = PowdrSdkCpu::new(app_config).unwrap();
 
     let output = sdk.execute(exe.clone(), inputs.clone()).unwrap();
@@ -909,6 +912,9 @@ pub fn prove(
     let app_config = AppConfig::new(app_fri_params, vm_config.clone());
 
     // Create the SDK
+    #[cfg(feature = "cuda")]
+    let sdk = PowdrSdkGpu::new(app_config).unwrap();
+    #[cfg(not(feature = "cuda"))]
     let sdk = PowdrSdkCpu::new(app_config).unwrap();
     if mock {
         // Build owned vm instance, so we can mutate it later
@@ -926,6 +932,9 @@ pub fn prove(
         // Get reusable inputs for `debug_proving_ctx`, the mock prover API from OVM.
         let vm = &mut vm_instance.vm;
         let air_inv = vm.config().create_airs().unwrap();
+        #[cfg(feature = "cuda")]
+        let pk = air_inv.keygen::<GpuBabyBearPoseidon2Engine>(&vm.engine);
+        #[cfg(not(feature = "cuda"))]
         let pk = air_inv.keygen::<BabyBearPoseidon2Engine>(&vm.engine);
 
         for (seg_idx, segment) in segments.into_iter().enumerate() {

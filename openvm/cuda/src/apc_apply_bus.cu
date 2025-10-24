@@ -46,7 +46,7 @@ __device__ __forceinline__ Fp stack_pop(Fp* stack, int& sp) {
 __device__ __forceinline__ Fp eval_expr(const uint32_t* expr, uint32_t len,
                                         const Fp* __restrict__ apc_trace,
                                         size_t H, size_t r) {
-  Fp stack[STACK_CAPACITY]; int sp = 0; // No stack overflow is asserted during bytecode compilation in Rust. Preferably keep small as it's per thread.
+  Fp stack[STACK_CAPACITY]; int sp = 0;
   for (uint32_t ip = 0; ip < len; ) {
     uint32_t op = expr[ip++];
     switch (op) {

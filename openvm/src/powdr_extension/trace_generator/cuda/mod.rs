@@ -151,16 +151,15 @@ impl PowdrTraceGeneratorGpu {
         }
     }
 
-    fn generate_witness(
+    fn try_generate_witness(
         &self,
         mut original_arenas: OriginalArenas<DenseRecordArena>,
-    ) -> DeviceMatrix<BabyBear> {
+    ) -> Option<DeviceMatrix<BabyBear>> {
         let num_apc_calls = original_arenas.number_of_calls();
 
         if num_apc_calls == 0 {
             // If the APC isn't called, early return with an empty trace.
-            let width = self.apc.machine().main_columns().count();
-            return DeviceMatrix::new(Arc::new([].to_device().unwrap()), 0, width);
+            return None;
         }
 
         let chip_inventory = {
@@ -212,30 +211,15 @@ impl PowdrTraceGeneratorGpu {
         // allocate for apc trace
         let width = apc_poly_id_to_index.len();
         let height = next_power_of_two_or_zero(num_apc_calls);
+        let mut output = DeviceMatrix::<BabyBear>::with_capacity(height, width);
 
-        // Create a host-side buffer to prefill the output, column major, zero-initialized
-        // TODO: do this on GPU instead, to avoid large host<->device copies
-        use openvm_stark_backend::p3_field::FieldAlgebra;
-        let mut h_output = vec![BabyBear::ZERO; height * width];
-
-        // Prefill `is_valid` column to 1 for the number of calls
-        for (column_idx, computation_method) in &self.apc.machine.derived_columns {
-            let col_index = apc_poly_id_to_index[&column_idx.id];
-            match computation_method {
-                ComputationMethod::Constant(c) => {
-                    for row in 0..num_apc_calls {
-                        h_output[row + col_index * height] = *c;
-                    }
-                }
-                ComputationMethod::InverseOrZero(_) => {
-                    unimplemented!("Cannot prefill inverse_or_zero without full row data")
-                }
-            }
-        }
-
-        let d_output = h_output.to_device().unwrap();
-
-        let mut output = DeviceMatrix::<BabyBear>::new(Arc::new(d_output), height, width);
+        let derived_column_poly_ids = self
+            .apc
+            .machine
+            .derived_columns
+            .iter()
+            .map(|(column, _)| column.id)
+            .collect::<Vec<_>>();
 
         // Prepare `OriginalAir` and `Subst` arrays
         let (airs, substitutions) = {
@@ -264,6 +248,10 @@ impl PowdrTraceGeneratorGpu {
                                 subs.iter()
                                     .enumerate()
                                     .filter_map(|(dummy_index, poly_id)| {
+                                        // Filter out poly_id of derived columns, because they will be set separately
+                                        if derived_column_poly_ids.contains(poly_id) {
+                                            return None;
+                                        }
                                         // Check if this dummy column is present in the final apc row
                                         apc_poly_id_to_index
                                             .get(poly_id)
@@ -306,6 +294,27 @@ impl PowdrTraceGeneratorGpu {
 
         cuda_abi::apc_tracegen(&mut output, airs, substitutions, num_apc_calls).unwrap();
 
+        // Apply derived columns (only constants for now) after main tracegen
+        let mut derived_cols: Vec<cuda_abi::DerivedColumn> = Vec::new();
+        for (column_idx, computation_method) in &self.apc.machine.derived_columns {
+            let col_index = apc_poly_id_to_index[&column_idx.id] as i32;
+            match computation_method {
+                ComputationMethod::Constant(c) => {
+                    derived_cols.push(cuda_abi::DerivedColumn {
+                        index: col_index,
+                        value: *c,
+                    });
+                }
+                ComputationMethod::InverseOrZero(_) => {
+                    unimplemented!("Cannot prefill inverse_or_zero without full row data")
+                }
+            }
+        }
+
+        // In practice `d_cols` is never empty, because we will always have `is_valid`
+        let d_cols = derived_cols.to_device().unwrap();
+        cuda_abi::apc_apply_derived(&mut output, d_cols, num_apc_calls).unwrap();
+
         // Encode bus interactions for GPU consumption
         let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
             &self.apc.machine.bus_interactions,
@@ -341,6 +350,10 @@ impl PowdrTraceGeneratorGpu {
         let bitwise_count_u32 = chip.count.as_ref();
 
         // Launch GPU apply-bus to update periphery histograms on device
+        // Note that this is implicitly serialized after `apc_tracegen`,
+        // because we use the default host to device stream, which only launches
+        // the next kernel function after the prior (`apc_tracegen`) returns.
+        // This is important because bus evaluation depends on trace results.
         cuda_abi::apc_apply_bus(
             // APC related
             &output,
@@ -362,7 +375,7 @@ impl PowdrTraceGeneratorGpu {
         )
         .unwrap();
 
-        output
+        Some(output)
     }
 }
 
@@ -372,8 +385,8 @@ impl<R, PB: ProverBackend<Matrix = DeviceMatrix<BabyBear>>> Chip<R, PB> for Powd
 
         let trace = self
             .trace_generator
-            .generate_witness(self.record_arena_by_air_name.take());
+            .try_generate_witness(self.record_arena_by_air_name.take());
 
-        AirProvingContext::simple(trace, vec![])
+        AirProvingContext::new(vec![], trace, vec![])
     }
 }
