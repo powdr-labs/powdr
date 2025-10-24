@@ -22,12 +22,11 @@ extern "C" {
     /// Each warp processes a derived column; each thread processes rows with zero-padding beyond num_apc_calls.
     /// Safety: All pointers must be valid device pointers for the specified lengths.
     pub fn _apc_apply_derived(
-        d_output: *mut BabyBear,   // APC trace matrix (column-major) on device
-        output_height: usize,      // rows (height)
-        num_apc_calls: i32,        // number of valid rows
-        d_cols: *const i32,        // device array of APC column indices
-        d_values: *const BabyBear, // device array of constants
-        n_cols: usize,             // number of derived columns
+        d_output: *mut BabyBear,      // APC trace matrix (column-major) on device
+        output_height: usize,         // rows (height)
+        num_apc_calls: i32,           // number of valid rows
+        d_cols: *const DerivedColumn, // device array of derived column specs
+        n_cols: usize,                // number of derived columns
     ) -> i32;
 
     /// Launches the GPU kernel that applies bus interactions to periphery histograms.
@@ -86,6 +85,15 @@ pub struct Subst {
     pub apc_col: i32,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct DerivedColumn {
+    /// Destination APC column index
+    pub index: i32,
+    /// Constant value to set for rows < num_apc_calls; zero beyond
+    pub value: BabyBear,
+}
+
 pub fn apc_tracegen(
     output: &mut DeviceMatrix<BabyBear>,      // column-major
     original_airs: DeviceBuffer<OriginalAir>, // device array, len = n_airs
@@ -111,18 +119,15 @@ pub fn apc_tracegen(
 /// Applies derived constant columns after `apc_tracegen` filled main columns.
 pub fn apc_apply_derived(
     output: &mut DeviceMatrix<BabyBear>,
-    cols: DeviceBuffer<i32>,
-    values: DeviceBuffer<BabyBear>,
+    cols: DeviceBuffer<DerivedColumn>,
     num_apc_calls: usize,
 ) -> Result<(), CudaError> {
-    debug_assert_eq!(cols.len(), values.len());
     unsafe {
         CudaError::from_result(_apc_apply_derived(
             output.buffer().as_mut_ptr(),
             output.height(),
             num_apc_calls as i32,
             cols.as_ptr(),
-            values.as_ptr(),
             cols.len(),
         ))
     }

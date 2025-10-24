@@ -295,14 +295,15 @@ impl PowdrTraceGeneratorGpu {
         cuda_abi::apc_tracegen(&mut output, airs, substitutions, num_apc_calls).unwrap();
 
         // Apply derived columns (only constants for now) after main tracegen
-        let mut derived_cols: Vec<i32> = Vec::new();
-        let mut derived_vals: Vec<BabyBear> = Vec::new();
+        let mut derived_cols: Vec<cuda_abi::DerivedColumn> = Vec::new();
         for (column_idx, computation_method) in &self.apc.machine.derived_columns {
             let col_index = apc_poly_id_to_index[&column_idx.id] as i32;
             match computation_method {
                 ComputationMethod::Constant(c) => {
-                    derived_cols.push(col_index);
-                    derived_vals.push(*c);
+                    derived_cols.push(cuda_abi::DerivedColumn {
+                        index: col_index,
+                        value: *c,
+                    });
                 }
                 ComputationMethod::InverseOrZero(_) => {
                     unimplemented!("Cannot prefill inverse_or_zero without full row data")
@@ -311,8 +312,7 @@ impl PowdrTraceGeneratorGpu {
         }
         if !derived_cols.is_empty() {
             let d_cols = derived_cols.to_device().unwrap();
-            let d_vals = derived_vals.to_device().unwrap();
-            cuda_abi::apc_apply_derived(&mut output, d_cols, d_vals, num_apc_calls).unwrap();
+            cuda_abi::apc_apply_derived(&mut output, d_cols, num_apc_calls).unwrap();
         }
 
         // Encode bus interactions for GPU consumption
