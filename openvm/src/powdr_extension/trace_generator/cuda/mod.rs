@@ -211,31 +211,6 @@ impl PowdrTraceGeneratorGpu {
         // allocate for apc trace
         let width = apc_poly_id_to_index.len();
         let height = next_power_of_two_or_zero(num_apc_calls);
-
-        // Create a host-side buffer to prefill the output, column major, zero-initialized
-        // TODO: do this on GPU instead, to avoid large host<->device copies
-        // use openvm_stark_backend::p3_field::FieldAlgebra;
-        // let mut h_output = vec![BabyBear::ZERO; height * width];
-
-        // // Prefill `is_valid` column to 1 for the number of calls
-        // for (column_idx, computation_method) in &self.apc.machine.derived_columns {
-        //     let col_index = apc_poly_id_to_index[&column_idx.id];
-        //     match computation_method {
-        //         ComputationMethod::Constant(c) => {
-        //             for row in 0..num_apc_calls {
-        //                 h_output[row + col_index * height] = *c;
-        //             }
-        //         }
-        //         ComputationMethod::InverseOrZero(_) => {
-        //             unimplemented!("Cannot prefill inverse_or_zero without full row data")
-        //         }
-        //     }
-        // }
-
-        // let d_output = h_output.to_device().unwrap();
-
-        // let mut output = DeviceMatrix::<BabyBear>::new(Arc::new(d_output), height, width);
-
         let mut output = DeviceMatrix::<BabyBear>::with_capacity(height, width);
 
         let derived_column_poly_ids = self
