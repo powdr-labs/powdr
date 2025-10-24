@@ -11,8 +11,8 @@ use crate::{
 /// Splits the constraint system into independent subsets.
 /// Each variable occurs in exactly one subset and all constraints referencing a
 /// certain variable have to be in the same subsystem.
-/// Note that this ignores derived variables, i.e. the returned systems all have
-/// no derived variables.
+/// Note that the list of derived variables in the returned set is empty,
+/// but derived variables do occur in the constraints.
 pub fn split_system<T: RuntimeConstant, V: Clone + Ord + Hash + Display>(
     constraint_system: IndexedConstraintSystem<T, V>,
 ) -> Vec<ConstraintSystem<T, V>> {
