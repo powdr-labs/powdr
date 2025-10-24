@@ -386,7 +386,7 @@ pub fn build<A: Adapter>(
     let machine = convert_machine_field_type(machine, &A::into_field);
 
     // Remove optimized away and derived columns from `subs`, because they will not be assigned from dummy traces to apc trace
-    let filtered_subs = filter_subs::<A::Field>(subs, &machine);
+    let filtered_subs = filter_subs(subs, &machine);
 
     let apc = Apc {
         block,
