@@ -87,15 +87,13 @@ where
         .iter()
         .map(|subs| {
             subs.iter()
-                .enumerate()
-                .filter_map(|(dummy_index, poly_id)| {
-                    // Check if this dummy column is present in the final apc row
-                    apc_poly_id_to_index
-                        .get(poly_id)
-                        // If it is, map the dummy index to the apc index
-                        .map(|apc_index| (dummy_index, *apc_index))
+                .map(|substitution| {
+                    (
+                        substitution.original_poly_index,
+                        apc_poly_id_to_index[&substitution.apc_poly_id],
+                    )
                 })
-                .collect()
+                .collect_vec()
         })
         .collect();
 
