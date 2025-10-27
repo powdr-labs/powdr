@@ -8,6 +8,7 @@
 # directory.
 
 set -e
+shopt -s globstar
 
 SCRIPT_PATH=$(realpath "${BASH_SOURCE[0]}")
 SCRIPTS_DIR=$(dirname "$SCRIPT_PATH")
@@ -25,10 +26,13 @@ run_bench() {
     mkdir -p "${run_name}"
 
     psrecord --include-children --interval 1 \
-        --log "${run_name}"/psrecord.csv \
+        --log "${run_name}/psrecord.csv" \
         --log-format csv \
-        --plot "${run_name}"/psrecord.png \
-        "cargo run --bin powdr_openvm -r --features metrics prove \"$guest\" --input \"$input\" --autoprecompiles \"$apcs\" --metrics \"${run_name}/metrics.json\" --recursion --apc-candidates-dir \"${run_name}\""
+        --plot "${run_name}/psrecord.png" \
+        -- cargo run --bin powdr_openvm -r --features metrics prove "$guest" \
+            --input "$input" --autoprecompiles "$apcs" \
+            --metrics "${run_name}/metrics.json" \
+            --recursion --apc-candidates-dir "${run_name}"
 
     python3 "$SCRIPTS_DIR"/plot_trace_cells.py -o "${run_name}"/trace_cells.png "${run_name}"/metrics.json > "${run_name}"/trace_cells.txt
 
@@ -38,7 +42,7 @@ run_bench() {
     fi
 
     # Clean up some files that we don't want to to push.
-    rm debug.pil
+    rm -f debug.pil
     rm -f "${run_name}"/*.cbor
 }
 
