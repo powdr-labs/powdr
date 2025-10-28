@@ -175,7 +175,7 @@ pub struct SymbolicMachine<T> {
     pub derived_columns: Vec<(AlgebraicReference, ComputationMethod<T>)>,
 }
 
-type ComputationMethod<T> =
+pub type ComputationMethod<T> =
     powdr_constraint_solver::constraint_system::ComputationMethod<T, AlgebraicExpression<T>>;
 
 impl<T> SymbolicMachine<T> {
