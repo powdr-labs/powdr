@@ -154,7 +154,7 @@ pub enum OpCode {
     Sub = 3,     // Subtract the top two values on the stack.
     Mul = 4,     // Multiply the top two values on the stack.
     Neg = 5,     // Negate the top value on the stack.
-    InvOrZero = 6, // Pop a; push inv(a) if a != 0, else 0
+    InvOrZero = 6, // Invert the top value on the stack if it is not zero, otherwise pop and push zero.
 }
 
 /// GPU device representation of a bus interaction.
