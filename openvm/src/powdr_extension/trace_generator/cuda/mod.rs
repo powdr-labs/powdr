@@ -16,13 +16,16 @@ use openvm_stark_backend::{
     Chip,
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
-use powdr_autoprecompiles::{expression::AlgebraicExpression, Apc, SymbolicBusInteraction};
+use powdr_autoprecompiles::{
+    expression::{AlgebraicExpression, AlgebraicReference},
+    Apc, SymbolicBusInteraction,
+};
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 
 use crate::{
     bus_map::DEFAULT_TUPLE_RANGE_CHECKER,
-    cuda_abi::{self, DevArgSpan, DevInteraction, OpCode, OriginalAir, Subst},
+    cuda_abi::{self, DerivedExprSpec, DevArgSpan, DevInteraction, OpCode, OriginalAir, Subst},
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     powdr_extension::{
         chip::PowdrChipGpu,
@@ -91,6 +94,42 @@ fn emit_dev_arg_span(
     emit_expr(bc, expr, id_to_apc_index, apc_height);
     let len = (bc.len() as u32) - off;
     DevArgSpan { off, len }
+}
+
+fn compile_derived_to_gpu(
+    derived_columns: &[(
+        AlgebraicReference,
+        ComputationMethod<BabyBear, AlgebraicExpression<BabyBear>>,
+    )],
+    apc_poly_id_to_index: &BTreeMap<u64, usize>,
+    apc_height: usize,
+) -> (Vec<DerivedExprSpec>, Vec<u32>) {
+    let mut specs = Vec::with_capacity(derived_columns.len());
+    let mut bytecode = Vec::new();
+
+    for (col, computation_method) in derived_columns {
+        let apc_col_index = apc_poly_id_to_index[&col.id];
+        let off = bytecode.len() as u32;
+        match computation_method {
+            ComputationMethod::Constant(c) => {
+                // Encode constant as an expression
+                bytecode.push(OpCode::PushConst as u32);
+                bytecode.push(c.as_canonical_u32());
+            }
+            ComputationMethod::InverseOrZero(expr) => {
+                // Encode inner expression, then apply InvOrZero
+                emit_expr(&mut bytecode, expr, apc_poly_id_to_index, apc_height);
+                bytecode.push(OpCode::InvOrZero as u32);
+            }
+        }
+        let len = (bytecode.len() as u32) - off;
+        specs.push(DerivedExprSpec {
+            col_base: (apc_col_index * apc_height) as u64,
+            span: DevArgSpan { off, len },
+        });
+    }
+
+    (specs, bytecode)
 }
 
 pub fn compile_bus_to_gpu(
@@ -294,26 +333,16 @@ impl PowdrTraceGeneratorGpu {
 
         cuda_abi::apc_tracegen(&mut output, airs, substitutions, num_apc_calls).unwrap();
 
-        // Apply derived columns (only constants for now) after main tracegen
-        let mut derived_cols: Vec<cuda_abi::DerivedColumn> = Vec::new();
-        for (column_idx, computation_method) in &self.apc.machine.derived_columns {
-            let col_index = apc_poly_id_to_index[&column_idx.id] as i32;
-            match computation_method {
-                ComputationMethod::Constant(c) => {
-                    derived_cols.push(cuda_abi::DerivedColumn {
-                        index: col_index,
-                        value: *c,
-                    });
-                }
-                ComputationMethod::InverseOrZero(_) => {
-                    unimplemented!("Cannot prefill inverse_or_zero without full row data")
-                }
-            }
-        }
-
-        // In practice `d_cols` is never empty, because we will always have `is_valid`
-        let d_cols = derived_cols.to_device().unwrap();
-        cuda_abi::apc_apply_derived(&mut output, d_cols, num_apc_calls).unwrap();
+        // Apply derived columns using the GPU expression evaluator
+        let (derived_specs, derived_bc) = compile_derived_to_gpu(
+            &self.apc.machine.derived_columns,
+            &apc_poly_id_to_index,
+            height,
+        );
+        // In practice `d_specs` is never empty, because we will always have `is_valid`
+        let d_specs = derived_specs.to_device().unwrap();
+        let d_bc = derived_bc.to_device().unwrap();
+        cuda_abi::apc_apply_derived_expr(&mut output, d_specs, d_bc, num_apc_calls).unwrap();
 
         // Encode bus interactions for GPU consumption
         let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(

@@ -18,15 +18,16 @@ extern "C" {
         num_apc_calls: i32,                  // number of APC calls
     ) -> i32;
 
-    /// Applies derived columns (only ComputationMethod::Constant for now) on the GPU.
-    /// Each warp processes a derived column; each thread processes rows with zero-padding beyond num_apc_calls.
-    /// Safety: All pointers must be valid device pointers for the specified lengths.
-    pub fn _apc_apply_derived(
-        d_output: *mut BabyBear,      // APC trace matrix (column-major) on device
-        output_height: usize,         // rows (height)
-        num_apc_calls: i32,           // number of valid rows
-        d_cols: *const DerivedColumn, // device array of derived column specs
-        n_cols: usize,                // number of derived columns
+    /// Applies derived expression columns on the GPU.
+    /// Each thread processes rows; for rows >= num_apc_calls, writes zeros.
+    /// Safety: All device pointers must be valid for the specified lengths.
+    pub fn _apc_apply_derived_expr(
+        d_output: *mut BabyBear,         // APC trace matrix (column-major)
+        output_height: usize,            // rows (height)
+        num_apc_calls: i32,              // number of valid rows
+        d_specs: *const DerivedExprSpec, // device array of derived expression specs
+        n_cols: usize,                   // number of derived columns
+        d_bytecode: *const u32,          // device bytecode buffer
     ) -> i32;
 
     /// Launches the GPU kernel that applies bus interactions to periphery histograms.
@@ -94,6 +95,15 @@ pub struct DerivedColumn {
     pub value: BabyBear,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct DerivedExprSpec {
+    /// Precomputed destination APC column base = (apc_col_index * H)
+    pub col_base: u64,
+    /// Expression span inside the shared bytecode buffer
+    pub span: DevArgSpan,
+}
+
 pub fn apc_tracegen(
     output: &mut DeviceMatrix<BabyBear>,      // column-major
     original_airs: DeviceBuffer<OriginalAir>, // device array, len = n_airs
@@ -115,20 +125,22 @@ pub fn apc_tracegen(
     }
 }
 
-/// High-level wrapper for `_apc_apply_derived`.
-/// Applies derived constant columns after `apc_tracegen` filled main columns.
-pub fn apc_apply_derived(
+/// High-level wrapper for `_apc_apply_derived_expr`.
+/// Applies derived arbitrary expression columns using the GPU stack machine.
+pub fn apc_apply_derived_expr(
     output: &mut DeviceMatrix<BabyBear>,
-    cols: DeviceBuffer<DerivedColumn>,
+    specs: DeviceBuffer<DerivedExprSpec>,
+    bytecode: DeviceBuffer<u32>,
     num_apc_calls: usize,
 ) -> Result<(), CudaError> {
     unsafe {
-        CudaError::from_result(_apc_apply_derived(
+        CudaError::from_result(_apc_apply_derived_expr(
             output.buffer().as_mut_ptr(),
             output.height(),
             num_apc_calls as i32,
-            cols.as_ptr(),
-            cols.len(),
+            specs.as_ptr(),
+            specs.len(),
+            bytecode.as_ptr(),
         ))
     }
 }
@@ -142,6 +154,7 @@ pub enum OpCode {
     Sub = 3,     // Subtract the top two values on the stack.
     Mul = 4,     // Multiply the top two values on the stack.
     Neg = 5,     // Negate the top value on the stack.
+    InvOrZero = 6, // Pop a; push inv(a) if a != 0, else 0
 }
 
 /// GPU device representation of a bus interaction.

@@ -1,6 +1,7 @@
 #include "primitives/buffer_view.cuh"
 #include "primitives/constants.h"
 #include "primitives/trace_access.h"
+#include "expr_eval.cuh"
 
 // ============================================================================================
 // Types
@@ -25,6 +26,13 @@ struct DerivedColumn {
     int index; // destination APC column index
     Fp  value; // constant value for valid rows
 };
+
+extern "C" {
+  typedef struct {
+    uint64_t col_base; // precomputed destination base offset = apc_col_index * H
+    DevArgSpan span;   // expression span encoding this column's value
+  } DerivedExprSpec;
+}
 
 // ============================================================================================
 // Kernel: one block per OriginalAir; each warp handles one substitution (APC column).
@@ -76,47 +84,55 @@ __global__ void apc_tracegen_kernel(
 }
 
 // ============================================================================================
-// Derived columns application: warp-per-derived-column, lane-per-row
+// Derived expressions: lane-per-row evaluator, sequential over derived columns per row
 // ============================================================================================
 
-__global__ void apc_apply_derived_kernel(
+__global__ void apc_apply_derived_expr_kernel(
     Fp* __restrict__ d_output,   // APC trace (column-major)
     size_t H,                    // rows (height)
     int num_apc_calls,           // number of valid rows
-    const DerivedColumn* __restrict__ d_cols, // derived specs
-    size_t n_cols
+    const DerivedExprSpec* __restrict__ d_specs, // derived expression specs
+    size_t n_cols,               // number of derived columns
+    const uint32_t* __restrict__ d_bytecode // shared bytecode buffer
 ) {
-    const int warps_per_block = (blockDim.x >> 5);
-    const int warp = (threadIdx.x >> 5);
-    const int lane = (threadIdx.x & 31);
+    const size_t total_threads = (size_t)gridDim.x * (size_t)blockDim.x;
+    const size_t tid = (size_t)blockIdx.x * (size_t)blockDim.x + (size_t)threadIdx.x;
 
-    for (int base = (int)blockIdx.x * warps_per_block; base < (int)n_cols; base += (int)gridDim.x * warps_per_block) {
-        const int i = base + warp;
-        if (i >= (int)n_cols) return;
-        const int col = d_cols[i].index;
-        const Fp val = d_cols[i].value;
-        const size_t col_base = (size_t)col * H;
-        for (size_t r = (size_t)lane; r < H; r += 32) {
-            d_output[col_base + r] = (r < (size_t)num_apc_calls) ? val : Fp(0);
+    for (size_t r = tid; r < H; r += total_threads) {
+        if (r < (size_t)num_apc_calls) {
+            // Compute and write each derived column for this row
+            for (size_t i = 0; i < n_cols; ++i) {
+                const DerivedExprSpec spec = d_specs[i];
+                const size_t col_base = (size_t)spec.col_base;
+                const Fp v = eval_arg(spec.span, d_bytecode, d_output, H, r);
+                d_output[col_base + r] = v;
+            }
+        } else {
+            // Zero-fill non-APC rows
+            for (size_t i = 0; i < n_cols; ++i) {
+                const size_t col_base = (size_t)d_specs[i].col_base;
+                d_output[col_base + r] = Fp(0);
+            }
         }
     }
 }
 
-extern "C" int _apc_apply_derived(
+extern "C" int _apc_apply_derived_expr(
     Fp*                d_output,
     size_t             output_height,
     int                num_apc_calls,
-    const DerivedColumn* d_cols,
-    size_t             n_cols
+    const DerivedExprSpec* d_specs,
+    size_t             n_cols,
+    const uint32_t*    d_bytecode
 ) {
     if (n_cols == 0) return 0;
-    const int block_x = 128; // 4 warps per block
+    const int block_x = 256; // more lanes to cover rows
     const dim3 block(block_x, 1, 1);
-    unsigned g = (unsigned)((n_cols + 3) / 4);
+    unsigned g = (unsigned)((output_height + block_x - 1) / block_x);
     if (g == 0u) g = 1u;
     const dim3 grid(g, 1, 1);
-    apc_apply_derived_kernel<<<grid, block>>>(
-        d_output, output_height, num_apc_calls, d_cols, n_cols
+    apc_apply_derived_expr_kernel<<<grid, block>>>(
+        d_output, output_height, num_apc_calls, d_specs, n_cols, d_bytecode
     );
     return (int)cudaGetLastError();
 }

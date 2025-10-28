@@ -5,6 +5,7 @@
 #include "primitives/constants.h"
 #include "primitives/trace_access.h"
 #include "primitives/histogram.cuh"
+#include "expr_eval.cuh"
 
 extern "C" {
   typedef struct {
@@ -12,72 +13,10 @@ extern "C" {
     uint32_t num_args; // Number of argument expressions for this interaction
     uint32_t args_index_off; // Starting index into the `DevArgSpan` array for this interaction's args. Layout: [mult, arg0, arg1, ...]
   } DevInteraction;
-
-  typedef struct {
-    uint32_t off; // Offset (in u32 words) into `bytecode` where this arg expression starts
-    uint32_t len; // Length (instruction count) of this arg expression
-  } DevArgSpan;
 }
-
-enum OpCode : uint32_t { 
-  OP_PUSH_APC = 0, // Push the APC value onto the stack. Must be followed by the index of the value in the APC device buffer.
-  OP_PUSH_CONST = 1, // Push a constant value onto the stack. Must be followed by the constant value.
-  OP_ADD = 2, // Add the top two values on the stack.
-  OP_SUB = 3, // Subtract the top two values on the stack.
-  OP_MUL = 4, // Multiply the top two values on the stack.
-  OP_NEG = 5, // Negate the top value on the stack.
-};
 
 // Fixed number of bits for bitwise lookup
 static constexpr uint32_t BITWISE_NUM_BITS = 8u;
-static constexpr int STACK_CAPACITY = 16;
-
-// Inline helpers to safely manipulate the evaluation stack (capacity 16)
-__device__ __forceinline__ void stack_push(Fp* stack, int& sp, Fp value) {
-  assert(sp < STACK_CAPACITY && "Stack overflow");
-  stack[sp++] = value;
-}
-
-__device__ __forceinline__ Fp stack_pop(Fp* stack, int& sp) {
-  assert(sp > 0 && "Stack underflow");
-  return stack[--sp];
-}
-
-__device__ __forceinline__ Fp eval_expr(const uint32_t* expr, uint32_t len,
-                                        const Fp* __restrict__ apc_trace,
-                                        size_t H, size_t r) {
-  Fp stack[STACK_CAPACITY]; int sp = 0;
-  for (uint32_t ip = 0; ip < len; ) {
-    uint32_t op = expr[ip++];
-    switch (op) {
-      case OP_PUSH_APC: {
-        uint32_t base = expr[ip++];
-        stack_push(stack, sp, apc_trace[base + r]);
-        break;
-      }
-      case OP_PUSH_CONST: {
-        uint32_t u = expr[ip++];
-        stack_push(stack, sp, Fp(u));
-        break;
-      }
-      case OP_ADD: { Fp b = stack_pop(stack, sp); Fp a = stack_pop(stack, sp); stack_push(stack, sp, a + b); break; }
-      case OP_SUB: { Fp b = stack_pop(stack, sp); Fp a = stack_pop(stack, sp); stack_push(stack, sp, a - b); break; }
-      case OP_MUL: { Fp b = stack_pop(stack, sp); Fp a = stack_pop(stack, sp); stack_push(stack, sp, a * b); break; }
-      case OP_NEG: { Fp a = stack_pop(stack, sp); stack_push(stack, sp, -a); break; }
-    }
-  }
-  return stack[sp - 1];
-}
-
-__device__ __forceinline__ Fp eval_arg(
-  const DevArgSpan& span,
-  const uint32_t* __restrict__ d_bytecode,
-  const Fp* __restrict__ apc_trace,
-  size_t H,
-  size_t r
-) {
-  return eval_expr(d_bytecode + span.off, span.len, apc_trace, H, r);
-}
 
 // Applies bus interactions to periphery histograms for a batch of APC rows
 __global__ void apc_apply_bus_kernel(
