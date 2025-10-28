@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     sync::Arc,
 };
 
@@ -18,6 +18,7 @@ use openvm_stark_backend::{
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
     expression::{AlgebraicExpression, AlgebraicReference},
+    powdr::UniqueReferences,
     Apc, SymbolicBusInteraction,
 };
 use powdr_constraint_solver::constraint_system::ComputationMethod;
@@ -96,6 +97,7 @@ fn emit_dev_arg_span(
     DevArgSpan { off, len }
 }
 
+/// Compile derived columns to GPU bytecode according to input order.
 fn compile_derived_to_gpu(
     derived_columns: &[(
         AlgebraicReference,
@@ -104,6 +106,40 @@ fn compile_derived_to_gpu(
     apc_poly_id_to_index: &BTreeMap<u64, usize>,
     apc_height: usize,
 ) -> (Vec<DerivedExprSpec>, Vec<u32>) {
+    // Requirement: derived columns are ordered such that each is only computed from previously seen columns.
+    // 1. Obtain all poly ids that aren't derived ones.
+    let all_poly_ids = apc_poly_id_to_index
+        .keys()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    let all_derived_poly_ids = derived_columns
+        .iter()
+        .map(|(derived, computation_method)| {
+            let referenced_poly_ids = match computation_method {
+                ComputationMethod::Constant(_) => {
+                    vec![]
+                }
+                ComputationMethod::InverseOrZero(expr) => {
+                    expr.unique_references().map(|r| r.id).collect::<Vec<_>>()
+                }
+            };
+            (derived.id, referenced_poly_ids)
+        })
+        .collect::<BTreeMap<u64, Vec<u64>>>();
+    let mut seen_poly_ids = all_poly_ids
+        .into_iter()
+        .filter(|id| !all_derived_poly_ids.contains_key(id))
+        .collect::<BTreeSet<_>>();
+
+    // 2. Iterate over derived columns and assert that each only refers to seen ones
+    for (derived_poly_id, referenced_poly_ids) in all_derived_poly_ids.iter() {
+        assert!(referenced_poly_ids
+            .iter()
+            .all(|id| seen_poly_ids.contains(id)));
+        seen_poly_ids.insert(*derived_poly_id);
+    }
+
+    // 3. Compile derived columns to GPU bytecode according to input order
     let mut specs = Vec::with_capacity(derived_columns.len());
     let mut bytecode = Vec::new();
 
