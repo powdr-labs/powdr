@@ -2,11 +2,11 @@ Instructions:
   BEQ 8 0 2 1 1
 
 APC advantage:
-  - Main columns: 26 -> 11 (2.36x reduction)
+  - Main columns: 26 -> 10 (2.60x reduction)
   - Bus interactions: 11 -> 10 (1.10x reduction)
-  - Constraints: 11 -> 6 (1.83x reduction)
+  - Constraints: 11 -> 2 (5.50x reduction)
 
-Symbolic machine using 11 unique main columns:
+Symbolic machine using 10 unique main columns:
   from_state__timestamp_0
   reads_aux__0__base__prev_timestamp_0
   reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0
@@ -17,7 +17,6 @@ Symbolic machine using 11 unique main columns:
   a__2_0
   a__3_0
   new_var_29
-  is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):
 mult=is_valid * -1, args=[0, from_state__timestamp_0]
@@ -36,9 +35,5 @@ mult=is_valid * 1, args=[reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0
 mult=is_valid * 1, args=[15360 * reads_aux__1__base__prev_timestamp_0 + 15360 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0 - 15360 * from_state__timestamp_0, 12]
 
 // Algebraic constraints:
-(1 - new_var_29 * (a__0_0 + a__1_0 + a__2_0 + a__3_0)) * a__0_0 = 0
-(1 - new_var_29 * (a__0_0 + a__1_0 + a__2_0 + a__3_0)) * a__1_0 = 0
-(1 - new_var_29 * (a__0_0 + a__1_0 + a__2_0 + a__3_0)) * a__2_0 = 0
-(1 - new_var_29 * (a__0_0 + a__1_0 + a__2_0 + a__3_0)) * a__3_0 = 0
 (1 - new_var_29 * (a__0_0 + a__1_0 + a__2_0 + a__3_0)) * (a__0_0 + a__1_0 + a__2_0 + a__3_0) = 0
 is_valid * (is_valid - 1) = 0

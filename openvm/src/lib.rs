@@ -1795,7 +1795,7 @@ mod tests {
                             main: 36,
                             log_up: 60,
                         },
-                        constraints: 14,
+                        constraints: 10,
                         bus_interactions: 26,
                     }
                 "#]],
@@ -1823,7 +1823,7 @@ mod tests {
                             main: 36,
                             log_up: 60,
                         },
-                        constraints: 14,
+                        constraints: 10,
                         bus_interactions: 26,
                     }
                 "#]],
@@ -1871,7 +1871,7 @@ mod tests {
                             main: 14550,
                             log_up: 23164,
                         },
-                        constraints: 4259,
+                        constraints: 4251,
                         bus_interactions: 11345,
                     }
                 "#]],
@@ -1899,7 +1899,7 @@ mod tests {
                             main: 14522,
                             log_up: 23132,
                         },
-                        constraints: 4235,
+                        constraints: 4227,
                         bus_interactions: 11335,
                     }
                 "#]],
@@ -2188,7 +2188,7 @@ mod tests {
                             main: 3254,
                             log_up: 5256,
                         },
-                        constraints: 715,
+                        constraints: 711,
                         bus_interactions: 2528,
                     }
                 "#]],

@@ -2,11 +2,11 @@ Instructions:
   SLTU rd_ptr = 8, rs1_ptr = 5, rs2 = 1, rs2_as = 0
 
 APC advantage:
-  - Main columns: 37 -> 15 (2.47x reduction)
+  - Main columns: 37 -> 14 (2.64x reduction)
   - Bus interactions: 18 -> 10 (1.80x reduction)
   - Constraints: 28 -> 2 (14.00x reduction)
 
-Symbolic machine using 15 unique main columns:
+Symbolic machine using 14 unique main columns:
   from_state__timestamp_0
   reads_aux__0__base__prev_timestamp_0
   reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0
@@ -21,7 +21,6 @@ Symbolic machine using 15 unique main columns:
   b__2_0
   b__3_0
   new_var_40
-  is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):
 mult=is_valid * -1, args=[0, from_state__timestamp_0]
