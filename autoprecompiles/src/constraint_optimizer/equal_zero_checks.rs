@@ -264,12 +264,14 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     };
     constraint_system.retain_algebraic_constraints(|constr| {
         // Remove the constraint if it references a variable to remove
-        // or if it only references the output (which is fully determined
-        // by the algebraic constraints we will add).
+        // or if it only references the output or the inputs (whose relation
+        // is fully determined by the algebraic constraints we will add).
         let remove = constr
             .referenced_unknown_variables()
             .any(|var| variables_to_remove.contains(var))
-            || constr.referenced_unknown_variables().all(|v| v == &output);
+            || constr
+                .referenced_unknown_variables()
+                .all(|v| v == &output || inputs.contains(v));
         if remove {
             // Sanity check that we do not remove anything we should not.
             assert!(constr.referenced_unknown_variables().all(|var| {
@@ -379,7 +381,12 @@ fn check_redundancy<T: FieldElement, V: Clone + Ord + Hash + Display>(
         + IsBusStateful<T>
         + Clone,
 ) -> bool {
-    let solver = solver::new_solver(isolated_system.clone(), bus_interaction_handler.clone());
+    log::trace!("Checking redundancy of isolated system:\n{isolated_system}");
+    let mut solver = solver::new_solver(isolated_system.clone(), bus_interaction_handler.clone());
+    // TODO assignments?
+    if solver.solve().is_err() {
+        return false;
+    }
     let mut booleans = isolated_system
         .referenced_unknown_variables()
         .filter(|v| solver.get(v) == RangeConstraint::from_mask(1))
@@ -387,6 +394,10 @@ fn check_redundancy<T: FieldElement, V: Clone + Ord + Hash + Display>(
         .collect::<BTreeSet<_>>();
     booleans.remove(output);
 
+    // First check that the system is satisfiable if all inputs are zero and output = value.
+    // The resulting restrictions should not be tighter than those determined in general
+    // on the variables.
+    // If this is the case, the system does not impose any restrictions in this case.
     if let Some(restrictions) = is_satisfiable(
         isolated_system,
         inputs
@@ -404,6 +415,9 @@ fn check_redundancy<T: FieldElement, V: Clone + Ord + Hash + Display>(
         return false;
     }
 
+    // Now we handle the more complicated case where `output = 1 - value` and
+    // at least one input variable is non-zero. We do this by going through
+    // all input variables in turn and set them to non-zero individually.
     for nonzero_var in inputs {
         let range_constraints = inputs
             .iter()
@@ -418,7 +432,7 @@ fn check_redundancy<T: FieldElement, V: Clone + Ord + Hash + Display>(
                 (v.clone(), rc)
             })
             .collect();
-        // TODO is there a way where we can avoid manually determining the booleans?
+        // Now exhaustively go through all booleans and determine the new restrictions.
         let restrictions = get_all_possible_assignments(booleans.clone(), &solver)
             .filter_map(|mut assignment| {
                 assignment.insert(output.clone(), T::from(1) - value);
@@ -430,6 +444,7 @@ fn check_redundancy<T: FieldElement, V: Clone + Ord + Hash + Display>(
                 )
             })
             .collect_vec();
+        // Combine them disjunctively.
         let restrictions = reduce_range_constraints(restrictions, &range_constraints);
         for result in restrictions {
             if !result.is_empty() {
@@ -440,7 +455,7 @@ fn check_redundancy<T: FieldElement, V: Clone + Ord + Hash + Display>(
     true
 }
 
-/// Determines if the system is satisfiable.
+/// Determines if the system is satisfiable given some variable assignments.
 /// If this returns `None`, the system is conflicting or we cannot determine satisfiability properly.
 /// If it returns `Some(rc)`, then `rc` are the determined range constraints on variables
 /// from `range_constraints` that are stricter than provided.
