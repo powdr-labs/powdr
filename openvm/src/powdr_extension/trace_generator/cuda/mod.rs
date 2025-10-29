@@ -253,14 +253,6 @@ impl PowdrTraceGeneratorGpu {
         let height = next_power_of_two_or_zero(num_apc_calls);
         let mut output = DeviceMatrix::<BabyBear>::with_capacity(height, width);
 
-        let derived_column_poly_ids = self
-            .apc
-            .machine
-            .derived_columns
-            .iter()
-            .map(|(column, _)| column.id)
-            .collect::<Vec<_>>();
-
         // Prepare `OriginalAir` and `Subst` arrays
         let (airs, substitutions) = {
             self.apc
@@ -279,30 +271,19 @@ impl PowdrTraceGeneratorGpu {
                     (Vec::new(), Vec::new()),
                     |(mut airs, mut substitutions), (air_name, subs_by_row)| {
                         // Find the substitutions that map to an apc column
-                        let filtered_substitutions: Vec<Subst> = subs_by_row
+                        let new_substitutions: Vec<Subst> = subs_by_row
                             .iter()
                             // enumerate over them to get the row index inside the air block
                             .enumerate()
                             .flat_map(|(row, subs)| {
-                                // for each substitution, map to `Subst` struct if it exists in apc
+                                // for each substitution, map to `Subst` struct
                                 subs.iter()
-                                    .enumerate()
-                                    .filter_map(|(dummy_index, poly_id)| {
-                                        // Filter out poly_id of derived columns, because they will be set separately
-                                        if derived_column_poly_ids.contains(poly_id) {
-                                            return None;
-                                        }
-                                        // Check if this dummy column is present in the final apc row
-                                        apc_poly_id_to_index
-                                            .get(poly_id)
-                                            // If it is, map the dummy index to the apc index
-                                            .map(|apc_index| Subst {
-                                                col: dummy_index as i32,
-                                                row: row as i32,
-                                                apc_col: *apc_index as i32,
-                                            })
+                                    .map(move |sub| (row, sub))
+                                    .map(|(row, sub)| Subst {
+                                        col: sub.original_poly_index as i32,
+                                        row: row as i32,
+                                        apc_col: apc_poly_id_to_index[&sub.apc_poly_id] as i32,
                                     })
-                                    .collect_vec()
                             })
                             // sort by column so that reads to the same column are coalesced, as the table is column major
                             .sorted_by(|left, right| left.col.cmp(&right.col))
@@ -317,11 +298,11 @@ impl PowdrTraceGeneratorGpu {
                             height: dummy_trace.height() as i32,
                             buffer: dummy_trace.buffer().as_ptr(),
                             row_block_size: subs_by_row.len() as i32,
-                            substitutions_offset: substitutions.len() as i32,
-                            substitutions_length: filtered_substitutions.len() as i32,
+                            substitutions_offset: new_substitutions.len() as i32,
+                            substitutions_length: new_substitutions.len() as i32,
                         });
 
-                        substitutions.extend(filtered_substitutions);
+                        substitutions.extend(new_substitutions);
 
                         (airs, substitutions)
                     },
