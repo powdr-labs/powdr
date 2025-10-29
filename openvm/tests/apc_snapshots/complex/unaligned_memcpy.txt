@@ -14,11 +14,11 @@ Instructions:
   BNE 68 0 -48 1 1
 
 APC advantage:
-  - Main columns: 465 -> 104 (4.47x reduction)
+  - Main columns: 465 -> 105 (4.43x reduction)
   - Bus interactions: 242 -> 58 (4.17x reduction)
   - Constraints: 286 -> 68 (4.21x reduction)
 
-Symbolic machine using 104 unique main columns:
+Symbolic machine using 105 unique main columns:
   from_state__timestamp_0
   rs1_data__0_0
   rs1_data__1_0
@@ -122,6 +122,7 @@ Symbolic machine using 104 unique main columns:
   a__2_9
   a__3_9
   cmp_result_12
+  new_var_468
   is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):

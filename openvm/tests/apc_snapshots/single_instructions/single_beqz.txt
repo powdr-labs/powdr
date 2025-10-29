@@ -2,11 +2,11 @@ Instructions:
   BEQ 8 0 2 1 1
 
 APC advantage:
-  - Main columns: 26 -> 10 (2.60x reduction)
+  - Main columns: 26 -> 11 (2.36x reduction)
   - Bus interactions: 11 -> 10 (1.10x reduction)
   - Constraints: 11 -> 2 (5.50x reduction)
 
-Symbolic machine using 10 unique main columns:
+Symbolic machine using 11 unique main columns:
   from_state__timestamp_0
   reads_aux__0__base__prev_timestamp_0
   reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0
@@ -17,6 +17,7 @@ Symbolic machine using 10 unique main columns:
   a__2_0
   a__3_0
   new_var_29
+  is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):
 mult=is_valid * -1, args=[0, from_state__timestamp_0]
