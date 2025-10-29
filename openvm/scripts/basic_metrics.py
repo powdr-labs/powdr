@@ -31,22 +31,17 @@ def extract_metrics(filename):
     perm_cols = pd.to_numeric(app[app["metric"] == "perm_cols"]["value"]).sum()
     app_proof_cols = main_cols + prep_cols + perm_cols
 
+    num_segments = int(pd.to_numeric(app["segment"]).max()) + 1
+
     metrics["filename"] = filename
-
-    metrics["num_segments"] = pd.to_numeric(app[app["metric"] == "num_segments"]["value"]).sum()
-
+    metrics["num_segments"] = num_segments
     metrics["app_proof_cells"] = pd.to_numeric(app[app["metric"] == "total_cells"]["value"]).sum()
-
     metrics["app_proof_cols"] = app_proof_cols
-
     metrics["total_proof_time_ms"] = total_proof_time_ms
-
     metrics["app_proof_time_ms"] = app_proof_time_ms
-
-    metrics["app_execute_time_ms"] = pd.to_numeric(app[app["metric"] == "execute_time_ms"]["value"]).sum()
-
+    metrics["app_execute_preflight_time_ms"] = pd.to_numeric(app[app["metric"] == "execute_preflight_time_ms"]["value"]).sum()
+    metrics["app_execute_metered_time_ms"] = pd.to_numeric(app[app["metric"] == "execute_metered_time_ms"]["value"]).sum()
     metrics["app_trace_gen_time_ms"] = pd.to_numeric(app[app["metric"] == "trace_gen_time_ms"]["value"]).sum()
-
     metrics["leaf_proof_time_ms"] = leaf_proof_time_ms
     metrics["inner_recursion_proof_time_ms"] = internal_proof_time_ms
 
@@ -58,7 +53,6 @@ def extract_metrics(filename):
     metrics["normal_instruction_ratio"] = normal_instruction_cells / metrics["app_proof_cells"]
     metrics["openvm_precompile_ratio"] = openvm_precompile_cells / metrics["app_proof_cells"]
     metrics["powdr_ratio"] = powdr_cells / metrics["app_proof_cells"]
-
     metrics["powdr_rows"] = pd.to_numeric(powdr_air[powdr_air["metric"] == "rows"]["value"]).sum()
 
     return metrics
