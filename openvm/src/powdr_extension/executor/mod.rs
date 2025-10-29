@@ -184,6 +184,7 @@ impl Executor<BabyBear> for PowdrExecutor {
         size_of::<PowdrPreCompute<BabyBear, ExecutionCtx>>()
     }
 
+    #[cfg(not(feature = "tco"))]
     fn pre_compute<Ctx>(
         &self,
         pc: u32,
@@ -212,7 +213,7 @@ impl Executor<BabyBear> for PowdrExecutor {
     {
         let pre_compute: &mut PowdrPreCompute<BabyBear, Ctx> = data.borrow_mut();
         self.pre_compute_impl::<Ctx>(pc, inst, pre_compute)?;
-        Ok(execute_e1_tco_handler::<BabyBear, Ctx>)
+        Ok(execute_e1_handler::<BabyBear, Ctx>)
     }
 }
 
@@ -223,6 +224,7 @@ impl MeteredExecutor<BabyBear> for PowdrExecutor {
         size_of::<E2PreCompute<PowdrPreCompute<BabyBear, MeteredCtx>>>()
     }
 
+    #[cfg(not(feature = "tco"))]
     fn metered_pre_compute<Ctx>(
         &self,
         chip_idx: usize,
@@ -257,7 +259,7 @@ impl MeteredExecutor<BabyBear> for PowdrExecutor {
 
         self.pre_compute_impl::<Ctx>(pc, inst, &mut pre_compute.data)?;
 
-        Ok(execute_e2_tco_handler::<BabyBear, Ctx>)
+        Ok(execute_e2_handler::<BabyBear, Ctx>)
     }
 }
 
@@ -315,11 +317,12 @@ impl PowdrExecutor {
                         })?;
                     let pre_compute_size = executor.pre_compute_size();
                     let mut pre_compute_data = vec![0u8; pre_compute_size];
-                    let execute_func = executor.pre_compute::<Ctx>(
-                        pc + idx as u32 * DEFAULT_PC_STEP,
-                        &instruction.0,
-                        &mut pre_compute_data,
-                    )?;
+                    // let execute_func = executor.pre_compute::<Ctx>(
+                    //     pc + idx as u32 * DEFAULT_PC_STEP,
+                    //     &instruction.0,
+                    //     &mut pre_compute_data,
+                    // )?;
+                    let execute_func = unimplemented!("Executor::pre_compute is not available in 1.4.1");
                     Ok((execute_func, pre_compute_data.to_vec()))
                 })
                 .collect::<Result<Vec<_>, StaticProgramError>>()?,
@@ -340,14 +343,13 @@ unsafe fn execute_e12_impl<F, CTX: ExecutionCtxTrait>(
 ) {
     // Save the current instret, as we will overwrite it during execution of original instructions
     let start_instret = *instret;
-    let _ =
-        pre_compute
-            .original_instructions
-            .iter()
-            .fold(vm_state, |vm_state, (executor, data)| {
-                executor(data, instret, pc, arg, vm_state);
-                vm_state
-            });
+    pre_compute
+        .original_instructions
+        .iter()
+        .fold(vm_state, |vm_state, (executor, data)| {
+            executor(data, instret, pc, arg, vm_state);
+            vm_state
+        });
     // Restore the instret and increment it by one, since we executed a single apc instruction
     *instret = start_instret + 1;
 }
