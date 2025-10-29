@@ -19,12 +19,9 @@ use openvm_circuit::arch::{
 };
 use openvm_circuit_derive::create_handler;
 use openvm_circuit_primitives::AlignedBytesBorrow;
-use openvm_instructions::{instruction::Instruction, program::DEFAULT_PC_STEP};
+use openvm_instructions::instruction::Instruction;
 use openvm_sdk::config::SdkVmConfigExecutor;
-use openvm_stark_backend::{
-    p3_field::{Field, PrimeField32},
-    p3_maybe_rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator},
-};
+use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::Apc;
 
@@ -264,6 +261,7 @@ impl MeteredExecutor<BabyBear> for PowdrExecutor {
 }
 
 impl PowdrExecutor {
+    #[cfg(not(feature = "tco"))]
     /// The implementation of pre_compute, shared between Executor and MeteredExecutor.
     #[inline]
     fn pre_compute_impl<Ctx>(
@@ -275,6 +273,14 @@ impl PowdrExecutor {
     where
         Ctx: ExecutionCtxTrait,
     {
+        use openvm_instructions::program::DEFAULT_PC_STEP;
+        use openvm_stark_backend::{
+            p3_field::Field,
+            p3_maybe_rayon::prelude::{
+                IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator,
+            },
+        };
+
         let &Instruction {
             a,
             b,
@@ -317,18 +323,29 @@ impl PowdrExecutor {
                         })?;
                     let pre_compute_size = executor.pre_compute_size();
                     let mut pre_compute_data = vec![0u8; pre_compute_size];
-                    // let execute_func = executor.pre_compute::<Ctx>(
-                    //     pc + idx as u32 * DEFAULT_PC_STEP,
-                    //     &instruction.0,
-                    //     &mut pre_compute_data,
-                    // )?;
-                    let execute_func = unimplemented!("Executor::pre_compute is not available in 1.4.1");
+                    let execute_func = executor.pre_compute::<Ctx>(
+                        pc + idx as u32 * DEFAULT_PC_STEP,
+                        &instruction.0,
+                        &mut pre_compute_data,
+                    )?;
                     Ok((execute_func, pre_compute_data.to_vec()))
                 })
                 .collect::<Result<Vec<_>, StaticProgramError>>()?,
         };
 
         Ok(())
+    }
+
+    #[cfg(feature = "tco")]
+    /// The implementation of pre_compute, shared between Executor and MeteredExecutor.
+    #[inline]
+    fn pre_compute_impl<Ctx>(
+        &self,
+        _pc: u32,
+        _inst: &Instruction<BabyBear>,
+        _data: &mut PowdrPreCompute<BabyBear, Ctx>,
+    ) -> Result<(), StaticProgramError> {
+        unimplemented!("tco is not implemented yet")
     }
 }
 
