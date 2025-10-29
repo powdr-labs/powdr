@@ -15,8 +15,8 @@ use powdr_constraint_solver::{
 use powdr_number::FieldElement;
 
 use crate::constraint_optimizer::trivial_simplifications;
-use crate::powdr::UniqueReferences;
 use crate::range_constraint_optimizer::optimize_range_constraints;
+use crate::ColumnAllocator;
 use crate::{
     adapter::Adapter,
     constraint_optimizer::optimize_constraints,
@@ -35,11 +35,10 @@ pub fn optimize<A: Adapter>(
     bus_interaction_handler: A::BusInteractionHandler,
     degree_bound: DegreeBound,
     bus_map: &BusMap<A::CustomBusTypes>,
-) -> Result<SymbolicMachine<A::PowdrField>, crate::constraint_optimizer::Error> {
-    let mut next_free_column_id = machine.unique_references().map(|c| c.id).max().unwrap_or(0) + 1;
+    mut var_allocator: ColumnAllocator,
+) -> Result<(SymbolicMachine<A::PowdrField>, ColumnAllocator), crate::constraint_optimizer::Error> {
     let mut new_var = || {
-        let id = next_free_column_id;
-        next_free_column_id += 1;
+        let id = var_allocator.issue_next_poly_id();
         AlgebraicReference {
             name: format!("new_var_{id}").into(),
             id,
@@ -127,7 +126,10 @@ pub fn optimize<A: Adapter>(
                 == GroupedExpression::from_number(A::PowdrField::from(pc_lookup_bus_id))),
         "Expected all PC lookups to be removed."
     );
-    Ok(constraint_system_to_symbolic_machine(constraint_system))
+    Ok((
+        constraint_system_to_symbolic_machine(constraint_system),
+        var_allocator,
+    ))
 }
 
 pub fn optimize_exec_bus<T: FieldElement>(
