@@ -320,9 +320,9 @@ pub trait InstructionHandler {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Substitution {
     /// The index of the original column in the original air
-    original_poly_index: usize,
+    pub original_poly_index: usize,
     /// The `poly_id` of the target column in the APC air
-    apc_poly_id: u64,
+    pub apc_poly_id: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
