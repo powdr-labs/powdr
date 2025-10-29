@@ -2,7 +2,7 @@ use eyre::Result;
 use metrics_tracing_context::{MetricsLayer, TracingContextLayer};
 use metrics_util::{debugging::DebuggingRecorder, layers::Layer};
 use openvm_sdk::StdIn;
-use openvm_stark_sdk::{bench::serialize_metric_snapshot};
+use openvm_stark_sdk::bench::serialize_metric_snapshot;
 use powdr_autoprecompiles::pgo::{pgo_config, PgoType};
 use powdr_openvm::{
     default_powdr_openvm_config, CompiledProgram, GuestOptions, PrecompileImplementation,
