@@ -11,32 +11,35 @@ use crate::{
     SymbolicConstraint, SymbolicMachine,
 };
 
-pub fn convert_machine<T, U>(
+/// Converts the field type of a symbolic machine.
+pub fn convert_machine_field_type<T, U>(
     machine: SymbolicMachine<T>,
-    convert: &impl Fn(T) -> U,
+    convert_field_element: &impl Fn(T) -> U,
 ) -> SymbolicMachine<U> {
     SymbolicMachine {
         constraints: machine
             .constraints
             .into_iter()
-            .map(|c| convert_symbolic_constraint(c, convert))
+            .map(|c| convert_symbolic_constraint(c, convert_field_element))
             .collect(),
         bus_interactions: machine
             .bus_interactions
             .into_iter()
-            .map(|i| convert_bus_interaction(i, convert))
+            .map(|i| convert_bus_interaction(i, convert_field_element))
             .collect(),
         derived_columns: machine
             .derived_columns
             .into_iter()
             .map(|(v, method)| {
                 let method = match method {
-                    ComputationMethod::Constant(c) => ComputationMethod::Constant(convert(c)),
-                    ComputationMethod::InverseOrZero(e) => {
-                        ComputationMethod::InverseOrZero(convert_expression(e, convert))
+                    ComputationMethod::Constant(c) => {
+                        ComputationMethod::Constant(convert_field_element(c))
                     }
+                    ComputationMethod::InverseOrZero(e) => ComputationMethod::InverseOrZero(
+                        convert_expression(e, convert_field_element),
+                    ),
                 };
-                (v.clone(), method)
+                (v, method)
             })
             .collect(),
     }
@@ -116,7 +119,7 @@ pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
             .clone();
 
         let machine: SymbolicMachine<<A as Adapter>::PowdrField> =
-            convert_machine(machine, &|x| A::from_field(x));
+            convert_machine_field_type(machine, &|x| A::from_field(x));
 
         // It is sufficient to provide the initial PC, because the PC update should be
         // deterministic within a basic block. Therefore, all future PCs can be derived
