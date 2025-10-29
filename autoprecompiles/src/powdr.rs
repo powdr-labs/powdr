@@ -22,7 +22,7 @@ pub fn make_bool<T: FieldElement>(expr: AlgebraicExpression<T>) -> AlgebraicExpr
     expr.clone() * (expr - one)
 }
 
-pub fn substitute_algebraic_algebraic<T: Clone + std::cmp::Ord>(
+pub fn substitute_subexpressions<T: Clone + std::cmp::Ord>(
     expr: &mut AlgebraicExpression<T>,
     sub: &BTreeMap<AlgebraicExpression<T>, AlgebraicExpression<T>>,
 ) {
