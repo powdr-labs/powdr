@@ -180,8 +180,6 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
-      - name: Install rustup
-        run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
       - name: Install Rust toolchain nightly-2025-10-01 (with clippy and rustfmt)
         run: rustup toolchain install nightly-2025-10-01 --component clippy,rustfmt
       - name: Install Rust toolchain 1.88 (stable)
