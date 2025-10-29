@@ -2,7 +2,7 @@ use eyre::Result;
 use metrics_tracing_context::{MetricsLayer, TracingContextLayer};
 use metrics_util::{debugging::DebuggingRecorder, layers::Layer};
 use openvm_sdk::StdIn;
-use openvm_stark_sdk::bench::serialize_metric_snapshot;
+use openvm_stark_sdk::{bench::serialize_metric_snapshot, metrics_tracing::TimingMetricsLayer};
 use powdr_autoprecompiles::pgo::{pgo_config, PgoType};
 use powdr_openvm::{
     default_powdr_openvm_config, CompiledProgram, GuestOptions, PrecompileImplementation,
@@ -267,6 +267,8 @@ fn setup_tracing_with_log_level(level: Level) {
         .with(env_filter)
         .with(ForestLayer::default())
         .with(MetricsLayer::new());
+    #[cfg(feature = "metrics")]
+    let subscriber = subscriber.with(TimingMetricsLayer::new());
     tracing::subscriber::set_global_default(subscriber).unwrap();
 }
 
