@@ -7,7 +7,7 @@ homepage.workspace = true
 repository.workspace = true
 
 [features]
-default = ["cuda"]
+default = []
 tco = ["openvm-sdk/tco"]
 metrics = ["openvm-sdk/metrics", "openvm-stark-backend/metrics", "openvm-stark-sdk/metrics"]
 cuda = ["openvm-sdk/cuda", "openvm-circuit-primitives/cuda", "dep:openvm-cuda-backend", "dep:openvm-cuda-common", "dep:openvm-cuda-builder"]

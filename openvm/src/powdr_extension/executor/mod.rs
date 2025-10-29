@@ -339,7 +339,7 @@ unsafe fn execute_e12_impl<F, CTX: ExecutionCtxTrait>(
     vm_state: &mut VmExecState<F, GuestMemory, CTX>,
 ) {
     // Save the current instret, as we will overwrite it during execution of original instructions
-    let start_instret = vm_state.vm_state.instret();
+    let start_instret = *instret;
     let _ =
         pre_compute
             .original_instructions
