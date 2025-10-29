@@ -921,10 +921,10 @@ pub fn prove(
         let vm_builder = sdk.app_vm_builder().clone();
         let vm_pk = sdk.app_pk().app_vm_pk.clone();
         let exe = sdk.convert_to_exe(exe.clone())?;
-        let mut vm_instance: VmInstance<_, _> = new_local_prover(vm_builder, &vm_pk, exe)?;
+        let mut vm_instance: VmInstance<_, _> = new_local_prover(vm_builder, &vm_pk, exe.clone())?;
 
         vm_instance.reset_state(inputs.clone());
-        let metered_ctx = vm_instance.vm.build_metered_ctx();
+        let metered_ctx = vm_instance.vm.build_metered_ctx(&exe);
         let metered_interpreter = vm_instance.vm.metered_interpreter(vm_instance.exe())?;
         let (segments, _) = metered_interpreter.execute_metered(inputs.clone(), metered_ctx)?;
         let mut state = vm_instance.state_mut().take();
@@ -946,7 +946,7 @@ pub fn prove(
                 num_insns,
                 trace_heights,
             } = segment;
-            assert_eq!(state.as_ref().unwrap().instret, instret_start);
+            assert_eq!(state.as_ref().unwrap().instret(), instret_start);
             let from_state = Option::take(&mut state).unwrap();
             vm.transport_init_memory_to_device(&from_state.memory);
             let PreflightExecutionOutput {

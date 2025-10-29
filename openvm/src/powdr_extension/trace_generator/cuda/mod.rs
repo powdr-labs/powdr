@@ -253,14 +253,6 @@ impl PowdrTraceGeneratorGpu {
         let height = next_power_of_two_or_zero(num_apc_calls);
         let mut output = DeviceMatrix::<BabyBear>::with_capacity(height, width);
 
-        let derived_column_poly_ids = self
-            .apc
-            .machine
-            .derived_columns
-            .iter()
-            .map(|(column, _)| column.id)
-            .collect::<Vec<_>>();
-
         // Prepare `OriginalAir` and `Subst` arrays
         let (airs, substitutions) = {
             self.apc
@@ -286,21 +278,13 @@ impl PowdrTraceGeneratorGpu {
                             .flat_map(|(row, subs)| {
                                 // for each substitution, map to `Subst` struct if it exists in apc
                                 subs.iter()
-                                    .enumerate()
-                                    .filter_map(|(dummy_index, poly_id)| {
-                                        // Filter out poly_id of derived columns, because they will be set separately
-                                        if derived_column_poly_ids.contains(poly_id) {
-                                            return None;
-                                        }
+                                    .map(|sub| {
                                         // Check if this dummy column is present in the final apc row
-                                        apc_poly_id_to_index
-                                            .get(poly_id)
-                                            // If it is, map the dummy index to the apc index
-                                            .map(|apc_index| Subst {
-                                                col: dummy_index as i32,
-                                                row: row as i32,
-                                                apc_col: *apc_index as i32,
-                                            })
+                                        Subst {
+                                            col: sub.original_poly_index as i32,
+                                            row: row as i32,
+                                            apc_col: apc_poly_id_to_index[&sub.apc_poly_id] as i32,
+                                        }
                                     })
                                     .collect_vec()
                             })

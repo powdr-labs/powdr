@@ -7,7 +7,7 @@ edition = "2024"
 members = []
 
 [dependencies]
-openvm = { git = "https://github.com/openvm-org/openvm.git", rev = "d613315", features = ["std"] }
+openvm = { git = "https://github.com/openvm-org/openvm.git", rev = "v1.4.1-powdr", features = ["std"] }
 
 ark-bn254 = "0.5"
 ark-ec = "0.5"
