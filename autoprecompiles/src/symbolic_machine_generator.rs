@@ -7,8 +7,8 @@ use crate::{
     adapter::Adapter,
     blocks::{BasicBlock, Instruction},
     expression::AlgebraicExpression,
-    powdr, BusMap, BusType, InstructionHandler, SymbolicBusInteraction, SymbolicConstraint,
-    SymbolicMachine,
+    powdr, BusMap, BusType, ColumnAllocator, InstructionHandler, SymbolicBusInteraction,
+    SymbolicConstraint, SymbolicMachine,
 };
 
 pub fn convert_machine<T, U>(
@@ -95,11 +95,15 @@ fn convert_expression<T, U>(
     }
 }
 
-pub fn statements_to_symbolic_machine<A: Adapter>(
+/// Converts a basic block into a symbolic machine and a vector
+/// that contains, for each instruction in the basic block,
+/// a mapping from local column IDs to global column IDs
+/// (in the form of a vector).
+pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
     block: &BasicBlock<A::Instruction>,
     instruction_handler: &A::InstructionHandler,
     bus_map: &BusMap<A::CustomBusTypes>,
-) -> (SymbolicMachine<A::PowdrField>, Vec<Vec<u64>>) {
+) -> (SymbolicMachine<A::PowdrField>, ColumnAllocator) {
     let mut constraints: Vec<SymbolicConstraint<_>> = Vec::new();
     let mut bus_interactions: Vec<SymbolicBusInteraction<_>> = Vec::new();
     let mut col_subs: Vec<Vec<u64>> = Vec::new();
@@ -177,7 +181,10 @@ pub fn statements_to_symbolic_machine<A: Adapter>(
             bus_interactions,
             derived_columns: vec![],
         },
-        col_subs,
+        ColumnAllocator {
+            subs: col_subs,
+            next_poly_id: global_idx,
+        },
     )
 }
 
