@@ -170,3 +170,28 @@ jobs:
           cd openvm-reth-benchmark
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
           MODE="compile" APC=10 PGO_TYPE="instruction" /usr/bin/time -v ./run.sh
+
+  build_gpu:
+    runs-on: [self-hosted, GPU]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      ##### The block below is shared between cache build and PR build workflows #####
+      - name: Install Rust toolchain nightly-2025-10-01 (with clippy and rustfmt)
+        run: rustup toolchain install nightly-2025-10-01 --component clippy,rustfmt
+      - name: Install Rust toolchain 1.88 (stable)
+        run: rustup toolchain install 1.88
+      - name: Set cargo to perform shallow clones
+        run: echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
+      - name: Format
+        run: cargo fmt --all --check --verbose
+      - name: Cargo check with Rust 1.88 (all features)
+        run: cargo +1.88 check --all-targets
+      - name: Lint no default features
+        run: cargo clippy --all --all-targets --all-features --profile pr-tests --verbose -- -D warnings
+      - name: Build (GPU)
+        run: cargo build --all-targets --all-features --all --profile pr-tests --verbose
