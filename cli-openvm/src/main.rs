@@ -8,6 +8,9 @@ use powdr_openvm::{
     default_powdr_openvm_config, CompiledProgram, GuestOptions, PrecompileImplementation,
 };
 
+#[cfg(feature = "metrics")]
+use openvm_stark_sdk::metrics_tracing::TimingMetricsLayer;
+
 use clap::{CommandFactory, Parser, Subcommand};
 use std::{io, path::PathBuf};
 use tracing::Level;
@@ -267,6 +270,8 @@ fn setup_tracing_with_log_level(level: Level) {
         .with(env_filter)
         .with(ForestLayer::default())
         .with(MetricsLayer::new());
+    #[cfg(feature = "metrics")]
+    let subscriber = subscriber.with(TimingMetricsLayer::new());
     tracing::subscriber::set_global_default(subscriber).unwrap();
 }
 
