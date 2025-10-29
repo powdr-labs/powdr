@@ -2,11 +2,14 @@ use eyre::Result;
 use metrics_tracing_context::{MetricsLayer, TracingContextLayer};
 use metrics_util::{debugging::DebuggingRecorder, layers::Layer};
 use openvm_sdk::StdIn;
-use openvm_stark_sdk::{bench::serialize_metric_snapshot, metrics_tracing::TimingMetricsLayer};
+use openvm_stark_sdk::{bench::serialize_metric_snapshot};
 use powdr_autoprecompiles::pgo::{pgo_config, PgoType};
 use powdr_openvm::{
     default_powdr_openvm_config, CompiledProgram, GuestOptions, PrecompileImplementation,
 };
+
+#[cfg(feature = "metrics")]
+use openvm_stark_sdk::metrics_tracing::TimingMetricsLayer;
 
 use clap::{CommandFactory, Parser, Subcommand};
 use std::{io, path::PathBuf};
