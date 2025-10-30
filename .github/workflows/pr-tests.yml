@@ -102,6 +102,10 @@ jobs:
         run: rustup install nightly-2025-10-01 --component rust-src
       - name: Install Rust deps
         run: rustup install nightly-2025-02-14 --component rust-src
+      - name: Install OpenVM guest toolchain (nightly-2025-08-02)
+        run: |
+          rustup toolchain install nightly-2025-08-02
+          rustup component add rust-src --toolchain nightly-2025-08-02
       - uses: taiki-e/install-action@nextest
       - name: Run default tests (CPU)
         run: cargo nextest run --archive-file tests_cpu.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/7 --no-tests=warn

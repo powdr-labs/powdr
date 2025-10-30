@@ -1,5 +1,7 @@
+#![cfg_attr(feature = "tco", allow(internal_features))]
 #![cfg_attr(feature = "tco", allow(incomplete_features))]
 #![cfg_attr(feature = "tco", feature(explicit_tail_calls))]
+#![cfg_attr(feature = "tco", feature(core_intrinsics))]
 
 use derive_more::From;
 use eyre::Result;
@@ -921,10 +923,10 @@ pub fn prove(
         let vm_builder = sdk.app_vm_builder().clone();
         let vm_pk = sdk.app_pk().app_vm_pk.clone();
         let exe = sdk.convert_to_exe(exe.clone())?;
-        let mut vm_instance: VmInstance<_, _> = new_local_prover(vm_builder, &vm_pk, exe)?;
+        let mut vm_instance: VmInstance<_, _> = new_local_prover(vm_builder, &vm_pk, exe.clone())?;
 
         vm_instance.reset_state(inputs.clone());
-        let metered_ctx = vm_instance.vm.build_metered_ctx();
+        let metered_ctx = vm_instance.vm.build_metered_ctx(&exe);
         let metered_interpreter = vm_instance.vm.metered_interpreter(vm_instance.exe())?;
         let (segments, _) = metered_interpreter.execute_metered(inputs.clone(), metered_ctx)?;
         let mut state = vm_instance.state_mut().take();
@@ -946,7 +948,7 @@ pub fn prove(
                 num_insns,
                 trace_heights,
             } = segment;
-            assert_eq!(state.as_ref().unwrap().instret, instret_start);
+            assert_eq!(state.as_ref().unwrap().instret(), instret_start);
             let from_state = Option::take(&mut state).unwrap();
             vm.transport_init_memory_to_device(&from_state.memory);
             let PreflightExecutionOutput {
@@ -2026,11 +2028,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 14560,
-                            log_up: 23156,
+                            main: 14263,
+                            log_up: 22784,
                         },
-                        constraints: 4261,
-                        bus_interactions: 11345,
+                        constraints: 4285,
+                        bus_interactions: 11160,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2054,11 +2056,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 14532,
-                            log_up: 23124,
+                            main: 14235,
+                            log_up: 22752,
                         },
-                        constraints: 4237,
-                        bus_interactions: 11335,
+                        constraints: 4261,
+                        bus_interactions: 11150,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2071,13 +2073,13 @@ mod tests {
                 AirWidthsDiff {
                     before: AirWidths {
                         preprocessed: 0,
-                        main: 176212,
-                        log_up: 218016,
+                        main: 183410,
+                        log_up: 227144,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 14532,
-                        log_up: 23124,
+                        main: 14235,
+                        log_up: 22752,
                     },
                 }
             "#]]),
@@ -2139,11 +2141,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 15488,
-                            log_up: 25212,
+                            main: 17304,
+                            log_up: 27896,
                         },
-                        constraints: 8387,
-                        bus_interactions: 10595,
+                        constraints: 8838,
+                        bus_interactions: 11927,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2156,13 +2158,13 @@ mod tests {
                 AirWidthsDiff {
                     before: AirWidths {
                         preprocessed: 0,
-                        main: 107487,
-                        log_up: 144252,
+                        main: 127884,
+                        log_up: 170096,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 15488,
-                        log_up: 25212,
+                        main: 17304,
+                        log_up: 27896,
                     },
                 }
             "#]]),
@@ -2188,11 +2190,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 18222,
-                            log_up: 28384,
+                            main: 19930,
+                            log_up: 30924,
                         },
-                        constraints: 10721,
-                        bus_interactions: 12178,
+                        constraints: 11105,
+                        bus_interactions: 13443,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2205,13 +2207,13 @@ mod tests {
                 AirWidthsDiff {
                     before: AirWidths {
                         preprocessed: 0,
-                        main: 130747,
-                        log_up: 173044,
+                        main: 150546,
+                        log_up: 198172,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 18222,
-                        log_up: 28384,
+                        main: 19930,
+                        log_up: 30924,
                     },
                 }
             "#]]),
@@ -2236,11 +2238,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 1757,
-                            log_up: 3028,
+                            main: 2025,
+                            log_up: 3472,
                         },
-                        constraints: 183,
-                        bus_interactions: 1512,
+                        constraints: 187,
+                        bus_interactions: 1734,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2264,11 +2266,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 1757,
-                            log_up: 3028,
+                            main: 2025,
+                            log_up: 3472,
                         },
-                        constraints: 183,
-                        bus_interactions: 1512,
+                        constraints: 187,
+                        bus_interactions: 1734,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2292,11 +2294,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 1757,
-                            log_up: 3028,
+                            main: 2025,
+                            log_up: 3472,
                         },
-                        constraints: 183,
-                        bus_interactions: 1512,
+                        constraints: 187,
+                        bus_interactions: 1734,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2309,13 +2311,13 @@ mod tests {
                 AirWidthsDiff {
                     before: AirWidths {
                         preprocessed: 0,
-                        main: 27194,
-                        log_up: 34792,
+                        main: 27521,
+                        log_up: 35156,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 1757,
-                        log_up: 3028,
+                        main: 2025,
+                        log_up: 3472,
                     },
                 }
             "#]]),
@@ -2343,15 +2345,15 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 3254,
-                            log_up: 5224,
+                            main: 3245,
+                            log_up: 5260,
                         },
-                        constraints: 730,
-                        bus_interactions: 2515,
+                        constraints: 608,
+                        bus_interactions: 2560,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
-                    28
+                    22
                 "#]],
                 non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
                 non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
@@ -2360,13 +2362,13 @@ mod tests {
                 AirWidthsDiff {
                     before: AirWidths {
                         preprocessed: 0,
-                        main: 33065,
-                        log_up: 42660,
+                        main: 32348,
+                        log_up: 41608,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 3254,
-                        log_up: 5224,
+                        main: 3245,
+                        log_up: 5260,
                     },
                 }
             "#]]),

@@ -17,14 +17,11 @@ use openvm_circuit::arch::{
     execution_mode::{ExecutionCtx, MeteredCtx},
     Arena, DenseRecordArena, E2PreCompute, MatrixRecordArena, PreflightExecutor,
 };
-use openvm_circuit_derive::create_tco_handler;
+use openvm_circuit_derive::create_handler;
 use openvm_circuit_primitives::AlignedBytesBorrow;
-use openvm_instructions::{instruction::Instruction, program::DEFAULT_PC_STEP};
+use openvm_instructions::instruction::Instruction;
 use openvm_sdk::config::SdkVmConfigExecutor;
-use openvm_stark_backend::{
-    p3_field::{Field, PrimeField32},
-    p3_maybe_rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator},
-};
+use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::Apc;
 
@@ -184,6 +181,7 @@ impl Executor<BabyBear> for PowdrExecutor {
         size_of::<PowdrPreCompute<BabyBear, ExecutionCtx>>()
     }
 
+    #[cfg(not(feature = "tco"))]
     fn pre_compute<Ctx>(
         &self,
         pc: u32,
@@ -212,7 +210,7 @@ impl Executor<BabyBear> for PowdrExecutor {
     {
         let pre_compute: &mut PowdrPreCompute<BabyBear, Ctx> = data.borrow_mut();
         self.pre_compute_impl::<Ctx>(pc, inst, pre_compute)?;
-        Ok(execute_e1_tco_handler::<BabyBear, Ctx>)
+        Ok(execute_e1_handler::<BabyBear, Ctx>)
     }
 }
 
@@ -223,6 +221,7 @@ impl MeteredExecutor<BabyBear> for PowdrExecutor {
         size_of::<E2PreCompute<PowdrPreCompute<BabyBear, MeteredCtx>>>()
     }
 
+    #[cfg(not(feature = "tco"))]
     fn metered_pre_compute<Ctx>(
         &self,
         chip_idx: usize,
@@ -257,11 +256,12 @@ impl MeteredExecutor<BabyBear> for PowdrExecutor {
 
         self.pre_compute_impl::<Ctx>(pc, inst, &mut pre_compute.data)?;
 
-        Ok(execute_e2_tco_handler::<BabyBear, Ctx>)
+        Ok(execute_e2_handler::<BabyBear, Ctx>)
     }
 }
 
 impl PowdrExecutor {
+    #[cfg(not(feature = "tco"))]
     /// The implementation of pre_compute, shared between Executor and MeteredExecutor.
     #[inline]
     fn pre_compute_impl<Ctx>(
@@ -273,6 +273,14 @@ impl PowdrExecutor {
     where
         Ctx: ExecutionCtxTrait,
     {
+        use openvm_instructions::program::DEFAULT_PC_STEP;
+        use openvm_stark_backend::{
+            p3_field::Field,
+            p3_maybe_rayon::prelude::{
+                IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator,
+            },
+        };
+
         let &Instruction {
             a,
             b,
@@ -327,40 +335,60 @@ impl PowdrExecutor {
 
         Ok(())
     }
+
+    #[cfg(feature = "tco")]
+    /// The implementation of pre_compute, shared between Executor and MeteredExecutor.
+    #[inline]
+    fn pre_compute_impl<Ctx>(
+        &self,
+        _pc: u32,
+        _inst: &Instruction<BabyBear>,
+        _data: &mut PowdrPreCompute<BabyBear, Ctx>,
+    ) -> Result<(), StaticProgramError> {
+        unimplemented!("tco is not implemented yet")
+    }
 }
 
 /// The implementation of the execute function, shared between Executor and MeteredExecutor.
 #[inline(always)]
 unsafe fn execute_e12_impl<F, CTX: ExecutionCtxTrait>(
     pre_compute: &PowdrPreCompute<F, CTX>,
+    instret: &mut u64,
+    pc: &mut u32,
+    arg: u64,
     vm_state: &mut VmExecState<F, GuestMemory, CTX>,
 ) {
     // Save the current instret, as we will overwrite it during execution of original instructions
-    let instret = vm_state.vm_state.instret;
-    let vm_state =
-        pre_compute
-            .original_instructions
-            .iter()
-            .fold(vm_state, |vm_state, (executor, data)| {
-                executor(data, vm_state);
-                vm_state
-            });
+    let start_instret = *instret;
+    pre_compute
+        .original_instructions
+        .iter()
+        .fold(vm_state, |vm_state, (executor, data)| {
+            executor(data, instret, pc, arg, vm_state);
+            vm_state
+        });
     // Restore the instret and increment it by one, since we executed a single apc instruction
-    vm_state.vm_state.instret = instret + 1;
+    *instret = start_instret + 1;
 }
 
-#[create_tco_handler]
+#[create_handler]
 unsafe fn execute_e1_impl<F: PrimeField32, CTX: ExecutionCtxTrait>(
     pre_compute: &[u8],
+    instret: &mut u64,
+    pc: &mut u32,
+    arg: u64,
     vm_state: &mut VmExecState<F, GuestMemory, CTX>,
 ) {
     let pre_compute: &PowdrPreCompute<F, CTX> = pre_compute.borrow();
-    execute_e12_impl::<F, CTX>(pre_compute, vm_state);
+    execute_e12_impl::<F, CTX>(pre_compute, instret, pc, arg, vm_state);
 }
 
-#[create_tco_handler]
+#[create_handler]
 unsafe fn execute_e2_impl<F: PrimeField32, CTX: MeteredExecutionCtxTrait>(
     pre_compute: &[u8],
+    instret: &mut u64,
+    pc: &mut u32,
+    arg: u64,
     vm_state: &mut VmExecState<F, GuestMemory, CTX>,
 ) {
     let pre_compute: &E2PreCompute<PowdrPreCompute<F, CTX>> = pre_compute.borrow();
@@ -368,7 +396,7 @@ unsafe fn execute_e2_impl<F: PrimeField32, CTX: MeteredExecutionCtxTrait>(
         pre_compute.chip_idx as usize,
         pre_compute.data.height_change,
     );
-    execute_e12_impl::<F, CTX>(&pre_compute.data, vm_state);
+    execute_e12_impl::<F, CTX>(&pre_compute.data, instret, pc, arg, vm_state);
 }
 
 // Preflight execution is implemented separately for CPU and GPU backends, because they use a different arena from `self`
