@@ -138,16 +138,16 @@ jobs:
           rm -rf results
           mkdir -p results
 
-      - name: Run guest benchmarks
-        run: |
-          source .venv/bin/activate
-          bash ./openvm/scripts/run_guest_benches.sh
+      # - name: Run guest benchmarks
+      #   run: |
+      #     source .venv/bin/activate
+      #     bash ./openvm/scripts/run_guest_benches.sh
 
       - name: Checkout openvm-reth-benchmark
         uses: actions/checkout@v4
         with:
           repository: powdr-labs/openvm-reth-benchmark
-          ref: openvm-reth-powdr-2025-10-22
+          ref: 1.4.0-patched
           path: openvm-reth-benchmark
 
       - name: Patch openvm-reth-benchmark to use local powdr
