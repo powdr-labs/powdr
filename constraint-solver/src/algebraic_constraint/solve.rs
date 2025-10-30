@@ -65,18 +65,26 @@ where
             return Err(Error::ConstraintUnsatisfiable(self.to_string()));
         }
 
-        if expression.is_quadratic() {
-            self.solve_quadratic(range_constraints)
+        let mut result = if expression.is_quadratic() {
+            self.solve_quadratic(range_constraints)?
         } else if let Some(k) = expression.try_to_known() {
             // If we know `expression` to be nonzero, we should have returned
             // Err already in the range constraint check above.
             assert!(k.is_zero());
             // TODO we could still process more information
             // and reach "unsatisfiable" here.
-            Ok(ProcessResult::complete(vec![]))
+            ProcessResult::complete(vec![])
         } else {
-            self.solve_affine(range_constraints)
+            self.solve_affine(range_constraints)?
+        };
+
+        if !result.complete {
+            // Try to transfer range constraints from the expression.
+            result
+                .effects
+                .extend(self.transfer_constraints(range_constraints));
         }
+        Ok(result)
     }
 
     /// Solves the constraint for `variable`. This is only possible if
@@ -89,6 +97,9 @@ where
     ///
     /// Returns the resulting solved grouped expression.
     pub fn try_solve_for(&self, variable: &V) -> Option<GroupedExpression<T, V>> {
+        if variable.to_string() == "a__0_3" {
+            println!("XX Trying to solve {self} for {variable}");
+        }
         let coefficient = self
             .expression
             .coefficient_of_variable_in_affine_part(variable)?;
@@ -100,6 +111,12 @@ where
             // There is another occurrence of the variable in the quadratic component,
             // we cannot solve for it.
             return None;
+        }
+        if variable.to_string() == "a__0_3" {
+            println!(
+                "   -> {}",
+                subtracted.clone() * (-coefficient.field_inverse())
+            );
         }
         Some(subtracted * (-coefficient.field_inverse()))
     }
@@ -196,10 +213,7 @@ where
                     ProcessResult::empty()
                 }
             } else {
-                ProcessResult {
-                    effects: self.transfer_constraints(range_constraints),
-                    complete: false,
-                }
+                ProcessResult::empty()
             },
         )
     }
@@ -213,11 +227,13 @@ where
     ) -> Vec<Effect<T, V>> {
         // Solve for each of the variables in the linear component and
         // compute the range constraints.
-        assert!(!self.expression.is_quadratic());
         self.expression
             .linear_components()
             .filter_map(|(var, _)| {
                 let rc = self.try_solve_for(var)?.range_constraint(range_constraints);
+                if var.to_string() == "a__0_3" && rc.range_width() <= 3.into() {
+                    println!("Solving {self} for {var} -> {rc}");
+                }
                 Some((var, rc))
             })
             .filter(|(_, constraint)| !constraint.is_unconstrained())
@@ -665,5 +681,35 @@ mod tests {
                 .to_string(),
             "-(3 * y)"
         );
+    }
+
+    #[test]
+    fn rc_for_quadratic() {
+        let cmp_result_1 = var("cmp_result_1");
+        let cmp_result_2 = var("cmp_result_2");
+        let a_0_3 = var("a__0_3");
+        let expr = ((constant(2) * cmp_result_1.clone()) * cmp_result_2.clone())
+            - (constant(2) * cmp_result_1)
+            - (constant(2) * cmp_result_2)
+            + (constant(2) * a_0_3);
+        let rc = HashMap::from([
+            ("cmp_result_1", RangeConstraint::from_mask(1u64)),
+            ("cmp_result_2", RangeConstraint::from_mask(1u64)),
+        ]);
+        // Try it manually first.
+        let constr = AlgebraicConstraint::assert_zero(&expr);
+        let solved = constr.try_solve_for(&"a__0_3").unwrap();
+        println!("-> {solved}");
+        let inferred_rc = solved.range_constraint(&rc);
+        println!("Inferred RC for a__0_3: {inferred_rc}");
+        // should infer binary constraint for "a__0_3"
+        let results = constr.solve(&rc).unwrap();
+        for e in &results.effects {
+            match e {
+                Effect::RangeConstraint(var, rc) => println!("{var}: {rc}"),
+                Effect::Assignment(var, value) => println!("{var} = {value}"),
+                _ => {}
+            }
+        }
     }
 }

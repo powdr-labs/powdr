@@ -173,14 +173,31 @@ impl<T: FieldElement> RangeConstraint<T> {
             self.multiple(v)
         } else if let Some(v) = self.try_to_single_value() {
             other.multiple(v)
-        } else if self.min <= self.max
-            && other.min <= other.max
-            && self.max.to_arbitrary_integer() * other.max.to_arbitrary_integer()
+        } else if self.min <= self.max && other.min <= other.max {
+            if self.max.to_arbitrary_integer() * other.max.to_arbitrary_integer()
                 < T::modulus().to_arbitrary_integer()
-        {
-            Self::from_range(self.min * other.min, self.max * other.max)
+            {
+                Self::from_range(self.min * other.min, self.max * other.max)
+            } else {
+                Self::unconstrained()
+            }
         } else {
-            Self::unconstrained()
+            let (a, negate) = if self.min > self.max {
+                ((-self.max, -self.min), true)
+            } else {
+                (self.range(), false)
+            };
+            let (b, negate) = if other.min > other.max {
+                ((-other.max, -other.min), !negate)
+            } else {
+                (other.range(), negate)
+            };
+            let result = Self::from_range(a.0, a.1).combine_product(&Self::from_range(b.0, b.1));
+            if negate {
+                result.negate()
+            } else {
+                result
+            }
         }
     }
 
@@ -272,6 +289,11 @@ impl<T: FieldElement> RangeConstraint<T> {
             max,
             mask: mask.unwrap_or_else(|| Self::from_range(min, max).mask),
         }
+    }
+
+    pub fn negate(&self) -> Self {
+        // TODO correct?
+        Self::from_range(-self.max, -self.min)
     }
 
     /// If only a single value satisfies this condition, returns this value.

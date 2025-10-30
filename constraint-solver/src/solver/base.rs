@@ -356,6 +356,17 @@ where
                         .solve(&self.range_constraints)
                         .map_err(Error::AlgebraicSolverError)?
                         .effects;
+                    for e in &effects {
+                        match e {
+                            Effect::Assignment(v, expr) => {
+                                println!("Solved {c} -> {v} := {expr}");
+                            }
+                            Effect::RangeConstraint(v, rc) => {
+                                println!("Solved {c} -> {v} in {rc}");
+                            }
+                            _ => {}
+                        }
+                    }
                     if let Some(components) = try_split_constraint(&c, &self.range_constraints) {
                         progress |= self.add_algebraic_constraints_if_new(components);
                     }
@@ -501,6 +512,9 @@ where
         variable: &V,
         range_constraint: RangeConstraint<T>,
     ) -> bool {
+        if variable.to_string() == "a__0_3" {
+            println!("Update {variable} : {range_constraint}");
+        }
         if self.range_constraints.update(variable, &range_constraint) {
             let new_rc = self.range_constraints.get(variable);
             if let Some(value) = new_rc.try_to_single_value() {
