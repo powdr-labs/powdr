@@ -15,7 +15,7 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  POWDR_OPENVM_SEGMENT_DELTA: 10000
+  POWDR_OPENVM_SEGMENT_DELTA: 50000
 
 jobs:
   build:
@@ -154,7 +154,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: powdr-labs/openvm-reth-benchmark
-          ref: 9641a47c70e4003e54a96947d4138c63825f1b12
+          ref: openvm-reth-powdr-2025-10-22
           path: openvm-reth-benchmark
 
       - name: Patch openvm-reth-benchmark to use local powdr
