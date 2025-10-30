@@ -298,7 +298,7 @@ impl PowdrTraceGeneratorGpu {
                             height: dummy_trace.height() as i32,
                             buffer: dummy_trace.buffer().as_ptr(),
                             row_block_size: subs_by_row.len() as i32,
-                            substitutions_offset: new_substitutions.len() as i32,
+                            substitutions_offset: substitutions.len() as i32,
                             substitutions_length: new_substitutions.len() as i32,
                         });
 
