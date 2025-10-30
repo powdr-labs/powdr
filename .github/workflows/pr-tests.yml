@@ -55,7 +55,7 @@ jobs:
       - name: Cargo check with Rust 1.88 (default features)
         run: cargo +1.88 check --all-targets
       - name: Lint no default features
-        run: cargo clippy --all --all-targets --no-default-features --profile pr-tests --verbose -- -D warnings
+        run: cargo clippy --all --all-targets --features metrics,tco --profile pr-tests --verbose -- -D warnings
       - name: Build (CPU)
         run: cargo build --all-targets --all --profile pr-tests --verbose
       ###############################################################################
