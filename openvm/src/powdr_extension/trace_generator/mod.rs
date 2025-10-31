@@ -183,13 +183,6 @@ impl PowdrTraceGenerator {
 
                 let evaluator = MappingRowEvaluator::new(row_slice, &apc_poly_id_to_index);
 
-                for constr in &self.apc.machine().constraints {
-                    let v = evaluator.eval_expr(&constr.expr);
-                    if !v.is_zero() {
-                        println!("Constraint not satisfied: {constr} = {v} != 0");
-                        panic!();
-                    }
-                }
                 // replay the side effects of this row on the main periphery
                 self.apc
                     .machine()

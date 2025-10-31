@@ -41,9 +41,6 @@ fn assert_expected_state(
     expected_final_state: BTreeMap<Var, GoldilocksField>,
 ) {
     let final_state = final_state.into_iter().collect::<BTreeMap<_, _>>();
-    for (variable, value) in &final_state {
-        log::debug!("-> {variable} = {value}");
-    }
     assert_eq!(
         final_state.keys().collect::<Vec<_>>(),
         expected_final_state.keys().collect::<Vec<_>>(),
