@@ -13,5 +13,5 @@ mod vm;
 mod plonk;
 
 pub use opcode::PowdrOpcode;
-pub use plonk::{air::PlonkAir, chip::PlonkChip};
+pub use plonk::{air::PlonkAir, chip::PlonkChipCpu};
 pub use vm::{PowdrExtension, PowdrExtensionExecutor, PowdrPrecompile};

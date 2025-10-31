@@ -6,6 +6,10 @@ license.workspace = true
 homepage.workspace = true
 repository.workspace = true
 
+[features]
+default = []
+tco = ["openvm-circuit/tco", "openvm-rv32im-circuit/tco"]
+
 [dependencies]
 openvm-circuit = { workspace = true }
 openvm-instructions = { workspace = true }
@@ -18,4 +22,3 @@ crypto-bigint = "0.6.1"
 elliptic-curve = "0.13.8"
 rand = { version = "0.8.5", default-features = false }
 serde = "1.0.219"
-
