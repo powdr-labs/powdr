@@ -402,6 +402,7 @@ where
         );
 
         let mut progress = false;
+
         let mut unsuccessful_variable_sets = BTreeSet::new();
 
         for mut variable_set in variable_sets {
