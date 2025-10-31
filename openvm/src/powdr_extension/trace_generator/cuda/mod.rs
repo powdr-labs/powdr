@@ -25,7 +25,7 @@ use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 
 use crate::{
     bus_map::DEFAULT_TUPLE_RANGE_CHECKER,
-    cuda_abi::{self, DerivedExprSpec, DevArgSpan, DevInteraction, OpCode, OriginalAir, Subst},
+    cuda_abi::{self, DerivedExprSpec, DevInteraction, ExprSpan, OpCode, OriginalAir, Subst},
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     powdr_extension::{
         chip::PowdrChipGpu,
@@ -84,16 +84,20 @@ fn emit_expr(
     }
 }
 
-fn emit_dev_arg_span(
+/// Given the current bytecode, appends bytecode for the expression `expr` and returns the associated span
+fn emit_expr_span(
     bc: &mut Vec<u32>,
     expr: &AlgebraicExpression<BabyBear>,
     id_to_apc_index: &BTreeMap<u64, usize>,
     apc_height: usize,
-) -> DevArgSpan {
+) -> ExprSpan {
+    // The span starts where the bytecode currently ends
     let off = bc.len() as u32;
+    // Append the bytecode for `expr`
     emit_expr(bc, expr, id_to_apc_index, apc_height);
+    // Calculate the length of the span
     let len = (bc.len() as u32) - off;
-    DevArgSpan { off, len }
+    ExprSpan { off, len }
 }
 
 /// Compile derived columns to GPU bytecode according to input order.
@@ -126,7 +130,7 @@ fn compile_derived_to_gpu(
         let len = (bytecode.len() as u32) - off;
         specs.push(DerivedExprSpec {
             col_base: (apc_col_index * apc_height) as u64,
-            span: DevArgSpan { off, len },
+            span: ExprSpan { off, len },
         });
     }
 
@@ -137,7 +141,7 @@ pub fn compile_bus_to_gpu(
     bus_interactions: &[SymbolicBusInteraction<BabyBear>],
     apc_poly_id_to_index: &BTreeMap<u64, usize>,
     apc_height: usize,
-) -> (Vec<DevInteraction>, Vec<DevArgSpan>, Vec<u32>) {
+) -> (Vec<DevInteraction>, Vec<ExprSpan>, Vec<u32>) {
     let mut interactions = Vec::with_capacity(bus_interactions.len());
     let mut arg_spans = Vec::new();
     let mut bytecode = Vec::new();
@@ -145,7 +149,7 @@ pub fn compile_bus_to_gpu(
     for bus_interaction in bus_interactions {
         // multiplicity as first arg span
         let args_index_off = arg_spans.len() as u32;
-        let mult_span = emit_dev_arg_span(
+        let mult_span = emit_expr_span(
             &mut bytecode,
             &bus_interaction.mult,
             apc_poly_id_to_index,
@@ -155,7 +159,7 @@ pub fn compile_bus_to_gpu(
 
         // args
         for arg in &bus_interaction.args {
-            let span = emit_dev_arg_span(&mut bytecode, arg, apc_poly_id_to_index, apc_height);
+            let span = emit_expr_span(&mut bytecode, arg, apc_poly_id_to_index, apc_height);
             arg_spans.push(span);
         }
 

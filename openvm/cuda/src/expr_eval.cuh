@@ -21,7 +21,7 @@ enum OpCode : uint32_t {
 
 static constexpr int STACK_CAPACITY = 16;
 
-// Inline helpers to safely manipulate the evaluation stack (capacity 16)
+// Inline helpers to safely manipulate the evaluation stack
 __device__ __forceinline__ void stack_push(Fp* stack, int& sp, Fp value) {
   assert(sp < STACK_CAPACITY && "Stack overflow");
   stack[sp++] = value;
@@ -32,10 +32,9 @@ __device__ __forceinline__ Fp stack_pop(Fp* stack, int& sp) {
   return stack[--sp];
 }
 
-// Evaluate expression encoded as u32 bytecode on a given APC row `r`.
+// Evaluate expression encoded as u32 bytecode starting at `expr` for length `len` on a given APC row `r` of `apc_trace`.
 __device__ __forceinline__ Fp eval_expr(const uint32_t* expr, uint32_t len,
-                                        const Fp* __restrict__ apc_trace,
-                                        size_t H, size_t r) {
+                                        const Fp* __restrict__ apc_trace, size_t r) {
   Fp stack[STACK_CAPACITY];
   int sp = 0;
   for (uint32_t ip = 0; ip < len;) {
@@ -85,23 +84,23 @@ __device__ __forceinline__ Fp eval_expr(const uint32_t* expr, uint32_t len,
       }
     }
   }
+  assert(sp == 1);
   return stack[sp - 1];
 }
 
 // Span (offset, length) of a sub-expression within a shared bytecode buffer
-struct DevArgSpan {
+struct ExprSpan {
   uint32_t off;
   uint32_t len;
 };
 
 // Evaluate an argument span from a shared bytecode buffer for APC row `r`
 __device__ __forceinline__ Fp eval_arg(
-  const DevArgSpan& span,
+  const ExprSpan& span,
   const uint32_t* __restrict__ d_bytecode,
   const Fp* __restrict__ apc_trace,
-  size_t H,
   size_t r
 ) {
-  return eval_expr(d_bytecode + span.off, span.len, apc_trace, H, r);
+  return eval_expr(d_bytecode + span.off, span.len, apc_trace, r);
 }
 

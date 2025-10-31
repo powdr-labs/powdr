@@ -36,7 +36,6 @@ extern "C" {
     pub fn _apc_apply_bus(
         // APC related
         d_output: *const BabyBear, // APC trace buffer (column-major), device pointer
-        output_height: usize,      // APC trace height (rows)
         num_apc_calls: i32,        // number of APC calls (rows to process)
 
         // Interaction related
@@ -44,7 +43,7 @@ extern "C" {
         bytecode_len: usize,    // length of bytecode buffer (u32 words)
         d_interactions: *const DevInteraction, // device array of interactions
         n_interactions: usize,  // number of interactions
-        d_arg_spans: *const DevArgSpan, // device array of arg spans into `d_bytecode`
+        d_arg_spans: *const ExprSpan, // device array of arg spans into `d_bytecode`
         n_arg_spans: usize,     // number of arg spans
 
         // Variable range checker related
@@ -87,21 +86,12 @@ pub struct Subst {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
-pub struct DerivedColumn {
-    /// Destination APC column index
-    pub index: i32,
-    /// Constant value to set for rows < num_apc_calls; zero beyond
-    pub value: BabyBear,
-}
-
-#[repr(C)]
 #[derive(Clone, Copy)]
 pub struct DerivedExprSpec {
     /// Precomputed destination APC column base = (apc_col_index * H)
     pub col_base: u64,
     /// Expression span inside the shared bytecode buffer
-    pub span: DevArgSpan,
+    pub span: ExprSpan,
 }
 
 pub fn apc_tracegen(
@@ -165,14 +155,14 @@ pub struct DevInteraction {
     pub bus_id: u32,
     /// Number of argument expressions for this interaction
     pub num_args: u32,
-    /// Starting index into the `DevArgSpan` array for this interaction's args
+    /// Starting index into the `ExprSpan` array for this interaction's args
     /// Layout: [ multiplicity span, arg0, arg1, ... ]
     pub args_index_off: u32,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct DevArgSpan {
+pub struct ExprSpan {
     /// Offset (in u32 words) into `bytecode` where this arg expression starts
     pub off: u32,
     /// Length (instruction count) of this arg expression
@@ -190,7 +180,7 @@ pub fn apc_apply_bus(
     // Interaction related
     bytecode: DeviceBuffer<u32>,                // device bytecode buffer
     interactions: DeviceBuffer<DevInteraction>, // device array of interactions
-    arg_spans: DeviceBuffer<DevArgSpan>,        // device array of arg spans
+    arg_spans: DeviceBuffer<ExprSpan>,          // device array of arg spans
 
     // Variable range checker related
     var_range_bus_id: u32, // bus id for variable range checker
@@ -209,7 +199,6 @@ pub fn apc_apply_bus(
         CudaError::from_result(_apc_apply_bus(
             // APC related
             output.buffer().as_ptr(),
-            output.height(),
             num_apc_calls as i32,
             // Interaction related
             bytecode.as_ptr(),

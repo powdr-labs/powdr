@@ -22,15 +22,10 @@ struct Subst {
     int apc_col;  // destination APC column
 };
 
-struct DerivedColumn {
-    int index; // destination APC column index
-    Fp  value; // constant value for valid rows
-};
-
 extern "C" {
   typedef struct {
     uint64_t col_base; // precomputed destination base offset = apc_col_index * H
-    DevArgSpan span;   // expression span encoding this column's value
+    ExprSpan span;   // expression span encoding this column's value
   } DerivedExprSpec;
 }
 
@@ -39,10 +34,10 @@ extern "C" {
 // ============================================================================================
 
 __global__ void apc_tracegen_kernel(
-    Fp* __restrict__ d_output,                         // [output_height * output_width], column-major
+    Fp* __restrict__ d_output,                         // column-major
+    size_t H,                                          // height of the output
     const OriginalAir* __restrict__ d_original_airs,   // metadata per AIR
     const Subst* __restrict__ d_subs,                  // all substitutions
-    size_t output_height,                              // H_out
     int num_apc_calls                                  // number of APC calls
 ) {
     const int air_id = blockIdx.x;
@@ -57,19 +52,17 @@ __global__ void apc_tracegen_kernel(
     const int warps_per_block = blockDim.x >> 5;
 
     // Process this AIR's substitutions in batches of warps_per_block
-    for (int base = 0; base < air.substitutions_length; base += warps_per_block) {
-        const int rel = base + warp;
-        if (rel >= air.substitutions_length) break;
+    for (int rel = warp; rel < air.substitutions_length; rel += warps_per_block) {
 
         const Subst sub = d_subs[air.substitutions_offset + rel];
 
         // Column bases (column-major)
-        const size_t dst_col_base = (size_t)sub.apc_col * (size_t)output_height;
+        const size_t dst_col_base = (size_t)sub.apc_col * (size_t)H;
         const size_t src_col_base = (size_t)sub.col     * (size_t)Ha;
 
         // Each lane writes rows lane, lane+32, lane+64, ... (coalesced per warp)
         // Loop over full output height; zero-pad rows beyond `num_apc_calls`.
-        for (size_t r = (size_t)lane; r < (size_t)output_height; r += 32) {
+        for (size_t r = (size_t)lane; r < (size_t)H; r += 32) {
             if (r < (size_t)num_apc_calls) {
                 const size_t src_r = (size_t)sub.row + r * (size_t)RBS;
                 if (src_r < (size_t)Ha) {
@@ -104,7 +97,7 @@ __global__ void apc_apply_derived_expr_kernel(
             for (size_t i = 0; i < n_cols; ++i) {
                 const DerivedExprSpec spec = d_specs[i];
                 const size_t col_base = (size_t)spec.col_base;
-                const Fp v = eval_arg(spec.span, d_bytecode, d_output, H, r);
+                const Fp v = eval_arg(spec.span, d_bytecode, d_output, r);
                 d_output[col_base + r] = v;
             }
         } else {
@@ -117,9 +110,13 @@ __global__ void apc_apply_derived_expr_kernel(
     }
 }
 
+// ============================================================================================
+// Host launcher wrappers — callable from Rust FFI or cudarc
+// ============================================================================================
+
 extern "C" int _apc_apply_derived_expr(
     Fp*                d_output,
-    size_t             output_height,
+    size_t             H,
     int                num_apc_calls,
     const DerivedExprSpec* d_specs,
     size_t             n_cols,
@@ -128,18 +125,14 @@ extern "C" int _apc_apply_derived_expr(
     if (n_cols == 0) return 0;
     const int block_x = 256; // more lanes to cover rows
     const dim3 block(block_x, 1, 1);
-    unsigned g = (unsigned)((output_height + block_x - 1) / block_x);
+    unsigned g = (unsigned)((H + block_x - 1) / block_x);
     if (g == 0u) g = 1u;
     const dim3 grid(g, 1, 1);
     apc_apply_derived_expr_kernel<<<grid, block>>>(
-        d_output, output_height, num_apc_calls, d_specs, n_cols, d_bytecode
+        d_output, H, num_apc_calls, d_specs, n_cols, d_bytecode
     );
     return (int)cudaGetLastError();
 }
-
-// ============================================================================================
-// Host launcher wrapper — callable from Rust FFI or cudarc
-// ============================================================================================
 
 extern "C" int _apc_tracegen(
     Fp*                      d_output,          // [output_height * output_width], column-major
@@ -156,7 +149,7 @@ extern "C" int _apc_tracegen(
     const dim3 grid((unsigned int)n_airs, 1, 1);
 
     apc_tracegen_kernel<<<grid, block>>>(
-        d_output, d_original_airs, d_subs, output_height, num_apc_calls
+        d_output, output_height, d_original_airs, d_subs, num_apc_calls
     );
     return (int)cudaGetLastError();
 }
