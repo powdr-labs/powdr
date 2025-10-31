@@ -1,0 +1,3 @@
+filename,num_segments,app_proof_cells,app_proof_cols,total_proof_time_ms,app_proof_time_ms,app_execute_preflight_time_ms,app_execute_metered_time_ms,app_trace_gen_time_ms,leaf_proof_time_ms,inner_recursion_proof_time_ms,normal_instruction_ratio,openvm_precompile_ratio,powdr_ratio,powdr_rows
+powdr-256/metrics.json,1,48483687,5514,2513,2513,15,1,148,0,0,0.12414804591903252,0.8758519540809675,0.0,0
+
