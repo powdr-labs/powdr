@@ -66,7 +66,6 @@ pub fn optimize<A: Adapter>(
             degree_bound,
         )?
         .clone();
-        println!("======================================================\n\n{constraint_system}\n======================================================");
         if stats == stats_logger::Stats::from(&constraint_system) {
             break;
         }

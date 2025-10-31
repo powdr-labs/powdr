@@ -36,7 +36,6 @@ pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Displa
         + Clone,
     new_var: &mut impl FnMut() -> V,
 ) -> IndexedConstraintSystem<T, V> {
-    // println!("Starting equal zero check optimization...\n{constraint_system}");
     let binary_range_constraint = RangeConstraint::from_mask(1);
     // To keep performance reasonable, we split the system at stateful bus interactions
     // into smaller sub-systems and optimize each of them separately.
@@ -72,7 +71,6 @@ pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Displa
             }
         }
     }
-    println!("Final system:\n{constraint_system}");
     constraint_system
 }
 
@@ -165,7 +163,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
         return;
     }
     // Here we know: `output = value` if and only if all variables in `inputs` are zero.
-    println!(
+    log::debug!(
         "Candidate found: {output} == {value} <=> all of {{{}}} are zero",
         inputs.iter().format(", ")
     );
@@ -214,23 +212,15 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     // Check that each input is non-negative and that the sum of inputs cannot wrap.
     // TODO we do not need this. If this property is false, we can still find
     // a better constraint that also models is-equal-zero.
-    let (min_input, max_input) = inputs
+    let min_input = inputs
         .iter()
-        .map(|v| {
-            let rc = solver.get(v);
-            println!("{v} : {rc}");
-            rc
-        })
+        .map(|v| solver.get(v))
         .reduce(|a, b| a.disjunction(&b))
         .unwrap()
-        .range();
-    println!("Inputs range: {min_input} - {max_input}");
+        .range()
+        .0;
     if min_input != T::from(0) {
         return;
-    }
-    //println!("Max input range: {max_input}");
-    if max_input == T::from(1) {
-        println!("Binary inputs in {subsystem}");
     }
     let sum_of_inputs = inputs
         .iter()
