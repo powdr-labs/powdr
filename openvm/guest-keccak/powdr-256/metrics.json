@@ -1,0 +1,7157 @@
+{
+  "counter": [
+    {
+      "labels": [
+        [
+          "air_name",
+          "ProgramAir"
+        ]
+      ],
+      "metric": "quotient_deg",
+      "value": "1"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "ProgramAir"
+        ]
+      ],
+      "metric": "constraints",
+      "value": "4"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "ProgramAir"
+        ]
+      ],
+      "metric": "interactions",
+      "value": "1"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmConnectorAir"
+        ]
+      ],
+      "metric": "quotient_deg",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmConnectorAir"
+        ]
+      ],
+      "metric": "constraints",
+      "value": "11"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmConnectorAir"
+        ]
+      ],
+      "metric": "interactions",
+      "value": "5"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "PersistentBoundaryAir<8>"
+        ]
+      ],
+      "metric": "quotient_deg",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "PersistentBoundaryAir<8>"
+        ]
+      ],
+      "metric": "constraints",
+      "value": "7"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "PersistentBoundaryAir<8>"
+        ]
+      ],
+      "metric": "interactions",
+      "value": "3"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "MemoryMerkleAir<8>"
+        ]
+      ],
+      "metric": "quotient_deg",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "MemoryMerkleAir<8>"
+        ]
+      ],
+      "metric": "constraints",
+      "value": "39"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "MemoryMerkleAir<8>"
+        ]
+      ],
+      "metric": "interactions",
+      "value": "4"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "AccessAdapterAir<2>"
+        ]
+      ],
+      "metric": "quotient_deg",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "AccessAdapterAir<2>"
+        ]
+      ],
+      "metric": "constraints",
+      "value": "12"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "AccessAdapterAir<2>"
+        ]
+      ],
+      "metric": "interactions",
+      "value": "5"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "AccessAdapterAir<4>"
+        ]
+      ],
+      "metric": "quotient_deg",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "AccessAdapterAir<4>"
+        ]
+      ],
+      "metric": "constraints",
+      "value": "12"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "AccessAdapterAir<4>"
+        ]
+      ],
+      "metric": "interactions",
+      "value": "5"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "AccessAdapterAir<8>"
+        ]
+      ],
+      "metric": "quotient_deg",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "AccessAdapterAir<8>"
+        ]
+      ],
+      "metric": "constraints",
+      "value": "12"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "AccessAdapterAir<8>"
+        ]
+      ],
+      "metric": "interactions",
+      "value": "5"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "AccessAdapterAir<16>"
+        ]
+      ],
+      "metric": "quotient_deg",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "AccessAdapterAir<16>"
+        ]
+      ],
+      "metric": "constraints",
+      "value": "12"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "AccessAdapterAir<16>"
+        ]
+      ],
+      "metric": "interactions",
+      "value": "5"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "AccessAdapterAir<32>"
+        ]
+      ],
+      "metric": "quotient_deg",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "AccessAdapterAir<32>"
+        ]
+      ],
+      "metric": "constraints",
+      "value": "12"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "AccessAdapterAir<32>"
+        ]
+      ],
+      "metric": "interactions",
+      "value": "5"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32MultAdapterAir, DivRemCoreAir<4, 8>"
+        ]
+      ],
+      "metric": "quotient_deg",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32MultAdapterAir, DivRemCoreAir<4, 8>"
+        ]
+      ],
+      "metric": "constraints",
+      "value": "84"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32MultAdapterAir, DivRemCoreAir<4, 8>"
+        ]
+      ],
+      "metric": "interactions",
+      "value": "25"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32MultAdapterAir, MulHCoreAir<4, 8>"
+        ]
+      ],
+      "metric": "quotient_deg",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32MultAdapterAir, MulHCoreAir<4, 8>"
+        ]
+      ],
+      "metric": "constraints",
+      "value": "31"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32MultAdapterAir, MulHCoreAir<4, 8>"
+        ]
+      ],
+      "metric": "interactions",
+      "value": "24"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32MultAdapterAir, MultiplicationCoreAir<4, 8>"
+        ]
+      ],
+      "metric": "quotient_deg",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32MultAdapterAir, MultiplicationCoreAir<4, 8>"
+        ]
+      ],
+      "metric": "constraints",
+      "value": "19"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32MultAdapterAir, MultiplicationCoreAir<4, 8>"
+        ]
+      ],
+      "metric": "interactions",
+      "value": "19"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "RangeTupleCheckerAir<2>"
+        ]
+      ],
+      "metric": "quotient_deg",
+      "value": "1"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "RangeTupleCheckerAir<2>"
+        ]
+      ],
+      "metric": "constraints",
+      "value": "4"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "RangeTupleCheckerAir<2>"
+        ]
+      ],
+      "metric": "interactions",
+      "value": "1"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "Rv32HintStoreAir"
+        ]
+      ],
+      "metric": "quotient_deg",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "Rv32HintStoreAir"
+        ]
+      ],
+      "metric": "constraints",
+      "value": "28"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "Rv32HintStoreAir"
+        ]
+      ],
+      "metric": "interactions",
+      "value": "18"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32RdWriteAdapterAir, Rv32AuipcCoreAir>"
+        ]
+      ],
+      "metric": "quotient_deg",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32RdWriteAdapterAir, Rv32AuipcCoreAir>"
+        ]
+      ],
+      "metric": "constraints",
+      "value": "14"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32RdWriteAdapterAir, Rv32AuipcCoreAir>"
+        ]
+      ],
+      "metric": "interactions",
+      "value": "12"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>"
+        ]
+      ],
+      "metric": "quotient_deg",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>"
+        ]
+      ],
+      "metric": "constraints",
+      "value": "20"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>"
+        ]
+      ],
+      "metric": "interactions",
+      "value": "16"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32CondRdWriteAdapterAir, Rv32JalLuiCoreAir>"
+        ]
+      ],
+      "metric": "quotient_deg",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32CondRdWriteAdapterAir, Rv32JalLuiCoreAir>"
+        ]
+      ],
+      "metric": "constraints",
+      "value": "18"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32CondRdWriteAdapterAir, Rv32JalLuiCoreAir>"
+        ]
+      ],
+      "metric": "interactions",
+      "value": "10"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BranchAdapterAir, BranchLessThanCoreAir<4, 8>"
+        ]
+      ],
+      "metric": "quotient_deg",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BranchAdapterAir, BranchLessThanCoreAir<4, 8>"
+        ]
+      ],
+      "metric": "constraints",
+      "value": "35"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BranchAdapterAir, BranchLessThanCoreAir<4, 8>"
+        ]
+      ],
+      "metric": "interactions",
+      "value": "13"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>"
+        ]
+      ],
+      "metric": "quotient_deg",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>"
+        ]
+      ],
+      "metric": "constraints",
+      "value": "20"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>"
+        ]
+      ],
+      "metric": "interactions",
+      "value": "11"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32LoadStoreAdapterAir, LoadSignExtendCoreAir<4, 8>"
+        ]
+      ],
+      "metric": "quotient_deg",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32LoadStoreAdapterAir, LoadSignExtendCoreAir<4, 8>"
+        ]
+      ],
+      "metric": "constraints",
+      "value": "33"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32LoadStoreAdapterAir, LoadSignExtendCoreAir<4, 8>"
+        ]
+      ],
+      "metric": "interactions",
+      "value": "18"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>"
+        ]
+      ],
+      "metric": "quotient_deg",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>"
+        ]
+      ],
+      "metric": "constraints",
+      "value": "40"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>"
+        ]
+      ],
+      "metric": "interactions",
+      "value": "17"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BaseAluAdapterAir, ShiftCoreAir<4, 8>"
+        ]
+      ],
+      "metric": "quotient_deg",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BaseAluAdapterAir, ShiftCoreAir<4, 8>"
+        ]
+      ],
+      "metric": "constraints",
+      "value": "91"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BaseAluAdapterAir, ShiftCoreAir<4, 8>"
+        ]
+      ],
+      "metric": "interactions",
+      "value": "24"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BaseAluAdapterAir, LessThanCoreAir<4, 8>"
+        ]
+      ],
+      "metric": "quotient_deg",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BaseAluAdapterAir, LessThanCoreAir<4, 8>"
+        ]
+      ],
+      "metric": "constraints",
+      "value": "40"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BaseAluAdapterAir, LessThanCoreAir<4, 8>"
+        ]
+      ],
+      "metric": "interactions",
+      "value": "18"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>"
+        ]
+      ],
+      "metric": "quotient_deg",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>"
+        ]
+      ],
+      "metric": "constraints",
+      "value": "37"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>"
+        ]
+      ],
+      "metric": "interactions",
+      "value": "20"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "BitwiseOperationLookupAir<8>"
+        ]
+      ],
+      "metric": "quotient_deg",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "BitwiseOperationLookupAir<8>"
+        ]
+      ],
+      "metric": "constraints",
+      "value": "4"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "BitwiseOperationLookupAir<8>"
+        ]
+      ],
+      "metric": "interactions",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "PhantomAir"
+        ]
+      ],
+      "metric": "quotient_deg",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "PhantomAir"
+        ]
+      ],
+      "metric": "constraints",
+      "value": "5"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "PhantomAir"
+        ]
+      ],
+      "metric": "interactions",
+      "value": "3"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "Poseidon2PeripheryAir<BabyBearParameters>, 1>"
+        ]
+      ],
+      "metric": "quotient_deg",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "Poseidon2PeripheryAir<BabyBearParameters>, 1>"
+        ]
+      ],
+      "metric": "constraints",
+      "value": "286"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "Poseidon2PeripheryAir<BabyBearParameters>, 1>"
+        ]
+      ],
+      "metric": "interactions",
+      "value": "1"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VariableRangeCheckerAir"
+        ]
+      ],
+      "metric": "quotient_deg",
+      "value": "1"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VariableRangeCheckerAir"
+        ]
+      ],
+      "metric": "constraints",
+      "value": "4"
+    },
+    {
+      "labels": [
+        [
+          "air_name",
+          "VariableRangeCheckerAir"
+        ]
+      ],
+      "metric": "interactions",
+      "value": "1"
+    },
+    {
+      "labels": [
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "fri.log_blowup",
+      "value": "1"
+    },
+    {
+      "labels": [
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "execute_metered_insns",
+      "value": "4436831"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "execute_preflight_insns",
+      "value": "4436831"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "main_cells_used",
+      "value": "180600608"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "total_cells_used",
+      "value": "418898902"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "trace_height_constraint",
+          "0"
+        ]
+      ],
+      "metric": "weighted_sum",
+      "value": "10629642"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "trace_height_constraint",
+          "0"
+        ]
+      ],
+      "metric": "threshold",
+      "value": "2013265921"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "trace_height_constraint",
+          "1"
+        ]
+      ],
+      "metric": "weighted_sum",
+      "value": "31727116"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "trace_height_constraint",
+          "1"
+        ]
+      ],
+      "metric": "threshold",
+      "value": "2013265921"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "trace_height_constraint",
+          "2"
+        ]
+      ],
+      "metric": "weighted_sum",
+      "value": "5314821"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "trace_height_constraint",
+          "2"
+        ]
+      ],
+      "metric": "threshold",
+      "value": "2013265921"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "trace_height_constraint",
+          "3"
+        ]
+      ],
+      "metric": "weighted_sum",
+      "value": "41196048"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "trace_height_constraint",
+          "3"
+        ]
+      ],
+      "metric": "threshold",
+      "value": "2013265921"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "trace_height_constraint",
+          "4"
+        ]
+      ],
+      "metric": "weighted_sum",
+      "value": "3584"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "trace_height_constraint",
+          "4"
+        ]
+      ],
+      "metric": "threshold",
+      "value": "2013265921"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "trace_height_constraint",
+          "5"
+        ]
+      ],
+      "metric": "weighted_sum",
+      "value": "1536"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "trace_height_constraint",
+          "5"
+        ]
+      ],
+      "metric": "threshold",
+      "value": "2013265921"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "trace_height_constraint",
+          "6"
+        ]
+      ],
+      "metric": "weighted_sum",
+      "value": "14772230"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "trace_height_constraint",
+          "6"
+        ]
+      ],
+      "metric": "threshold",
+      "value": "2013265921"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "trace_height_constraint",
+          "7"
+        ]
+      ],
+      "metric": "weighted_sum",
+      "value": "1024"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "trace_height_constraint",
+          "7"
+        ]
+      ],
+      "metric": "threshold",
+      "value": "2013265921"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "trace_height_constraint",
+          "8"
+        ]
+      ],
+      "metric": "weighted_sum",
+      "value": "104572209"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "trace_height_constraint",
+          "8"
+        ]
+      ],
+      "metric": "threshold",
+      "value": "2013265921"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "ProgramAir"
+        ],
+        [
+          "air_id",
+          "0"
+        ]
+      ],
+      "metric": "rows",
+      "value": "8192"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "ProgramAir"
+        ],
+        [
+          "air_id",
+          "0"
+        ]
+      ],
+      "metric": "cells",
+      "value": "147456"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "ProgramAir"
+        ],
+        [
+          "air_id",
+          "0"
+        ]
+      ],
+      "metric": "prep_cols",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "ProgramAir"
+        ],
+        [
+          "air_id",
+          "0"
+        ]
+      ],
+      "metric": "main_cols",
+      "value": "10"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "ProgramAir"
+        ],
+        [
+          "air_id",
+          "0"
+        ]
+      ],
+      "metric": "perm_cols",
+      "value": "8"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmConnectorAir"
+        ],
+        [
+          "air_id",
+          "1"
+        ]
+      ],
+      "metric": "rows",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmConnectorAir"
+        ],
+        [
+          "air_id",
+          "1"
+        ]
+      ],
+      "metric": "cells",
+      "value": "42"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmConnectorAir"
+        ],
+        [
+          "air_id",
+          "1"
+        ]
+      ],
+      "metric": "prep_cols",
+      "value": "1"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmConnectorAir"
+        ],
+        [
+          "air_id",
+          "1"
+        ]
+      ],
+      "metric": "main_cols",
+      "value": "5"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmConnectorAir"
+        ],
+        [
+          "air_id",
+          "1"
+        ]
+      ],
+      "metric": "perm_cols",
+      "value": "16"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "PersistentBoundaryAir<8>"
+        ],
+        [
+          "air_id",
+          "2"
+        ]
+      ],
+      "metric": "rows",
+      "value": "512"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "PersistentBoundaryAir<8>"
+        ],
+        [
+          "air_id",
+          "2"
+        ]
+      ],
+      "metric": "cells",
+      "value": "16384"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "PersistentBoundaryAir<8>"
+        ],
+        [
+          "air_id",
+          "2"
+        ]
+      ],
+      "metric": "prep_cols",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "PersistentBoundaryAir<8>"
+        ],
+        [
+          "air_id",
+          "2"
+        ]
+      ],
+      "metric": "main_cols",
+      "value": "20"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "PersistentBoundaryAir<8>"
+        ],
+        [
+          "air_id",
+          "2"
+        ]
+      ],
+      "metric": "perm_cols",
+      "value": "12"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "MemoryMerkleAir<8>"
+        ],
+        [
+          "air_id",
+          "3"
+        ]
+      ],
+      "metric": "rows",
+      "value": "1024"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "MemoryMerkleAir<8>"
+        ],
+        [
+          "air_id",
+          "3"
+        ]
+      ],
+      "metric": "cells",
+      "value": "49152"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "MemoryMerkleAir<8>"
+        ],
+        [
+          "air_id",
+          "3"
+        ]
+      ],
+      "metric": "prep_cols",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "MemoryMerkleAir<8>"
+        ],
+        [
+          "air_id",
+          "3"
+        ]
+      ],
+      "metric": "main_cols",
+      "value": "32"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "MemoryMerkleAir<8>"
+        ],
+        [
+          "air_id",
+          "3"
+        ]
+      ],
+      "metric": "perm_cols",
+      "value": "16"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "AccessAdapterAir<8>"
+        ],
+        [
+          "air_id",
+          "6"
+        ]
+      ],
+      "metric": "rows",
+      "value": "512"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "AccessAdapterAir<8>"
+        ],
+        [
+          "air_id",
+          "6"
+        ]
+      ],
+      "metric": "cells",
+      "value": "16896"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "AccessAdapterAir<8>"
+        ],
+        [
+          "air_id",
+          "6"
+        ]
+      ],
+      "metric": "prep_cols",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "AccessAdapterAir<8>"
+        ],
+        [
+          "air_id",
+          "6"
+        ]
+      ],
+      "metric": "main_cols",
+      "value": "17"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "AccessAdapterAir<8>"
+        ],
+        [
+          "air_id",
+          "6"
+        ]
+      ],
+      "metric": "perm_cols",
+      "value": "16"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32MultAdapterAir, MultiplicationCoreAir<4, 8>"
+        ],
+        [
+          "air_id",
+          "11"
+        ]
+      ],
+      "metric": "rows",
+      "value": "256"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32MultAdapterAir, MultiplicationCoreAir<4, 8>"
+        ],
+        [
+          "air_id",
+          "11"
+        ]
+      ],
+      "metric": "cells",
+      "value": "21248"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32MultAdapterAir, MultiplicationCoreAir<4, 8>"
+        ],
+        [
+          "air_id",
+          "11"
+        ]
+      ],
+      "metric": "prep_cols",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32MultAdapterAir, MultiplicationCoreAir<4, 8>"
+        ],
+        [
+          "air_id",
+          "11"
+        ]
+      ],
+      "metric": "main_cols",
+      "value": "31"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32MultAdapterAir, MultiplicationCoreAir<4, 8>"
+        ],
+        [
+          "air_id",
+          "11"
+        ]
+      ],
+      "metric": "perm_cols",
+      "value": "52"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "RangeTupleCheckerAir<2>"
+        ],
+        [
+          "air_id",
+          "12"
+        ]
+      ],
+      "metric": "rows",
+      "value": "524288"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "RangeTupleCheckerAir<2>"
+        ],
+        [
+          "air_id",
+          "12"
+        ]
+      ],
+      "metric": "cells",
+      "value": "4718592"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "RangeTupleCheckerAir<2>"
+        ],
+        [
+          "air_id",
+          "12"
+        ]
+      ],
+      "metric": "prep_cols",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "RangeTupleCheckerAir<2>"
+        ],
+        [
+          "air_id",
+          "12"
+        ]
+      ],
+      "metric": "main_cols",
+      "value": "1"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "RangeTupleCheckerAir<2>"
+        ],
+        [
+          "air_id",
+          "12"
+        ]
+      ],
+      "metric": "perm_cols",
+      "value": "8"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "Rv32HintStoreAir"
+        ],
+        [
+          "air_id",
+          "13"
+        ]
+      ],
+      "metric": "rows",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "Rv32HintStoreAir"
+        ],
+        [
+          "air_id",
+          "13"
+        ]
+      ],
+      "metric": "cells",
+      "value": "152"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "Rv32HintStoreAir"
+        ],
+        [
+          "air_id",
+          "13"
+        ]
+      ],
+      "metric": "prep_cols",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "Rv32HintStoreAir"
+        ],
+        [
+          "air_id",
+          "13"
+        ]
+      ],
+      "metric": "main_cols",
+      "value": "32"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "Rv32HintStoreAir"
+        ],
+        [
+          "air_id",
+          "13"
+        ]
+      ],
+      "metric": "perm_cols",
+      "value": "44"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32RdWriteAdapterAir, Rv32AuipcCoreAir>"
+        ],
+        [
+          "air_id",
+          "14"
+        ]
+      ],
+      "metric": "rows",
+      "value": "4096"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32RdWriteAdapterAir, Rv32AuipcCoreAir>"
+        ],
+        [
+          "air_id",
+          "14"
+        ]
+      ],
+      "metric": "cells",
+      "value": "196608"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32RdWriteAdapterAir, Rv32AuipcCoreAir>"
+        ],
+        [
+          "air_id",
+          "14"
+        ]
+      ],
+      "metric": "prep_cols",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32RdWriteAdapterAir, Rv32AuipcCoreAir>"
+        ],
+        [
+          "air_id",
+          "14"
+        ]
+      ],
+      "metric": "main_cols",
+      "value": "20"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32RdWriteAdapterAir, Rv32AuipcCoreAir>"
+        ],
+        [
+          "air_id",
+          "14"
+        ]
+      ],
+      "metric": "perm_cols",
+      "value": "28"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>"
+        ],
+        [
+          "air_id",
+          "15"
+        ]
+      ],
+      "metric": "rows",
+      "value": "8192"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>"
+        ],
+        [
+          "air_id",
+          "15"
+        ]
+      ],
+      "metric": "cells",
+      "value": "524288"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>"
+        ],
+        [
+          "air_id",
+          "15"
+        ]
+      ],
+      "metric": "prep_cols",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>"
+        ],
+        [
+          "air_id",
+          "15"
+        ]
+      ],
+      "metric": "main_cols",
+      "value": "28"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>"
+        ],
+        [
+          "air_id",
+          "15"
+        ]
+      ],
+      "metric": "perm_cols",
+      "value": "36"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32CondRdWriteAdapterAir, Rv32JalLuiCoreAir>"
+        ],
+        [
+          "air_id",
+          "16"
+        ]
+      ],
+      "metric": "rows",
+      "value": "8192"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32CondRdWriteAdapterAir, Rv32JalLuiCoreAir>"
+        ],
+        [
+          "air_id",
+          "16"
+        ]
+      ],
+      "metric": "cells",
+      "value": "376832"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32CondRdWriteAdapterAir, Rv32JalLuiCoreAir>"
+        ],
+        [
+          "air_id",
+          "16"
+        ]
+      ],
+      "metric": "prep_cols",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32CondRdWriteAdapterAir, Rv32JalLuiCoreAir>"
+        ],
+        [
+          "air_id",
+          "16"
+        ]
+      ],
+      "metric": "main_cols",
+      "value": "18"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32CondRdWriteAdapterAir, Rv32JalLuiCoreAir>"
+        ],
+        [
+          "air_id",
+          "16"
+        ]
+      ],
+      "metric": "perm_cols",
+      "value": "28"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BranchAdapterAir, BranchLessThanCoreAir<4, 8>"
+        ],
+        [
+          "air_id",
+          "17"
+        ]
+      ],
+      "metric": "rows",
+      "value": "16384"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BranchAdapterAir, BranchLessThanCoreAir<4, 8>"
+        ],
+        [
+          "air_id",
+          "17"
+        ]
+      ],
+      "metric": "cells",
+      "value": "1048576"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BranchAdapterAir, BranchLessThanCoreAir<4, 8>"
+        ],
+        [
+          "air_id",
+          "17"
+        ]
+      ],
+      "metric": "prep_cols",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BranchAdapterAir, BranchLessThanCoreAir<4, 8>"
+        ],
+        [
+          "air_id",
+          "17"
+        ]
+      ],
+      "metric": "main_cols",
+      "value": "32"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BranchAdapterAir, BranchLessThanCoreAir<4, 8>"
+        ],
+        [
+          "air_id",
+          "17"
+        ]
+      ],
+      "metric": "perm_cols",
+      "value": "32"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>"
+        ],
+        [
+          "air_id",
+          "18"
+        ]
+      ],
+      "metric": "rows",
+      "value": "32768"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>"
+        ],
+        [
+          "air_id",
+          "18"
+        ]
+      ],
+      "metric": "cells",
+      "value": "1769472"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>"
+        ],
+        [
+          "air_id",
+          "18"
+        ]
+      ],
+      "metric": "prep_cols",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>"
+        ],
+        [
+          "air_id",
+          "18"
+        ]
+      ],
+      "metric": "main_cols",
+      "value": "26"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>"
+        ],
+        [
+          "air_id",
+          "18"
+        ]
+      ],
+      "metric": "perm_cols",
+      "value": "28"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>"
+        ],
+        [
+          "air_id",
+          "20"
+        ]
+      ],
+      "metric": "rows",
+      "value": "2097152"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>"
+        ],
+        [
+          "air_id",
+          "20"
+        ]
+      ],
+      "metric": "cells",
+      "value": "195035136"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>"
+        ],
+        [
+          "air_id",
+          "20"
+        ]
+      ],
+      "metric": "prep_cols",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>"
+        ],
+        [
+          "air_id",
+          "20"
+        ]
+      ],
+      "metric": "main_cols",
+      "value": "41"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>"
+        ],
+        [
+          "air_id",
+          "20"
+        ]
+      ],
+      "metric": "perm_cols",
+      "value": "52"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BaseAluAdapterAir, ShiftCoreAir<4, 8>"
+        ],
+        [
+          "air_id",
+          "21"
+        ]
+      ],
+      "metric": "rows",
+      "value": "1048576"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BaseAluAdapterAir, ShiftCoreAir<4, 8>"
+        ],
+        [
+          "air_id",
+          "21"
+        ]
+      ],
+      "metric": "cells",
+      "value": "110100480"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BaseAluAdapterAir, ShiftCoreAir<4, 8>"
+        ],
+        [
+          "air_id",
+          "21"
+        ]
+      ],
+      "metric": "prep_cols",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BaseAluAdapterAir, ShiftCoreAir<4, 8>"
+        ],
+        [
+          "air_id",
+          "21"
+        ]
+      ],
+      "metric": "main_cols",
+      "value": "53"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BaseAluAdapterAir, ShiftCoreAir<4, 8>"
+        ],
+        [
+          "air_id",
+          "21"
+        ]
+      ],
+      "metric": "perm_cols",
+      "value": "52"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BaseAluAdapterAir, LessThanCoreAir<4, 8>"
+        ],
+        [
+          "air_id",
+          "22"
+        ]
+      ],
+      "metric": "rows",
+      "value": "2048"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BaseAluAdapterAir, LessThanCoreAir<4, 8>"
+        ],
+        [
+          "air_id",
+          "22"
+        ]
+      ],
+      "metric": "cells",
+      "value": "157696"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BaseAluAdapterAir, LessThanCoreAir<4, 8>"
+        ],
+        [
+          "air_id",
+          "22"
+        ]
+      ],
+      "metric": "prep_cols",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BaseAluAdapterAir, LessThanCoreAir<4, 8>"
+        ],
+        [
+          "air_id",
+          "22"
+        ]
+      ],
+      "metric": "main_cols",
+      "value": "37"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BaseAluAdapterAir, LessThanCoreAir<4, 8>"
+        ],
+        [
+          "air_id",
+          "22"
+        ]
+      ],
+      "metric": "perm_cols",
+      "value": "40"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>"
+        ],
+        [
+          "air_id",
+          "23"
+        ]
+      ],
+      "metric": "rows",
+      "value": "2097152"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>"
+        ],
+        [
+          "air_id",
+          "23"
+        ]
+      ],
+      "metric": "cells",
+      "value": "184549376"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>"
+        ],
+        [
+          "air_id",
+          "23"
+        ]
+      ],
+      "metric": "prep_cols",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>"
+        ],
+        [
+          "air_id",
+          "23"
+        ]
+      ],
+      "metric": "main_cols",
+      "value": "36"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>"
+        ],
+        [
+          "air_id",
+          "23"
+        ]
+      ],
+      "metric": "perm_cols",
+      "value": "52"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "BitwiseOperationLookupAir<8>"
+        ],
+        [
+          "air_id",
+          "24"
+        ]
+      ],
+      "metric": "rows",
+      "value": "65536"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "BitwiseOperationLookupAir<8>"
+        ],
+        [
+          "air_id",
+          "24"
+        ]
+      ],
+      "metric": "cells",
+      "value": "655360"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "BitwiseOperationLookupAir<8>"
+        ],
+        [
+          "air_id",
+          "24"
+        ]
+      ],
+      "metric": "prep_cols",
+      "value": "3"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "BitwiseOperationLookupAir<8>"
+        ],
+        [
+          "air_id",
+          "24"
+        ]
+      ],
+      "metric": "main_cols",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "BitwiseOperationLookupAir<8>"
+        ],
+        [
+          "air_id",
+          "24"
+        ]
+      ],
+      "metric": "perm_cols",
+      "value": "8"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "PhantomAir"
+        ],
+        [
+          "air_id",
+          "25"
+        ]
+      ],
+      "metric": "rows",
+      "value": "1"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "PhantomAir"
+        ],
+        [
+          "air_id",
+          "25"
+        ]
+      ],
+      "metric": "cells",
+      "value": "18"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "PhantomAir"
+        ],
+        [
+          "air_id",
+          "25"
+        ]
+      ],
+      "metric": "prep_cols",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "PhantomAir"
+        ],
+        [
+          "air_id",
+          "25"
+        ]
+      ],
+      "metric": "main_cols",
+      "value": "6"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "PhantomAir"
+        ],
+        [
+          "air_id",
+          "25"
+        ]
+      ],
+      "metric": "perm_cols",
+      "value": "12"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "Poseidon2PeripheryAir<BabyBearParameters>, 1>"
+        ],
+        [
+          "air_id",
+          "26"
+        ]
+      ],
+      "metric": "rows",
+      "value": "512"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "Poseidon2PeripheryAir<BabyBearParameters>, 1>"
+        ],
+        [
+          "air_id",
+          "26"
+        ]
+      ],
+      "metric": "cells",
+      "value": "157696"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "Poseidon2PeripheryAir<BabyBearParameters>, 1>"
+        ],
+        [
+          "air_id",
+          "26"
+        ]
+      ],
+      "metric": "prep_cols",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "Poseidon2PeripheryAir<BabyBearParameters>, 1>"
+        ],
+        [
+          "air_id",
+          "26"
+        ]
+      ],
+      "metric": "main_cols",
+      "value": "300"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "Poseidon2PeripheryAir<BabyBearParameters>, 1>"
+        ],
+        [
+          "air_id",
+          "26"
+        ]
+      ],
+      "metric": "perm_cols",
+      "value": "8"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VariableRangeCheckerAir"
+        ],
+        [
+          "air_id",
+          "27"
+        ]
+      ],
+      "metric": "rows",
+      "value": "262144"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VariableRangeCheckerAir"
+        ],
+        [
+          "air_id",
+          "27"
+        ]
+      ],
+      "metric": "cells",
+      "value": "2359296"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VariableRangeCheckerAir"
+        ],
+        [
+          "air_id",
+          "27"
+        ]
+      ],
+      "metric": "prep_cols",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VariableRangeCheckerAir"
+        ],
+        [
+          "air_id",
+          "27"
+        ]
+      ],
+      "metric": "main_cols",
+      "value": "1"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ],
+        [
+          "air_name",
+          "VariableRangeCheckerAir"
+        ],
+        [
+          "air_id",
+          "27"
+        ]
+      ],
+      "metric": "perm_cols",
+      "value": "8"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "total_cells",
+      "value": "501900756"
+    }
+  ],
+  "gauge": [
+    {
+      "labels": [],
+      "metric": "total_apc_gen_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [],
+      "metric": "coset_lde_batch_time_ms",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "execute_metered_time_ms",
+      "value": "93"
+    },
+    {
+      "labels": [
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "execute_metered_insn_mi/s",
+      "value": "47.464413706045335"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "execute_preflight_insn_mi/s",
+      "value": "13.757018299980777"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "memory_finalize_time_ms",
+      "value": "1"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "execute_preflight_time_ms",
+      "value": "327"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "memory_to_vec_partition_time_ms",
+      "value": "19"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "single_trace_gen_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "generate Poseidon2 trace_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "system_trace_gen_time_ms",
+      "value": "670"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "trace_gen_time_ms",
+      "value": "671"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "coset_lde_batch_time_ms",
+      "value": "7"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "main_trace_commit_time_ms",
+      "value": "4061"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "grind for proof-of-work witness_time_ms",
+      "value": "1"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "generate_perm_trace_time_ms",
+      "value": "952"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "perm_trace_commit_time_ms",
+      "value": "4390"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "quotient_poly_compute_time_ms",
+      "value": "2680"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "quotient_poly_commit_time_ms",
+      "value": "1261"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute_inverse_denominators_time_ms",
+      "value": "104"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "1x4"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "evaluate matrix_time_ms",
+      "value": "3"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "2x1048576"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "5"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "3x131072"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "1"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "2x524288"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "3"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "9x16384"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "1x16384"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "5x4"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "20x1024"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "32x2048"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "17x1024"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "31x512"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "1x1048576"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "5"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "32x4"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "20x8192"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "28x16384"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "18x16384"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "32x32768"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "26x65536"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "41x4194304"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "49"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "53x2097152"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "27"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "37x4096"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "36x4194304"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "48"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "2x131072"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "1"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "6x2"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "300x1024"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "1x524288"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "3"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "8x16384"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "16x4"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "12x1024"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "16x2048"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "16x1024"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "52x512"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "8x1048576"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "6"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "44x4"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "28x8192"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "36x16384"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "28x65536"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "52x4194304"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "55"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "52x2097152"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "26"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "40x4096"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "8x131072"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "1"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "12x2"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "8x1024"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "8x524288"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "3"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x16384"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x4"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x1024"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x2048"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x512"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x1048576"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "6"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x8192"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x32768"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x65536"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x4194304"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "28"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x2097152"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "12"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x4096"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x131072"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "1"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x2"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x524288"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute opened values with Lagrange interpolation_time_ms",
+      "value": "3"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "1x4"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "1x4"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce matrix quotient_time_ms",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "2x1048576"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "1"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "2x1048576"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "3x131072"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "3x131072"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "2x524288"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "2x524288"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "1"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "9x16384"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "9x16384"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "1x16384"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "1x16384"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "5x4"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "5x4"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "20x1024"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "20x1024"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "32x2048"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "32x2048"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "17x1024"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "17x1024"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "31x512"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "31x512"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "1x1048576"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "1x1048576"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "32x4"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "32x4"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "20x8192"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "20x8192"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "28x16384"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "28x16384"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "18x16384"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "18x16384"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "32x32768"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "32x32768"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "26x65536"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "26x65536"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "41x4194304"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "35"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "41x4194304"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "11"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "53x2097152"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "22"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "53x2097152"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "5"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "37x4096"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "37x4096"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "36x4194304"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "31"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "36x4194304"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "10"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "2x131072"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "2x131072"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "6x2"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "6x2"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "300x1024"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "300x1024"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "1x524288"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "1x524288"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "1"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "8x16384"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "8x16384"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "16x4"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "16x4"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "12x1024"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "12x1024"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "16x2048"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "16x2048"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "16x1024"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "16x1024"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "52x512"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "52x512"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "8x1048576"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "8x1048576"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "44x4"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "44x4"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "28x8192"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "28x8192"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "36x16384"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "36x16384"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "28x65536"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "28x65536"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "52x4194304"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "43"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "52x4194304"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "10"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "52x2097152"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "22"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "52x2097152"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "5"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "40x4096"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "40x4096"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "8x131072"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "8x131072"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "12x2"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "12x2"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "8x1024"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "8x1024"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "8x524288"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "1"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "8x524288"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "1"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x16384"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x16384"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x4"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x4"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x1024"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x1024"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x2048"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x2048"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x512"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x512"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x1048576"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "1"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x1048576"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x8192"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x8192"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x32768"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x32768"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x65536"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x65536"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x4194304"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "5"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x4194304"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "10"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x2097152"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "2"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x2097152"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "5"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x4096"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x4096"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x131072"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x131072"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x2"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x2"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x524288"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compress mat_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "dims",
+          "4x524288"
+        ],
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "reduce rows_time_ms",
+      "value": "1"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "divide_by_height_time_ms",
+      "value": "0"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "commit phase_time_ms",
+      "value": "842"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "query phase_time_ms",
+      "value": "1"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "FRI prover_time_ms",
+      "value": "845"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "pcs_opening_time_ms",
+      "value": "2199"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "stark_prove_excluding_trace_time_ms",
+      "value": "15555"
+    },
+    {
+      "labels": [
+        [
+          "segment",
+          "0"
+        ],
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "total_proof_time_ms",
+      "value": "16667"
+    },
+    {
+      "labels": [
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "prove_segment_time_ms",
+      "value": "16667"
+    },
+    {
+      "labels": [
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "memory_to_vec_partition_time_ms",
+      "value": "15"
+    },
+    {
+      "labels": [
+        [
+          "group",
+          "app_proof"
+        ]
+      ],
+      "metric": "compute_user_public_values_proof_time_ms",
+      "value": "59"
+    },
+    {
+      "labels": [],
+      "metric": "app_prove_time_ms",
+      "value": "16836"
+    }
+  ]
+}
