@@ -17,12 +17,13 @@ use openvm_circuit::system::SystemChipInventory;
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_instructions::VmOpcode;
+use openvm_stark_backend::air_builders::symbolic::symbolic_expression::{SymbolicEvaluator, SymbolicExpression};
+use openvm_stark_backend::air_builders::symbolic::symbolic_variable::Entry;
 
 use crate::utils::get_pil;
 use openvm_stark_backend::air_builders::symbolic::SymbolicRapBuilder;
 use openvm_stark_backend::config::Val;
-use openvm_stark_backend::interaction::fri_log_up::find_interaction_chunks;
-use openvm_stark_backend::p3_field::PrimeField32;
+use openvm_stark_backend::p3_field::{PrimeField32};
 use openvm_stark_backend::prover::cpu::CpuBackend;
 use openvm_stark_backend::{
     air_builders::symbolic::SymbolicConstraints, config::StarkGenericConfig, rap::AnyRap,
@@ -306,16 +307,16 @@ impl OriginalVmConfig {
             .try_fold(OriginalAirs::default(), |mut airs, (op, air_ref)| {
                 airs.insert_opcode(op, air_ref.name(), || {
                     let columns = get_columns(air_ref.clone());
-                    let constraints = get_constraints(air_ref.clone());
+                    let main_constraints = get_main_constraints(air_ref.clone());
                     let metrics = get_air_metrics(air_ref.clone(), max_degree);
 
-                    let powdr_exprs = constraints
+                    let powdr_exprs = main_constraints
                         .constraints
                         .iter()
                         .map(|expr| try_convert(symbolic_to_algebraic(expr, &columns)))
                         .collect::<Result<Vec<_>, _>>()?;
 
-                    let powdr_bus_interactions = constraints
+                    let powdr_bus_interactions = main_constraints
                         .interactions
                         .iter()
                         .map(|expr| openvm_bus_interaction_to_powdr(expr, &columns))
@@ -429,9 +430,9 @@ pub fn export_pil(writer: &mut impl std::io::Write, vm_config: &SpecializedConfi
 
         let columns = get_columns(air.clone());
 
-        let constraints = get_constraints(air.clone());
+        let main_constraints = get_main_constraints(air.clone());
 
-        let pil = get_pil(&name, &constraints, &columns, vec![], &bus_map);
+        let pil = get_pil(&name, &main_constraints, &columns, vec![], &bus_map);
         writeln!(writer, "{pil}\n").unwrap();
     }
 }
@@ -452,11 +453,58 @@ pub fn get_name<SC: StarkGenericConfig>(air: Arc<dyn AnyRap<SC>>) -> String {
     air.name()
 }
 
-pub fn get_constraints(
+pub fn get_main_constraints(
     air: Arc<dyn AnyRap<BabyBearSC>>,
 ) -> SymbolicConstraints<p3_baby_bear::BabyBear> {
     let builder = symbolic_builder_with_degree(air, None);
-    builder.constraints()
+    let mut constraints = builder.constraints();
+
+    /// An evaluator to count reference to any non-main data, such as challenges and permutation columns    
+    struct NonMainReferenceCounter;
+
+    impl<F: PrimeField32> SymbolicEvaluator<F, i32> for NonMainReferenceCounter {
+        fn eval_const(&self, _: F) -> i32 {
+            0
+        }
+    
+        fn eval_var(&self, symbolic_var: openvm_stark_backend::air_builders::symbolic::symbolic_variable::SymbolicVariable<F>) -> i32 {
+            match symbolic_var.entry {
+                Entry::Main { .. } => 0,
+                _ => 1
+            }
+        }
+    
+        fn eval_is_first_row(&self) -> i32 {
+            unreachable!()
+        }
+    
+        fn eval_is_last_row(&self) -> i32 {
+            unreachable!()
+        }
+    
+        fn eval_is_transition(&self) -> i32 {
+            unreachable!()
+        }
+
+        fn eval_expr(&self, symbolic_expr: &SymbolicExpression<F>) -> i32 {
+            match symbolic_expr {
+                SymbolicExpression::Variable(var) => self.eval_var(*var),
+                SymbolicExpression::Constant(c) => self.eval_const(*c),
+                SymbolicExpression::Add { x, y, .. } => self.eval_expr(x) + self.eval_expr(y),
+                SymbolicExpression::Sub { x, y, .. } => self.eval_expr(x) + self.eval_expr(y),
+                SymbolicExpression::Neg { x, .. } => self.eval_expr(x),
+                SymbolicExpression::Mul { x, y, .. } => self.eval_expr(x) + self.eval_expr(y),
+                SymbolicExpression::IsFirstRow => 0,
+                SymbolicExpression::IsLastRow => 0,
+                SymbolicExpression::IsTransition => 0,
+            }
+        }
+    }
+
+    // Only keep constraints which do not refer any non-main data
+    constraints.constraints = constraints.constraints.into_iter().filter(|e| NonMainReferenceCounter.eval_expr(e) == 0).collect();
+
+    constraints
 }
 
 pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>, max_degree: usize) -> AirMetrics {
@@ -465,16 +513,14 @@ pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>, max_degree: usize) -> A
     let symbolic_rap_builder = symbolic_builder_with_degree(air, Some(max_degree));
     let preprocessed = symbolic_rap_builder.width().preprocessed.unwrap_or(0);
 
+    let width = symbolic_rap_builder.width();
+    assert_eq!(width.after_challenge.len(), 1);
+    let log_up = width.after_challenge[0] * EXT_DEGREE;
+
     let SymbolicConstraints {
         constraints,
         interactions,
     } = symbolic_rap_builder.constraints();
-
-    let log_up = (find_interaction_chunks(&interactions, max_degree)
-        .interaction_partitions()
-        .len()
-        + 1)
-        * EXT_DEGREE;
 
     AirMetrics {
         widths: AirWidths {
@@ -669,6 +715,7 @@ mod tests {
         );
         export_pil(writer, &specialized_config);
         let output = String::from_utf8(writer.clone()).unwrap();
+        println!("{output}");
         assert!(!output.is_empty(), "PIL output should not be empty");
     }
 }
