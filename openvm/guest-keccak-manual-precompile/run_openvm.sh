@@ -6,8 +6,5 @@ cargo openvm keygen
 mkdir -p $1
 RUST_LOG=debug cargo openvm prove app --input "0x010001000000000000" > $1/output.txt
 
-echo "\n\nTrace cells:"
 grep "Cells =" $1/output.txt > $1/cells.txt
-
-echo "\n\nSegment proving times:"
 grep "prove_segment" $1/output.txt > $1/prove_times.txt
