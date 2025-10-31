@@ -6170,7 +6170,7 @@
     {
       "labels": [],
       "metric": "coset_lde_batch_time_ms",
-      "value": "2"
+      "value": "3"
     },
     {
       "labels": [
@@ -6190,7 +6190,7 @@
         ]
       ],
       "metric": "execute_metered_insn_mi/s",
-      "value": "45.16306200606557"
+      "value": "44.80893916099275"
     },
     {
       "labels": [
@@ -6204,7 +6204,7 @@
         ]
       ],
       "metric": "execute_preflight_insn_mi/s",
-      "value": "4.175396643940615"
+      "value": "3.5152601418726177"
     },
     {
       "labels": [
@@ -6218,7 +6218,7 @@
         ]
       ],
       "metric": "memory_finalize_time_ms",
-      "value": "2"
+      "value": "1"
     },
     {
       "labels": [
@@ -6232,7 +6232,7 @@
         ]
       ],
       "metric": "execute_preflight_time_ms",
-      "value": "274"
+      "value": "325"
     },
     {
       "labels": [
@@ -6246,7 +6246,7 @@
         ]
       ],
       "metric": "memory_to_vec_partition_time_ms",
-      "value": "21"
+      "value": "22"
     },
     {
       "labels": [
@@ -6293,7 +6293,7 @@
         ]
       ],
       "metric": "system_trace_gen_time_ms",
-      "value": "390"
+      "value": "293"
     },
     {
       "labels": [
@@ -6307,7 +6307,7 @@
         ]
       ],
       "metric": "trace_gen_time_ms",
-      "value": "390"
+      "value": "293"
     },
     {
       "labels": [
@@ -6335,7 +6335,7 @@
         ]
       ],
       "metric": "main_trace_commit_time_ms",
-      "value": "7801"
+      "value": "7635"
     },
     {
       "labels": [
@@ -6349,7 +6349,7 @@
         ]
       ],
       "metric": "grind for proof-of-work witness_time_ms",
-      "value": "2"
+      "value": "1"
     },
     {
       "labels": [
@@ -6363,7 +6363,7 @@
         ]
       ],
       "metric": "generate_perm_trace_time_ms",
-      "value": "689"
+      "value": "722"
     },
     {
       "labels": [
@@ -6377,7 +6377,7 @@
         ]
       ],
       "metric": "perm_trace_commit_time_ms",
-      "value": "3414"
+      "value": "3408"
     },
     {
       "labels": [
@@ -6391,7 +6391,7 @@
         ]
       ],
       "metric": "quotient_poly_compute_time_ms",
-      "value": "4639"
+      "value": "4658"
     },
     {
       "labels": [
@@ -6405,7 +6405,7 @@
         ]
       ],
       "metric": "quotient_poly_commit_time_ms",
-      "value": "633"
+      "value": "598"
     },
     {
       "labels": [
@@ -6419,7 +6419,7 @@
         ]
       ],
       "metric": "compute_inverse_denominators_time_ms",
-      "value": "59"
+      "value": "57"
     },
     {
       "labels": [
@@ -6649,7 +6649,7 @@
         ]
       ],
       "metric": "compute opened values with Lagrange interpolation_time_ms",
-      "value": "5"
+      "value": "6"
     },
     {
       "labels": [
@@ -6667,7 +6667,7 @@
         ]
       ],
       "metric": "compute opened values with Lagrange interpolation_time_ms",
-      "value": "106"
+      "value": "108"
     },
     {
       "labels": [
@@ -6757,7 +6757,7 @@
         ]
       ],
       "metric": "compute opened values with Lagrange interpolation_time_ms",
-      "value": "0"
+      "value": "1"
     },
     {
       "labels": [
@@ -6829,7 +6829,7 @@
         ]
       ],
       "metric": "compute opened values with Lagrange interpolation_time_ms",
-      "value": "3"
+      "value": "2"
     },
     {
       "labels": [
@@ -6865,7 +6865,7 @@
         ]
       ],
       "metric": "compute opened values with Lagrange interpolation_time_ms",
-      "value": "1"
+      "value": "0"
     },
     {
       "labels": [
@@ -7045,7 +7045,7 @@
         ]
       ],
       "metric": "compute opened values with Lagrange interpolation_time_ms",
-      "value": "6"
+      "value": "7"
     },
     {
       "labels": [
@@ -7063,7 +7063,7 @@
         ]
       ],
       "metric": "compute opened values with Lagrange interpolation_time_ms",
-      "value": "35"
+      "value": "36"
     },
     {
       "labels": [
@@ -7189,7 +7189,7 @@
         ]
       ],
       "metric": "compute opened values with Lagrange interpolation_time_ms",
-      "value": "6"
+      "value": "7"
     },
     {
       "labels": [
@@ -7423,7 +7423,7 @@
         ]
       ],
       "metric": "compute opened values with Lagrange interpolation_time_ms",
-      "value": "2"
+      "value": "1"
     },
     {
       "labels": [
@@ -7459,7 +7459,7 @@
         ]
       ],
       "metric": "compute opened values with Lagrange interpolation_time_ms",
-      "value": "1"
+      "value": "0"
     },
     {
       "labels": [
@@ -7941,7 +7941,7 @@
         ]
       ],
       "metric": "compress mat_time_ms",
-      "value": "1"
+      "value": "0"
     },
     {
       "labels": [
@@ -7977,7 +7977,7 @@
         ]
       ],
       "metric": "compress mat_time_ms",
-      "value": "163"
+      "value": "162"
     },
     {
       "labels": [
@@ -8211,7 +8211,7 @@
         ]
       ],
       "metric": "reduce rows_time_ms",
-      "value": "1"
+      "value": "0"
     },
     {
       "labels": [
@@ -8319,7 +8319,7 @@
         ]
       ],
       "metric": "reduce rows_time_ms",
-      "value": "1"
+      "value": "0"
     },
     {
       "labels": [
@@ -8949,7 +8949,7 @@
         ]
       ],
       "metric": "compress mat_time_ms",
-      "value": "1"
+      "value": "2"
     },
     {
       "labels": [
@@ -8967,7 +8967,7 @@
         ]
       ],
       "metric": "reduce rows_time_ms",
-      "value": "0"
+      "value": "1"
     },
     {
       "labels": [
@@ -8985,7 +8985,7 @@
         ]
       ],
       "metric": "compress mat_time_ms",
-      "value": "0"
+      "value": "1"
     },
     {
       "labels": [
@@ -9021,7 +9021,7 @@
         ]
       ],
       "metric": "compress mat_time_ms",
-      "value": "5"
+      "value": "6"
     },
     {
       "labels": [
@@ -9453,7 +9453,7 @@
         ]
       ],
       "metric": "compress mat_time_ms",
-      "value": "2"
+      "value": "1"
     },
     {
       "labels": [
@@ -9471,7 +9471,7 @@
         ]
       ],
       "metric": "reduce rows_time_ms",
-      "value": "3"
+      "value": "2"
     },
     {
       "labels": [
@@ -9507,7 +9507,7 @@
         ]
       ],
       "metric": "reduce rows_time_ms",
-      "value": "1"
+      "value": "0"
     },
     {
       "labels": [
@@ -9651,7 +9651,7 @@
         ]
       ],
       "metric": "reduce rows_time_ms",
-      "value": "2"
+      "value": "1"
     },
     {
       "labels": [
@@ -9687,7 +9687,7 @@
         ]
       ],
       "metric": "reduce rows_time_ms",
-      "value": "6"
+      "value": "5"
     },
     {
       "labels": [
@@ -9715,7 +9715,7 @@
         ]
       ],
       "metric": "commit phase_time_ms",
-      "value": "450"
+      "value": "442"
     },
     {
       "labels": [
@@ -9743,7 +9743,7 @@
         ]
       ],
       "metric": "FRI prover_time_ms",
-      "value": "455"
+      "value": "446"
     },
     {
       "labels": [
@@ -9757,7 +9757,7 @@
         ]
       ],
       "metric": "pcs_opening_time_ms",
-      "value": "1585"
+      "value": "1563"
     },
     {
       "labels": [
@@ -9771,7 +9771,7 @@
         ]
       ],
       "metric": "stark_prove_excluding_trace_time_ms",
-      "value": "18771"
+      "value": "18593"
     },
     {
       "labels": [
@@ -9785,7 +9785,7 @@
         ]
       ],
       "metric": "total_proof_time_ms",
-      "value": "19567"
+      "value": "19390"
     },
     {
       "labels": [
@@ -9795,7 +9795,7 @@
         ]
       ],
       "metric": "prove_segment_time_ms",
-      "value": "16534"
+      "value": "16539"
     },
     {
       "labels": [
@@ -9809,7 +9809,7 @@
         ]
       ],
       "metric": "execute_preflight_insn_mi/s",
-      "value": "34.86751750621188"
+      "value": "36.323920461230735"
     },
     {
       "labels": [
@@ -9837,7 +9837,7 @@
         ]
       ],
       "metric": "execute_preflight_time_ms",
-      "value": "155"
+      "value": "154"
     },
     {
       "labels": [
@@ -9851,7 +9851,7 @@
         ]
       ],
       "metric": "memory_to_vec_partition_time_ms",
-      "value": "15"
+      "value": "16"
     },
     {
       "labels": [
@@ -9893,7 +9893,7 @@
         ]
       ],
       "metric": "system_trace_gen_time_ms",
-      "value": "194"
+      "value": "217"
     },
     {
       "labels": [
@@ -9907,7 +9907,7 @@
         ]
       ],
       "metric": "trace_gen_time_ms",
-      "value": "194"
+      "value": "217"
     },
     {
       "labels": [
@@ -9921,7 +9921,7 @@
         ]
       ],
       "metric": "coset_lde_batch_time_ms",
-      "value": "5"
+      "value": "4"
     },
     {
       "labels": [
@@ -9935,7 +9935,7 @@
         ]
       ],
       "metric": "main_trace_commit_time_ms",
-      "value": "6584"
+      "value": "6567"
     },
     {
       "labels": [
@@ -9963,7 +9963,7 @@
         ]
       ],
       "metric": "generate_perm_trace_time_ms",
-      "value": "585"
+      "value": "576"
     },
     {
       "labels": [
@@ -9977,7 +9977,7 @@
         ]
       ],
       "metric": "perm_trace_commit_time_ms",
-      "value": "2876"
+      "value": "2887"
     },
     {
       "labels": [
@@ -9991,7 +9991,7 @@
         ]
       ],
       "metric": "quotient_poly_compute_time_ms",
-      "value": "4403"
+      "value": "4400"
     },
     {
       "labels": [
@@ -10005,7 +10005,7 @@
         ]
       ],
       "metric": "quotient_poly_commit_time_ms",
-      "value": "402"
+      "value": "413"
     },
     {
       "labels": [
@@ -10069,7 +10069,7 @@
         ]
       ],
       "metric": "compute opened values with Lagrange interpolation_time_ms",
-      "value": "8"
+      "value": "7"
     },
     {
       "labels": [
@@ -10249,7 +10249,7 @@
         ]
       ],
       "metric": "compute opened values with Lagrange interpolation_time_ms",
-      "value": "105"
+      "value": "107"
     },
     {
       "labels": [
@@ -10267,7 +10267,7 @@
         ]
       ],
       "metric": "compute opened values with Lagrange interpolation_time_ms",
-      "value": "0"
+      "value": "1"
     },
     {
       "labels": [
@@ -10339,7 +10339,7 @@
         ]
       ],
       "metric": "compute opened values with Lagrange interpolation_time_ms",
-      "value": "2"
+      "value": "3"
     },
     {
       "labels": [
@@ -10411,7 +10411,7 @@
         ]
       ],
       "metric": "compute opened values with Lagrange interpolation_time_ms",
-      "value": "12"
+      "value": "11"
     },
     {
       "labels": [
@@ -11361,7 +11361,7 @@
         ]
       ],
       "metric": "compress mat_time_ms",
-      "value": "163"
+      "value": "164"
     },
     {
       "labels": [
@@ -11433,7 +11433,7 @@
         ]
       ],
       "metric": "compress mat_time_ms",
-      "value": "1"
+      "value": "0"
     },
     {
       "labels": [
@@ -11523,7 +11523,7 @@
         ]
       ],
       "metric": "reduce rows_time_ms",
-      "value": "0"
+      "value": "1"
     },
     {
       "labels": [
@@ -11685,7 +11685,7 @@
         ]
       ],
       "metric": "compress mat_time_ms",
-      "value": "8"
+      "value": "7"
     },
     {
       "labels": [
@@ -12189,7 +12189,7 @@
         ]
       ],
       "metric": "compress mat_time_ms",
-      "value": "6"
+      "value": "5"
     },
     {
       "labels": [
@@ -12225,7 +12225,7 @@
         ]
       ],
       "metric": "compress mat_time_ms",
-      "value": "3"
+      "value": "2"
     },
     {
       "labels": [
@@ -12693,7 +12693,7 @@
         ]
       ],
       "metric": "compress mat_time_ms",
-      "value": "1"
+      "value": "0"
     },
     {
       "labels": [
@@ -12775,7 +12775,7 @@
         ]
       ],
       "metric": "commit phase_time_ms",
-      "value": "232"
+      "value": "230"
     },
     {
       "labels": [
@@ -12789,7 +12789,7 @@
         ]
       ],
       "metric": "query phase_time_ms",
-      "value": "2"
+      "value": "1"
     },
     {
       "labels": [
@@ -12803,7 +12803,7 @@
         ]
       ],
       "metric": "FRI prover_time_ms",
-      "value": "235"
+      "value": "232"
     },
     {
       "labels": [
@@ -12817,7 +12817,7 @@
         ]
       ],
       "metric": "pcs_opening_time_ms",
-      "value": "1233"
+      "value": "1225"
     },
     {
       "labels": [
@@ -12831,7 +12831,7 @@
         ]
       ],
       "metric": "stark_prove_excluding_trace_time_ms",
-      "value": "16096"
+      "value": "16079"
     },
     {
       "labels": [
@@ -12845,7 +12845,7 @@
         ]
       ],
       "metric": "total_proof_time_ms",
-      "value": "16534"
+      "value": "16539"
     },
     {
       "labels": [
@@ -12855,7 +12855,7 @@
         ]
       ],
       "metric": "memory_to_vec_partition_time_ms",
-      "value": "15"
+      "value": "16"
     },
     {
       "labels": [
@@ -12865,12 +12865,12 @@
         ]
       ],
       "metric": "compute_user_public_values_proof_time_ms",
-      "value": "59"
+      "value": "63"
     },
     {
       "labels": [],
       "metric": "app_prove_time_ms",
-      "value": "36228"
+      "value": "36059"
     }
   ]
 }
