@@ -7,12 +7,12 @@ edition = "2021"
 members = []
 
 [dependencies]
-#openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.1-powdr" }
-#openvm-platform = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.1-powdr" }
-#openvm-keccak256 = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.1-powdr" }
-openvm = { git = "https://github.com/openvm-org/openvm.git", rev = "v1.4.1" }
-openvm-platform = { git = "https://github.com/openvm-org/openvm.git", rev = "v1.4.1" }
-openvm-keccak256 = { git = "https://github.com/openvm-org/openvm.git", rev = "v1.4.1" }
+openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.1-powdr" }
+openvm-platform = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.1-powdr" }
+openvm-keccak256 = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.1-powdr" }
+#openvm = { git = "https://github.com/openvm-org/openvm.git", rev = "v1.4.1" }
+#openvm-platform = { git = "https://github.com/openvm-org/openvm.git", rev = "v1.4.1" }
+#openvm-keccak256 = { git = "https://github.com/openvm-org/openvm.git", rev = "v1.4.1" }
 
 [features]
 default = []
