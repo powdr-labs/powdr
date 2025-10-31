@@ -8,5 +8,4 @@ mkdir -p $1
 # hex(10000) = 0x2710 -> little-endian 0x1027
 RUST_LOG=debug cargo openvm prove app --input "0x011027000000000000" > $1/output.txt
 
-grep "Cells =" $1/output.txt > $1/cells.txt
-grep "prove_segment" $1/output.txt > $1/prove_times.txt
+./parse_logs.sh $1
