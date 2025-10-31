@@ -288,10 +288,10 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     };
 
     // Check if the transformation is worth it.
-    if variables_to_remove.len() <= 1
-        && isolated_system.algebraic_constraints.len() <= 2
-        && isolated_system.bus_interactions.is_empty()
-    {
+    // if variables_to_remove.len() <= 1
+    //     && isolated_system.algebraic_constraints.len() <= 2
+    //     && isolated_system.bus_interactions.is_empty()
+    if variables_to_remove.len() <= 2 {
         log::debug!(
             "Not optimizing equal-zero check for {output} since only {} variables, {} \
             algebraic constraints and {} bus interactions would be removed.",
@@ -315,9 +315,16 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     }
 
     // It's a go! Remove the constraind and add a more efficient version.
-    constraint_system.retain_algebraic_constraints(|constr| remove_algebraic_constraint(constr));
+    constraint_system.retain_algebraic_constraints(|constr| {
+        if remove_algebraic_constraint(constr) {
+            log::debug!("Removing:\n{constr}");
+            false
+        } else {
+            true
+        }
+    });
     constraint_system
-        .retain_bus_interactions(|bus_interaction| remove_bus_interaction(bus_interaction));
+        .retain_bus_interactions(|bus_interaction| !remove_bus_interaction(bus_interaction));
 
     // Now we build the more efficient version of the function.
     let output_expr = GroupedExpression::from_unknown_variable(output.clone());
