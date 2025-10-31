@@ -5,7 +5,8 @@ use std::hash::Hash;
 use itertools::Itertools;
 use num_traits::One;
 use powdr_constraint_solver::constraint_system::{
-    AlgebraicConstraint, BusInteraction, BusInteractionHandler, ComputationMethod, ConstraintSystem,
+    AlgebraicConstraint, BusInteraction, BusInteractionHandler, ComputationMethod,
+    ConstraintSystem, DerivedVariable,
 };
 use powdr_constraint_solver::grouped_expression::{
     GroupedExpression, NoRangeConstraints, RangeConstraintProvider,
@@ -315,48 +316,15 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     }
 
     // It's a go! Remove the constraind and add a more efficient version.
-    constraint_system.retain_algebraic_constraints(|constr| {
-        if remove_algebraic_constraint(constr) {
-            log::debug!("Removing:\n{constr}");
-            false
-        } else {
-            true
-        }
-    });
+    constraint_system.retain_algebraic_constraints(|constr| !remove_algebraic_constraint(constr));
     constraint_system
         .retain_bus_interactions(|bus_interaction| !remove_bus_interaction(bus_interaction));
 
     // Now we build the more efficient version of the function.
-    let output_expr = GroupedExpression::from_unknown_variable(output.clone());
-    let output_expr = if value == T::from(1) {
-        output_expr
-    } else {
-        GroupedExpression::one() - output_expr
-    };
-
-    // We encode "output = 1 <=> all inputs are zero":
-
-    let sum_of_inputs = inputs
-        .iter()
-        .map(|v| GroupedExpression::from_unknown_variable(v.clone()))
-        .reduce(|a, b| a + b)
-        .unwrap();
-    let sum_inv_var = new_var();
-    let sum_inv = GroupedExpression::from_unknown_variable(sum_inv_var.clone());
-    let new_constraints = vec![
-        AlgebraicConstraint::assert_zero(output_expr.clone() * sum_of_inputs.clone()),
-        AlgebraicConstraint::assert_eq(
-            output_expr,
-            GroupedExpression::one() - sum_inv.clone() * sum_of_inputs.clone(),
-        ),
-    ];
-    log::debug!("Adding:\n{}", new_constraints.iter().join("\n"));
-    constraint_system.add_algebraic_constraints(new_constraints.clone());
-    constraint_system.add_derived_variable(
-        sum_inv_var.clone(),
-        ComputationMethod::InverseOrZero(sum_of_inputs),
-    );
-    solver.add_algebraic_constraints(new_constraints);
+    let replacement = replacement_system(&inputs, &output, value, new_var);
+    log::debug!("Replacing\n{}\nby\n{}", isolated_system, replacement);
+    solver.add_algebraic_constraints(replacement.algebraic_constraints.iter().cloned());
+    constraint_system.extend(replacement);
 
     // Verify that the modified system still has the same property (optional)
 
@@ -472,6 +440,41 @@ fn check_redundancy<T: FieldElement, V: Clone + Ord + Hash + Display>(
         }
     }
     true
+}
+
+fn replacement_system<T: FieldElement, V: Clone + Ord + Hash + Display>(
+    inputs: &BTreeSet<V>,
+    output: &V,
+    value: T,
+    new_var: &mut impl FnMut() -> V,
+) -> ConstraintSystem<T, V> {
+    let output_expr = if value == T::from(1) {
+        GroupedExpression::from_unknown_variable(output.clone())
+    } else {
+        GroupedExpression::one() - GroupedExpression::from_unknown_variable(output.clone())
+    };
+    let sum_of_inputs = inputs
+        .iter()
+        .map(|v| GroupedExpression::from_unknown_variable(v.clone()))
+        .reduce(|a, b| a + b)
+        .unwrap();
+    let sum_inv_var = new_var();
+    let sum_inv = GroupedExpression::from_unknown_variable(sum_inv_var.clone());
+    let new_constraints = vec![
+        AlgebraicConstraint::assert_zero(output_expr.clone() * sum_of_inputs.clone()),
+        AlgebraicConstraint::assert_eq(
+            output_expr,
+            GroupedExpression::one() - sum_inv.clone() * sum_of_inputs.clone(),
+        ),
+    ];
+    ConstraintSystem {
+        algebraic_constraints: new_constraints,
+        bus_interactions: vec![],
+        derived_variables: vec![DerivedVariable {
+            variable: sum_inv_var,
+            computation_method: ComputationMethod::InverseOrZero(sum_of_inputs),
+        }],
+    }
 }
 
 /// Determines if the system is satisfiable given some variable assignments.
