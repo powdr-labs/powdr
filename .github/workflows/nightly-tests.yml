@@ -51,9 +51,9 @@ jobs:
       - name: Install test dependencies
         run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
       - name: Build
-        run: cargo build --all --release --all-features
+        run: cargo build --all --release --features "metrics"
       - name: Run tests
-        run: cargo test --all --release --verbose --all-features --exclude powdr-openvm -- --include-ignored --nocapture --test-threads=2
+        run: cargo test --all --release --verbose --features "metrics" --exclude powdr-openvm -- --include-ignored --nocapture --test-threads=2
 
   bench:
     runs-on: warp-ubuntu-2404-x64-4x
@@ -87,7 +87,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
       - name: Run benchmarks
         # we add `|| exit 1` to make sure the step fails if `cargo bench` fails
-        run: cargo bench --workspace --all-features -- --output-format bencher | tee output.txt || exit 1
+        run: cargo bench --workspace --features "metrics" -- --output-format bencher | tee output.txt || exit 1
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
         with:
