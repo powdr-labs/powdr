@@ -5,7 +5,7 @@ use std::hash::Hash;
 use itertools::Itertools;
 use num_traits::One;
 use powdr_constraint_solver::constraint_system::{
-    AlgebraicConstraint, BusInteractionHandler, ComputationMethod, ConstraintSystem,
+    AlgebraicConstraint, BusInteraction, BusInteractionHandler, ComputationMethod, ConstraintSystem,
 };
 use powdr_constraint_solver::grouped_expression::{
     GroupedExpression, NoRangeConstraints, RangeConstraintProvider,
@@ -250,56 +250,58 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
         variables_to_remove.remove(input);
     }
 
-    // If we remove at most two variables, it is not worth it.
-    if variables_to_remove.len() <= 2 {
-        println!(
-            "Not optimizing equal-zero check for {output} since only {} variables would be removed\n{constraint_system}",
-            variables_to_remove.len()
-        );
-        return;
-    }
-
     // Now build an isolated system with only the constraints we want to remove
     // to verify that it does not do anything apart from computing the equal-zero check.
-    let mut isolated_system = ConstraintSystem {
-        algebraic_constraints: vec![],
-        bus_interactions: vec![],
-        derived_variables: vec![],
-    };
-    constraint_system.retain_algebraic_constraints(|constr| {
+
+    let remove_algebraic_constraint = |constr: &AlgebraicConstraint<GroupedExpression<T, V>>| {
         // Remove the constraint if it references a variable to remove
         // or if it only references the output or the inputs (whose relation
         // is fully determined by the algebraic constraints we will add).
-        let remove = constr
+        constr
             .referenced_unknown_variables()
             .any(|var| variables_to_remove.contains(var))
             || constr
                 .referenced_unknown_variables()
-                .all(|v| v == &output || inputs.contains(v));
-        if remove {
-            // Sanity check that we do not remove anything we should not.
-            assert!(constr.referenced_unknown_variables().all(|var| {
-                inputs.contains(var) || var == &output || variables_to_remove.contains(var)
-            }));
-            isolated_system.algebraic_constraints.push(constr.clone());
-        }
-        !remove
-    });
-    constraint_system.retain_bus_interactions(|bus_interaction| {
-        let remove = bus_interaction
+                .all(|v| v == &output || inputs.contains(v))
+    };
+    let remove_bus_interaction = |bus_interaction: &BusInteraction<GroupedExpression<T, V>>| {
+        bus_interaction
             .referenced_unknown_variables()
-            .any(|var| variables_to_remove.contains(var));
-        if remove {
-            // Sanity check that we do not remove anything we should not.
-            assert!(bus_interaction.referenced_unknown_variables().all(|var| {
-                inputs.contains(var) || var == &output || variables_to_remove.contains(var)
-            }));
-            isolated_system
-                .bus_interactions
-                .push(bus_interaction.clone());
-        }
-        !remove
-    });
+            .any(|var| variables_to_remove.contains(var))
+    };
+    let isolated_system = ConstraintSystem {
+        algebraic_constraints: constraint_system
+            .system()
+            .algebraic_constraints
+            .iter()
+            .filter(|constr| remove_algebraic_constraint(constr))
+            .cloned()
+            .collect(),
+        bus_interactions: constraint_system
+            .system()
+            .bus_interactions
+            .iter()
+            .filter(|bus_int| remove_bus_interaction(bus_int))
+            .cloned()
+            .collect(),
+        derived_variables: vec![],
+    };
+
+    // Check if the transformation is worth it.
+    if variables_to_remove.len() <= 1
+        && isolated_system.algebraic_constraints.len() <= 2
+        && isolated_system.bus_interactions.is_empty()
+    {
+        log::debug!(
+            "Not optimizing equal-zero check for {output} since only {} variables, {} \
+            algebraic constraints and {} bus interactions would be removed.",
+            variables_to_remove.len(),
+            isolated_system.algebraic_constraints.len(),
+            isolated_system.bus_interactions.len()
+        );
+        return;
+    }
+
     // Now verify that the isolated system indeed only computes the is-equal-zero check.
     if !check_redundancy(
         &isolated_system,
@@ -311,6 +313,11 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     ) {
         return;
     }
+
+    // It's a go! Remove the constraind and add a more efficient version.
+    constraint_system.retain_algebraic_constraints(|constr| remove_algebraic_constraint(constr));
+    constraint_system
+        .retain_bus_interactions(|bus_interaction| remove_bus_interaction(bus_interaction));
 
     // Now we build the more efficient version of the function.
     let output_expr = GroupedExpression::from_unknown_variable(output.clone());
@@ -336,7 +343,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
             GroupedExpression::one() - sum_inv.clone() * sum_of_inputs.clone(),
         ),
     ];
-    println!("Adding:\n{}", new_constraints.iter().join("\n"));
+    log::debug!("Adding:\n{}", new_constraints.iter().join("\n"));
     constraint_system.add_algebraic_constraints(new_constraints.clone());
     constraint_system.add_derived_variable(
         sum_inv_var.clone(),
