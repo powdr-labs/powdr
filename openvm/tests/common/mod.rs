@@ -26,9 +26,9 @@ pub mod apc_builder_utils {
     use powdr_number::BabyBearField;
     use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
     use powdr_openvm::instruction_formatter::openvm_instruction_formatter;
-    use powdr_openvm::BabyBearOpenVmApcAdapter;
     use powdr_openvm::Instr;
     use powdr_openvm::DEFAULT_DEGREE_BOUND;
+    use powdr_openvm::{BabyBearOpenVmApcAdapter, PowdrAir};
     use pretty_assertions::assert_eq;
     use std::fs;
     use std::path::Path;
@@ -66,7 +66,11 @@ pub mod apc_builder_utils {
                 .unwrap();
         let apc = Arc::new(apc);
 
-        let evaluation = evaluate_apc::<BabyBearOpenVmApcAdapter>(apc.clone(), &airs, degree_bound.identities);
+        let evaluation = evaluate_apc::<BabyBearOpenVmApcAdapter, PowdrAir<BabyBear>>(
+            apc.clone(),
+            &airs,
+            degree_bound.identities,
+        );
 
         format!(
             "Instructions:\n{basic_block_str}\n\n{evaluation}\n\n{}",

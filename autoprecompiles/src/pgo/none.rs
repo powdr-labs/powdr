@@ -1,18 +1,18 @@
 use std::collections::BTreeMap;
 
 use crate::{
-    adapter::{Adapter, AdapterApcWithReport, AdapterVmConfig, PgoAdapter},
+    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, PgoAdapter, PowdrArithmetization},
     blocks::BasicBlock,
     pgo::create_apcs_for_all_blocks,
     PowdrConfig,
 };
 
-pub struct NonePgo<A> {
-    _marker: std::marker::PhantomData<A>,
+pub struct NonePgo<A, Air> {
+    _marker: std::marker::PhantomData<(A, Air)>,
 }
 
 // TODO: derive with explicit bounds
-impl<A> Default for NonePgo<A> {
+impl<A, Air> Default for NonePgo<A, Air> {
     fn default() -> Self {
         Self {
             _marker: std::marker::PhantomData,
@@ -20,8 +20,11 @@ impl<A> Default for NonePgo<A> {
     }
 }
 
-impl<A: Adapter> PgoAdapter for NonePgo<A> {
+impl<A: Adapter, Air: PowdrArithmetization<A::Field, A::Instruction, A::ApcStats>> PgoAdapter
+    for NonePgo<A, Air>
+{
     type Adapter = A;
+    type Air = Air;
 
     fn create_apcs_with_pgo(
         &self,
@@ -29,7 +32,7 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         _labels: BTreeMap<u64, Vec<String>>,
-    ) -> Vec<AdapterApcWithReport<Self::Adapter>> {
+    ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
         // cost = number_of_original_instructions
         blocks.sort_by(|a, b| b.statements.len().cmp(&a.statements.len()));
 
@@ -42,6 +45,6 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
             );
         }
 
-        create_apcs_for_all_blocks::<Self::Adapter>(blocks, config, vm_config)
+        create_apcs_for_all_blocks::<Self::Adapter, Self::Air>(blocks, config, vm_config)
     }
 }

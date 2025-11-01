@@ -30,7 +30,7 @@ use openvm_stark_backend::{
 use powdr_autoprecompiles::Apc;
 use serde::{Deserialize, Serialize};
 
-use crate::{Instr, PrecompileImplementation};
+use crate::{AirMetrics, Instr, PrecompileImplementation};
 
 use super::PowdrOpcode;
 
@@ -50,7 +50,7 @@ pub struct PowdrPrecompile<F> {
     pub name: String,
     pub opcode: PowdrOpcode,
     pub apc: Arc<Apc<F, Instr<F>>>,
-    pub apc_stats: ApcPerformanceReport,
+    pub apc_stats: ApcPerformanceReport<AirMetrics>,
     #[serde(skip)]
     pub apc_record_arena_cpu: Rc<RefCell<OriginalArenas<MatrixRecordArena<F>>>>,
     #[serde(skip)]
@@ -62,7 +62,7 @@ impl<F> PowdrPrecompile<F> {
         name: String,
         opcode: PowdrOpcode,
         apc: Arc<Apc<F, Instr<F>>>,
-        apc_stats: ApcPerformanceReport,
+        apc_stats: ApcPerformanceReport<AirMetrics>,
     ) -> Self {
         Self {
             name,
@@ -144,11 +144,7 @@ where
                 }
                 PrecompileImplementation::PlonkChip => {
                     let copy_constraint_bus_id = inventory.new_bus_idx();
-                    let plonk_air = PlonkAir {
-                        copy_constraint_bus_id,
-                        bus_map: self.bus_map.clone(),
-                        _marker: std::marker::PhantomData,
-                    };
+                    let plonk_air = PlonkAir::new(copy_constraint_bus_id, &self.bus_map);
                     inventory.add_air(plonk_air);
                 }
             }

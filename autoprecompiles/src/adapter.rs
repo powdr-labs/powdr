@@ -1,12 +1,13 @@
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
 use std::collections::BTreeMap;
 use std::hash::Hash;
+use std::iter::Sum;
 use std::{fmt::Display, sync::Arc};
 
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
-use crate::evaluation::{AirMetrics, ApcPerformanceReport};
+use crate::evaluation::{ApcPerformanceReport, ApcStats};
 use crate::{
     blocks::{BasicBlock, Instruction, Program},
     constraint_optimizer::IsBusStateful,
@@ -16,22 +17,27 @@ use crate::{
 };
 
 #[derive(Serialize, Deserialize)]
-pub struct ApcWithReport<F, I> {
+pub struct ApcWithReport<F, I, S> {
     apc: Arc<Apc<F, I>>,
-    report: ApcPerformanceReport,
+    report: ApcPerformanceReport<S>,
 }
-impl<F, I> ApcWithReport<F, I> {
-    pub fn new(apc: Arc<Apc<F, I>>, report: ApcPerformanceReport) -> Self {
+impl<F, I, S> ApcWithReport<F, I, S> {
+    pub fn new(apc: Arc<Apc<F, I>>, report: ApcPerformanceReport<S>) -> Self {
         Self { apc, report }
     }
 
-    pub fn into_parts(self) -> (Arc<Apc<F, I>>, ApcPerformanceReport) {
+    pub fn into_parts(self) -> (Arc<Apc<F, I>>, ApcPerformanceReport<S>) {
         (self.apc, self.report)
     }
 }
 
 pub trait PgoAdapter {
     type Adapter: Adapter;
+    type Air: PowdrArithmetization<
+        <Self::Adapter as Adapter>::Field,
+        <Self::Adapter as Adapter>::Instruction,
+        <Self::Adapter as Adapter>::ApcStats,
+    >;
 
     fn filter_blocks_and_create_apcs_with_pgo(
         &self,
@@ -39,7 +45,7 @@ pub trait PgoAdapter {
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
-    ) -> Vec<AdapterApcWithReport<Self::Adapter>> {
+    ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
         let filtered_blocks = blocks
             .into_iter()
             .filter(|block| !Self::Adapter::should_skip_block(block))
@@ -53,17 +59,24 @@ pub trait PgoAdapter {
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
-    ) -> Vec<AdapterApcWithReport<Self::Adapter>>;
+    ) -> Vec<AdapterApcWithStats<Self::Adapter>>;
 
     fn pc_execution_count(&self, _pc: u64) -> Option<u32> {
         None
     }
 }
 
+pub trait PowdrArithmetization<F, I, S>: Send + Sync {
+    fn get_apc_metrics(apc: Arc<Apc<F, I>>, max_constraint_degree: usize) -> S;
+}
+
 pub trait Adapter: Sized
 where
-    Self::InstructionHandler:
-        InstructionHandler<Field = Self::Field, Instruction = Self::Instruction>,
+    Self::InstructionHandler: InstructionHandler<
+        Field = Self::Field,
+        Instruction = Self::Instruction,
+        ApcStats = Self::ApcStats,
+    >,
 {
     type Field: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone;
     type PowdrField: FieldElement;
@@ -80,6 +93,14 @@ where
         V,
     >;
     type CustomBusTypes: Clone + Display + Sync + Eq + PartialEq;
+    type ApcStats: Serialize
+        + for<'a> Deserialize<'a>
+        + Send
+        + Sync
+        + Sum<Self::ApcStats>
+        + Copy
+        + Clone
+        + ApcStats;
     type AirId: Eq + Hash + Send + Sync;
 
     fn into_field(e: Self::PowdrField) -> Self::Field;
@@ -89,11 +110,10 @@ where
     fn should_skip_block(_block: &BasicBlock<Self::Instruction>) -> bool {
         false
     }
-
-    fn get_apc_metrics(apc: Arc<AdapterApc<Self>>, max_constraint_degree: usize) -> AirMetrics;
 }
 
-pub type AdapterApcWithReport<A> = ApcWithReport<<A as Adapter>::Field, <A as Adapter>::Instruction>;
+pub type AdapterApcWithStats<A> =
+    ApcWithReport<<A as Adapter>::Field, <A as Adapter>::Instruction, <A as Adapter>::ApcStats>;
 pub type AdapterApc<A> = Apc<<A as Adapter>::Field, <A as Adapter>::Instruction>;
 pub type AdapterVmConfig<'a, A> = VmConfig<
     'a,

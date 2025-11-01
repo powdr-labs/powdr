@@ -1,18 +1,18 @@
 use std::collections::{BTreeMap, HashMap};
 
 use crate::{
-    adapter::{Adapter, AdapterApcWithReport, AdapterVmConfig, PgoAdapter},
+    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, PgoAdapter, PowdrArithmetization},
     blocks::BasicBlock,
     pgo::create_apcs_for_all_blocks,
     PowdrConfig,
 };
 
-pub struct InstructionPgo<A> {
-    _marker: std::marker::PhantomData<A>,
+pub struct InstructionPgo<A, Air> {
+    _marker: std::marker::PhantomData<(A, Air)>,
     data: HashMap<u64, u32>,
 }
 
-impl<A> InstructionPgo<A> {
+impl<A, Air> InstructionPgo<A, Air> {
     pub fn with_pgo_data(data: HashMap<u64, u32>) -> Self {
         Self {
             _marker: std::marker::PhantomData,
@@ -21,8 +21,11 @@ impl<A> InstructionPgo<A> {
     }
 }
 
-impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
+impl<A: Adapter, Air: PowdrArithmetization<A::Field, A::Instruction, A::ApcStats>> PgoAdapter
+    for InstructionPgo<A, Air>
+{
     type Adapter = A;
+    type Air = Air;
 
     fn create_apcs_with_pgo(
         &self,
@@ -30,7 +33,7 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         _labels: BTreeMap<u64, Vec<String>>,
-    ) -> Vec<AdapterApcWithReport<Self::Adapter>> {
+    ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
         tracing::info!(
             "Generating autoprecompiles with instruction PGO for {} blocks",
             blocks.len()
@@ -70,7 +73,7 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
                 );
         }
 
-        create_apcs_for_all_blocks::<Self::Adapter>(blocks, config, vm_config)
+        create_apcs_for_all_blocks::<Self::Adapter, Self::Air>(blocks, config, vm_config)
     }
 
     fn pc_execution_count(&self, pc: u64) -> Option<u32> {

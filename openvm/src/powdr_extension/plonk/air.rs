@@ -1,6 +1,7 @@
 use crate::{
     bus_map::{BusMap, OpenVmBusType},
-    BusType,
+    extraction_utils::get_air_metrics,
+    AirMetrics, BusType, Instr,
 };
 use itertools::Itertools;
 use openvm_circuit_primitives::AlignedBorrow;
@@ -11,7 +12,9 @@ use openvm_stark_backend::{
     p3_matrix::Matrix,
     rap::{BaseAirWithPublicValues, ColumnsAir, PartitionedBaseAir},
 };
-use std::borrow::Borrow;
+use openvm_stark_sdk::p3_baby_bear::BabyBear;
+use powdr_autoprecompiles::{adapter::PowdrArithmetization, Apc};
+use std::{borrow::Borrow, sync::Arc};
 use struct_reflection::StructReflection;
 use struct_reflection::StructReflectionHelper;
 
@@ -52,8 +55,57 @@ pub struct PlonkColumns<T> {
 
 pub struct PlonkAir<F> {
     pub copy_constraint_bus_id: u16,
-    pub bus_map: BusMap,
+    pub execution_bus_id: u16,
+    pub memory_bus_id: u16,
+    pub pc_lookup_bus_id: u16,
+    pub variable_range_checker_bus_id: u16,
+    pub tuple_range_checker_bus_id: u16,
+    pub bitwise_lookup_bus_id: u16,
     pub _marker: std::marker::PhantomData<F>,
+}
+
+impl<F> PlonkAir<F> {
+    /// create a dummy plonk air, when we only care about the shape (number of columns and constraints)
+    fn dummy() -> Self {
+        Self {
+            copy_constraint_bus_id: 0,
+            execution_bus_id: 1,
+            memory_bus_id: 2,
+            pc_lookup_bus_id: 3,
+            variable_range_checker_bus_id: 4,
+            tuple_range_checker_bus_id: 5,
+            bitwise_lookup_bus_id: 6,
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    pub fn new(copy_constraint_bus_id: u16, bus_map: &BusMap) -> Self {
+        Self {
+            copy_constraint_bus_id,
+            execution_bus_id: bus_map.get_bus_id(&BusType::ExecutionBridge).unwrap() as u16,
+            memory_bus_id: bus_map.get_bus_id(&BusType::Memory).unwrap() as u16,
+            pc_lookup_bus_id: bus_map.get_bus_id(&BusType::PcLookup).unwrap() as u16,
+            variable_range_checker_bus_id: bus_map
+                .get_bus_id(&BusType::Other(OpenVmBusType::VariableRangeChecker))
+                .unwrap() as u16,
+            tuple_range_checker_bus_id: bus_map
+                .get_bus_id(&BusType::Other(OpenVmBusType::TupleRangeChecker))
+                .unwrap() as u16,
+            bitwise_lookup_bus_id: bus_map
+                .get_bus_id(&BusType::Other(OpenVmBusType::BitwiseLookup))
+                .unwrap() as u16,
+            _marker: std::marker::PhantomData,
+        }
+    }
+}
+
+impl PowdrArithmetization<BabyBear, Instr<BabyBear>, AirMetrics> for PlonkAir<BabyBear> {
+    fn get_apc_metrics(
+        _: Arc<Apc<BabyBear, Instr<BabyBear>>>,
+        max_constraint_degree: usize,
+    ) -> AirMetrics {
+        get_air_metrics(Arc::new(PlonkAir::dummy()), max_constraint_degree)
+    }
 }
 
 impl<F: PrimeField32> ColumnsAir<F> for PlonkAir<F> {
@@ -119,55 +171,38 @@ where
         builder.assert_zero(*q_l * *a + *q_r * *b + *q_o * *c + *q_mul * (*a * *b) + *q_const);
 
         // OpenVM bus interactions
-        builder.push_interaction(
-            self.bus_map
-                .get_bus_id(&BusType::ExecutionBridge)
-                .expect("BusType::ExecutionBridge not found in bus_map") as u16,
-            vec![*a, *b],
-            *c * *q_execution,
-            1,
-        );
+        builder.push_interaction(self.execution_bus_id, vec![*a, *b], *c * *q_execution, 1);
 
         builder.push_interaction(
-            self.bus_map
-                .get_bus_id(&BusType::Other(OpenVmBusType::VariableRangeChecker))
-                .expect("BusType::VariableRangeChecker not found in bus_map") as u16,
+            self.variable_range_checker_bus_id,
             vec![*a, *b],
             *c * *q_range_check,
             1,
         );
 
         builder.push_interaction(
-            self.bus_map
-                .get_bus_id(&BusType::Other(OpenVmBusType::TupleRangeChecker))
-                .expect("BusType::TupleRangeChecker not found in bus_map") as u16,
+            self.tuple_range_checker_bus_id,
             vec![*a, *b],
             *c * *q_range_tuple,
             1,
         );
 
         builder.push_interaction(
-            self.bus_map
-                .get_bus_id(&BusType::Other(OpenVmBusType::BitwiseLookup))
-                .expect("BusType::BitwiseLookup not found in bus_map") as u16,
+            self.bitwise_lookup_bus_id,
             vec![*a, *b, *c, *d],
             *e * *q_bitwise,
             1,
         );
 
         builder.push_interaction(
-            self.bus_map
-                .get_bus_id(&BusType::PcLookup)
-                .expect("BusType::PcLookup not found in bus_map") as u16,
+            self.pc_lookup_bus_id,
             vec![*a, *b, *c, *d, *e, *a_next, *b_next, *c_next, *d_next],
             *q_pc * *e_next,
             1,
         );
 
         builder.push_interaction(
-            self.bus_map
-                .get_bus_id(&BusType::Memory)
-                .expect("BusType::PcLookup not found in bus_map") as u16,
+            self.memory_bus_id,
             vec![*a, *b, *c, *d, *e, *a_next, *b_next],
             *q_memory * *c_next,
             1,

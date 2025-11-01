@@ -11,11 +11,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     adapter::{
-        Adapter, AdapterApc, AdapterApcWithReport, AdapterVmConfig, ApcWithReport, PgoAdapter,
+        Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig, ApcWithReport, PgoAdapter,
+        PowdrArithmetization,
     },
     blocks::BasicBlock,
-    evaluation::{evaluate_apc, AirMetrics, ApcPerformanceReport},
-    pgo::cell::selection::parallel_fractional_knapsack, PowdrConfig,
+    evaluation::{evaluate_apc, AirStats, ApcPerformanceReport},
+    pgo::cell::selection::parallel_fractional_knapsack,
+    PowdrConfig,
 };
 
 mod selection;
@@ -24,31 +26,27 @@ pub use selection::KnapsackItem;
 
 /// While introducing apcs lead to savings, it also has costs.
 /// This trait models the cost of introducing a new chip
-pub trait Cost {
-    fn cost(air_metrics: AirMetrics) -> usize;
+pub trait Cost<S> {
+    fn cost(air_metrics: S) -> usize;
 }
 
 /// A candidate APC
 #[derive(Serialize, Deserialize)]
-pub struct Candidate<A: Adapter, C: Cost> {
+pub struct Candidate<A: Adapter, C: Cost<A::ApcStats>> {
     apc: Arc<AdapterApc<A>>,
     execution_frequency: usize,
-    stats: ApcPerformanceReport,
+    stats: ApcPerformanceReport<A::ApcStats>,
     _marker: PhantomData<C>,
 }
 
-impl<A: Adapter, C: Cost> Candidate<A, C> {
-    fn create(
+impl<A: Adapter, C: Cost<A::ApcStats>> Candidate<A, C> {
+    fn create<Air: PowdrArithmetization<A::Field, A::Instruction, A::ApcStats>>(
         apc: Arc<AdapterApc<A>>,
         pgo_program_pc_count: &HashMap<u64, u32>,
         vm_config: AdapterVmConfig<A>,
         max_degree: usize,
     ) -> Self {
-        let stats = evaluate_apc::<A>(
-            apc.clone(),
-            vm_config.instruction_handler,
-            max_degree,
-        );
+        let stats = evaluate_apc::<A, Air>(apc.clone(), vm_config.instruction_handler, max_degree);
 
         let execution_frequency =
             *pgo_program_pc_count.get(&apc.block.start_pc).unwrap_or(&0) as usize;
@@ -63,36 +61,37 @@ impl<A: Adapter, C: Cost> Candidate<A, C> {
 
     /// Return a JSON export of the APC candidate.
     fn to_json_export(&self, apc_candidates_dir_path: &Path) -> ApcCandidateJsonExport {
-        ApcCandidateJsonExport {
-            execution_frequency: self.execution_frequency,
-            original_block: BasicBlock {
-                start_pc: self.apc.block.start_pc,
-                statements: self
-                    .apc
-                    .block
-                    .statements
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect(),
-            },
-            stats: self.stats,
-            width_before: self.stats.before.widths.total(),
-            value: self.value(),
-            cost_before: self.stats.before.widths.total() as f64,
-            cost_after: self.stats.after.widths.total() as f64,
-            apc_candidate_file: apc_candidates_dir_path
-                .join(format!("apc_{}.cbor", self.apc.start_pc()))
-                .display()
-                .to_string(),
-        }
+        // ApcCandidateJsonExport {
+        //     execution_frequency: self.execution_frequency,
+        //     original_block: BasicBlock {
+        //         start_pc: self.apc.block.start_pc,
+        //         statements: self
+        //             .apc
+        //             .block
+        //             .statements
+        //             .iter()
+        //             .map(ToString::to_string)
+        //             .collect(),
+        //     },
+        //     stats: self.stats,
+        //     width_before: self.stats.before.widths.total(),
+        //     value: self.value(),
+        //     cost_before: self.stats.before.widths.total() as f64,
+        //     cost_after: self.stats.after.widths.total() as f64,
+        //     apc_candidate_file: apc_candidates_dir_path
+        //         .join(format!("apc_{}.cbor", self.apc.start_pc()))
+        //         .display()
+        //         .to_string(),
+        // }
+        unimplemented!()
     }
 
-    fn into_apc_and_stats(self) -> AdapterApcWithReport<A> {
+    fn into_apc_and_stats(self) -> AdapterApcWithStats<A> {
         ApcWithReport::new(self.apc, self.stats)
     }
 }
 
-impl<A: Adapter, C: Cost> KnapsackItem for Candidate<A, C> {
+impl<A: Adapter, C: Cost<A::ApcStats>> KnapsackItem for Candidate<A, C> {
     fn cost(&self) -> usize {
         C::cost(self.stats.after)
     }
@@ -101,7 +100,7 @@ impl<A: Adapter, C: Cost> KnapsackItem for Candidate<A, C> {
         // For an APC which is called once and saves 1 cell, this would be 1.
         let value = self
             .execution_frequency
-            .checked_mul(self.stats.cells_saved_per_row())
+            .checked_mul(self.stats.cells_saved_per_call())
             .unwrap();
         // We need `value()` to be much larger than `cost()` to avoid ties when ranking by `value() / cost()`
         // Therefore, we scale it up by a constant factor.
@@ -120,7 +119,7 @@ pub struct ApcCandidateJsonExport {
     // original instructions (pretty printed)
     pub original_block: BasicBlock<String>,
     // before and after optimization stats
-    pub stats: ApcPerformanceReport,
+    pub stats: ApcPerformanceReport<AirStats>,
     // width before optimisation, used for software version cells in effectiveness plot
     pub width_before: usize,
     // value used in ranking of candidates
@@ -133,13 +132,13 @@ pub struct ApcCandidateJsonExport {
     pub apc_candidate_file: String,
 }
 
-pub struct CellPgo<A, C> {
-    _marker: std::marker::PhantomData<(A, C)>,
+pub struct CellPgo<A, C, Air> {
+    _marker: std::marker::PhantomData<(A, C, Air)>,
     data: HashMap<u64, u32>,
     max_total_apc_columns: Option<usize>,
 }
 
-impl<A, C> CellPgo<A, C> {
+impl<A, C, Air> CellPgo<A, C, Air> {
     pub fn with_pgo_data_and_max_columns(
         data: HashMap<u64, u32>,
         max_total_apc_columns: Option<usize>,
@@ -158,8 +157,14 @@ struct JsonExport {
     labels: BTreeMap<u64, Vec<String>>,
 }
 
-impl<A: Adapter + Send + Sync, C: Cost + Send + Sync> PgoAdapter for CellPgo<A, C> {
+impl<
+        A: Adapter + Send + Sync,
+        C: Cost<A::ApcStats> + Send + Sync,
+        Air: PowdrArithmetization<A::Field, A::Instruction, A::ApcStats>,
+    > PgoAdapter for CellPgo<A, C, Air>
+{
     type Adapter = A;
+    type Air = Air;
 
     fn create_apcs_with_pgo(
         &self,
@@ -167,7 +172,7 @@ impl<A: Adapter + Send + Sync, C: Cost + Send + Sync> PgoAdapter for CellPgo<A, 
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
-    ) -> Vec<AdapterApcWithReport<Self::Adapter>> {
+    ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
         tracing::info!(
             "Generating autoprecompiles with cell PGO for {} blocks",
             blocks.len()
@@ -208,7 +213,7 @@ impl<A: Adapter + Send + Sync, C: Cost + Send + Sync> PgoAdapter for CellPgo<A, 
                     config.apc_candidates_dir_path.as_deref(),
                 )
                 .ok()?;
-                let candidate: Candidate<A, C> = Candidate::create(
+                let candidate: Candidate<A, C> = Candidate::create::<Air>(
                     Arc::new(apc),
                     &self.data,
                     vm_config.clone(),

@@ -40,6 +40,9 @@ use openvm_stark_sdk::config::{
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
+use powdr_autoprecompiles::evaluation::AirStats;
+#[cfg(test)]
+use powdr_autoprecompiles::evaluation::ApcPerformanceReport;
 use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::PowdrExtension;
@@ -49,6 +52,8 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
 use std::fs::File;
 use std::io::BufWriter;
+use std::iter::Sum;
+use std::ops::Add;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -63,7 +68,7 @@ use tracing::{info_span, Level};
 
 #[cfg(test)]
 use crate::extraction_utils::AirWidthsDiff;
-use crate::extraction_utils::{export_pil, OriginalVmConfig};
+use crate::extraction_utils::{export_pil, AirWidths, OriginalVmConfig};
 use crate::instruction_formatter::openvm_opcode_formatter;
 use crate::powdr_extension::{PowdrExtensionExecutor, PowdrPrecompile};
 
@@ -610,6 +615,21 @@ pub fn compile_exe(
     )
 }
 
+macro_rules! dispatch_impl {
+    ($impl:expr, |$Air:ident| $body:block) => {
+        match $impl {
+            PrecompileImplementation::SingleRowChip => {
+                type $Air = PowdrAir<BabyBear>;
+                $body
+            }
+            PrecompileImplementation::PlonkChip => {
+                type $Air = PlonkAir<BabyBear>;
+                $body
+            }
+        }
+    };
+}
+
 pub fn compile_exe_with_elf(
     original_program: OriginalCompiledProgram,
     elf: &[u8],
@@ -631,34 +651,40 @@ pub fn compile_exe_with_elf(
                 max_total_columns - total_non_apc_columns
             });
 
+            dispatch_impl!(implementation, |Air| {
+                customize(
+                    original_program,
+                    elf.text_labels(),
+                    elf.debug_info(),
+                    config,
+                    implementation,
+                    CellPgo::<_, OpenVmKnapsackCost, Air>::with_pgo_data_and_max_columns(
+                        pgo_data,
+                        max_total_apc_columns,
+                    ),
+                )
+            })
+        }
+        PgoConfig::Instruction(pgo_data) => dispatch_impl!(implementation, |Air| {
             customize(
                 original_program,
                 elf.text_labels(),
                 elf.debug_info(),
                 config,
                 implementation,
-                CellPgo::<_, OpenVmKnapsackCost>::with_pgo_data_and_max_columns(
-                    pgo_data,
-                    max_total_apc_columns,
-                ),
+                InstructionPgo::<_, Air>::with_pgo_data(pgo_data),
             )
-        }
-        PgoConfig::Instruction(pgo_data) => customize(
-            original_program,
-            elf.text_labels(),
-            elf.debug_info(),
-            config,
-            implementation,
-            InstructionPgo::with_pgo_data(pgo_data),
-        ),
-        PgoConfig::None => customize(
-            original_program,
-            elf.text_labels(),
-            elf.debug_info(),
-            config,
-            implementation,
-            NonePgo::default(),
-        ),
+        }),
+        PgoConfig::None => dispatch_impl!(implementation, |Air| {
+            customize(
+                original_program,
+                elf.text_labels(),
+                elf.debug_info(),
+                config,
+                implementation,
+                NonePgo::<_, Air>::default(),
+            )
+        }),
     };
     // Export the compiled program to a PIL file for debugging purposes.
     export_pil(
@@ -773,12 +799,74 @@ impl InitFileGenerator for ExtendedVmConfig {
     }
 }
 
-#[cfg(test)]
-use powdr_autoprecompiles::evaluation::{AirMetrics, ApcPerformanceReport};
+#[derive(Clone, Copy, PartialEq, Default, Eq, Debug, Serialize, Deserialize)]
+pub struct ConstraintCount {
+    pub main: usize,
+    pub log_up: usize,
+}
+
+impl Add for ConstraintCount {
+    type Output = ConstraintCount;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        ConstraintCount {
+            main: self.main + rhs.main,
+            log_up: self.log_up + rhs.log_up,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Default, Eq, Debug, Serialize, Deserialize)]
+/// Statistics of an AIR
+pub struct AirMetrics {
+    /// The column widths
+    pub widths: AirWidths,
+    /// The number of polynomial constraints
+    pub constraint_count: ConstraintCount,
+    /// The number of bus interactions
+    pub interaction_count: usize,
+}
+
+impl From<AirMetrics> for AirStats {
+    fn from(metrics: AirMetrics) -> Self {
+        AirStats {
+            main_columns: metrics.widths.main,
+            constraints: metrics.constraint_count.main,
+            bus_interactions: metrics.interaction_count,
+        }
+    }
+}
+
+impl Add for AirMetrics {
+    type Output = AirMetrics;
+    fn add(self, rhs: AirMetrics) -> AirMetrics {
+        AirMetrics {
+            widths: self.widths + rhs.widths,
+            constraint_count: self.constraint_count + rhs.constraint_count,
+            interaction_count: self.interaction_count + rhs.interaction_count,
+        }
+    }
+}
+
+impl Sum<AirMetrics> for AirMetrics {
+    fn sum<I: Iterator<Item = AirMetrics>>(iter: I) -> AirMetrics {
+        iter.fold(AirMetrics::default(), Add::add)
+    }
+}
+
+impl AirMetrics {
+    pub fn total_width(&self) -> usize {
+        self.widths.total()
+    }
+}
+
 #[cfg(test)]
 impl CompiledProgram {
     // Return a tuple of (powdr AirMetrics, non-powdr AirMetrics)
-    fn air_metrics(&self, max_degree: usize) -> (Vec<ApcPerformanceReport>, Vec<AirMetrics>) {
+    fn air_metrics(
+        &self,
+        max_degree: usize,
+    ) -> (Vec<ApcPerformanceReport<AirMetrics>>, Vec<AirMetrics>) {
         let air_inventory = self.vm_config.create_airs().unwrap();
 
         let chip_complex = <SpecializedConfigCpuBuilder as VmBuilder<BabyBearPoseidon2Engine>>::create_chip_complex(&SpecializedConfigCpuBuilder, &self.vm_config, air_inventory).unwrap();
@@ -980,7 +1068,6 @@ pub fn execution_profile_from_guest(
 mod tests {
     use super::*;
     use expect_test::{expect, Expect};
-    use powdr_autoprecompiles::evaluation::AirWidths;
     use pretty_assertions::assert_eq;
     use test_log::test;
 
@@ -1843,12 +1930,7 @@ mod tests {
             // Test cells saved in Pgo::Cell
             performance_reports
                 .into_iter()
-                .map(|report| {
-                    AirWidthsDiff::new(
-                        report.before.widths,
-                        report.after.widths,
-                    )
-                })
+                .map(|report| AirWidthsDiff::new(report.before.widths, report.after.widths))
                 .sum::<AirWidthsDiff>()
         });
         assert_eq!(columns_saved.is_some(), expected_columns_saved.is_some());
@@ -1888,7 +1970,7 @@ mod tests {
             main: 798,
             log_up: 684,
         },
-        constraint_count: 813,
+        constraint_count: ConstraintCount { main: 1, log_up: 1 },
         interaction_count: 253,
     };
 
@@ -2074,7 +2156,10 @@ mod tests {
                     main: 26,
                     log_up: 36,
                 },
-                constraint_count: 1,
+                constraint_count: ConstraintCount {
+                    main: 1,
+                    log_up: 11
+                },
                 interaction_count: 16,
             }
         );

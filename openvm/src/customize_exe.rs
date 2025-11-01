@@ -6,14 +6,13 @@ use std::iter::once;
 use std::sync::Arc;
 
 use crate::bus_map::OpenVmBusType;
-use crate::extraction_utils::{get_air_metrics, OriginalAirs, OriginalVmConfig};
+use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
 use crate::instruction_formatter::openvm_instruction_formatter;
 use crate::memory_bus_interaction::OpenVmMemoryBusInteraction;
 use crate::opcode::branch_opcodes_bigint_set;
-use crate::powdr_extension::chip::PowdrAir;
 use crate::utils::UnsupportedOpenVmReferenceError;
-use crate::OriginalCompiledProgram;
 use crate::PrecompileImplementation;
+use crate::{AirMetrics, OriginalCompiledProgram};
 use crate::{CompiledProgram, SpecializedConfig};
 use itertools::Itertools;
 use openvm_instructions::instruction::Instruction as OpenVmInstruction;
@@ -24,16 +23,14 @@ use openvm_stark_backend::{
     p3_field::{FieldAlgebra, PrimeField32},
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
-use powdr_autoprecompiles::adapter::{
-    Adapter, AdapterApc, ApcWithReport, PgoAdapter,
-};
+use powdr_autoprecompiles::adapter::{Adapter, ApcWithReport, PgoAdapter};
 use powdr_autoprecompiles::blocks::{collect_basic_blocks, Instruction, Program};
-use powdr_autoprecompiles::evaluation::AirMetrics;
+use powdr_autoprecompiles::evaluation::ApcStats;
 use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::pgo::Cost;
+use powdr_autoprecompiles::PowdrConfig;
 use powdr_autoprecompiles::SymbolicBusInteraction;
 use powdr_autoprecompiles::VmConfig;
-use powdr_autoprecompiles::PowdrConfig;
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use powdr_riscv_elf::debug_info::DebugInfo;
 use serde::{Deserialize, Serialize};
@@ -56,9 +53,15 @@ pub struct BabyBearOpenVmApcAdapter<'a> {
 pub struct OpenVmKnapsackCost;
 
 // The cost of adding an apc chip in openvm when it comes to recursion, which we model as its width, since the verifier is linear in the number of columns
-impl Cost for OpenVmKnapsackCost {
+impl Cost<AirMetrics> for OpenVmKnapsackCost {
     fn cost(apc_metrics: AirMetrics) -> usize {
         apc_metrics.total_width()
+    }
+}
+
+impl ApcStats for AirMetrics {
+    fn cells_per_call(&self) -> usize {
+        self.total_width()
     }
 }
 
@@ -72,6 +75,7 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     type MemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash> =
         OpenVmMemoryBusInteraction<Self::PowdrField, V>;
     type CustomBusTypes = OpenVmBusType;
+    type ApcStats = AirMetrics;
     type AirId = String;
 
     fn into_field(e: Self::PowdrField) -> Self::Field {
@@ -82,10 +86,6 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
 
     fn from_field(e: Self::Field) -> Self::PowdrField {
         BabyBearField::from(e.as_canonical_u32())
-    }
-
-    fn get_apc_metrics(apc: Arc<AdapterApc<Self>>, max_constraint_degree: usize) -> AirMetrics {
-        get_air_metrics(Arc::new(PowdrAir::new(apc)), max_constraint_degree)
     }
 }
 

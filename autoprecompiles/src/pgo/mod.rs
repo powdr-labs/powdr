@@ -4,7 +4,7 @@ use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterato
 use strum::{Display, EnumString};
 
 use crate::{
-    adapter::{Adapter, AdapterApcWithReport, AdapterVmConfig, ApcWithReport},
+    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, ApcWithReport, PowdrArithmetization},
     blocks::BasicBlock,
     evaluation::evaluate_apc,
     PowdrConfig,
@@ -74,11 +74,14 @@ pub fn pgo_config(
 
 // Only used for PgoConfig::Instruction and PgoConfig::None,
 // because PgoConfig::Cell caches all APCs in sorting stage.
-fn create_apcs_for_all_blocks<A: Adapter>(
+fn create_apcs_for_all_blocks<
+    A: Adapter,
+    Air: PowdrArithmetization<A::Field, A::Instruction, A::ApcStats>,
+>(
     blocks: Vec<BasicBlock<A::Instruction>>,
     config: &PowdrConfig,
     vm_config: AdapterVmConfig<A>,
-) -> Vec<AdapterApcWithReport<A>> {
+) -> Vec<AdapterApcWithStats<A>> {
     let n_acc = config.autoprecompiles as usize;
     tracing::info!("Generating {n_acc} autoprecompiles in parallel");
 
@@ -103,10 +106,10 @@ fn create_apcs_for_all_blocks<A: Adapter>(
 
             let apc = Arc::new(apc);
 
-            let stats = evaluate_apc::<A>(
+            let stats = evaluate_apc::<A, Air>(
                 apc.clone(),
                 vm_config.instruction_handler,
-                config.degree_bound.identities
+                config.degree_bound.identities,
             );
 
             ApcWithReport::new(apc, stats)
