@@ -462,11 +462,11 @@ pub fn get_constraints(
 pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>, max_degree: usize) -> AirMetrics {
     let main = air.width();
 
-    let symbolic_rap_builder = symbolic_builder_with_degree(air, Some(max_degree));
+    let symbolic_rap_builder = symbolic_builder_with_degree(air.clone(), Some(max_degree));
     let preprocessed = symbolic_rap_builder.width().preprocessed.unwrap_or(0);
 
     let SymbolicConstraints {
-        constraints,
+        constraints: main_constraints,
         interactions,
     } = symbolic_rap_builder.constraints();
 
@@ -476,13 +476,22 @@ pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>, max_degree: usize) -> A
         + 1)
         * EXT_DEGREE;
 
+    // Fix for issue #3408: Include constraints for log_up phase.
+    // Since the symbolic evaluator does not run log_up, we account for constraints
+    // in both phases when log_up is present (same constraints apply to both main and log_up columns).
+    let total_constraints = if log_up > 0 {
+        main_constraints.len() * 2
+    } else {
+        main_constraints.len()
+    };
+
     AirMetrics {
         widths: AirWidths {
             preprocessed,
             main,
             log_up,
         },
-        constraints: constraints.len(),
+        constraints: total_constraints,
         bus_interactions: interactions.len(),
     }
 }
