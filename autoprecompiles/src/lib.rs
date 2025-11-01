@@ -1,7 +1,7 @@
 use crate::adapter::{Adapter, AdapterApc, AdapterVmConfig};
 use crate::blocks::BasicBlock;
 use crate::bus_map::{BusMap, BusType};
-use crate::evaluation::AirStats;
+use crate::evaluation::AirMetrics;
 use crate::expression_conversion::algebraic_to_grouped_expression;
 use crate::symbolic_machine_generator::convert_machine_field_type;
 use expression::{AlgebraicExpression, AlgebraicReference};
@@ -308,7 +308,7 @@ pub trait InstructionHandler {
     ) -> (Self::AirId, &SymbolicMachine<Self::Field>);
 
     /// Returns the AIR stats for the given instruction.
-    fn get_instruction_air_stats(&self, instruction: &Self::Instruction) -> AirStats;
+    fn get_instruction_air_metrics(&self, instruction: &Self::Instruction) -> AirMetrics;
 
     /// Returns whether the given instruction is allowed in an autoprecompile.
     fn is_allowed(&self, instruction: &Self::Instruction) -> bool;

@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use crate::{
-    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, PgoAdapter},
+    adapter::{Adapter, AdapterApcWithReport, AdapterVmConfig, PgoAdapter},
     blocks::BasicBlock,
     pgo::create_apcs_for_all_blocks,
     PowdrConfig,
@@ -30,7 +30,7 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         _labels: BTreeMap<u64, Vec<String>>,
-    ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
+    ) -> Vec<AdapterApcWithReport<Self::Adapter>> {
         tracing::info!(
             "Generating autoprecompiles with instruction PGO for {} blocks",
             blocks.len()

@@ -32,6 +32,7 @@ pub mod apc_builder_utils {
     use pretty_assertions::assert_eq;
     use std::fs;
     use std::path::Path;
+    use std::sync::Arc;
 
     use crate::common::original_vm_config;
 
@@ -63,13 +64,13 @@ pub mod apc_builder_utils {
         let apc =
             build::<BabyBearOpenVmApcAdapter>(basic_block.clone(), vm_config, degree_bound, None)
                 .unwrap();
-        let apc = apc.machine();
+        let apc = Arc::new(apc);
 
-        let evaluation = evaluate_apc(&basic_block.statements, &airs, apc);
+        let evaluation = evaluate_apc::<BabyBearOpenVmApcAdapter>(apc.clone(), &airs, degree_bound.identities);
 
         format!(
             "Instructions:\n{basic_block_str}\n\n{evaluation}\n\n{}",
-            apc.render(&bus_map)
+            apc.machine().render(&bus_map)
         )
     }
 
