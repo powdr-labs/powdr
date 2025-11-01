@@ -1989,8 +1989,8 @@ mod tests {
                             main: 14263,
                             log_up: 22784,
                         },
-                        constraints: 4285,
-                        bus_interactions: 11160,
+                        constraint_count: 10001,
+                        interaction_count: 11160,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2017,8 +2017,8 @@ mod tests {
                             main: 14235,
                             log_up: 22752,
                         },
-                        constraints: 4261,
-                        bus_interactions: 11150,
+                        constraint_count: 9969,
+                        interaction_count: 11150,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2102,8 +2102,8 @@ mod tests {
                             main: 17304,
                             log_up: 27896,
                         },
-                        constraints: 8838,
-                        bus_interactions: 11927,
+                        constraint_count: 15912,
+                        interaction_count: 11927,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2151,8 +2151,8 @@ mod tests {
                             main: 19930,
                             log_up: 30924,
                         },
-                        constraints: 11105,
-                        bus_interactions: 13443,
+                        constraint_count: 18936,
+                        interaction_count: 13443,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2199,8 +2199,8 @@ mod tests {
                             main: 2025,
                             log_up: 3472,
                         },
-                        constraints: 187,
-                        bus_interactions: 1734,
+                        constraint_count: 1057,
+                        interaction_count: 1734,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2227,8 +2227,8 @@ mod tests {
                             main: 2025,
                             log_up: 3472,
                         },
-                        constraints: 187,
-                        bus_interactions: 1734,
+                        constraint_count: 1057,
+                        interaction_count: 1734,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2255,8 +2255,8 @@ mod tests {
                             main: 2025,
                             log_up: 3472,
                         },
-                        constraints: 187,
-                        bus_interactions: 1734,
+                        constraint_count: 1057,
+                        interaction_count: 1734,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2306,8 +2306,8 @@ mod tests {
                             main: 3245,
                             log_up: 5260,
                         },
-                        constraints: 608,
-                        bus_interactions: 2560,
+                        constraint_count: 1967,
+                        interaction_count: 2560,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
