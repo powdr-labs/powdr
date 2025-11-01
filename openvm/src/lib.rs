@@ -800,29 +800,12 @@ impl InitFileGenerator for ExtendedVmConfig {
 }
 
 #[derive(Clone, Copy, PartialEq, Default, Eq, Debug, Serialize, Deserialize)]
-pub struct ConstraintCount {
-    pub main: usize,
-    pub log_up: usize,
-}
-
-impl Add for ConstraintCount {
-    type Output = ConstraintCount;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        ConstraintCount {
-            main: self.main + rhs.main,
-            log_up: self.log_up + rhs.log_up,
-        }
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Default, Eq, Debug, Serialize, Deserialize)]
 /// Statistics of an AIR
 pub struct AirMetrics {
     /// The column widths
     pub widths: AirWidths,
     /// The number of polynomial constraints
-    pub constraint_count: ConstraintCount,
+    pub constraint_count: usize,
     /// The number of bus interactions
     pub interaction_count: usize,
 }
@@ -831,7 +814,7 @@ impl From<AirMetrics> for AirStats {
     fn from(metrics: AirMetrics) -> Self {
         AirStats {
             main_columns: metrics.widths.main,
-            constraints: metrics.constraint_count.main,
+            constraints: metrics.constraint_count,
             bus_interactions: metrics.interaction_count,
         }
     }
@@ -1970,7 +1953,7 @@ mod tests {
             main: 798,
             log_up: 684,
         },
-        constraint_count: ConstraintCount { main: 1, log_up: 1 },
+        constraint_count: 1,
         interaction_count: 253,
     };
 
@@ -2156,10 +2139,7 @@ mod tests {
                     main: 26,
                     log_up: 36,
                 },
-                constraint_count: ConstraintCount {
-                    main: 1,
-                    log_up: 11
-                },
+                constraint_count: 1,
                 interaction_count: 16,
             }
         );

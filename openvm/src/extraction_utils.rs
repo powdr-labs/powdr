@@ -6,7 +6,7 @@ use crate::bus_map::{BusMap, OpenVmBusType};
 use crate::opcode::branch_opcodes_set;
 use crate::powdr_extension::executor::RecordArenaDimension;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
-use crate::{AirMetrics, ConstraintCount, ExtendedVmConfig, ExtendedVmConfigExecutor, Instr};
+use crate::{AirMetrics, ExtendedVmConfig, ExtendedVmConfigExecutor, Instr};
 use crate::{BabyBearPoseidon2Engine, ExtendedVmConfigCpuBuilder};
 use openvm_circuit::arch::{
     AirInventory, AirInventoryError, ExecutorInventory, ExecutorInventoryError, MatrixRecordArena,
@@ -17,10 +17,7 @@ use openvm_circuit::system::SystemChipInventory;
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_instructions::VmOpcode;
-use openvm_stark_backend::air_builders::symbolic::symbolic_expression::{
-    SymbolicEvaluator, SymbolicExpression,
-};
-use openvm_stark_backend::air_builders::symbolic::symbolic_variable::Entry;
+use openvm_stark_backend::interaction::fri_log_up::find_interaction_chunks;
 
 use crate::utils::get_pil;
 use openvm_stark_backend::air_builders::symbolic::SymbolicRapBuilder;
@@ -453,120 +450,37 @@ pub fn get_name<SC: StarkGenericConfig>(air: Arc<dyn AnyRap<SC>>) -> String {
     air.name()
 }
 
-/// An evaluator to count reference to any non-main data, such as challenges and permutation columns    
-struct NonMainReferenceCounter;
-
-impl<F: PrimeField32> SymbolicEvaluator<F, i32> for NonMainReferenceCounter {
-    fn eval_const(&self, _: F) -> i32 {
-        0
-    }
-
-    fn eval_var(
-        &self,
-        symbolic_var: openvm_stark_backend::air_builders::symbolic::symbolic_variable::SymbolicVariable<F>,
-    ) -> i32 {
-        match symbolic_var.entry {
-            Entry::Main { .. } => 0,
-            _ => 1,
-        }
-    }
-
-    fn eval_is_first_row(&self) -> i32 {
-        unreachable!()
-    }
-
-    fn eval_is_last_row(&self) -> i32 {
-        unreachable!()
-    }
-
-    fn eval_is_transition(&self) -> i32 {
-        unreachable!()
-    }
-
-    fn eval_expr(&self, symbolic_expr: &SymbolicExpression<F>) -> i32 {
-        match symbolic_expr {
-            SymbolicExpression::Variable(var) => self.eval_var(*var),
-            SymbolicExpression::Constant(c) => self.eval_const(*c),
-            SymbolicExpression::Neg { x, .. } => self.eval_expr(x),
-            SymbolicExpression::Add { x, y, .. }
-            | SymbolicExpression::Sub { x, y, .. }
-            | SymbolicExpression::Mul { x, y, .. } => {
-                let x = self.eval_expr(x);
-                if x == 0 {
-                    self.eval_expr(y)
-                } else {
-                    x
-                }
-            }
-            SymbolicExpression::IsFirstRow => 0,
-            SymbolicExpression::IsLastRow => 0,
-            SymbolicExpression::IsTransition => 0,
-        }
-    }
-}
-
 pub fn get_main_constraints(
     air: Arc<dyn AnyRap<BabyBearSC>>,
 ) -> SymbolicConstraints<p3_baby_bear::BabyBear> {
     let builder = symbolic_builder_with_degree(air, None);
-    let mut constraints = builder.constraints();
-
-    // Only keep constraints which do not refer to any non-main data
-    constraints
-        .constraints
-        .retain(|e| NonMainReferenceCounter.eval_expr(e) == 0);
-
-    constraints
+    builder.constraints()
 }
 
 pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>, max_degree: usize) -> AirMetrics {
-    println!("Get air metrics");
-    let air_width = air.width();
+    let main = air.width();
 
     let symbolic_rap_builder = symbolic_builder_with_degree(air, Some(max_degree));
+    let preprocessed = symbolic_rap_builder.width().preprocessed.unwrap_or(0);
 
-    let width = symbolic_rap_builder.width();
-    // Get the preprocessed width
-    let preprocessed = width.preprocessed.unwrap_or(0);
-
-    // Get the main width
-    let main = width.common_main;
-    // Sanity check that it matches the air width
-    assert_eq!(air_width, main);
-    // Sanity check that the cached main trace widths are empty
-    assert!(width.cached_mains.is_empty());
-
-    // Get the after challenge width
-    // Sanity check that there is a single challenge phase
-    assert_eq!(width.after_challenge.len(), 1);
-    let log_up = width.after_challenge[0] * EXT_DEGREE;
-
-    // Get the number of constraints
     let SymbolicConstraints {
         constraints,
         interactions,
     } = symbolic_rap_builder.constraints();
 
-    println!("filter {} constraints...", constraints.len());
+    let log_up = (find_interaction_chunks(&interactions, max_degree)
+        .interaction_partitions()
+        .len()
+        + 1)
+        * EXT_DEGREE;
 
-    let log_up_constraint_count = constraints
-        .iter()
-        .filter(|c| NonMainReferenceCounter.eval_expr(c) > 0)
-        .count();
-
-    println!("done getting air metrics");
-
-    // Note: we do not keep track of the number of bus interactions, since they taken into account by in the constraints.
     AirMetrics {
         widths: AirWidths {
             preprocessed,
             main,
             log_up,
         },
-        constraint_count: ConstraintCount {
-            main: constraints.len() - log_up_constraint_count,
-            log_up: log_up_constraint_count,
-        },
+        constraint_count: constraints.len(),
         interaction_count: interactions.len(),
     }
 }
