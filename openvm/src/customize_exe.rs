@@ -1,13 +1,12 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 
 use std::fmt::Display;
 use std::hash::Hash;
 use std::iter::once;
-use std::path::Path;
 use std::sync::Arc;
 
 use crate::bus_map::OpenVmBusType;
-use crate::extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs, OriginalVmConfig};
+use crate::extraction_utils::{get_air_metrics, OriginalAirs, OriginalVmConfig};
 use crate::instruction_formatter::openvm_instruction_formatter;
 use crate::memory_bus_interaction::OpenVmMemoryBusInteraction;
 use crate::opcode::branch_opcodes_bigint_set;
@@ -26,15 +25,15 @@ use openvm_stark_backend::{
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::adapter::{
-    Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig, ApcWithStats, PgoAdapter,
+    Adapter, AdapterApc, ApcWithReport, PgoAdapter,
 };
-use powdr_autoprecompiles::blocks::{collect_basic_blocks, BasicBlock, Instruction, Program};
-use powdr_autoprecompiles::evaluation::{evaluate_apc, EvaluationResult};
+use powdr_autoprecompiles::blocks::{collect_basic_blocks, Instruction, Program};
+use powdr_autoprecompiles::evaluation::AirMetrics;
 use powdr_autoprecompiles::expression::try_convert;
-use powdr_autoprecompiles::pgo::{ApcCandidateJsonExport, Candidate, KnapsackItem};
+use powdr_autoprecompiles::pgo::Cost;
 use powdr_autoprecompiles::SymbolicBusInteraction;
 use powdr_autoprecompiles::VmConfig;
-use powdr_autoprecompiles::{Apc, PowdrConfig};
+use powdr_autoprecompiles::PowdrConfig;
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use powdr_riscv_elf::debug_info::DebugInfo;
 use serde::{Deserialize, Serialize};
@@ -54,6 +53,15 @@ pub struct BabyBearOpenVmApcAdapter<'a> {
     _marker: std::marker::PhantomData<&'a ()>,
 }
 
+pub struct OpenVmKnapsackCost;
+
+// The cost of adding an apc chip in openvm when it comes to recursion, which we model as its width, since the verifier is linear in the number of columns
+impl Cost for OpenVmKnapsackCost {
+    fn cost(apc_metrics: AirMetrics) -> usize {
+        apc_metrics.total_width()
+    }
+}
+
 impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     type PowdrField = BabyBearField;
     type Field = BabyBear;
@@ -64,7 +72,6 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     type MemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash> =
         OpenVmMemoryBusInteraction<Self::PowdrField, V>;
     type CustomBusTypes = OpenVmBusType;
-    type ApcStats = OvmApcStats;
     type AirId = String;
 
     fn into_field(e: Self::PowdrField) -> Self::Field {
@@ -75,6 +82,10 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
 
     fn from_field(e: Self::Field) -> Self::PowdrField {
         BabyBearField::from(e.as_canonical_u32())
+    }
+
+    fn get_apc_metrics(apc: Arc<AdapterApc<Self>>, max_constraint_degree: usize) -> AirMetrics {
+        get_air_metrics(Arc::new(PowdrAir::new(apc)), max_constraint_degree)
     }
 }
 
@@ -230,7 +241,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
 
     let extensions = apcs
         .into_iter()
-        .map(ApcWithStats::into_parts)
+        .map(ApcWithReport::into_parts)
         .enumerate()
         .map(|(i, (apc, apc_stats))| {
             let opcode = POWDR_OPCODE + i;
@@ -308,122 +319,4 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32>(
         .collect::<Result<_, _>>()?;
 
     Ok(SymbolicBusInteraction { id, mult, args })
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct OpenVmApcCandidate<F, I> {
-    apc: Arc<Apc<F, I>>,
-    execution_frequency: usize,
-    widths: AirWidthsDiff,
-    stats: EvaluationResult,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct OvmApcStats {
-    pub widths: AirWidthsDiff,
-}
-
-impl OvmApcStats {
-    fn new(widths: AirWidthsDiff) -> Self {
-        Self { widths }
-    }
-}
-
-impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear, Instr<BabyBear>> {
-    fn create(
-        apc: Arc<AdapterApc<BabyBearOpenVmApcAdapter<'a>>>,
-        pgo_program_pc_count: &HashMap<u64, u32>,
-        vm_config: AdapterVmConfig<BabyBearOpenVmApcAdapter>,
-        max_degree: usize,
-    ) -> Self {
-        let apc_metrics = get_air_metrics(Arc::new(PowdrAir::new(apc.clone())), max_degree);
-        let width_after = apc_metrics.widths;
-
-        let width_before = apc
-            .block
-            .statements
-            .iter()
-            .map(|instr| {
-                vm_config
-                    .instruction_handler
-                    .get_instruction_metrics(instr.0.opcode)
-                    .unwrap()
-                    .widths
-            })
-            .sum();
-
-        let stats = evaluate_apc(
-            &apc.block.statements,
-            vm_config.instruction_handler,
-            apc.machine(),
-        );
-
-        let execution_frequency =
-            *pgo_program_pc_count.get(&apc.block.start_pc).unwrap_or(&0) as usize;
-
-        Self {
-            apc,
-            execution_frequency,
-            widths: AirWidthsDiff::new(width_before, width_after),
-            stats,
-        }
-    }
-
-    /// Return a JSON export of the APC candidate.
-    fn to_json_export(&self, apc_candidates_dir_path: &Path) -> ApcCandidateJsonExport {
-        ApcCandidateJsonExport {
-            execution_frequency: self.execution_frequency,
-            original_block: BasicBlock {
-                start_pc: self.apc.block.start_pc,
-                statements: self
-                    .apc
-                    .block
-                    .statements
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect(),
-            },
-            stats: self.stats,
-            width_before: self.widths.before.total(),
-            value: self.value(),
-            cost_before: self.widths.before.total() as f64,
-            cost_after: self.widths.after.total() as f64,
-            apc_candidate_file: apc_candidates_dir_path
-                .join(format!("apc_{}.cbor", self.apc.start_pc()))
-                .display()
-                .to_string(),
-        }
-    }
-
-    fn into_apc_and_stats(self) -> AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a>> {
-        ApcWithStats::from(self.apc).with_stats(OvmApcStats::new(self.widths))
-    }
-}
-
-impl<P, I> OpenVmApcCandidate<P, I> {
-    fn cells_saved_per_row(&self) -> usize {
-        // The number of cells saved per row is the difference between the width before and after the APC.
-        self.widths.columns_saved().total()
-    }
-}
-
-impl<P, I> KnapsackItem for OpenVmApcCandidate<P, I> {
-    fn cost(&self) -> usize {
-        self.widths.after.total()
-    }
-
-    fn value(&self) -> usize {
-        // For an APC which is called once and saves 1 cell, this would be 1.
-        let value = self
-            .execution_frequency
-            .checked_mul(self.cells_saved_per_row())
-            .unwrap();
-        // We need `value()` to be much larger than `cost()` to avoid ties when ranking by `value() / cost()`
-        // Therefore, we scale it up by a constant factor.
-        value.checked_mul(1000).unwrap()
-    }
-
-    fn tie_breaker(&self) -> usize {
-        self.apc.start_pc() as usize
-    }
 }

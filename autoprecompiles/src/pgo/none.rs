@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::{
-    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, PgoAdapter},
+    adapter::{Adapter, AdapterApcWithReport, AdapterVmConfig, PgoAdapter},
     blocks::BasicBlock,
     pgo::create_apcs_for_all_blocks,
     PowdrConfig,
@@ -29,7 +29,7 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         _labels: BTreeMap<u64, Vec<String>>,
-    ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
+    ) -> Vec<AdapterApcWithReport<Self::Adapter>> {
         // cost = number_of_original_instructions
         blocks.sort_by(|a, b| b.statements.len().cmp(&a.statements.len()));
 

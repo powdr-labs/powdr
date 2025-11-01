@@ -4,8 +4,9 @@ use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterato
 use strum::{Display, EnumString};
 
 use crate::{
-    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, ApcWithStats},
+    adapter::{Adapter, AdapterApcWithReport, AdapterVmConfig, ApcWithReport},
     blocks::BasicBlock,
+    evaluation::evaluate_apc,
     PowdrConfig,
 };
 
@@ -14,7 +15,7 @@ mod instruction;
 mod none;
 
 pub use {
-    cell::{ApcCandidateJsonExport, Candidate, CellPgo, KnapsackItem},
+    cell::{ApcCandidateJsonExport, Candidate, CellPgo, Cost, KnapsackItem},
     instruction::InstructionPgo,
     none::NonePgo,
 };
@@ -77,7 +78,7 @@ fn create_apcs_for_all_blocks<A: Adapter>(
     blocks: Vec<BasicBlock<A::Instruction>>,
     config: &PowdrConfig,
     vm_config: AdapterVmConfig<A>,
-) -> Vec<AdapterApcWithStats<A>> {
+) -> Vec<AdapterApcWithReport<A>> {
     let n_acc = config.autoprecompiles as usize;
     tracing::info!("Generating {n_acc} autoprecompiles in parallel");
 
@@ -92,15 +93,23 @@ fn create_apcs_for_all_blocks<A: Adapter>(
                 block.start_pc
             );
 
-            crate::build::<A>(
+            let apc = crate::build::<A>(
                 block,
                 vm_config.clone(),
                 config.degree_bound,
                 config.apc_candidates_dir_path.as_deref(),
             )
-            .unwrap()
+            .unwrap();
+
+            let apc = Arc::new(apc);
+
+            let stats = evaluate_apc::<A>(
+                apc.clone(),
+                vm_config.instruction_handler,
+                config.degree_bound.identities
+            );
+
+            ApcWithReport::new(apc, stats)
         })
-        .map(Arc::new)
-        .map(ApcWithStats::from)
         .collect()
 }

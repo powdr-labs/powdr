@@ -6,8 +6,8 @@ use crate::bus_map::{BusMap, OpenVmBusType};
 use crate::opcode::branch_opcodes_set;
 use crate::powdr_extension::executor::RecordArenaDimension;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
-use crate::{AirMetrics, ExtendedVmConfig, ExtendedVmConfigExecutor, Instr};
 use crate::{BabyBearPoseidon2Engine, ExtendedVmConfigCpuBuilder};
+use crate::{ExtendedVmConfig, ExtendedVmConfigExecutor, Instr};
 use openvm_circuit::arch::{
     AirInventory, AirInventoryError, ExecutorInventory, ExecutorInventoryError, MatrixRecordArena,
     SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig, VmExecutionConfig,
@@ -17,13 +17,15 @@ use openvm_circuit::system::SystemChipInventory;
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_instructions::VmOpcode;
-use openvm_stark_backend::air_builders::symbolic::symbolic_expression::{SymbolicEvaluator, SymbolicExpression};
+use openvm_stark_backend::air_builders::symbolic::symbolic_expression::{
+    SymbolicEvaluator, SymbolicExpression,
+};
 use openvm_stark_backend::air_builders::symbolic::symbolic_variable::Entry;
 
 use crate::utils::get_pil;
 use openvm_stark_backend::air_builders::symbolic::SymbolicRapBuilder;
 use openvm_stark_backend::config::Val;
-use openvm_stark_backend::p3_field::{PrimeField32};
+use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_backend::prover::cpu::CpuBackend;
 use openvm_stark_backend::{
     air_builders::symbolic::SymbolicConstraints, config::StarkGenericConfig, rap::AnyRap,
@@ -34,13 +36,14 @@ use openvm_stark_sdk::config::{
 };
 use openvm_stark_sdk::p3_baby_bear::{self, BabyBear};
 use powdr_autoprecompiles::bus_map::BusType;
-use powdr_autoprecompiles::evaluation::AirStats;
+use powdr_autoprecompiles::evaluation::AirMetrics;
+use powdr_autoprecompiles::evaluation::AirWidths;
 use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::{Apc, InstructionHandler, SymbolicMachine};
 use serde::{Deserialize, Serialize};
 use std::iter::Sum;
+use std::ops::Add;
 use std::ops::Deref;
-use std::ops::{Add, Sub};
 use std::sync::MutexGuard;
 
 use crate::utils::UnsupportedOpenVmReferenceError;
@@ -83,9 +86,9 @@ impl<F> InstructionHandler for OriginalAirs<F> {
         branch_opcodes_set().contains(&instruction.0.opcode)
     }
 
-    fn get_instruction_air_stats(&self, instruction: &Self::Instruction) -> AirStats {
+    fn get_instruction_air_metrics(&self, instruction: &Self::Instruction) -> AirMetrics {
         self.get_instruction_metrics(instruction.0.opcode)
-            .map(|metrics| metrics.clone().into())
+            .copied()
             .unwrap()
     }
 }
@@ -466,22 +469,25 @@ pub fn get_main_constraints(
         fn eval_const(&self, _: F) -> i32 {
             0
         }
-    
-        fn eval_var(&self, symbolic_var: openvm_stark_backend::air_builders::symbolic::symbolic_variable::SymbolicVariable<F>) -> i32 {
+
+        fn eval_var(
+            &self,
+            symbolic_var: openvm_stark_backend::air_builders::symbolic::symbolic_variable::SymbolicVariable<F>,
+        ) -> i32 {
             match symbolic_var.entry {
                 Entry::Main { .. } => 0,
-                _ => 1
+                _ => 1,
             }
         }
-    
+
         fn eval_is_first_row(&self) -> i32 {
             unreachable!()
         }
-    
+
         fn eval_is_last_row(&self) -> i32 {
             unreachable!()
         }
-    
+
         fn eval_is_transition(&self) -> i32 {
             unreachable!()
         }
@@ -502,34 +508,49 @@ pub fn get_main_constraints(
     }
 
     // Only keep constraints which do not refer any non-main data
-    constraints.constraints = constraints.constraints.into_iter().filter(|e| NonMainReferenceCounter.eval_expr(e) == 0).collect();
+    constraints
+        .constraints
+        .retain(|e| NonMainReferenceCounter.eval_expr(e) == 0);
 
     constraints
 }
 
 pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>, max_degree: usize) -> AirMetrics {
-    let main = air.width();
+    let air_width = air.width();
 
     let symbolic_rap_builder = symbolic_builder_with_degree(air, Some(max_degree));
-    let preprocessed = symbolic_rap_builder.width().preprocessed.unwrap_or(0);
 
     let width = symbolic_rap_builder.width();
+    // Get the preprocessed width
+    let preprocessed = width.preprocessed.unwrap_or(0);
+
+    // Get the main width
+    let main = width.common_main;
+    // Sanity check that it matches the air width
+    assert_eq!(air_width, main);
+    // Sanity check that the cached main trace widths are empty
+    assert!(width.cached_mains.is_empty());
+
+    // Get the after challenge width
+    // Sanity check that there is a single challenge phase
     assert_eq!(width.after_challenge.len(), 1);
     let log_up = width.after_challenge[0] * EXT_DEGREE;
 
+    // Get the number of constraints
     let SymbolicConstraints {
         constraints,
         interactions,
     } = symbolic_rap_builder.constraints();
 
+    // Note: we do not keep track of the number of bus interactions, since they taken into account by in the constraints.
     AirMetrics {
         widths: AirWidths {
             preprocessed,
             main,
             log_up,
         },
-        constraints: constraints.len(),
-        bus_interactions: interactions.len(),
+        constraint_count: constraints.len(),
+        interaction_count: interactions.len(),
     }
 }
 
@@ -542,60 +563,6 @@ pub fn symbolic_builder_with_degree(
     let config = config_from_perm(&perm, security_params);
     let air_keygen_builder = AirKeygenBuilder::new(config.pcs(), air);
     air_keygen_builder.get_symbolic_builder(max_constraint_degree)
-}
-
-#[derive(Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, Debug)]
-pub struct AirWidths {
-    pub preprocessed: usize,
-    pub main: usize,
-    pub log_up: usize,
-}
-
-impl Add for AirWidths {
-    type Output = AirWidths;
-    fn add(self, rhs: AirWidths) -> AirWidths {
-        AirWidths {
-            preprocessed: self.preprocessed + rhs.preprocessed,
-            main: self.main + rhs.main,
-            log_up: self.log_up + rhs.log_up,
-        }
-    }
-}
-
-impl Sub for AirWidths {
-    type Output = AirWidths;
-    fn sub(self, rhs: AirWidths) -> AirWidths {
-        AirWidths {
-            preprocessed: self.preprocessed - rhs.preprocessed,
-            main: self.main - rhs.main,
-            log_up: self.log_up - rhs.log_up,
-        }
-    }
-}
-
-impl Sum<AirWidths> for AirWidths {
-    fn sum<I: Iterator<Item = AirWidths>>(iter: I) -> AirWidths {
-        iter.fold(AirWidths::default(), Add::add)
-    }
-}
-
-impl AirWidths {
-    pub fn total(&self) -> usize {
-        self.preprocessed + self.main + self.log_up
-    }
-}
-
-impl std::fmt::Display for AirWidths {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Total Width: {} (Preprocessed: {} Main: {}, Log Up: {})",
-            self.preprocessed + self.main + self.log_up,
-            self.preprocessed,
-            self.main,
-            self.log_up
-        )
-    }
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, Debug)]

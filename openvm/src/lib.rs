@@ -40,7 +40,6 @@ use openvm_stark_sdk::config::{
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
-use powdr_autoprecompiles::evaluation::AirStats;
 use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::PowdrExtension;
@@ -50,23 +49,21 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
 use std::fs::File;
 use std::io::BufWriter;
-use std::iter::Sum;
-use std::ops::Add;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
     sync::Arc,
 };
 
-use crate::customize_exe::OpenVmApcCandidate;
+use crate::customize_exe::OpenVmKnapsackCost;
 pub use crate::customize_exe::Prog;
-use crate::powdr_extension::chip::PowdrAir;
+pub use crate::powdr_extension::chip::PowdrAir;
 use crate::powdr_extension::PlonkAir;
 use tracing::{info_span, Level};
 
 #[cfg(test)]
 use crate::extraction_utils::AirWidthsDiff;
-use crate::extraction_utils::{export_pil, AirWidths, OriginalVmConfig};
+use crate::extraction_utils::{export_pil, OriginalVmConfig};
 use crate::instruction_formatter::openvm_opcode_formatter;
 use crate::powdr_extension::{PowdrExtensionExecutor, PowdrPrecompile};
 
@@ -640,7 +637,7 @@ pub fn compile_exe_with_elf(
                 elf.debug_info(),
                 config,
                 implementation,
-                CellPgo::<_, OpenVmApcCandidate<_, _>>::with_pgo_data_and_max_columns(
+                CellPgo::<_, OpenVmKnapsackCost>::with_pgo_data_and_max_columns(
                     pgo_data,
                     max_total_apc_columns,
                 ),
@@ -776,91 +773,46 @@ impl InitFileGenerator for ExtendedVmConfig {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, Default, Debug, Eq, PartialEq)]
-pub struct AirMetrics {
-    pub widths: AirWidths,
-    pub constraints: usize,
-    pub bus_interactions: usize,
-}
-
-impl From<AirMetrics> for AirStats {
-    fn from(metrics: AirMetrics) -> Self {
-        AirStats {
-            main_columns: metrics.widths.main,
-            constraints: metrics.constraints,
-            bus_interactions: metrics.bus_interactions,
-        }
-    }
-}
-
-impl Add for AirMetrics {
-    type Output = AirMetrics;
-
-    fn add(self, rhs: AirMetrics) -> AirMetrics {
-        AirMetrics {
-            widths: self.widths + rhs.widths,
-            constraints: self.constraints + rhs.constraints,
-            bus_interactions: self.bus_interactions + rhs.bus_interactions,
-        }
-    }
-}
-
-impl Sum<AirMetrics> for AirMetrics {
-    fn sum<I: Iterator<Item = AirMetrics>>(iter: I) -> AirMetrics {
-        iter.fold(AirMetrics::default(), Add::add)
-    }
-}
-
-impl AirMetrics {
-    pub fn total_width(&self) -> usize {
-        self.widths.total()
-    }
-}
-
+#[cfg(test)]
+use powdr_autoprecompiles::evaluation::{AirMetrics, ApcPerformanceReport};
 #[cfg(test)]
 impl CompiledProgram {
     // Return a tuple of (powdr AirMetrics, non-powdr AirMetrics)
-    fn air_metrics(
-        &self,
-        max_degree: usize,
-    ) -> (Vec<(AirMetrics, Option<AirWidthsDiff>)>, Vec<AirMetrics>) {
+    fn air_metrics(&self, max_degree: usize) -> (Vec<ApcPerformanceReport>, Vec<AirMetrics>) {
         let air_inventory = self.vm_config.create_airs().unwrap();
 
         let chip_complex = <SpecializedConfigCpuBuilder as VmBuilder<BabyBearPoseidon2Engine>>::create_chip_complex(&SpecializedConfigCpuBuilder, &self.vm_config, air_inventory).unwrap();
 
         let inventory = chip_complex.inventory;
 
-        // Order of precompile is the same as that of Powdr executors in chip inventory
-        let mut apc_stats = self
+        let apc_stats = self
             .vm_config
             .powdr
             .precompiles
             .iter()
-            .map(|precompile| precompile.apc_stats.clone());
+            .map(|precompile| precompile.apc_stats)
+            .collect();
 
-        inventory.airs().ext_airs().iter().fold(
-            (Vec::new(), Vec::new()),
-            |(mut powdr_air_metrics, mut non_powdr_air_metrics), air| {
+        let non_powdr = inventory
+            .airs()
+            .ext_airs()
+            .iter()
+            .filter_map(|air| {
                 let name = air.name();
                 // We actually give name "powdr_air_for_opcode_<opcode>" to the AIRs,
                 // but OpenVM uses the actual Rust type (PowdrAir) as the name in this method.
                 // TODO this is hacky but not sure how to do it better rn.
                 if name.starts_with("PowdrAir") || name.starts_with("PlonkAir") {
-                    use crate::extraction_utils::get_air_metrics;
-
-                    powdr_air_metrics.push((
-                        get_air_metrics(air.clone(), max_degree),
-                        apc_stats.next().unwrap().map(|stats| stats.widths),
-                    ));
+                    None
                 } else {
                     use crate::extraction_utils::get_air_metrics;
 
-                    non_powdr_air_metrics.push(get_air_metrics(air.clone(), max_degree));
+                    Some(get_air_metrics(air.clone(), max_degree))
                 }
+            })
+            .collect();
 
-                (powdr_air_metrics, non_powdr_air_metrics)
-            },
-        )
+        (apc_stats, non_powdr)
     }
 }
 
@@ -1028,6 +980,7 @@ pub fn execution_profile_from_guest(
 mod tests {
     use super::*;
     use expect_test::{expect, Expect};
+    use powdr_autoprecompiles::evaluation::AirWidths;
     use pretty_assertions::assert_eq;
     use test_log::test;
 
@@ -1867,17 +1820,17 @@ mod tests {
         )
         .unwrap();
 
-        let (powdr_air_metrics, non_powdr_air_metrics) = compiled_program.air_metrics(max_degree);
+        let (performance_reports, non_powdr_air_metrics) = compiled_program.air_metrics(max_degree);
 
         expected_metrics.powdr_expected_sum.assert_debug_eq(
-            &powdr_air_metrics
+            &performance_reports
                 .iter()
-                .map(|(metrics, _)| metrics.clone())
+                .map(|report| report.after)
                 .sum::<AirMetrics>(),
         );
         expected_metrics
             .powdr_expected_machine_count
-            .assert_debug_eq(&powdr_air_metrics.len());
+            .assert_debug_eq(&performance_reports.len());
         assert_eq!(
             non_powdr_air_metrics.len(),
             expected_metrics.non_powdr_expected_machine_count
@@ -1888,9 +1841,14 @@ mod tests {
         );
         let columns_saved = is_cell_pgo.then(|| {
             // Test cells saved in Pgo::Cell
-            powdr_air_metrics
+            performance_reports
                 .into_iter()
-                .map(|(_, columns_saved)| columns_saved.unwrap())
+                .map(|report| {
+                    AirWidthsDiff::new(
+                        report.before.widths,
+                        report.after.widths,
+                    )
+                })
                 .sum::<AirWidthsDiff>()
         });
         assert_eq!(columns_saved.is_some(), expected_columns_saved.is_some());
@@ -1930,8 +1888,8 @@ mod tests {
             main: 798,
             log_up: 684,
         },
-        constraints: 604,
-        bus_interactions: 253,
+        constraint_count: 813,
+        interaction_count: 253,
     };
 
     #[test]
@@ -1955,8 +1913,8 @@ mod tests {
                             main: 41,
                             log_up: 56,
                         },
-                        constraints: 15,
-                        bus_interactions: 26,
+                        constraint_count: 31,
+                        interaction_count: 26,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1983,8 +1941,8 @@ mod tests {
                             main: 41,
                             log_up: 56,
                         },
-                        constraints: 15,
-                        bus_interactions: 26,
+                        constraint_count: 31,
+                        interaction_count: 26,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2106,7 +2064,7 @@ mod tests {
         assert_eq!(powdr_metrics.len(), 1);
         let powdr_metrics_sum = powdr_metrics
             .into_iter()
-            .map(|(metrics, _)| metrics)
+            .map(|evaluation_result| evaluation_result.after)
             .sum::<AirMetrics>();
         assert_eq!(
             powdr_metrics_sum,
@@ -2116,8 +2074,8 @@ mod tests {
                     main: 26,
                     log_up: 36,
                 },
-                constraints: 1,
-                bus_interactions: 16,
+                constraint_count: 1,
+                interaction_count: 16,
             }
         );
     }

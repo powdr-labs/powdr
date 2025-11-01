@@ -6,6 +6,7 @@ use std::{fmt::Display, sync::Arc};
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
+use crate::evaluation::{AirMetrics, ApcPerformanceReport};
 use crate::{
     blocks::{BasicBlock, Instruction, Program},
     constraint_optimizer::IsBusStateful,
@@ -15,24 +16,17 @@ use crate::{
 };
 
 #[derive(Serialize, Deserialize)]
-pub struct ApcWithStats<F, I, S> {
+pub struct ApcWithReport<F, I> {
     apc: Arc<Apc<F, I>>,
-    stats: Option<S>,
+    report: ApcPerformanceReport,
 }
-impl<F, I, S> ApcWithStats<F, I, S> {
-    pub fn with_stats(mut self, stats: S) -> Self {
-        self.stats = Some(stats);
-        self
+impl<F, I> ApcWithReport<F, I> {
+    pub fn new(apc: Arc<Apc<F, I>>, report: ApcPerformanceReport) -> Self {
+        Self { apc, report }
     }
 
-    pub fn into_parts(self) -> (Arc<Apc<F, I>>, Option<S>) {
-        (self.apc, self.stats)
-    }
-}
-
-impl<F, I, S> From<Arc<Apc<F, I>>> for ApcWithStats<F, I, S> {
-    fn from(apc: Arc<Apc<F, I>>) -> Self {
-        Self { apc, stats: None }
+    pub fn into_parts(self) -> (Arc<Apc<F, I>>, ApcPerformanceReport) {
+        (self.apc, self.report)
     }
 }
 
@@ -45,7 +39,7 @@ pub trait PgoAdapter {
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
-    ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
+    ) -> Vec<AdapterApcWithReport<Self::Adapter>> {
         let filtered_blocks = blocks
             .into_iter()
             .filter(|block| !Self::Adapter::should_skip_block(block))
@@ -59,7 +53,7 @@ pub trait PgoAdapter {
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
-    ) -> Vec<AdapterApcWithStats<Self::Adapter>>;
+    ) -> Vec<AdapterApcWithReport<Self::Adapter>>;
 
     fn pc_execution_count(&self, _pc: u64) -> Option<u32> {
         None
@@ -86,7 +80,6 @@ where
         V,
     >;
     type CustomBusTypes: Clone + Display + Sync + Eq + PartialEq;
-    type ApcStats: Send + Sync;
     type AirId: Eq + Hash + Send + Sync;
 
     fn into_field(e: Self::PowdrField) -> Self::Field;
@@ -96,11 +89,11 @@ where
     fn should_skip_block(_block: &BasicBlock<Self::Instruction>) -> bool {
         false
     }
+
+    fn get_apc_metrics(apc: Arc<AdapterApc<Self>>, max_constraint_degree: usize) -> AirMetrics;
 }
 
-pub type AdapterApcWithStats<A> =
-    ApcWithStats<<A as Adapter>::Field, <A as Adapter>::Instruction, <A as Adapter>::ApcStats>;
-pub type ApcStats<A> = <A as Adapter>::ApcStats;
+pub type AdapterApcWithReport<A> = ApcWithReport<<A as Adapter>::Field, <A as Adapter>::Instruction>;
 pub type AdapterApc<A> = Apc<<A as Adapter>::Field, <A as Adapter>::Instruction>;
 pub type AdapterVmConfig<'a, A> = VmConfig<
     'a,
