@@ -159,6 +159,7 @@ jobs:
           echo 'powdr-riscv-elf = { path = "../riscv-elf" }' >> .cargo/config.toml
           echo 'powdr-number = { path = "../number" }' >> .cargo/config.toml
           echo 'powdr-autoprecompiles = { path = "../autoprecompiles" }' >> .cargo/config.toml
+          echo 'powdr-openvm-hints-circuit = { path = "../openvm/extensions/hints-circuit" }' >> .cargo/config.toml
 
       - name: Run reth benchmark
         run: |

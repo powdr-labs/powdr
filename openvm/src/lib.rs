@@ -1410,7 +1410,7 @@ mod tests {
     // TODO: fix this test. It works with `mock` (see above) but not with `prove_simple`
     #[test]
     #[ignore = "Panics with a verifier error like below without debug assertions, but fails with it"]
-    #[should_panic = "Verification(StarkError(InvalidProofShape)"]
+    #[should_panic = "StarkError(InvalidProofShape)"]
     fn keccak_plonk_small_prove_simple() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
