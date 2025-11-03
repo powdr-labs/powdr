@@ -346,17 +346,17 @@ impl PowdrTraceGeneratorGpu {
         let periphery = &self.periphery.real;
 
         // Range checker
-        let var_range_bus_id = self.periphery_bus_ids.range_checker;
+        let var_range_bus_id = self.periphery_bus_ids.range_checker as u32;
         let var_range_count = &periphery.range_checker.count;
 
         // Tuple checker
         let tuple_range_checker_chip = periphery.tuple_range_checker.as_ref().unwrap();
-        let tuple2_bus_id = self.periphery_bus_ids.tuple_range_checker;
+        let tuple2_bus_id = self.periphery_bus_ids.tuple_range_checker.unwrap() as u32;
         let tuple2_sizes = tuple_range_checker_chip.sizes;
         let tuple2_count_u32 = tuple_range_checker_chip.count.as_ref();
 
         // Bitwise lookup; NUM_BITS is fixed at 8 in CUDA
-        let bitwise_bus_id = self.periphery_bus_ids.bitwise_lookup;
+        let bitwise_bus_id = self.periphery_bus_ids.bitwise_lookup.unwrap() as u32;
         let bitwise_count_u32 = periphery.bitwise_lookup_8.as_ref().unwrap().count.as_ref();
 
         // Launch GPU apply-bus to update periphery histograms on device
