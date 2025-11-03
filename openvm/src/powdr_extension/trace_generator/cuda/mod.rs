@@ -24,7 +24,6 @@ use powdr_constraint_solver::constraint_system::ComputationMethod;
 use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 
 use crate::{
-    bus_map::DEFAULT_TUPLE_RANGE_CHECKER,
     cuda_abi::{self, DerivedExprSpec, DevInteraction, ExprSpan, OpCode, OriginalAir, Subst},
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     powdr_extension::{
