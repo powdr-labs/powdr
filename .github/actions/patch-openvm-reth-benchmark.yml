@@ -1,0 +1,27 @@
+name: "Patch openvm-reth-benchmark"
+description: "Checks out powdr-labs/openvm-reth-benchmark at a fixed ref and patches it to use local powdr crates"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout openvm-reth-benchmark
+      uses: actions/checkout@v4
+      with:
+        repository: powdr-labs/openvm-reth-benchmark
+        # Set once here — no inputs required elsewhere
+        ref: openvm-reth-powdr-2025-10-30-1.4.1-gpu
+        path: openvm-reth-benchmark
+
+    - name: Patch openvm-reth-benchmark to use local powdr
+      shell: bash
+      run: |
+        cd openvm-reth-benchmark
+        mkdir -p .cargo
+        cat <<'EOF' > .cargo/config.toml
+        [patch."https://github.com/powdr-labs/powdr.git"]
+        powdr-openvm = { path = "../openvm" }
+        powdr-riscv-elf = { path = "../riscv-elf" }
+        powdr-number = { path = "../number" }
+        powdr-autoprecompiles = { path = "../autoprecompiles" }
+        powdr-openvm-hints-circuit = { path = "../openvm/extensions/hints-circuit" }
+        EOF
