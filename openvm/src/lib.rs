@@ -93,9 +93,9 @@ cfg_if::cfg_if! {
         pub use openvm_circuit::system::cuda::{extensions::SystemGpuBuilder, SystemChipInventoryGPU};
         pub use openvm_sdk::config::SdkVmGpuBuilder;
         pub use openvm_cuda_backend::prover_backend::GpuBackend;
-        pub use openvm_circuit_primitives::bitwise_op_lookup::BitwiseOperationLookupChipGPU;
-        pub use openvm_circuit_primitives::range_tuple::RangeTupleCheckerChipGPU;
-        pub use openvm_circuit_primitives::var_range::VariableRangeCheckerChipGPU;
+        pub use openvm_circuit_primitives::bitwise_op_lookup::{BitwiseOperationLookupAir, BitwiseOperationLookupChipGPU};
+        pub use openvm_circuit_primitives::range_tuple::{RangeTupleCheckerAir, RangeTupleCheckerChipGPU};
+        pub use openvm_circuit_primitives::var_range::{VariableRangeCheckerAir, VariableRangeCheckerChipGPU};
         pub use openvm_cuda_backend::base::DeviceMatrix;
         pub use openvm_circuit::arch::DenseRecordArena;
     }
@@ -231,18 +231,36 @@ impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, PowdrExtens
         // TODO: here we make assumptions about the existence of some chips in the periphery. Make this more flexible
 
         use crate::powdr_extension::trace_generator::cuda::PowdrPeripheryInstancesGpu;
-        let bitwise_lookup = inventory
-            .find_chip::<Arc<BitwiseOperationLookupChipGPU<8>>>()
-            .next()
-            .cloned();
         let range_checker = inventory
             .find_chip::<Arc<VariableRangeCheckerChipGPU>>()
             .next()
             .unwrap();
+        let bitwise_lookup = inventory
+            .find_chip::<Arc<BitwiseOperationLookupChipGPU<8>>>()
+            .next()
+            .cloned();
         let tuple_range_checker = inventory
             .find_chip::<Arc<RangeTupleCheckerChipGPU<2>>>()
             .next()
             .cloned();
+
+        // Obtain periphery bus ids from `AirInventory`
+        let air_inventory = inventory.airs();
+        let range_checker_bus_id = air_inventory
+            .find_air::<VariableRangeCheckerAir>()
+            .next()
+            .unwrap()
+            .bus
+            .inner
+            .index;
+        let bitwise_lookup_bus_id = air_inventory
+            .find_air::<BitwiseOperationLookupAir<8>>()
+            .next()
+            .map(|air| air.bus.inner.index);
+        let tuple_range_checker_bus_id = air_inventory
+            .find_air::<RangeTupleCheckerAir<2>>()
+            .next()
+            .map(|air| air.bus.inner.index);
 
         // Create the shared chips and the dummy shared chips
         let shared_chips_pair = PowdrPeripheryInstancesGpu::new(
@@ -262,6 +280,11 @@ impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, PowdrExtens
                         extension.airs.clone(),
                         extension.base_config.clone(),
                         shared_chips_pair.clone(),
+                        PeripheryBusIds {
+                            range_checker: range_checker_bus_id,
+                            bitwise_lookup: bitwise_lookup_bus_id,
+                            tuple_range_checker: tuple_range_checker_bus_id,
+                        },
                     );
                     inventory.add_executor_chip(chip);
                 }
@@ -273,6 +296,12 @@ impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, PowdrExtens
 
         Ok(())
     }
+}
+
+pub struct PeripheryBusIds {
+    pub range_checker: u16,
+    pub bitwise_lookup: Option<u16>,
+    pub tuple_range_checker: Option<u16>,
 }
 
 struct PowdrCpuProverExt;
