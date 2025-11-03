@@ -15,7 +15,6 @@ use crate::BitwiseOperationLookupChipGPU;
 use crate::DenseRecordArena;
 use crate::GpuBabyBearPoseidon2Engine;
 use crate::GpuBackend;
-use crate::PeripheryBusIds;
 use crate::RangeTupleCheckerChipGPU;
 use crate::VariableRangeCheckerChipGPU;
 use openvm_circuit_primitives::var_range::VariableRangeCheckerChip;
@@ -41,7 +40,7 @@ impl PowdrPeripheryInstancesGpu {
     pub(crate) fn new(
         range_checker: Arc<VariableRangeCheckerChipGPU>,
         bitwise_8: Option<Arc<BitwiseOperationLookupChipGPU<8>>>,
-        periphery_bus_ids: PeripheryBusIds,
+        tuple_range_checker: Option<Arc<RangeTupleCheckerChipGPU<2>>>,
     ) -> Self {
         Self {
             real: SharedPeripheryChipsGpu {

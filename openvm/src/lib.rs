@@ -277,7 +277,11 @@ impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, PowdrExtens
                         extension.airs.clone(),
                         extension.base_config.clone(),
                         shared_chips_pair.clone(),
-                        tuple_range_checker_bus_id,
+                        PeripheryBusIds {
+                            range_checker: range_checker_bus_id.unwrap(),
+                            bitwise_lookup: bitwise_lookup_bus_id.unwrap(),
+                            tuple_range_checker: tuple_range_checker_bus_id.unwrap(),
+                        },
                     );
                     inventory.add_executor_chip(chip);
                 }

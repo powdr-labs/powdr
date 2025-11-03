@@ -146,6 +146,7 @@ mod cuda {
             trace_generator::cuda::{PowdrPeripheryInstancesGpu, PowdrTraceGeneratorGpu},
             PowdrPrecompile,
         },
+        PeripheryBusIds,
     };
 
     pub struct PowdrChipGpu {
