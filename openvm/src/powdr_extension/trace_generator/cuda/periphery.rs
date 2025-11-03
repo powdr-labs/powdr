@@ -1,4 +1,4 @@
-use crate::powdr_extension::trace_generator::common::DummyExecutor;
+use crate::{powdr_extension::trace_generator::common::DummyExecutor, PeripheryBusIds};
 use openvm_circuit::arch::{
     AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecutorInventoryBuilder,
     ExecutorInventoryError, VmCircuitExtension, VmExecutionExtension, VmProverExtension,
@@ -27,6 +27,8 @@ pub struct PowdrPeripheryInstancesGpu {
     pub real: SharedPeripheryChipsGpu,
     /// The dummy chips used for all APCs. They share the range checker but create new instances of the bitwise lookup chip and the tuple range checker.
     pub dummy: SharedPeripheryChipsGpu,
+    /// The bus ids of the periphery
+    pub bus_ids: PeripheryBusIds,
 }
 
 #[derive(Clone)]
@@ -41,6 +43,7 @@ impl PowdrPeripheryInstancesGpu {
         range_checker: Arc<VariableRangeCheckerChipGPU>,
         bitwise_8: Option<Arc<BitwiseOperationLookupChipGPU<8>>>,
         tuple_range_checker: Option<Arc<RangeTupleCheckerChipGPU<2>>>,
+        bus_ids: PeripheryBusIds,
     ) -> Self {
         Self {
             real: SharedPeripheryChipsGpu {
@@ -73,6 +76,7 @@ impl PowdrPeripheryInstancesGpu {
                     })
                 }),
             },
+            bus_ids,
         }
     }
 }
