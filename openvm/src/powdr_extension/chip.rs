@@ -9,7 +9,7 @@ use crate::{
         trace_generator::cpu::{PowdrPeripheryInstancesCpu, PowdrTraceGeneratorCpu},
         PowdrPrecompile,
     },
-    AirMetrics, Instr,
+    AirMetrics, BabyBearOpenVmApcAdapter, Instr,
 };
 
 use itertools::Itertools;
@@ -27,7 +27,7 @@ use openvm_stark_backend::{
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
-    adapter::PowdrArithmetization,
+    adapter::{AdapterApc, ApcArithmetization},
     expression::{AlgebraicEvaluator, AlgebraicReference, WitnessEvaluator},
     Apc,
 };
@@ -68,9 +68,9 @@ pub struct PowdrAir<F> {
     apc: Arc<Apc<F, Instr<F>>>,
 }
 
-impl PowdrArithmetization<BabyBear, Instr<BabyBear>, AirMetrics> for PowdrAir<BabyBear> {
-    fn get_apc_metrics(
-        apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
+impl<'a> ApcArithmetization<BabyBearOpenVmApcAdapter<'a>> for PowdrAir<BabyBear> {
+    fn get_metrics(
+        apc: Arc<AdapterApc<BabyBearOpenVmApcAdapter<'a>>>,
         max_constraint_degree: usize,
     ) -> AirMetrics {
         get_air_metrics(Arc::new(Self::new(apc)), max_constraint_degree)

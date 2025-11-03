@@ -1,7 +1,7 @@
 use crate::{
     bus_map::{BusMap, OpenVmBusType},
     extraction_utils::get_air_metrics,
-    AirMetrics, BusType, Instr,
+    AirMetrics, BabyBearOpenVmApcAdapter, BusType,
 };
 use itertools::Itertools;
 use openvm_circuit_primitives::AlignedBorrow;
@@ -13,7 +13,7 @@ use openvm_stark_backend::{
     rap::{BaseAirWithPublicValues, ColumnsAir, PartitionedBaseAir},
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
-use powdr_autoprecompiles::{adapter::PowdrArithmetization, Apc};
+use powdr_autoprecompiles::adapter::{AdapterApc, ApcArithmetization};
 use std::{borrow::Borrow, sync::Arc};
 use struct_reflection::StructReflection;
 use struct_reflection::StructReflectionHelper;
@@ -99,9 +99,9 @@ impl<F> PlonkAir<F> {
     }
 }
 
-impl PowdrArithmetization<BabyBear, Instr<BabyBear>, AirMetrics> for PlonkAir<BabyBear> {
-    fn get_apc_metrics(
-        _: Arc<Apc<BabyBear, Instr<BabyBear>>>,
+impl<'a> ApcArithmetization<BabyBearOpenVmApcAdapter<'a>> for PlonkAir<BabyBear> {
+    fn get_metrics(
+        _: Arc<AdapterApc<BabyBearOpenVmApcAdapter<'a>>>,
         max_constraint_degree: usize,
     ) -> AirMetrics {
         get_air_metrics(Arc::new(PlonkAir::dummy()), max_constraint_degree)

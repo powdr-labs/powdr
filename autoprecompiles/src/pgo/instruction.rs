@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use crate::{
-    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, PgoAdapter, PowdrArithmetization},
+    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, PgoAdapter, ApcArithmetization},
     blocks::BasicBlock,
     pgo::create_apcs_for_all_blocks,
     PowdrConfig,
@@ -21,9 +21,7 @@ impl<A, Air> InstructionPgo<A, Air> {
     }
 }
 
-impl<A: Adapter, Air: PowdrArithmetization<A::Field, A::Instruction, A::ApcStats>> PgoAdapter
-    for InstructionPgo<A, Air>
-{
+impl<A: Adapter, Air: ApcArithmetization<A>> PgoAdapter for InstructionPgo<A, Air> {
     type Adapter = A;
     type Air = Air;
 

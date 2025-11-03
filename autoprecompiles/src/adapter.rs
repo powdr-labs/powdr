@@ -33,11 +33,7 @@ impl<F, I, S> ApcWithReport<F, I, S> {
 
 pub trait PgoAdapter {
     type Adapter: Adapter;
-    type Air: PowdrArithmetization<
-        <Self::Adapter as Adapter>::Field,
-        <Self::Adapter as Adapter>::Instruction,
-        <Self::Adapter as Adapter>::ApcStats,
-    >;
+    type Air: ApcArithmetization<Self::Adapter>;
 
     fn filter_blocks_and_create_apcs_with_pgo(
         &self,
@@ -66,8 +62,9 @@ pub trait PgoAdapter {
     }
 }
 
-pub trait PowdrArithmetization<F, I, S>: Send + Sync {
-    fn get_apc_metrics(apc: Arc<Apc<F, I>>, max_constraint_degree: usize) -> S;
+pub trait ApcArithmetization<A: Adapter>: Send + Sync {
+    /// Given an apc circuit and a degree bound, return the stats when compiling this apc using this arithmetization
+    fn get_metrics(apc: Arc<AdapterApc<A>>, max_constraint_degree: usize) -> A::ApcStats;
 }
 
 pub trait Adapter: Sized

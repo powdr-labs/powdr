@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     adapter::{
         Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig, ApcWithReport, PgoAdapter,
-        PowdrArithmetization,
+        ApcArithmetization,
     },
     blocks::BasicBlock,
     evaluation::{evaluate_apc, AirStats, ApcPerformanceReport, ApcStats},
@@ -40,7 +40,7 @@ pub struct Candidate<A: Adapter, C: Cost<A::ApcStats>> {
 }
 
 impl<A: Adapter, C: Cost<A::ApcStats>> Candidate<A, C> {
-    fn create<Air: PowdrArithmetization<A::Field, A::Instruction, A::ApcStats>>(
+    fn create<Air: ApcArithmetization<A>>(
         apc: Arc<AdapterApc<A>>,
         pgo_program_pc_count: &HashMap<u64, u32>,
         vm_config: AdapterVmConfig<A>,
@@ -160,7 +160,7 @@ struct JsonExport {
 impl<
         A: Adapter + Send + Sync,
         C: Cost<A::ApcStats> + Send + Sync,
-        Air: PowdrArithmetization<A::Field, A::Instruction, A::ApcStats>,
+        Air: ApcArithmetization<A>,
     > PgoAdapter for CellPgo<A, C, Air>
 {
     type Adapter = A;

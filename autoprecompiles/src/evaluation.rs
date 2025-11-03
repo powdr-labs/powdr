@@ -1,7 +1,7 @@
 use std::{fmt::Display, iter::Sum, ops::Add, sync::Arc};
 
 use crate::{
-    adapter::{Adapter, AdapterApc, PowdrArithmetization},
+    adapter::{Adapter, AdapterApc, ApcArithmetization},
     InstructionHandler,
 };
 
@@ -69,10 +69,7 @@ impl<S: ApcStats> ApcPerformanceReport<S> {
 
 /// Evaluate an APC by comparing its cost to the cost of executing the
 /// basic block in software.
-pub fn evaluate_apc<
-    A: Adapter,
-    Air: PowdrArithmetization<A::Field, A::Instruction, A::ApcStats>,
->(
+pub fn evaluate_apc<A: Adapter, Air: ApcArithmetization<A>>(
     apc: Arc<AdapterApc<A>>,
     instruction_handler: &A::InstructionHandler,
     max_constraint_degree: usize,
@@ -83,7 +80,7 @@ pub fn evaluate_apc<
         .iter()
         .map(|instruction| instruction_handler.get_instruction_air_metrics(instruction))
         .sum();
-    let after = Air::get_apc_metrics(apc, max_constraint_degree);
+    let after = Air::get_metrics(apc, max_constraint_degree);
     ApcPerformanceReport { before, after }
 }
 
