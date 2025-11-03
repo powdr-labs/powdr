@@ -499,7 +499,7 @@ mod test {
             RCg {
                 min: 18.into(),
                 max: 307.into(),
-                mask: 1023u32.into()
+                mask: 511u32.into()
             }
         );
         assert_eq!(
