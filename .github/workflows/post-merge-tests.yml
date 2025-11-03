@@ -52,7 +52,7 @@ jobs:
         run: /usr/bin/time -v cargo run --bin powdr_openvm -r prove guest-ecrecover --input 20 --autoprecompiles 100 --recursion
 
       - name: Patch benchmark
-        uses: ./.github/actions/patch-openvm-benchmark
+        uses: ./.github/actions/patch-openvm-reth-benchmark.yml
 
       - name: Run reth benchmark
         run: |

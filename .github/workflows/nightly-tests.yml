@@ -144,7 +144,7 @@ jobs:
           bash ./openvm/scripts/run_guest_benches.sh
 
       - name: Patch benchmark
-        uses: ./.github/actions/patch-openvm-benchmark
+        uses: ./.github/actions/patch-openvm-reth-benchmark.yml
 
       - name: Run reth benchmark
         run: |
