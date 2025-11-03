@@ -521,11 +521,11 @@ fn is_satisfiable<T: FieldElement, V: Clone + Ord + Hash + Display>(
         })
         .collect_vec();
     for (v, rc) in rcs {
-        let rc = output_rc
-            .get(&v)
-            .cloned()
-            .unwrap_or_default()
-            .conjunction(&rc);
+        if output_rc.contains_key(&v) {
+            // We cannot losslessly compute the conjunction,
+            // but this case should not happen anyway.
+            return None;
+        }
         output_rc.insert(v, rc);
     }
     if system.algebraic_constraints.is_empty() && system.bus_interactions.is_empty() {
@@ -557,6 +557,8 @@ fn inline_non_input_variables<T: FieldElement, V: Clone + Ord + Hash + Display>(
     }
 }
 
+/// Tries to remove pure range constraint bus interactions and returns
+/// the resulting constraint system and the range constraints.
 fn remove_range_constraint_bus_interactions<
     T: FieldElement,
     V: Clone + Ord + Eq + Hash + Display,
@@ -665,8 +667,8 @@ fn try_combine_range_constraint_pair<T: FieldElement, V: Clone + Ord + Hash + Di
             if rc1 == rc2 {
                 return None;
             }
-            // TODO check that it is loss-less
             let rc = rc1.disjunction(rc2);
+            // Check that the disjunction was loss-less.
             if rc.conjunction(rc1) == *rc1 && rc2.conjunction(&rc) == *rc2 {
                 Some((v, rc))
             } else {
