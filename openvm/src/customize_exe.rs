@@ -14,7 +14,6 @@ use crate::opcode::branch_opcodes_bigint_set;
 use crate::powdr_extension::chip::PowdrAir;
 use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::OriginalCompiledProgram;
-use crate::PrecompileImplementation;
 use crate::{CompiledProgram, SpecializedConfig};
 use itertools::Itertools;
 use openvm_instructions::instruction::Instruction as OpenVmInstruction;
@@ -146,7 +145,6 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
     labels: &BTreeSet<u32>,
     debug_info: &DebugInfo,
     config: PowdrConfig,
-    implementation: PrecompileImplementation,
     pgo: P,
 ) -> CompiledProgram {
     let original_config = OriginalVmConfig::new(vm_config.clone());
@@ -258,7 +256,6 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         vm_config: SpecializedConfig::new(
             original_config,
             extensions,
-            implementation,
             config.degree_bound.identities,
         ),
     }
