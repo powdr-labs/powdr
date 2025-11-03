@@ -160,6 +160,7 @@ mod cuda {
             original_airs: OriginalAirs<BabyBear>,
             base_config: OriginalVmConfig,
             periphery: PowdrPeripheryInstancesGpu,
+            tuple_range_checker_bus_id: Option<u16>,
         ) -> Self {
             let PowdrPrecompile {
                 name,
@@ -167,8 +168,13 @@ mod cuda {
                 apc_record_arena_gpu: apc_record_arena,
                 ..
             } = precompile;
-            let trace_generator =
-                PowdrTraceGeneratorGpu::new(apc, original_airs, base_config, periphery);
+            let trace_generator = PowdrTraceGeneratorGpu::new(
+                apc,
+                original_airs,
+                base_config,
+                periphery,
+                tuple_range_checker_bus_id,
+            );
 
             Self {
                 name,

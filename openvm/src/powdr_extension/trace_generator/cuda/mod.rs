@@ -178,6 +178,7 @@ pub struct PowdrTraceGeneratorGpu {
     pub original_airs: OriginalAirs<BabyBear>,
     pub config: OriginalVmConfig,
     pub periphery: PowdrPeripheryInstancesGpu,
+    pub tuple_range_checker_bus_id: Option<u16>,
 }
 
 impl PowdrTraceGeneratorGpu {
@@ -186,12 +187,14 @@ impl PowdrTraceGeneratorGpu {
         original_airs: OriginalAirs<BabyBear>,
         config: OriginalVmConfig,
         periphery: PowdrPeripheryInstancesGpu,
+        tuple_range_checker_bus_id: Option<u16>,
     ) -> Self {
         Self {
             apc,
             original_airs,
             config,
             periphery,
+            tuple_range_checker_bus_id,
         }
     }
 
@@ -355,7 +358,12 @@ impl PowdrTraceGeneratorGpu {
 
         // Tuple checker
         let chip = periphery.tuple_range_checker.as_ref().unwrap();
-        let tuple2_bus_id = DEFAULT_TUPLE_RANGE_CHECKER as u32;
+        let tuple2_bus_id = if let Some(cpu_chip) = periphery.tuple_range_checker.cpu_chip.as_ref()
+        {
+            cpu_chip.bus().index() as u32
+        } else {
+            self.tuple_range_checker_bus_id.unwrap() as u32
+        };
         let tuple2_sizes = chip.sizes;
         let tuple2_count_u32 = chip.count.as_ref();
 
