@@ -61,7 +61,7 @@ impl Cost<AirMetrics> for OpenVmKnapsackCost {
 
 impl ApcStats for AirMetrics {
     fn cells_per_call(&self) -> usize {
-        self.total_width()
+        self.total_width() * self.rows_per_call
     }
 }
 

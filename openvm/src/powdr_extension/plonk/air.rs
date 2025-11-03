@@ -1,6 +1,7 @@
 use crate::{
     bus_map::{BusMap, OpenVmBusType},
     extraction_utils::get_air_metrics,
+    plonk::air_to_plonkish::build_circuit,
     AirMetrics, BabyBearOpenVmApcAdapter, BusType,
 };
 use itertools::Itertools;
@@ -101,10 +102,27 @@ impl<F> PlonkAir<F> {
 
 impl<'a> ApcArithmetization<BabyBearOpenVmApcAdapter<'a>> for PlonkAir<BabyBear> {
     fn get_metrics(
-        _: Arc<AdapterApc<BabyBearOpenVmApcAdapter<'a>>>,
+        apc: Arc<AdapterApc<BabyBearOpenVmApcAdapter<'a>>>,
         max_constraint_degree: usize,
     ) -> AirMetrics {
-        get_air_metrics(Arc::new(PlonkAir::dummy()), max_constraint_degree)
+        // Instantiate a `PlonkAir` and collect the metrics. Note that the air does not depend on the apc, but the height does.
+        let plonk_air = PlonkAir::dummy();
+        let bus_map = BusMap::from_id_type_pairs([
+            (plonk_air.execution_bus_id as u64, BusType::ExecutionBridge),
+            (plonk_air.pc_lookup_bus_id as u64, BusType::PcLookup),
+            (plonk_air.execution_bus_id as u64, BusType::ExecutionBridge),
+            (plonk_air.memory_bus_id as u64, BusType::Memory),
+            (
+                plonk_air.tuple_range_checker_bus_id as u64,
+                BusType::Other(OpenVmBusType::TupleRangeChecker),
+            ),
+            (
+                plonk_air.variable_range_checker_bus_id as u64,
+                BusType::Other(OpenVmBusType::VariableRangeChecker),
+            ),
+        ]);
+        let circuit = build_circuit(apc.machine(), &bus_map);
+        get_air_metrics(Arc::new(plonk_air), max_constraint_degree, circuit.len())
     }
 }
 

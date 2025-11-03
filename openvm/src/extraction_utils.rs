@@ -227,6 +227,8 @@ impl AsMut<SystemConfig> for OriginalVmConfig {
     }
 }
 
+pub const ORIGINAL_AIRS_ROWS_PER_CALL: usize = 1;
+
 impl OriginalVmConfig {
     pub fn new(sdk_config: ExtendedVmConfig) -> Self {
         Self {
@@ -303,11 +305,10 @@ impl OriginalVmConfig {
             }) // find executor for opcode
             .try_fold(OriginalAirs::default(), |mut airs, (op, air_ref)| {
                 airs.insert_opcode(op, air_ref.name(), || {
-                    println!("FETCH {}", air_ref.name());
-
                     let columns = get_columns(air_ref.clone());
                     let constraints = get_constraints(air_ref.clone());
-                    let metrics = get_air_metrics(air_ref.clone(), max_degree);
+                    let metrics =
+                        get_air_metrics(air_ref.clone(), max_degree, ORIGINAL_AIRS_ROWS_PER_CALL);
 
                     let powdr_exprs = constraints
                         .constraints
@@ -402,7 +403,7 @@ impl OriginalVmConfig {
             .iter()
             .map(|air| {
                 let name = air.name();
-                let metrics = get_air_metrics(air.clone(), max_degree);
+                let metrics = get_air_metrics(air.clone(), max_degree, ORIGINAL_AIRS_ROWS_PER_CALL);
                 (name, metrics)
             })
             .collect()
@@ -459,7 +460,11 @@ pub fn get_constraints(
     builder.constraints()
 }
 
-pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>, max_degree: usize) -> AirMetrics {
+pub fn get_air_metrics(
+    air: Arc<dyn AnyRap<BabyBearSC>>,
+    max_degree: usize,
+    rows_per_call: usize,
+) -> AirMetrics {
     let main = air.width();
 
     let symbolic_rap_builder = symbolic_builder_with_degree(air, Some(max_degree));
@@ -484,6 +489,7 @@ pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>, max_degree: usize) -> A
         },
         constraints: constraints.len(),
         bus_interactions: interactions.len(),
+        rows_per_call,
     }
 }
 

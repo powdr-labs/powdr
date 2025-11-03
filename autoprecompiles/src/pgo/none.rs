@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::{
-    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, PgoAdapter, ApcArithmetization},
+    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, ApcArithmetization, PgoAdapter},
     blocks::BasicBlock,
     pgo::create_apcs_for_all_blocks,
     PowdrConfig,

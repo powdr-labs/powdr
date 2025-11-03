@@ -73,7 +73,8 @@ impl<'a> ApcArithmetization<BabyBearOpenVmApcAdapter<'a>> for PowdrAir<BabyBear>
         apc: Arc<AdapterApc<BabyBearOpenVmApcAdapter<'a>>>,
         max_constraint_degree: usize,
     ) -> AirMetrics {
-        get_air_metrics(Arc::new(Self::new(apc)), max_constraint_degree)
+        // Instantiate a `PowdrAir` and collect its metrics
+        get_air_metrics(Arc::new(Self::new(apc)), max_constraint_degree, 1)
     }
 }
 

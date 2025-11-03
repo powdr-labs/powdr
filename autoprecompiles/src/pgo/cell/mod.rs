@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     adapter::{
-        Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig, ApcWithReport, PgoAdapter,
-        ApcArithmetization,
+        Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig, ApcArithmetization,
+        ApcWithReport, PgoAdapter,
     },
     blocks::BasicBlock,
     evaluation::{evaluate_apc, AirStats, ApcPerformanceReport, ApcStats},
@@ -157,11 +157,8 @@ struct JsonExport {
     labels: BTreeMap<u64, Vec<String>>,
 }
 
-impl<
-        A: Adapter + Send + Sync,
-        C: Cost<A::ApcStats> + Send + Sync,
-        Air: ApcArithmetization<A>,
-    > PgoAdapter for CellPgo<A, C, Air>
+impl<A: Adapter + Send + Sync, C: Cost<A::ApcStats> + Send + Sync, Air: ApcArithmetization<A>>
+    PgoAdapter for CellPgo<A, C, Air>
 {
     type Adapter = A;
     type Air = Air;

@@ -4,7 +4,7 @@ use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterato
 use strum::{Display, EnumString};
 
 use crate::{
-    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, ApcWithReport, ApcArithmetization},
+    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, ApcArithmetization, ApcWithReport},
     blocks::BasicBlock,
     evaluation::evaluate_apc,
     PowdrConfig,
