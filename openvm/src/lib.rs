@@ -228,14 +228,14 @@ impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, PowdrExtens
         // TODO: here we make assumptions about the existence of some chips in the periphery. Make this more flexible
 
         use crate::powdr_extension::trace_generator::cuda::PowdrPeripheryInstancesGpu;
-        let range_checker = inventory
-            .find_chip::<Arc<VariableRangeCheckerChipGPU>>()
-            .next()
-            .unwrap();
         let bitwise_lookup = inventory
             .find_chip::<Arc<BitwiseOperationLookupChipGPU<8>>>()
             .next()
             .cloned();
+        let range_checker = inventory
+            .find_chip::<Arc<VariableRangeCheckerChipGPU>>()
+            .next()
+            .unwrap();
         let tuple_range_checker = inventory
             .find_chip::<Arc<RangeTupleCheckerChipGPU<2>>>()
             .next()
@@ -264,6 +264,11 @@ impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, PowdrExtens
             range_checker.clone(),
             bitwise_lookup,
             tuple_range_checker,
+            PeripheryBusIds {
+                range_checker: range_checker_bus_id,
+                bitwise_lookup: bitwise_lookup_bus_id,
+                tuple_range_checker: tuple_range_checker_bus_id,
+            },
         );
 
         for precompile in &extension.precompiles {
@@ -275,11 +280,6 @@ impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, PowdrExtens
                 extension.airs.clone(),
                 extension.base_config.clone(),
                 shared_chips_pair.clone(),
-                PeripheryBusIds {
-                    range_checker: range_checker_bus_id,
-                    bitwise_lookup: bitwise_lookup_bus_id,
-                    tuple_range_checker: tuple_range_checker_bus_id,
-                },
             );
             inventory.add_executor_chip(chip);
         }
@@ -288,6 +288,7 @@ impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, PowdrExtens
     }
 }
 
+#[derive(Clone)]
 pub struct PeripheryBusIds {
     pub range_checker: u16,
     pub bitwise_lookup: Option<u16>,

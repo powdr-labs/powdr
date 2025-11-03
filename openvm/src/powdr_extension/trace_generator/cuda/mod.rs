@@ -31,7 +31,7 @@ use crate::{
         executor::OriginalArenas,
         trace_generator::{common::create_dummy_airs, cuda::inventory::create_dummy_chip_complex},
     },
-    BabyBearSC, Instr, PeripheryBusIds,
+    BabyBearSC, Instr,
 };
 
 mod inventory;
@@ -177,7 +177,6 @@ pub struct PowdrTraceGeneratorGpu {
     pub original_airs: OriginalAirs<BabyBear>,
     pub config: OriginalVmConfig,
     pub periphery: PowdrPeripheryInstancesGpu,
-    pub periphery_bus_ids: PeripheryBusIds,
 }
 
 impl PowdrTraceGeneratorGpu {
@@ -186,14 +185,12 @@ impl PowdrTraceGeneratorGpu {
         original_airs: OriginalAirs<BabyBear>,
         config: OriginalVmConfig,
         periphery: PowdrPeripheryInstancesGpu,
-        periphery_bus_ids: PeripheryBusIds,
     ) -> Self {
         Self {
             apc,
             original_airs,
             config,
             periphery,
-            periphery_bus_ids,
         }
     }
 
@@ -346,17 +343,17 @@ impl PowdrTraceGeneratorGpu {
         let periphery = &self.periphery.real;
 
         // Range checker
-        let var_range_bus_id = self.periphery_bus_ids.range_checker as u32;
+        let var_range_bus_id = self.periphery.bus_ids.range_checker as u32;
         let var_range_count = &periphery.range_checker.count;
 
         // Tuple checker
         let tuple_range_checker_chip = periphery.tuple_range_checker.as_ref().unwrap();
-        let tuple2_bus_id = self.periphery_bus_ids.tuple_range_checker.unwrap() as u32;
+        let tuple2_bus_id = self.periphery.bus_ids.tuple_range_checker.unwrap() as u32;
         let tuple2_sizes = tuple_range_checker_chip.sizes;
         let tuple2_count_u32 = tuple_range_checker_chip.count.as_ref();
 
         // Bitwise lookup; NUM_BITS is fixed at 8 in CUDA
-        let bitwise_bus_id = self.periphery_bus_ids.bitwise_lookup.unwrap() as u32;
+        let bitwise_bus_id = self.periphery.bus_ids.bitwise_lookup.unwrap() as u32;
         let bitwise_count_u32 = periphery.bitwise_lookup_8.as_ref().unwrap().count.as_ref();
 
         // Launch GPU apply-bus to update periphery histograms on device
