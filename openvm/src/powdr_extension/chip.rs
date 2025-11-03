@@ -6,17 +6,16 @@ use crate::{
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     powdr_extension::{
         executor::OriginalArenas,
-        trace_generator::{PowdrPeripheryInstances, PowdrTraceGenerator},
+        trace_generator::cpu::{PowdrPeripheryInstancesCpu, PowdrTraceGeneratorCpu},
+        PowdrPrecompile,
     },
     Instr,
 };
 
-use super::PowdrPrecompile;
 use itertools::Itertools;
+use openvm_circuit::arch::MatrixRecordArena;
 use openvm_stark_backend::{
     p3_air::{Air, BaseAir},
-    p3_matrix::dense::DenseMatrix,
-    prover::{hal::ProverBackend, types::AirProvingContext},
     rap::ColumnsAir,
 };
 
@@ -25,7 +24,6 @@ use openvm_stark_backend::{
     p3_field::PrimeField32,
     p3_matrix::Matrix,
     rap::{BaseAirWithPublicValues, PartitionedBaseAir},
-    Chip,
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
@@ -33,44 +31,33 @@ use powdr_autoprecompiles::{
     Apc,
 };
 
-pub struct PowdrChip {
+pub struct PowdrChipCpu {
     pub name: String,
-    pub record_arena_by_air_name: Rc<RefCell<OriginalArenas>>,
-    pub trace_generator: PowdrTraceGenerator,
+    pub record_arena_by_air_name: Rc<RefCell<OriginalArenas<MatrixRecordArena<BabyBear>>>>,
+    pub trace_generator: PowdrTraceGeneratorCpu,
 }
 
-impl PowdrChip {
+impl PowdrChipCpu {
     pub(crate) fn new(
         precompile: PowdrPrecompile<BabyBear>,
         original_airs: OriginalAirs<BabyBear>,
         base_config: OriginalVmConfig,
-        periphery: PowdrPeripheryInstances,
+        periphery: PowdrPeripheryInstancesCpu,
     ) -> Self {
         let PowdrPrecompile {
             name,
             apc,
-            apc_record_arena,
+            apc_record_arena_cpu: apc_record_arena,
             ..
         } = precompile;
-        let trace_generator = PowdrTraceGenerator::new(apc, original_airs, base_config, periphery);
+        let trace_generator =
+            PowdrTraceGeneratorCpu::new(apc, original_airs, base_config, periphery);
 
         Self {
             name,
             record_arena_by_air_name: apc_record_arena,
             trace_generator,
         }
-    }
-}
-
-impl<R, PB: ProverBackend<Matrix = Arc<DenseMatrix<BabyBear>>>> Chip<R, PB> for PowdrChip {
-    fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
-        tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
-
-        let trace = self
-            .trace_generator
-            .generate_witness(self.record_arena_by_air_name.take());
-
-        AirProvingContext::simple(Arc::new(trace), vec![])
     }
 }
 
@@ -144,3 +131,52 @@ where
 }
 
 impl<F: PrimeField32> PartitionedBaseAir<F> for PowdrAir<F> {}
+
+#[cfg(feature = "cuda")]
+mod cuda {
+    use std::{cell::RefCell, rc::Rc};
+
+    use openvm_circuit::arch::DenseRecordArena;
+    use openvm_stark_sdk::p3_baby_bear::BabyBear;
+
+    use crate::{
+        extraction_utils::{OriginalAirs, OriginalVmConfig},
+        powdr_extension::{
+            executor::OriginalArenas,
+            trace_generator::cuda::{PowdrPeripheryInstancesGpu, PowdrTraceGeneratorGpu},
+            PowdrPrecompile,
+        },
+    };
+
+    pub struct PowdrChipGpu {
+        pub name: String,
+        pub record_arena_by_air_name: Rc<RefCell<OriginalArenas<DenseRecordArena>>>,
+        pub trace_generator: PowdrTraceGeneratorGpu,
+    }
+
+    impl PowdrChipGpu {
+        pub(crate) fn new(
+            precompile: PowdrPrecompile<BabyBear>,
+            original_airs: OriginalAirs<BabyBear>,
+            base_config: OriginalVmConfig,
+            periphery: PowdrPeripheryInstancesGpu,
+        ) -> Self {
+            let PowdrPrecompile {
+                name,
+                apc,
+                apc_record_arena_gpu: apc_record_arena,
+                ..
+            } = precompile;
+            let trace_generator =
+                PowdrTraceGeneratorGpu::new(apc, original_airs, base_config, periphery);
+
+            Self {
+                name,
+                record_arena_by_air_name: apc_record_arena,
+                trace_generator,
+            }
+        }
+    }
+}
+#[cfg(feature = "cuda")]
+pub use cuda::*;
