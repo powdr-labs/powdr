@@ -1,0 +1,14 @@
+[1;32mINFO    [0m ┝━ prove_segment [ 25.6s | 0.00% / 7.62% ] segment: 0
+[1;32mINFO    [0m ┝━ prove_segment [ 25.0s | 0.00% / 7.46% ] segment: 1
+[1;32mINFO    [0m ┝━ prove_segment [ 25.1s | 0.00% / 7.49% ] segment: 2
+[1;32mINFO    [0m ┝━ prove_segment [ 25.2s | 0.00% / 7.52% ] segment: 3
+[1;32mINFO    [0m ┝━ prove_segment [ 25.2s | 0.00% / 7.52% ] segment: 4
+[1;32mINFO    [0m ┝━ prove_segment [ 25.2s | 0.00% / 7.52% ] segment: 5
+[1;32mINFO    [0m ┝━ prove_segment [ 25.2s | 0.00% / 7.51% ] segment: 6
+[1;32mINFO    [0m ┝━ prove_segment [ 25.1s | 0.00% / 7.49% ] segment: 7
+[1;32mINFO    [0m ┝━ prove_segment [ 25.0s | 0.00% / 7.45% ] segment: 8
+[1;32mINFO    [0m ┝━ prove_segment [ 25.1s | 0.00% / 7.50% ] segment: 9
+[1;32mINFO    [0m ┝━ prove_segment [ 25.1s | 0.00% / 7.49% ] segment: 10
+[1;32mINFO    [0m ┝━ prove_segment [ 25.2s | 0.00% / 7.52% ] segment: 11
+[1;32mINFO    [0m ┝━ prove_segment [ 25.5s | 0.00% / 7.61% ] segment: 12
+[1;32mINFO    [0m ┝━ prove_segment [ 6.32s | 0.00% / 1.88% ] segment: 13
