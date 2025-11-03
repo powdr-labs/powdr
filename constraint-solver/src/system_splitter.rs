@@ -29,9 +29,6 @@ pub fn split_system<T: RuntimeConstant, V: Clone + Ord + Hash + Display>(
 
     while let Some(v) = remaining_variables.pop_first() {
         let variables_to_extract = reachable_variables([v.clone()], &constraint_system);
-        if variables_to_extract.is_empty() {
-            continue;
-        }
 
         let mut algebraic_constraints = Vec::new();
         let mut bus_interactions = Vec::new();
