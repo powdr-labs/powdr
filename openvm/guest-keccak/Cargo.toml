@@ -5,7 +5,7 @@ version = "0.0.0"
 edition = "2021"
 
 [dependencies]
-openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "d613315" }
+openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.1-powdr" }
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 
 [profile.release-with-debug]

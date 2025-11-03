@@ -18,7 +18,7 @@ env:
   POWDR_OPENVM_SEGMENT_DELTA: 50000
 
 jobs:
-  build:
+  build_cpu:
     runs-on: warp-ubuntu-2404-x64-8x
 
     steps:
@@ -55,25 +55,23 @@ jobs:
       - name: Cargo check with Rust 1.88 (default features)
         run: cargo +1.88 check --all-targets
       - name: Lint no default features
-        run: cargo clippy --all --all-targets --no-default-features --profile pr-tests --verbose -- -D warnings
-      - name: Lint all features
-        run: cargo clippy --all --all-targets --all-features --profile pr-tests --verbose -- -D warnings
-      - name: Build
-        run: cargo build --all-targets --all --all-features --profile pr-tests --verbose
+        run: cargo clippy --all --all-targets --features metrics --profile pr-tests --verbose -- -D warnings
+      - name: Build (CPU)
+        run: cargo build --all-targets --features metrics --all --profile pr-tests --verbose
       ###############################################################################
 
       - uses: taiki-e/install-action@nextest
-      - name: Create tests archive
-        run: cargo nextest archive --archive-file tests.tar.zst --cargo-profile pr-tests --workspace --all-features
-      - name: Upload build artifacts
+      - name: Create tests archive (CPU)
+        run: cargo nextest archive --archive-file tests_cpu.tar.zst --cargo-profile pr-tests --workspace
+      - name: Upload build artifacts (CPU)
         uses: actions/upload-artifact@v4
         with:
-          name: tests_archive
+          name: tests_archive_cpu
           path: |
-            tests.tar.zst
+            tests_cpu.tar.zst
 
-  test_quick:
-    needs: build
+  test_quick_cpu:
+    needs: build_cpu
     runs-on: ubuntu-24.04
     strategy:
       matrix:
@@ -90,10 +88,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - name: Download build artifacts
+      - name: Download build artifacts (CPU)
         uses: actions/download-artifact@v4
         with:
-          name: tests_archive
+          name: tests_archive_cpu
       - name: Install Rust toolchain nightly-2025-05-14 (with clippy and rustfmt)
         run: rustup toolchain install nightly-2025-05-14 --component clippy,rustfmt,rust-src
       - name: Install riscv target
@@ -104,11 +102,15 @@ jobs:
         run: rustup install nightly-2025-10-01 --component rust-src
       - name: Install Rust deps
         run: rustup install nightly-2025-02-14 --component rust-src
+      - name: Install OpenVM guest toolchain (nightly-2025-08-02)
+        run: |
+          rustup toolchain install nightly-2025-08-02
+          rustup component add rust-src --toolchain nightly-2025-08-02
       - uses: taiki-e/install-action@nextest
-      - name: Run default tests
-        run: cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/7 --no-tests=warn
+      - name: Run default tests (CPU)
+        run: cargo nextest run --archive-file tests_cpu.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/7 --no-tests=warn
 
-  udeps:
+  udeps_cpu:
     runs-on: ubuntu-22.04
 
     steps:
@@ -123,7 +125,7 @@ jobs:
 
       - name: Install cargo-udeps
         run: cargo install cargo-udeps --locked
-      - name: Run cargo-udeps
+      - name: Run cargo-udeps (CPU)
         run: cargo udeps --all-targets
 
   test_apc_reth_compilation:
@@ -154,7 +156,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: powdr-labs/openvm-reth-benchmark
-          ref: openvm-reth-powdr-2025-10-22
+          ref: openvm-reth-powdr-2025-10-30-1.4.1-gpu
           path: openvm-reth-benchmark
 
       - name: Patch openvm-reth-benchmark to use local powdr
@@ -166,9 +168,34 @@ jobs:
           echo 'powdr-riscv-elf = { path = "../riscv-elf" }' >> .cargo/config.toml
           echo 'powdr-number = { path = "../number" }' >> .cargo/config.toml
           echo 'powdr-autoprecompiles = { path = "../autoprecompiles" }' >> .cargo/config.toml
+          echo 'powdr-openvm-hints-circuit = { path = "../openvm/extensions/hints-circuit" }' >> .cargo/config.toml
 
       - name: Run small execution test with APCs
         run: |
           cd openvm-reth-benchmark
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
           MODE="compile" APC=10 PGO_TYPE="instruction" /usr/bin/time -v ./run.sh
+
+  build_gpu:
+    runs-on: [self-hosted, GPU]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Install Rust toolchain nightly-2025-10-01 (with clippy and rustfmt)
+        run: rustup toolchain install nightly-2025-10-01 --component clippy,rustfmt
+      - name: Install Rust toolchain 1.88 (stable)
+        run: rustup toolchain install 1.88
+      - name: Set cargo to perform shallow clones
+        run: echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
+      - name: Format
+        run: cargo fmt --all --check --verbose
+      - name: Cargo check with Rust 1.88 (all features)
+        run: cargo +1.88 check --all-targets
+      - name: Lint no default features
+        run: cargo clippy --all --all-targets --all-features --profile pr-tests --verbose -- -D warnings
+      - name: Build (GPU)
+        run: cargo build --all-targets --all-features --all --profile pr-tests --verbose
