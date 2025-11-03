@@ -514,12 +514,9 @@ fn is_satisfiable<T: FieldElement, V: Clone + Ord + Hash + Display>(
     let system = remove_trivial_constraints(system);
     let (system, rcs) =
         remove_range_constraint_bus_interactions(system.system().clone(), &bus_interaction_handler);
-    // TODO this does return RCs on non-input variables. We can only ignore them if the system
-    // is empty at the end!
     let rcs = rcs
         .into_iter()
         .filter_map(|(v, new_rc)| {
-            // TODO we should not filter out non-input RCs
             improves_existing_range_constraint(&v, &new_rc, range_constraints)
         })
         .collect_vec();
@@ -596,7 +593,16 @@ fn remove_range_constraint_bus_interactions<
                     // This is lossles, at least for the range.
                     // TODO is it ok? If we model a mask?
                     // TODO we could check if undoing it results in the same.
+                    println!(
+                        "Removing range constraint bus interaction on {}: {} ∈ {}",
+                        var, expr, rc
+                    );
                     let rc = rc.combine_sum(&RangeConstraint::from_value(-*expr.constant_offset()));
+                    println!(" after adjusting for offset: {var} -> {rc}");
+                    println!(
+                        " shifted: {}",
+                        rc.combine_sum(&RangeConstraint::from_value(*expr.constant_offset()))
+                    );
                     to_constrain.push((var.clone(), rc));
                 }
                 _ => {
