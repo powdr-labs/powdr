@@ -110,7 +110,7 @@ jobs:
           rustup component add rust-src --toolchain nightly-2025-08-02
       - uses: taiki-e/install-action@nextest
       - name: Run default tests (CPU)
-        run: cargo nextest run --archive-file tests_cpu.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/7 --no-tests=warn
+        run: cargo nextest run --archive-file tests_cpu.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/9 --no-tests=warn
 
   udeps_cpu:
     runs-on: ubuntu-22.04
