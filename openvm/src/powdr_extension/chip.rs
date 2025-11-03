@@ -146,6 +146,7 @@ mod cuda {
             trace_generator::cuda::{PowdrPeripheryInstancesGpu, PowdrTraceGeneratorGpu},
             PowdrPrecompile,
         },
+        PeripheryBusIds,
     };
 
     pub struct PowdrChipGpu {
@@ -160,6 +161,7 @@ mod cuda {
             original_airs: OriginalAirs<BabyBear>,
             base_config: OriginalVmConfig,
             periphery: PowdrPeripheryInstancesGpu,
+            periphery_bus_ids: PeripheryBusIds,
         ) -> Self {
             let PowdrPrecompile {
                 name,
@@ -167,8 +169,13 @@ mod cuda {
                 apc_record_arena_gpu: apc_record_arena,
                 ..
             } = precompile;
-            let trace_generator =
-                PowdrTraceGeneratorGpu::new(apc, original_airs, base_config, periphery);
+            let trace_generator = PowdrTraceGeneratorGpu::new(
+                apc,
+                original_airs,
+                base_config,
+                periphery,
+                periphery_bus_ids,
+            );
 
             Self {
                 name,

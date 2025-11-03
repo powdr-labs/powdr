@@ -490,14 +490,14 @@ impl PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExecutor {
         // Initialize the original arenas if not already initialized
         let mut original_arenas = self.original_arenas_gpu.as_ref().borrow_mut();
 
-        // Recover an estimate of how many times the APC is called in this segment
+        // Recover an (over)estimate of how many times the APC is called in this segment
+        // Overestimate is fine because we can initailize dummy arenas with some extra space
+        // Exact apc call count from execution is used in final tracegen regardless
         let apc_call_count = || {
-            const MAX_ALIGNMENT: usize = 32;
             let apc_width = self.apc.machine().main_columns().count();
             let bytes_per_row = apc_width * std::mem::size_of::<u32>();
             let buf = ctx.records_buffer.get_ref();
-            // Note that the `apc_call_count` here should be exact, because `DenseMatrixArena::with_capacity()` doesn't pad the height to next power of two
-            (buf.len() - MAX_ALIGNMENT) / bytes_per_row
+            buf.len() / bytes_per_row
         };
 
         original_arenas.ensure_initialized(apc_call_count, &self.air_by_opcode_id, &self.apc);
