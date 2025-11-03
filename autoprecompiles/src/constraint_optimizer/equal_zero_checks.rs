@@ -574,7 +574,6 @@ fn remove_range_constraint_bus_interactions<
         else {
             return true;
         };
-        let mut to_constrain = vec![];
         for (expr, rc) in new_range_constraints {
             if !expr.is_affine() {
                 // Keep the bus interaction
@@ -585,40 +584,32 @@ fn remove_range_constraint_bus_interactions<
                     assert!(rc.allows_value(expr.try_to_number().unwrap()));
                 }
                 1 => {
+                    // Try to solve for the variable, but only if the range constraint
+                    // can be transferred in a lossless way.
                     let var = expr.referenced_unknown_variables().next().unwrap();
-                    if expr.coefficient_of_variable_in_affine_part(var).unwrap() != &T::one() {
-                        // Keep the bus interaction
+                    let original_rc = rc.clone();
+                    let offset = *expr.constant_offset();
+                    let rc = rc.combine_sum(&RangeConstraint::from_value(-offset));
+                    // If we get back to the original range constraint by adding the offset
+                    // again, it is lossless.
+                    if original_rc != rc.combine_sum(&RangeConstraint::from_value(offset)) {
+                        // Range constraint transfer is lossy, keep the bus interaction
                         return true;
                     }
-                    // This is lossles, at least for the range.
-                    // TODO is it ok? If we model a mask?
-                    // TODO we could check if undoing it results in the same.
-                    println!(
-                        "Removing range constraint bus interaction on {}: {} ∈ {}",
-                        var, expr, rc
-                    );
-                    let rc = rc.combine_sum(&RangeConstraint::from_value(-*expr.constant_offset()));
-                    println!(" after adjusting for offset: {var} -> {rc}");
-                    println!(
-                        " shifted: {}",
-                        rc.combine_sum(&RangeConstraint::from_value(*expr.constant_offset()))
-                    );
-                    to_constrain.push((var.clone(), rc));
+                    if resulting_range_constraints
+                        .insert(var.clone(), rc.clone())
+                        .is_some()
+                    {
+                        // We cannot properly combine two range constraints
+                        // in a lossless way. Keep the bus interaction.
+                        return true;
+                    }
                 }
                 _ => {
                     //  Keep the bus interaction
                     return true;
                 }
             }
-        }
-        for (v, rc) in to_constrain {
-            let rc = resulting_range_constraints
-                .get(&v)
-                .cloned()
-                .unwrap_or_default()
-                // TODO this conjunction might be lossy
-                .conjunction(&rc);
-            resulting_range_constraints.insert(v, rc);
         }
         false
     });
