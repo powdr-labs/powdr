@@ -358,9 +358,14 @@ impl PowdrTraceGeneratorGpu {
 
         // Tuple checker
         let chip = periphery.tuple_range_checker.as_ref().unwrap();
-        let tuple2_bus_id = if let Some(cpu_chip) = periphery.tuple_range_checker.cpu_chip.as_ref()
+        let tuple2_bus_id = if let Some(cpu_chip) = periphery
+            .tuple_range_checker
+            .as_ref()
+            .unwrap()
+            .cpu_chip
+            .as_ref()
         {
-            cpu_chip.bus().index() as u32
+            cpu_chip.bus().inner.index as u32
         } else {
             self.tuple_range_checker_bus_id.unwrap() as u32
         };

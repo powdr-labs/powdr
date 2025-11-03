@@ -113,6 +113,8 @@ impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChipsGpu 
                 .is_none());
             // RangeTupleCheckerGPU is always initialized via `new()` without a CPU chip in all available extensions of `SdkVmGpuBuilder::create_chip_complex()`.
             // Therefore we create a new bus index, following a similar scenario in `Rv32M::extend_circuit`.
+            // The bus id is hardcoded to the default and isn't guaranteed to be correct, because it depends on chip insertion order,
+            // but this won't matter because the dummy chips are thrown away anyway.
             let bus = match tuple_range_checker.cpu_chip.as_ref() {
                 // None is the expected case
                 None => RangeTupleCheckerBus::new(
