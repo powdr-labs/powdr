@@ -145,7 +145,7 @@ impl<T: FieldElement> RangeConstraint<T> {
         let unconstrained = Self::unconstrained();
         // TODO we could use "add_with_carry" to see if this created an overflow.
         // it might even be enough to check if certain bits are set in the masks.
-        let mask = if self.mask.to_arbitrary_integer() + other.mask.to_arbitrary_integer()
+        let mut mask = if self.mask.to_arbitrary_integer() + other.mask.to_arbitrary_integer()
             >= T::modulus().to_arbitrary_integer()
         {
             unconstrained.mask
@@ -162,6 +162,9 @@ impl<T: FieldElement> RangeConstraint<T> {
         } else {
             unconstrained.range()
         };
+        if min <= max {
+            mask &= Self::from_range(min, max).mask;
+        }
         Self { min, max, mask }
     }
 
