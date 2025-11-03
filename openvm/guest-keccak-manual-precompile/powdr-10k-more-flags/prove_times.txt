@@ -1,0 +1,2 @@
+[1;32mINFO    [0m ┝━ prove_segment [ 8.70s | 0.00% / 53.50% ] segment: 0
+[1;32mINFO    [0m ┝━ prove_segment [ 7.42s | 0.00% / 45.65% ] segment: 1

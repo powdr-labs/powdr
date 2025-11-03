@@ -1,0 +1,1 @@
+../guest-keccak-manual-precompile/parse_logs.sh

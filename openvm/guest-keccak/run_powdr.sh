@@ -1,0 +1,1 @@
+../guest-keccak-manual-precompile/run_powdr.sh
