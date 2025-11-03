@@ -15,7 +15,7 @@ use crate::{
         PowdrArithmetization,
     },
     blocks::BasicBlock,
-    evaluation::{evaluate_apc, AirStats, ApcPerformanceReport},
+    evaluation::{evaluate_apc, AirStats, ApcPerformanceReport, ApcStats},
     pgo::cell::selection::parallel_fractional_knapsack,
     PowdrConfig,
 };
@@ -61,29 +61,29 @@ impl<A: Adapter, C: Cost<A::ApcStats>> Candidate<A, C> {
 
     /// Return a JSON export of the APC candidate.
     fn to_json_export(&self, apc_candidates_dir_path: &Path) -> ApcCandidateJsonExport {
-        // ApcCandidateJsonExport {
-        //     execution_frequency: self.execution_frequency,
-        //     original_block: BasicBlock {
-        //         start_pc: self.apc.block.start_pc,
-        //         statements: self
-        //             .apc
-        //             .block
-        //             .statements
-        //             .iter()
-        //             .map(ToString::to_string)
-        //             .collect(),
-        //     },
-        //     stats: self.stats,
-        //     width_before: self.stats.before.widths.total(),
-        //     value: self.value(),
-        //     cost_before: self.stats.before.widths.total() as f64,
-        //     cost_after: self.stats.after.widths.total() as f64,
-        //     apc_candidate_file: apc_candidates_dir_path
-        //         .join(format!("apc_{}.cbor", self.apc.start_pc()))
-        //         .display()
-        //         .to_string(),
-        // }
-        unimplemented!()
+        let stats: ApcPerformanceReport<AirStats> = self.stats.into();
+        ApcCandidateJsonExport {
+            execution_frequency: self.execution_frequency,
+            original_block: BasicBlock {
+                start_pc: self.apc.block.start_pc,
+                statements: self
+                    .apc
+                    .block
+                    .statements
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect(),
+            },
+            stats,
+            width_before: self.stats.before.cells_per_call(),
+            value: self.value(),
+            cost_before: self.stats.before.cells_per_call() as f64,
+            cost_after: self.stats.after.cells_per_call() as f64,
+            apc_candidate_file: apc_candidates_dir_path
+                .join(format!("apc_{}.cbor", self.apc.start_pc()))
+                .display()
+                .to_string(),
+        }
     }
 
     fn into_apc_and_stats(self) -> AdapterApcWithStats<A> {

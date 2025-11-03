@@ -805,28 +805,29 @@ pub struct AirMetrics {
     /// The column widths
     pub widths: AirWidths,
     /// The number of polynomial constraints
-    pub constraint_count: usize,
+    pub constraints: usize,
     /// The number of bus interactions
-    pub interaction_count: usize,
+    pub bus_interactions: usize,
 }
 
 impl From<AirMetrics> for AirStats {
     fn from(metrics: AirMetrics) -> Self {
         AirStats {
             main_columns: metrics.widths.main,
-            constraints: metrics.constraint_count,
-            bus_interactions: metrics.interaction_count,
+            constraints: metrics.constraints,
+            bus_interactions: metrics.bus_interactions,
         }
     }
 }
 
 impl Add for AirMetrics {
     type Output = AirMetrics;
+
     fn add(self, rhs: AirMetrics) -> AirMetrics {
         AirMetrics {
             widths: self.widths + rhs.widths,
-            constraint_count: self.constraint_count + rhs.constraint_count,
-            interaction_count: self.interaction_count + rhs.interaction_count,
+            constraints: self.constraints + rhs.constraints,
+            bus_interactions: self.bus_interactions + rhs.bus_interactions,
         }
     }
 }
@@ -1953,8 +1954,8 @@ mod tests {
             main: 798,
             log_up: 684,
         },
-        constraint_count: 1,
-        interaction_count: 253,
+        constraints: 604,
+        bus_interactions: 253,
     };
 
     #[test]
@@ -1978,8 +1979,8 @@ mod tests {
                             main: 41,
                             log_up: 56,
                         },
-                        constraint_count: 31,
-                        interaction_count: 26,
+                        constraints: 15,
+                        bus_interactions: 26,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2006,8 +2007,8 @@ mod tests {
                             main: 41,
                             log_up: 56,
                         },
-                        constraint_count: 31,
-                        interaction_count: 26,
+                        constraints: 15,
+                        bus_interactions: 26,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2054,8 +2055,8 @@ mod tests {
                             main: 14263,
                             log_up: 22784,
                         },
-                        constraint_count: 10001,
-                        interaction_count: 11160,
+                        constraints: 4285,
+                        bus_interactions: 11160,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2082,8 +2083,8 @@ mod tests {
                             main: 14235,
                             log_up: 22752,
                         },
-                        constraint_count: 9969,
-                        interaction_count: 11150,
+                        constraints: 4261,
+                        bus_interactions: 11150,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2139,8 +2140,8 @@ mod tests {
                     main: 26,
                     log_up: 36,
                 },
-                constraint_count: 1,
-                interaction_count: 16,
+                constraints: 1,
+                bus_interactions: 16,
             }
         );
     }
@@ -2167,8 +2168,8 @@ mod tests {
                             main: 17304,
                             log_up: 27896,
                         },
-                        constraint_count: 15912,
-                        interaction_count: 11927,
+                        constraints: 8838,
+                        bus_interactions: 11927,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2216,8 +2217,8 @@ mod tests {
                             main: 19930,
                             log_up: 30924,
                         },
-                        constraint_count: 18936,
-                        interaction_count: 13443,
+                        constraints: 11105,
+                        bus_interactions: 13443,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2264,8 +2265,8 @@ mod tests {
                             main: 2025,
                             log_up: 3472,
                         },
-                        constraint_count: 1057,
-                        interaction_count: 1734,
+                        constraints: 187,
+                        bus_interactions: 1734,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2292,8 +2293,8 @@ mod tests {
                             main: 2025,
                             log_up: 3472,
                         },
-                        constraint_count: 1057,
-                        interaction_count: 1734,
+                        constraints: 187,
+                        bus_interactions: 1734,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2320,8 +2321,8 @@ mod tests {
                             main: 2025,
                             log_up: 3472,
                         },
-                        constraint_count: 1057,
-                        interaction_count: 1734,
+                        constraints: 187,
+                        bus_interactions: 1734,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2371,8 +2372,8 @@ mod tests {
                             main: 3245,
                             log_up: 5260,
                         },
-                        constraint_count: 1967,
-                        interaction_count: 2560,
+                        constraints: 608,
+                        bus_interactions: 2560,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"

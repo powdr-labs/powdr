@@ -17,11 +17,11 @@ use openvm_circuit::system::SystemChipInventory;
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_instructions::VmOpcode;
-use openvm_stark_backend::interaction::fri_log_up::find_interaction_chunks;
 
 use crate::utils::get_pil;
 use openvm_stark_backend::air_builders::symbolic::SymbolicRapBuilder;
 use openvm_stark_backend::config::Val;
+use openvm_stark_backend::interaction::fri_log_up::find_interaction_chunks;
 use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_backend::prover::cpu::CpuBackend;
 use openvm_stark_backend::{
@@ -303,17 +303,19 @@ impl OriginalVmConfig {
             }) // find executor for opcode
             .try_fold(OriginalAirs::default(), |mut airs, (op, air_ref)| {
                 airs.insert_opcode(op, air_ref.name(), || {
+                    println!("FETCH {}", air_ref.name());
+
                     let columns = get_columns(air_ref.clone());
-                    let main_constraints = get_main_constraints(air_ref.clone());
+                    let constraints = get_constraints(air_ref.clone());
                     let metrics = get_air_metrics(air_ref.clone(), max_degree);
 
-                    let powdr_exprs = main_constraints
+                    let powdr_exprs = constraints
                         .constraints
                         .iter()
                         .map(|expr| try_convert(symbolic_to_algebraic(expr, &columns)))
                         .collect::<Result<Vec<_>, _>>()?;
 
-                    let powdr_bus_interactions = main_constraints
+                    let powdr_bus_interactions = constraints
                         .interactions
                         .iter()
                         .map(|expr| openvm_bus_interaction_to_powdr(expr, &columns))
@@ -427,9 +429,9 @@ pub fn export_pil(writer: &mut impl std::io::Write, vm_config: &SpecializedConfi
 
         let columns = get_columns(air.clone());
 
-        let main_constraints = get_main_constraints(air.clone());
+        let constraints = get_constraints(air.clone());
 
-        let pil = get_pil(&name, &main_constraints, &columns, vec![], &bus_map);
+        let pil = get_pil(&name, &constraints, &columns, vec![], &bus_map);
         writeln!(writer, "{pil}\n").unwrap();
     }
 }
@@ -450,7 +452,7 @@ pub fn get_name<SC: StarkGenericConfig>(air: Arc<dyn AnyRap<SC>>) -> String {
     air.name()
 }
 
-pub fn get_main_constraints(
+pub fn get_constraints(
     air: Arc<dyn AnyRap<BabyBearSC>>,
 ) -> SymbolicConstraints<p3_baby_bear::BabyBear> {
     let builder = symbolic_builder_with_degree(air, None);
@@ -480,8 +482,8 @@ pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>, max_degree: usize) -> A
             main,
             log_up,
         },
-        constraint_count: constraints.len(),
-        interaction_count: interactions.len(),
+        constraints: constraints.len(),
+        bus_interactions: interactions.len(),
     }
 }
 
@@ -667,7 +669,6 @@ mod tests {
         );
         export_pil(writer, &specialized_config);
         let output = String::from_utf8(writer.clone()).unwrap();
-        println!("{output}");
         assert!(!output.is_empty(), "PIL output should not be empty");
     }
 }

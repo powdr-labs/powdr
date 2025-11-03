@@ -48,6 +48,15 @@ pub struct ApcPerformanceReport<S> {
     pub after: S,
 }
 
+impl<S: ApcStats> From<ApcPerformanceReport<S>> for ApcPerformanceReport<AirStats> {
+    fn from(report: ApcPerformanceReport<S>) -> Self {
+        ApcPerformanceReport {
+            before: report.before.into(),
+            after: report.after.into(),
+        }
+    }
+}
+
 pub trait ApcStats: Into<AirStats> + Clone + Copy {
     fn cells_per_call(&self) -> usize;
 }
