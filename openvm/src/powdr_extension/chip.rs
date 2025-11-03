@@ -160,7 +160,7 @@ mod cuda {
             original_airs: OriginalAirs<BabyBear>,
             base_config: OriginalVmConfig,
             periphery: PowdrPeripheryInstancesGpu,
-            tuple_range_checker_bus_id: Option<u16>,
+            periphery_bus_ids: PeripheryBusIds,
         ) -> Self {
             let PowdrPrecompile {
                 name,
@@ -173,7 +173,7 @@ mod cuda {
                 original_airs,
                 base_config,
                 periphery,
-                tuple_range_checker_bus_id,
+                periphery_bus_ids,
             );
 
             Self {

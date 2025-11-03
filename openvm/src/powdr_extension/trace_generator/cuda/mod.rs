@@ -31,7 +31,7 @@ use crate::{
         executor::OriginalArenas,
         trace_generator::{common::create_dummy_airs, cuda::inventory::create_dummy_chip_complex},
     },
-    BabyBearSC, Instr,
+    BabyBearSC, Instr, PeripheryBusIds,
 };
 
 mod inventory;
@@ -177,7 +177,7 @@ pub struct PowdrTraceGeneratorGpu {
     pub original_airs: OriginalAirs<BabyBear>,
     pub config: OriginalVmConfig,
     pub periphery: PowdrPeripheryInstancesGpu,
-    pub tuple_range_checker_bus_id: Option<u16>,
+    pub periphery_bus_ids: PeripheryBusIds,
 }
 
 impl PowdrTraceGeneratorGpu {
@@ -186,14 +186,14 @@ impl PowdrTraceGeneratorGpu {
         original_airs: OriginalAirs<BabyBear>,
         config: OriginalVmConfig,
         periphery: PowdrPeripheryInstancesGpu,
-        tuple_range_checker_bus_id: Option<u16>,
+        periphery_bus_ids: PeripheryBusIds,
     ) -> Self {
         Self {
             apc,
             original_airs,
             config,
             periphery,
-            tuple_range_checker_bus_id,
+            periphery_bus_ids,
         }
     }
 
@@ -346,35 +346,18 @@ impl PowdrTraceGeneratorGpu {
         let periphery = &self.periphery.real;
 
         // Range checker
-        let var_range_bus_id = periphery
-            .range_checker
-            .cpu_chip
-            .as_ref()
-            .unwrap()
-            .bus()
-            .index() as u32;
+        let var_range_bus_id = self.periphery_bus_ids.range_checker;
         let var_range_count = &periphery.range_checker.count;
 
         // Tuple checker
-        let chip = periphery.tuple_range_checker.as_ref().unwrap();
-        let tuple2_bus_id = if let Some(cpu_chip) = periphery
-            .tuple_range_checker
-            .as_ref()
-            .unwrap()
-            .cpu_chip
-            .as_ref()
-        {
-            cpu_chip.bus().inner.index as u32
-        } else {
-            self.tuple_range_checker_bus_id.unwrap() as u32
-        };
-        let tuple2_sizes = chip.sizes;
-        let tuple2_count_u32 = chip.count.as_ref();
+        let tuple_range_checker_chip = periphery.tuple_range_checker.as_ref().unwrap();
+        let tuple2_bus_id = self.periphery_bus_ids.tuple_range_checker;
+        let tuple2_sizes = tuple_range_checker_chip.sizes;
+        let tuple2_count_u32 = tuple_range_checker_chip.count.as_ref();
 
         // Bitwise lookup; NUM_BITS is fixed at 8 in CUDA
-        let chip = periphery.bitwise_lookup_8.as_ref().unwrap();
-        let bitwise_bus_id = chip.cpu_chip.as_ref().unwrap().bus().inner.index as u32;
-        let bitwise_count_u32 = chip.count.as_ref();
+        let bitwise_bus_id = self.periphery_bus_ids.bitwise_lookup;
+        let bitwise_count_u32 = periphery.bitwise_lookup_8.as_ref().unwrap().count.as_ref();
 
         // Launch GPU apply-bus to update periphery histograms on device
         // Note that this is implicitly serialized after `apc_tracegen`,

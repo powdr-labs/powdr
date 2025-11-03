@@ -93,9 +93,9 @@ cfg_if::cfg_if! {
         pub use openvm_circuit::system::cuda::{extensions::SystemGpuBuilder, SystemChipInventoryGPU};
         pub use openvm_sdk::config::SdkVmGpuBuilder;
         pub use openvm_cuda_backend::prover_backend::GpuBackend;
-        pub use openvm_circuit_primitives::bitwise_op_lookup::BitwiseOperationLookupChipGPU;
+        pub use openvm_circuit_primitives::bitwise_op_lookup::{BitwiseOperationLookupAir, BitwiseOperationLookupChipGPU};
         pub use openvm_circuit_primitives::range_tuple::{RangeTupleCheckerAir, RangeTupleCheckerChipGPU};
-        pub use openvm_circuit_primitives::var_range::VariableRangeCheckerChipGPU;
+        pub use openvm_circuit_primitives::var_range::{VariableRangeCheckerAir, VariableRangeCheckerChipGPU};
         pub use openvm_cuda_backend::base::DeviceMatrix;
         pub use openvm_circuit::arch::DenseRecordArena;
     }
@@ -244,8 +244,16 @@ impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, PowdrExtens
             .next()
             .cloned();
 
-        // Obtain tuple range checker bus id from `AirInventory` because in practice we can't obtain it from the GPU chip
+        // Obtain periphery bus ids from `AirInventory`
         let air_inventory = inventory.airs();
+        let range_checker_bus_id = air_inventory
+            .find_air::<VariableRangeCheckerAir>()
+            .next()
+            .map(|air| air.bus.inner.index);
+        let bitwise_lookup_bus_id = air_inventory
+            .find_air::<BitwiseOperationLookupAir<8>>()
+            .next()
+            .map(|air| air.bus.inner.index);
         let tuple_range_checker_bus_id = air_inventory
             .find_air::<RangeTupleCheckerAir<2>>()
             .next()
@@ -281,6 +289,12 @@ impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, PowdrExtens
 
         Ok(())
     }
+}
+
+pub struct PeripheryBusIds {
+    pub range_checker: u32,
+    pub bitwise_lookup: u32,
+    pub tuple_range_checker: u32,
 }
 
 struct PowdrCpuProverExt;
