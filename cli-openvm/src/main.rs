@@ -4,9 +4,7 @@ use metrics_util::{debugging::DebuggingRecorder, layers::Layer};
 use openvm_sdk::StdIn;
 use openvm_stark_sdk::bench::serialize_metric_snapshot;
 use powdr_autoprecompiles::pgo::{pgo_config, PgoType};
-use powdr_openvm::{
-    default_powdr_openvm_config, CompiledProgram, GuestOptions, PrecompileImplementation,
-};
+use powdr_openvm::{default_powdr_openvm_config, CompiledProgram, GuestOptions};
 
 #[cfg(feature = "metrics")]
 use openvm_stark_sdk::metrics_tracing::TimingMetricsLayer;
@@ -16,8 +14,6 @@ use std::{io, path::PathBuf};
 use tracing::Level;
 use tracing_forest::ForestLayer;
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Registry};
-
-const IMPLEMENTATION: PrecompileImplementation = PrecompileImplementation::SingleRowChip;
 
 #[derive(Parser)]
 #[command(name = "powdr-openvm", author, version, about, long_about = None)]
@@ -150,14 +146,8 @@ fn run_command(command: Commands) {
                 stdin_from(input),
             );
             let pgo_config = pgo_config(pgo, max_columns, execution_profile);
-            let program = powdr_openvm::compile_guest(
-                &guest,
-                guest_opts,
-                powdr_config,
-                IMPLEMENTATION,
-                pgo_config,
-            )
-            .unwrap();
+            let program =
+                powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();
             write_program_to_file(program, &format!("{guest}_compiled.cbor")).unwrap();
         }
 
@@ -182,14 +172,9 @@ fn run_command(command: Commands) {
             );
             let pgo_config = pgo_config(pgo, max_columns, execution_profile);
             let compile_and_exec = || {
-                let program = powdr_openvm::compile_guest(
-                    &guest,
-                    guest_opts,
-                    powdr_config,
-                    IMPLEMENTATION,
-                    pgo_config,
-                )
-                .unwrap();
+                let program =
+                    powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config)
+                        .unwrap();
                 powdr_openvm::execute(program, stdin_from(input)).unwrap();
             };
             if let Some(metrics_path) = metrics {
@@ -225,14 +210,9 @@ fn run_command(command: Commands) {
             );
             let pgo_config = pgo_config(pgo, max_columns, execution_profile);
             let compile_and_prove = || {
-                let program = powdr_openvm::compile_guest(
-                    &guest,
-                    guest_opts,
-                    powdr_config,
-                    IMPLEMENTATION,
-                    pgo_config,
-                )
-                .unwrap();
+                let program =
+                    powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config)
+                        .unwrap();
                 powdr_openvm::prove(&program, mock, recursion, stdin_from(input), None).unwrap()
             };
             if let Some(metrics_path) = metrics {
