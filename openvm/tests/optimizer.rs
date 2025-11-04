@@ -93,3 +93,20 @@ fn test_sha256() {
     "#]]
     .assert_debug_eq(&machine.constraints.len());
 }
+
+// Extract the sign of byte range constraints
+// #[cfg(test)]
+// mod tests {
+//     use powdr_openvm::symbolic_instruction_builder::*;
+//     use powdr_openvm::tests::apc_builder_single_instructions::assert_machine_output;
+
+//     #[test]
+//     fn single_bge() {
+//     let program = [
+//         // pc = pc + 2 if x8 >= x5 (signed)
+//         bge(8, 5, 2),
+//     ];
+//     assert_machine_output(program.to_vec(), "single_bge");
+// }
+
+// }

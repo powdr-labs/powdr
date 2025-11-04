@@ -15,6 +15,7 @@ use powdr_constraint_solver::{
 use powdr_number::FieldElement;
 
 use crate::constraint_optimizer::trivial_simplifications;
+use crate::imm0_optimizer::extract_memory_limbs_from_range_constraints;
 use crate::range_constraint_optimizer::optimize_range_constraints;
 use crate::{
     adapter::Adapter,
@@ -73,6 +74,21 @@ pub fn optimize<A: Adapter>(
         degree_bound,
     );
     stats_logger.log("optimizing range constraints", &constraint_system);
+
+    let constraint_system = extract_memory_limbs_from_range_constraints(
+        constraint_system,
+        bus_interaction_handler.clone(),
+    );
+
+    let constraint_system = inliner::replace_constrained_witness_columns(
+        constraint_system.into(),
+        inline_everything_below_degree_bound(degree_bound),
+    )
+    .system()
+    .clone();
+    stats_logger.log("inlining", &constraint_system);
+
+    
 
     let constraint_system = trivial_simplifications(
         constraint_system.into(),
