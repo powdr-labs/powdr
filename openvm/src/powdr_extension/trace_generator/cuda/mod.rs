@@ -24,7 +24,6 @@ use powdr_constraint_solver::constraint_system::ComputationMethod;
 use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 
 use crate::{
-    bus_map::DEFAULT_TUPLE_RANGE_CHECKER,
     cuda_abi::{self, DerivedExprSpec, DevInteraction, ExprSpan, OpCode, OriginalAir, Subst},
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     powdr_extension::{
@@ -344,25 +343,18 @@ impl PowdrTraceGeneratorGpu {
         let periphery = &self.periphery.real;
 
         // Range checker
-        let var_range_bus_id = periphery
-            .range_checker
-            .cpu_chip
-            .as_ref()
-            .unwrap()
-            .bus()
-            .index() as u32;
+        let var_range_bus_id = self.periphery.bus_ids.range_checker as u32;
         let var_range_count = &periphery.range_checker.count;
 
         // Tuple checker
-        let chip = periphery.tuple_range_checker.as_ref().unwrap();
-        let tuple2_bus_id = DEFAULT_TUPLE_RANGE_CHECKER as u32;
-        let tuple2_sizes = chip.sizes;
-        let tuple2_count_u32 = chip.count.as_ref();
+        let tuple_range_checker_chip = periphery.tuple_range_checker.as_ref().unwrap();
+        let tuple2_bus_id = self.periphery.bus_ids.tuple_range_checker.unwrap() as u32;
+        let tuple2_sizes = tuple_range_checker_chip.sizes;
+        let tuple2_count_u32 = tuple_range_checker_chip.count.as_ref();
 
         // Bitwise lookup; NUM_BITS is fixed at 8 in CUDA
-        let chip = periphery.bitwise_lookup_8.as_ref().unwrap();
-        let bitwise_bus_id = chip.cpu_chip.as_ref().unwrap().bus().inner.index as u32;
-        let bitwise_count_u32 = chip.count.as_ref();
+        let bitwise_bus_id = self.periphery.bus_ids.bitwise_lookup.unwrap() as u32;
+        let bitwise_count_u32 = periphery.bitwise_lookup_8.as_ref().unwrap().count.as_ref();
 
         // Launch GPU apply-bus to update periphery histograms on device
         // Note that this is implicitly serialized after `apc_tracegen`,

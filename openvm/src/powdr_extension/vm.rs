@@ -14,10 +14,8 @@ use powdr_autoprecompiles::evaluation::ApcPerformanceReport;
 
 use crate::bus_map::BusMap;
 use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
-use crate::plonk::air_to_plonkish::build_circuit;
 use crate::powdr_extension::chip::PowdrAir;
 use crate::powdr_extension::executor::{OriginalArenas, PowdrExecutor};
-use crate::powdr_extension::PlonkAir;
 use openvm_circuit::{
     arch::{AirInventory, AirInventoryError, VmCircuitExtension, VmExecutionExtension},
     circuit_derive::Chip,
@@ -30,7 +28,7 @@ use openvm_stark_backend::{
 use powdr_autoprecompiles::Apc;
 use serde::{Deserialize, Serialize};
 
-use crate::{AirMetrics, Instr, PrecompileImplementation};
+use crate::{AirMetrics, Instr};
 
 use super::PowdrOpcode;
 
@@ -39,7 +37,6 @@ use super::PowdrOpcode;
 pub struct PowdrExtension<F> {
     pub precompiles: Vec<PowdrPrecompile<F>>,
     pub base_config: OriginalVmConfig,
-    pub implementation: PrecompileImplementation,
     pub bus_map: BusMap,
     pub airs: OriginalAirs<F>,
 }
@@ -80,14 +77,12 @@ impl<F> PowdrExtension<F> {
     pub fn new(
         precompiles: Vec<PowdrPrecompile<F>>,
         base_config: OriginalVmConfig,
-        implementation: PrecompileImplementation,
         bus_map: BusMap,
         airs: OriginalAirs<F>,
     ) -> Self {
         Self {
             precompiles,
             base_config,
-            implementation,
             bus_map,
             airs,
         }
@@ -108,13 +103,8 @@ impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear> {
         inventory: &mut openvm_circuit::arch::ExecutorInventoryBuilder<BabyBear, Self::Executor>,
     ) -> Result<(), openvm_circuit::arch::ExecutorInventoryError> {
         for precompile in &self.precompiles {
-            let height_change = match self.implementation {
-                PrecompileImplementation::SingleRowChip => 1,
-                PrecompileImplementation::PlonkChip => {
-                    let plonk_circuit = build_circuit(precompile.apc.machine(), &self.bus_map);
-                    plonk_circuit.len() as u32
-                }
-            };
+            // The apc chip uses a single row per call
+            let height_change = 1;
 
             let powdr_executor = PowdrExtensionExecutor::Powdr(PowdrExecutor::new(
                 self.airs.clone(),
@@ -138,16 +128,7 @@ where
 {
     fn extend_circuit(&self, inventory: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {
         for precompile in &self.precompiles {
-            match self.implementation {
-                PrecompileImplementation::SingleRowChip => {
-                    inventory.add_air(PowdrAir::new(precompile.apc.clone()));
-                }
-                PrecompileImplementation::PlonkChip => {
-                    let copy_constraint_bus_id = inventory.new_bus_idx();
-                    let plonk_air = PlonkAir::new(copy_constraint_bus_id, &self.bus_map);
-                    inventory.add_air(plonk_air);
-                }
-            }
+            inventory.add_air(PowdrAir::new(precompile.apc.clone()));
         }
         Ok(())
     }

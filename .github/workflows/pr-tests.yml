@@ -152,23 +152,8 @@ jobs:
           rustup toolchain install 1.88
           cargo +1.88 install --git 'http://github.com/openvm-org/openvm.git' cargo-openvm
 
-      - name: Checkout openvm-reth-benchmark
-        uses: actions/checkout@v4
-        with:
-          repository: powdr-labs/openvm-reth-benchmark
-          ref: openvm-reth-powdr-2025-10-30-1.4.1-gpu
-          path: openvm-reth-benchmark
-
-      - name: Patch openvm-reth-benchmark to use local powdr
-        run: |
-          cd openvm-reth-benchmark
-          mkdir -p .cargo
-          echo '[patch."https://github.com/powdr-labs/powdr.git"]' > .cargo/config.toml
-          echo 'powdr-openvm = { path = "../openvm" }' >> .cargo/config.toml
-          echo 'powdr-riscv-elf = { path = "../riscv-elf" }' >> .cargo/config.toml
-          echo 'powdr-number = { path = "../number" }' >> .cargo/config.toml
-          echo 'powdr-autoprecompiles = { path = "../autoprecompiles" }' >> .cargo/config.toml
-          echo 'powdr-openvm-hints-circuit = { path = "../openvm/extensions/hints-circuit" }' >> .cargo/config.toml
+      - name: Patch benchmark
+        uses: ./.github/actions/patch-openvm-reth-benchmark
 
       - name: Run small execution test with APCs
         run: |
