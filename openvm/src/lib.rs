@@ -1,5 +1,7 @@
+#![cfg_attr(feature = "tco", allow(internal_features))]
 #![cfg_attr(feature = "tco", allow(incomplete_features))]
 #![cfg_attr(feature = "tco", feature(explicit_tail_calls))]
+#![cfg_attr(feature = "tco", feature(core_intrinsics))]
 
 use derive_more::From;
 use eyre::Result;
@@ -8,23 +10,18 @@ use openvm_build::{build_guest_package, find_unique_executable, get_package, Tar
 use openvm_circuit::arch::execution_mode::metered::segment_ctx::SegmentationLimits;
 use openvm_circuit::arch::execution_mode::Segment;
 use openvm_circuit::arch::instructions::exe::VmExe;
-use openvm_circuit::arch::RowMajorMatrixArena;
 use openvm_circuit::arch::{
     debug_proving_ctx, AirInventory, AirInventoryError, ChipInventory, ChipInventoryError,
     ExecutorInventory, ExecutorInventoryError, InitFileGenerator, MatrixRecordArena,
-    PreflightExecutionOutput, SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig,
-    VmCircuitExtension, VmExecutionConfig, VmInstance, VmProverExtension,
+    PreflightExecutionOutput, RowMajorMatrixArena, SystemConfig, VmBuilder, VmChipComplex,
+    VmCircuitConfig, VmCircuitExtension, VmExecutionConfig, VmInstance, VmProverExtension,
 };
 use openvm_circuit::system::SystemChipInventory;
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
 use openvm_circuit_derive::{Executor, MeteredExecutor, PreflightExecutor};
-use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
-use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
-use openvm_circuit_primitives::var_range::SharedVariableRangeCheckerChip;
 use openvm_sdk::config::SdkVmCpuBuilder;
 
 use openvm_instructions::program::{Program, DEFAULT_PC_STEP};
-use openvm_native_circuit::NativeCpuBuilder;
 use openvm_sdk::config::TranspilerConfig;
 use openvm_sdk::prover::vm::new_local_prover;
 use openvm_sdk::prover::{verify_app_proof, AggStarkProver};
@@ -33,9 +30,10 @@ use openvm_sdk::{
     config::{AppConfig, SdkVmConfig, SdkVmConfigExecutor, DEFAULT_APP_LOG_BLOWUP},
     Sdk, StdIn,
 };
-use openvm_stark_backend::config::Val;
+use openvm_stark_backend::config::{StarkGenericConfig, Val};
 use openvm_stark_backend::engine::StarkEngine;
 use openvm_stark_backend::prover::cpu::{CpuBackend, CpuDevice};
+use openvm_stark_backend::prover::hal::ProverBackend;
 use openvm_stark_sdk::config::{
     baby_bear_poseidon2::{BabyBearPoseidon2Config, BabyBearPoseidon2Engine},
     FriParameters,
@@ -47,8 +45,7 @@ use powdr_autoprecompiles::evaluation::AirStats;
 use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::PowdrExtension;
-pub use powdr_openvm_hints_circuit::HintsExtension;
-use powdr_openvm_hints_circuit::{HintsCpuProverExt, HintsExtensionExecutor};
+use powdr_openvm_hints_circuit::{HintsExtension, HintsExtensionExecutor, HintsProverExt};
 use powdr_openvm_hints_transpiler::HintsTranspilerExtension;
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
@@ -64,19 +61,18 @@ use std::{
 
 use crate::customize_exe::OpenVmApcCandidate;
 pub use crate::customize_exe::Prog;
-use crate::powdr_extension::chip::{PowdrAir, PowdrChip};
-use crate::powdr_extension::trace_generator::PowdrPeripheryInstances;
-use crate::powdr_extension::PlonkAir;
+use crate::powdr_extension::chip::PowdrAir;
 use tracing::{info_span, Level};
 
 #[cfg(test)]
 use crate::extraction_utils::AirWidthsDiff;
 use crate::extraction_utils::{export_pil, AirWidths, OriginalVmConfig};
 use crate::instruction_formatter::openvm_opcode_formatter;
-use crate::powdr_extension::{PlonkChip, PowdrExtensionExecutor, PowdrPrecompile};
+use crate::powdr_extension::{PowdrExtensionExecutor, PowdrPrecompile};
 
 mod air_builder;
 pub mod bus_map;
+pub mod cuda_abi;
 pub mod extraction_utils;
 pub mod opcode;
 pub mod symbolic_instruction_builder;
@@ -85,7 +81,38 @@ pub use opcode::instruction_allowlist;
 pub use powdr_autoprecompiles::DegreeBound;
 pub use powdr_autoprecompiles::PgoConfig;
 
-type BabyBearSC = BabyBearPoseidon2Config;
+pub type BabyBearSC = BabyBearPoseidon2Config;
+
+cfg_if::cfg_if! {
+    if #[cfg(feature = "cuda")] {
+        pub use openvm_cuda_backend::engine::GpuBabyBearPoseidon2Engine;
+        pub use openvm_native_circuit::NativeGpuBuilder;
+        pub type PowdrSdkGpu = GenericSdk<GpuBabyBearPoseidon2Engine, SpecializedConfigGpuBuilder, NativeGpuBuilder>;
+        pub type PowdrExecutionProfileSdkGpu = GenericSdk<GpuBabyBearPoseidon2Engine, ExtendedVmConfigGpuBuilder, NativeGpuBuilder>;
+
+        pub use openvm_circuit::system::cuda::{extensions::SystemGpuBuilder, SystemChipInventoryGPU};
+        pub use openvm_sdk::config::SdkVmGpuBuilder;
+        pub use openvm_cuda_backend::prover_backend::GpuBackend;
+        pub use openvm_circuit_primitives::bitwise_op_lookup::BitwiseOperationLookupChipGPU;
+        pub use openvm_circuit_primitives::range_tuple::RangeTupleCheckerChipGPU;
+        pub use openvm_circuit_primitives::var_range::VariableRangeCheckerChipGPU;
+        pub use openvm_cuda_backend::base::DeviceMatrix;
+        pub use openvm_circuit::arch::DenseRecordArena;
+    }
+}
+
+use openvm_circuit_primitives::bitwise_op_lookup::{
+    BitwiseOperationLookupAir, SharedBitwiseOperationLookupChip,
+};
+use openvm_circuit_primitives::range_tuple::{RangeTupleCheckerAir, SharedRangeTupleCheckerChip};
+use openvm_circuit_primitives::var_range::{
+    SharedVariableRangeCheckerChip, VariableRangeCheckerAir,
+};
+use openvm_native_circuit::NativeCpuBuilder;
+pub type PowdrSdkCpu =
+    GenericSdk<BabyBearPoseidon2Engine, SpecializedConfigCpuBuilder, NativeCpuBuilder>;
+pub type PowdrExecutionProfileSdkCpu =
+    GenericSdk<BabyBearPoseidon2Engine, ExtendedVmConfigCpuBuilder, NativeCpuBuilder>;
 
 pub const DEFAULT_OPENVM_DEGREE_BOUND: usize = 2 * DEFAULT_APP_LOG_BLOWUP + 1;
 pub const DEFAULT_DEGREE_BOUND: DegreeBound = DegreeBound {
@@ -121,13 +148,44 @@ pub mod bus_interaction_handler;
 pub mod instruction_formatter;
 pub mod memory_bus_interaction;
 
-mod plonk;
-
 /// A custom VmConfig that wraps the SdkVmConfig, adding our custom extension.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SpecializedConfig {
     pub sdk: OriginalVmConfig,
     pub powdr: PowdrExtension<BabyBear>,
+}
+
+#[cfg(feature = "cuda")]
+#[derive(Default, Clone)]
+pub struct SpecializedConfigGpuBuilder;
+
+#[cfg(feature = "cuda")]
+impl VmBuilder<GpuBabyBearPoseidon2Engine> for SpecializedConfigGpuBuilder {
+    type VmConfig = SpecializedConfig;
+    type SystemChipInventory = SystemChipInventoryGPU;
+    type RecordArena = DenseRecordArena;
+
+    fn create_chip_complex(
+        &self,
+        config: &SpecializedConfig,
+        circuit: AirInventory<BabyBearSC>,
+    ) -> Result<
+        VmChipComplex<BabyBearSC, Self::RecordArena, GpuBackend, Self::SystemChipInventory>,
+        ChipInventoryError,
+    > {
+        let mut chip_complex = VmBuilder::<GpuBabyBearPoseidon2Engine>::create_chip_complex(
+            &SdkVmGpuBuilder,
+            &config.sdk.sdk_config.sdk,
+            circuit,
+        )?;
+        let inventory = &mut chip_complex.inventory;
+        VmProverExtension::<GpuBabyBearPoseidon2Engine, _, _>::extend_prover(
+            &PowdrGpuProverExt,
+            &config.powdr,
+            inventory,
+        )?;
+        Ok(chip_complex)
+    }
 }
 
 #[derive(Default, Clone)]
@@ -160,6 +218,66 @@ where
     }
 }
 
+#[cfg(feature = "cuda")]
+struct PowdrGpuProverExt;
+
+#[cfg(feature = "cuda")]
+impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, PowdrExtension<BabyBear>>
+    for PowdrGpuProverExt
+{
+    fn extend_prover(
+        &self,
+        extension: &PowdrExtension<BabyBear>,
+        inventory: &mut ChipInventory<BabyBearSC, DenseRecordArena, GpuBackend>,
+    ) -> Result<(), ChipInventoryError> {
+        // TODO: here we make assumptions about the existence of some chips in the periphery. Make this more flexible
+
+        use crate::powdr_extension::trace_generator::cuda::PowdrPeripheryInstancesGpu;
+        let bitwise_lookup = inventory
+            .find_chip::<Arc<BitwiseOperationLookupChipGPU<8>>>()
+            .next()
+            .cloned();
+        let range_checker = inventory
+            .find_chip::<Arc<VariableRangeCheckerChipGPU>>()
+            .next()
+            .unwrap();
+        let tuple_range_checker = inventory
+            .find_chip::<Arc<RangeTupleCheckerChipGPU<2>>>()
+            .next()
+            .cloned();
+
+        // Create the shared chips and the dummy shared chips
+        let shared_chips_pair = PowdrPeripheryInstancesGpu::new(
+            range_checker.clone(),
+            bitwise_lookup,
+            tuple_range_checker,
+            get_periphery_bus_ids(inventory),
+        );
+
+        for precompile in &extension.precompiles {
+            use crate::powdr_extension::chip::PowdrChipGpu;
+
+            inventory.next_air::<PowdrAir<BabyBear>>()?;
+            let chip = PowdrChipGpu::new(
+                precompile.clone(),
+                extension.airs.clone(),
+                extension.base_config.clone(),
+                shared_chips_pair.clone(),
+            );
+            inventory.add_executor_chip(chip);
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Clone)]
+pub struct PeripheryBusIds {
+    pub range_checker: u16,
+    pub bitwise_lookup: Option<u16>,
+    pub tuple_range_checker: Option<u16>,
+}
+
 struct PowdrCpuProverExt;
 
 impl<E, RA> VmProverExtension<E, RA, PowdrExtension<BabyBear>> for PowdrCpuProverExt
@@ -173,6 +291,8 @@ where
         inventory: &mut ChipInventory<<E as StarkEngine>::SC, RA, <E as StarkEngine>::PB>,
     ) -> Result<(), ChipInventoryError> {
         // TODO: here we make assumptions about the existence of some chips in the periphery. Make this more flexible
+
+        use crate::powdr_extension::trace_generator::cpu::PowdrPeripheryInstancesCpu;
         let bitwise_lookup = inventory
             .find_chip::<SharedBitwiseOperationLookupChip<8>>()
             .next()
@@ -187,39 +307,58 @@ where
             .cloned();
 
         // Create the shared chips and the dummy shared chips
-        let shared_chips_pair = PowdrPeripheryInstances::new(
+        let shared_chips_pair = PowdrPeripheryInstancesCpu::new(
             range_checker.clone(),
             bitwise_lookup,
             tuple_range_checker,
+            get_periphery_bus_ids(inventory),
         );
 
         for precompile in &extension.precompiles {
-            match extension.implementation {
-                PrecompileImplementation::SingleRowChip => {
-                    inventory.next_air::<PowdrAir<BabyBear>>()?;
-                    let chip = PowdrChip::new(
-                        precompile.clone(),
-                        extension.airs.clone(),
-                        extension.base_config.clone(),
-                        shared_chips_pair.clone(),
-                    );
-                    inventory.add_executor_chip(chip);
-                }
-                PrecompileImplementation::PlonkChip => {
-                    inventory.next_air::<PlonkAir<BabyBear>>()?;
-                    let chip = PlonkChip::new(
-                        precompile.clone(),
-                        extension.airs.clone(),
-                        extension.base_config.clone(),
-                        shared_chips_pair.clone(),
-                        extension.bus_map.clone(),
-                    );
-                    inventory.add_executor_chip(chip);
-                }
-            };
+            use crate::powdr_extension::chip::PowdrChipCpu;
+
+            inventory.next_air::<PowdrAir<BabyBear>>()?;
+            let chip = PowdrChipCpu::new(
+                precompile.clone(),
+                extension.airs.clone(),
+                extension.base_config.clone(),
+                shared_chips_pair.clone(),
+            );
+            inventory.add_executor_chip(chip);
         }
 
         Ok(())
+    }
+}
+
+// Helper function to get the periphery bus ids from the `AirInventory`.
+// This is the most robust method because bus ids are assigned at air creation time.
+fn get_periphery_bus_ids<SC, RA, PB>(inventory: &ChipInventory<SC, RA, PB>) -> PeripheryBusIds
+where
+    SC: StarkGenericConfig,
+    PB: ProverBackend,
+{
+    let air_inventory = inventory.airs();
+    let range_checker_bus_id = air_inventory
+        .find_air::<VariableRangeCheckerAir>()
+        .next()
+        .unwrap()
+        .bus
+        .inner
+        .index;
+    let bitwise_lookup_bus_id = air_inventory
+        .find_air::<BitwiseOperationLookupAir<8>>()
+        .next()
+        .map(|air| air.bus.inner.index);
+    let tuple_range_checker_bus_id = air_inventory
+        .find_air::<RangeTupleCheckerAir<2>>()
+        .next()
+        .map(|air| air.bus.inner.index);
+
+    PeripheryBusIds {
+        range_checker: range_checker_bus_id,
+        bitwise_lookup: bitwise_lookup_bus_id,
+        tuple_range_checker: tuple_range_checker_bus_id,
     }
 }
 
@@ -294,18 +433,11 @@ impl SpecializedConfig {
     fn new(
         base_config: OriginalVmConfig,
         precompiles: Vec<PowdrPrecompile<BabyBear>>,
-        implementation: PrecompileImplementation,
         max_degree: usize,
     ) -> Self {
         let airs = base_config.airs(max_degree).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
         let bus_map = base_config.bus_map();
-        let powdr_extension = PowdrExtension::new(
-            precompiles,
-            base_config.clone(),
-            implementation,
-            bus_map,
-            airs,
-        );
+        let powdr_extension = PowdrExtension::new(precompiles, base_config.clone(), bus_map, airs);
         Self {
             sdk: base_config,
             powdr: powdr_extension,
@@ -387,22 +519,10 @@ pub fn compile_openvm(
     Ok(OriginalCompiledProgram { exe, vm_config })
 }
 
-/// Determines how the precompile (a circuit with algebraic gates and bus interactions)
-/// is implemented as a RAP.
-#[derive(Default, Clone, Deserialize, Serialize)]
-pub enum PrecompileImplementation {
-    /// Allocate a column for each variable and process a call in a single row.
-    #[default]
-    SingleRowChip,
-    /// Compile the circuit to a PlonK circuit.
-    PlonkChip,
-}
-
 pub fn compile_guest(
     guest: &str,
     guest_opts: GuestOptions,
     config: PowdrConfig,
-    implementation: PrecompileImplementation,
     pgo_config: PgoConfig,
 ) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
     let original_program = compile_openvm(guest, guest_opts.clone())?;
@@ -412,14 +532,7 @@ pub fn compile_guest(
         tally_opcode_frequency(&pgo_config, &original_program.exe);
     }
 
-    compile_exe(
-        guest,
-        guest_opts,
-        original_program,
-        config,
-        implementation,
-        pgo_config,
-    )
+    compile_exe(guest, guest_opts, original_program, config, pgo_config)
 }
 
 fn instruction_index_to_pc(program: &Program<BabyBear>, idx: usize) -> u64 {
@@ -468,7 +581,6 @@ pub fn compile_exe(
     guest_opts: GuestOptions,
     original_program: OriginalCompiledProgram,
     config: PowdrConfig,
-    implementation: PrecompileImplementation,
     pgo_config: PgoConfig,
 ) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
     // Build the ELF with guest options and a target filter.
@@ -487,7 +599,6 @@ pub fn compile_exe(
         original_program,
         &std::fs::read(elf_binary_path)?,
         config,
-        implementation,
         pgo_config,
     )
 }
@@ -496,7 +607,6 @@ pub fn compile_exe_with_elf(
     original_program: OriginalCompiledProgram,
     elf: &[u8],
     config: PowdrConfig,
-    implementation: PrecompileImplementation,
     pgo_config: PgoConfig,
 ) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
     let elf = powdr_riscv_elf::load_elf_from_buffer(elf);
@@ -518,7 +628,6 @@ pub fn compile_exe_with_elf(
                 elf.text_labels(),
                 elf.debug_info(),
                 config,
-                implementation,
                 CellPgo::<_, OpenVmApcCandidate<_, _>>::with_pgo_data_and_max_columns(
                     pgo_data,
                     max_total_apc_columns,
@@ -530,7 +639,6 @@ pub fn compile_exe_with_elf(
             elf.text_labels(),
             elf.debug_info(),
             config,
-            implementation,
             InstructionPgo::with_pgo_data(pgo_data),
         ),
         PgoConfig::None => customize(
@@ -538,7 +646,6 @@ pub fn compile_exe_with_elf(
             elf.text_labels(),
             elf.debug_info(),
             config,
-            implementation,
             NonePgo::default(),
         ),
     };
@@ -603,7 +710,40 @@ where
         let mut chip_complex =
             VmBuilder::<E>::create_chip_complex(&SdkVmCpuBuilder, &config.sdk, circuit)?;
         let inventory = &mut chip_complex.inventory;
-        VmProverExtension::<E, _, _>::extend_prover(&HintsCpuProverExt, &config.hints, inventory)?;
+        VmProverExtension::<E, _, _>::extend_prover(&HintsProverExt, &config.hints, inventory)?;
+        Ok(chip_complex)
+    }
+}
+
+#[cfg(feature = "cuda")]
+#[derive(Default, Clone)]
+pub struct ExtendedVmConfigGpuBuilder;
+
+#[cfg(feature = "cuda")]
+impl VmBuilder<GpuBabyBearPoseidon2Engine> for ExtendedVmConfigGpuBuilder {
+    type VmConfig = ExtendedVmConfig;
+    type SystemChipInventory = SystemChipInventoryGPU;
+    type RecordArena = DenseRecordArena;
+
+    fn create_chip_complex(
+        &self,
+        config: &ExtendedVmConfig,
+        circuit: AirInventory<BabyBearSC>,
+    ) -> Result<
+        VmChipComplex<BabyBearSC, Self::RecordArena, GpuBackend, Self::SystemChipInventory>,
+        ChipInventoryError,
+    > {
+        let mut chip_complex = VmBuilder::<GpuBabyBearPoseidon2Engine>::create_chip_complex(
+            &SdkVmGpuBuilder,
+            &config.sdk,
+            circuit,
+        )?;
+        let inventory = &mut chip_complex.inventory;
+        VmProverExtension::<GpuBabyBearPoseidon2Engine, _, _>::extend_prover(
+            &HintsProverExt,
+            &config.hints,
+            inventory,
+        )?;
         Ok(chip_complex)
     }
 }
@@ -671,8 +811,9 @@ impl CompiledProgram {
         max_degree: usize,
     ) -> (Vec<(AirMetrics, Option<AirWidthsDiff>)>, Vec<AirMetrics>) {
         let air_inventory = self.vm_config.create_airs().unwrap();
-        let builder = SpecializedConfigCpuBuilder;
-        let chip_complex = <SpecializedConfigCpuBuilder as VmBuilder<BabyBearPoseidon2Engine>>::create_chip_complex(&builder, &self.vm_config, air_inventory).unwrap();
+
+        let chip_complex = <SpecializedConfigCpuBuilder as VmBuilder<BabyBearPoseidon2Engine>>::create_chip_complex(&SpecializedConfigCpuBuilder, &self.vm_config, air_inventory).unwrap();
+
         let inventory = chip_complex.inventory;
 
         // Order of precompile is the same as that of Powdr executors in chip inventory
@@ -690,7 +831,7 @@ impl CompiledProgram {
                 // We actually give name "powdr_air_for_opcode_<opcode>" to the AIRs,
                 // but OpenVM uses the actual Rust type (PowdrAir) as the name in this method.
                 // TODO this is hacky but not sure how to do it better rn.
-                if name.starts_with("PowdrAir") || name.starts_with("PlonkAir") {
+                if name.starts_with("PowdrAir") {
                     use crate::extraction_utils::get_air_metrics;
 
                     powdr_air_metrics.push((
@@ -718,8 +859,10 @@ pub fn execute(program: CompiledProgram, inputs: StdIn) -> Result<(), Box<dyn st
     let app_config = AppConfig::new(app_fri_params, vm_config.clone());
 
     // prepare for execute
-    let sdk: GenericSdk<BabyBearPoseidon2Engine, SpecializedConfigCpuBuilder, NativeCpuBuilder> =
-        GenericSdk::new(app_config).unwrap();
+    #[cfg(feature = "cuda")]
+    let sdk = PowdrSdkGpu::new(app_config).unwrap();
+    #[cfg(not(feature = "cuda"))]
+    let sdk = PowdrSdkCpu::new(app_config).unwrap();
 
     let output = sdk.execute(exe.clone(), inputs.clone()).unwrap();
 
@@ -757,17 +900,19 @@ pub fn prove(
     let app_config = AppConfig::new(app_fri_params, vm_config.clone());
 
     // Create the SDK
-    let sdk: GenericSdk<_, SpecializedConfigCpuBuilder, _> = GenericSdk::new(app_config).unwrap();
+    #[cfg(feature = "cuda")]
+    let sdk = PowdrSdkGpu::new(app_config).unwrap();
+    #[cfg(not(feature = "cuda"))]
+    let sdk = PowdrSdkCpu::new(app_config).unwrap();
     if mock {
         // Build owned vm instance, so we can mutate it later
         let vm_builder = sdk.app_vm_builder().clone();
         let vm_pk = sdk.app_pk().app_vm_pk.clone();
         let exe = sdk.convert_to_exe(exe.clone())?;
-        let mut vm_instance: VmInstance<BabyBearPoseidon2Engine, _> =
-            new_local_prover(vm_builder, &vm_pk, exe)?;
+        let mut vm_instance: VmInstance<_, _> = new_local_prover(vm_builder, &vm_pk, exe.clone())?;
 
         vm_instance.reset_state(inputs.clone());
-        let metered_ctx = vm_instance.vm.build_metered_ctx();
+        let metered_ctx = vm_instance.vm.build_metered_ctx(&exe);
         let metered_interpreter = vm_instance.vm.metered_interpreter(vm_instance.exe())?;
         let (segments, _) = metered_interpreter.execute_metered(inputs.clone(), metered_ctx)?;
         let mut state = vm_instance.state_mut().take();
@@ -775,7 +920,10 @@ pub fn prove(
         // Get reusable inputs for `debug_proving_ctx`, the mock prover API from OVM.
         let vm = &mut vm_instance.vm;
         let air_inv = vm.config().create_airs().unwrap();
-        let pk = air_inv.keygen(&vm.engine);
+        #[cfg(feature = "cuda")]
+        let pk = air_inv.keygen::<GpuBabyBearPoseidon2Engine>(&vm.engine);
+        #[cfg(not(feature = "cuda"))]
+        let pk = air_inv.keygen::<BabyBearPoseidon2Engine>(&vm.engine);
 
         for (seg_idx, segment) in segments.into_iter().enumerate() {
             let _segment_span = info_span!("prove_segment", segment = seg_idx).entered();
@@ -786,7 +934,7 @@ pub fn prove(
                 num_insns,
                 trace_heights,
             } = segment;
-            assert_eq!(state.as_ref().unwrap().instret, instret_start);
+            assert_eq!(state.as_ref().unwrap().instret(), instret_start);
             let from_state = Option::take(&mut state).unwrap();
             vm.transport_init_memory_to_device(&from_state.memory);
             let PreflightExecutionOutput {
@@ -824,8 +972,7 @@ pub fn prove(
         tracing::info!("App proof verification done.");
 
         if recursion {
-            let mut agg_prover: AggStarkProver<BabyBearPoseidon2Engine, NativeCpuBuilder> =
-                sdk.prover(exe.clone())?.agg_prover;
+            let mut agg_prover: AggStarkProver<_, _> = sdk.prover(exe.clone())?.agg_prover;
 
             // Note that this proof is not verified. We assume that any valid app proof
             // (verified above) also leads to a valid aggregation proof.
@@ -856,8 +1003,7 @@ pub fn execution_profile_from_guest(
     let app_config = AppConfig::new(app_fri_params, vm_config.clone());
 
     // prepare for execute
-    let sdk: GenericSdk<BabyBearPoseidon2Engine, ExtendedVmConfigCpuBuilder, NativeCpuBuilder> =
-        GenericSdk::new(app_config).unwrap();
+    let sdk = PowdrExecutionProfileSdkCpu::new(app_config).unwrap();
 
     execution_profile::<BabyBearOpenVmApcAdapter>(&program, || {
         sdk.execute(exe.clone(), inputs.clone()).unwrap();
@@ -875,28 +1021,19 @@ mod tests {
     fn compile_and_prove(
         guest: &str,
         config: PowdrConfig,
-        implementation: PrecompileImplementation,
         mock: bool,
         recursion: bool,
         stdin: StdIn,
         pgo_config: PgoConfig,
         segment_height: Option<usize>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let program = compile_guest(
-            guest,
-            GuestOptions::default(),
-            config,
-            implementation,
-            pgo_config,
-        )
-        .unwrap();
+        let program = compile_guest(guest, GuestOptions::default(), config, pgo_config).unwrap();
         prove(&program, mock, recursion, stdin, segment_height)
     }
 
     fn prove_simple(
         guest: &str,
         config: PowdrConfig,
-        implementation: PrecompileImplementation,
         stdin: StdIn,
         pgo_config: PgoConfig,
         segment_height: Option<usize>,
@@ -904,7 +1041,6 @@ mod tests {
         compile_and_prove(
             guest,
             config,
-            implementation,
             false,
             false,
             stdin,
@@ -917,7 +1053,6 @@ mod tests {
     fn prove_mock(
         guest: &str,
         config: PowdrConfig,
-        implementation: PrecompileImplementation,
         stdin: StdIn,
         pgo_config: PgoConfig,
         segment_height: Option<usize>,
@@ -925,7 +1060,6 @@ mod tests {
         compile_and_prove(
             guest,
             config,
-            implementation,
             true,
             false,
             stdin,
@@ -938,7 +1072,6 @@ mod tests {
     fn prove_recursion(
         guest: &str,
         config: PowdrConfig,
-        implementation: PrecompileImplementation,
         stdin: StdIn,
         pgo_config: PgoConfig,
         segment_height: Option<usize>,
@@ -946,7 +1079,6 @@ mod tests {
         compile_and_prove(
             guest,
             config,
-            implementation,
             false,
             true,
             stdin,
@@ -1014,14 +1146,8 @@ mod tests {
         let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
 
         let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP_NO_APC_EXECUTED);
-        let program = compile_guest(
-            GUEST,
-            GuestOptions::default(),
-            config,
-            PrecompileImplementation::SingleRowChip,
-            PgoConfig::None,
-        )
-        .unwrap();
+        let program =
+            compile_guest(GUEST, GuestOptions::default(), config, PgoConfig::None).unwrap();
 
         // Assert that all APCs aren't executed
         program
@@ -1043,14 +1169,7 @@ mod tests {
         stdin.write(&GUEST_ITER);
         let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP_PGO);
         let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
-        prove_simple(
-            GUEST,
-            config,
-            PrecompileImplementation::SingleRowChip,
-            stdin,
-            PgoConfig::Instruction(pgo_data),
-            None,
-        );
+        prove_simple(GUEST, config, stdin, PgoConfig::Instruction(pgo_data), None);
     }
 
     #[test]
@@ -1059,32 +1178,7 @@ mod tests {
         stdin.write(&GUEST_ITER);
         let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP_PGO);
         let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
-        prove_mock(
-            GUEST,
-            config,
-            PrecompileImplementation::SingleRowChip,
-            stdin,
-            PgoConfig::Instruction(pgo_data),
-            None,
-        );
-    }
-
-    // All gate constraints should be satisfied, but bus interactions are not implemented yet.
-    #[test]
-    #[ignore = "TODO: fix"]
-    fn guest_plonk_prove_mock() {
-        let mut stdin = StdIn::default();
-        stdin.write(&GUEST_ITER);
-        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP_PGO);
-        let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
-        prove_mock(
-            GUEST,
-            config,
-            PrecompileImplementation::PlonkChip,
-            stdin,
-            PgoConfig::Instruction(pgo_data),
-            None,
-        );
+        prove_mock(GUEST, config, stdin, PgoConfig::Instruction(pgo_data), None);
     }
 
     #[test]
@@ -1094,14 +1188,7 @@ mod tests {
         stdin.write(&GUEST_ITER);
         let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP_PGO);
         let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
-        prove_recursion(
-            GUEST,
-            config,
-            PrecompileImplementation::SingleRowChip,
-            stdin,
-            PgoConfig::Instruction(pgo_data),
-            None,
-        );
+        prove_recursion(GUEST, config, stdin, PgoConfig::Instruction(pgo_data), None);
     }
 
     #[test]
@@ -1109,14 +1196,9 @@ mod tests {
     fn matmul_compile() {
         let guest = "guest-matmul";
         let config = default_powdr_openvm_config(1, 0);
-        assert!(compile_guest(
-            guest,
-            GuestOptions::default(),
-            config,
-            PrecompileImplementation::SingleRowChip,
-            PgoConfig::default()
-        )
-        .is_ok());
+        assert!(
+            compile_guest(guest, GuestOptions::default(), config, PgoConfig::default()).is_ok()
+        );
     }
 
     #[test]
@@ -1124,14 +1206,7 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let config = default_powdr_openvm_config(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_simple(
-            GUEST_KECCAK,
-            config,
-            PrecompileImplementation::SingleRowChip,
-            stdin,
-            PgoConfig::None,
-            None,
-        );
+        prove_simple(GUEST_KECCAK, config, stdin, PgoConfig::None, None);
     }
 
     #[test]
@@ -1141,14 +1216,7 @@ mod tests {
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let config = default_powdr_openvm_config(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
         // should create two segments
-        prove_simple(
-            GUEST_KECCAK,
-            config,
-            PrecompileImplementation::SingleRowChip,
-            stdin,
-            PgoConfig::None,
-            Some(4_000),
-        );
+        prove_simple(GUEST_KECCAK, config, stdin, PgoConfig::None, Some(4_000));
     }
 
     #[test]
@@ -1157,14 +1225,7 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER);
         let config = default_powdr_openvm_config(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_simple(
-            GUEST_KECCAK,
-            config,
-            PrecompileImplementation::SingleRowChip,
-            stdin,
-            PgoConfig::None,
-            None,
-        );
+        prove_simple(GUEST_KECCAK, config, stdin, PgoConfig::None, None);
     }
 
     #[test]
@@ -1179,7 +1240,6 @@ mod tests {
         prove_recursion(
             GUEST_KECCAK,
             config.clone(),
-            PrecompileImplementation::SingleRowChip,
             stdin.clone(),
             PgoConfig::Instruction(pgo_data.clone()),
             None,
@@ -1188,7 +1248,6 @@ mod tests {
         prove_recursion(
             GUEST_KECCAK,
             config.clone(),
-            PrecompileImplementation::SingleRowChip,
             stdin,
             PgoConfig::Cell(pgo_data, None),
             None,
@@ -1207,7 +1266,6 @@ mod tests {
         prove_recursion(
             GUEST_KECCAK,
             config,
-            PrecompileImplementation::SingleRowChip,
             stdin,
             PgoConfig::Instruction(pgo_data),
             None,
@@ -1220,49 +1278,7 @@ mod tests {
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
 
         let config = default_powdr_openvm_config(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_mock(
-            GUEST_KECCAK,
-            config,
-            PrecompileImplementation::SingleRowChip,
-            stdin,
-            PgoConfig::None,
-            None,
-        );
-    }
-
-    // All gate constraints should be satisfied, but bus interactions are not implemented yet.
-    #[test]
-    #[ignore = "Passes without debug assertions, but fails with it"]
-    fn keccak_plonk_small_prove_mock() {
-        let mut stdin = StdIn::default();
-        stdin.write(&GUEST_KECCAK_ITER_SMALL);
-        let config = default_powdr_openvm_config(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_mock(
-            GUEST_KECCAK,
-            config,
-            PrecompileImplementation::PlonkChip,
-            stdin,
-            PgoConfig::None,
-            None,
-        );
-    }
-
-    // TODO: fix this test. It works with `mock` (see above) but not with `prove_simple`
-    #[test]
-    #[ignore = "Panics with a verifier error like below without debug assertions, but fails with it"]
-    #[should_panic = "Verification(StarkError(InvalidProofShape)"]
-    fn keccak_plonk_small_prove_simple() {
-        let mut stdin = StdIn::default();
-        stdin.write(&GUEST_KECCAK_ITER_SMALL);
-        let config = default_powdr_openvm_config(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_simple(
-            GUEST_KECCAK,
-            config,
-            PrecompileImplementation::PlonkChip,
-            stdin,
-            PgoConfig::None,
-            None,
-        );
+        prove_mock(GUEST_KECCAK, config, stdin, PgoConfig::None, None);
     }
 
     #[test]
@@ -1271,14 +1287,7 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER);
         let config = default_powdr_openvm_config(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_mock(
-            GUEST_KECCAK,
-            config,
-            PrecompileImplementation::SingleRowChip,
-            stdin,
-            PgoConfig::None,
-            None,
-        );
+        prove_mock(GUEST_KECCAK, config, stdin, PgoConfig::None, None);
     }
 
     // Create multiple APC for 10 Keccak iterations to test different PGO modes
@@ -1299,7 +1308,6 @@ mod tests {
         prove_simple(
             GUEST_KECCAK,
             config.clone(),
-            PrecompileImplementation::SingleRowChip,
             stdin.clone(),
             PgoConfig::Cell(pgo_data.clone(), None),
             None,
@@ -1312,7 +1320,6 @@ mod tests {
         prove_simple(
             GUEST_KECCAK,
             config.clone(),
-            PrecompileImplementation::SingleRowChip,
             stdin.clone(),
             PgoConfig::Instruction(pgo_data),
             None,
@@ -1337,7 +1344,6 @@ mod tests {
         prove_simple(
             GUEST_SHA256,
             config,
-            PrecompileImplementation::SingleRowChip,
             stdin,
             PgoConfig::Instruction(pgo_data),
             None,
@@ -1357,7 +1363,6 @@ mod tests {
         prove_mock(
             GUEST_SHA256,
             config,
-            PrecompileImplementation::SingleRowChip,
             stdin,
             PgoConfig::Instruction(pgo_data),
             None,
@@ -1376,7 +1381,6 @@ mod tests {
         prove_recursion(
             GUEST_SHA256,
             config.clone(),
-            PrecompileImplementation::SingleRowChip,
             stdin.clone(),
             PgoConfig::Instruction(pgo_data.clone()),
             None,
@@ -1385,7 +1389,6 @@ mod tests {
         prove_recursion(
             GUEST_SHA256,
             config.clone(),
-            PrecompileImplementation::SingleRowChip,
             stdin,
             PgoConfig::Cell(pgo_data, None),
             None,
@@ -1404,7 +1407,6 @@ mod tests {
         prove_recursion(
             GUEST_SHA256,
             config,
-            PrecompileImplementation::SingleRowChip,
             stdin,
             PgoConfig::Instruction(pgo_data),
             None,
@@ -1423,7 +1425,6 @@ mod tests {
         prove_simple(
             GUEST_SHA256,
             config,
-            PrecompileImplementation::SingleRowChip,
             stdin,
             PgoConfig::Instruction(pgo_data),
             None,
@@ -1442,7 +1443,6 @@ mod tests {
         prove_mock(
             GUEST_SHA256,
             config,
-            PrecompileImplementation::SingleRowChip,
             stdin,
             PgoConfig::Instruction(pgo_data),
             None,
@@ -1464,7 +1464,6 @@ mod tests {
         prove_simple(
             GUEST_SHA256,
             config.clone(),
-            PrecompileImplementation::SingleRowChip,
             stdin.clone(),
             PgoConfig::Cell(pgo_data.clone(), None),
             None,
@@ -1476,7 +1475,6 @@ mod tests {
         prove_simple(
             GUEST_SHA256,
             config.clone(),
-            PrecompileImplementation::SingleRowChip,
             stdin.clone(),
             PgoConfig::Instruction(pgo_data),
             None,
@@ -1503,7 +1501,6 @@ mod tests {
         prove_simple(
             GUEST_U256,
             config.clone(),
-            PrecompileImplementation::SingleRowChip,
             stdin.clone(),
             PgoConfig::Cell(pgo_data.clone(), None),
             None,
@@ -1527,7 +1524,6 @@ mod tests {
         prove_simple(
             GUEST_PAIRING,
             config.clone(),
-            PrecompileImplementation::SingleRowChip,
             stdin.clone(),
             PgoConfig::Cell(pgo_data.clone(), None),
             None,
@@ -1546,14 +1542,7 @@ mod tests {
         stdin.write(&GUEST_HINTS_TEST);
         let config = default_powdr_openvm_config(0, 0);
 
-        prove_simple(
-            GUEST_SHA256,
-            config,
-            PrecompileImplementation::SingleRowChip,
-            stdin,
-            PgoConfig::None,
-            None,
-        );
+        prove_simple(GUEST_SHA256, config, stdin, PgoConfig::None, None);
     }
 
     #[test]
@@ -1566,7 +1555,6 @@ mod tests {
         prove_simple(
             GUEST_ECC_HINTS,
             config.clone(),
-            PrecompileImplementation::SingleRowChip,
             stdin.clone(),
             PgoConfig::Cell(pgo_data.clone(), None),
             None,
@@ -1586,7 +1574,6 @@ mod tests {
         prove_simple(
             GUEST_ECRECOVER_HINTS,
             config.clone(),
-            PrecompileImplementation::SingleRowChip,
             stdin.clone(),
             PgoConfig::Cell(pgo_data.clone(), None),
             None,
@@ -1604,7 +1591,6 @@ mod tests {
         prove_recursion(
             GUEST_ECC_HINTS,
             config,
-            PrecompileImplementation::SingleRowChip,
             stdin,
             PgoConfig::Cell(pgo_data, None),
             None,
@@ -1625,7 +1611,6 @@ mod tests {
         prove_recursion(
             GUEST_ECRECOVER_HINTS,
             config,
-            PrecompileImplementation::SingleRowChip,
             stdin,
             PgoConfig::Cell(pgo_data, None),
             None,
@@ -1648,7 +1633,6 @@ mod tests {
         prove_simple(
             GUEST_ECC_PROJECTIVE,
             config,
-            PrecompileImplementation::SingleRowChip,
             stdin,
             PgoConfig::Cell(pgo_data, None),
             None,
@@ -1661,14 +1645,7 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER);
         let config = default_powdr_openvm_config(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_recursion(
-            GUEST_KECCAK,
-            config,
-            PrecompileImplementation::SingleRowChip,
-            stdin,
-            PgoConfig::None,
-            None,
-        );
+        prove_recursion(GUEST_KECCAK, config, stdin, PgoConfig::None, None);
     }
 
     // The following are compilation tests only
@@ -1702,7 +1679,6 @@ mod tests {
             guest.name,
             GuestOptions::default(),
             config,
-            PrecompileImplementation::SingleRowChip,
             guest.pgo_config,
         )
         .unwrap();
@@ -1868,11 +1844,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 14560,
-                            log_up: 23156,
+                            main: 14263,
+                            log_up: 22784,
                         },
-                        constraints: 4261,
-                        bus_interactions: 11345,
+                        constraints: 4285,
+                        bus_interactions: 11160,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1896,11 +1872,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 14532,
-                            log_up: 23124,
+                            main: 14235,
+                            log_up: 22752,
                         },
-                        constraints: 4237,
-                        bus_interactions: 11335,
+                        constraints: 4261,
+                        bus_interactions: 11150,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1913,52 +1889,16 @@ mod tests {
                 AirWidthsDiff {
                     before: AirWidths {
                         preprocessed: 0,
-                        main: 176212,
-                        log_up: 218016,
+                        main: 183410,
+                        log_up: 227144,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 14532,
-                        log_up: 23124,
+                        main: 14235,
+                        log_up: 22752,
                     },
                 }
             "#]]),
-        );
-    }
-
-    #[test]
-    fn guest_machine_plonk() {
-        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP_PGO);
-        let mut stdin = StdIn::default();
-        stdin.write(&GUEST_ITER);
-        let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin);
-
-        let max_degree = config.degree_bound.identities;
-        let (powdr_metrics, _) = compile_guest(
-            GUEST,
-            GuestOptions::default(),
-            config,
-            PrecompileImplementation::PlonkChip,
-            PgoConfig::Instruction(pgo_data),
-        )
-        .unwrap()
-        .air_metrics(max_degree);
-        assert_eq!(powdr_metrics.len(), 1);
-        let powdr_metrics_sum = powdr_metrics
-            .into_iter()
-            .map(|(metrics, _)| metrics)
-            .sum::<AirMetrics>();
-        assert_eq!(
-            powdr_metrics_sum,
-            AirMetrics {
-                widths: AirWidths {
-                    preprocessed: 0,
-                    main: 26,
-                    log_up: 36,
-                },
-                constraints: 1,
-                bus_interactions: 16,
-            }
         );
     }
 
@@ -1981,11 +1921,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 15488,
-                            log_up: 25212,
+                            main: 17304,
+                            log_up: 27896,
                         },
-                        constraints: 8387,
-                        bus_interactions: 10595,
+                        constraints: 8838,
+                        bus_interactions: 11927,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1998,13 +1938,13 @@ mod tests {
                 AirWidthsDiff {
                     before: AirWidths {
                         preprocessed: 0,
-                        main: 107487,
-                        log_up: 144252,
+                        main: 127884,
+                        log_up: 170096,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 15488,
-                        log_up: 25212,
+                        main: 17304,
+                        log_up: 27896,
                     },
                 }
             "#]]),
@@ -2030,11 +1970,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 18222,
-                            log_up: 28384,
+                            main: 19930,
+                            log_up: 30924,
                         },
-                        constraints: 10721,
-                        bus_interactions: 12178,
+                        constraints: 11105,
+                        bus_interactions: 13443,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2047,13 +1987,13 @@ mod tests {
                 AirWidthsDiff {
                     before: AirWidths {
                         preprocessed: 0,
-                        main: 130747,
-                        log_up: 173044,
+                        main: 150546,
+                        log_up: 198172,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 18222,
-                        log_up: 28384,
+                        main: 19930,
+                        log_up: 30924,
                     },
                 }
             "#]]),
@@ -2078,11 +2018,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 1757,
-                            log_up: 3028,
+                            main: 2025,
+                            log_up: 3472,
                         },
-                        constraints: 183,
-                        bus_interactions: 1512,
+                        constraints: 187,
+                        bus_interactions: 1734,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2106,11 +2046,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 1757,
-                            log_up: 3028,
+                            main: 2025,
+                            log_up: 3472,
                         },
-                        constraints: 183,
-                        bus_interactions: 1512,
+                        constraints: 187,
+                        bus_interactions: 1734,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2134,11 +2074,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 1757,
-                            log_up: 3028,
+                            main: 2025,
+                            log_up: 3472,
                         },
-                        constraints: 183,
-                        bus_interactions: 1512,
+                        constraints: 187,
+                        bus_interactions: 1734,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -2151,13 +2091,13 @@ mod tests {
                 AirWidthsDiff {
                     before: AirWidths {
                         preprocessed: 0,
-                        main: 27194,
-                        log_up: 34792,
+                        main: 27521,
+                        log_up: 35156,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 1757,
-                        log_up: 3028,
+                        main: 2025,
+                        log_up: 3472,
                     },
                 }
             "#]]),
@@ -2185,15 +2125,15 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 3254,
-                            log_up: 5224,
+                            main: 3245,
+                            log_up: 5260,
                         },
-                        constraints: 730,
-                        bus_interactions: 2515,
+                        constraints: 608,
+                        bus_interactions: 2560,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
-                    28
+                    22
                 "#]],
                 non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
                 non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
@@ -2202,13 +2142,13 @@ mod tests {
                 AirWidthsDiff {
                     before: AirWidths {
                         preprocessed: 0,
-                        main: 33065,
-                        log_up: 42660,
+                        main: 32348,
+                        log_up: 41608,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 3254,
-                        log_up: 5224,
+                        main: 3245,
+                        log_up: 5260,
                     },
                 }
             "#]]),

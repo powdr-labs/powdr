@@ -10,8 +10,5 @@ pub mod opcode;
 /// The integration of our extension with the VM
 mod vm;
 
-mod plonk;
-
 pub use opcode::PowdrOpcode;
-pub use plonk::{air::PlonkAir, chip::PlonkChip};
 pub use vm::{PowdrExtension, PowdrExtensionExecutor, PowdrPrecompile};
