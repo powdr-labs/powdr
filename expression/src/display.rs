@@ -122,6 +122,7 @@ mod test {
         test_display(-x.clone() + y.clone() * z.clone(), "-x + y * z");
         test_display((x.clone() * y.clone()) * z.clone(), "x * y * z");
         test_display(x.clone() - (y.clone() + z.clone()), "x - (y + z)");
+        test_display((x.clone() * y.clone()) + z.clone(), "x * y + z");
         // Observe associativity
         test_display(x.clone() * (y.clone() * z.clone()), "x * (y * z)");
         test_display(x.clone() + (y.clone() + z.clone()), "x + (y + z)");
