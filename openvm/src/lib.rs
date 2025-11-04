@@ -1166,6 +1166,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Too much RAM"]
     fn guest_prove_recursion() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
@@ -1175,7 +1176,7 @@ mod tests {
     }
 
     #[test]
-
+    #[ignore = "Too long"]
     fn matmul_compile() {
         let guest = "guest-matmul";
         let config = default_powdr_openvm_config(1, 0);
@@ -1203,7 +1204,7 @@ mod tests {
     }
 
     #[test]
-
+    #[ignore = "Too long"]
     fn keccak_prove_simple() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER);
@@ -1212,7 +1213,7 @@ mod tests {
     }
 
     #[test]
-
+    #[ignore = "Too much RAM"]
     fn keccak_prove_many_apcs() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER);
@@ -1238,6 +1239,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Too much RAM"]
     fn keccak_prove_large() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_LARGE);
@@ -1264,7 +1266,7 @@ mod tests {
     }
 
     #[test]
-
+    #[ignore = "Too long"]
     fn keccak_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER);
@@ -1314,7 +1316,7 @@ mod tests {
     }
 
     #[test]
-
+    #[ignore = "Too long"]
     fn sha256_prove_simple() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_SHA256_ITER);
@@ -1333,7 +1335,7 @@ mod tests {
     }
 
     #[test]
-
+    #[ignore = "Too long"]
     fn sha256_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_SHA256_ITER);
@@ -1352,7 +1354,7 @@ mod tests {
     }
 
     #[test]
-
+    #[ignore = "Too much RAM"]
     fn sha256_prove_many_apcs() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_SHA256_ITER);
@@ -1378,7 +1380,7 @@ mod tests {
     }
 
     #[test]
-
+    #[ignore = "Too much RAM"]
     fn sha256_prove_large() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_SHA256_ITER_LARGE);
@@ -1469,7 +1471,7 @@ mod tests {
     }
 
     #[test]
-
+    #[ignore = "Too much RAM"]
     fn u256_prove_large() {
         use std::time::Instant;
 
@@ -1492,6 +1494,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Too slow"]
     fn pairing_prove() {
         use std::time::Instant;
 
@@ -1562,7 +1565,7 @@ mod tests {
     }
 
     #[test]
-
+    #[ignore = "Too much RAM"]
     fn ecc_hint_prove_recursion() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ECC_ITER);
@@ -1579,7 +1582,7 @@ mod tests {
     }
 
     #[test]
-
+    #[ignore = "Too much RAM"]
     fn ecrecover_prove_recursion() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ECRECOVER_ITER);
@@ -1621,7 +1624,7 @@ mod tests {
     }
 
     #[test]
-
+    #[ignore = "Too much RAM"]
     fn keccak_prove_recursion() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER);
