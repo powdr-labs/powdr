@@ -1580,42 +1580,42 @@ mod tests {
         );
     }
 
-    #[test]
-    #[ignore = "Too much RAM"]
-    fn ecc_hint_prove_recursion() {
-        let mut stdin = StdIn::default();
-        stdin.write(&GUEST_ECC_ITER);
-        let pgo_data =
-            execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin.clone());
-        let config = default_powdr_openvm_config(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
-        prove_recursion(
-            GUEST_ECC_HINTS,
-            config,
-            stdin,
-            PgoConfig::Cell(pgo_data, None),
-            None,
-        );
-    }
+    // #[test]
+    // #[ignore = "Too much RAM"]
+    // fn ecc_hint_prove_recursion() {
+    //     let mut stdin = StdIn::default();
+    //     stdin.write(&GUEST_ECC_ITER);
+    //     let pgo_data =
+    //         execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin.clone());
+    //     let config = default_powdr_openvm_config(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
+    //     prove_recursion(
+    //         GUEST_ECC_HINTS,
+    //         config,
+    //         stdin,
+    //         PgoConfig::Cell(pgo_data, None),
+    //         None,
+    //     );
+    // }
 
-    #[test]
-    #[ignore = "Too much RAM"]
-    fn ecrecover_prove_recursion() {
-        let mut stdin = StdIn::default();
-        stdin.write(&GUEST_ECRECOVER_ITER);
-        let pgo_data = execution_profile_from_guest(
-            GUEST_ECRECOVER_HINTS,
-            GuestOptions::default(),
-            stdin.clone(),
-        );
-        let config = default_powdr_openvm_config(GUEST_ECRECOVER_APC_PGO, GUEST_ECRECOVER_SKIP);
-        prove_recursion(
-            GUEST_ECRECOVER_HINTS,
-            config,
-            stdin,
-            PgoConfig::Cell(pgo_data, None),
-            None,
-        );
-    }
+    // #[test]
+    // #[ignore = "Too much RAM"]
+    // fn ecrecover_prove_recursion() {
+    //     let mut stdin = StdIn::default();
+    //     stdin.write(&GUEST_ECRECOVER_ITER);
+    //     let pgo_data = execution_profile_from_guest(
+    //         GUEST_ECRECOVER_HINTS,
+    //         GuestOptions::default(),
+    //         stdin.clone(),
+    //     );
+    //     let config = default_powdr_openvm_config(GUEST_ECRECOVER_APC_PGO, GUEST_ECRECOVER_SKIP);
+    //     prove_recursion(
+    //         GUEST_ECRECOVER_HINTS,
+    //         config,
+    //         stdin,
+    //         PgoConfig::Cell(pgo_data, None),
+    //         None,
+    //     );
+    // }
 
     #[test]
     fn ecc_projective_prove() {
