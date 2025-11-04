@@ -18,6 +18,7 @@ use openvm_stark_backend::engine::StarkEngine;
 use openvm_stark_backend::prover::cpu::{CpuBackend, CpuDevice};
 
 use crate::powdr_extension::trace_generator::common::DummyExecutor;
+use crate::PeripheryBusIds;
 
 /// The shared chips which can be used by the PowdrChip.
 #[derive(Clone)]
@@ -26,6 +27,8 @@ pub struct PowdrPeripheryInstancesCpu {
     pub real: SharedPeripheryChipsCpu,
     /// The dummy chips used for all APCs. They share the range checker but create new instances of the bitwise lookup chip and the tuple range checker.
     pub dummy: SharedPeripheryChipsCpu,
+    /// The bus ids of the periphery
+    pub bus_ids: PeripheryBusIds,
 }
 
 #[derive(Clone)]
@@ -40,6 +43,7 @@ impl PowdrPeripheryInstancesCpu {
         range_checker: SharedVariableRangeCheckerChip,
         bitwise_8: Option<SharedBitwiseOperationLookupChip<8>>,
         tuple_range_checker: Option<SharedRangeTupleCheckerChip<2>>,
+        bus_ids: PeripheryBusIds,
     ) -> Self {
         Self {
             real: SharedPeripheryChipsCpu {
@@ -63,6 +67,7 @@ impl PowdrPeripheryInstancesCpu {
                     ))
                 }),
             },
+            bus_ids,
         }
     }
 }
@@ -160,9 +165,15 @@ where
 impl SharedPeripheryChipsCpu {
     /// Sends concrete values to the shared chips using a given bus id.
     /// Panics if the bus id doesn't match any of the chips' bus ids.
-    pub fn apply(&self, bus_id: u16, mult: u32, mut args: impl Iterator<Item = u32>) {
+    pub fn apply(
+        &self,
+        bus_id: u16,
+        mult: u32,
+        mut args: impl Iterator<Item = u32>,
+        periphery_bus_ids: &PeripheryBusIds,
+    ) {
         match bus_id {
-            id if Some(id) == self.bitwise_lookup_8.as_ref().map(|c| c.bus().inner.index) => {
+            id if Some(id) == periphery_bus_ids.bitwise_lookup => {
                 // bitwise operation lookup
                 // interpret the arguments, see `Air<AB> for BitwiseOperationLookupAir<NUM_BITS>`
                 let [x, y, x_xor_y, selector] = [
@@ -187,7 +198,7 @@ impl SharedPeripheryChipsCpu {
                     }
                 }
             }
-            id if id == self.range_checker.bus().index() => {
+            id if id == periphery_bus_ids.range_checker => {
                 // interpret the arguments, see `Air<AB> for VariableRangeCheckerAir`
                 let [value, max_bits] = [args.next().unwrap(), args.next().unwrap()];
 
@@ -195,12 +206,7 @@ impl SharedPeripheryChipsCpu {
                     self.range_checker.add_count(value, max_bits as usize);
                 }
             }
-            id if Some(id)
-                == self
-                    .tuple_range_checker
-                    .as_ref()
-                    .map(|c| c.bus().inner.index) =>
-            {
+            id if Some(id) == periphery_bus_ids.tuple_range_checker => {
                 // tuple range checker
                 // We pass a slice. It is checked inside `add_count`.
                 let args = args.collect_vec();
