@@ -57,7 +57,9 @@ impl<S: ApcStats> From<ApcPerformanceReport<S>> for ApcPerformanceReport<AirStat
     }
 }
 
-pub trait ApcStats: Into<AirStats> + Clone + Copy {
+pub trait ApcStats:
+    Into<AirStats> + Clone + Copy + Serialize + for<'a> Deserialize<'a> + Send + Sync + Sum
+{
     fn cells_per_call(&self) -> usize;
 }
 

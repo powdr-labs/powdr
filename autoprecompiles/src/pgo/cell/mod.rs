@@ -25,21 +25,21 @@ mod selection;
 pub use selection::KnapsackItem;
 
 /// While introducing apcs lead to savings, it also has costs.
-/// This trait models the cost of introducing a new chip
-pub trait Cost<S> {
-    fn cost(air_metrics: S) -> usize;
+/// This trait models the cost of introducing a new chip.
+pub trait Cost<A: Adapter> {
+    fn cost(air_metrics: A::ApcStats) -> usize;
 }
 
 /// A candidate APC
 #[derive(Serialize, Deserialize)]
-pub struct Candidate<A: Adapter, C: Cost<A::ApcStats>> {
+pub struct Candidate<A: Adapter, C: Cost<A>> {
     apc: Arc<AdapterApc<A>>,
     execution_frequency: usize,
     stats: ApcPerformanceReport<A::ApcStats>,
     _marker: PhantomData<C>,
 }
 
-impl<A: Adapter, C: Cost<A::ApcStats>> Candidate<A, C> {
+impl<A: Adapter, C: Cost<A>> Candidate<A, C> {
     fn create<Air: ApcArithmetization<A>>(
         apc: Arc<AdapterApc<A>>,
         pgo_program_pc_count: &HashMap<u64, u32>,
@@ -91,7 +91,7 @@ impl<A: Adapter, C: Cost<A::ApcStats>> Candidate<A, C> {
     }
 }
 
-impl<A: Adapter, C: Cost<A::ApcStats>> KnapsackItem for Candidate<A, C> {
+impl<A: Adapter, C: Cost<A>> KnapsackItem for Candidate<A, C> {
     fn cost(&self) -> usize {
         C::cost(self.stats.after)
     }
@@ -157,8 +157,8 @@ struct JsonExport {
     labels: BTreeMap<u64, Vec<String>>,
 }
 
-impl<A: Adapter + Send + Sync, C: Cost<A::ApcStats> + Send + Sync, Air: ApcArithmetization<A>>
-    PgoAdapter for CellPgo<A, C, Air>
+impl<A: Adapter + Send + Sync, C: Cost<A> + Send + Sync, Air: ApcArithmetization<A>> PgoAdapter
+    for CellPgo<A, C, Air>
 {
     type Adapter = A;
     type Air = Air;

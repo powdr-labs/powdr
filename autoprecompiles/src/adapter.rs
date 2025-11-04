@@ -1,7 +1,6 @@
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
 use std::collections::BTreeMap;
 use std::hash::Hash;
-use std::iter::Sum;
 use std::{fmt::Display, sync::Arc};
 
 use powdr_number::FieldElement;
@@ -90,14 +89,7 @@ where
         V,
     >;
     type CustomBusTypes: Clone + Display + Sync + Eq + PartialEq;
-    type ApcStats: Serialize
-        + for<'a> Deserialize<'a>
-        + Send
-        + Sync
-        + Sum<Self::ApcStats>
-        + Copy
-        + Clone
-        + ApcStats;
+    type ApcStats: ApcStats;
     type AirId: Eq + Hash + Send + Sync;
 
     fn into_field(e: Self::PowdrField) -> Self::Field;

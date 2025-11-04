@@ -52,7 +52,7 @@ pub struct BabyBearOpenVmApcAdapter<'a> {
 pub struct OpenVmKnapsackCost;
 
 // The cost of adding an apc chip in openvm when it comes to recursion, which we model as its width, since the verifier is linear in the number of columns
-impl Cost<AirMetrics> for OpenVmKnapsackCost {
+impl<'a> Cost<BabyBearOpenVmApcAdapter<'a>> for OpenVmKnapsackCost {
     fn cost(apc_metrics: AirMetrics) -> usize {
         apc_metrics.total_width()
     }
