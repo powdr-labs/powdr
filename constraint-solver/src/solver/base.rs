@@ -385,8 +385,9 @@ where
     }
 
     /// Find groups of variables with a small set of possible assignments.
-    /// If there is exactly one assignment that does not lead to a contradiction,
-    /// apply it. This might be expensive.
+    /// For each group, performs an exhaustive search in the possible assignments
+    /// to deduce new range constraints (also on other variables).
+    /// This might be expensive.
     fn exhaustive_search(&mut self) -> Result<bool, Error> {
         log::debug!("Starting exhaustive search...");
         let mut variable_sets =
@@ -401,7 +402,6 @@ where
         );
 
         let mut progress = false;
-
         let mut unsuccessful_variable_sets = BTreeSet::new();
 
         for mut variable_set in variable_sets {
@@ -415,29 +415,26 @@ where
                 // It can happen that we process the same variable set twice because
                 // assignments can make previously different sets equal.
                 // We have processed this variable set before, and it did not
-                // yield a unique assignment.
+                // yield new information.
                 // It could be that other assignments created in the meantime
-                // make it unique but this is rare and we will catch it in the
+                // lead to progress but this is rare and we will catch it in the
                 // next loop iteration.
                 continue;
             }
-            match exhaustive_search::find_unique_assignment_for_set(
+            match exhaustive_search::exhaustive_search_on_variable_set(
                 self.constraint_system.system(),
                 &variable_set,
                 &*self,
                 &self.bus_interaction_handler,
             ) {
-                Ok(Some(assignments)) => {
-                    for (var, value) in assignments.iter() {
-                        progress |= self.apply_range_constraint_update(
-                            var,
-                            RangeConstraint::from_value(*value),
-                        );
-                    }
+                Ok(assignments) if assignments.is_empty() => {
+                    // No new information was found.
+                    unsuccessful_variable_sets.insert(variable_set);
                 }
-                // Might return None if the assignment is not unique.
-                Ok(None) => {
-                    unsuccessful_variable_sets.insert(variable_set.clone());
+                Ok(assignments) => {
+                    for (var, rc) in assignments {
+                        progress |= self.apply_range_constraint_update(&var, rc);
+                    }
                 }
                 // Might error out if a contradiction was found.
                 Err(e) => return Err(e),
