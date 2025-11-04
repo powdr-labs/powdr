@@ -5,7 +5,9 @@ version = "0.0.0"
 edition = "2021"
 
 [dependencies]
-openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.1-powdr" }
+openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.1-powdr", features = [
+  "std",
+] }
 openvm-algebra-guest = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.1-powdr" }
 openvm-algebra-moduli-macros = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.1-powdr" }
 openvm-ecc-guest = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.1-powdr" }
