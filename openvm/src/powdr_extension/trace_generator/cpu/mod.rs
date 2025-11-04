@@ -218,6 +218,7 @@ impl PowdrTraceGeneratorCpu {
                             id as u16,
                             mult.as_canonical_u32(),
                             args.map(|arg| arg.as_canonical_u32()),
+                            &self.periphery.bus_ids,
                         );
                     });
             });

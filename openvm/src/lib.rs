@@ -30,9 +30,10 @@ use openvm_sdk::{
     config::{AppConfig, SdkVmConfig, SdkVmConfigExecutor, DEFAULT_APP_LOG_BLOWUP},
     Sdk, StdIn,
 };
-use openvm_stark_backend::config::Val;
+use openvm_stark_backend::config::{StarkGenericConfig, Val};
 use openvm_stark_backend::engine::StarkEngine;
 use openvm_stark_backend::prover::cpu::{CpuBackend, CpuDevice};
+use openvm_stark_backend::prover::hal::ProverBackend;
 use openvm_stark_sdk::config::{
     baby_bear_poseidon2::{BabyBearPoseidon2Config, BabyBearPoseidon2Engine},
     FriParameters,
@@ -92,17 +93,21 @@ cfg_if::cfg_if! {
         pub use openvm_circuit::system::cuda::{extensions::SystemGpuBuilder, SystemChipInventoryGPU};
         pub use openvm_sdk::config::SdkVmGpuBuilder;
         pub use openvm_cuda_backend::prover_backend::GpuBackend;
-        pub use openvm_circuit_primitives::bitwise_op_lookup::{BitwiseOperationLookupAir, BitwiseOperationLookupChipGPU};
-        pub use openvm_circuit_primitives::range_tuple::{RangeTupleCheckerAir, RangeTupleCheckerChipGPU};
-        pub use openvm_circuit_primitives::var_range::{VariableRangeCheckerAir, VariableRangeCheckerChipGPU};
+        pub use openvm_circuit_primitives::bitwise_op_lookup::BitwiseOperationLookupChipGPU;
+        pub use openvm_circuit_primitives::range_tuple::RangeTupleCheckerChipGPU;
+        pub use openvm_circuit_primitives::var_range::VariableRangeCheckerChipGPU;
         pub use openvm_cuda_backend::base::DeviceMatrix;
         pub use openvm_circuit::arch::DenseRecordArena;
     }
 }
 
-use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
-use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
-use openvm_circuit_primitives::var_range::SharedVariableRangeCheckerChip;
+use openvm_circuit_primitives::bitwise_op_lookup::{
+    BitwiseOperationLookupAir, SharedBitwiseOperationLookupChip,
+};
+use openvm_circuit_primitives::range_tuple::{RangeTupleCheckerAir, SharedRangeTupleCheckerChip};
+use openvm_circuit_primitives::var_range::{
+    SharedVariableRangeCheckerChip, VariableRangeCheckerAir,
+};
 use openvm_native_circuit::NativeCpuBuilder;
 pub type PowdrSdkCpu =
     GenericSdk<BabyBearPoseidon2Engine, SpecializedConfigCpuBuilder, NativeCpuBuilder>;
@@ -241,34 +246,12 @@ impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, PowdrExtens
             .next()
             .cloned();
 
-        // Obtain periphery bus ids from `AirInventory`
-        let air_inventory = inventory.airs();
-        let range_checker_bus_id = air_inventory
-            .find_air::<VariableRangeCheckerAir>()
-            .next()
-            .unwrap()
-            .bus
-            .inner
-            .index;
-        let bitwise_lookup_bus_id = air_inventory
-            .find_air::<BitwiseOperationLookupAir<8>>()
-            .next()
-            .map(|air| air.bus.inner.index);
-        let tuple_range_checker_bus_id = air_inventory
-            .find_air::<RangeTupleCheckerAir<2>>()
-            .next()
-            .map(|air| air.bus.inner.index);
-
         // Create the shared chips and the dummy shared chips
         let shared_chips_pair = PowdrPeripheryInstancesGpu::new(
             range_checker.clone(),
             bitwise_lookup,
             tuple_range_checker,
-            PeripheryBusIds {
-                range_checker: range_checker_bus_id,
-                bitwise_lookup: bitwise_lookup_bus_id,
-                tuple_range_checker: tuple_range_checker_bus_id,
-            },
+            get_periphery_bus_ids(inventory),
         );
 
         for precompile in &extension.precompiles {
@@ -328,6 +311,7 @@ where
             range_checker.clone(),
             bitwise_lookup,
             tuple_range_checker,
+            get_periphery_bus_ids(inventory),
         );
 
         for precompile in &extension.precompiles {
@@ -344,6 +328,37 @@ where
         }
 
         Ok(())
+    }
+}
+
+// Helper function to get the periphery bus ids from the `AirInventory`.
+// This is the most robust method because bus ids are assigned at air creation time.
+fn get_periphery_bus_ids<SC, RA, PB>(inventory: &ChipInventory<SC, RA, PB>) -> PeripheryBusIds
+where
+    SC: StarkGenericConfig,
+    PB: ProverBackend,
+{
+    let air_inventory = inventory.airs();
+    let range_checker_bus_id = air_inventory
+        .find_air::<VariableRangeCheckerAir>()
+        .next()
+        .unwrap()
+        .bus
+        .inner
+        .index;
+    let bitwise_lookup_bus_id = air_inventory
+        .find_air::<BitwiseOperationLookupAir<8>>()
+        .next()
+        .map(|air| air.bus.inner.index);
+    let tuple_range_checker_bus_id = air_inventory
+        .find_air::<RangeTupleCheckerAir<2>>()
+        .next()
+        .map(|air| air.bus.inner.index);
+
+    PeripheryBusIds {
+        range_checker: range_checker_bus_id,
+        bitwise_lookup: bitwise_lookup_bus_id,
+        tuple_range_checker: tuple_range_checker_bus_id,
     }
 }
 
