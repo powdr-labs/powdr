@@ -6,6 +6,7 @@ use std::{fmt::Display, sync::Arc};
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
+use crate::imm0_optimizer::IMM0Optimizer;
 use crate::{
     blocks::{BasicBlock, Instruction, Program},
     constraint_optimizer::IsBusStateful,
@@ -78,6 +79,7 @@ where
         + Clone
         + IsBusStateful<Self::PowdrField>
         + RangeConstraintHandler<Self::PowdrField>
+        + IMM0Optimizer<Self::PowdrField>
         + Sync;
     type Program: Program<Self::Instruction> + Send;
     type Instruction: Instruction<Self::Field> + Serialize + for<'de> Deserialize<'de> + Send + Sync;

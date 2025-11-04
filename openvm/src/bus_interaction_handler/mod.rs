@@ -7,6 +7,7 @@ use openvm_rv32im_circuit::Rv32M;
 use powdr_autoprecompiles::{
     bus_map::BusType,
     constraint_optimizer::IsBusStateful,
+    imm0_optimizer::IMM0Optimizer,
     range_constraint_optimizer::{
         utils::{filter_byte_constraints, range_constraint_to_num_bits},
         MakeRangeConstraintsError, RangeConstraintHandler, RangeConstraints,
@@ -255,6 +256,38 @@ impl<T: FieldElement> RangeConstraintHandler<T> for OpenVmBusInteractionHandler<
             .chain(byte_constraints)
             .chain(other_constraints)
             .collect::<Vec<_>>())
+    }
+}
+
+impl<T: FieldElement> IMM0Optimizer<T> for OpenVmBusInteractionHandler<T> {
+    fn extract_memory_limbs_from_range_constraints<V: Ord + Clone + Eq + Display + Hash>(
+        &self,
+        bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
+    ) -> Option<GroupedExpression<T, V>> {
+        let bus_id = bus_interaction
+            .bus_id
+            .try_to_number()
+            .unwrap()
+            .to_integer()
+            .try_into_u64()
+            .unwrap();
+        match self.bus_map.bus_type(bus_id) {
+            BusType::Other(OpenVmBusType::VariableRangeChecker) => {
+                match bus_interaction.payload.as_slice() {
+                    [expr0, expr1] => {
+                        if *expr1 == GroupedExpression::from_number(T::from(13u64)) {
+                            println!("{} is mem limb", expr1);
+                            return Some(expr0.clone());
+                        } else {
+                            None
+                        }
+                    }
+
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
     }
 }
 
