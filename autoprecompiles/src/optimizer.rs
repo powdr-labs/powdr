@@ -79,6 +79,7 @@ pub fn optimize<A: Adapter>(
         constraint_system,
         bus_interaction_handler.clone(),
     );
+    stats_logger.log("optimizing imm=0", &constraint_system);
 
     let constraint_system = inliner::replace_constrained_witness_columns(
         constraint_system.into(),
