@@ -11,6 +11,3 @@ openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.1-powdr
   "std",
 ] }
 ruint = "1.16"
-
-[features]
-default = []
