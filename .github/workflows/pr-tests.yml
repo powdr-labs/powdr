@@ -156,7 +156,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: powdr-labs/openvm-reth-benchmark
-          ref: openvm-reth-powdr-2025-10-30-1.4.1-gpu
+          ref: fa223931d36ce7d5206c5bb915b48f211710dec7
           path: openvm-reth-benchmark
 
       - name: Patch openvm-reth-benchmark to use local powdr
