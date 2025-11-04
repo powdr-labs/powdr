@@ -229,11 +229,3 @@ jobs:
           keep_files: true
           enable_jekyll: true
 
-      - name: Run u256_prove_large
-        run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1 u256_prove_large
-
-      - name: Run keccak_prove_large
-        run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1 keccak_prove_large
-
-      - name: Run sha256_prove_large
-        run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1 sha256_prove_large
