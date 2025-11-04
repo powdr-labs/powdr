@@ -773,8 +773,6 @@ pub struct AirMetrics {
     pub constraints: usize,
     /// The number of bus interactions
     pub bus_interactions: usize,
-    /// The number of rows required per call
-    pub rows_per_call: usize,
 }
 
 impl From<AirMetrics> for AirStats {
@@ -791,15 +789,10 @@ impl Add for AirMetrics {
     type Output = AirMetrics;
 
     fn add(self, rhs: AirMetrics) -> AirMetrics {
-        assert_eq!(
-            self.rows_per_call, rhs.rows_per_call,
-            "AirMetrics can only be added if `rows_per_call` is matching"
-        );
         AirMetrics {
             widths: self.widths + rhs.widths,
             constraints: self.constraints + rhs.constraints,
             bus_interactions: self.bus_interactions + rhs.bus_interactions,
-            rows_per_call: self.rows_per_call,
         }
     }
 }
@@ -849,13 +842,9 @@ impl CompiledProgram {
                 if name.starts_with("PowdrAir") {
                     None
                 } else {
-                    use crate::extraction_utils::{get_air_metrics, ORIGINAL_AIRS_ROWS_PER_CALL};
+                    use crate::extraction_utils::get_air_metrics;
 
-                    Some(get_air_metrics(
-                        air.clone(),
-                        max_degree,
-                        ORIGINAL_AIRS_ROWS_PER_CALL,
-                    ))
+                    Some(get_air_metrics(air.clone(), max_degree))
                 }
             })
             .collect();
@@ -1762,7 +1751,6 @@ mod tests {
         },
         constraints: 604,
         bus_interactions: 253,
-        rows_per_call: 1,
     };
 
     #[test]

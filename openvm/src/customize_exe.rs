@@ -60,7 +60,7 @@ impl<'a> Cost<BabyBearOpenVmApcAdapter<'a>> for OpenVmKnapsackCost {
 
 impl ApcStats for AirMetrics {
     fn cells_per_call(&self) -> usize {
-        self.total_width() * self.rows_per_call
+        self.total_width()
     }
 }
 
