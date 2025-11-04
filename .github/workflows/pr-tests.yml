@@ -148,7 +148,7 @@ jobs:
           rustup component add rust-src --toolchain nightly-2025-08-02
       - uses: taiki-e/install-action@nextest
       - name: Run tests (excluding larger ones)
-        run: cargo nextest run --archive-file tests_cpu.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/7 --test-threads=1 --no-tests=warn --skip _prove_large
+        run: cargo nextest run --archive-file tests_cpu.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/7 --test-threads=1 -E 'not (test(_large))' --run-ignored only --no-tests=warn
 
   udeps_cpu:
     runs-on: ubuntu-22.04
