@@ -670,7 +670,34 @@ l3 - 1 = 0"
     }
 
     #[test]
-    fn split_imm0() {
+    fn split_imm0_mem0() {
+        let byte_rc = RangeConstraint::from_mask(0xffu32);
+        let binary_rc = RangeConstraint::from_mask(0x1u32);
+        let bits16_rc = RangeConstraint::from_mask(0xffffu32);
+
+
+        //30720 * mem_ptr_limbs__0_0 - 30720 * rs1_data__0_0 - 7864320 * rs1_data__1_0 - z = 0       
+        let rcs = [
+            ("mem_ptr_limbs__0_0", bits16_rc.clone()),
+            ("rs1_data__0_0", byte_rc.clone()),
+            ("rs1_data__1_0", byte_rc.clone()),
+            ("z", binary_rc.clone()),
+        ].into_iter().collect::<HashMap<_, _>>();
+        let expr =
+            GroupedExpression::from_number(BabyBearField::from(30720))
+                * var("mem_ptr_limbs__0_0")
+            - GroupedExpression::from_number(BabyBearField::from(30720))
+                * var("rs1_data__0_0")
+            - GroupedExpression::from_number(BabyBearField::from(7864320))
+                * var("rs1_data__1_0")
+            - var("z");
+        let result = try_split(expr.clone(), &rcs).unwrap().iter().join(", ");
+        println!("{}", result);
+
+    }
+
+    #[test]
+    fn split_imm0_mem1() {
         let byte_rc = RangeConstraint::from_mask(0xffu32);
         let binary_rc = RangeConstraint::from_mask(0x1u32);
         let bits13_rc = RangeConstraint::from_mask(0x1fffu32);
