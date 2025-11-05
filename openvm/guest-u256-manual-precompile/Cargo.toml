@@ -8,9 +8,6 @@ members = []
 
 [dependencies]
 openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.1-powdr", features = [
-    "std",
+  "std",
 ] }
 openvm-ruint = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.1-powdr", package = "ruint" }
-
-[features]
-default = []
