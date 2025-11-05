@@ -1582,7 +1582,7 @@ mod tests {
 
     #[test]
     #[ignore = "Too much RAM"]
-    fn ecc_hint_prove_recursion() {
+    fn ecc_hint_prove_recursion_large() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ECC_ITER);
         let pgo_data =
@@ -1599,7 +1599,7 @@ mod tests {
 
     #[test]
     #[ignore = "Too much RAM"]
-    fn ecrecover_prove_recursion() {
+    fn ecrecover_prove_recursion_large() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ECRECOVER_ITER);
         let pgo_data = execution_profile_from_guest(
