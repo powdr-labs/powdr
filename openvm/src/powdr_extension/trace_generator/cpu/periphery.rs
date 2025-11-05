@@ -4,9 +4,13 @@ use openvm_circuit::arch::{
 };
 use openvm_circuit_primitives::{
     bitwise_op_lookup::{
-        BitwiseOperationLookupAir, BitwiseOperationLookupChip, SharedBitwiseOperationLookupChip,
+        BitwiseOperationLookupAir, BitwiseOperationLookupBus, BitwiseOperationLookupChip,
+        SharedBitwiseOperationLookupChip,
     },
-    range_tuple::{RangeTupleCheckerAir, RangeTupleCheckerChip, SharedRangeTupleCheckerChip},
+    range_tuple::{
+        RangeTupleCheckerAir, RangeTupleCheckerBus, RangeTupleCheckerChip,
+        SharedRangeTupleCheckerChip,
+    },
     var_range::{SharedVariableRangeCheckerChip, VariableRangeCheckerAir},
 };
 use openvm_stark_backend::{config::StarkGenericConfig, p3_field::PrimeField32};
@@ -91,13 +95,13 @@ impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChipsCpu 
         // - Dummy periphery bus ids depend on chip insertion order of `create_dummy_chip_complex`.
         // - Real periphery bus ids depend on chip insertion order of `create_chip_complex`.
         // However, none of these matters because the dummy chips are thrown away anyway.
-        if let Some(bitwise_lookup_8) = &self.bitwise_lookup_8 {
+        if self.bitwise_lookup_8.is_some() {
             assert!(inventory
                 .find_air::<BitwiseOperationLookupAir<8>>()
                 .next()
                 .is_none());
-            let bus = inventory.new_bus_idx();
-            inventory.add_air(BitwiseOperationLookupAir::<8>::new(bus));
+            let bus = BitwiseOperationLookupBus::new(inventory.new_bus_idx());
+            inventory.add_air(BitwiseOperationLookupAir::<8> { bus });
         }
 
         if let Some(tuple_range_checker) = &self.tuple_range_checker {
@@ -105,8 +109,11 @@ impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChipsCpu 
                 .find_air::<RangeTupleCheckerAir<2>>()
                 .next()
                 .is_none());
-            let bus = inventory.new_bus_idx();
-            inventory.add_air(RangeTupleCheckerAir::<2>::new(bus));
+            let bus = RangeTupleCheckerBus::<2>::new(
+                inventory.new_bus_idx(),
+                *tuple_range_checker.sizes(),
+            );
+            inventory.add_air(RangeTupleCheckerAir::<2> { bus });
         }
 
         // The range checker is already present in the builder because it's is used by the system, so we don't add it again.
