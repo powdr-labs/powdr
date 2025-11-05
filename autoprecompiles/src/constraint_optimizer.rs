@@ -371,7 +371,7 @@ fn combine_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>
     for pattern_match in single_occurrence {
         let mut grouped: GroupedExpression<T, V> = Zero::zero();
         let mut grouped_rc = RangeConstraint::<T>::from_value(0.into());
-        let mut rest: GroupedExpression<T, V> = Zero::zero();
+        let mut rest = pattern_match.rest;
         let mut vars_replaced = BTreeSet::new();
         // TODO could use fold here.
         for (v, f, rc) in pattern_match
