@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fmt::Display,
     hash::Hash,
     iter::once,
@@ -74,6 +74,9 @@ pub fn optimize_constraints<
     let constraint_system =
         remove_disconnected_columns(constraint_system, solver, bus_interaction_handler.clone());
     stats_logger.log("removing disconnected columns", &constraint_system);
+
+    let constraint_system = combine_free_variables(constraint_system, solver);
+    stats_logger.log("combining free variables", &constraint_system);
 
     let constraint_system = trivial_simplifications(
         constraint_system,
@@ -206,7 +209,6 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
     bus_interaction_handler: impl IsBusStateful<T> + Clone,
 ) -> IndexedConstraintSystem<T, V> {
     let all_variables = constraint_system
-        .system()
         .referenced_unknown_variables()
         .cloned()
         .collect::<HashSet<_>>();
@@ -301,6 +303,46 @@ fn can_always_be_satisfied_via_free_variable<
     } else {
         false
     }
+}
+
+/// Tries to combine multiple variables that only occur in the same algebraic
+/// constraint.
+fn combine_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
+    mut constraint_system: IndexedConstraintSystem<T, V>,
+    solver: &mut impl Solver<T, V>,
+) -> IndexedConstraintSystem<T, V> {
+    // TODO tracegen needs to be modified
+    let single_occurrence = constraint_system
+        .referenced_unknown_variables()
+        .unique()
+        .filter_map(|variable| {
+            constraint_system
+                .constraints_referencing_variables(once(variable))
+                .exactly_one()
+                .ok()
+                .map(|constraint| (constraint, variable.clone()))
+        })
+        .into_group_map()
+        .into_iter()
+        .filter(|(_c, v)| v.len() > 1)
+        .flat_map(|(c, v)| match c {
+            ConstraintRef::AlgebraicConstraint(constr) => Some((constr.clone(), v)),
+            ConstraintRef::BusInteraction(_bus_interaction) => None,
+        })
+        .collect_vec();
+    for (c, v) in &single_occurrence {
+        match c {
+            ConstraintRef::AlgebraicConstraint(constr) => {
+                println!(
+                    "NOCON Constraint: {},\n   NOCON   vars: {}",
+                    constr,
+                    v.iter().join(", ")
+                );
+            }
+            ConstraintRef::BusInteraction(bus_interaction) => {}
+        }
+    }
+    constraint_system
 }
 
 /// Removes any columns that are not connected to *stateful* bus interactions (e.g. memory),
