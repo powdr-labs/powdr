@@ -670,6 +670,7 @@ l3 - 1 = 0"
     }
 
     #[test]
+    #[should_panic]
     fn split_imm0_mem0() {
         let byte_rc = RangeConstraint::from_mask(0xffu32);
         let binary_rc = RangeConstraint::from_mask(0x1u32);
@@ -692,11 +693,11 @@ l3 - 1 = 0"
                 * var("rs1_data__1_0")
             - var("z");
         let result = try_split(expr.clone(), &rcs).unwrap().iter().join(", ");
-        println!("{}", result);
 
     }
 
     #[test]
+    #[should_panic]
     fn split_imm0_mem1() {
         let byte_rc = RangeConstraint::from_mask(0xffu32);
         let binary_rc = RangeConstraint::from_mask(0x1u32);

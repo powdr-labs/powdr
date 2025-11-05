@@ -272,6 +272,8 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
         self.linear.get(var)
     }
 
+    
+
     /// Returns the range constraint of the full expression.
     pub fn range_constraint(
         &self,
