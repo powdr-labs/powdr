@@ -4,11 +4,11 @@ Instructions:
   BNE 52 56 28 1 1
 
 APC advantage:
-  - Main columns: 108 -> 54 (2.00x reduction)
+  - Main columns: 108 -> 53 (2.04x reduction)
   - Bus interactions: 45 -> 30 (1.50x reduction)
-  - Constraints: 61 -> 32 (1.91x reduction)
+  - Constraints: 61 -> 31 (1.97x reduction)
 
-Symbolic machine using 54 unique main columns:
+Symbolic machine using 53 unique main columns:
   from_state__timestamp_0
   rs1_data__0_0
   rs1_data__1_0
@@ -61,7 +61,6 @@ Symbolic machine using 54 unique main columns:
   prev_data__3_1
   write_data__0_1
   cmp_result_2
-  diff_inv_marker__0_2
   is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):
@@ -129,7 +128,6 @@ flags__3_1 * ((flags__3_1 - 1) * (flags__3_1 - 2)) = 0
 flags__1_1 * (flags__1_1 - 1) + flags__2_1 * (flags__2_1 - 1) + 4 * flags__0_1 * flags__1_1 + 4 * flags__0_1 * flags__2_1 + 5 * flags__0_1 * flags__3_1 + 5 * flags__1_1 * flags__2_1 + 5 * flags__1_1 * flags__3_1 + 5 * flags__2_1 * flags__3_1 - (1006632960 * flags__3_1 * (flags__3_1 - 1) + flags__0_1 * (flags__0_1 + flags__1_1 + flags__2_1 + flags__3_1 - 2) + flags__1_1 * (flags__0_1 + flags__1_1 + flags__2_1 + flags__3_1 - 2) + flags__2_1 * (flags__0_1 + flags__1_1 + flags__2_1 + flags__3_1 - 2) + 3 * flags__3_1 * (flags__0_1 + flags__1_1 + flags__2_1 + flags__3_1 - 2) + 1 * is_valid) = 0
 cmp_result_2 * (cmp_result_2 - 1) = 0
 (1 - cmp_result_2) * (write_data__0_0 - write_data__0_1) = 0
-(write_data__0_0 - write_data__0_1) * diff_inv_marker__0_2 - cmp_result_2 = 0
 flags__1_0 * flags__2_0 + 2 * flags__0_0 * flags__2_0 + 2 * flags__1_0 * flags__3_0 + 3 * flags__2_0 * flags__3_0 = 0
 flags__1_1 * flags__2_1 + 2 * flags__0_1 * flags__2_1 + 2 * flags__1_1 * flags__3_1 + 3 * flags__2_1 * flags__3_1 = 0
 is_valid * (is_valid - 1) = 0

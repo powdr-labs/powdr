@@ -4,11 +4,11 @@ Instructions:
   BNE 52 56 28 1 1
 
 APC advantage:
-  - Main columns: 98 -> 53 (1.85x reduction)
+  - Main columns: 98 -> 49 (2.00x reduction)
   - Bus interactions: 47 -> 32 (1.47x reduction)
-  - Constraints: 47 -> 15 (3.13x reduction)
+  - Constraints: 47 -> 14 (3.36x reduction)
 
-Symbolic machine using 53 unique main columns:
+Symbolic machine using 49 unique main columns:
   from_state__timestamp_0
   rs1_data__0_0
   rs1_data__1_0
@@ -57,10 +57,6 @@ Symbolic machine using 53 unique main columns:
   prev_data__2_1
   prev_data__3_1
   cmp_result_2
-  diff_inv_marker__0_2
-  diff_inv_marker__1_2
-  diff_inv_marker__2_2
-  diff_inv_marker__3_2
   is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):
@@ -115,5 +111,4 @@ shift_most_sig_bit_1 * (shift_most_sig_bit_1 - 1) = 0
 cmp_result_2 * (cmp_result_2 - 1) = 0
 (1 - cmp_result_2) * ((opcode_loadb_flag0_1 - 1) * shifted_read_data__1_1 + opcode_loadb_flag0_0 * shifted_read_data__0_0 + (1 - opcode_loadb_flag0_0) * shifted_read_data__1_0 - opcode_loadb_flag0_1 * shifted_read_data__0_1) = 0
 (1 - cmp_result_2) * (255 * data_most_sig_bit_0 - 255 * data_most_sig_bit_1) = 0
-((opcode_loadb_flag0_1 - 1) * shifted_read_data__1_1 + opcode_loadb_flag0_0 * shifted_read_data__0_0 + (1 - opcode_loadb_flag0_0) * shifted_read_data__1_0 - opcode_loadb_flag0_1 * shifted_read_data__0_1) * diff_inv_marker__0_2 + (255 * data_most_sig_bit_0 - 255 * data_most_sig_bit_1) * diff_inv_marker__1_2 + (255 * data_most_sig_bit_0 - 255 * data_most_sig_bit_1) * diff_inv_marker__2_2 + (255 * data_most_sig_bit_0 - 255 * data_most_sig_bit_1) * diff_inv_marker__3_2 - cmp_result_2 = 0
 is_valid * (is_valid - 1) = 0

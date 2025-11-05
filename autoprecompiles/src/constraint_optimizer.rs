@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fmt::Display,
     hash::Hash,
     iter::once,
@@ -11,9 +11,10 @@ use powdr_constraint_solver::{
     constraint_system::{
         AlgebraicConstraint, BusInteractionHandler, ConstraintRef, ConstraintSystem,
     },
-    grouped_expression::GroupedExpression,
+    grouped_expression::{GroupedExpression, GroupedExpressionComponent},
     indexed_constraint_system::IndexedConstraintSystem,
     inliner::DegreeBound,
+    range_constraint::RangeConstraint,
     reachability::reachable_variables,
     solver::Solver,
 };
@@ -316,6 +317,19 @@ fn can_always_be_satisfied_via_free_variable<
 
 /// Tries to combine multiple variables that only occur in the same algebraic
 /// constraint.
+///
+/// The simplified pattern is `X * V1 + Y * V2 = C`, where `V1` and `V2` only occur
+/// here and only once.
+/// The only combination of values for `X`, `Y` and `C` where this is not satisfiable
+/// is `X = 0`, `Y = 0`, `C != 0`. So the constraint is equivalent to the statement
+/// `(X = 0 and Y = 0) -> C = 0`.
+///
+/// Considering the simpler case where both `X` and `Y` are non-negative such that
+/// `X + Y` does not wrap.
+/// Then `X = 0 and Y = 0` is equivalent to `X + Y = 0`. So we can replace the constraint
+/// by `(X + Y) * V3 = C`, where `V3` is a new variable that only occurs here.
+///
+/// If e.g. `X` can be negative, we replace it by `X * X`, if that value is still small enough.
 fn combine_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
     mut constraint_system: IndexedConstraintSystem<T, V>,
     solver: &mut impl Solver<T, V>,
@@ -324,20 +338,168 @@ fn combine_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>
     let single_occurrence = single_occurrence_variables(&constraint_system)
         .into_group_map()
         .into_iter()
-        .filter(|(_, v)| v.len() > 1)
         .flat_map(|(c, v)| match c {
             ConstraintRef::AlgebraicConstraint(constr) => Some((constr.clone(), v)),
             ConstraintRef::BusInteraction(_bus_interaction) => None,
         })
+        .filter_map(|(c, vars)| {
+            // Keep only the variables that occur exactly once
+            // and then filter out the constraints where less than two
+            // variables are left.
+            let vars = vars
+                .iter()
+                .filter(|var| {
+                    c.referenced_unknown_variables()
+                        .filter(|v| v == var)
+                        .count()
+                        == 1
+                })
+                .cloned()
+                .collect_vec();
+            if vars.len() <= 1 {
+                None
+            } else {
+                Some((c, vars))
+            }
+        })
+        .flat_map(|(c, v)| {
+            FreeVariablePatternMatch::try_from_constraint(&c, v.iter().cloned().collect())
+        })
         .collect_vec();
-    for (c, v) in &single_occurrence {
-        println!(
-            "NOCON Constraint: {},\n   NOCON   vars: {}",
-            c,
-            v.iter().join(", ")
-        );
+    let mut constraints_to_add = vec![];
+    let mut vars_to_remove = BTreeSet::<V>::new();
+    for pattern_match in single_occurrence {
+        let mut grouped: GroupedExpression<T, V> = Zero::zero();
+        let mut grouped_rc = RangeConstraint::<T>::from_value(0.into());
+        let mut rest: GroupedExpression<T, V> = Zero::zero();
+        let mut vars_replaced = BTreeSet::new();
+        // TODO could use fold here.
+        for (v, f, rc) in pattern_match
+            .variables
+            .into_iter()
+            .map(|(v, f)| {
+                let rc = f.range_constraint(solver);
+                (v, f, rc)
+            })
+            .sorted_by_key(|(_, _, rc)| rc.range_width())
+        {
+            // TODO we could actually also try to extract a factor from `f` to
+            // reduce its RC.
+            if rc.range().0 <= rc.range().1 {
+                // TODO not sure if this is correct.
+                // what we need ot check is that the only way for X + Y = 0
+                // is that X = 0 and Y = 0.
+                if rc.combine_sum(&grouped_rc).range_width() != T::modulus() {
+                    grouped += f;
+                    grouped_rc = rc.combine_sum(&grouped_rc);
+                    vars_replaced.insert(v.clone());
+                } else {
+                    rest += f * GroupedExpression::from_unknown_variable(v);
+                }
+            } else {
+                // TODO same here
+                if rc.square().combine_sum(&grouped_rc).range_width() != T::modulus() {
+                    grouped += f.clone() * f;
+                    grouped_rc = rc.square().combine_sum(&grouped_rc);
+                    vars_replaced.insert(v.clone());
+                } else {
+                    rest += f * GroupedExpression::from_unknown_variable(v);
+                }
+            }
+        }
+        if vars_replaced.len() >= 2 {
+            // TODO use a new variable
+            constraints_to_add.push(AlgebraicConstraint::assert_zero(
+                grouped
+                    * GroupedExpression::from_unknown_variable(
+                        vars_replaced.iter().next().unwrap().clone(),
+                    )
+                    + rest,
+            ));
+            vars_to_remove.extend(vars_replaced);
+        }
     }
+
+    constraint_system.retain_algebraic_constraints(|constr| {
+        !constr
+            .referenced_unknown_variables()
+            .any(|v| vars_to_remove.contains(v))
+    });
+    constraint_system.add_algebraic_constraints(constraints_to_add);
+
     constraint_system
+}
+
+/// This pattern match corresponds to the constraint
+/// \sum_{(v, f) in variables} f * v + rest = 0
+/// such that all variables are different single-occurrence variables.
+struct FreeVariablePatternMatch<T, V> {
+    variables: BTreeMap<V, GroupedExpression<T, V>>,
+    rest: GroupedExpression<T, V>,
+}
+
+impl<T: FieldElement, V: Clone + Ord + Eq + Hash + Display> FreeVariablePatternMatch<T, V> {
+    fn try_from_constraint(
+        constraint: &AlgebraicConstraint<&GroupedExpression<T, V>>,
+        single_occurrence_variables: BTreeSet<V>,
+    ) -> Option<Self> {
+        if single_occurrence_variables.len() < 2 {
+            return None;
+        }
+        let mut variables = BTreeMap::new();
+        let rest = constraint
+            .expression
+            .clone()
+            .into_summands()
+            .filter_map(|item| match item {
+                GroupedExpressionComponent::Constant(c) => Some(GroupedExpression::from_number(c)),
+                GroupedExpressionComponent::Linear(v, c) => {
+                    Some(GroupedExpression::from_unknown_variable(v) * c)
+                }
+                GroupedExpressionComponent::Quadratic(l, r) => {
+                    if let Some((c, v)) =
+                        Self::try_expression_to_single_occurrence_variable_multiple(
+                            &l,
+                            &single_occurrence_variables,
+                        )
+                    {
+                        variables.insert(v, r.clone() * c);
+                        None
+                    } else if let Some((c, v)) =
+                        Self::try_expression_to_single_occurrence_variable_multiple(
+                            &r,
+                            &single_occurrence_variables,
+                        )
+                    {
+                        variables.insert(v, l.clone() * c);
+                        None
+                    } else {
+                        Some(l * r)
+                    }
+                }
+            })
+            .sum();
+        if variables.len() >= 2 {
+            Some(Self { variables, rest })
+        } else {
+            None
+        }
+    }
+
+    /// If `expr` is of the form `c * v` where `v` is a single occurrence variable
+    /// and `c` a constant expression, returns `Some((c, v))`.
+    fn try_expression_to_single_occurrence_variable_multiple(
+        expr: &GroupedExpression<T, V>,
+        single_occurrence_variables: &BTreeSet<V>,
+    ) -> Option<(T, V)> {
+        if expr.is_affine() && expr.constant_offset().is_zero() {
+            let (v, c) = expr.linear_components().exactly_one().ok()?;
+            if single_occurrence_variables.contains(v) {
+                return Some((*c, v.clone()));
+            }
+        }
+        None
+    }
 }
 
 /// Removes any columns that are not connected to *stateful* bus interactions (e.g. memory),

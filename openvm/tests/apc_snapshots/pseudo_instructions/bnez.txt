@@ -2,11 +2,11 @@ Instructions:
   BNE 5 0 8 1 1
 
 APC advantage:
-  - Main columns: 26 -> 15 (1.73x reduction)
+  - Main columns: 26 -> 11 (2.36x reduction)
   - Bus interactions: 11 -> 10 (1.10x reduction)
-  - Constraints: 11 -> 7 (1.57x reduction)
+  - Constraints: 11 -> 6 (1.83x reduction)
 
-Symbolic machine using 15 unique main columns:
+Symbolic machine using 11 unique main columns:
   from_state__timestamp_0
   reads_aux__0__base__prev_timestamp_0
   reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0
@@ -17,10 +17,6 @@ Symbolic machine using 15 unique main columns:
   a__2_0
   a__3_0
   cmp_result_0
-  diff_inv_marker__0_0
-  diff_inv_marker__1_0
-  diff_inv_marker__2_0
-  diff_inv_marker__3_0
   is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):
@@ -45,5 +41,4 @@ cmp_result_0 * (cmp_result_0 - 1) = 0
 (1 - cmp_result_0) * a__1_0 = 0
 (1 - cmp_result_0) * a__2_0 = 0
 (1 - cmp_result_0) * a__3_0 = 0
-a__0_0 * diff_inv_marker__0_0 + a__1_0 * diff_inv_marker__1_0 + a__2_0 * diff_inv_marker__2_0 + a__3_0 * diff_inv_marker__3_0 - cmp_result_0 = 0
 is_valid * (is_valid - 1) = 0
