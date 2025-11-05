@@ -85,6 +85,9 @@ jobs:
           - "7"
 
     steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - name: Init testing instance
         uses: ./.github/actions/init-testing-instance
       - name: Run default tests
@@ -102,6 +105,9 @@ jobs:
           - "4"
 
     steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - name: Init testing instance
         uses: ./.github/actions/init-testing-instance
       - name: Run medium tests (ignored tests except large ones)
@@ -112,6 +118,9 @@ jobs:
     runs-on: warp-ubuntu-2404-x64-32x
 
     steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - name: Init testing instance
         uses: ./.github/actions/init-testing-instance
       - name: Run large tests
