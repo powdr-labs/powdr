@@ -92,9 +92,8 @@ impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChipsCpu 
                 .find_air::<BitwiseOperationLookupAir<8>>()
                 .next()
                 .is_none());
-            inventory.add_air(BitwiseOperationLookupAir::<8>::new(
-                bitwise_lookup_8.air.bus,
-            ));
+            let bus = inventory.new_bus_idx();
+            inventory.add_air(BitwiseOperationLookupAir::<8>::new(bus));
         }
 
         if let Some(tuple_range_checker) = &self.tuple_range_checker {
@@ -102,9 +101,8 @@ impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChipsCpu 
                 .find_air::<RangeTupleCheckerAir<2>>()
                 .next()
                 .is_none());
-            inventory.add_air(RangeTupleCheckerAir::<2> {
-                bus: tuple_range_checker.air.bus,
-            });
+            let bus = inventory.new_bus_idx();
+            inventory.add_air(RangeTupleCheckerAir::<2>::new(bus));
         }
 
         // The range checker is already present in the builder because it's is used by the system, so we don't add it again.

@@ -94,40 +94,28 @@ impl<F: PrimeField32> VmExecutionExtension<F> for SharedPeripheryChipsGpu {
 }
 
 impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChipsGpu {
+    // create dummy airs
     fn extend_circuit(&self, inventory: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {
-        // create dummy airs
+        // The bus id is for dummy shared periphery isn't guarantee to match that of the real periphery, because:
+        // - Dummy periphery bus ids depend on chip insertion order of `create_dummy_chip_complex`.
+        // - Real periphery bus ids depend on chip insertion order of `create_chip_complex`.
+        // However, none of these matters because the dummy chips are thrown away anyway.
         if let Some(bitwise_lookup_8) = &self.bitwise_lookup_8 {
             assert!(inventory
                 .find_air::<BitwiseOperationLookupAir<8>>()
                 .next()
                 .is_none());
-            inventory.add_air(BitwiseOperationLookupAir::<8>::new(
-                bitwise_lookup_8.cpu_chip.as_ref().unwrap().bus(),
-            ));
+            let bus = inventory.new_bus_idx();
+            inventory.add_air(BitwiseOperationLookupAir::<8>::new(bus));
         }
 
         if let Some(tuple_range_checker) = &self.tuple_range_checker {
-            use openvm_circuit_primitives::range_tuple::RangeTupleCheckerBus;
-
-            use crate::bus_map::DEFAULT_TUPLE_RANGE_CHECKER;
-
             assert!(inventory
                 .find_air::<RangeTupleCheckerAir<2>>()
                 .next()
                 .is_none());
-            // RangeTupleCheckerGPU is always initialized via `new()` without a CPU chip in all available extensions of `SdkVmGpuBuilder::create_chip_complex()`.
-            // Therefore we create a new bus index, following a similar scenario in `Rv32M::extend_circuit`.
-            // The bus id is hardcoded to the default and isn't guaranteed to be correct, because it depends on chip insertion order,
-            // but this won't matter because the dummy chips are thrown away anyway.
-            let bus = match tuple_range_checker.cpu_chip.as_ref() {
-                // None is the expected case
-                None => RangeTupleCheckerBus::new(
-                    DEFAULT_TUPLE_RANGE_CHECKER as u16,
-                    tuple_range_checker.sizes,
-                ),
-                Some(cpu_chip) => *cpu_chip.bus(),
-            };
-            inventory.add_air(RangeTupleCheckerAir::<2> { bus });
+            let bus = RangeTupleCheckerBus::new(inventory.new_bus_idx(), tuple_range_checker.sizes);
+            inventory.add_air(RangeTupleCheckerAir::<2>::new(bus));
         }
 
         // The range checker is already present in the builder because it's is used by the system, so we don't add it again.
