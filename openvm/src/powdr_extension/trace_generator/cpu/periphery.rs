@@ -85,8 +85,12 @@ impl<F: PrimeField32> VmExecutionExtension<F> for SharedPeripheryChipsCpu {
 }
 
 impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChipsCpu {
+    // create dummy airs
     fn extend_circuit(&self, inventory: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {
-        // create dummy airs
+        // The bus id is for dummy shared periphery isn't guarantee to match that of the real periphery, because:
+        // - Dummy periphery bus ids depend on chip insertion order of `create_dummy_chip_complex`.
+        // - Real periphery bus ids depend on chip insertion order of `create_chip_complex`.
+        // However, none of these matters because the dummy chips are thrown away anyway.
         if let Some(bitwise_lookup_8) = &self.bitwise_lookup_8 {
             assert!(inventory
                 .find_air::<BitwiseOperationLookupAir<8>>()
