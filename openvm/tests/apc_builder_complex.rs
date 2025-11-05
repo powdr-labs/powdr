@@ -187,7 +187,7 @@ fn copy_byte() {
 #[test]
 fn rotate() {
     // Rotation, implemented as `(x >> imm) | (x << (32-imm))`
-    // for omm = 1
+    // for imm = 1
     let program = [
         srl(1, 3, 1, 0),
         sll(2, 3, 31, 0),
