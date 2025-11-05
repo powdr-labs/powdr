@@ -4,8 +4,10 @@ use openvm_circuit::arch::{
     ExecutorInventoryError, VmCircuitExtension, VmExecutionExtension, VmProverExtension,
 };
 use openvm_circuit_primitives::{
-    bitwise_op_lookup::{BitwiseOperationLookupAir, BitwiseOperationLookupChip},
-    range_tuple::{RangeTupleCheckerAir, RangeTupleCheckerChip},
+    bitwise_op_lookup::{
+        BitwiseOperationLookupAir, BitwiseOperationLookupBus, BitwiseOperationLookupChip,
+    },
+    range_tuple::{RangeTupleCheckerAir, RangeTupleCheckerBus, RangeTupleCheckerChip},
     var_range::VariableRangeCheckerAir,
 };
 use openvm_stark_backend::{config::StarkGenericConfig, p3_field::PrimeField32};
@@ -100,7 +102,7 @@ impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChipsGpu 
         // - Dummy periphery bus ids depend on chip insertion order of `create_dummy_chip_complex`.
         // - Real periphery bus ids depend on chip insertion order of `create_chip_complex`.
         // However, none of these matters because the dummy chips are thrown away anyway.
-        if let Some(bitwise_lookup_8) = &self.bitwise_lookup_8 {
+        if self.bitwise_lookup_8.is_some() {
             assert!(inventory
                 .find_air::<BitwiseOperationLookupAir<8>>()
                 .next()
