@@ -201,6 +201,32 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_imm0_mem0() {
+        let mut var_dispenser = || "z";
+        //(30720 * mem_ptr_limbs__0_0 - (30720 * rs1_data__0_0 + 7864320 * rs1_data__1_0)) * (30720 * mem_ptr_limbs__0_0 - (30720 * rs1_data__0_0 + 7864320 * rs1_data__1_0 + 1)) = 0
+        let expr = (constant(30720) * var("mem_ptr_limbs__0_0") - (constant(30720) * var("rs1_data__0_0") + constant(7864320) * var("rs1_data__1_0"))) * (constant(30720) * var("mem_ptr_limbs__0_0") - (constant(30720) * var("rs1_data__0_0") + constant(7864320) * var("rs1_data__1_0") + constant(1)));
+        let mut extractor: BooleanExtractor<_, _> = Default::default();
+        let result = extractor
+            .try_extract_boolean(AlgebraicConstraint::assert_zero(&expr), &mut var_dispenser)
+            .unwrap();
+        assert_eq!(result.constraint.to_string(), "-(30720 * mem_ptr_limbs__0_0 - 30720 * rs1_data__0_0 - 7864320 * rs1_data__1_0 - z) = 0");
+        assert_eq!(result.new_unconstrained_boolean_variable, Some("z"));
+    }
+
+    #[test]
+    fn test_extract_imm0_mem1() {
+        let mut var_dispenser = || "z";
+        
+        let expr = (constant(943718400) * var("rs1_data__0_0") + constant(30720) * var("mem_ptr_limbs__1_0") - (constant(120) * var("rs1_data__1_0") + constant(30720) * var("rs1_data__2_0") + constant(7864320) * var("rs1_data__3_0") + constant(943718400) * var("mem_ptr_limbs__0_0"))) * (constant(943718400) * var("rs1_data__0_0") + constant(30720) * var("mem_ptr_limbs__1_0") - (constant(120) * var("rs1_data__1_0") + constant(30720) * var("rs1_data__2_0") + constant(7864320) * var("rs1_data__3_0") + constant(943718400) * var("mem_ptr_limbs__0_0") + constant(1)));
+        let mut extractor: BooleanExtractor<_, _> = Default::default();
+        let result = extractor
+            .try_extract_boolean(AlgebraicConstraint::assert_zero(&expr), &mut var_dispenser)
+            .unwrap();
+        assert_eq!(result.constraint.to_string(), "943718400 * mem_ptr_limbs__0_0 - 30720 * mem_ptr_limbs__1_0 - 943718400 * rs1_data__0_0 + 120 * rs1_data__1_0 + 30720 * rs1_data__2_0 + 7864320 * rs1_data__3_0 + z = 0");
+        assert_eq!(result.new_unconstrained_boolean_variable, Some("z"));
+    }
+
+    #[test]
     fn test_extract_boolean_square() {
         let mut var_dispenser = || "z";
         let expr = (var("a") + var("b")) * (var("a") + var("b"));

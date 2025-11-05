@@ -99,6 +99,13 @@ pub fn try_split_constraint<T: FieldElement, V: Clone + Ord + Display>(
         assert_ne!(smallest_coeff_in_rest, 0.into());
         assert!(smallest_coeff_in_rest.is_in_lower_half());
 
+        println!("candidate component: {}", candidate);
+        println!("rest components: {}", rest.iter().join(", "));
+        println!(
+            "smallest coeff in rest: {}",
+            smallest_coeff_in_rest
+        );
+
         // Try to find the unique value for `candidate.expr` in this equation.
         if let Some(solution) = find_solution(
             &candidate.expr,
@@ -109,6 +116,10 @@ pub fn try_split_constraint<T: FieldElement, V: Clone + Ord + Display>(
             constant / candidate.coeff,
             range_constraints,
         ) {
+            println!(
+                "  Found unique solution for {}: {}",
+                candidate.expr, solution
+            );
             // We now know that `candidate.expr = solution`, so we add it to the extracted parts.
             extracted_parts.push(AlgebraicConstraint::assert_eq(
                 candidate.expr.clone(),
@@ -164,6 +175,7 @@ fn find_solution<T: FieldElement, V: Clone + Ord + Display>(
 ) -> Option<T> {
     let expr_rc = expr.range_constraint(range_constraints);
     let rest_rc = rest.range_constraint(range_constraints);
+
 
     let unconstrained_range_width = RangeConstraint::<T>::unconstrained().range_width();
     if expr_rc.range_width() == unconstrained_range_width
@@ -359,14 +371,14 @@ mod test {
     use crate::range_constraint::RangeConstraint;
 
     type Var = &'static str;
-    type Qse = GroupedExpression<GoldilocksField, Var>;
+    type Qse = GroupedExpression<BabyBearField, Var>;
 
     fn var(name: Var) -> Qse {
         Qse::from_unknown_variable(name)
     }
 
     fn constant(value: u64) -> Qse {
-        Qse::from_number(GoldilocksField::from(value))
+        Qse::from_number(BabyBearField::from(value))
     }
 
     fn try_split<T: FieldElement, V: Clone + Ord + Display>(
@@ -655,5 +667,42 @@ l3 - 1 = 0"
         let expr = (var("x") - var("y")) + constant(16) * var("z") - constant(0);
         let result = try_split(expr.clone(), &rcs).unwrap().iter().join(", ");
         expect!["x - y = 0, z = 0"].assert_eq(&result);
+    }
+
+    #[test]
+    fn split_imm0() {
+        let byte_rc = RangeConstraint::from_mask(0xffu32);
+        let binary_rc = RangeConstraint::from_mask(0x1u32);
+        let bits13_rc = RangeConstraint::from_mask(0x1fffu32);
+        let bits16_rc = RangeConstraint::from_mask(0xffffu32);
+
+
+        //943718400 * mem_ptr_limbs__0_0 - 30720 * mem_ptr_limbs__1_0 - 943718400 * rs1_data__0_0 + 120 * rs1_data__1_0 + 30720 * rs1_data__2_0 + 7864320 * rs1_data__3_0 + z = 0"        
+        let rcs = [
+            ("mem_ptr_limbs__0_0", bits16_rc.clone()),
+            ("mem_ptr_limbs__1_0", bits13_rc.clone()),
+            ("rs1_data__0_0", byte_rc.clone()),
+            ("rs1_data__1_0", byte_rc.clone()),
+            ("rs1_data__2_0", byte_rc.clone()),
+            ("rs1_data__3_0", byte_rc.clone()),
+            ("z", binary_rc.clone()),
+        ].into_iter().collect::<HashMap<_, _>>();
+        let expr =
+            GroupedExpression::from_number(BabyBearField::from(943718400))
+                * var("mem_ptr_limbs__0_0")
+            - GroupedExpression::from_number(BabyBearField::from(30720))
+                * var("mem_ptr_limbs__1_0")
+            - GroupedExpression::from_number(BabyBearField::from(943718400))
+                * var("rs1_data__0_0")
+            + GroupedExpression::from_number(BabyBearField::from(120))
+                * var("rs1_data__1_0")
+            + GroupedExpression::from_number(BabyBearField::from(30720))
+                * var("rs1_data__2_0")
+            + GroupedExpression::from_number(BabyBearField::from(7864320))
+                * var("rs1_data__3_0")
+            + var("z");
+        let result = try_split(expr.clone(), &rcs).unwrap().iter().join(", ");
+        println!("{}", result);
+
     }
 }
