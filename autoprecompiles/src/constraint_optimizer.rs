@@ -213,17 +213,9 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
         .cloned()
         .collect::<HashSet<_>>();
 
-    let variables_to_delete = all_variables
-        .iter()
-        // Find variables that are referenced in exactly one constraint
-        .filter_map(|variable| {
-            constraint_system
-                .constraints_referencing_variables(once(variable))
-                .exactly_one()
-                .ok()
-                .map(|constraint| (variable.clone(), constraint))
-        })
-        .filter(|(variable, constraint)| match constraint {
+    // Find variables that are referenced in exactly one constraint
+    let variables_to_delete = single_occurrence_variables(&constraint_system)
+        .filter(|(constraint, variable)| match constraint {
             // Remove the algebraic constraint if we can solve for the variable.
             ConstraintRef::AlgebraicConstraint(constr) => {
                 can_always_be_satisfied_via_free_variable(*constr, variable)
@@ -255,7 +247,7 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
                 is_stateless && has_one_unknown_field && all_degrees_at_most_one
             }
         })
-        .map(|(variable, _constraint)| variable.clone())
+        .map(|(constraint, variable)| variable.clone())
         .collect::<HashSet<_>>();
 
     let variables_to_keep = all_variables
@@ -280,6 +272,23 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
     });
 
     constraint_system
+}
+
+/// Returns pairs of constraints and variables such that the variable occurs only
+/// in the given constraint.
+fn single_occurrence_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
+    constraint_system: &IndexedConstraintSystem<T, V>,
+) -> impl Iterator<Item = (ConstraintRef<T, V>, V)> {
+    constraint_system
+        .referenced_unknown_variables()
+        .unique()
+        .filter_map(|variable| {
+            constraint_system
+                .constraints_referencing_variables(once(variable))
+                .exactly_one()
+                .ok()
+                .map(|constraint| (constraint, variable.clone()))
+        })
 }
 
 /// Returns true if the given constraint can always be made to be satisfied by setting the
@@ -312,35 +321,21 @@ fn combine_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>
     solver: &mut impl Solver<T, V>,
 ) -> IndexedConstraintSystem<T, V> {
     // TODO tracegen needs to be modified
-    let single_occurrence = constraint_system
-        .referenced_unknown_variables()
-        .unique()
-        .filter_map(|variable| {
-            constraint_system
-                .constraints_referencing_variables(once(variable))
-                .exactly_one()
-                .ok()
-                .map(|constraint| (constraint, variable.clone()))
-        })
+    let single_occurrence = single_occurrence_variables(&constraint_system)
         .into_group_map()
         .into_iter()
-        .filter(|(_c, v)| v.len() > 1)
+        .filter(|(_, v)| v.len() > 1)
         .flat_map(|(c, v)| match c {
             ConstraintRef::AlgebraicConstraint(constr) => Some((constr.clone(), v)),
             ConstraintRef::BusInteraction(_bus_interaction) => None,
         })
         .collect_vec();
     for (c, v) in &single_occurrence {
-        match c {
-            ConstraintRef::AlgebraicConstraint(constr) => {
-                println!(
-                    "NOCON Constraint: {},\n   NOCON   vars: {}",
-                    constr,
-                    v.iter().join(", ")
-                );
-            }
-            ConstraintRef::BusInteraction(bus_interaction) => {}
-        }
+        println!(
+            "NOCON Constraint: {},\n   NOCON   vars: {}",
+            c,
+            v.iter().join(", ")
+        );
     }
     constraint_system
 }
