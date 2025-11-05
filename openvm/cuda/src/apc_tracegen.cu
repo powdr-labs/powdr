@@ -144,7 +144,7 @@ extern "C" int _apc_tracegen(
 ) {
     assert((output_height & (output_height - 1)) == 0);  // power-of-two height check
 
-    const int block_x = 32;
+    const int block_x = 256;
     const dim3 block(block_x, 1, 1);
     const dim3 grid((unsigned int)n_airs, 1, 1);
 
