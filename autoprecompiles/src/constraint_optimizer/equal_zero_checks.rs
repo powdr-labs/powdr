@@ -289,9 +289,6 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     };
 
     // Check if the transformation is worth it.
-    // if variables_to_remove.len() <= 1
-    //     && isolated_system.algebraic_constraints.len() <= 2
-    //     && isolated_system.bus_interactions.is_empty()
     if variables_to_remove.len() <= 2 {
         log::debug!(
             "Not optimizing equal-zero check for {output} since only {} variables, {} \
@@ -322,7 +319,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
 
     // Now we build the more efficient version of the function.
     let replacement = replacement_system(&inputs, &output, value, new_var);
-    log::debug!("Replacing\n{}\nby\n{}", isolated_system, replacement);
+    log::debug!("Replacing\n{isolated_system}\nby\n{replacement}");
     solver.add_algebraic_constraints(replacement.algebraic_constraints.iter().cloned());
     constraint_system.extend(replacement);
 
