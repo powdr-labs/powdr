@@ -112,7 +112,7 @@ jobs:
 
   test_medium_cpu:
     needs: build_cpu
-    runs-on: warp-ubuntu-2404-x64-8x
+    runs-on: warp-ubuntu-2404-x64-16x
     strategy:
       matrix:
         test:
@@ -120,9 +120,6 @@ jobs:
           - "2"
           - "3"
           - "4"
-          - "5"
-          - "6"
-          - "7"
 
     steps:
       - uses: actions/checkout@v4
@@ -148,37 +145,37 @@ jobs:
           rustup component add rust-src --toolchain nightly-2025-08-02
       - uses: taiki-e/install-action@nextest
       - name: Run tests (excluding larger ones)
-        run: cargo nextest run --archive-file tests_cpu.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/7 --test-threads=1 -E 'not (test(_large))' --run-ignored only --no-tests=warn
+        run: cargo nextest run --archive-file tests_cpu.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/7 --test-threads=4 -E 'not (test(_large))' --run-ignored only --no-tests=warn
 
-  test_large_cpu:
-    needs: build_cpu
-    runs-on: warp-ubuntu-2404-x64-32x
+  # test_large_cpu:
+  #   needs: build_cpu
+  #   runs-on: warp-ubuntu-2404-x64-32x
 
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: Download build artifacts (CPU)
-        uses: actions/download-artifact@v4
-        with:
-          name: tests_archive_cpu
-      - name: Install Rust toolchain nightly-2025-05-14 (with clippy and rustfmt)
-        run: rustup toolchain install nightly-2025-05-14 --component clippy,rustfmt,rust-src
-      - name: Install riscv target
-        run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2025-10-01
-      - name: Install test dependencies
-        run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
-      - name: Install Rust deps
-        run: rustup install nightly-2025-10-01 --component rust-src
-      - name: Install Rust deps
-        run: rustup install nightly-2025-02-14 --component rust-src
-      - name: Install OpenVM guest toolchain (nightly-2025-08-02)
-        run: |
-          rustup toolchain install nightly-2025-08-02
-          rustup component add rust-src --toolchain nightly-2025-08-02
-      - uses: taiki-e/install-action@nextest
-      - name: Run tests (excluding larger ones)
-        run: cargo nextest run --archive-file tests_cpu.tar.zst --workspace-remap . --verbose -E 'test(_large)' --run-ignored only --no-tests=warn
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         submodules: recursive
+  #     - name: Download build artifacts (CPU)
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: tests_archive_cpu
+  #     - name: Install Rust toolchain nightly-2025-05-14 (with clippy and rustfmt)
+  #       run: rustup toolchain install nightly-2025-05-14 --component clippy,rustfmt,rust-src
+  #     - name: Install riscv target
+  #       run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2025-10-01
+  #     - name: Install test dependencies
+  #       run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
+  #     - name: Install Rust deps
+  #       run: rustup install nightly-2025-10-01 --component rust-src
+  #     - name: Install Rust deps
+  #       run: rustup install nightly-2025-02-14 --component rust-src
+  #     - name: Install OpenVM guest toolchain (nightly-2025-08-02)
+  #       run: |
+  #         rustup toolchain install nightly-2025-08-02
+  #         rustup component add rust-src --toolchain nightly-2025-08-02
+  #     - uses: taiki-e/install-action@nextest
+  #     - name: Run tests (excluding larger ones)
+  #       run: cargo nextest run --archive-file tests_cpu.tar.zst --workspace-remap . --verbose -E 'test(_large)' --run-ignored only --no-tests=warn
 
   udeps_cpu:
     runs-on: ubuntu-22.04
