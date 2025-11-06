@@ -3,9 +3,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use crate::Sdk;
 use clap::Parser;
 use eyre::Result;
-use openvm_sdk::{fs::write_object_to_file, Sdk};
+use openvm_sdk::fs::write_object_to_file;
 
 use crate::{
     default::{DEFAULT_APP_PK_NAME, DEFAULT_APP_VK_NAME},

@@ -83,3 +83,8 @@ pub fn is_supported_target() -> bool {
 pub fn get_target() -> String {
     target_lexicon::HOST.to_string()
 }
+
+#[cfg(not(feature = "cuda"))]
+use powdr_openvm::PowdrSdkCpu as Sdk;
+#[cfg(feature = "cuda")]
+use powdr_openvm::PowdrSdkGpu as Sdk;

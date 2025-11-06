@@ -6,7 +6,7 @@ use std::{
 use clap::Parser;
 use eyre::Result;
 use openvm_circuit::arch::OPENVM_DEFAULT_INIT_FILE_NAME;
-use openvm_sdk::{fs::write_to_file_json, Sdk};
+use openvm_sdk::fs::write_to_file_json;
 
 use super::{RunArgs, RunCargoArgs};
 use crate::{
@@ -15,6 +15,7 @@ use crate::{
         get_app_commit_path, get_manifest_path_and_dir, get_single_target_name, get_target_dir,
         get_target_output_dir,
     },
+    Sdk,
 };
 
 #[derive(Parser)]

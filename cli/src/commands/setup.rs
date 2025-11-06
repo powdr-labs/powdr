@@ -3,19 +3,20 @@ use std::{
     path::PathBuf,
 };
 
+use crate::Sdk;
 use aws_config::{defaults, BehaviorVersion, Region};
 use aws_sdk_s3::Client;
 use clap::Parser;
 use eyre::{eyre, Result};
 use openvm_sdk::{
-    config::DEFAULT_HALO2_VERIFIER_K,
+    config::{AppConfig, AppFriParams, SdkVmConfig, DEFAULT_HALO2_VERIFIER_K},
     fs::{
         read_object_from_file, write_evm_halo2_verifier_to_folder, write_object_to_file,
         EVM_HALO2_VERIFIER_BASE_NAME, EVM_HALO2_VERIFIER_INTERFACE_NAME,
         EVM_HALO2_VERIFIER_PARENT_NAME,
     },
-    Sdk,
 };
+use powdr_openvm::{extraction_utils::OriginalVmConfig, ExtendedVmConfig, SpecializedConfig};
 
 use crate::{
     default::{
@@ -57,7 +58,17 @@ impl SetupCmd {
                 return Ok(());
             }
             // agg keygen does not depend on the app config
-            let sdk = Sdk::standard();
+            let sdk = Sdk::new(AppConfig::new(
+                AppFriParams::default().fri_params,
+                SpecializedConfig {
+                    sdk: OriginalVmConfig::new(ExtendedVmConfig {
+                        sdk: SdkVmConfig::standard(),
+                        hints: todo!(),
+                    }),
+                    powdr: todo!(),
+                },
+            ))
+            .unwrap();
             let (agg_pk, agg_vk) = sdk.agg_keygen()?;
 
             println!(
@@ -101,7 +112,17 @@ impl SetupCmd {
 
             Self::download_params(10, DEFAULT_HALO2_VERIFIER_K as u32).await?;
             // halo2 keygen does not depend on the app config
-            let sdk = Sdk::standard();
+            let sdk = Sdk::new(AppConfig::new(
+                AppFriParams::default().fri_params,
+                SpecializedConfig {
+                    sdk: OriginalVmConfig::new(ExtendedVmConfig {
+                        sdk: SdkVmConfig::standard(),
+                        hints: todo!(),
+                    }),
+                    powdr: todo!(),
+                },
+            ))
+            .unwrap();
 
             let agg_vk = if !self.force_agg_keygen
                 && PathBuf::from(&default_agg_stark_pk_path).exists()

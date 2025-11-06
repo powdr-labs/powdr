@@ -5,9 +5,10 @@ use std::{
 
 use eyre::Result;
 use openvm_build::{get_in_scope_packages, get_workspace_packages};
-use openvm_sdk::config::{AppConfig, SdkVmConfig};
+use openvm_sdk::config::AppConfig;
 #[cfg(feature = "evm-prove")]
 use openvm_sdk::keygen::{AggProvingKey, Halo2ProvingKey};
+use powdr_openvm::SpecializedConfig;
 use serde::de::DeserializeOwned;
 
 use crate::{
@@ -21,7 +22,9 @@ pub(crate) fn read_to_struct_toml<T: DeserializeOwned>(path: impl AsRef<Path>) -
     Ok(ret)
 }
 
-pub fn read_config_toml_or_default(config: impl AsRef<Path>) -> Result<AppConfig<SdkVmConfig>> {
+pub fn read_config_toml_or_default(
+    config: impl AsRef<Path>,
+) -> Result<AppConfig<SpecializedConfig>> {
     if config.as_ref().exists() {
         read_to_struct_toml(config)
     } else {

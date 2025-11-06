@@ -22,6 +22,7 @@ openvm-sdk = { workspace = true }
 openvm-stark-sdk.workspace = true
 openvm-stark-backend.workspace = true
 openvm-circuit = { workspace = true }
+powdr-openvm = { workspace = true }
 
 aws-sdk-s3 = "1.98.0"
 aws-config = "1.8.2"
@@ -43,7 +44,7 @@ include_dir = "0.7"
 default = ["parallel", "jemalloc", "evm-verify", "metrics"]
 evm-prove = ["openvm-sdk/evm-prove"]
 evm-verify = ["evm-prove", "openvm-sdk/evm-verify"]
-metrics = ["openvm-sdk/metrics"]
+metrics = ["openvm-sdk/metrics", "powdr-openvm/metrics"]
 tco = ["openvm-sdk/tco"]
 unprotected = ["openvm-sdk/unprotected"]
 # for guest profiling:
@@ -55,5 +56,5 @@ mimalloc = ["openvm-sdk/mimalloc"]
 jemalloc = ["openvm-sdk/jemalloc"]
 jemalloc-prof = ["openvm-sdk/jemalloc-prof"]
 nightly-features = ["openvm-sdk/nightly-features"]
-cuda = ["openvm-sdk/cuda"]
+cuda = ["openvm-sdk/cuda", "powdr-openvm/cuda"]
 ci = []

@@ -1,9 +1,10 @@
 use std::path::PathBuf;
 
+use crate::Sdk;
 use clap::{Parser, ValueEnum};
 use eyre::Result;
 use openvm_circuit::arch::{instructions::exe::VmExe, OPENVM_DEFAULT_INIT_FILE_NAME};
-use openvm_sdk::{config::SdkVmConfig, fs::read_object_from_file, keygen::AppProvingKey, Sdk, F};
+use openvm_sdk::{fs::read_object_from_file, keygen::AppProvingKey, F};
 
 use super::{build, BuildArgs, BuildCargoArgs};
 use crate::{
@@ -298,7 +299,7 @@ impl RunCmd {
             }
 
             // Load the app pk and set it
-            let app_pk: AppProvingKey<SdkVmConfig> = read_object_from_file(&app_pk_path)?;
+            let app_pk: AppProvingKey<_> = read_object_from_file(&app_pk_path)?;
             sdk.set_app_pk(app_pk)
                 .map_err(|_| eyre::eyre!("Failed to set app pk"))?;
         }

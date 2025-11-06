@@ -1,5 +1,6 @@
 use std::{path::PathBuf, sync::Arc};
 
+use crate::Sdk;
 use clap::Parser;
 use eyre::Result;
 use openvm_circuit::arch::{
@@ -9,12 +10,13 @@ use openvm_circuit::arch::{
     instructions::exe::VmExe,
 };
 use openvm_sdk::{
-    config::{AggregationTreeConfig, AppConfig, SdkVmConfig},
+    config::{AggregationTreeConfig, AppConfig},
     fs::{encode_to_file, read_object_from_file, write_to_file_json},
     keygen::AppProvingKey,
     types::VersionedVmStarkProof,
-    Sdk, F,
+    F,
 };
+use powdr_openvm::SpecializedConfig;
 
 use super::{RunArgs, RunCargoArgs};
 #[cfg(feature = "evm-prove")]
@@ -258,7 +260,7 @@ impl ProveCmd {
 pub(crate) fn load_app_pk(
     app_pk: &Option<PathBuf>,
     cargo_args: &RunCargoArgs,
-) -> Result<AppProvingKey<SdkVmConfig>> {
+) -> Result<AppProvingKey<SpecializedConfig>> {
     let (manifest_path, _) = get_manifest_path_and_dir(&cargo_args.manifest_path)?;
     let target_dir = get_target_dir(&cargo_args.target_dir, &manifest_path);
 
@@ -298,12 +300,16 @@ pub(crate) fn load_or_build_exe(
 /// Should only be called when `app_pk` has only a single reference internally.
 /// Mutates the `SystemConfig` within `app_pk` and then returns the updated `AppConfig`.
 fn get_app_config(
-    app_pk: &mut AppProvingKey<SdkVmConfig>,
+    app_pk: &mut AppProvingKey<SpecializedConfig>,
     segmentation_args: &SegmentationArgs,
-) -> AppConfig<SdkVmConfig> {
+) -> AppConfig<SpecializedConfig> {
     Arc::get_mut(&mut app_pk.app_vm_pk)
         .unwrap()
         .vm_config
+        .sdk
+        // TODO are we really touching the right thing here
+        .sdk_config
+        .sdk
         .system
         .config
         .set_segmentation_limits((*segmentation_args).into());

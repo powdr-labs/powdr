@@ -1,12 +1,13 @@
 use std::path::{Path, PathBuf};
 
+use crate::Sdk;
 use clap::Parser;
 use eyre::{Context, Result};
 use openvm_sdk::{
     fs::{decode_from_file, read_from_file_json, read_object_from_file},
     prover::verify_app_proof,
     types::VersionedVmStarkProof,
-    Sdk, OPENVM_VERSION,
+    OPENVM_VERSION,
 };
 
 use super::KeygenCargoArgs;
