@@ -6,11 +6,11 @@ Instructions:
   BNE 52 0 248 1 1
 
 APC advantage:
-  - Main columns: 172 -> 37 (4.65x reduction)
+  - Main columns: 172 -> 34 (5.06x reduction)
   - Bus interactions: 87 -> 21 (4.14x reduction)
-  - Constraints: 111 -> 33 (3.36x reduction)
+  - Constraints: 111 -> 26 (4.27x reduction)
 
-Symbolic machine using 37 unique main columns:
+Symbolic machine using 34 unique main columns:
   from_state__timestamp_0
   reads_aux__0__base__prev_timestamp_0
   reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0
@@ -27,9 +27,6 @@ Symbolic machine using 37 unique main columns:
   b__3_0
   cmp_result_1
   diff_marker__0_1
-  diff_marker__1_1
-  diff_marker__2_1
-  diff_marker__3_1
   diff_val_1
   reads_aux__0__base__prev_timestamp_2
   reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_2
@@ -75,22 +72,15 @@ mult=is_valid * 1, args=[15360 * reads_aux__1__base__prev_timestamp_4 + 15360 * 
 
 // Bus 6 (BITWISE_LOOKUP):
 mult=is_valid * 1, args=[b__0_0, 3, b__0_0 + 3 - 2 * a__0_0, 1]
-mult=diff_marker__0_1 + diff_marker__1_1 + diff_marker__2_1 + diff_marker__3_1, args=[diff_val_1 - 1, 0, 0, 0]
+mult=diff_marker__0_1, args=[diff_val_1 - 1, 0, 0, 0]
 mult=diff_marker__0_2 + diff_marker__1_2 + diff_marker__2_2 + diff_marker__3_2, args=[diff_val_2 - 1, 0, 0, 0]
 
 // Algebraic constraints:
 cmp_result_1 * (cmp_result_1 - 1) = 0
-diff_marker__3_1 * (diff_marker__3_1 - 1) = 0
-diff_marker__3_1 * diff_val_1 = 0
-diff_marker__2_1 * (diff_marker__2_1 - 1) = 0
-diff_marker__2_1 * diff_val_1 = 0
-diff_marker__1_1 * (diff_marker__1_1 - 1) = 0
-diff_marker__1_1 * diff_val_1 = 0
 diff_marker__0_1 * (diff_marker__0_1 - 1) = 0
-(1 * is_valid - (diff_marker__0_1 + diff_marker__1_1 + diff_marker__2_1 + diff_marker__3_1)) * ((1 - a__0_0) * (2 * cmp_result_1 - 1)) = 0
+(1 * is_valid - diff_marker__0_1) * ((1 - a__0_0) * (2 * cmp_result_1 - 1)) = 0
 diff_marker__0_1 * ((a__0_0 - 1) * (2 * cmp_result_1 - 1) + diff_val_1) = 0
-(diff_marker__0_1 + diff_marker__1_1 + diff_marker__2_1 + diff_marker__3_1) * (diff_marker__0_1 + diff_marker__1_1 + diff_marker__2_1 + diff_marker__3_1 - 1) = 0
-(1 - (diff_marker__0_1 + diff_marker__1_1 + diff_marker__2_1 + diff_marker__3_1)) * cmp_result_1 = 0
+(1 - diff_marker__0_1) * cmp_result_1 = 0
 cmp_result_2 * (cmp_result_2 - 1) = 0
 diff_marker__3_2 * (diff_marker__3_2 - 1) = 0
 (1 - diff_marker__3_2) * (writes_aux__prev_data__3_2 * (2 * cmp_result_2 - 1)) = 0
@@ -109,6 +99,6 @@ diff_marker__0_2 * ((writes_aux__prev_data__0_2 - 1) * (2 * cmp_result_2 - 1) + 
 cmp_result_4 * (cmp_result_4 - 1) = 0
 (1 - cmp_result_4) * (cmp_result_1 + cmp_result_2 - cmp_result_1 * cmp_result_2) = 0
 (cmp_result_1 + cmp_result_2 - cmp_result_1 * cmp_result_2) * diff_inv_marker__0_4 - cmp_result_4 = 0
-(1 - is_valid) * (diff_marker__0_1 + diff_marker__1_1 + diff_marker__2_1 + diff_marker__3_1) = 0
+(1 - is_valid) * diff_marker__0_1 = 0
 (1 - is_valid) * (diff_marker__0_2 + diff_marker__1_2 + diff_marker__2_2 + diff_marker__3_2) = 0
 is_valid * (is_valid - 1) = 0

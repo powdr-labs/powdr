@@ -336,6 +336,10 @@ where
             }
 
             if !progress {
+                progress |= self.inline_affine();
+            }
+
+            if !progress {
                 break;
             }
         }
@@ -476,6 +480,27 @@ where
         self.equivalent_expressions_cache
             .insert(expression.clone(), exprs.clone());
         exprs
+    }
+
+    fn inline_affine(&mut self) -> bool {
+        let mut progress = false;
+        let affine_equivalences = self
+            .constraint_system
+            .system()
+            .algebraic_constraints()
+            .iter()
+            .filter(|constr| {
+                constr.expression.is_affine() && constr.referenced_unknown_variables().count() == 2
+            })
+            .flat_map(|constr| {
+                let var = constr.referenced_unknown_variables().last().unwrap();
+                Some((var.clone(), constr.as_ref().try_solve_for(var)?))
+            })
+            .collect_vec();
+        for (v, expr) in affine_equivalences {
+            progress |= self.apply_assignment(&v, &expr);
+        }
+        progress
     }
 
     fn apply_effect(&mut self, effect: Effect<T, V>) -> bool {
