@@ -83,32 +83,67 @@ pub fn try_split_constraint<T: FieldElement, V: Clone + Ord + Display>(
 
     // Now try to split out each component in turn, modifying `components`
     // and `constant` for every successful split.
+    let mut counter = 0;
     let mut extracted_parts = vec![];
-    for index in 0..components.len() {
-        let candidate = &components[index];
-        let rest = components
+    for indices in (0..components.len()).powerset() {
+        let expr: GroupedExpression<_, _> = indices
             .iter()
-            .enumerate()
-            // Filter out the candidate itself and all zero components
-            // because we set components to zero when we extract them instead
-            // of removing them.
-            .filter(|(i, component)| *i != index && !component.is_zero())
-            .map(|(_, comp)| (comp.clone() / candidate.coeff).normalize())
-            .collect_vec();
-        if rest.is_empty() {
-            // Nothing to split, we are done.
-            break;
+            .map(|i| GroupedExpression::from(components[*i].clone()))
+            .sum();
+        if expr.is_zero() {
+            continue;
         }
-        if let Some((new_constraint, constant_offset)) =
-            try_split_out_component(candidate.clone(), rest, constant, range_constraints)
-        {
-            // We now know that `candidate.expr = solution`, so we add it to the extracted parts.
-            extracted_parts.push(new_constraint);
-            // We remove the candidate (`candidate.coeff * candidate.expr`) from the expression.
-            // To balance this out, we add `candidate.coeff * candidate.expr = candidate.coeff * solution`
-            // to the constant.
-            constant += constant_offset;
-            components[index] = Zero::zero();
+        // TODO we could compute "rest" here already and then only scale it.
+        for leading_index in &indices {
+            let coeff = components[*leading_index].coeff;
+            if coeff.is_zero() {
+                continue;
+            }
+            let candidate = Component {
+                coeff,
+                expr: expr.clone() * (T::one() / coeff),
+            }
+            .normalize();
+            counter += 1;
+            let rest = components
+                .iter()
+                .enumerate()
+                // Filter out the candidate itself and all zero components
+                // because we set components to zero when we extract them instead
+                // of removing them.
+                .filter(|(i, component)| !indices.contains(i) && !component.is_zero())
+                .map(|(_, comp)| (comp.clone() / candidate.coeff).normalize())
+                .collect_vec();
+            if rest.is_empty() {
+                // Nothing to split, we are done.
+                break;
+            }
+            if found && counter == 19 {
+                println!(
+                    "  Trying to split out component: {} * {}\n rest: {}\n expr: {expr}",
+                    candidate.coeff,
+                    candidate.expr,
+                    rest.iter()
+                        .map(|c| format!("{}", c))
+                        .collect::<Vec<_>>()
+                        .join(" + ")
+                );
+            }
+            if let Some((new_constraint, constant_offset)) =
+                try_split_out_component(candidate.clone(), rest, constant, range_constraints)
+            {
+                // We now know that `candidate.expr = solution`, so we add it to the extracted parts.
+                println!("  Successfully split out component: {}", candidate.expr);
+                extracted_parts.push(new_constraint);
+                // We remove the candidate (`candidate.coeff * candidate.expr`) from the expression.
+                // To balance this out, we add `candidate.coeff * candidate.expr = candidate.coeff * solution`
+                // to the constant.
+                constant += constant_offset;
+                for index in &indices {
+                    components[*index] = Zero::zero();
+                }
+                break;
+            }
         }
     }
     if extracted_parts.is_empty() {
@@ -210,6 +245,12 @@ fn find_solution<T: FieldElement, V: Clone + Ord + Display>(
 ) -> Option<T> {
     let expr_rc = expr.range_constraint(range_constraints);
     let rest_rc = rest.range_constraint(range_constraints);
+
+    println!(
+        "    Finding solution for expr: {expr} (rc: {expr_rc}), coeff: {coefficient}, rest: {rest} (rc: {rest_rc}), constant: {constant}",
+    );
+    //     Finding solution for expr: -(rs1_data__0_0 + 256 * rs1_data__1_0 - mem_ptr_limbs__0_0) (rc: [-131071, 65535] & 0xffffffff), coeff: 65536,
+    //  rest: -(rs1_data__2_0 + 256 * rs1_data__3_0 - mem_ptr_limbs__1_0 - 65536 * bool_1) (rc: [0, -1] & 0x7fffffff), constant: 0
 
     let unconstrained_range_width = RangeConstraint::<T>::unconstrained().range_width();
     if expr_rc.range_width() == unconstrained_range_width
