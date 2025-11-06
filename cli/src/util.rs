@@ -5,10 +5,10 @@ use std::{
 
 use eyre::Result;
 use openvm_build::{get_in_scope_packages, get_workspace_packages};
-use openvm_sdk::config::AppConfig;
+use openvm_sdk::config::{AppConfig, SdkVmConfig};
 #[cfg(feature = "evm-prove")]
 use openvm_sdk::keygen::{AggProvingKey, Halo2ProvingKey};
-use powdr_openvm::SpecializedConfig;
+use powdr_openvm::{ExtendedVmConfig, HintsExtension, PowdrExtension, SpecializedConfig, bus_map::{default_openvm_bus_map}, extraction_utils::{OriginalAirs, OriginalVmConfig}};
 use serde::de::DeserializeOwned;
 
 use crate::{
@@ -26,7 +26,14 @@ pub fn read_config_toml_or_default(
     config: impl AsRef<Path>,
 ) -> Result<AppConfig<SpecializedConfig>> {
     if config.as_ref().exists() {
-        read_to_struct_toml(config)
+        let sdk_config = read_to_struct_toml::<AppConfig<SdkVmConfig>>(config)?;
+        let extended_config = ExtendedVmConfig { sdk: sdk_config.app_vm_config, hints: HintsExtension };
+        Ok(AppConfig {
+            app_fri_params: sdk_config.app_fri_params,
+            app_vm_config: SpecializedConfig { sdk: OriginalVmConfig::new(extended_config.clone()), powdr: PowdrExtension::new(vec![], OriginalVmConfig::new(extended_config), default_openvm_bus_map(), OriginalAirs::default()) },
+            leaf_fri_params: sdk_config.leaf_fri_params,
+            compiler_options: sdk_config.compiler_options,
+        })
     } else {
         println!(
             "{:?} not found, using default application configuration",

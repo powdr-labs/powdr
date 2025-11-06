@@ -5,4 +5,4 @@ version = "0.0.0"
 edition = "2021"
 
 [dependencies]
-openvm = { path = "../../../../toolchain/openvm" }
+openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.1-powdr" }

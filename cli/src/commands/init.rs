@@ -150,12 +150,12 @@ fn add_openvm_dependency(path: &Path, features: &[&str]) -> Result<()> {
     }
     openvm_table.insert(
         "git",
-        Value::from("https://github.com/openvm-org/openvm.git"),
+        Value::from("https://github.com/powdr-labs/openvm.git"),
     );
 
     // Add version tag
-    let version_tag = format!("v{}", env!("CARGO_PKG_VERSION"));
-    openvm_table.insert("tag", Value::from(version_tag));
+    let version_tag = "v1.4.1-powdr";
+    openvm_table.insert("rev", Value::from(version_tag));
 
     openvm_table.insert("features", Value::Array(openvm_features));
     doc["dependencies"]["openvm"] = Item::Value(toml_edit::Value::InlineTable(openvm_table));
