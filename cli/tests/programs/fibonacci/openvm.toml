@@ -1,0 +1,3 @@
+[app_vm_config.rv32i]
+[app_vm_config.rv32m]
+range_tuple_checker_sizes = [256, 2048]

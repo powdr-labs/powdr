@@ -3,6 +3,7 @@
 resolver = "2"
 
 members = [
+  "cli",
   "number",
   "constraint-solver",
   "expression",

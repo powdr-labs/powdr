@@ -1,0 +1,15 @@
+[package]
+name = "openvm-cli-example-string-utils"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+openvm = { path = "../../../../../toolchain/openvm" }
+
+[[bin]]
+name = "string-utils"
+path = "src/main.rs"
+
+[[example]]
+name = "palindrome"
+path = "examples/palindrome.rs"

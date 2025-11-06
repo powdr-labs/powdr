@@ -1,0 +1,60 @@
+[package]
+name = "cargo-openvm"
+description = "OpenVM CLI tools"
+readme = "README.md"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[build-dependencies]
+vergen = { version = "8", default-features = false, features = [
+    "build",
+    "git",
+    "git2",
+] }
+
+[dependencies]
+openvm-build = { workspace = true }
+openvm-transpiler = { workspace = true }
+openvm-sdk = { workspace = true }
+openvm-stark-sdk.workspace = true
+openvm-stark-backend.workspace = true
+openvm-circuit = { workspace = true }
+
+aws-sdk-s3 = "1.98.0"
+aws-config = "1.8.2"
+tokio = { version = "1.46.1", features = ["rt", "rt-multi-thread", "macros"] }
+clap = { workspace = true, features = ["derive", "env"] }
+eyre.workspace = true
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+hex = "0.4.3"
+target-lexicon = "0.12.15"
+tempfile = "3.10.1"
+toml = { workspace = true }
+itertools.workspace = true
+toml_edit = "0.22"
+include_dir = "0.7"
+
+[features]
+default = ["parallel", "jemalloc", "evm-verify", "metrics"]
+evm-prove = ["openvm-sdk/evm-prove"]
+evm-verify = ["evm-prove", "openvm-sdk/evm-verify"]
+metrics = ["openvm-sdk/metrics"]
+tco = ["openvm-sdk/tco"]
+unprotected = ["openvm-sdk/unprotected"]
+# for guest profiling:
+perf-metrics = ["openvm-sdk/perf-metrics", "metrics"]
+# performance features:
+# (rayon is always imported because of halo2, so "parallel" feature is redundant)
+parallel = ["openvm-sdk/parallel"]
+mimalloc = ["openvm-sdk/mimalloc"]
+jemalloc = ["openvm-sdk/jemalloc"]
+jemalloc-prof = ["openvm-sdk/jemalloc-prof"]
+nightly-features = ["openvm-sdk/nightly-features"]
+cuda = ["openvm-sdk/cuda"]
+ci = []

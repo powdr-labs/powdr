@@ -1,0 +1,9 @@
+[workspace]
+members = [
+    "calculator",
+    "string-utils"
+]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2021"
