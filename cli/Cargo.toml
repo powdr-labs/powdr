@@ -3,7 +3,6 @@ name = "cargo-openvm"
 description = "OpenVM CLI tools"
 readme = "README.md"
 version.workspace = true
-authors.workspace = true
 edition.workspace = true
 homepage.workspace = true
 repository.workspace = true
@@ -27,16 +26,16 @@ openvm-circuit = { workspace = true }
 aws-sdk-s3 = "1.98.0"
 aws-config = "1.8.2"
 tokio = { version = "1.46.1", features = ["rt", "rt-multi-thread", "macros"] }
-clap = { workspace = true, features = ["derive", "env"] }
-eyre.workspace = true
-tracing.workspace = true
-serde.workspace = true
-serde_json.workspace = true
+clap = { version = "4.5", features = ["derive", "env"] }
+eyre = "0.6.12"
+tracing = "0.1.40"
+serde = "1.0.218"
+serde_json = "1.0.140"
 hex = "0.4.3"
 target-lexicon = "0.12.15"
 tempfile = "3.10.1"
-toml = { workspace = true }
-itertools.workspace = true
+toml = "0.8.14"
+itertools = "0.14.0"
 toml_edit = "0.22"
 include_dir = "0.7"
 
