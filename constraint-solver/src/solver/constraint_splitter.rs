@@ -52,7 +52,7 @@ pub fn try_split_constraint<T: FieldElement, V: Clone + Ord + Display>(
         && s.contains("mem_ptr_limbs__1_0")
         && !s.contains("lin")
     {
-        println!("Trying to split {constraint}");
+        //        println!("Trying to split {constraint}");
         true
     } else {
         false
@@ -78,6 +78,10 @@ pub fn try_split_constraint<T: FieldElement, V: Clone + Ord + Display>(
     if found {
         for c in &components {
             println!("  Component: {}", c);
+        }
+        for var in constraint.expression.referenced_unknown_variables() {
+            let rc = range_constraints.get(&var);
+            println!("  Variable: {} with range constraint {}", var, rc);
         }
     }
 
@@ -281,6 +285,7 @@ fn find_solution<T: FieldElement, V: Clone + Ord + Display>(
             range_constraints,
         );
     }
+    println!("No gap");
 
     // rc(expr): [0, max_expr]
     // rc(rest): [0, max_rest]
@@ -296,6 +301,12 @@ fn find_solution<T: FieldElement, V: Clone + Ord + Display>(
         + coefficient.to_arbitrary_integer() * max_rest.to_arbitrary_integer()
         >= T::modulus().to_arbitrary_integer()
     {
+        println!(
+            "sum is too large (by {})",
+            
+                 (max_expr.to_arbitrary_integer()
+                    + coefficient.to_arbitrary_integer() * max_rest.to_arbitrary_integer()) - T::modulus().to_arbitrary_integer()
+        );
         return None;
     }
     // It does not wrap around, so we know that the equation can be translated to the
@@ -311,6 +322,7 @@ fn find_solution<T: FieldElement, V: Clone + Ord + Display>(
     if max_expr.to_integer() >= coefficient.to_integer() + coefficient.to_integer() {
         // In this case, there are always at least two solutions (ignoring masks and other
         // constraints).
+        println!("at least two solutions");
         return None;
     }
 

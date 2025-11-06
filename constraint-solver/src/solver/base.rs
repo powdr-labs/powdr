@@ -129,6 +129,7 @@ where
     T: FieldElement,
 {
     fn solve(&mut self) -> Result<Vec<VariableAssignment<T, V>>, Error> {
+        println!("Solving system {self}");
         self.equivalent_expressions_cache.clear();
         self.loop_until_no_progress()?;
         let assignments = std::mem::take(&mut self.assignments_to_return);
@@ -140,6 +141,7 @@ where
         // will have the assignments applied.
         self.linearizer.apply_assignments(&assignments);
         self.boolean_extractor.apply_assignments(&assignments);
+        println!("Final system:\n{self}");
         Ok(assignments)
     }
 
@@ -153,6 +155,10 @@ where
             .into_iter()
             .filter(|c| !c.is_redundant())
             .flat_map(|constr| {
+                if constr.to_string().contains("mem_ptr") {
+                    println!("Trynig to extract {constr}");
+                }
+
                 self.try_extract_boolean(constr.as_ref())
                     .into_iter()
                     .chain(std::iter::once(constr))
@@ -322,17 +328,27 @@ where
     VD: VarDispenser<V>,
 {
     fn loop_until_no_progress(&mut self) -> Result<(), Error> {
+        println!("--------------------------------- Starting loop");
         loop {
+            println!("------------------ next iter");
             let mut progress = false;
             // Try solving constraints in isolation.
+            println!("--------------in isoltaino");
             progress |= self.solve_in_isolation()?;
+            println!("=========== DONE in isoltaino");
             // Try to find equivalent variables using quadratic constraints.
             progress |= self.try_solve_quadratic_equivalences();
 
             if !progress {
                 // This might be expensive, so we only do it if we made no progress
                 // in the previous steps.
+                println!("============== starting exhaustiv esearch");
                 progress |= self.exhaustive_search()?;
+                println!("-------------------- ending exhaustive search");
+            }
+
+            if !progress {
+                progress |= self.inline_affine();
             }
 
             if !progress {
@@ -348,6 +364,9 @@ where
         while let Some(item) = self.constraint_system.pop_front() {
             let effects = match item {
                 ConstraintRef::AlgebraicConstraint(c) => {
+                    if c.to_string().contains("mem_ptr") {
+                        println!("dealing with {c}");
+                    }
                     if let Some((v1, expr)) = try_to_simple_equivalence(c) {
                         self.apply_assignment(&v1, &expr);
                         continue;
@@ -356,16 +375,30 @@ where
                         .solve(&self.range_constraints)
                         .map_err(Error::AlgebraicSolverError)?
                         .effects;
+
+                    if c.to_string().contains("mem_ptr") {
+                        println!("trynig to split {c}");
+                    }
                     if let Some(components) = try_split_constraint(&c, &self.range_constraints) {
                         progress |= self.add_algebraic_constraints_if_new(components);
                     }
                     effects
                 }
-                ConstraintRef::BusInteraction(b) => b
-                    .solve(&self.bus_interaction_handler, &self.range_constraints)
-                    .map_err(|_| Error::BusInteractionError)?,
+                ConstraintRef::BusInteraction(b) => {
+                    println!("dealing with bus interaction {b}");
+                    b.solve(&self.bus_interaction_handler, &self.range_constraints)
+                        .map_err(|_| Error::BusInteractionError)?
+                }
             };
             for effect in effects {
+                match &effect {
+                    Effect::RangeConstraint(variable, rc) => {
+                        if variable.to_string().contains("mem_ptr") {
+                            println!("XXXX 5 ({variable}: {rc})");
+                        }
+                    }
+                    _ => {}
+                }
                 progress |= self.apply_effect(effect);
             }
         }
@@ -478,6 +511,27 @@ where
         exprs
     }
 
+    fn inline_affine(&mut self) -> bool {
+        let mut progress = false;
+        let affine_equivalences = self
+            .constraint_system
+            .system()
+            .algebraic_constraints()
+            .iter()
+            .filter(|constr| {
+                constr.expression.is_affine() && constr.referenced_unknown_variables().count() == 2
+            })
+            .flat_map(|constr| {
+                let var = constr.referenced_unknown_variables().last().unwrap();
+                Some((var.clone(), constr.as_ref().try_solve_for(var)?))
+            })
+            .collect_vec();
+        for (v, expr) in affine_equivalences {
+            progress |= self.apply_assignment(&v, &expr);
+        }
+        progress
+    }
+
     fn apply_effect(&mut self, effect: Effect<T, V>) -> bool {
         match effect {
             Effect::Assignment(v, expr) => {
@@ -500,6 +554,9 @@ where
     ) -> bool {
         if self.range_constraints.update(variable, &range_constraint) {
             let new_rc = self.range_constraints.get(variable);
+            if variable.to_string().starts_with("mem_ptr") {
+                println!("XXXX 2 ({variable}: {new_rc})");
+            }
             if let Some(value) = new_rc.try_to_single_value() {
                 self.apply_assignment(variable, &GroupedExpression::from_number(value));
             } else {
@@ -527,6 +584,9 @@ where
                 ConstraintRef::BusInteraction(_) => None,
             })
             .flat_map(|constr| {
+                if constr.to_string().contains("mem_ptr") {
+                    println!("XXXX 3 trying to extract boolean from {constr}");
+                }
                 let result = self
                     .boolean_extractor
                     .try_extract_boolean(constr, &mut || self.var_dispenser.next_boolean())?;
