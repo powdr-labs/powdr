@@ -28,7 +28,7 @@ use openvm_stark_backend::{
 use powdr_autoprecompiles::Apc;
 use serde::{Deserialize, Serialize};
 
-use crate::Instr;
+use crate::{BabyBearSC, Instr, PowdrExtensionNew};
 
 use super::PowdrOpcode;
 
@@ -95,20 +95,21 @@ pub enum PowdrExtensionExecutor {
     Powdr(PowdrExecutor),
 }
 
-impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear> {
+impl VmExecutionExtension<BabyBear> for PowdrExtensionNew {
     type Executor = PowdrExtensionExecutor;
 
     fn extend_execution(
         &self,
         inventory: &mut openvm_circuit::arch::ExecutorInventoryBuilder<BabyBear, Self::Executor>,
     ) -> Result<(), openvm_circuit::arch::ExecutorInventoryError> {
-        for precompile in &self.precompiles {
+        let extension = self.extension();
+        for precompile in &extension.precompiles {
             // The apc chip uses a single row per call
             let height_change = 1;
 
             let powdr_executor = PowdrExtensionExecutor::Powdr(PowdrExecutor::new(
-                self.airs.clone(),
-                self.base_config.clone(),
+                extension.airs.clone(),
+                extension.base_config.clone(),
                 precompile.apc.clone(),
                 precompile.apc_record_arena_cpu.clone(),
                 precompile.apc_record_arena_gpu.clone(),
@@ -121,13 +122,10 @@ impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear> {
     }
 }
 
-impl<SC> VmCircuitExtension<SC> for PowdrExtension<Val<SC>>
-where
-    SC: StarkGenericConfig,
-    Val<SC>: PrimeField32,
+impl VmCircuitExtension<BabyBearSC> for PowdrExtensionNew
 {
-    fn extend_circuit(&self, inventory: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {
-        for precompile in &self.precompiles {
+    fn extend_circuit(&self, inventory: &mut AirInventory<BabyBearSC>) -> Result<(), AirInventoryError> {
+        for precompile in &self.extension().precompiles {
             inventory.add_air(PowdrAir::new(precompile.apc.clone()));
         }
         Ok(())

@@ -6,6 +6,7 @@ use std::{fmt::Display, sync::Arc};
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
+use crate::PgoType;
 use crate::{
     blocks::{BasicBlock, Instruction, Program},
     constraint_optimizer::IsBusStateful,
@@ -38,6 +39,8 @@ impl<F, I, S> From<Arc<Apc<F, I>>> for ApcWithStats<F, I, S> {
 
 pub trait PgoAdapter {
     type Adapter: Adapter;
+
+    const TY: PgoType;
 
     fn filter_blocks_and_create_apcs_with_pgo(
         &self,

@@ -1,10 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use crate::{
-    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, PgoAdapter},
-    blocks::BasicBlock,
-    pgo::create_apcs_for_all_blocks,
-    PowdrConfig,
+    PgoType, PowdrConfig, adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, PgoAdapter}, blocks::BasicBlock, pgo::create_apcs_for_all_blocks
 };
 
 pub struct InstructionPgo<A> {
@@ -23,6 +20,8 @@ impl<A> InstructionPgo<A> {
 
 impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
     type Adapter = A;
+
+    const TY: super::PgoType = PgoType::Instruction;
 
     fn create_apcs_with_pgo(
         &self,

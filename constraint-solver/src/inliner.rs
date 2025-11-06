@@ -4,12 +4,13 @@ use crate::indexed_constraint_system::IndexedConstraintSystem;
 
 use itertools::Itertools;
 use powdr_number::FieldElement;
+use serde::{Deserialize, Serialize};
 
 use std::collections::HashSet;
 use std::fmt::Display;
 use std::hash::Hash;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct DegreeBound {
     pub identities: usize,
     pub bus_interactions: usize,

@@ -192,6 +192,7 @@ impl<'a> Deref for ChipComplexGuard<'a> {
 /// A wrapper around the `ExtendedVmConfig` that caches a chip complex.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct OriginalVmConfig {
+    #[serde(flatten)]
     pub sdk_config: ExtendedVmConfig,
     #[serde(skip)]
     pub chip_complex: CachedChipComplex,
@@ -648,7 +649,7 @@ mod tests {
 
         let _ = OriginalVmConfig::new(ExtendedVmConfig {
             sdk: sdk_vm_config,
-            hints: HintsExtension,
+            hints: HintsExtension {},
         })
         .bus_map();
     }
@@ -658,7 +659,7 @@ mod tests {
         let writer = &mut Vec::new();
         let ext_config = ExtendedVmConfig {
             sdk: SdkVmConfig::riscv32(),
-            hints: HintsExtension,
+            hints: HintsExtension {},
         };
         let base_config = OriginalVmConfig::new(ext_config);
         let specialized_config =

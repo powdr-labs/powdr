@@ -42,7 +42,7 @@ pub use pgo::{PgoConfig, PgoType};
 pub use powdr_constraint_solver::inliner::DegreeBound;
 pub mod trace_handler;
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct PowdrConfig {
     /// Number of autoprecompiles to generate.
     pub autoprecompiles: u64,

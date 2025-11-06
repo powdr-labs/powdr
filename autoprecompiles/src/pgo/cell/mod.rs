@@ -9,11 +9,7 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    adapter::{Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig, PgoAdapter},
-    blocks::BasicBlock,
-    evaluation::EvaluationResult,
-    pgo::cell::selection::parallel_fractional_knapsack,
-    PowdrConfig,
+    PgoType, PowdrConfig, adapter::{Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig, PgoAdapter}, blocks::BasicBlock, evaluation::EvaluationResult, pgo::cell::selection::parallel_fractional_knapsack
 };
 
 mod selection;
@@ -85,6 +81,8 @@ struct JsonExport {
 
 impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for CellPgo<A, C> {
     type Adapter = A;
+
+    const TY: super::PgoType = PgoType::Cell;
 
     fn create_apcs_with_pgo(
         &self,

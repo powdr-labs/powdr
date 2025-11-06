@@ -22,7 +22,9 @@ mod field10x26_k256;
 
 /// OpenVM extension with miscellaneous hint implementations.
 #[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct HintsExtension;
+pub struct HintsExtension {
+
+}
 
 #[derive(AnyEnum, PreflightExecutor, Executor, MeteredExecutor, Clone)]
 pub enum HintsExtensionExecutor<F: Field> {

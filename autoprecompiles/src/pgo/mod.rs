@@ -1,6 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
+use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
 
 use crate::{
@@ -47,7 +48,7 @@ impl PgoConfig {
 }
 
 /// CLI enum for PGO mode
-#[derive(Copy, Clone, Debug, EnumString, Display, Default)]
+#[derive(Copy, Clone, Debug, EnumString, Display, Default, Serialize, Deserialize)]
 #[strum(serialize_all = "lowercase")]
 pub enum PgoType {
     /// cost = cells saved per apc * times executed

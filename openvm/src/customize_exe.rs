@@ -13,7 +13,7 @@ use crate::memory_bus_interaction::OpenVmMemoryBusInteraction;
 use crate::opcode::branch_opcodes_bigint_set;
 use crate::powdr_extension::chip::PowdrAir;
 use crate::utils::UnsupportedOpenVmReferenceError;
-use crate::OriginalCompiledProgram;
+use crate::{OriginalCompiledProgram, PowdrExtension, PowdrExtensionNew};
 use crate::{CompiledProgram, SpecializedConfig};
 use itertools::Itertools;
 use openvm_instructions::instruction::Instruction as OpenVmInstruction;
@@ -251,13 +251,20 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         })
         .collect();
 
+    let vm_config = {
+        let max_degree = config.degree_bound.identities;
+        let airs = original_config.airs(max_degree).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
+        let bus_map = original_config.bus_map();
+        let powdr_extension = PowdrExtension::new(extensions, original_config.clone(), bus_map, airs);
+        SpecializedConfig {
+            sdk: original_config,
+            powdr: PowdrExtensionNew { pgo_type: P::TY, powdr_config: config, cached: powdr_extension.into() }
+        }
+    };
+
     CompiledProgram {
         exe: Arc::new(exe),
-        vm_config: SpecializedConfig::new(
-            original_config,
-            extensions,
-            config.degree_bound.identities,
-        ),
+        vm_config,
     }
 }
 

@@ -1,3 +1,13 @@
-[app_vm_config.rv32i]
-[app_vm_config.rv32m]
+[app_vm_config.sdk.rv32i]
+[app_vm_config.sdk.rv32m]
 range_tuple_checker_sizes = [256, 2048]
+
+[app_vm_config.hints]
+[app_vm_config.powdr]
+pgo_type = "Cell"
+[app_vm_config.powdr.powdr_config]
+autoprecompiles = 10
+skip_autoprecompiles = 0
+[app_vm_config.powdr.powdr_config.degree_bound]
+identities = 2
+bus_interactions = 3

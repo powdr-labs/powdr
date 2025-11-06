@@ -90,7 +90,11 @@ pub(crate) fn keygen(
     app_vk_path: impl AsRef<Path>,
     output_dir: Option<impl AsRef<Path>>,
 ) -> Result<()> {
-    let app_config = read_config_toml_or_default(config)?;
+    let mut app_config = read_config_toml_or_default(config)?;
+    let original_compiled_program = unimplemented!();
+    let labels = unimplemented!();
+    let debug_info = unimplemented!();
+    app_config.app_vm_config.powdr.init(original_compiled_program, labels, debug_info);
     let (app_pk, app_vk) = Sdk::new(app_config)?.app_keygen();
     write_object_to_file(&app_vk_path, app_vk)?;
     write_object_to_file(&app_pk_path, app_pk)?;

@@ -41,14 +41,19 @@ use openvm_stark_sdk::config::{
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
+use powdr_autoprecompiles::PgoType;
 use powdr_autoprecompiles::evaluation::AirStats;
 use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 pub use powdr_extension::PowdrExtension;
 pub use powdr_openvm_hints_circuit::{HintsExtension, HintsExtensionExecutor, HintsProverExt};
 use powdr_openvm_hints_transpiler::HintsTranspilerExtension;
+use powdr_riscv_elf::debug_info::DebugInfo;
 use serde::{Deserialize, Serialize};
+use std::cell::{OnceCell, Ref, RefCell};
 use std::cmp::Reverse;
+use std::collections::BTreeSet;
+use std::fmt::Debug;
 use std::fs::File;
 use std::io::BufWriter;
 use std::iter::Sum;
@@ -151,9 +156,32 @@ pub mod memory_bus_interaction;
 /// A custom VmConfig that wraps the SdkVmConfig, adding our custom extension.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SpecializedConfig {
+    #[serde(flatten)]
     pub sdk: OriginalVmConfig,
-    pub powdr: PowdrExtension<BabyBear>,
+    pub powdr: PowdrExtensionNew,
 }
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct PowdrExtensionNew {
+    pgo_type: PgoType,
+    powdr_config: PowdrConfig,
+    #[serde(skip)]
+    cached: OnceCell<PowdrExtension<BabyBear>>
+}
+
+impl PowdrExtensionNew {
+    pub fn init(&self, original_compiled_program: OriginalCompiledProgram, labels: &BTreeSet<u32>, debug_info: &DebugInfo) {
+        self.cached.get_or_init(|| match self.pgo_type {
+            PgoType::None => customize(original_compiled_program, labels, debug_info, self.powdr_config.clone(), NonePgo::<BabyBearOpenVmApcAdapter>::default()).vm_config.powdr.cached.into_inner().unwrap(),
+            pgo => unimplemented!("{pgo}"),
+            }
+        );
+    }
+
+    fn extension(&self) -> &PowdrExtension<BabyBear> {
+        self.cached.get().unwrap()
+    }
+} 
 
 #[cfg(feature = "cuda")]
 #[derive(Default, Clone)]
@@ -280,17 +308,19 @@ pub struct PeripheryBusIds {
 
 struct PowdrCpuProverExt;
 
-impl<E, RA> VmProverExtension<E, RA, PowdrExtension<BabyBear>> for PowdrCpuProverExt
+impl<E, RA> VmProverExtension<E, RA, PowdrExtensionNew> for PowdrCpuProverExt
 where
     E: StarkEngine<SC = BabyBearSC, PB = CpuBackend<BabyBearSC>, PD = CpuDevice<BabyBearSC>>,
     RA: RowMajorMatrixArena<BabyBear>,
 {
     fn extend_prover(
         &self,
-        extension: &PowdrExtension<BabyBear>,
+        extension: &PowdrExtensionNew,
         inventory: &mut ChipInventory<<E as StarkEngine>::SC, RA, <E as StarkEngine>::PB>,
     ) -> Result<(), ChipInventoryError> {
         // TODO: here we make assumptions about the existence of some chips in the periphery. Make this more flexible
+
+        let extension: PowdrExtension<BabyBear> = unimplemented!("recreate extension from params");
 
         use crate::powdr_extension::trace_generator::cpu::PowdrPeripheryInstancesCpu;
         let bitwise_lookup = inventory
@@ -429,22 +459,6 @@ impl VmExecutionConfig<BabyBear> for SpecializedConfig {
     }
 }
 
-impl SpecializedConfig {
-    fn new(
-        base_config: OriginalVmConfig,
-        precompiles: Vec<PowdrPrecompile<BabyBear>>,
-        max_degree: usize,
-    ) -> Self {
-        let airs = base_config.airs(max_degree).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
-        let bus_map = base_config.bus_map();
-        let powdr_extension = PowdrExtension::new(precompiles, base_config.clone(), bus_map, airs);
-        Self {
-            sdk: base_config,
-            powdr: powdr_extension,
-        }
-    }
-}
-
 pub fn build_elf_path<P: AsRef<Path>>(
     guest_opts: GuestOptions,
     pkg_dir: P,
@@ -513,7 +527,7 @@ pub fn compile_openvm(
 
     let vm_config = ExtendedVmConfig {
         sdk: sdk.app_config().app_vm_config.clone(),
-        hints: HintsExtension,
+        hints: HintsExtension {},
     };
 
     Ok(OriginalCompiledProgram { exe, vm_config })

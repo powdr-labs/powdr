@@ -1,10 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::{
-    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, PgoAdapter},
-    blocks::BasicBlock,
-    pgo::create_apcs_for_all_blocks,
-    PowdrConfig,
+    PgoType, PowdrConfig, adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, PgoAdapter}, blocks::BasicBlock, pgo::create_apcs_for_all_blocks
 };
 
 pub struct NonePgo<A> {
@@ -22,6 +19,8 @@ impl<A> Default for NonePgo<A> {
 
 impl<A: Adapter> PgoAdapter for NonePgo<A> {
     type Adapter = A;
+
+    const TY: super::PgoType = PgoType::None;
 
     fn create_apcs_with_pgo(
         &self,
