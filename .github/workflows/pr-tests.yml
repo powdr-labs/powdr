@@ -232,5 +232,5 @@ jobs:
       - name: Init testing instance (GPU)
         uses: ./.github/actions/init-testing-instance-gpu
       - name: Run quick GPU tests from openvm/src/lib.rs only
-        run: cargo nextest run --archive-file tests_gpu.tar.zst --workspace-remap . --verbose -E 'package(openvm) and test(/^openvm::tests::/)' --no-tests=warn
-        # run: cargo nextest run --archive-file tests_gpu.tar.zst --workspace-remap . --verbose -E 'package(openvm) and test(/^openvm::tests::/)' --partition count:"${{ matrix.test }}"/7 --no-tests=warn
+        run: cargo nextest run --archive-file tests_gpu.tar.zst --workspace-remap . --verbose -E 'package("powdr-openvm") and test(/^openvm::tests::/)' --no-tests=warn
+        # run: cargo nextest run --archive-file tests_gpu.tar.zst --workspace-remap . --verbose -E 'package("powdr-openvm") and test(/^openvm::tests::/)' --partition count:"${{ matrix.test }}"/7 --no-tests=warn
