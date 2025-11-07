@@ -189,7 +189,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     );
 
     // If some of the inputs are not reachable via stateful bus interactions, they
-    // are most likely redundant inputs that by chance share the property.
+    // are redundant inputs that by chance share the property.
     let inputs = inputs
         .into_iter()
         .filter(|v| outside_variables.contains(v))
