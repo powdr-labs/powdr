@@ -213,6 +213,16 @@ jobs:
   test_quick_gpu:
     needs: build_gpu
     runs-on: [self-hosted, GPU]
+    strategy:
+      matrix:
+        test:
+          - "1"
+          - "2"
+          - "3"
+          - "4"
+          - "5"
+          - "6"
+          - "7"
 
     steps:
       - uses: actions/checkout@v4
@@ -221,4 +231,4 @@ jobs:
       - name: Init testing instance (GPU)
         uses: ./.github/actions/init-testing-instance-gpu
       - name: Run quick GPU tests
-        run: cargo nextest run --archive-file tests_gpu.tar.zst --workspace-remap . --verbose --no-tests=warn
+        run: cargo nextest run --archive-file tests_gpu.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/7 --no-tests=warn
