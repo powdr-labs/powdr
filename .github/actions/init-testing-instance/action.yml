@@ -1,5 +1,11 @@
 name: "Init testing instance"
-description: "Initialises a testing instance with all required tools and fetches the precomputed tests archive named `tests_archive_cpu`"
+description: "Initialises a testing instance with all required tools and fetches a precomputed tests archive"
+
+inputs:
+  artifact_name:
+    description: "Name of the uploaded artifact to download (e.g. tests_archive_cpu)"
+    required: false
+    default: tests_archive
 
 runs:
   using: "composite"
@@ -7,10 +13,10 @@ runs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - name: Download build artifacts (CPU)
+      - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
-          name: tests_archive_cpu
+          name: ${{ inputs.artifact_name }}
       - name: Install Rust toolchain nightly-2025-05-14 (with clippy and rustfmt)
         shell: bash
         run: rustup toolchain install nightly-2025-05-14 --component clippy,rustfmt,rust-src
