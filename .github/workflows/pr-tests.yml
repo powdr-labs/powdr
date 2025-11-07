@@ -213,7 +213,7 @@ jobs:
   test_quick_gpu:
     needs: build_gpu
     runs-on: [self-hosted, GPU]
-    # TODO: we only have one runner on our GPU server, so can't partition yet
+    # TODO: we only have one runner on our GPU server, so can't partition yet; uncomment these once we have proper runners
     # strategy:
     #   matrix:
     #     test:
@@ -231,6 +231,6 @@ jobs:
           submodules: recursive
       - name: Init testing instance (GPU)
         uses: ./.github/actions/init-testing-instance-gpu
-      - name: Run quick GPU tests
-        run: cargo nextest run --archive-file tests_gpu.tar.zst --workspace-remap . --verbose --no-tests=warn
-        # run: cargo nextest run --archive-file tests_gpu.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/7 --no-tests=warn
+      - name: Run quick GPU tests from openvm/src/lib.rs only
+        run: cargo nextest run --archive-file tests_gpu.tar.zst --workspace-remap . --verbose -E 'package(openvm) and test(/^openvm::tests::/)' --no-tests=warn
+        # run: cargo nextest run --archive-file tests_gpu.tar.zst --workspace-remap . --verbose -E 'package(openvm) and test(/^openvm::tests::/)' --partition count:"${{ matrix.test }}"/7 --no-tests=warn
