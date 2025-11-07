@@ -14,7 +14,8 @@ use openvm_circuit::arch::{
     instructions::exe::VmExe, InitFileGenerator, OPENVM_DEFAULT_INIT_FILE_NAME,
 };
 use openvm_sdk::{config::TranspilerConfig, fs::write_object_to_file};
-use openvm_transpiler::{elf::Elf, openvm_platform::memory::MEM_SIZE, FromElf};
+use openvm_transpiler::{FromElf, elf::Elf, openvm_platform::memory::MEM_SIZE};
+use powdr_openvm::{DegreeBound, ExtendedVmConfig, HintsExtension, HintsTranspilerExtension, OriginalCompiledProgram, PowdrConfig, compile_exe_with_elf};
 
 use crate::util::{
     get_manifest_path_and_dir, get_target_dir, get_target_output_dir, read_config_toml_or_default,
@@ -296,7 +297,8 @@ pub fn build(build_args: &BuildArgs, cargo_args: &BuildCargoArgs) -> Result<Path
     let mut guest_options = GuestOptions::default()
         .with_features(cargo_args.features.clone())
         .with_profile(cargo_args.profile.clone())
-        .with_rustc_flags(var("RUSTFLAGS").unwrap_or_default().split_whitespace());
+        .with_rustc_flags(var("RUSTFLAGS").unwrap_or_default().split_whitespace())
+        .with_rustc_flags(vec!["-C", "link-arg=--emit-relocs"]);
 
     guest_options.target_dir = Some(target_dir.clone());
     guest_options
@@ -432,19 +434,24 @@ pub fn build(build_args: &BuildArgs, cargo_args: &BuildCargoArgs) -> Result<Path
     println!("[openvm] Transpiling the package...");
     for (elf_path, target) in izip!(&elf_paths, &elf_targets) {
         let transpiler = app_config.app_vm_config.transpiler();
+        let transpiler = transpiler.with_extension(HintsTranspilerExtension);
         let data = read(elf_path.clone())?;
         let elf = Elf::decode(&data, MEM_SIZE as u32)?;
         let exe = VmExe::from_elf(elf, transpiler)?;
+
+        let original_compiled_program = OriginalCompiledProgram { exe: exe.into(), vm_config: ExtendedVmConfig { sdk: app_config.app_vm_config.clone(), hints: HintsExtension } };
+
+        let compiled_program = compile_exe_with_elf(original_compiled_program, &data, PowdrConfig { autoprecompiles: 10, skip_autoprecompiles: 0, degree_bound: DegreeBound { identities: 3, bus_interactions: 2 }, apc_candidates_dir_path: None }, powdr_openvm::PgoConfig::None).unwrap();
 
         let target_name = if target.is_example() {
             PathBuf::from("examples").join(&target.name)
         } else {
             PathBuf::from(&target.name)
         };
-        let file_name = target_name.with_extension("vmexe");
+        let file_name = target_name.with_extension("bin");
         let file_path = target_output_dir.join(&file_name);
 
-        write_object_to_file(&file_path, exe)?;
+        write_object_to_file(&file_path, compiled_program)?;
         if let Some(output_dir) = &build_args.output_dir {
             create_dir_all(output_dir)?;
             copy(file_path, output_dir.join(file_name))?;

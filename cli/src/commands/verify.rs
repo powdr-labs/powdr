@@ -51,7 +51,7 @@ enum VerifySubCommand {
         cargo_args: KeygenCargoArgs,
     },
     Stark {
-        /// NOTE: if `openvm commit` was called with the `--exe` option, then `--app-commit` must
+        /// NOTE: if `openvm commit` was called with the `--specialized` option, then `--app-commit` must
         /// be specified so the command knows where to find the app commit.
         #[arg(
             long,

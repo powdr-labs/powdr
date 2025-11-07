@@ -39,6 +39,7 @@ toml = "0.8.14"
 itertools = "0.14.0"
 toml_edit = "0.22"
 include_dir = "0.7"
+bincode = { version = "2.0.1", features = ["serde"] }
 
 [features]
 default = ["parallel", "jemalloc", "evm-verify", "metrics"]

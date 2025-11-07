@@ -10,7 +10,7 @@ use openvm_sdk::fs::write_to_file_json;
 
 use super::{RunArgs, RunCargoArgs};
 use crate::{
-    commands::{load_app_pk, load_or_build_exe, ExecutionMode},
+    commands::{load_app_pk, load_or_build_specialized, ExecutionMode},
     util::{
         get_app_commit_path, get_manifest_path_and_dir, get_single_target_name, get_target_dir,
         get_target_output_dir,
@@ -35,10 +35,10 @@ pub struct CommitCmd {
     #[arg(
         long,
         action,
-        help = "Path to OpenVM executable, if specified build will be skipped",
+        help = "Path to OpenVM specalized, if specified build will be skipped",
         help_heading = "OpenVM Options"
     )]
-    pub exe: Option<PathBuf>,
+    pub specialized: Option<PathBuf>,
 
     #[arg(
         long,
@@ -71,17 +71,17 @@ impl CommitCmd {
         let app_pk = load_app_pk(&self.app_pk, &self.cargo_args)?;
 
         let run_args = RunArgs {
-            exe: self.exe.clone(),
+            specialized: self.specialized.clone(),
             config: self.config.clone(),
             output_dir: self.output_dir.clone(),
             init_file_name: self.init_file_name.clone(),
             input: None,
             mode: ExecutionMode::Pure,
         };
-        let (exe, target_name_stem) = load_or_build_exe(&run_args, &self.cargo_args)?;
+        let (specialized, target_name_stem) = load_or_build_specialized(&run_args, &self.cargo_args)?;
         let sdk = Sdk::new(app_pk.app_config())?.with_app_pk(app_pk);
 
-        let app_commit = sdk.app_prover(exe)?.app_commit();
+        let app_commit = sdk.app_prover(specialized.exe)?.app_commit();
         println!("exe commit: {:?}", app_commit.app_exe_commit.to_bn254());
         println!("vm commit: {:?}", app_commit.app_vm_commit.to_bn254());
 

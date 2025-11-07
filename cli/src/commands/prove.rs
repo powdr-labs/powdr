@@ -3,20 +3,16 @@ use std::{path::PathBuf, sync::Arc};
 use crate::Sdk;
 use clap::Parser;
 use eyre::Result;
-use openvm_circuit::arch::{
-    execution_mode::metered::segment_ctx::{
+use openvm_circuit::arch::execution_mode::metered::segment_ctx::{
         SegmentationLimits, DEFAULT_MAX_CELLS, DEFAULT_MAX_TRACE_HEIGHT_BITS,
-    },
-    instructions::exe::VmExe,
-};
+    };
 use openvm_sdk::{
     config::{AggregationTreeConfig, AppConfig},
     fs::{encode_to_file, read_object_from_file, write_to_file_json},
     keygen::AppProvingKey,
     types::VersionedVmStarkProof,
-    F,
 };
-use powdr_openvm::SpecializedConfig;
+use powdr_openvm::{CompiledProgram, SpecializedConfig};
 
 use super::{RunArgs, RunCargoArgs};
 #[cfg(feature = "evm-prove")]
@@ -158,10 +154,10 @@ impl ProveCmd {
                 let mut app_pk = load_app_pk(app_pk, cargo_args)?;
                 let app_config = get_app_config(&mut app_pk, segmentation_args);
                 let sdk = Sdk::new(app_config)?.with_app_pk(app_pk);
-                let (exe, target_name) = load_or_build_exe(run_args, cargo_args)?;
+                let (specialized, target_name) = load_or_build_specialized(run_args, cargo_args)?;
 
                 let app_proof = sdk
-                    .app_prover(exe)?
+                    .app_prover(specialized.exe)?
                     .prove(read_to_stdin(&run_args.input)?)?;
 
                 let proof_path = if let Some(proof) = proof {
@@ -184,7 +180,7 @@ impl ProveCmd {
                 agg_tree_config,
             } => {
                 let mut app_pk = load_app_pk(app_pk, cargo_args)?;
-                let (exe, target_name) = load_or_build_exe(run_args, cargo_args)?;
+                let (specialized, target_name) = load_or_build_specialized(run_args, cargo_args)?;
 
                 let agg_pk = read_object_from_file(default_agg_stark_pk_path()).map_err(|e| {
                     eyre::eyre!("Failed to read aggregation proving key: {}\nPlease run 'cargo openvm setup' first", e)
@@ -194,7 +190,7 @@ impl ProveCmd {
                     .with_agg_tree_config(*agg_tree_config)
                     .with_app_pk(app_pk)
                     .with_agg_pk(agg_pk);
-                let mut prover = sdk.prover(exe)?;
+                let mut prover = sdk.prover(specialized.exe)?;
                 let app_commit = prover.app_commit();
                 println!("exe commit: {:?}", app_commit.app_exe_commit.to_bn254());
                 println!("vm commit: {:?}", app_commit.app_vm_commit.to_bn254());
@@ -223,7 +219,7 @@ impl ProveCmd {
                 agg_tree_config,
             } => {
                 let mut app_pk = load_app_pk(app_pk, cargo_args)?;
-                let (exe, target_name) = load_or_build_exe(run_args, cargo_args)?;
+                let (specialized, target_name) = load_or_build_specialized(run_args, cargo_args)?;
 
                 println!("Generating EVM proof, this may take a lot of compute and memory...");
                 let (agg_pk, halo2_pk) = read_default_agg_and_halo2_pk().map_err(|e| {
@@ -235,7 +231,7 @@ impl ProveCmd {
                     .with_app_pk(app_pk)
                     .with_agg_pk(agg_pk)
                     .with_halo2_pk(halo2_pk);
-                let mut prover = sdk.evm_prover(exe)?;
+                let mut prover = sdk.evm_prover(specialized.exe)?;
                 let app_commit = prover.stark_prover.app_commit();
                 println!("exe commit: {:?}", app_commit.app_exe_commit.to_bn254());
                 println!("vm commit: {:?}", app_commit.app_vm_commit.to_bn254());
@@ -273,27 +269,27 @@ pub(crate) fn load_app_pk(
     read_object_from_file(app_pk_path)
 }
 
-/// Returns `(exe, target_name.file_stem())` where target_name has no extension and only contains
+/// Returns `(specialized, target_name.file_stem())` where target_name has no extension and only contains
 /// the file stem (in particular it does not include `examples/` if the target was an example)
-pub(crate) fn load_or_build_exe(
+pub(crate) fn load_or_build_specialized(
     run_args: &RunArgs,
     cargo_args: &RunCargoArgs,
-) -> Result<(VmExe<F>, String)> {
-    let exe_path = if let Some(exe) = &run_args.exe {
-        exe
+) -> Result<(CompiledProgram, String)> {
+    let specialized_path = if let Some(specialized) = &run_args.specialized {
+        specialized
     } else {
-        // Build and get the executable name
+        // Build and get the specialized name
         let target_name = get_single_target_name(cargo_args)?;
         let build_args = run_args.clone().into();
         let cargo_args = cargo_args.clone().into();
         let output_dir = build(&build_args, &cargo_args)?;
-        &output_dir.join(target_name.with_extension("vmexe"))
+        &output_dir.join(target_name.with_extension("bin"))
     };
 
-    let app_exe = read_object_from_file(exe_path)?;
+    let specialized = read_object_from_file(specialized_path)?;
     Ok((
-        app_exe,
-        exe_path.file_stem().unwrap().to_string_lossy().into_owned(),
+        specialized,
+        specialized_path.file_stem().unwrap().to_string_lossy().into_owned(),
     ))
 }
 

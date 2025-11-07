@@ -134,9 +134,9 @@ fn test_multi_target_transpile_default() -> Result<()> {
     let release_dir = openvm_dir.join("release");
     assert!(release_dir.exists());
 
-    // Check for expected vmexe files
-    let calculator_exe = release_dir.join("calculator.vmexe");
-    let string_utils_exe = release_dir.join("string-utils.vmexe");
+    // Check for expected bin files
+    let calculator_exe = release_dir.join("calculator.bin");
+    let string_utils_exe = release_dir.join("string-utils.bin");
     assert!(calculator_exe.exists());
     assert!(string_utils_exe.exists());
 
@@ -145,8 +145,8 @@ fn test_multi_target_transpile_default() -> Result<()> {
     assert!(examples_dir.exists());
 
     // Check for expected example files
-    let fibonacci_exe = examples_dir.join("fibonacci.vmexe");
-    let palindrome_exe = examples_dir.join("palindrome.vmexe");
+    let fibonacci_exe = examples_dir.join("fibonacci.bin");
+    let palindrome_exe = examples_dir.join("palindrome.bin");
     assert!(fibonacci_exe.exists());
     assert!(palindrome_exe.exists());
 
@@ -173,11 +173,11 @@ fn test_output_dir_copy() -> Result<()> {
     let default_target = target_dir
         .join("openvm")
         .join("release")
-        .join("openvm-cli-example-test.vmexe");
+        .join("openvm-cli-example-test.bin");
     assert!(default_target.exists());
 
     // Check for executable in output_dir
-    let copied_target = output_dir.join("openvm-cli-example-test.vmexe");
+    let copied_target = output_dir.join("openvm-cli-example-test.bin");
     assert!(copied_target.exists());
 
     // Check that the executable is the same

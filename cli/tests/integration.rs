@@ -1,13 +1,10 @@
 use std::{
     env,
-    fs::{self, read_to_string},
-    path::Path,
     process::Command,
     sync::OnceLock,
 };
 
 use eyre::Result;
-use itertools::Itertools;
 use tempfile::tempdir;
 
 fn install_cli() {
@@ -37,7 +34,7 @@ fn build_fibonacci_once() -> Result<&'static str> {
             )
         })
         .as_ref()
-        .map(|_| "tests/programs/fibonacci/target/openvm/release/openvm-cli-example-test.vmexe")
+        .map(|_| "tests/programs/fibonacci/target/openvm/release/openvm-cli-example-test.bin")
         .map_err(|e| eyre::eyre!("Failed to build fibonacci: {}", e))
 }
 
@@ -45,7 +42,7 @@ fn build_fibonacci_once() -> Result<&'static str> {
 fn test_cli_app_e2e() -> Result<()> {
     let temp_dir = tempdir()?;
     install_cli();
-    let exe_path = build_fibonacci_once()?;
+    let specialized_path = build_fibonacci_once()?;
     let temp_pk = temp_dir.path().join("app.pk");
     let temp_vk = temp_dir.path().join("app.vk");
     let temp_proof = temp_dir.path().join("fibonacci.app.proof");
@@ -57,6 +54,8 @@ fn test_cli_app_e2e() -> Result<()> {
             "keygen",
             "--config",
             "tests/programs/fibonacci/openvm.toml",
+            "--specialized",
+            specialized_path,
             "--output-dir",
             temp_dir.path().to_str().unwrap(),
         ],
@@ -67,8 +66,8 @@ fn test_cli_app_e2e() -> Result<()> {
         &[
             "openvm",
             "run",
-            "--exe",
-            exe_path,
+            "--specialized",
+            specialized_path,
             "--config",
             "tests/programs/fibonacci/openvm.toml",
         ],
@@ -82,8 +81,8 @@ fn test_cli_app_e2e() -> Result<()> {
             "app",
             "--app-pk",
             temp_pk.to_str().unwrap(),
-            "--exe",
-            exe_path,
+            "--specialized",
+            specialized_path,
             "--proof",
             temp_proof.to_str().unwrap(),
         ],
@@ -106,6 +105,7 @@ fn test_cli_app_e2e() -> Result<()> {
 }
 
 #[test]
+#[ignore = "running keygen without prior build is not supported"]
 fn test_cli_app_e2e_simplified() -> Result<()> {
     install_cli();
     run_cmd(
@@ -143,6 +143,7 @@ fn test_cli_app_e2e_simplified() -> Result<()> {
 }
 
 #[test]
+#[ignore = "running keygen without prior build is not supported"]
 fn test_cli_stark_e2e_simplified() -> Result<()> {
     install_cli();
     run_cmd("cargo", &["openvm", "setup"])?;
@@ -231,7 +232,7 @@ fn test_cli_init_build() -> Result<()> {
 #[test]
 fn test_cli_run_mode_pure_default() -> Result<()> {
     install_cli();
-    let exe_path = build_fibonacci_once()?;
+    let specialized_path = build_fibonacci_once()?;
 
     // Test that default mode (pure) works without explicit flag
     run_cmd(
@@ -239,8 +240,8 @@ fn test_cli_run_mode_pure_default() -> Result<()> {
         &[
             "openvm",
             "run",
-            "--exe",
-            exe_path,
+            "--specialized",
+            specialized_path,
             "--config",
             "tests/programs/fibonacci/openvm.toml",
         ],
@@ -252,8 +253,8 @@ fn test_cli_run_mode_pure_default() -> Result<()> {
         &[
             "openvm",
             "run",
-            "--exe",
-            exe_path,
+            "--specialized",
+            specialized_path,
             "--config",
             "tests/programs/fibonacci/openvm.toml",
             "--mode",
@@ -267,7 +268,7 @@ fn test_cli_run_mode_pure_default() -> Result<()> {
 #[test]
 fn test_cli_run_segment() -> Result<()> {
     install_cli();
-    let exe_path = build_fibonacci_once()?;
+    let specialized_path = build_fibonacci_once()?;
 
     // Test run with --mode segment
     run_cmd(
@@ -275,8 +276,8 @@ fn test_cli_run_segment() -> Result<()> {
         &[
             "openvm",
             "run",
-            "--exe",
-            exe_path,
+            "--specialized",
+            specialized_path,
             "--config",
             "tests/programs/fibonacci/openvm.toml",
             "--mode",
@@ -290,7 +291,7 @@ fn test_cli_run_segment() -> Result<()> {
 #[test]
 fn test_cli_run_meter() -> Result<()> {
     install_cli();
-    let exe_path = build_fibonacci_once()?;
+    let specialized_path = build_fibonacci_once()?;
 
     // Test run with --mode meter
     run_cmd(
@@ -298,8 +299,8 @@ fn test_cli_run_meter() -> Result<()> {
         &[
             "openvm",
             "run",
-            "--exe",
-            exe_path,
+            "--specialized",
+            specialized_path,
             "--config",
             "tests/programs/fibonacci/openvm.toml",
             "--mode",

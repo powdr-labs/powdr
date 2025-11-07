@@ -3,8 +3,9 @@ use std::path::PathBuf;
 use crate::Sdk;
 use clap::{Parser, ValueEnum};
 use eyre::Result;
-use openvm_circuit::arch::{instructions::exe::VmExe, OPENVM_DEFAULT_INIT_FILE_NAME};
-use openvm_sdk::{fs::read_object_from_file, keygen::AppProvingKey, F};
+use openvm_circuit::arch::{OPENVM_DEFAULT_INIT_FILE_NAME};
+use openvm_sdk::{config::AppConfig, fs::read_object_from_file, keygen::AppProvingKey};
+use powdr_openvm::CompiledProgram;
 
 use super::{build, BuildArgs, BuildCargoArgs};
 use crate::{
@@ -42,10 +43,10 @@ pub struct RunArgs {
     #[arg(
         long,
         action,
-        help = "Path to OpenVM executable, if specified build will be skipped",
+        help = "Path to OpenVM specialized program, if specified build will be skipped",
         help_heading = "OpenVM Options"
     )]
-    pub exe: Option<PathBuf>,
+    pub specialized: Option<PathBuf>,
 
     #[arg(
         long,
@@ -254,7 +255,7 @@ impl From<RunCargoArgs> for BuildCargoArgs {
 
 impl RunCmd {
     pub fn run(&self) -> Result<()> {
-        let exe_path = if let Some(exe) = &self.run_args.exe {
+        let compiled_program_path = if let Some(exe) = &self.run_args.specialized {
             exe
         } else {
             // Build and get the executable name
@@ -262,7 +263,7 @@ impl RunCmd {
             let build_args = self.run_args.clone().into();
             let cargo_args = self.cargo_args.clone().into();
             let output_dir = build(&build_args, &cargo_args)?;
-            &output_dir.join(target_name.with_extension("vmexe"))
+            &output_dir.join(target_name.with_extension("bin"))
         };
 
         let (manifest_path, manifest_dir) =
@@ -272,8 +273,18 @@ impl RunCmd {
             .config
             .to_owned()
             .unwrap_or_else(|| manifest_dir.join("openvm.toml"));
+
+        // Read the original config
         let app_config = read_config_toml_or_default(&config_path)?;
-        let exe: VmExe<F> = read_object_from_file(exe_path)?;
+
+        let specialized: CompiledProgram = read_object_from_file(compiled_program_path)?;
+
+        let app_config = AppConfig {
+            app_vm_config: specialized.vm_config.clone(),
+            app_fri_params: app_config.app_fri_params,
+            leaf_fri_params: app_config.leaf_fri_params,
+            compiler_options: app_config.compiler_options,
+        };
         let inputs = read_to_stdin(&self.run_args.input)?;
 
         // Create SDK
@@ -295,7 +306,13 @@ impl RunCmd {
                     .config
                     .to_owned()
                     .unwrap_or_else(|| manifest_dir.join("openvm.toml"));
-                keygen(&config_path, &app_pk_path, &app_vk_path, None::<&str>)?;
+                keygen(
+                    &config_path,
+                    &specialized,
+                    &app_pk_path,
+                    &app_vk_path,
+                    None::<&str>,
+                )?;
             }
 
             // Load the app pk and set it
@@ -306,18 +323,18 @@ impl RunCmd {
 
         match self.run_args.mode {
             ExecutionMode::Pure => {
-                let output = sdk.execute(exe, inputs)?;
+                let output = sdk.execute(specialized.exe, inputs)?;
                 println!("Execution output: {:?}", output);
             }
             ExecutionMode::Meter => {
-                let (output, (cost, instret)) = sdk.execute_metered_cost(exe, inputs)?;
+                let (output, (cost, instret)) = sdk.execute_metered_cost(specialized.exe, inputs)?;
                 println!("Execution output: {:?}", output);
 
                 println!("Number of instructions executed: {}", instret);
                 println!("Total cost: {}", cost);
             }
             ExecutionMode::Segment => {
-                let (output, segments) = sdk.execute_metered(exe, inputs)?;
+                let (output, segments) = sdk.execute_metered(specialized.exe, inputs)?;
                 println!("Execution output: {:?}", output);
 
                 let total_instructions: u64 = segments.iter().map(|s| s.num_insns).sum();

@@ -6,7 +6,10 @@ use std::{
 use crate::Sdk;
 use clap::Parser;
 use eyre::Result;
-use openvm_sdk::fs::write_object_to_file;
+use openvm_sdk::{
+    config::AppConfig, fs::{read_object_from_file, write_object_to_file}
+};
+use powdr_openvm::CompiledProgram;
 
 use crate::{
     default::{DEFAULT_APP_PK_NAME, DEFAULT_APP_VK_NAME},
@@ -25,6 +28,14 @@ pub struct KeygenCmd {
         help_heading = "OpenVM Options"
     )]
     config: Option<PathBuf>,
+
+    #[arg(
+        long,
+        action,
+        help = "Path to OpenVM specialized program",
+        help_heading = "OpenVM Options"
+    )]
+    pub specialized: PathBuf,
 
     #[arg(
         long,
@@ -63,11 +74,13 @@ impl KeygenCmd {
         let target_dir = get_target_dir(&self.cargo_args.target_dir, &manifest_path);
         let app_pk_path = get_app_pk_path(&target_dir);
         let app_vk_path = get_app_vk_path(&target_dir);
+        let specialized = read_object_from_file(&self.specialized)?;
 
         keygen(
             self.config
                 .to_owned()
                 .unwrap_or_else(|| manifest_dir.join("openvm.toml")),
+            &specialized,
             &app_pk_path,
             &app_vk_path,
             self.output_dir.as_ref(),
@@ -86,11 +99,20 @@ impl KeygenCmd {
 
 pub(crate) fn keygen(
     config: impl AsRef<Path>,
+    specialized: &CompiledProgram,
     app_pk_path: impl AsRef<Path>,
     app_vk_path: impl AsRef<Path>,
     output_dir: Option<impl AsRef<Path>>,
 ) -> Result<()> {
-    let app_config = read_config_toml_or_default(config)?;
+    // Read the original config
+    let app_config = read_config_toml_or_default(&config)?;
+
+    let app_config = AppConfig {
+        app_vm_config: specialized.vm_config.clone(),
+        app_fri_params: app_config.app_fri_params,
+        leaf_fri_params: app_config.leaf_fri_params,
+        compiler_options: app_config.compiler_options,
+    };
     let (app_pk, app_vk) = Sdk::new(app_config)?.app_keygen();
     write_object_to_file(&app_vk_path, app_vk)?;
     write_object_to_file(&app_pk_path, app_pk)?;

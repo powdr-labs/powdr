@@ -60,7 +60,7 @@ pub fn read_bytes_into_stdin(stdin: &mut StdIn, bytes: &[u8]) -> Result<()> {
         }
         Some(0x02) => {
             let data = &bytes[1..];
-            if data.len() % 4 != 0 {
+            if !data.len().is_multiple_of(4) {
                 return Err(eyre::eyre!(
                     "Invalid input format: incorrect number of bytes"
                 ));
