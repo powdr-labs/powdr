@@ -26,6 +26,9 @@ use crate::constraint_optimizer::{
 };
 use crate::range_constraint_optimizer::RangeConstraintHandler;
 
+/// Only run the optimization on sub-systems of at most this many variables.
+const MAX_SUBSYSTEM_SIZE: usize = 200;
+
 /// Tries to find variables that represent a zero check on a conjunction of other variables
 /// and replaces the involved constraints by a more efficient version.
 pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Display>(
@@ -44,7 +47,7 @@ pub fn replace_equal_zero_checks<T: FieldElement, V: Clone + Ord + Hash + Displa
         constraint_system.clone(),
         bus_interaction_handler.clone(),
     ) {
-        if subsystem.referenced_unknown_variables().count() > 200 {
+        if subsystem.referenced_unknown_variables().count() > MAX_SUBSYSTEM_SIZE {
             // Searching for equal zero checks in such a large
             // system would take too long.
             log::debug!(
@@ -143,7 +146,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
         bus_interaction_handler.clone(),
         [(output.clone(), value)],
     ) else {
-        return;
+        panic!("This should not happen, at least in this case we know that {output} = 1 - {value}");
     };
     let inputs: BTreeSet<_> = zero_assigments(&solution).collect();
     if inputs.is_empty() {
@@ -206,8 +209,8 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     )
     .is_ok()
     {
+        panic!("Does this happen?");
         // Something is wrong here, but rather do nothing.
-        return;
     }
 
     // Check that each input is non-negative and that the sum of inputs cannot wrap.

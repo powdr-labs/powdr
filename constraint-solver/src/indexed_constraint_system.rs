@@ -312,8 +312,9 @@ impl<T: RuntimeConstant, V: Clone + Eq + Hash> IndexedConstraintSystem<T, V> {
         });
     }
 
-    /// Adds a derived variable. The variable is not created with this function, it only adds
-    /// a method to compute it.
+    /// Adds a way to compute a derived variable when generating a proof trace.
+    /// A derived variable is a new variable that did not exist in the
+    /// original system.
     pub fn add_derived_variable(
         &mut self,
         variable: V,
