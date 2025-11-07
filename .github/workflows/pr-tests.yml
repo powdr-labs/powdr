@@ -201,8 +201,8 @@ jobs:
       - name: Build (GPU)
         run: cargo build --all-targets --all-features --all --profile pr-tests --verbose
       - uses: taiki-e/install-action@nextest
-      - name: Create tests archive (GPU)
-        run: cargo nextest archive --archive-file tests_gpu.tar.zst --cargo-profile pr-tests --workspace --all-features
+      - name: Create tests archive (GPU, features=cuda)
+        run: cargo nextest archive --archive-file tests_gpu.tar.zst --cargo-profile pr-tests --workspace --features cuda
       - name: Upload build artifacts (GPU)
         uses: actions/upload-artifact@v4
         with:
