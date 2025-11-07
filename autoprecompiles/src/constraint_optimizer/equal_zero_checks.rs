@@ -312,7 +312,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
         return;
     }
 
-    // It's a go! Remove the constraind and add a more efficient version.
+    // It's a go! Remove the constraint and add a more efficient version.
     constraint_system.retain_algebraic_constraints(|constr| !remove_algebraic_constraint(constr));
     constraint_system
         .retain_bus_interactions(|bus_interaction| !remove_bus_interaction(bus_interaction));
