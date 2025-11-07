@@ -133,7 +133,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     subsystem: IndexedConstraintSystem<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<T>
         + RangeConstraintHandler<T>
-        + IsBusStateful<T> // TODO do we need this?
+        + IsBusStateful<T>
         + Clone,
     solver: &mut impl Solver<T, V>,
     new_var: &mut impl FnMut() -> V,
@@ -192,7 +192,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     );
 
     // If some of the inputs are not reachable via stateful bus interactions, they
-    // are most likely redundant inputs that by chance share the property.
+    // are redundant inputs that by chance share the property.
     let inputs = inputs
         .into_iter()
         .filter(|v| outside_variables.contains(v))
@@ -315,7 +315,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
         return;
     }
 
-    // It's a go! Remove the constraind and add a more efficient version.
+    // It's a go! Remove the constraint and add a more efficient version.
     constraint_system.retain_algebraic_constraints(|constr| !remove_algebraic_constraint(constr));
     constraint_system
         .retain_bus_interactions(|bus_interaction| !remove_bus_interaction(bus_interaction));
