@@ -183,3 +183,11 @@ fn copy_byte() {
     ];
     assert_machine_output(program.to_vec(), "copy_byte");
 }
+
+#[test]
+fn rotate() {
+    // Rotation, implemented as `(x >> imm) | (x << (32-imm))`
+    // for imm = 1
+    let program = [srl(1, 3, 1, 0), sll(2, 3, 31, 0), or(3, 1, 2, 1)];
+    assert_machine_output(program.to_vec(), "rotate");
+}
