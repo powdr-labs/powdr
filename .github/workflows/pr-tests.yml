@@ -18,60 +18,8 @@ env:
   POWDR_OPENVM_SEGMENT_DELTA: 50000
 
 jobs:
-  build_cpu:
-    runs-on: warp-ubuntu-2404-x64-8x
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          submodules: recursive
-      - name: ⚡ Restore rust cache
-        id: cache
-        uses: WarpBuilds/cache/restore@v1
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-            Cargo.lock
-          key: ${{ runner.os }}-cargo-pr-tests
-      - name: Date of the restored cache
-        run: cat target/cache-build-date.txt
-        continue-on-error: true
-      - name: Check out cache commit state and update mtime accordingly.
-        run: git checkout "$(cat target/cache-commit-hash.txt || echo 'f02fd626e2bb9e46a22ea1cda96b4feb5c6bda43')" && git ls-files -z | xargs -0 -n1 touch -d "Fri, 18 Apr 2025 03:30:58 +0000" && git checkout HEAD@{1}
-
-      ##### The block below is shared between cache build and PR build workflows #####
-      - name: Install Rust toolchain nightly-2025-10-01 (with clippy and rustfmt)
-        run: rustup toolchain install nightly-2025-10-01 --component clippy,rustfmt
-      - name: Install Rust toolchain 1.88 (stable)
-        run: rustup toolchain install 1.88
-      - name: Set cargo to perform shallow clones
-        run: echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
-      - name: Format
-        run: cargo fmt --all --check --verbose
-      - name: Cargo check with Rust 1.88 (default features)
-        run: cargo +1.88 check --all-targets
-      - name: Lint no default features
-        run: cargo clippy --all --all-targets --features metrics --profile pr-tests --verbose -- -D warnings
-      - name: Build (CPU)
-        run: cargo build --all-targets --features metrics --all --profile pr-tests --verbose
-      ###############################################################################
-
-      - uses: taiki-e/install-action@nextest
-      - name: Create tests archive (CPU)
-        run: cargo nextest archive --archive-file tests_cpu.tar.zst --cargo-profile pr-tests --workspace --no-default-features
-      - name: Upload build artifacts (CPU)
-        uses: actions/upload-artifact@v4
-        with:
-          name: tests_archive_cpu
-          path: |
-            tests_cpu.tar.zst
-
   test_quick_cpu:
-    needs: build_cpu
+    needs: build
     runs-on: ubuntu-24.04
     strategy:
       matrix:
@@ -96,7 +44,7 @@ jobs:
         run: cargo nextest run --archive-file tests_cpu.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/7 --no-tests=warn
 
   test_medium_cpu:
-    needs: build_cpu
+    needs: build
     runs-on: warp-ubuntu-2404-x64-16x
     strategy:
       matrix:
@@ -118,7 +66,7 @@ jobs:
         run: cargo nextest run --archive-file tests_cpu.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/7 --test-threads=4 -E 'not (test(_large))' --run-ignored only --no-tests=warn
 
   test_large_cpu:
-    needs: build_cpu
+    needs: build
     runs-on: warp-ubuntu-2404-x64-32x
 
     steps:
@@ -183,7 +131,7 @@ jobs:
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
           MODE="compile" APC=10 PGO_TYPE="instruction" /usr/bin/time -v ./run.sh
 
-  build_gpu:
+  build:
     runs-on: [self-hosted, GPU]
 
     steps:
@@ -192,6 +140,7 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
+      ##### The block below is shared between cache build and PR build workflows #####
       - name: Install Rust toolchain nightly-2025-10-01 (with clippy and rustfmt)
         run: rustup toolchain install nightly-2025-10-01 --component clippy,rustfmt
       - name: Install Rust toolchain 1.88 (stable)
@@ -203,6 +152,27 @@ jobs:
       - name: Cargo check with Rust 1.88 (all features)
         run: cargo +1.88 check --all-targets
       - name: Lint no default features
+        run: cargo clippy --all --all-targets --no-default-features --profile pr-tests --verbose -- -D warnings
+      - name: Lint all features
         run: cargo clippy --all --all-targets --all-features --profile pr-tests --verbose -- -D warnings
-      - name: Build (GPU)
+      - name: Build
         run: cargo build --all-targets --all-features --all --profile pr-tests --verbose
+      ###############################################################################
+
+      - uses: taiki-e/install-action@nextest
+      - name: Create tests archive (CPU)
+        run: cargo nextest archive --archive-file tests_cpu.tar.zst --cargo-profile pr-tests --workspace --no-default-features
+      - name: Upload build artifacts (CPU)
+        uses: actions/upload-artifact@v4
+        with:
+          name: tests_archive_cpu
+          path: |
+            tests_cpu.tar.zst
+      - name: Create tests archive (GPU)
+        run: cargo nextest archive --archive-file tests_gpu.tar.zst --cargo-profile pr-tests --workspace --features cuda
+      - name: Upload build artifacts (GPU)
+        uses: actions/upload-artifact@v4
+        with:
+          name: tests_archive_gpu
+          path: |
+            tests_gpu.tar.zst
