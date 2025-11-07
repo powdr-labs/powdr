@@ -90,6 +90,8 @@ jobs:
           submodules: recursive
       - name: Init testing instance
         uses: ./.github/actions/init-testing-instance
+        with:
+          artifact_name: tests_archive_cpu
       - name: Run default tests
         run: cargo nextest run --archive-file tests_cpu.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/7 --no-tests=warn
 
@@ -110,6 +112,8 @@ jobs:
           submodules: recursive
       - name: Init testing instance
         uses: ./.github/actions/init-testing-instance
+        with:
+          artifact_name: tests_archive_cpu
       - name: Run medium tests (ignored tests except large ones)
         run: cargo nextest run --archive-file tests_cpu.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/7 --test-threads=4 -E 'not (test(_large))' --run-ignored only --no-tests=warn
 
@@ -123,6 +127,8 @@ jobs:
           submodules: recursive
       - name: Init testing instance
         uses: ./.github/actions/init-testing-instance
+        with:
+          artifact_name: tests_archive_cpu
       - name: Run large tests
         run: cargo nextest run --archive-file tests_cpu.tar.zst --workspace-remap . --verbose -E 'test(_large)' --run-ignored only --no-tests=warn
 
