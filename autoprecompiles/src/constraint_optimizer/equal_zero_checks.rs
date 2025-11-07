@@ -130,7 +130,7 @@ fn try_replace_equal_zero_check<T: FieldElement, V: Clone + Ord + Hash + Display
     subsystem: IndexedConstraintSystem<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<T>
         + RangeConstraintHandler<T>
-        + IsBusStateful<T> // TODO do we need this?
+        + IsBusStateful<T>
         + Clone,
     solver: &mut impl Solver<T, V>,
     new_var: &mut impl FnMut() -> V,
