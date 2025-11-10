@@ -12,8 +12,7 @@ extern "C" {
     pub fn _apc_tracegen(
         d_output: *mut BabyBear,             // column-major
         output_height: usize,                // H_out
-        d_original_airs: *const OriginalAir, // device array, len = n_original_airs
-        n_original_airs: usize,              //
+        d_original_airs: *const OriginalAir, // device array of AIR metadata
         d_subs: *const Subst,                // device array of all substitutions
         n_subs: usize,                      // number of substitutions
         num_apc_calls: i32,                  // number of APC calls
@@ -97,19 +96,17 @@ pub struct DerivedExprSpec {
 
 pub fn apc_tracegen(
     output: &mut DeviceMatrix<BabyBear>,      // column-major
-    original_airs: DeviceBuffer<OriginalAir>, // device array, len = n_airs
+    original_airs: DeviceBuffer<OriginalAir>, // device array of AIR metadata
     substitutions: DeviceBuffer<Subst>,       // device array of all substitutions
     num_apc_calls: usize,
 ) -> Result<(), CudaError> {
     let output_height = output.height();
-    let n_airs = original_airs.len();
 
     unsafe {
         CudaError::from_result(_apc_tracegen(
             output.buffer().as_mut_ptr(),
             output_height,
             original_airs.as_ptr(),
-            n_airs,
             substitutions.as_ptr(),
             substitutions.len(),
             num_apc_calls as i32,

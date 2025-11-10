@@ -290,8 +290,6 @@ impl PowdrTraceGeneratorGpu {
                                         apc_col: apc_poly_id_to_index[&sub.apc_poly_id] as i32,
                                     })
                             })
-                            // sort by column so that reads to the same column are coalesced, as the table is column major
-                            .sorted_by(|left, right| left.col.cmp(&right.col))
                             .collect();
 
                         // get the device dummy trace for this air

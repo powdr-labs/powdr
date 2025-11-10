@@ -36,7 +36,6 @@ __global__ void apc_tracegen_kernel(
     Fp* __restrict__ d_output,                         // column-major
     size_t H,                                          // height of the output
     const OriginalAir* __restrict__ d_original_airs,   // metadata per AIR
-    size_t n_airs,                                     // number of AIR entries
     const Subst* __restrict__ d_subs,                  // all substitutions
     size_t n_subs,                                     // number of substitutions
     int num_apc_calls                                  // number of APC calls
@@ -127,8 +126,7 @@ extern "C" int _apc_apply_derived_expr(
 extern "C" int _apc_tracegen(
     Fp*                      d_output,          // [output_height * output_width], column-major
     size_t                   output_height,     // H_out
-    const OriginalAir*       d_original_airs,   // device array, length = n_airs
-    size_t                   n_airs,            // metadata array length
+    const OriginalAir*       d_original_airs,   // device array of AIR metadata
     const Subst*             d_subs,            // device array of all substitutions
     size_t                   n_subs,            // number of substitutions
     int                      num_apc_calls      // number of APC calls
@@ -142,7 +140,7 @@ extern "C" int _apc_tracegen(
     const dim3 grid(g, 1, 1);
 
     apc_tracegen_kernel<<<grid, block>>>(
-        d_output, output_height, d_original_airs, n_airs, d_subs, n_subs, num_apc_calls
+        d_output, output_height, d_original_airs, d_subs, n_subs, num_apc_calls
     );
     return (int)cudaGetLastError();
 }
