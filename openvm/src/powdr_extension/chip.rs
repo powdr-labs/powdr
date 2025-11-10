@@ -3,13 +3,13 @@
 use std::{cell::RefCell, collections::BTreeMap, rc::Rc, sync::Arc};
 
 use crate::{
-    extraction_utils::{OriginalAirs, OriginalVmConfig},
+    extraction_utils::{get_air_metrics, OriginalAirs, OriginalVmConfig},
     powdr_extension::{
         executor::OriginalArenas,
         trace_generator::cpu::{PowdrPeripheryInstancesCpu, PowdrTraceGeneratorCpu},
         PowdrPrecompile,
     },
-    Instr,
+    AirMetrics, BabyBearOpenVmApcAdapter, Instr,
 };
 
 use itertools::Itertools;
@@ -27,6 +27,7 @@ use openvm_stark_backend::{
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
+    adapter::{AdapterApc, ApcArithmetization},
     expression::{AlgebraicEvaluator, AlgebraicReference, WitnessEvaluator},
     Apc,
 };
@@ -65,6 +66,16 @@ pub struct PowdrAir<F> {
     /// The columns in arbitrary order
     columns: Vec<AlgebraicReference>,
     apc: Arc<Apc<F, Instr<F>>>,
+}
+
+impl<'a> ApcArithmetization<BabyBearOpenVmApcAdapter<'a>> for PowdrAir<BabyBear> {
+    fn get_metrics(
+        apc: Arc<AdapterApc<BabyBearOpenVmApcAdapter<'a>>>,
+        max_constraint_degree: usize,
+    ) -> AirMetrics {
+        // Instantiate a `PowdrAir` and collect its metrics
+        get_air_metrics(Arc::new(Self::new(apc)), max_constraint_degree)
+    }
 }
 
 impl<F: PrimeField32> ColumnsAir<F> for PowdrAir<F> {

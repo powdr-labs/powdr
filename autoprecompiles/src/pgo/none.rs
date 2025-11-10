@@ -1,18 +1,18 @@
 use std::collections::BTreeMap;
 
 use crate::{
-    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, PgoAdapter},
+    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, ApcArithmetization, PgoAdapter},
     blocks::BasicBlock,
     pgo::create_apcs_for_all_blocks,
     PowdrConfig,
 };
 
-pub struct NonePgo<A> {
-    _marker: std::marker::PhantomData<A>,
+pub struct NonePgo<A, Air> {
+    _marker: std::marker::PhantomData<(A, Air)>,
 }
 
 // TODO: derive with explicit bounds
-impl<A> Default for NonePgo<A> {
+impl<A, Air> Default for NonePgo<A, Air> {
     fn default() -> Self {
         Self {
             _marker: std::marker::PhantomData,
@@ -20,8 +20,9 @@ impl<A> Default for NonePgo<A> {
     }
 }
 
-impl<A: Adapter> PgoAdapter for NonePgo<A> {
+impl<A: Adapter, Air: ApcArithmetization<A>> PgoAdapter for NonePgo<A, Air> {
     type Adapter = A;
+    type Air = Air;
 
     fn create_apcs_with_pgo(
         &self,
@@ -42,6 +43,6 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
             );
         }
 
-        create_apcs_for_all_blocks::<Self::Adapter>(blocks, config, vm_config)
+        create_apcs_for_all_blocks::<Self::Adapter, Self::Air>(blocks, config, vm_config)
     }
 }

@@ -1,6 +1,9 @@
-use std::{fmt::Display, iter::Sum, ops::Add};
+use std::{fmt::Display, iter::Sum, ops::Add, sync::Arc};
 
-use crate::{blocks::Instruction, InstructionHandler, SymbolicMachine};
+use crate::{
+    adapter::{Adapter, AdapterApc, ApcArithmetization},
+    InstructionHandler,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -15,16 +18,6 @@ pub struct AirStats {
     /// translate to a number of columns. The exact number depends on many factors,
     /// including the degree of the bus interaction fields, which is not measured here.
     pub bus_interactions: usize,
-}
-
-impl AirStats {
-    pub fn new<F: Clone + Ord + std::fmt::Display>(machine: &SymbolicMachine<F>) -> Self {
-        Self {
-            main_columns: machine.main_columns().count(),
-            constraints: machine.constraints.len(),
-            bus_interactions: machine.bus_interactions.len(),
-        }
-    }
 }
 
 impl Add for AirStats {
@@ -46,38 +39,58 @@ impl Sum<AirStats> for AirStats {
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
 /// Evaluation result of an APC evaluation
-pub struct EvaluationResult {
+pub struct ApcPerformanceReport<S> {
     /// Statistics before optimizations, i.e., the sum of the AIR stats
     /// of all AIRs that *would* be involved in proving this basic block
     /// if it was run in software.
-    pub before: AirStats,
+    pub before: S,
     /// The AIR stats of the APC.
-    pub after: AirStats,
+    pub after: S,
+}
+
+impl<S: ApcStats> From<ApcPerformanceReport<S>> for ApcPerformanceReport<AirStats> {
+    fn from(report: ApcPerformanceReport<S>) -> Self {
+        ApcPerformanceReport {
+            before: report.before.into(),
+            after: report.after.into(),
+        }
+    }
+}
+
+pub trait ApcStats:
+    Into<AirStats> + Clone + Copy + Serialize + for<'a> Deserialize<'a> + Send + Sync + Sum
+{
+    fn cells_per_call(&self) -> usize;
+}
+
+impl<S: ApcStats> ApcPerformanceReport<S> {
+    pub fn cells_saved_per_call(&self) -> usize {
+        self.before.cells_per_call() - self.after.cells_per_call()
+    }
 }
 
 /// Evaluate an APC by comparing its cost to the cost of executing the
 /// basic block in software.
-pub fn evaluate_apc<IH>(
-    basic_block: &[IH::Instruction],
-    instruction_handler: &IH,
-    machine: &SymbolicMachine<impl Clone + Ord + std::fmt::Display>,
-) -> EvaluationResult
-where
-    IH: InstructionHandler,
-    IH::Field: Clone + Ord + std::fmt::Display,
-    IH::Instruction: Instruction<IH::Field>,
-{
-    let before = basic_block
+pub fn evaluate_apc<A: Adapter, Air: ApcArithmetization<A>>(
+    apc: Arc<AdapterApc<A>>,
+    instruction_handler: &A::InstructionHandler,
+    max_constraint_degree: usize,
+) -> ApcPerformanceReport<A::ApcStats> {
+    let before = apc
+        .block
+        .statements
         .iter()
-        .map(|instruction| instruction_handler.get_instruction_air_stats(instruction))
+        .map(|instruction| instruction_handler.get_instruction_air_metrics(instruction))
         .sum();
-    let after = AirStats::new(machine);
-    EvaluationResult { before, after }
+    let after = Air::get_metrics(apc, max_constraint_degree);
+    ApcPerformanceReport { before, after }
 }
 
-impl Display for EvaluationResult {
+impl<S: ApcStats> Display for ApcPerformanceReport<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let EvaluationResult { before, after } = self;
+        let ApcPerformanceReport { before, after } = self;
+        let before: AirStats = (*before).into();
+        let after: AirStats = (*after).into();
         write!(
             f,
             "APC advantage:\n  - Main columns: {}\n  - Bus interactions: {}\n  - Constraints: {}",

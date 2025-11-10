@@ -6,6 +6,7 @@ use std::{fmt::Display, sync::Arc};
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
+use crate::evaluation::{ApcPerformanceReport, ApcStats};
 use crate::{
     blocks::{BasicBlock, Instruction, Program},
     constraint_optimizer::IsBusStateful,
@@ -15,29 +16,23 @@ use crate::{
 };
 
 #[derive(Serialize, Deserialize)]
-pub struct ApcWithStats<F, I, S> {
+pub struct ApcWithReport<F, I, S> {
     apc: Arc<Apc<F, I>>,
-    stats: Option<S>,
+    report: ApcPerformanceReport<S>,
 }
-impl<F, I, S> ApcWithStats<F, I, S> {
-    pub fn with_stats(mut self, stats: S) -> Self {
-        self.stats = Some(stats);
-        self
+impl<F, I, S> ApcWithReport<F, I, S> {
+    pub fn new(apc: Arc<Apc<F, I>>, report: ApcPerformanceReport<S>) -> Self {
+        Self { apc, report }
     }
 
-    pub fn into_parts(self) -> (Arc<Apc<F, I>>, Option<S>) {
-        (self.apc, self.stats)
-    }
-}
-
-impl<F, I, S> From<Arc<Apc<F, I>>> for ApcWithStats<F, I, S> {
-    fn from(apc: Arc<Apc<F, I>>) -> Self {
-        Self { apc, stats: None }
+    pub fn into_parts(self) -> (Arc<Apc<F, I>>, ApcPerformanceReport<S>) {
+        (self.apc, self.report)
     }
 }
 
 pub trait PgoAdapter {
     type Adapter: Adapter;
+    type Air: ApcArithmetization<Self::Adapter>;
 
     fn filter_blocks_and_create_apcs_with_pgo(
         &self,
@@ -66,10 +61,18 @@ pub trait PgoAdapter {
     }
 }
 
+pub trait ApcArithmetization<A: Adapter>: Send + Sync {
+    /// Given an apc circuit and a degree bound, return the stats when compiling this apc using this arithmetization
+    fn get_metrics(apc: Arc<AdapterApc<A>>, max_constraint_degree: usize) -> A::ApcStats;
+}
+
 pub trait Adapter: Sized
 where
-    Self::InstructionHandler:
-        InstructionHandler<Field = Self::Field, Instruction = Self::Instruction>,
+    Self::InstructionHandler: InstructionHandler<
+        Field = Self::Field,
+        Instruction = Self::Instruction,
+        ApcStats = Self::ApcStats,
+    >,
 {
     type Field: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone;
     type PowdrField: FieldElement;
@@ -86,7 +89,7 @@ where
         V,
     >;
     type CustomBusTypes: Clone + Display + Sync + Eq + PartialEq;
-    type ApcStats: Send + Sync;
+    type ApcStats: ApcStats;
     type AirId: Eq + Hash + Send + Sync;
 
     fn into_field(e: Self::PowdrField) -> Self::Field;
@@ -99,8 +102,7 @@ where
 }
 
 pub type AdapterApcWithStats<A> =
-    ApcWithStats<<A as Adapter>::Field, <A as Adapter>::Instruction, <A as Adapter>::ApcStats>;
-pub type ApcStats<A> = <A as Adapter>::ApcStats;
+    ApcWithReport<<A as Adapter>::Field, <A as Adapter>::Instruction, <A as Adapter>::ApcStats>;
 pub type AdapterApc<A> = Apc<<A as Adapter>::Field, <A as Adapter>::Instruction>;
 pub type AdapterVmConfig<'a, A> = VmConfig<
     'a,

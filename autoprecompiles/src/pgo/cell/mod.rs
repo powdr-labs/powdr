@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, HashMap},
     io::BufWriter,
+    marker::PhantomData,
     path::Path,
     sync::{Arc, Mutex},
 };
@@ -9,9 +10,12 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    adapter::{Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig, PgoAdapter},
+    adapter::{
+        Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig, ApcArithmetization,
+        ApcWithReport, PgoAdapter,
+    },
     blocks::BasicBlock,
-    evaluation::EvaluationResult,
+    evaluation::{evaluate_apc, AirStats, ApcPerformanceReport, ApcStats},
     pgo::cell::selection::parallel_fractional_knapsack,
     PowdrConfig,
 };
@@ -20,22 +24,92 @@ mod selection;
 
 pub use selection::KnapsackItem;
 
-/// Trait for autoprecompile candidates.
-/// Implementors of this trait wrap an APC with additional data used by the `KnapsackItem` trait to select the most cost-effective APCs.
-pub trait Candidate<A: Adapter>: Sized + KnapsackItem {
-    /// Try to create an autoprecompile candidate from a block.
-    fn create(
+/// While introducing apcs lead to savings, it also has costs.
+/// This trait models the cost of introducing a new chip.
+pub trait Cost<A: Adapter> {
+    fn cost(air_metrics: A::ApcStats) -> usize;
+}
+
+/// A candidate APC
+#[derive(Serialize, Deserialize)]
+pub struct Candidate<A: Adapter, C: Cost<A>> {
+    apc: Arc<AdapterApc<A>>,
+    execution_frequency: usize,
+    stats: ApcPerformanceReport<A::ApcStats>,
+    _marker: PhantomData<C>,
+}
+
+impl<A: Adapter, C: Cost<A>> Candidate<A, C> {
+    fn create<Air: ApcArithmetization<A>>(
         apc: Arc<AdapterApc<A>>,
         pgo_program_pc_count: &HashMap<u64, u32>,
         vm_config: AdapterVmConfig<A>,
         max_degree: usize,
-    ) -> Self;
+    ) -> Self {
+        let stats = evaluate_apc::<A, Air>(apc.clone(), vm_config.instruction_handler, max_degree);
+
+        let execution_frequency =
+            *pgo_program_pc_count.get(&apc.block.start_pc).unwrap_or(&0) as usize;
+
+        Self {
+            apc,
+            execution_frequency,
+            stats,
+            _marker: PhantomData,
+        }
+    }
 
     /// Return a JSON export of the APC candidate.
-    fn to_json_export(&self, apc_candidates_dir_path: &Path) -> ApcCandidateJsonExport;
+    fn to_json_export(&self, apc_candidates_dir_path: &Path) -> ApcCandidateJsonExport {
+        let stats: ApcPerformanceReport<AirStats> = self.stats.into();
+        ApcCandidateJsonExport {
+            execution_frequency: self.execution_frequency,
+            original_block: BasicBlock {
+                start_pc: self.apc.block.start_pc,
+                statements: self
+                    .apc
+                    .block
+                    .statements
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect(),
+            },
+            stats,
+            width_before: self.stats.before.cells_per_call(),
+            value: self.value(),
+            cost_before: self.stats.before.cells_per_call() as f64,
+            cost_after: self.stats.after.cells_per_call() as f64,
+            apc_candidate_file: apc_candidates_dir_path
+                .join(format!("apc_{}.cbor", self.apc.start_pc()))
+                .display()
+                .to_string(),
+        }
+    }
 
-    /// Convert the candidate into an autoprecompile and its statistics.
-    fn into_apc_and_stats(self) -> AdapterApcWithStats<A>;
+    fn into_apc_and_stats(self) -> AdapterApcWithStats<A> {
+        ApcWithReport::new(self.apc, self.stats)
+    }
+}
+
+impl<A: Adapter, C: Cost<A>> KnapsackItem for Candidate<A, C> {
+    fn cost(&self) -> usize {
+        C::cost(self.stats.after)
+    }
+
+    fn value(&self) -> usize {
+        // For an APC which is called once and saves 1 cell, this would be 1.
+        let value = self
+            .execution_frequency
+            .checked_mul(self.stats.cells_saved_per_call())
+            .unwrap();
+        // We need `value()` to be much larger than `cost()` to avoid ties when ranking by `value() / cost()`
+        // Therefore, we scale it up by a constant factor.
+        value.checked_mul(1000).unwrap()
+    }
+
+    fn tie_breaker(&self) -> usize {
+        self.apc.start_pc() as usize
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -45,7 +119,7 @@ pub struct ApcCandidateJsonExport {
     // original instructions (pretty printed)
     pub original_block: BasicBlock<String>,
     // before and after optimization stats
-    pub stats: EvaluationResult,
+    pub stats: ApcPerformanceReport<AirStats>,
     // width before optimisation, used for software version cells in effectiveness plot
     pub width_before: usize,
     // value used in ranking of candidates
@@ -58,13 +132,13 @@ pub struct ApcCandidateJsonExport {
     pub apc_candidate_file: String,
 }
 
-pub struct CellPgo<A, C> {
-    _marker: std::marker::PhantomData<(A, C)>,
+pub struct CellPgo<A, C, Air> {
+    _marker: std::marker::PhantomData<(A, C, Air)>,
     data: HashMap<u64, u32>,
     max_total_apc_columns: Option<usize>,
 }
 
-impl<A, C> CellPgo<A, C> {
+impl<A, C, Air> CellPgo<A, C, Air> {
     pub fn with_pgo_data_and_max_columns(
         data: HashMap<u64, u32>,
         max_total_apc_columns: Option<usize>,
@@ -83,8 +157,11 @@ struct JsonExport {
     labels: BTreeMap<u64, Vec<String>>,
 }
 
-impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for CellPgo<A, C> {
+impl<A: Adapter + Send + Sync, C: Cost<A> + Send + Sync, Air: ApcArithmetization<A>> PgoAdapter
+    for CellPgo<A, C, Air>
+{
     type Adapter = A;
+    type Air = Air;
 
     fn create_apcs_with_pgo(
         &self,
@@ -116,10 +193,10 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
         // calculate number of trace cells saved per row for each basic block to sort them by descending cost
         let max_cache = (config.autoprecompiles + config.skip_autoprecompiles) as usize;
         tracing::info!(
-        "Generating autoprecompiles for all ({}) basic blocks in parallel and caching costliest {}",
-        blocks.len(),
-        max_cache,
-    );
+            "Generating autoprecompiles for all ({}) basic blocks in parallel and caching costliest {}",
+            blocks.len(),
+            max_cache,
+        );
 
         let apc_candidates = Arc::new(Mutex::new(vec![]));
 
@@ -133,7 +210,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
                     config.apc_candidates_dir_path.as_deref(),
                 )
                 .ok()?;
-                let candidate = C::create(
+                let candidate: Candidate<A, C> = Candidate::create::<Air>(
                     Arc::new(apc),
                     &self.data,
                     vm_config.clone(),
@@ -149,7 +226,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
             self.max_total_apc_columns,
         )
         .skip(config.skip_autoprecompiles as usize)
-        .map(C::into_apc_and_stats)
+        .map(Candidate::into_apc_and_stats)
         .collect();
 
         // Write the APC candidates JSON to disk if the directory is specified.

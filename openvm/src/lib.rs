@@ -42,6 +42,8 @@ use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
 use powdr_autoprecompiles::evaluation::AirStats;
+#[cfg(test)]
+use powdr_autoprecompiles::evaluation::ApcPerformanceReport;
 use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::PowdrExtension;
@@ -59,9 +61,9 @@ use std::{
     sync::Arc,
 };
 
-use crate::customize_exe::OpenVmApcCandidate;
+use crate::customize_exe::OpenVmKnapsackCost;
 pub use crate::customize_exe::Prog;
-use crate::powdr_extension::chip::PowdrAir;
+pub use crate::powdr_extension::chip::PowdrAir;
 use tracing::{info_span, Level};
 
 #[cfg(test)]
@@ -628,7 +630,7 @@ pub fn compile_exe_with_elf(
                 elf.text_labels(),
                 elf.debug_info(),
                 config,
-                CellPgo::<_, OpenVmApcCandidate<_, _>>::with_pgo_data_and_max_columns(
+                CellPgo::<_, OpenVmKnapsackCost, PowdrAir<_>>::with_pgo_data_and_max_columns(
                     pgo_data,
                     max_total_apc_columns,
                 ),
@@ -639,14 +641,14 @@ pub fn compile_exe_with_elf(
             elf.text_labels(),
             elf.debug_info(),
             config,
-            InstructionPgo::with_pgo_data(pgo_data),
+            InstructionPgo::<_, PowdrAir<_>>::with_pgo_data(pgo_data),
         ),
         PgoConfig::None => customize(
             original_program,
             elf.text_labels(),
             elf.debug_info(),
             config,
-            NonePgo::default(),
+            NonePgo::<_, PowdrAir<_>>::default(),
         ),
     };
     // Export the compiled program to a PIL file for debugging purposes.
@@ -762,10 +764,14 @@ impl InitFileGenerator for ExtendedVmConfig {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, Default, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Default, Eq, Debug, Serialize, Deserialize)]
+/// Statistics of an AIR
 pub struct AirMetrics {
+    /// The column widths
     pub widths: AirWidths,
+    /// The number of polynomial constraints
     pub constraints: usize,
+    /// The number of bus interactions
     pub bus_interactions: usize,
 }
 
@@ -809,44 +815,41 @@ impl CompiledProgram {
     fn air_metrics(
         &self,
         max_degree: usize,
-    ) -> (Vec<(AirMetrics, Option<AirWidthsDiff>)>, Vec<AirMetrics>) {
+    ) -> (Vec<ApcPerformanceReport<AirMetrics>>, Vec<AirMetrics>) {
         let air_inventory = self.vm_config.create_airs().unwrap();
 
         let chip_complex = <SpecializedConfigCpuBuilder as VmBuilder<BabyBearPoseidon2Engine>>::create_chip_complex(&SpecializedConfigCpuBuilder, &self.vm_config, air_inventory).unwrap();
 
         let inventory = chip_complex.inventory;
 
-        // Order of precompile is the same as that of Powdr executors in chip inventory
-        let mut apc_stats = self
+        let apc_stats = self
             .vm_config
             .powdr
             .precompiles
             .iter()
-            .map(|precompile| precompile.apc_stats.clone());
+            .map(|precompile| precompile.apc_stats)
+            .collect();
 
-        inventory.airs().ext_airs().iter().fold(
-            (Vec::new(), Vec::new()),
-            |(mut powdr_air_metrics, mut non_powdr_air_metrics), air| {
+        let non_powdr = inventory
+            .airs()
+            .ext_airs()
+            .iter()
+            .filter_map(|air| {
                 let name = air.name();
                 // We actually give name "powdr_air_for_opcode_<opcode>" to the AIRs,
                 // but OpenVM uses the actual Rust type (PowdrAir) as the name in this method.
                 // TODO this is hacky but not sure how to do it better rn.
                 if name.starts_with("PowdrAir") {
-                    use crate::extraction_utils::get_air_metrics;
-
-                    powdr_air_metrics.push((
-                        get_air_metrics(air.clone(), max_degree),
-                        apc_stats.next().unwrap().map(|stats| stats.widths),
-                    ));
+                    None
                 } else {
                     use crate::extraction_utils::get_air_metrics;
 
-                    non_powdr_air_metrics.push(get_air_metrics(air.clone(), max_degree));
+                    Some(get_air_metrics(air.clone(), max_degree))
                 }
+            })
+            .collect();
 
-                (powdr_air_metrics, non_powdr_air_metrics)
-            },
-        )
+        (apc_stats, non_powdr)
     }
 }
 
@@ -1683,17 +1686,17 @@ mod tests {
         )
         .unwrap();
 
-        let (powdr_air_metrics, non_powdr_air_metrics) = compiled_program.air_metrics(max_degree);
+        let (performance_reports, non_powdr_air_metrics) = compiled_program.air_metrics(max_degree);
 
         expected_metrics.powdr_expected_sum.assert_debug_eq(
-            &powdr_air_metrics
+            &performance_reports
                 .iter()
-                .map(|(metrics, _)| metrics.clone())
+                .map(|report| report.after)
                 .sum::<AirMetrics>(),
         );
         expected_metrics
             .powdr_expected_machine_count
-            .assert_debug_eq(&powdr_air_metrics.len());
+            .assert_debug_eq(&performance_reports.len());
         assert_eq!(
             non_powdr_air_metrics.len(),
             expected_metrics.non_powdr_expected_machine_count
@@ -1704,9 +1707,9 @@ mod tests {
         );
         let columns_saved = is_cell_pgo.then(|| {
             // Test cells saved in Pgo::Cell
-            powdr_air_metrics
+            performance_reports
                 .into_iter()
-                .map(|(_, columns_saved)| columns_saved.unwrap())
+                .map(|report| AirWidthsDiff::new(report.before.widths, report.after.widths))
                 .sum::<AirWidthsDiff>()
         });
         assert_eq!(columns_saved.is_some(), expected_columns_saved.is_some());

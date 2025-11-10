@@ -10,9 +10,9 @@ use openvm_circuit::arch::{DenseRecordArena, MatrixRecordArena};
 use openvm_circuit_derive::{Executor, MeteredExecutor, PreflightExecutor};
 use openvm_instructions::LocalOpcode;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
+use powdr_autoprecompiles::evaluation::ApcPerformanceReport;
 
 use crate::bus_map::BusMap;
-use crate::customize_exe::OvmApcStats;
 use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
 use crate::powdr_extension::chip::PowdrAir;
 use crate::powdr_extension::executor::{OriginalArenas, PowdrExecutor};
@@ -28,7 +28,7 @@ use openvm_stark_backend::{
 use powdr_autoprecompiles::Apc;
 use serde::{Deserialize, Serialize};
 
-use crate::Instr;
+use crate::{AirMetrics, Instr};
 
 use super::PowdrOpcode;
 
@@ -47,7 +47,7 @@ pub struct PowdrPrecompile<F> {
     pub name: String,
     pub opcode: PowdrOpcode,
     pub apc: Arc<Apc<F, Instr<F>>>,
-    pub apc_stats: Option<OvmApcStats>,
+    pub apc_stats: ApcPerformanceReport<AirMetrics>,
     #[serde(skip)]
     pub apc_record_arena_cpu: Rc<RefCell<OriginalArenas<MatrixRecordArena<F>>>>,
     #[serde(skip)]
@@ -59,7 +59,7 @@ impl<F> PowdrPrecompile<F> {
         name: String,
         opcode: PowdrOpcode,
         apc: Arc<Apc<F, Instr<F>>>,
-        apc_stats: Option<OvmApcStats>,
+        apc_stats: ApcPerformanceReport<AirMetrics>,
     ) -> Self {
         Self {
             name,
