@@ -14,7 +14,7 @@ extern "C" {
         output_height: usize,                // H_out
         d_original_airs: *const OriginalAir, // device array of AIR metadata
         d_subs: *const Subst,                // device array of all substitutions
-        n_subs: usize,                      // number of substitutions
+        n_subs: usize,                       // number of substitutions
         num_apc_calls: i32,                  // number of APC calls
     ) -> i32;
 
@@ -66,10 +66,10 @@ extern "C" {
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct OriginalAir {
-    pub width: i32,                // number of columns
-    pub height: i32,               // number of rows (Ha)
-    pub buffer: *const BabyBear,   // column-major base: col*height + row (device ptr)
-    pub row_block_size: i32,       // stride between used rows
+    pub width: i32,              // number of columns
+    pub height: i32,             // number of rows (Ha)
+    pub buffer: *const BabyBear, // column-major base: col*height + row (device ptr)
+    pub row_block_size: i32,     // stride between used rows
 }
 
 #[repr(C)]
