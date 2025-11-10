@@ -57,20 +57,11 @@ __global__ void apc_tracegen_kernel(
             }
 
             const size_t air_idx = (size_t)sub.air_index;
-            // if (air_idx >= n_airs) {
-            //     d_output[dst_idx] = Fp(0);
-            //     continue;
-            // }
             const OriginalAir air = d_original_airs[air_idx];
             const Fp* __restrict__ src_base = air.buffer;
             const size_t src_col_base = (size_t)sub.col * (size_t)air.height;
             const size_t src_r = (size_t)sub.row + r * (size_t)air.row_block_size;
-
-            // if (src_r < (size_t)air.height) {
             d_output[dst_idx] = src_base[src_col_base + src_r];
-            // } else {
-            //     d_output[dst_idx] = Fp(0);
-            // }
         }
     }
 }
