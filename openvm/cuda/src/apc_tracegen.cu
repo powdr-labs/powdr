@@ -123,7 +123,7 @@ extern "C" int _apc_apply_derived_expr(
     const uint32_t*    d_bytecode
 ) {
     if (n_cols == 0) return 0;
-    const int block_x = 256; // more lanes to cover rows
+    const int block_x = 512; // more lanes to cover rows
     const dim3 block(block_x, 1, 1);
     unsigned g = (unsigned)((H + block_x - 1) / block_x);
     if (g == 0u) g = 1u;
@@ -144,7 +144,7 @@ extern "C" int _apc_tracegen(
 ) {
     assert((output_height & (output_height - 1)) == 0);  // power-of-two height check
 
-    const int block_x = 256;
+    const int block_x = 512;
     const dim3 block(block_x, 1, 1);
     const dim3 grid((unsigned int)n_airs, 1, 1);
 
