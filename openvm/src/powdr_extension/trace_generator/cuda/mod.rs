@@ -270,9 +270,10 @@ impl PowdrTraceGeneratorGpu {
                 .into_group_map()
                 // go through each air and its substitutions
                 .iter()
+                .enumerate()
                 .fold(
                     (Vec::new(), Vec::new()),
-                    |(mut airs, mut substitutions), (air_name, subs_by_row)| {
+                    |(mut airs, mut substitutions), (air_index, (air_name, subs_by_row))| {
                         // Find the substitutions that map to an apc column
                         let new_substitutions: Vec<Subst> = subs_by_row
                             .iter()
@@ -283,13 +284,12 @@ impl PowdrTraceGeneratorGpu {
                                 subs.iter()
                                     .map(move |sub| (row, sub))
                                     .map(|(row, sub)| Subst {
+                                        air_index: air_index as i32,
                                         col: sub.original_poly_index as i32,
                                         row: row as i32,
                                         apc_col: apc_poly_id_to_index[&sub.apc_poly_id] as i32,
                                     })
                             })
-                            // sort by column so that reads to the same column are coalesced, as the table is column major
-                            .sorted_by(|left, right| left.col.cmp(&right.col))
                             .collect();
 
                         // get the device dummy trace for this air
@@ -301,8 +301,6 @@ impl PowdrTraceGeneratorGpu {
                             height: dummy_trace.height() as i32,
                             buffer: dummy_trace.buffer().as_ptr(),
                             row_block_size: subs_by_row.len() as i32,
-                            substitutions_offset: substitutions.len() as i32,
-                            substitutions_length: new_substitutions.len() as i32,
                         });
 
                         substitutions.extend(new_substitutions);
