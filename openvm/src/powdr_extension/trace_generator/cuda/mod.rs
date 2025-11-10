@@ -270,10 +270,10 @@ impl PowdrTraceGeneratorGpu {
                 .into_group_map()
                 // go through each air and its substitutions
                 .iter()
+                .enumerate()
                 .fold(
                     (Vec::new(), Vec::new()),
-                    |(mut airs, mut substitutions), (air_name, subs_by_row)| {
-                        let air_index = airs.len();
+                    |(mut airs, mut substitutions), (air_index, (air_name, subs_by_row))| {
                         // Find the substitutions that map to an apc column
                         let new_substitutions: Vec<Subst> = subs_by_row
                             .iter()
