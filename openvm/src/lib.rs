@@ -47,6 +47,7 @@ use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::PowdrExtension;
 use powdr_openvm_hints_circuit::{HintsExtension, HintsExtensionExecutor, HintsProverExt};
 use powdr_openvm_hints_transpiler::HintsTranspilerExtension;
+use powdr_riscv_elf::ElfProgram;
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
 use std::fs::File;
@@ -502,7 +503,7 @@ pub fn compile_openvm(
     );
 
     let elf = sdk.build(
-        guest_opts,
+        guest_opts.clone(),
         target_path,
         &Default::default(),
         Default::default(),
@@ -511,12 +512,19 @@ pub fn compile_openvm(
     // Transpile the ELF into a VmExe.
     let exe = sdk.convert_to_exe(elf)?;
 
+    let elf_binary_path = build_elf_path(guest_opts.clone(), target_path, &Default::default())?;
+    let elf = powdr_riscv_elf::load_elf(&elf_binary_path);
+
     let vm_config = ExtendedVmConfig {
         sdk: sdk.app_config().app_vm_config.clone(),
         hints: HintsExtension,
     };
 
-    Ok(OriginalCompiledProgram { exe, vm_config })
+    Ok(OriginalCompiledProgram {
+        exe,
+        vm_config,
+        elf,
+    })
 }
 
 pub fn compile_guest(
@@ -532,7 +540,7 @@ pub fn compile_guest(
         tally_opcode_frequency(&pgo_config, &original_program.exe);
     }
 
-    compile_exe(guest, guest_opts, original_program, config, pgo_config)
+    compile_exe(original_program, config, pgo_config)
 }
 
 fn instruction_index_to_pc(program: &Program<BabyBear>, idx: usize) -> u64 {
@@ -577,39 +585,10 @@ fn tally_opcode_frequency(pgo_config: &PgoConfig, exe: &VmExe<BabyBear>) {
 }
 
 pub fn compile_exe(
-    guest: &str,
-    guest_opts: GuestOptions,
     original_program: OriginalCompiledProgram,
     config: PowdrConfig,
     pgo_config: PgoConfig,
 ) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
-    // Build the ELF with guest options and a target filter.
-    // We need these extra Rust flags to get the labels.
-    let guest_opts = guest_opts.with_rustc_flags(vec!["-C", "link-arg=--emit-relocs"]);
-
-    // Point to our local guest
-    use std::path::PathBuf;
-    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).to_path_buf();
-    path.push(guest);
-    let target_path = path.to_str().unwrap();
-
-    let elf_binary_path = build_elf_path(guest_opts.clone(), target_path, &Default::default())?;
-
-    compile_exe_with_elf(
-        original_program,
-        &std::fs::read(elf_binary_path)?,
-        config,
-        pgo_config,
-    )
-}
-
-pub fn compile_exe_with_elf(
-    original_program: OriginalCompiledProgram,
-    elf: &[u8],
-    config: PowdrConfig,
-    pgo_config: PgoConfig,
-) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
-    let elf = powdr_riscv_elf::load_elf_from_buffer(elf);
     let compiled = match pgo_config {
         PgoConfig::Cell(pgo_data, max_total_columns) => {
             let max_total_apc_columns: Option<usize> = max_total_columns.map(|max_total_columns| {
@@ -625,8 +604,6 @@ pub fn compile_exe_with_elf(
 
             customize(
                 original_program,
-                elf.text_labels(),
-                elf.debug_info(),
                 config,
                 CellPgo::<_, OpenVmApcCandidate<_, _>>::with_pgo_data_and_max_columns(
                     pgo_data,
@@ -636,18 +613,10 @@ pub fn compile_exe_with_elf(
         }
         PgoConfig::Instruction(pgo_data) => customize(
             original_program,
-            elf.text_labels(),
-            elf.debug_info(),
             config,
             InstructionPgo::with_pgo_data(pgo_data),
         ),
-        PgoConfig::None => customize(
-            original_program,
-            elf.text_labels(),
-            elf.debug_info(),
-            config,
-            NonePgo::default(),
-        ),
+        PgoConfig::None => customize(original_program, config, NonePgo::default()),
     };
     // Export the compiled program to a PIL file for debugging purposes.
     export_pil(
@@ -663,11 +632,11 @@ pub struct CompiledProgram {
     pub vm_config: SpecializedConfig,
 }
 
-// the original openvm program and config without powdr extension
-#[derive(Clone)]
+// the original openvm program and config without powdr extension, along with the elf
 pub struct OriginalCompiledProgram {
     pub exe: Arc<VmExe<BabyBear>>,
     pub vm_config: ExtendedVmConfig,
+    pub elf: ElfProgram,
 }
 
 use openvm_circuit_derive::VmConfig;
@@ -994,7 +963,7 @@ pub fn execution_profile_from_guest(
     guest_opts: GuestOptions,
     inputs: StdIn,
 ) -> HashMap<u64, u32> {
-    let OriginalCompiledProgram { exe, vm_config } = compile_openvm(guest, guest_opts).unwrap();
+    let OriginalCompiledProgram { exe, vm_config, .. } = compile_openvm(guest, guest_opts).unwrap();
     let program = Prog::from(&exe.program);
 
     // Set app configuration

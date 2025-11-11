@@ -35,7 +35,6 @@ use powdr_autoprecompiles::SymbolicBusInteraction;
 use powdr_autoprecompiles::VmConfig;
 use powdr_autoprecompiles::{Apc, PowdrConfig};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
-use powdr_riscv_elf::debug_info::DebugInfo;
 use serde::{Deserialize, Serialize};
 
 use crate::bus_interaction_handler::OpenVmBusInteractionHandler;
@@ -141,12 +140,16 @@ impl<'a, F: PrimeField32> Program<Instr<F>> for Prog<'a, F> {
 }
 
 pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
-    OriginalCompiledProgram { exe, vm_config }: OriginalCompiledProgram,
-    labels: &BTreeSet<u32>,
-    debug_info: &DebugInfo,
+    OriginalCompiledProgram {
+        exe,
+        vm_config,
+        elf,
+    }: OriginalCompiledProgram,
     config: PowdrConfig,
     pgo: P,
 ) -> CompiledProgram {
+    let labels = elf.text_labels();
+    let debug_info = elf.debug_info();
     let original_config = OriginalVmConfig::new(vm_config.clone());
     let airs = original_config.airs(config.degree_bound.identities).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
     let bus_map = original_config.bus_map();
