@@ -442,7 +442,6 @@ impl PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>> for PowdrExecutor 
             metrics,
         } = state;
 
-        // let init_start = Instant::now();
         // Initialize the original arenas if not already initialized
         let mut original_arenas = self.original_arenas_cpu.as_ref().borrow_mut();
 
@@ -450,13 +449,6 @@ impl PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>> for PowdrExecutor 
         let apc_call_count = || ctx.trace_buffer.len() / ctx.width;
 
         original_arenas.ensure_initialized(apc_call_count, &self.air_by_opcode_id, &self.apc);
-        // let init_duration = init_start.elapsed();
-
-        // let mut executor_lookup_duration = Duration::default();
-        // let mut arena_lookup_duration = Duration::default();
-        // let mut state_build_duration = Duration::default();
-        // let mut execute_duration = Duration::default();
-
         // execute the original instructions one by one
         for (instruction, prepared) in self
             .apc
@@ -464,15 +456,9 @@ impl PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>> for PowdrExecutor 
             .iter()
             .zip_eq(&self.prepared_instructions)
         {
-            // let executor_start = Instant::now();
             let executor = &self.executor_inventory.executors[prepared.executor_index];
-            // executor_lookup_duration += executor_start.elapsed();
-
-            // let arena_start = Instant::now();
             let ctx_arena = original_arenas.arena_mut_by_index(prepared.arena_index);
-            // arena_lookup_duration += arena_start.elapsed();
 
-            // let state_build_start = Instant::now();
             let state = VmStateMut {
                 pc,
                 memory,
@@ -485,25 +471,12 @@ impl PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>> for PowdrExecutor 
                 #[cfg(feature = "metrics")]
                 metrics,
             };
-            // state_build_duration += state_build_start.elapsed();
 
-            // let exec_start = Instant::now();
             executor.execute(state, &instruction.0)?;
-            // execute_duration += exec_start.elapsed();
         }
 
         // Update the real number of calls to the APC
         *original_arenas.number_of_calls_mut() += 1;
-
-        // println!(
-        //     "[PowdrExecutor::execute][cpu] apc_start_pc={} init_time={:?} executor_lookup_time={:?} arena_lookup_time={:?} state_build_time={:?} execute_time={:?}",
-        //     self.apc.start_pc(),
-        //     init_duration,
-        //     executor_lookup_duration,
-        //     arena_lookup_duration,
-        //     state_build_duration,
-        //     execute_duration
-        // );
 
         Ok(())
     }
@@ -535,7 +508,6 @@ impl PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExecutor {
         // Initialize the original arenas if not already initialized
         let mut original_arenas = self.original_arenas_gpu.as_ref().borrow_mut();
 
-        // let init_start = Instant::now();
         // Recover an (over)estimate of how many times the APC is called in this segment
         // Overestimate is fine because we can initailize dummy arenas with some extra space
         // Exact apc call count from execution is used in final tracegen regardless
@@ -547,13 +519,6 @@ impl PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExecutor {
         };
 
         original_arenas.ensure_initialized(apc_call_count, &self.air_by_opcode_id, &self.apc);
-        // let init_duration = init_start.elapsed();
-
-        // let mut executor_lookup_duration = Duration::default();
-        // let mut arena_lookup_duration = Duration::default();
-        // let mut state_build_duration = Duration::default();
-        // let mut execute_duration = Duration::default();
-
         // execute the original instructions one by one
         for (instruction, prepared) in self
             .apc
@@ -561,15 +526,9 @@ impl PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExecutor {
             .iter()
             .zip(&self.prepared_instructions)
         {
-            // let executor_start = Instant::now();
             let executor = &self.executor_inventory.executors[prepared.executor_index];
-            // executor_lookup_duration += executor_start.elapsed();
-
-            // let arena_start = Instant::now();
             let ctx_arena = original_arenas.arena_mut_by_index(prepared.arena_index);
-            // arena_lookup_duration += arena_start.elapsed();
 
-            // let state_build_start = Instant::now();
             let state = VmStateMut {
                 pc,
                 memory,
@@ -582,25 +541,12 @@ impl PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExecutor {
                 #[cfg(feature = "metrics")]
                 metrics,
             };
-            // state_build_duration += state_build_start.elapsed();
 
-            // let exec_start = Instant::now();
             executor.execute(state, &instruction.0)?;
-            // execute_duration += exec_start.elapsed();
         }
 
         // Update the real number of calls to the APC
         *original_arenas.number_of_calls_mut() += 1;
-
-        // println!(
-        //     "[PowdrExecutor::execute][gpu] apc_start_pc={} init_time={:?} executor_lookup_time={:?} arena_lookup_time={:?} state_build_time={:?} execute_time={:?}",
-        //     self.apc.start_pc(),
-        //     init_duration,
-        //     executor_lookup_duration,
-        //     arena_lookup_duration,
-        //     state_build_duration,
-        //     execute_duration
-        // );
 
         Ok(())
     }
