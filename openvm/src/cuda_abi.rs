@@ -12,9 +12,9 @@ extern "C" {
     pub fn _apc_tracegen(
         d_output: *mut BabyBear,             // column-major
         output_height: usize,                // H_out
-        d_original_airs: *const OriginalAir, // device array, len = n_original_airs
-        n_original_airs: usize,              //
+        d_original_airs: *const OriginalAir, // device array of AIR metadata
         d_subs: *const Subst,                // device array of all substitutions
+        n_subs: usize,                       // number of substitutions
         num_apc_calls: i32,                  // number of APC calls
     ) -> i32;
 
@@ -66,17 +66,17 @@ extern "C" {
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct OriginalAir {
-    pub width: i32,                // number of columns
-    pub height: i32,               // number of rows (Ha)
-    pub buffer: *const BabyBear,   // column-major base: col*height + row (device ptr)
-    pub row_block_size: i32,       // stride between used rows
-    pub substitutions_offset: i32, // offset in d_subs
-    pub substitutions_length: i32, // count in d_subs for this AIR
+    pub width: i32,              // number of columns
+    pub height: i32,             // number of rows (Ha)
+    pub buffer: *const BabyBear, // column-major base: col*height + row (device ptr)
+    pub row_block_size: i32,     // stride between used rows
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct Subst {
+    /// Index of the source AIR in `d_original_airs`
+    pub air_index: i32,
     /// Source column within this AIR
     pub col: i32,
     /// Base row offset within the row-block
@@ -96,20 +96,19 @@ pub struct DerivedExprSpec {
 
 pub fn apc_tracegen(
     output: &mut DeviceMatrix<BabyBear>,      // column-major
-    original_airs: DeviceBuffer<OriginalAir>, // device array, len = n_airs
+    original_airs: DeviceBuffer<OriginalAir>, // device array of AIR metadata
     substitutions: DeviceBuffer<Subst>,       // device array of all substitutions
     num_apc_calls: usize,
 ) -> Result<(), CudaError> {
     let output_height = output.height();
-    let n_airs = original_airs.len();
 
     unsafe {
         CudaError::from_result(_apc_tracegen(
             output.buffer().as_mut_ptr(),
             output_height,
             original_airs.as_ptr(),
-            n_airs,
             substitutions.as_ptr(),
+            substitutions.len(),
             num_apc_calls as i32,
         ))
     }
