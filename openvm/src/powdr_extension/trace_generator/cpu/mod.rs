@@ -119,8 +119,6 @@ impl PowdrTraceGeneratorCpu {
             .inventory
         };
 
-        let arenas = original_arenas.arenas_mut();
-
         let dummy_trace_by_air_name: HashMap<String, SharedCpuTrace<BabyBear>> = chip_inventory
             .chips()
             .iter()
@@ -130,7 +128,7 @@ impl PowdrTraceGeneratorCpu {
                 let air_name = chip_inventory.airs().ext_airs()[insertion_idx].name();
 
                 let record_arena = {
-                    match arenas.remove(&air_name) {
+                    match original_arenas.take_arena(&air_name) {
                         Some(ra) => ra,
                         None => return None, // skip this iteration, because we only have record arena for chips that are used
                     }
