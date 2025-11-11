@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use itertools::Itertools;
 use openvm_circuit::{
@@ -96,6 +96,7 @@ impl PowdrTraceGeneratorCpu {
         &self,
         mut original_arenas: OriginalArenas<MatrixRecordArena<BabyBear>>,
     ) -> DenseMatrix<BabyBear> {
+        let total_start = Instant::now();
         use powdr_autoprecompiles::trace_handler::{generate_trace, TraceData};
 
         let num_apc_calls = original_arenas.number_of_calls();
@@ -105,6 +106,7 @@ impl PowdrTraceGeneratorCpu {
             return RowMajorMatrix::new(vec![], width);
         }
 
+        let dummy_chip_start = Instant::now();
         let chip_inventory = {
             let airs: AirInventory<BabyBearSC> =
                 create_dummy_airs(&self.config.sdk_config.sdk, self.periphery.dummy.clone())
@@ -118,7 +120,9 @@ impl PowdrTraceGeneratorCpu {
             .expect("Failed to create chip complex")
             .inventory
         };
+        let dummy_chip_duration = dummy_chip_start.elapsed();
 
+        let dummy_trace_start = Instant::now();
         let dummy_trace_by_air_name: HashMap<String, SharedCpuTrace<BabyBear>> = chip_inventory
             .chips()
             .iter()
@@ -139,7 +143,9 @@ impl PowdrTraceGeneratorCpu {
                 Some((air_name, SharedCpuTrace::from(shared_trace)))
             })
             .collect();
+        let dummy_trace_duration = dummy_trace_start.elapsed();
 
+        let generate_trace_start = Instant::now();
         let TraceData {
             dummy_values,
             dummy_trace_index_to_apc_index_by_instruction,
@@ -151,12 +157,14 @@ impl PowdrTraceGeneratorCpu {
             num_apc_calls,
             &self.apc,
         );
+        let generate_trace_duration = generate_trace_start.elapsed();
 
         // allocate for apc trace
         let width = apc_poly_id_to_index.len();
         let height = next_power_of_two_or_zero(num_apc_calls);
         let mut values = <BabyBear as FieldAlgebra>::zero_vec(height * width);
 
+        let fill_start = Instant::now();
         // go through the final table and fill in the values
         values
             // a record is `width` values
@@ -220,6 +228,17 @@ impl PowdrTraceGeneratorCpu {
                         );
                     });
             });
+        let fill_duration = fill_start.elapsed();
+
+        println!(
+            "[PowdrTraceGeneratorCpu::generate_witness] apc_start_pc={} dummy_chip_time={:?} dummy_trace_time={:?} generate_trace_time={:?} fill_time={:?} total_time={:?}",
+            self.apc.start_pc(),
+            dummy_chip_duration,
+            dummy_trace_duration,
+            generate_trace_duration,
+            fill_duration,
+            total_start.elapsed(),
+        );
 
         RowMajorMatrix::new(values, width)
     }

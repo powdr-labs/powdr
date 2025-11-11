@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
+    time::Instant,
 };
 
 use itertools::Itertools;
@@ -205,6 +206,9 @@ impl PowdrTraceGeneratorGpu {
             return None;
         }
 
+        let total_start = Instant::now();
+
+        let dummy_chip_start = Instant::now();
         let chip_inventory = {
             let airs: AirInventory<BabyBearSC> =
                 create_dummy_airs(&self.config.sdk_config.sdk, self.periphery.dummy.clone())
@@ -218,6 +222,8 @@ impl PowdrTraceGeneratorGpu {
             .expect("Failed to create chip complex")
             .inventory
         };
+        let dummy_chip_duration = dummy_chip_start.elapsed();
+        let dummy_trace_start = Instant::now();
 
         let dummy_trace_by_air_name: HashMap<String, DeviceMatrix<BabyBear>> = chip_inventory
             .chips()
@@ -239,6 +245,7 @@ impl PowdrTraceGeneratorGpu {
                 Some((air_name, shared_trace))
             })
             .collect();
+        let dummy_trace_duration = dummy_trace_start.elapsed();
 
         // Map from apc poly id to its index in the final apc trace
         let apc_poly_id_to_index: BTreeMap<u64, usize> = self
@@ -255,6 +262,7 @@ impl PowdrTraceGeneratorGpu {
         let mut output = DeviceMatrix::<BabyBear>::with_capacity(height, width);
 
         // Prepare `OriginalAir` and `Subst` arrays
+        let prepare_airs_start = Instant::now();
         let (airs, substitutions) = {
             self.apc
                 // go through original instructions
@@ -307,14 +315,18 @@ impl PowdrTraceGeneratorGpu {
                     },
                 )
         };
+        let prepare_airs_duration = prepare_airs_start.elapsed();
 
         // Send the airs and substitutions to device
         let airs = airs.to_device().unwrap();
         let substitutions = substitutions.to_device().unwrap();
 
+        let tracegen_start = Instant::now();
         cuda_abi::apc_tracegen(&mut output, airs, substitutions, num_apc_calls).unwrap();
+        let tracegen_duration = tracegen_start.elapsed();
 
         // Apply derived columns using the GPU expression evaluator
+        let derived_start = Instant::now();
         let (derived_specs, derived_bc) = compile_derived_to_gpu(
             &self.apc.machine.derived_columns,
             &apc_poly_id_to_index,
@@ -324,6 +336,7 @@ impl PowdrTraceGeneratorGpu {
         let d_specs = derived_specs.to_device().unwrap();
         let d_bc = derived_bc.to_device().unwrap();
         cuda_abi::apc_apply_derived_expr(&mut output, d_specs, d_bc, num_apc_calls).unwrap();
+        let derived_duration = derived_start.elapsed();
 
         // Encode bus interactions for GPU consumption
         let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
@@ -357,6 +370,7 @@ impl PowdrTraceGeneratorGpu {
         // because we use the default host to device stream, which only launches
         // the next kernel function after the prior (`apc_tracegen`) returns.
         // This is important because bus evaluation depends on trace results.
+        let bus_apply_start = Instant::now();
         cuda_abi::apc_apply_bus(
             // APC related
             &output,
@@ -377,6 +391,21 @@ impl PowdrTraceGeneratorGpu {
             bitwise_count_u32,
         )
         .unwrap();
+        let bus_apply_duration = bus_apply_start.elapsed();
+
+        let total_duration = total_start.elapsed();
+
+        println!(
+            "[PowdrTraceGeneratorGpu::try_generate_witness] apc_start_pc={} dummy_chip_time={:?} dummy_trace_time={:?} prepare_airs_time={:?} tracegen_kernel_time={:?} derived_time={:?} bus_apply_time={:?} total_time={:?}",
+            self.apc.start_pc(),
+            dummy_chip_duration,
+            dummy_trace_duration,
+            prepare_airs_duration,
+            tracegen_duration,
+            derived_duration,
+            bus_apply_duration,
+            total_duration,
+        );
 
         Some(output)
     }
