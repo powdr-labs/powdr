@@ -68,57 +68,56 @@ pub fn try_split_constraint<T: FieldElement, V: Clone + Ord + Display>(
     // Now try to split out each component in turn, modifying `components`
     // and `constant` for every successful split.
     let mut extracted_parts = vec![];
-    for index in 0..components.len() {
-        let candidate = &components[index];
+    for indices in (0..components.len()).powerset() {
+        let expr: GroupedExpression<_, _> = indices
+            .iter()
+            .map(|i| GroupedExpression::from(components[*i].clone()))
+            .sum();
+        if expr.is_zero() {
+            continue;
+        }
         let rest = components
             .iter()
             .enumerate()
             // Filter out the candidate itself and all zero components
             // because we set components to zero when we extract them instead
             // of removing them.
-            .filter(|(i, component)| *i != index && !component.is_zero())
-            .map(|(_, comp)| (comp.clone() / candidate.coeff).normalize())
+            .filter(|(i, component)| !indices.contains(i) && !component.is_zero())
+            .map(|(_, comp)| comp.clone())
             .collect_vec();
         if rest.is_empty() {
             // Nothing to split, we are done.
             break;
         }
+        for leading_index in &indices {
+            let coeff = components[*leading_index].coeff;
+            if coeff.is_zero() {
+                continue;
+            }
+            let candidate = Component {
+                coeff,
+                expr: expr.clone() * (T::one() / coeff),
+            }
+            .normalize();
+            let rest = rest
+                .iter()
+                .map(|comp| (comp.clone() / candidate.coeff).normalize())
+                .collect();
 
-        // The original constraint is equivalent to
-        // `candidate.expr + rest + constant / candidate.coeff = 0`.
-
-        // The idea is to find some `k` such that the equation has the form
-        // `expr + k * rest' + constant' = 0` and it is equivalent to
-        // the same expression in the natural numbers. Then we apply `x -> x % k` to the whole equation
-        // to obtain `expr % k + constant' % k = 0`. Finally, we check if it has a unique solution.
-
-        // We start by finding a good `k`. It is likely wo work better if the factor exists
-        // in all components of `rest`, so the GCD of the coefficients of the components would
-        // be best, but we just try the smallest coefficient.
-        let smallest_coeff_in_rest = rest.iter().map(|comp| comp.coeff).min().unwrap();
-        assert_ne!(smallest_coeff_in_rest, 0.into());
-        assert!(smallest_coeff_in_rest.is_in_lower_half());
-
-        // Try to find the unique value for `candidate.expr` in this equation.
-        if let Some(solution) = find_solution(
-            &candidate.expr,
-            smallest_coeff_in_rest,
-            rest.into_iter()
-                .map(|comp| GroupedExpression::from(comp / smallest_coeff_in_rest))
-                .sum(),
-            constant / candidate.coeff,
-            range_constraints,
-        ) {
-            // We now know that `candidate.expr = solution`, so we add it to the extracted parts.
-            extracted_parts.push(AlgebraicConstraint::assert_eq(
-                candidate.expr.clone(),
-                GroupedExpression::from_number(solution),
-            ));
-            // We remove the candidate (`candidate.coeff * candidate.expr`) from the expression.
-            // To balance this out, we add `candidate.coeff * candidate.expr = candidate.coeff * solution`
-            // to the constant.
-            constant += solution * candidate.coeff;
-            components[index] = Zero::zero();
+            if let Some((new_constraint, constant_offset)) =
+                try_split_out_component(candidate.clone(), rest, constant, range_constraints)
+            {
+                // We now know that `candidate.expr = solution`, so we add it to the extracted parts.
+                extracted_parts.push(new_constraint);
+                // We remove the candidate (`candidate.coeff * candidate.expr`) from the expression.
+                // To balance this out, we add `candidate.coeff * candidate.expr = candidate.coeff * solution`
+                // to the constant.
+                constant += constant_offset;
+                for index in &indices {
+                    components[*index] = Zero::zero();
+                }
+                break;
+            }
         }
     }
     if extracted_parts.is_empty() {
@@ -129,6 +128,47 @@ pub fn try_split_constraint<T: FieldElement, V: Clone + Ord + Display>(
         extracted_parts.push(recombine_components(components, constant));
         Some(extracted_parts)
     }
+}
+
+fn try_split_out_component<T: FieldElement, V: Clone + Ord + Display>(
+    candidate: Component<T, V>,
+    rest: Vec<Component<T, V>>,
+    constant: T,
+    range_constraints: &impl RangeConstraintProvider<T, V>,
+) -> Option<(AlgebraicConstraint<GroupedExpression<T, V>>, T)> {
+    // The original constraint is equivalent to
+    // `candidate.expr + rest + constant / candidate.coeff = 0`.
+
+    // The idea is to find some `k` such that the equation has the form
+    // `expr + k * rest' + constant' = 0` and it is equivalent to
+    // the same expression in the natural numbers. Then we apply `x -> x % k` to the whole equation
+    // to obtain `expr % k + constant' % k = 0`. Finally, we check if it has a unique solution.
+
+    // We start by finding a good `k`. It is likely wo work better if the factor exists
+    // in all components of `rest`, so the GCD of the coefficients of the components would
+    // be best, but we just try the smallest coefficient.
+    let smallest_coeff_in_rest = rest.iter().map(|comp| comp.coeff).min().unwrap();
+    assert_ne!(smallest_coeff_in_rest, 0.into());
+    assert!(smallest_coeff_in_rest.is_in_lower_half());
+
+    // Try to find the unique value for `candidate.expr` in this equation.
+    let solution = find_solution(
+        &candidate.expr,
+        smallest_coeff_in_rest,
+        rest.into_iter()
+            .map(|comp| GroupedExpression::from(comp / smallest_coeff_in_rest))
+            .sum(),
+        constant / candidate.coeff,
+        range_constraints,
+    )?;
+
+    Some((
+        AlgebraicConstraint::assert_eq(
+            candidate.expr.clone(),
+            GroupedExpression::from_number(solution),
+        ),
+        solution * candidate.coeff,
+    ))
 }
 
 /// Groups a sequence of components (thought of as a sum) by coefficients
@@ -655,5 +695,22 @@ l3 - 1 = 0"
         let expr = (var("x") - var("y")) + constant(16) * var("z") - constant(0);
         let result = try_split(expr.clone(), &rcs).unwrap().iter().join(", ");
         expect!["x - y = 0, z = 0"].assert_eq(&result);
+    }
+
+    #[test]
+    fn split_multi() {
+        let byte = RangeConstraint::from_mask(0xffu32);
+        let rcs = [
+            ("x", byte.clone()),
+            ("y", byte.clone()),
+            ("m", RangeConstraint::from_max_bit(13)),
+            ("b", RangeConstraint::from_mask(1u32)),
+        ]
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+        let expr = var("x") + var("y") * constant(256) - var("m") - var("b") * constant(65536);
+
+        let result = try_split(expr, &rcs).unwrap().iter().join(", ");
+        expect!["-(m - x - 256 * y) = 0, -(b) = 0"].assert_eq(&result);
     }
 }
