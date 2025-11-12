@@ -18,7 +18,6 @@ pub fn handle_variable_range_checker<T: FieldElement>(
     let [_x, bits] = payload else {
         panic!("Expected arguments (x, bits)");
     };
-    println!("bits: {bits}");
     match bits.try_to_single_value() {
         Some(bits_value) if bits_value.to_degree() <= MAX_BITS => {
             let bits_value = bits_value.to_integer().try_into_u64().unwrap();
