@@ -104,18 +104,6 @@ where
         Some(subtracted * (-coefficient.field_inverse()))
     }
 
-    pub fn normalize_for(&self, variable: &V) -> AlgebraicConstraint<GroupedExpression<T, V>> {
-        let expr = if let Some(coefficient) = self
-            .expression
-            .coefficient_of_variable_in_affine_part(variable)
-        {
-            self.expression.clone() * coefficient.field_inverse()
-        } else {
-            self.expression.clone()
-        };
-        AlgebraicConstraint::assert_zero(expr)
-    }
-
     /// Algebraically transforms the constraint such that `self = 0` is equivalent
     /// to `expr = result` and returns `result`.
     ///

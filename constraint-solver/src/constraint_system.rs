@@ -227,19 +227,9 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq + Display>
         bus_interaction_handler: &dyn BusInteractionHandler<T>,
         range_constraint_provider: &impl RangeConstraintProvider<T, V>,
     ) -> Result<Vec<Effect<T, V>>, ViolatesBusRules> {
-        let s = self.to_string();
-        //      if s.contains("mem_ptr_limbs") {
-        println!("Solving bus interaction: {}", s);
-        //        }
         let range_constraints = self.to_range_constraints(range_constraint_provider);
-        if s.contains("mem_ptr_limbs") {
-            println!("Input: {}", range_constraints);
-        }
         let range_constraints =
             bus_interaction_handler.handle_bus_interaction_checked(range_constraints)?;
-        if s.contains("mem_ptr_limbs") {
-            println!("Output: {}", range_constraints);
-        }
         Ok(self
             .fields()
             .zip_eq(range_constraints.fields())
@@ -257,12 +247,6 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq + Display>
                     let rc = rc
                         .multiple(T::from(1) / k)
                         .combine_sum(&expr.range_constraint(range_constraint_provider));
-                    if var.to_string().contains("mem_ptr_limbs")
-                        && *rc.mask() == T::Integer::from(0x1fff)
-                    {
-                        println!("Var {var} RC update: {rc}");
-                        println!("-");
-                    }
                     (!rc.is_unconstrained()).then(|| Effect::RangeConstraint(var.clone(), rc))
                 })
             })

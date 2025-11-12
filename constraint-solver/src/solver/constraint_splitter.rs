@@ -47,17 +47,6 @@ pub fn try_split_constraint<T: FieldElement, V: Clone + Ord + Display>(
         return None;
     }
 
-    let s = constraint.to_string();
-    let found = if s.contains("mem_ptr_limbs__0_0")
-        && s.contains("mem_ptr_limbs__1_0")
-        && !s.contains("lin")
-    {
-        //        println!("Trying to split {constraint}");
-        true
-    } else {
-        false
-    };
-
     let mut constant = *expression.constant_offset();
 
     // Turn the linear part into components ("coefficient * expression"),
@@ -75,19 +64,9 @@ pub fn try_split_constraint<T: FieldElement, V: Clone + Ord + Display>(
     }
 
     // The original constraint is equivalent to `sum of components + constant = 0`
-    if found {
-        for c in &components {
-            println!("  Component: {}", c);
-        }
-        for var in constraint.expression.referenced_unknown_variables() {
-            let rc = range_constraints.get(&var);
-            println!("  Variable: {} with range constraint {}", var, rc);
-        }
-    }
 
     // Now try to split out each component in turn, modifying `components`
     // and `constant` for every successful split.
-    let mut counter = 0;
     let mut extracted_parts = vec![];
     for indices in (0..components.len()).powerset() {
         let expr: GroupedExpression<_, _> = indices
@@ -108,7 +87,6 @@ pub fn try_split_constraint<T: FieldElement, V: Clone + Ord + Display>(
                 expr: expr.clone() * (T::one() / coeff),
             }
             .normalize();
-            counter += 1;
             let rest = components
                 .iter()
                 .enumerate()
@@ -122,22 +100,11 @@ pub fn try_split_constraint<T: FieldElement, V: Clone + Ord + Display>(
                 // Nothing to split, we are done.
                 break;
             }
-            if found && counter == 19 {
-                println!(
-                    "  Trying to split out component: {} * {}\n rest: {}\n expr: {expr}",
-                    candidate.coeff,
-                    candidate.expr,
-                    rest.iter()
-                        .map(|c| format!("{}", c))
-                        .collect::<Vec<_>>()
-                        .join(" + ")
-                );
-            }
+
             if let Some((new_constraint, constant_offset)) =
                 try_split_out_component(candidate.clone(), rest, constant, range_constraints)
             {
                 // We now know that `candidate.expr = solution`, so we add it to the extracted parts.
-                println!("  Successfully split out component: {}", candidate.expr);
                 extracted_parts.push(new_constraint);
                 // We remove the candidate (`candidate.coeff * candidate.expr`) from the expression.
                 // To balance this out, we add `candidate.coeff * candidate.expr = candidate.coeff * solution`
@@ -156,9 +123,6 @@ pub fn try_split_constraint<T: FieldElement, V: Clone + Ord + Display>(
         // We found some independent parts, add the remaining components to the parts
         // and return them.
         extracted_parts.push(recombine_components(components, constant));
-        for p in &extracted_parts {
-            println!("  Extracted part: {}", p);
-        }
         Some(extracted_parts)
     }
 }
@@ -183,18 +147,6 @@ fn try_split_out_component<T: FieldElement, V: Clone + Ord + Display>(
     let smallest_coeff_in_rest = rest.iter().map(|comp| comp.coeff).min().unwrap();
     assert_ne!(smallest_coeff_in_rest, 0.into());
     assert!(smallest_coeff_in_rest.is_in_lower_half());
-
-    // if found {
-    //     println!(
-    //         "  Trying to split\n    {} +\n    {} +\n   {} = 0",
-    //         candidate.expr,
-    //         rest.iter()
-    //             .map(|c| format!("{}", c))
-    //             .collect::<Vec<_>>()
-    //             .join(" + "),
-    //         constant / candidate.coeff
-    //     );
-    // }
 
     // Try to find the unique value for `candidate.expr` in this equation.
     let solution = find_solution(
@@ -250,12 +202,6 @@ fn find_solution<T: FieldElement, V: Clone + Ord + Display>(
     let expr_rc = expr.range_constraint(range_constraints);
     let rest_rc = rest.range_constraint(range_constraints);
 
-    println!(
-        "    Finding solution for expr: {expr} (rc: {expr_rc}), coeff: {coefficient}, rest: {rest} (rc: {rest_rc}), constant: {constant}",
-    );
-    //     Finding solution for expr: -(rs1_data__0_0 + 256 * rs1_data__1_0 - mem_ptr_limbs__0_0) (rc: [-131071, 65535] & 0xffffffff), coeff: 65536,
-    //  rest: -(rs1_data__2_0 + 256 * rs1_data__3_0 - mem_ptr_limbs__1_0 - 65536 * bool_1) (rc: [0, -1] & 0x7fffffff), constant: 0
-
     let unconstrained_range_width = RangeConstraint::<T>::unconstrained().range_width();
     if expr_rc.range_width() == unconstrained_range_width
         || rest_rc.range_width() == unconstrained_range_width
@@ -285,7 +231,6 @@ fn find_solution<T: FieldElement, V: Clone + Ord + Display>(
             range_constraints,
         );
     }
-    println!("No gap");
 
     // rc(expr): [0, max_expr]
     // rc(rest): [0, max_rest]
@@ -301,12 +246,6 @@ fn find_solution<T: FieldElement, V: Clone + Ord + Display>(
         + coefficient.to_arbitrary_integer() * max_rest.to_arbitrary_integer()
         >= T::modulus().to_arbitrary_integer()
     {
-        println!(
-            "sum is too large (by {})",
-            (max_expr.to_arbitrary_integer()
-                + coefficient.to_arbitrary_integer() * max_rest.to_arbitrary_integer())
-                - T::modulus().to_arbitrary_integer()
-        );
         return None;
     }
     // It does not wrap around, so we know that the equation can be translated to the
@@ -322,7 +261,6 @@ fn find_solution<T: FieldElement, V: Clone + Ord + Display>(
     if max_expr.to_integer() >= coefficient.to_integer() + coefficient.to_integer() {
         // In this case, there are always at least two solutions (ignoring masks and other
         // constraints).
-        println!("at least two solutions");
         return None;
     }
 
