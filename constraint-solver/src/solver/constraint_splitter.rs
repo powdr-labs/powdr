@@ -76,7 +76,19 @@ pub fn try_split_constraint<T: FieldElement, V: Clone + Ord + Display>(
         if expr.is_zero() {
             continue;
         }
-        // TODO we could compute "rest" here already and then only scale it.
+        let rest = components
+            .iter()
+            .enumerate()
+            // Filter out the candidate itself and all zero components
+            // because we set components to zero when we extract them instead
+            // of removing them.
+            .filter(|(i, component)| !indices.contains(i) && !component.is_zero())
+            .map(|(_, comp)| comp.clone())
+            .collect_vec();
+        if rest.is_empty() {
+            // Nothing to split, we are done.
+            break;
+        }
         for leading_index in &indices {
             let coeff = components[*leading_index].coeff;
             if coeff.is_zero() {
@@ -87,19 +99,10 @@ pub fn try_split_constraint<T: FieldElement, V: Clone + Ord + Display>(
                 expr: expr.clone() * (T::one() / coeff),
             }
             .normalize();
-            let rest = components
+            let rest = rest
                 .iter()
-                .enumerate()
-                // Filter out the candidate itself and all zero components
-                // because we set components to zero when we extract them instead
-                // of removing them.
-                .filter(|(i, component)| !indices.contains(i) && !component.is_zero())
-                .map(|(_, comp)| (comp.clone() / candidate.coeff).normalize())
-                .collect_vec();
-            if rest.is_empty() {
-                // Nothing to split, we are done.
-                break;
-            }
+                .map(|comp| (comp.clone() / candidate.coeff).normalize())
+                .collect();
 
             if let Some((new_constraint, constant_offset)) =
                 try_split_out_component(candidate.clone(), rest, constant, range_constraints)
