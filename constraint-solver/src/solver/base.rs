@@ -141,7 +141,25 @@ where
         // will have the assignments applied.
         self.linearizer.apply_assignments(&assignments);
         self.boolean_extractor.apply_assignments(&assignments);
-        println!("Final system:\n{self}");
+        println!("Final system:\n{self}\n--------------------------------");
+
+        let var_from_name = |n: &str| {
+            self.constraint_system
+                .system()
+                .referenced_unknown_variables()
+                .find(|v| v.to_string() == n)
+                .unwrap()
+                .clone()
+        };
+        let mem_ptr_limbs__0_0 = var_from_name("mem_ptr_limbs__0_0");
+        for constr in self.constraint_system.system().algebraic_constraints() {
+            if constr
+                .referenced_unknown_variables()
+                .contains(&mem_ptr_limbs__0_0)
+            {
+                println!("{}", constr.as_ref().normalize_for(&mem_ptr_limbs__0_0));
+            }
+        }
         Ok(assignments)
     }
 

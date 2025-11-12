@@ -303,9 +303,9 @@ fn find_solution<T: FieldElement, V: Clone + Ord + Display>(
     {
         println!(
             "sum is too large (by {})",
-            
-                 (max_expr.to_arbitrary_integer()
-                    + coefficient.to_arbitrary_integer() * max_rest.to_arbitrary_integer()) - T::modulus().to_arbitrary_integer()
+            (max_expr.to_arbitrary_integer()
+                + coefficient.to_arbitrary_integer() * max_rest.to_arbitrary_integer())
+                - T::modulus().to_arbitrary_integer()
         );
         return None;
     }
@@ -754,5 +754,22 @@ l3 - 1 = 0"
         let expr = (var("x") - var("y")) + constant(16) * var("z") - constant(0);
         let result = try_split(expr.clone(), &rcs).unwrap().iter().join(", ");
         expect!["x - y = 0, z = 0"].assert_eq(&result);
+    }
+
+    #[test]
+    fn split_multi() {
+        let byte = RangeConstraint::from_mask(0xffu32);
+        let rcs = [
+            ("x", byte.clone()),
+            ("y", byte.clone()),
+            ("m", RangeConstraint::from_max_bit(13)),
+            ("b", RangeConstraint::from_mask(1u32)),
+        ]
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+        let expr = var("x") + var("y") * constant(256) - var("m") - var("b") * constant(65536);
+
+        let result = try_split(expr, &rcs).unwrap().iter().join(", ");
+        expect!["-(m - x - 256 * y) = 0, -(b) = 0"].assert_eq(&result);
     }
 }
