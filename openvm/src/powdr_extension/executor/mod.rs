@@ -45,7 +45,7 @@ pub struct PowdrExecutor {
     pub original_arenas_cpu: Rc<RefCell<OriginalArenas<MatrixRecordArena<BabyBear>>>>,
     pub original_arenas_gpu: Rc<RefCell<OriginalArenas<DenseRecordArena>>>,
     pub height_change: u32,
-    prepared_instructions: Vec<PreparedInstruction>,
+    cached_instructions_meta: Vec<CachedInstructionMeta>,
 }
 
 /// A shared mutable reference to the arenas used to store the traces of the original instructions, accessed during preflight execution and trace generation.
@@ -83,15 +83,6 @@ impl<A: Arena> OriginalArenas<A> {
         }
     }
 
-    /// Returns a mutable reference to the number of calls.
-    /// - Panics if the arenas are not initialized.
-    pub fn number_of_calls_mut(&mut self) -> &mut usize {
-        match self {
-            OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
-            OriginalArenas::Initialized(initialized) => &mut initialized.number_of_calls,
-        }
-    }
-
     pub fn arena_mut_by_index(&mut self, index: usize) -> &mut A {
         match self {
             OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
@@ -105,6 +96,15 @@ impl<A: Arena> OriginalArenas<A> {
         match self {
             OriginalArenas::Uninitialized => None,
             OriginalArenas::Initialized(initialized) => initialized.take_arena(air_name),
+        }
+    }
+
+    /// Returns a mutable reference to the number of calls.
+    /// - Panics if the arenas are not initialized.
+    pub fn number_of_calls_mut(&mut self) -> &mut usize {
+        match self {
+            OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
+            OriginalArenas::Initialized(initialized) => &mut initialized.number_of_calls,
         }
     }
 
@@ -134,31 +134,30 @@ impl<A: Arena> InitializedOriginalArenas<A> {
         original_airs: &OriginalAirs<BabyBear>,
         apc: &Arc<Apc<BabyBear, Instr<BabyBear>>>,
     ) -> Self {
-        let record_arena_layout =
+        let record_arena_dimensions =
             record_arena_dimension_by_air_name_per_apc_call(apc, original_airs);
-        let mut arena_name_to_index = HashMap::with_capacity(record_arena_layout.len());
-        let arenas = record_arena_layout
-            .into_iter()
-            .enumerate()
-            .map(
-                |(
-                    idx,
-                    (
-                        air_name,
-                        RecordArenaDimension {
-                            height: num_calls,
-                            width: air_width,
-                        },
-                    ),
-                )| {
-                    arena_name_to_index.insert(air_name, idx);
-                    Some(A::with_capacity(
-                        num_calls * apc_call_count_estimate,
-                        air_width,
-                    ))
-                },
-            )
-            .collect();
+        let (arena_name_to_index, arenas) = record_arena_dimensions.into_iter().enumerate().fold(
+            (HashMap::new(), Vec::new()),
+            |(mut arena_name_to_index, mut arenas),
+             (
+                idx,
+                (
+                    air_name,
+                    RecordArenaDimension {
+                        height: num_calls,
+                        width: air_width,
+                    },
+                ),
+            )| {
+                arena_name_to_index.insert(air_name, idx);
+                arenas.push(Some(A::with_capacity(
+                    num_calls * apc_call_count_estimate,
+                    air_width,
+                )));
+                (arena_name_to_index, arenas)
+            },
+        );
+
         Self {
             arenas,
             arena_name_to_index,
@@ -184,7 +183,7 @@ pub struct RecordArenaDimension {
 }
 
 #[derive(Clone, Copy)]
-struct PreparedInstruction {
+struct CachedInstructionMeta {
     executor_index: usize,
     arena_index: usize,
 }
@@ -450,14 +449,14 @@ impl PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>> for PowdrExecutor 
 
         original_arenas.ensure_initialized(apc_call_count, &self.air_by_opcode_id, &self.apc);
         // execute the original instructions one by one
-        for (instruction, prepared) in self
+        for (instruction, cached_meta) in self
             .apc
             .instructions()
             .iter()
-            .zip_eq(&self.prepared_instructions)
+            .zip_eq(&self.cached_instructions_meta)
         {
-            let executor = &self.executor_inventory.executors[prepared.executor_index];
-            let ctx_arena = original_arenas.arena_mut_by_index(prepared.arena_index);
+            let executor = &self.executor_inventory.executors[cached_meta.executor_index];
+            let ctx_arena = original_arenas.arena_mut_by_index(cached_meta.arena_index);
 
             let state = VmStateMut {
                 pc,
@@ -520,14 +519,14 @@ impl PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExecutor {
 
         original_arenas.ensure_initialized(apc_call_count, &self.air_by_opcode_id, &self.apc);
         // execute the original instructions one by one
-        for (instruction, prepared) in self
+        for (instruction, cached_meta) in self
             .apc
             .instructions()
             .iter()
-            .zip(&self.prepared_instructions)
+            .zip(&self.cached_instructions_meta)
         {
-            let executor = &self.executor_inventory.executors[prepared.executor_index];
-            let ctx_arena = original_arenas.arena_mut_by_index(prepared.arena_index);
+            let executor = &self.executor_inventory.executors[cached_meta.executor_index];
+            let ctx_arena = original_arenas.arena_mut_by_index(cached_meta.arena_index);
 
             let state = VmStateMut {
                 pc,
@@ -574,7 +573,7 @@ impl PowdrExecutor {
                 .map(|(idx, (name, _))| (name.clone(), idx))
                 .collect::<HashMap<_, _>>();
 
-        let prepared_instructions = apc
+        let cached_instructions_meta = apc
             .instructions()
             .iter()
             .map(|instruction| {
@@ -590,7 +589,7 @@ impl PowdrExecutor {
                 let arena_index = *arena_index_by_name
                     .get(air_name)
                     .expect("missing arena for air");
-                PreparedInstruction {
+                CachedInstructionMeta {
                     executor_index,
                     arena_index,
                 }
@@ -604,7 +603,7 @@ impl PowdrExecutor {
             original_arenas_cpu: record_arena_by_air_name_cpu,
             original_arenas_gpu: record_arena_by_air_name_gpu,
             height_change,
-            prepared_instructions,
+            cached_instructions_meta,
         }
     }
 }
