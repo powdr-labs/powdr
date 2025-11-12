@@ -69,7 +69,7 @@ impl<A: Arena> OriginalArenas<A> {
         apc_call_count_estimate: impl Fn() -> usize,
         original_airs: &OriginalAirs<BabyBear>,
         apc: &Arc<Apc<BabyBear, Instr<BabyBear>>>,
-    ) {
+    ) -> &mut InitializedOriginalArenas<A> {
         match self {
             OriginalArenas::Uninitialized => {
                 *self = OriginalArenas::Initialized(InitializedOriginalArenas::new(
@@ -77,43 +77,12 @@ impl<A: Arena> OriginalArenas<A> {
                     original_airs,
                     apc,
                 ));
+                match self {
+                    OriginalArenas::Initialized(i) => i,
+                    _ => unreachable!(),
+                }
             }
-            OriginalArenas::Initialized(_) => {}
-        }
-    }
-
-    /// Returns a mutable reference to the arenas.
-    /// - Panics if the arenas are not initialized.
-    pub fn arenas_mut(&mut self) -> &mut HashMap<String, A> {
-        match self {
-            OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
-            OriginalArenas::Initialized(initialized) => &mut initialized.arenas,
-        }
-    }
-
-    /// Returns a reference to the arenas.
-    /// - Panics if the arenas are not initialized.
-    pub fn arenas(&self) -> &HashMap<String, A> {
-        match self {
-            OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
-            OriginalArenas::Initialized(initialized) => &initialized.arenas,
-        }
-    }
-
-    /// Returns a mutable reference to the number of calls.
-    /// - Panics if the arenas are not initialized.
-    pub fn number_of_calls_mut(&mut self) -> &mut usize {
-        match self {
-            OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
-            OriginalArenas::Initialized(initialized) => &mut initialized.number_of_calls,
-        }
-    }
-
-    /// Returns the number of calls. If not initialized, `Preflight::execute` is never called, and thus return 0.
-    pub fn number_of_calls(&self) -> usize {
-        match self {
-            OriginalArenas::Uninitialized => 0,
-            OriginalArenas::Initialized(initialized) => initialized.number_of_calls,
+            OriginalArenas::Initialized(i) => i,
         }
     }
 }
@@ -425,9 +394,10 @@ impl PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>> for PowdrExecutor 
         // Recover an estimate of how many times the APC is called in this segment based on the current ctx height and width
         let apc_call_count = || ctx.trace_buffer.len() / ctx.width;
 
-        original_arenas.ensure_initialized(apc_call_count, &self.air_by_opcode_id, &self.apc);
+        let original_arenas =
+            original_arenas.ensure_initialized(apc_call_count, &self.air_by_opcode_id, &self.apc);
 
-        let arenas = original_arenas.arenas_mut();
+        let arenas = &mut original_arenas.arenas;
 
         // execute the original instructions one by one
         for instruction in self.apc.instructions() {
@@ -458,7 +428,7 @@ impl PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>> for PowdrExecutor 
         }
 
         // Update the real number of calls to the APC
-        *original_arenas.number_of_calls_mut() += 1;
+        original_arenas.number_of_calls += 1;
 
         Ok(())
     }
@@ -500,9 +470,10 @@ impl PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExecutor {
             buf.len() / bytes_per_row
         };
 
-        original_arenas.ensure_initialized(apc_call_count, &self.air_by_opcode_id, &self.apc);
+        let original_arenas =
+            original_arenas.ensure_initialized(apc_call_count, &self.air_by_opcode_id, &self.apc);
 
-        let arenas = original_arenas.arenas_mut();
+        let arenas = &mut original_arenas.arenas;
 
         // execute the original instructions one by one
         for instruction in self.apc.instructions() {
@@ -533,7 +504,7 @@ impl PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExecutor {
         }
 
         // Update the real number of calls to the APC
-        *original_arenas.number_of_calls_mut() += 1;
+        original_arenas.number_of_calls += 1;
 
         Ok(())
     }
