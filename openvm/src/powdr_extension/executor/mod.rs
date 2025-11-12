@@ -83,6 +83,8 @@ impl<A: Arena> OriginalArenas<A> {
         }
     }
 
+    /// Returns a mutable reference to the arena of the given vector index.
+    /// - Panics if the arenas are not initialized.
     pub fn arena_mut_by_index(&mut self, index: usize) -> &mut A {
         match self {
             OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
@@ -92,9 +94,11 @@ impl<A: Arena> OriginalArenas<A> {
         }
     }
 
+    /// Returns the arena of the given air name.
+    /// - Panics if the arenas are not initialized.
     pub fn take_arena(&mut self, air_name: &str) -> Option<A> {
         match self {
-            OriginalArenas::Uninitialized => None,
+            OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
             OriginalArenas::Initialized(initialized) => initialized.take_arena(air_name),
         }
     }
@@ -172,7 +176,10 @@ impl<A: Arena> InitializedOriginalArenas<A> {
 
     fn take_arena(&mut self, air_name: &str) -> Option<A> {
         let index = *self.arena_name_to_index.get(air_name)?;
-        self.arenas.get_mut(index)?.take()
+        self.arenas
+            .get_mut(index)
+            .expect("arena missing for index")
+            .take()
     }
 }
 
