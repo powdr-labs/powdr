@@ -88,9 +88,7 @@ impl<A: Arena> OriginalArenas<A> {
     pub fn arena_mut_by_index(&mut self, index: usize) -> &mut A {
         match self {
             OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
-            OriginalArenas::Initialized(initialized) => initialized
-                .arena_mut_by_index(index)
-                .expect("arena missing for index"),
+            OriginalArenas::Initialized(initialized) => initialized.arena_mut_by_index(index),
         }
     }
 
@@ -127,7 +125,7 @@ impl<A: Arena> OriginalArenas<A> {
 #[derive(Default)]
 pub struct InitializedOriginalArenas<A> {
     arenas: Vec<Option<A>>,
-    arena_name_to_index: HashMap<String, usize>,
+    air_name_to_arena_index: HashMap<String, usize>,
     pub number_of_calls: usize,
 }
 
@@ -140,46 +138,48 @@ impl<A: Arena> InitializedOriginalArenas<A> {
     ) -> Self {
         let record_arena_dimensions =
             record_arena_dimension_by_air_name_per_apc_call(apc, original_airs);
-        let (arena_name_to_index, arenas) = record_arena_dimensions.into_iter().enumerate().fold(
-            (HashMap::new(), Vec::new()),
-            |(mut arena_name_to_index, mut arenas),
-             (
-                idx,
-                (
-                    air_name,
-                    RecordArenaDimension {
-                        height: num_calls,
-                        width: air_width,
-                    },
-                ),
-            )| {
-                arena_name_to_index.insert(air_name, idx);
-                arenas.push(Some(A::with_capacity(
-                    num_calls * apc_call_count_estimate,
-                    air_width,
-                )));
-                (arena_name_to_index, arenas)
-            },
-        );
+        let (air_name_to_arena_index, arenas) =
+            record_arena_dimensions.into_iter().enumerate().fold(
+                (HashMap::new(), Vec::new()),
+                |(mut air_name_to_arena_index, mut arenas),
+                 (
+                    idx,
+                    (
+                        air_name,
+                        RecordArenaDimension {
+                            height: num_calls,
+                            width: air_width,
+                        },
+                    ),
+                )| {
+                    air_name_to_arena_index.insert(air_name, idx);
+                    arenas.push(Some(A::with_capacity(
+                        num_calls * apc_call_count_estimate,
+                        air_width,
+                    )));
+                    (air_name_to_arena_index, arenas)
+                },
+            );
 
         Self {
             arenas,
-            arena_name_to_index,
+            air_name_to_arena_index,
             // This is the actual number of calls, which we don't know yet. It will be updated during preflight execution.
             number_of_calls: 0,
         }
     }
 
-    fn arena_mut_by_index(&mut self, index: usize) -> Option<&mut A> {
-        self.arenas.get_mut(index).and_then(|arena| arena.as_mut())
+    #[inline]
+    fn arena_mut_by_index(&mut self, index: usize) -> &mut A {
+        self.arenas
+            .get_mut(index)
+            .and_then(|arena| arena.as_mut())
+            .expect("arena missing for index")
     }
 
     fn take_arena(&mut self, air_name: &str) -> Option<A> {
-        let index = *self.arena_name_to_index.get(air_name)?;
-        self.arenas
-            .get_mut(index)
-            .expect("arena missing for index")
-            .take()
+        let index = *self.air_name_to_arena_index.get(air_name)?;
+        self.arenas[index].take()
     }
 }
 
