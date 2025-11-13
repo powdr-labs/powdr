@@ -196,14 +196,12 @@ impl PowdrTraceGeneratorGpu {
 
     fn try_generate_witness(
         &self,
-        mut original_arenas: OriginalArenas<DenseRecordArena>,
+        original_arenas: OriginalArenas<DenseRecordArena>,
     ) -> Option<DeviceMatrix<BabyBear>> {
-        let width = self.apc.machine().main_columns().count();
-
         let original_arenas = match original_arenas {
             OriginalArenas::Initialized(arenas) => arenas,
             OriginalArenas::Uninitialized => {
-                // if the arenas are uninitialized, the apc was not called, so we return an empty trace
+                // if the arenas are uninitialized, the apc was not called, so we return early
                 return None;
             }
         };
@@ -222,7 +220,7 @@ impl PowdrTraceGeneratorGpu {
             .inventory
         };
 
-        let (arenas, num_apc_calls) = (original_arenas.arenas, original_arenas.number_of_calls);
+        let (mut arenas, num_apc_calls) = (original_arenas.arenas, original_arenas.number_of_calls);
 
         let dummy_trace_by_air_name: HashMap<String, DeviceMatrix<BabyBear>> = chip_inventory
             .chips()
