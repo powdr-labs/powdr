@@ -88,7 +88,7 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
     }
     let substitution_end = std::time::Instant::now();
 
-    log::debug!(
+    log::info!(
         "Rule-based optimization timings:\n\
            Transform: {}\n\
            Insert: {}\n\
