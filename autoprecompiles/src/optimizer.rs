@@ -7,7 +7,7 @@ use powdr_constraint_solver::constraint_system::{
     AlgebraicConstraint, ComputationMethod, DerivedVariable,
 };
 use powdr_constraint_solver::inliner::{self, inline_everything_below_degree_bound};
-use powdr_constraint_solver::solver::{self, new_solver};
+use powdr_constraint_solver::solver::new_solver;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, ConstraintSystem},
     grouped_expression::GroupedExpression,
@@ -16,7 +16,6 @@ use powdr_number::FieldElement;
 
 use crate::constraint_optimizer::trivial_simplifications;
 use crate::range_constraint_optimizer::optimize_range_constraints;
-use crate::rule_based_optimizer::rule_based_optimization;
 use crate::{
     adapter::Adapter,
     constraint_optimizer::optimize_constraints,
@@ -40,10 +39,7 @@ pub fn optimize<A: Adapter>(
         stats_logger.log("exec bus optimization", &machine);
     }
 
-    let constraint_system = symbolic_machine_to_constraint_system(machine);
-
-    let mut constraint_system = rule_based_optimization(constraint_system);
-    stats_logger.log("rule-based optimization", &constraint_system);
+    let mut constraint_system = symbolic_machine_to_constraint_system(machine);
 
     let mut solver = new_solver(constraint_system.clone(), bus_interaction_handler.clone());
     loop {

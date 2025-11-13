@@ -23,6 +23,7 @@ use crate::{
     low_degree_bus_interaction_optimizer::LowDegreeBusInteractionOptimizer,
     memory_optimizer::{optimize_memory, MemoryBusInteraction},
     range_constraint_optimizer::RangeConstraintHandler,
+    rule_based_optimizer::rule_based_optimization,
     stats_logger::StatsLogger,
 };
 
@@ -60,6 +61,9 @@ pub fn optimize_constraints<
 ) -> Result<ConstraintSystem<P, V>, Error> {
     // Index the constraint system for the first time
     let constraint_system = IndexedConstraintSystem::from(constraint_system);
+
+    let constraint_system = rule_based_optimization(constraint_system);
+    stats_logger.log("rule-based optimization", &constraint_system);
 
     let constraint_system = solver_based_optimization(constraint_system, solver)?;
     stats_logger.log("solver-based optimization", &constraint_system);
