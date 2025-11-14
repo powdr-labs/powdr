@@ -73,8 +73,8 @@ fn process_quadratic_equality_candidate_pair<
 
     // Now the only remaining check is to see if the affine expressions are the same.
     // This could have been the first step, but it is rather expensive, so we do it last.
-    if c1.expr - GroupedExpression::from_unknown_variable(c1_var.clone())
-        != c2.expr - GroupedExpression::from_unknown_variable(c2_var.clone())
+    if c1.expr.clone() - GroupedExpression::from_unknown_variable(c1_var.clone())
+        != c2.expr.clone() - GroupedExpression::from_unknown_variable(c2_var.clone())
     {
         return None;
     }
@@ -88,8 +88,8 @@ fn process_quadratic_equality_candidate_pair<
     // Since `A` has to have some value, we can conclude `X = Y`.
 
     println!(
-        "Found quadratic equality {} = {} from {}, {rc2}",
-        c1_var, c2_var, rc1,
+        "Found quadratic equality {} = {} from ({} - {}) * ({})   and  ({} - {}) * ({})",
+        c1_var, c2_var, c1.expr, c1.offset, c1.expr, c2.expr, c2.offset, c2.expr
     );
     Some((c1_var.clone(), c2_var.clone()))
 }

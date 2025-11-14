@@ -1,6 +1,10 @@
 #![allow(clippy::iter_over_hash_type)]
 #![allow(for_loops_over_fallibles)]
-use std::{collections::HashMap, fmt::Display, hash::Hash};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Display,
+    hash::Hash,
+};
 
 use itertools::Itertools;
 use powdr_constraint_solver::{
@@ -29,18 +33,22 @@ crepe! {
     @input
     struct RangeConstraintOnExpression<'a>(&'a GroupedExpression<F, Var>, F, F);
 
+    @input
+    struct InputExpression<'a>(&'a GroupedExpression<F, Var>);
+
     struct Expression<'a>(&'a GroupedExpression<F, Var>);
     // TODO question to answer: Does this treat different instances of the same expression as equal?
     Expression(e) <- AlgebraicConstraint(e);
     Expression(e) <- BusInteractionConstraint(bus_inter), for e in bus_inter.fields();
     Expression(q) <- Expression(e), for q in e.quadratic_components().iter().flat_map(|(l, r)| [l, r].into_iter());
+    Expression(e) <- InputExpression(e);
 
     struct IsSimpleVar<'a>(&'a GroupedExpression<F, Var>, Var);
     IsSimpleVar(e, v) <- Expression(e), for v in e.try_to_simple_unknown();
 
-    struct SimpleQuadratic<'a>(&'a GroupedExpression<F, Var>, &'a GroupedExpression<F, Var>, &'a GroupedExpression<F, Var>);
-    SimpleQuadratic(q, l, r) <- Expression(q), for (l, r) in q.quadratic_components();
-    SimpleQuadratic(q, l, r) <- SimpleQuadratic(q, r, l);
+    struct Product<'a>(&'a GroupedExpression<F, Var>, &'a GroupedExpression<F, Var>, &'a GroupedExpression<F, Var>);
+    Product(q, l, r) <- Expression(q), for (l, r) in q.quadratic_components();
+    Product(q, l, r) <- Product(q, r, l);
 
     @output
     struct RangeConstraint(Var, F, F);
@@ -52,7 +60,7 @@ crepe! {
     // instead of algebraic constraints. Might be more difficult with the scaling, though.
     RangeConstraint(v, x1, x1 + F::from(1)) <-
         AlgebraicConstraint(e),
-        SimpleQuadratic(e, l, r),
+        Product(e, l, r),
         Solvable(l, v, x1),
         Solvable(r, v, x1 + F::from(1));
 
@@ -139,24 +147,31 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                 })
         })
         .collect_vec();
+    // TODO we should do that for all expressions, also those in bus interactions etc.
+    let sub_expressions = transformed_expressions
+        .iter()
+        .flat_map(|e| extract_single_vars(e))
+        .collect_vec();
     let transform_end = std::time::Instant::now();
 
     rt.extend(transformed_expressions.iter().map(AlgebraicConstraint));
     rt.extend(bus_interactions.iter().map(BusInteractionConstraint));
     rt.extend(range_constraints);
+    rt.extend(sub_expressions.iter().map(InputExpression));
 
     let insert_end = std::time::Instant::now();
 
     let (rcs, assignments) = rt.run();
     let run_end = std::time::Instant::now();
-    for RangeConstraint(var, min, max) in rcs {
-        log::info!(
-            "Rule-based range constraint: {} in [{}, {}]",
-            var_mapper.backward(&var),
-            min,
-            max
-        );
-    }
+    // for RangeConstraint(var, min, max) in rcs {
+    //     log::info!(
+    //         "Rule-based range constraint: {} in [{}, {}]",
+    //         var_mapper.backward(&var),
+    //         min,
+    //         max
+    //     );
+    // }
+    println!("Found {} rule-based assignments", assignments.len());
     for (var, value) in assignments
         .into_iter()
         .map(|Assignment(var, value)| {
@@ -243,4 +258,23 @@ fn transform_grouped_expression<T: FieldElement, V: Hash + Eq + Ord + Clone + Di
             }
         })
         .sum()
+}
+
+/// Returns a set of expressions that are missing a single affine component.
+fn extract_single_vars(expr: &GroupedExpression<F, Var>) -> HashSet<GroupedExpression<F, Var>> {
+    let mut result = expr
+        .quadratic_components()
+        .iter()
+        .flat_map(|(l, r)| {
+            extract_single_vars(l)
+                .into_iter()
+                .chain(extract_single_vars(r).into_iter())
+        })
+        .collect::<HashSet<_>>();
+    result.extend(
+        expr.linear_components().map(|(v, c)| {
+            expr.clone() - GroupedExpression::from_unknown_variable(v.clone()) * (*c)
+        }),
+    );
+    result
 }
