@@ -42,6 +42,7 @@ use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
 use powdr_autoprecompiles::evaluation::AirStats;
+use powdr_autoprecompiles::execution_profile::{execution_data, Cycle};
 use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::PowdrExtension;
@@ -963,6 +964,9 @@ pub fn execution_profile_from_guest(
     guest_opts: GuestOptions,
     inputs: StdIn,
 ) -> HashMap<u64, u32> {
+    // HACK: Just run whenever we do PGO
+    execution_data_from_guest(guest, guest_opts.clone(), inputs.clone());
+
     let OriginalCompiledProgram { exe, vm_config, .. } = compile_openvm(guest, guest_opts).unwrap();
     let program = Prog::from(&exe.program);
 
@@ -977,6 +981,35 @@ pub fn execution_profile_from_guest(
     execution_profile::<BabyBearOpenVmApcAdapter>(&program, || {
         sdk.execute(exe.clone(), inputs.clone()).unwrap();
     })
+}
+
+pub fn execution_data_from_guest(
+    guest: &str,
+    guest_opts: GuestOptions,
+    inputs: StdIn,
+) -> Vec<Cycle> {
+    let OriginalCompiledProgram { exe, vm_config, .. } = compile_openvm(guest, guest_opts).unwrap();
+    let program = Prog::from(&exe.program);
+
+    // Set app configuration
+    let app_fri_params =
+        FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
+    let app_config = AppConfig::new(app_fri_params, vm_config.clone());
+
+    // prepare for execute
+    let sdk = PowdrExecutionProfileSdkCpu::new(app_config).unwrap();
+
+    let result = execution_data::<BabyBearOpenVmApcAdapter>(&program, || {
+        sdk.execute(exe.clone(), inputs.clone()).unwrap();
+    });
+
+    std::fs::write(
+        "execution_data.json",
+        serde_json::to_string_pretty(&result).unwrap(),
+    )
+    .expect("Failed to write execution data to file");
+
+    result
 }
 
 #[cfg(test)]
@@ -2131,5 +2164,20 @@ mod tests {
         //     total_columns <= MAX_TOTAL_COLUMNS,
         //     "Total columns exceeded the limit: {total_columns} > {MAX_TOTAL_COLUMNS}"
         // );
+    }
+
+    #[test]
+    fn guest_execution_data() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ITER);
+        let execution_data =
+            execution_data_from_guest(GUEST, GuestOptions::default(), stdin.clone());
+        // write to json file
+        std::fs::write(
+            "execution_data.json",
+            serde_json::to_string_pretty(&execution_data).unwrap(),
+        )
+        .expect("Failed to write execution data to file");
+        println!("Execution data: {execution_data:#?}");
     }
 }
