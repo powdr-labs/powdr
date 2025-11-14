@@ -134,10 +134,7 @@ where
 }
 
 /// Produces a rich execution trace with per-cycle memory access information.
-pub fn execution_data<A: Adapter>(
-    _program: &A::Program,
-    execute_fn: impl FnOnce(),
-) -> Vec<Cycle> {
+pub fn execution_data<A: Adapter>(_program: &A::Program, execute_fn: impl FnOnce()) -> Vec<Cycle> {
     let collector = PgoExecutionCollector::default();
 
     let subscriber = Registry::default().with(collector.clone());
@@ -176,21 +173,28 @@ impl tracing::field::Visit for CycleData {
 }
 
 impl CycleData {
-    fn memory_access(&self) -> Option<(u64, u64, u64)> {
-        Some((
-            self.address_space?,
-            self.address?,
-            self.value?,
-        ))
+    fn memory_access(&self) -> Option<MemoryAccess> {
+        Some(MemoryAccess {
+            address_space: self.address_space?,
+            address: self.address?,
+            value: self.value?,
+        })
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MemoryAccess {
+    pub address_space: u64,
+    pub address: u64,
+    pub value: u64,
 }
 
 /// Captures a complete description of a VM cycle.
 #[derive(Debug, Clone)]
 pub struct Cycle {
     pub pc: u64,
-    pub reads: Vec<(u64, u64, u64)>,
-    pub writes: Vec<(u64, u64, u64)>,
+    pub reads: Vec<MemoryAccess>,
+    pub writes: Vec<MemoryAccess>,
 }
 
 impl Cycle {
@@ -226,15 +230,15 @@ impl PgoExecutionCollector {
         state.current_cycle = Some(Cycle::new(pc));
     }
 
-    fn record_read(&self, access: (u64, u64, u64)) {
+    fn record_read(&self, access: MemoryAccess) {
         self.record_access(access, false);
     }
 
-    fn record_write(&self, access: (u64, u64, u64)) {
+    fn record_write(&self, access: MemoryAccess) {
         self.record_access(access, true);
     }
 
-    fn record_access(&self, access: (u64, u64, u64), is_write: bool) {
+    fn record_access(&self, access: MemoryAccess, is_write: bool) {
         let mut state = self
             .state
             .lock()
