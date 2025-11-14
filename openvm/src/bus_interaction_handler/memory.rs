@@ -120,7 +120,7 @@ mod tests {
         assert_eq!(result.len(), 7);
         assert_eq!(result[0], value(RV32_MEMORY_AS as u64));
         assert_eq!(result[1], value(0x1234));
-        // For receives, the range constraints should not be modified.
+        // For sends, the range constraints should not be modified.
         assert_eq!(result[2], Default::default());
         assert_eq!(result[3], Default::default());
         assert_eq!(result[4], Default::default());
