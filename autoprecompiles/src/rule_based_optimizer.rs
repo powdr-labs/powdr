@@ -1,14 +1,18 @@
 #![allow(clippy::iter_over_hash_type)]
+#![allow(for_loops_over_fallibles)]
 use std::{collections::HashMap, fmt::Display, hash::Hash};
 
 use itertools::Itertools;
 use powdr_constraint_solver::{
-    grouped_expression::{GroupedExpression, GroupedExpressionComponent},
+    constraint_system::{BusInteraction, BusInteractionHandler},
+    grouped_expression::{GroupedExpression, GroupedExpressionComponent, NoRangeConstraints},
     indexed_constraint_system::IndexedConstraintSystem,
 };
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 
 use crepe::crepe;
+
+use crate::range_constraint_optimizer::RangeConstraintHandler;
 
 type F = BabyBearField;
 
@@ -17,32 +21,44 @@ struct Var(u32);
 
 crepe! {
     @input
-    struct Constraint<'a>(&'a GroupedExpression<F, Var>);
+    struct AlgebraicConstraint<'a>(&'a GroupedExpression<F, Var>);
+
+    @input
+    struct BusInteractionConstraint<'a>(&'a BusInteraction<GroupedExpression<F, Var>>);
+
+    @input
+    struct RangeConstraintOnExpression<'a>(&'a GroupedExpression<F, Var>, F, F);
+
+    struct Expression<'a>(&'a GroupedExpression<F, Var>);
+    Expression(e) <- AlgebraicConstraint(e);
+    Expression(e) <- BusInteractionConstraint(bus_inter), for e in bus_inter.fields();
+
+    struct IsSimpleVar<'a>(&'a GroupedExpression<F, Var>, Var);
+    IsSimpleVar(e, v) <- Expression(e), for v in e.try_to_simple_unknown();
+
+    @output
+    struct RangeConstraint(Var, F, F);
 
     struct IsAffine<'a>(&'a GroupedExpression<F, Var>);
-    // TODO it should not be required that it is a constraint, but
-    // we cannot get expression from anywhere else.
-    IsAffine(e) <- Constraint(e), (e.is_affine());
+    IsAffine(e) <- Expression(e), (e.is_affine());
 
     struct ExprHasLinearComponent<'a>(&'a GroupedExpression<F, Var>, F, Var);
     ExprHasLinearComponent(e, coeff, var) <- IsAffine(e), for (coeff, var) in linear_components(e);
 
     struct LinearComponentCount<'a>(&'a GroupedExpression<F, Var>, usize);
-    LinearComponentCount(e, count) <- IsAffine(e), for count in std::iter::once(e.linear_components().count());
+    LinearComponentCount(e, e.linear_components().count()) <- IsAffine(e);
 
     struct AffineExpression<'a>(&'a GroupedExpression<F, Var>, F, Var, F);
-    AffineExpression(e, coeff, var, offset) <-
+    AffineExpression(e, coeff, var, *e.constant_offset()) <-
       IsAffine(e),
       LinearComponentCount(e, 1),
-      ExprHasLinearComponent(e, coeff, var),
-      for offset in std::iter::once(*e.constant_offset());
+      ExprHasLinearComponent(e, coeff, var);
 
     @output
     struct Assignment(Var, F);
-    Assignment(var, value) <-
-      Constraint(e),
-      AffineExpression(e, coeff, var, offset),
-        for value in std::iter::once(-offset / coeff);
+    Assignment(var, -offset / coeff) <-
+      AlgebraicConstraint(e),
+      AffineExpression(e, coeff, var, offset);
 }
 
 fn linear_components(expr: &GroupedExpression<F, Var>) -> Vec<(F, Var)> {
@@ -51,6 +67,7 @@ fn linear_components(expr: &GroupedExpression<F, Var>) -> Vec<(F, Var)> {
 
 pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
     mut system: IndexedConstraintSystem<T, V>,
+    bus_interaction_handler: impl BusInteractionHandler<T> + Clone,
 ) -> IndexedConstraintSystem<T, V> {
     if T::modulus().to_arbitrary_integer() != BabyBearField::modulus().to_arbitrary_integer() {
         return system;
@@ -65,14 +82,61 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         .iter()
         .map(|c| transform_grouped_expression(&c.expression, &mut var_mapper))
         .collect_vec();
+    let bus_interactions: Vec<BusInteraction<GroupedExpression<F, Var>>> = system
+        .system()
+        .bus_interactions
+        .iter()
+        .map(|bus_inter| {
+            bus_inter
+                .fields()
+                .map(|f| transform_grouped_expression(f, &mut var_mapper))
+                .collect()
+        })
+        .collect_vec();
+    // TODO we should do that inside the system, but the generic range constraint
+    // handler makes it difficult.
+    let range_constraints = system
+        .system()
+        .bus_interactions
+        .iter()
+        .enumerate()
+        .flat_map(|(i, bus_interaction)| {
+            let range_constraints = bus_interaction_handler
+                .handle_bus_interaction(bus_interaction.to_range_constraints(&NoRangeConstraints))
+                .fields()
+                .cloned()
+                .collect_vec();
+            bus_interactions[i]
+                .fields()
+                .zip_eq(range_constraints)
+                .map(|(expr, rc)| {
+                    let (min, max) = rc.range();
+                    RangeConstraintOnExpression(
+                        &expr,
+                        BabyBearField::from(min.to_arbitrary_integer()),
+                        BabyBearField::from(max.to_arbitrary_integer()),
+                    )
+                })
+        })
+        .collect_vec();
     let transform_end = std::time::Instant::now();
 
-    rt.extend(transformed_expressions.iter().map(Constraint));
+    rt.extend(transformed_expressions.iter().map(AlgebraicConstraint));
+    rt.extend(bus_interactions.iter().map(BusInteractionConstraint));
+    rt.extend(range_constraints);
 
     let insert_end = std::time::Instant::now();
 
-    let (assignments,) = rt.run();
+    let (rcs, assignments) = rt.run();
     let run_end = std::time::Instant::now();
+    for RangeConstraint(var, min, max) in rcs {
+        log::info!(
+            "Rule-based range constraint: {} in [{}, {}]",
+            var_mapper.backward(&var),
+            min,
+            max
+        );
+    }
     for (var, value) in assignments
         .into_iter()
         .map(|Assignment(var, value)| {
@@ -83,7 +147,7 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         })
         .sorted()
     {
-        log::trace!("Rule-based assignment: {var} = {value}",);
+        log::info!("Rule-based assignment: {var} = {value}",);
         system.substitute_by_known(var, &value);
     }
     let substitution_end = std::time::Instant::now();
