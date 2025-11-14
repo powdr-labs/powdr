@@ -36,14 +36,15 @@ crepe! {
     struct RangeConstraintOnExpression<'a>(&'a GroupedExpression<F, Var>, F, F);
 
     @input
-    struct InputExpression<'a>(&'a GroupedExpression<F, Var>);
+    struct DestructureAffine<'a>(&'a GroupedExpression<F, Var>, F, Var, &'a GroupedExpression<F, Var>);
 
     struct Expression<'a>(&'a GroupedExpression<F, Var>);
     // TODO question to answer: Does this treat different instances of the same expression as equal?
     Expression(e) <- AlgebraicConstraint(e);
     Expression(e) <- BusInteractionConstraint(bus_inter), for e in bus_inter.fields();
     Expression(q) <- Expression(e), for q in e.quadratic_components().iter().flat_map(|(l, r)| [l, r].into_iter());
-    Expression(e) <- InputExpression(e);
+    Expression(e) <- DestructureAffine(_, _, _, e);
+    Expression(e) <- DestructureAffine(e, _, _, _);
 
     struct IsSimpleVar<'a>(&'a GroupedExpression<F, Var>, Var);
     IsSimpleVar(e, v) <- Expression(e), for v in e.try_to_simple_unknown();
@@ -72,42 +73,18 @@ crepe! {
     struct IsAffine<'a>(&'a GroupedExpression<F, Var>);
     IsAffine(e) <- Expression(e), (e.is_affine());
 
-    // struct DestructureAffine<'a>(&'a GroupedExpression<F, Var>, F, Var, &'a GroupedExpression<F, Var>);
-    // DestructureAffine(e, coeff, var, rest) <-
-    //   IsAffine(e),
-    //   Expression(rest),
-    //   for (coeff, var) in linear_components(e),
-    //   (rest == &(e - &(GroupedExpression::from_unknown_variable(var.clone()) * coeff)));
-
-    // struct AffineExpression<'a>(&'a GroupedExpression<F, Var>, F, Var, F);
-    // AffineExpression(e, coeff, var, offset) <-
-    //   DestructureAffine(e, coeff, var, rest),
-    //   for offset in rest.try_to_number();
-
-    struct ExprHasLinearComponent<'a>(&'a GroupedExpression<F, Var>, F, Var);
-    ExprHasLinearComponent(e, coeff, var) <- IsAffine(e), for (coeff, var) in linear_components(e);
-
-    struct LinearComponentCount<'a>(&'a GroupedExpression<F, Var>, usize);
-    LinearComponentCount(e, e.linear_components().count()) <- IsAffine(e);
-
     struct AffineExpression<'a>(&'a GroupedExpression<F, Var>, F, Var, F);
-    AffineExpression(e, coeff, var, *e.constant_offset()) <-
-      IsAffine(e),
-      LinearComponentCount(e, 1),
-      ExprHasLinearComponent(e, coeff, var);
+    AffineExpression(e, coeff, var, offset) <-
+      DestructureAffine(e, coeff, var, rest),
+      for offset in rest.try_to_number();
 
     struct Solvable<'a>(&'a GroupedExpression<F, Var>, Var, F);
     Solvable(e, var, -offset / coeff) <-
       AffineExpression(e, coeff, var, offset);
 
-
     @output
     struct Assignment(Var, F);
     Assignment(var, v) <- AlgebraicConstraint(e), Solvable(e, var, v);
-}
-
-fn linear_components(expr: &GroupedExpression<F, Var>) -> Vec<(F, Var)> {
-    expr.linear_components().map(|(v, c)| (*c, *v)).collect()
 }
 
 pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
@@ -165,7 +142,7 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         })
         .collect_vec();
     // TODO we should do that for all expressions, also those in bus interactions etc.
-    let sub_expressions = transformed_expressions
+    let destructured_expressions = transformed_expressions
         .iter()
         .flat_map(|e| extract_single_vars(e))
         .collect_vec();
@@ -174,7 +151,11 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
     rt.extend(transformed_expressions.iter().map(AlgebraicConstraint));
     rt.extend(bus_interactions.iter().map(BusInteractionConstraint));
     rt.extend(range_constraints);
-    rt.extend(sub_expressions.iter().map(InputExpression));
+    rt.extend(
+        destructured_expressions
+            .iter()
+            .map(|(e, coeff, var, rest)| DestructureAffine(e, *coeff, *var, rest)),
+    );
 
     let insert_end = std::time::Instant::now();
 
@@ -199,7 +180,7 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         })
         .sorted()
     {
-        log::info!("Rule-based assignment: {var} = {value}",);
+        // log::info!("Rule-based assignment: {var} = {value}",);
         system.substitute_by_known(var, &value);
     }
     let substitution_end = std::time::Instant::now();
@@ -278,7 +259,9 @@ fn transform_grouped_expression<T: FieldElement, V: Hash + Eq + Ord + Clone + Di
 }
 
 /// Returns a set of expressions that are missing a single affine component.
-fn extract_single_vars(expr: &GroupedExpression<F, Var>) -> HashSet<GroupedExpression<F, Var>> {
+fn extract_single_vars(
+    expr: &GroupedExpression<F, Var>,
+) -> HashSet<(GroupedExpression<F, Var>, F, Var, GroupedExpression<F, Var>)> {
     let mut result = expr
         .quadratic_components()
         .iter()
@@ -288,10 +271,13 @@ fn extract_single_vars(expr: &GroupedExpression<F, Var>) -> HashSet<GroupedExpre
                 .chain(extract_single_vars(r).into_iter())
         })
         .collect::<HashSet<_>>();
-    result.extend(
-        expr.linear_components().map(|(v, c)| {
-            expr.clone() - GroupedExpression::from_unknown_variable(v.clone()) * (*c)
-        }),
-    );
+    result.extend(expr.linear_components().map(|(v, c)| {
+        (
+            expr.clone(),
+            *c,
+            *v,
+            expr.clone() - GroupedExpression::from_unknown_variable(v.clone()) * (*c),
+        )
+    }));
     result
 }
