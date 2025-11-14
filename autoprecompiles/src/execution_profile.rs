@@ -1,5 +1,6 @@
 use crate::adapter::Adapter;
 use crate::blocks::Program;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
@@ -182,7 +183,7 @@ impl CycleData {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct MemoryAccess {
     pub address_space: u64,
     pub address: u64,
@@ -190,7 +191,7 @@ pub struct MemoryAccess {
 }
 
 /// Captures a complete description of a VM cycle.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Cycle {
     pub pc: u64,
     pub reads: Vec<MemoryAccess>,

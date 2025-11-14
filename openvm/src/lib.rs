@@ -42,7 +42,7 @@ use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
 use powdr_autoprecompiles::evaluation::AirStats;
-use powdr_autoprecompiles::execution_profile::{Cycle, execution_data};
+use powdr_autoprecompiles::execution_profile::{execution_data, Cycle};
 use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::PowdrExtension;
@@ -2159,7 +2159,14 @@ mod tests {
     fn guest_execution_data() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        let execution_data = execution_data_from_guest(GUEST, GuestOptions::default(), stdin.clone());
+        let execution_data =
+            execution_data_from_guest(GUEST, GuestOptions::default(), stdin.clone());
+        // write to json file
+        std::fs::write(
+            "execution_data.json",
+            serde_json::to_string_pretty(&execution_data).unwrap(),
+        )
+        .expect("Failed to write execution data to file");
         println!("Execution data: {execution_data:#?}");
     }
 }
