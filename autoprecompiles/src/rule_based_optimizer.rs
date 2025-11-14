@@ -14,6 +14,8 @@ use powdr_constraint_solver::{
 };
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 
+use num_traits::Zero;
+
 use crepe::crepe;
 
 use crate::range_constraint_optimizer::RangeConstraintHandler;
@@ -64,8 +66,23 @@ crepe! {
         Solvable(l, v, x1),
         Solvable(r, v, x1 + F::from(1));
 
+    struct IsZero<'a>(&'a GroupedExpression<F, Var>);
+    IsZero(e) <- Expression(e), (e.is_zero());
+
     struct IsAffine<'a>(&'a GroupedExpression<F, Var>);
     IsAffine(e) <- Expression(e), (e.is_affine());
+
+    // struct DestructureAffine<'a>(&'a GroupedExpression<F, Var>, F, Var, &'a GroupedExpression<F, Var>);
+    // DestructureAffine(e, coeff, var, rest) <-
+    //   IsAffine(e),
+    //   Expression(rest),
+    //   for (coeff, var) in linear_components(e),
+    //   (rest == &(e - &(GroupedExpression::from_unknown_variable(var.clone()) * coeff)));
+
+    // struct AffineExpression<'a>(&'a GroupedExpression<F, Var>, F, Var, F);
+    // AffineExpression(e, coeff, var, offset) <-
+    //   DestructureAffine(e, coeff, var, rest),
+    //   for offset in rest.try_to_number();
 
     struct ExprHasLinearComponent<'a>(&'a GroupedExpression<F, Var>, F, Var);
     ExprHasLinearComponent(e, coeff, var) <- IsAffine(e), for (coeff, var) in linear_components(e);
