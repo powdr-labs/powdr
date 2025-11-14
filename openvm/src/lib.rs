@@ -42,6 +42,7 @@ use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
 use powdr_autoprecompiles::evaluation::AirStats;
+use powdr_autoprecompiles::execution_profile::{Cycle, execution_data};
 use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::PowdrExtension;
@@ -975,6 +976,27 @@ pub fn execution_profile_from_guest(
     let sdk = PowdrExecutionProfileSdkCpu::new(app_config).unwrap();
 
     execution_profile::<BabyBearOpenVmApcAdapter>(&program, || {
+        sdk.execute(exe.clone(), inputs.clone()).unwrap();
+    })
+}
+
+pub fn execution_data_from_guest(
+    guest: &str,
+    guest_opts: GuestOptions,
+    inputs: StdIn,
+) -> Vec<Cycle> {
+    let OriginalCompiledProgram { exe, vm_config, .. } = compile_openvm(guest, guest_opts).unwrap();
+    let program = Prog::from(&exe.program);
+
+    // Set app configuration
+    let app_fri_params =
+        FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
+    let app_config = AppConfig::new(app_fri_params, vm_config.clone());
+
+    // prepare for execute
+    let sdk = PowdrExecutionProfileSdkCpu::new(app_config).unwrap();
+
+    execution_data::<BabyBearOpenVmApcAdapter>(&program, || {
         sdk.execute(exe.clone(), inputs.clone()).unwrap();
     })
 }
@@ -2131,5 +2153,13 @@ mod tests {
         //     total_columns <= MAX_TOTAL_COLUMNS,
         //     "Total columns exceeded the limit: {total_columns} > {MAX_TOTAL_COLUMNS}"
         // );
+    }
+
+    #[test]
+    fn guest_execution_data() {
+        let mut stdin = StdIn::default();
+        stdin.write(&GUEST_ITER);
+        let execution_data = execution_data_from_guest(GUEST, GuestOptions::default(), stdin.clone());
+        println!("Execution data: {execution_data:#?}");
     }
 }

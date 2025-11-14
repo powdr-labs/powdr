@@ -3,7 +3,7 @@ use crate::blocks::Program;
 use std::collections::HashMap;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tracing::dispatcher::Dispatch;
 use tracing::field::Field as TracingField;
 use tracing::{Event, Level, Subscriber};
@@ -14,8 +14,8 @@ use tracing_subscriber::{
     Layer,
 };
 
-// Produces execution count by pc
-// Used in Pgo::Cell and Pgo::Instruction to help rank basic blocks to create APCs for
+/// Produces execution count by pc
+/// Used in Pgo::Cell and Pgo::Instruction to help rank basic blocks to create APCs for
 pub fn execution_profile<A: Adapter>(
     program: &A::Program,
     execute_fn: impl FnOnce(),
@@ -129,6 +129,161 @@ where
         // the visitor can't parse them, and these cases are filtered out automatically
         if let Some(pc) = visitor.pc {
             self.increment(pc);
+        }
+    }
+}
+
+/// Produces a rich execution trace with per-cycle memory access information.
+pub fn execution_data<A: Adapter>(
+    _program: &A::Program,
+    execute_fn: impl FnOnce(),
+) -> Vec<Cycle> {
+    let collector = PgoExecutionCollector::default();
+
+    let subscriber = Registry::default().with(collector.clone());
+    let dispatch = Dispatch::new(subscriber);
+    tracing::dispatcher::with_default(&dispatch, execute_fn);
+
+    collector.into_cycles()
+}
+
+// holds basic type fields of execution objects captured in trace by subscriber
+#[derive(Default)]
+struct CycleData {
+    pc: Option<u64>,
+    address_space: Option<u64>,
+    address: Option<u64>,
+    value: Option<u64>,
+}
+
+impl tracing::field::Visit for CycleData {
+    // when we receive a u64 field, they are parsed into fields of the pgo data
+    fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
+        if field.name() == "pc" {
+            self.pc = Some(value);
+        } else if field.name() == "address_space" {
+            self.address_space = Some(value);
+        } else if field.name() == "address" {
+            self.address = Some(value);
+        } else if field.name() == "value" {
+            self.value = Some(value);
+        }
+    }
+
+    // required for implementation, but in practice we will only receive u64 fields
+    // the fields we receive are determined by the instruction trace print out of our openvm fork during execution
+    fn record_debug(&mut self, _: &TracingField, _: &dyn std::fmt::Debug) {}
+}
+
+impl CycleData {
+    fn memory_access(&self) -> Option<(u64, u64, u64)> {
+        Some((
+            self.address_space?,
+            self.address?,
+            self.value?,
+        ))
+    }
+}
+
+/// Captures a complete description of a VM cycle.
+#[derive(Debug, Clone)]
+pub struct Cycle {
+    pub pc: u64,
+    pub reads: Vec<(u64, u64, u64)>,
+    pub writes: Vec<(u64, u64, u64)>,
+}
+
+impl Cycle {
+    fn new(pc: u64) -> Self {
+        Self {
+            pc,
+            reads: Vec::new(),
+            writes: Vec::new(),
+        }
+    }
+}
+
+#[derive(Default)]
+struct ExecutionCollectorState {
+    cycles: Vec<Cycle>,
+    current_cycle: Option<Cycle>,
+}
+
+#[derive(Clone, Default)]
+struct PgoExecutionCollector {
+    state: Arc<Mutex<ExecutionCollectorState>>,
+}
+
+impl PgoExecutionCollector {
+    fn start_cycle(&self, pc: u64) {
+        let mut state = self
+            .state
+            .lock()
+            .expect("execution collector state lock poisoned");
+        if let Some(cycle) = state.current_cycle.take() {
+            state.cycles.push(cycle);
+        }
+        state.current_cycle = Some(Cycle::new(pc));
+    }
+
+    fn record_read(&self, access: (u64, u64, u64)) {
+        self.record_access(access, false);
+    }
+
+    fn record_write(&self, access: (u64, u64, u64)) {
+        self.record_access(access, true);
+    }
+
+    fn record_access(&self, access: (u64, u64, u64), is_write: bool) {
+        let mut state = self
+            .state
+            .lock()
+            .expect("execution collector state lock poisoned");
+        if let Some(cycle) = state.current_cycle.as_mut() {
+            if is_write {
+                cycle.writes.push(access);
+            } else {
+                cycle.reads.push(access);
+            }
+        }
+    }
+
+    fn into_cycles(self) -> Vec<Cycle> {
+        let mut state = self
+            .state
+            .lock()
+            .expect("execution collector state lock poisoned");
+        if let Some(cycle) = state.current_cycle.take() {
+            state.cycles.push(cycle);
+        }
+        std::mem::take(&mut state.cycles)
+    }
+}
+
+impl<S> Layer<S> for PgoExecutionCollector
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+{
+    fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+        let mut visitor = CycleData::default();
+        event.record(&mut visitor);
+
+        if let Some(pc) = visitor.pc {
+            self.start_cycle(pc);
+        }
+
+        match event.metadata().target() {
+            "read" => {
+                if let Some(access) = visitor.memory_access() {
+                    self.record_read(access);
+                }
+            }
+            "write" => {
+                if let Some(access) = visitor.memory_access() {
+                    self.record_write(access);
+                }
+            }
+            _ => {}
         }
     }
 }
