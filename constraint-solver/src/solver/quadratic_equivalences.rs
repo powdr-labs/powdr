@@ -87,6 +87,10 @@ fn process_quadratic_equality_candidate_pair<
     // - X = -A - offset and Y = -A - offset
     // Since `A` has to have some value, we can conclude `X = Y`.
 
+    println!(
+        "Found quadratic equality {} = {} from {}, {rc2}",
+        c1_var, c2_var, rc1,
+    );
     Some((c1_var.clone(), c2_var.clone()))
 }
 

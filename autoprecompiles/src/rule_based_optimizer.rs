@@ -30,14 +30,31 @@ crepe! {
     struct RangeConstraintOnExpression<'a>(&'a GroupedExpression<F, Var>, F, F);
 
     struct Expression<'a>(&'a GroupedExpression<F, Var>);
+    // TODO question to answer: Does this treat different instances of the same expression as equal?
     Expression(e) <- AlgebraicConstraint(e);
     Expression(e) <- BusInteractionConstraint(bus_inter), for e in bus_inter.fields();
+    Expression(q) <- Expression(e), for q in e.quadratic_components().iter().flat_map(|(l, r)| [l, r].into_iter());
 
     struct IsSimpleVar<'a>(&'a GroupedExpression<F, Var>, Var);
     IsSimpleVar(e, v) <- Expression(e), for v in e.try_to_simple_unknown();
 
+    struct SimpleQuadratic<'a>(&'a GroupedExpression<F, Var>, &'a GroupedExpression<F, Var>, &'a GroupedExpression<F, Var>);
+    SimpleQuadratic(q, l, r) <- Expression(q), for (l, r) in q.quadratic_components();
+    SimpleQuadratic(q, l, r) <- SimpleQuadratic(q, r, l);
+
     @output
     struct RangeConstraint(Var, F, F);
+    RangeConstraint(v, min, max) <-
+      RangeConstraintOnExpression(e, min, max),
+      IsSimpleVar(e, v);
+    // TODO wait a second. We can craete range constraints on expressions for all
+    // algebraic constraints. Then we just work on range constraints on expressions
+    // instead of algebraic constraints. Might be more difficult with the scaling, though.
+    RangeConstraint(v, x1, x1 + F::from(1)) <-
+        AlgebraicConstraint(e),
+        SimpleQuadratic(e, l, r),
+        Solvable(l, v, x1),
+        Solvable(r, v, x1 + F::from(1));
 
     struct IsAffine<'a>(&'a GroupedExpression<F, Var>);
     IsAffine(e) <- Expression(e), (e.is_affine());
@@ -54,11 +71,14 @@ crepe! {
       LinearComponentCount(e, 1),
       ExprHasLinearComponent(e, coeff, var);
 
+    struct Solvable<'a>(&'a GroupedExpression<F, Var>, Var, F);
+    Solvable(e, var, -offset / coeff) <-
+      AffineExpression(e, coeff, var, offset);
+
+
     @output
     struct Assignment(Var, F);
-    Assignment(var, -offset / coeff) <-
-      AlgebraicConstraint(e),
-      AffineExpression(e, coeff, var, offset);
+    Assignment(var, v) <- AlgebraicConstraint(e), Solvable(e, var, v);
 }
 
 fn linear_components(expr: &GroupedExpression<F, Var>) -> Vec<(F, Var)> {
