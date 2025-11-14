@@ -964,6 +964,9 @@ pub fn execution_profile_from_guest(
     guest_opts: GuestOptions,
     inputs: StdIn,
 ) -> HashMap<u64, u32> {
+    // HACK: Just run whenever we do PGO
+    execution_data_from_guest(guest, guest_opts.clone(), inputs.clone());
+
     let OriginalCompiledProgram { exe, vm_config, .. } = compile_openvm(guest, guest_opts).unwrap();
     let program = Prog::from(&exe.program);
 
@@ -996,9 +999,17 @@ pub fn execution_data_from_guest(
     // prepare for execute
     let sdk = PowdrExecutionProfileSdkCpu::new(app_config).unwrap();
 
-    execution_data::<BabyBearOpenVmApcAdapter>(&program, || {
+    let result = execution_data::<BabyBearOpenVmApcAdapter>(&program, || {
         sdk.execute(exe.clone(), inputs.clone()).unwrap();
-    })
+    });
+
+    std::fs::write(
+        "execution_data.json",
+        serde_json::to_string_pretty(&result).unwrap(),
+    )
+    .expect("Failed to write execution data to file");
+
+    result
 }
 
 #[cfg(test)]

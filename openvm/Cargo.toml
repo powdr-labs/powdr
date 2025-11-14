@@ -72,6 +72,7 @@ struct-reflection = { git = "https://github.com/gzanitti/struct-reflection-rs.gi
 
 metrics = "0.23.0"
 toml = "0.8.14"
+serde_json = "1.0.140"
 
 rustc-demangle = "0.1.25"
 
@@ -88,7 +89,6 @@ openvm-bigint-circuit.workspace = true
 openvm-pairing-circuit.workspace = true
 openvm-pairing-transpiler.workspace = true
 serde_cbor = "0.11.2"
-serde_json = "1.0.140"
 expect-test = "1.5.1"
 criterion = { version = "0.4", features = ["html_reports"] }
 tracing-log = "0.2.0"
