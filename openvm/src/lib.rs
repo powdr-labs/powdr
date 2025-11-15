@@ -954,7 +954,7 @@ pub fn prove(
                 };
 
                 for row in main.row_slices() {
-                    let pc_value = row[pc_index].to_unique_u32();
+                    let pc_value = row[pc_index].as_canonical_u32();
 
                     if pc_value == 0 {
                         // Padding row!
@@ -979,7 +979,7 @@ pub fn prove(
                     assert_eq!(values_by_col.len(), row.len());
 
                     for (col_idx, value) in row.iter().enumerate() {
-                        values_by_col[col_idx].push(value.to_unique_u32());
+                        values_by_col[col_idx].push(value.as_canonical_u32());
                     }
                 }
             }
