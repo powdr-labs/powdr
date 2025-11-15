@@ -894,6 +894,8 @@ pub fn prove(
         #[cfg(not(feature = "cuda"))]
         let pk = air_inv.keygen::<BabyBearPoseidon2Engine>(&vm.engine);
 
+        let mut trace_values_by_pc = HashMap::new();
+
         for (seg_idx, segment) in segments.into_iter().enumerate() {
             let _segment_span = info_span!("prove_segment", segment = seg_idx).entered();
             // We need a separate span so the metric label includes "segment" from _segment_span
@@ -920,6 +922,39 @@ pub fn prove(
 
             // Generate proving context for each segment
             let ctx = vm.generate_proving_ctx(system_records, record_arenas)?;
+
+            let air_inv = vm.config().create_airs().unwrap();
+            let global_airs = air_inv.into_airs().enumerate().collect::<HashMap<_, _>>();
+
+            for (air_id, proving_context) in &ctx.per_air {
+                if proving_context.cached_mains.len() > 0 {
+                    // Not the case for instruction circuits
+                    continue;
+                }
+                let main = proving_context.common_main.as_ref().unwrap();
+                let main_width = main.width;
+
+                let air = &global_airs[air_id];
+                let air_name = air.name();
+                let Some(column_names) = air.columns() else {
+                    continue;
+                };
+                assert_eq!(main_width, column_names.len());
+
+                let Some(pc_index) = column_names
+                    .iter()
+                    .position(|name| name == "from_state__pc")
+                else {
+                    continue;
+                };
+
+                for row in main.row_slices() {
+                    let pc_value = row[pc_index].to_unique_u32();
+                    let values_by_col =
+                        trace_values_by_pc.entry(pc_value).or_insert(HashMap::new());
+                    
+                }
+            }
 
             // Run the mock prover for each segment
             debug_proving_ctx(vm, &pk, &ctx);
