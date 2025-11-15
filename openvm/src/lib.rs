@@ -50,6 +50,8 @@ use powdr_openvm_hints_transpiler::HintsTranspilerExtension;
 use powdr_riscv_elf::ElfProgram;
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
+use std::collections::hash_map::Entry;
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::BufWriter;
 use std::iter::Sum;
@@ -934,7 +936,7 @@ pub fn prove(
                 .collect::<HashMap<_, _>>();
 
             for (air_id, proving_context) in &ctx.per_air {
-                if proving_context.cached_mains.len() > 0 {
+                if !proving_context.cached_mains.is_empty() {
                     // Not the case for instruction circuits
                     continue;
                 }
@@ -961,9 +963,9 @@ pub fn prove(
                         continue;
                     }
 
-                    if !trace_values_by_pc.contains_key(&pc_value) {
+                    if let Entry::Vacant(e) = trace_values_by_pc.entry(pc_value) {
                         // First time we see this PC, initialize the column -> values map
-                        trace_values_by_pc.insert(pc_value, vec![Vec::new(); row.len()]);
+                        e.insert(vec![Vec::new(); row.len()]);
                         column_names_by_air_id.insert(*air_id, column_names.clone());
                         air_id_by_pc.insert(pc_value, *air_id);
                     }
@@ -1008,14 +1010,14 @@ pub fn prove(
 
         #[derive(Serialize)]
         struct JsonExport {
-            air_id_by_pc: HashMap<u32, usize>,
-            column_names_by_air_id: HashMap<usize, Vec<String>>,
-            column_ranges_by_pc: HashMap<u32, Vec<(u32, u32)>>,
+            air_id_by_pc: BTreeMap<u32, usize>,
+            column_names_by_air_id: BTreeMap<usize, Vec<String>>,
+            column_ranges_by_pc: BTreeMap<u32, Vec<(u32, u32)>>,
         }
         let export = JsonExport {
-            air_id_by_pc,
-            column_names_by_air_id,
-            column_ranges_by_pc,
+            air_id_by_pc: air_id_by_pc.into_iter().collect(),
+            column_names_by_air_id: column_names_by_air_id.into_iter().collect(),
+            column_ranges_by_pc: column_ranges_by_pc.into_iter().collect(),
         };
 
         // Write to pgo_range_constraints.json
