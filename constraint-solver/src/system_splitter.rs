@@ -43,11 +43,13 @@ pub fn split_system<T: RuntimeConstant, V: Clone + Ord + Hash + Display>(
                 }
             }
         }
-        systems.push(ConstraintSystem {
-            algebraic_constraints,
-            bus_interactions,
-            derived_variables: Vec::new(),
-        });
+        if !algebraic_constraints.is_empty() || !bus_interactions.is_empty() {
+            systems.push(ConstraintSystem {
+                algebraic_constraints,
+                bus_interactions,
+                derived_variables: Vec::new(),
+            });
+        }
         // Fine to iterate over a hash set here since the order in which we remove
         // is not relevant.
         #[allow(clippy::iter_over_hash_type)]
