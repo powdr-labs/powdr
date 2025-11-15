@@ -894,6 +894,10 @@ pub fn prove(
         #[cfg(not(feature = "cuda"))]
         let pk = air_inv.keygen::<BabyBearPoseidon2Engine>(&vm.engine);
 
+        let mut trace_values_by_pc = HashMap::new();
+        let mut column_names_by_air_id = HashMap::new();
+        let mut air_id_by_pc = HashMap::new();
+
         for (seg_idx, segment) in segments.into_iter().enumerate() {
             let _segment_span = info_span!("prove_segment", segment = seg_idx).entered();
             // We need a separate span so the metric label includes "segment" from _segment_span
@@ -921,9 +925,102 @@ pub fn prove(
             // Generate proving context for each segment
             let ctx = vm.generate_proving_ctx(system_records, record_arenas)?;
 
+            let global_airs = vm
+                .config()
+                .create_airs()
+                .unwrap()
+                .into_airs()
+                .enumerate()
+                .collect::<HashMap<_, _>>();
+
+            for (air_id, proving_context) in &ctx.per_air {
+                if proving_context.cached_mains.len() > 0 {
+                    // Not the case for instruction circuits
+                    continue;
+                }
+                let main = proving_context.common_main.as_ref().unwrap();
+
+                let air = &global_airs[air_id];
+                let Some(column_names) = air.columns() else {
+                    continue;
+                };
+                assert_eq!(main.width, column_names.len());
+
+                let Some(pc_index) = column_names
+                    .iter()
+                    .position(|name| name == "from_state__pc")
+                else {
+                    continue;
+                };
+
+                for row in main.row_slices() {
+                    let pc_value = row[pc_index].as_canonical_u32();
+
+                    if pc_value == 0 {
+                        // Padding row!
+                        continue;
+                    }
+
+                    if !trace_values_by_pc.contains_key(&pc_value) {
+                        // First time we see this PC, initialize the column -> values map
+                        trace_values_by_pc.insert(pc_value, vec![Vec::new(); row.len()]);
+                        column_names_by_air_id.insert(*air_id, column_names.clone());
+                        air_id_by_pc.insert(pc_value, *air_id);
+                    }
+                    let values_by_col = trace_values_by_pc.get_mut(&pc_value).unwrap();
+                    assert_eq!(
+                        air_id_by_pc[&pc_value],
+                        *air_id,
+                        "Mismatched air IDs for PC {}: {} vs {}",
+                        pc_value,
+                        global_airs[&air_id_by_pc[&pc_value]].name(),
+                        air.name()
+                    );
+                    assert_eq!(values_by_col.len(), row.len());
+
+                    for (col_idx, value) in row.iter().enumerate() {
+                        values_by_col[col_idx].push(value.as_canonical_u32());
+                    }
+                }
+            }
+
             // Run the mock prover for each segment
             debug_proving_ctx(vm, &pk, &ctx);
         }
+
+        // Map all column values to their range (1st and 99th percentile) for each pc
+        let column_ranges_by_pc: HashMap<u32, Vec<(u32, u32)>> = trace_values_by_pc
+            .into_iter()
+            .map(|(pc, values_by_col)| {
+                let column_ranges = values_by_col
+                    .into_iter()
+                    .map(|mut values| {
+                        values.sort_unstable();
+                        let len = values.len();
+                        let p1_index = len / 100; // 1st percentile
+                        let p99_index = len * 99 / 100; // 99th percentile
+                        (values[p1_index], values[p99_index])
+                    })
+                    .collect();
+                (pc, column_ranges)
+            })
+            .collect();
+
+        #[derive(Serialize)]
+        struct JsonExport {
+            air_id_by_pc: HashMap<u32, usize>,
+            column_names_by_air_id: HashMap<usize, Vec<String>>,
+            column_ranges_by_pc: HashMap<u32, Vec<(u32, u32)>>,
+        }
+        let export = JsonExport {
+            air_id_by_pc,
+            column_names_by_air_id,
+            column_ranges_by_pc,
+        };
+
+        // Write to pgo_range_constraints.json
+        let json = serde_json::to_string_pretty(&export).unwrap();
+        std::fs::write("pgo_range_constraints.json", json).unwrap();
     } else {
         let mut app_prover = sdk.app_prover(exe.clone())?;
 

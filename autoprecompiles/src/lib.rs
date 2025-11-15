@@ -7,12 +7,13 @@ use crate::symbolic_machine_generator::convert_machine_field_type;
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
 use powdr::UniqueReferences;
+use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_expression::AlgebraicUnaryOperator;
 use powdr_expression::{
     visitors::Children, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Display;
 use std::io::BufWriter;
 use std::iter::once;
@@ -430,11 +431,32 @@ pub fn build<A: Adapter>(
     metrics::counter!("before_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
 
+    // range constraints from PGO, applied to poly ids
+    let pgo_range_constraints_polyid: BTreeMap<u64, RangeConstraint<A::PowdrField>> =
+        BTreeMap::new();
+    // mapping from poly id to algebraic reference
+    let pgo_range_constraints: BTreeMap<AlgebraicReference, RangeConstraint<A::PowdrField>> =
+        machine
+            .constraints
+            .iter()
+            .filter_map(|c: &SymbolicConstraint<<A as Adapter>::PowdrField>| {
+                if let AlgebraicExpression::Reference(r) = &c.expr {
+                    pgo_range_constraints_polyid
+                        .get(&r.id)
+                        .cloned()
+                        .map(|rc| (r.clone(), rc))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
     let machine = optimizer::optimize::<A>(
         machine,
         vm_config.bus_interaction_handler,
         degree_bound,
         &vm_config.bus_map,
+        pgo_range_constraints,
     )?;
 
     // add guards to constraints that are not satisfied by zeroes

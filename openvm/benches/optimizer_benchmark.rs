@@ -24,6 +24,7 @@ fn optimize_keccak_benchmark(c: &mut Criterion) {
                     OpenVmBusInteractionHandler::default(),
                     DEFAULT_DEGREE_BOUND,
                     &default_openvm_bus_map(),
+                    BTreeMap::new(),
                 )
                 .unwrap()
             },
