@@ -7,7 +7,8 @@ use powdr_constraint_solver::constraint_system::{
     AlgebraicConstraint, ComputationMethod, DerivedVariable,
 };
 use powdr_constraint_solver::inliner::{self, inline_everything_below_degree_bound};
-use powdr_constraint_solver::solver::new_solver;
+use powdr_constraint_solver::range_constraint::RangeConstraint;
+use powdr_constraint_solver::solver::{new_solver, Solver};
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, ConstraintSystem},
     grouped_expression::GroupedExpression,
@@ -31,6 +32,7 @@ pub fn optimize<A: Adapter>(
     bus_interaction_handler: A::BusInteractionHandler,
     degree_bound: DegreeBound,
     bus_map: &BusMap<A::CustomBusTypes>,
+    pgo_range_constraints: BTreeMap<AlgebraicReference, RangeConstraint<A::PowdrField>>,
 ) -> Result<SymbolicMachine<A::PowdrField>, crate::constraint_optimizer::Error> {
     let mut stats_logger = StatsLogger::start(&machine);
 
@@ -41,6 +43,11 @@ pub fn optimize<A: Adapter>(
 
     let mut constraint_system = symbolic_machine_to_constraint_system(machine);
     let mut solver = new_solver(constraint_system.clone(), bus_interaction_handler.clone());
+
+    for (var, constraint) in pgo_range_constraints {
+        solver.add_range_constraint(&var, constraint);
+    }
+
     loop {
         let stats = stats_logger::Stats::from(&constraint_system);
         constraint_system = optimize_constraints::<_, _, A::MemoryBusInteraction<_>>(
