@@ -50,6 +50,7 @@ use powdr_openvm_hints_transpiler::HintsTranspilerExtension;
 use powdr_riscv_elf::ElfProgram;
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
+use std::collections::hash_map::Entry;
 use std::fs::File;
 use std::io::BufWriter;
 use std::iter::Sum;
@@ -934,7 +935,7 @@ pub fn prove(
                 .collect::<HashMap<_, _>>();
 
             for (air_id, proving_context) in &ctx.per_air {
-                if proving_context.cached_mains.len() > 0 {
+                if !proving_context.cached_mains.is_empty() {
                     // Not the case for instruction circuits
                     continue;
                 }
@@ -961,9 +962,9 @@ pub fn prove(
                         continue;
                     }
 
-                    if !trace_values_by_pc.contains_key(&pc_value) {
+                    if let Entry::Vacant(e) = trace_values_by_pc.entry(pc_value) {
                         // First time we see this PC, initialize the column -> values map
-                        trace_values_by_pc.insert(pc_value, vec![Vec::new(); row.len()]);
+                        e.insert(vec![Vec::new(); row.len()]);
                         column_names_by_air_id.insert(*air_id, column_names.clone());
                         air_id_by_pc.insert(pc_value, *air_id);
                     }
