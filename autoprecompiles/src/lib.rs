@@ -431,9 +431,10 @@ pub fn build<A: Adapter>(
     metrics::counter!("before_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
 
-
+    // range constraints from PGO, applied to poly ids
     let pgo_range_constraints_polyid: BTreeMap<u64, RangeConstraint<A::PowdrField>> =
         BTreeMap::new();
+    // mapping from poly id to algebraic reference
     let pgo_range_constraints: BTreeMap<AlgebraicReference, RangeConstraint<A::PowdrField>> =
         machine
             .constraints
