@@ -7,6 +7,7 @@ use crate::symbolic_machine_generator::convert_machine_field_type;
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
 use powdr::UniqueReferences;
+use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_expression::AlgebraicUnaryOperator;
 use powdr_expression::{
     visitors::Children, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
@@ -430,8 +431,25 @@ pub fn build<A: Adapter>(
     metrics::counter!("before_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
 
-    // TODO
-    let pgo_range_constraints = BTreeMap::new();
+    // TODO: from poly id to algebraic reference
+    let pgo_range_constraints_polyid: BTreeMap<u64, RangeConstraint<A::PowdrField>> =
+        BTreeMap::new();
+    let pgo_range_constraints: BTreeMap<AlgebraicReference, RangeConstraint<A::PowdrField>> =
+        machine
+            .constraints
+            .iter()
+            .filter_map(|c: &SymbolicConstraint<<A as Adapter>::PowdrField>| {
+                if let AlgebraicExpression::Reference(r) = &c.expr {
+                    // Single lookup; if missing, skip this entry
+                    pgo_range_constraints_polyid
+                        .get(&r.id)
+                        .cloned()
+                        .map(|rc| (r.clone(), rc))
+                } else {
+                    None
+                }
+            })
+            .collect();
 
     let machine = optimizer::optimize::<A>(
         machine,
