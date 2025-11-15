@@ -935,7 +935,6 @@ pub fn prove(
                 let main_width = main.width;
 
                 let air = &global_airs[air_id];
-                let air_name = air.name();
                 let Some(column_names) = air.columns() else {
                     continue;
                 };
@@ -952,7 +951,12 @@ pub fn prove(
                     let pc_value = row[pc_index].to_unique_u32();
                     let values_by_col =
                         trace_values_by_pc.entry(pc_value).or_insert(HashMap::new());
-                    
+                    for (col_idx, value) in row.iter().enumerate() {
+                        values_by_col
+                            .entry(col_idx as u64)
+                            .or_insert_with(Vec::new)
+                            .push(value.to_unique_u32());
+                    }
                 }
             }
 
