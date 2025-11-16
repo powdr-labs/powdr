@@ -77,6 +77,7 @@ pub mod cuda_abi;
 pub mod extraction_utils;
 pub mod opcode;
 pub mod symbolic_instruction_builder;
+mod tmp_register_analysis;
 mod utils;
 pub use opcode::instruction_allowlist;
 pub use powdr_autoprecompiles::DegreeBound;
