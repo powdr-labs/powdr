@@ -200,7 +200,7 @@ fn run_command(command: Commands) {
             apc_candidates_dir,
         } => {
             let mut powdr_config = default_powdr_openvm_config(autoprecompiles as u64, skip as u64);
-            if let Some(apc_candidates_dir) = apc_candidates_dir {
+            if let Some(apc_candidates_dir) = &apc_candidates_dir {
                 powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
             }
             let execution_profile = powdr_openvm::execution_profile_from_guest(
@@ -213,7 +213,7 @@ fn run_command(command: Commands) {
                 let program =
                     powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config)
                         .unwrap();
-                powdr_openvm::prove(&program, mock, recursion, stdin_from(input), None).unwrap()
+                powdr_openvm::prove(&program, mock, recursion, stdin_from(input), None, apc_candidates_dir).unwrap()
             };
             if let Some(metrics_path) = metrics {
                 run_with_metric_collection_to_file(
