@@ -437,6 +437,7 @@ pub fn build<A: Adapter>(
     let pgo_range_constraints: JsonExport = serde_json::from_str(&pgo_range_constraints_json)
         .expect("JSON format does not match JsonExport struct");
     let range_constraints = pgo_range_constraints.column_ranges_by_pc;
+    let equivalence_classes_by_block = pgo_range_constraints.equivalence_classes_by_block;
 
     // Mapping (instruction index, column index) -> AlgebraicReference
     let reverse_subs = column_allocator
@@ -469,7 +470,18 @@ pub fn build<A: Adapter>(
         }
     }
 
-    println!("apc_start_pc: {}", block.start_pc);
+    for equivalence_class in equivalence_classes_by_block.get(&block.start_pc).unwrap() {
+        let first = equivalence_class.first().unwrap();
+        let first_ref = algebraic_references.get(first).unwrap().clone();
+        for other in equivalence_class.iter().skip(1) {
+            let other_ref = algebraic_references.get(other).unwrap().clone();
+            let constraint = AlgebraicExpression::Reference(first_ref.clone())
+                - AlgebraicExpression::Reference(other_ref.clone());
+            machine
+                .constraints
+                .push(SymbolicConstraint { expr: constraint });
+        }
+    }
 
     let labels = [("apc_start_pc", block.start_pc.to_string())];
     metrics::counter!("before_opt_cols", &labels)
