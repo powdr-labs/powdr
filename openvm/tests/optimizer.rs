@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use expect_test::expect;
 use powdr_autoprecompiles::optimizer::optimize;
 use powdr_autoprecompiles::SymbolicMachine;
@@ -46,7 +44,6 @@ fn test_optimize() {
         OpenVmBusInteractionHandler::default(),
         DEFAULT_DEGREE_BOUND,
         &default_openvm_bus_map(),
-        BTreeMap::new(),
     )
     .unwrap();
 
@@ -78,7 +75,6 @@ fn test_sha256() {
         OpenVmBusInteractionHandler::default(),
         DEFAULT_DEGREE_BOUND,
         &default_openvm_bus_map(),
-        BTreeMap::new(),
     )
     .unwrap();
 

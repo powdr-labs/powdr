@@ -41,7 +41,6 @@ pub fn optimize<A: Adapter>(
 
     let mut constraint_system = symbolic_machine_to_constraint_system(machine);
     let mut solver = new_solver(constraint_system.clone(), bus_interaction_handler.clone());
-
     loop {
         let stats = stats_logger::Stats::from(&constraint_system);
         constraint_system = optimize_constraints::<_, _, A::MemoryBusInteraction<_>>(
