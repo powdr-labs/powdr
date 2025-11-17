@@ -394,9 +394,10 @@ impl<T, I> Apc<T, I> {
 }
 
 /// Allocates global poly_ids and keeps track of substitutions
-struct ColumnAllocator {
+#[derive(Debug)]
+pub struct ColumnAllocator {
     /// For each original air, for each original column index, the associated poly_id in the APC air
-    subs: Vec<Vec<u64>>,
+    pub subs: Vec<Vec<u64>>,
     /// The next poly_id to issue
     next_poly_id: u64,
 }
@@ -408,6 +409,14 @@ impl ColumnAllocator {
         id
     }
 }
+
+ #[derive(Serialize, Deserialize)]
+        pub struct JsonExport {
+        pub    air_id_by_pc: BTreeMap<u32, usize>,
+        pub     column_names_by_air_id: BTreeMap<usize, Vec<String>>,
+        pub     column_ranges_by_pc: BTreeMap<u32, Vec<(u32, u32)>>,
+        pub     equivalence_classes_by_block: BTreeMap<u64, Vec<Vec<(usize, usize)>>>,
+        }
 
 pub fn build<A: Adapter>(
     block: BasicBlock<A::Instruction>,
@@ -422,6 +431,15 @@ pub fn build<A: Adapter>(
         vm_config.instruction_handler,
         &vm_config.bus_map,
     );
+
+
+    let pgo_range_constraints_json = std::fs::read_to_string("pgo_range_constraints.json").expect("Failed to read pgo range constraints json file");
+
+    let pgo_range_constraints: JsonExport = serde_json::from_str(&pgo_range_constraints_json)
+    .expect("JSON format does not match JsonExport struct");
+    
+    
+    println!("apc_start_pc: {}", block.start_pc);
 
     let labels = [("apc_start_pc", block.start_pc.to_string())];
     metrics::counter!("before_opt_cols", &labels)

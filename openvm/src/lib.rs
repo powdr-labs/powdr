@@ -21,6 +21,7 @@ use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
 use openvm_circuit_derive::{Executor, MeteredExecutor, PreflightExecutor};
 use openvm_sdk::config::SdkVmCpuBuilder;
 
+
 use openvm_instructions::program::{Program, DEFAULT_PC_STEP};
 use openvm_sdk::config::TranspilerConfig;
 use openvm_sdk::prover::vm::new_local_prover;
@@ -43,7 +44,7 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
 use powdr_autoprecompiles::evaluation::AirStats;
 use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
-use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
+use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig, JsonExport};
 use powdr_extension::PowdrExtension;
 use powdr_openvm_hints_circuit::{HintsExtension, HintsExtensionExecutor, HintsProverExt};
 use powdr_openvm_hints_transpiler::HintsTranspilerExtension;
@@ -1149,13 +1150,7 @@ pub fn prove(
             })
             .collect();
 
-        #[derive(Serialize)]
-        struct JsonExport {
-            air_id_by_pc: BTreeMap<u32, usize>,
-            column_names_by_air_id: BTreeMap<usize, Vec<String>>,
-            column_ranges_by_pc: BTreeMap<u32, Vec<(u32, u32)>>,
-            equivalence_classes_by_block: BTreeMap<u64, Vec<Vec<(usize, usize)>>>,
-        }
+       
         let export = JsonExport {
             air_id_by_pc: air_id_by_pc.into_iter().collect(),
             column_names_by_air_id: column_names_by_air_id.into_iter().collect(),
