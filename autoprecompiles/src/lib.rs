@@ -7,7 +7,6 @@ use crate::symbolic_machine_generator::convert_machine_field_type;
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
 use powdr::UniqueReferences;
-use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_expression::AlgebraicUnaryOperator;
 use powdr_expression::{
     visitors::Children, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
@@ -410,13 +409,13 @@ impl ColumnAllocator {
     }
 }
 
- #[derive(Serialize, Deserialize)]
-        pub struct JsonExport {
-        pub    air_id_by_pc: BTreeMap<u32, usize>,
-        pub     column_names_by_air_id: BTreeMap<usize, Vec<String>>,
-        pub     column_ranges_by_pc: BTreeMap<u32, Vec<(u32, u32)>>,
-        pub     equivalence_classes_by_block: BTreeMap<u64, Vec<Vec<(usize, usize)>>>,
-        }
+#[derive(Serialize, Deserialize)]
+pub struct JsonExport {
+    pub air_id_by_pc: BTreeMap<u32, usize>,
+    pub column_names_by_air_id: BTreeMap<usize, Vec<String>>,
+    pub column_ranges_by_pc: BTreeMap<u32, Vec<(u32, u32)>>,
+    pub equivalence_classes_by_block: BTreeMap<u64, Vec<Vec<(usize, usize)>>>,
+}
 
 pub fn build<A: Adapter>(
     block: BasicBlock<A::Instruction>,
@@ -426,19 +425,50 @@ pub fn build<A: Adapter>(
 ) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
     let start = std::time::Instant::now();
 
-    let (machine, column_allocator) = statements_to_symbolic_machine::<A>(
+    let (mut machine, column_allocator) = statements_to_symbolic_machine::<A>(
         &block,
         vm_config.instruction_handler,
         &vm_config.bus_map,
     );
 
-
-    let pgo_range_constraints_json = std::fs::read_to_string("pgo_range_constraints.json").expect("Failed to read pgo range constraints json file");
+    let pgo_range_constraints_json = std::fs::read_to_string("pgo_range_constraints.json")
+        .expect("Failed to read pgo range constraints json file");
 
     let pgo_range_constraints: JsonExport = serde_json::from_str(&pgo_range_constraints_json)
-    .expect("JSON format does not match JsonExport struct");
-    
-    
+        .expect("JSON format does not match JsonExport struct");
+    let range_constraints = pgo_range_constraints.column_ranges_by_pc;
+
+    // Mapping (instruction index, column index) -> AlgebraicReference
+    let reverse_subs = column_allocator
+        .subs
+        .iter()
+        .enumerate()
+        .flat_map(|(instr_index, subs)| {
+            subs.iter()
+                .enumerate()
+                .map(move |(col_index, &poly_id)| (poly_id, (instr_index, col_index)))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let algebraic_references = machine
+        .main_columns()
+        .map(|r| (reverse_subs.get(&r.id).unwrap().clone(), r.clone()))
+        .collect::<BTreeMap<_, _>>();
+
+    for i in 0..block.statements.len() {
+        let pc = (block.start_pc + i as u64) as u32;
+        for (col_index, range) in range_constraints.get(&pc).unwrap().iter().enumerate() {
+            if range.0 == range.1 {
+                let value = A::PowdrField::from(range.0 as u64);
+                let reference = algebraic_references.get(&(i, col_index)).unwrap().clone();
+                let constraint =
+                    AlgebraicExpression::Reference(reference) - AlgebraicExpression::Number(value);
+                machine
+                    .constraints
+                    .push(SymbolicConstraint { expr: constraint });
+            }
+        }
+    }
+
     println!("apc_start_pc: {}", block.start_pc);
 
     let labels = [("apc_start_pc", block.start_pc.to_string())];
@@ -449,32 +479,11 @@ pub fn build<A: Adapter>(
     metrics::counter!("before_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
 
-    // range constraints from PGO, applied to poly ids
-    let pgo_range_constraints_polyid: BTreeMap<u64, RangeConstraint<A::PowdrField>> =
-        BTreeMap::new();
-    // mapping from poly id to algebraic reference
-    let pgo_range_constraints: BTreeMap<AlgebraicReference, RangeConstraint<A::PowdrField>> =
-        machine
-            .constraints
-            .iter()
-            .filter_map(|c: &SymbolicConstraint<<A as Adapter>::PowdrField>| {
-                if let AlgebraicExpression::Reference(r) = &c.expr {
-                    pgo_range_constraints_polyid
-                        .get(&r.id)
-                        .cloned()
-                        .map(|rc| (r.clone(), rc))
-                } else {
-                    None
-                }
-            })
-            .collect();
-
     let machine = optimizer::optimize::<A>(
         machine,
         vm_config.bus_interaction_handler,
         degree_bound,
         &vm_config.bus_map,
-        pgo_range_constraints,
     )?;
 
     // add guards to constraints that are not satisfied by zeroes
