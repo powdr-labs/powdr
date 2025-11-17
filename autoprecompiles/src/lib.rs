@@ -36,6 +36,7 @@ pub mod optimizer;
 pub mod pgo;
 pub mod powdr;
 pub mod range_constraint_optimizer;
+pub mod rule_based_optimizer;
 mod stats_logger;
 pub mod symbolic_machine_generator;
 pub use pgo::{PgoConfig, PgoType};
