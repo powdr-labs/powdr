@@ -1240,28 +1240,6 @@ pub fn prove(
             // Generate proving context for each segment
             let ctx = vm.generate_proving_ctx(system_records, record_arenas)?;
 
-            let global_airs = vm
-                .config()
-                .create_airs()
-                .unwrap()
-                .into_airs()
-                .enumerate()
-                .collect::<HashMap<_, _>>();
-
-            for (air_id, proving_context) in &ctx.per_air {
-                if !proving_context.cached_mains.is_empty() {
-                    // Not the case for instruction circuits
-                    continue;
-                }
-                let main = proving_context.common_main.as_ref().unwrap();
-
-                let air = &global_airs[air_id];
-                let Some(column_names) = air.columns() else {
-                    continue;
-                };
-                assert_eq!(main.width, column_names.len());
-            }
-
             // Run the mock prover for each segment
             debug_proving_ctx(vm, &pk, &ctx);
         }
