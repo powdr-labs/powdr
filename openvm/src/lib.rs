@@ -1154,13 +1154,13 @@ pub fn prove(
             air_id_by_pc: BTreeMap<u32, usize>,
             column_names_by_air_id: BTreeMap<usize, Vec<String>>,
             column_ranges_by_pc: BTreeMap<u32, Vec<(u32, u32)>>,
-            intersected_equivalence_classes: BTreeMap<u64, Vec<Vec<(usize, usize)>>>,
+            equivalence_classes_by_block: BTreeMap<u64, Vec<Vec<(usize, usize)>>>,
         }
         let export = JsonExport {
             air_id_by_pc: air_id_by_pc.into_iter().collect(),
             column_names_by_air_id: column_names_by_air_id.into_iter().collect(),
             column_ranges_by_pc: column_ranges_by_pc.into_iter().collect(),
-            intersected_equivalence_classes,
+            equivalence_classes_by_block: intersected_equivalence_classes,
         };
 
         // Write to pgo_range_constraints.json
