@@ -842,12 +842,64 @@ pub fn execute(program: CompiledProgram, inputs: StdIn) -> Result<(), Box<dyn st
     Ok(())
 }
 
+use std::collections::HashSet;
+use std::hash::Hash;
+
+// ChatGPT generated code
+fn intersect_partitions<Id>(partitions: &[Vec<Vec<Id>>]) -> Vec<Vec<Id>>
+where
+    Id: Eq + Hash + Copy,
+{
+    if partitions.is_empty() {
+        return Vec::new();
+    }
+
+    // 1) For each partition, build a map: Id -> class_index
+    let mut maps: Vec<HashMap<Id, usize>> = Vec::with_capacity(partitions.len());
+    for part in partitions {
+        let mut m = HashMap::new();
+        for (class_idx, class) in part.iter().enumerate() {
+            for &id in class {
+                m.insert(id, class_idx);
+            }
+        }
+        maps.push(m);
+    }
+
+    // 2) Collect the universe of all Ids
+    let mut universe: HashSet<Id> = HashSet::new();
+    for part in partitions {
+        for class in part {
+            for &id in class {
+                universe.insert(id);
+            }
+        }
+    }
+
+    // 3) For each Id, build its "signature" of class indices across all partitions
+    //    and group by that signature.
+    let mut grouped: HashMap<Vec<usize>, Vec<Id>> = HashMap::new();
+
+    for &id in &universe {
+        let mut signature = Vec::with_capacity(maps.len());
+        for m in &maps {
+            let class_idx = m.get(&id).expect("id missing in some partition");
+            signature.push(*class_idx);
+        }
+        grouped.entry(signature).or_default().push(id);
+    }
+
+    // 4) Resulting equivalence classes are the grouped values
+    grouped.into_values().collect()
+}
+
 pub fn prove(
     program: &CompiledProgram,
     mock: bool,
     recursion: bool,
     inputs: StdIn,
     segment_height: Option<usize>, // uses the default height if None
+    apc_candidates_dir: Option<PathBuf>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let exe = &program.exe;
     let mut vm_config = program.vm_config.clone();
@@ -895,6 +947,9 @@ pub fn prove(
         let pk = air_inv.keygen::<GpuBabyBearPoseidon2Engine>(&vm.engine);
         #[cfg(not(feature = "cuda"))]
         let pk = air_inv.keygen::<BabyBearPoseidon2Engine>(&vm.engine);
+
+        // Mapping (segment_idx, timestamp) -> Vec<u32>
+        let mut rows_by_time = BTreeMap::new();
 
         let mut trace_values_by_pc = HashMap::new();
         let mut column_names_by_air_id = HashMap::new();
@@ -948,15 +1003,20 @@ pub fn prove(
                 };
                 assert_eq!(main.width, column_names.len());
 
+                // This is the case for all instruction circuits
                 let Some(pc_index) = column_names
                     .iter()
                     .position(|name| name == "from_state__pc")
                 else {
                     continue;
                 };
+                let ts_index = 1;
 
                 for row in main.row_slices() {
-                    let pc_value = row[pc_index].as_canonical_u32();
+                    let row = row.iter().map(|v| v.as_canonical_u32()).collect::<Vec<_>>();
+                    let pc_value = row[pc_index];
+                    let ts_value = row[ts_index];
+                    rows_by_time.insert((seg_idx, ts_value), row.clone());
 
                     if pc_value == 0 {
                         // Padding row!
@@ -981,7 +1041,7 @@ pub fn prove(
                     assert_eq!(values_by_col.len(), row.len());
 
                     for (col_idx, value) in row.iter().enumerate() {
-                        values_by_col[col_idx].push(value.as_canonical_u32());
+                        values_by_col[col_idx].push(*value);
                     }
                 }
             }
@@ -989,6 +1049,87 @@ pub fn prove(
             // Run the mock prover for each segment
             debug_proving_ctx(vm, &pk, &ctx);
         }
+
+        let apc_candidates_dir = apc_candidates_dir.unwrap();
+        let apc_candiates: powdr_autoprecompiles::pgo::JsonExport = {
+            let json_str =
+                std::fs::read_to_string(apc_candidates_dir.join("apc_candidates.json")).unwrap();
+            serde_json::from_str(&json_str).unwrap()
+        };
+        let apcs = apc_candiates.apcs;
+
+        // Block ID -> instruction count mapping
+        let instruction_counts = apcs
+            .iter()
+            .map(|apc| {
+                (
+                    apc.original_block.start_pc,
+                    apc.original_block.statements.len(),
+                )
+            })
+            .collect::<HashMap<_, _>>();
+
+        // Block ID -> Vec<Vec<Row>>
+        let mut block_rows = BTreeMap::new();
+        let mut i = 0;
+        let rows_by_time = rows_by_time.values().collect::<Vec<_>>();
+        while i < rows_by_time.len() {
+            let row = &rows_by_time[i];
+            let pc_value = row[0] as u64;
+
+            if instruction_counts.contains_key(&pc_value) {
+                let instruction_count = instruction_counts[&pc_value];
+                let block_row_slice = &rows_by_time[i..i + instruction_count];
+                block_rows
+                    .entry(pc_value)
+                    .or_insert(Vec::new())
+                    .push(block_row_slice.to_vec());
+                i += instruction_count;
+            } else {
+                i += 1;
+            }
+        }
+
+        // Block ID -> Vec<Vec<Vec<(instruction_index, col_index)>>>:
+        // Indices: block ID, instance idx, equivalence class idx, cell
+        let equivalence_classes = block_rows
+            .into_iter()
+            .map(|(block_id, blocks)| {
+                let classes = blocks
+                    .into_iter()
+                    .map(|rows| {
+                        let value_to_cells = rows
+                            .into_iter()
+                            .enumerate()
+                            .flat_map(|(instruction_index, row)| {
+                                row.iter()
+                                    .enumerate()
+                                    .map(|(col_index, v)| (*v, (instruction_index, col_index)))
+                                    .collect::<Vec<_>>()
+                            })
+                            .into_group_map();
+                        value_to_cells.values().cloned().collect::<Vec<_>>()
+                    })
+                    .collect::<Vec<_>>();
+                (block_id, classes)
+            })
+            .collect::<HashMap<_, _>>();
+
+        // Intersect equivalence classes across all instances
+        let intersected_equivalence_classes = equivalence_classes
+            .into_iter()
+            .map(|(block_id, classes)| {
+                let intersected = intersect_partitions(&classes);
+
+                // Remove singleton classes
+                let intersected = intersected
+                    .into_iter()
+                    .filter(|class| class.len() > 1)
+                    .collect::<Vec<_>>();
+
+                (block_id, intersected)
+            })
+            .collect::<BTreeMap<_, _>>();
 
         // Map all column values to their range (1st and 99th percentile) for each pc
         let column_ranges_by_pc: HashMap<u32, Vec<(u32, u32)>> = trace_values_by_pc
@@ -1013,11 +1154,13 @@ pub fn prove(
             air_id_by_pc: BTreeMap<u32, usize>,
             column_names_by_air_id: BTreeMap<usize, Vec<String>>,
             column_ranges_by_pc: BTreeMap<u32, Vec<(u32, u32)>>,
+            intersected_equivalence_classes: BTreeMap<u64, Vec<Vec<(usize, usize)>>>,
         }
         let export = JsonExport {
             air_id_by_pc: air_id_by_pc.into_iter().collect(),
             column_names_by_air_id: column_names_by_air_id.into_iter().collect(),
             column_ranges_by_pc: column_ranges_by_pc.into_iter().collect(),
+            intersected_equivalence_classes,
         };
 
         // Write to pgo_range_constraints.json
@@ -1096,7 +1239,7 @@ mod tests {
         segment_height: Option<usize>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let program = compile_guest(guest, GuestOptions::default(), config, pgo_config).unwrap();
-        prove(&program, mock, recursion, stdin, segment_height)
+        prove(&program, mock, recursion, stdin, segment_height, None)
     }
 
     fn prove_simple(
@@ -1227,7 +1370,7 @@ mod tests {
                 assert!(!pgo_data.keys().contains(&precompile.apc.block.start_pc));
             });
 
-        let result = prove(&program, false, false, stdin, None);
+        let result = prove(&program, false, false, stdin, None, None);
         assert!(result.is_ok());
     }
 

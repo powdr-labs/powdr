@@ -78,8 +78,8 @@ impl<A, C> CellPgo<A, C> {
 }
 
 #[derive(Serialize, Deserialize)]
-struct JsonExport {
-    apcs: Vec<ApcCandidateJsonExport>,
+pub struct JsonExport {
+    pub apcs: Vec<ApcCandidateJsonExport>,
     labels: BTreeMap<u64, Vec<String>>,
 }
 

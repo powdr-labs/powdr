@@ -14,7 +14,7 @@ mod instruction;
 mod none;
 
 pub use {
-    cell::{ApcCandidateJsonExport, Candidate, CellPgo, KnapsackItem},
+    cell::{ApcCandidateJsonExport, Candidate, CellPgo, JsonExport, KnapsackItem},
     instruction::InstructionPgo,
     none::NonePgo,
 };
