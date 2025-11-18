@@ -516,6 +516,11 @@ pub fn build<A: Adapter>(
         machine.main_columns(),
     );
 
+    machine.constraints.extend(range_analyzer_constraints);
+
+    // TODO: Causes a bug
+    // machine.constraints.extend(equivalence_analyzer_constraints);
+
     let labels = [("apc_start_pc", block.start_pc.to_string())];
     metrics::counter!("before_opt_cols", &labels)
         .absolute(machine.unique_references().count() as u64);
