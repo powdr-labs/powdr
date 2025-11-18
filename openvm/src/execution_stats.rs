@@ -19,7 +19,7 @@ use openvm_stark_sdk::config::FriParameters;
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::blocks::BasicBlock;
-use powdr_autoprecompiles::JsonExport;
+use powdr_autoprecompiles::ExecutionStats;
 use std::collections::hash_map::Entry;
 use std::collections::BTreeMap;
 use std::{collections::HashMap, sync::Arc};
@@ -85,7 +85,7 @@ pub fn execution_stats(
     vm_config: SpecializedConfig,
     inputs: StdIn,
     blocks: &[BasicBlock<Instr<BabyBear>>],
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<ExecutionStats, Box<dyn std::error::Error>> {
     // Set app configuration
     let app_fri_params =
         FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
@@ -297,7 +297,7 @@ pub fn execution_stats(
         })
         .collect();
 
-    let export = JsonExport {
+    let export = ExecutionStats {
         air_id_by_pc: air_id_by_pc.into_iter().collect(),
         column_names_by_air_id: column_names_by_air_id.into_iter().collect(),
         column_ranges_by_pc: column_ranges_by_pc.into_iter().collect(),
@@ -308,5 +308,5 @@ pub fn execution_stats(
     let json = serde_json::to_string_pretty(&export).unwrap();
     std::fs::write("pgo_range_constraints.json", json).unwrap();
 
-    Ok(())
+    Ok(export)
 }

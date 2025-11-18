@@ -4,7 +4,7 @@ use crate::{
     adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, PgoAdapter},
     blocks::BasicBlock,
     pgo::create_apcs_for_all_blocks,
-    PowdrConfig,
+    ExecutionStats, PowdrConfig,
 };
 
 pub struct NonePgo<A> {
@@ -29,6 +29,7 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         _labels: BTreeMap<u64, Vec<String>>,
+        execution_stats: ExecutionStats,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
         // cost = number_of_original_instructions
         blocks.sort_by(|a, b| b.statements.len().cmp(&a.statements.len()));
@@ -42,6 +43,6 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
             );
         }
 
-        create_apcs_for_all_blocks::<Self::Adapter>(blocks, config, vm_config)
+        create_apcs_for_all_blocks::<Self::Adapter>(blocks, config, vm_config, execution_stats)
     }
 }

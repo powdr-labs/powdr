@@ -410,7 +410,7 @@ impl ColumnAllocator {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct JsonExport {
+pub struct ExecutionStats {
     pub air_id_by_pc: BTreeMap<u32, usize>,
     pub column_names_by_air_id: BTreeMap<usize, Vec<String>>,
     pub column_ranges_by_pc: BTreeMap<u32, Vec<(u32, u32)>>,
@@ -422,6 +422,7 @@ pub fn build<A: Adapter>(
     vm_config: AdapterVmConfig<A>,
     degree_bound: DegreeBound,
     apc_candidates_dir_path: Option<&Path>,
+    execution_stats: &ExecutionStats,
 ) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
     let start = std::time::Instant::now();
 
@@ -430,14 +431,8 @@ pub fn build<A: Adapter>(
         vm_config.instruction_handler,
         &vm_config.bus_map,
     );
-
-    let pgo_range_constraints_json = std::fs::read_to_string("pgo_range_constraints.json")
-        .expect("Failed to read pgo range constraints json file");
-
-    let pgo_range_constraints: JsonExport = serde_json::from_str(&pgo_range_constraints_json)
-        .expect("JSON format does not match JsonExport struct");
-    let range_constraints = pgo_range_constraints.column_ranges_by_pc;
-    let equivalence_classes_by_block = pgo_range_constraints.equivalence_classes_by_block;
+    let range_constraints = &execution_stats.column_ranges_by_pc;
+    let equivalence_classes_by_block = &execution_stats.equivalence_classes_by_block;
 
     // Mapping (instruction index, column index) -> AlgebraicReference
     let reverse_subs = column_allocator

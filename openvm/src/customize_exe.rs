@@ -219,7 +219,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         })
         .collect();
 
-    execution_stats(
+    let execution_stats = execution_stats(
         exe.clone(),
         SpecializedConfig::new(
             original_config.clone(),
@@ -232,7 +232,13 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
     .unwrap();
 
     let start = std::time::Instant::now();
-    let apcs = pgo.filter_blocks_and_create_apcs_with_pgo(blocks, &config, vm_config, labels);
+    let apcs = pgo.filter_blocks_and_create_apcs_with_pgo(
+        blocks,
+        &config,
+        vm_config,
+        labels,
+        execution_stats,
+    );
     metrics::gauge!("total_apc_gen_time_ms").set(start.elapsed().as_millis() as f64);
 
     let pc_base = exe.program.pc_base;

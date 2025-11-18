@@ -13,7 +13,7 @@ use crate::{
     blocks::BasicBlock,
     evaluation::EvaluationResult,
     pgo::cell::selection::parallel_fractional_knapsack,
-    PowdrConfig,
+    ExecutionStats, PowdrConfig,
 };
 
 mod selection;
@@ -78,8 +78,8 @@ impl<A, C> CellPgo<A, C> {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct JsonExport {
-    pub apcs: Vec<ApcCandidateJsonExport>,
+struct JsonExport {
+    apcs: Vec<ApcCandidateJsonExport>,
     labels: BTreeMap<u64, Vec<String>>,
 }
 
@@ -92,6 +92,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
+        execution_stats: ExecutionStats,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
         tracing::info!(
             "Generating autoprecompiles with cell PGO for {} blocks",
@@ -131,6 +132,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
                     vm_config.clone(),
                     config.degree_bound,
                     config.apc_candidates_dir_path.as_deref(),
+                    &execution_stats,
                 )
                 .ok()?;
                 let candidate = C::create(

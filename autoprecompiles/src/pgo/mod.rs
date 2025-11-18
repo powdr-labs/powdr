@@ -6,7 +6,7 @@ use strum::{Display, EnumString};
 use crate::{
     adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, ApcWithStats},
     blocks::BasicBlock,
-    PowdrConfig,
+    ExecutionStats, PowdrConfig,
 };
 
 mod cell;
@@ -14,7 +14,7 @@ mod instruction;
 mod none;
 
 pub use {
-    cell::{ApcCandidateJsonExport, Candidate, CellPgo, JsonExport, KnapsackItem},
+    cell::{ApcCandidateJsonExport, Candidate, CellPgo, KnapsackItem},
     instruction::InstructionPgo,
     none::NonePgo,
 };
@@ -77,6 +77,7 @@ fn create_apcs_for_all_blocks<A: Adapter>(
     blocks: Vec<BasicBlock<A::Instruction>>,
     config: &PowdrConfig,
     vm_config: AdapterVmConfig<A>,
+    execution_stats: ExecutionStats,
 ) -> Vec<AdapterApcWithStats<A>> {
     let n_acc = config.autoprecompiles as usize;
     tracing::info!("Generating {n_acc} autoprecompiles in parallel");
@@ -97,6 +98,7 @@ fn create_apcs_for_all_blocks<A: Adapter>(
                 vm_config.clone(),
                 config.degree_bound,
                 config.apc_candidates_dir_path.as_deref(),
+                &execution_stats,
             )
             .unwrap()
         })
