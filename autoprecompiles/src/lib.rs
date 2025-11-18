@@ -455,8 +455,10 @@ fn add_ai_constraints<A: Adapter>(
             if range.0 == range.1 {
                 let value = A::PowdrField::from(range.0 as u64);
                 let Some(reference) = algebraic_references.get(&(i, col_index)).cloned() else {
-                    println!("Missing reference for (i: {}, col_index: {})", i, col_index);
-                    continue;
+                    panic!(
+                        "Missing reference for (i: {}, col_index: {}, block_id: {})",
+                        i, col_index, block.start_pc
+                    );
                 };
                 let constraint =
                     AlgebraicExpression::Reference(reference) - AlgebraicExpression::Number(value);
@@ -470,19 +472,21 @@ fn add_ai_constraints<A: Adapter>(
         for equivalence_class in equivalence_classes {
             let first = equivalence_class.first().unwrap();
             let Some(first_ref) = algebraic_references.get(first).cloned() else {
+                // TODO: This fails in some blocks. For now, just return no extra constraints.
                 println!(
-                    "Missing reference for (i: {}, col_index: {})",
-                    first.0, first.1
+                    "Missing reference for (i: {}, col_index: {}, block_id: {})",
+                    first.0, first.1, block.start_pc
                 );
-                continue;
+                return (range_analyzer_constraints, vec![]);
             };
             for other in equivalence_class.iter().skip(1) {
                 let Some(other_ref) = algebraic_references.get(other).cloned() else {
+                    // TODO: This fails in some blocks. For now, just return no extra constraints.
                     println!(
-                        "Missing reference for (i: {}, col_index: {})",
-                        other.0, other.1
+                        "Missing reference for (i: {}, col_index: {}, block_id: {})",
+                        other.0, other.1, block.start_pc
                     );
-                    continue;
+                    return (range_analyzer_constraints, vec![]);
                 };
                 let constraint = AlgebraicExpression::Reference(first_ref.clone())
                     - AlgebraicExpression::Reference(other_ref.clone());
@@ -517,9 +521,7 @@ pub fn build<A: Adapter>(
     );
 
     machine.constraints.extend(range_analyzer_constraints);
-
-    // TODO: Causes a bug
-    // machine.constraints.extend(equivalence_analyzer_constraints);
+    machine.constraints.extend(equivalence_analyzer_constraints);
 
     let labels = [("apc_start_pc", block.start_pc.to_string())];
     metrics::counter!("before_opt_cols", &labels)
