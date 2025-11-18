@@ -507,7 +507,7 @@ pub fn build<A: Adapter>(
 ) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
     let start = std::time::Instant::now();
 
-    let (mut machine, column_allocator) = statements_to_symbolic_machine::<A>(
+    let (machine, column_allocator) = statements_to_symbolic_machine::<A>(
         &block,
         vm_config.instruction_handler,
         &vm_config.bus_map,
@@ -520,9 +520,6 @@ pub fn build<A: Adapter>(
         machine.main_columns(),
     );
 
-    machine.constraints.extend(range_analyzer_constraints);
-    machine.constraints.extend(equivalence_analyzer_constraints);
-
     let labels = [("apc_start_pc", block.start_pc.to_string())];
     metrics::counter!("before_opt_cols", &labels)
         .absolute(machine.unique_references().count() as u64);
@@ -531,13 +528,30 @@ pub fn build<A: Adapter>(
     metrics::counter!("before_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
 
+    let mut baseline = machine;
+
     let machine = optimizer::optimize::<A>(
-        machine,
+        baseline.clone(),
+        vm_config.bus_interaction_handler.clone(),
+        degree_bound,
+        &vm_config.bus_map,
+    )
+    .unwrap();
+    let dumb_precompile = machine.render(&vm_config.bus_map);
+
+    baseline.constraints.extend(range_analyzer_constraints);
+    baseline
+        .constraints
+        .extend(equivalence_analyzer_constraints);
+
+    let machine = optimizer::optimize::<A>(
+        baseline,
         vm_config.bus_interaction_handler,
         degree_bound,
         &vm_config.bus_map,
     )
     .unwrap();
+    let ai_precompile = machine.render(&vm_config.bus_map);
 
     // add guards to constraints that are not satisfied by zeroes
     let (machine, column_allocator) = add_guards(machine, column_allocator);
@@ -562,6 +576,16 @@ pub fn build<A: Adapter>(
             std::fs::File::create(&ser_path).expect("Failed to create file for APC candidate");
         let writer = BufWriter::new(file);
         serde_cbor::to_writer(writer, &apc).expect("Failed to write APC candidate to file");
+
+        let dumb_path = path
+            .join(format!("apc_candidate_{}_dumb.txt", apc.start_pc()))
+            .with_extension("txt");
+        std::fs::write(dumb_path, dumb_precompile).unwrap();
+
+        let ai_path = path
+            .join(format!("apc_candidate_{}_ai.txt", apc.start_pc()))
+            .with_extension("txt");
+        std::fs::write(ai_path, ai_precompile).unwrap();
     }
 
     metrics::gauge!("apc_gen_time_ms", &labels).set(start.elapsed().as_millis() as f64);
