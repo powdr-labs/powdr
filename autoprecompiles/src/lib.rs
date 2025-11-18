@@ -417,26 +417,23 @@ pub struct ExecutionStats {
     pub equivalence_classes_by_block: BTreeMap<u64, Vec<Vec<(usize, usize)>>>,
 }
 
-pub fn build<A: Adapter>(
-    block: BasicBlock<A::Instruction>,
-    vm_config: AdapterVmConfig<A>,
-    degree_bound: DegreeBound,
-    apc_candidates_dir_path: Option<&Path>,
+fn add_ai_constraints<A: Adapter>(
     execution_stats: &ExecutionStats,
-) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
-    let start = std::time::Instant::now();
-
-    let (mut machine, column_allocator) = statements_to_symbolic_machine::<A>(
-        &block,
-        vm_config.instruction_handler,
-        &vm_config.bus_map,
-    );
+    subs: &[Vec<u64>],
+    block: &BasicBlock<A::Instruction>,
+    columns: impl Iterator<Item = AlgebraicReference>,
+) -> (
+    Vec<SymbolicConstraint<A::PowdrField>>,
+    Vec<SymbolicConstraint<A::PowdrField>>,
+) {
     let range_constraints = &execution_stats.column_ranges_by_pc;
     let equivalence_classes_by_block = &execution_stats.equivalence_classes_by_block;
 
+    let mut range_analyzer_constraints = Vec::new();
+    let mut equivalence_analyzer_constraints = Vec::new();
+
     // Mapping (instruction index, column index) -> AlgebraicReference
-    let reverse_subs = column_allocator
-        .subs
+    let reverse_subs = subs
         .iter()
         .enumerate()
         .flat_map(|(instr_index, subs)| {
@@ -445,8 +442,7 @@ pub fn build<A: Adapter>(
                 .map(move |(col_index, &poly_id)| (poly_id, (instr_index, col_index)))
         })
         .collect::<BTreeMap<_, _>>();
-    let algebraic_references = machine
-        .main_columns()
+    let algebraic_references = columns
         .map(|r| (reverse_subs.get(&r.id).unwrap().clone(), r.clone()))
         .collect::<BTreeMap<_, _>>();
 
@@ -465,40 +461,60 @@ pub fn build<A: Adapter>(
                 let constraint =
                     AlgebraicExpression::Reference(reference) - AlgebraicExpression::Number(value);
 
-                machine
-                    .constraints
-                    .push(SymbolicConstraint { expr: constraint });
+                range_analyzer_constraints.push(SymbolicConstraint { expr: constraint });
             }
         }
     }
 
-    // TODO: This can cause unsatisfiable constraints somehow.
-    // if let Some(equivalence_classes) = equivalence_classes_by_block.get(&block.start_pc) {
-    //     for equivalence_class in equivalence_classes {
-    //         let first = equivalence_class.first().unwrap();
-    //         let Some(first_ref) = algebraic_references.get(first).cloned() else {
-    //             println!(
-    //                 "Missing reference for (i: {}, col_index: {})",
-    //                 first.0, first.1
-    //             );
-    //             continue;
-    //         };
-    //         for other in equivalence_class.iter().skip(1) {
-    //             let Some(other_ref) = algebraic_references.get(other).cloned() else {
-    //                 println!(
-    //                     "Missing reference for (i: {}, col_index: {})",
-    //                     other.0, other.1
-    //                 );
-    //                 continue;
-    //             };
-    //             let constraint = AlgebraicExpression::Reference(first_ref.clone())
-    //                 - AlgebraicExpression::Reference(other_ref.clone());
-    //             machine
-    //                 .constraints
-    //                 .push(SymbolicConstraint { expr: constraint });
-    //         }
-    //     }
-    // }
+    if let Some(equivalence_classes) = equivalence_classes_by_block.get(&block.start_pc) {
+        for equivalence_class in equivalence_classes {
+            let first = equivalence_class.first().unwrap();
+            let Some(first_ref) = algebraic_references.get(first).cloned() else {
+                println!(
+                    "Missing reference for (i: {}, col_index: {})",
+                    first.0, first.1
+                );
+                continue;
+            };
+            for other in equivalence_class.iter().skip(1) {
+                let Some(other_ref) = algebraic_references.get(other).cloned() else {
+                    println!(
+                        "Missing reference for (i: {}, col_index: {})",
+                        other.0, other.1
+                    );
+                    continue;
+                };
+                let constraint = AlgebraicExpression::Reference(first_ref.clone())
+                    - AlgebraicExpression::Reference(other_ref.clone());
+                equivalence_analyzer_constraints.push(SymbolicConstraint { expr: constraint });
+            }
+        }
+    }
+
+    (range_analyzer_constraints, equivalence_analyzer_constraints)
+}
+
+pub fn build<A: Adapter>(
+    block: BasicBlock<A::Instruction>,
+    vm_config: AdapterVmConfig<A>,
+    degree_bound: DegreeBound,
+    apc_candidates_dir_path: Option<&Path>,
+    execution_stats: &ExecutionStats,
+) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
+    let start = std::time::Instant::now();
+
+    let (mut machine, column_allocator) = statements_to_symbolic_machine::<A>(
+        &block,
+        vm_config.instruction_handler,
+        &vm_config.bus_map,
+    );
+
+    let (range_analyzer_constraints, equivalence_analyzer_constraints) = add_ai_constraints::<A>(
+        execution_stats,
+        &column_allocator.subs,
+        &block,
+        machine.main_columns(),
+    );
 
     let labels = [("apc_start_pc", block.start_pc.to_string())];
     metrics::counter!("before_opt_cols", &labels)
