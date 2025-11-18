@@ -230,15 +230,7 @@ fn run_command(command: Commands) {
                     inputs.clone(),
                 )
                 .unwrap();
-                powdr_openvm::prove(
-                    &program,
-                    mock,
-                    recursion,
-                    inputs.clone(),
-                    None,
-                    apc_candidates_dir,
-                )
-                .unwrap()
+                powdr_openvm::prove(&program, mock, recursion, inputs.clone(), None).unwrap()
             };
             if let Some(metrics_path) = metrics {
                 run_with_metric_collection_to_file(

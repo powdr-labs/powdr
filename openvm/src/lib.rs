@@ -852,7 +852,6 @@ pub fn prove(
     recursion: bool,
     inputs: StdIn,
     segment_height: Option<usize>, // uses the default height if None
-    _apc_candidates_dir: Option<PathBuf>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let exe = &program.exe;
     let mut vm_config = program.vm_config.clone();
@@ -1011,7 +1010,7 @@ mod tests {
             stdin.clone(),
         )
         .unwrap();
-        prove(&program, mock, recursion, stdin, segment_height, None)
+        prove(&program, mock, recursion, stdin, segment_height)
     }
 
     fn prove_simple(
@@ -1148,7 +1147,7 @@ mod tests {
                 assert!(!pgo_data.keys().contains(&precompile.apc.block.start_pc));
             });
 
-        let result = prove(&program, false, false, stdin, None, None);
+        let result = prove(&program, false, false, stdin, None);
         assert!(result.is_ok());
     }
 
