@@ -294,6 +294,44 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
     }
 }
 
+impl<T: FieldElement, V: Ord + Clone + Eq> GroupedExpression<T, V> {
+    pub fn substitute_simple(&mut self, variable: &V, substitution: T) {
+        if self.linear.contains_key(variable) {
+            let coeff = self.linear.remove(variable).unwrap();
+            self.constant += coeff * substitution;
+        }
+
+        let mut to_add = GroupedExpression::zero();
+        self.quadratic.retain_mut(|(l, r)| {
+            l.substitute_simple(variable, substitution);
+            r.substitute_simple(variable, substitution);
+            match (l.try_to_known(), r.try_to_known()) {
+                (Some(l), Some(r)) => {
+                    self.constant += l.clone() * r.clone();
+                    false
+                }
+                (Some(l), None) => {
+                    if !l.is_zero() {
+                        to_add += r.clone() * l;
+                    }
+                    false
+                }
+                (None, Some(r)) => {
+                    if !r.is_zero() {
+                        to_add += l.clone() * r;
+                    }
+                    false
+                }
+                _ => true,
+            }
+        });
+        // remove_quadratic_terms_adding_to_zero(&mut self.quadratic);
+
+        if !to_add.is_zero() {
+            *self += to_add;
+        }
+    }
+}
 impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq> GroupedExpression<T, V> {
     /// Substitute a variable by a symbolically known expression. The variable can be known or unknown.
     /// If it was already known, it will be substituted in the known expressions.

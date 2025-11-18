@@ -220,7 +220,8 @@ impl System {
         let expr = {
             let db = self.expressions.borrow();
             let mut expr = db[e].clone();
-            expr.substitute_by_known(&var, &value);
+            // expr.substitute_by_known(&var, &value);
+            expr.substitute_simple(&var, value);
             expr
         };
         self.insert_owned(expr)
@@ -362,23 +363,17 @@ crepe! {
     struct Equivalence(Var, Var);
     Equivalence(v1, v2) <- QuadraticEquivalence(v1, v2);
 
-    AlgebraicConstraint(sys.substitute_by_known(e, v, val)) <-
-      S(sys),
-      AlgebraicConstraint(e),
-      ContainsVariable(e, v),
-      Assignment(v, val);
-
     struct ReplaceAlgebraicConstraintBy(Expr, Expr);
     ReplaceAlgebraicConstraintBy(e, sys.substitute_by_known(e, v, val)) <-
       S(sys),
       AlgebraicConstraint(e),
       ContainsVariable(e, v),
       Assignment(v, val);
-    ReplaceAlgebraicConstraintBy(e, sys.substitute_by_var(e, v, v2)) <-
-      S(sys),
-      AlgebraicConstraint(e),
-      ContainsVariable(e, v),
-      Equivalence(v, v2);
+    // ReplaceAlgebraicConstraintBy(e, sys.substitute_by_var(e, v, v2)) <-
+    //   S(sys),
+    //   AlgebraicConstraint(e),
+    //   ContainsVariable(e, v),
+    //   Equivalence(v, v2);
     AlgebraicConstraint(e) <-
       ReplaceAlgebraicConstraintBy(_, e);
 
@@ -495,9 +490,9 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
     println!("Found {} rule-based assignments", assignments.len());
     println!("Found {} rule-based equivalences", equivalences.len());
     println!("Final algebraic constraints: {}", constrs.len());
-    for FinalAlgebraicConstraint(e) in &constrs {
-        println!("{}", db.format_expr(*e));
-    }
+    // for FinalAlgebraicConstraint(e) in &constrs {
+    //     println!("{}", db.format_expr(*e));
+    // }
     for (var, value) in assignments
         .into_iter()
         .map(|Assignment(var, value)| {
