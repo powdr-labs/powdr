@@ -91,7 +91,8 @@ fn process_quadratic_equality_candidate_pair<
         "Found quadratic equality {} = {} from ({} - {}) * ({})   and  ({} - {}) * ({})",
         c1_var, c2_var, c1.expr, c1.offset, c1.expr, c2.expr, c2.offset, c2.expr
     );
-    Some((c1_var.clone(), c2_var.clone()))
+    None
+    //    Some((c1_var.clone(), c2_var.clone()))
 }
 
 /// This represents an identity `expr * (expr + offset) = 0`,

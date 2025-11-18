@@ -117,6 +117,16 @@ impl System {
         Expr(id)
     }
 
+    pub fn try_to_affine(&self, expr: Expr) -> Option<(F, Var, F)> {
+        let db = self.expressions.borrow();
+        let expr = &db[expr];
+        if !expr.is_affine() {
+            return None;
+        }
+        let (var, coeff) = expr.linear_components().exactly_one().ok()?;
+        Some((*coeff, *var, *expr.constant_offset()))
+    }
+
     // TODO potentially make this a more generic "matches structure" function
     pub fn try_to_simple_quadratic(&self, expr: Expr) -> Option<(Expr, Expr)> {
         let (l, r) = {
@@ -137,11 +147,6 @@ impl System {
 
     /// Returns Some(C) if `a - b = C' and both are affine.
     pub fn constant_difference(&self, a: Expr, b: Expr) -> Option<F> {
-        println!(
-            "Checking constant difference between {} and {}",
-            self.format_expr(a),
-            self.format_expr(b)
-        );
         let db = self.expressions.borrow();
         let a = &db[a];
         let b = &db[b];
@@ -155,11 +160,16 @@ impl System {
 
     /// Checks if a and b are affine constraints that differ in exactly one variable.
     /// TODO scaling
-    pub fn differ_in_exactly_one_variable(&self, a: Expr, b: Expr) -> Option<(Var, Var)> {
+    pub fn differ_in_exactly_one_variable(&self, a_id: Expr, b_id: Expr) -> Option<(Var, Var, F)> {
         let db = self.expressions.borrow();
-        let a = &db[a];
-        let b = &db[b];
-        if !a.is_affine() || !b.is_affine() {
+        let a = &db[a_id];
+        let b = &db[b_id];
+        if !a.is_affine()
+            || !b.is_affine()
+            || a.referenced_unknown_variables().count() != b.referenced_unknown_variables().count()
+            // TODO this is not in the docstring
+            || a.referenced_unknown_variables().count() < 2
+        {
             return None;
         }
         if a.constant_offset() != b.constant_offset() {
@@ -176,12 +186,11 @@ impl System {
             .collect::<HashSet<_>>();
         let left_var = left_vars.difference(&right_vars).exactly_one().ok()?;
         let right_var = right_vars.difference(&left_vars).exactly_one().ok()?;
-        if a.coefficient_of_variable_in_affine_part(left_var)
-            != b.coefficient_of_variable_in_affine_part(right_var)
-        {
+        let coeff = *a.coefficient_of_variable_in_affine_part(left_var).unwrap();
+        if coeff != *b.coefficient_of_variable_in_affine_part(right_var).unwrap() {
             return None;
         }
-        Some((*left_var, *right_var))
+        Some((*left_var, *right_var, coeff))
     }
 
     pub fn format_expr(&self, expr: Expr) -> String {
@@ -192,6 +201,17 @@ impl System {
                 .to_string()
         } else {
             db[expr].to_string()
+        }
+    }
+
+    pub fn format_var(&self, var: Var) -> String {
+        if let Some(var_to_string) = &self.var_to_string {
+            var_to_string
+                .get(&var)
+                .cloned()
+                .unwrap_or_else(|| var.to_string())
+        } else {
+            var.to_string()
         }
     }
 }
@@ -212,6 +232,15 @@ crepe! {
     @input
     struct RangeConstraintOnExpression(Expr, F, F);
 
+    struct Expression(Expr);
+    Expression(e) <- AlgebraicConstraint(e);
+    Expression(e) <- RangeConstraintOnExpression(e, _, _);
+
+    struct AffineExpression(Expr, F, Var, F);
+    AffineExpression(e, coeff, var, offset) <-
+      Expression(e),
+      S(sys),
+      let Some((coeff, var, offset)) = sys.try_to_affine(e);
 
     @output
     struct RangeConstraint(Var, F, F);
@@ -220,18 +249,25 @@ crepe! {
       S(sys),
       let Some(v) = sys.try_to_simple_var(e);
 
-    // struct Product(Expr, Expr, Expr);
-    // Product(e, l, r) <-
-    //   AlgebraicConstraint(e),
-    //   S(sys),
-    //   let Some((l, r)) = sys.try_to_simple_quadratic(e);
+    // TODO conditions on the range constraint
+    RangeConstraint(v, min / coeff, max / coeff) <-
+      RangeConstraintOnExpression(e, min, max),
+      AffineExpression(e, coeff, v, offset),
+      (offset == F::zero());
+
+    struct Product(Expr, Expr, Expr);
+    Product(e, l, r) <-
+      Expression(e),
+      S(sys),
+      let Some((l, r)) = sys.try_to_simple_quadratic(e);
+    Product(e, r, l) <- Product(e, l, r);
 
     // (E, expr, offset) <-> E = (expr) * (expr + offset) is a constraint
     struct QuadraticEquivalenceCandidate(Expr, Expr, F);
     QuadraticEquivalenceCandidate(e, r, offset) <-
        AlgebraicConstraint(e),
        S(sys),
-       let Some((l, r)) = sys.try_to_simple_quadratic(e),
+       Product(e, l, r),
        let Some(offset) = sys.constant_difference(l, r);
 
     struct QuadraticEquivalence(Var, Var);
@@ -239,39 +275,35 @@ crepe! {
       QuadraticEquivalenceCandidate(_, expr1, offset),
       QuadraticEquivalenceCandidate(_, expr2, offset),
       S(sys),
-      let Some((v1, v2)) = sys.differ_in_exactly_one_variable(expr1, expr2),
+      let Some((v1, v2, coeff)) = sys.differ_in_exactly_one_variable(expr1, expr2),
       RangeConstraint(v1, min, max),
       RangeConstraint(v2, min, max),
-      (min + offset >= max); // TODO not exactly
+      (min + (offset / coeff) >= max); // TODO not exactly
 
 
     // TODO wait a second. We can craete range constraints on expressions for all
     // algebraic constraints. Then we just work on range constraints on expressions
     // instead of algebraic constraints. Might be more difficult with the scaling, though.
-    // RangeConstraint(v, x1, x1 + F::from(1)) <-
-    //     AlgebraicConstraint(e),
-    //     Product(e, l, r),
-    //     Solvable(l, v, x1),
-    //     Solvable(r, v, x1 + F::from(1));
 
-    // struct IsZero<'a>(&'a GroupedExpression<F, Var>);
-    // IsZero(e) <- Expression(e), (e.is_zero());
 
-    // struct IsAffine<'a>(&'a GroupedExpression<F, Var>);
-    // IsAffine(e) <- Expression(e), (e.is_affine());
 
-    // struct AffineExpression<'a>(&'a GroupedExpression<F, Var>, F, Var, F);
-    // AffineExpression(e, coeff, var, offset) <-
-    //   DestructureAffine(e, coeff, var, rest),
-    //   for offset in rest.try_to_number();
 
-    // struct Solvable<'a>(&'a GroupedExpression<F, Var>, Var, F);
-    // Solvable(e, var, -offset / coeff) <-
-    //   AffineExpression(e, coeff, var, offset);
+    struct Solvable(Expr, Var, F);
+    Solvable(e, var, -offset / coeff) <-
+      AffineExpression(e, coeff, var, offset);
+
+    // Boolean range constraint
+    RangeConstraint(v, x1, x1 + F::from(1)) <-
+      AlgebraicConstraint(e),
+      Product(e, l, r),
+      Solvable(l, v, x1),
+      Solvable(r, v, x1 + F::from(1));
 
     @output
     struct Assignment(Var, F);
-    // Assignment(var, v) <- AlgebraicConstraint(e), Solvable(e, var, v);
+    Assignment(var, v) <-
+      AlgebraicConstraint(e),
+      Solvable(e, var, v);
 
     @output
     struct Equivalence(Var, Var);
@@ -363,8 +395,8 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
 
     let (rcs, assignments, equivalences) = rt.run();
     let run_end = std::time::Instant::now();
-    // for RangeConstraint(var, min, max) in rcs {
-    //     log::info!(
+    // for RangeConstraint(var, min, max) in &rcs {
+    //     println!(
     //         "Rule-based range constraint: {} in [{}, {}]",
     //         var_mapper.backward(&var),
     //         min,
@@ -386,6 +418,13 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
     {
         // log::info!("Rule-based assignment: {var} = {value}",);
         system.substitute_by_known(var, &value);
+    }
+    for Equivalence(v1, v2) in &equivalences {
+        // log::info!("Rule-based equivalence: {v1} == {v2}",);
+        let v1 = var_mapper.backward(&v1).clone();
+        let v2 = var_mapper.backward(&v2).clone();
+        let (v1, v2) = if v1 < v2 { (v1, v2) } else { (v2, v1) };
+        system.substitute_by_unknown(&v2, &GroupedExpression::from_unknown_variable(v1.clone()));
     }
     let substitution_end = std::time::Instant::now();
 
