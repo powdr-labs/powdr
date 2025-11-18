@@ -374,14 +374,15 @@ where
 
     /// Tries to find equivalent variables using quadratic constraints.
     fn try_solve_quadratic_equivalences(&mut self) -> bool {
-        let equivalences = quadratic_equivalences::find_quadratic_equalities(
-            self.constraint_system.system().algebraic_constraints(),
-            &*self,
-        );
-        for (x, y) in &equivalences {
-            self.apply_assignment(y, &GroupedExpression::from_unknown_variable(x.clone()));
-        }
-        !equivalences.is_empty()
+        false
+        // let equivalences = quadratic_equivalences::find_quadratic_equalities(
+        //     self.constraint_system.system().algebraic_constraints(),
+        //     &*self,
+        // );
+        // for (x, y) in &equivalences {
+        //     self.apply_assignment(y, &GroupedExpression::from_unknown_variable(x.clone()));
+        // }
+        // !equivalences.is_empty()
     }
 
     /// Find groups of variables with a small set of possible assignments.

@@ -87,12 +87,7 @@ fn process_quadratic_equality_candidate_pair<
     // - X = -A - offset and Y = -A - offset
     // Since `A` has to have some value, we can conclude `X = Y`.
 
-    println!(
-        "Found quadratic equality {} = {} from ({} - {}) * ({})   and  ({} - {}) * ({})",
-        c1_var, c2_var, c1.expr, c1.offset, c1.expr, c2.expr, c2.offset, c2.expr
-    );
-    None
-    //    Some((c1_var.clone(), c2_var.clone()))
+    Some((c1_var.clone(), c2_var.clone()))
 }
 
 /// This represents an identity `expr * (expr + offset) = 0`,
