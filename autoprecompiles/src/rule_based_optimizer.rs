@@ -2,7 +2,7 @@
 #![allow(for_loops_over_fallibles)]
 use std::{
     cell::RefCell,
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     fmt::Display,
     hash::Hash,
     ops::Index,
@@ -108,15 +108,32 @@ impl System {
 
     pub fn insert(&self, expr: &GroupedExpression<F, Var>) -> Expr {
         let mut db = self.expressions.borrow_mut();
-        let id = if let Some(&id) = db.reverse.get(&expr) {
-            id
+        if let Some(&id) = db.reverse.get(expr) {
+            Expr(id)
         } else {
-            db.expressions.push(expr.clone());
-            let id = db.expressions.len() - 1;
-            db.reverse.insert(expr.clone(), id);
-            id
-        };
+            self.insert_owned_new(&mut db, expr.clone())
+        }
+    }
+
+    pub fn insert_owned(&self, expr: GroupedExpression<F, Var>) -> Expr {
+        let mut db = self.expressions.borrow_mut();
+        if let Some(&id) = db.reverse.get(&expr) {
+            Expr(id)
+        } else {
+            self.insert_owned_new(&mut db, expr)
+        }
+    }
+
+    fn insert_owned_new(&self, db: &mut DB, expr: GroupedExpression<F, Var>) -> Expr {
+        db.expressions.push(expr.clone());
+        let id = db.expressions.len() - 1;
+        db.reverse.insert(expr, id);
         Expr(id)
+    }
+
+    pub fn referenced_variable(&self, expr: Expr) -> BTreeSet<Var> {
+        let db = self.expressions.borrow();
+        db[expr].referenced_unknown_variables().cloned().collect()
     }
 
     pub fn try_to_affine(&self, expr: Expr) -> Option<(F, Var, F)> {
@@ -127,6 +144,10 @@ impl System {
         }
         let (var, coeff) = expr.linear_components().exactly_one().ok()?;
         Some((*coeff, *var, *expr.constant_offset()))
+    }
+
+    pub fn is_zero(&self, expr: Expr) -> bool {
+        self.expressions.borrow()[expr].is_zero()
     }
 
     // TODO potentially make this a more generic "matches structure" function
@@ -195,6 +216,29 @@ impl System {
         Some((*left_var, *right_var, coeff))
     }
 
+    pub fn substitute_by_known(&self, e: Expr, var: Var, value: F) -> Expr {
+        let expr = {
+            let db = self.expressions.borrow();
+            let mut expr = db[e].clone();
+            expr.substitute_by_known(&var, &value);
+            expr
+        };
+        self.insert_owned(expr)
+    }
+
+    pub fn substitute_by_var(&self, e: Expr, var: Var, replacement: Var) -> Expr {
+        let expr = {
+            let db = self.expressions.borrow();
+            let mut expr = db[e].clone();
+            expr.substitute_by_unknown(
+                &var,
+                &GroupedExpression::from_unknown_variable(replacement),
+            );
+            expr
+        };
+        self.insert_owned(expr)
+    }
+
     pub fn format_expr(&self, expr: Expr) -> String {
         let db = self.expressions.borrow();
         if let Some(var_to_string) = &self.var_to_string {
@@ -226,7 +270,10 @@ crepe! {
     struct S<'a>(&'a System);
 
     @input
+    struct InitialAlgebraicConstraint(Expr);
+
     struct AlgebraicConstraint(Expr);
+    AlgebraicConstraint(e) <- InitialAlgebraicConstraint(e);
 
     // @input
     // struct BusInteractionConstraint<'a>(&'a BusInteraction<GroupedExpression<F, Var>>);
@@ -237,6 +284,12 @@ crepe! {
     struct Expression(Expr);
     Expression(e) <- AlgebraicConstraint(e);
     Expression(e) <- RangeConstraintOnExpression(e, _);
+
+    struct ContainsVariable(Expr, Var);
+    ContainsVariable(e, v) <-
+      Expression(e),
+      S(sys),
+      for v in sys.referenced_variable(e);
 
     struct AffineExpression(Expr, F, Var, F);
     AffineExpression(e, coeff, var, offset) <-
@@ -288,9 +341,6 @@ crepe! {
     // algebraic constraints. Then we just work on range constraints on expressions
     // instead of algebraic constraints. Might be more difficult with the scaling, though.
 
-
-
-
     struct Solvable(Expr, Var, F);
     Solvable(e, var, -offset / coeff) <-
       AffineExpression(e, coeff, var, offset);
@@ -311,6 +361,40 @@ crepe! {
     @output
     struct Equivalence(Var, Var);
     Equivalence(v1, v2) <- QuadraticEquivalence(v1, v2);
+
+    AlgebraicConstraint(sys.substitute_by_known(e, v, val)) <-
+      S(sys),
+      AlgebraicConstraint(e),
+      ContainsVariable(e, v),
+      Assignment(v, val);
+
+    struct ReplaceAlgebraicConstraintBy(Expr, Expr);
+    ReplaceAlgebraicConstraintBy(e, sys.substitute_by_known(e, v, val)) <-
+      S(sys),
+      AlgebraicConstraint(e),
+      ContainsVariable(e, v),
+      Assignment(v, val);
+    ReplaceAlgebraicConstraintBy(e, sys.substitute_by_var(e, v, v2)) <-
+      S(sys),
+      AlgebraicConstraint(e),
+      ContainsVariable(e, v),
+      Equivalence(v, v2);
+    AlgebraicConstraint(e) <-
+      ReplaceAlgebraicConstraintBy(_, e);
+
+
+    // This constraint has been replaced by a different one (or is redundant).
+    struct AlgebraicConstraintDeleted(Expr);
+    AlgebraicConstraintDeleted(e) <-
+      ReplaceAlgebraicConstraintBy(e, _);
+    AlgebraicConstraintDeleted(e) <-
+      S(sys),
+      AlgebraicConstraint(e),
+      (sys.is_zero(e));
+
+    @output
+    struct FinalAlgebraicConstraint(Expr);
+    FinalAlgebraicConstraint(e) <- AlgebraicConstraint(e), !AlgebraicConstraintDeleted(e);
 }
 
 pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
@@ -381,7 +465,7 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         transformed_expressions
             .iter()
             .copied()
-            .map(AlgebraicConstraint),
+            .map(InitialAlgebraicConstraint),
     );
     // rt.extend(bus_interactions.iter().map(BusInteractionConstraint));
     rt.extend(range_constraints);
@@ -397,7 +481,7 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
 
     let insert_end = std::time::Instant::now();
 
-    let (rcs, assignments, equivalences) = rt.run();
+    let (rcs, assignments, equivalences, constrs) = rt.run();
     let run_end = std::time::Instant::now();
     // for RangeConstraint(var, min, max) in &rcs {
     //     println!(
@@ -410,6 +494,10 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
     println!("Found {} rule-based RCs", rcs.len());
     println!("Found {} rule-based assignments", assignments.len());
     println!("Found {} rule-based equivalences", equivalences.len());
+    println!("Final algebraic constraints: {}", constrs.len());
+    for FinalAlgebraicConstraint(e) in &constrs {
+        println!("{}", db.format_expr(*e));
+    }
     for (var, value) in assignments
         .into_iter()
         .map(|Assignment(var, value)| {
