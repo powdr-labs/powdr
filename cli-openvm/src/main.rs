@@ -146,8 +146,14 @@ fn run_command(command: Commands) {
                 stdin_from(input),
             );
             let pgo_config = pgo_config(pgo, max_columns, execution_profile);
-            let program =
-                powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config).unwrap();
+            let program = powdr_openvm::compile_guest(
+                &guest,
+                guest_opts,
+                powdr_config,
+                pgo_config,
+                stdin_from(input),
+            )
+            .unwrap();
             write_program_to_file(program, &format!("{guest}_compiled.cbor")).unwrap();
         }
 
@@ -172,9 +178,14 @@ fn run_command(command: Commands) {
             );
             let pgo_config = pgo_config(pgo, max_columns, execution_profile);
             let compile_and_exec = || {
-                let program =
-                    powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config)
-                        .unwrap();
+                let program = powdr_openvm::compile_guest(
+                    &guest,
+                    guest_opts,
+                    powdr_config,
+                    pgo_config,
+                    stdin_from(input),
+                )
+                .unwrap();
                 powdr_openvm::execute(program, stdin_from(input)).unwrap();
             };
             if let Some(metrics_path) = metrics {
@@ -203,17 +214,31 @@ fn run_command(command: Commands) {
             if let Some(apc_candidates_dir) = &apc_candidates_dir {
                 powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
             }
+            let inputs = stdin_from(input);
             let execution_profile = powdr_openvm::execution_profile_from_guest(
                 &guest,
                 guest_opts.clone(),
-                stdin_from(input),
+                inputs.clone(),
             );
             let pgo_config = pgo_config(pgo, max_columns, execution_profile);
             let compile_and_prove = || {
-                let program =
-                    powdr_openvm::compile_guest(&guest, guest_opts, powdr_config, pgo_config)
-                        .unwrap();
-                powdr_openvm::prove(&program, mock, recursion, stdin_from(input), None, apc_candidates_dir).unwrap()
+                let program = powdr_openvm::compile_guest(
+                    &guest,
+                    guest_opts,
+                    powdr_config,
+                    pgo_config,
+                    inputs.clone(),
+                )
+                .unwrap();
+                powdr_openvm::prove(
+                    &program,
+                    mock,
+                    recursion,
+                    inputs.clone(),
+                    None,
+                    apc_candidates_dir,
+                )
+                .unwrap()
             };
             if let Some(metrics_path) = metrics {
                 run_with_metric_collection_to_file(

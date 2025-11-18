@@ -5,9 +5,9 @@
 
 use eyre::Result;
 use itertools::Itertools;
-use openvm_circuit::arch::execution_mode::metered::segment_ctx::SegmentationLimits;
 use openvm_circuit::arch::execution_mode::Segment;
 use openvm_circuit::arch::{PreflightExecutionOutput, VirtualMachine, VmCircuitConfig, VmInstance};
+use openvm_instructions::exe::VmExe;
 use openvm_sdk::prover::vm::new_local_prover;
 use openvm_sdk::{
     config::{AppConfig, DEFAULT_APP_LOG_BLOWUP},
@@ -18,14 +18,15 @@ use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPermutationEngine;
 use openvm_stark_sdk::config::FriParameters;
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
+use powdr_autoprecompiles::blocks::BasicBlock;
 use powdr_autoprecompiles::JsonExport;
 use std::collections::hash_map::Entry;
 use std::collections::BTreeMap;
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 #[cfg(not(feature = "cuda"))]
 use crate::PowdrSdkCpu;
-use crate::{CompiledProgram, SpecializedConfigCpuBuilder};
+use crate::{Instr, SpecializedConfig, SpecializedConfigCpuBuilder};
 use tracing::info_span;
 
 use std::collections::HashSet;
@@ -80,27 +81,11 @@ where
 }
 
 pub fn execution_stats(
-    program: &CompiledProgram,
+    exe: Arc<VmExe<BabyBear>>,
+    vm_config: SpecializedConfig,
     inputs: StdIn,
-    segment_height: Option<usize>, // uses the default height if None
-    apc_candidates_dir: Option<PathBuf>,
+    blocks: &[BasicBlock<Instr<BabyBear>>],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let exe = &program.exe;
-    let mut vm_config = program.vm_config.clone();
-
-    // DefaultSegmentationStrategy { max_segment_len: 4194204, max_cells_per_chip_in_segment: 503304480 }
-    if let Some(segment_height) = segment_height {
-        vm_config
-            .sdk
-            .config_mut()
-            .sdk
-            .system
-            .config
-            .segmentation_limits =
-            SegmentationLimits::default().with_max_trace_height(segment_height as u32);
-        tracing::debug!("Setting max segment len to {}", segment_height);
-    }
-
     // Set app configuration
     let app_fri_params =
         FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
@@ -226,23 +211,10 @@ pub fn execution_stats(
         }
     }
 
-    let apc_candidates_dir = apc_candidates_dir.unwrap();
-    let apc_candiates: powdr_autoprecompiles::pgo::JsonExport = {
-        let json_str =
-            std::fs::read_to_string(apc_candidates_dir.join("apc_candidates.json")).unwrap();
-        serde_json::from_str(&json_str).unwrap()
-    };
-    let apcs = apc_candiates.apcs;
-
     // Block ID -> instruction count mapping
-    let instruction_counts = apcs
+    let instruction_counts = blocks
         .iter()
-        .map(|apc| {
-            (
-                apc.original_block.start_pc,
-                apc.original_block.statements.len(),
-            )
-        })
+        .map(|block| (block.start_pc, block.statements.len()))
         .collect::<HashMap<_, _>>();
 
     // Block ID -> Vec<Vec<Row>>
