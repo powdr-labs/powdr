@@ -13,10 +13,12 @@ use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler},
     grouped_expression::{GroupedExpression, GroupedExpressionComponent, NoRangeConstraints},
     indexed_constraint_system::IndexedConstraintSystem,
+    range_constraint::RangeConstraint,
     runtime_constant::VarTransformable,
 };
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 
+use num_traits::One;
 use num_traits::Zero;
 
 use crepe::crepe;
@@ -230,11 +232,11 @@ crepe! {
     // struct BusInteractionConstraint<'a>(&'a BusInteraction<GroupedExpression<F, Var>>);
 
     @input
-    struct RangeConstraintOnExpression(Expr, F, F);
+    struct RangeConstraintOnExpression(Expr, RangeConstraint<F>);
 
     struct Expression(Expr);
     Expression(e) <- AlgebraicConstraint(e);
-    Expression(e) <- RangeConstraintOnExpression(e, _, _);
+    Expression(e) <- RangeConstraintOnExpression(e, _);
 
     struct AffineExpression(Expr, F, Var, F);
     AffineExpression(e, coeff, var, offset) <-
@@ -243,17 +245,18 @@ crepe! {
       let Some((coeff, var, offset)) = sys.try_to_affine(e);
 
     @output
-    struct RangeConstraint(Var, F, F);
-    RangeConstraint(v, min, max) <-
-      RangeConstraintOnExpression(e, min, max),
-      S(sys),
-      let Some(v) = sys.try_to_simple_var(e);
-
-    // TODO conditions on the range constraint
-    RangeConstraint(v, min / coeff, max / coeff) <-
-      RangeConstraintOnExpression(e, min, max),
+    struct RangeConstraintOnVar(Var, RangeConstraint<F>);
+    // RC(coeff * var + offset) = rc <=>
+    // coeff * RC(var) + offset = rc <=>
+    // RC(var) = (rc - offset) / coeff
+    RangeConstraintOnVar(v, rc.combine_sum(&RangeConstraint::from_value(offset)).multiple(F::one() / coeff)) <-
+      RangeConstraintOnExpression(e, rc),
       AffineExpression(e, coeff, v, offset),
-      (offset == F::zero());
+      (coeff != F::zero());
+
+    RangeConstraintOnVar(v, v_rc1.conjunction(&v_rc2)) <-
+      RangeConstraintOnVar(v, v_rc1),
+      RangeConstraintOnVar(v, v_rc2);
 
     struct Product(Expr, Expr, Expr);
     Product(e, l, r) <-
@@ -276,9 +279,9 @@ crepe! {
       QuadraticEquivalenceCandidate(_, expr2, offset),
       S(sys),
       let Some((v1, v2, coeff)) = sys.differ_in_exactly_one_variable(expr1, expr2),
-      RangeConstraint(v1, min, max),
-      RangeConstraint(v2, min, max),
-      (min + (offset / coeff) >= max); // TODO not exactly
+      RangeConstraintOnVar(v1, rc),
+      RangeConstraintOnVar(v2, rc),
+      (rc.is_disjoint(&rc.combine_sum(&RangeConstraint::from_value(offset / coeff))));
 
 
     // TODO wait a second. We can craete range constraints on expressions for all
@@ -293,7 +296,7 @@ crepe! {
       AffineExpression(e, coeff, var, offset);
 
     // Boolean range constraint
-    RangeConstraint(v, x1, x1 + F::from(1)) <-
+    RangeConstraintOnVar(v, RangeConstraint::from_range(x1, x1 + F::from(1))) <-
       AlgebraicConstraint(e),
       Product(e, l, r),
       Solvable(l, v, x1),
@@ -308,7 +311,6 @@ crepe! {
     @output
     struct Equivalence(Var, Var);
     Equivalence(v1, v2) <- QuadraticEquivalence(v1, v2);
-
 }
 
 pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
@@ -362,11 +364,13 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                 .zip_eq(range_constraints)
                 .map(|(expr, rc)| {
                     let (min, max) = rc.range();
-                    RangeConstraintOnExpression(
-                        *expr,
-                        BabyBearField::from(min.to_arbitrary_integer()),
-                        BabyBearField::from(max.to_arbitrary_integer()),
+                    let mask = *rc.mask();
+                    let rc = RangeConstraint::from_range(
+                        F::from(min.to_arbitrary_integer()),
+                        F::from(max.to_arbitrary_integer()),
                     )
+                    .conjunction(&RangeConstraint::from_mask(mask.try_into_u64().unwrap()));
+                    RangeConstraintOnExpression(*expr, rc)
                 })
         })
         .collect_vec();
