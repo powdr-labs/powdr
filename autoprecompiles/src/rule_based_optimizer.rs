@@ -8,7 +8,7 @@ use std::{
     ops::Index,
 };
 
-use itertools::Itertools;
+use itertools::{EitherOrBoth, Itertools};
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler},
     grouped_expression::{GroupedExpression, GroupedExpressionComponent, NoRangeConstraints},
@@ -192,22 +192,29 @@ impl System {
         if a.constant_offset() != b.constant_offset() {
             return None;
         }
-        // TODO use merge_join_by? (avoid creating the HashSet)
-        let left_vars = a
+        let mut joined = a
             .linear_components()
-            .map(|(v, _)| *v)
-            .collect::<HashSet<_>>();
-        let right_vars = b
-            .linear_components()
-            .map(|(v, _)| *v)
-            .collect::<HashSet<_>>();
-        let left_var = left_vars.difference(&right_vars).exactly_one().ok()?;
-        let right_var = right_vars.difference(&left_vars).exactly_one().ok()?;
-        let coeff = *a.coefficient_of_variable_in_affine_part(left_var).unwrap();
-        if coeff != *b.coefficient_of_variable_in_affine_part(right_var).unwrap() {
+            // Join the sorted iterators into another sorted list,
+            // noting where the items came from.
+            .merge_join_by(b.linear_components(), Ord::cmp)
+            // Remove those that are equal in both iterators.
+            .filter(|either| !matches!(either, EitherOrBoth::Both(_, _)));
+        let first_diff = joined.next()?;
+        let second_diff = joined.next()?;
+        if joined.next() != None {
             return None;
         }
-        Some((*left_var, *right_var, coeff))
+        let (left_var, right_var, coeff) = match (first_diff, second_diff) {
+            (EitherOrBoth::Left((lv, lc)), EitherOrBoth::Right((rv, rc)))
+            | (EitherOrBoth::Right((rv, rc)), EitherOrBoth::Left((lv, lc))) => {
+                if lc != rc {
+                    return None;
+                }
+                (*lv, *rv, *lc)
+            }
+            _ => return None,
+        };
+        Some((left_var, right_var, coeff))
     }
 
     pub fn substitute_by_known(&self, e: Expr, var: Var, value: F) -> Expr {
