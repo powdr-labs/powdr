@@ -1,8 +1,6 @@
-#![allow(clippy::iter_over_hash_type)]
-#![allow(for_loops_over_fallibles)]
 use std::{
     cell::RefCell,
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeSet, HashMap},
     fmt::Display,
     hash::Hash,
     ops::Index,
@@ -228,6 +226,7 @@ impl System {
         self.insert_owned(expr)
     }
 
+    #[allow(dead_code)]
     pub fn substitute_by_var(&self, e: Expr, var: Var, replacement: Var) -> Expr {
         let expr = {
             let db = self.expressions.borrow();
@@ -241,6 +240,7 @@ impl System {
         self.insert_owned(expr)
     }
 
+    #[allow(dead_code)]
     pub fn format_expr(&self, expr: Expr) -> String {
         let db = self.expressions.borrow();
         if let Some(var_to_string) = &self.var_to_string {
@@ -252,6 +252,7 @@ impl System {
         }
     }
 
+    #[allow(dead_code)]
     pub fn format_var(&self, var: Var) -> String {
         if let Some(var_to_string) = &self.var_to_string {
             var_to_string
@@ -592,26 +593,48 @@ fn transform_grouped_expression<T: FieldElement, V: Hash + Eq + Ord + Clone + Di
         .sum()
 }
 
-/// Returns a set of expressions that are missing a single affine component.
-fn extract_single_vars(
-    expr: &GroupedExpression<F, Var>,
-) -> HashSet<(GroupedExpression<F, Var>, F, Var, GroupedExpression<F, Var>)> {
-    let mut result = expr
-        .quadratic_components()
-        .iter()
-        .flat_map(|(l, r)| {
-            extract_single_vars(l)
-                .into_iter()
-                .chain(extract_single_vars(r))
-        })
-        .collect::<HashSet<_>>();
-    result.extend(expr.linear_components().map(|(v, c)| {
-        (
-            expr.clone(),
-            *c,
-            *v,
-            expr.clone() - GroupedExpression::from_unknown_variable(*v) * (*c),
-        )
-    }));
-    result
+#[cfg(test)]
+mod tests {
+    use expect_test::expect;
+    use powdr_constraint_solver::{
+        algebraic_constraint, constraint_system::DefaultBusInteractionHandler,
+    };
+
+    use super::*;
+
+    fn assert_zero<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
+        expr: GroupedExpression<T, V>,
+    ) -> algebraic_constraint::AlgebraicConstraint<GroupedExpression<T, V>> {
+        algebraic_constraint::AlgebraicConstraint::assert_zero(expr)
+    }
+
+    fn var(name: &str) -> GroupedExpression<BabyBearField, String> {
+        GroupedExpression::from_unknown_variable(name.to_string())
+    }
+
+    fn constant(value: i64) -> GroupedExpression<BabyBearField, String> {
+        GroupedExpression::from_number(BabyBearField::from(value))
+    }
+
+    #[test]
+    fn test_rule_based_optimization_empty() {
+        let system: IndexedConstraintSystem<BabyBearField, String> =
+            IndexedConstraintSystem::default();
+        let optimized_system =
+            rule_based_optimization(system, DefaultBusInteractionHandler::default());
+        assert_eq!(optimized_system.system().algebraic_constraints.len(), 0);
+    }
+
+    #[test]
+    fn test_rule_based_optimization_simple_assignment() {
+        let mut system = IndexedConstraintSystem::default();
+        let x = var("x");
+        system.add_algebraic_constraints([
+            assert_zero(x * F::from(7) - constant(21)),
+            assert_zero(var("y") * (var("y") - constant(1)) - var("x")),
+        ]);
+        let optimized_system =
+            rule_based_optimization(system, DefaultBusInteractionHandler::default());
+        expect!["(y) * (y - 1) - 3 = 0"].assert_eq(&optimized_system.to_string());
+    }
 }

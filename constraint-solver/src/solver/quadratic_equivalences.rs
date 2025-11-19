@@ -12,6 +12,7 @@ use crate::{
 };
 
 /// Given a list of constraints, tries to determine pairs of equivalent variables.
+#[allow(dead_code)]
 pub fn find_quadratic_equalities<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
     constraints: &[AlgebraicConstraint<GroupedExpression<T, V>>],
     range_constraints: impl RangeConstraintProvider<T, V>,
