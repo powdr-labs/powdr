@@ -12,7 +12,7 @@ use crate::solver::boolean_extractor::BooleanExtractor;
 use crate::solver::constraint_splitter::try_split_constraint;
 use crate::solver::linearizer::Linearizer;
 use crate::solver::var_transformation::Variable;
-use crate::solver::{exhaustive_search, quadratic_equivalences, Error, Solver, VariableAssignment};
+use crate::solver::{exhaustive_search, Error, Solver, VariableAssignment};
 use crate::utils::possible_concrete_values;
 
 use std::collections::{BTreeSet, HashMap, HashSet};

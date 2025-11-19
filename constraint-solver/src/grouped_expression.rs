@@ -307,7 +307,7 @@ impl<T: FieldElement, V: Ord + Clone + Eq> GroupedExpression<T, V> {
             r.substitute_simple(variable, substitution);
             match (l.try_to_known(), r.try_to_known()) {
                 (Some(l), Some(r)) => {
-                    self.constant += l.clone() * r.clone();
+                    self.constant += *l * *r;
                     false
                 }
                 (Some(l), None) => {

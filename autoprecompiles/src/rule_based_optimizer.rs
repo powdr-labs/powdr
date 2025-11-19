@@ -8,7 +8,7 @@ use std::{
     ops::Index,
 };
 
-use itertools::{EitherOrBoth, Itertools};
+use itertools::Itertools;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler},
     grouped_expression::{GroupedExpression, GroupedExpressionComponent, NoRangeConstraints},
@@ -18,13 +18,9 @@ use powdr_constraint_solver::{
 };
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 
-use num_traits::One;
-use num_traits::Zero;
+use num_traits::{One, Zero};
 
 use crepe::crepe;
-use slab::Slab;
-
-use crate::range_constraint_optimizer::RangeConstraintHandler;
 
 type F = BabyBearField;
 
@@ -33,7 +29,7 @@ struct Var(u32);
 
 impl Display for Var {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "v{}", self.0)
+        write!(f, "v_{}", self.0)
     }
 }
 
@@ -67,7 +63,7 @@ impl Default for System {
 }
 
 impl PartialEq for System {
-    fn eq(&self, other: &Self) -> bool {
+    fn eq(&self, _other: &Self) -> bool {
         // TODO change this as soon as we have different systems
         true
     }
@@ -76,14 +72,14 @@ impl PartialEq for System {
 impl Eq for System {}
 
 impl PartialOrd for System {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, _other: &Self) -> Option<std::cmp::Ordering> {
         // TODO change this as soon as we have different systems
         Some(std::cmp::Ordering::Equal)
     }
 }
 
 impl Ord for System {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, _other: &Self) -> std::cmp::Ordering {
         // TODO change this as soon as we have different systems
         std::cmp::Ordering::Equal
     }
@@ -101,10 +97,6 @@ impl System {
         assert!(self.var_to_string.is_none());
         self.var_to_string = Some(mapping);
     }
-    // pub fn get(&self, expr: Expr) -> &GroupedExpression<F, Var> {
-    //     let b = self.expressions.borrow();
-    //     b.get(expr.0).unwrap()
-    // }
 
     pub fn insert(&self, expr: &GroupedExpression<F, Var>) -> Expr {
         let mut db = self.expressions.borrow_mut();
@@ -151,7 +143,7 @@ impl System {
     }
 
     // TODO potentially make this a more generic "matches structure" function
-    pub fn try_to_simple_quadratic(&self, expr: Expr) -> Option<(Expr, Expr)> {
+    pub fn try_as_single_product(&self, expr: Expr) -> Option<(Expr, Expr)> {
         let (l, r) = {
             let db = self.expressions.borrow();
             let (l, r) = db[expr].try_as_single_product()?;
@@ -163,7 +155,8 @@ impl System {
         Some((self.insert(&l), self.insert(&r)))
     }
 
-    pub fn try_to_simple_var(&self, expr: Expr) -> Option<Var> {
+    #[allow(dead_code)]
+    pub fn try_as_single_var(&self, expr: Expr) -> Option<Var> {
         let db = self.expressions.borrow();
         db[expr].try_to_simple_unknown()
     }
@@ -181,8 +174,10 @@ impl System {
         .then(|| *a.constant_offset() - *b.constant_offset())
     }
 
-    /// Checks if a and b are affine constraints that differ in exactly one variable.
-    /// TODO scaling
+    /// If this returns `Some((v1, v2, coeff))`, then `a` and `b` are affine expressions
+    /// such that `b` is obtained from `a` when replacing `v1` by `v2` and
+    /// `coeff` is the coefficient of `v1` in `a` (and also of `v2` in `b`)
+    /// also `a` and `b` have at least two variables each.
     pub fn differ_in_exactly_one_variable(&self, a_id: Expr, b_id: Expr) -> Option<(Var, Var, F)> {
         let db = self.expressions.borrow();
         let a = &db[a_id];
@@ -190,7 +185,6 @@ impl System {
         if !a.is_affine()
             || !b.is_affine()
             || a.referenced_unknown_variables().count() != b.referenced_unknown_variables().count()
-            // TODO this is not in the docstring
             || a.referenced_unknown_variables().count() < 2
         {
             return None;
@@ -303,7 +297,7 @@ crepe! {
     // RC(coeff * var + offset) = rc <=>
     // coeff * RC(var) + offset = rc <=>
     // RC(var) = (rc - offset) / coeff
-    RangeConstraintOnVar(v, rc.combine_sum(&RangeConstraint::from_value(offset)).multiple(F::one() / coeff)) <-
+    RangeConstraintOnVar(v, rc.combine_sum(&RangeConstraint::from_value(-offset)).multiple(F::one() / coeff)) <-
       RangeConstraintOnExpression(e, rc),
       AffineExpression(e, coeff, v, offset),
       (coeff != F::zero());
@@ -316,7 +310,7 @@ crepe! {
     Product(e, l, r) <-
       Expression(e),
       S(sys),
-      let Some((l, r)) = sys.try_to_simple_quadratic(e);
+      let Some((l, r)) = sys.try_as_single_product(e);
     Product(e, r, l) <- Product(e, l, r);
 
     // (E, expr, offset) <-> E = (expr) * (expr + offset) is a constraint
@@ -508,11 +502,13 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
     }
     for Equivalence(v1, v2) in &equivalences {
         // log::info!("Rule-based equivalence: {v1} == {v2}",);
-        let v1 = var_mapper.backward(&v1).clone();
-        let v2 = var_mapper.backward(&v2).clone();
+        let v1 = var_mapper.backward(v1).clone();
+        let v2 = var_mapper.backward(v2).clone();
         let (v1, v2) = if v1 < v2 { (v1, v2) } else { (v2, v1) };
         system.substitute_by_unknown(&v2, &GroupedExpression::from_unknown_variable(v1.clone()));
     }
+    system.retain_algebraic_constraints(|constraint| !constraint.is_redundant());
+    system.retain_bus_interactions(|bus_interaction| !bus_interaction.multiplicity.is_zero());
     let substitution_end = std::time::Instant::now();
 
     log::info!(
@@ -599,7 +595,7 @@ fn extract_single_vars(
         .flat_map(|(l, r)| {
             extract_single_vars(l)
                 .into_iter()
-                .chain(extract_single_vars(r).into_iter())
+                .chain(extract_single_vars(r))
         })
         .collect::<HashSet<_>>();
     result.extend(expr.linear_components().map(|(v, c)| {
@@ -607,7 +603,7 @@ fn extract_single_vars(
             expr.clone(),
             *c,
             *v,
-            expr.clone() - GroupedExpression::from_unknown_variable(v.clone()) * (*c),
+            expr.clone() - GroupedExpression::from_unknown_variable(*v) * (*c),
         )
     }));
     result
