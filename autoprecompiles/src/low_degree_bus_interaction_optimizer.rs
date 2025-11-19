@@ -184,7 +184,7 @@ impl<
             })
             .filter(|function| {
                 self.has_few_possible_values(
-                    function.inputs.iter().map(|f| f.range_constraint.clone()),
+                    function.inputs.iter().map(|f| f.range_constraint),
                     MAX_DOMAIN_SIZE,
                 )
             })
