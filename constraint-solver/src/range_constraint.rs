@@ -35,7 +35,7 @@ use powdr_number::{log2_exact, FieldElement, LargeInt};
 /// of the full system.
 ///
 /// Finally, please be aware that same constraint can have multiple representations.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct RangeConstraint<T: FieldElement> {
     /// Bit-mask. A value `x` is allowed only if `x & mask == x` (when seen as unsigned integer).
     mask: T::Integer,

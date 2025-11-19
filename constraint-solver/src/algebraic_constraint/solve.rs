@@ -317,7 +317,7 @@ fn effect_to_range_constraint<T: FieldElement, V: Ord + Clone + Eq>(
     effect: &Effect<T, V>,
 ) -> Option<(V, RangeConstraint<T>)> {
     match effect {
-        Effect::RangeConstraint(var, rc) => Some((var.clone(), rc.clone())),
+        Effect::RangeConstraint(var, rc) => Some((var.clone(), *rc)),
         Effect::Assignment(var, value) => Some((var.clone(), value.range_constraint())),
         _ => None,
     }
@@ -465,8 +465,7 @@ mod tests {
         let b = Qse::from_unknown_variable("b");
         let c = Qse::from_unknown_variable("c");
         let z = Qse::from_unknown_variable("Z");
-        let range_constraints =
-            HashMap::from([("a", rc.clone()), ("b", rc.clone()), ("c", rc.clone())]);
+        let range_constraints = HashMap::from([("a", rc), ("b", rc), ("c", rc)]);
         // a * 0x100 + b * 0x10000 + c * 0x1000000 + 10 - Z = 0
         let ten = constant(10);
         let constr =
@@ -503,7 +502,7 @@ mod tests {
         let Effect::RangeConstraint(var, rc) = effect else {
             panic!();
         };
-        (var, rc.clone())
+        (var, *rc)
     }
 
     #[test]
@@ -583,7 +582,7 @@ mod tests {
     fn bool_plus_one_cant_be_zero() {
         let expr = var("a") + constant(1);
         let rc = RangeConstraint::from_mask(0x1u64);
-        let range_constraints = HashMap::from([("a", rc.clone())]);
+        let range_constraints = HashMap::from([("a", rc)]);
         assert!(AlgebraicConstraint::assert_zero(&expr)
             .solve(&range_constraints)
             .is_err());

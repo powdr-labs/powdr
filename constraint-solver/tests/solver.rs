@@ -155,8 +155,8 @@ impl BusInteractionHandler<GoldilocksField> for TestBusInteractionHandler {
                             ^ b.to_integer().try_into_u64().unwrap(),
                     );
                     vec![
-                        bus_interaction.payload[0].clone(),
-                        bus_interaction.payload[1].clone(),
+                        bus_interaction.payload[0],
+                        bus_interaction.payload[1],
                         RangeConstraint::from_value(result),
                     ]
                 } else {
