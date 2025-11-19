@@ -12,7 +12,7 @@ use crate::solver::boolean_extractor::BooleanExtractor;
 use crate::solver::constraint_splitter::try_split_constraint;
 use crate::solver::linearizer::Linearizer;
 use crate::solver::var_transformation::Variable;
-use crate::solver::{exhaustive_search, Error, Solver, VariableAssignment};
+use crate::solver::{exhaustive_search, quadratic_equivalences, Error, Solver, VariableAssignment};
 use crate::utils::possible_concrete_values;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -374,15 +374,15 @@ where
 
     /// Tries to find equivalent variables using quadratic constraints.
     fn try_solve_quadratic_equivalences(&mut self) -> bool {
-        false
-        // let equivalences = quadratic_equivalences::find_quadratic_equalities(
-        //     self.constraint_system.system().algebraic_constraints(),
-        //     &*self,
-        // );
-        // for (x, y) in &equivalences {
-        //     self.apply_assignment(y, &GroupedExpression::from_unknown_variable(x.clone()));
-        // }
-        // !equivalences.is_empty()
+        // false
+        let equivalences = quadratic_equivalences::find_quadratic_equalities(
+            self.constraint_system.system().algebraic_constraints(),
+            &*self,
+        );
+        for (x, y) in &equivalences {
+            self.apply_assignment(y, &GroupedExpression::from_unknown_variable(x.clone()));
+        }
+        !equivalences.is_empty()
     }
 
     /// Find groups of variables with a small set of possible assignments.

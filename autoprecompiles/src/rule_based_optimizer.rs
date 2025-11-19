@@ -404,6 +404,7 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
     if T::modulus().to_arbitrary_integer() != BabyBearField::modulus().to_arbitrary_integer() {
         return system;
     }
+    println!("{system}");
     let start = std::time::Instant::now();
     let mut rt = Crepe::new();
 
@@ -601,6 +602,7 @@ mod tests {
     use expect_test::expect;
     use powdr_constraint_solver::{
         algebraic_constraint, constraint_system::DefaultBusInteractionHandler,
+        runtime_constant::RuntimeConstant,
     };
 
     use super::*;
@@ -617,6 +619,75 @@ mod tests {
 
     fn constant(value: i64) -> GroupedExpression<BabyBearField, String> {
         GroupedExpression::from_number(BabyBearField::from(value))
+    }
+
+    fn handle_variable_range_checker<T: FieldElement>(
+        payload: &[RangeConstraint<T>],
+    ) -> Vec<RangeConstraint<T>> {
+        const MAX_BITS: u64 = 25;
+        // See: https://github.com/openvm-org/openvm/blob/v1.0.0/crates/circuits/primitives/src/var_range/bus.rs
+        // Expects (x, bits), where `x` is in the range [0, 2^bits - 1]
+        let [_x, bits] = payload else {
+            panic!("Expected arguments (x, bits)");
+        };
+        match bits.try_to_single_value() {
+            Some(bits_value) if bits_value.to_degree() <= MAX_BITS => {
+                let bits_value = bits_value.to_integer().try_into_u64().unwrap();
+                let mask = (1u64 << bits_value) - 1;
+                vec![RangeConstraint::from_mask(mask), *bits]
+            }
+            _ => {
+                vec![
+                    RangeConstraint::from_mask((1u64 << MAX_BITS) - 1),
+                    RangeConstraint::from_range(T::from(0), T::from(MAX_BITS)),
+                ]
+            }
+        }
+    }
+
+    fn try_handle_bus_interaction(
+        bus_interaction: &BusInteraction<RangeConstraint<F>>,
+    ) -> Option<BusInteraction<RangeConstraint<F>>> {
+        let mult = bus_interaction.multiplicity.try_to_single_value()?;
+        if mult == Zero::zero() {
+            return None;
+        }
+        let bus_id = bus_interaction
+            .bus_id
+            .try_to_single_value()?
+            .to_integer()
+            .try_into_u64()?;
+        let payload_constraints = match bus_id {
+            3 => handle_variable_range_checker(&bus_interaction.payload),
+            _ => return None,
+        };
+        Some(BusInteraction {
+            payload: payload_constraints,
+            ..bus_interaction.clone()
+        })
+    }
+
+    #[derive(Clone)]
+    struct TestBusInteractionHandler;
+
+    impl BusInteractionHandler<F> for TestBusInteractionHandler {
+        fn handle_bus_interaction(
+            &self,
+            bus_interaction: BusInteraction<RangeConstraint<F>>,
+        ) -> BusInteraction<RangeConstraint<F>> {
+            try_handle_bus_interaction(&bus_interaction).unwrap_or(bus_interaction)
+        }
+    }
+
+    fn bit_constraint(
+        variable: &str,
+        bits: u32,
+    ) -> BusInteraction<GroupedExpression<BabyBearField, String>> {
+        BusInteraction {
+            bus_id: constant(3),
+            payload: vec![var(variable), constant(bits as i64)],
+            multiplicity: constant(1),
+        }
     }
 
     #[test]
@@ -639,5 +710,59 @@ mod tests {
         let optimized_system =
             rule_based_optimization(system, DefaultBusInteractionHandler::default());
         expect!["(y) * (y - 1) - 3 = 0"].assert_eq(&optimized_system.to_string());
+    }
+
+    #[test]
+    fn test_rule_based_optimization_quadratic_equality() {
+        let mut system = IndexedConstraintSystem::default();
+        system.add_algebraic_constraints([
+            assert_zero(
+                (constant(30720) * var("rs1_data__0_1") + constant(7864320) * var("rs1_data__1_1")
+                    - constant(30720) * var("mem_ptr_limbs__0_1")
+                    + constant(737280))
+                    * (constant(30720) * var("rs1_data__0_1")
+                        + constant(7864320) * var("rs1_data__1_1")
+                        - constant(30720) * var("mem_ptr_limbs__0_1")
+                        + constant(737281)),
+            ),
+            assert_zero(
+                (constant(30720) * var("rs1_data__0_1") + constant(7864320) * var("rs1_data__1_1")
+                    - constant(30720) * var("mem_ptr_limbs__0_2")
+                    + constant(737280))
+                    * (constant(30720) * var("rs1_data__0_1")
+                        + constant(7864320) * var("rs1_data__1_1")
+                        - constant(30720) * var("mem_ptr_limbs__0_2")
+                        + constant(737281)),
+            ),
+        ]);
+        system.add_bus_interactions([
+            bit_constraint("rs1_data__0_1", 8),
+            bit_constraint("rs1_data__1_1", 8),
+            BusInteraction {
+                bus_id: constant(3),
+                multiplicity: constant(1),
+                payload: vec![
+                    constant(-503316480) * var("mem_ptr_limbs__0_1"),
+                    constant(14),
+                ],
+            },
+            BusInteraction {
+                bus_id: constant(3),
+                multiplicity: constant(1),
+                payload: vec![
+                    constant(-503316480) * var("mem_ptr_limbs__0_2"),
+                    constant(14),
+                ],
+            },
+        ]);
+        let optimized_system = rule_based_optimization(system, TestBusInteractionHandler);
+        // Note that in the system below, mem_ptr_limbs__0_2 has been eliminated
+        expect![[r#"
+            (30720 * mem_ptr_limbs__0_1 - 30720 * rs1_data__0_1 - 7864320 * rs1_data__1_1 - 737280) * (30720 * mem_ptr_limbs__0_1 - 30720 * rs1_data__0_1 - 7864320 * rs1_data__1_1 - 737281) = 0
+            (30720 * mem_ptr_limbs__0_1 - 30720 * rs1_data__0_1 - 7864320 * rs1_data__1_1 - 737280) * (30720 * mem_ptr_limbs__0_1 - 30720 * rs1_data__0_1 - 7864320 * rs1_data__1_1 - 737281) = 0
+            BusInteraction { bus_id: 3, multiplicity: 1, payload: rs1_data__0_1, 8 }
+            BusInteraction { bus_id: 3, multiplicity: 1, payload: rs1_data__1_1, 8 }
+            BusInteraction { bus_id: 3, multiplicity: 1, payload: -(503316480 * mem_ptr_limbs__0_1), 14 }
+            BusInteraction { bus_id: 3, multiplicity: 1, payload: -(503316480 * mem_ptr_limbs__0_1), 14 }"#]].assert_eq(&optimized_system.to_string());
     }
 }
