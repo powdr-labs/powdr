@@ -48,7 +48,9 @@ impl<'a, T: 'a, E: AllChildren<AlgebraicExpression<T>>> UniqueReferences<'a, T> 
                     None
                 }
             })
-            .unique()
+            .map(|r| (r.id, r))
+            .collect::<BTreeMap<_, _>>()
+            .into_values()
     }
 }
 
@@ -76,6 +78,7 @@ pub fn globalize_references<T: FieldElement>(
 
     let subs = (next_global_id..(next_global_id + machine_size)).collect::<Vec<_>>();
     next_global_id += machine_size;
+    println!("globalize_references subs: {:?}", subs);
     (next_global_id, subs, machine)
 }
 

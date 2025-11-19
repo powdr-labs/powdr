@@ -178,6 +178,10 @@ pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
         col_subs.push(subs);
     }
 
+    col_subs.iter().for_each(|subs| {
+        println!("statements_to_symbolic_machine subs: {:?}", subs);
+    });
+
     (
         SymbolicMachine {
             constraints,

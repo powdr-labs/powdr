@@ -17,8 +17,7 @@ use openvm_stark_backend::{
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
-    expression::{AlgebraicExpression, AlgebraicReference},
-    Apc, SymbolicBusInteraction,
+    Apc, Substitution, SymbolicBusInteraction, expression::{AlgebraicExpression, AlgebraicReference}
 };
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
@@ -205,6 +204,83 @@ impl PowdrTraceGeneratorGpu {
             return None;
         }
 
+        // Map from apc poly id to its index in the final apc trace
+        let apc_poly_id_to_index: BTreeMap<u64, usize> = self
+            .apc
+            .machine
+            .main_columns()
+            .enumerate()
+            .map(|(index, c)| (c.id, index))
+            .collect();
+
+        // allocate for apc trace
+        let width = apc_poly_id_to_index.len();
+        let height = next_power_of_two_or_zero(num_apc_calls);
+
+        let mut output = DeviceMatrix::<BabyBear>::with_capacity(height, width);
+
+        let alu_subs: Vec<_> =
+            self.apc
+                // go through original instructions
+                .instructions()
+                .iter()
+                // along with their substitutions
+                .zip_eq(self.apc.subs())
+                // map to `(air_name, substitutions)`
+                .filter_map(|(instr, subs)| {
+                    let air_name = &self.original_airs.opcode_to_air[&instr.0.opcode];
+                    if *air_name == "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>" {
+                        Some(subs)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+        alu_subs.iter().for_each(|subs_for_row| {
+            println!("alu subs for row len: {}", subs_for_row.len());
+            println!("alu subs for row: {:?}", subs_for_row);
+        });
+
+        let alu_air_width = self
+            .original_airs
+            .air_name_to_machine
+            .get("VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>")
+            .map(|machine| machine.1.widths.main)
+            .expect("Failed to get ALU air");
+
+        println!("alu air width: {}", alu_air_width);
+
+        let calls_per_apc_row = alu_subs.len() as u32;
+
+        let padded_alu_subs: Vec<u32> = alu_subs
+            .iter()
+            .flat_map(|subs_for_row| {
+                let mut row = vec![u32::MAX; alu_air_width];
+                for sub in subs_for_row.iter() {
+                    assert!(
+                        sub.original_poly_index < alu_air_width,
+                        "substitution index {} exceeds ALU width ({})",
+                        sub.original_poly_index,
+                        alu_air_width
+                    );
+                    let apc_col =
+                        apc_poly_id_to_index[&sub.apc_poly_id];
+                    row[sub.original_poly_index] =
+                        u32::try_from(apc_col).expect("APC column index fits in u32");
+                }
+                row.into_iter()
+            })
+            .collect();
+
+        println!("padded_alu_subs len: {}", padded_alu_subs.len());
+        println!("padded_alu_subs: {:?}", padded_alu_subs);
+
+        let alu_subs_device = padded_alu_subs
+            .to_device()
+            .expect("Failed to copy ALU substitutions to device");
+        debug_assert_eq!(alu_subs_device.len(), padded_alu_subs.len());
+
         let chip_inventory = {
             let airs: AirInventory<BabyBearSC> =
                 create_dummy_airs(&self.config.sdk_config.sdk, self.periphery.dummy.clone())
@@ -227,32 +303,28 @@ impl PowdrTraceGeneratorGpu {
             .filter_map(|(insertion_idx, chip)| {
                 let air_name = chip_inventory.airs().ext_airs()[insertion_idx].name();
 
+                println!("air name: {}", air_name);
+
                 let record_arena = {
                     match original_arenas.take_arena(&air_name) {
-                        Some(ra) => ra,
+                        Some(ra) => {
+                            println!("arena air name: {}", air_name);
+                            ra
+                        },
                         None => return None, // skip this iteration, because we only have record arena for chips that are used
                     }
                 };
 
+                if air_name == "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>" {
+                    chip.generate_proving_ctx_new(record_arena, output.buffer(), &alu_subs_device, calls_per_apc_row as u32);
+                    return None;
+                }
+                
                 let shared_trace = chip.generate_proving_ctx(record_arena).common_main.unwrap();
 
                 Some((air_name, shared_trace))
             })
             .collect();
-
-        // Map from apc poly id to its index in the final apc trace
-        let apc_poly_id_to_index: BTreeMap<u64, usize> = self
-            .apc
-            .machine
-            .main_columns()
-            .enumerate()
-            .map(|(index, c)| (c.id, index))
-            .collect();
-
-        // allocate for apc trace
-        let width = apc_poly_id_to_index.len();
-        let height = next_power_of_two_or_zero(num_apc_calls);
-        let mut output = DeviceMatrix::<BabyBear>::with_capacity(height, width);
 
         // Prepare `OriginalAir` and `Subst` arrays
         let (airs, substitutions) = {
@@ -272,6 +344,11 @@ impl PowdrTraceGeneratorGpu {
                 .fold(
                     (Vec::new(), Vec::new()),
                     |(mut airs, mut substitutions), (air_index, (air_name, subs_by_row))| {
+                        if *air_name == "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>" {
+                            // skip ALU air because it is already processed above
+                            return (airs, substitutions);
+                        }
+
                         // Find the substitutions that map to an apc column
                         let new_substitutions: Vec<Subst> = subs_by_row
                             .iter()
