@@ -380,11 +380,11 @@ crepe! {
       AlgebraicConstraint(e),
       ContainsVariable(e, v),
       Assignment(v, val);
-    ReplaceAlgebraicConstraintBy(e, sys.substitute_by_var(e, v, v2)) <-
-      S(sys),
-      AlgebraicConstraint(e),
-      ContainsVariable(e, v),
-      Equivalence(v, v2);
+    // ReplaceAlgebraicConstraintBy(e, sys.substitute_by_var(e, v, v2)) <-
+    //   S(sys),
+    //   AlgebraicConstraint(e),
+    //   ContainsVariable(e, v),
+    //   Equivalence(v, v2);
     AlgebraicConstraint(e) <-
       ReplaceAlgebraicConstraintBy(_, e);
 

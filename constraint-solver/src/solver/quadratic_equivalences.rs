@@ -90,8 +90,8 @@ fn process_quadratic_equality_candidate_pair<
     // - X = -A - offset and Y = -A - offset
     // Since `A` has to have some value, we can conclude `X = Y`.
 
-    None
-    //    Some((c1_var.clone(), c2_var.clone()))
+    // None
+    Some((c1_var.clone(), c2_var.clone()))
 }
 
 /// This represents an identity `expr * (expr + offset) = 0`,
