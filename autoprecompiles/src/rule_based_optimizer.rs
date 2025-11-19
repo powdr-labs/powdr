@@ -1,3 +1,7 @@
+#![allow(clippy::iter_over_hash_type)]
+// This is about a warning about interior mutability for the key
+// `S`. We need it and it is probably fine.
+#![allow(clippy::mutable_key_type)]
 use std::{
     cell::RefCell,
     collections::{BTreeSet, HashMap},
@@ -70,9 +74,8 @@ impl PartialEq for System {
 impl Eq for System {}
 
 impl PartialOrd for System {
-    fn partial_cmp(&self, _other: &Self) -> Option<std::cmp::Ordering> {
-        // TODO change this as soon as we have different systems
-        Some(std::cmp::Ordering::Equal)
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -199,7 +202,7 @@ impl System {
             .filter(|either| !matches!(either, EitherOrBoth::Both(_, _)));
         let first_diff = joined.next()?;
         let second_diff = joined.next()?;
-        if joined.next() != None {
+        if joined.next().is_some() {
             return None;
         }
         let (left_var, right_var, coeff) = match (first_diff, second_diff) {
@@ -488,10 +491,10 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
     //         max
     //     );
     // }
-    println!("Found {} rule-based RCs", rcs.len());
-    println!("Found {} rule-based assignments", assignments.len());
-    println!("Found {} rule-based equivalences", equivalences.len());
-    println!("Final algebraic constraints: {}", constrs.len());
+    log::debug!("Found {} rule-based RCs", rcs.len());
+    log::debug!("Found {} rule-based assignments", assignments.len());
+    log::debug!("Found {} rule-based equivalences", equivalences.len());
+    log::debug!("Final algebraic constraints: {}", constrs.len());
     // for FinalAlgebraicConstraint(e) in &constrs {
     //     println!("{}", db.format_expr(*e));
     // }
@@ -505,7 +508,7 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         })
         .sorted()
     {
-        // log::info!("Rule-based assignment: {var} = {value}",);
+        log::trace!("Rule-based assignment: {var} = {value}",);
         system.substitute_by_known(var, &value);
     }
     for Equivalence(v1, v2) in &equivalences {
