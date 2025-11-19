@@ -12,6 +12,7 @@ use powdr_expression::{
     visitors::Children, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
 };
 use serde::{Deserialize, Serialize};
+use std::clone;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Display;
 use std::io::BufWriter;
@@ -446,6 +447,12 @@ fn add_ai_constraints<A: Adapter>(
         .map(|r| (reverse_subs.get(&r.id).unwrap().clone(), r.clone()))
         .collect::<BTreeMap<_, _>>();
 
+    assert_eq!(
+        block.statements.len(),
+        subs.len(),
+        "Number of statements and substitutions must match"
+    );
+
     for i in 0..block.statements.len() {
         let pc = (block.start_pc + (i * 4) as u64) as u32;
         let Some(range_constraints) = range_constraints.get(&pc) else {
@@ -455,10 +462,11 @@ fn add_ai_constraints<A: Adapter>(
             if range.0 == range.1 {
                 let value = A::PowdrField::from(range.0 as u64);
                 let Some(reference) = algebraic_references.get(&(i, col_index)).cloned() else {
-                    panic!(
-                        "Missing reference for (i: {}, col_index: {}, block_id: {})",
-                        i, col_index, block.start_pc
-                    );
+                    // println!(
+                    //     "Missing reference for (i: {}, col_index: {}, block_id: {})",
+                    //     i, col_index, block.start_pc
+                    // );
+                    continue;
                 };
                 let constraint =
                     AlgebraicExpression::Reference(reference) - AlgebraicExpression::Number(value);
@@ -468,32 +476,32 @@ fn add_ai_constraints<A: Adapter>(
         }
     }
 
-    if let Some(equivalence_classes) = equivalence_classes_by_block.get(&block.start_pc) {
-        for equivalence_class in equivalence_classes {
-            let first = equivalence_class.first().unwrap();
-            let Some(first_ref) = algebraic_references.get(first).cloned() else {
-                // TODO: This fails in some blocks. For now, just return no extra constraints.
-                println!(
-                    "Missing reference for (i: {}, col_index: {}, block_id: {})",
-                    first.0, first.1, block.start_pc
-                );
-                return (range_analyzer_constraints, vec![]);
-            };
-            for other in equivalence_class.iter().skip(1) {
-                let Some(other_ref) = algebraic_references.get(other).cloned() else {
-                    // TODO: This fails in some blocks. For now, just return no extra constraints.
-                    println!(
-                        "Missing reference for (i: {}, col_index: {}, block_id: {})",
-                        other.0, other.1, block.start_pc
-                    );
-                    return (range_analyzer_constraints, vec![]);
-                };
-                let constraint = AlgebraicExpression::Reference(first_ref.clone())
-                    - AlgebraicExpression::Reference(other_ref.clone());
-                equivalence_analyzer_constraints.push(SymbolicConstraint { expr: constraint });
-            }
-        }
-    }
+    // if let Some(equivalence_classes) = equivalence_classes_by_block.get(&block.start_pc) {
+    //     for equivalence_class in equivalence_classes {
+    //         let first = equivalence_class.first().unwrap();
+    //         let Some(first_ref) = algebraic_references.get(first).cloned() else {
+    //             // TODO: This fails in some blocks. For now, just return no extra constraints.
+    //             // println!(
+    //             //     "Missing reference for (i: {}, col_index: {}, block_id: {})",
+    //             //     first.0, first.1, block.start_pc
+    //             // );
+    //             return (range_analyzer_constraints, vec![]);
+    //         };
+    //         for other in equivalence_class.iter().skip(1) {
+    //             let Some(other_ref) = algebraic_references.get(other).cloned() else {
+    //                 // TODO: This fails in some blocks. For now, just return no extra constraints.
+    //                 // println!(
+    //                 //     "Missing reference for (i: {}, col_index: {}, block_id: {})",
+    //                 //     other.0, other.1, block.start_pc
+    //                 // );
+    //                 return (range_analyzer_constraints, vec![]);
+    //             };
+    //             let constraint = AlgebraicExpression::Reference(first_ref.clone())
+    //                 - AlgebraicExpression::Reference(other_ref.clone());
+    //             equivalence_analyzer_constraints.push(SymbolicConstraint { expr: constraint });
+    //         }
+    //     }
+    // }
 
     (range_analyzer_constraints, equivalence_analyzer_constraints)
 }
@@ -520,6 +528,11 @@ pub fn build<A: Adapter>(
         machine.main_columns(),
     );
 
+    println!(
+        "total range constraints that ai added : {}",
+        range_analyzer_constraints.len()
+    );
+
     let labels = [("apc_start_pc", block.start_pc.to_string())];
     metrics::counter!("before_opt_cols", &labels)
         .absolute(machine.unique_references().count() as u64);
@@ -544,6 +557,19 @@ pub fn build<A: Adapter>(
         .constraints
         .extend(equivalence_analyzer_constraints);
 
+    // for constraint in range_analyzer_constraints {
+    //     baseline.constraints.push(constraint.clone());
+    //     let Some(machine) = optimizer::optimize::<A>(
+    //         baseline.clone(),
+    //         vm_config.bus_interaction_handler.clone(),
+    //         degree_bound,
+    //         &vm_config.bus_map,
+    //     )
+    //     .ok() else {
+    //         panic!("constraint failed: {}", constraint.expr);
+    //     };
+    // }
+
     let machine = optimizer::optimize::<A>(
         baseline,
         vm_config.bus_interaction_handler,
@@ -551,6 +577,8 @@ pub fn build<A: Adapter>(
         &vm_config.bus_map,
     )
     .unwrap();
+
+    println!("optimizer finished after adding AI constraints");
     let ai_precompile = machine.render(&vm_config.bus_map);
 
     // add guards to constraints that are not satisfied by zeroes
