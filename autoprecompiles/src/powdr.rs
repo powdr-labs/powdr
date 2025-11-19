@@ -48,7 +48,9 @@ impl<'a, T: 'a, E: AllChildren<AlgebraicExpression<T>>> UniqueReferences<'a, T> 
                     None
                 }
             })
-            .unique()
+            .map(|r| (r.id, r))
+            .collect::<BTreeMap<_, _>>()
+            .into_values()
     }
 }
 
