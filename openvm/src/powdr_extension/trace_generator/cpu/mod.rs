@@ -6,10 +6,7 @@ use openvm_circuit::{
     utils::next_power_of_two_or_zero,
 };
 use openvm_stark_backend::{
-    p3_field::FieldAlgebra,
-    p3_matrix::dense::{DenseMatrix, RowMajorMatrix},
-    prover::{hal::ProverBackend, types::AirProvingContext},
-    Chip,
+    Chip, p3_field::FieldAlgebra, p3_matrix::dense::{DenseMatrix, RowMajorMatrix}, prover::{hal::ProverBackend, types::{AirProvingContext, AirProvingContexts}}
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{trace_handler::TraceTrait, Apc};
@@ -59,16 +56,23 @@ impl<F> From<Arc<RowMajorMatrix<F>>> for SharedCpuTrace<F> {
 }
 
 impl<R, PB: ProverBackend<Matrix = Arc<RowMajorMatrix<BabyBear>>>> Chip<R, PB> for PowdrChipCpu {
-    fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
+    fn generate_proving_ctx(&self, records: R) -> AirProvingContext<PB> {
+        unreachable!()
+    }
+    
+    fn generate_proving_ctxs(&self, _: R) -> AirProvingContexts<PB> {
         tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
 
-        let (trace, _rejected) = self
+        let (trace, rejected) = self
             .trace_generator
             .generate_witness(self.record_arena_by_air_name.take());
 
-        // TODO: extract the rejected rows somehow
+        let rejected = rejected.into_iter().map(|(key, (rows, values))| (key, (rows, AirProvingContext::simple(values, vec![])))).collect();
 
-        AirProvingContext::simple(Arc::new(trace), vec![])
+        AirProvingContexts {
+            main: AirProvingContext::simple(Arc::new(trace), vec![]),
+            rejected,
+        }
     }
 }
 
@@ -97,14 +101,14 @@ impl PowdrTraceGeneratorCpu {
     pub fn generate_witness(
         &self,
         mut original_arenas: OriginalArenas<MatrixRecordArena<BabyBear>>,
-    ) -> (DenseMatrix<BabyBear>, Vec<usize>) {
+    ) -> (DenseMatrix<BabyBear>, HashMap<String, (Vec<usize>, Arc<DenseMatrix<BabyBear>>)>) {
         use powdr_autoprecompiles::trace_handler::{generate_trace, TraceData};
 
         let num_apc_calls = original_arenas.number_of_calls();
         if num_apc_calls == 0 {
             // If the APC isn't called, early return with an empty trace.
             let width = self.apc.machine().main_columns().count();
-            return (RowMajorMatrix::new(vec![], width), vec![]);
+            return (RowMajorMatrix::new(vec![], width), HashMap::default());
         }
 
         let chip_inventory = {
@@ -121,7 +125,7 @@ impl PowdrTraceGeneratorCpu {
             .inventory
         };
 
-        let dummy_trace_by_air_name: HashMap<String, SharedCpuTrace<BabyBear>> = chip_inventory
+        let mut dummy_trace_by_air_name: HashMap<String, SharedCpuTrace<BabyBear>> = chip_inventory
             .chips()
             .iter()
             .enumerate()
@@ -164,7 +168,7 @@ impl PowdrTraceGeneratorCpu {
             // a record is `width` values
             .chunks_mut(width);
 
-        let mut rejected = vec![];
+        let mut rejected: HashMap<String, Vec<usize>> = dummy_trace_by_air_name.keys().cloned().map(|key| (key, vec![])).collect();
 
         let mut row_slice = apc_rows.next().unwrap();
 
@@ -235,8 +239,8 @@ impl PowdrTraceGeneratorCpu {
                 // move to the next row
                 row_slice = apc_rows.next().unwrap();
             } else {
-                // add to the rejected rows
-                rejected.push(index);
+                // TODO: add the rejected row indices to `rejected`
+
                 // keep the same row_slice for the next iteration unless we're in the last iteration
                 if is_last {
                     for v in row_slice.iter_mut() {
@@ -245,6 +249,9 @@ impl PowdrTraceGeneratorCpu {
                 }
             }
         }
+
+        // merge the rejected indices with the traces
+        let rejected = rejected.into_iter().map(|(name, indices)| (name.clone(), (indices, dummy_trace_by_air_name.remove(&name).unwrap().matrix))).collect();
 
         (RowMajorMatrix::new(values, width), rejected)
     }
