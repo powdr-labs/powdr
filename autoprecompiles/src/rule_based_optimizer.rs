@@ -131,6 +131,12 @@ impl System {
         db[expr].referenced_unknown_variables().cloned().collect()
     }
 
+    pub fn affine_var_count(&self, expr: Expr) -> Option<usize> {
+        let db = self.expressions.borrow();
+        let expr = &db[expr];
+        expr.is_affine().then(|| expr.linear_components().count())
+    }
+
     pub fn try_to_affine(&self, expr: Expr) -> Option<(F, Var, F)> {
         let db = self.expressions.borrow();
         let expr = &db[expr];
@@ -336,6 +342,7 @@ crepe! {
        AlgebraicConstraint(e),
        S(sys),
        Product(e, l, r),
+       ({sys.affine_var_count(l).unwrap_or(0) > 1 && sys.affine_var_count(r).unwrap_or(0) > 1}),
        let Some(offset) = sys.constant_difference(l, r);
 
     struct QuadraticEquivalence(Var, Var);
@@ -380,11 +387,12 @@ crepe! {
       AlgebraicConstraint(e),
       ContainsVariable(e, v),
       Assignment(v, val);
-    // ReplaceAlgebraicConstraintBy(e, sys.substitute_by_var(e, v, v2)) <-
-    //   S(sys),
-    //   AlgebraicConstraint(e),
-    //   ContainsVariable(e, v),
-    //   Equivalence(v, v2);
+    ReplaceAlgebraicConstraintBy(e, sys.substitute_by_var(e, v, v2)) <-
+       S(sys),
+       AlgebraicConstraint(e),
+       ContainsVariable(e, v),
+       Equivalence(v, v2);
+
     AlgebraicConstraint(e) <-
       ReplaceAlgebraicConstraintBy(_, e);
 
