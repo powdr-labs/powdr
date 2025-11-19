@@ -13,7 +13,9 @@ use std::{
 use itertools::{EitherOrBoth, Itertools};
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler},
-    grouped_expression::{GroupedExpression, GroupedExpressionComponent, NoRangeConstraints},
+    grouped_expression::{
+        GroupedExpression, GroupedExpressionComponent, NoRangeConstraints, RangeConstraintProvider,
+    },
     indexed_constraint_system::IndexedConstraintSystem,
     range_constraint::RangeConstraint,
     runtime_constant::VarTransformable,
@@ -278,6 +280,9 @@ crepe! {
     @input
     struct InitialAlgebraicConstraint(Expr);
 
+    @input
+    struct InitialRangeConstraintOnVar(Var, RangeConstraint<F>);
+
     struct AlgebraicConstraint(Expr);
     AlgebraicConstraint(e) <- InitialAlgebraicConstraint(e);
 
@@ -305,6 +310,7 @@ crepe! {
 
     @output
     struct RangeConstraintOnVar(Var, RangeConstraint<F>);
+    RangeConstraintOnVar(v, rc) <- InitialRangeConstraintOnVar(v, rc);
     // RC(coeff * var + offset) = rc <=>
     // coeff * RC(var) + offset = rc <=>
     // RC(var) = (rc - offset) / coeff
@@ -374,11 +380,11 @@ crepe! {
       AlgebraicConstraint(e),
       ContainsVariable(e, v),
       Assignment(v, val);
-    // ReplaceAlgebraicConstraintBy(e, sys.substitute_by_var(e, v, v2)) <-
-    //   S(sys),
-    //   AlgebraicConstraint(e),
-    //   ContainsVariable(e, v),
-    //   Equivalence(v, v2);
+    ReplaceAlgebraicConstraintBy(e, sys.substitute_by_var(e, v, v2)) <-
+      S(sys),
+      AlgebraicConstraint(e),
+      ContainsVariable(e, v),
+      Equivalence(v, v2);
     AlgebraicConstraint(e) <-
       ReplaceAlgebraicConstraintBy(_, e);
 
@@ -399,12 +405,13 @@ crepe! {
 
 pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
     mut system: IndexedConstraintSystem<T, V>,
+    range_constraints: impl RangeConstraintProvider<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<T> + Clone,
 ) -> IndexedConstraintSystem<T, V> {
     if T::modulus().to_arbitrary_integer() != BabyBearField::modulus().to_arbitrary_integer() {
         return system;
     }
-    println!("{system}");
+    // println!("{system}");
     let start = std::time::Instant::now();
     let mut rt = Crepe::new();
 
@@ -430,10 +437,18 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                 .collect()
         })
         .collect_vec();
+    let range_constraints_on_vars = system
+        .referenced_unknown_variables()
+        .unique()
+        .map(|v| {
+            let rc = range_constraints.get(v);
+            InitialRangeConstraintOnVar(var_mapper.forward(v), transform_range_constraint(&rc))
+        })
+        .collect_vec();
 
     // TODO we should do that inside the system, but the generic range constraint
     // handler makes it difficult.
-    let range_constraints = system
+    let range_constraints_from_bus_interactions = system
         .system()
         .bus_interactions
         .iter()
@@ -448,13 +463,7 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                 .fields()
                 .zip_eq(range_constraints)
                 .map(|(expr, rc)| {
-                    let (min, max) = rc.range();
-                    let mask = *rc.mask();
-                    let rc = RangeConstraint::from_range(
-                        F::from(min.to_arbitrary_integer()),
-                        F::from(max.to_arbitrary_integer()),
-                    )
-                    .conjunction(&RangeConstraint::from_mask(mask.try_into_u64().unwrap()));
+                    let rc = transform_range_constraint(&rc);
                     RangeConstraintOnExpression(*expr, rc)
                 })
         })
@@ -469,7 +478,8 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
             .map(InitialAlgebraicConstraint),
     );
     // rt.extend(bus_interactions.iter().map(BusInteractionConstraint));
-    rt.extend(range_constraints);
+    rt.extend(range_constraints_on_vars);
+    rt.extend(range_constraints_from_bus_interactions);
 
     db.set_var_to_string_mapping(
         var_mapper
@@ -484,12 +494,10 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
 
     let (rcs, assignments, equivalences, constrs) = rt.run();
     let run_end = std::time::Instant::now();
-    // for RangeConstraint(var, min, max) in &rcs {
+    // for RangeConstraintOnVar(var, rc) in &rcs {
     //     println!(
-    //         "Rule-based range constraint: {} in [{}, {}]",
+    //         "Rule-based range constraint: {} in {rc}",
     //         var_mapper.backward(&var),
-    //         min,
-    //         max
     //     );
     // }
     log::debug!("Found {} rule-based RCs", rcs.len());
@@ -512,12 +520,12 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         log::trace!("Rule-based assignment: {var} = {value}",);
         system.substitute_by_known(var, &value);
     }
-    for Equivalence(v1, v2) in &equivalences {
-        // log::info!("Rule-based equivalence: {v1} == {v2}",);
-        let v1 = var_mapper.backward(v1).clone();
-        let v2 = var_mapper.backward(v2).clone();
-        let (v1, v2) = if v1 < v2 { (v1, v2) } else { (v2, v1) };
-        system.substitute_by_unknown(&v2, &GroupedExpression::from_unknown_variable(v1.clone()));
+    // for Equivalence(v1, v2) in &equivalences {
+    //     println!("XXX Rule-based equivalence: {v1} == {v2}",);
+    //     let v1 = var_mapper.backward(v1).clone();
+    //     let v2 = var_mapper.backward(v2).clone();
+    //     let (v1, v2) = if v1 < v2 { (v1, v2) } else { (v2, v1) };
+    //     system.substitute_by_unknown(&v2, &GroupedExpression::from_unknown_variable(v1.clone()));
     }
     system.retain_algebraic_constraints(|constraint| !constraint.is_redundant());
     system.retain_bus_interactions(|bus_interaction| !bus_interaction.multiplicity.is_zero());
@@ -597,12 +605,23 @@ fn transform_grouped_expression<T: FieldElement, V: Hash + Eq + Ord + Clone + Di
         .sum()
 }
 
+fn transform_range_constraint<T: FieldElement>(
+    rc: &RangeConstraint<T>,
+) -> RangeConstraint<BabyBearField> {
+    let (min, max) = rc.range();
+    let mask = *rc.mask();
+    RangeConstraint::from_range(
+        BabyBearField::from(min.to_arbitrary_integer()),
+        BabyBearField::from(max.to_arbitrary_integer()),
+    )
+    .conjunction(&RangeConstraint::from_mask(mask.try_into_u64().unwrap()))
+}
+
 #[cfg(test)]
 mod tests {
     use expect_test::expect;
     use powdr_constraint_solver::{
         algebraic_constraint, constraint_system::DefaultBusInteractionHandler,
-        runtime_constant::RuntimeConstant,
     };
 
     use super::*;
@@ -613,11 +632,11 @@ mod tests {
         algebraic_constraint::AlgebraicConstraint::assert_zero(expr)
     }
 
-    fn var(name: &str) -> GroupedExpression<BabyBearField, String> {
+    fn v(name: &str) -> GroupedExpression<BabyBearField, String> {
         GroupedExpression::from_unknown_variable(name.to_string())
     }
 
-    fn constant(value: i64) -> GroupedExpression<BabyBearField, String> {
+    fn c(value: i64) -> GroupedExpression<BabyBearField, String> {
         GroupedExpression::from_number(BabyBearField::from(value))
     }
 
@@ -684,9 +703,9 @@ mod tests {
         bits: u32,
     ) -> BusInteraction<GroupedExpression<BabyBearField, String>> {
         BusInteraction {
-            bus_id: constant(3),
-            payload: vec![var(variable), constant(bits as i64)],
-            multiplicity: constant(1),
+            bus_id: c(3),
+            payload: vec![v(variable), c(bits as i64)],
+            multiplicity: c(1),
         }
     }
 
@@ -694,21 +713,27 @@ mod tests {
     fn test_rule_based_optimization_empty() {
         let system: IndexedConstraintSystem<BabyBearField, String> =
             IndexedConstraintSystem::default();
-        let optimized_system =
-            rule_based_optimization(system, DefaultBusInteractionHandler::default());
+        let optimized_system = rule_based_optimization(
+            system,
+            NoRangeConstraints,
+            DefaultBusInteractionHandler::default(),
+        );
         assert_eq!(optimized_system.system().algebraic_constraints.len(), 0);
     }
 
     #[test]
     fn test_rule_based_optimization_simple_assignment() {
         let mut system = IndexedConstraintSystem::default();
-        let x = var("x");
+        let x = v("x");
         system.add_algebraic_constraints([
-            assert_zero(x * F::from(7) - constant(21)),
-            assert_zero(var("y") * (var("y") - constant(1)) - var("x")),
+            assert_zero(x * F::from(7) - c(21)),
+            assert_zero(v("y") * (v("y") - c(1)) - v("x")),
         ]);
-        let optimized_system =
-            rule_based_optimization(system, DefaultBusInteractionHandler::default());
+        let optimized_system = rule_based_optimization(
+            system,
+            NoRangeConstraints,
+            DefaultBusInteractionHandler::default(),
+        );
         expect!["(y) * (y - 1) - 3 = 0"].assert_eq(&optimized_system.to_string());
     }
 
@@ -717,45 +742,38 @@ mod tests {
         let mut system = IndexedConstraintSystem::default();
         system.add_algebraic_constraints([
             assert_zero(
-                (constant(30720) * var("rs1_data__0_1") + constant(7864320) * var("rs1_data__1_1")
-                    - constant(30720) * var("mem_ptr_limbs__0_1")
-                    + constant(737280))
-                    * (constant(30720) * var("rs1_data__0_1")
-                        + constant(7864320) * var("rs1_data__1_1")
-                        - constant(30720) * var("mem_ptr_limbs__0_1")
-                        + constant(737281)),
+                (c(30720) * v("rs1_data__0_1") + c(7864320) * v("rs1_data__1_1")
+                    - c(30720) * v("mem_ptr_limbs__0_1")
+                    + c(737280))
+                    * (c(30720) * v("rs1_data__0_1") + c(7864320) * v("rs1_data__1_1")
+                        - c(30720) * v("mem_ptr_limbs__0_1")
+                        + c(737281)),
             ),
             assert_zero(
-                (constant(30720) * var("rs1_data__0_1") + constant(7864320) * var("rs1_data__1_1")
-                    - constant(30720) * var("mem_ptr_limbs__0_2")
-                    + constant(737280))
-                    * (constant(30720) * var("rs1_data__0_1")
-                        + constant(7864320) * var("rs1_data__1_1")
-                        - constant(30720) * var("mem_ptr_limbs__0_2")
-                        + constant(737281)),
+                (c(30720) * v("rs1_data__0_1") + c(7864320) * v("rs1_data__1_1")
+                    - c(30720) * v("mem_ptr_limbs__0_2")
+                    + c(737280))
+                    * (c(30720) * v("rs1_data__0_1") + c(7864320) * v("rs1_data__1_1")
+                        - c(30720) * v("mem_ptr_limbs__0_2")
+                        + c(737281)),
             ),
         ]);
         system.add_bus_interactions([
             bit_constraint("rs1_data__0_1", 8),
             bit_constraint("rs1_data__1_1", 8),
             BusInteraction {
-                bus_id: constant(3),
-                multiplicity: constant(1),
-                payload: vec![
-                    constant(-503316480) * var("mem_ptr_limbs__0_1"),
-                    constant(14),
-                ],
+                bus_id: c(3),
+                multiplicity: c(1),
+                payload: vec![c(-503316480) * v("mem_ptr_limbs__0_1"), c(14)],
             },
             BusInteraction {
-                bus_id: constant(3),
-                multiplicity: constant(1),
-                payload: vec![
-                    constant(-503316480) * var("mem_ptr_limbs__0_2"),
-                    constant(14),
-                ],
+                bus_id: c(3),
+                multiplicity: c(1),
+                payload: vec![c(-503316480) * v("mem_ptr_limbs__0_2"), c(14)],
             },
         ]);
-        let optimized_system = rule_based_optimization(system, TestBusInteractionHandler);
+        let optimized_system =
+            rule_based_optimization(system, NoRangeConstraints, TestBusInteractionHandler);
         // Note that in the system below, mem_ptr_limbs__0_2 has been eliminated
         expect![[r#"
             (30720 * mem_ptr_limbs__0_1 - 30720 * rs1_data__0_1 - 7864320 * rs1_data__1_1 - 737280) * (30720 * mem_ptr_limbs__0_1 - 30720 * rs1_data__0_1 - 7864320 * rs1_data__1_1 - 737281) = 0
