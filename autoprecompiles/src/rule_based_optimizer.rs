@@ -526,7 +526,7 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
     //     let v2 = var_mapper.backward(v2).clone();
     //     let (v1, v2) = if v1 < v2 { (v1, v2) } else { (v2, v1) };
     //     system.substitute_by_unknown(&v2, &GroupedExpression::from_unknown_variable(v1.clone()));
-    }
+    // }
     system.retain_algebraic_constraints(|constraint| !constraint.is_redundant());
     system.retain_bus_interactions(|bus_interaction| !bus_interaction.multiplicity.is_zero());
     let substitution_end = std::time::Instant::now();

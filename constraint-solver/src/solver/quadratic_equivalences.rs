@@ -80,7 +80,7 @@ fn process_quadratic_equality_candidate_pair<
         return None;
     }
 
-    println!("XXX {c1_var}, {c2_var},\n{}\n{}", c1.expr, c2.expr);
+    // println!("XXX {c1_var}, {c2_var},\n{}\n{}", c1.expr, c2.expr);
 
     // Now we have `(X + A) * (X + A + offset) = 0` and `(Y + A) * (Y + A + offset) = 0`
     // Furthermore, the range constraints of `X` and `Y` are such that for both identities,
