@@ -39,6 +39,7 @@ pub trait UniqueReferences<'a, T: 'a> {
 }
 
 impl<'a, T: 'a, E: AllChildren<AlgebraicExpression<T>>> UniqueReferences<'a, T> for E {
+    // Output unique column references sorted by ascending id of original instruction columns
     fn unique_references(&'a self) -> impl Iterator<Item = AlgebraicReference> {
         self.all_children()
             .filter_map(|e| {
@@ -48,7 +49,9 @@ impl<'a, T: 'a, E: AllChildren<AlgebraicExpression<T>>> UniqueReferences<'a, T> 
                     None
                 }
             })
-            .unique()
+            .map(|r| (r.id, r))
+            .collect::<BTreeMap<_, _>>()
+            .into_values()
     }
 }
 
