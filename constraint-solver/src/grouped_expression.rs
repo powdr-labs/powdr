@@ -272,6 +272,26 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
         self.linear.get(var)
     }
 
+    /// If `self` contains `var` exactly once in an affine way,
+    /// returns `Some((coeff, rest))` where `self = coeff * var + rest`.
+    ///
+    /// This is relatively expensive because it needs to construct a new
+    /// GroupedExpression.
+    pub fn try_extract_affine_var(&self, var: V) -> Option<(T, Self)> {
+        if self
+            .referenced_unknown_variables()
+            .filter(|v| *v == &var)
+            .count()
+            != 1
+        {
+            return None;
+        }
+        let coeff = self.linear.get(&var)?.clone();
+        let mut rest = self.clone();
+        rest.linear.remove(&var);
+        Some((coeff, rest))
+    }
+
     /// Returns the range constraint of the full expression.
     pub fn range_constraint(
         &self,
@@ -294,6 +314,44 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
     }
 }
 
+impl<T: FieldElement, V: Ord + Clone + Eq> GroupedExpression<T, V> {
+    pub fn substitute_simple(&mut self, variable: &V, substitution: T) {
+        if self.linear.contains_key(variable) {
+            let coeff = self.linear.remove(variable).unwrap();
+            self.constant += coeff * substitution;
+        }
+
+        let mut to_add = GroupedExpression::zero();
+        self.quadratic.retain_mut(|(l, r)| {
+            l.substitute_simple(variable, substitution);
+            r.substitute_simple(variable, substitution);
+            match (l.try_to_known(), r.try_to_known()) {
+                (Some(l), Some(r)) => {
+                    self.constant += *l * *r;
+                    false
+                }
+                (Some(l), None) => {
+                    if !l.is_zero() {
+                        to_add += r.clone() * l;
+                    }
+                    false
+                }
+                (None, Some(r)) => {
+                    if !r.is_zero() {
+                        to_add += l.clone() * r;
+                    }
+                    false
+                }
+                _ => true,
+            }
+        });
+        // remove_quadratic_terms_adding_to_zero(&mut self.quadratic);
+
+        if !to_add.is_zero() {
+            *self += to_add;
+        }
+    }
+}
 impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq> GroupedExpression<T, V> {
     /// Substitute a variable by a symbolically known expression. The variable can be known or unknown.
     /// If it was already known, it will be substituted in the known expressions.

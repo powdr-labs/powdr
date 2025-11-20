@@ -12,6 +12,7 @@ use crate::{
 };
 
 /// Given a list of constraints, tries to determine pairs of equivalent variables.
+#[allow(dead_code)]
 pub fn find_quadratic_equalities<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
     constraints: &[AlgebraicConstraint<GroupedExpression<T, V>>],
     range_constraints: impl RangeConstraintProvider<T, V>,
@@ -73,11 +74,13 @@ fn process_quadratic_equality_candidate_pair<
 
     // Now the only remaining check is to see if the affine expressions are the same.
     // This could have been the first step, but it is rather expensive, so we do it last.
-    if c1.expr - GroupedExpression::from_unknown_variable(c1_var.clone())
-        != c2.expr - GroupedExpression::from_unknown_variable(c2_var.clone())
+    if c1.expr.clone() - GroupedExpression::from_unknown_variable(c1_var.clone())
+        != c2.expr.clone() - GroupedExpression::from_unknown_variable(c2_var.clone())
     {
         return None;
     }
+
+    // println!("XXX {c1_var}, {c2_var},\n{}\n{}", c1.expr, c2.expr);
 
     // Now we have `(X + A) * (X + A + offset) = 0` and `(Y + A) * (Y + A + offset) = 0`
     // Furthermore, the range constraints of `X` and `Y` are such that for both identities,
@@ -87,6 +90,7 @@ fn process_quadratic_equality_candidate_pair<
     // - X = -A - offset and Y = -A - offset
     // Since `A` has to have some value, we can conclude `X = Y`.
 
+    // None
     Some((c1_var.clone(), c2_var.clone()))
 }
 
