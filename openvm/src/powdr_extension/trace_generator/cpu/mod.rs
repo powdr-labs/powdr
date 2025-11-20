@@ -175,107 +175,91 @@ impl PowdrTraceGeneratorCpu {
         let height = next_power_of_two_or_zero(num_apc_calls);
         let mut values = <BabyBear as FieldAlgebra>::zero_vec(height * width);
 
-        // get an iterator over the apc rows. This is what we write to
-        let mut apc_rows = values
-            // a record is `width` values
-            .chunks_mut(width);
-
         let mut rejected: HashMap<String, Vec<usize>> = dummy_trace_by_air_name
             .keys()
             .cloned()
             .map(|key| (key, vec![]))
             .collect();
 
-        let mut row_slice = apc_rows.next().unwrap();
+        // go through the final table and fill in the values
+        values
+            // a record is `width` values
+            // TODO: optimize by parallelizing on chunks of rows, currently fails because `dyn AnyChip<MatrixRecordArena<Val<SC>>>` is not `Send`
+            .chunks_mut(width)
+            .zip(dummy_values)
+            .for_each(|(row_slice, dummy_values)| {
+                // map the dummy rows to the autoprecompile row
 
-        for (dummy_values, is_last) in dummy_values
-            .iter()
-            .enumerate()
-            .map(|(index, dummy_values)| (dummy_values, index == dummy_values.len() - 1))
-        {
-            // map the dummy rows to the autoprecompile row
-
-            use powdr_autoprecompiles::expression::MappingRowEvaluator;
-            for (dummy_row, dummy_trace_index_to_apc_index) in dummy_values
-                .iter()
-                .map(|r| &r.data[r.start()..r.start() + r.length])
-                .zip_eq(&dummy_trace_index_to_apc_index_by_instruction)
-            {
-                for (dummy_trace_index, apc_index) in dummy_trace_index_to_apc_index {
-                    row_slice[*apc_index] = dummy_row[*dummy_trace_index];
-                }
-            }
-
-            // Fill in the columns we have to compute from other columns
-            // (these are either new columns or for example the "is_valid" column).
-            for (column, computation_method) in columns_to_compute {
-                let col_index = apc_poly_id_to_index[&column.id];
-                row_slice[col_index] = match computation_method {
-                    ComputationMethod::Constant(c) => *c,
-                    ComputationMethod::InverseOrZero(expr) => {
-                        use powdr_number::ExpressionConvertible;
-
-                        let expr_val = expr.to_expression(&|n| *n, &|column_ref| {
-                            row_slice[apc_poly_id_to_index[&column_ref.id]]
-                        });
-                        if expr_val.is_zero() {
-                            BabyBear::ZERO
-                        } else {
-                            expr_val.inverse()
-                        }
-                    }
-                };
-            }
-
-            let evaluator = MappingRowEvaluator::new(row_slice, &apc_poly_id_to_index);
-
-            // check the constraints and bus interactions
-            let row_is_valid = true;
-
-            if row_is_valid {
-                // replay the side effects of this row on the main periphery
-                self.apc
-                    .machine()
-                    .bus_interactions
+                use powdr_autoprecompiles::expression::MappingRowEvaluator;
+                for (dummy_row, dummy_trace_index_to_apc_index) in dummy_values
                     .iter()
-                    .for_each(|interaction| {
-                        use powdr_autoprecompiles::expression::{
-                            AlgebraicEvaluator, ConcreteBusInteraction,
-                        };
-
-                        let ConcreteBusInteraction { id, mult, args } =
-                            evaluator.eval_bus_interaction(interaction);
-                        self.periphery.real.apply(
-                            id as u16,
-                            mult.as_canonical_u32(),
-                            args.map(|arg| arg.as_canonical_u32()),
-                            &self.periphery.bus_ids,
-                        );
-                    });
-                // move to the next row
-                if !is_last {
-                    row_slice = apc_rows.next().unwrap();
-                }
-            } else {
-                // for each original row
-                for original_row_reference in dummy_values {
-                    // TODO replay the side effects of this row on the real periphery
-
-                    // add the row index to the rejected set
-                    rejected
-                        .get_mut(original_row_reference.air_id)
-                        .unwrap()
-                        .push(original_row_reference.row_index);
-                }
-
-                // keep the same row_slice for the next iteration unless we're in the last iteration
-                if !is_last {
-                    for v in row_slice.iter_mut() {
-                        *v = BabyBear::ZERO;
+                    .map(|r| &r.data[r.start()..r.start() + r.length])
+                    .zip_eq(&dummy_trace_index_to_apc_index_by_instruction)
+                {
+                    for (dummy_trace_index, apc_index) in dummy_trace_index_to_apc_index {
+                        row_slice[*apc_index] = dummy_row[*dummy_trace_index];
                     }
                 }
-            }
-        }
+
+                // Fill in the columns we have to compute from other columns
+                // (these are either new columns or for example the "is_valid" column).
+                for (column, computation_method) in columns_to_compute {
+                    let col_index = apc_poly_id_to_index[&column.id];
+                    row_slice[col_index] = match computation_method {
+                        ComputationMethod::Constant(c) => *c,
+                        ComputationMethod::InverseOrZero(expr) => {
+                            use powdr_number::ExpressionConvertible;
+
+                            let expr_val = expr.to_expression(&|n| *n, &|column_ref| {
+                                row_slice[apc_poly_id_to_index[&column_ref.id]]
+                            });
+                            if expr_val.is_zero() {
+                                BabyBear::ZERO
+                            } else {
+                                expr_val.inverse()
+                            }
+                        }
+                    };
+                }
+
+                let evaluator = MappingRowEvaluator::new(row_slice, &apc_poly_id_to_index);
+
+                // check the constraints and bus interactions
+                let row_is_valid = true;
+
+                if row_is_valid {
+                    // replay the side effects of this row on the main periphery
+                    self.apc
+                        .machine()
+                        .bus_interactions
+                        .iter()
+                        .for_each(|interaction| {
+                            use powdr_autoprecompiles::expression::{
+                                AlgebraicEvaluator, ConcreteBusInteraction,
+                            };
+
+                            let ConcreteBusInteraction { id, mult, args } =
+                                evaluator.eval_bus_interaction(interaction);
+                            self.periphery.real.apply(
+                                id as u16,
+                                mult.as_canonical_u32(),
+                                args.map(|arg| arg.as_canonical_u32()),
+                                &self.periphery.bus_ids,
+                            );
+                        });
+                } else {
+                    // for each original row
+                    for original_row_reference in dummy_values {
+                        // TODO replay the side effects of this row on the real periphery
+
+                        // add the row index to the rejected set
+                        rejected
+                            .get_mut(original_row_reference.air_id)
+                            .unwrap()
+                            .push(original_row_reference.row_index);
+                    }
+                }
+            });
 
         // merge the rejected indices with the traces
         let rejected = rejected
