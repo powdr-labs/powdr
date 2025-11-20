@@ -147,6 +147,7 @@ impl System {
         Some((*coeff, *var, *expr.constant_offset()))
     }
 
+    #[allow(dead_code)]
     pub fn is_zero(&self, expr: Expr) -> bool {
         self.expressions.borrow()[expr].is_zero()
     }
@@ -226,6 +227,7 @@ impl System {
         Some((left_var, right_var, coeff))
     }
 
+    #[allow(dead_code)]
     pub fn substitute_by_known(&self, e: Expr, var: Var, value: F) -> Expr {
         let expr = {
             let db = self.expressions.borrow();
@@ -381,34 +383,34 @@ crepe! {
     struct Equivalence(Var, Var);
     Equivalence(v1, v2) <- QuadraticEquivalence(v1, v2);
 
-    struct ReplaceAlgebraicConstraintBy(Expr, Expr);
-    ReplaceAlgebraicConstraintBy(e, sys.substitute_by_known(e, v, val)) <-
-      S(sys),
-      AlgebraicConstraint(e),
-      ContainsVariable(e, v),
-      Assignment(v, val);
-    ReplaceAlgebraicConstraintBy(e, sys.substitute_by_var(e, v, v2)) <-
-       S(sys),
-       AlgebraicConstraint(e),
-       ContainsVariable(e, v),
-       Equivalence(v, v2);
+    // struct ReplaceAlgebraicConstraintBy(Expr, Expr);
+    // ReplaceAlgebraicConstraintBy(e, sys.substitute_by_known(e, v, val)) <-
+    //   S(sys),
+    //   AlgebraicConstraint(e),
+    //   ContainsVariable(e, v),
+    //   Assignment(v, val);
+    // ReplaceAlgebraicConstraintBy(e, sys.substitute_by_var(e, v, v2)) <-
+    //    S(sys),
+    //    AlgebraicConstraint(e),
+    //    ContainsVariable(e, v),
+    //    Equivalence(v, v2);
 
-    AlgebraicConstraint(e) <-
-      ReplaceAlgebraicConstraintBy(_, e);
+    // AlgebraicConstraint(e) <-
+    //   ReplaceAlgebraicConstraintBy(_, e);
 
 
-    // This constraint has been replaced by a different one (or is redundant).
-    struct AlgebraicConstraintDeleted(Expr);
-    AlgebraicConstraintDeleted(e) <-
-      ReplaceAlgebraicConstraintBy(e, _);
-    AlgebraicConstraintDeleted(e) <-
-      S(sys),
-      AlgebraicConstraint(e),
-      (sys.is_zero(e));
+    // // This constraint has been replaced by a different one (or is redundant).
+    // struct AlgebraicConstraintDeleted(Expr);
+    // AlgebraicConstraintDeleted(e) <-
+    //   ReplaceAlgebraicConstraintBy(e, _);
+    // AlgebraicConstraintDeleted(e) <-
+    //   S(sys),
+    //   AlgebraicConstraint(e),
+    //   (sys.is_zero(e));
 
-    @output
-    struct FinalAlgebraicConstraint(Expr);
-    FinalAlgebraicConstraint(e) <- AlgebraicConstraint(e), !AlgebraicConstraintDeleted(e);
+    // @output
+    // struct FinalAlgebraicConstraint(Expr);
+    // FinalAlgebraicConstraint(e) <- AlgebraicConstraint(e), !AlgebraicConstraintDeleted(e);
 }
 
 pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
@@ -500,7 +502,7 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
 
     let insert_end = std::time::Instant::now();
 
-    let (rcs, assignments, equivalences, constrs) = rt.run();
+    let (rcs, assignments, equivalences /* , constrs*/) = rt.run();
     let run_end = std::time::Instant::now();
     // for RangeConstraintOnVar(var, rc) in &rcs {
     //     println!(
@@ -511,7 +513,7 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
     log::debug!("Found {} rule-based RCs", rcs.len());
     log::debug!("Found {} rule-based assignments", assignments.len());
     log::debug!("Found {} rule-based equivalences", equivalences.len());
-    log::debug!("Final algebraic constraints: {}", constrs.len());
+    // log::debug!("Final algebraic constraints: {}", constrs.len());
     // for FinalAlgebraicConstraint(e) in &constrs {
     //     println!("{}", db.format_expr(*e));
     // }
@@ -528,13 +530,13 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         log::trace!("Rule-based assignment: {var} = {value}",);
         system.substitute_by_known(var, &value);
     }
-    // for Equivalence(v1, v2) in &equivalences {
-    //     println!("XXX Rule-based equivalence: {v1} == {v2}",);
-    //     let v1 = var_mapper.backward(v1).clone();
-    //     let v2 = var_mapper.backward(v2).clone();
-    //     let (v1, v2) = if v1 < v2 { (v1, v2) } else { (v2, v1) };
-    //     system.substitute_by_unknown(&v2, &GroupedExpression::from_unknown_variable(v1.clone()));
-    // }
+    for Equivalence(v1, v2) in &equivalences {
+        //     println!("XXX Rule-based equivalence: {v1} == {v2}",);
+        let v1 = var_mapper.backward(v1).clone();
+        let v2 = var_mapper.backward(v2).clone();
+        let (v1, v2) = if v1 < v2 { (v1, v2) } else { (v2, v1) };
+        system.substitute_by_unknown(&v2, &GroupedExpression::from_unknown_variable(v1.clone()));
+    }
     system.retain_algebraic_constraints(|constraint| !constraint.is_redundant());
     system.retain_bus_interactions(|bus_interaction| !bus_interaction.multiplicity.is_zero());
     let substitution_end = std::time::Instant::now();
