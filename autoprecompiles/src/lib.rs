@@ -468,32 +468,32 @@ fn add_ai_constraints<A: Adapter>(
         }
     }
 
-    if let Some(equivalence_classes) = equivalence_classes_by_block.get(&block.start_pc) {
-        for equivalence_class in equivalence_classes {
-            let first = equivalence_class.first().unwrap();
-            let Some(first_ref) = algebraic_references.get(first).cloned() else {
-                // TODO: This fails in some blocks. For now, just return no extra constraints.
-                println!(
-                    "Missing reference for (i: {}, col_index: {}, block_id: {})",
-                    first.0, first.1, block.start_pc
-                );
-                return (range_analyzer_constraints, vec![]);
-            };
-            for other in equivalence_class.iter().skip(1) {
-                let Some(other_ref) = algebraic_references.get(other).cloned() else {
-                    // TODO: This fails in some blocks. For now, just return no extra constraints.
-                    println!(
-                        "Missing reference for (i: {}, col_index: {}, block_id: {})",
-                        other.0, other.1, block.start_pc
-                    );
-                    return (range_analyzer_constraints, vec![]);
-                };
-                let constraint = AlgebraicExpression::Reference(first_ref.clone())
-                    - AlgebraicExpression::Reference(other_ref.clone());
-                equivalence_analyzer_constraints.push(SymbolicConstraint { expr: constraint });
-            }
-        }
-    }
+    // if let Some(equivalence_classes) = equivalence_classes_by_block.get(&block.start_pc) {
+    //     for equivalence_class in equivalence_classes {
+    //         let first = equivalence_class.first().unwrap();
+    //         let Some(first_ref) = algebraic_references.get(first).cloned() else {
+    //             // TODO: This fails in some blocks. For now, just return no extra constraints.
+    //             // println!(
+    //             //     "Missing reference for (i: {}, col_index: {}, block_id: {})",
+    //             //     first.0, first.1, block.start_pc
+    //             // );
+    //             return (range_analyzer_constraints, vec![]);
+    //         };
+    //         for other in equivalence_class.iter().skip(1) {
+    //             let Some(other_ref) = algebraic_references.get(other).cloned() else {
+    //                 // TODO: This fails in some blocks. For now, just return no extra constraints.
+    //                 // println!(
+    //                 //     "Missing reference for (i: {}, col_index: {}, block_id: {})",
+    //                 //     other.0, other.1, block.start_pc
+    //                 // );
+    //                 return (range_analyzer_constraints, vec![]);
+    //             };
+    //             let constraint = AlgebraicExpression::Reference(first_ref.clone())
+    //                 - AlgebraicExpression::Reference(other_ref.clone());
+    //             equivalence_analyzer_constraints.push(SymbolicConstraint { expr: constraint });
+    //         }
+    //     }
+    // }
 
     (range_analyzer_constraints, equivalence_analyzer_constraints)
 }

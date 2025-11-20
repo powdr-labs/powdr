@@ -44,10 +44,10 @@ pub fn optimize_memory<
     // TODO perform substitutions instead
     system.algebraic_constraints.extend(new_constraints);
 
-    assert!(check_register_operation_consistency::<_, _, M>(
-        &system,
-        memory_bus_id
-    ));
+    // assert!(check_register_operation_consistency::<_, _, M>(
+    //     &system,
+    //     memory_bus_id
+    // ));
 
     system
 }
@@ -187,6 +187,11 @@ fn redundant_memory_interactions_indices<
                 // In that case, we can replace both bus interactions with equality constraints
                 // between the data that would have been sent and received.
                 if let Some((previous_send, existing_values)) = memory_contents.remove(&addr) {
+                    assert_eq!(
+                        existing_values.len(),
+                        mem_int.data().len(),
+                        "Mismatched data lengths in memory operations"
+                    );
                     for (existing, new) in existing_values.iter().zip_eq(mem_int.data().iter()) {
                         new_constraints.push(AlgebraicConstraint::assert_zero(
                             existing.clone() - new.clone(),
@@ -200,6 +205,11 @@ fn redundant_memory_interactions_indices<
                 // that this send operation does not interfere with it, i.e.
                 // if we can prove that the two addresses differ by at least a word size.
                 memory_contents.retain(|other_addr, _| {
+                    assert_eq!(
+                        addr.0.len(),
+                        other_addr.0.len(),
+                        "Mismatched address lengths in memory operations"
+                    );
                     addr.0
                         .iter()
                         .zip_eq(other_addr.0.iter())

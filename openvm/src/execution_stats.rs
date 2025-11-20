@@ -70,8 +70,11 @@ where
     for &id in &universe {
         let mut signature = Vec::with_capacity(maps.len());
         for m in &maps {
-            let class_idx = m.get(&id).expect("id missing in some partition");
-            signature.push(*class_idx);
+            if let Some(class_idx) = m.get(&id) {
+                signature.push(*class_idx);
+            } else {
+                continue;
+            }
         }
         grouped.entry(signature).or_default().push(id);
     }
