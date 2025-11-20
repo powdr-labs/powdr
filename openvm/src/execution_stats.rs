@@ -69,11 +69,19 @@ where
 
     for &id in &universe {
         let mut signature = Vec::with_capacity(maps.len());
+        let mut is_singleton = false;
         for m in &maps {
-            let class_idx = m.get(&id).expect("id missing in some partition");
+            let Some(class_idx) = m.get(&id) else {
+                // The element did not appear in one of the partition, so it is its
+                // own equivalence class. We can also omit it in the output partition.
+                is_singleton = true;
+                break;
+            };
             signature.push(*class_idx);
         }
-        grouped.entry(signature).or_default().push(id);
+        if !is_singleton {
+            grouped.entry(signature).or_default().push(id);
+        }
     }
 
     // 4) Resulting equivalence classes are the grouped values

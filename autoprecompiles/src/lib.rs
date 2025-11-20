@@ -540,9 +540,10 @@ pub fn build<A: Adapter>(
     let dumb_precompile = machine.render(&vm_config.bus_map);
 
     baseline.constraints.extend(range_analyzer_constraints);
-    baseline
-        .constraints
-        .extend(equivalence_analyzer_constraints);
+    // TODO: Appears to be buggy
+    // baseline
+    //     .constraints
+    //     .extend(equivalence_analyzer_constraints);
 
     let machine = optimizer::optimize::<A>(
         baseline,
