@@ -272,6 +272,26 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
         self.linear.get(var)
     }
 
+    /// If `self` contains `var` exactly once in an affine way,
+    /// returns `Some((coeff, rest))` where `self = coeff * var + rest`.
+    ///
+    /// This is relatively expensive because it needs to construct a new
+    /// GroupedExpression.
+    pub fn try_extract_affine_var(&self, var: V) -> Option<(T, Self)> {
+        if self
+            .referenced_unknown_variables()
+            .filter(|v| *v == &var)
+            .count()
+            != 1
+        {
+            return None;
+        }
+        let coeff = self.linear.get(&var)?.clone();
+        let mut rest = self.clone();
+        rest.linear.remove(&var);
+        Some((coeff, rest))
+    }
+
     /// Returns the range constraint of the full expression.
     pub fn range_constraint(
         &self,
