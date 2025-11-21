@@ -3,6 +3,7 @@
 #![cfg_attr(feature = "tco", feature(explicit_tail_calls))]
 #![cfg_attr(feature = "tco", feature(core_intrinsics))]
 
+use crate::execution_stats::execution_stats;
 use derive_more::From;
 use eyre::Result;
 use itertools::Itertools;
@@ -74,6 +75,7 @@ use crate::powdr_extension::{PowdrExtensionExecutor, PowdrPrecompile};
 mod air_builder;
 pub mod bus_map;
 pub mod cuda_abi;
+mod execution_stats;
 pub mod extraction_utils;
 pub mod opcode;
 pub mod symbolic_instruction_builder;
@@ -532,6 +534,7 @@ pub fn compile_guest(
     guest_opts: GuestOptions,
     config: PowdrConfig,
     pgo_config: PgoConfig,
+    inputs: StdIn,
 ) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
     let original_program = compile_openvm(guest, guest_opts.clone())?;
 
@@ -540,7 +543,7 @@ pub fn compile_guest(
         tally_opcode_frequency(&pgo_config, &original_program.exe);
     }
 
-    compile_exe(original_program, config, pgo_config)
+    compile_exe(original_program, config, pgo_config, inputs)
 }
 
 fn instruction_index_to_pc(program: &Program<BabyBear>, idx: usize) -> u64 {
@@ -588,6 +591,7 @@ pub fn compile_exe(
     original_program: OriginalCompiledProgram,
     config: PowdrConfig,
     pgo_config: PgoConfig,
+    inputs: StdIn,
 ) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
     let compiled = match pgo_config {
         PgoConfig::Cell(pgo_data, max_total_columns) => {
@@ -609,14 +613,16 @@ pub fn compile_exe(
                     pgo_data,
                     max_total_apc_columns,
                 ),
+                inputs,
             )
         }
         PgoConfig::Instruction(pgo_data) => customize(
             original_program,
             config,
             InstructionPgo::with_pgo_data(pgo_data),
+            inputs,
         ),
-        PgoConfig::None => customize(original_program, config, NonePgo::default()),
+        PgoConfig::None => customize(original_program, config, NonePgo::default(), inputs),
     };
     // Export the compiled program to a PIL file for debugging purposes.
     export_pil(
@@ -996,7 +1002,14 @@ mod tests {
         pgo_config: PgoConfig,
         segment_height: Option<usize>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let program = compile_guest(guest, GuestOptions::default(), config, pgo_config).unwrap();
+        let program = compile_guest(
+            guest,
+            GuestOptions::default(),
+            config,
+            pgo_config,
+            stdin.clone(),
+        )
+        .unwrap();
         prove(&program, mock, recursion, stdin, segment_height)
     }
 
@@ -1115,8 +1128,14 @@ mod tests {
         let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
 
         let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP_NO_APC_EXECUTED);
-        let program =
-            compile_guest(GUEST, GuestOptions::default(), config, PgoConfig::None).unwrap();
+        let program = compile_guest(
+            GUEST,
+            GuestOptions::default(),
+            config,
+            PgoConfig::None,
+            stdin.clone(),
+        )
+        .unwrap();
 
         // Assert that all APCs aren't executed
         program
@@ -1165,9 +1184,14 @@ mod tests {
     fn matmul_compile() {
         let guest = "guest-matmul";
         let config = default_powdr_openvm_config(1, 0);
-        assert!(
-            compile_guest(guest, GuestOptions::default(), config, PgoConfig::default()).is_ok()
-        );
+        assert!(compile_guest(
+            guest,
+            GuestOptions::default(),
+            config,
+            PgoConfig::default(),
+            StdIn::default()
+        )
+        .is_ok());
     }
 
     #[test]
@@ -1649,6 +1673,8 @@ mod tests {
             GuestOptions::default(),
             config,
             guest.pgo_config,
+            // TODO
+            StdIn::default(),
         )
         .unwrap();
 

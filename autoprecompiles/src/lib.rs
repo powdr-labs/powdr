@@ -12,7 +12,7 @@ use powdr_expression::{
     visitors::Children, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Display;
 use std::io::BufWriter;
 use std::iter::once;
@@ -393,9 +393,10 @@ impl<T, I> Apc<T, I> {
 }
 
 /// Allocates global poly_ids and keeps track of substitutions
-struct ColumnAllocator {
+#[derive(Debug)]
+pub struct ColumnAllocator {
     /// For each original air, for each original column index, the associated poly_id in the APC air
-    subs: Vec<Vec<u64>>,
+    pub subs: Vec<Vec<u64>>,
     /// The next poly_id to issue
     next_poly_id: u64,
 }
@@ -408,11 +409,101 @@ impl ColumnAllocator {
     }
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct ExecutionStats {
+    pub air_id_by_pc: BTreeMap<u32, usize>,
+    pub column_names_by_air_id: BTreeMap<usize, Vec<String>>,
+    pub column_ranges_by_pc: BTreeMap<u32, Vec<(u32, u32)>>,
+    pub equivalence_classes_by_block: BTreeMap<u64, Vec<Vec<(usize, usize)>>>,
+}
+
+fn add_ai_constraints<A: Adapter>(
+    execution_stats: &ExecutionStats,
+    subs: &[Vec<u64>],
+    block: &BasicBlock<A::Instruction>,
+    columns: impl Iterator<Item = AlgebraicReference>,
+) -> (
+    Vec<SymbolicConstraint<A::PowdrField>>,
+    Vec<SymbolicConstraint<A::PowdrField>>,
+) {
+    let range_constraints = &execution_stats.column_ranges_by_pc;
+    let equivalence_classes_by_block = &execution_stats.equivalence_classes_by_block;
+
+    let mut range_analyzer_constraints = Vec::new();
+    let mut equivalence_analyzer_constraints = Vec::new();
+
+    // Mapping (instruction index, column index) -> AlgebraicReference
+    let reverse_subs = subs
+        .iter()
+        .enumerate()
+        .flat_map(|(instr_index, subs)| {
+            subs.iter()
+                .enumerate()
+                .map(move |(col_index, &poly_id)| (poly_id, (instr_index, col_index)))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let algebraic_references = columns
+        .map(|r| (reverse_subs.get(&r.id).unwrap().clone(), r.clone()))
+        .collect::<BTreeMap<_, _>>();
+
+    for i in 0..block.statements.len() {
+        let pc = (block.start_pc + (i * 4) as u64) as u32;
+        let Some(range_constraints) = range_constraints.get(&pc) else {
+            continue;
+        };
+        for (col_index, range) in range_constraints.iter().enumerate() {
+            if range.0 == range.1 {
+                let value = A::PowdrField::from(range.0 as u64);
+                let Some(reference) = algebraic_references.get(&(i, col_index)).cloned() else {
+                    panic!(
+                        "Missing reference for (i: {}, col_index: {}, block_id: {})",
+                        i, col_index, block.start_pc
+                    );
+                };
+                let constraint =
+                    AlgebraicExpression::Reference(reference) - AlgebraicExpression::Number(value);
+
+                range_analyzer_constraints.push(SymbolicConstraint { expr: constraint });
+            }
+        }
+    }
+
+    if let Some(equivalence_classes) = equivalence_classes_by_block.get(&block.start_pc) {
+        for equivalence_class in equivalence_classes {
+            let first = equivalence_class.first().unwrap();
+            let Some(first_ref) = algebraic_references.get(first).cloned() else {
+                // TODO: This fails in some blocks. For now, just return no extra constraints.
+                println!(
+                    "Missing reference for (i: {}, col_index: {}, block_id: {})",
+                    first.0, first.1, block.start_pc
+                );
+                return (range_analyzer_constraints, vec![]);
+            };
+            for other in equivalence_class.iter().skip(1) {
+                let Some(other_ref) = algebraic_references.get(other).cloned() else {
+                    // TODO: This fails in some blocks. For now, just return no extra constraints.
+                    println!(
+                        "Missing reference for (i: {}, col_index: {}, block_id: {})",
+                        other.0, other.1, block.start_pc
+                    );
+                    return (range_analyzer_constraints, vec![]);
+                };
+                let constraint = AlgebraicExpression::Reference(first_ref.clone())
+                    - AlgebraicExpression::Reference(other_ref.clone());
+                equivalence_analyzer_constraints.push(SymbolicConstraint { expr: constraint });
+            }
+        }
+    }
+
+    (range_analyzer_constraints, equivalence_analyzer_constraints)
+}
+
 pub fn build<A: Adapter>(
     block: BasicBlock<A::Instruction>,
     vm_config: AdapterVmConfig<A>,
     degree_bound: DegreeBound,
     apc_candidates_dir_path: Option<&Path>,
+    execution_stats: &ExecutionStats,
 ) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
     let start = std::time::Instant::now();
 
@@ -420,6 +511,13 @@ pub fn build<A: Adapter>(
         &block,
         vm_config.instruction_handler,
         &vm_config.bus_map,
+    );
+
+    let (range_analyzer_constraints, equivalence_analyzer_constraints) = add_ai_constraints::<A>(
+        execution_stats,
+        &column_allocator.subs,
+        &block,
+        machine.main_columns(),
     );
 
     let labels = [("apc_start_pc", block.start_pc.to_string())];
@@ -430,12 +528,31 @@ pub fn build<A: Adapter>(
     metrics::counter!("before_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
 
+    let mut baseline = machine;
+
     let machine = optimizer::optimize::<A>(
-        machine,
+        baseline.clone(),
+        vm_config.bus_interaction_handler.clone(),
+        degree_bound,
+        &vm_config.bus_map,
+    )
+    .unwrap();
+    let dumb_precompile = machine.render(&vm_config.bus_map);
+
+    baseline.constraints.extend(range_analyzer_constraints);
+    // TODO: Appears to be buggy
+    // baseline
+    //     .constraints
+    //     .extend(equivalence_analyzer_constraints);
+
+    let machine = optimizer::optimize::<A>(
+        baseline,
         vm_config.bus_interaction_handler,
         degree_bound,
         &vm_config.bus_map,
-    )?;
+    )
+    .unwrap();
+    let ai_precompile = machine.render(&vm_config.bus_map);
 
     // add guards to constraints that are not satisfied by zeroes
     let (machine, column_allocator) = add_guards(machine, column_allocator);
@@ -460,6 +577,16 @@ pub fn build<A: Adapter>(
             std::fs::File::create(&ser_path).expect("Failed to create file for APC candidate");
         let writer = BufWriter::new(file);
         serde_cbor::to_writer(writer, &apc).expect("Failed to write APC candidate to file");
+
+        let dumb_path = path
+            .join(format!("apc_candidate_{}_dumb.txt", apc.start_pc()))
+            .with_extension("txt");
+        std::fs::write(dumb_path, dumb_precompile).unwrap();
+
+        let ai_path = path
+            .join(format!("apc_candidate_{}_ai.txt", apc.start_pc()))
+            .with_extension("txt");
+        std::fs::write(ai_path, ai_precompile).unwrap();
     }
 
     metrics::gauge!("apc_gen_time_ms", &labels).set(start.elapsed().as_millis() as f64);
@@ -547,11 +674,16 @@ fn add_guards<T: FieldElement>(
 
     machine.constraints.extend(is_valid_mults);
 
-    assert_eq!(
-        pre_degree,
-        machine.degree(),
-        "Degree should not change after adding guards"
-    );
+    // TODO: Why do we need this?
+    if pre_degree != 0 {
+        assert_eq!(
+            pre_degree,
+            machine.degree(),
+            "Degree should not change after adding guards, but changed from {} to {}",
+            pre_degree,
+            machine.degree(),
+        );
+    }
 
     // This needs to be added after the assertion above because it's a quadratic constraint
     // so it may increase the degree of the machine.

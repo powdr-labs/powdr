@@ -13,12 +13,13 @@ use crate::memory_bus_interaction::OpenVmMemoryBusInteraction;
 use crate::opcode::branch_opcodes_bigint_set;
 use crate::powdr_extension::chip::PowdrAir;
 use crate::utils::UnsupportedOpenVmReferenceError;
-use crate::OriginalCompiledProgram;
+use crate::{execution_stats, OriginalCompiledProgram};
 use crate::{CompiledProgram, SpecializedConfig};
 use itertools::Itertools;
 use openvm_instructions::instruction::Instruction as OpenVmInstruction;
 use openvm_instructions::program::{Program as OpenVmProgram, DEFAULT_PC_STEP};
 use openvm_instructions::VmOpcode;
+use openvm_sdk::StdIn;
 use openvm_stark_backend::{
     interaction::SymbolicInteraction,
     p3_field::{FieldAlgebra, PrimeField32},
@@ -147,6 +148,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
     }: OriginalCompiledProgram,
     config: PowdrConfig,
     pgo: P,
+    inputs: StdIn,
 ) -> CompiledProgram {
     let labels = elf.text_labels();
     let debug_info = elf.debug_info();
@@ -217,8 +219,26 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         })
         .collect();
 
+    let execution_stats = execution_stats(
+        exe.clone(),
+        SpecializedConfig::new(
+            original_config.clone(),
+            vec![],
+            config.degree_bound.identities,
+        ),
+        inputs,
+        &blocks,
+    )
+    .unwrap();
+
     let start = std::time::Instant::now();
-    let apcs = pgo.filter_blocks_and_create_apcs_with_pgo(blocks, &config, vm_config, labels);
+    let apcs = pgo.filter_blocks_and_create_apcs_with_pgo(
+        blocks,
+        &config,
+        vm_config,
+        labels,
+        execution_stats,
+    );
     metrics::gauge!("total_apc_gen_time_ms").set(start.elapsed().as_millis() as f64);
 
     let pc_base = exe.program.pc_base;
