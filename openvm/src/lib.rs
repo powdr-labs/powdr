@@ -1010,7 +1010,7 @@ mod tests {
         compile_and_prove(
             guest,
             config,
-            false,
+            true,
             false,
             stdin,
             pgo_config,
