@@ -1,4 +1,4 @@
-use std::{cmp::min, collections::HashMap, hash::Hash};
+use std::{cmp::min, collections::HashMap, fmt::Display, hash::Hash};
 
 use itertools::Itertools;
 use powdr_number::{FieldElement, LargeInt};
@@ -34,7 +34,7 @@ pub struct BooleanExtractionValue<T, V> {
     pub new_unconstrained_boolean_variable: Option<V>,
 }
 
-impl<T: FieldElement, V: Ord + Clone + Hash + Eq> BooleanExtractor<T, V> {
+impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> BooleanExtractor<T, V> {
     /// Tries to simplify a quadratic constraint by transforming it into an affine
     /// constraint that makes use of a new boolean variable.
     /// NOTE: The boolean constraint is not part of the output.
