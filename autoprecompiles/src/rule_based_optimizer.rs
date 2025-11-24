@@ -25,6 +25,8 @@ use num_traits::{One, Zero};
 
 use crepe::crepe;
 
+const SIZE_LIMIT: usize = 400;
+
 type F = BabyBearField;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -534,6 +536,7 @@ crepe! {
         }).map(GroupedExpression::from).sum::<GroupedExpression<F, Var>>();
         // TODO we actually need to insert a new variable at this point.
         let replacement = r + GroupedExpression::from_unknown_variable(v1) * (x1 * coeff1 + x2 * coeff2);
+        // v1 = -r / ((x1 * coeff1 + x2 * coeff2))
         Some(sys.insert_owned(replacement))
       })();
 
@@ -595,6 +598,14 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
     _bus_interaction_handler: impl BusInteractionHandler<T> + Clone,
 ) -> IndexedConstraintSystem<T, V> {
     if T::modulus().to_arbitrary_integer() != BabyBearField::modulus().to_arbitrary_integer() {
+        return system;
+    }
+    if system.system().algebraic_constraints.len() > SIZE_LIMIT {
+        log::debug!(
+            "Skipping rule-based optimization because the system is too large ({} > {}).",
+            system.system().algebraic_constraints.len(),
+            SIZE_LIMIT
+        );
         return system;
     }
 
@@ -667,6 +678,7 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         }
         db = Some(sys.expression_db());
     }
+    system.retain_algebraic_constraints(|c| !c.is_redundant());
     system
 }
 

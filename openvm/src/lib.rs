@@ -1987,7 +1987,7 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 2022,
+                            main: 2025,
                             log_up: 3472,
                         },
                         constraints: 187,
