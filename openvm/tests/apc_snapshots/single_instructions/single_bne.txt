@@ -41,10 +41,10 @@ mult=is_valid * 1, args=[reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0
 mult=is_valid * 1, args=[15360 * reads_aux__1__base__prev_timestamp_0 + 15360 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0 - 15360 * from_state__timestamp_0, 12]
 
 // Algebraic constraints:
-diff_inv_marker__0_0 * ((a__0_0 - b__0_0) * (a__0_0 - b__0_0) + (a__1_0 - b__1_0) * (a__1_0 - b__1_0) + (a__2_0 - b__2_0) * (a__2_0 - b__2_0) + (a__3_0 - b__3_0) * (a__3_0 - b__3_0)) - cmp_result_0 = 0
-(1 - cmp_result_0) * (a__1_0 - b__1_0) = 0
-(1 - cmp_result_0) * (a__3_0 - b__3_0) = 0
 cmp_result_0 * (cmp_result_0 - 1) = 0
-(1 - cmp_result_0) * (a__2_0 - b__2_0) = 0
 (1 - cmp_result_0) * (a__0_0 - b__0_0) = 0
+(1 - cmp_result_0) * (a__1_0 - b__1_0) = 0
+(1 - cmp_result_0) * (a__2_0 - b__2_0) = 0
+(1 - cmp_result_0) * (a__3_0 - b__3_0) = 0
+diff_inv_marker__0_0 * ((a__0_0 - b__0_0) * (a__0_0 - b__0_0) + (a__1_0 - b__1_0) * (a__1_0 - b__1_0) + (a__2_0 - b__2_0) * (a__2_0 - b__2_0) + (a__3_0 - b__3_0) * (a__3_0 - b__3_0)) - cmp_result_0 = 0
 is_valid * (is_valid - 1) = 0

@@ -13,7 +13,7 @@ use std::{
 use itertools::{EitherOrBoth, Itertools};
 use powdr_constraint_solver::{
     algebraic_constraint,
-    constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
+    constraint_system::{BusInteraction, BusInteractionHandler},
     grouped_expression::{GroupedExpression, GroupedExpressionComponent, RangeConstraintProvider},
     indexed_constraint_system::IndexedConstraintSystem,
     range_constraint::RangeConstraint,
@@ -97,6 +97,10 @@ impl System {
             single_occurrence_variables,
             range_constraints_on_vars,
         }
+    }
+
+    fn expression_db(self) -> ExpressionDB {
+        self.expressions.into_inner()
     }
 }
 
@@ -314,6 +318,13 @@ impl RangeConstraintProvider<F, Var> for System {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct Expr(usize);
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum Action {
+    SubstituteVariableByConstant(Var, F),
+    SubstituteVariableByVariable(Var, Var),
+    ReplaceAlgebraicConstraintBy(Expr, Expr),
+}
+
 crepe! {
     @input
     struct S<'a>(&'a System);
@@ -470,7 +481,6 @@ crepe! {
       AffineExpression(v2_, coeff2, v2, offset2),
       (offset2.is_zero());
 
-    @output
     struct PotentiallyReplaceAlgebraicConstraintBy(Expr, Expr);
 
     PotentiallyReplaceAlgebraicConstraintBy(e, replacement) <-
@@ -569,27 +579,18 @@ crepe! {
       ReplaceAlgebraicConstraintBy(_, e);
 
 
-    // This constraint has been replaced by a different one (or is redundant).
-    struct AlgebraicConstraintDeleted(Expr);
-    AlgebraicConstraintDeleted(e) <-
-      ReplaceAlgebraicConstraintBy(e, _);
-    AlgebraicConstraintDeleted(e) <-
-      S(sys),
-      AlgebraicConstraint(e),
-      (sys.is_zero(e));
-
     @output
-    struct Change();
-    Change() <- ReplaceAlgebraicConstraintBy(_, _);
-    Change() <- AlgebraicConstraintDeleted(_);
-
-    @output
-    struct FinalAlgebraicConstraint(Expr);
-    FinalAlgebraicConstraint(e) <- AlgebraicConstraint(e), !AlgebraicConstraintDeleted(e);
+    struct ActionRule(Action);
+    ActionRule(Action::SubstituteVariableByConstant(v, val)) <-
+      Assignment(v, val);
+    ActionRule(Action::SubstituteVariableByVariable(v, v2)) <-
+      Equivalence(v, v2);
+    ActionRule(Action::ReplaceAlgebraicConstraintBy(old, new)) <-
+      PotentiallyReplaceAlgebraicConstraintBy(old, new);
 }
 
 pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
-    system: IndexedConstraintSystem<T, V>,
+    mut system: IndexedConstraintSystem<T, V>,
     range_constraints: impl RangeConstraintProvider<T, V>,
     _bus_interaction_handler: impl BusInteractionHandler<T> + Clone,
 ) -> IndexedConstraintSystem<T, V> {
@@ -598,14 +599,91 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
     }
 
     let mut var_mapper = Default::default();
-    let mut db = ExpressionDB::default();
+    let mut db = Some(ExpressionDB::default());
 
+    loop {
+        let (algebraic_constraints, _bus_interactions, sys) = transform_constraint_system(
+            &system,
+            &range_constraints,
+            &mut var_mapper,
+            db.take().unwrap(),
+        );
+        let mut rt = Crepe::new();
+        rt.extend(
+            algebraic_constraints
+                .iter()
+                .copied()
+                .map(InitialAlgebraicConstraint),
+        );
+        rt.extend(std::iter::once(S(&sys)));
+
+        let mut progress = false;
+        let (actions,) = rt.run();
+
+        for action in actions.into_iter().map(|a| a.0).sorted() {
+            match action {
+                Action::SubstituteVariableByConstant(var, val) => {
+                    system.substitute_by_known(
+                        var_mapper.backward(&var),
+                        &untransform_field_element(&val),
+                    );
+                    progress = true;
+                }
+                Action::SubstituteVariableByVariable(v1, v2) => {
+                    system.substitute_by_unknown(
+                        var_mapper.backward(&v1),
+                        &GroupedExpression::from_unknown_variable(var_mapper.backward(&v2).clone()),
+                    );
+                    progress = true;
+                }
+                Action::ReplaceAlgebraicConstraintBy(e1, e2) => {
+                    let expr1 = untransform_grouped_expression(&sys.extract(e1), &var_mapper);
+                    // TODO more efficient?
+                    let mut found = false;
+                    system.retain_algebraic_constraints(|c| {
+                        if c.expression == expr1 {
+                            found = true;
+                            false
+                        } else {
+                            true
+                        }
+                    });
+                    if found {
+                        let expr2 = untransform_grouped_expression(&sys.extract(e2), &var_mapper);
+                        system.add_algebraic_constraints([
+                            algebraic_constraint::AlgebraicConstraint::assert_zero(expr2),
+                        ]);
+                        progress = true;
+                    } else {
+                        log::warn!(
+                            "Was about to replace {expr1} but did not find it in the system."
+                        );
+                    }
+                }
+            }
+        }
+        if !progress {
+            break;
+        }
+        db = Some(sys.expression_db());
+    }
+    system
+}
+
+// TODO use an expression cache so that we don't even
+// have to transform the field elements.
+fn transform_constraint_system<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
+    system: &IndexedConstraintSystem<T, V>,
+    range_constraints: impl RangeConstraintProvider<T, V>,
+    var_mapper: &mut VarMapper<V>,
+    mut expression_db: ExpressionDB,
+) -> (Vec<Expr>, Vec<BusInteraction<Expr>>, System) {
     let algebraic_constraints = system
         .system()
         .algebraic_constraints
         .iter()
-        .map(|c| transform_grouped_expression(&c.expression, &mut var_mapper))
-        .map(|e| db.insert_owned(e))
+        .map(|c| transform_grouped_expression(&c.expression, var_mapper))
+        .map(|e| expression_db.insert_owned(e))
         .collect_vec();
     let bus_interactions: Vec<BusInteraction<Expr>> = system
         .system()
@@ -614,8 +692,8 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         .map(|bus_inter| {
             bus_inter
                 .fields()
-                .map(|f| transform_grouped_expression(f, &mut var_mapper))
-                .map(|e| db.insert_owned(e))
+                .map(|f| transform_grouped_expression(f, var_mapper))
+                .map(|e| expression_db.insert_owned(e))
                 .collect()
         })
         .collect_vec();
@@ -651,83 +729,17 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
             (var_mapper.forward(var), rc)
         })
         .collect::<HashMap<_, _>>();
-    let sys = System::new(
-        db,
-        var_names,
-        single_occurrence_variables,
-        range_constraints_on_vars,
-    );
 
-    let (algebraic_constraints, bus_interactions) =
-        apply_rules(algebraic_constraints, bus_interactions, &sys);
-
-    let algebraic_constraints = algebraic_constraints.into_iter().map(|e| {
-        let expr = sys.extract(e);
-        algebraic_constraint::AlgebraicConstraint::assert_zero(
-            untransform_grouped_expression::<T, _>(&expr, &var_mapper),
-        )
-    });
-    let bus_interactions = bus_interactions
-        .into_iter()
-        .map(|bus_inter| {
-            bus_inter
-                .fields()
-                .map(|&e| {
-                    let expr = sys.extract(e);
-                    untransform_grouped_expression::<T, _>(&expr, &var_mapper)
-                })
-                .collect::<BusInteraction<GroupedExpression<T, V>>>()
-        })
-        .collect_vec();
-
-    ConstraintSystem {
-        algebraic_constraints: algebraic_constraints.collect(),
+    (
+        algebraic_constraints,
         bus_interactions,
-        derived_variables: system.system().derived_variables.clone(),
-    }
-    .into()
-}
-
-fn apply_rules(
-    mut algebraic_constraints: Vec<Expr>,
-    bus_interactions: Vec<BusInteraction<Expr>>,
-    sys: &System,
-) -> (Vec<Expr>, Vec<BusInteraction<Expr>>) {
-    loop {
-        let mut progress = false;
-        let mut rt = Crepe::new();
-
-        rt.extend(
-            algebraic_constraints
-                .iter()
-                .copied()
-                .map(InitialAlgebraicConstraint),
-        );
-        rt.extend(std::iter::once(S(sys)));
-
-        let (replacements, change, mut final_constrs) = rt.run();
-        progress |= !change.is_empty();
-
-        // We perform the constraint-by-constraint replacements instead of
-        // in the system because there can be multiple matches.
-        for PotentiallyReplaceAlgebraicConstraintBy(old, new) in &replacements {
-            if final_constrs.contains(&FinalAlgebraicConstraint(*old)) {
-                final_constrs.remove(&FinalAlgebraicConstraint(*old));
-                final_constrs.insert(FinalAlgebraicConstraint(*new));
-                progress = true;
-            }
-        }
-        // TODO this could all be non-deterministic.
-        algebraic_constraints = final_constrs
-            .iter()
-            .map(|FinalAlgebraicConstraint(e)| *e)
-            .collect();
-
-        if !progress {
-            break;
-        }
-    }
-    (algebraic_constraints, bus_interactions)
+        System::new(
+            expression_db,
+            var_names,
+            single_occurrence_variables,
+            range_constraints_on_vars,
+        ),
+    )
 }
 
 #[derive(Clone)]
@@ -778,10 +790,10 @@ fn transform_grouped_expression<T: FieldElement, V: Hash + Eq + Ord + Clone + Di
             }
             GroupedExpressionComponent::Linear(v, c) => {
                 GroupedExpression::from_unknown_variable(var_mapper.forward(&v))
-                    * BabyBearField::from(c.to_arbitrary_integer())
+                    * transform_field_element(&c)
             }
             GroupedExpressionComponent::Constant(c) => {
-                GroupedExpression::from_number(c.to_arbitrary_integer().into())
+                GroupedExpression::from_number(transform_field_element(&c))
             }
         })
         .sum()
@@ -799,14 +811,22 @@ fn untransform_grouped_expression<T: FieldElement, V: Hash + Eq + Ord + Clone + 
                     * untransform_grouped_expression(&r, var_mapper)
             }
             GroupedExpressionComponent::Linear(v, c) => {
-                GroupedExpression::from_unknown_variable(var_mapper.backward(&v).clone())
-                    * T::from(c.to_arbitrary_integer())
+                GroupedExpression::<T, V>::from_unknown_variable(var_mapper.backward(&v).clone())
+                    * untransform_field_element::<T>(&c)
             }
             GroupedExpressionComponent::Constant(c) => {
-                GroupedExpression::from_number(c.to_arbitrary_integer().into())
+                GroupedExpression::from_number(untransform_field_element(&c))
             }
         })
         .sum()
+}
+
+fn transform_field_element<T: FieldElement>(fe: &T) -> BabyBearField {
+    BabyBearField::from(fe.to_arbitrary_integer())
+}
+
+fn untransform_field_element<T: FieldElement>(fe: &BabyBearField) -> T {
+    T::from(fe.to_arbitrary_integer())
 }
 
 fn transform_range_constraint<T: FieldElement>(
@@ -814,11 +834,8 @@ fn transform_range_constraint<T: FieldElement>(
 ) -> RangeConstraint<BabyBearField> {
     let (min, max) = rc.range();
     let mask = *rc.mask();
-    RangeConstraint::from_range(
-        BabyBearField::from(min.to_arbitrary_integer()),
-        BabyBearField::from(max.to_arbitrary_integer()),
-    )
-    .conjunction(&RangeConstraint::from_mask(mask.try_into_u64().unwrap()))
+    RangeConstraint::from_range(transform_field_element(&min), transform_field_element(&max))
+        .conjunction(&RangeConstraint::from_mask(mask.try_into_u64().unwrap()))
 }
 
 #[cfg(test)]
