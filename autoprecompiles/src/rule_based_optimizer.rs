@@ -25,7 +25,7 @@ use num_traits::{One, Zero};
 
 use crepe::crepe;
 
-const SIZE_LIMIT: usize = 400;
+const SIZE_LIMIT: usize = 800;
 
 type F = BabyBearField;
 
