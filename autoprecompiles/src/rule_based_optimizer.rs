@@ -12,10 +12,9 @@ use std::{
 
 use itertools::{EitherOrBoth, Itertools};
 use powdr_constraint_solver::{
-    constraint_system::{BusInteraction, BusInteractionHandler},
-    grouped_expression::{
-        GroupedExpression, GroupedExpressionComponent, NoRangeConstraints, RangeConstraintProvider,
-    },
+    algebraic_constraint,
+    constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
+    grouped_expression::{GroupedExpression, GroupedExpressionComponent, RangeConstraintProvider},
     indexed_constraint_system::IndexedConstraintSystem,
     range_constraint::RangeConstraint,
     runtime_constant::VarTransformable,
@@ -37,21 +36,47 @@ impl Display for Var {
     }
 }
 
-struct DB {
+#[derive(Default)]
+struct ExpressionDB {
     expressions: Vec<GroupedExpression<F, Var>>,
     reverse: HashMap<GroupedExpression<F, Var>, usize>,
 }
 
-impl Index<Expr> for DB {
+impl Index<Expr> for ExpressionDB {
     type Output = GroupedExpression<F, Var>;
     fn index(&self, index: Expr) -> &Self::Output {
         &self.expressions[index.0]
     }
 }
 
+impl ExpressionDB {
+    fn insert_owned_new(&mut self, expr: GroupedExpression<F, Var>) -> Expr {
+        self.expressions.push(expr.clone());
+        let id = self.expressions.len() - 1;
+        self.reverse.insert(expr, id);
+        Expr(id)
+    }
+
+    pub fn insert(&mut self, expr: &GroupedExpression<F, Var>) -> Expr {
+        if let Some(&id) = self.reverse.get(expr) {
+            Expr(id)
+        } else {
+            self.insert_owned_new(expr.clone())
+        }
+    }
+
+    pub fn insert_owned(&mut self, expr: GroupedExpression<F, Var>) -> Expr {
+        if let Some(&id) = self.reverse.get(&expr) {
+            Expr(id)
+        } else {
+            self.insert_owned_new(expr)
+        }
+    }
+}
+
 struct System {
-    expressions: RefCell<DB>,
-    var_to_string: Option<HashMap<Var, String>>,
+    expressions: RefCell<ExpressionDB>,
+    var_to_string: HashMap<Var, String>,
 
     /// Variables that only occurr once in the system
     /// (also only once in the constraint they occur in).
@@ -59,16 +84,18 @@ struct System {
     range_constraints_on_vars: HashMap<Var, RangeConstraint<F>>,
 }
 
-impl Default for System {
-    fn default() -> Self {
+impl System {
+    fn new(
+        expressions: ExpressionDB,
+        var_to_string: HashMap<Var, String>,
+        single_occurrence_variables: HashSet<Var>,
+        range_constraints_on_vars: HashMap<Var, RangeConstraint<F>>,
+    ) -> Self {
         Self {
-            expressions: RefCell::new(DB {
-                expressions: Vec::new(),
-                reverse: HashMap::new(),
-            }),
-            var_to_string: None,
-            single_occurrence_variables: HashSet::new(),
-            range_constraints_on_vars: HashMap::new(),
+            expressions: RefCell::new(expressions),
+            var_to_string,
+            single_occurrence_variables,
+            range_constraints_on_vars,
         }
     }
 }
@@ -103,54 +130,18 @@ impl Hash for System {
 }
 
 impl System {
-    pub fn set_single_occurrence_variables(&mut self, vars: HashSet<Var>) {
-        assert!(self.single_occurrence_variables.is_empty());
-        self.single_occurrence_variables = vars;
-    }
-
-    pub fn set_var_to_string_mapping(&mut self, mapping: HashMap<Var, String>) {
-        assert!(self.var_to_string.is_none());
-        self.var_to_string = Some(mapping);
-    }
-
-    pub fn set_range_constraint_on_var(
-        &mut self,
-        rcs: impl Iterator<Item = (Var, RangeConstraint<F>)>,
-    ) {
-        assert!(self.range_constraints_on_vars.is_empty());
-        self.range_constraints_on_vars = rcs.collect();
-    }
-
     pub fn insert(&self, expr: &GroupedExpression<F, Var>) -> Expr {
-        let mut db = self.expressions.borrow_mut();
-        if let Some(&id) = db.reverse.get(expr) {
-            Expr(id)
-        } else {
-            self.insert_owned_new(&mut db, expr.clone())
-        }
+        self.expressions.borrow_mut().insert(expr)
     }
 
     pub fn insert_owned(&self, expr: GroupedExpression<F, Var>) -> Expr {
-        let mut db = self.expressions.borrow_mut();
-        if let Some(&id) = db.reverse.get(&expr) {
-            Expr(id)
-        } else {
-            self.insert_owned_new(&mut db, expr)
-        }
-    }
-
-    fn insert_owned_new(&self, db: &mut DB, expr: GroupedExpression<F, Var>) -> Expr {
-        db.expressions.push(expr.clone());
-        let id = db.expressions.len() - 1;
-        db.reverse.insert(expr, id);
-        Expr(id)
+        self.expressions.borrow_mut().insert_owned(expr)
     }
 
     /// Extract an Expr into a free GroupedExpression.
     /// This is expensive since it clones the expression.
     pub fn extract(&self, expr: Expr) -> GroupedExpression<F, Var> {
-        let db = self.expressions.borrow();
-        db[expr].clone()
+        self.expressions.borrow()[expr].clone()
     }
 
     pub fn referenced_variables(&self, expr: Expr) -> BTreeSet<Var> {
@@ -176,21 +167,6 @@ impl System {
         }
         let (var, coeff) = expr.linear_components().exactly_one().ok()?;
         Some((*coeff, *var, *expr.constant_offset()))
-    }
-
-    /// If `expr` contains `var` exactly once in an affine way,
-    /// returns `Some((var, coeff, rest))` where `expr = coeff * var + rest`.
-    ///
-    /// This is relatively expensive because it needs to construct a new Expr.
-    pub fn try_extract_affine_var(&self, expr: Expr, var: Var) -> Option<(F, Expr)> {
-        let db = self.expressions.borrow();
-        let (coeff, rest) = db[expr].try_extract_affine_var(var)?;
-        Some((coeff, self.insert_owned(rest)))
-    }
-
-    pub fn is_affine(&self, expr: Expr) -> bool {
-        let db = self.expressions.borrow();
-        db[expr].is_affine()
     }
 
     pub fn on_expr<Args, Ret>(
@@ -225,12 +201,6 @@ impl System {
         // if we change GroupedExpression to use `Expr` for the recursion, we do not
         // have to insert everything multiple times.
         Some((self.insert(&l), self.insert(&r)))
-    }
-
-    #[allow(dead_code)]
-    pub fn try_as_single_var(&self, expr: Expr) -> Option<Var> {
-        let db = self.expressions.borrow();
-        db[expr].try_to_simple_unknown()
     }
 
     /// Returns Some(C) if `a - b = C' and both are affine.
@@ -318,25 +288,17 @@ impl System {
     #[allow(dead_code)]
     pub fn format_expr(&self, expr: Expr) -> String {
         let db = self.expressions.borrow();
-        if let Some(var_to_string) = &self.var_to_string {
-            db[expr]
-                .transform_var_type(&mut |v| &var_to_string[v])
-                .to_string()
-        } else {
-            db[expr].to_string()
-        }
+        db[expr]
+            .transform_var_type(&mut |v| &self.var_to_string[v])
+            .to_string()
     }
 
     #[allow(dead_code)]
     pub fn format_var(&self, var: Var) -> String {
-        if let Some(var_to_string) = &self.var_to_string {
-            var_to_string
-                .get(&var)
-                .cloned()
-                .unwrap_or_else(|| var.to_string())
-        } else {
-            var.to_string()
-        }
+        self.var_to_string
+            .get(&var)
+            .cloned()
+            .unwrap_or_else(|| var.to_string())
     }
 }
 
@@ -358,9 +320,6 @@ crepe! {
 
     @input
     struct InitialAlgebraicConstraint(Expr);
-
-    @input
-    struct InitialRangeConstraintOnVar(Var, RangeConstraint<F>);
 
     struct AlgebraicConstraint(Expr);
     AlgebraicConstraint(e) <- InitialAlgebraicConstraint(e);
@@ -392,9 +351,8 @@ crepe! {
       S(sys),
       let Some((coeff, var, offset)) = sys.try_to_affine(e);
 
-    @output
     struct RangeConstraintOnVar(Var, RangeConstraint<F>);
-    RangeConstraintOnVar(v, rc) <- InitialRangeConstraintOnVar(v, rc);
+    RangeConstraintOnVar(v, rc) <- S(sys), ContainsVariable(_, v), let rc = sys.get(&v);
     // RC(coeff * var + offset) = rc <=>
     // coeff * RC(var) + offset = rc <=>
     // RC(var) = (rc - offset) / coeff
@@ -433,7 +391,6 @@ crepe! {
       RangeConstraintOnVar(v2, rc),
       (rc.is_disjoint(&rc.combine_sum(&RangeConstraint::from_value(offset / coeff))));
 
-    @output
     struct ReplaceAlgebraicConstraintBy(Expr, Expr);
 
     // Combine multiple variables that only occur in the same algebraic constraint.
@@ -462,8 +419,18 @@ crepe! {
       for v in sys.single_occurrence_variables().cloned(),
       AlgebraicConstraint(e),
       ContainsVariable(e, v2),
-      (v == v2)
-      ;
+      (v == v2);
+
+    struct LargestSingleOccurrenceVariablePairInExpr(Expr, Var, Var);
+    LargestSingleOccurrenceVariablePairInExpr(e, v1, v2) <-
+      S(sys),
+      SingleOccurrenceVariable(e, v1),
+      SingleOccurrenceVariable(e, v2),
+      (v1 < v2),
+      (sys
+        .single_occurrence_variables()
+        .filter(|v3| sys.referenced_variables(e).contains(v3))
+        .all(|&v3| v3 == v1 || v3 == v2 || v3 < v1));
 
     struct HasProductSummand(Expr, Expr, Expr);
     HasProductSummand(e, l, r) <-
@@ -481,11 +448,18 @@ crepe! {
     Expression(l) <- HasProductSummand(_, l, _);
     Expression(r) <- HasProductSummand(_, _, r);
 
-    ReplaceAlgebraicConstraintBy(e, replacement) <-
-      S(sys),
-      SingleOccurrenceVariable(e, v1),
-      SingleOccurrenceVariable(e, v2),
-      (v1 < v2),
+    // FreeVariableCombinationCandidate(e, coeff1, v1, coeff2, v2, x1, x2)
+    // if e is the expression of an algebraic constraint and
+    // e = coeff1 * v1 * x1 + coeff2 * v2 * x2 + ...
+    // where v1 and v2 are different variables that only occur here and only once.
+    struct FreeVariableCombinationCandidate(Expr, F, Var, Expr, F, Var, Expr);
+    FreeVariableCombinationCandidate(e, coeff1, v1, x1, coeff2, v2, x2) <-
+    //   SingleOccurrenceVariable(e, v1),
+    //   SingleOccurrenceVariable(e, v2),
+      // TODO this way, we could miss optimization opportunities
+      // if this is not working out because of range constraints,
+      // but at least the replacement becomes deterministic.
+      LargestSingleOccurrenceVariablePairInExpr(e, v1, v2),
       AlgebraicConstraint(e),
       HasProductSummand(e, x1, v1_),
       AffineExpression(v1_, coeff1, v1, offset1),
@@ -494,49 +468,64 @@ crepe! {
       (x2 != v1_),
       (x1 != v2_),
       AffineExpression(v2_, coeff2, v2, offset2),
-      (offset2.is_zero()),
+      (offset2.is_zero());
+
+    @output
+    struct PotentiallyReplaceAlgebraicConstraintBy(Expr, Expr);
+
+    PotentiallyReplaceAlgebraicConstraintBy(e, replacement) <-
+      S(sys),
+      FreeVariableCombinationCandidate(e, coeff1, v1, x1, coeff2, v2, x2),
       // Here, we have e = coeff1 * v1 * x1 + coeff2 * v2 * x2 + ...
       RangeConstraintOnExpression(x1, rc1),
       RangeConstraintOnExpression(x2, rc2),
-      ({println!("XXX Considering combining {v1} and {v2} in constraint {}", sys.format_expr(e)); true}),
-      ({println!("XXX RC: {}: {}, {}: {}", sys.format_expr(x1), rc1, sys.format_expr(x2), rc2); true}),
-      // TODO Continue here. This is working, but we only have examples where
-      // the RC can also be negative.
-      (rc1.range().0.is_zero() && rc2.range().0.is_zero()),
-      (rc1.multiple(coeff1).range().1 < F::from(-1) / 2.into()),
-      (rc2.multiple(coeff2).range().1 < F::from(-1) / 2.into()),
-      let replacement = {
-          // TODO it could be that only subtracting sys.extract(v1_) * sys.extract(x1) works.
-          let e = sys.extract(e);
-          let x1 = sys.extract(x1);
-          let x2 = sys.extract(x2);
-          let r = e.clone() - x1.clone() * sys.extract(v1_) - x2.clone() * sys.extract(v2_);
-          println!("Replacement residual of {e}:\n{r}");
-          let replacement = r + GroupedExpression::from_unknown_variable(v1) * (x1 * coeff1 + x2 * coeff2);
-          sys.insert_owned(replacement)
-      };
-
-    //   }
-    //   let Some((coeff2, rest)) = sys.try_extract_affine_var(e2, v2),
-    //   let replacement_expr = {
-    //       let db = sys.expressions.borrow();
-    //       let expr = &db[e];
-    //       let new_var = Var(1000000 + v1.0 + v2.0); // just a large number to avoid collisions
-    //       let replaced = expr
-    //           .substitute_by_unknown(
-    //               &v1,
-    //               &GroupedExpression::from_unknown_variable(new_var),
-    //           )
-    //           .substitute_by_unknown(
-    //               &v2,
-    //               &GroupedExpression::from_unknown_variable(new_var),
-    //           );
-    //       replaced * GroupedExpression::from_number(coeff1 + coeff2)
-    //   },
-    //   let replacement = sys.insert_owned(replacement_expr);
-
-
-
+      let Some(replacement) = (|| {
+        let x1_needs_squaring = rc1.range().0 != F::zero();
+        let x2_needs_squaring = rc2.range().0 != F::zero();
+        let rc1 = if x1_needs_squaring {
+            rc1.square()
+        } else {
+            rc1
+        };
+        let rc2 = if x2_needs_squaring {
+            rc2.square()
+        } else {
+            rc2
+        };
+        if !rc1.range().0.is_zero() || !rc2.range().0.is_zero() {
+            return None;
+        }
+        let sum_rc = rc1.multiple(coeff1).combine_sum(&rc2.multiple(coeff2));
+        if !(sum_rc.range().0.is_zero() && sum_rc.range().1 < F::from(-1)) {
+            return None;
+        }
+        let e = sys.extract(e);
+        let x1 = sys.extract(x1);
+        let x1 = if x1_needs_squaring {
+            x1.clone() * x1
+        } else {
+            x1
+        };
+        let x2 = sys.extract(x2);
+        let x2 = if x2_needs_squaring {
+            x2.clone() * x2
+        } else {
+            x2
+        };
+        // TODO remove clone
+        let r = e.clone().into_summands().filter(|s|{
+            if let GroupedExpressionComponent::Quadratic(l, r) = s {
+                let mut vars = l.referenced_unknown_variables().chain(r.referenced_unknown_variables());
+                if vars.any(|v| v == &v1 || v == &v2) {
+                    return false;
+                }
+            };
+            true
+        }).map(GroupedExpression::from).sum::<GroupedExpression<F, Var>>();
+        // TODO we actually need to insert a new variable at this point.
+        let replacement = r + GroupedExpression::from_unknown_variable(v1) * (x1 * coeff1 + x2 * coeff2);
+        Some(sys.insert_owned(replacement))
+      })();
 
     // TODO wait a second. We can craete range constraints on expressions for all
     // algebraic constraints. Then we just work on range constraints on expressions
@@ -553,34 +542,34 @@ crepe! {
       Solvable(l, v, x1),
       Solvable(r, v, x1 + F::from(1));
 
-    @output
     struct Assignment(Var, F);
     Assignment(var, v) <-
       AlgebraicConstraint(e),
       Solvable(e, var, v);
 
-    @output
     struct Equivalence(Var, Var);
     Equivalence(v1, v2) <- QuadraticEquivalence(v1, v2);
 
     // Do not do this because it is rather expensive.
 
-    // ReplaceAlgebraicConstraintBy(e, sys.substitute_by_known(e, v, val)) <-
-    //   S(sys),
-    //   AlgebraicConstraint(e),
-    //   ContainsVariable(e, v),
-    //   Assignment(v, val);
-    // ReplaceAlgebraicConstraintBy(e, sys.substitute_by_var(e, v, v2)) <-
-    //    S(sys),
-    //    AlgebraicConstraint(e),
-    //    ContainsVariable(e, v),
-    //    Equivalence(v, v2);
+    ReplaceAlgebraicConstraintBy(e, sys.substitute_by_known(e, v, val)) <-
+      S(sys),
+      AlgebraicConstraint(e),
+      ContainsVariable(e, v),
+      Assignment(v, val);
+    ReplaceAlgebraicConstraintBy(e, sys.substitute_by_var(e, v, v2)) <-
+       S(sys),
+       AlgebraicConstraint(e),
+       ContainsVariable(e, v),
+       Equivalence(v, v2);
 
+    // TODO this way, one constraint could be replaced by multiple
+    // alternative constraints.
     AlgebraicConstraint(e) <-
       ReplaceAlgebraicConstraintBy(_, e);
 
 
-    // // This constraint has been replaced by a different one (or is redundant).
+    // This constraint has been replaced by a different one (or is redundant).
     struct AlgebraicConstraintDeleted(Expr);
     AlgebraicConstraintDeleted(e) <-
       ReplaceAlgebraicConstraintBy(e, _);
@@ -590,31 +579,33 @@ crepe! {
       (sys.is_zero(e));
 
     @output
+    struct Change();
+    Change() <- ReplaceAlgebraicConstraintBy(_, _);
+    Change() <- AlgebraicConstraintDeleted(_);
+
+    @output
     struct FinalAlgebraicConstraint(Expr);
     FinalAlgebraicConstraint(e) <- AlgebraicConstraint(e), !AlgebraicConstraintDeleted(e);
 }
 
 pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
-    mut system: IndexedConstraintSystem<T, V>,
+    system: IndexedConstraintSystem<T, V>,
     range_constraints: impl RangeConstraintProvider<T, V>,
-    bus_interaction_handler: impl BusInteractionHandler<T> + Clone,
+    _bus_interaction_handler: impl BusInteractionHandler<T> + Clone,
 ) -> IndexedConstraintSystem<T, V> {
     if T::modulus().to_arbitrary_integer() != BabyBearField::modulus().to_arbitrary_integer() {
         return system;
     }
-    // println!("{system}");
-    let start = std::time::Instant::now();
-    let mut rt = Crepe::new();
 
     let mut var_mapper = Default::default();
-    let mut db = System::default();
+    let mut db = ExpressionDB::default();
 
-    let transformed_expressions = system
+    let algebraic_constraints = system
         .system()
         .algebraic_constraints
         .iter()
         .map(|c| transform_grouped_expression(&c.expression, &mut var_mapper))
-        .map(|e| db.insert(&e))
+        .map(|e| db.insert_owned(e))
         .collect_vec();
     let bus_interactions: Vec<BusInteraction<Expr>> = system
         .system()
@@ -624,117 +615,119 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
             bus_inter
                 .fields()
                 .map(|f| transform_grouped_expression(f, &mut var_mapper))
-                .map(|e| db.insert(&e))
+                .map(|e| db.insert_owned(e))
                 .collect()
         })
         .collect_vec();
+
+    let var_names = var_mapper
+        .backward
+        .iter()
+        .map(|(var, v)| (*var, v.to_string()))
+        .collect();
+    let single_occurrence_variables = system
+        .system()
+        .referenced_unknown_variables()
+        .unique()
+        .filter_map(|var| {
+            let constr = system
+                .constraints_referencing_variables(std::iter::once(var))
+                .exactly_one()
+                .ok()?;
+            constr
+                .referenced_unknown_variables()
+                .filter(|&v| v == var)
+                .cloned()
+                .exactly_one()
+                .ok()
+        })
+        .map(|v| var_mapper.forward(&v))
+        .collect();
     let range_constraints_on_vars = system
         .referenced_unknown_variables()
         .unique()
-        .map(|v| {
-            let rc = range_constraints.get(v);
-            InitialRangeConstraintOnVar(var_mapper.forward(v), transform_range_constraint(&rc))
+        .map(|var| {
+            let rc = transform_range_constraint(&range_constraints.get(var));
+            (var_mapper.forward(var), rc)
+        })
+        .collect::<HashMap<_, _>>();
+    let sys = System::new(
+        db,
+        var_names,
+        single_occurrence_variables,
+        range_constraints_on_vars,
+    );
+
+    let (algebraic_constraints, bus_interactions) =
+        apply_rules(algebraic_constraints, bus_interactions, &sys);
+
+    let algebraic_constraints = algebraic_constraints.into_iter().map(|e| {
+        let expr = sys.extract(e);
+        algebraic_constraint::AlgebraicConstraint::assert_zero(
+            untransform_grouped_expression::<T, _>(&expr, &var_mapper),
+        )
+    });
+    let bus_interactions = bus_interactions
+        .into_iter()
+        .map(|bus_inter| {
+            bus_inter
+                .fields()
+                .map(|&e| {
+                    let expr = sys.extract(e);
+                    untransform_grouped_expression::<T, _>(&expr, &var_mapper)
+                })
+                .collect::<BusInteraction<GroupedExpression<T, V>>>()
         })
         .collect_vec();
 
-    let transform_end = std::time::Instant::now();
-
-    rt.extend(
-        transformed_expressions
-            .iter()
-            .copied()
-            .map(InitialAlgebraicConstraint),
-    );
-    // rt.extend(bus_interactions.iter().map(BusInteractionConstraint));
-    rt.extend(range_constraints_on_vars);
-    db.set_var_to_string_mapping(
-        var_mapper
-            .backward
-            .iter()
-            .map(|(var, v)| (*var, v.to_string()))
-            .collect(),
-    );
-    db.set_single_occurrence_variables(
-        system
-            .referenced_unknown_variables()
-            .unique()
-            .filter_map(|var| {
-                let constr = system
-                    .constraints_referencing_variables(std::iter::once(var))
-                    .exactly_one()
-                    .ok()?;
-                constr
-                    .referenced_unknown_variables()
-                    .cloned()
-                    .filter(|v| v == var)
-                    .exactly_one()
-                    .ok()
-            })
-            .map(|v| var_mapper.forward(&v))
-            .collect(),
-    );
-    db.set_range_constraint_on_var(system.referenced_unknown_variables().unique().map(|v| {
-        let rc = range_constraints.get(v);
-        (var_mapper.forward(v), transform_range_constraint(&rc))
-    }));
-    rt.extend(std::iter::once(S(&db)));
-
-    let insert_end = std::time::Instant::now();
-
-    let (rcs, _, assignments, equivalences, .. /* , constrs*/) = rt.run();
-    let run_end = std::time::Instant::now();
-    // for RangeConstraintOnVar(var, rc) in &rcs {
-    //     println!(
-    //         "Rule-based range constraint: {} in {rc}",
-    //         var_mapper.backward(&var),
-    //     );
-    // }
-    log::debug!("Found {} rule-based RCs", rcs.len());
-    log::debug!("Found {} rule-based assignments", assignments.len());
-    log::debug!("Found {} rule-based equivalences", equivalences.len());
-    // log::debug!("Final algebraic constraints: {}", constrs.len());
-    // for FinalAlgebraicConstraint(e) in &constrs {
-    //     println!("{}", db.format_expr(*e));
-    // }
-    for (var, value) in assignments
-        .into_iter()
-        .map(|Assignment(var, value)| {
-            (
-                var_mapper.backward(&var),
-                T::from(value.to_arbitrary_integer()),
-            )
-        })
-        .sorted()
-    {
-        log::trace!("Rule-based assignment: {var} = {value}",);
-        system.substitute_by_known(var, &value);
+    ConstraintSystem {
+        algebraic_constraints: algebraic_constraints.collect(),
+        bus_interactions,
+        derived_variables: system.system().derived_variables.clone(),
     }
-    for Equivalence(v1, v2) in &equivalences {
-        //     println!("XXX Rule-based equivalence: {v1} == {v2}",);
-        let v1 = var_mapper.backward(v1).clone();
-        let v2 = var_mapper.backward(v2).clone();
-        let (v1, v2) = if v1 < v2 { (v1, v2) } else { (v2, v1) };
-        system.substitute_by_unknown(&v2, &GroupedExpression::from_unknown_variable(v1.clone()));
+    .into()
+}
+
+fn apply_rules(
+    mut algebraic_constraints: Vec<Expr>,
+    bus_interactions: Vec<BusInteraction<Expr>>,
+    sys: &System,
+) -> (Vec<Expr>, Vec<BusInteraction<Expr>>) {
+    loop {
+        let mut progress = false;
+        let mut rt = Crepe::new();
+
+        rt.extend(
+            algebraic_constraints
+                .iter()
+                .copied()
+                .map(InitialAlgebraicConstraint),
+        );
+        rt.extend(std::iter::once(S(sys)));
+
+        let (replacements, change, mut final_constrs) = rt.run();
+        progress |= !change.is_empty();
+
+        // We perform the constraint-by-constraint replacements instead of
+        // in the system because there can be multiple matches.
+        for PotentiallyReplaceAlgebraicConstraintBy(old, new) in &replacements {
+            if final_constrs.contains(&FinalAlgebraicConstraint(*old)) {
+                final_constrs.remove(&FinalAlgebraicConstraint(*old));
+                final_constrs.insert(FinalAlgebraicConstraint(*new));
+                progress = true;
+            }
+        }
+        // TODO this could all be non-deterministic.
+        algebraic_constraints = final_constrs
+            .iter()
+            .map(|FinalAlgebraicConstraint(e)| *e)
+            .collect();
+
+        if !progress {
+            break;
+        }
     }
-    system.retain_algebraic_constraints(|constraint| !constraint.is_redundant());
-    system.retain_bus_interactions(|bus_interaction| !bus_interaction.multiplicity.is_zero());
-    let substitution_end = std::time::Instant::now();
-
-    log::info!(
-        "Rule-based optimization timings:\n\
-           Transform: {}\n\
-           Insert: {}\n\
-           Run: {}\n\
-           Substitution: {}\n\
-         Total: {}",
-        (transform_end - start).as_secs_f32(),
-        (insert_end - transform_end).as_secs_f32(),
-        (run_end - insert_end).as_secs_f32(),
-        (substitution_end - run_end).as_secs_f32(),
-        (substitution_end - start).as_secs_f32(),
-    );
-
-    system
+    (algebraic_constraints, bus_interactions)
 }
 
 #[derive(Clone)]
@@ -794,6 +787,28 @@ fn transform_grouped_expression<T: FieldElement, V: Hash + Eq + Ord + Clone + Di
         .sum()
 }
 
+fn untransform_grouped_expression<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
+    expr: &GroupedExpression<BabyBearField, Var>,
+    var_mapper: &VarMapper<V>,
+) -> GroupedExpression<T, V> {
+    expr.clone()
+        .into_summands()
+        .map(|s| match s {
+            GroupedExpressionComponent::Quadratic(l, r) => {
+                untransform_grouped_expression(&l, var_mapper)
+                    * untransform_grouped_expression(&r, var_mapper)
+            }
+            GroupedExpressionComponent::Linear(v, c) => {
+                GroupedExpression::from_unknown_variable(var_mapper.backward(&v).clone())
+                    * T::from(c.to_arbitrary_integer())
+            }
+            GroupedExpressionComponent::Constant(c) => {
+                GroupedExpression::from_number(c.to_arbitrary_integer().into())
+            }
+        })
+        .sum()
+}
+
 fn transform_range_constraint<T: FieldElement>(
     rc: &RangeConstraint<T>,
 ) -> RangeConstraint<BabyBearField> {
@@ -811,6 +826,7 @@ mod tests {
     use expect_test::expect;
     use powdr_constraint_solver::{
         algebraic_constraint, constraint_system::DefaultBusInteractionHandler,
+        grouped_expression::NoRangeConstraints,
     };
 
     use super::*;

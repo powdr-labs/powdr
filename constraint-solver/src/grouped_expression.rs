@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fmt::Display,
     hash::Hash,
     iter::{once, Sum},
@@ -53,6 +53,33 @@ pub enum GroupedExpressionComponent<T, V> {
     Linear(V, T),
     /// A constant component `c`.
     Constant(T),
+}
+
+impl<F, T, V> From<GroupedExpressionComponent<T, V>> for GroupedExpression<T, V>
+where
+    F: FieldElement,
+    T: RuntimeConstant<FieldType = F>,
+    V: Clone + Ord + Eq,
+{
+    fn from(s: GroupedExpressionComponent<T, V>) -> Self {
+        match s {
+            GroupedExpressionComponent::Quadratic(l, r) => Self {
+                quadratic: vec![(l, r)],
+                linear: Default::default(),
+                constant: T::zero(),
+            },
+            GroupedExpressionComponent::Linear(v, c) => Self {
+                quadratic: Default::default(),
+                linear: [(v, c)].into_iter().collect(),
+                constant: T::zero(),
+            },
+            GroupedExpressionComponent::Constant(c) => Self {
+                quadratic: Default::default(),
+                linear: Default::default(),
+                constant: c,
+            },
+        }
+    }
 }
 
 impl<F: FieldElement, T: RuntimeConstant<FieldType = F>, V> GroupedExpression<T, V> {
@@ -300,8 +327,12 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
         self.quadratic
             .iter()
             .map(|(l, r)| {
-                l.range_constraint(range_constraints)
-                    .combine_product(&r.range_constraint(range_constraints))
+                if l == r {
+                    l.range_constraint(range_constraints).square()
+                } else {
+                    l.range_constraint(range_constraints)
+                        .combine_product(&r.range_constraint(range_constraints))
+                }
             })
             .chain(self.linear.iter().map(|(var, coeff)| {
                 range_constraints
@@ -499,6 +530,14 @@ pub trait RangeConstraintProvider<T: FieldElement, V> {
 impl<R: RangeConstraintProvider<T, V>, T: FieldElement, V> RangeConstraintProvider<T, V> for &R {
     fn get(&self, var: &V) -> RangeConstraint<T> {
         R::get(self, var)
+    }
+}
+
+impl<T: FieldElement, V: Eq + Hash> RangeConstraintProvider<T, V>
+    for HashMap<V, RangeConstraint<T>>
+{
+    fn get(&self, var: &V) -> RangeConstraint<T> {
+        HashMap::get(self, var).cloned().unwrap_or_default()
     }
 }
 

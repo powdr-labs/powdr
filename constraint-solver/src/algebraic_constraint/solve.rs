@@ -393,7 +393,7 @@ mod tests {
     use crate::grouped_expression::NoRangeConstraints;
 
     use super::*;
-    use powdr_number::{FieldElement, GoldilocksField};
+    use powdr_number::GoldilocksField;
 
     use pretty_assertions::assert_eq;
 
@@ -405,14 +405,6 @@ mod tests {
 
     fn constant(value: u64) -> Qse {
         Qse::from_number(GoldilocksField::from(value))
-    }
-
-    impl<T: FieldElement> RangeConstraintProvider<T, &'static str>
-        for HashMap<&'static str, RangeConstraint<T>>
-    {
-        fn get(&self, var: &&'static str) -> RangeConstraint<T> {
-            self.get(var).cloned().unwrap_or_default()
-        }
     }
 
     #[test]
