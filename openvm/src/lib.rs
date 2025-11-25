@@ -1135,7 +1135,7 @@ mod tests {
     #[test]
     fn guest_prove_simple() {
         let mut stdin = StdIn::default();
-        stdin.write(&GUEST_ITER);
+        stdin.write(&5);
         let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP_PGO);
         let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
         prove_simple(GUEST, config, stdin, PgoConfig::Instruction(pgo_data), None);

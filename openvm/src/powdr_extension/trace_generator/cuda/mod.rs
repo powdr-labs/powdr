@@ -17,7 +17,8 @@ use openvm_stark_backend::{
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
-    Apc, Substitution, SymbolicBusInteraction, expression::{AlgebraicExpression, AlgebraicReference}
+    expression::{AlgebraicExpression, AlgebraicReference},
+    Apc, Substitution, SymbolicBusInteraction,
 };
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
@@ -217,30 +218,52 @@ impl PowdrTraceGeneratorGpu {
         let width = apc_poly_id_to_index.len();
         let height = next_power_of_two_or_zero(num_apc_calls);
 
-        let mut output = DeviceMatrix::<BabyBear>::with_capacity(height, width);
+        // let mut output = DeviceMatrix::<BabyBear>::with_capacity(height, width);
 
-        let alu_subs: Vec<_> =
-            self.apc
-                // go through original instructions
-                .instructions()
-                .iter()
-                // along with their substitutions
-                .zip_eq(self.apc.subs())
-                // map to `(air_name, substitutions)`
-                .filter_map(|(instr, subs)| {
+        use openvm_stark_backend::p3_field::FieldAlgebra;
+        let zeros = vec![BabyBear::from_canonical_u16(1234); height * width];
+        let device_buffer = zeros
+            .to_device()
+            .expect("copy zero trace to device failed");
+        let mut output =
+            DeviceMatrix::<BabyBear>::new(Arc::new(device_buffer), height, width);
+
+        let (alu_subs, pre_optimization_widths, post_optimization_widths, _, _) = self
+            .apc
+            // go through original instructions
+            .instructions()
+            .iter()
+            // along with their substitutions
+            .zip_eq(self.apc.subs())
+            // map to `(air_name, substitutions)`
+            .fold(
+                (Vec::new(), Vec::new(), Vec::new(), 0u32, 0u32),
+                |(mut subs, mut pre_opt_widths, mut post_opt_widths, mut pre_opt_width_acc, mut post_opt_width_acc), (instr, sub)| {
                     let air_name = &self.original_airs.opcode_to_air[&instr.0.opcode];
                     if *air_name == "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>" {
-                        Some(subs)
-                    } else {
-                        None
+                        subs.push(sub);
+                        // push at the start because the first offsets should be 0
+                        pre_opt_widths.push(pre_opt_width_acc);
+                        post_opt_widths.push(post_opt_width_acc);
                     }
-                })
-                .collect();
+                    pre_opt_width_acc += self
+                        .original_airs
+                        .air_name_to_machine
+                        .get(air_name)
+                        .map(|machine| machine.1.widths.main as u32)
+                        .expect("Failed to get air main width");
+                    post_opt_width_acc += sub.len() as u32;
+                    (subs, pre_opt_widths, post_opt_widths, pre_opt_width_acc, post_opt_width_acc)
+                },
+            );
 
         alu_subs.iter().for_each(|subs_for_row| {
             println!("alu subs for row len: {}", subs_for_row.len());
             println!("alu subs for row: {:?}", subs_for_row);
         });
+
+        println!("pre_optimization_width: {:?}", pre_optimization_widths);
+        println!("post_optimization_width: {:?}", post_optimization_widths);
 
         let alu_air_width = self
             .original_airs
@@ -264,8 +287,7 @@ impl PowdrTraceGeneratorGpu {
                         sub.original_poly_index,
                         alu_air_width
                     );
-                    let apc_col =
-                        apc_poly_id_to_index[&sub.apc_poly_id];
+                    let apc_col = apc_poly_id_to_index[&sub.apc_poly_id];
                     row[sub.original_poly_index] =
                         u32::try_from(apc_col).expect("APC column index fits in u32");
                 }
@@ -276,10 +298,16 @@ impl PowdrTraceGeneratorGpu {
         println!("padded_alu_subs len: {}", padded_alu_subs.len());
         println!("padded_alu_subs: {:?}", padded_alu_subs);
 
-        let alu_subs_device = padded_alu_subs
+        let d_alu_subs = padded_alu_subs
             .to_device()
             .expect("Failed to copy ALU substitutions to device");
-        debug_assert_eq!(alu_subs_device.len(), padded_alu_subs.len());
+        debug_assert_eq!(d_alu_subs.len(), padded_alu_subs.len());
+        let d_pre_optimization_widths = pre_optimization_widths
+            .to_device()
+            .expect("Failed to copy pre optimization widths to device");
+        let d_post_optimization_widths = post_optimization_widths
+            .to_device()
+            .expect("Failed to copy post optimization widths to device");
 
         let chip_inventory = {
             let airs: AirInventory<BabyBearSC> =
@@ -310,16 +338,24 @@ impl PowdrTraceGeneratorGpu {
                         Some(ra) => {
                             println!("arena air name: {}", air_name);
                             ra
-                        },
+                        }
                         None => return None, // skip this iteration, because we only have record arena for chips that are used
                     }
                 };
 
                 if air_name == "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>" {
-                    chip.generate_proving_ctx_new(record_arena, output.buffer(), &alu_subs_device, calls_per_apc_row as u32);
+                    chip.generate_proving_ctx_new(
+                        record_arena,
+                        output.buffer(),
+                        &d_alu_subs,
+                        &d_pre_optimization_widths,
+                        &d_post_optimization_widths,
+                        calls_per_apc_row as u32,
+                        height,
+                    );
                     return None;
                 }
-                
+
                 let shared_trace = chip.generate_proving_ctx(record_arena).common_main.unwrap();
 
                 Some((air_name, shared_trace))
