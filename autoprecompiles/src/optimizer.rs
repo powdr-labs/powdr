@@ -209,9 +209,10 @@ fn symbolic_machine_to_constraint_system<P: FieldElement>(
             .map(|(v, method)| {
                 let method = match method {
                     ComputationMethod::Constant(c) => ComputationMethod::Constant(*c),
-                    ComputationMethod::InverseOrZero(c) => {
-                        ComputationMethod::InverseOrZero(algebraic_to_grouped_expression(c))
-                    }
+                    ComputationMethod::QuotientOrZero(e1, e2) => ComputationMethod::QuotientOrZero(
+                        algebraic_to_grouped_expression(e1),
+                        algebraic_to_grouped_expression(e2),
+                    ),
                 };
                 DerivedVariable {
                     variable: v.clone(),
@@ -242,9 +243,10 @@ fn constraint_system_to_symbolic_machine<P: FieldElement>(
             .map(|derived_var| {
                 let method = match derived_var.computation_method {
                     ComputationMethod::Constant(c) => ComputationMethod::Constant(c),
-                    ComputationMethod::InverseOrZero(c) => {
-                        ComputationMethod::InverseOrZero(grouped_expression_to_algebraic(c))
-                    }
+                    ComputationMethod::QuotientOrZero(e1, e2) => ComputationMethod::QuotientOrZero(
+                        grouped_expression_to_algebraic(e1),
+                        grouped_expression_to_algebraic(e2),
+                    ),
                 };
                 (derived_var.variable, method)
             })
