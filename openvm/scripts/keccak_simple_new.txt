@@ -1,0 +1,13 @@
+
+running 1 test
+cargo:rerun-if-env-changed=OPENVM_SKIP_BUILD
+Using rustc: /home/steve/.rustup/toolchains/nightly-2025-08-02-x86_64-unknown-linux-gnu/bin/rustc
+Building guest package: cargo +nightly-2025-08-02 build --target riscv32im-risc0-zkvm-elf -Z build-std=alloc,core,proc_macro,panic_abort,std -Z build-std-features=compiler-builtins-mem
+cargo:rerun-if-env-changed=OPENVM_SKIP_BUILD
+Using rustc: /home/steve/.rustup/toolchains/nightly-2025-08-02-x86_64-unknown-linux-gnu/bin/rustc
+Building guest package: cargo +nightly-2025-08-02 build --target riscv32im-risc0-zkvm-elf -Z build-std=alloc,core,proc_macro,panic_abort,std -Z build-std-features=compiler-builtins-mem
+[PowdrTraceGeneratorGpu::try_generate_witness] apc_start_pc=2101396 dummy_chip_time=67.461µs dummy_trace_time=1.604826ms prepare_airs_time=112.028µs tracegen_kernel_time=228.216µs derived_time=32.02µs bus_apply_time=263.152µs total_time=3.710633ms
+test tests::keccak_small_prove_simple ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 48 filtered out; finished in 20.03s
+

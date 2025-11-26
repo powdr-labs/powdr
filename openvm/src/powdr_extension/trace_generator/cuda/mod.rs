@@ -362,6 +362,27 @@ impl PowdrTraceGeneratorGpu {
             })
             .collect();
 
+        // Optionally dump the APC trace by copying it back to the host.
+        use openvm_cuda_common::copy::MemCopyD2H;
+        use openvm_stark_backend::prover::hal::MatrixDimensions;
+        match output.to_host() {
+            Ok(host_buffer) => {
+                let matrix_height = output.height();
+                let matrix_width = output.width();
+                for row in 0..matrix_height {
+                    print!("Row {row}: ");
+                    for col in 0..matrix_width {
+                        let idx = row + col * matrix_height;
+                        let value = host_buffer[idx].as_canonical_u32();
+                        print!("{value} ");
+                    }
+                    println!();
+                }
+            }
+            Err(err) => eprintln!("Failed to copy APC trace to host for logging: {err}"),
+        }
+
+
         // Prepare `OriginalAir` and `Subst` arrays
         let (airs, substitutions) = {
             self.apc
