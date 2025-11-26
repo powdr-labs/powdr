@@ -8,7 +8,6 @@ use std::{
     fmt::Display,
     hash::Hash,
     ops::Index,
-    rc::Rc,
 };
 
 use itertools::{EitherOrBoth, Itertools};
@@ -89,7 +88,7 @@ struct System {
     /// (also only once in the constraint they occur in).
     single_occurrence_variables: HashSet<Var>,
     range_constraints_on_vars: HashMap<Var, RangeConstraint<F>>,
-    new_var_generator: NewVarGenerator,
+    new_var_generator: RefCell<NewVarGenerator>,
 }
 
 impl System {
@@ -105,12 +104,15 @@ impl System {
             var_to_string,
             single_occurrence_variables,
             range_constraints_on_vars,
-            new_var_generator,
+            new_var_generator: RefCell::new(new_var_generator),
         }
     }
 
     fn terminate(self) -> (ExpressionDB, NewVarGenerator) {
-        (self.expressions.into_inner(), self.new_var_generator)
+        (
+            self.expressions.into_inner(),
+            self.new_var_generator.into_inner(),
+        )
     }
 }
 
@@ -163,7 +165,7 @@ impl System {
         prefix: &str,
         method: ComputationMethod<F, GroupedExpression<F, Var>>,
     ) -> Var {
-        self.new_var_generator.generate(prefix, method)
+        self.new_var_generator.borrow_mut().generate(prefix, method)
     }
     pub fn referenced_variables(&self, expr: Expr) -> BTreeSet<Var> {
         let db = self.expressions.borrow();
@@ -324,32 +326,29 @@ impl System {
 }
 
 struct NewVarGenerator {
-    counter: Rc<RefCell<u32>>,
-    requests: Rc<RefCell<HashMap<Var, String>>>,
-    computation_methods: Rc<RefCell<HashMap<Var, ComputationMethod<F, GroupedExpression<F, Var>>>>>,
+    counter: u32,
+    requests: HashMap<Var, String>,
+    computation_methods: HashMap<Var, ComputationMethod<F, GroupedExpression<F, Var>>>,
 }
 
 impl NewVarGenerator {
     fn new(initial_counter: u32) -> Self {
         Self {
-            counter: Rc::new(RefCell::new(initial_counter)),
-            requests: Rc::new(RefCell::new(HashMap::new())),
-            computation_methods: Rc::new(RefCell::new(HashMap::new())),
+            counter: initial_counter,
+            requests: Default::default(),
+            computation_methods: Default::default(),
         }
     }
 
     fn generate(
-        &self,
+        &mut self,
         prefix: &str,
         computation_method: ComputationMethod<F, GroupedExpression<F, Var>>,
     ) -> Var {
-        let mut counter = self.counter.borrow_mut();
-        let var = Var(*counter);
-        self.requests.borrow_mut().insert(var, prefix.to_string());
-        self.computation_methods
-            .borrow_mut()
-            .insert(var, computation_method);
-        *counter += 1;
+        let var = Var(self.counter);
+        self.requests.insert(var, prefix.to_string());
+        self.computation_methods.insert(var, computation_method);
+        self.counter += 1;
         var
     }
 }
@@ -666,7 +665,7 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
             var_mapper.all_names(),
             system
                 .single_occurrence_variables()
-                .map(|v| var_mapper.forward(&v))
+                .map(|v| var_mapper.forward(v))
                 .collect(),
             system
                 .referenced_unknown_variables()
@@ -693,17 +692,13 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         db = Some(expr_db);
 
         // TODO we do not need all of those variables.
-        for (var, prefix) in new_var_generator.requests.borrow().iter() {
-            let v = new_var_outer(prefix);
-            var_mapper.insert_existing(v.clone(), *var);
-            let computation_method = new_var_generator
-                .computation_methods
-                .borrow()
-                .get(var)
-                .unwrap()
-                .clone();
-            let computation_method =
-                untransform_computation_method(&computation_method, &var_mapper);
+        for (var, prefix) in new_var_generator.requests {
+            let v = new_var_outer(&prefix);
+            var_mapper.insert_existing(v.clone(), var);
+            let computation_method = untransform_computation_method(
+                new_var_generator.computation_methods.get(&var).unwrap(),
+                &var_mapper,
+            );
             system.extend(ConstraintSystem {
                 derived_variables: vec![DerivedVariable {
                     variable: v.clone(),
@@ -766,8 +761,6 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
     system
 }
 
-fn do_something(new_var: Box<dyn FnMut(&str) -> Var>) {}
-
 // TODO use an expression cache so that we don't even
 // have to transform the field elements.
 fn transform_constraint_system<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
@@ -823,17 +816,6 @@ where
 }
 
 impl<V: Hash + Eq + Clone + Display> VarMapper<V> {
-    fn forward_or_insert(&mut self, v: V) -> Var {
-        if let Some(var) = self.forward.get(&v) {
-            *var
-        } else {
-            let var = Var(self.forward.len() as u32);
-            self.forward.insert(v.clone(), var);
-            self.backward.insert(var, v);
-            var
-        }
-    }
-
     pub fn insert_existing(&mut self, v: V, var: Var) {
         assert!(self.forward.insert(v.clone(), var).is_none());
         assert!(self.backward.insert(var, v).is_none());
@@ -963,7 +945,7 @@ mod tests {
     fn new_var() -> impl FnMut(&str) -> String {
         let mut counter = 0;
         move |prefix: &str| {
-            let name = format!("{}_{}", prefix, counter);
+            let name = format!("{prefix}_{counter}");
             counter += 1;
             name
         }

@@ -212,7 +212,7 @@ impl<T: RuntimeConstant, V: Clone + Eq> IndexedConstraintSystem<T, V> {
                 .filter(|var| *var == v)
                 .exactly_one()
                 .is_ok()
-                .then(|| v)
+                .then_some(v)
         })
     }
 

@@ -25,7 +25,6 @@ use crate::{
     range_constraint_optimizer::RangeConstraintHandler,
     rule_based_optimizer::rule_based_optimization,
     stats_logger::StatsLogger,
-    ColumnAllocator,
 };
 
 #[derive(Debug)]
