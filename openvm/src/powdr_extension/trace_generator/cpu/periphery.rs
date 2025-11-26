@@ -80,7 +80,7 @@ impl PowdrPeripheryInstancesCpu {
         machine: &SymbolicMachine<T>,
         evaluator: &impl AlgebraicEvaluator<T, T>,
     ) {
-        machine.bus_interactions.iter().for_each(|interaction| {
+        for interaction in machine.bus_interactions.iter() {
             let ConcreteBusInteraction { id, mult, args } =
                 evaluator.eval_bus_interaction(interaction);
             self.real.apply(
@@ -89,7 +89,7 @@ impl PowdrPeripheryInstancesCpu {
                 args.map(|arg| arg.as_canonical_u32()),
                 &self.bus_ids,
             );
-        });
+        }
     }
 }
 
@@ -186,20 +186,13 @@ where
 impl SharedPeripheryChipsCpu {
     /// Sends concrete values to the shared chips using a given bus id.
     /// Panics if the bus id doesn't match any of the chips' bus ids.
-    /// Returns the `pc` of the program row that was received, if any
     pub fn apply(
         &self,
         bus_id: u16,
         mult: u32,
         mut args: impl Iterator<Item = u32>,
         periphery_bus_ids: &PeripheryBusIds,
-    ) -> Option<u32> {
-        // early return is the interaction is with the program chip
-        if bus_id == 2 {
-            // The passed data starts with the pc
-            return Some(args.next().unwrap());
-        }
-
+    ) {
         match bus_id {
             id if Some(id) == periphery_bus_ids.bitwise_lookup => {
                 // bitwise operation lookup
@@ -242,18 +235,13 @@ impl SharedPeripheryChipsCpu {
                     self.tuple_range_checker.as_ref().unwrap().add_count(&args);
                 }
             }
-            0..=1 => {
-                // execution bridge, memory
+            0..=2 => {
+                // execution bridge, memory, pc lookup
                 // do nothing
-            }
-            2 => {
-                unreachable!("Program bus already handled at the beginnning of this function")
             }
             _ => {
                 unreachable!("Bus interaction {} not implemented", bus_id);
             }
-        };
-
-        None
+        }
     }
 }

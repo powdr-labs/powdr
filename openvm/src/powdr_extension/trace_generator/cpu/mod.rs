@@ -290,6 +290,8 @@ impl PowdrTraceGeneratorCpu {
                 .collect(),
         };
 
+        // TODO: reduce the height of the table if possible
+
         AirProvingContexts {
             main: AirProvingContext::simple_no_pis(Arc::new(RowMajorMatrix::new(values, width))),
             rejected,
