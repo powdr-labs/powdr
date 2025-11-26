@@ -16,6 +16,10 @@ use openvm_circuit::arch::RowMajorMatrixArena;
 use openvm_stark_backend::config::Val;
 use openvm_stark_backend::engine::StarkEngine;
 use openvm_stark_backend::prover::cpu::{CpuBackend, CpuDevice};
+use powdr_autoprecompiles::{
+    expression::{AlgebraicEvaluator, ConcreteBusInteraction},
+    SymbolicMachine,
+};
 
 use crate::powdr_extension::trace_generator::common::DummyExecutor;
 use crate::PeripheryBusIds;
@@ -69,6 +73,23 @@ impl PowdrPeripheryInstancesCpu {
             },
             bus_ids,
         }
+    }
+
+    pub fn replay_bus_interactions<T: PrimeField32>(
+        &self,
+        machine: &SymbolicMachine<T>,
+        evaluator: &impl AlgebraicEvaluator<T, T>,
+    ) {
+        machine.bus_interactions.iter().for_each(|interaction| {
+            let ConcreteBusInteraction { id, mult, args } =
+                evaluator.eval_bus_interaction(interaction);
+            self.real.apply(
+                id as u16,
+                mult.as_canonical_u32(),
+                args.map(|arg| arg.as_canonical_u32()),
+                &self.bus_ids,
+            );
+        });
     }
 }
 
