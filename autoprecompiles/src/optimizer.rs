@@ -35,7 +35,7 @@ pub fn optimize<A: Adapter>(
     bus_interaction_handler: A::BusInteractionHandler,
     degree_bound: DegreeBound,
     bus_map: &BusMap<A::CustomBusTypes>,
-    column_allocator: ColumnAllocator,
+    mut column_allocator: ColumnAllocator,
 ) -> Result<(SymbolicMachine<A::PowdrField>, ColumnAllocator), crate::constraint_optimizer::Error> {
     let mut stats_logger = StatsLogger::start(&machine);
 
@@ -43,6 +43,15 @@ pub fn optimize<A: Adapter>(
         machine = optimize_exec_bus(machine, exec_bus_id);
         stats_logger.log("exec bus optimization", &machine);
     }
+
+    let mut new_var = |name: &str| {
+        let id = column_allocator.issue_next_poly_id();
+        AlgebraicReference {
+            // TODO is it a problem that we do not check the name to be unique?
+            name: format!("{name}_{id}").into(),
+            id,
+        }
+    };
 
     let mut constraint_system = symbolic_machine_to_constraint_system(machine);
 
@@ -56,6 +65,7 @@ pub fn optimize<A: Adapter>(
             &mut stats_logger,
             bus_map.get_bus_id(&BusType::Memory),
             degree_bound,
+            &mut new_var,
         )?
         .clone();
         if stats == stats_logger::Stats::from(&constraint_system) {

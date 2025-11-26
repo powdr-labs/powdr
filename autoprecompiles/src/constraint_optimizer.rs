@@ -25,6 +25,7 @@ use crate::{
     range_constraint_optimizer::RangeConstraintHandler,
     rule_based_optimizer::rule_based_optimization,
     stats_logger::StatsLogger,
+    ColumnAllocator,
 };
 
 #[derive(Debug)]
@@ -58,12 +59,17 @@ pub fn optimize_constraints<
     stats_logger: &mut StatsLogger,
     memory_bus_id: Option<u64>,
     degree_bound: DegreeBound,
+    new_var: &mut impl FnMut(&str) -> V,
 ) -> Result<ConstraintSystem<P, V>, Error> {
     // Index the constraint system for the first time
     let constraint_system = IndexedConstraintSystem::from(constraint_system);
 
-    let constraint_system =
-        rule_based_optimization(constraint_system, &*solver, bus_interaction_handler.clone());
+    let constraint_system = rule_based_optimization(
+        constraint_system,
+        &*solver,
+        bus_interaction_handler.clone(),
+        new_var,
+    );
     stats_logger.log("rule-based optimization", &constraint_system);
 
     let constraint_system = solver_based_optimization(constraint_system, solver)?;
