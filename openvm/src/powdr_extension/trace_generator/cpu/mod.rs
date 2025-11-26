@@ -183,16 +183,19 @@ impl PowdrTraceGeneratorCpu {
                     let col_index = apc_poly_id_to_index[&column.id];
                     row_slice[col_index] = match computation_method {
                         ComputationMethod::Constant(c) => *c,
-                        ComputationMethod::InverseOrZero(expr) => {
+                        ComputationMethod::QuotientOrZero(e1, e2) => {
                             use powdr_number::ExpressionConvertible;
 
-                            let expr_val = expr.to_expression(&|n| *n, &|column_ref| {
+                            let divisor_val = e2.to_expression(&|n| *n, &|column_ref| {
                                 row_slice[apc_poly_id_to_index[&column_ref.id]]
                             });
-                            if expr_val.is_zero() {
+                            if divisor_val.is_zero() {
                                 BabyBear::ZERO
                             } else {
-                                expr_val.inverse()
+                                divisor_val.inverse()
+                                    * e1.to_expression(&|n| *n, &|column_ref| {
+                                        row_slice[apc_poly_id_to_index[&column_ref.id]]
+                                    })
                             }
                         }
                     };
