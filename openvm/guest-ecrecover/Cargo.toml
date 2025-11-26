@@ -8,7 +8,7 @@ edition = "2021"
 openvm = { git = "https://github.com/powdr-labs/openvm.git", branch = "support-sotfware-fallback", features = [
   "std",
 ] }
-k256 = { git = "https://github.com/powdr-labs/elliptic-curves-k256", branch = "support-sotfware-fallback", default-features = false, features = [
+k256 = { git = "https://github.com/powdr-labs/elliptic-curves-k256", branch = "fallback-to-software", default-features = false, features = [
   "expose-field",
   "arithmetic",
   "ecdsa",
