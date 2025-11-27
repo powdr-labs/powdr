@@ -38,30 +38,36 @@ impl Display for Var {
     }
 }
 
-// TODO could be generic over Expr
-
-#[derive(Default)]
-struct ExpressionDB<T> {
-    expressions: Vec<GroupedExpression<T, Var>>,
-    reverse: HashMap<GroupedExpression<T, Var>, usize>,
+struct ExpressionDB<E> {
+    expressions: Vec<E>,
+    reverse: HashMap<E, usize>,
 }
 
-impl<T> Index<Expr> for ExpressionDB<T> {
-    type Output = GroupedExpression<T, Var>;
+impl<E> Default for ExpressionDB<E> {
+    fn default() -> Self {
+        Self {
+            expressions: Vec::new(),
+            reverse: HashMap::new(),
+        }
+    }
+}
+
+impl<E> Index<Expr> for ExpressionDB<E> {
+    type Output = E;
     fn index(&self, index: Expr) -> &Self::Output {
         &self.expressions[index.0]
     }
 }
 
-impl<T: Clone + Hash + Eq> ExpressionDB<T> {
-    fn insert_owned_new(&mut self, expr: GroupedExpression<T, Var>) -> Expr {
+impl<E: Clone + Hash + Eq> ExpressionDB<E> {
+    fn insert_owned_new(&mut self, expr: E) -> Expr {
         self.expressions.push(expr.clone());
         let id = self.expressions.len() - 1;
         self.reverse.insert(expr, id);
         Expr(id)
     }
 
-    pub fn insert(&mut self, expr: &GroupedExpression<T, Var>) -> Expr {
+    pub fn insert(&mut self, expr: &E) -> Expr {
         if let Some(&id) = self.reverse.get(expr) {
             Expr(id)
         } else {
@@ -69,7 +75,7 @@ impl<T: Clone + Hash + Eq> ExpressionDB<T> {
         }
     }
 
-    pub fn insert_owned(&mut self, expr: GroupedExpression<T, Var>) -> Expr {
+    pub fn insert_owned(&mut self, expr: E) -> Expr {
         if let Some(&id) = self.reverse.get(&expr) {
             Expr(id)
         } else {
@@ -81,7 +87,7 @@ impl<T: Clone + Hash + Eq> ExpressionDB<T> {
 // TODO rename this "Environment"
 
 struct System<T: FieldElement> {
-    expressions: RefCell<ExpressionDB<T>>,
+    expressions: RefCell<ExpressionDB<GroupedExpression<T, Var>>>,
     var_to_string: HashMap<Var, String>,
 
     /// Variables that only occurr once in the system
@@ -93,7 +99,7 @@ struct System<T: FieldElement> {
 
 impl<T: FieldElement> System<T> {
     fn new(
-        expressions: ExpressionDB<T>,
+        expressions: ExpressionDB<GroupedExpression<T, Var>>,
         var_to_string: HashMap<Var, String>,
         single_occurrence_variables: HashSet<Var>,
         range_constraints_on_vars: HashMap<Var, RangeConstraint<T>>,
@@ -108,7 +114,7 @@ impl<T: FieldElement> System<T> {
         }
     }
 
-    fn terminate(self) -> (ExpressionDB<T>, NewVarGenerator<T>) {
+    fn terminate(self) -> (ExpressionDB<GroupedExpression<T, Var>>, NewVarGenerator<T>) {
         (
             self.expressions.into_inner(),
             self.new_var_generator.into_inner(),
@@ -654,7 +660,7 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         .cloned()
         .collect::<VarMapper<V>>();
 
-    let mut db = Some(ExpressionDB::<T>::default());
+    let mut db = Some(ExpressionDB::<GroupedExpression<T, Var>>::default());
 
     loop {
         let (algebraic_constraints, _bus_interactions) =
@@ -760,7 +766,7 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
 fn transform_constraint_system<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
     system: &IndexedConstraintSystem<T, V>,
     var_mapper: &VarMapper<V>,
-    expression_db: &mut ExpressionDB<T>,
+    expression_db: &mut ExpressionDB<GroupedExpression<T, Var>>,
 ) -> (Vec<Expr>, Vec<BusInteraction<Expr>>) {
     let algebraic_constraints = system
         .system()
