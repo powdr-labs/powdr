@@ -556,7 +556,7 @@ fn add_guards<T: FieldElement>(
     machine.constraints.extend(is_valid_mults);
 
     // if pre_degree is 0, is_valid is added to the multiplicities of the bus interactions, thus the degree increases from 0 to 1
-    if pre_degree != 0 {
+    if pre_degree != 0 && !machine.bus_interactions.is_empty(){
         assert_eq!(
             pre_degree,
             machine.degree(),
