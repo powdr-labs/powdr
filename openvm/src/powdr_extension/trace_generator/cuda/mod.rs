@@ -227,6 +227,10 @@ impl PowdrTraceGeneratorGpu {
             .filter_map(|(insertion_idx, chip)| {
                 let air_name = chip_inventory.airs().ext_airs()[insertion_idx].name();
 
+                if air_name == "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>" {
+                    return None;
+                }
+
                 let record_arena = {
                     match original_arenas.take_arena(&air_name) {
                         Some(ra) => ra,
@@ -252,7 +256,16 @@ impl PowdrTraceGeneratorGpu {
         // allocate for apc trace
         let width = apc_poly_id_to_index.len();
         let height = next_power_of_two_or_zero(num_apc_calls);
-        let mut output = DeviceMatrix::<BabyBear>::with_capacity(height, width);
+        
+        // let mut output = DeviceMatrix::<BabyBear>::with_capacity(height, width);
+        use openvm_stark_backend::p3_field::FieldAlgebra;
+        let zeros = vec![BabyBear::ZERO; height * width];
+        let device_buffer = zeros
+            .to_device()
+            .expect("copy zero trace to device failed");
+        println!("output len: {}", device_buffer.len());
+        let mut output =
+            DeviceMatrix::<BabyBear>::new(Arc::new(device_buffer), height, width);
 
         // Prepare `OriginalAir` and `Subst` arrays
         let (airs, substitutions) = {
@@ -272,6 +285,10 @@ impl PowdrTraceGeneratorGpu {
                 .fold(
                     (Vec::new(), Vec::new()),
                     |(mut airs, mut substitutions), (air_index, (air_name, subs_by_row))| {
+                        if *air_name == "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>" {
+                            return (airs, substitutions)
+                        }
+                        
                         // Find the substitutions that map to an apc column
                         let new_substitutions: Vec<Subst> = subs_by_row
                             .iter()
