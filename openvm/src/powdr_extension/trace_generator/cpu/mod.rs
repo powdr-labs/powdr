@@ -10,7 +10,7 @@ use openvm_circuit::{
     utils::next_power_of_two_or_zero,
 };
 use openvm_stark_backend::{
-    p3_field::FieldAlgebra,
+    p3_field::{FieldAlgebra, PrimeField32},
     p3_matrix::dense::RowMajorMatrix,
     prover::{
         hal::ProverBackend,
@@ -263,7 +263,8 @@ impl PowdrTraceGeneratorCpu {
                                         evaluator.eval_bus_interaction(interaction);
                                     (id == 2).then(|| args.next().unwrap())
                                 })
-                                .unwrap(),
+                                .unwrap()
+                                .as_canonical_u32(),
                         );
 
                         // add the row index to the rejected set
