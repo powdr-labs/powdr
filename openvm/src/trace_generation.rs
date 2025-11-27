@@ -13,14 +13,14 @@ use tracing::info_span;
 use crate::{BabyBearSC, CompiledProgram, SpecializedConfigCpuBuilder};
 
 #[cfg(not(feature = "cuda"))]
-use crate::PowdrSdkCpu;
+use crate::PowdrSdkCpu as PowdrSdk;
 #[cfg(feature = "cuda")]
-use crate::PowdrSdkGpu;
+use crate::PowdrSdkGpu as PowdrSdk;
 
+#[cfg(feature = "cuda")]
+use openvm_cuda_backend::engine::GpuBabyBearPoseidon2Engine as BabyBearPoseidon2Engine;
 #[cfg(not(feature = "cuda"))]
 use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
-#[cfg(feature = "cuda")]
-use openvm_stark_sdk::config::gpu_baby_bear_poseidon2::GpuBabyBearPoseidon2Engine;
 
 /// Given a program and input, generates the trace segment by segment and calls the provided
 /// callback with the VM, proving key, and proving context (containing the trace) for each segment.
@@ -42,10 +42,7 @@ pub fn do_with_trace(
     let app_config = AppConfig::new(app_fri_params, vm_config.clone());
 
     // Create the SDK
-    #[cfg(feature = "cuda")]
-    let sdk = PowdrSdkGpu::new(app_config).unwrap();
-    #[cfg(not(feature = "cuda"))]
-    let sdk = PowdrSdkCpu::new(app_config).unwrap();
+    let sdk = PowdrSdk::new(app_config).unwrap();
     // Build owned vm instance, so we can mutate it later
     let vm_builder = sdk.app_vm_builder().clone();
     let vm_pk = sdk.app_pk().app_vm_pk.clone();
