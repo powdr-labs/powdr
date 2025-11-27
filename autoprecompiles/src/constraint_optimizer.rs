@@ -63,14 +63,6 @@ pub fn optimize_constraints<
     // Index the constraint system for the first time
     let constraint_system = IndexedConstraintSystem::from(constraint_system);
 
-    let constraint_system = rule_based_optimization(
-        constraint_system,
-        &*solver,
-        bus_interaction_handler.clone(),
-        new_var,
-    );
-    stats_logger.log("rule-based optimization", &constraint_system);
-
     let constraint_system = solver_based_optimization(constraint_system, solver)?;
     stats_logger.log("solver-based optimization", &constraint_system);
 
@@ -90,6 +82,14 @@ pub fn optimize_constraints<
         bus_interaction_handler.clone(),
         stats_logger,
     );
+
+    let constraint_system = rule_based_optimization(
+        constraint_system,
+        &*solver,
+        bus_interaction_handler.clone(),
+        new_var,
+    );
+    stats_logger.log("rule-based optimization", &constraint_system);
 
     // At this point, we throw away the index and only keep the constraint system, since the rest of the optimisations are defined on the system alone
     let constraint_system: ConstraintSystem<P, V> = constraint_system.into();

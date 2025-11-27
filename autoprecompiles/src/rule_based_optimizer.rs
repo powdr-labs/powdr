@@ -1094,10 +1094,10 @@ mod tests {
         // Note that in the system below, mem_ptr_limbs__0_2 has been eliminated
         expect![[r#"
             (30720 * mem_ptr_limbs__0_1 - 30720 * rs1_data__0_1 - 7864320 * rs1_data__1_1 - 737280) * (30720 * mem_ptr_limbs__0_1 - 30720 * rs1_data__0_1 - 7864320 * rs1_data__1_1 - 737281) = 0
-            (30720 * mem_ptr_limbs__0_1 - 30720 * rs1_data__0_1 - 7864320 * rs1_data__1_1 - 737280) * (30720 * mem_ptr_limbs__0_1 - 30720 * rs1_data__0_1 - 7864320 * rs1_data__1_1 - 737281) = 0
+            (30720 * mem_ptr_limbs__0_2 - 30720 * rs1_data__0_1 - 7864320 * rs1_data__1_1 - 737280) * (30720 * mem_ptr_limbs__0_2 - 30720 * rs1_data__0_1 - 7864320 * rs1_data__1_1 - 737281) = 0
             BusInteraction { bus_id: 3, multiplicity: 1, payload: rs1_data__0_1, 8 }
             BusInteraction { bus_id: 3, multiplicity: 1, payload: rs1_data__1_1, 8 }
             BusInteraction { bus_id: 3, multiplicity: 1, payload: -(503316480 * mem_ptr_limbs__0_1), 14 }
-            BusInteraction { bus_id: 3, multiplicity: 1, payload: -(503316480 * mem_ptr_limbs__0_1), 14 }"#]].assert_eq(&optimized_system.to_string());
+            BusInteraction { bus_id: 3, multiplicity: 1, payload: -(503316480 * mem_ptr_limbs__0_2), 14 }"#]].assert_eq(&optimized_system.to_string());
     }
 }
