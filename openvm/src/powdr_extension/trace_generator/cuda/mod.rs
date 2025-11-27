@@ -218,15 +218,18 @@ impl PowdrTraceGeneratorGpu {
         let width = apc_poly_id_to_index.len();
         let height = next_power_of_two_or_zero(num_apc_calls);
 
-        // let mut output = DeviceMatrix::<BabyBear>::with_capacity(height, width);
+        let mut output = DeviceMatrix::<BabyBear>::with_capacity(height, width);
 
-        use openvm_stark_backend::p3_field::FieldAlgebra;
-        let zeros = vec![BabyBear::from_canonical_u16(1234); height * width];
-        let device_buffer = zeros
-            .to_device()
-            .expect("copy zero trace to device failed");
-        let mut output =
-            DeviceMatrix::<BabyBear>::new(Arc::new(device_buffer), height, width);
+        // use openvm_stark_backend::p3_field::FieldAlgebra;
+        // let zeros = vec![BabyBear::from_canonical_u16(1234); height * width];
+        // let device_buffer = zeros
+        //     .to_device()
+        //     .expect("copy zero trace to device failed");
+
+        // println!("output len: {}", device_buffer.len());
+
+        // let mut output =
+        //     DeviceMatrix::<BabyBear>::new(Arc::new(device_buffer), height, width);
 
         let (alu_subs, pre_optimization_widths, post_optimization_widths, _, _) = self
             .apc
@@ -309,6 +312,16 @@ impl PowdrTraceGeneratorGpu {
             .to_device()
             .expect("Failed to copy post optimization widths to device");
 
+        println!("d_alu_subs len: {}", d_alu_subs.len());
+        println!(
+            "d_pre_optimization_widths len: {}",
+            d_pre_optimization_widths.len()
+        );
+        println!(
+            "d_post_optimization_widths len: {}",
+            d_post_optimization_widths.len()
+        );
+
         let chip_inventory = {
             let airs: AirInventory<BabyBearSC> =
                 create_dummy_airs(&self.config.sdk_config.sdk, self.periphery.dummy.clone())
@@ -343,6 +356,8 @@ impl PowdrTraceGeneratorGpu {
                     }
                 };
 
+                println!("generate dummy trace for: {}", air_name);
+
                 if air_name == "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>" {
                     chip.generate_proving_ctx_new(
                         record_arena,
@@ -352,6 +367,7 @@ impl PowdrTraceGeneratorGpu {
                         &d_post_optimization_widths,
                         calls_per_apc_row as u32,
                         height,
+                        width,
                     );
                     return None;
                 }
@@ -361,6 +377,8 @@ impl PowdrTraceGeneratorGpu {
                 Some((air_name, shared_trace))
             })
             .collect();
+
+        println!("reach here");
 
         // Optionally dump the APC trace by copying it back to the host.
         use openvm_cuda_common::copy::MemCopyD2H;
@@ -379,7 +397,7 @@ impl PowdrTraceGeneratorGpu {
                     println!();
                 }
             }
-            Err(err) => eprintln!("Failed to copy APC trace to host for logging: {err}"),
+            Err(err) => println!("Failed to copy APC trace to host for logging: {err}"),
         }
 
 
@@ -443,9 +461,11 @@ impl PowdrTraceGeneratorGpu {
         };
 
         // Send the airs and substitutions to device
+        println!("before airs.to_device with len {}", airs.len());
         let airs = airs.to_device().unwrap();
+        println!("after airs.to_device");
         let substitutions = substitutions.to_device().unwrap();
-
+        println!("after substitutions.to_device");
         cuda_abi::apc_tracegen(&mut output, airs, substitutions, num_apc_calls).unwrap();
 
         // Apply derived columns using the GPU expression evaluator
