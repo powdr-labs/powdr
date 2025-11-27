@@ -92,13 +92,21 @@ fn create_apcs_for_all_blocks<A: Adapter>(
                 block.start_pc
             );
 
-            crate::build::<A>(
+            println!("block {}", block);
+
+            let apc = crate::build::<A>(
                 block,
                 vm_config.clone(),
                 config.degree_bound,
                 config.apc_candidates_dir_path.as_deref(),
             )
-            .unwrap()
+            .unwrap();
+
+            apc.subs.iter().for_each(|sub| {
+                println!("sub in APC: {:?}", sub);
+            });
+
+            apc
         })
         .map(Arc::new)
         .map(ApcWithStats::from)
