@@ -374,6 +374,7 @@ where
 
     /// Tries to find equivalent variables using quadratic constraints.
     fn try_solve_quadratic_equivalences(&mut self) -> bool {
+        // false
         let equivalences = quadratic_equivalences::find_quadratic_equalities(
             self.constraint_system.system().algebraic_constraints(),
             &*self,

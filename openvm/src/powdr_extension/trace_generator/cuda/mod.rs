@@ -121,7 +121,7 @@ fn compile_derived_to_gpu(
                 bytecode.push(c.as_canonical_u32());
             }
             ComputationMethod::QuotientOrZero(e1, e2) => {
-                // Encode inner expression, then apply InvOrZero
+                // Invert denominator (or use zero), then multiply with numerator.
                 emit_expr(&mut bytecode, e2, apc_poly_id_to_index, apc_height);
                 bytecode.push(OpCode::InvOrZero as u32);
                 emit_expr(&mut bytecode, e1, apc_poly_id_to_index, apc_height);
