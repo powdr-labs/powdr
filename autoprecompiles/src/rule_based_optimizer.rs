@@ -32,60 +32,122 @@ const SIZE_LIMIT: usize = 800;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct Var(u32);
 
+// TODO auto-derive
+impl From<usize> for Var {
+    fn from(value: usize) -> Self {
+        Var(value as u32)
+    }
+}
+
+// TODO auto-derive
+impl From<Var> for usize {
+    fn from(value: Var) -> Self {
+        value.0 as usize
+    }
+}
+
 impl Display for Var {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "v_{}", self.0)
     }
 }
 
-struct ExpressionDB<E> {
-    expressions: Vec<E>,
-    reverse: HashMap<E, usize>,
+/// A database of items that are assigned consecutive identifiers
+/// and which can translate back and forth between identifiers
+/// and items.
+struct ItemDB<Item, Ident> {
+    items: Vec<Item>,
+    reverse: HashMap<Item, usize>,
+    _phantom: std::marker::PhantomData<Ident>,
 }
 
-impl<E> Default for ExpressionDB<E> {
+impl<Item, Ident> Default for ItemDB<Item, Ident> {
     fn default() -> Self {
         Self {
-            expressions: Vec::new(),
+            items: Vec::new(),
             reverse: HashMap::new(),
+            _phantom: std::marker::PhantomData,
         }
     }
 }
 
-impl<E> Index<Expr> for ExpressionDB<E> {
-    type Output = E;
-    fn index(&self, index: Expr) -> &Self::Output {
-        &self.expressions[index.0]
+impl<Item, Ident> FromIterator<Item> for ItemDB<Item, Ident>
+where
+    Item: Clone + Hash + Eq,
+{
+    fn from_iter<T: IntoIterator<Item = Item>>(iter: T) -> Self {
+        let items = iter.into_iter().collect::<Vec<_>>();
+        let reverse = items
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(i, v)| (v, i))
+            .collect();
+        Self {
+            items,
+            reverse,
+            _phantom: std::marker::PhantomData,
+        }
     }
 }
 
-impl<E: Clone + Hash + Eq> ExpressionDB<E> {
-    fn insert_owned_new(&mut self, expr: E) -> Expr {
-        self.expressions.push(expr.clone());
-        let id = self.expressions.len() - 1;
-        self.reverse.insert(expr, id);
-        Expr(id)
+impl<Item, Ident> Index<Ident> for ItemDB<Item, Ident>
+where
+    Ident: Into<usize>,
+{
+    type Output = Item;
+    fn index(&self, index: Ident) -> &Self::Output {
+        &self.items[index.into()]
+    }
+}
+
+impl<Item, Ident> ItemDB<Item, Ident>
+where
+    Item: Clone + Hash + Eq,
+    Ident: From<usize> + Copy,
+{
+    fn insert_owned_new(&mut self, item: Item) -> Ident {
+        let id = self.items.len();
+        self.items.push(item.clone());
+        self.reverse.insert(item, id);
+        Ident::from(id)
     }
 
-    pub fn insert(&mut self, expr: &E) -> Expr {
-        if let Some(&id) = self.reverse.get(expr) {
-            Expr(id)
+    pub fn insert(&mut self, item: &Item) -> Ident {
+        if let Some(&id) = self.reverse.get(item) {
+            Ident::from(id)
         } else {
-            self.insert_owned_new(expr.clone())
+            self.insert_owned_new(item.clone())
         }
     }
 
-    pub fn insert_owned(&mut self, expr: E) -> Expr {
-        if let Some(&id) = self.reverse.get(&expr) {
-            Expr(id)
+    pub fn insert_owned(&mut self, item: Item) -> Ident {
+        if let Some(&id) = self.reverse.get(&item) {
+            Ident::from(id)
         } else {
-            self.insert_owned_new(expr)
+            self.insert_owned_new(item)
         }
+    }
+
+    pub fn id(&self, item: &Item) -> Ident {
+        self.reverse.get(item).map(|&id| Ident::from(id)).unwrap()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (Ident, &Item)> {
+        self.items
+            .iter()
+            .enumerate()
+            .map(|(i, item)| (Ident::from(i), item))
+    }
+
+    // TODO avoid using this (as pub)
+    pub fn next_free_id(&self) -> usize {
+        self.items.len() as usize
     }
 }
 
 struct Environment<T: FieldElement> {
-    expressions: RefCell<ExpressionDB<GroupedExpression<T, Var>>>,
+    expressions: RefCell<ItemDB<GroupedExpression<T, Var>, Expr>>,
     var_to_string: HashMap<Var, String>,
 
     /// Variables that only occurr once in the system
@@ -97,7 +159,7 @@ struct Environment<T: FieldElement> {
 
 impl<T: FieldElement> Environment<T> {
     fn new(
-        expressions: ExpressionDB<GroupedExpression<T, Var>>,
+        expressions: ItemDB<GroupedExpression<T, Var>, Expr>,
         var_to_string: HashMap<Var, String>,
         single_occurrence_variables: HashSet<Var>,
         range_constraints_on_vars: HashMap<Var, RangeConstraint<T>>,
@@ -112,7 +174,7 @@ impl<T: FieldElement> Environment<T> {
         }
     }
 
-    fn terminate(self) -> (ExpressionDB<GroupedExpression<T, Var>>, NewVarGenerator<T>) {
+    fn terminate(self) -> (ItemDB<GroupedExpression<T, Var>, Expr>, NewVarGenerator<T>) {
         (
             self.expressions.into_inner(),
             self.new_var_generator.into_inner(),
@@ -330,13 +392,13 @@ impl<T: FieldElement> Environment<T> {
 }
 
 struct NewVarGenerator<T> {
-    counter: u32,
-    requests: HashMap<Var, String>,
+    counter: usize,
+    requests: Vec<(Var, String)>,
     computation_methods: HashMap<Var, ComputationMethod<T, GroupedExpression<T, Var>>>,
 }
 
 impl<T> NewVarGenerator<T> {
-    fn new(initial_counter: u32) -> Self {
+    fn new(initial_counter: usize) -> Self {
         Self {
             counter: initial_counter,
             requests: Default::default(),
@@ -349,8 +411,8 @@ impl<T> NewVarGenerator<T> {
         prefix: &str,
         computation_method: ComputationMethod<T, GroupedExpression<T, Var>>,
     ) -> Var {
-        let var = Var(self.counter);
-        self.requests.insert(var, prefix.to_string());
+        let var = Var::from(self.counter);
+        self.requests.push((var, prefix.to_string()));
         self.computation_methods.insert(var, computation_method);
         self.counter += 1;
         var
@@ -368,6 +430,19 @@ impl<T: FieldElement> RangeConstraintProvider<T, Var> for Environment<T> {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct Expr(usize);
+
+// TODO auto-derive
+impl From<usize> for Expr {
+    fn from(value: usize) -> Self {
+        Expr(value)
+    }
+}
+
+impl From<Expr> for usize {
+    fn from(value: Expr) -> Self {
+        value.0
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum Action<T> {
@@ -677,24 +752,27 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
     let mut var_mapper = system
         .referenced_unknown_variables()
         .cloned()
-        .collect::<VarMapper<V>>();
+        .collect::<ItemDB<V, Var>>();
 
-    let mut db = Some(ExpressionDB::<GroupedExpression<T, Var>>::default());
+    let mut expr_db = Some(ItemDB::<GroupedExpression<T, Var>, Expr>::default());
 
     loop {
         let (algebraic_constraints, _bus_interactions) =
-            transform_constraint_system(&system, &var_mapper, db.as_mut().unwrap());
+            transform_constraint_system(&system, &var_mapper, expr_db.as_mut().unwrap());
 
         let env = Environment::<T>::new(
-            db.take().unwrap(),
-            var_mapper.all_names(),
+            expr_db.take().unwrap(),
+            var_mapper
+                .iter()
+                .map(|(id, var)| (id, var.to_string()))
+                .collect(),
             system
                 .single_occurrence_variables()
-                .map(|v| var_mapper.forward(v))
+                .map(|v| var_mapper.id(v))
                 .collect(),
             system
                 .referenced_unknown_variables()
-                .map(|v| (var_mapper.forward(v), range_constraints.get(v)))
+                .map(|v| (var_mapper.id(v), range_constraints.get(v)))
                 .collect(),
             // TODO or we just clone the var mapper?
             NewVarGenerator::new(var_mapper.next_free_id()),
@@ -710,13 +788,13 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         rt.extend(std::iter::once(Env(&env)));
 
         let (actions,) = rt.run();
-        let (expr_db, new_var_generator) = env.terminate();
-        db = Some(expr_db);
+        let (db, new_var_generator) = env.terminate();
+        expr_db = Some(db);
 
         // TODO we do not need all of those variables.
         for (var, prefix) in new_var_generator.requests {
             let v = new_var_outer(&prefix);
-            var_mapper.insert_existing(v.clone(), var);
+            assert_eq!(var_mapper.insert(&v), var);
             let computation_method = untransform_computation_method(
                 new_var_generator.computation_methods.get(&var).unwrap(),
                 &var_mapper,
@@ -734,19 +812,19 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         for action in actions.into_iter().map(|a| a.0).sorted() {
             match action {
                 Action::SubstituteVariableByConstant(var, val) => {
-                    system.substitute_by_known(var_mapper.backward(&var), &val);
+                    system.substitute_by_known(&var_mapper[var], &val);
                     progress = true;
                 }
                 Action::SubstituteVariableByVariable(v1, v2) => {
                     system.substitute_by_unknown(
-                        var_mapper.backward(&v1),
-                        &GroupedExpression::from_unknown_variable(var_mapper.backward(&v2).clone()),
+                        &var_mapper[v1],
+                        &GroupedExpression::from_unknown_variable(var_mapper[v2].clone()),
                     );
                     progress = true;
                 }
                 Action::ReplaceAlgebraicConstraintBy(e1, e2) => {
                     let expr1 =
-                        untransform_grouped_expression(&db.as_ref().unwrap()[e1], &var_mapper);
+                        untransform_grouped_expression(&expr_db.as_ref().unwrap()[e1], &var_mapper);
                     // TODO more efficient?
                     let mut found = false;
                     system.retain_algebraic_constraints(|c| {
@@ -758,8 +836,10 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                         }
                     });
                     if found {
-                        let expr2 =
-                            untransform_grouped_expression(&db.as_ref().unwrap()[e2], &var_mapper);
+                        let expr2 = untransform_grouped_expression(
+                            &expr_db.as_ref().unwrap()[e2],
+                            &var_mapper,
+                        );
                         system.add_algebraic_constraints([
                             algebraic_constraint::AlgebraicConstraint::assert_zero(expr2),
                         ]);
@@ -772,9 +852,9 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                 }
                 Action::ReplacePairOfAlgebraicConstraintsBy(e1, e2, replacement) => {
                     let expr1 =
-                        untransform_grouped_expression(&db.as_ref().unwrap()[e1], &var_mapper);
+                        untransform_grouped_expression(&expr_db.as_ref().unwrap()[e1], &var_mapper);
                     let expr2 =
-                        untransform_grouped_expression(&db.as_ref().unwrap()[e2], &var_mapper);
+                        untransform_grouped_expression(&expr_db.as_ref().unwrap()[e2], &var_mapper);
                     let mut found1 = false;
                     let mut found2 = false;
                     for c in system.algebraic_constraints() {
@@ -789,7 +869,7 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                             c.expression != expr1 && c.expression != expr2
                         });
                         let replacement = untransform_grouped_expression(
-                            &db.as_ref().unwrap()[replacement],
+                            &expr_db.as_ref().unwrap()[replacement],
                             &var_mapper,
                         );
                         system.add_algebraic_constraints([
@@ -816,8 +896,8 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
 // have to transform the field elements.
 fn transform_constraint_system<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
     system: &IndexedConstraintSystem<T, V>,
-    var_mapper: &VarMapper<V>,
-    expression_db: &mut ExpressionDB<GroupedExpression<T, Var>>,
+    var_mapper: &ItemDB<V, Var>,
+    expression_db: &mut ItemDB<GroupedExpression<T, Var>, Expr>,
 ) -> (Vec<Expr>, Vec<BusInteraction<Expr>>) {
     let algebraic_constraints = system
         .system()
@@ -841,75 +921,23 @@ fn transform_constraint_system<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
     (algebraic_constraints, bus_interactions)
 }
 
-#[derive(Clone)]
-struct VarMapper<V> {
-    forward: HashMap<V, Var>,
-    backward: HashMap<Var, V>,
-}
-
-impl<V> FromIterator<V> for VarMapper<V>
-where
-    V: Hash + Eq + Clone + Display,
-{
-    fn from_iter<T: IntoIterator<Item = V>>(iter: T) -> Self {
-        let forward: HashMap<V, Var> = iter
-            .into_iter()
-            .unique()
-            .enumerate()
-            .map(|(i, v)| (v, Var(i as u32)))
-            .collect();
-        let backward = forward
-            .iter()
-            .map(|(outer, inner)| (*inner, outer.clone()))
-            .collect();
-        VarMapper { forward, backward }
-    }
-}
-
-impl<V: Hash + Eq + Clone + Display> VarMapper<V> {
-    pub fn insert_existing(&mut self, v: V, var: Var) {
-        assert!(self.forward.insert(v.clone(), var).is_none());
-        assert!(self.backward.insert(var, v).is_none());
-    }
-
-    // TODO avoid using this (as pub)
-    pub fn next_free_id(&self) -> u32 {
-        self.forward.len() as u32
-    }
-
-    fn forward(&self, v: &V) -> Var {
-        *self.forward.get(v).unwrap()
-    }
-
-    fn backward(&self, var: &Var) -> &V {
-        self.backward.get(var).unwrap()
-    }
-
-    fn all_names(&self) -> HashMap<Var, String> {
-        self.backward
-            .iter()
-            .map(|(var, v)| (*var, v.to_string()))
-            .collect()
-    }
-}
-
 fn transform_grouped_expression<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
     expr: &GroupedExpression<T, V>,
-    var_mapper: &VarMapper<V>,
+    var_mapper: &ItemDB<V, Var>,
 ) -> GroupedExpression<T, Var> {
-    expr.transform_var_type(&mut |v| var_mapper.forward(v))
+    expr.transform_var_type(&mut |v| var_mapper.id(v))
 }
 
 fn untransform_grouped_expression<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
     expr: &GroupedExpression<T, Var>,
-    var_mapper: &VarMapper<V>,
+    var_mapper: &ItemDB<V, Var>,
 ) -> GroupedExpression<T, V> {
-    expr.transform_var_type(&mut |v| var_mapper.backward(v).clone())
+    expr.transform_var_type(&mut |v| var_mapper[*v].clone())
 }
 
 fn untransform_computation_method<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
     method: &ComputationMethod<T, GroupedExpression<T, Var>>,
-    var_mapper: &VarMapper<V>,
+    var_mapper: &ItemDB<V, Var>,
 ) -> ComputationMethod<T, GroupedExpression<T, V>> {
     match method {
         ComputationMethod::Constant(c) => ComputationMethod::Constant(*c),
