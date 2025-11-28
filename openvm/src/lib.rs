@@ -5,10 +5,8 @@
 
 use derive_more::From;
 use eyre::Result;
-use itertools::Itertools;
 use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
 use openvm_circuit::arch::execution_mode::metered::segment_ctx::SegmentationLimits;
-use openvm_circuit::arch::instructions::exe::VmExe;
 use openvm_circuit::arch::{
     debug_proving_ctx, AirInventory, AirInventoryError, ChipInventory, ChipInventoryError,
     ExecutorInventory, ExecutorInventoryError, InitFileGenerator, MatrixRecordArena,
@@ -20,7 +18,6 @@ use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
 use openvm_circuit_derive::{Executor, MeteredExecutor, PreflightExecutor};
 use openvm_sdk::config::SdkVmCpuBuilder;
 
-use openvm_instructions::program::{Program, DEFAULT_PC_STEP};
 use openvm_sdk::config::TranspilerConfig;
 use openvm_sdk::prover::{verify_app_proof, AggStarkProver};
 use openvm_sdk::GenericSdk;
@@ -45,9 +42,7 @@ use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::PowdrExtension;
 use powdr_openvm_hints_circuit::{HintsExtension, HintsExtensionExecutor, HintsProverExt};
 use powdr_openvm_hints_transpiler::HintsTranspilerExtension;
-use powdr_riscv_elf::ElfProgram;
 use serde::{Deserialize, Serialize};
-use std::cmp::Reverse;
 use std::fs::File;
 use std::io::BufWriter;
 use std::iter::Sum;
@@ -55,19 +50,17 @@ use std::ops::Add;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::Arc,
 };
 
 use crate::customize_exe::OpenVmApcCandidate;
-pub use crate::customize_exe::Prog;
 use crate::powdr_extension::chip::PowdrAir;
+pub use crate::program::Prog;
+pub use crate::program::{CompiledProgram, OriginalCompiledProgram};
 use crate::trace_generation::do_with_trace;
-use tracing::Level;
 
 #[cfg(test)]
 use crate::extraction_utils::AirWidthsDiff;
 use crate::extraction_utils::{export_pil, AirWidths, OriginalVmConfig};
-use crate::instruction_formatter::openvm_opcode_formatter;
 use crate::powdr_extension::{PowdrExtensionExecutor, PowdrPrecompile};
 
 mod air_builder;
@@ -75,6 +68,7 @@ pub mod bus_map;
 pub mod cuda_abi;
 pub mod extraction_utils;
 pub mod opcode;
+mod program;
 pub mod symbolic_instruction_builder;
 pub mod trace_generation;
 mod utils;
@@ -231,6 +225,7 @@ impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, PowdrExtens
         extension: &PowdrExtension<BabyBear>,
         inventory: &mut ChipInventory<BabyBearSC, DenseRecordArena, GpuBackend>,
     ) -> Result<(), ChipInventoryError> {
+        use std::sync::Arc;
         // TODO: here we make assumptions about the existence of some chips in the periphery. Make this more flexible
 
         use crate::powdr_extension::trace_generator::cuda::PowdrPeripheryInstancesGpu;
@@ -431,7 +426,7 @@ impl VmExecutionConfig<BabyBear> for SpecializedConfig {
 }
 
 impl SpecializedConfig {
-    fn new(
+    pub fn new(
         base_config: OriginalVmConfig,
         precompiles: Vec<PowdrPrecompile<BabyBear>>,
         max_degree: usize,
@@ -527,63 +522,6 @@ pub fn compile_openvm(
     })
 }
 
-pub fn compile_guest(
-    guest: &str,
-    guest_opts: GuestOptions,
-    config: PowdrConfig,
-    pgo_config: PgoConfig,
-) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
-    let original_program = compile_openvm(guest, guest_opts.clone())?;
-
-    // Optional tally of opcode freqency (only enabled for debug level logs)
-    if tracing::enabled!(Level::DEBUG) {
-        tally_opcode_frequency(&pgo_config, &original_program.exe);
-    }
-
-    compile_exe(original_program, config, pgo_config)
-}
-
-fn instruction_index_to_pc(program: &Program<BabyBear>, idx: usize) -> u64 {
-    (program.pc_base + (idx as u32 * DEFAULT_PC_STEP)) as u64
-}
-
-fn tally_opcode_frequency(pgo_config: &PgoConfig, exe: &VmExe<BabyBear>) {
-    let pgo_program_pc_count = match pgo_config {
-        PgoConfig::Cell(pgo_program_pc_count, _) | PgoConfig::Instruction(pgo_program_pc_count) => {
-            // If execution count of each pc is available, we tally the opcode execution frequency
-            tracing::debug!("Opcode execution frequency:");
-            pgo_program_pc_count
-        }
-        PgoConfig::None => {
-            // If execution count of each pc isn't available, we just count the occurrences of each opcode in the program
-            tracing::debug!("Opcode frequency in program:");
-            // Create a dummy HashMap that returns 1 for each pc
-            &(0..exe.program.instructions_and_debug_infos.len())
-                .map(|i| (instruction_index_to_pc(&exe.program, i), 1))
-                .collect::<HashMap<_, _>>()
-        }
-    };
-
-    exe.program
-        .instructions_and_debug_infos
-        .iter()
-        .enumerate()
-        .fold(HashMap::new(), |mut acc, (i, instr)| {
-            let opcode = instr.as_ref().unwrap().0.opcode;
-            if let Some(count) = pgo_program_pc_count.get(&instruction_index_to_pc(&exe.program, i))
-            {
-                *acc.entry(opcode).or_insert(0) += count;
-            }
-            acc
-        })
-        .into_iter()
-        .sorted_by_key(|(_, count)| Reverse(*count))
-        .for_each(|(opcode, count)| {
-            // Log the opcode and its count
-            tracing::debug!("   {}: {count}", openvm_opcode_formatter(&opcode));
-        });
-}
-
 pub fn compile_exe(
     original_program: OriginalCompiledProgram,
     config: PowdrConfig,
@@ -624,19 +562,6 @@ pub fn compile_exe(
         &compiled.vm_config,
     );
     Ok(compiled)
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct CompiledProgram {
-    pub exe: Arc<VmExe<BabyBear>>,
-    pub vm_config: SpecializedConfig,
-}
-
-// the original openvm program and config without powdr extension, along with the elf
-pub struct OriginalCompiledProgram {
-    pub exe: Arc<VmExe<BabyBear>>,
-    pub vm_config: ExtendedVmConfig,
-    pub elf: ElfProgram,
 }
 
 use openvm_circuit_derive::VmConfig;
@@ -912,11 +837,10 @@ pub fn prove(
 
 // Same as execution_profile below but for guest path inputs.
 pub fn execution_profile_from_guest(
-    guest: &str,
-    guest_opts: GuestOptions,
+    program: &OriginalCompiledProgram,
     inputs: StdIn,
 ) -> HashMap<u64, u32> {
-    let OriginalCompiledProgram { exe, vm_config, .. } = compile_openvm(guest, guest_opts).unwrap();
+    let OriginalCompiledProgram { exe, vm_config, .. } = program;
     let program = Prog::from(&exe.program);
 
     // Set app configuration
@@ -936,6 +860,7 @@ pub fn execution_profile_from_guest(
 mod tests {
     use super::*;
     use expect_test::{expect, Expect};
+    use itertools::Itertools;
     use pretty_assertions::assert_eq;
     use test_log::test;
 
@@ -949,7 +874,8 @@ mod tests {
         pgo_config: PgoConfig,
         segment_height: Option<usize>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let program = compile_guest(guest, GuestOptions::default(), config, pgo_config).unwrap();
+        let guest = compile_openvm(guest, GuestOptions::default()).unwrap();
+        let program = compile_exe(guest, config, pgo_config).unwrap();
         prove(&program, mock, recursion, stdin, segment_height)
     }
 
@@ -1065,11 +991,11 @@ mod tests {
         stdin.write(&GUEST_ITER);
 
         // Create execution profile but don't prove with it, just to assert that the APC we select isn't executed
-        let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
+        let guest = compile_openvm(GUEST, GuestOptions::default()).unwrap();
+        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
         let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP_NO_APC_EXECUTED);
-        let program =
-            compile_guest(GUEST, GuestOptions::default(), config, PgoConfig::None).unwrap();
+        let program = compile_exe(guest, config, PgoConfig::None).unwrap();
 
         // Assert that all APCs aren't executed
         program
@@ -1090,7 +1016,8 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
         let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP_PGO);
-        let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
+        let guest = compile_openvm(GUEST, GuestOptions::default()).unwrap();
+        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
         prove_simple(GUEST, config, stdin, PgoConfig::Instruction(pgo_data), None);
     }
 
@@ -1099,7 +1026,8 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
         let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP_PGO);
-        let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
+        let guest = compile_openvm(GUEST, GuestOptions::default()).unwrap();
+        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
         prove_mock(GUEST, config, stdin, PgoConfig::Instruction(pgo_data), None);
     }
 
@@ -1109,18 +1037,17 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
         let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP_PGO);
-        let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin.clone());
+        let guest = compile_openvm(GUEST, GuestOptions::default()).unwrap();
+        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
         prove_recursion(GUEST, config, stdin, PgoConfig::Instruction(pgo_data), None);
     }
 
     #[test]
     #[ignore = "Too long"]
     fn matmul_compile() {
-        let guest = "guest-matmul";
+        let guest = compile_openvm("guest-matmul", GuestOptions::default()).unwrap();
         let config = default_powdr_openvm_config(1, 0);
-        assert!(
-            compile_guest(guest, GuestOptions::default(), config, PgoConfig::default()).is_ok()
-        );
+        assert!(compile_exe(guest, config, PgoConfig::default()).is_ok());
     }
 
     #[test]
@@ -1155,8 +1082,8 @@ mod tests {
     fn keccak_prove_many_apcs() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER);
-        let pgo_data =
-            execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
+        let guest = compile_openvm(GUEST_KECCAK, GuestOptions::default()).unwrap();
+        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
         let config = default_powdr_openvm_config(GUEST_KECCAK_APC_PGO_LARGE, GUEST_KECCAK_SKIP);
         prove_recursion(
@@ -1181,8 +1108,8 @@ mod tests {
     fn keccak_prove_large() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_LARGE);
-        let pgo_data =
-            execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
+        let guest = compile_openvm(GUEST_KECCAK, GuestOptions::default()).unwrap();
+        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
         let config = default_powdr_openvm_config(GUEST_KECCAK_APC_PGO, GUEST_KECCAK_SKIP);
         prove_recursion(
@@ -1222,8 +1149,8 @@ mod tests {
         let config = default_powdr_openvm_config(GUEST_KECCAK_APC_PGO, GUEST_KECCAK_SKIP);
 
         // Pgo data
-        let pgo_data =
-            execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
+        let guest = compile_openvm(GUEST_KECCAK, GuestOptions::default()).unwrap();
+        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
         // Pgo Cell mode
         let start = Instant::now();
@@ -1260,8 +1187,8 @@ mod tests {
         stdin.write(&GUEST_SHA256_ITER);
         let config = default_powdr_openvm_config(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
 
-        let pgo_data =
-            execution_profile_from_guest(GUEST_SHA256, GuestOptions::default(), stdin.clone());
+        let guest = compile_openvm(GUEST_SHA256, GuestOptions::default()).unwrap();
+        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
         prove_simple(
             GUEST_SHA256,
@@ -1279,8 +1206,8 @@ mod tests {
         stdin.write(&GUEST_SHA256_ITER);
         let config = default_powdr_openvm_config(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
 
-        let pgo_data =
-            execution_profile_from_guest(GUEST_SHA256, GuestOptions::default(), stdin.clone());
+        let guest = compile_openvm(GUEST_SHA256, GuestOptions::default()).unwrap();
+        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
         prove_mock(
             GUEST_SHA256,
@@ -1296,8 +1223,8 @@ mod tests {
     fn sha256_prove_many_apcs() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_SHA256_ITER);
-        let pgo_data =
-            execution_profile_from_guest(GUEST_SHA256, GuestOptions::default(), stdin.clone());
+        let guest = compile_openvm(GUEST_SHA256, GuestOptions::default()).unwrap();
+        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
         let config = default_powdr_openvm_config(GUEST_SHA256_APC_PGO_LARGE, GUEST_SHA256_SKIP);
         prove_recursion(
@@ -1322,8 +1249,8 @@ mod tests {
     fn sha256_prove_large() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_SHA256_ITER_LARGE);
-        let pgo_data =
-            execution_profile_from_guest(GUEST_SHA256, GuestOptions::default(), stdin.clone());
+        let guest = compile_openvm(GUEST_SHA256, GuestOptions::default()).unwrap();
+        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
         let config = default_powdr_openvm_config(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
         prove_recursion(
@@ -1341,8 +1268,8 @@ mod tests {
         stdin.write(&GUEST_SHA256_ITER_SMALL);
         let config = default_powdr_openvm_config(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
 
-        let pgo_data =
-            execution_profile_from_guest(GUEST_SHA256, GuestOptions::default(), stdin.clone());
+        let guest = compile_openvm(GUEST_SHA256, GuestOptions::default()).unwrap();
+        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
         prove_simple(
             GUEST_SHA256,
@@ -1359,8 +1286,8 @@ mod tests {
         stdin.write(&GUEST_SHA256_ITER_SMALL);
         let config = default_powdr_openvm_config(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
 
-        let pgo_data =
-            execution_profile_from_guest(GUEST_SHA256, GuestOptions::default(), stdin.clone());
+        let guest = compile_openvm(GUEST_SHA256, GuestOptions::default()).unwrap();
+        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
         prove_mock(
             GUEST_SHA256,
@@ -1379,8 +1306,8 @@ mod tests {
         stdin.write(&GUEST_SHA256_ITER_SMALL);
         let config = default_powdr_openvm_config(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
 
-        let pgo_data =
-            execution_profile_from_guest(GUEST_SHA256, GuestOptions::default(), stdin.clone());
+        let guest = compile_openvm(GUEST_SHA256, GuestOptions::default()).unwrap();
+        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
         let start = Instant::now();
         prove_simple(
@@ -1416,8 +1343,8 @@ mod tests {
         let stdin = StdIn::default();
         let config = default_powdr_openvm_config(GUEST_U256_APC_PGO, GUEST_U256_SKIP);
 
-        let pgo_data =
-            execution_profile_from_guest(GUEST_U256, GuestOptions::default(), stdin.clone());
+        let guest = compile_openvm(GUEST_U256, GuestOptions::default()).unwrap();
+        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
         let start = Instant::now();
         prove_simple(
@@ -1439,8 +1366,8 @@ mod tests {
         let stdin = StdIn::default();
         let config = default_powdr_openvm_config(GUEST_PAIRING_APC_PGO, GUEST_PAIRING_SKIP);
 
-        let pgo_data =
-            execution_profile_from_guest(GUEST_PAIRING, GuestOptions::default(), stdin.clone());
+        let guest = compile_openvm(GUEST_PAIRING, GuestOptions::default()).unwrap();
+        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
         let start = Instant::now();
         prove_simple(
@@ -1471,8 +1398,8 @@ mod tests {
     fn ecc_hint_prove() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ECC_ITER);
-        let pgo_data =
-            execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin.clone());
+        let guest = compile_openvm(GUEST_ECC_HINTS, GuestOptions::default()).unwrap();
+        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
         let config = default_powdr_openvm_config(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
         prove_simple(
             GUEST_ECC_HINTS,
@@ -1487,11 +1414,8 @@ mod tests {
     fn ecrecover_prove() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ECRECOVER_ITER);
-        let pgo_data = execution_profile_from_guest(
-            GUEST_ECRECOVER_HINTS,
-            GuestOptions::default(),
-            stdin.clone(),
-        );
+        let guest = compile_openvm(GUEST_ECRECOVER_HINTS, GuestOptions::default()).unwrap();
+        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
         let config = default_powdr_openvm_config(GUEST_ECRECOVER_APC_PGO, GUEST_ECRECOVER_SKIP);
         prove_simple(
             GUEST_ECRECOVER_HINTS,
@@ -1507,8 +1431,8 @@ mod tests {
     fn ecc_hint_prove_recursion_large() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ECC_ITER);
-        let pgo_data =
-            execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin.clone());
+        let guest = compile_openvm(GUEST_ECC_HINTS, GuestOptions::default()).unwrap();
+        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
         let config = default_powdr_openvm_config(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
         prove_recursion(
             GUEST_ECC_HINTS,
@@ -1524,11 +1448,8 @@ mod tests {
     fn ecrecover_prove_recursion_large() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ECRECOVER_ITER);
-        let pgo_data = execution_profile_from_guest(
-            GUEST_ECRECOVER_HINTS,
-            GuestOptions::default(),
-            stdin.clone(),
-        );
+        let guest = compile_openvm(GUEST_ECRECOVER_HINTS, GuestOptions::default()).unwrap();
+        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
         let config = default_powdr_openvm_config(GUEST_ECRECOVER_APC_PGO, GUEST_ECRECOVER_SKIP);
         prove_recursion(
             GUEST_ECRECOVER_HINTS,
@@ -1546,11 +1467,8 @@ mod tests {
         let config =
             default_powdr_openvm_config(GUEST_ECC_PROJECTIVE_APC_PGO, GUEST_ECC_PROJECTIVE_SKIP);
 
-        let pgo_data = execution_profile_from_guest(
-            GUEST_ECC_PROJECTIVE,
-            GuestOptions::default(),
-            stdin.clone(),
-        );
+        let guest = compile_openvm(GUEST_ECC_PROJECTIVE, GuestOptions::default()).unwrap();
+        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
         prove_simple(
             GUEST_ECC_PROJECTIVE,
@@ -1597,13 +1515,8 @@ mod tests {
             .with_apc_candidates_dir(apc_candidates_dir_path);
         let is_cell_pgo = matches!(guest.pgo_config, PgoConfig::Cell(_, _));
         let max_degree = config.degree_bound.identities;
-        let compiled_program = compile_guest(
-            guest.name,
-            GuestOptions::default(),
-            config,
-            guest.pgo_config,
-        )
-        .unwrap();
+        let guest_program = compile_openvm(guest.name, GuestOptions::default()).unwrap();
+        let compiled_program = compile_exe(guest_program, config, guest.pgo_config).unwrap();
 
         let (powdr_air_metrics, non_powdr_air_metrics) = compiled_program.air_metrics(max_degree);
 
@@ -1676,7 +1589,8 @@ mod tests {
     fn guest_machine_pgo_modes() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        let pgo_data = execution_profile_from_guest(GUEST, GuestOptions::default(), stdin);
+        let guest = compile_openvm(GUEST, GuestOptions::default()).unwrap();
+        let pgo_data = execution_profile_from_guest(&guest, stdin);
 
         test_machine_compilation(
             GuestTestConfig {
@@ -1752,7 +1666,8 @@ mod tests {
     fn sha256_machine_pgo() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_SHA256_ITER_SMALL);
-        let pgo_data = execution_profile_from_guest(GUEST_SHA256, GuestOptions::default(), stdin);
+        let guest = compile_openvm(GUEST_SHA256, GuestOptions::default()).unwrap();
+        let pgo_data = execution_profile_from_guest(&guest, stdin);
 
         test_machine_compilation(
             GuestTestConfig {
@@ -1828,8 +1743,8 @@ mod tests {
     fn ecc_hint_machine_pgo_cell() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ECC_ITER);
-        let pgo_data =
-            execution_profile_from_guest(GUEST_ECC_HINTS, GuestOptions::default(), stdin);
+        let guest = compile_openvm(GUEST_ECC_HINTS, GuestOptions::default()).unwrap();
+        let pgo_data = execution_profile_from_guest(&guest, stdin);
 
         test_machine_compilation(
             GuestTestConfig {
@@ -1877,8 +1792,8 @@ mod tests {
     fn ecrecover_machine_pgo_cell() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ECRECOVER_ITER);
-        let pgo_data =
-            execution_profile_from_guest(GUEST_ECRECOVER_HINTS, GuestOptions::default(), stdin);
+        let guest = compile_openvm(GUEST_ECRECOVER_HINTS, GuestOptions::default()).unwrap();
+        let pgo_data = execution_profile_from_guest(&guest, stdin);
 
         test_machine_compilation(
             GuestTestConfig {
@@ -1926,7 +1841,8 @@ mod tests {
     fn keccak_machine_pgo_modes() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
-        let pgo_data = execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin);
+        let guest = compile_openvm(GUEST_KECCAK, GuestOptions::default()).unwrap();
+        let pgo_data = execution_profile_from_guest(&guest, stdin);
 
         test_machine_compilation(
             GuestTestConfig {
@@ -2032,8 +1948,9 @@ mod tests {
 
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
-        let pgo_data =
-            execution_profile_from_guest(GUEST_KECCAK, GuestOptions::default(), stdin.clone());
+
+        let guest = compile_openvm(GUEST_KECCAK, GuestOptions::default()).unwrap();
+        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
         test_machine_compilation(
             GuestTestConfig {
