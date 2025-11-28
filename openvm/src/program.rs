@@ -47,39 +47,6 @@ impl OriginalCompiledProgram {
 
         collect_basic_blocks::<BabyBearOpenVmApcAdapter>(&program, &jumpdest_set, &airs)
     }
-<<<<<<< Updated upstream
-||||||| Stash base
-
-    pub fn compiled_program(
-        &self,
-        precompiles: Vec<PowdrPrecompile<BabyBear>>,
-        max_degree: usize,
-    ) -> CompiledProgram {
-        CompiledProgram {
-            exe: self.exe.clone(),
-            vm_config: SpecializedConfig::new(
-                OriginalVmConfig::new(self.vm_config.clone()),
-                precompiles,
-                max_degree,
-            ),
-        }
-    }
-=======
-
-    pub fn compiled_program(
-        &self,
-        precompiles: Vec<PowdrPrecompile<BabyBear>>,
-        max_degree: usize,
-    ) -> CompiledProgram {
-        CompiledProgram {
-            exe: self.exe.clone(),
-            vm_config: SpecializedConfig::new(
-                OriginalVmConfig::new(self.vm_config.clone()),
-                precompiles,
-                max_degree,
-            ),
-        }
-    }
 
     /// Besides the base RISCV-V branching instructions, the bigint extension adds two more branching
     /// instruction classes over BranchEqual and BranchLessThan.
@@ -106,7 +73,6 @@ impl OriginalCompiledProgram {
 
         labels
     }
->>>>>>> Stashed changes
 }
 
 /// A newtype wrapper around `OpenVmProgram` to implement the `Program` trait.
