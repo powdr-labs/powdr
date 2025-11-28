@@ -54,29 +54,20 @@ mult=is_valid * 1, args=[15360 * writes_aux__base__prev_timestamp_0 + 15360 * wr
 mult=diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0, args=[diff_val_0 - 1, 0, 0, 0]
 
 // Algebraic constraints:
-(1 - (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0)) * (c__0_0 * (2 * cmp_result_0 - 1)) = 0
-(1 - (diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0)) * (c__1_0 * (2 * cmp_result_0 - 1)) = 0
-(1 - (diff_marker__2_0 + diff_marker__3_0)) * (c__2_0 * (2 * cmp_result_0 - 1)) = 0
-(1 - diff_marker__3_0) * (c__3_0 * (2 * cmp_result_0 - 1)) = 0
 cmp_result_0 * (cmp_result_0 - 1) = 0
-diff_marker__0_0 * (diff_val_0 - c__0_0 * (2 * cmp_result_0 - 1)) = 0
-diff_marker__1_0 * (diff_val_0 - c__1_0 * (2 * cmp_result_0 - 1)) = 0
-diff_marker__2_0 * (diff_val_0 - c__2_0 * (2 * cmp_result_0 - 1)) = 0
+diff_marker__3_0 * (diff_marker__3_0 - 1) = 0
+(1 - diff_marker__3_0) * (c__3_0 * (2 * cmp_result_0 - 1)) = 0
 diff_marker__3_0 * (diff_val_0 - c__3_0 * (2 * cmp_result_0 - 1)) = 0
-
-
+diff_marker__2_0 * (diff_marker__2_0 - 1) = 0
+(1 - (diff_marker__2_0 + diff_marker__3_0)) * (c__2_0 * (2 * cmp_result_0 - 1)) = 0
+diff_marker__2_0 * (diff_val_0 - c__2_0 * (2 * cmp_result_0 - 1)) = 0
+diff_marker__1_0 * (diff_marker__1_0 - 1) = 0
+(1 - (diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0)) * (c__1_0 * (2 * cmp_result_0 - 1)) = 0
+diff_marker__1_0 * (diff_val_0 - c__1_0 * (2 * cmp_result_0 - 1)) = 0
+diff_marker__0_0 * (diff_marker__0_0 - 1) = 0
+(1 - (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0)) * (c__0_0 * (2 * cmp_result_0 - 1)) = 0
+diff_marker__0_0 * (diff_val_0 - c__0_0 * (2 * cmp_result_0 - 1)) = 0
+(diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0) * (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0 - 1) = 0
 (1 - (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0)) * cmp_result_0 = 0
-
-
-(diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0) *
-(diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0 - 1) = 0
-and all of the summands are binary as well
-
-diff_marker__3_0 = 0 => c__3_0 = 0 \/ cmp_result_0 = 1/2 (invalid
-diff_marker__3_0 = 0 => c__3_0 = 0
-c__3_0 = 0 => (diff_marker__3_0 = 0 \/ diff_val_0 = 0)
-
-c__3_0 != 0 => diff_marker__3_0 = 1
-diff_marke__3_0 = 1 => diff_val_0 = c__3_0 * (2 * cmp_result_0 - 1)
-
-c__3_0 = 0 => diff_marker__3_0 = 1
+(1 - is_valid) * (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0) = 0
+is_valid * (is_valid - 1) = 0
