@@ -847,37 +847,37 @@ pub fn prove(
     inputs: StdIn,
     segment_height: Option<usize>, // uses the default height if None
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let exe = &program.exe;
-    let mut vm_config = program.vm_config.clone();
-
-    // DefaultSegmentationStrategy { max_segment_len: 4194204, max_cells_per_chip_in_segment: 503304480 }
-    if let Some(segment_height) = segment_height {
-        vm_config
-            .sdk
-            .config_mut()
-            .sdk
-            .system
-            .config
-            .segmentation_limits =
-            SegmentationLimits::default().with_max_trace_height(segment_height as u32);
-        tracing::debug!("Setting max segment len to {}", segment_height);
-    }
-
-    // Set app configuration
-    let app_fri_params =
-        FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
-    let app_config = AppConfig::new(app_fri_params, vm_config.clone());
-
-    // Create the SDK
-    #[cfg(feature = "cuda")]
-    let sdk = PowdrSdkGpu::new(app_config).unwrap();
-    #[cfg(not(feature = "cuda"))]
-    let sdk = PowdrSdkCpu::new(app_config).unwrap();
     if mock {
         do_with_trace(program, inputs, |vm, pk, ctx| {
             debug_proving_ctx(vm, pk, &ctx);
         })?;
     } else {
+        let exe = &program.exe;
+        let mut vm_config = program.vm_config.clone();
+
+        // DefaultSegmentationStrategy { max_segment_len: 4194204, max_cells_per_chip_in_segment: 503304480 }
+        if let Some(segment_height) = segment_height {
+            vm_config
+                .sdk
+                .config_mut()
+                .sdk
+                .system
+                .config
+                .segmentation_limits =
+                SegmentationLimits::default().with_max_trace_height(segment_height as u32);
+            tracing::debug!("Setting max segment len to {}", segment_height);
+        }
+
+        // Set app configuration
+        let app_fri_params =
+            FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
+        let app_config = AppConfig::new(app_fri_params, vm_config.clone());
+
+        // Create the SDK
+        #[cfg(feature = "cuda")]
+        let sdk = PowdrSdkGpu::new(app_config).unwrap();
+        #[cfg(not(feature = "cuda"))]
+        let sdk = PowdrSdkCpu::new(app_config).unwrap();
         let mut app_prover = sdk.app_prover(exe.clone())?;
 
         // Generate a proof
