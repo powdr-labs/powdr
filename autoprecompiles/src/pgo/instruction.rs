@@ -4,7 +4,7 @@ use crate::{
     adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, PgoAdapter},
     blocks::BasicBlock,
     pgo::create_apcs_for_all_blocks,
-    PowdrConfig,
+    EmpiricalConstraints, PowdrConfig,
 };
 
 pub struct InstructionPgo<A> {
@@ -30,6 +30,7 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         _labels: BTreeMap<u64, Vec<String>>,
+        empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
         tracing::info!(
             "Generating autoprecompiles with instruction PGO for {} blocks",
@@ -70,7 +71,12 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
                 );
         }
 
-        create_apcs_for_all_blocks::<Self::Adapter>(blocks, config, vm_config)
+        create_apcs_for_all_blocks::<Self::Adapter>(
+            blocks,
+            config,
+            vm_config,
+            empirical_constraints,
+        )
     }
 
     fn pc_execution_count(&self, pc: u64) -> Option<u32> {

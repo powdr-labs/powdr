@@ -3,6 +3,7 @@ use metrics_tracing_context::{MetricsLayer, TracingContextLayer};
 use metrics_util::{debugging::DebuggingRecorder, layers::Layer};
 use openvm_sdk::StdIn;
 use openvm_stark_sdk::bench::serialize_metric_snapshot;
+use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::pgo::{pgo_config, PgoType};
 use powdr_autoprecompiles::PowdrConfig;
 use powdr_openvm::{compile_openvm, default_powdr_openvm_config, CompiledProgram, GuestOptions};
@@ -166,10 +167,19 @@ fn run_command(command: Commands) {
             let execution_profile =
                 powdr_openvm::execution_profile_from_guest(&guest_program, stdin_from(input));
 
-            maybe_compute_empirical_constraints(&guest_program, &powdr_config, stdin_from(input));
+            let empirical_constraints = maybe_compute_empirical_constraints(
+                &guest_program,
+                &powdr_config,
+                stdin_from(input),
+            );
             let pgo_config = pgo_config(pgo, max_columns, execution_profile);
-            let program =
-                powdr_openvm::compile_exe(guest_program, powdr_config, pgo_config).unwrap();
+            let program = powdr_openvm::compile_exe(
+                guest_program,
+                powdr_config,
+                pgo_config,
+                empirical_constraints,
+            )
+            .unwrap();
             write_program_to_file(program, &format!("{guest}_compiled.cbor")).unwrap();
         }
 
@@ -190,13 +200,22 @@ fn run_command(command: Commands) {
             }
             powdr_config = powdr_config.with_optimistic_precompiles(optimistic_precompiles);
             let guest_program = compile_openvm(&guest, guest_opts.clone()).unwrap();
-            maybe_compute_empirical_constraints(&guest_program, &powdr_config, stdin_from(input));
+            let empirical_constraints = maybe_compute_empirical_constraints(
+                &guest_program,
+                &powdr_config,
+                stdin_from(input),
+            );
             let execution_profile =
                 powdr_openvm::execution_profile_from_guest(&guest_program, stdin_from(input));
             let pgo_config = pgo_config(pgo, max_columns, execution_profile);
             let compile_and_exec = || {
-                let program =
-                    powdr_openvm::compile_exe(guest_program, powdr_config, pgo_config).unwrap();
+                let program = powdr_openvm::compile_exe(
+                    guest_program,
+                    powdr_config,
+                    pgo_config,
+                    empirical_constraints,
+                )
+                .unwrap();
                 powdr_openvm::execute(program, stdin_from(input)).unwrap();
             };
             if let Some(metrics_path) = metrics {
@@ -223,19 +242,28 @@ fn run_command(command: Commands) {
             optimistic_precompiles,
         } => {
             let mut powdr_config = default_powdr_openvm_config(autoprecompiles as u64, skip as u64);
-            if let Some(apc_candidates_dir) = apc_candidates_dir {
+            if let Some(apc_candidates_dir) = &apc_candidates_dir {
                 powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
             }
             powdr_config = powdr_config.with_optimistic_precompiles(optimistic_precompiles);
             let guest_program = compile_openvm(&guest, guest_opts).unwrap();
-            maybe_compute_empirical_constraints(&guest_program, &powdr_config, stdin_from(input));
+            let empirical_constraints = maybe_compute_empirical_constraints(
+                &guest_program,
+                &powdr_config,
+                stdin_from(input),
+            );
 
             let execution_profile =
                 powdr_openvm::execution_profile_from_guest(&guest_program, stdin_from(input));
             let pgo_config = pgo_config(pgo, max_columns, execution_profile);
             let compile_and_prove = || {
-                let program =
-                    powdr_openvm::compile_exe(guest_program, powdr_config, pgo_config).unwrap();
+                let program = powdr_openvm::compile_exe(
+                    guest_program,
+                    powdr_config,
+                    pgo_config,
+                    empirical_constraints,
+                )
+                .unwrap();
                 powdr_openvm::prove(&program, mock, recursion, stdin_from(input), None).unwrap()
             };
             if let Some(metrics_path) = metrics {
@@ -297,9 +325,9 @@ fn maybe_compute_empirical_constraints(
     guest_program: &OriginalCompiledProgram,
     powdr_config: &PowdrConfig,
     stdin: StdIn,
-) {
+) -> EmpiricalConstraints {
     if !powdr_config.should_use_optimistic_precompiles {
-        return;
+        return EmpiricalConstraints::default();
     }
 
     tracing::warn!(
@@ -318,4 +346,5 @@ fn maybe_compute_empirical_constraints(
         let json = serde_json::to_string_pretty(&empirical_constraints).unwrap();
         std::fs::write(path.join("empirical_constraints.json"), json).unwrap();
     }
+    empirical_constraints
 }
