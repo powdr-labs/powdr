@@ -1,9 +1,7 @@
 use itertools::Itertools;
 use openvm_circuit::arch::VmCircuitConfig;
 use openvm_sdk::StdIn;
-use openvm_stark_backend::p3_matrix::dense::DenseMatrix;
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
-use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::empirical_constraints::{
     intersect_partitions, DebugInfo, EmpiricalConstraints,
 };
@@ -96,7 +94,7 @@ fn collect_trace(program: &CompiledProgram, inputs: StdIn) -> (Trace, DebugInfo)
                 // Not the case for instruction circuits
                 continue;
             }
-            let main: &DenseMatrix<BabyBear> = proving_context.common_main.as_ref().unwrap();
+            let main = proving_context.common_main.as_ref().unwrap();
 
             let air = &global_airs[air_id];
             let Some(column_names) = air.columns() else {
