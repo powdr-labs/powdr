@@ -476,6 +476,7 @@ crepe! {
       Env(env),
       for v in env.single_occurrence_variables().cloned(),
       AlgebraicConstraint(e),
+      // We somehow cannot use "v" directly here.
       ContainsVariable(e, v2),
       (v == v2);
 
