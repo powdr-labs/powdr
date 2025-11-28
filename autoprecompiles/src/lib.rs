@@ -1,6 +1,7 @@
 use crate::adapter::{Adapter, AdapterApc, AdapterVmConfig};
 use crate::blocks::BasicBlock;
 use crate::bus_map::{BusMap, BusType};
+use crate::empirical_constraints::{ConstraintGenerator, EmpiricalConstraints};
 use crate::evaluation::AirStats;
 use crate::expression_conversion::algebraic_to_grouped_expression;
 use crate::symbolic_machine_generator::convert_machine_field_type;
@@ -429,6 +430,7 @@ pub fn build<A: Adapter>(
     vm_config: AdapterVmConfig<A>,
     degree_bound: DegreeBound,
     apc_candidates_dir_path: Option<&Path>,
+    empirical_constraints: &EmpiricalConstraints,
 ) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
     let start = std::time::Instant::now();
 
@@ -438,6 +440,16 @@ pub fn build<A: Adapter>(
         &vm_config.bus_map,
     );
 
+    // Generate constraints for optimistic precompiles.
+    let constraint_generator = ConstraintGenerator::<A>::new(
+        empirical_constraints,
+        &column_allocator.subs,
+        machine.main_columns(),
+        &block,
+    );
+    let range_analyzer_constraints = constraint_generator.range_constraints();
+    let equivalence_analyzer_constraints = constraint_generator.equivalence_constraints();
+
     let labels = [("apc_start_pc", block.start_pc.to_string())];
     metrics::counter!("before_opt_cols", &labels)
         .absolute(machine.unique_references().count() as u64);
@@ -446,13 +458,44 @@ pub fn build<A: Adapter>(
     metrics::counter!("before_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
 
+    let mut baseline = machine;
+
+    // Optimize once without empirical constraints
     let (machine, column_allocator) = optimizer::optimize::<A>(
-        machine,
-        vm_config.bus_interaction_handler,
+        baseline.clone(),
+        vm_config.bus_interaction_handler.clone(),
         degree_bound,
         &vm_config.bus_map,
         column_allocator,
-    )?;
+    )
+    .unwrap();
+    // Get the precompile that is guaranteed to always work
+    let guaranteed_precompile = machine.render(&vm_config.bus_map);
+
+    let (machine, column_allocator, optimistic_precompile) =
+        if !range_analyzer_constraints.is_empty() || !equivalence_analyzer_constraints.is_empty() {
+            // Add empirical constraints
+            baseline.constraints.extend(range_analyzer_constraints);
+            baseline
+                .constraints
+                .extend(equivalence_analyzer_constraints);
+
+            // Optimize again with empirical constraints
+            // TODO: Calling optimize twice is needed; otherwise the solver fails.
+            let (machine, column_allocator) = optimizer::optimize::<A>(
+                baseline,
+                vm_config.bus_interaction_handler,
+                degree_bound,
+                &vm_config.bus_map,
+                column_allocator,
+            )
+            .unwrap();
+            let optimistic_precompile = machine.render(&vm_config.bus_map);
+            (machine, column_allocator, Some(optimistic_precompile))
+        } else {
+            // If there are no empirical constraints, we can skip optimizing twice.
+            (machine, column_allocator, None)
+        };
 
     // add guards to constraints that are not satisfied by zeroes
     let (machine, column_allocator) = add_guards(machine, column_allocator);
@@ -469,14 +512,27 @@ pub fn build<A: Adapter>(
     let apc = Apc::new(block, machine, column_allocator);
 
     if let Some(path) = apc_candidates_dir_path {
-        let ser_path = path
-            .join(format!("apc_candidate_{}", apc.start_pc()))
-            .with_extension("cbor");
-        std::fs::create_dir_all(path).expect("Failed to create directory for APC candidates");
-        let file =
-            std::fs::File::create(&ser_path).expect("Failed to create file for APC candidate");
-        let writer = BufWriter::new(file);
-        serde_cbor::to_writer(writer, &apc).expect("Failed to write APC candidate to file");
+        if let Some(optimistic_precompile) = &optimistic_precompile {
+            // For debugging purposes, serialize the APC candidate to a file
+            let ser_path = path
+                .join(format!("apc_candidate_{}", apc.start_pc()))
+                .with_extension("cbor");
+            std::fs::create_dir_all(path).expect("Failed to create directory for APC candidates");
+            let file =
+                std::fs::File::create(&ser_path).expect("Failed to create file for APC candidate");
+            let writer = BufWriter::new(file);
+            serde_cbor::to_writer(writer, &apc).expect("Failed to write APC candidate to file");
+
+            let dumb_path = path
+                .join(format!("apc_candidate_{}_guaranteed.txt", apc.start_pc()))
+                .with_extension("txt");
+            std::fs::write(dumb_path, guaranteed_precompile).unwrap();
+
+            let ai_path = path
+                .join(format!("apc_candidate_{}_optimistic.txt", apc.start_pc()))
+                .with_extension("txt");
+            std::fs::write(ai_path, optimistic_precompile).unwrap();
+        }
     }
 
     metrics::gauge!("apc_gen_time_ms", &labels).set(start.elapsed().as_millis() as f64);
