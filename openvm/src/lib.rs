@@ -53,8 +53,8 @@ use std::{
 };
 
 use crate::customize_exe::OpenVmApcCandidate;
-pub use crate::customize_exe::Prog;
 use crate::powdr_extension::chip::PowdrAir;
+use crate::program::Prog;
 pub use crate::program::{CompiledProgram, OriginalCompiledProgram};
 use crate::trace_generation::do_with_trace;
 
@@ -225,6 +225,7 @@ impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, PowdrExtens
         extension: &PowdrExtension<BabyBear>,
         inventory: &mut ChipInventory<BabyBearSC, DenseRecordArena, GpuBackend>,
     ) -> Result<(), ChipInventoryError> {
+        use std::sync::Arc;
         // TODO: here we make assumptions about the existence of some chips in the periphery. Make this more flexible
 
         use crate::powdr_extension::trace_generator::cuda::PowdrPeripheryInstancesGpu;

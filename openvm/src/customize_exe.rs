@@ -11,12 +11,13 @@ use crate::extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs, Orig
 use crate::instruction_formatter::openvm_instruction_formatter;
 use crate::memory_bus_interaction::OpenVmMemoryBusInteraction;
 use crate::powdr_extension::chip::PowdrAir;
+use crate::program::Prog;
 use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::OriginalCompiledProgram;
 use crate::{CompiledProgram, SpecializedConfig};
 use itertools::Itertools;
 use openvm_instructions::instruction::Instruction as OpenVmInstruction;
-use openvm_instructions::program::{Program as OpenVmProgram, DEFAULT_PC_STEP};
+use openvm_instructions::program::DEFAULT_PC_STEP;
 use openvm_instructions::VmOpcode;
 use openvm_stark_backend::{
     interaction::SymbolicInteraction,
@@ -26,7 +27,7 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::adapter::{
     Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig, ApcWithStats, PgoAdapter,
 };
-use powdr_autoprecompiles::blocks::{BasicBlock, Instruction, Program};
+use powdr_autoprecompiles::blocks::{BasicBlock, Instruction};
 use powdr_autoprecompiles::evaluation::{evaluate_apc, EvaluationResult};
 use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::pgo::{ApcCandidateJsonExport, Candidate, KnapsackItem};
@@ -75,16 +76,6 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     }
 }
 
-/// A newtype wrapper around `OpenVmProgram` to implement the `Program` trait.
-/// This is necessary because we cannot implement a foreign trait for a foreign type.
-pub struct Prog<'a, F>(pub &'a OpenVmProgram<F>);
-
-impl<'a, F> From<&'a OpenVmProgram<F>> for Prog<'a, F> {
-    fn from(program: &'a OpenVmProgram<F>) -> Self {
-        Prog(program)
-    }
-}
-
 /// A newtype wrapper around `OpenVmInstruction` to implement the `Instruction` trait.
 /// This is necessary because we cannot implement a foreign trait for a foreign type.
 #[derive(Clone, Serialize, Deserialize)]
@@ -112,29 +103,6 @@ impl<F: PrimeField32> Instruction<F> for Instr<F> {
         // [pc, opcode, a, b, c, d, e, f, g]
         let pc = pc.map(|pc| F::from_canonical_u32(pc.try_into().unwrap()));
         once(pc).chain(args.into_iter().map(Some)).collect()
-    }
-}
-
-impl<'a, F: PrimeField32> Program<Instr<F>> for Prog<'a, F> {
-    fn base_pc(&self) -> u64 {
-        self.0.pc_base as u64
-    }
-
-    fn pc_step(&self) -> u32 {
-        DEFAULT_PC_STEP
-    }
-
-    fn instructions(&self) -> Box<dyn Iterator<Item = Instr<F>> + '_> {
-        Box::new(
-            self.0
-                .instructions_and_debug_infos
-                .iter()
-                .filter_map(|x| x.as_ref().map(|i| Instr(i.0.clone()))),
-        )
-    }
-
-    fn length(&self) -> u32 {
-        self.0.instructions_and_debug_infos.len() as u32
     }
 }
 

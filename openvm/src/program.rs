@@ -4,14 +4,14 @@ use openvm_instructions::exe::VmExe;
 use openvm_instructions::program::{Program as OpenVmProgram, DEFAULT_PC_STEP};
 use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
-use powdr_autoprecompiles::blocks::{collect_basic_blocks, BasicBlock};
+use powdr_autoprecompiles::blocks::{collect_basic_blocks, BasicBlock, Program};
 use powdr_riscv_elf::debug_info::DebugInfo;
 use powdr_riscv_elf::ElfProgram;
 use serde::{Deserialize, Serialize};
 
 use crate::extraction_utils::OriginalVmConfig;
 use crate::opcode::branch_opcodes_bigint_set;
-use crate::{BabyBearOpenVmApcAdapter, ExtendedVmConfig, Instr, Prog, SpecializedConfig};
+use crate::{BabyBearOpenVmApcAdapter, ExtendedVmConfig, Instr, SpecializedConfig};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct CompiledProgram {
@@ -86,5 +86,38 @@ impl OriginalCompiledProgram {
 
     pub fn debug_info(&self) -> &DebugInfo {
         self.elf.debug_info()
+    }
+}
+
+/// A newtype wrapper around `OpenVmProgram` to implement the `Program` trait.
+/// This is necessary because we cannot implement a foreign trait for a foreign type.
+pub struct Prog<'a, F>(&'a OpenVmProgram<F>);
+
+impl<'a, F> From<&'a OpenVmProgram<F>> for Prog<'a, F> {
+    fn from(program: &'a OpenVmProgram<F>) -> Self {
+        Prog(program)
+    }
+}
+
+impl<'a, F: PrimeField32> Program<Instr<F>> for Prog<'a, F> {
+    fn base_pc(&self) -> u64 {
+        self.0.pc_base as u64
+    }
+
+    fn pc_step(&self) -> u32 {
+        DEFAULT_PC_STEP
+    }
+
+    fn instructions(&self) -> Box<dyn Iterator<Item = Instr<F>> + '_> {
+        Box::new(
+            self.0
+                .instructions_and_debug_infos
+                .iter()
+                .filter_map(|x| x.as_ref().map(|i| Instr(i.0.clone()))),
+        )
+    }
+
+    fn length(&self) -> u32 {
+        self.0.instructions_and_debug_infos.len() as u32
     }
 }
