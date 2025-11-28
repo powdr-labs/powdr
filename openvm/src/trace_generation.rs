@@ -10,12 +10,17 @@ use openvm_stark_backend::{keygen::types::MultiStarkProvingKey, prover::types::P
 use openvm_stark_sdk::{config::FriParameters, engine::StarkEngine};
 use tracing::info_span;
 
-use crate::{BabyBearSC, CompiledProgram, SpecializedConfigCpuBuilder};
+use crate::{BabyBearSC, CompiledProgram};
 
 #[cfg(not(feature = "cuda"))]
 use crate::PowdrSdkCpu as PowdrSdk;
 #[cfg(feature = "cuda")]
 use crate::PowdrSdkGpu as PowdrSdk;
+
+#[cfg(not(feature = "cuda"))]
+use crate::SpecializedConfigCpuBuilder as SpecializedConfigBuilder;
+#[cfg(feature = "cuda")]
+use crate::SpecializedConfigGpuBuilder as SpecializedConfigBuilder;
 
 #[cfg(feature = "cuda")]
 use openvm_cuda_backend::engine::GpuBabyBearPoseidon2Engine as BabyBearPoseidon2Engine;
@@ -28,7 +33,7 @@ pub fn do_with_trace(
     program: &CompiledProgram,
     inputs: StdIn,
     mut callback: impl FnMut(
-        &VirtualMachine<BabyBearPoseidon2Engine, SpecializedConfigCpuBuilder>,
+        &VirtualMachine<BabyBearPoseidon2Engine, SpecializedConfigBuilder>,
         &MultiStarkProvingKey<BabyBearSC>,
         ProvingContext<<BabyBearPoseidon2Engine as StarkEngine>::PB>,
     ),
@@ -68,9 +73,6 @@ pub fn do_with_trace(
 
     // Get reusable inputs for `debug_proving_ctx`, the mock prover API from OVM.
     let air_inv = vm.config().create_airs().unwrap();
-    #[cfg(feature = "cuda")]
-    let pk = air_inv.keygen::<GpuBabyBearPoseidon2Engine>(&vm.engine);
-    #[cfg(not(feature = "cuda"))]
     let pk = air_inv.keygen::<BabyBearPoseidon2Engine>(&vm.engine);
 
     for (seg_idx, segment) in segments.into_iter().enumerate() {
