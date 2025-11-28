@@ -1,6 +1,6 @@
 #![allow(clippy::iter_over_hash_type)]
 // This is about a warning about interior mutability for the key
-// `S`. We need it and it is probably fine.
+// `Env`. We need it and it is probably fine.
 #![allow(clippy::mutable_key_type)]
 use std::{
     cell::RefCell,
@@ -23,28 +23,16 @@ use powdr_constraint_solver::{
 };
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 
+use derive_more::{From, Into};
+#[allow(unused_imports)]
 use num_traits::Zero;
 
 use crepe::crepe;
 
 const SIZE_LIMIT: usize = 800;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-struct Var(u32);
-
-// TODO auto-derive
-impl From<usize> for Var {
-    fn from(value: usize) -> Self {
-        Var(value as u32)
-    }
-}
-
-// TODO auto-derive
-impl From<Var> for usize {
-    fn from(value: Var) -> Self {
-        value.0 as usize
-    }
-}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, From, Into)]
+struct Var(usize);
 
 impl Display for Var {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -184,7 +172,6 @@ impl<T: FieldElement> Environment<T> {
 
 impl<T: FieldElement> PartialEq for Environment<T> {
     fn eq(&self, _other: &Self) -> bool {
-        // TODO change this as soon as we have different environments
         true
     }
 }
@@ -199,14 +186,12 @@ impl<T: FieldElement> PartialOrd for Environment<T> {
 
 impl<T: FieldElement> Ord for Environment<T> {
     fn cmp(&self, _other: &Self) -> std::cmp::Ordering {
-        // TODO change this as soon as we have different environments
         std::cmp::Ordering::Equal
     }
 }
 
 impl<T: FieldElement> Hash for Environment<T> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        // TODO change this as soon as we have different environments
         0.hash(state);
     }
 }
@@ -233,6 +218,7 @@ impl<T: FieldElement> Environment<T> {
     ) -> Var {
         self.new_var_generator.borrow_mut().generate(prefix, method)
     }
+
     pub fn referenced_variables(&self, expr: Expr) -> BTreeSet<Var> {
         let db = self.expressions.borrow();
         db[expr].referenced_unknown_variables().cloned().collect()
@@ -272,11 +258,6 @@ impl<T: FieldElement> Environment<T> {
     pub fn range_constraint_on_expr(&self, expr: Expr) -> RangeConstraint<T> {
         let db = self.expressions.borrow();
         db[expr].range_constraint(self)
-    }
-
-    #[allow(dead_code)]
-    pub fn is_zero(&self, expr: Expr) -> bool {
-        self.expressions.borrow()[expr].is_zero()
     }
 
     // TODO potentially make this a more generic "matches structure" function
@@ -428,21 +409,8 @@ impl<T: FieldElement> RangeConstraintProvider<T, Var> for Environment<T> {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, From, Into)]
 struct Expr(usize);
-
-// TODO auto-derive
-impl From<usize> for Expr {
-    fn from(value: usize) -> Self {
-        Expr(value)
-    }
-}
-
-impl From<Expr> for usize {
-    fn from(value: Expr) -> Self {
-        value.0
-    }
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum Action<T> {

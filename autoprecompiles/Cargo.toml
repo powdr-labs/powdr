@@ -24,6 +24,7 @@ strum = { version = "0.27.0", features = ["derive"] }
 
 metrics = "0.23.0"
 crepe = { git = "https://github.com/chriseth/crepe", branch = "generics", version = "0.1.8" }
+derive_more = "0.99.17"
 
 [dev-dependencies]
 expect-test = "1.5.1"
