@@ -374,6 +374,7 @@ enum Action<T> {
     SubstituteVariableByConstant(Var, T),
     SubstituteVariableByVariable(Var, Var),
     ReplaceAlgebraicConstraintBy(Expr, Expr),
+    ReplacePairOfAlgebraicConstraintsBy(Expr, Expr, Expr),
 }
 
 crepe! {
@@ -583,6 +584,23 @@ crepe! {
         Some(env.insert_owned(replacement))
       })();
 
+    // If we have x * a = 0 and x * b = 0 and (a = 0 and b = 0) is equivalent to (a + b = 0),
+    // replace those two by x * (a + b) = 0.
+    struct PotentiallyReplacePairOfAlgebraicConstraintsBy(Expr, Expr, Expr);
+    PotentiallyReplacePairOfAlgebraicConstraintsBy(e1, e2, replacement) <-
+      Env(env),
+      AlgebraicConstraint(e1),
+      AlgebraicConstraint(e2),
+      Product(e1, x, a),
+      Product(e2, x, b),
+      (e1 < e2),
+      RangeConstraintOnExpression(a, rc_a),
+      RangeConstraintOnExpression(b, rc_b),
+      (rc_a.range().0 == T::zero()
+        && rc_b.range().0 == T::zero() && rc_a.combine_sum(&rc_b).range().1 < T::from(-1)),
+      let replacement = env.insert_owned(env.extract(x) * (env.extract(a) + env.extract(b)));
+
+
     // TODO wait a second. We can craete range constraints on expressions for all
     // algebraic constraints. Then we just work on range constraints on expressions
     // instead of algebraic constraints. Might be more difficult with the scaling, though.
@@ -633,6 +651,8 @@ crepe! {
       Equivalence(v, v2);
     ActionRule(Action::ReplaceAlgebraicConstraintBy(old, new)) <-
       PotentiallyReplaceAlgebraicConstraintBy(old, new);
+    ActionRule(Action::ReplacePairOfAlgebraicConstraintsBy(e1, e2, replacement)) <-
+      PotentiallyReplacePairOfAlgebraicConstraintsBy(e1, e2, replacement);
 }
 
 pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
@@ -746,6 +766,38 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                     } else {
                         log::warn!(
                             "Was about to replace {expr1} but did not find it in the system."
+                        );
+                    }
+                }
+                Action::ReplacePairOfAlgebraicConstraintsBy(e1, e2, replacement) => {
+                    let expr1 =
+                        untransform_grouped_expression(&db.as_ref().unwrap()[e1], &var_mapper);
+                    let expr2 =
+                        untransform_grouped_expression(&db.as_ref().unwrap()[e2], &var_mapper);
+                    let mut found1 = false;
+                    let mut found2 = false;
+                    for c in system.algebraic_constraints() {
+                        if c.expression == expr1 {
+                            found1 = true;
+                        } else if c.expression == expr2 {
+                            found2 = true;
+                        }
+                    }
+                    if found1 && found2 {
+                        system.retain_algebraic_constraints(|c| {
+                            c.expression != expr1 && c.expression != expr2
+                        });
+                        let replacement = untransform_grouped_expression(
+                            &db.as_ref().unwrap()[replacement],
+                            &var_mapper,
+                        );
+                        system.add_algebraic_constraints([
+                            algebraic_constraint::AlgebraicConstraint::assert_zero(replacement),
+                        ]);
+                        progress = true;
+                    } else {
+                        log::warn!(
+                            "Was about to replace {expr1} and {expr2} but did not find them in the system."
                         );
                     }
                 }

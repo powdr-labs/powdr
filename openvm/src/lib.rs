@@ -1740,7 +1740,7 @@ mod tests {
                             main: 38,
                             log_up: 56,
                         },
-                        constraints: 15,
+                        constraints: 12,
                         bus_interactions: 26,
                     }
                 "#]],
@@ -1768,7 +1768,7 @@ mod tests {
                             main: 38,
                             log_up: 56,
                         },
-                        constraints: 15,
+                        constraints: 12,
                         bus_interactions: 26,
                     }
                 "#]],
@@ -1816,7 +1816,7 @@ mod tests {
                             main: 14257,
                             log_up: 22752,
                         },
-                        constraints: 4285,
+                        constraints: 4279,
                         bus_interactions: 11143,
                     }
                 "#]],
@@ -1844,7 +1844,7 @@ mod tests {
                             main: 14229,
                             log_up: 22720,
                         },
-                        constraints: 4261,
+                        constraints: 4255,
                         bus_interactions: 11133,
                     }
                 "#]],
@@ -1893,7 +1893,7 @@ mod tests {
                             main: 17297,
                             log_up: 27896,
                         },
-                        constraints: 8834,
+                        constraints: 8830,
                         bus_interactions: 11925,
                     }
                 "#]],
@@ -1942,7 +1942,7 @@ mod tests {
                             main: 19928,
                             log_up: 30924,
                         },
-                        constraints: 11103,
+                        constraints: 11099,
                         bus_interactions: 13442,
                     }
                 "#]],
@@ -2097,7 +2097,7 @@ mod tests {
                             main: 3242,
                             log_up: 5268,
                         },
-                        constraints: 594,
+                        constraints: 592,
                         bus_interactions: 2564,
                     }
                 "#]],
