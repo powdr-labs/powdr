@@ -8,13 +8,12 @@ use eyre::Result;
 use itertools::Itertools;
 use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
 use openvm_circuit::arch::execution_mode::metered::segment_ctx::SegmentationLimits;
-use openvm_circuit::arch::execution_mode::Segment;
 use openvm_circuit::arch::instructions::exe::VmExe;
 use openvm_circuit::arch::{
     debug_proving_ctx, AirInventory, AirInventoryError, ChipInventory, ChipInventoryError,
     ExecutorInventory, ExecutorInventoryError, InitFileGenerator, MatrixRecordArena,
-    PreflightExecutionOutput, RowMajorMatrixArena, SystemConfig, VmBuilder, VmChipComplex,
-    VmCircuitConfig, VmCircuitExtension, VmExecutionConfig, VmInstance, VmProverExtension,
+    RowMajorMatrixArena, SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig,
+    VmCircuitExtension, VmExecutionConfig, VmProverExtension,
 };
 use openvm_circuit::system::SystemChipInventory;
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
@@ -23,7 +22,6 @@ use openvm_sdk::config::SdkVmCpuBuilder;
 
 use openvm_instructions::program::{Program, DEFAULT_PC_STEP};
 use openvm_sdk::config::TranspilerConfig;
-use openvm_sdk::prover::vm::new_local_prover;
 use openvm_sdk::prover::{verify_app_proof, AggStarkProver};
 use openvm_sdk::GenericSdk;
 use openvm_sdk::{
@@ -63,7 +61,8 @@ use std::{
 use crate::customize_exe::OpenVmApcCandidate;
 pub use crate::customize_exe::Prog;
 use crate::powdr_extension::chip::PowdrAir;
-use tracing::{info_span, Level};
+use crate::trace_generation::do_with_trace;
+use tracing::Level;
 
 #[cfg(test)]
 use crate::extraction_utils::AirWidthsDiff;
@@ -77,6 +76,7 @@ pub mod cuda_abi;
 pub mod extraction_utils;
 pub mod opcode;
 pub mod symbolic_instruction_builder;
+pub mod trace_generation;
 mod utils;
 pub use opcode::instruction_allowlist;
 pub use powdr_autoprecompiles::DegreeBound;
@@ -847,84 +847,37 @@ pub fn prove(
     inputs: StdIn,
     segment_height: Option<usize>, // uses the default height if None
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let exe = &program.exe;
-    let mut vm_config = program.vm_config.clone();
-
-    // DefaultSegmentationStrategy { max_segment_len: 4194204, max_cells_per_chip_in_segment: 503304480 }
-    if let Some(segment_height) = segment_height {
-        vm_config
-            .sdk
-            .config_mut()
-            .sdk
-            .system
-            .config
-            .segmentation_limits =
-            SegmentationLimits::default().with_max_trace_height(segment_height as u32);
-        tracing::debug!("Setting max segment len to {}", segment_height);
-    }
-
-    // Set app configuration
-    let app_fri_params =
-        FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
-    let app_config = AppConfig::new(app_fri_params, vm_config.clone());
-
-    // Create the SDK
-    #[cfg(feature = "cuda")]
-    let sdk = PowdrSdkGpu::new(app_config).unwrap();
-    #[cfg(not(feature = "cuda"))]
-    let sdk = PowdrSdkCpu::new(app_config).unwrap();
     if mock {
-        // Build owned vm instance, so we can mutate it later
-        let vm_builder = sdk.app_vm_builder().clone();
-        let vm_pk = sdk.app_pk().app_vm_pk.clone();
-        let exe = sdk.convert_to_exe(exe.clone())?;
-        let mut vm_instance: VmInstance<_, _> = new_local_prover(vm_builder, &vm_pk, exe.clone())?;
-
-        vm_instance.reset_state(inputs.clone());
-        let metered_ctx = vm_instance.vm.build_metered_ctx(&exe);
-        let metered_interpreter = vm_instance.vm.metered_interpreter(vm_instance.exe())?;
-        let (segments, _) = metered_interpreter.execute_metered(inputs.clone(), metered_ctx)?;
-        let mut state = vm_instance.state_mut().take();
-
-        // Get reusable inputs for `debug_proving_ctx`, the mock prover API from OVM.
-        let vm = &mut vm_instance.vm;
-        let air_inv = vm.config().create_airs().unwrap();
-        #[cfg(feature = "cuda")]
-        let pk = air_inv.keygen::<GpuBabyBearPoseidon2Engine>(&vm.engine);
-        #[cfg(not(feature = "cuda"))]
-        let pk = air_inv.keygen::<BabyBearPoseidon2Engine>(&vm.engine);
-
-        for (seg_idx, segment) in segments.into_iter().enumerate() {
-            let _segment_span = info_span!("prove_segment", segment = seg_idx).entered();
-            // We need a separate span so the metric label includes "segment" from _segment_span
-            let _prove_span = info_span!("total_proof").entered();
-            let Segment {
-                instret_start,
-                num_insns,
-                trace_heights,
-            } = segment;
-            assert_eq!(state.as_ref().unwrap().instret(), instret_start);
-            let from_state = Option::take(&mut state).unwrap();
-            vm.transport_init_memory_to_device(&from_state.memory);
-            let PreflightExecutionOutput {
-                system_records,
-                record_arenas,
-                to_state,
-            } = vm.execute_preflight(
-                &mut vm_instance.interpreter,
-                from_state,
-                Some(num_insns),
-                &trace_heights,
-            )?;
-            state = Some(to_state);
-
-            // Generate proving context for each segment
-            let ctx = vm.generate_proving_ctx(system_records, record_arenas)?;
-
-            // Run the mock prover for each segment
-            debug_proving_ctx(vm, &pk, &ctx);
-        }
+        do_with_trace(program, inputs, |vm, pk, ctx| {
+            debug_proving_ctx(vm, pk, &ctx);
+        })?;
     } else {
+        let exe = &program.exe;
+        let mut vm_config = program.vm_config.clone();
+
+        // DefaultSegmentationStrategy { max_segment_len: 4194204, max_cells_per_chip_in_segment: 503304480 }
+        if let Some(segment_height) = segment_height {
+            vm_config
+                .sdk
+                .config_mut()
+                .sdk
+                .system
+                .config
+                .segmentation_limits =
+                SegmentationLimits::default().with_max_trace_height(segment_height as u32);
+            tracing::debug!("Setting max segment len to {}", segment_height);
+        }
+
+        // Set app configuration
+        let app_fri_params =
+            FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
+        let app_config = AppConfig::new(app_fri_params, vm_config.clone());
+
+        // Create the SDK
+        #[cfg(feature = "cuda")]
+        let sdk = PowdrSdkGpu::new(app_config).unwrap();
+        #[cfg(not(feature = "cuda"))]
+        let sdk = PowdrSdkCpu::new(app_config).unwrap();
         let mut app_prover = sdk.app_prover(exe.clone())?;
 
         // Generate a proof
