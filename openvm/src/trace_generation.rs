@@ -37,7 +37,7 @@ pub fn do_with_trace(
         &MultiStarkProvingKey<BabyBearSC>,
         ProvingContext<<BabyBearPoseidon2Engine as StarkEngine>::PB>,
     ),
-) {
+) -> Result<(), Box<dyn std::error::Error>> {
     let exe = &program.exe;
     let vm_config = program.vm_config.clone();
 
@@ -47,23 +47,17 @@ pub fn do_with_trace(
     let app_config = AppConfig::new(app_fri_params, vm_config.clone());
 
     // Create the SDK
-    let sdk = PowdrSdk::new(app_config).unwrap();
+    let sdk = PowdrSdk::new(app_config)?;
     // Build owned vm instance, so we can mutate it later
     let vm_builder = sdk.app_vm_builder().clone();
     let vm_pk = sdk.app_pk().app_vm_pk.clone();
-    let exe = sdk.convert_to_exe(exe.clone()).unwrap();
-    let mut vm_instance: VmInstance<_, _> =
-        new_local_prover(vm_builder, &vm_pk, exe.clone()).unwrap();
+    let exe = sdk.convert_to_exe(exe.clone())?;
+    let mut vm_instance: VmInstance<_, _> = new_local_prover(vm_builder, &vm_pk, exe.clone())?;
 
     vm_instance.reset_state(inputs.clone());
     let metered_ctx = vm_instance.vm.build_metered_ctx(&exe);
-    let metered_interpreter = vm_instance
-        .vm
-        .metered_interpreter(vm_instance.exe())
-        .unwrap();
-    let (segments, _) = metered_interpreter
-        .execute_metered(inputs.clone(), metered_ctx)
-        .unwrap();
+    let metered_interpreter = vm_instance.vm.metered_interpreter(vm_instance.exe())?;
+    let (segments, _) = metered_interpreter.execute_metered(inputs.clone(), metered_ctx)?;
     let mut state = vm_instance.state_mut().take();
 
     // Move `vm` and `interpreter` out of `vm_instance`
@@ -72,7 +66,7 @@ pub fn do_with_trace(
     let mut interpreter = vm_instance.interpreter;
 
     // Get reusable inputs for `debug_proving_ctx`, the mock prover API from OVM.
-    let air_inv = vm.config().create_airs().unwrap();
+    let air_inv = vm.config().create_airs()?;
     let pk = air_inv.keygen::<BabyBearPoseidon2Engine>(&vm.engine);
 
     for (seg_idx, segment) in segments.into_iter().enumerate() {
@@ -91,21 +85,17 @@ pub fn do_with_trace(
             system_records,
             record_arenas,
             to_state,
-        } = vm
-            .execute_preflight(
-                &mut interpreter,
-                from_state,
-                Some(num_insns),
-                &trace_heights,
-            )
-            .unwrap();
+        } = vm.execute_preflight(
+            &mut interpreter,
+            from_state,
+            Some(num_insns),
+            &trace_heights,
+        )?;
         state = Some(to_state);
 
-        // Generate proving context for each segment
-        let ctx = vm
-            .generate_proving_ctx(system_records, record_arenas)
-            .unwrap();
+        let ctx = vm.generate_proving_ctx(system_records, record_arenas)?;
 
         callback(&vm, &pk, ctx);
     }
+    Ok(())
 }

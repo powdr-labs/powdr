@@ -876,7 +876,7 @@ pub fn prove(
     if mock {
         do_with_trace(program, inputs, |vm, pk, ctx| {
             debug_proving_ctx(vm, pk, &ctx);
-        });
+        })?;
     } else {
         let mut app_prover = sdk.app_prover(exe.clone())?;
 
