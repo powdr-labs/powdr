@@ -25,36 +25,6 @@ pub struct OriginalCompiledProgram {
     pub elf: ElfProgram,
 }
 
-/// Besides the base RISCV-V branching instructions, the bigint extension adds two more branching
-/// instruction classes over BranchEqual and BranchLessThan.
-/// Those instructions have the form <INSTR rs0 rs1 target_offset ...>, where target_offset is the
-/// relative jump we're interested in.
-/// This means that for a given program address A containing the instruction above,
-/// we add A + target_offset as a target as well.
-fn add_extra_targets<F: PrimeField32>(
-    program: &OpenVmProgram<F>,
-    mut labels: BTreeSet<u32>,
-    base_pc: u32,
-    pc_step: u32,
-) -> BTreeSet<u32> {
-    let branch_opcodes_bigint = branch_opcodes_bigint_set();
-    let new_labels = program
-        .instructions_and_debug_infos
-        .iter()
-        .enumerate()
-        .filter_map(|(i, instr)| {
-            let instr = instr.as_ref().unwrap().0.clone();
-            let adjusted_pc = base_pc + (i as u32) * pc_step;
-            let op = instr.opcode;
-            branch_opcodes_bigint
-                .contains(&op)
-                .then_some(adjusted_pc + instr.c.as_canonical_u32())
-        });
-    labels.extend(new_labels);
-
-    labels
-}
-
 impl OriginalCompiledProgram {
     /// Segments the program into basic blocks. The degree bound does not influence the result (see TODO below).
     pub fn collect_basic_blocks(&self, degree_bound: usize) -> Vec<BasicBlock<Instr<BabyBear>>> {
@@ -65,12 +35,7 @@ impl OriginalCompiledProgram {
         let original_config = OriginalVmConfig::new(self.vm_config.clone());
         let airs = original_config.airs(degree_bound).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
 
-        let jumpdest_set = add_extra_targets(
-            &self.exe.program,
-            labels.clone(),
-            self.exe.program.pc_base,
-            DEFAULT_PC_STEP,
-        );
+        let jumpdest_set = self.add_extra_targets(labels.clone(), DEFAULT_PC_STEP);
 
         let program = Prog(&self.exe.program);
 
@@ -82,6 +47,66 @@ impl OriginalCompiledProgram {
 
         collect_basic_blocks::<BabyBearOpenVmApcAdapter>(&program, &jumpdest_set, &airs)
     }
+<<<<<<< Updated upstream
+||||||| Stash base
+
+    pub fn compiled_program(
+        &self,
+        precompiles: Vec<PowdrPrecompile<BabyBear>>,
+        max_degree: usize,
+    ) -> CompiledProgram {
+        CompiledProgram {
+            exe: self.exe.clone(),
+            vm_config: SpecializedConfig::new(
+                OriginalVmConfig::new(self.vm_config.clone()),
+                precompiles,
+                max_degree,
+            ),
+        }
+    }
+=======
+
+    pub fn compiled_program(
+        &self,
+        precompiles: Vec<PowdrPrecompile<BabyBear>>,
+        max_degree: usize,
+    ) -> CompiledProgram {
+        CompiledProgram {
+            exe: self.exe.clone(),
+            vm_config: SpecializedConfig::new(
+                OriginalVmConfig::new(self.vm_config.clone()),
+                precompiles,
+                max_degree,
+            ),
+        }
+    }
+
+    /// Besides the base RISCV-V branching instructions, the bigint extension adds two more branching
+    /// instruction classes over BranchEqual and BranchLessThan.
+    /// Those instructions have the form <INSTR rs0 rs1 target_offset ...>, where target_offset is the
+    /// relative jump we're interested in.
+    /// This means that for a given program address A containing the instruction above,
+    /// we add A + target_offset as a target as well.
+    fn add_extra_targets(&self, mut labels: BTreeSet<u32>, pc_step: u32) -> BTreeSet<u32> {
+        let branch_opcodes_bigint = branch_opcodes_bigint_set();
+        let program = &self.exe.program;
+        let new_labels = program
+            .instructions_and_debug_infos
+            .iter()
+            .enumerate()
+            .filter_map(|(i, instr)| {
+                let instr = instr.as_ref().unwrap().0.clone();
+                let adjusted_pc = program.pc_base + (i as u32) * pc_step;
+                let op = instr.opcode;
+                branch_opcodes_bigint
+                    .contains(&op)
+                    .then_some(adjusted_pc + instr.c.as_canonical_u32())
+            });
+        labels.extend(new_labels);
+
+        labels
+    }
+>>>>>>> Stashed changes
 }
 
 /// A newtype wrapper around `OpenVmProgram` to implement the `Program` trait.
