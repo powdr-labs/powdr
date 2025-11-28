@@ -142,7 +142,7 @@ where
 
     // TODO avoid using this (as pub)
     pub fn next_free_id(&self) -> usize {
-        self.items.len() as usize
+        self.items.len()
     }
 }
 
