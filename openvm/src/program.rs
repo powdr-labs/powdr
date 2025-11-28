@@ -5,7 +5,6 @@ use openvm_instructions::program::{Program as OpenVmProgram, DEFAULT_PC_STEP};
 use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::blocks::{collect_basic_blocks, BasicBlock, Program};
-use powdr_riscv_elf::debug_info::DebugInfo;
 use powdr_riscv_elf::ElfProgram;
 use serde::{Deserialize, Serialize};
 
@@ -82,10 +81,6 @@ impl OriginalCompiledProgram {
             .collect::<BTreeSet<_>>();
 
         collect_basic_blocks::<BabyBearOpenVmApcAdapter>(&program, &jumpdest_set, &airs)
-    }
-
-    pub fn debug_info(&self) -> &DebugInfo {
-        self.elf.debug_info()
     }
 }
 
