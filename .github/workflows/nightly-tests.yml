@@ -141,6 +141,7 @@ jobs:
       - name: Run guest benchmarks
         run: |
           source .venv/bin/activate
+          env
           bash ./openvm/scripts/run_guest_benches.sh
 
       - name: Patch benchmark
