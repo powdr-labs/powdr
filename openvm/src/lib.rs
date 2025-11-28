@@ -54,7 +54,7 @@ use std::{
 
 use crate::customize_exe::OpenVmApcCandidate;
 use crate::powdr_extension::chip::PowdrAir;
-use crate::program::Prog;
+pub use crate::program::Prog;
 pub use crate::program::{CompiledProgram, OriginalCompiledProgram};
 use crate::trace_generation::do_with_trace;
 
