@@ -26,6 +26,7 @@ pub mod adapter;
 pub mod blocks;
 pub mod bus_map;
 pub mod constraint_optimizer;
+pub mod empirical_constraints;
 pub mod evaluation;
 pub mod execution_profile;
 pub mod expression;
@@ -53,6 +54,8 @@ pub struct PowdrConfig {
     pub degree_bound: DegreeBound,
     /// The path to the APC candidates dir, if any.
     pub apc_candidates_dir_path: Option<PathBuf>,
+    /// Whether to use optimistic precompiles.
+    pub optimistic_precompiles: bool,
 }
 
 impl PowdrConfig {
@@ -62,11 +65,17 @@ impl PowdrConfig {
             skip_autoprecompiles,
             degree_bound,
             apc_candidates_dir_path: None,
+            optimistic_precompiles: false,
         }
     }
 
     pub fn with_apc_candidates_dir<P: AsRef<Path>>(mut self, path: P) -> Self {
         self.apc_candidates_dir_path = Some(path.as_ref().to_path_buf());
+        self
+    }
+
+    pub fn with_optimistic_precompiles(mut self, optimistic: bool) -> Self {
+        self.optimistic_precompiles = optimistic;
         self
     }
 }
