@@ -280,6 +280,7 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
         self.quadratic
             .iter()
             .map(|(l, r)| {
+                // TODO use rc.square() if there is an f such that l = r * f
                 l.range_constraint(range_constraints)
                     .combine_product(&r.range_constraint(range_constraints))
             })

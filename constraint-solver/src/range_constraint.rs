@@ -187,6 +187,22 @@ impl<T: FieldElement> RangeConstraint<T> {
         }
     }
 
+    pub fn square(&self) -> Self {
+        let square_rc = (self.min > self.max)
+            .then(|| {
+                let max_abs = std::cmp::max(-self.min, self.max);
+                if max_abs.to_arbitrary_integer() * max_abs.to_arbitrary_integer()
+                    < T::modulus().to_arbitrary_integer()
+                {
+                    Self::from_range(T::zero(), max_abs * max_abs)
+                } else {
+                    Default::default()
+                }
+            })
+            .unwrap_or_default();
+        self.combine_product(self).conjunction(&square_rc)
+    }
+
     /// Returns the conjunction of this constraint and the other.
     /// This operation is not lossless, but if `r1` and `r2` allow
     /// a value `x`, then `r1.conjunction(r2)` also allows `x`.
