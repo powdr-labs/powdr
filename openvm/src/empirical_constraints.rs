@@ -13,6 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::trace_generation::do_with_trace;
 use crate::{CompiledProgram, OriginalCompiledProgram};
 
+#[derive(Debug)]
 struct Row {
     pc: u32,
     timestamp: (u32, u32),
@@ -250,12 +251,39 @@ impl ConstraintDetector {
         let mut block_rows = BTreeMap::new();
         let mut row_index = 0;
         let rows_by_time = trace.rows_by_time();
+
+        // Maps Block ID -> (successful instances, unsuccessful instances) for reporting
+        let mut block_stats = BTreeMap::new();
+
         while row_index < rows_by_time.len() {
             let first_row = rows_by_time[row_index];
             let block_id = first_row.pc as u64;
 
             if let Some(instruction_count) = self.instruction_counts.get(&block_id) {
                 let block_row_slice = &rows_by_time[row_index..row_index + instruction_count];
+
+                // Check that we do indeed have all instructions of the block
+                // TODO: I'm not sure in which cases don't have them. In practice, this seems to
+                // happen rarely.
+                let has_all_instructions = block_row_slice
+                    .iter()
+                    .tuple_windows()
+                    .all(|(row1, row2)| row2.pc == row1.pc + 4);
+                if !has_all_instructions {
+                    // Incomplete block instance, skip.
+                    row_index += 1;
+                    block_stats
+                        .entry(block_id)
+                        .and_modify(|(_successful, unsuccessful)| *unsuccessful += 1)
+                        .or_insert((0, 1));
+                    continue;
+                } else {
+                    block_stats
+                        .entry(block_id)
+                        .and_modify(|(successful, _unsuccessful)| *successful += 1)
+                        .or_insert((1, 0));
+                }
+
                 block_rows
                     .entry(block_id)
                     .or_insert(Vec::new())
@@ -266,6 +294,18 @@ impl ConstraintDetector {
                 row_index += 1;
             }
         }
+
+        for (block_id, (successful, unsuccessful)) in block_stats {
+            if unsuccessful > 0 {
+                tracing::warn!(
+                    "        Block {:#x}: {} / {} instances skipped due to incomplete execution",
+                    block_id,
+                    unsuccessful,
+                    unsuccessful + successful
+                );
+            }
+        }
+
         block_rows
     }
 
@@ -326,16 +366,16 @@ mod tests {
     fn test_constraint_detector() {
         // Assume the following test program:
         // ADDI x1, x1, 1    // note how the second operand is always 1
-        // BLT x1, x2, -8    // Note how the first operand is always equal to the result of the previous ADDI
+        // BLT x1, x2, -4    // Note how the first operand is always equal to the result of the previous ADDI
 
         let instruction_counts = vec![(0, 2)].into_iter().collect();
         let mut detector = ConstraintDetector::new(instruction_counts);
 
         let trace1 = make_trace(vec![
             (0, vec![1, 0, 1]),  // ADDI: 0 + 1 = 1
-            (1, vec![0, 1, 2]),  // BLT: 1 < 2 => PC = 0
+            (4, vec![0, 1, 2]),  // BLT: 1 < 2 => PC = 0
             (0, vec![2, 1, 1]),  // ADDI: 1 + 1 = 2
-            (1, vec![12, 2, 2]), // BLT: 2 >= 2 => PC = 12
+            (4, vec![12, 2, 2]), // BLT: 2 >= 2 => PC = 8
         ]);
         detector.process_trace(trace1, DebugInfo::default());
 
@@ -347,7 +387,7 @@ mod tests {
             Some(&vec![(1, 2), (0, 1), (1, 1)])
         );
         assert_eq!(
-            empirical_constraints.column_ranges_by_pc.get(&1),
+            empirical_constraints.column_ranges_by_pc.get(&4),
             // For the BLT instruction, second operand (col 2) is always 2; the other columns vary
             Some(&vec![(0, 12), (1, 2), (2, 2)])
         );
