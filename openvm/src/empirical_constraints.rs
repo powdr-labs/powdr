@@ -1,6 +1,8 @@
 use itertools::Itertools;
 use openvm_circuit::arch::VmCircuitConfig;
 use openvm_sdk::StdIn;
+use openvm_stark_backend::p3_maybe_rayon::prelude::IntoParallelIterator;
+use openvm_stark_backend::p3_maybe_rayon::prelude::ParallelIterator;
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use powdr_autoprecompiles::empirical_constraints::{
     intersect_partitions, DebugInfo, EmpiricalConstraints,
@@ -91,26 +93,29 @@ fn collect_trace(program: &CompiledProgram, inputs: StdIn) -> (Trace, DebugInfo)
             .collect::<HashMap<_, _>>();
 
         for (air_id, proving_context) in &ctx.per_air {
+            let air = &global_airs[air_id];
+            let Some(column_names) = air.columns() else {
+                // Instruction chips always have column names.
+                continue;
+            };
+
             if !proving_context.cached_mains.is_empty() {
-                // Not the case for instruction circuits
+                // Instruction chips always have a cached main.
                 continue;
             }
             let main = proving_context.common_main.as_ref().unwrap();
-
-            let air = &global_airs[air_id];
-            let Some(column_names) = air.columns() else {
-                continue;
-            };
             assert_eq!(main.width, column_names.len());
 
-            // This is the case for all instruction circuits
-            let Some(pc_index) = column_names
-                .iter()
-                .position(|name| name == "from_state__pc")
-            else {
+            // Instruction chips have a PC and time stamp
+            let find_col = |name: &str| -> Option<usize> {
+                column_names.iter().position(|col_name| {
+                    col_name == name || col_name == &format!("inner__{}", name)
+                })
+            };
+            let Some(pc_index) = find_col("from_state__pc") else {
                 continue;
             };
-            let ts_index = 1;
+            let ts_index = find_col("from_state__timestamp").unwrap();
 
             for row in main.row_slices() {
                 let row = row.iter().map(|v| v.as_canonical_u32()).collect::<Vec<_>>();
@@ -222,8 +227,11 @@ impl ConstraintDetector {
         &self,
         trace: &Trace,
     ) -> BTreeMap<u64, BTreeSet<BTreeSet<(usize, usize)>>> {
-        self.get_blocks(trace)
-            .into_iter()
+        tracing::info!("        Segmenting trace into blocks...");
+        let blocks = self.get_blocks(trace);
+        tracing::info!("        Finding equivalence classes...");
+        blocks
+            .into_par_iter()
             .map(|(block_id, block_instances)| {
                 // Segment each block instance into equivalence classes
                 let classes = block_instances
@@ -252,9 +260,6 @@ impl ConstraintDetector {
         let mut row_index = 0;
         let rows_by_time = trace.rows_by_time();
 
-        // Maps Block ID -> (successful instances, unsuccessful instances) for reporting
-        let mut block_stats = BTreeMap::new();
-
         while row_index < rows_by_time.len() {
             let first_row = rows_by_time[row_index];
             let block_id = first_row.pc as u64;
@@ -262,26 +267,8 @@ impl ConstraintDetector {
             if let Some(instruction_count) = self.instruction_counts.get(&block_id) {
                 let block_row_slice = &rows_by_time[row_index..row_index + instruction_count];
 
-                // Check that we do indeed have all instructions of the block
-                // TODO: I'm not sure in which cases don't have them. In practice, this seems to
-                // happen rarely.
-                let has_all_instructions = block_row_slice
-                    .iter()
-                    .tuple_windows()
-                    .all(|(row1, row2)| row2.pc == row1.pc + 4);
-                if !has_all_instructions {
-                    // Incomplete block instance, skip.
-                    row_index += 1;
-                    block_stats
-                        .entry(block_id)
-                        .and_modify(|(_successful, unsuccessful)| *unsuccessful += 1)
-                        .or_insert((0, 1));
-                    continue;
-                } else {
-                    block_stats
-                        .entry(block_id)
-                        .and_modify(|(successful, _unsuccessful)| *successful += 1)
-                        .or_insert((1, 0));
+                for (row1, row2) in block_row_slice.iter().tuple_windows() {
+                    assert_eq!(row2.pc, row1.pc + 4);
                 }
 
                 block_rows
@@ -292,17 +279,6 @@ impl ConstraintDetector {
             } else {
                 // Single instruction block, ignore.
                 row_index += 1;
-            }
-        }
-
-        for (block_id, (successful, unsuccessful)) in block_stats {
-            if unsuccessful > 0 {
-                tracing::warn!(
-                    "        Block {:#x}: {} / {} instances skipped due to incomplete execution",
-                    block_id,
-                    unsuccessful,
-                    unsuccessful + successful
-                );
             }
         }
 
