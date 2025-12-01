@@ -206,7 +206,7 @@ TODO Continue with the abstraction using Range Constraints.
 
 ## Grouped Expressions
 
-The main data structure used for algebraic expressions the _Grouped Expression_.
+The main data structure used for algebraic expressions is the _Grouped Expression_.
 A Grouped Expression consists of a constant term, a list of linear terms (a list of pairs of a non-zero coefficient
 and a variable) and a list of quadratic terms (a list of pairs of Grouped Expressions).
 
@@ -214,13 +214,13 @@ For affine Algebraic Expressions, the Grouped Expression provides a normal form 
 It even provides a normal form for affine Algebraic Constraints if multiplied by a factor such that
 the constant term is zero or one.
 
-This normal fom makes it easy to compare affine Algebraic Expressions for equality,
+This normal form makes it easy to compare affine Algebraic Expressions for equality,
 check if they have a constant difference, etc.
 
 If a map data structure is used for the linear terms, substitution of variables is also quick.
 
-Addition and subtraction of Grouped Expressions is implemented to remove linear terms that cancel each other out,
-and it performs some checks also in the quadratic terms, but this part is not complete for performance reasons.
+Addition and subtraction of Grouped Expressions are implemented to remove linear terms that cancel each other out,
+and they perform some checks also in the quadratic terms, but this part is not complete for performance reasons.
 
 ## Equivalence Notion
 
