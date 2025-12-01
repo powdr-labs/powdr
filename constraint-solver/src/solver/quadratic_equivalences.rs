@@ -22,11 +22,16 @@ pub fn find_quadratic_equalities<T: FieldElement, V: Ord + Clone + Hash + Eq + D
         .filter_map(QuadraticEqualityCandidate::try_from_constraint)
         .filter(|c| c.variables.len() >= 2)
         .collect::<Vec<_>>();
-    candidates
+    let equiv = candidates
         .iter()
         .tuple_combinations()
         .flat_map(|(c1, c2)| process_quadratic_equality_candidate_pair(c1, c2, &range_constraints))
-        .collect()
+        .collect_vec();
+    for (e1, e2) in &equiv {
+        let (e1, e2) = if e1 < e2 { (e1, e2) } else { (e2, e1) };
+        println!("{e1} == {e2} (EQS)");
+    }
+    vec![]
 }
 
 /// If we have two constraints of the form

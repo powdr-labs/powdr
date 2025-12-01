@@ -80,7 +80,7 @@ pub fn optimize<A: Adapter>(
     );
     stats_logger.log("inlining", &constraint_system);
 
-    let constraint_system = rule_based_optimization(
+    let (constraint_system, _) = rule_based_optimization(
         constraint_system,
         &solver,
         bus_interaction_handler.clone(),

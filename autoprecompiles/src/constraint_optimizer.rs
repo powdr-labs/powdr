@@ -83,7 +83,7 @@ pub fn optimize_constraints<
         stats_logger,
     );
 
-    let constraint_system = rule_based_optimization(
+    let (constraint_system, derived_constraints) = rule_based_optimization(
         constraint_system,
         &*solver,
         bus_interaction_handler.clone(),
@@ -92,6 +92,7 @@ pub fn optimize_constraints<
         // do not increase the degree.
         None,
     );
+    solver.add_algebraic_constraints(derived_constraints);
     stats_logger.log("rule-based optimization", &constraint_system);
 
     // At this point, we throw away the index and only keep the constraint system, since the rest of the optimisations are defined on the system alone

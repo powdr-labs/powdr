@@ -30,7 +30,7 @@ use num_traits::Zero;
 
 use crepe::crepe;
 
-const SIZE_LIMIT: usize = 800;
+const SIZE_LIMIT: usize = 1600;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, From, Into)]
 struct Var(usize);
@@ -692,16 +692,20 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
     _bus_interaction_handler: impl BusInteractionHandler<T> + Clone,
     new_var_outer: &mut impl FnMut(&str) -> V,
     degree_bound: Option<DegreeBound>,
-) -> IndexedConstraintSystem<T, V> {
+) -> (
+    IndexedConstraintSystem<T, V>,
+    Vec<algebraic_constraint::AlgebraicConstraint<GroupedExpression<T, V>>>,
+) {
     if system.system().algebraic_constraints.len() > SIZE_LIMIT {
         log::debug!(
             "Skipping rule-based optimization because the system is too large ({} > {}).",
             system.system().algebraic_constraints.len(),
             SIZE_LIMIT
         );
-        return system;
+        return (system, vec![]);
     }
 
+    let mut additional_algebraic_constraints = vec![];
     let mut var_mapper = system
         .referenced_unknown_variables()
         .cloned()
@@ -769,6 +773,18 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                     progress = true;
                 }
                 Action::SubstituteVariableByVariable(v1, v2) => {
+                    let (v1, v2) = if var_mapper[v1] < var_mapper[v2] {
+                        (v1, v2)
+                    } else {
+                        (v2, v1)
+                    };
+                    // We need to notify the solver of the equivalence.
+                    additional_algebraic_constraints.push(
+                        algebraic_constraint::AlgebraicConstraint::assert_zero(
+                            GroupedExpression::from_unknown_variable(var_mapper[v1].clone())
+                                - GroupedExpression::from_unknown_variable(var_mapper[v2].clone()),
+                        ),
+                    );
                     system.substitute_by_unknown(
                         &var_mapper[v1],
                         &GroupedExpression::from_unknown_variable(var_mapper[v2].clone()),
@@ -852,7 +868,7 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         }
     }
     system.retain_algebraic_constraints(|c| !c.is_redundant());
-    system
+    (system, additional_algebraic_constraints)
 }
 
 fn transform_constraint_system<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
@@ -1025,7 +1041,7 @@ mod tests {
             &mut new_var(),
             None,
         );
-        assert_eq!(optimized_system.system().algebraic_constraints.len(), 0);
+        assert_eq!(optimized_system.0.system().algebraic_constraints.len(), 0);
     }
 
     #[test]
@@ -1043,7 +1059,7 @@ mod tests {
             &mut new_var(),
             None,
         );
-        expect!["(y) * (y - 1) - 3 = 0"].assert_eq(&optimized_system.to_string());
+        expect!["(y) * (y - 1) - 3 = 0"].assert_eq(&optimized_system.0.to_string());
     }
 
     #[test]
@@ -1095,6 +1111,6 @@ mod tests {
             BusInteraction { bus_id: 3, multiplicity: 1, payload: rs1_data__0_1, 8 }
             BusInteraction { bus_id: 3, multiplicity: 1, payload: rs1_data__1_1, 8 }
             BusInteraction { bus_id: 3, multiplicity: 1, payload: -(503316480 * mem_ptr_limbs__0_1), 14 }
-            BusInteraction { bus_id: 3, multiplicity: 1, payload: -(503316480 * mem_ptr_limbs__0_2), 14 }"#]].assert_eq(&optimized_system.to_string());
+            BusInteraction { bus_id: 3, multiplicity: 1, payload: -(503316480 * mem_ptr_limbs__0_2), 14 }"#]].assert_eq(&optimized_system.0.to_string());
     }
 }
