@@ -409,6 +409,7 @@ mod tests {
     use crate::grouped_expression::NoRangeConstraints;
 
     use super::*;
+    use expect_test::expect;
     use powdr_number::{FieldElement, GoldilocksField};
 
     use pretty_assertions::assert_eq;
@@ -684,31 +685,24 @@ mod tests {
 
     #[test]
     fn rc_for_quadratic() {
-        let cmp_result_1 = var("cmp_result_1");
-        let cmp_result_2 = var("cmp_result_2");
-        let a_0_3 = var("a__0_3");
-        let expr = ((constant(2) * cmp_result_1.clone()) * cmp_result_2.clone())
-            - (constant(2) * cmp_result_1)
-            - (constant(2) * cmp_result_2)
-            + (constant(2) * a_0_3);
-        let rc = HashMap::from([
-            ("cmp_result_1", RangeConstraint::from_mask(1u64)),
-            ("cmp_result_2", RangeConstraint::from_mask(1u64)),
-        ]);
+        let rc = HashMap::from([("y", RangeConstraint::from_mask(7u64))]);
+        // We have `y - 3` here, so the RC can be negative, but it is
+        // squared, so we end up with a rather small RC for x.
+        let expr = -constant(2) * var("x")
+            + constant(8) * (var("y") - constant(3)) * (var("y") - constant(3))
+            + constant(8);
         // Try it manually first.
         let constr = AlgebraicConstraint::assert_zero(&expr);
-        let solved = constr.try_solve_for(&"a__0_3").unwrap();
-        println!("-> {solved}");
-        let inferred_rc = solved.range_constraint(&rc);
-        println!("Inferred RC for a__0_3: {inferred_rc}");
-        // should infer binary constraint for "a__0_3"
+        let solved = constr.try_solve_for(&"x").unwrap();
+        expect!["[4, 68] & 0x7c"].assert_eq(&solved.range_constraint(&rc).to_string());
         let results = constr.solve(&rc).unwrap();
-        for e in &results.effects {
-            match e {
-                Effect::RangeConstraint(var, rc) => println!("{var}: {rc}"),
-                Effect::Assignment(var, value) => println!("{var} = {value}"),
-                _ => {}
+        let found = results.effects.iter().any(|e| match e {
+            Effect::RangeConstraint(var, rc) if *var == "x" => {
+                expect!["[4, 68] & 0x7c"].assert_eq(&rc.to_string());
+                true
             }
-        }
+            _ => false,
+        });
+        assert!(found);
     }
 }
