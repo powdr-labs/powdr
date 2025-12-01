@@ -393,7 +393,7 @@ impl<T, I> Apc<T, I> {
 }
 
 /// Allocates global poly_ids and keeps track of substitutions
-struct ColumnAllocator {
+pub struct ColumnAllocator {
     /// For each original air, for each original column index, the associated poly_id in the APC air
     subs: Vec<Vec<u64>>,
     /// The next poly_id to issue
@@ -401,7 +401,14 @@ struct ColumnAllocator {
 }
 
 impl ColumnAllocator {
-    fn issue_next_poly_id(&mut self) -> u64 {
+    pub fn from_max_poly_id_of_machine(machine: &SymbolicMachine<impl FieldElement>) -> Self {
+        Self {
+            subs: Vec::new(),
+            next_poly_id: machine.main_columns().map(|c| c.id).max().unwrap_or(0) + 1,
+        }
+    }
+
+    pub fn issue_next_poly_id(&mut self) -> u64 {
         let id = self.next_poly_id;
         self.next_poly_id += 1;
         id
@@ -430,11 +437,12 @@ pub fn build<A: Adapter>(
     metrics::counter!("before_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
 
-    let machine = optimizer::optimize::<A>(
+    let (machine, column_allocator) = optimizer::optimize::<A>(
         machine,
         vm_config.bus_interaction_handler,
         degree_bound,
         &vm_config.bus_map,
+        column_allocator,
     )?;
 
     // add guards to constraints that are not satisfied by zeroes
@@ -547,11 +555,14 @@ fn add_guards<T: FieldElement>(
 
     machine.constraints.extend(is_valid_mults);
 
-    assert_eq!(
-        pre_degree,
-        machine.degree(),
-        "Degree should not change after adding guards"
-    );
+    // if pre_degree is 0, is_valid is added to the multiplicities of the bus interactions, thus the degree increases from 0 to 1
+    if pre_degree != 0 && !machine.bus_interactions.is_empty() {
+        assert_eq!(
+            pre_degree,
+            machine.degree(),
+            "Degree should not change after adding guards"
+        );
+    }
 
     // This needs to be added after the assertion above because it's a quadratic constraint
     // so it may increase the degree of the machine.
