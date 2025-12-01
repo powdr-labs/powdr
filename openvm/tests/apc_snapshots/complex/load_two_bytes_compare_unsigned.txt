@@ -61,7 +61,7 @@ Symbolic machine using 54 unique main columns:
   prev_data__3_1
   write_data__0_1
   cmp_result_2
-  free_var_113
+  diff_inv_marker__0_2
   is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):
@@ -129,7 +129,7 @@ flags__3_1 * ((flags__3_1 - 1) * (flags__3_1 - 2)) = 0
 flags__1_1 * (flags__1_1 - 1) + flags__2_1 * (flags__2_1 - 1) + 4 * flags__0_1 * flags__1_1 + 4 * flags__0_1 * flags__2_1 + 5 * flags__0_1 * flags__3_1 + 5 * flags__1_1 * flags__2_1 + 5 * flags__1_1 * flags__3_1 + 5 * flags__2_1 * flags__3_1 - (1006632960 * flags__3_1 * (flags__3_1 - 1) + flags__0_1 * (flags__0_1 + flags__1_1 + flags__2_1 + flags__3_1 - 2) + flags__1_1 * (flags__0_1 + flags__1_1 + flags__2_1 + flags__3_1 - 2) + flags__2_1 * (flags__0_1 + flags__1_1 + flags__2_1 + flags__3_1 - 2) + 3 * flags__3_1 * (flags__0_1 + flags__1_1 + flags__2_1 + flags__3_1 - 2) + 1 * is_valid) = 0
 cmp_result_2 * (cmp_result_2 - 1) = 0
 (1 - cmp_result_2) * (write_data__0_0 - write_data__0_1) = 0
+(write_data__0_0 - write_data__0_1) * diff_inv_marker__0_2 - cmp_result_2 = 0
 flags__1_0 * flags__2_0 + 2 * flags__0_0 * flags__2_0 + 2 * flags__1_0 * flags__3_0 + 3 * flags__2_0 * flags__3_0 = 0
 flags__1_1 * flags__2_1 + 2 * flags__0_1 * flags__2_1 + 2 * flags__1_1 * flags__3_1 + 3 * flags__2_1 * flags__3_1 = 0
-free_var_113 * ((write_data__0_0 - write_data__0_1) * (write_data__0_0 - write_data__0_1)) - cmp_result_2 = 0
 is_valid * (is_valid - 1) = 0

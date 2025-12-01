@@ -778,6 +778,19 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                 Action::ReplaceAlgebraicConstraintBy(e1, e2) => {
                     let expr1 =
                         untransform_grouped_expression(&expr_db.as_ref().unwrap()[e1], &var_mapper);
+                    let expr2 =
+                        untransform_grouped_expression(&expr_db.as_ref().unwrap()[e2], &var_mapper);
+                    // If the degree does not increase, we do it in any case. If the degree increases, we
+                    // only do it if a degree bound is given and it stays within the bound.
+                    if expr2.degree() > expr1.degree()
+                        && (degree_bound.is_none()
+                            || expr2.degree() > degree_bound.unwrap().identities)
+                    {
+                        log::debug!(
+                            "Skipping replacement of {expr1} by {expr2} due to degree constraints."
+                        );
+                        continue;
+                    }
                     // TODO more efficient?
                     let mut found = false;
                     system.retain_algebraic_constraints(|c| {
@@ -789,10 +802,6 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                         }
                     });
                     if found {
-                        let expr2 = untransform_grouped_expression(
-                            &expr_db.as_ref().unwrap()[e2],
-                            &var_mapper,
-                        );
                         system.add_algebraic_constraints([
                             algebraic_constraint::AlgebraicConstraint::assert_zero(expr2),
                         ]);
@@ -808,17 +817,6 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                         untransform_grouped_expression(&expr_db.as_ref().unwrap()[e1], &var_mapper);
                     let expr2 =
                         untransform_grouped_expression(&expr_db.as_ref().unwrap()[e2], &var_mapper);
-                    // If the degree does not increase, we do it in any case. If the degree increases, we
-                    // only do it if a degree bound is given and it stays within the bound.
-                    if expr2.degree() > expr1.degree()
-                        && (degree_bound.is_none()
-                            || expr2.degree() > degree_bound.unwrap().identities)
-                    {
-                        log::debug!(
-                            "Skipping replacement of {expr1} by {expr2} due to degree constraints."
-                        );
-                        continue;
-                    }
                     let mut found1 = false;
                     let mut found2 = false;
                     for c in system.algebraic_constraints() {
@@ -836,6 +834,7 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                             &expr_db.as_ref().unwrap()[replacement],
                             &var_mapper,
                         );
+                        assert!(replacement.degree() <= expr1.degree().max(expr2.degree()));
                         system.add_algebraic_constraints([
                             algebraic_constraint::AlgebraicConstraint::assert_zero(replacement),
                         ]);
