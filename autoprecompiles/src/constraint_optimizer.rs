@@ -88,6 +88,9 @@ pub fn optimize_constraints<
         &*solver,
         bus_interaction_handler.clone(),
         new_var,
+        // No degree bound given, i.e. only perform replacements that
+        // do not increase the degree.
+        None,
     );
     stats_logger.log("rule-based optimization", &constraint_system);
 

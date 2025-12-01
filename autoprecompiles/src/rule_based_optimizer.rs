@@ -18,10 +18,11 @@ use powdr_constraint_solver::{
     },
     grouped_expression::{GroupedExpression, GroupedExpressionComponent, RangeConstraintProvider},
     indexed_constraint_system::IndexedConstraintSystem,
+    inliner::DegreeBound,
     range_constraint::RangeConstraint,
     runtime_constant::VarTransformable,
 };
-use powdr_number::{BabyBearField, FieldElement, LargeInt};
+use powdr_number::FieldElement;
 
 use derive_more::{From, Into};
 #[allow(unused_imports)]
@@ -67,9 +68,8 @@ where
         let items = iter.into_iter().collect::<Vec<_>>();
         let reverse = items
             .iter()
-            .cloned()
             .enumerate()
-            .map(|(i, v)| (v, i))
+            .map(|(i, v)| (v.clone(), i))
             .collect();
         Self {
             items,
@@ -691,10 +691,8 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
     range_constraints: impl RangeConstraintProvider<T, V>,
     _bus_interaction_handler: impl BusInteractionHandler<T> + Clone,
     new_var_outer: &mut impl FnMut(&str) -> V,
+    degree_bound: Option<DegreeBound>,
 ) -> IndexedConstraintSystem<T, V> {
-    if T::modulus().to_arbitrary_integer() != BabyBearField::modulus().to_arbitrary_integer() {
-        return system;
-    }
     if system.system().algebraic_constraints.len() > SIZE_LIMIT {
         log::debug!(
             "Skipping rule-based optimization because the system is too large ({} > {}).",
@@ -810,6 +808,17 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                         untransform_grouped_expression(&expr_db.as_ref().unwrap()[e1], &var_mapper);
                     let expr2 =
                         untransform_grouped_expression(&expr_db.as_ref().unwrap()[e2], &var_mapper);
+                    // If the degree does not increase, we do it in any case. If the degree increases, we
+                    // only do it if a degree bound is given and it stays within the bound.
+                    if expr2.degree() > expr1.degree()
+                        && (degree_bound.is_none()
+                            || expr2.degree() > degree_bound.unwrap().identities)
+                    {
+                        log::debug!(
+                            "Skipping replacement of {expr1} by {expr2} due to degree constraints."
+                        );
+                        continue;
+                    }
                     let mut found1 = false;
                     let mut found2 = false;
                     for c in system.algebraic_constraints() {
@@ -847,8 +856,6 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
     system
 }
 
-// TODO use an expression cache so that we don't even
-// have to transform the field elements.
 fn transform_constraint_system<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
     system: &IndexedConstraintSystem<T, V>,
     var_mapper: &ItemDB<V, Var>,
@@ -912,6 +919,7 @@ mod tests {
         algebraic_constraint, constraint_system::DefaultBusInteractionHandler,
         grouped_expression::NoRangeConstraints,
     };
+    use powdr_number::{BabyBearField, LargeInt};
 
     use super::*;
 
@@ -1016,6 +1024,7 @@ mod tests {
             NoRangeConstraints,
             DefaultBusInteractionHandler::default(),
             &mut new_var(),
+            None,
         );
         assert_eq!(optimized_system.system().algebraic_constraints.len(), 0);
     }
@@ -1033,6 +1042,7 @@ mod tests {
             NoRangeConstraints,
             DefaultBusInteractionHandler::default(),
             &mut new_var(),
+            None,
         );
         expect!["(y) * (y - 1) - 3 = 0"].assert_eq(&optimized_system.to_string());
     }
@@ -1077,6 +1087,7 @@ mod tests {
             NoRangeConstraints,
             TestBusInteractionHandler,
             &mut new_var(),
+            None,
         );
         // Note that in the system below, mem_ptr_limbs__0_2 has been eliminated
         expect![[r#"

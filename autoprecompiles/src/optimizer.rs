@@ -16,6 +16,7 @@ use powdr_number::FieldElement;
 
 use crate::constraint_optimizer::trivial_simplifications;
 use crate::range_constraint_optimizer::optimize_range_constraints;
+use crate::rule_based_optimizer::rule_based_optimization;
 use crate::ColumnAllocator;
 use crate::{
     adapter::Adapter,
@@ -76,15 +77,20 @@ pub fn optimize<A: Adapter>(
     let constraint_system = inliner::replace_constrained_witness_columns(
         constraint_system.into(),
         inline_everything_below_degree_bound(degree_bound),
-    )
-    .system()
-    .clone();
+    );
     stats_logger.log("inlining", &constraint_system);
 
+    let constraint_system = rule_based_optimization(
+        constraint_system,
+        &solver,
+        bus_interaction_handler.clone(),
+        &mut new_var,
+        Some(degree_bound),
+    );
     // Note that the rest of the optimization does not benefit from optimizing range constraints,
     // so we only do it once at the end.
     let constraint_system = optimize_range_constraints(
-        constraint_system,
+        constraint_system.into(),
         bus_interaction_handler.clone(),
         degree_bound,
     );
