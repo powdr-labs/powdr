@@ -1,9 +1,11 @@
 use crate::adapter::Adapter;
 use crate::blocks::Program;
+use itertools::Itertools;
 use std::collections::HashMap;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::RwLock;
 use tracing::dispatcher::Dispatch;
 use tracing::field::Field as TracingField;
 use tracing::{Event, Level, Subscriber};
@@ -29,6 +31,23 @@ pub fn execution_profile<A: Adapter>(
     // dispatch constructs a local subscriber at trace level that is invoked during data collection but doesn't override the global one at info level
     let dispatch = Dispatch::new(subscriber);
     tracing::dispatcher::with_default(&dispatch, execute_fn);
+
+    let next_pcs_by_pc = {
+        collector
+            .pc_list
+            .read()
+            .unwrap()
+            .iter()
+            .tuple_windows()
+            .map(|(a, b)| (*a, *b))
+            .into_group_map()
+            .into_iter()
+            .map(|(pc, next_pcs)| (pc, next_pcs.into_iter().counts()))
+            .collect::<HashMap<_, _>>()
+    };
+
+    let json = serde_json::to_string_pretty(&next_pcs_by_pc).unwrap();
+    std::fs::write("next_pcs.json", json).unwrap();
 
     // Extract the collected data
     let pc_index_count = collector.into_hashmap();
@@ -77,6 +96,7 @@ struct PgoCollector {
     step: u32,
     pc_base: u64,
     pc_index_map: Arc<Vec<AtomicU32>>,
+    pub pc_list: Arc<RwLock<Vec<u64>>>,
 }
 
 impl PgoCollector {
@@ -88,6 +108,7 @@ impl PgoCollector {
             pc_index_map,
             step: program.pc_step(),
             pc_base: program.base_pc(),
+            pc_list: Arc::new(RwLock::new(Vec::new())),
         }
     }
 
@@ -111,6 +132,7 @@ impl PgoCollector {
     }
 
     fn increment(&self, pc: u64) {
+        self.pc_list.write().unwrap().push(pc);
         self.pc_index_map[(pc - self.pc_base) as usize / self.step as usize]
             .fetch_add(1, Ordering::Relaxed);
     }
