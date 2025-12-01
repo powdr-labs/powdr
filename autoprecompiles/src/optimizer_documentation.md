@@ -210,14 +210,15 @@ The main data structure used for algebraic expressions is the _Grouped Expressio
 A Grouped Expression consists of a constant term, a list of linear terms (a list of pairs of a non-zero coefficient
 and a variable) and a list of quadratic terms (a list of pairs of Grouped Expressions).
 
-For affine Algebraic Expressions, the Grouped Expression provides a normal form (if sorted by variable).
-It even provides a normal form for affine Algebraic Constraints if multiplied by a factor such that
-the constant term is zero or one.
+The variables in the linear terms are unique and the coefficients are required
+to be non-zero. The uniqueness is enforced by using a map data type.
+This makes it easy to compare, add and subtract affine expressions, which do not
+have quadratic terms.
 
-This normal form makes it easy to compare affine Algebraic Expressions for equality,
-check if they have a constant difference, etc.
-
-If a map data structure is used for the linear terms, substitution of variables is also quick.
+It also provides a normal form for affine Algebraic Constraints if we require 
+the coefficient of the first variable (according to some fixed order on the 
+variables) to be one. Note that an Algebraic Constraint can be multiplied 
+by a nonzero factor without changing the semantics.
 
 Addition and subtraction of Grouped Expressions are implemented to remove linear terms that cancel each other out,
 and they perform some checks also in the quadratic terms, but this part is not complete for performance reasons.
@@ -236,14 +237,14 @@ System A:
 ```
 x = 8
 x + y + z = 12
-2 1 [x, y, z]
+BusInteraction { bus_id = 2, multiplicity = 1, payload = [x, y, z] }
 w * (w - 1) = 0
 ```
 
 System B:
 ```
 y + z = 4
-2 1 [8, y, z]
+BusInteraction { bus_id = 2, multiplicity = 1, payload = [8, y, z] }
 ```
 
 Let us assume that the bus with ID 2 is stateful and allows all combinations of values between 0 and 100 (inclusive).
