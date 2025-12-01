@@ -204,6 +204,64 @@ TODO Continue with the abstraction using Range Constraints.
 ## Combining Range Constraints
 
 
+## Grouped Expressions
+
+The main data structure used for algebraic expressions is the _Grouped Expression_.
+A Grouped Expression consists of a constant term, a list of linear terms (a list of pairs of a non-zero coefficient
+and a variable) and a list of quadratic terms (a list of pairs of Grouped Expressions).
+
+The variables in the linear terms are unique and the coefficients are required
+to be non-zero. The uniqueness is enforced by using a map data type.
+This makes it easy to compare, add and subtract affine expressions, which do not
+have quadratic terms.
+
+It also provides a normal form for affine Algebraic Constraints if we require 
+the coefficient of the first variable (according to some fixed order on the 
+variables) to be one. Note that an Algebraic Constraint can be multiplied 
+by a nonzero factor without changing the semantics.
+
+Addition and subtraction of Grouped Expressions are implemented to remove linear terms that cancel each other out,
+and they perform some checks also in the quadratic terms, but this part is not complete for performance reasons.
+
+## Equivalence Notion
+
+TODO define the property of a Constraint System the optimizer preserves
+
+We call two Constraint Systems _equivalent_ if every satisfying assignment for one system
+can be extended to a satisfying assignment for the other system and every such extension
+leads to the same payloads and multiplicities for all _stateful_ bus interactions in both systems.
+
+As an example, consider the two systems
+
+System A:
+```
+x = 8
+x + y + z = 12
+BusInteraction { bus_id = 2, multiplicity = 1, payload = [x, y, z] }
+w * (w - 1) = 0
+```
+
+System B:
+```
+y + z = 4
+BusInteraction { bus_id = 2, multiplicity = 1, payload = [8, y, z] }
+```
+
+Let us assume that the bus with ID 2 is stateful and allows all combinations of values between 0 and 100 (inclusive).
+Note that the variables `y` and `z` are not uniquely determined in either system, so the stateful bus
+acts both as input and output for the system. TODO can that be or do we need one send and one receive?
+
+Note that System B is obtained from System A by substituting `x = 8` and removing `w`.
+
+All satisfying assignments of System A must have `x = 8` and either `w = 0` or `w = 1`.
+Such an assignment also satisfies System B and it produces the same values for the stateful bus interaction.
+
+The converse is a bit more complicated: Satisfying assignments of system B only assign the variables
+`y` and `z`. So we need to extend the assignment for System A into a satisfying one. For `x`, the only
+choice we have is `x = 8`, but there are two ways to extend the assignment with regards to `w` such that
+it is still satisfying, `w = 0` or `w = 1`. Since both ways to extend the assignment
+produce the same values in the stateful bus interaction, the systems are equivalent.
+
 ## Optimization Steps
 
 The called functions are
