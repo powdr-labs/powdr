@@ -581,18 +581,17 @@ crepe! {
       RangeConstraintOnExpression(x1, rc1),
       RangeConstraintOnExpression(x2, rc2),
       let Some(replacement) = (|| {
-        let x1_needs_squaring = rc1.range().0 != T::zero();
-        let x2_needs_squaring = rc2.range().0 != T::zero();
-        let rc1 = if x1_needs_squaring {
-            rc1.square()
-        } else {
-            rc1
+        // If the expression is not known to be non-negative, we square it.
+        let square_if_needed = |expr: Expr, rc: RangeConstraint<T>| {
+            let expr = env.extract(expr);
+            if rc.range().0 == T::zero() {
+                (expr, rc)
+            } else {
+                (expr.clone() * expr, rc.square())
+            }
         };
-        let rc2 = if x2_needs_squaring {
-            rc2.square()
-        } else {
-            rc2
-        };
+        let (x1, rc1) = square_if_needed(x1, rc1);
+        let (x2, rc2) = square_if_needed(x2, rc2);
         if !rc1.range().0.is_zero() || !rc2.range().0.is_zero() {
             return None;
         }
@@ -600,20 +599,8 @@ crepe! {
         if !(sum_rc.range().0.is_zero() && sum_rc.range().1 < T::from(-1)) {
             return None;
         }
-        let e = env.extract(e);
-        let x1 = env.extract(x1);
-        let x1 = if x1_needs_squaring {
-            x1.clone() * x1
-        } else {
-            x1
-        };
-        let x2 = env.extract(x2);
-        let x2 = if x2_needs_squaring {
-            x2.clone() * x2
-        } else {
-            x2
-        };
-        let r = e.into_summands().filter(|s|{
+        // Remove the summands with v1 and v2 from the expression.
+        let r = env.extract(e).into_summands().filter(|s|{
             if let GroupedExpressionComponent::Quadratic(l, r) = s {
                 let mut vars = l.referenced_unknown_variables().chain(r.referenced_unknown_variables());
                 if vars.any(|v| v == &v1 || v == &v2) {
