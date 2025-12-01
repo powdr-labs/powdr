@@ -17,7 +17,7 @@ use super::symbolic_expression::SymbolicExpression;
 
 /// Terms with more than `MAX_SUM_SIZE_FOR_QUADRATIC_ANALYSIS` quadratic terms
 /// are not analyzed for pairs that sum to zero.
-const MAX_SUM_SIZE_FOR_QUADRATIC_ANALYSIS: usize = 20;
+const MAX_SUM_SIZE_FOR_QUADRATIC_ANALYSIS: usize = 6;
 
 /// A symbolic expression in unknown variables of type `V` and (symbolically)
 /// known terms, representing a sum of (super-)quadratic, linear and constant parts.
