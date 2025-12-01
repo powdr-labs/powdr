@@ -5,7 +5,7 @@ use crate::{
     runtime_constant::{RuntimeConstant, Substitutable},
 };
 use itertools::Itertools;
-use powdr_number::{ExpressionConvertible, FieldElement};
+use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 use std::{fmt::Display, hash::Hash};
 
@@ -94,15 +94,16 @@ pub struct DerivedVariable<T, V> {
 pub enum ComputationMethod<T, E> {
     /// A constant value.
     Constant(T),
-    /// The field inverse of an expression if it exists or zero otherwise.
-    InverseOrZero(E),
+    /// The quotiont (using inversion in the field) of the first argument
+    /// by the second argument, or zero if the latter is zero.
+    QuotientOrZero(E, E),
 }
 
 impl<T: Display, E: Display> Display for ComputationMethod<T, E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ComputationMethod::Constant(c) => write!(f, "{c}"),
-            ComputationMethod::InverseOrZero(e) => write!(f, "InverseOrZero({e})"),
+            ComputationMethod::QuotientOrZero(e1, e2) => write!(f, "QuotientOrZero({e1}, {e2})"),
         }
     }
 }
@@ -112,7 +113,10 @@ impl<T, F> ComputationMethod<T, GroupedExpression<T, F>> {
     pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &F> + '_> {
         match self {
             ComputationMethod::Constant(_) => Box::new(std::iter::empty()),
-            ComputationMethod::InverseOrZero(e) => e.referenced_unknown_variables(),
+            ComputationMethod::QuotientOrZero(e1, e2) => Box::new(
+                e1.referenced_unknown_variables()
+                    .chain(e2.referenced_unknown_variables()),
+            ),
         }
     }
 }
@@ -125,8 +129,9 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq>
     pub fn substitute_by_known(&mut self, variable: &V, substitution: &T) {
         match self {
             ComputationMethod::Constant(_) => {}
-            ComputationMethod::InverseOrZero(e) => {
-                e.substitute_by_known(variable, substitution);
+            ComputationMethod::QuotientOrZero(e1, e2) => {
+                e1.substitute_by_known(variable, substitution);
+                e2.substitute_by_known(variable, substitution);
             }
         }
     }
@@ -138,8 +143,9 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq>
     pub fn substitute_by_unknown(&mut self, variable: &V, substitution: &GroupedExpression<T, V>) {
         match self {
             ComputationMethod::Constant(_) => {}
-            ComputationMethod::InverseOrZero(e) => {
-                e.substitute_by_unknown(variable, substitution);
+            ComputationMethod::QuotientOrZero(e1, e2) => {
+                e1.substitute_by_unknown(variable, substitution);
+                e2.substitute_by_unknown(variable, substitution);
             }
         }
     }
@@ -215,10 +221,8 @@ impl<T: RuntimeConstant, V: Clone + Ord + Eq> BusInteraction<GroupedExpression<T
     }
 }
 
-impl<
-        T: RuntimeConstant + Display + ExpressionConvertible<T::FieldType, V>,
-        V: Clone + Hash + Ord + Eq + Display,
-    > BusInteraction<GroupedExpression<T, V>>
+impl<T: FieldElement, V: Clone + Hash + Ord + Eq + Display>
+    BusInteraction<GroupedExpression<T, V>>
 {
     /// Refines range constraints of the bus interaction's fields
     /// using the provided `BusInteractionHandler`.
@@ -226,8 +230,8 @@ impl<
     /// Forwards and error by the bus interaction handler.
     pub fn solve(
         &self,
-        bus_interaction_handler: &dyn BusInteractionHandler<T::FieldType>,
-        range_constraint_provider: &impl RangeConstraintProvider<T::FieldType, V>,
+        bus_interaction_handler: &dyn BusInteractionHandler<T>,
+        range_constraint_provider: &impl RangeConstraintProvider<T, V>,
     ) -> Result<Vec<Effect<T, V>>, ViolatesBusRules> {
         let range_constraints = self.to_range_constraints(range_constraint_provider);
         let range_constraints =
@@ -247,7 +251,7 @@ impl<
                         .try_to_number()?;
                     let expr = AlgebraicConstraint::assert_zero(expr).try_solve_for(var)?;
                     let rc = rc
-                        .multiple(T::FieldType::from(1) / k)
+                        .multiple(T::from(1) / k)
                         .combine_sum(&expr.range_constraint(range_constraint_provider));
                     (!rc.is_unconstrained()).then(|| Effect::RangeConstraint(var.clone(), rc))
                 })

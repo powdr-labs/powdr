@@ -1,6 +1,3 @@
-#![cfg_attr(not(feature = "std"), no_main)]
-#![cfg_attr(not(feature = "std"), no_std)]
-
 use hex_literal::hex;
 use openvm::io::read;
 use openvm_algebra_guest::IntMod;

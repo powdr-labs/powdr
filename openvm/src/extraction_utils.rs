@@ -52,8 +52,8 @@ const EXT_DEGREE: usize = 4;
 
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct OriginalAirs<F> {
-    opcode_to_air: HashMap<VmOpcode, String>,
-    air_name_to_machine: BTreeMap<String, (SymbolicMachine<F>, AirMetrics)>,
+    pub(crate) opcode_to_air: HashMap<VmOpcode, String>,
+    pub(crate) air_name_to_machine: BTreeMap<String, (SymbolicMachine<F>, AirMetrics)>,
 }
 
 impl<F> InstructionHandler for OriginalAirs<F> {
@@ -136,9 +136,9 @@ impl<F> OriginalAirs<F> {
 pub fn record_arena_dimension_by_air_name_per_apc_call<F>(
     apc: &Apc<F, Instr<F>>,
     air_by_opcode_id: &OriginalAirs<F>,
-) -> HashMap<String, RecordArenaDimension> {
+) -> BTreeMap<String, RecordArenaDimension> {
     apc.instructions().iter().map(|instr| &instr.0.opcode).fold(
-        HashMap::new(),
+        BTreeMap::new(),
         |mut acc, opcode| {
             // Get the air name for this opcode
             let air_name = air_by_opcode_id.opcode_to_air.get(opcode).unwrap();
@@ -661,12 +661,8 @@ mod tests {
             hints: HintsExtension,
         };
         let base_config = OriginalVmConfig::new(ext_config);
-        let specialized_config = SpecializedConfig::new(
-            base_config,
-            vec![],
-            crate::PrecompileImplementation::SingleRowChip,
-            DEFAULT_OPENVM_DEGREE_BOUND,
-        );
+        let specialized_config =
+            SpecializedConfig::new(base_config, vec![], DEFAULT_OPENVM_DEGREE_BOUND);
         export_pil(writer, &specialized_config);
         let output = String::from_utf8(writer.clone()).unwrap();
         assert!(!output.is_empty(), "PIL output should not be empty");

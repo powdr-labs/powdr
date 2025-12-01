@@ -6,6 +6,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use derive_more::From;
+use openvm_circuit::arch::{DenseRecordArena, MatrixRecordArena};
 use openvm_circuit_derive::{Executor, MeteredExecutor, PreflightExecutor};
 use openvm_instructions::LocalOpcode;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
@@ -13,10 +14,8 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use crate::bus_map::BusMap;
 use crate::customize_exe::OvmApcStats;
 use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
-use crate::plonk::air_to_plonkish::build_circuit;
 use crate::powdr_extension::chip::PowdrAir;
 use crate::powdr_extension::executor::{OriginalArenas, PowdrExecutor};
-use crate::powdr_extension::PlonkAir;
 use openvm_circuit::{
     arch::{AirInventory, AirInventoryError, VmCircuitExtension, VmExecutionExtension},
     circuit_derive::Chip,
@@ -29,7 +28,7 @@ use openvm_stark_backend::{
 use powdr_autoprecompiles::Apc;
 use serde::{Deserialize, Serialize};
 
-use crate::{Instr, PrecompileImplementation};
+use crate::Instr;
 
 use super::PowdrOpcode;
 
@@ -38,7 +37,6 @@ use super::PowdrOpcode;
 pub struct PowdrExtension<F> {
     pub precompiles: Vec<PowdrPrecompile<F>>,
     pub base_config: OriginalVmConfig,
-    pub implementation: PrecompileImplementation,
     pub bus_map: BusMap,
     pub airs: OriginalAirs<F>,
 }
@@ -51,7 +49,9 @@ pub struct PowdrPrecompile<F> {
     pub apc: Arc<Apc<F, Instr<F>>>,
     pub apc_stats: Option<OvmApcStats>,
     #[serde(skip)]
-    pub apc_record_arena: Rc<RefCell<OriginalArenas>>,
+    pub apc_record_arena_cpu: Rc<RefCell<OriginalArenas<MatrixRecordArena<F>>>>,
+    #[serde(skip)]
+    pub apc_record_arena_gpu: Rc<RefCell<OriginalArenas<DenseRecordArena>>>,
 }
 
 impl<F> PowdrPrecompile<F> {
@@ -67,7 +67,8 @@ impl<F> PowdrPrecompile<F> {
             apc,
             apc_stats,
             // Initialize with empty Rc (default to OriginalArenas::Uninitialized) for each APC
-            apc_record_arena: Default::default(),
+            apc_record_arena_cpu: Default::default(),
+            apc_record_arena_gpu: Default::default(),
         }
     }
 }
@@ -76,14 +77,12 @@ impl<F> PowdrExtension<F> {
     pub fn new(
         precompiles: Vec<PowdrPrecompile<F>>,
         base_config: OriginalVmConfig,
-        implementation: PrecompileImplementation,
         bus_map: BusMap,
         airs: OriginalAirs<F>,
     ) -> Self {
         Self {
             precompiles,
             base_config,
-            implementation,
             bus_map,
             airs,
         }
@@ -104,19 +103,15 @@ impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear> {
         inventory: &mut openvm_circuit::arch::ExecutorInventoryBuilder<BabyBear, Self::Executor>,
     ) -> Result<(), openvm_circuit::arch::ExecutorInventoryError> {
         for precompile in &self.precompiles {
-            let height_change = match self.implementation {
-                PrecompileImplementation::SingleRowChip => 1,
-                PrecompileImplementation::PlonkChip => {
-                    let plonk_circuit = build_circuit(precompile.apc.machine(), &self.bus_map);
-                    plonk_circuit.len() as u32
-                }
-            };
+            // The apc chip uses a single row per call
+            let height_change = 1;
 
             let powdr_executor = PowdrExtensionExecutor::Powdr(PowdrExecutor::new(
                 self.airs.clone(),
                 self.base_config.clone(),
                 precompile.apc.clone(),
-                precompile.apc_record_arena.clone(),
+                precompile.apc_record_arena_cpu.clone(),
+                precompile.apc_record_arena_gpu.clone(),
                 height_change,
             ));
             inventory.add_executor(powdr_executor, once(precompile.opcode.global_opcode()))?;
@@ -133,20 +128,7 @@ where
 {
     fn extend_circuit(&self, inventory: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {
         for precompile in &self.precompiles {
-            match self.implementation {
-                PrecompileImplementation::SingleRowChip => {
-                    inventory.add_air(PowdrAir::new(precompile.apc.clone()));
-                }
-                PrecompileImplementation::PlonkChip => {
-                    let copy_constraint_bus_id = inventory.new_bus_idx();
-                    let plonk_air = PlonkAir {
-                        copy_constraint_bus_id,
-                        bus_map: self.bus_map.clone(),
-                        _marker: std::marker::PhantomData,
-                    };
-                    inventory.add_air(plonk_air);
-                }
-            }
+            inventory.add_air(PowdrAir::new(precompile.apc.clone()));
         }
         Ok(())
     }

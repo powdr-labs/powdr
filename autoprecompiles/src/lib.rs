@@ -12,6 +12,7 @@ use powdr_expression::{
     visitors::Children, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::fmt::Display;
 use std::io::BufWriter;
 use std::iter::once;
@@ -317,14 +318,25 @@ pub trait InstructionHandler {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct Substitution {
+    /// The index of the original column in the original air
+    pub original_poly_index: usize,
+    /// The `poly_id` of the target column in the APC air
+    pub apc_poly_id: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Apc<T, I> {
+    /// The basic block this APC is based on
     pub block: BasicBlock<I>,
+    /// The symbolic machine for this APC
     pub machine: SymbolicMachine<T>,
-    pub subs: Vec<Vec<u64>>,
+    /// For each original air, the substitutions from original columns to APC columns
+    pub subs: Vec<Vec<Substitution>>,
 }
 
 impl<T, I> Apc<T, I> {
-    pub fn subs(&self) -> &[Vec<u64>] {
+    pub fn subs(&self) -> &[Vec<Substitution>] {
         &self.subs
     }
 
@@ -341,6 +353,66 @@ impl<T, I> Apc<T, I> {
     pub fn instructions(&self) -> &[I] {
         &self.block.statements
     }
+
+    /// Create a new APC based on the given basic block, symbolic machine and column allocator
+    /// The column allocator only issues the subs which are actually used in the machine
+    fn new(
+        block: BasicBlock<I>,
+        machine: SymbolicMachine<T>,
+        column_allocator: ColumnAllocator,
+    ) -> Self {
+        // Get all poly_ids in the machine
+        let all_references = machine
+            .unique_references()
+            .map(|r| r.id)
+            .collect::<BTreeSet<_>>();
+        // Only keep substitutions from the column allocator if the target poly_id is used in the machine
+        let subs = column_allocator
+            .subs
+            .into_iter()
+            .map(|subs| {
+                subs.into_iter()
+                    .enumerate()
+                    .filter_map(|(original_poly_index, apc_poly_id)| {
+                        all_references
+                            .contains(&apc_poly_id)
+                            .then_some(Substitution {
+                                original_poly_index,
+                                apc_poly_id,
+                            })
+                    })
+                    .collect_vec()
+            })
+            .collect();
+        Self {
+            block,
+            machine,
+            subs,
+        }
+    }
+}
+
+/// Allocates global poly_ids and keeps track of substitutions
+pub struct ColumnAllocator {
+    /// For each original air, for each original column index, the associated poly_id in the APC air
+    subs: Vec<Vec<u64>>,
+    /// The next poly_id to issue
+    next_poly_id: u64,
+}
+
+impl ColumnAllocator {
+    pub fn from_max_poly_id_of_machine(machine: &SymbolicMachine<impl FieldElement>) -> Self {
+        Self {
+            subs: Vec::new(),
+            next_poly_id: machine.main_columns().map(|c| c.id).max().unwrap_or(0) + 1,
+        }
+    }
+
+    pub fn issue_next_poly_id(&mut self) -> u64 {
+        let id = self.next_poly_id;
+        self.next_poly_id += 1;
+        id
+    }
 }
 
 pub fn build<A: Adapter>(
@@ -351,7 +423,7 @@ pub fn build<A: Adapter>(
 ) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
     let start = std::time::Instant::now();
 
-    let (machine, subs) = statements_to_symbolic_machine::<A>(
+    let (machine, column_allocator) = statements_to_symbolic_machine::<A>(
         &block,
         vm_config.instruction_handler,
         &vm_config.bus_map,
@@ -365,15 +437,16 @@ pub fn build<A: Adapter>(
     metrics::counter!("before_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
 
-    let machine = optimizer::optimize::<A>(
+    let (machine, column_allocator) = optimizer::optimize::<A>(
         machine,
         vm_config.bus_interaction_handler,
         degree_bound,
         &vm_config.bus_map,
+        column_allocator,
     )?;
 
     // add guards to constraints that are not satisfied by zeroes
-    let machine = add_guards(machine);
+    let (machine, column_allocator) = add_guards(machine, column_allocator);
 
     metrics::counter!("after_opt_cols", &labels)
         .absolute(machine.unique_references().count() as u64);
@@ -384,11 +457,7 @@ pub fn build<A: Adapter>(
 
     let machine = convert_machine_field_type(machine, &A::into_field);
 
-    let apc = Apc {
-        block,
-        machine,
-        subs,
-    };
+    let apc = Apc::new(block, machine, column_allocator);
 
     if let Some(path) = apc_candidates_dir_path {
         let ser_path = path
@@ -447,12 +516,15 @@ fn add_guards_constraint<T: FieldElement>(
 }
 
 /// Adds an `is_valid` guard to all constraints and bus interactions, if needed.
-fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
+fn add_guards<T: FieldElement>(
+    mut machine: SymbolicMachine<T>,
+    mut column_allocator: ColumnAllocator,
+) -> (SymbolicMachine<T>, ColumnAllocator) {
     let pre_degree = machine.degree();
 
     let is_valid_ref = AlgebraicReference {
         name: Arc::new("is_valid".to_string()),
-        id: machine.unique_references().map(|c| c.id).max().unwrap() + 1,
+        id: column_allocator.issue_next_poly_id(),
     };
     let is_valid = AlgebraicExpression::Reference(is_valid_ref.clone());
 
@@ -483,15 +555,18 @@ fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachi
 
     machine.constraints.extend(is_valid_mults);
 
-    assert_eq!(
-        pre_degree,
-        machine.degree(),
-        "Degree should not change after adding guards"
-    );
+    // if pre_degree is 0, is_valid is added to the multiplicities of the bus interactions, thus the degree increases from 0 to 1
+    if pre_degree != 0 && !machine.bus_interactions.is_empty() {
+        assert_eq!(
+            pre_degree,
+            machine.degree(),
+            "Degree should not change after adding guards"
+        );
+    }
 
     // This needs to be added after the assertion above because it's a quadratic constraint
     // so it may increase the degree of the machine.
     machine.constraints.push(powdr::make_bool(is_valid).into());
 
-    machine
+    (machine, column_allocator)
 }

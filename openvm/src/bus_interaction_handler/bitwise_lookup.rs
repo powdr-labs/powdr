@@ -80,9 +80,9 @@ pub fn bitwise_lookup_pure_range_constraints<T: FieldElement, V: Ord + Clone + E
     if op.try_to_number() == Some(T::from(0u64)) {
         Some(
             [
-                (x.clone(), byte_rc.clone()),
-                (y.clone(), byte_rc.clone()),
-                (z.clone(), zero_rc.clone()),
+                (x.clone(), byte_rc),
+                (y.clone(), byte_rc),
+                (z.clone(), zero_rc),
             ]
             .into(),
         )
@@ -93,8 +93,8 @@ pub fn bitwise_lookup_pure_range_constraints<T: FieldElement, V: Ord + Clone + E
         // Note that this block also gets executed if `op` is unknown (but we know that `op` can only be 0 or 1).
         Some(
             [
-                (x.clone(), byte_rc.clone()),
-                (z.clone(), zero_rc.clone()),
+                (x.clone(), byte_rc),
+                (z.clone(), zero_rc),
                 (op.clone(), RangeConstraint::from_mask(1)),
             ]
             .into(),

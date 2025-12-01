@@ -16,6 +16,7 @@ use powdr_number::FieldElement;
 
 use crate::constraint_optimizer::trivial_simplifications;
 use crate::range_constraint_optimizer::optimize_range_constraints;
+use crate::ColumnAllocator;
 use crate::{
     adapter::Adapter,
     constraint_optimizer::optimize_constraints,
@@ -26,12 +27,16 @@ use crate::{
     BusMap, BusType, DegreeBound, SymbolicBusInteraction, SymbolicMachine,
 };
 
+/// Optimizes a given symbolic machine and returns an equivalent, but "simpler" one.
+/// All constraints in the returned machine will respect the given degree bound.
+/// New variables may be introduced in the process.
 pub fn optimize<A: Adapter>(
     mut machine: SymbolicMachine<A::PowdrField>,
     bus_interaction_handler: A::BusInteractionHandler,
     degree_bound: DegreeBound,
     bus_map: &BusMap<A::CustomBusTypes>,
-) -> Result<SymbolicMachine<A::PowdrField>, crate::constraint_optimizer::Error> {
+    column_allocator: ColumnAllocator,
+) -> Result<(SymbolicMachine<A::PowdrField>, ColumnAllocator), crate::constraint_optimizer::Error> {
     let mut stats_logger = StatsLogger::start(&machine);
 
     if let Some(exec_bus_id) = bus_map.get_bus_id(&BusType::ExecutionBridge) {
@@ -112,7 +117,10 @@ pub fn optimize<A: Adapter>(
                 == GroupedExpression::from_number(A::PowdrField::from(pc_lookup_bus_id))),
         "Expected all PC lookups to be removed."
     );
-    Ok(constraint_system_to_symbolic_machine(constraint_system))
+    Ok((
+        constraint_system_to_symbolic_machine(constraint_system),
+        column_allocator,
+    ))
 }
 
 pub fn optimize_exec_bus<T: FieldElement>(
@@ -209,9 +217,10 @@ fn symbolic_machine_to_constraint_system<P: FieldElement>(
             .map(|(v, method)| {
                 let method = match method {
                     ComputationMethod::Constant(c) => ComputationMethod::Constant(*c),
-                    ComputationMethod::InverseOrZero(c) => {
-                        ComputationMethod::InverseOrZero(algebraic_to_grouped_expression(c))
-                    }
+                    ComputationMethod::QuotientOrZero(e1, e2) => ComputationMethod::QuotientOrZero(
+                        algebraic_to_grouped_expression(e1),
+                        algebraic_to_grouped_expression(e2),
+                    ),
                 };
                 DerivedVariable {
                     variable: v.clone(),
@@ -242,9 +251,10 @@ fn constraint_system_to_symbolic_machine<P: FieldElement>(
             .map(|derived_var| {
                 let method = match derived_var.computation_method {
                     ComputationMethod::Constant(c) => ComputationMethod::Constant(c),
-                    ComputationMethod::InverseOrZero(c) => {
-                        ComputationMethod::InverseOrZero(grouped_expression_to_algebraic(c))
-                    }
+                    ComputationMethod::QuotientOrZero(e1, e2) => ComputationMethod::QuotientOrZero(
+                        grouped_expression_to_algebraic(e1),
+                        grouped_expression_to_algebraic(e2),
+                    ),
                 };
                 (derived_var.variable, method)
             })

@@ -7,8 +7,8 @@ use crate::{
     adapter::Adapter,
     blocks::{BasicBlock, Instruction},
     expression::AlgebraicExpression,
-    powdr, BusMap, BusType, InstructionHandler, SymbolicBusInteraction, SymbolicConstraint,
-    SymbolicMachine,
+    powdr, BusMap, BusType, ColumnAllocator, InstructionHandler, SymbolicBusInteraction,
+    SymbolicConstraint, SymbolicMachine,
 };
 
 /// Converts the field type of a symbolic machine.
@@ -35,8 +35,9 @@ pub fn convert_machine_field_type<T, U>(
                     ComputationMethod::Constant(c) => {
                         ComputationMethod::Constant(convert_field_element(c))
                     }
-                    ComputationMethod::InverseOrZero(e) => ComputationMethod::InverseOrZero(
-                        convert_expression(e, convert_field_element),
+                    ComputationMethod::QuotientOrZero(e1, e2) => ComputationMethod::QuotientOrZero(
+                        convert_expression(e1, convert_field_element),
+                        convert_expression(e2, convert_field_element),
                     ),
                 };
                 (v, method)
@@ -102,11 +103,11 @@ fn convert_expression<T, U>(
 /// that contains, for each instruction in the basic block,
 /// a mapping from local column IDs to global column IDs
 /// (in the form of a vector).
-pub fn statements_to_symbolic_machine<A: Adapter>(
+pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
     block: &BasicBlock<A::Instruction>,
     instruction_handler: &A::InstructionHandler,
     bus_map: &BusMap<A::CustomBusTypes>,
-) -> (SymbolicMachine<A::PowdrField>, Vec<Vec<u64>>) {
+) -> (SymbolicMachine<A::PowdrField>, ColumnAllocator) {
     let mut constraints: Vec<SymbolicConstraint<_>> = Vec::new();
     let mut bus_interactions: Vec<SymbolicBusInteraction<_>> = Vec::new();
     let mut col_subs: Vec<Vec<u64>> = Vec::new();
@@ -184,7 +185,10 @@ pub fn statements_to_symbolic_machine<A: Adapter>(
             bus_interactions,
             derived_columns: vec![],
         },
-        col_subs,
+        ColumnAllocator {
+            subs: col_subs,
+            next_poly_id: global_idx,
+        },
     )
 }
 

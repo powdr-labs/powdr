@@ -5,15 +5,15 @@ on:
     branches:
       - main
     paths:
-      - '**.rs'
-      - '**.toml'
+      - "**.rs"
+      - "**.toml"
 
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-C target-cpu=native"
   RUST_BACKTRACE: 1
   JEMALLOC_SYS_WITH_MALLOC_CONF: "retain:true,background_thread:true,metadata_thp:always,dirty_decay_ms:10000,muzzy_decay_ms:10000,abort_conf:true"
-  POWDR_OPENVM_SEGMENT_DELTA: 10000
+  POWDR_OPENVM_SEGMENT_DELTA: 50000
 
 jobs:
   test_guests_apc:
@@ -51,22 +51,8 @@ jobs:
       - name: Run ecrecover with 100 APCs
         run: /usr/bin/time -v cargo run --bin powdr_openvm -r prove guest-ecrecover --input 20 --autoprecompiles 100 --recursion
 
-      - name: Checkout openvm-reth-benchmark
-        uses: actions/checkout@v4
-        with:
-          repository: powdr-labs/openvm-reth-benchmark
-          ref: 9641a47c70e4003e54a96947d4138c63825f1b12
-          path: openvm-reth-benchmark
-
-      - name: Patch openvm-reth-benchmark to use local powdr
-        run: |
-          cd openvm-reth-benchmark
-          mkdir -p .cargo
-          echo '[patch."https://github.com/powdr-labs/powdr.git"]' > .cargo/config.toml
-          echo 'powdr-openvm = { path = "../openvm" }' >> .cargo/config.toml
-          echo 'powdr-riscv-elf = { path = "../riscv-elf" }' >> .cargo/config.toml
-          echo 'powdr-number = { path = "../number" }' >> .cargo/config.toml
-          echo 'powdr-autoprecompiles = { path = "../autoprecompiles" }' >> .cargo/config.toml
+      - name: Patch benchmark
+        uses: ./.github/actions/patch-openvm-reth-benchmark
 
       - name: Run reth benchmark
         run: |

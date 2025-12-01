@@ -829,30 +829,32 @@ mod tests {
             derived_variables: vec![
                 DerivedVariable {
                     variable: "d1",
-                    computation_method: ComputationMethod::InverseOrZero(
-                        GroupedExpression::from_unknown_variable("x"),
+                    computation_method: ComputationMethod::QuotientOrZero(
+                        GroupedExpression::from_unknown_variable("x1"),
+                        GroupedExpression::from_unknown_variable("x2"),
                     ),
                 },
                 DerivedVariable {
                     variable: "d2",
-                    computation_method: ComputationMethod::InverseOrZero(
-                        GroupedExpression::from_unknown_variable("y"),
+                    computation_method: ComputationMethod::QuotientOrZero(
+                        GroupedExpression::from_unknown_variable("y1"),
+                        GroupedExpression::from_unknown_variable("y2"),
                     ),
                 },
             ],
         }
         .into();
-        // We first substitute `y` by an expression that contains `x` such that when we
-        // substitute `x` in the next step, `d2` has to be updated again.
+        // We first substitute `y2` by an expression that contains `x1` such that when we
+        // substitute `x1` in the next step, `d2` has to be updated again.
         system.substitute_by_unknown(
-            &"y",
-            &(GroupedExpression::from_unknown_variable("x")
+            &"y2",
+            &(GroupedExpression::from_unknown_variable("x1")
                 + GroupedExpression::from_number(7.into())),
         );
-        system.substitute_by_known(&"x", &1.into());
+        system.substitute_by_known(&"x1", &1.into());
         assert_eq!(
             format!("{system}"),
-            "d1 := InverseOrZero(1)\nd2 := InverseOrZero(8)"
+            "d1 := QuotientOrZero(1, x2)\nd2 := QuotientOrZero(y1, 8)"
         );
     }
 }

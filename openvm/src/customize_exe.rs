@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 
 use std::fmt::Display;
 use std::hash::Hash;
@@ -10,15 +10,14 @@ use crate::bus_map::OpenVmBusType;
 use crate::extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs, OriginalVmConfig};
 use crate::instruction_formatter::openvm_instruction_formatter;
 use crate::memory_bus_interaction::OpenVmMemoryBusInteraction;
-use crate::opcode::branch_opcodes_bigint_set;
 use crate::powdr_extension::chip::PowdrAir;
+use crate::program::Prog;
 use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::OriginalCompiledProgram;
-use crate::PrecompileImplementation;
 use crate::{CompiledProgram, SpecializedConfig};
 use itertools::Itertools;
 use openvm_instructions::instruction::Instruction as OpenVmInstruction;
-use openvm_instructions::program::{Program as OpenVmProgram, DEFAULT_PC_STEP};
+use openvm_instructions::program::DEFAULT_PC_STEP;
 use openvm_instructions::VmOpcode;
 use openvm_stark_backend::{
     interaction::SymbolicInteraction,
@@ -28,7 +27,7 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::adapter::{
     Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig, ApcWithStats, PgoAdapter,
 };
-use powdr_autoprecompiles::blocks::{collect_basic_blocks, BasicBlock, Instruction, Program};
+use powdr_autoprecompiles::blocks::{BasicBlock, Instruction};
 use powdr_autoprecompiles::evaluation::{evaluate_apc, EvaluationResult};
 use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::pgo::{ApcCandidateJsonExport, Candidate, KnapsackItem};
@@ -36,7 +35,6 @@ use powdr_autoprecompiles::SymbolicBusInteraction;
 use powdr_autoprecompiles::VmConfig;
 use powdr_autoprecompiles::{Apc, PowdrConfig};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
-use powdr_riscv_elf::debug_info::DebugInfo;
 use serde::{Deserialize, Serialize};
 
 use crate::bus_interaction_handler::OpenVmBusInteractionHandler;
@@ -78,16 +76,6 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     }
 }
 
-/// A newtype wrapper around `OpenVmProgram` to implement the `Program` trait.
-/// This is necessary because we cannot implement a foreign trait for a foreign type.
-pub struct Prog<'a, F>(&'a OpenVmProgram<F>);
-
-impl<'a, F> From<&'a OpenVmProgram<F>> for Prog<'a, F> {
-    fn from(program: &'a OpenVmProgram<F>) -> Self {
-        Prog(program)
-    }
-}
-
 /// A newtype wrapper around `OpenVmInstruction` to implement the `Instruction` trait.
 /// This is necessary because we cannot implement a foreign trait for a foreign type.
 #[derive(Clone, Serialize, Deserialize)]
@@ -118,51 +106,21 @@ impl<F: PrimeField32> Instruction<F> for Instr<F> {
     }
 }
 
-impl<'a, F: PrimeField32> Program<Instr<F>> for Prog<'a, F> {
-    fn base_pc(&self) -> u64 {
-        self.0.pc_base as u64
-    }
-
-    fn pc_step(&self) -> u32 {
-        DEFAULT_PC_STEP
-    }
-
-    fn instructions(&self) -> Box<dyn Iterator<Item = Instr<F>> + '_> {
-        Box::new(
-            self.0
-                .instructions_and_debug_infos
-                .iter()
-                .filter_map(|x| x.as_ref().map(|i| Instr(i.0.clone()))),
-        )
-    }
-
-    fn length(&self) -> u32 {
-        self.0.instructions_and_debug_infos.len() as u32
-    }
-}
-
 pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
-    OriginalCompiledProgram { exe, vm_config }: OriginalCompiledProgram,
-    labels: &BTreeSet<u32>,
-    debug_info: &DebugInfo,
+    original_program: OriginalCompiledProgram,
     config: PowdrConfig,
-    implementation: PrecompileImplementation,
     pgo: P,
 ) -> CompiledProgram {
-    let original_config = OriginalVmConfig::new(vm_config.clone());
+    let original_config = OriginalVmConfig::new(original_program.vm_config.clone());
     let airs = original_config.airs(config.degree_bound.identities).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
     let bus_map = original_config.bus_map();
 
-    let jumpdest_set = add_extra_targets(
-        &exe.program,
-        labels.clone(),
-        exe.program.pc_base,
-        DEFAULT_PC_STEP,
-    );
-
-    let program = Prog(&exe.program);
-
-    let range_tuple_checker_sizes = vm_config.sdk.rv32m.unwrap().range_tuple_checker_sizes;
+    let range_tuple_checker_sizes = original_program
+        .vm_config
+        .sdk
+        .rv32m
+        .unwrap()
+        .range_tuple_checker_sizes;
     let vm_config = VmConfig {
         instruction_handler: &airs,
         bus_interaction_handler: OpenVmBusInteractionHandler::new(
@@ -172,13 +130,9 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         bus_map: bus_map.clone(),
     };
 
-    // Convert the jump destinations to u64 for compatibility with the `collect_basic_blocks` function.
-    let jumpdest_set = jumpdest_set
-        .iter()
-        .map(|&x| x as u64)
-        .collect::<BTreeSet<_>>();
-
-    let blocks = collect_basic_blocks::<BabyBearOpenVmApcAdapter>(&program, &jumpdest_set, &airs);
+    let blocks = original_program.collect_basic_blocks(config.degree_bound.identities);
+    let exe = original_program.exe;
+    let debug_info = original_program.elf.debug_info();
     tracing::info!(
         "Got {} basic blocks from `collect_basic_blocks`",
         blocks.len()
@@ -258,40 +212,9 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         vm_config: SpecializedConfig::new(
             original_config,
             extensions,
-            implementation,
             config.degree_bound.identities,
         ),
     }
-}
-
-/// Besides the base RISCV-V branching instructions, the bigint extension adds two more branching
-/// instruction classes over BranchEqual and BranchLessThan.
-/// Those instructions have the form <INSTR rs0 rs1 target_offset ...>, where target_offset is the
-/// relative jump we're interested in.
-/// This means that for a given program address A containing the instruction above,
-/// we add A + target_offset as a target as well.
-fn add_extra_targets<F: PrimeField32>(
-    program: &OpenVmProgram<F>,
-    mut labels: BTreeSet<u32>,
-    base_pc: u32,
-    pc_step: u32,
-) -> BTreeSet<u32> {
-    let branch_opcodes_bigint = branch_opcodes_bigint_set();
-    let new_labels = program
-        .instructions_and_debug_infos
-        .iter()
-        .enumerate()
-        .filter_map(|(i, instr)| {
-            let instr = instr.as_ref().unwrap().0.clone();
-            let adjusted_pc = base_pc + (i as u32) * pc_step;
-            let op = instr.opcode;
-            branch_opcodes_bigint
-                .contains(&op)
-                .then_some(adjusted_pc + instr.c.as_canonical_u32())
-        });
-    labels.extend(new_labels);
-
-    labels
 }
 
 pub fn openvm_bus_interaction_to_powdr<F: PrimeField32>(

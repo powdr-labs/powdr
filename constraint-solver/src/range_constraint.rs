@@ -35,7 +35,7 @@ use powdr_number::{log2_exact, FieldElement, LargeInt};
 /// of the full system.
 ///
 /// Finally, please be aware that same constraint can have multiple representations.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct RangeConstraint<T: FieldElement> {
     /// Bit-mask. A value `x` is allowed only if `x & mask == x` (when seen as unsigned integer).
     mask: T::Integer,
@@ -145,7 +145,7 @@ impl<T: FieldElement> RangeConstraint<T> {
         let unconstrained = Self::unconstrained();
         // TODO we could use "add_with_carry" to see if this created an overflow.
         // it might even be enough to check if certain bits are set in the masks.
-        let mask = if self.mask.to_arbitrary_integer() + other.mask.to_arbitrary_integer()
+        let mut mask = if self.mask.to_arbitrary_integer() + other.mask.to_arbitrary_integer()
             >= T::modulus().to_arbitrary_integer()
         {
             unconstrained.mask
@@ -162,6 +162,9 @@ impl<T: FieldElement> RangeConstraint<T> {
         } else {
             unconstrained.range()
         };
+        if min <= max {
+            mask &= Self::from_range(min, max).mask;
+        }
         Self { min, max, mask }
     }
 
@@ -496,7 +499,7 @@ mod test {
             RCg {
                 min: 18.into(),
                 max: 307.into(),
-                mask: 1023u32.into()
+                mask: 511u32.into()
             }
         );
         assert_eq!(

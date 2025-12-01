@@ -9,7 +9,7 @@ env:
   RUSTFLAGS: "-C target-cpu=native"
   RUST_BACKTRACE: 1
   JEMALLOC_SYS_WITH_MALLOC_CONF: "retain:true,background_thread:true,metadata_thp:always,dirty_decay_ms:10000,muzzy_decay_ms:10000,abort_conf:true"
-  POWDR_OPENVM_SEGMENT_DELTA: 10000
+  POWDR_OPENVM_SEGMENT_DELTA: 50000
 
 jobs:
   check_if_needs_running:
@@ -51,9 +51,9 @@ jobs:
       - name: Install test dependencies
         run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
       - name: Build
-        run: cargo build --all --release --all-features
+        run: cargo build --all --release --features "metrics"
       - name: Run tests
-        run: cargo test --all --release --verbose --all-features --exclude powdr-openvm -- --include-ignored --nocapture --test-threads=2
+        run: cargo test --all --release --verbose --features "metrics" --exclude powdr-openvm -- --include-ignored --nocapture --test-threads=2
 
   bench:
     runs-on: warp-ubuntu-2404-x64-4x
@@ -87,7 +87,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
       - name: Run benchmarks
         # we add `|| exit 1` to make sure the step fails if `cargo bench` fails
-        run: cargo bench --workspace --all-features -- --output-format bencher | tee output.txt || exit 1
+        run: cargo bench --workspace --features "metrics" -- --output-format bencher | tee output.txt || exit 1
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
         with:
@@ -143,22 +143,8 @@ jobs:
           source .venv/bin/activate
           bash ./openvm/scripts/run_guest_benches.sh
 
-      - name: Checkout openvm-reth-benchmark
-        uses: actions/checkout@v4
-        with:
-          repository: powdr-labs/openvm-reth-benchmark
-          ref: 9641a47c70e4003e54a96947d4138c63825f1b12
-          path: openvm-reth-benchmark
-
-      - name: Patch openvm-reth-benchmark to use local powdr
-        run: |
-          cd openvm-reth-benchmark
-          mkdir -p .cargo
-          echo '[patch."https://github.com/powdr-labs/powdr.git"]' > .cargo/config.toml
-          echo 'powdr-openvm = { path = "../openvm" }' >> .cargo/config.toml
-          echo 'powdr-riscv-elf = { path = "../riscv-elf" }' >> .cargo/config.toml
-          echo 'powdr-number = { path = "../number" }' >> .cargo/config.toml
-          echo 'powdr-autoprecompiles = { path = "../autoprecompiles" }' >> .cargo/config.toml
+      - name: Patch benchmark
+        uses: ./.github/actions/patch-openvm-reth-benchmark
 
       - name: Run reth benchmark
         run: |
@@ -170,30 +156,40 @@ jobs:
 
           # prove with no APCs
           MODE="prove-stark" APC=0 ./run.sh || exit 1
+          # remove apc cache to not interfere with the next runs
+          rm -rf apc-cache
           echo "Finished proving with no APCs"
           mv metrics.json $RES_DIR/apc000.json
           python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc000.png $RES_DIR/apc000.json > $RES_DIR/trace_cells_apc000.txt
 
           # prove with 3 APCs
           MODE="prove-stark" APC=3 ./run.sh || exit 1
+          # remove apc cache to not interfere with the next runs
+          rm -rf apc-cache
           echo "Finished proving with 3 APCs"
           mv metrics.json $RES_DIR/apc003.json
           python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc003.png $RES_DIR/apc003.json > $RES_DIR/trace_cells_apc003.txt
 
           # prove with 10 APCs
           MODE="prove-stark" APC=10 ./run.sh || exit 1
+          # remove apc cache to not interfere with the next runs
+          rm -rf apc-cache
           echo "Finished proving with 10 APCs"
           mv metrics.json $RES_DIR/apc010.json
           python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc010.png $RES_DIR/apc010.json > $RES_DIR/trace_cells_apc010.txt
 
           # prove with 30 APCs
           MODE="prove-stark" APC=30 ./run.sh || exit 1
+          # remove apc cache to not interfere with the next runs
+          rm -rf apc-cache
           echo "Finished proving with 30 APCs"
           mv metrics.json $RES_DIR/apc030.json
           python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc030.png $RES_DIR/apc030.json > $RES_DIR/trace_cells_apc030.txt
 
           # prove with 100 APCs, recording mem usage
           MODE="prove-stark" APC=100 psrecord --include-children --interval 1 --log $RES_DIR/psrecord.csv --log-format csv --plot $RES_DIR/psrecord.png "./run.sh" || exit 1
+          # remove apc cache to not interfere with the next runs
+          rm -rf apc-cache
           echo "Finished proving with 100 APCs"
           mv metrics.json $RES_DIR/apc100.json
           python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc100.png $RES_DIR/apc100.json > $RES_DIR/trace_cells_apc100.txt
@@ -233,14 +229,3 @@ jobs:
           keep_files: true
           enable_jekyll: true
 
-      - name: Run tests (excluding larger ones)
-        run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1 --skip _prove_large
-
-      - name: Run u256_prove_large
-        run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1 u256_prove_large
-
-      - name: Run keccak_prove_large
-        run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1 keccak_prove_large
-
-      - name: Run sha256_prove_large
-        run: cargo test --release --verbose -p powdr-openvm -- --include-ignored --nocapture --test-threads=1 sha256_prove_large
