@@ -97,9 +97,6 @@ where
     ///
     /// Returns the resulting solved grouped expression.
     pub fn try_solve_for(&self, variable: &V) -> Option<GroupedExpression<T, V>> {
-        if variable.to_string() == "a__0_3" {
-            println!("XX Trying to solve {self} for {variable}");
-        }
         let coefficient = self
             .expression
             .coefficient_of_variable_in_affine_part(variable)?;
@@ -111,12 +108,6 @@ where
             // There is another occurrence of the variable in the quadratic component,
             // we cannot solve for it.
             return None;
-        }
-        if variable.to_string() == "a__0_3" {
-            println!(
-                "   -> {}",
-                subtracted.clone() * (-coefficient.field_inverse())
-            );
         }
         Some(subtracted * (-coefficient.field_inverse()))
     }
@@ -231,9 +222,6 @@ where
             .linear_components()
             .filter_map(|(var, _)| {
                 let rc = self.try_solve_for(var)?.range_constraint(range_constraints);
-                if var.to_string() == "a__0_3" && rc.range_width() <= 3.into() {
-                    println!("Solving {self} for {var} -> {rc}");
-                }
                 Some((var, rc))
             })
             .filter(|(_, constraint)| !constraint.is_unconstrained())
