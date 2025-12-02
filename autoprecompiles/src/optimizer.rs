@@ -4,8 +4,9 @@ use std::{collections::BTreeMap, fmt::Display};
 
 use itertools::Itertools;
 use powdr_constraint_solver::constraint_system::{
-    AlgebraicConstraint, ComputationMethod, DerivedVariable,
+    self, AlgebraicConstraint, ComputationMethod, DerivedVariable,
 };
+use powdr_constraint_solver::grouped_expression::NoRangeConstraints;
 use powdr_constraint_solver::inliner::{self, inline_everything_below_degree_bound};
 use powdr_constraint_solver::solver::new_solver;
 use powdr_constraint_solver::{
@@ -54,7 +55,20 @@ pub fn optimize<A: Adapter>(
         }
     };
 
-    let mut constraint_system = symbolic_machine_to_constraint_system(machine);
+    let constraint_system = symbolic_machine_to_constraint_system(machine);
+    stats_logger.log("system construction", &constraint_system);
+
+    let (constraint_system, derived_constraints) = rule_based_optimization(
+        constraint_system.into(),
+        NoRangeConstraints,
+        bus_interaction_handler.clone(),
+        &mut new_var,
+        // No degree bound given, i.e. only perform replacements that
+        // do not increase the degree.
+        None,
+    );
+    stats_logger.log("rule-based optimization", &constraint_system);
+    let mut constraint_system = constraint_system.system().clone();
 
     let mut solver = new_solver(constraint_system.clone(), bus_interaction_handler.clone());
     loop {

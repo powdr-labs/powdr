@@ -485,16 +485,21 @@ crepe! {
        ({env.affine_var_count(l).unwrap_or(0) > 1 && env.affine_var_count(r).unwrap_or(0) > 1}),
        let Some(offset) = env.constant_difference(l, r);
 
-    struct QuadraticEquivalence(Var, Var);
-    QuadraticEquivalence(v1, v2) <-
+    struct QuadraticEquivalenceCandidatePair<T: FieldElement>(Expr, Expr, T, Var, Var);
+    QuadraticEquivalenceCandidatePair(expr1, expr2, offset / coeff, v1, v2) <-
       Env(env),
       QuadraticEquivalenceCandidate(_, expr1, offset),
       QuadraticEquivalenceCandidate(_, expr2, offset),
       (expr1 < expr2),
-      let Some((v1, v2, coeff)) = env.differ_in_exactly_one_variable(expr1, expr2),
+      let Some((v1, v2, coeff)) = env.differ_in_exactly_one_variable(expr1, expr2);
+    // what exactly is re-executed for an update?
+
+    struct QuadraticEquivalence(Var, Var);
+    QuadraticEquivalence(v1, v2) <-
+      QuadraticEquivalenceCandidatePair(_, _, offset, v1, v2),
       RangeConstraintOnVar(v1, rc),
       RangeConstraintOnVar(v2, rc),
-      (rc.is_disjoint(&rc.combine_sum(&RangeConstraint::from_value(offset / coeff))));
+      (rc.is_disjoint(&rc.combine_sum(&RangeConstraint::from_value(offset))));
 
     struct ReplaceAlgebraicConstraintBy(Expr, Expr);
 
@@ -749,7 +754,8 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         );
         rt.extend(std::iter::once(Env(&env)));
 
-        let (actions,) = rt.run();
+        let ((actions,), profile) = rt.run_with_profiling();
+        profile.report();
         let (db, new_var_generator) = env.terminate();
         expr_db = Some(db);
 
