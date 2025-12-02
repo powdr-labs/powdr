@@ -237,7 +237,10 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
     /// Otherwise, the variables returned here might also appear inside the higher order terms
     /// and this the dependency on these variables might be more complicated than just a
     /// runtime constant factor.
-    pub fn linear_components(&self) -> impl DoubleEndedIterator<Item = (&V, &T)> + Clone {
+    pub fn linear_components(
+        &self,
+    ) -> impl DoubleEndedIterator<Item = (&V, &T)> + ExactSizeIterator<Item = (&V, &T)> + Clone
+    {
         self.linear.iter()
     }
 

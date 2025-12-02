@@ -30,7 +30,7 @@ use num_traits::Zero;
 
 use crepe::crepe;
 
-const SIZE_LIMIT: usize = 1600;
+const SIZE_LIMIT: usize = 100600;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, From, Into)]
 struct Var(usize);
@@ -231,7 +231,7 @@ impl<T: FieldElement> Environment<T> {
     pub fn affine_var_count(&self, expr: Expr) -> Option<usize> {
         let db = self.expressions.borrow();
         let expr = &db[expr];
-        expr.is_affine().then(|| expr.linear_components().count())
+        expr.is_affine().then(|| expr.linear_components().len())
     }
 
     pub fn try_to_affine(&self, expr: Expr) -> Option<(T, Var, T)> {
@@ -296,12 +296,10 @@ impl<T: FieldElement> Environment<T> {
         let b = &db[b_id];
         if !a.is_affine()
             || !b.is_affine()
-            || a.referenced_unknown_variables().count() != b.referenced_unknown_variables().count()
-            || a.referenced_unknown_variables().count() < 2
+            || a.constant_offset() != b.constant_offset()
+            || a.linear_components().len() != b.linear_components().len()
+            || a.linear_components().len() < 2
         {
-            return None;
-        }
-        if a.constant_offset() != b.constant_offset() {
             return None;
         }
         let mut joined = a
@@ -489,9 +487,10 @@ crepe! {
 
     struct QuadraticEquivalence(Var, Var);
     QuadraticEquivalence(v1, v2) <-
+      Env(env),
       QuadraticEquivalenceCandidate(_, expr1, offset),
       QuadraticEquivalenceCandidate(_, expr2, offset),
-      Env(env),
+      (expr1 < expr2),
       let Some((v1, v2, coeff)) = env.differ_in_exactly_one_variable(expr1, expr2),
       RangeConstraintOnVar(v1, rc),
       RangeConstraintOnVar(v2, rc),
@@ -514,14 +513,17 @@ crepe! {
     //
     // For the general case, where e.g. `X` can be negative, we replace it by `X * X`,
     // if that value is still small enough.
+    struct SOV(Var);
+    SOV(v) <-
+      Env(env),
+      for v in env.single_occurrence_variables().cloned();
     struct SingleOccurrenceVariable(Expr, Var);
     SingleOccurrenceVariable(e, v) <-
       Env(env),
-      for v in env.single_occurrence_variables().cloned(),
-      AlgebraicConstraint(e),
+      SOV(v),
       // We somehow cannot use "v" directly here.
-      ContainsVariable(e, v2),
-      (v == v2);
+      ContainsVariable(e, v),
+      AlgebraicConstraint(e);
 
     struct LargestSingleOccurrenceVariablePairInExpr(Expr, Var, Var);
     LargestSingleOccurrenceVariablePairInExpr(e, v1, v2) <-
@@ -615,15 +617,18 @@ crepe! {
         Some(env.insert_owned(replacement))
       })();
 
+    struct ProductConstraint(Expr, Expr, Expr);
+    ProductConstraint(e, l, r) <-
+      AlgebraicConstraint(e),
+      Product(e, l, r);
+
     // If we have x * a = 0 and x * b = 0 and (a = 0 and b = 0) is equivalent to (a + b = 0),
     // replace those two by x * (a + b) = 0.
     struct PotentiallyReplacePairOfAlgebraicConstraintsBy(Expr, Expr, Expr);
     PotentiallyReplacePairOfAlgebraicConstraintsBy(e1, e2, replacement) <-
       Env(env),
-      AlgebraicConstraint(e1),
-      AlgebraicConstraint(e2),
-      Product(e1, x, a),
-      Product(e2, x, b),
+      ProductConstraint(e1, x, a),
+      ProductConstraint(e2, x, b),
       (e1 < e2),
       RangeConstraintOnExpression(a, rc_a),
       RangeConstraintOnExpression(b, rc_b),
@@ -642,8 +647,8 @@ crepe! {
 
     // Boolean range constraint
     RangeConstraintOnVar(v, RangeConstraint::from_range(x1, x1 + T::from(1))) <-
-      AlgebraicConstraint(e),
-      Product(e, l, r),
+      ProductConstraint(_, l, r),
+      (l < r),
       Solvable(l, v, x1),
       Solvable(r, v, x1 + T::from(1));
 
