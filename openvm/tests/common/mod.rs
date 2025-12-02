@@ -57,6 +57,7 @@ pub mod apc_builder_utils {
 
         let basic_block = BasicBlock {
             statements: basic_block.into_iter().map(Instr).collect(),
+            other_pcs: vec![],
             start_pc: 0,
         };
 

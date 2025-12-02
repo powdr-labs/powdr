@@ -16,12 +16,21 @@ use tracing_subscriber::{
     Layer,
 };
 
-// Produces execution count by pc
-// Used in Pgo::Cell and Pgo::Instruction to help rank basic blocks to create APCs for
+#[derive(Clone)]
+pub struct ExecutionProfile {
+    /// execution count of each pc
+    pub pc_count: HashMap<u64, u32>,
+    /// next pc count, for each pc
+    // TODO: u32 count? itertools `count` returns usize
+    pub next_pc: HashMap<u64, HashMap<u64, usize>>,
+}
+
+// Produces execution information for PGO.
+// Used in Pgo::Cell and Pgo::Instruction to help rank basic blocks to create APCs for.
 pub fn execution_profile<A: Adapter>(
     program: &A::Program,
     execute_fn: impl FnOnce(),
-) -> HashMap<u64, u32> {
+) -> ExecutionProfile {
     // in memory collector storage
     let collector = PgoCollector::new::<A>(program);
 
@@ -46,29 +55,42 @@ pub fn execution_profile<A: Adapter>(
             .collect::<HashMap<_, _>>()
     };
 
+    // let insns: HashMap<_, _> = program.instructions().enumerate().map(|(idx, insn)| {
+    //     let pc = program.instruction_index_to_pc(idx);
+    //     (pc, insn)
+    // }).collect();
+
+    // for (pc, next) in next_pcs_by_pc.iter() {
+    //     println!("pc {}: {:?}", pc, next.len());
+    //     println!("\t{:?}", insns[pc]);
+    // }
+
     let json = serde_json::to_string_pretty(&next_pcs_by_pc).unwrap();
     std::fs::write("next_pcs.json", json).unwrap();
 
     // Extract the collected data
-    let pc_index_count = collector.into_hashmap();
+    let pc_count = collector.into_hashmap();
 
     // the smallest pc is the same as the base_pc if there's no stdin
-    let pc_min = pc_index_count.keys().min().unwrap();
+    let pc_min = pc_count.keys().min().unwrap();
     tracing::debug!("pc_min: {}; base_pc: {}", pc_min, program.base_pc());
 
     // print the total and by pc counts
-    tracing::debug!("Pgo captured {} pc's", pc_index_count.len());
+    tracing::debug!("Pgo captured {} pc's", pc_count.len());
 
     if tracing::enabled!(Level::TRACE) {
         // print pc_index map in descending order of pc_index count
-        let mut pc_index_count_sorted: Vec<_> = pc_index_count.iter().collect();
+        let mut pc_index_count_sorted: Vec<_> = pc_count.iter().collect();
         pc_index_count_sorted.sort_by(|a, b| b.1.cmp(a.1));
         pc_index_count_sorted.iter().for_each(|(pc, count)| {
             tracing::trace!("pc_index {}: {}", pc, count);
         });
     }
 
-    pc_index_count
+    ExecutionProfile {
+        pc_count,
+        next_pc: next_pcs_by_pc,
+    }
 }
 
 // holds basic type fields of execution objects captured in trace by subscriber

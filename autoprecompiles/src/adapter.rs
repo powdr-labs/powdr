@@ -6,6 +6,7 @@ use std::{fmt::Display, sync::Arc};
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
+use crate::execution_profile::ExecutionProfile;
 use crate::{
     blocks::{BasicBlock, Instruction, Program},
     constraint_optimizer::IsBusStateful,
@@ -62,6 +63,10 @@ pub trait PgoAdapter {
     ) -> Vec<AdapterApcWithStats<Self::Adapter>>;
 
     fn pc_execution_count(&self, _pc: u64) -> Option<u32> {
+        None
+    }
+
+    fn profiling_data(&self) -> Option<&ExecutionProfile> {
         None
     }
 }

@@ -1,19 +1,16 @@
 use std::collections::{BTreeMap, HashMap};
 
 use crate::{
-    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, PgoAdapter},
-    blocks::BasicBlock,
-    pgo::create_apcs_for_all_blocks,
-    PowdrConfig,
+    PowdrConfig, adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, PgoAdapter}, blocks::BasicBlock, execution_profile::ExecutionProfile, pgo::create_apcs_for_all_blocks
 };
 
 pub struct InstructionPgo<A> {
     _marker: std::marker::PhantomData<A>,
-    data: HashMap<u64, u32>,
+    data: ExecutionProfile,
 }
 
 impl<A> InstructionPgo<A> {
-    pub fn with_pgo_data(data: HashMap<u64, u32>) -> Self {
+    pub fn with_pgo_data(data: ExecutionProfile) -> Self {
         Self {
             _marker: std::marker::PhantomData,
             data,
@@ -40,7 +37,7 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
             return vec![];
         }
 
-        let pgo_program_pc_count: &HashMap<u64, u32> = &self.data;
+        let pgo_program_pc_count: &HashMap<u64, u32> = &self.data.pc_count;
         // drop any block whose start index cannot be found in pc_idx_count,
         // because a basic block might not be executed at all.
         // Also only keep basic blocks with more than one original instruction.
@@ -74,6 +71,6 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
     }
 
     fn pc_execution_count(&self, pc: u64) -> Option<u32> {
-        self.data.get(&pc).cloned()
+        self.data.pc_count.get(&pc).cloned()
     }
 }
