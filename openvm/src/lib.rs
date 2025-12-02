@@ -16,6 +16,7 @@ use openvm_circuit::arch::{
 use openvm_circuit::system::SystemChipInventory;
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
 use openvm_circuit_derive::{Executor, MeteredExecutor, PreflightExecutor};
+use openvm_instructions::program::DEFAULT_PC_STEP;
 use openvm_sdk::config::SdkVmCpuBuilder;
 
 use openvm_sdk::config::TranspilerConfig;
@@ -37,6 +38,7 @@ use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
 use powdr_autoprecompiles::evaluation::AirStats;
+use powdr_autoprecompiles::execution_profile::ExecutionProfile;
 use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::PowdrExtension;
@@ -47,10 +49,7 @@ use std::fs::File;
 use std::io::BufWriter;
 use std::iter::Sum;
 use std::ops::Add;
-use std::{
-    collections::HashMap,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use crate::customize_exe::OpenVmApcCandidate;
 use crate::powdr_extension::chip::PowdrAir;
@@ -545,6 +544,7 @@ pub fn compile_exe(
                 config,
                 CellPgo::<_, OpenVmApcCandidate<_, _>>::with_pgo_data_and_max_columns(
                     pgo_data,
+                    DEFAULT_PC_STEP,
                     max_total_apc_columns,
                 ),
             )
@@ -839,7 +839,7 @@ pub fn prove(
 pub fn execution_profile_from_guest(
     program: &OriginalCompiledProgram,
     inputs: StdIn,
-) -> HashMap<u64, u32> {
+) -> ExecutionProfile {
     let OriginalCompiledProgram { exe, vm_config, .. } = program;
     let program = Prog::from(&exe.program);
 
@@ -1004,7 +1004,7 @@ mod tests {
             .precompiles
             .iter()
             .for_each(|precompile| {
-                assert!(!pgo_data.keys().contains(&precompile.apc.block.start_pc));
+                assert!(!pgo_data.pc_count.keys().contains(&precompile.apc.block.start_pc));
             });
 
         let result = prove(&program, false, false, stdin, None);
