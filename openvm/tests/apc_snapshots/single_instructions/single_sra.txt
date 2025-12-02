@@ -4,7 +4,7 @@ Instructions:
 APC advantage:
   - Main columns: 53 -> 40 (1.32x reduction)
   - Bus interactions: 24 -> 22 (1.09x reduction)
-  - Constraints: 76 -> 38 (2.00x reduction)
+  - Constraints: 76 -> 35 (2.17x reduction)
 
 Symbolic machine using 40 unique main columns:
   from_state__timestamp_0
@@ -104,16 +104,13 @@ limb_shift_marker__1_0 * (limb_shift_marker__1_0 - 1) = 0
 limb_shift_marker__1_0 * (a__0_0 * bit_multiplier_right_0 + bit_shift_carry__1_0 - (b__1_0 + 256 * bit_shift_carry__2_0)) = 0
 limb_shift_marker__1_0 * (a__1_0 * bit_multiplier_right_0 + bit_shift_carry__2_0 - (b__2_0 + 256 * bit_shift_carry__3_0)) = 0
 limb_shift_marker__1_0 * (a__2_0 * bit_multiplier_right_0 + bit_shift_carry__3_0 - (256 * b_sign_0 * (bit_multiplier_right_0 - 1) + b__3_0)) = 0
-limb_shift_marker__1_0 * (a__3_0 - 255 * b_sign_0) = 0
 limb_shift_marker__2_0 * (limb_shift_marker__2_0 - 1) = 0
 limb_shift_marker__2_0 * (a__0_0 * bit_multiplier_right_0 + bit_shift_carry__2_0 - (b__2_0 + 256 * bit_shift_carry__3_0)) = 0
 limb_shift_marker__2_0 * (a__1_0 * bit_multiplier_right_0 + bit_shift_carry__3_0 - (256 * b_sign_0 * (bit_multiplier_right_0 - 1) + b__3_0)) = 0
-limb_shift_marker__2_0 * (a__2_0 - 255 * b_sign_0) = 0
-limb_shift_marker__2_0 * (a__3_0 - 255 * b_sign_0) = 0
 (1 - (limb_shift_marker__0_0 + limb_shift_marker__1_0 + limb_shift_marker__2_0)) * (limb_shift_marker__0_0 + limb_shift_marker__1_0 + limb_shift_marker__2_0) = 0
 (1 - (limb_shift_marker__0_0 + limb_shift_marker__1_0 + limb_shift_marker__2_0)) * (a__0_0 * bit_multiplier_right_0 + bit_shift_carry__3_0 - (256 * b_sign_0 * (bit_multiplier_right_0 - 1) + b__3_0)) = 0
 (1 - (limb_shift_marker__0_0 + limb_shift_marker__1_0 + limb_shift_marker__2_0)) * (a__1_0 - 255 * b_sign_0) = 0
-(1 - (limb_shift_marker__0_0 + limb_shift_marker__1_0 + limb_shift_marker__2_0)) * (a__2_0 - 255 * b_sign_0) = 0
-(1 - (limb_shift_marker__0_0 + limb_shift_marker__1_0 + limb_shift_marker__2_0)) * (a__3_0 - 255 * b_sign_0) = 0
 b_sign_0 * (b_sign_0 - 1) = 0
+(a__2_0 - 255 * b_sign_0) * (1 - (limb_shift_marker__0_0 + limb_shift_marker__1_0)) = 0
+(a__3_0 - 255 * b_sign_0) * (1 - limb_shift_marker__0_0) = 0
 is_valid * (is_valid - 1) = 0
