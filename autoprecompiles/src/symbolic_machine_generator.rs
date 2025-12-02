@@ -138,7 +138,11 @@ pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
         // It is sufficient to provide the initial PC, because the PC update should be
         // deterministic within a basic block. Therefore, all future PCs can be derived
         // by the solver.
-        let pc = (i == 0).then_some(block.start_pc);
+        let pc = if i == 0 {
+            Some(block.start_pc)
+        } else {
+            block.other_pcs.iter().find(|(idx, _)| *idx == i).map(|(_, pc_value)| *pc_value)
+        };
         let pc_lookup_row = instr
             .pc_lookup_row(pc)
             .into_iter()

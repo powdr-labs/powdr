@@ -9,16 +9,12 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    adapter::{
-        Adapter, AdapterApc, AdapterApcWithStats, AdapterBasicBlock, AdapterVmConfig, PgoAdapter,
-    },
-    blocks::BasicBlock,
-    evaluation::EvaluationResult,
-    pgo::cell::selection::parallel_fractional_knapsack,
-    PowdrConfig,
+    PowdrConfig, adapter::{Adapter, AdapterApc, AdapterApcWithStats, AdapterBasicBlock, AdapterVmConfig, PgoAdapter}, blocks::BasicBlock, evaluation::EvaluationResult, execution_profile::ExecutionProfile, pgo::cell::selection::parallel_fractional_knapsack
 };
 
 mod selection;
+
+use itertools::Itertools;
 
 pub use selection::KnapsackItem;
 
@@ -62,18 +58,21 @@ pub struct ApcCandidateJsonExport {
 
 pub struct CellPgo<A, C> {
     _marker: std::marker::PhantomData<(A, C)>,
-    data: HashMap<u64, u32>,
+    data: ExecutionProfile,
+    default_pc_step: u32,
     max_total_apc_columns: Option<usize>,
 }
 
 impl<A, C> CellPgo<A, C> {
     pub fn with_pgo_data_and_max_columns(
-        data: HashMap<u64, u32>,
+        data: ExecutionProfile,
+        default_pc_step: u32,
         max_total_apc_columns: Option<usize>,
     ) -> Self {
         Self {
             _marker: std::marker::PhantomData,
             data,
+            default_pc_step,
             max_total_apc_columns,
         }
     }
@@ -90,7 +89,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
 
     fn create_apcs_with_pgo(
         &self,
-        mut blocks: Vec<AdapterBasicBlock<Self::Adapter>>,
+        blocks: Vec<AdapterBasicBlock<Self::Adapter>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
@@ -100,14 +99,122 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
             blocks.len()
         );
 
+        let prof = self.profiling_data().unwrap();
+
+        let mut bb_count = vec![0; blocks.len()];
+        // // count bb of first executed instruction
+        // let initial_pc = original_program.exe.program.pc_base as u64;
+        // if let Some(first_bb_idx) = blocks.iter().position(|bb| bb.start_pc == initial_pc) {
+        //     bb_count[first_bb_idx] += 1;
+        // }
+
+        let mut bb_pair_count = HashMap::new();
+
+
+        for (pc, next_pcs) in prof.next_pc.iter() {
+            // check that PC ends a BB!
+            let mut pc_ends_bb = false;
+            let mut bb_idx_1 = 0;
+            for (idx, bb) in blocks.iter().enumerate() {
+                let last_pc = bb.start_pc + ((bb.statements.len() - 1) as u64 * self.default_pc_step as u64);
+
+                if last_pc == *pc {
+                    pc_ends_bb = true;
+                    bb_idx_1 = idx;
+                    break;
+                }
+            }
+            if !pc_ends_bb {
+                continue;
+            }
+
+            // println!("pc {} ends BB {}", pc, bb_idx_1);
+
+            for (next_pc, next_pc_count) in next_pcs {
+                // check this is the start of a BB!
+                let mut is_start = false;
+                let mut bb_idx_2 = 0;
+                for (idx, bb) in blocks.iter().enumerate() {
+                    if bb.start_pc == *next_pc {
+                        is_start = true;
+                        bb_idx_2 = idx;
+                        break;
+                    }
+                }
+                if is_start {
+                    // only count BB if its a valid APC
+                    if blocks[bb_idx_2].statements.len() > 1 {
+                        bb_count[bb_idx_2] += next_pc_count;
+                        // only count pair if both BBs are valid APC
+                        if blocks[bb_idx_1].statements.len() > 1 {
+                            bb_pair_count.entry((bb_idx_1, bb_idx_2))
+                                .and_modify(|c| *c += next_pc_count)
+                                .or_insert(*next_pc_count);
+                        }
+                    }
+                    // println!("\tpc {} starts BB {}", next_pc, bb_idx_2);
+                } else {
+                    panic!("\tpc {} does not start a BB!", next_pc);
+                }
+            }
+        }
+
+        // BBs sorted by execution count
+        let bb_sorted = bb_count
+            .iter()
+            .enumerate()
+            // map to start_pc
+            .map(|(idx, count)| (blocks[idx].start_pc, *count))
+            .sorted_by_key(|(_, count)| *count)
+            .filter(|&(_, count)| count > 0)
+            .rev()
+            .collect::<Vec<_>>();
+
+        println!("BB execution counts: {bb_sorted:?}");
+
+        // TODO: additional constraint to enforce the jump to the second block
+        let super_blocks = bb_pair_count.iter()
+            .filter_map(|(&(idx1, idx2), &count)| {
+                if count > 1 {
+                    let block_1 = blocks[idx1].clone();
+                    let block_2 = blocks[idx2].clone();
+                    Some(BasicBlock {
+                        start_pc: block_1.start_pc,
+                        other_pcs: vec![(block_1.statements.len(), block_2.start_pc)],
+                        statements: [block_1.statements, block_2.statements].concat(),
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect_vec();
+
+        let bb_pair_sorted = bb_pair_count
+            .iter()
+            .sorted_by_key(|(_, count)| *count)
+            // map to start_pc
+            .map(|(&(bb_idx_1, bb_idx_2), count)| {
+                (
+                    (blocks[bb_idx_1].start_pc, blocks[bb_idx_2].start_pc),
+                    *count,
+                )
+            })
+            .rev()
+            .collect::<Vec<_>>();
+
+        println!("BB pairs execution counts: {bb_pair_sorted:?}");
+
         if config.autoprecompiles == 0 {
             return vec![];
         }
 
+        let mut blocks = super_blocks;
+
         // drop any block whose start index cannot be found in pc_idx_count,
         // because a basic block might not be executed at all.
         // Also only keep basic blocks with more than one original instruction.
-        blocks.retain(|b| self.data.contains_key(&b.start_pc) && b.statements.len() > 1);
+        blocks.retain(|b| self.data.pc_count.contains_key(&b.start_pc) && b.statements.len() > 1);
+
 
         tracing::debug!(
             "Retained {} basic blocks after filtering by pc_idx_count",
@@ -137,7 +244,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
                 .ok()?;
                 let candidate = C::create(
                     Arc::new(apc),
-                    &self.data,
+                    &self.data.pc_count,
                     vm_config.clone(),
                     config.degree_bound.identities,
                 );
@@ -169,6 +276,10 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
     }
 
     fn pc_execution_count(&self, pc: u64) -> Option<u32> {
-        self.data.get(&pc).cloned()
+        self.data.pc_count.get(&pc).cloned()
+    }
+
+    fn profiling_data(&self) -> Option<&ExecutionProfile> {
+        Some(&self.data)
     }
 }

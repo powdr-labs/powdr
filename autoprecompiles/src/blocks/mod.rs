@@ -11,6 +11,8 @@ pub use detection::collect_basic_blocks;
 pub struct BasicBlock<I> {
     /// The program counter of the first instruction in this block.
     pub start_pc: u64,
+    /// Map instruction idx and other concrete pcs
+    pub other_pcs: Vec<(usize, u64)>,
     pub statements: Vec<I>,
 }
 
