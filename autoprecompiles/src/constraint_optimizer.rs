@@ -74,6 +74,7 @@ pub fn optimize_constraints<
         None,
     );
     stats_logger.log("rule-based optimization", &constraint_system);
+    println!("XXXX algebraic constraints:\n{constraint_system}",);
 
     let constraint_system = solver_based_optimization(constraint_system, solver)?;
     stats_logger.log("solver-based optimization", &constraint_system);

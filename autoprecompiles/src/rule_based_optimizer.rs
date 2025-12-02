@@ -425,11 +425,14 @@ crepe! {
     @input
     struct InitialAlgebraicConstraint(Expr);
 
+    @input
+    struct InitialRangeConstraintOnExpression<T: FieldElement>(Expr, RangeConstraint<T>);
+
     struct AlgebraicConstraint(Expr);
     AlgebraicConstraint(e) <- InitialAlgebraicConstraint(e);
 
     // @input
-    // struct BusInteractionConstraint<'a>(&'a BusInteraction<GroupedExpression<F, Var>>);
+    // struct BusInteractionConstraint<'a>(&'a BusInteraction<Expr>);
 
     struct RangeConstraintOnExpression<T: FieldElement>(Expr, RangeConstraint<T>);
 
@@ -438,10 +441,12 @@ crepe! {
     Expression(e) <- RangeConstraintOnExpression(e, _);
 
     RangeConstraintOnExpression(e, rc) <-
+      InitialRangeConstraintOnExpression(e, rc);
+
+    RangeConstraintOnExpression(e, rc) <-
       Env(env),
       Expression(e),
       let rc = env.range_constraint_on_expr(e);
-
 
     struct ContainsVariable(Expr, Var);
     ContainsVariable(e, v) <-
@@ -665,7 +670,24 @@ crepe! {
     struct Equivalence(Var, Var);
     Equivalence(v1, v2) <- QuadraticEquivalence(v1, v2);
 
-    // Do not do this because it is rather expensive.
+    Equivalence(v1, v2) <-
+      Env(env),
+      AlgebraicConstraint(e),
+      let Some((v1, v2)) = env.on_expr(e, (), |e, _| {
+        if !e.is_affine() || e.constant_offset() != &T::zero() {
+            return None;
+        }
+        let ((v1, c1), (v2, c2)) = e.linear_components().collect_tuple()?;
+        let (v1, c1, v2, c2) = if v1 < v2 {
+            (v1, c1, v2, c2)
+        } else {
+            (v2, c2, v1, c1)
+        };
+        // We have `c1 * v1 + c2 * v2 = 0`, which is equivalent to
+        // `v1 = -c2 / c1 * v2`
+        (-*c2 / *c1).is_one().then_some((*v1, *v2))
+      });
+
 
     ReplaceAlgebraicConstraintBy(e, env.substitute_by_known(e, v, val)) <-
       Env(env),
@@ -699,7 +721,7 @@ crepe! {
 pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
     mut system: IndexedConstraintSystem<T, V>,
     range_constraints: impl RangeConstraintProvider<T, V>,
-    _bus_interaction_handler: impl BusInteractionHandler<T> + Clone,
+    bus_interaction_handler: impl BusInteractionHandler<T> + Clone,
     new_var_outer: &mut impl FnMut(&str) -> V,
     degree_bound: Option<DegreeBound>,
 ) -> (
@@ -724,8 +746,35 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
     let mut expr_db = Some(ItemDB::<GroupedExpression<T, Var>, Expr>::default());
 
     loop {
-        let (algebraic_constraints, _bus_interactions) =
+        let (algebraic_constraints, bus_interactions) =
             transform_constraint_system(&system, &var_mapper, expr_db.as_mut().unwrap());
+        // TODO it would be better to handle that inside the rule system,
+        // but it is difficult because of the vector and the combinatorial
+        // explosion of the range constraints.
+        let rcs = system
+            .bus_interactions()
+            .iter()
+            .zip(bus_interactions)
+            .flat_map(|(bus_inter, bus_inter_transformed)| {
+                let bi_rc = bus_inter
+                    .fields()
+                    .map(|e| e.range_constraint(&range_constraints))
+                    .collect();
+                let updated_rcs = bus_interaction_handler
+                    .handle_bus_interaction(bi_rc)
+                    .fields()
+                    .cloned()
+                    .collect_vec();
+                bus_inter_transformed
+                    .fields()
+                    .cloned()
+                    .zip(updated_rcs)
+                    .collect_vec()
+            })
+            .map(|(e, rc)| InitialRangeConstraintOnExpression(e, rc))
+            .collect_vec();
+        let mut rt = Crepe::new();
+        rt.extend(rcs.into_iter());
 
         let env = Environment::<T>::new(
             expr_db.take().unwrap(),
@@ -745,7 +794,6 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
             NewVarGenerator::new(var_mapper.next_free_id()),
         );
 
-        let mut rt = Crepe::new();
         rt.extend(
             algebraic_constraints
                 .iter()
@@ -775,6 +823,8 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                 ..Default::default()
             });
         }
+
+        // TODO update RC on vars?
 
         let mut progress = false;
         for action in actions.into_iter().map(|a| a.0).sorted() {
