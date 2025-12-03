@@ -190,21 +190,18 @@ impl<T: FieldElement> RangeConstraint<T> {
     /// If `Self` is a valid range constraint on an expression `e`, returns
     /// a valid range constraint for `e * e`.
     pub fn square(&self) -> Self {
-        let square_rc = if self.min > self.max {
+        if self.min > self.max {
+            // If we have "negative" values, make sure that the square
+            // is non-negative.
+            let max_abs = std::cmp::max(-self.min, self.max);
+            if max_abs.to_arbitrary_integer() * max_abs.to_arbitrary_integer()
+                < T::modulus().to_arbitrary_integer()
             {
-                let max_abs = std::cmp::max(-self.min, self.max);
-                if max_abs.to_arbitrary_integer() * max_abs.to_arbitrary_integer()
-                    < T::modulus().to_arbitrary_integer()
-                {
-                    Self::from_range(T::zero(), max_abs * max_abs)
-                } else {
-                    Default::default()
-                }
+                return Self::from_range(T::zero(), max_abs * max_abs);
             }
-        } else {
-            Default::default()
-        };
-        self.combine_product(self).conjunction(&square_rc)
+        }
+
+        self.combine_product(self)
     }
 
     /// Returns the conjunction of this constraint and the other.

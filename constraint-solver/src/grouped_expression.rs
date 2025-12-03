@@ -834,12 +834,15 @@ impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> GroupedExpression<T
 #[cfg(test)]
 mod tests {
 
+    use std::collections::HashMap;
+
     use crate::{
         symbolic_expression::SymbolicExpression,
         test_utils::{constant, var},
     };
 
     use super::*;
+    use expect_test::expect;
     use powdr_number::GoldilocksField;
 
     use pretty_assertions::assert_eq;
@@ -1107,5 +1110,22 @@ mod tests {
         );
         let factors = expr.to_factors().into_iter().format(", ").to_string();
         assert_eq!(factors, "x, y, z + 1, t + 2 * z, t");
+    }
+
+    #[test]
+    fn rc_of_square() {
+        let expr = (var("x") * var("x")) + constant(3);
+        let rc1 = HashMap::from([("x", RangeConstraint::from_range(1.into(), 2.into()))]);
+        expect!("[4, 7] & 0x7").assert_eq(&expr.range_constraint(&rc1).to_string());
+        let rc2 = HashMap::from([(
+            "x",
+            RangeConstraint::from_range(-GoldilocksField::from(5), 3.into()),
+        )]);
+        expect!("[3, 28] & 0x1f").assert_eq(&expr.range_constraint(&rc2).to_string());
+        let rc3 = HashMap::from([(
+            "x",
+            RangeConstraint::from_range(-GoldilocksField::from(3), 5.into()),
+        )]);
+        expect!("[3, 28] & 0x1f").assert_eq(&expr.range_constraint(&rc3).to_string());
     }
 }
