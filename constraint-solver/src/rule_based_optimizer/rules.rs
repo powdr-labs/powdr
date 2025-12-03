@@ -8,7 +8,7 @@ use itertools::Itertools;
 use powdr_number::FieldElement;
 
 use crate::{
-    grouped_expression::{GroupedExpressionComponent, RangeConstraintProvider},
+    grouped_expression::RangeConstraintProvider,
     range_constraint::RangeConstraint,
     rule_based_optimizer::{
         environment::Environment,
@@ -64,45 +64,11 @@ crepe! {
       RangeConstraintOnVar(v, v_rc1),
       RangeConstraintOnVar(v, v_rc2);
 
-    struct Product(Expr, Expr, Expr);
-    Product(e, l, r) <-
-      Expression(e),
-      Env(env),
-      let Some((l, r)) = env.try_as_single_product(e);
-    Product(e, r, l) <- Product(e, l, r);
-
     struct ReplaceAlgebraicConstraintBy(Expr, Expr);
-
-    struct HasProductSummand(Expr, Expr, Expr);
-    HasProductSummand(e, l, r) <-
-      Env(env),
-      Expression(e),
-      (!env.on_expr(e, (), |e, _| e.is_affine())),
-      for (l, r) in env.extract(e).into_summands().filter_map(|s| {
-          if let GroupedExpressionComponent::Quadratic(l, r) = s {
-              Some((env.insert_owned(l), env.insert_owned(r)))
-          } else {
-              None
-          }
-      });
-    HasProductSummand(e, r, l) <- HasProductSummand(e, l, r);
-    Expression(l) <- HasProductSummand(_, l, _);
-    Expression(r) <- HasProductSummand(_, _, r);
-
-    struct ProductConstraint(Expr, Expr, Expr);
-    ProductConstraint(e, l, r) <-
-      AlgebraicConstraint(e),
-      Product(e, l, r);
 
     struct Solvable<T: FieldElement>(Expr, Var, T);
     Solvable(e, var, -offset / coeff) <-
       AffineExpression(e, coeff, var, offset);
-
-    // Boolean range constraint
-    RangeConstraintOnVar(v, RangeConstraint::from_range(x1, x1 + T::from(1))) <-
-      ProductConstraint(_, l, r),
-      Solvable(l, v, x1),
-      Solvable(r, v, x1 + T::from(1));
 
     struct Assignment<T: FieldElement>(Var, T);
     Assignment(var, v) <-

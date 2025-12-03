@@ -89,6 +89,7 @@ impl<T: FieldElement> Environment<T> {
         )
     }
 
+    #[allow(dead_code)]
     pub fn insert(&self, expr: &GroupedExpression<T, Var>) -> Expr {
         self.expressions.borrow_mut().insert(expr)
     }
@@ -99,6 +100,7 @@ impl<T: FieldElement> Environment<T> {
 
     /// Extract an Expr into a free GroupedExpression.
     /// This is expensive since it clones the expression.
+    #[allow(dead_code)]
     pub fn extract(&self, expr: Expr) -> GroupedExpression<T, Var> {
         self.expressions.borrow()[expr].clone()
     }
@@ -145,6 +147,7 @@ impl<T: FieldElement> Environment<T> {
         f(expr, args)
     }
 
+    #[allow(dead_code)]
     pub fn try_as_single_product(&self, expr: Expr) -> Option<(Expr, Expr)> {
         let (l, r) = {
             let db = self.expressions.borrow();
