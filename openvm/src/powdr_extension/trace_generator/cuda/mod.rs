@@ -402,7 +402,7 @@ impl PowdrTraceGeneratorGpu {
 
 
         // Prepare `OriginalAir` and `Subst` arrays
-        let (airs, substitutions) = {
+        let (airs, substitutions, _) = {
             self.apc
                 // go through original instructions
                 .instructions()
@@ -415,13 +415,12 @@ impl PowdrTraceGeneratorGpu {
                 .into_group_map()
                 // go through each air and its substitutions
                 .iter()
-                .enumerate()
                 .fold(
-                    (Vec::new(), Vec::new()),
-                    |(mut airs, mut substitutions), (air_index, (air_name, subs_by_row))| {
+                    (Vec::new(), Vec::new(), 0usize),
+                    |(mut airs, mut substitutions, mut air_index), (air_name, subs_by_row)| {
                         if *air_name == "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>" {
                             // skip ALU air because it is already processed above
-                            return (airs, substitutions);
+                            return (airs, substitutions, air_index);
                         }
 
                         // Find the substitutions that map to an apc column
@@ -455,7 +454,7 @@ impl PowdrTraceGeneratorGpu {
 
                         substitutions.extend(new_substitutions);
 
-                        (airs, substitutions)
+                        (airs, substitutions, air_index + 1)
                     },
                 )
         };
