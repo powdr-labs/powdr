@@ -6,7 +6,6 @@ use itertools::Itertools;
 use powdr_constraint_solver::constraint_system::{
     AlgebraicConstraint, ComputationMethod, DerivedVariable,
 };
-use powdr_constraint_solver::grouped_expression::NoRangeConstraints;
 use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
 use powdr_constraint_solver::inliner::{self, inline_everything_below_degree_bound};
 use powdr_constraint_solver::rule_based_optimizer::rule_based_optimization;
@@ -100,7 +99,7 @@ pub fn optimize<A: Adapter>(
     }
 
     let constraint_system = inliner::replace_constrained_witness_columns(
-        constraint_system.into(),
+        constraint_system,
         inline_everything_below_degree_bound(degree_bound),
     );
     stats_logger.log("inlining", &constraint_system);
