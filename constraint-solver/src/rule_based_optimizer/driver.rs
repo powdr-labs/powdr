@@ -43,6 +43,10 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         );
         return (system, vec![]);
     }
+    println!(
+        "Starting rule-based optimization on {} constraints...",
+        system.system().algebraic_constraints.len()
+    );
     let mut assignments = vec![];
     let mut var_mapper = system
         .referenced_unknown_variables()
@@ -109,9 +113,13 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         );
         rt.extend(std::iter::once(rules::Env(&env)));
 
-        // let ((actions,), profile) = rt.run_with_profiling();
-        // profile.report();
-        let (actions,) = rt.run();
+        println!(
+            "  launching Optimizing {} algebraic constraints...",
+            algebraic_constraints.len(),
+        );
+        let ((actions,), profile) = rt.run_with_profiling();
+        profile.report();
+        // let (actions,) = rt.run();
         let (expr_db_, new_var_generator) = env.terminate();
 
         // TODO we do not need all of those variables.
