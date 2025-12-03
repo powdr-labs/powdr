@@ -316,7 +316,7 @@ pub trait BusInteractionHandler<T: FieldElement> {
 
 /// A default bus interaction handler that does nothing. Using it is
 /// equivalent to ignoring bus interactions.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct DefaultBusInteractionHandler<T: FieldElement> {
     _marker: std::marker::PhantomData<T>,
 }

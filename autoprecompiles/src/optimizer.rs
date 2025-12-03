@@ -6,7 +6,9 @@ use itertools::Itertools;
 use powdr_constraint_solver::constraint_system::{
     AlgebraicConstraint, ComputationMethod, DerivedVariable,
 };
+use powdr_constraint_solver::grouped_expression::NoRangeConstraints;
 use powdr_constraint_solver::inliner::{self, inline_everything_below_degree_bound};
+use powdr_constraint_solver::rule_based_optimizer::rule_based_optimization;
 use powdr_constraint_solver::solver::new_solver;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, ConstraintSystem},
@@ -35,7 +37,7 @@ pub fn optimize<A: Adapter>(
     bus_interaction_handler: A::BusInteractionHandler,
     degree_bound: DegreeBound,
     bus_map: &BusMap<A::CustomBusTypes>,
-    column_allocator: ColumnAllocator,
+    mut column_allocator: ColumnAllocator,
 ) -> Result<(SymbolicMachine<A::PowdrField>, ColumnAllocator), crate::constraint_optimizer::Error> {
     let mut stats_logger = StatsLogger::start(&machine);
 
@@ -44,7 +46,30 @@ pub fn optimize<A: Adapter>(
         stats_logger.log("exec bus optimization", &machine);
     }
 
-    let mut constraint_system = symbolic_machine_to_constraint_system(machine);
+    let mut new_var = |name: &str| {
+        let id = column_allocator.issue_next_poly_id();
+        AlgebraicReference {
+            // TODO is it a problem that we do not check the name to be unique?
+            name: format!("{name}_{id}").into(),
+            id,
+        }
+    };
+
+    let constraint_system = symbolic_machine_to_constraint_system(machine);
+    stats_logger.log("system construction", &constraint_system);
+
+    let (constraint_system, _) = rule_based_optimization(
+        constraint_system.into(),
+        NoRangeConstraints,
+        bus_interaction_handler.clone(),
+        &mut new_var,
+        // No degree bound given, i.e. only perform replacements that
+        // do not increase the degree.
+        None,
+    );
+    stats_logger.log("rule-based optimization", &constraint_system);
+    let mut constraint_system = constraint_system.system().clone();
+
     let mut solver = new_solver(constraint_system.clone(), bus_interaction_handler.clone());
     loop {
         let stats = stats_logger::Stats::from(&constraint_system);
@@ -55,6 +80,7 @@ pub fn optimize<A: Adapter>(
             &mut stats_logger,
             bus_map.get_bus_id(&BusType::Memory),
             degree_bound,
+            &mut new_var,
         )?
         .clone();
         if stats == stats_logger::Stats::from(&constraint_system) {
@@ -65,15 +91,20 @@ pub fn optimize<A: Adapter>(
     let constraint_system = inliner::replace_constrained_witness_columns(
         constraint_system.into(),
         inline_everything_below_degree_bound(degree_bound),
-    )
-    .system()
-    .clone();
+    );
     stats_logger.log("inlining", &constraint_system);
 
+    let (constraint_system, _) = rule_based_optimization(
+        constraint_system,
+        &solver,
+        bus_interaction_handler.clone(),
+        &mut new_var,
+        Some(degree_bound),
+    );
     // Note that the rest of the optimization does not benefit from optimizing range constraints,
     // so we only do it once at the end.
     let constraint_system = optimize_range_constraints(
-        constraint_system,
+        constraint_system.into(),
         bus_interaction_handler.clone(),
         degree_bound,
     );

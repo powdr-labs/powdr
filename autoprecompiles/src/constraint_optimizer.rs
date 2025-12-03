@@ -15,6 +15,7 @@ use powdr_constraint_solver::{
     indexed_constraint_system::IndexedConstraintSystem,
     inliner::DegreeBound,
     reachability::reachable_variables,
+    rule_based_optimizer::rule_based_optimization,
     solver::Solver,
 };
 use powdr_number::FieldElement;
@@ -57,9 +58,11 @@ pub fn optimize_constraints<
     stats_logger: &mut StatsLogger,
     memory_bus_id: Option<u64>,
     degree_bound: DegreeBound,
+    new_var: &mut impl FnMut(&str) -> V,
 ) -> Result<ConstraintSystem<P, V>, Error> {
     // Index the constraint system for the first time
     let constraint_system = IndexedConstraintSystem::from(constraint_system);
+    stats_logger.log("indexing", &constraint_system);
 
     let constraint_system = solver_based_optimization(constraint_system, solver)?;
     stats_logger.log("solver-based optimization", &constraint_system);
@@ -80,6 +83,20 @@ pub fn optimize_constraints<
         bus_interaction_handler.clone(),
         stats_logger,
     );
+
+    let (constraint_system, assignments) = rule_based_optimization(
+        constraint_system,
+        &*solver,
+        bus_interaction_handler.clone(),
+        new_var,
+        // No degree bound given, i.e. only perform replacements that
+        // do not increase the degree.
+        None,
+    );
+    solver.add_algebraic_constraints(assignments.into_iter().map(|(v, val)| {
+        AlgebraicConstraint::assert_eq(GroupedExpression::from_unknown_variable(v), val)
+    }));
+    stats_logger.log("rule-based optimization", &constraint_system);
 
     // At this point, we throw away the index and only keep the constraint system, since the rest of the optimisations are defined on the system alone
     let constraint_system: ConstraintSystem<P, V> = constraint_system.into();
