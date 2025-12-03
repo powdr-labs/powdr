@@ -56,27 +56,32 @@ pub fn optimize<A: Adapter>(
         }
     };
 
-    let mut constraint_system = symbolic_machine_to_constraint_system(machine);
+    let constraint_system = symbolic_machine_to_constraint_system(machine);
     stats_logger.log("system construction", &constraint_system);
 
     let mut constraint_system: IndexedConstraintSystem<_, _> = constraint_system.into();
     stats_logger.log("indexing", &constraint_system);
-    // let (constraint_system, _) = rule_based_optimization(
-    //     constraint_system.into(),
+
+    // If this is enabled, memory usage will skyrocket during
+    // solver-based optimization even though we just return
+    // constraint_system unmodified for large systems.
+    // let mut constraint_system = rule_based_optimization(
+    //     constraint_system,
     //     NoRangeConstraints,
     //     bus_interaction_handler.clone(),
     //     &mut new_var,
     //     // No degree bound given, i.e. only perform replacements that
     //     // do not increase the degree.
     //     None,
-    // );
-    // stats_logger.log("rule-based optimization", &constraint_system);
-    // let mut constraint_system = constraint_system.system().clone();
+    // )
+    // .0;
+    stats_logger.log("rule-based optimization", &constraint_system);
 
     let mut solver = new_solver(
         constraint_system.system().clone(),
         bus_interaction_handler.clone(),
     );
+    stats_logger.log("constructing the solver", &constraint_system);
     loop {
         let stats = stats_logger::Stats::from(&constraint_system);
         constraint_system = optimize_constraints::<_, _, A::MemoryBusInteraction<_>>(
