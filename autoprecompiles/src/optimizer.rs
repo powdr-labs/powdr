@@ -7,6 +7,7 @@ use powdr_constraint_solver::constraint_system::{
     AlgebraicConstraint, ComputationMethod, DerivedVariable,
 };
 use powdr_constraint_solver::grouped_expression::NoRangeConstraints;
+use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
 use powdr_constraint_solver::inliner::{self, inline_everything_below_degree_bound};
 use powdr_constraint_solver::rule_based_optimizer::rule_based_optimization;
 use powdr_constraint_solver::solver::new_solver;
@@ -58,6 +59,8 @@ pub fn optimize<A: Adapter>(
     let mut constraint_system = symbolic_machine_to_constraint_system(machine);
     stats_logger.log("system construction", &constraint_system);
 
+    let mut constraint_system: IndexedConstraintSystem<_, _> = constraint_system.into();
+    stats_logger.log("indexing", &constraint_system);
     // let (constraint_system, _) = rule_based_optimization(
     //     constraint_system.into(),
     //     NoRangeConstraints,
@@ -70,7 +73,10 @@ pub fn optimize<A: Adapter>(
     // stats_logger.log("rule-based optimization", &constraint_system);
     // let mut constraint_system = constraint_system.system().clone();
 
-    let mut solver = new_solver(constraint_system.clone(), bus_interaction_handler.clone());
+    let mut solver = new_solver(
+        constraint_system.system().clone(),
+        bus_interaction_handler.clone(),
+    );
     loop {
         let stats = stats_logger::Stats::from(&constraint_system);
         constraint_system = optimize_constraints::<_, _, A::MemoryBusInteraction<_>>(
@@ -82,7 +88,7 @@ pub fn optimize<A: Adapter>(
             degree_bound,
             &mut new_var,
         )?
-        .clone();
+        .into();
         if stats == stats_logger::Stats::from(&constraint_system) {
             break;
         }

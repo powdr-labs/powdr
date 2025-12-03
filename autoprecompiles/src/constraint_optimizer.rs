@@ -49,7 +49,7 @@ pub fn optimize_constraints<
     V: Ord + Clone + Eq + Hash + Display,
     M: MemoryBusInteraction<P, V>,
 >(
-    constraint_system: ConstraintSystem<P, V>,
+    constraint_system: IndexedConstraintSystem<P, V>,
     solver: &mut impl Solver<P, V>,
     bus_interaction_handler: impl BusInteractionHandler<P>
         + IsBusStateful<P>
@@ -60,10 +60,6 @@ pub fn optimize_constraints<
     degree_bound: DegreeBound,
     new_var: &mut impl FnMut(&str) -> V,
 ) -> Result<ConstraintSystem<P, V>, Error> {
-    // Index the constraint system for the first time
-    let constraint_system = IndexedConstraintSystem::from(constraint_system);
-    stats_logger.log("indexing", &constraint_system);
-
     let constraint_system = solver_based_optimization(constraint_system, solver)?;
     stats_logger.log("solver-based optimization", &constraint_system);
 
