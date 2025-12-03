@@ -1,0 +1,1435 @@
+
+namespace PhantomAir;
+    // Preamble
+    col fixed is_first_row = [1] + [0]*;
+    col fixed is_last_row = [0] + [1]*;
+    col fixed is_transition = [0] + [1]* + [0];
+
+    let EXECUTION_BRIDGE = 0;
+    let MEMORY = 1;
+    let PC_LOOKUP = 2;
+    let VARIABLE_RANGE_CHECKER = 3;
+    let BITWISE_LOOKUP = 6;
+    let TUPLE_RANGE_CHECKER = 7;
+
+    // Witness columns
+    col witness pc;
+    col witness operands__0;
+    col witness operands__1;
+    col witness operands__2;
+    col witness timestamp;
+    col witness is_valid;
+
+    // Bus interactions (bus_index, fields, count)
+    std::protocols::bus::bus_interaction(EXECUTION_BRIDGE, [pc, timestamp], -is_valid);
+    std::protocols::bus::bus_interaction(EXECUTION_BRIDGE, [pc + 4, timestamp + 1], is_valid);
+
+    std::protocols::bus::bus_interaction(PC_LOOKUP, [pc, 1, operands__0, operands__1, operands__2, 0, 0, 0, 0], is_valid);
+
+    // Constraints
+
+
+
+namespace VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>;
+    // Preamble
+    col fixed is_first_row = [1] + [0]*;
+    col fixed is_last_row = [0] + [1]*;
+    col fixed is_transition = [0] + [1]* + [0];
+
+    let EXECUTION_BRIDGE = 0;
+    let MEMORY = 1;
+    let PC_LOOKUP = 2;
+    let VARIABLE_RANGE_CHECKER = 3;
+    let BITWISE_LOOKUP = 6;
+    let TUPLE_RANGE_CHECKER = 7;
+
+    // Witness columns
+    col witness from_state__pc;
+    col witness from_state__timestamp;
+    col witness rd_ptr;
+    col witness rs1_ptr;
+    col witness rs2;
+    col witness rs2_as;
+    col witness reads_aux__0__base__prev_timestamp;
+    col witness reads_aux__0__base__timestamp_lt_aux__lower_decomp__0;
+    col witness reads_aux__0__base__timestamp_lt_aux__lower_decomp__1;
+    col witness reads_aux__1__base__prev_timestamp;
+    col witness reads_aux__1__base__timestamp_lt_aux__lower_decomp__0;
+    col witness reads_aux__1__base__timestamp_lt_aux__lower_decomp__1;
+    col witness writes_aux__base__prev_timestamp;
+    col witness writes_aux__base__timestamp_lt_aux__lower_decomp__0;
+    col witness writes_aux__base__timestamp_lt_aux__lower_decomp__1;
+    col witness writes_aux__prev_data__0;
+    col witness writes_aux__prev_data__1;
+    col witness writes_aux__prev_data__2;
+    col witness writes_aux__prev_data__3;
+    col witness a__0;
+    col witness a__1;
+    col witness a__2;
+    col witness a__3;
+    col witness b__0;
+    col witness b__1;
+    col witness b__2;
+    col witness b__3;
+    col witness c__0;
+    col witness c__1;
+    col witness c__2;
+    col witness c__3;
+    col witness opcode_add_flag;
+    col witness opcode_sub_flag;
+    col witness opcode_xor_flag;
+    col witness opcode_or_flag;
+    col witness opcode_and_flag;
+
+    // Bus interactions (bus_index, fields, count)
+    std::protocols::bus::bus_interaction(EXECUTION_BRIDGE, [from_state__pc, from_state__timestamp], -(0 + opcode_add_flag + opcode_sub_flag + opcode_xor_flag + opcode_or_flag + opcode_and_flag));
+    std::protocols::bus::bus_interaction(EXECUTION_BRIDGE, [from_state__pc + 4, from_state__timestamp + 3], 0 + opcode_add_flag + opcode_sub_flag + opcode_xor_flag + opcode_or_flag + opcode_and_flag);
+
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs1_ptr, b__0, b__1, b__2, b__3, reads_aux__0__base__prev_timestamp], 2013265920 * (0 + opcode_add_flag + opcode_sub_flag + opcode_xor_flag + opcode_or_flag + opcode_and_flag));
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs1_ptr, b__0, b__1, b__2, b__3, from_state__timestamp + 0], 0 + opcode_add_flag + opcode_sub_flag + opcode_xor_flag + opcode_or_flag + opcode_and_flag);
+    std::protocols::bus::bus_interaction(MEMORY, [rs2_as, rs2, c__0, c__1, c__2, c__3, reads_aux__1__base__prev_timestamp], 2013265920 * rs2_as);
+    std::protocols::bus::bus_interaction(MEMORY, [rs2_as, rs2, c__0, c__1, c__2, c__3, from_state__timestamp + 1], rs2_as);
+    std::protocols::bus::bus_interaction(MEMORY, [1, rd_ptr, writes_aux__prev_data__0, writes_aux__prev_data__1, writes_aux__prev_data__2, writes_aux__prev_data__3, writes_aux__base__prev_timestamp], 2013265920 * (0 + opcode_add_flag + opcode_sub_flag + opcode_xor_flag + opcode_or_flag + opcode_and_flag));
+    std::protocols::bus::bus_interaction(MEMORY, [1, rd_ptr, a__0, a__1, a__2, a__3, from_state__timestamp + 2], 0 + opcode_add_flag + opcode_sub_flag + opcode_xor_flag + opcode_or_flag + opcode_and_flag);
+
+    std::protocols::bus::bus_interaction(PC_LOOKUP, [from_state__pc, 512 + (0 + opcode_add_flag * 0 + opcode_sub_flag * 1 + opcode_xor_flag * 2 + opcode_or_flag * 3 + opcode_and_flag * 4), rd_ptr, rs1_ptr, rs2, 1, rs2_as, 0, 0], 0 + opcode_add_flag + opcode_sub_flag + opcode_xor_flag + opcode_or_flag + opcode_and_flag);
+
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__0__base__timestamp_lt_aux__lower_decomp__0, 17], 0 + opcode_add_flag + opcode_sub_flag + opcode_xor_flag + opcode_or_flag + opcode_and_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__0__base__timestamp_lt_aux__lower_decomp__1, 12], 0 + opcode_add_flag + opcode_sub_flag + opcode_xor_flag + opcode_or_flag + opcode_and_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__1__base__timestamp_lt_aux__lower_decomp__0, 17], rs2_as);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__1__base__timestamp_lt_aux__lower_decomp__1, 12], rs2_as);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [writes_aux__base__timestamp_lt_aux__lower_decomp__0, 17], 0 + opcode_add_flag + opcode_sub_flag + opcode_xor_flag + opcode_or_flag + opcode_and_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [writes_aux__base__timestamp_lt_aux__lower_decomp__1, 12], 0 + opcode_add_flag + opcode_sub_flag + opcode_xor_flag + opcode_or_flag + opcode_and_flag);
+
+    std::protocols::bus::bus_interaction(BITWISE_LOOKUP, [(1 - (opcode_xor_flag + opcode_or_flag + opcode_and_flag)) * a__0 + (opcode_xor_flag + opcode_or_flag + opcode_and_flag) * b__0, (1 - (opcode_xor_flag + opcode_or_flag + opcode_and_flag)) * a__0 + (opcode_xor_flag + opcode_or_flag + opcode_and_flag) * c__0, opcode_xor_flag * a__0 + opcode_or_flag * (2 * a__0 - b__0 - c__0) + opcode_and_flag * (b__0 + c__0 - 2 * a__0), 1], 0 + opcode_add_flag + opcode_sub_flag + opcode_xor_flag + opcode_or_flag + opcode_and_flag);
+    std::protocols::bus::bus_interaction(BITWISE_LOOKUP, [(1 - (opcode_xor_flag + opcode_or_flag + opcode_and_flag)) * a__1 + (opcode_xor_flag + opcode_or_flag + opcode_and_flag) * b__1, (1 - (opcode_xor_flag + opcode_or_flag + opcode_and_flag)) * a__1 + (opcode_xor_flag + opcode_or_flag + opcode_and_flag) * c__1, opcode_xor_flag * a__1 + opcode_or_flag * (2 * a__1 - b__1 - c__1) + opcode_and_flag * (b__1 + c__1 - 2 * a__1), 1], 0 + opcode_add_flag + opcode_sub_flag + opcode_xor_flag + opcode_or_flag + opcode_and_flag);
+    std::protocols::bus::bus_interaction(BITWISE_LOOKUP, [(1 - (opcode_xor_flag + opcode_or_flag + opcode_and_flag)) * a__2 + (opcode_xor_flag + opcode_or_flag + opcode_and_flag) * b__2, (1 - (opcode_xor_flag + opcode_or_flag + opcode_and_flag)) * a__2 + (opcode_xor_flag + opcode_or_flag + opcode_and_flag) * c__2, opcode_xor_flag * a__2 + opcode_or_flag * (2 * a__2 - b__2 - c__2) + opcode_and_flag * (b__2 + c__2 - 2 * a__2), 1], 0 + opcode_add_flag + opcode_sub_flag + opcode_xor_flag + opcode_or_flag + opcode_and_flag);
+    std::protocols::bus::bus_interaction(BITWISE_LOOKUP, [(1 - (opcode_xor_flag + opcode_or_flag + opcode_and_flag)) * a__3 + (opcode_xor_flag + opcode_or_flag + opcode_and_flag) * b__3, (1 - (opcode_xor_flag + opcode_or_flag + opcode_and_flag)) * a__3 + (opcode_xor_flag + opcode_or_flag + opcode_and_flag) * c__3, opcode_xor_flag * a__3 + opcode_or_flag * (2 * a__3 - b__3 - c__3) + opcode_and_flag * (b__3 + c__3 - 2 * a__3), 1], 0 + opcode_add_flag + opcode_sub_flag + opcode_xor_flag + opcode_or_flag + opcode_and_flag);
+    std::protocols::bus::bus_interaction(BITWISE_LOOKUP, [c__0, c__1, 0, 0], 0 + opcode_add_flag + opcode_sub_flag + opcode_xor_flag + opcode_or_flag + opcode_and_flag - rs2_as);
+
+    // Constraints
+    opcode_add_flag * (opcode_add_flag - 1) = 0;
+    opcode_sub_flag * (opcode_sub_flag - 1) = 0;
+    opcode_xor_flag * (opcode_xor_flag - 1) = 0;
+    opcode_or_flag * (opcode_or_flag - 1) = 0;
+    opcode_and_flag * (opcode_and_flag - 1) = 0;
+    (0 + opcode_add_flag + opcode_sub_flag + opcode_xor_flag + opcode_or_flag + opcode_and_flag) * (0 + opcode_add_flag + opcode_sub_flag + opcode_xor_flag + opcode_or_flag + opcode_and_flag - 1) = 0;
+    opcode_add_flag * (2005401601 * (b__0 + c__0 - a__0 + 0) * (2005401601 * (b__0 + c__0 - a__0 + 0) - 1)) = 0;
+    opcode_sub_flag * (2005401601 * (a__0 + c__0 - b__0 + 0) * (2005401601 * (a__0 + c__0 - b__0 + 0) - 1)) = 0;
+    opcode_add_flag * (2005401601 * (b__1 + c__1 - a__1 + 2005401601 * (b__0 + c__0 - a__0 + 0)) * (2005401601 * (b__1 + c__1 - a__1 + 2005401601 * (b__0 + c__0 - a__0 + 0)) - 1)) = 0;
+    opcode_sub_flag * (2005401601 * (a__1 + c__1 - b__1 + 2005401601 * (a__0 + c__0 - b__0 + 0)) * (2005401601 * (a__1 + c__1 - b__1 + 2005401601 * (a__0 + c__0 - b__0 + 0)) - 1)) = 0;
+    opcode_add_flag * (2005401601 * (b__2 + c__2 - a__2 + 2005401601 * (b__1 + c__1 - a__1 + 2005401601 * (b__0 + c__0 - a__0 + 0))) * (2005401601 * (b__2 + c__2 - a__2 + 2005401601 * (b__1 + c__1 - a__1 + 2005401601 * (b__0 + c__0 - a__0 + 0))) - 1)) = 0;
+    opcode_sub_flag * (2005401601 * (a__2 + c__2 - b__2 + 2005401601 * (a__1 + c__1 - b__1 + 2005401601 * (a__0 + c__0 - b__0 + 0))) * (2005401601 * (a__2 + c__2 - b__2 + 2005401601 * (a__1 + c__1 - b__1 + 2005401601 * (a__0 + c__0 - b__0 + 0))) - 1)) = 0;
+    opcode_add_flag * (2005401601 * (b__3 + c__3 - a__3 + 2005401601 * (b__2 + c__2 - a__2 + 2005401601 * (b__1 + c__1 - a__1 + 2005401601 * (b__0 + c__0 - a__0 + 0)))) * (2005401601 * (b__3 + c__3 - a__3 + 2005401601 * (b__2 + c__2 - a__2 + 2005401601 * (b__1 + c__1 - a__1 + 2005401601 * (b__0 + c__0 - a__0 + 0)))) - 1)) = 0;
+    opcode_sub_flag * (2005401601 * (a__3 + c__3 - b__3 + 2005401601 * (a__2 + c__2 - b__2 + 2005401601 * (a__1 + c__1 - b__1 + 2005401601 * (a__0 + c__0 - b__0 + 0)))) * (2005401601 * (a__3 + c__3 - b__3 + 2005401601 * (a__2 + c__2 - b__2 + 2005401601 * (a__1 + c__1 - b__1 + 2005401601 * (a__0 + c__0 - b__0 + 0)))) - 1)) = 0;
+    rs2_as * (rs2_as - 1) = 0;
+    (1 - rs2_as) * (rs2 - (c__0 + c__1 * 256 + c__2 * 65536)) = 0;
+    (1 - rs2_as) * (c__2 - c__3) = 0;
+    (1 - rs2_as) * (c__2 * (255 - c__2)) = 0;
+    (0 + opcode_add_flag + opcode_sub_flag + opcode_xor_flag + opcode_or_flag + opcode_and_flag) * (from_state__timestamp + 0 - reads_aux__0__base__prev_timestamp - 1 - (0 + reads_aux__0__base__timestamp_lt_aux__lower_decomp__0 * 1 + reads_aux__0__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+    rs2_as * (0 + opcode_add_flag + opcode_sub_flag + opcode_xor_flag + opcode_or_flag + opcode_and_flag - 1) = 0;
+    rs2_as * (from_state__timestamp + 1 - reads_aux__1__base__prev_timestamp - 1 - (0 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0 * 1 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+    (0 + opcode_add_flag + opcode_sub_flag + opcode_xor_flag + opcode_or_flag + opcode_and_flag) * (from_state__timestamp + 2 - writes_aux__base__prev_timestamp - 1 - (0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0 * 1 + writes_aux__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+
+
+
+namespace VmAirWrapper<Rv32BaseAluAdapterAir, LessThanCoreAir<4, 8>;
+    // Preamble
+    col fixed is_first_row = [1] + [0]*;
+    col fixed is_last_row = [0] + [1]*;
+    col fixed is_transition = [0] + [1]* + [0];
+
+    let EXECUTION_BRIDGE = 0;
+    let MEMORY = 1;
+    let PC_LOOKUP = 2;
+    let VARIABLE_RANGE_CHECKER = 3;
+    let BITWISE_LOOKUP = 6;
+    let TUPLE_RANGE_CHECKER = 7;
+
+    // Witness columns
+    col witness from_state__pc;
+    col witness from_state__timestamp;
+    col witness rd_ptr;
+    col witness rs1_ptr;
+    col witness rs2;
+    col witness rs2_as;
+    col witness reads_aux__0__base__prev_timestamp;
+    col witness reads_aux__0__base__timestamp_lt_aux__lower_decomp__0;
+    col witness reads_aux__0__base__timestamp_lt_aux__lower_decomp__1;
+    col witness reads_aux__1__base__prev_timestamp;
+    col witness reads_aux__1__base__timestamp_lt_aux__lower_decomp__0;
+    col witness reads_aux__1__base__timestamp_lt_aux__lower_decomp__1;
+    col witness writes_aux__base__prev_timestamp;
+    col witness writes_aux__base__timestamp_lt_aux__lower_decomp__0;
+    col witness writes_aux__base__timestamp_lt_aux__lower_decomp__1;
+    col witness writes_aux__prev_data__0;
+    col witness writes_aux__prev_data__1;
+    col witness writes_aux__prev_data__2;
+    col witness writes_aux__prev_data__3;
+    col witness b__0;
+    col witness b__1;
+    col witness b__2;
+    col witness b__3;
+    col witness c__0;
+    col witness c__1;
+    col witness c__2;
+    col witness c__3;
+    col witness cmp_result;
+    col witness opcode_slt_flag;
+    col witness opcode_sltu_flag;
+    col witness b_msb_f;
+    col witness c_msb_f;
+    col witness diff_marker__0;
+    col witness diff_marker__1;
+    col witness diff_marker__2;
+    col witness diff_marker__3;
+    col witness diff_val;
+
+    // Bus interactions (bus_index, fields, count)
+    std::protocols::bus::bus_interaction(EXECUTION_BRIDGE, [from_state__pc, from_state__timestamp], -(0 + opcode_slt_flag + opcode_sltu_flag));
+    std::protocols::bus::bus_interaction(EXECUTION_BRIDGE, [from_state__pc + 4, from_state__timestamp + 3], 0 + opcode_slt_flag + opcode_sltu_flag);
+
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs1_ptr, b__0, b__1, b__2, b__3, reads_aux__0__base__prev_timestamp], 2013265920 * (0 + opcode_slt_flag + opcode_sltu_flag));
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs1_ptr, b__0, b__1, b__2, b__3, from_state__timestamp + 0], 0 + opcode_slt_flag + opcode_sltu_flag);
+    std::protocols::bus::bus_interaction(MEMORY, [rs2_as, rs2, c__0, c__1, c__2, c__3, reads_aux__1__base__prev_timestamp], 2013265920 * rs2_as);
+    std::protocols::bus::bus_interaction(MEMORY, [rs2_as, rs2, c__0, c__1, c__2, c__3, from_state__timestamp + 1], rs2_as);
+    std::protocols::bus::bus_interaction(MEMORY, [1, rd_ptr, writes_aux__prev_data__0, writes_aux__prev_data__1, writes_aux__prev_data__2, writes_aux__prev_data__3, writes_aux__base__prev_timestamp], 2013265920 * (0 + opcode_slt_flag + opcode_sltu_flag));
+    std::protocols::bus::bus_interaction(MEMORY, [1, rd_ptr, cmp_result, 0, 0, 0, from_state__timestamp + 2], 0 + opcode_slt_flag + opcode_sltu_flag);
+
+    std::protocols::bus::bus_interaction(PC_LOOKUP, [from_state__pc, 0 + opcode_slt_flag * 0 + opcode_sltu_flag * 1 + 520, rd_ptr, rs1_ptr, rs2, 1, rs2_as, 0, 0], 0 + opcode_slt_flag + opcode_sltu_flag);
+
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__0__base__timestamp_lt_aux__lower_decomp__0, 17], 0 + opcode_slt_flag + opcode_sltu_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__0__base__timestamp_lt_aux__lower_decomp__1, 12], 0 + opcode_slt_flag + opcode_sltu_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__1__base__timestamp_lt_aux__lower_decomp__0, 17], rs2_as);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__1__base__timestamp_lt_aux__lower_decomp__1, 12], rs2_as);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [writes_aux__base__timestamp_lt_aux__lower_decomp__0, 17], 0 + opcode_slt_flag + opcode_sltu_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [writes_aux__base__timestamp_lt_aux__lower_decomp__1, 12], 0 + opcode_slt_flag + opcode_sltu_flag);
+
+    std::protocols::bus::bus_interaction(BITWISE_LOOKUP, [b_msb_f + 128 * opcode_slt_flag, c_msb_f + 128 * opcode_slt_flag, 0, 0], 0 + opcode_slt_flag + opcode_sltu_flag);
+    std::protocols::bus::bus_interaction(BITWISE_LOOKUP, [diff_val - 1, 0, 0, 0], 0 + diff_marker__3 + diff_marker__2 + diff_marker__1 + diff_marker__0);
+    std::protocols::bus::bus_interaction(BITWISE_LOOKUP, [c__0, c__1, 0, 0], 0 + opcode_slt_flag + opcode_sltu_flag - rs2_as);
+
+    // Constraints
+    opcode_slt_flag * (opcode_slt_flag - 1) = 0;
+    opcode_sltu_flag * (opcode_sltu_flag - 1) = 0;
+    (0 + opcode_slt_flag + opcode_sltu_flag) * (0 + opcode_slt_flag + opcode_sltu_flag - 1) = 0;
+    cmp_result * (cmp_result - 1) = 0;
+    (b__3 - b_msb_f) * (256 - (b__3 - b_msb_f)) = 0;
+    (c__3 - c_msb_f) * (256 - (c__3 - c_msb_f)) = 0;
+    diff_marker__3 * (diff_marker__3 - 1) = 0;
+    (1 - (0 + diff_marker__3)) * ((c_msb_f - b_msb_f) * (2 * cmp_result - 1)) = 0;
+    diff_marker__3 * (diff_val - (c_msb_f - b_msb_f) * (2 * cmp_result - 1)) = 0;
+    diff_marker__2 * (diff_marker__2 - 1) = 0;
+    (1 - (0 + diff_marker__3 + diff_marker__2)) * ((c__2 - b__2) * (2 * cmp_result - 1)) = 0;
+    diff_marker__2 * (diff_val - (c__2 - b__2) * (2 * cmp_result - 1)) = 0;
+    diff_marker__1 * (diff_marker__1 - 1) = 0;
+    (1 - (0 + diff_marker__3 + diff_marker__2 + diff_marker__1)) * ((c__1 - b__1) * (2 * cmp_result - 1)) = 0;
+    diff_marker__1 * (diff_val - (c__1 - b__1) * (2 * cmp_result - 1)) = 0;
+    diff_marker__0 * (diff_marker__0 - 1) = 0;
+    (1 - (0 + diff_marker__3 + diff_marker__2 + diff_marker__1 + diff_marker__0)) * ((c__0 - b__0) * (2 * cmp_result - 1)) = 0;
+    diff_marker__0 * (diff_val - (c__0 - b__0) * (2 * cmp_result - 1)) = 0;
+    (0 + diff_marker__3 + diff_marker__2 + diff_marker__1 + diff_marker__0) * (0 + diff_marker__3 + diff_marker__2 + diff_marker__1 + diff_marker__0 - 1) = 0;
+    (1 - (0 + diff_marker__3 + diff_marker__2 + diff_marker__1 + diff_marker__0)) * cmp_result = 0;
+    rs2_as * (rs2_as - 1) = 0;
+    (1 - rs2_as) * (rs2 - (c__0 + c__1 * 256 + c__2 * 65536)) = 0;
+    (1 - rs2_as) * (c__2 - c__3) = 0;
+    (1 - rs2_as) * (c__2 * (255 - c__2)) = 0;
+    (0 + opcode_slt_flag + opcode_sltu_flag) * (from_state__timestamp + 0 - reads_aux__0__base__prev_timestamp - 1 - (0 + reads_aux__0__base__timestamp_lt_aux__lower_decomp__0 * 1 + reads_aux__0__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+    rs2_as * (0 + opcode_slt_flag + opcode_sltu_flag - 1) = 0;
+    rs2_as * (from_state__timestamp + 1 - reads_aux__1__base__prev_timestamp - 1 - (0 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0 * 1 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+    (0 + opcode_slt_flag + opcode_sltu_flag) * (from_state__timestamp + 2 - writes_aux__base__prev_timestamp - 1 - (0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0 * 1 + writes_aux__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+
+
+
+namespace VmAirWrapper<Rv32BaseAluAdapterAir, ShiftCoreAir<4, 8>;
+    // Preamble
+    col fixed is_first_row = [1] + [0]*;
+    col fixed is_last_row = [0] + [1]*;
+    col fixed is_transition = [0] + [1]* + [0];
+
+    let EXECUTION_BRIDGE = 0;
+    let MEMORY = 1;
+    let PC_LOOKUP = 2;
+    let VARIABLE_RANGE_CHECKER = 3;
+    let BITWISE_LOOKUP = 6;
+    let TUPLE_RANGE_CHECKER = 7;
+
+    // Witness columns
+    col witness from_state__pc;
+    col witness from_state__timestamp;
+    col witness rd_ptr;
+    col witness rs1_ptr;
+    col witness rs2;
+    col witness rs2_as;
+    col witness reads_aux__0__base__prev_timestamp;
+    col witness reads_aux__0__base__timestamp_lt_aux__lower_decomp__0;
+    col witness reads_aux__0__base__timestamp_lt_aux__lower_decomp__1;
+    col witness reads_aux__1__base__prev_timestamp;
+    col witness reads_aux__1__base__timestamp_lt_aux__lower_decomp__0;
+    col witness reads_aux__1__base__timestamp_lt_aux__lower_decomp__1;
+    col witness writes_aux__base__prev_timestamp;
+    col witness writes_aux__base__timestamp_lt_aux__lower_decomp__0;
+    col witness writes_aux__base__timestamp_lt_aux__lower_decomp__1;
+    col witness writes_aux__prev_data__0;
+    col witness writes_aux__prev_data__1;
+    col witness writes_aux__prev_data__2;
+    col witness writes_aux__prev_data__3;
+    col witness a__0;
+    col witness a__1;
+    col witness a__2;
+    col witness a__3;
+    col witness b__0;
+    col witness b__1;
+    col witness b__2;
+    col witness b__3;
+    col witness c__0;
+    col witness c__1;
+    col witness c__2;
+    col witness c__3;
+    col witness opcode_sll_flag;
+    col witness opcode_srl_flag;
+    col witness opcode_sra_flag;
+    col witness bit_multiplier_left;
+    col witness bit_multiplier_right;
+    col witness b_sign;
+    col witness bit_shift_marker__0;
+    col witness bit_shift_marker__1;
+    col witness bit_shift_marker__2;
+    col witness bit_shift_marker__3;
+    col witness bit_shift_marker__4;
+    col witness bit_shift_marker__5;
+    col witness bit_shift_marker__6;
+    col witness bit_shift_marker__7;
+    col witness limb_shift_marker__0;
+    col witness limb_shift_marker__1;
+    col witness limb_shift_marker__2;
+    col witness limb_shift_marker__3;
+    col witness bit_shift_carry__0;
+    col witness bit_shift_carry__1;
+    col witness bit_shift_carry__2;
+    col witness bit_shift_carry__3;
+
+    // Bus interactions (bus_index, fields, count)
+    std::protocols::bus::bus_interaction(EXECUTION_BRIDGE, [from_state__pc, from_state__timestamp], -(0 + opcode_sll_flag + opcode_srl_flag + opcode_sra_flag));
+    std::protocols::bus::bus_interaction(EXECUTION_BRIDGE, [from_state__pc + 4, from_state__timestamp + 3], 0 + opcode_sll_flag + opcode_srl_flag + opcode_sra_flag);
+
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs1_ptr, b__0, b__1, b__2, b__3, reads_aux__0__base__prev_timestamp], 2013265920 * (0 + opcode_sll_flag + opcode_srl_flag + opcode_sra_flag));
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs1_ptr, b__0, b__1, b__2, b__3, from_state__timestamp + 0], 0 + opcode_sll_flag + opcode_srl_flag + opcode_sra_flag);
+    std::protocols::bus::bus_interaction(MEMORY, [rs2_as, rs2, c__0, c__1, c__2, c__3, reads_aux__1__base__prev_timestamp], 2013265920 * rs2_as);
+    std::protocols::bus::bus_interaction(MEMORY, [rs2_as, rs2, c__0, c__1, c__2, c__3, from_state__timestamp + 1], rs2_as);
+    std::protocols::bus::bus_interaction(MEMORY, [1, rd_ptr, writes_aux__prev_data__0, writes_aux__prev_data__1, writes_aux__prev_data__2, writes_aux__prev_data__3, writes_aux__base__prev_timestamp], 2013265920 * (0 + opcode_sll_flag + opcode_srl_flag + opcode_sra_flag));
+    std::protocols::bus::bus_interaction(MEMORY, [1, rd_ptr, a__0, a__1, a__2, a__3, from_state__timestamp + 2], 0 + opcode_sll_flag + opcode_srl_flag + opcode_sra_flag);
+
+    std::protocols::bus::bus_interaction(PC_LOOKUP, [from_state__pc, 517 + (0 + opcode_sll_flag * 0 + opcode_srl_flag * 1 + opcode_sra_flag * 2), rd_ptr, rs1_ptr, rs2, 1, rs2_as, 0, 0], 0 + opcode_sll_flag + opcode_srl_flag + opcode_sra_flag);
+
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [(c__0 - (0 + 0 * limb_shift_marker__0 + 1 * limb_shift_marker__1 + 2 * limb_shift_marker__2 + 3 * limb_shift_marker__3) * 8 - (0 + 0 * bit_shift_marker__0 + 1 * bit_shift_marker__1 + 2 * bit_shift_marker__2 + 3 * bit_shift_marker__3 + 4 * bit_shift_marker__4 + 5 * bit_shift_marker__5 + 6 * bit_shift_marker__6 + 7 * bit_shift_marker__7)) * 1950351361, 3], 0 + opcode_sll_flag + opcode_srl_flag + opcode_sra_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [bit_shift_carry__0, 0 + 0 * bit_shift_marker__0 + 1 * bit_shift_marker__1 + 2 * bit_shift_marker__2 + 3 * bit_shift_marker__3 + 4 * bit_shift_marker__4 + 5 * bit_shift_marker__5 + 6 * bit_shift_marker__6 + 7 * bit_shift_marker__7], 0 + opcode_sll_flag + opcode_srl_flag + opcode_sra_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [bit_shift_carry__1, 0 + 0 * bit_shift_marker__0 + 1 * bit_shift_marker__1 + 2 * bit_shift_marker__2 + 3 * bit_shift_marker__3 + 4 * bit_shift_marker__4 + 5 * bit_shift_marker__5 + 6 * bit_shift_marker__6 + 7 * bit_shift_marker__7], 0 + opcode_sll_flag + opcode_srl_flag + opcode_sra_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [bit_shift_carry__2, 0 + 0 * bit_shift_marker__0 + 1 * bit_shift_marker__1 + 2 * bit_shift_marker__2 + 3 * bit_shift_marker__3 + 4 * bit_shift_marker__4 + 5 * bit_shift_marker__5 + 6 * bit_shift_marker__6 + 7 * bit_shift_marker__7], 0 + opcode_sll_flag + opcode_srl_flag + opcode_sra_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [bit_shift_carry__3, 0 + 0 * bit_shift_marker__0 + 1 * bit_shift_marker__1 + 2 * bit_shift_marker__2 + 3 * bit_shift_marker__3 + 4 * bit_shift_marker__4 + 5 * bit_shift_marker__5 + 6 * bit_shift_marker__6 + 7 * bit_shift_marker__7], 0 + opcode_sll_flag + opcode_srl_flag + opcode_sra_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__0__base__timestamp_lt_aux__lower_decomp__0, 17], 0 + opcode_sll_flag + opcode_srl_flag + opcode_sra_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__0__base__timestamp_lt_aux__lower_decomp__1, 12], 0 + opcode_sll_flag + opcode_srl_flag + opcode_sra_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__1__base__timestamp_lt_aux__lower_decomp__0, 17], rs2_as);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__1__base__timestamp_lt_aux__lower_decomp__1, 12], rs2_as);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [writes_aux__base__timestamp_lt_aux__lower_decomp__0, 17], 0 + opcode_sll_flag + opcode_srl_flag + opcode_sra_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [writes_aux__base__timestamp_lt_aux__lower_decomp__1, 12], 0 + opcode_sll_flag + opcode_srl_flag + opcode_sra_flag);
+
+    std::protocols::bus::bus_interaction(BITWISE_LOOKUP, [b__3, 128, b__3 + 128 - 2 * (b_sign * 128), 1], opcode_sra_flag);
+    std::protocols::bus::bus_interaction(BITWISE_LOOKUP, [a__0, a__1, 0, 0], 0 + opcode_sll_flag + opcode_srl_flag + opcode_sra_flag);
+    std::protocols::bus::bus_interaction(BITWISE_LOOKUP, [a__2, a__3, 0, 0], 0 + opcode_sll_flag + opcode_srl_flag + opcode_sra_flag);
+    std::protocols::bus::bus_interaction(BITWISE_LOOKUP, [c__0, c__1, 0, 0], 0 + opcode_sll_flag + opcode_srl_flag + opcode_sra_flag - rs2_as);
+
+    // Constraints
+    opcode_sll_flag * (opcode_sll_flag - 1) = 0;
+    opcode_srl_flag * (opcode_srl_flag - 1) = 0;
+    opcode_sra_flag * (opcode_sra_flag - 1) = 0;
+    (0 + opcode_sll_flag + opcode_srl_flag + opcode_sra_flag) * (0 + opcode_sll_flag + opcode_srl_flag + opcode_sra_flag - 1) = 0;
+    bit_shift_marker__0 * (bit_shift_marker__0 - 1) = 0;
+    bit_shift_marker__0 * (bit_multiplier_left - 1 * opcode_sll_flag) = 0;
+    bit_shift_marker__0 * (bit_multiplier_right - 1 * (opcode_srl_flag + opcode_sra_flag)) = 0;
+    bit_shift_marker__1 * (bit_shift_marker__1 - 1) = 0;
+    bit_shift_marker__1 * (bit_multiplier_left - 2 * opcode_sll_flag) = 0;
+    bit_shift_marker__1 * (bit_multiplier_right - 2 * (opcode_srl_flag + opcode_sra_flag)) = 0;
+    bit_shift_marker__2 * (bit_shift_marker__2 - 1) = 0;
+    bit_shift_marker__2 * (bit_multiplier_left - 4 * opcode_sll_flag) = 0;
+    bit_shift_marker__2 * (bit_multiplier_right - 4 * (opcode_srl_flag + opcode_sra_flag)) = 0;
+    bit_shift_marker__3 * (bit_shift_marker__3 - 1) = 0;
+    bit_shift_marker__3 * (bit_multiplier_left - 8 * opcode_sll_flag) = 0;
+    bit_shift_marker__3 * (bit_multiplier_right - 8 * (opcode_srl_flag + opcode_sra_flag)) = 0;
+    bit_shift_marker__4 * (bit_shift_marker__4 - 1) = 0;
+    bit_shift_marker__4 * (bit_multiplier_left - 16 * opcode_sll_flag) = 0;
+    bit_shift_marker__4 * (bit_multiplier_right - 16 * (opcode_srl_flag + opcode_sra_flag)) = 0;
+    bit_shift_marker__5 * (bit_shift_marker__5 - 1) = 0;
+    bit_shift_marker__5 * (bit_multiplier_left - 32 * opcode_sll_flag) = 0;
+    bit_shift_marker__5 * (bit_multiplier_right - 32 * (opcode_srl_flag + opcode_sra_flag)) = 0;
+    bit_shift_marker__6 * (bit_shift_marker__6 - 1) = 0;
+    bit_shift_marker__6 * (bit_multiplier_left - 64 * opcode_sll_flag) = 0;
+    bit_shift_marker__6 * (bit_multiplier_right - 64 * (opcode_srl_flag + opcode_sra_flag)) = 0;
+    bit_shift_marker__7 * (bit_shift_marker__7 - 1) = 0;
+    bit_shift_marker__7 * (bit_multiplier_left - 128 * opcode_sll_flag) = 0;
+    bit_shift_marker__7 * (bit_multiplier_right - 128 * (opcode_srl_flag + opcode_sra_flag)) = 0;
+    (0 + opcode_sll_flag + opcode_srl_flag + opcode_sra_flag) * (0 + bit_shift_marker__0 + bit_shift_marker__1 + bit_shift_marker__2 + bit_shift_marker__3 + bit_shift_marker__4 + bit_shift_marker__5 + bit_shift_marker__6 + bit_shift_marker__7 - 1) = 0;
+    limb_shift_marker__0 * (limb_shift_marker__0 - 1) = 0;
+    limb_shift_marker__0 * (a__0 * opcode_sll_flag - (0 + b__0 * bit_multiplier_left - 256 * bit_shift_carry__0 * opcode_sll_flag)) = 0;
+    limb_shift_marker__0 * (a__0 * bit_multiplier_right - (bit_shift_carry__1 * (opcode_srl_flag + opcode_sra_flag) * 256 + (opcode_srl_flag + opcode_sra_flag) * (b__0 - bit_shift_carry__0))) = 0;
+    limb_shift_marker__0 * (a__1 * opcode_sll_flag - (bit_shift_carry__0 * opcode_sll_flag + b__1 * bit_multiplier_left - 256 * bit_shift_carry__1 * opcode_sll_flag)) = 0;
+    limb_shift_marker__0 * (a__1 * bit_multiplier_right - (bit_shift_carry__2 * (opcode_srl_flag + opcode_sra_flag) * 256 + (opcode_srl_flag + opcode_sra_flag) * (b__1 - bit_shift_carry__1))) = 0;
+    limb_shift_marker__0 * (a__2 * opcode_sll_flag - (bit_shift_carry__1 * opcode_sll_flag + b__2 * bit_multiplier_left - 256 * bit_shift_carry__2 * opcode_sll_flag)) = 0;
+    limb_shift_marker__0 * (a__2 * bit_multiplier_right - (bit_shift_carry__3 * (opcode_srl_flag + opcode_sra_flag) * 256 + (opcode_srl_flag + opcode_sra_flag) * (b__2 - bit_shift_carry__2))) = 0;
+    limb_shift_marker__0 * (a__3 * opcode_sll_flag - (bit_shift_carry__2 * opcode_sll_flag + b__3 * bit_multiplier_left - 256 * bit_shift_carry__3 * opcode_sll_flag)) = 0;
+    limb_shift_marker__0 * (a__3 * bit_multiplier_right - (b_sign * (bit_multiplier_right - 1) * 256 + (opcode_srl_flag + opcode_sra_flag) * (b__3 - bit_shift_carry__3))) = 0;
+    limb_shift_marker__1 * (limb_shift_marker__1 - 1) = 0;
+    limb_shift_marker__1 * (a__0 * opcode_sll_flag) = 0;
+    limb_shift_marker__1 * (a__0 * bit_multiplier_right - (bit_shift_carry__2 * (opcode_srl_flag + opcode_sra_flag) * 256 + (opcode_srl_flag + opcode_sra_flag) * (b__1 - bit_shift_carry__1))) = 0;
+    limb_shift_marker__1 * (a__1 * opcode_sll_flag - (0 + b__0 * bit_multiplier_left - 256 * bit_shift_carry__0 * opcode_sll_flag)) = 0;
+    limb_shift_marker__1 * (a__1 * bit_multiplier_right - (bit_shift_carry__3 * (opcode_srl_flag + opcode_sra_flag) * 256 + (opcode_srl_flag + opcode_sra_flag) * (b__2 - bit_shift_carry__2))) = 0;
+    limb_shift_marker__1 * (a__2 * opcode_sll_flag - (bit_shift_carry__0 * opcode_sll_flag + b__1 * bit_multiplier_left - 256 * bit_shift_carry__1 * opcode_sll_flag)) = 0;
+    limb_shift_marker__1 * (a__2 * bit_multiplier_right - (b_sign * (bit_multiplier_right - 1) * 256 + (opcode_srl_flag + opcode_sra_flag) * (b__3 - bit_shift_carry__3))) = 0;
+    limb_shift_marker__1 * (a__3 * opcode_sll_flag - (bit_shift_carry__1 * opcode_sll_flag + b__2 * bit_multiplier_left - 256 * bit_shift_carry__2 * opcode_sll_flag)) = 0;
+    limb_shift_marker__1 * (a__3 * (opcode_srl_flag + opcode_sra_flag) - b_sign * 255) = 0;
+    limb_shift_marker__2 * (limb_shift_marker__2 - 1) = 0;
+    limb_shift_marker__2 * (a__0 * opcode_sll_flag) = 0;
+    limb_shift_marker__2 * (a__0 * bit_multiplier_right - (bit_shift_carry__3 * (opcode_srl_flag + opcode_sra_flag) * 256 + (opcode_srl_flag + opcode_sra_flag) * (b__2 - bit_shift_carry__2))) = 0;
+    limb_shift_marker__2 * (a__1 * opcode_sll_flag) = 0;
+    limb_shift_marker__2 * (a__1 * bit_multiplier_right - (b_sign * (bit_multiplier_right - 1) * 256 + (opcode_srl_flag + opcode_sra_flag) * (b__3 - bit_shift_carry__3))) = 0;
+    limb_shift_marker__2 * (a__2 * opcode_sll_flag - (0 + b__0 * bit_multiplier_left - 256 * bit_shift_carry__0 * opcode_sll_flag)) = 0;
+    limb_shift_marker__2 * (a__2 * (opcode_srl_flag + opcode_sra_flag) - b_sign * 255) = 0;
+    limb_shift_marker__2 * (a__3 * opcode_sll_flag - (bit_shift_carry__0 * opcode_sll_flag + b__1 * bit_multiplier_left - 256 * bit_shift_carry__1 * opcode_sll_flag)) = 0;
+    limb_shift_marker__2 * (a__3 * (opcode_srl_flag + opcode_sra_flag) - b_sign * 255) = 0;
+    limb_shift_marker__3 * (limb_shift_marker__3 - 1) = 0;
+    limb_shift_marker__3 * (a__0 * opcode_sll_flag) = 0;
+    limb_shift_marker__3 * (a__0 * bit_multiplier_right - (b_sign * (bit_multiplier_right - 1) * 256 + (opcode_srl_flag + opcode_sra_flag) * (b__3 - bit_shift_carry__3))) = 0;
+    limb_shift_marker__3 * (a__1 * opcode_sll_flag) = 0;
+    limb_shift_marker__3 * (a__1 * (opcode_srl_flag + opcode_sra_flag) - b_sign * 255) = 0;
+    limb_shift_marker__3 * (a__2 * opcode_sll_flag) = 0;
+    limb_shift_marker__3 * (a__2 * (opcode_srl_flag + opcode_sra_flag) - b_sign * 255) = 0;
+    limb_shift_marker__3 * (a__3 * opcode_sll_flag - (0 + b__0 * bit_multiplier_left - 256 * bit_shift_carry__0 * opcode_sll_flag)) = 0;
+    limb_shift_marker__3 * (a__3 * (opcode_srl_flag + opcode_sra_flag) - b_sign * 255) = 0;
+    (0 + opcode_sll_flag + opcode_srl_flag + opcode_sra_flag) * (0 + limb_shift_marker__0 + limb_shift_marker__1 + limb_shift_marker__2 + limb_shift_marker__3 - 1) = 0;
+    b_sign * (b_sign - 1) = 0;
+    (1 - opcode_sra_flag) * b_sign = 0;
+    rs2_as * (rs2_as - 1) = 0;
+    (1 - rs2_as) * (rs2 - (c__0 + c__1 * 256 + c__2 * 65536)) = 0;
+    (1 - rs2_as) * (c__2 - c__3) = 0;
+    (1 - rs2_as) * (c__2 * (255 - c__2)) = 0;
+    (0 + opcode_sll_flag + opcode_srl_flag + opcode_sra_flag) * (from_state__timestamp + 0 - reads_aux__0__base__prev_timestamp - 1 - (0 + reads_aux__0__base__timestamp_lt_aux__lower_decomp__0 * 1 + reads_aux__0__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+    rs2_as * (0 + opcode_sll_flag + opcode_srl_flag + opcode_sra_flag - 1) = 0;
+    rs2_as * (from_state__timestamp + 1 - reads_aux__1__base__prev_timestamp - 1 - (0 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0 * 1 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+    (0 + opcode_sll_flag + opcode_srl_flag + opcode_sra_flag) * (from_state__timestamp + 2 - writes_aux__base__prev_timestamp - 1 - (0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0 * 1 + writes_aux__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+
+
+
+namespace VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>;
+    // Preamble
+    col fixed is_first_row = [1] + [0]*;
+    col fixed is_last_row = [0] + [1]*;
+    col fixed is_transition = [0] + [1]* + [0];
+
+    let EXECUTION_BRIDGE = 0;
+    let MEMORY = 1;
+    let PC_LOOKUP = 2;
+    let VARIABLE_RANGE_CHECKER = 3;
+    let BITWISE_LOOKUP = 6;
+    let TUPLE_RANGE_CHECKER = 7;
+
+    // Witness columns
+    col witness from_state__pc;
+    col witness from_state__timestamp;
+    col witness rs1_ptr;
+    col witness rs1_data__0;
+    col witness rs1_data__1;
+    col witness rs1_data__2;
+    col witness rs1_data__3;
+    col witness rs1_aux_cols__base__prev_timestamp;
+    col witness rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0;
+    col witness rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__1;
+    col witness rd_rs2_ptr;
+    col witness read_data_aux__base__prev_timestamp;
+    col witness read_data_aux__base__timestamp_lt_aux__lower_decomp__0;
+    col witness read_data_aux__base__timestamp_lt_aux__lower_decomp__1;
+    col witness imm;
+    col witness imm_sign;
+    col witness mem_ptr_limbs__0;
+    col witness mem_ptr_limbs__1;
+    col witness mem_as;
+    col witness write_base_aux__prev_timestamp;
+    col witness write_base_aux__timestamp_lt_aux__lower_decomp__0;
+    col witness write_base_aux__timestamp_lt_aux__lower_decomp__1;
+    col witness needs_write;
+    col witness flags__0;
+    col witness flags__1;
+    col witness flags__2;
+    col witness flags__3;
+    col witness is_valid;
+    col witness is_load;
+    col witness read_data__0;
+    col witness read_data__1;
+    col witness read_data__2;
+    col witness read_data__3;
+    col witness prev_data__0;
+    col witness prev_data__1;
+    col witness prev_data__2;
+    col witness prev_data__3;
+    col witness write_data__0;
+    col witness write_data__1;
+    col witness write_data__2;
+    col witness write_data__3;
+
+    // Bus interactions (bus_index, fields, count)
+    std::protocols::bus::bus_interaction(EXECUTION_BRIDGE, [from_state__pc, from_state__timestamp], -is_valid);
+    std::protocols::bus::bus_interaction(EXECUTION_BRIDGE, [from_state__pc + 4, from_state__timestamp + 3], is_valid);
+
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs1_ptr, rs1_data__0, rs1_data__1, rs1_data__2, rs1_data__3, rs1_aux_cols__base__prev_timestamp], 2013265920 * is_valid);
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs1_ptr, rs1_data__0, rs1_data__1, rs1_data__2, rs1_data__3, from_state__timestamp + 0], is_valid);
+    std::protocols::bus::bus_interaction(MEMORY, [is_load * mem_as + (1 - is_load) * 1, is_load * (mem_ptr_limbs__0 + mem_ptr_limbs__1 * 65536) + (1 - is_load) * rd_rs2_ptr - ((0 + flags__0 * (0 + flags__0 + flags__1 + flags__2 + flags__3 - 2) * 2013265920) * 1 + (0 + flags__2 * (flags__2 - 1) * 1006632961 + flags__1 * (0 + flags__0 + flags__1 + flags__2 + flags__3 - 2) * 2013265920) * 2 + (0 + flags__2 * (0 + flags__0 + flags__1 + flags__2 + flags__3 - 2) * 2013265920) * 3), read_data__0, read_data__1, read_data__2, read_data__3, read_data_aux__base__prev_timestamp], 2013265920 * is_valid);
+    std::protocols::bus::bus_interaction(MEMORY, [is_load * mem_as + (1 - is_load) * 1, is_load * (mem_ptr_limbs__0 + mem_ptr_limbs__1 * 65536) + (1 - is_load) * rd_rs2_ptr - ((0 + flags__0 * (0 + flags__0 + flags__1 + flags__2 + flags__3 - 2) * 2013265920) * 1 + (0 + flags__2 * (flags__2 - 1) * 1006632961 + flags__1 * (0 + flags__0 + flags__1 + flags__2 + flags__3 - 2) * 2013265920) * 2 + (0 + flags__2 * (0 + flags__0 + flags__1 + flags__2 + flags__3 - 2) * 2013265920) * 3), read_data__0, read_data__1, read_data__2, read_data__3, from_state__timestamp + 1], is_valid);
+    std::protocols::bus::bus_interaction(MEMORY, [is_load * 1 + (1 - is_load) * mem_as, is_load * rd_rs2_ptr + (1 - is_load) * (mem_ptr_limbs__0 + mem_ptr_limbs__1 * 65536) - ((0 + flags__1 * flags__2) * 1 + (0 + flags__0 * flags__2 + flags__1 * flags__3) * 2 + (0 + flags__2 * flags__3) * 3), prev_data__0, prev_data__1, prev_data__2, prev_data__3, write_base_aux__prev_timestamp], 2013265920 * needs_write);
+    std::protocols::bus::bus_interaction(MEMORY, [is_load * 1 + (1 - is_load) * mem_as, is_load * rd_rs2_ptr + (1 - is_load) * (mem_ptr_limbs__0 + mem_ptr_limbs__1 * 65536) - ((0 + flags__1 * flags__2) * 1 + (0 + flags__0 * flags__2 + flags__1 * flags__3) * 2 + (0 + flags__2 * flags__3) * 3), write_data__0, write_data__1, write_data__2, write_data__3, from_state__timestamp + 2], needs_write);
+
+    std::protocols::bus::bus_interaction(PC_LOOKUP, [from_state__pc, 528 + ((0 + flags__0 * (flags__0 - 1) * 1006632961) * 0 + (0 + flags__1 * (flags__1 - 1) * 1006632961 + flags__2 * (flags__2 - 1) * 1006632961) * 2 + (0 + flags__3 * (flags__3 - 1) * 1006632961 + flags__0 * (0 + flags__0 + flags__1 + flags__2 + flags__3 - 2) * 2013265920 + flags__1 * (0 + flags__0 + flags__1 + flags__2 + flags__3 - 2) * 2013265920 + flags__2 * (0 + flags__0 + flags__1 + flags__2 + flags__3 - 2) * 2013265920) * 1 + (0 + flags__3 * (0 + flags__0 + flags__1 + flags__2 + flags__3 - 2) * 2013265920) * 3 + (0 + flags__0 * flags__1 + flags__0 * flags__2) * 4 + (0 + flags__0 * flags__3 + flags__1 * flags__2 + flags__1 * flags__3 + flags__2 * flags__3) * 5), rd_rs2_ptr, rs1_ptr, imm, 1, mem_as, needs_write, imm_sign], is_valid);
+
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0, 17], is_valid);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__1, 12], is_valid);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [(mem_ptr_limbs__0 - ((0 + flags__0 * (0 + flags__0 + flags__1 + flags__2 + flags__3 - 2) * 2013265920) * 1 + (0 + flags__2 * (flags__2 - 1) * 1006632961 + flags__1 * (0 + flags__0 + flags__1 + flags__2 + flags__3 - 2) * 2013265920) * 2 + (0 + flags__2 * (0 + flags__0 + flags__1 + flags__2 + flags__3 - 2) * 2013265920) * 3 + ((0 + flags__1 * flags__2) * 1 + (0 + flags__0 * flags__2 + flags__1 * flags__3) * 2 + (0 + flags__2 * flags__3) * 3))) * 1509949441, 14], is_valid);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [mem_ptr_limbs__1, 13], is_valid);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [read_data_aux__base__timestamp_lt_aux__lower_decomp__0, 17], is_valid);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [read_data_aux__base__timestamp_lt_aux__lower_decomp__1, 12], is_valid);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [write_base_aux__timestamp_lt_aux__lower_decomp__0, 17], needs_write);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [write_base_aux__timestamp_lt_aux__lower_decomp__1, 12], needs_write);
+
+    // Constraints
+    is_valid * (is_valid - 1) = 0;
+    flags__0 * ((flags__0 - 1) * (flags__0 - 2)) = 0;
+    flags__1 * ((flags__1 - 1) * (flags__1 - 2)) = 0;
+    flags__2 * ((flags__2 - 1) * (flags__2 - 2)) = 0;
+    flags__3 * ((flags__3 - 1) * (flags__3 - 2)) = 0;
+    (0 + flags__0 + flags__1 + flags__2 + flags__3) * ((0 + flags__0 + flags__1 + flags__2 + flags__3 - 1) * (0 + flags__0 + flags__1 + flags__2 + flags__3 - 2)) = 0;
+    (0 + flags__0 + flags__1 + flags__2 + flags__3 - 1) * (0 + flags__0 + flags__1 + flags__2 + flags__3 - 2) * is_valid = 0;
+    is_load - (0 + flags__0 * (flags__0 - 1) * 1006632961 + flags__1 * (flags__1 - 1) * 1006632961 + flags__2 * (flags__2 - 1) * 1006632961 + flags__3 * (flags__3 - 1) * 1006632961 + flags__0 * (0 + flags__0 + flags__1 + flags__2 + flags__3 - 2) * 2013265920 + flags__1 * (0 + flags__0 + flags__1 + flags__2 + flags__3 - 2) * 2013265920 + flags__2 * (0 + flags__0 + flags__1 + flags__2 + flags__3 - 2) * 2013265920) = 0;
+    is_load * (is_valid - 1) = 0;
+    write_data__0 - ((0 + flags__0 * (flags__0 - 1) * 1006632961 + flags__1 * (flags__1 - 1) * 1006632961 + flags__3 * (flags__3 - 1) * 1006632961) * read_data__0 + (0 + flags__0 * (0 + flags__0 + flags__1 + flags__2 + flags__3 - 2) * 2013265920) * read_data__1 + (0 + flags__2 * (flags__2 - 1) * 1006632961 + flags__1 * (0 + flags__0 + flags__1 + flags__2 + flags__3 - 2) * 2013265920) * read_data__2 + (0 + flags__2 * (0 + flags__0 + flags__1 + flags__2 + flags__3 - 2) * 2013265920) * read_data__3 + ((0 + flags__3 * (0 + flags__0 + flags__1 + flags__2 + flags__3 - 2) * 2013265920 + flags__0 * flags__1 + flags__0 * flags__3) * read_data__0 + (0 + flags__0 * flags__2 + flags__1 * flags__2 + flags__1 * flags__3 + flags__2 * flags__3) * prev_data__0)) = 0;
+    write_data__1 - ((0 + flags__0 * (flags__0 - 1) * 1006632961 + flags__1 * (flags__1 - 1) * 1006632961) * read_data__1 + (0 + flags__2 * (flags__2 - 1) * 1006632961) * read_data__3 + ((0 + flags__1 * flags__2) * read_data__0 + (0 + flags__3 * (0 + flags__0 + flags__1 + flags__2 + flags__3 - 2) * 2013265920 + flags__0 * flags__1) * read_data__1 + (0 + flags__0 * flags__2 + flags__0 * flags__3 + flags__1 * flags__3 + flags__2 * flags__3) * prev_data__1)) = 0;
+    write_data__2 - ((0 + flags__0 * (flags__0 - 1) * 1006632961) * read_data__2 + ((0 + flags__0 * flags__2 + flags__1 * flags__3) * read_data__0 + (0 + flags__3 * (0 + flags__0 + flags__1 + flags__2 + flags__3 - 2) * 2013265920) * read_data__2 + (0 + flags__0 * flags__1 + flags__0 * flags__3 + flags__1 * flags__2 + flags__2 * flags__3) * prev_data__2)) = 0;
+    write_data__3 - ((0 + flags__0 * (flags__0 - 1) * 1006632961) * read_data__3 + ((0 + flags__2 * flags__3) * read_data__0 + (0 + flags__0 * flags__2) * read_data__1 + (0 + flags__3 * (0 + flags__0 + flags__1 + flags__2 + flags__3 - 2) * 2013265920) * read_data__3 + (0 + flags__0 * flags__1 + flags__0 * flags__3 + flags__1 * flags__2 + flags__1 * flags__3) * prev_data__3)) = 0;
+    needs_write * (needs_write - 1) = 0;
+    needs_write * (is_valid - 1) = 0;
+    (is_valid - needs_write) * (is_load - 1) = 0;
+    (is_valid - needs_write) * rd_rs2_ptr = 0;
+    is_valid * (from_state__timestamp + 0 - rs1_aux_cols__base__prev_timestamp - 1 - (0 + rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0 * 1 + rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+    is_valid * ((rs1_data__0 + rs1_data__1 * 256 + imm - mem_ptr_limbs__0) * 2013235201 * ((rs1_data__0 + rs1_data__1 * 256 + imm - mem_ptr_limbs__0) * 2013235201 - 1)) = 0;
+    is_valid * (imm_sign * (imm_sign - 1)) = 0;
+    is_valid * ((rs1_data__2 + rs1_data__3 * 256 + imm_sign * 65535 + (rs1_data__0 + rs1_data__1 * 256 + imm - mem_ptr_limbs__0) * 2013235201 - mem_ptr_limbs__1) * 2013235201 * ((rs1_data__2 + rs1_data__3 * 256 + imm_sign * 65535 + (rs1_data__0 + rs1_data__1 * 256 + imm - mem_ptr_limbs__0) * 2013235201 - mem_ptr_limbs__1) * 2013235201 - 1)) = 0;
+    (mem_as - (is_valid - is_load) * 2) * (mem_as - (is_valid - is_load) * 2 - 1) * (mem_as - (is_valid - is_load) * 2 - 2) = 0;
+    (1 - is_valid) * mem_as = 0;
+    is_valid * (from_state__timestamp + 1 - read_data_aux__base__prev_timestamp - 1 - (0 + read_data_aux__base__timestamp_lt_aux__lower_decomp__0 * 1 + read_data_aux__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+    needs_write * (from_state__timestamp + 2 - write_base_aux__prev_timestamp - 1 - (0 + write_base_aux__timestamp_lt_aux__lower_decomp__0 * 1 + write_base_aux__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+
+
+
+namespace VmAirWrapper<Rv32LoadStoreAdapterAir, LoadSignExtendCoreAir<4, 8>;
+    // Preamble
+    col fixed is_first_row = [1] + [0]*;
+    col fixed is_last_row = [0] + [1]*;
+    col fixed is_transition = [0] + [1]* + [0];
+
+    let EXECUTION_BRIDGE = 0;
+    let MEMORY = 1;
+    let PC_LOOKUP = 2;
+    let VARIABLE_RANGE_CHECKER = 3;
+    let BITWISE_LOOKUP = 6;
+    let TUPLE_RANGE_CHECKER = 7;
+
+    // Witness columns
+    col witness from_state__pc;
+    col witness from_state__timestamp;
+    col witness rs1_ptr;
+    col witness rs1_data__0;
+    col witness rs1_data__1;
+    col witness rs1_data__2;
+    col witness rs1_data__3;
+    col witness rs1_aux_cols__base__prev_timestamp;
+    col witness rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0;
+    col witness rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__1;
+    col witness rd_rs2_ptr;
+    col witness read_data_aux__base__prev_timestamp;
+    col witness read_data_aux__base__timestamp_lt_aux__lower_decomp__0;
+    col witness read_data_aux__base__timestamp_lt_aux__lower_decomp__1;
+    col witness imm;
+    col witness imm_sign;
+    col witness mem_ptr_limbs__0;
+    col witness mem_ptr_limbs__1;
+    col witness mem_as;
+    col witness write_base_aux__prev_timestamp;
+    col witness write_base_aux__timestamp_lt_aux__lower_decomp__0;
+    col witness write_base_aux__timestamp_lt_aux__lower_decomp__1;
+    col witness needs_write;
+    col witness opcode_loadb_flag0;
+    col witness opcode_loadb_flag1;
+    col witness opcode_loadh_flag;
+    col witness shift_most_sig_bit;
+    col witness data_most_sig_bit;
+    col witness shifted_read_data__0;
+    col witness shifted_read_data__1;
+    col witness shifted_read_data__2;
+    col witness shifted_read_data__3;
+    col witness prev_data__0;
+    col witness prev_data__1;
+    col witness prev_data__2;
+    col witness prev_data__3;
+
+    // Bus interactions (bus_index, fields, count)
+    std::protocols::bus::bus_interaction(EXECUTION_BRIDGE, [from_state__pc, from_state__timestamp], -(0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag));
+    std::protocols::bus::bus_interaction(EXECUTION_BRIDGE, [from_state__pc + 4, from_state__timestamp + 3], 0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag);
+
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs1_ptr, rs1_data__0, rs1_data__1, rs1_data__2, rs1_data__3, rs1_aux_cols__base__prev_timestamp], 2013265920 * (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag));
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs1_ptr, rs1_data__0, rs1_data__1, rs1_data__2, rs1_data__3, from_state__timestamp + 0], 0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag);
+    std::protocols::bus::bus_interaction(MEMORY, [(0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag) * mem_as + (1 - (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag)) * 1, (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag) * (mem_ptr_limbs__0 + mem_ptr_limbs__1 * 65536) + (1 - (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag)) * rd_rs2_ptr - (shift_most_sig_bit * 2 + opcode_loadb_flag1), shift_most_sig_bit * shifted_read_data__2 + (1 - shift_most_sig_bit) * shifted_read_data__0, shift_most_sig_bit * shifted_read_data__3 + (1 - shift_most_sig_bit) * shifted_read_data__1, shift_most_sig_bit * shifted_read_data__0 + (1 - shift_most_sig_bit) * shifted_read_data__2, shift_most_sig_bit * shifted_read_data__1 + (1 - shift_most_sig_bit) * shifted_read_data__3, read_data_aux__base__prev_timestamp], 2013265920 * (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag));
+    std::protocols::bus::bus_interaction(MEMORY, [(0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag) * mem_as + (1 - (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag)) * 1, (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag) * (mem_ptr_limbs__0 + mem_ptr_limbs__1 * 65536) + (1 - (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag)) * rd_rs2_ptr - (shift_most_sig_bit * 2 + opcode_loadb_flag1), shift_most_sig_bit * shifted_read_data__2 + (1 - shift_most_sig_bit) * shifted_read_data__0, shift_most_sig_bit * shifted_read_data__3 + (1 - shift_most_sig_bit) * shifted_read_data__1, shift_most_sig_bit * shifted_read_data__0 + (1 - shift_most_sig_bit) * shifted_read_data__2, shift_most_sig_bit * shifted_read_data__1 + (1 - shift_most_sig_bit) * shifted_read_data__3, from_state__timestamp + 1], 0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag);
+    std::protocols::bus::bus_interaction(MEMORY, [(0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag) * 1 + (1 - (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag)) * mem_as, (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag) * rd_rs2_ptr + (1 - (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag)) * (mem_ptr_limbs__0 + mem_ptr_limbs__1 * 65536) - 0, prev_data__0, prev_data__1, prev_data__2, prev_data__3, write_base_aux__prev_timestamp], 2013265920 * needs_write);
+    std::protocols::bus::bus_interaction(MEMORY, [(0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag) * 1 + (1 - (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag)) * mem_as, (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag) * rd_rs2_ptr + (1 - (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag)) * (mem_ptr_limbs__0 + mem_ptr_limbs__1 * 65536) - 0, (opcode_loadh_flag + opcode_loadb_flag0) * shifted_read_data__0 + opcode_loadb_flag1 * shifted_read_data__1, shifted_read_data__1 * opcode_loadh_flag + (opcode_loadb_flag0 + opcode_loadb_flag1) * (data_most_sig_bit * 255), data_most_sig_bit * 255, data_most_sig_bit * 255, from_state__timestamp + 2], needs_write);
+
+    std::protocols::bus::bus_interaction(PC_LOOKUP, [from_state__pc, (opcode_loadb_flag0 + opcode_loadb_flag1) * 6 + opcode_loadh_flag * 7 + 528, rd_rs2_ptr, rs1_ptr, imm, 1, mem_as, needs_write, imm_sign], 0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag);
+
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [shifted_read_data__0 * opcode_loadb_flag0 + shifted_read_data__1 * opcode_loadb_flag1 + shifted_read_data__1 * opcode_loadh_flag - data_most_sig_bit * 128, 7], 0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0, 17], 0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__1, 12], 0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [(mem_ptr_limbs__0 - (shift_most_sig_bit * 2 + opcode_loadb_flag1 + 0)) * 1509949441, 14], 0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [mem_ptr_limbs__1, 13], 0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [read_data_aux__base__timestamp_lt_aux__lower_decomp__0, 17], 0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [read_data_aux__base__timestamp_lt_aux__lower_decomp__1, 12], 0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [write_base_aux__timestamp_lt_aux__lower_decomp__0, 17], needs_write);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [write_base_aux__timestamp_lt_aux__lower_decomp__1, 12], needs_write);
+
+    // Constraints
+    opcode_loadb_flag0 * (opcode_loadb_flag0 - 1) = 0;
+    opcode_loadb_flag1 * (opcode_loadb_flag1 - 1) = 0;
+    opcode_loadh_flag * (opcode_loadh_flag - 1) = 0;
+    (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag) * (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag - 1) = 0;
+    data_most_sig_bit * (data_most_sig_bit - 1) = 0;
+    shift_most_sig_bit * (shift_most_sig_bit - 1) = 0;
+    needs_write * (needs_write - 1) = 0;
+    needs_write * (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag - 1) = 0;
+    (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag - needs_write) * (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag - 1) = 0;
+    (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag - needs_write) * rd_rs2_ptr = 0;
+    (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag) * (from_state__timestamp + 0 - rs1_aux_cols__base__prev_timestamp - 1 - (0 + rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0 * 1 + rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+    (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag) * ((rs1_data__0 + rs1_data__1 * 256 + imm - mem_ptr_limbs__0) * 2013235201 * ((rs1_data__0 + rs1_data__1 * 256 + imm - mem_ptr_limbs__0) * 2013235201 - 1)) = 0;
+    (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag) * (imm_sign * (imm_sign - 1)) = 0;
+    (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag) * ((rs1_data__2 + rs1_data__3 * 256 + imm_sign * 65535 + (rs1_data__0 + rs1_data__1 * 256 + imm - mem_ptr_limbs__0) * 2013235201 - mem_ptr_limbs__1) * 2013235201 * ((rs1_data__2 + rs1_data__3 * 256 + imm_sign * 65535 + (rs1_data__0 + rs1_data__1 * 256 + imm - mem_ptr_limbs__0) * 2013235201 - mem_ptr_limbs__1) * 2013235201 - 1)) = 0;
+    (mem_as - (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag - (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag)) * 2) * (mem_as - (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag - (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag)) * 2 - 1) * (mem_as - (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag - (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag)) * 2 - 2) = 0;
+    (1 - (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag)) * mem_as = 0;
+    (0 + opcode_loadb_flag0 + opcode_loadb_flag1 + opcode_loadh_flag) * (from_state__timestamp + 1 - read_data_aux__base__prev_timestamp - 1 - (0 + read_data_aux__base__timestamp_lt_aux__lower_decomp__0 * 1 + read_data_aux__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+    needs_write * (from_state__timestamp + 2 - write_base_aux__prev_timestamp - 1 - (0 + write_base_aux__timestamp_lt_aux__lower_decomp__0 * 1 + write_base_aux__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+
+
+
+namespace VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>;
+    // Preamble
+    col fixed is_first_row = [1] + [0]*;
+    col fixed is_last_row = [0] + [1]*;
+    col fixed is_transition = [0] + [1]* + [0];
+
+    let EXECUTION_BRIDGE = 0;
+    let MEMORY = 1;
+    let PC_LOOKUP = 2;
+    let VARIABLE_RANGE_CHECKER = 3;
+    let BITWISE_LOOKUP = 6;
+    let TUPLE_RANGE_CHECKER = 7;
+
+    // Witness columns
+    col witness from_state__pc;
+    col witness from_state__timestamp;
+    col witness rs1_ptr;
+    col witness rs2_ptr;
+    col witness reads_aux__0__base__prev_timestamp;
+    col witness reads_aux__0__base__timestamp_lt_aux__lower_decomp__0;
+    col witness reads_aux__0__base__timestamp_lt_aux__lower_decomp__1;
+    col witness reads_aux__1__base__prev_timestamp;
+    col witness reads_aux__1__base__timestamp_lt_aux__lower_decomp__0;
+    col witness reads_aux__1__base__timestamp_lt_aux__lower_decomp__1;
+    col witness a__0;
+    col witness a__1;
+    col witness a__2;
+    col witness a__3;
+    col witness b__0;
+    col witness b__1;
+    col witness b__2;
+    col witness b__3;
+    col witness cmp_result;
+    col witness imm;
+    col witness opcode_beq_flag;
+    col witness opcode_bne_flag;
+    col witness diff_inv_marker__0;
+    col witness diff_inv_marker__1;
+    col witness diff_inv_marker__2;
+    col witness diff_inv_marker__3;
+
+    // Bus interactions (bus_index, fields, count)
+    std::protocols::bus::bus_interaction(EXECUTION_BRIDGE, [from_state__pc, from_state__timestamp], -(0 + opcode_beq_flag + opcode_bne_flag));
+    std::protocols::bus::bus_interaction(EXECUTION_BRIDGE, [from_state__pc + cmp_result * imm + (1 - cmp_result) * 4, from_state__timestamp + 2], 0 + opcode_beq_flag + opcode_bne_flag);
+
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs1_ptr, a__0, a__1, a__2, a__3, reads_aux__0__base__prev_timestamp], 2013265920 * (0 + opcode_beq_flag + opcode_bne_flag));
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs1_ptr, a__0, a__1, a__2, a__3, from_state__timestamp + 0], 0 + opcode_beq_flag + opcode_bne_flag);
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs2_ptr, b__0, b__1, b__2, b__3, reads_aux__1__base__prev_timestamp], 2013265920 * (0 + opcode_beq_flag + opcode_bne_flag));
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs2_ptr, b__0, b__1, b__2, b__3, from_state__timestamp + 1], 0 + opcode_beq_flag + opcode_bne_flag);
+
+    std::protocols::bus::bus_interaction(PC_LOOKUP, [from_state__pc, 0 + opcode_beq_flag * 0 + opcode_bne_flag * 1 + 544, rs1_ptr, rs2_ptr, imm, 1, 1, 0, 0], 0 + opcode_beq_flag + opcode_bne_flag);
+
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__0__base__timestamp_lt_aux__lower_decomp__0, 17], 0 + opcode_beq_flag + opcode_bne_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__0__base__timestamp_lt_aux__lower_decomp__1, 12], 0 + opcode_beq_flag + opcode_bne_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__1__base__timestamp_lt_aux__lower_decomp__0, 17], 0 + opcode_beq_flag + opcode_bne_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__1__base__timestamp_lt_aux__lower_decomp__1, 12], 0 + opcode_beq_flag + opcode_bne_flag);
+
+    // Constraints
+    opcode_beq_flag * (opcode_beq_flag - 1) = 0;
+    opcode_bne_flag * (opcode_bne_flag - 1) = 0;
+    (0 + opcode_beq_flag + opcode_bne_flag) * (0 + opcode_beq_flag + opcode_bne_flag - 1) = 0;
+    cmp_result * (cmp_result - 1) = 0;
+    (cmp_result * opcode_beq_flag + (1 - cmp_result) * opcode_bne_flag) * (a__0 - b__0) = 0;
+    (cmp_result * opcode_beq_flag + (1 - cmp_result) * opcode_bne_flag) * (a__1 - b__1) = 0;
+    (cmp_result * opcode_beq_flag + (1 - cmp_result) * opcode_bne_flag) * (a__2 - b__2) = 0;
+    (cmp_result * opcode_beq_flag + (1 - cmp_result) * opcode_bne_flag) * (a__3 - b__3) = 0;
+    (0 + opcode_beq_flag + opcode_bne_flag) * (cmp_result * opcode_beq_flag + (1 - cmp_result) * opcode_bne_flag + (a__0 - b__0) * diff_inv_marker__0 + (a__1 - b__1) * diff_inv_marker__1 + (a__2 - b__2) * diff_inv_marker__2 + (a__3 - b__3) * diff_inv_marker__3 - 1) = 0;
+    (0 + opcode_beq_flag + opcode_bne_flag) * (from_state__timestamp + 0 - reads_aux__0__base__prev_timestamp - 1 - (0 + reads_aux__0__base__timestamp_lt_aux__lower_decomp__0 * 1 + reads_aux__0__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+    (0 + opcode_beq_flag + opcode_bne_flag) * (from_state__timestamp + 1 - reads_aux__1__base__prev_timestamp - 1 - (0 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0 * 1 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+
+
+
+namespace VmAirWrapper<Rv32BranchAdapterAir, BranchLessThanCoreAir<4, 8>;
+    // Preamble
+    col fixed is_first_row = [1] + [0]*;
+    col fixed is_last_row = [0] + [1]*;
+    col fixed is_transition = [0] + [1]* + [0];
+
+    let EXECUTION_BRIDGE = 0;
+    let MEMORY = 1;
+    let PC_LOOKUP = 2;
+    let VARIABLE_RANGE_CHECKER = 3;
+    let BITWISE_LOOKUP = 6;
+    let TUPLE_RANGE_CHECKER = 7;
+
+    // Witness columns
+    col witness from_state__pc;
+    col witness from_state__timestamp;
+    col witness rs1_ptr;
+    col witness rs2_ptr;
+    col witness reads_aux__0__base__prev_timestamp;
+    col witness reads_aux__0__base__timestamp_lt_aux__lower_decomp__0;
+    col witness reads_aux__0__base__timestamp_lt_aux__lower_decomp__1;
+    col witness reads_aux__1__base__prev_timestamp;
+    col witness reads_aux__1__base__timestamp_lt_aux__lower_decomp__0;
+    col witness reads_aux__1__base__timestamp_lt_aux__lower_decomp__1;
+    col witness a__0;
+    col witness a__1;
+    col witness a__2;
+    col witness a__3;
+    col witness b__0;
+    col witness b__1;
+    col witness b__2;
+    col witness b__3;
+    col witness cmp_result;
+    col witness imm;
+    col witness opcode_blt_flag;
+    col witness opcode_bltu_flag;
+    col witness opcode_bge_flag;
+    col witness opcode_bgeu_flag;
+    col witness a_msb_f;
+    col witness b_msb_f;
+    col witness cmp_lt;
+    col witness diff_marker__0;
+    col witness diff_marker__1;
+    col witness diff_marker__2;
+    col witness diff_marker__3;
+    col witness diff_val;
+
+    // Bus interactions (bus_index, fields, count)
+    std::protocols::bus::bus_interaction(EXECUTION_BRIDGE, [from_state__pc, from_state__timestamp], -(0 + opcode_blt_flag + opcode_bltu_flag + opcode_bge_flag + opcode_bgeu_flag));
+    std::protocols::bus::bus_interaction(EXECUTION_BRIDGE, [from_state__pc + cmp_result * imm + (1 - cmp_result) * 4, from_state__timestamp + 2], 0 + opcode_blt_flag + opcode_bltu_flag + opcode_bge_flag + opcode_bgeu_flag);
+
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs1_ptr, a__0, a__1, a__2, a__3, reads_aux__0__base__prev_timestamp], 2013265920 * (0 + opcode_blt_flag + opcode_bltu_flag + opcode_bge_flag + opcode_bgeu_flag));
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs1_ptr, a__0, a__1, a__2, a__3, from_state__timestamp + 0], 0 + opcode_blt_flag + opcode_bltu_flag + opcode_bge_flag + opcode_bgeu_flag);
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs2_ptr, b__0, b__1, b__2, b__3, reads_aux__1__base__prev_timestamp], 2013265920 * (0 + opcode_blt_flag + opcode_bltu_flag + opcode_bge_flag + opcode_bgeu_flag));
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs2_ptr, b__0, b__1, b__2, b__3, from_state__timestamp + 1], 0 + opcode_blt_flag + opcode_bltu_flag + opcode_bge_flag + opcode_bgeu_flag);
+
+    std::protocols::bus::bus_interaction(PC_LOOKUP, [from_state__pc, 0 + opcode_blt_flag * 0 + opcode_bltu_flag * 1 + opcode_bge_flag * 2 + opcode_bgeu_flag * 3 + 549, rs1_ptr, rs2_ptr, imm, 1, 1, 0, 0], 0 + opcode_blt_flag + opcode_bltu_flag + opcode_bge_flag + opcode_bgeu_flag);
+
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__0__base__timestamp_lt_aux__lower_decomp__0, 17], 0 + opcode_blt_flag + opcode_bltu_flag + opcode_bge_flag + opcode_bgeu_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__0__base__timestamp_lt_aux__lower_decomp__1, 12], 0 + opcode_blt_flag + opcode_bltu_flag + opcode_bge_flag + opcode_bgeu_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__1__base__timestamp_lt_aux__lower_decomp__0, 17], 0 + opcode_blt_flag + opcode_bltu_flag + opcode_bge_flag + opcode_bgeu_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__1__base__timestamp_lt_aux__lower_decomp__1, 12], 0 + opcode_blt_flag + opcode_bltu_flag + opcode_bge_flag + opcode_bgeu_flag);
+
+    std::protocols::bus::bus_interaction(BITWISE_LOOKUP, [a_msb_f + 128 * (opcode_blt_flag + opcode_bge_flag), b_msb_f + 128 * (opcode_blt_flag + opcode_bge_flag), 0, 0], 0 + opcode_blt_flag + opcode_bltu_flag + opcode_bge_flag + opcode_bgeu_flag);
+    std::protocols::bus::bus_interaction(BITWISE_LOOKUP, [diff_val - 1, 0, 0, 0], 0 + diff_marker__3 + diff_marker__2 + diff_marker__1 + diff_marker__0);
+
+    // Constraints
+    opcode_blt_flag * (opcode_blt_flag - 1) = 0;
+    opcode_bltu_flag * (opcode_bltu_flag - 1) = 0;
+    opcode_bge_flag * (opcode_bge_flag - 1) = 0;
+    opcode_bgeu_flag * (opcode_bgeu_flag - 1) = 0;
+    (0 + opcode_blt_flag + opcode_bltu_flag + opcode_bge_flag + opcode_bgeu_flag) * (0 + opcode_blt_flag + opcode_bltu_flag + opcode_bge_flag + opcode_bgeu_flag - 1) = 0;
+    cmp_result * (cmp_result - 1) = 0;
+    cmp_lt - (cmp_result * (opcode_blt_flag + opcode_bltu_flag) + (1 - cmp_result) * (opcode_bge_flag + opcode_bgeu_flag)) = 0;
+    (a__3 - a_msb_f) * (256 - (a__3 - a_msb_f)) = 0;
+    (b__3 - b_msb_f) * (256 - (b__3 - b_msb_f)) = 0;
+    diff_marker__3 * (diff_marker__3 - 1) = 0;
+    (1 - (0 + diff_marker__3)) * ((b_msb_f - a_msb_f) * (2 * cmp_lt - 1)) = 0;
+    diff_marker__3 * (diff_val - (b_msb_f - a_msb_f) * (2 * cmp_lt - 1)) = 0;
+    diff_marker__2 * (diff_marker__2 - 1) = 0;
+    (1 - (0 + diff_marker__3 + diff_marker__2)) * ((b__2 - a__2) * (2 * cmp_lt - 1)) = 0;
+    diff_marker__2 * (diff_val - (b__2 - a__2) * (2 * cmp_lt - 1)) = 0;
+    diff_marker__1 * (diff_marker__1 - 1) = 0;
+    (1 - (0 + diff_marker__3 + diff_marker__2 + diff_marker__1)) * ((b__1 - a__1) * (2 * cmp_lt - 1)) = 0;
+    diff_marker__1 * (diff_val - (b__1 - a__1) * (2 * cmp_lt - 1)) = 0;
+    diff_marker__0 * (diff_marker__0 - 1) = 0;
+    (1 - (0 + diff_marker__3 + diff_marker__2 + diff_marker__1 + diff_marker__0)) * ((b__0 - a__0) * (2 * cmp_lt - 1)) = 0;
+    diff_marker__0 * (diff_val - (b__0 - a__0) * (2 * cmp_lt - 1)) = 0;
+    (0 + diff_marker__3 + diff_marker__2 + diff_marker__1 + diff_marker__0) * (0 + diff_marker__3 + diff_marker__2 + diff_marker__1 + diff_marker__0 - 1) = 0;
+    (1 - (0 + diff_marker__3 + diff_marker__2 + diff_marker__1 + diff_marker__0)) * cmp_lt = 0;
+    (0 + opcode_blt_flag + opcode_bltu_flag + opcode_bge_flag + opcode_bgeu_flag) * (from_state__timestamp + 0 - reads_aux__0__base__prev_timestamp - 1 - (0 + reads_aux__0__base__timestamp_lt_aux__lower_decomp__0 * 1 + reads_aux__0__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+    (0 + opcode_blt_flag + opcode_bltu_flag + opcode_bge_flag + opcode_bgeu_flag) * (from_state__timestamp + 1 - reads_aux__1__base__prev_timestamp - 1 - (0 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0 * 1 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+
+
+
+namespace VmAirWrapper<Rv32CondRdWriteAdapterAir, Rv32JalLuiCoreAir>;
+    // Preamble
+    col fixed is_first_row = [1] + [0]*;
+    col fixed is_last_row = [0] + [1]*;
+    col fixed is_transition = [0] + [1]* + [0];
+
+    let EXECUTION_BRIDGE = 0;
+    let MEMORY = 1;
+    let PC_LOOKUP = 2;
+    let VARIABLE_RANGE_CHECKER = 3;
+    let BITWISE_LOOKUP = 6;
+    let TUPLE_RANGE_CHECKER = 7;
+
+    // Witness columns
+    col witness inner__from_state__pc;
+    col witness inner__from_state__timestamp;
+    col witness inner__rd_ptr;
+    col witness inner__rd_aux_cols__base__prev_timestamp;
+    col witness inner__rd_aux_cols__base__timestamp_lt_aux__lower_decomp__0;
+    col witness inner__rd_aux_cols__base__timestamp_lt_aux__lower_decomp__1;
+    col witness inner__rd_aux_cols__prev_data__0;
+    col witness inner__rd_aux_cols__prev_data__1;
+    col witness inner__rd_aux_cols__prev_data__2;
+    col witness inner__rd_aux_cols__prev_data__3;
+    col witness needs_write;
+    col witness imm;
+    col witness rd_data__0;
+    col witness rd_data__1;
+    col witness rd_data__2;
+    col witness rd_data__3;
+    col witness is_jal;
+    col witness is_lui;
+
+    // Bus interactions (bus_index, fields, count)
+    std::protocols::bus::bus_interaction(EXECUTION_BRIDGE, [inner__from_state__pc, inner__from_state__timestamp], -(is_lui + is_jal));
+    std::protocols::bus::bus_interaction(EXECUTION_BRIDGE, [inner__from_state__pc + is_lui * 4 + is_jal * imm, inner__from_state__timestamp + 1], is_lui + is_jal);
+
+    std::protocols::bus::bus_interaction(MEMORY, [1, inner__rd_ptr, inner__rd_aux_cols__prev_data__0, inner__rd_aux_cols__prev_data__1, inner__rd_aux_cols__prev_data__2, inner__rd_aux_cols__prev_data__3, inner__rd_aux_cols__base__prev_timestamp], 2013265920 * needs_write);
+    std::protocols::bus::bus_interaction(MEMORY, [1, inner__rd_ptr, rd_data__0, rd_data__1, rd_data__2, rd_data__3, inner__from_state__timestamp], needs_write);
+
+    std::protocols::bus::bus_interaction(PC_LOOKUP, [inner__from_state__pc, 560 + (is_lui * 1 + is_jal * 0), inner__rd_ptr, 0, imm, 1, 0, needs_write, 0], is_lui + is_jal);
+
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [inner__rd_aux_cols__base__timestamp_lt_aux__lower_decomp__0, 17], needs_write);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [inner__rd_aux_cols__base__timestamp_lt_aux__lower_decomp__1, 12], needs_write);
+
+    std::protocols::bus::bus_interaction(BITWISE_LOOKUP, [rd_data__0, rd_data__1, 0, 0], is_lui + is_jal);
+    std::protocols::bus::bus_interaction(BITWISE_LOOKUP, [rd_data__2, rd_data__3, 0, 0], is_lui + is_jal);
+    std::protocols::bus::bus_interaction(BITWISE_LOOKUP, [rd_data__3, 192, rd_data__3 + 192, 1], is_jal);
+
+    // Constraints
+    is_lui * (is_lui - 1) = 0;
+    is_jal * (is_jal - 1) = 0;
+    (is_lui + is_jal) * (is_lui + is_jal - 1) = 0;
+    is_lui * rd_data__0 = 0;
+    is_lui * (0 + rd_data__1 * 1 + rd_data__2 * 256 + rd_data__3 * 65536 - imm * 16) = 0;
+    is_jal * (rd_data__0 + (0 + rd_data__1 * 1 + rd_data__2 * 256 + rd_data__3 * 65536) * 256 - (inner__from_state__pc + 4)) = 0;
+    needs_write * (needs_write - 1) = 0;
+    (1 - (is_lui + is_jal)) * needs_write = 0;
+    needs_write * (inner__from_state__timestamp - inner__rd_aux_cols__base__prev_timestamp - 1 - (0 + inner__rd_aux_cols__base__timestamp_lt_aux__lower_decomp__0 * 1 + inner__rd_aux_cols__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+
+
+
+namespace VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>;
+    // Preamble
+    col fixed is_first_row = [1] + [0]*;
+    col fixed is_last_row = [0] + [1]*;
+    col fixed is_transition = [0] + [1]* + [0];
+
+    let EXECUTION_BRIDGE = 0;
+    let MEMORY = 1;
+    let PC_LOOKUP = 2;
+    let VARIABLE_RANGE_CHECKER = 3;
+    let BITWISE_LOOKUP = 6;
+    let TUPLE_RANGE_CHECKER = 7;
+
+    // Witness columns
+    col witness from_state__pc;
+    col witness from_state__timestamp;
+    col witness rs1_ptr;
+    col witness rs1_aux_cols__base__prev_timestamp;
+    col witness rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0;
+    col witness rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__1;
+    col witness rd_ptr;
+    col witness rd_aux_cols__base__prev_timestamp;
+    col witness rd_aux_cols__base__timestamp_lt_aux__lower_decomp__0;
+    col witness rd_aux_cols__base__timestamp_lt_aux__lower_decomp__1;
+    col witness rd_aux_cols__prev_data__0;
+    col witness rd_aux_cols__prev_data__1;
+    col witness rd_aux_cols__prev_data__2;
+    col witness rd_aux_cols__prev_data__3;
+    col witness needs_write;
+    col witness imm;
+    col witness rs1_data__0;
+    col witness rs1_data__1;
+    col witness rs1_data__2;
+    col witness rs1_data__3;
+    col witness rd_data__0;
+    col witness rd_data__1;
+    col witness rd_data__2;
+    col witness is_valid;
+    col witness to_pc_least_sig_bit;
+    col witness to_pc_limbs__0;
+    col witness to_pc_limbs__1;
+    col witness imm_sign;
+
+    // Bus interactions (bus_index, fields, count)
+    std::protocols::bus::bus_interaction(EXECUTION_BRIDGE, [from_state__pc, from_state__timestamp], -is_valid);
+    std::protocols::bus::bus_interaction(EXECUTION_BRIDGE, [to_pc_limbs__0 * 2 + to_pc_limbs__1 * 65536, from_state__timestamp + 2], is_valid);
+
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs1_ptr, rs1_data__0, rs1_data__1, rs1_data__2, rs1_data__3, rs1_aux_cols__base__prev_timestamp], 2013265920 * is_valid);
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs1_ptr, rs1_data__0, rs1_data__1, rs1_data__2, rs1_data__3, from_state__timestamp + 0], is_valid);
+    std::protocols::bus::bus_interaction(MEMORY, [1, rd_ptr, rd_aux_cols__prev_data__0, rd_aux_cols__prev_data__1, rd_aux_cols__prev_data__2, rd_aux_cols__prev_data__3, rd_aux_cols__base__prev_timestamp], 2013265920 * needs_write);
+    std::protocols::bus::bus_interaction(MEMORY, [1, rd_ptr, from_state__pc + 4 - (0 + rd_data__0 * 256 + rd_data__1 * 65536 + rd_data__2 * 16777216), rd_data__0, rd_data__1, rd_data__2, from_state__timestamp + 1], needs_write);
+
+    std::protocols::bus::bus_interaction(PC_LOOKUP, [from_state__pc, 565 + 0, rd_ptr, rs1_ptr, imm, 1, 0, needs_write, imm_sign], is_valid);
+
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [rd_data__1, 8], is_valid);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [rd_data__2, 6], is_valid);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [to_pc_limbs__1, 14], is_valid);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [to_pc_limbs__0, 15], is_valid);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0, 17], is_valid);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__1, 12], is_valid);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [rd_aux_cols__base__timestamp_lt_aux__lower_decomp__0, 17], needs_write);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [rd_aux_cols__base__timestamp_lt_aux__lower_decomp__1, 12], needs_write);
+
+    std::protocols::bus::bus_interaction(BITWISE_LOOKUP, [from_state__pc + 4 - (0 + rd_data__0 * 256 + rd_data__1 * 65536 + rd_data__2 * 16777216), rd_data__0, 0, 0], is_valid);
+
+    // Constraints
+    is_valid * (is_valid - 1) = 0;
+    imm_sign * (imm_sign - 1) = 0;
+    to_pc_least_sig_bit * (to_pc_least_sig_bit - 1) = 0;
+    is_valid * ((rs1_data__0 + rs1_data__1 * 256 + imm - to_pc_limbs__0 * 2 - to_pc_least_sig_bit) * 2013235201 * ((rs1_data__0 + rs1_data__1 * 256 + imm - to_pc_limbs__0 * 2 - to_pc_least_sig_bit) * 2013235201 - 1)) = 0;
+    is_valid * ((rs1_data__2 + rs1_data__3 * 256 + imm_sign * 65535 + (rs1_data__0 + rs1_data__1 * 256 + imm - to_pc_limbs__0 * 2 - to_pc_least_sig_bit) * 2013235201 - to_pc_limbs__1) * 2013235201 * ((rs1_data__2 + rs1_data__3 * 256 + imm_sign * 65535 + (rs1_data__0 + rs1_data__1 * 256 + imm - to_pc_limbs__0 * 2 - to_pc_least_sig_bit) * 2013235201 - to_pc_limbs__1) * 2013235201 - 1)) = 0;
+    needs_write * (needs_write - 1) = 0;
+    (1 - is_valid) * needs_write = 0;
+    is_valid * (from_state__timestamp + 0 - rs1_aux_cols__base__prev_timestamp - 1 - (0 + rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0 * 1 + rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+    needs_write * (from_state__timestamp + 1 - rd_aux_cols__base__prev_timestamp - 1 - (0 + rd_aux_cols__base__timestamp_lt_aux__lower_decomp__0 * 1 + rd_aux_cols__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+
+
+
+namespace VmAirWrapper<Rv32RdWriteAdapterAir, Rv32AuipcCoreAir>;
+    // Preamble
+    col fixed is_first_row = [1] + [0]*;
+    col fixed is_last_row = [0] + [1]*;
+    col fixed is_transition = [0] + [1]* + [0];
+
+    let EXECUTION_BRIDGE = 0;
+    let MEMORY = 1;
+    let PC_LOOKUP = 2;
+    let VARIABLE_RANGE_CHECKER = 3;
+    let BITWISE_LOOKUP = 6;
+    let TUPLE_RANGE_CHECKER = 7;
+
+    // Witness columns
+    col witness from_state__pc;
+    col witness from_state__timestamp;
+    col witness rd_ptr;
+    col witness rd_aux_cols__base__prev_timestamp;
+    col witness rd_aux_cols__base__timestamp_lt_aux__lower_decomp__0;
+    col witness rd_aux_cols__base__timestamp_lt_aux__lower_decomp__1;
+    col witness rd_aux_cols__prev_data__0;
+    col witness rd_aux_cols__prev_data__1;
+    col witness rd_aux_cols__prev_data__2;
+    col witness rd_aux_cols__prev_data__3;
+    col witness is_valid;
+    col witness imm_limbs__0;
+    col witness imm_limbs__1;
+    col witness imm_limbs__2;
+    col witness pc_limbs__0;
+    col witness pc_limbs__1;
+    col witness rd_data__0;
+    col witness rd_data__1;
+    col witness rd_data__2;
+    col witness rd_data__3;
+
+    // Bus interactions (bus_index, fields, count)
+    std::protocols::bus::bus_interaction(EXECUTION_BRIDGE, [from_state__pc, from_state__timestamp], -is_valid);
+    std::protocols::bus::bus_interaction(EXECUTION_BRIDGE, [from_state__pc + 4, from_state__timestamp + 1], is_valid);
+
+    std::protocols::bus::bus_interaction(MEMORY, [1, rd_ptr, rd_aux_cols__prev_data__0, rd_aux_cols__prev_data__1, rd_aux_cols__prev_data__2, rd_aux_cols__prev_data__3, rd_aux_cols__base__prev_timestamp], 2013265920 * is_valid);
+    std::protocols::bus::bus_interaction(MEMORY, [1, rd_ptr, rd_data__0, rd_data__1, rd_data__2, rd_data__3, from_state__timestamp], is_valid);
+
+    std::protocols::bus::bus_interaction(PC_LOOKUP, [from_state__pc, 576 + 0, rd_ptr, 0, 0 + imm_limbs__0 * 1 + imm_limbs__1 * 256 + imm_limbs__2 * 65536, 1, 0, 0, 0], is_valid);
+
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [rd_aux_cols__base__timestamp_lt_aux__lower_decomp__0, 17], is_valid);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [rd_aux_cols__base__timestamp_lt_aux__lower_decomp__1, 12], is_valid);
+
+    std::protocols::bus::bus_interaction(BITWISE_LOOKUP, [rd_data__0, rd_data__1, 0, 0], is_valid);
+    std::protocols::bus::bus_interaction(BITWISE_LOOKUP, [rd_data__2, rd_data__3, 0, 0], is_valid);
+    std::protocols::bus::bus_interaction(BITWISE_LOOKUP, [imm_limbs__0, imm_limbs__1, 0, 0], is_valid);
+    std::protocols::bus::bus_interaction(BITWISE_LOOKUP, [imm_limbs__2, pc_limbs__0, 0, 0], is_valid);
+    std::protocols::bus::bus_interaction(BITWISE_LOOKUP, [pc_limbs__1, (from_state__pc - (rd_data__0 + (0 + pc_limbs__0 * 256 + pc_limbs__1 * 65536))) * 2013265801 * 4, 0, 0], is_valid);
+
+    // Constraints
+    is_valid * (is_valid - 1) = 0;
+    is_valid * (2005401601 * (pc_limbs__0 + imm_limbs__0 - rd_data__1 + 0) * (2005401601 * (pc_limbs__0 + imm_limbs__0 - rd_data__1 + 0) - 1)) = 0;
+    is_valid * (2005401601 * (pc_limbs__1 + imm_limbs__1 - rd_data__2 + 2005401601 * (pc_limbs__0 + imm_limbs__0 - rd_data__1 + 0)) * (2005401601 * (pc_limbs__1 + imm_limbs__1 - rd_data__2 + 2005401601 * (pc_limbs__0 + imm_limbs__0 - rd_data__1 + 0)) - 1)) = 0;
+    is_valid * (2005401601 * ((from_state__pc - (rd_data__0 + (0 + pc_limbs__0 * 256 + pc_limbs__1 * 65536))) * 2013265801 + imm_limbs__2 - rd_data__3 + 2005401601 * (pc_limbs__1 + imm_limbs__1 - rd_data__2 + 2005401601 * (pc_limbs__0 + imm_limbs__0 - rd_data__1 + 0))) * (2005401601 * ((from_state__pc - (rd_data__0 + (0 + pc_limbs__0 * 256 + pc_limbs__1 * 65536))) * 2013265801 + imm_limbs__2 - rd_data__3 + 2005401601 * (pc_limbs__1 + imm_limbs__1 - rd_data__2 + 2005401601 * (pc_limbs__0 + imm_limbs__0 - rd_data__1 + 0))) - 1)) = 0;
+    is_valid * (from_state__timestamp - rd_aux_cols__base__prev_timestamp - 1 - (0 + rd_aux_cols__base__timestamp_lt_aux__lower_decomp__0 * 1 + rd_aux_cols__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+
+
+
+namespace Rv32HintStoreAir;
+    // Preamble
+    col fixed is_first_row = [1] + [0]*;
+    col fixed is_last_row = [0] + [1]*;
+    col fixed is_transition = [0] + [1]* + [0];
+
+    let EXECUTION_BRIDGE = 0;
+    let MEMORY = 1;
+    let PC_LOOKUP = 2;
+    let VARIABLE_RANGE_CHECKER = 3;
+    let BITWISE_LOOKUP = 6;
+    let TUPLE_RANGE_CHECKER = 7;
+
+    // Witness columns
+    col witness is_single;
+    col witness is_buffer;
+    col witness rem_words_limbs__0;
+    col witness rem_words_limbs__1;
+    col witness rem_words_limbs__2;
+    col witness rem_words_limbs__3;
+    col witness from_state__pc;
+    col witness from_state__timestamp;
+    col witness mem_ptr_ptr;
+    col witness mem_ptr_limbs__0;
+    col witness mem_ptr_limbs__1;
+    col witness mem_ptr_limbs__2;
+    col witness mem_ptr_limbs__3;
+    col witness mem_ptr_aux_cols__base__prev_timestamp;
+    col witness mem_ptr_aux_cols__base__timestamp_lt_aux__lower_decomp__0;
+    col witness mem_ptr_aux_cols__base__timestamp_lt_aux__lower_decomp__1;
+    col witness write_aux__base__prev_timestamp;
+    col witness write_aux__base__timestamp_lt_aux__lower_decomp__0;
+    col witness write_aux__base__timestamp_lt_aux__lower_decomp__1;
+    col witness write_aux__prev_data__0;
+    col witness write_aux__prev_data__1;
+    col witness write_aux__prev_data__2;
+    col witness write_aux__prev_data__3;
+    col witness data__0;
+    col witness data__1;
+    col witness data__2;
+    col witness data__3;
+    col witness is_buffer_start;
+    col witness num_words_ptr;
+    col witness num_words_aux_cols__base__prev_timestamp;
+    col witness num_words_aux_cols__base__timestamp_lt_aux__lower_decomp__0;
+    col witness num_words_aux_cols__base__timestamp_lt_aux__lower_decomp__1;
+
+    // Bus interactions (bus_index, fields, count)
+    std::protocols::bus::bus_interaction(EXECUTION_BRIDGE, [from_state__pc, from_state__timestamp], -(is_single + is_buffer_start));
+    std::protocols::bus::bus_interaction(EXECUTION_BRIDGE, [from_state__pc + 4, from_state__timestamp + ((((0 * 256 + rem_words_limbs__3) * 256 + rem_words_limbs__2) * 256 + rem_words_limbs__1) * 256 + rem_words_limbs__0) * 3], is_single + is_buffer_start);
+
+    std::protocols::bus::bus_interaction(MEMORY, [1, mem_ptr_ptr, mem_ptr_limbs__0, mem_ptr_limbs__1, mem_ptr_limbs__2, mem_ptr_limbs__3, mem_ptr_aux_cols__base__prev_timestamp], 2013265920 * (is_single + is_buffer_start));
+    std::protocols::bus::bus_interaction(MEMORY, [1, mem_ptr_ptr, mem_ptr_limbs__0, mem_ptr_limbs__1, mem_ptr_limbs__2, mem_ptr_limbs__3, from_state__timestamp + 0], is_single + is_buffer_start);
+    std::protocols::bus::bus_interaction(MEMORY, [1, num_words_ptr, rem_words_limbs__0, rem_words_limbs__1, rem_words_limbs__2, rem_words_limbs__3, num_words_aux_cols__base__prev_timestamp], 2013265920 * is_buffer_start);
+    std::protocols::bus::bus_interaction(MEMORY, [1, num_words_ptr, rem_words_limbs__0, rem_words_limbs__1, rem_words_limbs__2, rem_words_limbs__3, from_state__timestamp + 1], is_buffer_start);
+    std::protocols::bus::bus_interaction(MEMORY, [2, (((0 * 256 + mem_ptr_limbs__3) * 256 + mem_ptr_limbs__2) * 256 + mem_ptr_limbs__1) * 256 + mem_ptr_limbs__0, write_aux__prev_data__0, write_aux__prev_data__1, write_aux__prev_data__2, write_aux__prev_data__3, write_aux__base__prev_timestamp], 2013265920 * (is_single + is_buffer));
+    std::protocols::bus::bus_interaction(MEMORY, [2, (((0 * 256 + mem_ptr_limbs__3) * 256 + mem_ptr_limbs__2) * 256 + mem_ptr_limbs__1) * 256 + mem_ptr_limbs__0, data__0, data__1, data__2, data__3, from_state__timestamp + 2], is_single + is_buffer);
+
+    std::protocols::bus::bus_interaction(PC_LOOKUP, [from_state__pc, is_single * 608 + is_buffer * 609, is_buffer * num_words_ptr, mem_ptr_ptr, 0, 1, 2, 0, 0], is_single + is_buffer_start);
+
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [mem_ptr_aux_cols__base__timestamp_lt_aux__lower_decomp__0, 17], is_single + is_buffer_start);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [mem_ptr_aux_cols__base__timestamp_lt_aux__lower_decomp__1, 12], is_single + is_buffer_start);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [num_words_aux_cols__base__timestamp_lt_aux__lower_decomp__0, 17], is_buffer_start);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [num_words_aux_cols__base__timestamp_lt_aux__lower_decomp__1, 12], is_buffer_start);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [write_aux__base__timestamp_lt_aux__lower_decomp__0, 17], is_single + is_buffer);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [write_aux__base__timestamp_lt_aux__lower_decomp__1, 12], is_single + is_buffer);
+
+    std::protocols::bus::bus_interaction(BITWISE_LOOKUP, [mem_ptr_limbs__3 * 8, rem_words_limbs__3 * 8, 0, 0], is_single + is_buffer_start);
+    std::protocols::bus::bus_interaction(BITWISE_LOOKUP, [data__0, data__1, 0, 0], is_single + is_buffer);
+    std::protocols::bus::bus_interaction(BITWISE_LOOKUP, [data__2, data__3, 0, 0], is_single + is_buffer);
+
+    // Constraints
+    is_single * (is_single - 1) = 0;
+    is_buffer * (is_buffer - 1) = 0;
+    is_buffer_start * (is_buffer_start - 1) = 0;
+    is_buffer_start * (is_buffer - 1) = 0;
+    (is_single + is_buffer) * (is_single + is_buffer - 1) = 0;
+    is_transition * ((1 - (is_single + is_buffer)) * (is_single' + is_buffer')) = 0;
+    is_single * (1 - is_buffer' + is_buffer_start' - 1) = 0;
+    is_first_row * (1 - is_buffer + is_buffer_start - 1) = 0;
+    (is_single + is_buffer_start) * (from_state__timestamp + 0 - mem_ptr_aux_cols__base__prev_timestamp - 1 - (0 + mem_ptr_aux_cols__base__timestamp_lt_aux__lower_decomp__0 * 1 + mem_ptr_aux_cols__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+    is_buffer_start * (from_state__timestamp + 1 - num_words_aux_cols__base__prev_timestamp - 1 - (0 + num_words_aux_cols__base__timestamp_lt_aux__lower_decomp__0 * 1 + num_words_aux_cols__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+    (is_single + is_buffer) * (from_state__timestamp + 2 - write_aux__base__prev_timestamp - 1 - (0 + write_aux__base__timestamp_lt_aux__lower_decomp__0 * 1 + write_aux__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+    (is_single + is_buffer) * ((1 - is_buffer' + is_buffer_start') * ((((0 * 256 + rem_words_limbs__3) * 256 + rem_words_limbs__2) * 256 + rem_words_limbs__1) * 256 + rem_words_limbs__0 - 1)) = 0;
+    (1 - (1 - is_buffer' + is_buffer_start')) * ((((0 * 256 + rem_words_limbs__3) * 256 + rem_words_limbs__2) * 256 + rem_words_limbs__1) * 256 + rem_words_limbs__0 - ((((0 * 256 + rem_words_limbs__3') * 256 + rem_words_limbs__2') * 256 + rem_words_limbs__1') * 256 + rem_words_limbs__0') - 1) = 0;
+    (1 - (1 - is_buffer' + is_buffer_start')) * ((((0 * 256 + mem_ptr_limbs__3') * 256 + mem_ptr_limbs__2') * 256 + mem_ptr_limbs__1') * 256 + mem_ptr_limbs__0' - ((((0 * 256 + mem_ptr_limbs__3) * 256 + mem_ptr_limbs__2) * 256 + mem_ptr_limbs__1) * 256 + mem_ptr_limbs__0) - 4) = 0;
+    (1 - (1 - is_buffer' + is_buffer_start')) * (from_state__timestamp + 3 - from_state__timestamp') = 0;
+
+
+
+namespace VmAirWrapper<Rv32MultAdapterAir, MultiplicationCoreAir<4, 8>;
+    // Preamble
+    col fixed is_first_row = [1] + [0]*;
+    col fixed is_last_row = [0] + [1]*;
+    col fixed is_transition = [0] + [1]* + [0];
+
+    let EXECUTION_BRIDGE = 0;
+    let MEMORY = 1;
+    let PC_LOOKUP = 2;
+    let VARIABLE_RANGE_CHECKER = 3;
+    let BITWISE_LOOKUP = 6;
+    let TUPLE_RANGE_CHECKER = 7;
+
+    // Witness columns
+    col witness from_state__pc;
+    col witness from_state__timestamp;
+    col witness rd_ptr;
+    col witness rs1_ptr;
+    col witness rs2_ptr;
+    col witness reads_aux__0__base__prev_timestamp;
+    col witness reads_aux__0__base__timestamp_lt_aux__lower_decomp__0;
+    col witness reads_aux__0__base__timestamp_lt_aux__lower_decomp__1;
+    col witness reads_aux__1__base__prev_timestamp;
+    col witness reads_aux__1__base__timestamp_lt_aux__lower_decomp__0;
+    col witness reads_aux__1__base__timestamp_lt_aux__lower_decomp__1;
+    col witness writes_aux__base__prev_timestamp;
+    col witness writes_aux__base__timestamp_lt_aux__lower_decomp__0;
+    col witness writes_aux__base__timestamp_lt_aux__lower_decomp__1;
+    col witness writes_aux__prev_data__0;
+    col witness writes_aux__prev_data__1;
+    col witness writes_aux__prev_data__2;
+    col witness writes_aux__prev_data__3;
+    col witness a__0;
+    col witness a__1;
+    col witness a__2;
+    col witness a__3;
+    col witness b__0;
+    col witness b__1;
+    col witness b__2;
+    col witness b__3;
+    col witness c__0;
+    col witness c__1;
+    col witness c__2;
+    col witness c__3;
+    col witness is_valid;
+
+    // Bus interactions (bus_index, fields, count)
+    std::protocols::bus::bus_interaction(EXECUTION_BRIDGE, [from_state__pc, from_state__timestamp], -is_valid);
+    std::protocols::bus::bus_interaction(EXECUTION_BRIDGE, [from_state__pc + 4, from_state__timestamp + 3], is_valid);
+
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs1_ptr, b__0, b__1, b__2, b__3, reads_aux__0__base__prev_timestamp], 2013265920 * is_valid);
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs1_ptr, b__0, b__1, b__2, b__3, from_state__timestamp + 0], is_valid);
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs2_ptr, c__0, c__1, c__2, c__3, reads_aux__1__base__prev_timestamp], 2013265920 * is_valid);
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs2_ptr, c__0, c__1, c__2, c__3, from_state__timestamp + 1], is_valid);
+    std::protocols::bus::bus_interaction(MEMORY, [1, rd_ptr, writes_aux__prev_data__0, writes_aux__prev_data__1, writes_aux__prev_data__2, writes_aux__prev_data__3, writes_aux__base__prev_timestamp], 2013265920 * is_valid);
+    std::protocols::bus::bus_interaction(MEMORY, [1, rd_ptr, a__0, a__1, a__2, a__3, from_state__timestamp + 2], is_valid);
+
+    std::protocols::bus::bus_interaction(PC_LOOKUP, [from_state__pc, 592 + 0, rd_ptr, rs1_ptr, rs2_ptr, 1, 0, 0, 0], is_valid);
+
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__0__base__timestamp_lt_aux__lower_decomp__0, 17], is_valid);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__0__base__timestamp_lt_aux__lower_decomp__1, 12], is_valid);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__1__base__timestamp_lt_aux__lower_decomp__0, 17], is_valid);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__1__base__timestamp_lt_aux__lower_decomp__1, 12], is_valid);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [writes_aux__base__timestamp_lt_aux__lower_decomp__0, 17], is_valid);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [writes_aux__base__timestamp_lt_aux__lower_decomp__1, 12], is_valid);
+
+    std::protocols::bus::bus_interaction(TUPLE_RANGE_CHECKER, [a__0, 2005401601 * (0 + (0 + b__0 * c__0) - a__0)], is_valid);
+    std::protocols::bus::bus_interaction(TUPLE_RANGE_CHECKER, [a__1, 2005401601 * (2005401601 * (0 + (0 + b__0 * c__0) - a__0) + (0 + b__0 * c__1 + b__1 * c__0) - a__1)], is_valid);
+    std::protocols::bus::bus_interaction(TUPLE_RANGE_CHECKER, [a__2, 2005401601 * (2005401601 * (2005401601 * (0 + (0 + b__0 * c__0) - a__0) + (0 + b__0 * c__1 + b__1 * c__0) - a__1) + (0 + b__0 * c__2 + b__1 * c__1 + b__2 * c__0) - a__2)], is_valid);
+    std::protocols::bus::bus_interaction(TUPLE_RANGE_CHECKER, [a__3, 2005401601 * (2005401601 * (2005401601 * (2005401601 * (0 + (0 + b__0 * c__0) - a__0) + (0 + b__0 * c__1 + b__1 * c__0) - a__1) + (0 + b__0 * c__2 + b__1 * c__1 + b__2 * c__0) - a__2) + (0 + b__0 * c__3 + b__1 * c__2 + b__2 * c__1 + b__3 * c__0) - a__3)], is_valid);
+
+    // Constraints
+    is_valid * (is_valid - 1) = 0;
+    is_valid * (from_state__timestamp + 0 - reads_aux__0__base__prev_timestamp - 1 - (0 + reads_aux__0__base__timestamp_lt_aux__lower_decomp__0 * 1 + reads_aux__0__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+    is_valid * (from_state__timestamp + 1 - reads_aux__1__base__prev_timestamp - 1 - (0 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0 * 1 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+    is_valid * (from_state__timestamp + 2 - writes_aux__base__prev_timestamp - 1 - (0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0 * 1 + writes_aux__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+
+
+
+namespace VmAirWrapper<Rv32MultAdapterAir, MulHCoreAir<4, 8>;
+    // Preamble
+    col fixed is_first_row = [1] + [0]*;
+    col fixed is_last_row = [0] + [1]*;
+    col fixed is_transition = [0] + [1]* + [0];
+
+    let EXECUTION_BRIDGE = 0;
+    let MEMORY = 1;
+    let PC_LOOKUP = 2;
+    let VARIABLE_RANGE_CHECKER = 3;
+    let BITWISE_LOOKUP = 6;
+    let TUPLE_RANGE_CHECKER = 7;
+
+    // Witness columns
+    col witness from_state__pc;
+    col witness from_state__timestamp;
+    col witness rd_ptr;
+    col witness rs1_ptr;
+    col witness rs2_ptr;
+    col witness reads_aux__0__base__prev_timestamp;
+    col witness reads_aux__0__base__timestamp_lt_aux__lower_decomp__0;
+    col witness reads_aux__0__base__timestamp_lt_aux__lower_decomp__1;
+    col witness reads_aux__1__base__prev_timestamp;
+    col witness reads_aux__1__base__timestamp_lt_aux__lower_decomp__0;
+    col witness reads_aux__1__base__timestamp_lt_aux__lower_decomp__1;
+    col witness writes_aux__base__prev_timestamp;
+    col witness writes_aux__base__timestamp_lt_aux__lower_decomp__0;
+    col witness writes_aux__base__timestamp_lt_aux__lower_decomp__1;
+    col witness writes_aux__prev_data__0;
+    col witness writes_aux__prev_data__1;
+    col witness writes_aux__prev_data__2;
+    col witness writes_aux__prev_data__3;
+    col witness a__0;
+    col witness a__1;
+    col witness a__2;
+    col witness a__3;
+    col witness b__0;
+    col witness b__1;
+    col witness b__2;
+    col witness b__3;
+    col witness c__0;
+    col witness c__1;
+    col witness c__2;
+    col witness c__3;
+    col witness a_mul__0;
+    col witness a_mul__1;
+    col witness a_mul__2;
+    col witness a_mul__3;
+    col witness b_ext;
+    col witness c_ext;
+    col witness opcode_mulh_flag;
+    col witness opcode_mulhsu_flag;
+    col witness opcode_mulhu_flag;
+
+    // Bus interactions (bus_index, fields, count)
+    std::protocols::bus::bus_interaction(EXECUTION_BRIDGE, [from_state__pc, from_state__timestamp], -(0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag));
+    std::protocols::bus::bus_interaction(EXECUTION_BRIDGE, [from_state__pc + 4, from_state__timestamp + 3], 0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag);
+
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs1_ptr, b__0, b__1, b__2, b__3, reads_aux__0__base__prev_timestamp], 2013265920 * (0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag));
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs1_ptr, b__0, b__1, b__2, b__3, from_state__timestamp + 0], 0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag);
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs2_ptr, c__0, c__1, c__2, c__3, reads_aux__1__base__prev_timestamp], 2013265920 * (0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag));
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs2_ptr, c__0, c__1, c__2, c__3, from_state__timestamp + 1], 0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag);
+    std::protocols::bus::bus_interaction(MEMORY, [1, rd_ptr, writes_aux__prev_data__0, writes_aux__prev_data__1, writes_aux__prev_data__2, writes_aux__prev_data__3, writes_aux__base__prev_timestamp], 2013265920 * (0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag));
+    std::protocols::bus::bus_interaction(MEMORY, [1, rd_ptr, a__0, a__1, a__2, a__3, from_state__timestamp + 2], 0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag);
+
+    std::protocols::bus::bus_interaction(PC_LOOKUP, [from_state__pc, 593 + (0 + opcode_mulh_flag * 0 + opcode_mulhsu_flag * 1 + opcode_mulhu_flag * 2), rd_ptr, rs1_ptr, rs2_ptr, 1, 0, 0, 0], 0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag);
+
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__0__base__timestamp_lt_aux__lower_decomp__0, 17], 0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__0__base__timestamp_lt_aux__lower_decomp__1, 12], 0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__1__base__timestamp_lt_aux__lower_decomp__0, 17], 0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__1__base__timestamp_lt_aux__lower_decomp__1, 12], 0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [writes_aux__base__timestamp_lt_aux__lower_decomp__0, 17], 0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [writes_aux__base__timestamp_lt_aux__lower_decomp__1, 12], 0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag);
+
+    std::protocols::bus::bus_interaction(BITWISE_LOOKUP, [2 * (b__3 - b_ext * 465814468 * 128), (opcode_mulh_flag + 1) * (c__3 - c_ext * 465814468 * 128), 0, 0], opcode_mulh_flag + opcode_mulhsu_flag);
+
+    std::protocols::bus::bus_interaction(TUPLE_RANGE_CHECKER, [a_mul__0, 2005401601 * (0 + (0 + b__0 * c__0) - a_mul__0)], 0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag);
+    std::protocols::bus::bus_interaction(TUPLE_RANGE_CHECKER, [a_mul__1, 2005401601 * (2005401601 * (0 + (0 + b__0 * c__0) - a_mul__0) + (0 + b__0 * c__1 + b__1 * c__0) - a_mul__1)], 0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag);
+    std::protocols::bus::bus_interaction(TUPLE_RANGE_CHECKER, [a_mul__2, 2005401601 * (2005401601 * (2005401601 * (0 + (0 + b__0 * c__0) - a_mul__0) + (0 + b__0 * c__1 + b__1 * c__0) - a_mul__1) + (0 + b__0 * c__2 + b__1 * c__1 + b__2 * c__0) - a_mul__2)], 0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag);
+    std::protocols::bus::bus_interaction(TUPLE_RANGE_CHECKER, [a_mul__3, 2005401601 * (2005401601 * (2005401601 * (2005401601 * (0 + (0 + b__0 * c__0) - a_mul__0) + (0 + b__0 * c__1 + b__1 * c__0) - a_mul__1) + (0 + b__0 * c__2 + b__1 * c__1 + b__2 * c__0) - a_mul__2) + (0 + b__0 * c__3 + b__1 * c__2 + b__2 * c__1 + b__3 * c__0) - a_mul__3)], 0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag);
+    std::protocols::bus::bus_interaction(TUPLE_RANGE_CHECKER, [a__0, 2005401601 * (2005401601 * (2005401601 * (2005401601 * (2005401601 * (0 + (0 + b__0 * c__0) - a_mul__0) + (0 + b__0 * c__1 + b__1 * c__0) - a_mul__1) + (0 + b__0 * c__2 + b__1 * c__1 + b__2 * c__0) - a_mul__2) + (0 + b__0 * c__3 + b__1 * c__2 + b__2 * c__1 + b__3 * c__0) - a_mul__3) + (0 + b__1 * c__3 + b__2 * c__2 + b__3 * c__1) + (0 + b__0 * c_ext + c__0 * b_ext) - a__0)], 0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag);
+    std::protocols::bus::bus_interaction(TUPLE_RANGE_CHECKER, [a__1, 2005401601 * (2005401601 * (2005401601 * (2005401601 * (2005401601 * (2005401601 * (0 + (0 + b__0 * c__0) - a_mul__0) + (0 + b__0 * c__1 + b__1 * c__0) - a_mul__1) + (0 + b__0 * c__2 + b__1 * c__1 + b__2 * c__0) - a_mul__2) + (0 + b__0 * c__3 + b__1 * c__2 + b__2 * c__1 + b__3 * c__0) - a_mul__3) + (0 + b__1 * c__3 + b__2 * c__2 + b__3 * c__1) + (0 + b__0 * c_ext + c__0 * b_ext) - a__0) + (0 + b__2 * c__3 + b__3 * c__2) + (0 + b__0 * c_ext + c__0 * b_ext + b__1 * c_ext + c__1 * b_ext) - a__1)], 0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag);
+    std::protocols::bus::bus_interaction(TUPLE_RANGE_CHECKER, [a__2, 2005401601 * (2005401601 * (2005401601 * (2005401601 * (2005401601 * (2005401601 * (2005401601 * (0 + (0 + b__0 * c__0) - a_mul__0) + (0 + b__0 * c__1 + b__1 * c__0) - a_mul__1) + (0 + b__0 * c__2 + b__1 * c__1 + b__2 * c__0) - a_mul__2) + (0 + b__0 * c__3 + b__1 * c__2 + b__2 * c__1 + b__3 * c__0) - a_mul__3) + (0 + b__1 * c__3 + b__2 * c__2 + b__3 * c__1) + (0 + b__0 * c_ext + c__0 * b_ext) - a__0) + (0 + b__2 * c__3 + b__3 * c__2) + (0 + b__0 * c_ext + c__0 * b_ext + b__1 * c_ext + c__1 * b_ext) - a__1) + (0 + b__3 * c__3) + (0 + b__0 * c_ext + c__0 * b_ext + b__1 * c_ext + c__1 * b_ext + b__2 * c_ext + c__2 * b_ext) - a__2)], 0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag);
+    std::protocols::bus::bus_interaction(TUPLE_RANGE_CHECKER, [a__3, 2005401601 * (2005401601 * (2005401601 * (2005401601 * (2005401601 * (2005401601 * (2005401601 * (2005401601 * (0 + (0 + b__0 * c__0) - a_mul__0) + (0 + b__0 * c__1 + b__1 * c__0) - a_mul__1) + (0 + b__0 * c__2 + b__1 * c__1 + b__2 * c__0) - a_mul__2) + (0 + b__0 * c__3 + b__1 * c__2 + b__2 * c__1 + b__3 * c__0) - a_mul__3) + (0 + b__1 * c__3 + b__2 * c__2 + b__3 * c__1) + (0 + b__0 * c_ext + c__0 * b_ext) - a__0) + (0 + b__2 * c__3 + b__3 * c__2) + (0 + b__0 * c_ext + c__0 * b_ext + b__1 * c_ext + c__1 * b_ext) - a__1) + (0 + b__3 * c__3) + (0 + b__0 * c_ext + c__0 * b_ext + b__1 * c_ext + c__1 * b_ext + b__2 * c_ext + c__2 * b_ext) - a__2) + 0 + (0 + b__0 * c_ext + c__0 * b_ext + b__1 * c_ext + c__1 * b_ext + b__2 * c_ext + c__2 * b_ext + b__3 * c_ext + c__3 * b_ext) - a__3)], 0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag);
+
+    // Constraints
+    opcode_mulh_flag * (opcode_mulh_flag - 1) = 0;
+    opcode_mulhsu_flag * (opcode_mulhsu_flag - 1) = 0;
+    opcode_mulhu_flag * (opcode_mulhu_flag - 1) = 0;
+    (0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag) * (0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag - 1) = 0;
+    b_ext * 465814468 * (b_ext * 465814468 - 1) = 0;
+    c_ext * 465814468 * (c_ext * 465814468 - 1) = 0;
+    opcode_mulhu_flag * (b_ext * 465814468) = 0;
+    (opcode_mulhu_flag + opcode_mulhsu_flag) * (c_ext * 465814468) = 0;
+    (0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag) * (from_state__timestamp + 0 - reads_aux__0__base__prev_timestamp - 1 - (0 + reads_aux__0__base__timestamp_lt_aux__lower_decomp__0 * 1 + reads_aux__0__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+    (0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag) * (from_state__timestamp + 1 - reads_aux__1__base__prev_timestamp - 1 - (0 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0 * 1 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+    (0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag) * (from_state__timestamp + 2 - writes_aux__base__prev_timestamp - 1 - (0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0 * 1 + writes_aux__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+
+
+
+namespace VmAirWrapper<Rv32MultAdapterAir, DivRemCoreAir<4, 8>;
+    // Preamble
+    col fixed is_first_row = [1] + [0]*;
+    col fixed is_last_row = [0] + [1]*;
+    col fixed is_transition = [0] + [1]* + [0];
+
+    let EXECUTION_BRIDGE = 0;
+    let MEMORY = 1;
+    let PC_LOOKUP = 2;
+    let VARIABLE_RANGE_CHECKER = 3;
+    let BITWISE_LOOKUP = 6;
+    let TUPLE_RANGE_CHECKER = 7;
+
+    // Witness columns
+    col witness from_state__pc;
+    col witness from_state__timestamp;
+    col witness rd_ptr;
+    col witness rs1_ptr;
+    col witness rs2_ptr;
+    col witness reads_aux__0__base__prev_timestamp;
+    col witness reads_aux__0__base__timestamp_lt_aux__lower_decomp__0;
+    col witness reads_aux__0__base__timestamp_lt_aux__lower_decomp__1;
+    col witness reads_aux__1__base__prev_timestamp;
+    col witness reads_aux__1__base__timestamp_lt_aux__lower_decomp__0;
+    col witness reads_aux__1__base__timestamp_lt_aux__lower_decomp__1;
+    col witness writes_aux__base__prev_timestamp;
+    col witness writes_aux__base__timestamp_lt_aux__lower_decomp__0;
+    col witness writes_aux__base__timestamp_lt_aux__lower_decomp__1;
+    col witness writes_aux__prev_data__0;
+    col witness writes_aux__prev_data__1;
+    col witness writes_aux__prev_data__2;
+    col witness writes_aux__prev_data__3;
+    col witness b__0;
+    col witness b__1;
+    col witness b__2;
+    col witness b__3;
+    col witness c__0;
+    col witness c__1;
+    col witness c__2;
+    col witness c__3;
+    col witness q__0;
+    col witness q__1;
+    col witness q__2;
+    col witness q__3;
+    col witness r__0;
+    col witness r__1;
+    col witness r__2;
+    col witness r__3;
+    col witness zero_divisor;
+    col witness r_zero;
+    col witness b_sign;
+    col witness c_sign;
+    col witness q_sign;
+    col witness sign_xor;
+    col witness c_sum_inv;
+    col witness r_sum_inv;
+    col witness r_prime__0;
+    col witness r_prime__1;
+    col witness r_prime__2;
+    col witness r_prime__3;
+    col witness r_inv__0;
+    col witness r_inv__1;
+    col witness r_inv__2;
+    col witness r_inv__3;
+    col witness lt_marker__0;
+    col witness lt_marker__1;
+    col witness lt_marker__2;
+    col witness lt_marker__3;
+    col witness lt_diff;
+    col witness opcode_div_flag;
+    col witness opcode_divu_flag;
+    col witness opcode_rem_flag;
+    col witness opcode_remu_flag;
+
+    // Bus interactions (bus_index, fields, count)
+    std::protocols::bus::bus_interaction(EXECUTION_BRIDGE, [from_state__pc, from_state__timestamp], -(0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag));
+    std::protocols::bus::bus_interaction(EXECUTION_BRIDGE, [from_state__pc + 4, from_state__timestamp + 3], 0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag);
+
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs1_ptr, b__0, b__1, b__2, b__3, reads_aux__0__base__prev_timestamp], 2013265920 * (0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag));
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs1_ptr, b__0, b__1, b__2, b__3, from_state__timestamp + 0], 0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag);
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs2_ptr, c__0, c__1, c__2, c__3, reads_aux__1__base__prev_timestamp], 2013265920 * (0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag));
+    std::protocols::bus::bus_interaction(MEMORY, [1, rs2_ptr, c__0, c__1, c__2, c__3, from_state__timestamp + 1], 0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag);
+    std::protocols::bus::bus_interaction(MEMORY, [1, rd_ptr, writes_aux__prev_data__0, writes_aux__prev_data__1, writes_aux__prev_data__2, writes_aux__prev_data__3, writes_aux__base__prev_timestamp], 2013265920 * (0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag));
+    std::protocols::bus::bus_interaction(MEMORY, [1, rd_ptr, (opcode_div_flag + opcode_divu_flag) * q__0 + (1 - (opcode_div_flag + opcode_divu_flag)) * r__0, (opcode_div_flag + opcode_divu_flag) * q__1 + (1 - (opcode_div_flag + opcode_divu_flag)) * r__1, (opcode_div_flag + opcode_divu_flag) * q__2 + (1 - (opcode_div_flag + opcode_divu_flag)) * r__2, (opcode_div_flag + opcode_divu_flag) * q__3 + (1 - (opcode_div_flag + opcode_divu_flag)) * r__3, from_state__timestamp + 2], 0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag);
+
+    std::protocols::bus::bus_interaction(PC_LOOKUP, [from_state__pc, 0 + opcode_div_flag * 0 + opcode_divu_flag * 1 + opcode_rem_flag * 2 + opcode_remu_flag * 3 + 596, rd_ptr, rs1_ptr, rs2_ptr, 1, 0, 0, 0], 0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag);
+
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__0__base__timestamp_lt_aux__lower_decomp__0, 17], 0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__0__base__timestamp_lt_aux__lower_decomp__1, 12], 0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__1__base__timestamp_lt_aux__lower_decomp__0, 17], 0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [reads_aux__1__base__timestamp_lt_aux__lower_decomp__1, 12], 0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [writes_aux__base__timestamp_lt_aux__lower_decomp__0, 17], 0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag);
+    std::protocols::bus::bus_interaction(VARIABLE_RANGE_CHECKER, [writes_aux__base__timestamp_lt_aux__lower_decomp__1, 12], 0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag);
+
+    std::protocols::bus::bus_interaction(BITWISE_LOOKUP, [2 * (b__3 - b_sign * 128), 2 * (c__3 - c_sign * 128), 0, 0], opcode_div_flag + opcode_rem_flag);
+    std::protocols::bus::bus_interaction(BITWISE_LOOKUP, [lt_diff - 1, 0, 0, 0], 0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag - (zero_divisor + r_zero));
+
+    std::protocols::bus::bus_interaction(TUPLE_RANGE_CHECKER, [q__0, (0 + (r__0 + c__0 * q__0) - b__0) * 2005401601], 0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag);
+    std::protocols::bus::bus_interaction(TUPLE_RANGE_CHECKER, [q__1, ((0 + (r__0 + c__0 * q__0) - b__0) * 2005401601 + (r__1 + c__0 * q__1 + c__1 * q__0) - b__1) * 2005401601], 0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag);
+    std::protocols::bus::bus_interaction(TUPLE_RANGE_CHECKER, [q__2, (((0 + (r__0 + c__0 * q__0) - b__0) * 2005401601 + (r__1 + c__0 * q__1 + c__1 * q__0) - b__1) * 2005401601 + (r__2 + c__0 * q__2 + c__1 * q__1 + c__2 * q__0) - b__2) * 2005401601], 0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag);
+    std::protocols::bus::bus_interaction(TUPLE_RANGE_CHECKER, [q__3, ((((0 + (r__0 + c__0 * q__0) - b__0) * 2005401601 + (r__1 + c__0 * q__1 + c__1 * q__0) - b__1) * 2005401601 + (r__2 + c__0 * q__2 + c__1 * q__1 + c__2 * q__0) - b__2) * 2005401601 + (r__3 + c__0 * q__3 + c__1 * q__2 + c__2 * q__1 + c__3 * q__0) - b__3) * 2005401601], 0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag);
+    std::protocols::bus::bus_interaction(TUPLE_RANGE_CHECKER, [r__0, (((((0 + (r__0 + c__0 * q__0) - b__0) * 2005401601 + (r__1 + c__0 * q__1 + c__1 * q__0) - b__1) * 2005401601 + (r__2 + c__0 * q__2 + c__1 * q__1 + c__2 * q__0) - b__2) * 2005401601 + (r__3 + c__0 * q__3 + c__1 * q__2 + c__2 * q__1 + c__3 * q__0) - b__3) * 2005401601 + (0 + c__1 * q__3 + c__2 * q__2 + c__3 * q__1) + (0 + c__0 * (q_sign * 255) + q__0 * (c_sign * 255)) + (1 - r_zero) * (b_sign * 255) - b_sign * 255) * 2005401601], 0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag);
+    std::protocols::bus::bus_interaction(TUPLE_RANGE_CHECKER, [r__1, ((((((0 + (r__0 + c__0 * q__0) - b__0) * 2005401601 + (r__1 + c__0 * q__1 + c__1 * q__0) - b__1) * 2005401601 + (r__2 + c__0 * q__2 + c__1 * q__1 + c__2 * q__0) - b__2) * 2005401601 + (r__3 + c__0 * q__3 + c__1 * q__2 + c__2 * q__1 + c__3 * q__0) - b__3) * 2005401601 + (0 + c__1 * q__3 + c__2 * q__2 + c__3 * q__1) + (0 + c__0 * (q_sign * 255) + q__0 * (c_sign * 255)) + (1 - r_zero) * (b_sign * 255) - b_sign * 255) * 2005401601 + (0 + c__2 * q__3 + c__3 * q__2) + (0 + c__0 * (q_sign * 255) + q__0 * (c_sign * 255) + c__1 * (q_sign * 255) + q__1 * (c_sign * 255)) + (1 - r_zero) * (b_sign * 255) - b_sign * 255) * 2005401601], 0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag);
+    std::protocols::bus::bus_interaction(TUPLE_RANGE_CHECKER, [r__2, (((((((0 + (r__0 + c__0 * q__0) - b__0) * 2005401601 + (r__1 + c__0 * q__1 + c__1 * q__0) - b__1) * 2005401601 + (r__2 + c__0 * q__2 + c__1 * q__1 + c__2 * q__0) - b__2) * 2005401601 + (r__3 + c__0 * q__3 + c__1 * q__2 + c__2 * q__1 + c__3 * q__0) - b__3) * 2005401601 + (0 + c__1 * q__3 + c__2 * q__2 + c__3 * q__1) + (0 + c__0 * (q_sign * 255) + q__0 * (c_sign * 255)) + (1 - r_zero) * (b_sign * 255) - b_sign * 255) * 2005401601 + (0 + c__2 * q__3 + c__3 * q__2) + (0 + c__0 * (q_sign * 255) + q__0 * (c_sign * 255) + c__1 * (q_sign * 255) + q__1 * (c_sign * 255)) + (1 - r_zero) * (b_sign * 255) - b_sign * 255) * 2005401601 + (0 + c__3 * q__3) + (0 + c__0 * (q_sign * 255) + q__0 * (c_sign * 255) + c__1 * (q_sign * 255) + q__1 * (c_sign * 255) + c__2 * (q_sign * 255) + q__2 * (c_sign * 255)) + (1 - r_zero) * (b_sign * 255) - b_sign * 255) * 2005401601], 0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag);
+    std::protocols::bus::bus_interaction(TUPLE_RANGE_CHECKER, [r__3, ((((((((0 + (r__0 + c__0 * q__0) - b__0) * 2005401601 + (r__1 + c__0 * q__1 + c__1 * q__0) - b__1) * 2005401601 + (r__2 + c__0 * q__2 + c__1 * q__1 + c__2 * q__0) - b__2) * 2005401601 + (r__3 + c__0 * q__3 + c__1 * q__2 + c__2 * q__1 + c__3 * q__0) - b__3) * 2005401601 + (0 + c__1 * q__3 + c__2 * q__2 + c__3 * q__1) + (0 + c__0 * (q_sign * 255) + q__0 * (c_sign * 255)) + (1 - r_zero) * (b_sign * 255) - b_sign * 255) * 2005401601 + (0 + c__2 * q__3 + c__3 * q__2) + (0 + c__0 * (q_sign * 255) + q__0 * (c_sign * 255) + c__1 * (q_sign * 255) + q__1 * (c_sign * 255)) + (1 - r_zero) * (b_sign * 255) - b_sign * 255) * 2005401601 + (0 + c__3 * q__3) + (0 + c__0 * (q_sign * 255) + q__0 * (c_sign * 255) + c__1 * (q_sign * 255) + q__1 * (c_sign * 255) + c__2 * (q_sign * 255) + q__2 * (c_sign * 255)) + (1 - r_zero) * (b_sign * 255) - b_sign * 255) * 2005401601 + 0 + (0 + c__0 * (q_sign * 255) + q__0 * (c_sign * 255) + c__1 * (q_sign * 255) + q__1 * (c_sign * 255) + c__2 * (q_sign * 255) + q__2 * (c_sign * 255) + c__3 * (q_sign * 255) + q__3 * (c_sign * 255)) + (1 - r_zero) * (b_sign * 255) - b_sign * 255) * 2005401601], 0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag);
+
+    // Constraints
+    opcode_div_flag * (opcode_div_flag - 1) = 0;
+    opcode_divu_flag * (opcode_divu_flag - 1) = 0;
+    opcode_rem_flag * (opcode_rem_flag - 1) = 0;
+    opcode_remu_flag * (opcode_remu_flag - 1) = 0;
+    (0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag) * (0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag - 1) = 0;
+    (zero_divisor + r_zero) * (zero_divisor + r_zero - 1) = 0;
+    zero_divisor * (zero_divisor - 1) = 0;
+    zero_divisor * c__0 = 0;
+    zero_divisor * (q__0 - 255) = 0;
+    zero_divisor * c__1 = 0;
+    zero_divisor * (q__1 - 255) = 0;
+    zero_divisor * c__2 = 0;
+    zero_divisor * (q__2 - 255) = 0;
+    zero_divisor * c__3 = 0;
+    zero_divisor * (q__3 - 255) = 0;
+    (0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag - zero_divisor) * (0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag - zero_divisor - 1) = 0;
+    (0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag - zero_divisor) * ((0 + c__0 + c__1 + c__2 + c__3) * c_sum_inv - 1) = 0;
+    r_zero * (r_zero - 1) = 0;
+    r_zero * r__0 = 0;
+    r_zero * r__1 = 0;
+    r_zero * r__2 = 0;
+    r_zero * r__3 = 0;
+    (0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag - (zero_divisor + r_zero)) * (0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag - (zero_divisor + r_zero) - 1) = 0;
+    (0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag - (zero_divisor + r_zero)) * ((0 + r__0 + r__1 + r__2 + r__3) * r_sum_inv - 1) = 0;
+    b_sign * (b_sign - 1) = 0;
+    c_sign * (c_sign - 1) = 0;
+    (1 - (opcode_div_flag + opcode_rem_flag)) * b_sign = 0;
+    (1 - (opcode_div_flag + opcode_rem_flag)) * c_sign = 0;
+    b_sign + c_sign - 2 * b_sign * c_sign - sign_xor = 0;
+    q_sign * (q_sign - 1) = 0;
+    (0 + q__0 + q__1 + q__2 + q__3) * ((1 - zero_divisor) * (q_sign - sign_xor)) = 0;
+    (q_sign - sign_xor) * ((1 - zero_divisor) * q_sign) = 0;
+    (1 - sign_xor) * (r__0 - r_prime__0) = 0;
+    sign_xor * (((0 + r__0 + r_prime__0) * 2005401601 - 0) * ((0 + r__0 + r_prime__0) * 2005401601 - 1)) = 0;
+    sign_xor * ((r_prime__0 - 256) * r_inv__0 - 1) = 0;
+    sign_xor * ((1 - (0 + r__0 + r_prime__0) * 2005401601) * r_prime__0) = 0;
+    (1 - sign_xor) * (r__1 - r_prime__1) = 0;
+    sign_xor * ((((0 + r__0 + r_prime__0) * 2005401601 + r__1 + r_prime__1) * 2005401601 - (0 + r__0 + r_prime__0) * 2005401601) * (((0 + r__0 + r_prime__0) * 2005401601 + r__1 + r_prime__1) * 2005401601 - 1)) = 0;
+    sign_xor * ((r_prime__1 - 256) * r_inv__1 - 1) = 0;
+    sign_xor * ((1 - ((0 + r__0 + r_prime__0) * 2005401601 + r__1 + r_prime__1) * 2005401601) * r_prime__1) = 0;
+    (1 - sign_xor) * (r__2 - r_prime__2) = 0;
+    sign_xor * (((((0 + r__0 + r_prime__0) * 2005401601 + r__1 + r_prime__1) * 2005401601 + r__2 + r_prime__2) * 2005401601 - ((0 + r__0 + r_prime__0) * 2005401601 + r__1 + r_prime__1) * 2005401601) * ((((0 + r__0 + r_prime__0) * 2005401601 + r__1 + r_prime__1) * 2005401601 + r__2 + r_prime__2) * 2005401601 - 1)) = 0;
+    sign_xor * ((r_prime__2 - 256) * r_inv__2 - 1) = 0;
+    sign_xor * ((1 - (((0 + r__0 + r_prime__0) * 2005401601 + r__1 + r_prime__1) * 2005401601 + r__2 + r_prime__2) * 2005401601) * r_prime__2) = 0;
+    (1 - sign_xor) * (r__3 - r_prime__3) = 0;
+    sign_xor * ((((((0 + r__0 + r_prime__0) * 2005401601 + r__1 + r_prime__1) * 2005401601 + r__2 + r_prime__2) * 2005401601 + r__3 + r_prime__3) * 2005401601 - (((0 + r__0 + r_prime__0) * 2005401601 + r__1 + r_prime__1) * 2005401601 + r__2 + r_prime__2) * 2005401601) * (((((0 + r__0 + r_prime__0) * 2005401601 + r__1 + r_prime__1) * 2005401601 + r__2 + r_prime__2) * 2005401601 + r__3 + r_prime__3) * 2005401601 - 1)) = 0;
+    sign_xor * ((r_prime__3 - 256) * r_inv__3 - 1) = 0;
+    sign_xor * ((1 - ((((0 + r__0 + r_prime__0) * 2005401601 + r__1 + r_prime__1) * 2005401601 + r__2 + r_prime__2) * 2005401601 + r__3 + r_prime__3) * 2005401601) * r_prime__3) = 0;
+    lt_marker__3 * (lt_marker__3 - 1) = 0;
+    (1 - (zero_divisor + r_zero + lt_marker__3)) * (r_prime__3 * (2 * c_sign - 1) + c__3 * (1 - 2 * c_sign)) = 0;
+    lt_marker__3 * (lt_diff - (r_prime__3 * (2 * c_sign - 1) + c__3 * (1 - 2 * c_sign))) = 0;
+    lt_marker__2 * (lt_marker__2 - 1) = 0;
+    (1 - (zero_divisor + r_zero + lt_marker__3 + lt_marker__2)) * (r_prime__2 * (2 * c_sign - 1) + c__2 * (1 - 2 * c_sign)) = 0;
+    lt_marker__2 * (lt_diff - (r_prime__2 * (2 * c_sign - 1) + c__2 * (1 - 2 * c_sign))) = 0;
+    lt_marker__1 * (lt_marker__1 - 1) = 0;
+    (1 - (zero_divisor + r_zero + lt_marker__3 + lt_marker__2 + lt_marker__1)) * (r_prime__1 * (2 * c_sign - 1) + c__1 * (1 - 2 * c_sign)) = 0;
+    lt_marker__1 * (lt_diff - (r_prime__1 * (2 * c_sign - 1) + c__1 * (1 - 2 * c_sign))) = 0;
+    lt_marker__0 * (lt_marker__0 - 1) = 0;
+    (1 - (zero_divisor + r_zero + lt_marker__3 + lt_marker__2 + lt_marker__1 + lt_marker__0)) * (r_prime__0 * (2 * c_sign - 1) + c__0 * (1 - 2 * c_sign)) = 0;
+    lt_marker__0 * (lt_diff - (r_prime__0 * (2 * c_sign - 1) + c__0 * (1 - 2 * c_sign))) = 0;
+    (0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag) * (zero_divisor + r_zero + lt_marker__3 + lt_marker__2 + lt_marker__1 + lt_marker__0 - 1) = 0;
+    (0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag) * (from_state__timestamp + 0 - reads_aux__0__base__prev_timestamp - 1 - (0 + reads_aux__0__base__timestamp_lt_aux__lower_decomp__0 * 1 + reads_aux__0__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+    (0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag) * (from_state__timestamp + 1 - reads_aux__1__base__prev_timestamp - 1 - (0 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__0 * 1 + reads_aux__1__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+    (0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag) * (from_state__timestamp + 2 - writes_aux__base__prev_timestamp - 1 - (0 + writes_aux__base__timestamp_lt_aux__lower_decomp__0 * 1 + writes_aux__base__timestamp_lt_aux__lower_decomp__1 * 131072)) = 0;
+
+

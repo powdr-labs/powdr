@@ -227,10 +227,6 @@ impl PowdrTraceGeneratorGpu {
             .filter_map(|(insertion_idx, chip)| {
                 let air_name = chip_inventory.airs().ext_airs()[insertion_idx].name();
 
-                if air_name == "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>" {
-                    return None;
-                }
-
                 let record_arena = {
                     match original_arenas.take_arena(&air_name) {
                         Some(ra) => ra,
@@ -268,7 +264,7 @@ impl PowdrTraceGeneratorGpu {
             DeviceMatrix::<BabyBear>::new(Arc::new(device_buffer), height, width);
 
         // Prepare `OriginalAir` and `Subst` arrays
-        let (airs, substitutions) = {
+        let (airs, substitutions, _) = {
             self.apc
                 // go through original instructions
                 .instructions()
@@ -281,12 +277,11 @@ impl PowdrTraceGeneratorGpu {
                 .into_group_map()
                 // go through each air and its substitutions
                 .iter()
-                .enumerate()
                 .fold(
-                    (Vec::new(), Vec::new()),
-                    |(mut airs, mut substitutions), (air_index, (air_name, subs_by_row))| {
+                    (Vec::new(), Vec::new(), 0usize),
+                    |(mut airs, mut substitutions, mut air_index), (air_name, subs_by_row)| {
                         if *air_name == "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>" {
-                            return (airs, substitutions)
+                            return (airs, substitutions, air_index)
                         }
                         
                         // Find the substitutions that map to an apc column
@@ -320,10 +315,27 @@ impl PowdrTraceGeneratorGpu {
 
                         substitutions.extend(new_substitutions);
 
-                        (airs, substitutions)
+                        (airs, substitutions, air_index + 1)
                     },
                 )
         };
+
+        println!("airs/substs lengths: {}/{}", airs.len(), substitutions.len());
+        println!("num_apc_calls: {}", num_apc_calls);
+
+        airs.iter().for_each(|a| {
+            println!(
+                "air: width {}, height {}, row_block_size {}",
+                a.width, a.height, a.row_block_size
+            );
+        });
+
+        substitutions.iter().for_each(|s| {
+            println!(
+                "subst: air_index {}, col {}, row {}, apc_col {}",
+                s.air_index, s.col, s.row, s.apc_col
+            );
+        });
 
         // Send the airs and substitutions to device
         let airs = airs.to_device().unwrap();
