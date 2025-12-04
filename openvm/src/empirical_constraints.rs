@@ -81,9 +81,8 @@ pub fn detect_empirical_constraints(
 fn collect_trace(program: &CompiledProgram, inputs: StdIn) -> (Trace, DebugInfo) {
     let mut trace = Trace::default();
     let mut debug_info = DebugInfo::default();
-    let mut seg_idx = 0;
 
-    do_with_trace(program, inputs, |vm, _pk, ctx| {
+    do_with_trace(program, inputs, |seg_idx, vm, _pk, ctx| {
         let global_airs = vm
             .config()
             .create_airs()
@@ -130,7 +129,7 @@ fn collect_trace(program: &CompiledProgram, inputs: StdIn) -> (Trace, DebugInfo)
                 let row = Row {
                     cells: row,
                     pc: pc_value,
-                    timestamp: (seg_idx, ts_value),
+                    timestamp: (seg_idx as u32, ts_value),
                 };
                 trace.rows.push(row);
 
@@ -149,8 +148,6 @@ fn collect_trace(program: &CompiledProgram, inputs: StdIn) -> (Trace, DebugInfo)
                 }
             }
         }
-
-        seg_idx += 1;
     })
     .unwrap();
     (trace, debug_info)
