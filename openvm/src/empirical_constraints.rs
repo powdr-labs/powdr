@@ -4,13 +4,16 @@ use openvm_sdk::StdIn;
 use openvm_stark_backend::p3_maybe_rayon::prelude::IntoParallelIterator;
 use openvm_stark_backend::p3_maybe_rayon::prelude::ParallelIterator;
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
+use powdr_autoprecompiles::empirical_constraints::BlockCell;
 use powdr_autoprecompiles::empirical_constraints::{
     intersect_partitions, DebugInfo, EmpiricalConstraints,
 };
+use powdr_autoprecompiles::equivalence_classes::EquivalenceClasses;
 use powdr_autoprecompiles::DegreeBound;
 use std::collections::btree_map::Entry;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
-use std::collections::{BTreeMap, BTreeSet};
+use std::iter::once;
 
 use crate::trace_generation::do_with_trace;
 use crate::{CompiledProgram, OriginalCompiledProgram};
@@ -37,11 +40,8 @@ impl Trace {
         })
     }
 
-    fn rows_by_time(&self) -> Vec<&Row> {
-        self.rows
-            .iter()
-            .sorted_by_key(|row| row.timestamp)
-            .collect()
+    fn rows_sorted_by_time(&self) -> impl Iterator<Item = &Row> {
+        self.rows.iter().sorted_by_key(|row| row.timestamp)
     }
 }
 
@@ -160,6 +160,31 @@ struct ConstraintDetector {
     debug_info: DebugInfo,
 }
 
+struct ConcreteBlock<'a> {
+    rows: Vec<&'a Row>,
+}
+
+impl<'a> ConcreteBlock<'a> {
+    fn equivalence_classes(&self) -> EquivalenceClasses<BlockCell> {
+        self.rows
+            .iter()
+            .enumerate()
+            // Map each cell to a (value, (instruction_index, col_index)) pair
+            .flat_map(|(instruction_index, row)| {
+                row.cells
+                    .iter()
+                    .enumerate()
+                    .map(|(col_index, v)| (*v, BlockCell::new(instruction_index, col_index)))
+                    .collect::<Vec<_>>()
+            })
+            // Group by value
+            .into_group_map()
+            .into_values()
+            .map(|cells| cells.into_iter().collect())
+            .collect()
+    }
+}
+
 impl ConstraintDetector {
     pub fn new(instruction_counts: HashMap<u64, usize>) -> Self {
         Self {
@@ -223,7 +248,7 @@ impl ConstraintDetector {
     fn generate_equivalence_classes_by_block(
         &self,
         trace: &Trace,
-    ) -> BTreeMap<u64, BTreeSet<BTreeSet<(usize, usize)>>> {
+    ) -> BTreeMap<u64, EquivalenceClasses<BlockCell>> {
         tracing::info!("        Segmenting trace into blocks...");
         let blocks = self.get_blocks(trace);
         tracing::info!("        Finding equivalence classes...");
@@ -233,17 +258,11 @@ impl ConstraintDetector {
                 // Segment each block instance into equivalence classes
                 let classes = block_instances
                     .into_iter()
-                    .map(|block| self.block_equivalence_classes(block))
+                    .map(|block| block.equivalence_classes())
                     .collect::<Vec<_>>();
 
                 // Intersect the equivalence classes across all instances of the block
-                let intersected = intersect_partitions(&classes);
-
-                // Remove singleton classes
-                let intersected = intersected
-                    .into_iter()
-                    .filter(|class| class.len() > 1)
-                    .collect::<BTreeSet<_>>();
+                let intersected = intersect_partitions(classes);
 
                 (block_id, intersected)
             })
@@ -252,59 +271,42 @@ impl ConstraintDetector {
 
     /// Segments a trace into basic blocks.
     /// Returns a mapping from block ID to all instances of that block in the trace.
-    fn get_blocks<'a>(&self, trace: &'a Trace) -> BTreeMap<u64, Vec<Vec<&'a Row>>> {
-        let mut block_rows = BTreeMap::new();
-        let mut row_index = 0;
-        let rows_by_time = trace.rows_by_time();
+    fn get_blocks<'a>(&self, trace: &'a Trace) -> BTreeMap<u64, Vec<ConcreteBlock<'a>>> {
+        trace
+            .rows_sorted_by_time()
+            // take entire blocks from the rows
+            .batching(|it| {
+                let first = it.next()?;
+                let block_id = first.pc as u64;
 
-        while row_index < rows_by_time.len() {
-            let first_row = rows_by_time[row_index];
-            let block_id = first_row.pc as u64;
+                if let Some(&count) = self.instruction_counts.get(&block_id) {
+                    let rows = once(first).chain(it.take(count - 1)).collect_vec();
 
-            if let Some(instruction_count) = self.instruction_counts.get(&block_id) {
-                let block_row_slice = &rows_by_time[row_index..row_index + instruction_count];
+                    for (r1, r2) in rows.iter().tuple_windows() {
+                        assert_eq!(r2.pc, r1.pc + 4);
+                    }
 
-                for (row1, row2) in block_row_slice.iter().tuple_windows() {
-                    assert_eq!(row2.pc, row1.pc + 4);
+                    Some(Some((block_id, ConcreteBlock { rows })))
+                } else {
+                    // Single instruction block, yield `None` to be filtered.
+                    Some(None)
                 }
-
-                block_rows
-                    .entry(block_id)
-                    .or_insert(Vec::new())
-                    .push(block_row_slice.to_vec());
-                row_index += instruction_count;
-            } else {
-                // Single instruction block, ignore.
-                row_index += 1;
-            }
-        }
-
-        block_rows
-    }
-
-    fn block_equivalence_classes(&self, block: Vec<&Row>) -> BTreeSet<BTreeSet<(usize, usize)>> {
-        block
-            .into_iter()
-            .enumerate()
-            // Map each cell to a (value, (instruction_index, col_index)) pair
-            .flat_map(|(instruction_index, row)| {
-                row.cells
-                    .iter()
-                    .enumerate()
-                    .map(|(col_index, v)| (*v, (instruction_index, col_index)))
-                    .collect::<Vec<_>>()
             })
-            // Group by value
-            .into_group_map()
-            .values()
-            // Convert to set
-            .map(|v| v.clone().into_iter().collect())
-            .collect()
+            // filter out single instruction blocks
+            .flatten()
+            // collect by start_pc
+            .fold(Default::default(), |mut block_rows, (block_id, chunk)| {
+                block_rows.entry(block_id).or_insert(Vec::new()).push(chunk);
+                block_rows
+            })
     }
 }
 
 #[cfg(test)]
 mod tests {
+
+    use powdr_autoprecompiles::equivalence_classes::EquivalenceClass;
+
     use super::*;
 
     fn make_trace(rows_by_time_with_pc: Vec<(u32, Vec<u32>)>) -> Trace {
@@ -319,20 +321,6 @@ mod tests {
                 })
                 .collect(),
         }
-    }
-
-    fn assert_equivalence_classes_equal(
-        actual: BTreeSet<BTreeSet<(usize, usize)>>,
-        expected: Vec<Vec<(usize, usize)>>,
-    ) {
-        assert_eq!(actual.len(), expected.len());
-        let mut actual = actual.into_iter();
-        for expected_class in expected {
-            let actual_class = actual.next().unwrap();
-            let expected_class_set: BTreeSet<(usize, usize)> = expected_class.into_iter().collect();
-            assert_eq!(actual_class, expected_class_set);
-        }
-        assert!(actual.next().is_none());
     }
 
     #[test]
@@ -368,16 +356,16 @@ mod tests {
         let equivalence_classes = empirical_constraints
             .equivalence_classes_by_block
             .get(&0)
-            .unwrap()
-            .clone();
+            .unwrap();
         println!("Equivalence classes: {:?}", equivalence_classes);
-        assert_equivalence_classes_equal(
-            equivalence_classes,
-            vec![
-                // The result of the first instruction (col 0) is always equal to the
-                // first operand of the second instruction (col 1)
-                vec![(0, 0), (1, 1)],
-            ],
-        );
+        let expected: EquivalenceClasses<_> = once(
+            // The result of the first instruction (col 0) is always equal to the
+            // first operand of the second instruction (col 1)
+            [BlockCell::new(0, 0), BlockCell::new(1, 1)]
+                .into_iter()
+                .collect::<EquivalenceClass<_>>(),
+        )
+        .collect();
+        assert_eq!(*equivalence_classes, expected,);
     }
 }
