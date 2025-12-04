@@ -1,13 +1,11 @@
 use std::collections::BTreeMap;
 
-use itertools::Itertools;
 use num_traits::identities::{One, Zero};
 use powdr_constraint_solver::{
     constraint_system::{
         BusInteraction, BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
     },
     grouped_expression::GroupedExpression,
-    indexed_constraint_system::apply_substitutions,
     range_constraint::RangeConstraint,
     solver::{solve_system, Error},
 };
