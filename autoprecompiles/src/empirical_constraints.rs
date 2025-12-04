@@ -1,12 +1,12 @@
 use std::collections::btree_map::Entry;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::Debug;
 use std::hash::Hash;
 
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
-pub use crate::empirical_constraints::equivalence_class::EquivalenceClass;
+pub use crate::equivalence_classes::{EquivalenceClass, EquivalenceClasses};
 
 /// "Constraints" that were inferred from execution statistics. They hold empirically
 /// (most of the time), but are not guaranteed to hold in all cases.
@@ -101,67 +101,6 @@ impl BlockCell {
     }
 }
 
-mod equivalence_class {
-    use std::collections::BTreeSet;
-
-    use serde::Serialize;
-
-    /// An equivalence class with the following guarantees
-    /// - It cannot be empty
-    /// - It cannot hold a single element
-    #[derive(Serialize, Debug, PartialOrd, Ord, PartialEq, Eq)]
-    pub struct EquivalenceClass<T> {
-        inner: BTreeSet<T>,
-    }
-
-    impl<T> Default for EquivalenceClass<T> {
-        fn default() -> Self {
-            Self {
-                inner: BTreeSet::default(),
-            }
-        }
-    }
-
-    impl<T> EquivalenceClass<T> {
-        pub fn iter(&self) -> impl Iterator<Item = &T> {
-            self.inner.iter()
-        }
-    }
-
-    impl<T: Ord> FromIterator<T> for EquivalenceClass<T> {
-        fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
-            let inner: BTreeSet<_> = iter.into_iter().collect();
-            if inner.len() > 1 {
-                Self { inner }
-            } else {
-                Self::default()
-            }
-        }
-    }
-}
-
-/// A collection of equivalence classes
-#[derive(Serialize, Debug, PartialEq, Eq)]
-pub struct EquivalenceClasses<T> {
-    inner: BTreeSet<EquivalenceClass<T>>,
-}
-
-impl<T> Default for EquivalenceClasses<T> {
-    fn default() -> Self {
-        Self {
-            inner: Default::default(),
-        }
-    }
-}
-
-impl<T: Ord> FromIterator<EquivalenceClass<T>> for EquivalenceClasses<T> {
-    fn from_iter<I: IntoIterator<Item = EquivalenceClass<T>>>(iter: I) -> Self {
-        Self {
-            inner: iter.into_iter().collect(),
-        }
-    }
-}
-
 /// Intersects multiple partitions of the same universe into a single partition.
 /// In other words, two elements are in the same equivalence class in the resulting partition
 /// if and only if they are in the same equivalence class in all input partitions.
@@ -174,7 +113,6 @@ pub fn intersect_partitions<T: Eq + Hash + Copy + Ord>(
         .iter()
         .map(|partition| {
             partition
-                .inner
                 .iter()
                 .enumerate()
                 .flat_map(|(class_idx, class)| class.iter().map(move |&id| (id, class_idx)))
@@ -183,17 +121,17 @@ pub fn intersect_partitions<T: Eq + Hash + Copy + Ord>(
         .collect();
 
     // Iterate over all elements in the universe
-    let res = partitions
+    partitions
         .iter()
-        .flat_map(|partition| &partition.inner)
-        .flat_map(|class| class.iter().copied())
+        .flat_map(|partition| partition.iter())
+        .flat_map(|class| class.iter())
         .unique()
         .filter_map(|id| {
             // Build the signature of the element: the list of class indices it belongs to
             // (one index per partition)
             class_ids
                 .iter()
-                .map(|m| m.get(&id).cloned())
+                .map(|m| m.get(id).cloned())
                 // If an element did not appear in any one of the partitions, it is
                 // a singleton and we skip it.
                 .collect::<Option<Vec<usize>>>()
@@ -202,11 +140,9 @@ pub fn intersect_partitions<T: Eq + Hash + Copy + Ord>(
         // Group elements by their signatures
         .into_group_map()
         .into_values()
-        // Remove singletons and convert to Set
-        .filter_map(|ids| (ids.len() > 1).then_some(ids.into_iter().collect()))
-        .collect();
-
-    EquivalenceClasses { inner: res }
+        // Convert to set
+        .map(|ids| ids.into_iter().copied().collect())
+        .collect()
 }
 
 #[cfg(test)]

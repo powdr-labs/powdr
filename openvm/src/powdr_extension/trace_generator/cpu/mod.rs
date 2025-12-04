@@ -119,14 +119,14 @@ impl PowdrTraceGeneratorCpu {
             .inventory
         };
 
-        let dummy_trace_by_insertion_idx: HashMap<usize, SharedCpuTrace<BabyBear>> = chip_inventory
+        let dummy_trace_by_air_id: HashMap<usize, SharedCpuTrace<BabyBear>> = chip_inventory
             .chips()
             .iter()
             .enumerate()
             .rev()
-            .filter_map(|(insertion_idx, chip)| {
+            .filter_map(|(air_id, chip)| {
                 let record_arena = {
-                    match original_arenas.take_arena(insertion_idx) {
+                    match original_arenas.take_arena(air_id) {
                         Some(ra) => ra,
                         None => return None, // skip this iteration, because we only have record arena for chips that are used
                     }
@@ -134,7 +134,7 @@ impl PowdrTraceGeneratorCpu {
 
                 let shared_trace = chip.generate_proving_ctx(record_arena).common_main.unwrap();
 
-                Some((insertion_idx, SharedCpuTrace::from(shared_trace)))
+                Some((air_id, SharedCpuTrace::from(shared_trace)))
             })
             .collect();
 
@@ -144,7 +144,7 @@ impl PowdrTraceGeneratorCpu {
             apc_poly_id_to_index,
             columns_to_compute,
         } = generate_trace(
-            &dummy_trace_by_insertion_idx,
+            &dummy_trace_by_air_id,
             &self.original_airs,
             num_apc_calls,
             &self.apc,

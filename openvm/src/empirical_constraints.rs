@@ -5,6 +5,7 @@ use openvm_stark_backend::p3_maybe_rayon::prelude::ParallelIterator;
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::blocks::BasicBlock;
+use powdr_autoprecompiles::bus_map::BusType;
 use powdr_autoprecompiles::empirical_constraints::BlockCell;
 use powdr_autoprecompiles::empirical_constraints::EquivalenceClasses;
 use powdr_autoprecompiles::empirical_constraints::{
@@ -18,12 +19,13 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::iter::once;
 
+use crate::bus_map::default_openvm_bus_map;
 use crate::trace_generation::do_with_cpu_trace;
 use crate::{CompiledProgram, OriginalCompiledProgram};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Timestamp {
-    segment_id: u32,
+    segment_id: usize,
     value: u32,
 }
 
@@ -93,7 +95,7 @@ fn collect_trace(
     let mut trace = Trace::default();
     let mut debug_info = DebugInfo::default();
 
-    do_with_cpu_trace(program, inputs, |segment_idx, _vm, _pk, ctx| {
+    do_with_cpu_trace(program, inputs, |segment_id, _vm, _pk, ctx| {
         let airs = program.vm_config.sdk.airs(degree_bound).unwrap();
 
         for (air_id, proving_context) in &ctx.per_air {
@@ -102,41 +104,58 @@ fn collect_trace(
                 continue;
             }
             let main = proving_context.common_main.as_ref().unwrap();
-            let (symbolic_machine, _) = airs.machine_by_insertion_idx.get(air_id).unwrap();
+            let machine = &airs.machine_by_air_id.get(air_id).unwrap().machine;
 
-            let execution_bus_interaction = symbolic_machine
+            // Find the execution bus interation
+            // This assumes there is exactly one, which is the case for instruction chips
+            let execution_bus_interaction = machine
                 .bus_interactions
                 .iter()
-                .find(|interaction| interaction.id == 0)
+                .find(|interaction| {
+                    interaction.id
+                        == default_openvm_bus_map()
+                            .get_bus_id(&BusType::ExecutionBridge)
+                            .unwrap()
+                })
                 .unwrap();
 
             for row in main.row_slices() {
+                // Create an evaluator over this row
                 let evaluator = RowEvaluator::new(row);
+
+                // Evaluate the execution bus interaction
                 let execution = evaluator.eval_bus_interaction(execution_bus_interaction);
+
+                // `is_valid` is the multiplicity
                 let is_valid = execution.mult;
                 if is_valid == BabyBear::ZERO {
+                    // If `is_valid` is zero, this is a padding row
                     continue;
                 }
-                let [pc_value, ts_value] = execution
+
+                // Recover the values of the pc and timestamp
+                let [pc, timestamp] = execution
                     .args
                     .map(|v| v.as_canonical_u32())
                     .collect_vec()
                     .try_into()
                     .unwrap();
 
+                // Convert the row to u32s
+                // TODO: is this necessary?
                 let row = row.iter().map(|v| v.as_canonical_u32()).collect();
 
                 let row = Row {
                     cells: row,
-                    pc: pc_value,
+                    pc,
                     timestamp: Timestamp {
-                        segment_id: segment_idx,
-                        value: ts_value,
+                        segment_id,
+                        value: timestamp,
                     },
                 };
                 trace.rows.push(row);
 
-                match debug_info.air_id_by_pc.entry(pc_value) {
+                match debug_info.air_id_by_pc.entry(pc) {
                     Entry::Vacant(entry) => {
                         entry.insert(*air_id);
                     }
@@ -147,10 +166,7 @@ fn collect_trace(
                 if !debug_info.column_names_by_air_id.contains_key(air_id) {
                     debug_info.column_names_by_air_id.insert(
                         *air_id,
-                        symbolic_machine
-                            .main_columns()
-                            .map(|r| (*r.name).clone())
-                            .collect(),
+                        machine.main_columns().map(|r| (*r.name).clone()).collect(),
                     );
                 }
             }
@@ -266,8 +282,8 @@ impl ConstraintDetector {
                 // Segment each block instance into equivalence classes
                 let classes = block_instances
                     .iter()
-                    .map(|block| block.equivalence_classes())
-                    .collect::<Vec<_>>();
+                    .map(ConcreteBlock::equivalence_classes)
+                    .collect();
 
                 // Intersect the equivalence classes across all instances of the block
                 let intersected = intersect_partitions(classes);
@@ -296,10 +312,11 @@ impl ConstraintDetector {
 
                     Some(Some((block_id, ConcreteBlock { rows })))
                 } else {
-                    // Single instruction block, ignore.
+                    // Single instruction block, yield `None` to be filtered.
                     Some(None)
                 }
             })
+            // filter out single instruction blocks
             .flatten()
             // collect by start_pc
             .fold(Default::default(), |mut block_rows, (block_id, chunk)| {
