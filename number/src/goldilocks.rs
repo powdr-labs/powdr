@@ -366,9 +366,12 @@ impl FieldElement for GoldilocksField {
     }
 
     fn from_str_radix(s: &str, radix: u32) -> Result<Self, String> {
-        u64::from_str_radix(s, radix)
-            .map(Self)
-            .map_err(|e| e.to_string())
+        let n = u64::from_str_radix(s, radix).map_err(|e| e.to_string())?;
+        if n < Self::ORDER {
+            Ok(Self::from_canonical_u64(n))
+        } else {
+            Err(format!("Number \"{s}\" too large for Goldilocks field."))
+        }
     }
 
     fn checked_from(value: ibig::UBig) -> Option<Self> {
@@ -623,6 +626,19 @@ mod test {
         let y = GoldilocksField::from_str_radix("7fffffff80000000", 16).unwrap();
         assert!(y.is_in_lower_half());
         assert!(!(y + 1.into()).is_in_lower_half());
+    }
+
+    #[test]
+    fn from_str_radix_rejects_modulus() {
+        // ORDER = 0xffffffff00000001, should be rejected
+        assert!(GoldilocksField::from_str_radix("ffffffff00000001", 16).is_err());
+    }
+
+    #[test]
+    fn from_str_radix_accepts_order_minus_one() {
+        // ORDER - 1 = 0xffffffff00000000, should be accepted and equal to the literal value
+        let v = GoldilocksField::from_str_radix("ffffffff00000000", 16).unwrap();
+        assert_eq!(v.to_canonical_u64(), 0xffff_ffff_0000_0000);
     }
 
     #[test]
