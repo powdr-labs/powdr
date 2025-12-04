@@ -1,3 +1,4 @@
+use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
@@ -105,8 +106,7 @@ impl<F> OriginalAirs<F> {
             panic!("Opcode {opcode} already exists");
         }
         // Insert the machine only if `air_name` isn't already present
-        if let std::collections::btree_map::Entry::Vacant(e) = self.machine_by_air_id.entry(air_id)
-        {
+        if let Entry::Vacant(e) = self.machine_by_air_id.entry(air_id) {
             let machine_instance = machine()?;
             e.insert(machine_instance);
         }
