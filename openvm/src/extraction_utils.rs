@@ -50,32 +50,35 @@ use crate::utils::symbolic_to_algebraic;
 // TODO: Use `<PackedChallenge<BabyBearSC> as FieldExtensionAlgebra<Val<BabyBearSC>>>::D` instead after fixing p3 dependency
 const EXT_DEGREE: usize = 4;
 
+#[derive(Clone, Serialize, Deserialize)]
+pub struct OriginalMachine<F> {
+    pub machine: SymbolicMachine<F>,
+    pub name: String,
+    pub metrics: AirMetrics,
+}
+
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct OriginalAirs<F> {
-    pub(crate) opcode_to_air: HashMap<VmOpcode, String>,
-    pub(crate) air_name_to_machine: BTreeMap<String, (SymbolicMachine<F>, AirMetrics)>,
+    pub(crate) air_id_by_opcode: HashMap<VmOpcode, usize>,
+    pub(crate) machine_by_air_id: BTreeMap<usize, OriginalMachine<F>>,
 }
 
 impl<F> InstructionHandler for OriginalAirs<F> {
     type Field = F;
     type Instruction = Instr<F>;
-    type AirId = String;
+    type AirId = usize;
 
     fn get_instruction_air_and_id(
         &self,
         instruction: &Self::Instruction,
     ) -> (Self::AirId, &SymbolicMachine<Self::Field>) {
-        let id = self
-            .opcode_to_air
-            .get(&instruction.0.opcode)
-            .unwrap()
-            .clone();
-        let air = &self.air_name_to_machine.get(&id).unwrap().0;
+        let id = *self.air_id_by_opcode.get(&instruction.0.opcode).unwrap();
+        let air = &self.machine_by_air_id.get(&id).unwrap().machine;
         (id, air)
     }
 
     fn is_allowed(&self, instruction: &Self::Instruction) -> bool {
-        self.opcode_to_air.contains_key(&instruction.0.opcode)
+        self.air_id_by_opcode.contains_key(&instruction.0.opcode)
     }
 
     fn is_branching(&self, instruction: &Self::Instruction) -> bool {
@@ -95,59 +98,63 @@ impl<F> OriginalAirs<F> {
     pub fn insert_opcode(
         &mut self,
         opcode: VmOpcode,
-        air_name: String,
-        machine: impl Fn() -> Result<(SymbolicMachine<F>, AirMetrics), UnsupportedOpenVmReferenceError>,
+        air_id: usize,
+        machine: impl Fn() -> Result<OriginalMachine<F>, UnsupportedOpenVmReferenceError>,
     ) -> Result<(), UnsupportedOpenVmReferenceError> {
-        if self.opcode_to_air.contains_key(&opcode) {
+        if self.air_id_by_opcode.contains_key(&opcode) {
             panic!("Opcode {opcode} already exists");
         }
         // Insert the machine only if `air_name` isn't already present
-        if !self.air_name_to_machine.contains_key(&air_name) {
+        if let std::collections::btree_map::Entry::Vacant(e) = self.machine_by_air_id.entry(air_id)
+        {
             let machine_instance = machine()?;
-            self.air_name_to_machine
-                .insert(air_name.clone(), machine_instance);
+            e.insert(machine_instance);
         }
 
-        self.opcode_to_air.insert(opcode, air_name);
+        self.air_id_by_opcode.insert(opcode, air_id);
+
         Ok(())
     }
 
     pub fn get_instruction_metrics(&self, opcode: VmOpcode) -> Option<&AirMetrics> {
-        self.opcode_to_air.get(&opcode).and_then(|air_name| {
-            self.air_name_to_machine
-                .get(air_name)
-                .map(|(_, metrics)| metrics)
+        self.air_id_by_opcode.get(&opcode).and_then(|air_id| {
+            self.machine_by_air_id
+                .get(air_id)
+                .map(|machine| &machine.metrics)
         })
     }
 
     pub fn allow_list(&self) -> Vec<VmOpcode> {
-        self.opcode_to_air.keys().cloned().collect()
+        self.air_id_by_opcode.keys().cloned().collect()
     }
 
     pub fn airs_by_name(&self) -> impl Iterator<Item = (&String, &SymbolicMachine<F>)> {
-        self.air_name_to_machine
-            .iter()
-            .map(|(name, (machine, _))| (name, machine))
+        self.machine_by_air_id
+            .values()
+            .map(|machine| (&machine.name, &machine.machine))
     }
 }
 
 /// For each air name, the dimension of a record arena needed to store the
 /// records for a single APC call.
-pub fn record_arena_dimension_by_air_name_per_apc_call<F>(
+pub fn record_arena_dimension_by_air_id_per_apc_call<F>(
     apc: &Apc<F, Instr<F>>,
     air_by_opcode_id: &OriginalAirs<F>,
-) -> BTreeMap<String, RecordArenaDimension> {
+) -> BTreeMap<usize, RecordArenaDimension> {
     apc.instructions().iter().map(|instr| &instr.0.opcode).fold(
         BTreeMap::new(),
         |mut acc, opcode| {
             // Get the air name for this opcode
-            let air_name = air_by_opcode_id.opcode_to_air.get(opcode).unwrap();
+            let air_id = air_by_opcode_id.air_id_by_opcode.get(opcode).unwrap();
 
             // Increment the height for this air name, initializing if necessary
-            acc.entry(air_name.clone())
+            acc.entry(*air_id)
                 .or_insert_with(|| {
-                    let (_, air_metrics) =
-                        air_by_opcode_id.air_name_to_machine.get(air_name).unwrap();
+                    let air_metrics = &air_by_opcode_id
+                        .machine_by_air_id
+                        .get(air_id)
+                        .unwrap()
+                        .metrics;
 
                     RecordArenaDimension {
                         height: 0,
@@ -300,11 +307,12 @@ impl OriginalVmConfig {
             })
             .map(|(op, executor_id)| {
                 let insertion_index = chip_inventory.executor_idx_to_insertion_idx[executor_id];
-                let air_ref = &chip_inventory.airs().ext_airs()[insertion_index];
-                (op, air_ref)
+                (op, insertion_index)
             }) // find executor for opcode
-            .try_fold(OriginalAirs::default(), |mut airs, (op, air_ref)| {
-                airs.insert_opcode(op, air_ref.name(), || {
+            .try_fold(OriginalAirs::default(), |mut airs, (op, insertion_idx)| {
+                airs.insert_opcode(op, insertion_idx, || {
+                    let air_ref = &chip_inventory.airs().ext_airs()[insertion_idx];
+                    let name = air_ref.name();
                     let columns = get_columns(air_ref.clone());
                     let constraints = get_constraints(air_ref.clone());
                     let metrics = get_air_metrics(air_ref.clone(), max_degree);
@@ -321,14 +329,17 @@ impl OriginalVmConfig {
                         .map(|expr| openvm_bus_interaction_to_powdr(expr, &columns))
                         .collect::<Result<_, _>>()?;
 
-                    Ok((
-                        SymbolicMachine {
-                            constraints: powdr_exprs.into_iter().map(Into::into).collect(),
-                            bus_interactions: powdr_bus_interactions,
-                            derived_columns: vec![],
-                        },
+                    let machine = SymbolicMachine {
+                        constraints: powdr_exprs.into_iter().map(Into::into).collect(),
+                        bus_interactions: powdr_bus_interactions,
+                        derived_columns: vec![],
+                    };
+
+                    Ok(OriginalMachine {
+                        machine,
+                        name,
                         metrics,
-                    ))
+                    })
                 })?;
 
                 Ok(airs)
