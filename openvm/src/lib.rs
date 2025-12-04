@@ -56,7 +56,7 @@ use crate::customize_exe::OpenVmApcCandidate;
 use crate::powdr_extension::chip::PowdrAir;
 pub use crate::program::Prog;
 pub use crate::program::{CompiledProgram, OriginalCompiledProgram};
-use crate::trace_generation::do_with_trace;
+use crate::trace_generation::do_with_cpu_trace;
 
 #[cfg(test)]
 use crate::extraction_utils::AirWidthsDiff;
@@ -776,7 +776,7 @@ pub fn prove(
     segment_height: Option<usize>, // uses the default height if None
 ) -> Result<(), Box<dyn std::error::Error>> {
     if mock {
-        do_with_trace(program, inputs, |vm, pk, ctx| {
+        do_with_cpu_trace(program, inputs, |_, vm, pk, ctx| {
             debug_proving_ctx(vm, pk, &ctx);
         })?;
     } else {

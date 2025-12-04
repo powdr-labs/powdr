@@ -8,7 +8,7 @@ use std::{
 
 use crate::{
     extraction_utils::{
-        record_arena_dimension_by_air_name_per_apc_call, OriginalAirs, OriginalVmConfig,
+        record_arena_dimension_by_insertion_idx_per_apc_call, OriginalAirs, OriginalVmConfig,
     },
     Instr,
 };
@@ -94,10 +94,10 @@ impl<A: Arena> OriginalArenas<A> {
 
     /// Returns the arena of the given air name.
     /// - Panics if the arenas are not initialized.
-    pub fn take_arena(&mut self, air_name: &str) -> Option<A> {
+    pub fn take_arena(&mut self, air_idx: usize) -> Option<A> {
         match self {
             OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
-            OriginalArenas::Initialized(initialized) => initialized.take_arena(air_name),
+            OriginalArenas::Initialized(initialized) => initialized.take_arena(air_idx),
         }
     }
 
@@ -125,7 +125,7 @@ impl<A: Arena> OriginalArenas<A> {
 #[derive(Default)]
 pub struct InitializedOriginalArenas<A> {
     arenas: Vec<Option<A>>,
-    air_name_to_arena_index: HashMap<String, usize>,
+    insertion_idx_to_arena_index: HashMap<usize, usize>,
     pub number_of_calls: usize,
 }
 
@@ -137,7 +137,7 @@ impl<A: Arena> InitializedOriginalArenas<A> {
         apc: &Arc<Apc<BabyBear, Instr<BabyBear>>>,
     ) -> Self {
         let record_arena_dimensions =
-            record_arena_dimension_by_air_name_per_apc_call(apc, original_airs);
+            record_arena_dimension_by_insertion_idx_per_apc_call(apc, original_airs);
         let (air_name_to_arena_index, arenas) =
             record_arena_dimensions.into_iter().enumerate().fold(
                 (HashMap::new(), Vec::new()),
@@ -163,7 +163,7 @@ impl<A: Arena> InitializedOriginalArenas<A> {
 
         Self {
             arenas,
-            air_name_to_arena_index,
+            insertion_idx_to_arena_index: air_name_to_arena_index,
             // This is the actual number of calls, which we don't know yet. It will be updated during preflight execution.
             number_of_calls: 0,
         }
@@ -177,8 +177,8 @@ impl<A: Arena> InitializedOriginalArenas<A> {
             .expect("arena missing for index")
     }
 
-    fn take_arena(&mut self, air_name: &str) -> Option<A> {
-        let index = *self.air_name_to_arena_index.get(air_name)?;
+    fn take_arena(&mut self, air_idx: usize) -> Option<A> {
+        let index = *self.insertion_idx_to_arena_index.get(&air_idx)?;
         self.arenas[index].take()
     }
 }
@@ -574,10 +574,10 @@ impl PowdrExecutor {
         let executor_inventory = base_config.sdk_config.sdk.create_executors().unwrap();
 
         let arena_index_by_name =
-            record_arena_dimension_by_air_name_per_apc_call(apc.as_ref(), &air_by_opcode_id)
+            record_arena_dimension_by_insertion_idx_per_apc_call(apc.as_ref(), &air_by_opcode_id)
                 .iter()
                 .enumerate()
-                .map(|(idx, (name, _))| (name.clone(), idx))
+                .map(|(idx, (name, _))| (*name, idx))
                 .collect::<HashMap<_, _>>();
 
         let cached_instructions_meta = apc
@@ -590,7 +590,7 @@ impl PowdrExecutor {
                     .expect("missing executor for opcode")
                     as usize;
                 let air_name = air_by_opcode_id
-                    .opcode_to_air
+                    .opcode_to_air_insertion_idx
                     .get(&instruction.0.opcode)
                     .expect("missing air for opcode");
                 let arena_index = *arena_index_by_name

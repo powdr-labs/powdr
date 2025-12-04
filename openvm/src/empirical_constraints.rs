@@ -1,24 +1,36 @@
 use itertools::Itertools;
-use openvm_circuit::arch::VmCircuitConfig;
 use openvm_sdk::StdIn;
 use openvm_stark_backend::p3_maybe_rayon::prelude::IntoParallelIterator;
 use openvm_stark_backend::p3_maybe_rayon::prelude::ParallelIterator;
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
+use openvm_stark_sdk::p3_baby_bear::BabyBear;
+use powdr_autoprecompiles::blocks::BasicBlock;
+use powdr_autoprecompiles::empirical_constraints::BlockCell;
+use powdr_autoprecompiles::empirical_constraints::EquivalenceClasses;
 use powdr_autoprecompiles::empirical_constraints::{
     intersect_partitions, DebugInfo, EmpiricalConstraints,
 };
+use powdr_autoprecompiles::expression::AlgebraicEvaluator;
+use powdr_autoprecompiles::expression::RowEvaluator;
 use powdr_autoprecompiles::DegreeBound;
 use std::collections::btree_map::Entry;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
-use std::collections::{BTreeMap, BTreeSet};
+use std::iter::once;
 
-use crate::trace_generation::do_with_trace;
+use crate::trace_generation::do_with_cpu_trace;
 use crate::{CompiledProgram, OriginalCompiledProgram};
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct Timestamp {
+    segment_id: u32,
+    value: u32,
+}
 
 #[derive(Debug)]
 struct Row {
     pc: u32,
-    timestamp: (u32, u32),
+    timestamp: Timestamp,
     cells: Vec<u32>,
 }
 
@@ -37,11 +49,8 @@ impl Trace {
         })
     }
 
-    fn rows_by_time(&self) -> Vec<&Row> {
-        self.rows
-            .iter()
-            .sorted_by_key(|row| row.timestamp)
-            .collect()
+    fn rows_sorted_by_time(&self) -> impl Iterator<Item = &Row> {
+        self.rows.iter().sorted_by_key(|row| &row.timestamp)
     }
 }
 
@@ -49,18 +58,14 @@ pub fn detect_empirical_constraints(
     program: &OriginalCompiledProgram,
     degree_bound: DegreeBound,
     inputs: Vec<StdIn>,
-) -> (EmpiricalConstraints, DebugInfo) {
+) -> EmpiricalConstraints {
     tracing::info!("Collecting empirical constraints...");
     let blocks = program.collect_basic_blocks(degree_bound.identities);
-    let instruction_counts = blocks
-        .iter()
-        .map(|block| (block.start_pc, block.statements.len()))
-        .collect();
 
     // Collect trace, without any autoprecompiles.
     let program = program.compiled_program(Vec::new(), degree_bound.identities);
 
-    let mut constraint_detector = ConstraintDetector::new(instruction_counts);
+    let mut constraint_detector = ConstraintDetector::new(&blocks);
 
     let num_inputs = inputs.len();
     for (i, input) in inputs.into_iter().enumerate() {
@@ -69,7 +74,7 @@ pub fn detect_empirical_constraints(
         // If this becomes a RAM issue, we can also pass individual segments to process_trace.
         // The advantage of the current approach is that the percentiles can be computed more accurately.
         tracing::info!("    Collecting trace...");
-        let (trace, new_debug_info) = collect_trace(&program, input);
+        let (trace, new_debug_info) = collect_trace(&program, input, degree_bound.identities);
         tracing::info!("    Detecting constraints...");
         constraint_detector.process_trace(trace, new_debug_info);
     }
@@ -78,59 +83,56 @@ pub fn detect_empirical_constraints(
     constraint_detector.finalize()
 }
 
-fn collect_trace(program: &CompiledProgram, inputs: StdIn) -> (Trace, DebugInfo) {
+use openvm_stark_backend::p3_field::FieldAlgebra;
+
+fn collect_trace(
+    program: &CompiledProgram,
+    inputs: StdIn,
+    degree_bound: usize,
+) -> (Trace, DebugInfo) {
     let mut trace = Trace::default();
     let mut debug_info = DebugInfo::default();
-    let mut seg_idx = 0;
 
-    do_with_trace(program, inputs, |vm, _pk, ctx| {
-        let global_airs = vm
-            .config()
-            .create_airs()
-            .unwrap()
-            .into_airs()
-            .enumerate()
-            .collect::<HashMap<_, _>>();
+    do_with_cpu_trace(program, inputs, |segment_idx, _vm, _pk, ctx| {
+        let airs = program.vm_config.sdk.airs(degree_bound).unwrap();
 
         for (air_id, proving_context) in &ctx.per_air {
-            let air = &global_airs[air_id];
-            let Some(column_names) = air.columns() else {
-                // Instruction chips always have column names.
-                continue;
-            };
-
             if !proving_context.cached_mains.is_empty() {
                 // Instruction chips always have a cached main.
                 continue;
             }
             let main = proving_context.common_main.as_ref().unwrap();
-            assert_eq!(main.width, column_names.len());
+            let (symbolic_machine, _) = airs.machine_by_insertion_idx.get(air_id).unwrap();
 
-            // Instruction chips have a PC and time stamp
-            let find_col = |name: &str| -> Option<usize> {
-                column_names.iter().position(|col_name| {
-                    col_name == name || col_name == &format!("inner__{}", name)
-                })
-            };
-            let Some(pc_index) = find_col("from_state__pc") else {
-                continue;
-            };
-            let ts_index = find_col("from_state__timestamp").unwrap();
+            let execution_bus_interaction = symbolic_machine
+                .bus_interactions
+                .iter()
+                .find(|interaction| interaction.id == 0)
+                .unwrap();
 
             for row in main.row_slices() {
-                let row = row.iter().map(|v| v.as_canonical_u32()).collect::<Vec<_>>();
-                let pc_value = row[pc_index];
-                let ts_value = row[ts_index];
-
-                if pc_value == 0 {
-                    // Padding row!
+                let evaluator = RowEvaluator::new(row);
+                let execution = evaluator.eval_bus_interaction(execution_bus_interaction);
+                let is_valid = execution.mult;
+                if is_valid == BabyBear::ZERO {
                     continue;
                 }
+                let [pc_value, ts_value] = execution
+                    .args
+                    .map(|v| v.as_canonical_u32())
+                    .collect_vec()
+                    .try_into()
+                    .unwrap();
+
+                let row = row.iter().map(|v| v.as_canonical_u32()).collect();
 
                 let row = Row {
                     cells: row,
                     pc: pc_value,
-                    timestamp: (seg_idx, ts_value),
+                    timestamp: Timestamp {
+                        segment_id: segment_idx,
+                        value: ts_value,
+                    },
                 };
                 trace.rows.push(row);
 
@@ -143,14 +145,16 @@ fn collect_trace(program: &CompiledProgram, inputs: StdIn) -> (Trace, DebugInfo)
                     }
                 }
                 if !debug_info.column_names_by_air_id.contains_key(air_id) {
-                    debug_info
-                        .column_names_by_air_id
-                        .insert(*air_id, column_names.clone());
+                    debug_info.column_names_by_air_id.insert(
+                        *air_id,
+                        symbolic_machine
+                            .main_columns()
+                            .map(|r| (*r.name).clone())
+                            .collect(),
+                    );
                 }
             }
         }
-
-        seg_idx += 1;
     })
     .unwrap();
     (trace, debug_info)
@@ -158,25 +162,51 @@ fn collect_trace(program: &CompiledProgram, inputs: StdIn) -> (Trace, DebugInfo)
 
 struct ConstraintDetector {
     /// Mapping from block PC to number of instructions in that block
-    instruction_counts: HashMap<u64, usize>,
+    instruction_count_by_start_pc: HashMap<u64, usize>,
     empirical_constraints: EmpiricalConstraints,
-    debug_info: DebugInfo,
+}
+
+struct ConcreteBlock<'a> {
+    rows: Vec<&'a Row>,
+}
+
+impl<'a> ConcreteBlock<'a> {
+    fn equivalence_classes(&self) -> EquivalenceClasses<BlockCell> {
+        self.rows
+            .iter()
+            .enumerate()
+            // Map each cell to a (value, (instruction_index, col_index)) pair
+            .flat_map(|(instruction_index, row)| {
+                row.cells
+                    .iter()
+                    .enumerate()
+                    .map(|(col_index, v)| (*v, BlockCell::new(instruction_index, col_index)))
+                    .collect::<Vec<_>>()
+            })
+            // Group by value
+            .into_group_map()
+            .into_values()
+            .map(|cells| cells.into_iter().collect())
+            .collect()
+    }
 }
 
 impl ConstraintDetector {
-    pub fn new(instruction_counts: HashMap<u64, usize>) -> Self {
+    pub fn new<I>(blocks: &[BasicBlock<I>]) -> Self {
         Self {
-            instruction_counts,
+            instruction_count_by_start_pc: blocks
+                .iter()
+                .map(|block| (block.start_pc, block.statements.len()))
+                .collect(),
             empirical_constraints: EmpiricalConstraints::default(),
-            debug_info: DebugInfo::default(),
         }
     }
 
-    pub fn finalize(self) -> (EmpiricalConstraints, DebugInfo) {
-        (self.empirical_constraints, self.debug_info)
+    pub fn finalize(self) -> EmpiricalConstraints {
+        self.empirical_constraints
     }
 
-    pub fn process_trace(&mut self, trace: Trace, new_debug_info: DebugInfo) {
+    pub fn process_trace(&mut self, trace: Trace, debug_info: DebugInfo) {
         // Compute empirical constraints from the current trace
         tracing::info!("      Detecting equivalence classes by block...");
         let equivalence_classes_by_block = self.generate_equivalence_classes_by_block(&trace);
@@ -185,12 +215,12 @@ impl ConstraintDetector {
         let new_empirical_constraints = EmpiricalConstraints {
             column_ranges_by_pc,
             equivalence_classes_by_block,
+            debug_info,
         };
 
         // Combine the new empirical constraints and debug info with the existing ones
         self.empirical_constraints
             .combine_with(new_empirical_constraints);
-        self.debug_info.combine_with(new_debug_info);
     }
 
     fn detect_column_ranges_by_pc(&self, trace: Trace) -> BTreeMap<u32, Vec<(u32, u32)>> {
@@ -226,7 +256,7 @@ impl ConstraintDetector {
     fn generate_equivalence_classes_by_block(
         &self,
         trace: &Trace,
-    ) -> BTreeMap<u64, BTreeSet<BTreeSet<(usize, usize)>>> {
+    ) -> BTreeMap<u64, EquivalenceClasses<BlockCell>> {
         tracing::info!("        Segmenting trace into blocks...");
         let blocks = self.get_blocks(trace);
         tracing::info!("        Finding equivalence classes...");
@@ -235,18 +265,12 @@ impl ConstraintDetector {
             .map(|(block_id, block_instances)| {
                 // Segment each block instance into equivalence classes
                 let classes = block_instances
-                    .into_iter()
-                    .map(|block| self.block_equivalence_classes(block))
+                    .iter()
+                    .map(|block| block.equivalence_classes())
                     .collect::<Vec<_>>();
 
                 // Intersect the equivalence classes across all instances of the block
-                let intersected = intersect_partitions(&classes);
-
-                // Remove singleton classes
-                let intersected = intersected
-                    .into_iter()
-                    .filter(|class| class.len() > 1)
-                    .collect::<BTreeSet<_>>();
+                let intersected = intersect_partitions(classes);
 
                 (block_id, intersected)
             })
@@ -254,60 +278,41 @@ impl ConstraintDetector {
     }
 
     /// Segments a trace into basic blocks.
-    /// Returns a mapping from block ID to all instances of that block in the trace.
-    fn get_blocks<'a>(&self, trace: &'a Trace) -> BTreeMap<u64, Vec<Vec<&'a Row>>> {
-        let mut block_rows = BTreeMap::new();
-        let mut row_index = 0;
-        let rows_by_time = trace.rows_by_time();
+    /// Returns a mapping from block start pc to all instances of that block in the trace.
+    fn get_blocks<'a>(&self, trace: &'a Trace) -> BTreeMap<u64, Vec<ConcreteBlock<'a>>> {
+        trace
+            .rows_sorted_by_time()
+            // take entire blocks from the rows
+            .batching(|it| {
+                let first = it.next()?;
+                let block_id = first.pc as u64;
 
-        while row_index < rows_by_time.len() {
-            let first_row = rows_by_time[row_index];
-            let block_id = first_row.pc as u64;
+                if let Some(&count) = self.instruction_count_by_start_pc.get(&block_id) {
+                    let rows = once(first).chain(it.take(count - 1)).collect_vec();
 
-            if let Some(instruction_count) = self.instruction_counts.get(&block_id) {
-                let block_row_slice = &rows_by_time[row_index..row_index + instruction_count];
+                    for (r1, r2) in rows.iter().tuple_windows() {
+                        assert_eq!(r2.pc, r1.pc + 4);
+                    }
 
-                for (row1, row2) in block_row_slice.iter().tuple_windows() {
-                    assert_eq!(row2.pc, row1.pc + 4);
+                    Some(Some((block_id, ConcreteBlock { rows })))
+                } else {
+                    // Single instruction block, ignore.
+                    Some(None)
                 }
-
-                block_rows
-                    .entry(block_id)
-                    .or_insert(Vec::new())
-                    .push(block_row_slice.to_vec());
-                row_index += instruction_count;
-            } else {
-                // Single instruction block, ignore.
-                row_index += 1;
-            }
-        }
-
-        block_rows
-    }
-
-    fn block_equivalence_classes(&self, block: Vec<&Row>) -> BTreeSet<BTreeSet<(usize, usize)>> {
-        block
-            .into_iter()
-            .enumerate()
-            // Map each cell to a (value, (instruction_index, col_index)) pair
-            .flat_map(|(instruction_index, row)| {
-                row.cells
-                    .iter()
-                    .enumerate()
-                    .map(|(col_index, v)| (*v, (instruction_index, col_index)))
-                    .collect::<Vec<_>>()
             })
-            // Group by value
-            .into_group_map()
-            .values()
-            // Convert to set
-            .map(|v| v.clone().into_iter().collect())
-            .collect()
+            .flatten()
+            // collect by start_pc
+            .fold(Default::default(), |mut block_rows, (block_id, chunk)| {
+                block_rows.entry(block_id).or_insert(Vec::new()).push(chunk);
+                block_rows
+            })
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use powdr_autoprecompiles::empirical_constraints::EquivalenceClass;
+
     use super::*;
 
     fn make_trace(rows_by_time_with_pc: Vec<(u32, Vec<u32>)>) -> Trace {
@@ -318,24 +323,13 @@ mod tests {
                 .map(|(clk, (pc, cells))| Row {
                     cells,
                     pc,
-                    timestamp: (0, clk as u32),
+                    timestamp: Timestamp {
+                        segment_id: 0,
+                        value: clk as u32,
+                    },
                 })
                 .collect(),
         }
-    }
-
-    fn assert_equivalence_classes_equal(
-        actual: BTreeSet<BTreeSet<(usize, usize)>>,
-        expected: Vec<Vec<(usize, usize)>>,
-    ) {
-        assert_eq!(actual.len(), expected.len());
-        let mut actual = actual.into_iter();
-        for expected_class in expected {
-            let actual_class = actual.next().unwrap();
-            let expected_class_set: BTreeSet<(usize, usize)> = expected_class.into_iter().collect();
-            assert_eq!(actual_class, expected_class_set);
-        }
-        assert!(actual.next().is_none());
     }
 
     #[test]
@@ -344,8 +338,11 @@ mod tests {
         // ADDI x1, x1, 1    // note how the second operand is always 1
         // BLT x1, x2, -4    // Note how the first operand is always equal to the result of the previous ADDI
 
-        let instruction_counts = vec![(0, 2)].into_iter().collect();
-        let mut detector = ConstraintDetector::new(instruction_counts);
+        let instruction_counts = vec![BasicBlock {
+            start_pc: 0,
+            statements: vec![(), ()],
+        }];
+        let mut detector = ConstraintDetector::new(&instruction_counts);
 
         let trace1 = make_trace(vec![
             (0, vec![1, 0, 1]),  // ADDI: 0 + 1 = 1
@@ -355,7 +352,7 @@ mod tests {
         ]);
         detector.process_trace(trace1, DebugInfo::default());
 
-        let (empirical_constraints, _debug_info) = detector.finalize();
+        let empirical_constraints = detector.finalize();
 
         assert_eq!(
             empirical_constraints.column_ranges_by_pc.get(&0),
@@ -371,16 +368,16 @@ mod tests {
         let equivalence_classes = empirical_constraints
             .equivalence_classes_by_block
             .get(&0)
-            .unwrap()
-            .clone();
+            .unwrap();
         println!("Equivalence classes: {:?}", equivalence_classes);
-        assert_equivalence_classes_equal(
-            equivalence_classes,
-            vec![
-                // The result of the first instruction (col 0) is always equal to the
-                // first operand of the second instruction (col 1)
-                vec![(0, 0), (1, 1)],
-            ],
-        );
+        let expected: EquivalenceClasses<_> = once(
+            // The result of the first instruction (col 0) is always equal to the
+            // first operand of the second instruction (col 1)
+            [BlockCell::new(0, 0), BlockCell::new(1, 1)]
+                .into_iter()
+                .collect::<EquivalenceClass<_>>(),
+        )
+        .collect();
+        assert_eq!(*equivalence_classes, expected,);
     }
 }

@@ -52,30 +52,31 @@ const EXT_DEGREE: usize = 4;
 
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct OriginalAirs<F> {
-    pub(crate) opcode_to_air: HashMap<VmOpcode, String>,
-    pub(crate) air_name_to_machine: BTreeMap<String, (SymbolicMachine<F>, AirMetrics)>,
+    pub(crate) opcode_to_air_insertion_idx: HashMap<VmOpcode, usize>,
+    pub(crate) machine_by_insertion_idx: BTreeMap<usize, (SymbolicMachine<F>, AirMetrics)>,
+    pub(crate) name_by_insertion_index: BTreeMap<usize, String>,
 }
 
 impl<F> InstructionHandler for OriginalAirs<F> {
     type Field = F;
     type Instruction = Instr<F>;
-    type AirId = String;
+    type AirId = usize;
 
     fn get_instruction_air_and_id(
         &self,
         instruction: &Self::Instruction,
     ) -> (Self::AirId, &SymbolicMachine<Self::Field>) {
-        let id = self
-            .opcode_to_air
+        let id = *self
+            .opcode_to_air_insertion_idx
             .get(&instruction.0.opcode)
-            .unwrap()
-            .clone();
-        let air = &self.air_name_to_machine.get(&id).unwrap().0;
+            .unwrap();
+        let air = &self.machine_by_insertion_idx.get(&id).unwrap().0;
         (id, air)
     }
 
     fn is_allowed(&self, instruction: &Self::Instruction) -> bool {
-        self.opcode_to_air.contains_key(&instruction.0.opcode)
+        self.opcode_to_air_insertion_idx
+            .contains_key(&instruction.0.opcode)
     }
 
     fn is_branching(&self, instruction: &Self::Instruction) -> bool {
@@ -95,59 +96,74 @@ impl<F> OriginalAirs<F> {
     pub fn insert_opcode(
         &mut self,
         opcode: VmOpcode,
+        insertion_idx: usize,
         air_name: String,
         machine: impl Fn() -> Result<(SymbolicMachine<F>, AirMetrics), UnsupportedOpenVmReferenceError>,
     ) -> Result<(), UnsupportedOpenVmReferenceError> {
-        if self.opcode_to_air.contains_key(&opcode) {
+        if self.opcode_to_air_insertion_idx.contains_key(&opcode) {
             panic!("Opcode {opcode} already exists");
         }
         // Insert the machine only if `air_name` isn't already present
-        if !self.air_name_to_machine.contains_key(&air_name) {
+        if let std::collections::btree_map::Entry::Vacant(e) =
+            self.machine_by_insertion_idx.entry(insertion_idx)
+        {
             let machine_instance = machine()?;
-            self.air_name_to_machine
-                .insert(air_name.clone(), machine_instance);
+            e.insert(machine_instance);
         }
 
-        self.opcode_to_air.insert(opcode, air_name);
+        self.opcode_to_air_insertion_idx
+            .insert(opcode, insertion_idx);
+
+        self.name_by_insertion_index.insert(insertion_idx, air_name);
+
         Ok(())
     }
 
     pub fn get_instruction_metrics(&self, opcode: VmOpcode) -> Option<&AirMetrics> {
-        self.opcode_to_air.get(&opcode).and_then(|air_name| {
-            self.air_name_to_machine
-                .get(air_name)
-                .map(|(_, metrics)| metrics)
-        })
+        self.opcode_to_air_insertion_idx
+            .get(&opcode)
+            .and_then(|air_name| {
+                self.machine_by_insertion_idx
+                    .get(air_name)
+                    .map(|(_, metrics)| metrics)
+            })
     }
 
     pub fn allow_list(&self) -> Vec<VmOpcode> {
-        self.opcode_to_air.keys().cloned().collect()
+        self.opcode_to_air_insertion_idx.keys().cloned().collect()
     }
 
     pub fn airs_by_name(&self) -> impl Iterator<Item = (&String, &SymbolicMachine<F>)> {
-        self.air_name_to_machine
+        self.machine_by_insertion_idx
             .iter()
-            .map(|(name, (machine, _))| (name, machine))
+            .map(|(insertion_idx, (machine, _))| {
+                (&self.name_by_insertion_index[insertion_idx], machine)
+            })
     }
 }
 
 /// For each air name, the dimension of a record arena needed to store the
 /// records for a single APC call.
-pub fn record_arena_dimension_by_air_name_per_apc_call<F>(
+pub fn record_arena_dimension_by_insertion_idx_per_apc_call<F>(
     apc: &Apc<F, Instr<F>>,
     air_by_opcode_id: &OriginalAirs<F>,
-) -> BTreeMap<String, RecordArenaDimension> {
+) -> BTreeMap<usize, RecordArenaDimension> {
     apc.instructions().iter().map(|instr| &instr.0.opcode).fold(
         BTreeMap::new(),
         |mut acc, opcode| {
             // Get the air name for this opcode
-            let air_name = air_by_opcode_id.opcode_to_air.get(opcode).unwrap();
+            let insertion_idx = air_by_opcode_id
+                .opcode_to_air_insertion_idx
+                .get(opcode)
+                .unwrap();
 
             // Increment the height for this air name, initializing if necessary
-            acc.entry(air_name.clone())
+            acc.entry(*insertion_idx)
                 .or_insert_with(|| {
-                    let (_, air_metrics) =
-                        air_by_opcode_id.air_name_to_machine.get(air_name).unwrap();
+                    let (_, air_metrics) = air_by_opcode_id
+                        .machine_by_insertion_idx
+                        .get(insertion_idx)
+                        .unwrap();
 
                     RecordArenaDimension {
                         height: 0,
@@ -300,11 +316,11 @@ impl OriginalVmConfig {
             })
             .map(|(op, executor_id)| {
                 let insertion_index = chip_inventory.executor_idx_to_insertion_idx[executor_id];
-                let air_ref = &chip_inventory.airs().ext_airs()[insertion_index];
-                (op, air_ref)
+                (op, insertion_index)
             }) // find executor for opcode
-            .try_fold(OriginalAirs::default(), |mut airs, (op, air_ref)| {
-                airs.insert_opcode(op, air_ref.name(), || {
+            .try_fold(OriginalAirs::default(), |mut airs, (op, insertion_idx)| {
+                let air_ref = &chip_inventory.airs().ext_airs()[insertion_idx];
+                airs.insert_opcode(op, insertion_idx, air_ref.name(), || {
                     let columns = get_columns(air_ref.clone());
                     let constraints = get_constraints(air_ref.clone());
                     let metrics = get_air_metrics(air_ref.clone(), max_degree);
