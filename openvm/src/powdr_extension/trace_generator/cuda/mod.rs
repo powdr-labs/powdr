@@ -221,16 +221,14 @@ impl PowdrTraceGeneratorGpu {
             .inventory
         };
 
-        let dummy_trace_by_air_name: HashMap<String, DeviceMatrix<BabyBear>> = chip_inventory
+        let dummy_trace_by_air_name: HashMap<usize, DeviceMatrix<BabyBear>> = chip_inventory
             .chips()
             .iter()
             .enumerate()
             .rev()
-            .filter_map(|(insertion_idx, chip)| {
-                let air_name = chip_inventory.airs().ext_airs()[insertion_idx].name();
-
+            .filter_map(|(air_id, chip)| {
                 let record_arena = {
-                    match original_arenas.take_arena(&air_name) {
+                    match original_arenas.take_arena(air_id) {
                         Some(ra) => ra,
                         None => return None, // skip this iteration, because we only have record arena for chips that are used
                     }
@@ -238,7 +236,7 @@ impl PowdrTraceGeneratorGpu {
 
                 let shared_trace = chip.generate_proving_ctx(record_arena).common_main.unwrap();
 
-                Some((air_name, shared_trace))
+                Some((air_id, shared_trace))
             })
             .collect();
 
@@ -264,8 +262,8 @@ impl PowdrTraceGeneratorGpu {
                 .iter()
                 // along with their substitutions
                 .zip_eq(self.apc.subs())
-                // map to `(air_name, substitutions)`
-                .map(|(instr, subs)| (&self.original_airs.opcode_to_air[&instr.0.opcode], subs))
+                // map to `(air_id, substitutions)`
+                .map(|(instr, subs)| (&self.original_airs.air_id_by_opcode[&instr.0.opcode], subs))
                 // group by air name. This results in `HashMap<air_name, Vec<subs>>` where the length of the vector is the number of rows which are created in this air, per apc call
                 .into_group_map()
                 // go through each air and its substitutions
@@ -273,7 +271,7 @@ impl PowdrTraceGeneratorGpu {
                 .enumerate()
                 .fold(
                     (Vec::new(), Vec::new()),
-                    |(mut airs, mut substitutions), (air_index, (air_name, subs_by_row))| {
+                    |(mut airs, mut substitutions), (air_index, (air_id, subs_by_row))| {
                         // Find the substitutions that map to an apc column
                         let new_substitutions: Vec<Subst> = subs_by_row
                             .iter()
@@ -293,7 +291,7 @@ impl PowdrTraceGeneratorGpu {
                             .collect();
 
                         // get the device dummy trace for this air
-                        let dummy_trace = &dummy_trace_by_air_name[*air_name];
+                        let dummy_trace = &dummy_trace_by_air_name[*air_id];
 
                         use openvm_stark_backend::prover::hal::MatrixDimensions;
                         airs.push(OriginalAir {
