@@ -41,6 +41,7 @@ mod stats_logger;
 pub mod symbolic_machine_generator;
 pub use pgo::{PgoConfig, PgoType};
 pub use powdr_constraint_solver::inliner::DegreeBound;
+pub mod equivalence_classes;
 pub mod trace_handler;
 
 #[derive(Clone)]
