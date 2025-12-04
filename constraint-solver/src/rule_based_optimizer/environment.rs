@@ -173,45 +173,49 @@ impl<T: FieldElement> Environment<T> {
         .then(|| *a.constant_offset() - *b.constant_offset())
     }
 
-    /// If this returns `Some((v1, v2, coeff))`, then `a` and `b` are affine expressions
-    /// such that `b` is obtained from `a` when replacing `v1` by `v2` and
-    /// `coeff` is the coefficient of `v1` in `a` (and also of `v2` in `b`)
-    /// also `a` and `b` have at least two variables each.
+    /// If this returns Some((v1, v2, factor)), then
+    /// a is obtained from b * factor by substituting v2 by v1.
     pub fn differ_in_exactly_one_variable(&self, a_id: Expr, b_id: Expr) -> Option<(Var, Var, T)> {
         let db = self.expressions.borrow();
         let a = &db[a_id];
         let b = &db[b_id];
         if !a.is_affine()
             || !b.is_affine()
-            || a.constant_offset() != b.constant_offset()
             || a.linear_components().len() != b.linear_components().len()
             || a.linear_components().len() < 2
         {
             return None;
         }
-        let mut joined = a
+        // First find the variables, ignoring the coefficients.
+        let (v1, v2) = a
             .linear_components()
-            // Join the sorted iterators into another sorted list,
-            // noting where the items came from.
-            .merge_join_by(b.linear_components(), Ord::cmp)
-            // Remove those that are equal in both iterators.
-            .filter(|either| !matches!(either, EitherOrBoth::Both(_, _)));
-        let first_diff = joined.next()?;
-        let second_diff = joined.next()?;
-        if joined.next().is_some() {
-            return None;
-        }
-        let (left_var, right_var, coeff) = match (first_diff, second_diff) {
+            .merge_join_by(b.linear_components(), |(v1, _), (v2, _)| v1.cmp(v2))
+            .filter(|either| !matches!(either, EitherOrBoth::Both(_, _)))
+            .collect_tuple()?;
+        let (left_var, right_var, factor) = match (v1, v2) {
             (EitherOrBoth::Left((lv, lc)), EitherOrBoth::Right((rv, rc)))
             | (EitherOrBoth::Right((rv, rc)), EitherOrBoth::Left((lv, lc))) => {
-                if lc != rc {
-                    return None;
-                }
-                (*lv, *rv, *lc)
+                (*lv, *rv, *lc / *rc)
             }
             _ => return None,
         };
-        Some((left_var, right_var, coeff))
+        // Now verify that the other coefficients agree with the factor
+        if *a.constant_offset() != *b.constant_offset() * factor {
+            return None;
+        }
+        if !a
+            .linear_components()
+            .filter(|(v, _)| **v != left_var)
+            .map(|(v, c)| (*v, *c))
+            .eq(b
+                .linear_components()
+                .filter(|(v, _)| **v != right_var)
+                .map(|(bv, bc)| (*bv, *bc * factor)))
+        {
+            return None;
+        }
+
+        Some((left_var, right_var, factor))
     }
 
     pub fn substitute_by_known(&self, e: Expr, var: Var, value: T) -> Expr {

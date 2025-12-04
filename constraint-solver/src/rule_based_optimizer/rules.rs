@@ -91,26 +91,26 @@ crepe! {
     QuadraticEquivalenceCandidate(e, r, offset) <-
        Env(env),
        AlgebraicConstraint(e),
-       Product(e, l, r),
+       Product(e, l, r), // note that this will always produce two facts for (l, r) and (r, l)
        ({env.affine_var_count(l).unwrap_or(0) > 1 && env.affine_var_count(r).unwrap_or(0) > 1}),
        let Some(offset) = env.constant_difference(l, r);
 
     struct QuadraticEquivalenceCandidatePair<T: FieldElement>(Expr, Expr, T, Var, Var);
-    QuadraticEquivalenceCandidatePair(expr1, expr2, offset / coeff, v1, v2) <-
+    QuadraticEquivalenceCandidatePair(expr1, expr2, offset1 / coeff, v1, v2) <-
       Env(env),
-      QuadraticEquivalenceCandidate(_, expr1, offset),
-      QuadraticEquivalenceCandidate(_, expr2, offset),
+      QuadraticEquivalenceCandidate(_, expr1, offset1),
+      QuadraticEquivalenceCandidate(_, expr2, offset2),
       (expr1 < expr2),
-      let Some((v1, v2, coeff)) = env.differ_in_exactly_one_variable(expr1, expr2);
-    // what exactly is re-executed for an update?
+      let Some((v1, v2,factor)) = env.differ_in_exactly_one_variable(expr1, expr2),
+      (offset1 == offset2 * factor),
+      let coeff = env.on_expr(expr1, (), |e, _| *e.coefficient_of_variable_in_affine_part(&v1).unwrap());
 
-    struct QuadraticEquivalence(Var, Var);
+      struct QuadraticEquivalence(Var, Var);
     QuadraticEquivalence(v1, v2) <-
       QuadraticEquivalenceCandidatePair(_, _, offset, v1, v2),
       RangeConstraintOnVar(v1, rc),
       RangeConstraintOnVar(v2, rc),
       (rc.is_disjoint(&rc.combine_sum(&RangeConstraint::from_value(offset))));
-
 
     Equivalence(v1, v2) <- QuadraticEquivalence(v1, v2);
 
