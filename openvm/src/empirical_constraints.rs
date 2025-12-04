@@ -350,7 +350,7 @@ mod tests {
         ]);
         detector.process_trace(trace1, DebugInfo::default());
 
-        let (empirical_constraints, _debug_info) = detector.finalize();
+        let empirical_constraints = detector.finalize();
 
         assert_eq!(
             empirical_constraints.column_ranges_by_pc.get(&0),
