@@ -776,7 +776,7 @@ pub fn prove(
     segment_height: Option<usize>, // uses the default height if None
 ) -> Result<(), Box<dyn std::error::Error>> {
     if mock {
-        do_with_trace(program, inputs, |vm, pk, ctx| {
+        do_with_trace(program, inputs, |_segment_idx, vm, pk, ctx| {
             debug_proving_ctx(vm, pk, &ctx);
         })?;
     } else {
