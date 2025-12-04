@@ -18,10 +18,16 @@ use std::iter::once;
 use crate::trace_generation::do_with_trace;
 use crate::{CompiledProgram, OriginalCompiledProgram};
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct Timestamp {
+    segment_id: usize,
+    value: u32,
+}
+
 #[derive(Debug)]
 struct Row {
     pc: u32,
-    timestamp: (u32, u32),
+    timestamp: Timestamp,
     cells: Vec<u32>,
 }
 
@@ -41,7 +47,7 @@ impl Trace {
     }
 
     fn rows_sorted_by_time(&self) -> impl Iterator<Item = &Row> {
-        self.rows.iter().sorted_by_key(|row| row.timestamp)
+        self.rows.iter().sorted_by_key(|row| &row.timestamp)
     }
 }
 
@@ -81,8 +87,9 @@ pub fn detect_empirical_constraints(
 fn collect_trace(program: &CompiledProgram, inputs: StdIn) -> (Trace, DebugInfo) {
     let mut trace = Trace::default();
     let mut debug_info = DebugInfo::default();
+    let mut seg_idx = 0;
 
-    do_with_trace(program, inputs, |seg_idx, vm, _pk, ctx| {
+    do_with_trace(program, inputs, |vm, _pk, ctx| {
         let global_airs = vm
             .config()
             .create_airs()
@@ -129,7 +136,10 @@ fn collect_trace(program: &CompiledProgram, inputs: StdIn) -> (Trace, DebugInfo)
                 let row = Row {
                     cells: row,
                     pc: pc_value,
-                    timestamp: (seg_idx as u32, ts_value),
+                    timestamp: Timestamp {
+                        segment_id: seg_idx,
+                        value: ts_value,
+                    },
                 };
                 trace.rows.push(row);
 
@@ -148,6 +158,8 @@ fn collect_trace(program: &CompiledProgram, inputs: StdIn) -> (Trace, DebugInfo)
                 }
             }
         }
+
+        seg_idx += 1;
     })
     .unwrap();
     (trace, debug_info)
@@ -317,7 +329,10 @@ mod tests {
                 .map(|(clk, (pc, cells))| Row {
                     cells,
                     pc,
-                    timestamp: (0, clk as u32),
+                    timestamp: Timestamp {
+                        segment_id: 0,
+                        value: clk as u32,
+                    },
                 })
                 .collect(),
         }

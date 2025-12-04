@@ -21,7 +21,7 @@ pub struct EmpiricalConstraints {
 }
 
 /// Debug information mapping AIR ids to program counters and column names.
-#[derive(Serialize, Deserialize, Default, Debug)]
+#[derive(Serialize, Deserialize, Default)]
 pub struct DebugInfo {
     /// Mapping from program counter to AIR id.
     pub air_id_by_pc: BTreeMap<u32, usize>,
@@ -108,10 +108,10 @@ impl BlockCell {
 /// Intersects multiple partitions of the same universe into a single partition.
 /// In other words, two elements are in the same equivalence class in the resulting partition
 /// if and only if they are in the same equivalence class in all input partitions.
-/// Singleton equivalence classes are omitted from the result.
-pub fn intersect_partitions<T: Eq + Hash + Copy + Ord>(
-    partitions: Vec<EquivalenceClasses<T>>,
-) -> EquivalenceClasses<T> {
+pub fn intersect_partitions<T>(partitions: Vec<EquivalenceClasses<T>>) -> EquivalenceClasses<T>
+where
+    T: Eq + Hash + Copy + Ord,
+{
     // For each partition, build a map: Id -> class_index
     let class_ids: Vec<HashMap<T, usize>> = partitions
         .iter()
