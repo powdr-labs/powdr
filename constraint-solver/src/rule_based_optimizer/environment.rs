@@ -4,7 +4,7 @@ use std::{
     hash::Hash,
 };
 
-use itertools::Itertools;
+use itertools::{EitherOrBoth, Itertools};
 use powdr_number::FieldElement;
 
 use crate::{
@@ -158,6 +158,60 @@ impl<T: FieldElement> Environment<T> {
         // if we change GroupedExpression to use `Expr` for the recursion, we do not
         // have to insert everything multiple times.
         Some((self.insert(&l), self.insert(&r)))
+    }
+
+    /// Returns Some(C) if `a - b = C' and both are affine.
+    pub fn constant_difference(&self, a: Expr, b: Expr) -> Option<T> {
+        let db = self.expressions.borrow();
+        let a = &db[a];
+        let b = &db[b];
+        (a.is_affine()
+            && b.is_affine()
+            && a.linear_components()
+                .zip(b.linear_components())
+                .all(|(x, y)| x == y))
+        .then(|| *a.constant_offset() - *b.constant_offset())
+    }
+
+    /// If this returns `Some((v1, v2, coeff))`, then `a` and `b` are affine expressions
+    /// such that `b` is obtained from `a` when replacing `v1` by `v2` and
+    /// `coeff` is the coefficient of `v1` in `a` (and also of `v2` in `b`)
+    /// also `a` and `b` have at least two variables each.
+    pub fn differ_in_exactly_one_variable(&self, a_id: Expr, b_id: Expr) -> Option<(Var, Var, T)> {
+        let db = self.expressions.borrow();
+        let a = &db[a_id];
+        let b = &db[b_id];
+        if !a.is_affine()
+            || !b.is_affine()
+            || a.constant_offset() != b.constant_offset()
+            || a.linear_components().len() != b.linear_components().len()
+            || a.linear_components().len() < 2
+        {
+            return None;
+        }
+        let mut joined = a
+            .linear_components()
+            // Join the sorted iterators into another sorted list,
+            // noting where the items came from.
+            .merge_join_by(b.linear_components(), Ord::cmp)
+            // Remove those that are equal in both iterators.
+            .filter(|either| !matches!(either, EitherOrBoth::Both(_, _)));
+        let first_diff = joined.next()?;
+        let second_diff = joined.next()?;
+        if joined.next().is_some() {
+            return None;
+        }
+        let (left_var, right_var, coeff) = match (first_diff, second_diff) {
+            (EitherOrBoth::Left((lv, lc)), EitherOrBoth::Right((rv, rc)))
+            | (EitherOrBoth::Right((rv, rc)), EitherOrBoth::Left((lv, lc))) => {
+                if lc != rc {
+                    return None;
+                }
+                (*lv, *rv, *lc)
+            }
+            _ => return None,
+        };
+        Some((left_var, right_var, coeff))
     }
 
     pub fn substitute_by_known(&self, e: Expr, var: Var, value: T) -> Expr {

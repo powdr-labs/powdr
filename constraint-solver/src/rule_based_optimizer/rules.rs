@@ -44,6 +44,13 @@ crepe! {
       Expression(e),
       for v in env.on_expr(e, (), |e, _| e.referenced_unknown_variables().cloned().collect_vec());
 
+    struct Product(Expr, Expr, Expr);
+    Product(e, l, r) <-
+      Expression(e),
+      Env(env),
+      let Some((l, r)) = env.try_as_single_product(e);
+    Product(e, r, l) <- Product(e, l, r);
+
     struct AffineExpression<T: FieldElement>(Expr, T, Var, T);
     AffineExpression(e, coeff, var, offset) <-
       Expression(e),
@@ -76,6 +83,36 @@ crepe! {
       Solvable(e, var, v);
 
     struct Equivalence(Var, Var);
+
+    //------- quadratic equivalence -----
+
+    // (E, expr, offset) <-> E = (expr) * (expr + offset) is a constraint
+    struct QuadraticEquivalenceCandidate<T: FieldElement>(Expr, Expr, T);
+    QuadraticEquivalenceCandidate(e, r, offset) <-
+       Env(env),
+       AlgebraicConstraint(e),
+       Product(e, l, r),
+       ({env.affine_var_count(l).unwrap_or(0) > 1 && env.affine_var_count(r).unwrap_or(0) > 1}),
+       let Some(offset) = env.constant_difference(l, r);
+
+    struct QuadraticEquivalenceCandidatePair<T: FieldElement>(Expr, Expr, T, Var, Var);
+    QuadraticEquivalenceCandidatePair(expr1, expr2, offset / coeff, v1, v2) <-
+      Env(env),
+      QuadraticEquivalenceCandidate(_, expr1, offset),
+      QuadraticEquivalenceCandidate(_, expr2, offset),
+      (expr1 < expr2),
+      let Some((v1, v2, coeff)) = env.differ_in_exactly_one_variable(expr1, expr2);
+    // what exactly is re-executed for an update?
+
+    struct QuadraticEquivalence(Var, Var);
+    QuadraticEquivalence(v1, v2) <-
+      QuadraticEquivalenceCandidatePair(_, _, offset, v1, v2),
+      RangeConstraintOnVar(v1, rc),
+      RangeConstraintOnVar(v2, rc),
+      (rc.is_disjoint(&rc.combine_sum(&RangeConstraint::from_value(offset))));
+
+
+    Equivalence(v1, v2) <- QuadraticEquivalence(v1, v2);
 
     ReplaceAlgebraicConstraintBy(e, env.substitute_by_known(e, v, val)) <-
       Env(env),
