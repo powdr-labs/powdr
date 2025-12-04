@@ -135,5 +135,7 @@ crepe! {
     ActionRule(Action::SubstituteVariableByConstant(v, val)) <-
       Assignment(v, val);
     ActionRule(Action::SubstituteVariableByVariable(v1, v2)) <-
-      Equivalence(v1, v2);
+      Equivalence(v1, v2), (v1 > v2);
+    ActionRule(Action::SubstituteVariableByVariable(v1, v2)) <-
+      Equivalence(v2, v1), (v1 > v2);
 }

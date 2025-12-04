@@ -206,11 +206,11 @@ impl<T: FieldElement> Environment<T> {
         if !a
             .linear_components()
             .filter(|(v, _)| **v != left_var)
-            .map(|(v, c)| (*v, *c))
+            .map(|(_, c)| *c)
             .eq(b
                 .linear_components()
                 .filter(|(v, _)| **v != right_var)
-                .map(|(bv, bc)| (*bv, *bc * factor)))
+                .map(|(_, bc)| *bc * factor))
         {
             return None;
         }
