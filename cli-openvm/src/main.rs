@@ -3,7 +3,6 @@ use metrics_tracing_context::{MetricsLayer, TracingContextLayer};
 use metrics_util::{debugging::DebuggingRecorder, layers::Layer};
 use openvm_sdk::StdIn;
 use openvm_stark_sdk::bench::serialize_metric_snapshot;
-use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraintsJson;
 use powdr_autoprecompiles::pgo::{pgo_config, PgoType};
 use powdr_autoprecompiles::PowdrConfig;
 use powdr_openvm::{compile_openvm, default_powdr_openvm_config, CompiledProgram, GuestOptions};
@@ -311,7 +310,7 @@ fn maybe_compute_empirical_constraints(
         "Optimistic precompiles are not implemented yet. Computing empirical constraints..."
     );
 
-    let (empirical_constraints, debug_info) =
+    let empirical_constraints =
         detect_empirical_constraints(guest_program, powdr_config.degree_bound, vec![stdin]);
 
     if let Some(path) = &powdr_config.apc_candidates_dir_path {
@@ -319,11 +318,7 @@ fn maybe_compute_empirical_constraints(
             "Saving empirical constraints debug info to {}/empirical_constraints.json",
             path.display()
         );
-        let export = EmpiricalConstraintsJson {
-            empirical_constraints: empirical_constraints.clone(),
-            debug_info,
-        };
-        let json = serde_json::to_string_pretty(&export).unwrap();
+        let json = serde_json::to_string_pretty(&empirical_constraints).unwrap();
         std::fs::write(path.join("empirical_constraints.json"), json).unwrap();
     }
 }

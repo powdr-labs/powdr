@@ -49,7 +49,7 @@ pub fn detect_empirical_constraints(
     program: &OriginalCompiledProgram,
     degree_bound: DegreeBound,
     inputs: Vec<StdIn>,
-) -> (EmpiricalConstraints, DebugInfo) {
+) -> EmpiricalConstraints {
     tracing::info!("Collecting empirical constraints...");
     let blocks = program.collect_basic_blocks(degree_bound.identities);
     let instruction_counts = blocks
@@ -157,7 +157,6 @@ struct ConstraintDetector {
     /// Mapping from block PC to number of instructions in that block
     instruction_counts: HashMap<u64, usize>,
     empirical_constraints: EmpiricalConstraints,
-    debug_info: DebugInfo,
 }
 
 impl ConstraintDetector {
@@ -165,15 +164,14 @@ impl ConstraintDetector {
         Self {
             instruction_counts,
             empirical_constraints: EmpiricalConstraints::default(),
-            debug_info: DebugInfo::default(),
         }
     }
 
-    pub fn finalize(self) -> (EmpiricalConstraints, DebugInfo) {
-        (self.empirical_constraints, self.debug_info)
+    pub fn finalize(self) -> EmpiricalConstraints {
+        self.empirical_constraints
     }
 
-    pub fn process_trace(&mut self, trace: Trace, new_debug_info: DebugInfo) {
+    pub fn process_trace(&mut self, trace: Trace, debug_info: DebugInfo) {
         // Compute empirical constraints from the current trace
         tracing::info!("      Detecting equivalence classes by block...");
         let equivalence_classes_by_block = self.generate_equivalence_classes_by_block(&trace);
@@ -182,12 +180,12 @@ impl ConstraintDetector {
         let new_empirical_constraints = EmpiricalConstraints {
             column_ranges_by_pc,
             equivalence_classes_by_block,
+            debug_info,
         };
 
         // Combine the new empirical constraints and debug info with the existing ones
         self.empirical_constraints
             .combine_with(new_empirical_constraints);
-        self.debug_info.combine_with(new_debug_info);
     }
 
     fn detect_column_ranges_by_pc(&self, trace: Trace) -> BTreeMap<u32, Vec<(u32, u32)>> {
