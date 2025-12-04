@@ -139,6 +139,38 @@ fn test_rule_based_optimization_simple_assignment() {
 }
 
 #[test]
+fn add_with_carry() {
+    // This tests a case of equivalent constraints that appear in the
+    // way "add with carry" is performed in openvm.
+    // X and Y end up being equivalent because they are both either
+    // A or A - 256, depending on whether the value of A is between
+    // 0 and 255 or not.
+    // A is the result of an addition with carry.
+    let mut system = IndexedConstraintSystem::default();
+    system.add_algebraic_constraints([
+        assert_zero(
+            (v("X") * c(7) - v("A") * c(7) + c(256) * c(7)) * (v("X") * c(7) - v("A") * c(7)),
+        ),
+        assert_zero((v("Y") - v("A") + c(256)) * (v("Y") - v("A"))),
+    ]);
+    system.add_bus_interactions([bit_constraint("X", 8), bit_constraint("Y", 8)]);
+    let optimized_system = rule_based_optimization(
+        system,
+        NoRangeConstraints,
+        TestBusInteractionHandler,
+        &mut new_var(),
+        None,
+    );
+    // Y has been replaced by X
+    expect![[r#"
+        (7 * A - 7 * X - 1792) * (7 * A - 7 * X) = 0
+        (A - X - 256) * (A - X) = 0
+        BusInteraction { bus_id: 3, multiplicity: 1, payload: X, 8 }
+        BusInteraction { bus_id: 3, multiplicity: 1, payload: X, 8 }"#]]
+    .assert_eq(&optimized_system.0.to_string());
+}
+
+#[test]
 fn test_rule_based_optimization_quadratic_equality() {
     let mut system = IndexedConstraintSystem::default();
     system.add_algebraic_constraints([
