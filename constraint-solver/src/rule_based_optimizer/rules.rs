@@ -97,6 +97,9 @@ crepe! {
     pub struct ActionRule<T>(pub Action<T>);
     ActionRule(Action::SubstituteVariableByConstant(v, val)) <-
       Assignment(v, val);
+    // Substitute the larger variable by the smaller.
     ActionRule(Action::SubstituteVariableByVariable(v1, v2)) <-
-      Equivalence(v1, v2);
+      Equivalence(v1, v2), (v1 > v2);
+    ActionRule(Action::SubstituteVariableByVariable(v2, v1)) <-
+      Equivalence(v1, v2), (v2 > v1);
 }
