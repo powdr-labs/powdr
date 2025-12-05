@@ -8,6 +8,7 @@ repository.workspace = true
 
 [features]
 default = []
+aot = ["openvm-circuit/aot", "openvm-rv32im-circuit/aot"]
 tco = ["openvm-circuit/tco", "openvm-rv32im-circuit/tco"]
 
 [dependencies]

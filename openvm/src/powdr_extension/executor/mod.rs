@@ -20,6 +20,8 @@ use openvm_circuit::arch::{
     Arena, DenseRecordArena, E2PreCompute, InterpreterExecutor, MatrixRecordArena,
     PreflightExecutor,
 };
+#[cfg(feature = "aot")]
+use openvm_circuit::arch::{AotExecutor, AotMeteredExecutor};
 use openvm_circuit_derive::create_handler;
 use openvm_circuit_primitives::AlignedBytesBorrow;
 use openvm_instructions::instruction::Instruction;
@@ -287,6 +289,38 @@ impl InterpreterMeteredExecutor<BabyBear> for PowdrExecutor {
         self.pre_compute_impl::<Ctx>(pc, inst, &mut pre_compute.data)?;
 
         Ok(execute_e2_handler::<BabyBear, Ctx>)
+    }
+}
+
+#[cfg(feature = "aot")]
+impl AotExecutor<BabyBear> for PowdrExecutor {
+    fn is_aot_supported(&self, _inst: &Instruction<BabyBear>) -> bool {
+        false
+    }
+
+    fn generate_x86_asm(
+        &self,
+        _inst: &Instruction<BabyBear>,
+        _pc: u32,
+    ) -> Result<String, openvm_circuit::arch::AotError> {
+        std::unimplemented!()
+    }
+}
+
+#[cfg(feature = "aot")]
+impl AotMeteredExecutor<BabyBear> for PowdrExecutor {
+    fn is_aot_metered_supported(&self, _inst: &Instruction<BabyBear>) -> bool {
+        false
+    }
+
+    fn generate_x86_metered_asm(
+        &self,
+        _inst: &Instruction<BabyBear>,
+        _pc: u32,
+        _chip_idx: usize,
+        _config: &openvm_circuit::arch::SystemConfig,
+    ) -> Result<String, openvm_circuit::arch::AotError> {
+        std::unimplemented!()
     }
 }
 
