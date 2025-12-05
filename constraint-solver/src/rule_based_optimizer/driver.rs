@@ -23,9 +23,6 @@ use crate::{
     runtime_constant::VarTransformable,
 };
 
-/// If a system contains more algebraic constraints than this, we will skip optimizing it.
-const MAX_CONSTRAINT_COUNT: usize = 50000;
-
 pub type VariableAssignment<T, V> = (V, GroupedExpression<T, V>);
 
 pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
@@ -35,14 +32,6 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
     new_var_outer: &mut impl FnMut(&str) -> V,
     degree_bound: Option<DegreeBound>,
 ) -> (IndexedConstraintSystem<T, V>, Vec<VariableAssignment<T, V>>) {
-    if system.system().algebraic_constraints.len() > MAX_CONSTRAINT_COUNT {
-        log::warn!(
-            "Skipping rule-based optimization due to too many constraints ({} > {}).",
-            system.system().algebraic_constraints.len(),
-            MAX_CONSTRAINT_COUNT
-        );
-        return (system, vec![]);
-    }
     let mut assignments = vec![];
     let mut var_mapper = system
         .referenced_unknown_variables()
