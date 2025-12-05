@@ -102,9 +102,6 @@ fn create_apcs_for_all_blocks<A: Adapter>(
             )
             .unwrap();
 
-            apc.subs.iter().for_each(|sub| {
-                println!("sub in APC: {:?}", sub);
-            });
 
             apc
         })

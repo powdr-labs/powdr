@@ -231,7 +231,16 @@ impl PowdrTraceGeneratorGpu {
         // let mut output =
         //     DeviceMatrix::<BabyBear>::new(Arc::new(device_buffer), height, width);
 
-        let (alu_subs, pre_optimization_widths, post_optimization_widths, _, _) = self
+        let alu_air_width = self
+            .original_airs
+            .air_name_to_machine
+            .get("VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>")
+            .map(|machine| machine.1.widths.main)
+            .expect("Failed to get ALU air");
+
+        // println!("alu air width: {}", alu_air_width);
+
+        let (alu_subs, opt_widths, post_optimization_offsets, _, _) = self
             .apc
             // go through original instructions
             .instructions()
@@ -241,41 +250,27 @@ impl PowdrTraceGeneratorGpu {
             // map to `(air_name, substitutions)`
             .fold(
                 (Vec::new(), Vec::new(), Vec::new(), 0u32, 0u32),
-                |(mut subs, mut pre_opt_widths, mut post_opt_widths, mut pre_opt_width_acc, mut post_opt_width_acc), (instr, sub)| {
+                |(mut subs, mut opt_widths, mut post_opt_widths, mut opt_width_acc, mut post_opt_width_acc), (instr, sub)| {
                     let air_name = &self.original_airs.opcode_to_air[&instr.0.opcode];
                     if *air_name == "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>" {
                         subs.push(sub);
                         // push at the start because the first offsets should be 0
-                        pre_opt_widths.push(pre_opt_width_acc);
+                        opt_widths.push(sub.len() as u32);
                         post_opt_widths.push(post_opt_width_acc);
+                        opt_width_acc += alu_air_width as u32;
                     }
-                    pre_opt_width_acc += self
-                        .original_airs
-                        .air_name_to_machine
-                        .get(air_name)
-                        .map(|machine| machine.1.widths.main as u32)
-                        .expect("Failed to get air main width");
                     post_opt_width_acc += sub.len() as u32;
-                    (subs, pre_opt_widths, post_opt_widths, pre_opt_width_acc, post_opt_width_acc)
+                    (subs, opt_widths, post_opt_widths, opt_width_acc, post_opt_width_acc)
                 },
             );
 
-        alu_subs.iter().for_each(|subs_for_row| {
-            println!("alu subs for row len: {}", subs_for_row.len());
-            println!("alu subs for row: {:?}", subs_for_row);
-        });
+        // alu_subs.iter().for_each(|subs_for_row| {
+        //     println!("alu subs for row len: {}", subs_for_row.len());
+        //     println!("alu subs for row: {:?}", subs_for_row);
+        // });
 
-        println!("pre_optimization_width: {:?}", pre_optimization_widths);
-        println!("post_optimization_width: {:?}", post_optimization_widths);
-
-        let alu_air_width = self
-            .original_airs
-            .air_name_to_machine
-            .get("VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>")
-            .map(|machine| machine.1.widths.main)
-            .expect("Failed to get ALU air");
-
-        println!("alu air width: {}", alu_air_width);
+        // println!("opt_width: {:?}", opt_widths);
+        // println!("post_optimization_offset: {:?}", post_optimization_offsets);
 
         let calls_per_apc_row = alu_subs.len() as u32;
 
@@ -298,29 +293,29 @@ impl PowdrTraceGeneratorGpu {
             })
             .collect();
 
-        println!("padded_alu_subs len: {}", padded_alu_subs.len());
-        println!("padded_alu_subs: {:?}", padded_alu_subs);
+        // println!("padded_alu_subs len: {}", padded_alu_subs.len());
+        // println!("padded_alu_subs: {:?}", padded_alu_subs);
 
         let d_alu_subs = padded_alu_subs
             .to_device()
             .expect("Failed to copy ALU substitutions to device");
-        debug_assert_eq!(d_alu_subs.len(), padded_alu_subs.len());
-        let d_pre_optimization_widths = pre_optimization_widths
+        // debug_assert_eq!(d_alu_subs.len(), padded_alu_subs.len());
+        let d_opt_widths = opt_widths
             .to_device()
             .expect("Failed to copy pre optimization widths to device");
-        let d_post_optimization_widths = post_optimization_widths
+        let d_post_opt_offsets = post_optimization_offsets
             .to_device()
             .expect("Failed to copy post optimization widths to device");
 
-        println!("d_alu_subs len: {}", d_alu_subs.len());
-        println!(
-            "d_pre_optimization_widths len: {}",
-            d_pre_optimization_widths.len()
-        );
-        println!(
-            "d_post_optimization_widths len: {}",
-            d_post_optimization_widths.len()
-        );
+        // println!("d_alu_subs len: {}", d_alu_subs.len());
+        // println!(
+        //     "d_opt_widths len: {}",
+        //     d_opt_widths.len()
+        // );
+        // println!(
+        //     "d_post_opt_offsets len: {}",
+        //     d_post_opt_offsets.len()
+        // );
 
         let chip_inventory = {
             let airs: AirInventory<BabyBearSC> =
@@ -344,27 +339,29 @@ impl PowdrTraceGeneratorGpu {
             .filter_map(|(insertion_idx, chip)| {
                 let air_name = chip_inventory.airs().ext_airs()[insertion_idx].name();
 
-                println!("air name: {}", air_name);
+                // println!("air name: {}", air_name);
 
                 let record_arena = {
                     match original_arenas.take_arena(&air_name) {
                         Some(ra) => {
-                            println!("arena air name: {}", air_name);
+                            // println!("arena air name: {}", air_name);
                             ra
                         }
                         None => return None, // skip this iteration, because we only have record arena for chips that are used
                     }
                 };
 
-                println!("generate dummy trace for: {}", air_name);
+                // println!("generate dummy trace for: {}", air_name);
+
+                // println!("calls_per_apc_row: {}, height: {}", calls_per_apc_row, height);
 
                 if air_name == "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>" {
                     chip.generate_proving_ctx_new(
                         record_arena,
                         output.buffer(),
                         &d_alu_subs,
-                        &d_pre_optimization_widths,
-                        &d_post_optimization_widths,
+                        &d_opt_widths,
+                        &d_post_opt_offsets,
                         calls_per_apc_row as u32,
                         height,
                         width,
@@ -378,27 +375,25 @@ impl PowdrTraceGeneratorGpu {
             })
             .collect();
 
-        println!("reach here");
-
-        // Optionally dump the APC trace by copying it back to the host.
-        use openvm_cuda_common::copy::MemCopyD2H;
-        use openvm_stark_backend::prover::hal::MatrixDimensions;
-        match output.to_host() {
-            Ok(host_buffer) => {
-                let matrix_height = output.height();
-                let matrix_width = output.width();
-                for row in 0..matrix_height {
-                    print!("Row {row}: ");
-                    for col in 0..matrix_width {
-                        let idx = row + col * matrix_height;
-                        let value = host_buffer[idx].as_canonical_u32();
-                        print!("{value} ");
-                    }
-                    println!();
-                }
-            }
-            Err(err) => println!("Failed to copy APC trace to host for logging: {err}"),
-        }
+        // // Optionally dump the APC trace by copying it back to the host.
+        // use openvm_cuda_common::copy::MemCopyD2H;
+        // use openvm_stark_backend::prover::hal::MatrixDimensions;
+        // match output.to_host() {
+        //     Ok(host_buffer) => {
+        //         let matrix_height = output.height();
+        //         let matrix_width = output.width();
+        //         for row in 0..matrix_height {
+        //             print!("Row {row}: ");
+        //             for col in 0..matrix_width {
+        //                 let idx = row + col * matrix_height;
+        //                 let value = host_buffer[idx].as_canonical_u32();
+        //                 print!("{value} ");
+        //             }
+        //             println!();
+        //         }
+        //     }
+        //     Err(err) => println!("Failed to copy APC trace to host for logging: {err}"),
+        // }
 
 
         // Prepare `OriginalAir` and `Subst` arrays
@@ -459,13 +454,48 @@ impl PowdrTraceGeneratorGpu {
                 )
         };
 
-        // Send the airs and substitutions to device
-        println!("before airs.to_device with len {}", airs.len());
+        // println!("airs/substs lengths: {}/{}", airs.len(), substitutions.len());
+        // println!("num_apc_calls: {}", num_apc_calls);
+
+        // airs.iter().for_each(|a| {
+        //     println!(
+        //         "air: width {}, height {}, row_block_size {}",
+        //         a.width, a.height, a.row_block_size
+        //     );
+        // });
+
+        // substitutions.iter().for_each(|s| {
+        //     println!(
+        //         "subst: air_index {}, col {}, row {}, apc_col {}",
+        //         s.air_index, s.col, s.row, s.apc_col
+        //     );
+        // });
+
+        // // Send the airs and substitutions to device
+        // println!("before airs.to_device with len {}", airs.len());
         let airs = airs.to_device().unwrap();
-        println!("after airs.to_device");
+        // println!("after airs.to_device");
         let substitutions = substitutions.to_device().unwrap();
-        println!("after substitutions.to_device");
+        // println!("after substitutions.to_device");
         cuda_abi::apc_tracegen(&mut output, airs, substitutions, num_apc_calls).unwrap();
+
+        // // Optionally dump the APC trace by copying it back to the host.
+        // match output.to_host() {
+        //     Ok(host_buffer) => {
+        //         let matrix_height = output.height();
+        //         let matrix_width = output.width();
+        //         for row in 0..matrix_height {
+        //             print!("Post-Tracegen Row {row}: ");
+        //             for col in 0..matrix_width {
+        //                 let idx = row + col * matrix_height;
+        //                 let value = host_buffer[idx].as_canonical_u32();
+        //                 print!("{value} ");
+        //             }
+        //             println!();
+        //         }
+        //     }
+        //     Err(err) => println!("Failed to copy APC trace to host for logging: {err}"),
+        // }
 
         // Apply derived columns using the GPU expression evaluator
         let (derived_specs, derived_bc) = compile_derived_to_gpu(
@@ -477,6 +507,24 @@ impl PowdrTraceGeneratorGpu {
         let d_specs = derived_specs.to_device().unwrap();
         let d_bc = derived_bc.to_device().unwrap();
         cuda_abi::apc_apply_derived_expr(&mut output, d_specs, d_bc, num_apc_calls).unwrap();
+
+        // // Optionally dump the APC trace by copying it back to the host.
+        // match output.to_host() {
+        //     Ok(host_buffer) => {
+        //         let matrix_height = output.height();
+        //         let matrix_width = output.width();
+        //         for row in 0..matrix_height {
+        //             print!("Post-Derive Row {row}: ");
+        //             for col in 0..matrix_width {
+        //                 let idx = row + col * matrix_height;
+        //                 let value = host_buffer[idx].as_canonical_u32();
+        //                 print!("{value} ");
+        //             }
+        //             println!();
+        //         }
+        //     }
+        //     Err(err) => println!("Failed to copy APC trace to host for logging: {err}"),
+        // }
 
         // Encode bus interactions for GPU consumption
         let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
