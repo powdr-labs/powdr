@@ -19,6 +19,11 @@ use crate::{
     runtime_constant::VarTransformable,
 };
 
+/// The Environment in the main method to access information about
+/// the constraint system. It allows rules to translate
+/// the opaque Expr identifiers into GroupedExpressions and perform
+/// actions on them.
+/// It is available to the rules as a singleton with interior mutability.
 pub struct Environment<T: FieldElement> {
     expressions: RefCell<ItemDB<GroupedExpression<T, Var>, Expr>>,
     var_to_string: HashMap<Var, String>,
@@ -41,6 +46,7 @@ impl<T: FieldElement> RangeConstraintProvider<T, Var> for Environment<T> {
 
 impl<T: FieldElement> PartialEq for Environment<T> {
     fn eq(&self, _other: &Self) -> bool {
+        // Environment is a singleton.
         true
     }
 }
@@ -49,18 +55,21 @@ impl<T: FieldElement> Eq for Environment<T> {}
 
 impl<T: FieldElement> PartialOrd for Environment<T> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        // Environment is a singleton.
         Some(self.cmp(other))
     }
 }
 
 impl<T: FieldElement> Ord for Environment<T> {
     fn cmp(&self, _other: &Self) -> std::cmp::Ordering {
+        // Environment is a singleton.
         std::cmp::Ordering::Equal
     }
 }
 
 impl<T: FieldElement> Hash for Environment<T> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // Environment is a singleton.
         0.hash(state);
     }
 }
@@ -82,6 +91,7 @@ impl<T: FieldElement> Environment<T> {
         }
     }
 
+    /// Re-extract re-usable components after the rules have run.
     pub fn terminate(self) -> (ItemDB<GroupedExpression<T, Var>, Expr>, NewVarGenerator<T>) {
         (
             self.expressions.into_inner(),
@@ -90,15 +100,21 @@ impl<T: FieldElement> Environment<T> {
     }
 
     #[allow(dead_code)]
+    /// Turns a GroupedExpression into the corresponding Expr,
+    /// allocating a new ID if it is not yet present.
+    /// Use this function when you only have a reference to the expression.
     pub fn insert(&self, expr: &GroupedExpression<T, Var>) -> Expr {
         self.expressions.borrow_mut().insert(expr)
     }
 
+    /// Turns a GroupedExpression into the corresponding Expr,
+    /// allocating a new ID if it is not yet present.
+    /// Use this function instead of `insert` when you own the expression.
     pub fn insert_owned(&self, expr: GroupedExpression<T, Var>) -> Expr {
         self.expressions.borrow_mut().insert_owned(expr)
     }
 
-    /// Extract an Expr into a free GroupedExpression.
+    /// Turns an Expr into an owned GroupedExpression.
     /// This is expensive since it clones the expression.
     #[allow(dead_code)]
     pub fn extract(&self, expr: Expr) -> GroupedExpression<T, Var> {
@@ -120,12 +136,16 @@ impl<T: FieldElement> Environment<T> {
     }
 
     #[allow(dead_code)]
+    /// If this returns Some(n) then the expression is affine
+    /// and contains n variables.
     pub fn affine_var_count(&self, expr: Expr) -> Option<usize> {
         let db = self.expressions.borrow();
         let expr = &db[expr];
         expr.is_affine().then(|| expr.linear_components().len())
     }
 
+    /// If this returns Some((coeff, var, offset)) then the expression is affine
+    /// and equals `coeff * var + offset`.
     pub fn try_to_affine(&self, expr: Expr) -> Option<(T, Var, T)> {
         let db = self.expressions.borrow();
         let expr = &db[expr];
@@ -136,6 +156,10 @@ impl<T: FieldElement> Environment<T> {
         Some((*coeff, *var, *expr.constant_offset()))
     }
 
+    /// Runs the function `f` on the expression identified by `expr`,
+    /// passing `args` as additional arguments.
+    /// This function is needed because we cannot return
+    /// references to GroupedExpression due to the interior mutability.
     pub fn on_expr<Args, Ret>(
         &self,
         expr: Expr,
@@ -148,6 +172,7 @@ impl<T: FieldElement> Environment<T> {
     }
 
     #[allow(dead_code)]
+    /// If this returns Some(e1, e2) then the expression equals e1 * e2.
     pub fn try_as_single_product(&self, expr: Expr) -> Option<(Expr, Expr)> {
         let (l, r) = {
             let db = self.expressions.borrow();
@@ -218,6 +243,8 @@ impl<T: FieldElement> Environment<T> {
         Some((left_var, right_var, factor))
     }
 
+    /// Substitutes the variable `var` by the constant `value` in the expression `e`
+    /// and returns the resulting expression.
     pub fn substitute_by_known(&self, e: Expr, var: Var, value: T) -> Expr {
         let expr = {
             let db = self.expressions.borrow();
@@ -229,6 +256,8 @@ impl<T: FieldElement> Environment<T> {
         self.insert_owned(expr)
     }
 
+    /// Substitutes the variable `var` by the variable `replacement` in the expression `e`
+    /// and returns the resulting expression.
     pub fn substitute_by_var(&self, e: Expr, var: Var, replacement: Var) -> Expr {
         let expr = {
             let db = self.expressions.borrow();

@@ -23,66 +23,48 @@ use crate::{
     runtime_constant::VarTransformable,
 };
 
-/// If a system contains more algebraic constraints than this, we will skip optimizing it.
-const MAX_CONSTRAINT_COUNT: usize = 50000;
-
 pub type VariableAssignment<T, V> = (V, GroupedExpression<T, V>);
 
+/// Perform rule-based optimization on the given constraint system. Returns the modified
+/// system and a list of variable assignments that were made during the optimization.
+/// The rules can also alter algebraic constraints and bus interactions, those alterations
+/// will not be visible in the list of substitutions.
+///
+/// If a degree bound is NOT given, then the degrees of the returned system will not increase.
+/// If it is given, then the degrees may increase, but will stay within the bound.
+///
+/// The function `new_var` can be used to generate a fresh variable, each call should
+/// return a fresh variable and the parameter can be used as a name suggestion.
 pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
     mut system: IndexedConstraintSystem<T, V>,
     range_constraints: impl RangeConstraintProvider<T, V>,
     bus_interaction_handler: impl BusInteractionHandler<T> + Clone,
-    new_var_outer: &mut impl FnMut(&str) -> V,
+    new_var: &mut impl FnMut(&str) -> V,
     degree_bound: Option<DegreeBound>,
 ) -> (IndexedConstraintSystem<T, V>, Vec<VariableAssignment<T, V>>) {
-    if system.system().algebraic_constraints.len() > MAX_CONSTRAINT_COUNT {
-        log::warn!(
-            "Skipping rule-based optimization due to too many constraints ({} > {}).",
-            system.system().algebraic_constraints.len(),
-            MAX_CONSTRAINT_COUNT
-        );
-        return (system, vec![]);
-    }
     let mut assignments = vec![];
     let mut var_mapper = system
         .referenced_unknown_variables()
         .cloned()
+        // Sorting is important here so that the order for V translates
+        // to the same order on Var.
         .sorted()
         .collect::<ItemDB<V, Var>>();
 
+    // The expression database will be used to map expressions and their IDs.
+    // New expressions are created during rule execution and thus new IDs need
+    // to be allocated. Because of lifetime issues, we pass it into
+    // `env` and extract it again after the rules have run.
     let mut expr_db = Some(ItemDB::<GroupedExpression<T, Var>, Expr>::default());
 
     loop {
+        // Transform the constraint system into a simpler representation
+        // using IDs for variables and expressions.
         let (algebraic_constraints, bus_interactions) =
             transform_constraint_system(&system, &var_mapper, expr_db.as_mut().unwrap());
-        // TODO it would be better to handle that inside the rule system,
-        // but it is difficult because of the vector and the combinatorial
-        // explosion of the range constraints.
-        let rcs = system
-            .bus_interactions()
-            .iter()
-            .zip(bus_interactions)
-            .flat_map(|(bus_inter, bus_inter_transformed)| {
-                let bi_rc = bus_inter
-                    .fields()
-                    .map(|e| e.range_constraint(&range_constraints))
-                    .collect();
-                let updated_rcs = bus_interaction_handler
-                    .handle_bus_interaction(bi_rc)
-                    .fields()
-                    .cloned()
-                    .collect_vec();
-                bus_inter_transformed
-                    .fields()
-                    .cloned()
-                    .zip(updated_rcs)
-                    .collect_vec()
-            })
-            .map(|(e, rc)| rules::InitialRangeConstraintOnExpression(e, rc))
-            .collect_vec();
-        let mut rt = rules::Crepe::new();
-        rt.extend(rcs);
 
+        // Create the "environment" singleton that can be used by the rules
+        // to query information from the outside world.
         let env = Environment::<T>::new(
             expr_db.take().unwrap(),
             var_mapper
@@ -97,8 +79,38 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                 .referenced_unknown_variables()
                 .map(|v| (var_mapper.id(v), range_constraints.get(v)))
                 .collect(),
-            // TODO or we just clone the var mapper?
+            // The NewVarGenerator will be used to generate fresh variables.
+            // because of lifetime issuse, we pass the next ID that
+            // the var_mapper would use here and then re-create the
+            // variables in the same sequence further down.
             NewVarGenerator::new(var_mapper.next_free_id()),
+        );
+
+        // Create the rule system and populate it with the initial facts.
+        let mut rt = rules::Crepe::new();
+
+        // It would be better to handle bus interactions inside the rule system,
+        // but it is difficult because of the vector and the combinatorial
+        // explosion of the range constraints, so we just determine the range constraints
+        // on the bus interaction fields now.
+        rt.extend(
+            system
+                .bus_interactions()
+                .iter()
+                .zip(bus_interactions)
+                .flat_map(|(bus_inter, bus_inter_transformed)| {
+                    let updated_rcs = bus_interaction_handler
+                        .handle_bus_interaction(bus_inter.to_range_constraints(&range_constraints))
+                        .fields()
+                        .cloned()
+                        .collect_vec();
+                    bus_inter_transformed
+                        .fields()
+                        .cloned()
+                        .zip(updated_rcs)
+                        .collect_vec()
+                })
+                .map(|(e, rc)| rules::InitialRangeConstraintOnExpression(e, rc)),
         );
 
         rt.extend(
@@ -109,16 +121,20 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         );
         rt.extend(std::iter::once(rules::Env(&env)));
 
-        let ((actions,), profile) = rt.run_with_profiling();
-        profile.report();
-        // let (actions,) = rt.run();
+        // Uncomment this to get a runtime profile of the individual
+        // rules.
+        // let ((actions,), profile) = rt.run_with_profiling();
+        // profile.report();
+        let (actions,) = rt.run();
         let (expr_db_, new_var_generator) = env.terminate();
 
-        // TODO we do not need all of those variables.
+        // Re-create the variables that were created using the
+        // new_var_generator inside the rule system using
+        // the var mapper, ensuring that the same IDs are used.
         for (var, prefix) in new_var_generator.requests() {
-            let v = new_var_outer(prefix);
+            let v = new_var(prefix);
             assert_eq!(var_mapper.insert(&v), *var);
-            let computation_method = untransform_computation_method(
+            let computation_method = undo_variable_transform_in_computation_method(
                 new_var_generator.computation_method(var),
                 &var_mapper,
             );
@@ -131,8 +147,13 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
             });
         }
 
-        // TODO update RC on vars?
         let mut progress = false;
+        // Try to execute the actions that were determined by the rules.
+        // Since the rules are "non-deterministic", some actions might conflict
+        // (imagine x := 7, x := y and y := 7, they are all consistent but
+        // some will fail depending on the order in which they are applied).
+        // We try to ensure that at least the outcome is deterministic by
+        // sorting the actions.
         for action in actions.into_iter().map(|a| a.0).sorted() {
             match action {
                 Action::SubstituteVariableByConstant(var, val) => {
@@ -142,19 +163,13 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                     progress = true;
                 }
                 Action::SubstituteVariableByVariable(v1, v2) => {
-                    let (v1, v2) = if var_mapper[v1] < var_mapper[v2] {
-                        (v1, v2)
-                    } else {
-                        (v2, v1)
-                    };
-                    // We need to notify the solver of the equivalence.
                     assignments.push((
-                        var_mapper[v2].clone(),
-                        GroupedExpression::from_unknown_variable(var_mapper[v1].clone()),
+                        var_mapper[v1].clone(),
+                        GroupedExpression::from_unknown_variable(var_mapper[v2].clone()),
                     ));
                     system.substitute_by_unknown(
-                        &var_mapper[v2],
-                        &GroupedExpression::from_unknown_variable(var_mapper[v1].clone()),
+                        &var_mapper[v1],
+                        &GroupedExpression::from_unknown_variable(var_mapper[v2].clone()),
                     );
                     progress = true;
                 }
@@ -189,6 +204,13 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
     (system, assignments)
 }
 
+/// Replaces all of the algebraic constraints in `old` by the ones in `replacement`.
+/// Returns true if the replacement was successful, i.e. all of the `old` constraints
+/// were found and replaced.
+///
+/// If degree_bound is None, the replacement is only done if the degree does not increase.
+/// If degree_bound is Some(bound), the replacement is only done if the degree
+/// stays within the bound.
 fn replace_algebraic_constraints<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
     system: &mut IndexedConstraintSystem<T, V>,
     old: impl IntoIterator<Item = Expr>,
@@ -197,14 +219,15 @@ fn replace_algebraic_constraints<T: FieldElement, V: Hash + Eq + Ord + Clone + D
     var_mapper: &ItemDB<V, Var>,
     degree_bound: Option<DegreeBound>,
 ) -> bool {
+    // Undo the variable transformation.
     let mut old_found = old
         .into_iter()
-        .map(|e| untransform_grouped_expression(&expr_db[e], var_mapper))
+        .map(|e| undo_variable_transform(&expr_db[e], var_mapper))
         .map(|e| (e, false))
         .collect::<HashMap<_, _>>();
     let replacement = replacement
         .into_iter()
-        .map(|e| untransform_grouped_expression(&expr_db[e], var_mapper))
+        .map(|e| undo_variable_transform(&expr_db[e], var_mapper))
         .collect_vec();
 
     let max_old_degree = old_found.keys().map(|e| e.degree()).max().unwrap_or(0);
@@ -246,6 +269,8 @@ fn replace_algebraic_constraints<T: FieldElement, V: Hash + Eq + Ord + Clone + D
     }
 }
 
+/// Transform the constraint system such that variables and expressions are
+/// assigned IDs.
 fn transform_constraint_system<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
     system: &IndexedConstraintSystem<T, V>,
     var_mapper: &ItemDB<V, Var>,
@@ -255,7 +280,7 @@ fn transform_constraint_system<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         .system()
         .algebraic_constraints
         .iter()
-        .map(|c| transform_grouped_expression(&c.expression, var_mapper))
+        .map(|c| transform_variables(&c.expression, var_mapper))
         .map(|e| expression_db.insert_owned(e))
         .collect_vec();
     let bus_interactions: Vec<BusInteraction<Expr>> = system
@@ -265,7 +290,7 @@ fn transform_constraint_system<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         .map(|bus_inter| {
             bus_inter
                 .fields()
-                .map(|f| transform_grouped_expression(f, var_mapper))
+                .map(|f| transform_variables(f, var_mapper))
                 .map(|e| expression_db.insert_owned(e))
                 .collect()
         })
@@ -273,21 +298,27 @@ fn transform_constraint_system<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
     (algebraic_constraints, bus_interactions)
 }
 
-fn transform_grouped_expression<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
+/// Transform the variable type in the expression to use `Var` instead of `V`.
+fn transform_variables<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
     expr: &GroupedExpression<T, V>,
     var_mapper: &ItemDB<V, Var>,
 ) -> GroupedExpression<T, Var> {
     expr.transform_var_type(&mut |v| var_mapper.id(v))
 }
 
-fn untransform_grouped_expression<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
+/// Undo the effect of `transform_variables`, transforming from `Var` back to `V`.
+fn undo_variable_transform<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
     expr: &GroupedExpression<T, Var>,
     var_mapper: &ItemDB<V, Var>,
 ) -> GroupedExpression<T, V> {
     expr.transform_var_type(&mut |v| var_mapper[*v].clone())
 }
 
-fn untransform_computation_method<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
+/// Undo the effect of `transform_variables` on a computation method.
+fn undo_variable_transform_in_computation_method<
+    T: FieldElement,
+    V: Hash + Eq + Ord + Clone + Display,
+>(
     method: &ComputationMethod<T, GroupedExpression<T, Var>>,
     var_mapper: &ItemDB<V, Var>,
 ) -> ComputationMethod<T, GroupedExpression<T, V>> {
@@ -295,8 +326,8 @@ fn untransform_computation_method<T: FieldElement, V: Hash + Eq + Ord + Clone + 
         ComputationMethod::Constant(c) => ComputationMethod::Constant(*c),
         ComputationMethod::QuotientOrZero(numerator, denominator) => {
             ComputationMethod::QuotientOrZero(
-                untransform_grouped_expression(numerator, var_mapper),
-                untransform_grouped_expression(denominator, var_mapper),
+                undo_variable_transform(numerator, var_mapper),
+                undo_variable_transform(denominator, var_mapper),
             )
         }
     }
