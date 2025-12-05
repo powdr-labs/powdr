@@ -14,8 +14,11 @@ use crate::{
 };
 
 use itertools::Itertools;
+use openvm_circuit::arch::InterpreterMeteredExecutor;
 use openvm_circuit::arch::{
-    Arena, DenseRecordArena, E2PreCompute, InterpreterExecutor, MatrixRecordArena, PreflightExecutor, execution_mode::{ExecutionCtx, MeteredCtx}
+    execution_mode::{ExecutionCtx, MeteredCtx},
+    Arena, DenseRecordArena, E2PreCompute, InterpreterExecutor, MatrixRecordArena,
+    PreflightExecutor,
 };
 use openvm_circuit_derive::create_handler;
 use openvm_circuit_primitives::AlignedBytesBorrow;
@@ -23,14 +26,12 @@ use openvm_instructions::instruction::Instruction;
 use openvm_sdk::config::SdkVmConfigExecutor;
 use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
-use openvm_circuit::arch::InterpreterMeteredExecutor;
 use powdr_autoprecompiles::Apc;
 
 use openvm_circuit::{
     arch::{
-        ExecuteFunc, ExecutionCtxTrait, ExecutionError, Executor, ExecutorInventory,
-        MeteredExecutionCtxTrait, MeteredExecutor, StaticProgramError, VmExecState,
-        VmExecutionConfig, VmStateMut,
+        ExecuteFunc, ExecutionCtxTrait, ExecutionError, ExecutorInventory,
+        MeteredExecutionCtxTrait, StaticProgramError, VmExecState, VmExecutionConfig, VmStateMut,
     },
     system::memory::online::{GuestMemory, TracingMemory},
 };
@@ -382,50 +383,42 @@ impl PowdrExecutor {
 #[inline(always)]
 unsafe fn execute_e12_impl<F, CTX: ExecutionCtxTrait>(
     pre_compute: &PowdrPreCompute<F, CTX>,
-    instret: &mut u64,
-    pc: &mut u32,
-    arg: u64,
-    vm_state: &mut VmExecState<F, GuestMemory, CTX>,
+    exec_state: &mut VmExecState<F, GuestMemory, CTX>,
 ) {
-    // Save the current instret, as we will overwrite it during execution of original instructions
-    let start_instret = *instret;
     pre_compute
         .original_instructions
         .iter()
-        .fold(vm_state, |vm_state, (executor, data)| {
-            executor(data, instret, pc, arg, vm_state);
-            vm_state
+        .fold(exec_state, |exec_state, (executor, data)| {
+            executor(data.as_ptr(), exec_state);
+            exec_state
         });
-    // Restore the instret and increment it by one, since we executed a single apc instruction
-    *instret = start_instret + 1;
 }
 
 #[create_handler]
 unsafe fn execute_e1_impl<F: PrimeField32, CTX: ExecutionCtxTrait>(
-    pre_compute: &[u8],
-    instret: &mut u64,
-    pc: &mut u32,
-    arg: u64,
-    vm_state: &mut VmExecState<F, GuestMemory, CTX>,
+    pre_compute: *const u8,
+    exec_state: &mut VmExecState<F, GuestMemory, CTX>,
 ) {
-    let pre_compute: &PowdrPreCompute<F, CTX> = pre_compute.borrow();
-    execute_e12_impl::<F, CTX>(pre_compute, instret, pc, arg, vm_state);
+    let pre_compute: &PowdrPreCompute<F, CTX> =
+        std::slice::from_raw_parts(pre_compute, size_of::<PowdrPreCompute<F, CTX>>()).borrow();
+    execute_e12_impl::<F, CTX>(pre_compute, exec_state);
 }
 
 #[create_handler]
 unsafe fn execute_e2_impl<F: PrimeField32, CTX: MeteredExecutionCtxTrait>(
-    pre_compute: &[u8],
-    instret: &mut u64,
-    pc: &mut u32,
-    arg: u64,
-    vm_state: &mut VmExecState<F, GuestMemory, CTX>,
+    pre_compute: *const u8,
+    exec_state: &mut VmExecState<F, GuestMemory, CTX>,
 ) {
-    let pre_compute: &E2PreCompute<PowdrPreCompute<F, CTX>> = pre_compute.borrow();
-    vm_state.ctx.on_height_change(
+    let pre_compute: &E2PreCompute<PowdrPreCompute<F, CTX>> = std::slice::from_raw_parts(
+        pre_compute,
+        size_of::<E2PreCompute<PowdrPreCompute<F, CTX>>>(),
+    )
+    .borrow();
+    exec_state.ctx.on_height_change(
         pre_compute.chip_idx as usize,
         pre_compute.data.height_change,
     );
-    execute_e12_impl::<F, CTX>(&pre_compute.data, instret, pc, arg, vm_state);
+    execute_e12_impl::<F, CTX>(&pre_compute.data, exec_state);
 }
 
 // Preflight execution is implemented separately for CPU and GPU backends, because they use a different arena from `self`
