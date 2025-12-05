@@ -194,18 +194,14 @@ impl<T: FieldElement> RangeConstraint<T> {
             // If we have "negative" values, make sure that the square
             // is non-negative.
             let max_abs = std::cmp::max(-self.min, self.max);
-            let square_rc = if max_abs.to_arbitrary_integer() * max_abs.to_arbitrary_integer()
+            if max_abs.to_arbitrary_integer() * max_abs.to_arbitrary_integer()
                 < T::modulus().to_arbitrary_integer()
             {
-                Self::from_range(T::zero(), max_abs * max_abs)
-            } else {
-                Default::default()
-            };
-            self.combine_product(self).conjunction(&square_rc)
-        } else {
-            // In this case, combine_product is good enough
-            self.combine_product(self)
+                return Self::from_range(T::zero(), max_abs * max_abs);
+            }
         }
+
+        self.combine_product(self)
     }
 
     /// Returns the conjunction of this constraint and the other.
