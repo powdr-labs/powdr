@@ -37,10 +37,10 @@ jobs:
         run: cargo build --release -p powdr-openvm
 
       - name: Install cargo openvm
-        # Rust 1.88 is needed by fresher versions of dependencies of cargo-openvm.
+        # Rust 1.89 is needed by fresher versions of dependencies of cargo-openvm.
         run: |
-          rustup toolchain install 1.88
-          cargo +1.88 install --git 'http://github.com/openvm-org/openvm.git' cargo-openvm
+          rustup toolchain install 1.89
+          cargo +1.89 install --git 'http://github.com/openvm-org/openvm.git' cargo-openvm
 
       - name: Run keccak with 100 APCs
         run: /usr/bin/time -v cargo run --bin powdr_openvm -r prove guest-keccak --input 10000 --autoprecompiles 100 --recursion
