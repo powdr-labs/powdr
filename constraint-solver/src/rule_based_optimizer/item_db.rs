@@ -62,6 +62,9 @@ where
         Ident::from(id)
     }
 
+    /// Inserts the item if not already present, returning its identifier.
+    /// Use this function over `insert_owned` when you only have a
+    /// reference to the item.
     pub fn insert(&mut self, item: &Item) -> Ident {
         if let Some(&id) = self.reverse.get(item) {
             Ident::from(id)
@@ -70,6 +73,8 @@ where
         }
     }
 
+    /// Inserts the item if not already present, returning its identifier.
+    /// Use this function over `insert` when you have ownership of the item.
     pub fn insert_owned(&mut self, item: Item) -> Ident {
         if let Some(&id) = self.reverse.get(&item) {
             Ident::from(id)

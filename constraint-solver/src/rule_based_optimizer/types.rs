@@ -17,9 +17,13 @@ pub struct Expr(usize);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Action<T> {
     SubstituteVariableByConstant(Var, T),
+    /// Substitute the first variable by the second.
     SubstituteVariableByVariable(Var, Var),
     #[allow(dead_code)]
+    /// Replace one algebraic constraint by another.
     ReplaceAlgebraicConstraintBy(Expr, Expr),
     #[allow(dead_code)]
+    /// Replace a pair of algebraic constraints (the first two) by
+    /// another (the third).
     ReplacePairOfAlgebraicConstraintsBy(Expr, Expr, Expr),
 }
