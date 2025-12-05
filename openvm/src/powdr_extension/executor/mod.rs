@@ -15,8 +15,7 @@ use crate::{
 
 use itertools::Itertools;
 use openvm_circuit::arch::{
-    execution_mode::{ExecutionCtx, MeteredCtx},
-    Arena, DenseRecordArena, E2PreCompute, MatrixRecordArena, PreflightExecutor,
+    Arena, DenseRecordArena, E2PreCompute, InterpreterExecutor, MatrixRecordArena, PreflightExecutor, execution_mode::{ExecutionCtx, MeteredCtx}
 };
 use openvm_circuit_derive::create_handler;
 use openvm_circuit_primitives::AlignedBytesBorrow;
@@ -24,6 +23,7 @@ use openvm_instructions::instruction::Instruction;
 use openvm_sdk::config::SdkVmConfigExecutor;
 use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
+use openvm_circuit::arch::InterpreterMeteredExecutor;
 use powdr_autoprecompiles::Apc;
 
 use openvm_circuit::{
@@ -203,7 +203,7 @@ struct PowdrPreCompute<F, Ctx> {
     original_instructions: Vec<(ExecuteFunc<F, Ctx>, Vec<u8>)>,
 }
 
-impl Executor<BabyBear> for PowdrExecutor {
+impl InterpreterExecutor<BabyBear> for PowdrExecutor {
     fn pre_compute_size(&self) -> usize {
         // TODO: do we know `ExecutionCtx` is correct? It's only one implementation of `ExecutionCtxTrait`.
         // A clean fix would be to add `Ctx` as a generic parameter to this method in the `Executor` trait, but that would be a breaking change.
@@ -243,7 +243,7 @@ impl Executor<BabyBear> for PowdrExecutor {
     }
 }
 
-impl MeteredExecutor<BabyBear> for PowdrExecutor {
+impl InterpreterMeteredExecutor<BabyBear> for PowdrExecutor {
     fn metered_pre_compute_size(&self) -> usize {
         // TODO: do we know `MeteredCtx` is correct? It's only one implementation of `MeteredExecutionCtxTrait`.
         // A clean fix would be to add `Ctx` as a generic parameter to this method in the `MeteredExecutor` trait, but that would be a breaking change.
