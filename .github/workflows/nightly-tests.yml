@@ -40,8 +40,8 @@ jobs:
             ~/.cargo/git
             target
           key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.toml') }}
-      - name: Install Rust toolchain 1.88
-        run: rustup toolchain install 1.88
+      - name: Install Rust toolchain 1.89
+        run: rustup toolchain install 1.89
       - name: Install nightly
         run: rustup toolchain install nightly-2025-10-01 --component rust-src
       - name: Install nightly
@@ -79,8 +79,8 @@ jobs:
           key: ${{ runner.os }}-cargo-pr-tests
       - name: Install Rust toolchain nightly-2025-10-01 (with clippy and rustfmt)
         run: rustup toolchain install nightly-2025-10-01 --component clippy,rustfmt,rust-src
-      - name: Install Rust toolchain 1.88
-        run: rustup toolchain install 1.88
+      - name: Install Rust toolchain 1.89
+        run: rustup toolchain install 1.89
       - name: Install riscv target
         run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2025-10-01
       - name: Install test dependencies
@@ -121,10 +121,10 @@ jobs:
         run: cargo build --release -p powdr-openvm
 
       - name: Install cargo openvm
-        # Rust 1.88 is needed by fresher versions of dependencies of cargo-openvm.
+        # Rust 1.89 is needed by fresher versions of dependencies of cargo-openvm.
         run: |
-          rustup toolchain install 1.88
-          cargo +1.88 install --git 'http://github.com/openvm-org/openvm.git' cargo-openvm
+          rustup toolchain install 1.89
+          cargo +1.89 install --git 'http://github.com/openvm-org/openvm.git' cargo-openvm
 
       - name: Setup python venv
         run: |
