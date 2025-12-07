@@ -6,6 +6,10 @@ use crate::{
 };
 
 type ExpressionPrecedence = u64;
+/// Trait for determining operator precedence in expressions.
+///
+/// Lower numeric values indicate higher precedence (e.g., 1 binds tighter than 4).
+/// This follows standard mathematical operator precedence rules.
 trait Precedence {
     fn precedence(&self) -> Option<ExpressionPrecedence>;
 }
@@ -13,6 +17,7 @@ trait Precedence {
 impl Precedence for AlgebraicUnaryOperator {
     fn precedence(&self) -> Option<ExpressionPrecedence> {
         Some(match self {
+            // Unary operators have the highest precedence
             AlgebraicUnaryOperator::Minus => 1,
         })
     }
@@ -21,6 +26,8 @@ impl Precedence for AlgebraicUnaryOperator {
 impl Precedence for AlgebraicBinaryOperator {
     fn precedence(&self) -> Option<ExpressionPrecedence> {
         Some(match self {
+            // Multiplication has higher precedence than addition/subtraction
+            // (standard mathematical order: * before +, -)
             Self::Mul => 3,
             Self::Add | Self::Sub => 4,
         })
