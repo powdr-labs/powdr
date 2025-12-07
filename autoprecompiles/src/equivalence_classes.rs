@@ -2,23 +2,15 @@ use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 
-/// An equivalence class
+/// An equivalence class, i.e, a set of values of type `T` which are considered equivalent
 pub type EquivalenceClass<T> = BTreeSet<T>;
 
 /// A collection of equivalence classes where all classes are guaranteed to have at least two elements
+/// This is enforced by construction of this type only happening through collection, where we ignore empty and singleton classes
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 #[serde(bound(deserialize = "T: Ord + Deserialize<'de>"))]
 pub struct EquivalenceClasses<T> {
     inner: BTreeSet<EquivalenceClass<T>>,
-}
-
-// TODO: derive
-impl<T> Default for EquivalenceClasses<T> {
-    fn default() -> Self {
-        Self {
-            inner: Default::default(),
-        }
-    }
 }
 
 impl<T: Ord> FromIterator<EquivalenceClass<T>> for EquivalenceClasses<T> {

@@ -54,12 +54,20 @@ impl EmpiricalConstraints {
 
         // Combine equivalence classes by block
         for (block_pc, classes) in other.equivalence_classes_by_block {
-            let existing = self
+            // Compute the new equivalence classes for this block
+            let new_equivalence_class = match self.equivalence_classes_by_block.entry(block_pc) {
+                Entry::Vacant(_) => classes,
+                Entry::Occupied(e) => {
+                    // Remove the value and compute the intersection
+                    // This is because `intersect_partitions` takes inputs by value
+                    let existing = e.remove();
+                    intersect_partitions(vec![existing, classes])
+                }
+            };
+            assert!(self
                 .equivalence_classes_by_block
-                .entry(block_pc)
-                .or_default();
-
-            *existing = intersect_partitions(vec![std::mem::take(existing), classes]);
+                .insert(block_pc, new_equivalence_class)
+                .is_none());
         }
     }
 }
