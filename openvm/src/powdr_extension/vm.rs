@@ -7,7 +7,9 @@ use std::sync::Arc;
 
 use derive_more::From;
 use openvm_circuit::arch::{DenseRecordArena, MatrixRecordArena};
-use openvm_circuit_derive::{Executor, MeteredExecutor, PreflightExecutor};
+use openvm_circuit_derive::{
+    AotExecutor, AotMeteredExecutor, Executor, MeteredExecutor, PreflightExecutor,
+};
 use openvm_instructions::LocalOpcode;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 
@@ -89,7 +91,16 @@ impl<F> PowdrExtension<F> {
     }
 }
 
-#[derive(From, AnyEnum, PreflightExecutor, Executor, MeteredExecutor, Chip)]
+#[derive(
+    From,
+    AnyEnum,
+    PreflightExecutor,
+    Executor,
+    MeteredExecutor,
+    AotExecutor,
+    AotMeteredExecutor,
+    Chip,
+)]
 #[allow(clippy::large_enum_variant)]
 pub enum PowdrExtensionExecutor {
     Powdr(PowdrExecutor),

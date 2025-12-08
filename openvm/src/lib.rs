@@ -15,7 +15,9 @@ use openvm_circuit::arch::{
 };
 use openvm_circuit::system::SystemChipInventory;
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
-use openvm_circuit_derive::{Executor, MeteredExecutor, PreflightExecutor};
+use openvm_circuit_derive::{
+    AotExecutor, AotMeteredExecutor, Executor, MeteredExecutor, PreflightExecutor,
+};
 use openvm_sdk::config::SdkVmCpuBuilder;
 
 use openvm_sdk::config::TranspilerConfig;
@@ -394,7 +396,16 @@ impl AsMut<SystemConfig> for SpecializedConfig {
 }
 
 #[allow(clippy::large_enum_variant)]
-#[derive(From, AnyEnum, Chip, Executor, MeteredExecutor, PreflightExecutor)]
+#[derive(
+    From,
+    AnyEnum,
+    Chip,
+    Executor,
+    MeteredExecutor,
+    AotExecutor,
+    AotMeteredExecutor,
+    PreflightExecutor,
+)]
 pub enum SpecializedExecutor {
     #[any_enum]
     SdkExecutor(ExtendedVmConfigExecutor<BabyBear>),
