@@ -24,6 +24,8 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
     fn create_apcs_with_pgo(
         &self,
         mut blocks: Vec<BasicBlock<<Self::Adapter as Adapter>::Instruction>>,
+        // execution count of blocks (indexes into the `blocks` vec)
+        block_exec_count: Option<HashMap<usize, u32>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         _labels: BTreeMap<u64, Vec<String>>,
@@ -68,9 +70,5 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
         }
 
         create_apcs_for_all_blocks::<Self::Adapter>(blocks, config, vm_config)
-    }
-
-    fn pc_execution_count(&self, pc: u64) -> Option<u32> {
-        self.data.pc_count.get(&pc).cloned()
     }
 }

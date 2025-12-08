@@ -1,15 +1,12 @@
 use std::{
-    collections::{BTreeMap, HashMap},
-    io::BufWriter,
-    path::Path,
-    sync::{Arc, Mutex},
+    cmp::Ordering, collections::{BTreeMap, HashMap}, io::BufWriter, path::Path, sync::{Arc, Mutex}
 };
 
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use rayon::iter::{ParallelIterator, ParallelBridge};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    PowdrConfig, adapter::{Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig, PgoAdapter}, blocks::BasicBlock, evaluation::EvaluationResult, execution_profile::ExecutionProfile, pgo::cell::selection::parallel_fractional_knapsack
+    PowdrConfig, adapter::{Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig, ApcWithStats, PgoAdapter}, blocks::{BasicBlock, generate_superblocks}, evaluation::EvaluationResult, execution_profile::ExecutionProfile, pgo::cell::selection::parallel_fractional_knapsack
 };
 
 mod selection;
@@ -24,7 +21,7 @@ pub trait Candidate<A: Adapter>: Sized + KnapsackItem {
     /// Try to create an autoprecompile candidate from a block.
     fn create(
         apc: Arc<AdapterApc<A>>,
-        pgo_program_pc_count: &HashMap<u64, u32>,
+        exec_count: u32,
         vm_config: AdapterVmConfig<A>,
         max_degree: usize,
     ) -> Self;
@@ -89,7 +86,8 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
 
     fn create_apcs_with_pgo(
         &self,
-        mut blocks: Vec<BasicBlock<<Self::Adapter as Adapter>::Instruction>>,
+        blocks: Vec<BasicBlock<<Self::Adapter as Adapter>::Instruction>>,
+        block_exec_count: Option<HashMap<usize, u32>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
@@ -99,167 +97,145 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
             blocks.len()
         );
 
-        let prof = self.profiling_data().unwrap();
-
-        let mut bb_count = vec![0; blocks.len()];
-        // // count bb of first executed instruction
-        // let initial_pc = original_program.exe.program.pc_base as u64;
-        // if let Some(first_bb_idx) = blocks.iter().position(|bb| bb.start_pc == initial_pc) {
-        //     bb_count[first_bb_idx] += 1;
-        // }
-
-        let mut bb_pair_count = HashMap::new();
-
-
-        for (pc, next_pcs) in prof.next_pc.iter() {
-            // check that PC ends a BB!
-            let mut pc_ends_bb = false;
-            let mut bb_idx_1 = 0;
-            for (idx, bb) in blocks.iter().enumerate() {
-                let last_pc = bb.start_pc + ((bb.statements.len() - 1) as u64 * self.default_pc_step as u64);
-
-                if last_pc == *pc {
-                    pc_ends_bb = true;
-                    bb_idx_1 = idx;
-                    break;
-                }
-            }
-            if !pc_ends_bb {
-                continue;
-            }
-
-            // println!("pc {} ends BB {}", pc, bb_idx_1);
-
-            for (next_pc, next_pc_count) in next_pcs {
-                // check this is the start of a BB!
-                let mut is_start = false;
-                let mut bb_idx_2 = 0;
-                for (idx, bb) in blocks.iter().enumerate() {
-                    if bb.start_pc == *next_pc {
-                        is_start = true;
-                        bb_idx_2 = idx;
-                        break;
-                    }
-                }
-                if is_start {
-                    // only count BB if its a valid APC
-                    if blocks[bb_idx_2].statements.len() > 1 {
-                        bb_count[bb_idx_2] += next_pc_count;
-                        // only count pair if both BBs are valid APC
-                        if blocks[bb_idx_1].statements.len() > 1 {
-                            bb_pair_count.entry((bb_idx_1, bb_idx_2))
-                                .and_modify(|c| *c += next_pc_count)
-                                .or_insert(*next_pc_count);
-                        }
-                    }
-                    // println!("\tpc {} starts BB {}", next_pc, bb_idx_2);
-                } else {
-                    panic!("\tpc {} does not start a BB!", next_pc);
-                }
-            }
-        }
-
-        // BBs sorted by execution count
-        let bb_sorted = bb_count
-            .iter()
-            .enumerate()
-            // map to start_pc
-            .map(|(idx, count)| (blocks[idx].start_pc, *count))
-            .sorted_by_key(|(_, count)| *count)
-            .filter(|&(_, count)| count > 0)
-            .rev()
-            .collect::<Vec<_>>();
-
-        println!("BB execution counts: {bb_sorted:?}");
-
-        // TODO: additional constraint to enforce the jump to the second block
-        let super_blocks = bb_pair_count.iter()
-            .filter_map(|(&(idx1, idx2), &count)| {
-                if count > 1 {
-                    let block_1 = blocks[idx1].clone();
-                    let block_2 = blocks[idx2].clone();
-                    Some(BasicBlock {
-                        start_pc: block_1.start_pc,
-                        other_pcs: vec![(block_1.statements.len(), block_2.start_pc)],
-                        statements: [block_1.statements, block_2.statements].concat(),
-                    })
-                } else {
-                    None
-                }
-            })
-            .collect_vec();
-
-        let bb_pair_sorted = bb_pair_count
-            .iter()
-            .sorted_by_key(|(_, count)| *count)
-            // map to start_pc
-            .map(|(&(bb_idx_1, bb_idx_2), count)| {
-                (
-                    (blocks[bb_idx_1].start_pc, blocks[bb_idx_2].start_pc),
-                    *count,
-                )
-            })
-            .rev()
-            .collect::<Vec<_>>();
-
-        println!("BB pairs execution counts: {bb_pair_sorted:?}");
-
         if config.autoprecompiles == 0 {
             return vec![];
         }
 
-        let mut blocks = super_blocks;
-
-        // drop any block whose start index cannot be found in pc_idx_count,
-        // because a basic block might not be executed at all.
-        // Also only keep basic blocks with more than one original instruction.
-        blocks.retain(|b| self.data.pc_count.contains_key(&b.start_pc) && b.statements.len() > 1);
-
-
-        tracing::debug!(
-            "Retained {} basic blocks after filtering by pc_idx_count",
-            blocks.len()
-        );
+        // ensure blocks are valid for APC
+        let block_exec_count = block_exec_count.unwrap();
+        blocks.iter().enumerate().for_each(|(idx, b)| assert!(block_exec_count[&idx] > 0 && b.statements.len() > 1));
 
         // generate apc for all basic blocks and only cache the ones we eventually use
         // calculate number of trace cells saved per row for each basic block to sort them by descending cost
         let max_cache = (config.autoprecompiles + config.skip_autoprecompiles) as usize;
         tracing::info!(
-        "Generating autoprecompiles for all ({}) basic blocks in parallel and caching costliest {}",
-        blocks.len(),
-        max_cache,
-    );
+            "Generating autoprecompiles for all ({}) basic blocks in parallel and caching costliest {}",
+            blocks.len(),
+            max_cache,
+        );
 
         let apc_candidates = Arc::new(Mutex::new(vec![]));
 
-        // map–reduce over blocks into a single BinaryHeap<ApcCandidate<P>> capped at max_cache
-        let res = parallel_fractional_knapsack(
-            blocks.into_par_iter().filter_map(|block| {
-                let apc = crate::build::<A>(
-                    block.clone(),
-                    vm_config.clone(),
-                    config.degree_bound,
-                    config.apc_candidates_dir_path.as_deref(),
-                )
+        // generate candidates in parallel
+        let mut candidates: Vec<_> = blocks.iter().enumerate().par_bridge().filter_map(|(idx, block)| {
+            let apc = crate::build::<A>(
+                block.clone(),
+                vm_config.clone(),
+                config.degree_bound,
+                config.apc_candidates_dir_path.as_deref(),
+            )
                 .ok()?;
-                let candidate = C::create(
-                    Arc::new(apc),
-                    &self.data.pc_count,
-                    vm_config.clone(),
-                    config.degree_bound.identities,
+            let candidate = C::create(
+                Arc::new(apc),
+                block_exec_count[&idx],
+                vm_config.clone(),
+                config.degree_bound.identities,
+            );
+            if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
+                let json_export = candidate.to_json_export(apc_candidates_dir_path);
+                println!("APC pc {}, other_pcs {:?}, cost effectiveness: {:?}, freq: {:?}, value: {:?}",
+                         json_export.original_block.start_pc,
+                         json_export.original_block.other_pcs,
+                         json_export.cost_before as f64 / json_export.cost_after as f64,
+                         json_export.execution_frequency,
+                         json_export.value,
                 );
-                if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
-                    let json_export = candidate.to_json_export(apc_candidates_dir_path);
-                    apc_candidates.lock().unwrap().push(json_export);
+                apc_candidates.lock().unwrap().push(json_export);
+            }
+            Some(candidate)
+        }).collect();
+
+        // sort candidates by value / cost (larger first)
+        candidates.sort_by(|a, b| {
+            let a_density = a.value() as f32 / a.cost() as f32;
+            let b_density = b.value() as f32 / b.cost() as f32;
+            match b_density.partial_cmp(&a_density) {
+                Some(Ordering::Equal) | None => {
+                    b.tie_breaker().cmp(&a.tie_breaker())
+                },
+                Some(ordering) => ordering
+            }
+        });
+
+        println!("=============================================");
+        println!("====== APC SELECTION ORDER ==================");
+        println!("=============================================");
+
+        // knapsack algorithm for choosing APCs maximizing the total value
+        let res: Vec<_> = candidates.into_iter().scan(0, move |cumulative_cost, e| {
+            if let Some(max_cost) = self.max_total_apc_columns {
+                // Try to add the item
+                if *cumulative_cost + e.cost() <= max_cost {
+                    // The item fits, increment the cumulative cost
+                    *cumulative_cost += e.cost();
+                    Some(Some(e))
+                } else {
+                    // The item does not fit, skip it
+                    Some(None)
                 }
-                Some(candidate)
-            }),
-            max_cache,
-            self.max_total_apc_columns,
-        )
-        .skip(config.skip_autoprecompiles as usize)
-        .map(C::into_apc_and_stats)
-        .collect();
+            } else {
+                // No max cost, just return the item
+                Some(Some(e))
+            }
+        })
+            .flatten()
+            .inspect(|c| {
+                let c = c.to_json_export(Path::new("bla"));
+                println!("==============================================");
+                println!("APC pc {}, other_pcs {:?}, cost effectiveness: {:?}, freq: {:?}, value: {:?}",
+                         c.original_block.start_pc,
+                         c.original_block.other_pcs,
+                         c.cost_before as f64 / c.cost_after as f64,
+                         c.execution_frequency,
+                         c.value,
+                );
+                println!("");
+                println!("instructions:");
+                for instr in c.original_block.statements.iter() {
+                    println!("  {}", instr);
+                }
+                // println!("constraints:");
+                // for constraint in c.machine.constraints.iter() {
+                //     println!("  {}", constraint);
+                // }
+                // println!("interactions:");
+                // for constraint in c.machine.bus_interactions.iter() {
+                //     println!("  {}", constraint);
+                // }
+            })
+            .take(max_cache)
+            .skip(config.skip_autoprecompiles as usize)
+            .map(C::into_apc_and_stats)
+            .collect();
+
+        // // map–reduce over blocks into a single BinaryHeap<ApcCandidate<P>> capped at max_cache
+        // let res: Vec<_> = parallel_fractional_knapsack(
+        //     blocks.iter().enumerate().par_bridge().filter_map(|(idx, block)| {
+        //         let apc = crate::build::<A>(
+        //             block.clone(),
+        //             vm_config.clone(),
+        //             config.degree_bound,
+        //             config.apc_candidates_dir_path.as_deref(),
+        //         )
+        //         .ok()?;
+        //         let candidate = C::create(
+        //             Arc::new(apc),
+        //             counts[&idx],
+        //             vm_config.clone(),
+        //             config.degree_bound.identities,
+        //         );
+        //         if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
+        //             let json_export = candidate.to_json_export(apc_candidates_dir_path);
+        //             apc_candidates.lock().unwrap().push(json_export);
+        //         }
+        //         Some(candidate)
+        //     }),
+        //     max_cache,
+        //     self.max_total_apc_columns,
+        // )
+        // .skip(config.skip_autoprecompiles as usize)
+        // .map(C::into_apc_and_stats)
+        // .collect();
 
         // Write the APC candidates JSON to disk if the directory is specified.
         if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
@@ -273,10 +249,6 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
         }
 
         res
-    }
-
-    fn pc_execution_count(&self, pc: u64) -> Option<u32> {
-        self.data.pc_count.get(&pc).cloned()
     }
 
     fn profiling_data(&self) -> Option<&ExecutionProfile> {

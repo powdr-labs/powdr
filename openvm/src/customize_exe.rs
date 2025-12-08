@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use std::fmt::Display;
 use std::hash::Hash;
 use std::iter::once;
@@ -255,7 +253,7 @@ impl OvmApcStats {
 impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear, Instr<BabyBear>> {
     fn create(
         apc: Arc<AdapterApc<BabyBearOpenVmApcAdapter<'a>>>,
-        pgo_program_pc_count: &HashMap<u64, u32>,
+        count: u32,
         vm_config: AdapterVmConfig<BabyBearOpenVmApcAdapter>,
         max_degree: usize,
     ) -> Self {
@@ -281,8 +279,7 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
             apc.machine(),
         );
 
-        let execution_frequency =
-            *pgo_program_pc_count.get(&apc.block.start_pc).unwrap_or(&0) as usize;
+        let execution_frequency = count as usize;
 
         Self {
             apc,
@@ -298,7 +295,7 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
             execution_frequency: self.execution_frequency,
             original_block: BasicBlock {
                 start_pc: self.apc.block.start_pc,
-                other_pcs: vec![],
+                other_pcs: self.apc.block.other_pcs.clone(),
                 statements: self
                     .apc
                     .block
