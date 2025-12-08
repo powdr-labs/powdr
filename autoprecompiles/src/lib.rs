@@ -12,7 +12,7 @@ use powdr_expression::{
     visitors::Children, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Display;
 use std::io::BufWriter;
 use std::iter::once;
@@ -174,6 +174,147 @@ pub struct SymbolicMachine<T> {
     /// Columns that have been newly created during the optimization process with a method
     /// to compute their values from other columns.
     pub derived_columns: Vec<(AlgebraicReference, ComputationMethod<T>)>,
+}
+
+/// Attempts to generate a witness for the given symbolic machine using the provided memory snapshot.
+///
+/// This function:
+/// 1. Collects input columns from receive memory bus interactions (using MemoryBusInteraction trait)
+/// 2. Assigns values to those columns based on the memory snapshot
+/// 3. Attempts to solve for all other columns using the constraint solver
+/// 4. Verifies all constraints evaluate to zero
+///
+/// Returns `true` if a valid witness was found and all constraints are satisfied.
+///
+/// # Type Parameters
+/// - `T`: The field element type
+/// - `M`: The memory bus interaction type that implements `MemoryBusInteraction`
+pub fn try_witness<T, M>(
+    machine: &SymbolicMachine<T>,
+    memory: &BTreeMap<u32, BTreeMap<u32, u32>>,
+    memory_bus_id: u64,
+    _pc: u32,
+    _timestamp: u32,
+) -> bool
+where
+    T: FieldElement,
+    M: memory_optimizer::MemoryBusInteraction<T, expression::AlgebraicReference>,
+{
+    use crate::expression::{AlgebraicEvaluator, WitnessEvaluator};
+    use memory_optimizer::MemoryOp;
+    use powdr_constraint_solver::constraint_system::{
+        BusInteraction, ConstraintSystem, DefaultBusInteractionHandler,
+    };
+    use powdr_constraint_solver::grouped_expression::GroupedExpression;
+    use powdr_constraint_solver::solver::solve_system;
+
+    // Convert machine constraints to GroupedExpression-based algebraic constraints
+    let mut algebraic_constraints = Vec::new();
+    for constraint in &machine.constraints {
+        let expr = expression_conversion::algebraic_to_grouped_expression(&constraint.expr);
+        algebraic_constraints.push(
+            powdr_constraint_solver::constraint_system::AlgebraicConstraint::assert_zero(expr),
+        );
+    }
+
+    // Convert bus interactions to constraint solver format
+    let mut bus_interactions = Vec::new();
+    for bus_int in &machine.bus_interactions {
+        let mult = expression_conversion::algebraic_to_grouped_expression(&bus_int.mult);
+        let bus_id = GroupedExpression::from_number(T::from(bus_int.id));
+        let payload: Vec<_> = bus_int
+            .args
+            .iter()
+            .map(|arg| expression_conversion::algebraic_to_grouped_expression(arg))
+            .collect();
+        bus_interactions.push(BusInteraction {
+            bus_id,
+            multiplicity: mult,
+            payload,
+        });
+    }
+
+    // Use MemoryBusInteraction trait to identify receive (read) memory operations
+    // and add constraints based on memory snapshot
+    for bus_int in &bus_interactions {
+        let mem_int = match M::try_from_bus_interaction(bus_int, memory_bus_id) {
+            Ok(Some(m)) => m,
+            Ok(None) => continue, // Not a memory bus interaction
+            Err(_) => continue,   // Could not parse (e.g., multiplicity not concrete)
+        };
+
+        // Only process receive (read) operations
+        if mem_int.op() != MemoryOp::GetPrevious {
+            continue;
+        }
+
+        // Extract address components and try to look up in memory
+        let addr_parts: Vec<_> = mem_int.addr().into_iter().collect();
+        if addr_parts.len() < 2 {
+            continue;
+        }
+
+        // First part is address space, second is the address
+        let addr_space = match addr_parts[0].try_to_number() {
+            Some(n) => n.to_degree() as u32,
+            None => continue,
+        };
+        let addr = match addr_parts[1].try_to_number() {
+            Some(n) => n.to_degree() as u32,
+            None => continue,
+        };
+
+        // Look up value in memory snapshot
+        if let Some(addr_space_mem) = memory.get(&addr_space) {
+            if let Some(&value) = addr_space_mem.get(&addr) {
+                // Add constraints for each data limb (data is byte limbs)
+                let data = mem_int.data();
+                let mut remaining = value;
+                for limb in data {
+                    let byte_value = (remaining & 0xFF) as u64;
+                    remaining >>= 8;
+                    let value_expr = GroupedExpression::from_number(T::from(byte_value));
+                    algebraic_constraints.push(
+                        powdr_constraint_solver::constraint_system::AlgebraicConstraint::assert_zero(
+                            limb.clone() - value_expr,
+                        ),
+                    );
+                }
+            }
+        }
+    }
+
+    let constraint_system: ConstraintSystem<T, expression::AlgebraicReference> = ConstraintSystem {
+        algebraic_constraints,
+        bus_interactions,
+        derived_variables: vec![],
+    };
+
+    // Try to solve the constraint system
+    let result = solve_system(constraint_system, DefaultBusInteractionHandler::default());
+
+    match result {
+        Ok(assignments) => {
+            // Create a witness map from solved assignments
+            let mut witness: BTreeMap<u64, T> = BTreeMap::new();
+            for (var, expr) in assignments {
+                if let Some(value) = expr.try_to_number() {
+                    witness.insert(var.id, value);
+                }
+            }
+
+            // Verify all constraints evaluate to zero
+            let evaluator: WitnessEvaluator<T, T, T> = WitnessEvaluator::new(&witness);
+            for constraint in &machine.constraints {
+                let value = evaluator.eval_expr(&constraint.expr);
+                if !value.is_zero() {
+                    return false;
+                }
+            }
+            true
+        }
+        Err(_) => false,
+    }
 }
 
 type ComputationMethod<T> =
@@ -569,4 +710,293 @@ fn add_guards<T: FieldElement>(
     machine.constraints.push(powdr::make_bool(is_valid).into());
 
     (machine, column_allocator)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::memory_optimizer::{
+        MemoryBusInteraction, MemoryBusInteractionConversionError, MemoryOp,
+    };
+    use num_traits::One;
+    use powdr_constraint_solver::constraint_system::BusInteraction;
+    use powdr_constraint_solver::grouped_expression::GroupedExpression;
+    use powdr_number::GoldilocksField;
+    use std::fmt::Display;
+    use std::hash::Hash;
+    use std::sync::Arc;
+
+    type F = GoldilocksField;
+
+    fn make_ref(name: &str, id: u64) -> AlgebraicReference {
+        AlgebraicReference {
+            name: Arc::new(name.to_string()),
+            id,
+        }
+    }
+
+    fn num(v: u64) -> AlgebraicExpression<F> {
+        AlgebraicExpression::Number(F::from(v))
+    }
+
+    fn var(name: &str, id: u64) -> AlgebraicExpression<F> {
+        AlgebraicExpression::Reference(make_ref(name, id))
+    }
+
+    /// Test implementation of MemoryBusInteraction for testing try_witness
+    /// Memory bus format: [address_space, address, data..., timestamp]
+    struct TestMemoryBusInteraction<T, V> {
+        op: MemoryOp,
+        address_space: T,
+        address: GroupedExpression<T, V>,
+        data: Vec<GroupedExpression<T, V>>,
+    }
+
+    impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction<T, V>
+        for TestMemoryBusInteraction<T, V>
+    {
+        type Address = Vec<GroupedExpression<T, V>>;
+
+        fn try_from_bus_interaction(
+            bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
+            memory_bus_id: u64,
+        ) -> Result<Option<Self>, MemoryBusInteractionConversionError> {
+            // Check bus ID
+            match bus_interaction.bus_id.try_to_number() {
+                None => return Err(MemoryBusInteractionConversionError),
+                Some(id) if id == memory_bus_id.into() => {}
+                Some(_) => return Ok(None),
+            }
+
+            // Check multiplicity to determine operation type
+            let op = match bus_interaction.multiplicity.try_to_number() {
+                Some(n) if n == T::one() => MemoryOp::SetNew,
+                Some(n) if n == -T::one() => MemoryOp::GetPrevious,
+                _ => return Err(MemoryBusInteractionConversionError),
+            };
+
+            // Parse payload: [address_space, address, data..., timestamp]
+            if bus_interaction.payload.len() < 3 {
+                return Err(MemoryBusInteractionConversionError);
+            }
+
+            let address_space = match bus_interaction.payload[0].try_to_number() {
+                Some(n) => n,
+                None => return Err(MemoryBusInteractionConversionError),
+            };
+
+            let address = bus_interaction.payload[1].clone();
+            let data = bus_interaction.payload[2..bus_interaction.payload.len() - 1].to_vec();
+
+            Ok(Some(TestMemoryBusInteraction {
+                op,
+                address_space,
+                address,
+                data,
+            }))
+        }
+
+        fn addr(&self) -> Self::Address {
+            vec![
+                GroupedExpression::from_number(self.address_space),
+                self.address.clone(),
+            ]
+        }
+
+        fn data(&self) -> &[GroupedExpression<T, V>] {
+            &self.data
+        }
+
+        fn op(&self) -> MemoryOp {
+            self.op
+        }
+
+        fn register_address(&self) -> Option<usize> {
+            None
+        }
+    }
+
+    type TestMBI = TestMemoryBusInteraction<F, AlgebraicReference>;
+
+    const MEMORY_BUS_ID: u64 = 1;
+
+    #[test]
+    fn test_try_witness_simple_constraint() {
+        // Test: x - 5 = 0 should be solvable
+        let machine = SymbolicMachine {
+            constraints: vec![SymbolicConstraint {
+                expr: var("x", 0) - num(5),
+            }],
+            bus_interactions: vec![],
+            derived_columns: vec![],
+        };
+
+        let memory = BTreeMap::new();
+        assert!(try_witness::<F, TestMBI>(
+            &machine,
+            &memory,
+            MEMORY_BUS_ID,
+            0,
+            0
+        ));
+    }
+
+    #[test]
+    fn test_try_witness_unsatisfiable_constraint() {
+        // Test: 1 = 0 is never satisfiable
+        let machine = SymbolicMachine {
+            constraints: vec![SymbolicConstraint { expr: num(1) }],
+            bus_interactions: vec![],
+            derived_columns: vec![],
+        };
+
+        let memory = BTreeMap::new();
+        assert!(!try_witness::<F, TestMBI>(
+            &machine,
+            &memory,
+            MEMORY_BUS_ID,
+            0,
+            0
+        ));
+    }
+
+    #[test]
+    fn test_try_witness_two_variables() {
+        // Test: x = 3, y = x * 2 should give x=3, y=6
+        let machine = SymbolicMachine {
+            constraints: vec![
+                SymbolicConstraint {
+                    expr: var("x", 0) - num(3),
+                },
+                SymbolicConstraint {
+                    expr: var("y", 1) - var("x", 0) * num(2),
+                },
+            ],
+            bus_interactions: vec![],
+            derived_columns: vec![],
+        };
+
+        let memory = BTreeMap::new();
+        assert!(try_witness::<F, TestMBI>(
+            &machine,
+            &memory,
+            MEMORY_BUS_ID,
+            0,
+            0
+        ));
+    }
+
+    #[test]
+    fn test_try_witness_empty_machine() {
+        // Empty machine should be trivially satisfiable
+        let machine: SymbolicMachine<F> = SymbolicMachine {
+            constraints: vec![],
+            bus_interactions: vec![],
+            derived_columns: vec![],
+        };
+
+        let memory = BTreeMap::new();
+        assert!(try_witness::<F, TestMBI>(
+            &machine,
+            &memory,
+            MEMORY_BUS_ID,
+            0,
+            0
+        ));
+    }
+
+    #[test]
+    fn test_try_witness_with_memory_lookup() {
+        // Test that a receive memory bus interaction can read from memory snapshot
+        // Memory bus interaction format: [address_space, address, data_limbs..., timestamp]
+        // Data is 4 byte limbs, value 0x2A = 42 = [42, 0, 0, 0] in little-endian byte limbs
+        let machine: SymbolicMachine<F> = SymbolicMachine {
+            constraints: vec![
+                // Constraint that first data limb should equal 42 (the low byte)
+                SymbolicConstraint {
+                    expr: var("data0", 2) - num(42),
+                },
+                // Other limbs should be 0
+                SymbolicConstraint {
+                    expr: var("data1", 3) - num(0),
+                },
+                SymbolicConstraint {
+                    expr: var("data2", 4) - num(0),
+                },
+                SymbolicConstraint {
+                    expr: var("data3", 5) - num(0),
+                },
+            ],
+            bus_interactions: vec![SymbolicBusInteraction {
+                id: MEMORY_BUS_ID,
+                mult: AlgebraicExpression::Number(-F::one()), // Receive = -1
+                args: vec![
+                    num(1),          // address_space = 1 (registers)
+                    num(10),         // address = 10
+                    var("data0", 2), // data limb 0
+                    var("data1", 3), // data limb 1
+                    var("data2", 4), // data limb 2
+                    var("data3", 5), // data limb 3
+                    num(0),          // timestamp
+                ],
+            }],
+            derived_columns: vec![],
+        };
+
+        // Memory: address_space 1 -> address 10 -> value 42
+        let mut memory = BTreeMap::new();
+        let mut addr_space_1 = BTreeMap::new();
+        addr_space_1.insert(10, 42);
+        memory.insert(1, addr_space_1);
+
+        assert!(try_witness::<F, TestMBI>(
+            &machine,
+            &memory,
+            MEMORY_BUS_ID,
+            0,
+            0
+        ));
+    }
+
+    #[test]
+    fn test_try_witness_memory_lookup_wrong_value() {
+        // Test that constraint fails when memory value doesn't match expected
+        // Memory has 42, but constraint expects first limb to be 100
+        let machine: SymbolicMachine<F> = SymbolicMachine {
+            constraints: vec![
+                // Constraint expects first data limb = 100, but memory has 42
+                SymbolicConstraint {
+                    expr: var("data0", 2) - num(100),
+                },
+            ],
+            bus_interactions: vec![SymbolicBusInteraction {
+                id: MEMORY_BUS_ID,
+                mult: AlgebraicExpression::Number(-F::one()),
+                args: vec![
+                    num(1),          // address_space
+                    num(10),         // address
+                    var("data0", 2), // data limb 0
+                    var("data1", 3), // data limb 1
+                    var("data2", 4), // data limb 2
+                    var("data3", 5), // data limb 3
+                    num(0),          // timestamp
+                ],
+            }],
+            derived_columns: vec![],
+        };
+
+        let mut memory = BTreeMap::new();
+        let mut addr_space_1 = BTreeMap::new();
+        addr_space_1.insert(10, 42); // 42 = [42, 0, 0, 0] in byte limbs
+        memory.insert(1, addr_space_1);
+
+        // This should fail because memory lookup sets data0=42 but constraint expects data0=100
+        assert!(!try_witness::<F, TestMBI>(
+            &machine,
+            &memory,
+            MEMORY_BUS_ID,
+            0,
+            0
+        ));
+    }
 }
