@@ -282,6 +282,15 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
             .map(|(l, r)| {
                 if l == r {
                     l.range_constraint(range_constraints).square()
+                } else if let Some(f) = l.is_constant_multiple_of(r).and_then(|f| f.try_to_number())
+                {
+                    // l = f * r,
+                    // thus l * r = f * r^2 = l^2 / f
+                    let l_rc = l.range_constraint(range_constraints);
+                    let r_rc = r.range_constraint(range_constraints);
+                    r_rc.square()
+                        .multiple(f)
+                        .conjunction(&l_rc.square().multiple(T::FieldType::from(1) / f))
                 } else {
                     l.range_constraint(range_constraints)
                         .combine_product(&r.range_constraint(range_constraints))
@@ -295,6 +304,18 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
             .chain(std::iter::once(self.constant.range_constraint()))
             .reduce(|rc1, rc2| rc1.combine_sum(&rc2))
             .unwrap_or_else(|| RangeConstraint::from_value(0.into()))
+    }
+
+    /// If this returns Some(x), then `self = x * other`.
+    /// Only works if there is at least one linear term in both expressions
+    pub fn is_constant_multiple_of(&self, other: &GroupedExpression<T, V>) -> Option<T> {
+        let (v1, c1) = self.linear_components().next()?;
+        let (ov1, oc1) = other.linear_components().next()?;
+        if v1 != ov1 {
+            return None;
+        }
+        let factor_candidate = c1.field_div(oc1);
+        (*self == other.clone() * factor_candidate.clone()).then_some(factor_candidate)
     }
 }
 
@@ -1014,6 +1035,22 @@ mod tests {
         );
         let factors = expr.to_factors().into_iter().format(", ").to_string();
         assert_eq!(factors, "x, y, z + 1, t + 2 * z, t");
+    }
+
+    #[test]
+    fn constant_multiple() {
+        let expr1 = var("x") + var("y") + constant(3);
+        let expr2 = constant(5) * var("x") + constant(5) * var("y") + constant(15);
+        assert_eq!(
+            expr2.is_constant_multiple_of(&expr1),
+            Some(GoldilocksField::from(5).into())
+        );
+        assert_eq!(
+            expr1.is_constant_multiple_of(&expr2),
+            Some((GoldilocksField::from(1) / GoldilocksField::from(5)).into())
+        );
+        let expr3 = constant(4) * var("x") + constant(5) * var("y") + constant(15);
+        assert_eq!(expr1.is_constant_multiple_of(&expr3), None);
     }
 
     #[test]

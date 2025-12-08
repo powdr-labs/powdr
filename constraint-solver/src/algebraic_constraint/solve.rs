@@ -65,18 +65,26 @@ where
             return Err(Error::ConstraintUnsatisfiable(self.to_string()));
         }
 
-        if expression.is_quadratic() {
-            self.solve_quadratic(range_constraints)
+        let mut result = if expression.is_quadratic() {
+            self.solve_quadratic(range_constraints)?
         } else if let Some(k) = expression.try_to_known() {
             // If we know `expression` to be nonzero, we should have returned
             // Err already in the range constraint check above.
             assert!(k.is_zero());
             // TODO we could still process more information
             // and reach "unsatisfiable" here.
-            Ok(ProcessResult::complete(vec![]))
+            ProcessResult::complete(vec![])
         } else {
-            self.solve_affine(range_constraints)
+            self.solve_affine(range_constraints)?
+        };
+
+        if !result.complete {
+            // Try to transfer range constraints from the expression.
+            result
+                .effects
+                .extend(self.transfer_constraints(range_constraints));
         }
+        Ok(result)
     }
 
     /// Solves the constraint for `variable`. This is only possible if
@@ -196,10 +204,7 @@ where
                     ProcessResult::empty()
                 }
             } else {
-                ProcessResult {
-                    effects: self.transfer_constraints(range_constraints),
-                    complete: false,
-                }
+                ProcessResult::empty()
             },
         )
     }
@@ -213,7 +218,6 @@ where
     ) -> Vec<Effect<T, V>> {
         // Solve for each of the variables in the linear component and
         // compute the range constraints.
-        assert!(!self.expression.is_quadratic());
         self.expression
             .linear_components()
             .filter_map(|(var, _)| {
@@ -393,6 +397,7 @@ mod tests {
     use crate::grouped_expression::NoRangeConstraints;
 
     use super::*;
+    use expect_test::expect;
     use powdr_number::{FieldElement, GoldilocksField};
 
     use pretty_assertions::assert_eq;
@@ -664,5 +669,28 @@ mod tests {
                 .to_string(),
             "-(3 * y)"
         );
+    }
+
+    #[test]
+    fn rc_for_quadratic() {
+        let rc = HashMap::from([("y", RangeConstraint::from_mask(7u64))]);
+        // We have `y - 3` here, so the RC can be negative, but it is
+        // squared, so we end up with a rather small RC for x.
+        let expr = -constant(2) * var("x")
+            + constant(8) * (var("y") - constant(3)) * (var("y") - constant(3))
+            + constant(8);
+        // Try it manually first.
+        let constr = AlgebraicConstraint::assert_zero(&expr);
+        let solved = constr.try_solve_for(&"x").unwrap();
+        expect!["[4, 68] & 0x7c"].assert_eq(&solved.range_constraint(&rc).to_string());
+        let results = constr.solve(&rc).unwrap();
+        let found = results.effects.iter().any(|e| match e {
+            Effect::RangeConstraint(var, rc) if *var == "x" => {
+                expect!["[4, 68] & 0x7c"].assert_eq(&rc.to_string());
+                true
+            }
+            _ => false,
+        });
+        assert!(found);
     }
 }
