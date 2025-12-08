@@ -86,12 +86,21 @@ fn create_apcs_for_all_blocks<A: Adapter>(
         .into_par_iter()
         .skip(config.skip_autoprecompiles as usize)
         .take(n_acc)
-        .map(|block| {
+        .map(|mut block| {
             tracing::debug!(
                 "Accelerating block of length {} and start pc {}",
                 block.statements.len(),
                 block.start_pc
             );
+
+            let trim_from = std::env::var("APC_TRIM_FROM").unwrap_or("0".to_string()).parse::<usize>().unwrap();
+            let trim_to = std::env::var("APC_TRIM_TO").unwrap_or(block.statements.len().to_string()).parse::<usize>().unwrap();
+
+            block.start_pc += 4 * trim_from as u64;
+            block.statements = block.statements[trim_from..trim_to].to_vec();
+
+
+            println!("Block: {block}");
 
             crate::build::<A>(
                 block,

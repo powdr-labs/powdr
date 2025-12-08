@@ -192,6 +192,8 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
                     let reference = self.get_algebraic_reference(i, col_index);
                     let constraint = AlgebraicExpression::Reference(reference)
                         - AlgebraicExpression::Number(value);
+                    
+                    println!("Constrain {constraint} to 0");
 
                     constraints.push(SymbolicConstraint { expr: constraint });
                 }
@@ -211,12 +213,16 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
         {
             for equivalence_class in equivalence_classes {
                 let first = equivalence_class.first().unwrap();
-                let first_ref = self.get_algebraic_reference(first.0, first.1);
-                for other in equivalence_class.iter().skip(1) {
-                    let other_ref = self.get_algebraic_reference(other.0, other.1);
-                    let constraint = AlgebraicExpression::Reference(first_ref.clone())
-                        - AlgebraicExpression::Reference(other_ref.clone());
-                    constraints.push(SymbolicConstraint { expr: constraint });
+                if first.0 < self.block.statements.len() {
+                    let first_ref = self.get_algebraic_reference(first.0, first.1);
+                    for other in equivalence_class.iter().skip(1) {
+                        if other.0 < self.block.statements.len() {
+                            let other_ref = self.get_algebraic_reference(other.0, other.1);
+                            let constraint = AlgebraicExpression::Reference(first_ref.clone())
+                                - AlgebraicExpression::Reference(other_ref.clone());
+                            constraints.push(SymbolicConstraint { expr: constraint });
+                        }
+                    }
                 }
             }
         }
