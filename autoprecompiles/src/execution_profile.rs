@@ -23,6 +23,8 @@ pub struct ExecutionProfile {
     /// next pc count, for each pc
     // TODO: u32 count? itertools `count` returns usize
     pub next_pc: HashMap<u64, HashMap<u64, usize>>,
+    /// list of pcs executed in order
+    pub pc_list: Vec<u64>,
 }
 
 // Produces execution information for PGO.
@@ -68,6 +70,8 @@ pub fn execution_profile<A: Adapter>(
     let json = serde_json::to_string_pretty(&next_pcs_by_pc).unwrap();
     std::fs::write("next_pcs.json", json).unwrap();
 
+    let pc_list = collector.pc_list.read().unwrap().clone();
+
     // Extract the collected data
     let pc_count = collector.into_hashmap();
 
@@ -90,6 +94,7 @@ pub fn execution_profile<A: Adapter>(
     ExecutionProfile {
         pc_count,
         next_pc: next_pcs_by_pc,
+        pc_list,
     }
 }
 

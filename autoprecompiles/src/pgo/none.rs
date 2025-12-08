@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use crate::{
     adapter::{Adapter, AdapterApcWithStats, AdapterBasicBlock, AdapterVmConfig, PgoAdapter},
@@ -25,6 +25,7 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
     fn create_apcs_with_pgo(
         &self,
         mut blocks: Vec<AdapterBasicBlock<Self::Adapter>>,
+        block_exec_count: Option<HashMap<usize, u32>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         _labels: BTreeMap<u64, Vec<String>>,
