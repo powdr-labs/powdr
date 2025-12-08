@@ -41,6 +41,7 @@ pub mod symbolic_machine_generator;
 pub use pgo::{PgoConfig, PgoType};
 pub use powdr_constraint_solver::inliner::DegreeBound;
 pub mod trace_handler;
+pub mod execution;
 
 #[derive(Clone)]
 pub struct PowdrConfig {

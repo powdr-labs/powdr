@@ -6,6 +6,7 @@ use std::{fmt::Display, sync::Arc};
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
+use crate::execution::ExecutionState;
 use crate::{
     blocks::{BasicBlock, Instruction, Program},
     constraint_optimizer::IsBusStateful,
@@ -88,6 +89,7 @@ where
     type CustomBusTypes: Clone + Display + Sync + Eq + PartialEq;
     type ApcStats: Send + Sync;
     type AirId: Eq + Hash + Send + Sync;
+    type ExecutionState: ExecutionState;
 
     fn into_field(e: Self::PowdrField) -> Self::Field;
 
