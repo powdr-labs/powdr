@@ -18,11 +18,12 @@ use crate::SpecializedConfigCpuBuilder as SpecializedConfigBuilder;
 use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
 
 /// Given a program and input, generates the trace segment by segment and calls the provided
-/// callback with the VM, proving key, and proving context (containing the trace) for each segment.
+/// callback with the segment id, VM, proving key, and proving context (containing the trace) for each segment.
 pub fn do_with_trace(
     program: &CompiledProgram,
     inputs: StdIn,
     mut callback: impl FnMut(
+        usize,
         &VirtualMachine<BabyBearPoseidon2Engine, SpecializedConfigBuilder>,
         &MultiStarkProvingKey<BabyBearSC>,
         ProvingContext<<BabyBearPoseidon2Engine as StarkEngine>::PB>,
@@ -85,7 +86,7 @@ pub fn do_with_trace(
 
         let ctx = vm.generate_proving_ctx(system_records, record_arenas)?;
 
-        callback(&vm, &pk, ctx);
+        callback(seg_idx, &vm, &pk, ctx);
     }
     Ok(())
 }
