@@ -80,18 +80,18 @@ openvm-platform = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.
 openvm-custom-insn = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.3-powdr" }
 
 # stark-backend
-openvm-stark-sdk = { git = "https://github.com/powdr-labs/stark-backend.git", branch = "v1.2.2-rc.1-upgrade", default-features = false, features = [
+openvm-stark-sdk = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "v1.2.2-rc.1-powdr", default-features = false, features = [
   "parallel",
   "jemalloc",
   "nightly-features",
 ] }
-openvm-stark-backend = { git = "https://github.com/powdr-labs/stark-backend.git", branch = "v1.2.2-rc.1-upgrade", default-features = false, features = [
+openvm-stark-backend = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "v1.2.2-rc.1-powdr", default-features = false, features = [
   "parallel",
   "jemalloc",
 ] }
-openvm-cuda-backend = { git = "https://github.com/powdr-labs/stark-backend.git", branch = "v1.2.2-rc.1-upgrade", default-features = false }
-openvm-cuda-builder = { git = "https://github.com/powdr-labs/stark-backend.git", branch = "v1.2.2-rc.1-upgrade", default-features = false }
-openvm-cuda-common = { git = "https://github.com/powdr-labs/stark-backend.git", branch = "v1.2.2-rc.1-upgrade", default-features = false }
+openvm-cuda-backend = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "v1.2.2-rc.1-powdr", default-features = false }
+openvm-cuda-builder = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "v1.2.2-rc.1-powdr", default-features = false }
+openvm-cuda-common = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "v1.2.2-rc.1-powdr", default-features = false }
 
 [profile.pr-tests]
 inherits = "dev"
