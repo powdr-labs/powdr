@@ -474,9 +474,7 @@ pub fn build<A: Adapter>(
         if !range_analyzer_constraints.is_empty() || !equivalence_analyzer_constraints.is_empty() {
             // Add empirical constraints
             machine.constraints.extend(range_analyzer_constraints);
-            machine
-                .constraints
-                .extend(equivalence_analyzer_constraints);
+            machine.constraints.extend(equivalence_analyzer_constraints);
 
             // Optimize again with empirical constraints
             // TODO: Calling optimize twice is needed; otherwise the solver fails.
