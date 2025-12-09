@@ -458,11 +458,9 @@ pub fn build<A: Adapter>(
     metrics::counter!("before_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
 
-    let mut baseline = machine;
-
     // Optimize once without empirical constraints
     let (mut machine, column_allocator) = optimizer::optimize::<A>(
-        baseline.clone(),
+        machine,
         vm_config.bus_interaction_handler.clone(),
         degree_bound,
         &vm_config.bus_map,
@@ -474,15 +472,6 @@ pub fn build<A: Adapter>(
 
     let (machine, column_allocator, optimistic_precompile) =
         if !range_analyzer_constraints.is_empty() || !equivalence_analyzer_constraints.is_empty() {
-
-            println!("made it to empirical specialisation with machine:");
-
-            println!("{machine}");
-
-            println!("specialize based on original machine:");
-
-            println!("{baseline}");
-
             // Add empirical constraints
             machine.constraints.extend(range_analyzer_constraints);
             machine

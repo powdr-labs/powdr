@@ -192,36 +192,16 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
                     let reference = self.get_algebraic_reference(i, col_index);
                     let constraint = AlgebraicExpression::Reference(reference)
                         - AlgebraicExpression::Number(value);
-                    
+
                     constraints.push(SymbolicConstraint { expr: constraint });
                 }
             }
-        }
-
-        // let len = constraints.len();
-        // let mut should_take = vec![true; len - (len/2 + 3)];
-        // should_take[2] = false;
-        // should_take[5] = false;
-        // should_take[7] = false;
-
-        // constraints = constraints.into_iter().skip(len/2 + 3).zip_eq(should_take).filter_map(|(v, should_take)| should_take.then_some(v)).collect();
-
-        for c in &constraints {
-            println!("Constraint {c}");
         }
 
         constraints
     }
 
     pub fn equivalence_constraints(&self) -> Vec<SymbolicConstraint<<A as Adapter>::PowdrField>> {
-
-        // return vec![];
-
-        let trim_from = std::env::var("APC_TRIM_FROM").unwrap_or("0".to_string()).parse::<usize>().unwrap();
-        let trim_to = std::env::var("APC_TRIM_TO").unwrap_or(self.block.statements.len().to_string()).parse::<usize>().unwrap();
-
-        let in_range = |index: &(usize, usize)| index.0 >= trim_from && index.0 < trim_to;
-
         let mut constraints = Vec::new();
 
         if let Some(equivalence_classes) = self
@@ -231,19 +211,12 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
         {
             for equivalence_class in equivalence_classes {
                 let first = equivalence_class.first().unwrap();
-                if in_range(first) {
-                    let first_ref = self.get_algebraic_reference(first.0, first.1);
-                    for other in equivalence_class.iter().skip(1) {
-                        if in_range(other) {
-                            let other_ref = self.get_algebraic_reference(other.0, other.1);
-                            let constraint = AlgebraicExpression::Reference(first_ref.clone())
-                                - AlgebraicExpression::Reference(other_ref.clone());
-                            
-                            println!("Equivalence: constrain {constraint} to 0");
-
-                            constraints.push(SymbolicConstraint { expr: constraint });
-                        }
-                    }
+                let first_ref = self.get_algebraic_reference(first.0, first.1);
+                for other in equivalence_class.iter().skip(1) {
+                    let other_ref = self.get_algebraic_reference(other.0, other.1);
+                    let constraint = AlgebraicExpression::Reference(first_ref.clone())
+                        - AlgebraicExpression::Reference(other_ref.clone());
+                    constraints.push(SymbolicConstraint { expr: constraint });
                 }
             }
         }
