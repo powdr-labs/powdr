@@ -97,7 +97,7 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction
                 self.address
                     .local_address
                     .try_to_number()
-                    .expect("Register address must be a concrete number")
+                    .expect(&format!("Register address must be a concrete number but found {}", self.address.local_address))
                     .to_degree()
                     .try_into()
                     .unwrap(),
