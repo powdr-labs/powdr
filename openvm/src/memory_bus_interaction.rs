@@ -15,35 +15,31 @@ const REGISTER_ADDRESS_SPACE: u32 = 1;
 #[derive(Clone, Debug)]
 pub struct OpenVmMemoryBusInteraction<T: FieldElement, V> {
     op: MemoryOp,
-    address: OpenVmAddress<T, V>,
+    address: OpenVmAddress<GroupedExpression<T, V>>,
     data: Vec<GroupedExpression<T, V>>,
 }
 
 #[derive(Clone, Hash, Eq, PartialEq, Debug)]
-pub struct OpenVmAddress<T, V> {
+pub struct OpenVmAddress<E> {
     /// The address space (e.g. register, memory, native, etc.), always a concrete number.
-    address_space: T,
+    pub address_space: E,
     /// The address expression.
-    local_address: GroupedExpression<T, V>,
+    pub local_address: E,
 }
 
-impl<T: FieldElement, V> IntoIterator for OpenVmAddress<T, V> {
-    type Item = GroupedExpression<T, V>;
-    type IntoIter = IntoIter<GroupedExpression<T, V>, 2>;
+impl<E> IntoIterator for OpenVmAddress<E> {
+    type Item = E;
+    type IntoIter = IntoIter<E, 2>;
 
     fn into_iter(self) -> Self::IntoIter {
-        [
-            GroupedExpression::from_number(self.address_space),
-            self.local_address,
-        ]
-        .into_iter()
+        [self.address_space, self.local_address].into_iter()
     }
 }
 
 impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction<T, V>
     for OpenVmMemoryBusInteraction<T, V>
 {
-    type Address = OpenVmAddress<T, V>;
+    type Address = OpenVmAddress<GroupedExpression<T, V>>;
 
     fn try_from_bus_interaction(
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
@@ -64,11 +60,11 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction
         let [address_space, addr, data @ .., _timestamp] = &bus_interaction.payload[..] else {
             panic!();
         };
-        let Some(address_space) = address_space.try_to_number() else {
-            panic!("Address space must be known!");
-        };
+        // let Some(address_space) = address_space.try_to_number() else {
+        //     panic!("Address space must be known!");
+        // };
         let address = OpenVmAddress {
-            address_space,
+            address_space: address_space.clone(),
             local_address: addr.clone(),
         };
         Ok(Some(OpenVmMemoryBusInteraction {
@@ -91,7 +87,9 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction
     }
 
     fn register_address(&self) -> Option<usize> {
-        if self.address.address_space == REGISTER_ADDRESS_SPACE.into() {
+        if self.address.address_space
+            == GroupedExpression::from_number(T::from(REGISTER_ADDRESS_SPACE))
+        {
             // We assume that the address is a concrete number.
             Some(
                 self.address

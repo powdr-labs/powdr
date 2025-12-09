@@ -9,7 +9,7 @@ use std::sync::Arc;
 use crate::bus_map::OpenVmBusType;
 use crate::extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs, OriginalVmConfig};
 use crate::instruction_formatter::openvm_instruction_formatter;
-use crate::memory_bus_interaction::OpenVmMemoryBusInteraction;
+use crate::memory_bus_interaction::{OpenVmAddress, OpenVmMemoryBusInteraction};
 use crate::powdr_extension::chip::PowdrAir;
 use crate::program::Prog;
 use crate::utils::UnsupportedOpenVmReferenceError;
@@ -57,14 +57,21 @@ pub struct BabyBearOpenVmApcAdapter<'a> {
 
 pub struct OpenVmExecutionState<T>(VmState<T, GuestMemory>);
 
-impl<T> ExecutionState for OpenVmExecutionState<T> {
-    fn pc(&self) -> u32 {
+impl<T: PrimeField32> ExecutionState for OpenVmExecutionState<T> {
+    type Pc = u32;
+    type Address = OpenVmAddress<u32>;
+    type Value = T;
+
+    fn pc(&self) -> Self::Pc {
         self.0.pc()
     }
 
-    fn read(&self, addr_space: u32, ptr: u32) -> u32 {
+    fn read(&self, addr: Self::Address) -> Self::Value {
         unsafe {
-            self.0.memory.read::<u32, 1>(addr_space, ptr)[0]
+            self.0
+                .memory
+                .memory
+                .get_f::<T>(addr.address_space, addr.local_address)
         }
     }
 }
@@ -76,6 +83,7 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     type BusInteractionHandler = OpenVmBusInteractionHandler<Self::PowdrField>;
     type Program = Prog<'a, Self::Field>;
     type Instruction = Instr<Self::Field>;
+    type MemoryAddress<E> = OpenVmAddress<E>;
     type MemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash> =
         OpenVmMemoryBusInteraction<Self::PowdrField, V>;
     type CustomBusTypes = OpenVmBusType;

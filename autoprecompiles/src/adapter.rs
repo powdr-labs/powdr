@@ -1,4 +1,5 @@
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
+use powdr_constraint_solver::grouped_expression::GroupedExpression;
 use std::collections::BTreeMap;
 use std::hash::Hash;
 use std::{fmt::Display, sync::Arc};
@@ -82,14 +83,16 @@ where
         + Sync;
     type Program: Program<Self::Instruction> + Send;
     type Instruction: Instruction<Self::Field> + Serialize + for<'de> Deserialize<'de> + Send + Sync;
+    type MemoryAddress<E>;
     type MemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash>: MemoryBusInteraction<
         Self::PowdrField,
         V,
+        Address = Self::MemoryAddress<GroupedExpression<Self::PowdrField, V>>,
     >;
     type CustomBusTypes: Clone + Display + Sync + Eq + PartialEq;
     type ApcStats: Send + Sync;
     type AirId: Eq + Hash + Send + Sync;
-    type ExecutionState: ExecutionState;
+    type ExecutionState: ExecutionState<Address = Self::MemoryAddress<u32>>;
 
     fn into_field(e: Self::PowdrField) -> Self::Field;
 
