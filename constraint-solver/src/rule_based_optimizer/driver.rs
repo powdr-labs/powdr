@@ -87,7 +87,7 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         );
 
         // Create the rule system and populate it with the initial facts.
-        let mut rt = rules::Crepe::new();
+        let mut rt = rules::Crepe::default();
 
         // It would be better to handle bus interactions inside the rule system,
         // but it is difficult because of the vector and the combinatorial
