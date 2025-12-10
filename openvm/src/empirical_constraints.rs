@@ -177,6 +177,12 @@ impl ConstraintDetector {
     }
 
     pub fn process_trace(&mut self, trace: Trace, new_debug_info: DebugInfo) {
+        let pc_counts = trace
+            .rows_by_pc()
+            .into_iter()
+            .map(|(pc, rows)| (pc, rows.len() as u64))
+            .collect();
+
         // Compute empirical constraints from the current trace
         tracing::info!("      Detecting equivalence classes by block...");
         let equivalence_classes_by_block = self.generate_equivalence_classes_by_block(&trace);
@@ -185,6 +191,7 @@ impl ConstraintDetector {
         let new_empirical_constraints = EmpiricalConstraints {
             column_ranges_by_pc,
             equivalence_classes_by_block,
+            pc_counts,
         };
 
         // Combine the new empirical constraints and debug info with the existing ones
