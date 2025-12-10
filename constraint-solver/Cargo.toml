@@ -25,7 +25,6 @@ pretty_assertions = "1.4.0"
 env_logger = "0.10.0"
 test-log = "0.2.12"
 expect-test = "1.5.1"
-itertools = "0.13"
 
 [package.metadata.cargo-udeps.ignore]
 development = ["env_logger"]
