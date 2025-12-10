@@ -189,8 +189,8 @@ crepe! {
         (env.is_offset_zero_in_multi_var_affine(e));       
     
    
-   struct MinimalRangeDeduciblePair(Expr, Expr);
-      MinimalRangeDeduciblePair(expr1, expr2) <-
+   struct MinimalRangeDeducible(Expr);
+      MinimalRangeDeducible(expr1) <-
         MinimalRangeDeducibleCandidate(expr1),
         MinimalRangeDeducibleCandidate(expr2),
         Expression(expr),
