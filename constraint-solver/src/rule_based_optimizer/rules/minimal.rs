@@ -12,5 +12,5 @@ use crate::{
 };
 
 crepe! {
-    @include!("inputs.crepe");
+    @include!("minimal_rules.crepe");
 }

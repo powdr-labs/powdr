@@ -23,6 +23,9 @@ use crate::{
     runtime_constant::VarTransformable,
 };
 
+/// If we have more than this many variables, we only run the minimal rules.
+const COMPLETE_RULES_VAR_LIMIT: usize = 2000;
+
 pub type VariableAssignment<T, V> = (V, GroupedExpression<T, V>);
 
 /// Perform rule-based optimization on the given constraint system. Returns the modified
@@ -86,46 +89,35 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
             NewVarGenerator::new(var_mapper.next_free_id()),
         );
 
-        // Create the rule system and populate it with the initial facts.
-        let mut rt = rules::Crepe::new();
-
         // It would be better to handle bus interactions inside the rule system,
         // but it is difficult because of the vector and the combinatorial
         // explosion of the range constraints, so we just determine the range constraints
         // on the bus interaction fields now.
-        rt.extend(
-            system
-                .bus_interactions()
-                .iter()
-                .zip(bus_interactions)
-                .flat_map(|(bus_inter, bus_inter_transformed)| {
-                    let updated_rcs = bus_interaction_handler
-                        .handle_bus_interaction(bus_inter.to_range_constraints(&range_constraints))
-                        .fields()
-                        .cloned()
-                        .collect_vec();
-                    bus_inter_transformed
-                        .fields()
-                        .cloned()
-                        .zip(updated_rcs)
-                        .collect_vec()
-                })
-                .map(|(e, rc)| rules::InitialRangeConstraintOnExpression(e, rc)),
-        );
+        let range_constraints_on_expressions = system
+            .bus_interactions()
+            .iter()
+            .zip(bus_interactions)
+            .flat_map(|(bus_inter, bus_inter_transformed)| {
+                let updated_rcs = bus_interaction_handler
+                    .handle_bus_interaction(bus_inter.to_range_constraints(&range_constraints))
+                    .fields()
+                    .cloned()
+                    .collect_vec();
+                bus_inter_transformed
+                    .fields()
+                    .cloned()
+                    .zip(updated_rcs)
+                    .collect_vec()
+            });
 
-        rt.extend(
-            algebraic_constraints
-                .iter()
-                .copied()
-                .map(rules::InitialAlgebraicConstraint),
-        );
-        rt.extend(std::iter::once(rules::Env(&env)));
+        let (actions, env) = if system.referenced_unknown_variables().count()
+            > COMPLETE_RULES_VAR_LIMIT
+        {
+            rules::run_minimal_rules(env, algebraic_constraints, range_constraints_on_expressions)
+        } else {
+            rules::run_complete_rules(env, algebraic_constraints, range_constraints_on_expressions)
+        };
 
-        // Uncomment this to get a runtime profile of the individual
-        // rules.
-        let ((actions,), profile) = rt.run_with_profiling();
-        profile.report();
-        // let (actions,) = rt.run();
         let (expr_db_, new_var_generator) = env.terminate();
 
         // Re-create the variables that were created using the
@@ -154,7 +146,7 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         // some will fail depending on the order in which they are applied).
         // We try to ensure that at least the outcome is deterministic by
         // sorting the actions.
-        for action in actions.into_iter().map(|a| a.0).sorted() {
+        for action in actions.into_iter().sorted() {
             match action {
                 Action::SubstituteVariableByConstant(var, val) => {
                     system.substitute_by_known(&var_mapper[var], &val);
