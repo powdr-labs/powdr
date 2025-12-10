@@ -459,9 +459,11 @@ pub fn build<A: Adapter>(
     metrics::counter!("before_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
 
+    let mut baseline = machine;
+
     // Optimize once without empirical constraints
-    let (mut machine, column_allocator) = optimizer::optimize::<A>(
-        machine,
+    let (machine, column_allocator) = optimizer::optimize::<A>(
+        baseline.clone(),
         vm_config.bus_interaction_handler.clone(),
         degree_bound,
         &vm_config.bus_map,
@@ -474,13 +476,15 @@ pub fn build<A: Adapter>(
     let (machine, column_allocator, optimistic_precompile) =
         if !range_analyzer_constraints.is_empty() || !equivalence_analyzer_constraints.is_empty() {
             // Add empirical constraints
-            machine.constraints.extend(range_analyzer_constraints);
-            machine.constraints.extend(equivalence_analyzer_constraints);
+            baseline.constraints.extend(range_analyzer_constraints);
+            baseline
+                .constraints
+                .extend(equivalence_analyzer_constraints);
 
             // Optimize again with empirical constraints
             // TODO: Calling optimize twice is needed; otherwise the solver fails.
             let (machine, column_allocator) = optimizer::optimize::<A>(
-                machine,
+                baseline,
                 vm_config.bus_interaction_handler,
                 degree_bound,
                 &vm_config.bus_map,
