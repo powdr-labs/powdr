@@ -41,16 +41,13 @@ use crate::{
 // that have been derived for that variable over the course of executing the rules,
 // not just the most strict one.
 //
-// We split the rules into a "minimal" and a "complete" set and use build scripts
-// to include files.
+// We split the rules into a "minimal" (run an gigantic systems) and a "complete" set
+// (run on smaller systems). The minimal set is a sub-set of the complete set and
+// they have the same inputs and outputs.
 
-pub mod minimal {
-    include!(concat!(env!("OUT_DIR"), "/minimal.rs"));
-}
+pub mod minimal;
 
-pub mod complete {
-    include!(concat!(env!("OUT_DIR"), "/complete.rs"));
-}
+pub mod complete;
 
 pub fn run_minimal_rules<T: FieldElement>(
     env: Environment<T>,
