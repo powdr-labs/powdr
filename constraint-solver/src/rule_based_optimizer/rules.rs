@@ -54,7 +54,7 @@ pub fn run_minimal_rules<T: FieldElement>(
     algebraic_constraints: impl IntoIterator<Item = Expr>,
     rcs_on_exprs: impl IntoIterator<Item = (Expr, RangeConstraint<T>)>,
 ) -> (Vec<Action<T>>, Environment<T>) {
-    let mut rt = minimal::Crepe::new();
+    let mut rt = minimal::Crepe::default();
     rt.extend([minimal::Env(&env)]);
     rt.extend(
         algebraic_constraints
@@ -75,7 +75,7 @@ pub fn run_complete_rules<T: FieldElement>(
     algebraic_constraints: impl IntoIterator<Item = Expr>,
     rcs_on_exprs: impl IntoIterator<Item = (Expr, RangeConstraint<T>)>,
 ) -> (Vec<Action<T>>, Environment<T>) {
-    let mut rt = complete::Crepe::new();
+    let mut rt = complete::Crepe::default();
     rt.extend([complete::Env(&env)]);
     rt.extend(
         algebraic_constraints

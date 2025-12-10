@@ -99,7 +99,6 @@ impl<T: FieldElement> Environment<T> {
         )
     }
 
-    #[allow(dead_code)]
     /// Turns a GroupedExpression into the corresponding Expr,
     /// allocating a new ID if it is not yet present.
     /// Use this function when you only have a reference to the expression.
@@ -110,7 +109,6 @@ impl<T: FieldElement> Environment<T> {
     /// Turns a GroupedExpression into the corresponding Expr,
     /// allocating a new ID if it is not yet present.
     /// Use this function instead of `insert` when you own the expression.
-    #[allow(dead_code)]
     pub fn insert_owned(&self, expr: GroupedExpression<T, Var>) -> Expr {
         self.expressions.borrow_mut().insert_owned(expr)
     }
