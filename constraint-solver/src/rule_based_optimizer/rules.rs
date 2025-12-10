@@ -177,19 +177,26 @@ crepe! {
 
     // it doesn't need to be affine, but only consider this case now.
     // split the expression into coeff * var + rest_expr = 0
-    struct MultiVarAffineExpression<T: FieldElement>(Expr, T);
+    // need to add expr_rest to database
+    struct MinimalRangeDeducibleCandidate(Expr);
+      MinimalRangeDeducibleCandidate(expr1) <-
+        Expression(e),
+        Env(env),
+        AffineExpression(expr1, coeff, var, offset),
+        (offset != T::zero()),
+        let Some((expr1, expr_rest)) = env.try_to_multi_var_affine(e),
+        (env.try_to_extract_affine(expr1, expr_rest, e)),
+        (env.is_offset_zero_in_multi_var_affine(e));       
+    
+   
+   struct MinimalRangeDeduciblePair(Expr, Expr);
+      MinimalRangeDeduciblePair(expr1, expr2) <-
+        MinimalRangeDeducibleCandidate(expr1),
+        MinimalRangeDeducibleCandidate(expr2),
+        Expression(expr),
+        Env(env),
+        (env.is_minimal_range_deducible(expr1, expr2, expr));
 
-
-
-    struct MinimalRangeDerivationCandidate<T:FieldElement>(Expr,Expr,Expr, RangeConstraint<T>,RangeConstraint<T>);
-    MinimalRangeDerivationCandidate(expr, expr1, expr_rest, expr1_rc,expr_rest_rc) <-
-      Env(env),
-      AlgebraicConstraint(expr),
-      AffineExpression(expr1, coeff, var, left_offset),
-      (left_offset == T::zero()),
-      RangeConstraintOnExpression(expr1, expr1_rc),
-      RangeConstraintOnExpression(expr_rest, expr_rest_rc),
-      (env.is_minimal_range_deducible(expr1,expr_rest,expr));
       
 
 
