@@ -1,0 +1,8 @@
+@input
+pub struct Env<'a, T: FieldElement>(pub &'a Environment<T>);
+
+@input
+pub struct InitialAlgebraicConstraint(pub Expr);
+
+@input
+pub struct InitialRangeConstraintOnExpression<T: FieldElement>(pub Expr, pub RangeConstraint<T>);

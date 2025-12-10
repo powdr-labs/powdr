@@ -43,19 +43,8 @@ use crate::{
 // that have been derived for that variable over the course of executing the rules,
 // not just the most strict one.
 
-mod minimal {
-    include!(concat!(env!("OUT_DIR"), "/minimal.rs"));
-}
-
 crepe! {
-    @input
-    pub struct Env<'a, T: FieldElement>(pub &'a Environment<T>);
-
-    @input
-    pub struct InitialAlgebraicConstraint(pub Expr);
-
-    @input
-    pub struct InitialRangeConstraintOnExpression<T: FieldElement>(pub Expr, pub RangeConstraint<T>);
+    @include!("inputs.crepe");
 
     struct AlgebraicConstraint(Expr);
     AlgebraicConstraint(e) <- InitialAlgebraicConstraint(e);
