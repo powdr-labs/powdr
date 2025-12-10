@@ -13,6 +13,7 @@ use crate::{
     Instr,
 };
 
+use itertools::Itertools;
 use openvm_circuit::arch::{
     execution_mode::{ExecutionCtx, MeteredCtx},
     Arena, DenseRecordArena, E2PreCompute, MatrixRecordArena, PreflightExecutor,
@@ -33,7 +34,6 @@ use openvm_circuit::{
     },
     system::memory::online::{GuestMemory, TracingMemory},
 };
-use powdr_autoprecompiles::InstructionHandler;
 
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
 /// It holds arenas for each original use for both cpu and gpu execution, so that this struct can be agnostic to the execution backend.
@@ -45,6 +45,7 @@ pub struct PowdrExecutor {
     pub original_arenas_cpu: Rc<RefCell<OriginalArenas<MatrixRecordArena<BabyBear>>>>,
     pub original_arenas_gpu: Rc<RefCell<OriginalArenas<DenseRecordArena>>>,
     pub height_change: u32,
+    cached_instructions_meta: Vec<CachedInstructionMeta>,
 }
 
 /// A shared mutable reference to the arenas used to store the traces of the original instructions, accessed during preflight execution and trace generation.
@@ -82,21 +83,21 @@ impl<A: Arena> OriginalArenas<A> {
         }
     }
 
-    /// Returns a mutable reference to the arenas.
+    /// Returns a mutable reference to the arena of the given vector index.
     /// - Panics if the arenas are not initialized.
-    pub fn arenas_mut(&mut self) -> &mut HashMap<String, A> {
+    pub fn arena_mut_by_index(&mut self, index: usize) -> &mut A {
         match self {
             OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
-            OriginalArenas::Initialized(initialized) => &mut initialized.arenas,
+            OriginalArenas::Initialized(initialized) => initialized.arena_mut_by_index(index),
         }
     }
 
-    /// Returns a reference to the arenas.
+    /// Returns the arena of the given air name.
     /// - Panics if the arenas are not initialized.
-    pub fn arenas(&self) -> &HashMap<String, A> {
+    pub fn take_arena(&mut self, air_name: &str) -> Option<A> {
         match self {
             OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
-            OriginalArenas::Initialized(initialized) => &initialized.arenas,
+            OriginalArenas::Initialized(initialized) => initialized.take_arena(air_name),
         }
     }
 
@@ -123,7 +124,8 @@ impl<A: Arena> OriginalArenas<A> {
 /// and how many calls to each air are made per APC call.
 #[derive(Default)]
 pub struct InitializedOriginalArenas<A> {
-    pub arenas: HashMap<String, A>,
+    arenas: Vec<Option<A>>,
+    air_name_to_arena_index: HashMap<String, usize>,
     pub number_of_calls: usize,
 }
 
@@ -136,27 +138,48 @@ impl<A: Arena> InitializedOriginalArenas<A> {
     ) -> Self {
         let record_arena_dimensions =
             record_arena_dimension_by_air_name_per_apc_call(apc, original_airs);
-        Self {
-            arenas: record_arena_dimensions
-                .iter()
-                .map(
-                    |(
+        let (air_name_to_arena_index, arenas) =
+            record_arena_dimensions.into_iter().enumerate().fold(
+                (HashMap::new(), Vec::new()),
+                |(mut air_name_to_arena_index, mut arenas),
+                 (
+                    idx,
+                    (
                         air_name,
                         RecordArenaDimension {
                             height: num_calls,
                             width: air_width,
                         },
-                    )| {
-                        (
-                            air_name.clone(),
-                            A::with_capacity(*num_calls * apc_call_count_estimate, *air_width),
-                        )
-                    },
-                )
-                .collect(),
+                    ),
+                )| {
+                    air_name_to_arena_index.insert(air_name, idx);
+                    arenas.push(Some(A::with_capacity(
+                        num_calls * apc_call_count_estimate,
+                        air_width,
+                    )));
+                    (air_name_to_arena_index, arenas)
+                },
+            );
+
+        Self {
+            arenas,
+            air_name_to_arena_index,
             // This is the actual number of calls, which we don't know yet. It will be updated during preflight execution.
             number_of_calls: 0,
         }
+    }
+
+    #[inline]
+    fn arena_mut_by_index(&mut self, index: usize) -> &mut A {
+        self.arenas
+            .get_mut(index)
+            .and_then(|arena| arena.as_mut())
+            .expect("arena missing for index")
+    }
+
+    fn take_arena(&mut self, air_name: &str) -> Option<A> {
+        let index = *self.air_name_to_arena_index.get(air_name)?;
+        self.arenas[index].take()
     }
 }
 
@@ -164,6 +187,12 @@ impl<A: Arena> InitializedOriginalArenas<A> {
 pub struct RecordArenaDimension {
     pub height: usize,
     pub width: usize,
+}
+
+#[derive(Clone, Copy)]
+struct CachedInstructionMeta {
+    executor_index: usize,
+    arena_index: usize,
 }
 
 /// A struct to interpret the pre-compute data as for PowdrExecutor.
@@ -426,20 +455,15 @@ impl PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>> for PowdrExecutor 
         let apc_call_count = || ctx.trace_buffer.len() / ctx.width;
 
         original_arenas.ensure_initialized(apc_call_count, &self.air_by_opcode_id, &self.apc);
-
-        let arenas = original_arenas.arenas_mut();
-
         // execute the original instructions one by one
-        for instruction in self.apc.instructions() {
-            let executor = self
-                .executor_inventory
-                .get_executor(instruction.0.opcode)
-                .unwrap();
-
-            let air_name = self
-                .air_by_opcode_id
-                .get_instruction_air_and_id(instruction)
-                .0;
+        for (instruction, cached_meta) in self
+            .apc
+            .instructions()
+            .iter()
+            .zip_eq(&self.cached_instructions_meta)
+        {
+            let executor = &self.executor_inventory.executors[cached_meta.executor_index];
+            let ctx_arena = original_arenas.arena_mut_by_index(cached_meta.arena_index);
 
             let state = VmStateMut {
                 pc,
@@ -448,7 +472,7 @@ impl PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>> for PowdrExecutor 
                 rng,
                 custom_pvs,
                 // We execute in the context of the relevant original table
-                ctx: arenas.get_mut(&air_name).unwrap(),
+                ctx: ctx_arena,
                 // TODO: should we pass around the same metrics object, or snapshot it at the beginning of this method and apply a single update at the end?
                 #[cfg(feature = "metrics")]
                 metrics,
@@ -501,20 +525,15 @@ impl PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExecutor {
         };
 
         original_arenas.ensure_initialized(apc_call_count, &self.air_by_opcode_id, &self.apc);
-
-        let arenas = original_arenas.arenas_mut();
-
         // execute the original instructions one by one
-        for instruction in self.apc.instructions() {
-            let executor = self
-                .executor_inventory
-                .get_executor(instruction.0.opcode)
-                .unwrap();
-
-            let air_name = self
-                .air_by_opcode_id
-                .get_instruction_air_and_id(instruction)
-                .0;
+        for (instruction, cached_meta) in self
+            .apc
+            .instructions()
+            .iter()
+            .zip(&self.cached_instructions_meta)
+        {
+            let executor = &self.executor_inventory.executors[cached_meta.executor_index];
+            let ctx_arena = original_arenas.arena_mut_by_index(cached_meta.arena_index);
 
             let state = VmStateMut {
                 pc,
@@ -523,7 +542,7 @@ impl PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExecutor {
                 rng,
                 custom_pvs,
                 // We execute in the context of the relevant original table
-                ctx: arenas.get_mut(&air_name).unwrap(),
+                ctx: ctx_arena,
                 // TODO: should we pass around the same metrics object, or snapshot it at the beginning of this method and apply a single update at the end?
                 #[cfg(feature = "metrics")]
                 metrics,
@@ -552,13 +571,46 @@ impl PowdrExecutor {
         record_arena_by_air_name_gpu: Rc<RefCell<OriginalArenas<DenseRecordArena>>>,
         height_change: u32,
     ) -> Self {
+        let executor_inventory = base_config.sdk_config.sdk.create_executors().unwrap();
+
+        let arena_index_by_name =
+            record_arena_dimension_by_air_name_per_apc_call(apc.as_ref(), &air_by_opcode_id)
+                .iter()
+                .enumerate()
+                .map(|(idx, (name, _))| (name.clone(), idx))
+                .collect::<HashMap<_, _>>();
+
+        let cached_instructions_meta = apc
+            .instructions()
+            .iter()
+            .map(|instruction| {
+                let executor_index = *executor_inventory
+                    .instruction_lookup
+                    .get(&instruction.0.opcode)
+                    .expect("missing executor for opcode")
+                    as usize;
+                let air_name = air_by_opcode_id
+                    .opcode_to_air
+                    .get(&instruction.0.opcode)
+                    .expect("missing air for opcode");
+                let arena_index = *arena_index_by_name
+                    .get(air_name)
+                    .expect("missing arena for air");
+                CachedInstructionMeta {
+                    executor_index,
+                    arena_index,
+                }
+            })
+            .collect();
+
         Self {
             air_by_opcode_id,
-            executor_inventory: base_config.sdk_config.sdk.create_executors().unwrap(),
+            executor_inventory,
             apc,
             original_arenas_cpu: record_arena_by_air_name_cpu,
             original_arenas_gpu: record_arena_by_air_name_gpu,
             height_change,
+            cached_instructions_meta,
         }
     }
 }

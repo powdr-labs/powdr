@@ -35,8 +35,9 @@ pub fn convert_machine_field_type<T, U>(
                     ComputationMethod::Constant(c) => {
                         ComputationMethod::Constant(convert_field_element(c))
                     }
-                    ComputationMethod::InverseOrZero(e) => ComputationMethod::InverseOrZero(
-                        convert_expression(e, convert_field_element),
+                    ComputationMethod::QuotientOrZero(e1, e2) => ComputationMethod::QuotientOrZero(
+                        convert_expression(e1, convert_field_element),
+                        convert_expression(e2, convert_field_element),
                     ),
                 };
                 (v, method)

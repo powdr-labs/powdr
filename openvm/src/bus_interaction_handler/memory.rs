@@ -39,10 +39,10 @@ pub fn handle_memory<T: FieldElement>(
                 data.iter().map(|_| byte_constraint()).collect::<Vec<_>>()
             };
 
-            [address_space.clone(), pointer.clone()]
+            [*address_space, *pointer]
                 .into_iter()
                 .chain(data)
-                .chain(std::iter::once(timestamp.clone()))
+                .chain(std::iter::once(*timestamp))
                 .collect()
         }
         // Otherwise, we can't improve the constraints

@@ -173,21 +173,21 @@ impl<T: FieldElement, S1: Ord + Clone, S2: Ord + Clone> VarTransformable<S1, S2>
         Some(match self {
             SymbolicExpression::Concrete(n) => SymbolicExpression::Concrete(*n),
             SymbolicExpression::Symbol(v, rc) => {
-                SymbolicExpression::from_symbol(var_transform(v)?, rc.clone())
+                SymbolicExpression::from_symbol(var_transform(v)?, *rc)
             }
             SymbolicExpression::BinaryOperation(lhs, op, rhs, rc) => {
                 SymbolicExpression::BinaryOperation(
                     Arc::new(lhs.try_transform_var_type(var_transform)?),
                     *op,
                     Arc::new(rhs.try_transform_var_type(var_transform)?),
-                    rc.clone(),
+                    *rc,
                 )
             }
             SymbolicExpression::UnaryOperation(op, inner, rc) => {
                 SymbolicExpression::UnaryOperation(
                     *op,
                     Arc::new(inner.try_transform_var_type(var_transform)?),
-                    rc.clone(),
+                    *rc,
                 )
             }
         })
@@ -449,7 +449,7 @@ impl<T: FieldElement, V: Clone + Eq> RuntimeConstant for SymbolicExpression<T, V
             SymbolicExpression::Concrete(v) => RangeConstraint::from_value(*v),
             SymbolicExpression::Symbol(.., rc)
             | SymbolicExpression::BinaryOperation(.., rc)
-            | SymbolicExpression::UnaryOperation(.., rc) => rc.clone(),
+            | SymbolicExpression::UnaryOperation(.., rc) => *rc,
         }
     }
 

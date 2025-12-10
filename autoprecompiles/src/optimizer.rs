@@ -6,7 +6,9 @@ use itertools::Itertools;
 use powdr_constraint_solver::constraint_system::{
     AlgebraicConstraint, ComputationMethod, DerivedVariable,
 };
+use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
 use powdr_constraint_solver::inliner::{self, inline_everything_below_degree_bound};
+use powdr_constraint_solver::rule_based_optimizer::rule_based_optimization;
 use powdr_constraint_solver::solver::new_solver;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, ConstraintSystem},
@@ -16,6 +18,7 @@ use powdr_number::FieldElement;
 
 use crate::constraint_optimizer::trivial_simplifications;
 use crate::range_constraint_optimizer::optimize_range_constraints;
+use crate::ColumnAllocator;
 use crate::{
     adapter::Adapter,
     constraint_optimizer::optimize_constraints,
@@ -26,12 +29,16 @@ use crate::{
     BusMap, BusType, DegreeBound, SymbolicBusInteraction, SymbolicMachine,
 };
 
+/// Optimizes a given symbolic machine and returns an equivalent, but "simpler" one.
+/// All constraints in the returned machine will respect the given degree bound.
+/// New variables may be introduced in the process.
 pub fn optimize<A: Adapter>(
     mut machine: SymbolicMachine<A::PowdrField>,
     bus_interaction_handler: A::BusInteractionHandler,
     degree_bound: DegreeBound,
     bus_map: &BusMap<A::CustomBusTypes>,
-) -> Result<SymbolicMachine<A::PowdrField>, crate::constraint_optimizer::Error> {
+    mut column_allocator: ColumnAllocator,
+) -> Result<(SymbolicMachine<A::PowdrField>, ColumnAllocator), crate::constraint_optimizer::Error> {
     let mut stats_logger = StatsLogger::start(&machine);
 
     if let Some(exec_bus_id) = bus_map.get_bus_id(&BusType::ExecutionBridge) {
@@ -39,8 +46,41 @@ pub fn optimize<A: Adapter>(
         stats_logger.log("exec bus optimization", &machine);
     }
 
-    let mut constraint_system = symbolic_machine_to_constraint_system(machine);
-    let mut solver = new_solver(constraint_system.clone(), bus_interaction_handler.clone());
+    let mut new_var = |name: &str| {
+        let id = column_allocator.issue_next_poly_id();
+        AlgebraicReference {
+            // TODO is it a problem that we do not check the name to be unique?
+            name: format!("{name}_{id}").into(),
+            id,
+        }
+    };
+
+    let constraint_system = symbolic_machine_to_constraint_system(machine);
+    stats_logger.log("system construction", &constraint_system);
+
+    let mut constraint_system: IndexedConstraintSystem<_, _> = constraint_system.into();
+    stats_logger.log("indexing", &constraint_system);
+
+    // If this is enabled, memory usage will skyrocket during
+    // solver-based optimization even though we just return
+    // constraint_system unmodified for large systems.
+    // let mut constraint_system = rule_based_optimization(
+    //     constraint_system,
+    //     NoRangeConstraints,
+    //     bus_interaction_handler.clone(),
+    //     &mut new_var,
+    //     // No degree bound given, i.e. only perform replacements that
+    //     // do not increase the degree.
+    //     None,
+    // )
+    // .0;
+    stats_logger.log("rule-based optimization", &constraint_system);
+
+    let mut solver = new_solver(
+        constraint_system.system().clone(),
+        bus_interaction_handler.clone(),
+    );
+    stats_logger.log("constructing the solver", &constraint_system);
     loop {
         let stats = stats_logger::Stats::from(&constraint_system);
         constraint_system = optimize_constraints::<_, _, A::MemoryBusInteraction<_>>(
@@ -50,25 +90,31 @@ pub fn optimize<A: Adapter>(
             &mut stats_logger,
             bus_map.get_bus_id(&BusType::Memory),
             degree_bound,
+            &mut new_var,
         )?
-        .clone();
+        .into();
         if stats == stats_logger::Stats::from(&constraint_system) {
             break;
         }
     }
 
     let constraint_system = inliner::replace_constrained_witness_columns(
-        constraint_system.into(),
+        constraint_system,
         inline_everything_below_degree_bound(degree_bound),
-    )
-    .system()
-    .clone();
+    );
     stats_logger.log("inlining", &constraint_system);
 
+    let (constraint_system, _) = rule_based_optimization(
+        constraint_system,
+        &solver,
+        bus_interaction_handler.clone(),
+        &mut new_var,
+        Some(degree_bound),
+    );
     // Note that the rest of the optimization does not benefit from optimizing range constraints,
     // so we only do it once at the end.
     let constraint_system = optimize_range_constraints(
-        constraint_system,
+        constraint_system.into(),
         bus_interaction_handler.clone(),
         degree_bound,
     );
@@ -112,7 +158,10 @@ pub fn optimize<A: Adapter>(
                 == GroupedExpression::from_number(A::PowdrField::from(pc_lookup_bus_id))),
         "Expected all PC lookups to be removed."
     );
-    Ok(constraint_system_to_symbolic_machine(constraint_system))
+    Ok((
+        constraint_system_to_symbolic_machine(constraint_system),
+        column_allocator,
+    ))
 }
 
 pub fn optimize_exec_bus<T: FieldElement>(
@@ -209,9 +258,10 @@ fn symbolic_machine_to_constraint_system<P: FieldElement>(
             .map(|(v, method)| {
                 let method = match method {
                     ComputationMethod::Constant(c) => ComputationMethod::Constant(*c),
-                    ComputationMethod::InverseOrZero(c) => {
-                        ComputationMethod::InverseOrZero(algebraic_to_grouped_expression(c))
-                    }
+                    ComputationMethod::QuotientOrZero(e1, e2) => ComputationMethod::QuotientOrZero(
+                        algebraic_to_grouped_expression(e1),
+                        algebraic_to_grouped_expression(e2),
+                    ),
                 };
                 DerivedVariable {
                     variable: v.clone(),
@@ -242,9 +292,10 @@ fn constraint_system_to_symbolic_machine<P: FieldElement>(
             .map(|derived_var| {
                 let method = match derived_var.computation_method {
                     ComputationMethod::Constant(c) => ComputationMethod::Constant(c),
-                    ComputationMethod::InverseOrZero(c) => {
-                        ComputationMethod::InverseOrZero(grouped_expression_to_algebraic(c))
-                    }
+                    ComputationMethod::QuotientOrZero(e1, e2) => ComputationMethod::QuotientOrZero(
+                        grouped_expression_to_algebraic(e1),
+                        grouped_expression_to_algebraic(e2),
+                    ),
                 };
                 (derived_var.variable, method)
             })

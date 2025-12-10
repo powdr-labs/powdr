@@ -12,11 +12,10 @@ struct OriginalAir {
     int height;              // number of rows (Ha)
     const Fp* buffer;        // column-major base: col*height + row
     int row_block_size;      // stride between used rows
-    int substitutions_offset;// offset in d_subs
-    int substitutions_length;// count in d_subs for this AIR
 };
 
 struct Subst {
+    int air_index; // index into d_original_airs
     int col;      // source column within this AIR
     int row;      // base row offset within the row-block
     int apc_col;  // destination APC column
@@ -30,7 +29,7 @@ extern "C" {
 }
 
 // ============================================================================================
-// Kernel: one block per OriginalAir; each warp handles one substitution (APC column).
+// Kernel: each thread iterates rows and processes all substitutions.
 // ============================================================================================
 
 __global__ void apc_tracegen_kernel(
@@ -38,41 +37,31 @@ __global__ void apc_tracegen_kernel(
     size_t H,                                          // height of the output
     const OriginalAir* __restrict__ d_original_airs,   // metadata per AIR
     const Subst* __restrict__ d_subs,                  // all substitutions
+    size_t n_subs,                                     // number of substitutions
     int num_apc_calls                                  // number of APC calls
 ) {
-    const int air_id = blockIdx.x;
-    const OriginalAir air = d_original_airs[air_id];
+    const size_t total_threads = (size_t)gridDim.x * (size_t)blockDim.x;
+    const size_t tid = (size_t)blockIdx.x * (size_t)blockDim.x + (size_t)threadIdx.x;
 
-    const Fp* __restrict__ src_base = air.buffer;
-    const int Ha  = air.height;
-    const int RBS = air.row_block_size;
+    for (size_t r = tid; r < H; r += total_threads) {
+        const bool row_in_range = r < (size_t)num_apc_calls;
 
-    const int lane  = threadIdx.x & 31;     // 0..31
-    const int warp  = threadIdx.x >> 5;     // warp index in block
-    const int warps_per_block = blockDim.x >> 5;
+        for (size_t i = 0; i < n_subs; ++i) {
+            const Subst sub = d_subs[i];
+            const size_t dst_idx = (size_t)sub.apc_col * H + r;
 
-    // Process this AIR's substitutions in batches of warps_per_block
-    for (int rel = warp; rel < air.substitutions_length; rel += warps_per_block) {
-
-        const Subst sub = d_subs[air.substitutions_offset + rel];
-
-        // Column bases (column-major)
-        const size_t dst_col_base = (size_t)sub.apc_col * (size_t)H;
-        const size_t src_col_base = (size_t)sub.col     * (size_t)Ha;
-
-        // Each lane writes rows lane, lane+32, lane+64, ... (coalesced per warp)
-        // Loop over full output height; zero-pad rows beyond `num_apc_calls`.
-        for (size_t r = (size_t)lane; r < (size_t)H; r += 32) {
-            if (r < (size_t)num_apc_calls) {
-                const size_t src_r = (size_t)sub.row + r * (size_t)RBS;
-                if (src_r < (size_t)Ha) {
-                    d_output[dst_col_base + r] = src_base[src_col_base + src_r];
-                }
-            } else {
-                d_output[dst_col_base + r] = Fp(0);
+            if (!row_in_range) {
+                d_output[dst_idx] = Fp(0);
+                continue;
             }
+
+            const size_t air_idx = (size_t)sub.air_index;
+            const OriginalAir air = d_original_airs[air_idx];
+            const Fp* __restrict__ src_base = air.buffer;
+            const size_t src_col_base = (size_t)sub.col * (size_t)air.height;
+            const size_t src_r = (size_t)sub.row + r * (size_t)air.row_block_size;
+            d_output[dst_idx] = src_base[src_col_base + src_r];
         }
-        // Warps are independent for different substitutions; no syncthreads needed here.
     }
 }
 
@@ -137,19 +126,21 @@ extern "C" int _apc_apply_derived_expr(
 extern "C" int _apc_tracegen(
     Fp*                      d_output,          // [output_height * output_width], column-major
     size_t                   output_height,     // H_out
-    const OriginalAir*       d_original_airs,   // device array, length = n_airs
-    size_t                   n_airs,            // one block per AIR
+    const OriginalAir*       d_original_airs,   // device array of AIR metadata
     const Subst*             d_subs,            // device array of all substitutions
+    size_t                   n_subs,            // number of substitutions
     int                      num_apc_calls      // number of APC calls
 ) {
     assert((output_height & (output_height - 1)) == 0);  // power-of-two height check
 
-    const int block_x = 32;
+    const int block_x = 256;
     const dim3 block(block_x, 1, 1);
-    const dim3 grid((unsigned int)n_airs, 1, 1);
+    unsigned g = (unsigned)((output_height + block_x - 1) / block_x);
+    if (g == 0u) g = 1u;
+    const dim3 grid(g, 1, 1);
 
     apc_tracegen_kernel<<<grid, block>>>(
-        d_output, output_height, d_original_airs, d_subs, num_apc_calls
+        d_output, output_height, d_original_airs, d_subs, n_subs, num_apc_calls
     );
     return (int)cudaGetLastError();
 }

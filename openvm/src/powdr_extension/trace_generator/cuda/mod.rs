@@ -120,10 +120,12 @@ fn compile_derived_to_gpu(
                 bytecode.push(OpCode::PushConst as u32);
                 bytecode.push(c.as_canonical_u32());
             }
-            ComputationMethod::InverseOrZero(expr) => {
-                // Encode inner expression, then apply InvOrZero
-                emit_expr(&mut bytecode, expr, apc_poly_id_to_index, apc_height);
+            ComputationMethod::QuotientOrZero(e1, e2) => {
+                // Invert denominator (or use zero), then multiply with numerator.
+                emit_expr(&mut bytecode, e2, apc_poly_id_to_index, apc_height);
                 bytecode.push(OpCode::InvOrZero as u32);
+                emit_expr(&mut bytecode, e1, apc_poly_id_to_index, apc_height);
+                bytecode.push(OpCode::Mul as u32);
             }
         }
         let len = (bytecode.len() as u32) - off;
@@ -219,8 +221,6 @@ impl PowdrTraceGeneratorGpu {
             .inventory
         };
 
-        let arenas = original_arenas.arenas_mut();
-
         let dummy_trace_by_air_name: HashMap<String, DeviceMatrix<BabyBear>> = chip_inventory
             .chips()
             .iter()
@@ -230,7 +230,7 @@ impl PowdrTraceGeneratorGpu {
                 let air_name = chip_inventory.airs().ext_airs()[insertion_idx].name();
 
                 let record_arena = {
-                    match arenas.remove(&air_name) {
+                    match original_arenas.take_arena(&air_name) {
                         Some(ra) => ra,
                         None => return None, // skip this iteration, because we only have record arena for chips that are used
                     }
@@ -270,9 +270,10 @@ impl PowdrTraceGeneratorGpu {
                 .into_group_map()
                 // go through each air and its substitutions
                 .iter()
+                .enumerate()
                 .fold(
                     (Vec::new(), Vec::new()),
-                    |(mut airs, mut substitutions), (air_name, subs_by_row)| {
+                    |(mut airs, mut substitutions), (air_index, (air_name, subs_by_row))| {
                         // Find the substitutions that map to an apc column
                         let new_substitutions: Vec<Subst> = subs_by_row
                             .iter()
@@ -283,13 +284,12 @@ impl PowdrTraceGeneratorGpu {
                                 subs.iter()
                                     .map(move |sub| (row, sub))
                                     .map(|(row, sub)| Subst {
+                                        air_index: air_index as i32,
                                         col: sub.original_poly_index as i32,
                                         row: row as i32,
                                         apc_col: apc_poly_id_to_index[&sub.apc_poly_id] as i32,
                                     })
                             })
-                            // sort by column so that reads to the same column are coalesced, as the table is column major
-                            .sorted_by(|left, right| left.col.cmp(&right.col))
                             .collect();
 
                         // get the device dummy trace for this air
@@ -301,8 +301,6 @@ impl PowdrTraceGeneratorGpu {
                             height: dummy_trace.height() as i32,
                             buffer: dummy_trace.buffer().as_ptr(),
                             row_block_size: subs_by_row.len() as i32,
-                            substitutions_offset: substitutions.len() as i32,
-                            substitutions_length: new_substitutions.len() as i32,
                         });
 
                         substitutions.extend(new_substitutions);

@@ -46,14 +46,14 @@ jobs:
       ##### The block below is shared between cache build and PR build workflows #####
       - name: Install Rust toolchain nightly-2025-10-01 (with clippy and rustfmt)
         run: rustup toolchain install nightly-2025-10-01 --component clippy,rustfmt
-      - name: Install Rust toolchain 1.88 (stable)
-        run: rustup toolchain install 1.88
+      - name: Install Rust toolchain 1.90 (stable)
+        run: rustup toolchain install 1.90
       - name: Set cargo to perform shallow clones
         run: echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
       - name: Format
         run: cargo fmt --all --check --verbose
-      - name: Cargo check with Rust 1.88 (default features)
-        run: cargo +1.88 check --all-targets
+      - name: Cargo check with Rust 1.90 (default features)
+        run: cargo +1.90 check --all-targets
       - name: Lint no default features
         run: cargo clippy --all --all-targets --features metrics --profile pr-tests --verbose -- -D warnings
       - name: Build (CPU)
@@ -62,7 +62,7 @@ jobs:
 
       - uses: taiki-e/install-action@nextest
       - name: Create tests archive (CPU)
-        run: cargo nextest archive --archive-file tests_cpu.tar.zst --cargo-profile pr-tests --workspace
+        run: cargo nextest archive --archive-file tests_cpu.tar.zst --cargo-profile pr-tests --workspace --no-default-features
       - name: Upload build artifacts (CPU)
         uses: actions/upload-artifact@v4
         with:
@@ -88,27 +88,43 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - name: Download build artifacts (CPU)
-        uses: actions/download-artifact@v4
-        with:
-          name: tests_archive_cpu
-      - name: Install Rust toolchain nightly-2025-05-14 (with clippy and rustfmt)
-        run: rustup toolchain install nightly-2025-05-14 --component clippy,rustfmt,rust-src
-      - name: Install riscv target
-        run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2025-10-01
-      - name: Install test dependencies
-        run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
-      - name: Install Rust deps
-        run: rustup install nightly-2025-10-01 --component rust-src
-      - name: Install Rust deps
-        run: rustup install nightly-2025-02-14 --component rust-src
-      - name: Install OpenVM guest toolchain (nightly-2025-08-02)
-        run: |
-          rustup toolchain install nightly-2025-08-02
-          rustup component add rust-src --toolchain nightly-2025-08-02
-      - uses: taiki-e/install-action@nextest
-      - name: Run default tests (CPU)
+      - name: Init testing instance
+        uses: ./.github/actions/init-testing-instance
+      - name: Run default tests
         run: cargo nextest run --archive-file tests_cpu.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/7 --no-tests=warn
+
+  test_medium_cpu:
+    needs: build_cpu
+    runs-on: warp-ubuntu-2404-x64-16x
+    strategy:
+      matrix:
+        test:
+          - "1"
+          - "2"
+          - "3"
+          - "4"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Init testing instance
+        uses: ./.github/actions/init-testing-instance
+      - name: Run medium tests (ignored tests except large ones)
+        run: cargo nextest run --archive-file tests_cpu.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/7 --test-threads=4 -E 'not (test(_large))' --run-ignored only --no-tests=warn
+
+  test_large_cpu:
+    needs: build_cpu
+    runs-on: warp-ubuntu-2404-x64-32x
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Init testing instance
+        uses: ./.github/actions/init-testing-instance
+      - name: Run large tests
+        run: cargo nextest run --archive-file tests_cpu.tar.zst --workspace-remap . --verbose -E 'test(_large)' --run-ignored only --no-tests=warn
 
   udeps_cpu:
     runs-on: ubuntu-22.04
@@ -147,10 +163,10 @@ jobs:
         run: cargo build --release -p powdr-openvm
 
       - name: Install cargo openvm
-        # Rust 1.88 is needed by fresher versions of dependencies of cargo-openvm.
+        # Rust 1.90 is needed by fresher versions of dependencies of cargo-openvm.
         run: |
-          rustup toolchain install 1.88
-          cargo +1.88 install --git 'http://github.com/openvm-org/openvm.git' cargo-openvm
+          rustup toolchain install 1.90
+          cargo +1.90 install --git 'http://github.com/openvm-org/openvm.git' cargo-openvm
 
       - name: Patch benchmark
         uses: ./.github/actions/patch-openvm-reth-benchmark
@@ -172,15 +188,49 @@ jobs:
 
       - name: Install Rust toolchain nightly-2025-10-01 (with clippy and rustfmt)
         run: rustup toolchain install nightly-2025-10-01 --component clippy,rustfmt
-      - name: Install Rust toolchain 1.88 (stable)
-        run: rustup toolchain install 1.88
+      - name: Install Rust toolchain 1.90 (stable)
+        run: rustup toolchain install 1.90
       - name: Set cargo to perform shallow clones
         run: echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
       - name: Format
         run: cargo fmt --all --check --verbose
-      - name: Cargo check with Rust 1.88 (all features)
-        run: cargo +1.88 check --all-targets
+      - name: Cargo check with Rust 1.90 (all features)
+        run: cargo +1.90 check --all-targets
       - name: Lint no default features
         run: cargo clippy --all --all-targets --all-features --profile pr-tests --verbose -- -D warnings
       - name: Build (GPU)
         run: cargo build --all-targets --all-features --all --profile pr-tests --verbose
+      - uses: taiki-e/install-action@nextest
+      - name: Create tests archive (GPU, features=cuda)
+        run: cargo nextest archive --archive-file tests_gpu.tar.zst --cargo-profile pr-tests --workspace --package powdr-openvm --features cuda
+      - name: Upload build artifacts (GPU)
+        uses: actions/upload-artifact@v4
+        with:
+          name: tests_archive_gpu
+          path: |
+            tests_gpu.tar.zst
+
+  test_quick_gpu:
+    needs: build_gpu
+    runs-on: [self-hosted, GPU]
+    # TODO: we only have one runner on our GPU server, so can't partition yet; uncomment these once we have proper runners
+    # strategy:
+    #   matrix:
+    #     test:
+    #       - "1"
+    #       - "2"
+    #       - "3"
+    #       - "4"
+    #       - "5"
+    #       - "6"
+    #       - "7"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Init testing instance (GPU)
+        uses: ./.github/actions/init-testing-instance-gpu
+      - name: Run quick GPU tests from powdr-openvm only
+        run: cargo nextest run --archive-file tests_gpu.tar.zst --workspace-remap . --verbose --no-tests=warn
+        # run: cargo nextest run --archive-file tests_gpu.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/7 --no-tests=warn

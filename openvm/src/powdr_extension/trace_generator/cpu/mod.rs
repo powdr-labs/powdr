@@ -119,8 +119,6 @@ impl PowdrTraceGeneratorCpu {
             .inventory
         };
 
-        let arenas = original_arenas.arenas_mut();
-
         let dummy_trace_by_air_name: HashMap<String, SharedCpuTrace<BabyBear>> = chip_inventory
             .chips()
             .iter()
@@ -130,7 +128,7 @@ impl PowdrTraceGeneratorCpu {
                 let air_name = chip_inventory.airs().ext_airs()[insertion_idx].name();
 
                 let record_arena = {
-                    match arenas.remove(&air_name) {
+                    match original_arenas.take_arena(&air_name) {
                         Some(ra) => ra,
                         None => return None, // skip this iteration, because we only have record arena for chips that are used
                     }
@@ -185,16 +183,19 @@ impl PowdrTraceGeneratorCpu {
                     let col_index = apc_poly_id_to_index[&column.id];
                     row_slice[col_index] = match computation_method {
                         ComputationMethod::Constant(c) => *c,
-                        ComputationMethod::InverseOrZero(expr) => {
+                        ComputationMethod::QuotientOrZero(e1, e2) => {
                             use powdr_number::ExpressionConvertible;
 
-                            let expr_val = expr.to_expression(&|n| *n, &|column_ref| {
+                            let divisor_val = e2.to_expression(&|n| *n, &|column_ref| {
                                 row_slice[apc_poly_id_to_index[&column_ref.id]]
                             });
-                            if expr_val.is_zero() {
+                            if divisor_val.is_zero() {
                                 BabyBear::ZERO
                             } else {
-                                expr_val.inverse()
+                                divisor_val.inverse()
+                                    * e1.to_expression(&|n| *n, &|column_ref| {
+                                        row_slice[apc_poly_id_to_index[&column_ref.id]]
+                                    })
                             }
                         }
                     };

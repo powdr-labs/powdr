@@ -136,9 +136,9 @@ impl<F> OriginalAirs<F> {
 pub fn record_arena_dimension_by_air_name_per_apc_call<F>(
     apc: &Apc<F, Instr<F>>,
     air_by_opcode_id: &OriginalAirs<F>,
-) -> HashMap<String, RecordArenaDimension> {
+) -> BTreeMap<String, RecordArenaDimension> {
     apc.instructions().iter().map(|instr| &instr.0.opcode).fold(
-        HashMap::new(),
+        BTreeMap::new(),
         |mut acc, opcode| {
             // Get the air name for this opcode
             let air_name = air_by_opcode_id.opcode_to_air.get(opcode).unwrap();

@@ -380,10 +380,10 @@ mod test {
     fn split_simple() {
         let four_bit_rc = RangeConstraint::from_mask(0xfu32);
         let rcs = [
-            ("x", four_bit_rc.clone()),
-            ("y", four_bit_rc.clone()),
-            ("a", four_bit_rc.clone()),
-            ("b", four_bit_rc.clone()),
+            ("x", four_bit_rc),
+            ("y", four_bit_rc),
+            ("a", four_bit_rc),
+            ("b", four_bit_rc),
         ]
         .into_iter()
         .collect::<HashMap<_, _>>();
@@ -397,13 +397,13 @@ mod test {
     fn split_multiple() {
         let four_bit_rc = RangeConstraint::from_mask(0xfu32);
         let rcs = [
-            ("x", four_bit_rc.clone()),
-            ("y", four_bit_rc.clone()),
-            ("a", four_bit_rc.clone()),
-            ("b", four_bit_rc.clone()),
-            ("r", four_bit_rc.clone()),
-            ("s", four_bit_rc.clone()),
-            ("w", four_bit_rc.clone()),
+            ("x", four_bit_rc),
+            ("y", four_bit_rc),
+            ("a", four_bit_rc),
+            ("b", four_bit_rc),
+            ("r", four_bit_rc),
+            ("s", four_bit_rc),
+            ("w", four_bit_rc),
         ]
         .into_iter()
         .collect::<HashMap<_, _>>();
@@ -432,13 +432,9 @@ w = 0"
 
         let byte_rc = RangeConstraint::from_mask(0xffu32);
         let bit_rc = RangeConstraint::from_mask(0x1u32);
-        let rcs = [
-            ("b__3_0", byte_rc.clone()),
-            ("b_msb_f_0", byte_rc.clone()),
-            ("x", bit_rc.clone()),
-        ]
-        .into_iter()
-        .collect::<HashMap<_, _>>();
+        let rcs = [("b__3_0", byte_rc), ("b_msb_f_0", byte_rc), ("x", bit_rc)]
+            .into_iter()
+            .collect::<HashMap<_, _>>();
         let expr1 = var("b__3_0") - var("b_msb_f_0") + constant(256) * var("x");
         let items = try_split(expr1, &rcs).unwrap().iter().join("\n");
         assert_eq!(
@@ -459,13 +455,13 @@ x - 1 = 0"
     fn split_multiple_with_const() {
         let four_bit_rc = RangeConstraint::from_mask(0xfu32);
         let rcs = [
-            ("x", four_bit_rc.clone()),
-            ("y", four_bit_rc.clone()),
-            ("a", four_bit_rc.clone()),
-            ("b", four_bit_rc.clone()),
-            ("r", four_bit_rc.clone()),
-            ("s", four_bit_rc.clone()),
-            ("w", four_bit_rc.clone()),
+            ("x", four_bit_rc),
+            ("y", four_bit_rc),
+            ("a", four_bit_rc),
+            ("b", four_bit_rc),
+            ("r", four_bit_rc),
+            ("s", four_bit_rc),
+            ("w", four_bit_rc),
         ]
         .into_iter()
         .collect::<HashMap<_, _>>();
@@ -491,10 +487,10 @@ w - 5 = 0"
     fn split_limb_decomposition() {
         let four_bit_rc = RangeConstraint::from_mask(0xfu32);
         let rcs = [
-            ("l0", four_bit_rc.clone()),
-            ("l1", four_bit_rc.clone()),
-            ("l2", four_bit_rc.clone()),
-            ("l3", four_bit_rc.clone()),
+            ("l0", four_bit_rc),
+            ("l1", four_bit_rc),
+            ("l2", four_bit_rc),
+            ("l3", four_bit_rc),
         ]
         .into_iter()
         .collect::<HashMap<_, _>>();
@@ -520,7 +516,7 @@ l3 - 1 = 0"
         // a__0_12 + 256 * bool_113 - 216
         let byte_rc = RangeConstraint::from_mask(0xffu32);
         let bit_rc = RangeConstraint::from_mask(0x1u32);
-        let rcs = [("a__0_12", byte_rc.clone()), ("bool_113", bit_rc.clone())]
+        let rcs = [("a__0_12", byte_rc), ("bool_113", bit_rc)]
             .into_iter()
             .collect::<HashMap<_, _>>();
         let expr1: GroupedExpression<BabyBearField, _> =
@@ -545,9 +541,9 @@ l3 - 1 = 0"
         // -(c__1_3) + 256 * (30720 * c__0_3 - c__2_3) = 1226833928
         let byte_rc = RangeConstraint::from_mask(0xffu32);
         let rcs = [
-            ("c__0_3", byte_rc.clone()),
-            ("c__1_3", byte_rc.clone()),
-            ("c__2_3", byte_rc.clone()),
+            ("c__0_3", byte_rc),
+            ("c__1_3", byte_rc),
+            ("c__2_3", byte_rc),
         ]
         .into_iter()
         .collect::<HashMap<_, _>>();
@@ -572,7 +568,7 @@ l3 - 1 = 0"
     fn wrapping_2() {
         // bool_17 + 1069547521 * (a__0_0) = 943718400
         let bit_rc = RangeConstraint::from_mask(0x1u32);
-        let rcs = [("bool_17", bit_rc.clone()), ("a__0_0", bit_rc.clone())]
+        let rcs = [("bool_17", bit_rc), ("a__0_0", bit_rc)]
             .into_iter()
             .collect::<HashMap<_, _>>();
         let expr: GroupedExpression<BabyBearField, _> =
@@ -589,9 +585,9 @@ l3 - 1 = 0"
         let bit_rc = RangeConstraint::from_mask(0x1u32);
         let limb_rc = RangeConstraint::from_mask(0x7fffu32);
         let rcs = [
-            ("bool_103", bit_rc.clone()),
-            ("to_pc_least_sig_bit_4", bit_rc.clone()),
-            ("to_pc_limbs__0_4", limb_rc.clone()),
+            ("bool_103", bit_rc),
+            ("to_pc_least_sig_bit_4", bit_rc),
+            ("to_pc_limbs__0_4", limb_rc),
         ]
         .into_iter()
         .collect::<HashMap<_, _>>();
@@ -629,7 +625,7 @@ l3 - 1 = 0"
     #[test]
     fn split_fail_overlapping() {
         let four_bit_rc = RangeConstraint::from_mask(0xfu32);
-        let rcs = [("x", four_bit_rc.clone()), ("y", four_bit_rc.clone())]
+        let rcs = [("x", four_bit_rc), ("y", four_bit_rc)]
             .into_iter()
             .collect::<HashMap<_, _>>();
         // The RC of x is not tight enough
@@ -640,13 +636,9 @@ l3 - 1 = 0"
     #[test]
     fn split_fail_not_unique() {
         let four_bit_rc = RangeConstraint::from_mask(0xfu32);
-        let rcs = [
-            ("x", four_bit_rc.clone()),
-            ("y", four_bit_rc.clone()),
-            ("z", four_bit_rc.clone()),
-        ]
-        .into_iter()
-        .collect::<HashMap<_, _>>();
+        let rcs = [("x", four_bit_rc), ("y", four_bit_rc), ("z", four_bit_rc)]
+            .into_iter()
+            .collect::<HashMap<_, _>>();
         // There are multiple ways to solve the modulo equation.
         let expr = (var("x") - var("y")) + constant(16) * var("z") - constant(1);
         assert!(try_split(expr, &rcs).is_none());

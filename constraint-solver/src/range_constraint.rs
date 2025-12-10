@@ -35,7 +35,7 @@ use powdr_number::{log2_exact, FieldElement, LargeInt};
 /// of the full system.
 ///
 /// Finally, please be aware that same constraint can have multiple representations.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct RangeConstraint<T: FieldElement> {
     /// Bit-mask. A value `x` is allowed only if `x & mask == x` (when seen as unsigned integer).
     mask: T::Integer,
@@ -185,6 +185,23 @@ impl<T: FieldElement> RangeConstraint<T> {
         } else {
             Self::unconstrained()
         }
+    }
+
+    /// If `Self` is a valid range constraint on an expression `e`, returns
+    /// a valid range constraint for `e * e`.
+    pub fn square(&self) -> Self {
+        if self.min > self.max {
+            // If we have "negative" values, make sure that the square
+            // is non-negative.
+            let max_abs = std::cmp::max(-self.min, self.max);
+            if max_abs.to_arbitrary_integer() * max_abs.to_arbitrary_integer()
+                < T::modulus().to_arbitrary_integer()
+            {
+                return Self::from_range(T::zero(), max_abs * max_abs);
+            }
+        }
+
+        self.combine_product(self)
     }
 
     /// Returns the conjunction of this constraint and the other.

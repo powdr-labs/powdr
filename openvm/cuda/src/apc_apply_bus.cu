@@ -153,9 +153,11 @@ extern "C" int _apc_apply_bus(
   uint32_t bitwise_bus_id, // bitwise lookup bus id
   uint32_t* d_bitwise_hist // bitwise lookup histogram (device)
 ) {
-  const int block_x = 128; // 4 warps
+  const int block_x = 256; // 8 warps
   const dim3 block(block_x, 1, 1);
-  unsigned g = (unsigned)((n_interactions + 3) / 4);
+  const unsigned warps_per_block = (unsigned)(block_x / 32);
+  size_t g_size = (n_interactions + (size_t)warps_per_block - 1) / (size_t)warps_per_block;
+  unsigned g = (unsigned)g_size;
   if (g == 0u) g = 1u;
   const dim3 grid(g, 1, 1); // each warp processes an interaction
 
