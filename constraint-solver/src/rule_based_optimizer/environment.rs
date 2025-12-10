@@ -271,6 +271,27 @@ impl<T: FieldElement> Environment<T> {
         self.insert_owned(expr)
     }
 
+    /// Split Expr into expr1 + expr_rest 
+    /// Expr is affine, expr1 is affine and has only one variable.
+    pub fn is_minimal_range_deducible(&self, expr1: Expr, expr_rest: Expr, expr: Expr) -> bool {
+        let db = self.expressions.borrow();
+        let expr = &db[expr];
+        let expr1 = &db[expr1];
+        let expr_rest = &db[expr_rest];
+        if !expr.is_affine() {
+            return false;
+        }
+        if expr1 + expr_rest != *expr {
+            return false;
+        }
+
+        if !(expr1.range_constraint(self).range().0 >= T::zero()) {
+            return false;
+        }
+
+        return true;
+    }
+
     #[allow(dead_code)]
     pub fn format_expr(&self, expr: Expr) -> String {
         let db = self.expressions.borrow();

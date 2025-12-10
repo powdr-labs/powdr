@@ -169,6 +169,31 @@ crepe! {
 
     Equivalence(v1, v2) <- QuadraticEquivalence(v1, v2);
 
+
+    //------- end quadratic equivalence -----
+
+
+    //------- split constraint based on minimal range derivation -----
+
+    // it doesn't need to be affine, but only consider this case now.
+    // split the expression into coeff * var + rest_expr = 0
+    struct MultiVarAffineExpression<T: FieldElement>(Expr, T);
+
+
+
+    struct MinimalRangeDerivationCandidate<T:FieldElement>(Expr,Expr,Expr, RangeConstraint<T>,RangeConstraint<T>);
+    MinimalRangeDerivationCandidate(expr, expr1, expr_rest, expr1_rc,expr_rest_rc) <-
+      Env(env),
+      AlgebraicConstraint(expr),
+      AffineExpression(expr1, coeff, var, left_offset),
+      (left_offset == T::zero()),
+      RangeConstraintOnExpression(expr1, expr1_rc),
+      RangeConstraintOnExpression(expr_rest, expr_rest_rc),
+      (env.is_minimal_range_deducible(expr1,expr_rest,expr));
+      
+
+
+
     ReplaceAlgebraicConstraintBy(e, env.substitute_by_known(e, v, val)) <-
       Env(env),
       Assignment(v, val),

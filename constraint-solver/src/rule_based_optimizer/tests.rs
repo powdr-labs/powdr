@@ -221,3 +221,37 @@ fn test_rule_based_optimization_quadratic_equality() {
         BusInteraction { bus_id: 3, multiplicity: 1, payload: -(503316480 * mem_ptr_limbs__0_1), 14 }
         BusInteraction { bus_id: 3, multiplicity: 1, payload: -(503316480 * mem_ptr_limbs__0_1), 14 }"#]].assert_eq(&optimized_system.0.to_string());
 }
+
+fn test_rule_split_constraints_based_on_minimal_range() {
+    let mut system = IndexedConstraintSystem::default();
+    //opcode_sub_flag_21 + 2 * opcode_xor_flag_21 + 3 * opcode_or_flag_21 + 4 * opcode_and_flag_21 = 0
+    system.add_algebraic_constraints([assert_zero(
+        (v("opcode_sub_flag_21")
+            + c(2) * v("opcode_xor_flag_21")
+            + c(3) * v("opcode_or_flag_21")
+            + c(4) * v("opcode_and_flag_21"))
+            * (v("opcode_sub_flag_21")
+                + c(2) * v("opcode_xor_flag_21")
+                + c(3) * v("opcode_or_flag_21")
+                + c(4) * v("opcode_and_flag_21")),
+    )]);
+    system.add_bus_interactions([
+        bit_constraint("opcode_sub_flag_21", 1),
+        bit_constraint("opcode_xor_flag_21", 1),
+        bit_constraint("opcode_or_flag_21", 1),
+        bit_constraint("opcode_and_flag_21", 1),
+    ]);
+    let optimized_system = rule_based_optimization(
+        system,
+        NoRangeConstraints,
+        DefaultBusInteractionHandler::default(),
+        &mut new_var(),
+        None,
+    );
+    expect![[r#"opcode_sub_flag_21 = 0
+    opcode_xor_flag_21 = 0
+    opcode_or_flag_21 = 0
+    opcode_and_flag_21 = 0
+    "#]]
+    .assert_eq(&optimized_system.0.to_string());
+}
