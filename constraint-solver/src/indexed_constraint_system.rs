@@ -198,6 +198,24 @@ impl<T: RuntimeConstant, V: Clone + Eq> IndexedConstraintSystem<T, V> {
         self.constraint_system.referenced_unknown_variables()
     }
 
+    /// Returns a list of variables that occur exactly once in the system.
+    pub fn single_occurrence_variables<'a>(&'a self) -> impl Iterator<Item = &'a V> + 'a {
+        self.variable_occurrences.iter().filter_map(|(v, items)| {
+            let item = items
+                .iter()
+                .filter(|item| !item.is_derived_variable())
+                .exactly_one()
+                .ok()?;
+            item.try_to_constraint_ref(&self.constraint_system)
+                .unwrap()
+                .referenced_unknown_variables()
+                .filter(|var| *var == v)
+                .exactly_one()
+                .is_ok()
+                .then_some(v)
+        })
+    }
+
     /// Removes all constraints that do not fulfill the predicate.
     pub fn retain_algebraic_constraints(
         &mut self,
