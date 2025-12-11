@@ -113,11 +113,46 @@ crepe! {
 
     struct Equivalence(Var, Var);
 
+
+
+    //------- split constraint based on minimal range derivation: case minimal range is zero-----
+    // it doesn't need to be affine, but only consider this case now.
+    // split the expression into coeff * var + rest_expr = 0
+    // need to add expr_rest to database
+    struct MinimalRangeZeroDeducible<T: FieldElement>(Expr, Expr, Var, T);
+      MinimalRangeZeroDeducible(expr1, expr_rest, var, coeff) <-
+        AlgebraicConstraint(e),
+        Env(env),
+        let Some((expr1, expr_rest, coeff, var)) = env.try_to_multi_var_affine(e),
+        (env.is_minimal_range_zero_deducible(expr1, expr_rest, e)),
+        (env.on_expr(e, (), |e, _| e.constant_offset().is_zero()));
+
+      //  (env.is_minimal_range_zero_deducible(expr1, expr_rest, e)),
+     //   (env.on_expr(e, (), |e, _| e.constant_offset().is_zero()));
+
+
+    // AlgebraicConstraint(expr_rest) <-
+    //   MinimalRangeZeroDeducible(_, expr_rest, _, _),
+    //   AlgebraicConstraint(e),
+    //   Env(env);
+
+
+
+    Assignment(var, T::zero()) <-
+    RangeConstraintOnVar(var, rc),
+    Env(env),
+     MinimalRangeZeroDeducible(expr1, _,var,_),
+     (env.printthis(expr1));//, _, var, coeff),
+    //(rc.contains_value(T::zero()));
+
+
+
     ReplaceAlgebraicConstraintBy(e, env.substitute_by_known(e, v, val)) <-
       Env(env),
       Assignment(v, val),
       ContainsVariable(e, v),
       AlgebraicConstraint(e);
+     // (env.printthis(e));
 
     ReplaceAlgebraicConstraintBy(e, env.substitute_by_var(e, v, v2)) <-
        Env(env),
