@@ -1,6 +1,7 @@
 // Mostly taken from [this openvm extension](https://github.com/openvm-org/openvm/blob/1b76fd5a900a7d69850ee9173969f70ef79c4c76/extensions/rv32im/circuit/src/extension.rs#L185) and simplified to only handle a single opcode with its necessary dependencies
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::iter::once;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -52,6 +53,7 @@ pub struct PowdrPrecompile<F> {
     pub apc_record_arena_cpu: Rc<RefCell<OriginalArenas<MatrixRecordArena<F>>>>,
     #[serde(skip)]
     pub apc_record_arena_gpu: Rc<RefCell<OriginalArenas<DenseRecordArena>>>,
+    pub subs_stats_by_air: std::collections::HashMap<String, (usize, Vec<usize>)>,
 }
 
 impl<F> PowdrPrecompile<F> {
@@ -60,6 +62,7 @@ impl<F> PowdrPrecompile<F> {
         opcode: PowdrOpcode,
         apc: Arc<Apc<F, Instr<F>>>,
         apc_stats: Option<OvmApcStats>,
+        subs_stats_by_air: std::collections::HashMap<String, (usize, Vec<usize>)>,
     ) -> Self {
         Self {
             name,
@@ -69,6 +72,7 @@ impl<F> PowdrPrecompile<F> {
             // Initialize with empty Rc (default to OriginalArenas::Uninitialized) for each APC
             apc_record_arena_cpu: Default::default(),
             apc_record_arena_gpu: Default::default(),
+            subs_stats_by_air,
         }
     }
 }

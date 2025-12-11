@@ -35,6 +35,7 @@ pub struct PowdrChipCpu {
     pub name: String,
     pub record_arena_by_air_name: Rc<RefCell<OriginalArenas<MatrixRecordArena<BabyBear>>>>,
     pub trace_generator: PowdrTraceGeneratorCpu,
+    pub subs_stats_by_air: std::collections::HashMap<String, (usize, Vec<usize>)>,
 }
 
 impl PowdrChipCpu {
@@ -48,6 +49,7 @@ impl PowdrChipCpu {
             name,
             apc,
             apc_record_arena_cpu: apc_record_arena,
+            subs_stats_by_air,
             ..
         } = precompile;
         let trace_generator =
@@ -57,6 +59,7 @@ impl PowdrChipCpu {
             name,
             record_arena_by_air_name: apc_record_arena,
             trace_generator,
+            subs_stats_by_air,
         }
     }
 }
