@@ -49,6 +49,8 @@ pub mod minimal;
 
 pub mod complete;
 
+const SHOW_PROFILE: bool = false;
+
 pub fn run_minimal_rules<T: FieldElement>(
     env: Environment<T>,
     algebraic_constraints: impl IntoIterator<Item = Expr>,
@@ -66,9 +68,14 @@ pub fn run_minimal_rules<T: FieldElement>(
             .into_iter()
             .map(|(v, rc)| minimal::InitialRangeConstraintOnExpression(v, rc)),
     );
-    let ((actions,), profile) = rt.run_with_profiling();
-    profile.report();
-    // let (actions,) = rt.run();
+    let actions = if SHOW_PROFILE {
+        let ((actions,), profile) = rt.run_with_profiling();
+        profile.report();
+        actions
+    } else {
+        let (actions,) = rt.run();
+        actions
+    };
     (actions.into_iter().map(|a| a.0).collect(), env)
 }
 
@@ -89,8 +96,13 @@ pub fn run_complete_rules<T: FieldElement>(
             .into_iter()
             .map(|(v, rc)| complete::InitialRangeConstraintOnExpression(v, rc)),
     );
-    let ((actions,), profile) = rt.run_with_profiling();
-    profile.report();
-    // let (actions,) = rt.run();
+    let actions = if SHOW_PROFILE {
+        let ((actions,), profile) = rt.run_with_profiling();
+        profile.report();
+        actions
+    } else {
+        let (actions,) = rt.run();
+        actions
+    };
     (actions.into_iter().map(|a| a.0).collect(), env)
 }
