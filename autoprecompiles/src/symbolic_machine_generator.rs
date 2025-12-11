@@ -106,10 +106,11 @@ pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
     block: &BasicBlock<A::Instruction>,
     instruction_handler: &A::InstructionHandler,
     bus_map: &BusMap<A::CustomBusTypes>,
-) -> (SymbolicMachine<A::PowdrField>, ColumnAllocator) {
+) -> (SymbolicMachine<A::PowdrField>, ColumnAllocator, Vec<<<A as Adapter>::InstructionHandler as InstructionHandler>::AirId>) {
     let mut constraints: Vec<SymbolicConstraint<_>> = Vec::new();
     let mut bus_interactions: Vec<SymbolicBusInteraction<_>> = Vec::new();
     let mut col_subs: Vec<Vec<u64>> = Vec::new();
+    let mut air_ids: Vec<<<A as Adapter>::InstructionHandler as InstructionHandler>::AirId> = Vec::new();
     let mut global_idx: u64 = 3;
 
     for (i, instr) in block.statements.iter().enumerate() {
@@ -117,6 +118,9 @@ pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
             .get_instruction_air_and_id(instr)
             .1
             .clone();
+
+        let air_id = instruction_handler.get_instruction_air_and_id(instr).0.clone();
+        air_ids.push(air_id);
 
         let machine: SymbolicMachine<<A as Adapter>::PowdrField> =
             convert_machine_field_type(machine, &|x| A::from_field(x));
@@ -188,6 +192,7 @@ pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
             subs: col_subs,
             next_poly_id: global_idx,
         },
+        air_ids,
     )
 }
 

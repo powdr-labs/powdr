@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, fs, io::Write, path::PathBuf, sync::Arc};
 
 use itertools::Itertools;
 use openvm_circuit::{
@@ -14,6 +14,7 @@ use openvm_stark_backend::{
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{trace_handler::TraceTrait, Apc};
 use powdr_constraint_solver::constraint_system::ComputationMethod;
+use serde::Serialize;
 
 use crate::{
     extraction_utils::{OriginalAirs, OriginalVmConfig},
@@ -58,9 +59,43 @@ impl<F> From<Arc<RowMajorMatrix<F>>> for SharedCpuTrace<F> {
     }
 }
 
+#[derive(Serialize, Clone)]
+pub struct ApcSubsJsonExport {
+    pub start_pc: usize,
+    pub num_calls: usize,
+    pub num_instr: usize,
+    pub airs: HashMap<String, (usize, Vec<usize>)>, // map from air name to (before_opt_width, post_opt_width_per_sub)
+}
+
 impl<R, PB: ProverBackend<Matrix = Arc<RowMajorMatrix<BabyBear>>>> Chip<R, PB> for PowdrChipCpu {
     fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
         tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
+
+        // export subs_stats_by_air and # of APC executions to json
+        let start_pc = self.trace_generator.apc.block.start_pc as usize;
+        let num_calls = self.record_arena_by_air_name.borrow().number_of_calls(); // real # of calls populated during preflight
+        let num_instr = self.trace_generator.apc.block.statements.len();
+        let airs = &self.subs_stats_by_air;
+
+        let json_export = ApcSubsJsonExport {
+            start_pc,
+            num_calls,
+            num_instr,
+            airs: airs.clone(),
+        };
+
+        if let Err(err) = (|| -> Result<(), Box<dyn std::error::Error>> {
+            let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("apc_subs_stats.json");
+            let mut file = fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)?;
+            serde_json::to_writer(&mut file, &json_export)?;
+            file.write_all(b"\n")?;
+            Ok(())
+        })() {
+            println!("Failed to write APC subs stats: {err}");
+        }
 
         let trace = self
             .trace_generator

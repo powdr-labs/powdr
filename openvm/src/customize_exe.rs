@@ -31,7 +31,7 @@ use powdr_autoprecompiles::blocks::{collect_basic_blocks, BasicBlock, Instructio
 use powdr_autoprecompiles::evaluation::{evaluate_apc, EvaluationResult};
 use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::pgo::{ApcCandidateJsonExport, Candidate, KnapsackItem};
-use powdr_autoprecompiles::SymbolicBusInteraction;
+use powdr_autoprecompiles::{InstructionHandler, SymbolicBusInteraction};
 use powdr_autoprecompiles::VmConfig;
 use powdr_autoprecompiles::{Apc, PowdrConfig};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
@@ -229,6 +229,12 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
 
     tracing::info!("Adjust the program with the autoprecompiles");
 
+    // clear apc_subs_stats.json file if any or create one if none
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("apc_subs_stats.json");
+    if let Err(err) = std::fs::File::create(&path) {
+        tracing::warn!("Failed to clear apc_subs_stats.json file: {err}");
+    }
+
     let extensions = apcs
         .into_iter()
         .map(ApcWithStats::into_parts)
@@ -243,6 +249,48 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
             // This is only for witgen: the program in the program chip is left unchanged.
             program.add_apc_instruction_at_pc_index(start_index, VmOpcode::from_usize(opcode));
 
+            // Tally before and after optimization column count of each APC instruction, grouped by AIR name.
+            // Output: HashMap<air_name, (before_optimization_column_count, Vec<after_optimization_column_count_per_substitution>)>
+            let air_names_by_instruction: Vec<_> = apc
+                .instructions()
+                .iter()
+                .map(|instr| airs.get_instruction_air_and_id(instr).0)
+                .collect();
+
+            let mut subs_stats_by_air = std::collections::HashMap::new();
+
+            apc.subs_stats
+                .iter()
+                .zip_eq(air_names_by_instruction.into_iter())
+                .for_each(|((before, after), air_name)| {
+                    subs_stats_by_air
+                        .entry(air_name.clone())
+                        .or_insert_with(|| (*before, Vec::new()))
+                        .1
+                        .push(*after);
+                });
+            
+            // Print APC start pc and instruction count
+            println!(
+                "APC with start_pc {} and {} instructions",
+                apc.start_pc(),
+                apc.instructions().len()
+            );
+
+            // Print out for each AIR, grouping by after optimization column counts per substitution, with instruction count and percentage of all instruction.
+            for (air_name, (before, after_vec)) in &subs_stats_by_air {
+                let mut after_count_map: HashMap<usize, usize> = HashMap::new();
+                for after in after_vec {
+                    *after_count_map.entry(*after).or_insert(0) += 1;
+                }
+                let total_instructions: usize = after_vec.len();
+                println!("    AIR: {air_name}, before optimization columns: {before}");
+                for (after, count) in after_count_map.iter().sorted_by_key(|(after, _)| *after) {
+                    let percentage = (*count as f64 / total_instructions as f64) * 100.0;
+                    println!("        after optimization columns: {after}, instruction count: {count} ({percentage:.2}%)");
+                }
+            }
+
             PowdrPrecompile::new(
                 format!("PowdrAutoprecompile_{}", apc.start_pc()),
                 PowdrOpcode {
@@ -250,6 +298,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
                 },
                 apc,
                 apc_stats,
+                subs_stats_by_air,
             )
         })
         .collect();

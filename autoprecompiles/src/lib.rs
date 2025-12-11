@@ -299,7 +299,7 @@ impl<'a, M, B: Clone, C: Clone> Clone for VmConfig<'a, M, B, C> {
 pub trait InstructionHandler {
     type Field;
     type Instruction;
-    type AirId;
+    type AirId: Clone;
 
     /// Returns the AIR for the given instruction.
     fn get_instruction_air_and_id(
@@ -333,6 +333,8 @@ pub struct Apc<T, I> {
     pub machine: SymbolicMachine<T>,
     /// For each original air, the substitutions from original columns to APC columns
     pub subs: Vec<Vec<Substitution>>,
+    /// Before and after optimization numbers of columns by instruction
+    pub subs_stats: Vec<(usize, usize)>,
 }
 
 impl<T, I> Apc<T, I> {
@@ -360,6 +362,7 @@ impl<T, I> Apc<T, I> {
         block: BasicBlock<I>,
         machine: SymbolicMachine<T>,
         column_allocator: ColumnAllocator,
+        // air_ids: Vec<Id>,
     ) -> Self {
         // Get all poly_ids in the machine
         let all_references = machine
@@ -367,11 +370,12 @@ impl<T, I> Apc<T, I> {
             .map(|r| r.id)
             .collect::<BTreeSet<_>>();
         // Only keep substitutions from the column allocator if the target poly_id is used in the machine
-        let subs = column_allocator
+        let (subs, subs_stats) = column_allocator
             .subs
             .into_iter()
             .map(|subs| {
-                subs.into_iter()
+                let before_len = subs.len();
+                let filtered_subs = subs.into_iter()
                     .enumerate()
                     .filter_map(|(original_poly_index, apc_poly_id)| {
                         all_references
@@ -381,13 +385,16 @@ impl<T, I> Apc<T, I> {
                                 apc_poly_id,
                             })
                     })
-                    .collect_vec()
+                    .collect_vec();
+                let after_len = filtered_subs.len();
+                (filtered_subs, (before_len, after_len))
             })
-            .collect();
+            .unzip();
         Self {
             block,
             machine,
             subs,
+            subs_stats,
         }
     }
 }
@@ -416,7 +423,7 @@ pub fn build<A: Adapter>(
 ) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
     let start = std::time::Instant::now();
 
-    let (machine, column_allocator) = statements_to_symbolic_machine::<A>(
+    let (machine, column_allocator, air_ids) = statements_to_symbolic_machine::<A>(
         &block,
         vm_config.instruction_handler,
         &vm_config.bus_map,
