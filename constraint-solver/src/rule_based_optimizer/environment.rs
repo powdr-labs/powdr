@@ -186,7 +186,6 @@ impl<T: FieldElement> Environment<T> {
 
     /// Substitutes the variable `var` by the constant `value` in the expression `e`
     /// and returns the resulting expression.
-    #[allow(dead_code)]
     pub fn substitute_by_known(&self, e: Expr, var: Var, value: T) -> Expr {
         let expr = {
             let db = self.expressions.borrow();
@@ -200,7 +199,6 @@ impl<T: FieldElement> Environment<T> {
 
     /// Substitutes the variable `var` by the variable `replacement` in the expression `e`
     /// and returns the resulting expression.
-    #[allow(dead_code)]
     pub fn substitute_by_var(&self, e: Expr, var: Var, replacement: Var) -> Expr {
         let expr = {
             let db = self.expressions.borrow();
