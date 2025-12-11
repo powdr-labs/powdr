@@ -18,7 +18,7 @@ log = "0.4.27"
 bitvec = "1.0.1"
 serde = "1.0.218"
 
-crepe = { git = "https://github.com/powdr-labs/crepe", rev = "powdr-0.1.10" }
+crepe = { git = "https://github.com/powdr-labs/crepe", rev = "powdr-0.1.11" }
 
 [dev-dependencies]
 pretty_assertions = "1.4.0"
