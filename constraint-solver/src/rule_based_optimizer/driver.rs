@@ -23,8 +23,8 @@ use crate::{
     runtime_constant::VarTransformable,
 };
 
-/// If we have more than this many variables, we only run the minimal rules.
-const COMPLETE_RULES_VAR_LIMIT: usize = 2000;
+/// If we have more than this many algebraic constraints, we only run the minimal rules.
+const COMPLETE_RULES_CONSTR_LIMIT: usize = 5000;
 
 pub type VariableAssignment<T, V> = (V, GroupedExpression<T, V>);
 
@@ -110,9 +110,7 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                     .collect_vec()
             });
 
-        let (actions, env) = if system.referenced_unknown_variables().count()
-            > COMPLETE_RULES_VAR_LIMIT
-        {
+        let (actions, env) = if system.algebraic_constraints().len() > COMPLETE_RULES_CONSTR_LIMIT {
             rules::run_minimal_rules(env, algebraic_constraints, range_constraints_on_expressions)
         } else {
             rules::run_complete_rules(env, algebraic_constraints, range_constraints_on_expressions)
@@ -191,8 +189,8 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
             break;
         }
         expr_db = Some(expr_db_);
+        system.retain_algebraic_constraints(|c| !c.is_redundant());
     }
-    system.retain_algebraic_constraints(|c| !c.is_redundant());
     (system, assignments)
 }
 

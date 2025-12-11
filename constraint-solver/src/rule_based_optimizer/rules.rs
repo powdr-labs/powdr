@@ -66,7 +66,9 @@ pub fn run_minimal_rules<T: FieldElement>(
             .into_iter()
             .map(|(v, rc)| minimal::InitialRangeConstraintOnExpression(v, rc)),
     );
-    let actions = rt.run().0;
+    let ((actions,), profile) = rt.run_with_profiling();
+    profile.report();
+    // let (actions,) = rt.run();
     (actions.into_iter().map(|a| a.0).collect(), env)
 }
 
@@ -87,6 +89,8 @@ pub fn run_complete_rules<T: FieldElement>(
             .into_iter()
             .map(|(v, rc)| complete::InitialRangeConstraintOnExpression(v, rc)),
     );
-    let (actions,) = rt.run();
+    let ((actions,), profile) = rt.run_with_profiling();
+    profile.report();
+    // let (actions,) = rt.run();
     (actions.into_iter().map(|a| a.0).collect(), env)
 }
