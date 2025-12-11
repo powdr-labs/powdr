@@ -55,9 +55,9 @@ pub struct BabyBearOpenVmApcAdapter<'a> {
     _marker: std::marker::PhantomData<&'a ()>,
 }
 
-pub struct OpenVmExecutionState<T>(VmState<T, GuestMemory>);
+pub struct OpenVmExecutionState<'a, T>(&'a VmState<T, GuestMemory>);
 
-impl<T: PrimeField32> ExecutionState for OpenVmExecutionState<T> {
+impl<'a, T: PrimeField32> ExecutionState for OpenVmExecutionState<'a, T> {
     type Pc = u32;
     type Address = OpenVmAddress<u32>;
     type Value = T;
@@ -89,7 +89,7 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     type CustomBusTypes = OpenVmBusType;
     type ApcStats = OvmApcStats;
     type AirId = String;
-    type ExecutionState = OpenVmExecutionState<BabyBear>;
+    type ExecutionState<'b> = OpenVmExecutionState<'b, BabyBear>;
 
     fn into_field(e: Self::PowdrField) -> Self::Field {
         openvm_stark_sdk::p3_baby_bear::BabyBear::from_canonical_u32(

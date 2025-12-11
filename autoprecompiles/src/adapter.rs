@@ -92,7 +92,7 @@ where
     type CustomBusTypes: Clone + Display + Sync + Eq + PartialEq;
     type ApcStats: Send + Sync;
     type AirId: Eq + Hash + Send + Sync;
-    type ExecutionState: ExecutionState<Address = Self::MemoryAddress<u32>>;
+    type ExecutionState<'a>: ExecutionState<Address = Self::MemoryAddress<u32>>;
 
     fn into_field(e: Self::PowdrField) -> Self::Field;
 
