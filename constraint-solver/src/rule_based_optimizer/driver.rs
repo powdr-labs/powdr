@@ -24,7 +24,7 @@ use crate::{
 };
 
 /// If we have more than this many algebraic constraints, we only run the minimal rules.
-const COMPLETE_RULES_CONSTR_LIMIT: usize = 10000;
+const COMPLETE_RULES_CONSTR_LIMIT: usize = 8000;
 
 pub type VariableAssignment<T, V> = (V, GroupedExpression<T, V>);
 
