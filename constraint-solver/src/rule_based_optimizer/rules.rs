@@ -124,6 +124,10 @@ crepe! {
     struct RangeConstraintOnExpression<T: FieldElement>(Expr, RangeConstraint<T>);
     RangeConstraintOnExpression(e, rc) <-
       InitialRangeConstraintOnExpression(e, rc);
+    RangeConstraintOnExpression(e, rc) <-
+      Env(env),
+      Expression(e),
+      let rc = env.on_expr(e, (), |expr, _| expr.range_constraint(env));
 
     // RangeConstraintOnVar(v, rc) => variable v has range constraint rc.
     // Note that this range constraint is not necessarily the currently best known
@@ -195,6 +199,7 @@ crepe! {
     FreeVariableCombinationCandidate(e, coeff1, v1, x1, coeff2, v2, x2) <-
       // If we only consider he largest variable pair we could miss optimization opportunities,
       // but at least the replacement becomes deterministic.
+      Env(env),
       LargestSingleOccurrenceVariablePairInExpr(e, v1, v2),
       AlgebraicConstraint(e),
       HasProductSummand(e, x1, v1_e),

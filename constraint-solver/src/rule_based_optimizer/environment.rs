@@ -184,7 +184,7 @@ impl<T: FieldElement> Environment<T> {
     pub fn format_expr(&self, expr: Expr) -> String {
         let db = self.expressions.borrow();
         db[expr]
-            .transform_var_type(&mut |v| &self.var_to_string[v])
+            .transform_var_type(&mut |v| self.format_var(*v))
             .to_string()
     }
 
