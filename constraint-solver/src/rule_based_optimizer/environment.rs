@@ -99,7 +99,6 @@ impl<T: FieldElement> Environment<T> {
         )
     }
 
-    #[allow(dead_code)]
     /// Turns a GroupedExpression into the corresponding Expr,
     /// allocating a new ID if it is not yet present.
     /// Use this function when you only have a reference to the expression.
