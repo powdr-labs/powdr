@@ -163,15 +163,15 @@ crepe! {
     //
     // For the general case, where e.g. `X` can be negative, we replace it by `X * X`,
     // if that value is still small enough.
-    struct SOV(Var);
-    SOV(v) <-
+    struct SingleOccurrenceVariable(Var);
+    SingleOccurrenceVariable(v) <-
       Env(env),
       for v in env.single_occurrence_variables().cloned();
     // SingleOccurrenceVariable(e, v) => v occurs only once in e and e is the
     // only constraint in appears in.
-    struct SingleOccurrenceVariable(Expr, Var);
-    SingleOccurrenceVariable(e, v) <-
-      SOV(v),
+    struct SingleOccurrenceVariableInExpr(Expr, Var);
+    SingleOccurrenceVariableInExpr(e, v) <-
+      SingleOccurrenceVariable(v),
       ContainsVariable(e, v),
       AlgebraicConstraint(e);
 
@@ -181,8 +181,8 @@ crepe! {
     struct LargestSingleOccurrenceVariablePairInExpr(Expr, Var, Var);
     LargestSingleOccurrenceVariablePairInExpr(e, v1, v2) <-
       Env(env),
-      SingleOccurrenceVariable(e, v1),
-      SingleOccurrenceVariable(e, v2),
+      SingleOccurrenceVariableInExpr(e, v1),
+      SingleOccurrenceVariableInExpr(e, v2),
       (v1 < v2),
       (env
         .single_occurrence_variables()
