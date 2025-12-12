@@ -8,6 +8,7 @@ use crate::powdr_extension::executor::RecordArenaDimension;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
 use crate::{AirMetrics, ExtendedVmConfig, ExtendedVmConfigExecutor, Instr};
 use crate::{BabyBearPoseidon2Engine, ExtendedVmConfigCpuBuilder};
+use itertools::Itertools;
 use openvm_circuit::arch::{
     AirInventory, AirInventoryError, ExecutorInventory, ExecutorInventoryError, MatrixRecordArena,
     SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig, VmExecutionConfig,
@@ -137,27 +138,28 @@ pub fn record_arena_dimension_by_air_name_per_apc_call<F>(
     apc: &Apc<F, Instr<F>>,
     air_by_opcode_id: &OriginalAirs<F>,
 ) -> BTreeMap<String, RecordArenaDimension> {
-    apc.instructions().iter().map(|instr| &instr.0.opcode).fold(
-        BTreeMap::new(),
-        |mut acc, opcode| {
+    apc.instructions()
+        .iter()
+        .map(|instr| &instr.0.opcode)
+        .zip_eq(apc.subs.iter())
+        .fold(BTreeMap::new(), |mut acc, (opcode, sub)| {
             // Get the air name for this opcode
             let air_name = air_by_opcode_id.opcode_to_air.get(opcode).unwrap();
 
             // Increment the height for this air name, initializing if necessary
-            acc.entry(air_name.clone())
-                .or_insert_with(|| {
-                    let (_, air_metrics) =
-                        air_by_opcode_id.air_name_to_machine.get(air_name).unwrap();
+            let entry = acc.entry(air_name.clone()).or_insert_with(|| {
+                let (_, air_metrics) = air_by_opcode_id.air_name_to_machine.get(air_name).unwrap();
 
-                    RecordArenaDimension {
-                        height: 0,
-                        width: air_metrics.widths.main,
-                    }
-                })
-                .height += 1;
+                RecordArenaDimension {
+                    height: 0,
+                    width: air_metrics.widths.main,
+                    fully_optimized_away_height: 0,
+                }
+            });
+            entry.height += 1;
+            (sub.len() == 0).then(|| entry.fully_optimized_away_height += 1);
             acc
-        },
-    )
+        })
 }
 
 type ChipComplex = VmChipComplex<
