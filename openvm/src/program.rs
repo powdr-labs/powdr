@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::extraction_utils::OriginalVmConfig;
 use crate::opcode::branch_opcodes_bigint_set;
+use crate::powdr_extension::PowdrPrecompile;
 use crate::{BabyBearOpenVmApcAdapter, ExtendedVmConfig, Instr, SpecializedConfig};
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -72,6 +73,22 @@ impl OriginalCompiledProgram {
         labels.extend(new_labels);
 
         labels
+    }
+
+    /// Converts to a compiled program with the given precompiles and max degree.
+    pub fn compiled_program(
+        &self,
+        precompiles: Vec<PowdrPrecompile<BabyBear>>,
+        max_degree: usize,
+    ) -> CompiledProgram {
+        CompiledProgram {
+            exe: self.exe.clone(),
+            vm_config: SpecializedConfig::new(
+                OriginalVmConfig::new(self.vm_config.clone()),
+                precompiles,
+                max_degree,
+            ),
+        }
     }
 }
 

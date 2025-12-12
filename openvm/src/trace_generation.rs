@@ -12,19 +12,9 @@ use tracing::info_span;
 
 use crate::{BabyBearSC, CompiledProgram};
 
-#[cfg(not(feature = "cuda"))]
+// Use CPU for simplicity.
 use crate::PowdrSdkCpu as PowdrSdk;
-#[cfg(feature = "cuda")]
-use crate::PowdrSdkGpu as PowdrSdk;
-
-#[cfg(not(feature = "cuda"))]
 use crate::SpecializedConfigCpuBuilder as SpecializedConfigBuilder;
-#[cfg(feature = "cuda")]
-use crate::SpecializedConfigGpuBuilder as SpecializedConfigBuilder;
-
-#[cfg(feature = "cuda")]
-use openvm_cuda_backend::engine::GpuBabyBearPoseidon2Engine as BabyBearPoseidon2Engine;
-#[cfg(not(feature = "cuda"))]
 use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
 
 /// Given a program and input, generates the trace segment by segment and calls the provided
