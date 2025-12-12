@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::Hash;
 
@@ -63,6 +63,19 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         let (algebraic_constraints, bus_interactions) =
             transform_constraint_system(&system, &var_mapper, expr_db.as_mut().unwrap());
 
+        let duplicate_vars = system
+            .referenced_unknown_variables()
+            .map(|v| var_mapper.id(v))
+            .duplicates()
+            .collect::<HashSet<_>>();
+        let single_occurrence_vars = system
+            .referenced_unknown_variables()
+            .map(|v| var_mapper.id(v))
+            .collect::<HashSet<_>>()
+            .difference(&duplicate_vars)
+            .copied()
+            .collect::<HashSet<_>>();
+
         // Create the "environment" singleton that can be used by the rules
         // to query information from the outside world.
         let env = Environment::<T>::new(
@@ -71,10 +84,7 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                 .iter()
                 .map(|(id, var)| (id, var.to_string()))
                 .collect(),
-            system
-                .single_occurrence_variables()
-                .map(|v| var_mapper.id(v))
-                .collect(),
+            single_occurrence_vars,
             system
                 .referenced_unknown_variables()
                 .map(|v| (var_mapper.id(v), range_constraints.get(v)))
