@@ -199,7 +199,6 @@ crepe! {
     FreeVariableCombinationCandidate(e, coeff1, v1, x1, coeff2, v2, x2) <-
       // If we only consider he largest variable pair we could miss optimization opportunities,
       // but at least the replacement becomes deterministic.
-      Env(env),
       LargestSingleOccurrenceVariablePairInExpr(e, v1, v2),
       AlgebraicConstraint(e),
       HasProductSummand(e, x1, v1_e),
