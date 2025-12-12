@@ -8,6 +8,7 @@ use powdr_constraint_solver::{
     constraint_system::BusInteraction, grouped_expression::GroupedExpression,
 };
 use powdr_number::FieldElement;
+use serde::{Deserialize, Serialize};
 
 /// The memory address space for register memory operations.
 const REGISTER_ADDRESS_SPACE: u32 = 1;
@@ -19,7 +20,7 @@ pub struct OpenVmMemoryBusInteraction<T: FieldElement, V> {
     data: Vec<GroupedExpression<T, V>>,
 }
 
-#[derive(Clone, Hash, Eq, PartialEq, Debug)]
+#[derive(Clone, Copy, Hash, Eq, PartialEq, Debug, Serialize, Deserialize)]
 pub struct OpenVmAddress<E> {
     /// The address space (e.g. register, memory, native, etc.), always a concrete number.
     pub address_space: E,

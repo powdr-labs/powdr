@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::air_builder::AirKeygenBuilder;
 use crate::bus_map::{BusMap, OpenVmBusType};
+use crate::memory_bus_interaction::OpenVmAddress;
 use crate::opcode::branch_opcodes_set;
 use crate::powdr_extension::executor::RecordArenaDimension;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
@@ -134,7 +135,7 @@ impl<F> OriginalAirs<F> {
 /// For each air name, the dimension of a record arena needed to store the
 /// records for a single APC call.
 pub fn record_arena_dimension_by_air_name_per_apc_call<F>(
-    apc: &Apc<F, Instr<F>>,
+    apc: &Apc<F, Instr<F>, OpenVmAddress<u32>, F>,
     air_by_opcode_id: &OriginalAirs<F>,
 ) -> BTreeMap<String, RecordArenaDimension> {
     apc.instructions().iter().map(|instr| &instr.0.opcode).fold(

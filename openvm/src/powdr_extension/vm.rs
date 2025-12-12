@@ -14,6 +14,7 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use crate::bus_map::BusMap;
 use crate::customize_exe::OvmApcStats;
 use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
+use crate::memory_bus_interaction::OpenVmAddress;
 use crate::powdr_extension::chip::PowdrAir;
 use crate::powdr_extension::executor::{OriginalArenas, PowdrExecutor};
 use openvm_circuit::{
@@ -46,7 +47,7 @@ pub struct PowdrExtension<F> {
 pub struct PowdrPrecompile<F> {
     pub name: String,
     pub opcode: PowdrOpcode,
-    pub apc: Arc<Apc<F, Instr<F>>>,
+    pub apc: Arc<Apc<F, Instr<F>, OpenVmAddress<u32>, F>>,
     pub apc_stats: Option<OvmApcStats>,
     #[serde(skip)]
     pub apc_record_arena_cpu: Rc<RefCell<OriginalArenas<MatrixRecordArena<F>>>>,
@@ -58,7 +59,7 @@ impl<F> PowdrPrecompile<F> {
     pub fn new(
         name: String,
         opcode: PowdrOpcode,
-        apc: Arc<Apc<F, Instr<F>>>,
+        apc: Arc<Apc<F, Instr<F>, OpenVmAddress<u32>, F>>,
         apc_stats: Option<OvmApcStats>,
     ) -> Self {
         Self {

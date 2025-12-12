@@ -58,15 +58,14 @@ pub struct BabyBearOpenVmApcAdapter<'a> {
 pub struct OpenVmExecutionState<'a, T>(&'a VmState<T, GuestMemory>);
 
 impl<'a, T: PrimeField32> ExecutionState for OpenVmExecutionState<'a, T> {
-    type Pc = u32;
     type Address = OpenVmAddress<u32>;
     type Value = T;
 
-    fn pc(&self) -> Self::Pc {
-        self.0.pc()
+    fn pc(&self) -> Self::Value {
+        T::from_canonical_u32(self.0.pc())
     }
 
-    fn read(&self, addr: Self::Address) -> Self::Value {
+    fn read(&self, addr: &Self::Address) -> Self::Value {
         unsafe {
             self.0
                 .memory
@@ -83,13 +82,13 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     type BusInteractionHandler = OpenVmBusInteractionHandler<Self::PowdrField>;
     type Program = Prog<'a, Self::Field>;
     type Instruction = Instr<Self::Field>;
-    type MemoryAddress<E> = OpenVmAddress<E>;
+    type ConcreteAddress = u32;
     type MemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash> =
         OpenVmMemoryBusInteraction<Self::PowdrField, V>;
     type CustomBusTypes = OpenVmBusType;
     type ApcStats = OvmApcStats;
     type AirId = String;
-    type ExecutionState<'b> = OpenVmExecutionState<'b, BabyBear>;
+    type ExecutionState = OpenVmExecutionState<'a, BabyBear>;
 
     fn into_field(e: Self::PowdrField) -> Self::Field {
         openvm_stark_sdk::p3_baby_bear::BabyBear::from_canonical_u32(
@@ -261,7 +260,7 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32>(
 
 #[derive(Serialize, Deserialize)]
 pub struct OpenVmApcCandidate<F, I> {
-    apc: Arc<Apc<F, I>>,
+    apc: Arc<Apc<F, I, OpenVmAddress<u32>, F>>,
     execution_frequency: usize,
     widths: AirWidthsDiff,
     stats: EvaluationResult,

@@ -2,6 +2,7 @@ use crate::adapter::{Adapter, AdapterApc, AdapterVmConfig};
 use crate::blocks::BasicBlock;
 use crate::bus_map::{BusMap, BusType};
 use crate::evaluation::AirStats;
+use crate::execution::OptimisticConstraints;
 use crate::expression_conversion::algebraic_to_grouped_expression;
 use crate::symbolic_machine_generator::convert_machine_field_type;
 use expression::{AlgebraicExpression, AlgebraicReference};
@@ -327,16 +328,18 @@ pub struct Substitution {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Apc<T, I> {
+pub struct Apc<T, I, A, V> {
     /// The basic block this APC is based on
     pub block: BasicBlock<I>,
     /// The symbolic machine for this APC
     pub machine: SymbolicMachine<T>,
     /// For each original air, the substitutions from original columns to APC columns
     pub subs: Vec<Vec<Substitution>>,
+    /// The optimistic constraints for this apc to be run
+    pub optimistic_constraints: OptimisticConstraints<A, V>,
 }
 
-impl<T, I> Apc<T, I> {
+impl<T, I, A, V> Apc<T, I, A, V> {
     pub fn subs(&self) -> &[Vec<Substitution>] {
         &self.subs
     }
@@ -361,6 +364,7 @@ impl<T, I> Apc<T, I> {
         block: BasicBlock<I>,
         machine: SymbolicMachine<T>,
         column_allocator: ColumnAllocator,
+        optimistic_constraints: OptimisticConstraints<A, V>,
     ) -> Self {
         // Get all poly_ids in the machine
         let all_references = machine
@@ -389,6 +393,7 @@ impl<T, I> Apc<T, I> {
             block,
             machine,
             subs,
+            optimistic_constraints,
         }
     }
 }
@@ -458,7 +463,9 @@ pub fn build<A: Adapter>(
 
     let machine = convert_machine_field_type(machine, &A::into_field);
 
-    let apc = Apc::new(block, machine, column_allocator);
+    let optimistic_constraints = OptimisticConstraints::from_constraints(vec![]);
+
+    let apc = Apc::new(block, machine, column_allocator, optimistic_constraints);
 
     if let Some(path) = apc_candidates_dir_path {
         let ser_path = path

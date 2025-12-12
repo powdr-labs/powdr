@@ -1,5 +1,4 @@
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
-use powdr_constraint_solver::grouped_expression::GroupedExpression;
 use std::collections::BTreeMap;
 use std::hash::Hash;
 use std::{fmt::Display, sync::Arc};
@@ -7,7 +6,7 @@ use std::{fmt::Display, sync::Arc};
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
-use crate::execution::ExecutionState;
+use crate::execution::{ExecutionState, OptimisticConstraints};
 use crate::{
     blocks::{BasicBlock, Instruction, Program},
     constraint_optimizer::IsBusStateful,
@@ -17,23 +16,23 @@ use crate::{
 };
 
 #[derive(Serialize, Deserialize)]
-pub struct ApcWithStats<F, I, S> {
-    apc: Arc<Apc<F, I>>,
+pub struct ApcWithStats<F, I, A, V, S> {
+    apc: Arc<Apc<F, I, A, V>>,
     stats: Option<S>,
 }
-impl<F, I, S> ApcWithStats<F, I, S> {
+impl<F, I, A, V, S> ApcWithStats<F, I, A, V, S> {
     pub fn with_stats(mut self, stats: S) -> Self {
         self.stats = Some(stats);
         self
     }
 
-    pub fn into_parts(self) -> (Arc<Apc<F, I>>, Option<S>) {
+    pub fn into_parts(self) -> (Arc<Apc<F, I, A, V>>, Option<S>) {
         (self.apc, self.stats)
     }
 }
 
-impl<F, I, S> From<Arc<Apc<F, I>>> for ApcWithStats<F, I, S> {
-    fn from(apc: Arc<Apc<F, I>>) -> Self {
+impl<F, I, A, V, S> From<Arc<Apc<F, I, A, V>>> for ApcWithStats<F, I, A, V, S> {
+    fn from(apc: Arc<Apc<F, I, A, V>>) -> Self {
         Self { apc, stats: None }
     }
 }
@@ -83,16 +82,15 @@ where
         + Sync;
     type Program: Program<Self::Instruction> + Send;
     type Instruction: Instruction<Self::Field> + Serialize + for<'de> Deserialize<'de> + Send + Sync;
-    type MemoryAddress<E>;
+    type ConcreteAddress: Send + Sync + Serialize + for<'de> Deserialize<'de>;
     type MemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash>: MemoryBusInteraction<
         Self::PowdrField,
         V,
-        Address = Self::MemoryAddress<GroupedExpression<Self::PowdrField, V>>,
     >;
     type CustomBusTypes: Clone + Display + Sync + Eq + PartialEq;
     type ApcStats: Send + Sync;
     type AirId: Eq + Hash + Send + Sync;
-    type ExecutionState<'a>: ExecutionState<Address = Self::MemoryAddress<u32>>;
+    type ExecutionState: ExecutionState;
 
     fn into_field(e: Self::PowdrField) -> Self::Field;
 
@@ -103,13 +101,28 @@ where
     }
 }
 
-pub type AdapterApcWithStats<A> =
-    ApcWithStats<<A as Adapter>::Field, <A as Adapter>::Instruction, <A as Adapter>::ApcStats>;
+pub type AdapterApcWithStats<A> = ApcWithStats<
+    <A as Adapter>::Field,
+    <A as Adapter>::Instruction,
+    <<A as Adapter>::ExecutionState as ExecutionState>::Address,
+    <<A as Adapter>::ExecutionState as ExecutionState>::Value,
+    <A as Adapter>::ApcStats,
+>;
 pub type ApcStats<A> = <A as Adapter>::ApcStats;
-pub type AdapterApc<A> = Apc<<A as Adapter>::Field, <A as Adapter>::Instruction>;
+pub type AdapterApc<A> = Apc<
+    <A as Adapter>::Field,
+    <A as Adapter>::Instruction,
+    <<A as Adapter>::ExecutionState as ExecutionState>::Address,
+    <<A as Adapter>::ExecutionState as ExecutionState>::Value,
+>;
 pub type AdapterVmConfig<'a, A> = VmConfig<
     'a,
     <A as Adapter>::InstructionHandler,
     <A as Adapter>::BusInteractionHandler,
     <A as Adapter>::CustomBusTypes,
+>;
+pub type AdapterExecutionState<A> = <A as Adapter>::ExecutionState;
+pub type AdapterOptimisticConstraints<A> = OptimisticConstraints<
+    <<A as Adapter>::ExecutionState as ExecutionState>::Address,
+    <<A as Adapter>::ExecutionState as ExecutionState>::Value,
 >;

@@ -175,7 +175,7 @@ pub fn compile_bus_to_gpu(
 }
 
 pub struct PowdrTraceGeneratorGpu {
-    pub apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
+    pub apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmAdress<u32>, BabyBear>>,
     pub original_airs: OriginalAirs<BabyBear>,
     pub config: OriginalVmConfig,
     pub periphery: PowdrPeripheryInstancesGpu,
@@ -183,7 +183,7 @@ pub struct PowdrTraceGeneratorGpu {
 
 impl PowdrTraceGeneratorGpu {
     pub fn new(
-        apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
+        apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmAdress<u32>, BabyBear>>,
         original_airs: OriginalAirs<BabyBear>,
         config: OriginalVmConfig,
         periphery: PowdrPeripheryInstancesGpu,
