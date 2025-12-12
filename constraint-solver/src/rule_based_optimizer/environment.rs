@@ -99,7 +99,6 @@ impl<T: FieldElement> Environment<T> {
         )
     }
 
-    #[allow(dead_code)]
     /// Turns a GroupedExpression into the corresponding Expr,
     /// allocating a new ID if it is not yet present.
     /// Use this function when you only have a reference to the expression.
@@ -116,12 +115,10 @@ impl<T: FieldElement> Environment<T> {
 
     /// Turns an Expr into an owned GroupedExpression.
     /// This is expensive since it clones the expression.
-    #[allow(dead_code)]
     pub fn extract(&self, expr: Expr) -> GroupedExpression<T, Var> {
         self.expressions.borrow()[expr].clone()
     }
 
-    #[allow(dead_code)]
     pub fn new_var(
         &self,
         prefix: &str,
@@ -130,7 +127,6 @@ impl<T: FieldElement> Environment<T> {
         self.new_var_generator.borrow_mut().generate(prefix, method)
     }
 
-    #[allow(dead_code)]
     pub fn single_occurrence_variables(&self) -> impl Iterator<Item = &Var> {
         self.single_occurrence_variables.iter()
     }
@@ -171,7 +167,6 @@ impl<T: FieldElement> Environment<T> {
         f(expr, args)
     }
 
-    #[allow(dead_code)]
     /// If this returns Some(e1, e2) then the expression equals e1 * e2.
     pub fn try_as_single_product(&self, expr: Expr) -> Option<(Expr, Expr)> {
         let (l, r) = {
@@ -183,34 +178,6 @@ impl<T: FieldElement> Environment<T> {
         // if we change GroupedExpression to use `Expr` for the recursion, we do not
         // have to insert everything multiple times.
         Some((self.insert(&l), self.insert(&r)))
-    }
-
-    /// Substitutes the variable `var` by the constant `value` in the expression `e`
-    /// and returns the resulting expression.
-    pub fn substitute_by_known(&self, e: Expr, var: Var, value: T) -> Expr {
-        let expr = {
-            let db = self.expressions.borrow();
-            let mut expr = db[e].clone();
-            // expr.substitute_by_known(&var, &value);
-            expr.substitute_simple(&var, value);
-            expr
-        };
-        self.insert_owned(expr)
-    }
-
-    /// Substitutes the variable `var` by the variable `replacement` in the expression `e`
-    /// and returns the resulting expression.
-    pub fn substitute_by_var(&self, e: Expr, var: Var, replacement: Var) -> Expr {
-        let expr = {
-            let db = self.expressions.borrow();
-            let mut expr = db[e].clone();
-            expr.substitute_by_unknown(
-                &var,
-                &GroupedExpression::from_unknown_variable(replacement),
-            );
-            expr
-        };
-        self.insert_owned(expr)
     }
 
     #[allow(dead_code)]
