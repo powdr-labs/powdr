@@ -393,6 +393,7 @@ impl<T, I> Apc<T, I> {
 }
 
 /// Allocates global poly_ids and keeps track of substitutions
+#[derive(Clone)]
 pub struct ColumnAllocator {
     /// For each original air, for each original column index, the associated poly_id in the APC air
     subs: Vec<Vec<u64>>,
@@ -429,6 +430,9 @@ pub fn build<A: Adapter>(
         &vm_config.bus_map,
     );
 
+    let unopt_machine = machine.clone();
+    let unopt_col_alloc = column_allocator.clone();
+
     let labels = [("apc_start_pc", block.start_pc.to_string())];
     metrics::counter!("before_opt_cols", &labels)
         .absolute(machine.unique_references().count() as u64);
@@ -457,13 +461,24 @@ pub fn build<A: Adapter>(
 
     let machine = convert_machine_field_type(machine, &A::into_field);
 
-    let apc = Apc::new(block, machine, column_allocator);
+    let apc = Apc::new(block.clone(), machine, column_allocator);
 
     if let Some(path) = apc_candidates_dir_path {
+        std::fs::create_dir_all(path).expect("Failed to create directory for APC candidates");
+
+        let ser_path_unopt = path
+            .join(format!("apc_candidate_unopt_{}", apc.start_pc()))
+            .with_extension("cbor");
+        let file_unopt = std::fs::File::create(&ser_path_unopt)
+            .expect("Failed to create file for unoptimized APC candidate");
+        let writer_unopt = BufWriter::new(file_unopt);
+        let apc_unopt = Apc::new(block, unopt_machine, unopt_col_alloc);
+        serde_cbor::to_writer(writer_unopt, &apc_unopt)
+            .expect("Failed to write unoptimized APC candidate to file");
+
         let ser_path = path
             .join(format!("apc_candidate_{}", apc.start_pc()))
             .with_extension("cbor");
-        std::fs::create_dir_all(path).expect("Failed to create directory for APC candidates");
         let file =
             std::fs::File::create(&ser_path).expect("Failed to create file for APC candidate");
         let writer = BufWriter::new(file);
