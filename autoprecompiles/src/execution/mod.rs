@@ -269,3 +269,86 @@ impl<'a, E: ExecutionState> StepOptimisticConstraintEvaluator<'a, E> {
         todo!()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct TestExecutionState {
+        mem: HashMap<u8, u8>,
+        pc: u8,
+    }
+
+    impl ExecutionState for TestExecutionState {
+        type Address = u8;
+
+        type Value = u8;
+
+        fn pc(&self) -> Self::Value {
+            self.pc
+        }
+
+        fn read(&self, address: &Self::Address) -> Self::Value {
+            self.mem[address]
+        }
+    }
+
+    #[test]
+    fn test() {
+        let constraints: OptimisticConstraints<u8, u8> =
+            OptimisticConstraints::from_constraints(vec![
+                OptimisticConstraint {
+                    left: OptimisticExpression::Literal(OptimisticLiteral {
+                        instr_idx: 0,
+                        val: LocalOptimisticLiteral::Memory(0),
+                    }),
+                    right: OptimisticExpression::Literal(OptimisticLiteral {
+                        instr_idx: 0,
+                        val: LocalOptimisticLiteral::Memory(1),
+                    }),
+                },
+                OptimisticConstraint {
+                    left: OptimisticExpression::Literal(OptimisticLiteral {
+                        instr_idx: 1,
+                        val: LocalOptimisticLiteral::Memory(0),
+                    }),
+                    right: OptimisticExpression::Literal(OptimisticLiteral {
+                        instr_idx: 1,
+                        val: LocalOptimisticLiteral::Memory(1),
+                    }),
+                },
+                OptimisticConstraint {
+                    left: OptimisticExpression::Literal(OptimisticLiteral {
+                        instr_idx: 2,
+                        val: LocalOptimisticLiteral::Memory(0),
+                    }),
+                    right: OptimisticExpression::Literal(OptimisticLiteral {
+                        instr_idx: 2,
+                        val: LocalOptimisticLiteral::Memory(1),
+                    }),
+                },
+            ]);
+
+        let evaluator: OptimisticConstraintEvaluator<TestExecutionState> =
+            OptimisticConstraintEvaluator::new(constraints);
+
+        let states = [TestExecutionState {
+                mem: [(0, 0), (1, 0)].into_iter().collect(),
+                pc: 0,
+            },
+            TestExecutionState {
+                mem: [(0, 1), (1, 1)].into_iter().collect(),
+                pc: 1,
+            },
+            TestExecutionState {
+                mem: [(0, 2), (1, 0)].into_iter().collect(),
+                pc: 2,
+            }];
+
+        let res = states.iter().try_fold(evaluator, |mut evaluator, state| {
+            evaluator.try_next(state).map(|_| evaluator)
+        });
+
+        assert!(res.is_err());
+    }
+}
