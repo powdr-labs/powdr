@@ -20,7 +20,6 @@ mod boolean_extractor;
 mod constraint_splitter;
 mod exhaustive_search;
 mod linearizer;
-mod quadratic_equivalences;
 mod var_transformation;
 
 /// Solve a constraint system, i.e. derive assignments for variables in the system.
