@@ -14,7 +14,9 @@ pub trait ExecutionState {
         + Copy
         + std::fmt::Debug
         + Serialize
-        + for<'a> Deserialize<'a>;
+        + for<'a> Deserialize<'a>
+        + Send
+        + Sync;
     type Value: PartialEq
         + Eq
         + std::fmt::Debug
@@ -332,7 +334,8 @@ mod tests {
         let evaluator: OptimisticConstraintEvaluator<TestExecutionState> =
             OptimisticConstraintEvaluator::new(constraints);
 
-        let states = [TestExecutionState {
+        let states = [
+            TestExecutionState {
                 mem: [(0, 0), (1, 0)].into_iter().collect(),
                 pc: 0,
             },
@@ -343,7 +346,8 @@ mod tests {
             TestExecutionState {
                 mem: [(0, 2), (1, 0)].into_iter().collect(),
                 pc: 2,
-            }];
+            },
+        ];
 
         let res = states.iter().try_fold(evaluator, |mut evaluator, state| {
             evaluator.try_next(state).map(|_| evaluator)

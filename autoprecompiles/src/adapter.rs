@@ -26,6 +26,7 @@ impl<F, I, A, V, S> ApcWithStats<F, I, A, V, S> {
         self
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn into_parts(self) -> (Arc<Apc<F, I, A, V>>, Option<S>) {
         (self.apc, self.stats)
     }

@@ -1,9 +1,10 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
+use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use strum::{Display, EnumString};
 
 use crate::{
-    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig},
+    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, ApcWithStats},
     blocks::BasicBlock,
     PowdrConfig,
 };
@@ -73,35 +74,33 @@ pub fn pgo_config(
 // Only used for PgoConfig::Instruction and PgoConfig::None,
 // because PgoConfig::Cell caches all APCs in sorting stage.
 fn create_apcs_for_all_blocks<A: Adapter>(
-    _blocks: Vec<BasicBlock<A::Instruction>>,
+    blocks: Vec<BasicBlock<A::Instruction>>,
     config: &PowdrConfig,
-    _vm_config: AdapterVmConfig<A>,
+    vm_config: AdapterVmConfig<A>,
 ) -> Vec<AdapterApcWithStats<A>> {
     let n_acc = config.autoprecompiles as usize;
     tracing::info!("Generating {n_acc} autoprecompiles in parallel");
 
-    // blocks
-    //     .into_par_iter()
-    //     .skip(config.skip_autoprecompiles as usize)
-    //     .take(n_acc)
-    //     .map(|block| {
-    //         tracing::debug!(
-    //             "Accelerating block of length {} and start pc {}",
-    //             block.statements.len(),
-    //             block.start_pc
-    //         );
+    blocks
+        .into_par_iter()
+        .skip(config.skip_autoprecompiles as usize)
+        .take(n_acc)
+        .map(|block| {
+            tracing::debug!(
+                "Accelerating block of length {} and start pc {}",
+                block.statements.len(),
+                block.start_pc
+            );
 
-    //         crate::build::<A>(
-    //             block,
-    //             vm_config.clone(),
-    //             config.degree_bound,
-    //             config.apc_candidates_dir_path.as_deref(),
-    //         )
-    //         .unwrap()
-    //     })
-    //     .map(Arc::new)
-    //     .map(ApcWithStats::from)
-    //     .collect()
-
-    todo!()
+            crate::build::<A>(
+                block,
+                vm_config.clone(),
+                config.degree_bound,
+                config.apc_candidates_dir_path.as_deref(),
+            )
+            .unwrap()
+        })
+        .map(Arc::new)
+        .map(ApcWithStats::from)
+        .collect()
 }
