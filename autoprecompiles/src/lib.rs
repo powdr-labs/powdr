@@ -335,7 +335,7 @@ pub struct Apc<T, I, A, V> {
     pub machine: SymbolicMachine<T>,
     /// For each original air, the substitutions from original columns to APC columns
     pub subs: Vec<Vec<Substitution>>,
-    /// The optimistic constraints for this apc to be run
+    /// The optimistic constraints to be satisfied for this apc to be run
     pub optimistic_constraints: OptimisticConstraints<A, V>,
 }
 
@@ -463,6 +463,7 @@ pub fn build<A: Adapter>(
 
     let machine = convert_machine_field_type(machine, &A::into_field);
 
+    // TODO: add optimistic constraints here
     let optimistic_constraints = OptimisticConstraints::from_constraints(vec![]);
 
     let apc = Apc::new(block, machine, column_allocator, optimistic_constraints);

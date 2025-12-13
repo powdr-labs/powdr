@@ -57,6 +57,7 @@ pub struct BabyBearOpenVmApcAdapter<'a> {
 
 pub struct OpenVmExecutionState<'a, T>(&'a VmState<T, GuestMemory>);
 
+// TODO: untested!
 impl<'a, T: PrimeField32> ExecutionState for OpenVmExecutionState<'a, T> {
     type Address = OpenVmAddress<u32>;
     type Value = T;
@@ -82,7 +83,6 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     type BusInteractionHandler = OpenVmBusInteractionHandler<Self::PowdrField>;
     type Program = Prog<'a, Self::Field>;
     type Instruction = Instr<Self::Field>;
-    type ConcreteAddress = u32;
     type MemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash> =
         OpenVmMemoryBusInteraction<Self::PowdrField, V>;
     type CustomBusTypes = OpenVmBusType;

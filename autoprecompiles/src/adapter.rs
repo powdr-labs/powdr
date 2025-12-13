@@ -83,7 +83,6 @@ where
         + Sync;
     type Program: Program<Self::Instruction> + Send;
     type Instruction: Instruction<Self::Field> + Serialize + for<'de> Deserialize<'de> + Send + Sync;
-    type ConcreteAddress: Send + Sync + Serialize + for<'de> Deserialize<'de>;
     type MemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash>: MemoryBusInteraction<
         Self::PowdrField,
         V,
