@@ -9,13 +9,15 @@ use std::sync::Arc;
 use crate::bus_map::OpenVmBusType;
 use crate::extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs, OriginalVmConfig};
 use crate::instruction_formatter::openvm_instruction_formatter;
-use crate::memory_bus_interaction::OpenVmMemoryBusInteraction;
+use crate::memory_bus_interaction::{OpenVmAddress, OpenVmMemoryBusInteraction};
 use crate::powdr_extension::chip::PowdrAir;
 use crate::program::Prog;
 use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::OriginalCompiledProgram;
 use crate::{CompiledProgram, SpecializedConfig};
 use itertools::Itertools;
+use openvm_circuit::arch::VmState;
+use openvm_circuit::system::memory::online::GuestMemory;
 use openvm_instructions::instruction::Instruction as OpenVmInstruction;
 use openvm_instructions::program::DEFAULT_PC_STEP;
 use openvm_instructions::VmOpcode;
@@ -29,6 +31,7 @@ use powdr_autoprecompiles::adapter::{
 };
 use powdr_autoprecompiles::blocks::{BasicBlock, Instruction};
 use powdr_autoprecompiles::evaluation::{evaluate_apc, EvaluationResult};
+use powdr_autoprecompiles::execution::ExecutionState;
 use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::pgo::{ApcCandidateJsonExport, Candidate, KnapsackItem};
 use powdr_autoprecompiles::SymbolicBusInteraction;
@@ -52,6 +55,27 @@ pub struct BabyBearOpenVmApcAdapter<'a> {
     _marker: std::marker::PhantomData<&'a ()>,
 }
 
+pub struct OpenVmExecutionState<'a, T>(&'a VmState<T, GuestMemory>);
+
+// TODO: untested!
+impl<'a, T: PrimeField32> ExecutionState for OpenVmExecutionState<'a, T> {
+    type Address = OpenVmAddress<u32>;
+    type Value = T;
+
+    fn pc(&self) -> Self::Value {
+        T::from_canonical_u32(self.0.pc())
+    }
+
+    fn read(&self, addr: &Self::Address) -> Self::Value {
+        unsafe {
+            self.0
+                .memory
+                .memory
+                .get_f::<T>(addr.address_space, addr.local_address)
+        }
+    }
+}
+
 impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     type PowdrField = BabyBearField;
     type Field = BabyBear;
@@ -64,6 +88,7 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     type CustomBusTypes = OpenVmBusType;
     type ApcStats = OvmApcStats;
     type AirId = String;
+    type ExecutionState = OpenVmExecutionState<'a, BabyBear>;
 
     fn into_field(e: Self::PowdrField) -> Self::Field {
         openvm_stark_sdk::p3_baby_bear::BabyBear::from_canonical_u32(
@@ -235,7 +260,7 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32>(
 
 #[derive(Serialize, Deserialize)]
 pub struct OpenVmApcCandidate<F, I> {
-    apc: Arc<Apc<F, I>>,
+    apc: Arc<Apc<F, I, OpenVmAddress<u32>, F>>,
     execution_frequency: usize,
     widths: AirWidthsDiff,
     stats: EvaluationResult,

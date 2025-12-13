@@ -4,6 +4,7 @@ use std::{cell::RefCell, collections::BTreeMap, rc::Rc, sync::Arc};
 
 use crate::{
     extraction_utils::{OriginalAirs, OriginalVmConfig},
+    memory_bus_interaction::OpenVmAddress,
     powdr_extension::{
         executor::OriginalArenas,
         trace_generator::cpu::{PowdrPeripheryInstancesCpu, PowdrTraceGeneratorCpu},
@@ -64,7 +65,7 @@ impl PowdrChipCpu {
 pub struct PowdrAir<F> {
     /// The columns in arbitrary order
     columns: Vec<AlgebraicReference>,
-    apc: Arc<Apc<F, Instr<F>>>,
+    apc: Arc<Apc<F, Instr<F>, OpenVmAddress<u32>, F>>,
 }
 
 impl<F: PrimeField32> ColumnsAir<F> for PowdrAir<F> {
@@ -74,7 +75,7 @@ impl<F: PrimeField32> ColumnsAir<F> for PowdrAir<F> {
 }
 
 impl<F: PrimeField32> PowdrAir<F> {
-    pub fn new(apc: Arc<Apc<F, Instr<F>>>) -> Self {
+    pub fn new(apc: Arc<Apc<F, Instr<F>, OpenVmAddress<u32>, F>>) -> Self {
         Self {
             columns: apc.machine().main_columns().collect(),
             apc,

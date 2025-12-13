@@ -38,11 +38,12 @@ pub trait TraceTrait<F>: Send + Sync {
     fn values(&self) -> &Self::Values;
 }
 
-pub fn generate_trace<'a, IH, M: TraceTrait<IH::Field>>(
+// TODO: refactor `Apc` so we don't have to pass A, V here
+pub fn generate_trace<'a, IH, M: TraceTrait<IH::Field>, A, V>(
     air_id_to_dummy_trace: &'a HashMap<IH::AirId, M>,
     instruction_handler: &'a IH,
     apc_call_count: usize,
-    apc: &'a Apc<IH::Field, IH::Instruction>,
+    apc: &'a Apc<IH::Field, IH::Instruction, A, V>,
 ) -> TraceData<'a, IH::Field, M::Values>
 where
     IH: InstructionHandler,
