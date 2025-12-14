@@ -1,4 +1,4 @@
-use std::{collections::HashMap, iter};
+use std::{collections::HashMap, iter, sync::Arc};
 
 use itertools::Itertools;
 use powdr_expression::visitors::{AllChildren, Children};
@@ -33,7 +33,7 @@ pub trait ExecutionState {
 }
 
 // TODO: remove clone
-#[derive(Debug, Serialize, Deserialize, deepsize2::DeepSizeOf, Clone)]
+#[derive(Debug, Serialize, Deserialize, deepsize2::DeepSizeOf)]
 pub struct OptimisticConstraint<A, V> {
     pub left: OptimisticExpression<A, V>,
     pub right: OptimisticExpression<A, V>,
@@ -98,7 +98,7 @@ impl<A, V> OptimisticExpression<A, V> {
 }
 
 // TODO: Remove clone
-#[derive(Debug, Serialize, Deserialize, Clone, deepsize2::DeepSizeOf)]
+#[derive(Debug, Serialize, Deserialize, deepsize2::DeepSizeOf)]
 pub struct OptimisticConstraints<A, V> {
     // TODO: currently if a variable is needed at step n but not after, we still add it to memory which is wasteful
     fetches_by_step: HashMap<usize, Vec<LocalOptimisticLiteral<A>>>,
@@ -115,7 +115,7 @@ impl<A, V> Default for OptimisticConstraints<A, V> {
 }
 
 impl<A: std::hash::Hash + PartialEq + Eq + Copy, V> OptimisticConstraints<A, V> {
-    pub fn from_constraints(constraints: Vec<OptimisticConstraint<A, V>>) -> Self {
+    pub fn from_constraints(constraints: Vec<OptimisticConstraint<A, V>>) -> Arc<Self> {
         // Extract each constraint together with the literals it references and the step
         // at which the constraint becomes evaluable (i.e. when all referenced literals
         // are available).
@@ -149,16 +149,18 @@ impl<A: std::hash::Hash + PartialEq + Eq + Copy, V> OptimisticConstraints<A, V> 
             .into_iter()
             .map(|(first_evaluable_step, _, constraint)| (first_evaluable_step, constraint))
             .into_group_map();
-        Self {
+        Arc::new(Self {
             fetches_by_step,
             constraints_to_check_by_step,
-        }
+        })
     }
 }
 
-pub struct OptimisticConstraintEvaluator<E: ExecutionState> {
+pub struct OptimisticConstraintEvaluator<
+    E: ExecutionState,
+> {
     /// The constraints that all need to be verified
-    constraints: OptimisticConstraints<E::Address, E::Value>,
+    constraints: Arc<OptimisticConstraints<E::Address, E::Value>>,
     /// The current instruction index in the execution
     instruction_index: usize,
     /// The values from previous intermediate states which we still need
@@ -190,8 +192,10 @@ impl<'a, E: ExecutionState> StepOptimisticConstraintEvaluator<'a, E> {
 #[derive(Debug)]
 pub struct OptimisticConstraintFailed;
 
-impl<E: ExecutionState> OptimisticConstraintEvaluator<E> {
-    pub fn new(constraints: OptimisticConstraints<E::Address, E::Value>) -> Self {
+impl<E: ExecutionState>
+    OptimisticConstraintEvaluator<E>
+{
+    pub fn new(constraints: Arc<OptimisticConstraints<E::Address, E::Value>>) -> Self {
         Self {
             constraints,
             instruction_index: 0,
@@ -203,6 +207,7 @@ impl<E: ExecutionState> OptimisticConstraintEvaluator<E> {
     pub fn try_next(&mut self, state: &E) -> Result<(), OptimisticConstraintFailed> {
         let mut constraints = self
             .constraints
+            .as_ref()
             .constraints_to_check_by_step
             .get(&self.instruction_index)
             .into_iter()
@@ -217,6 +222,7 @@ impl<E: ExecutionState> OptimisticConstraintEvaluator<E> {
 
         let fetches = self
             .constraints
+            .as_ref()
             .fetches_by_step
             .get(&self.instruction_index)
             .into_iter()
@@ -355,7 +361,7 @@ mod tests {
         OptimisticConstraint { left, right }
     }
 
-    fn equality_constraints() -> OptimisticConstraints<u8, u8> {
+    fn equality_constraints() -> Arc<OptimisticConstraints<u8, u8>> {
         OptimisticConstraints::from_constraints(vec![
             eq(mem(0, 0), mem(0, 1)),
             eq(mem(1, 0), mem(1, 1)),
@@ -363,15 +369,15 @@ mod tests {
         ])
     }
 
-    fn cross_step_memory_constraint() -> OptimisticConstraints<u8, u8> {
+    fn cross_step_memory_constraint() -> Arc<OptimisticConstraints<u8, u8>> {
         OptimisticConstraints::from_constraints(vec![eq(mem(0, 0), mem(1, 1))])
     }
 
-    fn cross_step_pc_constraint() -> OptimisticConstraints<u8, u8> {
+    fn cross_step_pc_constraint() -> Arc<OptimisticConstraints<u8, u8>> {
         OptimisticConstraints::from_constraints(vec![eq(pc(0), pc(1))])
     }
 
-    fn initial_to_final_constraint(final_instr_idx: usize) -> OptimisticConstraints<u8, u8> {
+    fn initial_to_final_constraint(final_instr_idx: usize) -> Arc<OptimisticConstraints<u8, u8>> {
         OptimisticConstraints::from_constraints(vec![eq(mem(0, 0), mem(final_instr_idx, 1))])
     }
 
