@@ -39,7 +39,6 @@ use powdr_autoprecompiles::pgo::{ApcCandidateJsonExport, Candidate, KnapsackItem
 use powdr_autoprecompiles::SymbolicBusInteraction;
 use powdr_autoprecompiles::VmConfig;
 use powdr_autoprecompiles::{Apc, PowdrConfig};
-use powdr_constraint_solver::grouped_expression::GroupedExpression;
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use serde::{Deserialize, Serialize};
 
@@ -79,6 +78,7 @@ impl<'a, T: PrimeField32> ExecutionState for OpenVmExecutionState<'a, T> {
     }
 }
 
+/// A type to represent register addresses during execution
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct OpenVmRegisterAddress(u8);
 
@@ -87,14 +87,13 @@ pub enum RegisterAddressError {
     NotConcrete,
 }
 
-impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash>
-    TryFrom<OpenVmAddress<GroupedExpression<T, V>>> for OpenVmRegisterAddress
+impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> TryFrom<OpenVmAddress<T, V>>
+    for OpenVmRegisterAddress
 {
     type Error = RegisterAddressError;
 
-    fn try_from(value: OpenVmAddress<GroupedExpression<T, V>>) -> Result<Self, Self::Error> {
-        let space = value.address_space.try_to_number().unwrap();
-        if space != T::from(REGISTER_ADDRESS_SPACE) {
+    fn try_from(value: OpenVmAddress<T, V>) -> Result<Self, Self::Error> {
+        if value.address_space != T::from(REGISTER_ADDRESS_SPACE) {
             return Err(RegisterAddressError::NotRegister);
         }
         value
