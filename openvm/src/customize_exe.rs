@@ -118,7 +118,6 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     type ApcStats = OvmApcStats;
     type AirId = String;
     type ExecutionState = OpenVmExecutionState<'a, BabyBear>;
-    type ConcreteRegisterAddress = OpenVmRegisterAddress;
 
     fn into_field(e: Self::PowdrField) -> Self::Field {
         openvm_stark_sdk::p3_baby_bear::BabyBear::from_canonical_u32(

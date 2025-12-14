@@ -7,7 +7,6 @@ use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
 use crate::execution::{ExecutionState, OptimisticConstraints};
-use crate::expression::AlgebraicReference;
 use crate::{
     blocks::{BasicBlock, Instruction, Program},
     constraint_optimizer::IsBusStateful,
@@ -88,26 +87,10 @@ where
         Self::PowdrField,
         V,
     >;
-    type ConcreteRegisterAddress: PartialEq
-        + Eq
-        + std::hash::Hash
-        + Clone
-        + Copy
-        + std::fmt::Debug
-        + Serialize
-        + for<'a> Deserialize<'a>
-        + Send
-        + Sync
-        + TryFrom<
-            <Self::MemoryBusInteraction<AlgebraicReference> as MemoryBusInteraction<
-                Self::PowdrField,
-                AlgebraicReference,
-            >>::Address,
-        >;
     type CustomBusTypes: Clone + Display + Sync + Eq + PartialEq;
     type ApcStats: Send + Sync;
     type AirId: Eq + Hash + Send + Sync;
-    type ExecutionState: ExecutionState<RegisterAddress = Self::ConcreteRegisterAddress>;
+    type ExecutionState: ExecutionState;
 
     fn into_field(e: Self::PowdrField) -> Self::Field;
 
