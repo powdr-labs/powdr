@@ -27,12 +27,13 @@ pub trait ExecutionState {
         + Send
         + Sync;
 
+    /// Return the pc at this point
     fn pc(&self) -> Self::Value;
 
+    /// Read a register at this point
     fn read(&self, address: &Self::RegisterAddress) -> Self::Value;
 }
 
-// TODO: remove clone
 #[derive(Debug, Serialize, Deserialize, deepsize2::DeepSizeOf)]
 pub struct OptimisticConstraint<A, V> {
     pub left: OptimisticExpression<A, V>,
@@ -83,10 +84,6 @@ pub enum OptimisticExpression<A, V> {
 }
 
 impl<A, V> OptimisticExpression<A, V> {
-    /// Returns an iterator over all (top-level) expressions in this expression.
-    /// This specifically does not implement the Children trait because otherwise it
-    /// would have a wrong implementation of ExpressionVisitable (which is implemented
-    /// generically for all types that implement Children<Expr>).
     fn children(&self) -> Box<dyn Iterator<Item = &OptimisticExpression<A, V>> + '_> {
         match self {
             OptimisticExpression::Literal(_) | OptimisticExpression::Value(_) => {
@@ -97,21 +94,12 @@ impl<A, V> OptimisticExpression<A, V> {
     }
 }
 
-// TODO: Remove clone
 #[derive(Debug, Serialize, Deserialize, deepsize2::DeepSizeOf)]
 pub struct OptimisticConstraints<A, V> {
-    // TODO: currently if a variable is needed at step n but not after, we still add it to memory which is wasteful
+    /// For each step, the execution values we need to remember for future constraints, excluding this step
     fetches_by_step: HashMap<usize, Vec<LocalOptimisticLiteral<A>>>,
+    /// For each step, the constraints that must be satisfied
     constraints_to_check_by_step: HashMap<usize, Vec<OptimisticConstraint<A, V>>>,
-}
-
-impl<A, V> Default for OptimisticConstraints<A, V> {
-    fn default() -> Self {
-        Self {
-            fetches_by_step: Default::default(),
-            constraints_to_check_by_step: Default::default(),
-        }
-    }
 }
 
 impl<A: std::hash::Hash + PartialEq + Eq + Copy, V> OptimisticConstraints<A, V> {
