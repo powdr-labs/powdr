@@ -7,10 +7,10 @@ use std::{
 };
 
 use crate::{
+    customize_exe::OpenVmRegisterAddress,
     extraction_utils::{
         record_arena_dimension_by_air_name_per_apc_call, OriginalAirs, OriginalVmConfig,
     },
-    memory_bus_interaction::OpenVmAddress,
     Instr,
 };
 
@@ -42,7 +42,7 @@ use openvm_circuit::{
 pub struct PowdrExecutor {
     pub air_by_opcode_id: OriginalAirs<BabyBear>,
     pub executor_inventory: ExecutorInventory<SdkVmConfigExecutor<BabyBear>>,
-    pub apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmAddress<u32>, BabyBear>>,
+    pub apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, BabyBear>>,
     pub original_arenas_cpu: Rc<RefCell<OriginalArenas<MatrixRecordArena<BabyBear>>>>,
     pub original_arenas_gpu: Rc<RefCell<OriginalArenas<DenseRecordArena>>>,
     pub height_change: u32,
@@ -70,7 +70,7 @@ impl<A: Arena> OriginalArenas<A> {
         &mut self,
         apc_call_count_estimate: impl Fn() -> usize,
         original_airs: &OriginalAirs<BabyBear>,
-        apc: &Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmAddress<u32>, BabyBear>>,
+        apc: &Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, BabyBear>>,
     ) {
         match self {
             OriginalArenas::Uninitialized => {
@@ -135,7 +135,7 @@ impl<A: Arena> InitializedOriginalArenas<A> {
     pub fn new(
         apc_call_count_estimate: usize,
         original_airs: &OriginalAirs<BabyBear>,
-        apc: &Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmAddress<u32>, BabyBear>>,
+        apc: &Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, BabyBear>>,
     ) -> Self {
         let record_arena_dimensions =
             record_arena_dimension_by_air_name_per_apc_call(apc, original_airs);
@@ -567,7 +567,7 @@ impl PowdrExecutor {
     pub fn new(
         air_by_opcode_id: OriginalAirs<BabyBear>,
         base_config: OriginalVmConfig,
-        apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmAddress<u32>, BabyBear>>,
+        apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, BabyBear>>,
         record_arena_by_air_name_cpu: Rc<RefCell<OriginalArenas<MatrixRecordArena<BabyBear>>>>,
         record_arena_by_air_name_gpu: Rc<RefCell<OriginalArenas<DenseRecordArena>>>,
         height_change: u32,

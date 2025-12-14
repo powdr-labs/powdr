@@ -19,8 +19,8 @@ use powdr_autoprecompiles::{
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 
 use crate::{
+    customize_exe::OpenVmRegisterAddress,
     extraction_utils::{OriginalAirs, OriginalVmConfig},
-    memory_bus_interaction::OpenVmAddress,
     powdr_extension::{
         chip::PowdrChipCpu,
         executor::OriginalArenas,
@@ -75,7 +75,7 @@ impl<R, PB: ProverBackend<Matrix = Arc<RowMajorMatrix<BabyBear>>>> Chip<R, PB> f
 }
 
 pub struct PowdrTraceGeneratorCpu {
-    pub apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmAddress<u32>, BabyBear>>,
+    pub apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, BabyBear>>,
     pub original_airs: OriginalAirs<BabyBear>,
     pub config: OriginalVmConfig,
     pub periphery: PowdrPeripheryInstancesCpu,
@@ -83,7 +83,7 @@ pub struct PowdrTraceGeneratorCpu {
 
 impl PowdrTraceGeneratorCpu {
     pub fn new(
-        apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmAddress<u32>, BabyBear>>,
+        apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, BabyBear>>,
         original_airs: OriginalAirs<BabyBear>,
         config: OriginalVmConfig,
         periphery: PowdrPeripheryInstancesCpu,

@@ -2,8 +2,12 @@ use crate::adapter::{Adapter, AdapterApc, AdapterVmConfig};
 use crate::blocks::BasicBlock;
 use crate::bus_map::{BusMap, BusType};
 use crate::evaluation::AirStats;
-use crate::execution::OptimisticConstraints;
+use crate::execution::{
+    ExecutionState, OptimisticConstraint, OptimisticConstraints, OptimisticLiteral,
+};
 use crate::expression_conversion::algebraic_to_grouped_expression;
+use crate::memory_optimizer::MemoryBusInteraction;
+use crate::optimizer::symbolic_machine_to_constraint_system;
 use crate::symbolic_machine_generator::convert_machine_field_type;
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
@@ -393,7 +397,7 @@ impl<T, I, A, V> Apc<T, I, A, V> {
             block,
             machine,
             subs,
-            optimistic_constraints
+            optimistic_constraints,
         }
     }
 }
@@ -451,6 +455,39 @@ pub fn build<A: Adapter>(
         column_allocator,
     )?;
 
+    let [first_interaction, second_interaction]: [A::ConcreteRegisterAddress; 2] = symbolic_machine_to_constraint_system(
+        machine.clone(),
+    )
+    .bus_interactions
+    .iter()
+    .filter_map(|i| {
+        let i = <A::MemoryBusInteraction<_> as MemoryBusInteraction<_, _>>::try_from_bus_interaction(
+            i,
+            vm_config.bus_map.get_bus_id(&BusType::Memory).unwrap(),
+        ).ok().flatten()?;
+        let addr = i.addr();
+        addr.try_into().ok()
+    })
+    .take(2)
+    .collect::<Vec<_>>()
+    .try_into()
+    .map_err(|_| ())
+    .unwrap();
+
+    let constraint: OptimisticConstraint<_, <A::ExecutionState as ExecutionState>::Value> =
+        OptimisticConstraint {
+            left: execution::OptimisticExpression::Literal(OptimisticLiteral {
+                instr_idx: todo!(),
+                val: execution::LocalOptimisticLiteral::Memory(first_interaction),
+            }),
+            right: execution::OptimisticExpression::Literal(OptimisticLiteral {
+                instr_idx: todo!(),
+                val: execution::LocalOptimisticLiteral::Memory(second_interaction),
+            }),
+        };
+
+    let optimistic_constraints = OptimisticConstraints::from_constraints(vec![constraint]);
+
     // add guards to constraints that are not satisfied by zeroes
     let (machine, column_allocator) = add_guards(machine, column_allocator);
 
@@ -462,9 +499,6 @@ pub fn build<A: Adapter>(
         .absolute(machine.unique_references().count() as u64);
 
     let machine = convert_machine_field_type(machine, &A::into_field);
-
-    // TODO: add optimistic constraints here
-    let optimistic_constraints = OptimisticConstraints::from_constraints(vec![]);
 
     let apc = Apc::new(block, machine, column_allocator, optimistic_constraints);
 

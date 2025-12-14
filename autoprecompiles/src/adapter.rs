@@ -7,6 +7,7 @@ use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
 use crate::execution::{ExecutionState, OptimisticConstraints};
+use crate::expression::AlgebraicReference;
 use crate::{
     blocks::{BasicBlock, Instruction, Program},
     constraint_optimizer::IsBusStateful,
@@ -87,10 +88,26 @@ where
         Self::PowdrField,
         V,
     >;
+    type ConcreteRegisterAddress: PartialEq
+        + Eq
+        + std::hash::Hash
+        + Clone
+        + Copy
+        + std::fmt::Debug
+        + Serialize
+        + for<'a> Deserialize<'a>
+        + Send
+        + Sync
+        + TryFrom<
+            <Self::MemoryBusInteraction<AlgebraicReference> as MemoryBusInteraction<
+                Self::PowdrField,
+                AlgebraicReference,
+            >>::Address,
+        >;
     type CustomBusTypes: Clone + Display + Sync + Eq + PartialEq;
     type ApcStats: Send + Sync;
     type AirId: Eq + Hash + Send + Sync;
-    type ExecutionState: ExecutionState;
+    type ExecutionState: ExecutionState<RegisterAddress = Self::ConcreteRegisterAddress>;
 
     fn into_field(e: Self::PowdrField) -> Self::Field;
 
@@ -104,7 +121,7 @@ where
 pub type AdapterApcWithStats<A> = ApcWithStats<
     <A as Adapter>::Field,
     <A as Adapter>::Instruction,
-    <<A as Adapter>::ExecutionState as ExecutionState>::Address,
+    <<A as Adapter>::ExecutionState as ExecutionState>::RegisterAddress,
     <<A as Adapter>::ExecutionState as ExecutionState>::Value,
     <A as Adapter>::ApcStats,
 >;
@@ -112,7 +129,7 @@ pub type ApcStats<A> = <A as Adapter>::ApcStats;
 pub type AdapterApc<A> = Apc<
     <A as Adapter>::Field,
     <A as Adapter>::Instruction,
-    <<A as Adapter>::ExecutionState as ExecutionState>::Address,
+    <<A as Adapter>::ExecutionState as ExecutionState>::RegisterAddress,
     <<A as Adapter>::ExecutionState as ExecutionState>::Value,
 >;
 pub type AdapterVmConfig<'a, A> = VmConfig<
@@ -123,6 +140,6 @@ pub type AdapterVmConfig<'a, A> = VmConfig<
 >;
 pub type AdapterExecutionState<A> = <A as Adapter>::ExecutionState;
 pub type AdapterOptimisticConstraints<A> = OptimisticConstraints<
-    <<A as Adapter>::ExecutionState as ExecutionState>::Address,
+    <<A as Adapter>::ExecutionState as ExecutionState>::RegisterAddress,
     <<A as Adapter>::ExecutionState as ExecutionState>::Value,
 >;

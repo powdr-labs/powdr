@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::powdr::UniqueReferences;
 
 pub trait ExecutionState {
-    type Address: PartialEq
+    type RegisterAddress: PartialEq
         + Eq
         + std::hash::Hash
         + Clone
@@ -29,7 +29,7 @@ pub trait ExecutionState {
 
     fn pc(&self) -> Self::Value;
 
-    fn read(&self, address: &Self::Address) -> Self::Value;
+    fn read(&self, address: &Self::RegisterAddress) -> Self::Value;
 }
 
 // TODO: remove clone
@@ -156,28 +156,26 @@ impl<A: std::hash::Hash + PartialEq + Eq + Copy, V> OptimisticConstraints<A, V> 
     }
 }
 
-pub struct OptimisticConstraintEvaluator<
-    E: ExecutionState,
-> {
+pub struct OptimisticConstraintEvaluator<E: ExecutionState> {
     /// The constraints that all need to be verified
-    constraints: Arc<OptimisticConstraints<E::Address, E::Value>>,
+    constraints: Arc<OptimisticConstraints<E::RegisterAddress, E::Value>>,
     /// The current instruction index in the execution
     instruction_index: usize,
     /// The values from previous intermediate states which we still need
-    memory: HashMap<OptimisticLiteral<E::Address>, E::Value>,
+    memory: HashMap<OptimisticLiteral<E::RegisterAddress>, E::Value>,
 }
 
 struct StepOptimisticConstraintEvaluator<'a, E: ExecutionState> {
     step: usize,
     state: &'a E,
-    memory: &'a HashMap<OptimisticLiteral<E::Address>, E::Value>,
+    memory: &'a HashMap<OptimisticLiteral<E::RegisterAddress>, E::Value>,
 }
 impl<'a, E: ExecutionState> StepOptimisticConstraintEvaluator<'a, E> {
     fn new(
         step: usize,
         state: &'a E,
         memory: &'a HashMap<
-            OptimisticLiteral<<E as ExecutionState>::Address>,
+            OptimisticLiteral<<E as ExecutionState>::RegisterAddress>,
             <E as ExecutionState>::Value,
         >,
     ) -> Self {
@@ -192,10 +190,8 @@ impl<'a, E: ExecutionState> StepOptimisticConstraintEvaluator<'a, E> {
 #[derive(Debug)]
 pub struct OptimisticConstraintFailed;
 
-impl<E: ExecutionState>
-    OptimisticConstraintEvaluator<E>
-{
-    pub fn new(constraints: Arc<OptimisticConstraints<E::Address, E::Value>>) -> Self {
+impl<E: ExecutionState> OptimisticConstraintEvaluator<E> {
+    pub fn new(constraints: Arc<OptimisticConstraints<E::RegisterAddress, E::Value>>) -> Self {
         Self {
             constraints,
             instruction_index: 0,
@@ -268,11 +264,14 @@ pub struct OptimisticMaskedExpression<A, V> {
 }
 
 impl<'a, E: ExecutionState> StepOptimisticConstraintEvaluator<'a, E> {
-    fn evaluate_constraint(&self, c: &OptimisticConstraint<E::Address, E::Value>) -> bool {
+    fn evaluate_constraint(&self, c: &OptimisticConstraint<E::RegisterAddress, E::Value>) -> bool {
         self.evaluate_expression(&c.left) == self.evaluate_expression(&c.right)
     }
 
-    fn evaluate_expression(&self, e: &OptimisticExpression<E::Address, E::Value>) -> E::Value {
+    fn evaluate_expression(
+        &self,
+        e: &OptimisticExpression<E::RegisterAddress, E::Value>,
+    ) -> E::Value {
         match e {
             OptimisticExpression::Value(v) => *v,
             OptimisticExpression::Literal(optimistic_literal) => {
@@ -284,7 +283,7 @@ impl<'a, E: ExecutionState> StepOptimisticConstraintEvaluator<'a, E> {
         }
     }
 
-    fn evaluate_literal(&self, l: &OptimisticLiteral<E::Address>) -> E::Value {
+    fn evaluate_literal(&self, l: &OptimisticLiteral<E::RegisterAddress>) -> E::Value {
         debug_assert!(l.instr_idx <= self.step);
         // Hit the state for the current step
         if l.instr_idx == self.step {
@@ -300,7 +299,7 @@ impl<'a, E: ExecutionState> StepOptimisticConstraintEvaluator<'a, E> {
 
     fn evaluate_masked_expression(
         &self,
-        e: &OptimisticMaskedExpression<E::Address, E::Value>,
+        e: &OptimisticMaskedExpression<E::RegisterAddress, E::Value>,
     ) -> E::Value {
         let _expr = self.evaluate_expression(&e.expr);
         // expr & e.mask
@@ -318,7 +317,7 @@ mod tests {
     }
 
     impl ExecutionState for TestExecutionState {
-        type Address = u8;
+        type RegisterAddress = u8;
 
         type Value = u8;
 
@@ -326,7 +325,7 @@ mod tests {
             self.pc
         }
 
-        fn read(&self, address: &Self::Address) -> Self::Value {
+        fn read(&self, address: &Self::RegisterAddress) -> Self::Value {
             self.mem[address]
         }
     }

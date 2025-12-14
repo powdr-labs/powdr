@@ -11,7 +11,7 @@ use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
 /// The memory address space for register memory operations.
-const REGISTER_ADDRESS_SPACE: u32 = 1;
+pub const REGISTER_ADDRESS_SPACE: u32 = 1;
 
 #[derive(Clone, Debug)]
 pub struct OpenVmMemoryBusInteraction<T: FieldElement, V> {
