@@ -17,9 +17,9 @@ use crate::{
 #[derive(Debug, Serialize, Deserialize, deepsize2::DeepSizeOf)]
 pub struct OptimisticConstraints<A, V> {
     /// For each step, the execution values we need to remember for future constraints, excluding this step
-    fetches_by_step: HashMap<usize, Vec<LocalOptimisticLiteral<A>>>,
+    fetches_by_step: Vec<(usize, Vec<LocalOptimisticLiteral<A>>)>,
     /// For each step, the constraints that must be satisfied
-    constraints_to_check_by_step: HashMap<usize, Vec<OptimisticConstraint<A, V>>>,
+    constraints_to_check_by_step: Vec<(usize, Vec<OptimisticConstraint<A, V>>)>,
 }
 
 impl<A: std::hash::Hash + PartialEq + Eq + Copy, V> OptimisticConstraints<A, V> {
@@ -50,13 +50,20 @@ impl<A: std::hash::Hash + PartialEq + Eq + Copy, V> OptimisticConstraints<A, V> 
                     .filter(move |literal| *constraint_step > literal.instr_idx)
                     .map(|literal| (literal.instr_idx, literal.val))
             })
-            .into_group_map();
+            .into_group_map()
+            .into_iter()
+            .sorted_by_key(|(instruction_index, _)| *instruction_index)
+            .collect();
 
         // The constraint itself can only be checked once all its literals exist.
         let constraints_to_check_by_step = constraint_data
             .into_iter()
             .map(|(first_evaluable_step, _, constraint)| (first_evaluable_step, constraint))
-            .into_group_map();
+            .into_group_map()
+            .into_iter()
+            .sorted_by_key(|(instruction_index, _)| *instruction_index)
+            .collect();
+
         Arc::new(Self {
             fetches_by_step,
             constraints_to_check_by_step,
@@ -75,6 +82,10 @@ pub struct OptimisticConstraintEvaluator<E: ExecutionState> {
     constraints: Arc<OptimisticConstraints<E::RegisterAddress, E::Value>>,
     /// The current instruction index in the execution
     instruction_index: usize,
+    /// The current index in the constraints vector
+    constraints_index: usize,
+    /// The current index in the fetches vector
+    fetches_index: usize,
     /// The values from previous intermediate states which we still need
     memory: HashMap<OptimisticLiteral<E::RegisterAddress>, E::Value>,
 }
@@ -87,48 +98,61 @@ impl<E: ExecutionState> OptimisticConstraintEvaluator<E> {
         Self {
             constraints,
             instruction_index: 0,
+            constraints_index: 0,
+            fetches_index: 0,
             memory: HashMap::default(),
         }
     }
 
     /// Check all constraints that can be checked at this stage, returning a new instance iff they are verified
     pub fn try_next(&mut self, state: &E) -> Result<(), OptimisticConstraintFailed> {
-        // Get the constraints that can first be checked at this step
-        let mut constraints = self
-            .constraints
-            .as_ref()
-            .constraints_to_check_by_step
-            .get(&self.instruction_index)
-            .into_iter()
-            .flatten();
 
-        // Check the constraints based on the current state and the memory of the previous states
-        let evaluator =
-            StepOptimisticConstraintEvaluator::new(self.instruction_index, state, &self.memory);
-        if !constraints.all(|constraint| evaluator.evaluate_constraint(constraint)) {
-            return Err(OptimisticConstraintFailed);
+        let constraints_ref = self.constraints.as_ref();
+
+        // Get the constraints that can first be checked at this step
+        let constraints = constraints_ref
+            .constraints_to_check_by_step
+            .get(self.constraints_index)
+            .and_then(|(instruction_id, constraints)| {
+                (*instruction_id == self.instruction_index).then_some(constraints)
+            });
+
+        if let Some(constraints) = constraints {
+            // Check the constraints based on the current state and the memory of the previous states
+            let evaluator =
+                StepOptimisticConstraintEvaluator::new(self.instruction_index, state, &self.memory);
+            if !constraints
+                .iter()
+                .all(|constraint| evaluator.evaluate_constraint(constraint))
+            {
+                return Err(OptimisticConstraintFailed);
+            }
+            self.constraints_index += 1;
         }
 
         // Get the values we need to store from the state to check constraints in the future
-        let fetches = self
-            .constraints
-            .as_ref()
+        let fetches = constraints_ref
             .fetches_by_step
-            .get(&self.instruction_index)
-            .into_iter()
-            .flatten();
+            .get(self.fetches_index)
+            .and_then(|(instruction_id, fetches)| {
+                (*instruction_id == self.instruction_index).then_some(fetches)
+            });
 
-        // fetch the values them in memory
-        for literal in fetches {
-            let value = match literal {
-                LocalOptimisticLiteral::Register(address) => state.reg(address),
-                LocalOptimisticLiteral::Pc => state.pc(),
-            };
-            let key = OptimisticLiteral {
-                instr_idx: self.instruction_index,
-                val: *literal,
-            };
-            self.memory.insert(key, value);
+        if let Some(fetches) = fetches {
+            // fetch the values them in memory
+            for literal in fetches {
+                let value = match literal {
+                    LocalOptimisticLiteral::Register(address) => state.reg(address),
+                    LocalOptimisticLiteral::Pc => state.pc(),
+                };
+                let key = OptimisticLiteral {
+                    instr_idx: self.instruction_index,
+                    val: *literal,
+                };
+                self.memory.insert(key, value);
+            }
+
+            self.fetches_index += 1;
         }
 
         self.instruction_index += 1;
