@@ -6,7 +6,6 @@ use std::{
 
 use itertools::Itertools;
 use powdr_number::FieldElement;
-use powdr_number::LargeInt;
 
 use crate::{
     constraint_system::ComputationMethod,
@@ -183,36 +182,33 @@ impl<T: FieldElement> Environment<T> {
         let db = self.expressions.borrow();
         let expr = db[expr].clone();
         drop(db);
-        // check there might need more conditions
-        if expr.range_constraint(self).range().1.to_arbitrary_integer()
-            >= T::modulus().to_arbitrary_integer()
+        let expr_rc = expr.range_constraint(self);
+
+        if expr_rc.range_width() >= RangeConstraint::<T>::unconstrained().range_width()
+            || expr_rc.range().0 != T::zero()
             || expr.linear_components().len() < 2
+            || expr.is_quadratic()
         {
             return (None, false);
         }
-        if !(expr.is_affine() && expr.constant_offset().is_zero()) {
-            return (None, false);
-        }
+
         if let Some((var, coeff)) = expr.clone().linear_components().next() {
             let expr_rest = expr.clone()
                 - (GroupedExpression::from_number(*coeff)
                     * GroupedExpression::from_unknown_variable(*var));
             let expr1 = &(GroupedExpression::from_number(*coeff)
                 * GroupedExpression::from_unknown_variable(*var));
+
+            let expr1_rc = expr1.range_constraint(self);
+            let expr_rest_rc = expr_rest.range_constraint(self);
             // is this the proper way to check the minimal range zero property?
-            if expr1.range_constraint(self).range().0 < T::zero()
-                || expr1.range_constraint(self).range().1
-                    > (T::modulus().to_arbitrary_integer() / T::from(2).to_arbitrary_integer())
-                        .into()
+            if expr1_rc.range_width() >= RangeConstraint::<T>::unconstrained().range_width()
+                || expr_rest_rc.range_width() >= RangeConstraint::<T>::unconstrained().range_width()
             {
                 return (None, false);
             }
 
-            if expr_rest.range_constraint(self).range().0 < T::zero()
-                || expr_rest.range_constraint(self).range().1
-                    > (T::modulus().to_arbitrary_integer() / T::from(2).to_arbitrary_integer())
-                        .into()
-            {
+            if expr1_rc.range().0 != T::zero() || expr_rest_rc.range().0 != T::zero() {
                 return (None, false);
             }
 
