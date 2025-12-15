@@ -139,7 +139,6 @@ crepe! {
       Assignment(v, val),
       ContainsVariable(e, v),
       AlgebraicConstraint(e);
-     // (env.printthis(e));
 
     ReplaceAlgebraicConstraintBy(e, env.substitute_by_var(e, v, v2)) <-
        Env(env),
