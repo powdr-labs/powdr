@@ -16,14 +16,18 @@ use std::collections::HashMap;
 use crate::trace_generation::do_with_trace;
 use crate::{CompiledProgram, OriginalCompiledProgram};
 
+/// A single row in the execution trace
 #[derive(Debug)]
 struct Row {
+    /// The program counter value for this row
     pc: u32,
+    /// The timestamp for this row (segment index, row index within segment)
     timestamp: (u32, u32),
+    /// The values of the cells in this row
     cells: Vec<u32>,
 }
 
-/// Materialized execution trace, Indexed by time and by PC
+/// Materialized execution trace
 #[derive(Default)]
 struct Trace {
     /// The raw rows, in any order
@@ -31,6 +35,7 @@ struct Trace {
 }
 
 impl Trace {
+    /// Groups rows by their program counter value. The order of rows within each PC group is arbitrary.
     fn rows_by_pc(&self) -> BTreeMap<u32, Vec<&Row>> {
         self.rows.iter().fold(BTreeMap::new(), |mut acc, row| {
             acc.entry(row.pc).or_insert(Vec::new()).push(row);
@@ -38,6 +43,7 @@ impl Trace {
         })
     }
 
+    /// Returns all rows sorted by their timestamp
     fn rows_by_time(&self) -> Vec<&Row> {
         self.rows
             .iter()
@@ -82,9 +88,8 @@ pub fn detect_empirical_constraints(
 fn collect_trace(program: &CompiledProgram, inputs: StdIn) -> (Trace, DebugInfo) {
     let mut trace = Trace::default();
     let mut debug_info = DebugInfo::default();
-    let mut seg_idx = 0;
 
-    do_with_trace(program, inputs, |vm, _pk, ctx| {
+    do_with_trace(program, inputs, |seg_idx, vm, _pk, ctx| {
         let global_airs = vm
             .config()
             .create_airs()
@@ -131,7 +136,7 @@ fn collect_trace(program: &CompiledProgram, inputs: StdIn) -> (Trace, DebugInfo)
                 let row = Row {
                     cells: row,
                     pc: pc_value,
-                    timestamp: (seg_idx, ts_value),
+                    timestamp: (seg_idx as u32, ts_value),
                 };
                 trace.rows.push(row);
 
@@ -150,8 +155,6 @@ fn collect_trace(program: &CompiledProgram, inputs: StdIn) -> (Trace, DebugInfo)
                 }
             }
         }
-
-        seg_idx += 1;
     })
     .unwrap();
     (trace, debug_info)
