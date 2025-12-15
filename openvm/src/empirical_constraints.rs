@@ -1,18 +1,24 @@
 use itertools::Itertools;
 use openvm_circuit::arch::VmCircuitConfig;
 use openvm_sdk::StdIn;
+use openvm_stark_backend::p3_field::FieldAlgebra;
 use openvm_stark_backend::p3_maybe_rayon::prelude::IntoParallelIterator;
 use openvm_stark_backend::p3_maybe_rayon::prelude::ParallelIterator;
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
+use openvm_stark_sdk::p3_baby_bear::BabyBear;
+use powdr_autoprecompiles::bus_map::BusType;
 use powdr_autoprecompiles::empirical_constraints::EquivalenceClass;
 use powdr_autoprecompiles::empirical_constraints::Partition;
 use powdr_autoprecompiles::empirical_constraints::VariableId;
 use powdr_autoprecompiles::empirical_constraints::{DebugInfo, EmpiricalConstraints};
+use powdr_autoprecompiles::expression::AlgebraicEvaluator;
+use powdr_autoprecompiles::expression::RowEvaluator;
 use powdr_autoprecompiles::DegreeBound;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 
+use crate::bus_map::default_openvm_bus_map;
 use crate::trace_generation::do_with_trace;
 use crate::{CompiledProgram, OriginalCompiledProgram};
 
@@ -76,7 +82,7 @@ pub fn detect_empirical_constraints(
         // If this becomes a RAM issue, we can also pass individual segments to process_trace.
         // The advantage of the current approach is that the percentiles can be computed more accurately.
         tracing::info!("    Collecting trace...");
-        let (trace, new_debug_info) = collect_trace(&program, input);
+        let (trace, new_debug_info) = collect_trace(&program, input, degree_bound.identities);
         tracing::info!("    Detecting constraints...");
         constraint_detector.process_trace(trace, new_debug_info);
     }
@@ -85,11 +91,16 @@ pub fn detect_empirical_constraints(
     constraint_detector.finalize()
 }
 
-fn collect_trace(program: &CompiledProgram, inputs: StdIn) -> (Trace, DebugInfo) {
+fn collect_trace(
+    program: &CompiledProgram,
+    inputs: StdIn,
+    degree_bound: usize,
+) -> (Trace, DebugInfo) {
     let mut trace = Trace::default();
     let mut debug_info = DebugInfo::default();
 
     do_with_trace(program, inputs, |seg_idx, vm, _pk, ctx| {
+        let airs = program.vm_config.sdk.airs(degree_bound).unwrap();
         let global_airs = vm
             .config()
             .create_airs()
@@ -99,48 +110,61 @@ fn collect_trace(program: &CompiledProgram, inputs: StdIn) -> (Trace, DebugInfo)
             .collect::<HashMap<_, _>>();
 
         for (air_id, proving_context) in &ctx.per_air {
-            let air = &global_airs[air_id];
-            let Some(column_names) = air.columns() else {
-                // Instruction chips always have column names.
-                continue;
-            };
-
             if !proving_context.cached_mains.is_empty() {
                 // Instruction chips always have a cached main.
                 continue;
             }
             let main = proving_context.common_main.as_ref().unwrap();
-            assert_eq!(main.width, column_names.len());
+            let air_name = global_airs[air_id].name();
+            let (machine, _) = &airs.air_name_to_machine.get(&air_name).unwrap();
 
-            // Instruction chips have a PC and timestamp
-            let find_col = |name: &str| -> Option<usize> {
-                column_names.iter().position(|col_name| {
-                    col_name == name || col_name == &format!("inner__{}", name)
+            // Find the execution bus interaction
+            // This assumes there is exactly one, which is the case for instruction chips
+            let execution_bus_interaction = machine
+                .bus_interactions
+                .iter()
+                .find(|interaction| {
+                    interaction.id
+                        == default_openvm_bus_map()
+                            .get_bus_id(&BusType::ExecutionBridge)
+                            .unwrap()
                 })
-            };
-            let Some(pc_index) = find_col("from_state__pc") else {
-                continue;
-            };
-            let ts_index = find_col("from_state__timestamp").unwrap();
+                .unwrap();
 
             for row in main.row_slices() {
-                let row = row.iter().map(|v| v.as_canonical_u32()).collect::<Vec<_>>();
-                let pc_value = row[pc_index];
-                let ts_value = row[ts_index];
+                // Create an evaluator over this row
+                let evaluator = RowEvaluator::new(row);
 
-                if pc_value == 0 {
-                    // Padding row!
+                // Evaluate the execution bus interaction
+                let execution = evaluator.eval_bus_interaction(execution_bus_interaction);
+
+                // `is_valid` is the multiplicity
+                let is_valid = execution.mult;
+                if is_valid == BabyBear::ZERO {
+                    // If `is_valid` is zero, this is a padding row
                     continue;
                 }
 
+                // Recover the values of the pc and timestamp
+                let [pc, timestamp] = execution
+                    .args
+                    .map(|v| v.as_canonical_u32())
+                    .collect_vec()
+                    .try_into()
+                    .unwrap();
+
+                // Convert the row to u32s
+                // TODO: is this necessary?
+                let row = row.iter().map(|v| v.as_canonical_u32()).collect();
+
                 let row = Row {
                     cells: row,
-                    pc: pc_value,
-                    timestamp: (seg_idx as u32, ts_value),
+                    pc,
+                    timestamp: (seg_idx as u32, timestamp),
                 };
                 trace.rows.push(row);
 
-                match debug_info.air_id_by_pc.entry(pc_value) {
+                match debug_info.air_id_by_pc.entry(pc) {
                     Entry::Vacant(entry) => {
                         entry.insert(*air_id);
                     }
@@ -149,9 +173,10 @@ fn collect_trace(program: &CompiledProgram, inputs: StdIn) -> (Trace, DebugInfo)
                     }
                 }
                 if !debug_info.column_names_by_air_id.contains_key(air_id) {
-                    debug_info
-                        .column_names_by_air_id
-                        .insert(*air_id, column_names.clone());
+                    debug_info.column_names_by_air_id.insert(
+                        *air_id,
+                        machine.main_columns().map(|r| (*r.name).clone()).collect(),
+                    );
                 }
             }
         }
