@@ -107,7 +107,7 @@ fn collect_trace(program: &CompiledProgram, inputs: StdIn) -> (Trace, DebugInfo)
             let main = proving_context.common_main.as_ref().unwrap();
             assert_eq!(main.width, column_names.len());
 
-            // Instruction chips have a PC and time stamp
+            // Instruction chips have a PC and timestamp
             let find_col = |name: &str| -> Option<usize> {
                 column_names.iter().position(|col_name| {
                     col_name == name || col_name == &format!("inner__{}", name)
