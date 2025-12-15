@@ -13,6 +13,7 @@ use crate::{
     powdr::UniqueReferences,
 };
 
+/// A collection of optimistic constraints over the intermediate execution states of a block, to be accessed in chronological order
 #[derive(Debug, Serialize, Deserialize, deepsize2::DeepSizeOf)]
 pub struct OptimisticConstraints<A, V> {
     /// For each step, the execution values we need to remember for future constraints, excluding this step
@@ -63,6 +64,7 @@ impl<A: std::hash::Hash + PartialEq + Eq + Copy, V> OptimisticConstraints<A, V> 
     }
 }
 
+/// An evaluator over a set of constraints
 pub struct OptimisticConstraintEvaluator<E: ExecutionState> {
     /// The constraints that all need to be verified
     constraints: Arc<OptimisticConstraints<E::RegisterAddress, E::Value>>,
@@ -72,6 +74,65 @@ pub struct OptimisticConstraintEvaluator<E: ExecutionState> {
     memory: HashMap<OptimisticLiteral<E::RegisterAddress>, E::Value>,
 }
 
+#[derive(Debug)]
+pub struct OptimisticConstraintFailed;
+
+impl<E: ExecutionState> OptimisticConstraintEvaluator<E> {
+    pub fn new(constraints: Arc<OptimisticConstraints<E::RegisterAddress, E::Value>>) -> Self {
+        Self {
+            constraints,
+            instruction_index: 0,
+            memory: HashMap::default(),
+        }
+    }
+
+    /// Check all constraints that can be checked at this stage, returning a new instance iff they are verified
+    pub fn try_next(&mut self, state: &E) -> Result<(), OptimisticConstraintFailed> {
+        // Get the constraints that can first be checked at this step
+        let mut constraints = self
+            .constraints
+            .as_ref()
+            .constraints_to_check_by_step
+            .get(&self.instruction_index)
+            .into_iter()
+            .flatten();
+
+        // Check the constraints based on the current state and the memory of the previous states
+        let evaluator =
+            StepOptimisticConstraintEvaluator::new(self.instruction_index, state, &self.memory);
+        if !constraints.all(|constraint| evaluator.evaluate_constraint(constraint)) {
+            return Err(OptimisticConstraintFailed);
+        }
+
+        // Get the values we need to store from the state to check constraints in the future
+        let fetches = self
+            .constraints
+            .as_ref()
+            .fetches_by_step
+            .get(&self.instruction_index)
+            .into_iter()
+            .flatten();
+
+        // fetch the values them in memory
+        for literal in fetches {
+            let value = match literal {
+                LocalOptimisticLiteral::Register(address) => state.reg(address),
+                LocalOptimisticLiteral::Pc => state.pc(),
+            };
+            let key = OptimisticLiteral {
+                instr_idx: self.instruction_index,
+                val: *literal,
+            };
+            self.memory.insert(key, value);
+        }
+
+        self.instruction_index += 1;
+
+        Ok(())
+    }
+}
+
+/// A constraint evaluator using the current execution state as well as the memory of previous states
 struct StepOptimisticConstraintEvaluator<'a, E: ExecutionState> {
     step: usize,
     state: &'a E,
@@ -94,62 +155,6 @@ impl<'a, E: ExecutionState> StepOptimisticConstraintEvaluator<'a, E> {
     }
 }
 
-#[derive(Debug)]
-pub struct OptimisticConstraintFailed;
-
-impl<E: ExecutionState> OptimisticConstraintEvaluator<E> {
-    pub fn new(constraints: Arc<OptimisticConstraints<E::RegisterAddress, E::Value>>) -> Self {
-        Self {
-            constraints,
-            instruction_index: 0,
-            memory: HashMap::default(),
-        }
-    }
-
-    /// Check all constraints that can be checked at this stage, returning a new instance iff they are verified
-    pub fn try_next(&mut self, state: &E) -> Result<(), OptimisticConstraintFailed> {
-        let mut constraints = self
-            .constraints
-            .as_ref()
-            .constraints_to_check_by_step
-            .get(&self.instruction_index)
-            .into_iter()
-            .flatten();
-
-        // Check the constraints based on the current state and memory of the previous states
-        let evaluator =
-            StepOptimisticConstraintEvaluator::new(self.instruction_index, state, &self.memory);
-        if !constraints.all(|constraint| evaluator.evaluate_constraint(constraint)) {
-            return Err(OptimisticConstraintFailed);
-        }
-
-        let fetches = self
-            .constraints
-            .as_ref()
-            .fetches_by_step
-            .get(&self.instruction_index)
-            .into_iter()
-            .flatten();
-
-        // fetch the values required in the future and store them in memory
-        for literal in fetches {
-            let value = match literal {
-                LocalOptimisticLiteral::Memory(address) => state.read(address),
-                LocalOptimisticLiteral::Pc => state.pc(),
-            };
-            let key = OptimisticLiteral {
-                instr_idx: self.instruction_index,
-                val: *literal,
-            };
-            self.memory.insert(key, value);
-        }
-
-        self.instruction_index += 1;
-
-        Ok(())
-    }
-}
-
 impl<'a, E: ExecutionState> StepOptimisticConstraintEvaluator<'a, E> {
     fn evaluate_constraint(&self, c: &OptimisticConstraint<E::RegisterAddress, E::Value>) -> bool {
         self.evaluate_expression(&c.left) == self.evaluate_expression(&c.right)
@@ -160,7 +165,7 @@ impl<'a, E: ExecutionState> StepOptimisticConstraintEvaluator<'a, E> {
         e: &OptimisticExpression<E::RegisterAddress, E::Value>,
     ) -> E::Value {
         match e {
-            OptimisticExpression::Value(v) => *v,
+            OptimisticExpression::Number(v) => *v,
             OptimisticExpression::Literal(optimistic_literal) => {
                 self.evaluate_literal(optimistic_literal)
             }
@@ -168,11 +173,12 @@ impl<'a, E: ExecutionState> StepOptimisticConstraintEvaluator<'a, E> {
     }
 
     fn evaluate_literal(&self, l: &OptimisticLiteral<E::RegisterAddress>) -> E::Value {
+        // By construction, the literals involved should only be from past states
         debug_assert!(l.instr_idx <= self.step);
         // Hit the state for the current step
         if l.instr_idx == self.step {
             match l.val {
-                LocalOptimisticLiteral::Memory(addr) => self.state.read(&addr),
+                LocalOptimisticLiteral::Register(addr) => self.state.reg(&addr),
                 LocalOptimisticLiteral::Pc => self.state.pc(),
             }
         } else {
@@ -200,7 +206,7 @@ mod tests {
             self.pc
         }
 
-        fn read(&self, address: &Self::RegisterAddress) -> Self::Value {
+        fn reg(&self, address: &Self::RegisterAddress) -> Self::Value {
             self.mem[address]
         }
     }
@@ -217,7 +223,7 @@ mod tests {
     }
 
     fn mem(instr_idx: usize, addr: u8) -> OptimisticExpression<u8, u8> {
-        literal_expr(instr_idx, LocalOptimisticLiteral::Memory(addr))
+        literal_expr(instr_idx, LocalOptimisticLiteral::Register(addr))
     }
 
     fn pc(instr_idx: usize) -> OptimisticExpression<u8, u8> {
@@ -225,7 +231,7 @@ mod tests {
     }
 
     fn value(value: u8) -> OptimisticExpression<u8, u8> {
-        OptimisticExpression::Value(value)
+        OptimisticExpression::Number(value)
     }
 
     fn eq(

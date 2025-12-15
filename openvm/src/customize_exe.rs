@@ -68,7 +68,7 @@ impl<'a, T: PrimeField32> ExecutionState for OpenVmExecutionState<'a, T> {
         T::from_canonical_u32(self.0.pc())
     }
 
-    fn read(&self, addr: &Self::RegisterAddress) -> Self::Value {
+    fn reg(&self, addr: &Self::RegisterAddress) -> Self::Value {
         unsafe {
             self.0
                 .memory

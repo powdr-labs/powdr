@@ -29,5 +29,5 @@ pub trait ExecutionState {
     fn pc(&self) -> Self::Value;
 
     /// Read a register at this point
-    fn read(&self, address: &Self::RegisterAddress) -> Self::Value;
+    fn reg(&self, address: &Self::RegisterAddress) -> Self::Value;
 }

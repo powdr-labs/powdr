@@ -50,14 +50,14 @@ impl<A, V> AllChildren<OptimisticExpression<A, V>> for OptimisticExpression<A, V
 
 #[derive(Debug, Clone, Serialize, Deserialize, deepsize2::DeepSizeOf)]
 pub enum OptimisticExpression<A, V> {
-    Value(V),
+    Number(V),
     Literal(OptimisticLiteral<A>),
 }
 
 impl<A, V> OptimisticExpression<A, V> {
     fn children(&self) -> Box<dyn Iterator<Item = &OptimisticExpression<A, V>> + '_> {
         match self {
-            OptimisticExpression::Literal(_) | OptimisticExpression::Value(_) => {
+            OptimisticExpression::Literal(_) | OptimisticExpression::Number(_) => {
                 Box::new(iter::empty())
             }
         }
@@ -68,7 +68,7 @@ impl<A, V> OptimisticExpression<A, V> {
     Debug, Clone, Copy, Serialize, Deserialize, deepsize2::DeepSizeOf, PartialEq, Eq, Hash,
 )]
 pub enum LocalOptimisticLiteral<A> {
-    Memory(A),
+    Register(A),
     Pc,
 }
 
