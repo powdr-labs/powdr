@@ -31,12 +31,14 @@ pub struct DebugInfo {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct EmpiricalConstraintsJson {
+pub struct EmpiricalConstraintsExport {
     pub empirical_constraints: EmpiricalConstraints,
     pub debug_info: DebugInfo,
 }
 
 impl EmpiricalConstraints {
+    /// Combines the empirical constraints with another set of empirical constraints.
+    /// The resulting constraints are the most conservative combination of both.
     pub fn combine_with(&mut self, other: EmpiricalConstraints) {
         // Combine column ranges by PC
         for (pc, ranges) in other.column_ranges_by_pc {

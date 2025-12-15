@@ -3,7 +3,7 @@ use metrics_tracing_context::{MetricsLayer, TracingContextLayer};
 use metrics_util::{debugging::DebuggingRecorder, layers::Layer};
 use openvm_sdk::StdIn;
 use openvm_stark_sdk::bench::serialize_metric_snapshot;
-use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraintsJson;
+use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraintsExport;
 use powdr_autoprecompiles::pgo::{pgo_config, PgoType};
 use powdr_autoprecompiles::PowdrConfig;
 use powdr_openvm::{compile_openvm, default_powdr_openvm_config, CompiledProgram, GuestOptions};
@@ -319,7 +319,7 @@ fn maybe_compute_empirical_constraints(
             "Saving empirical constraints debug info to {}/empirical_constraints.json",
             path.display()
         );
-        let export = EmpiricalConstraintsJson {
+        let export = EmpiricalConstraintsExport {
             empirical_constraints: empirical_constraints.clone(),
             debug_info,
         };
