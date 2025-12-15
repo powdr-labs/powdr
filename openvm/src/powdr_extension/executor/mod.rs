@@ -85,7 +85,7 @@ impl<A: Arena> OriginalArenas<A> {
 
     /// Returns a mutable reference to the arena of the given vector index.
     /// - Panics if the arenas are not initialized.
-    pub fn arena_mut_by_index(&mut self, index: usize) -> &mut (A, A) {
+    pub fn arena_mut_by_index(&mut self, index: usize) -> &mut ArenaPair<A> {
         match self {
             OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
             OriginalArenas::Initialized(initialized) => initialized.arena_mut_by_index(index),
@@ -138,7 +138,7 @@ impl<A: Arena> OriginalArenas<A> {
 /// and how many calls to each air are made per APC call.
 #[derive(Default)]
 pub struct InitializedOriginalArenas<A> {
-    arenas: Vec<Option<(A, A)>>, // (real, dummy)
+    arenas: Vec<Option<ArenaPair<A>>>,
     air_name_to_arena_index: HashMap<String, usize>,
     pub number_of_calls: usize,
 }
@@ -168,13 +168,13 @@ impl<A: Arena> InitializedOriginalArenas<A> {
                     ),
                 )| {
                     air_name_to_arena_index.insert(air_name, idx);
-                    arenas.push(Some((
-                        A::with_capacity(
+                    arenas.push(Some(ArenaPair {
+                        real: A::with_capacity(
                             (all_calls - dummy_calls) * apc_call_count_estimate,
                             air_width,
                         ),
-                        A::with_capacity(dummy_calls * apc_call_count_estimate, air_width),
-                    )));
+                        dummy: A::with_capacity(dummy_calls * apc_call_count_estimate, air_width),
+                    }));
                     (air_name_to_arena_index, arenas)
                 },
             );
@@ -188,7 +188,7 @@ impl<A: Arena> InitializedOriginalArenas<A> {
     }
 
     #[inline]
-    fn arena_mut_by_index(&mut self, index: usize) -> &mut (A, A) {
+    fn arena_mut_by_index(&mut self, index: usize) -> &mut ArenaPair<A> {
         self.arenas
             .get_mut(index)
             .and_then(|arena| arena.as_mut())
@@ -197,18 +197,23 @@ impl<A: Arena> InitializedOriginalArenas<A> {
 
     #[inline]
     fn real_arena_mut_by_index(&mut self, index: usize) -> &mut A {
-        &mut self.arena_mut_by_index(index).0
+        &mut self.arena_mut_by_index(index).real
     }
 
     #[inline]
     fn dummy_arena_mut_by_index(&mut self, index: usize) -> &mut A {
-        &mut self.arena_mut_by_index(index).1
+        &mut self.arena_mut_by_index(index).dummy
     }
 
     fn take_real_arena(&mut self, air_name: &str) -> Option<A> {
         let index = *self.air_name_to_arena_index.get(air_name)?;
-        self.arenas[index].take().map(|(real, _dummy)| real)
+        self.arenas[index].take().map(|arena_pair| arena_pair.real)
     }
+}
+
+pub struct ArenaPair<A> {
+    pub real: A,
+    pub dummy: A,
 }
 
 /// The dimensions of a record arena for a given air name, used to initialize the arenas.
