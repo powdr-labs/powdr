@@ -97,16 +97,16 @@ fn merge_maps<K: Ord, V: Eq + Debug>(map1: &mut BTreeMap<K, V>, map2: BTreeMap<K
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug, Copy, Clone)]
 pub struct BlockCell {
-    /// The row index which is also the instruction index within the basic block
-    row_idx: usize,
+    /// Instruction index within the basic block
+    instruction_idx: usize,
     /// The column index within the instruction air
     column_idx: usize,
 }
 
 impl BlockCell {
-    pub fn new(row_idx: usize, column_idx: usize) -> Self {
+    pub fn new(instruction_idx: usize, column_idx: usize) -> Self {
         Self {
-            row_idx,
+            instruction_idx,
             column_idx,
         }
     }

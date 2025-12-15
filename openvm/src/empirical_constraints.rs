@@ -24,7 +24,8 @@ use crate::{CompiledProgram, OriginalCompiledProgram};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Timestamp {
-    segment_id: usize,
+    // Note that the order of the fields matters for correct ordering.
+    segment_idx: usize,
     value: u32,
 }
 
@@ -164,7 +165,7 @@ fn collect_trace(
                     cells: row,
                     pc,
                     timestamp: Timestamp {
-                        segment_id: seg_idx,
+                        segment_idx: seg_idx,
                         value: timestamp,
                     },
                 };
@@ -197,6 +198,7 @@ struct ConstraintDetector {
     empirical_constraints: EmpiricalConstraints,
 }
 
+/// An instance of a basic block in the trace
 struct ConcreteBlock<'a> {
     rows: Vec<&'a Row>,
 }
@@ -353,7 +355,7 @@ mod tests {
                     cells,
                     pc,
                     timestamp: Timestamp {
-                        segment_id: 0,
+                        segment_idx: 0,
                         value: clk as u32,
                     },
                 })
