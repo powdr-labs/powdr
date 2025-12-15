@@ -185,7 +185,7 @@ impl<T: FieldElement> Environment<T> {
         drop(db);
         // check there might need more conditions
         if expr.range_constraint(self).range().1.to_arbitrary_integer()
-            >= T::modulus().to_arbitrary_integer()
+            >= T::modulus().to_arbitrary_integer() || expr.linear_components().len() < 2
         {
             return (None, false);
         }
@@ -198,13 +198,12 @@ impl<T: FieldElement> Environment<T> {
                     * GroupedExpression::from_unknown_variable(*var));
             let expr1 = &(GroupedExpression::from_number(*coeff)
                 * GroupedExpression::from_unknown_variable(*var));
-
             // is this the proper way to check the minimal range zero property?
-            if expr1.range_constraint(self).range().0 < T::zero() {
+            if expr1.range_constraint(self).range().0 < T::zero() || expr1.range_constraint(self).range().1 > (T::modulus().to_arbitrary_integer()/T::from(2).to_arbitrary_integer()).into() {
                 return (None, false);
             }
 
-            if expr_rest.range_constraint(self).range().0 < T::zero() {
+            if expr_rest.range_constraint(self).range().0 < T::zero() || expr_rest.range_constraint(self).range().1 > (T::modulus().to_arbitrary_integer()/T::from(2).to_arbitrary_integer()).into() {
                 return (None, false);
             }
 
