@@ -1,13 +1,12 @@
 use std::collections::btree_map::Entry;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::Debug;
 use std::hash::Hash;
 
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
-/// A constraint system variable is a tuple of (instruction index in block, column index).
-pub type VariableId = (usize, usize);
+pub use crate::equivalence_classes::{EquivalenceClass, Partition};
 
 /// "Constraints" that were inferred from execution statistics. They hold empirically
 /// (most of the time), but are not guaranteed to hold in all cases.
@@ -18,7 +17,7 @@ pub struct EmpiricalConstraints {
     pub column_ranges_by_pc: BTreeMap<u32, Vec<(u32, u32)>>,
     /// For each basic block (identified by its starting PC), the equivalence classes of columns.
     /// Each equivalence class is a list of (instruction index in block, column index).
-    pub equivalence_classes_by_block: BTreeMap<u64, Partition<VariableId>>,
+    pub equivalence_classes_by_block: BTreeMap<u64, Partition<BlockCell>>,
     pub debug_info: DebugInfo,
 }
 
@@ -52,14 +51,20 @@ impl EmpiricalConstraints {
 
         // Combine equivalence classes by block
         for (block_pc, classes) in other.equivalence_classes_by_block {
-            self.equivalence_classes_by_block
-                .entry(block_pc)
-                .and_modify(|existing_classes| {
-                    let combined =
-                        Partition::intersect(&[existing_classes.clone(), classes.clone()]);
-                    *existing_classes = combined;
-                })
-                .or_insert(classes);
+            // Compute the new equivalence classes for this block
+            let new_equivalence_class = match self.equivalence_classes_by_block.entry(block_pc) {
+                Entry::Vacant(_) => classes,
+                Entry::Occupied(e) => {
+                    // Remove the value and compute the intersection
+                    // This is because `intersect_partitions` takes inputs by value
+                    let existing = e.remove();
+                    Partition::intersect(&[existing, classes])
+                }
+            };
+            assert!(self
+                .equivalence_classes_by_block
+                .insert(block_pc, new_equivalence_class)
+                .is_none());
         }
 
         self.debug_info.combine_with(other.debug_info);
@@ -76,19 +81,6 @@ impl DebugInfo {
     }
 }
 
-/// An equivalence class of constraint system variables.
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Debug, PartialOrd, Ord)]
-pub struct EquivalenceClass<Id: Ord> {
-    pub ids: BTreeSet<Id>,
-}
-
-/// A partition of a universe of constraint system variables into equivalence classes.
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Debug, PartialOrd, Ord)]
-pub struct Partition<Id: Ord> {
-    /// The set of equivalence classes. Singleton classes are omitted.
-    pub classes: BTreeSet<EquivalenceClass<Id>>,
-}
-
 /// Merges two maps, asserting that existing keys map to equal values.
 fn merge_maps<K: Ord, V: Eq + Debug>(map1: &mut BTreeMap<K, V>, map2: BTreeMap<K, V>) {
     for (key, value) in map2 {
@@ -99,6 +91,23 @@ fn merge_maps<K: Ord, V: Eq + Debug>(map1: &mut BTreeMap<K, V>, map2: BTreeMap<K
             Entry::Occupied(existing) => {
                 assert_eq!(*existing.get(), value,);
             }
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug, Copy, Clone)]
+pub struct BlockCell {
+    /// The row index which is also the instruction index within the basic block
+    row_idx: usize,
+    /// The column index within the instruction air
+    column_idx: usize,
+}
+
+impl BlockCell {
+    pub fn new(row_idx: usize, column_idx: usize) -> Self {
+        Self {
+            row_idx,
+            column_idx,
         }
     }
 }
@@ -114,26 +123,25 @@ impl<Id: Ord + Hash + Copy> Partition<Id> {
             .iter()
             .map(|partition| {
                 partition
-                    .classes
                     .iter()
                     .enumerate()
-                    .flat_map(|(class_idx, class)| class.ids.iter().map(move |&id| (id, class_idx)))
+                    .flat_map(|(class_idx, class)| class.iter().map(move |&id| (id, class_idx)))
                     .collect()
             })
             .collect();
 
         // Iterate over all elements in the universe
-        let classes = partitions
+        partitions
             .iter()
-            .flat_map(|partition| partition.classes.iter())
-            .flat_map(|class| class.ids.iter().copied())
+            .flat_map(|partition| partition.iter())
+            .flat_map(|class| class.iter())
             .unique()
             .filter_map(|id| {
                 // Build the signature of the element: the list of class indices it belongs to
                 // (one index per partition)
                 class_ids
                     .iter()
-                    .map(|m| m.get(&id).cloned())
+                    .map(|m| m.get(id).cloned())
                     // If an element did not appear in any one of the partitions, it is
                     // a singleton and we skip it.
                     .collect::<Option<Vec<usize>>>()
@@ -142,32 +150,18 @@ impl<Id: Ord + Hash + Copy> Partition<Id> {
             // Group elements by their signatures
             .into_group_map()
             .into_values()
-            // Remove singletons and convert to Set
-            .filter_map(|ids| {
-                (ids.len() > 1).then_some(EquivalenceClass {
-                    ids: ids.into_iter().collect(),
-                })
-            })
-            .collect();
-
-        Self { classes }
+            // Convert to set
+            .map(|ids| ids.into_iter().copied().collect())
+            .collect()
     }
 }
 
 #[cfg(test)]
 mod tests {
-
-    use crate::empirical_constraints::{EquivalenceClass, Partition};
+    use crate::empirical_constraints::Partition;
 
     fn partition(sets: Vec<Vec<u32>>) -> Partition<u32> {
-        Partition {
-            classes: sets
-                .into_iter()
-                .map(|s| EquivalenceClass {
-                    ids: s.into_iter().collect(),
-                })
-                .collect(),
-        }
+        sets.into_iter().map(|s| s.into_iter().collect()).collect()
     }
 
     #[test]
