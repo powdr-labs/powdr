@@ -4,13 +4,14 @@ use openvm_sdk::StdIn;
 use openvm_stark_backend::p3_maybe_rayon::prelude::IntoParallelIterator;
 use openvm_stark_backend::p3_maybe_rayon::prelude::ParallelIterator;
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
-use powdr_autoprecompiles::empirical_constraints::{
-    intersect_partitions, DebugInfo, EmpiricalConstraints,
-};
+use powdr_autoprecompiles::empirical_constraints::EquivalenceClass;
+use powdr_autoprecompiles::empirical_constraints::Partition;
+use powdr_autoprecompiles::empirical_constraints::VariableId;
+use powdr_autoprecompiles::empirical_constraints::{DebugInfo, EmpiricalConstraints};
 use powdr_autoprecompiles::DegreeBound;
 use std::collections::btree_map::Entry;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
-use std::collections::{BTreeMap, BTreeSet};
 
 use crate::trace_generation::do_with_trace;
 use crate::{CompiledProgram, OriginalCompiledProgram};
@@ -226,7 +227,7 @@ impl ConstraintDetector {
     fn generate_equivalence_classes_by_block(
         &self,
         trace: &Trace,
-    ) -> BTreeMap<u64, BTreeSet<BTreeSet<(usize, usize)>>> {
+    ) -> BTreeMap<u64, Partition<VariableId>> {
         tracing::info!("        Segmenting trace into blocks...");
         let blocks = self.get_blocks(trace);
         tracing::info!("        Finding equivalence classes...");
@@ -240,13 +241,7 @@ impl ConstraintDetector {
                     .collect::<Vec<_>>();
 
                 // Intersect the equivalence classes across all instances of the block
-                let intersected = intersect_partitions(&classes);
-
-                // Remove singleton classes
-                let intersected = intersected
-                    .into_iter()
-                    .filter(|class| class.len() > 1)
-                    .collect::<BTreeSet<_>>();
+                let intersected = Partition::intersect(&classes);
 
                 (block_id, intersected)
             })
@@ -285,29 +280,35 @@ impl ConstraintDetector {
         block_rows
     }
 
-    fn block_equivalence_classes(&self, block: Vec<&Row>) -> BTreeSet<BTreeSet<(usize, usize)>> {
-        block
-            .into_iter()
-            .enumerate()
-            // Map each cell to a (value, (instruction_index, col_index)) pair
-            .flat_map(|(instruction_index, row)| {
-                row.cells
-                    .iter()
-                    .enumerate()
-                    .map(|(col_index, v)| (*v, (instruction_index, col_index)))
-                    .collect::<Vec<_>>()
-            })
-            // Group by value
-            .into_group_map()
-            .values()
-            // Convert to set
-            .map(|v| v.clone().into_iter().collect())
-            .collect()
+    fn block_equivalence_classes(&self, block: Vec<&Row>) -> Partition<VariableId> {
+        Partition {
+            classes: block
+                .into_iter()
+                .enumerate()
+                // Map each cell to a (value, (instruction_index, col_index)) pair
+                .flat_map(|(instruction_index, row)| {
+                    row.cells
+                        .iter()
+                        .enumerate()
+                        .map(|(col_index, v)| (*v, (instruction_index, col_index)))
+                        .collect::<Vec<_>>()
+                })
+                // Group by value
+                .into_group_map()
+                .values()
+                // Convert to set
+                .map(|v| EquivalenceClass {
+                    ids: v.clone().into_iter().collect(),
+                })
+                .collect(),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use super::*;
 
     fn make_trace(rows_by_time_with_pc: Vec<(u32, Vec<u32>)>) -> Trace {
@@ -325,15 +326,15 @@ mod tests {
     }
 
     fn assert_equivalence_classes_equal(
-        actual: BTreeSet<BTreeSet<(usize, usize)>>,
+        actual: Partition<VariableId>,
         expected: Vec<Vec<(usize, usize)>>,
     ) {
-        assert_eq!(actual.len(), expected.len());
-        let mut actual = actual.into_iter();
+        assert_eq!(actual.classes.len(), expected.len());
+        let mut actual = actual.classes.into_iter();
         for expected_class in expected {
             let actual_class = actual.next().unwrap();
             let expected_class_set: BTreeSet<(usize, usize)> = expected_class.into_iter().collect();
-            assert_eq!(actual_class, expected_class_set);
+            assert_eq!(actual_class.ids, expected_class_set);
         }
         assert!(actual.next().is_none());
     }
