@@ -8,6 +8,8 @@ use crate::symbolic_machine_generator::convert_machine_field_type;
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
 use powdr::UniqueReferences;
+use powdr_constraint_solver::constraint_system::BusInteraction;
+use powdr_constraint_solver::grouped_expression::GroupedExpression;
 use powdr_expression::AlgebraicUnaryOperator;
 use powdr_expression::{
     visitors::Children, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
@@ -38,6 +40,7 @@ pub mod optimizer;
 pub mod pgo;
 pub mod powdr;
 pub mod range_constraint_optimizer;
+use memory_optimizer::MemoryBusInteraction;
 mod stats_logger;
 pub mod symbolic_machine_generator;
 pub use pgo::{PgoConfig, PgoType};
@@ -447,8 +450,31 @@ pub fn build<A: Adapter>(
         machine.main_columns(),
         &block,
     );
+
+    // within each equivalance class, one range has to hold over all variables
+    // therefore, we don't need one range per variable, rather one range per eq class
+    // this can be checked/asserted
+    // once we find that value, constraint creation can:
+    // eg: ({a,b,c},x), a = x, a = b, b = c
+    // here, {a,b} may have been removed by the solver already
+    // for each eq class, remove all vars that do not appear in the first optimized machine
+    // note: do not remove singletons at this point
+    // now, we can generate constraints for an eq class ({t,w,z},y):
+    // t=y, t=w, w=z
+
+    println!("Computed empirical constraints for basic block\n{block}");
+
     let range_analyzer_constraints = constraint_generator.range_constraints();
     let equivalence_analyzer_constraints = constraint_generator.equivalence_constraints();
+
+    for r in &range_analyzer_constraints {
+        println!("Generated range constraint: {}", r.expr);
+    }
+    for e in &equivalence_analyzer_constraints {
+        println!("Generated equivalence constraint: {}", e.expr);
+    }
+
+    println!("111111111");
 
     let labels = [("apc_start_pc", block.start_pc.to_string())];
     metrics::counter!("before_opt_cols", &labels)
@@ -460,6 +486,7 @@ pub fn build<A: Adapter>(
 
     let mut baseline = machine;
 
+    println!("222222222");
     // Optimize once without empirical constraints
     let (machine, column_allocator) = optimizer::optimize::<A>(
         baseline.clone(),
@@ -469,16 +496,82 @@ pub fn build<A: Adapter>(
         column_allocator,
     )
     .unwrap();
+
+    let cols = machine.main_columns().collect::<BTreeSet<_>>();
+    let strong_constraints = constraint_generator.strong_constraints(&cols);
+    for s in &strong_constraints {
+        println!("Generated strong constraint: {}", s.0.expr);
+    }
+
+    println!("333333333");
     // Get the precompile that is guaranteed to always work
     let guaranteed_precompile = machine.render(&vm_config.bus_map);
+    println!("guaranteed optimized precompile:\n{guaranteed_precompile}");
+    println!("4444444444");
+
+    println!("# range constraints: {}", range_analyzer_constraints.len());
+    println!(
+        "# eq constraints: {}",
+        equivalence_analyzer_constraints.len()
+    );
+    println!("# strong constraints: {}", strong_constraints.len());
 
     let (machine, column_allocator, optimistic_precompile) =
         if !range_analyzer_constraints.is_empty() || !equivalence_analyzer_constraints.is_empty() {
+            let register_data_columns =
+                collect_register_data_columns::<A>(&machine, &vm_config.bus_map);
+            println!("register_data_columns: {register_data_columns:?}");
+
+            let range_len_before = range_analyzer_constraints.len();
+            let eq_len_before = equivalence_analyzer_constraints.len();
+            let strong_len_before = strong_constraints.len();
+            println!("Range analyzer constraints total: {range_len_before}",);
+            println!("Equivalence analyzer constraints total: {eq_len_before}",);
+            println!("Strong constraints total: {strong_len_before}",);
+            let range_analyzer_constraints: Vec<_> = range_analyzer_constraints
+                .into_iter()
+                .filter(|c| constraint_columns_in_set(c, &register_data_columns))
+                .collect();
+            let equivalence_analyzer_constraints: Vec<_> = equivalence_analyzer_constraints
+                .into_iter()
+                .filter(|c| constraint_columns_in_set(c, &register_data_columns))
+                .collect();
+            let strong_constraints: Vec<_> = strong_constraints
+                .into_iter()
+                .filter(|c| c.1 || constraint_columns_in_set(&c.0, &register_data_columns))
+                .collect();
+
+            println!(
+                "Range analyzer constraints after filtering: {}",
+                range_analyzer_constraints.len()
+            );
+            println!(
+                "Equivalence analyzer constraints after filtering: {}",
+                equivalence_analyzer_constraints.len()
+            );
+            println!(
+                "Strong constraints after filtering: {}",
+                strong_constraints.len()
+            );
+
+            for r in &range_analyzer_constraints {
+                println!("Range constraint added: {r}");
+            }
+            for e in &equivalence_analyzer_constraints {
+                println!("Eq constraint added: {e}");
+            }
+            for s in &strong_constraints {
+                println!("Strong constraint added: {}", s.0);
+            }
+
             // Add empirical constraints
-            baseline.constraints.extend(range_analyzer_constraints);
             baseline
                 .constraints
-                .extend(equivalence_analyzer_constraints);
+                .extend(strong_constraints.iter().map(|s| s.0.clone()));
+            // baseline.constraints.extend(range_analyzer_constraints);
+            // baseline
+            //     .constraints
+            //     .extend(equivalence_analyzer_constraints);
 
             // Optimize again with empirical constraints
             // TODO: Calling optimize twice is needed; otherwise the solver fails.
@@ -538,6 +631,66 @@ pub fn build<A: Adapter>(
     metrics::gauge!("apc_gen_time_ms", &labels).set(start.elapsed().as_millis() as f64);
 
     Ok(apc)
+}
+
+/// Returns true if all columns referenced in the constraint are in the given set.
+fn constraint_columns_in_set<T>(
+    constraint: &SymbolicConstraint<T>,
+    allowed_columns: &BTreeSet<u64>,
+) -> bool {
+    constraint
+        .unique_references()
+        .all(|r| allowed_columns.contains(&r.id))
+}
+
+fn collect_register_data_columns<A: Adapter>(
+    machine: &SymbolicMachine<A::PowdrField>,
+    bus_map: &BusMap<A::CustomBusTypes>,
+) -> BTreeSet<u64> {
+    use memory_optimizer::MemoryBusInteraction;
+    use powdr_constraint_solver::constraint_system::BusInteraction;
+    use powdr_constraint_solver::grouped_expression::GroupedExpression;
+
+    let memory_bus_id = match bus_map.get_bus_id(&BusType::Memory) {
+        Some(id) => id,
+        None => return BTreeSet::new(),
+    };
+
+    machine
+        .bus_interactions
+        .iter()
+        .filter_map(|bus_int| {
+            println!("bus_int later {bus_int}");
+            // Convert to constraint solver BusInteraction format
+            let cs_bus_int = BusInteraction {
+                bus_id: GroupedExpression::from_number(A::PowdrField::from(bus_int.id)),
+                multiplicity: expression_conversion::algebraic_to_grouped_expression(&bus_int.mult),
+                payload: bus_int
+                    .args
+                    .iter()
+                    .map(expression_conversion::algebraic_to_grouped_expression)
+                    .collect(),
+            };
+
+            // Try to parse as memory bus interaction, filter to register interactions only
+            let m = A::MemoryBusInteraction::<AlgebraicReference>::try_from_bus_interaction(
+                &cs_bus_int,
+                memory_bus_id,
+            );
+            println!("memory is ok? {}", m.is_ok());
+            m.ok()
+                .flatten()
+                .filter(|mem_int| mem_int.register_address().is_some())
+        })
+        .flat_map(|mem_int| {
+            println!("Inside flat map");
+            mem_int
+                .data()
+                .iter()
+                .flat_map(|data_expr| data_expr.referenced_unknown_variables().map(|v| v.id))
+                .collect::<Vec<_>>()
+        })
+        .collect()
 }
 
 fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {

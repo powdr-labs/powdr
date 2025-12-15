@@ -223,6 +223,185 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
 
         constraints
     }
+
+    // within each equivalance class, one range has to hold over all variables
+    // therefore, we don't need one range per variable, rather one range per eq class
+    // this can be checked/asserted
+    // once we find that value, constraint creation can:
+    // eg: ({a,b,c},x), a = x, a = b, b = c
+    // here, {a,b} may have been removed by the solver already
+    // for each eq class, remove all vars that do not appear in the first optimized machine
+    // note: do not remove singletons at this point
+    // now, we can generate constraints for an eq class ({t,w,z},y):
+    // t=y, t=w, w=z
+    pub fn strong_constraints(
+        &self,
+        variables: &BTreeSet<AlgebraicReference>,
+    ) -> Vec<(SymbolicConstraint<<A as Adapter>::PowdrField>, bool)> {
+        println!("Generating strong constraints");
+        let mut constraints = Vec::new();
+
+        let mut ranges = BTreeMap::new();
+        for i in 0..self.block.statements.len() {
+            let pc = (self.block.start_pc + (i * 4) as u64) as u32;
+            let Some(range_constraints) = self.empirical_constraints.column_ranges_by_pc.get(&pc)
+            else {
+                continue;
+            };
+            for (col_index, range) in range_constraints.iter().enumerate() {
+                if range.0 == range.1 {
+                    ranges.insert((i, col_index), (range.0, range.1));
+                }
+            }
+        }
+
+        println!("Ranges map:\n");
+        for (k, v) in &ranges {
+            let col = self.get_algebraic_reference(k.0, k.1);
+            println!("{col} = {v:?}");
+        }
+
+        if let Some(equivalence_classes) = self
+            .empirical_constraints
+            .equivalence_classes_by_block
+            .get(&self.block.start_pc)
+        {
+            for (r, v) in &ranges {
+                if !equivalence_classes
+                    .iter()
+                    .any(|eq_class| eq_class.contains(r))
+                {
+                    let col = self.get_algebraic_reference(r.0, r.1);
+                    println!("Range variable {col} is not in any equivalence class");
+                    if v.0 == v.1 {
+                        let value = A::PowdrField::from(v.0 as u64);
+                        let reference = self.get_algebraic_reference(r.0, r.1);
+                        if variables.contains(&col) {
+                            let constraint = AlgebraicExpression::Reference(reference)
+                                - AlgebraicExpression::Number(value);
+                            println!("Adding constraint {constraint}");
+                            constraints.push((SymbolicConstraint { expr: constraint }, true));
+                        } else {
+                            println!("Optimized machine does not have it so not adding constraint");
+                        }
+                    }
+                }
+            }
+
+            for equivalence_class in equivalence_classes {
+                let eq_constraints =
+                    self.strong_constraints_per_eq_class(equivalence_class, &ranges, variables);
+                constraints.extend(eq_constraints);
+            }
+        }
+
+        constraints
+    }
+
+    pub fn strong_constraints_per_eq_class(
+        &self,
+        eq_class: &BTreeSet<(usize, usize)>,
+        ranges: &BTreeMap<(usize, usize), (u32, u32)>,
+        variables: &BTreeSet<AlgebraicReference>,
+    ) -> Vec<(SymbolicConstraint<<A as Adapter>::PowdrField>, bool)> {
+        println!("Computing strong constraints for eq_class\n");
+        for e in eq_class {
+            let col = self.get_algebraic_reference(e.0, e.1);
+            println!("{col}");
+        }
+
+        let range = eq_class
+            .iter()
+            .filter_map(|k| {
+                let a = ranges.get(k);
+                println!("Saw range {a:?}");
+                a
+            })
+            .filter(|k| k.0 == k.1)
+            .copied()
+            .unique()
+            .exactly_one()
+            .ok();
+
+        println!("Collecting range: {range:?}");
+
+        // Remove variables from this equivalence class that are not in the optimized
+        // machine.
+        let eq_class = eq_class
+            .iter()
+            .filter(|e| {
+                let col = self.get_algebraic_reference(e.0, e.1);
+                variables.contains(&col)
+            })
+            .copied()
+            .collect::<BTreeSet<_>>();
+
+        println!(
+            "Cols ({}) after removing cols that were removed by the solver already:",
+            eq_class.len()
+        );
+        for e in &eq_class {
+            let col = self.get_algebraic_reference(e.0, e.1);
+            println!("{col}");
+        }
+
+        if eq_class.is_empty() {
+            println!(
+                "No variables left in this eq class after filtering, returning empty constraints"
+            );
+            return vec![];
+        }
+
+        match range {
+            // There is a single range, continue as planned.
+            Some(range) => {
+                println!("there is a single range");
+
+                match eq_class.len() {
+                    0 => panic!("should have returned earlier"),
+                    _ => {
+                        // Create chain of equalities.
+                        let mut chain = self.chain_of_equalities(&eq_class, true);
+                        // Add range constraint to the first var.
+                        let first = eq_class.first().unwrap();
+                        let first_ref = self.get_algebraic_reference(first.0, first.1);
+                        let range_eq =
+                            AlgebraicExpression::Number(A::PowdrField::from(range.0 as u64));
+                        let constraint =
+                            AlgebraicExpression::Reference(first_ref.clone()) - range_eq.clone();
+                        chain.push((SymbolicConstraint { expr: constraint }, true));
+                        chain
+                    }
+                }
+            }
+            // There is no range over any variable in this eq class.
+            // Only return the chain of equalities.
+            None => {
+                println!("there is NO single range, using only chain of equalities");
+                self.chain_of_equalities(&eq_class, false)
+            }
+        }
+    }
+
+    pub fn chain_of_equalities(
+        &self,
+        eq_class: &BTreeSet<(usize, usize)>,
+        have_range: bool,
+    ) -> Vec<(SymbolicConstraint<<A as Adapter>::PowdrField>, bool)> {
+        let mut iter = eq_class.iter().copied();
+        let Some(first) = iter.next() else {
+            return Vec::new();
+        };
+        let (_, constraints) = iter.fold((first, Vec::new()), |(prev, mut acc), curr| {
+            let first_ref = self.get_algebraic_reference(prev.0, prev.1);
+            let other_ref = self.get_algebraic_reference(curr.0, curr.1);
+            let constraint = AlgebraicExpression::Reference(first_ref.clone())
+                - AlgebraicExpression::Reference(other_ref.clone());
+            acc.push((SymbolicConstraint { expr: constraint }, have_range));
+            (curr, acc)
+        });
+        constraints
+    }
 }
 
 /// Intersects multiple partitions of the same universe into a single partition.
