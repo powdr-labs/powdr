@@ -11,7 +11,7 @@ pub type VariableId = (usize, usize);
 
 /// "Constraints" that were inferred from execution statistics. They hold empirically
 /// (most of the time), but are not guaranteed to hold in all cases.
-#[derive(Serialize, Deserialize, Clone, Default, Debug)]
+#[derive(Serialize, Deserialize, Default, Debug)]
 pub struct EmpiricalConstraints {
     /// For each program counter, the range constraints for each column.
     /// The range might not hold in 100% of cases.
@@ -19,21 +19,16 @@ pub struct EmpiricalConstraints {
     /// For each basic block (identified by its starting PC), the equivalence classes of columns.
     /// Each equivalence class is a list of (instruction index in block, column index).
     pub equivalence_classes_by_block: BTreeMap<u64, Partition<VariableId>>,
+    pub debug_info: DebugInfo,
 }
 
 /// Debug information mapping AIR ids to program counters and column names.
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize, Default, Debug)]
 pub struct DebugInfo {
     /// Mapping from program counter to the ID of the AIR implementing this instruction.
     pub air_id_by_pc: BTreeMap<u32, usize>,
     /// Mapping from AIR ID to column names.
     pub column_names_by_air_id: BTreeMap<usize, Vec<String>>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct EmpiricalConstraintsExport {
-    pub empirical_constraints: EmpiricalConstraints,
-    pub debug_info: DebugInfo,
 }
 
 impl EmpiricalConstraints {
@@ -66,6 +61,8 @@ impl EmpiricalConstraints {
                 })
                 .or_insert(classes);
         }
+
+        self.debug_info.combine_with(other.debug_info);
     }
 }
 

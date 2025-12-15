@@ -10,7 +10,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::extraction_utils::OriginalVmConfig;
 use crate::opcode::branch_opcodes_bigint_set;
-use crate::powdr_extension::PowdrPrecompile;
 use crate::{BabyBearOpenVmApcAdapter, ExtendedVmConfig, Instr, SpecializedConfig};
 
 #[derive(Serialize, Deserialize, Clone)]
