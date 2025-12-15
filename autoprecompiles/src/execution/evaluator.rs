@@ -65,6 +65,11 @@ impl<A: std::hash::Hash + PartialEq + Eq + Copy, V> OptimisticConstraints<A, V> 
 }
 
 /// An evaluator over a set of constraints
+/// The expected use is to
+/// - store the APC's set of optimistic constraints in the program
+/// - when an APC is executed, create an instance of this evaluator over the APC's optimistic constraints
+/// - as we go through the original instructions, call `OptimisticConstraintEvaluator::try_next`
+/// - if a constraint fails, stop checking the constraints
 pub struct OptimisticConstraintEvaluator<E: ExecutionState> {
     /// The constraints that all need to be verified
     constraints: Arc<OptimisticConstraints<E::RegisterAddress, E::Value>>,
