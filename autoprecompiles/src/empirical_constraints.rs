@@ -24,9 +24,9 @@ pub struct EmpiricalConstraints {
 /// Debug information mapping AIR ids to program counters and column names.
 #[derive(Serialize, Deserialize, Default)]
 pub struct DebugInfo {
-    /// Mapping from program counter to AIR id.
+    /// Mapping from program counter to the ID of the AIR implementing this instruction.
     pub air_id_by_pc: BTreeMap<u32, usize>,
-    /// Mapping from AIR id to column names.
+    /// Mapping from AIR ID to column names.
     pub column_names_by_air_id: BTreeMap<usize, Vec<String>>,
 }
 
