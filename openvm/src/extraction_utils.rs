@@ -157,7 +157,7 @@ pub fn record_arena_dimension_by_air_name_per_apc_call<F>(
                 }
             });
             entry.height += 1;
-            (sub.len() == 0).then(|| entry.fully_optimized_away_height += 1);
+            (sub.is_empty()).then(|| entry.fully_optimized_away_height += 1);
             acc
         })
 }
