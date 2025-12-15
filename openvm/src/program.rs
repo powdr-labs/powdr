@@ -75,17 +75,13 @@ impl OriginalCompiledProgram {
         labels
     }
 
-    /// Converts to a compiled program with the given precompiles and max degree.
-    pub fn compiled_program(
-        &self,
-        precompiles: Vec<PowdrPrecompile<BabyBear>>,
-        max_degree: usize,
-    ) -> CompiledProgram {
+    /// Converts to a `CompiledProgram` with the original vm config (without autoprecompiles).
+    pub fn compiled_program(&self, max_degree: usize) -> CompiledProgram {
         CompiledProgram {
             exe: self.exe.clone(),
             vm_config: SpecializedConfig::new(
                 OriginalVmConfig::new(self.vm_config.clone()),
-                precompiles,
+                Vec::new(),
                 max_degree,
             ),
         }

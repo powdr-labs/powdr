@@ -71,7 +71,7 @@ pub fn detect_empirical_constraints(
         .collect();
 
     // Collect trace, without any autoprecompiles.
-    let program = program.compiled_program(Vec::new(), degree_bound.identities);
+    let program = program.compiled_program(degree_bound.identities);
 
     let mut constraint_detector = ConstraintDetector::new(instruction_counts);
 
