@@ -329,10 +329,6 @@ crepe! {
        ContainsVariable(e, v),
        Equivalence(v, v2);
 
-    AlgebraicConstraint(e) <-
-      ReplaceAlgebraicConstraintBy(_, e);
-
-
     @output
     pub struct ActionRule<T>(pub Action<T>);
     ActionRule(Action::SubstituteVariableByConstant(v, val)) <-
