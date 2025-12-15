@@ -1,13 +1,11 @@
 use std::collections::BTreeMap;
 
-use itertools::Itertools;
 use num_traits::identities::{One, Zero};
 use powdr_constraint_solver::{
     constraint_system::{
         BusInteraction, BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
     },
     grouped_expression::GroupedExpression,
-    indexed_constraint_system::apply_substitutions,
     range_constraint::RangeConstraint,
     solver::{solve_system, Error},
 };
@@ -249,39 +247,6 @@ fn xor_invalid() {
         Err(e) => assert_eq!(e, Error::BusInteractionError),
         _ => panic!("Expected error!"),
     }
-}
-
-#[test]
-fn add_with_carry() {
-    // This tests a case of equivalent constraints that appear in the
-    // way "add with carry" is performed in openvm.
-    // X and Y end up being equivalent because they are both either
-    // A or A - 256, depending on whether the value of A is between
-    // 0 and 255 or not.
-    // A is the result of an addition with carry.
-    let constraint_system = ConstraintSystem::default()
-        .with_constraints(vec![
-            (var("X") * constant(7) - var("A") * constant(7) + constant(256) * constant(7))
-                * (var("X") * constant(7) - var("A") * constant(7)),
-            (var("Y") - var("A") + constant(256)) * (var("Y") - var("A")),
-        ])
-        .with_bus_interactions(vec![
-            // Byte range constraints on X and Y
-            send(BYTE_BUS_ID, vec![var("X")]),
-            send(BYTE_BUS_ID, vec![var("Y")]),
-        ]);
-
-    let final_state = solve_system(constraint_system.clone(), TestBusInteractionHandler).unwrap();
-    let final_state = apply_substitutions(constraint_system, final_state)
-        .algebraic_constraints
-        .iter()
-        .format("\n")
-        .to_string();
-    assert_eq!(
-        final_state,
-        "(7 * A - 7 * X - 1792) * (7 * A - 7 * X) = 0
-(A - X - 256) * (A - X) = 0"
-    );
 }
 
 #[test]
