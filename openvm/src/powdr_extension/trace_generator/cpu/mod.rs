@@ -12,10 +12,7 @@ use openvm_stark_backend::{
     Chip,
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
-use powdr_autoprecompiles::{
-    trace_handler::{generate_trace, TraceData, TraceTrait},
-    Apc,
-};
+use powdr_autoprecompiles::{trace_handler::TraceTrait, Apc};
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 
 use crate::{
@@ -75,7 +72,7 @@ impl<R, PB: ProverBackend<Matrix = Arc<RowMajorMatrix<BabyBear>>>> Chip<R, PB> f
 }
 
 pub struct PowdrTraceGeneratorCpu {
-    pub apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, BabyBear>>,
+    pub apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, u32>>,
     pub original_airs: OriginalAirs<BabyBear>,
     pub config: OriginalVmConfig,
     pub periphery: PowdrPeripheryInstancesCpu,
@@ -83,7 +80,7 @@ pub struct PowdrTraceGeneratorCpu {
 
 impl PowdrTraceGeneratorCpu {
     pub fn new(
-        apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, BabyBear>>,
+        apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, u32>>,
         original_airs: OriginalAirs<BabyBear>,
         config: OriginalVmConfig,
         periphery: PowdrPeripheryInstancesCpu,
@@ -100,6 +97,8 @@ impl PowdrTraceGeneratorCpu {
         &self,
         mut original_arenas: OriginalArenas<MatrixRecordArena<BabyBear>>,
     ) -> DenseMatrix<BabyBear> {
+        use powdr_autoprecompiles::trace_handler::{generate_trace, TraceData};
+
         let num_apc_calls = original_arenas.number_of_calls();
         if num_apc_calls == 0 {
             // If the APC isn't called, early return with an empty trace.

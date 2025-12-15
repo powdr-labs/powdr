@@ -236,7 +236,7 @@ pub fn optimize_exec_bus<T: FieldElement>(
     machine
 }
 
-pub fn symbolic_machine_to_constraint_system<P: FieldElement>(
+fn symbolic_machine_to_constraint_system<P: FieldElement>(
     symbolic_machine: SymbolicMachine<P>,
 ) -> ConstraintSystem<P, AlgebraicReference> {
     ConstraintSystem {

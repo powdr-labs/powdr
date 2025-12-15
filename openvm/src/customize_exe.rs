@@ -9,9 +9,7 @@ use std::sync::Arc;
 use crate::bus_map::OpenVmBusType;
 use crate::extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs, OriginalVmConfig};
 use crate::instruction_formatter::openvm_instruction_formatter;
-use crate::memory_bus_interaction::{
-    OpenVmAddress, OpenVmMemoryBusInteraction, REGISTER_ADDRESS_SPACE,
-};
+use crate::memory_bus_interaction::{OpenVmMemoryBusInteraction, REGISTER_ADDRESS_SPACE};
 use crate::powdr_extension::chip::PowdrAir;
 use crate::program::Prog;
 use crate::utils::UnsupportedOpenVmReferenceError;
@@ -59,13 +57,13 @@ pub struct BabyBearOpenVmApcAdapter<'a> {
 
 pub struct OpenVmExecutionState<'a, T>(&'a VmState<T, GuestMemory>);
 
-// TODO: untested!
+// TODO: This is not tested yet as apc compilation does not currently output any optimistic constraints
 impl<'a, T: PrimeField32> ExecutionState for OpenVmExecutionState<'a, T> {
     type RegisterAddress = OpenVmRegisterAddress;
-    type Value = T;
+    type Value = u32;
 
     fn pc(&self) -> Self::Value {
-        T::from_canonical_u32(self.0.pc())
+        self.0.pc()
     }
 
     fn reg(&self, addr: &Self::RegisterAddress) -> Self::Value {
@@ -73,7 +71,8 @@ impl<'a, T: PrimeField32> ExecutionState for OpenVmExecutionState<'a, T> {
             self.0
                 .memory
                 .memory
-                .get_f(REGISTER_ADDRESS_SPACE, addr.0 as u32)
+                .get_f::<T>(REGISTER_ADDRESS_SPACE, addr.0 as u32)
+                .as_canonical_u32()
         }
     }
 }
@@ -81,29 +80,6 @@ impl<'a, T: PrimeField32> ExecutionState for OpenVmExecutionState<'a, T> {
 /// A type to represent register addresses during execution
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct OpenVmRegisterAddress(u8);
-
-pub enum RegisterAddressError {
-    NotRegister,
-    NotConcrete,
-}
-
-impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> TryFrom<OpenVmAddress<T, V>>
-    for OpenVmRegisterAddress
-{
-    type Error = RegisterAddressError;
-
-    fn try_from(value: OpenVmAddress<T, V>) -> Result<Self, Self::Error> {
-        if value.address_space != T::from(REGISTER_ADDRESS_SPACE) {
-            return Err(RegisterAddressError::NotRegister);
-        }
-        value
-            .local_address
-            .try_to_number()
-            .ok_or(RegisterAddressError::NotConcrete)
-            .map(|register_index| register_index.to_degree() as u8)
-            .map(OpenVmRegisterAddress)
-    }
-}
 
 impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     type PowdrField = BabyBearField;
@@ -289,7 +265,7 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32>(
 
 #[derive(Serialize, Deserialize)]
 pub struct OpenVmApcCandidate<F, I> {
-    apc: Arc<Apc<F, I, OpenVmRegisterAddress, F>>,
+    apc: Arc<Apc<F, I, OpenVmRegisterAddress, u32>>,
     execution_frequency: usize,
     widths: AirWidthsDiff,
     stats: EvaluationResult,

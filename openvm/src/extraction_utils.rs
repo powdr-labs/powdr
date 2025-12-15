@@ -134,7 +134,7 @@ impl<F> OriginalAirs<F> {
 /// For each air name, the dimension of a record arena needed to store the
 /// records for a single APC call.
 pub fn record_arena_dimension_by_air_name_per_apc_call<F>(
-    apc: &Apc<F, Instr<F>, OpenVmRegisterAddress, F>,
+    apc: &Apc<F, Instr<F>, OpenVmRegisterAddress, u32>,
     air_by_opcode_id: &OriginalAirs<F>,
 ) -> BTreeMap<String, RecordArenaDimension> {
     apc.instructions().iter().map(|instr| &instr.0.opcode).fold(

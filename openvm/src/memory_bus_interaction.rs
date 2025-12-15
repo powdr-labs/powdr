@@ -22,9 +22,9 @@ pub struct OpenVmMemoryBusInteraction<T: FieldElement, V> {
 #[derive(Clone, Hash, Eq, PartialEq, Debug)]
 pub struct OpenVmAddress<T, V> {
     /// The address space (e.g. register, memory, native, etc.), always a concrete number.
-    pub address_space: T,
+    address_space: T,
     /// The address expression.
-    pub local_address: GroupedExpression<T, V>,
+    local_address: GroupedExpression<T, V>,
 }
 
 impl<T: FieldElement, V> IntoIterator for OpenVmAddress<T, V> {
