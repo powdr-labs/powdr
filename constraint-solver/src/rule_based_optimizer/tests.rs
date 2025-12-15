@@ -8,6 +8,7 @@ use crate::{
     indexed_constraint_system::IndexedConstraintSystem,
     range_constraint::RangeConstraint,
     rule_based_optimizer::driver::rule_based_optimization,
+    solver::Solver,
 };
 use expect_test::expect;
 use num_traits::Zero;
@@ -154,17 +155,28 @@ fn test_rule_split_constraints_based_on_minimal_range() {
         bit_constraint("opcode_or_flag_21", 1),
         bit_constraint("opcode_and_flag_21", 1),
     ]);
+
+    let range_constraints = std::collections::HashMap::from([
+        ("opcode_sub_flag_21", RangeConstraint::from_mask(0x1u32)),
+        ("opcode_xor_flag_21", RangeConstraint::from_mask(0x1u32)),
+        ("opcode_or_flag_21", RangeConstraint::from_mask(0x1u32)),
+        ("opcode_and_flag_21", RangeConstraint::from_mask(0x1u32)),
+    ]);
+
+    let mut solver = crate::solver::new_solver(
+        system.clone().into(),
+        DefaultBusInteractionHandler::default(),
+    );
+    for (var, constraint) in range_constraints {
+        solver.add_range_constraint(&var.to_string(), constraint);
+    }
+
     let optimized_system = rule_based_optimization(
         system,
-        NoRangeConstraints,
+        solver,
         DefaultBusInteractionHandler::default(),
         &mut new_var(),
         None,
     );
-    expect![[r#"opcode_sub_flag_21 = 0
-    opcode_xor_flag_21 = 0
-    opcode_or_flag_21 = 0
-    opcode_and_flag_21 = 0
-    "#]]
-    .assert_eq(&optimized_system.0.to_string());
+    assert_eq!(optimized_system.0.system().algebraic_constraints.len(), 0);
 }

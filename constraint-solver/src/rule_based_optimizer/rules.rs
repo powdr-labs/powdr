@@ -115,35 +115,22 @@ crepe! {
 
 
 
-    //------- split constraint based on minimal range derivation: case minimal range is zero-----
-    // it doesn't need to be affine, but only consider this case now.
-    // split the expression into coeff * var + rest_expr = 0
-    // need to add expr_rest to database
+    //------- split constraint based on minimal range -------
+    // - deducible case: minimal range of the variable in a affine algebraic constraint is zero
+    // for an algebraic constraint coeff0 * var0 + coeff1 * var1 + ... + coeffn * varn = 0
+    // if minimal range of vari is zero for some i in [0, n], no wrapping,  then vari = 0 can be deduced
+    // split the an algebraic constraint that has minimal range zero property into coeff * var + expr_rest = 0
+    // apply zero assignment recursively.
     struct MinimalRangeZeroDeducible<T: FieldElement>(Expr, Expr, Var, T);
       MinimalRangeZeroDeducible(expr1, expr_rest, var, coeff) <-
         AlgebraicConstraint(e),
         Env(env),
-        let Some((expr1, expr_rest, coeff, var)) = env.try_to_multi_var_affine(e),
-        (env.is_minimal_range_zero_deducible(expr1, expr_rest, e)),
+        let (Some((expr1, expr_rest, coeff, var)), is_minimal_zero) = env.try_to_multi_minimal_range_zero_var_affine(e),
+        (is_minimal_zero),
         (env.on_expr(e, (), |e, _| e.constant_offset().is_zero()));
 
-      //  (env.is_minimal_range_zero_deducible(expr1, expr_rest, e)),
-     //   (env.on_expr(e, (), |e, _| e.constant_offset().is_zero()));
-
-
-    // AlgebraicConstraint(expr_rest) <-
-    //   MinimalRangeZeroDeducible(_, expr_rest, _, _),
-    //   AlgebraicConstraint(e),
-    //   Env(env);
-
-
-
     Assignment(var, T::zero()) <-
-    RangeConstraintOnVar(var, rc),
-    Env(env),
-     MinimalRangeZeroDeducible(expr1, _,var,_),
-     (env.printthis(expr1));//, _, var, coeff),
-    //(rc.contains_value(T::zero()));
+    MinimalRangeZeroDeducible(_, _, var, _);
 
 
 

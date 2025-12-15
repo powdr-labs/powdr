@@ -6,6 +6,7 @@ use std::{
 
 use itertools::Itertools;
 use powdr_number::FieldElement;
+use powdr_number::LargeInt;
 
 use crate::{
     constraint_system::ComputationMethod,
@@ -171,62 +172,46 @@ impl<T: FieldElement> Environment<T> {
         f(expr, args)
     }
 
-    pub fn printthis(&self, expr: Expr) -> bool {
-        let db = self.expressions.borrow();
-        let expr = db[expr].clone();
-
-        println!("checking expr {}", expr);
-
-        true
-    }
-
     /// Split Expr into expr1 + expr_rest, i.e., expr = expr1 + expr_rest
     /// Expr is affine, offset is zero
     /// expr1 is of the form coeff * var
     /// expr_rest is zero if expr only contains one variable
-    pub fn try_to_multi_var_affine(&self, expr: Expr) -> Option<(Expr, Expr, T, Var)> {
+    pub fn try_to_multi_minimal_range_zero_var_affine(
+        &self,
+        expr: Expr,
+    ) -> (Option<(Expr, Expr, T, Var)>, bool) {
         let db = self.expressions.borrow();
         let expr = db[expr].clone();
         drop(db);
+        // check there might need more conditions
+        if expr.range_constraint(self).range().1.to_arbitrary_integer()
+            >= T::modulus().to_arbitrary_integer()
+        {
+            return (None, false);
+        }
         if let Some((var, coeff)) = expr.clone().linear_components().next() {
             let expr_rest = expr.clone()
                 - (GroupedExpression::from_number(*coeff)
                     * GroupedExpression::from_unknown_variable(*var));
             let expr1 = &(GroupedExpression::from_number(*coeff)
                 * GroupedExpression::from_unknown_variable(*var));
-            println!("expression {} is considering", expr);
-            Some((self.insert(&expr1), self.insert(&expr_rest), *coeff, *var))
+
+            // is this the proper way to check the minimal range zero property?
+            if expr1.range_constraint(self).range().0 < T::zero() {
+                return (None, false);
+            }
+
+            if expr_rest.range_constraint(self).range().0 < T::zero() {
+                return (None, false);
+            }
+
+            (
+                Some((self.insert(expr1), self.insert(&expr_rest), *coeff, *var)),
+                true,
+            )
         } else {
-            return None;
+            (None, false)
         }
-    }
-    pub fn is_minimal_range_zero_deducible(
-        &self,
-        expr1: Expr,
-        expr_rest: Expr,
-        expr: Expr,
-    ) -> bool {
-        let db = self.expressions.borrow();
-        let expr = &db[expr];
-        let expr1 = &db[expr1];
-        let expr_rest = &db[expr_rest];
-        if !expr.is_affine() {
-            return false;
-        }
-
-        if expr1 + expr_rest != *expr {
-            return false;
-        }
-
-        if !(expr1.range_constraint(self).range().0 >= T::zero()) {
-            return false;
-        }
-
-        if !(expr_rest.range_constraint(self).range().0 >= T::zero()) {
-            return false;
-        }
-
-        return true;
     }
 
     #[allow(dead_code)]
