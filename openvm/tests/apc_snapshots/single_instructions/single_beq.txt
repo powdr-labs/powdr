@@ -21,7 +21,7 @@ Symbolic machine using 16 unique main columns:
   b__2_0
   b__3_0
   cmp_result_0
-  free_var_35
+  free_var_33
   is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):
@@ -46,5 +46,5 @@ cmp_result_0 * (a__0_0 - b__0_0) = 0
 cmp_result_0 * (a__1_0 - b__1_0) = 0
 cmp_result_0 * (a__2_0 - b__2_0) = 0
 cmp_result_0 * (a__3_0 - b__3_0) = 0
-free_var_35 * ((a__2_0 - b__2_0) * (a__2_0 - b__2_0) + (a__3_0 - b__3_0) * (a__3_0 - b__3_0) + (a__0_0 - b__0_0) * (a__0_0 - b__0_0) + (a__1_0 - b__1_0) * (a__1_0 - b__1_0)) + cmp_result_0 - 1 * is_valid = 0
+free_var_33 * ((a__0_0 - b__0_0) * (a__0_0 - b__0_0) + (a__1_0 - b__1_0) * (a__1_0 - b__1_0) + (a__2_0 - b__2_0) * (a__2_0 - b__2_0) + (a__3_0 - b__3_0) * (a__3_0 - b__3_0)) + cmp_result_0 - 1 * is_valid = 0
 is_valid * (is_valid - 1) = 0
