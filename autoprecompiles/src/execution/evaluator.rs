@@ -106,7 +106,6 @@ impl<E: ExecutionState> OptimisticConstraintEvaluator<E> {
 
     /// Check all constraints that can be checked at this stage, returning a new instance iff they are verified
     pub fn try_next(&mut self, state: &E) -> Result<(), OptimisticConstraintFailed> {
-
         let constraints_ref = self.constraints.as_ref();
 
         // Get the constraints that can first be checked at this step
