@@ -162,9 +162,7 @@ fn run_command(command: Commands) {
             if let Some(apc_candidates_dir) = apc_candidates_dir {
                 powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
             }
-            if optimistic_precompiles {
-                powdr_config = powdr_config.with_optimistic_precompiles(true);
-            }
+            powdr_config = powdr_config.with_optimistic_precompiles(optimistic_precompiles);
             let guest_program = compile_openvm(&guest, guest_opts.clone()).unwrap();
             let execution_profile =
                 powdr_openvm::execution_profile_from_guest(&guest_program, stdin_from(input));
@@ -191,9 +189,7 @@ fn run_command(command: Commands) {
             if let Some(apc_candidates_dir) = apc_candidates_dir {
                 powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
             }
-            if optimistic_precompiles {
-                powdr_config = powdr_config.with_optimistic_precompiles(true);
-            }
+            powdr_config = powdr_config.with_optimistic_precompiles(optimistic_precompiles);
             let guest_program = compile_openvm(&guest, guest_opts.clone()).unwrap();
             maybe_compute_empirical_constraints(&guest_program, &powdr_config, stdin_from(input));
             let execution_profile =
@@ -231,9 +227,7 @@ fn run_command(command: Commands) {
             if let Some(apc_candidates_dir) = apc_candidates_dir {
                 powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
             }
-            if optimistic_precompiles {
-                powdr_config = powdr_config.with_optimistic_precompiles(true);
-            }
+            powdr_config = powdr_config.with_optimistic_precompiles(optimistic_precompiles);
             let guest_program = compile_openvm(&guest, guest_opts).unwrap();
             maybe_compute_empirical_constraints(&guest_program, &powdr_config, stdin_from(input));
 
@@ -298,6 +292,8 @@ pub fn run_with_metric_collection_to_file<R>(file: std::fs::File, f: impl FnOnce
     res
 }
 
+/// If optimistic precompiles are enabled, compute empirical constraints from the execution
+/// of the guest program on the given stdin, and save them to disk.
 fn maybe_compute_empirical_constraints(
     guest_program: &OriginalCompiledProgram,
     powdr_config: &PowdrConfig,
@@ -315,6 +311,7 @@ fn maybe_compute_empirical_constraints(
         detect_empirical_constraints(guest_program, powdr_config.degree_bound, vec![stdin]);
 
     if let Some(path) = &powdr_config.apc_candidates_dir_path {
+        std::fs::create_dir_all(path).expect("Failed to create apc candidates directory");
         tracing::info!(
             "Saving empirical constraints debug info to {}/empirical_constraints.json",
             path.display()
