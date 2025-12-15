@@ -189,6 +189,9 @@ impl<T: FieldElement> Environment<T> {
         {
             return (None, false);
         }
+        if !(expr.is_affine() && expr.constant_offset().is_zero()) {
+            return (None, false);
+        }
         if let Some((var, coeff)) = expr.clone().linear_components().next() {
             let expr_rest = expr.clone()
                 - (GroupedExpression::from_number(*coeff)
