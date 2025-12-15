@@ -78,6 +78,15 @@ crepe! {
       Expression(e),
       for v in env.on_expr(e, (), |e, _| e.referenced_unknown_variables().cloned().collect_vec());
 
+    struct Product(Expr, Expr, Expr);
+    Product(e, l, r) <-
+      Expression(e),
+      Env(env),
+      let Some((l, r)) = env.try_as_single_product(e);
+    Product(e, r, l) <- Product(e, l, r);
+    Expression(e) <- Product(_, e, _);
+    Expression(e) <- Product(_, _, e);
+
     // AffineExpression(e, coeff, var, offset) => e = coeff * var + offset
     struct AffineExpression<T: FieldElement>(Expr, T, Var, T);
     AffineExpression(e, coeff, var, offset) <-
@@ -101,16 +110,6 @@ crepe! {
     HasProductSummand(e, r, l) <- HasProductSummand(e, l, r);
     Expression(l) <- HasProductSummand(_, l, _);
     Expression(r) <- HasProductSummand(_, _, r);
-
-    // Product(e, l, r) => e = l * r
-    struct Product(Expr, Expr, Expr);
-    Product(e, l, r) <-
-      Expression(e),
-      Env(env),
-      let Some((l, r)) = env.try_as_single_product(e);
-    Product(e, r, l) <- Product(e, l, r);
-    Expression(e) <- Product(_, e, _);
-    Expression(e) <- Product(_, _, e);
 
     // ProductConstraint(e, l, r) => e is an algebraic constraint of the form l * r = 0
     struct ProductConstraint(Expr, Expr, Expr);
@@ -268,6 +267,71 @@ crepe! {
     ///////////////////////////////// OUTPUT ACTIONS //////////////////////////
 
     struct Equivalence(Var, Var);
+
+    //------- quadratic equivalence -----
+
+    // QuadraticEquivalenceCandidate(E, expr, offset) =>
+    //   E = ((expr) * (expr + offset) = 0) is a constraint and
+    //   expr is affine with at least 2 variables.
+    struct QuadraticEquivalenceCandidate<T: FieldElement>(Expr, Expr, T);
+    QuadraticEquivalenceCandidate(e, r, offset) <-
+       Env(env),
+       AlgebraicConstraint(e),
+       Product(e, l, r), // note that this will always produce two facts for (l, r) and (r, l)
+       ({env.affine_var_count(l).unwrap_or(0) > 1 && env.affine_var_count(r).unwrap_or(0) > 1}),
+       let Some(offset) = env.constant_difference(l, r);
+
+    // QuadraticEquivalenceCandidatePair(expr1, expr2, offset1 / coeff, v1, v2) =>
+    //  (expr1) * (expr1 + offset1) = 0 and (expr2) * (expr2 + offset2) = 0 are constraints,
+    //  expr1 is affine with at least 2 variables and is obtained from
+    //  expr2 * factor by substituting v2 by v1 (factor != 0),
+    //  offset1 == offset2 * factor and coeff is the coefficient of v1 in expr1.
+    //
+    //  This means that v1 is always equal to (-expr1 / coeff) or equal to
+    //  (-(expr1 + offset1) / coeff) = (-expr1 / coeff - offset1 / coeff).
+    //  Because of the above, also v2 is equal to
+    //  (-expr1 / coeff) or equal to (-(expr1 + offset1) / coeff) [Yes, expr1!].
+    struct QuadraticEquivalenceCandidatePair<T: FieldElement>(Expr, Expr, T, Var, Var);
+    QuadraticEquivalenceCandidatePair(expr1, expr2, offset1 / coeff, v1, v2) <-
+      Env(env),
+      QuadraticEquivalenceCandidate(_, expr1, offset1),
+      QuadraticEquivalenceCandidate(_, expr2, offset2),
+      (expr1 < expr2),
+      let Some((v1, v2,factor)) = env.differ_in_exactly_one_variable(expr1, expr2),
+      (offset1 == offset2 * factor),
+      let coeff = env.on_expr(expr1, (), |e, _| *e.coefficient_of_variable_in_affine_part(&v1).unwrap());
+
+    // QuadraticEquivalence(v1, v2) => v1 and v2 are equal in all satisfying assignments.
+    // Because of QuadraticEquivalenceCandidatePair, v1 is equal to X or X + offset,
+    // where X is some value that depends on other variables. Similarly, v2 is equal to X or X + offset.
+    // Because of the range constraints of v1 and v2, these two "or"s are exclusive ors.
+    // This means depending on the value of X, it is either X or X + offset.
+    // Since this "decision" only depens on X, both v1 and v2 are either X or X + offset at the same time
+    // and thus equal.
+    struct QuadraticEquivalence(Var, Var);
+    QuadraticEquivalence(v1, v2) <-
+      QuadraticEquivalenceCandidatePair(_, _, offset, v1, v2),
+      RangeConstraintOnVar(v1, rc),
+      RangeConstraintOnVar(v2, rc),
+      (rc.is_disjoint(&rc.combine_sum(&RangeConstraint::from_value(offset))));
+
+    Equivalence(v1, v2) <- QuadraticEquivalence(v1, v2);
+
+    ReplaceAlgebraicConstraintBy(e, env.substitute_by_known(e, v, val)) <-
+      Env(env),
+      Assignment(v, val),
+      ContainsVariable(e, v),
+      AlgebraicConstraint(e);
+
+    ReplaceAlgebraicConstraintBy(e, env.substitute_by_var(e, v, v2)) <-
+       Env(env),
+       AlgebraicConstraint(e),
+       ContainsVariable(e, v),
+       Equivalence(v, v2);
+
+    AlgebraicConstraint(e) <-
+      ReplaceAlgebraicConstraintBy(_, e);
+
 
     @output
     pub struct ActionRule<T>(pub Action<T>);
