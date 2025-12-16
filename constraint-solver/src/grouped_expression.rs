@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fmt::Display,
     hash::Hash,
     iter::{once, Sum},
@@ -53,6 +53,33 @@ pub enum GroupedExpressionComponent<T, V> {
     Linear(V, T),
     /// A constant component `c`.
     Constant(T),
+}
+
+impl<F, T, V> From<GroupedExpressionComponent<T, V>> for GroupedExpression<T, V>
+where
+    F: FieldElement,
+    T: RuntimeConstant<FieldType = F>,
+    V: Clone + Ord + Eq,
+{
+    fn from(s: GroupedExpressionComponent<T, V>) -> Self {
+        match s {
+            GroupedExpressionComponent::Quadratic(l, r) => Self {
+                quadratic: vec![(l, r)],
+                linear: Default::default(),
+                constant: T::zero(),
+            },
+            GroupedExpressionComponent::Linear(v, c) => Self {
+                quadratic: Default::default(),
+                linear: [(v, c)].into_iter().collect(),
+                constant: T::zero(),
+            },
+            GroupedExpressionComponent::Constant(c) => Self {
+                quadratic: Default::default(),
+                linear: Default::default(),
+                constant: c,
+            },
+        }
+    }
 }
 
 impl<F: FieldElement, T: RuntimeConstant<FieldType = F>, V> GroupedExpression<T, V> {
@@ -210,7 +237,10 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
     /// Otherwise, the variables returned here might also appear inside the higher order terms
     /// and this the dependency on these variables might be more complicated than just a
     /// runtime constant factor.
-    pub fn linear_components(&self) -> impl DoubleEndedIterator<Item = (&V, &T)> + Clone {
+    pub fn linear_components(
+        &self,
+    ) -> impl DoubleEndedIterator<Item = (&V, &T)> + ExactSizeIterator<Item = (&V, &T)> + Clone
+    {
         self.linear.iter()
     }
 
@@ -272,6 +302,26 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
         self.linear.get(var)
     }
 
+    /// If `self` contains `var` exactly once in an affine way,
+    /// returns `Some((coeff, rest))` where `self = coeff * var + rest`.
+    ///
+    /// This is relatively expensive because it needs to construct a new
+    /// GroupedExpression.
+    pub fn try_extract_affine_var(&self, var: V) -> Option<(T, Self)> {
+        if self
+            .referenced_unknown_variables()
+            .filter(|v| *v == &var)
+            .count()
+            != 1
+        {
+            return None;
+        }
+        let coeff = self.linear.get(&var)?.clone();
+        let mut rest = self.clone();
+        rest.linear.remove(&var);
+        Some((coeff, rest))
+    }
+
     /// Returns the range constraint of the full expression.
     pub fn range_constraint(
         &self,
@@ -298,6 +348,44 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
     }
 }
 
+impl<T: FieldElement, V: Ord + Clone + Eq> GroupedExpression<T, V> {
+    pub fn substitute_simple(&mut self, variable: &V, substitution: T) {
+        if self.linear.contains_key(variable) {
+            let coeff = self.linear.remove(variable).unwrap();
+            self.constant += coeff * substitution;
+        }
+
+        let mut to_add = GroupedExpression::zero();
+        self.quadratic.retain_mut(|(l, r)| {
+            l.substitute_simple(variable, substitution);
+            r.substitute_simple(variable, substitution);
+            match (l.try_to_known(), r.try_to_known()) {
+                (Some(l), Some(r)) => {
+                    self.constant += *l * *r;
+                    false
+                }
+                (Some(l), None) => {
+                    if !l.is_zero() {
+                        to_add += r.clone() * l;
+                    }
+                    false
+                }
+                (None, Some(r)) => {
+                    if !r.is_zero() {
+                        to_add += l.clone() * r;
+                    }
+                    false
+                }
+                _ => true,
+            }
+        });
+        // remove_quadratic_terms_adding_to_zero(&mut self.quadratic);
+
+        if !to_add.is_zero() {
+            *self += to_add;
+        }
+    }
+}
 impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq> GroupedExpression<T, V> {
     /// Substitute a variable by a symbolically known expression. The variable can be known or unknown.
     /// If it was already known, it will be substituted in the known expressions.
@@ -445,6 +533,14 @@ pub trait RangeConstraintProvider<T: FieldElement, V> {
 impl<R: RangeConstraintProvider<T, V>, T: FieldElement, V> RangeConstraintProvider<T, V> for &R {
     fn get(&self, var: &V) -> RangeConstraint<T> {
         R::get(self, var)
+    }
+}
+
+impl<T: FieldElement, V: Eq + Hash> RangeConstraintProvider<T, V>
+    for HashMap<V, RangeConstraint<T>>
+{
+    fn get(&self, var: &V) -> RangeConstraint<T> {
+        HashMap::get(self, var).cloned().unwrap_or_default()
     }
 }
 
