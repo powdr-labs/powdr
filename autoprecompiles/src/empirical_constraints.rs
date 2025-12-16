@@ -84,6 +84,9 @@ impl EmpiricalConstraints {
         }
     }
 
+    /// Returns a new `EmpiricalConstraints` instance containing only the constraints
+    /// (both range and equivalence) that are based on a number of executions greater
+    /// than or equal to `threshold`. This should mitigate overfitting to rare execution paths.
     pub fn apply_pc_threshold(&self, threshold: u64) -> Self {
         EmpiricalConstraints {
             column_ranges_by_pc: self
@@ -96,7 +99,9 @@ impl EmpiricalConstraints {
                 .equivalence_classes_by_block
                 .iter()
                 .filter(|(&block_pc, _)| {
-                    // For equivalence classes, we check the pc_counts of the first instruction in the block
+                    // For equivalence classes, it is enough to check the pc_counts of the first
+                    // instruction in the block, as all other instruction will be executed at least
+                    // as often.
                     self.pc_counts.get(&(block_pc as u32)).cloned().unwrap_or(0) >= threshold
                 })
                 .map(|(block_pc, classes)| (*block_pc, classes.clone()))
@@ -152,30 +157,39 @@ impl BlockCell {
 /// discard any empirical constraints associated with it.
 const EXECUTION_COUNT_THRESHOLD: u64 = 100;
 
+/// Generates symbolic constraints based on empirical constraints for a given basic block.
 pub struct ConstraintGenerator<'a, A: Adapter> {
     empirical_constraints: EmpiricalConstraints,
-    algebraic_references: BTreeMap<(usize, usize), AlgebraicReference>,
+    algebraic_references: BTreeMap<BlockCell, AlgebraicReference>,
     block: &'a BasicBlock<A::Instruction>,
 }
 
 impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
+    /// Creates a new `ConstraintGenerator`.
+    ///
+    /// Arguments:
+    /// - `empirical_constraints`: The empirical constraints to use.
+    /// - `subs`: A mapping from instruction index and column index to polynomial IDs.
+    ///           This would typically come from a `ColumnAllocator`.
+    /// - `columns`: An iterator over the algebraic references for the columns in the block.
+    /// - `block`: The basic block for which to generate constraints.
     pub fn new(
         empirical_constraints: &EmpiricalConstraints,
         subs: &[Vec<u64>],
         columns: impl Iterator<Item = AlgebraicReference>,
         block: &'a BasicBlock<A::Instruction>,
     ) -> Self {
-        let reverse_subs = subs
+        let poly_id_to_block_cell = subs
             .iter()
             .enumerate()
             .flat_map(|(instr_index, subs)| {
-                subs.iter()
-                    .enumerate()
-                    .map(move |(col_index, &poly_id)| (poly_id, (instr_index, col_index)))
+                subs.iter().enumerate().map(move |(col_index, &poly_id)| {
+                    (poly_id, BlockCell::new(instr_index, col_index))
+                })
             })
             .collect::<BTreeMap<_, _>>();
         let algebraic_references = columns
-            .map(|r| (*reverse_subs.get(&r.id).unwrap(), r.clone()))
+            .map(|r| (*poly_id_to_block_cell.get(&r.id).unwrap(), r.clone()))
             .collect::<BTreeMap<_, _>>();
 
         Self {
@@ -186,18 +200,23 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
         }
     }
 
-    fn get_algebraic_reference(&self, instr_index: usize, col_index: usize) -> AlgebraicReference {
+    fn get_algebraic_reference(&self, block_cell: &BlockCell) -> AlgebraicReference {
         self.algebraic_references
-            .get(&(instr_index, col_index))
+            .get(block_cell)
             .cloned()
             .unwrap_or_else(|| {
                 panic!(
-                    "Missing reference for (i: {}, col_index: {}, block_id: {})",
-                    instr_index, col_index, self.block.start_pc
+                    "Missing reference for in block {}: {block_cell:?}",
+                    self.block.start_pc
                 )
             })
     }
 
+    /// Generates constraints of the form `var = <value>` for columns whose value is
+    /// always the same empirically.
+    // TODO: We could also enforce looser range constraints.
+    // This is a bit more complicated though, because we'd have to add bus interactions
+    // to actually enforce them.
     pub fn range_constraints(&self) -> Vec<SymbolicConstraint<<A as Adapter>::PowdrField>> {
         let mut constraints = Vec::new();
 
@@ -207,13 +226,11 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
             else {
                 continue;
             };
-            for (col_index, range) in range_constraints.iter().enumerate() {
-                // TODO: We could also enforce looser range constraints.
-                // This is a bit more complicated though, because we'd have to add bus interactions
-                // to actually enforce them.
-                if range.0 == range.1 {
-                    let value = A::PowdrField::from(range.0 as u64);
-                    let reference = self.get_algebraic_reference(i, col_index);
+            for (col_index, (min, max)) in range_constraints.iter().enumerate() {
+                let block_cell = BlockCell::new(i, col_index);
+                if min == max {
+                    let value = A::PowdrField::from(*min as u64);
+                    let reference = self.get_algebraic_reference(&block_cell);
                     let constraint = AlgebraicExpression::Reference(reference)
                         - AlgebraicExpression::Number(value);
 
@@ -235,11 +252,9 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
         {
             for equivalence_class in equivalence_classes.iter() {
                 let first = equivalence_class.first().unwrap();
-                let first_ref =
-                    self.get_algebraic_reference(first.instruction_idx, first.column_idx);
+                let first_ref = self.get_algebraic_reference(first);
                 for other in equivalence_class.iter().skip(1) {
-                    let other_ref =
-                        self.get_algebraic_reference(other.instruction_idx, other.column_idx);
+                    let other_ref = self.get_algebraic_reference(other);
                     let constraint = AlgebraicExpression::Reference(first_ref.clone())
                         - AlgebraicExpression::Reference(other_ref.clone());
                     constraints.push(SymbolicConstraint { expr: constraint });
