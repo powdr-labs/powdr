@@ -170,7 +170,7 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
     /// Arguments:
     /// - `empirical_constraints`: The empirical constraints to use.
     /// - `subs`: A mapping from instruction index and column index to polynomial IDs.
-    ///           This would typically come from a `ColumnAllocator`.
+    ///   This would typically come from a `ColumnAllocator`.
     /// - `columns`: An iterator over the algebraic references for the columns in the block.
     /// - `block`: The basic block for which to generate constraints.
     pub fn new(
