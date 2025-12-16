@@ -187,20 +187,6 @@ fn redundant_memory_interactions_indices<
                 // In that case, we can replace both bus interactions with equality constraints
                 // between the data that would have been sent and received.
                 if let Some((previous_send, existing_values)) = memory_contents.remove(&addr) {
-                    // TODO: This can happen which optimistic precompiles, because basic block can include
-                    // big-word branching instructions. This hot fix is NOT sounds, because it does not handle
-                    // a situation where we write a (small-word) limb, accesses the large word, and then the
-                    // small-word limb again.
-                    if existing_values.len() != mem_int.data().len() {
-                        log::error!(
-                            "Memory interaction data length mismatch: existing values = {}, new values = {}. Resetting memory.",
-                            existing_values.iter().map(ToString::to_string).join(", "),
-                            mem_int.data().iter().map(ToString::to_string).join(", ")
-                        );
-                        memory_contents.clear();
-                        continue;
-                    }
-
                     for (existing, new) in existing_values.iter().zip_eq(mem_int.data().iter()) {
                         new_constraints.push(AlgebraicConstraint::assert_zero(
                             existing.clone() - new.clone(),
