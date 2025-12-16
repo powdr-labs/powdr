@@ -30,11 +30,17 @@ macro_rules! define_opcodes {
             ) as usize;
         )*
 
-        /// All opcodes in one slice
+        /// All opcodes in one slice.
         pub const ALL_OPCODES: &[usize] = &[
             $( $non_big_int_name, )*
             $( $bigint_name, )*
         ];
+
+        /// All opcodes except bigint in one slice.
+        pub const ALL_OPCODES_EXCEPT_BIGINT: &[usize] = &[
+            $( $non_big_int_name, )*
+        ];
+
     }
 }
 
@@ -112,10 +118,10 @@ pub const BRANCH_OPCODES: &[usize] = &[
     OPCODE_JALR,
 ];
 
-// Allowed opcodes = ALL_OPCODES - HINT_STOREW - HINT_BUFFER
+// Allowed opcodes = ALL_OPCODES_EXCEPT_BIGINT - HINT_STOREW - HINT_BUFFER
 pub fn instruction_allowlist() -> HashSet<VmOpcode> {
     // Filter out HINT_STOREW and HINT_BUFFER, which contain next references that don't work with apc
-    ALL_OPCODES
+    ALL_OPCODES_EXCEPT_BIGINT
         .iter()
         .copied()
         .filter(|&op| op != OPCODE_HINT_BUFFER && op != OPCODE_HINT_STOREW)
@@ -156,17 +162,28 @@ mod tests {
     }
 
     #[test]
+    fn test_all_opcodes_except_bigint() {
+        let expected = &[
+            512, 513, 514, 515, 516, 517, 518, 519, 520, 521, 528, 529, 530, 531, 532, 533, 534,
+            535, 544, 545, 549, 550, 551, 552, 560, 561, 565, 576, 592, 593, 594, 595, 596, 597,
+            598, 599, 608, 609,
+        ];
+        assert_eq!(ALL_OPCODES_EXCEPT_BIGINT.len(), 38); // 38 non-bigint
+        assert_eq!(ALL_OPCODES_EXCEPT_BIGINT, expected);
+    }
+
+    #[test]
     fn test_instruction_allowlist() {
         let allowlist = instruction_allowlist();
         let expected = [
             512, 513, 514, 515, 516, 517, 518, 519, 520, 521, 528, 529, 530, 531, 532, 533, 534,
             535, 544, 545, 549, 550, 551, 552, 560, 561, 565, 576, 592, 593, 594, 595, 596, 597,
-            598, 599, 1056, 1057, 1061, 1062, 1063, 1064,
+            598, 599,
         ]
         .into_iter()
         .map(VmOpcode::from_usize)
         .collect();
-        assert_eq!(allowlist.len(), ALL_OPCODES.len() - 2); // Excluding HINT_STOREW and HINT_BUFFER
+        assert_eq!(allowlist.len(), ALL_OPCODES_EXCEPT_BIGINT.len() - 2); // Excluding HINT_STOREW and HINT_BUFFER
         assert_eq!(allowlist, expected);
     }
 }
