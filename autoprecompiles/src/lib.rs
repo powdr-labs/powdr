@@ -513,6 +513,15 @@ pub fn build<A: Adapter>(
     let apc = Apc::new(block, machine, column_allocator);
 
     if let Some(path) = apc_candidates_dir_path {
+        let ser_path = path
+            .join(format!("apc_candidate_{}", apc.start_pc()))
+            .with_extension("cbor");
+        std::fs::create_dir_all(path).expect("Failed to create directory for APC candidates");
+        let file =
+            std::fs::File::create(&ser_path).expect("Failed to create file for APC candidate");
+        let writer = BufWriter::new(file);
+        serde_cbor::to_writer(writer, &apc).expect("Failed to write APC candidate to file");
+
         if let Some(optimistic_precompile) = &optimistic_precompile {
             // For debugging purposes, serialize the APC candidate to a file
             let ser_path = path
