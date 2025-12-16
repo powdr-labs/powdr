@@ -5,7 +5,7 @@ version = "0.0.0"
 edition = "2021"
 
 [dependencies]
-openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.3-powdr" }
+openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr" }
 sha2 = { version = "0.10", default-features = false }
 digest = { version = "0.10", default-features = false }
 
