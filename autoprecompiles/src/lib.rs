@@ -513,35 +513,25 @@ pub fn build<A: Adapter>(
     let apc = Apc::new(block, machine, column_allocator);
 
     if let Some(path) = apc_candidates_dir_path {
-        let ser_path = path
-            .join(format!("apc_candidate_{}", apc.start_pc()))
-            .with_extension("cbor");
-        std::fs::create_dir_all(path).expect("Failed to create directory for APC candidates");
-        let file =
-            std::fs::File::create(&ser_path).expect("Failed to create file for APC candidate");
+        std::fs::create_dir_all(path).unwrap();
+
+        let make_path = |suffix: Option<&str>, extension: &str| {
+            let suffix = suffix.map(|s| format!("_{s}")).unwrap_or_default();
+            path.join(format!("apc_candidate_{}{}", apc.start_pc(), suffix))
+                .with_extension(extension)
+        };
+
+        let ser_path = make_path(None, "cbor");
+        let file = std::fs::File::create(&ser_path).unwrap();
         let writer = BufWriter::new(file);
-        serde_cbor::to_writer(writer, &apc).expect("Failed to write APC candidate to file");
+        serde_cbor::to_writer(writer, &apc).unwrap();
 
         if let Some(optimistic_precompile) = &optimistic_precompile {
-            // For debugging purposes, serialize the APC candidate to a file
-            let ser_path = path
-                .join(format!("apc_candidate_{}", apc.start_pc()))
-                .with_extension("cbor");
-            std::fs::create_dir_all(path).expect("Failed to create directory for APC candidates");
-            let file =
-                std::fs::File::create(&ser_path).expect("Failed to create file for APC candidate");
-            let writer = BufWriter::new(file);
-            serde_cbor::to_writer(writer, &apc).expect("Failed to write APC candidate to file");
+            let guaranteed_precompile_path = make_path(Some("guaranteed"), "txt");
+            std::fs::write(guaranteed_precompile_path, guaranteed_precompile).unwrap();
 
-            let dumb_path = path
-                .join(format!("apc_candidate_{}_guaranteed.txt", apc.start_pc()))
-                .with_extension("txt");
-            std::fs::write(dumb_path, guaranteed_precompile).unwrap();
-
-            let ai_path = path
-                .join(format!("apc_candidate_{}_optimistic.txt", apc.start_pc()))
-                .with_extension("txt");
-            std::fs::write(ai_path, optimistic_precompile).unwrap();
+            let optimistic_precompile_path = make_path(Some("optimistic"), "txt");
+            std::fs::write(optimistic_precompile_path, optimistic_precompile).unwrap();
         }
     }
 
