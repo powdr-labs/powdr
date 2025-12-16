@@ -114,13 +114,17 @@ fn collect_trace(
             .collect::<HashMap<_, _>>();
 
         for (air_id, proving_context) in &ctx.per_air {
-            if !proving_context.cached_mains.is_empty() {
-                // Instruction chips always have a cached main.
-                continue;
-            }
             let main = proving_context.common_main.as_ref().unwrap();
             let air_name = global_airs[air_id].name();
-            let (machine, _) = &airs.air_name_to_machine.get(&air_name).unwrap();
+            let Some((machine, _)) = &airs.air_name_to_machine.get(&air_name) else {
+                // air_name_to_machine only contains instruction AIRs, and we are only
+                // interested in those here.
+                continue;
+            };
+            assert!(
+                proving_context.cached_mains.is_empty(),
+                "Unexpected cached main in {air_name}."
+            );
 
             // Find the execution bus interaction
             // This assumes there is exactly one, which is the case for instruction chips
@@ -158,7 +162,6 @@ fn collect_trace(
                     .unwrap();
 
                 // Convert the row to u32s
-                // TODO: is this necessary?
                 let row = row.iter().map(|v| v.as_canonical_u32()).collect();
 
                 let row = Row {
