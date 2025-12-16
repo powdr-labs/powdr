@@ -9,7 +9,7 @@ runs:
       with:
         repository: powdr-labs/openvm-reth-benchmark
         # Set once here — no inputs required elsewhere
-        ref: 64cdc9640a563517848814489ea6c63f134e1e85
+        ref: d9de243ee5b1a5050f88be04b2c9a5ae232bf590
         path: openvm-reth-benchmark
 
     - name: Patch openvm-reth-benchmark to use local powdr
