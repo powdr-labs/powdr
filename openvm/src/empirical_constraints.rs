@@ -297,13 +297,13 @@ impl ConstraintDetector {
             .into_par_iter()
             .map(|(block_id, block_instances)| {
                 // Segment each block instance into equivalence classes
-                let classes = block_instances
+                let partition_by_block_instance = block_instances
                     .into_iter()
                     .map(|block| block.equivalence_classes())
                     .collect::<Vec<_>>();
 
                 // Intersect the equivalence classes across all instances of the block
-                let intersected = Partition::intersect(&classes);
+                let intersected = Partition::intersect(&partition_by_block_instance);
 
                 (block_id, intersected)
             })
