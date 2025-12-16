@@ -7,6 +7,6 @@ edition = "2021"
 members = []
 
 [dependencies]
-openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.3-powdr" }
-openvm-platform = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.3-powdr" }
-openvm-sha2 = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.3-powdr" }
+openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr" }
+openvm-platform = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr" }
+openvm-sha2 = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr" }
