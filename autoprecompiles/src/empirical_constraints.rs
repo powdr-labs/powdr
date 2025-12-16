@@ -1,9 +1,8 @@
 use std::collections::btree_map::Entry;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 pub use crate::equivalence_classes::{EquivalenceClass, Partition};
@@ -109,80 +108,5 @@ impl BlockCell {
             instruction_idx,
             column_idx,
         }
-    }
-}
-
-impl<Id: Ord + Hash + Copy> Partition<Id> {
-    /// Intersects multiple partitions of the same universe into a single partition.
-    /// In other words, two elements are in the same equivalence class in the resulting partition
-    /// if and only if they are in the same equivalence class in all input partitions.
-    /// Singleton equivalence classes are omitted from the result.
-    pub fn intersect(partitions: &[Self]) -> Self {
-        // For each partition, build a map: Id -> class_index
-        let class_ids: Vec<HashMap<Id, usize>> = partitions
-            .iter()
-            .map(|partition| {
-                partition
-                    .iter()
-                    .enumerate()
-                    .flat_map(|(class_idx, class)| class.iter().map(move |&id| (id, class_idx)))
-                    .collect()
-            })
-            .collect();
-
-        // Iterate over all elements in the universe
-        partitions
-            .iter()
-            .flat_map(|partition| partition.iter())
-            .flat_map(|class| class.iter())
-            .unique()
-            .filter_map(|id| {
-                // Build the signature of the element: the list of class indices it belongs to
-                // (one index per partition)
-                class_ids
-                    .iter()
-                    .map(|m| m.get(id).cloned())
-                    // If an element did not appear in any one of the partitions, it is
-                    // a singleton and we skip it.
-                    .collect::<Option<Vec<usize>>>()
-                    .map(|signature| (signature, id))
-            })
-            // Group elements by their signatures
-            .into_group_map()
-            .into_values()
-            // Convert to set
-            .map(|ids| ids.into_iter().copied().collect())
-            .collect()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::empirical_constraints::Partition;
-
-    fn partition(sets: Vec<Vec<u32>>) -> Partition<u32> {
-        sets.into_iter().map(|s| s.into_iter().collect()).collect()
-    }
-
-    #[test]
-    fn test_intersect_partitions() {
-        let partition1 = partition(vec![
-            // Two classes: 1-4 and 5-9
-            vec![1, 2, 3, 4],
-            vec![5, 6, 7, 8, 9],
-        ]);
-        let partition2 = partition(vec![
-            // Four classes: 1, 2-3, 4-5, 6-8, 9 (implicit)
-            vec![1],
-            vec![2, 3],
-            vec![4, 5],
-            vec![6, 7, 8],
-        ]);
-
-        let result = Partition::intersect(&[partition1, partition2]);
-
-        let expected = partition(vec![vec![2, 3], vec![6, 7, 8]]);
-
-        assert_eq!(result, expected);
     }
 }
