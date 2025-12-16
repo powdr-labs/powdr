@@ -52,7 +52,10 @@ const EXT_DEGREE: usize = 4;
 
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct OriginalAirs<F> {
+    /// Maps a VM opcode to the name of the (unique) AIR that implements it.
     pub(crate) opcode_to_air: HashMap<VmOpcode, String>,
+    /// Maps an AIR name to its symbolic machine and metrics.
+    /// Note that this map only contains AIRs that implement instructions.
     pub(crate) air_name_to_machine: BTreeMap<String, (SymbolicMachine<F>, AirMetrics)>,
 }
 

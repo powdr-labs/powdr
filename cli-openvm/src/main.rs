@@ -4,7 +4,9 @@ use metrics_util::{debugging::DebuggingRecorder, layers::Layer};
 use openvm_sdk::StdIn;
 use openvm_stark_sdk::bench::serialize_metric_snapshot;
 use powdr_autoprecompiles::pgo::{pgo_config, PgoType};
+use powdr_autoprecompiles::PowdrConfig;
 use powdr_openvm::{compile_openvm, default_powdr_openvm_config, CompiledProgram, GuestOptions};
+use powdr_openvm::{detect_empirical_constraints, OriginalCompiledProgram};
 
 #[cfg(feature = "metrics")]
 use openvm_stark_sdk::metrics_tracing::TimingMetricsLayer;
@@ -46,6 +48,12 @@ enum Commands {
         /// When `--pgo-mode cell`, the directory to persist all APC candidates + a metrics summary
         #[arg(long)]
         apc_candidates_dir: Option<PathBuf>,
+
+        /// If active, generates "optimistic" precompiles. Optimistic precompiles are smaller in size
+        /// but may fail at runtime if the assumptions they make are violated.
+        #[arg(long)]
+        #[arg(default_value_t = false)]
+        optimistic_precompiles: bool,
     },
 
     Execute {
@@ -73,6 +81,12 @@ enum Commands {
         /// When `--pgo-mode cell`, the directory to persist all APC candidates + a metrics summary
         #[arg(long)]
         apc_candidates_dir: Option<PathBuf>,
+
+        /// If active, generates "optimistic" precompiles. Optimistic precompiles are smaller in size
+        /// but may fail at runtime if the assumptions they make are violated.
+        #[arg(long)]
+        #[arg(default_value_t = false)]
+        optimistic_precompiles: bool,
     },
 
     Prove {
@@ -108,6 +122,12 @@ enum Commands {
         /// When `--pgo-mode cell`, the directory to persist all APC candidates + a metrics summary
         #[arg(long)]
         apc_candidates_dir: Option<PathBuf>,
+
+        /// If active, generates "optimistic" precompiles. Optimistic precompiles are smaller in size
+        /// but may fail at runtime if the assumptions they make are violated.
+        #[arg(long)]
+        #[arg(default_value_t = false)]
+        optimistic_precompiles: bool,
     },
 }
 
@@ -135,15 +155,18 @@ fn run_command(command: Commands) {
             max_columns,
             input,
             apc_candidates_dir,
+            optimistic_precompiles,
         } => {
             let mut powdr_config = default_powdr_openvm_config(autoprecompiles as u64, skip as u64);
             if let Some(apc_candidates_dir) = apc_candidates_dir {
                 powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
             }
+            powdr_config = powdr_config.with_optimistic_precompiles(optimistic_precompiles);
             let guest_program = compile_openvm(&guest, guest_opts.clone()).unwrap();
             let execution_profile =
                 powdr_openvm::execution_profile_from_guest(&guest_program, stdin_from(input));
 
+            maybe_compute_empirical_constraints(&guest_program, &powdr_config, stdin_from(input));
             let pgo_config = pgo_config(pgo, max_columns, execution_profile);
             let program =
                 powdr_openvm::compile_exe(guest_program, powdr_config, pgo_config).unwrap();
@@ -159,12 +182,15 @@ fn run_command(command: Commands) {
             input,
             metrics,
             apc_candidates_dir,
+            optimistic_precompiles,
         } => {
             let mut powdr_config = default_powdr_openvm_config(autoprecompiles as u64, skip as u64);
             if let Some(apc_candidates_dir) = apc_candidates_dir {
                 powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
             }
+            powdr_config = powdr_config.with_optimistic_precompiles(optimistic_precompiles);
             let guest_program = compile_openvm(&guest, guest_opts.clone()).unwrap();
+            maybe_compute_empirical_constraints(&guest_program, &powdr_config, stdin_from(input));
             let execution_profile =
                 powdr_openvm::execution_profile_from_guest(&guest_program, stdin_from(input));
             let pgo_config = pgo_config(pgo, max_columns, execution_profile);
@@ -194,12 +220,15 @@ fn run_command(command: Commands) {
             input,
             metrics,
             apc_candidates_dir,
+            optimistic_precompiles,
         } => {
             let mut powdr_config = default_powdr_openvm_config(autoprecompiles as u64, skip as u64);
             if let Some(apc_candidates_dir) = apc_candidates_dir {
                 powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
             }
+            powdr_config = powdr_config.with_optimistic_precompiles(optimistic_precompiles);
             let guest_program = compile_openvm(&guest, guest_opts).unwrap();
+            maybe_compute_empirical_constraints(&guest_program, &powdr_config, stdin_from(input));
 
             let execution_profile =
                 powdr_openvm::execution_profile_from_guest(&guest_program, stdin_from(input));
@@ -260,4 +289,33 @@ pub fn run_with_metric_collection_to_file<R>(file: std::fs::File, f: impl FnOnce
     serde_json::to_writer_pretty(&file, &serialize_metric_snapshot(snapshotter.snapshot()))
         .unwrap();
     res
+}
+
+/// If optimistic precompiles are enabled, compute empirical constraints from the execution
+/// of the guest program on the given stdin, and save them to disk.
+fn maybe_compute_empirical_constraints(
+    guest_program: &OriginalCompiledProgram,
+    powdr_config: &PowdrConfig,
+    stdin: StdIn,
+) {
+    if !powdr_config.should_use_optimistic_precompiles {
+        return;
+    }
+
+    tracing::warn!(
+        "Optimistic precompiles are not implemented yet. Computing empirical constraints..."
+    );
+
+    let empirical_constraints =
+        detect_empirical_constraints(guest_program, powdr_config.degree_bound, vec![stdin]);
+
+    if let Some(path) = &powdr_config.apc_candidates_dir_path {
+        std::fs::create_dir_all(path).expect("Failed to create apc candidates directory");
+        tracing::info!(
+            "Saving empirical constraints debug info to {}/empirical_constraints.json",
+            path.display()
+        );
+        let json = serde_json::to_string_pretty(&empirical_constraints).unwrap();
+        std::fs::write(path.join("empirical_constraints.json"), json).unwrap();
+    }
 }

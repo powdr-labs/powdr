@@ -66,6 +66,7 @@ use crate::powdr_extension::{PowdrExtensionExecutor, PowdrPrecompile};
 mod air_builder;
 pub mod bus_map;
 pub mod cuda_abi;
+mod empirical_constraints;
 pub mod extraction_utils;
 pub mod opcode;
 mod program;
@@ -75,6 +76,8 @@ mod utils;
 pub use opcode::instruction_allowlist;
 pub use powdr_autoprecompiles::DegreeBound;
 pub use powdr_autoprecompiles::PgoConfig;
+
+pub use crate::empirical_constraints::detect_empirical_constraints;
 
 pub type BabyBearSC = BabyBearPoseidon2Config;
 
@@ -773,7 +776,7 @@ pub fn prove(
     segment_height: Option<usize>, // uses the default height if None
 ) -> Result<(), Box<dyn std::error::Error>> {
     if mock {
-        do_with_trace(program, inputs, |vm, pk, ctx| {
+        do_with_trace(program, inputs, |_segment_idx, vm, pk, ctx| {
             debug_proving_ctx(vm, pk, &ctx);
         })?;
     } else {
