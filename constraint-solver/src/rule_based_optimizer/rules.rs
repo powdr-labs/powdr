@@ -317,18 +317,6 @@ crepe! {
 
     Equivalence(v1, v2) <- QuadraticEquivalence(v1, v2);
 
-    ReplaceAlgebraicConstraintBy(e, env.substitute_by_known(e, v, val)) <-
-      Env(env),
-      Assignment(v, val),
-      ContainsVariable(e, v),
-      AlgebraicConstraint(e);
-
-    ReplaceAlgebraicConstraintBy(e, env.substitute_by_var(e, v, v2)) <-
-       Env(env),
-       AlgebraicConstraint(e),
-       ContainsVariable(e, v),
-       Equivalence(v, v2);
-
     @output
     pub struct ActionRule<T>(pub Action<T>);
     ActionRule(Action::SubstituteVariableByConstant(v, val)) <-
