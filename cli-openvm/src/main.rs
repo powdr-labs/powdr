@@ -298,7 +298,7 @@ fn maybe_compute_empirical_constraints(
     powdr_config: &PowdrConfig,
     stdin: StdIn,
 ) {
-    if !powdr_config.optimistic_precompiles {
+    if !powdr_config.should_use_optimistic_precompiles {
         return;
     }
 

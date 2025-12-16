@@ -56,7 +56,7 @@ pub struct PowdrConfig {
     /// The path to the APC candidates dir, if any.
     pub apc_candidates_dir_path: Option<PathBuf>,
     /// Whether to use optimistic precompiles.
-    pub optimistic_precompiles: bool,
+    pub should_use_optimistic_precompiles: bool,
 }
 
 impl PowdrConfig {
@@ -66,7 +66,7 @@ impl PowdrConfig {
             skip_autoprecompiles,
             degree_bound,
             apc_candidates_dir_path: None,
-            optimistic_precompiles: false,
+            should_use_optimistic_precompiles: false,
         }
     }
 
@@ -75,8 +75,8 @@ impl PowdrConfig {
         self
     }
 
-    pub fn with_optimistic_precompiles(mut self, optimistic: bool) -> Self {
-        self.optimistic_precompiles = optimistic;
+    pub fn with_optimistic_precompiles(mut self, should_use_optimistic_precompiles: bool) -> Self {
+        self.should_use_optimistic_precompiles = should_use_optimistic_precompiles;
         self
     }
 }
