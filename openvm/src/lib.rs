@@ -18,7 +18,6 @@ use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
 use openvm_circuit_derive::{
     AotExecutor, AotMeteredExecutor, Executor, MeteredExecutor, PreflightExecutor,
 };
-use openvm_instructions::program::DEFAULT_PC_STEP;
 use openvm_sdk::config::SdkVmCpuBuilder;
 
 use openvm_sdk::config::TranspilerConfig;
@@ -558,7 +557,6 @@ pub fn compile_exe(
                 config,
                 CellPgo::<_, OpenVmApcCandidate<_, _>>::with_pgo_data_and_max_columns(
                     pgo_data,
-                    DEFAULT_PC_STEP,
                     max_total_apc_columns,
                 ),
             )
