@@ -7,11 +7,17 @@ use derive_more::From;
 use eyre::Result;
 use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
 use openvm_circuit::arch::execution_mode::metered::segment_ctx::SegmentationLimits;
+use openvm_circuit::arch::execution_mode::ExecutionCtx;
+use openvm_circuit::arch::interpreter::{
+    alloc_pre_compute_buf, check_termination, execute_trampoline, get_pre_compute_instructions,
+    get_pre_compute_max_size, split_pre_compute_buf,
+};
 use openvm_circuit::arch::{
     debug_proving_ctx, AirInventory, AirInventoryError, ChipInventory, ChipInventoryError,
     ExecutorInventory, ExecutorInventoryError, InitFileGenerator, MatrixRecordArena,
-    RowMajorMatrixArena, SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig,
-    VmCircuitExtension, VmExecutionConfig, VmProverExtension,
+    RowMajorMatrixArena, SystemConfig, VirtualMachineError, VmBuilder, VmChipComplex,
+    VmCircuitConfig, VmCircuitExtension, VmExecState, VmExecutionConfig, VmExecutor,
+    VmProverExtension, VmState,
 };
 use openvm_circuit::system::SystemChipInventory;
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
@@ -20,11 +26,11 @@ use openvm_sdk::config::SdkVmCpuBuilder;
 
 use openvm_sdk::config::TranspilerConfig;
 use openvm_sdk::prover::{verify_app_proof, AggStarkProver};
-use openvm_sdk::GenericSdk;
 use openvm_sdk::{
     config::{AppConfig, SdkVmConfig, SdkVmConfigExecutor, DEFAULT_APP_LOG_BLOWUP},
     Sdk, StdIn,
 };
+use openvm_sdk::{GenericSdk, SdkError};
 use openvm_stark_backend::config::{StarkGenericConfig, Val};
 use openvm_stark_backend::engine::StarkEngine;
 use openvm_stark_backend::prover::cpu::{CpuBackend, CpuDevice};
@@ -855,7 +861,37 @@ pub fn execution_profile_from_guest(
     let sdk = PowdrExecutionProfileSdkCpu::new(app_config).unwrap();
 
     execution_profile::<BabyBearOpenVmApcAdapter>(&program, || {
-        sdk.execute(exe.clone(), inputs.clone()).unwrap();
+        // Create field variables of non-tco interpreter
+        let inventory = &sdk.executor().inventory;
+        let program = &exe.program;
+        let pre_compute_max_size = get_pre_compute_max_size(program, inventory);
+        let mut pre_compute_buf = alloc_pre_compute_buf(program, pre_compute_max_size);
+        let mut split_pre_compute_buf =
+            split_pre_compute_buf(program, &mut pre_compute_buf, pre_compute_max_size);
+        let pre_compute_insns =
+            get_pre_compute_instructions::<_, _, _>(program, inventory, &mut split_pre_compute_buf)
+                .unwrap();
+
+        // Force execution to non-tco path
+        let from_state =
+            VmState::initial(inventory.config(), &exe.init_memory, exe.pc_start, inputs);
+        let instret = from_state.instret();
+        let ctx = ExecutionCtx::new(None);
+        let mut exec_state = VmExecState::new(from_state, ctx);
+
+        // Force run! macro to non-tco path
+        let pc = exec_state.pc();
+        let instret_end = exec_state.ctx.instret_end;
+        unsafe {
+            execute_trampoline(
+                instret,
+                pc,
+                instret_end,
+                &mut exec_state,
+                &pre_compute_insns,
+            );
+        }
+        check_termination(exec_state.exit_code).unwrap();
     })
 }
 
