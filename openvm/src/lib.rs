@@ -15,9 +15,8 @@ use openvm_circuit::arch::interpreter::{
 use openvm_circuit::arch::{
     debug_proving_ctx, AirInventory, AirInventoryError, ChipInventory, ChipInventoryError,
     ExecutorInventory, ExecutorInventoryError, InitFileGenerator, MatrixRecordArena,
-    RowMajorMatrixArena, SystemConfig, VirtualMachineError, VmBuilder, VmChipComplex,
-    VmCircuitConfig, VmCircuitExtension, VmExecState, VmExecutionConfig, VmExecutor,
-    VmProverExtension, VmState,
+    RowMajorMatrixArena, SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig,
+    VmCircuitExtension, VmExecState, VmExecutionConfig, VmProverExtension, VmState,
 };
 use openvm_circuit::system::SystemChipInventory;
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
@@ -26,11 +25,11 @@ use openvm_sdk::config::SdkVmCpuBuilder;
 
 use openvm_sdk::config::TranspilerConfig;
 use openvm_sdk::prover::{verify_app_proof, AggStarkProver};
+use openvm_sdk::GenericSdk;
 use openvm_sdk::{
     config::{AppConfig, SdkVmConfig, SdkVmConfigExecutor, DEFAULT_APP_LOG_BLOWUP},
     Sdk, StdIn,
 };
-use openvm_sdk::{GenericSdk, SdkError};
 use openvm_stark_backend::config::{StarkGenericConfig, Val};
 use openvm_stark_backend::engine::StarkEngine;
 use openvm_stark_backend::prover::cpu::{CpuBackend, CpuDevice};
