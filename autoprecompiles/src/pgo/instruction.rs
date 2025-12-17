@@ -1,4 +1,6 @@
-use std::collections::{BTreeMap, HashMap};
+use std::{cmp::Reverse, collections::{BTreeMap, HashMap}};
+
+use itertools::Itertools;
 
 use crate::{
     PowdrConfig, adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, PgoAdapter}, blocks::BasicBlock, execution_profile::ExecutionProfile, pgo::create_apcs_for_all_blocks
@@ -23,7 +25,7 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
 
     fn create_apcs_with_pgo(
         &self,
-        mut blocks: Vec<BasicBlock<<Self::Adapter as Adapter>::Instruction>>,
+        blocks: Vec<BasicBlock<<Self::Adapter as Adapter>::Instruction>>,
         // execution count of blocks (indexes into the `blocks` vec)
         block_exec_count: Option<HashMap<usize, u32>>,
         config: &PowdrConfig,
@@ -39,36 +41,38 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
             return vec![];
         }
 
-        let pgo_program_pc_count: &HashMap<u64, u32> = &self.data.pc_count;
-        // drop any block whose start index cannot be found in pc_idx_count,
-        // because a basic block might not be executed at all.
-        // Also only keep basic blocks with more than one original instruction.
-        blocks.retain(|b| pgo_program_pc_count.contains_key(&b.start_pc) && b.statements.len() > 1);
+        // ensure blocks are valid for APC
+        let block_exec_count = block_exec_count.unwrap();
+        blocks.iter().enumerate().for_each(|(idx, b)| assert!(block_exec_count[&idx] > 0 && b.statements.len() > 1));
 
         tracing::debug!(
             "Retained {} basic blocks after filtering by pc_idx_count",
             blocks.len()
         );
 
-        // cost = cells_saved_per_row
-        blocks.sort_by(|a, b| {
-            let a_cnt = pgo_program_pc_count[&a.start_pc];
-            let b_cnt = pgo_program_pc_count[&b.start_pc];
-            (b_cnt * (b.statements.len() as u32)).cmp(&(a_cnt * (a.statements.len() as u32)))
-        });
-
-        // Debug print blocks by descending cost
-        for block in &blocks {
-            let frequency = pgo_program_pc_count[&block.start_pc];
-            let number_of_instructions = block.statements.len();
-            let value = frequency * number_of_instructions as u32;
-
-            tracing::debug!(
-                    "Basic block start_pc: {start_pc}, value: {value}, frequency: {frequency}, number_of_instructions: {number_of_instructions}",
-                    start_pc = block.start_pc,
+        // sort blocks by execution count * number of instructions
+        let blocks = blocks.into_iter()
+            .enumerate()
+            .map(|(idx, block)| {
+                let count = block_exec_count[&idx];
+                (count, block)
+            })
+            .sorted_by_key(|(count, b)| Reverse(count * b.statements.len() as u32))
+            .inspect(|(count, b)| {
+                let number_of_instructions = b.statements.len();
+                let value = count * number_of_instructions as u32;
+                tracing::debug!(
+                    "Basic block start_pc: {start_pc}, other_pcs: {:?}, value: {value}, frequency: {count}, number_of_instructions: {number_of_instructions}",
+                    b.other_pcs,
+                    start_pc = b.start_pc,
                 );
-        }
+            })
+            .map(|(_, block)| block).collect::<Vec<_>>();
 
         create_apcs_for_all_blocks::<Self::Adapter>(blocks, config, vm_config)
+    }
+
+    fn profiling_data(&self) -> Option<&ExecutionProfile> {
+        Some(&self.data)
     }
 }

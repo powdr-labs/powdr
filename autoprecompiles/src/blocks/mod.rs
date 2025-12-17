@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, VecDeque}, fmt::Display};
+use std::{collections::{HashMap, HashSet}, fmt::Display};
 
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -54,6 +54,20 @@ pub trait Instruction<T>: Clone + Display {
     fn pc_lookup_row(&self, pc: Option<u64>) -> Vec<Option<T>>;
 }
 
+fn count_non_overlapping(haystack: &[usize], needle: &[usize]) -> u32 {
+    let mut count = 0;
+    let mut pos = 0;
+    while pos + needle.len() <= haystack.len() {
+        if haystack[pos..pos + needle.len()] == needle[..] {
+            count += 1;
+            pos += needle.len();
+        } else {
+            pos += 1;
+        }
+    }
+    count
+}
+
 /// Uses the PC sequence of a given execution to detect superblocks.
 /// Returns all blocks and superblocks (of up a to maximum sequence length), together with their execution counts.
 /// Doesn't return blocks with a single instruction or that were never executed.
@@ -62,49 +76,60 @@ pub fn generate_superblocks<I: Clone>(
     blocks: &[BasicBlock<I>],
     max_len: usize
 ) -> (Vec<BasicBlock<I>>, HashMap<usize, u32>) {
-    let mut bb_seq_count = HashMap::new();
-    // we go through the PCs maintaining the last N basic blocks that executed
-    let mut bb_window = VecDeque::new();
-
     println!("generating superblocks of size <= {max_len}, going over sequence of {} PCs", execution_pc_list.len());
 
     // make a hash map from start_pc to BB
-    let pc_to_block_idx: HashMap<_,_> = blocks.iter().enumerate().map(|(idx, bb)| (bb.start_pc, idx)).collect();
+    let pc_to_bb_idx: HashMap<_,_> = blocks.iter().enumerate().map(|(idx, bb)| (bb.start_pc, idx)).collect();
 
+    // set of all superblocks seen
+    let mut seen_superblocks: HashSet<_> = HashSet::new();
+    // list of valid BB runs in the execution (i.e., sequences of BBs without single-instruction BBs in between)
+    let mut execution_bb_runs = vec![];
+    let mut current_run = vec![];
+
+    // first, we identify all superblocks present in the execution and create the BB runs
     for pc in execution_pc_list {
-        let Some(&bb_idx) = pc_to_block_idx.get(pc) else {
+        let Some(&bb_idx) = pc_to_bb_idx.get(pc) else {
             // still in the same BB
             continue;
         };
 
         // if starting a single instruction BB, clear current sequence
         if blocks[bb_idx].statements.len() <= 1 {
-            bb_window.clear();
+            if !current_run.is_empty() {
+                execution_bb_runs.push(current_run.drain(..).collect_vec());
+            }
             continue;
         }
 
-        bb_window.push_back(bb_idx);
-        // limit window size
-        if bb_window.len() > max_len {
-            bb_window.pop_front();
-        }
+        current_run.push(bb_idx);
 
-        // update count for each superblock size in current window
-        for len in 1..=bb_window.len() {
-            let seq: Vec<usize> = bb_window.iter().skip(bb_window.len() - len).cloned().collect();
-            bb_seq_count.entry(seq)
-                .and_modify(|c| *c += 1)
-                .or_insert(1);
+        for len in 1..=std::cmp::min(max_len, current_run.len()) {
+            let sblock: Vec<usize> = current_run.iter().skip(current_run.len() - len).cloned().collect();
+            seen_superblocks.insert(sblock);
         }
     }
 
+    println!("found {} superblocks in {} BB runs!", seen_superblocks.len(), execution_bb_runs.len());
+
+    // second, count how many times each superblock was executed
+    let mut superblock_count = HashMap::new();
+    for sblock in seen_superblocks {
+        for run in &execution_bb_runs {
+            let count = count_non_overlapping(run, &sblock);
+            if count > 0 {
+                *superblock_count.entry(sblock.clone())
+                    .or_insert(0u32) += count;
+            }
+        }
+    }
+
+    // build the resulting BasicBlock's and counts
     let mut super_blocks = vec![];
     let mut counts = HashMap::new();
-
-    // go through the seen BB sequences and create the superblocks
-    bb_seq_count.into_iter()
-        .for_each(|(seq, count)| {
-            let blocks = seq.iter().map(|&idx| &blocks[idx]).collect_vec();
+    superblock_count.into_iter()
+        .for_each(|(sblock, count)| {
+            let blocks = sblock.iter().map(|&idx| &blocks[idx]).collect_vec();
             let start_pc = blocks[0].start_pc;
             let mut curr_statement = blocks[0].statements.len();
             let other_pcs = blocks.iter().skip(1).map(|block| {
