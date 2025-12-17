@@ -264,6 +264,6 @@ fn test_rule_split_constraints_based_on_minimal_range() {
         None,
     );
 
-    println!("{}", optimized_system.0.to_string());
+    //println!("{}", optimized_system.0.to_string());
     assert_eq!(optimized_system.0.system().algebraic_constraints.len(), 0);
 }
