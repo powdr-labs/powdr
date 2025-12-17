@@ -26,7 +26,7 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
     fn create_apcs_with_pgo(
         &self,
         mut blocks: Vec<BasicBlock<<Self::Adapter as Adapter>::Instruction>>,
-        block_exec_count: Option<HashMap<usize, u32>>,
+        _block_exec_count: Option<HashMap<usize, u32>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         _labels: BTreeMap<u64, Vec<String>>,

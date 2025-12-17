@@ -31,7 +31,7 @@ use powdr_autoprecompiles::blocks::{BasicBlock, Instruction};
 use powdr_autoprecompiles::evaluation::{evaluate_apc, EvaluationResult};
 use powdr_autoprecompiles::execution::ExecutionState;
 use powdr_autoprecompiles::expression::try_convert;
-use powdr_autoprecompiles::pgo::{ApcCandidateJsonExport, Candidate, KnapsackItem};
+use powdr_autoprecompiles::pgo::{ApcCandidateJsonExport, Candidate};
 use powdr_autoprecompiles::SymbolicBusInteraction;
 use powdr_autoprecompiles::VmConfig;
 use powdr_autoprecompiles::{Apc, PowdrConfig};
@@ -336,7 +336,6 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
             },
             stats: self.stats,
             width_before: self.widths.before.total(),
-            value: self.value(),
             cost_before: self.widths.before.total() as f64,
             cost_after: self.widths.after.total() as f64,
             apc_candidate_file: apc_candidates_dir_path
@@ -349,32 +348,27 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
     fn into_apc_and_stats(self) -> AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a>> {
         ApcWithStats::from(self.apc).with_stats(OvmApcStats::new(self.widths))
     }
-}
 
-impl<P, I> OpenVmApcCandidate<P, I> {
-    fn cells_saved_per_row(&self) -> usize {
-        // The number of cells saved per row is the difference between the width before and after the APC.
-        self.widths.columns_saved().total()
+    fn execution_count(&self) -> u32 {
+        self.execution_frequency as u32
     }
-}
 
-impl<P, I> KnapsackItem for OpenVmApcCandidate<P, I> {
-    fn cost(&self) -> usize {
+    fn cells_saved_per_row(&self) -> usize {
+        self.cells_saved_per_row_inner()
+    }
+
+    fn width(&self) -> usize {
         self.widths.after.total()
     }
 
-    fn value(&self) -> usize {
-        // For an APC which is called once and saves 1 cell, this would be 1.
-        let value = self
-            .execution_frequency
-            .checked_mul(self.cells_saved_per_row())
-            .unwrap();
-        // We need `value()` to be much larger than `cost()` to avoid ties when ranking by `value() / cost()`
-        // Therefore, we scale it up by a constant factor.
-        value.checked_mul(1000).unwrap()
+    fn apc(&self) -> &AdapterApc<BabyBearOpenVmApcAdapter<'a>> {
+        self.apc.as_ref()
     }
+}
 
-    fn tie_breaker(&self) -> usize {
-        self.apc.start_pc() as usize
+impl<P, I> OpenVmApcCandidate<P, I> {
+    fn cells_saved_per_row_inner(&self) -> usize {
+        // The number of cells saved per row is the difference between the width before and after the APC.
+        self.widths.columns_saved().total()
     }
 }
