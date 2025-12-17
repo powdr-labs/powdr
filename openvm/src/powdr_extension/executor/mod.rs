@@ -161,9 +161,9 @@ impl<A: Arena> InitializedOriginalArenas<A> {
                     (
                         air_name,
                         RecordArenaDimension {
-                            height: all_calls,
+                            real_height: all_calls,
                             width: air_width,
-                            fully_optimized_away_height: dummy_calls,
+                            dummy_height: dummy_calls,
                         },
                     ),
                 )| {
@@ -218,16 +218,16 @@ pub struct ArenaPair<A> {
 
 /// The dimensions of a record arena for a given air name, used to initialize the arenas.
 pub struct RecordArenaDimension {
-    pub height: usize,
+    pub real_height: usize,
     pub width: usize,
-    pub fully_optimized_away_height: usize,
+    pub dummy_height: usize,
 }
 
 #[derive(Clone, Copy)]
 struct CachedInstructionMeta {
     executor_index: usize,
     arena_index: usize,
-    use_real_arena: bool,
+    should_use_real_arena: bool,
 }
 
 /// A struct to interpret the pre-compute data as for PowdrExecutor.
@@ -499,7 +499,7 @@ impl PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>> for PowdrExecutor 
         {
             let executor = &self.executor_inventory.executors[cached_meta.executor_index];
 
-            let ctx_arena = if cached_meta.use_real_arena {
+            let ctx_arena = if cached_meta.should_use_real_arena {
                 original_arenas.real_arena_mut_by_index(cached_meta.arena_index)
             } else {
                 original_arenas.dummy_arena_mut_by_index(cached_meta.arena_index)
@@ -574,7 +574,7 @@ impl PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExecutor {
         {
             let executor = &self.executor_inventory.executors[cached_meta.executor_index];
 
-            let ctx_arena = if cached_meta.use_real_arena {
+            let ctx_arena = if cached_meta.should_use_real_arena {
                 original_arenas.real_arena_mut_by_index(cached_meta.arena_index)
             } else {
                 original_arenas.dummy_arena_mut_by_index(cached_meta.arena_index)
@@ -645,7 +645,7 @@ impl PowdrExecutor {
                 CachedInstructionMeta {
                     executor_index,
                     arena_index,
-                    use_real_arena: !sub.is_empty(),
+                    should_use_real_arena: !sub.is_empty(),
                 }
             })
             .collect();

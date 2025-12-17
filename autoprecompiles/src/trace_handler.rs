@@ -50,15 +50,14 @@ where
     IH::AirId: Eq + Hash + Send + Sync,
 {
     // Keep only instructions that produce dummy records
-    let instructions_with_subs: Vec<_> = apc
+    let instructions_with_subs = apc
         .instructions()
         .iter()
         .zip_eq(apc.subs.iter())
-        .filter(|(_, subs)| !subs.is_empty())
-        .collect();
+        .filter(|(_, subs)| !subs.is_empty());
 
     let original_instruction_air_ids = instructions_with_subs
-        .iter()
+        .clone()
         .map(|(instruction, _)| {
             instruction_handler
                 .get_instruction_air_and_id(instruction)
@@ -89,7 +88,6 @@ where
         .collect::<Vec<_>>();
 
     let dummy_trace_index_to_apc_index_by_instruction = instructions_with_subs
-        .iter()
         .map(|(_, subs)| {
             subs.iter()
                 .map(|substitution| {

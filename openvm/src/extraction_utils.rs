@@ -151,13 +151,13 @@ pub fn record_arena_dimension_by_air_name_per_apc_call<F>(
                 let (_, air_metrics) = air_by_opcode_id.air_name_to_machine.get(air_name).unwrap();
 
                 RecordArenaDimension {
-                    height: 0,
+                    real_height: 0,
                     width: air_metrics.widths.main,
-                    fully_optimized_away_height: 0,
+                    dummy_height: 0,
                 }
             });
-            entry.height += 1;
-            (sub.is_empty()).then(|| entry.fully_optimized_away_height += 1);
+            entry.real_height += 1;
+            (sub.is_empty()).then(|| entry.dummy_height += 1);
             acc
         })
 }

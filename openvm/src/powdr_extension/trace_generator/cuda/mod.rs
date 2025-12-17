@@ -236,7 +236,7 @@ impl PowdrTraceGeneratorGpu {
                     }
                 };
 
-                // We might have initialized an arena for an AIR which ends up having no real records.
+                // We might have initialized an arena for an AIR which ends up having no real records. It gets filtered out here.
                 chip.generate_proving_ctx(record_arena)
                     .common_main
                     .map(|m| (air_name, m))
