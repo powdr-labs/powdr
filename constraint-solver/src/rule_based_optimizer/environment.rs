@@ -132,6 +132,41 @@ impl<T: FieldElement> Environment<T> {
         self.single_occurrence_variables.iter()
     }
 
+    /// Split Expr into expr1 + expr_rest, i.e., expr = expr1 + expr_rest
+    /// Expr is affine, offset is zero
+    /// expr1 is of the form coeff * var
+    /// expr_rest is zero if expr only contains one variable
+    pub fn try_sum_into_head_tail(&self, expr: Expr) -> Option<(Expr, Expr)> {
+        let db = self.expressions.borrow();
+        let expr = db[expr].clone();
+        // println!("try_sum_into_head_tail: expr {}", expr.to_string());
+        // for item in db.items.iter() {
+        //     println!("item in db: {}", item);
+        // }
+        drop(db);
+        // conditions limiting the cases for now
+        if !expr.is_affine()
+            || !expr.constant_offset().is_zero()
+            || expr.linear_components().len() < 2
+        {
+            return None;
+        }
+        if let Some((var, coeff)) = expr.clone().linear_components().next() {
+            let head = &(GroupedExpression::from_number(*coeff)
+                * GroupedExpression::from_unknown_variable(*var));
+            let tail = expr.clone() - head.clone();
+            // println!(
+            //     "try_sum_into_head_tail: expr {} = head {} + tail {}",
+            //     expr.to_string(),
+            //     head.to_string(),
+            //     tail.to_string()
+            // );
+            Some((self.insert(head), self.insert(&tail)))
+        } else {
+            None
+        }
+    }
+
     #[allow(dead_code)]
     /// If this returns Some(n) then the expression is affine
     /// and contains n variables.
@@ -153,6 +188,11 @@ impl<T: FieldElement> Environment<T> {
         Some((*coeff, *var, *expr.constant_offset()))
     }
 
+    pub fn printthis(&self, msg: &str) -> bool {
+        println!("{}", msg);
+        true
+    }
+
     /// Runs the function `f` on the expression identified by `expr`,
     /// passing `args` as additional arguments.
     /// This function is needed because we cannot return
@@ -165,6 +205,10 @@ impl<T: FieldElement> Environment<T> {
     ) -> Ret {
         let db = self.expressions.borrow();
         let expr = &db[expr];
+        //println!("on_expr: expression is {}", expr);
+        // for item in db.items.iter() {
+        //     println!("item in db: {}", item);
+        // }
         f(expr, args)
     }
 
