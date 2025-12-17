@@ -290,14 +290,14 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
 
         // Check conflicting candidates with lower priority and update/remove them
         let apc = c.apc();
-        let bbs = [vec![apc.block.start_pc], apc.block.other_pcs.iter().map(|(_,pc)| *pc).collect()].concat();
+        let bbs = apc.block.original_pcs();
         let mut to_remove = vec![];
         let mut to_discount = vec![];
         // println!("checking conflicts with APC: {bbs:?}");
         for (other_idx, _) in ordered_candidates.iter().filter(|(other_idx, _)| !selected_candidates.contains(*other_idx)) {
             let other_candidate = &candidates[*other_idx];
             let other_apc = other_candidate.apc();
-            let other_bbs = [vec![other_apc.block.start_pc], other_apc.block.other_pcs.iter().map(|(_,pc)| *pc).collect()].concat();
+            let other_bbs = other_apc.block.original_pcs();
             let mut remove = false;
             let mut discount = false;
             if let Some(pos) = bbs.iter().position(|it| *it == other_bbs[0]) {
@@ -340,15 +340,8 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
 
         for other_idx in to_discount {
             let mut new_priority = ordered_candidates.get(&other_idx).unwrap().1.clone();
-            let selected_bbs = {
-                let apc = c.apc();
-                [vec![apc.block.start_pc], apc.block.other_pcs.iter().map(|(_,pc)| *pc).collect()].concat()
-            };
-            let other = &candidates[other_idx];
-            let other_bbs = {
-                let apc = other.apc();
-                [vec![apc.block.start_pc], apc.block.other_pcs.iter().map(|(_,pc)| *pc).collect()].concat()
-            };
+            let selected_bbs = c.apc().block.original_pcs();
+            let other_bbs = &candidates[other_idx].apc().block.original_pcs();
 
             // count how many times the other candidate is included in the selected one
             let mut count = 0;
