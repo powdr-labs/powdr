@@ -76,7 +76,7 @@ pub trait PgoAdapter {
     ) -> Vec<AdapterApcWithStats<Self::Adapter>>;
 
     fn pc_execution_count(&self, pc: u64) -> Option<u32> {
-        self.profiling_data().map(|prof| prof.pc_count[&pc])
+        self.profiling_data().and_then(|prof| prof.pc_count.get(&pc).cloned())
     }
 
     fn profiling_data(&self) -> Option<&ExecutionProfile> {
