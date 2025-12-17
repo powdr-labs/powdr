@@ -341,7 +341,7 @@ pub struct Apc<T, I> {
     pub block: BasicBlock<I>,
     /// The symbolic machine for this APC
     pub machine: SymbolicMachine<T>,
-    /// For each original air, the substitutions from original columns to APC columns
+    /// For each original instruction, the substitutions from original columns to APC columns
     pub subs: Vec<Vec<Substitution>>,
 }
 

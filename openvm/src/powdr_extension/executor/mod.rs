@@ -85,19 +85,33 @@ impl<A: Arena> OriginalArenas<A> {
 
     /// Returns a mutable reference to the arena of the given vector index.
     /// - Panics if the arenas are not initialized.
-    pub fn arena_mut_by_index(&mut self, index: usize) -> &mut A {
+    pub fn arena_mut_by_index(&mut self, index: usize) -> &mut ArenaPair<A> {
         match self {
             OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
             OriginalArenas::Initialized(initialized) => initialized.arena_mut_by_index(index),
         }
     }
 
-    /// Returns the arena of the given air name.
-    /// - Panics if the arenas are not initialized.
-    pub fn take_arena(&mut self, air_name: &str) -> Option<A> {
+    pub fn real_arena_mut_by_index(&mut self, index: usize) -> &mut A {
         match self {
             OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
-            OriginalArenas::Initialized(initialized) => initialized.take_arena(air_name),
+            OriginalArenas::Initialized(initialized) => initialized.real_arena_mut_by_index(index),
+        }
+    }
+
+    pub fn dummy_arena_mut_by_index(&mut self, index: usize) -> &mut A {
+        match self {
+            OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
+            OriginalArenas::Initialized(initialized) => initialized.dummy_arena_mut_by_index(index),
+        }
+    }
+
+    /// Returns the arena of the given air name.
+    /// - Panics if the arenas are not initialized.
+    pub fn take_real_arena(&mut self, air_name: &str) -> Option<A> {
+        match self {
+            OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
+            OriginalArenas::Initialized(initialized) => initialized.take_real_arena(air_name),
         }
     }
 
@@ -124,7 +138,7 @@ impl<A: Arena> OriginalArenas<A> {
 /// and how many calls to each air are made per APC call.
 #[derive(Default)]
 pub struct InitializedOriginalArenas<A> {
-    arenas: Vec<Option<A>>,
+    arenas: Vec<Option<ArenaPair<A>>>,
     air_name_to_arena_index: HashMap<String, usize>,
     pub number_of_calls: usize,
 }
@@ -147,16 +161,17 @@ impl<A: Arena> InitializedOriginalArenas<A> {
                     (
                         air_name,
                         RecordArenaDimension {
-                            height: num_calls,
+                            real_height,
                             width: air_width,
+                            dummy_height,
                         },
                     ),
                 )| {
                     air_name_to_arena_index.insert(air_name, idx);
-                    arenas.push(Some(A::with_capacity(
-                        num_calls * apc_call_count_estimate,
-                        air_width,
-                    )));
+                    arenas.push(Some(ArenaPair {
+                        real: A::with_capacity(real_height * apc_call_count_estimate, air_width),
+                        dummy: A::with_capacity(dummy_height * apc_call_count_estimate, air_width),
+                    }));
                     (air_name_to_arena_index, arenas)
                 },
             );
@@ -170,29 +185,46 @@ impl<A: Arena> InitializedOriginalArenas<A> {
     }
 
     #[inline]
-    fn arena_mut_by_index(&mut self, index: usize) -> &mut A {
+    fn arena_mut_by_index(&mut self, index: usize) -> &mut ArenaPair<A> {
         self.arenas
             .get_mut(index)
             .and_then(|arena| arena.as_mut())
             .expect("arena missing for index")
     }
 
-    fn take_arena(&mut self, air_name: &str) -> Option<A> {
-        let index = *self.air_name_to_arena_index.get(air_name)?;
-        self.arenas[index].take()
+    #[inline]
+    fn real_arena_mut_by_index(&mut self, index: usize) -> &mut A {
+        &mut self.arena_mut_by_index(index).real
     }
+
+    #[inline]
+    fn dummy_arena_mut_by_index(&mut self, index: usize) -> &mut A {
+        &mut self.arena_mut_by_index(index).dummy
+    }
+
+    fn take_real_arena(&mut self, air_name: &str) -> Option<A> {
+        let index = *self.air_name_to_arena_index.get(air_name)?;
+        self.arenas[index].take().map(|arena_pair| arena_pair.real)
+    }
+}
+
+pub struct ArenaPair<A> {
+    pub real: A,
+    pub dummy: A,
 }
 
 /// The dimensions of a record arena for a given air name, used to initialize the arenas.
 pub struct RecordArenaDimension {
-    pub height: usize,
+    pub real_height: usize,
     pub width: usize,
+    pub dummy_height: usize,
 }
 
 #[derive(Clone, Copy)]
 struct CachedInstructionMeta {
     executor_index: usize,
     arena_index: usize,
+    should_use_real_arena: bool,
 }
 
 /// A struct to interpret the pre-compute data as for PowdrExecutor.
@@ -463,7 +495,12 @@ impl PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>> for PowdrExecutor 
             .zip_eq(&self.cached_instructions_meta)
         {
             let executor = &self.executor_inventory.executors[cached_meta.executor_index];
-            let ctx_arena = original_arenas.arena_mut_by_index(cached_meta.arena_index);
+
+            let ctx_arena = if cached_meta.should_use_real_arena {
+                original_arenas.real_arena_mut_by_index(cached_meta.arena_index)
+            } else {
+                original_arenas.dummy_arena_mut_by_index(cached_meta.arena_index)
+            };
 
             let state = VmStateMut {
                 pc,
@@ -533,7 +570,12 @@ impl PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExecutor {
             .zip(&self.cached_instructions_meta)
         {
             let executor = &self.executor_inventory.executors[cached_meta.executor_index];
-            let ctx_arena = original_arenas.arena_mut_by_index(cached_meta.arena_index);
+
+            let ctx_arena = if cached_meta.should_use_real_arena {
+                original_arenas.real_arena_mut_by_index(cached_meta.arena_index)
+            } else {
+                original_arenas.dummy_arena_mut_by_index(cached_meta.arena_index)
+            };
 
             let state = VmStateMut {
                 pc,
@@ -583,7 +625,8 @@ impl PowdrExecutor {
         let cached_instructions_meta = apc
             .instructions()
             .iter()
-            .map(|instruction| {
+            .zip_eq(apc.subs.iter())
+            .map(|(instruction, sub)| {
                 let executor_index = *executor_inventory
                     .instruction_lookup
                     .get(&instruction.0.opcode)
@@ -599,6 +642,7 @@ impl PowdrExecutor {
                 CachedInstructionMeta {
                     executor_index,
                     arena_index,
+                    should_use_real_arena: !sub.is_empty(),
                 }
             })
             .collect();
