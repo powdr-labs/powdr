@@ -161,19 +161,16 @@ impl<A: Arena> InitializedOriginalArenas<A> {
                     (
                         air_name,
                         RecordArenaDimension {
-                            real_height: all_calls,
+                            real_height,
                             width: air_width,
-                            dummy_height: dummy_calls,
+                            dummy_height,
                         },
                     ),
                 )| {
                     air_name_to_arena_index.insert(air_name, idx);
                     arenas.push(Some(ArenaPair {
-                        real: A::with_capacity(
-                            (all_calls - dummy_calls) * apc_call_count_estimate,
-                            air_width,
-                        ),
-                        dummy: A::with_capacity(dummy_calls * apc_call_count_estimate, air_width),
+                        real: A::with_capacity(real_height * apc_call_count_estimate, air_width),
+                        dummy: A::with_capacity(dummy_height * apc_call_count_estimate, air_width),
                     }));
                     (air_name_to_arena_index, arenas)
                 },

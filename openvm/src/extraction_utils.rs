@@ -142,24 +142,31 @@ pub fn record_arena_dimension_by_air_name_per_apc_call<F>(
         .iter()
         .map(|instr| &instr.0.opcode)
         .zip_eq(apc.subs.iter().map(|sub| sub.is_empty()))
-        .fold(BTreeMap::new(), |mut acc, (opcode, sub_is_empty)| {
-            // Get the air name for this opcode
-            let air_name = air_by_opcode_id.opcode_to_air.get(opcode).unwrap();
+        .fold(
+            BTreeMap::new(),
+            |mut acc, (opcode, should_use_dummy_arena)| {
+                // Get the air name for this opcode
+                let air_name = air_by_opcode_id.opcode_to_air.get(opcode).unwrap();
 
-            // Increment the height for this air name, initializing if necessary
-            let entry = acc.entry(air_name.clone()).or_insert_with(|| {
-                let (_, air_metrics) = air_by_opcode_id.air_name_to_machine.get(air_name).unwrap();
+                // Increment the height for this air name, initializing if necessary
+                let entry = acc.entry(air_name.clone()).or_insert_with(|| {
+                    let (_, air_metrics) =
+                        air_by_opcode_id.air_name_to_machine.get(air_name).unwrap();
 
-                RecordArenaDimension {
-                    real_height: 0,
-                    width: air_metrics.widths.main,
-                    dummy_height: 0,
+                    RecordArenaDimension {
+                        real_height: 0,
+                        width: air_metrics.widths.main,
+                        dummy_height: 0,
+                    }
+                });
+                if should_use_dummy_arena {
+                    entry.dummy_height += 1;
+                } else {
+                    entry.real_height += 1;
                 }
-            });
-            entry.real_height += 1;
-            sub_is_empty.then(|| entry.dummy_height += 1);
-            acc
-        })
+                acc
+            },
+        )
 }
 
 type ChipComplex = VmChipComplex<
