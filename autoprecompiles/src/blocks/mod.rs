@@ -18,6 +18,13 @@ pub struct BasicBlock<I> {
     pub statements: Vec<I>,
 }
 
+impl<I> BasicBlock<I> {
+    /// Starting PCs of each original basic block
+    pub fn original_pcs(&self) -> Vec<u64> {
+        [vec![self.start_pc], self.other_pcs.iter().map(|(_,pc)| *pc).collect()].concat()
+    }
+}
+
 impl<I: Display> Display for BasicBlock<I> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "BasicBlock(start_pc: {}, statements: [", self.start_pc)?;
