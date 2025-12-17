@@ -1,4 +1,8 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    iter::{once, repeat},
+    sync::Arc,
+};
 
 use itertools::Itertools;
 use openvm_circuit::{
@@ -6,13 +10,20 @@ use openvm_circuit::{
     utils::next_power_of_two_or_zero,
 };
 use openvm_stark_backend::{
-    p3_field::FieldAlgebra,
-    p3_matrix::dense::{DenseMatrix, RowMajorMatrix},
-    prover::{hal::ProverBackend, types::AirProvingContext},
+    p3_field::{FieldAlgebra, PrimeField32},
+    p3_matrix::dense::RowMajorMatrix,
+    prover::{
+        hal::ProverBackend,
+        types::{AirProvingContext, AirProvingContexts, Rejected},
+    },
     Chip,
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
-use powdr_autoprecompiles::{trace_handler::TraceTrait, Apc};
+use powdr_autoprecompiles::{
+    expression::{AlgebraicEvaluator, ConcreteBusInteraction, RowEvaluator},
+    trace_handler::TraceTrait,
+    Apc,
+};
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 
 use crate::{
@@ -24,7 +35,6 @@ use crate::{
     },
     BabyBearSC, Instr,
 };
-use openvm_stark_backend::p3_field::PrimeField32;
 
 use openvm_stark_backend::p3_field::Field;
 
@@ -58,15 +68,18 @@ impl<F> From<Arc<RowMajorMatrix<F>>> for SharedCpuTrace<F> {
     }
 }
 
-impl<R, PB: ProverBackend<Matrix = Arc<RowMajorMatrix<BabyBear>>>> Chip<R, PB> for PowdrChipCpu {
-    fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
+impl<R, PB: ProverBackend<Val = BabyBear, Matrix = Arc<RowMajorMatrix<BabyBear>>>> Chip<R, PB>
+    for PowdrChipCpu
+{
+    fn generate_proving_ctx(&self, _records: R) -> AirProvingContext<PB> {
+        unreachable!()
+    }
+
+    fn generate_proving_ctxs(&self, _: R) -> AirProvingContexts<PB> {
         tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
 
-        let trace = self
-            .trace_generator
-            .generate_witness(self.record_arena_by_air_name.take());
-
-        AirProvingContext::simple(Arc::new(trace), vec![])
+        self.trace_generator
+            .generate_witness::<PB>(self.record_arena_by_air_name.take())
     }
 }
 
@@ -92,17 +105,22 @@ impl PowdrTraceGeneratorCpu {
         }
     }
 
-    pub fn generate_witness(
+    pub fn generate_witness<
+        PB: ProverBackend<Val = BabyBear, Matrix = Arc<RowMajorMatrix<BabyBear>>>,
+    >(
         &self,
         mut original_arenas: OriginalArenas<MatrixRecordArena<BabyBear>>,
-    ) -> DenseMatrix<BabyBear> {
+    ) -> AirProvingContexts<PB> {
+        let mut rejected_pcs = vec![];
+
         use powdr_autoprecompiles::trace_handler::{generate_trace, TraceData};
 
         let num_apc_calls = original_arenas.number_of_calls();
         if num_apc_calls == 0 {
             // If the APC isn't called, early return with an empty trace.
             let width = self.apc.machine().main_columns().count();
-            return RowMajorMatrix::new(vec![], width);
+            return AirProvingContext::simple_no_pis(Arc::new(RowMajorMatrix::new(vec![], width)))
+                .into();
         }
 
         let chip_inventory = {
@@ -119,7 +137,7 @@ impl PowdrTraceGeneratorCpu {
             .inventory
         };
 
-        let dummy_trace_by_air_name: HashMap<String, SharedCpuTrace<BabyBear>> = chip_inventory
+        let mut dummy_trace_by_air_name: HashMap<String, SharedCpuTrace<BabyBear>> = chip_inventory
             .chips()
             .iter()
             .enumerate()
@@ -157,19 +175,27 @@ impl PowdrTraceGeneratorCpu {
         let height = next_power_of_two_or_zero(num_apc_calls);
         let mut values = <BabyBear as FieldAlgebra>::zero_vec(height * width);
 
+        let mut rejected_rows_per_air: HashMap<String, Vec<usize>> = dummy_trace_by_air_name
+            .keys()
+            .cloned()
+            .map(|key| (key, vec![]))
+            .collect();
+
         // go through the final table and fill in the values
         values
             // a record is `width` values
             // TODO: optimize by parallelizing on chunks of rows, currently fails because `dyn AnyChip<MatrixRecordArena<Val<SC>>>` is not `Send`
             .chunks_mut(width)
             .zip(dummy_values)
-            .for_each(|(row_slice, dummy_values)| {
+            // Just for testing, reject the first call of each apc
+            .zip(once(false).chain(repeat(true)))
+            .for_each(|((row_slice, dummy_values), row_is_valid)| {
                 // map the dummy rows to the autoprecompile row
 
                 use powdr_autoprecompiles::expression::MappingRowEvaluator;
                 for (dummy_row, dummy_trace_index_to_apc_index) in dummy_values
                     .iter()
-                    .map(|r| &r.data[r.start..r.start + r.length])
+                    .map(|r| &r.data[r.start()..r.start() + r.length])
                     .zip_eq(&dummy_trace_index_to_apc_index_by_instruction)
                 {
                     for (dummy_trace_index, apc_index) in dummy_trace_index_to_apc_index {
@@ -203,27 +229,76 @@ impl PowdrTraceGeneratorCpu {
 
                 let evaluator = MappingRowEvaluator::new(row_slice, &apc_poly_id_to_index);
 
-                // replay the side effects of this row on the main periphery
-                self.apc
-                    .machine()
-                    .bus_interactions
-                    .iter()
-                    .for_each(|interaction| {
-                        use powdr_autoprecompiles::expression::{
-                            AlgebraicEvaluator, ConcreteBusInteraction,
-                        };
+                // check the constraints and bus interactions
+                // let row_is_valid = unimplemented!("evaluate constraints and bus interactions, or just specialization constraints? For now we reject the first call, just for testing.");
 
-                        let ConcreteBusInteraction { id, mult, args } =
-                            evaluator.eval_bus_interaction(interaction);
-                        self.periphery.real.apply(
-                            id as u16,
-                            mult.as_canonical_u32(),
-                            args.map(|arg| arg.as_canonical_u32()),
-                            &self.periphery.bus_ids,
+                if row_is_valid {
+                    // replay the side effects of this row on the main periphery
+                    self.periphery
+                        .replay_bus_interactions(self.apc.machine(), &evaluator);
+                } else {
+                    // set the whole row to zero
+                    // TODO: this generates a gap in the table. Instead, reuse the row in the next iteration.
+                    for cell in row_slice {
+                        *cell = BabyBear::ZERO;
+                    }
+
+                    // for each original row
+                    for original_row_reference in dummy_values {
+                        // build an evaluator over the row
+                        let original_row_data = &original_row_reference.data[original_row_reference
+                            .start()
+                            ..original_row_reference.start() + original_row_reference.length];
+                        let evaluator = RowEvaluator::new(original_row_data);
+                        let (machine, _) =
+                            &self.original_airs.air_name_to_machine[original_row_reference.air_id];
+
+                        // replay the side effects of this row on the real periphery
+                        self.periphery.replay_bus_interactions(machine, &evaluator);
+
+                        // find the concrete value of the received pc
+                        rejected_pcs.push(
+                            machine
+                                .bus_interactions
+                                .iter()
+                                .find_map(|interaction| {
+                                    let ConcreteBusInteraction { id, mut args, .. } =
+                                        evaluator.eval_bus_interaction(interaction);
+                                    (id == 2).then(|| args.next().unwrap())
+                                })
+                                .unwrap()
+                                .as_canonical_u32(),
                         );
-                    });
+
+                        // add the row index to the rejected set
+                        rejected_rows_per_air
+                            .get_mut(original_row_reference.air_id)
+                            .unwrap()
+                            .push(original_row_reference.row_index);
+                    }
+                }
             });
 
-        RowMajorMatrix::new(values, width)
+        // merge the rejected indices with the traces
+        let rejected = Rejected {
+            pcs: rejected_pcs,
+            rows_per_air: rejected_rows_per_air
+                .into_iter()
+                // if this original table contains any rejected rows
+                .filter(|(_, indices)| !indices.is_empty())
+                // return the table with its rejected rows
+                .map(|(name, indices)| {
+                    let original_trace = dummy_trace_by_air_name.remove(&name).unwrap().matrix;
+                    (name, (original_trace, indices))
+                })
+                .collect(),
+        };
+
+        // TODO: reduce the height of the table if possible
+
+        AirProvingContexts {
+            main: AirProvingContext::simple_no_pis(Arc::new(RowMajorMatrix::new(values, width))),
+            rejected,
+        }
     }
 }
