@@ -188,10 +188,10 @@ impl<T: FieldElement> Environment<T> {
         Some((*coeff, *var, *expr.constant_offset()))
     }
 
-    pub fn printthis(&self, msg: &str) -> bool {
-        println!("{}", msg);
-        true
-    }
+    // pub fn printthis(&self, msg: &str) -> bool {
+    //     println!("{}", msg);
+    //     true
+    // }
 
     /// Runs the function `f` on the expression identified by `expr`,
     /// passing `args` as additional arguments.

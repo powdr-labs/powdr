@@ -146,110 +146,110 @@ crepe! {
       RangeConstraintOnVar(v, v_rc2);
 
 
-    // //////////////////////// SINGLE-OCCURRENCE VARIABLES //////////////////////////
+    //////////////////////// SINGLE-OCCURRENCE VARIABLES //////////////////////////
 
-    // // Combine multiple variables that only occur in the same algebraic constraint.
-    // //
-    // // Assume we have an algebraic constraint of the form `X * V1 + Y * V2 = R`,
-    // // where `V1` and `V2` only occur in this constraint and only once.
-    // // The only combination of values for `X`, `Y` and `R` where this is _not_ satisfiable
-    // // is `X = 0`, `Y = 0`, `R != 0`. So the constraint is equivalent to the statement
-    // // `(X = 0 and Y = 0) -> R = 0`.
-    // //
-    // // Consider the simpler case where both `X` and `Y` are non-negative such that
-    // // `X + Y` does not wrap.
-    // // Then `X = 0 and Y = 0` is equivalent to `X + Y = 0`. So we can replace the constraint
-    // // by `(X + Y) * V3 = C`, where `V3` is a new variable that only occurs here.
-    // //
-    // // For the general case, where e.g. `X` can be negative, we replace it by `X * X`,
-    // // if that value is still small enough.
-    // struct SingleOccurrenceVariable(Var);
-    // SingleOccurrenceVariable(v) <-
-    //   Env(env),
-    //   for v in env.single_occurrence_variables().cloned();
-    // // SingleOccurrenceVariable(e, v) => v occurs only once in e and e is the
-    // // only constraint in appears in.
-    // struct SingleOccurrenceVariableInExpr(Expr, Var);
-    // SingleOccurrenceVariableInExpr(e, v) <-
-    //   SingleOccurrenceVariable(v),
-    //   ContainsVariable(e, v),
-    //   AlgebraicConstraint(e);
+    // Combine multiple variables that only occur in the same algebraic constraint.
+    //
+    // Assume we have an algebraic constraint of the form `X * V1 + Y * V2 = R`,
+    // where `V1` and `V2` only occur in this constraint and only once.
+    // The only combination of values for `X`, `Y` and `R` where this is _not_ satisfiable
+    // is `X = 0`, `Y = 0`, `R != 0`. So the constraint is equivalent to the statement
+    // `(X = 0 and Y = 0) -> R = 0`.
+    //
+    // Consider the simpler case where both `X` and `Y` are non-negative such that
+    // `X + Y` does not wrap.
+    // Then `X = 0 and Y = 0` is equivalent to `X + Y = 0`. So we can replace the constraint
+    // by `(X + Y) * V3 = C`, where `V3` is a new variable that only occurs here.
+    //
+    // For the general case, where e.g. `X` can be negative, we replace it by `X * X`,
+    // if that value is still small enough.
+    struct SingleOccurrenceVariable(Var);
+    SingleOccurrenceVariable(v) <-
+      Env(env),
+      for v in env.single_occurrence_variables().cloned();
+    // SingleOccurrenceVariable(e, v) => v occurs only once in e and e is the
+    // only constraint in appears in.
+    struct SingleOccurrenceVariableInExpr(Expr, Var);
+    SingleOccurrenceVariableInExpr(e, v) <-
+      SingleOccurrenceVariable(v),
+      ContainsVariable(e, v),
+      AlgebraicConstraint(e);
 
-    // // LargestSingleOccurrenceVariablePairInExpr(e, v1, v2) =>
-    // // v1 and v2 are different variables that only occur in e and only once,
-    // // and are the two largest variables with that property in e.
-    // struct LargestSingleOccurrenceVariablePairInExpr(Expr, Var, Var);
-    // LargestSingleOccurrenceVariablePairInExpr(e, v1, v2) <-
-    //   Env(env),
-    //   SingleOccurrenceVariableInExpr(e, v1),
-    //   SingleOccurrenceVariableInExpr(e, v2),
-    //   (v1 < v2),
-    //   (env
-    //     .single_occurrence_variables()
-    //     .filter(|v3| env.on_expr(e, (), |e, _| {
-    //         e.referenced_unknown_variables().any(|v| v == *v3)
-    //     }))
-    //     .all(|&v3| v3 == v1 || v3 == v2 || v3 < v1));
+    // LargestSingleOccurrenceVariablePairInExpr(e, v1, v2) =>
+    // v1 and v2 are different variables that only occur in e and only once,
+    // and are the two largest variables with that property in e.
+    struct LargestSingleOccurrenceVariablePairInExpr(Expr, Var, Var);
+    LargestSingleOccurrenceVariablePairInExpr(e, v1, v2) <-
+      Env(env),
+      SingleOccurrenceVariableInExpr(e, v1),
+      SingleOccurrenceVariableInExpr(e, v2),
+      (v1 < v2),
+      (env
+        .single_occurrence_variables()
+        .filter(|v3| env.on_expr(e, (), |e, _| {
+            e.referenced_unknown_variables().any(|v| v == *v3)
+        }))
+        .all(|&v3| v3 == v1 || v3 == v2 || v3 < v1));
 
-    // // FreeVariableCombinationCandidate(e, coeff1, v1, coeff2, v2, x1, x2)
-    // // => e is the expression of an algebraic constraint and
-    // // e = coeff1 * v1 * x1 + coeff2 * v2 * x2 + ...
-    // // where v1 and v2 are different variables that only occur here and only once.
-    // struct FreeVariableCombinationCandidate<T: FieldElement>(Expr, T, Var, Expr, T, Var, Expr);
-    // FreeVariableCombinationCandidate(e, coeff1, v1, x1, coeff2, v2, x2) <-
-    //   // If we only consider he largest variable pair we could miss optimization opportunities,
-    //   // but at least the replacement becomes deterministic.
-    //   LargestSingleOccurrenceVariablePairInExpr(e, v1, v2),
-    //   AlgebraicConstraint(e),
-    //   HasProductSummand(e, x1, v1_e),
-    //   AffineExpression(v1_e, coeff1, v1, offset1),
-    //   (offset1.is_zero()),
-    //   HasProductSummand(e, x2, v2_e),
-    //   (x2 != v1_e),
-    //   (x1 != v2_e),
-    //   AffineExpression(v2_e, coeff2, v2, offset2),
-    //   (offset2.is_zero());
+    // FreeVariableCombinationCandidate(e, coeff1, v1, coeff2, v2, x1, x2)
+    // => e is the expression of an algebraic constraint and
+    // e = coeff1 * v1 * x1 + coeff2 * v2 * x2 + ...
+    // where v1 and v2 are different variables that only occur here and only once.
+    struct FreeVariableCombinationCandidate<T: FieldElement>(Expr, T, Var, Expr, T, Var, Expr);
+    FreeVariableCombinationCandidate(e, coeff1, v1, x1, coeff2, v2, x2) <-
+      // If we only consider he largest variable pair we could miss optimization opportunities,
+      // but at least the replacement becomes deterministic.
+      LargestSingleOccurrenceVariablePairInExpr(e, v1, v2),
+      AlgebraicConstraint(e),
+      HasProductSummand(e, x1, v1_e),
+      AffineExpression(v1_e, coeff1, v1, offset1),
+      (offset1.is_zero()),
+      HasProductSummand(e, x2, v2_e),
+      (x2 != v1_e),
+      (x1 != v2_e),
+      AffineExpression(v2_e, coeff2, v2, offset2),
+      (offset2.is_zero());
 
-    // ReplaceAlgebraicConstraintBy(e, replacement) <-
-    //   Env(env),
-    //   FreeVariableCombinationCandidate(e, coeff1, v1, x1, coeff2, v2, x2),
-    //   // Here, we have e = coeff1 * v1 * x1 + coeff2 * v2 * x2 + ...
-    //   RangeConstraintOnExpression(x1, rc1),
-    //   RangeConstraintOnExpression(x2, rc2),
-    //   let Some(replacement) = (|| {
-    //     // If the expression is not known to be non-negative, we square it.
-    //     let square_if_needed = |expr: Expr, rc: RangeConstraint<T>| {
-    //         let expr = env.extract(expr);
-    //         if rc.range().0 == T::zero() {
-    //             (expr, rc)
-    //         } else {
-    //             (expr.clone() * expr, rc.square())
-    //         }
-    //     };
-    //     let (x1, rc1) = square_if_needed(x1, rc1);
-    //     let (x2, rc2) = square_if_needed(x2, rc2);
-    //     if !rc1.range().0.is_zero() || !rc2.range().0.is_zero() {
-    //         return None;
-    //     }
-    //     let sum_rc = rc1.multiple(coeff1).combine_sum(&rc2.multiple(coeff2));
-    //     if !(sum_rc.range().0.is_zero() && sum_rc.range().1 < T::from(-1)) {
-    //         return None;
-    //     }
-    //     // Remove the summands with v1 and v2 from the expression.
-    //     let r = env.extract(e).into_summands().filter(|s|{
-    //         if let GroupedExpressionComponent::Quadratic(l, r) = s {
-    //             let mut vars = l.referenced_unknown_variables().chain(r.referenced_unknown_variables());
-    //             if vars.any(|v| v == &v1 || v == &v2) {
-    //                 return false;
-    //             }
-    //         };
-    //         true
-    //     }).map(GroupedExpression::from).sum::<GroupedExpression<T, Var>>();
-    //     let factor = x1 * coeff1 + x2 * coeff2;
-    //     let combined_var = env.new_var("free_var", ComputationMethod::QuotientOrZero(-r.clone(), factor.clone()));
-    //     let replacement = r + GroupedExpression::from_unknown_variable(combined_var) * factor;
-    //     Some(env.insert_owned(replacement))
-    //   })();
+    ReplaceAlgebraicConstraintBy(e, replacement) <-
+      Env(env),
+      FreeVariableCombinationCandidate(e, coeff1, v1, x1, coeff2, v2, x2),
+      // Here, we have e = coeff1 * v1 * x1 + coeff2 * v2 * x2 + ...
+      RangeConstraintOnExpression(x1, rc1),
+      RangeConstraintOnExpression(x2, rc2),
+      let Some(replacement) = (|| {
+        // If the expression is not known to be non-negative, we square it.
+        let square_if_needed = |expr: Expr, rc: RangeConstraint<T>| {
+            let expr = env.extract(expr);
+            if rc.range().0 == T::zero() {
+                (expr, rc)
+            } else {
+                (expr.clone() * expr, rc.square())
+            }
+        };
+        let (x1, rc1) = square_if_needed(x1, rc1);
+        let (x2, rc2) = square_if_needed(x2, rc2);
+        if !rc1.range().0.is_zero() || !rc2.range().0.is_zero() {
+            return None;
+        }
+        let sum_rc = rc1.multiple(coeff1).combine_sum(&rc2.multiple(coeff2));
+        if !(sum_rc.range().0.is_zero() && sum_rc.range().1 < T::from(-1)) {
+            return None;
+        }
+        // Remove the summands with v1 and v2 from the expression.
+        let r = env.extract(e).into_summands().filter(|s|{
+            if let GroupedExpressionComponent::Quadratic(l, r) = s {
+                let mut vars = l.referenced_unknown_variables().chain(r.referenced_unknown_variables());
+                if vars.any(|v| v == &v1 || v == &v2) {
+                    return false;
+                }
+            };
+            true
+        }).map(GroupedExpression::from).sum::<GroupedExpression<T, Var>>();
+        let factor = x1 * coeff1 + x2 * coeff2;
+        let combined_var = env.new_var("free_var", ComputationMethod::QuotientOrZero(-r.clone(), factor.clone()));
+        let replacement = r + GroupedExpression::from_unknown_variable(combined_var) * factor;
+        Some(env.insert_owned(replacement))
+      })();
 
     //////////////////////// AFFINE SOLVING //////////////////////////
 
@@ -294,7 +294,6 @@ crepe! {
 
 
     Assignment(var, T::zero()) <-
-    Env(env),
     //(env.printthis(".............................................generate assignment")),
     MinimalRangeZeroDeducibleCandidate(_, _, _, var, _);
     ///////////////////////////////// OUTPUT ACTIONS //////////////////////////
