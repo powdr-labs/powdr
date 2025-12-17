@@ -141,8 +141,8 @@ pub fn record_arena_dimension_by_air_name_per_apc_call<F>(
     apc.instructions()
         .iter()
         .map(|instr| &instr.0.opcode)
-        .zip_eq(apc.subs.iter())
-        .fold(BTreeMap::new(), |mut acc, (opcode, sub)| {
+        .zip_eq(apc.subs.iter().map(|sub| sub.is_empty()))
+        .fold(BTreeMap::new(), |mut acc, (opcode, sub_is_empty)| {
             // Get the air name for this opcode
             let air_name = air_by_opcode_id.opcode_to_air.get(opcode).unwrap();
 
@@ -157,7 +157,7 @@ pub fn record_arena_dimension_by_air_name_per_apc_call<F>(
                 }
             });
             entry.real_height += 1;
-            (sub.is_empty()).then(|| entry.dummy_height += 1);
+            sub_is_empty.then(|| entry.dummy_height += 1);
             acc
         })
 }
