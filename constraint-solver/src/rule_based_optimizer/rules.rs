@@ -167,7 +167,7 @@ crepe! {
       Env(env),
       for v in env.single_occurrence_variables().cloned();
     // SingleOccurrenceVariable(e, v) => v occurs only once in e and e is the
-    // only constraint in appears in.
+    // only constraint it appears in.
     struct SingleOccurrenceVariableInExpr(Expr, Var);
     SingleOccurrenceVariableInExpr(e, v) <-
       SingleOccurrenceVariable(v),
