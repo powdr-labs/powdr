@@ -1,12 +1,15 @@
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::hash::Hash;
 use std::{fmt::Display, sync::Arc};
 
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
+use crate::blocks::generate_superblocks;
 use crate::execution::{ExecutionState, OptimisticConstraints};
+use crate::execution_profile::ExecutionProfile;
+
 use crate::{
     blocks::{BasicBlock, Instruction, Program},
     constraint_optimizer::IsBusStateful,
@@ -48,22 +51,42 @@ pub trait PgoAdapter {
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
-        let filtered_blocks = blocks
+        let filtered_blocks: Vec<_> = blocks
             .into_iter()
             .filter(|block| !Self::Adapter::should_skip_block(block))
             .collect();
-        self.create_apcs_with_pgo(filtered_blocks, config, vm_config, labels)
+
+        // generate superblocks if profiling data is available
+        let (blocks, execution_count) = if let Some(prof) = self.profiling_data() {
+            // generate_superblocks already filters out unexecuted blocks and single instruction blocks
+            let (blocks, count) = generate_superblocks(
+                &prof.pc_list,
+                &filtered_blocks,
+                config.superblock_max_len as usize,
+            );
+            (blocks, Some(count))
+        } else {
+            (filtered_blocks, None)
+        };
+
+        self.create_apcs_with_pgo(blocks, execution_count, config, vm_config, labels)
     }
 
     fn create_apcs_with_pgo(
         &self,
         blocks: Vec<BasicBlock<<Self::Adapter as Adapter>::Instruction>>,
+        block_exec_count: Option<HashMap<usize, u32>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>>;
 
-    fn pc_execution_count(&self, _pc: u64) -> Option<u32> {
+    fn pc_execution_count(&self, pc: u64) -> Option<u32> {
+        self.profiling_data()
+            .and_then(|prof| prof.pc_count.get(&pc).cloned())
+    }
+
+    fn profiling_data(&self) -> Option<&ExecutionProfile> {
         None
     }
 }

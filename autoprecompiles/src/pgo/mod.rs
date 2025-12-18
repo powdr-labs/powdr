@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use strum::{Display, EnumString};
@@ -6,6 +6,7 @@ use strum::{Display, EnumString};
 use crate::{
     adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, ApcWithStats},
     blocks::BasicBlock,
+    execution_profile::ExecutionProfile,
     PowdrConfig,
 };
 
@@ -14,7 +15,7 @@ mod instruction;
 mod none;
 
 pub use {
-    cell::{ApcCandidateJsonExport, Candidate, CellPgo, KnapsackItem},
+    cell::{ApcCandidateJsonExport, Candidate, CellPgo},
     instruction::InstructionPgo,
     none::NonePgo,
 };
@@ -26,9 +27,9 @@ pub enum PgoConfig {
     /// value = cells saved per apc * times executed
     /// cost = number of columns in the apc
     /// constraint of max total columns
-    Cell(HashMap<u64, u32>, Option<usize>),
+    Cell(ExecutionProfile, Option<usize>),
     /// value = instruction per apc * times executed
-    Instruction(HashMap<u64, u32>),
+    Instruction(ExecutionProfile),
     /// value = instruction per apc
     #[default]
     None,
@@ -38,9 +39,16 @@ impl PgoConfig {
     /// Returns the number of times a certain pc was executed in the profile.
     pub fn pc_execution_count(&self, pc: u64) -> Option<u32> {
         match self {
-            PgoConfig::Cell(pc_count, _) | PgoConfig::Instruction(pc_count) => {
-                pc_count.get(&pc).copied()
+            PgoConfig::Cell(prof, _) | PgoConfig::Instruction(prof) => {
+                prof.pc_count.get(&pc).copied()
             }
+            PgoConfig::None => None,
+        }
+    }
+
+    pub fn execution_profile(&self) -> Option<&ExecutionProfile> {
+        match self {
+            PgoConfig::Cell(prof, _) | PgoConfig::Instruction(prof) => Some(prof),
             PgoConfig::None => None,
         }
     }
@@ -62,7 +70,7 @@ pub enum PgoType {
 pub fn pgo_config(
     pgo: PgoType,
     max_columns: Option<usize>,
-    execution_profile: HashMap<u64, u32>,
+    execution_profile: ExecutionProfile,
 ) -> PgoConfig {
     match pgo {
         PgoType::Cell => PgoConfig::Cell(execution_profile, max_columns),

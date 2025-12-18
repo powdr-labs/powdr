@@ -1,9 +1,11 @@
 use crate::adapter::Adapter;
 use crate::blocks::Program;
+use itertools::Itertools;
 use std::collections::HashMap;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::RwLock;
 use tracing::dispatcher::Dispatch;
 use tracing::field::Field as TracingField;
 use tracing::{Event, Level, Subscriber};
@@ -14,12 +16,23 @@ use tracing_subscriber::{
     Layer,
 };
 
-// Produces execution count by pc
-// Used in Pgo::Cell and Pgo::Instruction to help rank basic blocks to create APCs for
+#[derive(Clone)]
+pub struct ExecutionProfile {
+    /// execution count of each pc
+    pub pc_count: HashMap<u64, u32>,
+    /// next pc count, for each pc
+    // TODO: u32 count? itertools `count` returns usize
+    pub next_pc: HashMap<u64, HashMap<u64, usize>>,
+    /// list of pcs executed in order
+    pub pc_list: Vec<u64>,
+}
+
+// Produces execution information for PGO.
+// Used in Pgo::Cell and Pgo::Instruction to help rank basic blocks to create APCs for.
 pub fn execution_profile<A: Adapter>(
     program: &A::Program,
     execute_fn: impl FnOnce(),
-) -> HashMap<u64, u32> {
+) -> ExecutionProfile {
     // in memory collector storage
     let collector = PgoCollector::new::<A>(program);
 
@@ -30,26 +43,59 @@ pub fn execution_profile<A: Adapter>(
     let dispatch = Dispatch::new(subscriber);
     tracing::dispatcher::with_default(&dispatch, execute_fn);
 
+    let next_pcs_by_pc = {
+        collector
+            .pc_list
+            .read()
+            .unwrap()
+            .iter()
+            .tuple_windows()
+            .map(|(a, b)| (*a, *b))
+            .into_group_map()
+            .into_iter()
+            .map(|(pc, next_pcs)| (pc, next_pcs.into_iter().counts()))
+            .collect::<HashMap<_, _>>()
+    };
+
+    // let insns: HashMap<_, _> = program.instructions().enumerate().map(|(idx, insn)| {
+    //     let pc = program.instruction_index_to_pc(idx);
+    //     (pc, insn)
+    // }).collect();
+
+    // for (pc, next) in next_pcs_by_pc.iter() {
+    //     println!("pc {}: {:?}", pc, next.len());
+    //     println!("\t{:?}", insns[pc]);
+    // }
+
+    let json = serde_json::to_string_pretty(&next_pcs_by_pc).unwrap();
+    std::fs::write("next_pcs.json", json).unwrap();
+
+    let pc_list = collector.pc_list.read().unwrap().clone();
+
     // Extract the collected data
-    let pc_index_count = collector.into_hashmap();
+    let pc_count = collector.into_hashmap();
 
     // the smallest pc is the same as the base_pc if there's no stdin
-    let pc_min = pc_index_count.keys().min().unwrap();
+    let pc_min = pc_count.keys().min().unwrap();
     tracing::debug!("pc_min: {}; base_pc: {}", pc_min, program.base_pc());
 
     // print the total and by pc counts
-    tracing::debug!("Pgo captured {} pc's", pc_index_count.len());
+    tracing::debug!("Pgo captured {} pc's", pc_count.len());
 
     if tracing::enabled!(Level::TRACE) {
         // print pc_index map in descending order of pc_index count
-        let mut pc_index_count_sorted: Vec<_> = pc_index_count.iter().collect();
+        let mut pc_index_count_sorted: Vec<_> = pc_count.iter().collect();
         pc_index_count_sorted.sort_by(|a, b| b.1.cmp(a.1));
         pc_index_count_sorted.iter().for_each(|(pc, count)| {
             tracing::trace!("pc_index {}: {}", pc, count);
         });
     }
 
-    pc_index_count
+    ExecutionProfile {
+        pc_count,
+        next_pc: next_pcs_by_pc,
+        pc_list,
+    }
 }
 
 // holds basic type fields of execution objects captured in trace by subscriber
@@ -77,6 +123,7 @@ struct PgoCollector {
     step: u32,
     pc_base: u64,
     pc_index_map: Arc<Vec<AtomicU32>>,
+    pub pc_list: Arc<RwLock<Vec<u64>>>,
 }
 
 impl PgoCollector {
@@ -88,6 +135,7 @@ impl PgoCollector {
             pc_index_map,
             step: program.pc_step(),
             pc_base: program.base_pc(),
+            pc_list: Arc::new(RwLock::new(Vec::new())),
         }
     }
 
@@ -111,6 +159,7 @@ impl PgoCollector {
     }
 
     fn increment(&self, pc: u64) {
+        self.pc_list.write().unwrap().push(pc);
         self.pc_index_map[(pc - self.pc_base) as usize / self.step as usize]
             .fetch_add(1, Ordering::Relaxed);
     }
