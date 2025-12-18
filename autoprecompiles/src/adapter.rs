@@ -58,9 +58,8 @@ pub trait PgoAdapter {
 
         // generate superblocks if profiling data is available
         let (blocks, execution_count) = if let Some(prof) = self.profiling_data() {
-            let max_superblock_len = 3;
             // generate_superblocks already filters out unexecuted blocks and single instruction blocks
-            let (blocks, count) = generate_superblocks(&prof.pc_list, &filtered_blocks, max_superblock_len);
+            let (blocks, count) = generate_superblocks(&prof.pc_list, &filtered_blocks, config.superblock_max_len as usize);
             (blocks, Some(count))
         } else {
             (filtered_blocks, None)

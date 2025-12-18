@@ -83,7 +83,7 @@ pub fn generate_superblocks<I: Clone>(
     blocks: &[BasicBlock<I>],
     max_len: usize
 ) -> (Vec<BasicBlock<I>>, HashMap<usize, u32>) {
-    println!("generating superblocks of size <= {max_len}, going over sequence of {} PCs", execution_pc_list.len());
+    tracing::info!("Detecting superblocks of size <= {max_len}, over the sequence of {} PCs", execution_pc_list.len());
 
     // make a hash map from start_pc to BB
     let pc_to_bb_idx: HashMap<_,_> = blocks.iter().enumerate().map(|(idx, bb)| (bb.start_pc, idx)).collect();
@@ -117,7 +117,7 @@ pub fn generate_superblocks<I: Clone>(
         }
     }
 
-    println!("found {} superblocks in {} BB runs!", seen_superblocks.len(), execution_bb_runs.len());
+    tracing::info!("Found {} superblocks in {} basic block runs!", seen_superblocks.len(), execution_bb_runs.len());
 
     // second, count how many times each superblock was executed
     let mut superblock_count = HashMap::new();

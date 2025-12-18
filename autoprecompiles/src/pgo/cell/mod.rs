@@ -95,11 +95,6 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
-        tracing::info!(
-            "Generating autoprecompiles with cell PGO for {} blocks",
-            blocks.len()
-        );
-
         if config.autoprecompiles == 0 {
             return vec![];
         }
@@ -111,7 +106,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
         // generate apc for all basic blocks and only cache the ones we eventually use
         // calculate number of trace cells saved per row for each basic block to sort them by descending cost
         tracing::info!(
-            "Generating autoprecompiles for all ({}) basic blocks in parallel",
+            "Generating autoprecompiles with cell PGO for all ({}) basic blocks in parallel",
             blocks.len(),
         );
 
@@ -119,6 +114,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
 
         // generate candidates in parallel
         let candidates: Vec<_> = blocks.iter().enumerate().par_bridge().filter_map(|(idx, block)| {
+            let start = std::time::Instant::now();
             let apc = crate::build::<A>(
                 block.clone(),
                 vm_config.clone(),
@@ -132,13 +128,19 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
                 vm_config.clone(),
                 config.degree_bound.identities,
             );
+            tracing::debug!(
+                "Generated candidate for block starting at pc {} in {:?}",
+                block.start_pc,
+                start.elapsed()
+            );
             if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
                 let json_export = candidate.to_json_export(apc_candidates_dir_path);
-                tracing::debug!("generated APC pc {}, other_pcs {:?}, effectiveness: {:?}, freq: {:?}",
+                tracing::debug!("generated APC pc {}, other_pcs {:?}, effectiveness: {:?}, freq: {:?} (took {:?}s)",
                                 json_export.original_block.start_pc,
                                 json_export.original_block.other_pcs,
                                 json_export.cost_before as f64 / json_export.cost_after as f64,
                                 json_export.execution_frequency,
+                                start.elapsed().as_secs_f64()
                 );
                 apc_candidates.lock().unwrap().push(json_export);
             }
