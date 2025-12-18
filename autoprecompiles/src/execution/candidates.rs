@@ -352,13 +352,14 @@ mod tests {
         let mut state = TestExecutionState { pc: 0 };
         // single apc with a constraint that fails on the final (step 2) state
         let apc = a(2).p(1);
-        let failing_constraints = OptimisticConstraints::from_constraints(vec![OptimisticConstraint {
-            left: OptimisticExpression::Literal(OptimisticLiteral {
-                instr_idx: 2,
-                val: crate::execution::LocalOptimisticLiteral::Pc,
-            }),
-            right: OptimisticExpression::Number(99),
-        }]);
+        let failing_constraints =
+            OptimisticConstraints::from_constraints(vec![OptimisticConstraint {
+                left: OptimisticExpression::Literal(OptimisticLiteral {
+                    instr_idx: 2,
+                    val: crate::execution::LocalOptimisticLiteral::Pc,
+                }),
+                right: OptimisticExpression::Number(99),
+            }]);
         candidates.insert(ApcCandidate::new(apc, failing_constraints, s(0)));
         assert!(incr(&mut candidates, &mut state).is_empty());
         assert_eq!(candidates.count_in_progress(), 1);
