@@ -1,4 +1,7 @@
+use std::cmp::Ordering;
 use std::sync::Arc;
+
+use itertools::Itertools;
 
 use crate::execution::{ExecutionState, OptimisticConstraintEvaluator, OptimisticConstraints};
 
@@ -72,17 +75,110 @@ impl<E: ExecutionState, A: Apc, S: Snapshot> ApcCandidates<E, A, S> {
             return vec![];
         }
 
-        // Now we have no more candidates in progress. Return the done candidates with the highest priority
-        std::mem::take(&mut self.candidates)
+        // Now we have no more candidates in progress
+
+        // If there is a single candidate, we can return it directly
+        if self.candidates.len() <= 1 {
+            return std::mem::take(&mut self.candidates);
+        }
+
+        // If there are more candidates, we need to solve conflicts to make sure we do not return overlapping candidates
+
+        // Collect metadata needed to resolve overlaps in a single pass
+        let meta: Vec<_> = self
+            .candidates
+            .iter()
+            .enumerate()
+            .map(|(idx, candidate)| {
+                let range = Self::candidate_range(candidate);
+                (
+                    CandidateRank {
+                        candidate_id: idx,
+                        len: range.1 - range.0,
+                        priority: candidate.apc.priority(),
+                    },
+                    range,
+                )
+            })
+            .collect();
+        let discard = meta.iter().tuple_combinations().fold(
+            vec![false; self.candidates.len()],
+            |mut discard, ((rank_left, range_left), (rank_right, range_right))| {
+                let (rank_left, range_left) = (*rank_left, *range_left);
+                let (rank_right, range_right) = (*rank_right, *range_right);
+                let idx_left = rank_left.candidate_id;
+                let idx_right = rank_right.candidate_id;
+
+                // If one of the two is already discarded, or they do not overlap, keep both
+                if discard[idx_left]
+                    || discard[idx_right]
+                    || !Self::ranges_overlap(range_left, range_right)
+                {
+                    return discard;
+                }
+
+                // Otherwise, discard the one with lower priority
+                match rank_left.cmp(&rank_right) {
+                    Ordering::Greater => discard[idx_right] = true,
+                    Ordering::Less => discard[idx_left] = true,
+                    Ordering::Equal => unreachable!("by construction, two ranks cannot be equal"),
+                }
+
+                discard
+            },
+        );
+
+        // Keep all candidates that were not marked as discarded
+        self.candidates
+            .drain(..)
+            .zip_eq(discard)
+            .filter_map(|(candidate, discard)| (!discard).then_some(candidate))
+            .collect()
     }
 
     pub fn insert(&mut self, apc_candidate: ApcCandidate<E, A, S>) {
         self.candidates.push(apc_candidate);
     }
 
-    // pub fn take_all(&mut self) -> impl Iterator<Item = ApcCandidate<E, A, S>> + use<'_> {
-    //     self.candidates.drain(..)
-    // }
+    fn candidate_range(candidate: &ApcCandidate<E, A, S>) -> (usize, usize) {
+        let start = candidate.snapshot.instret();
+        let end = match &candidate.status {
+            CandidateStatus::Done(snapshot) => snapshot.instret(),
+            CandidateStatus::InProgress(_) => {
+                unreachable!("candidate_range called on candidate still in progress")
+            }
+        };
+        (start, end)
+    }
+
+    fn ranges_overlap((start_a, end_a): (usize, usize), (start_b, end_b): (usize, usize)) -> bool {
+        start_a < end_b && start_b < end_a
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct CandidateRank {
+    /// Priority of this candidate. Higher is better.
+    priority: usize,
+    /// Length (number of cycles) covered by this candidate. Higher is better.
+    len: usize,
+    /// Index of the candidate within the current list. Lower is better.
+    candidate_id: usize,
+}
+
+impl Ord for CandidateRank {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.priority
+            .cmp(&other.priority)
+            .then_with(|| self.len.cmp(&other.len))
+            .then_with(|| other.candidate_id.cmp(&self.candidate_id))
+    }
+}
+
+impl PartialOrd for CandidateRank {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -99,7 +195,11 @@ pub struct ApcCandidate<E: ExecutionState, A, S> {
 }
 
 pub trait Apc {
+    /// The number of cycles to go through this APC
     fn len(&self) -> usize;
+
+    /// Larger priority wins when APC execution ranges overlap.
+    fn priority(&self) -> usize;
 }
 
 pub trait Snapshot: Clone {
@@ -133,6 +233,8 @@ pub enum CandidateStatus<E: ExecutionState, S> {
 
 #[cfg(test)]
 mod tests {
+    use crate::execution::{OptimisticConstraint, OptimisticExpression, OptimisticLiteral};
+
     use super::*;
 
     #[derive(Default, Clone, Copy, PartialEq, Debug)]
@@ -162,6 +264,10 @@ mod tests {
     impl Apc for TestApc {
         fn len(&self) -> usize {
             self.len
+        }
+
+        fn priority(&self) -> usize {
+            self.priority
         }
     }
 
@@ -289,13 +395,15 @@ mod tests {
     }
 
     #[test]
-    fn two_candidates_different_length() {
+    fn superblock_success() {
         let mut candidates = ApcCandidates::default();
         let mut state = TestExecutionState { pc: 0 };
         // insert two apcs with different length and priority
+        // the superblock (longer block) apc has higher priority and succeeds so it should be picked
         let low_priority = a(3).p(1);
         let high_priority = a(4).p(2);
         let snapshot: TestSnapshot = s(0);
+        // The final snapshot is the one at the end of the high priority apc, since it succeeds
         let final_snapshot = s(4);
         candidates.insert(ApcCandidate::new(
             low_priority,
@@ -335,6 +443,121 @@ mod tests {
                 remaining_instr_count: 0,
                 apc: high_priority,
                 snapshot,
+                status: CandidateStatus::Done(final_snapshot)
+            }
+        );
+    }
+
+    #[test]
+    fn superblock_failure() {
+        let mut candidates = ApcCandidates::default();
+        let mut state = TestExecutionState { pc: 0 };
+        // insert two apcs with different length and priority
+        // the superblock (longer block) apc has higher priority but fails the branching condition, so the low priority apc should be picked
+        let low_priority = a(3).p(1);
+        let high_priority = a(4).p(2);
+        let snapshot: TestSnapshot = s(0);
+        // The final snapshot is the one at the end of the low priority apc, as the other one failed
+        let final_snapshot = s(3);
+        candidates.insert(ApcCandidate::new(
+            low_priority,
+            OptimisticConstraints::empty(),
+            s(0),
+        ));
+        // The high priority candidate requires a jump to pc 1234 for the last cycle. This means the pc at step 3 (before instruction 4) should be 1234.
+        candidates.insert(ApcCandidate::new(
+            high_priority,
+            OptimisticConstraints::from_constraints(vec![OptimisticConstraint {
+                left: OptimisticExpression::Literal(OptimisticLiteral {
+                    instr_idx: 3,
+                    val: crate::execution::LocalOptimisticLiteral::Pc,
+                }),
+                right: OptimisticExpression::Number(1234),
+            }]),
+            s(0),
+        ));
+        assert!(candidates
+            .check_conditions(&state, || state.snap())
+            .is_empty());
+        state.incr();
+        assert!(candidates
+            .check_conditions(&state, || state.snap())
+            .is_empty());
+        state.incr();
+        assert!(candidates
+            .check_conditions(&state, || state.snap())
+            .is_empty());
+        state.incr();
+        // Both apcs are still running
+        assert_eq!(candidates.count_done(), 0);
+        // In this check, the low priority apc completes and the high priority one fails (as the jump did not happen)
+        let candidates = candidates.check_conditions(&state, || state.snap());
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(
+            candidates[0],
+            ApcCandidate {
+                remaining_instr_count: 0,
+                apc: low_priority,
+                snapshot,
+                status: CandidateStatus::Done(final_snapshot)
+            }
+        );
+    }
+
+    #[test]
+    fn two_candidates_different_start() {
+        let mut candidates = ApcCandidates::default();
+        let mut state = TestExecutionState { pc: 0 };
+        // define two apcs with different priorities
+        let low_priority = a(3).p(1);
+        let high_priority = a(3).p(2);
+        let low_priority_snapshot = s(0);
+        let high_priority_snapshot = s(1);
+        let final_snapshot = s(4);
+        // insert the low priority apc
+        candidates.insert(ApcCandidate::new(
+            low_priority,
+            OptimisticConstraints::empty(),
+            low_priority_snapshot,
+        ));
+        assert!(candidates
+            .check_conditions(&state, || state.snap())
+            .is_empty());
+        // candidate is still running
+        assert_eq!(candidates.count_in_progress(), 1);
+        state.incr();
+        // insert the high priority apc
+        candidates.insert(ApcCandidate::new(
+            high_priority,
+            OptimisticConstraints::empty(),
+            high_priority_snapshot.clone(),
+        ));
+        assert!(candidates
+            .check_conditions(&state, || state.snap())
+            .is_empty());
+        // both candidates are running
+        assert_eq!(candidates.count_in_progress(), 2);
+        state.incr();
+        assert!(candidates
+            .check_conditions(&state, || state.snap())
+            .is_empty());
+        state.incr();
+        // Both are still running
+        assert_eq!(candidates.count_in_progress(), 2);
+        assert!(candidates
+            .check_conditions(&state, || state.snap())
+            .is_empty());
+        // The first apc is done
+        assert_eq!(candidates.count_done(), 1);
+        state.incr();
+        let candidates = candidates.check_conditions(&state, || state.snap());
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(
+            candidates[0],
+            ApcCandidate {
+                remaining_instr_count: 0,
+                apc: high_priority,
+                snapshot: high_priority_snapshot,
                 status: CandidateStatus::Done(final_snapshot)
             }
         );
