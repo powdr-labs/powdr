@@ -149,6 +149,13 @@ crepe! {
 
     // Combine multiple variables that only occur in the same algebraic constraint.
     //
+    // The use-case here is for "diff_inv_marker_..." variables that each are the
+    // inverse of certain variables only if those variables are non-zero
+    // (and arbitrary otherwise).
+    // If the "diff_inv_marker_..." variables only occur once, they are essentially
+    // "free" variables and under some conditions, we can combine them into a single
+    // free variable and thus reduce the number of variables.
+    //
     // Assume we have an algebraic constraint of the form `X * V1 + Y * V2 = R`,
     // where `V1` and `V2` only occur in this constraint and only once.
     // The only combination of values for `X`, `Y` and `R` where this is _not_ satisfiable
