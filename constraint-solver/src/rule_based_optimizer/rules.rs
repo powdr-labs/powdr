@@ -266,29 +266,41 @@ crepe! {
       Solvable(e, var, v);
 
     ///////////////////////////////// CONSTRAINT SPLITTING //////////////////////////
-
+    
     struct ExpressionSumHeadTail(Expr, Expr, Expr);
     ExpressionSumHeadTail(e, head, tail) <-
       Env(env),
       AlgebraicConstraint(e),
+      (env.on_expr(e, (), |e, _| e.constant_offset().is_zero())),
       let Some((head, tail)) = env.try_sum_into_head_tail(e);
 
 
     AlgebraicConstraint(head) <-
+      RangeConstraintOnExpression(head, rc),
+      (rc.range().0 == T::zero()),
+      (rc.range_width() != RangeConstraint::<T>::unconstrained().range_width()),
       ExpressionSumHeadTail(_, head, _);
-      AlgebraicConstraint(tail) <-
+      
+      
+    AlgebraicConstraint(tail) <-
+      RangeConstraintOnExpression(tail, rc),
+      (rc.range().0 == T::zero()),
+      (rc.range_width() != RangeConstraint::<T>::unconstrained().range_width()),
       ExpressionSumHeadTail(_, _, tail);
 
     struct MinimalRangeZeroDeducibleCandidate<T: FieldElement>(Expr, Expr,Expr, Var, T);
     MinimalRangeZeroDeducibleCandidate(e, head, tail, var, coeff) <-
       ExpressionSumHeadTail(e, head, tail),
       AlgebraicConstraint(e),
+      AlgebraicConstraint(head),
+      AlgebraicConstraint(tail),
       AffineExpression(head, coeff, var, offset),
       (offset.is_zero()),
       RangeConstraintOnExpression(head, rc_head),
       RangeConstraintOnExpression(tail, rc_tail),
       (rc_head.range().0 == T::zero()),
       (rc_tail.range().0 == T::zero()),
+      (rc_head.combine_sum(&rc_tail).range().1 < T::from(-1)),
       (rc_tail.range_width() != RangeConstraint::<T>::unconstrained().range_width()),
       (rc_head.range_width() != RangeConstraint::<T>::unconstrained().range_width());
 
