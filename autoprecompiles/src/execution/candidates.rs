@@ -18,20 +18,6 @@ impl<E: ExecutionState, A, S> Default for ApcCandidates<E, A, S> {
 }
 
 impl<E: ExecutionState, A: Apc, S: Snapshot> ApcCandidates<E, A, S> {
-    pub fn count_done(&self) -> usize {
-        self.candidates
-            .iter()
-            .filter(|c| matches!(c.status, CandidateStatus::Done(_)))
-            .count()
-    }
-
-    pub fn count_in_progress(&self) -> usize {
-        self.candidates
-            .iter()
-            .filter(|c| matches!(c.status, CandidateStatus::InProgress(_)))
-            .count()
-    }
-
     /// Given the current state of execution, retain the candidates whose constraints are still
     /// verified
     pub fn check_conditions(
@@ -196,7 +182,7 @@ pub struct ApcCandidate<E: ExecutionState, A, S> {
 
 pub trait Apc {
     /// The number of cycles to go through this APC
-    fn len(&self) -> usize;
+    fn cycle_count(&self) -> usize;
 
     /// Larger priority wins when APC execution ranges overlap.
     fn priority(&self) -> usize;
@@ -215,7 +201,7 @@ impl<E: ExecutionState, A: Apc, S> ApcCandidate<E, A, S> {
     ) -> Self {
         ApcCandidate {
             // TODO: this is only true for blocks that are a contiguous range
-            remaining_instr_count: apc.len(),
+            remaining_instr_count: apc.cycle_count(),
             apc,
             snapshot,
             status: CandidateStatus::InProgress(OptimisticConstraintEvaluator::new(conditions)),
@@ -236,6 +222,22 @@ mod tests {
     use crate::execution::{OptimisticConstraint, OptimisticExpression, OptimisticLiteral};
 
     use super::*;
+
+    impl<E: ExecutionState, A: Apc, S: Snapshot> ApcCandidates<E, A, S> {
+        pub fn count_done(&self) -> usize {
+            self.candidates
+                .iter()
+                .filter(|c| matches!(c.status, CandidateStatus::Done(_)))
+                .count()
+        }
+
+        pub fn count_in_progress(&self) -> usize {
+            self.candidates
+                .iter()
+                .filter(|c| matches!(c.status, CandidateStatus::InProgress(_)))
+                .count()
+        }
+    }
 
     #[derive(Default, Clone, Copy, PartialEq, Debug)]
     struct TestApc {
@@ -262,7 +264,7 @@ mod tests {
     }
 
     impl Apc for TestApc {
-        fn len(&self) -> usize {
+        fn cycle_count(&self) -> usize {
             self.len
         }
 
