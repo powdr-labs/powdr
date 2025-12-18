@@ -17,6 +17,7 @@ pub trait ExecutionState {
         + Send
         + Sync;
     type Value: PartialEq
+        + TryFrom<u64>
         + Eq
         + std::fmt::Debug
         + Serialize
