@@ -1,5 +1,9 @@
 use std::{
-    cmp::Ordering, collections::{BTreeMap, HashMap}, io::BufWriter, path::Path, sync::{Arc, Mutex}
+    cmp::Ordering,
+    collections::{BTreeMap, HashMap},
+    io::BufWriter,
+    path::Path,
+    sync::{Arc, Mutex},
 };
 
 use priority_queue::PriorityQueue;
@@ -7,7 +11,11 @@ use rayon::iter::{ParallelBridge, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    PowdrConfig, adapter::{Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig, PgoAdapter}, blocks::BasicBlock, evaluation::EvaluationResult, execution_profile::ExecutionProfile
+    adapter::{Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig, PgoAdapter},
+    blocks::BasicBlock,
+    evaluation::EvaluationResult,
+    execution_profile::ExecutionProfile,
+    PowdrConfig,
 };
 
 use itertools::Itertools;
@@ -101,7 +109,10 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
 
         // ensure blocks are valid for APC
         let block_exec_count = block_exec_count.unwrap();
-        blocks.iter().enumerate().for_each(|(idx, b)| assert!(block_exec_count[&idx] > 0 && b.statements.len() > 1));
+        blocks
+            .iter()
+            .enumerate()
+            .for_each(|(idx, b)| assert!(block_exec_count[&idx] > 0 && b.statements.len() > 1));
 
         // generate apc for all basic blocks and only cache the ones we eventually use
         // calculate number of trace cells saved per row for each basic block to sort them by descending cost
@@ -147,7 +158,12 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
             Some(candidate)
         }).collect();
 
-        tracing::info!("Selecting {} APCs from {} candidates (skipping {})", config.autoprecompiles, candidates.len(), config.skip_autoprecompiles);
+        tracing::info!(
+            "Selecting {} APCs from {} candidates (skipping {})",
+            config.autoprecompiles,
+            candidates.len(),
+            config.skip_autoprecompiles
+        );
 
         let selected_indices = select_apc_candidates::<A, C>(
             &candidates,
@@ -159,16 +175,18 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
         tracing::debug!("Selected candidates:");
         for idx in &selected_indices {
             let c = candidates[*idx].to_json_export(Path::new(""));
-            tracing::debug!("\tAPC pc {}, other_pcs {:?}, effectiveness: {:?}, freq: {:?}",
-                            c.original_block.start_pc,
-                            c.original_block.other_pcs,
-                            c.cost_before as f64 / c.cost_after as f64,
-                            c.execution_frequency,
+            tracing::debug!(
+                "\tAPC pc {}, other_pcs {:?}, effectiveness: {:?}, freq: {:?}",
+                c.original_block.start_pc,
+                c.original_block.other_pcs,
+                c.cost_before as f64 / c.cost_after as f64,
+                c.execution_frequency,
             );
         }
 
         // filter candidates to selected ones, sorted by selection order
-        let res: Vec<_> = candidates.into_iter()
+        let res: Vec<_> = candidates
+            .into_iter()
             .enumerate()
             .filter_map(|(idx, c)| {
                 if let Some(position) = selected_indices.iter().position(|i| *i == idx) {
@@ -178,7 +196,8 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
                 }
             })
             .sorted_by_key(|(position, _)| *position)
-            .map(|(_, apc_and_stats)| apc_and_stats).collect();
+            .map(|(_, apc_and_stats)| apc_and_stats)
+            .collect();
 
         // Write the APC candidates JSON to disk if the directory is specified.
         if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
@@ -210,9 +229,12 @@ struct WeightedPriority {
 
 impl WeightedPriority {
     fn priority(&self) -> (usize, usize) {
-        let value = self.exec_count
-            .checked_mul(self.cells_saved_per_row).unwrap()
-            .checked_mul(1000).unwrap();
+        let value = self
+            .exec_count
+            .checked_mul(self.cells_saved_per_row)
+            .unwrap()
+            .checked_mul(1000)
+            .unwrap();
         (value / self.cost, self.tie_breaker)
     }
 }
@@ -223,8 +245,7 @@ impl PartialEq for WeightedPriority {
     }
 }
 
-impl Eq for WeightedPriority {
-}
+impl Eq for WeightedPriority {}
 
 impl PartialOrd for WeightedPriority {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -245,27 +266,32 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
     mut skip: usize,
 ) -> Vec<usize> {
     // candidates ordered by priority
-    let mut ordered_candidates: PriorityQueue<_, _> = candidates.iter().enumerate().map(|(idx, candidate)| {
-        let priority = WeightedPriority {
-            exec_count: candidate.execution_count() as usize,
-            cells_saved_per_row: candidate.cells_saved_per_row(),
-            cost: candidate.width(),
-            tie_breaker: candidate.apc().start_pc() as usize,
-        };
-        (idx, priority)
-    }).collect();
+    let mut ordered_candidates: PriorityQueue<_, _> = candidates
+        .iter()
+        .enumerate()
+        .map(|(idx, candidate)| {
+            let priority = WeightedPriority {
+                exec_count: candidate.execution_count() as usize,
+                cells_saved_per_row: candidate.cells_saved_per_row(),
+                cost: candidate.width(),
+                tie_breaker: candidate.apc().start_pc() as usize,
+            };
+            (idx, priority)
+        })
+        .collect();
 
     if tracing::enabled!(tracing::Level::DEBUG) {
         tracing::debug!("All candidates sorted by priority:");
         for (idx, prio) in ordered_candidates.clone().into_sorted_iter() {
             let c = &candidates[idx];
             let json = c.to_json_export(Path::new("")); // just for debug printing
-            tracing::debug!("\tAPC pc {}, other_pcs {:?}, effectiveness: {:?}, freq: {:?}, priority: {:?}",
-                            json.original_block.start_pc,
-                            json.original_block.other_pcs,
-                            json.cost_before as f64 / json.cost_after as f64,
-                            json.execution_frequency,
-                            prio.priority(),
+            tracing::debug!(
+                "\tAPC pc {}, other_pcs {:?}, effectiveness: {:?}, freq: {:?}, priority: {:?}",
+                json.original_block.start_pc,
+                json.original_block.other_pcs,
+                json.cost_before as f64 / json.cost_after as f64,
+                json.execution_frequency,
+                prio.priority(),
             );
         }
     }
@@ -296,7 +322,10 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
         let mut to_remove = vec![];
         let mut to_discount = vec![];
         // println!("checking conflicts with APC: {bbs:?}");
-        for (other_idx, _) in ordered_candidates.iter().filter(|(other_idx, _)| !selected_candidates.contains(*other_idx)) {
+        for (other_idx, _) in ordered_candidates
+            .iter()
+            .filter(|(other_idx, _)| !selected_candidates.contains(*other_idx))
+        {
             let other_candidate = &candidates[*other_idx];
             let other_apc = other_candidate.apc();
             let other_bbs = other_apc.block.original_pcs();
@@ -304,7 +333,9 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
             let mut discount = false;
             if let Some(pos) = bbs.iter().position(|it| *it == other_bbs[0]) {
                 // check if the selected apc includes the other apc
-                if bbs.len() >= pos + other_bbs.len() && bbs[pos..pos + other_bbs.len()] == other_bbs[..] {
+                if bbs.len() >= pos + other_bbs.len()
+                    && bbs[pos..pos + other_bbs.len()] == other_bbs[..]
+                {
                     // println!("\t{other_bbs:?} is included");
                     discount = true;
                 }
@@ -320,7 +351,8 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
             }
             if let Some(pos) = other_bbs.iter().position(|it| *it == bbs[0]) {
                 // check if the other apc includes the selected apc
-                if other_bbs.len() >= pos + bbs.len() && other_bbs[pos..pos + bbs.len()] == bbs[..] {
+                if other_bbs.len() >= pos + bbs.len() && other_bbs[pos..pos + bbs.len()] == bbs[..]
+                {
                     // println!("\t{other_bbs:?} includes it");
                     remove = true;
                 }

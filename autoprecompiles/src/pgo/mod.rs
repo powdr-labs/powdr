@@ -4,7 +4,10 @@ use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterato
 use strum::{Display, EnumString};
 
 use crate::{
-    PowdrConfig, adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, ApcWithStats}, blocks::BasicBlock, execution_profile::ExecutionProfile
+    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, ApcWithStats},
+    blocks::BasicBlock,
+    execution_profile::ExecutionProfile,
+    PowdrConfig,
 };
 
 mod cell;
