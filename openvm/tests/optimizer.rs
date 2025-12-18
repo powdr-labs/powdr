@@ -92,11 +92,11 @@ fn test_ecrecover() {
     // This cbor file above has the `is_valid` column removed, this is why the number below
     // might be one less than in other tests.
     expect![[r#"
-        2854
+        2852
     "#]]
     .assert_debug_eq(&machine.main_columns().count());
     expect![[r#"
-        1621
+        1619
     "#]]
     .assert_debug_eq(&machine.bus_interactions.len());
     expect![[r#"
