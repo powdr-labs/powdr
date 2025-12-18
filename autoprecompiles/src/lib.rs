@@ -435,7 +435,7 @@ pub fn build<A: Adapter>(
             machine.clone(),
             &column_allocator,
             path,
-            "unopt",
+            Some("unopt"),
         );
     }
 
@@ -470,7 +470,7 @@ pub fn build<A: Adapter>(
     let apc = Apc::new(block, machine, &column_allocator);
 
     if let Some(path) = apc_candidates_dir_path {
-        serialize_apc::<A::Field, A::Instruction>(&apc, path, "opt");
+        serialize_apc::<A::Field, A::Instruction>(&apc, path, None);
     }
 
     metrics::gauge!("apc_gen_time_ms", &labels).set(start.elapsed().as_millis() as f64);
@@ -478,11 +478,16 @@ pub fn build<A: Adapter>(
     Ok(apc)
 }
 
-fn serialize_apc<T: Serialize, I: Serialize>(apc: &Apc<T, I>, path: &Path, suffix: &str) {
+fn serialize_apc<T: Serialize, I: Serialize>(apc: &Apc<T, I>, path: &Path, suffix: Option<&str>) {
     std::fs::create_dir_all(path).expect("Failed to create directory for APC candidates");
 
+    let suffix = if let Some(suffix) = suffix {
+        format!("_{suffix}")
+    } else {
+        "".to_string()
+    };
     let ser_path = path
-        .join(format!("apc_candidate_{suffix}_{}", apc.start_pc()))
+        .join(format!("apc_candidate{suffix}_{}", apc.start_pc()))
         .with_extension("cbor");
     let file_unopt =
         std::fs::File::create(&ser_path).expect("Failed to create file for {suffix} APC candidate");
@@ -496,7 +501,7 @@ fn serialize_apc_from_machine<T: Serialize, I: Serialize>(
     machine: SymbolicMachine<T>,
     column_allocator: &ColumnAllocator,
     path: &Path,
-    suffix: &str,
+    suffix: Option<&str>,
 ) {
     let apc = Apc::new(block, machine, column_allocator);
     serialize_apc::<T, I>(&apc, path, suffix);
