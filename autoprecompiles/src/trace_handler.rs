@@ -50,11 +50,16 @@ where
     IH::Field: Display + Clone + Send + Sync,
     IH::AirId: Eq + Hash + Send + Sync,
 {
-    // Returns a vector with the same length as original instructions
-    let original_instruction_air_ids = apc
+    // Keep only instructions that produce dummy records
+    let instructions_with_subs = apc
         .instructions()
         .iter()
-        .map(|instruction| {
+        .zip_eq(apc.subs.iter())
+        .filter(|(_, subs)| !subs.is_empty());
+
+    let original_instruction_air_ids = instructions_with_subs
+        .clone()
+        .map(|(instruction, _)| {
             instruction_handler
                 .get_instruction_air_and_id(instruction)
                 .0
@@ -83,10 +88,8 @@ where
         )
         .collect::<Vec<_>>();
 
-    let dummy_trace_index_to_apc_index_by_instruction = apc
-        .subs
-        .iter()
-        .map(|subs| {
+    let dummy_trace_index_to_apc_index_by_instruction = instructions_with_subs
+        .map(|(_, subs)| {
             subs.iter()
                 .map(|substitution| {
                     (

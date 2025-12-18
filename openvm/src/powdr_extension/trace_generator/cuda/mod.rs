@@ -231,15 +231,16 @@ impl PowdrTraceGeneratorGpu {
                 let air_name = chip_inventory.airs().ext_airs()[insertion_idx].name();
 
                 let record_arena = {
-                    match original_arenas.take_arena(&air_name) {
+                    match original_arenas.take_real_arena(&air_name) {
                         Some(ra) => ra,
                         None => return None, // skip this iteration, because we only have record arena for chips that are used
                     }
                 };
 
-                let shared_trace = chip.generate_proving_ctx(record_arena).common_main.unwrap();
-
-                Some((air_name, shared_trace))
+                // We might have initialized an arena for an AIR which ends up having no real records. It gets filtered out here.
+                chip.generate_proving_ctx(record_arena)
+                    .common_main
+                    .map(|m| (air_name, m))
             })
             .collect();
 
@@ -266,7 +267,13 @@ impl PowdrTraceGeneratorGpu {
                 // along with their substitutions
                 .zip_eq(self.apc.subs())
                 // map to `(air_name, substitutions)`
-                .map(|(instr, subs)| (&self.original_airs.opcode_to_air[&instr.0.opcode], subs))
+                .filter_map(|(instr, subs)| {
+                    if subs.is_empty() {
+                        None
+                    } else {
+                        Some((&self.original_airs.opcode_to_air[&instr.0.opcode], subs))
+                    }
+                })
                 // group by air name. This results in `HashMap<air_name, Vec<subs>>` where the length of the vector is the number of rows which are created in this air, per apc call
                 .into_group_map()
                 // go through each air and its substitutions

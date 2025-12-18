@@ -73,6 +73,18 @@ impl OriginalCompiledProgram {
 
         labels
     }
+
+    /// Converts to a `CompiledProgram` with the original vm config (without autoprecompiles).
+    pub fn compiled_program(&self, max_degree: usize) -> CompiledProgram {
+        CompiledProgram {
+            exe: self.exe.clone(),
+            vm_config: SpecializedConfig::new(
+                OriginalVmConfig::new(self.vm_config.clone()),
+                Vec::new(),
+                max_degree,
+            ),
+        }
+    }
 }
 
 /// A newtype wrapper around `OpenVmProgram` to implement the `Program` trait.

@@ -27,6 +27,7 @@ pub mod adapter;
 pub mod blocks;
 pub mod bus_map;
 pub mod constraint_optimizer;
+pub mod empirical_constraints;
 pub mod evaluation;
 pub mod execution_profile;
 pub mod expression;
@@ -41,6 +42,7 @@ mod stats_logger;
 pub mod symbolic_machine_generator;
 pub use pgo::{PgoConfig, PgoType};
 pub use powdr_constraint_solver::inliner::DegreeBound;
+pub mod equivalence_classes;
 pub mod execution;
 pub mod trace_handler;
 
@@ -55,6 +57,8 @@ pub struct PowdrConfig {
     pub degree_bound: DegreeBound,
     /// The path to the APC candidates dir, if any.
     pub apc_candidates_dir_path: Option<PathBuf>,
+    /// Whether to use optimistic precompiles.
+    pub should_use_optimistic_precompiles: bool,
 }
 
 impl PowdrConfig {
@@ -64,11 +68,17 @@ impl PowdrConfig {
             skip_autoprecompiles,
             degree_bound,
             apc_candidates_dir_path: None,
+            should_use_optimistic_precompiles: false,
         }
     }
 
     pub fn with_apc_candidates_dir<P: AsRef<Path>>(mut self, path: P) -> Self {
         self.apc_candidates_dir_path = Some(path.as_ref().to_path_buf());
+        self
+    }
+
+    pub fn with_optimistic_precompiles(mut self, should_use_optimistic_precompiles: bool) -> Self {
+        self.should_use_optimistic_precompiles = should_use_optimistic_precompiles;
         self
     }
 }
@@ -333,7 +343,7 @@ pub struct Apc<T, I, A, V> {
     pub block: BasicBlock<I>,
     /// The symbolic machine for this APC
     pub machine: SymbolicMachine<T>,
-    /// For each original air, the substitutions from original columns to APC columns
+    /// For each original instruction, the substitutions from original columns to APC columns
     pub subs: Vec<Vec<Substitution>>,
     /// The optimistic constraints to be satisfied for this apc to be run
     pub optimistic_constraints: Arc<OptimisticConstraints<A, V>>,
