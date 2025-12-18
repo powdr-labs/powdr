@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 mod ast;
 mod evaluator;
 
+pub use ast::*;
 pub use evaluator::{OptimisticConstraintEvaluator, OptimisticConstraints};
 pub trait ExecutionState {
     type RegisterAddress: PartialEq

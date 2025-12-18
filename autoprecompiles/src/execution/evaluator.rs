@@ -14,7 +14,7 @@ use crate::{
 };
 
 /// A collection of optimistic constraints over the intermediate execution states of a block, to be accessed in chronological order
-#[derive(Debug, Serialize, Deserialize, deepsize2::DeepSizeOf)]
+#[derive(Debug, Serialize, Deserialize, deepsize2::DeepSizeOf, PartialEq)]
 pub struct OptimisticConstraints<A, V> {
     /// For each step, the execution values we need to remember for future constraints, excluding this step
     fetches_by_step: Vec<(usize, Vec<LocalOptimisticLiteral<A>>)>,
@@ -23,6 +23,10 @@ pub struct OptimisticConstraints<A, V> {
 }
 
 impl<A: std::hash::Hash + PartialEq + Eq + Copy, V> OptimisticConstraints<A, V> {
+    pub fn empty() -> Arc<Self> {
+        Self::from_constraints(vec![])
+    }
+
     pub fn from_constraints(constraints: Vec<OptimisticConstraint<A, V>>) -> Arc<Self> {
         // Extract each constraint together with the literals it references and the step
         // at which the constraint becomes evaluable (i.e. when all referenced literals
@@ -77,6 +81,7 @@ impl<A: std::hash::Hash + PartialEq + Eq + Copy, V> OptimisticConstraints<A, V> 
 /// - when an APC is executed, create an instance of this evaluator over the APC's optimistic constraints
 /// - as we go through the original instructions, call `OptimisticConstraintEvaluator::try_next`
 /// - if a constraint fails, stop checking the constraints
+#[derive(Debug, PartialEq)]
 pub struct OptimisticConstraintEvaluator<E: ExecutionState> {
     /// The constraints that all need to be verified
     constraints: Arc<OptimisticConstraints<E::RegisterAddress, E::Value>>,

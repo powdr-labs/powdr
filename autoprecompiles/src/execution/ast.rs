@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::powdr::UniqueReferences;
 
-#[derive(Debug, Serialize, Deserialize, deepsize2::DeepSizeOf)]
+#[derive(Debug, Serialize, Deserialize, deepsize2::DeepSizeOf, PartialEq)]
 pub struct OptimisticConstraint<A, V> {
     pub left: OptimisticExpression<A, V>,
     pub right: OptimisticExpression<A, V>,
@@ -48,7 +48,7 @@ impl<A, V> AllChildren<OptimisticExpression<A, V>> for OptimisticExpression<A, V
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, deepsize2::DeepSizeOf)]
+#[derive(Debug, Clone, Serialize, Deserialize, deepsize2::DeepSizeOf, PartialEq)]
 pub enum OptimisticExpression<A, V> {
     Number(V),
     Literal(OptimisticLiteral<A>),
