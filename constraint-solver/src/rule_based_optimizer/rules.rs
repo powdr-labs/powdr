@@ -271,43 +271,60 @@ crepe! {
     ExpressionSumHeadTail(e, head, tail) <-
       Env(env),
       AlgebraicConstraint(e),
+      RangeConstraintOnExpression(e, rc),
+      (rc.range().0 == T::zero()),
+      (rc.range_width() != RangeConstraint::<T>::unconstrained().range_width()),
       (env.on_expr(e, (), |e, _| e.constant_offset().is_zero())),
       let Some((head, tail)) = env.try_sum_into_head_tail(e);
 
-
+    Expression(head) <- ExpressionSumHeadTail(_, head, _);
+    Expression(tail) <- ExpressionSumHeadTail(_, _, tail);
+       
     AlgebraicConstraint(head) <-
-      RangeConstraintOnExpression(head, rc),
-      (rc.range().0 == T::zero()),
-      (rc.range_width() != RangeConstraint::<T>::unconstrained().range_width()),
-      ExpressionSumHeadTail(_, head, _);
-      
-      
+      RangeConstraintOnExpression(head, head_rc),
+      RangeConstraintOnExpression(tail, tail_rc),
+      (head_rc.range().0 == T::zero()),
+      (tail_rc.range().0 == T::zero()),
+      (head_rc.combine_sum(&tail_rc).range().1 < T::from(-1)),
+      ExpressionSumHeadTail(_, head, tail);
+
+
     AlgebraicConstraint(tail) <-
-      RangeConstraintOnExpression(tail, rc),
-      (rc.range().0 == T::zero()),
-      (rc.range_width() != RangeConstraint::<T>::unconstrained().range_width()),
-      ExpressionSumHeadTail(_, _, tail);
+      RangeConstraintOnExpression(head, head_rc),
+      RangeConstraintOnExpression(tail, tail_rc),
+      (head_rc.range().0 == T::zero()),
+      (tail_rc.range().0 == T::zero()),
+      (head_rc.combine_sum(&tail_rc).range().1 < T::from(-1)),
+      ExpressionSumHeadTail(_, head, tail);
+
+    
 
     struct MinimalRangeZeroDeducibleCandidate<T: FieldElement>(Expr, Expr,Expr, Var, T);
     MinimalRangeZeroDeducibleCandidate(e, head, tail, var, coeff) <-
       ExpressionSumHeadTail(e, head, tail),
+      Env(env),
+      RangeConstraintOnExpression(head, rc_head),
+      RangeConstraintOnExpression(tail, rc_tail),
+      (rc_head.range().0 == T::zero()),
+      (rc_tail.range().0 == T::zero()),
+      (env.printthis(&head)),
+      (env.printthis(&tail)),
       AlgebraicConstraint(e),
       AlgebraicConstraint(head),
       AlgebraicConstraint(tail),
       AffineExpression(head, coeff, var, offset),
       (offset.is_zero()),
-      RangeConstraintOnExpression(head, rc_head),
-      RangeConstraintOnExpression(tail, rc_tail),
-      (rc_head.range().0 == T::zero()),
-      (rc_tail.range().0 == T::zero()),
       (rc_head.combine_sum(&rc_tail).range().1 < T::from(-1)),
       (rc_tail.range_width() != RangeConstraint::<T>::unconstrained().range_width()),
       (rc_head.range_width() != RangeConstraint::<T>::unconstrained().range_width());
 
 
     Assignment(var, T::zero()) <-
-    //(env.printthis(".............................................generate assignment")),
-    MinimalRangeZeroDeducibleCandidate(_, _, _, var, _);
+    Env(env),
+    MinimalRangeZeroDeducibleCandidate(e, head, tail, var, _),
+    (env.printthis(&e)),
+    (env.printthis(&head)),
+    (env.printthis(&tail));
     ///////////////////////////////// OUTPUT ACTIONS //////////////////////////
 
     struct Equivalence(Var, Var);
