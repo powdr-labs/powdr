@@ -206,7 +206,7 @@ impl<'a, E: ExecutionState> StepOptimisticConstraintEvaluator<'a, E> {
     }
 
     fn evaluate_literal(&self, l: &OptimisticLiteral<E::RegisterAddress>) -> E::Value {
-        // By construction, the literals involved should only be from past states
+        // By construction, the literals involved should only be from past states or the current state
         debug_assert!(l.instr_idx <= self.step);
         // Hit the state for the current step
         if l.instr_idx == self.step {
@@ -226,7 +226,7 @@ mod tests {
     use super::*;
 
     struct TestExecutionState {
-        mem: HashMap<u8, u8>,
+        mem: [u8; 2],
         pc: u8,
     }
 
@@ -240,7 +240,7 @@ mod tests {
         }
 
         fn reg(&self, address: &Self::RegisterAddress) -> Self::Value {
-            self.mem[address]
+            self.mem[*address as usize]
         }
     }
 
@@ -300,18 +300,9 @@ mod tests {
             OptimisticConstraintEvaluator::new(equality_constraints());
 
         let states = [
-            TestExecutionState {
-                mem: [(0, 0), (1, 0)].into_iter().collect(),
-                pc: 0,
-            },
-            TestExecutionState {
-                mem: [(0, 1), (1, 1)].into_iter().collect(),
-                pc: 1,
-            },
-            TestExecutionState {
-                mem: [(0, 2), (1, 2)].into_iter().collect(),
-                pc: 2,
-            },
+            TestExecutionState { mem: [0, 0], pc: 0 },
+            TestExecutionState { mem: [1, 1], pc: 1 },
+            TestExecutionState { mem: [2, 2], pc: 2 },
         ];
 
         let res = states.iter().try_fold(evaluator, |mut evaluator, state| {
@@ -327,18 +318,9 @@ mod tests {
             OptimisticConstraintEvaluator::new(equality_constraints());
 
         let states = [
-            TestExecutionState {
-                mem: [(0, 0), (1, 0)].into_iter().collect(),
-                pc: 0,
-            },
-            TestExecutionState {
-                mem: [(0, 1), (1, 1)].into_iter().collect(),
-                pc: 1,
-            },
-            TestExecutionState {
-                mem: [(0, 2), (1, 0)].into_iter().collect(),
-                pc: 2,
-            },
+            TestExecutionState { mem: [0, 0], pc: 0 },
+            TestExecutionState { mem: [1, 1], pc: 1 },
+            TestExecutionState { mem: [2, 0], pc: 2 },
         ];
 
         let res = states.iter().try_fold(evaluator, |mut evaluator, state| {
@@ -353,16 +335,10 @@ mod tests {
         let mut evaluator: OptimisticConstraintEvaluator<TestExecutionState> =
             OptimisticConstraintEvaluator::new(cross_step_memory_constraint());
 
-        let first_state = TestExecutionState {
-            mem: [(0, 5), (1, 0)].into_iter().collect(),
-            pc: 0,
-        };
+        let first_state = TestExecutionState { mem: [5, 0], pc: 0 };
         evaluator.try_next(&first_state).unwrap();
 
-        let second_state = TestExecutionState {
-            mem: [(0, 0), (1, 5)].into_iter().collect(),
-            pc: 1,
-        };
+        let second_state = TestExecutionState { mem: [0, 5], pc: 1 };
 
         assert!(evaluator.try_next(&second_state).is_ok());
     }
@@ -372,16 +348,10 @@ mod tests {
         let mut evaluator: OptimisticConstraintEvaluator<TestExecutionState> =
             OptimisticConstraintEvaluator::new(cross_step_memory_constraint());
 
-        let first_state = TestExecutionState {
-            mem: [(0, 9), (1, 0)].into_iter().collect(),
-            pc: 0,
-        };
+        let first_state = TestExecutionState { mem: [9, 0], pc: 0 };
         evaluator.try_next(&first_state).unwrap();
 
-        let second_state = TestExecutionState {
-            mem: [(0, 0), (1, 3)].into_iter().collect(),
-            pc: 1,
-        };
+        let second_state = TestExecutionState { mem: [0, 3], pc: 1 };
 
         assert!(evaluator.try_next(&second_state).is_err());
     }
@@ -391,26 +361,17 @@ mod tests {
         let mut evaluator: OptimisticConstraintEvaluator<TestExecutionState> =
             OptimisticConstraintEvaluator::new(cross_step_pc_constraint());
 
-        let first_state = TestExecutionState {
-            mem: HashMap::new(),
-            pc: 7,
-        };
+        let first_state = TestExecutionState { mem: [0; 2], pc: 7 };
         evaluator.try_next(&first_state).unwrap();
 
-        let second_state = TestExecutionState {
-            mem: HashMap::new(),
-            pc: 7,
-        };
+        let second_state = TestExecutionState { mem: [0; 2], pc: 7 };
         assert!(evaluator.try_next(&second_state).is_ok());
 
         let mut failing_evaluator: OptimisticConstraintEvaluator<TestExecutionState> =
             OptimisticConstraintEvaluator::new(cross_step_pc_constraint());
         failing_evaluator.try_next(&first_state).unwrap();
 
-        let mismatched_pc = TestExecutionState {
-            mem: HashMap::new(),
-            pc: 8,
-        };
+        let mismatched_pc = TestExecutionState { mem: [0; 2], pc: 8 };
         assert!(failing_evaluator.try_next(&mismatched_pc).is_err());
     }
 
@@ -421,19 +382,16 @@ mod tests {
             OptimisticConstraintEvaluator::new(initial_to_final_constraint(final_step));
 
         let initial_state = TestExecutionState {
-            mem: [(0, 11)].into_iter().collect(),
+            mem: [11, 0],
             pc: 0,
         };
         evaluator.try_next(&initial_state).unwrap();
 
-        let middle_state = TestExecutionState {
-            mem: HashMap::new(),
-            pc: 1,
-        };
+        let middle_state = TestExecutionState { mem: [0; 2], pc: 1 };
         evaluator.try_next(&middle_state).unwrap();
 
         let final_state = TestExecutionState {
-            mem: [(1, 11)].into_iter().collect(),
+            mem: [0, 11],
             pc: 2,
         };
         assert!(evaluator.try_next(&final_state).is_ok());
@@ -443,10 +401,7 @@ mod tests {
         failing_evaluator.try_next(&initial_state).unwrap();
         failing_evaluator.try_next(&middle_state).unwrap();
 
-        let mismatched_final_state = TestExecutionState {
-            mem: [(1, 3)].into_iter().collect(),
-            pc: 2,
-        };
+        let mismatched_final_state = TestExecutionState { mem: [0, 3], pc: 2 };
         assert!(failing_evaluator.try_next(&mismatched_final_state).is_err());
     }
 
@@ -457,7 +412,7 @@ mod tests {
             OptimisticConstraintEvaluator::new(constraints);
 
         let passing_state = TestExecutionState {
-            mem: [(0, 99)].into_iter().collect(),
+            mem: [99, 0],
             pc: 0,
         };
         assert!(evaluator.try_next(&passing_state).is_ok());
@@ -468,7 +423,7 @@ mod tests {
                 value(10),
             )]));
         let failing_state = TestExecutionState {
-            mem: [(0, 12)].into_iter().collect(),
+            mem: [12, 0],
             pc: 0,
         };
         assert!(failing_evaluator.try_next(&failing_state).is_err());
