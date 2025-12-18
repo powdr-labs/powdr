@@ -866,7 +866,8 @@ pub fn execution_profile_from_guest(
     let sdk = PowdrExecutionProfileSdkCpu::new(app_config).unwrap();
 
     execution_profile::<BabyBearOpenVmApcAdapter>(&program, || {
-        sdk.execute_interpreted(exe.clone(), inputs.clone()).unwrap();
+        sdk.execute_interpreted(exe.clone(), inputs.clone())
+            .unwrap();
     })
 }
 
