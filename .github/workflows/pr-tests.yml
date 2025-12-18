@@ -52,8 +52,6 @@ jobs:
         run: echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
       - name: Format
         run: cargo fmt --all --check --verbose
-      - name: Update git dependencies
-        run: cargo update
       - name: Cargo check with Rust 1.90 (default features)
         run: cargo +1.90 check --all-targets
       - name: Lint no default features
@@ -196,8 +194,6 @@ jobs:
         run: echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
       - name: Format
         run: cargo fmt --all --check --verbose
-      - name: Update git dependencies
-        run: cargo update
       - name: Cargo check with Rust 1.90 (all features)
         run: cargo +1.90 check --all-targets
       - name: Lint no default features
