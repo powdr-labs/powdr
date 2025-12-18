@@ -5,6 +5,7 @@ use crate::evaluation::AirStats;
 use crate::execution::OptimisticConstraints;
 use crate::expression_conversion::algebraic_to_grouped_expression;
 use crate::symbolic_machine_generator::convert_machine_field_type;
+use execution::{ExecutionState, LocalOptimisticLiteral, OptimisticConstraint, OptimisticExpression, OptimisticLiteral};
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
 use powdr::UniqueReferences;
@@ -467,7 +468,8 @@ pub fn build<A: Adapter>(
     let machine = convert_machine_field_type(machine, &A::into_field);
 
     // TODO: add optimistic constraints here
-    let optimistic_constraints = OptimisticConstraints::from_constraints(vec![]);
+    let pc_constraints = superblock_pc_constraints::<A>(&block);
+    let optimistic_constraints = OptimisticConstraints::from_constraints(pc_constraints);
 
     let apc = Apc::new(block, machine, column_allocator, optimistic_constraints);
 
@@ -485,6 +487,26 @@ pub fn build<A: Adapter>(
     metrics::gauge!("apc_gen_time_ms", &labels).set(start.elapsed().as_millis() as f64);
 
     Ok(apc)
+}
+
+/// Generate optimistic constraints for superblock jumps (doesn't enforce the starting PC).
+fn superblock_pc_constraints<A: Adapter>(
+    block: &BasicBlock<A::Instruction>
+) -> Vec<OptimisticConstraint<<<A as Adapter>::ExecutionState as ExecutionState>::RegisterAddress,
+                              <<A as Adapter>::ExecutionState as ExecutionState>::Value>> {
+    let mut res = vec![];
+    for (insn, pc) in block.other_pcs.clone() {
+        let left = OptimisticExpression::Literal(OptimisticLiteral {
+            instr_idx: insn,
+            val: LocalOptimisticLiteral::Pc,
+        });
+        let Ok(pc_value) = <<A as Adapter>::ExecutionState as ExecutionState>::Value::try_from(pc) else {
+            panic!("PC doesn't fit in Value type");
+        };
+        let right = OptimisticExpression::Number(pc_value);
+        res.push(OptimisticConstraint { left, right });
+    }
+    res
 }
 
 fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
