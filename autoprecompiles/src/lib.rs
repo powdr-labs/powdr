@@ -359,7 +359,7 @@ impl<T, I> Apc<T, I> {
     fn new(
         block: BasicBlock<I>,
         machine: SymbolicMachine<T>,
-        column_allocator: ColumnAllocator,
+        column_allocator: &ColumnAllocator,
     ) -> Self {
         // Get all poly_ids in the machine
         let all_references = machine
@@ -369,16 +369,16 @@ impl<T, I> Apc<T, I> {
         // Only keep substitutions from the column allocator if the target poly_id is used in the machine
         let subs = column_allocator
             .subs
-            .into_iter()
+            .iter()
             .map(|subs| {
-                subs.into_iter()
+                subs.iter()
                     .enumerate()
                     .filter_map(|(original_poly_index, apc_poly_id)| {
                         all_references
                             .contains(&apc_poly_id)
                             .then_some(Substitution {
                                 original_poly_index,
-                                apc_poly_id,
+                                apc_poly_id: apc_poly_id.clone(),
                             })
                     })
                     .collect_vec()
@@ -393,7 +393,6 @@ impl<T, I> Apc<T, I> {
 }
 
 /// Allocates global poly_ids and keeps track of substitutions
-#[derive(Clone)]
 pub struct ColumnAllocator {
     /// For each original air, for each original column index, the associated poly_id in the APC air
     subs: Vec<Vec<u64>>,
@@ -430,8 +429,15 @@ pub fn build<A: Adapter>(
         &vm_config.bus_map,
     );
 
-    let unopt_machine = machine.clone();
-    let unopt_col_alloc = column_allocator.clone();
+    if let Some(path) = apc_candidates_dir_path {
+        serialize_apc_from_machine::<A>(
+            block.clone(),
+            machine.clone(),
+            &column_allocator,
+            path,
+            "unopt",
+        );
+    }
 
     let labels = [("apc_start_pc", block.start_pc.to_string())];
     metrics::counter!("before_opt_cols", &labels)
@@ -461,33 +467,39 @@ pub fn build<A: Adapter>(
 
     let machine = convert_machine_field_type(machine, &A::into_field);
 
-    let apc = Apc::new(block.clone(), machine, column_allocator);
+    let apc = Apc::new(block, machine, &column_allocator);
 
     if let Some(path) = apc_candidates_dir_path {
-        std::fs::create_dir_all(path).expect("Failed to create directory for APC candidates");
-
-        let ser_path_unopt = path
-            .join(format!("apc_candidate_unopt_{}", apc.start_pc()))
-            .with_extension("cbor");
-        let file_unopt = std::fs::File::create(&ser_path_unopt)
-            .expect("Failed to create file for unoptimized APC candidate");
-        let writer_unopt = BufWriter::new(file_unopt);
-        let apc_unopt = Apc::new(block, unopt_machine, unopt_col_alloc);
-        serde_cbor::to_writer(writer_unopt, &apc_unopt)
-            .expect("Failed to write unoptimized APC candidate to file");
-
-        let ser_path = path
-            .join(format!("apc_candidate_{}", apc.start_pc()))
-            .with_extension("cbor");
-        let file =
-            std::fs::File::create(&ser_path).expect("Failed to create file for APC candidate");
-        let writer = BufWriter::new(file);
-        serde_cbor::to_writer(writer, &apc).expect("Failed to write APC candidate to file");
+        serialize_apc::<A>(apc, path, "opt");
     }
 
     metrics::gauge!("apc_gen_time_ms", &labels).set(start.elapsed().as_millis() as f64);
 
     Ok(apc)
+}
+
+fn serialize_apc<A: Adapter>(apc: Apc<A::PowdrField, A::Instruction>, path: &Path, suffix: &str) {
+    std::fs::create_dir_all(path).expect("Failed to create directory for APC candidates");
+
+    let ser_path = path
+        .join(format!("apc_candidate_{suffix}_{}", apc.start_pc()))
+        .with_extension("cbor");
+    let file_unopt =
+        std::fs::File::create(&ser_path).expect("Failed to create file for {suffix} APC candidate");
+    let writer_unopt = BufWriter::new(file_unopt);
+    serde_cbor::to_writer(writer_unopt, &apc)
+        .expect("Failed to write {suffix} APC candidate to file");
+}
+
+fn serialize_apc_from_machine<A: Adapter>(
+    block: BasicBlock<A::Instruction>,
+    machine: SymbolicMachine<A::PowdrField>,
+    column_allocator: &ColumnAllocator,
+    path: &Path,
+    suffix: &str,
+) {
+    let apc = Apc::new(block.clone(), machine.clone(), &column_allocator);
+    serialize_apc::<A>(apc, path, suffix);
 }
 
 fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
