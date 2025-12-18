@@ -1,4 +1,7 @@
-use std::{cmp::Reverse, collections::{BTreeMap, HashMap}};
+use std::{
+    cmp::Reverse,
+    collections::{BTreeMap, HashMap},
+};
 
 use itertools::Itertools;
 
@@ -43,7 +46,10 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
 
         // ensure blocks are valid for APC
         let block_exec_count = block_exec_count.unwrap();
-        blocks.iter().enumerate().for_each(|(idx, b)| assert!(block_exec_count[&idx] > 0 && b.statements.len() > 1));
+        blocks
+            .iter()
+            .enumerate()
+            .for_each(|(idx, b)| assert!(block_exec_count[&idx] > 0 && b.statements.len() > 1));
 
         tracing::debug!(
             "Retained {} basic blocks after filtering by pc_idx_count",

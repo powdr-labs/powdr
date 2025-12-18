@@ -141,7 +141,11 @@ pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
         let pc = if i == 0 {
             Some(block.start_pc)
         } else {
-            block.other_pcs.iter().find(|(idx, _)| *idx == i).map(|(_, pc_value)| *pc_value)
+            block
+                .other_pcs
+                .iter()
+                .find(|(idx, _)| *idx == i)
+                .map(|(_, pc_value)| *pc_value)
         };
         let pc_lookup_row = instr
             .pc_lookup_row(pc)

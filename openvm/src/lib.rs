@@ -118,8 +118,17 @@ pub const DEFAULT_DEGREE_BOUND: DegreeBound = DegreeBound {
     bus_interactions: DEFAULT_OPENVM_DEGREE_BOUND - 1,
 };
 
-pub fn default_powdr_openvm_config(apc: u64, skip: u64, superblock_max_len: Option<u8>) -> PowdrConfig {
-    PowdrConfig::new(apc, skip, superblock_max_len.unwrap_or(1), DEFAULT_DEGREE_BOUND)
+pub fn default_powdr_openvm_config(
+    apc: u64,
+    skip: u64,
+    superblock_max_len: Option<u8>,
+) -> PowdrConfig {
+    PowdrConfig::new(
+        apc,
+        skip,
+        superblock_max_len.unwrap_or(1),
+        DEFAULT_DEGREE_BOUND,
+    )
 }
 
 fn format_fe<F: PrimeField32>(v: F) -> String {
@@ -1016,7 +1025,10 @@ mod tests {
             .precompiles
             .iter()
             .for_each(|precompile| {
-                assert!(!pgo_data.pc_count.keys().contains(&precompile.apc.block.start_pc));
+                assert!(!pgo_data
+                    .pc_count
+                    .keys()
+                    .contains(&precompile.apc.block.start_pc));
             });
 
         let result = prove(&program, false, false, stdin, None);
@@ -1097,7 +1109,8 @@ mod tests {
         let guest = compile_openvm(GUEST_KECCAK, GuestOptions::default()).unwrap();
         let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
-        let config = default_powdr_openvm_config(GUEST_KECCAK_APC_PGO_LARGE, GUEST_KECCAK_SKIP, None);
+        let config =
+            default_powdr_openvm_config(GUEST_KECCAK_APC_PGO_LARGE, GUEST_KECCAK_SKIP, None);
         prove_recursion(
             GUEST_KECCAK,
             config.clone(),
@@ -1238,7 +1251,8 @@ mod tests {
         let guest = compile_openvm(GUEST_SHA256, GuestOptions::default()).unwrap();
         let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
-        let config = default_powdr_openvm_config(GUEST_SHA256_APC_PGO_LARGE, GUEST_SHA256_SKIP, None);
+        let config =
+            default_powdr_openvm_config(GUEST_SHA256_APC_PGO_LARGE, GUEST_SHA256_SKIP, None);
         prove_recursion(
             GUEST_SHA256,
             config.clone(),
@@ -1428,7 +1442,8 @@ mod tests {
         stdin.write(&GUEST_ECRECOVER_ITER);
         let guest = compile_openvm(GUEST_ECRECOVER_HINTS, GuestOptions::default()).unwrap();
         let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
-        let config = default_powdr_openvm_config(GUEST_ECRECOVER_APC_PGO, GUEST_ECRECOVER_SKIP, None);
+        let config =
+            default_powdr_openvm_config(GUEST_ECRECOVER_APC_PGO, GUEST_ECRECOVER_SKIP, None);
         prove_simple(
             GUEST_ECRECOVER_HINTS,
             config.clone(),
@@ -1462,7 +1477,8 @@ mod tests {
         stdin.write(&GUEST_ECRECOVER_ITER);
         let guest = compile_openvm(GUEST_ECRECOVER_HINTS, GuestOptions::default()).unwrap();
         let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
-        let config = default_powdr_openvm_config(GUEST_ECRECOVER_APC_PGO, GUEST_ECRECOVER_SKIP, None);
+        let config =
+            default_powdr_openvm_config(GUEST_ECRECOVER_APC_PGO, GUEST_ECRECOVER_SKIP, None);
         prove_recursion(
             GUEST_ECRECOVER_HINTS,
             config,
@@ -1476,8 +1492,11 @@ mod tests {
     fn ecc_projective_prove() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ECC_ITER);
-        let config =
-            default_powdr_openvm_config(GUEST_ECC_PROJECTIVE_APC_PGO, GUEST_ECC_PROJECTIVE_SKIP, None);
+        let config = default_powdr_openvm_config(
+            GUEST_ECC_PROJECTIVE_APC_PGO,
+            GUEST_ECC_PROJECTIVE_SKIP,
+            None,
+        );
 
         let guest = compile_openvm(GUEST_ECC_PROJECTIVE, GuestOptions::default()).unwrap();
         let pgo_data = execution_profile_from_guest(&guest, stdin.clone());

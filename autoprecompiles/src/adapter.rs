@@ -6,8 +6,8 @@ use std::{fmt::Display, sync::Arc};
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
-use crate::execution::{ExecutionState, OptimisticConstraints};
 use crate::blocks::generate_superblocks;
+use crate::execution::{ExecutionState, OptimisticConstraints};
 use crate::execution_profile::ExecutionProfile;
 
 use crate::{
@@ -59,7 +59,11 @@ pub trait PgoAdapter {
         // generate superblocks if profiling data is available
         let (blocks, execution_count) = if let Some(prof) = self.profiling_data() {
             // generate_superblocks already filters out unexecuted blocks and single instruction blocks
-            let (blocks, count) = generate_superblocks(&prof.pc_list, &filtered_blocks, config.superblock_max_len as usize);
+            let (blocks, count) = generate_superblocks(
+                &prof.pc_list,
+                &filtered_blocks,
+                config.superblock_max_len as usize,
+            );
             (blocks, Some(count))
         } else {
             (filtered_blocks, None)
@@ -78,7 +82,8 @@ pub trait PgoAdapter {
     ) -> Vec<AdapterApcWithStats<Self::Adapter>>;
 
     fn pc_execution_count(&self, pc: u64) -> Option<u32> {
-        self.profiling_data().and_then(|prof| prof.pc_count.get(&pc).cloned())
+        self.profiling_data()
+            .and_then(|prof| prof.pc_count.get(&pc).cloned())
     }
 
     fn profiling_data(&self) -> Option<&ExecutionProfile> {

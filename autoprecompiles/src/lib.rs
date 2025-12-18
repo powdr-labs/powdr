@@ -8,7 +8,10 @@ use crate::evaluation::AirStats;
 use crate::execution::OptimisticConstraints;
 use crate::expression_conversion::algebraic_to_grouped_expression;
 use crate::symbolic_machine_generator::convert_apc_field_type;
-use execution::{ExecutionState, LocalOptimisticLiteral, OptimisticConstraint, OptimisticExpression, OptimisticLiteral};
+use execution::{
+    ExecutionState, LocalOptimisticLiteral, OptimisticConstraint, OptimisticExpression,
+    OptimisticLiteral,
+};
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
 use powdr::UniqueReferences;
@@ -68,11 +71,20 @@ pub struct PowdrConfig {
 }
 
 impl PowdrConfig {
-    pub fn new(autoprecompiles: u64, skip_autoprecompiles: u64, superblock_max_len: u8, degree_bound: DegreeBound) -> Self {
+    pub fn new(
+        autoprecompiles: u64,
+        skip_autoprecompiles: u64,
+        superblock_max_len: u8,
+        degree_bound: DegreeBound,
+    ) -> Self {
         Self {
             autoprecompiles,
             skip_autoprecompiles,
-            superblock_max_len: if superblock_max_len == 0 { 1 } else { superblock_max_len },
+            superblock_max_len: if superblock_max_len == 0 {
+                1
+            } else {
+                superblock_max_len
+            },
             degree_bound,
             apc_candidates_dir_path: None,
             should_use_optimistic_precompiles: false,
@@ -541,16 +553,21 @@ fn serialize_apc_from_machine<A: Adapter>(
 
 /// Generate optimistic constraints for superblock jumps (doesn't enforce the starting PC).
 fn superblock_pc_constraints<A: Adapter>(
-    block: &BasicBlock<A::Instruction>
-) -> Vec<OptimisticConstraint<<<A as Adapter>::ExecutionState as ExecutionState>::RegisterAddress,
-                              <<A as Adapter>::ExecutionState as ExecutionState>::Value>> {
+    block: &BasicBlock<A::Instruction>,
+) -> Vec<
+    OptimisticConstraint<
+        <<A as Adapter>::ExecutionState as ExecutionState>::RegisterAddress,
+        <<A as Adapter>::ExecutionState as ExecutionState>::Value,
+    >,
+> {
     let mut res = vec![];
     for (insn, pc) in block.other_pcs.clone() {
         let left = OptimisticExpression::Literal(OptimisticLiteral {
             instr_idx: insn,
             val: LocalOptimisticLiteral::Pc,
         });
-        let Ok(pc_value) = <<A as Adapter>::ExecutionState as ExecutionState>::Value::try_from(pc) else {
+        let Ok(pc_value) = <<A as Adapter>::ExecutionState as ExecutionState>::Value::try_from(pc)
+        else {
             panic!("PC doesn't fit in Value type");
         };
         let right = OptimisticExpression::Number(pc_value);
