@@ -95,7 +95,29 @@ pub fn optimize_constraints<
     stats_logger.log("rule-based optimization", &constraint_system);
 
     // At this point, we throw away the index and only keep the constraint system, since the rest of the optimisations are defined on the system alone
-    let constraint_system: ConstraintSystem<P, V> = constraint_system.into();
+    let mut constraint_system: ConstraintSystem<P, V> = constraint_system.into();
+
+    let bus_inter_count = constraint_system.bus_interactions.len();
+    for index in 0..bus_inter_count {
+        let bus_inter = &mut constraint_system.bus_interactions[index];
+        for field in bus_inter.fields_mut() {
+            if field.try_to_known().is_some() {
+                continue;
+            }
+            if let Some(v) = solver.is_expression_constant(field) {
+                let constr = AlgebraicConstraint::assert_eq(
+                    field.clone(),
+                    GroupedExpression::from_number(v),
+                );
+                *field = GroupedExpression::from_number(v);
+                constraint_system.algebraic_constraints.push(constr);
+            }
+        }
+    }
+    stats_logger.log(
+        "substituting expressions in bus interactions",
+        &constraint_system,
+    );
 
     let constraint_system = optimize_memory::<_, _, M>(constraint_system, solver, memory_bus_id);
     stats_logger.log("memory optimization", &constraint_system);
