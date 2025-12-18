@@ -20,11 +20,7 @@ impl<E: ExecutionState, A, S> Default for ApcCandidates<E, A, S> {
 impl<E: ExecutionState, A: Apc, S: Snapshot> ApcCandidates<E, A, S> {
     /// Given the current state of execution, retain the candidates whose constraints are still
     /// verified
-    pub fn check_conditions(
-        &mut self,
-        state: &E,
-        snapshot_callback: impl Fn() -> S,
-    ) -> Vec<ApcCandidate<E, A, S>> {
+    pub fn check_conditions(&mut self, state: &E, snapshot_callback: impl Fn() -> S) {
         let mut snapshot = None;
 
         // Filter out failing candidates and upgrade the ones that are done
@@ -50,7 +46,10 @@ impl<E: ExecutionState, A: Apc, S: Snapshot> ApcCandidates<E, A, S> {
                 }
                 _ => true,
             });
+    }
 
+    /// If no more candidates are in progress, return a set of non-overlapping candidates
+    pub fn extract_candidates(&mut self) -> Vec<ApcCandidate<E, A, S>> {
         let are_any_in_progress = self
             .candidates
             .iter()
@@ -71,27 +70,22 @@ impl<E: ExecutionState, A: Apc, S: Snapshot> ApcCandidates<E, A, S> {
         // If there are more candidates, we need to solve conflicts to make sure we do not return overlapping candidates
 
         // Collect metadata needed to resolve overlaps in a single pass
-        let meta: Vec<_> = self
-            .candidates
-            .iter()
-            .enumerate()
-            .map(|(idx, candidate)| {
-                let range = Self::candidate_range(candidate);
-                (
-                    CandidateRank {
-                        candidate_id: idx,
-                        len: range.1 - range.0,
-                        priority: candidate.apc.priority(),
-                    },
-                    range,
-                )
-            })
-            .collect();
-        let discard = meta.iter().tuple_combinations().fold(
+        let meta = self.candidates.iter().enumerate().map(|(idx, candidate)| {
+            let range = Self::candidate_range(candidate);
+            (
+                CandidateRank {
+                    candidate_id: idx,
+                    len: range.1 - range.0,
+                    priority: candidate.apc.priority(),
+                },
+                range,
+            )
+        });
+        let discard = meta.tuple_combinations().fold(
             vec![false; self.candidates.len()],
             |mut discard, ((rank_left, range_left), (rank_right, range_right))| {
-                let (rank_left, range_left) = (*rank_left, *range_left);
-                let (rank_right, range_right) = (*rank_right, *range_right);
+                let (rank_left, range_left) = (rank_left, range_left);
+                let (rank_right, range_right) = (rank_right, range_right);
                 let idx_left = rank_left.candidate_id;
                 let idx_right = rank_right.candidate_id;
 
@@ -317,6 +311,15 @@ mod tests {
         }
     }
 
+    fn incr(
+        candidates: &mut ApcCandidates<TestExecutionState, TestApc, TestSnapshot>,
+        state: &mut TestExecutionState,
+    ) -> Vec<ApcCandidate<TestExecutionState, TestApc, TestSnapshot>> {
+        candidates.check_conditions(state, || state.snap());
+        state.incr();
+        candidates.extract_candidates()
+    }
+
     #[test]
     fn single_candidate() {
         let mut candidates = ApcCandidates::default();
@@ -327,19 +330,10 @@ mod tests {
         let final_snapshot = s(3);
         // it will be checked in 4 steps, because we have conditions on the state before and after
         candidates.insert(ApcCandidate::new(apc, OptimisticConstraints::empty(), s(0)));
-        assert!(candidates
-            .check_conditions(&state, || state.snap())
-            .is_empty());
-        state.incr();
-        assert!(candidates
-            .check_conditions(&state, || state.snap())
-            .is_empty());
-        state.incr();
-        assert!(candidates
-            .check_conditions(&state, || state.snap())
-            .is_empty());
-        state.incr();
-        let candidates = candidates.check_conditions(&state, || state.snap());
+        assert!(incr(&mut candidates, &mut state).is_empty());
+        assert!(incr(&mut candidates, &mut state).is_empty());
+        assert!(incr(&mut candidates, &mut state).is_empty());
+        let candidates = incr(&mut candidates, &mut state);
         assert_eq!(candidates.len(), 1);
         assert_eq!(
             candidates[0],
@@ -371,19 +365,10 @@ mod tests {
             OptimisticConstraints::empty(),
             s(0),
         ));
-        assert!(candidates
-            .check_conditions(&state, || state.snap())
-            .is_empty());
-        state.incr();
-        assert!(candidates
-            .check_conditions(&state, || state.snap())
-            .is_empty());
-        state.incr();
-        assert!(candidates
-            .check_conditions(&state, || state.snap())
-            .is_empty());
-        state.incr();
-        let candidates = candidates.check_conditions(&state, || state.snap());
+        assert!(incr(&mut candidates, &mut state).is_empty());
+        assert!(incr(&mut candidates, &mut state).is_empty());
+        assert!(incr(&mut candidates, &mut state).is_empty());
+        let candidates = incr(&mut candidates, &mut state);
         assert_eq!(candidates.len(), 1);
         assert_eq!(
             candidates[0],
@@ -417,27 +402,15 @@ mod tests {
             OptimisticConstraints::empty(),
             s(0),
         ));
-        assert!(candidates
-            .check_conditions(&state, || state.snap())
-            .is_empty());
-        state.incr();
-        assert!(candidates
-            .check_conditions(&state, || state.snap())
-            .is_empty());
-        state.incr();
-        assert!(candidates
-            .check_conditions(&state, || state.snap())
-            .is_empty());
-        state.incr();
+        assert!(incr(&mut candidates, &mut state).is_empty());
+        assert!(incr(&mut candidates, &mut state).is_empty());
+        assert!(incr(&mut candidates, &mut state).is_empty());
         // Both are still running
         assert_eq!(candidates.count_done(), 0);
-        assert!(candidates
-            .check_conditions(&state, || state.snap())
-            .is_empty());
+        assert!(incr(&mut candidates, &mut state).is_empty());
         // The first apc is done
         assert_eq!(candidates.count_done(), 1);
-        state.incr();
-        let candidates = candidates.check_conditions(&state, || state.snap());
+        let candidates = incr(&mut candidates, &mut state);
         assert_eq!(candidates.len(), 1);
         assert_eq!(
             candidates[0],
@@ -478,22 +451,13 @@ mod tests {
             }]),
             s(0),
         ));
-        assert!(candidates
-            .check_conditions(&state, || state.snap())
-            .is_empty());
-        state.incr();
-        assert!(candidates
-            .check_conditions(&state, || state.snap())
-            .is_empty());
-        state.incr();
-        assert!(candidates
-            .check_conditions(&state, || state.snap())
-            .is_empty());
-        state.incr();
+        assert!(incr(&mut candidates, &mut state).is_empty());
+        assert!(incr(&mut candidates, &mut state).is_empty());
+        assert!(incr(&mut candidates, &mut state).is_empty());
         // Both apcs are still running
         assert_eq!(candidates.count_done(), 0);
         // In this check, the low priority apc completes and the high priority one fails (as the jump did not happen)
-        let candidates = candidates.check_conditions(&state, || state.snap());
+        let candidates = incr(&mut candidates, &mut state);
         assert_eq!(candidates.len(), 1);
         assert_eq!(
             candidates[0],
@@ -522,37 +486,25 @@ mod tests {
             OptimisticConstraints::empty(),
             low_priority_snapshot,
         ));
-        assert!(candidates
-            .check_conditions(&state, || state.snap())
-            .is_empty());
+        assert!(incr(&mut candidates, &mut state).is_empty());
         // candidate is still running
         assert_eq!(candidates.count_in_progress(), 1);
-        state.incr();
         // insert the high priority apc
         candidates.insert(ApcCandidate::new(
             high_priority,
             OptimisticConstraints::empty(),
             high_priority_snapshot.clone(),
         ));
-        assert!(candidates
-            .check_conditions(&state, || state.snap())
-            .is_empty());
+        assert!(incr(&mut candidates, &mut state).is_empty());
         // both candidates are running
         assert_eq!(candidates.count_in_progress(), 2);
-        state.incr();
-        assert!(candidates
-            .check_conditions(&state, || state.snap())
-            .is_empty());
-        state.incr();
+        assert!(incr(&mut candidates, &mut state).is_empty());
         // Both are still running
         assert_eq!(candidates.count_in_progress(), 2);
-        assert!(candidates
-            .check_conditions(&state, || state.snap())
-            .is_empty());
+        assert!(incr(&mut candidates, &mut state).is_empty());
         // The first apc is done
         assert_eq!(candidates.count_done(), 1);
-        state.incr();
-        let candidates = candidates.check_conditions(&state, || state.snap());
+        let candidates = incr(&mut candidates, &mut state);
         assert_eq!(candidates.len(), 1);
         assert_eq!(
             candidates[0],
