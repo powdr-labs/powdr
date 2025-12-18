@@ -28,7 +28,10 @@ impl<E: ExecutionState, A: Apc, S: Snapshot> ApcCandidates<E, A, S> {
             .retain_mut(|candidate| match &mut candidate.status {
                 // Check the conditions for unconfirmed candidates
                 CandidateStatus::InProgress(optimistic_constraint_evaluator) => {
-                    if optimistic_constraint_evaluator.try_next(state).is_err() {
+                    if optimistic_constraint_evaluator
+                        .try_next_execution_step(state)
+                        .is_err()
+                    {
                         return false;
                     }
                     match candidate.remaining_instr_count == 0 {
