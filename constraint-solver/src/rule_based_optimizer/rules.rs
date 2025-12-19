@@ -286,7 +286,6 @@ crepe! {
       let Some((head, tail)) = env.try_split_into_head_tail(e);
 
 
-
     Expression(head) <- ExpressionSumHeadTail(_, head, _);
     Expression(tail) <- ExpressionSumHeadTail(_, _, tail);
 
