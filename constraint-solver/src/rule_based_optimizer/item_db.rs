@@ -6,7 +6,7 @@ use std::ops::Index;
 /// and which can translate back and forth between identifiers
 /// and items.
 pub struct ItemDB<Item, Ident> {
-    pub items: Vec<Item>,
+    items: Vec<Item>,
     reverse: HashMap<Item, usize>,
     _phantom: std::marker::PhantomData<Ident>,
 }

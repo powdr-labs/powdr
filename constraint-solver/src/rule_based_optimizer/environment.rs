@@ -132,17 +132,10 @@ impl<T: FieldElement> Environment<T> {
         self.single_occurrence_variables.iter()
     }
 
-    /// Split Expr into expr1 + expr_rest, i.e., expr = expr1 + expr_rest
-    /// Expr is affine, offset is zero
-    /// expr1 is of the form coeff * var
-    /// expr_rest is zero if expr only contains one variable
-    pub fn try_sum_into_head_tail(&self, expr: Expr) -> Option<(Expr, Expr)> {
+    /// Split Expr into head and tail, i.e., expr = head + tail
+    pub fn try_split_into_head_tail(&self, expr: Expr) -> Option<(Expr, Expr)> {
         let db = self.expressions.borrow();
         let expr = db[expr].clone();
-        // println!("try_sum_into_head_tail: expr {}", expr.to_string());
-        // for item in db.items.iter() {
-        //     println!("item in db: {}", item);
-        // }
         drop(db);
         // conditions limiting the cases for now
         if expr.linear_components().len() + expr.quadratic_components().len() < 2 {
@@ -175,19 +168,6 @@ impl<T: FieldElement> Environment<T> {
         Some((*coeff, *var, *expr.constant_offset()))
     }
 
-    // pub fn printthis(&self, expr: &Expr) -> bool {
-    //     let db = self.expressions.borrow();
-    //     let expr = &db[*expr];
-    //     let range = expr.range_constraint(self);
-    //     println!("{} has Range constraint: {}", expr, range);
-    //     true
-    // }
-
-    // pub fn printmsg(&self, msg: &str) -> bool {
-    //     println!("{}", msg);
-    //     true
-    // }
-
     /// Runs the function `f` on the expression identified by `expr`,
     /// passing `args` as additional arguments.
     /// This function is needed because we cannot return
@@ -200,10 +180,6 @@ impl<T: FieldElement> Environment<T> {
     ) -> Ret {
         let db = self.expressions.borrow();
         let expr = &db[expr];
-        //println!("on_expr: expression is {}", expr);
-        // for item in db.items.iter() {
-        //     println!("item in db: {}", item);
-        // }
         f(expr, args)
     }
 

@@ -272,11 +272,12 @@ crepe! {
 
     ///////////////////////////////// CONSTRAINT SPLITTING //////////////////////////
 
+    // Split the expression into head and tail
     struct ExpressionSumHeadTail(Expr, Expr, Expr);
     ExpressionSumHeadTail(e, head, tail) <-
       Env(env),
       Expression(e),
-      let Some((head, tail)) = env.try_sum_into_head_tail(e);
+      let Some((head, tail)) = env.try_split_into_head_tail(e);
 
 
 
@@ -284,18 +285,17 @@ crepe! {
     Expression(tail) <- ExpressionSumHeadTail(_, _, tail);
 
 
+    // If algebraic constraint e has range constraint [0, a] with a < -1,
+    // a = head + tail with head, tail >= 0,
+    // then both head and tail must be zero.
     AlgebraicConstraint(head) <-
       RangeConstraintOnExpression(head, head_rc),
       RangeConstraintOnExpression(tail, tail_rc),
-      //Env(env),
-      // (env.printmsg("Deriving AlgebraicConstraint(head) from ExpressionSumHeadTail")),
-      // (env.printthis(&head)),
       (head_rc.range().0 == T::zero()),
       (tail_rc.range().0 == T::zero()),
       (head_rc.combine_sum(&tail_rc).range().1 < T::from(-1)),
       AlgebraicConstraint(e),
       ExpressionSumHeadTail(e, head, tail);
-
 
     AlgebraicConstraint(tail) <-
       RangeConstraintOnExpression(head, head_rc),
@@ -307,27 +307,21 @@ crepe! {
       ExpressionSumHeadTail(e, head, tail);
 
 
-
+    // If head is an linear expression coeff * var,
+    // var can be set to zero.
     struct MinimalRangeZeroDeducibleCandidate<T: FieldElement>(Expr, Expr,Expr, Var, T);
     MinimalRangeZeroDeducibleCandidate(e, head, tail, var, coeff) <-
       ExpressionSumHeadTail(e, head, tail),
       RangeConstraintOnExpression(head, rc_head),
       RangeConstraintOnExpression(tail, rc_tail),
-      RangeConstraintOnExpression(e, e_rc),
       (rc_head.range().0 == T::zero()),
       (rc_tail.range().0 == T::zero()),
+      (rc_head.combine_sum(&rc_tail).range().1 < T::from(-1)),
       AlgebraicConstraint(e),
-      (e_rc.range().0 == T::zero()),
-      (e_rc.range().1 < T::from(-1)),
-      LinearExpression(e, var, coeff),
-      (rc_head.combine_sum(&rc_tail).range().1 < T::from(-1));
+      LinearExpression(e, var, coeff);
 
     Assignment(var, T::zero()) <-
-    //Env(env),
     MinimalRangeZeroDeducibleCandidate(_, _, _, var, _);
-    // (env.printthis(&e)),
-    // (env.printthis(&head)),
-    // (env.printthis(&tail));
     ///////////////////////////////// OUTPUT ACTIONS //////////////////////////
 
     struct Equivalence(Var, Var);
