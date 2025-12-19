@@ -1,9 +1,6 @@
 use crate::adapter::Adapter;
 use crate::blocks::Program;
-use itertools::Itertools;
 use std::collections::HashMap;
-use std::sync::atomic::AtomicU32;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::RwLock;
 use tracing::dispatcher::Dispatch;
@@ -20,9 +17,6 @@ use tracing_subscriber::{
 pub struct ExecutionProfile {
     /// execution count of each pc
     pub pc_count: HashMap<u64, u32>,
-    /// next pc count, for each pc
-    // TODO: u32 count? itertools `count` returns usize
-    pub next_pc: HashMap<u64, HashMap<u64, usize>>,
     /// list of pcs executed in order
     pub pc_list: Vec<u64>,
 }
@@ -34,7 +28,7 @@ pub fn execution_profile<A: Adapter>(
     execute_fn: impl FnOnce(),
 ) -> ExecutionProfile {
     // in memory collector storage
-    let collector = PgoCollector::new::<A>(program);
+    let collector = PgoCollector::new::<A>();
 
     // build subscriber
     let subscriber = Registry::default().with(collector.clone());
@@ -43,37 +37,13 @@ pub fn execution_profile<A: Adapter>(
     let dispatch = Dispatch::new(subscriber);
     tracing::dispatcher::with_default(&dispatch, execute_fn);
 
-    let next_pcs_by_pc = {
-        collector
-            .pc_list
-            .read()
-            .unwrap()
-            .iter()
-            .tuple_windows()
-            .map(|(a, b)| (*a, *b))
-            .into_group_map()
-            .into_iter()
-            .map(|(pc, next_pcs)| (pc, next_pcs.into_iter().counts()))
-            .collect::<HashMap<_, _>>()
-    };
-
-    // let insns: HashMap<_, _> = program.instructions().enumerate().map(|(idx, insn)| {
-    //     let pc = program.instruction_index_to_pc(idx);
-    //     (pc, insn)
-    // }).collect();
-
-    // for (pc, next) in next_pcs_by_pc.iter() {
-    //     println!("pc {}: {:?}", pc, next.len());
-    //     println!("\t{:?}", insns[pc]);
-    // }
-
-    let json = serde_json::to_string_pretty(&next_pcs_by_pc).unwrap();
-    std::fs::write("next_pcs.json", json).unwrap();
-
-    let pc_list = collector.pc_list.read().unwrap().clone();
+    let pc_list = collector.into_pc_list();
 
     // Extract the collected data
-    let pc_count = collector.into_hashmap();
+    let pc_count = pc_list.iter().fold(HashMap::new(), |mut counts, pc| {
+        *counts.entry(*pc).or_insert(0) += 1;
+        counts
+    });
 
     // the smallest pc is the same as the base_pc if there's no stdin
     let pc_min = pc_count.keys().min().unwrap();
@@ -93,7 +63,6 @@ pub fn execution_profile<A: Adapter>(
 
     ExecutionProfile {
         pc_count,
-        next_pc: next_pcs_by_pc,
         pc_list,
     }
 }
@@ -120,48 +89,22 @@ impl tracing::field::Visit for PgoData {
 // A Layer that collects data we are interested in using for the pgo from the trace fields.
 #[derive(Clone)]
 struct PgoCollector {
-    step: u32,
-    pc_base: u64,
-    pc_index_map: Arc<Vec<AtomicU32>>,
     pub pc_list: Arc<RwLock<Vec<u64>>>,
 }
 
 impl PgoCollector {
-    fn new<A: Adapter>(program: &A::Program) -> Self {
-        let max_pc_index = program.length();
-        // create a map with max_pc entries initialized to 0
-        let pc_index_map = Arc::new((0..max_pc_index).map(|_| AtomicU32::new(0)).collect());
+    fn new<A: Adapter>() -> Self {
         Self {
-            pc_index_map,
-            step: program.pc_step(),
-            pc_base: program.base_pc(),
             pc_list: Arc::new(RwLock::new(Vec::new())),
         }
     }
 
-    fn into_hashmap(self) -> HashMap<u64, u32> {
-        // Turn the map into a HashMap of (pc_index, count)
-        self.pc_index_map
-            .iter()
-            .enumerate()
-            .filter_map(|(pc_index, count)| {
-                let count = count.load(Ordering::Relaxed);
-
-                // if the count is zero, we skip it
-                if count == 0 {
-                    return None;
-                }
-                let pc = self.pc_base + (pc_index as u64 * self.step as u64);
-
-                Some((pc, count))
-            })
-            .collect()
-    }
-
     fn increment(&self, pc: u64) {
         self.pc_list.write().unwrap().push(pc);
-        self.pc_index_map[(pc - self.pc_base) as usize / self.step as usize]
-            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn into_pc_list(self) -> Vec<u64> {
+        Arc::into_inner(self.pc_list).unwrap().into_inner().unwrap()
     }
 }
 
