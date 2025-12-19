@@ -33,7 +33,8 @@ mod execution_constraints {
 
     #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
     pub enum LocalOptimisticLiteral<A> {
-        Register(A),
+        // Changed this from Register(A) to RegisterLimb(A, usize)
+        RegisterLimb(A, usize),
         Pc,
     }
 
