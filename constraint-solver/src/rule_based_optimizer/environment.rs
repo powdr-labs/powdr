@@ -141,7 +141,7 @@ impl<T: FieldElement> Environment<T> {
             return None;
         }
         let (head, tail) = expr.try_split_head_tail()?;
-        Some((self.insert(&head), self.insert(&tail)))
+        Some((self.insert_owned(head), self.insert_owned(tail)))
     }
 
     #[allow(dead_code)]

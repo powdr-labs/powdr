@@ -234,19 +234,13 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
     /// Splits this expression into head and tail, i.e., `self = head + tail`
     /// head is the first summand
     pub fn try_split_head_tail(mut self) -> Option<(Self, Self)> {
-        if self.linear_components().len() + self.quadratic_components().len() < 2 {
-            return None;
-        }
-
         if !self.quadratic.is_empty() {
             let mut quadratic = self.quadratic.into_iter();
             let (hl, hr) = quadratic.next().unwrap();
             self.quadratic = quadratic.collect();
             Some(((hl * hr), self))
         } else if !self.linear.is_empty() {
-            let mut linear = self.linear.into_iter();
-            let (hv, hc) = linear.next().unwrap();
-            self.linear = linear.collect();
+            let (hv, hc) = self.linear.pop_first()?;
             Some((GroupedExpressionComponent::Linear(hv, hc).into(), self))
         } else {
             None
