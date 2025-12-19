@@ -120,10 +120,12 @@ fn compile_derived_to_gpu(
                 bytecode.push(OpCode::PushConst as u32);
                 bytecode.push(c.as_canonical_u32());
             }
-            ComputationMethod::InverseOrZero(expr) => {
-                // Encode inner expression, then apply InvOrZero
-                emit_expr(&mut bytecode, expr, apc_poly_id_to_index, apc_height);
+            ComputationMethod::QuotientOrZero(e1, e2) => {
+                // Invert denominator (or use zero), then multiply with numerator.
+                emit_expr(&mut bytecode, e2, apc_poly_id_to_index, apc_height);
                 bytecode.push(OpCode::InvOrZero as u32);
+                emit_expr(&mut bytecode, e1, apc_poly_id_to_index, apc_height);
+                bytecode.push(OpCode::Mul as u32);
             }
         }
         let len = (bytecode.len() as u32) - off;
@@ -247,6 +249,13 @@ impl PowdrTraceGeneratorGpu {
             .iter()
             // along with their substitutions
             .zip_eq(self.apc.subs())
+            .filter_map(|(instr, subs)| {
+                if subs.is_empty() {
+                    None
+                } else {
+                    Some((instr, subs))
+                }
+            })
             // map to `(air_name, substitutions)`
             .fold(
                 (Vec::new(), Vec::new(), Vec::new(), 0u32, 0u32),
@@ -264,10 +273,10 @@ impl PowdrTraceGeneratorGpu {
                 },
             );
 
-        // alu_subs.iter().for_each(|subs_for_row| {
-        //     println!("alu subs for row len: {}", subs_for_row.len());
-        //     println!("alu subs for row: {:?}", subs_for_row);
-        // });
+        alu_subs.iter().for_each(|subs_for_row| {
+            println!("alu subs for row len: {}", subs_for_row.len());
+            println!("alu subs for row: {:?}", subs_for_row);
+        });
 
         // println!("opt_width: {:?}", opt_widths);
         // println!("post_optimization_offset: {:?}", post_optimization_offsets);
@@ -342,7 +351,7 @@ impl PowdrTraceGeneratorGpu {
                 // println!("air name: {}", air_name);
 
                 let record_arena = {
-                    match original_arenas.take_arena(&air_name) {
+                    match original_arenas.take_real_arena(&air_name) {
                         Some(ra) => {
                             // println!("arena air name: {}", air_name);
                             ra
@@ -369,9 +378,28 @@ impl PowdrTraceGeneratorGpu {
                     return None;
                 }
 
-                let shared_trace = chip.generate_proving_ctx(record_arena).common_main.unwrap();
+                // println!("generate dummy trace for: {}", air_name);
 
-                Some((air_name, shared_trace))
+                // println!("calls_per_apc_row: {}, height: {}", calls_per_apc_row, height);
+
+                if air_name == "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>" {
+                    chip.generate_proving_ctx_new(
+                        record_arena,
+                        output.buffer(),
+                        &d_alu_subs,
+                        &d_opt_widths,
+                        &d_post_opt_offsets,
+                        calls_per_apc_row as u32,
+                        height,
+                        width,
+                    );
+                    return None;
+                }
+
+                // We might have initialized an arena for an AIR which ends up having no real records. It gets filtered out here.
+                chip.generate_proving_ctx(record_arena).common_main.map(|trace| {
+                    (air_name, trace)
+                })
             })
             .collect();
 
@@ -405,7 +433,13 @@ impl PowdrTraceGeneratorGpu {
                 // along with their substitutions
                 .zip_eq(self.apc.subs())
                 // map to `(air_name, substitutions)`
-                .map(|(instr, subs)| (&self.original_airs.opcode_to_air[&instr.0.opcode], subs))
+                .filter_map(|(instr, subs)| {
+                    if subs.is_empty() {
+                        None
+                    } else {
+                        Some((&self.original_airs.opcode_to_air[&instr.0.opcode], subs))
+                    }
+                })
                 // group by air name. This results in `HashMap<air_name, Vec<subs>>` where the length of the vector is the number of rows which are created in this air, per apc call
                 .into_group_map()
                 // go through each air and its substitutions

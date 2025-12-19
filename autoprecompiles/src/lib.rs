@@ -26,6 +26,7 @@ pub mod adapter;
 pub mod blocks;
 pub mod bus_map;
 pub mod constraint_optimizer;
+pub mod empirical_constraints;
 pub mod evaluation;
 pub mod execution_profile;
 pub mod expression;
@@ -40,6 +41,7 @@ mod stats_logger;
 pub mod symbolic_machine_generator;
 pub use pgo::{PgoConfig, PgoType};
 pub use powdr_constraint_solver::inliner::DegreeBound;
+pub mod equivalence_classes;
 pub mod trace_handler;
 
 #[derive(Clone)]
@@ -53,6 +55,8 @@ pub struct PowdrConfig {
     pub degree_bound: DegreeBound,
     /// The path to the APC candidates dir, if any.
     pub apc_candidates_dir_path: Option<PathBuf>,
+    /// Whether to use optimistic precompiles.
+    pub should_use_optimistic_precompiles: bool,
 }
 
 impl PowdrConfig {
@@ -62,11 +66,17 @@ impl PowdrConfig {
             skip_autoprecompiles,
             degree_bound,
             apc_candidates_dir_path: None,
+            should_use_optimistic_precompiles: false,
         }
     }
 
     pub fn with_apc_candidates_dir<P: AsRef<Path>>(mut self, path: P) -> Self {
         self.apc_candidates_dir_path = Some(path.as_ref().to_path_buf());
+        self
+    }
+
+    pub fn with_optimistic_precompiles(mut self, should_use_optimistic_precompiles: bool) -> Self {
+        self.should_use_optimistic_precompiles = should_use_optimistic_precompiles;
         self
     }
 }
@@ -331,7 +341,7 @@ pub struct Apc<T, I> {
     pub block: BasicBlock<I>,
     /// The symbolic machine for this APC
     pub machine: SymbolicMachine<T>,
-    /// For each original air, the substitutions from original columns to APC columns
+    /// For each original instruction, the substitutions from original columns to APC columns
     pub subs: Vec<Vec<Substitution>>,
 }
 
@@ -359,7 +369,7 @@ impl<T, I> Apc<T, I> {
     fn new(
         block: BasicBlock<I>,
         machine: SymbolicMachine<T>,
-        column_allocator: ColumnAllocator,
+        column_allocator: &ColumnAllocator,
     ) -> Self {
         // Get all poly_ids in the machine
         let all_references = machine
@@ -369,16 +379,16 @@ impl<T, I> Apc<T, I> {
         // Only keep substitutions from the column allocator if the target poly_id is used in the machine
         let subs = column_allocator
             .subs
-            .into_iter()
+            .iter()
             .map(|subs| {
-                subs.into_iter()
+                subs.iter()
                     .enumerate()
                     .filter_map(|(original_poly_index, apc_poly_id)| {
                         all_references
-                            .contains(&apc_poly_id)
+                            .contains(apc_poly_id)
                             .then_some(Substitution {
                                 original_poly_index,
-                                apc_poly_id,
+                                apc_poly_id: *apc_poly_id,
                             })
                     })
                     .collect_vec()
@@ -393,7 +403,7 @@ impl<T, I> Apc<T, I> {
 }
 
 /// Allocates global poly_ids and keeps track of substitutions
-struct ColumnAllocator {
+pub struct ColumnAllocator {
     /// For each original air, for each original column index, the associated poly_id in the APC air
     subs: Vec<Vec<u64>>,
     /// The next poly_id to issue
@@ -401,7 +411,14 @@ struct ColumnAllocator {
 }
 
 impl ColumnAllocator {
-    fn issue_next_poly_id(&mut self) -> u64 {
+    pub fn from_max_poly_id_of_machine(machine: &SymbolicMachine<impl FieldElement>) -> Self {
+        Self {
+            subs: Vec::new(),
+            next_poly_id: machine.main_columns().map(|c| c.id).max().unwrap_or(0) + 1,
+        }
+    }
+
+    pub fn issue_next_poly_id(&mut self) -> u64 {
         let id = self.next_poly_id;
         self.next_poly_id += 1;
         id
@@ -422,6 +439,16 @@ pub fn build<A: Adapter>(
         &vm_config.bus_map,
     );
 
+    if let Some(path) = apc_candidates_dir_path {
+        serialize_apc_from_machine::<A::PowdrField, A::Instruction>(
+            block.clone(),
+            machine.clone(),
+            &column_allocator,
+            path,
+            Some("unopt"),
+        );
+    }
+
     let labels = [("apc_start_pc", block.start_pc.to_string())];
     metrics::counter!("before_opt_cols", &labels)
         .absolute(machine.unique_references().count() as u64);
@@ -430,11 +457,12 @@ pub fn build<A: Adapter>(
     metrics::counter!("before_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
 
-    let machine = optimizer::optimize::<A>(
+    let (machine, column_allocator) = optimizer::optimize::<A>(
         machine,
         vm_config.bus_interaction_handler,
         degree_bound,
         &vm_config.bus_map,
+        column_allocator,
     )?;
 
     // add guards to constraints that are not satisfied by zeroes
@@ -449,22 +477,44 @@ pub fn build<A: Adapter>(
 
     let machine = convert_machine_field_type(machine, &A::into_field);
 
-    let apc = Apc::new(block, machine, column_allocator);
+    let apc = Apc::new(block, machine, &column_allocator);
 
     if let Some(path) = apc_candidates_dir_path {
-        let ser_path = path
-            .join(format!("apc_candidate_{}", apc.start_pc()))
-            .with_extension("cbor");
-        std::fs::create_dir_all(path).expect("Failed to create directory for APC candidates");
-        let file =
-            std::fs::File::create(&ser_path).expect("Failed to create file for APC candidate");
-        let writer = BufWriter::new(file);
-        serde_cbor::to_writer(writer, &apc).expect("Failed to write APC candidate to file");
+        serialize_apc::<A::Field, A::Instruction>(&apc, path, None);
     }
 
     metrics::gauge!("apc_gen_time_ms", &labels).set(start.elapsed().as_millis() as f64);
 
     Ok(apc)
+}
+
+fn serialize_apc<T: Serialize, I: Serialize>(apc: &Apc<T, I>, path: &Path, suffix: Option<&str>) {
+    std::fs::create_dir_all(path).expect("Failed to create directory for APC candidates");
+
+    let suffix = if let Some(suffix) = suffix {
+        format!("_{suffix}")
+    } else {
+        "".to_string()
+    };
+    let ser_path = path
+        .join(format!("apc_candidate{suffix}_{}", apc.start_pc()))
+        .with_extension("cbor");
+    let file_unopt =
+        std::fs::File::create(&ser_path).expect("Failed to create file for {suffix} APC candidate");
+    let writer_unopt = BufWriter::new(file_unopt);
+    serde_cbor::to_writer(writer_unopt, &apc)
+        .expect("Failed to write {suffix} APC candidate to file");
+}
+
+fn serialize_apc_from_machine<T: Serialize, I: Serialize>(
+    block: BasicBlock<I>,
+    machine: SymbolicMachine<T>,
+    column_allocator: &ColumnAllocator,
+    path: &Path,
+    suffix: Option<&str>,
+) {
+    let apc = Apc::new(block, machine, column_allocator);
+    serialize_apc::<T, I>(&apc, path, suffix);
 }
 
 fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
@@ -547,11 +597,14 @@ fn add_guards<T: FieldElement>(
 
     machine.constraints.extend(is_valid_mults);
 
-    assert_eq!(
-        pre_degree,
-        machine.degree(),
-        "Degree should not change after adding guards"
-    );
+    // if pre_degree is 0, is_valid is added to the multiplicities of the bus interactions, thus the degree increases from 0 to 1
+    if pre_degree != 0 && !machine.bus_interactions.is_empty() {
+        assert_eq!(
+            pre_degree,
+            machine.degree(),
+            "Degree should not change after adding guards"
+        );
+    }
 
     // This needs to be added after the assertion above because it's a quadratic constraint
     // so it may increase the degree of the machine.
