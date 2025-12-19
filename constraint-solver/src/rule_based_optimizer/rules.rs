@@ -100,6 +100,7 @@ crepe! {
       (offset.is_zero());
 
     // Split the expression into head and tail
+    // ExpressionSumHeadTail(e, h, t) => e = h + t
     struct ExpressionSumHeadTail(Expr, Expr, Expr);
     ExpressionSumHeadTail(e, head, tail) <-
       Env(env),
@@ -285,7 +286,7 @@ crepe! {
       AlgebraicConstraint(e),
       Solvable(e, var, v);
 
-    ///////////////////////////////// Minimal Range //////////////////////////
+    ///////////////////////////////// MINIMAL RANGE //////////////////////////
 
     // If algebraic constraint e has range constraint [0, a] with a < P,
     // e = head + tail, and both head, tail >= 0,
