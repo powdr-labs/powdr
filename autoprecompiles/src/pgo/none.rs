@@ -1,8 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::{
-    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, PgoAdapter},
-    blocks::BasicBlock,
+    adapter::{Adapter, AdapterApcWithStats, AdapterBasicBlock, AdapterVmConfig, PgoAdapter},
     pgo::create_apcs_for_all_blocks,
     EmpiricalConstraints, PowdrConfig,
 };
@@ -25,7 +24,7 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
 
     fn create_apcs_with_pgo(
         &self,
-        mut blocks: Vec<BasicBlock<<Self::Adapter as Adapter>::Instruction>>,
+        mut blocks: Vec<AdapterBasicBlock<Self::Adapter>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         _labels: BTreeMap<u64, Vec<String>>,

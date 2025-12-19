@@ -3,6 +3,7 @@ use crate::blocks::BasicBlock;
 use crate::bus_map::{BusMap, BusType};
 use crate::empirical_constraints::{ConstraintGenerator, EmpiricalConstraints};
 use crate::evaluation::AirStats;
+use crate::execution::{ExecutionState, OptimisticConstraints};
 use crate::expression_conversion::algebraic_to_grouped_expression;
 use crate::symbolic_machine_generator::convert_machine_field_type;
 use expression::{AlgebraicExpression, AlgebraicReference};
@@ -43,6 +44,7 @@ pub mod symbolic_machine_generator;
 pub use pgo::{PgoConfig, PgoType};
 pub use powdr_constraint_solver::inliner::DegreeBound;
 pub mod equivalence_classes;
+pub mod execution;
 pub mod trace_handler;
 
 #[derive(Clone)]
@@ -337,16 +339,18 @@ pub struct Substitution {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Apc<T, I> {
+pub struct Apc<T, I, A, V> {
     /// The basic block this APC is based on
     pub block: BasicBlock<I>,
     /// The symbolic machine for this APC
     pub machine: SymbolicMachine<T>,
     /// For each original instruction, the substitutions from original columns to APC columns
     pub subs: Vec<Vec<Substitution>>,
+    /// The optimistic constraints to be satisfied for this apc to be run
+    pub optimistic_constraints: Arc<OptimisticConstraints<A, V>>,
 }
 
-impl<T, I> Apc<T, I> {
+impl<T, I, A, V> Apc<T, I, A, V> {
     pub fn subs(&self) -> &[Vec<Substitution>] {
         &self.subs
     }
@@ -370,6 +374,7 @@ impl<T, I> Apc<T, I> {
     fn new(
         block: BasicBlock<I>,
         machine: SymbolicMachine<T>,
+        optimistic_constraints: Arc<OptimisticConstraints<A, V>>,
         column_allocator: &ColumnAllocator,
     ) -> Self {
         // Get all poly_ids in the machine
@@ -399,6 +404,7 @@ impl<T, I> Apc<T, I> {
             block,
             machine,
             subs,
+            optimistic_constraints,
         }
     }
 }
@@ -452,7 +458,12 @@ pub fn build<A: Adapter>(
     let equivalence_analyzer_constraints = constraint_generator.equivalence_constraints();
 
     if let Some(path) = apc_candidates_dir_path {
-        serialize_apc_from_machine::<A::PowdrField, A::Instruction>(
+        serialize_apc_from_machine::<
+            A::PowdrField,
+            A::Instruction,
+            <A::ExecutionState as ExecutionState>::RegisterAddress,
+            <A::ExecutionState as ExecutionState>::Value,
+        >(
             block.clone(),
             machine.clone(),
             &column_allocator,
@@ -519,10 +530,18 @@ pub fn build<A: Adapter>(
 
     let machine = convert_machine_field_type(machine, &A::into_field);
 
-    let apc = Apc::new(block, machine, &column_allocator);
+    // TODO: add optimistic constraints here
+    let optimistic_constraints = OptimisticConstraints::from_constraints(vec![]);
+
+    let apc = Apc::new(block, machine, optimistic_constraints, &column_allocator);
 
     if let Some(path) = apc_candidates_dir_path {
-        serialize_apc::<A::Field, A::Instruction>(&apc, path, None);
+        serialize_apc::<
+            A::Field,
+            A::Instruction,
+            <<A as Adapter>::ExecutionState as ExecutionState>::RegisterAddress,
+            <<A as Adapter>::ExecutionState as ExecutionState>::Value,
+        >(&apc, path, None);
 
         if let Some(optimistic_precompile) = &optimistic_precompile {
             let guaranteed_precompile_path = make_path(path, &apc, Some("guaranteed"), "txt");
@@ -538,9 +557,9 @@ pub fn build<A: Adapter>(
     Ok(apc)
 }
 
-fn make_path<T, I>(
+fn make_path<T, I, A, V>(
     base_path: &Path,
-    apc: &Apc<T, I>,
+    apc: &Apc<T, I, A, V>,
     suffix: Option<&str>,
     extension: &str,
 ) -> PathBuf {
@@ -550,7 +569,11 @@ fn make_path<T, I>(
         .with_extension(extension)
 }
 
-fn serialize_apc<T: Serialize, I: Serialize>(apc: &Apc<T, I>, path: &Path, suffix: Option<&str>) {
+fn serialize_apc<T: Serialize, I: Serialize, A: Serialize, V: Serialize>(
+    apc: &Apc<T, I, A, V>,
+    path: &Path,
+    suffix: Option<&str>,
+) {
     std::fs::create_dir_all(path).expect("Failed to create directory for APC candidates");
 
     let ser_path = make_path(path, apc, suffix, "cbor");
@@ -561,15 +584,20 @@ fn serialize_apc<T: Serialize, I: Serialize>(apc: &Apc<T, I>, path: &Path, suffi
         .expect("Failed to write {suffix} APC candidate to file");
 }
 
-fn serialize_apc_from_machine<T: Serialize, I: Serialize>(
+fn serialize_apc_from_machine<T: Serialize, I: Serialize, A: Serialize, V: Serialize>(
     block: BasicBlock<I>,
     machine: SymbolicMachine<T>,
     column_allocator: &ColumnAllocator,
     path: &Path,
     suffix: Option<&str>,
 ) {
-    let apc = Apc::new(block, machine, column_allocator);
-    serialize_apc::<T, I>(&apc, path, suffix);
+    let apc = Apc::new(
+        block,
+        machine,
+        OptimisticConstraints::empty(),
+        column_allocator,
+    );
+    serialize_apc::<T, I, A, V>(&apc, path, suffix);
 }
 
 fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
