@@ -13,7 +13,7 @@ use crate::empirical_constraints::execution_constraints::{
     LocalOptimisticLiteral, OptimisticConstraint, OptimisticExpression, OptimisticLiteral,
 };
 pub use crate::equivalence_classes::{EquivalenceClass, Partition};
-use crate::memory_optimizer::MemoryBusInteraction;
+use crate::memory_optimizer::{MemoryBusInteraction, MemoryOp};
 use crate::optimizer::symbolic_bus_interaction_to_bus_interaction;
 use crate::symbolic_machine_generator::convert_machine_field_type;
 use crate::{InstructionHandler, SymbolicMachine};
@@ -387,6 +387,11 @@ fn optimistic_literals<A: Adapter>(
     block: &BasicBlock<A::Instruction>,
     vm_config: &AdapterVmConfig<A>,
 ) -> BTreeMap<AlgebraicReference, AdapterOptimisticLiteral<A>> {
+    let log = block.start_pc == 0x201ecc;
+    let memory_bus_id = vm_config.bus_map.get_bus_id(&BusType::Memory).unwrap();
+    if log {
+        log::info!("Memory bus ID {memory_bus_id} ");
+    }
     block
         .statements
         .iter()
@@ -396,6 +401,10 @@ fn optimistic_literals<A: Adapter>(
             let (_air_id, symbolic_machine) = vm_config
                 .instruction_handler
                 .get_instruction_air_and_id(instruction);
+
+            if log {
+                log::info!("{instruction}");
+            }
 
             // Convert to powdr type
             let symbolic_machine: SymbolicMachine<<A as Adapter>::PowdrField> =
@@ -407,9 +416,15 @@ fn optimistic_literals<A: Adapter>(
                 .iter()
                 // Filter for memory bus interactions
                 .filter_map(|bus_interaction| {
+                    if log {
+                        log::info!("  Bus interaction: {bus_interaction}");
+                    }
+                    // TODO: We have to *at least* set is_valid to one.
+                    let bus_interaction =
+                        symbolic_bus_interaction_to_bus_interaction(bus_interaction);
                     A::MemoryBusInteraction::try_from_bus_interaction(
-                        &symbolic_bus_interaction_to_bus_interaction(bus_interaction),
-                        vm_config.bus_map.get_bus_id(&BusType::Memory).unwrap(),
+                        &bus_interaction,
+                        memory_bus_id,
                     )
                     // TODO: This filters out memory bus interactions with unknown multiplicity.
                     .ok()
@@ -419,6 +434,12 @@ fn optimistic_literals<A: Adapter>(
                 .filter_map(|bus_interaction| {
                     let address = bus_interaction.addr();
                     let data = bus_interaction.data();
+
+                    let address = address.into_iter().collect_vec();
+
+                    if log {
+                        log::info!("  Memory bus interaction: address={address:?}, data={data:?}");
+                    }
 
                     // Find concrete address
                     let concrete_address = address
@@ -431,6 +452,12 @@ fn optimistic_literals<A: Adapter>(
                         .iter()
                         .map(|expr| expr.try_to_simple_unknown())
                         .collect::<Option<Vec<_>>>()?;
+
+                    let instruction_idx = match bus_interaction.op() {
+                        MemoryOp::GetPrevious => instruction_idx,
+                        MemoryOp::SetNew => instruction_idx + 1,
+                    };
+
                     Some((instruction_idx, concrete_address, limbs))
                 })
                 .collect_vec()
