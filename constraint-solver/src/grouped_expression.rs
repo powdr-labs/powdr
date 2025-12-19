@@ -247,11 +247,7 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
             let mut linear = self.linear.into_iter();
             let (hv, hc) = linear.next().unwrap();
             self.linear = linear.collect();
-            Some((
-                GroupedExpression::from_runtime_constant(hc)
-                    * GroupedExpression::from_unknown_variable(hv),
-                self,
-            ))
+            Some((GroupedExpressionComponent::Linear(hv, hc).into(), self))
         } else {
             None
         }
