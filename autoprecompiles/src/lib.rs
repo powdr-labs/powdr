@@ -55,8 +55,8 @@ pub struct PowdrConfig {
     /// Number of basic blocks to skip for autoprecompiles.
     /// This is either the largest N if no PGO, or the costliest N with PGO.
     pub skip_autoprecompiles: u64,
-    /// Maximum length allowed for superblocks
-    pub superblock_max_len: u8,
+    /// Maximum number of basic blocks included in a superblock
+    pub superblock_max_bb_count: u8,
     /// Max degree of constraints.
     pub degree_bound: DegreeBound,
     /// The path to the APC candidates dir, if any.
@@ -67,17 +67,14 @@ impl PowdrConfig {
     pub fn new(
         autoprecompiles: u64,
         skip_autoprecompiles: u64,
-        superblock_max_len: u8,
+        superblock_max_bb_count: u8,
         degree_bound: DegreeBound,
     ) -> Self {
+        assert!(superblock_max_bb_count > 0, "superblock_max_bb_count must be greater than 0");
         Self {
             autoprecompiles,
             skip_autoprecompiles,
-            superblock_max_len: if superblock_max_len == 0 {
-                1
-            } else {
-                superblock_max_len
-            },
+            superblock_max_bb_count,
             degree_bound,
             apc_candidates_dir_path: None,
         }
