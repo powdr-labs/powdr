@@ -43,7 +43,7 @@ pub trait PgoAdapter {
 
     fn filter_blocks_and_create_apcs_with_pgo(
         &self,
-        blocks: Vec<BasicBlock<<Self::Adapter as Adapter>::Instruction>>,
+        blocks: Vec<AdapterBasicBlock<Self::Adapter>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
@@ -57,7 +57,7 @@ pub trait PgoAdapter {
 
     fn create_apcs_with_pgo(
         &self,
-        blocks: Vec<BasicBlock<<Self::Adapter as Adapter>::Instruction>>,
+        blocks: Vec<AdapterBasicBlock<Self::Adapter>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
@@ -126,3 +126,4 @@ pub type AdapterOptimisticConstraints<A> = OptimisticConstraints<
     <<A as Adapter>::ExecutionState as ExecutionState>::RegisterAddress,
     <<A as Adapter>::ExecutionState as ExecutionState>::Value,
 >;
+pub type AdapterBasicBlock<A> = BasicBlock<<A as Adapter>::Instruction>;
