@@ -60,9 +60,17 @@ pub mod apc_builder_utils {
             start_pc: 0,
         };
 
-        let apc =
-            build::<BabyBearOpenVmApcAdapter>(basic_block.clone(), vm_config, degree_bound, None)
-                .unwrap();
+        // Use this env var to output serialized APCs for tests as well.
+        let apc_path_var = std::env::var("APC_CBOR_PATH").ok();
+        let apc_path: Option<&Path> = apc_path_var.as_deref().map(Path::new);
+
+        let apc = build::<BabyBearOpenVmApcAdapter>(
+            basic_block.clone(),
+            vm_config,
+            degree_bound,
+            apc_path,
+        )
+        .unwrap();
         let apc = apc.machine();
 
         let evaluation = evaluate_apc(&basic_block.statements, &airs, apc);

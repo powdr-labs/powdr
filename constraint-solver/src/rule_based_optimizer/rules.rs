@@ -94,11 +94,6 @@ crepe! {
       Env(env),
       let Some((coeff, var, offset)) = env.try_to_affine(e);
 
-    struct LinearExpression<T: FieldElement>(Expr, Var, T);
-    LinearExpression(e, var, coeff) <-
-      AffineExpression(e, coeff, var, offset),
-      (offset.is_zero());
-
     // HasProductSummand(e, l, r) => e contains a summand of the form l * r
     struct HasProductSummand(Expr, Expr, Expr);
     HasProductSummand(e, l, r) <-
@@ -131,7 +126,7 @@ crepe! {
     RangeConstraintOnExpression(e, rc) <-
       Env(env),
       Expression(e),
-      let rc = env.on_expr(e, (), |expr, _|  expr.range_constraint(env));
+      let rc = env.on_expr(e, (), |expr, _| expr.range_constraint(env));
 
     // RangeConstraintOnVar(v, rc) => variable v has range constraint rc.
     // Note that this range constraint is not necessarily the currently best known

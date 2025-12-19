@@ -1,9 +1,13 @@
-use crate::adapter::{Adapter, AdapterApc, AdapterVmConfig};
+use crate::adapter::{
+    Adapter, AdapterApc, AdapterApcOverPowdrField, AdapterBasicBlock, AdapterOptimisticConstraints,
+    AdapterVmConfig,
+};
 use crate::blocks::BasicBlock;
 use crate::bus_map::{BusMap, BusType};
 use crate::evaluation::AirStats;
+use crate::execution::OptimisticConstraints;
 use crate::expression_conversion::algebraic_to_grouped_expression;
-use crate::symbolic_machine_generator::convert_machine_field_type;
+use crate::symbolic_machine_generator::convert_apc_field_type;
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
 use powdr::UniqueReferences;
@@ -42,6 +46,7 @@ pub mod symbolic_machine_generator;
 pub use pgo::{PgoConfig, PgoType};
 pub use powdr_constraint_solver::inliner::DegreeBound;
 pub mod equivalence_classes;
+pub mod execution;
 pub mod trace_handler;
 
 #[derive(Clone)]
@@ -336,16 +341,18 @@ pub struct Substitution {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Apc<T, I> {
+pub struct Apc<T, I, A, V> {
     /// The basic block this APC is based on
     pub block: BasicBlock<I>,
     /// The symbolic machine for this APC
     pub machine: SymbolicMachine<T>,
-    /// For each original air, the substitutions from original columns to APC columns
+    /// For each original instruction, the substitutions from original columns to APC columns
     pub subs: Vec<Vec<Substitution>>,
+    /// The optimistic constraints to be satisfied for this apc to be run
+    pub optimistic_constraints: Arc<OptimisticConstraints<A, V>>,
 }
 
-impl<T, I> Apc<T, I> {
+impl<T, I, A, V> Apc<T, I, A, V> {
     pub fn subs(&self) -> &[Vec<Substitution>] {
         &self.subs
     }
@@ -369,7 +376,8 @@ impl<T, I> Apc<T, I> {
     fn new(
         block: BasicBlock<I>,
         machine: SymbolicMachine<T>,
-        column_allocator: ColumnAllocator,
+        optimistic_constraints: Arc<OptimisticConstraints<A, V>>,
+        column_allocator: &ColumnAllocator,
     ) -> Self {
         // Get all poly_ids in the machine
         let all_references = machine
@@ -379,16 +387,16 @@ impl<T, I> Apc<T, I> {
         // Only keep substitutions from the column allocator if the target poly_id is used in the machine
         let subs = column_allocator
             .subs
-            .into_iter()
+            .iter()
             .map(|subs| {
-                subs.into_iter()
+                subs.iter()
                     .enumerate()
                     .filter_map(|(original_poly_index, apc_poly_id)| {
                         all_references
-                            .contains(&apc_poly_id)
+                            .contains(apc_poly_id)
                             .then_some(Substitution {
                                 original_poly_index,
-                                apc_poly_id,
+                                apc_poly_id: *apc_poly_id,
                             })
                     })
                     .collect_vec()
@@ -398,6 +406,7 @@ impl<T, I> Apc<T, I> {
             block,
             machine,
             subs,
+            optimistic_constraints,
         }
     }
 }
@@ -439,6 +448,16 @@ pub fn build<A: Adapter>(
         &vm_config.bus_map,
     );
 
+    if let Some(path) = apc_candidates_dir_path {
+        serialize_apc_from_machine::<A>(
+            block.clone(),
+            machine.clone(),
+            &column_allocator,
+            path,
+            Some("unopt"),
+        );
+    }
+
     let labels = [("apc_start_pc", block.start_pc.to_string())];
     metrics::counter!("before_opt_cols", &labels)
         .absolute(machine.unique_references().count() as u64);
@@ -465,24 +484,54 @@ pub fn build<A: Adapter>(
     metrics::counter!("after_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
 
-    let machine = convert_machine_field_type(machine, &A::into_field);
+    // TODO: add optimistic constraints here
+    let optimistic_constraints = OptimisticConstraints::from_constraints(vec![]);
 
-    let apc = Apc::new(block, machine, column_allocator);
+    let apc = Apc::new(block, machine, optimistic_constraints, &column_allocator);
 
     if let Some(path) = apc_candidates_dir_path {
-        let ser_path = path
-            .join(format!("apc_candidate_{}", apc.start_pc()))
-            .with_extension("cbor");
-        std::fs::create_dir_all(path).expect("Failed to create directory for APC candidates");
-        let file =
-            std::fs::File::create(&ser_path).expect("Failed to create file for APC candidate");
-        let writer = BufWriter::new(file);
-        serde_cbor::to_writer(writer, &apc).expect("Failed to write APC candidate to file");
+        serialize_apc::<A>(&apc, path, None);
     }
+
+    let apc = convert_apc_field_type(apc, &A::into_field);
 
     metrics::gauge!("apc_gen_time_ms", &labels).set(start.elapsed().as_millis() as f64);
 
     Ok(apc)
+}
+
+fn serialize_apc<A: Adapter>(apc: &AdapterApcOverPowdrField<A>, path: &Path, suffix: Option<&str>) {
+    std::fs::create_dir_all(path).expect("Failed to create directory for APC candidates");
+
+    let suffix = if let Some(suffix) = suffix {
+        format!("_{suffix}")
+    } else {
+        "".to_string()
+    };
+    let ser_path = path
+        .join(format!("apc_candidate{suffix}_{}", apc.start_pc()))
+        .with_extension("cbor");
+    let file_unopt =
+        std::fs::File::create(&ser_path).expect("Failed to create file for {suffix} APC candidate");
+    let writer_unopt = BufWriter::new(file_unopt);
+    serde_cbor::to_writer(writer_unopt, &apc)
+        .expect("Failed to write {suffix} APC candidate to file");
+}
+
+fn serialize_apc_from_machine<A: Adapter>(
+    block: AdapterBasicBlock<A>,
+    machine: SymbolicMachine<A::PowdrField>,
+    column_allocator: &ColumnAllocator,
+    path: &Path,
+    suffix: Option<&str>,
+) {
+    let apc = Apc::new(
+        block,
+        machine,
+        AdapterOptimisticConstraints::<A>::empty(),
+        column_allocator,
+    );
+    serialize_apc::<A>(&apc, path, suffix);
 }
 
 fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {

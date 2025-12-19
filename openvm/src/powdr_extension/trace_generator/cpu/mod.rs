@@ -16,6 +16,7 @@ use powdr_autoprecompiles::{trace_handler::TraceTrait, Apc};
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 
 use crate::{
+    customize_exe::OpenVmRegisterAddress,
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     powdr_extension::{
         chip::PowdrChipCpu,
@@ -71,7 +72,7 @@ impl<R, PB: ProverBackend<Matrix = Arc<RowMajorMatrix<BabyBear>>>> Chip<R, PB> f
 }
 
 pub struct PowdrTraceGeneratorCpu {
-    pub apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
+    pub apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, u32>>,
     pub original_airs: OriginalAirs<BabyBear>,
     pub config: OriginalVmConfig,
     pub periphery: PowdrPeripheryInstancesCpu,
@@ -79,7 +80,7 @@ pub struct PowdrTraceGeneratorCpu {
 
 impl PowdrTraceGeneratorCpu {
     pub fn new(
-        apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
+        apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, u32>>,
         original_airs: OriginalAirs<BabyBear>,
         config: OriginalVmConfig,
         periphery: PowdrPeripheryInstancesCpu,
@@ -128,7 +129,7 @@ impl PowdrTraceGeneratorCpu {
                 let air_name = chip_inventory.airs().ext_airs()[insertion_idx].name();
 
                 let record_arena = {
-                    match original_arenas.take_arena(&air_name) {
+                    match original_arenas.take_real_arena(&air_name) {
                         Some(ra) => ra,
                         None => return None, // skip this iteration, because we only have record arena for chips that are used
                     }

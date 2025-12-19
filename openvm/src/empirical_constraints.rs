@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::iter::once;
 
 use crate::bus_map::default_openvm_bus_map;
-use crate::trace_generation::do_with_trace;
+use crate::trace_generation::do_with_cpu_trace;
 use crate::{CompiledProgram, OriginalCompiledProgram};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -103,7 +103,7 @@ fn collect_trace(
     let mut trace = Trace::default();
     let mut debug_info = DebugInfo::default();
 
-    do_with_trace(program, inputs, |seg_idx, vm, _pk, ctx| {
+    do_with_cpu_trace(program, inputs, |seg_idx, vm, _pk, ctx| {
         let airs = program.vm_config.sdk.airs(degree_bound).unwrap();
         let global_airs = vm
             .config()
