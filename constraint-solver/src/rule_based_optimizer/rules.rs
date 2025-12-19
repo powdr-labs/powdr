@@ -99,6 +99,15 @@ crepe! {
       AffineExpression(e, coeff, var, offset),
       (offset.is_zero());
 
+    // Split the expression into head and tail
+    struct ExpressionSumHeadTail(Expr, Expr, Expr);
+    ExpressionSumHeadTail(e, head, tail) <-
+      Env(env),
+      Expression(e),
+      let Some((head, tail)) = env.try_split_into_head_tail(e);
+    Expression(head) <- ExpressionSumHeadTail(_, head, _);
+    Expression(tail) <- ExpressionSumHeadTail(_, _, tail);
+
     // HasProductSummand(e, l, r) => e contains a summand of the form l * r
     struct HasProductSummand(Expr, Expr, Expr);
     HasProductSummand(e, l, r) <-
@@ -276,20 +285,13 @@ crepe! {
       AlgebraicConstraint(e),
       Solvable(e, var, v);
 
-    ///////////////////////////////// CONSTRAINT SPLITTING //////////////////////////
+    ///////////////////////////////// Minimal Range //////////////////////////
 
-    // Split the expression into head and tail
-    struct ExpressionSumHeadTail(Expr, Expr, Expr);
-    ExpressionSumHeadTail(e, head, tail) <-
-      Env(env),
-      Expression(e),
-      let Some((head, tail)) = env.try_split_into_head_tail(e);
-
-
-    Expression(head) <- ExpressionSumHeadTail(_, head, _);
-    Expression(tail) <- ExpressionSumHeadTail(_, _, tail);
-
-
+    // If algebraic constraint e has range constraint [0, a] with a < P,
+    // e = head + tail, and both head, tail >= 0,
+    // then both head and tail must be zero.
+    // If head is a linear expression coeff * var,
+    // var can be set to zero.
     struct ExpressionWithZeroMinimalRange(Expr);
     ExpressionWithZeroMinimalRange(head) <-
       ExpressionSumHeadTail(_, head, _),
@@ -325,11 +327,7 @@ crepe! {
       ExpressionWithZeroMinimalRange(head),
       ExpressionWithZeroMinimalRange(tail);
 
-    // If algebraic constraint e has range constraint [0, a] with a < P,
-    // e = head + tail, and both head, tail >= 0,
-    // then both head and tail must be zero.
-    // If head is an linear expression coeff * var,
-    // var can be set to zero.
+
     struct MinimalRangeZeroDeducible<T: FieldElement>(Expr, Expr,Expr, Var, T);
     MinimalRangeZeroDeducible(e, head, tail, var, coeff) <-
       MinimalRangeAlgebraicConstraintCandidate(e),

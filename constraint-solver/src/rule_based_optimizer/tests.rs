@@ -233,12 +233,6 @@ fn test_rule_split_constraints_based_on_minimal_range() {
             + c(3) * v("opcode_or_flag_21")
             + c(4) * v("opcode_and_flag_21"),
     )]);
-    system.add_bus_interactions([
-        bit_constraint("opcode_sub_flag_21", 1),
-        bit_constraint("opcode_xor_flag_21", 1),
-        bit_constraint("opcode_or_flag_21", 1),
-        bit_constraint("opcode_and_flag_21", 1),
-    ]);
 
     let range_constraints = std::collections::HashMap::from([
         ("opcode_sub_flag_21", RangeConstraint::from_mask(0x1u32)),
