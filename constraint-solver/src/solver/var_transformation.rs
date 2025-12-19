@@ -155,6 +155,10 @@ where
             .range_constraint_for_expression(&transform_expr(expr))
     }
 
+    fn is_expression_constant(&self, expr: &GroupedExpression<T, V>) -> Option<T> {
+        self.solver.is_expression_constant(&transform_expr(expr))
+    }
+
     fn are_expressions_known_to_be_different(
         &mut self,
         a: &GroupedExpression<T, V>,

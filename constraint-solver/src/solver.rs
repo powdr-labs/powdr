@@ -79,6 +79,8 @@ pub trait Solver<T: FieldElement, V>: RangeConstraintProvider<T, V> + Sized {
     fn range_constraint_for_expression(&self, expr: &GroupedExpression<T, V>)
         -> RangeConstraint<T>;
 
+    fn is_expression_constant(&self, expr: &GroupedExpression<T, V>) -> Option<T>;
+
     /// Returns `true` if `a` and `b` are different for all satisfying assignments.
     /// In other words, `a - b` does not allow the value zero.
     /// If this function returns `false`, it does not mean that `a` and `b` are equal,
