@@ -304,15 +304,20 @@ crepe! {
 
 
 
+    // Find expression e that has range constraint [0, a] with a < P,
+    // e = head + tail, and both head, tail >= 0
     struct MinimalRangeAlgebraicConstraintCandidate(Expr);
     MinimalRangeAlgebraicConstraintCandidate(e) <-
+      ExpressionSumHeadTail(e, head, tail),
       RangeConstraintOnExpression(e, e_rc),
       (e_rc.range().1 < T::from(-1)),
-      ExpressionSumHeadTail(e, head, tail),
       ExpressionWithZeroMinimalRange(head),
       ExpressionWithZeroMinimalRange(tail),
       AlgebraicConstraint(e);
 
+    // Find tail of expression e that has range constraint [0, a] with a < P,
+    // e = head + tail, and both head, tail >= 0
+    // Tail must be zero and can be used to iteratively reduced.
     MinimalRangeAlgebraicConstraintCandidate(tail) <-
       MinimalRangeAlgebraicConstraintCandidate(e),
       RangeConstraintOnExpression(e, e_rc),
@@ -321,19 +326,19 @@ crepe! {
       ExpressionWithZeroMinimalRange(head),
       ExpressionWithZeroMinimalRange(tail);
 
-    // If algebraic constraint e has range constraint [0, a] with a < -1,
-    // a = head + tail with head, tail >= 0,
+    // If algebraic constraint e has range constraint [0, a] with a < P,
+    // e = head + tail, and both head, tail >= 0,
     // then both head and tail must be zero.
     // If head is an linear expression coeff * var,
     // var can be set to zero.
     struct MinimalRangeZeroDeducible<T: FieldElement>(Expr, Expr,Expr, Var, T);
     MinimalRangeZeroDeducible(e, head, tail, var, coeff) <-
+      MinimalRangeAlgebraicConstraintCandidate(e),
       ExpressionSumHeadTail(e, head, tail),
       ExpressionWithZeroMinimalRange(head),
       ExpressionWithZeroMinimalRange(tail),
       RangeConstraintOnExpression(e, rc_e),
       (rc_e.range().1 < T::from(-1)),
-      MinimalRangeAlgebraicConstraintCandidate(e),
       LinearExpression(head, var, coeff);
 
     Assignment(var, T::zero()) <-
