@@ -145,26 +145,13 @@ impl<T: FieldElement> Environment<T> {
         // }
         drop(db);
         // conditions limiting the cases for now
-        if !expr.is_affine()
-            || !expr.constant_offset().is_zero()
-            || expr.linear_components().len() < 2
-        {
+        if expr.linear_components().len() + expr.quadratic_components().len() < 2 {
             return None;
         }
-        if let Some((var, coeff)) = expr.clone().linear_components().next() {
-            let head = &(GroupedExpression::from_number(*coeff)
-                * GroupedExpression::from_unknown_variable(*var));
-            let tail = expr.clone() - head.clone();
-            // println!(
-            //     "try_sum_into_head_tail: expr {} = head {} + tail {}",
-            //     expr.to_string(),
-            //     head.to_string(),
-            //     tail.to_string()
-            // );
-            Some((self.insert(head), self.insert(&tail)))
-        } else {
-            None
+        if let Some((head, tail)) = expr.try_split_head_tail() {
+            return Some((self.insert(&head), self.insert(&tail)));
         }
+        None
     }
 
     #[allow(dead_code)]
@@ -188,14 +175,18 @@ impl<T: FieldElement> Environment<T> {
         Some((*coeff, *var, *expr.constant_offset()))
     }
 
-    pub fn printthis(&self, expr: &Expr) -> bool {
-        let db = self.expressions.borrow();
-        let expr = &db[*expr];
-        let range = expr.range_constraint(self);
-        println!("{}", expr);
-        println!("Range constraint: {}", range);
-        true
-    }
+    // pub fn printthis(&self, expr: &Expr) -> bool {
+    //     let db = self.expressions.borrow();
+    //     let expr = &db[*expr];
+    //     let range = expr.range_constraint(self);
+    //     println!("{} has Range constraint: {}", expr, range);
+    //     true
+    // }
+
+    // pub fn printmsg(&self, msg: &str) -> bool {
+    //     println!("{}", msg);
+    //     true
+    // }
 
     /// Runs the function `f` on the expression identified by `expr`,
     /// passing `args` as additional arguments.

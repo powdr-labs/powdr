@@ -231,6 +231,29 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
         }
     }
 
+    pub fn try_split_head_tail(&self) -> Option<(Self, Self)> {
+        if self.linear_components().len() + self.quadratic_components().len() < 2 {
+            return None;
+        }
+
+        if let Some(head) = self.clone().into_summands().next() {
+            let head = match head {
+                GroupedExpressionComponent::Quadratic(l, r) => l * r,
+                GroupedExpressionComponent::Linear(var, coeff) => {
+                    GroupedExpression::from_runtime_constant(coeff)
+                        * GroupedExpression::from_unknown_variable(var)
+                }
+                GroupedExpressionComponent::Constant(_) => {
+                    return None;
+                }
+            };
+            let tail = self.clone() - head.clone();
+            Some((head, tail))
+        } else {
+            None
+        }
+    }
+
     /// Returns the linear components of this expression, i.e. summands that we were
     /// able to determine to be only a runtime constant times a single variable.
     /// If `is_affine()` returns true, this returns all summands except the constant offset.
