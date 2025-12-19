@@ -413,6 +413,7 @@ impl<T, I, A, V> Apc<T, I, A, V> {
 }
 
 /// Allocates global poly_ids and keeps track of substitutions
+#[derive(Clone)]
 pub struct ColumnAllocator {
     /// For each original air, for each original column index, the associated poly_id in the APC air
     subs: Vec<Vec<u64>>,
@@ -457,6 +458,7 @@ pub fn build<A: Adapter>(
         machine.main_columns(),
         &block,
         &vm_config,
+        &degree_bound,
         true,
     );
     // TODO: Use execution constraints

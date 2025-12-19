@@ -4,6 +4,7 @@ use std::fmt::Debug;
 use std::hash::Hash;
 
 use itertools::Itertools;
+use powdr_constraint_solver::inliner::DegreeBound;
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
@@ -14,9 +15,8 @@ use crate::empirical_constraints::execution_constraints::{
 };
 pub use crate::equivalence_classes::{EquivalenceClass, Partition};
 use crate::memory_optimizer::{MemoryBusInteraction, MemoryOp};
-use crate::optimizer::symbolic_bus_interaction_to_bus_interaction;
-use crate::symbolic_machine_generator::convert_machine_field_type;
-use crate::{InstructionHandler, SymbolicMachine};
+use crate::optimizer::{optimize, symbolic_bus_interaction_to_bus_interaction};
+use crate::symbolic_machine_generator::statements_to_symbolic_machine;
 
 use crate::{
     adapter::Adapter,
@@ -226,6 +226,7 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
         columns: impl Iterator<Item = AlgebraicReference>,
         block: &'a BasicBlock<A::Instruction>,
         vm_config: &AdapterVmConfig<A>,
+        degree_bound: &DegreeBound,
         only_memory_limbs: bool,
     ) -> Self {
         let poly_id_to_block_cell = subs
@@ -242,7 +243,7 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
             .collect::<BTreeMap<_, _>>();
 
         let optimistic_literals = if only_memory_limbs {
-            Some(optimistic_literals::<A>(block, vm_config))
+            Some(optimistic_literals::<A>(block, vm_config, degree_bound))
         } else {
             None
         };
@@ -387,29 +388,40 @@ type AdapterOptimisticLiteral<A> = OptimisticLiteral<Vec<<A as Adapter>::PowdrFi
 fn optimistic_literals<A: Adapter>(
     block: &BasicBlock<A::Instruction>,
     vm_config: &AdapterVmConfig<A>,
+    degree_bound: &DegreeBound,
 ) -> BTreeMap<AlgebraicReference, AdapterOptimisticLiteral<A>> {
     let log = block.start_pc == 0x201ecc;
     let memory_bus_id = vm_config.bus_map.get_bus_id(&BusType::Memory).unwrap();
     if log {
-        log::info!("Memory bus ID {memory_bus_id} ");
+        tracing::info!("Memory bus ID {memory_bus_id} ");
     }
     block
         .statements
         .iter()
         .enumerate()
         .flat_map(|(instruction_idx, instruction)| {
-            // Get symbolic machine
-            let (_air_id, symbolic_machine) = vm_config
-                .instruction_handler
-                .get_instruction_air_and_id(instruction);
-
             if log {
-                log::info!("{instruction}");
+                tracing::info!("{instruction}");
             }
 
-            // Convert to powdr type
-            let symbolic_machine: SymbolicMachine<<A as Adapter>::PowdrField> =
-                convert_machine_field_type(symbolic_machine.clone(), &|x| A::from_field(x));
+            let dummy_block = BasicBlock {
+                start_pc: block.start_pc + (instruction_idx * 4) as u64,
+                statements: vec![instruction.clone()],
+            };
+            let (symbolic_machine, column_allocator) = statements_to_symbolic_machine::<A>(
+                &dummy_block,
+                vm_config.instruction_handler,
+                &vm_config.bus_map,
+            );
+
+            let (symbolic_machine, _column_allocator) = optimize::<A>(
+                symbolic_machine.clone(),
+                vm_config.bus_interaction_handler.clone(),
+                degree_bound.clone(),
+                &vm_config.bus_map,
+                column_allocator.clone(),
+            )
+            .unwrap();
 
             // Go over all bus interactions
             symbolic_machine
@@ -418,9 +430,8 @@ fn optimistic_literals<A: Adapter>(
                 // Filter for memory bus interactions
                 .filter_map(|bus_interaction| {
                     if log {
-                        log::info!("  Bus interaction: {bus_interaction}");
+                        tracing::info!("  Bus interaction: {bus_interaction}");
                     }
-                    // TODO: We have to *at least* set is_valid to one.
                     let bus_interaction =
                         symbolic_bus_interaction_to_bus_interaction(bus_interaction);
                     A::MemoryBusInteraction::try_from_bus_interaction(
@@ -439,7 +450,9 @@ fn optimistic_literals<A: Adapter>(
                     let address = address.into_iter().collect_vec();
 
                     if log {
-                        log::info!("  Memory bus interaction: address={address:?}, data={data:?}");
+                        tracing::info!(
+                            "  Memory bus interaction: address={address:?}, data={data:?}"
+                        );
                     }
 
                     // Find concrete address
