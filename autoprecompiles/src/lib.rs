@@ -370,7 +370,7 @@ impl<T, I> Apc<T, I> {
     fn new(
         block: BasicBlock<I>,
         machine: SymbolicMachine<T>,
-        column_allocator: ColumnAllocator,
+        column_allocator: &ColumnAllocator,
     ) -> Self {
         // Get all poly_ids in the machine
         let all_references = machine
@@ -380,16 +380,16 @@ impl<T, I> Apc<T, I> {
         // Only keep substitutions from the column allocator if the target poly_id is used in the machine
         let subs = column_allocator
             .subs
-            .into_iter()
+            .iter()
             .map(|subs| {
-                subs.into_iter()
+                subs.iter()
                     .enumerate()
                     .filter_map(|(original_poly_index, apc_poly_id)| {
                         all_references
-                            .contains(&apc_poly_id)
+                            .contains(apc_poly_id)
                             .then_some(Substitution {
                                 original_poly_index,
-                                apc_poly_id,
+                                apc_poly_id: *apc_poly_id,
                             })
                     })
                     .collect_vec()
@@ -451,6 +451,16 @@ pub fn build<A: Adapter>(
     let range_analyzer_constraints = constraint_generator.range_constraints();
     let equivalence_analyzer_constraints = constraint_generator.equivalence_constraints();
 
+    if let Some(path) = apc_candidates_dir_path {
+        serialize_apc_from_machine::<A::PowdrField, A::Instruction>(
+            block.clone(),
+            machine.clone(),
+            &column_allocator,
+            path,
+            Some("unopt"),
+        );
+    }
+
     let labels = [("apc_start_pc", block.start_pc.to_string())];
     metrics::counter!("before_opt_cols", &labels)
         .absolute(machine.unique_references().count() as u64);
@@ -509,27 +519,18 @@ pub fn build<A: Adapter>(
 
     let machine = convert_machine_field_type(machine, &A::into_field);
 
-    let apc = Apc::new(block, machine, column_allocator);
+    let apc = Apc::new(block, machine, &column_allocator);
 
     if let Some(path) = apc_candidates_dir_path {
         std::fs::create_dir_all(path).unwrap();
 
-        let make_path = |suffix: Option<&str>, extension: &str| {
-            let suffix = suffix.map(|s| format!("_{s}")).unwrap_or_default();
-            path.join(format!("apc_candidate_{}{}", apc.start_pc(), suffix))
-                .with_extension(extension)
-        };
-
-        let ser_path = make_path(None, "cbor");
-        let file = std::fs::File::create(&ser_path).unwrap();
-        let writer = BufWriter::new(file);
-        serde_cbor::to_writer(writer, &apc).unwrap();
+        serialize_apc::<A::Field, A::Instruction>(&apc, path, None);
 
         if let Some(optimistic_precompile) = &optimistic_precompile {
-            let guaranteed_precompile_path = make_path(Some("guaranteed"), "txt");
+            let guaranteed_precompile_path = make_path(path, &apc, Some("guaranteed"), "txt");
             std::fs::write(guaranteed_precompile_path, guaranteed_precompile).unwrap();
 
-            let optimistic_precompile_path = make_path(Some("optimistic"), "txt");
+            let optimistic_precompile_path = make_path(path, &apc, Some("optimistic"), "txt");
             std::fs::write(optimistic_precompile_path, optimistic_precompile).unwrap();
         }
     }
@@ -537,6 +538,40 @@ pub fn build<A: Adapter>(
     metrics::gauge!("apc_gen_time_ms", &labels).set(start.elapsed().as_millis() as f64);
 
     Ok(apc)
+}
+
+fn make_path<T, I>(
+    base_path: &Path,
+    apc: &Apc<T, I>,
+    suffix: Option<&str>,
+    extension: &str,
+) -> PathBuf {
+    let suffix = suffix.map(|s| format!("_{s}")).unwrap_or_default();
+    base_path
+        .join(format!("apc_candidate_{}{}", apc.start_pc(), suffix))
+        .with_extension(extension)
+}
+
+fn serialize_apc<T: Serialize, I: Serialize>(apc: &Apc<T, I>, path: &Path, suffix: Option<&str>) {
+    std::fs::create_dir_all(path).expect("Failed to create directory for APC candidates");
+
+    let ser_path = make_path(path, apc, suffix, "cbor");
+    let file_unopt =
+        std::fs::File::create(&ser_path).expect("Failed to create file for {suffix} APC candidate");
+    let writer_unopt = BufWriter::new(file_unopt);
+    serde_cbor::to_writer(writer_unopt, &apc)
+        .expect("Failed to write {suffix} APC candidate to file");
+}
+
+fn serialize_apc_from_machine<T: Serialize, I: Serialize>(
+    block: BasicBlock<I>,
+    machine: SymbolicMachine<T>,
+    column_allocator: &ColumnAllocator,
+    path: &Path,
+    suffix: Option<&str>,
+) {
+    let apc = Apc::new(block, machine, column_allocator);
+    serialize_apc::<T, I>(&apc, path, suffix);
 }
 
 fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
