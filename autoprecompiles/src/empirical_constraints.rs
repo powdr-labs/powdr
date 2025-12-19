@@ -359,6 +359,7 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
             .get(&self.block.start_pc)
         {
             for equivalence_class in equivalence_classes.iter() {
+                // TODO: Need to do quadratic constraints here if we filter like we are above.
                 let first = equivalence_class.first().unwrap();
                 let first_ref = self.get_algebraic_reference(first);
                 for other in equivalence_class.iter().skip(1) {
