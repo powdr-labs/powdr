@@ -62,7 +62,7 @@ pub trait PgoAdapter {
             let (blocks, count) = generate_superblocks(
                 &prof.pc_list,
                 &filtered_blocks,
-                config.superblock_max_len as usize,
+                config.superblock_max_bb_count as usize,
             );
             (blocks, Some(count))
         } else {

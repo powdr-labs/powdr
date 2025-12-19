@@ -121,12 +121,12 @@ pub const DEFAULT_DEGREE_BOUND: DegreeBound = DegreeBound {
 pub fn default_powdr_openvm_config(
     apc: u64,
     skip: u64,
-    superblock_max_len: Option<u8>,
+    superblock_max_bb_count: Option<u8>,
 ) -> PowdrConfig {
     PowdrConfig::new(
         apc,
         skip,
-        superblock_max_len.unwrap_or(1),
+        superblock_max_bb_count.unwrap_or(1),
         DEFAULT_DEGREE_BOUND,
     )
 }

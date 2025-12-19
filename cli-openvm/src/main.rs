@@ -38,6 +38,7 @@ enum Commands {
         #[arg(long, default_value_t = PgoType::default())]
         pgo: PgoType,
 
+        /// Enable superblocks of size (number of basic blocks) up to the given value
         #[arg(long)]
         superblocks: Option<u8>,
 
@@ -71,6 +72,7 @@ enum Commands {
         #[arg(long, default_value_t = PgoType::default())]
         pgo: PgoType,
 
+        /// Enable superblocks of size (number of basic blocks) up to the given value
         #[arg(long)]
         superblocks: Option<u8>,
 
@@ -115,6 +117,7 @@ enum Commands {
         #[arg(long, default_value_t = PgoType::default())]
         pgo: PgoType,
 
+        /// Enable superblocks of size (number of basic blocks) up to the given value
         #[arg(long)]
         superblocks: Option<u8>,
 
