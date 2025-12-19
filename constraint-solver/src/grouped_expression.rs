@@ -233,24 +233,28 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
 
     /// Splits this expression into head and tail, i.e., `self = head + tail`
     /// head is the first summand
-    pub fn try_split_head_tail(&self) -> Option<(Self, Self)> {
+    pub fn try_split_head_tail(mut self) -> Option<(Self, Self)> {
         if self.linear_components().len() + self.quadratic_components().len() < 2 {
             return None;
         }
 
-        let head = self.clone().into_summands().next()?;
-        let head = match head {
-            GroupedExpressionComponent::Quadratic(l, r) => l * r,
-            GroupedExpressionComponent::Linear(var, coeff) => {
-                GroupedExpression::from_runtime_constant(coeff)
-                    * GroupedExpression::from_unknown_variable(var)
-            }
-            GroupedExpressionComponent::Constant(_) => {
-                return None;
-            }
-        };
-        let tail = self.clone() - head.clone();
-        Some((head, tail))
+        if !self.quadratic.is_empty() {
+            let mut quadratic = self.quadratic.into_iter();
+            let (hl, hr) = quadratic.next().unwrap();
+            self.quadratic = quadratic.collect();
+            Some(((hl * hr), self))
+        } else if !self.linear.is_empty() {
+            let mut linear = self.linear.into_iter();
+            let (hv, hc) = linear.next().unwrap();
+            self.linear = linear.collect();
+            Some((
+                GroupedExpression::from_runtime_constant(hc)
+                    * GroupedExpression::from_unknown_variable(hv),
+                self,
+            ))
+        } else {
+            None
+        }
     }
 
     /// Returns the linear components of this expression, i.e. summands that we were
