@@ -522,8 +522,6 @@ pub fn build<A: Adapter>(
     let apc = Apc::new(block, machine, &column_allocator);
 
     if let Some(path) = apc_candidates_dir_path {
-        std::fs::create_dir_all(path).unwrap();
-
         serialize_apc::<A::Field, A::Instruction>(&apc, path, None);
 
         if let Some(optimistic_precompile) = &optimistic_precompile {
