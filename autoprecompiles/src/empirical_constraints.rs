@@ -14,6 +14,36 @@ use crate::{
     SymbolicConstraint,
 };
 
+// Data structures copied from https://github.com/powdr-labs/powdr/pull/3491.
+#[allow(dead_code)]
+mod execution_constraints {
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    pub struct OptimisticConstraint<A, V> {
+        pub left: OptimisticExpression<A, V>,
+        pub right: OptimisticExpression<A, V>,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+    pub enum OptimisticExpression<A, V> {
+        Number(V),
+        Literal(OptimisticLiteral<A>),
+    }
+
+    #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+    pub enum LocalOptimisticLiteral<A> {
+        Register(A),
+        Pc,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+    pub struct OptimisticLiteral<A> {
+        pub instr_idx: usize,
+        pub val: LocalOptimisticLiteral<A>,
+    }
+}
+
 /// "Constraints" that were inferred from execution statistics. They hold empirically
 /// (most of the time), but are not guaranteed to hold in all cases.
 #[derive(Serialize, Deserialize, Default, Debug)]
