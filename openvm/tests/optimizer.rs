@@ -176,7 +176,7 @@ fn test_optimize_reth_op() {
     assert!(machine.derived_columns.is_empty());
 
     let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&machine);
-    let _machine = optimize::<BabyBearOpenVmApcAdapter>(
+    let machine = optimize::<BabyBearOpenVmApcAdapter>(
         machine,
         bus_int_handler,
         DEFAULT_DEGREE_BOUND,
@@ -185,4 +185,17 @@ fn test_optimize_reth_op() {
     )
     .unwrap()
     .0;
+
+    expect![[r#"
+        446
+    "#]]
+    .assert_debug_eq(&machine.main_columns().count());
+    expect![[r#"
+        356
+    "#]]
+    .assert_debug_eq(&machine.bus_interactions.len());
+    expect![[r#"
+        315
+    "#]]
+    .assert_debug_eq(&machine.constraints.len());
 }
