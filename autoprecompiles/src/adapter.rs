@@ -11,7 +11,7 @@ use crate::execution::{ExecutionState, OptimisticConstraints};
 use crate::execution_profile::ExecutionProfile;
 
 use crate::{
-    blocks::{BasicBlock, Instruction, Program},
+    blocks::{Block, Instruction, Program},
     constraint_optimizer::IsBusStateful,
     memory_optimizer::MemoryBusInteraction,
     range_constraint_optimizer::RangeConstraintHandler,
@@ -46,7 +46,7 @@ pub trait PgoAdapter {
 
     fn filter_blocks_and_create_apcs_with_pgo(
         &self,
-        blocks: Vec<AdapterBasicBlock<Self::Adapter>>,
+        blocks: Vec<AdapterBlock<Self::Adapter>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
@@ -74,7 +74,9 @@ pub trait PgoAdapter {
 
     fn create_apcs_with_pgo(
         &self,
-        blocks: Vec<AdapterBasicBlock<Self::Adapter>>,
+        blocks: Vec<AdapterBlock<Self::Adapter>>,
+        // frequency of each block during PGO execution.
+        // This is None when there's no profiling data (NonePgo).
         block_exec_count: Option<HashMap<usize, u32>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
@@ -119,7 +121,7 @@ where
 
     fn from_field(e: Self::Field) -> Self::PowdrField;
 
-    fn should_skip_block(_block: &BasicBlock<Self::Instruction>) -> bool {
+    fn should_skip_block(_block: &Block<Self::Instruction>) -> bool {
         false
     }
 }
@@ -155,4 +157,4 @@ pub type AdapterOptimisticConstraints<A> = OptimisticConstraints<
     <<A as Adapter>::ExecutionState as ExecutionState>::RegisterAddress,
     <<A as Adapter>::ExecutionState as ExecutionState>::Value,
 >;
-pub type AdapterBasicBlock<A> = BasicBlock<<A as Adapter>::Instruction>;
+pub type AdapterBlock<A> = Block<<A as Adapter>::Instruction>;

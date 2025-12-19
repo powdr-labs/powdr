@@ -20,7 +20,7 @@ pub fn original_vm_config() -> OriginalVmConfig {
 pub mod apc_builder_utils {
     use openvm_instructions::instruction::Instruction;
     use openvm_stark_sdk::p3_baby_bear::BabyBear;
-    use powdr_autoprecompiles::blocks::BasicBlock;
+    use powdr_autoprecompiles::blocks::Block;
     use powdr_autoprecompiles::evaluation::evaluate_apc;
     use powdr_autoprecompiles::{build, VmConfig};
     use powdr_number::BabyBearField;
@@ -55,7 +55,7 @@ pub mod apc_builder_utils {
             .collect::<Vec<_>>()
             .join("\n");
 
-        let basic_block = BasicBlock {
+        let basic_block = Block {
             statements: basic_block.into_iter().map(Instr).collect(),
             // TODO: could we test superblocks here? need to pass as args
             other_pcs: vec![],

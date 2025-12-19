@@ -5,7 +5,7 @@ use powdr_number::FieldElement;
 
 use crate::{
     adapter::Adapter,
-    blocks::{BasicBlock, Instruction},
+    blocks::{Block, Instruction},
     expression::AlgebraicExpression,
     powdr, Apc, BusMap, BusType, ColumnAllocator, InstructionHandler, SymbolicBusInteraction,
     SymbolicConstraint, SymbolicMachine,
@@ -117,7 +117,7 @@ fn convert_expression<T, U>(
 /// a mapping from local column IDs to global column IDs
 /// (in the form of a vector).
 pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
-    block: &BasicBlock<A::Instruction>,
+    block: &Block<A::Instruction>,
     instruction_handler: &A::InstructionHandler,
     bus_map: &BusMap<A::CustomBusTypes>,
 ) -> (SymbolicMachine<A::PowdrField>, ColumnAllocator) {

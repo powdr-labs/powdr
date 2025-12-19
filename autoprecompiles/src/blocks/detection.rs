@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use crate::{
     adapter::Adapter,
-    blocks::{BasicBlock, Program},
+    blocks::{Block, Program},
     InstructionHandler,
 };
 
@@ -11,9 +11,9 @@ pub fn collect_basic_blocks<A: Adapter>(
     program: &A::Program,
     jumpdest_set: &BTreeSet<u64>,
     instruction_handler: &A::InstructionHandler,
-) -> Vec<BasicBlock<A::Instruction>> {
+) -> Vec<Block<A::Instruction>> {
     let mut blocks = Vec::new();
-    let mut curr_block = BasicBlock {
+    let mut curr_block = Block {
         start_pc: program.instruction_index_to_pc(0),
         other_pcs: Vec::new(),
         statements: Vec::new(),
@@ -30,13 +30,13 @@ pub fn collect_basic_blocks<A: Adapter>(
                 blocks.push(curr_block);
             }
             // Push the instruction itself
-            blocks.push(BasicBlock {
+            blocks.push(Block {
                 start_pc: program.instruction_index_to_pc(i),
                 other_pcs: Vec::new(),
                 statements: vec![instr.clone()],
             });
             // Skip the instruction and start a new block from the next instruction.
-            curr_block = BasicBlock {
+            curr_block = Block {
                 start_pc: program.instruction_index_to_pc(i + 1),
                 other_pcs: Vec::new(),
                 statements: Vec::new(),
@@ -48,7 +48,7 @@ pub fn collect_basic_blocks<A: Adapter>(
                 if !curr_block.statements.is_empty() {
                     blocks.push(curr_block);
                 }
-                curr_block = BasicBlock {
+                curr_block = Block {
                     start_pc: program.instruction_index_to_pc(i),
                     other_pcs: Vec::new(),
                     statements: Vec::new(),
@@ -59,7 +59,7 @@ pub fn collect_basic_blocks<A: Adapter>(
             // with this instruction and start a new block from the next one.
             if is_branching {
                 blocks.push(curr_block); // guaranteed to be non-empty because an instruction was just pushed
-                curr_block = BasicBlock {
+                curr_block = Block {
                     start_pc: program.instruction_index_to_pc(i + 1),
                     other_pcs: Vec::new(),
                     statements: Vec::new(),

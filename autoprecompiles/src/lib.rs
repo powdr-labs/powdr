@@ -1,8 +1,8 @@
 use crate::adapter::{
-    Adapter, AdapterApc, AdapterApcOverPowdrField, AdapterBasicBlock, AdapterOptimisticConstraints,
+    Adapter, AdapterApc, AdapterApcOverPowdrField, AdapterBlock, AdapterOptimisticConstraints,
     AdapterVmConfig,
 };
-use crate::blocks::BasicBlock;
+use crate::blocks::Block;
 use crate::bus_map::{BusMap, BusType};
 use crate::evaluation::AirStats;
 use crate::execution::OptimisticConstraints;
@@ -359,7 +359,7 @@ pub struct Substitution {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Apc<T, I, A, V> {
     /// The basic block this APC is based on
-    pub block: BasicBlock<I>,
+    pub block: Block<I>,
     /// The symbolic machine for this APC
     pub machine: SymbolicMachine<T>,
     /// For each original instruction, the substitutions from original columns to APC columns
@@ -390,7 +390,7 @@ impl<T, I, A, V> Apc<T, I, A, V> {
     /// Create a new APC based on the given basic block, symbolic machine and column allocator
     /// The column allocator only issues the subs which are actually used in the machine
     fn new(
-        block: BasicBlock<I>,
+        block: Block<I>,
         machine: SymbolicMachine<T>,
         optimistic_constraints: Arc<OptimisticConstraints<A, V>>,
         column_allocator: &ColumnAllocator,
@@ -451,7 +451,7 @@ impl ColumnAllocator {
 }
 
 pub fn build<A: Adapter>(
-    block: BasicBlock<A::Instruction>,
+    block: Block<A::Instruction>,
     vm_config: AdapterVmConfig<A>,
     degree_bound: DegreeBound,
     apc_candidates_dir_path: Option<&Path>,
@@ -536,7 +536,7 @@ fn serialize_apc<A: Adapter>(apc: &AdapterApcOverPowdrField<A>, path: &Path, suf
 }
 
 fn serialize_apc_from_machine<A: Adapter>(
-    block: AdapterBasicBlock<A>,
+    block: AdapterBlock<A>,
     machine: SymbolicMachine<A::PowdrField>,
     column_allocator: &ColumnAllocator,
     path: &Path,
@@ -553,7 +553,7 @@ fn serialize_apc_from_machine<A: Adapter>(
 
 /// Generate optimistic constraints for superblock jumps (doesn't enforce the starting PC).
 fn superblock_pc_constraints<A: Adapter>(
-    block: &BasicBlock<A::Instruction>,
+    block: &Block<A::Instruction>,
 ) -> Vec<
     OptimisticConstraint<
         <<A as Adapter>::ExecutionState as ExecutionState>::RegisterAddress,

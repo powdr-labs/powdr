@@ -27,7 +27,7 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::adapter::{
     Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig, ApcWithStats, PgoAdapter,
 };
-use powdr_autoprecompiles::blocks::{BasicBlock, Instruction};
+use powdr_autoprecompiles::blocks::{Block, Instruction};
 use powdr_autoprecompiles::evaluation::{evaluate_apc, EvaluationResult};
 use powdr_autoprecompiles::execution::ExecutionState;
 use powdr_autoprecompiles::expression::try_convert;
@@ -323,7 +323,7 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
     fn to_json_export(&self, apc_candidates_dir_path: &Path) -> ApcCandidateJsonExport {
         ApcCandidateJsonExport {
             execution_frequency: self.execution_frequency,
-            original_block: BasicBlock {
+            original_block: Block {
                 start_pc: self.apc.block.start_pc,
                 other_pcs: self.apc.block.other_pcs.clone(),
                 statements: self

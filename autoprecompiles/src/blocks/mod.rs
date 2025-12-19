@@ -12,16 +12,19 @@ mod detection;
 pub use detection::collect_basic_blocks;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct BasicBlock<I> {
+/// A sequence of instructions starting at a given PC.
+/// If `other_pcs` is empty, this is a basic block.
+/// If `other_pcs` is non-empty, this is a superblock, that is, a sequence of basic blocks.
+pub struct Block<I> {
     /// The program counter of the first instruction in this block.
     pub start_pc: u64,
     /// When not empty, indicates a superblock.
-    /// Each entry is a tuple of (relative instruction index inside the superblock, original BB start_pc).
+    /// Each entry is a tuple of (relative instruction index inside the superblock, original basic block start_pc).
     pub other_pcs: Vec<(usize, u64)>,
     pub statements: Vec<I>,
 }
 
-impl<I> BasicBlock<I> {
+impl<I> Block<I> {
     /// Starting PCs of each original basic block
     pub fn original_pcs(&self) -> Vec<u64> {
         [
@@ -32,7 +35,7 @@ impl<I> BasicBlock<I> {
     }
 }
 
-impl<I: Display> Display for BasicBlock<I> {
+impl<I: Display> Display for Block<I> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "BasicBlock(start_pc: {}, statements: [", self.start_pc)?;
         for (i, instr) in self.statements.iter().enumerate() {
@@ -68,6 +71,8 @@ pub trait Instruction<T>: Clone + Display {
     fn pc_lookup_row(&self, pc: Option<u64>) -> Vec<Option<T>>;
 }
 
+/// Count how many times the `needle` sequence appears inside the `haystack` sequence.
+/// It does not count overlapping sequences (e.g. `aba` is counted only twice in `abababa`).
 fn count_non_overlapping(haystack: &[usize], needle: &[usize]) -> u32 {
     let mut count = 0;
     let mut pos = 0;
@@ -87,30 +92,32 @@ fn count_non_overlapping(haystack: &[usize], needle: &[usize]) -> u32 {
 /// Doesn't return blocks with a single instruction or that were never executed.
 pub fn generate_superblocks<I: Clone>(
     execution_pc_list: &[u64],
-    blocks: &[BasicBlock<I>],
+    blocks: &[Block<I>],
     max_len: usize,
-) -> (Vec<BasicBlock<I>>, HashMap<usize, u32>) {
+) -> (Vec<Block<I>>, HashMap<usize, u32>) {
     tracing::info!(
         "Detecting superblocks of size <= {max_len}, over the sequence of {} PCs",
         execution_pc_list.len()
     );
 
     // make a hash map from start_pc to BB
-    let pc_to_bb_idx: HashMap<_, _> = blocks
+    let bb_start_pc_to_idx: HashMap<_, _> = blocks
         .iter()
         .enumerate()
         .map(|(idx, bb)| (bb.start_pc, idx))
         .collect();
 
-    // set of all superblocks seen
-    let mut seen_superblocks: HashSet<_> = HashSet::new();
-    // list of valid BB runs in the execution (i.e., sequences of BBs without single-instruction BBs in between)
+    // set of all superblocks seen. Each superblock is identified by the starting PCs of its basic blocks.
+    let mut seen_superblocks: HashSet<Vec<usize>> = HashSet::new();
+    // list basic block runs in the execution (i.e., sequences of BBs without single-instruction BBs in between)
     let mut execution_bb_runs = vec![];
     let mut current_run = vec![];
 
-    // first, we identify all superblocks present in the execution and create the BB runs
+    // here, we go over the execution PCs to:
+    // (1) identify basic block runs
+    // (2) collect the superblocks seen in the execution
     for pc in execution_pc_list {
-        let Some(&bb_idx) = pc_to_bb_idx.get(pc) else {
+        let Some(&bb_idx) = bb_start_pc_to_idx.get(pc) else {
             // still in the same BB
             continue;
         };
@@ -118,13 +125,14 @@ pub fn generate_superblocks<I: Clone>(
         // if starting a single instruction BB, clear current sequence
         if blocks[bb_idx].statements.len() <= 1 {
             if !current_run.is_empty() {
-                execution_bb_runs.push(current_run.drain(..).collect_vec());
+                execution_bb_runs.push(std::mem::take(&mut current_run));
             }
             continue;
         }
 
         current_run.push(bb_idx);
 
+        // add to seen set the superblocks (size 1..max_len) ending at the last BB of the current run
         for len in 1..=std::cmp::min(max_len, current_run.len()) {
             let sblock: Vec<usize> = current_run
                 .iter()
@@ -141,13 +149,13 @@ pub fn generate_superblocks<I: Clone>(
         execution_bb_runs.len()
     );
 
-    // second, count how many times each superblock was executed
+    // here, we go over the BB runs to count how many times each superblock can be executed
     let mut superblock_count = HashMap::new();
     for sblock in seen_superblocks {
         for run in &execution_bb_runs {
             let count = count_non_overlapping(run, &sblock);
             if count > 0 {
-                *superblock_count.entry(sblock.clone()).or_insert(0u32) += count;
+                *superblock_count.entry(sblock.clone()).or_default() += count;
             }
         }
     }
@@ -175,7 +183,7 @@ pub fn generate_superblocks<I: Clone>(
             .collect_vec();
 
         let idx = super_blocks.len();
-        super_blocks.push(BasicBlock {
+        super_blocks.push(Block {
             start_pc,
             other_pcs,
             statements,

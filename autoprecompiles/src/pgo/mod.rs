@@ -5,7 +5,7 @@ use strum::{Display, EnumString};
 
 use crate::{
     adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, ApcWithStats},
-    blocks::BasicBlock,
+    blocks::Block,
     execution_profile::ExecutionProfile,
     PowdrConfig,
 };
@@ -82,7 +82,7 @@ pub fn pgo_config(
 // Only used for PgoConfig::Instruction and PgoConfig::None,
 // because PgoConfig::Cell caches all APCs in sorting stage.
 fn create_apcs_for_all_blocks<A: Adapter>(
-    blocks: Vec<BasicBlock<A::Instruction>>,
+    blocks: Vec<Block<A::Instruction>>,
     config: &PowdrConfig,
     vm_config: AdapterVmConfig<A>,
 ) -> Vec<AdapterApcWithStats<A>> {
