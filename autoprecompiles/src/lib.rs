@@ -460,8 +460,9 @@ pub fn build<A: Adapter>(
         true,
     );
     // TODO: Use execution constraints
-    let (empirical_constraints, _execution_constraints) =
-        constraint_generator.generate_constraints();
+    let empirical_constraints = constraint_generator
+        .generate_constraints()
+        .symbolic_constraints;
 
     if let Some(path) = apc_candidates_dir_path {
         serialize_apc_from_machine::<A>(

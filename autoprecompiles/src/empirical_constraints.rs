@@ -4,12 +4,13 @@ use std::fmt::Debug;
 use std::hash::Hash;
 
 use itertools::Itertools;
+use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
 use crate::adapter::AdapterVmConfig;
 use crate::bus_map::BusType;
 use crate::empirical_constraints::execution_constraints::{
-    LocalOptimisticLiteral, OptimisticConstraint, OptimisticLiteral,
+    LocalOptimisticLiteral, OptimisticConstraint, OptimisticExpression, OptimisticLiteral,
 };
 pub use crate::equivalence_classes::{EquivalenceClass, Partition};
 use crate::memory_optimizer::MemoryBusInteraction;
@@ -258,6 +259,11 @@ pub struct ConstraintGenerator<'a, A: Adapter> {
     optimistic_literals: Option<BTreeMap<AlgebraicReference, AdapterOptimisticLiteral<A>>>,
 }
 
+pub struct Constraints<A: Adapter> {
+    pub symbolic_constraints: Vec<SymbolicConstraint<<A as Adapter>::PowdrField>>,
+    pub execution_constraints: Vec<OptimisticConstraint<Vec<<A as Adapter>::PowdrField>, u32>>,
+}
+
 impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
     /// Creates a new `ConstraintGenerator`.
     ///
@@ -315,20 +321,55 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
             })
     }
 
-    pub fn generate_constraints(
+    fn get_optimistic_expression(
         &self,
-    ) -> (
-        Vec<SymbolicConstraint<<A as Adapter>::PowdrField>>,
-        Vec<OptimisticConstraint<u32, u32>>,
-    ) {
-        (
-            self.range_constraints()
+        algebraic_expression: &AlgebraicExpression<<A as Adapter>::PowdrField>,
+    ) -> Option<OptimisticExpression<Vec<<A as Adapter>::PowdrField>, u32>> {
+        match algebraic_expression {
+            AlgebraicExpression::Number(n) => {
+                // TODO: Don't use to_degree...
+                Some(OptimisticExpression::Number(n.to_degree() as u32))
+            }
+            AlgebraicExpression::Reference(r) => {
+                let optimistic_literal = self.optimistic_literals.as_ref()?.get(r)?;
+                Some(OptimisticExpression::Literal(optimistic_literal.clone()))
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn generate_constraints(&self) -> Constraints<A> {
+        let range_constraints = self.range_constraints();
+        let equivalence_constraints = self.equivalence_constraints();
+        let (symbolic_constraints, execution_constraints) = if self.optimistic_literals.is_none() {
+            (
+                range_constraints
+                    .into_iter()
+                    .chain(equivalence_constraints)
+                    .map(|(left, right)| SymbolicConstraint { expr: left - right })
+                    .collect(),
+                Vec::new(),
+            )
+        } else {
+            range_constraints
                 .into_iter()
-                .chain(self.equivalence_constraints().into_iter())
-                .collect(),
-            // TODO
-            Vec::new(),
-        )
+                .chain(equivalence_constraints)
+                .filter_map(|(left, right)| {
+                    let left_optimistic = self.get_optimistic_expression(&left)?;
+                    let right_optimistic = self.get_optimistic_expression(&right)?;
+                    let optimistic_constraint = OptimisticConstraint {
+                        left: left_optimistic,
+                        right: right_optimistic,
+                    };
+                    let symbolic_constraint = SymbolicConstraint { expr: left - right };
+                    Some((symbolic_constraint, optimistic_constraint))
+                })
+                .unzip()
+        };
+        Constraints {
+            symbolic_constraints,
+            execution_constraints,
+        }
     }
 
     /// Generates constraints of the form `var = <value>` for columns whose value is
@@ -336,7 +377,7 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
     // TODO: We could also enforce looser range constraints.
     // This is a bit more complicated though, because we'd have to add bus interactions
     // to actually enforce them.
-    fn range_constraints(&self) -> Vec<SymbolicConstraint<<A as Adapter>::PowdrField>> {
+    fn range_constraints(&self) -> Vec<EqualityConstraint<A>> {
         let mut constraints = Vec::new();
 
         for i in 0..self.block.statements.len() {
@@ -350,10 +391,11 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
                 if min == max {
                     let value = A::PowdrField::from(*min as u64);
                     let reference = self.get_algebraic_reference(&block_cell);
-                    let constraint = AlgebraicExpression::Reference(reference)
-                        - AlgebraicExpression::Number(value);
 
-                    constraints.push(SymbolicConstraint { expr: constraint });
+                    constraints.push((
+                        AlgebraicExpression::Reference(reference),
+                        AlgebraicExpression::Number(value),
+                    ));
                 }
             }
         }
@@ -361,7 +403,7 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
         constraints
     }
 
-    fn equivalence_constraints(&self) -> Vec<SymbolicConstraint<<A as Adapter>::PowdrField>> {
+    fn equivalence_constraints(&self) -> Vec<EqualityConstraint<A>> {
         let mut constraints = Vec::new();
 
         if let Some(equivalence_classes) = self
@@ -374,9 +416,10 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
                 let first_ref = self.get_algebraic_reference(first);
                 for other in equivalence_class.iter().skip(1) {
                     let other_ref = self.get_algebraic_reference(other);
-                    let constraint = AlgebraicExpression::Reference(first_ref.clone())
-                        - AlgebraicExpression::Reference(other_ref.clone());
-                    constraints.push(SymbolicConstraint { expr: constraint });
+                    constraints.push((
+                        AlgebraicExpression::Reference(first_ref.clone()),
+                        AlgebraicExpression::Reference(other_ref.clone()),
+                    ));
                 }
             }
         }
@@ -385,6 +428,10 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
     }
 }
 
+type EqualityConstraint<A> = (
+    AlgebraicExpression<<A as Adapter>::PowdrField>,
+    AlgebraicExpression<<A as Adapter>::PowdrField>,
+);
 type AdapterOptimisticLiteral<A> = OptimisticLiteral<Vec<<A as Adapter>::PowdrField>>;
 
 /// Maps an algebraic reference to an execution literal, if it represents the limb of a
