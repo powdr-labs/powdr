@@ -137,14 +137,11 @@ impl<T: FieldElement> Environment<T> {
         let db = self.expressions.borrow();
         let expr = db[expr].clone();
         drop(db);
-        // conditions limiting the cases for now
         if expr.linear_components().len() + expr.quadratic_components().len() < 2 {
             return None;
         }
-        if let Some((head, tail)) = expr.try_split_head_tail() {
-            return Some((self.insert(&head), self.insert(&tail)));
-        }
-        None
+        let (head, tail) = expr.try_split_head_tail()?;
+        Some((self.insert(&head), self.insert(&tail)))
     }
 
     #[allow(dead_code)]
