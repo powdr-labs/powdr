@@ -3,10 +3,19 @@ use std::collections::{btree_map::Entry, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
 
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
-use crate::empirical_constraints::execution_constraints::OptimisticConstraint;
+use crate::adapter::AdapterVmConfig;
+use crate::bus_map::BusType;
+use crate::empirical_constraints::execution_constraints::{
+    LocalOptimisticLiteral, OptimisticConstraint, OptimisticLiteral,
+};
 pub use crate::equivalence_classes::{EquivalenceClass, Partition};
+use crate::memory_optimizer::MemoryBusInteraction;
+use crate::optimizer::symbolic_bus_interaction_to_bus_interaction;
+use crate::symbolic_machine_generator::convert_machine_field_type;
+use crate::{InstructionHandler, SymbolicMachine};
 
 use crate::{
     adapter::Adapter,
@@ -16,7 +25,6 @@ use crate::{
 };
 
 // Data structures copied from https://github.com/powdr-labs/powdr/pull/3491.
-#[allow(dead_code)]
 mod execution_constraints {
     use serde::{Deserialize, Serialize};
 
@@ -247,6 +255,7 @@ pub struct ConstraintGenerator<'a, A: Adapter> {
     empirical_constraints: EmpiricalConstraints,
     algebraic_references: BTreeMap<BlockCell, AlgebraicReference>,
     block: &'a BasicBlock<A::Instruction>,
+    optimistic_literals: Option<BTreeMap<AlgebraicReference, AdapterOptimisticLiteral<A>>>,
 }
 
 impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
@@ -263,6 +272,8 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
         subs: &[Vec<u64>],
         columns: impl Iterator<Item = AlgebraicReference>,
         block: &'a BasicBlock<A::Instruction>,
+        vm_config: &AdapterVmConfig<A>,
+        only_memory_limbs: bool,
     ) -> Self {
         let poly_id_to_block_cell = subs
             .iter()
@@ -277,15 +288,18 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
             .map(|r| (*poly_id_to_block_cell.get(&r.id).unwrap(), r.clone()))
             .collect::<BTreeMap<_, _>>();
 
-        // TODO
-        let register_memory_trace_cells = HashSet::new();
+        let optimistic_literals = if only_memory_limbs {
+            Some(optimistic_literals::<A>(block, vm_config))
+        } else {
+            None
+        };
 
         Self {
             empirical_constraints: empirical_constraints
-                .apply_pc_threshold(EXECUTION_COUNT_THRESHOLD)
-                .filter_for_trace_cells(block.start_pc as u32, register_memory_trace_cells),
+                .apply_pc_threshold(EXECUTION_COUNT_THRESHOLD),
             algebraic_references,
             block,
+            optimistic_literals,
         }
     }
 
@@ -369,4 +383,77 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
 
         constraints
     }
+}
+
+type AdapterOptimisticLiteral<A> = OptimisticLiteral<Vec<<A as Adapter>::PowdrField>>;
+
+/// Maps an algebraic reference to an execution literal, if it represents the limb of a
+/// memory access to an address known at compile time.
+fn optimistic_literals<A: Adapter>(
+    block: &BasicBlock<A::Instruction>,
+    vm_config: &AdapterVmConfig<A>,
+) -> BTreeMap<AlgebraicReference, AdapterOptimisticLiteral<A>> {
+    block
+        .statements
+        .iter()
+        .enumerate()
+        .flat_map(|(instruction_idx, instruction)| {
+            // Get symbolic machine
+            let (_air_id, symbolic_machine) = vm_config
+                .instruction_handler
+                .get_instruction_air_and_id(instruction);
+
+            // Convert to powdr type
+            let symbolic_machine: SymbolicMachine<<A as Adapter>::PowdrField> =
+                convert_machine_field_type(symbolic_machine.clone(), &|x| A::from_field(x));
+
+            // Go over all bus interactions
+            symbolic_machine
+                .bus_interactions
+                .iter()
+                // Filter for memory bus interactions
+                .filter_map(|bus_interaction| {
+                    A::MemoryBusInteraction::try_from_bus_interaction(
+                        &symbolic_bus_interaction_to_bus_interaction(bus_interaction),
+                        vm_config.bus_map.get_bus_id(&BusType::Memory).unwrap(),
+                    )
+                    // TODO: This filters out memory bus interactions with unknown multiplicity.
+                    .ok()
+                    .flatten()
+                })
+                // Filter for concrete address and single-column limbs
+                .filter_map(|bus_interaction| {
+                    let address = bus_interaction.addr();
+                    let data = bus_interaction.data();
+
+                    // Find concrete address
+                    let concrete_address = address
+                        .into_iter()
+                        .map(|expr| expr.try_to_known().cloned())
+                        .collect::<Option<Vec<_>>>()?;
+
+                    // Find references to the limbs
+                    let limbs = data
+                        .iter()
+                        .map(|expr| expr.try_to_simple_unknown())
+                        .collect::<Option<Vec<_>>>()?;
+                    Some((instruction_idx, concrete_address, limbs))
+                })
+                .collect_vec()
+        })
+        .flat_map(|(instruction_idx, concrete_address, limbs)| {
+            limbs
+                .into_iter()
+                .enumerate()
+                .map(move |(limb_index, limb_ref)| {
+                    let local_literal =
+                        LocalOptimisticLiteral::RegisterLimb(concrete_address.clone(), limb_index);
+                    let optimistic_literal = OptimisticLiteral {
+                        instr_idx: instruction_idx,
+                        val: local_literal,
+                    };
+                    (limb_ref, optimistic_literal)
+                })
+        })
+        .collect::<BTreeMap<_, _>>()
 }

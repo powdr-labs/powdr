@@ -456,6 +456,8 @@ pub fn build<A: Adapter>(
         &column_allocator.subs,
         machine.main_columns(),
         &block,
+        &vm_config,
+        true,
     );
     // TODO: Use execution constraints
     let (empirical_constraints, _execution_constraints) =
