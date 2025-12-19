@@ -5,6 +5,7 @@ use std::hash::Hash;
 
 use serde::{Deserialize, Serialize};
 
+use crate::empirical_constraints::execution_constraints::OptimisticConstraint;
 pub use crate::equivalence_classes::{EquivalenceClass, Partition};
 
 use crate::{
@@ -300,12 +301,28 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
             })
     }
 
+    pub fn generate_constraints(
+        &self,
+    ) -> (
+        Vec<SymbolicConstraint<<A as Adapter>::PowdrField>>,
+        Vec<OptimisticConstraint<u32, u32>>,
+    ) {
+        (
+            self.range_constraints()
+                .into_iter()
+                .chain(self.equivalence_constraints().into_iter())
+                .collect(),
+            // TODO
+            Vec::new(),
+        )
+    }
+
     /// Generates constraints of the form `var = <value>` for columns whose value is
     /// always the same empirically.
     // TODO: We could also enforce looser range constraints.
     // This is a bit more complicated though, because we'd have to add bus interactions
     // to actually enforce them.
-    pub fn range_constraints(&self) -> Vec<SymbolicConstraint<<A as Adapter>::PowdrField>> {
+    fn range_constraints(&self) -> Vec<SymbolicConstraint<<A as Adapter>::PowdrField>> {
         let mut constraints = Vec::new();
 
         for i in 0..self.block.statements.len() {
@@ -330,7 +347,7 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
         constraints
     }
 
-    pub fn equivalence_constraints(&self) -> Vec<SymbolicConstraint<<A as Adapter>::PowdrField>> {
+    fn equivalence_constraints(&self) -> Vec<SymbolicConstraint<<A as Adapter>::PowdrField>> {
         let mut constraints = Vec::new();
 
         if let Some(equivalence_classes) = self

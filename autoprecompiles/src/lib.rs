@@ -457,8 +457,9 @@ pub fn build<A: Adapter>(
         machine.main_columns(),
         &block,
     );
-    let range_analyzer_constraints = constraint_generator.range_constraints();
-    let equivalence_analyzer_constraints = constraint_generator.equivalence_constraints();
+    // TODO: Use execution constraints
+    let (empirical_constraints, _execution_constraints) =
+        constraint_generator.generate_constraints();
 
     if let Some(path) = apc_candidates_dir_path {
         serialize_apc_from_machine::<A>(
@@ -492,29 +493,25 @@ pub fn build<A: Adapter>(
     // Get the precompile that is guaranteed to always work
     let guaranteed_precompile = machine.render(&vm_config.bus_map);
 
-    let (machine, column_allocator, optimistic_precompile) =
-        if !range_analyzer_constraints.is_empty() || !equivalence_analyzer_constraints.is_empty() {
-            // Add empirical constraints to the baseline
-            baseline.constraints.extend(range_analyzer_constraints);
-            baseline
-                .constraints
-                .extend(equivalence_analyzer_constraints);
+    let (machine, column_allocator, optimistic_precompile) = if !empirical_constraints.is_empty() {
+        // Add empirical constraints to the baseline
+        baseline.constraints.extend(empirical_constraints);
 
-            // Optimize again with empirical constraints
-            let (machine, column_allocator) = optimizer::optimize::<A>(
-                baseline,
-                vm_config.bus_interaction_handler,
-                degree_bound,
-                &vm_config.bus_map,
-                column_allocator,
-            )
-            .unwrap();
-            let optimistic_precompile = machine.render(&vm_config.bus_map);
-            (machine, column_allocator, Some(optimistic_precompile))
-        } else {
-            // If there are no empirical constraints, we can skip optimizing twice.
-            (machine, column_allocator, None)
-        };
+        // Optimize again with empirical constraints
+        let (machine, column_allocator) = optimizer::optimize::<A>(
+            baseline,
+            vm_config.bus_interaction_handler,
+            degree_bound,
+            &vm_config.bus_map,
+            column_allocator,
+        )
+        .unwrap();
+        let optimistic_precompile = machine.render(&vm_config.bus_map);
+        (machine, column_allocator, Some(optimistic_precompile))
+    } else {
+        // If there are no empirical constraints, we can skip optimizing twice.
+        (machine, column_allocator, None)
+    };
 
     // add guards to constraints that are not satisfied by zeroes
     let (machine, column_allocator) = add_guards(machine, column_allocator);
