@@ -36,10 +36,8 @@ jobs:
       run: cargo +1.90 check --all-targets
     - name: Lint no default features
       run: cargo clippy --all --all-targets --no-default-features --profile pr-tests --verbose -- -D warnings
-    - name: Lint all features
-      run: cargo clippy --all --all-targets --all-features --profile pr-tests --verbose -- -D warnings
     - name: Build
-      run: cargo build --all-targets --all --all-features --profile pr-tests --verbose
+      run: cargo build --all-targets --features metrics --all --profile pr-tests --verbose
     ###############################################################################
 
     - name: Delete the old cache

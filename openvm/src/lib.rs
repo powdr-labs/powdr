@@ -68,6 +68,7 @@ use crate::powdr_extension::{PowdrExtensionExecutor, PowdrPrecompile};
 mod air_builder;
 pub mod bus_map;
 pub mod cuda_abi;
+mod empirical_constraints;
 pub mod extraction_utils;
 pub mod opcode;
 mod program;
@@ -77,6 +78,8 @@ mod utils;
 pub use opcode::instruction_allowlist;
 pub use powdr_autoprecompiles::DegreeBound;
 pub use powdr_autoprecompiles::PgoConfig;
+
+pub use crate::empirical_constraints::detect_empirical_constraints;
 
 pub type BabyBearSC = BabyBearPoseidon2Config;
 
@@ -784,7 +787,7 @@ pub fn prove(
     segment_height: Option<usize>, // uses the default height if None
 ) -> Result<(), Box<dyn std::error::Error>> {
     if mock {
-        do_with_trace(program, inputs, |vm, pk, ctx| {
+        do_with_trace(program, inputs, |_segment_idx, vm, pk, ctx| {
             debug_proving_ctx(vm, pk, &ctx);
         })?;
     } else {
@@ -1769,11 +1772,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 17300,
-                            log_up: 27896,
+                            main: 17289,
+                            log_up: 27884,
                         },
-                        constraints: 8834,
-                        bus_interactions: 11925,
+                        constraints: 8823,
+                        bus_interactions: 11919,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1791,8 +1794,8 @@ mod tests {
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 17300,
-                        log_up: 27896,
+                        main: 17289,
+                        log_up: 27884,
                     },
                 }
             "#]]),
@@ -1818,11 +1821,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 19928,
-                            log_up: 30924,
+                            main: 19909,
+                            log_up: 30904,
                         },
-                        constraints: 11103,
-                        bus_interactions: 13442,
+                        constraints: 11084,
+                        bus_interactions: 13432,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1840,8 +1843,8 @@ mod tests {
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 19928,
-                        log_up: 30924,
+                        main: 19909,
+                        log_up: 30904,
                     },
                 }
             "#]]),
