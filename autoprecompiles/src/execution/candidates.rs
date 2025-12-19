@@ -134,6 +134,15 @@ impl<E: ExecutionState, A: Apc, S: Snapshot> ApcCandidates<E, A, S> {
         (start, end)
     }
 
+    /// Abort all candidates that are in progress.
+    /// This is useful at the end of a segment, where some candidates being in progress block other candidates that are done from being extracted.
+    /// Since we reached the end of the segment, we know that the candidates that are in progress will not be valid, so it's safe to drop them.
+    pub fn abort_in_progress(&mut self) -> Vec<ApcCandidate<E, A, S>> {
+        self.candidates
+            .extract_if(.., |f| matches!(f.status, CandidateStatus::InProgress(_)))
+            .collect()
+    }
+
     fn ranges_overlap((start_a, end_a): (usize, usize), (start_b, end_b): (usize, usize)) -> bool {
         start_a < end_b && start_b < end_a
     }
@@ -541,6 +550,92 @@ mod tests {
                 apc: high_priority,
                 snapshot: high_priority_snapshot,
                 status: CandidateStatus::Done(final_snapshot)
+            }
+        );
+    }
+
+    #[test]
+    fn abort_in_progress_returns_shorter_candidate() {
+        let mut candidates = ApcCandidates::default();
+        let mut state = TestExecutionState { pc: 0 };
+        let short_low_priority = a(2).p(1);
+        let long_high_priority = a(4).p(2);
+        let short_snapshot = s(0);
+        let short_final_snapshot = s(2);
+
+        candidates.insert(ApcCandidate::new(
+            short_low_priority,
+            OptimisticConstraints::empty(),
+            short_snapshot.clone(),
+        ));
+        candidates.insert(ApcCandidate::new(
+            long_high_priority,
+            OptimisticConstraints::empty(),
+            s(0),
+        ));
+
+        for _ in 0..3 {
+            assert!(incr(&mut candidates, &mut state).is_empty());
+        }
+
+        assert_eq!(candidates.count_done(), 1);
+        assert_eq!(candidates.count_in_progress(), 1);
+
+        candidates.abort_in_progress();
+
+        let extracted = candidates.extract_candidates();
+        assert_eq!(extracted.len(), 1);
+        assert_eq!(
+            extracted[0],
+            ApcCandidate {
+                remaining_instr_count: 0,
+                apc: short_low_priority,
+                snapshot: short_snapshot,
+                status: CandidateStatus::Done(short_final_snapshot)
+            }
+        );
+    }
+
+    #[test]
+    fn abort_in_progress_after_segment_end_picks_shorter_candidate() {
+        let mut candidates = ApcCandidates::default();
+        let mut state = TestExecutionState { pc: 0 };
+        let short_low_priority = a(2).p(1);
+        let long_high_priority = a(4).p(2);
+        let short_snapshot = s(0);
+        let short_final_snapshot = s(2);
+
+        candidates.insert(ApcCandidate::new(
+            short_low_priority,
+            OptimisticConstraints::empty(),
+            short_snapshot.clone(),
+        ));
+        candidates.insert(ApcCandidate::new(
+            long_high_priority,
+            OptimisticConstraints::empty(),
+            s(0),
+        ));
+
+        for _ in 0..2 {
+            assert!(incr(&mut candidates, &mut state).is_empty());
+        }
+
+        assert_eq!(candidates.count_done(), 0);
+        assert_eq!(candidates.count_in_progress(), 2);
+
+        // Segment ends!
+        candidates.check_conditions(&state, || state.snap());
+        candidates.abort_in_progress();
+
+        let extracted = candidates.extract_candidates();
+        assert_eq!(extracted.len(), 1);
+        assert_eq!(
+            extracted[0],
+            ApcCandidate {
+                remaining_instr_count: 0,
+                apc: short_low_priority,
+                snapshot: short_snapshot,
+                status: CandidateStatus::Done(short_final_snapshot)
             }
         );
     }
