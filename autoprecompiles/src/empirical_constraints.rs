@@ -1,5 +1,5 @@
+use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
-use std::collections::{btree_map::Entry, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
 
@@ -147,59 +147,6 @@ impl EmpiricalConstraints {
                 })
                 .map(|(block_pc, classes)| (*block_pc, classes.clone()))
                 .collect(),
-            pc_counts: self.pc_counts.clone(),
-            debug_info: self.debug_info.clone(),
-        }
-    }
-
-    pub fn filter_for_trace_cells(self, base_pc: u32, trace_cells: HashSet<BlockCell>) -> Self {
-        let max_instruction_index = trace_cells
-            .iter()
-            .map(|cell| cell.instruction_idx)
-            .max()
-            .unwrap_or(0);
-        let column_ranges_by_pc = self
-            .column_ranges_by_pc
-            .into_iter()
-            // TODO: This should be a separate method.
-            .filter(|(pc, _)| *pc >= base_pc && *pc <= base_pc + (max_instruction_index * 4) as u32)
-            .map(|(pc, ranges)| {
-                let ranges = ranges
-                    .into_iter()
-                    .enumerate()
-                    .filter_map(|(col_index, range)| {
-                        trace_cells
-                            .contains(&BlockCell::new(((pc - base_pc) / 4) as usize, col_index))
-                            .then_some(range)
-                    })
-                    .collect();
-                (pc, ranges)
-            })
-            .collect();
-        let filtered_equivalence_classes_by_block = self
-            .equivalence_classes_by_block
-            .into_iter()
-            .map(|(block_pc, partition)| {
-                let partition = partition
-                    .iter()
-                    .map(|equivalence_class| {
-                        equivalence_class
-                            .iter()
-                            .filter(|cell| trace_cells.contains(cell))
-                            .cloned()
-                            .collect()
-                    })
-                    .filter(|equivalence_class: &EquivalenceClass<BlockCell>| {
-                        !equivalence_class.is_empty()
-                    })
-                    .collect::<Partition<BlockCell>>();
-                (block_pc, partition)
-            })
-            .collect();
-
-        EmpiricalConstraints {
-            column_ranges_by_pc,
-            equivalence_classes_by_block: filtered_equivalence_classes_by_block,
             pc_counts: self.pc_counts.clone(),
             debug_info: self.debug_info.clone(),
         }
