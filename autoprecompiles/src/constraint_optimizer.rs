@@ -95,27 +95,11 @@ pub fn optimize_constraints<
     stats_logger.log("rule-based optimization", &constraint_system);
 
     // At this point, we throw away the index and only keep the constraint system, since the rest of the optimisations are defined on the system alone
-    let mut constraint_system: ConstraintSystem<P, V> = constraint_system.into();
+    let constraint_system: ConstraintSystem<P, V> = constraint_system.into();
 
-    let bus_inter_count = constraint_system.bus_interactions.len();
-    for index in 0..bus_inter_count {
-        let bus_inter = &mut constraint_system.bus_interactions[index];
-        for field in bus_inter.fields_mut() {
-            if field.try_to_known().is_some() {
-                continue;
-            }
-            if let Some(v) = solver.is_expression_constant(field) {
-                let constr = AlgebraicConstraint::assert_eq(
-                    field.clone(),
-                    GroupedExpression::from_number(v),
-                );
-                *field = GroupedExpression::from_number(v);
-                constraint_system.algebraic_constraints.push(constr);
-            }
-        }
-    }
+    let constraint_system = substitute_bus_interaction_fields(solver, constraint_system);
     stats_logger.log(
-        "substituting expressions in bus interactions",
+        "substituting fields in bus interactions",
         &constraint_system,
     );
 
@@ -134,6 +118,36 @@ pub fn optimize_constraints<
     );
 
     Ok(constraint_system)
+}
+
+/// Tries to replace each bus interaction field by a constant, if that expression
+/// is known to be constant to the solver.
+/// For each such field, also adds an algebraic constraint asserting that the field
+/// expression is equal to the constant, because this is needed for soundness in some
+/// situations.
+/// For simple situations, this constraint will be optimizer away in subsequent stages.
+fn substitute_bus_interaction_fields<P: FieldElement, V: Ord + Clone + Eq + Hash + Display>(
+    solver: &mut impl Solver<P, V>,
+    mut constraint_system: ConstraintSystem<P, V>,
+) -> ConstraintSystem<P, V> {
+    for field in constraint_system
+        .bus_interactions
+        .iter_mut()
+        .flat_map(|bi| bi.fields_mut())
+    {
+        // If we have an expression of the form `a * x + b` that is known to be constant,
+        // then we would already know the value of `x`.
+        if field.is_affine() && field.linear_components().len() <= 1 {
+            continue;
+        }
+        if let Some(v) = solver.is_expression_constant(field) {
+            let constr =
+                AlgebraicConstraint::assert_eq(field.clone(), GroupedExpression::from_number(v));
+            *field = GroupedExpression::from_number(v);
+            constraint_system.algebraic_constraints.push(constr);
+        }
+    }
+    constraint_system
 }
 
 /// Performs some very easy simplifications that only remove constraints.
