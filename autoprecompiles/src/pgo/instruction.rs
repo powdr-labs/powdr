@@ -7,7 +7,7 @@ use itertools::Itertools;
 
 use crate::{
     adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, PgoAdapter},
-    blocks::BasicBlock,
+    blocks::Block,
     execution_profile::ExecutionProfile,
     pgo::create_apcs_for_all_blocks,
     PowdrConfig,
@@ -32,7 +32,7 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
 
     fn create_apcs_with_pgo(
         &self,
-        blocks: Vec<BasicBlock<<Self::Adapter as Adapter>::Instruction>>,
+        blocks: Vec<Block<<Self::Adapter as Adapter>::Instruction>>,
         // execution count of blocks (indexes into the `blocks` vec)
         block_exec_count: Option<HashMap<usize, u32>>,
         config: &PowdrConfig,

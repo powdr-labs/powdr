@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     adapter::{Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig, PgoAdapter},
-    blocks::BasicBlock,
+    blocks::Block,
     evaluation::EvaluationResult,
     execution_profile::ExecutionProfile,
     PowdrConfig,
@@ -54,7 +54,7 @@ pub struct ApcCandidateJsonExport {
     // execution_frequency
     pub execution_frequency: usize,
     // original instructions (pretty printed)
-    pub original_block: BasicBlock<String>,
+    pub original_block: Block<String>,
     // before and after optimization stats
     pub stats: EvaluationResult,
     // width before optimisation, used for software version cells in effectiveness plot
@@ -97,7 +97,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
 
     fn create_apcs_with_pgo(
         &self,
-        blocks: Vec<BasicBlock<<Self::Adapter as Adapter>::Instruction>>,
+        blocks: Vec<Block<<Self::Adapter as Adapter>::Instruction>>,
         block_exec_count: Option<HashMap<usize, u32>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,

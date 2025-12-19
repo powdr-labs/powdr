@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use crate::{
     adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, PgoAdapter},
-    blocks::BasicBlock,
+    blocks::Block,
     pgo::create_apcs_for_all_blocks,
     PowdrConfig,
 };
@@ -25,7 +25,7 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
 
     fn create_apcs_with_pgo(
         &self,
-        mut blocks: Vec<BasicBlock<<Self::Adapter as Adapter>::Instruction>>,
+        mut blocks: Vec<Block<<Self::Adapter as Adapter>::Instruction>>,
         _block_exec_count: Option<HashMap<usize, u32>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
