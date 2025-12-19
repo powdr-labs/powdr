@@ -507,20 +507,18 @@ fn superblock_pc_constraints<A: Adapter>(
         <<A as Adapter>::ExecutionState as ExecutionState>::Value,
     >,
 > {
-    let mut res = vec![];
-    for (insn, pc) in block.other_pcs.clone() {
+    block.other_pcs.iter().map(|(insn, pc)| {
         let left = OptimisticExpression::Literal(OptimisticLiteral {
-            instr_idx: insn,
+            instr_idx: *insn,
             val: LocalOptimisticLiteral::Pc,
         });
-        let Ok(pc_value) = <<A as Adapter>::ExecutionState as ExecutionState>::Value::try_from(pc)
+        let Ok(pc_value) = <<A as Adapter>::ExecutionState as ExecutionState>::Value::try_from(*pc)
         else {
             panic!("PC doesn't fit in Value type");
         };
         let right = OptimisticExpression::Number(pc_value);
-        res.push(OptimisticConstraint { left, right });
-    }
-    res
+        OptimisticConstraint { left, right }
+    }).collect()
 }
 
 fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
