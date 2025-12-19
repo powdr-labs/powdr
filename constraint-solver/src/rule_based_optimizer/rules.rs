@@ -310,7 +310,9 @@ crepe! {
       MinimalRangeAlgebraicConstraintCandidate(e),
       ExpressionSumHeadTail(e, head, tail);
 
-
+    // If algebraic constraint e has range constraint [0, a] with a < -1,
+    // a = head + tail with head, tail >= 0,
+    // then both head and tail must be zero.
     // If head is an linear expression coeff * var,
     // var can be set to zero.
     struct MinimalRangeZeroDeducible<T: FieldElement>(Expr, Expr,Expr, Var, T);
