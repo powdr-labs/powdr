@@ -174,7 +174,7 @@ crepe! {
       Env(env),
       for v in env.single_occurrence_variables().cloned();
     // SingleOccurrenceVariable(e, v) => v occurs only once in e and e is the
-    // only constraint in appears in.
+    // only constraint it appears in.
     struct SingleOccurrenceVariableInExpr(Expr, Var);
     SingleOccurrenceVariableInExpr(e, v) <-
       SingleOccurrenceVariable(v),
@@ -203,7 +203,7 @@ crepe! {
     // where v1 and v2 are different variables that only occur here and only once.
     struct FreeVariableCombinationCandidate<T: FieldElement>(Expr, T, Var, Expr, T, Var, Expr);
     FreeVariableCombinationCandidate(e, coeff1, v1, x1, coeff2, v2, x2) <-
-      // If we only consider he largest variable pair we could miss optimization opportunities,
+      // If we only consider the largest variable pair we could miss optimization opportunities,
       // but at least the replacement becomes deterministic.
       LargestSingleOccurrenceVariablePairInExpr(e, v1, v2),
       AlgebraicConstraint(e),
