@@ -94,6 +94,11 @@ crepe! {
       Env(env),
       let Some((coeff, var, offset)) = env.try_to_affine(e);
 
+    struct LinearExpression<T: FieldElement>(Expr, Var, T);
+    LinearExpression(e, var, coeff) <-
+      AffineExpression(e, coeff, var, offset),
+      (offset.is_zero());
+
     // HasProductSummand(e, l, r) => e contains a summand of the form l * r
     struct HasProductSummand(Expr, Expr, Expr);
     HasProductSummand(e, l, r) <-
@@ -288,14 +293,14 @@ crepe! {
 
     struct ExpressionWithZeroMinimalRange(Expr);
     ExpressionWithZeroMinimalRange(head) <-
-    ExpressionSumHeadTail(_, head, _),
-    RangeConstraintOnExpression(head, head_rc),
-    (head_rc.range().0 == T::zero());
+      ExpressionSumHeadTail(_, head, _),
+      RangeConstraintOnExpression(head, head_rc),
+      (head_rc.range().0 == T::zero());
 
     ExpressionWithZeroMinimalRange(tail) <-
-    ExpressionSumHeadTail(_, _, tail),
-    RangeConstraintOnExpression(tail, tail_rc),
-    (tail_rc.range().0 == T::zero());
+      ExpressionSumHeadTail(_, _, tail),
+      RangeConstraintOnExpression(tail, tail_rc),
+      (tail_rc.range().0 == T::zero());
 
 
 
@@ -312,7 +317,7 @@ crepe! {
       MinimalRangeAlgebraicConstraintCandidate(e),
       RangeConstraintOnExpression(e, e_rc),
       (e_rc.range().1 < T::from(-1)),
-       ExpressionSumHeadTail(e, head, tail),
+      ExpressionSumHeadTail(e, head, tail),
       ExpressionWithZeroMinimalRange(head),
       ExpressionWithZeroMinimalRange(tail);
 
