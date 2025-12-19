@@ -22,11 +22,16 @@ pub struct OptimisticConstraints<A, V> {
     constraints_to_check_by_step: HashMap<usize, Vec<OptimisticConstraint<A, V>>>,
 }
 
-impl<A: std::hash::Hash + PartialEq + Eq + Copy, V> OptimisticConstraints<A, V> {
+impl<A, V> OptimisticConstraints<A, V> {
     pub fn empty() -> Arc<Self> {
-        Self::from_constraints(vec![])
+        Arc::new(Self {
+            fetches_by_step: Default::default(),
+            constraints_to_check_by_step: Default::default(),
+        })
     }
+}
 
+impl<A: std::hash::Hash + PartialEq + Eq + Copy, V> OptimisticConstraints<A, V> {
     pub fn from_constraints(constraints: Vec<OptimisticConstraint<A, V>>) -> Arc<Self> {
         // Extract each constraint together with the literals it references and the step
         // at which the constraint becomes evaluable (i.e. when all referenced literals
@@ -79,7 +84,7 @@ impl<A: std::hash::Hash + PartialEq + Eq + Copy, V> OptimisticConstraints<A, V> 
 /// The expected use is to
 /// - store the APC's set of optimistic constraints in the program
 /// - when an APC is executed, create an instance of this evaluator over the APC's optimistic constraints
-/// - as we go through the original instructions, call `OptimisticConstraintEvaluator::try_next`
+/// - as we go through the original instructions, call `OptimisticConstraintEvaluator::try_next_execution_step`
 /// - if a constraint fails, stop checking the constraints
 #[derive(Debug, PartialEq)]
 pub struct OptimisticConstraintEvaluator<E: ExecutionState> {
