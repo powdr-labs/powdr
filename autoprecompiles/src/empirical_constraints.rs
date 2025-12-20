@@ -242,8 +242,19 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
             .map(|r| (*poly_id_to_block_cell.get(&r.id).unwrap(), r.clone()))
             .collect::<BTreeMap<_, _>>();
 
+        let log = block.start_pc == 0x201ecc;
         let optimistic_literals = if only_memory_limbs {
-            Some(optimistic_literals::<A>(block, vm_config, degree_bound))
+            let optimistic_literals = optimistic_literals::<A>(block, vm_config, degree_bound);
+            if log {
+                tracing::info!(
+                    "Optimistic literals for block starting at PC {:#x}:",
+                    block.start_pc
+                );
+                for (k, v) in optimistic_literals.iter() {
+                    tracing::info!("  {k} => {v:?}");
+                }
+            }
+            Some(optimistic_literals)
         } else {
             None
         };
@@ -360,15 +371,19 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
             .get(&self.block.start_pc)
         {
             for equivalence_class in equivalence_classes.iter() {
-                // TODO: Need to do quadratic constraints here if we filter like we are above.
-                let first = equivalence_class.first().unwrap();
-                let first_ref = self.get_algebraic_reference(first);
-                for other in equivalence_class.iter().skip(1) {
-                    let other_ref = self.get_algebraic_reference(other);
-                    constraints.push((
-                        AlgebraicExpression::Reference(first_ref.clone()),
-                        AlgebraicExpression::Reference(other_ref.clone()),
-                    ));
+                // TODO: Avoid quadratic number of constraints here. Currently needed because of how we filter later.
+                for first in equivalence_class.iter() {
+                    let first_ref = self.get_algebraic_reference(first);
+                    for other in equivalence_class.iter() {
+                        if first == other {
+                            continue;
+                        }
+                        let other_ref = self.get_algebraic_reference(other);
+                        constraints.push((
+                            AlgebraicExpression::Reference(first_ref.clone()),
+                            AlgebraicExpression::Reference(other_ref.clone()),
+                        ));
+                    }
                 }
             }
         }
@@ -429,9 +444,6 @@ fn optimistic_literals<A: Adapter>(
                 .iter()
                 // Filter for memory bus interactions
                 .filter_map(|bus_interaction| {
-                    if log {
-                        tracing::info!("  Bus interaction: {bus_interaction}");
-                    }
                     let bus_interaction =
                         symbolic_bus_interaction_to_bus_interaction(bus_interaction);
                     A::MemoryBusInteraction::try_from_bus_interaction(
@@ -451,7 +463,9 @@ fn optimistic_literals<A: Adapter>(
 
                     if log {
                         tracing::info!(
-                            "  Memory bus interaction: address={address:?}, data={data:?}"
+                            "  Memory bus interaction: address=({}), data=({})",
+                            address.iter().map(ToString::to_string).join(", "),
+                            data.iter().map(ToString::to_string).join(", ")
                         );
                     }
 
@@ -466,6 +480,14 @@ fn optimistic_literals<A: Adapter>(
                         .iter()
                         .map(|expr| expr.try_to_simple_unknown())
                         .collect::<Option<Vec<_>>>()?;
+
+                    if log {
+                        tracing::info!(
+                            "    Using: address=({}), data=({})",
+                            concrete_address.iter().map(ToString::to_string).join(", "),
+                            data.iter().map(ToString::to_string).join(", ")
+                        );
+                    }
 
                     let instruction_idx = match bus_interaction.op() {
                         MemoryOp::GetPrevious => instruction_idx,
