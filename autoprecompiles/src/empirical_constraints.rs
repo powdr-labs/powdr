@@ -384,19 +384,32 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
             .get(&self.block.start_pc)
         {
             for equivalence_class in equivalence_classes.iter() {
-                // TODO: Avoid quadratic number of constraints here. Currently needed because of how we filter later.
-                for first in equivalence_class.iter() {
-                    let first_ref = self.get_algebraic_reference(first);
-                    for other in equivalence_class.iter() {
-                        if first == other {
-                            continue;
-                        }
-                        let other_ref = self.get_algebraic_reference(other);
-                        constraints.push((
-                            AlgebraicExpression::Reference(first_ref.clone()),
-                            AlgebraicExpression::Reference(other_ref.clone()),
-                        ));
-                    }
+                let equivalence_class = if let Some(optimistic_literals) = &self.optimistic_literals
+                {
+                    equivalence_class
+                        .iter()
+                        .filter(|cell| {
+                            let reference = self.get_algebraic_reference(cell);
+                            optimistic_literals.contains_key(&reference)
+                        })
+                        .cloned()
+                        .collect()
+                } else {
+                    equivalence_class.clone()
+                };
+
+                if equivalence_class.len() < 2 {
+                    continue;
+                }
+
+                let first = equivalence_class.iter().next().unwrap();
+                let first_ref = self.get_algebraic_reference(first);
+                for other in equivalence_class.iter().skip(1) {
+                    let other_ref = self.get_algebraic_reference(other);
+                    constraints.push((
+                        AlgebraicExpression::Reference(first_ref.clone()),
+                        AlgebraicExpression::Reference(other_ref.clone()),
+                    ));
                 }
             }
         }
