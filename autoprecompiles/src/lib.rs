@@ -418,7 +418,7 @@ pub struct ColumnAllocator {
     /// For each original air, for each original column index, the associated poly_id in the APC air
     subs: Vec<Vec<u64>>,
     /// The next poly_id to issue
-    next_poly_id: u64,
+    pub next_poly_id: u64,
 }
 
 impl ColumnAllocator {
@@ -449,6 +449,8 @@ pub fn build<A: Adapter>(
         &block,
         vm_config.instruction_handler,
         &vm_config.bus_map,
+        // TODO: Why 3?!
+        3,
     );
 
     // Generate constraints for optimistic precompiles.

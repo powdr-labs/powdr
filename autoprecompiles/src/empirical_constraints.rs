@@ -1,5 +1,5 @@
 use std::collections::btree_map::Entry;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
 
@@ -238,7 +238,10 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
                 })
             })
             .collect::<BTreeMap<_, _>>();
+        let columns = columns.collect::<HashSet<_>>();
         let algebraic_references = columns
+            .iter()
+            .cloned()
             .map(|r| (*poly_id_to_block_cell.get(&r.id).unwrap(), r.clone()))
             .collect::<BTreeMap<_, _>>();
 
@@ -251,7 +254,8 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
                     block.start_pc
                 );
                 for (k, v) in optimistic_literals.iter() {
-                    tracing::info!("  {k} => {v:?}");
+                    let original_column = columns.get(k).unwrap();
+                    tracing::info!("  {k} = {original_column} => {v:?}");
                 }
             }
             Some(optimistic_literals)
@@ -306,7 +310,7 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
                     .into_iter()
                     .chain(equivalence_constraints)
                     .map(|(left, right)| SymbolicConstraint { expr: left - right })
-                    .collect(),
+                    .collect_vec(),
                 Vec::new(),
             )
         } else {
@@ -325,6 +329,15 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
                 })
                 .unzip()
         };
+
+        let log = self.block.start_pc == 0x201ecc;
+        if log {
+            tracing::info!("Final constraints:");
+            for constraint in symbolic_constraints.iter() {
+                tracing::info!("  {constraint}");
+            }
+        }
+
         Constraints {
             symbolic_constraints,
             execution_constraints,
@@ -410,6 +423,7 @@ fn optimistic_literals<A: Adapter>(
     if log {
         tracing::info!("Memory bus ID {memory_bus_id} ");
     }
+    let mut next_global_idx: u64 = 3;
     block
         .statements
         .iter()
@@ -427,7 +441,9 @@ fn optimistic_literals<A: Adapter>(
                 &dummy_block,
                 vm_config.instruction_handler,
                 &vm_config.bus_map,
+                next_global_idx,
             );
+            next_global_idx = column_allocator.next_poly_id;
 
             let (symbolic_machine, _column_allocator) = optimize::<A>(
                 symbolic_machine.clone(),
