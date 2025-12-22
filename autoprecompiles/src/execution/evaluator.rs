@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -89,7 +89,7 @@ impl<A: std::hash::Hash + PartialEq + Eq + Copy, V> OptimisticConstraints<A, V> 
 #[derive(Debug)]
 pub struct OptimisticConstraintEvaluator<A, V> {
     /// The constraints that all need to be verified
-    constraints: Arc<OptimisticConstraints<A, V>>,
+    constraints: OptimisticConstraints<A, V>,
     /// The current instruction index in the execution
     instruction_index: usize,
     /// The values from previous intermediate states which we still need
@@ -100,7 +100,7 @@ pub struct OptimisticConstraintEvaluator<A, V> {
 pub struct OptimisticConstraintFailed;
 
 impl<A, V> OptimisticConstraintEvaluator<A, V> {
-    pub fn new(constraints: Arc<OptimisticConstraints<A, V>>) -> Self {
+    pub fn new(constraints: OptimisticConstraints<A, V>) -> Self {
         Self {
             constraints,
             instruction_index: 0,
@@ -118,10 +118,9 @@ impl<A, V> OptimisticConstraintEvaluator<A, V> {
         A: std::hash::Hash + PartialEq + Eq + Copy,
         V: Copy,
     {
-        let constraints_ref = self.constraints.as_ref();
-
         // Get the constraints that can first be checked at this step
-        let constraints = constraints_ref
+        let constraints = self
+            .constraints
             .constraints_to_check_by_step
             .get(&self.instruction_index);
 
@@ -138,7 +137,10 @@ impl<A, V> OptimisticConstraintEvaluator<A, V> {
         }
 
         // Get the values we need to store from the state to check constraints in the future
-        let fetches = constraints_ref.fetches_by_step.get(&self.instruction_index);
+        let fetches = self
+            .constraints
+            .fetches_by_step
+            .get(&self.instruction_index);
 
         if let Some(fetches) = fetches {
             // fetch the values them in memory
@@ -270,7 +272,7 @@ mod tests {
         OptimisticConstraint { left, right }
     }
 
-    fn equality_constraints() -> Arc<OptimisticConstraints<u8, u8>> {
+    fn equality_constraints() -> OptimisticConstraints<u8, u8> {
         OptimisticConstraints::from_constraints(vec![
             eq(mem(0, 0), mem(0, 1)),
             eq(mem(1, 0), mem(1, 1)),
@@ -278,15 +280,15 @@ mod tests {
         ])
     }
 
-    fn cross_step_memory_constraint() -> Arc<OptimisticConstraints<u8, u8>> {
+    fn cross_step_memory_constraint() -> OptimisticConstraints<u8, u8> {
         OptimisticConstraints::from_constraints(vec![eq(mem(0, 0), mem(1, 1))])
     }
 
-    fn cross_step_pc_constraint() -> Arc<OptimisticConstraints<u8, u8>> {
+    fn cross_step_pc_constraint() -> OptimisticConstraints<u8, u8> {
         OptimisticConstraints::from_constraints(vec![eq(pc(0), pc(1))])
     }
 
-    fn initial_to_final_constraint(final_instr_idx: usize) -> Arc<OptimisticConstraints<u8, u8>> {
+    fn initial_to_final_constraint(final_instr_idx: usize) -> OptimisticConstraints<u8, u8> {
         OptimisticConstraints::from_constraints(vec![eq(mem(0, 0), mem(final_instr_idx, 1))])
     }
 

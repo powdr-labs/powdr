@@ -458,7 +458,7 @@ unsafe fn execute_e12_impl<F: PrimeField32, CTX: ExecutionCtxTrait>(
     exec_state: &mut VmExecState<F, GuestMemory, CTX>,
 ) {
     let mut optimistic_constraint_evalutator =
-        OptimisticConstraintEvaluator::new(Arc::new(pre_compute.optimistic_constraints.clone()));
+        OptimisticConstraintEvaluator::new(pre_compute.optimistic_constraints.clone());
     // Check the state before execution
     assert!(optimistic_constraint_evalutator
         .try_next_execution_step(&OpenVmExecutionState::from(&exec_state.vm_state))
