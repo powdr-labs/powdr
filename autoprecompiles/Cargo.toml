@@ -26,6 +26,7 @@ metrics = "0.23.0"
 deepsize2 = "0.1.0"
 derive_more = "0.99.17"
 priority-queue = "2.7.0"
+derivative = "2.2.0"
 
 [package.metadata.cargo-udeps.ignore]
 development = ["env_logger"]

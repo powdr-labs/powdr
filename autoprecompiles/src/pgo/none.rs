@@ -1,20 +1,15 @@
 use std::collections::{BTreeMap, HashMap};
 
+use derivative::Derivative;
+
 use crate::{
     PowdrConfig, adapter::{Adapter, AdapterApcWithStats, AdapterBlock, AdapterVmConfig, PgoAdapter}, pgo::create_apcs_for_all_blocks
 };
 
+#[derive(Derivative)]
+#[derivative(Default(bound = ""))]
 pub struct NonePgo<A> {
     _marker: std::marker::PhantomData<A>,
-}
-
-// TODO: derive with explicit bounds
-impl<A> Default for NonePgo<A> {
-    fn default() -> Self {
-        Self {
-            _marker: std::marker::PhantomData,
-        }
-    }
 }
 
 impl<A: Adapter> PgoAdapter for NonePgo<A> {
