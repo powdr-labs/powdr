@@ -1,20 +1,15 @@
 use std::cmp::Ordering;
 use std::sync::Arc;
 
+use derivative::Derivative;
 use itertools::Itertools;
 
 use crate::execution::{ExecutionState, OptimisticConstraintEvaluator, OptimisticConstraints};
 
+#[derive(Derivative)]
+#[derivative(Default(bound = ""))]
 pub struct ApcCandidates<E: ExecutionState, A, S> {
     candidates: Vec<ApcCandidate<E, A, S>>,
-}
-
-impl<E: ExecutionState, A, S> Default for ApcCandidates<E, A, S> {
-    fn default() -> Self {
-        Self {
-            candidates: Default::default(),
-        }
-    }
 }
 
 impl<E: ExecutionState, A: Apc, S: Snapshot> ApcCandidates<E, A, S> {
