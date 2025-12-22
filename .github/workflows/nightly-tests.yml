@@ -162,43 +162,43 @@ jobs:
           mv metrics.json $RES_DIR/apc000.json
           python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc000.png $RES_DIR/apc000.json > $RES_DIR/trace_cells_apc000.txt
 
-          # # prove with 3 APCs
-          # MODE="prove-stark" APC=3 ./run.sh || exit 1
-          # # remove apc cache to not interfere with the next runs
-          # rm -rf apc-cache
-          # echo "Finished proving with 3 APCs"
-          # mv metrics.json $RES_DIR/apc003.json
-          # python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc003.png $RES_DIR/apc003.json > $RES_DIR/trace_cells_apc003.txt
+          # prove with 3 APCs
+          APC=3 ./run.sh --mode prove-stark || exit 1
+          # remove apc cache to not interfere with the next runs
+          rm -rf apc-cache
+          echo "Finished proving with 3 APCs"
+          mv metrics.json $RES_DIR/apc003.json
+          python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc003.png $RES_DIR/apc003.json > $RES_DIR/trace_cells_apc003.txt
 
-          # # prove with 10 APCs
-          # MODE="prove-stark" APC=10 ./run.sh || exit 1
-          # # remove apc cache to not interfere with the next runs
-          # rm -rf apc-cache
-          # echo "Finished proving with 10 APCs"
-          # mv metrics.json $RES_DIR/apc010.json
-          # python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc010.png $RES_DIR/apc010.json > $RES_DIR/trace_cells_apc010.txt
+          # prove with 10 APCs
+          APC=10 ./run.sh --mode prove-stark || exit 1
+          # remove apc cache to not interfere with the next runs
+          rm -rf apc-cache
+          echo "Finished proving with 10 APCs"
+          mv metrics.json $RES_DIR/apc010.json
+          python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc010.png $RES_DIR/apc010.json > $RES_DIR/trace_cells_apc010.txt
 
-          # # prove with 30 APCs
-          # MODE="prove-stark" APC=30 ./run.sh || exit 1
-          # # remove apc cache to not interfere with the next runs
-          # rm -rf apc-cache
-          # echo "Finished proving with 30 APCs"
-          # mv metrics.json $RES_DIR/apc030.json
-          # python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc030.png $RES_DIR/apc030.json > $RES_DIR/trace_cells_apc030.txt
+          # prove with 30 APCs
+          APC=30 ./run.sh --mode prove-stark || exit 1
+          # remove apc cache to not interfere with the next runs
+          rm -rf apc-cache
+          echo "Finished proving with 30 APCs"
+          mv metrics.json $RES_DIR/apc030.json
+          python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc030.png $RES_DIR/apc030.json > $RES_DIR/trace_cells_apc030.txt
 
-          # # prove with 100 APCs, recording mem usage
-          # MODE="prove-stark" APC=100 psrecord --include-children --interval 1 --log $RES_DIR/psrecord.csv --log-format csv --plot $RES_DIR/psrecord.png "./run.sh" || exit 1
-          # # remove apc cache to not interfere with the next runs
-          # rm -rf apc-cache
-          # echo "Finished proving with 100 APCs"
-          # mv metrics.json $RES_DIR/apc100.json
-          # python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc100.png $RES_DIR/apc100.json > $RES_DIR/trace_cells_apc100.txt
+          # prove with 100 APCs, recording mem usage
+          APC=100 psrecord --include-children --interval 1 --log $RES_DIR/psrecord.csv --log-format csv --plot $RES_DIR/psrecord.png "./run.sh --mode prove-stark" || exit 1
+          # remove apc cache to not interfere with the next runs
+          rm -rf apc-cache
+          echo "Finished proving with 100 APCs"
+          mv metrics.json $RES_DIR/apc100.json
+          python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc100.png $RES_DIR/apc100.json > $RES_DIR/trace_cells_apc100.txt
 
-          # # The APC candidates would be the same for all runs, so just keep the last one
-          # mv apcs/apc_candidates.json $RES_DIR/apc_candidates.json
+          # The APC candidates would be the same for all runs, so just keep the last one
+          mv apcs/apc_candidates.json $RES_DIR/apc_candidates.json
 
-          # python ../openvm/scripts/basic_metrics.py --csv $RES_DIR/apc000.json $RES_DIR/apc003.json $RES_DIR/apc010.json $RES_DIR/apc030.json $RES_DIR/apc100.json > $RES_DIR/basic_metrics.csv
-          # python ../autoprecompiles/scripts/plot_effectiveness.py $RES_DIR/apc_candidates.json --output $RES_DIR/effectiveness.png
+          python ../openvm/scripts/basic_metrics.py --csv $RES_DIR/apc000.json $RES_DIR/apc003.json $RES_DIR/apc010.json $RES_DIR/apc030.json $RES_DIR/apc100.json > $RES_DIR/basic_metrics.csv
+          python ../autoprecompiles/scripts/plot_effectiveness.py $RES_DIR/apc_candidates.json --output $RES_DIR/effectiveness.png
 
           mv $RES_DIR ../results/
 
