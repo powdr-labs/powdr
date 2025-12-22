@@ -155,12 +155,12 @@ jobs:
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
 
           # prove with no APCs
-          MODE="prove-stark" APC=0 ./run.sh || exit 1
+          APC=0 ./run.sh --mode prove-stark || exit 1
           # remove apc cache to not interfere with the next runs
           rm -rf apc-cache
           echo "Finished proving with no APCs"
           mv metrics.json $RES_DIR/apc000.json
-          # python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc000.png $RES_DIR/apc000.json > $RES_DIR/trace_cells_apc000.txt
+          python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc000.png $RES_DIR/apc000.json > $RES_DIR/trace_cells_apc000.txt
 
           # # prove with 3 APCs
           # MODE="prove-stark" APC=3 ./run.sh || exit 1
