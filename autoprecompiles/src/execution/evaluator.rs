@@ -109,7 +109,10 @@ impl<A, V> OptimisticConstraintEvaluator<A, V> {
     }
 
     /// Check all constraints that can be checked at this stage, returning a new instance iff they are verified
-    pub fn try_next_execution_step<E>(&mut self, state: &E) -> Result<(), OptimisticConstraintFailed>
+    pub fn try_next_execution_step<E>(
+        &mut self,
+        state: &E,
+    ) -> Result<(), OptimisticConstraintFailed>
     where
         E: ExecutionState<RegisterAddress = A, Value = V>,
         A: std::hash::Hash + PartialEq + Eq + Copy,
@@ -289,8 +292,7 @@ mod tests {
 
     #[test]
     fn constraints_succeed_when_all_states_match() {
-        let evaluator: OptimisticConstraintEvaluator<u8, u8> =
-            OptimisticConstraintEvaluator::new(equality_constraints());
+        let evaluator = OptimisticConstraintEvaluator::new(equality_constraints());
 
         let states = [
             TestExecutionState { mem: [0, 0], pc: 0 },
@@ -307,8 +309,7 @@ mod tests {
 
     #[test]
     fn checks_equality_constraints() {
-        let mut evaluator: OptimisticConstraintEvaluator<u8, u8> =
-            OptimisticConstraintEvaluator::new(equality_constraints());
+        let mut evaluator = OptimisticConstraintEvaluator::new(equality_constraints());
 
         let states = [
             (TestExecutionState { mem: [0, 0], pc: 0 }, true),
@@ -326,8 +327,7 @@ mod tests {
 
     #[test]
     fn reuses_values_from_previous_steps() {
-        let mut evaluator: OptimisticConstraintEvaluator<u8, u8> =
-            OptimisticConstraintEvaluator::new(cross_step_memory_constraint());
+        let mut evaluator = OptimisticConstraintEvaluator::new(cross_step_memory_constraint());
 
         let first_state = TestExecutionState { mem: [5, 0], pc: 0 };
         evaluator.try_next_execution_step(&first_state).unwrap();
@@ -339,8 +339,7 @@ mod tests {
 
     #[test]
     fn detects_mismatch_for_stored_values() {
-        let mut evaluator: OptimisticConstraintEvaluator<u8, u8> =
-            OptimisticConstraintEvaluator::new(cross_step_memory_constraint());
+        let mut evaluator = OptimisticConstraintEvaluator::new(cross_step_memory_constraint());
 
         let first_state = TestExecutionState { mem: [9, 0], pc: 0 };
         evaluator.try_next_execution_step(&first_state).unwrap();
@@ -352,8 +351,7 @@ mod tests {
 
     #[test]
     fn compares_program_counter_across_steps() {
-        let mut evaluator: OptimisticConstraintEvaluator<u8, u8> =
-            OptimisticConstraintEvaluator::new(cross_step_pc_constraint());
+        let mut evaluator = OptimisticConstraintEvaluator::new(cross_step_pc_constraint());
 
         let first_state = TestExecutionState { mem: [0; 2], pc: 7 };
         evaluator.try_next_execution_step(&first_state).unwrap();
@@ -361,8 +359,7 @@ mod tests {
         let second_state = TestExecutionState { mem: [0; 2], pc: 7 };
         assert!(evaluator.try_next_execution_step(&second_state).is_ok());
 
-        let mut failing_evaluator: OptimisticConstraintEvaluator<u8, u8> =
-            OptimisticConstraintEvaluator::new(cross_step_pc_constraint());
+        let mut failing_evaluator = OptimisticConstraintEvaluator::new(cross_step_pc_constraint());
         failing_evaluator
             .try_next_execution_step(&first_state)
             .unwrap();
@@ -376,7 +373,7 @@ mod tests {
     #[test]
     fn links_initial_and_final_state() {
         let final_step = 2;
-        let mut evaluator: OptimisticConstraintEvaluator<u8, u8> =
+        let mut evaluator =
             OptimisticConstraintEvaluator::new(initial_to_final_constraint(final_step));
 
         let initial_state = TestExecutionState {
@@ -394,7 +391,7 @@ mod tests {
         };
         assert!(evaluator.try_next_execution_step(&final_state).is_ok());
 
-        let mut failing_evaluator: OptimisticConstraintEvaluator<u8, u8> =
+        let mut failing_evaluator =
             OptimisticConstraintEvaluator::new(initial_to_final_constraint(final_step));
         failing_evaluator
             .try_next_execution_step(&initial_state)
@@ -412,8 +409,7 @@ mod tests {
     #[test]
     fn compares_memory_to_literal_value() {
         let constraints = OptimisticConstraints::from_constraints(vec![eq(mem(0, 0), value(99))]);
-        let mut evaluator: OptimisticConstraintEvaluator<u8, u8> =
-            OptimisticConstraintEvaluator::new(constraints);
+        let mut evaluator = OptimisticConstraintEvaluator::new(constraints);
 
         let passing_state = TestExecutionState {
             mem: [99, 0],
@@ -421,11 +417,9 @@ mod tests {
         };
         assert!(evaluator.try_next_execution_step(&passing_state).is_ok());
 
-        let mut failing_evaluator: OptimisticConstraintEvaluator<u8, u8> =
-            OptimisticConstraintEvaluator::new(OptimisticConstraints::from_constraints(vec![eq(
-                mem(0, 0),
-                value(10),
-            )]));
+        let mut failing_evaluator = OptimisticConstraintEvaluator::new(
+            OptimisticConstraints::from_constraints(vec![eq(mem(0, 0), value(10))]),
+        );
         let failing_state = TestExecutionState {
             mem: [12, 0],
             pc: 0,
