@@ -232,7 +232,7 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
     }
 
     /// Splits this expression into head and tail, i.e., `self = head + tail`
-    /// head is the first summand
+    /// head is the first summand, i.e., either the first quadratic term or the first linear term.
     pub fn try_split_head_tail(mut self) -> Option<(Self, Self)> {
         if !self.quadratic.is_empty() {
             let mut quadratic = self.quadratic.into_iter();

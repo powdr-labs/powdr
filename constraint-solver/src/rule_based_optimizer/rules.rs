@@ -286,61 +286,7 @@ crepe! {
       AlgebraicConstraint(e),
       Solvable(e, var, v);
 
-    ///////////////////////////////// MINIMAL RANGE //////////////////////////
 
-    // If algebraic constraint e has range constraint [0, a] with a < P,
-    // e = head + tail, and both head, tail >= 0,
-    // then both head and tail must be zero.
-    // If head is a linear expression coeff * var,
-    // var can be set to zero.
-    struct ExpressionWithZeroMinimalRange(Expr);
-    ExpressionWithZeroMinimalRange(head) <-
-      ExpressionSumHeadTail(_, head, _),
-      RangeConstraintOnExpression(head, head_rc),
-      (head_rc.range().0 == T::zero());
-
-    ExpressionWithZeroMinimalRange(tail) <-
-      ExpressionSumHeadTail(_, _, tail),
-      RangeConstraintOnExpression(tail, tail_rc),
-      (tail_rc.range().0 == T::zero());
-
-
-
-    // Find expression e that has range constraint [0, a] with a < P,
-    // e = head + tail, and both head, tail >= 0
-    struct MinimalRangeAlgebraicConstraintCandidate(Expr);
-    MinimalRangeAlgebraicConstraintCandidate(e) <-
-      ExpressionSumHeadTail(e, head, tail),
-      RangeConstraintOnExpression(e, e_rc),
-      (e_rc.range().1 < T::from(-1)),
-      ExpressionWithZeroMinimalRange(head),
-      ExpressionWithZeroMinimalRange(tail),
-      AlgebraicConstraint(e);
-
-    // Find tail of expression e that has range constraint [0, a] with a < P,
-    // e = head + tail, and both head, tail >= 0
-    // Tail must be zero and can be used to iteratively reduced.
-    MinimalRangeAlgebraicConstraintCandidate(tail) <-
-      MinimalRangeAlgebraicConstraintCandidate(e),
-      RangeConstraintOnExpression(e, e_rc),
-      (e_rc.range().1 < T::from(-1)),
-      ExpressionSumHeadTail(e, head, tail),
-      ExpressionWithZeroMinimalRange(head),
-      ExpressionWithZeroMinimalRange(tail);
-
-
-    struct MinimalRangeZeroDeducible<T: FieldElement>(Expr, Expr,Expr, Var, T);
-    MinimalRangeZeroDeducible(e, head, tail, var, coeff) <-
-      MinimalRangeAlgebraicConstraintCandidate(e),
-      ExpressionSumHeadTail(e, head, tail),
-      ExpressionWithZeroMinimalRange(head),
-      ExpressionWithZeroMinimalRange(tail),
-      RangeConstraintOnExpression(e, rc_e),
-      (rc_e.range().1 < T::from(-1)),
-      LinearExpression(head, var, coeff);
-
-    Assignment(var, T::zero()) <-
-    MinimalRangeZeroDeducible(_, _, _, var, _);
 
     ///////////////////////////////// OUTPUT ACTIONS //////////////////////////
 

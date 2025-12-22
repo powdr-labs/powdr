@@ -137,9 +137,6 @@ impl<T: FieldElement> Environment<T> {
         let db = self.expressions.borrow();
         let expr = db[expr].clone();
         drop(db);
-        if expr.linear_components().len() + expr.quadratic_components().len() < 2 {
-            return None;
-        }
         let (head, tail) = expr.try_split_head_tail()?;
         Some((self.insert_owned(head), self.insert_owned(tail)))
     }
