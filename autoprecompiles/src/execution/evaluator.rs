@@ -14,7 +14,7 @@ use crate::{
 };
 
 /// A collection of optimistic constraints over the intermediate execution states of a block, to be accessed in chronological order
-#[derive(Debug, Serialize, Deserialize, deepsize2::DeepSizeOf, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, deepsize2::DeepSizeOf, PartialEq, Clone)]
 pub struct OptimisticConstraints<A, V> {
     /// For each step, the execution values we need to remember for future constraints, excluding this step
     fetches_by_step: HashMap<usize, Vec<LocalOptimisticLiteral<A>>>,
@@ -23,16 +23,16 @@ pub struct OptimisticConstraints<A, V> {
 }
 
 impl<A, V> OptimisticConstraints<A, V> {
-    pub fn empty() -> Arc<Self> {
-        Arc::new(Self {
+    pub fn empty() -> Self {
+        Self {
             fetches_by_step: Default::default(),
             constraints_to_check_by_step: Default::default(),
-        })
+        }
     }
 }
 
 impl<A: std::hash::Hash + PartialEq + Eq + Copy, V> OptimisticConstraints<A, V> {
-    pub fn from_constraints(constraints: Vec<OptimisticConstraint<A, V>>) -> Arc<Self> {
+    pub fn from_constraints(constraints: Vec<OptimisticConstraint<A, V>>) -> Self {
         // Extract each constraint together with the literals it references and the step
         // at which the constraint becomes evaluable (i.e. when all referenced literals
         // are available).
@@ -73,10 +73,10 @@ impl<A: std::hash::Hash + PartialEq + Eq + Copy, V> OptimisticConstraints<A, V> 
             .sorted_by_key(|(instruction_index, _)| *instruction_index)
             .collect();
 
-        Arc::new(Self {
+        Self {
             fetches_by_step,
             constraints_to_check_by_step,
-        })
+        }
     }
 }
 

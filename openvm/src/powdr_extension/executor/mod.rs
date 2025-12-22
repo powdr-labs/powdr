@@ -240,7 +240,7 @@ struct CachedInstructionMeta {
 struct PowdrPreCompute<F, Ctx> {
     height_change: u32,
     original_instructions: Vec<(ExecuteFunc<F, Ctx>, Vec<u8>)>,
-    optimistic_constraints: Arc<OptimisticConstraints<OpenVmRegisterAddress, u32>>,
+    optimistic_constraints: OptimisticConstraints<OpenVmRegisterAddress, u32>,
 }
 
 impl InterpreterExecutor<BabyBear> for PowdrExecutor {
@@ -458,7 +458,7 @@ unsafe fn execute_e12_impl<F: PrimeField32, CTX: ExecutionCtxTrait>(
     exec_state: &mut VmExecState<F, GuestMemory, CTX>,
 ) {
     let mut optimistic_constraint_evalutator =
-        OptimisticConstraintEvaluator::new(pre_compute.optimistic_constraints.clone());
+        OptimisticConstraintEvaluator::new(Arc::new(pre_compute.optimistic_constraints.clone()));
     // Check the state before execution
     assert!(optimistic_constraint_evalutator
         .try_next_execution_step(&OpenVmExecutionState::from(&exec_state.vm_state))
