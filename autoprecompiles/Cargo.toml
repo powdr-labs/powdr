@@ -23,6 +23,7 @@ rayon = "1.10.0"
 strum = { version = "0.27.0", features = ["derive"] }
 
 metrics = "0.23.0"
+deepsize2 = "0.1.0"
 derive_more = "0.99.17"
 
 [package.metadata.cargo-udeps.ignore]

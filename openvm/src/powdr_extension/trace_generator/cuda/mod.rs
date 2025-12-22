@@ -25,6 +25,7 @@ use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 
 use crate::{
     cuda_abi::{self, DerivedExprSpec, DevInteraction, ExprSpan, OpCode, OriginalAir, Subst},
+    customize_exe::OpenVmRegisterAddress,
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     powdr_extension::{
         chip::PowdrChipGpu,
@@ -175,7 +176,7 @@ pub fn compile_bus_to_gpu(
 }
 
 pub struct PowdrTraceGeneratorGpu {
-    pub apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
+    pub apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, u32>>,
     pub original_airs: OriginalAirs<BabyBear>,
     pub config: OriginalVmConfig,
     pub periphery: PowdrPeripheryInstancesGpu,
@@ -183,7 +184,7 @@ pub struct PowdrTraceGeneratorGpu {
 
 impl PowdrTraceGeneratorGpu {
     pub fn new(
-        apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
+        apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, u32>>,
         original_airs: OriginalAirs<BabyBear>,
         config: OriginalVmConfig,
         periphery: PowdrPeripheryInstancesGpu,
@@ -233,88 +234,145 @@ impl PowdrTraceGeneratorGpu {
         // let mut output =
         //     DeviceMatrix::<BabyBear>::new(Arc::new(device_buffer), height, width);
 
-        let alu_air_width = self
-            .original_airs
-            .air_name_to_machine
-            .get("VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>")
-            .map(|machine| machine.1.widths.main)
-            .expect("Failed to get ALU air");
+        // Hardcoded array of AIR names for direct-to-APC trace generation.
+        // To add a new chip, simply add its AIR name to this array.
+        const DIRECT_TO_APC_AIRS: [&str; 4] = [
+            "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>",
+            "VmAirWrapper<Rv32BaseAluAdapterAir, ShiftCoreAir<4, 8>",
+            "VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>",
+            "VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>",
+        ];
 
-        // println!("alu air width: {}", alu_air_width);
+        println!("air names: {:?}", self.original_airs.air_name_to_machine.keys());
 
-        let (alu_subs, opt_widths, post_optimization_offsets, _, _) = self
+        // Calculate and print unique AIR names of instructions in the APC
+        let unique_apc_air_names: std::collections::BTreeSet<&String> = self
             .apc
-            // go through original instructions
             .instructions()
             .iter()
-            // along with their substitutions
             .zip_eq(self.apc.subs())
             .filter_map(|(instr, subs)| {
                 if subs.is_empty() {
                     None
                 } else {
-                    Some((instr, subs))
+                    Some(&self.original_airs.opcode_to_air[&instr.0.opcode])
                 }
             })
-            // map to `(air_name, substitutions)`
-            .fold(
-                (Vec::new(), Vec::new(), Vec::new(), 0u32, 0u32),
-                |(mut subs, mut opt_widths, mut post_opt_widths, mut opt_width_acc, mut post_opt_width_acc), (instr, sub)| {
-                    let air_name = &self.original_airs.opcode_to_air[&instr.0.opcode];
-                    if *air_name == "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>" {
-                        subs.push(sub);
-                        // push at the start because the first offsets should be 0
-                        opt_widths.push(sub.len() as u32);
-                        post_opt_widths.push(post_opt_width_acc);
-                        opt_width_acc += alu_air_width as u32;
-                    }
-                    post_opt_width_acc += sub.len() as u32;
-                    (subs, opt_widths, post_opt_widths, opt_width_acc, post_opt_width_acc)
-                },
-            );
+            .collect();
+        println!("Unique AIR names in APC instructions: {:?}", unique_apc_air_names);
 
-        alu_subs.iter().for_each(|subs_for_row| {
-            println!("alu subs for row len: {}", subs_for_row.len());
-            println!("alu subs for row: {:?}", subs_for_row);
-        });
-
-        // println!("opt_width: {:?}", opt_widths);
-        // println!("post_optimization_offset: {:?}", post_optimization_offsets);
-
-        let calls_per_apc_row = alu_subs.len() as u32;
-
-        let padded_alu_subs: Vec<u32> = alu_subs
+        // Get air widths for each direct-to-APC AIR
+        let direct_air_widths: Vec<usize> = DIRECT_TO_APC_AIRS
             .iter()
-            .flat_map(|subs_for_row| {
-                let mut row = vec![u32::MAX; alu_air_width];
-                for sub in subs_for_row.iter() {
-                    assert!(
-                        sub.original_poly_index < alu_air_width,
-                        "substitution index {} exceeds ALU width ({})",
-                        sub.original_poly_index,
-                        alu_air_width
-                    );
-                    let apc_col = apc_poly_id_to_index[&sub.apc_poly_id];
-                    row[sub.original_poly_index] =
-                        u32::try_from(apc_col).expect("APC column index fits in u32");
-                }
-                row.into_iter()
+            .map(|air_name| {
+                self.original_airs
+                    .air_name_to_machine
+                    .get(*air_name)
+                    .map(|machine| machine.1.widths.main)
+                    .unwrap_or_else(|| panic!("Failed to get air width for {}", air_name))
             })
             .collect();
 
-        // println!("padded_alu_subs len: {}", padded_alu_subs.len());
-        // println!("padded_alu_subs: {:?}", padded_alu_subs);
+        // Generate substitution data for each direct-to-APC AIR
+        // For each AIR: (subs, opt_widths, post_optimization_offsets)
+        let direct_air_data: Vec<(
+            Vec<&Vec<Substitution>>,
+            Vec<u32>,
+            Vec<u32>,
+        )> = DIRECT_TO_APC_AIRS
+            .iter()
+            .zip(direct_air_widths.iter())
+            .map(|(target_air_name, &air_width)| {
+                self.apc
+                    .instructions()
+                    .iter()
+                    .zip_eq(self.apc.subs())
+                    .filter_map(|(instr, subs)| {
+                        if subs.is_empty() {
+                            None
+                        } else {
+                            Some((instr, subs))
+                        }
+                    })
+                    .fold(
+                        (Vec::new(), Vec::new(), Vec::new(), 0u32, 0u32),
+                        |(mut subs, mut opt_widths, mut post_opt_widths, mut opt_width_acc, mut post_opt_width_acc),
+                         (instr, sub)| {
+                            let air_name = &self.original_airs.opcode_to_air[&instr.0.opcode];
+                            if air_name == target_air_name {
+                                subs.push(sub);
+                                opt_widths.push(sub.len() as u32);
+                                post_opt_widths.push(post_opt_width_acc);
+                                opt_width_acc += air_width as u32;
+                            }
+                            post_opt_width_acc += sub.len() as u32;
+                            (subs, opt_widths, post_opt_widths, opt_width_acc, post_opt_width_acc)
+                        },
+                    )
+            })
+            .map(|(subs, opt_widths, post_opt_offsets, _, _)| {
+                (subs, opt_widths, post_opt_offsets)
+            })
+            .collect();
 
-        let d_alu_subs = padded_alu_subs
-            .to_device()
-            .expect("Failed to copy ALU substitutions to device");
-        // debug_assert_eq!(d_alu_subs.len(), padded_alu_subs.len());
-        let d_opt_widths = opt_widths
-            .to_device()
-            .expect("Failed to copy pre optimization widths to device");
-        let d_post_opt_offsets = post_optimization_offsets
-            .to_device()
-            .expect("Failed to copy post optimization widths to device");
+        // Extract calls_per_apc_row for each AIR
+        let direct_calls_per_apc_row: Vec<u32> = direct_air_data
+            .iter()
+            .map(|(subs, _, _)| subs.len() as u32)
+            .collect();
+
+        // Pad substitutions for each AIR and copy to device
+        let direct_d_subs: Vec<_> = direct_air_data
+            .iter()
+            .zip(direct_air_widths.iter())
+            .enumerate()
+            .map(|(air_idx, ((subs, _, _), &air_width))| {
+                let padded_subs: Vec<u32> = subs
+                    .iter()
+                    .flat_map(|subs_for_row| {
+                        let mut row = vec![u32::MAX; air_width];
+                        for sub in subs_for_row.iter() {
+                            assert!(
+                                sub.original_poly_index < air_width,
+                                "substitution index {} exceeds {} width ({})",
+                                sub.original_poly_index,
+                                DIRECT_TO_APC_AIRS[air_idx],
+                                air_width
+                            );
+                            let apc_col = apc_poly_id_to_index[&sub.apc_poly_id];
+                            row[sub.original_poly_index] =
+                                u32::try_from(apc_col).expect("APC column index fits in u32");
+                        }
+                        row.into_iter()
+                    })
+                    .collect();
+                padded_subs
+                    .to_device()
+                    .unwrap_or_else(|_| panic!("Failed to copy {} substitutions to device", DIRECT_TO_APC_AIRS[air_idx]))
+            })
+            .collect();
+
+        let direct_d_opt_widths: Vec<_> = direct_air_data
+            .iter()
+            .enumerate()
+            .map(|(air_idx, (_, opt_widths, _))| {
+                opt_widths
+                    .clone()
+                    .to_device()
+                    .unwrap_or_else(|_| panic!("Failed to copy {} opt widths to device", DIRECT_TO_APC_AIRS[air_idx]))
+            })
+            .collect();
+
+        let direct_d_post_opt_offsets: Vec<_> = direct_air_data
+            .iter()
+            .enumerate()
+            .map(|(air_idx, (_, _, post_opt_offsets))| {
+                post_opt_offsets
+                    .clone()
+                    .to_device()
+                    .unwrap_or_else(|_| panic!("Failed to copy {} post opt offsets to device", DIRECT_TO_APC_AIRS[air_idx]))
+            })
+            .collect();
 
         // println!("d_alu_subs len: {}", d_alu_subs.len());
         // println!(
@@ -364,32 +422,15 @@ impl PowdrTraceGeneratorGpu {
 
                 // println!("calls_per_apc_row: {}, height: {}", calls_per_apc_row, height);
 
-                if air_name == "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>" {
+                // Check if this AIR is in the direct-to-APC list
+                if let Some(air_idx) = DIRECT_TO_APC_AIRS.iter().position(|&name| name == air_name) {
                     chip.generate_proving_ctx_new(
                         record_arena,
                         output.buffer(),
-                        &d_alu_subs,
-                        &d_opt_widths,
-                        &d_post_opt_offsets,
-                        calls_per_apc_row as u32,
-                        height,
-                        width,
-                    );
-                    return None;
-                }
-
-                // println!("generate dummy trace for: {}", air_name);
-
-                // println!("calls_per_apc_row: {}, height: {}", calls_per_apc_row, height);
-
-                if air_name == "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>" {
-                    chip.generate_proving_ctx_new(
-                        record_arena,
-                        output.buffer(),
-                        &d_alu_subs,
-                        &d_opt_widths,
-                        &d_post_opt_offsets,
-                        calls_per_apc_row as u32,
+                        &direct_d_subs[air_idx],
+                        &direct_d_opt_widths[air_idx],
+                        &direct_d_post_opt_offsets[air_idx],
+                        direct_calls_per_apc_row[air_idx],
                         height,
                         width,
                     );
@@ -446,9 +487,9 @@ impl PowdrTraceGeneratorGpu {
                 .iter()
                 .fold(
                     (Vec::new(), Vec::new(), 0usize),
-                    |(mut airs, mut substitutions, mut air_index), (air_name, subs_by_row)| {
-                        if *air_name == "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>" {
-                            // skip ALU air because it is already processed above
+                    |(mut airs, mut substitutions, air_index), (air_name, subs_by_row)| {
+                        // Skip direct-to-APC AIRs because they are already processed above
+                        if DIRECT_TO_APC_AIRS.iter().any(|&name| name == *air_name) {
                             return (airs, substitutions, air_index);
                         }
 
@@ -505,13 +546,12 @@ impl PowdrTraceGeneratorGpu {
         //     );
         // });
 
-        // // Send the airs and substitutions to device
-        // println!("before airs.to_device with len {}", airs.len());
-        let airs = airs.to_device().unwrap();
-        // println!("after airs.to_device");
-        let substitutions = substitutions.to_device().unwrap();
-        // println!("after substitutions.to_device");
-        cuda_abi::apc_tracegen(&mut output, airs, substitutions, num_apc_calls).unwrap();
+        // Send the airs and substitutions to device (skip if all AIRs are direct-to-APC)
+        if !airs.is_empty() {
+            let airs = airs.to_device().unwrap();
+            let substitutions = substitutions.to_device().unwrap();
+            cuda_abi::apc_tracegen(&mut output, airs, substitutions, num_apc_calls).unwrap();
+        }
 
         // // Optionally dump the APC trace by copying it back to the host.
         // match output.to_host() {
@@ -620,6 +660,8 @@ impl PowdrTraceGeneratorGpu {
 impl<R, PB: ProverBackend<Matrix = DeviceMatrix<BabyBear>>> Chip<R, PB> for PowdrChipGpu {
     fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
         tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
+
+        println!("generate_proving_ctx called for PowdrChipGpu");
 
         let trace = self
             .trace_generator
