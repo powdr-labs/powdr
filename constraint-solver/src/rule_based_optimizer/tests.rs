@@ -8,7 +8,6 @@ use crate::{
     indexed_constraint_system::IndexedConstraintSystem,
     range_constraint::RangeConstraint,
     rule_based_optimizer::driver::rule_based_optimization,
-    solver::Solver,
 };
 use expect_test::expect;
 use num_traits::Zero;
