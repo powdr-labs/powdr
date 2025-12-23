@@ -1,13 +1,17 @@
 use crate::adapter::{
-    Adapter, AdapterApc, AdapterApcOverPowdrField, AdapterBasicBlock, AdapterOptimisticConstraints,
+    Adapter, AdapterApc, AdapterApcOverPowdrField, AdapterBlock, AdapterOptimisticConstraints,
     AdapterVmConfig,
 };
-use crate::blocks::BasicBlock;
+use crate::blocks::Block;
 use crate::bus_map::{BusMap, BusType};
 use crate::evaluation::AirStats;
 use crate::execution::OptimisticConstraints;
 use crate::expression_conversion::algebraic_to_grouped_expression;
 use crate::symbolic_machine_generator::convert_apc_field_type;
+use execution::{
+    ExecutionState, LocalOptimisticLiteral, OptimisticConstraint, OptimisticExpression,
+    OptimisticLiteral,
+};
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
 use powdr::UniqueReferences;
@@ -56,6 +60,8 @@ pub struct PowdrConfig {
     /// Number of basic blocks to skip for autoprecompiles.
     /// This is either the largest N if no PGO, or the costliest N with PGO.
     pub skip_autoprecompiles: u64,
+    /// Maximum number of basic blocks included in a superblock
+    pub superblock_max_bb_count: u8,
     /// Max degree of constraints.
     pub degree_bound: DegreeBound,
     /// The path to the APC candidates dir, if any.
@@ -65,10 +71,17 @@ pub struct PowdrConfig {
 }
 
 impl PowdrConfig {
-    pub fn new(autoprecompiles: u64, skip_autoprecompiles: u64, degree_bound: DegreeBound) -> Self {
+    pub fn new(
+        autoprecompiles: u64,
+        skip_autoprecompiles: u64,
+        superblock_max_bb_count: u8,
+        degree_bound: DegreeBound,
+    ) -> Self {
+        assert!(superblock_max_bb_count > 0, "superblock_max_bb_count must be greater than 0");
         Self {
             autoprecompiles,
             skip_autoprecompiles,
+            superblock_max_bb_count,
             degree_bound,
             apc_candidates_dir_path: None,
             should_use_optimistic_precompiles: false,
@@ -343,7 +356,7 @@ pub struct Substitution {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Apc<T, I, A, V> {
     /// The basic block this APC is based on
-    pub block: BasicBlock<I>,
+    pub block: Block<I>,
     /// The symbolic machine for this APC
     pub machine: SymbolicMachine<T>,
     /// For each original instruction, the substitutions from original columns to APC columns
@@ -374,7 +387,7 @@ impl<T, I, A, V> Apc<T, I, A, V> {
     /// Create a new APC based on the given basic block, symbolic machine and column allocator
     /// The column allocator only issues the subs which are actually used in the machine
     fn new(
-        block: BasicBlock<I>,
+        block: Block<I>,
         machine: SymbolicMachine<T>,
         optimistic_constraints: OptimisticConstraints<A, V>,
         column_allocator: &ColumnAllocator,
@@ -435,7 +448,7 @@ impl ColumnAllocator {
 }
 
 pub fn build<A: Adapter>(
-    block: BasicBlock<A::Instruction>,
+    block: Block<A::Instruction>,
     vm_config: AdapterVmConfig<A>,
     degree_bound: DegreeBound,
     apc_candidates_dir_path: Option<&Path>,
@@ -485,7 +498,8 @@ pub fn build<A: Adapter>(
         .absolute(machine.unique_references().count() as u64);
 
     // TODO: add optimistic constraints here
-    let optimistic_constraints = OptimisticConstraints::from_constraints(vec![]);
+    let pc_constraints = superblock_pc_constraints::<A>(&block);
+    let optimistic_constraints = OptimisticConstraints::from_constraints(pc_constraints);
 
     let apc = Apc::new(block, machine, optimistic_constraints, &column_allocator);
 
@@ -519,7 +533,7 @@ fn serialize_apc<A: Adapter>(apc: &AdapterApcOverPowdrField<A>, path: &Path, suf
 }
 
 fn serialize_apc_from_machine<A: Adapter>(
-    block: AdapterBasicBlock<A>,
+    block: AdapterBlock<A>,
     machine: SymbolicMachine<A::PowdrField>,
     column_allocator: &ColumnAllocator,
     path: &Path,
@@ -532,6 +546,29 @@ fn serialize_apc_from_machine<A: Adapter>(
         column_allocator,
     );
     serialize_apc::<A>(&apc, path, suffix);
+}
+
+/// Generate optimistic constraints for superblock jumps (doesn't enforce the starting PC).
+fn superblock_pc_constraints<A: Adapter>(
+    block: &Block<A::Instruction>,
+) -> Vec<
+    OptimisticConstraint<
+        <<A as Adapter>::ExecutionState as ExecutionState>::RegisterAddress,
+        <<A as Adapter>::ExecutionState as ExecutionState>::Value,
+    >,
+> {
+    block.other_pcs.iter().map(|(insn, pc)| {
+        let left = OptimisticExpression::Literal(OptimisticLiteral {
+            instr_idx: *insn,
+            val: LocalOptimisticLiteral::Pc,
+        });
+        let Ok(pc_value) = <<A as Adapter>::ExecutionState as ExecutionState>::Value::try_from(*pc)
+        else {
+            panic!("PC doesn't fit in Value type");
+        };
+        let right = OptimisticExpression::Number(pc_value);
+        OptimisticConstraint { left, right }
+    }).collect()
 }
 
 fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
