@@ -48,7 +48,6 @@ jobs:
           ~/.cargo/registry/cache/
           ~/.cargo/git/db/
           target/
-          Cargo.lock
         key: ${{ runner.os }}-cargo-pr-tests
         delete-cache: true
     
@@ -60,5 +59,4 @@ jobs:
           ~/.cargo/registry/cache/
           ~/.cargo/git/db/
           target/
-          Cargo.lock
         key: ${{ runner.os }}-cargo-pr-tests

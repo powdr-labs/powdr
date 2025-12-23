@@ -35,7 +35,6 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-            Cargo.lock
           key: ${{ runner.os }}-cargo-pr-tests
       - name: Date of the restored cache
         run: cat target/cache-build-date.txt
