@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::hash::Hash;
 
+use derivative::Derivative;
 use itertools::Itertools;
 use powdr_number::FieldElement;
 
@@ -12,16 +13,10 @@ use crate::solver::VariableAssignment;
 
 /// Solver component that substitutes non-affine sub-expressions
 /// by new variables.
+#[derive(Derivative)]
+#[derivative(Default(bound = ""))]
 pub struct Linearizer<T, V> {
     substitutions: HashMap<GroupedExpression<T, V>, V>,
-}
-
-impl<T, V> Default for Linearizer<T, V> {
-    fn default() -> Self {
-        Linearizer {
-            substitutions: HashMap::new(),
-        }
-    }
 }
 
 impl<T: FieldElement, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
