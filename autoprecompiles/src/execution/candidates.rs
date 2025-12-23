@@ -1,5 +1,4 @@
 use std::cmp::Ordering;
-use std::sync::Arc;
 
 use derivative::Derivative;
 use itertools::Itertools;
@@ -197,7 +196,7 @@ pub trait Snapshot: Clone {
 impl<E: ExecutionState, A: Apc, S> ApcCandidate<E, A, S> {
     pub fn new(
         apc: A,
-        conditions: Arc<OptimisticConstraints<E::RegisterAddress, E::Value>>,
+        conditions: OptimisticConstraints<E::RegisterAddress, E::Value>,
         snapshot: S,
     ) -> Self {
         ApcCandidate {
@@ -213,7 +212,7 @@ impl<E: ExecutionState, A: Apc, S> ApcCandidate<E, A, S> {
 #[derive(Debug, PartialEq)]
 pub enum CandidateStatus<E: ExecutionState, S> {
     /// We don't know yet if this apc candidate is valid. The conditions must be verified
-    InProgress(OptimisticConstraintEvaluator<E>),
+    InProgress(OptimisticConstraintEvaluator<E::RegisterAddress, E::Value>),
     /// We know the candidate is valid until the given Snapshot
     Done(S),
 }
