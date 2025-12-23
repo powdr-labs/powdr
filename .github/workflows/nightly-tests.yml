@@ -155,7 +155,7 @@ jobs:
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
 
           # prove with no APCs
-          MODE="prove-stark" APC=0 ./run.sh || exit 1
+          APC=0 ./run.sh --mode prove-stark || exit 1
           # remove apc cache to not interfere with the next runs
           rm -rf apc-cache
           echo "Finished proving with no APCs"
@@ -163,7 +163,7 @@ jobs:
           python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc000.png $RES_DIR/apc000.json > $RES_DIR/trace_cells_apc000.txt
 
           # prove with 3 APCs
-          MODE="prove-stark" APC=3 ./run.sh || exit 1
+          APC=3 ./run.sh --mode prove-stark || exit 1
           # remove apc cache to not interfere with the next runs
           rm -rf apc-cache
           echo "Finished proving with 3 APCs"
@@ -171,7 +171,7 @@ jobs:
           python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc003.png $RES_DIR/apc003.json > $RES_DIR/trace_cells_apc003.txt
 
           # prove with 10 APCs
-          MODE="prove-stark" APC=10 ./run.sh || exit 1
+          APC=10 ./run.sh --mode prove-stark || exit 1
           # remove apc cache to not interfere with the next runs
           rm -rf apc-cache
           echo "Finished proving with 10 APCs"
@@ -179,7 +179,7 @@ jobs:
           python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc010.png $RES_DIR/apc010.json > $RES_DIR/trace_cells_apc010.txt
 
           # prove with 30 APCs
-          MODE="prove-stark" APC=30 ./run.sh || exit 1
+          APC=30 ./run.sh --mode prove-stark || exit 1
           # remove apc cache to not interfere with the next runs
           rm -rf apc-cache
           echo "Finished proving with 30 APCs"
@@ -187,7 +187,7 @@ jobs:
           python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc030.png $RES_DIR/apc030.json > $RES_DIR/trace_cells_apc030.txt
 
           # prove with 100 APCs, recording mem usage
-          MODE="prove-stark" APC=100 psrecord --include-children --interval 1 --log $RES_DIR/psrecord.csv --log-format csv --plot $RES_DIR/psrecord.png "./run.sh" || exit 1
+          APC=100 psrecord --include-children --interval 1 --log $RES_DIR/psrecord.csv --log-format csv --plot $RES_DIR/psrecord.png "./run.sh --mode prove-stark" || exit 1
           # remove apc cache to not interfere with the next runs
           rm -rf apc-cache
           echo "Finished proving with 100 APCs"
