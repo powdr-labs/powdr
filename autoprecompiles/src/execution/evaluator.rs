@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -14,7 +14,7 @@ use crate::{
 };
 
 /// A collection of optimistic constraints over the intermediate execution states of a block, to be accessed in chronological order
-#[derive(Debug, Serialize, Deserialize, deepsize2::DeepSizeOf, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, deepsize2::DeepSizeOf, PartialEq, Clone)]
 pub struct OptimisticConstraints<A, V> {
     /// For each step, the execution values we need to remember for future constraints, excluding this step
     fetches_by_step: HashMap<usize, Vec<LocalOptimisticLiteral<A>>>,
@@ -23,16 +23,16 @@ pub struct OptimisticConstraints<A, V> {
 }
 
 impl<A, V> OptimisticConstraints<A, V> {
-    pub fn empty() -> Arc<Self> {
-        Arc::new(Self {
+    pub fn empty() -> Self {
+        Self {
             fetches_by_step: Default::default(),
             constraints_to_check_by_step: Default::default(),
-        })
+        }
     }
 }
 
 impl<A: std::hash::Hash + PartialEq + Eq + Copy, V> OptimisticConstraints<A, V> {
-    pub fn from_constraints(constraints: Vec<OptimisticConstraint<A, V>>) -> Arc<Self> {
+    pub fn from_constraints(constraints: Vec<OptimisticConstraint<A, V>>) -> Self {
         // Extract each constraint together with the literals it references and the step
         // at which the constraint becomes evaluable (i.e. when all referenced literals
         // are available).
@@ -73,10 +73,10 @@ impl<A: std::hash::Hash + PartialEq + Eq + Copy, V> OptimisticConstraints<A, V> 
             .sorted_by_key(|(instruction_index, _)| *instruction_index)
             .collect();
 
-        Arc::new(Self {
+        Self {
             fetches_by_step,
             constraints_to_check_by_step,
-        })
+        }
     }
 }
 
@@ -86,21 +86,21 @@ impl<A: std::hash::Hash + PartialEq + Eq + Copy, V> OptimisticConstraints<A, V> 
 /// - when an APC is executed, create an instance of this evaluator over the APC's optimistic constraints
 /// - as we go through the original instructions, call `OptimisticConstraintEvaluator::try_next_execution_step`
 /// - if a constraint fails, stop checking the constraints
-#[derive(Debug, PartialEq)]
-pub struct OptimisticConstraintEvaluator<E: ExecutionState> {
+#[derive(Debug)]
+pub struct OptimisticConstraintEvaluator<A, V> {
     /// The constraints that all need to be verified
-    constraints: Arc<OptimisticConstraints<E::RegisterAddress, E::Value>>,
+    constraints: OptimisticConstraints<A, V>,
     /// The current instruction index in the execution
     instruction_index: usize,
     /// The values from previous intermediate states which we still need
-    memory: HashMap<OptimisticLiteral<E::RegisterAddress>, E::Value>,
+    memory: HashMap<OptimisticLiteral<A>, V>,
 }
 
 #[derive(Debug)]
 pub struct OptimisticConstraintFailed;
 
-impl<E: ExecutionState> OptimisticConstraintEvaluator<E> {
-    pub fn new(constraints: Arc<OptimisticConstraints<E::RegisterAddress, E::Value>>) -> Self {
+impl<A, V> OptimisticConstraintEvaluator<A, V> {
+    pub fn new(constraints: OptimisticConstraints<A, V>) -> Self {
         Self {
             constraints,
             instruction_index: 0,
@@ -109,11 +109,18 @@ impl<E: ExecutionState> OptimisticConstraintEvaluator<E> {
     }
 
     /// Check all constraints that can be checked at this stage, returning a new instance iff they are verified
-    pub fn try_next_execution_step(&mut self, state: &E) -> Result<(), OptimisticConstraintFailed> {
-        let constraints_ref = self.constraints.as_ref();
-
+    pub fn try_next_execution_step<E>(
+        &mut self,
+        state: &E,
+    ) -> Result<(), OptimisticConstraintFailed>
+    where
+        E: ExecutionState<RegisterAddress = A, Value = V>,
+        A: std::hash::Hash + PartialEq + Eq + Copy,
+        V: Copy,
+    {
         // Get the constraints that can first be checked at this step
-        let constraints = constraints_ref
+        let constraints = self
+            .constraints
             .constraints_to_check_by_step
             .get(&self.instruction_index);
 
@@ -130,7 +137,10 @@ impl<E: ExecutionState> OptimisticConstraintEvaluator<E> {
         }
 
         // Get the values we need to store from the state to check constraints in the future
-        let fetches = constraints_ref.fetches_by_step.get(&self.instruction_index);
+        let fetches = self
+            .constraints
+            .fetches_by_step
+            .get(&self.instruction_index);
 
         if let Some(fetches) = fetches {
             // fetch the values them in memory
@@ -262,7 +272,7 @@ mod tests {
         OptimisticConstraint { left, right }
     }
 
-    fn equality_constraints() -> Arc<OptimisticConstraints<u8, u8>> {
+    fn equality_constraints() -> OptimisticConstraints<u8, u8> {
         OptimisticConstraints::from_constraints(vec![
             eq(mem(0, 0), mem(0, 1)),
             eq(mem(1, 0), mem(1, 1)),
@@ -270,22 +280,21 @@ mod tests {
         ])
     }
 
-    fn cross_step_memory_constraint() -> Arc<OptimisticConstraints<u8, u8>> {
+    fn cross_step_memory_constraint() -> OptimisticConstraints<u8, u8> {
         OptimisticConstraints::from_constraints(vec![eq(mem(0, 0), mem(1, 1))])
     }
 
-    fn cross_step_pc_constraint() -> Arc<OptimisticConstraints<u8, u8>> {
+    fn cross_step_pc_constraint() -> OptimisticConstraints<u8, u8> {
         OptimisticConstraints::from_constraints(vec![eq(pc(0), pc(1))])
     }
 
-    fn initial_to_final_constraint(final_instr_idx: usize) -> Arc<OptimisticConstraints<u8, u8>> {
+    fn initial_to_final_constraint(final_instr_idx: usize) -> OptimisticConstraints<u8, u8> {
         OptimisticConstraints::from_constraints(vec![eq(mem(0, 0), mem(final_instr_idx, 1))])
     }
 
     #[test]
     fn constraints_succeed_when_all_states_match() {
-        let evaluator: OptimisticConstraintEvaluator<TestExecutionState> =
-            OptimisticConstraintEvaluator::new(equality_constraints());
+        let evaluator = OptimisticConstraintEvaluator::new(equality_constraints());
 
         let states = [
             TestExecutionState { mem: [0, 0], pc: 0 },
@@ -302,8 +311,7 @@ mod tests {
 
     #[test]
     fn checks_equality_constraints() {
-        let mut evaluator: OptimisticConstraintEvaluator<TestExecutionState> =
-            OptimisticConstraintEvaluator::new(equality_constraints());
+        let mut evaluator = OptimisticConstraintEvaluator::new(equality_constraints());
 
         let states = [
             (TestExecutionState { mem: [0, 0], pc: 0 }, true),
@@ -321,8 +329,7 @@ mod tests {
 
     #[test]
     fn reuses_values_from_previous_steps() {
-        let mut evaluator: OptimisticConstraintEvaluator<TestExecutionState> =
-            OptimisticConstraintEvaluator::new(cross_step_memory_constraint());
+        let mut evaluator = OptimisticConstraintEvaluator::new(cross_step_memory_constraint());
 
         let first_state = TestExecutionState { mem: [5, 0], pc: 0 };
         evaluator.try_next_execution_step(&first_state).unwrap();
@@ -334,8 +341,7 @@ mod tests {
 
     #[test]
     fn detects_mismatch_for_stored_values() {
-        let mut evaluator: OptimisticConstraintEvaluator<TestExecutionState> =
-            OptimisticConstraintEvaluator::new(cross_step_memory_constraint());
+        let mut evaluator = OptimisticConstraintEvaluator::new(cross_step_memory_constraint());
 
         let first_state = TestExecutionState { mem: [9, 0], pc: 0 };
         evaluator.try_next_execution_step(&first_state).unwrap();
@@ -347,8 +353,7 @@ mod tests {
 
     #[test]
     fn compares_program_counter_across_steps() {
-        let mut evaluator: OptimisticConstraintEvaluator<TestExecutionState> =
-            OptimisticConstraintEvaluator::new(cross_step_pc_constraint());
+        let mut evaluator = OptimisticConstraintEvaluator::new(cross_step_pc_constraint());
 
         let first_state = TestExecutionState { mem: [0; 2], pc: 7 };
         evaluator.try_next_execution_step(&first_state).unwrap();
@@ -356,8 +361,7 @@ mod tests {
         let second_state = TestExecutionState { mem: [0; 2], pc: 7 };
         assert!(evaluator.try_next_execution_step(&second_state).is_ok());
 
-        let mut failing_evaluator: OptimisticConstraintEvaluator<TestExecutionState> =
-            OptimisticConstraintEvaluator::new(cross_step_pc_constraint());
+        let mut failing_evaluator = OptimisticConstraintEvaluator::new(cross_step_pc_constraint());
         failing_evaluator
             .try_next_execution_step(&first_state)
             .unwrap();
@@ -371,7 +375,7 @@ mod tests {
     #[test]
     fn links_initial_and_final_state() {
         let final_step = 2;
-        let mut evaluator: OptimisticConstraintEvaluator<TestExecutionState> =
+        let mut evaluator =
             OptimisticConstraintEvaluator::new(initial_to_final_constraint(final_step));
 
         let initial_state = TestExecutionState {
@@ -389,7 +393,7 @@ mod tests {
         };
         assert!(evaluator.try_next_execution_step(&final_state).is_ok());
 
-        let mut failing_evaluator: OptimisticConstraintEvaluator<TestExecutionState> =
+        let mut failing_evaluator =
             OptimisticConstraintEvaluator::new(initial_to_final_constraint(final_step));
         failing_evaluator
             .try_next_execution_step(&initial_state)
@@ -407,8 +411,7 @@ mod tests {
     #[test]
     fn compares_memory_to_literal_value() {
         let constraints = OptimisticConstraints::from_constraints(vec![eq(mem(0, 0), value(99))]);
-        let mut evaluator: OptimisticConstraintEvaluator<TestExecutionState> =
-            OptimisticConstraintEvaluator::new(constraints);
+        let mut evaluator = OptimisticConstraintEvaluator::new(constraints);
 
         let passing_state = TestExecutionState {
             mem: [99, 0],
@@ -416,11 +419,9 @@ mod tests {
         };
         assert!(evaluator.try_next_execution_step(&passing_state).is_ok());
 
-        let mut failing_evaluator: OptimisticConstraintEvaluator<TestExecutionState> =
-            OptimisticConstraintEvaluator::new(OptimisticConstraints::from_constraints(vec![eq(
-                mem(0, 0),
-                value(10),
-            )]));
+        let mut failing_evaluator = OptimisticConstraintEvaluator::new(
+            OptimisticConstraints::from_constraints(vec![eq(mem(0, 0), value(10))]),
+        );
         let failing_state = TestExecutionState {
             mem: [12, 0],
             pc: 0,

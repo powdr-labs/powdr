@@ -8,8 +8,9 @@ runs:
       uses: actions/checkout@v4
       with:
         repository: powdr-labs/openvm-reth-benchmark
-        # Set once here — no inputs required elsewhere
-        ref: ede8f6e050b8faa78878b989be8f3c8d3618cc25
+        # Set once here — no inputs required elsewhere.
+        # Latest main branch from openvm-reth-benchmark on 2025-12-19.
+        ref: 03626adca26dc08b0d1738639a5372c6733cc1eb
         path: openvm-reth-benchmark
 
     - name: Patch openvm-reth-benchmark to use local powdr
