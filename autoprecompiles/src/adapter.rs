@@ -124,6 +124,12 @@ pub type AdapterApc<A> = Apc<
     <<A as Adapter>::ExecutionState as ExecutionState>::RegisterAddress,
     <<A as Adapter>::ExecutionState as ExecutionState>::Value,
 >;
+pub type AdapterApcOverPowdrField<A> = Apc<
+    <A as Adapter>::PowdrField,
+    <A as Adapter>::Instruction,
+    <<A as Adapter>::ExecutionState as ExecutionState>::RegisterAddress,
+    <<A as Adapter>::ExecutionState as ExecutionState>::Value,
+>;
 pub type AdapterVmConfig<'a, A> = VmConfig<
     'a,
     <A as Adapter>::InstructionHandler,

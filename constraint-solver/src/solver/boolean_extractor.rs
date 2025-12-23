@@ -1,5 +1,6 @@
 use std::{cmp::min, collections::HashMap, hash::Hash};
 
+use derivative::Derivative;
 use itertools::Itertools;
 use powdr_number::{FieldElement, LargeInt};
 
@@ -8,6 +9,8 @@ use crate::{
     indexed_constraint_system::apply_substitutions_to_expressions, solver::VariableAssignment,
 };
 
+#[derive(Derivative)]
+#[derivative(Default(bound = ""))]
 pub struct BooleanExtractor<T, V> {
     /// If (expr, Some(z)) is in the map, it means that
     /// we have transformed a constraint `left * right = 0` into
@@ -19,14 +22,6 @@ pub struct BooleanExtractor<T, V> {
     /// `right = 0`, which is a special case where we do not need
     /// a new boolean variable.
     substitutions: HashMap<GroupedExpression<T, V>, Option<V>>,
-}
-
-impl<T, V> Default for BooleanExtractor<T, V> {
-    fn default() -> Self {
-        Self {
-            substitutions: HashMap::new(),
-        }
-    }
 }
 
 pub struct BooleanExtractionValue<T, V> {

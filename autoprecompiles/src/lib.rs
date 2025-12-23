@@ -1,11 +1,14 @@
-use crate::adapter::{Adapter, AdapterApc, AdapterVmConfig};
+use crate::adapter::{
+    Adapter, AdapterApc, AdapterApcOverPowdrField, AdapterBasicBlock, AdapterOptimisticConstraints,
+    AdapterVmConfig,
+};
 use crate::blocks::BasicBlock;
 use crate::bus_map::{BusMap, BusType};
 use crate::empirical_constraints::{ConstraintGenerator, EmpiricalConstraints};
 use crate::evaluation::AirStats;
-use crate::execution::{ExecutionState, OptimisticConstraints};
+use crate::execution::OptimisticConstraints;
 use crate::expression_conversion::algebraic_to_grouped_expression;
-use crate::symbolic_machine_generator::convert_machine_field_type;
+use crate::symbolic_machine_generator::convert_apc_field_type;
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
 use powdr::UniqueReferences;
@@ -458,12 +461,7 @@ pub fn build<A: Adapter>(
     let equivalence_analyzer_constraints = constraint_generator.equivalence_constraints();
 
     if let Some(path) = apc_candidates_dir_path {
-        serialize_apc_from_machine::<
-            A::PowdrField,
-            A::Instruction,
-            <A::ExecutionState as ExecutionState>::RegisterAddress,
-            <A::ExecutionState as ExecutionState>::Value,
-        >(
+        serialize_apc_from_machine::<A>(
             block.clone(),
             machine.clone(),
             &column_allocator,
@@ -528,20 +526,13 @@ pub fn build<A: Adapter>(
     metrics::counter!("after_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
 
-    let machine = convert_machine_field_type(machine, &A::into_field);
-
     // TODO: add optimistic constraints here
     let optimistic_constraints = OptimisticConstraints::from_constraints(vec![]);
 
     let apc = Apc::new(block, machine, optimistic_constraints, &column_allocator);
 
     if let Some(path) = apc_candidates_dir_path {
-        serialize_apc::<
-            A::Field,
-            A::Instruction,
-            <<A as Adapter>::ExecutionState as ExecutionState>::RegisterAddress,
-            <<A as Adapter>::ExecutionState as ExecutionState>::Value,
-        >(&apc, path, None);
+        serialize_apc::<A>(&apc, path, None);
 
         if let Some(optimistic_precompile) = &optimistic_precompile {
             let guaranteed_precompile_path = make_path(path, &apc, Some("guaranteed"), "txt");
@@ -551,6 +542,8 @@ pub fn build<A: Adapter>(
             std::fs::write(optimistic_precompile_path, optimistic_precompile).unwrap();
         }
     }
+
+    let apc = convert_apc_field_type(apc, &A::into_field);
 
     metrics::gauge!("apc_gen_time_ms", &labels).set(start.elapsed().as_millis() as f64);
 
@@ -569,11 +562,7 @@ fn make_path<T, I, A, V>(
         .with_extension(extension)
 }
 
-fn serialize_apc<T: Serialize, I: Serialize, A: Serialize, V: Serialize>(
-    apc: &Apc<T, I, A, V>,
-    path: &Path,
-    suffix: Option<&str>,
-) {
+fn serialize_apc<A: Adapter>(apc: &AdapterApcOverPowdrField<A>, path: &Path, suffix: Option<&str>) {
     std::fs::create_dir_all(path).expect("Failed to create directory for APC candidates");
 
     let ser_path = make_path(path, apc, suffix, "cbor");
@@ -584,9 +573,9 @@ fn serialize_apc<T: Serialize, I: Serialize, A: Serialize, V: Serialize>(
         .expect("Failed to write {suffix} APC candidate to file");
 }
 
-fn serialize_apc_from_machine<T: Serialize, I: Serialize, A: Serialize, V: Serialize>(
-    block: BasicBlock<I>,
-    machine: SymbolicMachine<T>,
+fn serialize_apc_from_machine<A: Adapter>(
+    block: AdapterBasicBlock<A>,
+    machine: SymbolicMachine<A::PowdrField>,
     column_allocator: &ColumnAllocator,
     path: &Path,
     suffix: Option<&str>,
@@ -594,10 +583,10 @@ fn serialize_apc_from_machine<T: Serialize, I: Serialize, A: Serialize, V: Seria
     let apc = Apc::new(
         block,
         machine,
-        OptimisticConstraints::empty(),
+        AdapterOptimisticConstraints::<A>::empty(),
         column_allocator,
     );
-    serialize_apc::<T, I, A, V>(&apc, path, suffix);
+    serialize_apc::<A>(&apc, path, suffix);
 }
 
 fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
