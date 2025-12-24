@@ -92,18 +92,13 @@ fn create_apcs_for_all_blocks<A: Adapter>(
                 block.start_pc
             );
 
-            println!("block {}", block);
-
-            let apc = crate::build::<A>(
+            crate::build::<A>(
                 block,
                 vm_config.clone(),
                 config.degree_bound,
                 config.apc_candidates_dir_path.as_deref(),
             )
-            .unwrap();
-
-
-            apc
+            .unwrap()
         })
         .map(Arc::new)
         .map(ApcWithStats::from)

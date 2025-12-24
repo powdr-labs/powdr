@@ -1067,7 +1067,7 @@ mod tests {
     #[test]
     fn keccak_small_prove_simple() {
         let mut stdin = StdIn::default();
-        stdin.write(&10);
+        stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let config = default_powdr_openvm_config(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
         prove_simple(GUEST_KECCAK, config, stdin, PgoConfig::None, None);
     }
@@ -1138,7 +1138,7 @@ mod tests {
     #[test]
     fn keccak_small_prove_mock() {
         let mut stdin = StdIn::default();
-        stdin.write(&10);
+        stdin.write(&GUEST_KECCAK_ITER_SMALL);
 
         let config = default_powdr_openvm_config(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
         prove_mock(GUEST_KECCAK, config, stdin, PgoConfig::None, None);

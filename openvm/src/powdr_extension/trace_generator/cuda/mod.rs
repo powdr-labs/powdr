@@ -13,7 +13,7 @@ use openvm_cuda_common::copy::MemCopyH2D;
 use openvm_stark_backend::{
     p3_field::PrimeField32,
     prover::{hal::ProverBackend, types::AirProvingContext},
-    Chip,
+    ApcTracingContext, Chip,
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
@@ -201,7 +201,6 @@ impl PowdrTraceGeneratorGpu {
         &self,
         mut original_arenas: OriginalArenas<DenseRecordArena>,
     ) -> Option<DeviceMatrix<BabyBear>> {
-        println!("PowdrChip try_generate_witness");
         let num_apc_calls = original_arenas.number_of_calls();
 
         if num_apc_calls == 0 {
@@ -221,44 +220,9 @@ impl PowdrTraceGeneratorGpu {
         // allocate for apc trace
         let width = apc_poly_id_to_index.len();
         let height = next_power_of_two_or_zero(num_apc_calls);
-
         let mut output = DeviceMatrix::<BabyBear>::with_capacity(height, width);
 
-        // use openvm_stark_backend::p3_field::FieldAlgebra;
-        // let zeros = vec![BabyBear::from_canonical_u16(1234); height * width];
-        // let device_buffer = zeros
-        //     .to_device()
-        //     .expect("copy zero trace to device failed");
-
-        // println!("output len: {}", device_buffer.len());
-
-        // let mut output =
-        //     DeviceMatrix::<BabyBear>::new(Arc::new(device_buffer), height, width);
-
-        // Hardcoded array of AIR names for direct-to-APC trace generation.
-        // To add a new chip, simply add its AIR name to this array.
-        const DIRECT_TO_APC_AIRS: [&str; 13] = [
-            // 4 airs in keccak
-            "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>",
-            "VmAirWrapper<Rv32BaseAluAdapterAir, ShiftCoreAir<4, 8>",
-            "VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>",
-            "VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>",
-            // 5 more airs in reth, with sign extend bugging out
-            "VmAirWrapper<Rv32BaseAluAdapterAir, LessThanCoreAir<4, 8>",
-            "VmAirWrapper<Rv32BranchAdapterAir, BranchLessThanCoreAir<4, 8>",
-            "VmAirWrapper<Rv32MultAdapterAir, MulHCoreAir<4, 8>",
-            "VmAirWrapper<Rv32MultAdapterAir, MultiplicationCoreAir<4, 8>",
-            "VmAirWrapper<Rv32LoadStoreAdapterAir, LoadSignExtendCoreAir<4, 8>",
-            // 4 rest of the airs
-            "VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>",
-            "VmAirWrapper<Rv32CondRdWriteAdapterAir, Rv32JalLuiCoreAir>",
-            "VmAirWrapper<Rv32MultAdapterAir, DivRemCoreAir<4, 8>",
-            "VmAirWrapper<Rv32RdWriteAdapterAir, Rv32AuipcCoreAir>",
-        ];
-
-        println!("air names: {:?}", self.original_airs.air_name_to_machine.keys());
-
-        // Calculate and print unique AIR names of instructions in the APC
+        // Calculate unique AIR names of instructions in the APC that have substitutions
         let unique_apc_air_names: std::collections::BTreeSet<&String> = self
             .apc
             .instructions()
@@ -272,12 +236,13 @@ impl PowdrTraceGeneratorGpu {
                 }
             })
             .collect();
-        println!("Unique AIR names in APC instructions: {:?}", unique_apc_air_names);
 
-        // Filter DIRECT_TO_APC_AIRS to only include AIRs that are actually present in this APC
-        let active_direct_airs: Vec<&str> = DIRECT_TO_APC_AIRS
-            .iter()
-            .copied()
+        // Filter to only include AIRs that are in air_name_to_machine and present in this APC
+        let active_direct_airs: Vec<&str> = self
+            .original_airs
+            .air_name_to_machine
+            .keys()
+            .map(|s| s.as_str())
             .filter(|air_name| unique_apc_air_names.iter().any(|s| s.as_str() == *air_name))
             .collect();
 
@@ -285,7 +250,8 @@ impl PowdrTraceGeneratorGpu {
         let direct_air_widths: HashMap<&str, usize> = active_direct_airs
             .iter()
             .map(|&air_name| {
-                let width = self.original_airs
+                let width = self
+                    .original_airs
                     .air_name_to_machine
                     .get(air_name)
                     .map(|machine| machine.1.widths.main)
@@ -301,7 +267,8 @@ impl PowdrTraceGeneratorGpu {
                 .iter()
                 .map(|&target_air_name| {
                     let air_width = direct_air_widths[target_air_name];
-                    let result = self.apc
+                    let result = self
+                        .apc
                         .instructions()
                         .iter()
                         .zip_eq(self.apc.subs())
@@ -314,7 +281,13 @@ impl PowdrTraceGeneratorGpu {
                         })
                         .fold(
                             (Vec::new(), Vec::new(), Vec::new(), 0u32, 0u32),
-                            |(mut subs, mut opt_widths, mut post_opt_widths, mut opt_width_acc, mut post_opt_width_acc),
+                            |(
+                                mut subs,
+                                mut opt_widths,
+                                mut post_opt_widths,
+                                mut opt_width_acc,
+                                mut post_opt_width_acc,
+                            ),
                              (instr, sub)| {
                                 let air_name = &self.original_airs.opcode_to_air[&instr.0.opcode];
                                 if air_name == target_air_name {
@@ -324,7 +297,13 @@ impl PowdrTraceGeneratorGpu {
                                     opt_width_acc += air_width as u32;
                                 }
                                 post_opt_width_acc += sub.len() as u32;
-                                (subs, opt_widths, post_opt_widths, opt_width_acc, post_opt_width_acc)
+                                (
+                                    subs,
+                                    opt_widths,
+                                    post_opt_widths,
+                                    opt_width_acc,
+                                    post_opt_width_acc,
+                                )
                             },
                         );
                     (target_air_name, (result.0, result.1, result.2))
@@ -361,9 +340,9 @@ impl PowdrTraceGeneratorGpu {
                         row.into_iter()
                     })
                     .collect();
-                let d_subs = padded_subs
-                    .to_device()
-                    .unwrap_or_else(|_| panic!("Failed to copy {} substitutions to device", air_name));
+                let d_subs = padded_subs.to_device().unwrap_or_else(|_| {
+                    panic!("Failed to copy {} substitutions to device", air_name)
+                });
                 (air_name, d_subs)
             })
             .collect();
@@ -382,23 +361,13 @@ impl PowdrTraceGeneratorGpu {
         let direct_d_post_opt_offsets: HashMap<&str, _> = direct_air_data
             .iter()
             .map(|(&air_name, (_, _, post_opt_offsets))| {
-                let d_post_opt_offsets = post_opt_offsets
-                    .clone()
-                    .to_device()
-                    .unwrap_or_else(|_| panic!("Failed to copy {} post opt offsets to device", air_name));
+                let d_post_opt_offsets =
+                    post_opt_offsets.clone().to_device().unwrap_or_else(|_| {
+                        panic!("Failed to copy {} post opt offsets to device", air_name)
+                    });
                 (air_name, d_post_opt_offsets)
             })
             .collect();
-
-        // println!("d_alu_subs len: {}", d_alu_subs.len());
-        // println!(
-        //     "d_opt_widths len: {}",
-        //     d_opt_widths.len()
-        // );
-        // println!(
-        //     "d_post_opt_offsets len: {}",
-        //     d_post_opt_offsets.len()
-        // );
 
         let chip_inventory = {
             let airs: AirInventory<BabyBearSC> =
@@ -428,17 +397,20 @@ impl PowdrTraceGeneratorGpu {
                 Some(subs) => subs,
                 None => {
                     // AIR has records but is not in the active APC
-                    // If it's in DIRECT_TO_APC_AIRS, it's just not used in this APC - skip it
-                    // If it's not in DIRECT_TO_APC_AIRS, it needs to be implemented
-                    if DIRECT_TO_APC_AIRS.iter().any(|&name| name == air_name) {
+                    // If it's in air_name_to_machine, it's just not used in this APC - skip it
+                    // If it's not in air_name_to_machine, it needs to be implemented
+                    if self
+                        .original_airs
+                        .air_name_to_machine
+                        .contains_key(&air_name)
+                    {
                         continue;
                     }
-                    panic!("AIR '{}' is not in DIRECT_TO_APC_AIRS. All chips must implement generate_proving_ctx_new.", air_name);
+                    panic!("AIR '{}' is not in air_name_to_machine. All chips must implement generate_proving_ctx_new.", air_name);
                 }
             };
 
-            chip.generate_proving_ctx_new(
-                record_arena,
+            let ctx = ApcTracingContext::new(
                 output.buffer(),
                 d_subs,
                 &direct_d_opt_widths[air_name.as_str()],
@@ -447,25 +419,8 @@ impl PowdrTraceGeneratorGpu {
                 height,
                 width,
             );
+            chip.generate_proving_ctx_new(record_arena, &ctx);
         }
-
-        // // Optionally dump the APC trace by copying it back to the host.
-        // match output.to_host() {
-        //     Ok(host_buffer) => {
-        //         let matrix_height = output.height();
-        //         let matrix_width = output.width();
-        //         for row in 0..matrix_height {
-        //             print!("Post-Tracegen Row {row}: ");
-        //             for col in 0..matrix_width {
-        //                 let idx = row + col * matrix_height;
-        //                 let value = host_buffer[idx].as_canonical_u32();
-        //                 print!("{value} ");
-        //             }
-        //             println!();
-        //         }
-        //     }
-        //     Err(err) => println!("Failed to copy APC trace to host for logging: {err}"),
-        // }
 
         // Apply derived columns using the GPU expression evaluator
         let (derived_specs, derived_bc) = compile_derived_to_gpu(
@@ -477,24 +432,6 @@ impl PowdrTraceGeneratorGpu {
         let d_specs = derived_specs.to_device().unwrap();
         let d_bc = derived_bc.to_device().unwrap();
         cuda_abi::apc_apply_derived_expr(&mut output, d_specs, d_bc, num_apc_calls).unwrap();
-
-        // // Optionally dump the APC trace by copying it back to the host.
-        // match output.to_host() {
-        //     Ok(host_buffer) => {
-        //         let matrix_height = output.height();
-        //         let matrix_width = output.width();
-        //         for row in 0..matrix_height {
-        //             print!("Post-Derive Row {row}: ");
-        //             for col in 0..matrix_width {
-        //                 let idx = row + col * matrix_height;
-        //                 let value = host_buffer[idx].as_canonical_u32();
-        //                 print!("{value} ");
-        //             }
-        //             println!();
-        //         }
-        //     }
-        //     Err(err) => println!("Failed to copy APC trace to host for logging: {err}"),
-        // }
 
         // Encode bus interactions for GPU consumption
         let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
@@ -555,8 +492,6 @@ impl PowdrTraceGeneratorGpu {
 impl<R, PB: ProverBackend<Matrix = DeviceMatrix<BabyBear>>> Chip<R, PB> for PowdrChipGpu {
     fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
         tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
-
-        println!("generate_proving_ctx called for PowdrChipGpu");
 
         let trace = self
             .trace_generator
