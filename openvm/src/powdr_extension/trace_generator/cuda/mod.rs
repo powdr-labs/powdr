@@ -24,7 +24,7 @@ use powdr_constraint_solver::constraint_system::ComputationMethod;
 use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 
 use crate::{
-    cuda_abi::{self, DerivedExprSpec, DevInteraction, ExprSpan, OpCode, OriginalAir, Subst},
+    cuda_abi::{self, DerivedExprSpec, DevInteraction, ExprSpan, OpCode},
     customize_exe::OpenVmRegisterAddress,
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     powdr_extension::{
@@ -237,23 +237,24 @@ impl PowdrTraceGeneratorGpu {
 
         // Hardcoded array of AIR names for direct-to-APC trace generation.
         // To add a new chip, simply add its AIR name to this array.
-        const DIRECT_TO_APC_AIRS: [&str; 7] = [
+        const DIRECT_TO_APC_AIRS: [&str; 13] = [
+            // 4 airs in keccak
             "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>",
             "VmAirWrapper<Rv32BaseAluAdapterAir, ShiftCoreAir<4, 8>",
             "VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>",
             "VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>",
-
+            // 5 more airs in reth, with sign extend bugging out
             "VmAirWrapper<Rv32BaseAluAdapterAir, LessThanCoreAir<4, 8>",
             "VmAirWrapper<Rv32BranchAdapterAir, BranchLessThanCoreAir<4, 8>",
+            "VmAirWrapper<Rv32MultAdapterAir, MulHCoreAir<4, 8>",
+            "VmAirWrapper<Rv32MultAdapterAir, MultiplicationCoreAir<4, 8>",
             "VmAirWrapper<Rv32LoadStoreAdapterAir, LoadSignExtendCoreAir<4, 8>",
-            // "VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>",
-            // "VmAirWrapper<Rv32MultAdapterAir, MulHCoreAir<4, 8>",
-            // "VmAirWrapper<Rv32MultAdapterAir, MultiplicationCoreAir<4, 8>",
+            // 4 rest of the airs
+            "VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>",
+            "VmAirWrapper<Rv32CondRdWriteAdapterAir, Rv32JalLuiCoreAir>",
+            "VmAirWrapper<Rv32MultAdapterAir, DivRemCoreAir<4, 8>",
+            "VmAirWrapper<Rv32RdWriteAdapterAir, Rv32AuipcCoreAir>",
         ];
-
-        // 1. VmAirWrapper<Rv32CondRdWriteAdapterAir, Rv32JalLuiCoreAir>
-        // 4. VmAirWrapper<Rv32MultAdapterAir, DivRemCoreAir<4, 8>
-        // 7. VmAirWrapper<Rv32RdWriteAdapterAir, Rv32AuipcCoreAir>
 
         println!("air names: {:?}", self.original_airs.air_name_to_machine.keys());
 
@@ -413,161 +414,39 @@ impl PowdrTraceGeneratorGpu {
             .inventory
         };
 
-        let dummy_trace_by_air_name: HashMap<String, DeviceMatrix<BabyBear>> = chip_inventory
-            .chips()
-            .iter()
-            .enumerate()
-            .rev()
-            .filter_map(|(insertion_idx, chip)| {
-                let air_name = chip_inventory.airs().ext_airs()[insertion_idx].name();
+        // Generate traces for all chips using direct-to-APC path
+        for (insertion_idx, chip) in chip_inventory.chips().iter().enumerate().rev() {
+            let air_name = chip_inventory.airs().ext_airs()[insertion_idx].name();
 
-                // println!("air name: {}", air_name);
+            let record_arena = match original_arenas.take_real_arena(&air_name) {
+                Some(ra) => ra,
+                None => continue, // skip chips without records
+            };
 
-                let record_arena = {
-                    match original_arenas.take_real_arena(&air_name) {
-                        Some(ra) => {
-                            // println!("arena air name: {}", air_name);
-                            ra
-                        }
-                        None => return None, // skip this iteration, because we only have record arena for chips that are used
+            // Check if AIR is in the active APC
+            let d_subs = match direct_d_subs.get(air_name.as_str()) {
+                Some(subs) => subs,
+                None => {
+                    // AIR has records but is not in the active APC
+                    // If it's in DIRECT_TO_APC_AIRS, it's just not used in this APC - skip it
+                    // If it's not in DIRECT_TO_APC_AIRS, it needs to be implemented
+                    if DIRECT_TO_APC_AIRS.iter().any(|&name| name == air_name) {
+                        continue;
                     }
-                };
-
-                // println!("generate dummy trace for: {}", air_name);
-
-                // println!("calls_per_apc_row: {}, height: {}", calls_per_apc_row, height);
-
-                // Check if this AIR is in the active direct-to-APC list
-                if let Some(d_subs) = direct_d_subs.get(air_name.as_str()) {
-                    chip.generate_proving_ctx_new(
-                        record_arena,
-                        output.buffer(),
-                        d_subs,
-                        &direct_d_opt_widths[air_name.as_str()],
-                        &direct_d_post_opt_offsets[air_name.as_str()],
-                        direct_calls_per_apc_row[air_name.as_str()],
-                        height,
-                        width,
-                    );
-                    return None;
+                    panic!("AIR '{}' is not in DIRECT_TO_APC_AIRS. All chips must implement generate_proving_ctx_new.", air_name);
                 }
+            };
 
-                // We might have initialized an arena for an AIR which ends up having no real records. It gets filtered out here.
-                chip.generate_proving_ctx(record_arena).common_main.map(|trace| {
-                    (air_name, trace)
-                })
-            })
-            .collect();
-
-        // // Optionally dump the APC trace by copying it back to the host.
-        // use openvm_cuda_common::copy::MemCopyD2H;
-        // use openvm_stark_backend::prover::hal::MatrixDimensions;
-        // match output.to_host() {
-        //     Ok(host_buffer) => {
-        //         let matrix_height = output.height();
-        //         let matrix_width = output.width();
-        //         for row in 0..matrix_height {
-        //             print!("Row {row}: ");
-        //             for col in 0..matrix_width {
-        //                 let idx = row + col * matrix_height;
-        //                 let value = host_buffer[idx].as_canonical_u32();
-        //                 print!("{value} ");
-        //             }
-        //             println!();
-        //         }
-        //     }
-        //     Err(err) => println!("Failed to copy APC trace to host for logging: {err}"),
-        // }
-
-
-        // Prepare `OriginalAir` and `Subst` arrays
-        let (airs, substitutions, air_names, _) = {
-            self.apc
-                // go through original instructions
-                .instructions()
-                .iter()
-                // along with their substitutions
-                .zip_eq(self.apc.subs())
-                // map to `(air_name, substitutions)`
-                .filter_map(|(instr, subs)| {
-                    if subs.is_empty() {
-                        None
-                    } else {
-                        Some((&self.original_airs.opcode_to_air[&instr.0.opcode], subs))
-                    }
-                })
-                // group by air name. This results in `HashMap<air_name, Vec<subs>>` where the length of the vector is the number of rows which are created in this air, per apc call
-                .into_group_map()
-                // go through each air and its substitutions
-                .iter()
-                .fold(
-                    (Vec::new(), Vec::new(), Vec::new(), 0usize),
-                    |(mut airs, mut substitutions, mut air_names, air_index), (air_name, subs_by_row)| {
-                        // Skip direct-to-APC AIRs because they are already processed above
-                        if DIRECT_TO_APC_AIRS.iter().any(|&name| name == *air_name) {
-                            return (airs, substitutions, air_names, air_index);
-                        }
-
-                        // Find the substitutions that map to an apc column
-                        let new_substitutions: Vec<Subst> = subs_by_row
-                            .iter()
-                            // enumerate over them to get the row index inside the air block
-                            .enumerate()
-                            .flat_map(|(row, subs)| {
-                                // for each substitution, map to `Subst` struct
-                                subs.iter()
-                                    .map(move |sub| (row, sub))
-                                    .map(|(row, sub)| Subst {
-                                        air_index: air_index as i32,
-                                        col: sub.original_poly_index as i32,
-                                        row: row as i32,
-                                        apc_col: apc_poly_id_to_index[&sub.apc_poly_id] as i32,
-                                    })
-                            })
-                            .collect();
-
-                        // get the device dummy trace for this air
-                        let dummy_trace = &dummy_trace_by_air_name[*air_name];
-
-                        use openvm_stark_backend::prover::hal::MatrixDimensions;
-                        airs.push(OriginalAir {
-                            width: dummy_trace.width() as i32,
-                            height: dummy_trace.height() as i32,
-                            buffer: dummy_trace.buffer().as_ptr(),
-                            row_block_size: subs_by_row.len() as i32,
-                        });
-
-                        substitutions.extend(new_substitutions);
-                        air_names.push(air_name.clone());
-
-                        (airs, substitutions, air_names, air_index + 1)
-                    },
-                )
-        };
-
-        // println!("airs/substs lengths: {}/{}", airs.len(), substitutions.len());
-        // println!("num_apc_calls: {}", num_apc_calls);
-
-        // airs.iter().for_each(|a| {
-        //     println!(
-        //         "air: width {}, height {}, row_block_size {}",
-        //         a.width, a.height, a.row_block_size
-        //     );
-        // });
-
-        // substitutions.iter().for_each(|s| {
-        //     println!(
-        //         "subst: air_index {}, col {}, row {}, apc_col {}",
-        //         s.air_index, s.col, s.row, s.apc_col
-        //     );
-        // });
-
-        // Send the airs and substitutions to device (skip if all AIRs are direct-to-APC)
-        if !airs.is_empty() {
-            println!("Copying {} airs and {} substitutions to device: {:?}", airs.len(), substitutions.len(), air_names);
-            let airs = airs.to_device().unwrap();
-            let substitutions = substitutions.to_device().unwrap();
-            cuda_abi::apc_tracegen(&mut output, airs, substitutions, num_apc_calls).unwrap();
+            chip.generate_proving_ctx_new(
+                record_arena,
+                output.buffer(),
+                d_subs,
+                &direct_d_opt_widths[air_name.as_str()],
+                &direct_d_post_opt_offsets[air_name.as_str()],
+                direct_calls_per_apc_row[air_name.as_str()],
+                height,
+                width,
+            );
         }
 
         // // Optionally dump the APC trace by copying it back to the host.
@@ -645,9 +524,8 @@ impl PowdrTraceGeneratorGpu {
         let bitwise_count_u32 = periphery.bitwise_lookup_8.as_ref().unwrap().count.as_ref();
 
         // Launch GPU apply-bus to update periphery histograms on device
-        // Note that this is implicitly serialized after `apc_tracegen`,
-        // because we use the default host to device stream, which only launches
-        // the next kernel function after the prior (`apc_tracegen`) returns.
+        // Note: kernels are serialized via the default stream, so this runs after
+        // all chip trace generation and derived expression kernels complete.
         // This is important because bus evaluation depends on trace results.
         cuda_abi::apc_apply_bus(
             // APC related

@@ -6,18 +6,6 @@ use openvm_stark_backend::prover::hal::MatrixDimensions;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 
 extern "C" {
-    /// Launches the GPU kernel that maps original AIR traces into the APC trace buffer.
-    ///
-    /// Safety: All pointers must be valid device pointers for the specified lengths.
-    pub fn _apc_tracegen(
-        d_output: *mut BabyBear,             // column-major
-        output_height: usize,                // H_out
-        d_original_airs: *const OriginalAir, // device array of AIR metadata
-        d_subs: *const Subst,                // device array of all substitutions
-        n_subs: usize,                       // number of substitutions
-        num_apc_calls: i32,                  // number of APC calls
-    ) -> i32;
-
     /// Applies derived expression columns on the GPU.
     /// Each thread processes rows; for rows >= num_apc_calls, writes zeros.
     /// Safety: All device pointers must be valid for the specified lengths.
@@ -64,54 +52,12 @@ extern "C" {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
-pub struct OriginalAir {
-    pub width: i32,              // number of columns
-    pub height: i32,             // number of rows (Ha)
-    pub buffer: *const BabyBear, // column-major base: col*height + row (device ptr)
-    pub row_block_size: i32,     // stride between used rows
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug)]
-pub struct Subst {
-    /// Index of the source AIR in `d_original_airs`
-    pub air_index: i32,
-    /// Source column within this AIR
-    pub col: i32,
-    /// Base row offset within the row-block
-    pub row: i32,
-    /// Destination APC column
-    pub apc_col: i32,
-}
-
-#[repr(C)]
 #[derive(Clone, Copy)]
 pub struct DerivedExprSpec {
     /// Precomputed destination APC column base = (apc_col_index * H)
     pub col_base: u64,
     /// Expression span inside the shared bytecode buffer
     pub span: ExprSpan,
-}
-
-pub fn apc_tracegen(
-    output: &mut DeviceMatrix<BabyBear>,      // column-major
-    original_airs: DeviceBuffer<OriginalAir>, // device array of AIR metadata
-    substitutions: DeviceBuffer<Subst>,       // device array of all substitutions
-    num_apc_calls: usize,
-) -> Result<(), CudaError> {
-    let output_height = output.height();
-
-    unsafe {
-        CudaError::from_result(_apc_tracegen(
-            output.buffer().as_mut_ptr(),
-            output_height,
-            original_airs.as_ptr(),
-            substitutions.as_ptr(),
-            substitutions.len(),
-            num_apc_calls as i32,
-        ))
-    }
 }
 
 /// High-level wrapper for `_apc_apply_derived_expr`.
