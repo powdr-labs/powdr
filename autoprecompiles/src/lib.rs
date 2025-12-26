@@ -350,7 +350,7 @@ pub struct Apc<T, I, A, V> {
     /// For each original instruction, the substitutions from original columns to APC columns
     pub subs: Vec<Vec<Substitution>>,
     /// The optimistic constraints to be satisfied for this apc to be run
-    pub optimistic_constraints: Arc<OptimisticConstraints<A, V>>,
+    pub optimistic_constraints: OptimisticConstraints<A, V>,
 }
 
 impl<T, I, A, V> Apc<T, I, A, V> {
@@ -377,7 +377,7 @@ impl<T, I, A, V> Apc<T, I, A, V> {
     fn new(
         block: BasicBlock<I>,
         machine: SymbolicMachine<T>,
-        optimistic_constraints: Arc<OptimisticConstraints<A, V>>,
+        optimistic_constraints: OptimisticConstraints<A, V>,
         column_allocator: &ColumnAllocator,
     ) -> Self {
         // Get all poly_ids in the machine

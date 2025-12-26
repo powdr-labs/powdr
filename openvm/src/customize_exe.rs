@@ -15,6 +15,7 @@ use crate::program::Prog;
 use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::OriginalCompiledProgram;
 use crate::{CompiledProgram, SpecializedConfig};
+use derive_more::From;
 use itertools::Itertools;
 use openvm_circuit::arch::VmState;
 use openvm_circuit::system::memory::online::GuestMemory;
@@ -56,6 +57,7 @@ pub struct BabyBearOpenVmApcAdapter<'a> {
     _marker: std::marker::PhantomData<&'a ()>,
 }
 
+#[derive(From)]
 pub struct OpenVmExecutionState<'a, T>(&'a VmState<T, GuestMemory>);
 
 // TODO: This is not tested yet as apc compilation does not currently output any optimistic constraints
