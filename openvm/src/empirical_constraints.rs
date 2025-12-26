@@ -407,14 +407,18 @@ mod tests {
             .get(&0)
             .unwrap();
         println!("Equivalence classes: {:?}", equivalence_classes);
-        let expected: Partition<_> = once(
+        let expected: Partition<_> = vec![
             // The result of the first instruction (col 0) is always equal to the
             // first operand of the second instruction (col 1)
-            [BlockCell::new(0, 0), BlockCell::new(1, 1)]
-                .into_iter()
-                .collect::<EquivalenceClass<_>>(),
-        )
+            vec![BlockCell::new(0, 0), BlockCell::new(1, 1)],
+            vec![BlockCell::new(0, 1)],
+            vec![BlockCell::new(0, 2)],
+            vec![BlockCell::new(1, 0)],
+            vec![BlockCell::new(1, 2)],
+        ]
+        .into_iter()
+        .map(|cells| cells.into_iter().collect::<EquivalenceClass<_>>())
         .collect();
-        assert_eq!(*equivalence_classes, expected,);
+        assert_eq!(*equivalence_classes, expected);
     }
 }
