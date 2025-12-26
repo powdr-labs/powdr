@@ -444,7 +444,7 @@ pub fn build<A: Adapter>(
 ) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
     let start = std::time::Instant::now();
 
-    let (machine, column_allocator) = statements_to_symbolic_machine::<A>(
+    let (mut machine, column_allocator) = statements_to_symbolic_machine::<A>(
         &block,
         vm_config.instruction_handler,
         &vm_config.bus_map,
@@ -459,6 +459,10 @@ pub fn build<A: Adapter>(
     );
     let range_analyzer_constraints = constraint_generator.range_constraints();
     let equivalence_analyzer_constraints = constraint_generator.equivalence_constraints();
+
+    // Add empirical constraints to the baseline
+    machine.constraints.extend(range_analyzer_constraints);
+    machine.constraints.extend(equivalence_analyzer_constraints);
 
     if let Some(path) = apc_candidates_dir_path {
         serialize_apc_from_machine::<A>(
@@ -478,43 +482,13 @@ pub fn build<A: Adapter>(
     metrics::counter!("before_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
 
-    let mut baseline = machine;
-
-    // Optimize once without empirical constraints
     let (machine, column_allocator) = optimizer::optimize::<A>(
-        baseline.clone(),
-        vm_config.bus_interaction_handler.clone(),
+        machine,
+        vm_config.bus_interaction_handler,
         degree_bound,
         &vm_config.bus_map,
         column_allocator,
-    )
-    .unwrap();
-    // Get the precompile that is guaranteed to always work
-    let guaranteed_precompile = machine.render(&vm_config.bus_map);
-
-    let (machine, column_allocator, optimistic_precompile) =
-        if !range_analyzer_constraints.is_empty() || !equivalence_analyzer_constraints.is_empty() {
-            // Add empirical constraints to the baseline
-            baseline.constraints.extend(range_analyzer_constraints);
-            baseline
-                .constraints
-                .extend(equivalence_analyzer_constraints);
-
-            // Optimize again with empirical constraints
-            let (machine, column_allocator) = optimizer::optimize::<A>(
-                baseline,
-                vm_config.bus_interaction_handler,
-                degree_bound,
-                &vm_config.bus_map,
-                column_allocator,
-            )
-            .unwrap();
-            let optimistic_precompile = machine.render(&vm_config.bus_map);
-            (machine, column_allocator, Some(optimistic_precompile))
-        } else {
-            // If there are no empirical constraints, we can skip optimizing twice.
-            (machine, column_allocator, None)
-        };
+    )?;
 
     // add guards to constraints that are not satisfied by zeroes
     let (machine, column_allocator) = add_guards(machine, column_allocator);
@@ -534,13 +508,10 @@ pub fn build<A: Adapter>(
     if let Some(path) = apc_candidates_dir_path {
         serialize_apc::<A>(&apc, path, None);
 
-        if let Some(optimistic_precompile) = &optimistic_precompile {
-            let guaranteed_precompile_path = make_path(path, &apc, Some("guaranteed"), "txt");
-            std::fs::write(guaranteed_precompile_path, guaranteed_precompile).unwrap();
-
-            let optimistic_precompile_path = make_path(path, &apc, Some("optimistic"), "txt");
-            std::fs::write(optimistic_precompile_path, optimistic_precompile).unwrap();
-        }
+        // For debugging, also serialize a human-readable version of the final precompile
+        let rendered = apc.machine.render(&vm_config.bus_map);
+        let path = make_path(path, apc.start_pc(), None, "txt");
+        std::fs::write(path, rendered).unwrap();
     }
 
     let apc = convert_apc_field_type(apc, &A::into_field);
@@ -550,22 +521,17 @@ pub fn build<A: Adapter>(
     Ok(apc)
 }
 
-fn make_path<T, I, A, V>(
-    base_path: &Path,
-    apc: &Apc<T, I, A, V>,
-    suffix: Option<&str>,
-    extension: &str,
-) -> PathBuf {
+fn make_path(base_path: &Path, start_pc: u64, suffix: Option<&str>, extension: &str) -> PathBuf {
     let suffix = suffix.map(|s| format!("_{s}")).unwrap_or_default();
     base_path
-        .join(format!("apc_candidate_{}{}", apc.start_pc(), suffix))
+        .join(format!("apc_candidate_{start_pc}{suffix}"))
         .with_extension(extension)
 }
 
 fn serialize_apc<A: Adapter>(apc: &AdapterApcOverPowdrField<A>, path: &Path, suffix: Option<&str>) {
     std::fs::create_dir_all(path).expect("Failed to create directory for APC candidates");
 
-    let ser_path = make_path(path, apc, suffix, "cbor");
+    let ser_path = make_path(path, apc.start_pc(), suffix, "cbor");
     let file_unopt =
         std::fs::File::create(&ser_path).expect("Failed to create file for {suffix} APC candidate");
     let writer_unopt = BufWriter::new(file_unopt);
