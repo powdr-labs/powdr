@@ -413,11 +413,12 @@ impl<T, I, A, V> Apc<T, I, A, V> {
 }
 
 /// Allocates global poly_ids and keeps track of substitutions
+#[derive(Clone)]
 pub struct ColumnAllocator {
     /// For each original air, for each original column index, the associated poly_id in the APC air
     subs: Vec<Vec<u64>>,
     /// The next poly_id to issue
-    next_poly_id: u64,
+    pub next_poly_id: u64,
 }
 
 impl ColumnAllocator {
@@ -448,6 +449,8 @@ pub fn build<A: Adapter>(
         &block,
         vm_config.instruction_handler,
         &vm_config.bus_map,
+        // TODO: Why 3?!
+        3,
     );
 
     // Generate constraints for optimistic precompiles.
@@ -456,9 +459,14 @@ pub fn build<A: Adapter>(
         &column_allocator.subs,
         machine.main_columns(),
         &block,
+        &vm_config,
+        &degree_bound,
+        true,
     );
-    let range_analyzer_constraints = constraint_generator.range_constraints();
-    let equivalence_analyzer_constraints = constraint_generator.equivalence_constraints();
+    // TODO: Use execution constraints
+    let empirical_constraints = constraint_generator
+        .generate_constraints()
+        .symbolic_constraints;
 
     if let Some(path) = apc_candidates_dir_path {
         serialize_apc_from_machine::<A>(
@@ -492,29 +500,25 @@ pub fn build<A: Adapter>(
     // Get the precompile that is guaranteed to always work
     let guaranteed_precompile = machine.render(&vm_config.bus_map);
 
-    let (machine, column_allocator, optimistic_precompile) =
-        if !range_analyzer_constraints.is_empty() || !equivalence_analyzer_constraints.is_empty() {
-            // Add empirical constraints to the baseline
-            baseline.constraints.extend(range_analyzer_constraints);
-            baseline
-                .constraints
-                .extend(equivalence_analyzer_constraints);
+    let (machine, column_allocator, optimistic_precompile) = if !empirical_constraints.is_empty() {
+        // Add empirical constraints to the baseline
+        baseline.constraints.extend(empirical_constraints);
 
-            // Optimize again with empirical constraints
-            let (machine, column_allocator) = optimizer::optimize::<A>(
-                baseline,
-                vm_config.bus_interaction_handler,
-                degree_bound,
-                &vm_config.bus_map,
-                column_allocator,
-            )
-            .unwrap();
-            let optimistic_precompile = machine.render(&vm_config.bus_map);
-            (machine, column_allocator, Some(optimistic_precompile))
-        } else {
-            // If there are no empirical constraints, we can skip optimizing twice.
-            (machine, column_allocator, None)
-        };
+        // Optimize again with empirical constraints
+        let (machine, column_allocator) = optimizer::optimize::<A>(
+            baseline,
+            vm_config.bus_interaction_handler,
+            degree_bound,
+            &vm_config.bus_map,
+            column_allocator,
+        )
+        .unwrap();
+        let optimistic_precompile = machine.render(&vm_config.bus_map);
+        (machine, column_allocator, Some(optimistic_precompile))
+    } else {
+        // If there are no empirical constraints, we can skip optimizing twice.
+        (machine, column_allocator, None)
+    };
 
     // add guards to constraints that are not satisfied by zeroes
     let (machine, column_allocator) = add_guards(machine, column_allocator);
