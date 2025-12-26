@@ -1,24 +1,18 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// An equivalence class, i.e, a set of values of type `T` which are considered equivalent
 pub type EquivalenceClass<T> = BTreeSet<T>;
 
 /// A collection of equivalence classes where all classes are non-empty
 /// and each element appears in exactly one class.
-#[derive(Serialize, Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Partition<T> {
-    inner: BTreeSet<EquivalenceClass<T>>,
+    class_of: BTreeMap<T, T>,
 }
 
-impl<T> Partition<T> {
-    pub fn iter(&self) -> impl Iterator<Item = &EquivalenceClass<T>> {
-        self.inner.iter()
-    }
-}
-
-impl<T: Ord> Partition<T> {
+impl<T: Ord + Clone> Partition<T> {
     fn from_classes<I>(classes: I) -> Self
     where
         I: IntoIterator<Item = EquivalenceClass<T>>,
@@ -26,58 +20,67 @@ impl<T: Ord> Partition<T> {
         let mut uf = UnionFind::default();
         let mut index = BTreeMap::<T, usize>::new();
 
-        for class in classes {
-            let mut iter = class.into_iter();
-            let Some(first) = iter.next() else {
-                continue;
-            };
-            let first_id = intern(first, &mut uf, &mut index);
-            for item in iter {
+        classes.into_iter().for_each(|class| {
+            class.into_iter().fold(None, |first_id, item| {
                 let id = intern(item, &mut uf, &mut index);
-                uf.union(first_id, id);
-            }
-        }
+                match first_id {
+                    Some(first_id) => {
+                        uf.union(first_id, id);
+                        Some(first_id)
+                    }
+                    None => Some(id),
+                }
+            });
+        });
 
-        let mut grouped: BTreeMap<usize, EquivalenceClass<T>> = BTreeMap::new();
-        for (item, id) in index {
-            let root = uf.find(id);
-            grouped.entry(root).or_default().insert(item);
-        }
+        let mut min_by_root = BTreeMap::<usize, T>::new();
+        index.iter().for_each(|(item, id)| {
+            let root = uf.find(*id);
+            min_by_root
+                .entry(root)
+                .and_modify(|min| {
+                    if item < min {
+                        *min = item.clone();
+                    }
+                })
+                .or_insert_with(|| item.clone());
+        });
 
-        Self {
-            inner: grouped.into_values().collect(),
-        }
+        let class_of = index
+            .into_iter()
+            .map(|(item, id)| {
+                let root = uf.find(id);
+                let rep = min_by_root
+                    .get(&root)
+                    .expect("root must have a representative")
+                    .clone();
+                (item, rep)
+            })
+            .collect();
+
+        Self { class_of }
     }
 }
 
-impl<T: Ord> FromIterator<EquivalenceClass<T>> for Partition<T> {
+impl<T: Ord + Clone> FromIterator<EquivalenceClass<T>> for Partition<T> {
     fn from_iter<I: IntoIterator<Item = EquivalenceClass<T>>>(iter: I) -> Self {
         Self::from_classes(iter)
     }
 }
 
-impl<'de, T> Deserialize<'de> for Partition<T>
-where
-    T: Ord + Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let classes = Vec::<EquivalenceClass<T>>::deserialize(deserializer)?;
-        Ok(Self::from_classes(classes))
-    }
-}
-
 impl<T: Ord + Clone> Partition<T> {
-    fn class_index(&self) -> BTreeMap<T, usize> {
-        let mut map = BTreeMap::new();
-        for (class_idx, class) in self.inner.iter().enumerate() {
-            for item in class {
-                map.insert(item.clone(), class_idx);
-            }
-        }
-        map
+    pub fn iter(&self) -> impl Iterator<Item = EquivalenceClass<T>> + '_ {
+        self.classes().into_values()
+    }
+
+    fn classes(&self) -> BTreeMap<T, EquivalenceClass<T>> {
+        self.class_of.iter().fold(
+            BTreeMap::<T, EquivalenceClass<T>>::new(),
+            |mut acc, (item, rep)| {
+                acc.entry(rep.clone()).or_default().insert(item.clone());
+                acc
+            },
+        )
     }
 
     /// Intersects multiple partitions of the same universe into a single partition.
@@ -93,46 +96,58 @@ impl<T: Ord + Clone> Partition<T> {
             return partitions[0].clone();
         }
 
-        let class_ids: Vec<BTreeMap<T, usize>> =
-            partitions.iter().map(|partition| partition.class_index()).collect();
-
-        let base = class_ids
+        let base = partitions
             .iter()
-            .min_by_key(|map| map.len())
+            .min_by_key(|partition| partition.class_of.len())
             .expect("partitions is not empty");
 
-        let mut grouped: BTreeMap<Vec<usize>, EquivalenceClass<T>> = BTreeMap::new();
+        let mut grouped: BTreeMap<Vec<T>, EquivalenceClass<T>> = BTreeMap::new();
 
-        for item in base.keys() {
-            let mut signature = Vec::with_capacity(class_ids.len());
-            let mut in_all = true;
-            for map in &class_ids {
-                if let Some(class_id) = map.get(item) {
-                    signature.push(*class_id);
-                } else {
-                    in_all = false;
-                    break;
-                }
-            }
-            if !in_all {
-                continue;
-            }
-
-            grouped.entry(signature).or_default().insert(item.clone());
-        }
+        base.class_of
+            .keys()
+            .filter_map(|item| {
+                let signature = partitions
+                    .iter()
+                    .map(|partition| partition.class_of.get(item).cloned())
+                    .collect::<Option<Vec<_>>>()?;
+                Some((signature, item.clone()))
+            })
+            .for_each(|(signature, item)| {
+                grouped.entry(signature).or_default().insert(item);
+            });
 
         Self::from_classes(grouped.into_values())
     }
 }
 
-fn intern<T: Ord>(value: T, uf: &mut UnionFind, index: &mut BTreeMap<T, usize>) -> usize {
-    if let Some(&id) = index.get(&value) {
-        return id;
+impl<T: Ord + Clone + Serialize> Serialize for Partition<T> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.iter().collect::<Vec<_>>().serialize(serializer)
     }
+}
 
-    let id = uf.make_set();
-    index.insert(value, id);
-    id
+impl<'de, T> Deserialize<'de> for Partition<T>
+where
+    T: Ord + Clone + Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let classes = Vec::<EquivalenceClass<T>>::deserialize(deserializer)?;
+        Ok(Self::from_classes(classes))
+    }
+}
+
+fn intern<T: Ord>(value: T, uf: &mut UnionFind, index: &mut BTreeMap<T, usize>) -> usize {
+    index.get(&value).copied().unwrap_or_else(|| {
+        let id = uf.make_set();
+        index.insert(value, id);
+        id
+    })
 }
 
 #[derive(Default)]
