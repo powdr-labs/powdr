@@ -7,11 +7,11 @@ homepage.workspace = true
 repository.workspace = true
 
 [features]
-default = ["cuda"]
+default = []
 aot = ["openvm-sdk/aot", "powdr-openvm-hints-circuit/aot"]
 tco = ["openvm-sdk/tco", "powdr-openvm-hints-circuit/tco"]
 metrics = ["openvm-sdk/metrics", "openvm-stark-backend/metrics", "openvm-stark-sdk/metrics"]
-cuda = ["openvm-sdk/cuda", "openvm-circuit-primitives/cuda", "dep:openvm-cuda-backend", "dep:openvm-cuda-common", "dep:openvm-cuda-builder"]
+cuda = ["openvm-sdk/cuda", "openvm-circuit-primitives/cuda", "dep:openvm-cuda-backend", "dep:openvm-cuda-common", "dep:openvm-cuda-builder", "dep:openvm-circuit-primitives"]
 
 [dependencies]
 openvm.workspace = true
@@ -95,6 +95,7 @@ tracing-log = "0.2.0"
 
 [build-dependencies]
 openvm-cuda-builder = { workspace = true, optional = true }
+openvm-circuit-primitives = { workspace = true, optional = true, features = ["cuda"] }
 
 [lib]
 bench = false # See https://github.com/bheisler/criterion.rs/issues/458

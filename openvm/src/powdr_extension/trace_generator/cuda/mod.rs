@@ -38,6 +38,8 @@ use crate::{
 mod inventory;
 mod periphery;
 
+type DirectAirData<'a> = (Vec<&'a Vec<Substitution>>, Vec<u32>, Vec<u32>);
+
 pub use periphery::PowdrPeripheryInstancesGpu;
 
 /// Encodes an algebraic expression into GPU stack-machine bytecode.
@@ -262,53 +264,52 @@ impl PowdrTraceGeneratorGpu {
 
         // Generate substitution data for each active direct-to-APC AIR
         // HashMap: air_name -> (subs, opt_widths, post_optimization_offsets)
-        let direct_air_data: HashMap<&str, (Vec<&Vec<Substitution>>, Vec<u32>, Vec<u32>)> =
-            active_direct_airs
-                .iter()
-                .map(|&target_air_name| {
-                    let air_width = direct_air_widths[target_air_name];
-                    let result = self
-                        .apc
-                        .instructions()
-                        .iter()
-                        .zip_eq(self.apc.subs())
-                        .filter_map(|(instr, subs)| {
-                            if subs.is_empty() {
-                                None
-                            } else {
-                                Some((instr, subs))
+        let direct_air_data: HashMap<&str, DirectAirData<'_>> = active_direct_airs
+            .iter()
+            .map(|&target_air_name| {
+                let air_width = direct_air_widths[target_air_name];
+                let result = self
+                    .apc
+                    .instructions()
+                    .iter()
+                    .zip_eq(self.apc.subs())
+                    .filter_map(|(instr, subs)| {
+                        if subs.is_empty() {
+                            None
+                        } else {
+                            Some((instr, subs))
+                        }
+                    })
+                    .fold(
+                        (Vec::new(), Vec::new(), Vec::new(), 0u32, 0u32),
+                        |(
+                            mut subs,
+                            mut opt_widths,
+                            mut post_opt_widths,
+                            mut opt_width_acc,
+                            mut post_opt_width_acc,
+                        ),
+                         (instr, sub)| {
+                            let air_name = &self.original_airs.opcode_to_air[&instr.0.opcode];
+                            if air_name == target_air_name {
+                                subs.push(sub);
+                                opt_widths.push(sub.len() as u32);
+                                post_opt_widths.push(post_opt_width_acc);
+                                opt_width_acc += air_width as u32;
                             }
-                        })
-                        .fold(
-                            (Vec::new(), Vec::new(), Vec::new(), 0u32, 0u32),
-                            |(
-                                mut subs,
-                                mut opt_widths,
-                                mut post_opt_widths,
-                                mut opt_width_acc,
-                                mut post_opt_width_acc,
-                            ),
-                             (instr, sub)| {
-                                let air_name = &self.original_airs.opcode_to_air[&instr.0.opcode];
-                                if air_name == target_air_name {
-                                    subs.push(sub);
-                                    opt_widths.push(sub.len() as u32);
-                                    post_opt_widths.push(post_opt_width_acc);
-                                    opt_width_acc += air_width as u32;
-                                }
-                                post_opt_width_acc += sub.len() as u32;
-                                (
-                                    subs,
-                                    opt_widths,
-                                    post_opt_widths,
-                                    opt_width_acc,
-                                    post_opt_width_acc,
-                                )
-                            },
-                        );
-                    (target_air_name, (result.0, result.1, result.2))
-                })
-                .collect();
+                            post_opt_width_acc += sub.len() as u32;
+                            (
+                                subs,
+                                opt_widths,
+                                post_opt_widths,
+                                opt_width_acc,
+                                post_opt_width_acc,
+                            )
+                        },
+                    );
+                (target_air_name, (result.0, result.1, result.2))
+            })
+            .collect();
 
         // Extract calls_per_apc_row for each AIR (HashMap)
         let direct_calls_per_apc_row: HashMap<&str, u32> = direct_air_data
@@ -419,7 +420,7 @@ impl PowdrTraceGeneratorGpu {
                 height,
                 width,
             );
-            chip.generate_proving_ctx_new(record_arena, &ctx);
+            chip.generate_proving_ctx_direct(record_arena, Some(&ctx));
         }
 
         // Apply derived columns using the GPU expression evaluator
