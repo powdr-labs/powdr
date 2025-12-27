@@ -94,6 +94,21 @@ crepe! {
       Env(env),
       let Some((coeff, var, offset)) = env.try_to_affine(e);
 
+    struct LinearExpression<T: FieldElement>(Expr, Var, T);
+    LinearExpression(e, var, coeff) <-
+      AffineExpression(e, coeff, var, offset),
+      (offset.is_zero());
+
+    // Split the expression into head and tail
+    // ExpressionSumHeadTail(e, h, t) => e = h + t
+    struct ExpressionSumHeadTail(Expr, Expr, Expr);
+    ExpressionSumHeadTail(e, head, tail) <-
+      Env(env),
+      Expression(e),
+      let Some((head, tail)) = env.try_split_into_head_tail(e);
+    Expression(head) <- ExpressionSumHeadTail(_, head, _);
+    Expression(tail) <- ExpressionSumHeadTail(_, _, tail);
+
     // HasProductSummand(e, l, r) => e contains a summand of the form l * r
     struct HasProductSummand(Expr, Expr, Expr);
     HasProductSummand(e, l, r) <-
@@ -270,6 +285,8 @@ crepe! {
     Assignment(var, v) <-
       AlgebraicConstraint(e),
       Solvable(e, var, v);
+
+
 
     ///////////////////////////////// OUTPUT ACTIONS //////////////////////////
 
