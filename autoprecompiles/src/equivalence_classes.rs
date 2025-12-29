@@ -2,7 +2,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::hash::Hash;
 
 use itertools::Itertools;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// An equivalence class, i.e, a set of values of type `T` which are considered equivalent
 pub type EquivalenceClass<T> = BTreeSet<T>;
@@ -11,13 +11,32 @@ pub type EquivalenceClass<T> = BTreeSet<T>;
 /// This is enforced by construction of this type only happening through collection, where we ignore empty and singleton classes.
 ///
 /// Internally represented as a map from element to class ID for efficient intersection operations.
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(bound(deserialize = "T: Eq + Hash + Deserialize<'de>"))]
+/// Serializes as Vec<Vec<T>> for JSON compatibility (JSON requires string keys in objects).
+#[derive(Debug, Clone)]
 pub struct Partition<T> {
     /// Maps each element to its class ID (0..num_classes)
     class_of: HashMap<T, usize>,
     /// Number of classes
     num_classes: usize,
+}
+
+impl<T: Eq + Hash + Serialize + Clone> Serialize for Partition<T> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        // Serialize as Vec<Vec<T>> for JSON compatibility
+        let classes: Vec<Vec<T>> = self.iter().collect();
+        classes.serialize(serializer)
+    }
+}
+
+impl<'de, T: Eq + Hash + Ord + Deserialize<'de>> Deserialize<'de> for Partition<T> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        // Deserialize from Vec<Vec<T>>, reusing FromIterator logic
+        let classes: Vec<Vec<T>> = Vec::deserialize(deserializer)?;
+        Ok(classes
+            .into_iter()
+            .map(|class| class.into_iter().collect())
+            .collect())
+    }
 }
 
 impl<T: Eq + Hash> FromIterator<EquivalenceClass<T>> for Partition<T> {
