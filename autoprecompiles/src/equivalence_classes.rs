@@ -23,8 +23,7 @@ pub struct Partition<T> {
 impl<T: Eq + Hash + Serialize + Clone> Serialize for Partition<T> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         // Serialize as Vec<Vec<T>> for JSON compatibility
-        let classes: Vec<Vec<T>> = self.iter().collect();
-        classes.serialize(serializer)
+        self.into_classes().serialize(serializer)
     }
 }
 
@@ -62,15 +61,15 @@ impl<T: Eq + Hash> FromIterator<EquivalenceClass<T>> for Partition<T> {
 }
 
 impl<T: Eq + Hash + Clone> Partition<T> {
-    /// Iterates over equivalence classes, returning each class as a Vec of its elements.
-    pub fn iter(&self) -> impl Iterator<Item = Vec<T>> + '_ {
-        (0..self.num_classes).map(|class_id| {
-            self.class_of
-                .iter()
-                .filter(move |(_, &c)| c == class_id)
-                .map(|(e, _)| e.clone())
-                .collect()
-        })
+    /// Returns all equivalence classes as a Vec<Vec<T>>.
+    /// This is O(n) where n is the number of elements.
+    #[allow(clippy::iter_over_hash_type)] // Order within classes doesn't matter semantically
+    pub fn into_classes(&self) -> Vec<Vec<T>> {
+        let mut classes: Vec<Vec<T>> = vec![Vec::new(); self.num_classes];
+        for (elem, &class_id) in &self.class_of {
+            classes[class_id].push(elem.clone());
+        }
+        classes
     }
 }
 
@@ -143,7 +142,8 @@ impl<T: Eq + Hash + Ord + Clone> Eq for Partition<T> {}
 impl<T: Eq + Hash + Ord + Clone> Partition<T> {
     /// Converts to a canonical BTreeSet<BTreeSet<T>> form for equality comparison.
     fn to_canonical(&self) -> BTreeSet<BTreeSet<T>> {
-        self.iter()
+        self.into_classes()
+            .into_iter()
             .map(|class| class.into_iter().collect())
             .collect()
     }

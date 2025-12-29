@@ -250,7 +250,7 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
             .equivalence_classes_by_block
             .get(&self.block.start_pc)
         {
-            for equivalence_class in equivalence_classes.iter() {
+            for equivalence_class in equivalence_classes.into_classes() {
                 let first = equivalence_class.first().unwrap();
                 let first_ref = self.get_algebraic_reference(first);
                 for other in equivalence_class.iter().skip(1) {
