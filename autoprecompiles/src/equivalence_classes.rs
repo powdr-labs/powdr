@@ -146,21 +146,30 @@ mod tests {
     #[test]
     fn test_intersect_partitions() {
         let partition1 = partition(vec![
-            // Two classes: 1-4 and 5-9
+            // Two classes: {1,2,3,4} and {5,6,7,8,9}
             vec![1, 2, 3, 4],
             vec![5, 6, 7, 8, 9],
         ]);
         let partition2 = partition(vec![
-            // Four classes: 1, 2-3, 4-5, 6-8, 9 (implicit)
-            vec![1],
+            // Classes: {2,3}, {4,5}, {6,7,8} (1 and 9 are singletons)
             vec![2, 3],
             vec![4, 5],
             vec![6, 7, 8],
         ]);
+        let partition3 = partition(vec![
+            // Classes: {2,3}, {6,7}, {8,9} (splits {6,7,8} into {6,7} and {8})
+            vec![2, 3],
+            vec![6, 7],
+            vec![8, 9],
+        ]);
 
-        let result = Partition::intersect(&[partition1, partition2]);
+        let result = Partition::intersect(&[partition1, partition2, partition3]);
 
-        let expected = partition(vec![vec![2, 3], vec![6, 7, 8]]);
+        // After intersecting all three:
+        // - {2,3} survives (in same class in all three)
+        // - {6,7} survives (6,7,8 in p2 intersected with 6,7 in p3)
+        // - 8 becomes singleton (was with 6,7 in p2, but with 9 in p3, and 9 not in p1's class)
+        let expected = partition(vec![vec![2, 3], vec![6, 7]]);
 
         assert_eq!(result, expected);
     }
