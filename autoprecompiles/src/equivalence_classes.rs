@@ -116,7 +116,7 @@ impl<T: Eq + Hash + Copy> Partition<T> {
 }
 
 /// Equality implementation that converts to canonical form for comparison.
-/// This is intentionally simple (not optimized) since it's primarily used in tests.
+/// This is intentionally simple (not optimized) since it's only used in tests.
 impl<T: Eq + Hash + Ord + Clone> PartialEq for Partition<T> {
     fn eq(&self, other: &Self) -> bool {
         self.to_canonical() == other.to_canonical()
