@@ -151,6 +151,14 @@ impl BlockCell {
             column_idx,
         }
     }
+
+    pub fn instruction_idx(&self) -> usize {
+        self.instruction_idx
+    }
+
+    pub fn column_idx(&self) -> usize {
+        self.column_idx
+    }
 }
 
 /// For any program line that was not executed at least this many times in the traces,

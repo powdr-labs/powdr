@@ -207,24 +207,41 @@ struct ConcreteBlock<'a> {
 }
 
 impl<'a> ConcreteBlock<'a> {
-    fn equivalence_classes(&self) -> Partition<BlockCell> {
+    /// Gets the value of a cell by its coordinates.
+    fn get_cell_value(&self, cell: &BlockCell) -> Option<u32> {
         self.rows
+            .get(cell.instruction_idx())
+            .and_then(|row| row.cells.get(cell.column_idx()).copied())
+    }
+}
+
+/// Computes equivalence classes across all instances of a block using a fused
+/// build+intersect approach. Instead of building full partitions for all instances
+/// and then intersecting, we incrementally refine the result, only tracking cells
+/// that are still in non-singleton equivalence classes.
+fn equivalence_classes_fused(instances: &[ConcreteBlock]) -> Partition<BlockCell> {
+    let Some((first, rest)) = instances.split_first() else {
+        return std::iter::empty().collect();
+    };
+
+    // Build initial partition from first instance by grouping cells with the same value
+    let cells_with_values = first.rows.iter().enumerate().flat_map(|(i, row)| {
+        row.cells
             .iter()
             .enumerate()
-            // Map each cell to a (value, (instruction_index, col_index)) pair
-            .flat_map(|(instruction_index, row)| {
-                row.cells
-                    .iter()
-                    .enumerate()
-                    .map(|(col_index, v)| (*v, BlockCell::new(instruction_index, col_index)))
-                    .collect::<Vec<_>>()
-            })
-            // Group by value
-            .into_group_map()
-            .into_values()
-            .map(|cells| cells.into_iter().collect())
-            .collect()
+            .map(move |(j, &v)| (BlockCell::new(i, j), v))
+    });
+    let mut partition = Partition::from_values(cells_with_values);
+
+    // Refine with each subsequent instance
+    for instance in rest {
+        if partition.is_empty() {
+            break;
+        }
+        partition.refine_with(|cell| instance.get_cell_value(cell));
     }
+
+    partition
 }
 
 impl ConstraintDetector {
@@ -301,8 +318,7 @@ impl ConstraintDetector {
         tracing::info!("        Finding equivalence classes...");
 
         use std::sync::atomic::{AtomicU64, Ordering};
-        let build_time_us = AtomicU64::new(0);
-        let intersect_time_us = AtomicU64::new(0);
+        let fused_time_us = AtomicU64::new(0);
         let num_blocks = AtomicU64::new(0);
         let num_instances = AtomicU64::new(0);
         let num_cells = AtomicU64::new(0);
@@ -319,29 +335,22 @@ impl ConstraintDetector {
                     .sum();
                 num_cells.fetch_add(cells_in_block, Ordering::Relaxed);
 
-                // Segment each block instance into equivalence classes
-                let build_start = std::time::Instant::now();
-                let partition_by_block_instance = block_instances
-                    .into_iter()
-                    .map(|block| block.equivalence_classes())
-                    .collect::<Vec<_>>();
-                build_time_us.fetch_add(build_start.elapsed().as_micros() as u64, Ordering::Relaxed);
+                // Use fused build+intersect approach for efficiency
+                let start = std::time::Instant::now();
+                let result = equivalence_classes_fused(&block_instances);
+                fused_time_us.fetch_add(start.elapsed().as_micros() as u64, Ordering::Relaxed);
 
-                // Intersect the equivalence classes across all instances of the block
-                let intersect_start = std::time::Instant::now();
-                let intersected = Partition::intersect(&partition_by_block_instance);
-                intersect_time_us.fetch_add(intersect_start.elapsed().as_micros() as u64, Ordering::Relaxed);
-
-                (block_id, intersected)
+                (block_id, result)
             })
             .collect();
 
-        tracing::info!("        Blocks: {}, Instances: {}, Cells: {}, Build: {}ms, Intersect: {}ms",
+        tracing::info!(
+            "        Blocks: {}, Instances: {}, Cells: {}, Fused: {}ms",
             num_blocks.load(Ordering::Relaxed),
             num_instances.load(Ordering::Relaxed),
             num_cells.load(Ordering::Relaxed),
-            build_time_us.load(Ordering::Relaxed) / 1000,
-            intersect_time_us.load(Ordering::Relaxed) / 1000);
+            fused_time_us.load(Ordering::Relaxed) / 1000
+        );
 
         result
     }

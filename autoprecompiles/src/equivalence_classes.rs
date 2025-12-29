@@ -72,9 +72,72 @@ impl<T: Eq + Hash + Clone> Partition<T> {
                 .collect()
         })
     }
+
+    /// Returns true if there are no equivalence classes.
+    pub fn is_empty(&self) -> bool {
+        self.num_classes == 0
+    }
 }
 
 impl<T: Eq + Hash + Copy> Partition<T> {
+    /// Creates a partition by grouping elements that have the same value.
+    /// Elements with unique values are not included (singleton classes are omitted).
+    pub fn from_values<V: Eq + Hash>(elements_with_values: impl Iterator<Item = (T, V)>) -> Self {
+        let grouped: HashMap<V, Vec<T>> = elements_with_values
+            .map(|(elem, value)| (value, elem))
+            .into_group_map();
+
+        let mut class_of = HashMap::new();
+        let mut num_classes = 0;
+
+        for elements in grouped.into_values() {
+            if elements.len() > 1 {
+                for element in elements {
+                    class_of.insert(element, num_classes);
+                }
+                num_classes += 1;
+            }
+        }
+
+        Self {
+            class_of,
+            num_classes,
+        }
+    }
+
+    /// Refines this partition by splitting classes where elements have different values.
+    /// Elements in the same class that have the same value stay together.
+    /// Elements for which `get_value` returns `None` are removed from the partition.
+    /// Singleton classes are removed.
+    pub fn refine_with<V: Eq + Hash>(&mut self, get_value: impl Fn(&T) -> Option<V>) {
+        if self.class_of.is_empty() {
+            return;
+        }
+
+        // Group surviving elements by (current_class, value)
+        let grouped: HashMap<(usize, V), Vec<T>> = self
+            .class_of
+            .keys()
+            .filter_map(|&elem| {
+                let class = self.class_of.get(&elem).copied()?;
+                let value = get_value(&elem)?;
+                Some(((class, value), elem))
+            })
+            .into_group_map();
+
+        // Rebuild with groups of 2+ elements
+        self.class_of.clear();
+        self.num_classes = 0;
+        for elements in grouped.into_values() {
+            if elements.len() > 1 {
+                for element in elements {
+                    self.class_of.insert(element, self.num_classes);
+                }
+                self.num_classes += 1;
+            }
+        }
+    }
+
     /// Intersects multiple partitions of the same universe into a single partition.
     /// In other words, two elements are in the same equivalence class in the resulting partition
     /// if and only if they are in the same equivalence class in all input partitions.
@@ -143,7 +206,9 @@ impl<T: Eq + Hash + Ord + Clone> Eq for Partition<T> {}
 impl<T: Eq + Hash + Ord + Clone> Partition<T> {
     /// Converts to a canonical BTreeSet<BTreeSet<T>> form for equality comparison.
     fn to_canonical(&self) -> BTreeSet<BTreeSet<T>> {
-        self.iter().map(|class| class.into_iter().collect()).collect()
+        self.iter()
+            .map(|class| class.into_iter().collect())
+            .collect()
     }
 }
 
@@ -175,5 +240,51 @@ mod tests {
         let expected = partition(vec![vec![2, 3], vec![6, 7, 8]]);
 
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_from_values() {
+        // Elements 1,2,3 have value 'a', elements 4,5 have value 'b', element 6 has value 'c'
+        let p = Partition::from_values(
+            [(1, 'a'), (2, 'a'), (3, 'a'), (4, 'b'), (5, 'b'), (6, 'c')].into_iter(),
+        );
+        let expected = partition(vec![vec![1, 2, 3], vec![4, 5]]);
+        assert_eq!(p, expected);
+    }
+
+    #[test]
+    fn test_refine_with() {
+        // Start with elements 1-5 all in one class
+        let mut p = Partition::from_values([(1, 0), (2, 0), (3, 0), (4, 0), (5, 0)].into_iter());
+        assert_eq!(p, partition(vec![vec![1, 2, 3, 4, 5]]));
+
+        // Refine: 1,2,3 have value 'a', 4,5 have value 'b'
+        p.refine_with(|&x| Some(if x <= 3 { 'a' } else { 'b' }));
+        assert_eq!(p, partition(vec![vec![1, 2, 3], vec![4, 5]]));
+
+        // Refine again: 1 has value 1, 2,3 have value 2, 4,5 have value 3
+        p.refine_with(|&x| {
+            Some(if x == 1 {
+                1
+            } else if x <= 3 {
+                2
+            } else {
+                3
+            })
+        });
+        // Now 1 is singleton (removed), 2,3 stay together, 4,5 stay together
+        assert_eq!(p, partition(vec![vec![2, 3], vec![4, 5]]));
+    }
+
+    #[test]
+    fn test_refine_with_removal() {
+        // Start with elements 1-4 all in one class
+        let mut p = Partition::from_values([(1, 0), (2, 0), (3, 0), (4, 0)].into_iter());
+
+        // Refine but element 3 returns None (removed)
+        p.refine_with(|&x| if x == 3 { None } else { Some(x % 2) });
+        // 1 has value 1 (odd), 2 has value 0 (even), 4 has value 0 (even)
+        // So 2,4 stay together, 1 is singleton (removed)
+        assert_eq!(p, partition(vec![vec![2, 4]]));
     }
 }
