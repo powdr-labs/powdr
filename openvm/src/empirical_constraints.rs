@@ -298,7 +298,6 @@ impl ConstraintDetector {
         tracing::info!("        Segmenting trace into blocks...");
         let blocks = self.get_blocks(trace);
         tracing::info!("        Finding equivalence classes...");
-
         blocks
             .into_par_iter()
             .map(|(block_id, block_instances)| {
