@@ -2,6 +2,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::hash::Hash;
 
 use itertools::Itertools;
+use rayon::prelude::*;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// An equivalence class, i.e, a set of values of type `T` which are considered equivalent
@@ -112,6 +113,34 @@ impl<T: Eq + Hash + Copy> Partition<T> {
             .into_group_map()
             .into_values()
             .collect()
+    }
+}
+
+/// Threshold below which we use sequential intersection.
+const PARALLEL_THRESHOLD: usize = 16;
+
+/// Number of partitions to combine in each chunk before parallelizing.
+const CHUNK_SIZE: usize = 64;
+
+impl<T: Eq + Hash + Copy + Send + Sync> Partition<T> {
+    /// Intersects multiple partitions in parallel using a chunked tree reduction.
+    ///
+    /// Partitions are grouped into chunks, each chunk is intersected sequentially,
+    /// then the chunk results are combined recursively in parallel.
+    pub fn parallel_intersect(partitions: Vec<Self>) -> Self {
+        if partitions.len() <= PARALLEL_THRESHOLD {
+            return Self::intersect(&partitions);
+        }
+
+        // Chunk partitions and intersect each chunk in parallel
+        let chunk_results: Vec<Self> = partitions
+            .chunks(CHUNK_SIZE)
+            .par_bridge()
+            .map(Self::intersect)
+            .collect();
+
+        // Recursively combine chunk results
+        Self::parallel_intersect(chunk_results)
     }
 }
 

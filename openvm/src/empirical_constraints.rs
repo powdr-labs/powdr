@@ -301,14 +301,14 @@ impl ConstraintDetector {
         blocks
             .into_par_iter()
             .map(|(block_id, block_instances)| {
-                // Segment each block instance into equivalence classes
-                let partition_by_block_instance = block_instances
-                    .into_iter()
+                // Build partitions for each block instance in parallel
+                let partition_by_block_instance: Vec<_> = block_instances
+                    .into_par_iter()
                     .map(|block| block.equivalence_classes())
-                    .collect::<Vec<_>>();
+                    .collect();
 
-                // Intersect the equivalence classes across all instances of the block
-                let intersected = Partition::intersect(&partition_by_block_instance);
+                // Intersect the equivalence classes across all instances in parallel
+                let intersected = Partition::parallel_intersect(partition_by_block_instance);
 
                 (block_id, intersected)
             })
