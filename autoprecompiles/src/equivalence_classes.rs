@@ -102,6 +102,8 @@ impl<T: Eq + Hash + Copy> Partition<T> {
         let grouped: HashMap<(usize, usize), Vec<T>> = a
             .class_of
             .iter()
+            // Note that if an element is not in a or b, it is a singleton and will also
+            // not be in the intersection.
             .filter_map(|(&elem, &class_a)| {
                 b.class_of
                     .get(&elem)
