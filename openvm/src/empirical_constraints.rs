@@ -222,7 +222,6 @@ impl<'a> ConcreteBlock<'a> {
             // Group by value
             .into_group_map()
             .into_values()
-            .map(|cells| cells.into_iter().collect())
             .collect()
     }
 }
