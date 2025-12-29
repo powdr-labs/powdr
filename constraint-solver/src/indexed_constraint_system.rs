@@ -6,6 +6,7 @@ use std::{
 };
 
 use bitvec::vec::BitVec;
+use derivative::Derivative;
 use itertools::Itertools;
 
 use crate::{
@@ -53,21 +54,13 @@ pub fn apply_substitutions_to_expressions<
 
 /// Structure on top of a [`ConstraintSystem`] that stores indices
 /// to more efficiently update the constraints.
-#[derive(Clone)]
+#[derive(Derivative)]
+#[derivative(Default(bound = ""), Clone)]
 pub struct IndexedConstraintSystem<T, V> {
     /// The constraint system.
     constraint_system: ConstraintSystem<T, V>,
     /// Stores where each unknown variable appears.
     variable_occurrences: HashMap<V, BTreeSet<ConstraintSystemItem>>,
-}
-
-impl<T, V> Default for IndexedConstraintSystem<T, V> {
-    fn default() -> Self {
-        IndexedConstraintSystem {
-            constraint_system: ConstraintSystem::default(),
-            variable_occurrences: HashMap::new(),
-        }
-    }
 }
 
 /// Structure on top of [`IndexedConstraintSystem`] that
@@ -78,19 +71,11 @@ impl<T, V> Default for IndexedConstraintSystem<T, V> {
 /// and are put in a queue. Handling an item can cause an update to a variable,
 /// which causes all constraints referencing that variable to be put back into the
 /// queue.
-#[derive(Clone)]
+#[derive(Derivative)]
+#[derivative(Default(bound = ""), Clone)]
 pub struct IndexedConstraintSystemWithQueue<T, V> {
     constraint_system: IndexedConstraintSystem<T, V>,
     queue: ConstraintSystemQueue,
-}
-
-impl<T, V> Default for IndexedConstraintSystemWithQueue<T, V> {
-    fn default() -> Self {
-        IndexedConstraintSystemWithQueue {
-            constraint_system: IndexedConstraintSystem::default(),
-            queue: ConstraintSystemQueue::default(),
-        }
-    }
 }
 
 /// A reference to an item in the constraint system, based on the index.
@@ -196,24 +181,6 @@ impl<T: RuntimeConstant, V: Clone + Eq> IndexedConstraintSystem<T, V> {
     /// but might contain repetitions.
     pub fn referenced_unknown_variables(&self) -> impl Iterator<Item = &V> {
         self.constraint_system.referenced_unknown_variables()
-    }
-
-    /// Returns a list of variables that occur exactly once in the system.
-    pub fn single_occurrence_variables<'a>(&'a self) -> impl Iterator<Item = &'a V> + 'a {
-        self.variable_occurrences.iter().filter_map(|(v, items)| {
-            let item = items
-                .iter()
-                .filter(|item| !item.is_derived_variable())
-                .exactly_one()
-                .ok()?;
-            item.try_to_constraint_ref(&self.constraint_system)
-                .unwrap()
-                .referenced_unknown_variables()
-                .filter(|var| *var == v)
-                .exactly_one()
-                .is_ok()
-                .then_some(v)
-        })
     }
 
     /// Removes all constraints that do not fulfill the predicate.

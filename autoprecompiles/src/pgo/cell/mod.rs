@@ -9,11 +9,13 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    adapter::{Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig, PgoAdapter},
+    adapter::{
+        Adapter, AdapterApc, AdapterApcWithStats, AdapterBasicBlock, AdapterVmConfig, PgoAdapter,
+    },
     blocks::BasicBlock,
     evaluation::EvaluationResult,
     pgo::cell::selection::parallel_fractional_knapsack,
-    PowdrConfig,
+    EmpiricalConstraints, PowdrConfig,
 };
 
 mod selection;
@@ -88,10 +90,11 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
 
     fn create_apcs_with_pgo(
         &self,
-        mut blocks: Vec<BasicBlock<<Self::Adapter as Adapter>::Instruction>>,
+        mut blocks: Vec<AdapterBasicBlock<Self::Adapter>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
+        empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
         tracing::info!(
             "Generating autoprecompiles with cell PGO for {} blocks",
@@ -131,6 +134,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
                     vm_config.clone(),
                     config.degree_bound,
                     config.apc_candidates_dir_path.as_deref(),
+                    &empirical_constraints,
                 )
                 .ok()?;
                 let candidate = C::create(

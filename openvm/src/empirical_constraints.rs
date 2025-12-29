@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::iter::once;
 
 use crate::bus_map::default_openvm_bus_map;
-use crate::trace_generation::do_with_trace;
+use crate::trace_generation::do_with_cpu_trace;
 use crate::{CompiledProgram, OriginalCompiledProgram};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -103,7 +103,7 @@ fn collect_trace(
     let mut trace = Trace::default();
     let mut debug_info = DebugInfo::default();
 
-    do_with_trace(program, inputs, |seg_idx, vm, _pk, ctx| {
+    do_with_cpu_trace(program, inputs, |seg_idx, vm, _pk, ctx| {
         let airs = program.vm_config.sdk.airs(degree_bound).unwrap();
         let global_airs = vm
             .config()
@@ -240,6 +240,11 @@ impl ConstraintDetector {
     }
 
     pub fn process_trace(&mut self, trace: Trace, debug_info: DebugInfo) {
+        let pc_counts = trace
+            .rows_by_pc()
+            .into_iter()
+            .map(|(pc, rows)| (pc, rows.len() as u64))
+            .collect();
         // Compute empirical constraints from the current trace
         tracing::info!("      Detecting equivalence classes by block...");
         let equivalence_classes_by_block = self.generate_equivalence_classes_by_block(&trace);
@@ -249,6 +254,7 @@ impl ConstraintDetector {
             column_ranges_by_pc,
             equivalence_classes_by_block,
             debug_info,
+            pc_counts,
         };
 
         // Combine the new empirical constraints and debug info with the existing ones

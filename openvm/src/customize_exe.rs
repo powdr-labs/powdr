@@ -9,13 +9,16 @@ use std::sync::Arc;
 use crate::bus_map::OpenVmBusType;
 use crate::extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs, OriginalVmConfig};
 use crate::instruction_formatter::openvm_instruction_formatter;
-use crate::memory_bus_interaction::OpenVmMemoryBusInteraction;
+use crate::memory_bus_interaction::{OpenVmMemoryBusInteraction, REGISTER_ADDRESS_SPACE};
 use crate::powdr_extension::chip::PowdrAir;
 use crate::program::Prog;
 use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::OriginalCompiledProgram;
 use crate::{CompiledProgram, SpecializedConfig};
+use derive_more::From;
 use itertools::Itertools;
+use openvm_circuit::arch::VmState;
+use openvm_circuit::system::memory::online::GuestMemory;
 use openvm_instructions::instruction::Instruction as OpenVmInstruction;
 use openvm_instructions::program::DEFAULT_PC_STEP;
 use openvm_instructions::VmOpcode;
@@ -28,7 +31,9 @@ use powdr_autoprecompiles::adapter::{
     Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig, ApcWithStats, PgoAdapter,
 };
 use powdr_autoprecompiles::blocks::{BasicBlock, Instruction};
+use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::evaluation::{evaluate_apc, EvaluationResult};
+use powdr_autoprecompiles::execution::ExecutionState;
 use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::pgo::{ApcCandidateJsonExport, Candidate, KnapsackItem};
 use powdr_autoprecompiles::SymbolicBusInteraction;
@@ -52,6 +57,33 @@ pub struct BabyBearOpenVmApcAdapter<'a> {
     _marker: std::marker::PhantomData<&'a ()>,
 }
 
+#[derive(From)]
+pub struct OpenVmExecutionState<'a, T>(&'a VmState<T, GuestMemory>);
+
+// TODO: This is not tested yet as apc compilation does not currently output any optimistic constraints
+impl<'a, T: PrimeField32> ExecutionState for OpenVmExecutionState<'a, T> {
+    type RegisterAddress = OpenVmRegisterAddress;
+    type Value = u32;
+
+    fn pc(&self) -> Self::Value {
+        self.0.pc()
+    }
+
+    fn reg(&self, addr: &Self::RegisterAddress) -> Self::Value {
+        unsafe {
+            self.0
+                .memory
+                .memory
+                .get_f::<T>(REGISTER_ADDRESS_SPACE, addr.0 as u32)
+                .as_canonical_u32()
+        }
+    }
+}
+
+/// A type to represent register addresses during execution
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct OpenVmRegisterAddress(u8);
+
 impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     type PowdrField = BabyBearField;
     type Field = BabyBear;
@@ -64,6 +96,7 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     type CustomBusTypes = OpenVmBusType;
     type ApcStats = OvmApcStats;
     type AirId = String;
+    type ExecutionState = OpenVmExecutionState<'a, BabyBear>;
 
     fn into_field(e: Self::PowdrField) -> Self::Field {
         openvm_stark_sdk::p3_baby_bear::BabyBear::from_canonical_u32(
@@ -110,6 +143,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
     original_program: OriginalCompiledProgram,
     config: PowdrConfig,
     pgo: P,
+    empirical_constraints: EmpiricalConstraints,
 ) -> CompiledProgram {
     let original_config = OriginalVmConfig::new(original_program.vm_config.clone());
     let airs = original_config.airs(config.degree_bound.identities).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
@@ -171,7 +205,13 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         .collect();
 
     let start = std::time::Instant::now();
-    let apcs = pgo.filter_blocks_and_create_apcs_with_pgo(blocks, &config, vm_config, labels);
+    let apcs = pgo.filter_blocks_and_create_apcs_with_pgo(
+        blocks,
+        &config,
+        vm_config,
+        labels,
+        empirical_constraints,
+    );
     metrics::gauge!("total_apc_gen_time_ms").set(start.elapsed().as_millis() as f64);
 
     let pc_base = exe.program.pc_base;
@@ -235,7 +275,7 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32>(
 
 #[derive(Serialize, Deserialize)]
 pub struct OpenVmApcCandidate<F, I> {
-    apc: Arc<Apc<F, I>>,
+    apc: Arc<Apc<F, I, OpenVmRegisterAddress, u32>>,
     execution_frequency: usize,
     widths: AirWidthsDiff,
     stats: EvaluationResult,

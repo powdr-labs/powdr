@@ -1,9 +1,14 @@
-use crate::adapter::{Adapter, AdapterApc, AdapterVmConfig};
+use crate::adapter::{
+    Adapter, AdapterApc, AdapterApcOverPowdrField, AdapterBasicBlock, AdapterOptimisticConstraints,
+    AdapterVmConfig,
+};
 use crate::blocks::BasicBlock;
 use crate::bus_map::{BusMap, BusType};
+use crate::empirical_constraints::{ConstraintGenerator, EmpiricalConstraints};
 use crate::evaluation::AirStats;
+use crate::execution::OptimisticConstraints;
 use crate::expression_conversion::algebraic_to_grouped_expression;
-use crate::symbolic_machine_generator::convert_machine_field_type;
+use crate::symbolic_machine_generator::convert_apc_field_type;
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
 use powdr::UniqueReferences;
@@ -42,6 +47,7 @@ pub mod symbolic_machine_generator;
 pub use pgo::{PgoConfig, PgoType};
 pub use powdr_constraint_solver::inliner::DegreeBound;
 pub mod equivalence_classes;
+pub mod execution;
 pub mod trace_handler;
 
 #[derive(Clone)]
@@ -336,16 +342,18 @@ pub struct Substitution {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Apc<T, I> {
+pub struct Apc<T, I, A, V> {
     /// The basic block this APC is based on
     pub block: BasicBlock<I>,
     /// The symbolic machine for this APC
     pub machine: SymbolicMachine<T>,
-    /// For each original air, the substitutions from original columns to APC columns
+    /// For each original instruction, the substitutions from original columns to APC columns
     pub subs: Vec<Vec<Substitution>>,
+    /// The optimistic constraints to be satisfied for this apc to be run
+    pub optimistic_constraints: OptimisticConstraints<A, V>,
 }
 
-impl<T, I> Apc<T, I> {
+impl<T, I, A, V> Apc<T, I, A, V> {
     pub fn subs(&self) -> &[Vec<Substitution>] {
         &self.subs
     }
@@ -369,7 +377,8 @@ impl<T, I> Apc<T, I> {
     fn new(
         block: BasicBlock<I>,
         machine: SymbolicMachine<T>,
-        column_allocator: ColumnAllocator,
+        optimistic_constraints: OptimisticConstraints<A, V>,
+        column_allocator: &ColumnAllocator,
     ) -> Self {
         // Get all poly_ids in the machine
         let all_references = machine
@@ -379,16 +388,16 @@ impl<T, I> Apc<T, I> {
         // Only keep substitutions from the column allocator if the target poly_id is used in the machine
         let subs = column_allocator
             .subs
-            .into_iter()
+            .iter()
             .map(|subs| {
-                subs.into_iter()
+                subs.iter()
                     .enumerate()
                     .filter_map(|(original_poly_index, apc_poly_id)| {
                         all_references
-                            .contains(&apc_poly_id)
+                            .contains(apc_poly_id)
                             .then_some(Substitution {
                                 original_poly_index,
-                                apc_poly_id,
+                                apc_poly_id: *apc_poly_id,
                             })
                     })
                     .collect_vec()
@@ -398,6 +407,7 @@ impl<T, I> Apc<T, I> {
             block,
             machine,
             subs,
+            optimistic_constraints,
         }
     }
 }
@@ -430,14 +440,39 @@ pub fn build<A: Adapter>(
     vm_config: AdapterVmConfig<A>,
     degree_bound: DegreeBound,
     apc_candidates_dir_path: Option<&Path>,
+    empirical_constraints: &EmpiricalConstraints,
 ) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
     let start = std::time::Instant::now();
 
-    let (machine, column_allocator) = statements_to_symbolic_machine::<A>(
+    let (mut machine, column_allocator) = statements_to_symbolic_machine::<A>(
         &block,
         vm_config.instruction_handler,
         &vm_config.bus_map,
     );
+
+    // Generate constraints for optimistic precompiles.
+    let constraint_generator = ConstraintGenerator::<A>::new(
+        empirical_constraints,
+        &column_allocator.subs,
+        machine.main_columns(),
+        &block,
+    );
+    let range_analyzer_constraints = constraint_generator.range_constraints();
+    let equivalence_analyzer_constraints = constraint_generator.equivalence_constraints();
+
+    // Add empirical constraints to the baseline
+    machine.constraints.extend(range_analyzer_constraints);
+    machine.constraints.extend(equivalence_analyzer_constraints);
+
+    if let Some(path) = apc_candidates_dir_path {
+        serialize_apc_from_machine::<A>(
+            block.clone(),
+            machine.clone(),
+            &column_allocator,
+            path,
+            Some("unopt"),
+        );
+    }
 
     let labels = [("apc_start_pc", block.start_pc.to_string())];
     metrics::counter!("before_opt_cols", &labels)
@@ -465,24 +500,59 @@ pub fn build<A: Adapter>(
     metrics::counter!("after_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
 
-    let machine = convert_machine_field_type(machine, &A::into_field);
+    // TODO: add optimistic constraints here
+    let optimistic_constraints = OptimisticConstraints::from_constraints(vec![]);
 
-    let apc = Apc::new(block, machine, column_allocator);
+    let apc = Apc::new(block, machine, optimistic_constraints, &column_allocator);
 
     if let Some(path) = apc_candidates_dir_path {
-        let ser_path = path
-            .join(format!("apc_candidate_{}", apc.start_pc()))
-            .with_extension("cbor");
-        std::fs::create_dir_all(path).expect("Failed to create directory for APC candidates");
-        let file =
-            std::fs::File::create(&ser_path).expect("Failed to create file for APC candidate");
-        let writer = BufWriter::new(file);
-        serde_cbor::to_writer(writer, &apc).expect("Failed to write APC candidate to file");
+        serialize_apc::<A>(&apc, path, None);
+
+        // For debugging, also serialize a human-readable version of the final precompile
+        let rendered = apc.machine.render(&vm_config.bus_map);
+        let path = make_path(path, apc.start_pc(), None, "txt");
+        std::fs::write(path, rendered).unwrap();
     }
+
+    let apc = convert_apc_field_type(apc, &A::into_field);
 
     metrics::gauge!("apc_gen_time_ms", &labels).set(start.elapsed().as_millis() as f64);
 
     Ok(apc)
+}
+
+fn make_path(base_path: &Path, start_pc: u64, suffix: Option<&str>, extension: &str) -> PathBuf {
+    let suffix = suffix.map(|s| format!("_{s}")).unwrap_or_default();
+    base_path
+        .join(format!("apc_candidate_{start_pc}{suffix}"))
+        .with_extension(extension)
+}
+
+fn serialize_apc<A: Adapter>(apc: &AdapterApcOverPowdrField<A>, path: &Path, suffix: Option<&str>) {
+    std::fs::create_dir_all(path).expect("Failed to create directory for APC candidates");
+
+    let ser_path = make_path(path, apc.start_pc(), suffix, "cbor");
+    let file_unopt =
+        std::fs::File::create(&ser_path).expect("Failed to create file for {suffix} APC candidate");
+    let writer_unopt = BufWriter::new(file_unopt);
+    serde_cbor::to_writer(writer_unopt, &apc)
+        .expect("Failed to write {suffix} APC candidate to file");
+}
+
+fn serialize_apc_from_machine<A: Adapter>(
+    block: AdapterBasicBlock<A>,
+    machine: SymbolicMachine<A::PowdrField>,
+    column_allocator: &ColumnAllocator,
+    path: &Path,
+    suffix: Option<&str>,
+) {
+    let apc = Apc::new(
+        block,
+        machine,
+        AdapterOptimisticConstraints::<A>::empty(),
+        column_allocator,
+    );
+    serialize_apc::<A>(&apc, path, suffix);
 }
 
 fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {

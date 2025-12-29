@@ -2,23 +2,18 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::ops::Index;
 
+use derivative::Derivative;
+
 /// A database of items that are assigned consecutive identifiers
 /// and which can translate back and forth between identifiers
 /// and items.
+
+#[derive(Derivative)]
+#[derivative(Default(bound = ""))]
 pub struct ItemDB<Item, Ident> {
     items: Vec<Item>,
     reverse: HashMap<Item, usize>,
     _phantom: std::marker::PhantomData<Ident>,
-}
-
-impl<Item, Ident> Default for ItemDB<Item, Ident> {
-    fn default() -> Self {
-        Self {
-            items: Vec::new(),
-            reverse: HashMap::new(),
-            _phantom: std::marker::PhantomData,
-        }
-    }
 }
 
 impl<Item, Ident> FromIterator<Item> for ItemDB<Item, Ident>

@@ -1,3 +1,4 @@
+use derivative::Derivative;
 use itertools::Itertools;
 use powdr_number::FieldElement;
 
@@ -599,17 +600,10 @@ fn try_to_simple_equivalence<T: FieldElement, V: Clone + Ord + Eq>(
 }
 
 /// The currently known range constraints for the variables.
+#[derive(Derivative)]
+#[derivative(Default(bound = ""))]
 pub struct RangeConstraints<T: FieldElement, V> {
     pub range_constraints: HashMap<V, RangeConstraint<T>>,
-}
-
-// Manual implementation so that we don't have to require `V: Default`.
-impl<T: FieldElement, V> Default for RangeConstraints<T, V> {
-    fn default() -> Self {
-        RangeConstraints {
-            range_constraints: Default::default(),
-        }
-    }
 }
 
 impl<T: FieldElement, V: Clone + Hash + Eq> RangeConstraintProvider<T, V>

@@ -3,6 +3,7 @@
 use std::{cell::RefCell, collections::BTreeMap, rc::Rc, sync::Arc};
 
 use crate::{
+    customize_exe::OpenVmRegisterAddress,
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     powdr_extension::{
         executor::OriginalArenas,
@@ -64,7 +65,7 @@ impl PowdrChipCpu {
 pub struct PowdrAir<F> {
     /// The columns in arbitrary order
     columns: Vec<AlgebraicReference>,
-    apc: Arc<Apc<F, Instr<F>>>,
+    apc: Arc<Apc<F, Instr<F>, OpenVmRegisterAddress, u32>>,
 }
 
 impl<F: PrimeField32> ColumnsAir<F> for PowdrAir<F> {
@@ -74,7 +75,7 @@ impl<F: PrimeField32> ColumnsAir<F> for PowdrAir<F> {
 }
 
 impl<F: PrimeField32> PowdrAir<F> {
-    pub fn new(apc: Arc<Apc<F, Instr<F>>>) -> Self {
+    pub fn new(apc: Arc<Apc<F, Instr<F>, OpenVmRegisterAddress, u32>>) -> Self {
         Self {
             columns: apc.machine().main_columns().collect(),
             apc,

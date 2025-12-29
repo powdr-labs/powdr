@@ -99,7 +99,6 @@ impl<T: FieldElement> Environment<T> {
         )
     }
 
-    #[allow(dead_code)]
     /// Turns a GroupedExpression into the corresponding Expr,
     /// allocating a new ID if it is not yet present.
     /// Use this function when you only have a reference to the expression.
@@ -117,12 +116,10 @@ impl<T: FieldElement> Environment<T> {
 
     /// Turns an Expr into an owned GroupedExpression.
     /// This is expensive since it clones the expression.
-    #[allow(dead_code)]
     pub fn extract(&self, expr: Expr) -> GroupedExpression<T, Var> {
         self.expressions.borrow()[expr].clone()
     }
 
-    #[allow(dead_code)]
     pub fn new_var(
         &self,
         prefix: &str,
@@ -131,9 +128,17 @@ impl<T: FieldElement> Environment<T> {
         self.new_var_generator.borrow_mut().generate(prefix, method)
     }
 
-    #[allow(dead_code)]
     pub fn single_occurrence_variables(&self) -> impl Iterator<Item = &Var> {
         self.single_occurrence_variables.iter()
+    }
+
+    /// Split Expr into head and tail, i.e., expr = head + tail
+    pub fn try_split_into_head_tail(&self, expr: Expr) -> Option<(Expr, Expr)> {
+        let db = self.expressions.borrow();
+        let expr = db[expr].clone();
+        drop(db);
+        let (head, tail) = expr.try_split_head_tail()?;
+        Some((self.insert_owned(head), self.insert_owned(tail)))
     }
 
     #[allow(dead_code)]
@@ -172,7 +177,6 @@ impl<T: FieldElement> Environment<T> {
         f(expr, args)
     }
 
-    #[allow(dead_code)]
     /// If this returns Some(e1, e2) then the expression equals e1 * e2.
     pub fn try_as_single_product(&self, expr: Expr) -> Option<(Expr, Expr)> {
         let (l, r) = {
@@ -278,7 +282,7 @@ impl<T: FieldElement> Environment<T> {
     pub fn format_expr(&self, expr: Expr) -> String {
         let db = self.expressions.borrow();
         db[expr]
-            .transform_var_type(&mut |v| &self.var_to_string[v])
+            .transform_var_type(&mut |v| self.format_var(*v))
             .to_string()
     }
 

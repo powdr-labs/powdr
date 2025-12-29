@@ -8,6 +8,7 @@ use crate::powdr_extension::executor::RecordArenaDimension;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
 use crate::{AirMetrics, ExtendedVmConfig, ExtendedVmConfigExecutor, Instr};
 use crate::{BabyBearPoseidon2Engine, ExtendedVmConfigCpuBuilder};
+use itertools::Itertools;
 use openvm_circuit::arch::{
     AirInventory, AirInventoryError, ExecutorInventory, ExecutorInventoryError, MatrixRecordArena,
     SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig, VmExecutionConfig,
@@ -44,7 +45,7 @@ use std::sync::MutexGuard;
 
 use crate::utils::UnsupportedOpenVmReferenceError;
 
-use crate::customize_exe::openvm_bus_interaction_to_powdr;
+use crate::customize_exe::{openvm_bus_interaction_to_powdr, OpenVmRegisterAddress};
 use crate::utils::symbolic_to_algebraic;
 
 // TODO: Use `<PackedChallenge<BabyBearSC> as FieldExtensionAlgebra<Val<BabyBearSC>>>::D` instead after fixing p3 dependency
@@ -137,30 +138,38 @@ impl<F> OriginalAirs<F> {
 /// For each air name, the dimension of a record arena needed to store the
 /// records for a single APC call.
 pub fn record_arena_dimension_by_air_name_per_apc_call<F>(
-    apc: &Apc<F, Instr<F>>,
+    apc: &Apc<F, Instr<F>, OpenVmRegisterAddress, u32>,
     air_by_opcode_id: &OriginalAirs<F>,
 ) -> BTreeMap<String, RecordArenaDimension> {
-    apc.instructions().iter().map(|instr| &instr.0.opcode).fold(
-        BTreeMap::new(),
-        |mut acc, opcode| {
-            // Get the air name for this opcode
-            let air_name = air_by_opcode_id.opcode_to_air.get(opcode).unwrap();
+    apc.instructions()
+        .iter()
+        .map(|instr| &instr.0.opcode)
+        .zip_eq(apc.subs.iter().map(|sub| sub.is_empty()))
+        .fold(
+            BTreeMap::new(),
+            |mut acc, (opcode, should_use_dummy_arena)| {
+                // Get the air name for this opcode
+                let air_name = air_by_opcode_id.opcode_to_air.get(opcode).unwrap();
 
-            // Increment the height for this air name, initializing if necessary
-            acc.entry(air_name.clone())
-                .or_insert_with(|| {
+                // Increment the height for this air name, initializing if necessary
+                let entry = acc.entry(air_name.clone()).or_insert_with(|| {
                     let (_, air_metrics) =
                         air_by_opcode_id.air_name_to_machine.get(air_name).unwrap();
 
                     RecordArenaDimension {
-                        height: 0,
+                        real_height: 0,
                         width: air_metrics.widths.main,
+                        dummy_height: 0,
                     }
-                })
-                .height += 1;
-            acc
-        },
-    )
+                });
+                if should_use_dummy_arena {
+                    entry.dummy_height += 1;
+                } else {
+                    entry.real_height += 1;
+                }
+                acc
+            },
+        )
 }
 
 type ChipComplex = VmChipComplex<

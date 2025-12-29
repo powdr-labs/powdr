@@ -231,6 +231,22 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
         }
     }
 
+    /// Splits this expression into head and tail, i.e., `self = head + tail`
+    /// head is the first summand, i.e., either the first quadratic term or the first linear term.
+    pub fn try_split_head_tail(mut self) -> Option<(Self, Self)> {
+        if !self.quadratic.is_empty() {
+            let mut quadratic = self.quadratic.into_iter();
+            let (hl, hr) = quadratic.next().unwrap();
+            self.quadratic = quadratic.collect();
+            Some(((hl * hr), self))
+        } else if !self.linear.is_empty() {
+            let (hv, hc) = self.linear.pop_first()?;
+            Some((GroupedExpressionComponent::Linear(hv, hc).into(), self))
+        } else {
+            None
+        }
+    }
+
     /// Returns the linear components of this expression, i.e. summands that we were
     /// able to determine to be only a runtime constant times a single variable.
     /// If `is_affine()` returns true, this returns all summands except the constant offset.
