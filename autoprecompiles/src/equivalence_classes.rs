@@ -7,70 +7,121 @@ use serde::{Deserialize, Serialize};
 /// An equivalence class, i.e, a set of values of type `T` which are considered equivalent
 pub type EquivalenceClass<T> = BTreeSet<T>;
 
-/// A collection of equivalence classes where all classes are guaranteed to have at least two elements
-/// This is enforced by construction of this type only happening through collection, where we ignore empty and singleton classes
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
-#[serde(bound(deserialize = "T: Ord + Deserialize<'de>"))]
+/// A collection of equivalence classes where all classes are guaranteed to have at least two elements.
+/// This is enforced by construction of this type only happening through collection, where we ignore empty and singleton classes.
+///
+/// Internally represented as a map from element to class ID for efficient intersection operations.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(bound(deserialize = "T: Eq + Hash + Deserialize<'de>"))]
 pub struct Partition<T> {
-    inner: BTreeSet<EquivalenceClass<T>>,
+    /// Maps each element to its class ID (0..num_classes)
+    class_of: HashMap<T, usize>,
+    /// Number of classes
+    num_classes: usize,
 }
 
-impl<T: Ord> FromIterator<EquivalenceClass<T>> for Partition<T> {
+impl<T: Eq + Hash> FromIterator<EquivalenceClass<T>> for Partition<T> {
     fn from_iter<I: IntoIterator<Item = EquivalenceClass<T>>>(iter: I) -> Self {
-        // When collecting, we ignore classes with 0 or 1 elements as they are useless
+        let mut class_of = HashMap::new();
+        let mut num_classes = 0;
+
+        for class in iter {
+            // Ignore classes with 0 or 1 elements as they are useless
+            if class.len() > 1 {
+                for element in class {
+                    class_of.insert(element, num_classes);
+                }
+                num_classes += 1;
+            }
+        }
+
         Self {
-            inner: iter.into_iter().filter(|class| class.len() > 1).collect(),
+            class_of,
+            num_classes,
         }
     }
 }
 
-impl<T> Partition<T> {
-    pub fn iter(&self) -> impl Iterator<Item = &EquivalenceClass<T>> {
-        self.inner.iter()
+impl<T: Eq + Hash + Clone> Partition<T> {
+    /// Iterates over equivalence classes, returning each class as a Vec of its elements.
+    pub fn iter(&self) -> impl Iterator<Item = Vec<T>> + '_ {
+        (0..self.num_classes).map(|class_id| {
+            self.class_of
+                .iter()
+                .filter(move |(_, &c)| c == class_id)
+                .map(|(e, _)| e.clone())
+                .collect()
+        })
     }
 }
 
-impl<T: Ord + Hash + Copy> Partition<T> {
+impl<T: Eq + Hash + Copy> Partition<T> {
     /// Intersects multiple partitions of the same universe into a single partition.
     /// In other words, two elements are in the same equivalence class in the resulting partition
     /// if and only if they are in the same equivalence class in all input partitions.
     /// Singleton equivalence classes are omitted from the result.
     pub fn intersect(partitions: &[Self]) -> Self {
-        // For each partition, build a map: Id -> class_index
-        let class_ids: Vec<HashMap<T, usize>> = partitions
+        // Collect references to each partition's class_of map
+        let class_maps: Vec<&HashMap<T, usize>> =
+            partitions.iter().map(|p| &p.class_of).collect();
+
+        // Iterate over all elements in the universe (union of all partition elements)
+        let all_elements: Vec<T> = partitions
             .iter()
-            .map(|partition| {
-                partition
-                    .iter()
-                    .enumerate()
-                    .flat_map(|(class_idx, class)| class.iter().map(move |&id| (id, class_idx)))
-                    .collect()
-            })
+            .flat_map(|p| p.class_of.keys())
+            .copied()
+            .unique()
             .collect();
 
-        // Iterate over all elements in the universe
-        partitions
-            .iter()
-            .flat_map(|partition| partition.iter())
-            .flat_map(|class| class.iter())
-            .unique()
-            .filter_map(|id| {
-                // Build the signature of the element: the list of class indices it belongs to
-                // (one index per partition)
-                class_ids
+        // Group elements by their signature (tuple of class IDs across all partitions)
+        let grouped: HashMap<Vec<usize>, Vec<T>> = all_elements
+            .into_iter()
+            .filter_map(|element| {
+                // Build the signature: the list of class indices for this element (one per partition)
+                let signature: Option<Vec<usize>> = class_maps
                     .iter()
-                    .map(|m| m.get(id).cloned())
+                    .map(|m| m.get(&element).copied())
                     // If an element did not appear in any one of the partitions, it is
                     // a singleton and we skip it.
-                    .collect::<Option<Vec<usize>>>()
-                    .map(|signature| (signature, id))
+                    .collect();
+                signature.map(|sig| (sig, element))
             })
-            // Group elements by their signatures
-            .into_group_map()
-            .into_values()
-            // Convert to set
-            .map(|ids| ids.into_iter().copied().collect())
-            .collect()
+            .into_group_map();
+
+        // Build result: assign new class IDs to groups with 2+ elements
+        let mut class_of = HashMap::new();
+        let mut num_classes = 0;
+
+        for elements in grouped.into_values() {
+            if elements.len() > 1 {
+                for element in elements {
+                    class_of.insert(element, num_classes);
+                }
+                num_classes += 1;
+            }
+        }
+
+        Self {
+            class_of,
+            num_classes,
+        }
+    }
+}
+
+/// Equality implementation that converts to canonical form for comparison.
+/// This is intentionally simple (not optimized) since it's primarily used in tests.
+impl<T: Eq + Hash + Ord + Clone> PartialEq for Partition<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.to_canonical() == other.to_canonical()
+    }
+}
+
+impl<T: Eq + Hash + Ord + Clone> Eq for Partition<T> {}
+
+impl<T: Eq + Hash + Ord + Clone> Partition<T> {
+    /// Converts to a canonical BTreeSet<BTreeSet<T>> form for equality comparison.
+    fn to_canonical(&self) -> BTreeSet<BTreeSet<T>> {
+        self.iter().map(|class| class.into_iter().collect()).collect()
     }
 }
 
