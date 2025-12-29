@@ -80,30 +80,33 @@ impl<T: Eq + Hash + Copy> Partition<T> {
     /// if and only if they are in the same equivalence class in all input partitions.
     /// Singleton equivalence classes are omitted from the result.
     pub fn intersect(partitions: &[Self]) -> Self {
-        // Collect references to each partition's class_of map
-        let class_maps: Vec<&HashMap<T, usize>> =
-            partitions.iter().map(|p| &p.class_of).collect();
+        let Some(first) = partitions.first() else {
+            return Self {
+                class_of: HashMap::new(),
+                num_classes: 0,
+            };
+        };
 
-        // Iterate over all elements in the universe (union of all partition elements)
-        let all_elements: Vec<T> = partitions
+        // Pairwise intersection: fold over partitions, intersecting two at a time.
+        // This is more efficient than building Vec<usize> signatures because:
+        // 1. We only hash (usize, usize) tuples instead of Vec<usize>
+        // 2. The result shrinks after each intersection, making later steps faster
+        partitions[1..]
             .iter()
-            .flat_map(|p| p.class_of.keys())
-            .copied()
-            .unique()
-            .collect();
+            .fold(first.clone(), |acc, p| Self::intersect_two(&acc, p))
+    }
 
-        // Group elements by their signature (tuple of class IDs across all partitions)
-        let grouped: HashMap<Vec<usize>, Vec<T>> = all_elements
-            .into_iter()
-            .filter_map(|element| {
-                // Build the signature: the list of class indices for this element (one per partition)
-                let signature: Option<Vec<usize>> = class_maps
-                    .iter()
-                    .map(|m| m.get(&element).copied())
-                    // If an element did not appear in any one of the partitions, it is
-                    // a singleton and we skip it.
-                    .collect();
-                signature.map(|sig| (sig, element))
+    /// Intersects two partitions.
+    fn intersect_two(a: &Self, b: &Self) -> Self {
+        // Group elements by (class_in_a, class_in_b)
+        // Elements with the same pair end up in the same result class
+        let grouped: HashMap<(usize, usize), Vec<T>> = a
+            .class_of
+            .iter()
+            .filter_map(|(&elem, &class_a)| {
+                b.class_of
+                    .get(&elem)
+                    .map(|&class_b| ((class_a, class_b), elem))
             })
             .into_group_map();
 

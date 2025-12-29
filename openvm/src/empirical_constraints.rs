@@ -299,21 +299,51 @@ impl ConstraintDetector {
         tracing::info!("        Segmenting trace into blocks...");
         let blocks = self.get_blocks(trace);
         tracing::info!("        Finding equivalence classes...");
-        blocks
+
+        use std::sync::atomic::{AtomicU64, Ordering};
+        let build_time_us = AtomicU64::new(0);
+        let intersect_time_us = AtomicU64::new(0);
+        let num_blocks = AtomicU64::new(0);
+        let num_instances = AtomicU64::new(0);
+        let num_cells = AtomicU64::new(0);
+
+        let result = blocks
             .into_par_iter()
             .map(|(block_id, block_instances)| {
+                num_blocks.fetch_add(1, Ordering::Relaxed);
+                num_instances.fetch_add(block_instances.len() as u64, Ordering::Relaxed);
+                // Count total cells: instances × rows × cells_per_row
+                let cells_in_block: u64 = block_instances
+                    .iter()
+                    .map(|b| b.rows.iter().map(|r| r.cells.len() as u64).sum::<u64>())
+                    .sum();
+                num_cells.fetch_add(cells_in_block, Ordering::Relaxed);
+
                 // Segment each block instance into equivalence classes
+                let build_start = std::time::Instant::now();
                 let partition_by_block_instance = block_instances
                     .into_iter()
                     .map(|block| block.equivalence_classes())
                     .collect::<Vec<_>>();
+                build_time_us.fetch_add(build_start.elapsed().as_micros() as u64, Ordering::Relaxed);
 
                 // Intersect the equivalence classes across all instances of the block
+                let intersect_start = std::time::Instant::now();
                 let intersected = Partition::intersect(&partition_by_block_instance);
+                intersect_time_us.fetch_add(intersect_start.elapsed().as_micros() as u64, Ordering::Relaxed);
 
                 (block_id, intersected)
             })
-            .collect()
+            .collect();
+
+        tracing::info!("        Blocks: {}, Instances: {}, Cells: {}, Build: {}ms, Intersect: {}ms",
+            num_blocks.load(Ordering::Relaxed),
+            num_instances.load(Ordering::Relaxed),
+            num_cells.load(Ordering::Relaxed),
+            build_time_us.load(Ordering::Relaxed) / 1000,
+            intersect_time_us.load(Ordering::Relaxed) / 1000);
+
+        result
     }
 
     /// Segments a trace into basic blocks.
