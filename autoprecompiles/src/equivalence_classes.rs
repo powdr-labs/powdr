@@ -27,26 +27,27 @@ impl<T: Eq + Hash + Serialize + Clone> Serialize for Partition<T> {
     }
 }
 
-impl<'de, T: Eq + Hash + Ord + Deserialize<'de>> Deserialize<'de> for Partition<T> {
+impl<'de, T: Eq + Hash + Deserialize<'de>> Deserialize<'de> for Partition<T> {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         // Deserialize from Vec<Vec<T>>, reusing FromIterator logic
         let classes: Vec<Vec<T>> = Vec::deserialize(deserializer)?;
-        Ok(classes
-            .into_iter()
-            .map(|class| class.into_iter().collect())
-            .collect())
+        Ok(classes.into_iter().collect())
     }
 }
 
-impl<T: Eq + Hash> FromIterator<EquivalenceClass<T>> for Partition<T> {
-    fn from_iter<I: IntoIterator<Item = EquivalenceClass<T>>>(iter: I) -> Self {
+impl<T: Eq + Hash, C: IntoIterator<Item = T>> FromIterator<C> for Partition<T>
+where
+    C::IntoIter: ExactSizeIterator,
+{
+    fn from_iter<I: IntoIterator<Item = C>>(iter: I) -> Self {
         let mut class_of = HashMap::new();
         let mut num_classes = 0;
 
         for class in iter {
+            let class_iter = class.into_iter();
             // Ignore classes with 0 or 1 elements as they are useless
-            if class.len() > 1 {
-                for element in class {
+            if class_iter.len() > 1 {
+                for element in class_iter {
                     class_of.insert(element, num_classes);
                 }
                 num_classes += 1;
@@ -99,8 +100,7 @@ impl<T: Eq + Hash + Copy> Partition<T> {
     fn intersect_two(a: &Self, b: &Self) -> Self {
         // Group elements by (class_in_a, class_in_b)
         // Elements with the same pair end up in the same result class
-        let grouped: HashMap<(usize, usize), Vec<T>> = a
-            .class_of
+        a.class_of
             .iter()
             // Note that if an element is not in a or b, it is a singleton and will also
             // not be in the intersection.
@@ -109,25 +109,9 @@ impl<T: Eq + Hash + Copy> Partition<T> {
                     .get(&elem)
                     .map(|&class_b| ((class_a, class_b), elem))
             })
-            .into_group_map();
-
-        // Build result: assign new class IDs to groups with 2+ elements
-        let mut class_of = HashMap::new();
-        let mut num_classes = 0;
-
-        for elements in grouped.into_values() {
-            if elements.len() > 1 {
-                for element in elements {
-                    class_of.insert(element, num_classes);
-                }
-                num_classes += 1;
-            }
-        }
-
-        Self {
-            class_of,
-            num_classes,
-        }
+            .into_group_map()
+            .into_values()
+            .collect()
     }
 }
 
@@ -156,7 +140,7 @@ mod tests {
     use crate::equivalence_classes::Partition;
 
     fn partition(sets: Vec<Vec<u32>>) -> Partition<u32> {
-        sets.into_iter().map(|s| s.into_iter().collect()).collect()
+        sets.into_iter().collect()
     }
 
     #[test]
