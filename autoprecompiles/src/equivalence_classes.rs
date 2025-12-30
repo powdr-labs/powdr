@@ -78,30 +78,29 @@ impl<T: Eq + Hash + Clone> Partition<T> {
     /// In other words, two elements are in the same equivalence class in the resulting partition
     /// if and only if they are in the same equivalence class in all input partitions.
     /// Singleton equivalence classes are omitted from the result.
-    pub fn intersect_many(partitions: &[Self]) -> Self {
-        let first = partitions.first().expect("Need at least one partition");
-
+    pub fn intersect_many(partitions: impl IntoIterator<Item = Self>) -> Self {
         // Pairwise intersection: fold over partitions, intersecting two at a time.
         // This is more efficient than building Vec<usize> signatures because:
         // 1. We only hash (usize, usize) tuples instead of Vec<usize>
         // 2. The result shrinks after each intersection, making later steps faster
-        partitions[1..]
-            .iter()
-            .fold(first.clone(), |acc, p| acc.intersected_with(p))
+        partitions
+            .into_iter()
+            .reduce(Partition::intersected_with)
+            .expect("expected at least one element")
     }
 
     /// Intersects two partitions.
-    pub fn intersected_with(&self, other: &Self) -> Self {
+    pub fn intersected_with(self, other: Self) -> Self {
         // Group elements by (class_in_self, class_in_other)
         // Elements with the same pair end up in the same result class
         self.class_of
-            .iter()
+            .into_iter()
             // Note that if an element is not in self or other, it is a
             // singleton and will also not be in the intersection.
-            .filter_map(|(elem, &class_a)| {
+            .filter_map(|(elem, class_a)| {
                 other
                     .class_of
-                    .get(elem)
+                    .get(&elem)
                     .map(|&class_b| ((class_a, class_b), elem.clone()))
             })
             .into_group_map()
@@ -123,13 +122,13 @@ impl<T: Eq + Hash + Copy + Send + Sync> Partition<T> {
     /// then the chunk results are combined recursively in parallel.
     pub fn parallel_intersect(partitions: Vec<Self>) -> Self {
         if partitions.len() <= PARALLEL_THRESHOLD {
-            return Self::intersect_many(&partitions);
+            return Self::intersect_many(partitions);
         }
 
         // Chunk partitions and intersect each chunk in parallel
         let chunk_results: Vec<Self> = partitions
+            .into_par_iter()
             .chunks(CHUNK_SIZE)
-            .par_bridge()
             .map(Self::intersect_many)
             .collect();
 
@@ -186,7 +185,7 @@ mod tests {
             vec![8, 9],
         ]);
 
-        let result = Partition::intersect_many(&[partition1, partition2, partition3]);
+        let result = Partition::intersect_many([partition1, partition2, partition3]);
 
         // After intersecting all three:
         // - {2,3} survives (in same class in all three)
