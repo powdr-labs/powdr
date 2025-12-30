@@ -99,6 +99,12 @@ crepe! {
       AffineExpression(e, coeff, var, offset),
       (offset.is_zero());
 
+    struct Constant<T: FieldElement>(Expr, T);
+    Constant(e, value) <-
+      Expression(e),
+      Env(env),
+      let Some(value) = env.try_to_number(e);
+
     // Split the expression into head and tail
     // ExpressionSumHeadTail(e, h, t) => e = h + t
     struct ExpressionSumHeadTail(Expr, Expr, Expr);
@@ -139,15 +145,40 @@ crepe! {
     RangeConstraintOnExpression(e, rc) <-
       InitialRangeConstraintOnExpression(e, rc);
     RangeConstraintOnExpression(e, rc) <-
-      Env(env),
-      Expression(e),
-      let rc = env.on_expr(e, (), |expr, _| expr.range_constraint(env));
+      Product(e, l, r),
+      RangeConstraintOnExpression(l, l_rc),
+      RangeConstraintOnExpression(r, r_rc),
+      let rc = if l == r {
+        l_rc.square()
+      } else {
+        l_rc.combine_product(&r_rc)
+      },
+      (!rc.is_unconstrained());
+    RangeConstraintOnExpression(e, rc) <-
+      LinearExpression(e, v, coeff),
+      RangeConstraintOnVar(v, v_rc),
+      (!v_rc.is_unconstrained()),
+      let rc = v_rc.multiple(coeff),
+      (!rc.is_unconstrained());
+    RangeConstraintOnExpression(e, rc) <-
+      ExpressionSumHeadTail(e, head, tail),
+      RangeConstraintOnExpression(head, head_rc),
+      RangeConstraintOnExpression(tail, tail_rc),
+      let rc = head_rc.combine_sum(&tail_rc),
+      (!rc.is_unconstrained());
+    RangeConstraintOnExpression(e, rc) <-
+      Constant(e, value),
+      let rc = RangeConstraint::from_value(value);
 
     // RangeConstraintOnVar(v, rc) => variable v has range constraint rc.
     // Note that this range constraint is not necessarily the currently best known
     // one, but any range constraint that is derivable using the rules.
     struct RangeConstraintOnVar<T: FieldElement>(Var, RangeConstraint<T>);
-    RangeConstraintOnVar(v, rc) <- Env(env), ContainsVariable(_, v), let rc = env.get(&v);
+    RangeConstraintOnVar(v, rc) <-
+      Env(env),
+      ContainsVariable(_, v),
+      let rc = env.get(&v),
+      (!rc.is_unconstrained());
     // RC(coeff * var + offset) = rc <=>
     // coeff * RC(var) + offset = rc <=>
     // RC(var) = (rc - offset) / coeff

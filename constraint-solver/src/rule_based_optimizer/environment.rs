@@ -162,6 +162,12 @@ impl<T: FieldElement> Environment<T> {
         Some((*coeff, *var, *expr.constant_offset()))
     }
 
+    pub fn try_to_number(&self, expr: Expr) -> Option<T> {
+        let db = self.expressions.borrow();
+        let expr = &db[expr];
+        expr.try_to_number()
+    }
+
     /// Runs the function `f` on the expression identified by `expr`,
     /// passing `args` as additional arguments.
     /// This function is needed because we cannot return
