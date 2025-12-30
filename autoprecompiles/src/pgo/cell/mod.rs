@@ -179,7 +179,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
                 "\tAPC pc {}, other_pcs {:?}, effectiveness: {:?}, freq: {:?}",
                 c.original_block.start_pc,
                 c.original_block.other_pcs,
-                c.cost_before as f64 / c.cost_after as f64,
+                c.cost_before / c.cost_after,
                 c.execution_frequency,
             );
         }
@@ -189,11 +189,10 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
             .into_iter()
             .enumerate()
             .filter_map(|(idx, c)| {
-                if let Some(position) = selected_indices.iter().position(|i| *i == idx) {
-                    Some((position, c.into_apc_and_stats()))
-                } else {
-                    None
-                }
+                selected_indices
+                    .iter()
+                    .position(|i| *i == idx)
+                    .map(|position| (position, c.into_apc_and_stats()))
             })
             .sorted_by_key(|(position, _)| *position)
             .map(|(_, apc_and_stats)| apc_and_stats)
@@ -289,7 +288,7 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
                 "\tAPC pc {}, other_pcs {:?}, effectiveness: {:?}, freq: {:?}, priority: {:?}",
                 json.original_block.start_pc,
                 json.original_block.other_pcs,
-                json.cost_before as f64 / json.cost_after as f64,
+                json.cost_before / json.cost_after,
                 json.execution_frequency,
                 prio.priority(),
             );
@@ -340,8 +339,8 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
                     discount = true;
                 }
                 // check the other prefix is equal to the selected apc suffix
-                let suffix = bbs[pos..].to_vec();
-                if other_bbs.len() >= suffix.len() && other_bbs[..suffix.len()] == suffix {
+                let suffix = &bbs[pos..];
+                if other_bbs.len() >= suffix.len() && &other_bbs[..suffix.len()] == suffix {
                     // println!("\t{other_bbs:?} prefix is equal to apc suffix");
 
                     // TODO: ideally we'd just discount here, but we would need more info:
@@ -357,8 +356,8 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
                     remove = true;
                 }
                 // check that the other apc suffix is a prefix of the selected apc
-                let suffix = other_bbs[pos..].to_vec();
-                if bbs.len() >= suffix.len() && bbs[..suffix.len()] == suffix {
+                let suffix = &other_bbs[pos..];
+                if bbs.len() >= suffix.len() && &bbs[..suffix.len()] == suffix {
                     // println!("\t{other_bbs:?} suffix is equal to apc prefix");
                     remove = true;
                 }

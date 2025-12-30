@@ -28,7 +28,7 @@ pub fn execution_profile<A: Adapter>(
     execute_fn: impl FnOnce(),
 ) -> ExecutionProfile {
     // in memory collector storage
-    let collector = PgoCollector::new::<A>();
+    let collector = PgoCollector::new();
 
     // build subscriber
     let subscriber = Registry::default().with(collector.clone());
@@ -93,7 +93,7 @@ struct PgoCollector {
 }
 
 impl PgoCollector {
-    fn new<A: Adapter>() -> Self {
+    fn new() -> Self {
         Self {
             pc_list: Arc::new(RwLock::new(Vec::new())),
         }
