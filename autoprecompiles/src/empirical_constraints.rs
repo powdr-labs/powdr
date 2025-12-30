@@ -63,7 +63,7 @@ impl EmpiricalConstraints {
             // Compute the new equivalence classes for this block
             let new_equivalence_class = match self.equivalence_classes_by_block.entry(block_pc) {
                 Entry::Vacant(_) => classes,
-                Entry::Occupied(e) => e.remove().intersected_with(&classes),
+                Entry::Occupied(e) => e.remove().intersected_with(classes),
             };
             assert!(self
                 .equivalence_classes_by_block
