@@ -11,6 +11,27 @@ pub struct ApcCandidates<E: ExecutionState, A, S> {
     candidates: Vec<ApcCandidate<E, A, S>>,
 }
 
+#[derive(Debug)]
+pub struct Output<A, S> {
+    pub from: S,
+    pub to: S,
+    pub apc: A,
+}
+
+impl<E: ExecutionState, A, S> From<ApcCandidate<E, A, S>> for Output<A, S> {
+    fn from(candidate: ApcCandidate<E, A, S>) -> Self {
+        Self {
+            from: candidate.snapshot,
+            to: if let CandidateStatus::Done(to) = candidate.status {
+                to
+            } else {
+                panic!()
+            },
+            apc: candidate.apc,
+        }
+    }
+}
+
 impl<E: ExecutionState, A: Apc, S: Snapshot> ApcCandidates<E, A, S> {
     /// Given the current state of execution, retain the candidates whose constraints are still
     /// verified
@@ -46,7 +67,7 @@ impl<E: ExecutionState, A: Apc, S: Snapshot> ApcCandidates<E, A, S> {
     }
 
     /// If no more candidates are in progress, return a set of non-overlapping candidates
-    pub fn extract_candidates(&mut self) -> Vec<ApcCandidate<E, A, S>> {
+    pub fn extract_candidates(&mut self) -> Vec<Output<A, S>> {
         let are_any_in_progress = self
             .candidates
             .iter()
@@ -61,7 +82,7 @@ impl<E: ExecutionState, A: Apc, S: Snapshot> ApcCandidates<E, A, S> {
 
         // If there is a single candidate, we can return it directly
         if self.candidates.len() <= 1 {
-            return std::mem::take(&mut self.candidates);
+            return self.candidates.drain(..).map(Output::from).collect();
         }
 
         // If there are more candidates, we need to solve conflicts to make sure we do not return overlapping candidates
@@ -110,6 +131,7 @@ impl<E: ExecutionState, A: Apc, S: Snapshot> ApcCandidates<E, A, S> {
             .drain(..)
             .zip_eq(discard)
             .filter_map(|(candidate, discard)| (!discard).then_some(candidate))
+            .map(Output::from)
             .collect()
     }
 
