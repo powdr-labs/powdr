@@ -232,6 +232,13 @@ where
             })
     }
 
+    fn try_to_equivalent_constant(&self, expr: &GroupedExpression<T, V>) -> Option<T> {
+        self.linearizer
+            .internalized_versions_of_expression(expr)
+            .filter_map(|e| e.try_to_number())
+            .next()
+    }
+
     fn are_expressions_known_to_be_different(
         &mut self,
         a: &GroupedExpression<T, V>,

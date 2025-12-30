@@ -12,11 +12,12 @@ use crate::indexed_constraint_system::apply_substitutions_to_expressions;
 use crate::solver::VariableAssignment;
 
 /// Solver component that substitutes non-affine sub-expressions
-/// by new variables.
+/// by new variables (or constants if those variables have been determined
+/// later on to have a constant value).
 #[derive(Derivative)]
 #[derivative(Default(bound = ""))]
 pub struct Linearizer<T, V> {
-    substitutions: HashMap<GroupedExpression<T, V>, V>,
+    substitutions: HashMap<GroupedExpression<T, V>, GroupedExpression<T, V>>,
 }
 
 impl<T: FieldElement, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
@@ -117,7 +118,10 @@ impl<T: FieldElement, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
             var
         } else {
             let var = var_dispenser();
-            self.substitutions.insert(expr.clone(), var.clone());
+            self.substitutions.insert(
+                expr.clone(),
+                GroupedExpression::from_unknown_variable(var.clone()),
+            );
             let var = GroupedExpression::from_unknown_variable(var);
             constraint_collection.extend([AlgebraicConstraint::assert_zero(expr - var.clone())]);
             var
@@ -132,9 +136,7 @@ impl<T: FieldElement, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
         if expr.try_to_known().is_some() || expr.try_to_simple_unknown().is_some() {
             Some(expr.clone())
         } else {
-            self.substitutions
-                .get(expr)
-                .map(|var| GroupedExpression::from_unknown_variable(var.clone()))
+            self.substitutions.get(expr).cloned()
         }
     }
 
@@ -165,11 +167,8 @@ impl<T: FieldElement, V: Clone + Eq + Ord + Hash> Linearizer<T, V> {
         }
         let (exprs, vars): (Vec<_>, Vec<_>) = self.substitutions.drain().unzip();
         let exprs = apply_substitutions_to_expressions(exprs, assignments.iter().cloned());
-        self.substitutions = exprs
-            .into_iter()
-            .zip_eq(vars)
-            .map(|(expr, var)| (expr, var.clone()))
-            .collect();
+        let vars = apply_substitutions_to_expressions(vars, assignments.iter().cloned());
+        self.substitutions = exprs.into_iter().zip_eq(vars).collect();
     }
 }
 
