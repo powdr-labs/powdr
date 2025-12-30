@@ -97,6 +97,12 @@ pub fn optimize_constraints<
     // At this point, we throw away the index and only keep the constraint system, since the rest of the optimisations are defined on the system alone
     let constraint_system: ConstraintSystem<P, V> = constraint_system.into();
 
+    let constraint_system = substitute_bus_interaction_fields(solver, constraint_system);
+    stats_logger.log(
+        "substituting fields in bus interactions",
+        &constraint_system,
+    );
+
     let constraint_system = optimize_memory::<_, _, M>(constraint_system, solver, memory_bus_id);
     stats_logger.log("memory optimization", &constraint_system);
 
@@ -112,6 +118,36 @@ pub fn optimize_constraints<
     );
 
     Ok(constraint_system)
+}
+
+/// Tries to replace each bus interaction field by a constant, if that expression
+/// is known to be constant to the solver.
+/// For each such field, also adds an algebraic constraint asserting that the field
+/// expression is equal to the constant, because this is needed for soundness in some
+/// situations.
+/// For simple situations, this constraint will be optimizer away in subsequent stages.
+fn substitute_bus_interaction_fields<P: FieldElement, V: Ord + Clone + Eq + Hash + Display>(
+    solver: &mut impl Solver<P, V>,
+    mut constraint_system: ConstraintSystem<P, V>,
+) -> ConstraintSystem<P, V> {
+    for field in constraint_system
+        .bus_interactions
+        .iter_mut()
+        .flat_map(|bi| bi.fields_mut())
+    {
+        // If we have an expression of the form `a * x + b` that is known to be constant,
+        // then we would already know the value of `x`.
+        if field.is_affine() && field.linear_components().len() <= 1 {
+            continue;
+        }
+        if let Some(v) = solver.try_to_equivalent_constant(field) {
+            let constr =
+                AlgebraicConstraint::assert_eq(field.clone(), GroupedExpression::from_number(v));
+            *field = GroupedExpression::from_number(v);
+            constraint_system.algebraic_constraints.push(constr);
+        }
+    }
+    constraint_system
 }
 
 /// Performs some very easy simplifications that only remove constraints.
