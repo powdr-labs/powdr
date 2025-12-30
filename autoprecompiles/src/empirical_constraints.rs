@@ -63,12 +63,7 @@ impl EmpiricalConstraints {
             // Compute the new equivalence classes for this block
             let new_equivalence_class = match self.equivalence_classes_by_block.entry(block_pc) {
                 Entry::Vacant(_) => classes,
-                Entry::Occupied(e) => {
-                    // Remove the value and compute the intersection
-                    // This is because `intersect_partitions` takes inputs by value
-                    let existing = e.remove();
-                    Partition::intersect_many(&[existing, classes])
-                }
+                Entry::Occupied(e) => e.remove().intersected_with(&classes),
             };
             assert!(self
                 .equivalence_classes_by_block

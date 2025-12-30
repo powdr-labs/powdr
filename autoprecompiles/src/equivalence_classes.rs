@@ -74,21 +74,12 @@ impl<T: Eq + Hash + Clone> Partition<T> {
         classes
     }
 
-    pub fn empty() -> Self {
-        Self {
-            class_of: HashMap::new(),
-            num_classes: 0,
-        }
-    }
-
     /// Intersects multiple partitions of the same universe into a single partition.
     /// In other words, two elements are in the same equivalence class in the resulting partition
     /// if and only if they are in the same equivalence class in all input partitions.
     /// Singleton equivalence classes are omitted from the result.
     pub fn intersect_many(partitions: &[Self]) -> Self {
-        let Some(first) = partitions.first() else {
-            return Self::empty();
-        };
+        let first = partitions.first().expect("Need at least one partition");
 
         // Pairwise intersection: fold over partitions, intersecting two at a time.
         // This is more efficient than building Vec<usize> signatures because:
@@ -100,7 +91,7 @@ impl<T: Eq + Hash + Clone> Partition<T> {
     }
 
     /// Intersects two partitions.
-    fn intersected_with(&self, other: &Self) -> Self {
+    pub fn intersected_with(&self, other: &Self) -> Self {
         // Group elements by (class_in_self, class_in_other)
         // Elements with the same pair end up in the same result class
         self.class_of
