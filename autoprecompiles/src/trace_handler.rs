@@ -38,22 +38,28 @@ pub trait TraceTrait<F>: Send + Sync {
     fn values(&self) -> &Self::Values;
 }
 
-pub fn generate_trace<'a, IH, M: TraceTrait<IH::Field>>(
+// TODO: refactor `Apc` so we don't have to pass A, V here
+pub fn generate_trace<'a, IH, M: TraceTrait<IH::Field>, A, V>(
     air_id_to_dummy_trace: &'a HashMap<IH::AirId, M>,
     instruction_handler: &'a IH,
     apc_call_count: usize,
-    apc: &'a Apc<IH::Field, IH::Instruction>,
+    apc: &'a Apc<IH::Field, IH::Instruction, A, V>,
 ) -> TraceData<'a, IH::Field, M::Values>
 where
     IH: InstructionHandler,
     IH::Field: Display + Clone + Send + Sync,
     IH::AirId: Eq + Hash + Send + Sync,
 {
-    // Returns a vector with the same length as original instructions
-    let original_instruction_air_ids = apc
+    // Keep only instructions that produce dummy records
+    let instructions_with_subs = apc
         .instructions()
         .iter()
-        .map(|instruction| {
+        .zip_eq(apc.subs.iter())
+        .filter(|(_, subs)| !subs.is_empty());
+
+    let original_instruction_air_ids = instructions_with_subs
+        .clone()
+        .map(|(instruction, _)| {
             instruction_handler
                 .get_instruction_air_and_id(instruction)
                 .0
@@ -82,10 +88,8 @@ where
         )
         .collect::<Vec<_>>();
 
-    let dummy_trace_index_to_apc_index_by_instruction = apc
-        .subs
-        .iter()
-        .map(|subs| {
+    let dummy_trace_index_to_apc_index_by_instruction = instructions_with_subs
+        .map(|(_, subs)| {
             subs.iter()
                 .map(|substitution| {
                     (

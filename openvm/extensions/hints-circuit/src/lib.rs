@@ -7,7 +7,9 @@ use openvm_circuit::arch::{
     AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecutorInventoryBuilder,
     ExecutorInventoryError, VmCircuitExtension, VmExecutionExtension, VmProverExtension,
 };
-use openvm_circuit::derive::{AnyEnum, Executor, MeteredExecutor, PreflightExecutor};
+use openvm_circuit::derive::{
+    AnyEnum, AotExecutor, AotMeteredExecutor, Executor, MeteredExecutor, PreflightExecutor,
+};
 use openvm_circuit::system::phantom::PhantomExecutor;
 use openvm_instructions::PhantomDiscriminant;
 use openvm_stark_backend::config::{StarkGenericConfig, Val};
@@ -24,7 +26,9 @@ mod field10x26_k256;
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct HintsExtension;
 
-#[derive(AnyEnum, PreflightExecutor, Executor, MeteredExecutor, Clone)]
+#[derive(
+    AnyEnum, PreflightExecutor, Executor, MeteredExecutor, AotExecutor, AotMeteredExecutor, Clone,
+)]
 pub enum HintsExtensionExecutor<F: Field> {
     Phantom(PhantomExecutor<F>),
 }

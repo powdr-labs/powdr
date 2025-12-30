@@ -7,12 +7,14 @@ use std::sync::Arc;
 
 use derive_more::From;
 use openvm_circuit::arch::{DenseRecordArena, MatrixRecordArena};
-use openvm_circuit_derive::{Executor, MeteredExecutor, PreflightExecutor};
+use openvm_circuit_derive::{
+    AotExecutor, AotMeteredExecutor, Executor, MeteredExecutor, PreflightExecutor,
+};
 use openvm_instructions::LocalOpcode;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 
 use crate::bus_map::BusMap;
-use crate::customize_exe::OvmApcStats;
+use crate::customize_exe::{OpenVmRegisterAddress, OvmApcStats};
 use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
 use crate::powdr_extension::chip::PowdrAir;
 use crate::powdr_extension::executor::{OriginalArenas, PowdrExecutor};
@@ -46,7 +48,7 @@ pub struct PowdrExtension<F> {
 pub struct PowdrPrecompile<F> {
     pub name: String,
     pub opcode: PowdrOpcode,
-    pub apc: Arc<Apc<F, Instr<F>>>,
+    pub apc: Arc<Apc<F, Instr<F>, OpenVmRegisterAddress, u32>>,
     pub apc_stats: Option<OvmApcStats>,
     #[serde(skip)]
     pub apc_record_arena_cpu: Rc<RefCell<OriginalArenas<MatrixRecordArena<F>>>>,
@@ -58,7 +60,7 @@ impl<F> PowdrPrecompile<F> {
     pub fn new(
         name: String,
         opcode: PowdrOpcode,
-        apc: Arc<Apc<F, Instr<F>>>,
+        apc: Arc<Apc<F, Instr<F>, OpenVmRegisterAddress, u32>>,
         apc_stats: Option<OvmApcStats>,
     ) -> Self {
         Self {
@@ -89,7 +91,16 @@ impl<F> PowdrExtension<F> {
     }
 }
 
-#[derive(From, AnyEnum, PreflightExecutor, Executor, MeteredExecutor, Chip)]
+#[derive(
+    From,
+    AnyEnum,
+    PreflightExecutor,
+    Executor,
+    MeteredExecutor,
+    AotExecutor,
+    AotMeteredExecutor,
+    Chip,
+)]
 #[allow(clippy::large_enum_variant)]
 pub enum PowdrExtensionExecutor {
     Powdr(PowdrExecutor),
