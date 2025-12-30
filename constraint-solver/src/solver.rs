@@ -79,7 +79,13 @@ pub trait Solver<T: FieldElement, V>: RangeConstraintProvider<T, V> + Sized {
     fn range_constraint_for_expression(&self, expr: &GroupedExpression<T, V>)
         -> RangeConstraint<T>;
 
-    fn is_expression_constant(&self, expr: &GroupedExpression<T, V>) -> Option<T>;
+    /// If the solver can determine the given expression to always have a constant
+    /// value, returns that value. Otherwise, returns `None`.
+    /// Note that if this function returns `x` on input `e`, replacing `x`
+    /// by `x` in a system does not always yield an equivalent system - it might
+    /// be less strict. Replacing and afterwards adding `e = x` does yield an
+    /// jequivalent system, though.
+    fn try_to_equivalent_constant(&self, expr: &GroupedExpression<T, V>) -> Option<T>;
 
     /// Returns `true` if `a` and `b` are different for all satisfying assignments.
     /// In other words, `a - b` does not allow the value zero.

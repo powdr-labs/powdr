@@ -140,7 +140,7 @@ fn substitute_bus_interaction_fields<P: FieldElement, V: Ord + Clone + Eq + Hash
         if field.is_affine() && field.linear_components().len() <= 1 {
             continue;
         }
-        if let Some(v) = solver.is_expression_constant(field) {
+        if let Some(v) = solver.try_to_equivalent_constant(field) {
             let constr =
                 AlgebraicConstraint::assert_eq(field.clone(), GroupedExpression::from_number(v));
             *field = GroupedExpression::from_number(v);

@@ -231,7 +231,7 @@ where
             })
     }
 
-    fn is_expression_constant(&self, expr: &GroupedExpression<T, V>) -> Option<T> {
+    fn try_to_equivalent_constant(&self, expr: &GroupedExpression<T, V>) -> Option<T> {
         self.linearizer
             .internalized_versions_of_expression(expr)
             .filter_map(|e| e.try_to_number())
