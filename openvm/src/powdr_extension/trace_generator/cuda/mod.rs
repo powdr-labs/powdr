@@ -38,7 +38,22 @@ use crate::{
 mod inventory;
 mod periphery;
 
-type DirectAirData<'a> = (Vec<&'a Vec<Substitution>>, Vec<u32>, Vec<u32>);
+/// Data for direct-to-APC trace generation for a single AIR.
+///
+/// This struct holds the substitution mappings and layout information needed
+/// to copy trace values from original AIR columns to APC columns on the GPU.
+struct DirectAirData<'a> {
+    /// Substitution mappings for each instruction in this AIR.
+    /// Each inner `Vec<Substitution>` maps original AIR column indices to APC column IDs
+    /// for one instruction.
+    subs: Vec<&'a Vec<Substitution>>,
+    /// Number of substitutions (post-optimization columns) for each original instruction.
+    /// Used to compute the destination offset in the APC trace.
+    opt_widths: Vec<u32>,
+    /// Cumulative offset into the post-optimization column layout for each instruction.
+    /// Used to compute the destination offset in the APC trace.
+    post_opt_offsets: Vec<u32>,
+}
 
 pub use periphery::PowdrPeripheryInstancesGpu;
 
@@ -224,8 +239,9 @@ impl PowdrTraceGeneratorGpu {
         let height = next_power_of_two_or_zero(num_apc_calls);
         let mut output = DeviceMatrix::<BabyBear>::with_capacity(height, width);
 
-        // Calculate unique AIR names of instructions in the APC that have substitutions
-        let unique_apc_air_names: std::collections::BTreeSet<&String> = self
+        // Get unique AIR names with widths for instructions that have substitutions
+        // (only for AIRs in air_name_to_machine). BTreeMap naturally deduplicates by key.
+        let active_direct_airs: std::collections::BTreeMap<&str, usize> = self
             .apc
             .instructions()
             .iter()
@@ -234,40 +250,19 @@ impl PowdrTraceGeneratorGpu {
                 if subs.is_empty() {
                     None
                 } else {
-                    Some(&self.original_airs.opcode_to_air[&instr.0.opcode])
+                    let air_name = &self.original_airs.opcode_to_air[&instr.0.opcode];
+                    self.original_airs
+                        .air_name_to_machine
+                        .get(air_name)
+                        .map(|machine| (air_name.as_str(), machine.1.widths.main))
                 }
             })
             .collect();
 
-        // Filter to only include AIRs that are in air_name_to_machine and present in this APC
-        let active_direct_airs: Vec<&str> = self
-            .original_airs
-            .air_name_to_machine
-            .keys()
-            .map(|s| s.as_str())
-            .filter(|air_name| unique_apc_air_names.iter().any(|s| s.as_str() == *air_name))
-            .collect();
-
-        // Get air widths for each active direct-to-APC AIR (HashMap keyed by air name)
-        let direct_air_widths: HashMap<&str, usize> = active_direct_airs
-            .iter()
-            .map(|&air_name| {
-                let width = self
-                    .original_airs
-                    .air_name_to_machine
-                    .get(air_name)
-                    .map(|machine| machine.1.widths.main)
-                    .unwrap_or_else(|| panic!("Failed to get air width for {}", air_name));
-                (air_name, width)
-            })
-            .collect();
-
         // Generate substitution data for each active direct-to-APC AIR
-        // HashMap: air_name -> (subs, opt_widths, post_optimization_offsets)
         let direct_air_data: HashMap<&str, DirectAirData<'_>> = active_direct_airs
             .iter()
-            .map(|&target_air_name| {
-                let air_width = direct_air_widths[target_air_name];
+            .map(|(&target_air_name, &air_width)| {
                 let result = self
                     .apc
                     .instructions()
@@ -307,22 +302,30 @@ impl PowdrTraceGeneratorGpu {
                             )
                         },
                     );
-                (target_air_name, (result.0, result.1, result.2))
+                (
+                    target_air_name,
+                    DirectAirData {
+                        subs: result.0,
+                        opt_widths: result.1,
+                        post_opt_offsets: result.2,
+                    },
+                )
             })
             .collect();
 
         // Extract calls_per_apc_row for each AIR (HashMap)
         let direct_calls_per_apc_row: HashMap<&str, u32> = direct_air_data
             .iter()
-            .map(|(&air_name, (subs, _, _))| (air_name, subs.len() as u32))
+            .map(|(&air_name, data)| (air_name, data.subs.len() as u32))
             .collect();
 
         // Pad substitutions for each AIR and copy to device (HashMap)
         let direct_d_subs: HashMap<&str, _> = direct_air_data
             .iter()
-            .map(|(&air_name, (subs, _, _))| {
-                let air_width = direct_air_widths[air_name];
-                let padded_subs: Vec<u32> = subs
+            .map(|(&air_name, data)| {
+                let air_width = active_direct_airs[air_name];
+                let padded_subs: Vec<u32> = data
+                    .subs
                     .iter()
                     .flat_map(|subs_for_row| {
                         let mut row = vec![u32::MAX; air_width];
@@ -350,22 +353,25 @@ impl PowdrTraceGeneratorGpu {
 
         let direct_d_opt_widths: HashMap<&str, _> = direct_air_data
             .iter()
-            .map(|(&air_name, (_, opt_widths, _))| {
-                let d_opt_widths = opt_widths
-                    .clone()
-                    .to_device()
-                    .unwrap_or_else(|_| panic!("Failed to copy {} opt widths to device", air_name));
+            .map(|(&air_name, data)| {
+                let d_opt_widths =
+                    data.opt_widths.clone().to_device().unwrap_or_else(|_| {
+                        panic!("Failed to copy {} opt widths to device", air_name)
+                    });
                 (air_name, d_opt_widths)
             })
             .collect();
 
         let direct_d_post_opt_offsets: HashMap<&str, _> = direct_air_data
             .iter()
-            .map(|(&air_name, (_, _, post_opt_offsets))| {
+            .map(|(&air_name, data)| {
                 let d_post_opt_offsets =
-                    post_opt_offsets.clone().to_device().unwrap_or_else(|_| {
-                        panic!("Failed to copy {} post opt offsets to device", air_name)
-                    });
+                    data.post_opt_offsets
+                        .clone()
+                        .to_device()
+                        .unwrap_or_else(|_| {
+                            panic!("Failed to copy {} post opt offsets to device", air_name)
+                        });
                 (air_name, d_post_opt_offsets)
             })
             .collect();
@@ -397,17 +403,13 @@ impl PowdrTraceGeneratorGpu {
             let d_subs = match direct_d_subs.get(air_name.as_str()) {
                 Some(subs) => subs,
                 None => {
-                    // AIR has records but is not in the active APC
-                    // If it's in air_name_to_machine, it's just not used in this APC - skip it
-                    // If it's not in air_name_to_machine, it needs to be implemented
-                    if self
-                        .original_airs
-                        .air_name_to_machine
-                        .contains_key(&air_name)
-                    {
-                        continue;
-                    }
-                    panic!("AIR '{}' is not in air_name_to_machine. All chips must implement generate_proving_ctx_new.", air_name);
+                    // AIR has records but is not in the active APC - skip if it's a known AIR
+                    assert!(
+                        self.original_airs.air_name_to_machine.contains_key(&air_name),
+                        "AIR '{}' is not in air_name_to_machine. All chips must implement generate_proving_ctx_direct.",
+                        air_name
+                    );
+                    continue;
                 }
             };
 
