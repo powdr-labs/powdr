@@ -67,7 +67,7 @@ impl EmpiricalConstraints {
                     // Remove the value and compute the intersection
                     // This is because `intersect_partitions` takes inputs by value
                     let existing = e.remove();
-                    Partition::intersect(&[existing, classes])
+                    Partition::intersect_many(&[existing, classes])
                 }
             };
             assert!(self
@@ -250,7 +250,7 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
             .equivalence_classes_by_block
             .get(&self.block.start_pc)
         {
-            for equivalence_class in equivalence_classes.into_classes() {
+            for equivalence_class in equivalence_classes.to_classes() {
                 let first = equivalence_class.first().unwrap();
                 let first_ref = self.get_algebraic_reference(first);
                 for other in equivalence_class.iter().skip(1) {

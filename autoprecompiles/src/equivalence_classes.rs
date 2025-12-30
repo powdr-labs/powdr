@@ -24,7 +24,7 @@ pub struct Partition<T> {
 impl<T: Eq + Hash + Serialize + Clone> Serialize for Partition<T> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         // Serialize as Vec<Vec<T>> for JSON compatibility
-        self.into_classes().serialize(serializer)
+        self.to_classes().serialize(serializer)
     }
 }
 
@@ -49,7 +49,7 @@ where
             // Ignore classes with 0 or 1 elements as they are useless
             if class_iter.len() > 1 {
                 for element in class_iter {
-                    class_of.insert(element, num_classes);
+                    assert!(class_of.insert(element, num_classes).is_none());
                 }
                 num_classes += 1;
             }
@@ -66,26 +66,28 @@ impl<T: Eq + Hash + Clone> Partition<T> {
     /// Returns all equivalence classes as a Vec<Vec<T>>.
     /// This is O(n) where n is the number of elements.
     #[allow(clippy::iter_over_hash_type)] // Order within classes doesn't matter semantically
-    pub fn into_classes(&self) -> Vec<Vec<T>> {
+    pub fn to_classes(&self) -> Vec<Vec<T>> {
         let mut classes: Vec<Vec<T>> = vec![Vec::new(); self.num_classes];
         for (elem, &class_id) in &self.class_of {
             classes[class_id].push(elem.clone());
         }
         classes
     }
-}
 
-impl<T: Eq + Hash + Copy> Partition<T> {
+    pub fn empty() -> Self {
+        Self {
+            class_of: HashMap::new(),
+            num_classes: 0,
+        }
+    }
+
     /// Intersects multiple partitions of the same universe into a single partition.
     /// In other words, two elements are in the same equivalence class in the resulting partition
     /// if and only if they are in the same equivalence class in all input partitions.
     /// Singleton equivalence classes are omitted from the result.
-    pub fn intersect(partitions: &[Self]) -> Self {
+    pub fn intersect_many(partitions: &[Self]) -> Self {
         let Some(first) = partitions.first() else {
-            return Self {
-                class_of: HashMap::new(),
-                num_classes: 0,
-            };
+            return Self::empty();
         };
 
         // Pairwise intersection: fold over partitions, intersecting two at a time.
@@ -94,21 +96,22 @@ impl<T: Eq + Hash + Copy> Partition<T> {
         // 2. The result shrinks after each intersection, making later steps faster
         partitions[1..]
             .iter()
-            .fold(first.clone(), |acc, p| Self::intersect_two(&acc, p))
+            .fold(first.clone(), |acc, p| acc.intersected_with(p))
     }
 
     /// Intersects two partitions.
-    fn intersect_two(a: &Self, b: &Self) -> Self {
-        // Group elements by (class_in_a, class_in_b)
+    fn intersected_with(&self, other: &Self) -> Self {
+        // Group elements by (class_in_self, class_in_other)
         // Elements with the same pair end up in the same result class
-        a.class_of
+        self.class_of
             .iter()
-            // Note that if an element is not in a or b, it is a singleton and will also
-            // not be in the intersection.
-            .filter_map(|(&elem, &class_a)| {
-                b.class_of
-                    .get(&elem)
-                    .map(|&class_b| ((class_a, class_b), elem))
+            // Note that if an element is not in self or other, it is a
+            // singleton and will also not be in the intersection.
+            .filter_map(|(elem, &class_a)| {
+                other
+                    .class_of
+                    .get(elem)
+                    .map(|&class_b| ((class_a, class_b), elem.clone()))
             })
             .into_group_map()
             .into_values()
@@ -129,14 +132,14 @@ impl<T: Eq + Hash + Copy + Send + Sync> Partition<T> {
     /// then the chunk results are combined recursively in parallel.
     pub fn parallel_intersect(partitions: Vec<Self>) -> Self {
         if partitions.len() <= PARALLEL_THRESHOLD {
-            return Self::intersect(&partitions);
+            return Self::intersect_many(&partitions);
         }
 
         // Chunk partitions and intersect each chunk in parallel
         let chunk_results: Vec<Self> = partitions
             .chunks(CHUNK_SIZE)
             .par_bridge()
-            .map(Self::intersect)
+            .map(Self::intersect_many)
             .collect();
 
         // Recursively combine chunk results
@@ -157,7 +160,7 @@ impl<T: Eq + Hash + Ord + Clone> Eq for Partition<T> {}
 impl<T: Eq + Hash + Ord + Clone> Partition<T> {
     /// Converts to a canonical BTreeSet<BTreeSet<T>> form for equality comparison.
     fn to_canonical(&self) -> BTreeSet<BTreeSet<T>> {
-        self.into_classes()
+        self.to_classes()
             .into_iter()
             .map(|class| class.into_iter().collect())
             .collect()
@@ -192,7 +195,7 @@ mod tests {
             vec![8, 9],
         ]);
 
-        let result = Partition::intersect(&[partition1, partition2, partition3]);
+        let result = Partition::intersect_many(&[partition1, partition2, partition3]);
 
         // After intersecting all three:
         // - {2,3} survives (in same class in all three)
