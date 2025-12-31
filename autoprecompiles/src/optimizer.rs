@@ -29,6 +29,10 @@ use crate::{
     BusMap, BusType, DegreeBound, SymbolicBusInteraction, SymbolicMachine,
 };
 
+/// All constraints ever seen during optimization (for debugging).
+/// Tuple of (step_name, constraint_expr).
+pub type ConstraintHistory<T> = Vec<(String, GroupedExpression<T, AlgebraicReference>)>;
+
 /// Optimizes a given symbolic machine and returns an equivalent, but "simpler" one.
 /// All constraints in the returned machine will respect the given degree bound.
 /// New variables may be introduced in the process.
@@ -38,8 +42,16 @@ pub fn optimize<A: Adapter>(
     degree_bound: DegreeBound,
     bus_map: &BusMap<A::CustomBusTypes>,
     mut column_allocator: ColumnAllocator,
-) -> Result<(SymbolicMachine<A::PowdrField>, ColumnAllocator), crate::constraint_optimizer::Error> {
+) -> Result<(SymbolicMachine<A::PowdrField>, ColumnAllocator, ConstraintHistory<A::PowdrField>), crate::constraint_optimizer::Error> {
     let mut stats_logger = StatsLogger::start(&machine);
+    let mut constraint_history: ConstraintHistory<A::PowdrField> = Vec::new();
+
+    // Helper to snapshot current constraints
+    let mut snapshot_constraints = |step: &str, system: &ConstraintSystem<A::PowdrField, AlgebraicReference>| {
+        for c in &system.algebraic_constraints {
+            constraint_history.push((step.to_string(), c.expression.clone()));
+        }
+    };
 
     if let Some(exec_bus_id) = bus_map.get_bus_id(&BusType::ExecutionBridge) {
         machine = optimize_exec_bus(machine, exec_bus_id);
@@ -57,6 +69,7 @@ pub fn optimize<A: Adapter>(
 
     let constraint_system = symbolic_machine_to_constraint_system(machine);
     stats_logger.log("system construction", &constraint_system);
+    snapshot_constraints("initial", &constraint_system);
 
     let mut constraint_system: IndexedConstraintSystem<_, _> = constraint_system.into();
     stats_logger.log("indexing", &constraint_system);
@@ -81,6 +94,7 @@ pub fn optimize<A: Adapter>(
         bus_interaction_handler.clone(),
     );
     stats_logger.log("constructing the solver", &constraint_system);
+    let mut opt_iter = 0;
     loop {
         let stats = stats_logger::Stats::from(&constraint_system);
         constraint_system = optimize_constraints::<_, _, A::MemoryBusInteraction<_>>(
@@ -93,6 +107,8 @@ pub fn optimize<A: Adapter>(
             &mut new_var,
         )?
         .into();
+        opt_iter += 1;
+        snapshot_constraints(&format!("optimize_constraints_{}", opt_iter), constraint_system.system());
         if stats == stats_logger::Stats::from(&constraint_system) {
             break;
         }
@@ -103,6 +119,7 @@ pub fn optimize<A: Adapter>(
         inline_everything_below_degree_bound(degree_bound),
     );
     stats_logger.log("inlining", &constraint_system);
+    snapshot_constraints("inlining", constraint_system.system());
 
     let (constraint_system, _) = rule_based_optimization(
         constraint_system,
@@ -111,6 +128,8 @@ pub fn optimize<A: Adapter>(
         &mut new_var,
         Some(degree_bound),
     );
+    snapshot_constraints("rule_based_optimization", constraint_system.system());
+
     // Note that the rest of the optimization does not benefit from optimizing range constraints,
     // so we only do it once at the end.
     let constraint_system = optimize_range_constraints(
@@ -119,6 +138,7 @@ pub fn optimize<A: Adapter>(
         degree_bound,
     );
     stats_logger.log("optimizing range constraints", &constraint_system);
+    snapshot_constraints("range_constraints", &constraint_system);
 
     let constraint_system = trivial_simplifications(
         constraint_system.into(),
@@ -127,6 +147,7 @@ pub fn optimize<A: Adapter>(
     )
     .system()
     .clone();
+    snapshot_constraints("trivial_simplifications", &constraint_system);
 
     // Sanity check: Degree bound should be respected:
     for algebraic_constraint in &constraint_system.algebraic_constraints {
@@ -161,6 +182,7 @@ pub fn optimize<A: Adapter>(
     Ok((
         constraint_system_to_symbolic_machine(constraint_system),
         column_allocator,
+        constraint_history,
     ))
 }
 

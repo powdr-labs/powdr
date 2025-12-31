@@ -7,7 +7,7 @@ use crate::bus_map::{BusMap, BusType};
 use crate::empirical_constraints::{ConstraintGenerator, EmpiricalConstraints};
 use crate::evaluation::AirStats;
 use crate::execution::OptimisticConstraints;
-use crate::expression_conversion::algebraic_to_grouped_expression;
+use crate::expression_conversion::{algebraic_to_grouped_expression, grouped_expression_to_algebraic};
 use crate::symbolic_machine_generator::convert_apc_field_type;
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
@@ -464,6 +464,9 @@ pub fn build<A: Adapter>(
     machine.constraints.extend(range_analyzer_constraints);
     machine.constraints.extend(equivalence_analyzer_constraints);
 
+    // Cache pre-optimization constraints for later analysis
+    let pre_opt_constraints: Vec<SymbolicConstraint<A::PowdrField>> = machine.constraints.clone();
+
     if let Some(path) = apc_candidates_dir_path {
         serialize_apc_from_machine::<A>(
             block.clone(),
@@ -482,7 +485,7 @@ pub fn build<A: Adapter>(
     metrics::counter!("before_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
 
-    let (machine, column_allocator) = optimizer::optimize::<A>(
+    let (machine, column_allocator, constraint_history) = optimizer::optimize::<A>(
         machine,
         vm_config.bus_interaction_handler,
         degree_bound,
@@ -512,6 +515,503 @@ pub fn build<A: Adapter>(
         let rendered = apc.machine.render(&vm_config.bus_map);
         let path = make_path(path, apc.start_pc(), None, "txt");
         std::fs::write(path, rendered).unwrap();
+    }
+
+    // Debug: Track singleton subs and check if they can be solved
+    {
+        use std::collections::BTreeMap;
+
+        // Helper: compute degree of each poly_id in an expression
+        fn compute_poly_degrees<T>(
+            expr: &AlgebraicExpression<T>,
+        ) -> BTreeMap<u64, usize> {
+            fn helper<T>(
+                expr: &AlgebraicExpression<T>,
+                current_mult: usize,
+                degrees: &mut BTreeMap<u64, usize>,
+            ) {
+                match expr {
+                    AlgebraicExpression::Reference(r) => {
+                        *degrees.entry(r.id).or_insert(0) =
+                            degrees.get(&r.id).unwrap_or(&0).max(&current_mult).clone();
+                    }
+                    AlgebraicExpression::Number(_) => {}
+                    AlgebraicExpression::BinaryOperation(op) => {
+                        match op.op {
+                            AlgebraicBinaryOperator::Add | AlgebraicBinaryOperator::Sub => {
+                                helper(&op.left, current_mult, degrees);
+                                helper(&op.right, current_mult, degrees);
+                            }
+                            AlgebraicBinaryOperator::Mul => {
+                                // For multiplication A * B, degree of var v is:
+                                // degree(v, A) + degree(v, B)
+                                let mut left_degrees = BTreeMap::new();
+                                let mut right_degrees = BTreeMap::new();
+                                helper(&op.left, 1, &mut left_degrees);
+                                helper(&op.right, 1, &mut right_degrees);
+
+                                // Collect all poly_ids from both sides
+                                let all_ids: BTreeSet<u64> = left_degrees
+                                    .keys()
+                                    .chain(right_degrees.keys())
+                                    .cloned()
+                                    .collect();
+
+                                for id in all_ids {
+                                    let left_deg = left_degrees.get(&id).copied().unwrap_or(0);
+                                    let right_deg = right_degrees.get(&id).copied().unwrap_or(0);
+                                    let new_deg = (left_deg + right_deg) * current_mult;
+                                    *degrees.entry(id).or_insert(0) =
+                                        degrees.get(&id).unwrap_or(&0).max(&new_deg).clone();
+                                }
+                            }
+                        }
+                    }
+                    AlgebraicExpression::UnaryOperation(op) => {
+                        helper(&op.expr, current_mult, degrees);
+                    }
+                }
+            }
+            let mut degrees = BTreeMap::new();
+            helper(expr, 1, &mut degrees);
+            degrees
+        }
+
+        // Helper: collect all poly_ids from an expression
+        fn collect_poly_ids<T>(expr: &AlgebraicExpression<T>, ids: &mut BTreeSet<u64>) {
+            match expr {
+                AlgebraicExpression::Reference(r) => {
+                    ids.insert(r.id);
+                }
+                AlgebraicExpression::Number(_) => {}
+                AlgebraicExpression::BinaryOperation(op) => {
+                    collect_poly_ids(&op.left, ids);
+                    collect_poly_ids(&op.right, ids);
+                }
+                AlgebraicExpression::UnaryOperation(op) => {
+                    collect_poly_ids(&op.expr, ids);
+                }
+            }
+        }
+
+        // Collect poly_ids that appear in constraints
+        let mut poly_ids_in_constraints: BTreeSet<u64> = BTreeSet::new();
+        for constraint in &apc.machine.constraints {
+            collect_poly_ids(&constraint.expr, &mut poly_ids_in_constraints);
+        }
+
+        // Collect poly_ids that appear in bus interactions
+        let mut poly_ids_in_bus: BTreeSet<u64> = BTreeSet::new();
+        for bus in &apc.machine.bus_interactions {
+            collect_poly_ids(&bus.mult, &mut poly_ids_in_bus);
+            for arg in &bus.args {
+                collect_poly_ids(arg, &mut poly_ids_in_bus);
+            }
+        }
+
+        // Collect apc_poly_ids where the inner vec has length 1
+        let singleton_poly_ids: BTreeSet<u64> = apc
+            .subs
+            .iter()
+            .enumerate()
+            .filter_map(|(instr_idx, subs)| {
+                if subs.len() == 1 {
+                    let poly_id = subs[0].apc_poly_id;
+                    let in_constraints = poly_ids_in_constraints.contains(&poly_id);
+                    let in_bus = poly_ids_in_bus.contains(&poly_id);
+                    let location = match (in_constraints, in_bus) {
+                        (true, true) => "constraints+bus",
+                        (true, false) => "constraints",
+                        (false, true) => "bus",
+                        (false, false) => "NONE",
+                    };
+                    println!(
+                        "[DEBUG] Instruction {} has singleton sub: original_poly_index={}, apc_poly_id={} [{}]",
+                        instr_idx, subs[0].original_poly_index, poly_id, location
+                    );
+                    Some(poly_id)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if singleton_poly_ids.is_empty() {
+            println!("[DEBUG] No singleton poly_ids found");
+        } else {
+            println!("[DEBUG] Singleton poly_ids (initially unknown): {:?}", singleton_poly_ids);
+
+            // All poly_ids in the machine
+            let all_poly_ids: BTreeSet<u64> = apc
+                .machine
+                .unique_references()
+                .map(|r| r.id)
+                .collect();
+
+            // Known = all poly_ids except singletons
+            let mut known: BTreeSet<u64> = all_poly_ids
+                .difference(&singleton_poly_ids)
+                .cloned()
+                .collect();
+            let mut unknown: BTreeSet<u64> = singleton_poly_ids.clone();
+
+            println!("[DEBUG] Initially known poly_ids: {} total", known.len());
+            println!("[DEBUG] Initially unknown poly_ids: {:?}", unknown);
+
+            // Helper to render expression with unknowns named, knowns as "known"
+            fn render_expr_with_unknowns<T: std::fmt::Display>(
+                expr: &AlgebraicExpression<T>,
+                unknown: &BTreeSet<u64>,
+            ) -> String {
+                match expr {
+                    AlgebraicExpression::Reference(r) => {
+                        if unknown.contains(&r.id) {
+                            format!("{}(#{})", r.name, r.id)
+                        } else {
+                            "known".to_string()
+                        }
+                    }
+                    AlgebraicExpression::Number(n) => format!("{}", n),
+                    AlgebraicExpression::BinaryOperation(op) => {
+                        let left = render_expr_with_unknowns(&op.left, unknown);
+                        let right = render_expr_with_unknowns(&op.right, unknown);
+                        let op_str = match op.op {
+                            AlgebraicBinaryOperator::Add => "+",
+                            AlgebraicBinaryOperator::Sub => "-",
+                            AlgebraicBinaryOperator::Mul => "*",
+                        };
+                        format!("({} {} {})", left, op_str, right)
+                    }
+                    AlgebraicExpression::UnaryOperation(op) => {
+                        let inner = render_expr_with_unknowns(&op.expr, unknown);
+                        format!("-{}", inner)
+                    }
+                }
+            }
+
+            // Filter pre-opt constraints to only those with post-opt poly_ids
+            let post_opt_poly_ids: BTreeSet<u64> = all_poly_ids.clone();
+            let filtered_pre_opt: Vec<_> = pre_opt_constraints
+                .iter()
+                .filter(|c| {
+                    let mut poly_ids = BTreeSet::new();
+                    collect_poly_ids(&c.expr, &mut poly_ids);
+                    // Keep constraint if ALL its poly_ids exist in post-opt
+                    !poly_ids.is_empty() && poly_ids.iter().all(|id| post_opt_poly_ids.contains(id))
+                })
+                .collect();
+
+            println!(
+                "[DEBUG] Pre-opt constraints: {} total, {} filtered (with post-opt poly_ids only)",
+                pre_opt_constraints.len(),
+                filtered_pre_opt.len()
+            );
+
+            // Convert constraint_history (GroupedExpression) to AlgebraicExpression and filter
+            let history_constraints: Vec<(String, AlgebraicExpression<A::PowdrField>)> = constraint_history
+                .iter()
+                .filter_map(|(step, grouped_expr)| {
+                    let expr: AlgebraicExpression<A::PowdrField> = grouped_expression_to_algebraic(grouped_expr.clone());
+                    let mut poly_ids = BTreeSet::new();
+                    collect_poly_ids(&expr, &mut poly_ids);
+                    // Keep constraint if ALL its poly_ids exist in post-opt
+                    if !poly_ids.is_empty() && poly_ids.iter().all(|id| post_opt_poly_ids.contains(id)) {
+                        Some((step.clone(), expr))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            println!(
+                "[DEBUG] Constraint history: {} total, {} filtered (with post-opt poly_ids only)",
+                constraint_history.len(),
+                history_constraints.len()
+            );
+
+            // Print all constraints before solving
+            println!("[DEBUG] === ALL CONSTRAINTS (unknowns named, knowns as 'known') ===");
+
+            // Print pre-opt constraints
+            println!("[DEBUG] --- Pre-optimization constraints ---");
+            for (idx, constraint) in filtered_pre_opt.iter().enumerate() {
+                let mut constraint_poly_ids = BTreeSet::new();
+                collect_poly_ids(&constraint.expr, &mut constraint_poly_ids);
+                let has_unknown = constraint_poly_ids.iter().any(|id| unknown.contains(id));
+                if has_unknown {
+                    let rendered = render_expr_with_unknowns(&constraint.expr, &unknown);
+                    println!("[DEBUG] [pre-opt {}] {}", idx, rendered);
+                }
+            }
+
+            // Print post-opt constraints
+            println!("[DEBUG] --- Post-optimization constraints ---");
+            for (idx, constraint) in apc.machine.constraints.iter().enumerate() {
+                let mut constraint_poly_ids = BTreeSet::new();
+                collect_poly_ids(&constraint.expr, &mut constraint_poly_ids);
+                let has_unknown = constraint_poly_ids.iter().any(|id| unknown.contains(id));
+                if has_unknown {
+                    let rendered = render_expr_with_unknowns(&constraint.expr, &unknown);
+                    println!("[DEBUG] [post-opt {}] {}", idx, rendered);
+                }
+            }
+
+            // Print history constraints (from optimization steps)
+            println!("[DEBUG] --- Constraint history (filtered to post-opt poly_ids) ---");
+            for (step, expr) in &history_constraints {
+                let mut constraint_poly_ids = BTreeSet::new();
+                collect_poly_ids(expr, &mut constraint_poly_ids);
+                let has_unknown = constraint_poly_ids.iter().any(|id| unknown.contains(id));
+                if has_unknown {
+                    let rendered = render_expr_with_unknowns(expr, &unknown);
+                    println!("[DEBUG] [history:{}] {}", step, rendered);
+                }
+            }
+            println!("[DEBUG] === END CONSTRAINTS ===");
+
+            // Combine constraints for solving: (label, &expr)
+            // We need owned expressions for history_constraints, so use a different approach
+            let pre_opt_exprs: Vec<(String, AlgebraicExpression<A::PowdrField>)> = filtered_pre_opt
+                .iter()
+                .enumerate()
+                .map(|(i, c)| (format!("pre-opt {}", i), c.expr.clone()))
+                .collect();
+            let post_opt_exprs: Vec<(String, AlgebraicExpression<A::PowdrField>)> = apc.machine
+                .constraints
+                .iter()
+                .enumerate()
+                .map(|(i, c)| (format!("post-opt {}", i), c.expr.clone()))
+                .collect();
+
+            let all_solve_constraints: Vec<(String, AlgebraicExpression<A::PowdrField>)> = pre_opt_exprs
+                .into_iter()
+                .chain(post_opt_exprs)
+                .chain(history_constraints.clone())
+                .collect();
+
+            // Show constraint counts by source
+            let pre_count = filtered_pre_opt.len();
+            let post_count = apc.machine.constraints.len();
+            let hist_count = history_constraints.len();
+            println!(
+                "[DEBUG] Total constraints for solving: {} (pre-opt: {}, post-opt: {}, history: {})",
+                all_solve_constraints.len(), pre_count, post_count, hist_count
+            );
+
+            // Analyze all constraints with unknowns to show why they can/cannot be solved
+            // Deduplicate by (unknowns, solvability) to reduce verbosity
+            println!("[DEBUG] === CONSTRAINT SOLVABILITY ANALYSIS ===");
+            let mut seen_patterns: BTreeSet<(Vec<(u64, usize)>, String)> = BTreeSet::new();
+            let mut solvable_count = 0;
+            let mut unsolvable_count = 0;
+
+            for (label, expr) in &all_solve_constraints {
+                let poly_degrees = compute_poly_degrees(expr);
+
+                // Check if this constraint has any unknowns
+                let mut unknowns_in_constraint: Vec<(u64, usize)> = poly_degrees
+                    .iter()
+                    .filter(|(id, _)| unknown.contains(id))
+                    .map(|(&id, &deg)| (id, deg))
+                    .collect();
+                unknowns_in_constraint.sort();
+
+                if unknowns_in_constraint.is_empty() {
+                    continue;
+                }
+
+                let deg1_unknowns: Vec<u64> = unknowns_in_constraint
+                    .iter()
+                    .filter(|(_, deg)| *deg == 1)
+                    .map(|(id, _)| *id)
+                    .collect();
+
+                let solvability = if deg1_unknowns.len() == 1 {
+                    solvable_count += 1;
+                    format!("CAN SOLVE poly_id {}", deg1_unknowns[0])
+                } else if deg1_unknowns.is_empty() {
+                    unsolvable_count += 1;
+                    let max_deg = unknowns_in_constraint.iter().map(|(_, d)| *d).max().unwrap_or(0);
+                    format!("CANNOT SOLVE: all unknowns at degree {}", max_deg)
+                } else {
+                    unsolvable_count += 1;
+                    format!("CANNOT SOLVE: {} unknowns at degree 1", deg1_unknowns.len())
+                };
+
+                // Only print if we haven't seen this pattern before
+                let pattern = (unknowns_in_constraint.clone(), solvability.clone());
+                if seen_patterns.insert(pattern) {
+                    let rendered = render_expr_with_unknowns(expr, &unknown);
+                    println!("[DEBUG] [{}] {} => {}", label, rendered, solvability);
+                }
+            }
+            println!(
+                "[DEBUG] Summary: {} constraints can solve, {} cannot (showing unique patterns only)",
+                solvable_count, unsolvable_count
+            );
+            println!("[DEBUG] === END SOLVABILITY ANALYSIS ===");
+
+            // Iteratively solve
+            let mut iteration = 0;
+            loop {
+                iteration += 1;
+                let mut solved_this_round: Vec<u64> = Vec::new();
+
+                for (label, expr) in &all_solve_constraints {
+                    let poly_degrees = compute_poly_degrees(expr);
+
+                    // Find unknowns with degree 1 in this constraint
+                    let unknowns_deg1: Vec<u64> = poly_degrees
+                        .iter()
+                        .filter(|(id, &deg)| unknown.contains(id) && deg == 1)
+                        .map(|(&id, _)| id)
+                        .collect();
+
+                    // If exactly one unknown with degree 1, we can solve it
+                    if unknowns_deg1.len() == 1 {
+                        let solved_id = unknowns_deg1[0];
+                        if !solved_this_round.contains(&solved_id) {
+                            let rendered = render_expr_with_unknowns(expr, &unknown);
+                            println!(
+                                "[DEBUG] Iteration {}: [{}] solves poly_id {} (expr: {})",
+                                iteration, label, solved_id, rendered
+                            );
+                            solved_this_round.push(solved_id);
+                        }
+                    }
+                }
+
+                if solved_this_round.is_empty() {
+                    println!("[DEBUG] Iteration {}: No progress, stopping", iteration);
+                    break;
+                }
+
+                for id in solved_this_round {
+                    unknown.remove(&id);
+                    known.insert(id);
+                }
+
+                println!(
+                    "[DEBUG] After iteration {}: {} unknown, {} known",
+                    iteration,
+                    unknown.len(),
+                    known.len()
+                );
+
+                if unknown.is_empty() {
+                    break;
+                }
+            }
+
+            // Final report
+            let solved: BTreeSet<u64> = singleton_poly_ids
+                .difference(&unknown)
+                .cloned()
+                .collect();
+
+            println!("[DEBUG] === FINAL RESULTS ===");
+            println!("[DEBUG] Solved singleton poly_ids: {:?}", solved);
+            println!("[DEBUG] Unsolved singleton poly_ids: {:?}", unknown);
+
+            if unknown.is_empty() {
+                println!("[DEBUG] SUCCESS: All singleton poly_ids are solvable!");
+            } else {
+                println!(
+                    "[DEBUG] FAILURE: {} singleton poly_ids could not be solved",
+                    unknown.len()
+                );
+
+                // Categorize unsolved poly_ids
+                let only_in_bus: Vec<u64> = unknown
+                    .iter()
+                    .filter(|id| !poly_ids_in_constraints.contains(id) && poly_ids_in_bus.contains(id))
+                    .cloned()
+                    .collect();
+                let in_constraints: Vec<u64> = unknown
+                    .iter()
+                    .filter(|id| poly_ids_in_constraints.contains(id))
+                    .cloned()
+                    .collect();
+                let in_neither: Vec<u64> = unknown
+                    .iter()
+                    .filter(|id| !poly_ids_in_constraints.contains(id) && !poly_ids_in_bus.contains(id))
+                    .cloned()
+                    .collect();
+
+                println!("[DEBUG] === UNSOLVED POLY_ID CATEGORIES ===");
+                println!("[DEBUG] Only in bus interactions ({} poly_ids): {:?}", only_in_bus.len(), only_in_bus);
+                println!("[DEBUG] In constraints ({} poly_ids): {:?}", in_constraints.len(), in_constraints);
+                println!("[DEBUG] In neither ({} poly_ids): {:?}", in_neither.len(), in_neither);
+
+                // For poly_ids only in bus, show which bus interactions
+                if !only_in_bus.is_empty() {
+                    println!("[DEBUG] === BUS INTERACTIONS for bus-only poly_ids ===");
+                    for &unsolved_id in only_in_bus.iter().take(5) {  // Limit to first 5 to avoid spam
+                        println!("[DEBUG] Poly_id {} appears in bus interactions:", unsolved_id);
+                        for (bus_idx, bus) in apc.machine.bus_interactions.iter().enumerate() {
+                            let mut bus_poly_ids = BTreeSet::new();
+                            collect_poly_ids(&bus.mult, &mut bus_poly_ids);
+                            for arg in &bus.args {
+                                collect_poly_ids(arg, &mut bus_poly_ids);
+                            }
+                            if bus_poly_ids.contains(&unsolved_id) {
+                                println!("  [bus {}] {}", bus_idx, bus);
+                            }
+                        }
+                    }
+                    if only_in_bus.len() > 5 {
+                        println!("[DEBUG] ... and {} more bus-only poly_ids", only_in_bus.len() - 5);
+                    }
+                }
+
+                // For poly_ids in constraints, show why they couldn't be solved
+                if !in_constraints.is_empty() {
+                    println!("[DEBUG] === DIAGNOSTIC: Why constraint poly_ids are unsolved ===");
+                    for &unsolved_id in in_constraints.iter().take(10) {  // Limit to first 10
+                        println!("[DEBUG] Poly_id {} appears in:", unsolved_id);
+
+                        for (label, expr) in &all_solve_constraints {
+                            let poly_degrees = compute_poly_degrees(expr);
+
+                            if let Some(&deg) = poly_degrees.get(&unsolved_id) {
+                                // Count unknowns with degree 1
+                                let unknowns_deg1: Vec<u64> = poly_degrees
+                                    .iter()
+                                    .filter(|(id, &d)| unknown.contains(id) && d == 1)
+                                    .map(|(&id, _)| id)
+                                    .collect();
+
+                                // Count all unknowns
+                                let all_unknowns: Vec<(u64, usize)> = poly_degrees
+                                    .iter()
+                                    .filter(|(id, _)| unknown.contains(id))
+                                    .map(|(&id, &d)| (id, d))
+                                    .collect();
+
+                                let reason = if deg > 1 {
+                                    format!("degree {} (not linear)", deg)
+                                } else if unknowns_deg1.len() > 1 {
+                                    format!("{} unknowns at deg 1: {:?}", unknowns_deg1.len(), unknowns_deg1)
+                                } else if unknowns_deg1.is_empty() {
+                                    "no unknowns at degree 1".to_string()
+                                } else {
+                                    "should be solvable?".to_string()
+                                };
+
+                                let rendered = render_expr_with_unknowns(expr, &unknown);
+                                println!(
+                                    "  [{}] {} | deg={}, unknowns={:?}, reason: {}",
+                                    label, rendered, deg, all_unknowns, reason
+                                );
+                            }
+                        }
+                    }
+                    if in_constraints.len() > 10 {
+                        println!("[DEBUG] ... and {} more constraint poly_ids", in_constraints.len() - 10);
+                    }
+                }
+            }
+        }
     }
 
     let apc = convert_apc_field_type(apc, &A::into_field);
