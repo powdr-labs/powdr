@@ -22,7 +22,7 @@ use crate::bus_map::default_openvm_bus_map;
 use crate::trace_generation::do_with_cpu_trace;
 use crate::{CompiledProgram, OriginalCompiledProgram};
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 struct Timestamp {
     // Note that the order of the fields matters for correct ordering.
     segment_idx: usize,
@@ -60,6 +60,12 @@ impl Trace {
     fn rows_sorted_by_time(&self) -> impl Iterator<Item = &Row> {
         self.rows.iter().sorted_by_key(|row| &row.timestamp)
     }
+
+    fn take(&mut self) -> Self {
+        Self {
+            rows: std::mem::take(&mut self.rows),
+        }
+    }
 }
 
 pub fn detect_empirical_constraints(
@@ -82,26 +88,37 @@ pub fn detect_empirical_constraints(
     let num_inputs = inputs.len();
     for (i, input) in inputs.into_iter().enumerate() {
         tracing::info!("  Processing input {} / {}", i + 1, num_inputs);
-        // Materialize the full trace for a given input.
-        // If this becomes a RAM issue, we can also pass individual segments to process_trace.
-        // The advantage of the current approach is that the percentiles can be computed more accurately.
-        tracing::info!("    Collecting trace...");
-        let (trace, new_debug_info) = collect_trace(&program, input, degree_bound.identities);
-        tracing::info!("    Detecting constraints...");
-        constraint_detector.process_trace(trace, new_debug_info);
+        detect_empirical_constraints_from_input(
+            &program,
+            i,
+            input,
+            degree_bound.identities,
+            &mut constraint_detector,
+        );
     }
     tracing::info!("Done collecting empirical constraints.");
 
     constraint_detector.finalize()
 }
 
-fn collect_trace(
+/// The maximum number of segments to keep in memory while detecting empirical constraints.
+/// A higher number here leads to more accurate percentile estimates, but uses more memory.
+const DEFAULT_MAX_SEGMENTS: usize = 20;
+
+fn detect_empirical_constraints_from_input(
     program: &CompiledProgram,
+    input_index: usize,
     inputs: StdIn,
     degree_bound: usize,
-) -> (Trace, DebugInfo) {
+    constraint_detector: &mut ConstraintDetector,
+) {
     let mut trace = Trace::default();
     let mut debug_info = DebugInfo::default();
+
+    let max_segments = std::env::var("POWDR_EMPIRICAL_CONSTRAINTS_MAX_SEGMENTS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(DEFAULT_MAX_SEGMENTS);
 
     do_with_cpu_trace(program, inputs, |seg_idx, vm, _pk, ctx| {
         let airs = program.vm_config.sdk.airs(degree_bound).unwrap();
@@ -190,9 +207,59 @@ fn collect_trace(
                 }
             }
         }
+
+        if (seg_idx + 1) % max_segments == 0 {
+            let (trace_to_process, remaining_trace) =
+                take_complete_blocks(constraint_detector, trace.take());
+            trace = remaining_trace;
+            tracing::info!(
+                "    Reached segment {} of input {}, processing trace so far...",
+                seg_idx + 1,
+                input_index + 1
+            );
+            constraint_detector.process_trace(trace_to_process, debug_info.take());
+        }
     })
     .unwrap();
-    (trace, debug_info)
+    tracing::info!(
+        "    Finished execution of input {}, processing (remaining) trace...",
+        input_index + 1
+    );
+    constraint_detector.process_trace(trace, debug_info);
+}
+
+/// Takes as many complete basic blocks from the trace as possible,
+/// returning the taken trace and the remaining trace.
+/// This is needed because ConstraintDetector::process_trace requires complete basic blocks,
+/// but segmentation might happen within a basic block.
+fn take_complete_blocks(constraint_detector: &ConstraintDetector, trace: Trace) -> (Trace, Trace) {
+    // Find the latest timestamp that begins a basic block
+    let latest_basic_block_beginning = trace
+        .rows
+        .iter()
+        .filter(|row| {
+            constraint_detector
+                .instruction_counts
+                .contains_key(&(row.pc as u64))
+        })
+        .map(|row| &row.timestamp)
+        .max()
+        .unwrap()
+        .clone();
+    // Process all rows before that timestamp
+    let (rows_to_process, remaining_rows): (Vec<Row>, Vec<Row>) = trace
+        .rows
+        .into_iter()
+        .partition(|row| row.timestamp < latest_basic_block_beginning);
+
+    let trace_to_process = Trace {
+        rows: rows_to_process,
+    };
+    let remaining_trace = Trace {
+        rows: remaining_rows,
+    };
+
+    (trace_to_process, remaining_trace)
 }
 
 struct ConstraintDetector {
