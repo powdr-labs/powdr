@@ -1,3 +1,5 @@
+use indicatif::ProgressBar;
+use indicatif::ProgressStyle;
 use itertools::Itertools;
 use openvm_circuit::arch::VmCircuitConfig;
 use openvm_sdk::StdIn;
@@ -265,7 +267,7 @@ impl ConstraintDetector {
         // Map all column values to their range (1st and 99th percentile) for each pc
         trace
             .rows_by_pc()
-            .into_iter()
+            .into_par_iter()
             .map(|(pc, rows)| (pc, self.detect_column_ranges(&rows)))
             .collect()
     }
@@ -298,21 +300,35 @@ impl ConstraintDetector {
         tracing::info!("        Segmenting trace into blocks...");
         let blocks = self.get_blocks(trace);
         tracing::info!("        Finding equivalence classes...");
-        blocks
-            .into_par_iter()
-            .map(|(block_id, block_instances)| {
+        let num_blocks = blocks.len();
+        let pb = ProgressBar::new(num_blocks as u64).with_style(
+            ProgressStyle::with_template("[{elapsed_precise}] [{bar:50}] {wide_msg}").unwrap(),
+        );
+        let partition = blocks
+            .into_iter()
+            .enumerate()
+            .map(|(i, (block_id, block_instances))| {
+                pb.set_message(format!(
+                    "Block {} / {} ({} instances)",
+                    i + 1,
+                    num_blocks,
+                    block_instances.len()
+                ));
+
                 // Build partitions for each block instance in parallel
-                let partition_by_block_instance: Vec<_> = block_instances
+                let partition_by_block_instance = block_instances
                     .into_par_iter()
-                    .map(|block| block.equivalence_classes())
-                    .collect();
+                    .map(|block| block.equivalence_classes());
 
                 // Intersect the equivalence classes across all instances in parallel
                 let intersected = Partition::parallel_intersect(partition_by_block_instance);
+                pb.inc(1);
 
                 (block_id, intersected)
             })
-            .collect()
+            .collect();
+        pb.finish_with_message("Done");
+        partition
     }
 
     /// Segments a trace into basic blocks.
