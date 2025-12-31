@@ -209,14 +209,14 @@ fn detect_empirical_constraints_from_input(
         }
 
         if (seg_idx + 1) % max_segments == 0 {
-            let (trace_to_process, remaining_trace) =
-                take_complete_blocks(constraint_detector, trace.take());
-            trace = remaining_trace;
             tracing::info!(
                 "    Reached segment {} of input {}, processing trace so far...",
                 seg_idx + 1,
                 input_index + 1
             );
+            let (trace_to_process, remaining_trace) =
+                take_complete_blocks(constraint_detector, trace.take());
+            trace = remaining_trace;
             constraint_detector.process_trace(trace_to_process, debug_info.take());
         }
     })
