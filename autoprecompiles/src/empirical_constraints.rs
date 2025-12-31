@@ -1,11 +1,22 @@
 use std::collections::btree_map::Entry;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
 
+use itertools::Itertools;
+use powdr_constraint_solver::inliner::DegreeBound;
+use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
+use crate::adapter::AdapterVmConfig;
+use crate::bus_map::BusType;
+use crate::empirical_constraints::execution_constraints::{
+    LocalOptimisticLiteral, OptimisticConstraint, OptimisticExpression, OptimisticLiteral,
+};
 pub use crate::equivalence_classes::{EquivalenceClass, Partition};
+use crate::memory_optimizer::{MemoryBusInteraction, MemoryOp};
+use crate::optimizer::{optimize, symbolic_bus_interaction_to_bus_interaction};
+use crate::symbolic_machine_generator::statements_to_symbolic_machine;
 
 use crate::{
     adapter::Adapter,
@@ -13,6 +24,36 @@ use crate::{
     expression::{AlgebraicExpression, AlgebraicReference},
     SymbolicConstraint,
 };
+
+// Data structures copied from https://github.com/powdr-labs/powdr/pull/3491.
+mod execution_constraints {
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    pub struct OptimisticConstraint<A, V> {
+        pub left: OptimisticExpression<A, V>,
+        pub right: OptimisticExpression<A, V>,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+    pub enum OptimisticExpression<A, V> {
+        Number(V),
+        Literal(OptimisticLiteral<A>),
+    }
+
+    #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+    pub enum LocalOptimisticLiteral<A> {
+        // Changed this from Register(A) to RegisterLimb(A, usize)
+        RegisterLimb(A, usize),
+        Pc,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+    pub struct OptimisticLiteral<A> {
+        pub instr_idx: usize,
+        pub val: LocalOptimisticLiteral<A>,
+    }
+}
 
 /// "Constraints" that were inferred from execution statistics. They hold empirically
 /// (most of the time), but are not guaranteed to hold in all cases.
@@ -115,6 +156,13 @@ impl DebugInfo {
             other.column_names_by_air_id,
         );
     }
+
+    pub fn take(&mut self) -> Self {
+        Self {
+            air_id_by_pc: std::mem::take(&mut self.air_id_by_pc),
+            column_names_by_air_id: std::mem::take(&mut self.column_names_by_air_id),
+        }
+    }
 }
 
 /// Merges two maps, asserting that existing keys map to equal values.
@@ -157,6 +205,12 @@ pub struct ConstraintGenerator<'a, A: Adapter> {
     empirical_constraints: EmpiricalConstraints,
     algebraic_references: BTreeMap<BlockCell, AlgebraicReference>,
     block: &'a BasicBlock<A::Instruction>,
+    optimistic_literals: Option<BTreeMap<AlgebraicReference, AdapterOptimisticLiteral<A>>>,
+}
+
+pub struct Constraints<A: Adapter> {
+    pub symbolic_constraints: Vec<SymbolicConstraint<<A as Adapter>::PowdrField>>,
+    pub execution_constraints: Vec<OptimisticConstraint<Vec<<A as Adapter>::PowdrField>, u32>>,
 }
 
 impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
@@ -173,6 +227,9 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
         subs: &[Vec<u64>],
         columns: impl Iterator<Item = AlgebraicReference>,
         block: &'a BasicBlock<A::Instruction>,
+        vm_config: &AdapterVmConfig<A>,
+        degree_bound: &DegreeBound,
+        only_memory_limbs: bool,
     ) -> Self {
         let poly_id_to_block_cell = subs
             .iter()
@@ -183,7 +240,9 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
                 })
             })
             .collect::<BTreeMap<_, _>>();
+        let columns = columns.collect::<HashSet<_>>();
         let algebraic_references = columns
+            .iter()
             .map(|r| (*poly_id_to_block_cell.get(&r.id).unwrap(), r.clone()))
             .collect::<BTreeMap<_, _>>();
 
@@ -196,11 +255,30 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
             execution_count_threshold
         );
 
+        let log = block.start_pc == 0x201ecc;
+        let optimistic_literals = if only_memory_limbs {
+            let optimistic_literals = optimistic_literals::<A>(block, vm_config, degree_bound);
+            if log {
+                tracing::info!(
+                    "Optimistic literals for block starting at PC {:#x}:",
+                    block.start_pc
+                );
+                for (k, v) in optimistic_literals.iter() {
+                    let original_column = columns.get(k).unwrap();
+                    tracing::info!("  {k} = {original_column} => {v:?}");
+                }
+            }
+            Some(optimistic_literals)
+        } else {
+            None
+        };
+
         Self {
             empirical_constraints: empirical_constraints
                 .apply_pc_threshold(execution_count_threshold),
             algebraic_references,
             block,
+            optimistic_literals,
         }
     }
 
@@ -216,12 +294,72 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
             })
     }
 
+    fn get_optimistic_expression(
+        &self,
+        algebraic_expression: &AlgebraicExpression<<A as Adapter>::PowdrField>,
+    ) -> Option<OptimisticExpression<Vec<<A as Adapter>::PowdrField>, u32>> {
+        match algebraic_expression {
+            AlgebraicExpression::Number(n) => {
+                // TODO: Don't use to_degree...
+                Some(OptimisticExpression::Number(n.to_degree() as u32))
+            }
+            AlgebraicExpression::Reference(r) => {
+                let optimistic_literal = self.optimistic_literals.as_ref()?.get(r)?;
+                Some(OptimisticExpression::Literal(optimistic_literal.clone()))
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn generate_constraints(&self) -> Constraints<A> {
+        let range_constraints = self.range_constraints();
+        let equivalence_constraints = self.equivalence_constraints();
+        let (symbolic_constraints, execution_constraints) = if self.optimistic_literals.is_none() {
+            (
+                range_constraints
+                    .into_iter()
+                    .chain(equivalence_constraints)
+                    .map(|(left, right)| SymbolicConstraint { expr: left - right })
+                    .collect_vec(),
+                Vec::new(),
+            )
+        } else {
+            range_constraints
+                .into_iter()
+                .chain(equivalence_constraints)
+                .filter_map(|(left, right)| {
+                    let left_optimistic = self.get_optimistic_expression(&left)?;
+                    let right_optimistic = self.get_optimistic_expression(&right)?;
+                    let optimistic_constraint = OptimisticConstraint {
+                        left: left_optimistic,
+                        right: right_optimistic,
+                    };
+                    let symbolic_constraint = SymbolicConstraint { expr: left - right };
+                    Some((symbolic_constraint, optimistic_constraint))
+                })
+                .unzip()
+        };
+
+        let log = self.block.start_pc == 0x201ecc;
+        if log {
+            tracing::info!("Final constraints:");
+            for constraint in symbolic_constraints.iter() {
+                tracing::info!("  {constraint}");
+            }
+        }
+
+        Constraints {
+            symbolic_constraints,
+            execution_constraints,
+        }
+    }
+
     /// Generates constraints of the form `var = <value>` for columns whose value is
     /// always the same empirically.
     // TODO: We could also enforce looser range constraints.
     // This is a bit more complicated though, because we'd have to add bus interactions
     // to actually enforce them.
-    pub fn range_constraints(&self) -> Vec<SymbolicConstraint<<A as Adapter>::PowdrField>> {
+    fn range_constraints(&self) -> Vec<EqualityConstraint<A>> {
         let mut constraints = Vec::new();
 
         for i in 0..self.block.statements.len() {
@@ -235,10 +373,11 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
                 if min == max {
                     let value = A::PowdrField::from(*min as u64);
                     let reference = self.get_algebraic_reference(&block_cell);
-                    let constraint = AlgebraicExpression::Reference(reference)
-                        - AlgebraicExpression::Number(value);
 
-                    constraints.push(SymbolicConstraint { expr: constraint });
+                    constraints.push((
+                        AlgebraicExpression::Reference(reference),
+                        AlgebraicExpression::Number(value),
+                    ));
                 }
             }
         }
@@ -246,7 +385,7 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
         constraints
     }
 
-    pub fn equivalence_constraints(&self) -> Vec<SymbolicConstraint<<A as Adapter>::PowdrField>> {
+    fn equivalence_constraints(&self) -> Vec<EqualityConstraint<A>> {
         let mut constraints = Vec::new();
 
         if let Some(equivalence_classes) = self
@@ -255,17 +394,162 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
             .get(&self.block.start_pc)
         {
             for equivalence_class in equivalence_classes.to_classes() {
+                let equivalence_class = if let Some(optimistic_literals) = &self.optimistic_literals
+                {
+                    equivalence_class
+                        .iter()
+                        .filter(|cell| {
+                            let reference = self.get_algebraic_reference(cell);
+                            optimistic_literals.contains_key(&reference)
+                        })
+                        .cloned()
+                        .collect()
+                } else {
+                    equivalence_class.clone()
+                };
+
+                if equivalence_class.len() < 2 {
+                    continue;
+                }
+
                 let first = equivalence_class.first().unwrap();
                 let first_ref = self.get_algebraic_reference(first);
                 for other in equivalence_class.iter().skip(1) {
                     let other_ref = self.get_algebraic_reference(other);
-                    let constraint = AlgebraicExpression::Reference(first_ref.clone())
-                        - AlgebraicExpression::Reference(other_ref.clone());
-                    constraints.push(SymbolicConstraint { expr: constraint });
+                    constraints.push((
+                        AlgebraicExpression::Reference(first_ref.clone()),
+                        AlgebraicExpression::Reference(other_ref.clone()),
+                    ));
                 }
             }
         }
 
         constraints
     }
+}
+
+type EqualityConstraint<A> = (
+    AlgebraicExpression<<A as Adapter>::PowdrField>,
+    AlgebraicExpression<<A as Adapter>::PowdrField>,
+);
+type AdapterOptimisticLiteral<A> = OptimisticLiteral<Vec<<A as Adapter>::PowdrField>>;
+
+/// Maps an algebraic reference to an execution literal, if it represents the limb of a
+/// memory access to an address known at compile time.
+fn optimistic_literals<A: Adapter>(
+    block: &BasicBlock<A::Instruction>,
+    vm_config: &AdapterVmConfig<A>,
+    degree_bound: &DegreeBound,
+) -> BTreeMap<AlgebraicReference, AdapterOptimisticLiteral<A>> {
+    let log = block.start_pc == 0x201ecc;
+    let memory_bus_id = vm_config.bus_map.get_bus_id(&BusType::Memory).unwrap();
+    if log {
+        tracing::info!("Memory bus ID {memory_bus_id} ");
+    }
+    let mut next_global_idx: u64 = 3;
+    block
+        .statements
+        .iter()
+        .enumerate()
+        .flat_map(|(instruction_idx, instruction)| {
+            if log {
+                tracing::info!("{instruction}");
+            }
+
+            let dummy_block = BasicBlock {
+                start_pc: block.start_pc + (instruction_idx * 4) as u64,
+                statements: vec![instruction.clone()],
+            };
+            let (symbolic_machine, column_allocator) = statements_to_symbolic_machine::<A>(
+                &dummy_block,
+                vm_config.instruction_handler,
+                &vm_config.bus_map,
+                next_global_idx,
+            );
+            next_global_idx = column_allocator.next_poly_id;
+
+            let (symbolic_machine, _column_allocator) = optimize::<A>(
+                symbolic_machine.clone(),
+                vm_config.bus_interaction_handler.clone(),
+                *degree_bound,
+                &vm_config.bus_map,
+                column_allocator.clone(),
+            )
+            .unwrap();
+
+            // Go over all bus interactions
+            symbolic_machine
+                .bus_interactions
+                .iter()
+                // Filter for memory bus interactions
+                .filter_map(|bus_interaction| {
+                    let bus_interaction =
+                        symbolic_bus_interaction_to_bus_interaction(bus_interaction);
+                    A::MemoryBusInteraction::try_from_bus_interaction(
+                        &bus_interaction,
+                        memory_bus_id,
+                    )
+                    // TODO: This filters out memory bus interactions with unknown multiplicity.
+                    .ok()
+                    .flatten()
+                })
+                // Filter for concrete address and single-column limbs
+                .filter_map(|bus_interaction| {
+                    let address = bus_interaction.addr();
+                    let data = bus_interaction.data();
+
+                    let address = address.into_iter().collect_vec();
+
+                    if log {
+                        tracing::info!(
+                            "  Memory bus interaction: address=({}), data=({})",
+                            address.iter().map(ToString::to_string).join(", "),
+                            data.iter().map(ToString::to_string).join(", ")
+                        );
+                    }
+
+                    // Find concrete address
+                    let concrete_address = address
+                        .into_iter()
+                        .map(|expr| expr.try_to_known().cloned())
+                        .collect::<Option<Vec<_>>>()?;
+
+                    // Find references to the limbs
+                    let limbs = data
+                        .iter()
+                        .map(|expr| expr.try_to_simple_unknown())
+                        .collect::<Option<Vec<_>>>()?;
+
+                    if log {
+                        tracing::info!(
+                            "    Using: address=({}), data=({})",
+                            concrete_address.iter().map(ToString::to_string).join(", "),
+                            data.iter().map(ToString::to_string).join(", ")
+                        );
+                    }
+
+                    let instruction_idx = match bus_interaction.op() {
+                        MemoryOp::GetPrevious => instruction_idx,
+                        MemoryOp::SetNew => instruction_idx + 1,
+                    };
+
+                    Some((instruction_idx, concrete_address, limbs))
+                })
+                .collect_vec()
+        })
+        .flat_map(|(instruction_idx, concrete_address, limbs)| {
+            limbs
+                .into_iter()
+                .enumerate()
+                .map(move |(limb_index, limb_ref)| {
+                    let local_literal =
+                        LocalOptimisticLiteral::RegisterLimb(concrete_address.clone(), limb_index);
+                    let optimistic_literal = OptimisticLiteral {
+                        instr_idx: instruction_idx,
+                        val: local_literal,
+                    };
+                    (limb_ref, optimistic_literal)
+                })
+        })
+        .collect::<BTreeMap<_, _>>()
 }

@@ -413,11 +413,12 @@ impl<T, I, A, V> Apc<T, I, A, V> {
 }
 
 /// Allocates global poly_ids and keeps track of substitutions
+#[derive(Clone)]
 pub struct ColumnAllocator {
     /// For each original air, for each original column index, the associated poly_id in the APC air
     subs: Vec<Vec<u64>>,
     /// The next poly_id to issue
-    next_poly_id: u64,
+    pub next_poly_id: u64,
 }
 
 impl ColumnAllocator {
@@ -448,21 +449,30 @@ pub fn build<A: Adapter>(
         &block,
         vm_config.instruction_handler,
         &vm_config.bus_map,
+        // TODO: Why 3?!
+        3,
     );
 
     // Generate constraints for optimistic precompiles.
+    // fetch POWDR_RESTRICTED_OPTIMISTIC_PRECOMPILES env var
+    let restrict_optimistic_precompiles =
+        std::env::var("POWDR_RESTRICTED_OPTIMISTIC_PRECOMPILES").is_ok();
     let constraint_generator = ConstraintGenerator::<A>::new(
         empirical_constraints,
         &column_allocator.subs,
         machine.main_columns(),
         &block,
+        &vm_config,
+        &degree_bound,
+        restrict_optimistic_precompiles,
     );
-    let range_analyzer_constraints = constraint_generator.range_constraints();
-    let equivalence_analyzer_constraints = constraint_generator.equivalence_constraints();
+    // TODO: Use execution constraints
+    let empirical_constraints = constraint_generator
+        .generate_constraints()
+        .symbolic_constraints;
 
     // Add empirical constraints to the baseline
-    machine.constraints.extend(range_analyzer_constraints);
-    machine.constraints.extend(equivalence_analyzer_constraints);
+    machine.constraints.extend(empirical_constraints);
 
     if let Some(path) = apc_candidates_dir_path {
         serialize_apc_from_machine::<A>(
