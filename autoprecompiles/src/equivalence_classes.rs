@@ -126,14 +126,10 @@ impl<T: Eq + Hash + Copy + Send + Sync> Partition<T> {
             return Self::intersect_many(partitions);
         }
         // Chunk partitions and intersect each chunk in parallel
-        let chunk_results = partitions
-            .chunks(CHUNK_SIZE)
-            .map(Self::intersect_many)
-            // Not collecting here causes the type checker to hit the recursion limit...
-            .collect::<Vec<_>>();
+        let chunk_results = partitions.chunks(CHUNK_SIZE).map(Self::intersect_many);
 
         // Recursively combine chunk results
-        Self::parallel_intersect(chunk_results.into_par_iter())
+        Self::parallel_intersect(chunk_results)
     }
 }
 
