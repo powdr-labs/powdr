@@ -175,7 +175,7 @@ jobs:
         run: |
           cd openvm-reth-benchmark
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
-          MODE="compile" APC=10 PGO_TYPE="instruction" /usr/bin/time -v ./run.sh
+          APC=10 PGO_TYPE="instruction" /usr/bin/time -v ./run.sh --mode compile
 
   build_gpu:
     runs-on: [self-hosted, GPU]
