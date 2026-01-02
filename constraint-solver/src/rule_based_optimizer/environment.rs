@@ -9,7 +9,7 @@ use powdr_number::FieldElement;
 
 use crate::{
     constraint_system::ComputationMethod,
-    grouped_expression::{GroupedExpression, RangeConstraintProvider},
+    grouped_expression::GroupedExpression,
     rule_based_optimizer::{
         item_db::ItemDB,
         new_var_generator::NewVarGenerator,
