@@ -15,6 +15,7 @@ use crate::{
         environment::Environment,
         types::{Action, Expr, Var},
     },
+    runtime_constant::VarTransformable,
 };
 
 // This file contains the set of datalog rules executed on the constraint system.
@@ -150,52 +151,25 @@ crepe! {
 
     struct RangeConstraintOnExpression<T: FieldElement>(Expr, RangeConstraint<T>);
     RangeConstraintOnExpression(e, rc) <-
-      InitialRangeConstraintOnExpression(e, rc),
-      // (!rc.is_unconstrained()),
-      Env(env),
-      ({ println!("Initial range constraint on expression {}: {}", env.format_expr(e), rc); true });
-    RangeConstraintOnExpression(e, rc) <-
+      InitialRangeConstraintOnExpression(e, rc);
+    RangeConstraintOnExpression(e, rc.square()) <-
       Product(e, l, r),
       (l == r),
-      RangeConstraintOnExpression(l, l_rc),
-      let rc = l_rc.square(),
-      // (!rc.is_unconstrained()),
-      Env(env),
-      ({ println!("RC from product {}: {}", env.format_expr(e), rc); true });
-    RangeConstraintOnExpression(e, rc) <-
+      RangeConstraintOnExpression(l, rc);
+    RangeConstraintOnExpression(e, l_rc.combine_product(&r_rc)) <-
       Product(e, l, r),
       (l < r),
       RangeConstraintOnExpression(l, l_rc),
-      RangeConstraintOnExpression(r, r_rc),
-      let rc = l_rc.combine_product(&r_rc),
-      // (!rc.is_unconstrained()),
-      Env(env),
-      ({ println!("RC from product {}: {}", env.format_expr(e), rc); true });
-    RangeConstraintOnExpression(e, rc) <-
+      RangeConstraintOnExpression(r, r_rc);
+    RangeConstraintOnExpression(e, v_rc.multiple(coeff)) <-
       LinearExpression(e, v, coeff),
-      RangeConstraintOnVar(v, v_rc),
-      // (!v_rc.is_unconstrained()),
-      let rc = v_rc.multiple(coeff),
-      // (!rc.is_unconstrained()),
-      Env(env),
-      ({ println!("RC from var {}: {}", env.format_expr(e), rc); true });
-    RangeConstraintOnExpression(e, rc) <-
+      RangeConstraintOnVar(v, v_rc);
+    RangeConstraintOnExpression(e, head_rc.combine_sum(&tail_rc)) <-
       ExpressionSumHeadTail(e, head, tail),
       RangeConstraintOnExpression(head, head_rc),
-      RangeConstraintOnExpression(tail, tail_rc),
-      let rc = head_rc.combine_sum(&tail_rc),
-      // (!rc.is_unconstrained()),
-      Env(env),
-      ({ println!("RC from head tail {} ({} [{}] + {} [{}): {}",
-      env.format_expr(e),
-      env.format_expr(head), head_rc,
-      env.format_expr(tail), tail_rc,
-      rc); true });
-    RangeConstraintOnExpression(e, rc) <-
-      Constant(e, value),
-      let rc = RangeConstraint::from_value(value),
-      Env(env),
-      ({ println!("RC from constant {}: {}", env.format_expr(e), rc); true });
+      RangeConstraintOnExpression(tail, tail_rc);
+    RangeConstraintOnExpression(e, RangeConstraint::from_value(value)) <-
+      Constant(e, value);
 
     // RangeConstraintOnVar(v, rc) => variable v has range constraint rc.
     // Note that this range constraint is not necessarily the currently best known
@@ -208,9 +182,7 @@ crepe! {
     UpdateRangeConstraintOnVar(v, rc.combine_sum(&RangeConstraint::from_value(-offset)).multiple(T::one() / coeff)) <-
       RangeConstraintOnExpression(e, rc),
       AffineExpression(e, coeff, v, offset),
-      (coeff != T::zero()),
-      Env(env),
-      ({println!("RC on var {} from affine expr {}: {}", env.format_var(v), env.format_expr(e), rc.combine_sum(&RangeConstraint::from_value(-offset)).multiple(T::one() / coeff)); true });
+      (coeff != T::zero());
 
 
     //////////////////////// SINGLE-OCCURRENCE VARIABLES //////////////////////////
@@ -319,7 +291,7 @@ crepe! {
             };
             true
         }).map(GroupedExpression::from).sum::<GroupedExpression<T, Var>>();
-        let factor = x1 * coeff1 + x2 * coeff2;
+        let factor = x1.clone() * coeff1 + x2.clone() * coeff2;
         let combined_var = env.new_var("free_var", ComputationMethod::QuotientOrZero(-r.clone(), factor.clone()));
         let replacement = r + GroupedExpression::from_unknown_variable(combined_var) * factor;
         Some(env.insert_owned(replacement))
