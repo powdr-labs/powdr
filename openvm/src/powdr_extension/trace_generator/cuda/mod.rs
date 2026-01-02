@@ -25,6 +25,7 @@ use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 
 use crate::{
     cuda_abi::{self, DerivedExprSpec, DevInteraction, ExprSpan, OpCode, OriginalAir, Subst},
+    customize_exe::OpenVmRegisterAddress,
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     powdr_extension::{
         chip::PowdrChipGpu,
@@ -175,7 +176,7 @@ pub fn compile_bus_to_gpu(
 }
 
 pub struct PowdrTraceGeneratorGpu {
-    pub apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
+    pub apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, u32>>,
     pub original_airs: OriginalAirs<BabyBear>,
     pub config: OriginalVmConfig,
     pub periphery: PowdrPeripheryInstancesGpu,
@@ -183,7 +184,7 @@ pub struct PowdrTraceGeneratorGpu {
 
 impl PowdrTraceGeneratorGpu {
     pub fn new(
-        apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
+        apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, u32>>,
         original_airs: OriginalAirs<BabyBear>,
         config: OriginalVmConfig,
         periphery: PowdrPeripheryInstancesGpu,

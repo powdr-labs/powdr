@@ -45,7 +45,7 @@ use std::sync::MutexGuard;
 
 use crate::utils::UnsupportedOpenVmReferenceError;
 
-use crate::customize_exe::openvm_bus_interaction_to_powdr;
+use crate::customize_exe::{openvm_bus_interaction_to_powdr, OpenVmRegisterAddress};
 use crate::utils::symbolic_to_algebraic;
 
 // TODO: Use `<PackedChallenge<BabyBearSC> as FieldExtensionAlgebra<Val<BabyBearSC>>>::D` instead after fixing p3 dependency
@@ -138,7 +138,7 @@ impl<F> OriginalAirs<F> {
 /// For each air name, the dimension of a record arena needed to store the
 /// records for a single APC call.
 pub fn record_arena_dimension_by_air_name_per_apc_call<F>(
-    apc: &Apc<F, Instr<F>>,
+    apc: &Apc<F, Instr<F>, OpenVmRegisterAddress, u32>,
     air_by_opcode_id: &OriginalAirs<F>,
 ) -> BTreeMap<String, RecordArenaDimension> {
     apc.instructions()

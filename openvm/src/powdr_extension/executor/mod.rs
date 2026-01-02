@@ -7,6 +7,7 @@ use std::{
 };
 
 use crate::{
+    customize_exe::{OpenVmExecutionState, OpenVmRegisterAddress},
     extraction_utils::{
         record_arena_dimension_by_air_name_per_apc_call, OriginalAirs, OriginalVmConfig,
     },
@@ -28,7 +29,10 @@ use openvm_instructions::instruction::Instruction;
 use openvm_sdk::config::SdkVmConfigExecutor;
 use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
-use powdr_autoprecompiles::Apc;
+use powdr_autoprecompiles::{
+    execution::{OptimisticConstraintEvaluator, OptimisticConstraints},
+    Apc,
+};
 
 use openvm_circuit::{
     arch::{
@@ -44,7 +48,7 @@ use openvm_circuit::{
 pub struct PowdrExecutor {
     pub air_by_opcode_id: OriginalAirs<BabyBear>,
     pub executor_inventory: ExecutorInventory<SdkVmConfigExecutor<BabyBear>>,
-    pub apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
+    pub apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, u32>>,
     pub original_arenas_cpu: Rc<RefCell<OriginalArenas<MatrixRecordArena<BabyBear>>>>,
     pub original_arenas_gpu: Rc<RefCell<OriginalArenas<DenseRecordArena>>>,
     pub height_change: u32,
@@ -72,7 +76,7 @@ impl<A: Arena> OriginalArenas<A> {
         &mut self,
         apc_call_count_estimate: impl Fn() -> usize,
         original_airs: &OriginalAirs<BabyBear>,
-        apc: &Arc<Apc<BabyBear, Instr<BabyBear>>>,
+        apc: &Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, u32>>,
     ) {
         match self {
             OriginalArenas::Uninitialized => {
@@ -151,7 +155,7 @@ impl<A: Arena> InitializedOriginalArenas<A> {
     pub fn new(
         apc_call_count_estimate: usize,
         original_airs: &OriginalAirs<BabyBear>,
-        apc: &Arc<Apc<BabyBear, Instr<BabyBear>>>,
+        apc: &Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, u32>>,
     ) -> Self {
         let record_arena_dimensions =
             record_arena_dimension_by_air_name_per_apc_call(apc, original_airs);
@@ -236,6 +240,7 @@ struct CachedInstructionMeta {
 struct PowdrPreCompute<F, Ctx> {
     height_change: u32,
     original_instructions: Vec<(ExecuteFunc<F, Ctx>, Vec<u8>)>,
+    optimistic_constraints: OptimisticConstraints<OpenVmRegisterAddress, u32>,
 }
 
 impl InterpreterExecutor<BabyBear> for PowdrExecutor {
@@ -427,6 +432,7 @@ impl PowdrExecutor {
                     Ok((execute_func, pre_compute_data.to_vec()))
                 })
                 .collect::<Result<Vec<_>, StaticProgramError>>()?,
+            optimistic_constraints: self.apc.optimistic_constraints.clone(),
         };
 
         Ok(())
@@ -447,17 +453,23 @@ impl PowdrExecutor {
 
 /// The implementation of the execute function, shared between Executor and MeteredExecutor.
 #[inline(always)]
-unsafe fn execute_e12_impl<F, CTX: ExecutionCtxTrait>(
+unsafe fn execute_e12_impl<F: PrimeField32, CTX: ExecutionCtxTrait>(
     pre_compute: &PowdrPreCompute<F, CTX>,
     exec_state: &mut VmExecState<F, GuestMemory, CTX>,
 ) {
-    pre_compute
-        .original_instructions
-        .iter()
-        .fold(exec_state, |exec_state, (executor, data)| {
-            executor(data.as_ptr(), exec_state);
-            exec_state
-        });
+    let mut optimistic_constraint_evalutator =
+        OptimisticConstraintEvaluator::new(pre_compute.optimistic_constraints.clone());
+    // Check the state before execution
+    assert!(optimistic_constraint_evalutator
+        .try_next_execution_step(&OpenVmExecutionState::from(&exec_state.vm_state))
+        .is_ok());
+    for (executor, data) in &pre_compute.original_instructions {
+        executor(data.as_ptr(), exec_state);
+        // Check the state after each original instruction
+        assert!(optimistic_constraint_evalutator
+            .try_next_execution_step(&OpenVmExecutionState::from(&exec_state.vm_state))
+            .is_ok());
+    }
 }
 
 #[create_handler]
@@ -635,7 +647,7 @@ impl PowdrExecutor {
     pub fn new(
         air_by_opcode_id: OriginalAirs<BabyBear>,
         base_config: OriginalVmConfig,
-        apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
+        apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, u32>>,
         record_arena_by_air_name_cpu: Rc<RefCell<OriginalArenas<MatrixRecordArena<BabyBear>>>>,
         record_arena_by_air_name_gpu: Rc<RefCell<OriginalArenas<DenseRecordArena>>>,
         height_change: u32,
