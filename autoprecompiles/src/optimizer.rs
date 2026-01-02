@@ -6,7 +6,6 @@ use itertools::Itertools;
 use powdr_constraint_solver::constraint_system::{
     AlgebraicConstraint, ComputationMethod, DerivedVariable,
 };
-use powdr_constraint_solver::grouped_expression::NoRangeConstraints;
 use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
 use powdr_constraint_solver::inliner::{self, inline_everything_below_degree_bound};
 use powdr_constraint_solver::rule_based_optimizer::rule_based_optimization;
@@ -59,19 +58,21 @@ pub fn optimize<A: Adapter>(
     let constraint_system = symbolic_machine_to_constraint_system(machine);
     stats_logger.log("system construction", &constraint_system);
 
-    let constraint_system: IndexedConstraintSystem<_, _> = constraint_system.into();
+    let mut constraint_system: IndexedConstraintSystem<_, _> = constraint_system.into();
     stats_logger.log("indexing", &constraint_system);
 
-    let mut constraint_system = rule_based_optimization(
-        constraint_system,
-        NoRangeConstraints,
-        bus_interaction_handler.clone(),
-        &mut new_var,
-        // No degree bound given, i.e. only perform replacements that
-        // do not increase the degree.
-        None,
-    )
-    .0;
+    // We could run the rule system before ever constructing the solver.
+    // Currently, it does not yet save time.
+    // let mut constraint_system = rule_based_optimization(
+    //     constraint_system,
+    //     NoRangeConstraints,
+    //     bus_interaction_handler.clone(),
+    //     &mut new_var,
+    //     // No degree bound given, i.e. only perform replacements that
+    //     // do not increase the degree.
+    //     None,
+    // )
+    // .0;
     stats_logger.log("rule-based optimization", &constraint_system);
 
     let mut solver = new_solver(

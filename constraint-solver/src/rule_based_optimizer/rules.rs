@@ -15,7 +15,6 @@ use crate::{
         environment::Environment,
         types::{Action, Expr, Var},
     },
-    runtime_constant::VarTransformable,
 };
 
 // This file contains the set of datalog rules executed on the constraint system.

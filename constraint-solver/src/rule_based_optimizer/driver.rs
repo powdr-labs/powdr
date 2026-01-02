@@ -133,7 +133,7 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         rt.extend(
             range_constraints_on_vars
                 .iter()
-                .map(|(var, rc)| rules::RangeConstraintOnVar(*var, rc.clone())),
+                .map(|(var, rc)| rules::RangeConstraintOnVar(*var, *rc)),
         );
 
         rt.extend(
