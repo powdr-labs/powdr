@@ -38,6 +38,7 @@ use openvm_stark_sdk::config::{
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
+use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::evaluation::AirStats;
 use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
@@ -540,6 +541,7 @@ pub fn compile_exe(
     original_program: OriginalCompiledProgram,
     config: PowdrConfig,
     pgo_config: PgoConfig,
+    empirical_constraints: EmpiricalConstraints,
 ) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
     let compiled = match pgo_config {
         PgoConfig::Cell(pgo_data, max_total_columns) => {
@@ -561,14 +563,21 @@ pub fn compile_exe(
                     pgo_data,
                     max_total_apc_columns,
                 ),
+                empirical_constraints,
             )
         }
         PgoConfig::Instruction(pgo_data) => customize(
             original_program,
             config,
             InstructionPgo::with_pgo_data(pgo_data),
+            empirical_constraints,
         ),
-        PgoConfig::None => customize(original_program, config, NonePgo::default()),
+        PgoConfig::None => customize(
+            original_program,
+            config,
+            NonePgo::default(),
+            empirical_constraints,
+        ),
     };
     // Export the compiled program to a PIL file for debugging purposes.
     export_pil(
@@ -889,7 +898,8 @@ mod tests {
         segment_height: Option<usize>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let guest = compile_openvm(guest, GuestOptions::default()).unwrap();
-        let program = compile_exe(guest, config, pgo_config).unwrap();
+        let program =
+            compile_exe(guest, config, pgo_config, EmpiricalConstraints::default()).unwrap();
         prove(&program, mock, recursion, stdin, segment_height)
     }
 
@@ -1009,7 +1019,13 @@ mod tests {
         let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
         let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP_NO_APC_EXECUTED);
-        let program = compile_exe(guest, config, PgoConfig::None).unwrap();
+        let program = compile_exe(
+            guest,
+            config,
+            PgoConfig::None,
+            EmpiricalConstraints::default(),
+        )
+        .unwrap();
 
         // Assert that all APCs aren't executed
         program
@@ -1061,7 +1077,13 @@ mod tests {
     fn matmul_compile() {
         let guest = compile_openvm("guest-matmul", GuestOptions::default()).unwrap();
         let config = default_powdr_openvm_config(1, 0);
-        assert!(compile_exe(guest, config, PgoConfig::default()).is_ok());
+        assert!(compile_exe(
+            guest,
+            config,
+            PgoConfig::default(),
+            EmpiricalConstraints::default()
+        )
+        .is_ok());
     }
 
     #[test]
@@ -1530,7 +1552,13 @@ mod tests {
         let is_cell_pgo = matches!(guest.pgo_config, PgoConfig::Cell(_, _));
         let max_degree = config.degree_bound.identities;
         let guest_program = compile_openvm(guest.name, GuestOptions::default()).unwrap();
-        let compiled_program = compile_exe(guest_program, config, guest.pgo_config).unwrap();
+        let compiled_program = compile_exe(
+            guest_program,
+            config,
+            guest.pgo_config,
+            EmpiricalConstraints::default(),
+        )
+        .unwrap();
 
         let (powdr_air_metrics, non_powdr_air_metrics) = compiled_program.air_metrics(max_degree);
 

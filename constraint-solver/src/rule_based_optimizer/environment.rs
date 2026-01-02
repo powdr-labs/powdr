@@ -132,6 +132,15 @@ impl<T: FieldElement> Environment<T> {
         self.single_occurrence_variables.iter()
     }
 
+    /// Split Expr into head and tail, i.e., expr = head + tail
+    pub fn try_split_into_head_tail(&self, expr: Expr) -> Option<(Expr, Expr)> {
+        let db = self.expressions.borrow();
+        let expr = db[expr].clone();
+        drop(db);
+        let (head, tail) = expr.try_split_head_tail()?;
+        Some((self.insert_owned(head), self.insert_owned(tail)))
+    }
+
     #[allow(dead_code)]
     /// If this returns Some(n) then the expression is affine
     /// and contains n variables.
