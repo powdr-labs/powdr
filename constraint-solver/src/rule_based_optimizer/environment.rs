@@ -31,17 +31,7 @@ pub struct Environment<T: FieldElement> {
     /// Variables that only occurr once in the system
     /// (also only once in the constraint they occur in).
     single_occurrence_variables: HashSet<Var>,
-    range_constraints_on_vars: HashMap<Var, RangeConstraint<T>>,
     new_var_generator: RefCell<NewVarGenerator<T>>,
-}
-
-impl<T: FieldElement> RangeConstraintProvider<T, Var> for Environment<T> {
-    fn get(&self, var: &Var) -> RangeConstraint<T> {
-        self.range_constraints_on_vars
-            .get(var)
-            .cloned()
-            .unwrap_or(RangeConstraint::unconstrained())
-    }
 }
 
 impl<T: FieldElement> PartialEq for Environment<T> {
@@ -79,14 +69,12 @@ impl<T: FieldElement> Environment<T> {
         expressions: ItemDB<GroupedExpression<T, Var>, Expr>,
         var_to_string: HashMap<Var, String>,
         single_occurrence_variables: HashSet<Var>,
-        range_constraints_on_vars: HashMap<Var, RangeConstraint<T>>,
         new_var_generator: NewVarGenerator<T>,
     ) -> Self {
         Self {
             expressions: RefCell::new(expressions),
             var_to_string,
             single_occurrence_variables,
-            range_constraints_on_vars,
             new_var_generator: RefCell::new(new_var_generator),
         }
     }
