@@ -115,6 +115,13 @@ impl DebugInfo {
             other.column_names_by_air_id,
         );
     }
+
+    pub fn take(&mut self) -> Self {
+        Self {
+            air_id_by_pc: std::mem::take(&mut self.air_id_by_pc),
+            column_names_by_air_id: std::mem::take(&mut self.column_names_by_air_id),
+        }
+    }
 }
 
 /// Merges two maps, asserting that existing keys map to equal values.
