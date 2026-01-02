@@ -5,14 +5,14 @@ version = "0.0.0"
 edition = "2021"
 
 [dependencies]
-openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr", features = [
+openvm = { git = "https://github.com/powdr-labs/openvm.git", branch = "skip-dummy-wip", features = [
   "std",
 ] }
-openvm-algebra-guest = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr" }
-openvm-algebra-moduli-macros = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr" }
-openvm-ecc-guest = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr" }
-openvm-ecc-sw-macros = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr" }
-openvm-k256 = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr", package = "k256" }
+openvm-algebra-guest = { git = "https://github.com/powdr-labs/openvm.git", branch = "skip-dummy-wip" }
+openvm-algebra-moduli-macros = { git = "https://github.com/powdr-labs/openvm.git", branch = "skip-dummy-wip" }
+openvm-ecc-guest = { git = "https://github.com/powdr-labs/openvm.git", branch = "skip-dummy-wip" }
+openvm-ecc-sw-macros = { git = "https://github.com/powdr-labs/openvm.git", branch = "skip-dummy-wip" }
+openvm-k256 = { git = "https://github.com/powdr-labs/openvm.git", branch = "skip-dummy-wip", package = "k256" }
 
 elliptic-curve = { version = "0.13.8" }
 ecdsa = { version = "0.16.9" }

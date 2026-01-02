@@ -8,7 +8,7 @@ use openvm_circuit::{
     arch::{AirInventory, DenseRecordArena},
     utils::next_power_of_two_or_zero,
 };
-use openvm_cuda_backend::base::DeviceMatrix;
+use openvm_cuda_backend::{base::DeviceMatrix, prover_backend::GpuApcTracingContext};
 use openvm_cuda_common::copy::MemCopyH2D;
 use openvm_stark_backend::{
     p3_field::PrimeField32,
@@ -18,13 +18,13 @@ use openvm_stark_backend::{
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
     expression::{AlgebraicExpression, AlgebraicReference},
-    Apc, SymbolicBusInteraction,
+    Apc, Substitution, SymbolicBusInteraction,
 };
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 
 use crate::{
-    cuda_abi::{self, DerivedExprSpec, DevInteraction, ExprSpan, OpCode, OriginalAir, Subst},
+    cuda_abi::{self, DerivedExprSpec, DevInteraction, ExprSpan, OpCode},
     customize_exe::OpenVmRegisterAddress,
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     powdr_extension::{
@@ -37,6 +37,23 @@ use crate::{
 
 mod inventory;
 mod periphery;
+
+/// Data for direct-to-APC trace generation for a single AIR.
+///
+/// This struct holds the substitution mappings and layout information needed
+/// to copy trace values from original AIR columns to APC columns on the GPU.
+struct DirectAirData<'a> {
+    /// Substitution mappings for each instruction in this AIR.
+    /// Each inner `Vec<Substitution>` maps original AIR column indices to APC column IDs
+    /// for one instruction.
+    subs: Vec<&'a Vec<Substitution>>,
+    /// Number of substitutions (post-optimization columns) for each original instruction.
+    /// Used to compute the destination offset in the APC trace.
+    opt_widths: Vec<u32>,
+    /// Cumulative offset into the post-optimization column layout for each instruction.
+    /// Used to compute the destination offset in the APC trace.
+    post_opt_offsets: Vec<u32>,
+}
 
 pub use periphery::PowdrPeripheryInstancesGpu;
 
@@ -208,42 +225,6 @@ impl PowdrTraceGeneratorGpu {
             return None;
         }
 
-        let chip_inventory = {
-            let airs: AirInventory<BabyBearSC> =
-                create_dummy_airs(&self.config.sdk_config.sdk, self.periphery.dummy.clone())
-                    .expect("Failed to create dummy airs");
-
-            create_dummy_chip_complex(
-                &self.config.sdk_config.sdk,
-                airs,
-                self.periphery.dummy.clone(),
-            )
-            .expect("Failed to create chip complex")
-            .inventory
-        };
-
-        let dummy_trace_by_air_name: HashMap<String, DeviceMatrix<BabyBear>> = chip_inventory
-            .chips()
-            .iter()
-            .enumerate()
-            .rev()
-            .filter_map(|(insertion_idx, chip)| {
-                let air_name = chip_inventory.airs().ext_airs()[insertion_idx].name();
-
-                let record_arena = {
-                    match original_arenas.take_real_arena(&air_name) {
-                        Some(ra) => ra,
-                        None => return None, // skip this iteration, because we only have record arena for chips that are used
-                    }
-                };
-
-                // We might have initialized an arena for an AIR which ends up having no real records. It gets filtered out here.
-                chip.generate_proving_ctx(record_arena)
-                    .common_main
-                    .map(|m| (air_name, m))
-            })
-            .collect();
-
         // Map from apc poly id to its index in the final apc trace
         let apc_poly_id_to_index: BTreeMap<u64, usize> = self
             .apc
@@ -258,71 +239,191 @@ impl PowdrTraceGeneratorGpu {
         let height = next_power_of_two_or_zero(num_apc_calls);
         let mut output = DeviceMatrix::<BabyBear>::with_capacity(height, width);
 
-        // Prepare `OriginalAir` and `Subst` arrays
-        let (airs, substitutions) = {
-            self.apc
-                // go through original instructions
-                .instructions()
-                .iter()
-                // along with their substitutions
-                .zip_eq(self.apc.subs())
-                // map to `(air_name, substitutions)`
-                .filter_map(|(instr, subs)| {
-                    if subs.is_empty() {
-                        None
-                    } else {
-                        Some((&self.original_airs.opcode_to_air[&instr.0.opcode], subs))
-                    }
-                })
-                // group by air name. This results in `HashMap<air_name, Vec<subs>>` where the length of the vector is the number of rows which are created in this air, per apc call
-                .into_group_map()
-                // go through each air and its substitutions
-                .iter()
-                .enumerate()
-                .fold(
-                    (Vec::new(), Vec::new()),
-                    |(mut airs, mut substitutions), (air_index, (air_name, subs_by_row))| {
-                        // Find the substitutions that map to an apc column
-                        let new_substitutions: Vec<Subst> = subs_by_row
-                            .iter()
-                            // enumerate over them to get the row index inside the air block
-                            .enumerate()
-                            .flat_map(|(row, subs)| {
-                                // for each substitution, map to `Subst` struct
-                                subs.iter()
-                                    .map(move |sub| (row, sub))
-                                    .map(|(row, sub)| Subst {
-                                        air_index: air_index as i32,
-                                        col: sub.original_poly_index as i32,
-                                        row: row as i32,
-                                        apc_col: apc_poly_id_to_index[&sub.apc_poly_id] as i32,
-                                    })
-                            })
-                            .collect();
+        // Get unique AIR names with widths for instructions that have substitutions
+        // (only for AIRs in air_name_to_machine). BTreeMap naturally deduplicates by key.
+        let active_direct_airs: std::collections::BTreeMap<&str, usize> = self
+            .apc
+            .instructions()
+            .iter()
+            .zip_eq(self.apc.subs())
+            .filter_map(|(instr, subs)| {
+                if subs.is_empty() {
+                    None
+                } else {
+                    let air_name = &self.original_airs.opcode_to_air[&instr.0.opcode];
+                    self.original_airs
+                        .air_name_to_machine
+                        .get(air_name)
+                        .map(|machine| (air_name.as_str(), machine.1.widths.main))
+                }
+            })
+            .collect();
 
-                        // get the device dummy trace for this air
-                        let dummy_trace = &dummy_trace_by_air_name[*air_name];
-
-                        use openvm_stark_backend::prover::hal::MatrixDimensions;
-                        airs.push(OriginalAir {
-                            width: dummy_trace.width() as i32,
-                            height: dummy_trace.height() as i32,
-                            buffer: dummy_trace.buffer().as_ptr(),
-                            row_block_size: subs_by_row.len() as i32,
-                        });
-
-                        substitutions.extend(new_substitutions);
-
-                        (airs, substitutions)
+        // Generate substitution data for each active direct-to-APC AIR
+        let direct_air_data: HashMap<&str, DirectAirData<'_>> = active_direct_airs
+            .iter()
+            .map(|(&target_air_name, &air_width)| {
+                let result = self
+                    .apc
+                    .instructions()
+                    .iter()
+                    .zip_eq(self.apc.subs())
+                    .filter_map(|(instr, subs)| {
+                        if subs.is_empty() {
+                            None
+                        } else {
+                            Some((instr, subs))
+                        }
+                    })
+                    .fold(
+                        (Vec::new(), Vec::new(), Vec::new(), 0u32, 0u32),
+                        |(
+                            mut subs,
+                            mut opt_widths,
+                            mut post_opt_widths,
+                            mut opt_width_acc,
+                            mut post_opt_width_acc,
+                        ),
+                         (instr, sub)| {
+                            let air_name = &self.original_airs.opcode_to_air[&instr.0.opcode];
+                            if air_name == target_air_name {
+                                subs.push(sub);
+                                opt_widths.push(sub.len() as u32);
+                                post_opt_widths.push(post_opt_width_acc);
+                                opt_width_acc += air_width as u32;
+                            }
+                            post_opt_width_acc += sub.len() as u32;
+                            (
+                                subs,
+                                opt_widths,
+                                post_opt_widths,
+                                opt_width_acc,
+                                post_opt_width_acc,
+                            )
+                        },
+                    );
+                (
+                    target_air_name,
+                    DirectAirData {
+                        subs: result.0,
+                        opt_widths: result.1,
+                        post_opt_offsets: result.2,
                     },
                 )
+            })
+            .collect();
+
+        // Extract calls_per_apc_row for each AIR (HashMap)
+        let direct_calls_per_apc_row: HashMap<&str, u32> = direct_air_data
+            .iter()
+            .map(|(&air_name, data)| (air_name, data.subs.len() as u32))
+            .collect();
+
+        // Pad substitutions for each AIR and copy to device (HashMap)
+        let direct_d_subs: HashMap<&str, _> = direct_air_data
+            .iter()
+            .map(|(&air_name, data)| {
+                let air_width = active_direct_airs[air_name];
+                let padded_subs: Vec<u32> = data
+                    .subs
+                    .iter()
+                    .flat_map(|subs_for_row| {
+                        let mut row = vec![u32::MAX; air_width];
+                        for sub in subs_for_row.iter() {
+                            assert!(
+                                sub.original_poly_index < air_width,
+                                "substitution index {} exceeds {} width ({})",
+                                sub.original_poly_index,
+                                air_name,
+                                air_width
+                            );
+                            let apc_col = apc_poly_id_to_index[&sub.apc_poly_id];
+                            row[sub.original_poly_index] =
+                                u32::try_from(apc_col).expect("APC column index fits in u32");
+                        }
+                        row.into_iter()
+                    })
+                    .collect();
+                let d_subs = padded_subs.to_device().unwrap_or_else(|_| {
+                    panic!("Failed to copy {} substitutions to device", air_name)
+                });
+                (air_name, d_subs)
+            })
+            .collect();
+
+        let direct_d_opt_widths: HashMap<&str, _> = direct_air_data
+            .iter()
+            .map(|(&air_name, data)| {
+                let d_opt_widths =
+                    data.opt_widths.clone().to_device().unwrap_or_else(|_| {
+                        panic!("Failed to copy {} opt widths to device", air_name)
+                    });
+                (air_name, d_opt_widths)
+            })
+            .collect();
+
+        let direct_d_post_opt_offsets: HashMap<&str, _> = direct_air_data
+            .iter()
+            .map(|(&air_name, data)| {
+                let d_post_opt_offsets =
+                    data.post_opt_offsets
+                        .clone()
+                        .to_device()
+                        .unwrap_or_else(|_| {
+                            panic!("Failed to copy {} post opt offsets to device", air_name)
+                        });
+                (air_name, d_post_opt_offsets)
+            })
+            .collect();
+
+        let chip_inventory = {
+            let airs: AirInventory<BabyBearSC> =
+                create_dummy_airs(&self.config.sdk_config.sdk, self.periphery.dummy.clone())
+                    .expect("Failed to create dummy airs");
+
+            create_dummy_chip_complex(
+                &self.config.sdk_config.sdk,
+                airs,
+                self.periphery.dummy.clone(),
+            )
+            .expect("Failed to create chip complex")
+            .inventory
         };
 
-        // Send the airs and substitutions to device
-        let airs = airs.to_device().unwrap();
-        let substitutions = substitutions.to_device().unwrap();
+        // Generate traces for all chips using direct-to-APC path
+        for (insertion_idx, chip) in chip_inventory.chips().iter().enumerate().rev() {
+            let air_name = chip_inventory.airs().ext_airs()[insertion_idx].name();
 
-        cuda_abi::apc_tracegen(&mut output, airs, substitutions, num_apc_calls).unwrap();
+            let record_arena = match original_arenas.take_real_arena(&air_name) {
+                Some(ra) => ra,
+                None => continue, // skip chips without records
+            };
+
+            // Check if AIR is in the active APC
+            let d_subs = match direct_d_subs.get(air_name.as_str()) {
+                Some(subs) => subs,
+                None => {
+                    // AIR has records but is not in the active APC - skip if it's a known AIR
+                    assert!(
+                        self.original_airs.air_name_to_machine.contains_key(&air_name),
+                        "AIR '{}' is not in air_name_to_machine. All chips must implement generate_proving_ctx_direct.",
+                        air_name
+                    );
+                    continue;
+                }
+            };
+
+            let ctx = GpuApcTracingContext::new(
+                output.buffer(),
+                d_subs,
+                &direct_d_opt_widths[air_name.as_str()],
+                &direct_d_post_opt_offsets[air_name.as_str()],
+                direct_calls_per_apc_row[air_name.as_str()],
+                height,
+                width,
+            );
+            chip.generate_proving_ctx_direct(record_arena, Some(&ctx));
+        }
 
         // Apply derived columns using the GPU expression evaluator
         let (derived_specs, derived_bc) = compile_derived_to_gpu(
@@ -363,9 +464,8 @@ impl PowdrTraceGeneratorGpu {
         let bitwise_count_u32 = periphery.bitwise_lookup_8.as_ref().unwrap().count.as_ref();
 
         // Launch GPU apply-bus to update periphery histograms on device
-        // Note that this is implicitly serialized after `apc_tracegen`,
-        // because we use the default host to device stream, which only launches
-        // the next kernel function after the prior (`apc_tracegen`) returns.
+        // Note: kernels are serialized via the default stream, so this runs after
+        // all chip trace generation and derived expression kernels complete.
         // This is important because bus evaluation depends on trace results.
         cuda_abi::apc_apply_bus(
             // APC related
