@@ -860,6 +860,7 @@ mod test {
     #[test]
     fn is_unconstrained() {
         type F = BabyBearField;
+        assert!(RangeConstraint::<F>::unconstrained().is_unconstrained());
         let a = RangeConstraint::<F>::from_range(0.into(), F::from(0) - F::from(1));
         assert!(a.is_unconstrained());
         let b = RangeConstraint::<F>::from_range(5.into(), 4.into());

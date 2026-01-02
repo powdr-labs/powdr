@@ -121,16 +121,11 @@ crepe! {
     // HasProductSummand(e, l, r) => e contains a summand of the form l * r
     struct HasProductSummand(Expr, Expr, Expr);
     HasProductSummand(e, l, r) <-
-      Env(env),
-      Expression(e),
-      (!env.on_expr(e, (), |e, _| e.is_affine())),
-      for (l, r) in env.extract(e).into_summands().filter_map(|s| {
-          if let GroupedExpressionComponent::Quadratic(l, r) = s {
-              Some((env.insert_owned(l), env.insert_owned(r)))
-          } else {
-              None
-          }
-      });
+      ExpressionSumHeadTail(e, head, _),
+      Product(head, l, r);
+    HasProductSummand(e, l, r) <-
+      ExpressionSumHeadTail(e, _, tail),
+      HasProductSummand(tail, l, r);
     HasProductSummand(e, r, l) <- HasProductSummand(e, l, r);
     Expression(l) <- HasProductSummand(_, l, _);
     Expression(r) <- HasProductSummand(_, _, r);
