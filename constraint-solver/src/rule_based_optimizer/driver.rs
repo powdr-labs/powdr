@@ -126,7 +126,14 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                 .into_grouping_map()
                 .reduce(|rc1, _, rc2| rc1.conjunction(&rc2))
                 .into_iter()
+                // TODO we still have unconstrained exprs there.
+                .filter(|(_, rc)| !rc.is_unconstrained())
                 .map(|(e, rc)| rules::InitialRangeConstraintOnExpression(e, rc)),
+        );
+        rt.extend(
+            range_constraints_on_vars
+                .iter()
+                .map(|(var, rc)| rules::RangeConstraintOnVar(*var, rc.clone())),
         );
 
         rt.extend(

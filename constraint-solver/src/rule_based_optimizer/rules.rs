@@ -200,6 +200,7 @@ crepe! {
     // RangeConstraintOnVar(v, rc) => variable v has range constraint rc.
     // Note that this range constraint is not necessarily the currently best known
     // one, but any range constraint that is derivable using the rules.
+    // TODO yes it is, for variables at least.
 
     // RC(coeff * var + offset) = rc <=>
     // coeff * RC(var) + offset = rc <=>
