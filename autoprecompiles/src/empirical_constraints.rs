@@ -150,7 +150,7 @@ impl BlockCell {
 
 /// For any program line that was not executed at least this many times in the traces,
 /// discard any empirical constraints associated with it.
-const EXECUTION_COUNT_THRESHOLD: u64 = 100;
+const DEFAULT_EXECUTION_COUNT_THRESHOLD: u64 = 100;
 
 /// Generates symbolic constraints based on empirical constraints for a given basic block.
 pub struct ConstraintGenerator<'a, A: Adapter> {
@@ -187,9 +187,18 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
             .map(|r| (*poly_id_to_block_cell.get(&r.id).unwrap(), r.clone()))
             .collect::<BTreeMap<_, _>>();
 
+        let execution_count_threshold = std::env::var("POWDR_OP_EXECUTION_COUNT_THRESHOLD")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(DEFAULT_EXECUTION_COUNT_THRESHOLD);
+        tracing::info!(
+            "Using execution count threshold: {}",
+            execution_count_threshold
+        );
+
         Self {
             empirical_constraints: empirical_constraints
-                .apply_pc_threshold(EXECUTION_COUNT_THRESHOLD),
+                .apply_pc_threshold(execution_count_threshold),
             algebraic_references,
             block,
         }
