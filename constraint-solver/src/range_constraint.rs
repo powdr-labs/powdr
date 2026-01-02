@@ -91,14 +91,14 @@ impl<T: FieldElement> RangeConstraint<T> {
 
     /// Returns a constraint that allows any value.
     pub fn unconstrained() -> Self {
-        Self::from_mask(!T::Integer::zero())
+        Self::from_range(T::from(0), T::from(-1))
     }
 
     /// Returns true if the range constraint does not impose any
     /// restrictions on the values.
     pub fn is_unconstrained(&self) -> bool {
-        self.range_width() == Self::unconstrained().range_width()
-            && self.mask == Self::unconstrained().mask
+        let un = Self::unconstrained();
+        self.range_width() == un.range_width() && (self.mask & un.mask) == un.mask
     }
 
     /// Returns a bit mask. This might be drastically under-fitted in case
@@ -443,7 +443,7 @@ fn format_negated<T: FieldElement>(value: T) -> String {
 #[cfg(test)]
 mod test {
     use itertools::Itertools;
-    use powdr_number::GoldilocksField;
+    use powdr_number::{BabyBearField, GoldilocksField};
     use pretty_assertions::assert_eq;
 
     use super::*;
@@ -855,5 +855,21 @@ mod test {
         assert!(!c.is_disjoint(&b));
         let d = c.conjunction(&RangeConstraint::from_range(1.into(), 5000.into()));
         assert!(d.is_disjoint(&b));
+    }
+
+    #[test]
+    fn is_unconstrained() {
+        type F = BabyBearField;
+        assert!(RangeConstraint::<F>::unconstrained().is_unconstrained());
+        let a = RangeConstraint::<F>::from_range(0.into(), F::from(0) - F::from(1));
+        assert!(a.is_unconstrained());
+        let b = RangeConstraint::<F>::from_range(5.into(), 4.into());
+        assert!(b.is_unconstrained());
+        let c = RangeConstraint::<F>::from_mask(!F::from(0).to_integer());
+        assert!(c.is_unconstrained());
+        let x = RangeConstraint::<F>::from_range(0.into(), F::from(10));
+        assert!(!x.is_unconstrained());
+        let y = RangeConstraint::<F>::from_range(F::from(-1), F::from(0));
+        assert!(!y.is_unconstrained());
     }
 }

@@ -61,9 +61,8 @@ pub fn optimize<A: Adapter>(
     let mut constraint_system: IndexedConstraintSystem<_, _> = constraint_system.into();
     stats_logger.log("indexing", &constraint_system);
 
-    // If this is enabled, memory usage will skyrocket during
-    // solver-based optimization even though we just return
-    // constraint_system unmodified for large systems.
+    // We could run the rule system before ever constructing the solver.
+    // Currently, it does not yet save time.
     // let mut constraint_system = rule_based_optimization(
     //     constraint_system,
     //     NoRangeConstraints,
