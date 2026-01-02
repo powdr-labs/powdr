@@ -120,20 +120,20 @@ impl<T: Eq + Hash + Copy + Send + Sync> Partition<T> {
     ///
     /// Partitions are grouped into chunks, each chunk is intersected sequentially,
     /// then the chunk results are combined recursively in parallel.
-    pub fn parallel_intersect(partitions: Vec<Self>) -> Self {
+    pub fn parallel_intersect(partitions: impl IndexedParallelIterator<Item = Self>) -> Self {
         if partitions.len() <= PARALLEL_THRESHOLD {
+            let partitions = partitions.collect::<Vec<_>>();
             return Self::intersect_many(partitions);
         }
-
         // Chunk partitions and intersect each chunk in parallel
-        let chunk_results: Vec<Self> = partitions
-            .into_par_iter()
+        let chunk_results = partitions
             .chunks(CHUNK_SIZE)
             .map(Self::intersect_many)
-            .collect();
+            // Not collecting here causes the type checker to hit the recursion limit...
+            .collect::<Vec<_>>();
 
         // Recursively combine chunk results
-        Self::parallel_intersect(chunk_results)
+        Self::parallel_intersect(chunk_results.into_par_iter())
     }
 }
 
