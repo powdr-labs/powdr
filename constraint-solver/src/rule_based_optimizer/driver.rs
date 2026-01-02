@@ -123,11 +123,10 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                         .zip(updated_rcs)
                         .collect_vec()
                 })
+                .filter(|(_, rc)| !rc.is_unconstrained())
                 .into_grouping_map()
                 .reduce(|rc1, _, rc2| rc1.conjunction(&rc2))
                 .into_iter()
-                // TODO we still have unconstrained exprs there.
-                .filter(|(_, rc)| !rc.is_unconstrained())
                 .map(|(e, rc)| rules::InitialRangeConstraintOnExpression(e, rc)),
         );
         rt.extend(
@@ -135,7 +134,6 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                 .iter()
                 .map(|(var, rc)| rules::RangeConstraintOnVar(*var, *rc)),
         );
-
         rt.extend(
             algebraic_constraints
                 .iter()
@@ -146,9 +144,9 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
 
         // Uncomment this to get a runtime profile of the individual
         // rules.
-        let ((actions,), profile) = rt.run_with_profiling();
-        profile.report();
-        // let (actions,) = rt.run();
+        // let ((actions,), profile) = rt.run_with_profiling();
+        // profile.report();
+        let (actions,) = rt.run();
         let (expr_db_, new_var_generator) = env.terminate();
 
         // Re-create the variables that were created using the
