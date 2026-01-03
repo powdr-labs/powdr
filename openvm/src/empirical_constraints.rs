@@ -158,6 +158,13 @@ fn detect_empirical_constraints_from_input(
                 })
                 .unwrap();
 
+            if !debug_info.column_names_by_air_id.contains_key(air_id) {
+                debug_info.column_names_by_air_id.insert(
+                    *air_id,
+                    machine.main_columns().map(|r| (*r.name).clone()).collect(),
+                );
+            }
+
             for row in main.row_slices() {
                 // Create an evaluator over this row
                 let evaluator = RowEvaluator::new(row);
@@ -200,12 +207,6 @@ fn detect_empirical_constraints_from_input(
                     Entry::Occupied(existing) => {
                         assert_eq!(*existing.get(), *air_id);
                     }
-                }
-                if !debug_info.column_names_by_air_id.contains_key(air_id) {
-                    debug_info.column_names_by_air_id.insert(
-                        *air_id,
-                        machine.main_columns().map(|r| (*r.name).clone()).collect(),
-                    );
                 }
             }
         }
