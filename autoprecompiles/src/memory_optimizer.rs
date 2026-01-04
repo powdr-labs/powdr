@@ -54,6 +54,8 @@ pub fn optimize_memory<
 
 // Check that the number of register memory bus interactions for each concrete address in the precompile is even.
 // Assumption: all register memory bus interactions feature a concrete address.
+// Note: x0 register (address 0) is excluded from this check since x0 bus interactions are removed
+// and replaced with constraints that the data is 0.
 pub fn check_register_operation_consistency<T, V, M: MemoryBusInteraction<T, V>>(
     system: &ConstraintSystem<T, V>,
     memory_bus_id: u64,
@@ -68,6 +70,8 @@ pub fn check_register_operation_consistency<T, V, M: MemoryBusInteraction<T, V>>
                 .flatten()
         })
         .filter_map(|mem_int| mem_int.register_address())
+        // Skip x0 (register address 0) since x0 bus interactions are removed
+        .filter(|&addr| addr != 0)
         .fold(BTreeMap::new(), |mut map, addr| {
             *map.entry(addr).or_insert(0) += 1;
             map
@@ -178,6 +182,19 @@ fn redundant_memory_interactions_indices<
                 continue;
             }
         };
+
+        // Skip bus interactions for x0 register (register address 0).
+        // x0 is always 0, so we can remove these interactions and add constraints
+        // that the data is 0 instead.
+        if mem_int.register_address() == Some(0) {
+            // Remove the bus interaction for x0
+            to_remove.push(index);
+            // Add constraints that all data bytes are 0
+            for data_byte in mem_int.data() {
+                new_constraints.push(AlgebraicConstraint::assert_zero(data_byte.clone()));
+            }
+            continue;
+        }
 
         let addr = mem_int.addr().into();
 
