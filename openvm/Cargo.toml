@@ -8,6 +8,7 @@ repository.workspace = true
 
 [features]
 default = []
+aot = ["openvm-sdk/aot", "powdr-openvm-hints-circuit/aot"]
 tco = ["openvm-sdk/tco", "powdr-openvm-hints-circuit/tco"]
 metrics = ["openvm-sdk/metrics", "openvm-stark-backend/metrics", "openvm-stark-sdk/metrics"]
 cuda = ["openvm-sdk/cuda", "openvm-circuit-primitives/cuda", "dep:openvm-cuda-backend", "dep:openvm-cuda-common", "dep:openvm-cuda-builder"]
@@ -55,11 +56,10 @@ powdr-constraint-solver.workspace = true
 powdr-openvm-hints-transpiler.workspace = true
 powdr-openvm-hints-circuit.workspace = true
 
+indicatif = "0.18.3"
 eyre = "0.6.12"
 serde = "1.0.217"
-derive_more = { version = "2.0.1", default-features = false, features = [
-  "from",
-] }
+derive_more = { version = "2.0.1", default-features = false, features = ["from"] }
 itertools = "0.14.0"
 
 tracing = "0.1.40"

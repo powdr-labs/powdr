@@ -7,7 +7,7 @@ use crate::{
     adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, ApcWithStats},
     blocks::Block,
     execution_profile::ExecutionProfile,
-    PowdrConfig,
+    EmpiricalConstraints, PowdrConfig,
 };
 
 mod cell;
@@ -85,6 +85,7 @@ fn create_apcs_for_all_blocks<A: Adapter>(
     blocks: Vec<Block<A::Instruction>>,
     config: &PowdrConfig,
     vm_config: AdapterVmConfig<A>,
+    empirical_constraints: EmpiricalConstraints,
 ) -> Vec<AdapterApcWithStats<A>> {
     let n_acc = config.autoprecompiles as usize;
     tracing::info!("Generating {n_acc} autoprecompiles in parallel");
@@ -105,6 +106,7 @@ fn create_apcs_for_all_blocks<A: Adapter>(
                 vm_config.clone(),
                 config.degree_bound,
                 config.apc_candidates_dir_path.as_deref(),
+                &empirical_constraints,
             )
             .unwrap()
         })

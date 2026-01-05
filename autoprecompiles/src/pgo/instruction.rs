@@ -6,11 +6,10 @@ use std::{
 use itertools::Itertools;
 
 use crate::{
-    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, PgoAdapter},
-    blocks::Block,
+    adapter::{Adapter, AdapterApcWithStats, AdapterBasicBlock, AdapterVmConfig, PgoAdapter},
     execution_profile::ExecutionProfile,
     pgo::create_apcs_for_all_blocks,
-    PowdrConfig,
+    EmpiricalConstraints, PowdrConfig,
 };
 
 pub struct InstructionPgo<A> {
@@ -32,12 +31,13 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
 
     fn create_apcs_with_pgo(
         &self,
-        blocks: Vec<Block<<Self::Adapter as Adapter>::Instruction>>,
+        blocks: Vec<AdapterBasicBlock<Self::Adapter>>,
         // execution count of blocks (indexes into the `blocks` vec)
         block_exec_count: Option<HashMap<usize, u32>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         _labels: BTreeMap<u64, Vec<String>>,
+        empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
         tracing::info!(
             "Generating autoprecompiles with instruction PGO for {} blocks",
@@ -79,7 +79,12 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
             })
             .map(|(_, block)| block).collect::<Vec<_>>();
 
-        create_apcs_for_all_blocks::<Self::Adapter>(blocks, config, vm_config)
+        create_apcs_for_all_blocks::<Self::Adapter>(
+            blocks,
+            config,
+            vm_config,
+            empirical_constraints,
+        )
     }
 
     fn profiling_data(&self) -> Option<&ExecutionProfile> {

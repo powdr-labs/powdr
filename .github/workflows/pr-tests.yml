@@ -179,6 +179,7 @@ jobs:
 
   build_gpu:
     runs-on: [self-hosted, GPU]
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4
@@ -197,9 +198,9 @@ jobs:
       - name: Cargo check with Rust 1.90 (all features)
         run: cargo +1.90 check --all-targets
       - name: Lint no default features
-        run: cargo clippy --all --all-targets --all-features --profile pr-tests --verbose -- -D warnings
+        run: cargo clippy --all --all-targets --features cuda,metrics,aot --profile pr-tests --verbose -- -D warnings
       - name: Build (GPU)
-        run: cargo build --all-targets --all-features --all --profile pr-tests --verbose
+        run: cargo build --all-targets --features cuda,metrics,aot --all --profile pr-tests --verbose
       - uses: taiki-e/install-action@nextest
       - name: Create tests archive (GPU, features=cuda)
         run: cargo nextest archive --archive-file tests_gpu.tar.zst --cargo-profile pr-tests --workspace --package powdr-openvm --features cuda
@@ -213,6 +214,7 @@ jobs:
   test_quick_gpu:
     needs: build_gpu
     runs-on: [self-hosted, GPU]
+    timeout-minutes: 30
     # TODO: we only have one runner on our GPU server, so can't partition yet; uncomment these once we have proper runners
     # strategy:
     #   matrix:

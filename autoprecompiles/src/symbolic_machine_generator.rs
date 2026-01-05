@@ -7,9 +7,22 @@ use crate::{
     adapter::Adapter,
     blocks::{Block, Instruction},
     expression::AlgebraicExpression,
-    powdr, BusMap, BusType, ColumnAllocator, InstructionHandler, SymbolicBusInteraction,
+    powdr, Apc, BusMap, BusType, ColumnAllocator, InstructionHandler, SymbolicBusInteraction,
     SymbolicConstraint, SymbolicMachine,
 };
+
+/// Converts the field type of a symbolic machine.
+pub fn convert_apc_field_type<T, I, A, V, U>(
+    apc: Apc<T, I, A, V>,
+    convert_field_element: &impl Fn(T) -> U,
+) -> Apc<U, I, A, V> {
+    Apc {
+        block: apc.block,
+        machine: convert_machine_field_type(apc.machine, convert_field_element),
+        subs: apc.subs,
+        optimistic_constraints: apc.optimistic_constraints,
+    }
+}
 
 /// Converts the field type of a symbolic machine.
 pub fn convert_machine_field_type<T, U>(

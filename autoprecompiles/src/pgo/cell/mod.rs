@@ -11,11 +11,13 @@ use rayon::iter::{ParallelBridge, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    adapter::{Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig, PgoAdapter},
+    adapter::{
+        Adapter, AdapterApc, AdapterApcWithStats, AdapterBasicBlock, AdapterVmConfig, PgoAdapter,
+    },
     blocks::Block,
     evaluation::EvaluationResult,
     execution_profile::ExecutionProfile,
-    PowdrConfig,
+    EmpiricalConstraints, PowdrConfig,
 };
 
 use itertools::Itertools;
@@ -97,11 +99,12 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
 
     fn create_apcs_with_pgo(
         &self,
-        blocks: Vec<Block<<Self::Adapter as Adapter>::Instruction>>,
+        blocks: Vec<AdapterBasicBlock<Self::Adapter>>,
         block_exec_count: Option<HashMap<usize, u32>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
+        empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
         if config.autoprecompiles == 0 {
             return vec![];
@@ -126,7 +129,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
         // generate candidates in parallel
         let candidates: Vec<_> = blocks.into_iter().enumerate().par_bridge().filter_map(|(idx, block)| {
             let block_exec_count = block_exec_count[&idx];
-            let candidate: C = try_generate_candidate(block, block_exec_count, config, &vm_config)?;
+            let candidate: C = try_generate_candidate(block, block_exec_count, config, &vm_config, &empirical_constraints)?;
             if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
                 let json_export = candidate.to_json_export(apc_candidates_dir_path);
                 // TODO: probably remove this debug print
@@ -236,6 +239,7 @@ fn try_generate_candidate<A: Adapter, C: Candidate<A>>(
     block_exec_count: u32,
     config: &PowdrConfig,
     vm_config: &AdapterVmConfig<A>,
+    empirical_constraints: &EmpiricalConstraints,
 ) -> Option<C> {
     let start = std::time::Instant::now();
     let apc = crate::build::<A>(
@@ -243,6 +247,7 @@ fn try_generate_candidate<A: Adapter, C: Candidate<A>>(
         vm_config.clone(),
         config.degree_bound,
         config.apc_candidates_dir_path.as_deref(),
+        empirical_constraints,
     )
         .ok()?;
     let candidate = C::create(

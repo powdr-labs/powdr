@@ -7,9 +7,9 @@ use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
 use crate::blocks::generate_superblocks;
+use crate::empirical_constraints::EmpiricalConstraints;
 use crate::execution::{ExecutionState, OptimisticConstraints};
 use crate::execution_profile::ExecutionProfile;
-
 use crate::{
     blocks::{Block, Instruction, Program},
     constraint_optimizer::IsBusStateful,
@@ -46,10 +46,11 @@ pub trait PgoAdapter {
 
     fn filter_blocks_and_create_apcs_with_pgo(
         &self,
-        blocks: Vec<Block<<Self::Adapter as Adapter>::Instruction>>,
+        blocks: Vec<AdapterBasicBlock<Self::Adapter>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
+        empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
         let filtered_blocks: Vec<_> = blocks
             .into_iter()
@@ -69,18 +70,26 @@ pub trait PgoAdapter {
             (filtered_blocks, None)
         };
 
-        self.create_apcs_with_pgo(blocks, execution_count, config, vm_config, labels)
+        self.create_apcs_with_pgo(
+            blocks,
+            execution_count,
+            config,
+            vm_config,
+            labels,
+            empirical_constraints,
+        )
     }
 
     fn create_apcs_with_pgo(
         &self,
-        blocks: Vec<Block<<Self::Adapter as Adapter>::Instruction>>,
+        blocks: Vec<AdapterBasicBlock<Self::Adapter>>,
         // frequency of each block during PGO execution.
         // This is None when there's no profiling data (NonePgo).
         block_exec_count: Option<HashMap<usize, u32>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
+        empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>>;
 
     fn pc_execution_count(&self, pc: u64) -> Option<u32> {
@@ -140,6 +149,12 @@ pub type AdapterApc<A> = Apc<
     <<A as Adapter>::ExecutionState as ExecutionState>::RegisterAddress,
     <<A as Adapter>::ExecutionState as ExecutionState>::Value,
 >;
+pub type AdapterApcOverPowdrField<A> = Apc<
+    <A as Adapter>::PowdrField,
+    <A as Adapter>::Instruction,
+    <<A as Adapter>::ExecutionState as ExecutionState>::RegisterAddress,
+    <<A as Adapter>::ExecutionState as ExecutionState>::Value,
+>;
 pub type AdapterVmConfig<'a, A> = VmConfig<
     'a,
     <A as Adapter>::InstructionHandler,
@@ -151,3 +166,4 @@ pub type AdapterOptimisticConstraints<A> = OptimisticConstraints<
     <<A as Adapter>::ExecutionState as ExecutionState>::RegisterAddress,
     <<A as Adapter>::ExecutionState as ExecutionState>::Value,
 >;
+pub type AdapterBasicBlock<A> = Block<<A as Adapter>::Instruction>;

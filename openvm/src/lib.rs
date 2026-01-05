@@ -15,7 +15,9 @@ use openvm_circuit::arch::{
 };
 use openvm_circuit::system::SystemChipInventory;
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
-use openvm_circuit_derive::{Executor, MeteredExecutor, PreflightExecutor};
+use openvm_circuit_derive::{
+    AotExecutor, AotMeteredExecutor, Executor, MeteredExecutor, PreflightExecutor,
+};
 use openvm_sdk::config::SdkVmCpuBuilder;
 
 use openvm_sdk::config::TranspilerConfig;
@@ -36,6 +38,7 @@ use openvm_stark_sdk::config::{
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
+use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::evaluation::AirStats;
 use powdr_autoprecompiles::execution_profile::ExecutionProfile;
 use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
@@ -64,6 +67,7 @@ use crate::powdr_extension::{PowdrExtensionExecutor, PowdrPrecompile};
 mod air_builder;
 pub mod bus_map;
 pub mod cuda_abi;
+mod empirical_constraints;
 pub mod extraction_utils;
 pub mod opcode;
 mod program;
@@ -73,6 +77,8 @@ mod utils;
 pub use opcode::instruction_allowlist;
 pub use powdr_autoprecompiles::DegreeBound;
 pub use powdr_autoprecompiles::PgoConfig;
+
+pub use crate::empirical_constraints::detect_empirical_constraints;
 
 pub type BabyBearSC = BabyBearPoseidon2Config;
 
@@ -401,7 +407,16 @@ impl AsMut<SystemConfig> for SpecializedConfig {
 }
 
 #[allow(clippy::large_enum_variant)]
-#[derive(From, AnyEnum, Chip, Executor, MeteredExecutor, PreflightExecutor)]
+#[derive(
+    From,
+    AnyEnum,
+    Chip,
+    Executor,
+    MeteredExecutor,
+    AotExecutor,
+    AotMeteredExecutor,
+    PreflightExecutor,
+)]
 pub enum SpecializedExecutor {
     #[any_enum]
     SdkExecutor(ExtendedVmConfigExecutor<BabyBear>),
@@ -533,6 +548,7 @@ pub fn compile_exe(
     original_program: OriginalCompiledProgram,
     config: PowdrConfig,
     pgo_config: PgoConfig,
+    empirical_constraints: EmpiricalConstraints,
 ) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
     let compiled = match pgo_config {
         PgoConfig::Cell(pgo_data, max_total_columns) => {
@@ -554,14 +570,21 @@ pub fn compile_exe(
                     pgo_data,
                     max_total_apc_columns,
                 ),
+                empirical_constraints,
             )
         }
         PgoConfig::Instruction(pgo_data) => customize(
             original_program,
             config,
             InstructionPgo::with_pgo_data(pgo_data),
+            empirical_constraints,
         ),
-        PgoConfig::None => customize(original_program, config, NonePgo::default()),
+        PgoConfig::None => customize(
+            original_program,
+            config,
+            NonePgo::default(),
+            empirical_constraints,
+        ),
     };
     // Export the compiled program to a PIL file for debugging purposes.
     export_pil(
@@ -780,7 +803,7 @@ pub fn prove(
     segment_height: Option<usize>, // uses the default height if None
 ) -> Result<(), Box<dyn std::error::Error>> {
     if mock {
-        do_with_trace(program, inputs, |vm, pk, ctx| {
+        do_with_trace(program, inputs, |_segment_idx, vm, pk, ctx| {
             debug_proving_ctx(vm, pk, &ctx);
         })?;
     } else {
@@ -859,7 +882,8 @@ pub fn execution_profile_from_guest(
     let sdk = PowdrExecutionProfileSdkCpu::new(app_config).unwrap();
 
     execution_profile::<BabyBearOpenVmApcAdapter>(&program, || {
-        sdk.execute(exe.clone(), inputs.clone()).unwrap();
+        sdk.execute_interpreted(exe.clone(), inputs.clone())
+            .unwrap();
     })
 }
 
@@ -882,7 +906,8 @@ mod tests {
         segment_height: Option<usize>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let guest = compile_openvm(guest, GuestOptions::default()).unwrap();
-        let program = compile_exe(guest, config, pgo_config).unwrap();
+        let program =
+            compile_exe(guest, config, pgo_config, EmpiricalConstraints::default()).unwrap();
         prove(&program, mock, recursion, stdin, segment_height)
     }
 
@@ -1002,7 +1027,13 @@ mod tests {
         let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
         let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP_NO_APC_EXECUTED, None);
-        let program = compile_exe(guest, config, PgoConfig::None).unwrap();
+        let program = compile_exe(
+            guest,
+            config,
+            PgoConfig::None,
+            EmpiricalConstraints::default(),
+        )
+        .unwrap();
 
         // Assert that all APCs aren't executed
         program
@@ -1057,7 +1088,13 @@ mod tests {
     fn matmul_compile() {
         let guest = compile_openvm("guest-matmul", GuestOptions::default()).unwrap();
         let config = default_powdr_openvm_config(1, 0, None);
-        assert!(compile_exe(guest, config, PgoConfig::default()).is_ok());
+        assert!(compile_exe(
+            guest,
+            config,
+            PgoConfig::default(),
+            EmpiricalConstraints::default()
+        )
+        .is_ok());
     }
 
     #[test]
@@ -1533,7 +1570,13 @@ mod tests {
         let is_cell_pgo = matches!(guest.pgo_config, PgoConfig::Cell(_, _));
         let max_degree = config.degree_bound.identities;
         let guest_program = compile_openvm(guest.name, GuestOptions::default()).unwrap();
-        let compiled_program = compile_exe(guest_program, config, guest.pgo_config).unwrap();
+        let compiled_program = compile_exe(
+            guest_program,
+            config,
+            guest.pgo_config,
+            EmpiricalConstraints::default(),
+        )
+        .unwrap();
 
         let (powdr_air_metrics, non_powdr_air_metrics) = compiled_program.air_metrics(max_degree);
 
@@ -1621,7 +1664,7 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 41,
+                            main: 38,
                             log_up: 56,
                         },
                         constraints: 15,
@@ -1649,7 +1692,7 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 41,
+                            main: 38,
                             log_up: 56,
                         },
                         constraints: 15,
@@ -1671,7 +1714,7 @@ mod tests {
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 41,
+                        main: 38,
                         log_up: 56,
                     },
                 }
@@ -1698,7 +1741,7 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 14263,
+                            main: 14254,
                             log_up: 22752,
                         },
                         constraints: 4285,
@@ -1726,7 +1769,7 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 14235,
+                            main: 14226,
                             log_up: 22720,
                         },
                         constraints: 4261,
@@ -1748,7 +1791,7 @@ mod tests {
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 14235,
+                        main: 14226,
                         log_up: 22720,
                     },
                 }
@@ -1775,11 +1818,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 17300,
-                            log_up: 27896,
+                            main: 17286,
+                            log_up: 27884,
                         },
-                        constraints: 8834,
-                        bus_interactions: 11925,
+                        constraints: 8823,
+                        bus_interactions: 11919,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1797,8 +1840,8 @@ mod tests {
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 17300,
-                        log_up: 27896,
+                        main: 17286,
+                        log_up: 27884,
                     },
                 }
             "#]]),
@@ -1824,11 +1867,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 19928,
-                            log_up: 30924,
+                            main: 19909,
+                            log_up: 30904,
                         },
-                        constraints: 11103,
-                        bus_interactions: 13442,
+                        constraints: 11084,
+                        bus_interactions: 13432,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1846,8 +1889,8 @@ mod tests {
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 19928,
-                        log_up: 30924,
+                        main: 19909,
+                        log_up: 30904,
                     },
                 }
             "#]]),
@@ -1873,7 +1916,7 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 2025,
+                            main: 2022,
                             log_up: 3472,
                         },
                         constraints: 187,
@@ -1901,7 +1944,7 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 2025,
+                            main: 2022,
                             log_up: 3472,
                         },
                         constraints: 187,
@@ -1929,7 +1972,7 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 2025,
+                            main: 2022,
                             log_up: 3472,
                         },
                         constraints: 187,
@@ -1951,7 +1994,7 @@ mod tests {
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 2025,
+                        main: 2022,
                         log_up: 3472,
                     },
                 }
@@ -1981,11 +2024,11 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 3246,
-                            log_up: 5264,
+                            main: 3242,
+                            log_up: 5268,
                         },
-                        constraints: 598,
-                        bus_interactions: 2562,
+                        constraints: 594,
+                        bus_interactions: 2564,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1998,13 +2041,13 @@ mod tests {
                 AirWidthsDiff {
                     before: AirWidths {
                         preprocessed: 0,
-                        main: 32370,
-                        log_up: 41644,
+                        main: 32376,
+                        log_up: 41660,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 3246,
-                        log_up: 5264,
+                        main: 3242,
+                        log_up: 5268,
                     },
                 }
             "#]]),
