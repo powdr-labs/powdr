@@ -114,8 +114,8 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
         let block_exec_count = block_exec_count.unwrap();
         blocks
             .iter()
-            .enumerate()
-            .for_each(|(idx, b)| assert!(block_exec_count[idx] > 0 && b.statements.len() > 1));
+            .zip_eq(&block_exec_count)
+            .for_each(|(block, count)| assert!(*count > 0 && block.statements.len() > 1));
 
         // generate apc for all basic blocks and only cache the ones we eventually use
         // calculate number of trace cells saved per row for each basic block to sort them by descending cost
@@ -127,9 +127,8 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
         let candidates_json = Arc::new(Mutex::new(vec![]));
 
         // generate candidates in parallel
-        let candidates: Vec<_> = blocks.into_iter().enumerate().par_bridge().filter_map(|(idx, block)| {
-            let block_exec_count = block_exec_count[idx];
-            let candidate: C = try_generate_candidate(block, block_exec_count, config, &vm_config, &empirical_constraints)?;
+        let candidates: Vec<_> = blocks.into_iter().zip_eq(block_exec_count).par_bridge().filter_map(|(block, count)| {
+            let candidate: C = try_generate_candidate(block, count, config, &vm_config, &empirical_constraints)?;
             if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
                 let json_export = candidate.to_json_export(apc_candidates_dir_path);
                 // TODO: probably remove this debug print
