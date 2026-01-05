@@ -308,11 +308,12 @@ crepe! {
 
     ///////////////////////////////// MINIMAL RANGE //////////////////////////
 
-    // If algebraic constraint e has range constraint [0, a] with a < P,
-    // e = head + tail, and both head, tail >= 0,
+    // If an algebraic constraint e = 0 has the following properties:
+    // 1. expression e has range constraint [0, a] with a < P,
+    // 2. e = head + tail, and both head, tail >= 0,
+    // 3. head is a linear expression coeff * var,
     // then both head and tail must be zero.
-    // If head is a linear expression coeff * var,
-    // var can be set to zero.
+    // This rule replaces the variable var by zero.
     struct ExpressionWithZeroMinimalRange(Expr);
     ExpressionWithZeroMinimalRange(head) <-
       ExpressionSumHeadTail(_, head, _),
@@ -326,7 +327,7 @@ crepe! {
 
 
 
-    // Find expression e that has range constraint [0, a] with a < P,
+    // Find algebraic constraint e = 0, and expression e has range constraint [0, a] with a < P,
     // e = head + tail, and both head, tail >= 0
     struct MinimalRangeAlgebraicConstraintCandidate(Expr);
     MinimalRangeAlgebraicConstraintCandidate(e) <-
@@ -337,8 +338,8 @@ crepe! {
       ExpressionWithZeroMinimalRange(tail),
       AlgebraicConstraint(e);
 
-    // Find tail of expression e that has range constraint [0, a] with a < P,
-    // e = head + tail, and both head, tail >= 0
+    // Find a tail expression that has range constraint [0, a] with a < P,
+    // head + tail = 0, and both head, tail >= 0
     // Tail must be zero and can be used to iteratively reduced.
     MinimalRangeAlgebraicConstraintCandidate(tail) <-
       MinimalRangeAlgebraicConstraintCandidate(e),
