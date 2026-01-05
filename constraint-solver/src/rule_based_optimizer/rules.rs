@@ -314,16 +314,11 @@ crepe! {
     // 3. head is a linear expression coeff * var,
     // then both head and tail must be zero.
     // This rule replaces the variable var by zero.
-    struct ExpressionWithZeroMinimalRange(Expr);
-    ExpressionWithZeroMinimalRange(head) <-
-      ExpressionSumHeadTail(_, head, _),
-      RangeConstraintOnExpression(head, head_rc),
-      (head_rc.range().0 == T::zero());
-
-    ExpressionWithZeroMinimalRange(tail) <-
-      ExpressionSumHeadTail(_, _, tail),
-      RangeConstraintOnExpression(tail, tail_rc),
-      (tail_rc.range().0 == T::zero());
+    struct NonNegativeExpression(Expr);
+    NonNegativeExpression(e) <-
+      RangeConstraintOnExpression(e, e_rc),
+      (e_rc.range().0 == T::zero()),
+      (e_rc.range().1 < T::from(-1));
 
 
 
@@ -334,8 +329,8 @@ crepe! {
       ExpressionSumHeadTail(e, head, tail),
       RangeConstraintOnExpression(e, e_rc),
       (e_rc.range().1 < T::from(-1)),
-      ExpressionWithZeroMinimalRange(head),
-      ExpressionWithZeroMinimalRange(tail),
+      NonNegativeExpression(head),
+      NonNegativeExpression(tail),
       AlgebraicConstraint(e);
 
     // Find a tail expression that has range constraint [0, a] with a < P,
@@ -346,18 +341,14 @@ crepe! {
       RangeConstraintOnExpression(e, e_rc),
       (e_rc.range().1 < T::from(-1)),
       ExpressionSumHeadTail(e, head, tail),
-      ExpressionWithZeroMinimalRange(head),
-      ExpressionWithZeroMinimalRange(tail);
+      NonNegativeExpression(head),
+      NonNegativeExpression(tail);
 
 
     struct MinimalRangeZeroDeducible<T: FieldElement>(Expr, Expr,Expr, Var, T);
     MinimalRangeZeroDeducible(e, head, tail, var, coeff) <-
       MinimalRangeAlgebraicConstraintCandidate(e),
       ExpressionSumHeadTail(e, head, tail),
-      ExpressionWithZeroMinimalRange(head),
-      ExpressionWithZeroMinimalRange(tail),
-      RangeConstraintOnExpression(e, rc_e),
-      (rc_e.range().1 < T::from(-1)),
       LinearExpression(head, var, coeff);
 
     Assignment(var, T::zero()) <-
