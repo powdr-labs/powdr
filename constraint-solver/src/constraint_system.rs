@@ -4,6 +4,7 @@ use crate::{
     range_constraint::RangeConstraint,
     runtime_constant::{RuntimeConstant, Substitutable},
 };
+use derivative::Derivative;
 use itertools::Itertools;
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
@@ -12,7 +13,8 @@ use std::{fmt::Display, hash::Hash};
 pub use crate::algebraic_constraint::AlgebraicConstraint;
 
 /// Description of a constraint system.
-#[derive(Clone)]
+#[derive(Derivative)]
+#[derivative(Default(bound = ""), Clone)]
 pub struct ConstraintSystem<T, V> {
     /// The algebraic expressions which have to evaluate to zero.
     pub algebraic_constraints: Vec<AlgebraicConstraint<GroupedExpression<T, V>>>,
@@ -21,16 +23,6 @@ pub struct ConstraintSystem<T, V> {
     pub bus_interactions: Vec<BusInteraction<GroupedExpression<T, V>>>,
     /// Newly added variables whose values are derived from existing variables.
     pub derived_variables: Vec<DerivedVariable<T, V>>,
-}
-
-impl<T, V> Default for ConstraintSystem<T, V> {
-    fn default() -> Self {
-        ConstraintSystem {
-            algebraic_constraints: Vec::new(),
-            bus_interactions: Vec::new(),
-            derived_variables: Vec::new(),
-        }
-    }
 }
 
 impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display for ConstraintSystem<T, V> {

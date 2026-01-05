@@ -1,3 +1,5 @@
+use indicatif::ProgressBar;
+use indicatif::ProgressStyle;
 use itertools::Itertools;
 use openvm_circuit::arch::VmCircuitConfig;
 use openvm_sdk::StdIn;
@@ -22,7 +24,7 @@ use crate::bus_map::default_openvm_bus_map;
 use crate::trace_generation::do_with_cpu_trace;
 use crate::{CompiledProgram, OriginalCompiledProgram};
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 struct Timestamp {
     // Note that the order of the fields matters for correct ordering.
     segment_idx: usize,
@@ -60,6 +62,12 @@ impl Trace {
     fn rows_sorted_by_time(&self) -> impl Iterator<Item = &Row> {
         self.rows.iter().sorted_by_key(|row| &row.timestamp)
     }
+
+    fn take(&mut self) -> Self {
+        Self {
+            rows: std::mem::take(&mut self.rows),
+        }
+    }
 }
 
 pub fn detect_empirical_constraints(
@@ -82,26 +90,37 @@ pub fn detect_empirical_constraints(
     let num_inputs = inputs.len();
     for (i, input) in inputs.into_iter().enumerate() {
         tracing::info!("  Processing input {} / {}", i + 1, num_inputs);
-        // Materialize the full trace for a given input.
-        // If this becomes a RAM issue, we can also pass individual segments to process_trace.
-        // The advantage of the current approach is that the percentiles can be computed more accurately.
-        tracing::info!("    Collecting trace...");
-        let (trace, new_debug_info) = collect_trace(&program, input, degree_bound.identities);
-        tracing::info!("    Detecting constraints...");
-        constraint_detector.process_trace(trace, new_debug_info);
+        detect_empirical_constraints_from_input(
+            &program,
+            i,
+            input,
+            degree_bound.identities,
+            &mut constraint_detector,
+        );
     }
     tracing::info!("Done collecting empirical constraints.");
 
     constraint_detector.finalize()
 }
 
-fn collect_trace(
+/// The maximum number of segments to keep in memory while detecting empirical constraints.
+/// A higher number here leads to more accurate percentile estimates, but uses more memory.
+const DEFAULT_MAX_SEGMENTS: usize = 20;
+
+fn detect_empirical_constraints_from_input(
     program: &CompiledProgram,
+    input_index: usize,
     inputs: StdIn,
     degree_bound: usize,
-) -> (Trace, DebugInfo) {
+    constraint_detector: &mut ConstraintDetector,
+) {
     let mut trace = Trace::default();
     let mut debug_info = DebugInfo::default();
+
+    let max_segments = std::env::var("POWDR_EMPIRICAL_CONSTRAINTS_MAX_SEGMENTS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(DEFAULT_MAX_SEGMENTS);
 
     do_with_cpu_trace(program, inputs, |seg_idx, vm, _pk, ctx| {
         let airs = program.vm_config.sdk.airs(degree_bound).unwrap();
@@ -190,9 +209,59 @@ fn collect_trace(
                 }
             }
         }
+
+        if (seg_idx + 1) % max_segments == 0 {
+            tracing::info!(
+                "    Reached segment {} of input {}, processing trace so far...",
+                seg_idx + 1,
+                input_index + 1
+            );
+            let (trace_to_process, remaining_trace) =
+                take_complete_blocks(constraint_detector, trace.take());
+            trace = remaining_trace;
+            constraint_detector.process_trace(trace_to_process, debug_info.take());
+        }
     })
     .unwrap();
-    (trace, debug_info)
+    tracing::info!(
+        "    Finished execution of input {}, processing (remaining) trace...",
+        input_index + 1
+    );
+    constraint_detector.process_trace(trace, debug_info);
+}
+
+/// Takes as many complete basic blocks from the trace as possible,
+/// returning the taken trace and the remaining trace.
+/// This is needed because ConstraintDetector::process_trace requires complete basic blocks,
+/// but segmentation might happen within a basic block.
+fn take_complete_blocks(constraint_detector: &ConstraintDetector, trace: Trace) -> (Trace, Trace) {
+    // Find the latest timestamp that begins a basic block
+    let latest_basic_block_beginning = trace
+        .rows
+        .iter()
+        .filter(|row| {
+            constraint_detector
+                .instruction_counts
+                .contains_key(&(row.pc as u64))
+        })
+        .map(|row| &row.timestamp)
+        .max()
+        .unwrap()
+        .clone();
+    // Process all rows before that timestamp
+    let (rows_to_process, remaining_rows): (Vec<Row>, Vec<Row>) = trace
+        .rows
+        .into_iter()
+        .partition(|row| row.timestamp < latest_basic_block_beginning);
+
+    let trace_to_process = Trace {
+        rows: rows_to_process,
+    };
+    let remaining_trace = Trace {
+        rows: remaining_rows,
+    };
+
+    (trace_to_process, remaining_trace)
 }
 
 struct ConstraintDetector {
@@ -222,7 +291,6 @@ impl<'a> ConcreteBlock<'a> {
             // Group by value
             .into_group_map()
             .into_values()
-            .map(|cells| cells.into_iter().collect())
             .collect()
     }
 }
@@ -240,6 +308,11 @@ impl ConstraintDetector {
     }
 
     pub fn process_trace(&mut self, trace: Trace, debug_info: DebugInfo) {
+        let pc_counts = trace
+            .rows_by_pc()
+            .into_iter()
+            .map(|(pc, rows)| (pc, rows.len() as u64))
+            .collect();
         // Compute empirical constraints from the current trace
         tracing::info!("      Detecting equivalence classes by block...");
         let equivalence_classes_by_block = self.generate_equivalence_classes_by_block(&trace);
@@ -249,6 +322,7 @@ impl ConstraintDetector {
             column_ranges_by_pc,
             equivalence_classes_by_block,
             debug_info,
+            pc_counts,
         };
 
         // Combine the new empirical constraints and debug info with the existing ones
@@ -260,7 +334,7 @@ impl ConstraintDetector {
         // Map all column values to their range (1st and 99th percentile) for each pc
         trace
             .rows_by_pc()
-            .into_iter()
+            .into_par_iter()
             .map(|(pc, rows)| (pc, self.detect_column_ranges(&rows)))
             .collect()
     }
@@ -293,21 +367,35 @@ impl ConstraintDetector {
         tracing::info!("        Segmenting trace into blocks...");
         let blocks = self.get_blocks(trace);
         tracing::info!("        Finding equivalence classes...");
-        blocks
-            .into_par_iter()
-            .map(|(block_id, block_instances)| {
-                // Segment each block instance into equivalence classes
-                let partition_by_block_instance = block_instances
-                    .into_iter()
-                    .map(|block| block.equivalence_classes())
-                    .collect::<Vec<_>>();
+        let num_blocks = blocks.len();
+        let pb = ProgressBar::new(num_blocks as u64).with_style(
+            ProgressStyle::with_template("[{elapsed_precise}] [{bar:50}] {wide_msg}").unwrap(),
+        );
+        let partition = blocks
+            .into_iter()
+            .enumerate()
+            .map(|(i, (block_id, block_instances))| {
+                pb.set_message(format!(
+                    "Block {} / {} ({} instances)",
+                    i + 1,
+                    num_blocks,
+                    block_instances.len()
+                ));
 
-                // Intersect the equivalence classes across all instances of the block
-                let intersected = Partition::intersect(&partition_by_block_instance);
+                // Build partitions for each block instance in parallel
+                let partition_by_block_instance = block_instances
+                    .into_par_iter()
+                    .map(|block| block.equivalence_classes());
+
+                // Intersect the equivalence classes across all instances in parallel
+                let intersected = Partition::parallel_intersect(partition_by_block_instance);
+                pb.inc(1);
 
                 (block_id, intersected)
             })
-            .collect()
+            .collect();
+        pb.finish_with_message("Done");
+        partition
     }
 
     /// Segments a trace into basic blocks.

@@ -1,22 +1,17 @@
 use std::collections::BTreeMap;
 
+use derivative::Derivative;
+
 use crate::{
     adapter::{Adapter, AdapterApcWithStats, AdapterBasicBlock, AdapterVmConfig, PgoAdapter},
     pgo::create_apcs_for_all_blocks,
-    PowdrConfig,
+    EmpiricalConstraints, PowdrConfig,
 };
 
+#[derive(Derivative)]
+#[derivative(Default(bound = ""))]
 pub struct NonePgo<A> {
     _marker: std::marker::PhantomData<A>,
-}
-
-// TODO: derive with explicit bounds
-impl<A> Default for NonePgo<A> {
-    fn default() -> Self {
-        Self {
-            _marker: std::marker::PhantomData,
-        }
-    }
 }
 
 impl<A: Adapter> PgoAdapter for NonePgo<A> {
@@ -28,6 +23,7 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         _labels: BTreeMap<u64, Vec<String>>,
+        empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
         // cost = number_of_original_instructions
         blocks.sort_by(|a, b| b.statements.len().cmp(&a.statements.len()));
@@ -41,6 +37,11 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
             );
         }
 
-        create_apcs_for_all_blocks::<Self::Adapter>(blocks, config, vm_config)
+        create_apcs_for_all_blocks::<Self::Adapter>(
+            blocks,
+            config,
+            vm_config,
+            empirical_constraints,
+        )
     }
 }

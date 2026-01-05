@@ -56,11 +56,10 @@ powdr-constraint-solver.workspace = true
 powdr-openvm-hints-transpiler.workspace = true
 powdr-openvm-hints-circuit.workspace = true
 
+indicatif = "0.18.3"
 eyre = "0.6.12"
 serde = "1.0.217"
-derive_more = { version = "2.0.1", default-features = false, features = [
-  "from",
-] }
+derive_more = { version = "2.0.1", default-features = false, features = ["from"] }
 itertools = "0.14.0"
 
 tracing = "0.1.40"
