@@ -94,7 +94,7 @@ pub fn generate_superblocks<I: Clone>(
     execution_pc_list: &[u64],
     blocks: &[Block<I>],
     max_len: usize,
-) -> (Vec<Block<I>>, HashMap<usize, u32>) {
+) -> (Vec<Block<I>>, Vec<u32>) {
     tracing::info!(
         "Detecting superblocks of size <= {max_len}, over the sequence of {} PCs",
         execution_pc_list.len()
@@ -162,7 +162,7 @@ pub fn generate_superblocks<I: Clone>(
 
     // build the resulting BasicBlock's and counts
     let mut super_blocks = vec![];
-    let mut counts = HashMap::new();
+    let mut counts = vec![];
     superblock_count.into_iter().for_each(|(sblock, count)| {
         let blocks = sblock.iter().map(|&idx| &blocks[idx]).collect_vec();
         let start_pc = blocks[0].start_pc;
@@ -182,13 +182,12 @@ pub fn generate_superblocks<I: Clone>(
             .cloned()
             .collect_vec();
 
-        let idx = super_blocks.len();
         super_blocks.push(Block {
             start_pc,
             other_pcs,
             statements,
         });
-        counts.insert(idx, count);
+        counts.push(count);
     });
 
     (super_blocks, counts)

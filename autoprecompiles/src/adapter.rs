@@ -1,5 +1,5 @@
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::hash::Hash;
 use std::{fmt::Display, sync::Arc};
 
@@ -85,7 +85,8 @@ pub trait PgoAdapter {
         blocks: Vec<AdapterBasicBlock<Self::Adapter>>,
         // frequency of each block during PGO execution.
         // This is None when there's no profiling data (NonePgo).
-        block_exec_count: Option<HashMap<usize, u32>>,
+        // If present, has one entry for each of the given `blocks`.
+        block_exec_count: Option<Vec<u32>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,

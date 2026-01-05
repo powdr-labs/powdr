@@ -1,6 +1,6 @@
 use std::{
     cmp::Reverse,
-    collections::{BTreeMap, HashMap},
+    collections::BTreeMap,
 };
 
 use itertools::Itertools;
@@ -33,7 +33,7 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
         &self,
         blocks: Vec<AdapterBasicBlock<Self::Adapter>>,
         // execution count of blocks (indexes into the `blocks` vec)
-        block_exec_count: Option<HashMap<usize, u32>>,
+        block_exec_count: Option<Vec<u32>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         _labels: BTreeMap<u64, Vec<String>>,
@@ -53,7 +53,7 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
         blocks
             .iter()
             .enumerate()
-            .for_each(|(idx, b)| assert!(block_exec_count[&idx] > 0 && b.statements.len() > 1));
+            .for_each(|(idx, b)| assert!(block_exec_count[idx] > 0 && b.statements.len() > 1));
 
         tracing::debug!(
             "Retained {} basic blocks after filtering by pc_idx_count",
@@ -64,7 +64,7 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
         let blocks = blocks.into_iter()
             .enumerate()
             .map(|(idx, block)| {
-                let count = block_exec_count[&idx];
+                let count = block_exec_count[idx];
                 (count, block)
             })
             .sorted_by_key(|(count, b)| Reverse(count * b.statements.len() as u32))
