@@ -109,9 +109,6 @@ impl<T: Eq + Hash + Clone> Partition<T> {
     }
 }
 
-/// Threshold below which we use sequential intersection.
-const PARALLEL_THRESHOLD: usize = 16;
-
 /// Number of partitions to combine in each chunk before parallelizing.
 const CHUNK_SIZE: usize = 64;
 
@@ -121,10 +118,12 @@ impl<T: Eq + Hash + Copy + Send + Sync> Partition<T> {
     /// Partitions are grouped into chunks, each chunk is intersected sequentially,
     /// then the chunk results are combined recursively in parallel.
     pub fn parallel_intersect(partitions: impl IndexedParallelIterator<Item = Self>) -> Self {
-        if partitions.len() <= PARALLEL_THRESHOLD {
+        if partitions.len() <= CHUNK_SIZE {
+            // Base case: We only have one chunk, intersect sequentially
             let partitions = partitions.collect::<Vec<_>>();
             return Self::intersect_many(partitions);
         }
+
         // Chunk partitions and intersect each chunk in parallel
         let chunk_results = partitions
             .chunks(CHUNK_SIZE)
