@@ -118,17 +118,39 @@ crepe! {
     Expression(head) <- ExpressionSumHeadTail(_, head, _);
     Expression(tail) <- ExpressionSumHeadTail(_, _, tail);
 
+    // IsAffine(e) => e is an affine expression, i.e. does not have super-linear parts.
+    struct IsAffine(Expr);
+    IsAffine(e) <-
+      Constant(e, _);
+    IsAffine(e) <-
+      ExpressionSumHeadTail(e, head, tail),
+      LinearExpression(head, _, _),
+      IsAffine(tail);
+
+
+    // HasSummand(e, summand, rest) => e = summand + rest
+    struct HasSummand(Expr, Expr, Expr);
+    HasSummand(e, summand, rest) <-
+      ExpressionSumHeadTail(e, summand, rest);
+    HasSummand(e, summand, rest) <-
+      ExpressionSumHeadTail(e, head, tail1),
+      ExpressionSumHeadTail(rest, head, tail2),
+      HasSummand(tail1, summand, tail2);
+
+    // SplitLinearSummand(e1, e2, coeff, var) =>
+    //   e1 = e2 + coeff * var
+    // Note that var can also appear in a non-linear part of e2.
+    struct SplitLinearSummand<T: FieldElement>(Expr, Expr, T, Var);
+    SplitLinearSummand(e1, e2, coeff, var) <-
+      HasSummand(e1, summand, e2),
+      LinearExpression(summand, var, coeff);
+
     // HasProductSummand(e, l, r) => e contains a summand of the form l * r
     struct HasProductSummand(Expr, Expr, Expr);
     HasProductSummand(e, l, r) <-
-      ExpressionSumHeadTail(e, head, _),
-      Product(head, l, r);
-    HasProductSummand(e, l, r) <-
-      ExpressionSumHeadTail(e, _, tail),
-      HasProductSummand(tail, l, r);
+      HasSummand(e, summand, _),
+      Product(summand, l, r);
     HasProductSummand(e, r, l) <- HasProductSummand(e, l, r);
-    Expression(l) <- HasProductSummand(_, l, _);
-    Expression(r) <- HasProductSummand(_, _, r);
 
     // ProductConstraint(e, l, r) => e is an algebraic constraint of the form l * r = 0
     struct ProductConstraint(Expr, Expr, Expr);
@@ -319,21 +341,17 @@ crepe! {
         PlusMinusResult(r1, e2, cmp_result),
         LinearExpression(r2, diff_val, _);
 
-    // NegatedDiffMarkerConstraint(e, diff_marker, e2, cmp_result, diff_val) =>
+      // (1 - diff_marker__3_0) * (a__3_0 * (2 * cmp_result_0 - 1)) = 0
+    // NegatedDiffMarkerConstraint(e, diff_marker, diff_marker_rest, v, result) =>
+    //   e is the constraint (diff_marker_rest - diff_marker) * (v * (2 * result - 1)) = 0
     struct NegatedDiffMarkerConstraint(Expr, Var, Expr, Var, Var);
-    DiffMarkerConstraint(e, diff_marker, e2, cmp_result, diff_val) <-
-      ProductConstraint(e, l, r),
-      LinearExpression(l, diff_marker, _),
-      // Note: the quadratic part has to be the head
-      ExpressionSumHeadTail(r, r1, r2),
-        PlusMinusResult(r1, e2, cmp_result),
-        LinearExpression(r2, diff_val, _);
 
     // EqualZeroCheck(constrs, result, vars) =>
     //   constrsexprs can be equivalently replaced by a constraint that models
     //   result = 1 if all vars are zero, and result = 0 otherwise.
     struct EqualZeroCheck([Expr; 4], Var, [Var; 4]);
     EqualZeroCheck(contrs, result, vars) <-
+      // (1 - diff_marker__3_0) * (a__3_0 * (2 * cmp_result_0 - 1)) = 0
       // diff_marker__0_0 * ((a__0_0 - 1) * (2 * cmp_result_0 - 1) + diff_val_0) = 0
       DiffMarkerConstraint(constr_0, diff_marker_0, a_0_e, result, diff_val),
         AffineExpression(a_0_e, a_0_e_coeff, a_0, a_0_e_offset), (a_0_e_coeff == T::from(1)), (a_0_e_offset == T::from(-1)),
@@ -351,7 +369,6 @@ crepe! {
       BooleanVar(diff_marker_1),
       BooleanVar(diff_marker_2),
       BooleanVar(diff_marker_3),
-      // (1 - diff_marker__3_0) * (a__3_0 * (2 * cmp_result_0 - 1)) = 0
       // (1 - (diff_marker__2_0 + diff_marker__3_0)) * (a__2_0 * (2 * cmp_result_0 - 1)) = 0
       // (1 - (diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0)) * (a__1_0 * (2 * cmp_result_0 - 1)) = 0
       // (1 - (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0)) * cmp_result_0 = 0
