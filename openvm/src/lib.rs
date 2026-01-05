@@ -1650,7 +1650,7 @@ mod tests {
                             main: 38,
                             log_up: 56,
                         },
-                        constraints: 15,
+                        constraints: 12,
                         bus_interactions: 26,
                     }
                 "#]],
@@ -1678,7 +1678,7 @@ mod tests {
                             main: 38,
                             log_up: 56,
                         },
-                        constraints: 15,
+                        constraints: 12,
                         bus_interactions: 26,
                     }
                 "#]],
