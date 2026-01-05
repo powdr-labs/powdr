@@ -177,6 +177,25 @@ jobs:
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
           MODE="compile" APC=10 PGO_TYPE="instruction" /usr/bin/time -v ./run.sh
 
+      # Check that reth commit is on main.
+      # Do that after the actual test so that the step above passes when checking that a
+      # reth PR commit works with a powdr PR.
+      - name: Verify openvm-reth-benchmark ref is on main
+        shell: bash
+        run: |
+          cd openvm-reth-benchmark
+          if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+            git fetch --quiet --unshallow origin main
+          else
+            git fetch --quiet origin main
+          fi
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "Pinned ref is not in origin/main history."
+            echo "HEAD: $(git rev-parse HEAD)"
+            echo "origin/main: $(git rev-parse origin/main)"
+            exit 1
+          fi
+
   build_gpu:
     runs-on: [self-hosted, GPU]
     timeout-minutes: 10
