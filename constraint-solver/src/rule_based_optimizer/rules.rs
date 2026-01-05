@@ -179,6 +179,13 @@ crepe! {
       AffineExpression(e, coeff, v, offset),
       (coeff != T::zero());
 
+    // This derives boolean constraints on variables from `v * (v - 1) = 0`,
+    // but also works with `v * (v - 8) = 0` or similar.
+    UpdateRangeConstraintOnVar(v, RangeConstraint::from_value(c1).disjunction(&RangeConstraint::from_value(c2))) <-
+      ProductConstraint(_, l, r),
+      (l < r),
+      Solvable(l, v, c1),
+      Solvable(r, v, c2);
 
     //////////////////////// SINGLE-OCCURRENCE VARIABLES //////////////////////////
 
