@@ -63,12 +63,7 @@ impl EmpiricalConstraints {
             // Compute the new equivalence classes for this block
             let new_equivalence_class = match self.equivalence_classes_by_block.entry(block_pc) {
                 Entry::Vacant(_) => classes,
-                Entry::Occupied(e) => {
-                    // Remove the value and compute the intersection
-                    // This is because `intersect_partitions` takes inputs by value
-                    let existing = e.remove();
-                    Partition::intersect(&[existing, classes])
-                }
+                Entry::Occupied(e) => e.remove().intersected_with(classes),
             };
             assert!(self
                 .equivalence_classes_by_block
@@ -120,6 +115,13 @@ impl DebugInfo {
             other.column_names_by_air_id,
         );
     }
+
+    pub fn take(&mut self) -> Self {
+        Self {
+            air_id_by_pc: std::mem::take(&mut self.air_id_by_pc),
+            column_names_by_air_id: std::mem::take(&mut self.column_names_by_air_id),
+        }
+    }
 }
 
 /// Merges two maps, asserting that existing keys map to equal values.
@@ -155,7 +157,7 @@ impl BlockCell {
 
 /// For any program line that was not executed at least this many times in the traces,
 /// discard any empirical constraints associated with it.
-const EXECUTION_COUNT_THRESHOLD: u64 = 100;
+const DEFAULT_EXECUTION_COUNT_THRESHOLD: u64 = 100;
 
 /// Generates symbolic constraints based on empirical constraints for a given basic block.
 pub struct ConstraintGenerator<'a, A: Adapter> {
@@ -192,9 +194,18 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
             .map(|r| (*poly_id_to_block_cell.get(&r.id).unwrap(), r.clone()))
             .collect::<BTreeMap<_, _>>();
 
+        let execution_count_threshold = std::env::var("POWDR_OP_EXECUTION_COUNT_THRESHOLD")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(DEFAULT_EXECUTION_COUNT_THRESHOLD);
+        tracing::info!(
+            "Using execution count threshold: {}",
+            execution_count_threshold
+        );
+
         Self {
             empirical_constraints: empirical_constraints
-                .apply_pc_threshold(EXECUTION_COUNT_THRESHOLD),
+                .apply_pc_threshold(execution_count_threshold),
             algebraic_references,
             block,
         }
@@ -250,7 +261,7 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
             .equivalence_classes_by_block
             .get(&self.block.start_pc)
         {
-            for equivalence_class in equivalence_classes.iter() {
+            for equivalence_class in equivalence_classes.to_classes() {
                 let first = equivalence_class.first().unwrap();
                 let first_ref = self.get_algebraic_reference(first);
                 for other in equivalence_class.iter().skip(1) {
