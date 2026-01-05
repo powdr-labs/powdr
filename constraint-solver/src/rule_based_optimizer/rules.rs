@@ -179,6 +179,10 @@ crepe! {
       AffineExpression(e, coeff, v, offset),
       (coeff != T::zero());
 
+    struct BooleanVar(Var);
+    BooleanVar(v) <-
+      RangeConstraintOnVar(v, rc),
+      (rc.range() == (T::zero(), T::one()));
 
     //////////////////////// SINGLE-OCCURRENCE VARIABLES //////////////////////////
 
@@ -291,6 +295,76 @@ crepe! {
         let replacement = r + GroupedExpression::from_unknown_variable(combined_var) * factor;
         Some(env.insert_owned(replacement))
       })();
+
+    //////////////////// EQUAL ZERO TEST ////////////////////////
+
+    // PlusMinusResult(e, e1, v2) =>
+    //   e = e1 * (2 * v2 - 1)
+    struct PlusMinusResult(Expr, Expr, Var);
+    PlusMinusResult(e, e1, v2) <-
+      Product(e, e1, r),
+      AffineExpression(r, coeff, v2, offset),
+        (coeff == T::from(2)),
+        (offset == T::from(-1));
+
+    // DiffMarkerConstraint(e, diff_marker, e2, cmp_result, diff_val) =>
+    //   e = diff_marker * (e2 * (2 * cmp_result - 1) + diff_val)
+    // (up to a factor)
+    struct DiffMarkerConstraint(Expr, Var, Expr, Var, Var);
+    DiffMarkerConstraint(e, diff_marker, e2, cmp_result, diff_val) <-
+      ProductConstraint(e, l, r),
+      LinearExpression(l, diff_marker, _),
+      // Note: the quadratic part has to be the head
+      ExpressionSumHeadTail(r, r1, r2),
+        PlusMinusResult(r1, e2, cmp_result),
+        LinearExpression(r2, diff_val, _);
+
+    // NegatedDiffMarkerConstraint(e, diff_marker, e2, cmp_result, diff_val) =>
+    struct NegatedDiffMarkerConstraint(Expr, Var, Expr, Var, Var);
+    DiffMarkerConstraint(e, diff_marker, e2, cmp_result, diff_val) <-
+      ProductConstraint(e, l, r),
+      LinearExpression(l, diff_marker, _),
+      // Note: the quadratic part has to be the head
+      ExpressionSumHeadTail(r, r1, r2),
+        PlusMinusResult(r1, e2, cmp_result),
+        LinearExpression(r2, diff_val, _);
+
+    // EqualZeroCheck(constrs, result, vars) =>
+    //   constrsexprs can be equivalently replaced by a constraint that models
+    //   result = 1 if all vars are zero, and result = 0 otherwise.
+    struct EqualZeroCheck([Expr; 4], Var, [Var; 4]);
+    EqualZeroCheck(contrs, result, vars) <-
+      // diff_marker__0_0 * ((a__0_0 - 1) * (2 * cmp_result_0 - 1) + diff_val_0) = 0
+      DiffMarkerConstraint(constr_0, diff_marker_0, a_0_e, result, diff_val),
+        AffineExpression(a_0_e, a_0_e_coeff, a_0, a_0_e_offset), (a_0_e_coeff == T::from(1)), (a_0_e_offset == T::from(-1)),
+      // diff_marker__1_0 * (a__1_0 * (2 * cmp_result_0 - 1) + diff_val_0) = 0
+      DiffMarkerConstraint(constr_1, diff_marker_1, a_1_e, result, diff_val), (constr_1 != constr_0),
+        LinearExpression(a_1_e, a_1, a_coeff), (a_coeff == T::from(1)),
+      // diff_marker__2_0 * (a__2_0 * (2 * cmp_result_0 - 1) + diff_val_0) = 0
+      DiffMarkerConstraint(constr_2, diff_marker_2, a_2_e, result, diff_val), (constr_2 != constr_0), (constr_2 > constr_1),
+        LinearExpression(a_2_e, a_2, a_coeff2), (a_coeff2 == T::from(1)),
+      // diff_marker__3_0 * (a__3_0 * (2 * cmp_result_0 - 1) + diff_val_0) = 0
+      DiffMarkerConstraint(constr_3, diff_marker_3, a_3_e, result, diff_val), (constr_3 != constr_0), (constr_3 > constr_2),
+        LinearExpression(a_3_e, a_3, a_coeff3), (a_coeff3 == T::from(1)),
+      BooleanVar(result),
+      BooleanVar(diff_marker_0),
+      BooleanVar(diff_marker_1),
+      BooleanVar(diff_marker_2),
+      BooleanVar(diff_marker_3),
+      // (1 - diff_marker__3_0) * (a__3_0 * (2 * cmp_result_0 - 1)) = 0
+      // (1 - (diff_marker__2_0 + diff_marker__3_0)) * (a__2_0 * (2 * cmp_result_0 - 1)) = 0
+      // (1 - (diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0)) * (a__1_0 * (2 * cmp_result_0 - 1)) = 0
+      // (1 - (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0)) * cmp_result_0 = 0
+      // (1 * is_valid - (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0)) * ((1 - a__0_0) * (2 * cmp_result_0 - 1)) = 0
+      // (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0) * (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0 - 1) = 0
+      // (1 - is_valid) * (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0) = 0
+      let contrs = [constr_0, constr_1, constr_2, constr_3],
+      let vars = [a_0, a_1, a_2, a_3],
+      Env(env),
+      ({println!("Found EqualZeroCheck on {} with result {:?}", vars.iter().map(|v| env.format_var(*v)).format(", "), result); true})
+      ;
+
+
 
     //////////////////////// AFFINE SOLVING //////////////////////////
 
