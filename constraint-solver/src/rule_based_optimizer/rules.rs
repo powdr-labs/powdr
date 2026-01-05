@@ -9,7 +9,7 @@ use powdr_number::FieldElement;
 
 use crate::{
     constraint_system::ComputationMethod,
-    grouped_expression::{GroupedExpression, GroupedExpressionComponent, RangeConstraintProvider},
+    grouped_expression::{GroupedExpression, GroupedExpressionComponent},
     range_constraint::RangeConstraint,
     rule_based_optimizer::{
         environment::Environment,
@@ -53,6 +53,9 @@ crepe! {
 
     @input
     pub struct InitialRangeConstraintOnExpression<T: FieldElement>(pub Expr, pub RangeConstraint<T>);
+
+    @input
+    pub struct RangeConstraintOnVar<T: FieldElement>(pub Var, pub RangeConstraint<T>);
 
     struct AlgebraicConstraint(Expr);
     AlgebraicConstraint(e) <- InitialAlgebraicConstraint(e);
@@ -99,6 +102,12 @@ crepe! {
       AffineExpression(e, coeff, var, offset),
       (offset.is_zero());
 
+    struct Constant<T: FieldElement>(Expr, T);
+    Constant(e, value) <-
+      Expression(e),
+      Env(env),
+      let Some(value) = env.try_to_number(e);
+
     // Split the expression into head and tail
     // ExpressionSumHeadTail(e, h, t) => e = h + t
     struct ExpressionSumHeadTail(Expr, Expr, Expr);
@@ -130,29 +139,45 @@ crepe! {
 
     //////////////////////// RANGE CONSTRAINTS //////////////////////////
 
+    // Range constraints are tricky because they can easily lead to exponential behaviour.
+    // Because of that, we should never update a range constraint on a variable
+    // and only compute range constraints on expressions from smaller expressions.
+
     struct RangeConstraintOnExpression<T: FieldElement>(Expr, RangeConstraint<T>);
     RangeConstraintOnExpression(e, rc) <-
       InitialRangeConstraintOnExpression(e, rc);
-    RangeConstraintOnExpression(e, rc) <-
-      Env(env),
-      Expression(e),
-      let rc = env.on_expr(e, (), |expr, _| expr.range_constraint(env));
+    RangeConstraintOnExpression(e, rc.square()) <-
+      Product(e, l, r),
+      (l == r),
+      RangeConstraintOnExpression(l, rc);
+    RangeConstraintOnExpression(e, l_rc.combine_product(&r_rc)) <-
+      Product(e, l, r),
+      (l < r),
+      RangeConstraintOnExpression(l, l_rc),
+      RangeConstraintOnExpression(r, r_rc);
+    RangeConstraintOnExpression(e, v_rc.multiple(coeff)) <-
+      LinearExpression(e, v, coeff),
+      RangeConstraintOnVar(v, v_rc);
+    RangeConstraintOnExpression(e, head_rc.combine_sum(&tail_rc)) <-
+      ExpressionSumHeadTail(e, head, tail),
+      RangeConstraintOnExpression(head, head_rc),
+      RangeConstraintOnExpression(tail, tail_rc);
+    RangeConstraintOnExpression(e, RangeConstraint::from_value(value)) <-
+      Constant(e, value);
 
-    // RangeConstraintOnVar(v, rc) => variable v has range constraint rc.
-    // Note that this range constraint is not necessarily the currently best known
-    // one, but any range constraint that is derivable using the rules.
-    struct RangeConstraintOnVar<T: FieldElement>(Var, RangeConstraint<T>);
-    RangeConstraintOnVar(v, rc) <- Env(env), ContainsVariable(_, v), let rc = env.get(&v);
+    // UpdateRangeConstraintOnVar(v, rc) => rc is a valid range constraint for variable v
+    // This is an output predicate and might cause the rule system to re-run if
+    // the range constraint is better than the currently best known.
+    // Please avoid deriving new range constraints directly since this can easily
+    // lead to exponential behaviour.
+    struct UpdateRangeConstraintOnVar<T: FieldElement>(Var, RangeConstraint<T>);
     // RC(coeff * var + offset) = rc <=>
     // coeff * RC(var) + offset = rc <=>
     // RC(var) = (rc - offset) / coeff
-    RangeConstraintOnVar(v, rc.combine_sum(&RangeConstraint::from_value(-offset)).multiple(T::one() / coeff)) <-
+    UpdateRangeConstraintOnVar(v, rc.combine_sum(&RangeConstraint::from_value(-offset)).multiple(T::one() / coeff)) <-
       RangeConstraintOnExpression(e, rc),
       AffineExpression(e, coeff, v, offset),
       (coeff != T::zero());
-    RangeConstraintOnVar(v, v_rc1.conjunction(&v_rc2)) <-
-      RangeConstraintOnVar(v, v_rc1),
-      RangeConstraintOnVar(v, v_rc2);
 
 
     //////////////////////// SINGLE-OCCURRENCE VARIABLES //////////////////////////
@@ -261,7 +286,7 @@ crepe! {
             };
             true
         }).map(GroupedExpression::from).sum::<GroupedExpression<T, Var>>();
-        let factor = x1 * coeff1 + x2 * coeff2;
+        let factor = x1.clone() * coeff1 + x2.clone() * coeff2;
         let combined_var = env.new_var("free_var", ComputationMethod::QuotientOrZero(-r.clone(), factor.clone()));
         let replacement = r + GroupedExpression::from_unknown_variable(combined_var) * factor;
         Some(env.insert_owned(replacement))
@@ -337,7 +362,9 @@ crepe! {
     Equivalence(v1, v2) <- QuadraticEquivalence(v1, v2);
 
     @output
-    pub struct ActionRule<T>(pub Action<T>);
+    pub struct ActionRule<T: FieldElement>(pub Action<T>);
+    ActionRule(Action::UpdateRangeConstraintOnVar(v, rc)) <-
+      UpdateRangeConstraintOnVar(v, rc);
     ActionRule(Action::SubstituteVariableByConstant(v, val)) <-
       Assignment(v, val);
     // Substitute the larger variable by the smaller.
