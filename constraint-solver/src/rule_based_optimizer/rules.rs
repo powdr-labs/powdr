@@ -68,6 +68,10 @@ crepe! {
     // be replaced by new_expr (and new_expression is in some way "simpler").
     struct ReplaceAlgebraicConstraintBy(Expr, Expr);
 
+    // ReplacePairOfAlgebraicConstraintsBy(e1, e2, replacement) =>
+    // the system that does not have the constraints `e1` and `e2` but has
+    // the new constraint `replacement` is equivalent.
+    struct ReplacePairOfAlgebraicConstraintsBy(Expr, Expr, Expr);
 
     //////////////////// STRUCTURAL PROPERTIES OF EXPRESSIONS //////////////////////
 
@@ -267,6 +271,22 @@ crepe! {
         Some(env.insert_owned(replacement))
       })();
 
+    //////////////// COMBINE CONSTRAINTS WITH NON-NEGATIVE FACTORS /////////////////////
+
+    // If we have `x * a = 0` and `x * b = 0` and `a` and `b` are
+    // both non-negative and their sum is constrained, then we can replace
+    // both constraints by `x * (a + b) = 0`.
+    ReplacePairOfAlgebraicConstraintsBy(e1, e2, replacement) <-
+      Env(env),
+      ProductConstraint(e1, x, a),
+      ProductConstraint(e2, x, b),
+      (e1 < e2),
+      RangeConstraintOnExpression(a, rc_a),
+      RangeConstraintOnExpression(b, rc_b),
+      (rc_a.range().0 == T::zero()
+        && rc_b.range().0 == T::zero() && !rc_a.combine_sum(&rc_b).is_unconstrained()),
+      let replacement = env.insert_owned(env.extract(x) * (env.extract(a) + env.extract(b)));
+
     //////////////////////// AFFINE SOLVING //////////////////////////
 
     // Solvable(e, var, value) => (e = 0 => var = value)
@@ -347,4 +367,6 @@ crepe! {
       Equivalence(v1, v2), (v2 > v1);
     ActionRule(Action::ReplaceAlgebraicConstraintBy(e1, e2)) <-
       ReplaceAlgebraicConstraintBy(e1, e2);
+    ActionRule(Action::ReplacePairOfAlgebraicConstraintsBy(e1, e2, r)) <-
+      ReplacePairOfAlgebraicConstraintsBy(e1, e2, r);
 }
