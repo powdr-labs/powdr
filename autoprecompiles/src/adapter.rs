@@ -6,6 +6,7 @@ use std::{fmt::Display, sync::Arc};
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
+use crate::empirical_constraints::EmpiricalConstraints;
 use crate::execution::{ExecutionState, OptimisticConstraints};
 use crate::{
     blocks::{BasicBlock, Instruction, Program},
@@ -47,12 +48,19 @@ pub trait PgoAdapter {
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
+        empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
         let filtered_blocks = blocks
             .into_iter()
             .filter(|block| !Self::Adapter::should_skip_block(block))
             .collect();
-        self.create_apcs_with_pgo(filtered_blocks, config, vm_config, labels)
+        self.create_apcs_with_pgo(
+            filtered_blocks,
+            config,
+            vm_config,
+            labels,
+            empirical_constraints,
+        )
     }
 
     fn create_apcs_with_pgo(
@@ -61,6 +69,7 @@ pub trait PgoAdapter {
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
+        empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>>;
 
     fn pc_execution_count(&self, _pc: u64) -> Option<u32> {

@@ -21,6 +21,7 @@ pub mod apc_builder_utils {
     use openvm_instructions::instruction::Instruction;
     use openvm_stark_sdk::p3_baby_bear::BabyBear;
     use powdr_autoprecompiles::blocks::BasicBlock;
+    use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
     use powdr_autoprecompiles::evaluation::evaluate_apc;
     use powdr_autoprecompiles::{build, VmConfig};
     use powdr_number::BabyBearField;
@@ -69,6 +70,7 @@ pub mod apc_builder_utils {
             vm_config,
             degree_bound,
             apc_path,
+            &EmpiricalConstraints::default(),
         )
         .unwrap();
         let apc = apc.machine();

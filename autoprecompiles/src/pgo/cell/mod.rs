@@ -15,7 +15,7 @@ use crate::{
     blocks::BasicBlock,
     evaluation::EvaluationResult,
     pgo::cell::selection::parallel_fractional_knapsack,
-    PowdrConfig,
+    EmpiricalConstraints, PowdrConfig,
 };
 
 mod selection;
@@ -94,6 +94,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
+        empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
         tracing::info!(
             "Generating autoprecompiles with cell PGO for {} blocks",
@@ -133,6 +134,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
                     vm_config.clone(),
                     config.degree_bound,
                     config.apc_candidates_dir_path.as_deref(),
+                    &empirical_constraints,
                 )
                 .ok()?;
                 let candidate = C::create(

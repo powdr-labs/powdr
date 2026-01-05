@@ -9,8 +9,7 @@ use powdr_number::FieldElement;
 
 use crate::{
     constraint_system::ComputationMethod,
-    grouped_expression::{GroupedExpression, RangeConstraintProvider},
-    range_constraint::RangeConstraint,
+    grouped_expression::GroupedExpression,
     rule_based_optimizer::{
         item_db::ItemDB,
         new_var_generator::NewVarGenerator,
@@ -31,17 +30,7 @@ pub struct Environment<T: FieldElement> {
     /// Variables that only occurr once in the system
     /// (also only once in the constraint they occur in).
     single_occurrence_variables: HashSet<Var>,
-    range_constraints_on_vars: HashMap<Var, RangeConstraint<T>>,
     new_var_generator: RefCell<NewVarGenerator<T>>,
-}
-
-impl<T: FieldElement> RangeConstraintProvider<T, Var> for Environment<T> {
-    fn get(&self, var: &Var) -> RangeConstraint<T> {
-        self.range_constraints_on_vars
-            .get(var)
-            .cloned()
-            .unwrap_or(RangeConstraint::unconstrained())
-    }
 }
 
 impl<T: FieldElement> PartialEq for Environment<T> {
@@ -79,14 +68,12 @@ impl<T: FieldElement> Environment<T> {
         expressions: ItemDB<GroupedExpression<T, Var>, Expr>,
         var_to_string: HashMap<Var, String>,
         single_occurrence_variables: HashSet<Var>,
-        range_constraints_on_vars: HashMap<Var, RangeConstraint<T>>,
         new_var_generator: NewVarGenerator<T>,
     ) -> Self {
         Self {
             expressions: RefCell::new(expressions),
             var_to_string,
             single_occurrence_variables,
-            range_constraints_on_vars,
             new_var_generator: RefCell::new(new_var_generator),
         }
     }
@@ -132,6 +119,15 @@ impl<T: FieldElement> Environment<T> {
         self.single_occurrence_variables.iter()
     }
 
+    /// Split Expr into head and tail, i.e., expr = head + tail
+    pub fn try_split_into_head_tail(&self, expr: Expr) -> Option<(Expr, Expr)> {
+        let db = self.expressions.borrow();
+        let expr = db[expr].clone();
+        drop(db);
+        let (head, tail) = expr.try_split_head_tail()?;
+        Some((self.insert_owned(head), self.insert_owned(tail)))
+    }
+
     #[allow(dead_code)]
     /// If this returns Some(n) then the expression is affine
     /// and contains n variables.
@@ -151,6 +147,12 @@ impl<T: FieldElement> Environment<T> {
         }
         let (var, coeff) = expr.linear_components().exactly_one().ok()?;
         Some((*coeff, *var, *expr.constant_offset()))
+    }
+
+    pub fn try_to_number(&self, expr: Expr) -> Option<T> {
+        let db = self.expressions.borrow();
+        let expr = &db[expr];
+        expr.try_to_number()
     }
 
     /// Runs the function `f` on the expression identified by `expr`,

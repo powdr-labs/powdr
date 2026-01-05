@@ -4,6 +4,7 @@ use crate::adapter::{
 };
 use crate::blocks::BasicBlock;
 use crate::bus_map::{BusMap, BusType};
+use crate::empirical_constraints::{ConstraintGenerator, EmpiricalConstraints};
 use crate::evaluation::AirStats;
 use crate::execution::OptimisticConstraints;
 use crate::expression_conversion::algebraic_to_grouped_expression;
@@ -439,14 +440,29 @@ pub fn build<A: Adapter>(
     vm_config: AdapterVmConfig<A>,
     degree_bound: DegreeBound,
     apc_candidates_dir_path: Option<&Path>,
+    empirical_constraints: &EmpiricalConstraints,
 ) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
     let start = std::time::Instant::now();
 
-    let (machine, column_allocator) = statements_to_symbolic_machine::<A>(
+    let (mut machine, column_allocator) = statements_to_symbolic_machine::<A>(
         &block,
         vm_config.instruction_handler,
         &vm_config.bus_map,
     );
+
+    // Generate constraints for optimistic precompiles.
+    let constraint_generator = ConstraintGenerator::<A>::new(
+        empirical_constraints,
+        &column_allocator.subs,
+        machine.main_columns(),
+        &block,
+    );
+    let range_analyzer_constraints = constraint_generator.range_constraints();
+    let equivalence_analyzer_constraints = constraint_generator.equivalence_constraints();
+
+    // Add empirical constraints to the baseline
+    machine.constraints.extend(range_analyzer_constraints);
+    machine.constraints.extend(equivalence_analyzer_constraints);
 
     if let Some(path) = apc_candidates_dir_path {
         serialize_apc_from_machine::<A>(
@@ -491,6 +507,11 @@ pub fn build<A: Adapter>(
 
     if let Some(path) = apc_candidates_dir_path {
         serialize_apc::<A>(&apc, path, None);
+
+        // For debugging, also serialize a human-readable version of the final precompile
+        let rendered = apc.machine.render(&vm_config.bus_map);
+        let path = make_path(path, apc.start_pc(), None, "txt");
+        std::fs::write(path, rendered).unwrap();
     }
 
     let apc = convert_apc_field_type(apc, &A::into_field);
@@ -500,17 +521,17 @@ pub fn build<A: Adapter>(
     Ok(apc)
 }
 
+fn make_path(base_path: &Path, start_pc: u64, suffix: Option<&str>, extension: &str) -> PathBuf {
+    let suffix = suffix.map(|s| format!("_{s}")).unwrap_or_default();
+    base_path
+        .join(format!("apc_candidate_{start_pc}{suffix}"))
+        .with_extension(extension)
+}
+
 fn serialize_apc<A: Adapter>(apc: &AdapterApcOverPowdrField<A>, path: &Path, suffix: Option<&str>) {
     std::fs::create_dir_all(path).expect("Failed to create directory for APC candidates");
 
-    let suffix = if let Some(suffix) = suffix {
-        format!("_{suffix}")
-    } else {
-        "".to_string()
-    };
-    let ser_path = path
-        .join(format!("apc_candidate{suffix}_{}", apc.start_pc()))
-        .with_extension("cbor");
+    let ser_path = make_path(path, apc.start_pc(), suffix, "cbor");
     let file_unopt =
         std::fs::File::create(&ser_path).expect("Failed to create file for {suffix} APC candidate");
     let writer_unopt = BufWriter::new(file_unopt);
