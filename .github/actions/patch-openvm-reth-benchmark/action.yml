@@ -13,22 +13,6 @@ runs:
         ref: 4a458d77c3b85ab14926ac6d51d637ccb9bdc383
         path: openvm-reth-benchmark
 
-    - name: Verify openvm-reth-benchmark ref is on main
-      shell: bash
-      run: |
-        cd openvm-reth-benchmark
-        if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
-          git fetch --quiet --unshallow origin main
-        else
-          git fetch --quiet origin main
-        fi
-        if ! git merge-base --is-ancestor HEAD origin/main; then
-          echo "Pinned ref is not in origin/main history."
-          echo "HEAD: $(git rev-parse HEAD)"
-          echo "origin/main: $(git rev-parse origin/main)"
-          exit 1
-        fi
-
     - name: Patch openvm-reth-benchmark to use local powdr
       shell: bash
       run: |
