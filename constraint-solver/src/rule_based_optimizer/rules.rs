@@ -179,6 +179,13 @@ crepe! {
       AffineExpression(e, coeff, v, offset),
       (coeff != T::zero());
 
+    //////////////////// RANGE PROPERTIES OF EXPRESSIONS //////////////////////
+    struct NonNegativeExpression(Expr);
+    NonNegativeExpression(e) <-
+      RangeConstraintOnExpression(e, e_rc),
+      (e_rc.range().0 == T::zero()),
+      (e_rc.range().1 < T::from(-1));
+
 
     //////////////////////// SINGLE-OCCURRENCE VARIABLES //////////////////////////
 
@@ -314,13 +321,6 @@ crepe! {
     // 3. head is a linear expression coeff * var,
     // then both head and tail must be zero.
     // This rule replaces the variable var by zero.
-    struct NonNegativeExpression(Expr);
-    NonNegativeExpression(e) <-
-      RangeConstraintOnExpression(e, e_rc),
-      (e_rc.range().0 == T::zero()),
-      (e_rc.range().1 < T::from(-1));
-
-
 
     // Find algebraic constraint e = 0, and expression e has range constraint [0, a] with a < P,
     // e = head + tail, and both head, tail >= 0
