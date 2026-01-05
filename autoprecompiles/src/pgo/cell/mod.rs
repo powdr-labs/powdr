@@ -121,60 +121,41 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
             blocks.len(),
         );
 
-        let apc_candidates = Arc::new(Mutex::new(vec![]));
+        let candidates_json = Arc::new(Mutex::new(vec![]));
 
         // generate candidates in parallel
-        let candidates: Vec<_> = blocks.iter().enumerate().par_bridge().filter_map(|(idx, block)| {
-            let start = std::time::Instant::now();
-            let apc = crate::build::<A>(
-                block.clone(),
-                vm_config.clone(),
-                config.degree_bound,
-                config.apc_candidates_dir_path.as_deref(),
-            )
-                .ok()?;
-            let candidate = C::create(
-                Arc::new(apc),
-                block_exec_count[&idx],
-                vm_config.clone(),
-                config.degree_bound.identities,
-            );
-            tracing::debug!(
-                "Generated candidate for block starting at pc {} in {:?}",
-                block.start_pc,
-                start.elapsed()
-            );
+        let candidates: Vec<_> = blocks.into_iter().enumerate().par_bridge().filter_map(|(idx, block)| {
+            let block_exec_count = block_exec_count[&idx];
+            let candidate: C = try_generate_candidate(block, block_exec_count, config, &vm_config)?;
             if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
                 let json_export = candidate.to_json_export(apc_candidates_dir_path);
-                tracing::debug!("generated APC pc {}, other_pcs {:?}, effectiveness: {:?}, freq: {:?} (took {:?}s)",
+                // TODO: probably remove this debug print
+                tracing::debug!("Generated APC pc {}, other_pcs {:?}, effectiveness: {:?}, freq: {:?}",
                                 json_export.original_block.start_pc,
                                 json_export.original_block.other_pcs,
                                 json_export.cost_before as f64 / json_export.cost_after as f64,
-                                json_export.execution_frequency,
-                                start.elapsed().as_secs_f64()
-                );
-                apc_candidates.lock().unwrap().push(json_export);
+                                json_export.execution_frequency);
+                candidates_json.lock().unwrap().push(json_export);
             }
             Some(candidate)
         }).collect();
 
         tracing::info!(
-            "Selecting {} APCs from {} candidates (skipping {})",
+            "Selecting {} APCs from {} generated candidates (skipping {})",
             config.autoprecompiles,
             candidates.len(),
             config.skip_autoprecompiles
         );
 
-        let selected_indices = select_apc_candidates::<A, C>(
-            &candidates,
+        let selected_candidates = select_apc_candidates::<A, C>(
+            candidates,
             self.max_total_apc_columns,
             config.autoprecompiles as usize,
             config.skip_autoprecompiles as usize,
         );
 
         tracing::debug!("Selected candidates:");
-        for idx in &selected_indices {
-            let c = candidates[*idx].to_json_export(Path::new(""));
+        for c in selected_candidates.iter().map(|c| c.to_json_export(Path::new(""))) {
             tracing::debug!(
                 "\tAPC pc {}, other_pcs {:?}, effectiveness: {:?}, freq: {:?}",
                 c.original_block.start_pc,
@@ -184,23 +165,14 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
             );
         }
 
-        // filter candidates to selected ones, sorted by selection order
-        let res: Vec<_> = candidates
+        let res: Vec<_> = selected_candidates
             .into_iter()
-            .enumerate()
-            .filter_map(|(idx, c)| {
-                selected_indices
-                    .iter()
-                    .position(|i| *i == idx)
-                    .map(|position| (position, c.into_apc_and_stats()))
-            })
-            .sorted_by_key(|(position, _)| *position)
-            .map(|(_, apc_and_stats)| apc_and_stats)
+            .map(|c| c.into_apc_and_stats())
             .collect();
 
         // Write the APC candidates JSON to disk if the directory is specified.
         if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
-            let apcs = apc_candidates.lock().unwrap().drain(..).collect();
+            let apcs = candidates_json.lock().unwrap().drain(..).collect();
             let json = JsonExport { apcs, labels };
             let json_path = apc_candidates_dir_path.join("apc_candidates.json");
             let file = std::fs::File::create(&json_path)
@@ -258,13 +230,47 @@ impl Ord for WeightedPriority {
     }
 }
 
+// Try and build an autoprecompile candidate from a (super)block.
+fn try_generate_candidate<A: Adapter, C: Candidate<A>>(
+    block: Block<A::Instruction>,
+    block_exec_count: u32,
+    config: &PowdrConfig,
+    vm_config: &AdapterVmConfig<A>,
+) -> Option<C> {
+    let start = std::time::Instant::now();
+    let apc = crate::build::<A>(
+        block.clone(),
+        vm_config.clone(),
+        config.degree_bound,
+        config.apc_candidates_dir_path.as_deref(),
+    )
+        .ok()?;
+    let candidate = C::create(
+        Arc::new(apc),
+        block_exec_count,
+        vm_config.clone(),
+        config.degree_bound.identities,
+    );
+    tracing::debug!(
+        "Generated APC pc {}, other_pcs {:?} (took {:?})",
+        block.start_pc,
+        block.other_pcs,
+        start.elapsed()
+    );
+    Some(candidate)
+}
+
+// Select the best apc candidates according to its priority (how effective it should be according to PGO).
+// This selection takes into account "conflicting" candidates, that is,
+// it will update the priority of the remaining candidates.
 fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
-    candidates: &[C],
+    candidates: Vec<C>,
     max_cost: Option<usize>,
     count: usize,
     mut skip: usize,
-) -> Vec<usize> {
-    // candidates ordered by priority
+) -> Vec<C> {
+    // candidates ordered by priority. These priorities will be updated as candidates are selected.
+    // We store indexes here because the items need to be Eq.
     let mut ordered_candidates: PriorityQueue<_, _> = candidates
         .iter()
         .enumerate()
@@ -297,7 +303,7 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
 
     let mut selected_candidates = vec![];
     let mut cumulative_cost = 0;
-    // we go through candidates in order, selecting them if they fit and updating/removing conflicting candidates
+    // we go through candidates in priority order, selecting them if they fit and updating/removing conflicting candidates
     while let Some((idx, prio)) = ordered_candidates.pop() {
         if skip > 0 {
             skip -= 1;
@@ -315,7 +321,7 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
         // The item fits, increment the cumulative cost
         cumulative_cost += prio.cost;
 
-        // Check conflicting candidates with lower priority and update/remove them
+        // Check for conflicts in remaining candidates and update/remove them
         let apc = c.apc();
         let bbs = apc.block.original_pcs();
         let mut to_remove = vec![];
@@ -323,6 +329,7 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
         // println!("checking conflicts with APC: {bbs:?}");
         for (other_idx, _) in ordered_candidates
             .iter()
+            // TODO: this seems unnecessary, as selected candidates have been removed from ordered candidates already?
             .filter(|(other_idx, _)| !selected_candidates.contains(*other_idx))
         {
             let other_candidate = &candidates[*other_idx];
@@ -405,5 +412,17 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
         }
     }
 
-    selected_candidates
+    // filter the candidates using the selected indices (and ordering)
+    candidates
+        .into_iter()
+        .enumerate()
+        .filter_map(|(idx, c)| {
+            selected_candidates
+                .iter()
+                .position(|i| *i == idx)
+                .map(|position| (position, c))
+        })
+        .sorted_by_key(|(position, _)| *position)
+        .map(|(_, c)| c)
+        .collect()
 }

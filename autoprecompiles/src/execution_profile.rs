@@ -2,7 +2,7 @@ use crate::adapter::Adapter;
 use crate::blocks::Program;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::RwLock;
+use std::sync::Mutex;
 use tracing::dispatcher::Dispatch;
 use tracing::field::Field as TracingField;
 use tracing::{Event, Level, Subscriber};
@@ -37,7 +37,7 @@ pub fn execution_profile<A: Adapter>(
     let dispatch = Dispatch::new(subscriber);
     tracing::dispatcher::with_default(&dispatch, execute_fn);
 
-    let pc_list = collector.into_pc_list();
+    let pc_list = collector.take_pc_list();
 
     // Extract the collected data
     let pc_count = pc_list.iter().fold(HashMap::new(), |mut counts, pc| {
@@ -89,22 +89,22 @@ impl tracing::field::Visit for PgoData {
 // A Layer that collects data we are interested in using for the pgo from the trace fields.
 #[derive(Clone)]
 struct PgoCollector {
-    pub pc_list: Arc<RwLock<Vec<u64>>>,
+    pub pc_list: Arc<Mutex<Vec<u64>>>,
 }
 
 impl PgoCollector {
     fn new() -> Self {
         Self {
-            pc_list: Arc::new(RwLock::new(Vec::new())),
+            pc_list: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
     fn increment(&self, pc: u64) {
-        self.pc_list.write().unwrap().push(pc);
+        self.pc_list.lock().unwrap().push(pc);
     }
 
-    fn into_pc_list(self) -> Vec<u64> {
-        Arc::into_inner(self.pc_list).unwrap().into_inner().unwrap()
+    fn take_pc_list(&self) -> Vec<u64> {
+        std::mem::take(&mut self.pc_list.lock().unwrap())
     }
 }
 
