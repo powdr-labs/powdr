@@ -165,11 +165,12 @@ crepe! {
     RangeConstraintOnExpression(e, RangeConstraint::from_value(value)) <-
       Constant(e, value);
 
-    // RangeConstraintOnVar(v, rc) => variable v has range constraint rc.
-    // Note that this range constraint is not necessarily the currently best known
-    // one, but any range constraint that is derivable using the rules.
-    // TODO yes it is, for variables at least.
-
+    // UpdateRangeConstraintOnVar(v, rc) => rc is a valid range constraint for variable v
+    // This is an output predicate and might cause the rule system to re-run if
+    // the range constraint is better than the currently best known.
+    // Please avoid deriving new range constraints directly since this can easily
+    // lead to exponential behaviour.
+    struct UpdateRangeConstraintOnVar<T: FieldElement>(Var, RangeConstraint<T>);
     // RC(coeff * var + offset) = rc <=>
     // coeff * RC(var) + offset = rc <=>
     // RC(var) = (rc - offset) / coeff
@@ -359,8 +360,6 @@ crepe! {
       (rc.is_disjoint(&rc.combine_sum(&RangeConstraint::from_value(offset))));
 
     Equivalence(v1, v2) <- QuadraticEquivalence(v1, v2);
-
-    struct UpdateRangeConstraintOnVar<T: FieldElement>(Var, RangeConstraint<T>);
 
     @output
     pub struct ActionRule<T: FieldElement>(pub Action<T>);
