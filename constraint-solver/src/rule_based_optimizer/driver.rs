@@ -5,6 +5,7 @@ use std::hash::Hash;
 use itertools::Itertools;
 use powdr_number::FieldElement;
 
+use crate::range_constraint::RangeConstraint;
 use crate::{
     algebraic_constraint::AlgebraicConstraint,
     constraint_system::{
@@ -57,6 +58,12 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
     // `env` and extract it again after the rules have run.
     let mut expr_db = Some(ItemDB::<GroupedExpression<T, Var>, Expr>::default());
 
+    let mut range_constraints_on_vars: HashMap<Var, RangeConstraint<T>> = system
+        .referenced_unknown_variables()
+        .map(|v| (var_mapper.id(v), range_constraints.get(v)))
+        .filter(|(_, rc)| !rc.is_unconstrained())
+        .collect();
+
     loop {
         // Transform the constraint system into a simpler representation
         // using IDs for variables and expressions.
@@ -85,10 +92,6 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                 .map(|(id, var)| (id, var.to_string()))
                 .collect(),
             single_occurrence_vars,
-            system
-                .referenced_unknown_variables()
-                .map(|v| (var_mapper.id(v), range_constraints.get(v)))
-                .collect(),
             // The NewVarGenerator will be used to generate fresh variables.
             // because of lifetime issuse, we pass the next ID that
             // the var_mapper would use here and then re-create the
@@ -120,9 +123,17 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                         .zip(updated_rcs)
                         .collect_vec()
                 })
+                .filter(|(_, rc)| !rc.is_unconstrained())
+                .into_grouping_map()
+                .reduce(|rc1, _, rc2| rc1.conjunction(&rc2))
+                .into_iter()
                 .map(|(e, rc)| rules::InitialRangeConstraintOnExpression(e, rc)),
         );
-
+        rt.extend(
+            range_constraints_on_vars
+                .iter()
+                .map(|(var, rc)| rules::RangeConstraintOnVar(*var, *rc)),
+        );
         rt.extend(
             algebraic_constraints
                 .iter()
@@ -166,6 +177,17 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         // sorting the actions.
         for action in actions.into_iter().map(|a| a.0).sorted() {
             match action {
+                Action::UpdateRangeConstraintOnVar(var, rc) => {
+                    let existing_rc = range_constraints_on_vars
+                        .get(&var)
+                        .cloned()
+                        .unwrap_or_default();
+                    let new_rc = existing_rc.conjunction(&rc);
+                    if new_rc != existing_rc {
+                        range_constraints_on_vars.insert(var, new_rc);
+                        progress = true;
+                    }
+                }
                 Action::SubstituteVariableByConstant(var, val) => {
                     system.substitute_by_known(&var_mapper[var], &val);
                     assignments
