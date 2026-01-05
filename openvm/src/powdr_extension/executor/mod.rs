@@ -159,6 +159,7 @@ impl<A: Arena> InitializedOriginalArenas<A> {
     ) -> Self {
         let record_arena_dimensions =
             record_arena_dimension_by_air_name_per_apc_call(apc, original_airs);
+        eprintln!("[DEBUG] InitializedOriginalArenas::new - apc_call_count_estimate={}", apc_call_count_estimate);
         let (air_name_to_arena_index, arenas) =
             record_arena_dimensions.into_iter().enumerate().fold(
                 (HashMap::new(), Vec::new()),
@@ -174,6 +175,11 @@ impl<A: Arena> InitializedOriginalArenas<A> {
                         },
                     ),
                 )| {
+                    let real_capacity_bytes = real_height * apc_call_count_estimate * air_width * 4;
+                    let dummy_capacity_bytes = dummy_height * apc_call_count_estimate * air_width * 4;
+                    eprintln!("[DEBUG]   air={}, real_height={}, dummy_height={}, air_width={}, apc_estimate={} => real_cap={}B, dummy_cap={}B",
+                        air_name, real_height, dummy_height, air_width, apc_call_count_estimate,
+                        real_capacity_bytes, dummy_capacity_bytes);
                     air_name_to_arena_index.insert(air_name, idx);
                     arenas.push(Some(ArenaPair {
                         real: A::with_capacity(real_height * apc_call_count_estimate, air_width),
@@ -492,6 +498,13 @@ unsafe fn execute_e2_impl<F: PrimeField32, CTX: MeteredExecutionCtxTrait>(
         size_of::<E2PreCompute<PowdrPreCompute<F, CTX>>>(),
     )
     .borrow();
+    // Debug: track metered execution calls
+    static METERED_CALL_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let call_num = METERED_CALL_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    if call_num < 5 || call_num % 10000 == 0 {
+        eprintln!("[DEBUG] PowdrExecutor metered execute_e2_impl call #{}, chip_idx={}, height_change={}",
+            call_num + 1, pre_compute.chip_idx, pre_compute.data.height_change);
+    }
     exec_state.ctx.on_height_change(
         pre_compute.chip_idx as usize,
         pre_compute.data.height_change,
@@ -523,7 +536,12 @@ impl PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>> for PowdrExecutor 
         let mut original_arenas = self.original_arenas_cpu.as_ref().borrow_mut();
 
         // Recover an estimate of how many times the APC is called in this segment based on the current ctx height and width
-        let apc_call_count = || ctx.trace_buffer.len() / ctx.width;
+        let apc_call_count = || {
+            let estimate = ctx.trace_buffer.len() / ctx.width;
+            eprintln!("[DEBUG] apc_call_count (CPU path): trace_buffer.len()={}, ctx.width={}, estimate={}",
+                ctx.trace_buffer.len(), ctx.width, estimate);
+            estimate
+        };
 
         original_arenas.ensure_initialized(apc_call_count, &self.air_by_opcode_id, &self.apc);
         // execute the original instructions one by one
@@ -590,14 +608,30 @@ impl PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExecutor {
         // Initialize the original arenas if not already initialized
         let mut original_arenas = self.original_arenas_gpu.as_ref().borrow_mut();
 
+        // Debug: print APC arena info and call count
+        static CALL_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let call_num = CALL_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if call_num == 0 {
+            eprintln!("[DEBUG] PowdrExecutor::execute (DenseArena) - APC arena capacity={}, position={}",
+                ctx.capacity(), ctx.records_buffer.position());
+        }
+        if call_num < 5 || call_num % 1000 == 0 {
+            eprintln!("[DEBUG] PowdrExecutor::execute call #{}", call_num + 1);
+        }
+
         // Recover an (over)estimate of how many times the APC is called in this segment
         // Overestimate is fine because we can initailize dummy arenas with some extra space
         // Exact apc call count from execution is used in final tracegen regardless
         let apc_call_count = || {
             let apc_width = self.apc.machine().main_columns().count();
             let bytes_per_row = apc_width * std::mem::size_of::<u32>();
-            let buf = ctx.records_buffer.get_ref();
-            buf.len() / bytes_per_row
+            // capacity() returns total buffer size including MAX_ALIGNMENT (32 bytes)
+            // Subtract MAX_ALIGNMENT to get the actual allocated size for data
+            let capacity = ctx.capacity().saturating_sub(32);
+            let estimate = capacity / bytes_per_row;
+            eprintln!("[DEBUG] apc_call_count (DenseArena path): capacity={}, apc_width={}, bytes_per_row={}, estimate={}",
+                capacity, apc_width, bytes_per_row, estimate);
+            estimate
         };
 
         original_arenas.ensure_initialized(apc_call_count, &self.air_by_opcode_id, &self.apc);
