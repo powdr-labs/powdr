@@ -1,0 +1,223 @@
+
+running 1 test
+cargo:rerun-if-env-changed=OPENVM_SKIP_BUILD
+Using rustc: /home/steve/.rustup/toolchains/nightly-2025-08-02-x86_64-unknown-linux-gnu/bin/rustc
+Building guest package: cargo +nightly-2025-08-02 build --target riscv32im-risc0-zkvm-elf -Z build-std=alloc,core,proc_macro,panic_abort,std -Z build-std-features=compiler-builtins-mem
+cargo:rerun-if-env-changed=OPENVM_SKIP_BUILD
+Using rustc: /home/steve/.rustup/toolchains/nightly-2025-08-02-x86_64-unknown-linux-gnu/bin/rustc
+Building guest package: cargo +nightly-2025-08-02 build --target riscv32im-risc0-zkvm-elf -Z build-std=alloc,core,proc_macro,panic_abort,std -Z build-std-features=compiler-builtins-mem
+[DEBUG] Instruction 83 has singleton sub: original_poly_index=19, apc_poly_id=3250 [bus]
+[DEBUG] Instruction 85 has singleton sub: original_poly_index=19, apc_poly_id=3356 [bus]
+[DEBUG] Instruction 87 has singleton sub: original_poly_index=19, apc_poly_id=3445 [bus]
+[DEBUG] Instruction 88 has singleton sub: original_poly_index=19, apc_poly_id=3498 [bus]
+[DEBUG] Instruction 93 has singleton sub: original_poly_index=19, apc_poly_id=3700 [bus]
+[DEBUG] Instruction 94 has singleton sub: original_poly_index=19, apc_poly_id=3753 [bus]
+[DEBUG] Instruction 95 has singleton sub: original_poly_index=19, apc_poly_id=3789 [bus]
+[DEBUG] Instruction 97 has singleton sub: original_poly_index=19, apc_poly_id=3895 [bus]
+[DEBUG] Instruction 100 has singleton sub: original_poly_index=19, apc_poly_id=4003 [bus]
+[DEBUG] Instruction 102 has singleton sub: original_poly_index=19, apc_poly_id=4109 [bus]
+[DEBUG] Instruction 104 has singleton sub: original_poly_index=19, apc_poly_id=4198 [bus]
+[DEBUG] Instruction 105 has singleton sub: original_poly_index=19, apc_poly_id=4251 [bus]
+[DEBUG] Instruction 109 has singleton sub: original_poly_index=19, apc_poly_id=4412 [bus]
+[DEBUG] Instruction 110 has singleton sub: original_poly_index=19, apc_poly_id=4465 [bus]
+[DEBUG] Instruction 111 has singleton sub: original_poly_index=19, apc_poly_id=4501 [bus]
+[DEBUG] Instruction 113 has singleton sub: original_poly_index=19, apc_poly_id=4607 [bus]
+[DEBUG] Instruction 120 has singleton sub: original_poly_index=19, apc_poly_id=4891 [bus]
+[DEBUG] Instruction 121 has singleton sub: original_poly_index=19, apc_poly_id=4944 [bus]
+[DEBUG] Instruction 122 has singleton sub: original_poly_index=19, apc_poly_id=4980 [bus]
+[DEBUG] Instruction 124 has singleton sub: original_poly_index=19, apc_poly_id=5086 [bus]
+[DEBUG] Instruction 253 has singleton sub: original_poly_index=19, apc_poly_id=10070 [bus]
+[DEBUG] Instruction 255 has singleton sub: original_poly_index=19, apc_poly_id=10176 [bus]
+[DEBUG] Instruction 257 has singleton sub: original_poly_index=19, apc_poly_id=10253 [bus]
+[DEBUG] Instruction 259 has singleton sub: original_poly_index=19, apc_poly_id=10359 [bus]
+[DEBUG] Instruction 261 has singleton sub: original_poly_index=19, apc_poly_id=10436 [bus]
+[DEBUG] Instruction 263 has singleton sub: original_poly_index=19, apc_poly_id=10542 [bus]
+[DEBUG] Instruction 265 has singleton sub: original_poly_index=19, apc_poly_id=10619 [bus]
+[DEBUG] Instruction 267 has singleton sub: original_poly_index=19, apc_poly_id=10725 [bus]
+[DEBUG] Instruction 269 has singleton sub: original_poly_index=19, apc_poly_id=10802 [bus]
+[DEBUG] Instruction 271 has singleton sub: original_poly_index=19, apc_poly_id=10908 [bus]
+[DEBUG] Instruction 273 has singleton sub: original_poly_index=19, apc_poly_id=10985 [bus]
+[DEBUG] Instruction 275 has singleton sub: original_poly_index=19, apc_poly_id=11091 [bus]
+[DEBUG] Instruction 279 has singleton sub: original_poly_index=20, apc_poly_id=11275 [bus]
+[DEBUG] Instruction 283 has singleton sub: original_poly_index=20, apc_poly_id=11458 [bus]
+[DEBUG] Instruction 287 has singleton sub: original_poly_index=20, apc_poly_id=11641 [bus]
+[DEBUG] Instruction 291 has singleton sub: original_poly_index=20, apc_poly_id=11824 [bus]
+[DEBUG] Instruction 295 has singleton sub: original_poly_index=21, apc_poly_id=12008 [bus]
+[DEBUG] Instruction 299 has singleton sub: original_poly_index=21, apc_poly_id=12191 [bus]
+[DEBUG] Instruction 302 has singleton sub: original_poly_index=22, apc_poly_id=12322 [bus]
+[DEBUG] Instruction 303 has singleton sub: original_poly_index=22, apc_poly_id=12375 [bus]
+[DEBUG] Instruction 306 has singleton sub: original_poly_index=22, apc_poly_id=12505 [bus]
+[DEBUG] Instruction 307 has singleton sub: original_poly_index=22, apc_poly_id=12558 [bus]
+[DEBUG] Instruction 309 has singleton sub: original_poly_index=19, apc_poly_id=12632 [bus]
+[DEBUG] Instruction 311 has singleton sub: original_poly_index=19, apc_poly_id=12738 [bus]
+[DEBUG] Instruction 313 has singleton sub: original_poly_index=19, apc_poly_id=12815 [bus]
+[DEBUG] Instruction 316 has singleton sub: original_poly_index=19, apc_poly_id=12962 [bus]
+[DEBUG] Instruction 320 has singleton sub: original_poly_index=20, apc_poly_id=13146 [bus]
+[DEBUG] Instruction 324 has singleton sub: original_poly_index=20, apc_poly_id=13329 [bus]
+[DEBUG] Instruction 328 has singleton sub: original_poly_index=21, apc_poly_id=13513 [bus]
+[DEBUG] Instruction 332 has singleton sub: original_poly_index=21, apc_poly_id=13696 [bus]
+[DEBUG] Instruction 334 has singleton sub: original_poly_index=19, apc_poly_id=13771 [bus]
+[DEBUG] Instruction 337 has singleton sub: original_poly_index=19, apc_poly_id=13918 [bus]
+[DEBUG] Instruction 339 has singleton sub: original_poly_index=19, apc_poly_id=13995 [bus]
+[DEBUG] Instruction 341 has singleton sub: original_poly_index=19, apc_poly_id=14101 [bus]
+[DEBUG] Instruction 345 has singleton sub: original_poly_index=20, apc_poly_id=14285 [bus]
+[DEBUG] Instruction 348 has singleton sub: original_poly_index=20, apc_poly_id=14427 [bus]
+[DEBUG] Instruction 350 has singleton sub: original_poly_index=22, apc_poly_id=14518 [bus]
+[DEBUG] Instruction 351 has singleton sub: original_poly_index=22, apc_poly_id=14571 [bus]
+[DEBUG] Instruction 354 has singleton sub: original_poly_index=22, apc_poly_id=14701 [bus]
+[DEBUG] Instruction 355 has singleton sub: original_poly_index=22, apc_poly_id=14754 [bus]
+[DEBUG] Instruction 361 has singleton sub: original_poly_index=20, apc_poly_id=15017 [bus]
+[DEBUG] Instruction 365 has singleton sub: original_poly_index=20, apc_poly_id=15200 [bus]
+[DEBUG] Instruction 386 has singleton sub: original_poly_index=22, apc_poly_id=16146 [constraints+bus]
+[DEBUG] Instruction 387 has singleton sub: original_poly_index=22, apc_poly_id=16199 [bus]
+[DEBUG] Instruction 389 has singleton sub: original_poly_index=22, apc_poly_id=16288 [constraints+bus]
+[DEBUG] Instruction 390 has singleton sub: original_poly_index=22, apc_poly_id=16341 [bus]
+[DEBUG] Instruction 395 has singleton sub: original_poly_index=20, apc_poly_id=16563 [bus]
+[DEBUG] Instruction 398 has singleton sub: original_poly_index=20, apc_poly_id=16705 [bus]
+[DEBUG] Instruction 402 has singleton sub: original_poly_index=22, apc_poly_id=16878 [bus]
+[DEBUG] Instruction 403 has singleton sub: original_poly_index=22, apc_poly_id=16931 [bus]
+[DEBUG] Instruction 406 has singleton sub: original_poly_index=22, apc_poly_id=17061 [bus]
+[DEBUG] Instruction 407 has singleton sub: original_poly_index=22, apc_poly_id=17114 [bus]
+[DEBUG] Instruction 412 has singleton sub: original_poly_index=21, apc_poly_id=17337 [bus]
+[DEBUG] Instruction 415 has singleton sub: original_poly_index=21, apc_poly_id=17479 [bus]
+[DEBUG] Instruction 417 has singleton sub: original_poly_index=19, apc_poly_id=17554 [constraints+bus]
+[DEBUG] Instruction 420 has singleton sub: original_poly_index=19, apc_poly_id=17701 [bus]
+[DEBUG] Instruction 422 has singleton sub: original_poly_index=19, apc_poly_id=17778 [constraints+bus]
+[DEBUG] Instruction 424 has singleton sub: original_poly_index=19, apc_poly_id=17884 [bus]
+[DEBUG] Instruction 428 has singleton sub: original_poly_index=22, apc_poly_id=18058 [bus]
+[DEBUG] Instruction 429 has singleton sub: original_poly_index=22, apc_poly_id=18111 [bus]
+[DEBUG] Instruction 431 has singleton sub: original_poly_index=22, apc_poly_id=18200 [bus]
+[DEBUG] Instruction 432 has singleton sub: original_poly_index=22, apc_poly_id=18253 [bus]
+[DEBUG] Instruction 437 has singleton sub: original_poly_index=21, apc_poly_id=18476 [bus]
+[DEBUG] Instruction 440 has singleton sub: original_poly_index=21, apc_poly_id=18618 [bus]
+[DEBUG] Instruction 445 has singleton sub: original_poly_index=20, apc_poly_id=18841 [bus]
+[DEBUG] Instruction 449 has singleton sub: original_poly_index=20, apc_poly_id=19024 [bus]
+[DEBUG] Instruction 676 has singleton sub: original_poly_index=18, apc_poly_id=27516 [constraints+bus]
+[DEBUG] Singleton poly_ids (initially unknown): {3250, 3356, 3445, 3498, 3700, 3753, 3789, 3895, 4003, 4109, 4198, 4251, 4412, 4465, 4501, 4607, 4891, 4944, 4980, 5086, 10070, 10176, 10253, 10359, 10436, 10542, 10619, 10725, 10802, 10908, 10985, 11091, 11275, 11458, 11641, 11824, 12008, 12191, 12322, 12375, 12505, 12558, 12632, 12738, 12815, 12962, 13146, 13329, 13513, 13696, 13771, 13918, 13995, 14101, 14285, 14427, 14518, 14571, 14701, 14754, 15017, 15200, 16146, 16199, 16288, 16341, 16563, 16705, 16878, 16931, 17061, 17114, 17337, 17479, 17554, 17701, 17778, 17884, 18058, 18111, 18200, 18253, 18476, 18618, 18841, 19024, 27516}
+[DEBUG] Initially known poly_ids: 1935 total
+[DEBUG] Initially unknown poly_ids: {3250, 3356, 3445, 3498, 3700, 3753, 3789, 3895, 4003, 4109, 4198, 4251, 4412, 4465, 4501, 4607, 4891, 4944, 4980, 5086, 10070, 10176, 10253, 10359, 10436, 10542, 10619, 10725, 10802, 10908, 10985, 11091, 11275, 11458, 11641, 11824, 12008, 12191, 12322, 12375, 12505, 12558, 12632, 12738, 12815, 12962, 13146, 13329, 13513, 13696, 13771, 13918, 13995, 14101, 14285, 14427, 14518, 14571, 14701, 14754, 15017, 15200, 16146, 16199, 16288, 16341, 16563, 16705, 16878, 16931, 17061, 17114, 17337, 17479, 17554, 17701, 17778, 17884, 18058, 18111, 18200, 18253, 18476, 18618, 18841, 19024, 27516}
+[DEBUG] Pre-opt constraints: 27951 total, 1 filtered (with post-opt poly_ids only)
+[DEBUG] Constraint history: 41127 total, 1328 filtered (with post-opt poly_ids only)
+[DEBUG] === ALL CONSTRAINTS (unknowns named, knowns as 'known') ===
+[DEBUG] --- Pre-optimization constraints ---
+[DEBUG] [pre-opt 0] (cmp_result_676(#27516) * (cmp_result_676(#27516) - 1))
+[DEBUG] --- Post-optimization constraints ---
+[DEBUG] [post-opt 112] (cmp_result_676(#27516) * (cmp_result_676(#27516) - 1))
+[DEBUG] [post-opt 113] (((1 * known) - cmp_result_676(#27516)) * (known - 72))
+[DEBUG] [post-opt 114] (((1 * known) - cmp_result_676(#27516)) * (known - 98))
+[DEBUG] [post-opt 115] (((1 * known) - cmp_result_676(#27516)) * (known - 32))
+[DEBUG] [post-opt 116] ((1 - cmp_result_676(#27516)) * known)
+[DEBUG] [post-opt 117] ((known * (((((known - 72) * (known - 72)) + ((known - 98) * (known - 98))) + ((known - 32) * (known - 32))) + known)) - cmp_result_676(#27516))
+[DEBUG] [post-opt 182] (((7864320 * a__3_386(#16146)) - (15728640 * known)) * ((7864320 * a__3_386(#16146)) - ((15728640 * known) + 1)))
+[DEBUG] [post-opt 183] (((7864320 * a__3_389(#16288)) - (15728640 * known)) * ((7864320 * a__3_389(#16288)) - ((15728640 * known) + 1)))
+[DEBUG] [post-opt 184] ((known - (2 * a__0_417(#17554))) * (known - ((2 * a__0_417(#17554)) + 1)))
+[DEBUG] [post-opt 185] ((known - (2 * a__0_422(#17778))) * (known - ((2 * a__0_422(#17778)) + 1)))
+[DEBUG] --- Constraint history (filtered to post-opt poly_ids) ---
+[DEBUG] [history:initial] (cmp_result_676(#27516) * (cmp_result_676(#27516) - 1))
+[DEBUG] [history:optimize_constraints_1] (cmp_result_676(#27516) * (cmp_result_676(#27516) - 1))
+[DEBUG] [history:optimize_constraints_2] (cmp_result_676(#27516) * (cmp_result_676(#27516) - 1))
+[DEBUG] [history:optimize_constraints_2] ((1 - cmp_result_676(#27516)) * (known - 72))
+[DEBUG] [history:optimize_constraints_2] ((1 - cmp_result_676(#27516)) * (known - 98))
+[DEBUG] [history:optimize_constraints_2] ((1 - cmp_result_676(#27516)) * (known - 32))
+[DEBUG] [history:optimize_constraints_2] ((1 - cmp_result_676(#27516)) * known)
+[DEBUG] [history:optimize_constraints_3] (cmp_result_676(#27516) * (cmp_result_676(#27516) - 1))
+[DEBUG] [history:optimize_constraints_3] ((1 - cmp_result_676(#27516)) * (known - 72))
+[DEBUG] [history:optimize_constraints_3] ((1 - cmp_result_676(#27516)) * (known - 98))
+[DEBUG] [history:optimize_constraints_3] ((1 - cmp_result_676(#27516)) * (known - 32))
+[DEBUG] [history:optimize_constraints_3] ((1 - cmp_result_676(#27516)) * known)
+[DEBUG] [history:optimize_constraints_4] (cmp_result_676(#27516) * (cmp_result_676(#27516) - 1))
+[DEBUG] [history:optimize_constraints_4] ((1 - cmp_result_676(#27516)) * (known - 72))
+[DEBUG] [history:optimize_constraints_4] ((1 - cmp_result_676(#27516)) * (known - 98))
+[DEBUG] [history:optimize_constraints_4] ((1 - cmp_result_676(#27516)) * (known - 32))
+[DEBUG] [history:optimize_constraints_4] ((1 - cmp_result_676(#27516)) * known)
+[DEBUG] [history:inlining] (cmp_result_676(#27516) * (cmp_result_676(#27516) - 1))
+[DEBUG] [history:inlining] ((1 - cmp_result_676(#27516)) * (known - 72))
+[DEBUG] [history:inlining] ((1 - cmp_result_676(#27516)) * (known - 98))
+[DEBUG] [history:inlining] ((1 - cmp_result_676(#27516)) * (known - 32))
+[DEBUG] [history:inlining] ((1 - cmp_result_676(#27516)) * known)
+[DEBUG] [history:rule_based_optimization] (cmp_result_676(#27516) * (cmp_result_676(#27516) - 1))
+[DEBUG] [history:rule_based_optimization] ((1 - cmp_result_676(#27516)) * (known - 72))
+[DEBUG] [history:rule_based_optimization] ((1 - cmp_result_676(#27516)) * (known - 98))
+[DEBUG] [history:rule_based_optimization] ((1 - cmp_result_676(#27516)) * (known - 32))
+[DEBUG] [history:rule_based_optimization] ((1 - cmp_result_676(#27516)) * known)
+[DEBUG] [history:rule_based_optimization] ((known * (((((known - 72) * (known - 72)) + ((known - 98) * (known - 98))) + ((known - 32) * (known - 32))) + known)) - cmp_result_676(#27516))
+[DEBUG] [history:range_constraints] (cmp_result_676(#27516) * (cmp_result_676(#27516) - 1))
+[DEBUG] [history:range_constraints] ((1 - cmp_result_676(#27516)) * (known - 72))
+[DEBUG] [history:range_constraints] ((1 - cmp_result_676(#27516)) * (known - 98))
+[DEBUG] [history:range_constraints] ((1 - cmp_result_676(#27516)) * (known - 32))
+[DEBUG] [history:range_constraints] ((1 - cmp_result_676(#27516)) * known)
+[DEBUG] [history:range_constraints] ((known * (((((known - 72) * (known - 72)) + ((known - 98) * (known - 98))) + ((known - 32) * (known - 32))) + known)) - cmp_result_676(#27516))
+[DEBUG] [history:range_constraints] (((7864320 * a__3_386(#16146)) - (15728640 * known)) * ((7864320 * a__3_386(#16146)) - ((15728640 * known) + 1)))
+[DEBUG] [history:range_constraints] (((7864320 * a__3_389(#16288)) - (15728640 * known)) * ((7864320 * a__3_389(#16288)) - ((15728640 * known) + 1)))
+[DEBUG] [history:range_constraints] ((known - (2 * a__0_417(#17554))) * (known - ((2 * a__0_417(#17554)) + 1)))
+[DEBUG] [history:range_constraints] ((known - (2 * a__0_422(#17778))) * (known - ((2 * a__0_422(#17778)) + 1)))
+[DEBUG] [history:trivial_simplifications] (cmp_result_676(#27516) * (cmp_result_676(#27516) - 1))
+[DEBUG] [history:trivial_simplifications] ((1 - cmp_result_676(#27516)) * (known - 72))
+[DEBUG] [history:trivial_simplifications] ((1 - cmp_result_676(#27516)) * (known - 98))
+[DEBUG] [history:trivial_simplifications] ((1 - cmp_result_676(#27516)) * (known - 32))
+[DEBUG] [history:trivial_simplifications] ((1 - cmp_result_676(#27516)) * known)
+[DEBUG] [history:trivial_simplifications] ((known * (((((known - 72) * (known - 72)) + ((known - 98) * (known - 98))) + ((known - 32) * (known - 32))) + known)) - cmp_result_676(#27516))
+[DEBUG] [history:trivial_simplifications] (((7864320 * a__3_386(#16146)) - (15728640 * known)) * ((7864320 * a__3_386(#16146)) - ((15728640 * known) + 1)))
+[DEBUG] [history:trivial_simplifications] (((7864320 * a__3_389(#16288)) - (15728640 * known)) * ((7864320 * a__3_389(#16288)) - ((15728640 * known) + 1)))
+[DEBUG] [history:trivial_simplifications] ((known - (2 * a__0_417(#17554))) * (known - ((2 * a__0_417(#17554)) + 1)))
+[DEBUG] [history:trivial_simplifications] ((known - (2 * a__0_422(#17778))) * (known - ((2 * a__0_422(#17778)) + 1)))
+[DEBUG] === END CONSTRAINTS ===
+[DEBUG] Total constraints for solving: 1516 (pre-opt: 1, post-opt: 187, history: 1328)
+[DEBUG] === CONSTRAINT SOLVABILITY ANALYSIS ===
+[DEBUG] [pre-opt 0] (cmp_result_676(#27516) * (cmp_result_676(#27516) - 1)) => CANNOT SOLVE: all unknowns at degree 2
+[DEBUG] [post-opt 113] (((1 * known) - cmp_result_676(#27516)) * (known - 72)) => CAN SOLVE poly_id 27516
+[DEBUG] [post-opt 182] (((7864320 * a__3_386(#16146)) - (15728640 * known)) * ((7864320 * a__3_386(#16146)) - ((15728640 * known) + 1))) => CANNOT SOLVE: all unknowns at degree 2
+[DEBUG] [post-opt 183] (((7864320 * a__3_389(#16288)) - (15728640 * known)) * ((7864320 * a__3_389(#16288)) - ((15728640 * known) + 1))) => CANNOT SOLVE: all unknowns at degree 2
+[DEBUG] [post-opt 184] ((known - (2 * a__0_417(#17554))) * (known - ((2 * a__0_417(#17554)) + 1))) => CANNOT SOLVE: all unknowns at degree 2
+[DEBUG] [post-opt 185] ((known - (2 * a__0_422(#17778))) * (known - ((2 * a__0_422(#17778)) + 1))) => CANNOT SOLVE: all unknowns at degree 2
+[DEBUG] Summary: 36 constraints can solve, 23 cannot (showing unique patterns only)
+[DEBUG] === END SOLVABILITY ANALYSIS ===
+[DEBUG] Iteration 1: [post-opt 113] solves poly_id 27516 (expr: (((1 * known) - cmp_result_676(#27516)) * (known - 72)))
+[DEBUG] After iteration 1: 86 unknown, 1936 known
+[DEBUG] Iteration 2: No progress, stopping
+[DEBUG] === FINAL RESULTS ===
+[DEBUG] Solved singleton poly_ids: {27516}
+[DEBUG] Unsolved singleton poly_ids: {3250, 3356, 3445, 3498, 3700, 3753, 3789, 3895, 4003, 4109, 4198, 4251, 4412, 4465, 4501, 4607, 4891, 4944, 4980, 5086, 10070, 10176, 10253, 10359, 10436, 10542, 10619, 10725, 10802, 10908, 10985, 11091, 11275, 11458, 11641, 11824, 12008, 12191, 12322, 12375, 12505, 12558, 12632, 12738, 12815, 12962, 13146, 13329, 13513, 13696, 13771, 13918, 13995, 14101, 14285, 14427, 14518, 14571, 14701, 14754, 15017, 15200, 16146, 16199, 16288, 16341, 16563, 16705, 16878, 16931, 17061, 17114, 17337, 17479, 17554, 17701, 17778, 17884, 18058, 18111, 18200, 18253, 18476, 18618, 18841, 19024}
+[DEBUG] FAILURE: 86 singleton poly_ids could not be solved
+[DEBUG] === UNSOLVED POLY_ID CATEGORIES ===
+[DEBUG] Only in bus interactions (82 poly_ids): [3250, 3356, 3445, 3498, 3700, 3753, 3789, 3895, 4003, 4109, 4198, 4251, 4412, 4465, 4501, 4607, 4891, 4944, 4980, 5086, 10070, 10176, 10253, 10359, 10436, 10542, 10619, 10725, 10802, 10908, 10985, 11091, 11275, 11458, 11641, 11824, 12008, 12191, 12322, 12375, 12505, 12558, 12632, 12738, 12815, 12962, 13146, 13329, 13513, 13696, 13771, 13918, 13995, 14101, 14285, 14427, 14518, 14571, 14701, 14754, 15017, 15200, 16199, 16341, 16563, 16705, 16878, 16931, 17061, 17114, 17337, 17479, 17701, 17884, 18058, 18111, 18200, 18253, 18476, 18618, 18841, 19024]
+[DEBUG] In constraints (4 poly_ids): [16146, 16288, 17554, 17778]
+[DEBUG] In neither (0 poly_ids): []
+[DEBUG] === BUS INTERACTIONS for bus-only poly_ids ===
+[DEBUG] Poly_id 3250 appears in bus interactions:
+  [bus 206] (id=6, mult=is_valid * 1, args=[a__0_84, a__0_83, 2 * a__0_85 - (a__0_83 + a__0_84), 1])
+  [bus 1414] (id=3, mult=is_valid * 1, args=[a__3_82 - 128 * a__0_83, 7])
+[DEBUG] Poly_id 3356 appears in bus interactions:
+  [bus 206] (id=6, mult=is_valid * 1, args=[a__0_84, a__0_83, 2 * a__0_85 - (a__0_83 + a__0_84), 1])
+  [bus 255] (id=6, mult=is_valid * 1, args=[a__0_106, a__0_85, a__0_126, 1])
+[DEBUG] Poly_id 3445 appears in bus interactions:
+  [bus 207] (id=6, mult=is_valid * 1, args=[a__0_86, a__0_87, 2 * a__0_88 - (a__0_86 + a__0_87), 1])
+  [bus 1415] (id=3, mult=is_valid * 1, args=[a__3_80 - 128 * a__0_87, 7])
+[DEBUG] Poly_id 3498 appears in bus interactions:
+  [bus 207] (id=6, mult=is_valid * 1, args=[a__0_86, a__0_87, 2 * a__0_88 - (a__0_86 + a__0_87), 1])
+  [bus 251] (id=6, mult=is_valid * 1, args=[a__0_107, a__0_88, a__0_125, 1])
+[DEBUG] Poly_id 3700 appears in bus interactions:
+  [bus 217] (id=6, mult=is_valid * 1, args=[a__0_92, a__0_93, 2 * a__0_94 - (a__0_92 + a__0_93), 1])
+  [bus 1420] (id=3, mult=is_valid * 1, args=[a__3_90 - 128 * a__0_93, 7])
+[DEBUG] ... and 77 more bus-only poly_ids
+[DEBUG] === DIAGNOSTIC: Why constraint poly_ids are unsolved ===
+[DEBUG] Poly_id 16146 appears in:
+  [post-opt 182] (((7864320 * a__3_386(#16146)) - (15728640 * known)) * ((7864320 * a__3_386(#16146)) - ((15728640 * known) + 1))) | deg=2, unknowns=[(16146, 2)], reason: degree 2 (not linear)
+  [range_constraints] (((7864320 * a__3_386(#16146)) - (15728640 * known)) * ((7864320 * a__3_386(#16146)) - ((15728640 * known) + 1))) | deg=2, unknowns=[(16146, 2)], reason: degree 2 (not linear)
+  [trivial_simplifications] (((7864320 * a__3_386(#16146)) - (15728640 * known)) * ((7864320 * a__3_386(#16146)) - ((15728640 * known) + 1))) | deg=2, unknowns=[(16146, 2)], reason: degree 2 (not linear)
+[DEBUG] Poly_id 16288 appears in:
+  [post-opt 183] (((7864320 * a__3_389(#16288)) - (15728640 * known)) * ((7864320 * a__3_389(#16288)) - ((15728640 * known) + 1))) | deg=2, unknowns=[(16288, 2)], reason: degree 2 (not linear)
+  [range_constraints] (((7864320 * a__3_389(#16288)) - (15728640 * known)) * ((7864320 * a__3_389(#16288)) - ((15728640 * known) + 1))) | deg=2, unknowns=[(16288, 2)], reason: degree 2 (not linear)
+  [trivial_simplifications] (((7864320 * a__3_389(#16288)) - (15728640 * known)) * ((7864320 * a__3_389(#16288)) - ((15728640 * known) + 1))) | deg=2, unknowns=[(16288, 2)], reason: degree 2 (not linear)
+[DEBUG] Poly_id 17554 appears in:
+  [post-opt 184] ((known - (2 * a__0_417(#17554))) * (known - ((2 * a__0_417(#17554)) + 1))) | deg=2, unknowns=[(17554, 2)], reason: degree 2 (not linear)
+  [range_constraints] ((known - (2 * a__0_417(#17554))) * (known - ((2 * a__0_417(#17554)) + 1))) | deg=2, unknowns=[(17554, 2)], reason: degree 2 (not linear)
+  [trivial_simplifications] ((known - (2 * a__0_417(#17554))) * (known - ((2 * a__0_417(#17554)) + 1))) | deg=2, unknowns=[(17554, 2)], reason: degree 2 (not linear)
+[DEBUG] Poly_id 17778 appears in:
+  [post-opt 185] ((known - (2 * a__0_422(#17778))) * (known - ((2 * a__0_422(#17778)) + 1))) | deg=2, unknowns=[(17778, 2)], reason: degree 2 (not linear)
+  [range_constraints] ((known - (2 * a__0_422(#17778))) * (known - ((2 * a__0_422(#17778)) + 1))) | deg=2, unknowns=[(17778, 2)], reason: degree 2 (not linear)
+  [trivial_simplifications] ((known - (2 * a__0_422(#17778))) * (known - ((2 * a__0_422(#17778)) + 1))) | deg=2, unknowns=[(17778, 2)], reason: degree 2 (not linear)
+test tests::keccak_small_prove_mock ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 50 filtered out; finished in 16.48s
+
