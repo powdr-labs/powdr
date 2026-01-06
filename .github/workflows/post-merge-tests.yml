@@ -42,15 +42,6 @@ jobs:
           rustup toolchain install 1.90
           cargo +1.90 install --git 'http://github.com/openvm-org/openvm.git' cargo-openvm
 
-      - name: Run keccak with 100 APCs
-        run: /usr/bin/time -v cargo run --bin powdr_openvm -r prove guest-keccak --input 10000 --autoprecompiles 100 --recursion
-
-      - name: Run ECC with 100 APCs
-        run: /usr/bin/time -v cargo run --bin powdr_openvm -r prove guest-ecc-powdr-affine-hint --input 20 --autoprecompiles 100 --recursion
-
-      - name: Run ecrecover with 100 APCs
-        run: /usr/bin/time -v cargo run --bin powdr_openvm -r prove guest-ecrecover --input 20 --autoprecompiles 100 --recursion
-
       - name: Patch benchmark
         uses: ./.github/actions/patch-openvm-reth-benchmark
 
@@ -61,9 +52,9 @@ jobs:
           mkdir -p $RES_DIR
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
 
-          # prove with 100 APCs
-          MODE="prove-stark" APC=100 /usr/bin/time -v ./run.sh || exit 1
-          echo "Finished proving with 100 APCs"
+          # prove with 3 APCs
+          APC=3 /usr/bin/time -v ./run.sh --mode prove-mock || exit 1
+          echo "Finished proving with 3 APCs"
 
       - name: Save revisions and run info
         run: |

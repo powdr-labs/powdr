@@ -511,7 +511,9 @@ impl PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>> for PowdrExecutor 
         let mut original_arenas = self.original_arenas_cpu.as_ref().borrow_mut();
 
         // Recover an estimate of how many times the APC is called in this segment based on the current ctx height and width
-        let apc_call_count = || ctx.trace_buffer.len() / ctx.width;
+        let apc_call_count = || {
+            ctx.trace_buffer.len() / ctx.width
+        };
 
         original_arenas.ensure_initialized(apc_call_count, &self.air_by_opcode_id, &self.apc);
         // execute the original instructions one by one
@@ -584,8 +586,10 @@ impl PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExecutor {
         let apc_call_count = || {
             let apc_width = self.apc.machine().main_columns().count();
             let bytes_per_row = apc_width * std::mem::size_of::<u32>();
-            let buf = ctx.records_buffer.get_ref();
-            buf.len() / bytes_per_row
+            // capacity() returns total buffer size including MAX_ALIGNMENT (32 bytes)
+            // Subtract MAX_ALIGNMENT to get the actual allocated size for data
+            let capacity = ctx.capacity().saturating_sub(32);
+            capacity / bytes_per_row
         };
 
         original_arenas.ensure_initialized(apc_call_count, &self.air_by_opcode_id, &self.apc);
