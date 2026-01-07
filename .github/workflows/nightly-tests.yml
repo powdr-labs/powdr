@@ -101,7 +101,7 @@ jobs:
           summary-always: true
 
   test_apc:
-    runs-on: self-hosted
+    runs-on: server-dev
 
     steps:
       - uses: actions/checkout@v4
