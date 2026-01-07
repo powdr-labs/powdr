@@ -327,12 +327,12 @@ crepe! {
     // e = head + tail, and both head, tail >= 0
     struct MinimalRangeAlgebraicConstraintCandidate(Expr);
     MinimalRangeAlgebraicConstraintCandidate(e) <-
+      AlgebraicConstraint(e),
       ExpressionSumHeadTail(e, head, tail),
       RangeConstraintOnExpression(e, e_rc),
       (e_rc.range().1 < T::from(-1)),
       NonNegativeExpression(head),
-      NonNegativeExpression(tail),
-      AlgebraicConstraint(e);
+      NonNegativeExpression(tail);
 
     // Find a tail expression that has range constraint [0, a] with a < P,
     // head + tail = 0, and both head, tail >= 0
