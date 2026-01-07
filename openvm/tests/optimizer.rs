@@ -195,7 +195,7 @@ fn test_optimize_reth_op() {
     "#]]
     .assert_debug_eq(&machine.bus_interactions.len());
     expect![[r#"
-        315
+        313
     "#]]
     .assert_debug_eq(&machine.constraints.len());
 }
