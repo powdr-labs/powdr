@@ -180,6 +180,7 @@ crepe! {
       (coeff != T::zero());
 
     //////////////////// RANGE PROPERTIES OF EXPRESSIONS //////////////////////
+    // NonNegativeExpression(e) => range of e is [0, a] for some a < P - 1
     struct NonNegativeExpression(Expr);
     NonNegativeExpression(e) <-
       RangeConstraintOnExpression(e, e_rc),
