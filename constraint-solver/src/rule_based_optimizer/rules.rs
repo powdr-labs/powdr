@@ -316,7 +316,7 @@ crepe! {
     ///////////////////////////////// MINIMAL RANGE //////////////////////////
 
     // If an algebraic constraint e = 0 has the following properties:
-    // 1. expression e has range constraint [0, a] with a < P,
+    // 1. expression e has range constraint [0, a] with a < P - 1,
     // 2. e = head + tail, and both head, tail >= 0,
     // 3. head is a linear expression coeff * var,
     // then both head and tail must be zero.
