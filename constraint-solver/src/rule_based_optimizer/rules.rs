@@ -127,27 +127,30 @@ crepe! {
       LinearExpression(head, _, _),
       IsAffine(tail);
 
-    // HasSummand(e, summand, rest) => e = summand + rest
-    struct HasSummand(Expr, Expr, Expr);
-    HasSummand(e, summand, rest) <-
-      ExpressionSumHeadTail(e, summand, rest);
-    HasSummand(e, summand, rest) <-
-      ExpressionSumHeadTail(e, head, tail1),
-      ExpressionSumHeadTail(rest, head, tail2),
-      HasSummand(tail1, summand, tail2);
+    // HasSummand(e, summand) => summand is one of the summands of e.
+    struct HasSummand(Expr, Expr);
+    HasSummand(e, summand) <-
+      ExpressionSumHeadTail(e, summand, _);
+    HasSummand(e, summand) <-
+      ExpressionSumHeadTail(e, _, tail),
+      HasSummand(tail, summand);
 
-    // SplitLinearSummand(e1, e2, coeff, var) =>
-    //   e1 = e2 + coeff * var
-    // Note that var can also appear in a non-linear part of e2.
-    struct SplitLinearSummand<T: FieldElement>(Expr, Expr, T, Var);
-    SplitLinearSummand(e1, e2, coeff, var) <-
-      HasSummand(e1, summand, e2),
-      LinearExpression(summand, var, coeff);
+    // DifferBySummand(e1, e2, s) => e1 = e2 + s and `s` is not a sum.
+    // Note that `e1` and `e2` must "pre-exist" as expressions, i.e.
+    // this rule cannot be used to split out a linear summand
+    // from an expression.
+    struct DifferBySummand(Expr, Expr, Expr);
+    DifferBySummand(e1, e2, s) <-
+      ExpressionSumHeadTail(e1, s, e2);
+    DifferBySummand(e1, e2, s) <-
+      ExpressionSumHeadTail(e1, head, tail1),
+      ExpressionSumHeadTail(e2, head, tail2),
+      DifferBySummand(tail1, tail2, s);
 
     // HasProductSummand(e, l, r) => e contains a summand of the form l * r
     struct HasProductSummand(Expr, Expr, Expr);
     HasProductSummand(e, l, r) <-
-      HasSummand(e, summand, _),
+      HasSummand(e, summand),
       Product(summand, l, r);
     HasProductSummand(e, r, l) <- HasProductSummand(e, l, r);
 
@@ -354,7 +357,8 @@ crepe! {
     NegatedDiffMarkerConstraint(e, diff_marker, l, v, result, n + 1) <-
       ProductConstraint(e, l, r),
         NegatedDiffMarkerConstraint(_, _, diff_marker_expr2, _, result, n),
-        SplitLinearSummand(l, diff_marker_expr2, T::from(-1), diff_marker),
+        DifferBySummand(l, diff_marker_expr2, diff_marker_e),
+          LinearExpression(diff_marker_e, diff_marker, T::from(-1)),
       PlusMinusResult(r, r2, result),
       LinearExpression(r2, v, T::from(-1));
 
@@ -367,14 +371,16 @@ crepe! {
     NegatedDiffMarkerConstraintFinal(e, diff_marker, result, n + 1) <-
       ProductConstraint(e, l, r),
         NegatedDiffMarkerConstraint(_, _, diff_marker_expr2, _, result, n),
-        SplitLinearSummand(l, diff_marker_expr2, T::from(-1), diff_marker),
+        DifferBySummand(l, diff_marker_expr2, diff_marker_e),
+          LinearExpression(diff_marker_e, diff_marker, T::from(-1)),
       LinearExpression(r, result, T::from(1));
 
     struct NegatedDiffMarkerConstraintFinalNegated(Expr, Var, Var, Var, u32);
     NegatedDiffMarkerConstraintFinalNegated(e, diff_marker, v, result, n + 1) <-
       ProductConstraint(e, l, r),
         NegatedDiffMarkerConstraint(_, _, diff_marker_expr2, _, result, n),
-        SplitLinearSummand(l, diff_marker_expr2, T::from(-1), diff_marker),
+        DifferBySummand(l, diff_marker_expr2, diff_marker_e),
+          LinearExpression(diff_marker_e, diff_marker, T::from(-1)),
       PlusMinusResult(r, r2, result),
       AffineExpression(r2, T::from(-1), v, T::from(1));
 
