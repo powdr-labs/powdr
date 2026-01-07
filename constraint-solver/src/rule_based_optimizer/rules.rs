@@ -118,17 +118,39 @@ crepe! {
     Expression(head) <- ExpressionSumHeadTail(_, head, _);
     Expression(tail) <- ExpressionSumHeadTail(_, _, tail);
 
+    // IsAffine(e) => e is an affine expression, i.e. does not have super-linear parts.
+    struct IsAffine(Expr);
+    IsAffine(e) <-
+      Constant(e, _);
+    IsAffine(e) <-
+      ExpressionSumHeadTail(e, head, tail),
+      LinearExpression(head, _, _),
+      IsAffine(tail);
+
+    // HasSummand(e, summand, rest) => e = summand + rest
+    struct HasSummand(Expr, Expr, Expr);
+    HasSummand(e, summand, rest) <-
+      ExpressionSumHeadTail(e, summand, rest);
+    HasSummand(e, summand, rest) <-
+      HasSummand(tail1, summand, tail2),
+      ExpressionSumHeadTail(e, head, tail1),
+      ExpressionSumHeadTail(rest, head, tail2)
+      ;
+
+    // SplitLinearSummand(e1, e2, coeff, var) =>
+    //   e1 = e2 + coeff * var
+    // Note that var can also appear in a non-linear part of e2.
+    struct SplitLinearSummand<T: FieldElement>(Expr, Expr, T, Var);
+    SplitLinearSummand(e1, e2, coeff, var) <-
+      HasSummand(e1, summand, e2),
+      LinearExpression(summand, var, coeff);
+
     // HasProductSummand(e, l, r) => e contains a summand of the form l * r
     struct HasProductSummand(Expr, Expr, Expr);
     HasProductSummand(e, l, r) <-
-      ExpressionSumHeadTail(e, head, _),
-      Product(head, l, r);
-    HasProductSummand(e, l, r) <-
-      ExpressionSumHeadTail(e, _, tail),
-      HasProductSummand(tail, l, r);
+      HasSummand(e, summand, _),
+      Product(summand, l, r);
     HasProductSummand(e, r, l) <- HasProductSummand(e, l, r);
-    Expression(l) <- HasProductSummand(_, l, _);
-    Expression(r) <- HasProductSummand(_, _, r);
 
     // ProductConstraint(e, l, r) => e is an algebraic constraint of the form l * r = 0
     struct ProductConstraint(Expr, Expr, Expr);
