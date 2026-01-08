@@ -355,11 +355,14 @@ crepe! {
     struct MinimalRangeAlgebraicConstraintCandidate(Expr);
     MinimalRangeAlgebraicConstraintCandidate(e) <-
       AlgebraicConstraint(e),
-      ExpressionSumHeadTail(e, head, tail),
       RangeConstraintOnExpression(e, e_rc),
       (e_rc.range().1 < T::from(-1)),
+      ExpressionSumHeadTail(e, head, tail),
       NonNegativeExpression(head),
-      NonNegativeExpression(tail);
+      NonNegativeExpression(tail),
+      RangeConstraintOnExpression(head, rc_head),
+      RangeConstraintOnExpression(tail, rc_tail),
+      (rc_head.combine_sum(&rc_tail).range().1 < T::from(-1));
 
     // Find a tail expression that has range constraint [0, a] with a < P,
     // head + tail = 0, and both head, tail >= 0
@@ -370,7 +373,10 @@ crepe! {
       (e_rc.range().1 < T::from(-1)),
       ExpressionSumHeadTail(e, head, tail),
       NonNegativeExpression(head),
-      NonNegativeExpression(tail);
+      NonNegativeExpression(tail),
+      RangeConstraintOnExpression(head, rc_head),
+      RangeConstraintOnExpression(tail, rc_tail),
+      (rc_head.combine_sum(&rc_tail).range().1 < T::from(-1));
 
 
     struct MinimalRangeZeroDeducible<T: FieldElement>(Expr, Expr,Expr, Var, T);
