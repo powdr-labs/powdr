@@ -347,6 +347,7 @@ crepe! {
     // 1. expression e has range constraint [0, a] with a < P - 1,
     // 2. e = head + tail, and both head, tail >= 0,
     // 3. head is a linear expression coeff * var,
+    // 4. range of (head + tail) is [0, b] with b < P - 1,
     // then both head and tail must be zero.
     // This rule replaces the variable var by zero.
 
