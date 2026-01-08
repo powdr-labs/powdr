@@ -3,7 +3,10 @@ use std::cmp::Ordering;
 use derivative::Derivative;
 use itertools::Itertools;
 
-use crate::execution::{ExecutionState, OptimisticConstraintEvaluator, OptimisticConstraints};
+use crate::execution::{
+    evaluator::OptimisticConstraintFailed, ExecutionState, OptimisticConstraintEvaluator,
+    OptimisticConstraints,
+};
 
 #[derive(Derivative)]
 #[derivative(Default(bound = ""))]
@@ -11,7 +14,7 @@ pub struct ApcCandidates<E: ExecutionState, A, S> {
     candidates: Vec<ApcCandidate<E, A, S>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Output<A, S> {
     pub from: S,
     pub to: S,
@@ -51,10 +54,12 @@ impl<E: ExecutionState, A: Apc, S: Snapshot> ApcCandidates<E, A, S> {
                     }
                     match candidate.remaining_instr_count == 0 {
                         false => {
+                            println!("continue inside candidate");
                             // We're in the middle of the block, continue
                             candidate.remaining_instr_count -= 1;
                         }
                         true => {
+                            println!("confirmed candidate!");
                             // We're done with this block, confirm it
                             let snapshot = snapshot.get_or_insert_with(&snapshot_callback);
                             candidate.status = CandidateStatus::Done(snapshot.clone());
@@ -135,8 +140,16 @@ impl<E: ExecutionState, A: Apc, S: Snapshot> ApcCandidates<E, A, S> {
             .collect()
     }
 
-    pub fn insert(&mut self, apc_candidate: ApcCandidate<E, A, S>) {
+    pub fn try_insert(
+        &mut self,
+        state: &E,
+        apc: A,
+        optimistic_constraints: OptimisticConstraints<E::RegisterAddress, E::Value>,
+        snapshot: impl Fn() -> S,
+    ) -> Result<(), OptimisticConstraintFailed> {
+        let apc_candidate = ApcCandidate::try_new(state, apc, optimistic_constraints, snapshot)?;
         self.candidates.push(apc_candidate);
+        Ok(())
     }
 
     fn candidate_range(candidate: &ApcCandidate<E, A, S>) -> (usize, usize) {
@@ -153,9 +166,10 @@ impl<E: ExecutionState, A: Apc, S: Snapshot> ApcCandidates<E, A, S> {
     /// Abort all candidates that are in progress.
     /// This is useful at the end of a segment, where some candidates being in progress block other candidates that are done from being extracted.
     /// Since we reached the end of the segment, we know that the candidates that are in progress will not be valid, so it's safe to drop them.
-    pub fn abort_in_progress(&mut self) -> Vec<ApcCandidate<E, A, S>> {
+    pub fn abort_in_progress(&mut self) -> Vec<A> {
         self.candidates
             .extract_if(.., |f| matches!(f.status, CandidateStatus::InProgress(_)))
+            .map(|candidate| candidate.apc)
             .collect()
     }
 
@@ -190,7 +204,7 @@ impl PartialOrd for CandidateRank {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct ApcCandidate<E: ExecutionState, A, S> {
+struct ApcCandidate<E: ExecutionState, A, S> {
     /// The number of remaining instructions to run
     /// TODO: correlates with the counter inside the evaluator, could be unified
     remaining_instr_count: usize,
@@ -216,18 +230,22 @@ pub trait Snapshot: Clone {
 }
 
 impl<E: ExecutionState, A: Apc, S> ApcCandidate<E, A, S> {
-    pub fn new(
+    /// Try to create a new candidate.
+    /// Returns an error if an optimistic constraint fails on the current state
+    pub fn try_new(
+        state: &E,
         apc: A,
         conditions: OptimisticConstraints<E::RegisterAddress, E::Value>,
-        snapshot: S,
-    ) -> Self {
-        ApcCandidate {
-            // TODO: this is only true for blocks that are a contiguous range
-            remaining_instr_count: apc.cycle_count(),
+        snapshot: impl Fn() -> S,
+    ) -> Result<Self, OptimisticConstraintFailed> {
+        let mut evaluator = OptimisticConstraintEvaluator::new(conditions);
+        evaluator.try_next_execution_step(state)?;
+        Ok(ApcCandidate {
+            remaining_instr_count: apc.cycle_count() - 1,
             apc,
-            snapshot,
-            status: CandidateStatus::InProgress(OptimisticConstraintEvaluator::new(conditions)),
-        }
+            snapshot: snapshot(),
+            status: CandidateStatus::InProgress(evaluator),
+        })
     }
 }
 
@@ -324,7 +342,7 @@ mod tests {
         }
     }
 
-    #[derive(Clone, PartialEq, Debug)]
+    #[derive(Clone, PartialEq, Debug, Copy)]
     struct TestSnapshot {
         pc: usize,
     }
@@ -342,9 +360,9 @@ mod tests {
     fn incr(
         candidates: &mut ApcCandidates<TestExecutionState, TestApc, TestSnapshot>,
         state: &mut TestExecutionState,
-    ) -> Vec<ApcCandidate<TestExecutionState, TestApc, TestSnapshot>> {
-        candidates.check_conditions(state, || state.snap());
+    ) -> Vec<Output<TestApc, TestSnapshot>> {
         state.incr();
+        candidates.check_conditions(state, || state.snap());
         candidates.extract_candidates()
     }
 
@@ -356,20 +374,20 @@ mod tests {
         let apc = a(3).p(1);
         let snapshot = s(0);
         let final_snapshot = s(3);
-        // it will be checked in 4 steps, because we have conditions on the state before and after
-        candidates.insert(ApcCandidate::new(apc, OptimisticConstraints::empty(), s(0)));
+        // it will be checked in 4 steps, because we have conditions on the state before and after. The first check is included in `try_insert`.
+        candidates
+            .try_insert(&state, apc, OptimisticConstraints::empty(), || s(0))
+            .unwrap();
         assert!(incr(&mut candidates, &mut state).is_empty());
         assert!(incr(&mut candidates, &mut state).is_empty());
-        assert!(incr(&mut candidates, &mut state).is_empty());
-        let candidates = incr(&mut candidates, &mut state);
-        assert_eq!(candidates.len(), 1);
+        let output = incr(&mut candidates, &mut state);
+        assert_eq!(output.len(), 1);
         assert_eq!(
-            candidates[0],
-            ApcCandidate {
-                remaining_instr_count: 0,
+            output[0],
+            Output {
                 apc,
-                snapshot,
-                status: CandidateStatus::Done(final_snapshot)
+                from: snapshot,
+                to: final_snapshot,
             }
         );
     }
@@ -388,9 +406,9 @@ mod tests {
                 }),
                 right: OptimisticExpression::Number(99),
             }]);
-        candidates.insert(ApcCandidate::new(apc, failing_constraints, s(0)));
-        assert!(incr(&mut candidates, &mut state).is_empty());
-        assert_eq!(candidates.count_in_progress(), 1);
+        candidates
+            .try_insert(&state, apc, failing_constraints, || s(0))
+            .unwrap();
         assert!(incr(&mut candidates, &mut state).is_empty());
         assert_eq!(candidates.count_in_progress(), 1);
         let extracted = incr(&mut candidates, &mut state);
@@ -408,28 +426,29 @@ mod tests {
         let high_priority = a(3).p(2);
         let snapshot = s(0);
         let final_snapshot = s(3);
-        candidates.insert(ApcCandidate::new(
-            low_priority,
-            OptimisticConstraints::empty(),
-            s(0),
-        ));
-        candidates.insert(ApcCandidate::new(
-            high_priority,
-            OptimisticConstraints::empty(),
-            s(0),
-        ));
+        candidates
+            .try_insert(&state, low_priority, OptimisticConstraints::empty(), || {
+                s(0)
+            })
+            .unwrap();
+        candidates
+            .try_insert(
+                &state,
+                high_priority,
+                OptimisticConstraints::empty(),
+                || s(0),
+            )
+            .unwrap();
         assert!(incr(&mut candidates, &mut state).is_empty());
         assert!(incr(&mut candidates, &mut state).is_empty());
-        assert!(incr(&mut candidates, &mut state).is_empty());
-        let candidates = incr(&mut candidates, &mut state);
-        assert_eq!(candidates.len(), 1);
+        let output = incr(&mut candidates, &mut state);
+        assert_eq!(output.len(), 1);
         assert_eq!(
-            candidates[0],
-            ApcCandidate {
-                remaining_instr_count: 0,
+            output[0],
+            Output {
                 apc: high_priority,
-                snapshot,
-                status: CandidateStatus::Done(final_snapshot)
+                from: snapshot,
+                to: final_snapshot
             }
         );
     }
@@ -445,17 +464,19 @@ mod tests {
         let snapshot: TestSnapshot = s(0);
         // The final snapshot is the one at the end of the high priority apc, since it succeeds
         let final_snapshot = s(4);
-        candidates.insert(ApcCandidate::new(
-            low_priority,
-            OptimisticConstraints::empty(),
-            s(0),
-        ));
-        candidates.insert(ApcCandidate::new(
-            high_priority,
-            OptimisticConstraints::empty(),
-            s(0),
-        ));
-        assert!(incr(&mut candidates, &mut state).is_empty());
+        candidates
+            .try_insert(&state, low_priority, OptimisticConstraints::empty(), || {
+                s(0)
+            })
+            .unwrap();
+        candidates
+            .try_insert(
+                &state,
+                high_priority,
+                OptimisticConstraints::empty(),
+                || s(0),
+            )
+            .unwrap();
         assert!(incr(&mut candidates, &mut state).is_empty());
         assert!(incr(&mut candidates, &mut state).is_empty());
         // Both are still running
@@ -463,15 +484,14 @@ mod tests {
         assert!(incr(&mut candidates, &mut state).is_empty());
         // The first apc is done
         assert_eq!(candidates.count_done(), 1);
-        let candidates = incr(&mut candidates, &mut state);
-        assert_eq!(candidates.len(), 1);
+        let output = incr(&mut candidates, &mut state);
+        assert_eq!(output.len(), 1);
         assert_eq!(
-            candidates[0],
-            ApcCandidate {
-                remaining_instr_count: 0,
+            output[0],
+            Output {
                 apc: high_priority,
-                snapshot,
-                status: CandidateStatus::Done(final_snapshot)
+                from: snapshot,
+                to: final_snapshot,
             }
         );
     }
@@ -487,38 +507,39 @@ mod tests {
         let snapshot: TestSnapshot = s(0);
         // The final snapshot is the one at the end of the low priority apc, as the other one failed
         let final_snapshot = s(3);
-        candidates.insert(ApcCandidate::new(
-            low_priority,
-            OptimisticConstraints::empty(),
-            s(0),
-        ));
+        candidates
+            .try_insert(&state, low_priority, OptimisticConstraints::empty(), || {
+                s(0)
+            })
+            .unwrap();
         // The high priority candidate requires a jump to pc 1234 for the last cycle. This means the pc at step 3 (before instruction 4) should be 1234.
-        candidates.insert(ApcCandidate::new(
-            high_priority,
-            OptimisticConstraints::from_constraints(vec![OptimisticConstraint {
-                left: OptimisticExpression::Literal(OptimisticLiteral {
-                    instr_idx: 3,
-                    val: crate::execution::LocalOptimisticLiteral::Pc,
-                }),
-                right: OptimisticExpression::Number(1234),
-            }]),
-            s(0),
-        ));
-        assert!(incr(&mut candidates, &mut state).is_empty());
+        candidates
+            .try_insert(
+                &state,
+                high_priority,
+                OptimisticConstraints::from_constraints(vec![OptimisticConstraint {
+                    left: OptimisticExpression::Literal(OptimisticLiteral {
+                        instr_idx: 3,
+                        val: crate::execution::LocalOptimisticLiteral::Pc,
+                    }),
+                    right: OptimisticExpression::Number(1234),
+                }]),
+                || s(0),
+            )
+            .unwrap();
         assert!(incr(&mut candidates, &mut state).is_empty());
         assert!(incr(&mut candidates, &mut state).is_empty());
         // Both apcs are still running
         assert_eq!(candidates.count_done(), 0);
         // In this check, the low priority apc completes and the high priority one fails (as the jump did not happen)
-        let candidates = incr(&mut candidates, &mut state);
-        assert_eq!(candidates.len(), 1);
+        let output = incr(&mut candidates, &mut state);
+        assert_eq!(output.len(), 1);
         assert_eq!(
-            candidates[0],
-            ApcCandidate {
-                remaining_instr_count: 0,
+            output[0],
+            Output {
                 apc: low_priority,
-                snapshot,
-                status: CandidateStatus::Done(final_snapshot)
+                from: snapshot,
+                to: final_snapshot,
             }
         );
     }
@@ -534,38 +555,37 @@ mod tests {
         let high_priority_snapshot = s(1);
         let final_snapshot = s(4);
         // insert the low priority apc
-        candidates.insert(ApcCandidate::new(
-            low_priority,
-            OptimisticConstraints::empty(),
-            low_priority_snapshot,
-        ));
+        candidates
+            .try_insert(&state, low_priority, OptimisticConstraints::empty(), || {
+                low_priority_snapshot
+            })
+            .unwrap();
         assert!(incr(&mut candidates, &mut state).is_empty());
         // candidate is still running
         assert_eq!(candidates.count_in_progress(), 1);
         // insert the high priority apc
-        candidates.insert(ApcCandidate::new(
-            high_priority,
-            OptimisticConstraints::empty(),
-            high_priority_snapshot.clone(),
-        ));
-        assert!(incr(&mut candidates, &mut state).is_empty());
-        // both candidates are running
-        assert_eq!(candidates.count_in_progress(), 2);
+        candidates
+            .try_insert(
+                &state,
+                high_priority,
+                OptimisticConstraints::empty(),
+                || high_priority_snapshot,
+            )
+            .unwrap();
         assert!(incr(&mut candidates, &mut state).is_empty());
         // Both are still running
         assert_eq!(candidates.count_in_progress(), 2);
         assert!(incr(&mut candidates, &mut state).is_empty());
         // The first apc is done
         assert_eq!(candidates.count_done(), 1);
-        let candidates = incr(&mut candidates, &mut state);
-        assert_eq!(candidates.len(), 1);
+        let output = incr(&mut candidates, &mut state);
+        assert_eq!(output.len(), 1);
         assert_eq!(
-            candidates[0],
-            ApcCandidate {
-                remaining_instr_count: 0,
+            output[0],
+            Output {
                 apc: high_priority,
-                snapshot: high_priority_snapshot,
-                status: CandidateStatus::Done(final_snapshot)
+                from: high_priority_snapshot,
+                to: final_snapshot,
             }
         );
     }
@@ -579,18 +599,24 @@ mod tests {
         let short_snapshot = s(0);
         let short_final_snapshot = s(2);
 
-        candidates.insert(ApcCandidate::new(
-            short_low_priority,
-            OptimisticConstraints::empty(),
-            short_snapshot.clone(),
-        ));
-        candidates.insert(ApcCandidate::new(
-            long_high_priority,
-            OptimisticConstraints::empty(),
-            s(0),
-        ));
+        candidates
+            .try_insert(
+                &state,
+                short_low_priority,
+                OptimisticConstraints::empty(),
+                || short_snapshot,
+            )
+            .unwrap();
+        candidates
+            .try_insert(
+                &state,
+                long_high_priority,
+                OptimisticConstraints::empty(),
+                || s(0),
+            )
+            .unwrap();
 
-        for _ in 0..3 {
+        for _ in 0..2 {
             assert!(incr(&mut candidates, &mut state).is_empty());
         }
 
@@ -603,11 +629,10 @@ mod tests {
         assert_eq!(extracted.len(), 1);
         assert_eq!(
             extracted[0],
-            ApcCandidate {
-                remaining_instr_count: 0,
+            Output {
                 apc: short_low_priority,
-                snapshot: short_snapshot,
-                status: CandidateStatus::Done(short_final_snapshot)
+                from: short_snapshot,
+                to: short_final_snapshot,
             }
         );
     }
@@ -621,37 +646,43 @@ mod tests {
         let short_snapshot = s(0);
         let short_final_snapshot = s(2);
 
-        candidates.insert(ApcCandidate::new(
-            short_low_priority,
-            OptimisticConstraints::empty(),
-            short_snapshot.clone(),
-        ));
-        candidates.insert(ApcCandidate::new(
-            long_high_priority,
-            OptimisticConstraints::empty(),
-            s(0),
-        ));
+        candidates
+            .try_insert(
+                &state,
+                short_low_priority,
+                OptimisticConstraints::empty(),
+                || short_snapshot,
+            )
+            .unwrap();
+        candidates
+            .try_insert(
+                &state,
+                long_high_priority,
+                OptimisticConstraints::empty(),
+                || s(0),
+            )
+            .unwrap();
 
         for _ in 0..2 {
             assert!(incr(&mut candidates, &mut state).is_empty());
         }
 
-        assert_eq!(candidates.count_done(), 0);
-        assert_eq!(candidates.count_in_progress(), 2);
+        // The short one is done, the long one is still in progress
+        assert_eq!(candidates.count_done(), 1);
+        assert_eq!(candidates.count_in_progress(), 1);
 
-        // Segment ends!
-        candidates.check_conditions(&state, || state.snap());
+        // Segment ends, abort the one in progress
         candidates.abort_in_progress();
 
+        // The extracted one should be the short one
         let extracted = candidates.extract_candidates();
         assert_eq!(extracted.len(), 1);
         assert_eq!(
             extracted[0],
-            ApcCandidate {
-                remaining_instr_count: 0,
+            Output {
                 apc: short_low_priority,
-                snapshot: short_snapshot,
-                status: CandidateStatus::Done(short_final_snapshot)
+                from: short_snapshot,
+                to: short_final_snapshot,
             }
         );
     }
