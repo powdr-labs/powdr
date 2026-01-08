@@ -158,6 +158,13 @@ fn detect_empirical_constraints_from_input(
                 })
                 .unwrap();
 
+            if !debug_info.column_names_by_air_id.contains_key(air_id) {
+                debug_info.column_names_by_air_id.insert(
+                    *air_id,
+                    machine.main_columns().map(|r| (*r.name).clone()).collect(),
+                );
+            }
+
             for row in main.row_slices() {
                 // Create an evaluator over this row
                 let evaluator = RowEvaluator::new(row);
@@ -201,12 +208,6 @@ fn detect_empirical_constraints_from_input(
                         assert_eq!(*existing.get(), *air_id);
                     }
                 }
-                if !debug_info.column_names_by_air_id.contains_key(air_id) {
-                    debug_info.column_names_by_air_id.insert(
-                        *air_id,
-                        machine.main_columns().map(|r| (*r.name).clone()).collect(),
-                    );
-                }
             }
         }
 
@@ -239,11 +240,7 @@ fn take_complete_blocks(constraint_detector: &ConstraintDetector, trace: Trace) 
     let latest_basic_block_beginning = trace
         .rows
         .iter()
-        .filter(|row| {
-            constraint_detector
-                .instruction_counts
-                .contains_key(&(row.pc as u64))
-        })
+        .filter(|row| constraint_detector.is_basic_block_start(row.pc as u64))
         .map(|row| &row.timestamp)
         .max()
         .unwrap()
@@ -265,8 +262,9 @@ fn take_complete_blocks(constraint_detector: &ConstraintDetector, trace: Trace) 
 }
 
 struct ConstraintDetector {
-    /// Mapping from block PC to number of instructions in that block
-    instruction_counts: HashMap<u64, usize>,
+    /// Mapping from a basic block ID (= PC of the first instruction) to number
+    /// of instructions in that block
+    block_instruction_counts: HashMap<u64, usize>,
     empirical_constraints: EmpiricalConstraints,
 }
 
@@ -296,11 +294,15 @@ impl<'a> ConcreteBlock<'a> {
 }
 
 impl ConstraintDetector {
-    pub fn new(instruction_counts: HashMap<u64, usize>) -> Self {
+    pub fn new(block_instruction_counts: HashMap<u64, usize>) -> Self {
         Self {
-            instruction_counts,
+            block_instruction_counts,
             empirical_constraints: EmpiricalConstraints::default(),
         }
+    }
+
+    pub fn is_basic_block_start(&self, pc: u64) -> bool {
+        self.block_instruction_counts.contains_key(&pc)
     }
 
     pub fn finalize(self) -> EmpiricalConstraints {
@@ -408,7 +410,7 @@ impl ConstraintDetector {
                 let first = it.next()?;
                 let block_id = first.pc as u64;
 
-                if let Some(&count) = self.instruction_counts.get(&block_id) {
+                if let Some(&count) = self.block_instruction_counts.get(&block_id) {
                     let rows = once(first).chain(it.take(count - 1)).collect_vec();
 
                     for (r1, r2) in rows.iter().tuple_windows() {

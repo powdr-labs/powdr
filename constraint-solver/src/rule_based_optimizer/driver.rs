@@ -184,7 +184,15 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                         .unwrap_or_default();
                     let new_rc = existing_rc.conjunction(&rc);
                     if new_rc != existing_rc {
-                        range_constraints_on_vars.insert(var, new_rc);
+                        if let Some(val) = new_rc.try_to_single_value() {
+                            system.substitute_by_known(&var_mapper[var], &val);
+                            assignments.push((
+                                var_mapper[var].clone(),
+                                GroupedExpression::from_number(val),
+                            ));
+                        } else {
+                            range_constraints_on_vars.insert(var, new_rc);
+                        }
                         progress = true;
                     }
                 }

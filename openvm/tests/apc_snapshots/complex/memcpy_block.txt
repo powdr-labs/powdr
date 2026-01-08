@@ -8,7 +8,7 @@ Instructions:
 APC advantage:
   - Main columns: 172 -> 37 (4.65x reduction)
   - Bus interactions: 87 -> 21 (4.14x reduction)
-  - Constraints: 111 -> 33 (3.36x reduction)
+  - Constraints: 111 -> 31 (3.58x reduction)
 
 Symbolic machine using 37 unique main columns:
   from_state__timestamp_0
@@ -81,11 +81,8 @@ mult=diff_marker__0_2 + diff_marker__1_2 + diff_marker__2_2 + diff_marker__3_2, 
 // Algebraic constraints:
 cmp_result_1 * (cmp_result_1 - 1) = 0
 diff_marker__3_1 * (diff_marker__3_1 - 1) = 0
-diff_marker__3_1 * diff_val_1 = 0
 diff_marker__2_1 * (diff_marker__2_1 - 1) = 0
-diff_marker__2_1 * diff_val_1 = 0
 diff_marker__1_1 * (diff_marker__1_1 - 1) = 0
-diff_marker__1_1 * diff_val_1 = 0
 diff_marker__0_1 * (diff_marker__0_1 - 1) = 0
 (1 * is_valid - (diff_marker__0_1 + diff_marker__1_1 + diff_marker__2_1 + diff_marker__3_1)) * ((1 - a__0_0) * (2 * cmp_result_1 - 1)) = 0
 diff_marker__0_1 * ((a__0_0 - 1) * (2 * cmp_result_1 - 1) + diff_val_1) = 0
@@ -109,6 +106,7 @@ diff_marker__0_2 * ((writes_aux__prev_data__0_2 - 1) * (2 * cmp_result_2 - 1) + 
 cmp_result_4 * (cmp_result_4 - 1) = 0
 (1 - cmp_result_4) * (cmp_result_1 + cmp_result_2 - cmp_result_1 * cmp_result_2) = 0
 free_var_177 * (cmp_result_1 + cmp_result_2 - cmp_result_1 * cmp_result_2) - cmp_result_4 = 0
+diff_val_1 * (diff_marker__1_1 + diff_marker__2_1 + diff_marker__3_1) = 0
 (1 - is_valid) * (diff_marker__0_1 + diff_marker__1_1 + diff_marker__2_1 + diff_marker__3_1) = 0
 (1 - is_valid) * (diff_marker__0_2 + diff_marker__1_2 + diff_marker__2_2 + diff_marker__3_2) = 0
 is_valid * (is_valid - 1) = 0
