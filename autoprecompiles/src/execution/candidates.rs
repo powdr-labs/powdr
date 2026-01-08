@@ -43,7 +43,8 @@ impl<E: ExecutionState, A: Apc, S: Snapshot> ApcCandidates<E, A, S> {
                         return false;
                     }
                     // If we went through the whole block, confirm it
-                    if candidate.total_check_count == optimistic_constraint_evaluator.count_steps()
+                    if candidate.total_check_count
+                        == optimistic_constraint_evaluator.instruction_index()
                     {
                         candidate.status = CandidateStatus::Done(snapshot_callback());
                     }

@@ -108,7 +108,7 @@ impl<A, V> OptimisticConstraintEvaluator<A, V> {
         }
     }
 
-    pub fn count_steps(&self) -> usize {
+    pub fn instruction_index(&self) -> usize {
         self.instruction_index
     }
 
