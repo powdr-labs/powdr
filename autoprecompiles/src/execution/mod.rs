@@ -5,7 +5,7 @@ mod candidates;
 mod evaluator;
 
 pub use ast::*;
-pub use candidates::{Apc, ApcCandidates, CandidateStatus, Output, Snapshot};
+pub use candidates::{Apc, ApcCall, ApcCandidates, Snapshot};
 pub use evaluator::{OptimisticConstraintEvaluator, OptimisticConstraints};
 pub trait ExecutionState {
     type RegisterAddress: PartialEq

@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use derivative::Derivative;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
@@ -15,7 +14,7 @@ use crate::{
 };
 
 /// A collection of optimistic constraints over the intermediate execution states of a block, to be accessed in chronological order
-#[derive(Debug, Serialize, Deserialize, deepsize2::DeepSizeOf, PartialEq, Eq, Clone)]
+#[derive(Debug, Serialize, Deserialize, deepsize2::DeepSizeOf, PartialEq, Clone)]
 pub struct OptimisticConstraints<A, V> {
     /// For each step, the execution values we need to remember for future constraints, excluding this step
     fetches_by_step: HashMap<usize, Vec<LocalOptimisticLiteral<A>>>,
@@ -87,11 +86,7 @@ impl<A: std::hash::Hash + PartialEq + Eq + Copy, V> OptimisticConstraints<A, V> 
 /// - when an APC is executed, create an instance of this evaluator over the APC's optimistic constraints
 /// - as we go through the original instructions, call `OptimisticConstraintEvaluator::try_next_execution_step`
 /// - if a constraint fails, stop checking the constraints
-#[derive(Derivative)]
-#[derivative(
-    Debug,
-    PartialEq(bound = "A: std::hash::Hash + PartialEq + Eq, V: PartialEq + Eq")
-)]
+#[derive(Debug)]
 pub struct OptimisticConstraintEvaluator<A, V> {
     /// The constraints that all need to be verified
     constraints: OptimisticConstraints<A, V>,
@@ -111,6 +106,10 @@ impl<A, V> OptimisticConstraintEvaluator<A, V> {
             instruction_index: 0,
             memory: HashMap::default(),
         }
+    }
+
+    pub fn count_steps(&self) -> usize {
+        self.instruction_index
     }
 
     /// Check all constraints that can be checked at this stage, returning a new instance iff they are verified

@@ -8,39 +8,29 @@ use crate::execution::{
     OptimisticConstraints,
 };
 
+/// An APC candidate tracker
+/// During execution, it keeps track of possible parts of the trace that can be assigned to APCs
 #[derive(Derivative)]
 #[derivative(Default(bound = ""))]
 pub struct ApcCandidates<E: ExecutionState, A, S> {
     candidates: Vec<ApcCandidate<E, A, S>>,
 }
 
+/// A selected APC call
 #[derive(Debug, PartialEq)]
-pub struct Output<A, S> {
-    pub from: S,
-    pub to: S,
+pub struct ApcCall<A, S> {
+    /// The APC that this call runs
     pub apc: A,
-}
-
-impl<E: ExecutionState, A, S> From<ApcCandidate<E, A, S>> for Output<A, S> {
-    fn from(candidate: ApcCandidate<E, A, S>) -> Self {
-        Self {
-            from: candidate.snapshot,
-            to: if let CandidateStatus::Done(to) = candidate.status {
-                to
-            } else {
-                panic!()
-            },
-            apc: candidate.apc,
-        }
-    }
+    /// A snapshot before this APC
+    pub from: S,
+    /// A snapshot after this APC
+    pub to: S,
 }
 
 impl<E: ExecutionState, A: Apc, S: Snapshot> ApcCandidates<E, A, S> {
     /// Given the current state of execution, retain the candidates whose constraints are still
     /// verified
     pub fn check_conditions(&mut self, state: &E, snapshot_callback: impl Fn() -> S) {
-        let mut snapshot = None;
-
         // Filter out failing candidates and upgrade the ones that are done
         self.candidates
             .retain_mut(|candidate| match &mut candidate.status {
@@ -52,18 +42,10 @@ impl<E: ExecutionState, A: Apc, S: Snapshot> ApcCandidates<E, A, S> {
                     {
                         return false;
                     }
-                    match candidate.remaining_instr_count == 0 {
-                        false => {
-                            println!("continue inside candidate");
-                            // We're in the middle of the block, continue
-                            candidate.remaining_instr_count -= 1;
-                        }
-                        true => {
-                            println!("confirmed candidate!");
-                            // We're done with this block, confirm it
-                            let snapshot = snapshot.get_or_insert_with(&snapshot_callback);
-                            candidate.status = CandidateStatus::Done(snapshot.clone());
-                        }
+                    // If we went through the whole block, confirm it
+                    if candidate.total_check_count == optimistic_constraint_evaluator.count_steps()
+                    {
+                        candidate.status = CandidateStatus::Done(snapshot_callback());
                     }
                     true
                 }
@@ -71,8 +53,18 @@ impl<E: ExecutionState, A: Apc, S: Snapshot> ApcCandidates<E, A, S> {
             });
     }
 
+    /// Abort all candidates that are in progress.
+    /// This is useful at the end of a segment, where some candidates being in progress block other candidates that are done from being extracted.
+    /// Since we reached the end of the segment, we know that the candidates that are in progress will not be valid, so it's safe to drop them.
+    pub fn abort_in_progress(&mut self) -> Vec<A> {
+        self.candidates
+            .extract_if(.., |f| matches!(f.status, CandidateStatus::InProgress(_)))
+            .map(|candidate| candidate.apc)
+            .collect()
+    }
+
     /// If no more candidates are in progress, return a set of non-overlapping candidates
-    pub fn extract_candidates(&mut self) -> Vec<Output<A, S>> {
+    pub fn extract_candidates(&mut self) -> Vec<ApcCall<A, S>> {
         let are_any_in_progress = self
             .candidates
             .iter()
@@ -85,12 +77,7 @@ impl<E: ExecutionState, A: Apc, S: Snapshot> ApcCandidates<E, A, S> {
 
         // Now we have no more candidates in progress
 
-        // If there is a single candidate, we can return it directly
-        if self.candidates.len() <= 1 {
-            return self.candidates.drain(..).map(Output::from).collect();
-        }
-
-        // If there are more candidates, we need to solve conflicts to make sure we do not return overlapping candidates
+        // We need to solve conflicts to make sure we do not return overlapping candidates
 
         // Collect metadata needed to resolve overlaps in a single pass
         let meta = self.candidates.iter().enumerate().map(|(idx, candidate)| {
@@ -104,6 +91,8 @@ impl<E: ExecutionState, A: Apc, S: Snapshot> ApcCandidates<E, A, S> {
                 range,
             )
         });
+
+        // Find which candidates to discard by going through all pairs
         let discard = meta.tuple_combinations().fold(
             vec![false; self.candidates.len()],
             |mut discard, ((rank_left, range_left), (rank_right, range_right))| {
@@ -112,7 +101,7 @@ impl<E: ExecutionState, A: Apc, S: Snapshot> ApcCandidates<E, A, S> {
                 let idx_left = rank_left.candidate_id;
                 let idx_right = rank_right.candidate_id;
 
-                // If one of the two is already discarded, or they do not overlap, keep both
+                // If one of the two is already discarded, or they do not overlap, do nothing
                 if discard[idx_left]
                     || discard[idx_right]
                     || !Self::ranges_overlap(range_left, range_right)
@@ -136,10 +125,21 @@ impl<E: ExecutionState, A: Apc, S: Snapshot> ApcCandidates<E, A, S> {
             .drain(..)
             .zip_eq(discard)
             .filter_map(|(candidate, discard)| (!discard).then_some(candidate))
-            .map(Output::from)
+            .map(|candidate| {
+                let CandidateStatus::Done(to) = candidate.status else {
+                    unreachable!()
+                };
+                ApcCall {
+                    apc: candidate.apc,
+                    from: candidate.from_snapshot,
+                    to,
+                }
+            })
             .collect()
     }
 
+    /// Try to insert a new candidate.
+    /// This can fail if the current state is incompatible with the optimistic constraints of the candidate
     pub fn try_insert(
         &mut self,
         state: &E,
@@ -153,7 +153,7 @@ impl<E: ExecutionState, A: Apc, S: Snapshot> ApcCandidates<E, A, S> {
     }
 
     fn candidate_range(candidate: &ApcCandidate<E, A, S>) -> (usize, usize) {
-        let start = candidate.snapshot.instret();
+        let start = candidate.from_snapshot.instret();
         let end = match &candidate.status {
             CandidateStatus::Done(snapshot) => snapshot.instret(),
             CandidateStatus::InProgress(_) => {
@@ -161,16 +161,6 @@ impl<E: ExecutionState, A: Apc, S: Snapshot> ApcCandidates<E, A, S> {
             }
         };
         (start, end)
-    }
-
-    /// Abort all candidates that are in progress.
-    /// This is useful at the end of a segment, where some candidates being in progress block other candidates that are done from being extracted.
-    /// Since we reached the end of the segment, we know that the candidates that are in progress will not be valid, so it's safe to drop them.
-    pub fn abort_in_progress(&mut self) -> Vec<A> {
-        self.candidates
-            .extract_if(.., |f| matches!(f.status, CandidateStatus::InProgress(_)))
-            .map(|candidate| candidate.apc)
-            .collect()
     }
 
     fn ranges_overlap((start_a, end_a): (usize, usize), (start_b, end_b): (usize, usize)) -> bool {
@@ -203,15 +193,15 @@ impl PartialOrd for CandidateRank {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 struct ApcCandidate<E: ExecutionState, A, S> {
-    /// The number of remaining instructions to run
-    /// TODO: correlates with the counter inside the evaluator, could be unified
-    remaining_instr_count: usize,
+    /// The total number of steps to run
+    /// This is the number of steps plus one, because we check the state before and after
+    total_check_count: usize,
     /// The apc candidate being run
     pub apc: A,
     /// The state of the execution when this candidate was introduced
-    pub snapshot: S,
+    pub from_snapshot: S,
     /// The status of this candidate
     pub status: CandidateStatus<E, S>,
 }
@@ -241,15 +231,15 @@ impl<E: ExecutionState, A: Apc, S> ApcCandidate<E, A, S> {
         let mut evaluator = OptimisticConstraintEvaluator::new(conditions);
         evaluator.try_next_execution_step(state)?;
         Ok(ApcCandidate {
-            remaining_instr_count: apc.cycle_count() - 1,
+            total_check_count: apc.cycle_count() + 1,
             apc,
-            snapshot: snapshot(),
+            from_snapshot: snapshot(),
             status: CandidateStatus::InProgress(evaluator),
         })
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum CandidateStatus<E: ExecutionState, S> {
     /// We don't know yet if this apc candidate is valid. The conditions must be verified
     InProgress(OptimisticConstraintEvaluator<E::RegisterAddress, E::Value>),
@@ -360,7 +350,7 @@ mod tests {
     fn incr(
         candidates: &mut ApcCandidates<TestExecutionState, TestApc, TestSnapshot>,
         state: &mut TestExecutionState,
-    ) -> Vec<Output<TestApc, TestSnapshot>> {
+    ) -> Vec<ApcCall<TestApc, TestSnapshot>> {
         state.incr();
         candidates.check_conditions(state, || state.snap());
         candidates.extract_candidates()
@@ -384,7 +374,7 @@ mod tests {
         assert_eq!(output.len(), 1);
         assert_eq!(
             output[0],
-            Output {
+            ApcCall {
                 apc,
                 from: snapshot,
                 to: final_snapshot,
@@ -445,7 +435,7 @@ mod tests {
         assert_eq!(output.len(), 1);
         assert_eq!(
             output[0],
-            Output {
+            ApcCall {
                 apc: high_priority,
                 from: snapshot,
                 to: final_snapshot
@@ -488,7 +478,7 @@ mod tests {
         assert_eq!(output.len(), 1);
         assert_eq!(
             output[0],
-            Output {
+            ApcCall {
                 apc: high_priority,
                 from: snapshot,
                 to: final_snapshot,
@@ -536,7 +526,7 @@ mod tests {
         assert_eq!(output.len(), 1);
         assert_eq!(
             output[0],
-            Output {
+            ApcCall {
                 apc: low_priority,
                 from: snapshot,
                 to: final_snapshot,
@@ -582,7 +572,7 @@ mod tests {
         assert_eq!(output.len(), 1);
         assert_eq!(
             output[0],
-            Output {
+            ApcCall {
                 apc: high_priority,
                 from: high_priority_snapshot,
                 to: final_snapshot,
@@ -629,7 +619,7 @@ mod tests {
         assert_eq!(extracted.len(), 1);
         assert_eq!(
             extracted[0],
-            Output {
+            ApcCall {
                 apc: short_low_priority,
                 from: short_snapshot,
                 to: short_final_snapshot,
@@ -679,7 +669,7 @@ mod tests {
         assert_eq!(extracted.len(), 1);
         assert_eq!(
             extracted[0],
-            Output {
+            ApcCall {
                 apc: short_low_priority,
                 from: short_snapshot,
                 to: short_final_snapshot,
