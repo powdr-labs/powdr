@@ -11,6 +11,9 @@ pub use detection::collect_basic_blocks;
 pub struct BasicBlock<I> {
     /// The program counter of the first instruction in this block.
     pub start_pc: u64,
+    /// The step size of the program counter. Useful to convert between
+    /// instruction indices and program counters.
+    pub pc_step: u32,
     pub statements: Vec<I>,
 }
 
