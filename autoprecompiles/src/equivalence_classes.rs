@@ -16,9 +16,21 @@ pub type EquivalenceClass<T> = BTreeSet<T>;
 #[derive(Debug, Clone)]
 pub struct Partition<T> {
     /// Maps each element to its class ID (0..num_classes)
+    /// If an element is not present, it is in a singleton class.
     class_of: HashMap<T, usize>,
     /// Number of classes
     num_classes: usize,
+}
+
+// Default implementation creates an empty partition, i.e., all elements are singletons.
+// We're not deriving Default to avoid requiring T: Default.
+impl<T> Default for Partition<T> {
+    fn default() -> Self {
+        Self {
+            class_of: HashMap::new(),
+            num_classes: 0,
+        }
+    }
 }
 
 impl<T: Eq + Hash + Serialize + Clone> Serialize for Partition<T> {
@@ -64,6 +76,7 @@ where
 
 impl<T: Eq + Hash + Clone> Partition<T> {
     /// Returns all equivalence classes as a Vec<Vec<T>>.
+    /// Singleton classes are omitted.
     /// This is O(n) where n is the number of elements.
     #[allow(clippy::iter_over_hash_type)] // Order within classes doesn't matter semantically
     pub fn to_classes(&self) -> Vec<Vec<T>> {
@@ -193,5 +206,13 @@ mod tests {
         let expected = partition(vec![vec![2, 3], vec![6, 7]]);
 
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_default_partition_yields_no_classes() {
+        // The default partition puts every element in its own singleton class,
+        // which are omitted in the list of equivalence classes.
+        let partition: Partition<u32> = Partition::default();
+        assert_eq!(partition.to_classes().len(), 0);
     }
 }

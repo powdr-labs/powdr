@@ -452,7 +452,7 @@ pub fn build<A: Adapter>(
 
     // Generate constraints for optimistic precompiles.
     let constraint_generator = ConstraintGenerator::<A>::new(
-        empirical_constraints,
+        empirical_constraints.for_block(&block),
         &column_allocator.subs,
         machine.main_columns(),
         &block,

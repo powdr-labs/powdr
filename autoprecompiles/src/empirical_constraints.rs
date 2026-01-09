@@ -30,6 +30,15 @@ pub struct EmpiricalConstraints {
     pub pc_counts: BTreeMap<u32, u64>,
 }
 
+/// Empirical constraints for a specific basic block.
+pub struct BlockEmpiricalConstraints {
+    /// For each program counter in the block, the range constraints for each column.
+    /// The range might not hold in 100% of cases.
+    pub column_ranges_by_pc: BTreeMap<u32, Vec<(u32, u32)>>,
+    /// The equivalence classes of columns in the block.
+    pub equivalence_classes: Partition<BlockCell>,
+}
+
 /// Debug information mapping AIR ids to program counters and column names.
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct DebugInfo {
@@ -79,10 +88,35 @@ impl EmpiricalConstraints {
         }
     }
 
+    /// Extracts the empirical constraints relevant for a specific basic block.
+    pub fn for_block<I>(&self, block: &BasicBlock<I>) -> BlockEmpiricalConstraints {
+        let block_pc: u32 = block.start_pc.try_into().unwrap();
+        let next_block_pc = block_pc + block.pc_step * (block.statements.len() as u32);
+        let pc_range = block_pc..next_block_pc;
+        BlockEmpiricalConstraints {
+            column_ranges_by_pc: self
+                .column_ranges_by_pc
+                .range(pc_range)
+                .map(|(&pc, ranges)| (pc, ranges.clone()))
+                .collect(),
+            equivalence_classes: self
+                .equivalence_classes_by_block
+                .get(&(block_pc as u64))
+                .cloned()
+                .unwrap_or_default(),
+        }
+    }
+
     /// Returns a new `EmpiricalConstraints` instance containing only the constraints
     /// (both range and equivalence) that are based on a number of executions greater
-    /// than or equal to `threshold`. This should mitigate overfitting to rare execution paths.
-    pub fn apply_pc_threshold(&self, threshold: u64) -> Self {
+    /// than or equal to a threshold passed in the `POWDR_OP_EXECUTION_COUNT_THRESHOLD`
+    /// environment variable (or `DEFAULT_EXECUTION_COUNT_THRESHOLD`).
+    /// This should mitigate overfitting to rare execution paths.
+    pub fn apply_pc_threshold(&self) -> Self {
+        let threshold = std::env::var("POWDR_OP_EXECUTION_COUNT_THRESHOLD")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(DEFAULT_EXECUTION_COUNT_THRESHOLD);
         EmpiricalConstraints {
             column_ranges_by_pc: self
                 .column_ranges_by_pc
@@ -161,7 +195,7 @@ const DEFAULT_EXECUTION_COUNT_THRESHOLD: u64 = 100;
 
 /// Generates symbolic constraints based on empirical constraints for a given basic block.
 pub struct ConstraintGenerator<'a, A: Adapter> {
-    empirical_constraints: EmpiricalConstraints,
+    empirical_constraints: BlockEmpiricalConstraints,
     algebraic_references: BTreeMap<BlockCell, AlgebraicReference>,
     block: &'a BasicBlock<A::Instruction>,
 }
@@ -176,7 +210,7 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
     /// - `columns`: An iterator over the algebraic references for the columns in the block.
     /// - `block`: The basic block for which to generate constraints.
     pub fn new(
-        empirical_constraints: &EmpiricalConstraints,
+        empirical_constraints: BlockEmpiricalConstraints,
         subs: &[Vec<u64>],
         columns: impl Iterator<Item = AlgebraicReference>,
         block: &'a BasicBlock<A::Instruction>,
@@ -204,8 +238,7 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
         );
 
         Self {
-            empirical_constraints: empirical_constraints
-                .apply_pc_threshold(execution_count_threshold),
+            empirical_constraints,
             algebraic_references,
             block,
         }
@@ -256,20 +289,14 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
     pub fn equivalence_constraints(&self) -> Vec<SymbolicConstraint<<A as Adapter>::PowdrField>> {
         let mut constraints = Vec::new();
 
-        if let Some(equivalence_classes) = self
-            .empirical_constraints
-            .equivalence_classes_by_block
-            .get(&self.block.start_pc)
-        {
-            for equivalence_class in equivalence_classes.to_classes() {
-                let first = equivalence_class.first().unwrap();
-                let first_ref = self.get_algebraic_reference(first);
-                for other in equivalence_class.iter().skip(1) {
-                    let other_ref = self.get_algebraic_reference(other);
-                    let constraint = AlgebraicExpression::Reference(first_ref.clone())
-                        - AlgebraicExpression::Reference(other_ref.clone());
-                    constraints.push(SymbolicConstraint { expr: constraint });
-                }
+        for equivalence_class in self.empirical_constraints.equivalence_classes.to_classes() {
+            let first = equivalence_class.first().unwrap();
+            let first_ref = self.get_algebraic_reference(first);
+            for other in equivalence_class.iter().skip(1) {
+                let other_ref = self.get_algebraic_reference(other);
+                let constraint = AlgebraicExpression::Reference(first_ref.clone())
+                    - AlgebraicExpression::Reference(other_ref.clone());
+                constraints.push(SymbolicConstraint { expr: constraint });
             }
         }
 
