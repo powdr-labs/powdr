@@ -14,6 +14,12 @@ pub struct BasicBlock<I> {
     pub statements: Vec<I>,
 }
 
+impl<I: PcStep> BasicBlock<I> {
+    pub fn pc_step() -> u32 {
+        I::pc_step()
+    }
+}
+
 impl<I: Display> Display for BasicBlock<I> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "BasicBlock(start_pc: {}, statements: [", self.start_pc)?;
