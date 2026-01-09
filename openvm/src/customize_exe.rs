@@ -338,6 +338,7 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
             execution_frequency: self.execution_frequency,
             original_block: BasicBlock {
                 start_pc: self.apc.block.start_pc,
+                pc_step: self.apc.block.pc_step,
                 statements: self
                     .apc
                     .block
