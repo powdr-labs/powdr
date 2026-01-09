@@ -257,22 +257,6 @@ mod tests {
 
     use super::*;
 
-    impl<E: ExecutionState, A: Apc, S: Snapshot> ApcCandidates<E, A, S> {
-        pub fn count_done(&self) -> usize {
-            self.candidates
-                .iter()
-                .filter(|c| matches!(c.status, CandidateStatus::Done(_)))
-                .count()
-        }
-
-        pub fn count_in_progress(&self) -> usize {
-            self.candidates
-                .iter()
-                .filter(|c| matches!(c.status, CandidateStatus::InProgress(_)))
-                .count()
-        }
-    }
-
     #[derive(Default, Clone, Copy, PartialEq, Debug)]
     struct TestApc {
         priority: usize,
@@ -310,15 +294,23 @@ mod tests {
     #[derive(Clone, Copy, PartialEq, Debug, Default)]
     struct TestExecutionState {
         pc: usize,
+        instret: usize,
     }
 
     impl TestExecutionState {
-        fn snap(&self) -> TestSnapshot {
-            TestSnapshot { pc: self.pc }
+        fn incr(&mut self) {
+            self.jump(self.pc + 1)
         }
 
-        fn incr(&mut self) {
-            self.pc += 1;
+        fn jump(&mut self, pc: usize) {
+            self.pc = pc;
+            self.instret += 1;
+        }
+
+        fn snapshot(&self) -> TestSnapshot {
+            TestSnapshot {
+                instret: self.instret,
+            }
         }
     }
 
@@ -338,16 +330,16 @@ mod tests {
 
     #[derive(Clone, PartialEq, Debug, Copy)]
     struct TestSnapshot {
-        pc: usize,
+        instret: usize,
     }
 
-    fn s(pc: usize) -> TestSnapshot {
-        TestSnapshot { pc }
+    fn s(instret: usize) -> TestSnapshot {
+        TestSnapshot { instret }
     }
 
     impl Snapshot for TestSnapshot {
         fn instret(&self) -> usize {
-            self.pc
+            self.instret
         }
     }
 
@@ -364,15 +356,38 @@ mod tests {
             constraints: OptimisticConstraints<(), usize>,
         ) -> Result<(), OptimisticConstraintFailed> {
             self.candidates
-                .try_insert(&self.state, apc, constraints, || self.state.snap())
+                .try_insert(&self.state, apc, constraints, || self.state.snapshot())
         }
 
         // A helper function to go to the next execution state, check the conditions on it, and extract the calls
         fn incr(&mut self) -> Vec<ApcCall<TestApc, TestSnapshot>> {
             self.state.incr();
             self.candidates
-                .check_conditions(&self.state, || self.state.snap());
+                .check_conditions(&self.state, || self.state.snapshot());
             self.candidates.extract_calls()
+        }
+
+        fn jump(&mut self, pc: usize) -> Vec<ApcCall<TestApc, TestSnapshot>> {
+            self.state.jump(pc);
+            self.candidates
+                .check_conditions(&self.state, || self.state.snapshot());
+            self.candidates.extract_calls()
+        }
+
+        fn count_done(&self) -> usize {
+            self.candidates
+                .candidates
+                .iter()
+                .filter(|c| matches!(c.status, CandidateStatus::Done(_)))
+                .count()
+        }
+
+        fn count_in_progress(&self) -> usize {
+            self.candidates
+                .candidates
+                .iter()
+                .filter(|c| matches!(c.status, CandidateStatus::InProgress(_)))
+                .count()
         }
     }
 
@@ -415,11 +430,11 @@ mod tests {
             }]);
         vm.try_add_candidate(apc, failing_constraints).unwrap();
         assert!(vm.incr().is_empty());
-        assert_eq!(vm.candidates.count_in_progress(), 1);
+        assert_eq!(vm.count_in_progress(), 1);
         let extracted = vm.incr();
         assert!(extracted.is_empty());
-        assert_eq!(vm.candidates.count_in_progress(), 0);
-        assert_eq!(vm.candidates.count_done(), 0);
+        assert_eq!(vm.count_in_progress(), 0);
+        assert_eq!(vm.count_done(), 0);
     }
 
     #[test]
@@ -465,10 +480,10 @@ mod tests {
         assert!(vm.incr().is_empty());
         assert!(vm.incr().is_empty());
         // Both are still running
-        assert_eq!(vm.candidates.count_done(), 0);
+        assert_eq!(vm.count_done(), 0);
         assert!(vm.incr().is_empty());
         // The first apc is done
-        assert_eq!(vm.candidates.count_done(), 1);
+        assert_eq!(vm.count_done(), 1);
         let output = vm.incr();
         assert_eq!(output.len(), 1);
         assert_eq!(
@@ -508,7 +523,7 @@ mod tests {
         assert!(vm.incr().is_empty());
         assert!(vm.incr().is_empty());
         // Both apcs are still running
-        assert_eq!(vm.candidates.count_done(), 0);
+        assert_eq!(vm.count_done(), 0);
         // In this check, the low priority apc completes and the high priority one fails (as the jump did not happen)
         let output = vm.incr();
         assert_eq!(output.len(), 1);
@@ -535,16 +550,16 @@ mod tests {
             .unwrap();
         assert!(vm.incr().is_empty());
         // candidate is still running
-        assert_eq!(vm.candidates.count_in_progress(), 1);
+        assert_eq!(vm.count_in_progress(), 1);
         // insert the high priority apc
         vm.try_add_candidate(high_priority, OptimisticConstraints::empty())
             .unwrap();
         assert!(vm.incr().is_empty());
         // Both are still running
-        assert_eq!(vm.candidates.count_in_progress(), 2);
+        assert_eq!(vm.count_in_progress(), 2);
         assert!(vm.incr().is_empty());
         // The first apc is done
-        assert_eq!(vm.candidates.count_done(), 1);
+        assert_eq!(vm.count_done(), 1);
         let output = vm.incr();
         assert_eq!(output.len(), 1);
         assert_eq!(
@@ -574,8 +589,8 @@ mod tests {
             assert!(vm.incr().is_empty());
         }
 
-        assert_eq!(vm.candidates.count_done(), 1);
-        assert_eq!(vm.candidates.count_in_progress(), 1);
+        assert_eq!(vm.count_done(), 1);
+        assert_eq!(vm.count_in_progress(), 1);
 
         vm.candidates.abort_in_progress();
 
@@ -609,8 +624,8 @@ mod tests {
         }
 
         // The short one is done, the long one is still in progress
-        assert_eq!(vm.candidates.count_done(), 1);
-        assert_eq!(vm.candidates.count_in_progress(), 1);
+        assert_eq!(vm.count_done(), 1);
+        assert_eq!(vm.count_in_progress(), 1);
 
         // Segment ends, abort the one in progress
         vm.candidates.abort_in_progress();
@@ -624,6 +639,58 @@ mod tests {
                 apc: short_low_priority,
                 from: short_snapshot,
                 to: short_final_snapshot,
+            }
+        );
+    }
+
+    #[test]
+    fn jump_back_and_readd_candidate_does_not_overlap() {
+        // We have a program like
+        // 0: NOOP
+        // 1: JUMP 0
+
+        // We create an apc for the range, and check that calls do not overlap: the first call finishes before the second call starts
+
+        let mut vm = TestVm::default();
+        let apc = a(2).p(1);
+
+        // pc = 0, add the candidate
+        vm.try_add_candidate(apc, OptimisticConstraints::empty())
+            .unwrap();
+        assert_eq!(vm.count_in_progress(), 1);
+
+        assert!(vm.incr().is_empty());
+        // pc = 1, candidate still in progress
+        let output = vm.jump(0);
+        // pc = 0, first candidate should be done
+        assert_eq!(output.len(), 1);
+        assert_eq!(
+            output[0],
+            ApcCall {
+                apc,
+                from: s(0),
+                to: s(2),
+            }
+        );
+
+        // done with the first call, haven't started the second call, clean state.
+        assert_eq!(vm.count_in_progress(), 0);
+        assert_eq!(vm.count_done(), 0);
+
+        // start over
+        vm.try_add_candidate(apc, OptimisticConstraints::empty())
+            .unwrap();
+        assert_eq!(vm.count_in_progress(), 1);
+
+        assert!(vm.incr().is_empty());
+        let output = vm.jump(0);
+        assert_eq!(output.len(), 1);
+        assert_eq!(
+            output[0],
+            ApcCall {
+                apc,
+                from: s(2),
+                to: s(4),
             }
         );
     }
