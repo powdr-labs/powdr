@@ -57,6 +57,8 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
             blocks.len()
         );
 
+        // TODO: similar to the cell PGO case, we should take into account that selecting some superblock might lower the execution count of overlapping blocks.
+
         // sort blocks by execution count * number of instructions
         let blocks = blocks.into_iter()
             .enumerate()
