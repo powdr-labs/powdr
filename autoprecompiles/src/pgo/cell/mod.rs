@@ -11,13 +11,9 @@ use rayon::iter::{ParallelBridge, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    adapter::{
+    EmpiricalConstraints, PowdrConfig, adapter::{
         Adapter, AdapterApc, AdapterApcWithStats, AdapterBasicBlock, AdapterVmConfig, PgoAdapter,
-    },
-    blocks::Block,
-    evaluation::EvaluationResult,
-    execution_profile::ExecutionProfile,
-    EmpiricalConstraints, PowdrConfig,
+    }, blocks::{Block, count_non_overlapping}, evaluation::EvaluationResult, execution_profile::ExecutionProfile
 };
 
 use itertools::Itertools;
@@ -270,7 +266,7 @@ fn try_generate_candidate<A: Adapter, C: Candidate<A>>(
 fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
     candidates: Vec<C>,
     max_cost: Option<usize>,
-    count: usize,
+    max_selected: usize,
     mut skip: usize,
 ) -> Vec<C> {
     // candidates ordered by priority. These priorities will be updated as candidates are selected.
@@ -330,76 +326,37 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
         let bbs = apc.block.original_pcs();
         let mut to_remove = vec![];
         let mut to_discount = vec![];
-        // println!("checking conflicts with APC: {bbs:?}");
-        for (other_idx, _) in ordered_candidates
-            .iter()
-            // TODO: this seems unnecessary, as selected candidates have been removed from ordered candidates already?
-            .filter(|(other_idx, _)| !selected_candidates.contains(*other_idx))
-        {
+        for (other_idx, _) in ordered_candidates.iter() {
             let other_candidate = &candidates[*other_idx];
             let other_apc = other_candidate.apc();
             let other_bbs = other_apc.block.original_pcs();
-            let mut remove = false;
-            let mut discount = false;
-            if let Some(pos) = bbs.iter().position(|it| *it == other_bbs[0]) {
-                // check if the selected apc includes the other apc
-                if bbs.len() >= pos + other_bbs.len()
-                    && bbs[pos..pos + other_bbs.len()] == other_bbs[..]
-                {
-                    // println!("\t{other_bbs:?} is included");
-                    discount = true;
-                }
-                // check the other prefix is equal to the selected apc suffix
-                let suffix = &bbs[pos..];
-                if other_bbs.len() >= suffix.len() && &other_bbs[..suffix.len()] == suffix {
-                    // println!("\t{other_bbs:?} prefix is equal to apc suffix");
 
+            match check_overlap(&bbs, &other_bbs) {
+                Some(BlockOverlap::FirstIncludesSecond(count)) => {
+                    to_discount.push((*other_idx, count));
+                },
+                Some(BlockOverlap::FirstOverlapsSecond) => {
                     // TODO: ideally we'd just discount here, but we would need more info:
-                    // - if 'ab' is selected: 'bc' and 'bd' could be discounted, but we need to know the counts of both 'abc' and 'abd' to do it properly.
-                    remove = true;
+                    // for example, if 'ab' is selected: 'bc' and 'bd' could be discounted,
+                    // but we need to know the counts of both 'abc' and 'abd' to do it properly.
+                    to_remove.push(*other_idx);
                 }
-            }
-            if let Some(pos) = other_bbs.iter().position(|it| *it == bbs[0]) {
-                // check if the other apc includes the selected apc
-                if other_bbs.len() >= pos + bbs.len() && other_bbs[pos..pos + bbs.len()] == bbs[..]
-                {
-                    // println!("\t{other_bbs:?} includes it");
-                    remove = true;
-                }
-                // check that the other apc suffix is a prefix of the selected apc
-                let suffix = &other_bbs[pos..];
-                if bbs.len() >= suffix.len() && &bbs[..suffix.len()] == suffix {
-                    // println!("\t{other_bbs:?} suffix is equal to apc prefix");
-                    remove = true;
-                }
-            }
-            if remove {
-                to_remove.push(*other_idx);
-            } else if discount {
-                to_discount.push(*other_idx);
+                Some(BlockOverlap::SecondIncludesFirst(_) | BlockOverlap::SecondOverlapsFirst) => {
+                    // in these cases, running the other apc would prevent us from using the current better one
+                    to_remove.push(*other_idx);
+                },
+                None => (),
             }
         }
 
         selected_candidates.push(idx);
 
-        for other_idx in to_discount {
+        // update remaining candidates that will be chosen less because of this one
+        for (other_idx, count) in to_discount {
             let mut new_priority = ordered_candidates.get(&other_idx).unwrap().1.clone();
-            let selected_bbs = c.apc().block.original_pcs();
-            let other_bbs = &candidates[other_idx].apc().block.original_pcs();
 
-            // count how many times the other candidate is included in the selected one
-            let mut count = 0;
-            let mut pos = 0;
-            while pos < selected_bbs.len() - other_bbs.len() {
-                if selected_bbs[pos..pos + other_bbs.len()] == other_bbs[..] {
-                    count += 1;
-                    pos += other_bbs.len();
-                } else {
-                    pos += 1;
-                }
-            }
-
-            new_priority.exec_count -= (c.execution_count() as usize) * count;
+            // `count` is how many times to discount the other apc for each time the selected one runs
+            new_priority.exec_count -= (c.execution_count() as usize) * count as usize;
             if new_priority.exec_count == 0 {
                 to_remove.push(other_idx);
             } else {
@@ -411,7 +368,7 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
             ordered_candidates.remove(&other_idx);
         }
 
-        if selected_candidates.len() >= count {
+        if selected_candidates.len() >= max_selected {
             break;
         }
     }
@@ -429,4 +386,55 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
         .sorted_by_key(|(position, _)| *position)
         .map(|(_, c)| c)
         .collect()
+}
+
+enum BlockOverlap {
+    // Second block is fully included in the first block this many times
+    // e.g.: 'abc' and 'ab'
+    FirstIncludesSecond(u32),
+    // Some prefix of the second block is a suffix of the first
+    // e.g.: 'abc' and 'bcd'
+    FirstOverlapsSecond,
+    // First block is fully included in the second this many times
+    // e.g.: 'abc' and 'ab'
+    // e.g.: 'ab' and 'abc'
+    #[allow(unused)]
+    SecondIncludesFirst(u32),
+    // Some prefix of the first block is a suffix of the second
+    // e.g.: 'bcd' and 'abc'
+    SecondOverlapsFirst,
+}
+
+/// returns true if a suffix of the first sequence is a prefix of the second
+fn suffix_in_common_with_prefix(
+    first: &[u64],
+    second: &[u64],
+) -> bool {
+    let mut prefix_len = 1;
+    while prefix_len <= second.len() && prefix_len <= first.len() {
+        if first[first.len() - prefix_len..] == second[..prefix_len] {
+            return true;
+        }
+        prefix_len += 1;
+    }
+    false
+}
+
+/// Check if and how two superblocks overlap (each sequence is the starting PC of its composing basic blocks)
+fn check_overlap(first: &[u64], second: &[u64]) -> Option<BlockOverlap> {
+    let count_second_in_first = count_non_overlapping(first, second);
+    if count_second_in_first > 0 {
+        return Some(BlockOverlap::FirstIncludesSecond(count_second_in_first));
+    }
+    let count_first_in_second = count_non_overlapping(second, first);
+    if count_first_in_second > 0 {
+        return Some(BlockOverlap::SecondIncludesFirst(count_first_in_second));
+    }
+    if suffix_in_common_with_prefix(first, second) {
+        return Some(BlockOverlap::FirstOverlapsSecond);
+    }
+    if suffix_in_common_with_prefix(second, first) {
+        return Some(BlockOverlap::SecondOverlapsFirst);
+    }
+    None
 }

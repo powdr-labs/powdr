@@ -73,7 +73,7 @@ pub trait Instruction<T>: Clone + Display {
 
 /// Count how many times the `needle` sequence appears inside the `haystack` sequence.
 /// It does not count overlapping sequences (e.g. `aba` is counted only twice in `abababa`).
-fn count_non_overlapping(haystack: &[usize], needle: &[usize]) -> u32 {
+pub fn count_non_overlapping<T: Eq>(haystack: &[T], needle: &[T]) -> u32 {
     let mut count = 0;
     let mut pos = 0;
     while pos + needle.len() <= haystack.len() {
