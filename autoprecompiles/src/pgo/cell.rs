@@ -338,8 +338,13 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
                     // but we need to know the counts of both 'abc' and 'abd' to do it properly.
                     to_remove.push(*other_idx);
                 }
-                Some(BlockOverlap::SecondIncludesFirst(_) | BlockOverlap::SecondOverlapsFirst) => {
+                Some(BlockOverlap::SecondIncludesFirst(_)) => {
                     // in these cases, running the other apc would prevent us from using the current better one
+                    to_remove.push(*other_idx);
+                }
+                Some(BlockOverlap::SecondOverlapsFirst) => {
+                    // TODO: similarly to the other overlap case, ideally we'd just discount here:
+                    // if 'bc' is selected: 'ab' could be discounted, but we need to know the count of 'abc'
                     to_remove.push(*other_idx);
                 },
                 None => (),
