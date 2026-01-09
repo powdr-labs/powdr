@@ -8,6 +8,9 @@ use crate::empirical_constraints::{ConstraintGenerator, EmpiricalConstraints};
 use crate::evaluation::AirStats;
 use crate::execution::OptimisticConstraints;
 use crate::expression_conversion::algebraic_to_grouped_expression;
+use crate::optimistic::algebraic_references::BlockCellAlgebraicReferenceMapper;
+use crate::optimistic::execution_constraint_generator::generate_execution_constraints;
+use crate::optimistic::execution_literals::optimistic_literals;
 use crate::symbolic_machine_generator::convert_apc_field_type;
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
@@ -48,6 +51,7 @@ pub use pgo::{PgoConfig, PgoType};
 pub use powdr_constraint_solver::inliner::DegreeBound;
 pub mod equivalence_classes;
 pub mod execution;
+mod optimistic;
 pub mod trace_handler;
 
 #[derive(Clone)]
@@ -413,11 +417,12 @@ impl<T, I, A, V> Apc<T, I, A, V> {
 }
 
 /// Allocates global poly_ids and keeps track of substitutions
+#[derive(Clone)]
 pub struct ColumnAllocator {
     /// For each original air, for each original column index, the associated poly_id in the APC air
     subs: Vec<Vec<u64>>,
     /// The next poly_id to issue
-    next_poly_id: u64,
+    pub next_poly_id: u64,
 }
 
 impl ColumnAllocator {
@@ -448,21 +453,52 @@ pub fn build<A: Adapter>(
         &block,
         vm_config.instruction_handler,
         &vm_config.bus_map,
+        // TODO: Why 3?!
+        3,
     );
 
     // Generate constraints for optimistic precompiles.
-    let constraint_generator = ConstraintGenerator::<A>::new(
-        empirical_constraints.for_block(&block),
-        &column_allocator.subs,
-        machine.main_columns(),
-        &block,
-    );
-    let range_analyzer_constraints = constraint_generator.range_constraints();
-    let equivalence_analyzer_constraints = constraint_generator.equivalence_constraints();
+    let should_generate_execution_constraints =
+        std::env::var("POWDR_RESTRICTED_OPTIMISTIC_PRECOMPILES").is_ok();
+    let algebraic_references =
+        BlockCellAlgebraicReferenceMapper::new(&column_allocator.subs, machine.main_columns());
+    let mut empirical_constraints = empirical_constraints.for_block::<A>(&block);
+
+    // TODO: Use execution constraints
+    let (empirical_constraints, _execution_constraints) = if should_generate_execution_constraints {
+        // Filter constraints to only contain execution-checkable columns,
+        // generate execution constraints for them.
+        let optimistic_literals = optimistic_literals::<A>(&block, &vm_config, &degree_bound);
+
+        empirical_constraints = empirical_constraints.filtered(
+            |block_cell| {
+                let algebraic_reference = algebraic_references
+                    .get_algebraic_reference(block_cell)
+                    .unwrap();
+                optimistic_literals.contains_key(algebraic_reference)
+            },
+            block.pc_step,
+        );
+
+        let empirical_constraints =
+            ConstraintGenerator::<A>::new(empirical_constraints, algebraic_references, &block)
+                .generate_constraints();
+
+        let execution_constraints =
+            generate_execution_constraints::<A>(&empirical_constraints, &optimistic_literals);
+        (empirical_constraints, execution_constraints)
+    } else {
+        // Don't filter empirical constraints, return empty execution constraints.
+        let empirical_constraints =
+            ConstraintGenerator::<A>::new(empirical_constraints, algebraic_references, &block)
+                .generate_constraints();
+        (empirical_constraints, vec![])
+    };
 
     // Add empirical constraints to the baseline
-    machine.constraints.extend(range_analyzer_constraints);
-    machine.constraints.extend(equivalence_analyzer_constraints);
+    machine
+        .constraints
+        .extend(empirical_constraints.into_iter().map(Into::into));
 
     if let Some(path) = apc_candidates_dir_path {
         serialize_apc_from_machine::<A>(

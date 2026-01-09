@@ -120,11 +120,12 @@ pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
     block: &BasicBlock<A::Instruction>,
     instruction_handler: &A::InstructionHandler,
     bus_map: &BusMap<A::CustomBusTypes>,
+    global_idx_start: u64,
 ) -> (SymbolicMachine<A::PowdrField>, ColumnAllocator) {
     let mut constraints: Vec<SymbolicConstraint<_>> = Vec::new();
     let mut bus_interactions: Vec<SymbolicBusInteraction<_>> = Vec::new();
     let mut col_subs: Vec<Vec<u64>> = Vec::new();
-    let mut global_idx: u64 = 3;
+    let mut global_idx = global_idx_start;
 
     for (i, instr) in block.statements.iter().enumerate() {
         let machine = instruction_handler
