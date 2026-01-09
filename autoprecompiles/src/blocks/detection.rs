@@ -13,10 +13,8 @@ pub fn collect_basic_blocks<A: Adapter>(
     instruction_handler: &A::InstructionHandler,
 ) -> Vec<BasicBlock<A::Instruction>> {
     let mut blocks = Vec::new();
-    let pc_step = program.pc_step();
     let mut curr_block = BasicBlock {
         start_pc: program.instruction_index_to_pc(0),
-        pc_step,
         statements: Vec::new(),
     };
     for (i, instr) in program.instructions().enumerate() {
@@ -33,13 +31,11 @@ pub fn collect_basic_blocks<A: Adapter>(
             // Push the instruction itself
             blocks.push(BasicBlock {
                 start_pc: program.instruction_index_to_pc(i),
-                pc_step,
                 statements: vec![instr.clone()],
             });
             // Skip the instruction and start a new block from the next instruction.
             curr_block = BasicBlock {
                 start_pc: program.instruction_index_to_pc(i + 1),
-                pc_step,
                 statements: Vec::new(),
             };
         } else {
@@ -51,7 +47,6 @@ pub fn collect_basic_blocks<A: Adapter>(
                 }
                 curr_block = BasicBlock {
                     start_pc: program.instruction_index_to_pc(i),
-                    pc_step,
                     statements: Vec::new(),
                 };
             }
@@ -62,7 +57,6 @@ pub fn collect_basic_blocks<A: Adapter>(
                 blocks.push(curr_block); // guaranteed to be non-empty because an instruction was just pushed
                 curr_block = BasicBlock {
                     start_pc: program.instruction_index_to_pc(i + 1),
-                    pc_step,
                     statements: Vec::new(),
                 };
             }
