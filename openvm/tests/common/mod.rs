@@ -19,6 +19,7 @@ pub fn original_vm_config() -> OriginalVmConfig {
 
 pub mod apc_builder_utils {
     use openvm_instructions::instruction::Instruction;
+    use openvm_instructions::program::DEFAULT_PC_STEP;
     use openvm_stark_sdk::p3_baby_bear::BabyBear;
     use powdr_autoprecompiles::blocks::BasicBlock;
     use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
@@ -58,6 +59,7 @@ pub mod apc_builder_utils {
 
         let basic_block = BasicBlock {
             statements: basic_block.into_iter().map(Instr).collect(),
+            pc_step: DEFAULT_PC_STEP,
             start_pc: 0,
         };
 
