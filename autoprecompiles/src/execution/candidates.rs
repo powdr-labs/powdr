@@ -20,6 +20,7 @@ pub struct ApcCandidates<E: ExecutionState, A, S> {
 #[derive(Debug, PartialEq)]
 pub struct ApcCall<A, S> {
     /// The APC that this call runs
+    // TODO: We probably do not need the whole thing here, the id should be enough.
     pub apc: A,
     /// A snapshot before this APC
     pub from: S,
@@ -27,7 +28,7 @@ pub struct ApcCall<A, S> {
     pub to: S,
 }
 
-impl<E: ExecutionState, A: Apc, S: Snapshot> ApcCandidates<E, A, S> {
+impl<E: ExecutionState, A: Apc<E>, S: Snapshot> ApcCandidates<E, A, S> {
     /// Given the current state of execution, retain the candidates whose constraints are still
     /// verified
     pub fn check_conditions(&mut self, state: &E, snapshot_callback: impl Fn() -> S) {
@@ -37,7 +38,7 @@ impl<E: ExecutionState, A: Apc, S: Snapshot> ApcCandidates<E, A, S> {
                 // Check the conditions for unconfirmed candidates
                 CandidateStatus::InProgress(optimistic_constraint_evaluator) => {
                     if optimistic_constraint_evaluator
-                        .try_next_execution_step(state)
+                        .try_next_execution_step(state, candidate.apc.optimistic_constraints())
                         .is_err()
                     {
                         return false;
@@ -145,10 +146,9 @@ impl<E: ExecutionState, A: Apc, S: Snapshot> ApcCandidates<E, A, S> {
         &mut self,
         state: &E,
         apc: A,
-        optimistic_constraints: OptimisticConstraints<E::RegisterAddress, E::Value>,
         snapshot: impl Fn() -> S,
     ) -> Result<(), OptimisticConstraintFailed> {
-        let apc_candidate = ApcCandidate::try_new(state, apc, optimistic_constraints, snapshot)?;
+        let apc_candidate = ApcCandidate::try_new(state, apc, snapshot)?;
         self.candidates.push(apc_candidate);
         Ok(())
     }
@@ -208,7 +208,10 @@ struct ApcCandidate<E: ExecutionState, A, S> {
 }
 
 /// A trait to represent APCs at execution time
-pub trait Apc {
+pub trait Apc<E: ExecutionState> {
+    /// Gets a reference to the optimistic constraints
+    fn optimistic_constraints(&self) -> &OptimisticConstraints<E::RegisterAddress, E::Value>;
+
     /// The number of cycles to go through this APC
     fn cycle_count(&self) -> usize;
 
@@ -223,17 +226,16 @@ pub trait Snapshot: Clone {
     fn instret(&self) -> usize;
 }
 
-impl<E: ExecutionState, A: Apc, S> ApcCandidate<E, A, S> {
+impl<E: ExecutionState, A: Apc<E>, S> ApcCandidate<E, A, S> {
     /// Try to create a new candidate.
     /// Returns an error if an optimistic constraint fails on the current state
     fn try_new(
         state: &E,
         apc: A,
-        conditions: OptimisticConstraints<E::RegisterAddress, E::Value>,
         snapshot: impl Fn() -> S,
     ) -> Result<Self, OptimisticConstraintFailed> {
-        let mut evaluator = OptimisticConstraintEvaluator::new(conditions);
-        evaluator.try_next_execution_step(state)?;
+        let mut evaluator = OptimisticConstraintEvaluator::new();
+        evaluator.try_next_execution_step(state, apc.optimistic_constraints())?;
         Ok(ApcCandidate {
             total_check_count: apc.cycle_count() + 1,
             apc,
@@ -257,10 +259,11 @@ mod tests {
 
     use super::*;
 
-    #[derive(Default, Clone, Copy, PartialEq, Debug)]
+    #[derive(Default, Clone, PartialEq, Debug)]
     struct TestApc {
         priority: usize,
         len: usize,
+        optimistic_constraints: OptimisticConstraints<(), usize>,
     }
 
     impl TestApc {
@@ -275,19 +278,28 @@ mod tests {
             self.priority = priority;
             self
         }
+
+        fn c(mut self, optimistic_constraints: OptimisticConstraints<(), usize>) -> Self {
+            self.optimistic_constraints = optimistic_constraints;
+            self
+        }
     }
 
     fn a(len: usize) -> TestApc {
         TestApc::a(len)
     }
 
-    impl Apc for TestApc {
+    impl Apc<TestExecutionState> for TestApc {
         fn cycle_count(&self) -> usize {
             self.len
         }
 
         fn priority(&self) -> usize {
             self.priority
+        }
+
+        fn optimistic_constraints(&self) -> &OptimisticConstraints<(), usize> {
+            &self.optimistic_constraints
         }
     }
 
@@ -350,13 +362,9 @@ mod tests {
     }
 
     impl TestVm {
-        fn try_add_candidate(
-            &mut self,
-            apc: TestApc,
-            constraints: OptimisticConstraints<(), usize>,
-        ) -> Result<(), OptimisticConstraintFailed> {
+        fn try_add_candidate(&mut self, apc: TestApc) -> Result<(), OptimisticConstraintFailed> {
             self.candidates
-                .try_insert(&self.state, apc, constraints, || self.state.snapshot())
+                .try_insert(&self.state, apc, || self.state.snapshot())
         }
 
         // A helper function to go to the next execution state, check the conditions on it, and extract the calls
@@ -399,8 +407,7 @@ mod tests {
         let snapshot = s(0);
         let final_snapshot = s(3);
         // it will be checked in 4 steps, because we have conditions on the state before and after. The first check is included in `try_insert`.
-        vm.try_add_candidate(apc, OptimisticConstraints::empty())
-            .unwrap();
+        vm.try_add_candidate(apc.clone()).unwrap();
         assert!(vm.incr().is_empty());
         assert!(vm.incr().is_empty());
         let output = vm.incr();
@@ -419,7 +426,6 @@ mod tests {
     fn single_candidate_final_state_failure() {
         let mut vm = TestVm::default();
         // single apc with a constraint that fails on the final (step 2) state
-        let apc = a(2).p(1);
         let failing_constraints =
             OptimisticConstraints::from_constraints(vec![OptimisticConstraint {
                 left: OptimisticExpression::Literal(OptimisticLiteral {
@@ -428,7 +434,8 @@ mod tests {
                 }),
                 right: OptimisticExpression::Number(99),
             }]);
-        vm.try_add_candidate(apc, failing_constraints).unwrap();
+        let apc = a(2).p(1).c(failing_constraints);
+        vm.try_add_candidate(apc).unwrap();
         assert!(vm.incr().is_empty());
         assert_eq!(vm.count_in_progress(), 1);
         let extracted = vm.incr();
@@ -445,10 +452,8 @@ mod tests {
         let high_priority = a(3).p(2);
         let snapshot = s(0);
         let final_snapshot = s(3);
-        vm.try_add_candidate(low_priority, OptimisticConstraints::empty())
-            .unwrap();
-        vm.try_add_candidate(high_priority, OptimisticConstraints::empty())
-            .unwrap();
+        vm.try_add_candidate(low_priority).unwrap();
+        vm.try_add_candidate(high_priority.clone()).unwrap();
         assert!(vm.incr().is_empty());
         assert!(vm.incr().is_empty());
         let output = vm.incr();
@@ -469,14 +474,12 @@ mod tests {
         // insert two apcs with different length and priority
         // the superblock (longer block) apc has higher priority and succeeds so it should be picked
         let low_priority = a(3).p(1);
-        let high_priority = a(4).p(2);
+        let high_priority = a(4).p(2).clone();
         let snapshot: TestSnapshot = s(0);
         // The final snapshot is the one at the end of the high priority apc, since it succeeds
         let final_snapshot = s(4);
-        vm.try_add_candidate(low_priority, OptimisticConstraints::empty())
-            .unwrap();
-        vm.try_add_candidate(high_priority, OptimisticConstraints::empty())
-            .unwrap();
+        vm.try_add_candidate(low_priority).unwrap();
+        vm.try_add_candidate(high_priority.clone()).unwrap();
         assert!(vm.incr().is_empty());
         assert!(vm.incr().is_empty());
         // Both are still running
@@ -502,24 +505,21 @@ mod tests {
         // insert two apcs with different length and priority
         // the superblock (longer block) apc has higher priority but fails the branching condition, so the low priority apc should be picked
         let low_priority = a(3).p(1);
-        let high_priority = a(4).p(2);
-        let snapshot: TestSnapshot = s(0);
-        // The final snapshot is the one at the end of the low priority apc, as the other one failed
-        let final_snapshot = s(3);
-        vm.try_add_candidate(low_priority, OptimisticConstraints::empty())
-            .unwrap();
-        // The high priority candidate requires a jump to pc 1234 for the last cycle. This means the pc at step 3 (before instruction 4) should be 1234.
-        vm.try_add_candidate(
-            high_priority,
+        let failing_constraints =
             OptimisticConstraints::from_constraints(vec![OptimisticConstraint {
                 left: OptimisticExpression::Literal(OptimisticLiteral {
                     instr_idx: 3,
                     val: crate::execution::LocalOptimisticLiteral::Pc,
                 }),
                 right: OptimisticExpression::Number(1234),
-            }]),
-        )
-        .unwrap();
+            }]);
+        let high_priority = a(4).p(2).c(failing_constraints);
+        let snapshot: TestSnapshot = s(0);
+        // The final snapshot is the one at the end of the low priority apc, as the other one failed
+        let final_snapshot = s(3);
+        vm.try_add_candidate(low_priority.clone()).unwrap();
+        // The high priority candidate requires a jump to pc 1234 for the last cycle. This means the pc at step 3 (before instruction 4) should be 1234.
+        vm.try_add_candidate(high_priority).unwrap();
         assert!(vm.incr().is_empty());
         assert!(vm.incr().is_empty());
         // Both apcs are still running
@@ -546,14 +546,12 @@ mod tests {
         let high_priority_snapshot = s(1);
         let final_snapshot = s(4);
         // insert the low priority apc
-        vm.try_add_candidate(low_priority, OptimisticConstraints::empty())
-            .unwrap();
+        vm.try_add_candidate(low_priority.clone()).unwrap();
         assert!(vm.incr().is_empty());
         // candidate is still running
         assert_eq!(vm.count_in_progress(), 1);
         // insert the high priority apc
-        vm.try_add_candidate(high_priority, OptimisticConstraints::empty())
-            .unwrap();
+        vm.try_add_candidate(high_priority.clone()).unwrap();
         assert!(vm.incr().is_empty());
         // Both are still running
         assert_eq!(vm.count_in_progress(), 2);
@@ -580,10 +578,8 @@ mod tests {
         let short_snapshot = s(0);
         let short_final_snapshot = s(2);
 
-        vm.try_add_candidate(short_low_priority, OptimisticConstraints::empty())
-            .unwrap();
-        vm.try_add_candidate(long_high_priority, OptimisticConstraints::empty())
-            .unwrap();
+        vm.try_add_candidate(short_low_priority.clone()).unwrap();
+        vm.try_add_candidate(long_high_priority).unwrap();
 
         for _ in 0..2 {
             assert!(vm.incr().is_empty());
@@ -614,10 +610,8 @@ mod tests {
         let short_snapshot = s(0);
         let short_final_snapshot = s(2);
 
-        vm.try_add_candidate(short_low_priority, OptimisticConstraints::empty())
-            .unwrap();
-        vm.try_add_candidate(long_high_priority, OptimisticConstraints::empty())
-            .unwrap();
+        vm.try_add_candidate(short_low_priority.clone()).unwrap();
+        vm.try_add_candidate(long_high_priority.clone()).unwrap();
 
         for _ in 0..2 {
             assert!(vm.incr().is_empty());
@@ -655,8 +649,7 @@ mod tests {
         let apc = a(2).p(1);
 
         // pc = 0, add the candidate
-        vm.try_add_candidate(apc, OptimisticConstraints::empty())
-            .unwrap();
+        vm.try_add_candidate(apc.clone()).unwrap();
         assert_eq!(vm.count_in_progress(), 1);
 
         assert!(vm.incr().is_empty());
@@ -667,7 +660,7 @@ mod tests {
         assert_eq!(
             output[0],
             ApcCall {
-                apc,
+                apc: apc.clone(),
                 from: s(0),
                 to: s(2),
             }
@@ -678,8 +671,7 @@ mod tests {
         assert_eq!(vm.count_done(), 0);
 
         // start over
-        vm.try_add_candidate(apc, OptimisticConstraints::empty())
-            .unwrap();
+        vm.try_add_candidate(apc.clone()).unwrap();
         assert_eq!(vm.count_in_progress(), 1);
 
         assert!(vm.incr().is_empty());
