@@ -3,7 +3,7 @@ use std::{
     fmt::Display,
 };
 
-use itertools::Itertools;
+use itertools::{Either, Itertools};
 use serde::{Deserialize, Serialize};
 
 /// Tools to detect basic blocks in a program
@@ -15,33 +15,101 @@ pub use detection::collect_basic_blocks;
 /// A sequence of instructions starting at a given PC.
 /// If `other_pcs` is empty, this is a basic block.
 /// If `other_pcs` is non-empty, this is a superblock, that is, a sequence of basic blocks.
-pub struct Block<I> {
+pub struct BasicBlock<I> {
     /// The program counter of the first instruction in this block.
     pub start_pc: u64,
-    /// When not empty, indicates a superblock.
-    /// Each entry is a tuple of (relative instruction index inside the superblock, original basic block start_pc).
-    pub other_pcs: Vec<(usize, u64)>,
     pub statements: Vec<I>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SuperBlock<I> {
+    pub blocks: Vec<BasicBlock<I>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum Block<I> {
+    Basic(BasicBlock<I>),
+    Super(SuperBlock<I>),
+}
+
+impl<I> SuperBlock<I> {
+    pub fn original_pcs(&self) -> Vec<u64> {
+        self.blocks.iter().map(|b| b.start_pc).collect()
+    }
 }
 
 impl<I> Block<I> {
     /// Starting PCs of each original basic block
     pub fn original_pcs(&self) -> Vec<u64> {
-        [
-            vec![self.start_pc],
-            self.other_pcs.iter().map(|(_, pc)| *pc).collect(),
-        ]
-        .concat()
+        match self {
+            Block::Basic(basic_block) => vec![basic_block.start_pc],
+            Block::Super(super_block) => super_block.original_pcs(),
+        }
+    }
+
+    /// Starting instruction index of each original PC
+    pub fn insn_indexed_pcs(&self) -> Vec<(usize, u64)> {
+        match self {
+            Block::Basic(basic_block) => {
+                vec![(0, basic_block.start_pc)]
+            },
+            Block::Super(super_block) => {
+                let mut idx = 0;
+                super_block
+                    .blocks
+                    .iter()
+                    .map(|b| {
+                        let elem = (idx, b.start_pc);
+                        idx += b.statements.len();
+                        elem
+                    })
+                    .collect()
+            },
+        }
+    }
+
+    pub fn original_blocks(&self) -> impl Iterator<Item=&BasicBlock<I>> {
+        match self {
+            Block::Basic(basic_block) => Either::Left(std::iter::once(basic_block)),
+            Block::Super(super_block) => Either::Right(super_block.blocks.iter()),
+        }
+    }
+
+    pub fn statements(&self) -> impl Iterator<Item=&I> + Clone {
+        match self {
+            Block::Basic(basic_block) => {
+                Either::Left(basic_block.statements.iter())
+            },
+            Block::Super(super_block) => {
+                Either::Right(super_block.blocks.iter().flat_map(|b| &b.statements))
+            },
+        }
     }
 }
 
-impl<I: Display> Display for Block<I> {
+impl<I: Display> Display for BasicBlock<I> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "BasicBlock(start_pc: {}, statements: [", self.start_pc)?;
         for (i, instr) in self.statements.iter().enumerate() {
             writeln!(f, "   instr {i:>3}:   {instr}")?;
         }
         write!(f, "])")
+    }
+}
+
+impl<I: Display> Display for SuperBlock<I> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "SuperBlock(")?;
+        let mut insn_idx = 0;
+        for block in &self.blocks {
+            writeln!(f, "   pc: {}, statements: [", block.start_pc)?;
+            for instr in block.statements.iter() {
+                writeln!(f, "      instr {insn_idx:>3}:   {instr}")?;
+                insn_idx += 1;
+            }
+            write!(f, "   ],")?;
+        }
+        write!(f, ")")
     }
 }
 
@@ -92,7 +160,7 @@ pub fn count_non_overlapping<T: Eq>(haystack: &[T], needle: &[T]) -> u32 {
 /// Doesn't return blocks with a single instruction or that were never executed.
 pub fn generate_superblocks<I: Clone>(
     execution_pc_list: &[u64],
-    blocks: &[Block<I>],
+    basic_blocks: &[BasicBlock<I>],
     max_len: usize,
 ) -> (Vec<Block<I>>, Vec<u32>) {
     tracing::info!(
@@ -101,7 +169,7 @@ pub fn generate_superblocks<I: Clone>(
     );
 
     // make a hash map from start_pc to BB
-    let bb_start_pc_to_idx: HashMap<_, _> = blocks
+    let bb_start_pc_to_idx: HashMap<_, _> = basic_blocks
         .iter()
         .enumerate()
         .map(|(idx, bb)| (bb.start_pc, idx))
@@ -123,7 +191,7 @@ pub fn generate_superblocks<I: Clone>(
         };
 
         // if starting a single instruction BB, clear current sequence
-        if blocks[bb_idx].statements.len() <= 1 {
+        if basic_blocks[bb_idx].statements.len() <= 1 {
             if !current_run.is_empty() {
                 execution_bb_runs.push(std::mem::take(&mut current_run));
             }
@@ -164,29 +232,13 @@ pub fn generate_superblocks<I: Clone>(
     let mut super_blocks = vec![];
     let mut counts = vec![];
     superblock_count.into_iter().for_each(|(sblock, count)| {
-        let blocks = sblock.iter().map(|&idx| &blocks[idx]).collect_vec();
-        let start_pc = blocks[0].start_pc;
-        let mut curr_statement = blocks[0].statements.len();
-        let other_pcs = blocks
-            .iter()
-            .skip(1)
-            .map(|block| {
-                let relative_start = curr_statement;
-                curr_statement += block.statements.len();
-                (relative_start, block.start_pc)
-            })
-            .collect_vec();
-        let statements = blocks
-            .iter()
-            .flat_map(|block| &block.statements)
-            .cloned()
-            .collect_vec();
+        let mut blocks = sblock.iter().map(|&idx| basic_blocks[idx].clone()).collect_vec();
 
-        super_blocks.push(Block {
-            start_pc,
-            other_pcs,
-            statements,
-        });
+        if blocks.len() == 1 {
+            super_blocks.push(Block::Basic(blocks.pop().unwrap()));
+        } else {
+            super_blocks.push(Block::Super(SuperBlock { blocks }));
+        }
         counts.push(count);
     });
 

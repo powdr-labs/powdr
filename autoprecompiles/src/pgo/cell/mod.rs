@@ -12,8 +12,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     EmpiricalConstraints, PowdrConfig, adapter::{
-        Adapter, AdapterApc, AdapterApcWithStats, AdapterBasicBlock, AdapterVmConfig, PgoAdapter,
-    }, blocks::{Block, count_non_overlapping}, evaluation::EvaluationResult, execution_profile::ExecutionProfile
+        Adapter, AdapterApc, AdapterApcWithStats, AdapterBlock, AdapterVmConfig, PgoAdapter
+    }, blocks::{Block, SuperBlock, count_non_overlapping}, evaluation::EvaluationResult, execution_profile::ExecutionProfile
 };
 
 use itertools::Itertools;
@@ -52,7 +52,7 @@ pub struct ApcCandidateJsonExport {
     // execution_frequency
     pub execution_frequency: usize,
     // original instructions (pretty printed)
-    pub original_block: Block<String>,
+    pub original_block: SuperBlock<String>,
     // before and after optimization stats
     pub stats: EvaluationResult,
     // width before optimisation, used for software version cells in effectiveness plot
@@ -95,7 +95,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
 
     fn create_apcs_with_pgo(
         &self,
-        blocks: Vec<AdapterBasicBlock<Self::Adapter>>,
+        blocks: Vec<AdapterBlock<Self::Adapter>>,
         block_exec_count: Option<Vec<u32>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
@@ -111,7 +111,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
         blocks
             .iter()
             .zip_eq(&block_exec_count)
-            .for_each(|(block, count)| assert!(*count > 0 && block.statements.len() > 1));
+            .for_each(|(block, count)| assert!(*count > 0 && block.statements().count() > 1));
 
         // generate apc for all basic blocks and only cache the ones we eventually use
         // calculate number of trace cells saved per row for each basic block to sort them by descending cost
@@ -128,9 +128,8 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
             if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
                 let json_export = candidate.to_json_export(apc_candidates_dir_path);
                 // TODO: probably remove this debug print
-                tracing::debug!("Generated APC pc {}, other_pcs {:?}, effectiveness: {:?}, freq: {:?}",
-                                json_export.original_block.start_pc,
-                                json_export.original_block.other_pcs,
+                tracing::debug!("Generated APC pcs {:?}, effectiveness: {:?}, freq: {:?}",
+                                json_export.original_block.original_pcs(),
                                 json_export.cost_before as f64 / json_export.cost_after as f64,
                                 json_export.execution_frequency);
                 candidates_json.lock().unwrap().push(json_export);
@@ -155,9 +154,8 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
         tracing::debug!("Selected candidates:");
         for c in selected_candidates.iter().map(|c| c.to_json_export(Path::new(""))) {
             tracing::debug!(
-                "\tAPC pc {}, other_pcs {:?}, effectiveness: {:?}, freq: {:?}",
-                c.original_block.start_pc,
-                c.original_block.other_pcs,
+                "\tAPC pcs {:?}, effectiveness: {:?}, freq: {:?}",
+                c.original_block.original_pcs(),
                 c.cost_before / c.cost_after,
                 c.execution_frequency,
             );
@@ -252,9 +250,8 @@ fn try_generate_candidate<A: Adapter, C: Candidate<A>>(
         config.degree_bound.identities,
     );
     tracing::debug!(
-        "Generated APC pc {}, other_pcs {:?} (took {:?})",
-        block.start_pc,
-        block.other_pcs,
+        "Generated APC pcs {:?} (took {:?})",
+        block.original_pcs(),
         start.elapsed()
     );
     Some(candidate)
@@ -279,7 +276,8 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
                 exec_count: candidate.execution_count() as usize,
                 cells_saved_per_row: candidate.cells_saved_per_row(),
                 cost: candidate.width(),
-                tie_breaker: candidate.apc().start_pc() as usize,
+                // TODO: with super blocks this is not unique
+                tie_breaker: candidate.apc().original_pcs()[0] as usize,
             };
             (idx, priority)
         })
@@ -291,9 +289,8 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
             let c = &candidates[idx];
             let json = c.to_json_export(Path::new("")); // just for debug printing
             tracing::debug!(
-                "\tAPC pc {}, other_pcs {:?}, effectiveness: {:?}, freq: {:?}, priority: {:?}",
-                json.original_block.start_pc,
-                json.original_block.other_pcs,
+                "\tAPC pcs {:?}, effectiveness: {:?}, freq: {:?}, priority: {:?}",
+                json.original_block.original_pcs(),
                 json.cost_before / json.cost_after,
                 json.execution_frequency,
                 prio.priority(),

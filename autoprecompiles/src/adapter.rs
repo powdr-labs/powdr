@@ -6,12 +6,12 @@ use std::{fmt::Display, sync::Arc};
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
-use crate::blocks::generate_superblocks;
+use crate::blocks::{Block, generate_superblocks};
 use crate::empirical_constraints::EmpiricalConstraints;
 use crate::execution::{ExecutionState, OptimisticConstraints};
 use crate::execution_profile::ExecutionProfile;
 use crate::{
-    blocks::{Block, Instruction, Program},
+    blocks::{BasicBlock, Instruction, Program},
     constraint_optimizer::IsBusStateful,
     memory_optimizer::MemoryBusInteraction,
     range_constraint_optimizer::RangeConstraintHandler,
@@ -67,7 +67,9 @@ pub trait PgoAdapter {
             );
             (blocks, Some(count))
         } else {
-            (filtered_blocks, None)
+            (filtered_blocks.into_iter().map(|bb| {
+                Block::Basic(bb)
+            }).collect(), None)
         };
 
         self.create_apcs_with_pgo(
@@ -82,7 +84,7 @@ pub trait PgoAdapter {
 
     fn create_apcs_with_pgo(
         &self,
-        blocks: Vec<AdapterBasicBlock<Self::Adapter>>,
+        blocks: Vec<AdapterBlock<Self::Adapter>>,
         // frequency of each block during PGO execution.
         // This is None when there's no profiling data (NonePgo).
         // If present, has one entry for each of the given `blocks`.
@@ -131,7 +133,7 @@ where
 
     fn from_field(e: Self::Field) -> Self::PowdrField;
 
-    fn should_skip_block(_block: &Block<Self::Instruction>) -> bool {
+    fn should_skip_block(_block: &BasicBlock<Self::Instruction>) -> bool {
         false
     }
 }
@@ -167,4 +169,5 @@ pub type AdapterOptimisticConstraints<A> = OptimisticConstraints<
     <<A as Adapter>::ExecutionState as ExecutionState>::RegisterAddress,
     <<A as Adapter>::ExecutionState as ExecutionState>::Value,
 >;
-pub type AdapterBasicBlock<A> = Block<<A as Adapter>::Instruction>;
+pub type AdapterBasicBlock<A> = BasicBlock<<A as Adapter>::Instruction>;
+pub type AdapterBlock<A> = Block<<A as Adapter>::Instruction>;

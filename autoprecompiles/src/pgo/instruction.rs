@@ -6,10 +6,7 @@ use std::{
 use itertools::Itertools;
 
 use crate::{
-    adapter::{Adapter, AdapterApcWithStats, AdapterBasicBlock, AdapterVmConfig, PgoAdapter},
-    execution_profile::ExecutionProfile,
-    pgo::create_apcs_for_all_blocks,
-    EmpiricalConstraints, PowdrConfig,
+    EmpiricalConstraints, PowdrConfig, adapter::{Adapter, AdapterApcWithStats, AdapterBlock, AdapterVmConfig, PgoAdapter}, execution_profile::ExecutionProfile, pgo::create_apcs_for_all_blocks
 };
 
 pub struct InstructionPgo<A> {
@@ -31,7 +28,7 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
 
     fn create_apcs_with_pgo(
         &self,
-        blocks: Vec<AdapterBasicBlock<Self::Adapter>>,
+        blocks: Vec<AdapterBlock<Self::Adapter>>,
         // execution count of blocks (indexes into the `blocks` vec)
         block_exec_count: Option<Vec<u32>>,
         config: &PowdrConfig,
@@ -53,7 +50,7 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
         blocks
             .iter()
             .enumerate()
-            .for_each(|(idx, b)| assert!(block_exec_count[idx] > 0 && b.statements.len() > 1));
+            .for_each(|(idx, b)| assert!(block_exec_count[idx] > 0 && b.statements().count() > 1));
 
         tracing::debug!(
             "Retained {} basic blocks after filtering by pc_idx_count",
@@ -67,14 +64,13 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
                 let count = block_exec_count[idx];
                 (count, block)
             })
-            .sorted_by_key(|(count, b)| Reverse(count * b.statements.len() as u32))
+            .sorted_by_key(|(count, b)| Reverse(count * b.statements().count() as u32))
             .inspect(|(count, b)| {
-                let number_of_instructions = b.statements.len();
+                let number_of_instructions = b.statements().count();
                 let value = count * number_of_instructions as u32;
                 tracing::debug!(
-                    "Basic block start_pc: {start_pc}, other_pcs: {:?}, value: {value}, frequency: {count}, number_of_instructions: {number_of_instructions}",
-                    b.other_pcs,
-                    start_pc = b.start_pc,
+                    "Basic block pcs: {:?}, value: {value}, frequency: {count}, number_of_instructions: {number_of_instructions}",
+                    b.original_pcs(),
                 );
             })
             .map(|(_, block)| block).collect::<Vec<_>>();

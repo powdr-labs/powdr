@@ -8,10 +8,7 @@ use serde::{Deserialize, Serialize};
 pub use crate::equivalence_classes::{EquivalenceClass, Partition};
 
 use crate::{
-    adapter::Adapter,
-    blocks::Block,
-    expression::{AlgebraicExpression, AlgebraicReference},
-    SymbolicConstraint,
+    SymbolicConstraint, adapter::Adapter, blocks::BasicBlock, expression::{AlgebraicExpression, AlgebraicReference}
 };
 
 /// "Constraints" that were inferred from execution statistics. They hold empirically
@@ -163,7 +160,7 @@ const DEFAULT_EXECUTION_COUNT_THRESHOLD: u64 = 100;
 pub struct ConstraintGenerator<'a, A: Adapter> {
     empirical_constraints: EmpiricalConstraints,
     algebraic_references: BTreeMap<BlockCell, AlgebraicReference>,
-    block: &'a Block<A::Instruction>,
+    block: &'a BasicBlock<A::Instruction>,
 }
 
 impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
@@ -179,7 +176,7 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
         empirical_constraints: &EmpiricalConstraints,
         subs: &[Vec<u64>],
         columns: impl Iterator<Item = AlgebraicReference>,
-        block: &'a Block<A::Instruction>,
+        block: &'a BasicBlock<A::Instruction>,
     ) -> Self {
         let poly_id_to_block_cell = subs
             .iter()

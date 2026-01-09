@@ -28,7 +28,7 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::adapter::{
     Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig, ApcWithStats, PgoAdapter,
 };
-use powdr_autoprecompiles::blocks::{Block, Instruction};
+use powdr_autoprecompiles::blocks::{BasicBlock, Instruction, SuperBlock};
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::evaluation::{evaluate_apc, EvaluationResult};
 use powdr_autoprecompiles::execution::ExecutionState;
@@ -226,7 +226,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         .enumerate()
         .map(|(i, (apc, apc_stats))| {
             let opcode = POWDR_OPCODE + i;
-            let start_index = ((apc.start_pc() - pc_base as u64) / pc_step as u64)
+            let start_index = ((apc.original_pcs()[0] - pc_base as u64) / pc_step as u64)
                 .try_into()
                 .unwrap();
 
@@ -235,7 +235,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
             program.add_apc_instruction_at_pc_index(start_index, VmOpcode::from_usize(opcode));
 
             PowdrPrecompile::new(
-                format!("PowdrAutoprecompile_{}", apc.start_pc()),
+                format!("PowdrAutoprecompile_{}", apc.original_pcs().into_iter().join("_")),
                 PowdrOpcode {
                     class_offset: opcode,
                 },
@@ -302,8 +302,7 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
 
         let width_before = apc
             .block
-            .statements
-            .iter()
+            .statements()
             .map(|instr| {
                 vm_config
                     .instruction_handler
@@ -314,7 +313,7 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
             .sum();
 
         let stats = evaluate_apc(
-            &apc.block.statements,
+            &apc.block.statements().cloned().collect_vec(),
             vm_config.instruction_handler,
             apc.machine(),
         );
@@ -331,25 +330,23 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
 
     /// Return a JSON export of the APC candidate.
     fn to_json_export(&self, apc_candidates_dir_path: &Path) -> ApcCandidateJsonExport {
+        let blocks = self.apc.block.original_blocks().map(|b| {
+            BasicBlock {
+                start_pc: b.start_pc,
+                statements: b.statements.iter().map(ToString::to_string).collect(),
+            }
+        }).collect();
         ApcCandidateJsonExport {
             execution_frequency: self.execution_frequency,
-            original_block: Block {
-                start_pc: self.apc.block.start_pc,
-                other_pcs: self.apc.block.other_pcs.clone(),
-                statements: self
-                    .apc
-                    .block
-                    .statements
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect(),
+            original_block: SuperBlock {
+                blocks,
             },
             stats: self.stats,
             width_before: self.widths.before.total(),
             cost_before: self.widths.before.total() as f64,
             cost_after: self.widths.after.total() as f64,
             apc_candidate_file: apc_candidates_dir_path
-                .join(format!("apc_{}.cbor", self.apc.start_pc()))
+                .join(format!("apc_{}.cbor", self.apc.original_pcs().iter().join("_")))
                 .display()
                 .to_string(),
         }

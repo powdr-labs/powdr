@@ -1,14 +1,15 @@
 use crate::adapter::{
-    Adapter, AdapterApc, AdapterApcOverPowdrField, AdapterBasicBlock, AdapterOptimisticConstraints,
+    Adapter, AdapterApc, AdapterApcOverPowdrField, AdapterOptimisticConstraints,
     AdapterVmConfig,
 };
-use crate::blocks::Block;
 use crate::bus_map::{BusMap, BusType};
-use crate::empirical_constraints::{ConstraintGenerator, EmpiricalConstraints};
+use crate::empirical_constraints::EmpiricalConstraints;
 use crate::evaluation::AirStats;
 use crate::execution::OptimisticConstraints;
 use crate::expression_conversion::algebraic_to_grouped_expression;
 use crate::symbolic_machine_generator::convert_apc_field_type;
+use adapter::AdapterBlock;
+use blocks::Block;
 use execution::{
     ExecutionState, LocalOptimisticLiteral, OptimisticConstraint, OptimisticExpression,
     OptimisticLiteral,
@@ -356,7 +357,7 @@ pub struct Substitution {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Apc<T, I, A, V> {
-    /// The basic block this APC is based on
+    /// The block this APC is based on
     pub block: Block<I>,
     /// The symbolic machine for this APC
     pub machine: SymbolicMachine<T>,
@@ -375,14 +376,14 @@ impl<T, I, A, V> Apc<T, I, A, V> {
         &self.machine
     }
 
-    /// The PC of the first line of the basic block. Can be used to identify the APC.
-    pub fn start_pc(&self) -> u64 {
-        self.block.start_pc
+    /// The PCs of the original basic blocks composing this APC. Can be used to identify the APC.
+    pub fn original_pcs(&self) -> Vec<u64> {
+        self.block.original_pcs()
     }
 
     /// The instructions in the basic block.
-    pub fn instructions(&self) -> &[I] {
-        &self.block.statements
+    pub fn instructions(&self) -> impl Iterator<Item=&I> + Clone {
+        self.block.statements()
     }
 
     /// Create a new APC based on the given basic block, symbolic machine and column allocator
@@ -453,29 +454,29 @@ pub fn build<A: Adapter>(
     vm_config: AdapterVmConfig<A>,
     degree_bound: DegreeBound,
     apc_candidates_dir_path: Option<&Path>,
-    empirical_constraints: &EmpiricalConstraints,
+    _empirical_constraints: &EmpiricalConstraints,
 ) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
     let start = std::time::Instant::now();
 
-    let (mut machine, column_allocator) = statements_to_symbolic_machine::<A>(
+    let (machine, column_allocator) = statements_to_symbolic_machine::<A>(
         &block,
         vm_config.instruction_handler,
         &vm_config.bus_map,
     );
 
-    // Generate constraints for optimistic precompiles.
-    let constraint_generator = ConstraintGenerator::<A>::new(
-        empirical_constraints,
-        &column_allocator.subs,
-        machine.main_columns(),
-        &block,
-    );
-    let range_analyzer_constraints = constraint_generator.range_constraints();
-    let equivalence_analyzer_constraints = constraint_generator.equivalence_constraints();
+    // TODO: Generate constraints for optimistic precompiles.
+    // let constraint_generator = ConstraintGenerator::<A>::new(
+    //     empirical_constraints,
+    //     &column_allocator.subs,
+    //     machine.main_columns(),
+    //     &block,
+    // );
+    // let range_analyzer_constraints = constraint_generator.range_constraints();
+    // let equivalence_analyzer_constraints = constraint_generator.equivalence_constraints();
 
-    // Add empirical constraints to the baseline
-    machine.constraints.extend(range_analyzer_constraints);
-    machine.constraints.extend(equivalence_analyzer_constraints);
+    // // Add empirical constraints to the baseline
+    // machine.constraints.extend(range_analyzer_constraints);
+    // machine.constraints.extend(equivalence_analyzer_constraints);
 
     if let Some(path) = apc_candidates_dir_path {
         serialize_apc_from_machine::<A>(
@@ -487,7 +488,7 @@ pub fn build<A: Adapter>(
         );
     }
 
-    let labels = [("apc_start_pc", block.start_pc.to_string())];
+    let labels = [("apc_original_pcs", block.original_pcs().iter().join(","))];
     metrics::counter!("before_opt_cols", &labels)
         .absolute(machine.unique_references().count() as u64);
     metrics::counter!("before_opt_constraints", &labels)
@@ -524,7 +525,7 @@ pub fn build<A: Adapter>(
 
         // For debugging, also serialize a human-readable version of the final precompile
         let rendered = apc.machine.render(&vm_config.bus_map);
-        let path = make_path(path, apc.start_pc(), None, "txt");
+        let path = make_path(path, apc.original_pcs(), None, "txt");
         std::fs::write(path, rendered).unwrap();
     }
 
@@ -544,12 +545,12 @@ fn superblock_pc_constraints<A: Adapter>(
         <<A as Adapter>::ExecutionState as ExecutionState>::Value,
     >,
 > {
-    block.other_pcs.iter().map(|(insn, pc)| {
+    block.insn_indexed_pcs().into_iter().skip(1).map(|(instr_idx, pc)| {
         let left = OptimisticExpression::Literal(OptimisticLiteral {
-            instr_idx: *insn,
+            instr_idx,
             val: LocalOptimisticLiteral::Pc,
         });
-        let Ok(pc_value) = <<A as Adapter>::ExecutionState as ExecutionState>::Value::try_from(*pc)
+        let Ok(pc_value) = <<A as Adapter>::ExecutionState as ExecutionState>::Value::try_from(pc)
         else {
             panic!("PC doesn't fit in Value type");
         };
@@ -558,17 +559,17 @@ fn superblock_pc_constraints<A: Adapter>(
     }).collect()
 }
 
-fn make_path(base_path: &Path, start_pc: u64, suffix: Option<&str>, extension: &str) -> PathBuf {
+fn make_path(base_path: &Path, original_pcs: Vec<u64>, suffix: Option<&str>, extension: &str) -> PathBuf {
     let suffix = suffix.map(|s| format!("_{s}")).unwrap_or_default();
     base_path
-        .join(format!("apc_candidate_{start_pc}{suffix}"))
+        .join(format!("apc_candidate_{}{suffix}", original_pcs.into_iter().join("_")))
         .with_extension(extension)
 }
 
 fn serialize_apc<A: Adapter>(apc: &AdapterApcOverPowdrField<A>, path: &Path, suffix: Option<&str>) {
     std::fs::create_dir_all(path).expect("Failed to create directory for APC candidates");
 
-    let ser_path = make_path(path, apc.start_pc(), suffix, "cbor");
+    let ser_path = make_path(path, apc.original_pcs(), suffix, "cbor");
     let file_unopt =
         std::fs::File::create(&ser_path).expect("Failed to create file for {suffix} APC candidate");
     let writer_unopt = BufWriter::new(file_unopt);
@@ -577,7 +578,7 @@ fn serialize_apc<A: Adapter>(apc: &AdapterApcOverPowdrField<A>, path: &Path, suf
 }
 
 fn serialize_apc_from_machine<A: Adapter>(
-    block: AdapterBasicBlock<A>,
+    block: AdapterBlock<A>,
     machine: SymbolicMachine<A::PowdrField>,
     column_allocator: &ColumnAllocator,
     path: &Path,

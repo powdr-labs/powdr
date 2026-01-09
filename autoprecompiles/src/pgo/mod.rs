@@ -4,10 +4,7 @@ use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterato
 use strum::{Display, EnumString};
 
 use crate::{
-    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, ApcWithStats},
-    blocks::Block,
-    execution_profile::ExecutionProfile,
-    EmpiricalConstraints, PowdrConfig,
+    EmpiricalConstraints, PowdrConfig, adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, ApcWithStats}, blocks::Block, execution_profile::ExecutionProfile
 };
 
 mod cell;
@@ -96,9 +93,9 @@ fn create_apcs_for_all_blocks<A: Adapter>(
         .take(n_acc)
         .map(|block| {
             tracing::debug!(
-                "Accelerating block of length {} and start pc {}",
-                block.statements.len(),
-                block.start_pc
+                "Accelerating block of length {} and original pcs {:?}",
+                block.statements().count(),
+                block.original_pcs(),
             );
 
             crate::build::<A>(

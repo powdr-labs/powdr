@@ -3,9 +3,7 @@ use std::collections::BTreeMap;
 use derivative::Derivative;
 
 use crate::{
-    adapter::{Adapter, AdapterApcWithStats, AdapterBasicBlock, AdapterVmConfig, PgoAdapter},
-    pgo::create_apcs_for_all_blocks,
-    EmpiricalConstraints, PowdrConfig,
+    EmpiricalConstraints, PowdrConfig, adapter::{Adapter, AdapterApcWithStats, AdapterBlock, AdapterVmConfig, PgoAdapter}, pgo::create_apcs_for_all_blocks
 };
 
 #[derive(Derivative)]
@@ -19,7 +17,7 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
 
     fn create_apcs_with_pgo(
         &self,
-        mut blocks: Vec<AdapterBasicBlock<Self::Adapter>>,
+        mut blocks: Vec<AdapterBlock<Self::Adapter>>,
         _block_exec_count: Option<Vec<u32>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
@@ -27,14 +25,14 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
         empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
         // cost = number_of_original_instructions
-        blocks.sort_by(|a, b| b.statements.len().cmp(&a.statements.len()));
+        blocks.sort_by_key(|b| std::cmp::Reverse(b.statements().count()));
 
         // Debug print blocks by descending cost
         for block in &blocks {
             tracing::debug!(
-                "Basic block start_pc: {}, number_of_instructions: {}",
-                block.start_pc,
-                block.statements.len(),
+                "Basic block pcs: {:?}, number_of_instructions: {}",
+                block.original_pcs(),
+                block.statements().count(),
             );
         }
 
