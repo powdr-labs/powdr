@@ -6,8 +6,10 @@ use std::{fmt::Display, sync::Arc};
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
+use crate::blocks::{Block, generate_superblocks};
 use crate::empirical_constraints::EmpiricalConstraints;
 use crate::execution::{ExecutionState, OptimisticConstraints};
+use crate::execution_profile::ExecutionProfile;
 use crate::{
     blocks::{BasicBlock, Instruction, Program},
     constraint_optimizer::IsBusStateful,
@@ -50,12 +52,29 @@ pub trait PgoAdapter {
         labels: BTreeMap<u64, Vec<String>>,
         empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
-        let filtered_blocks = blocks
+        let filtered_blocks: Vec<_> = blocks
             .into_iter()
             .filter(|block| !Self::Adapter::should_skip_block(block))
             .collect();
+
+        // generate superblocks if profiling data is available
+        let (blocks, execution_count) = if let Some(prof) = self.profiling_data() {
+            // generate_superblocks already filters out unexecuted blocks and single instruction blocks
+            let (blocks, count) = generate_superblocks(
+                &prof.pc_list,
+                &filtered_blocks,
+                config.superblock_max_bb_count as usize,
+            );
+            (blocks, Some(count))
+        } else {
+            (filtered_blocks.into_iter().map(|bb| {
+                Block::Basic(bb)
+            }).collect(), None)
+        };
+
         self.create_apcs_with_pgo(
-            filtered_blocks,
+            blocks,
+            execution_count,
             config,
             vm_config,
             labels,
@@ -65,14 +84,23 @@ pub trait PgoAdapter {
 
     fn create_apcs_with_pgo(
         &self,
-        blocks: Vec<AdapterBasicBlock<Self::Adapter>>,
+        blocks: Vec<AdapterBlock<Self::Adapter>>,
+        // frequency of each block during PGO execution.
+        // This is None when there's no profiling data (NonePgo).
+        // If present, has one entry for each of the given `blocks`.
+        block_exec_count: Option<Vec<u32>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
         empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>>;
 
-    fn pc_execution_count(&self, _pc: u64) -> Option<u32> {
+    fn pc_execution_count(&self, pc: u64) -> Option<u32> {
+        self.profiling_data()
+            .and_then(|prof| prof.pc_count.get(&pc).cloned())
+    }
+
+    fn profiling_data(&self) -> Option<&ExecutionProfile> {
         None
     }
 }
@@ -142,3 +170,4 @@ pub type AdapterOptimisticConstraints<A> = OptimisticConstraints<
     <<A as Adapter>::ExecutionState as ExecutionState>::Value,
 >;
 pub type AdapterBasicBlock<A> = BasicBlock<<A as Adapter>::Instruction>;
+pub type AdapterBlock<A> = Block<<A as Adapter>::Instruction>;

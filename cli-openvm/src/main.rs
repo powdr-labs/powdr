@@ -39,6 +39,10 @@ enum Commands {
         #[arg(long, default_value_t = PgoType::default())]
         pgo: PgoType,
 
+        /// Enable superblocks of size (number of basic blocks) up to the given value
+        #[arg(long)]
+        superblocks: Option<u8>,
+
         /// When `--pgo-mode cell`, the optional max columns
         #[clap(long)]
         max_columns: Option<usize>,
@@ -68,6 +72,10 @@ enum Commands {
 
         #[arg(long, default_value_t = PgoType::default())]
         pgo: PgoType,
+
+        /// Enable superblocks of size (number of basic blocks) up to the given value
+        #[arg(long)]
+        superblocks: Option<u8>,
 
         /// When `--pgo-mode cell`, the optional max columns
         #[clap(long)]
@@ -109,6 +117,10 @@ enum Commands {
 
         #[arg(long, default_value_t = PgoType::default())]
         pgo: PgoType,
+
+        /// Enable superblocks of size (number of basic blocks) up to the given value
+        #[arg(long)]
+        superblocks: Option<u8>,
 
         /// When `--pgo-mode cell`, the optional max columns
         #[clap(long)]
@@ -153,12 +165,14 @@ fn run_command(command: Commands) {
             autoprecompiles,
             skip,
             pgo,
+            superblocks,
             max_columns,
             input,
             apc_candidates_dir,
             optimistic_precompiles,
         } => {
-            let mut powdr_config = default_powdr_openvm_config(autoprecompiles as u64, skip as u64);
+            let mut powdr_config =
+                default_powdr_openvm_config(autoprecompiles as u64, skip as u64, superblocks);
             if let Some(apc_candidates_dir) = apc_candidates_dir {
                 powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
             }
@@ -188,13 +202,15 @@ fn run_command(command: Commands) {
             autoprecompiles,
             skip,
             pgo,
+            superblocks,
             max_columns,
             input,
             metrics,
             apc_candidates_dir,
             optimistic_precompiles,
         } => {
-            let mut powdr_config = default_powdr_openvm_config(autoprecompiles as u64, skip as u64);
+            let mut powdr_config =
+                default_powdr_openvm_config(autoprecompiles as u64, skip as u64, superblocks);
             if let Some(apc_candidates_dir) = apc_candidates_dir {
                 powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
             }
@@ -235,13 +251,15 @@ fn run_command(command: Commands) {
             mock,
             recursion,
             pgo,
+            superblocks,
             max_columns,
             input,
             metrics,
             apc_candidates_dir,
             optimistic_precompiles,
         } => {
-            let mut powdr_config = default_powdr_openvm_config(autoprecompiles as u64, skip as u64);
+            let mut powdr_config =
+                default_powdr_openvm_config(autoprecompiles as u64, skip as u64, superblocks);
             if let Some(apc_candidates_dir) = &apc_candidates_dir {
                 powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
             }

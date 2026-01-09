@@ -8,10 +8,7 @@ use serde::{Deserialize, Serialize};
 pub use crate::equivalence_classes::{EquivalenceClass, Partition};
 
 use crate::{
-    adapter::Adapter,
-    blocks::BasicBlock,
-    expression::{AlgebraicExpression, AlgebraicReference},
-    SymbolicConstraint,
+    SymbolicConstraint, adapter::Adapter, blocks::BasicBlock, expression::{AlgebraicExpression, AlgebraicReference}
 };
 
 /// "Constraints" that were inferred from execution statistics. They hold empirically

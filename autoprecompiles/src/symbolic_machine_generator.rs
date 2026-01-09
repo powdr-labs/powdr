@@ -4,11 +4,7 @@ use powdr_expression::AlgebraicBinaryOperation;
 use powdr_number::FieldElement;
 
 use crate::{
-    adapter::Adapter,
-    blocks::{BasicBlock, Instruction},
-    expression::AlgebraicExpression,
-    powdr, Apc, BusMap, BusType, ColumnAllocator, InstructionHandler, SymbolicBusInteraction,
-    SymbolicConstraint, SymbolicMachine,
+    Apc, BusMap, BusType, ColumnAllocator, InstructionHandler, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine, adapter::Adapter, blocks::{Block, Instruction}, expression::AlgebraicExpression, powdr
 };
 
 /// Converts the field type of a symbolic machine.
@@ -117,7 +113,7 @@ fn convert_expression<T, U>(
 /// a mapping from local column IDs to global column IDs
 /// (in the form of a vector).
 pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
-    block: &BasicBlock<A::Instruction>,
+    block: &Block<A::Instruction>,
     instruction_handler: &A::InstructionHandler,
     bus_map: &BusMap<A::CustomBusTypes>,
 ) -> (SymbolicMachine<A::PowdrField>, ColumnAllocator) {
@@ -126,7 +122,9 @@ pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
     let mut col_subs: Vec<Vec<u64>> = Vec::new();
     let mut global_idx: u64 = 3;
 
-    for (i, instr) in block.statements.iter().enumerate() {
+    let insn_indexed_pcs = block.insn_indexed_pcs();
+
+    for (i, instr) in block.statements().enumerate() {
         let machine = instruction_handler
             .get_instruction_air_and_id(instr)
             .1
@@ -138,7 +136,9 @@ pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
         // It is sufficient to provide the initial PC, because the PC update should be
         // deterministic within a basic block. Therefore, all future PCs can be derived
         // by the solver.
-        let pc = (i == 0).then_some(block.start_pc);
+        let pc = insn_indexed_pcs.iter()
+            .find(|(idx, _)| *idx == i)
+            .map(|(_, pc_value)| *pc_value);
         let pc_lookup_row = instr
             .pc_lookup_row(pc)
             .into_iter()
