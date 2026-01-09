@@ -193,22 +193,16 @@ pub fn generate_superblocks<I: Clone>(
         // if starting a single instruction BB, clear current sequence
         if basic_blocks[bb_idx].statements.len() <= 1 {
             if !current_run.is_empty() {
+                // add superblocks seen in this run
+                for len in 1..=std::cmp::min(max_len, current_run.len()) {
+                    seen_superblocks.extend(current_run.windows(len).map(|w| w.to_vec()));
+                }
                 execution_bb_runs.push(std::mem::take(&mut current_run));
             }
             continue;
         }
 
         current_run.push(bb_idx);
-
-        // add to seen set the superblocks (size 1..max_len) ending at the last BB of the current run
-        for len in 1..=std::cmp::min(max_len, current_run.len()) {
-            let sblock: Vec<usize> = current_run
-                .iter()
-                .skip(current_run.len() - len)
-                .cloned()
-                .collect();
-            seen_superblocks.insert(sblock);
-        }
     }
 
     tracing::info!(
