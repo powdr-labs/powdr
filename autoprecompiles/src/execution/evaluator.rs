@@ -97,6 +97,12 @@ pub struct OptimisticConstraintEvaluator<A, V> {
 #[derive(Debug)]
 pub struct OptimisticConstraintFailed;
 
+impl<A, V> Default for OptimisticConstraintEvaluator<A, V> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<A, V> OptimisticConstraintEvaluator<A, V> {
     pub fn new() -> Self {
         Self {

@@ -1,6 +1,5 @@
 use std::cmp::Ordering;
 
-use derivative::Derivative;
 use itertools::Itertools;
 
 use crate::execution::{
@@ -10,18 +9,16 @@ use crate::execution::{
 
 /// An APC candidate tracker
 /// During execution, it keeps track of possible parts of the trace that can be assigned to APCs
-#[derive(Derivative)]
-#[derivative(Default(bound = ""))]
 pub struct ApcCandidates<E: ExecutionState, A, S> {
-    candidates: Vec<ApcCandidate<E, A, S>>,
+    apcs: Vec<A>,
+    candidates: Vec<ApcCandidate<E, S>>,
 }
 
 /// A selected APC call
 #[derive(Debug, PartialEq)]
-pub struct ApcCall<A, S> {
-    /// The APC that this call runs
-    // TODO: We probably do not need the whole thing here, the id should be enough.
-    pub apc: A,
+pub struct ApcCall<S> {
+    /// The index of the APC that this call runs
+    pub apc_id: usize,
     /// A snapshot before this APC
     pub from: S,
     /// A snapshot after this APC
@@ -29,6 +26,13 @@ pub struct ApcCall<A, S> {
 }
 
 impl<E: ExecutionState, A: Apc<E>, S: Snapshot> ApcCandidates<E, A, S> {
+    pub fn new(apcs: Vec<A>) -> Self {
+        Self {
+            apcs,
+            candidates: Default::default(),
+        }
+    }
+
     /// Given the current state of execution, retain the candidates whose constraints are still
     /// verified
     pub fn check_conditions(&mut self, state: &E, snapshot_callback: impl Fn() -> S) {
@@ -38,7 +42,10 @@ impl<E: ExecutionState, A: Apc<E>, S: Snapshot> ApcCandidates<E, A, S> {
                 // Check the conditions for unconfirmed candidates
                 CandidateStatus::InProgress(optimistic_constraint_evaluator) => {
                     if optimistic_constraint_evaluator
-                        .try_next_execution_step(state, candidate.apc.optimistic_constraints())
+                        .try_next_execution_step(
+                            state,
+                            self.apcs[candidate.apc_id].optimistic_constraints(),
+                        )
                         .is_err()
                     {
                         return false;
@@ -58,15 +65,15 @@ impl<E: ExecutionState, A: Apc<E>, S: Snapshot> ApcCandidates<E, A, S> {
     /// Abort all candidates that are in progress.
     /// This is useful at the end of a segment, where some candidates being in progress block other candidates that are done from being extracted.
     /// Since we reached the end of the segment, we know that the candidates that are in progress will not be valid, so it's safe to drop them.
-    pub fn abort_in_progress(&mut self) -> Vec<A> {
+    pub fn abort_in_progress(&mut self) -> Vec<usize> {
         self.candidates
             .extract_if(.., |f| matches!(f.status, CandidateStatus::InProgress(_)))
-            .map(|candidate| candidate.apc)
+            .map(|candidate| candidate.apc_id)
             .collect()
     }
 
     /// If no more candidates are in progress, return a set of non-overlapping calls
-    pub fn extract_calls(&mut self) -> Vec<ApcCall<A, S>> {
+    pub fn extract_calls(&mut self) -> Vec<ApcCall<S>> {
         let are_any_in_progress = self
             .candidates
             .iter()
@@ -88,7 +95,7 @@ impl<E: ExecutionState, A: Apc<E>, S: Snapshot> ApcCandidates<E, A, S> {
                 CandidateRank {
                     candidate_id: idx,
                     len: range.1 - range.0,
-                    priority: candidate.apc.priority(),
+                    priority: self.apcs[candidate.apc_id].priority(),
                 },
                 range,
             )
@@ -132,7 +139,7 @@ impl<E: ExecutionState, A: Apc<E>, S: Snapshot> ApcCandidates<E, A, S> {
                     unreachable!()
                 };
                 ApcCall {
-                    apc: candidate.apc,
+                    apc_id: candidate.apc_id,
                     from: candidate.from_snapshot,
                     to,
                 }
@@ -145,15 +152,25 @@ impl<E: ExecutionState, A: Apc<E>, S: Snapshot> ApcCandidates<E, A, S> {
     pub fn try_insert(
         &mut self,
         state: &E,
-        apc: A,
+        apc_id: usize,
         snapshot: impl Fn() -> S,
     ) -> Result<(), OptimisticConstraintFailed> {
-        let apc_candidate = ApcCandidate::try_new(state, apc, snapshot)?;
+        let apc_candidate = {
+            let apc = &self.apcs[apc_id];
+            let mut evaluator = OptimisticConstraintEvaluator::new();
+            evaluator.try_next_execution_step(state, apc.optimistic_constraints())?;
+            Ok(ApcCandidate {
+                total_check_count: apc.cycle_count() + 1,
+                apc_id,
+                from_snapshot: snapshot(),
+                status: CandidateStatus::InProgress(evaluator),
+            })
+        }?;
         self.candidates.push(apc_candidate);
         Ok(())
     }
 
-    fn candidate_range(candidate: &ApcCandidate<E, A, S>) -> (usize, usize) {
+    fn candidate_range(candidate: &ApcCandidate<E, S>) -> (usize, usize) {
         let start = candidate.from_snapshot.instret();
         let end = match &candidate.status {
             CandidateStatus::Done(snapshot) => snapshot.instret(),
@@ -195,12 +212,12 @@ impl PartialOrd for CandidateRank {
 }
 
 #[derive(Debug)]
-struct ApcCandidate<E: ExecutionState, A, S> {
+struct ApcCandidate<E: ExecutionState, S> {
     /// The total number of steps to run
     /// This is the number of steps plus one, because we check the state before and after
     total_check_count: usize,
-    /// The apc candidate being run
-    pub apc: A,
+    /// The id of the apc candidate being run
+    pub apc_id: usize,
     /// The state of the execution when this candidate was introduced
     pub from_snapshot: S,
     /// The status of this candidate
@@ -224,25 +241,6 @@ pub trait Apc<E: ExecutionState> {
 pub trait Snapshot: Clone {
     // How many cycles happened to lead to this snapshot
     fn instret(&self) -> usize;
-}
-
-impl<E: ExecutionState, A: Apc<E>, S> ApcCandidate<E, A, S> {
-    /// Try to create a new candidate.
-    /// Returns an error if an optimistic constraint fails on the current state
-    fn try_new(
-        state: &E,
-        apc: A,
-        snapshot: impl Fn() -> S,
-    ) -> Result<Self, OptimisticConstraintFailed> {
-        let mut evaluator = OptimisticConstraintEvaluator::new();
-        evaluator.try_next_execution_step(state, apc.optimistic_constraints())?;
-        Ok(ApcCandidate {
-            total_check_count: apc.cycle_count() + 1,
-            apc,
-            from_snapshot: snapshot(),
-            status: CandidateStatus::InProgress(evaluator),
-        })
-    }
 }
 
 #[derive(Debug)]
@@ -355,27 +353,26 @@ mod tests {
         }
     }
 
-    #[derive(Default)]
     struct TestVm {
         state: TestExecutionState,
         candidates: ApcCandidates<TestExecutionState, TestApc, TestSnapshot>,
     }
 
     impl TestVm {
-        fn try_add_candidate(&mut self, apc: TestApc) -> Result<(), OptimisticConstraintFailed> {
+        fn try_add_candidate(&mut self, apc_id: usize) -> Result<(), OptimisticConstraintFailed> {
             self.candidates
-                .try_insert(&self.state, apc, || self.state.snapshot())
+                .try_insert(&self.state, apc_id, || self.state.snapshot())
         }
 
         // A helper function to go to the next execution state, check the conditions on it, and extract the calls
-        fn incr(&mut self) -> Vec<ApcCall<TestApc, TestSnapshot>> {
+        fn incr(&mut self) -> Vec<ApcCall<TestSnapshot>> {
             self.state.incr();
             self.candidates
                 .check_conditions(&self.state, || self.state.snapshot());
             self.candidates.extract_calls()
         }
 
-        fn jump(&mut self, pc: usize) -> Vec<ApcCall<TestApc, TestSnapshot>> {
+        fn jump(&mut self, pc: usize) -> Vec<ApcCall<TestSnapshot>> {
             self.state.jump(pc);
             self.candidates
                 .check_conditions(&self.state, || self.state.snapshot());
@@ -397,17 +394,23 @@ mod tests {
                 .filter(|c| matches!(c.status, CandidateStatus::InProgress(_)))
                 .count()
         }
+
+        fn new(apcs: impl IntoIterator<Item = TestApc>) -> Self {
+            Self {
+                state: Default::default(),
+                candidates: ApcCandidates::new(apcs.into_iter().collect()),
+            }
+        }
     }
 
     #[test]
     fn single_candidate() {
-        let mut vm = TestVm::default();
-        // insert an apc with 3 steps
-        let apc = a(3).p(1);
+        // an apc with 3 steps
+        let mut vm = TestVm::new([a(3).p(1)]);
         let snapshot = s(0);
         let final_snapshot = s(3);
         // it will be checked in 4 steps, because we have conditions on the state before and after. The first check is included in `try_insert`.
-        vm.try_add_candidate(apc.clone()).unwrap();
+        vm.try_add_candidate(0).unwrap();
         assert!(vm.incr().is_empty());
         assert!(vm.incr().is_empty());
         let output = vm.incr();
@@ -415,7 +418,7 @@ mod tests {
         assert_eq!(
             output[0],
             ApcCall {
-                apc,
+                apc_id: 0,
                 from: snapshot,
                 to: final_snapshot,
             }
@@ -424,7 +427,6 @@ mod tests {
 
     #[test]
     fn single_candidate_final_state_failure() {
-        let mut vm = TestVm::default();
         // single apc with a constraint that fails on the final (step 2) state
         let failing_constraints =
             OptimisticConstraints::from_constraints(vec![OptimisticConstraint {
@@ -435,7 +437,8 @@ mod tests {
                 right: OptimisticExpression::Number(99),
             }]);
         let apc = a(2).p(1).c(failing_constraints);
-        vm.try_add_candidate(apc).unwrap();
+        let mut vm = TestVm::new([apc]);
+        vm.try_add_candidate(0).unwrap();
         assert!(vm.incr().is_empty());
         assert_eq!(vm.count_in_progress(), 1);
         let extracted = vm.incr();
@@ -446,14 +449,16 @@ mod tests {
 
     #[test]
     fn two_candidates_same_length() {
-        let mut vm = TestVm::default();
         // insert two apcs with 3 steps each, but different priority
         let low_priority = a(3).p(1);
         let high_priority = a(3).p(2);
+        let mut vm = TestVm::new([low_priority, high_priority]);
+        let low_priority_id = 0;
+        let high_priority_id = 1;
         let snapshot = s(0);
         let final_snapshot = s(3);
-        vm.try_add_candidate(low_priority).unwrap();
-        vm.try_add_candidate(high_priority.clone()).unwrap();
+        vm.try_add_candidate(low_priority_id).unwrap();
+        vm.try_add_candidate(high_priority_id).unwrap();
         assert!(vm.incr().is_empty());
         assert!(vm.incr().is_empty());
         let output = vm.incr();
@@ -461,7 +466,7 @@ mod tests {
         assert_eq!(
             output[0],
             ApcCall {
-                apc: high_priority,
+                apc_id: high_priority_id,
                 from: snapshot,
                 to: final_snapshot
             }
@@ -470,16 +475,18 @@ mod tests {
 
     #[test]
     fn superblock_success() {
-        let mut vm = TestVm::default();
         // insert two apcs with different length and priority
         // the superblock (longer block) apc has higher priority and succeeds so it should be picked
         let low_priority = a(3).p(1);
-        let high_priority = a(4).p(2).clone();
+        let high_priority = a(4).p(2);
+        let mut vm = TestVm::new([low_priority, high_priority]);
+        let low_priority_id = 0;
+        let high_priority_id = 1;
         let snapshot: TestSnapshot = s(0);
         // The final snapshot is the one at the end of the high priority apc, since it succeeds
         let final_snapshot = s(4);
-        vm.try_add_candidate(low_priority).unwrap();
-        vm.try_add_candidate(high_priority.clone()).unwrap();
+        vm.try_add_candidate(low_priority_id).unwrap();
+        vm.try_add_candidate(high_priority_id).unwrap();
         assert!(vm.incr().is_empty());
         assert!(vm.incr().is_empty());
         // Both are still running
@@ -492,7 +499,7 @@ mod tests {
         assert_eq!(
             output[0],
             ApcCall {
-                apc: high_priority,
+                apc_id: high_priority_id,
                 from: snapshot,
                 to: final_snapshot,
             }
@@ -501,7 +508,6 @@ mod tests {
 
     #[test]
     fn superblock_failure() {
-        let mut vm = TestVm::default();
         // insert two apcs with different length and priority
         // the superblock (longer block) apc has higher priority but fails the branching condition, so the low priority apc should be picked
         let low_priority = a(3).p(1);
@@ -514,12 +520,15 @@ mod tests {
                 right: OptimisticExpression::Number(1234),
             }]);
         let high_priority = a(4).p(2).c(failing_constraints);
+        let mut vm = TestVm::new([low_priority, high_priority]);
+        let low_priority_id = 0;
+        let high_priority_id = 1;
         let snapshot: TestSnapshot = s(0);
         // The final snapshot is the one at the end of the low priority apc, as the other one failed
         let final_snapshot = s(3);
-        vm.try_add_candidate(low_priority.clone()).unwrap();
+        vm.try_add_candidate(low_priority_id).unwrap();
         // The high priority candidate requires a jump to pc 1234 for the last cycle. This means the pc at step 3 (before instruction 4) should be 1234.
-        vm.try_add_candidate(high_priority).unwrap();
+        vm.try_add_candidate(high_priority_id).unwrap();
         assert!(vm.incr().is_empty());
         assert!(vm.incr().is_empty());
         // Both apcs are still running
@@ -530,7 +539,7 @@ mod tests {
         assert_eq!(
             output[0],
             ApcCall {
-                apc: low_priority,
+                apc_id: low_priority_id,
                 from: snapshot,
                 to: final_snapshot,
             }
@@ -539,19 +548,21 @@ mod tests {
 
     #[test]
     fn two_candidates_different_start() {
-        let mut vm = TestVm::default();
         // define two apcs with different priorities
         let low_priority = a(3).p(1);
         let high_priority = a(3).p(2);
+        let mut vm = TestVm::new([low_priority, high_priority]);
+        let low_priority_id = 0;
+        let high_priority_id = 1;
         let high_priority_snapshot = s(1);
         let final_snapshot = s(4);
         // insert the low priority apc
-        vm.try_add_candidate(low_priority.clone()).unwrap();
+        vm.try_add_candidate(low_priority_id).unwrap();
         assert!(vm.incr().is_empty());
         // candidate is still running
         assert_eq!(vm.count_in_progress(), 1);
         // insert the high priority apc
-        vm.try_add_candidate(high_priority.clone()).unwrap();
+        vm.try_add_candidate(high_priority_id).unwrap();
         assert!(vm.incr().is_empty());
         // Both are still running
         assert_eq!(vm.count_in_progress(), 2);
@@ -563,7 +574,7 @@ mod tests {
         assert_eq!(
             output[0],
             ApcCall {
-                apc: high_priority,
+                apc_id: high_priority_id,
                 from: high_priority_snapshot,
                 to: final_snapshot,
             }
@@ -572,14 +583,15 @@ mod tests {
 
     #[test]
     fn abort_in_progress_returns_shorter_candidate() {
-        let mut vm = TestVm::default();
         let short_low_priority = a(2).p(1);
         let long_high_priority = a(4).p(2);
+        let mut vm = TestVm::new([short_low_priority, long_high_priority]);
+        let short_low_priority_id = 0;
         let short_snapshot = s(0);
         let short_final_snapshot = s(2);
 
-        vm.try_add_candidate(short_low_priority.clone()).unwrap();
-        vm.try_add_candidate(long_high_priority).unwrap();
+        vm.try_add_candidate(short_low_priority_id).unwrap();
+        vm.try_add_candidate(1).unwrap();
 
         for _ in 0..2 {
             assert!(vm.incr().is_empty());
@@ -595,7 +607,7 @@ mod tests {
         assert_eq!(
             extracted[0],
             ApcCall {
-                apc: short_low_priority,
+                apc_id: short_low_priority_id,
                 from: short_snapshot,
                 to: short_final_snapshot,
             }
@@ -604,14 +616,15 @@ mod tests {
 
     #[test]
     fn abort_in_progress_after_segment_end_picks_shorter_candidate() {
-        let mut vm = TestVm::default();
         let short_low_priority = a(2).p(1);
         let long_high_priority = a(4).p(2);
+        let mut vm = TestVm::new([short_low_priority, long_high_priority]);
+        let short_low_priority_id = 0;
         let short_snapshot = s(0);
         let short_final_snapshot = s(2);
 
-        vm.try_add_candidate(short_low_priority.clone()).unwrap();
-        vm.try_add_candidate(long_high_priority.clone()).unwrap();
+        vm.try_add_candidate(short_low_priority_id).unwrap();
+        vm.try_add_candidate(1).unwrap();
 
         for _ in 0..2 {
             assert!(vm.incr().is_empty());
@@ -630,7 +643,7 @@ mod tests {
         assert_eq!(
             extracted[0],
             ApcCall {
-                apc: short_low_priority,
+                apc_id: short_low_priority_id,
                 from: short_snapshot,
                 to: short_final_snapshot,
             }
@@ -645,11 +658,11 @@ mod tests {
 
         // We create an apc for the range, and check that calls do not overlap: the first call finishes before the second call starts
 
-        let mut vm = TestVm::default();
-        let apc = a(2).p(1);
+        let mut vm = TestVm::new([a(2).p(1)]);
+        let apc_id = 0;
 
         // pc = 0, add the candidate
-        vm.try_add_candidate(apc.clone()).unwrap();
+        vm.try_add_candidate(apc_id).unwrap();
         assert_eq!(vm.count_in_progress(), 1);
 
         assert!(vm.incr().is_empty());
@@ -660,7 +673,7 @@ mod tests {
         assert_eq!(
             output[0],
             ApcCall {
-                apc: apc.clone(),
+                apc_id,
                 from: s(0),
                 to: s(2),
             }
@@ -671,7 +684,7 @@ mod tests {
         assert_eq!(vm.count_done(), 0);
 
         // start over
-        vm.try_add_candidate(apc.clone()).unwrap();
+        vm.try_add_candidate(apc_id).unwrap();
         assert_eq!(vm.count_in_progress(), 1);
 
         assert!(vm.incr().is_empty());
@@ -680,7 +693,7 @@ mod tests {
         assert_eq!(
             output[0],
             ApcCall {
-                apc,
+                apc_id,
                 from: s(2),
                 to: s(4),
             }
