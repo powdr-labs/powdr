@@ -8,6 +8,7 @@ use crate::empirical_constraints::{ConstraintGenerator, EmpiricalConstraints};
 use crate::evaluation::AirStats;
 use crate::execution::OptimisticConstraints;
 use crate::expression_conversion::algebraic_to_grouped_expression;
+use crate::optimistic::algebraic_references::BlockCellAlgebraicReferenceMapper;
 use crate::symbolic_machine_generator::convert_apc_field_type;
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
@@ -38,6 +39,7 @@ pub mod expression;
 pub mod expression_conversion;
 pub mod low_degree_bus_interaction_optimizer;
 pub mod memory_optimizer;
+mod optimistic;
 pub mod optimizer;
 pub mod pgo;
 pub mod powdr;
@@ -451,10 +453,11 @@ pub fn build<A: Adapter>(
     );
 
     // Generate constraints for optimistic precompiles.
+    let algebraic_references =
+        BlockCellAlgebraicReferenceMapper::new(&column_allocator.subs, machine.main_columns());
     let constraint_generator = ConstraintGenerator::<A>::new(
-        empirical_constraints,
-        &column_allocator.subs,
-        machine.main_columns(),
+        empirical_constraints.for_block(&block),
+        algebraic_references,
         &block,
     );
     let range_analyzer_constraints = constraint_generator.range_constraints();
