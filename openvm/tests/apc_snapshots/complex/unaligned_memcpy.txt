@@ -122,7 +122,7 @@ Symbolic machine using 105 unique main columns:
   a__2_9
   a__3_9
   cmp_result_12
-  free_var_470
+  free_var_467
   is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):
@@ -253,7 +253,7 @@ diff_marker__0_7 * (diff_val_7 - a__0_4 * (2 * cmp_result_7 - 1)) = 0
 cmp_result_12 * (cmp_result_12 - 1) = 0
 flags__2_3 * (flags__2_3 - 1) - (flags__0_3 * (flags__0_3 + flags__1_3 + flags__2_3 + flags__3_3 - 2) + 2 * flags__1_3 * (flags__0_3 + flags__1_3 + flags__2_3 + flags__3_3 - 2) + 3 * flags__2_3 * (flags__0_3 + flags__1_3 + flags__2_3 + flags__3_3 - 2)) = 0
 (1 - cmp_result_12) * (cmp_result_6 * cmp_result_7) = 0
-free_var_470 * (cmp_result_6 * cmp_result_7) - cmp_result_12 = 0
+free_var_467 * (cmp_result_6 * cmp_result_7) - cmp_result_12 = 0
 opcode_loadb_flag0_0 * shifted_read_data__0_0 + (1 - opcode_loadb_flag0_0) * shifted_read_data__1_0 - read_data__0_3 = 0
 diff_val_6 * (diff_marker__1_6 + diff_marker__2_6 + diff_marker__3_6) = 0
 (1 - is_valid) * (diff_marker__0_6 + diff_marker__1_6 + diff_marker__2_6 + diff_marker__3_6) = 0
