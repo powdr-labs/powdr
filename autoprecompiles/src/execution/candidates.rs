@@ -547,6 +547,63 @@ mod tests {
     }
 
     #[test]
+    fn superblock_failure_keeps_non_overlapping_calls() {
+        // A and B are separate blocks; ABC spans A+B+C but fails within C.
+        // When ABC fails, A and B should both be emitted since their ranges do not overlap.
+        let a_len = 2;
+        let b_len = 2;
+        let c_len = 2;
+        let abc_len = a_len + b_len + c_len;
+        let fail_instr_idx = a_len + b_len + 1;
+        let failing_constraints =
+            OptimisticConstraints::from_constraints(vec![OptimisticConstraint {
+                left: OptimisticExpression::Literal(OptimisticLiteral {
+                    instr_idx: fail_instr_idx,
+                    val: crate::execution::LocalOptimisticLiteral::Pc,
+                }),
+                right: OptimisticExpression::Number(999),
+            }]);
+        let apc_a = a(a_len).p(1);
+        let apc_b = a(b_len).p(1);
+        let apc_abc = a(abc_len).p(2).c(failing_constraints);
+        let mut vm = TestVm::new([apc_a, apc_b, apc_abc]);
+
+        let apc_a_id = 0;
+        let apc_b_id = 1;
+        let apc_abc_id = 2;
+
+        vm.try_add_candidate(apc_a_id).unwrap();
+        vm.try_add_candidate(apc_abc_id).unwrap();
+
+        for _ in 0..a_len {
+            assert!(vm.incr().is_empty());
+        }
+
+        vm.try_add_candidate(apc_b_id).unwrap();
+
+        for _ in 0..b_len {
+            assert!(vm.incr().is_empty());
+        }
+
+        let output = vm.incr();
+        assert_eq!(
+            output,
+            vec![
+                ApcCall {
+                    apc_id: apc_a_id,
+                    from: s(0),
+                    to: s(2),
+                },
+                ApcCall {
+                    apc_id: apc_b_id,
+                    from: s(2),
+                    to: s(4),
+                },
+            ]
+        );
+    }
+
+    #[test]
     fn two_candidates_different_start() {
         // define two apcs with different priorities
         let low_priority = a(3).p(1);
