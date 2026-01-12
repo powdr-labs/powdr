@@ -238,7 +238,7 @@ pub trait Apc<E: ExecutionState> {
 
 /// A trait to represent execution state snapshots at execution time
 /// TODO: Maybe `Snapshot` is incorrect as we only care about instret here
-pub trait Snapshot: Clone {
+pub trait Snapshot {
     // How many cycles happened to lead to this snapshot
     fn instret(&self) -> usize;
 }
