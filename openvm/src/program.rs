@@ -102,10 +102,6 @@ impl<'a, F: PrimeField32> Program<Instr<F>> for Prog<'a, F> {
         self.0.pc_base as u64
     }
 
-    fn pc_step(&self) -> u32 {
-        DEFAULT_PC_STEP
-    }
-
     fn instructions(&self) -> Box<dyn Iterator<Item = Instr<F>> + '_> {
         Box::new(
             self.0
