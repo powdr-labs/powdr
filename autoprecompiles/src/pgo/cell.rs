@@ -151,14 +151,23 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
             config.skip_autoprecompiles as usize,
         );
 
-        tracing::debug!("Selected candidates:");
-        for c in selected_candidates.iter().map(|c| c.to_json_export(Path::new(""))) {
-            tracing::debug!(
-                "\tAPC pcs {:?}, effectiveness: {:?}, freq: {:?}",
-                c.original_block.original_pcs(),
-                c.cost_before / c.cost_after,
-                c.execution_frequency,
-            );
+        if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
+            tracing::debug!("Selected candidates:");
+            let selected: Vec<_> = selected_candidates.iter().map(|c| c.to_json_export(apc_candidates_dir_path))
+                .inspect(|c| {
+                    tracing::debug!(
+                        "\tAPC pcs {:?}, effectiveness: {:?}, freq: {:?}",
+                        c.original_block.original_pcs(),
+                        c.cost_before / c.cost_after,
+                        c.execution_frequency,
+                    );
+                }).collect();
+            let json = JsonExport { apcs: selected, labels: labels.clone() };
+            let json_path = apc_candidates_dir_path.join("apc_candidates_selected.json");
+            let file = std::fs::File::create(&json_path)
+                .expect("Failed to create file for selected APC candidates JSON");
+            serde_json::to_writer(BufWriter::new(file), &json)
+                .expect("Failed to write selected APC candidates JSON to file");
         }
 
         let res: Vec<_> = selected_candidates
