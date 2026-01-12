@@ -330,21 +330,32 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
 
             match check_overlap(&bbs, &other_bbs) {
                 Some(BlockOverlap::FirstIncludesSecond(count)) => {
-                    to_discount.push((*other_idx, count));
+                    if other_bbs.len() > 1 {
+                        // TODO: discounting the other one here has corner cases:
+                        // for example, 'aaa' and 'aa': we can't just simply discount 'aa' by the count of 'aaa'.
+                        // Given a run like 'aaaaaaaaaa', 5-3=2 which is wrong (if we used 'aaa' then 'aa' would never run).
+                        // Another similar case is 'baba' and 'ab' in a run like 'babababababa'.
+                        to_remove.push(*other_idx);
+                    } else {
+                        // For normal basic blocks the above is not an issue:
+                        // running 'aaa' once will prevent 'a' from running exactly 3 times
+                        to_discount.push((*other_idx, c.execution_count().checked_mul(count).unwrap()));
+                    }
                 },
+                Some(BlockOverlap::SecondIncludesFirst(_)) => {
+                    // If the first block is always preferred, the second can't run
+                    // TODO: could the following case exist?
+                    // 'a' is chosen over 'ba', but 'b' followed by 'a' is worse than 'ba'?
+                    to_remove.push(*other_idx);
+                }
                 Some(BlockOverlap::FirstOverlapsSecond) => {
                     // TODO: ideally we'd just discount here, but we would need more info:
                     // for example, if 'ab' is selected: 'bc' and 'bd' could be discounted,
                     // but we need to know the counts of both 'abc' and 'abd' to do it properly.
                     to_remove.push(*other_idx);
                 }
-                Some(BlockOverlap::SecondIncludesFirst(_)) => {
-                    // in these cases, running the other apc would prevent us from using the current better one
-                    to_remove.push(*other_idx);
-                }
                 Some(BlockOverlap::SecondOverlapsFirst) => {
-                    // TODO: similarly to the other overlap case, ideally we'd just discount here:
-                    // if 'bc' is selected: 'ab' could be discounted, but we need to know the count of 'abc'
+                    // TODO: this is similar to the case above
                     to_remove.push(*other_idx);
                 },
                 None => (),
@@ -358,7 +369,7 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
             let mut new_priority = ordered_candidates.get(&other_idx).unwrap().1.clone();
 
             // `count` is how many times to discount the other apc for each time the selected one runs
-            new_priority.exec_count -= (c.execution_count() as usize) * count as usize;
+            new_priority.exec_count -= count as usize;
             if new_priority.exec_count == 0 {
                 to_remove.push(other_idx);
             } else {
