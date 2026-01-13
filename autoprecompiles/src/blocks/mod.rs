@@ -13,8 +13,6 @@ pub use detection::collect_basic_blocks;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 /// A sequence of instructions starting at a given PC.
-/// If `other_pcs` is empty, this is a basic block.
-/// If `other_pcs` is non-empty, this is a superblock, that is, a sequence of basic blocks.
 pub struct BasicBlock<I> {
     /// The program counter of the first instruction in this block.
     pub start_pc: u64,
