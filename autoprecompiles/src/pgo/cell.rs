@@ -95,7 +95,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
 
     fn create_apcs_with_pgo(
         &self,
-        blocks: Vec<AdapterBlock<Self::Adapter>>,
+        mut blocks: Vec<AdapterBlock<Self::Adapter>>,
         block_exec_count: Option<Vec<u32>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
@@ -107,11 +107,37 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
         }
 
         // ensure blocks are valid for APC
-        let block_exec_count = block_exec_count.unwrap();
+        let mut block_exec_count = block_exec_count.unwrap();
         blocks
             .iter()
             .zip_eq(&block_exec_count)
             .for_each(|(block, count)| assert!(*count > 0 && block.statements().count() > 1));
+
+        // filter out blocks with low execution count
+        let block_exec_count_cutoff = std::env::var("POWDR_BLOCK_EXEC_COUNT_CUTOFF")
+            .ok()
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(0);
+        let mut skipped = 0;
+        for i in (0..blocks.len()).rev() {
+            if block_exec_count[i] < block_exec_count_cutoff {
+                tracing::debug!(
+                    "Skipping block {:?} due to execution count below cutoff ({})",
+                    blocks[i].original_pcs(),
+                    block_exec_count[i],
+                );
+                // remove block
+                blocks.remove(i);
+                block_exec_count.remove(i);
+                skipped += 1;
+            }
+        }
+        tracing::info!(
+            "{} blocks were skipped due to execution cutoff of {}, {} blocks remain",
+            skipped,
+            block_exec_count_cutoff,
+            blocks.len(),
+        );
 
         // generate apc for all basic blocks and only cache the ones we eventually use
         // calculate number of trace cells saved per row for each basic block to sort them by descending cost
