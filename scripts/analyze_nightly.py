@@ -94,8 +94,8 @@ def fetch_benchmark_results(run_dir: str, benchmark: str) -> Optional[BenchmarkR
 
     try:
         df = pd.read_csv(StringIO(content))
-        results = {
-            row['filename']: float(row['total_proof_time_ms'])
+        results: dict[str, float] = {
+            str(row['filename']): float(row['total_proof_time_ms'])
             for _, row in df.iterrows()
         }
 
@@ -103,7 +103,7 @@ def fetch_benchmark_results(run_dir: str, benchmark: str) -> Optional[BenchmarkR
             return None
 
         # Find the best (lowest) total_proof_time_ms
-        best_config = min(results, key=results.get)
+        best_config = min(results, key=lambda k: results[k])
         best_time = results[best_config]
 
         return BenchmarkResult(
