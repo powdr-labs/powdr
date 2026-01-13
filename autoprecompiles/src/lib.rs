@@ -496,12 +496,21 @@ pub fn build<A: Adapter>(
     metrics::counter!("before_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
 
+    // Block boundaries (instruction indices where new basic blocks start in a superblock)
+    let block_boundaries: std::collections::HashSet<usize> = block
+        .insn_indexed_pcs()
+        .into_iter()
+        .skip(1) // Skip index 0, it's always the start
+        .map(|(idx, _)| idx)
+        .collect();
+
     let (machine, column_allocator) = optimizer::optimize::<A>(
         machine,
         vm_config.bus_interaction_handler,
         degree_bound,
         &vm_config.bus_map,
         column_allocator,
+        &block_boundaries,
     )?;
 
     // add guards to constraints that are not satisfied by zeroes
