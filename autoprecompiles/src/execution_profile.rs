@@ -1,4 +1,5 @@
 use crate::adapter::Adapter;
+use crate::blocks::PcStep;
 use crate::blocks::Program;
 use std::collections::HashMap;
 use std::sync::atomic::AtomicU32;
@@ -86,7 +87,7 @@ impl PgoCollector {
         let pc_index_map = Arc::new((0..max_pc_index).map(|_| AtomicU32::new(0)).collect());
         Self {
             pc_index_map,
-            step: program.pc_step(),
+            step: <A::Instruction as PcStep>::pc_step(),
             pc_base: program.base_pc(),
         }
     }
