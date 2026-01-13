@@ -74,18 +74,29 @@ class ComparisonResult:
 
 
 def fetch_url(url: str, headers: Optional[dict] = None) -> str:
-    """Fetch content from a URL."""
+    """Fetch content from a URL.
+
+    Raises:
+        URLError: If the URL cannot be reached.
+        HTTPError: If the server returns an error status code.
+    """
     req = Request(url)
     if headers:
         for key, value in headers.items():
             req.add_header(key, value)
 
-    with urlopen(req, timeout=30) as response:
+    with urlopen(req, timeout=60) as response:
         return response.read().decode('utf-8')
 
 
 def get_results_directories() -> list[str]:
-    """Get list of result directories from GitHub, sorted by date descending."""
+    """Get list of result directories from GitHub, sorted by date descending.
+
+    Raises:
+        URLError: If the GitHub API cannot be reached.
+        HTTPError: If the GitHub API returns an error status code.
+        json.JSONDecodeError: If the API response is not valid JSON.
+    """
     url = f"{GITHUB_API_BASE}/contents/results?ref=gh-pages"
     headers = {"Accept": "application/vnd.github.v3+json"}
 
@@ -144,8 +155,14 @@ def compare_results(
     regression_threshold: float = 0.0
 ) -> ComparisonResult:
     """Compare latest results to previous results."""
-    change_percent = ((latest.best_time_ms - previous.best_time_ms) / previous.best_time_ms) * 100
-    is_regression = change_percent > regression_threshold
+    if previous.best_time_ms == 0:
+        change_percent = 0.0
+        is_regression = False
+    else:
+        change_percent = (
+            (latest.best_time_ms - previous.best_time_ms) / previous.best_time_ms
+        ) * 100
+        is_regression = change_percent > regression_threshold
 
     # Check if best config changed
     config_changed = latest.best_config != previous.best_config
@@ -169,6 +186,16 @@ def compare_results(
     )
 
 
+def format_change_percent(change: float) -> str:
+    """Format a percentage change with appropriate sign."""
+    if change == 0.0:
+        return "0.0%"
+    elif change > 0:
+        return f"+{change:.1f}%"
+    else:
+        return f"{change:.1f}%"
+
+
 def format_report(
     latest_run: str,
     previous_run: str,
@@ -177,7 +204,24 @@ def format_report(
     warnings: list[str]
 ) -> str:
     """Format the comparison report as markdown."""
-    lines = []
+    lines: list[str] = []
+
+    def add_table_section(title: str, items: list[ComparisonResult]) -> None:
+        """Add a markdown table section for comparison results."""
+        if not items:
+            return
+        lines.append(f"## {title}")
+        lines.append("")
+        lines.append("| Benchmark | Latest (ms) | Previous (ms) | Change |")
+        lines.append("|-----------|-------------|---------------|--------|")
+        for r in items:
+            lines.append(
+                f"| {r.benchmark} | {r.latest_time_ms:.0f} ({r.latest_config}) | "
+                f"{r.previous_time_ms:.0f} ({r.previous_config}) | "
+                f"{format_change_percent(r.change_percent)} |"
+            )
+        lines.append("")
+
     lines.append("# Nightly Benchmark Comparison Report")
     lines.append("")
     lines.append(f"**Latest run:** {latest_run}")
@@ -202,44 +246,9 @@ def format_report(
     improvements = [c for c in comparisons if c.change_percent < 0]
     stable = [c for c in comparisons if not c.is_regression and c.change_percent >= 0]
 
-    if regressions:
-        lines.append("## Regressions")
-        lines.append("")
-        lines.append("| Benchmark | Latest (ms) | Previous (ms) | Change |")
-        lines.append("|-----------|-------------|---------------|--------|")
-        for r in regressions:
-            lines.append(
-                f"| {r.benchmark} | {r.latest_time_ms:.0f} ({r.latest_config}) | "
-                f"{r.previous_time_ms:.0f} ({r.previous_config}) | "
-                f"+{r.change_percent:.1f}% |"
-            )
-        lines.append("")
-
-    if improvements:
-        lines.append("## Improvements")
-        lines.append("")
-        lines.append("| Benchmark | Latest (ms) | Previous (ms) | Change |")
-        lines.append("|-----------|-------------|---------------|--------|")
-        for r in improvements:
-            lines.append(
-                f"| {r.benchmark} | {r.latest_time_ms:.0f} ({r.latest_config}) | "
-                f"{r.previous_time_ms:.0f} ({r.previous_config}) | "
-                f"{r.change_percent:.1f}% |"
-            )
-        lines.append("")
-
-    if stable:
-        lines.append("## Stable")
-        lines.append("")
-        lines.append("| Benchmark | Latest (ms) | Previous (ms) | Change |")
-        lines.append("|-----------|-------------|---------------|--------|")
-        for r in stable:
-            lines.append(
-                f"| {r.benchmark} | {r.latest_time_ms:.0f} ({r.latest_config}) | "
-                f"{r.previous_time_ms:.0f} ({r.previous_config}) | "
-                f"+{r.change_percent:.1f}% |"
-            )
-        lines.append("")
+    add_table_section("Regressions", regressions)
+    add_table_section("Improvements", improvements)
+    add_table_section("Stable", stable)
 
     return "\n".join(lines)
 
@@ -285,6 +294,9 @@ def main():
         result_dirs = get_results_directories()
     except (URLError, HTTPError) as e:
         print(f"Error: Could not fetch results directories: {e}", file=sys.stderr)
+        sys.exit(1)
+    except json.JSONDecodeError as e:
+        print(f"Error: Failed to parse GitHub API response: {e}", file=sys.stderr)
         sys.exit(1)
 
     if len(result_dirs) < 2:

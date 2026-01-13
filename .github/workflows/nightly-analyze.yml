@@ -10,9 +10,13 @@ on:
 jobs:
   analyze:
     runs-on: ubuntu-latest
-    # Only run if nightly tests completed (regardless of success/failure)
-    # This allows us to report even if some benchmarks failed
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion != 'cancelled' }}
+    # Only run if nightly tests completed successfully or failed (not skipped/cancelled)
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        github.event.workflow_run.conclusion == 'success' ||
+        github.event.workflow_run.conclusion == 'failure'
+      }}
 
     steps:
       - uses: actions/checkout@v4
@@ -28,20 +32,17 @@ jobs:
       - name: Run regression analysis
         id: analysis
         run: |
-          # Run analysis and capture output
+          # Run analysis and capture stdout (report) separately from stderr (logs)
           set +e
-          OUTPUT=$(python ./scripts/analyze_nightly.py 2>&1)
+          python ./scripts/analyze_nightly.py > analysis_report.md
           EXIT_CODE=$?
           set -e
-
-          # Save output to file for the summary
-          echo "$OUTPUT" > analysis_report.md
 
           # Set outputs for later steps
           echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
 
-          # Print to logs
-          echo "$OUTPUT"
+          # Print report to logs as well
+          cat analysis_report.md
 
       - name: Generate job summary
         run: cat analysis_report.md >> $GITHUB_STEP_SUMMARY
