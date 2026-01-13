@@ -259,3 +259,38 @@ fn test_rule_split_constraints_based_on_minimal_range() {
     );
     assert_eq!(optimized_system.0.system().algebraic_constraints.len(), 0);
 }
+
+#[test]
+fn one_hot_flags() {
+    let mut system = IndexedConstraintSystem::default();
+    //opcode_sub_flag_21 + 2 * opcode_xor_flag_21 + 3 * opcode_or_flag_21 + 4 * opcode_and_flag_21 = 0
+    system.add_algebraic_constraints([
+        // Boolean flags
+        assert_zero(v("flag0") * (v("flag0") - c(1))),
+        assert_zero(v("flag1") * (v("flag1") - c(1))),
+        assert_zero(v("flag2") * (v("flag2") - c(1))),
+        assert_zero(v("flag3") * (v("flag3") - c(1))),
+        // Exactly one flag is active
+        assert_zero(v("flag0") + v("flag1") + v("flag2") + v("flag3") - c(1)),
+        // Flag 2 is active
+        assert_zero(
+            v("flag0") * c(0) + v("flag1") * c(1) + v("flag2") * c(2) + v("flag3") * c(3) - c(2),
+        ),
+    ]);
+
+    let optimized_system = rule_based_optimization(
+        system,
+        NoRangeConstraints,
+        DefaultBusInteractionHandler::default(),
+        &mut new_var(),
+        None,
+    );
+
+    expect![[r#"(flag0) * (flag0 - 1) = 0
+(flag1) * (flag1 - 1) = 0
+(flag2) * (flag2 - 1) = 0
+(flag3) * (flag3 - 1) = 0
+flag0 + flag1 + flag2 + flag3 - 1 = 0
+flag1 + 2 * flag2 + 3 * flag3 - 2 = 0"#]]
+    .assert_eq(&optimized_system.0.to_string());
+}
