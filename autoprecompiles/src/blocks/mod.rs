@@ -4,6 +4,7 @@ use std::{
 };
 
 use itertools::{Either, Itertools};
+use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 /// Tools to detect basic blocks in a program
@@ -210,15 +211,16 @@ pub fn generate_superblocks<I: Clone>(
     );
 
     // here, we go over the BB runs to count how many times each superblock can be executed
-    let mut superblock_count = HashMap::new();
-    for sblock in seen_superblocks {
-        for run in &execution_bb_runs {
-            let count = count_non_overlapping(run, &sblock);
-            if count > 0 {
-                *superblock_count.entry(sblock.clone()).or_default() += count;
-            }
+    let superblock_count: HashMap<_, _> = seen_superblocks.into_par_iter().filter_map(|sblock| {
+        let count: u32 = execution_bb_runs.iter().map(|run| {
+            count_non_overlapping(run, &sblock)
+        }).sum();
+        if count > 0 {
+            Some((sblock, count))
+        } else {
+            None
         }
-    }
+    }).collect();
 
     // build the resulting BasicBlock's and counts
     let mut super_blocks = vec![];
