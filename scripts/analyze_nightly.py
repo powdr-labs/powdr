@@ -30,6 +30,25 @@ BENCHMARKS = ["keccak", "sha256", "pairing", "u256", "matmul", "ecc", "ecrecover
 # Date pattern for result directories (YYYY-MM-DD-HHMM)
 DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{4}$")
 
+# Pattern to extract APC count from config name (e.g., "apc030" -> 30)
+APC_PATTERN = re.compile(r"apc(\d+)")
+
+
+def is_apc_config(config: str) -> bool:
+    """Check if a config uses APCs (apc count > 0)."""
+    match = APC_PATTERN.search(config)
+    if match:
+        return int(match.group(1)) > 0
+    return False
+
+
+def get_apc_count(config: str) -> Optional[int]:
+    """Extract APC count from config name, or None if not an APC config."""
+    match = APC_PATTERN.search(config)
+    if match:
+        return int(match.group(1))
+    return None
+
 
 @dataclass
 class BenchmarkResult:
@@ -50,6 +69,8 @@ class ComparisonResult:
     previous_config: str
     change_percent: float
     is_regression: bool
+    config_changed: bool  # True if best config differs between runs
+    apc_regression: bool  # True if regressed from APC to non-APC config
 
 
 def fetch_url(url: str, headers: Optional[dict] = None) -> str:
@@ -126,6 +147,15 @@ def compare_results(
     change_percent = ((latest.best_time_ms - previous.best_time_ms) / previous.best_time_ms) * 100
     is_regression = change_percent > regression_threshold
 
+    # Check if best config changed
+    config_changed = latest.best_config != previous.best_config
+
+    # Check if regressed from APC to non-APC
+    # This is an error if previous used APCs but latest doesn't
+    previous_uses_apc = is_apc_config(previous.best_config)
+    latest_uses_apc = is_apc_config(latest.best_config)
+    apc_regression = previous_uses_apc and not latest_uses_apc
+
     return ComparisonResult(
         benchmark=latest.benchmark,
         latest_time_ms=latest.best_time_ms,
@@ -133,7 +163,9 @@ def compare_results(
         previous_time_ms=previous.best_time_ms,
         previous_config=previous.best_config,
         change_percent=change_percent,
-        is_regression=is_regression
+        is_regression=is_regression,
+        config_changed=config_changed,
+        apc_regression=apc_regression,
     )
 
 
@@ -141,7 +173,8 @@ def format_report(
     latest_run: str,
     previous_run: str,
     comparisons: list[ComparisonResult],
-    errors: list[str]
+    errors: list[str],
+    warnings: list[str]
 ) -> str:
     """Format the comparison report as markdown."""
     lines = []
@@ -156,6 +189,13 @@ def format_report(
         lines.append("")
         for error in errors:
             lines.append(f"- {error}")
+        lines.append("")
+
+    if warnings:
+        lines.append("## Warnings")
+        lines.append("")
+        for warning in warnings:
+            lines.append(f"- {warning}")
         lines.append("")
 
     regressions = [c for c in comparisons if c.is_regression]
@@ -259,6 +299,7 @@ def main():
     # Fetch results for each benchmark
     comparisons = []
     errors = []
+    warnings = []
 
     for benchmark in args.benchmarks:
         print(f"Analyzing {benchmark}...", file=sys.stderr)
@@ -281,6 +322,18 @@ def main():
         )
         comparisons.append(comparison)
 
+        # Check for config changes and APC regressions
+        if comparison.apc_regression:
+            errors.append(
+                f"{benchmark}: APC regression - best config changed from APC "
+                f"({comparison.previous_config}) to non-APC ({comparison.latest_config})"
+            )
+        elif comparison.config_changed:
+            warnings.append(
+                f"{benchmark}: Best config changed from {comparison.previous_config} "
+                f"to {comparison.latest_config}"
+            )
+
     # Generate report
     if args.output_format == "json":
         output = {
@@ -294,22 +347,27 @@ def main():
                     "previous_time_ms": c.previous_time_ms,
                     "previous_config": c.previous_config,
                     "change_percent": c.change_percent,
-                    "is_regression": c.is_regression
+                    "is_regression": c.is_regression,
+                    "config_changed": c.config_changed,
+                    "apc_regression": c.apc_regression,
                 }
                 for c in comparisons
             ],
             "errors": errors,
+            "warnings": warnings,
             "has_regressions": any(c.is_regression for c in comparisons),
-            "has_errors": len(errors) > 0
+            "has_errors": len(errors) > 0,
+            "has_warnings": len(warnings) > 0,
         }
         print(json.dumps(output, indent=2))
     else:
-        report = format_report(latest_run, previous_run, comparisons, errors)
+        report = format_report(latest_run, previous_run, comparisons, errors, warnings)
         print(report)
 
     # Exit with error code if there are regressions or errors
     has_regressions = any(c.is_regression for c in comparisons)
     has_errors = len(errors) > 0
+    has_warnings = len(warnings) > 0
 
     if has_errors:
         print("\nErrors were encountered during analysis.", file=sys.stderr)
@@ -318,6 +376,9 @@ def main():
     if has_regressions:
         print("\nRegressions detected!", file=sys.stderr)
         sys.exit(1)
+
+    if has_warnings:
+        print("\nWarnings were generated (see report).", file=sys.stderr)
 
     print("\nNo regressions detected.", file=sys.stderr)
     sys.exit(0)
