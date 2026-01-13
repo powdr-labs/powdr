@@ -20,7 +20,7 @@ pub fn original_vm_config() -> OriginalVmConfig {
 pub mod apc_builder_utils {
     use openvm_instructions::instruction::Instruction;
     use openvm_stark_sdk::p3_baby_bear::BabyBear;
-    use powdr_autoprecompiles::blocks::BasicBlock;
+    use powdr_autoprecompiles::blocks::{BasicBlock, Block};
     use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
     use powdr_autoprecompiles::evaluation::evaluate_apc;
     use powdr_autoprecompiles::{build, VmConfig};
@@ -67,7 +67,7 @@ pub mod apc_builder_utils {
         let apc_path: Option<&Path> = apc_path_var.as_deref().map(Path::new);
 
         let apc = build::<BabyBearOpenVmApcAdapter>(
-            basic_block.clone(),
+            Block::Basic(basic_block.clone()),
             vm_config,
             degree_bound,
             apc_path,
