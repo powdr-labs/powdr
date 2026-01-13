@@ -1,0 +1,59 @@
+name: Nightly Regression Analysis
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Nightly tests"]
+    types:
+      - completed
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    # Only run if nightly tests completed (regardless of success/failure)
+    # This allows us to report even if some benchmarks failed
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion != 'cancelled' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install pandas
+
+      - name: Run regression analysis
+        id: analysis
+        run: |
+          # Run analysis and capture output
+          set +e
+          OUTPUT=$(python ./scripts/analyze_nightly.py 2>&1)
+          EXIT_CODE=$?
+          set -e
+
+          # Save output to file for the summary
+          echo "$OUTPUT" > analysis_report.md
+
+          # Set outputs for later steps
+          echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
+
+          # Print to logs
+          echo "$OUTPUT"
+
+      - name: Generate job summary
+        run: cat analysis_report.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Check for regressions
+        if: ${{ steps.analysis.outputs.exit_code == '1' }}
+        run: |
+          echo "::error::Performance regressions detected! See job summary for details."
+          exit 1
+
+      - name: Check for errors
+        if: ${{ steps.analysis.outputs.exit_code == '2' }}
+        run: |
+          echo "::warning::Errors occurred during analysis. See job summary for details."
+          exit 1
