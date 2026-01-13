@@ -1,12 +1,12 @@
-use std::{
-    cmp::Reverse,
-    collections::BTreeMap,
-};
+use std::{cmp::Reverse, collections::BTreeMap};
 
 use itertools::Itertools;
 
 use crate::{
-    EmpiricalConstraints, PowdrConfig, adapter::{Adapter, AdapterApcWithStats, AdapterBlock, AdapterVmConfig, PgoAdapter}, execution_profile::ExecutionProfile, pgo::create_apcs_for_all_blocks
+    adapter::{Adapter, AdapterApcWithStats, AdapterBlock, AdapterVmConfig, PgoAdapter},
+    execution_profile::ExecutionProfile,
+    pgo::create_apcs_for_all_blocks,
+    EmpiricalConstraints, PowdrConfig,
 };
 
 pub struct InstructionPgo<A> {

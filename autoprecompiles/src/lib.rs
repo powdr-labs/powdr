@@ -1,6 +1,5 @@
 use crate::adapter::{
-    Adapter, AdapterApc, AdapterApcOverPowdrField, AdapterOptimisticConstraints,
-    AdapterVmConfig,
+    Adapter, AdapterApc, AdapterApcOverPowdrField, AdapterOptimisticConstraints, AdapterVmConfig,
 };
 use crate::bus_map::{BusMap, BusType};
 use crate::empirical_constraints::EmpiricalConstraints;
@@ -79,7 +78,10 @@ impl PowdrConfig {
         superblock_max_bb_count: u8,
         degree_bound: DegreeBound,
     ) -> Self {
-        assert!(superblock_max_bb_count > 0, "superblock_max_bb_count must be greater than 0");
+        assert!(
+            superblock_max_bb_count > 0,
+            "superblock_max_bb_count must be greater than 0"
+        );
         Self {
             autoprecompiles,
             skip_autoprecompiles,
@@ -382,7 +384,7 @@ impl<T, I, A, V> Apc<T, I, A, V> {
     }
 
     /// The instructions in the basic block.
-    pub fn instructions(&self) -> impl Iterator<Item=&I> + Clone {
+    pub fn instructions(&self) -> impl Iterator<Item = &I> + Clone {
         self.block.statements()
     }
 
@@ -496,12 +498,21 @@ pub fn build<A: Adapter>(
     metrics::counter!("before_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
 
+    // Block boundaries (instruction indices where new basic blocks start in a superblock)
+    let block_boundaries: std::collections::HashSet<usize> = block
+        .insn_indexed_pcs()
+        .into_iter()
+        .skip(1) // Skip index 0, it's always the start
+        .map(|(idx, _)| idx)
+        .collect();
+
     let (machine, column_allocator) = optimizer::optimize::<A>(
         machine,
         vm_config.bus_interaction_handler,
         degree_bound,
         &vm_config.bus_map,
         column_allocator,
+        &block_boundaries,
     )?;
 
     // add guards to constraints that are not satisfied by zeroes
@@ -545,24 +556,38 @@ fn superblock_pc_constraints<A: Adapter>(
         <<A as Adapter>::ExecutionState as ExecutionState>::Value,
     >,
 > {
-    block.insn_indexed_pcs().into_iter().skip(1).map(|(instr_idx, pc)| {
-        let left = OptimisticExpression::Literal(OptimisticLiteral {
-            instr_idx,
-            val: LocalOptimisticLiteral::Pc,
-        });
-        let Ok(pc_value) = <<A as Adapter>::ExecutionState as ExecutionState>::Value::try_from(pc)
-        else {
-            panic!("PC doesn't fit in Value type");
-        };
-        let right = OptimisticExpression::Number(pc_value);
-        OptimisticConstraint { left, right }
-    }).collect()
+    block
+        .insn_indexed_pcs()
+        .into_iter()
+        .skip(1)
+        .map(|(instr_idx, pc)| {
+            let left = OptimisticExpression::Literal(OptimisticLiteral {
+                instr_idx,
+                val: LocalOptimisticLiteral::Pc,
+            });
+            let Ok(pc_value) =
+                <<A as Adapter>::ExecutionState as ExecutionState>::Value::try_from(pc)
+            else {
+                panic!("PC doesn't fit in Value type");
+            };
+            let right = OptimisticExpression::Number(pc_value);
+            OptimisticConstraint { left, right }
+        })
+        .collect()
 }
 
-fn make_path(base_path: &Path, original_pcs: Vec<u64>, suffix: Option<&str>, extension: &str) -> PathBuf {
+fn make_path(
+    base_path: &Path,
+    original_pcs: Vec<u64>,
+    suffix: Option<&str>,
+    extension: &str,
+) -> PathBuf {
     let suffix = suffix.map(|s| format!("_{s}")).unwrap_or_default();
     base_path
-        .join(format!("apc_candidate_{}{suffix}", original_pcs.into_iter().join("_")))
+        .join(format!(
+            "apc_candidate_{}{suffix}",
+            original_pcs.into_iter().join("_")
+        ))
         .with_extension(extension)
 }
 

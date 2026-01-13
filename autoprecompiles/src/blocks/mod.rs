@@ -52,7 +52,7 @@ impl<I> Block<I> {
         match self {
             Block::Basic(basic_block) => {
                 vec![(0, basic_block.start_pc)]
-            },
+            }
             Block::Super(super_block) => {
                 let mut idx = 0;
                 super_block
@@ -64,25 +64,23 @@ impl<I> Block<I> {
                         elem
                     })
                     .collect()
-            },
+            }
         }
     }
 
-    pub fn original_blocks(&self) -> impl Iterator<Item=&BasicBlock<I>> {
+    pub fn original_blocks(&self) -> impl Iterator<Item = &BasicBlock<I>> {
         match self {
             Block::Basic(basic_block) => Either::Left(std::iter::once(basic_block)),
             Block::Super(super_block) => Either::Right(super_block.blocks.iter()),
         }
     }
 
-    pub fn statements(&self) -> impl Iterator<Item=&I> + Clone {
+    pub fn statements(&self) -> impl Iterator<Item = &I> + Clone {
         match self {
-            Block::Basic(basic_block) => {
-                Either::Left(basic_block.statements.iter())
-            },
+            Block::Basic(basic_block) => Either::Left(basic_block.statements.iter()),
             Block::Super(super_block) => {
                 Either::Right(super_block.blocks.iter().flat_map(|b| &b.statements))
-            },
+            }
         }
     }
 }
@@ -226,7 +224,10 @@ pub fn generate_superblocks<I: Clone>(
     let mut super_blocks = vec![];
     let mut counts = vec![];
     superblock_count.into_iter().for_each(|(sblock, count)| {
-        let mut blocks = sblock.iter().map(|&idx| basic_blocks[idx].clone()).collect_vec();
+        let mut blocks = sblock
+            .iter()
+            .map(|&idx| basic_blocks[idx].clone())
+            .collect_vec();
 
         if blocks.len() == 1 {
             super_blocks.push(Block::Basic(blocks.pop().unwrap()));

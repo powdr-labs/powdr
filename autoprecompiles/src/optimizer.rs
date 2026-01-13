@@ -1,6 +1,9 @@
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::{collections::BTreeMap, fmt::Display};
+use std::{
+    collections::{BTreeMap, HashSet},
+    fmt::Display,
+};
 
 use itertools::Itertools;
 use powdr_constraint_solver::constraint_system::{
@@ -38,11 +41,12 @@ pub fn optimize<A: Adapter>(
     degree_bound: DegreeBound,
     bus_map: &BusMap<A::CustomBusTypes>,
     mut column_allocator: ColumnAllocator,
+    block_boundaries: &HashSet<usize>,
 ) -> Result<(SymbolicMachine<A::PowdrField>, ColumnAllocator), crate::constraint_optimizer::Error> {
     let mut stats_logger = StatsLogger::start(&machine);
 
     if let Some(exec_bus_id) = bus_map.get_bus_id(&BusType::ExecutionBridge) {
-        machine = optimize_exec_bus(machine, exec_bus_id);
+        machine = optimize_exec_bus(machine, exec_bus_id, block_boundaries);
         stats_logger.log("exec bus optimization", &machine);
     }
 
@@ -166,11 +170,14 @@ pub fn optimize<A: Adapter>(
 pub fn optimize_exec_bus<T: FieldElement>(
     mut machine: SymbolicMachine<T>,
     exec_bus_id: u64,
+    block_boundaries: &HashSet<usize>,
 ) -> SymbolicMachine<T> {
     let mut first_seen = false;
     let mut receive = true;
     let mut latest_send = None;
+    let mut instruction_idx = 0;
     let mut subs: BTreeMap<AlgebraicExpression<T>, AlgebraicExpression<T>> = Default::default();
+
     machine.bus_interactions.retain(|bus_int| {
         if bus_int.id != exec_bus_id {
             return true;
@@ -198,6 +205,12 @@ pub fn optimize_exec_bus<T: FieldElement>(
                 .collect();
 
             latest_send = Some(send);
+            instruction_idx += 1;
+            false
+        } else if block_boundaries.contains(&instruction_idx) {
+            // At a block boundary: don't substitute, just remove both send and receive.
+            // The PC transition is checked at runtime via optimistic constraints.
+            latest_send = None;
             false
         } else {
             // Equate the latest send to the new receive and remove the bus interaction

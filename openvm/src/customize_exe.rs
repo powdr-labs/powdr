@@ -235,7 +235,10 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
             program.add_apc_instruction_at_pc_index(start_index, VmOpcode::from_usize(opcode));
 
             PowdrPrecompile::new(
-                format!("PowdrAutoprecompile_{}", apc.original_pcs().into_iter().join("_")),
+                format!(
+                    "PowdrAutoprecompile_{}",
+                    apc.original_pcs().into_iter().join("_")
+                ),
                 PowdrOpcode {
                     class_offset: opcode,
                 },
@@ -330,23 +333,27 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
 
     /// Return a JSON export of the APC candidate.
     fn to_json_export(&self, apc_candidates_dir_path: &Path) -> ApcCandidateJsonExport {
-        let blocks = self.apc.block.original_blocks().map(|b| {
-            BasicBlock {
+        let blocks = self
+            .apc
+            .block
+            .original_blocks()
+            .map(|b| BasicBlock {
                 start_pc: b.start_pc,
                 statements: b.statements.iter().map(ToString::to_string).collect(),
-            }
-        }).collect();
+            })
+            .collect();
         ApcCandidateJsonExport {
             execution_frequency: self.execution_frequency,
-            original_block: SuperBlock {
-                blocks,
-            },
+            original_block: SuperBlock { blocks },
             stats: self.stats,
             width_before: self.widths.before.total(),
             cost_before: self.widths.before.total() as f64,
             cost_after: self.widths.after.total() as f64,
             apc_candidate_file: apc_candidates_dir_path
-                .join(format!("apc_{}.cbor", self.apc.original_pcs().iter().join("_")))
+                .join(format!(
+                    "apc_{}.cbor",
+                    self.apc.original_pcs().iter().join("_")
+                ))
                 .display()
                 .to_string(),
         }

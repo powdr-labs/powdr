@@ -48,13 +48,25 @@ impl<E: ExecutionState, A: Apc<E>, S: Snapshot> ApcCandidates<E, A, S> {
                         )
                         .is_err()
                     {
+                        tracing::debug!(
+                            "APC candidate rejected: apc_id={}, failed at instruction_index={}",
+                            candidate.apc_id,
+                            optimistic_constraint_evaluator.instruction_index()
+                        );
                         return false;
                     }
                     // If we went through the whole block, confirm it
                     if candidate.total_check_count
                         == optimistic_constraint_evaluator.instruction_index()
                     {
-                        candidate.status = CandidateStatus::Done(snapshot_callback());
+                        let snapshot = snapshot_callback();
+                        tracing::debug!(
+                            "APC candidate completed: apc_id={}, range={}..{}",
+                            candidate.apc_id,
+                            candidate.from_snapshot.instret(),
+                            snapshot.instret()
+                        );
+                        candidate.status = CandidateStatus::Done(snapshot);
                     }
                     true
                 }
@@ -120,8 +132,22 @@ impl<E: ExecutionState, A: Apc<E>, S: Snapshot> ApcCandidates<E, A, S> {
 
                 // Otherwise, discard the one with lower priority
                 match rank_left.cmp(&rank_right) {
-                    Ordering::Greater => discard[idx_right] = true,
-                    Ordering::Less => discard[idx_left] = true,
+                    Ordering::Greater => {
+                        tracing::debug!(
+                            "APC candidate discarded: apc_id={} (priority={}, len={}) lost to apc_id={} (priority={}, len={})",
+                            self.candidates[idx_right].apc_id, rank_right.priority, rank_right.len,
+                            self.candidates[idx_left].apc_id, rank_left.priority, rank_left.len
+                        );
+                        discard[idx_right] = true;
+                    }
+                    Ordering::Less => {
+                        tracing::debug!(
+                            "APC candidate discarded: apc_id={} (priority={}, len={}) lost to apc_id={} (priority={}, len={})",
+                            self.candidates[idx_left].apc_id, rank_left.priority, rank_left.len,
+                            self.candidates[idx_right].apc_id, rank_right.priority, rank_right.len
+                        );
+                        discard[idx_left] = true;
+                    }
                     Ordering::Equal => unreachable!("by construction, two ranks cannot be equal"),
                 }
 
@@ -130,7 +156,8 @@ impl<E: ExecutionState, A: Apc<E>, S: Snapshot> ApcCandidates<E, A, S> {
         );
 
         // Keep all candidates that were not marked as discarded
-        self.candidates
+        let calls: Vec<_> = self
+            .candidates
             .drain(..)
             .zip_eq(discard)
             .filter_map(|(candidate, discard)| (!discard).then_some(candidate))
@@ -144,7 +171,17 @@ impl<E: ExecutionState, A: Apc<E>, S: Snapshot> ApcCandidates<E, A, S> {
                     to,
                 }
             })
-            .collect()
+            .collect();
+
+        if !calls.is_empty() {
+            tracing::debug!(
+                "Extracted {} APC calls: {:?}",
+                calls.len(),
+                calls.iter().map(|c| c.apc_id).collect::<Vec<_>>()
+            );
+        }
+
+        calls
     }
 
     /// Try to insert a new candidate.
@@ -158,14 +195,25 @@ impl<E: ExecutionState, A: Apc<E>, S: Snapshot> ApcCandidates<E, A, S> {
         let apc_candidate = {
             let apc = &self.apcs[apc_id];
             let mut evaluator = OptimisticConstraintEvaluator::new();
-            evaluator.try_next_execution_step(state, apc.optimistic_constraints())?;
-            Ok(ApcCandidate {
+            if let Err(e) = evaluator.try_next_execution_step(state, apc.optimistic_constraints()) {
+                tracing::debug!(
+                    "APC candidate rejected on insert: apc_id={}, failed initial constraint check",
+                    apc_id
+                );
+                return Err(e);
+            }
+            ApcCandidate {
                 total_check_count: apc.cycle_count() + 1,
                 apc_id,
                 from_snapshot: snapshot(),
                 status: CandidateStatus::InProgress(evaluator),
-            })
-        }?;
+            }
+        };
+        tracing::debug!(
+            "APC candidate inserted: apc_id={}, instret={}",
+            apc_id,
+            apc_candidate.from_snapshot.instret()
+        );
         self.candidates.push(apc_candidate);
         Ok(())
     }

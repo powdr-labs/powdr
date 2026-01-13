@@ -11,9 +11,13 @@ use rayon::iter::{ParallelBridge, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    EmpiricalConstraints, PowdrConfig, adapter::{
-        Adapter, AdapterApc, AdapterApcWithStats, AdapterBlock, AdapterVmConfig, PgoAdapter
-    }, blocks::{Block, SuperBlock, count_non_overlapping}, evaluation::EvaluationResult, execution_profile::ExecutionProfile
+    adapter::{
+        Adapter, AdapterApc, AdapterApcWithStats, AdapterBlock, AdapterVmConfig, PgoAdapter,
+    },
+    blocks::{count_non_overlapping, Block, SuperBlock},
+    evaluation::EvaluationResult,
+    execution_profile::ExecutionProfile,
+    EmpiricalConstraints, PowdrConfig,
 };
 
 use itertools::Itertools;
@@ -123,19 +127,32 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
         let candidates_json = Arc::new(Mutex::new(vec![]));
 
         // generate candidates in parallel
-        let candidates: Vec<_> = blocks.into_iter().zip_eq(block_exec_count).par_bridge().filter_map(|(block, count)| {
-            let candidate: C = try_generate_candidate(block, count, config, &vm_config, &empirical_constraints)?;
-            if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
-                let json_export = candidate.to_json_export(apc_candidates_dir_path);
-                // TODO: probably remove this debug print
-                tracing::debug!("Generated APC pcs {:?}, effectiveness: {:?}, freq: {:?}",
-                                json_export.original_block.original_pcs(),
-                                json_export.cost_before as f64 / json_export.cost_after as f64,
-                                json_export.execution_frequency);
-                candidates_json.lock().unwrap().push(json_export);
-            }
-            Some(candidate)
-        }).collect();
+        let candidates: Vec<_> = blocks
+            .into_iter()
+            .zip_eq(block_exec_count)
+            .par_bridge()
+            .filter_map(|(block, count)| {
+                let candidate: C = try_generate_candidate(
+                    block,
+                    count,
+                    config,
+                    &vm_config,
+                    &empirical_constraints,
+                )?;
+                if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
+                    let json_export = candidate.to_json_export(apc_candidates_dir_path);
+                    // TODO: probably remove this debug print
+                    tracing::debug!(
+                        "Generated APC pcs {:?}, effectiveness: {:?}, freq: {:?}",
+                        json_export.original_block.original_pcs(),
+                        json_export.cost_before as f64 / json_export.cost_after as f64,
+                        json_export.execution_frequency
+                    );
+                    candidates_json.lock().unwrap().push(json_export);
+                }
+                Some(candidate)
+            })
+            .collect();
 
         tracing::info!(
             "Selecting {} APCs from {} generated candidates (skipping {})",
@@ -153,7 +170,9 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
 
         if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
             tracing::debug!("Selected candidates:");
-            let selected: Vec<_> = selected_candidates.iter().map(|c| c.to_json_export(apc_candidates_dir_path))
+            let selected: Vec<_> = selected_candidates
+                .iter()
+                .map(|c| c.to_json_export(apc_candidates_dir_path))
                 .inspect(|c| {
                     tracing::debug!(
                         "\tAPC pcs {:?}, effectiveness: {:?}, freq: {:?}",
@@ -161,8 +180,12 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
                         c.cost_before / c.cost_after,
                         c.execution_frequency,
                     );
-                }).collect();
-            let json = JsonExport { apcs: selected, labels: labels.clone() };
+                })
+                .collect();
+            let json = JsonExport {
+                apcs: selected,
+                labels: labels.clone(),
+            };
             let json_path = apc_candidates_dir_path.join("apc_candidates_selected.json");
             let file = std::fs::File::create(&json_path)
                 .expect("Failed to create file for selected APC candidates JSON");
@@ -251,7 +274,7 @@ fn try_generate_candidate<A: Adapter, C: Candidate<A>>(
         config.apc_candidates_dir_path.as_deref(),
         empirical_constraints,
     )
-        .ok()?;
+    .ok()?;
     let candidate = C::create(
         Arc::new(apc),
         block_exec_count,
@@ -348,9 +371,10 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
                     } else {
                         // For normal basic blocks the above is not an issue:
                         // running 'aaa' once will prevent 'a' from running exactly 3 times
-                        to_discount.push((*other_idx, c.execution_count().checked_mul(count).unwrap()));
+                        to_discount
+                            .push((*other_idx, c.execution_count().checked_mul(count).unwrap()));
                     }
-                },
+                }
                 Some(BlockOverlap::SecondIncludesFirst(_)) => {
                     // If the first block is always preferred, the second can't run
                     // TODO: could the following case exist?
@@ -366,7 +390,7 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
                 Some(BlockOverlap::SecondOverlapsFirst) => {
                     // TODO: this is similar to the case above
                     to_remove.push(*other_idx);
-                },
+                }
                 None => (),
             }
         }
@@ -395,6 +419,21 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
         }
     }
 
+    // Check for overlaps among final selected candidates
+    tracing::info!("Final selected candidates ({}):", selected_candidates.len());
+    for &idx in &selected_candidates {
+        tracing::info!("  {:?}", candidates[idx].apc().block.original_pcs());
+    }
+    for (i, &idx_a) in selected_candidates.iter().enumerate() {
+        let pcs_a = candidates[idx_a].apc().block.original_pcs();
+        for &idx_b in &selected_candidates[i + 1..] {
+            let pcs_b = candidates[idx_b].apc().block.original_pcs();
+            if let Some(overlap) = check_overlap(&pcs_a, &pcs_b) {
+                tracing::warn!("OVERLAP: {:?} vs {:?} -> {:?}", pcs_a, pcs_b, overlap);
+            }
+        }
+    }
+
     // filter the candidates using the selected indices (and ordering)
     candidates
         .into_iter()
@@ -410,6 +449,7 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
         .collect()
 }
 
+#[derive(Debug)]
 enum BlockOverlap {
     // Second block is fully included in the first block this many times
     // e.g.: 'abc' and 'ab'
@@ -428,10 +468,7 @@ enum BlockOverlap {
 }
 
 /// returns true if a suffix of the first sequence is a prefix of the second
-fn suffix_in_common_with_prefix(
-    first: &[u64],
-    second: &[u64],
-) -> bool {
+fn suffix_in_common_with_prefix(first: &[u64], second: &[u64]) -> bool {
     let mut prefix_len = 1;
     while prefix_len <= second.len() && prefix_len <= first.len() {
         if first[first.len() - prefix_len..] == second[..prefix_len] {
