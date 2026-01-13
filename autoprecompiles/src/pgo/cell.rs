@@ -251,7 +251,7 @@ impl Eq for WeightedPriority {}
 
 impl PartialOrd for WeightedPriority {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.priority().cmp(&other.priority()))
+        Some(self.cmp(other))
     }
 }
 

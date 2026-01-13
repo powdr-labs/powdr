@@ -536,15 +536,17 @@ pub fn build<A: Adapter>(
     Ok(apc)
 }
 
-/// Generate optimistic constraints for superblock jumps (doesn't enforce the starting PC).
-fn superblock_pc_constraints<A: Adapter>(
-    block: &Block<A::Instruction>,
-) -> Vec<
+pub type AdapterOptimisticConstraint<A> =
     OptimisticConstraint<
         <<A as Adapter>::ExecutionState as ExecutionState>::RegisterAddress,
         <<A as Adapter>::ExecutionState as ExecutionState>::Value,
-    >,
-> {
+    >;
+
+/// Generate optimistic constraints for superblock jumps (doesn't enforce the starting PC).
+fn superblock_pc_constraints<A: Adapter>(
+    block: &Block<A::Instruction>,
+) -> Vec<AdapterOptimisticConstraint<A>>
+{
     block.insn_indexed_pcs().into_iter().skip(1).map(|(instr_idx, pc)| {
         let left = OptimisticExpression::Literal(OptimisticLiteral {
             instr_idx,
