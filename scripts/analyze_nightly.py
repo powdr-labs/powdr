@@ -18,12 +18,7 @@ from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
 import json
 
-# Optional pandas import - we'll parse CSV manually if not available
-try:
-    import pandas as pd
-    HAS_PANDAS = True
-except ImportError:
-    HAS_PANDAS = False
+import pandas as pd
 
 
 GITHUB_API_BASE = "https://api.github.com/repos/powdr-labs/bench-results"
@@ -87,21 +82,6 @@ def get_results_directories() -> list[str]:
     return dirs
 
 
-def parse_csv_simple(content: str) -> list[dict]:
-    """Parse CSV content without pandas."""
-    lines = content.strip().split('\n')
-    if not lines:
-        return []
-
-    headers = lines[0].split(',')
-    rows = []
-    for line in lines[1:]:
-        if line.strip():
-            values = line.split(',')
-            rows.append(dict(zip(headers, values)))
-    return rows
-
-
 def fetch_benchmark_results(run_dir: str, benchmark: str) -> Optional[BenchmarkResult]:
     """Fetch and parse results for a specific benchmark from a run."""
     url = f"{RAW_CONTENT_BASE}/results/{run_dir}/{benchmark}/basic_metrics.csv"
@@ -113,18 +93,11 @@ def fetch_benchmark_results(run_dir: str, benchmark: str) -> Optional[BenchmarkR
         return None
 
     try:
-        if HAS_PANDAS:
-            df = pd.read_csv(StringIO(content))
-            results = {
-                row['filename']: float(row['total_proof_time_ms'])
-                for _, row in df.iterrows()
-            }
-        else:
-            rows = parse_csv_simple(content)
-            results = {
-                row['filename']: float(row['total_proof_time_ms'])
-                for row in rows
-            }
+        df = pd.read_csv(StringIO(content))
+        results = {
+            row['filename']: float(row['total_proof_time_ms'])
+            for _, row in df.iterrows()
+        }
 
         if not results:
             return None
