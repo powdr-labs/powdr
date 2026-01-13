@@ -4,7 +4,7 @@ use std::{
 };
 
 use itertools::{Either, Itertools};
-use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 /// Tools to detect basic blocks in a program
@@ -20,21 +20,27 @@ pub struct BasicBlock<I> {
     pub statements: Vec<I>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct SuperBlock<I> {
-    pub blocks: Vec<BasicBlock<I>>,
+impl<I: PcStep> BasicBlock<I> {
+    pub fn pc_step() -> u32 {
+        I::pc_step()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum Block<I> {
-    Basic(BasicBlock<I>),
-    Super(SuperBlock<I>),
+pub struct SuperBlock<I> {
+    pub blocks: Vec<BasicBlock<I>>,
 }
 
 impl<I> SuperBlock<I> {
     pub fn original_pcs(&self) -> Vec<u64> {
         self.blocks.iter().map(|b| b.start_pc).collect()
     }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum Block<I> {
+    Basic(BasicBlock<I>),
+    Super(SuperBlock<I>),
 }
 
 impl<I> Block<I> {
@@ -112,16 +118,13 @@ impl<I: Display> Display for SuperBlock<I> {
     }
 }
 
-pub trait Program<I> {
+pub trait Program<I: PcStep> {
     /// Returns the base program counter.
     fn base_pc(&self) -> u64;
 
-    /// Returns the step size of the program counter.
-    fn pc_step(&self) -> u32;
-
     /// Converts an instruction index to a program counter.
     fn instruction_index_to_pc(&self, idx: usize) -> u64 {
-        self.base_pc() + (idx as u64 * self.pc_step() as u64)
+        self.base_pc() + (idx as u64 * I::pc_step() as u64)
     }
 
     /// Returns an iterator over the instructions in the program.
@@ -131,7 +134,11 @@ pub trait Program<I> {
     fn length(&self) -> u32;
 }
 
-pub trait Instruction<T>: Clone + Display {
+pub trait PcStep {
+    fn pc_step() -> u32;
+}
+
+pub trait Instruction<T>: Clone + Display + PcStep {
     /// Returns a list of concrete values that the LHS of the PC lookup should be assigned to.
     /// An entry can be `None` to indicate that the value is not known at compile time.
     /// The provided PC will in practice be provided for the first instruction of the block.

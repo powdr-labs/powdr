@@ -28,7 +28,7 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::adapter::{
     Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig, ApcWithStats, PgoAdapter,
 };
-use powdr_autoprecompiles::blocks::{BasicBlock, Instruction, SuperBlock};
+use powdr_autoprecompiles::blocks::{BasicBlock, Instruction, PcStep, SuperBlock};
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::evaluation::{evaluate_apc, EvaluationResult};
 use powdr_autoprecompiles::execution::ExecutionState;
@@ -115,6 +115,12 @@ pub struct Instr<F>(pub OpenVmInstruction<F>);
 impl<F: PrimeField32> Display for Instr<F> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", openvm_instruction_formatter(&self.0))
+    }
+}
+
+impl<F> PcStep for Instr<F> {
+    fn pc_step() -> u32 {
+        DEFAULT_PC_STEP
     }
 }
 

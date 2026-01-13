@@ -2,7 +2,7 @@ name: Nightly tests
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 2 * * *" # run at 2 AM UTC
+    - cron: "0 23 * * *" # run at 11pm UTC
 
 env:
   CARGO_TERM_COLOR: always
