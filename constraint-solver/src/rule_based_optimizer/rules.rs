@@ -387,11 +387,11 @@ crepe! {
           LinearExpression(diff_marker_e, diff_marker, T::from(-1)),
       LinearExpression(r, result, T::from(1));
 
-    struct NegatedDiffMarkerConstraintFinalNegated(Expr, Var, Var, Var, u32);
-    NegatedDiffMarkerConstraintFinalNegated(e, diff_marker, v, result, n + 1) <-
-      ProductConstraint(e, l, r),
+    struct NegatedDiffMarkerConstraintFinalNegated(Expr, Var, Var, Expr, Var, u32);
+    NegatedDiffMarkerConstraintFinalNegated(e, diff_marker, v, one_minus_diff_marker_sum, result, n + 1) <-
+      ProductConstraint(e, one_minus_diff_marker_sum, r),
         NegatedDiffMarkerConstraint(_, _, diff_marker_expr2, _, result, n),
-        DifferBySummand(l, diff_marker_expr2, diff_marker_e),
+        DifferBySummand(one_minus_diff_marker_sum, diff_marker_expr2, diff_marker_e),
           LinearExpression(diff_marker_e, diff_marker, T::from(-1)),
       PlusMinusResult(r, r2, result),
       AffineExpression(r2, T::from(-1), v, T::from(1));
@@ -410,7 +410,7 @@ crepe! {
       // (1 - (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0)) * cmp_result_0 = 0
       NegatedDiffMarkerConstraintFinal(constr_3, diff_marker_0, result, 3),
       // (1 - (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0)) * ((1 - a__0_0) * (2 * cmp_result_0 - 1)) = 0
-      NegatedDiffMarkerConstraintFinalNegated(constr_4, diff_marker_0, a_0, result, 3),
+      NegatedDiffMarkerConstraintFinalNegated(constr_4, diff_marker_0, one_minus_diff_marker_sum, a_0, result, 3),
       // diff_marker__0_0 * ((a__0_0 - 1) * (2 * cmp_result_0 - 1) + diff_val_0) = 0
       DiffMarkerConstraint(constr_5, diff_marker_0, a_0_e, result, diff_val),
         AffineExpression(a_0_e, a_0_e_coeff, a_0, a_0_e_offset), (a_0_e_coeff == T::from(1)), (a_0_e_offset == T::from(-1)),
