@@ -172,7 +172,7 @@ crepe! {
       Product(e2, l2, r2),
       (l2 < r2),
       AffinelyRelated(r1, f2, r2, T::zero());
-    AffinelyRelated(e1, f, e2, o1 + o2) <-
+    AffinelyRelated(e1, f, e2, o1 - f * o2) <-
       ExpressionSumHeadTail(e2, head2, tail2),
       AffinelyRelated(e1, f, head2, o1),
       Constant(tail2, o2);
