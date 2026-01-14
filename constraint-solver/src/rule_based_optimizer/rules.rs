@@ -250,18 +250,18 @@ crepe! {
       RangeConstraintOnVar(v, rc),
       (rc.range() == (T::zero(), T::one()));
 
-    // BooleanExpression(e) => there is an algebraic constraint of the form
-    //                         e * (e - 1) = 0 or similar.
-    struct BooleanExpression(Expr);
-    BooleanExpression(e) <-
-      ProductConstraint(_, e, r),
+    // BooleanExpressionConstraint(constr, e) =>
+    // constr is an algebraic constraint that forces (e = 0 or e = 1).
+    struct BooleanExpressionConstraint(Expr, Expr);
+    BooleanExpressionConstraint(constr, e) <-
+      ProductConstraint(constr, e, r),
       AffinelyRelated(r, f, e, o),
       // e * (f * e + o) = 0, i.e. e = 0 or f * e + o = 0
       // i.e. e = 0 or e = -o/f
       // for boolean we need -o/f = 1 <=> o + f = 0
       (f + o == T::zero());
-    BooleanExpression(e1) <-
-      BooleanExpression(e2),
+    BooleanExpressionConstraint(constr, e1) <-
+      BooleanExpressionConstraint(constr, e2),
       AffinelyRelated(e1, -T::one(), e2, T::one());
 
     //////////////////////// SINGLE-OCCURRENCE VARIABLES //////////////////////////
@@ -443,7 +443,7 @@ crepe! {
     // EqualZeroCheck(constrs, result, vars) =>
     //   constrsexprs can be equivalently replaced by a constraint that models
     //   result = 1 if all vars are zero, and result = 0 otherwise.
-    struct EqualZeroCheck([Expr; 9], Var, [Var; 4]);
+    struct EqualZeroCheck([Expr; 10], Var, [Var; 4]);
     EqualZeroCheck(constrs, result, vars) <-
       // (1 - diff_marker__3_0) * (a__3_0 * (2 * cmp_result_0 - 1)) = 0
       NegatedDiffMarkerConstraint(constr_0, diff_marker_3, _, a_3, result, 0),
@@ -472,16 +472,10 @@ crepe! {
       BooleanVar(diff_marker_1),
       BooleanVar(diff_marker_2),
       BooleanVar(diff_marker_3),
-      Env(env),
-      ({println!("marker sum: {}", env.format_expr(one_minus_diff_marker_sum)); true}),
-      // TODO detect these:
       // (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0) * (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0 - 1) = 0
-      BooleanExpression(one_minus_diff_marker_sum),
-      // (1 - is_valid) * (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0) = 0
-      let constrs = [constr_0, constr_1, constr_2, constr_3, constr_4, constr_5, constr_6, constr_7, constr_8],
-      let vars = [a_0, a_1, a_2, a_3],
-      ({println!("Found EqualZeroCheck on {} with result {:?}", vars.iter().map(|v| env.format_var(*v)).format(", "), result); true})
-      ;
+      BooleanExpressionConstraint(constr_9, one_minus_diff_marker_sum),
+      let constrs = [constr_0, constr_1, constr_2, constr_3, constr_4, constr_5, constr_6, constr_7, constr_8, constr_9],
+      let vars = [a_0, a_1, a_2, a_3];
 
     //////////////// COMBINE CONSTRAINTS WITH NON-NEGATIVE FACTORS /////////////////////
 
