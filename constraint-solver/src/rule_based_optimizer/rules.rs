@@ -260,6 +260,9 @@ crepe! {
       // i.e. e = 0 or e = -o/f
       // for boolean we need -o/f = 1 <=> o + f = 0
       (f + o == T::zero());
+    BooleanExpression(e1) <-
+      BooleanExpression(e2),
+      AffinelyRelated(e1, -T::one(), e2, T::one());
 
     //////////////////////// SINGLE-OCCURRENCE VARIABLES //////////////////////////
 
@@ -420,19 +423,19 @@ crepe! {
     //   and diff_marker_expr is of the form `1 - diff_marker1 - diff_marker2 - ...`
     //   such that we have n variables and there is another
     //   NegatedDiffMarkerConstraint with n-1 variables used to derive this one.
-    struct NegatedDiffMarkerConstraintFinal(Expr, Var, Var, u32);
-    NegatedDiffMarkerConstraintFinal(e, diff_marker, result, n + 1) <-
+    struct NegatedDiffMarkerConstraintFinal(Expr, Var, Expr, Var, u32);
+    NegatedDiffMarkerConstraintFinal(e, diff_marker, l, result, n + 1) <-
       ProductConstraint(e, l, r),
         NegatedDiffMarkerConstraint(_, _, diff_marker_expr2, _, result, n),
         DifferBySummand(l, diff_marker_expr2, diff_marker_e),
           LinearExpression(diff_marker_e, diff_marker, T::from(-1)),
       LinearExpression(r, result, T::from(1));
 
-    struct NegatedDiffMarkerConstraintFinalNegated(Expr, Var, Var, Expr, Var, u32);
-    NegatedDiffMarkerConstraintFinalNegated(e, diff_marker, v, one_minus_diff_marker_sum, result, n + 1) <-
-      ProductConstraint(e, one_minus_diff_marker_sum, r),
+    struct NegatedDiffMarkerConstraintFinalNegated(Expr, Var, Var, Var, u32);
+    NegatedDiffMarkerConstraintFinalNegated(e, diff_marker, v, result, n + 1) <-
+      ProductConstraint(e, l, r),
         NegatedDiffMarkerConstraint(_, _, diff_marker_expr2, _, result, n),
-        DifferBySummand(one_minus_diff_marker_sum, diff_marker_expr2, diff_marker_e),
+        DifferBySummand(l, diff_marker_expr2, diff_marker_e),
           LinearExpression(diff_marker_e, diff_marker, T::from(-1)),
       PlusMinusResult(r, r2, result),
       AffineExpression(r2, T::from(-1), v, T::from(1));
@@ -449,9 +452,9 @@ crepe! {
       // (1 - (diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0)) * (a__1_0 * (2 * cmp_result_0 - 1)) = 0
       NegatedDiffMarkerConstraint(constr_2, diff_marker_1, _, a_1, result, 2),
       // (1 - (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0)) * cmp_result_0 = 0
-      NegatedDiffMarkerConstraintFinal(constr_3, diff_marker_0, result, 3),
+      NegatedDiffMarkerConstraintFinal(constr_3, diff_marker_0, one_minus_diff_marker_sum, result, 3),
       // (1 - (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0)) * ((1 - a__0_0) * (2 * cmp_result_0 - 1)) = 0
-      NegatedDiffMarkerConstraintFinalNegated(constr_4, diff_marker_0, one_minus_diff_marker_sum, a_0, result, 3),
+      NegatedDiffMarkerConstraintFinalNegated(constr_4, diff_marker_0, a_0, result, 3),
       // diff_marker__0_0 * ((a__0_0 - 1) * (2 * cmp_result_0 - 1) + diff_val_0) = 0
       DiffMarkerConstraint(constr_5, diff_marker_0, a_0_e, result, diff_val),
         AffineExpression(a_0_e, a_0_e_coeff, a_0, a_0_e_offset), (a_0_e_coeff == T::from(1)), (a_0_e_offset == T::from(-1)),
@@ -469,12 +472,14 @@ crepe! {
       BooleanVar(diff_marker_1),
       BooleanVar(diff_marker_2),
       BooleanVar(diff_marker_3),
+      Env(env),
+      ({println!("marker sum: {}", env.format_expr(one_minus_diff_marker_sum)); true}),
       // TODO detect these:
       // (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0) * (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0 - 1) = 0
+      BooleanExpression(one_minus_diff_marker_sum),
       // (1 - is_valid) * (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0) = 0
       let constrs = [constr_0, constr_1, constr_2, constr_3, constr_4, constr_5, constr_6, constr_7, constr_8],
       let vars = [a_0, a_1, a_2, a_3],
-      Env(env),
       ({println!("Found EqualZeroCheck on {} with result {:?}", vars.iter().map(|v| env.format_var(*v)).format(", "), result); true})
       ;
 
