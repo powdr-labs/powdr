@@ -1,6 +1,7 @@
 use std::collections::{BTreeSet, HashMap};
 use std::hash::Hash;
 
+use derivative::Derivative;
 use itertools::Itertools;
 use rayon::prelude::*;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -13,24 +14,14 @@ pub type EquivalenceClass<T> = BTreeSet<T>;
 ///
 /// Internally represented as a map from element to class ID for efficient intersection operations.
 /// Serializes as Vec<Vec<T>> for JSON compatibility (JSON requires string keys in objects).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Derivative)]
+#[derivative(Default(bound = ""))]
 pub struct Partition<T> {
     /// Maps each element to its class ID (0..num_classes)
     /// If an element is not present, it is in a singleton class.
     class_of: HashMap<T, usize>,
     /// Number of classes
     num_classes: usize,
-}
-
-// Default implementation creates an empty partition, i.e., all elements are singletons.
-// We're not deriving Default to avoid requiring T: Default.
-impl<T> Default for Partition<T> {
-    fn default() -> Self {
-        Self {
-            class_of: HashMap::new(),
-            num_classes: 0,
-        }
-    }
 }
 
 impl<T: Eq + Hash + Serialize + Clone> Serialize for Partition<T> {
