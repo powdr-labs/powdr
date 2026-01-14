@@ -61,10 +61,7 @@ pub fn execution_profile<A: Adapter>(
         });
     }
 
-    ExecutionProfile {
-        pc_count,
-        pc_list,
-    }
+    ExecutionProfile { pc_count, pc_list }
 }
 
 // holds basic type fields of execution objects captured in trace by subscriber

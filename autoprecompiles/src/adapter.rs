@@ -6,7 +6,7 @@ use std::{fmt::Display, sync::Arc};
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
-use crate::blocks::{Block, generate_superblocks};
+use crate::blocks::{generate_superblocks, Block};
 use crate::empirical_constraints::EmpiricalConstraints;
 use crate::execution::{ExecutionState, OptimisticConstraints};
 use crate::execution_profile::ExecutionProfile;
@@ -67,9 +67,13 @@ pub trait PgoAdapter {
             );
             (blocks, Some(count))
         } else {
-            (filtered_blocks.into_iter().map(|bb| {
-                Block::Basic(bb)
-            }).collect(), None)
+            (
+                filtered_blocks
+                    .into_iter()
+                    .map(|bb| Block::Basic(bb))
+                    .collect(),
+                None,
+            )
         };
 
         self.create_apcs_with_pgo(

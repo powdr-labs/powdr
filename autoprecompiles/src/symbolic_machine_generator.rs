@@ -4,7 +4,11 @@ use powdr_expression::AlgebraicBinaryOperation;
 use powdr_number::FieldElement;
 
 use crate::{
-    Apc, BusMap, BusType, ColumnAllocator, InstructionHandler, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine, adapter::Adapter, blocks::{Block, Instruction}, expression::AlgebraicExpression, powdr
+    adapter::Adapter,
+    blocks::{Block, Instruction},
+    expression::AlgebraicExpression,
+    powdr, Apc, BusMap, BusType, ColumnAllocator, InstructionHandler, SymbolicBusInteraction,
+    SymbolicConstraint, SymbolicMachine,
 };
 
 /// Converts the field type of a symbolic machine.
@@ -136,7 +140,8 @@ pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
         // We need to provide the initial PC of each composing basic block,
         // as these need to be enforced in the constraints.
         // The other PCs can be derived by the solver.
-        let pc = insn_indexed_pcs.iter()
+        let pc = insn_indexed_pcs
+            .iter()
             .find(|(idx, _)| *idx == i)
             .map(|(_, pc_value)| *pc_value);
         let pc_lookup_row = instr

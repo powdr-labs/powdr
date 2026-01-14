@@ -57,7 +57,7 @@ impl<I> Block<I> {
         match self {
             Block::Basic(basic_block) => {
                 vec![(0, basic_block.start_pc)]
-            },
+            }
             Block::Super(super_block) => {
                 let mut idx = 0;
                 super_block
@@ -69,25 +69,23 @@ impl<I> Block<I> {
                         elem
                     })
                     .collect()
-            },
+            }
         }
     }
 
-    pub fn original_blocks(&self) -> impl Iterator<Item=&BasicBlock<I>> {
+    pub fn original_blocks(&self) -> impl Iterator<Item = &BasicBlock<I>> {
         match self {
             Block::Basic(basic_block) => Either::Left(std::iter::once(basic_block)),
             Block::Super(super_block) => Either::Right(super_block.blocks.iter()),
         }
     }
 
-    pub fn statements(&self) -> impl Iterator<Item=&I> + Clone {
+    pub fn statements(&self) -> impl Iterator<Item = &I> + Clone {
         match self {
-            Block::Basic(basic_block) => {
-                Either::Left(basic_block.statements.iter())
-            },
+            Block::Basic(basic_block) => Either::Left(basic_block.statements.iter()),
             Block::Super(super_block) => {
                 Either::Right(super_block.blocks.iter().flat_map(|b| &b.statements))
-            },
+            }
         }
     }
 }
@@ -218,22 +216,29 @@ pub fn generate_superblocks<I: Clone>(
     );
 
     // here, we go over the BB runs to count how many times each superblock can be executed
-    let superblock_count: HashMap<_, _> = seen_superblocks.into_par_iter().filter_map(|sblock| {
-        let count: u32 = execution_bb_runs.iter().map(|run| {
-            count_non_overlapping(run, &sblock)
-        }).sum();
-        if count > 0 {
-            Some((sblock, count))
-        } else {
-            None
-        }
-    }).collect();
+    let superblock_count: HashMap<_, _> = seen_superblocks
+        .into_par_iter()
+        .filter_map(|sblock| {
+            let count: u32 = execution_bb_runs
+                .iter()
+                .map(|run| count_non_overlapping(run, &sblock))
+                .sum();
+            if count > 0 {
+                Some((sblock, count))
+            } else {
+                None
+            }
+        })
+        .collect();
 
     // build the resulting BasicBlock's and counts
     let mut super_blocks = vec![];
     let mut counts = vec![];
     superblock_count.into_iter().for_each(|(sblock, count)| {
-        let mut blocks = sblock.iter().map(|&idx| basic_blocks[idx].clone()).collect_vec();
+        let mut blocks = sblock
+            .iter()
+            .map(|&idx| basic_blocks[idx].clone())
+            .collect_vec();
 
         if blocks.len() == 1 {
             super_blocks.push(Block::Basic(blocks.pop().unwrap()));
