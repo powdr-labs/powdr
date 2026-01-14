@@ -150,6 +150,26 @@ crepe! {
       ExpressionSumHeadTail(e1, head, tail1),
       ExpressionSumHeadTail(e2, head, tail2);
 
+    // AffinelyRelated(e1, f, e2, c) => e1 = f * e2 + c
+    // This only works if e1 and e2 have at least one variable
+    // and both e1 and e2 have to "pre-exist" as expressions.
+    // This means this rule cannot be used to subtract constants
+    // or multiply/divide by constants alone.
+    struct AffinelyRelated<T: FieldElement>(Expr, T, Expr, T);
+    AffinelyRelated(e1, f1 / f2, e2, o1 - o2) <-
+      AffineExpression(e1, f1, v, o1),
+      AffineExpression(e2, f2, v, o2);
+    AffinelyRelated(e1, f, e2, c) <-
+      ExpressionSumHeadTail(e1, head1, tail1),
+      ExpressionSumHeadTail(e2, head2, tail2),
+      AffinelyRelated(head1, f, head2, T::zero()),
+      AffinelyRelated(tail1, f, tail2, c);
+    AffinelyRelated(e1, f1 * f2, e2, T::zero()) <-
+      Product(e1, l1, r1),
+      Product(e2, l2, r2),
+      AffinelyRelated(l1, f1, l2, T::zero()),
+      AffinelyRelated(r1, f2, r2, T::zero());
+
     // HasProductSummand(e, l, r) => e contains a summand of the form l * r
     struct HasProductSummand(Expr, Expr, Expr);
     HasProductSummand(e, l, r) <-
@@ -218,6 +238,17 @@ crepe! {
     BooleanVar(v) <-
       RangeConstraintOnVar(v, rc),
       (rc.range() == (T::zero(), T::one()));
+
+    // BooleanExpression(e) => there is an algebraic constraint of the form
+    //                         e * (e - 1) = 0 or similar.
+    struct BooleanExpression(Expr);
+    BooleanExpression(e) <-
+      ProductConstraint(_, e, r),
+      AffinelyRelated(r, f, e, o),
+      // e * (f * e + o) = 0, i.e. e = 0 or f * e + o = 0
+      // i.e. e = 0 or e = -o/f
+      // for boolean we need -o/f = 1 <=> o + f = 0
+      (f + o == T::zero());
 
     //////////////////////// SINGLE-OCCURRENCE VARIABLES //////////////////////////
 
