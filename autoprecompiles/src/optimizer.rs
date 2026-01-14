@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::{collections::BTreeMap, fmt::Display};
@@ -38,11 +39,12 @@ pub fn optimize<A: Adapter>(
     degree_bound: DegreeBound,
     bus_map: &BusMap<A::CustomBusTypes>,
     mut column_allocator: ColumnAllocator,
+    basic_block_indices: &HashSet<usize>, // instruction indices where each basic block starts in a superblock
 ) -> Result<(SymbolicMachine<A::PowdrField>, ColumnAllocator), crate::constraint_optimizer::Error> {
     let mut stats_logger = StatsLogger::start(&machine);
 
     if let Some(exec_bus_id) = bus_map.get_bus_id(&BusType::ExecutionBridge) {
-        machine = optimize_exec_bus(machine, exec_bus_id);
+        machine = optimize_exec_bus(machine, exec_bus_id, basic_block_indices);
         stats_logger.log("exec bus optimization", &machine);
     }
 
@@ -166,11 +168,14 @@ pub fn optimize<A: Adapter>(
 pub fn optimize_exec_bus<T: FieldElement>(
     mut machine: SymbolicMachine<T>,
     exec_bus_id: u64,
+    basic_block_indices: &HashSet<usize>,
 ) -> SymbolicMachine<T> {
     let mut first_seen = false;
     let mut receive = true;
     let mut latest_send = None;
+    let mut instruction_idx = 0;
     let mut subs: BTreeMap<AlgebraicExpression<T>, AlgebraicExpression<T>> = Default::default();
+
     machine.bus_interactions.retain(|bus_int| {
         if bus_int.id != exec_bus_id {
             return true;
@@ -198,6 +203,12 @@ pub fn optimize_exec_bus<T: FieldElement>(
                 .collect();
 
             latest_send = Some(send);
+            instruction_idx += 1;
+            false
+        } else if basic_block_indices.contains(&instruction_idx) {
+            // At basic block indices: don't substitute, just remove both send and receive.
+            // The PC transition is enforced by constraints.
+            latest_send = None;
             false
         } else {
             // Equate the latest send to the new receive and remove the bus interaction

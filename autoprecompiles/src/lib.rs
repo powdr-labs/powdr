@@ -496,12 +496,20 @@ pub fn build<A: Adapter>(
     metrics::counter!("before_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
 
+    // Instruction indices where each basic block starts in a superblock
+    let basic_block_indices: std::collections::HashSet<usize> = block
+        .insn_indexed_pcs()
+        .into_iter()
+        .map(|(idx, _)| idx)
+        .collect();
+
     let (machine, column_allocator) = optimizer::optimize::<A>(
         machine,
         vm_config.bus_interaction_handler,
         degree_bound,
         &vm_config.bus_map,
         column_allocator,
+        &basic_block_indices,
     )?;
 
     // add guards to constraints that are not satisfied by zeroes
