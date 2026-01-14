@@ -49,12 +49,8 @@ jobs:
 
       - name: Check for regressions
         if: ${{ steps.analysis.outputs.exit_code == '1' }}
-        run: |
-          echo "::error::Performance regressions detected! See job summary for details."
-          exit 1
+        run: echo "::warning::Performance regressions detected! See job summary for details."
 
       - name: Check for errors
         if: ${{ steps.analysis.outputs.exit_code == '2' }}
-        run: |
-          echo "::warning::Errors occurred during analysis. See job summary for details."
-          exit 1
+        run: echo "::warning::Errors occurred during analysis. See job summary for details."

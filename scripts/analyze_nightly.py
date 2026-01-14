@@ -9,6 +9,8 @@ Results are fetched from: https://github.com/powdr-labs/bench-results/tree/gh-pa
 """
 
 import argparse
+from datetime import date
+import json
 import re
 import sys
 from dataclasses import dataclass
@@ -16,7 +18,6 @@ from io import StringIO
 from typing import Optional
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
-import json
 
 import pandas as pd
 
@@ -303,8 +304,26 @@ def main():
         print("Error: Need at least 2 result directories to compare", file=sys.stderr)
         sys.exit(1)
 
-    latest_run = args.latest or result_dirs[0]
-    previous_run = args.previous or result_dirs[1]
+    # Find today's run (must exist unless --latest is provided)
+    if args.latest:
+        latest_run = args.latest
+    else:
+        today = date.today().strftime("%Y-%m-%d")
+        today_runs = [d for d in result_dirs if d.startswith(today)]
+        if not today_runs:
+            print(f"Error: No results found for today ({today})", file=sys.stderr)
+            sys.exit(1)
+        latest_run = today_runs[0]  # Most recent run today (dirs are sorted descending)
+
+    # Find previous run (most recent run that's not the latest)
+    if args.previous:
+        previous_run = args.previous
+    else:
+        previous_runs = [d for d in result_dirs if d != latest_run]
+        if not previous_runs:
+            print("Error: No previous run found to compare against", file=sys.stderr)
+            sys.exit(1)
+        previous_run = previous_runs[0]
 
     print(f"Comparing {latest_run} (latest) vs {previous_run} (previous)", file=sys.stderr)
 
