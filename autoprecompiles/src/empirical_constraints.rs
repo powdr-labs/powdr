@@ -113,7 +113,7 @@ impl EmpiricalConstraints {
     /// than or equal to a threshold passed in the `POWDR_OP_EXECUTION_COUNT_THRESHOLD`
     /// environment variable (or `DEFAULT_EXECUTION_COUNT_THRESHOLD`).
     /// This should mitigate overfitting to rare execution paths.
-    pub fn apply_pc_threshold(&self) -> Self {
+    pub fn apply_pc_threshold(self) -> Self {
         let threshold = std::env::var("POWDR_OP_EXECUTION_COUNT_THRESHOLD")
             .ok()
             .and_then(|s| s.parse().ok())
@@ -121,20 +121,18 @@ impl EmpiricalConstraints {
         EmpiricalConstraints {
             column_ranges_by_pc: self
                 .column_ranges_by_pc
-                .iter()
+                .into_iter()
                 .filter(|(pc, _)| self.pc_counts.get(pc).cloned().unwrap_or(0) >= threshold)
-                .map(|(pc, ranges)| (*pc, ranges.clone()))
                 .collect(),
             equivalence_classes_by_block: self
                 .equivalence_classes_by_block
-                .iter()
-                .filter(|(&block_pc, _)| {
+                .into_iter()
+                .filter(|&(block_pc, _)| {
                     // For equivalence classes, it is enough to check the pc_counts of the first
                     // instruction in the block, as all other instruction will be executed at least
                     // as often.
                     self.pc_counts.get(&(block_pc as u32)).cloned().unwrap_or(0) >= threshold
                 })
-                .map(|(block_pc, classes)| (*block_pc, classes.clone()))
                 .collect(),
             pc_counts: self.pc_counts.clone(),
             debug_info: self.debug_info.clone(),
