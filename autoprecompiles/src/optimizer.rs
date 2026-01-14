@@ -206,7 +206,7 @@ pub fn optimize_exec_bus<T: FieldElement>(
             instruction_idx += 1;
             false
         } else if basic_block_indices.contains(&instruction_idx) {
-            // At a basic block boundary: don't substitute, just remove both send and receive.
+            // At basic block indices: don't substitute, just remove both send and receive.
             // The PC transition is enforced by constraints.
             latest_send = None;
             false
