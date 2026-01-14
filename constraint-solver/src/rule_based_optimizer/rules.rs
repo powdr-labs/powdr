@@ -389,6 +389,18 @@ crepe! {
     Assignment(var, T::zero()) <-
     MinimalRangeZeroDeducible(_, _, _, var, _);
 
+    ///////////////////////////////// ONE-HOT FLAG ///////////////////////////
+
+    struct ExactlyOneSet(Expr);
+    ExactlyOneSet(e) <- Constant(e, T::from(1));
+
+    ExactlyOneSet(e) <-
+    ExpressionSumHeadTail(e, head, tail),
+    AtMostOneSet(tail),
+    LinearExpression(head, v, T::from(1)),
+    BooleanVar(v);
+
+
     ///////////////////////////////// OUTPUT ACTIONS //////////////////////////
 
     struct Equivalence(Var, Var);
