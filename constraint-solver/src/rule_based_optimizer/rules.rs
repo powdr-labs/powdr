@@ -103,8 +103,7 @@ crepe! {
 
     struct LinearExpression<T: FieldElement>(Expr, Var, T);
     LinearExpression(e, var, coeff) <-
-      AffineExpression(e, coeff, var, offset),
-      (offset.is_zero());
+      AffineExpression(e, coeff, var, T::zero());
 
     struct Constant<T: FieldElement>(Expr, T);
     Constant(e, value) <-
@@ -277,13 +276,11 @@ crepe! {
       LargestSingleOccurrenceVariablePairInExpr(e, v1, v2),
       AlgebraicConstraint(e),
       HasProductSummand(e, x1, v1_e),
-      AffineExpression(v1_e, coeff1, v1, offset1),
-      (offset1.is_zero()),
+      LinearExpression(v1_e, v1, coeff1),
       HasProductSummand(e, x2, v2_e),
       (x2 != v1_e),
       (x1 != v2_e),
-      AffineExpression(v2_e, coeff2, v2, offset2),
-      (offset2.is_zero());
+      LinearExpression(v2_e, v2, coeff2);
 
     ReplaceAlgebraicConstraintBy(e, replacement) <-
       Env(env),
