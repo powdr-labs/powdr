@@ -333,7 +333,7 @@ crepe! {
       AlgebraicConstraint(e),
       Solvable(e, var, v);
 
-    ///////////////////////////////// MINIMAL RANGE //////////////////////////
+    ///////////////////////////////// NO-WRAP ZERO SUM //////////////////////////
 
     // If an algebraic constraint e = 0 has the following properties:
     // 1. e = head + tail, and both head, tail >= 0,
@@ -351,6 +351,7 @@ crepe! {
     ExpressionSumHeadTail(e, head, tail),
     RangeConstraintOnExpression(head, rc_head),
     RangeConstraintOnExpression(tail, rc_tail),
+    (rc_head.range().0 == T::from(0)),
     (rc_tail.range().0 == T::from(0)),
     (rc_head.combine_sum(&rc_tail).range().1 < T::from(-1));
 
