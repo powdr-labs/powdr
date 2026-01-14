@@ -191,14 +191,6 @@ crepe! {
       Solvable(l, v, c1),
       Solvable(r, v, c2);
 
-    //////////////////// RANGE PROPERTIES OF EXPRESSIONS //////////////////////
-    // NonNegativeExpression(e) => range of e is [0, a] for some a < P - 1
-    struct NonNegativeExpression(Expr);
-    NonNegativeExpression(e) <-
-      RangeConstraintOnExpression(e, e_rc),
-      (e_rc.range().0 == T::zero()),
-      (e_rc.range().1 < T::from(-1));
-
     //////////////////////// SINGLE-OCCURRENCE VARIABLES //////////////////////////
 
     // Combine multiple variables that only occur in the same algebraic constraint.
@@ -344,50 +336,28 @@ crepe! {
     ///////////////////////////////// MINIMAL RANGE //////////////////////////
 
     // If an algebraic constraint e = 0 has the following properties:
-    // 1. expression e has range constraint [0, a] with a < P - 1,
-    // 2. e = head + tail, and both head, tail >= 0,
-    // 3. head is a linear expression coeff * var,
-    // 4. range of (head + tail) is [0, b] with b < P - 1,
+    // 1. e = head + tail, and both head, tail >= 0,
+    // 2. head is a linear expression coeff * var,
+    // 3. range of (head + tail) is [0, b] with b < P - 1, i.e., their sum does not wrap.
     // then both head and tail must be zero.
     // This rule replaces the variable var by zero.
 
-    // Find algebraic constraint e = 0, and expression e has range constraint [0, a] with a < P,
-    // e = head + tail, and both head, tail >= 0
-    struct MinimalRangeAlgebraicConstraintCandidate(Expr);
-    MinimalRangeAlgebraicConstraintCandidate(e) <-
-      AlgebraicConstraint(e),
-      RangeConstraintOnExpression(e, e_rc),
-      (e_rc.range().1 < T::from(-1)),
-      ExpressionSumHeadTail(e, head, tail),
-      NonNegativeExpression(head),
-      NonNegativeExpression(tail),
-      RangeConstraintOnExpression(head, rc_head),
-      RangeConstraintOnExpression(tail, rc_tail),
-      (rc_head.combine_sum(&rc_tail).range().1 < T::from(-1));
+    struct EqualZero(Expr);
+    EqualZero(e) <- AlgebraicConstraint(e);
 
-    // Find a tail expression that has range constraint [0, a] with a < P,
-    // head + tail = 0, and both head, tail >= 0
-    // Tail must be zero and can be used to iteratively reduced.
-    MinimalRangeAlgebraicConstraintCandidate(tail) <-
-      MinimalRangeAlgebraicConstraintCandidate(e),
-      RangeConstraintOnExpression(e, e_rc),
-      (e_rc.range().1 < T::from(-1)),
-      ExpressionSumHeadTail(e, head, tail),
-      NonNegativeExpression(head),
-      NonNegativeExpression(tail),
-      RangeConstraintOnExpression(head, rc_head),
-      RangeConstraintOnExpression(tail, rc_tail),
-      (rc_head.combine_sum(&rc_tail).range().1 < T::from(-1));
+    struct EntailsZeroHeadAndTail(Expr,Expr);
+    EntailsZeroHeadAndTail(head, tail) <-
+    EqualZero(e),
+    ExpressionSumHeadTail(e, head, tail),
+    RangeConstraintOnExpression(head, rc_head),
+    RangeConstraintOnExpression(tail, rc_tail),
+    (rc_tail.range().0 == T::from(0)),
+    (rc_head.combine_sum(&rc_tail).range().1 < T::from(-1));
 
+    EqualZero(head) <- EntailsZeroHeadAndTail(head,_);
+    EqualZero(tail) <- EntailsZeroHeadAndTail(_, tail);
 
-    struct MinimalRangeZeroDeducible<T: FieldElement>(Expr, Expr,Expr, Var, T);
-    MinimalRangeZeroDeducible(e, head, tail, var, coeff) <-
-      MinimalRangeAlgebraicConstraintCandidate(e),
-      ExpressionSumHeadTail(e, head, tail),
-      LinearExpression(head, var, coeff);
-
-    Assignment(var, T::zero()) <-
-    MinimalRangeZeroDeducible(_, _, _, var, _);
+    Assignment(v, val) <- EqualZero(head), Solvable(head,v,val);
 
     ///////////////////////////////// OUTPUT ACTIONS //////////////////////////
 
