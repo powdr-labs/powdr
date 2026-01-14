@@ -160,11 +160,20 @@ crepe! {
       AffineExpression(e1, f1, v, o1), // e1 = f1 * v + o1
       AffineExpression(e2, f2, v, o2); // e2 = f2 * v + o2
       // e1 = (e2 - o2) / f2 * f1 + o1 = e2 * (f1 / f2) + (o1 - o2 * f1 / f2)
-    AffinelyRelated(e1, f, e2, c) <-
+
+    // just a join-lookup table.
+    struct AffinelyRelatedIntermediateTail<T: FieldElement>(Expr, Expr, T, Expr, T);
+    AffinelyRelatedIntermediateTail(e1, head1, f, tail2, c) <-
       ExpressionSumHeadTail(e1, head1, tail1),
-      AffinelyRelated(tail1, f, tail2, c),
+      AffinelyRelated(tail1, f, tail2, c);
+    // just a join-lookup table.
+    struct AffinelyRelatedIntermediateHead<T: FieldElement>(Expr, Expr, T, Expr);
+    AffinelyRelatedIntermediateHead(e2, tail2, f, head1) <-
       ExpressionSumHeadTail(e2, head2, tail2),
       AffinelyRelated(head1, f, head2, T::zero());
+    AffinelyRelated(e1, f, e2, c) <-
+      AffinelyRelatedIntermediateTail(e1, head1, f, tail2, c),
+      AffinelyRelatedIntermediateHead(e2, tail2, f, head1);
     AffinelyRelated(e1, f1 * f2, e2, T::zero()) <-
       Product(e1, l1, r1),
       (l1 < r1),
