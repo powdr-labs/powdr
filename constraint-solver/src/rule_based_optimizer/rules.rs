@@ -162,14 +162,24 @@ crepe! {
       // e1 = (e2 - o2) / f2 * f1 + o1 = e2 * (f1 / f2) + (o1 - o2 * f1 / f2)
     AffinelyRelated(e1, f, e2, c) <-
       ExpressionSumHeadTail(e1, head1, tail1),
+      AffinelyRelated(tail1, f, tail2, c),
       ExpressionSumHeadTail(e2, head2, tail2),
-      AffinelyRelated(head1, f, head2, T::zero()),
-      AffinelyRelated(tail1, f, tail2, c);
+      AffinelyRelated(head1, f, head2, T::zero());
     AffinelyRelated(e1, f1 * f2, e2, T::zero()) <-
       Product(e1, l1, r1),
-      Product(e2, l2, r2),
+      (l1 < r1),
       AffinelyRelated(l1, f1, l2, T::zero()),
+      Product(e2, l2, r2),
+      (l2 < r2),
       AffinelyRelated(r1, f2, r2, T::zero());
+    AffinelyRelated(e1, f, e2, o1 + o2) <-
+      ExpressionSumHeadTail(e2, head2, tail2),
+      AffinelyRelated(e1, f, head2, o1),
+      Constant(tail2, o2);
+    AffinelyRelated(e1, T::one() / f, e2, -o / f) <-
+      // e2 = f * e1 + o <=> e1 = e2 / f - o / f
+      AffinelyRelated(e2, f, e1, o);
+
 
     // HasProductSummand(e, l, r) => e contains a summand of the form l * r
     struct HasProductSummand(Expr, Expr, Expr);
