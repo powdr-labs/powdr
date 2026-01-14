@@ -5,7 +5,7 @@ use powdr_number::FieldElement;
 
 use crate::{
     adapter::Adapter,
-    blocks::{BasicBlock, Instruction},
+    blocks::{Block, Instruction},
     expression::AlgebraicExpression,
     powdr, Apc, BusMap, BusType, ColumnAllocator, InstructionHandler, SymbolicBusInteraction,
     SymbolicConstraint, SymbolicMachine,
@@ -117,7 +117,7 @@ fn convert_expression<T, U>(
 /// a mapping from local column IDs to global column IDs
 /// (in the form of a vector).
 pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
-    block: &BasicBlock<A::Instruction>,
+    block: &Block<A::Instruction>,
     instruction_handler: &A::InstructionHandler,
     bus_map: &BusMap<A::CustomBusTypes>,
 ) -> (SymbolicMachine<A::PowdrField>, ColumnAllocator) {
@@ -126,7 +126,9 @@ pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
     let mut col_subs: Vec<Vec<u64>> = Vec::new();
     let mut global_idx: u64 = 0;
 
-    for (i, instr) in block.statements.iter().enumerate() {
+    let insn_indexed_pcs = block.insn_indexed_pcs();
+
+    for (i, instr) in block.statements().enumerate() {
         let machine = instruction_handler
             .get_instruction_air_and_id(instr)
             .1
@@ -135,10 +137,13 @@ pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
         let machine: SymbolicMachine<<A as Adapter>::PowdrField> =
             convert_machine_field_type(machine, &|x| A::from_field(x));
 
-        // It is sufficient to provide the initial PC, because the PC update should be
-        // deterministic within a basic block. Therefore, all future PCs can be derived
-        // by the solver.
-        let pc = (i == 0).then_some(block.start_pc);
+        // We need to provide the initial PC of each composing basic block,
+        // as these need to be enforced in the constraints.
+        // The other PCs can be derived by the solver.
+        let pc = insn_indexed_pcs
+            .iter()
+            .find(|(idx, _)| *idx == i)
+            .map(|(_, pc_value)| *pc_value);
         let pc_lookup_row = instr
             .pc_lookup_row(pc)
             .into_iter()
