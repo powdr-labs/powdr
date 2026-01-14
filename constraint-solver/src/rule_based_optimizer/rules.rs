@@ -460,13 +460,13 @@ crepe! {
         AffineExpression(a_0_e, a_0_e_coeff, a_0, a_0_e_offset), (a_0_e_coeff == T::from(1)), (a_0_e_offset == T::from(-1)),
       // diff_marker__1_0 * (a__1_0 * (2 * cmp_result_0 - 1) + diff_val_0) = 0
       DiffMarkerConstraint(constr_6, diff_marker_1, a_1_e, result, diff_val),
-        LinearExpression(a_1_e, a_1, a_coeff), (a_coeff == T::from(1)),
+        LinearExpression(a_1_e, a_1, T::from(1)),
       // diff_marker__2_0 * (a__2_0 * (2 * cmp_result_0 - 1) + diff_val_0) = 0
       DiffMarkerConstraint(constr_7, diff_marker_2, a_2_e, result, diff_val),
-        LinearExpression(a_2_e, a_2, a_coeff2), (a_coeff2 == T::from(1)),
+        LinearExpression(a_2_e, a_2, T::from(1)),
       // diff_marker__3_0 * (a__3_0 * (2 * cmp_result_0 - 1) + diff_val_0) = 0
       DiffMarkerConstraint(constr_8, diff_marker_3, a_3_e, result, diff_val),
-        LinearExpression(a_3_e, a_3, a_coeff3), (a_coeff3 == T::from(1)),
+        LinearExpression(a_3_e, a_3, T::from(1)),
       BooleanVar(result),
       BooleanVar(diff_marker_0),
       BooleanVar(diff_marker_1),
