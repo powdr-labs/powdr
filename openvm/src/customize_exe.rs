@@ -216,7 +216,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         &config,
         vm_config,
         labels,
-        empirical_constraints,
+        empirical_constraints.apply_pc_threshold(),
     );
     metrics::gauge!("total_apc_gen_time_ms").set(start.elapsed().as_millis() as f64);
 
