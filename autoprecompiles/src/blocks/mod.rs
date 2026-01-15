@@ -15,8 +15,9 @@ pub struct BasicBlock<I> {
 }
 
 impl<I: PcStep> BasicBlock<I> {
-    pub fn pc_step() -> u32 {
-        I::pc_step()
+    /// Returns an iterator over the program counters of the instructions in this block.
+    pub fn pcs(&self) -> impl Iterator<Item = u64> + '_ {
+        (0..self.statements.len()).map(move |i| self.start_pc + (i as u64 * I::pc_step() as u64))
     }
 }
 
@@ -52,7 +53,5 @@ pub trait PcStep {
 
 pub trait Instruction<T>: Clone + Display + PcStep {
     /// Returns a list of concrete values that the LHS of the PC lookup should be assigned to.
-    /// An entry can be `None` to indicate that the value is not known at compile time.
-    /// The provided PC will in practice be provided for the first instruction of the block.
-    fn pc_lookup_row(&self, pc: Option<u64>) -> Vec<Option<T>>;
+    fn pc_lookup_row(&self, pc: u64) -> Vec<T>;
 }

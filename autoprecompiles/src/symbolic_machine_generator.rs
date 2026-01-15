@@ -139,7 +139,7 @@ pub(crate) fn statements_to_symbolic_machines<A: Adapter>(
     let mut global_idx = 0;
     let mut machines: Vec<SymbolicMachine<A::PowdrField>> = Vec::new();
 
-    for (i, instr) in block.statements.iter().enumerate() {
+    for (i, (instr, pc)) in block.statements.iter().zip_eq(block.pcs()).enumerate() {
         let machine = instruction_handler
             .get_instruction_air_and_id(instr)
             .1
@@ -148,14 +148,10 @@ pub(crate) fn statements_to_symbolic_machines<A: Adapter>(
         let machine: SymbolicMachine<<A as Adapter>::PowdrField> =
             convert_machine_field_type(machine, &|x| A::from_field(x));
 
-        // It is sufficient to provide the initial PC, because the PC update should be
-        // deterministic within a basic block. Therefore, all future PCs can be derived
-        // by the solver.
-        let pc = (i == 0).then_some(block.start_pc);
         let pc_lookup_row = instr
             .pc_lookup_row(pc)
             .into_iter()
-            .map(|x| x.map(|f| A::from_field(f)))
+            .map(|x| A::from_field(x))
             .collect::<Vec<_>>();
 
         let (next_global_idx, subs, machine) = powdr::globalize_references(machine, global_idx, i);
@@ -191,7 +187,6 @@ pub(crate) fn statements_to_symbolic_machines<A: Adapter>(
                 .args
                 .iter()
                 .zip_eq(pc_lookup_row)
-                .filter_map(|(l, r)| r.map(|r| (l, r)))
                 .map(|(l, r)| (l.clone() - r.into()).into()),
         );
 
