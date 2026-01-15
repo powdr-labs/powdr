@@ -1,12 +1,10 @@
-use crate::adapter::{
-    Adapter, AdapterApc, AdapterApcOverPowdrField, AdapterBasicBlock, AdapterOptimisticConstraints,
-    AdapterVmConfig,
-};
+use crate::adapter::{Adapter, AdapterApc, AdapterVmConfig};
 use crate::blocks::BasicBlock;
 use crate::bus_map::{BusMap, BusType};
 use crate::empirical_constraints::{ConstraintGenerator, EmpiricalConstraints};
 use crate::evaluation::AirStats;
 use crate::execution::OptimisticConstraints;
+use crate::export::ExportOptions;
 use crate::expression_conversion::algebraic_to_grouped_expression;
 use crate::optimistic::algebraic_references::BlockCellAlgebraicReferenceMapper;
 use crate::symbolic_machine_generator::convert_apc_field_type;
@@ -20,7 +18,6 @@ use powdr_expression::{
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fmt::Display;
-use std::io::BufWriter;
 use std::iter::once;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -50,6 +47,7 @@ pub use pgo::{PgoConfig, PgoType};
 pub use powdr_constraint_solver::inliner::DegreeBound;
 pub mod equivalence_classes;
 pub mod execution;
+pub mod export;
 pub mod trace_handler;
 
 #[derive(Clone)]
@@ -441,7 +439,7 @@ pub fn build<A: Adapter>(
     block: BasicBlock<A::Instruction>,
     vm_config: AdapterVmConfig<A>,
     degree_bound: DegreeBound,
-    apc_candidates_dir_path: Option<&Path>,
+    export_options: ExportOptions,
     empirical_constraints: &EmpiricalConstraints,
 ) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
     let start = std::time::Instant::now();
@@ -467,12 +465,13 @@ pub fn build<A: Adapter>(
     machine.constraints.extend(range_analyzer_constraints);
     machine.constraints.extend(equivalence_analyzer_constraints);
 
-    if let Some(path) = apc_candidates_dir_path {
-        serialize_apc_from_machine::<A>(
+    if export_options.export_requested() {
+        export::export_apc_from_machine::<A>(
             block.clone(),
             machine.clone(),
             &column_allocator,
-            path,
+            &vm_config.bus_map,
+            &export_options,
             Some("unopt"),
         );
     }
@@ -489,7 +488,7 @@ pub fn build<A: Adapter>(
         machine,
         vm_config.bus_interaction_handler,
         degree_bound,
-        &vm_config.bus_map,
+        &vm_config.bus_map, // TODO add export path here
         column_allocator,
     )?;
 
@@ -508,13 +507,8 @@ pub fn build<A: Adapter>(
 
     let apc = Apc::new(block, machine, optimistic_constraints, &column_allocator);
 
-    if let Some(path) = apc_candidates_dir_path {
-        serialize_apc::<A>(&apc, path, None);
-
-        // For debugging, also serialize a human-readable version of the final precompile
-        let rendered = apc.machine.render(&vm_config.bus_map);
-        let path = make_path(path, apc.start_pc(), None, "txt");
-        std::fs::write(path, rendered).unwrap();
+    if export_options.export_requested() {
+        export::export_apc::<A>(&apc, &export_options, None, &vm_config.bus_map);
     }
 
     let apc = convert_apc_field_type(apc, &A::into_field);
@@ -522,40 +516,6 @@ pub fn build<A: Adapter>(
     metrics::gauge!("apc_gen_time_ms", &labels).set(start.elapsed().as_millis() as f64);
 
     Ok(apc)
-}
-
-fn make_path(base_path: &Path, start_pc: u64, suffix: Option<&str>, extension: &str) -> PathBuf {
-    let suffix = suffix.map(|s| format!("_{s}")).unwrap_or_default();
-    base_path
-        .join(format!("apc_candidate_{start_pc}{suffix}"))
-        .with_extension(extension)
-}
-
-fn serialize_apc<A: Adapter>(apc: &AdapterApcOverPowdrField<A>, path: &Path, suffix: Option<&str>) {
-    std::fs::create_dir_all(path).expect("Failed to create directory for APC candidates");
-
-    let ser_path = make_path(path, apc.start_pc(), suffix, "cbor");
-    let file_unopt =
-        std::fs::File::create(&ser_path).expect("Failed to create file for {suffix} APC candidate");
-    let writer_unopt = BufWriter::new(file_unopt);
-    serde_cbor::to_writer(writer_unopt, &apc)
-        .expect("Failed to write {suffix} APC candidate to file");
-}
-
-fn serialize_apc_from_machine<A: Adapter>(
-    block: AdapterBasicBlock<A>,
-    machine: SymbolicMachine<A::PowdrField>,
-    column_allocator: &ColumnAllocator,
-    path: &Path,
-    suffix: Option<&str>,
-) {
-    let apc = Apc::new(
-        block,
-        machine,
-        AdapterOptimisticConstraints::<A>::empty(),
-        column_allocator,
-    );
-    serialize_apc::<A>(&apc, path, suffix);
 }
 
 fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
