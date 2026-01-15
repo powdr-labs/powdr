@@ -290,11 +290,6 @@ jobs:
           pip install -r openvm/scripts/requirements.txt
           pip install -r autoprecompiles/scripts/requirements.txt
 
-      - name: Remove old results if present
-        run: |
-          rm -rf results
-          mkdir -p results
-
       - name: Patch benchmark
         uses: ./.github/actions/patch-openvm-reth-benchmark
 
@@ -308,6 +303,4 @@ jobs:
 
           # prove with 3 APCs
           APC=3 ./run.sh --mode prove-app || exit 1
-          # remove apc cache to not interfere with the next runs
-          rm -rf apc-cache
           echo "Finished proving with 3 APCs"
