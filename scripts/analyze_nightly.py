@@ -299,24 +299,17 @@ def main():
     args = parser.parse_args()
 
     # Get result directories
-    print("Fetching results directories...", file=sys.stderr)
     try:
         result_dirs = get_results_directories()
     except (URLError, HTTPError) as e:
-        msg = f"Could not fetch results directories: {e}"
-        print(f"Error: {msg}", file=sys.stderr)
-        print_error_report(msg)
+        print_error_report(f"Could not fetch results directories: {e}")
         sys.exit(1)
     except json.JSONDecodeError as e:
-        msg = f"Failed to parse GitHub API response: {e}"
-        print(f"Error: {msg}", file=sys.stderr)
-        print_error_report(msg)
+        print_error_report(f"Failed to parse GitHub API response: {e}")
         sys.exit(1)
 
     if len(result_dirs) < 2:
-        msg = "Need at least 2 result directories to compare"
-        print(f"Error: {msg}", file=sys.stderr)
-        print_error_report(msg)
+        print_error_report("Need at least 2 result directories to compare")
         sys.exit(1)
 
     # Find today's run (must exist unless --latest is provided)
@@ -326,9 +319,7 @@ def main():
         today = date.today().strftime("%Y-%m-%d")
         today_runs = [d for d in result_dirs if d.startswith(today)]
         if not today_runs:
-            msg = f"No results found for today ({today})"
-            print(f"Error: {msg}", file=sys.stderr)
-            print_error_report(msg)
+            print_error_report(f"No results found for today ({today})")
             sys.exit(1)
         latest_run = today_runs[0]  # Most recent run today (dirs are sorted descending)
 
@@ -338,13 +329,9 @@ def main():
     else:
         previous_runs = [d for d in result_dirs if d != latest_run]
         if not previous_runs:
-            msg = "No previous run found to compare against"
-            print(f"Error: {msg}", file=sys.stderr)
-            print_error_report(msg)
+            print_error_report("No previous run found to compare against")
             sys.exit(1)
         previous_run = previous_runs[0]
-
-    print(f"Comparing {latest_run} (latest) vs {previous_run} (previous)", file=sys.stderr)
 
     # Fetch results for each benchmark
     comparisons = []
@@ -352,7 +339,6 @@ def main():
     warnings = []
 
     for benchmark in args.benchmarks:
-        print(f"Analyzing {benchmark}...", file=sys.stderr)
 
         latest_result = fetch_benchmark_results(latest_run, benchmark)
         previous_result = fetch_benchmark_results(previous_run, benchmark)
@@ -417,20 +403,11 @@ def main():
     # Exit with error code if there are regressions or errors
     has_regressions = any(c.is_regression for c in comparisons)
     has_errors = len(errors) > 0
-    has_warnings = len(warnings) > 0
 
     if has_errors:
-        print("\nErrors were encountered during analysis.", file=sys.stderr)
         sys.exit(2)
-
     if has_regressions:
-        print("\nRegressions detected!", file=sys.stderr)
         sys.exit(1)
-
-    if has_warnings:
-        print("\nWarnings were generated (see report).", file=sys.stderr)
-
-    print("\nNo regressions detected.", file=sys.stderr)
     sys.exit(0)
 
 
