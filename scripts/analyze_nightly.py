@@ -187,6 +187,15 @@ def compare_results(
     )
 
 
+def print_error_report(error_msg: str) -> None:
+    """Print a minimal error report to stdout."""
+    print("# Nightly Benchmark Comparison Report")
+    print("")
+    print("## Errors")
+    print("")
+    print(f"- {error_msg}")
+
+
 def format_change_percent(change: float) -> str:
     """Format a percentage change with appropriate sign."""
     if change == 0.0:
@@ -294,14 +303,14 @@ def main():
     try:
         result_dirs = get_results_directories()
     except (URLError, HTTPError) as e:
-        print(f"Error: Could not fetch results directories: {e}", file=sys.stderr)
+        print_error_report(f"Could not fetch results directories: {e}")
         sys.exit(1)
     except json.JSONDecodeError as e:
-        print(f"Error: Failed to parse GitHub API response: {e}", file=sys.stderr)
+        print_error_report(f"Failed to parse GitHub API response: {e}")
         sys.exit(1)
 
     if len(result_dirs) < 2:
-        print("Error: Need at least 2 result directories to compare", file=sys.stderr)
+        print_error_report("Need at least 2 result directories to compare")
         sys.exit(1)
 
     # Find today's run (must exist unless --latest is provided)
@@ -311,7 +320,7 @@ def main():
         today = date.today().strftime("%Y-%m-%d")
         today_runs = [d for d in result_dirs if d.startswith(today)]
         if not today_runs:
-            print(f"Error: No results found for today ({today})", file=sys.stderr)
+            print_error_report(f"No results found for today ({today})")
             sys.exit(1)
         latest_run = today_runs[0]  # Most recent run today (dirs are sorted descending)
 
@@ -321,7 +330,7 @@ def main():
     else:
         previous_runs = [d for d in result_dirs if d != latest_run]
         if not previous_runs:
-            print("Error: No previous run found to compare against", file=sys.stderr)
+            print_error_report("No previous run found to compare against")
             sys.exit(1)
         previous_run = previous_runs[0]
 
