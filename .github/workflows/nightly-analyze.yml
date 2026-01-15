@@ -54,3 +54,18 @@ jobs:
       - name: Check for errors
         if: ${{ steps.analysis.outputs.exit_code == '2' }}
         run: echo "::warning::Errors occurred during analysis. See job summary for details."
+
+      - name: Send report to Matrix
+        env:
+          MATRIX_HOMESERVER: ${{ secrets.MATRIX_HOMESERVER }}
+          MATRIX_ROOM_ID: ${{ secrets.MATRIX_ROOM_ID }}
+          MATRIX_ACCESS_TOKEN: ${{ secrets.MATRIX_ACCESS_TOKEN }}
+        run: |
+          echo "" >> analysis_report.md
+          echo "[View workflow run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> analysis_report.md
+
+          curl -sf -X POST \
+            "${MATRIX_HOMESERVER}/_matrix/client/r0/rooms/${MATRIX_ROOM_ID}/send/m.room.message/$(date +%s)" \
+            -H "Authorization: Bearer ${MATRIX_ACCESS_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --rawfile body analysis_report.md '{msgtype: "m.text", body: $body}')"
