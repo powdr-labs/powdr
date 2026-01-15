@@ -46,7 +46,7 @@ cargo nextest run -p powdr-openvm
 
 ## CLI Usage
 
-The main CLI is `powdr-openvm` (in `cli-openvm/`):
+The main CLI is `powdr_openvm` (in `cli-openvm/`):
 
 ```bash
 # Compile a guest program with autoprecompiles
