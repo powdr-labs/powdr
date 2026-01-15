@@ -257,7 +257,8 @@ jobs:
         # run: cargo nextest run --archive-file tests_gpu.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/7 --no-tests=warn
 
   test_apc_reth_app_proof:
-    runs-on: server-dev
+    # runs-on: server-dev
+    runs-on: warp-ubuntu-2404-x64-16x
 
     steps:
       - uses: actions/checkout@v4
