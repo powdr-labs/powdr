@@ -14,6 +14,7 @@ use powdr_autoprecompiles::empirical_constraints::Partition;
 use powdr_autoprecompiles::empirical_constraints::{DebugInfo, EmpiricalConstraints};
 use powdr_autoprecompiles::expression::AlgebraicEvaluator;
 use powdr_autoprecompiles::expression::RowEvaluator;
+use powdr_autoprecompiles::optimistic::config::optimistic_precompile_config;
 use powdr_autoprecompiles::DegreeBound;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
@@ -103,10 +104,6 @@ pub fn detect_empirical_constraints(
     constraint_detector.finalize()
 }
 
-/// The maximum number of segments to keep in memory while detecting empirical constraints.
-/// A higher number here leads to more accurate percentile estimates, but uses more memory.
-const DEFAULT_MAX_SEGMENTS: usize = 20;
-
 fn detect_empirical_constraints_from_input(
     program: &CompiledProgram,
     input_index: usize,
@@ -117,10 +114,7 @@ fn detect_empirical_constraints_from_input(
     let mut trace = Trace::default();
     let mut debug_info = DebugInfo::default();
 
-    let max_segments = std::env::var("POWDR_EMPIRICAL_CONSTRAINTS_MAX_SEGMENTS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(DEFAULT_MAX_SEGMENTS);
+    let max_segments = optimistic_precompile_config().max_segments;
 
     do_with_cpu_trace(program, inputs, |seg_idx, vm, _pk, ctx| {
         let airs = program.vm_config.sdk.airs(degree_bound).unwrap();

@@ -68,7 +68,10 @@ impl<A, V> OptimisticExpression<A, V> {
     Debug, Clone, Copy, Serialize, Deserialize, deepsize2::DeepSizeOf, PartialEq, Eq, Hash,
 )]
 pub enum LocalOptimisticLiteral<A> {
-    Register(A),
+    /// A limb of a register
+    // TODO: The code below ignores the limb index; support it properly
+    // Search for "TODO: Support limb accesses"
+    RegisterLimb(A, usize),
     Pc,
 }
 

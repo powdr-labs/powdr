@@ -152,7 +152,8 @@ impl<A, V> OptimisticConstraintEvaluator<A, V> {
             // fetch the values them in memory
             for literal in fetches {
                 let value = match literal {
-                    LocalOptimisticLiteral::Register(address) => state.reg(address),
+                    // TODO: Support limb accesses
+                    LocalOptimisticLiteral::RegisterLimb(address, _) => state.reg(address),
                     LocalOptimisticLiteral::Pc => state.pc(),
                 };
                 let key = OptimisticLiteral {
@@ -215,7 +216,8 @@ impl<'a, E: ExecutionState> StepOptimisticConstraintEvaluator<'a, E> {
         // Hit the state for the current step
         if l.instr_idx == self.step {
             match l.val {
-                LocalOptimisticLiteral::Register(addr) => self.state.reg(&addr),
+                // TODO: Support limb accesses
+                LocalOptimisticLiteral::RegisterLimb(addr, _) => self.state.reg(&addr),
                 LocalOptimisticLiteral::Pc => self.state.pc(),
             }
         } else {
@@ -260,7 +262,8 @@ mod tests {
     }
 
     fn mem(instr_idx: usize, addr: u8) -> OptimisticExpression<u8, u8> {
-        literal_expr(instr_idx, LocalOptimisticLiteral::Register(addr))
+        // TODO: Support limb accesses
+        literal_expr(instr_idx, LocalOptimisticLiteral::RegisterLimb(addr, 0))
     }
 
     fn pc(instr_idx: usize) -> OptimisticExpression<u8, u8> {
