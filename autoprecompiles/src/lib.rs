@@ -201,6 +201,13 @@ impl<T> SymbolicMachine<T> {
     pub fn main_columns(&self) -> impl Iterator<Item = AlgebraicReference> + use<'_, T> {
         self.unique_references()
     }
+
+    pub fn concatenate(mut self, other: SymbolicMachine<T>) -> Self {
+        self.constraints.extend(other.constraints);
+        self.bus_interactions.extend(other.bus_interactions);
+        self.derived_columns.extend(other.derived_columns);
+        self
+    }
 }
 
 impl<T: Display> Display for SymbolicMachine<T> {

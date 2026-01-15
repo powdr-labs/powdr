@@ -112,19 +112,32 @@ fn convert_expression<T, U>(
     }
 }
 
-/// Converts a basic block into a symbolic machine and a vector
-/// that contains, for each instruction in the basic block,
-/// a mapping from local column IDs to global column IDs
-/// (in the form of a vector).
+/// Converts a basic block into a symbolic machines (all instruction circuits
+/// concatenated) and a column allocator.
 pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
     block: &BasicBlock<A::Instruction>,
     instruction_handler: &A::InstructionHandler,
     bus_map: &BusMap<A::CustomBusTypes>,
 ) -> (SymbolicMachine<A::PowdrField>, ColumnAllocator) {
-    let mut constraints: Vec<SymbolicConstraint<_>> = Vec::new();
-    let mut bus_interactions: Vec<SymbolicBusInteraction<_>> = Vec::new();
+    let (machines, column_allocator) =
+        statements_to_symbolic_machines::<A>(block, instruction_handler, bus_map);
+    let machine = machines
+        .into_iter()
+        .reduce(SymbolicMachine::concatenate)
+        .unwrap();
+    (machine, column_allocator)
+}
+
+/// Converts a basic block into a list of symbolic machines (one per instruction)
+/// and a column allocator. All columns are globally unique across all instructions.
+pub(crate) fn statements_to_symbolic_machines<A: Adapter>(
+    block: &BasicBlock<A::Instruction>,
+    instruction_handler: &A::InstructionHandler,
+    bus_map: &BusMap<A::CustomBusTypes>,
+) -> (Vec<SymbolicMachine<A::PowdrField>>, ColumnAllocator) {
     let mut col_subs: Vec<Vec<u64>> = Vec::new();
-    let mut global_idx: u64 = 0;
+    let mut global_idx = 0;
+    let mut machines: Vec<SymbolicMachine<A::PowdrField>> = Vec::new();
 
     for (i, instr) in block.statements.iter().enumerate() {
         let machine = instruction_handler
@@ -148,14 +161,15 @@ pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
         let (next_global_idx, subs, machine) = powdr::globalize_references(machine, global_idx, i);
         global_idx = next_global_idx;
 
+        // Make machine mutable, to add local constraints
+        let mut machine = machine;
+
         let pc_lookup = machine
             .bus_interactions
             .iter()
             .filter(|bus_int| bus_int.id == bus_map.get_bus_id(&BusType::PcLookup).unwrap())
             .exactly_one()
             .expect("Expected single pc lookup");
-
-        let mut local_constraints: Vec<SymbolicConstraint<_>> = Vec::new();
 
         // To simplify constraint solving, we constrain `is_valid` to be 1, which effectively
         // removes the column. The optimized precompile will then have to be guarded by a new
@@ -167,10 +181,12 @@ pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
         .mult
         .clone();
         let one = AlgebraicExpression::Number(1u64.into());
-        local_constraints.push((minus_is_valid.clone() + one).into());
+        machine
+            .constraints
+            .push((minus_is_valid.clone() + one).into());
 
         // Constrain the pc lookup to the current instruction.
-        local_constraints.extend(
+        machine.constraints.extend(
             pc_lookup
                 .args
                 .iter()
@@ -179,25 +195,12 @@ pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
                 .map(|(l, r)| (l.clone() - r.into()).into()),
         );
 
-        constraints.extend(
-            machine
-                .constraints
-                .iter()
-                .chain(&local_constraints)
-                .map(|expr| SymbolicConstraint {
-                    expr: expr.expr.clone(),
-                }),
-        );
-        bus_interactions.extend(machine.bus_interactions.iter().cloned());
         col_subs.push(subs);
+        machines.push(machine);
     }
 
     (
-        SymbolicMachine {
-            constraints,
-            bus_interactions,
-            derived_columns: vec![],
-        },
+        machines,
         ColumnAllocator {
             subs: col_subs,
             next_poly_id: global_idx,
