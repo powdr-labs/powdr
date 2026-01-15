@@ -102,7 +102,3 @@ Example guest programs in `openvm/guest-*` directories (keccak, sha256, ecc, pai
   - `PgoConfig::Instruction`: Optimizes based on instruction execution frequency
 - **Symbolic Machine**: Intermediate representation of constraints and bus interactions
 - **Bus Interactions**: Communication between different chips/machines in the OpenVM architecture
-
-## Rust Toolchain
-
-Uses nightly-2025-10-01. The `rust-toolchain.toml` sets this automatically.
