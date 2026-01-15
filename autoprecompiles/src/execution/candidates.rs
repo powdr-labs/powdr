@@ -33,9 +33,16 @@ impl<E: ExecutionState, A: Apc<E>, S: Snapshot> ApcCandidates<E, A, S> {
         }
     }
 
-    /// Given the current state of execution, retain the candidates whose constraints are still
-    /// verified
-    pub fn check_conditions(&mut self, state: &E, snapshot_callback: impl Fn() -> S) {
+    /// Retain candidates whose constraints are still verified.
+    ///
+    /// - `snapshot_callback`: Creates a snapshot of the current execution state.
+    /// - `bump_check(apc_id, from, to)`: Returns `true` if no bump occurred, `false` to reject.
+    pub fn check_conditions(
+        &mut self,
+        state: &E,
+        snapshot_callback: impl Fn() -> S,
+        mut bump_check: impl FnMut(usize, &S, &S) -> bool,
+    ) {
         // Filter out failing candidates and upgrade the ones that are done
         self.candidates
             .retain_mut(|candidate| match &mut candidate.status {
@@ -54,7 +61,25 @@ impl<E: ExecutionState, A: Apc<E>, S: Snapshot> ApcCandidates<E, A, S> {
                     if candidate.total_check_count
                         == optimistic_constraint_evaluator.instruction_index()
                     {
-                        candidate.status = CandidateStatus::Done(snapshot_callback());
+                        // Create the completion snapshot first
+                        let to_snapshot = snapshot_callback();
+
+                        // Check for bump events by comparing from and to snapshots
+                        if !bump_check(candidate.apc_id, &candidate.from_snapshot, &to_snapshot) {
+                            tracing::debug!(
+                                "APC candidate rejected: apc_id={}, bump event detected",
+                                candidate.apc_id
+                            );
+                            return false;
+                        }
+
+                        tracing::debug!(
+                            "APC candidate completed: apc_id={}, range={}..{}",
+                            candidate.apc_id,
+                            candidate.from_snapshot.instret(),
+                            to_snapshot.instret()
+                        );
+                        candidate.status = CandidateStatus::Done(to_snapshot);
                     }
                     true
                 }
@@ -367,15 +392,31 @@ mod tests {
         // A helper function to go to the next execution state, check the conditions on it, and extract the calls
         fn incr(&mut self) -> Vec<ApcCall<TestSnapshot>> {
             self.state.incr();
-            self.candidates
-                .check_conditions(&self.state, || self.state.snapshot());
+            self.candidates.check_conditions(
+                &self.state,
+                || self.state.snapshot(),
+                |_, _, _| true, // No bump events in tests
+            );
             self.candidates.extract_calls()
         }
 
         fn jump(&mut self, pc: usize) -> Vec<ApcCall<TestSnapshot>> {
             self.state.jump(pc);
+            self.candidates.check_conditions(
+                &self.state,
+                || self.state.snapshot(),
+                |_, _, _| true, // No bump events in tests
+            );
+            self.candidates.extract_calls()
+        }
+
+        fn incr_with_bump_check(
+            &mut self,
+            bump_check: impl FnMut(usize, &TestSnapshot, &TestSnapshot) -> bool,
+        ) -> Vec<ApcCall<TestSnapshot>> {
+            self.state.incr();
             self.candidates
-                .check_conditions(&self.state, || self.state.snapshot());
+                .check_conditions(&self.state, || self.state.snapshot(), bump_check);
             self.candidates.extract_calls()
         }
 
@@ -755,5 +796,34 @@ mod tests {
                 to: s(4),
             }
         );
+    }
+
+    #[test]
+    fn bump_check_rejects_candidate() {
+        let mut vm = TestVm::new([a(3).p(1)]);
+        vm.try_add_candidate(0).unwrap();
+        assert!(vm.incr().is_empty());
+        assert!(vm.incr().is_empty());
+        // bump_check returns false, rejecting the candidate
+        let output = vm.incr_with_bump_check(|_, _, _| false);
+        assert!(output.is_empty());
+        assert_eq!(vm.count_in_progress(), 0);
+        assert_eq!(vm.count_done(), 0);
+    }
+
+    #[test]
+    fn bump_check_receives_correct_snapshots() {
+        let mut vm = TestVm::new([a(3).p(1)]);
+        vm.try_add_candidate(0).unwrap();
+        assert!(vm.incr().is_empty());
+        assert!(vm.incr().is_empty());
+        // Verify bump_check receives correct from/to snapshots
+        let output = vm.incr_with_bump_check(|apc_id, from, to| {
+            assert_eq!(apc_id, 0);
+            assert_eq!(from.instret, 0); // snapshot when candidate was created
+            assert_eq!(to.instret, 3); // snapshot at completion
+            true
+        });
+        assert_eq!(output.len(), 1);
     }
 }
