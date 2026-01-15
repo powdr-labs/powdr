@@ -299,6 +299,7 @@ def main():
     args = parser.parse_args()
 
     # Get result directories
+    print("Fetching results directories...", file=sys.stderr)
     try:
         result_dirs = get_results_directories()
     except (URLError, HTTPError) as e:
@@ -333,12 +334,15 @@ def main():
             sys.exit(1)
         previous_run = previous_runs[0]
 
+    print(f"Comparing {latest_run} (latest) vs {previous_run} (previous)", file=sys.stderr)
+
     # Fetch results for each benchmark
     comparisons = []
     errors = []
     warnings = []
 
     for benchmark in args.benchmarks:
+        print(f"Analyzing {benchmark}...", file=sys.stderr)
 
         latest_result = fetch_benchmark_results(latest_run, benchmark)
         previous_result = fetch_benchmark_results(previous_run, benchmark)
@@ -403,11 +407,20 @@ def main():
     # Exit with error code if there are regressions or errors
     has_regressions = any(c.is_regression for c in comparisons)
     has_errors = len(errors) > 0
+    has_warnings = len(warnings) > 0
 
     if has_errors:
+        print("\nErrors were encountered during analysis.", file=sys.stderr)
         sys.exit(2)
+
     if has_regressions:
+        print("\nRegressions detected!", file=sys.stderr)
         sys.exit(1)
+
+    if has_warnings:
+        print("\nWarnings were generated (see report).", file=sys.stderr)
+
+    print("\nNo regressions detected.", file=sys.stderr)
     sys.exit(0)
 
 
