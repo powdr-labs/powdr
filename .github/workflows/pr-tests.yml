@@ -258,7 +258,7 @@ jobs:
 
   test_apc_reth_app_proof:
     # runs-on: server-dev
-    runs-on: warp-ubuntu-2404-x64-16x
+    runs-on: warp-ubuntu-2404-x64-32x
 
     steps:
       - uses: actions/checkout@v4
