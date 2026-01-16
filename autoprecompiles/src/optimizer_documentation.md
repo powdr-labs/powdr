@@ -269,15 +269,15 @@ produce the same values in the stateful bus interaction, the systems are equival
 Now let's proceed formally.
 
 Let $S = (C, B)$ be a system, defined over a vector of variables, $w$. Let
-$C$ be the constraints of the system: a formula over these variables. It
-includes the algebraic constraints, stateless buses, and any constraints
-enforced by stateful buses on their interactions. Let $B = ( (d_i,
-m_i))_{i=1}^{|B|}$ be the stateful bus interactions. It is a fixed-length
-sequence, indexed by $i$. Each interaction is a pair. The first component,
-$d_i$, is the data, a fixed-length list of field terms, so its type is
-$\mathbb{F}^+$ (sequences of positive length). Assume the bus ID is represented
-as the first entry in $d_i$, for simplicity. The second component of an
-interaction is $m_i$, the multiplicity, which is a field term.
+$C$ be the constraints of the system: a formula over $w$. It includes the
+algebraic constraints, stateless buses, and any constraints enforced by stateful
+buses on their interactions. Let $B = ( (d_i, m_i))_{i=1}^{|B|}$ be the stateful
+bus interactions. It is a fixed-length sequence, indexed by $i$. Each
+interaction is a pair. The first component, $d_i$, is the data, a fixed-length
+list of field terms, so its type is $\mathbb{F}^+$ (sequences of positive
+length). Assume the bus ID is represented as the first entry in $d_i$, for
+simplicity. The second component of an interaction is $m_i$, the multiplicity,
+which is a field term.
 
 The bus interactions will be aggregated into a special kind of multiset. We
 refer to a map from $\mathbb{F}^+ \to \mathbb{F}$ as a “field multiset” (aka
@@ -340,9 +340,10 @@ Our definition strengthens Georg's slightly. In that soundness definition,
 $I$ and $E$ are de-skolemized (their outputs are existentially quantified). This
 is equivalent to removing the requirement that $I$ and $E$ be efficient. An
 inefficient $E$ really wouldn't work, because then you can't compute the witness
-$w'$. And inefficient $I$ means that the powdr would compose with a zkSNARG,
-but not a zkSNARK. That it, it no longer applies to knowledge soundness, just to
-existential soundness. That actually might be fine.
+$w'$. Fortunately, powdr outputs $E$ (encoded in the variable derivations). An
+inefficient $I$ means that powdr would compose with a zkSNARG, but not a
+zkSNARK. That is, it no longer applies to knowledge soundness, just to
+existential soundness.
 
 ### Constraints
 
@@ -353,7 +354,7 @@ The algebraic constraints are just QF_FF predicates over the variables $w$. More
 specifically, they are $\mathbb{F}$ equalities over terms constructed with $+$
 and $\times$ in $\mathbb{F}$.
 
-The are a few different stateful bus interactions, which Leo has described.
+The are a few different bus interactions, that contribute to $C$:
 
 * TODO
 
