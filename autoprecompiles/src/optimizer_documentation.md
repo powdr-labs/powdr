@@ -225,7 +225,9 @@ and they perform some checks also in the quadratic terms, but this part is not c
 
 ## Equivalence Notion
 
-TODO define the property of a Constraint System the optimizer preserves
+### Introduction and Example
+
+We start with some informal intuition and an example.
 
 We call two Constraint Systems _equivalent_ if every satisfying assignment for one system
 can be extended to a satisfying assignment for the other system and every such extension
@@ -261,6 +263,120 @@ The converse is a bit more complicated: Satisfying assignments of system B only 
 choice we have is `x = 8`, but there are two ways to extend the assignment with regards to `w` such that
 it is still satisfying, `w = 0` or `w = 1`. Since both ways to extend the assignment
 produce the same values in the stateful bus interaction, the systems are equivalent.
+
+### Abstract Equivalence Definition
+
+Now let's proceed formally.
+
+Let $S = (C, B)$ be a system, defined over a vector of variables, $w$. Let
+$C$ be the constraints of the system: a formula over these variables. It
+includes the algebraic constraints, stateless buses, and any constraints
+enforced by stateful buses on their interactions. Let $B = ( (d_i,
+m_i))_{i=1}^{|B|}$ be the stateful bus interactions. It is a fixed-length
+sequence, indexed by $i$. Each interaction is a pair. The first component,
+$d_i$, is the data, a fixed-length list of field terms, so its type is
+$\mathbb{F}^+$ (sequences of positive length). Assume the bus ID is represented
+as the first entry in $d_i$, for simplicity. The second component of an
+interaction is $m_i$, the multiplicity, which is a field term.
+
+The bus interactions will be aggregated into a special kind of multiset. We
+refer to a map from $\mathbb{F}^+ \to \mathbb{F}$ as a “field multiset” (aka
+“multiset”). This name reflects an interpretation of the map as a multiset in
+which each key in the map appears with multiplicity equal to its value. Note
+that these multisets can be added pointwise. That is, for multisets $m$ and
+$m'$, their sum $m + m'$ maps each key $k$ to $m(k) + m'(k)$. We interpret a bus
+interactions as a multiset with one key and the specified multiplicity. That is,
+we define $\textsf{toMs}(d, m)$ to be the field multiset that sends $d$ to $m$
+and all other keys to $0$. Then, we define $\Sigma(B)$ to be $\sum_i
+\textsf{toMs}(d_i, m_i)$
+
+Now we can define equivalence, which has two conditions. Assume two systems
+$S(w) = (C(w), B(w))$ and $S'(w') = (C'(w'), B'(w'))$. The $S$ is the input
+to powdr and $S'$ is the output. powder also outputs a function $E$ that maps
+$w$ to $w'$. Most of the variables in $w'$ have the same name as some variable
+in $w$---they takes its value. Other variables have an entry in the "derived
+variables", which explains how to compute them from $w$.
+
+The first condition is completeness, which says that when $S$ is satisfiable,
+$E$ gives a satisfying assignment for $S'$ with the same effects (stateful bus
+interactions). Formally:
+
+$$\forall w, \forall s, C(w) \wedge \sum(B(w)) = s
+\implies C'(W(w)) \wedge \sum(B'(E(w))) = s$$
+
+The second condition is soundness, which says that when $S'$ is satisfiable, $S$
+is too, and with the same effects. Formally, there should exists an efficient
+$I(w') \to w$ such that:
+
+$$\forall w', \forall s, C'(w') \wedge \sum(B'(w')) = s
+\implies C(I(w')) \wedge \sum(B(I(w'))) = s$$
+
+#### Connection to prior definitions from the literature
+
+Our definition is an instantiation of Ozdemir et al.'s definition of ZKP
+compiler correctness from the paper ["Bounded Verification for
+Finite-Field-Blasting in a Compiler for Zero Knowledge Proofs"][1]. Start from
+their Definition 1. To see this, set:
+
+* their $w$ to our $w$
+* their $x$ and $x'$ to our $s$
+* their $\phi(x,w)$ to our $C(w) \wedge \Sigma(B(w)) = s$
+* their $\phi'(x',w')$ to our $C'(w') \wedge \Sigma(B'(w')) = s$
+* their $\mathsf{Ext}_x(x)$ to the identity function from $s$ to itself
+* their $\mathsf{Ext}_w(x, w)$ to our $E$
+* their $\mathsf{Inv}(x', i')$ to our $I$
+
+This alignment bodes very well for our definition. Ozdemir et al. proved that a
+ZKP compiler that is correct by their definition can securely compose with a
+zkSNARK for the compiler's output language to give a zkSNARK for the compiler's
+input language. We would hope to show a similar result using our definition. But
+our result, would also need to account for the zkVM's design. Our result would
+say something like (secure zkSNARK for plonkish constraints) + (correct zkVM) +
+(correct powdr) = (secure zkSNARK for RISC-V).
+
+#### Connections to Georg's definition
+
+Our definition strengthens Georg's slightly. In that soundness definition,
+$I$ and $E$ are de-skolemized (their outputs are existentially quantified). This
+is equivalent to removing the requirement that $I$ and $E$ be efficient. An
+inefficient $E$ really wouldn't work, because then you can't compute the witness
+$w'$. And inefficient $I$ means that the powdr would compose with a zkSNARG,
+but not a zkSNARK. That it, it no longer applies to knowledge soundness, just to
+existential soundness. That actually might be fine.
+
+### Constraints
+
+In the foregoing, we noted that stateless bus interactions and algebraic
+constraints are represented by $C$. Now, we discuss $C$ in more detail.
+
+The algebraic constraints are just QF_FF predicates over the variables $w$. More
+specifically, they are $\mathbb{F}$ equalities over terms constructed with $+$
+and $\times$ in $\mathbb{F}$.
+
+The are a few different stateful bus interactions, which Leo has described.
+
+* TODO
+
+### Requirements that are not yet formalized.
+
+The definition above is a living object. There are requirements for powdr that
+we have not yet formalized, and there may be some that we are not yet aware of.
+Most of these are likely weird invariants that OpenVM implicitly assumes in its
+own definition of correctness.
+
+Currently, we know of one unformalized requirement:
+
+* Under all satisfying assignments, a constraints system must ensure that the
+  different between the execution step counter in its final execution bus send
+  and its initial execution bus receive is at most the total number of bus
+  interactions. This requirement is used to prevent overflows related to the
+  step counter and the bus multiplicities. Powdr is currently violating this
+  requirement[2]. But also, this requirement is not tight. Many looser
+  requirements could also prevent overflow. And, powdr might be able to be
+  changed to respect it.
+
+  We expect that it will be easy to very a requirement like this one once we
+  figure out exactly what we need to verify.
 
 ## Optimization Steps
 
@@ -326,3 +442,5 @@ which is crucial for memory optimization to solve the aliasing problem.
 
 #### Equal Zero Check
 
+[1]: https://eprint.iacr.org/2023/778.pdf
+[2]: https://github.com/powdr-labs/powdr/issues/3542
