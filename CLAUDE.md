@@ -125,6 +125,6 @@ Always run these checks before claiming work is complete:
 ### PR Workflow
 
 Use the GitHub CLI to interact with GitHub, for example:
-- Create PR: `gh pr create --repo https://github.com/powdr-labs/powdr --base main --title "..." --body "..."`
+- Create PR (always use --draft): `gh pr create --repo https://github.com/powdr-labs/powdr --base main --draft --title "..." --body "..."`
 - Check CI status: `gh pr checks --repo https://github.com/powdr-labs/powdr <pr-number>`
 - View PR comments: `gh pr view --repo https://github.com/powdr-labs/powdr <pr-number> --comments`
