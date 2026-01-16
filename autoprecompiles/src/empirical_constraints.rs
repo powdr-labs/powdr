@@ -312,9 +312,6 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
         let mut constraints = Vec::new();
 
         for equivalence_class in self.empirical_constraints.equivalence_classes.to_classes() {
-            if equivalence_class.len() < 2 {
-                continue;
-            }
 
             let first = equivalence_class.first().unwrap();
             let first_ref = self.get_algebraic_reference(first);
