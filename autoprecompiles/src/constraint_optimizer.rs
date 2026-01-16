@@ -65,7 +65,7 @@ pub fn optimize_constraints<
     let constraint_system = solver_based_optimization(constraint_system, solver)?;
     stats_logger.log("solver-based optimization", &constraint_system);
 
-    export_options.export_optimizer_inner_constraint_system(constraint_system.system(), "solver");
+    // export_options.export_optimizer_inner_constraint_system(constraint_system.system(), "solver");
 
     let constraint_system = remove_trivial_constraints(constraint_system);
     stats_logger.log("removing trivial constraints", &constraint_system);

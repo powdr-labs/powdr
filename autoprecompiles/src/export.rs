@@ -140,8 +140,9 @@ impl ExportOptions {
         V: Ord + Clone + serde::Serialize,
     {
         if let ExportLevel::APCAndOptimizerSteps = self.level {
-            let machine = constraint_system_to_symbolic_machine(constraint_system.clone());
-            self.write_to_next_file(&machine, Some(suffix));
+            todo!()
+            // let machine = constraint_system_to_symbolic_machine(constraint_system.clone());
+            // self.write_to_next_file(&machine, Some(suffix));
         }
     }
 
