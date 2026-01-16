@@ -325,12 +325,13 @@ mod tests {
     }
 
     impl ExecutionState for TestExecutionState {
-        const LIMB_BIT_WIDTH: usize = 1;
-        const LIMBS_PER_VALUE: usize = 1;
-
         type RegisterAddress = ();
 
         type Value = usize;
+
+        fn value_limb(_: Self::Value, _: usize) -> Self::Value {
+            todo!("Limbs are currently untested")
+        }
 
         fn pc(&self) -> Self::Value {
             self.pc
