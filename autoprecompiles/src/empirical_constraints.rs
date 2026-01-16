@@ -36,11 +36,9 @@ pub struct EmpiricalConstraints {
 pub struct BlockEmpiricalConstraints {
     /// The starting program counter of the basic block.
     block_pc: u64,
-    /// For each program counter in the block, the range constraints for each column.
-    /// A range constraint can be None, in which case we don't know anything about
-    /// the column.
+    /// For each program counter in the block, the range constraints for each column, if any.
     /// The range might not hold in 100% of cases.
-    pub column_ranges_by_pc: BTreeMap<u32, Vec<Option<(u32, u32)>>>,
+    pub column_ranges_by_pc: BTreeMap<u32, BTreeMap<usize, (u32, u32)>>,
     /// The equivalence classes of columns in the block.
     pub equivalence_classes: Partition<BlockCell>,
 }
@@ -104,7 +102,7 @@ impl EmpiricalConstraints {
             column_ranges_by_pc: self
                 .column_ranges_by_pc
                 .range(block_pc..next_block_pc)
-                .map(|(&pc, ranges)| (pc, ranges.iter().cloned().map(Some).collect()))
+                .map(|(&pc, ranges)| (pc, ranges.iter().cloned().enumerate().collect()))
                 .collect(),
             equivalence_classes: self
                 .equivalence_classes_by_block
@@ -156,12 +154,12 @@ impl BlockEmpiricalConstraints {
                 let ranges = ranges
                     .into_iter()
                     .enumerate()
-                    .map(|(col_idx, range)| {
+                    .filter_map(|(col_idx, range)| {
                         let cell = BlockCell::new(instruction_idx, col_idx);
                         // Keep the range only if the predicate holds for the cell
-                        predicate(&cell).then_some(range?)
+                        predicate(&cell).then_some(range)
                     })
-                    .collect::<Vec<_>>();
+                    .collect();
                 (pc, ranges)
             })
             .collect();
@@ -293,11 +291,8 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
             else {
                 continue;
             };
-            for (col_index, range) in range_constraints.iter().enumerate() {
-                let block_cell = BlockCell::new(i, col_index);
-                let Some((min, max)) = range else {
-                    continue;
-                };
+            for (col_index, (min, max)) in range_constraints {
+                let block_cell = BlockCell::new(i, *col_index);
                 if min == max {
                     let value = A::PowdrField::from(*min as u64);
                     let reference = self.get_algebraic_reference(&block_cell);
