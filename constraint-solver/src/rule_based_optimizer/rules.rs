@@ -358,7 +358,7 @@ crepe! {
     EqualZero(head) <- EntailsZeroHeadAndTail(head,_);
     EqualZero(tail) <- EntailsZeroHeadAndTail(_, tail);
 
-    Assignment(v, val) <- EqualZero(head), Solvable(head,v,val);
+    Assignment(v, val) <- EqualZero(e), Solvable(e, v, val);
 
     ///////////////////////////////// OUTPUT ACTIONS //////////////////////////
 
