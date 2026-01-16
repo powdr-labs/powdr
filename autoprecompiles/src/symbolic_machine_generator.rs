@@ -7,8 +7,9 @@ use crate::{
     adapter::Adapter,
     blocks::{BasicBlock, Instruction},
     expression::AlgebraicExpression,
-    powdr, Apc, BusMap, BusType, ColumnAllocator, InstructionHandler, SymbolicBusInteraction,
-    SymbolicConstraint, SymbolicMachine,
+    powdr,
+    symbolic_machine::{SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine},
+    Apc, BusMap, BusType, ColumnAllocator, InstructionHandler,
 };
 
 /// Converts the field type of a symbolic machine.

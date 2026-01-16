@@ -12,7 +12,7 @@ use crate::{
     blocks::{BasicBlock, PcStep},
     expression::{AlgebraicExpression, AlgebraicReference},
     optimistic::algebraic_references::BlockCellAlgebraicReferenceMapper,
-    SymbolicConstraint,
+    symbolic_machine::SymbolicConstraint,
 };
 
 /// "Constraints" that were inferred from execution statistics. They hold empirically
