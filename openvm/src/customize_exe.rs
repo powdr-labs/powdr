@@ -62,7 +62,7 @@ pub struct OpenVmExecutionState<'a, T>(&'a VmState<T, GuestMemory>);
 
 // TODO: This is not tested yet as apc compilation does not currently output any optimistic constraints
 impl<'a, T: PrimeField32> ExecutionState for OpenVmExecutionState<'a, T> {
-    const BITS_PER_LIMB: usize = 8;
+    const LIMB_WIDTH: usize = 8;
     type RegisterAddress = OpenVmRegisterAddress;
     type Value = u32;
 
