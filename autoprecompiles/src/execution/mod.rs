@@ -14,7 +14,9 @@ pub use ast::*;
 pub use candidates::{Apc, ApcCall, ApcCandidates, Snapshot};
 pub use evaluator::{OptimisticConstraintEvaluator, OptimisticConstraints};
 pub trait ExecutionState {
-    const LIMB_WIDTH: usize;
+    /// The number of limbs per value
+    const LIMBS_PER_VALUE: usize;
+    const LIMB_BIT_WIDTH: usize;
     type RegisterAddress: PartialEq
         + Eq
         + std::hash::Hash

@@ -68,6 +68,7 @@ impl<A, V> OptimisticExpression<A, V> {
     Debug, Clone, Copy, Serialize, Deserialize, deepsize2::DeepSizeOf, PartialEq, Eq, Hash,
 )]
 pub enum LocalOptimisticLiteral<A> {
+    /// A register limb value. Limbs are indexed in little-endian order.
     RegisterLimb(A, usize),
     Pc,
 }

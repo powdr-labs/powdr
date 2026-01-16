@@ -213,12 +213,11 @@ impl<'a, E: ExecutionState> StepOptimisticConstraintEvaluator<'a, E> {
         let fetch_value = self.fetch(&(*l).into());
         match l.val {
             LocalOptimisticLiteral::RegisterLimb(_, limb_index) => {
-                let bits_per_full_value = core::mem::size_of::<E::Value>() * 8;
                 let zero = E::Value::zero();
                 let all_ones = !zero;
                 // build a mask of `E::LIMB_WIDTH` ones
-                let mask = all_ones >> (bits_per_full_value - E::LIMB_WIDTH);
-                (fetch_value >> (limb_index * E::LIMB_WIDTH)) & mask
+                let mask = all_ones >> ((E::LIMBS_PER_VALUE - 1) * E::LIMB_BIT_WIDTH);
+                (fetch_value >> (limb_index * E::LIMB_BIT_WIDTH)) & mask
             }
             LocalOptimisticLiteral::Pc => fetch_value,
         }
@@ -245,7 +244,8 @@ mod tests {
     }
 
     impl<const LIMB_WIDTH: usize> ExecutionState for TestExecutionState<LIMB_WIDTH> {
-        const LIMB_WIDTH: usize = LIMB_WIDTH;
+        const LIMB_BIT_WIDTH: usize = LIMB_WIDTH;
+        const LIMBS_PER_VALUE: usize = 8 / LIMB_WIDTH;
 
         type RegisterAddress = u8;
 
