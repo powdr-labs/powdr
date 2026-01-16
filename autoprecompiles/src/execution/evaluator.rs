@@ -8,16 +8,17 @@ use crate::{
         ast::{
             LocalOptimisticLiteral, OptimisticConstraint, OptimisticExpression, OptimisticLiteral,
         },
-        ExecutionState,
+        ExecutionState, Fetch, LocalFetch,
     },
     powdr::UniqueReferences,
 };
+use num_traits::One;
 
 /// A collection of optimistic constraints over the intermediate execution states of a block, to be accessed in chronological order
 #[derive(Debug, Serialize, Deserialize, deepsize2::DeepSizeOf, PartialEq, Clone, Default)]
 pub struct OptimisticConstraints<A, V> {
     /// For each step, the execution values we need to remember for future constraints, excluding this step
-    fetches_by_step: HashMap<usize, Vec<LocalOptimisticLiteral<A>>>,
+    fetches_by_step: HashMap<usize, Vec<LocalFetch<A>>>,
     /// For each step, the constraints that must be satisfied
     constraints_to_check_by_step: HashMap<usize, Vec<OptimisticConstraint<A, V>>>,
 }
@@ -57,7 +58,7 @@ impl<A: std::hash::Hash + PartialEq + Eq + Copy, V> OptimisticConstraints<A, V> 
                 references
                     .iter()
                     .filter(move |literal| *constraint_step > literal.instr_idx)
-                    .map(|literal| (literal.instr_idx, literal.val))
+                    .map(|literal| (literal.instr_idx, literal.val.into()))
             })
             .into_group_map()
             .into_iter()
@@ -91,7 +92,7 @@ pub struct OptimisticConstraintEvaluator<A, V> {
     /// The current instruction index in the execution
     instruction_index: usize,
     /// The values from previous intermediate states which we still need
-    memory: HashMap<OptimisticLiteral<A>, V>,
+    memory: HashMap<Fetch<A>, V>,
 }
 
 #[derive(Debug)]
@@ -150,14 +151,11 @@ impl<A, V> OptimisticConstraintEvaluator<A, V> {
 
         if let Some(fetches) = fetches {
             // fetch the values them in memory
-            for literal in fetches {
-                let value = match literal {
-                    LocalOptimisticLiteral::Register(address) => state.reg(address),
-                    LocalOptimisticLiteral::Pc => state.pc(),
-                };
-                let key = OptimisticLiteral {
+            for fetch in fetches {
+                let value = fetch.get(state);
+                let key = Fetch {
                     instr_idx: self.instruction_index,
-                    val: *literal,
+                    val: *fetch,
                 };
                 self.memory.insert(key, value);
             }
@@ -173,14 +171,14 @@ impl<A, V> OptimisticConstraintEvaluator<A, V> {
 struct StepOptimisticConstraintEvaluator<'a, E: ExecutionState> {
     step: usize,
     state: &'a E,
-    memory: &'a HashMap<OptimisticLiteral<E::RegisterAddress>, E::Value>,
+    memory: &'a HashMap<Fetch<E::RegisterAddress>, E::Value>,
 }
 impl<'a, E: ExecutionState> StepOptimisticConstraintEvaluator<'a, E> {
     fn new(
         step: usize,
         state: &'a E,
         memory: &'a HashMap<
-            OptimisticLiteral<<E as ExecutionState>::RegisterAddress>,
+            Fetch<<E as ExecutionState>::RegisterAddress>,
             <E as ExecutionState>::Value,
         >,
     ) -> Self {
@@ -212,15 +210,23 @@ impl<'a, E: ExecutionState> StepOptimisticConstraintEvaluator<'a, E> {
     fn evaluate_literal(&self, l: &OptimisticLiteral<E::RegisterAddress>) -> E::Value {
         // By construction, the literals involved should only be from past states or the current state
         debug_assert!(l.instr_idx <= self.step);
-        // Hit the state for the current step
-        if l.instr_idx == self.step {
-            match l.val {
-                LocalOptimisticLiteral::Register(addr) => self.state.reg(&addr),
-                LocalOptimisticLiteral::Pc => self.state.pc(),
+        let fetch_value = self.fetch(&(*l).into());
+        match l.val {
+            LocalOptimisticLiteral::RegisterLimb(_, limb_index) => {
+                let mask = (E::Value::one() << E::LIMB_WIDTH) - E::Value::one();
+                (fetch_value >> (limb_index * E::LIMB_WIDTH)) & mask
             }
+            LocalOptimisticLiteral::Pc => fetch_value,
+        }
+    }
+
+    fn fetch(&self, f: &Fetch<E::RegisterAddress>) -> E::Value {
+        if f.instr_idx == self.step {
+            // Hit the state for the current step
+            f.val.get(self.state)
         } else {
             // Hit the memory for the previous steps
-            self.memory[l]
+            self.memory[f]
         }
     }
 }
@@ -235,6 +241,8 @@ mod tests {
     }
 
     impl ExecutionState for TestExecutionState {
+        const LIMB_WIDTH: usize = 1;
+
         type RegisterAddress = u8;
 
         type Value = u8;
@@ -261,6 +269,13 @@ mod tests {
 
     fn mem(instr_idx: usize, addr: u8) -> OptimisticExpression<u8, u8> {
         literal_expr(instr_idx, LocalOptimisticLiteral::Register(addr))
+    }
+
+    fn mem_limb(instr_idx: usize, addr: u8, limb_index: usize) -> OptimisticExpression<u8, u8> {
+        literal_expr(
+            instr_idx,
+            LocalOptimisticLiteral::RegisterLimb(addr, limb_index),
+        )
     }
 
     fn pc(instr_idx: usize) -> OptimisticExpression<u8, u8> {
@@ -461,5 +476,29 @@ mod tests {
         assert!(failing_evaluator
             .try_next_execution_step(&failing_state, &failing_constraints)
             .is_err());
+    }
+
+    #[test]
+    fn accesses_register_limbs() {
+        let constraints = OptimisticConstraints::from_constraints(vec![
+            eq(mem_limb(0, 0, 0), value(0)),
+            eq(mem_limb(0, 0, 1), value(1)),
+            eq(mem_limb(0, 0, 2), value(0)),
+            eq(mem_limb(0, 0, 3), value(1)),
+            eq(mem_limb(0, 0, 4), value(0)),
+            eq(mem_limb(0, 0, 5), value(1)),
+            eq(mem_limb(0, 0, 6), value(1)),
+            eq(mem_limb(0, 0, 7), value(0)),
+        ]);
+        let mut evaluator = OptimisticConstraintEvaluator::new();
+
+        let state = TestExecutionState {
+            mem: [0b0110_1010, 0],
+            pc: 0,
+        };
+
+        assert!(evaluator
+            .try_next_execution_step(&state, &constraints)
+            .is_ok());
     }
 }

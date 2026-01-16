@@ -4,7 +4,7 @@ use itertools::Itertools;
 use powdr_expression::visitors::{AllChildren, Children};
 use serde::{Deserialize, Serialize};
 
-use crate::powdr::UniqueReferences;
+use crate::{execution::ExecutionState, powdr::UniqueReferences};
 
 #[derive(Debug, Serialize, Deserialize, deepsize2::DeepSizeOf, PartialEq, Eq, Clone)]
 pub struct OptimisticConstraint<A, V> {
@@ -33,7 +33,7 @@ impl<
         self.all_children()
             .filter_map(|e| {
                 if let OptimisticExpression::Literal(r) = e {
-                    Some(r.clone())
+                    Some(*r)
                 } else {
                     None
                 }
@@ -68,11 +68,56 @@ impl<A, V> OptimisticExpression<A, V> {
     Debug, Clone, Copy, Serialize, Deserialize, deepsize2::DeepSizeOf, PartialEq, Eq, Hash,
 )]
 pub enum LocalOptimisticLiteral<A> {
+    RegisterLimb(A, usize),
+    Pc,
+}
+
+impl<A> From<LocalOptimisticLiteral<A>> for LocalFetch<A> {
+    fn from(value: LocalOptimisticLiteral<A>) -> Self {
+        match value {
+            LocalOptimisticLiteral::RegisterLimb(a, _) => Self::Register(a),
+            LocalOptimisticLiteral::Pc => Self::Pc,
+        }
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, deepsize2::DeepSizeOf, PartialEq, Eq, Hash,
+)]
+pub enum LocalFetch<A> {
     Register(A),
     Pc,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, deepsize2::DeepSizeOf, PartialEq, Eq, Hash)]
+impl<A> LocalFetch<A> {
+    pub fn get<E: ExecutionState<RegisterAddress = A>>(&self, state: &E) -> E::Value {
+        match self {
+            LocalFetch::Register(a) => state.reg(a),
+            LocalFetch::Pc => state.pc(),
+        }
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, deepsize2::DeepSizeOf, PartialEq, Eq, Hash,
+)]
+pub struct Fetch<A> {
+    pub instr_idx: usize,
+    pub val: LocalFetch<A>,
+}
+
+impl<A> From<OptimisticLiteral<A>> for Fetch<A> {
+    fn from(value: OptimisticLiteral<A>) -> Self {
+        Self {
+            instr_idx: value.instr_idx,
+            val: value.val.into(),
+        }
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, deepsize2::DeepSizeOf, PartialEq, Eq, Hash,
+)]
 pub struct OptimisticLiteral<A> {
     pub instr_idx: usize,
     pub val: LocalOptimisticLiteral<A>,

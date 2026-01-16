@@ -325,6 +325,8 @@ mod tests {
     }
 
     impl ExecutionState for TestExecutionState {
+        const LIMB_WIDTH: usize = 1;
+
         type RegisterAddress = ();
 
         type Value = usize;
