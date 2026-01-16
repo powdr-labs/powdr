@@ -18,8 +18,8 @@ pub fn generate_execution_constraints<T: FieldElement>(
     equality_constraints
         .iter()
         .map(|constraint| OptimisticConstraint {
-            left: get_optimistic_expression(optimistic_literals, &constraint.left).unwrap(),
-            right: get_optimistic_expression(optimistic_literals, &constraint.right).unwrap(),
+            left: get_optimistic_expression(optimistic_literals, &constraint.left),
+            right: get_optimistic_expression(optimistic_literals, &constraint.right),
         })
         .collect()
 }
@@ -27,14 +27,14 @@ pub fn generate_execution_constraints<T: FieldElement>(
 fn get_optimistic_expression<T: FieldElement>(
     optimistic_literals: &BTreeMap<AlgebraicReference, OptimisticLiteral<Vec<T>>>,
     algebraic_expression: &EqualityExpression<T>,
-) -> Option<OptimisticExpression<Vec<T>, u32>> {
+) -> OptimisticExpression<Vec<T>, u32> {
     match algebraic_expression {
-        EqualityExpression::Number(n) => Some(OptimisticExpression::Number(
-            n.to_integer().try_into_u32().unwrap(),
-        )),
+        EqualityExpression::Number(n) => {
+            OptimisticExpression::Number(n.to_integer().try_into_u32().unwrap())
+        }
         EqualityExpression::Reference(r) => {
-            let optimistic_literal = optimistic_literals.get(r)?;
-            Some(OptimisticExpression::Literal(optimistic_literal.clone()))
+            let optimistic_literal = optimistic_literals.get(r).unwrap();
+            OptimisticExpression::Literal(optimistic_literal.clone())
         }
     }
 }
