@@ -354,7 +354,7 @@ crepe! {
     RangeConstraintOnExpression(tail, rc_tail),
     (rc_head.range().0 == T::from(0)),
     (rc_tail.range().0 == T::from(0)),
-    (rc_head.combine_sum(&rc_tail).range().1 < T::from(-1));
+    (rc_head.range().1 + rc_tail.range().1 < T::from(-1));
 
     EqualZero(head) <- EntailsZeroHeadAndTail(head,_);
     EqualZero(tail) <- EntailsZeroHeadAndTail(_, tail);
