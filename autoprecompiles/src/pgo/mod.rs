@@ -6,6 +6,7 @@ use strum::{Display, EnumString};
 use crate::{
     adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, ApcWithStats},
     blocks::BasicBlock,
+    export::{ExportLevel, ExportOptions},
     EmpiricalConstraints, PowdrConfig,
 };
 
@@ -93,11 +94,16 @@ fn create_apcs_for_all_blocks<A: Adapter>(
                 block.start_pc
             );
 
+            let export_options = ExportOptions::new(
+                config.apc_candidates_dir_path.clone(),
+                block.start_pc,
+                ExportLevel::OnlyAPC,
+            );
             crate::build::<A>(
                 block,
                 vm_config.clone(),
                 config.degree_bound,
-                config.apc_candidates_dir_path.as_deref(),
+                export_options,
                 &empirical_constraints,
             )
             .unwrap()

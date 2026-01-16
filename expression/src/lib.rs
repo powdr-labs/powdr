@@ -5,7 +5,7 @@ use std::{
 
 use powdr_number::ExpressionConvertible;
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::{ser::SerializeTuple, Deserialize, Serialize};
 
 pub mod display;
 pub mod visitors;
@@ -24,9 +24,13 @@ pub mod visitors;
     derive_more::Display,
 )]
 pub enum AlgebraicExpression<T, R> {
+    #[serde(untagged)]
     Reference(R),
+    #[serde(untagged)]
     Number(T),
+    #[serde(untagged, serialize_with = "serialize_binary_operation")]
     BinaryOperation(AlgebraicBinaryOperation<T, R>),
+    #[serde(untagged, serialize_with = "serialize_unary_operation")]
     UnaryOperation(AlgebraicUnaryOperation<T, R>),
 }
 
@@ -43,8 +47,11 @@ pub struct AlgebraicBinaryOperation<T, R> {
     Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Serialize, Deserialize, JsonSchema, Hash,
 )]
 pub enum AlgebraicBinaryOperator {
+    #[serde(rename = "+")]
     Add,
+    #[serde(rename = "-")]
     Sub,
+    #[serde(rename = "*")]
     Mul,
 }
 
@@ -60,6 +67,7 @@ pub struct AlgebraicUnaryOperation<T, R> {
     Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Serialize, Deserialize, JsonSchema, Hash,
 )]
 pub enum AlgebraicUnaryOperator {
+    #[serde(rename = "-")]
     Minus,
 }
 
@@ -195,5 +203,52 @@ impl<T, R> ExpressionConvertible<T, R> for AlgebraicExpression<T, R> {
                 }
             },
         }
+    }
+}
+
+fn serialize_unary_operation<S, T, R>(
+    un_op: &AlgebraicUnaryOperation<T, R>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+    T: Serialize,
+    R: Serialize,
+{
+    let mut state = serializer.serialize_tuple(2)?;
+    state.serialize_element(&un_op.op)?;
+    state.serialize_element(un_op.expr.as_ref())?;
+    state.end()
+}
+
+fn serialize_binary_operation<S, T, R>(
+    bin_op: &AlgebraicBinaryOperation<T, R>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+    T: Serialize,
+    R: Serialize,
+{
+    let mut state = serializer.serialize_tuple(3)?;
+    state.serialize_element(bin_op.left.as_ref())?;
+    state.serialize_element(&bin_op.op)?;
+    state.serialize_element(bin_op.right.as_ref())?;
+    state.end()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_serde() {
+        let x: AlgebraicExpression<u32, &'static str> = AlgebraicExpression::from(5)
+            * AlgebraicExpression::Reference("x")
+            - AlgebraicExpression::from(3);
+        let serialized = serde_json::to_string(&x).unwrap();
+        assert_eq!(serialized, r#"[[5,"*","x"],"-",3]"#);
+        let deserialized = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(x, deserialized);
     }
 }

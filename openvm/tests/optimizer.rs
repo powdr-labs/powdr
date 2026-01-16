@@ -52,6 +52,7 @@ fn test_optimize() {
         DEFAULT_DEGREE_BOUND,
         &default_openvm_bus_map(),
         column_allocator,
+        &mut Default::default(),
     )
     .unwrap()
     .0;
@@ -86,6 +87,7 @@ fn test_ecrecover() {
         DEFAULT_DEGREE_BOUND,
         &default_openvm_bus_map(),
         column_allocator,
+        &mut Default::default(),
     )
     .unwrap()
     .0;
@@ -120,6 +122,7 @@ fn test_sha256() {
         DEFAULT_DEGREE_BOUND,
         &default_openvm_bus_map(),
         column_allocator,
+        &mut Default::default(),
     )
     .unwrap()
     .0;
@@ -183,6 +186,7 @@ fn test_optimize_reth_op() {
         DEFAULT_DEGREE_BOUND,
         &bus_map,
         column_allocator,
+        &mut Default::default(),
     )
     .unwrap()
     .0;
