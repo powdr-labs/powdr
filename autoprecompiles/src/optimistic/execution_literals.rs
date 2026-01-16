@@ -47,6 +47,7 @@ pub fn optimistic_literals<A: Adapter>(
                 vm_config.bus_interaction_handler.clone(),
                 *degree_bound,
                 &vm_config.bus_map,
+                // The optimizer might introduce new columns, but we'll discard them below.
                 dummy_column_allocator,
             )
             .unwrap();
