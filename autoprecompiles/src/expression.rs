@@ -9,7 +9,7 @@ use crate::{SymbolicBusInteraction, SymbolicConstraint};
 
 pub type AlgebraicExpression<T> = powdr_expression::AlgebraicExpression<T, AlgebraicReference>;
 
-#[derive(Debug, Clone, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, Deserialize)]
 pub struct AlgebraicReference {
     /// Name of the polynomial - just for informational purposes.
     /// Comparisons are based on the ID.
@@ -45,6 +45,15 @@ impl PartialEq for AlgebraicReference {
 impl Hash for AlgebraicReference {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.id.hash(state);
+    }
+}
+
+impl Serialize for AlgebraicReference {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&format!("{}@{}", self.name, self.id))
     }
 }
 
