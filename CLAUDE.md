@@ -108,6 +108,9 @@ Example guest programs in `openvm/guest-*` directories (keccak, sha256, ecc, pai
 ### Coding Style
 - Write idiomatic Rust code. Follow Rust conventions and best practices, and keep the style similar to existing code in the repository.
 - Try to minimize code, reusing existing functions and modules where possible.
+- Keep diffs small and focused. Avoid unrelated changes, unnecessary refactoring, or adding comments to unchanged code.
+- Use `eyre::Result` for error handling in most cases.
+- Use builder pattern with `with_*` methods for structs with optional configuration.
 
 ### Before Returning to User
 Always run these checks before claiming work is complete:
