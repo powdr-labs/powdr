@@ -5,7 +5,7 @@ use powdr_number::ExpressionConvertible;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, hash::Hash, marker::PhantomData, sync::Arc};
 
-use crate::{SymbolicBusInteraction, SymbolicConstraint};
+use crate::symbolic_machine::{SymbolicBusInteraction, SymbolicConstraint};
 
 pub type AlgebraicExpression<T> = powdr_expression::AlgebraicExpression<T, AlgebraicReference>;
 
