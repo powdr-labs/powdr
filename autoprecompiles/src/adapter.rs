@@ -108,6 +108,14 @@ where
     fn should_skip_block(_block: &BasicBlock<Self::Instruction>) -> bool {
         false
     }
+
+    fn try_into_register_address(
+        e: Self::PowdrField,
+    ) -> Result<<Self::ExecutionState as ExecutionState>::RegisterAddress, ()>;
+
+    fn try_into_value(
+        e: Self::PowdrField,
+    ) -> Result<<Self::ExecutionState as ExecutionState>::Value, ()>;
 }
 
 pub type AdapterApcWithStats<A> = ApcWithStats<
