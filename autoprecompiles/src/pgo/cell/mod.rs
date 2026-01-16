@@ -134,10 +134,11 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
                     block.clone(),
                     vm_config.clone(),
                     config.degree_bound,
-                    ExportOptions {
-                        path: config.apc_candidates_dir_path.clone(),
-                        level: ExportLevel::OnlyAPC,
-                    },
+                    ExportOptions::new(
+                        config.apc_candidates_dir_path.clone(),
+                        block.start_pc,
+                        ExportLevel::OnlyAPC,
+                    ),
                     &empirical_constraints,
                 )
                 .ok()?;

@@ -42,6 +42,7 @@ pub mod pgo;
 pub mod powdr;
 pub mod range_constraint_optimizer;
 mod stats_logger;
+pub mod symbolic_machine;
 pub mod symbolic_machine_generator;
 pub use pgo::{PgoConfig, PgoType};
 pub use powdr_constraint_solver::inliner::DegreeBound;
@@ -440,7 +441,7 @@ pub fn build<A: Adapter>(
     block: BasicBlock<A::Instruction>,
     vm_config: AdapterVmConfig<A>,
     degree_bound: DegreeBound,
-    export_options: ExportOptions,
+    mut export_options: ExportOptions,
     empirical_constraints: &EmpiricalConstraints,
 ) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
     let start = std::time::Instant::now();
@@ -467,12 +468,11 @@ pub fn build<A: Adapter>(
     machine.constraints.extend(equivalence_analyzer_constraints);
 
     if export_options.export_requested() {
-        export::export_apc_from_machine::<A>(
+        export_options.export_apc_from_machine::<A>(
             block.clone(),
             machine.clone(),
             &column_allocator,
             &vm_config.bus_map,
-            &export_options,
             Some("unopt"),
         );
     }
@@ -489,8 +489,9 @@ pub fn build<A: Adapter>(
         machine,
         vm_config.bus_interaction_handler,
         degree_bound,
-        &vm_config.bus_map, // TODO add export path here
+        &vm_config.bus_map,
         column_allocator,
+        &mut export_options,
     )?;
 
     // add guards to constraints that are not satisfied by zeroes
@@ -509,7 +510,7 @@ pub fn build<A: Adapter>(
     let apc = Apc::new(block, machine, optimistic_constraints, &column_allocator);
 
     if export_options.export_requested() {
-        export::export_apc::<A>(&apc, &export_options, None, &vm_config.bus_map);
+        export_options.export_apc::<A>(&apc, None, &vm_config.bus_map);
     }
 
     let apc = convert_apc_field_type(apc, &A::into_field);

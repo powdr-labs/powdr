@@ -70,7 +70,7 @@ pub mod apc_builder_utils {
             basic_block.clone(),
             vm_config,
             degree_bound,
-            ExportOptions::from_env_vars(export_path, export_level),
+            ExportOptions::from_env_vars(export_path, export_level, basic_block.start_pc),
             &EmpiricalConstraints::default(),
         )
         .unwrap();
