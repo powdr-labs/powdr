@@ -218,8 +218,7 @@ impl<'a, E: ExecutionState> StepOptimisticConstraintEvaluator<'a, E> {
                 let all_ones = !zero;
                 // build a mask of `E::LIMB_WIDTH` ones
                 let mask = all_ones >> (bits_per_full_value - E::LIMB_WIDTH);
-
-                (fetch_value >> limb_index) & mask
+                (fetch_value >> (limb_index * E::LIMB_WIDTH)) & mask
             }
             LocalOptimisticLiteral::Pc => fetch_value,
         }
@@ -490,20 +489,16 @@ mod tests {
     #[test]
     fn accesses_register_limbs() {
         let constraints = OptimisticConstraints::from_constraints(vec![
-            eq(mem_limb(0, 0, 0), value(0)),
-            eq(mem_limb(0, 0, 1), value(1)),
-            eq(mem_limb(0, 0, 2), value(0)),
-            eq(mem_limb(0, 0, 3), value(1)),
-            eq(mem_limb(0, 0, 4), value(0)),
-            eq(mem_limb(0, 0, 5), value(1)),
-            eq(mem_limb(0, 0, 6), value(1)),
-            eq(mem_limb(0, 0, 7), value(0)),
+            eq(mem_limb(0, 0, 0), value(0b10)),
+            eq(mem_limb(0, 0, 1), value(0b01)),
+            eq(mem_limb(0, 0, 2), value(0b11)),
+            eq(mem_limb(0, 0, 3), value(0b10)),
         ]);
         let mut evaluator = OptimisticConstraintEvaluator::new();
 
-        // We use an execution state where each limb is a single bit, so 8 limbs in total here
-        let state = TestExecutionState::<1> {
-            mem: [0b0110_1010, 0],
+        // We use an execution state where each limb is two bits, so 4 limbs in total
+        let state = TestExecutionState::<2> {
+            mem: [0b1011_0110, 0],
             pc: 0,
         };
 
