@@ -81,6 +81,10 @@ impl<'a, T: PrimeField32> ExecutionState for OpenVmExecutionState<'a, T> {
                 .as_canonical_u32()
         }
     }
+
+    fn value_limb(value: Self::Value, limb_index: usize) -> Self::Value {
+        value >> (limb_index * 8) & 0xff
+    }
 }
 
 /// A type to represent register addresses during execution
