@@ -11,7 +11,6 @@ use crate::{
     memory_optimizer::MemoryOp,
     optimizer::{optimize, symbolic_bus_interaction_to_bus_interaction},
 };
-use itertools::Itertools;
 use powdr_constraint_solver::inliner::DegreeBound;
 
 /// Maps an algebraic reference to an execution literal, if it represents the limb of a
@@ -54,11 +53,11 @@ pub fn optimistic_literals<A: Adapter>(
             // 3. Extract memory pointer limbs with known addresses and map them to optimistic literals
             symbolic_machine
                 .bus_interactions
-                .iter()
+                .into_iter()
                 // Filter for memory bus interactions
                 .filter_map(|bus_interaction| {
                     let bus_interaction =
-                        symbolic_bus_interaction_to_bus_interaction(bus_interaction);
+                        symbolic_bus_interaction_to_bus_interaction(&bus_interaction);
                     A::MemoryBusInteraction::try_from_bus_interaction(
                         &bus_interaction,
                         memory_bus_id,
@@ -68,7 +67,7 @@ pub fn optimistic_literals<A: Adapter>(
                     .flatten()
                 })
                 // Filter for concrete address and single-column limbs
-                .filter_map(|bus_interaction| {
+                .filter_map(move |bus_interaction| {
                     let address = bus_interaction.addr();
                     let data = bus_interaction.data();
 
@@ -91,7 +90,6 @@ pub fn optimistic_literals<A: Adapter>(
 
                     Some((instruction_idx, concrete_address, limbs))
                 })
-                .collect_vec()
         })
         // Map each limb reference to an optimistic literal
         .flat_map(|(instruction_idx, concrete_address, limbs)| {
