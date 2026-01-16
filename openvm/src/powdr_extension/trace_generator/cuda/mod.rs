@@ -18,7 +18,8 @@ use openvm_stark_backend::{
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
     expression::{AlgebraicExpression, AlgebraicReference},
-    Apc, SymbolicBusInteraction,
+    symbolic_machine::SymbolicBusInteraction,
+    Apc,
 };
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
