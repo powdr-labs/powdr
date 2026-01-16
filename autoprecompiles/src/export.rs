@@ -1,6 +1,6 @@
 use std::{
     io::{BufWriter, Write},
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 
 use powdr_constraint_solver::constraint_system::ConstraintSystem;
@@ -9,19 +9,24 @@ use powdr_number::FieldElement;
 use crate::{
     adapter::{Adapter, AdapterApcOverPowdrField, AdapterBasicBlock, AdapterOptimisticConstraints},
     bus_map::BusMap,
+    expression::AlgebraicReference,
+    symbolic_machine::constraint_system_to_symbolic_machine,
     Apc, ColumnAllocator, SymbolicMachine,
 };
 
 /// Configuration for exporting the state of the autoprecompile
 /// generation and optimization as json at different stages.
+#[derive(Default)]
 pub struct ExportOptions {
     pub path: Option<PathBuf>,
     pub level: ExportLevel,
     sequence_number: usize,
 }
 
+#[derive(Default)]
 pub enum ExportLevel {
     /// Export the unoptimizend and optimizend autoprecompile.
+    #[default]
     OnlyAPC,
     /// In addition to the above, also export the state at each
     /// optimization loop iteration.
@@ -106,26 +111,37 @@ impl ExportOptions {
         }
     }
 
-    pub fn export_optimizer_outer_constraint_system<T: FieldElement, V>(
+    pub fn export_optimizer_outer_constraint_system<T: FieldElement>(
         &mut self,
-        data: &ConstraintSystem<T, V>,
+        constraint_system: &ConstraintSystem<T, AlgebraicReference>,
         suffix: &str,
     ) {
         match self.level {
             ExportLevel::APCAndOptimizerLoop | ExportLevel::APCAndOptimizerSteps => {
-                let machine = constraint_system_to
-                self.write_to_next_file(data, Some(suffix));
+                let machine = constraint_system_to_symbolic_machine(constraint_system.clone());
+                self.write_to_next_file(&machine, Some(suffix));
             }
             _ => {}
         }
     }
 
     pub fn export_optimizer_inner(&mut self, data: &impl serde::Serialize, suffix: &str) {
-        match self.level {
-            ExportLevel::APCAndOptimizerSteps => {
-                self.write_to_next_file(data, Some(suffix));
-            }
-            _ => {}
+        if let ExportLevel::APCAndOptimizerSteps = self.level {
+            self.write_to_next_file(data, Some(suffix));
+        }
+    }
+
+    pub fn export_optimizer_inner_constraint_system<T, V>(
+        &mut self,
+        constraint_system: &ConstraintSystem<T, V>,
+        suffix: &str,
+    ) where
+        T: FieldElement,
+        V: Ord + Clone + serde::Serialize,
+    {
+        if let ExportLevel::APCAndOptimizerSteps = self.level {
+            let machine = constraint_system_to_symbolic_machine(constraint_system.clone());
+            self.write_to_next_file(&machine, Some(suffix));
         }
     }
 
@@ -144,7 +160,9 @@ impl ExportOptions {
 
     fn write_to_next_file(&mut self, data: &impl serde::Serialize, info: Option<&str>) -> PathBuf {
         let path = self.next_path(info);
-        std::fs::create_dir_all(&path).unwrap();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
         let file = std::fs::File::create(&path).unwrap();
         let mut writer_unopt = BufWriter::new(file);
         serde_json::to_writer(&mut writer_unopt, data).unwrap();

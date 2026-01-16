@@ -21,6 +21,7 @@ use powdr_constraint_solver::{
 use powdr_number::FieldElement;
 
 use crate::{
+    export::ExportOptions,
     low_degree_bus_interaction_optimizer::LowDegreeBusInteractionOptimizer,
     memory_optimizer::{optimize_memory, MemoryBusInteraction},
     range_constraint_optimizer::RangeConstraintHandler,
@@ -59,9 +60,12 @@ pub fn optimize_constraints<
     memory_bus_id: Option<u64>,
     degree_bound: DegreeBound,
     new_var: &mut impl FnMut(&str) -> V,
+    export_options: &mut ExportOptions,
 ) -> Result<ConstraintSystem<P, V>, Error> {
     let constraint_system = solver_based_optimization(constraint_system, solver)?;
     stats_logger.log("solver-based optimization", &constraint_system);
+
+    export_options.export_optimizer_inner_constraint_system(constraint_system.system(), "solver");
 
     let constraint_system = remove_trivial_constraints(constraint_system);
     stats_logger.log("removing trivial constraints", &constraint_system);

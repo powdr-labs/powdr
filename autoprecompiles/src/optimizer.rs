@@ -83,10 +83,8 @@ pub fn optimize<A: Adapter>(
     );
     stats_logger.log("constructing the solver", &constraint_system);
     loop {
-        export_options.export_optimizer_outer_constraint_system(
-            &constraint_system.system(),
-            "loop_iteration",
-        );
+        export_options
+            .export_optimizer_outer_constraint_system(constraint_system.system(), "loop_iteration");
         let stats = stats_logger::Stats::from(&constraint_system);
         constraint_system = optimize_constraints::<_, _, A::MemoryBusInteraction<_>>(
             constraint_system,
@@ -96,6 +94,7 @@ pub fn optimize<A: Adapter>(
             bus_map.get_bus_id(&BusType::Memory),
             degree_bound,
             &mut new_var,
+            export_options,
         )?
         .into();
         if stats == stats_logger::Stats::from(&constraint_system) {

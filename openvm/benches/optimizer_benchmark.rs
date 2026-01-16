@@ -31,6 +31,7 @@ fn optimize_keccak_benchmark(c: &mut Criterion) {
                     DEFAULT_DEGREE_BOUND,
                     &default_openvm_bus_map(),
                     column_allocator,
+                    &mut Default::default(),
                 )
                 .unwrap()
             },
