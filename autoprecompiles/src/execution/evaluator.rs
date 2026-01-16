@@ -12,7 +12,7 @@ use crate::{
     },
     powdr::UniqueReferences,
 };
-use num_traits::One;
+use num_traits::Zero;
 
 /// A collection of optimistic constraints over the intermediate execution states of a block, to be accessed in chronological order
 #[derive(Debug, Serialize, Deserialize, deepsize2::DeepSizeOf, PartialEq, Clone, Default)]
@@ -213,8 +213,13 @@ impl<'a, E: ExecutionState> StepOptimisticConstraintEvaluator<'a, E> {
         let fetch_value = self.fetch(&(*l).into());
         match l.val {
             LocalOptimisticLiteral::RegisterLimb(_, limb_index) => {
-                let mask = (E::Value::one() << E::LIMB_WIDTH) - E::Value::one();
-                (fetch_value >> (limb_index * E::LIMB_WIDTH)) & mask
+                let bits_per_full_value = core::mem::size_of::<E::Value>() * 8;
+                let zero = E::Value::zero();
+                let all_ones = !zero;
+                // build a mask of `E::LIMB_WIDTH` ones
+                let mask = all_ones >> (bits_per_full_value - E::LIMB_WIDTH);
+
+                (fetch_value >> limb_index) & mask
             }
             LocalOptimisticLiteral::Pc => fetch_value,
         }
@@ -235,13 +240,13 @@ impl<'a, E: ExecutionState> StepOptimisticConstraintEvaluator<'a, E> {
 mod tests {
     use super::*;
 
-    struct TestExecutionState {
+    struct TestExecutionState<const LIMB_WIDTH: usize> {
         mem: [u8; 2],
         pc: u8,
     }
 
-    impl ExecutionState for TestExecutionState {
-        const LIMB_WIDTH: usize = 1;
+    impl<const LIMB_WIDTH: usize> ExecutionState for TestExecutionState<LIMB_WIDTH> {
+        const LIMB_WIDTH: usize = LIMB_WIDTH;
 
         type RegisterAddress = u8;
 
@@ -256,6 +261,9 @@ mod tests {
         }
     }
 
+    // An execution state with a single limb of 8 bits
+    type SingleLimbExecutionState = TestExecutionState<8>;
+
     fn literal(instr_idx: usize, val: LocalOptimisticLiteral<u8>) -> OptimisticLiteral<u8> {
         OptimisticLiteral { instr_idx, val }
     }
@@ -267,8 +275,9 @@ mod tests {
         OptimisticExpression::Literal(literal(instr_idx, val))
     }
 
+    // This is used in the cases where the value has a single limb, so we access the first limb
     fn mem(instr_idx: usize, addr: u8) -> OptimisticExpression<u8, u8> {
-        literal_expr(instr_idx, LocalOptimisticLiteral::Register(addr))
+        mem_limb(instr_idx, addr, 0)
     }
 
     fn mem_limb(instr_idx: usize, addr: u8, limb_index: usize) -> OptimisticExpression<u8, u8> {
@@ -318,9 +327,9 @@ mod tests {
         let evaluator = OptimisticConstraintEvaluator::new();
 
         let states = [
-            TestExecutionState { mem: [0, 0], pc: 0 },
-            TestExecutionState { mem: [1, 1], pc: 1 },
-            TestExecutionState { mem: [2, 2], pc: 2 },
+            SingleLimbExecutionState { mem: [0, 0], pc: 0 },
+            SingleLimbExecutionState { mem: [1, 1], pc: 1 },
+            SingleLimbExecutionState { mem: [2, 2], pc: 2 },
         ];
 
         let res = states.iter().try_fold(evaluator, |mut evaluator, state| {
@@ -337,9 +346,9 @@ mod tests {
         let mut evaluator = OptimisticConstraintEvaluator::new();
 
         let states = [
-            (TestExecutionState { mem: [0, 0], pc: 0 }, true),
-            (TestExecutionState { mem: [1, 1], pc: 1 }, true),
-            (TestExecutionState { mem: [2, 0], pc: 2 }, false),
+            (SingleLimbExecutionState { mem: [0, 0], pc: 0 }, true),
+            (SingleLimbExecutionState { mem: [1, 1], pc: 1 }, true),
+            (SingleLimbExecutionState { mem: [2, 0], pc: 2 }, false),
         ];
 
         for (state, should_succeed) in &states {
@@ -357,12 +366,12 @@ mod tests {
         let constraints = cross_step_memory_constraint();
         let mut evaluator = OptimisticConstraintEvaluator::new();
 
-        let first_state = TestExecutionState { mem: [5, 0], pc: 0 };
+        let first_state = SingleLimbExecutionState { mem: [5, 0], pc: 0 };
         evaluator
             .try_next_execution_step(&first_state, &constraints)
             .unwrap();
 
-        let second_state = TestExecutionState { mem: [0, 5], pc: 1 };
+        let second_state = SingleLimbExecutionState { mem: [0, 5], pc: 1 };
 
         assert!(evaluator
             .try_next_execution_step(&second_state, &constraints)
@@ -374,12 +383,12 @@ mod tests {
         let constraints = cross_step_memory_constraint();
         let mut evaluator = OptimisticConstraintEvaluator::new();
 
-        let first_state = TestExecutionState { mem: [9, 0], pc: 0 };
+        let first_state = SingleLimbExecutionState { mem: [9, 0], pc: 0 };
         evaluator
             .try_next_execution_step(&first_state, &constraints)
             .unwrap();
 
-        let second_state = TestExecutionState { mem: [0, 3], pc: 1 };
+        let second_state = SingleLimbExecutionState { mem: [0, 3], pc: 1 };
 
         assert!(evaluator
             .try_next_execution_step(&second_state, &constraints)
@@ -391,12 +400,12 @@ mod tests {
         let constraints = cross_step_pc_constraint();
         let mut evaluator = OptimisticConstraintEvaluator::new();
 
-        let first_state = TestExecutionState { mem: [0; 2], pc: 7 };
+        let first_state = SingleLimbExecutionState { mem: [0; 2], pc: 7 };
         evaluator
             .try_next_execution_step(&first_state, &constraints)
             .unwrap();
 
-        let second_state = TestExecutionState { mem: [0; 2], pc: 7 };
+        let second_state = SingleLimbExecutionState { mem: [0; 2], pc: 7 };
         assert!(evaluator
             .try_next_execution_step(&second_state, &constraints)
             .is_ok());
@@ -406,7 +415,7 @@ mod tests {
             .try_next_execution_step(&first_state, &constraints)
             .unwrap();
 
-        let mismatched_pc = TestExecutionState { mem: [0; 2], pc: 8 };
+        let mismatched_pc = SingleLimbExecutionState { mem: [0; 2], pc: 8 };
         assert!(failing_evaluator
             .try_next_execution_step(&mismatched_pc, &constraints)
             .is_err());
@@ -418,7 +427,7 @@ mod tests {
         let constraints = initial_to_final_constraint(final_step);
         let mut evaluator = OptimisticConstraintEvaluator::new();
 
-        let initial_state = TestExecutionState {
+        let initial_state = SingleLimbExecutionState {
             mem: [11, 0],
             pc: 0,
         };
@@ -426,12 +435,12 @@ mod tests {
             .try_next_execution_step(&initial_state, &constraints)
             .unwrap();
 
-        let middle_state = TestExecutionState { mem: [0; 2], pc: 1 };
+        let middle_state = SingleLimbExecutionState { mem: [0; 2], pc: 1 };
         evaluator
             .try_next_execution_step(&middle_state, &constraints)
             .unwrap();
 
-        let final_state = TestExecutionState {
+        let final_state = SingleLimbExecutionState {
             mem: [0, 11],
             pc: 2,
         };
@@ -447,7 +456,7 @@ mod tests {
             .try_next_execution_step(&middle_state, &constraints)
             .unwrap();
 
-        let mismatched_final_state = TestExecutionState { mem: [0, 3], pc: 2 };
+        let mismatched_final_state = SingleLimbExecutionState { mem: [0, 3], pc: 2 };
         assert!(failing_evaluator
             .try_next_execution_step(&mismatched_final_state, &constraints)
             .is_err());
@@ -458,7 +467,7 @@ mod tests {
         let constraints = OptimisticConstraints::from_constraints(vec![eq(mem(0, 0), value(99))]);
         let mut evaluator = OptimisticConstraintEvaluator::new();
 
-        let passing_state = TestExecutionState {
+        let passing_state = SingleLimbExecutionState {
             mem: [99, 0],
             pc: 0,
         };
@@ -469,7 +478,7 @@ mod tests {
         let failing_constraints =
             OptimisticConstraints::from_constraints(vec![eq(mem(0, 0), value(10))]);
         let mut failing_evaluator = OptimisticConstraintEvaluator::new();
-        let failing_state = TestExecutionState {
+        let failing_state = SingleLimbExecutionState {
             mem: [12, 0],
             pc: 0,
         };
@@ -492,7 +501,8 @@ mod tests {
         ]);
         let mut evaluator = OptimisticConstraintEvaluator::new();
 
-        let state = TestExecutionState {
+        // We use an execution state where each limb is a single bit, so 8 limbs in total here
+        let state = TestExecutionState::<1> {
             mem: [0b0110_1010, 0],
             pc: 0,
         };
