@@ -1,9 +1,3 @@
-use std::{
-    fmt::Binary,
-    ops::{BitAnd, Not, Shr, Sub},
-};
-
-use num_traits::{One, Zero};
 use serde::{Deserialize, Serialize};
 
 mod ast;
@@ -32,14 +26,7 @@ pub trait ExecutionState {
         + Clone
         + Copy
         + Send
-        + Sync
-        + One
-        + Zero
-        + Shr<usize, Output = Self::Value>
-        + Not<Output = Self::Value>
-        + BitAnd<Output = Self::Value>
-        + Sub<Output = Self::Value>
-        + Binary;
+        + Sync;
 
     /// Return the pc at this point
     fn pc(&self) -> Self::Value;
