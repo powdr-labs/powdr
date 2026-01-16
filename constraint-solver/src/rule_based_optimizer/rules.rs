@@ -345,7 +345,8 @@ crepe! {
     struct EqualZero(Expr);
     EqualZero(e) <- AlgebraicConstraint(e);
 
-    struct EntailsZeroHeadAndTail(Expr,Expr);
+    // EntailsZeroHeadAndTail(e1, e2) => e1 = 0 and e2 = 0
+    struct EntailsZeroHeadAndTail(Expr, Expr);
     EntailsZeroHeadAndTail(head, tail) <-
     EqualZero(e),
     ExpressionSumHeadTail(e, head, tail),
