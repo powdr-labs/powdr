@@ -291,18 +291,18 @@ and all other keys to $0$. Then, we define $\Sigma(B)$ to be $\sum_i
 \textsf{toMs}(d_i, m_i)$
 
 Now we can define equivalence, which has two conditions. Assume two systems
-$S(w) = (C(w), B(w))$ and $S'(w') = (C'(w'), B'(w'))$. The $S$ is the input
-to powdr and $S'$ is the output. powder also outputs a function $E$ that maps
-$w$ to $w'$. Most of the variables in $w'$ have the same name as some variable
-in $w$---they takes its value. Other variables have an entry in the "derived
-variables", which explains how to compute them from $w$.
+$S = (C, B)$ and $S' = (C', B')$ in variable $w$ and $w'$, respectively. The $S$
+is the input to powdr and $S'$ is the output. powder also outputs a function $E$
+that maps $w$ to $w'$. Most of the variables in $w'$ have the same name as some
+variable in $w$---they takes its value. Other variables have an entry in the
+"derived variables", which explains how to compute them from $w$.
 
 The first condition is completeness, which says that when $S$ is satisfiable,
 $E$ gives a satisfying assignment for $S'$ with the same effects (stateful bus
 interactions). Formally:
 
 $$\forall w, \forall s, C(w) \wedge \sum(B(w)) = s
-\implies C'(W(w)) \wedge \sum(B'(E(w))) = s$$
+\implies C'(E(w)) \wedge \sum(B'(E(w))) = s$$
 
 The second condition is soundness, which says that when $S'$ is satisfiable, $S$
 is too, and with the same effects. Formally, there should exists an efficient
@@ -318,13 +318,13 @@ compiler correctness from the paper ["Bounded Verification for
 Finite-Field-Blasting in a Compiler for Zero Knowledge Proofs"][1]. Start from
 their Definition 1. To see this, set:
 
-* their $w$ to our $w$
-* their $x$ and $x'$ to our $s$
-* their $\phi(x,w)$ to our $C(w) \wedge \Sigma(B(w)) = s$
-* their $\phi'(x',w')$ to our $C'(w') \wedge \Sigma(B'(w')) = s$
-* their $\mathsf{Ext}_x(x)$ to the identity function from $s$ to itself
-* their $\mathsf{Ext}_w(x, w)$ to our $E$
-* their $\mathsf{Inv}(x', i')$ to our $I$
+* their $w$ and $w'$ to our $w$ and $w'$,
+* their $x$ and $x'$ to our $s$ (both are $s$),
+* their $\phi(x,w)$ to our $C(w) \wedge \Sigma(B(w)) = s$,
+* their $\phi'(x',w')$ to our $C'(w') \wedge \Sigma(B'(w')) = s$,
+* their $\mathsf{Ext}_x(x)$ to the identity function from $s$ to itself,
+* their $\mathsf{Ext}_w(x, w)$ to our $E$, and
+* their $\mathsf{Inv}(x', i')$ to our $I$.
 
 This alignment bodes very well for our definition. Ozdemir et al. proved that a
 ZKP compiler that is correct by their definition can securely compose with a
