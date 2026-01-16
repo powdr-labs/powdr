@@ -109,7 +109,6 @@ Example guest programs in `openvm/guest-*` directories (keccak, sha256, ecc, pai
 - Write idiomatic Rust code. Follow Rust conventions and best practices, and keep the style similar to existing code in the repository.
 - Try to minimize code, reusing existing functions and modules where possible.
 - Keep diffs small and focused. Avoid unrelated changes, unnecessary refactoring, or adding comments to unchanged code.
-- Use `eyre::Result` for error handling in most cases.
 - Use builder pattern with `with_*` methods for structs with optional configuration.
 
 ### Before Returning to User
@@ -128,3 +127,4 @@ Use the GitHub CLI to interact with GitHub, for example:
 - Create PR (always use --draft): `gh pr create --repo https://github.com/powdr-labs/powdr --base main --draft --title "..." --body "..."`
 - Check CI status: `gh pr checks --repo https://github.com/powdr-labs/powdr <pr-number>`
 - View PR comments: `gh pr view --repo https://github.com/powdr-labs/powdr <pr-number> --comments`
+- View review comments on code: `gh api repos/powdr-labs/powdr/pulls/<pr-number>/comments`
