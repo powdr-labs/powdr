@@ -30,8 +30,6 @@ pub fn optimistic_literals<A: Adapter>(
         &vm_config.bus_map,
     );
 
-    let max_poly_id = column_allocator.next_poly_id - 1;
-
     symbolic_machines
         .into_iter()
         .enumerate()
@@ -97,11 +95,13 @@ pub fn optimistic_literals<A: Adapter>(
         })
         // Map each limb reference to an optimistic literal
         .flat_map(|(instruction_idx, concrete_address, limbs)| {
+            // Borrow column allocator to avoid moving it into the closure
+            let column_allocator = &column_allocator;
             limbs
                 .into_iter()
                 .enumerate()
                 .filter_map(move |(limb_index, limb_ref)| {
-                    if limb_ref.id > max_poly_id {
+                    if !column_allocator.is_known_id(limb_ref.id) {
                         // Limb refers to a column introduced by the optimizer, skip it.
                         // We would never have empirical constraints on such a column anyway.
                         return None;

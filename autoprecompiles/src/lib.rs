@@ -446,6 +446,11 @@ impl ColumnAllocator {
         self.next_poly_id += 1;
         id
     }
+
+    /// Returns whether the given poly_id is known (i.e., was issued by this allocator)
+    pub fn is_known_id(&self, poly_id: u64) -> bool {
+        poly_id < self.next_poly_id
+    }
 }
 
 pub fn build<A: Adapter>(
