@@ -149,6 +149,37 @@ crepe! {
       ExpressionSumHeadTail(e1, head, tail1),
       ExpressionSumHeadTail(e2, head, tail2);
 
+    // AffinelyRelated(e1, f, e2, c) => e1 = f * e2 + c
+    // This only works if e1 and e2 have at least one variable
+    // and both e1 and e2 have to "pre-exist" as expressions.
+    // This means this rule cannot be used to subtract constants
+    // or multiply/divide by constants alone.
+    struct AffinelyRelated<T: FieldElement>(Expr, T, Expr, T);
+    AffinelyRelated(e1, f1 / f2, e2, o1 - o2 * f1 / f2) <-
+      AffineExpression(e1, f1, v, o1), // e1 = f1 * v + o1
+      AffineExpression(e2, f2, v, o2); // e2 = f2 * v + o2
+      // e1 = (e2 - o2) / f2 * f1 + o1 = e2 * (f1 / f2) + (o1 - o2 * f1 / f2)
+    AffinelyRelated(e1, f, e2, c) <-
+      ExpressionSumHeadTail(e1, head1, tail1),
+      AffinelyRelated(tail1, f, tail2, c),
+      ExpressionSumHeadTail(e2, head2, tail2),
+      AffinelyRelated(head1, f, head2, T::zero());
+    AffinelyRelated(e1, f1 * f2, e2, T::zero()) <-
+      Product(e1, l1, r1),
+      (l1 < r1),
+      AffinelyRelated(l1, f1, l2, T::zero()),
+      Product(e2, l2, r2),
+      (l2 < r2),
+      AffinelyRelated(r1, f2, r2, T::zero());
+    AffinelyRelated(e1, f, e2, o1 + o2) <-
+      ExpressionSumHeadTail(e2, head2, tail2),
+      AffinelyRelated(e1, f, head2, o1),
+      Constant(tail2, o2);
+    AffinelyRelated(e1, T::one() / f, e2, -o / f) <-
+      // e2 = f * e1 + o <=> e1 = e2 / f - o / f
+      AffinelyRelated(e2, f, e1, o);
+
+
     // HasProductSummand(e, l, r) => e contains a summand of the form l * r
     struct HasProductSummand(Expr, Expr, Expr);
     HasProductSummand(e, l, r) <-
@@ -212,6 +243,25 @@ crepe! {
       (l < r),
       Solvable(l, v, c1),
       Solvable(r, v, c2);
+
+    struct BooleanVar(Var);
+    BooleanVar(v) <-
+      RangeConstraintOnVar(v, rc),
+      (rc.range() == (T::zero(), T::one()));
+
+    // BooleanExpressionConstraint(constr, e) =>
+    // constr is an algebraic constraint that forces (e = 0 or e = 1).
+    struct BooleanExpressionConstraint(Expr, Expr);
+    BooleanExpressionConstraint(constr, e) <-
+      ProductConstraint(constr, e, r),
+      AffinelyRelated(r, f, e, o),
+      // e * (f * e + o) = 0, i.e. e = 0 or f * e + o = 0
+      // i.e. e = 0 or e = -o/f
+      // for boolean we need -o/f = 1 <=> o + f = 0
+      (f + o == T::zero());
+    BooleanExpressionConstraint(constr, e1) <-
+      BooleanExpressionConstraint(constr, e2),
+      AffinelyRelated(e1, -T::one(), e2, T::one());
 
     //////////////////////// SINGLE-OCCURRENCE VARIABLES //////////////////////////
 
@@ -323,6 +373,107 @@ crepe! {
         Some(env.insert_owned(replacement))
       })();
 
+    //////////////////// EQUAL ZERO TEST ////////////////////////
+
+    // PlusMinusResult(e, e1, v2) =>
+    //   e = e1 * (2 * v2 - 1)
+    struct PlusMinusResult(Expr, Expr, Var);
+    PlusMinusResult(e, e1, v2) <-
+      Product(e, e1, r),
+      AffineExpression(r, coeff, v2, offset),
+        (coeff == T::from(2)),
+        (offset == T::from(-1));
+
+    // DiffMarkerConstraint(e, diff_marker, e2, cmp_result, diff_val) =>
+    //   e = diff_marker * (e2 * (2 * cmp_result - 1) + diff_val)
+    // (up to a factor)
+    struct DiffMarkerConstraint(Expr, Var, Expr, Var, Var);
+    DiffMarkerConstraint(e, diff_marker, e2, cmp_result, diff_val) <-
+      ProductConstraint(e, l, r),
+      LinearExpression(l, diff_marker, _),
+      // Note: the quadratic part has to be the head
+      ExpressionSumHeadTail(r, r1, r2),
+        PlusMinusResult(r1, e2, cmp_result),
+        LinearExpression(r2, diff_val, _);
+
+    // NegatedDiffMarkerConstraint(e, diff_marker, diff_expr, v, result, n) =>
+    //   e is the constraint diff_marker_expr * (v * (2 * result - 1)) = 0
+    //   and diff_marker_expr is of the form `1 - diff_marker1 - diff_marker2 - ...`
+    //   such that we have n variables and there is another
+    //   NegatedDiffMarkerConstraint with n-1 variables used to derive this one.
+    struct NegatedDiffMarkerConstraint(Expr, Var, Expr, Var, Var, u32);
+    NegatedDiffMarkerConstraint(e, diff_marker, l, v, result, 0) <-
+      ProductConstraint(e, l, r),
+      AffineExpression(l, T::from(-1), diff_marker, T::from(1)),
+      PlusMinusResult(r, r2, result),
+      LinearExpression(r2, v, T::from(-1));
+    NegatedDiffMarkerConstraint(e, diff_marker, l, v, result, n + 1) <-
+      ProductConstraint(e, l, r),
+        NegatedDiffMarkerConstraint(_, _, diff_marker_expr2, _, result, n),
+        DifferBySummand(l, diff_marker_expr2, diff_marker_e),
+          LinearExpression(diff_marker_e, diff_marker, T::from(-1)),
+      PlusMinusResult(r, r2, result),
+      LinearExpression(r2, v, T::from(-1));
+
+    // NegatedDiffMarkerConstraintFinal(e, diff_marker, l, result, n) =>
+    //   e is the constraint diff_marker_expr * (result) = 0
+    //   and diff_marker_expr is of the form `1 - diff_marker1 - diff_marker2 - ...`
+    //   such that we have n variables and there is another
+    //   NegatedDiffMarkerConstraint with n-1 variables used to derive this one.
+    struct NegatedDiffMarkerConstraintFinal(Expr, Var, Expr, Var, u32);
+    NegatedDiffMarkerConstraintFinal(e, diff_marker, l, result, n + 1) <-
+      ProductConstraint(e, l, r),
+        NegatedDiffMarkerConstraint(_, _, diff_marker_expr2, _, result, n),
+        DifferBySummand(l, diff_marker_expr2, diff_marker_e),
+          LinearExpression(diff_marker_e, diff_marker, T::from(-1)),
+      LinearExpression(r, result, T::from(1));
+
+    struct NegatedDiffMarkerConstraintFinalNegated(Expr, Var, Var, Var, u32);
+    NegatedDiffMarkerConstraintFinalNegated(e, diff_marker, v, result, n + 1) <-
+      ProductConstraint(e, l, r),
+        NegatedDiffMarkerConstraint(_, _, diff_marker_expr2, _, result, n),
+        DifferBySummand(l, diff_marker_expr2, diff_marker_e),
+          LinearExpression(diff_marker_e, diff_marker, T::from(-1)),
+      PlusMinusResult(r, r2, result),
+      AffineExpression(r2, T::from(-1), v, T::from(1));
+
+    // EqualZeroCheck(constrs, result, vars) =>
+    //   constrsexprs can be equivalently replaced by a constraint that models
+    //   result = 1 if all vars are zero, and result = 0 otherwise.
+    struct EqualZeroCheck([Expr; 10], Var, [Var; 4]);
+    EqualZeroCheck(constrs, result, vars) <-
+      // (1 - diff_marker__3_0) * (a__3_0 * (2 * cmp_result_0 - 1)) = 0
+      NegatedDiffMarkerConstraint(constr_0, diff_marker_3, _, a_3, result, 0),
+      // (1 - (diff_marker__2_0 + diff_marker__3_0)) * (a__2_0 * (2 * cmp_result_0 - 1)) = 0
+      NegatedDiffMarkerConstraint(constr_1, diff_marker_2, _, a_2, result, 1),
+      // (1 - (diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0)) * (a__1_0 * (2 * cmp_result_0 - 1)) = 0
+      NegatedDiffMarkerConstraint(constr_2, diff_marker_1, _, a_1, result, 2),
+      // (1 - (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0)) * cmp_result_0 = 0
+      NegatedDiffMarkerConstraintFinal(constr_3, diff_marker_0, one_minus_diff_marker_sum, result, 3),
+      // (1 - (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0)) * ((1 - a__0_0) * (2 * cmp_result_0 - 1)) = 0
+      NegatedDiffMarkerConstraintFinalNegated(constr_4, diff_marker_0, a_0, result, 3),
+      // diff_marker__0_0 * ((a__0_0 - 1) * (2 * cmp_result_0 - 1) + diff_val_0) = 0
+      DiffMarkerConstraint(constr_5, diff_marker_0, a_0_e, result, diff_val),
+        AffineExpression(a_0_e, a_0_e_coeff, a_0, a_0_e_offset), (a_0_e_coeff == T::from(1)), (a_0_e_offset == T::from(-1)),
+      // diff_marker__1_0 * (a__1_0 * (2 * cmp_result_0 - 1) + diff_val_0) = 0
+      DiffMarkerConstraint(constr_6, diff_marker_1, a_1_e, result, diff_val),
+        LinearExpression(a_1_e, a_1, T::from(1)),
+      // diff_marker__2_0 * (a__2_0 * (2 * cmp_result_0 - 1) + diff_val_0) = 0
+      DiffMarkerConstraint(constr_7, diff_marker_2, a_2_e, result, diff_val),
+        LinearExpression(a_2_e, a_2, T::from(1)),
+      // diff_marker__3_0 * (a__3_0 * (2 * cmp_result_0 - 1) + diff_val_0) = 0
+      DiffMarkerConstraint(constr_8, diff_marker_3, a_3_e, result, diff_val),
+        LinearExpression(a_3_e, a_3, T::from(1)),
+      BooleanVar(result),
+      BooleanVar(diff_marker_0),
+      BooleanVar(diff_marker_1),
+      BooleanVar(diff_marker_2),
+      BooleanVar(diff_marker_3),
+      // (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0) * (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0 - 1) = 0
+      BooleanExpressionConstraint(constr_9, one_minus_diff_marker_sum),
+      let constrs = [constr_0, constr_1, constr_2, constr_3, constr_4, constr_5, constr_6, constr_7, constr_8, constr_9],
+      let vars = [a_0, a_1, a_2, a_3];
+
     //////////////// COMBINE CONSTRAINTS WITH NON-NEGATIVE FACTORS /////////////////////
 
     // If we have `x * a = 0` and `x * b = 0` and `a` and `b` are
@@ -362,15 +513,15 @@ crepe! {
     //------- quadratic equivalence -----
 
     // QuadraticEquivalenceCandidate(E, expr, offset) =>
-    //   E = ((expr) * (expr + offset) = 0) is a constraint and
+    //   E = ((expr + offset) * (expr) = 0) is a constraint and
     //   expr is affine with at least 2 variables.
     struct QuadraticEquivalenceCandidate<T: FieldElement>(Expr, Expr, T);
-    QuadraticEquivalenceCandidate(e, r, offset) <-
+    QuadraticEquivalenceCandidate(e, r, o / f) <-
        Env(env),
-       AlgebraicConstraint(e),
-       Product(e, l, r), // note that this will always produce two facts for (l, r) and (r, l)
-       ({env.affine_var_count(l).unwrap_or(0) > 1 && env.affine_var_count(r).unwrap_or(0) > 1}),
-       let Some(offset) = env.constant_difference(l, r);
+       ProductConstraint(e, l, r),
+       AffinelyRelated(l, f, r, o), // l = f * r + o
+       IsAffine(l),
+       ({env.affine_var_count(l).unwrap_or(0) > 1});
 
     // QuadraticEquivalenceCandidatePair(expr1, expr2, offset1 / coeff, v1, v2) =>
     //  (expr1) * (expr1 + offset1) = 0 and (expr2) * (expr2 + offset2) = 0 are constraints,
@@ -388,7 +539,7 @@ crepe! {
       QuadraticEquivalenceCandidate(_, expr1, offset1),
       QuadraticEquivalenceCandidate(_, expr2, offset2),
       (expr1 < expr2),
-      let Some((v1, v2,factor)) = env.differ_in_exactly_one_variable(expr1, expr2),
+      let Some((v1, v2, factor)) = env.differ_in_exactly_one_variable(expr1, expr2),
       (offset1 == offset2 * factor),
       let coeff = env.on_expr(expr1, (), |e, _| *e.coefficient_of_variable_in_affine_part(&v1).unwrap());
 
