@@ -1,3 +1,9 @@
+use std::{
+    fmt::Binary,
+    ops::{BitAnd, Not, Shr, Sub},
+};
+
+use num_traits::{One, Zero};
 use serde::{Deserialize, Serialize};
 
 mod ast;
@@ -8,6 +14,9 @@ pub use ast::*;
 pub use candidates::{Apc, ApcCall, ApcCandidates, Snapshot};
 pub use evaluator::{OptimisticConstraintEvaluator, OptimisticConstraints};
 pub trait ExecutionState {
+    /// The number of limbs per value
+    const LIMBS_PER_VALUE: usize;
+    const LIMB_BIT_WIDTH: usize;
     type RegisterAddress: PartialEq
         + Eq
         + std::hash::Hash
@@ -26,7 +35,14 @@ pub trait ExecutionState {
         + Clone
         + Copy
         + Send
-        + Sync;
+        + Sync
+        + One
+        + Zero
+        + Shr<usize, Output = Self::Value>
+        + Not<Output = Self::Value>
+        + BitAnd<Output = Self::Value>
+        + Sub<Output = Self::Value>
+        + Binary;
 
     /// Return the pc at this point
     fn pc(&self) -> Self::Value;
