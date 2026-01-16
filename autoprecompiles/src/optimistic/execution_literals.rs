@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::memory_optimizer::MemoryBusInteraction;
 use crate::symbolic_machine_generator::statements_to_symbolic_machines;
+use crate::ColumnAllocator;
 use crate::{
     adapter::{Adapter, AdapterVmConfig},
     blocks::BasicBlock,
@@ -39,14 +40,14 @@ pub fn optimistic_literals<A: Adapter>(
             // those optimistic literals.
             // Note that the optimizer would still remove some memory accesses, if the instruction
             // accesses the same register multiple times.
-            let (symbolic_machine, _column_allocator) = optimize::<A>(
+            let dummy_column_allocator =
+                ColumnAllocator::from_max_poly_id_of_machine(&symbolic_machine);
+            let (symbolic_machine, _) = optimize::<A>(
                 symbolic_machine.clone(),
                 vm_config.bus_interaction_handler.clone(),
                 *degree_bound,
                 &vm_config.bus_map,
-                // The optimizer might introduce new columns, but we'll discard them below.
-                // As a result, it is fine to clone here (and reuse column IDs across instructions).
-                column_allocator.clone(),
+                dummy_column_allocator,
             )
             .unwrap();
 
