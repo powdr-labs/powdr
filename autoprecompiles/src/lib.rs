@@ -471,7 +471,7 @@ pub fn build<A: Adapter>(
     let empirical_constraints = empirical_constraints.for_block(&block);
 
     // TODO: Use execution constraints
-    let (empirical_constraints, _execution_constraints) = if should_generate_execution_constraints {
+    let (empirical_constraints, execution_constraints) = if should_generate_execution_constraints {
         // Filter constraints to only contain execution-checkable columns,
         // generate execution constraints for them.
         let optimistic_literals = optimistic_literals::<A>(&block, &vm_config, &degree_bound);
@@ -491,7 +491,7 @@ pub fn build<A: Adapter>(
                 .generate_constraints();
 
         let execution_constraints =
-            generate_execution_constraints(&empirical_constraints, &optimistic_literals);
+            generate_execution_constraints::<A>(&empirical_constraints, &optimistic_literals);
         (empirical_constraints, execution_constraints)
     } else {
         // Don't filter empirical constraints, return empty execution constraints.
@@ -543,7 +543,7 @@ pub fn build<A: Adapter>(
         .absolute(machine.unique_references().count() as u64);
 
     // TODO: add optimistic constraints here
-    let optimistic_constraints = OptimisticConstraints::from_constraints(vec![]);
+    let optimistic_constraints = OptimisticConstraints::from_constraints(execution_constraints);
 
     let apc = Apc::new(block, machine, optimistic_constraints, &column_allocator);
 

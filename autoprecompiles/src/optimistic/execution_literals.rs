@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use crate::execution::ExecutionState;
 use crate::memory_optimizer::MemoryBusInteraction;
 use crate::symbolic_machine_generator::statements_to_symbolic_machines;
 use crate::{
@@ -20,7 +21,10 @@ pub fn optimistic_literals<A: Adapter>(
     block: &BasicBlock<A::Instruction>,
     vm_config: &AdapterVmConfig<A>,
     degree_bound: &DegreeBound,
-) -> BTreeMap<AlgebraicReference, OptimisticLiteral<Vec<<A as Adapter>::PowdrField>>> {
+) -> BTreeMap<
+    AlgebraicReference,
+    OptimisticLiteral<<A::ExecutionState as ExecutionState>::RegisterAddress>,
+> {
     let memory_bus_id = vm_config.bus_map.get_bus_id(&BusType::Memory).unwrap();
 
     // 1. Generate symbolic machines for each instruction in the block
@@ -75,10 +79,22 @@ pub fn optimistic_literals<A: Adapter>(
                     let data = bus_interaction.data();
 
                     // Find concrete address
-                    let concrete_address = address
-                        .into_iter()
-                        .map(|expr| expr.try_to_known().cloned())
-                        .collect::<Option<Vec<_>>>()?;
+                    let concrete_address: <A::ExecutionState as ExecutionState>::RegisterAddress =
+                        A::try_into_register_address(
+                            address
+                                .into_iter()
+                                .map(|expr| expr.try_to_known().cloned())
+                                .collect::<Option<Vec<_>>>()?
+                                .into_iter()
+                                .enumerate()
+                                .map(|(limb_index, limb)| {
+                                    // TODO: here we need to have access to the bitwidth of the limbs
+                                    limb * A::PowdrField::from(1 << (limb_index * 8))
+                                })
+                                .reduce(std::ops::Add::add)
+                                .unwrap(),
+                        )
+                        .unwrap();
 
                     // Find references to the limbs
                     let limbs = data
@@ -108,7 +124,7 @@ pub fn optimistic_literals<A: Adapter>(
                     }
 
                     let local_literal =
-                        LocalOptimisticLiteral::RegisterLimb(concrete_address.clone(), limb_index);
+                        LocalOptimisticLiteral::RegisterLimb(concrete_address, limb_index);
                     let optimistic_literal = OptimisticLiteral {
                         instr_idx: instruction_idx,
                         val: local_literal,

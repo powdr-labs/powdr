@@ -107,6 +107,22 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     fn from_field(e: Self::Field) -> Self::PowdrField {
         BabyBearField::from(e.as_canonical_u32())
     }
+
+    fn try_into_register_address(
+        e: Self::PowdrField,
+    ) -> Result<<Self::ExecutionState as ExecutionState>::RegisterAddress, ()> {
+        e.to_integer()
+            .try_into_u32()
+            .ok_or(())
+            .and_then(|v| v.try_into().map_err(|_| ()))
+            .map(OpenVmRegisterAddress)
+    }
+
+    fn try_into_value(
+        e: Self::PowdrField,
+    ) -> Result<<Self::ExecutionState as ExecutionState>::Value, ()> {
+        e.to_integer().try_into_u32().ok_or(())
+    }
 }
 
 /// A newtype wrapper around `OpenVmInstruction` to implement the `Instruction` trait.
