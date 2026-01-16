@@ -9,7 +9,7 @@ pub struct OptimisticPrecompileConfig {
     /// A higher number here leads to more accurate percentile estimates, but uses more memory.
     pub max_segments: usize,
     /// Whether to restrict empirical constraints to those that are checkable at execution time.
-    pub restricted_optimistic_precompiles: bool,
+    pub restrict_optimistic_precompiles: bool,
 }
 
 pub fn optimistic_precompile_config() -> OptimisticPrecompileConfig {
@@ -27,6 +27,6 @@ pub fn optimistic_precompile_config() -> OptimisticPrecompileConfig {
     OptimisticPrecompileConfig {
         execution_count_threshold,
         max_segments,
-        restricted_optimistic_precompiles,
+        restrict_optimistic_precompiles: restricted_optimistic_precompiles,
     }
 }

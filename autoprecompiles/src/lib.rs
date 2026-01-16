@@ -465,7 +465,7 @@ pub fn build<A: Adapter>(
 
     // Generate constraints for optimistic precompiles.
     let should_generate_execution_constraints =
-        optimistic_precompile_config().restricted_optimistic_precompiles;
+        optimistic_precompile_config().restrict_optimistic_precompiles;
     let algebraic_references =
         BlockCellAlgebraicReferenceMapper::new(&column_allocator.subs, machine.main_columns());
     let empirical_constraints = empirical_constraints.for_block(&block);
