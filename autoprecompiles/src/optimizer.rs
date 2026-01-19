@@ -39,6 +39,7 @@ pub fn optimize<A: Adapter>(
     degree_bound: DegreeBound,
     bus_map: &BusMap<A::CustomBusTypes>,
     mut column_allocator: ColumnAllocator,
+    // TODO: should this be part of the SymbolicMachine? can we avoid the need for it in the optimizer?
     basic_block_indices: &HashSet<usize>, // instruction indices where each basic block starts in a superblock
 ) -> Result<(SymbolicMachine<A::PowdrField>, ColumnAllocator), crate::constraint_optimizer::Error> {
     let mut stats_logger = StatsLogger::start(&machine);
