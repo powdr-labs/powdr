@@ -104,7 +104,7 @@ fn create_apcs_for_all_blocks<A: Adapter>(
 
             let apc = Arc::new(apc);
 
-            let stats = unimplemented!();
+            let stats = A::apc_stats(&apc, &vm_config, config);
 
             ApcWithStats::new(apc, stats)
         })

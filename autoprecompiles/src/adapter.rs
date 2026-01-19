@@ -75,7 +75,14 @@ where
     Self::InstructionHandler:
         InstructionHandler<Field = Self::Field, Instruction = Self::Instruction>,
 {
-    type Field: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone;
+    type Field: Serialize
+        + for<'de> Deserialize<'de>
+        + PartialOrd
+        + Ord
+        + Display
+        + Send
+        + Sync
+        + Clone;
     type PowdrField: FieldElement;
     type InstructionHandler: InstructionHandler + Sync;
     type BusInteractionHandler: BusInteractionHandler<Self::PowdrField>
@@ -97,6 +104,12 @@ where
     fn into_field(e: Self::PowdrField) -> Self::Field;
 
     fn from_field(e: Self::Field) -> Self::PowdrField;
+
+    fn apc_stats(
+        apc: &Arc<AdapterApc<Self>>,
+        vm_config: &AdapterVmConfig<'_, Self>,
+        config: &PowdrConfig,
+    ) -> Self::ApcStats;
 
     fn should_skip_block(_block: &BasicBlock<Self::Instruction>) -> bool {
         false

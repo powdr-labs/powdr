@@ -111,6 +111,33 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     fn from_field(e: Self::Field) -> Self::PowdrField {
         BabyBearField::from(e.as_canonical_u32())
     }
+
+    fn apc_stats(
+        apc: &Arc<AdapterApc<Self>>,
+        vm_config: &AdapterVmConfig<'_, Self>,
+        config: &PowdrConfig,
+    ) -> Self::ApcStats {
+        let apc_metrics = get_air_metrics(
+            Arc::new(PowdrAir::new(apc.clone())),
+            config.degree_bound.identities,
+        );
+        let width_after = apc_metrics.widths;
+
+        let width_before = apc
+            .block
+            .statements
+            .iter()
+            .map(|instr| {
+                vm_config
+                    .instruction_handler
+                    .get_instruction_metrics(instr.0.opcode)
+                    .unwrap()
+                    .widths
+            })
+            .sum();
+
+        OvmApcStats::new(AirWidthsDiff::new(width_before, width_after))
+    }
 }
 
 /// A newtype wrapper around `OpenVmInstruction` to implement the `Instruction` trait.
