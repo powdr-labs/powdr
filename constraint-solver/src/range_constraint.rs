@@ -183,8 +183,10 @@ impl<T: FieldElement> RangeConstraint<T> {
 
             match (self_wrapping, other_wrapping) {
                 (true, true) => {
-                    // Both ranges are wrapping (negative values)
-                    // For negative ranges, the maximum absolute values are at min and max
+                    // Both ranges are wrapping (negative values and possibly positive)
+                    // For a wrapping range [min, max] where min > max, the range includes
+                    // values from min to field_max (negative) and 0 to max (positive/negative).
+                    // The maximum absolute value is max(-min, max).
                     let self_max_abs = std::cmp::max(-self.min, self.max);
                     let other_max_abs = std::cmp::max(-other.min, other.max);
 
@@ -325,20 +327,11 @@ impl<T: FieldElement> RangeConstraint<T> {
 
                 if !in_range {
                     // Extend potential_max to cover this corner
-                    // Calculate distance from potential_min to corner
-                    let distance = if corner >= potential_min {
-                        (corner - potential_min).to_integer()
-                    } else {
-                        // Wrapping distance
-                        (T::from(-1) - potential_min + corner + T::one()).to_integer()
-                    };
+                    // Calculate distance from potential_min to corner using range_width
+                    let distance = range_width(potential_min, corner);
 
                     // Update potential_max if this corner is further
-                    let current_distance = if potential_max >= potential_min {
-                        (potential_max - potential_min).to_integer()
-                    } else {
-                        (T::from(-1) - potential_min + potential_max + T::one()).to_integer()
-                    };
+                    let current_distance = range_width(potential_min, potential_max);
 
                     if distance > current_distance {
                         potential_max = corner;
