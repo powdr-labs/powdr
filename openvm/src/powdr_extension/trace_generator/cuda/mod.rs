@@ -210,6 +210,8 @@ impl PowdrTraceGeneratorGpu {
             }
         };
 
+        let num_apc_calls = original_arenas.number_of_calls;
+
         let chip_inventory = {
             let airs: AirInventory<BabyBearSC> =
                 create_dummy_airs(&self.config.sdk_config.sdk, self.periphery.dummy.clone())
@@ -257,7 +259,7 @@ impl PowdrTraceGeneratorGpu {
 
         // allocate for apc trace
         let width = apc_poly_id_to_index.len();
-        let height = next_power_of_two_or_zero(original_arenas.number_of_calls);
+        let height = next_power_of_two_or_zero(num_apc_calls);
         let mut output = DeviceMatrix::<BabyBear>::with_capacity(height, width);
 
         // Prepare `OriginalAir` and `Subst` arrays
@@ -324,13 +326,7 @@ impl PowdrTraceGeneratorGpu {
         let airs = airs.to_device().unwrap();
         let substitutions = substitutions.to_device().unwrap();
 
-        cuda_abi::apc_tracegen(
-            &mut output,
-            airs,
-            substitutions,
-            original_arenas.number_of_calls,
-        )
-        .unwrap();
+        cuda_abi::apc_tracegen(&mut output, airs, substitutions, num_apc_calls).unwrap();
 
         // Apply derived columns using the GPU expression evaluator
         let (derived_specs, derived_bc) = compile_derived_to_gpu(
@@ -341,13 +337,7 @@ impl PowdrTraceGeneratorGpu {
         // In practice `d_specs` is never empty, because we will always have `is_valid`
         let d_specs = derived_specs.to_device().unwrap();
         let d_bc = derived_bc.to_device().unwrap();
-        cuda_abi::apc_apply_derived_expr(
-            &mut output,
-            d_specs,
-            d_bc,
-            original_arenas.number_of_calls,
-        )
-        .unwrap();
+        cuda_abi::apc_apply_derived_expr(&mut output, d_specs, d_bc, num_apc_calls).unwrap();
 
         // Encode bus interactions for GPU consumption
         let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
@@ -384,7 +374,7 @@ impl PowdrTraceGeneratorGpu {
         cuda_abi::apc_apply_bus(
             // APC related
             &output,
-            original_arenas.number_of_calls,
+            num_apc_calls,
             // Interaction related
             bytecode,
             bus_interactions,

@@ -72,7 +72,7 @@ pub enum OriginalArenas<A> {
 impl<A: Arena> OriginalArenas<A> {
     /// Given an estimate of how many times the APC is called in this segment, and the original airs and apc,
     /// initializes the arenas iff not already initialized.
-    pub fn ensure_initialized(
+    fn ensure_initialized(
         &mut self,
         apc_call_count_estimate: impl Fn() -> usize,
         original_airs: &OriginalAirs<BabyBear>,

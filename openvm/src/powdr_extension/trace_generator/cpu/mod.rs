@@ -109,6 +109,8 @@ impl PowdrTraceGeneratorCpu {
             }
         };
 
+        let num_apc_calls = original_arenas.number_of_calls;
+
         let chip_inventory = {
             let airs: AirInventory<BabyBearSC> =
                 create_dummy_airs(&self.config.sdk_config.sdk, self.periphery.dummy.clone())
@@ -152,13 +154,13 @@ impl PowdrTraceGeneratorCpu {
         } = generate_trace(
             &dummy_trace_by_air_name,
             &self.original_airs,
-            original_arenas.number_of_calls,
+            num_apc_calls,
             &self.apc,
         );
 
         // allocate for apc trace
         let width = apc_poly_id_to_index.len();
-        let height = next_power_of_two_or_zero(original_arenas.number_of_calls);
+        let height = next_power_of_two_or_zero(num_apc_calls);
         let mut values = <BabyBear as FieldAlgebra>::zero_vec(height * width);
 
         // go through the final table and fill in the values
