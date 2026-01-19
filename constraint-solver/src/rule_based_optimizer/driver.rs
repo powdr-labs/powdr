@@ -321,7 +321,7 @@ fn replace_algebraic_constraints<T: FieldElement, V: Hash + Eq + Ord + Clone + D
 }
 
 /// A single replacement operation: replace `lhs` constraints with `rhs` constraints.
-struct ReplacementAction<T, V> {
+struct ReplacementAction<T: FieldElement, V: Hash + Eq + Ord + Clone + Display> {
     /// Constraints to be replaced (LHS).
     lhs: Vec<GroupedExpression<T, V>>,
     /// Replacement constraints (RHS).
@@ -365,9 +365,14 @@ fn batch_replace_algebraic_constraints<T: FieldElement, V: Hash + Eq + Ord + Clo
                 .max()
                 .unwrap_or(0);
 
-            if max_new_degree > max_old_degree
-                && (degree_bound.is_none() || max_new_degree > degree_bound.unwrap().identities)
-            {
+            // Check if the degree increase is acceptable
+            let degree_increase = max_new_degree > max_old_degree;
+            let within_bound = match degree_bound {
+                None => !degree_increase,
+                Some(bound) => max_new_degree <= bound.identities,
+            };
+
+            if !within_bound {
                 log::debug!(
                     "Skipping replacement of {} by {} due to degree constraints.",
                     replacement.lhs.iter().format(", "),
