@@ -384,80 +384,88 @@ fn batch_replace_algebraic_constraints<T: FieldElement, V: Hash + Eq + Ord + Clo
         return false;
     }
 
-    // Step 2: Build a map from LHS expressions to their replacement indices
-    // For each constraint expression, track which replacements need it
-    let mut lhs_to_replacements: HashMap<GroupedExpression<T, V>, Vec<usize>> = HashMap::new();
-    for (replacement_idx, replacement) in valid_replacements.iter().enumerate() {
-        for lhs_expr in &replacement.lhs {
-            lhs_to_replacements
-                .entry(lhs_expr.clone())
-                .or_default()
-                .push(replacement_idx);
-        }
-    }
-
-    // Step 3: Single pass through constraints to identify which LHS constraints are present
-    // Track: (replacement_idx, number of LHS constraints found)
-    let mut replacement_lhs_found_count: Vec<usize> = vec![0; valid_replacements.len()];
-    let mut constraints_to_remove: HashSet<GroupedExpression<T, V>> = HashSet::new();
+    // Step 2: Single pass through constraints to match against all replacements
+    // For each replacement, track which LHS constraints have been found
+    let mut replacement_lhs_matches: Vec<HashSet<GroupedExpression<T, V>>> =
+        vec![HashSet::new(); valid_replacements.len()];
 
     for constraint in system.algebraic_constraints() {
-        if let Some(replacement_indices) = lhs_to_replacements.get(&constraint.expression) {
-            // This constraint matches an LHS expression
-            // Check if it's already been claimed by another replacement (first match wins)
-            if !constraints_to_remove.contains(&constraint.expression) {
-                // Find the first replacement that can still use this constraint
-                // (i.e., hasn't been marked incomplete or already used all its LHS constraints)
-                for &replacement_idx in replacement_indices {
-                    let lhs_count = valid_replacements[replacement_idx].lhs.len();
-                    if replacement_lhs_found_count[replacement_idx] < lhs_count {
-                        // This replacement can claim this constraint
-                        replacement_lhs_found_count[replacement_idx] += 1;
-                        constraints_to_remove.insert(constraint.expression.clone());
-                        break; // First match wins
-                    }
-                }
+        // Check each replacement to see if this constraint is in its LHS
+        for (replacement_idx, replacement) in valid_replacements.iter().enumerate() {
+            if replacement.lhs.contains(&constraint.expression) {
+                // Mark this constraint as found for this replacement
+                replacement_lhs_matches[replacement_idx].insert(constraint.expression.clone());
             }
         }
     }
 
-    // Step 4: Determine which replacements are complete (all LHS constraints found)
+    // Step 3: Determine which replacements are complete (all LHS constraints found)
     let complete_replacements: Vec<_> = valid_replacements
         .iter()
         .enumerate()
-        .filter(|(idx, replacement)| replacement_lhs_found_count[*idx] == replacement.lhs.len())
+        .filter(|(idx, replacement)| {
+            // A replacement is complete if we found all its unique LHS constraints
+            let unique_lhs: HashSet<_> = replacement.lhs.iter().cloned().collect();
+            replacement_lhs_matches[*idx] == unique_lhs
+        })
         .collect();
 
     if complete_replacements.is_empty() {
         // Log which replacements were incomplete
         for (idx, replacement) in valid_replacements.iter().enumerate() {
-            if replacement_lhs_found_count[idx] != replacement.lhs.len() {
+            let unique_lhs: HashSet<_> = replacement.lhs.iter().cloned().collect();
+            if replacement_lhs_matches[idx] != unique_lhs {
+                let missing: Vec<_> = unique_lhs
+                    .difference(&replacement_lhs_matches[idx])
+                    .collect();
                 log::warn!(
-                    "Was about to replace constraints {} but found only {}/{} in the system.",
+                    "Was about to replace constraints {} but did not find {} in the system.",
                     replacement.lhs.iter().format(", "),
-                    replacement_lhs_found_count[idx],
-                    replacement.lhs.len()
+                    missing.iter().format(", ")
                 );
             }
         }
         return false;
     }
 
-    // Step 5: Build the set of expressions to actually remove (only from complete replacements)
-    let mut expressions_to_remove: HashSet<GroupedExpression<T, V>> = HashSet::new();
+    // Step 4: Handle conflicts - if multiple complete replacements want the same constraint,
+    // only the first one (in sorted order) gets it
+    let mut constraints_to_remove: HashSet<GroupedExpression<T, V>> = HashSet::new();
     let mut replacement_constraints = Vec::new();
+    let mut skipped_replacements = HashSet::new();
 
-    for (_idx, replacement) in complete_replacements {
-        // Add all LHS expressions from this complete replacement to the removal set
-        for lhs_expr in &replacement.lhs {
-            expressions_to_remove.insert(lhs_expr.clone());
+    for (idx, replacement) in complete_replacements {
+        // Check if any of this replacement's LHS constraints have already been claimed
+        let has_conflict = replacement
+            .lhs
+            .iter()
+            .any(|lhs_expr| constraints_to_remove.contains(lhs_expr));
+
+        if has_conflict {
+            // This replacement conflicts with an earlier one, skip it
+            skipped_replacements.insert(idx);
+            log::debug!(
+                "Skipping replacement of {} due to conflict with earlier replacement.",
+                replacement.lhs.iter().format(", ")
+            );
+        } else {
+            // No conflict, this replacement can proceed
+            // Add all LHS expressions to the removal set
+            for lhs_expr in &replacement.lhs {
+                constraints_to_remove.insert(lhs_expr.clone());
+            }
+            // Collect all RHS constraints to add
+            replacement_constraints.extend(replacement.rhs.iter().cloned());
         }
-        // Collect all RHS constraints to add
-        replacement_constraints.extend(replacement.rhs.iter().cloned());
     }
 
-    // Step 6: Remove old constraints and add new ones
-    system.retain_algebraic_constraints(|c| !expressions_to_remove.contains(&c.expression));
+    if constraints_to_remove.is_empty() {
+        // All replacements were skipped due to conflicts
+        return false;
+    }
+
+    // Step 5: Remove old constraints and add new ones
+    system.retain_algebraic_constraints(|c| !constraints_to_remove.contains(&c.expression));
     system.add_algebraic_constraints(
         replacement_constraints
             .into_iter()
