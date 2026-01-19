@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
 
 use crate::memory_optimizer::MemoryBusInteraction;
+use crate::symbolic_machine::{
+    symbolic_bus_interaction_to_bus_interaction, SymbolicBusInteraction,
+};
 use crate::symbolic_machine_generator::statements_to_symbolic_machines;
 use crate::{
     adapter::{Adapter, AdapterVmConfig},
@@ -9,9 +12,9 @@ use crate::{
     execution::{LocalOptimisticLiteral, OptimisticLiteral},
     expression::AlgebraicReference,
     memory_optimizer::MemoryOp,
-    optimizer::{optimize, symbolic_bus_interaction_to_bus_interaction},
+    optimizer::optimize,
 };
-use crate::{ColumnAllocator, SymbolicBusInteraction, SymbolicMachine};
+use crate::{ColumnAllocator, SymbolicMachine};
 use powdr_constraint_solver::inliner::DegreeBound;
 
 /// Maps an algebraic reference to an execution literal, if it represents the limb of a

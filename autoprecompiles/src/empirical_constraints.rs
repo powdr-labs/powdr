@@ -14,7 +14,7 @@ use crate::{
     adapter::Adapter,
     blocks::{BasicBlock, PcStep},
     expression::{AlgebraicExpression, AlgebraicReference},
-    SymbolicConstraint,
+    symbolic_machine::SymbolicConstraint,
 };
 
 /// "Constraints" that were inferred from execution statistics. They hold empirically

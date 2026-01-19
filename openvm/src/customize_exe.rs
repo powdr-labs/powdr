@@ -36,7 +36,7 @@ use powdr_autoprecompiles::evaluation::{evaluate_apc, EvaluationResult};
 use powdr_autoprecompiles::execution::ExecutionState;
 use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::pgo::{ApcCandidateJsonExport, Candidate, KnapsackItem};
-use powdr_autoprecompiles::SymbolicBusInteraction;
+use powdr_autoprecompiles::symbolic_machine::SymbolicBusInteraction;
 use powdr_autoprecompiles::VmConfig;
 use powdr_autoprecompiles::{Apc, PowdrConfig};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
