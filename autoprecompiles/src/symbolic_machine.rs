@@ -33,7 +33,6 @@ impl<T> IntoIterator for SymbolicInstructionStatement<T> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(transparent)]
 pub struct SymbolicConstraint<T> {
     pub expr: AlgebraicExpression<T>,
 }
