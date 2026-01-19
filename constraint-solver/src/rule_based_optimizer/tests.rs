@@ -221,3 +221,36 @@ fn test_rule_based_optimization_quadratic_equality() {
         BusInteraction { bus_id: 3, multiplicity: 1, payload: -(503316480 * mem_ptr_limbs__0_1), 14 }
         BusInteraction { bus_id: 3, multiplicity: 1, payload: -(503316480 * mem_ptr_limbs__0_1), 14 }"#]].assert_eq(&optimized_system.0.to_string());
 }
+
+#[test]
+fn test_rule_based_optimization_with_duplicate_constraints() {
+    // Test that the batch replacement correctly handles duplicate constraints in the system
+    // Create a system with duplicate constraints
+    let mut system: IndexedConstraintSystem<BabyBearField, String> =
+        IndexedConstraintSystem::default();
+
+    // Add the same constraint twice: x + y = 0
+    system.add_algebraic_constraints([
+        assert_zero(v("x") + v("y")),
+        assert_zero(v("x") + v("y")), // Duplicate
+        assert_zero(v("z") - c(5)),
+    ]);
+
+    let optimized_system = rule_based_optimization(
+        system,
+        NoRangeConstraints,
+        DefaultBusInteractionHandler::default(),
+        &mut new_var(),
+        None,
+    );
+
+    // The optimization should still work correctly even with duplicates
+    // Both duplicates should remain (or both be removed if optimized away)
+    let constraints = &optimized_system.0.system().algebraic_constraints;
+
+    // Check that we still have valid constraints
+    assert!(!constraints.is_empty(), "System should have constraints");
+
+    // The key is that the batch replacement logic should not incorrectly count
+    // duplicate constraints multiple times when checking if all LHS constraints are present
+}

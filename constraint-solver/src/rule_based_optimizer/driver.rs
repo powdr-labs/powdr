@@ -236,7 +236,6 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
             }
         }
 
-        // Process all replacement actions in batch
         progress |=
             batch_replace_algebraic_constraints(&mut system, replacement_actions, degree_bound);
 
@@ -347,22 +346,27 @@ fn batch_replace_algebraic_constraints<T: FieldElement, V: Hash + Eq + Ord + Clo
     }
 
     // Single pass through constraints to identify which LHS constraints are present
-    // Track which LHS constraints have been found for each replacement
-    let mut replacement_lhs_found_count: Vec<usize> = vec![0; valid_replacements.len()];
+    // Track which unique LHS constraints have been found for each replacement
+    let mut replacement_lhs_found: Vec<HashSet<&GroupedExpression<T, V>>> =
+        vec![HashSet::new(); valid_replacements.len()];
 
     for constraint in system.algebraic_constraints() {
         if let Some(replacement_indices) = lhs_to_replacement_indices.get(&constraint.expression) {
             for &replacement_idx in replacement_indices {
-                replacement_lhs_found_count[replacement_idx] += 1;
+                replacement_lhs_found[replacement_idx].insert(&constraint.expression);
             }
         }
     }
 
     // Determine which replacements are complete (all LHS constraints found)
+    // A replacement is complete if we found all unique LHS expressions
     let complete_replacement_indices: Vec<usize> = valid_replacements
         .iter()
         .enumerate()
-        .filter(|(idx, replacement)| replacement_lhs_found_count[*idx] == replacement.lhs.len())
+        .filter(|(idx, replacement)| {
+            let unique_lhs: HashSet<_> = replacement.lhs.iter().collect();
+            replacement_lhs_found[*idx].len() == unique_lhs.len()
+        })
         .map(|(idx, _)| idx)
         .collect();
 
@@ -401,12 +405,13 @@ fn batch_replace_algebraic_constraints<T: FieldElement, V: Hash + Eq + Ord + Clo
 
     // Log warnings for incomplete and skipped replacements
     for (idx, replacement) in valid_replacements.iter().enumerate() {
-        if replacement_lhs_found_count[idx] != replacement.lhs.len() {
+        let unique_lhs: HashSet<_> = replacement.lhs.iter().collect();
+        if replacement_lhs_found[idx].len() != unique_lhs.len() {
             log::warn!(
-                "Was about to replace constraints {} but found only {}/{} in the system.",
+                "Was about to replace constraints {} but found only {}/{} unique in the system.",
                 replacement.lhs.iter().format(", "),
-                replacement_lhs_found_count[idx],
-                replacement.lhs.len()
+                replacement_lhs_found[idx].len(),
+                unique_lhs.len()
             );
         } else if skipped_indices.contains(&idx) {
             log::debug!(
