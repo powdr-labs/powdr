@@ -16,6 +16,7 @@ use powdr_autoprecompiles::{trace_handler::TraceTrait, Apc};
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 
 use crate::{
+    customize_exe::OpenVmRegisterAddress,
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     powdr_extension::{
         chip::PowdrChipCpu,
@@ -71,7 +72,7 @@ impl<R, PB: ProverBackend<Matrix = Arc<RowMajorMatrix<BabyBear>>>> Chip<R, PB> f
 }
 
 pub struct PowdrTraceGeneratorCpu {
-    pub apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
+    pub apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, u32>>,
     pub original_airs: OriginalAirs<BabyBear>,
     pub config: OriginalVmConfig,
     pub periphery: PowdrPeripheryInstancesCpu,
@@ -79,7 +80,7 @@ pub struct PowdrTraceGeneratorCpu {
 
 impl PowdrTraceGeneratorCpu {
     pub fn new(
-        apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
+        apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, u32>>,
         original_airs: OriginalAirs<BabyBear>,
         config: OriginalVmConfig,
         periphery: PowdrPeripheryInstancesCpu,
@@ -100,7 +101,7 @@ impl PowdrTraceGeneratorCpu {
 
         let width = self.apc.machine().main_columns().count();
 
-        let original_arenas = match original_arenas {
+        let mut original_arenas = match original_arenas {
             OriginalArenas::Initialized(arenas) => arenas,
             OriginalArenas::Uninitialized => {
                 // if the arenas are uninitialized, the apc was not called, so we return an empty trace
@@ -122,8 +123,6 @@ impl PowdrTraceGeneratorCpu {
             .inventory
         };
 
-        let (mut arenas, num_apc_calls) = (original_arenas.arenas, original_arenas.number_of_calls);
-
         let dummy_trace_by_air_name: HashMap<String, SharedCpuTrace<BabyBear>> = chip_inventory
             .chips()
             .iter()
@@ -133,7 +132,7 @@ impl PowdrTraceGeneratorCpu {
                 let air_name = chip_inventory.airs().ext_airs()[insertion_idx].name();
 
                 let record_arena = {
-                    match arenas.remove(&air_name) {
+                    match original_arenas.take_real_arena(&air_name) {
                         Some(ra) => ra,
                         None => return None, // skip this iteration, because we only have record arena for chips that are used
                     }
@@ -153,13 +152,13 @@ impl PowdrTraceGeneratorCpu {
         } = generate_trace(
             &dummy_trace_by_air_name,
             &self.original_airs,
-            num_apc_calls,
+            original_arenas.number_of_calls,
             &self.apc,
         );
 
         // allocate for apc trace
         let width = apc_poly_id_to_index.len();
-        let height = next_power_of_two_or_zero(num_apc_calls);
+        let height = next_power_of_two_or_zero(original_arenas.number_of_calls);
         let mut values = <BabyBear as FieldAlgebra>::zero_vec(height * width);
 
         // go through the final table and fill in the values
@@ -188,16 +187,19 @@ impl PowdrTraceGeneratorCpu {
                     let col_index = apc_poly_id_to_index[&column.id];
                     row_slice[col_index] = match computation_method {
                         ComputationMethod::Constant(c) => *c,
-                        ComputationMethod::InverseOrZero(expr) => {
+                        ComputationMethod::QuotientOrZero(e1, e2) => {
                             use powdr_number::ExpressionConvertible;
 
-                            let expr_val = expr.to_expression(&|n| *n, &|column_ref| {
+                            let divisor_val = e2.to_expression(&|n| *n, &|column_ref| {
                                 row_slice[apc_poly_id_to_index[&column_ref.id]]
                             });
-                            if expr_val.is_zero() {
+                            if divisor_val.is_zero() {
                                 BabyBear::ZERO
                             } else {
-                                expr_val.inverse()
+                                divisor_val.inverse()
+                                    * e1.to_expression(&|n| *n, &|column_ref| {
+                                        row_slice[apc_poly_id_to_index[&column_ref.id]]
+                                    })
                             }
                         }
                     };

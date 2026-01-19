@@ -33,12 +33,15 @@ pub fn substitute_subexpressions<T: Clone + std::cmp::Ord>(
     });
 }
 
-pub trait UniqueReferences<'a, T: 'a> {
+pub trait UniqueReferences<'a, T: 'a, R> {
     /// Returns an iterator over the unique references
-    fn unique_references(&'a self) -> impl Iterator<Item = AlgebraicReference>;
+    fn unique_references(&'a self) -> impl Iterator<Item = R>;
 }
 
-impl<'a, T: 'a, E: AllChildren<AlgebraicExpression<T>>> UniqueReferences<'a, T> for E {
+impl<'a, T: 'a, E: AllChildren<AlgebraicExpression<T>>> UniqueReferences<'a, T, AlgebraicReference>
+    for E
+{
+    // Output unique column references sorted by ascending id of original instruction columns
     fn unique_references(&'a self) -> impl Iterator<Item = AlgebraicReference> {
         self.all_children()
             .filter_map(|e| {
@@ -48,7 +51,9 @@ impl<'a, T: 'a, E: AllChildren<AlgebraicExpression<T>>> UniqueReferences<'a, T> 
                     None
                 }
             })
-            .unique()
+            .map(|r| (r.id, r))
+            .collect::<BTreeMap<_, _>>()
+            .into_values()
     }
 }
 

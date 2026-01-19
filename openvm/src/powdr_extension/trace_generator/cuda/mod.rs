@@ -18,13 +18,15 @@ use openvm_stark_backend::{
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
     expression::{AlgebraicExpression, AlgebraicReference},
-    Apc, SymbolicBusInteraction,
+    symbolic_machine::SymbolicBusInteraction,
+    Apc,
 };
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 
 use crate::{
     cuda_abi::{self, DerivedExprSpec, DevInteraction, ExprSpan, OpCode, OriginalAir, Subst},
+    customize_exe::OpenVmRegisterAddress,
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     powdr_extension::{
         chip::PowdrChipGpu,
@@ -120,10 +122,12 @@ fn compile_derived_to_gpu(
                 bytecode.push(OpCode::PushConst as u32);
                 bytecode.push(c.as_canonical_u32());
             }
-            ComputationMethod::InverseOrZero(expr) => {
-                // Encode inner expression, then apply InvOrZero
-                emit_expr(&mut bytecode, expr, apc_poly_id_to_index, apc_height);
+            ComputationMethod::QuotientOrZero(e1, e2) => {
+                // Invert denominator (or use zero), then multiply with numerator.
+                emit_expr(&mut bytecode, e2, apc_poly_id_to_index, apc_height);
                 bytecode.push(OpCode::InvOrZero as u32);
+                emit_expr(&mut bytecode, e1, apc_poly_id_to_index, apc_height);
+                bytecode.push(OpCode::Mul as u32);
             }
         }
         let len = (bytecode.len() as u32) - off;
@@ -173,7 +177,7 @@ pub fn compile_bus_to_gpu(
 }
 
 pub struct PowdrTraceGeneratorGpu {
-    pub apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
+    pub apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, u32>>,
     pub original_airs: OriginalAirs<BabyBear>,
     pub config: OriginalVmConfig,
     pub periphery: PowdrPeripheryInstancesGpu,
@@ -181,7 +185,7 @@ pub struct PowdrTraceGeneratorGpu {
 
 impl PowdrTraceGeneratorGpu {
     pub fn new(
-        apc: Arc<Apc<BabyBear, Instr<BabyBear>>>,
+        apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, u32>>,
         original_airs: OriginalAirs<BabyBear>,
         config: OriginalVmConfig,
         periphery: PowdrPeripheryInstancesGpu,
@@ -198,7 +202,7 @@ impl PowdrTraceGeneratorGpu {
         &self,
         original_arenas: OriginalArenas<DenseRecordArena>,
     ) -> Option<DeviceMatrix<BabyBear>> {
-        let original_arenas = match original_arenas {
+        let mut original_arenas = match original_arenas {
             OriginalArenas::Initialized(arenas) => arenas,
             OriginalArenas::Uninitialized => {
                 // if the arenas are uninitialized, the apc was not called, so we return early
@@ -220,8 +224,6 @@ impl PowdrTraceGeneratorGpu {
             .inventory
         };
 
-        let (mut arenas, num_apc_calls) = (original_arenas.arenas, original_arenas.number_of_calls);
-
         let dummy_trace_by_air_name: HashMap<String, DeviceMatrix<BabyBear>> = chip_inventory
             .chips()
             .iter()
@@ -231,15 +233,16 @@ impl PowdrTraceGeneratorGpu {
                 let air_name = chip_inventory.airs().ext_airs()[insertion_idx].name();
 
                 let record_arena = {
-                    match arenas.remove(&air_name) {
+                    match original_arenas.take_real_arena(&air_name) {
                         Some(ra) => ra,
                         None => return None, // skip this iteration, because we only have record arena for chips that are used
                     }
                 };
 
-                let shared_trace = chip.generate_proving_ctx(record_arena).common_main.unwrap();
-
-                Some((air_name, shared_trace))
+                // We might have initialized an arena for an AIR which ends up having no real records. It gets filtered out here.
+                chip.generate_proving_ctx(record_arena)
+                    .common_main
+                    .map(|m| (air_name, m))
             })
             .collect();
 
@@ -254,7 +257,7 @@ impl PowdrTraceGeneratorGpu {
 
         // allocate for apc trace
         let width = apc_poly_id_to_index.len();
-        let height = next_power_of_two_or_zero(num_apc_calls);
+        let height = next_power_of_two_or_zero(original_arenas.number_of_calls);
         let mut output = DeviceMatrix::<BabyBear>::with_capacity(height, width);
 
         // Prepare `OriginalAir` and `Subst` arrays
@@ -266,7 +269,13 @@ impl PowdrTraceGeneratorGpu {
                 // along with their substitutions
                 .zip_eq(self.apc.subs())
                 // map to `(air_name, substitutions)`
-                .map(|(instr, subs)| (&self.original_airs.opcode_to_air[&instr.0.opcode], subs))
+                .filter_map(|(instr, subs)| {
+                    if subs.is_empty() {
+                        None
+                    } else {
+                        Some((&self.original_airs.opcode_to_air[&instr.0.opcode], subs))
+                    }
+                })
                 // group by air name. This results in `HashMap<air_name, Vec<subs>>` where the length of the vector is the number of rows which are created in this air, per apc call
                 .into_group_map()
                 // go through each air and its substitutions
@@ -315,7 +324,13 @@ impl PowdrTraceGeneratorGpu {
         let airs = airs.to_device().unwrap();
         let substitutions = substitutions.to_device().unwrap();
 
-        cuda_abi::apc_tracegen(&mut output, airs, substitutions, num_apc_calls).unwrap();
+        cuda_abi::apc_tracegen(
+            &mut output,
+            airs,
+            substitutions,
+            original_arenas.number_of_calls,
+        )
+        .unwrap();
 
         // Apply derived columns using the GPU expression evaluator
         let (derived_specs, derived_bc) = compile_derived_to_gpu(
@@ -326,7 +341,13 @@ impl PowdrTraceGeneratorGpu {
         // In practice `d_specs` is never empty, because we will always have `is_valid`
         let d_specs = derived_specs.to_device().unwrap();
         let d_bc = derived_bc.to_device().unwrap();
-        cuda_abi::apc_apply_derived_expr(&mut output, d_specs, d_bc, num_apc_calls).unwrap();
+        cuda_abi::apc_apply_derived_expr(
+            &mut output,
+            d_specs,
+            d_bc,
+            original_arenas.number_of_calls,
+        )
+        .unwrap();
 
         // Encode bus interactions for GPU consumption
         let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
@@ -363,7 +384,7 @@ impl PowdrTraceGeneratorGpu {
         cuda_abi::apc_apply_bus(
             // APC related
             &output,
-            num_apc_calls,
+            original_arenas.number_of_calls,
             // Interaction related
             bytecode,
             bus_interactions,

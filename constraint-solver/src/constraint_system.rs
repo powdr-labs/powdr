@@ -4,6 +4,7 @@ use crate::{
     range_constraint::RangeConstraint,
     runtime_constant::{RuntimeConstant, Substitutable},
 };
+use derivative::Derivative;
 use itertools::Itertools;
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
@@ -12,7 +13,8 @@ use std::{fmt::Display, hash::Hash};
 pub use crate::algebraic_constraint::AlgebraicConstraint;
 
 /// Description of a constraint system.
-#[derive(Clone)]
+#[derive(Derivative)]
+#[derivative(Default(bound = ""), Clone)]
 pub struct ConstraintSystem<T, V> {
     /// The algebraic expressions which have to evaluate to zero.
     pub algebraic_constraints: Vec<AlgebraicConstraint<GroupedExpression<T, V>>>,
@@ -21,16 +23,6 @@ pub struct ConstraintSystem<T, V> {
     pub bus_interactions: Vec<BusInteraction<GroupedExpression<T, V>>>,
     /// Newly added variables whose values are derived from existing variables.
     pub derived_variables: Vec<DerivedVariable<T, V>>,
-}
-
-impl<T, V> Default for ConstraintSystem<T, V> {
-    fn default() -> Self {
-        ConstraintSystem {
-            algebraic_constraints: Vec::new(),
-            bus_interactions: Vec::new(),
-            derived_variables: Vec::new(),
-        }
-    }
 }
 
 impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display for ConstraintSystem<T, V> {
@@ -94,15 +86,16 @@ pub struct DerivedVariable<T, V> {
 pub enum ComputationMethod<T, E> {
     /// A constant value.
     Constant(T),
-    /// The field inverse of an expression if it exists or zero otherwise.
-    InverseOrZero(E),
+    /// The quotiont (using inversion in the field) of the first argument
+    /// by the second argument, or zero if the latter is zero.
+    QuotientOrZero(E, E),
 }
 
 impl<T: Display, E: Display> Display for ComputationMethod<T, E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ComputationMethod::Constant(c) => write!(f, "{c}"),
-            ComputationMethod::InverseOrZero(e) => write!(f, "InverseOrZero({e})"),
+            ComputationMethod::QuotientOrZero(e1, e2) => write!(f, "QuotientOrZero({e1}, {e2})"),
         }
     }
 }
@@ -112,7 +105,10 @@ impl<T, F> ComputationMethod<T, GroupedExpression<T, F>> {
     pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &F> + '_> {
         match self {
             ComputationMethod::Constant(_) => Box::new(std::iter::empty()),
-            ComputationMethod::InverseOrZero(e) => e.referenced_unknown_variables(),
+            ComputationMethod::QuotientOrZero(e1, e2) => Box::new(
+                e1.referenced_unknown_variables()
+                    .chain(e2.referenced_unknown_variables()),
+            ),
         }
     }
 }
@@ -125,8 +121,9 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq>
     pub fn substitute_by_known(&mut self, variable: &V, substitution: &T) {
         match self {
             ComputationMethod::Constant(_) => {}
-            ComputationMethod::InverseOrZero(e) => {
-                e.substitute_by_known(variable, substitution);
+            ComputationMethod::QuotientOrZero(e1, e2) => {
+                e1.substitute_by_known(variable, substitution);
+                e2.substitute_by_known(variable, substitution);
             }
         }
     }
@@ -138,8 +135,9 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq>
     pub fn substitute_by_unknown(&mut self, variable: &V, substitution: &GroupedExpression<T, V>) {
         match self {
             ComputationMethod::Constant(_) => {}
-            ComputationMethod::InverseOrZero(e) => {
-                e.substitute_by_unknown(variable, substitution);
+            ComputationMethod::QuotientOrZero(e1, e2) => {
+                e1.substitute_by_unknown(variable, substitution);
+                e2.substitute_by_unknown(variable, substitution);
             }
         }
     }
@@ -310,7 +308,7 @@ pub trait BusInteractionHandler<T: FieldElement> {
 
 /// A default bus interaction handler that does nothing. Using it is
 /// equivalent to ignoring bus interactions.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct DefaultBusInteractionHandler<T: FieldElement> {
     _marker: std::marker::PhantomData<T>,
 }

@@ -2,7 +2,7 @@ name: Nightly tests
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 2 * * *" # run at 2 AM UTC
+    - cron: "0 23 * * *" # run at 11pm UTC
 
 env:
   CARGO_TERM_COLOR: always
@@ -12,49 +12,6 @@ env:
   POWDR_OPENVM_SEGMENT_DELTA: 50000
 
 jobs:
-  check_if_needs_running:
-    runs-on: ubuntu-24.04
-    outputs:
-      status: ${{ steps.count.outputs.status }}
-
-    steps:
-      - uses: actions/checkout@v4
-      - name: Count recent commits
-        id: count
-        run: echo "status=$(git log --oneline --since '24 hours ago' | wc -l)" >> $GITHUB_OUTPUT
-
-  test_release:
-    runs-on: ubuntu-24.04
-    needs: check_if_needs_running
-    if: needs.check_if_needs_running.outputs.status > 0
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: ⚡ Cache rust
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.toml') }}
-      - name: Install Rust toolchain 1.88
-        run: rustup toolchain install 1.88
-      - name: Install nightly
-        run: rustup toolchain install nightly-2025-10-01 --component rust-src
-      - name: Install nightly
-        run: rustup toolchain install nightly-2025-02-14 --component rust-src
-      - name: Install riscv target
-        run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2025-10-01
-      - name: Install test dependencies
-        run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
-      - name: Build
-        run: cargo build --all --release --features "metrics"
-      - name: Run tests
-        run: cargo test --all --release --verbose --features "metrics" --exclude powdr-openvm -- --include-ignored --nocapture --test-threads=2
-
   bench:
     runs-on: warp-ubuntu-2404-x64-4x
     permissions:
@@ -79,8 +36,8 @@ jobs:
           key: ${{ runner.os }}-cargo-pr-tests
       - name: Install Rust toolchain nightly-2025-10-01 (with clippy and rustfmt)
         run: rustup toolchain install nightly-2025-10-01 --component clippy,rustfmt,rust-src
-      - name: Install Rust toolchain 1.88
-        run: rustup toolchain install 1.88
+      - name: Install Rust toolchain 1.90
+        run: rustup toolchain install 1.90
       - name: Install riscv target
         run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2025-10-01
       - name: Install test dependencies
@@ -101,7 +58,7 @@ jobs:
           summary-always: true
 
   test_apc:
-    runs-on: self-hosted
+    runs-on: server-dev
 
     steps:
       - uses: actions/checkout@v4
@@ -121,10 +78,10 @@ jobs:
         run: cargo build --release -p powdr-openvm
 
       - name: Install cargo openvm
-        # Rust 1.88 is needed by fresher versions of dependencies of cargo-openvm.
+        # Rust 1.90 is needed by fresher versions of dependencies of cargo-openvm.
         run: |
-          rustup toolchain install 1.88
-          cargo +1.88 install --git 'http://github.com/openvm-org/openvm.git' cargo-openvm
+          rustup toolchain install 1.90
+          cargo +1.90 install --git 'http://github.com/openvm-org/openvm.git' cargo-openvm
 
       - name: Setup python venv
         run: |
@@ -155,7 +112,7 @@ jobs:
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
 
           # prove with no APCs
-          MODE="prove-stark" APC=0 ./run.sh || exit 1
+          ./run.sh --apc 0 --mode prove-stark || exit 1
           # remove apc cache to not interfere with the next runs
           rm -rf apc-cache
           echo "Finished proving with no APCs"
@@ -163,7 +120,7 @@ jobs:
           python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc000.png $RES_DIR/apc000.json > $RES_DIR/trace_cells_apc000.txt
 
           # prove with 3 APCs
-          MODE="prove-stark" APC=3 ./run.sh || exit 1
+          ./run.sh --apc 3 --mode prove-stark || exit 1
           # remove apc cache to not interfere with the next runs
           rm -rf apc-cache
           echo "Finished proving with 3 APCs"
@@ -171,7 +128,7 @@ jobs:
           python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc003.png $RES_DIR/apc003.json > $RES_DIR/trace_cells_apc003.txt
 
           # prove with 10 APCs
-          MODE="prove-stark" APC=10 ./run.sh || exit 1
+          ./run.sh --apc 10 --mode prove-stark || exit 1
           # remove apc cache to not interfere with the next runs
           rm -rf apc-cache
           echo "Finished proving with 10 APCs"
@@ -179,7 +136,7 @@ jobs:
           python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc010.png $RES_DIR/apc010.json > $RES_DIR/trace_cells_apc010.txt
 
           # prove with 30 APCs
-          MODE="prove-stark" APC=30 ./run.sh || exit 1
+          ./run.sh --apc 30 --mode prove-stark || exit 1
           # remove apc cache to not interfere with the next runs
           rm -rf apc-cache
           echo "Finished proving with 30 APCs"
@@ -187,7 +144,7 @@ jobs:
           python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc030.png $RES_DIR/apc030.json > $RES_DIR/trace_cells_apc030.txt
 
           # prove with 100 APCs, recording mem usage
-          MODE="prove-stark" APC=100 psrecord --include-children --interval 1 --log $RES_DIR/psrecord.csv --log-format csv --plot $RES_DIR/psrecord.png "./run.sh" || exit 1
+          psrecord --include-children --interval 1 --log $RES_DIR/psrecord.csv --log-format csv --plot $RES_DIR/psrecord.png "./run.sh --apc 100 --mode prove-stark" || exit 1
           # remove apc cache to not interfere with the next runs
           rm -rf apc-cache
           echo "Finished proving with 100 APCs"

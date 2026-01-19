@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 
 use std::fmt::Display;
 use std::hash::Hash;
@@ -9,15 +9,18 @@ use std::sync::Arc;
 use crate::bus_map::OpenVmBusType;
 use crate::extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs, OriginalVmConfig};
 use crate::instruction_formatter::openvm_instruction_formatter;
-use crate::memory_bus_interaction::OpenVmMemoryBusInteraction;
-use crate::opcode::branch_opcodes_bigint_set;
+use crate::memory_bus_interaction::{OpenVmMemoryBusInteraction, REGISTER_ADDRESS_SPACE};
 use crate::powdr_extension::chip::PowdrAir;
+use crate::program::Prog;
 use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::OriginalCompiledProgram;
 use crate::{CompiledProgram, SpecializedConfig};
+use derive_more::From;
 use itertools::Itertools;
+use openvm_circuit::arch::VmState;
+use openvm_circuit::system::memory::online::GuestMemory;
 use openvm_instructions::instruction::Instruction as OpenVmInstruction;
-use openvm_instructions::program::{Program as OpenVmProgram, DEFAULT_PC_STEP};
+use openvm_instructions::program::DEFAULT_PC_STEP;
 use openvm_instructions::VmOpcode;
 use openvm_stark_backend::{
     interaction::SymbolicInteraction,
@@ -27,11 +30,13 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::adapter::{
     Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig, ApcWithStats, PgoAdapter,
 };
-use powdr_autoprecompiles::blocks::{collect_basic_blocks, BasicBlock, Instruction, Program};
+use powdr_autoprecompiles::blocks::{BasicBlock, Instruction, PcStep};
+use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::evaluation::{evaluate_apc, EvaluationResult};
+use powdr_autoprecompiles::execution::ExecutionState;
 use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::pgo::{ApcCandidateJsonExport, Candidate, KnapsackItem};
-use powdr_autoprecompiles::SymbolicBusInteraction;
+use powdr_autoprecompiles::symbolic_machine::SymbolicBusInteraction;
 use powdr_autoprecompiles::VmConfig;
 use powdr_autoprecompiles::{Apc, PowdrConfig};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
@@ -52,6 +57,37 @@ pub struct BabyBearOpenVmApcAdapter<'a> {
     _marker: std::marker::PhantomData<&'a ()>,
 }
 
+#[derive(From)]
+pub struct OpenVmExecutionState<'a, T>(&'a VmState<T, GuestMemory>);
+
+// TODO: This is not tested yet as apc compilation does not currently output any optimistic constraints
+impl<'a, T: PrimeField32> ExecutionState for OpenVmExecutionState<'a, T> {
+    type RegisterAddress = OpenVmRegisterAddress;
+    type Value = u32;
+
+    fn pc(&self) -> Self::Value {
+        self.0.pc()
+    }
+
+    fn reg(&self, addr: &Self::RegisterAddress) -> Self::Value {
+        unsafe {
+            self.0
+                .memory
+                .memory
+                .get_f::<T>(REGISTER_ADDRESS_SPACE, addr.0 as u32)
+                .as_canonical_u32()
+        }
+    }
+
+    fn value_limb(value: Self::Value, limb_index: usize) -> Self::Value {
+        value >> (limb_index * 8) & 0xff
+    }
+}
+
+/// A type to represent register addresses during execution
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct OpenVmRegisterAddress(u8);
+
 impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     type PowdrField = BabyBearField;
     type Field = BabyBear;
@@ -64,6 +100,7 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     type CustomBusTypes = OpenVmBusType;
     type ApcStats = OvmApcStats;
     type AirId = String;
+    type ExecutionState = OpenVmExecutionState<'a, BabyBear>;
 
     fn into_field(e: Self::PowdrField) -> Self::Field {
         openvm_stark_sdk::p3_baby_bear::BabyBear::from_canonical_u32(
@@ -73,16 +110,6 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
 
     fn from_field(e: Self::Field) -> Self::PowdrField {
         BabyBearField::from(e.as_canonical_u32())
-    }
-}
-
-/// A newtype wrapper around `OpenVmProgram` to implement the `Program` trait.
-/// This is necessary because we cannot implement a foreign trait for a foreign type.
-pub struct Prog<'a, F>(&'a OpenVmProgram<F>);
-
-impl<'a, F> From<&'a OpenVmProgram<F>> for Prog<'a, F> {
-    fn from(program: &'a OpenVmProgram<F>) -> Self {
-        Prog(program)
     }
 }
 
@@ -97,8 +124,14 @@ impl<F: PrimeField32> Display for Instr<F> {
     }
 }
 
+impl<F> PcStep for Instr<F> {
+    fn pc_step() -> u32 {
+        DEFAULT_PC_STEP
+    }
+}
+
 impl<F: PrimeField32> Instruction<F> for Instr<F> {
-    fn pc_lookup_row(&self, pc: Option<u64>) -> Vec<Option<F>> {
+    fn pc_lookup_row(&self, pc: u64) -> Vec<F> {
         let args = [
             self.0.opcode.to_field(),
             self.0.a,
@@ -111,59 +144,27 @@ impl<F: PrimeField32> Instruction<F> for Instr<F> {
         ];
         // The PC lookup row has the format:
         // [pc, opcode, a, b, c, d, e, f, g]
-        let pc = pc.map(|pc| F::from_canonical_u32(pc.try_into().unwrap()));
-        once(pc).chain(args.into_iter().map(Some)).collect()
-    }
-}
-
-impl<'a, F: PrimeField32> Program<Instr<F>> for Prog<'a, F> {
-    fn base_pc(&self) -> u64 {
-        self.0.pc_base as u64
-    }
-
-    fn pc_step(&self) -> u32 {
-        DEFAULT_PC_STEP
-    }
-
-    fn instructions(&self) -> Box<dyn Iterator<Item = Instr<F>> + '_> {
-        Box::new(
-            self.0
-                .instructions_and_debug_infos
-                .iter()
-                .filter_map(|x| x.as_ref().map(|i| Instr(i.0.clone()))),
-        )
-    }
-
-    fn length(&self) -> u32 {
-        self.0.instructions_and_debug_infos.len() as u32
+        let pc = F::from_canonical_u32(pc.try_into().unwrap());
+        once(pc).chain(args).collect()
     }
 }
 
 pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
-    OriginalCompiledProgram {
-        exe,
-        vm_config,
-        elf,
-    }: OriginalCompiledProgram,
+    original_program: OriginalCompiledProgram,
     config: PowdrConfig,
     pgo: P,
+    empirical_constraints: EmpiricalConstraints,
 ) -> CompiledProgram {
-    let labels = elf.text_labels();
-    let debug_info = elf.debug_info();
-    let original_config = OriginalVmConfig::new(vm_config.clone());
+    let original_config = OriginalVmConfig::new(original_program.vm_config.clone());
     let airs = original_config.airs(config.degree_bound.identities).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
     let bus_map = original_config.bus_map();
 
-    let jumpdest_set = add_extra_targets(
-        &exe.program,
-        labels.clone(),
-        exe.program.pc_base,
-        DEFAULT_PC_STEP,
-    );
-
-    let program = Prog(&exe.program);
-
-    let range_tuple_checker_sizes = vm_config.sdk.rv32m.unwrap().range_tuple_checker_sizes;
+    let range_tuple_checker_sizes = original_program
+        .vm_config
+        .sdk
+        .rv32m
+        .unwrap()
+        .range_tuple_checker_sizes;
     let vm_config = VmConfig {
         instruction_handler: &airs,
         bus_interaction_handler: OpenVmBusInteractionHandler::new(
@@ -173,13 +174,9 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         bus_map: bus_map.clone(),
     };
 
-    // Convert the jump destinations to u64 for compatibility with the `collect_basic_blocks` function.
-    let jumpdest_set = jumpdest_set
-        .iter()
-        .map(|&x| x as u64)
-        .collect::<BTreeSet<_>>();
-
-    let blocks = collect_basic_blocks::<BabyBearOpenVmApcAdapter>(&program, &jumpdest_set, &airs);
+    let blocks = original_program.collect_basic_blocks(config.degree_bound.identities);
+    let exe = original_program.exe;
+    let debug_info = original_program.elf.debug_info();
     tracing::info!(
         "Got {} basic blocks from `collect_basic_blocks`",
         blocks.len()
@@ -218,7 +215,13 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         .collect();
 
     let start = std::time::Instant::now();
-    let apcs = pgo.filter_blocks_and_create_apcs_with_pgo(blocks, &config, vm_config, labels);
+    let apcs = pgo.filter_blocks_and_create_apcs_with_pgo(
+        blocks,
+        &config,
+        vm_config,
+        labels,
+        empirical_constraints.apply_pc_threshold(),
+    );
     metrics::gauge!("total_apc_gen_time_ms").set(start.elapsed().as_millis() as f64);
 
     let pc_base = exe.program.pc_base;
@@ -264,36 +267,6 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
     }
 }
 
-/// Besides the base RISCV-V branching instructions, the bigint extension adds two more branching
-/// instruction classes over BranchEqual and BranchLessThan.
-/// Those instructions have the form <INSTR rs0 rs1 target_offset ...>, where target_offset is the
-/// relative jump we're interested in.
-/// This means that for a given program address A containing the instruction above,
-/// we add A + target_offset as a target as well.
-fn add_extra_targets<F: PrimeField32>(
-    program: &OpenVmProgram<F>,
-    mut labels: BTreeSet<u32>,
-    base_pc: u32,
-    pc_step: u32,
-) -> BTreeSet<u32> {
-    let branch_opcodes_bigint = branch_opcodes_bigint_set();
-    let new_labels = program
-        .instructions_and_debug_infos
-        .iter()
-        .enumerate()
-        .filter_map(|(i, instr)| {
-            let instr = instr.as_ref().unwrap().0.clone();
-            let adjusted_pc = base_pc + (i as u32) * pc_step;
-            let op = instr.opcode;
-            branch_opcodes_bigint
-                .contains(&op)
-                .then_some(adjusted_pc + instr.c.as_canonical_u32())
-        });
-    labels.extend(new_labels);
-
-    labels
-}
-
 pub fn openvm_bus_interaction_to_powdr<F: PrimeField32>(
     interaction: &SymbolicInteraction<F>,
     columns: &[Arc<String>],
@@ -312,7 +285,7 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32>(
 
 #[derive(Serialize, Deserialize)]
 pub struct OpenVmApcCandidate<F, I> {
-    apc: Arc<Apc<F, I>>,
+    apc: Arc<Apc<F, I, OpenVmRegisterAddress, u32>>,
     execution_frequency: usize,
     widths: AirWidthsDiff,
     stats: EvaluationResult,

@@ -1,5 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use powdr_autoprecompiles::{optimizer::optimize, SymbolicMachine};
+use powdr_autoprecompiles::{
+    optimizer::optimize, symbolic_machine::SymbolicMachine, ColumnAllocator,
+};
 use powdr_number::BabyBearField;
 use powdr_openvm::{
     bus_interaction_handler::OpenVmBusInteractionHandler, bus_map::default_openvm_bus_map,
@@ -14,16 +16,21 @@ fn optimize_keccak_benchmark(c: &mut Criterion) {
     let file = std::fs::File::open("tests/keccak_apc_pre_opt.cbor").unwrap();
     let reader = std::io::BufReader::new(file);
     let machine: SymbolicMachine<BabyBearField> = serde_cbor::from_reader(reader).unwrap();
-
     group.bench_function("optimize", |b| {
         b.iter_batched(
-            || machine.clone(),
-            |machine| {
+            || {
+                (
+                    machine.clone(),
+                    ColumnAllocator::from_max_poly_id_of_machine(&machine),
+                )
+            },
+            |(machine, column_allocator)| {
                 optimize::<BabyBearOpenVmApcAdapter>(
                     black_box(machine),
                     OpenVmBusInteractionHandler::default(),
                     DEFAULT_DEGREE_BOUND,
                     &default_openvm_bus_map(),
+                    column_allocator,
                 )
                 .unwrap()
             },

@@ -17,7 +17,7 @@ env:
 
 jobs:
   test_guests_apc:
-    runs-on: self-hosted
+    runs-on: server-dev
 
     steps:
       - uses: actions/checkout@v4
@@ -37,10 +37,10 @@ jobs:
         run: cargo build --release -p powdr-openvm
 
       - name: Install cargo openvm
-        # Rust 1.88 is needed by fresher versions of dependencies of cargo-openvm.
+        # Rust 1.90 is needed by fresher versions of dependencies of cargo-openvm.
         run: |
-          rustup toolchain install 1.88
-          cargo +1.88 install --git 'http://github.com/openvm-org/openvm.git' cargo-openvm
+          rustup toolchain install 1.90
+          cargo +1.90 install --git 'http://github.com/openvm-org/openvm.git' cargo-openvm
 
       - name: Run keccak with 100 APCs
         run: /usr/bin/time -v cargo run --bin powdr_openvm -r prove guest-keccak --input 10000 --autoprecompiles 100 --recursion
@@ -62,7 +62,7 @@ jobs:
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
 
           # prove with 100 APCs
-          MODE="prove-stark" APC=100 /usr/bin/time -v ./run.sh || exit 1
+          /usr/bin/time -v ./run.sh --apc 100  --mode prove-stark || exit 1
           echo "Finished proving with 100 APCs"
 
       - name: Save revisions and run info

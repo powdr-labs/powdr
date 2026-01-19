@@ -8,6 +8,7 @@ use crate::powdr_extension::executor::RecordArenaDimension;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
 use crate::{AirMetrics, ExtendedVmConfig, ExtendedVmConfigExecutor, Instr};
 use crate::{BabyBearPoseidon2Engine, ExtendedVmConfigCpuBuilder};
+use itertools::Itertools;
 use openvm_circuit::arch::{
     AirInventory, AirInventoryError, ExecutorInventory, ExecutorInventoryError, MatrixRecordArena,
     SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig, VmExecutionConfig,
@@ -35,7 +36,8 @@ use openvm_stark_sdk::p3_baby_bear::{self, BabyBear};
 use powdr_autoprecompiles::bus_map::BusType;
 use powdr_autoprecompiles::evaluation::AirStats;
 use powdr_autoprecompiles::expression::try_convert;
-use powdr_autoprecompiles::{Apc, InstructionHandler, SymbolicMachine};
+use powdr_autoprecompiles::symbolic_machine::SymbolicMachine;
+use powdr_autoprecompiles::{Apc, InstructionHandler};
 use serde::{Deserialize, Serialize};
 use std::iter::Sum;
 use std::ops::Deref;
@@ -44,7 +46,7 @@ use std::sync::MutexGuard;
 
 use crate::utils::UnsupportedOpenVmReferenceError;
 
-use crate::customize_exe::openvm_bus_interaction_to_powdr;
+use crate::customize_exe::{openvm_bus_interaction_to_powdr, OpenVmRegisterAddress};
 use crate::utils::symbolic_to_algebraic;
 
 // TODO: Use `<PackedChallenge<BabyBearSC> as FieldExtensionAlgebra<Val<BabyBearSC>>>::D` instead after fixing p3 dependency
@@ -52,7 +54,10 @@ const EXT_DEGREE: usize = 4;
 
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct OriginalAirs<F> {
+    /// Maps a VM opcode to the name of the (unique) AIR that implements it.
     pub(crate) opcode_to_air: HashMap<VmOpcode, String>,
+    /// Maps an AIR name to its symbolic machine and metrics.
+    /// Note that this map only contains AIRs that implement instructions.
     pub(crate) air_name_to_machine: BTreeMap<String, (SymbolicMachine<F>, AirMetrics)>,
 }
 
@@ -134,30 +139,38 @@ impl<F> OriginalAirs<F> {
 /// For each air name, the dimension of a record arena needed to store the
 /// records for a single APC call.
 pub fn record_arena_dimension_by_air_name_per_apc_call<F>(
-    apc: &Apc<F, Instr<F>>,
+    apc: &Apc<F, Instr<F>, OpenVmRegisterAddress, u32>,
     air_by_opcode_id: &OriginalAirs<F>,
-) -> HashMap<String, RecordArenaDimension> {
-    apc.instructions().iter().map(|instr| &instr.0.opcode).fold(
-        HashMap::new(),
-        |mut acc, opcode| {
-            // Get the air name for this opcode
-            let air_name = air_by_opcode_id.opcode_to_air.get(opcode).unwrap();
+) -> BTreeMap<String, RecordArenaDimension> {
+    apc.instructions()
+        .iter()
+        .map(|instr| &instr.0.opcode)
+        .zip_eq(apc.subs.iter().map(|sub| sub.is_empty()))
+        .fold(
+            BTreeMap::new(),
+            |mut acc, (opcode, should_use_dummy_arena)| {
+                // Get the air name for this opcode
+                let air_name = air_by_opcode_id.opcode_to_air.get(opcode).unwrap();
 
-            // Increment the height for this air name, initializing if necessary
-            acc.entry(air_name.clone())
-                .or_insert_with(|| {
+                // Increment the height for this air name, initializing if necessary
+                let entry = acc.entry(air_name.clone()).or_insert_with(|| {
                     let (_, air_metrics) =
                         air_by_opcode_id.air_name_to_machine.get(air_name).unwrap();
 
                     RecordArenaDimension {
-                        height: 0,
+                        real_height: 0,
                         width: air_metrics.widths.main,
+                        dummy_height: 0,
                     }
-                })
-                .height += 1;
-            acc
-        },
-    )
+                });
+                if should_use_dummy_arena {
+                    entry.dummy_height += 1;
+                } else {
+                    entry.real_height += 1;
+                }
+                acc
+            },
+        )
 }
 
 type ChipComplex = VmChipComplex<

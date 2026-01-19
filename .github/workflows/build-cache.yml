@@ -26,20 +26,18 @@ jobs:
       run: rustup toolchain install nightly-2025-10-01 --component clippy,rustfmt
     - name: Install Rust toolchain
       run: rustup toolchain install nightly-2025-02-14 --component rust-src
-    - name: Install Rust toolchain 1.88 (stable)
-      run: rustup toolchain install 1.88
+    - name: Install Rust toolchain 1.90 (stable)
+      run: rustup toolchain install 1.90
     - name: Set cargo to perform shallow clones
       run: echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
     - name: Format
       run: cargo fmt --all --check --verbose
-    - name: Cargo check with Rust 1.88 (default features)
-      run: cargo +1.88 check --all-targets
+    - name: Cargo check with Rust 1.90 (default features)
+      run: cargo +1.90 check --all-targets
     - name: Lint no default features
       run: cargo clippy --all --all-targets --no-default-features --profile pr-tests --verbose -- -D warnings
-    - name: Lint all features
-      run: cargo clippy --all --all-targets --all-features --profile pr-tests --verbose -- -D warnings
     - name: Build
-      run: cargo build --all-targets --all --all-features --profile pr-tests --verbose
+      run: cargo build --all-targets --features metrics --all --profile pr-tests --verbose
     ###############################################################################
 
     - name: Delete the old cache

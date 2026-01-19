@@ -1,3 +1,4 @@
+use derivative::Derivative;
 use itertools::Itertools;
 use powdr_number::FieldElement;
 
@@ -12,7 +13,7 @@ use crate::solver::boolean_extractor::BooleanExtractor;
 use crate::solver::constraint_splitter::try_split_constraint;
 use crate::solver::linearizer::Linearizer;
 use crate::solver::var_transformation::Variable;
-use crate::solver::{exhaustive_search, quadratic_equivalences, Error, Solver, VariableAssignment};
+use crate::solver::{exhaustive_search, Error, Solver, VariableAssignment};
 use crate::utils::possible_concrete_values;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -231,6 +232,13 @@ where
             })
     }
 
+    fn try_to_equivalent_constant(&self, expr: &GroupedExpression<T, V>) -> Option<T> {
+        self.linearizer
+            .internalized_versions_of_expression(expr)
+            .filter_map(|e| e.try_to_number())
+            .next()
+    }
+
     fn are_expressions_known_to_be_different(
         &mut self,
         a: &GroupedExpression<T, V>,
@@ -326,8 +334,6 @@ where
             let mut progress = false;
             // Try solving constraints in isolation.
             progress |= self.solve_in_isolation()?;
-            // Try to find equivalent variables using quadratic constraints.
-            progress |= self.try_solve_quadratic_equivalences();
 
             if !progress {
                 // This might be expensive, so we only do it if we made no progress
@@ -370,18 +376,6 @@ where
             }
         }
         Ok(progress)
-    }
-
-    /// Tries to find equivalent variables using quadratic constraints.
-    fn try_solve_quadratic_equivalences(&mut self) -> bool {
-        let equivalences = quadratic_equivalences::find_quadratic_equalities(
-            self.constraint_system.system().algebraic_constraints(),
-            &*self,
-        );
-        for (x, y) in &equivalences {
-            self.apply_assignment(y, &GroupedExpression::from_unknown_variable(x.clone()));
-        }
-        !equivalences.is_empty()
     }
 
     /// Find groups of variables with a small set of possible assignments.
@@ -606,17 +600,10 @@ fn try_to_simple_equivalence<T: FieldElement, V: Clone + Ord + Eq>(
 }
 
 /// The currently known range constraints for the variables.
+#[derive(Derivative)]
+#[derivative(Default(bound = ""))]
 pub struct RangeConstraints<T: FieldElement, V> {
     pub range_constraints: HashMap<V, RangeConstraint<T>>,
-}
-
-// Manual implementation so that we don't have to require `V: Default`.
-impl<T: FieldElement, V> Default for RangeConstraints<T, V> {
-    fn default() -> Self {
-        RangeConstraints {
-            range_constraints: Default::default(),
-        }
-    }
 }
 
 impl<T: FieldElement, V: Clone + Hash + Eq> RangeConstraintProvider<T, V>
