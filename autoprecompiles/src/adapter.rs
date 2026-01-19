@@ -75,14 +75,7 @@ where
     Self::InstructionHandler:
         InstructionHandler<Field = Self::Field, Instruction = Self::Instruction>,
 {
-    type Field: Serialize
-        + for<'de> Deserialize<'de>
-        + PartialOrd
-        + Ord
-        + Display
-        + Send
-        + Sync
-        + Clone;
+    type Field: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone;
     type PowdrField: FieldElement;
     type InstructionHandler: InstructionHandler + Sync;
     type BusInteractionHandler: BusInteractionHandler<Self::PowdrField>
