@@ -10,10 +10,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     adapter::{
-        Adapter, AdapterApc, AdapterApcWithStats, AdapterBasicBlock, AdapterVmConfig, PgoAdapter,
+        Adapter, AdapterApcWithStats, AdapterBasicBlock, AdapterVmConfig, ApcWithStats, PgoAdapter,
     },
     blocks::BasicBlock,
-    evaluation::EvaluationResult,
+    evaluation::{evaluate_apc, EvaluationResult},
     pgo::cell::selection::parallel_fractional_knapsack,
     EmpiricalConstraints, PowdrConfig,
 };
@@ -27,10 +27,8 @@ pub use selection::KnapsackItem;
 pub trait Candidate<A: Adapter>: Sized + KnapsackItem {
     /// Try to create an autoprecompile candidate from a block.
     fn create(
-        apc: Arc<AdapterApc<A>>,
+        apc_with_stats: AdapterApcWithStats<A>,
         pgo_program_pc_count: &HashMap<u64, u32>,
-        vm_config: AdapterVmConfig<A>,
-        max_degree: usize,
     ) -> Self;
 
     /// Return a JSON export of the APC candidate.
@@ -137,11 +135,16 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
                     &empirical_constraints,
                 )
                 .ok()?;
+                let apc = Arc::new(apc);
+                let apc_stats = A::apc_stats(&apc, &vm_config, config);
+                let evaluation_result = evaluate_apc(
+                    &block.statements,
+                    vm_config.instruction_handler,
+                    apc.machine(),
+                );
                 let candidate = C::create(
-                    Arc::new(apc),
+                    ApcWithStats::new(apc, apc_stats, evaluation_result),
                     &self.data,
-                    vm_config.clone(),
-                    config.degree_bound.identities,
                 );
                 if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
                     let json_export = candidate.to_json_export(apc_candidates_dir_path);

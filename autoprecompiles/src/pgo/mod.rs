@@ -6,6 +6,7 @@ use strum::{Display, EnumString};
 use crate::{
     adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, ApcWithStats},
     blocks::BasicBlock,
+    evaluation::evaluate_apc,
     EmpiricalConstraints, PowdrConfig,
 };
 
@@ -94,7 +95,7 @@ fn create_apcs_for_all_blocks<A: Adapter>(
             );
 
             let apc = crate::build::<A>(
-                block,
+                block.clone(),
                 vm_config.clone(),
                 config.degree_bound,
                 config.apc_candidates_dir_path.as_deref(),
@@ -105,8 +106,13 @@ fn create_apcs_for_all_blocks<A: Adapter>(
             let apc = Arc::new(apc);
 
             let stats = A::apc_stats(&apc, &vm_config, config);
+            let evaluation_result = evaluate_apc(
+                &block.statements,
+                vm_config.instruction_handler,
+                apc.machine(),
+            );
 
-            ApcWithStats::new(apc, stats)
+            ApcWithStats::new(apc, stats, evaluation_result)
         })
         .collect()
 }

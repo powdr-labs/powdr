@@ -20,6 +20,7 @@ pub fn original_vm_config() -> OriginalVmConfig {
 pub mod apc_builder_utils {
     use openvm_instructions::instruction::Instruction;
     use openvm_stark_sdk::p3_baby_bear::BabyBear;
+
     use powdr_autoprecompiles::blocks::BasicBlock;
     use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
     use powdr_autoprecompiles::evaluation::evaluate_apc;
@@ -33,6 +34,7 @@ pub mod apc_builder_utils {
     use pretty_assertions::assert_eq;
     use std::fs;
     use std::path::Path;
+    use std::sync::Arc;
 
     use crate::common::original_vm_config;
 
@@ -67,19 +69,22 @@ pub mod apc_builder_utils {
 
         let apc = build::<BabyBearOpenVmApcAdapter>(
             basic_block.clone(),
-            vm_config,
+            vm_config.clone(),
             degree_bound,
             apc_path,
             &EmpiricalConstraints::default(),
         )
         .unwrap();
-        let apc = apc.machine();
-
-        let evaluation = evaluate_apc(&basic_block.statements, &airs, apc);
+        let apc = Arc::new(apc);
+        let evaluation = evaluate_apc(
+            &basic_block.statements,
+            vm_config.instruction_handler,
+            apc.machine(),
+        );
 
         format!(
             "Instructions:\n{basic_block_str}\n\n{evaluation}\n\n{}",
-            apc.render(&bus_map)
+            apc.machine().render(&bus_map)
         )
     }
 

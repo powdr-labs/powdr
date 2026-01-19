@@ -7,6 +7,7 @@ use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
 use crate::empirical_constraints::EmpiricalConstraints;
+use crate::evaluation::EvaluationResult;
 use crate::execution::{ExecutionState, OptimisticConstraints};
 use crate::{
     blocks::{BasicBlock, Instruction, Program},
@@ -20,15 +21,32 @@ use crate::{
 pub struct ApcWithStats<F, I, A, V, S> {
     apc: Arc<Apc<F, I, A, V>>,
     stats: S,
+    evaluation_result: EvaluationResult,
 }
 impl<F, I, A, V, S> ApcWithStats<F, I, A, V, S> {
-    pub fn new(apc: Arc<Apc<F, I, A, V>>, stats: S) -> Self {
-        Self { apc, stats }
+    pub fn new(apc: Arc<Apc<F, I, A, V>>, stats: S, evaluation_result: EvaluationResult) -> Self {
+        Self {
+            apc,
+            stats,
+            evaluation_result,
+        }
     }
 
     #[allow(clippy::type_complexity)]
     pub fn into_parts(self) -> (Arc<Apc<F, I, A, V>>, S) {
         (self.apc, self.stats)
+    }
+
+    pub fn apc(&self) -> &Apc<F, I, A, V> {
+        &self.apc
+    }
+
+    pub fn stats(&self) -> &S {
+        &self.stats
+    }
+
+    pub fn evaluation_result(&self) -> EvaluationResult {
+        self.evaluation_result
     }
 }
 
@@ -75,7 +93,14 @@ where
     Self::InstructionHandler:
         InstructionHandler<Field = Self::Field, Instruction = Self::Instruction>,
 {
-    type Field: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone;
+    type Field: Serialize
+        + for<'de> Deserialize<'de>
+        + Send
+        + Sync
+        + Clone
+        + PartialOrd
+        + Ord
+        + Display;
     type PowdrField: FieldElement;
     type InstructionHandler: InstructionHandler + Sync;
     type BusInteractionHandler: BusInteractionHandler<Self::PowdrField>
