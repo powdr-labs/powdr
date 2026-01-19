@@ -257,9 +257,6 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
 /// If degree_bound is None, the replacement is only done if the degree does not increase.
 /// If degree_bound is Some(bound), the replacement is only done if the degree
 /// stays within the bound.
-///
-/// Note: This function is kept for reference but is no longer used by the main optimization loop,
-/// which now uses `batch_replace_algebraic_constraints` for better performance.
 #[allow(dead_code)]
 fn replace_algebraic_constraints<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
     system: &mut IndexedConstraintSystem<T, V>,
@@ -320,7 +317,7 @@ fn replace_algebraic_constraints<T: FieldElement, V: Hash + Eq + Ord + Clone + D
 }
 
 /// A single replacement operation: replace `lhs` constraints with `rhs` constraints.
-struct ReplacementAction<T: FieldElement, V: Hash + Eq + Ord + Clone + Display> {
+struct ReplacementAction<T, V> {
     /// Constraints to be replaced (LHS).
     lhs: Vec<GroupedExpression<T, V>>,
     /// Replacement constraints (RHS).
@@ -351,30 +348,14 @@ fn is_replacement_within_degree_bound<T: FieldElement, V: Hash + Eq + Ord + Clon
 
     // Check if the degree increase is acceptable
     let degree_increase = max_new_degree > max_old_degree;
-    let within_bound = match degree_bound {
+    match degree_bound {
         None => !degree_increase,
         Some(bound) => max_new_degree <= bound.identities,
-    };
-
-    if !within_bound {
-        log::debug!(
-            "Skipping replacement of {} by {} due to degree constraints.",
-            replacement.lhs.iter().format(", "),
-            replacement.rhs.iter().format(", ")
-        );
     }
-
-    within_bound
 }
 
 /// Batch replaces multiple sets of algebraic constraints in a single pass through the constraint system.
 /// Returns true if at least one replacement was successful.
-///
-/// This function processes multiple replacement actions efficiently by:
-/// 1. Checking degree bounds upfront for all replacements
-/// 2. Making a single pass through the constraint system to identify which LHS constraints are present
-/// 3. Executing only complete replacements (where all LHS constraints were found)
-/// 4. Handling conflicts by processing replacements in order (first match wins)
 ///
 /// If degree_bound is None, replacements are only done if the degree does not increase.
 /// If degree_bound is Some(bound), replacements are only done if the degree stays within the bound.
@@ -383,16 +364,21 @@ fn batch_replace_algebraic_constraints<T: FieldElement, V: Hash + Eq + Ord + Clo
     replacements: Vec<ReplacementAction<T, V>>,
     degree_bound: Option<DegreeBound>,
 ) -> bool {
-
     // Step 1: Filter out replacements that violate degree bounds
     let valid_replacements: Vec<_> = replacements
         .into_iter()
-        .filter(|replacement| is_replacement_within_degree_bound(replacement, degree_bound))
+        .filter(|replacement| {
+            let within_bound = is_replacement_within_degree_bound(replacement, degree_bound);
+            if !within_bound {
+                log::debug!(
+                    "Skipping replacement of {} by {} due to degree constraints.",
+                    replacement.lhs.iter().format(", "),
+                    replacement.rhs.iter().format(", ")
+                );
+            }
+            within_bound
+        })
         .collect();
-
-    if valid_replacements.is_empty() {
-        return false;
-    }
 
     // Step 2: Precompute HashSets of unique LHS constraints for efficient lookups
     let replacement_unique_lhs: Vec<HashSet<GroupedExpression<T, V>>> = valid_replacements
