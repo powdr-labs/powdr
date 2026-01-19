@@ -238,10 +238,9 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         }
 
         // Process all replacement actions in batch
-        if !replacement_actions.is_empty() {
-            progress |=
-                batch_replace_algebraic_constraints(&mut system, replacement_actions, degree_bound);
-        }
+        progress |=
+            batch_replace_algebraic_constraints(&mut system, replacement_actions, degree_bound);
+
         if !progress {
             break;
         }
