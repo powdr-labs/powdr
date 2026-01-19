@@ -432,9 +432,8 @@ fn batch_replace_algebraic_constraints<T: FieldElement, V: Hash + Eq + Ord + Clo
     // only the first one (in sorted order) gets it
     let mut constraints_to_remove: HashSet<GroupedExpression<T, V>> = HashSet::new();
     let mut replacement_constraints = Vec::new();
-    let mut skipped_replacements = HashSet::new();
 
-    for (idx, replacement) in complete_replacements {
+    for (_idx, replacement) in complete_replacements {
         // Check if any of this replacement's LHS constraints have already been claimed
         let has_conflict = replacement
             .lhs
@@ -443,7 +442,6 @@ fn batch_replace_algebraic_constraints<T: FieldElement, V: Hash + Eq + Ord + Clo
 
         if has_conflict {
             // This replacement conflicts with an earlier one, skip it
-            skipped_replacements.insert(idx);
             log::debug!(
                 "Skipping replacement of {} due to conflict with earlier replacement.",
                 replacement.lhs.iter().format(", ")
