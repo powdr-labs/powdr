@@ -30,4 +30,7 @@ pub enum Action<T: FieldElement> {
     /// Replace a pair of algebraic constraints (the first two) by
     /// another (the third).
     ReplacePairOfAlgebraicConstraintsBy(Expr, Expr, Expr),
+    /// Replace a triple of algebraic constraints (the first three) by
+    /// another (the fourth).
+    ReplaceTripleOfAlgebraicConstraintsBy(Expr, Expr, Expr, Expr),
 }

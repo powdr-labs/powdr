@@ -328,10 +328,36 @@ crepe! {
     // If we have `x * a = 0` and `x * b = 0` and `a` and `b` are
     // both non-negative and their sum is constrained, then we can replace
     // both constraints by `x * (a + b) = 0`.
+    // The same applies to three constraints.
+    struct ReplaceTripleOfAlgebraicConstraintsBy(Expr, Expr, Expr, Expr);
+    ReplaceTripleOfAlgebraicConstraintsBy(e1, e2, e3, replacement) <-
+      Env(env),
+      ProductConstraint(e1, x, a1),
+      ProductConstraint(e2, x, a2),
+      (e1 < e2),
+      ProductConstraint(e3, x, a3),
+      (e2 < e3),
+      RangeConstraintOnExpression(a1, rc_a1),
+      RangeConstraintOnExpression(a2, rc_a2),
+      RangeConstraintOnExpression(a3, rc_a3),
+      (rc_a1.range().0 == T::zero()
+        && rc_a2.range().0 == T::zero()
+        && rc_a3.range().0 == T::zero()
+        && !rc_a1.combine_sum(&rc_a2).combine_sum(&rc_a3).is_unconstrained()),
+      let replacement = env.insert_owned(env.extract(x) * (env.extract(a1) + env.extract(a2) + env.extract(a3)));
+
+    struct ReplacedExpressionInTripleSet(Expr);
+    ReplacedExpressionInTripleSet(e) <- ReplaceTripleOfAlgebraicConstraintsBy(e, _, _, _);
+    ReplacedExpressionInTripleSet(e) <- ReplaceTripleOfAlgebraicConstraintsBy(_, e, _, _);
+    ReplacedExpressionInTripleSet(e) <- ReplaceTripleOfAlgebraicConstraintsBy(_, _, e, _);
+
+
     ReplacePairOfAlgebraicConstraintsBy(e1, e2, replacement) <-
       Env(env),
       ProductConstraint(e1, x, a),
       ProductConstraint(e2, x, b),
+      !ReplacedExpressionInTripleSet(e1),
+      !ReplacedExpressionInTripleSet(e2),
       (e1 < e2),
       RangeConstraintOnExpression(a, rc_a),
       RangeConstraintOnExpression(b, rc_b),
@@ -421,6 +447,8 @@ crepe! {
       Equivalence(v1, v2), (v2 > v1);
     ActionRule(Action::ReplaceAlgebraicConstraintBy(e1, e2)) <-
       ReplaceAlgebraicConstraintBy(e1, e2);
+    ActionRule(Action::ReplaceTripleOfAlgebraicConstraintsBy(e1, e2, e3, r)) <-
+      ReplaceTripleOfAlgebraicConstraintsBy(e1, e2, e3, r);
     ActionRule(Action::ReplacePairOfAlgebraicConstraintsBy(e1, e2, r)) <-
       ReplacePairOfAlgebraicConstraintsBy(e1, e2, r);
 }
