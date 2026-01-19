@@ -353,7 +353,33 @@ crepe! {
       AlgebraicConstraint(e),
       Solvable(e, var, v);
 
+    ///////////////////////////////// NO-WRAP ZERO SUM //////////////////////////
 
+    // If an algebraic constraint e = 0 has the following properties:
+    // 1. e = head + tail, and both head, tail >= 0,
+    // 2. head is a linear expression coeff * var,
+    // 3. range of (head + tail) is [0, b] with b < P - 1, i.e., their sum does not wrap.
+    // then both head and tail must be zero.
+    // This rule replaces the variable var by zero.
+
+    struct EqualZero(Expr);
+    EqualZero(e) <- AlgebraicConstraint(e);
+
+    // EntailsZeroHeadAndTail(e1, e2) => e1 = 0 and e2 = 0
+    struct EntailsZeroHeadAndTail(Expr, Expr);
+    EntailsZeroHeadAndTail(head, tail) <-
+    EqualZero(e),
+    ExpressionSumHeadTail(e, head, tail),
+    RangeConstraintOnExpression(head, rc_head),
+    RangeConstraintOnExpression(tail, rc_tail),
+    (rc_head.range().0 == T::from(0)),
+    (rc_tail.range().0 == T::from(0)),
+    (rc_head.range().1.to_integer() + rc_tail.range().1.to_integer() < T::from(-1).to_integer());
+
+    EqualZero(head) <- EntailsZeroHeadAndTail(head,_);
+    EqualZero(tail) <- EntailsZeroHeadAndTail(_, tail);
+
+    Assignment(v, val) <- EqualZero(e), Solvable(e, v, val);
 
     ///////////////////////////////// OUTPUT ACTIONS //////////////////////////
 
