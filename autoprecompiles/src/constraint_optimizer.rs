@@ -45,6 +45,7 @@ impl From<powdr_constraint_solver::solver::Error> for Error {
 /// - Panics if the solver fails.
 /// - Removes trivial constraints (e.g. `0 = 0` or bus interaction with multiplicity `0`)
 ///   from the constraint system.
+#[allow(clippy::too_many_arguments)]
 pub fn optimize_constraints<
     P: FieldElement,
     V: Ord + Clone + Eq + Hash + Display,
@@ -60,7 +61,7 @@ pub fn optimize_constraints<
     memory_bus_id: Option<u64>,
     degree_bound: DegreeBound,
     new_var: &mut impl FnMut(&str) -> V,
-    export_options: &mut ExportOptions,
+    _export_options: &mut ExportOptions,
 ) -> Result<ConstraintSystem<P, V>, Error> {
     let constraint_system = solver_based_optimization(constraint_system, solver)?;
     stats_logger.log("solver-based optimization", &constraint_system);

@@ -136,7 +136,7 @@ pub trait InstructionHandler {
     fn is_branching(&self, instruction: &Self::Instruction) -> bool;
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Substitution {
     /// The index of the original column in the original air
     pub original_poly_index: usize,
@@ -144,7 +144,7 @@ pub struct Substitution {
     pub apc_poly_id: u64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Apc<T, I, A, V> {
     /// The basic block this APC is based on
     pub block: BasicBlock<I>,

@@ -1,14 +1,19 @@
 use std::{
+    fmt::Display,
     io::{BufWriter, Write},
     path::PathBuf,
 };
 
+use itertools::Itertools;
 use powdr_constraint_solver::constraint_system::ConstraintSystem;
 use powdr_number::FieldElement;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     adapter::{Adapter, AdapterApcOverPowdrField, AdapterBasicBlock, AdapterOptimisticConstraints},
+    blocks::{BasicBlock, Instruction, PcStep},
     bus_map::BusMap,
+    execution::ExecutionState,
     expression::AlgebraicReference,
     symbolic_machine::constraint_system_to_symbolic_machine,
     Apc, ColumnAllocator, SymbolicMachine,
@@ -73,7 +78,7 @@ impl ExportOptions {
         suffix: Option<&str>,
         bus_map: &BusMap<A::CustomBusTypes>,
     ) {
-        let path = self.write_to_next_file(apc, suffix);
+        let path = self.write_to_next_file(&instructions_to_powdr_field::<A>(apc.clone()), suffix);
 
         // For debugging, also serialize a human-readable version of the final precompile
         let rendered = apc.machine.render(bus_map);
@@ -133,8 +138,8 @@ impl ExportOptions {
 
     pub fn export_optimizer_inner_constraint_system<T, V>(
         &mut self,
-        constraint_system: &ConstraintSystem<T, V>,
-        suffix: &str,
+        _constraint_system: &ConstraintSystem<T, V>,
+        _suffix: &str,
     ) where
         T: FieldElement,
         V: Ord + Clone + serde::Serialize,
@@ -169,5 +174,66 @@ impl ExportOptions {
         serde_json::to_writer(&mut writer_unopt, data).unwrap();
         writer_unopt.flush().unwrap();
         path
+    }
+}
+
+/// Converts the APC to use an instruction type that stores field elements
+/// using a powdr type, so that we do not need to export in Montgomery form.
+#[allow(clippy::type_complexity)]
+fn instructions_to_powdr_field<A: Adapter>(
+    apc: AdapterApcOverPowdrField<A>,
+) -> Apc<
+    <A as Adapter>::PowdrField,
+    SimpleInstruction<<A as Adapter>::PowdrField>,
+    <<A as Adapter>::ExecutionState as ExecutionState>::RegisterAddress,
+    <<A as Adapter>::ExecutionState as ExecutionState>::Value,
+> {
+    let block = BasicBlock {
+        start_pc: apc.block.start_pc,
+        statements: apc
+            .block
+            .statements
+            .iter()
+            .map(|instr| {
+                SimpleInstruction(
+                    // Extract the data by providing a dummy pc
+                    // and removing it again.
+                    instr
+                        .pc_lookup_row(778)
+                        .iter()
+                        .skip(1)
+                        .map(|x| A::from_field(x.clone()))
+                        .collect(),
+                )
+            })
+            .collect(),
+    };
+    Apc {
+        block,
+        machine: apc.machine,
+        subs: apc.subs,
+        optimistic_constraints: apc.optimistic_constraints,
+    }
+}
+
+/// Dummy instruction type that is used to store the converted field type.
+#[derive(Serialize, Deserialize, Clone)]
+struct SimpleInstruction<T>(Vec<T>);
+
+impl<T: Display> Display for SimpleInstruction<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.iter().format(", "))
+    }
+}
+
+impl<T: Display + Clone> Instruction<T> for SimpleInstruction<T> {
+    fn pc_lookup_row(&self, _pc: u64) -> Vec<T> {
+        self.0.clone()
+    }
+}
+
+impl<T> PcStep for SimpleInstruction<T> {
+    fn pc_step() -> u32 {
+        unimplemented!()
     }
 }
