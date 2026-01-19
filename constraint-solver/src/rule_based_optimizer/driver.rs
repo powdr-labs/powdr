@@ -249,11 +249,11 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
 }
 
 /// A single replacement operation: replace `lhs` constraints with `rhs` constraints.
-struct ReplacementAction<T, V> {
+pub(crate) struct ReplacementAction<T, V> {
     /// Constraints to be replaced (LHS).
-    lhs: Vec<GroupedExpression<T, V>>,
+    pub(crate) lhs: Vec<GroupedExpression<T, V>>,
     /// Replacement constraints (RHS).
-    rhs: Vec<GroupedExpression<T, V>>,
+    pub(crate) rhs: Vec<GroupedExpression<T, V>>,
 }
 
 impl<T: FieldElement, V: Hash + Eq + Ord + Clone + Display> ReplacementAction<T, V> {
@@ -312,7 +312,10 @@ fn is_replacement_within_degree_bound<T: FieldElement, V: Hash + Eq + Ord + Clon
 ///
 /// If degree_bound is None, replacements are only done if the degree does not increase.
 /// If degree_bound is Some(bound), replacements are only done if the degree stays within the bound.
-fn batch_replace_algebraic_constraints<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
+pub(crate) fn batch_replace_algebraic_constraints<
+    T: FieldElement,
+    V: Hash + Eq + Ord + Clone + Display,
+>(
     system: &mut IndexedConstraintSystem<T, V>,
     replacements: Vec<ReplacementAction<T, V>>,
     degree_bound: Option<DegreeBound>,

@@ -223,9 +223,70 @@ fn test_rule_based_optimization_quadratic_equality() {
 }
 
 #[test]
-fn test_rule_based_optimization_with_duplicate_constraints() {
-    // Test that the batch replacement correctly handles duplicate constraints in the system
+fn test_batch_replace_with_duplicate_constraints() {
+    // Direct test of batch_replace_algebraic_constraints with duplicate constraints
+    // This verifies that the HashSet-based tracking correctly handles duplicates
+
+    use crate::rule_based_optimizer::driver::{
+        batch_replace_algebraic_constraints, ReplacementAction,
+    };
+
+    let mut system: IndexedConstraintSystem<BabyBearField, String> =
+        IndexedConstraintSystem::default();
+
     // Create a system with duplicate constraints
+    // Constraint 1: x + y = 0
+    // Constraint 2: x + y = 0 (duplicate)
+    // Constraint 3: z = 5
+    system.add_algebraic_constraints([
+        assert_zero(v("x") + v("y")),
+        assert_zero(v("x") + v("y")), // Duplicate
+        assert_zero(v("z") - c(5)),
+    ]);
+
+    assert_eq!(system.system().algebraic_constraints.len(), 3);
+
+    // Create a replacement action: replace (x + y = 0) with (a = 0)
+    // If the duplicate handling is broken, the algorithm might think it found
+    // the constraint twice and proceed with the replacement incorrectly
+    let replacements = vec![ReplacementAction {
+        lhs: vec![v("x") + v("y")],
+        rhs: vec![v("a")],
+    }];
+
+    // Try to apply the replacement
+    let result = batch_replace_algebraic_constraints(&mut system, replacements, None);
+
+    // The replacement should succeed because we found the LHS constraint (even though it appears twice)
+    assert!(result, "Replacement should succeed");
+
+    // After replacement, we should have replaced both instances of (x + y = 0) with (a = 0)
+    let final_constraints = &system.system().algebraic_constraints;
+
+    // We should have removed the 2 duplicate (x + y) constraints and added 1 (a) constraint
+    // So: 3 - 2 + 1 = 2 constraints
+    assert_eq!(
+        final_constraints.len(),
+        2,
+        "Should have 2 constraints after replacement"
+    );
+
+    // Verify that (x + y) is no longer in the system
+    let has_x_plus_y = final_constraints.iter().any(|c| {
+        matches!(&c.expression, expr if format!("{}", expr).contains("x") && format!("{}", expr).contains("y"))
+    });
+    assert!(!has_x_plus_y, "x + y should have been replaced");
+
+    // Verify that 'a' is in the system
+    let has_a = final_constraints
+        .iter()
+        .any(|c| format!("{}", c.expression).contains("a"));
+    assert!(has_a, "Replacement constraint 'a' should be in the system");
+}
+
+#[test]
+fn test_rule_based_optimization_with_duplicate_constraints() {
+    // Integration test that the batch replacement correctly handles duplicate constraints
     let mut system: IndexedConstraintSystem<BabyBearField, String> =
         IndexedConstraintSystem::default();
 
@@ -244,13 +305,8 @@ fn test_rule_based_optimization_with_duplicate_constraints() {
         None,
     );
 
-    // The optimization should still work correctly even with duplicates
-    // Both duplicates should remain (or both be removed if optimized away)
     let constraints = &optimized_system.0.system().algebraic_constraints;
 
     // Check that we still have valid constraints
     assert!(!constraints.is_empty(), "System should have constraints");
-
-    // The key is that the batch replacement logic should not incorrectly count
-    // duplicate constraints multiple times when checking if all LHS constraints are present
 }
