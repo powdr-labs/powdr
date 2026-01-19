@@ -383,9 +383,6 @@ fn batch_replace_algebraic_constraints<T: FieldElement, V: Hash + Eq + Ord + Clo
     replacements: Vec<ReplacementAction<T, V>>,
     degree_bound: Option<DegreeBound>,
 ) -> bool {
-    if replacements.is_empty() {
-        return false;
-    }
 
     // Step 1: Filter out replacements that violate degree bounds
     let valid_replacements: Vec<_> = replacements
