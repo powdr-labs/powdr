@@ -176,15 +176,186 @@ impl<T: FieldElement> RangeConstraint<T> {
             self.multiple(v)
         } else if let Some(v) = self.try_to_single_value() {
             other.multiple(v)
-        } else if self.min <= self.max
-            && other.min <= other.max
-            && self.max.to_arbitrary_integer() * other.max.to_arbitrary_integer()
-                < T::modulus().to_arbitrary_integer()
-        {
-            Self::from_range(self.min * other.min, self.max * other.max)
         } else {
+            // Check if both ranges are wrapping (representing negative values)
+            let self_wrapping = self.min > self.max;
+            let other_wrapping = other.min > other.max;
+
+            match (self_wrapping, other_wrapping) {
+                (true, true) => {
+                    // Both ranges are wrapping (negative values)
+                    // For negative ranges, the maximum absolute values are at min and max
+                    let self_max_abs = std::cmp::max(-self.min, self.max);
+                    let other_max_abs = std::cmp::max(-other.min, other.max);
+
+                    // Check if the product of max absolute values fits in the modulus
+                    if self_max_abs.to_arbitrary_integer() * other_max_abs.to_arbitrary_integer()
+                        < T::modulus().to_arbitrary_integer()
+                    {
+                        // The product of two negative ranges can be positive or negative
+                        // depending on the specific values. We need to consider all corners.
+                        // For wrapping ranges, the extremes are at min (most negative) and max (least negative or small positive)
+                        let corners = [
+                            self.min * other.min, // most negative * most negative = large positive
+                            self.min * other.max, // most negative * least negative
+                            self.max * other.min, // least negative * most negative
+                            self.max * other.max, // least negative * least negative
+                        ];
+
+                        // Find the actual min and max among all corners
+                        // Since we're dealing with field elements, we need to determine which is "smaller"
+                        // We'll compute all products and find the range that covers them all
+                        let (result_min, result_max) = Self::compute_product_bounds(&corners);
+                        return Self::from_range(result_min, result_max);
+                    }
+                }
+                (true, false) | (false, true) => {
+                    // One range is wrapping, one is not (mixed signs)
+                    let (wrap_range, normal_range) = if self_wrapping {
+                        (self, other)
+                    } else {
+                        (other, self)
+                    };
+
+                    let wrap_max_abs = std::cmp::max(-wrap_range.min, wrap_range.max);
+
+                    // Check if the product fits in the modulus
+                    if wrap_max_abs.to_arbitrary_integer() * normal_range.max.to_arbitrary_integer()
+                        < T::modulus().to_arbitrary_integer()
+                    {
+                        // Compute all four corner products
+                        let corners = [
+                            self.min * other.min,
+                            self.min * other.max,
+                            self.max * other.min,
+                            self.max * other.max,
+                        ];
+
+                        let (result_min, result_max) = Self::compute_product_bounds(&corners);
+                        return Self::from_range(result_min, result_max);
+                    }
+                }
+                (false, false) => {
+                    // Both ranges are non-wrapping
+                    // Check if either range might contain negative values (in the field sense)
+                    // A non-wrapping range [min, max] where min is in upper half represents
+                    // a range of all large (negative) values
+
+                    // Simple case: both min values are in lower half (positive)
+                    if self.min.is_in_lower_half() && other.min.is_in_lower_half() {
+                        // Standard positive × positive case
+                        if self.max.to_arbitrary_integer() * other.max.to_arbitrary_integer()
+                            < T::modulus().to_arbitrary_integer()
+                        {
+                            return Self::from_range(self.min * other.min, self.max * other.max);
+                        }
+                    } else {
+                        // At least one range starts in the upper half
+                        // Need to consider corner cases more carefully
+
+                        // Compute the maximum absolute value for each range
+                        let self_max_abs = if self.min.is_in_lower_half() {
+                            // Range is all positive, max is self.max
+                            self.max
+                        } else if self.max.is_in_lower_half() {
+                            // Range crosses zero, max abs is max of -min and max
+                            std::cmp::max(-self.min, self.max)
+                        } else {
+                            // Range is all negative, max abs is -min
+                            -self.min
+                        };
+
+                        let other_max_abs = if other.min.is_in_lower_half() {
+                            other.max
+                        } else if other.max.is_in_lower_half() {
+                            std::cmp::max(-other.min, other.max)
+                        } else {
+                            -other.min
+                        };
+
+                        // Check if product fits
+                        if self_max_abs.to_arbitrary_integer()
+                            * other_max_abs.to_arbitrary_integer()
+                            < T::modulus().to_arbitrary_integer()
+                        {
+                            let corners = [
+                                self.min * other.min,
+                                self.min * other.max,
+                                self.max * other.min,
+                                self.max * other.max,
+                            ];
+
+                            let (result_min, result_max) = Self::compute_product_bounds(&corners);
+                            return Self::from_range(result_min, result_max);
+                        }
+                    }
+                }
+            }
+
+            // If none of the above cases apply, return unconstrained
             Self::unconstrained()
         }
+    }
+
+    /// Helper function to compute the min and max bounds from a set of corner products.
+    /// This handles the complexity of field arithmetic where values wrap around.
+    fn compute_product_bounds(corners: &[T]) -> (T, T) {
+        // To find the proper min and max in field arithmetic, we need to find
+        // the tightest range [min, max] that covers all corner values.
+        // This is non-trivial because ranges can wrap.
+
+        // Try each corner as a potential min, and find the corresponding max
+        // that covers all corners with the smallest range width
+        let mut best_min = corners[0];
+        let mut best_max = corners[0];
+        let mut best_width = T::modulus();
+
+        for &potential_min in corners {
+            // For this potential_min, find the maximum value among all corners
+            // when measured as distance from potential_min (going forward in field order)
+            let mut potential_max = potential_min;
+
+            for &corner in corners {
+                // Check if corner is in range [potential_min, potential_max]
+                let in_range = if potential_min <= potential_max {
+                    potential_min <= corner && corner <= potential_max
+                } else {
+                    potential_min <= corner || corner <= potential_max
+                };
+
+                if !in_range {
+                    // Extend potential_max to cover this corner
+                    // Calculate distance from potential_min to corner
+                    let distance = if corner >= potential_min {
+                        (corner - potential_min).to_integer()
+                    } else {
+                        // Wrapping distance
+                        (T::from(-1) - potential_min + corner + T::one()).to_integer()
+                    };
+
+                    // Update potential_max if this corner is further
+                    let current_distance = if potential_max >= potential_min {
+                        (potential_max - potential_min).to_integer()
+                    } else {
+                        (T::from(-1) - potential_min + potential_max + T::one()).to_integer()
+                    };
+
+                    if distance > current_distance {
+                        potential_max = corner;
+                    }
+                }
+            }
+
+            // Check if this is a better (smaller width) range
+            let width = range_width(potential_min, potential_max);
+            if width < best_width {
+                best_width = width;
+                best_min = potential_min;
+                best_max = potential_max;
+            }
+        }
+
+        (best_min, best_max)
     }
 
     /// If `Self` is a valid range constraint on an expression `e`, returns
@@ -871,5 +1042,186 @@ mod test {
         assert!(!x.is_unconstrained());
         let y = RangeConstraint::<F>::from_range(F::from(-1), F::from(0));
         assert!(!y.is_unconstrained());
+    }
+
+    #[test]
+    fn combine_product_negative_negative() {
+        type F = GoldilocksField;
+        // Test: negative × negative = positive
+        // Range [-10, -5] × [-8, -3]
+        // Should give range [15, 80] (min: -5 * -3 = 15, max: -10 * -8 = 80)
+        let a = RangeConstraint::<F>::from_range(F::from(-10), F::from(-5));
+        let b = RangeConstraint::<F>::from_range(F::from(-8), F::from(-3));
+        let result = a.combine_product(&b);
+
+        // The result should not be unconstrained
+        assert!(!result.is_unconstrained());
+
+        // Check that some expected values are in the range
+        assert!(result.allows_value(F::from(15))); // -5 * -3
+        assert!(result.allows_value(F::from(24))); // -8 * -3
+        assert!(result.allows_value(F::from(40))); // -5 * -8
+        assert!(result.allows_value(F::from(80))); // -10 * -8
+    }
+
+    #[test]
+    fn combine_product_negative_positive() {
+        type F = GoldilocksField;
+        // Test: negative × positive = negative
+        // Range [-10, -5] × [3, 8]
+        let a = RangeConstraint::<F>::from_range(F::from(-10), F::from(-5));
+        let b = RangeConstraint::<F>::from_range(F::from(3), F::from(8));
+        let result = a.combine_product(&b);
+
+        // The result should not be unconstrained
+        assert!(!result.is_unconstrained());
+
+        // Check that some expected values are in the range
+        // Min product: -10 * 8 = -80
+        // Max product: -5 * 3 = -15
+        assert!(result.allows_value(F::from(-80)));
+        assert!(result.allows_value(F::from(-40)));
+        assert!(result.allows_value(F::from(-15)));
+    }
+
+    #[test]
+    fn combine_product_positive_negative() {
+        type F = GoldilocksField;
+        // Test: positive × negative = negative (commutative test)
+        let a = RangeConstraint::<F>::from_range(F::from(3), F::from(8));
+        let b = RangeConstraint::<F>::from_range(F::from(-10), F::from(-5));
+        let result = a.combine_product(&b);
+
+        // The result should not be unconstrained
+        assert!(!result.is_unconstrained());
+
+        // Check that some expected values are in the range
+        assert!(result.allows_value(F::from(-80)));
+        assert!(result.allows_value(F::from(-40)));
+        assert!(result.allows_value(F::from(-15)));
+    }
+
+    #[test]
+    fn combine_product_small_negative_ranges() {
+        type F = GoldilocksField;
+        // Test small negative ranges that should produce useful constraints
+        let a = RangeConstraint::<F>::from_range(F::from(-3), F::from(-1));
+        let b = RangeConstraint::<F>::from_range(F::from(-2), F::from(-1));
+        let result = a.combine_product(&b);
+
+        // The result should not be unconstrained
+        assert!(!result.is_unconstrained());
+
+        // Min: -1 * -1 = 1
+        // Max: -3 * -2 = 6
+        assert!(result.allows_value(F::from(1)));
+        assert!(result.allows_value(F::from(2)));
+        assert!(result.allows_value(F::from(6)));
+    }
+
+    #[test]
+    fn combine_product_mixed_sign_non_wrapping() {
+        type F = GoldilocksField;
+        // Test non-wrapping ranges that contain negative values
+        // when both min and max are in the upper half (all negative)
+        let a = RangeConstraint::<F>::from_range(F::from(-10), F::from(-5));
+        let b = RangeConstraint::<F>::from_range(F::from(-8), F::from(-3));
+        let result = a.combine_product(&b);
+
+        assert!(!result.is_unconstrained());
+
+        // The product of two negative ranges should give positive results
+        // The corners are: (-10)*(-8)=80, (-10)*(-3)=30, (-5)*(-8)=40, (-5)*(-3)=15
+        assert!(result.allows_value(F::from(15)));
+        assert!(result.allows_value(F::from(30)));
+        assert!(result.allows_value(F::from(40)));
+        assert!(result.allows_value(F::from(80)));
+    }
+
+    #[test]
+    fn combine_product_wrapping_non_wrapping() {
+        type F = GoldilocksField;
+        // Test one wrapping, one non-wrapping
+        // Wrapping range that represents negative values
+        let wrapping = RangeConstraint::<F>::from_range(F::from(-5), F::from(-2));
+        // Non-wrapping positive range
+        let non_wrapping = RangeConstraint::<F>::from_range(F::from(2), F::from(4));
+
+        let result1 = wrapping.combine_product(&non_wrapping);
+        let result2 = non_wrapping.combine_product(&wrapping);
+
+        // Results should be the same (commutative)
+        assert_eq!(result1.range(), result2.range());
+
+        // Should not be unconstrained
+        assert!(!result1.is_unconstrained());
+
+        // Product should include negative values
+        // Corners: (-5)*2=-10, (-5)*4=-20, (-2)*2=-4, (-2)*4=-8
+        assert!(result1.allows_value(F::from(-20)));
+        assert!(result1.allows_value(F::from(-10)));
+        assert!(result1.allows_value(F::from(-8)));
+        assert!(result1.allows_value(F::from(-4)));
+    }
+
+    #[test]
+    fn combine_product_overflow_still_unconstrained() {
+        type F = GoldilocksField;
+        // Test that we still return unconstrained when product would overflow
+        // Use very large ranges that would cause overflow
+        // GoldilocksField modulus is approximately 2^64, so use values around 2^32
+        let large_val = F::from(1u64 << 50); // 2^50
+        let a = RangeConstraint::<F>::from_range(large_val, large_val + F::from(1000u32));
+        let b = RangeConstraint::<F>::from_range(large_val, large_val + F::from(1000u32));
+
+        let result = a.combine_product(&b);
+        // With such large values, the product should overflow and return unconstrained
+        assert!(result.is_unconstrained());
+    }
+
+    #[test]
+    fn combine_product_preserves_single_value_optimization() {
+        type F = GoldilocksField;
+        // Test that single value optimization still works
+        let a = RangeConstraint::<F>::from_value(F::from(5));
+        let b = RangeConstraint::<F>::from_range(F::from(10), F::from(20));
+
+        let result = a.combine_product(&b);
+
+        // Should use the multiple() optimization
+        assert_eq!(result.range(), (F::from(50), F::from(100)));
+    }
+
+    #[test]
+    fn combine_product_zero_in_range() {
+        type F = GoldilocksField;
+        // Test ranges that include zero
+        let a = RangeConstraint::<F>::from_range(F::from(-5), F::from(5));
+        let b = RangeConstraint::<F>::from_range(F::from(-3), F::from(3));
+
+        let result = a.combine_product(&b);
+
+        // Should not be unconstrained
+        assert!(!result.is_unconstrained());
+
+        // Should allow zero (since 0 * anything = 0)
+        assert!(result.allows_value(F::from(0)));
+
+        // Should allow various products
+        assert!(result.allows_value(F::from(15))); // 5 * 3
+        assert!(result.allows_value(F::from(-15))); // -5 * 3 or 5 * -3
+    }
+
+    #[test]
+    fn combine_product_positive_positive_no_overflow() {
+        type F = GoldilocksField;
+        // Test standard positive × positive that should work as before
+        let a = RangeConstraint::<F>::from_range(F::from(10), F::from(20));
+        let b = RangeConstraint::<F>::from_range(F::from(5), F::from(10));
+
+        let result = a.combine_product(&b);
+
+        assert!(!result.is_unconstrained());
+        assert_eq!(result.range(), (F::from(50), F::from(200)));
     }
 }
