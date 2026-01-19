@@ -218,7 +218,6 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                     progress = true;
                 }
                 Action::ReplaceAlgebraicConstraintBy(e1, replacement) => {
-                    // Collect this replacement action for batch processing
                     replacement_actions.push(ReplacementAction::new(
                         [e1],
                         [replacement],
@@ -227,7 +226,6 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                     ));
                 }
                 Action::ReplacePairOfAlgebraicConstraintsBy(e1, e2, replacement) => {
-                    // Collect this replacement action for batch processing
                     replacement_actions.push(ReplacementAction::new(
                         [e1, e2],
                         [replacement],
