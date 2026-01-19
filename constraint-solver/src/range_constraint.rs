@@ -1217,4 +1217,25 @@ mod test {
         assert!(!result.is_unconstrained());
         assert_eq!(result.range(), (F::from(50), F::from(200)));
     }
+
+    #[test]
+    fn combine_product_wrapping_with_positive_max() {
+        type F = GoldilocksField;
+        // Test wrapping range where max (positive part) has larger absolute value than -min
+        // Range [-5, 10] × [-3, 8]
+        let a = RangeConstraint::<F>::from_range(F::from(-5), F::from(10));
+        let b = RangeConstraint::<F>::from_range(F::from(-3), F::from(8));
+
+        let result = a.combine_product(&b);
+
+        // Should not be unconstrained
+        assert!(!result.is_unconstrained());
+
+        // Check that expected corner products are allowed
+        // Corners: (-5)*(-3)=15, (-5)*8=-40, 10*(-3)=-30, 10*8=80
+        assert!(result.allows_value(F::from(15)));
+        assert!(result.allows_value(F::from(-40)));
+        assert!(result.allows_value(F::from(-30)));
+        assert!(result.allows_value(F::from(80)));
+    }
 }
