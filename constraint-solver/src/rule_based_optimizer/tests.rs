@@ -250,14 +250,14 @@ fn test_batch_replace_with_duplicate_constraints() {
     // If the duplicate handling is broken, the algorithm might think it found
     // the constraint twice and proceed with the replacement incorrectly
     let replacements = vec![ReplacementAction {
-        lhs: vec![v("x") + v("y")],
-        rhs: vec![v("a")],
+        replace: vec![v("x") + v("y")],
+        replace_by: vec![v("a")],
     }];
 
     // Try to apply the replacement
     let result = batch_replace_algebraic_constraints(&mut system, replacements, None);
 
-    // The replacement should succeed because we found the LHS constraint (even though it appears twice)
+    // The replacement should succeed because we found the constraint to replace (even though it appears twice)
     assert!(result, "Replacement should succeed");
 
     // After replacement, we should have replaced both instances of (x + y = 0) with (a = 0)
