@@ -4,7 +4,7 @@ use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterato
 use strum::{Display, EnumString};
 
 use crate::{
-    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig},
+    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, ApcWithStats},
     blocks::BasicBlock,
     EmpiricalConstraints, PowdrConfig,
 };
@@ -93,16 +93,20 @@ fn create_apcs_for_all_blocks<A: Adapter>(
                 block.start_pc
             );
 
-            crate::build::<A>(
+            let apc = crate::build::<A>(
                 block,
                 vm_config.clone(),
                 config.degree_bound,
                 config.apc_candidates_dir_path.as_deref(),
                 &empirical_constraints,
             )
-            .unwrap()
+            .unwrap();
+
+            let apc = Arc::new(apc);
+
+            let stats = unimplemented!();
+
+            ApcWithStats::new(apc, stats)
         })
-        .map(Arc::new)
-        .map(|_| unimplemented!())
         .collect()
 }
