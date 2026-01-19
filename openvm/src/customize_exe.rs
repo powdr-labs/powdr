@@ -369,7 +369,7 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
     }
 
     fn into_apc_and_stats(self) -> AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a>> {
-        ApcWithStats::from(self.apc).with_stats(OvmApcStats::new(self.widths))
+        ApcWithStats::new(self.apc, OvmApcStats::new(self.widths))
     }
 }
 

@@ -4,7 +4,7 @@ use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterato
 use strum::{Display, EnumString};
 
 use crate::{
-    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, ApcWithStats},
+    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig},
     blocks::BasicBlock,
     EmpiricalConstraints, PowdrConfig,
 };
@@ -103,6 +103,6 @@ fn create_apcs_for_all_blocks<A: Adapter>(
             .unwrap()
         })
         .map(Arc::new)
-        .map(ApcWithStats::from)
+        .map(|_| unimplemented!())
         .collect()
 }

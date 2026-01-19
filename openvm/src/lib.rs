@@ -753,7 +753,7 @@ impl CompiledProgram {
 
                     powdr_air_metrics.push((
                         get_air_metrics(air.clone(), max_degree),
-                        apc_stats.next().unwrap().map(|stats| stats.widths),
+                        Some(apc_stats.next().unwrap().widths),
                     ));
                 } else {
                     use crate::extraction_utils::get_air_metrics;

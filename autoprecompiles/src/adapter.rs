@@ -19,23 +19,16 @@ use crate::{
 #[derive(Serialize, Deserialize)]
 pub struct ApcWithStats<F, I, A, V, S> {
     apc: Arc<Apc<F, I, A, V>>,
-    stats: Option<S>,
+    stats: S,
 }
 impl<F, I, A, V, S> ApcWithStats<F, I, A, V, S> {
-    pub fn with_stats(mut self, stats: S) -> Self {
-        self.stats = Some(stats);
-        self
+    pub fn new(apc: Arc<Apc<F, I, A, V>>, stats: S) -> Self {
+        Self { apc, stats }
     }
 
     #[allow(clippy::type_complexity)]
-    pub fn into_parts(self) -> (Arc<Apc<F, I, A, V>>, Option<S>) {
+    pub fn into_parts(self) -> (Arc<Apc<F, I, A, V>>, S) {
         (self.apc, self.stats)
-    }
-}
-
-impl<F, I, A, V, S> From<Arc<Apc<F, I, A, V>>> for ApcWithStats<F, I, A, V, S> {
-    fn from(apc: Arc<Apc<F, I, A, V>>) -> Self {
-        Self { apc, stats: None }
     }
 }
 

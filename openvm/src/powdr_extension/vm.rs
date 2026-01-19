@@ -49,7 +49,7 @@ pub struct PowdrPrecompile<F> {
     pub name: String,
     pub opcode: PowdrOpcode,
     pub apc: Arc<Apc<F, Instr<F>, OpenVmRegisterAddress, u32>>,
-    pub apc_stats: Option<OvmApcStats>,
+    pub apc_stats: OvmApcStats,
     #[serde(skip)]
     pub apc_record_arena_cpu: Rc<RefCell<OriginalArenas<MatrixRecordArena<F>>>>,
     #[serde(skip)]
@@ -61,7 +61,7 @@ impl<F> PowdrPrecompile<F> {
         name: String,
         opcode: PowdrOpcode,
         apc: Arc<Apc<F, Instr<F>, OpenVmRegisterAddress, u32>>,
-        apc_stats: Option<OvmApcStats>,
+        apc_stats: OvmApcStats,
     ) -> Self {
         Self {
             name,
