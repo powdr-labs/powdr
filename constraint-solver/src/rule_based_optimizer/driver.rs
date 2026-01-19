@@ -219,20 +219,21 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                 }
                 Action::ReplaceAlgebraicConstraintBy(e1, replacement) => {
                     // Collect this replacement action for batch processing
-                    replacement_actions.push(ReplacementAction {
-                        lhs: vec![undo_variable_transform(&expr_db_[e1], &var_mapper)],
-                        rhs: vec![undo_variable_transform(&expr_db_[replacement], &var_mapper)],
-                    });
+                    replacement_actions.push(ReplacementAction::new(
+                        [e1],
+                        [replacement],
+                        &expr_db_,
+                        &var_mapper,
+                    ));
                 }
                 Action::ReplacePairOfAlgebraicConstraintsBy(e1, e2, replacement) => {
                     // Collect this replacement action for batch processing
-                    replacement_actions.push(ReplacementAction {
-                        lhs: vec![
-                            undo_variable_transform(&expr_db_[e1], &var_mapper),
-                            undo_variable_transform(&expr_db_[e2], &var_mapper),
-                        ],
-                        rhs: vec![undo_variable_transform(&expr_db_[replacement], &var_mapper)],
-                    });
+                    replacement_actions.push(ReplacementAction::new(
+                        [e1, e2],
+                        [replacement],
+                        &expr_db_,
+                        &var_mapper,
+                    ));
                 }
             }
         }
@@ -250,78 +251,33 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
     (system, assignments)
 }
 
-/// Replaces all of the algebraic constraints in `old` by the ones in `replacement`.
-/// Returns true if the replacement was successful, i.e. all of the `old` constraints
-/// were found and replaced.
-///
-/// If degree_bound is None, the replacement is only done if the degree does not increase.
-/// If degree_bound is Some(bound), the replacement is only done if the degree
-/// stays within the bound.
-#[allow(dead_code)]
-fn replace_algebraic_constraints<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
-    system: &mut IndexedConstraintSystem<T, V>,
-    old: impl IntoIterator<Item = Expr>,
-    replacement: impl IntoIterator<Item = Expr>,
-    expr_db: &ItemDB<GroupedExpression<T, Var>, Expr>,
-    var_mapper: &ItemDB<V, Var>,
-    degree_bound: Option<DegreeBound>,
-) -> bool {
-    // Undo the variable transformation.
-    let mut old_found = old
-        .into_iter()
-        .map(|e| undo_variable_transform(&expr_db[e], var_mapper))
-        .map(|e| (e, false))
-        .collect::<HashMap<_, _>>();
-    let replacement = replacement
-        .into_iter()
-        .map(|e| undo_variable_transform(&expr_db[e], var_mapper))
-        .collect_vec();
-
-    let max_old_degree = old_found.keys().map(|e| e.degree()).max().unwrap_or(0);
-    let max_new_degree = replacement.iter().map(|e| e.degree()).max().unwrap_or(0);
-    // If the degree does not increase, we do it in any case. If the degree increases, we
-    // only do it if a degree bound is given and it stays within the bound.
-    if max_new_degree > max_old_degree
-        && (degree_bound.is_none() || max_new_degree > degree_bound.unwrap().identities)
-    {
-        log::debug!(
-            "Skipping replacement of {} by {} due to degree constraints.",
-            old_found.keys().format(", "),
-            replacement.iter().format(", ")
-        );
-        return false;
-    }
-    // TODO special case for a single element in old:
-    // We could run retain_algebraic_constraints right away
-    // and thus iterate only once.
-    for c in system.algebraic_constraints() {
-        if old_found.contains_key(&c.expression) {
-            *old_found.get_mut(&c.expression).unwrap() = true;
-        }
-    }
-    if old_found.values().any(|found| !*found) {
-        log::warn!(
-            "Was about to replace constraints {} but did not find all in the system.",
-            old_found.keys().format(", ")
-        );
-        false
-    } else {
-        system.retain_algebraic_constraints(|c| !old_found.contains_key(&c.expression));
-        system.add_algebraic_constraints(
-            replacement
-                .into_iter()
-                .map(AlgebraicConstraint::assert_zero),
-        );
-        true
-    }
-}
-
 /// A single replacement operation: replace `lhs` constraints with `rhs` constraints.
 struct ReplacementAction<T, V> {
     /// Constraints to be replaced (LHS).
     lhs: Vec<GroupedExpression<T, V>>,
     /// Replacement constraints (RHS).
     rhs: Vec<GroupedExpression<T, V>>,
+}
+
+impl<T: FieldElement, V: Hash + Eq + Ord + Clone + Display> ReplacementAction<T, V> {
+    /// Creates a new ReplacementAction from expression IDs, performing variable transformation.
+    fn new(
+        lhs: impl IntoIterator<Item = Expr>,
+        rhs: impl IntoIterator<Item = Expr>,
+        expr_db: &ItemDB<GroupedExpression<T, Var>, Expr>,
+        var_mapper: &ItemDB<V, Var>,
+    ) -> Self {
+        Self {
+            lhs: lhs
+                .into_iter()
+                .map(|e| undo_variable_transform(&expr_db[e], var_mapper))
+                .collect(),
+            rhs: rhs
+                .into_iter()
+                .map(|e| undo_variable_transform(&expr_db[e], var_mapper))
+                .collect(),
+        }
+    }
 }
 
 /// Checks if a replacement action satisfies the degree bound constraints.
@@ -364,7 +320,7 @@ fn batch_replace_algebraic_constraints<T: FieldElement, V: Hash + Eq + Ord + Clo
     replacements: Vec<ReplacementAction<T, V>>,
     degree_bound: Option<DegreeBound>,
 ) -> bool {
-    // Step 1: Filter out replacements that violate degree bounds
+    // Filter out replacements that violate degree bounds
     let valid_replacements: Vec<_> = replacements
         .into_iter()
         .filter(|replacement| {
@@ -380,60 +336,51 @@ fn batch_replace_algebraic_constraints<T: FieldElement, V: Hash + Eq + Ord + Clo
         })
         .collect();
 
-    // Step 2: Precompute HashSets of unique LHS constraints for efficient lookups
-    let replacement_unique_lhs: Vec<HashSet<GroupedExpression<T, V>>> = valid_replacements
-        .iter()
-        .map(|replacement| replacement.lhs.iter().cloned().collect())
-        .collect();
+    // Build a map from LHS expressions to the replacement indices that need them
+    let mut lhs_to_replacement_indices: HashMap<&GroupedExpression<T, V>, Vec<usize>> =
+        HashMap::new();
+    for (replacement_idx, replacement) in valid_replacements.iter().enumerate() {
+        for lhs_expr in &replacement.lhs {
+            lhs_to_replacement_indices
+                .entry(lhs_expr)
+                .or_default()
+                .push(replacement_idx);
+        }
+    }
 
-    // Step 3: Single pass through constraints to match against all replacements
-    // For each replacement, track which LHS constraints have been found
-    let mut replacement_lhs_matches: Vec<HashSet<GroupedExpression<T, V>>> =
-        vec![HashSet::new(); valid_replacements.len()];
+    // Single pass through constraints to identify which LHS constraints are present
+    // Track which LHS constraints have been found for each replacement
+    let mut replacement_lhs_found_count: Vec<usize> = vec![0; valid_replacements.len()];
 
     for constraint in system.algebraic_constraints() {
-        // Check each replacement to see if this constraint is in its LHS
-        for (replacement_idx, unique_lhs) in replacement_unique_lhs.iter().enumerate() {
-            if unique_lhs.contains(&constraint.expression) {
-                // Mark this constraint as found for this replacement
-                replacement_lhs_matches[replacement_idx].insert(constraint.expression.clone());
+        if let Some(replacement_indices) = lhs_to_replacement_indices.get(&constraint.expression) {
+            for &replacement_idx in replacement_indices {
+                replacement_lhs_found_count[replacement_idx] += 1;
             }
         }
     }
 
-    // Step 4: Determine which replacements are complete (all LHS constraints found)
-    let complete_replacements: Vec<_> = valid_replacements
+    // Determine which replacements are complete (all LHS constraints found)
+    let complete_replacement_indices: Vec<usize> = valid_replacements
         .iter()
         .enumerate()
-        .filter(|(idx, _replacement)| {
-            // A replacement is complete if we found all its unique LHS constraints
-            replacement_lhs_matches[*idx] == replacement_unique_lhs[*idx]
-        })
+        .filter(|(idx, replacement)| replacement_lhs_found_count[*idx] == replacement.lhs.len())
+        .map(|(idx, _)| idx)
         .collect();
 
-    if complete_replacements.is_empty() {
-        // Log which replacements were incomplete
-        for (idx, replacement) in valid_replacements.iter().enumerate() {
-            if replacement_lhs_matches[idx] != replacement_unique_lhs[idx] {
-                let missing: Vec<_> = replacement_unique_lhs[idx]
-                    .difference(&replacement_lhs_matches[idx])
-                    .collect();
-                log::warn!(
-                    "Was about to replace constraints {} but did not find {} in the system.",
-                    replacement.lhs.iter().format(", "),
-                    missing.iter().format(", ")
-                );
-            }
-        }
+    if complete_replacement_indices.is_empty() {
         return false;
     }
 
-    // Step 5: Handle conflicts - if multiple complete replacements want the same constraint,
+    // Handle conflicts - if multiple complete replacements want the same constraint,
     // only the first one (in sorted order) gets it
-    let mut constraints_to_remove: HashSet<GroupedExpression<T, V>> = HashSet::new();
+    let mut constraints_to_remove: HashSet<&GroupedExpression<T, V>> = HashSet::new();
     let mut replacement_constraints = Vec::new();
+    let mut skipped_indices = HashSet::new();
 
-    for (_idx, replacement) in complete_replacements {
+    for &replacement_idx in &complete_replacement_indices {
+        let replacement = &valid_replacements[replacement_idx];
+
         // Check if any of this replacement's LHS constraints have already been claimed
         let has_conflict = replacement
             .lhs
@@ -441,18 +388,10 @@ fn batch_replace_algebraic_constraints<T: FieldElement, V: Hash + Eq + Ord + Clo
             .any(|lhs_expr| constraints_to_remove.contains(lhs_expr));
 
         if has_conflict {
-            // This replacement conflicts with an earlier one, skip it
-            log::debug!(
-                "Skipping replacement of {} due to conflict with earlier replacement.",
-                replacement.lhs.iter().format(", ")
-            );
+            skipped_indices.insert(replacement_idx);
         } else {
             // No conflict, this replacement can proceed
-            // Add all LHS expressions to the removal set
-            for lhs_expr in &replacement.lhs {
-                constraints_to_remove.insert(lhs_expr.clone());
-            }
-            // Collect all RHS constraints to add
+            constraints_to_remove.extend(replacement.lhs.iter());
             replacement_constraints.extend(replacement.rhs.iter().cloned());
         }
     }
@@ -462,7 +401,24 @@ fn batch_replace_algebraic_constraints<T: FieldElement, V: Hash + Eq + Ord + Clo
         return false;
     }
 
-    // Step 6: Remove old constraints and add new ones
+    // Log warnings for incomplete and skipped replacements
+    for (idx, replacement) in valid_replacements.iter().enumerate() {
+        if replacement_lhs_found_count[idx] != replacement.lhs.len() {
+            log::warn!(
+                "Was about to replace constraints {} but found only {}/{} in the system.",
+                replacement.lhs.iter().format(", "),
+                replacement_lhs_found_count[idx],
+                replacement.lhs.len()
+            );
+        } else if skipped_indices.contains(&idx) {
+            log::debug!(
+                "Skipping replacement of {} due to conflict with earlier replacement.",
+                replacement.lhs.iter().format(", ")
+            );
+        }
+    }
+
+    // Remove old constraints and add new ones
     system.retain_algebraic_constraints(|c| !constraints_to_remove.contains(&c.expression));
     system.add_algebraic_constraints(
         replacement_constraints
