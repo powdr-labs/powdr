@@ -328,6 +328,46 @@ struct ReplacementAction<T: FieldElement, V: Hash + Eq + Ord + Clone + Display> 
     rhs: Vec<GroupedExpression<T, V>>,
 }
 
+/// Checks if a replacement action satisfies the degree bound constraints.
+/// Returns true if the replacement is allowed, false otherwise.
+///
+/// If degree_bound is None, the replacement is only allowed if the degree does not increase.
+/// If degree_bound is Some(bound), the replacement is allowed if the new degree stays within the bound.
+fn is_replacement_within_degree_bound<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
+    replacement: &ReplacementAction<T, V>,
+    degree_bound: Option<DegreeBound>,
+) -> bool {
+    let max_old_degree = replacement
+        .lhs
+        .iter()
+        .map(|e| e.degree())
+        .max()
+        .unwrap_or(0);
+    let max_new_degree = replacement
+        .rhs
+        .iter()
+        .map(|e| e.degree())
+        .max()
+        .unwrap_or(0);
+
+    // Check if the degree increase is acceptable
+    let degree_increase = max_new_degree > max_old_degree;
+    let within_bound = match degree_bound {
+        None => !degree_increase,
+        Some(bound) => max_new_degree <= bound.identities,
+    };
+
+    if !within_bound {
+        log::debug!(
+            "Skipping replacement of {} by {} due to degree constraints.",
+            replacement.lhs.iter().format(", "),
+            replacement.rhs.iter().format(", ")
+        );
+    }
+
+    within_bound
+}
+
 /// Batch replaces multiple sets of algebraic constraints in a single pass through the constraint system.
 /// Returns true if at least one replacement was successful.
 ///
@@ -351,38 +391,7 @@ fn batch_replace_algebraic_constraints<T: FieldElement, V: Hash + Eq + Ord + Clo
     // Step 1: Filter out replacements that violate degree bounds
     let valid_replacements: Vec<_> = replacements
         .into_iter()
-        .filter(|replacement| {
-            let max_old_degree = replacement
-                .lhs
-                .iter()
-                .map(|e| e.degree())
-                .max()
-                .unwrap_or(0);
-            let max_new_degree = replacement
-                .rhs
-                .iter()
-                .map(|e| e.degree())
-                .max()
-                .unwrap_or(0);
-
-            // Check if the degree increase is acceptable
-            let degree_increase = max_new_degree > max_old_degree;
-            let within_bound = match degree_bound {
-                None => !degree_increase,
-                Some(bound) => max_new_degree <= bound.identities,
-            };
-
-            if !within_bound {
-                log::debug!(
-                    "Skipping replacement of {} by {} due to degree constraints.",
-                    replacement.lhs.iter().format(", "),
-                    replacement.rhs.iter().format(", ")
-                );
-                false
-            } else {
-                true
-            }
-        })
+        .filter(|replacement| is_replacement_within_degree_bound(replacement, degree_bound))
         .collect();
 
     if valid_replacements.is_empty() {
