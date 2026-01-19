@@ -329,13 +329,110 @@ crepe! {
     // both non-negative and their sum is constrained, then we can replace
     // both constraints by `x * (a + b) = 0`.
     // The same applies to three constraints.
+
+    struct ReplaceEightOfAlgebraicConstraintsBy(Expr, Expr, Expr,Expr, Expr, Expr, Expr, Expr, Expr);
+    ReplaceEightOfAlgebraicConstraintsBy(e0, e1, e2, e3, e4, e5, e6, e7, replacement) <-
+      Env(env),
+      ProductConstraint(e0, x, a0),
+      ProductConstraint(e1, x, a1),
+      (e0 < e1),
+      ProductConstraint(e2, x, a2),
+      (e1 < e2),
+      ProductConstraint(e3, x, a3),
+      (e2 < e3),
+      ProductConstraint(e4, x, a4),
+      (e3 < e4),
+      ProductConstraint(e5, x, a5),
+      (e4 < e5),
+      ProductConstraint(e6, x, a6),
+      (e5 < e6),
+      ProductConstraint(e7, x, a7),
+      (e6 < e7),
+      RangeConstraintOnExpression(a0, rc_a0),
+      RangeConstraintOnExpression(a1, rc_a1),
+      RangeConstraintOnExpression(a2, rc_a2),
+      RangeConstraintOnExpression(a3, rc_a3),
+      RangeConstraintOnExpression(a4, rc_a4),
+      RangeConstraintOnExpression(a5, rc_a5),
+      RangeConstraintOnExpression(a6, rc_a6),
+      RangeConstraintOnExpression(a7, rc_a7),
+      (rc_a0.range().0 == T::zero()
+        && rc_a1.range().0 == T::zero()
+        && rc_a2.range().0 == T::zero()
+        && rc_a3.range().0 == T::zero()
+        && rc_a4.range().0 == T::zero()
+        && rc_a5.range().0 == T::zero()
+        && rc_a6.range().0 == T::zero()
+        && rc_a7.range().0 == T::zero()
+        && !rc_a0.combine_sum(&rc_a1).combine_sum(&rc_a2.combine_sum(&rc_a3)).combine_sum(&rc_a4).combine_sum(&rc_a5).combine_sum(&rc_a6).combine_sum(&rc_a7).is_unconstrained()),
+      let replacement = env.insert_owned(env.extract(x) * (env.extract(a0) + env.extract(a1) + env.extract(a2) + env.extract(a3)+ env.extract(a4) + env.extract(a5) + env.extract(a6) + env.extract(a7)));
+
+    struct ReplacedExpressionInEightSet(Expr);
+    ReplacedExpressionInEightSet(e) <-
+      ReplaceEightOfAlgebraicConstraintsBy(e, _, _, _, _, _, _, _, _);
+    ReplacedExpressionInEightSet(e) <-
+      ReplaceEightOfAlgebraicConstraintsBy(_, e, _, _, _, _, _, _, _);
+    ReplacedExpressionInEightSet(e) <-
+      ReplaceEightOfAlgebraicConstraintsBy(_, _, e, _, _, _, _, _, _);
+    ReplacedExpressionInEightSet(e) <-
+      ReplaceEightOfAlgebraicConstraintsBy(_, _, _, e, _, _, _, _, _);
+    ReplacedExpressionInEightSet(e) <-
+      ReplaceEightOfAlgebraicConstraintsBy(_, _, _, _, e, _, _, _, _);
+    ReplacedExpressionInEightSet(e) <-
+      ReplaceEightOfAlgebraicConstraintsBy(_, _, _, _, _, e, _, _, _);
+    ReplacedExpressionInEightSet(e) <-
+      ReplaceEightOfAlgebraicConstraintsBy(_, _, _, _, _, _, e, _, _);
+    ReplacedExpressionInEightSet(e) <-
+      ReplaceEightOfAlgebraicConstraintsBy(_, _, _, _, _, _, _, e, _);
+
+    struct ReplaceFourOfAlgebraicConstraintsBy(Expr, Expr, Expr, Expr, Expr);
+    ReplaceFourOfAlgebraicConstraintsBy(e0, e1, e2, e3, replacement) <-
+      Env(env),
+      ProductConstraint(e0, x, a0),
+      !ReplacedExpressionInEightSet(e0),
+      ProductConstraint(e1, x, a1),
+      !ReplacedExpressionInEightSet(e1),
+      (e0 < e1),
+      ProductConstraint(e2, x, a2),
+      !ReplacedExpressionInEightSet(e2),
+      (e1 < e2),
+      ProductConstraint(e3, x, a3),
+      !ReplacedExpressionInEightSet(e3),
+      (e2 < e3),
+      RangeConstraintOnExpression(a0, rc_a0),
+      RangeConstraintOnExpression(a1, rc_a1),
+      RangeConstraintOnExpression(a2, rc_a2),
+      RangeConstraintOnExpression(a3, rc_a3),
+      (rc_a0.range().0 == T::zero()
+        && rc_a1.range().0 == T::zero()
+        && rc_a2.range().0 == T::zero()
+        && rc_a3.range().0 == T::zero()
+        && !rc_a0.combine_sum(&rc_a1).combine_sum(&rc_a2.combine_sum(&rc_a3)).is_unconstrained()),
+      let replacement = env.insert_owned(env.extract(x) * (env.extract(a0) + env.extract(a1) + env.extract(a2) + env.extract(a3)));
+
+    struct ReplacedExpressionInFourSet(Expr);
+    ReplacedExpressionInFourSet(e) <-
+      ReplaceFourOfAlgebraicConstraintsBy(e, _, _, _, _);
+    ReplacedExpressionInFourSet(e) <-
+      ReplaceFourOfAlgebraicConstraintsBy(_, e, _, _, _);
+    ReplacedExpressionInFourSet(e) <-
+      ReplaceFourOfAlgebraicConstraintsBy(_, _, e, _, _);
+    ReplacedExpressionInFourSet(e) <-
+      ReplaceFourOfAlgebraicConstraintsBy(_, _, _, e, _);
+
     struct ReplaceTripleOfAlgebraicConstraintsBy(Expr, Expr, Expr, Expr);
     ReplaceTripleOfAlgebraicConstraintsBy(e1, e2, e3, replacement) <-
       Env(env),
       ProductConstraint(e1, x, a1),
       ProductConstraint(e2, x, a2),
-      (e1 < e2),
       ProductConstraint(e3, x, a3),
+      !ReplacedExpressionInEightSet(e1),
+      !ReplacedExpressionInEightSet(e2),
+      !ReplacedExpressionInEightSet(e3),
+      !ReplacedExpressionInFourSet(e1),
+      !ReplacedExpressionInFourSet(e2),
+      !ReplacedExpressionInFourSet(e3),
+      (e1 < e2),
       (e2 < e3),
       RangeConstraintOnExpression(a1, rc_a1),
       RangeConstraintOnExpression(a2, rc_a2),
@@ -356,6 +453,10 @@ crepe! {
       Env(env),
       ProductConstraint(e1, x, a),
       ProductConstraint(e2, x, b),
+      !ReplacedExpressionInEightSet(e1),
+      !ReplacedExpressionInEightSet(e2),
+      !ReplacedExpressionInFourSet(e1),
+      !ReplacedExpressionInFourSet(e2),
       !ReplacedExpressionInTripleSet(e1),
       !ReplacedExpressionInTripleSet(e2),
       (e1 < e2),
@@ -378,7 +479,6 @@ crepe! {
     Assignment(var, v) <-
       AlgebraicConstraint(e),
       Solvable(e, var, v);
-
 
 
     ///////////////////////////////// OUTPUT ACTIONS //////////////////////////
@@ -447,6 +547,10 @@ crepe! {
       Equivalence(v1, v2), (v2 > v1);
     ActionRule(Action::ReplaceAlgebraicConstraintBy(e1, e2)) <-
       ReplaceAlgebraicConstraintBy(e1, e2);
+    ActionRule(Action::ReplaceEightOfAlgebraicConstraintsBy(e0, e1, e2, e3, e4, e5, e6, e7, r)) <-
+      ReplaceEightOfAlgebraicConstraintsBy(e0, e1, e2, e3, e4, e5, e6, e7, r);
+    ActionRule(Action::ReplaceFourOfAlgebraicConstraintsBy(e0, e1, e2, e3, r)) <-
+      ReplaceFourOfAlgebraicConstraintsBy(e0, e1, e2, e3, r);
     ActionRule(Action::ReplaceTripleOfAlgebraicConstraintsBy(e1, e2, e3, r)) <-
       ReplaceTripleOfAlgebraicConstraintsBy(e1, e2, e3, r);
     ActionRule(Action::ReplacePairOfAlgebraicConstraintsBy(e1, e2, r)) <-

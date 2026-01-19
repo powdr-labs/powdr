@@ -223,6 +223,36 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                         degree_bound,
                     )
                 }
+                Action::ReplaceEightOfAlgebraicConstraintsBy(
+                    e1,
+                    e2,
+                    e3,
+                    e4,
+                    e5,
+                    e6,
+                    e7,
+                    e8,
+                    replacement,
+                ) => {
+                    progress |= replace_algebraic_constraints(
+                        &mut system,
+                        [e1, e2, e3, e4, e5, e6, e7, e8],
+                        [replacement],
+                        &expr_db_,
+                        &var_mapper,
+                        degree_bound,
+                    );
+                }
+                Action::ReplaceFourOfAlgebraicConstraintsBy(e1, e2, e3, e4, replacement) => {
+                    progress |= replace_algebraic_constraints(
+                        &mut system,
+                        [e1, e2, e3, e4],
+                        [replacement],
+                        &expr_db_,
+                        &var_mapper,
+                        degree_bound,
+                    );
+                }
                 Action::ReplaceTripleOfAlgebraicConstraintsBy(e1, e2, e3, replacement) => {
                     progress |= replace_algebraic_constraints(
                         &mut system,
