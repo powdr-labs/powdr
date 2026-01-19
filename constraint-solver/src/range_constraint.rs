@@ -168,6 +168,27 @@ impl<T: FieldElement> RangeConstraint<T> {
         Self { min, max, mask }
     }
 
+    /// Helper function to compute the maximum absolute value in a range.
+    /// For wrapping ranges (min > max), the range spans negative and possibly positive values.
+    /// -min gives the absolute value of the most negative element, and max represents
+    /// the largest positive element, so max(-min, max) gives the largest absolute value.
+    fn max_abs_value(&self) -> T {
+        if self.min > self.max {
+            // Wrapping range: may contain both negative (from min to field_max)
+            // and positive (from 0 to max) values
+            std::cmp::max(-self.min, self.max)
+        } else if self.min.is_in_lower_half() {
+            // Non-wrapping positive range
+            self.max
+        } else if self.max.is_in_lower_half() {
+            // Non-wrapping range crossing zero
+            std::cmp::max(-self.min, self.max)
+        } else {
+            // Non-wrapping negative range
+            -self.min
+        }
+    }
+
     /// The range constraint of the product of two expressions:
     /// If `r1` is a valid RangeConstraint for `e1` and `r2` is a valid RangeConstraint for `e2`,
     /// then `r1.combine_product(r2)` is a valid RangeConstraint for `e1 * e2`.
@@ -183,46 +204,33 @@ impl<T: FieldElement> RangeConstraint<T> {
 
             match (self_wrapping, other_wrapping) {
                 (true, true) => {
-                    // Both ranges are wrapping (negative values and possibly positive)
-                    // For a wrapping range [min, max] where min > max, the range includes
-                    // values from min to field_max (negative) and 0 to max (positive/negative).
-                    // The maximum absolute value is max(-min, max).
-                    let self_max_abs = std::cmp::max(-self.min, self.max);
-                    let other_max_abs = std::cmp::max(-other.min, other.max);
+                    // Both ranges are wrapping
+                    let self_max_abs = self.max_abs_value();
+                    let other_max_abs = other.max_abs_value();
 
                     // Check if the product of max absolute values fits in the modulus
                     if self_max_abs.to_arbitrary_integer() * other_max_abs.to_arbitrary_integer()
                         < T::modulus().to_arbitrary_integer()
                     {
-                        // The product of two negative ranges can be positive or negative
-                        // depending on the specific values. We need to consider all corners.
-                        // For wrapping ranges, the extremes are at min (most negative) and max (least negative or small positive)
+                        // Compute all four corner products to find the tightest bounds
                         let corners = [
-                            self.min * other.min, // most negative * most negative = large positive
-                            self.min * other.max, // most negative * least negative
-                            self.max * other.min, // least negative * most negative
-                            self.max * other.max, // least negative * least negative
+                            self.min * other.min,
+                            self.min * other.max,
+                            self.max * other.min,
+                            self.max * other.max,
                         ];
 
-                        // Find the actual min and max among all corners
-                        // Since we're dealing with field elements, we need to determine which is "smaller"
-                        // We'll compute all products and find the range that covers them all
                         let (result_min, result_max) = Self::compute_product_bounds(&corners);
                         return Self::from_range(result_min, result_max);
                     }
                 }
                 (true, false) | (false, true) => {
                     // One range is wrapping, one is not (mixed signs)
-                    let (wrap_range, normal_range) = if self_wrapping {
-                        (self, other)
-                    } else {
-                        (other, self)
-                    };
-
-                    let wrap_max_abs = std::cmp::max(-wrap_range.min, wrap_range.max);
+                    let self_max_abs = self.max_abs_value();
+                    let other_max_abs = other.max_abs_value();
 
                     // Check if the product fits in the modulus
-                    if wrap_max_abs.to_arbitrary_integer() * normal_range.max.to_arbitrary_integer()
+                    if self_max_abs.to_arbitrary_integer() * other_max_abs.to_arbitrary_integer()
                         < T::modulus().to_arbitrary_integer()
                     {
                         // Compute all four corner products
@@ -240,8 +248,6 @@ impl<T: FieldElement> RangeConstraint<T> {
                 (false, false) => {
                     // Both ranges are non-wrapping
                     // Check if either range might contain negative values (in the field sense)
-                    // A non-wrapping range [min, max] where min is in upper half represents
-                    // a range of all large (negative) values
 
                     // Simple case: both min values are in lower half (positive)
                     if self.min.is_in_lower_half() && other.min.is_in_lower_half() {
@@ -253,27 +259,9 @@ impl<T: FieldElement> RangeConstraint<T> {
                         }
                     } else {
                         // At least one range starts in the upper half
-                        // Need to consider corner cases more carefully
-
-                        // Compute the maximum absolute value for each range
-                        let self_max_abs = if self.min.is_in_lower_half() {
-                            // Range is all positive, max is self.max
-                            self.max
-                        } else if self.max.is_in_lower_half() {
-                            // Range crosses zero, max abs is max of -min and max
-                            std::cmp::max(-self.min, self.max)
-                        } else {
-                            // Range is all negative, max abs is -min
-                            -self.min
-                        };
-
-                        let other_max_abs = if other.min.is_in_lower_half() {
-                            other.max
-                        } else if other.max.is_in_lower_half() {
-                            std::cmp::max(-other.min, other.max)
-                        } else {
-                            -other.min
-                        };
+                        // Use the helper to compute maximum absolute values
+                        let self_max_abs = self.max_abs_value();
+                        let other_max_abs = other.max_abs_value();
 
                         // Check if product fits
                         if self_max_abs.to_arbitrary_integer()
@@ -1162,7 +1150,8 @@ mod test {
         type F = GoldilocksField;
         // Test that we still return unconstrained when product would overflow
         // Use very large ranges that would cause overflow
-        // GoldilocksField modulus is approximately 2^64, so use values around 2^32
+        // GoldilocksField modulus is approximately 2^64, so use values around 2^50
+        // where 2^50 * 2^50 = 2^100 > 2^64 will overflow
         let large_val = F::from(1u64 << 50); // 2^50
         let a = RangeConstraint::<F>::from_range(large_val, large_val + F::from(1000u32));
         let b = RangeConstraint::<F>::from_range(large_val, large_val + F::from(1000u32));
