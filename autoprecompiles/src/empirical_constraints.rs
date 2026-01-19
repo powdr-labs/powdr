@@ -7,13 +7,15 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 pub use crate::equivalence_classes::{EquivalenceClass, Partition};
-use crate::optimistic::algebraic_references::BlockCellAlgebraicReferenceMapper;
 
-use crate::optimistic::config::optimistic_precompile_config;
 use crate::{
     adapter::Adapter,
     blocks::{BasicBlock, PcStep},
     expression::{AlgebraicExpression, AlgebraicReference},
+    optimistic::{
+        algebraic_references::BlockCellAlgebraicReferenceMapper,
+        config::optimistic_precompile_config,
+    },
     symbolic_machine::SymbolicConstraint,
 };
 
