@@ -178,13 +178,10 @@ impl<T: FieldElement> RangeConstraint<T> {
             // and positive (from 0 to max) values
             std::cmp::max(-self.min, self.max)
         } else if self.min.is_in_lower_half() {
-            // Non-wrapping positive range
+            // Non-wrapping range, all positive
             self.max
-        } else if self.max.is_in_lower_half() {
-            // Non-wrapping range crossing zero
-            std::cmp::max(-self.min, self.max)
         } else {
-            // Non-wrapping negative range
+            // Non-wrapping range, all negative (min and max both in upper half)
             -self.min
         }
     }
@@ -293,9 +290,13 @@ impl<T: FieldElement> RangeConstraint<T> {
         // To find the proper min and max in field arithmetic, we need to find
         // the tightest range [min, max] that covers all corner values.
         // This is non-trivial because ranges can wrap.
+        //
+        // Algorithm: Try each corner as a potential min, then find the max that
+        // covers all corners with minimum range width. This works because:
+        // - The optimal min must be one of the corners
+        // - For each potential min, we find the furthest corner going forward in field order
+        // - We select the (min, max) pair with smallest width
 
-        // Try each corner as a potential min, and find the corresponding max
-        // that covers all corners with the smallest range width
         let mut best_min = corners[0];
         let mut best_max = corners[0];
         let mut best_width = T::modulus();
