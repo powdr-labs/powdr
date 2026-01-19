@@ -370,10 +370,6 @@ fn batch_replace_algebraic_constraints<T: FieldElement, V: Hash + Eq + Ord + Clo
         .map(|(idx, _)| idx)
         .collect();
 
-    if complete_replacement_indices.is_empty() {
-        return false;
-    }
-
     // Handle conflicts - if multiple complete replacements want the same constraint,
     // only the first one (in sorted order) gets it
     let mut constraints_to_remove: HashSet<&GroupedExpression<T, V>> = HashSet::new();
