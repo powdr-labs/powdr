@@ -384,38 +384,42 @@ fn batch_replace_algebraic_constraints<T: FieldElement, V: Hash + Eq + Ord + Clo
         return false;
     }
 
-    // Step 2: Single pass through constraints to match against all replacements
+    // Step 2: Precompute HashSets of unique LHS constraints for efficient lookups
+    let replacement_unique_lhs: Vec<HashSet<GroupedExpression<T, V>>> = valid_replacements
+        .iter()
+        .map(|replacement| replacement.lhs.iter().cloned().collect())
+        .collect();
+
+    // Step 3: Single pass through constraints to match against all replacements
     // For each replacement, track which LHS constraints have been found
     let mut replacement_lhs_matches: Vec<HashSet<GroupedExpression<T, V>>> =
         vec![HashSet::new(); valid_replacements.len()];
 
     for constraint in system.algebraic_constraints() {
         // Check each replacement to see if this constraint is in its LHS
-        for (replacement_idx, replacement) in valid_replacements.iter().enumerate() {
-            if replacement.lhs.contains(&constraint.expression) {
+        for (replacement_idx, unique_lhs) in replacement_unique_lhs.iter().enumerate() {
+            if unique_lhs.contains(&constraint.expression) {
                 // Mark this constraint as found for this replacement
                 replacement_lhs_matches[replacement_idx].insert(constraint.expression.clone());
             }
         }
     }
 
-    // Step 3: Determine which replacements are complete (all LHS constraints found)
+    // Step 4: Determine which replacements are complete (all LHS constraints found)
     let complete_replacements: Vec<_> = valid_replacements
         .iter()
         .enumerate()
-        .filter(|(idx, replacement)| {
+        .filter(|(idx, _replacement)| {
             // A replacement is complete if we found all its unique LHS constraints
-            let unique_lhs: HashSet<_> = replacement.lhs.iter().cloned().collect();
-            replacement_lhs_matches[*idx] == unique_lhs
+            replacement_lhs_matches[*idx] == replacement_unique_lhs[*idx]
         })
         .collect();
 
     if complete_replacements.is_empty() {
         // Log which replacements were incomplete
         for (idx, replacement) in valid_replacements.iter().enumerate() {
-            let unique_lhs: HashSet<_> = replacement.lhs.iter().cloned().collect();
-            if replacement_lhs_matches[idx] != unique_lhs {
-                let missing: Vec<_> = unique_lhs
+            if replacement_lhs_matches[idx] != replacement_unique_lhs[idx] {
+                let missing: Vec<_> = replacement_unique_lhs[idx]
                     .difference(&replacement_lhs_matches[idx])
                     .collect();
                 log::warn!(
@@ -428,7 +432,7 @@ fn batch_replace_algebraic_constraints<T: FieldElement, V: Hash + Eq + Ord + Clo
         return false;
     }
 
-    // Step 4: Handle conflicts - if multiple complete replacements want the same constraint,
+    // Step 5: Handle conflicts - if multiple complete replacements want the same constraint,
     // only the first one (in sorted order) gets it
     let mut constraints_to_remove: HashSet<GroupedExpression<T, V>> = HashSet::new();
     let mut replacement_constraints = Vec::new();
@@ -462,7 +466,7 @@ fn batch_replace_algebraic_constraints<T: FieldElement, V: Hash + Eq + Ord + Clo
         return false;
     }
 
-    // Step 5: Remove old constraints and add new ones
+    // Step 6: Remove old constraints and add new ones
     system.retain_algebraic_constraints(|c| !constraints_to_remove.contains(&c.expression));
     system.add_algebraic_constraints(
         replacement_constraints
