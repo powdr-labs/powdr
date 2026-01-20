@@ -408,7 +408,7 @@ pub(crate) fn batch_replace_algebraic_constraints<
     for (idx, replacement) in valid_replacements.iter().enumerate() {
         let unique_replace: HashSet<_> = replacement.replace.iter().collect();
         if replacement_found[idx].len() != unique_replace.len() {
-            log::warn!(
+            log::debug!(
                 "Was about to replace constraints {} but found only {}/{} unique in the system.",
                 replacement.replace.iter().format(", "),
                 replacement_found[idx].len(),
