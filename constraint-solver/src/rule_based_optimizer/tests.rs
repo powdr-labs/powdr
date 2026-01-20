@@ -282,6 +282,18 @@ fn test_batch_replace_with_duplicate_constraints() {
         .iter()
         .any(|c| format!("{}", c.expression).contains("a"));
     assert!(has_a, "Replacement constraint 'a' should be in the system");
+
+    // Verify the exact form of the final constraints
+    let constraints_str = final_constraints
+        .iter()
+        .map(|c| format!("{}", c.expression))
+        .collect::<Vec<_>>()
+        .join(", ");
+    // Should have 'a' and 'z' constraints (z was the unchanged constraint)
+    assert!(
+        constraints_str.contains("a") && constraints_str.contains("z"),
+        "Final constraints should contain 'a' and 'z', got: {constraints_str}"
+    );
 }
 
 #[test]
