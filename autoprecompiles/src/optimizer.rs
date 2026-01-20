@@ -107,6 +107,7 @@ pub fn optimize<A: Adapter>(
         inline_everything_below_degree_bound(degree_bound),
     );
     stats_logger.log("inlining", &constraint_system);
+    export_options.export_optimizer_outer_constraint_system(constraint_system.system(), "inlining");
 
     let (constraint_system, _) = rule_based_optimization(
         constraint_system,
@@ -115,6 +116,8 @@ pub fn optimize<A: Adapter>(
         &mut new_var,
         Some(degree_bound),
     );
+    export_options
+        .export_optimizer_outer_constraint_system(constraint_system.system(), "rule_based");
     // Note that the rest of the optimization does not benefit from optimizing range constraints,
     // so we only do it once at the end.
     let constraint_system = optimize_range_constraints(
@@ -123,6 +126,8 @@ pub fn optimize<A: Adapter>(
         degree_bound,
     );
     stats_logger.log("optimizing range constraints", &constraint_system);
+    export_options
+        .export_optimizer_outer_constraint_system(&constraint_system, "range_constraints");
 
     let constraint_system = trivial_simplifications(
         constraint_system.into(),
@@ -131,6 +136,7 @@ pub fn optimize<A: Adapter>(
     )
     .system()
     .clone();
+    export_options.export_optimizer_outer_constraint_system(&constraint_system, "trivial_simp");
 
     // Sanity check: Degree bound should be respected:
     for algebraic_constraint in &constraint_system.algebraic_constraints {

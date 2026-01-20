@@ -66,25 +66,34 @@ pub fn optimize_constraints<
 ) -> Result<ConstraintSystem<P, V>, Error> {
     let constraint_system = solver_based_optimization(constraint_system, solver)?;
     stats_logger.log("solver-based optimization", &constraint_system);
-
     export_options.export_optimizer_inner_constraint_system(constraint_system.system(), "solver");
 
     let constraint_system = remove_trivial_constraints(constraint_system);
     stats_logger.log("removing trivial constraints", &constraint_system);
+    export_options
+        .export_optimizer_inner_constraint_system(constraint_system.system(), "remove_trivial");
 
     let constraint_system =
         remove_free_variables(constraint_system, solver, bus_interaction_handler.clone());
     stats_logger.log("removing free variables", &constraint_system);
+    export_options
+        .export_optimizer_inner_constraint_system(constraint_system.system(), "remove_free");
 
     let constraint_system =
         remove_disconnected_columns(constraint_system, solver, bus_interaction_handler.clone());
     stats_logger.log("removing disconnected columns", &constraint_system);
+    export_options.export_optimizer_inner_constraint_system(
+        constraint_system.system(),
+        "remove_disconnected",
+    );
 
     let constraint_system = trivial_simplifications(
         constraint_system,
         bus_interaction_handler.clone(),
         stats_logger,
     );
+    export_options
+        .export_optimizer_inner_constraint_system(constraint_system.system(), "trivial_simp");
 
     let (constraint_system, assignments) = rule_based_optimization(
         constraint_system,
@@ -99,6 +108,8 @@ pub fn optimize_constraints<
         AlgebraicConstraint::assert_eq(GroupedExpression::from_unknown_variable(v), val)
     }));
     stats_logger.log("rule-based optimization", &constraint_system);
+    export_options
+        .export_optimizer_inner_constraint_system(constraint_system.system(), "rule_based");
 
     // At this point, we throw away the index and only keep the constraint system, since the rest of the optimisations are defined on the system alone
     let constraint_system: ConstraintSystem<P, V> = constraint_system.into();
@@ -108,9 +119,14 @@ pub fn optimize_constraints<
         "substituting fields in bus interactions",
         &constraint_system,
     );
+    export_options.export_optimizer_inner_constraint_system(
+        &constraint_system,
+        "substitute_bus_interactio_fields",
+    );
 
     let constraint_system = optimize_memory::<_, _, M>(constraint_system, solver, memory_bus_id);
     stats_logger.log("memory optimization", &constraint_system);
+    export_options.export_optimizer_inner_constraint_system(&constraint_system, "memory");
 
     let constraint_system = LowDegreeBusInteractionOptimizer::new(
         solver,
@@ -122,6 +138,7 @@ pub fn optimize_constraints<
         "low degree bus interaction optimization",
         &constraint_system,
     );
+    export_options.export_optimizer_inner_constraint_system(&constraint_system, "low_degree_bus");
 
     Ok(constraint_system)
 }
