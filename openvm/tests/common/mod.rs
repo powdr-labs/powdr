@@ -28,13 +28,12 @@ pub mod apc_builder_utils {
     use powdr_number::BabyBearField;
     use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
     use powdr_openvm::instruction_formatter::openvm_instruction_formatter;
-    use powdr_openvm::BabyBearOpenVmApcAdapter;
     use powdr_openvm::Instr;
     use powdr_openvm::DEFAULT_DEGREE_BOUND;
+    use powdr_openvm::{default_powdr_openvm_config, BabyBearOpenVmApcAdapter};
     use pretty_assertions::assert_eq;
     use std::fs;
     use std::path::Path;
-    use std::sync::Arc;
 
     use crate::common::original_vm_config;
 
@@ -75,16 +74,21 @@ pub mod apc_builder_utils {
             &EmpiricalConstraints::default(),
         )
         .unwrap();
-        let apc = Arc::new(apc);
-        let evaluation = evaluate_apc(
-            &basic_block.statements,
+
+        let config = default_powdr_openvm_config(0, 0);
+        let apc_with_stats = evaluate_apc::<BabyBearOpenVmApcAdapter>(
+            basic_block,
             vm_config.instruction_handler,
-            apc.machine(),
+            apc,
+            &config,
         );
+
+        let evaluation = apc_with_stats.evaluation_result();
+        let apc = &apc_with_stats.apc().machine;
 
         format!(
             "Instructions:\n{basic_block_str}\n\n{evaluation}\n\n{}",
-            apc.machine().render(&bus_map)
+            apc.render(&bus_map)
         )
     }
 

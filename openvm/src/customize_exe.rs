@@ -28,7 +28,7 @@ use openvm_stark_backend::{
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::adapter::{
-    Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig, ApcWithStats, PgoAdapter,
+    Adapter, AdapterApc, AdapterApcWithStats, ApcWithStats, PgoAdapter,
 };
 use powdr_autoprecompiles::blocks::{BasicBlock, Instruction, PcStep};
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
@@ -112,8 +112,8 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     }
 
     fn apc_stats(
-        apc: &Arc<AdapterApc<Self>>,
-        vm_config: &AdapterVmConfig<'_, Self>,
+        apc: Arc<AdapterApc<Self>>,
+        instruction_handler: &Self::InstructionHandler,
         config: &PowdrConfig,
     ) -> Self::ApcStats {
         let apc_metrics = get_air_metrics(
@@ -127,8 +127,7 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
             .statements
             .iter()
             .map(|instr| {
-                vm_config
-                    .instruction_handler
+                instruction_handler
                     .get_instruction_metrics(instr.0.opcode)
                     .unwrap()
                     .widths

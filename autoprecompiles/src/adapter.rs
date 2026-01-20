@@ -124,8 +124,8 @@ where
     fn from_field(e: Self::Field) -> Self::PowdrField;
 
     fn apc_stats(
-        apc: &Arc<AdapterApc<Self>>,
-        vm_config: &AdapterVmConfig<'_, Self>,
+        apc: Arc<AdapterApc<Self>>,
+        vm_config: &Self::InstructionHandler,
         config: &PowdrConfig,
     ) -> Self::ApcStats;
 

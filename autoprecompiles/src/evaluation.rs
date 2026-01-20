@@ -1,6 +1,9 @@
-use std::{fmt::Display, iter::Sum, ops::Add};
+use std::{fmt::Display, iter::Sum, ops::Add, sync::Arc};
 
-use crate::{blocks::Instruction, InstructionHandler, SymbolicMachine};
+use crate::{
+    adapter::{Adapter, AdapterApc, AdapterApcWithStats, AdapterBasicBlock},
+    InstructionHandler, PowdrConfig, SymbolicMachine,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -57,22 +60,24 @@ pub struct EvaluationResult {
 
 /// Evaluate an APC by comparing its cost to the cost of executing the
 /// basic block in software.
-pub fn evaluate_apc<IH>(
-    basic_block: &[IH::Instruction],
-    instruction_handler: &IH,
-    machine: &SymbolicMachine<impl Clone + Ord + std::fmt::Display>,
-) -> EvaluationResult
-where
-    IH: InstructionHandler,
-    IH::Field: Clone + Ord + std::fmt::Display,
-    IH::Instruction: Instruction<IH::Field>,
-{
+pub fn evaluate_apc<A: Adapter>(
+    basic_block: AdapterBasicBlock<A>,
+    instruction_handler: &A::InstructionHandler,
+    apc: AdapterApc<A>,
+    config: &PowdrConfig,
+) -> AdapterApcWithStats<A> {
     let before = basic_block
+        .statements
         .iter()
         .map(|instruction| instruction_handler.get_instruction_air_stats(instruction))
         .sum();
-    let after = AirStats::new(machine);
-    EvaluationResult { before, after }
+    let after = AirStats::new(apc.machine());
+    let evaluation_result = EvaluationResult { before, after };
+
+    let apc = Arc::new(apc);
+    let apc_stats = A::apc_stats(apc.clone(), instruction_handler, config);
+
+    AdapterApcWithStats::<A>::new(apc, apc_stats, evaluation_result)
 }
 
 impl Display for EvaluationResult {

@@ -9,9 +9,7 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    adapter::{
-        Adapter, AdapterApcWithStats, AdapterBasicBlock, AdapterVmConfig, ApcWithStats, PgoAdapter,
-    },
+    adapter::{Adapter, AdapterApcWithStats, AdapterBasicBlock, AdapterVmConfig, PgoAdapter},
     blocks::BasicBlock,
     evaluation::{evaluate_apc, EvaluationResult},
     pgo::cell::selection::parallel_fractional_knapsack,
@@ -135,17 +133,9 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
                     &empirical_constraints,
                 )
                 .ok()?;
-                let apc = Arc::new(apc);
-                let apc_stats = A::apc_stats(&apc, &vm_config, config);
-                let evaluation_result = evaluate_apc(
-                    &block.statements,
-                    vm_config.instruction_handler,
-                    apc.machine(),
-                );
-                let candidate = C::create(
-                    ApcWithStats::new(apc, apc_stats, evaluation_result),
-                    &self.data,
-                );
+                let apc_with_stats =
+                    evaluate_apc::<A>(block, vm_config.instruction_handler, apc, config);
+                let candidate = C::create(apc_with_stats, &self.data);
                 if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
                     let json_export = candidate.to_json_export(apc_candidates_dir_path);
                     apc_candidates.lock().unwrap().push(json_export);
