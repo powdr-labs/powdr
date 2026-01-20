@@ -20,7 +20,6 @@ pub fn original_vm_config() -> OriginalVmConfig {
 pub mod apc_builder_utils {
     use openvm_instructions::instruction::Instruction;
     use openvm_stark_sdk::p3_baby_bear::BabyBear;
-
     use powdr_autoprecompiles::blocks::BasicBlock;
     use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
     use powdr_autoprecompiles::evaluation::evaluate_apc;

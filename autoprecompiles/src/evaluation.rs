@@ -60,6 +60,7 @@ pub struct EvaluationResult {
 
 /// Evaluate an APC by comparing its cost to the cost of executing the
 /// basic block in software.
+/// This is used by different pgo strategies in different stages. For example, for cell PGO, this is done before selection, and for instruction PGO, it is done after.
 pub fn evaluate_apc<A: Adapter>(
     basic_block: AdapterBasicBlock<A>,
     instruction_handler: &A::InstructionHandler,

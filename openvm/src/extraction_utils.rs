@@ -144,7 +144,7 @@ impl<F> OriginalAirs<F> {
             .map(|(name, (machine, _))| (name, machine))
     }
 
-    fn new(degree_bound: DegreeBound) -> Self {
+    fn with_degree_bound(degree_bound: DegreeBound) -> Self {
         Self {
             degree_bound,
             opcode_to_air: Default::default(),
@@ -334,7 +334,7 @@ impl OriginalVmConfig {
                 (op, air_ref)
             }) // find executor for opcode
             .try_fold(
-                OriginalAirs::new(degree_bound),
+                OriginalAirs::with_degree_bound(degree_bound),
                 |mut airs, (op, air_ref)| {
                     airs.insert_opcode(op, air_ref.name(), |degree_bound| {
                         let columns = get_columns(air_ref.clone());
