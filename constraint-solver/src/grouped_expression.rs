@@ -11,7 +11,7 @@ use itertools::Itertools;
 use num_traits::One;
 use num_traits::Zero;
 use powdr_number::FieldElement;
-use serde::{ser::SerializeTuple, Serialize, Serializer};
+use serde::{Serialize, Serializer};
 
 use super::range_constraint::RangeConstraint;
 use super::symbolic_expression::SymbolicExpression;
@@ -882,11 +882,7 @@ impl<'a, I: Serialize> Serialize for SumSerializer<'a, I> {
         if beginning.is_empty() {
             last.serialize(serializer)
         } else {
-            let mut state = serializer.serialize_tuple(3)?;
-            state.serialize_element(&SumSerializer { items: beginning })?;
-            state.serialize_element("+")?;
-            state.serialize_element(last)?;
-            state.end()
+            (&SumSerializer { items: beginning }, "+", last).serialize(serializer)
         }
     }
 }
@@ -896,20 +892,8 @@ impl<T: RuntimeConstant + Serialize, V: Ord + Clone + Eq + Serialize> Serialize
 {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
-            GroupedExpressionComponent::Quadratic(l, r) => {
-                let mut state = serializer.serialize_tuple(3)?;
-                state.serialize_element(l)?;
-                state.serialize_element("*")?;
-                state.serialize_element(r)?;
-                state.end()
-            }
-            GroupedExpressionComponent::Linear(v, c) => {
-                let mut state = serializer.serialize_tuple(3)?;
-                state.serialize_element(c)?;
-                state.serialize_element("*")?;
-                state.serialize_element(v)?;
-                state.end()
-            }
+            GroupedExpressionComponent::Quadratic(l, r) => (l, "*", r).serialize(serializer),
+            GroupedExpressionComponent::Linear(v, c) => (c, "*", v).serialize(serializer),
             GroupedExpressionComponent::Constant(c) => c.serialize(serializer),
         }
     }
