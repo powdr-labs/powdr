@@ -103,7 +103,7 @@ fn create_apcs_for_all_blocks<A: Adapter>(
             )
             .unwrap();
 
-            evaluate_apc::<A>(block, vm_config.instruction_handler, apc, config)
+            evaluate_apc::<A>(block, vm_config.instruction_handler, apc)
         })
         .collect()
 }

@@ -2,7 +2,7 @@ use std::{fmt::Display, iter::Sum, ops::Add, sync::Arc};
 
 use crate::{
     adapter::{Adapter, AdapterApc, AdapterApcWithStats, AdapterBasicBlock},
-    InstructionHandler, PowdrConfig, SymbolicMachine,
+    InstructionHandler, SymbolicMachine,
 };
 
 use serde::{Deserialize, Serialize};
@@ -21,7 +21,7 @@ pub struct AirStats {
 }
 
 impl AirStats {
-    pub fn new<F: Clone + Ord + std::fmt::Display>(machine: &SymbolicMachine<F>) -> Self {
+    pub fn new<F>(machine: &SymbolicMachine<F>) -> Self {
         Self {
             main_columns: machine.main_columns().count(),
             constraints: machine.constraints.len(),
@@ -64,7 +64,6 @@ pub fn evaluate_apc<A: Adapter>(
     basic_block: AdapterBasicBlock<A>,
     instruction_handler: &A::InstructionHandler,
     apc: AdapterApc<A>,
-    config: &PowdrConfig,
 ) -> AdapterApcWithStats<A> {
     let before = basic_block
         .statements
@@ -75,7 +74,7 @@ pub fn evaluate_apc<A: Adapter>(
     let evaluation_result = EvaluationResult { before, after };
 
     let apc = Arc::new(apc);
-    let apc_stats = A::apc_stats(apc.clone(), instruction_handler, config);
+    let apc_stats = A::apc_stats(apc.clone(), instruction_handler);
 
     AdapterApcWithStats::<A>::new(apc, apc_stats, evaluation_result)
 }

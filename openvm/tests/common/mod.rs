@@ -28,9 +28,9 @@ pub mod apc_builder_utils {
     use powdr_number::BabyBearField;
     use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
     use powdr_openvm::instruction_formatter::openvm_instruction_formatter;
+    use powdr_openvm::BabyBearOpenVmApcAdapter;
     use powdr_openvm::Instr;
     use powdr_openvm::DEFAULT_DEGREE_BOUND;
-    use powdr_openvm::{default_powdr_openvm_config, BabyBearOpenVmApcAdapter};
     use pretty_assertions::assert_eq;
     use std::fs;
     use std::path::Path;
@@ -42,7 +42,7 @@ pub mod apc_builder_utils {
     pub fn compile(basic_block: Vec<Instruction<BabyBear>>) -> String {
         let original_config = original_vm_config();
         let degree_bound = DEFAULT_DEGREE_BOUND;
-        let airs = original_config.airs(degree_bound.identities).unwrap();
+        let airs = original_config.airs(degree_bound).unwrap();
         let bus_map = original_config.bus_map();
 
         let vm_config = VmConfig {
@@ -75,12 +75,10 @@ pub mod apc_builder_utils {
         )
         .unwrap();
 
-        let config = default_powdr_openvm_config(0, 0);
         let apc_with_stats = evaluate_apc::<BabyBearOpenVmApcAdapter>(
             basic_block,
             vm_config.instruction_handler,
             apc,
-            &config,
         );
 
         let evaluation = apc_with_stats.evaluation_result();

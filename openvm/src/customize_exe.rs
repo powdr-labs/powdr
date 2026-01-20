@@ -37,7 +37,7 @@ use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::pgo::{ApcCandidateJsonExport, Candidate, KnapsackItem};
 use powdr_autoprecompiles::symbolic_machine::SymbolicBusInteraction;
 use powdr_autoprecompiles::PowdrConfig;
-use powdr_autoprecompiles::VmConfig;
+use powdr_autoprecompiles::{InstructionHandler, VmConfig};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use serde::{Deserialize, Serialize};
 
@@ -114,11 +114,10 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     fn apc_stats(
         apc: Arc<AdapterApc<Self>>,
         instruction_handler: &Self::InstructionHandler,
-        config: &PowdrConfig,
     ) -> Self::ApcStats {
         let apc_metrics = get_air_metrics(
             Arc::new(PowdrAir::new(apc.clone())),
-            config.degree_bound.identities,
+            instruction_handler.degree_bound().identities,
         );
         let width_after = apc_metrics.widths;
 
@@ -181,7 +180,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
     empirical_constraints: EmpiricalConstraints,
 ) -> CompiledProgram {
     let original_config = OriginalVmConfig::new(original_program.vm_config.clone());
-    let airs = original_config.airs(config.degree_bound.identities).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
+    let airs = original_config.airs(config.degree_bound).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
     let bus_map = original_config.bus_map();
 
     let range_tuple_checker_sizes = original_program
@@ -199,7 +198,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         bus_map: bus_map.clone(),
     };
 
-    let blocks = original_program.collect_basic_blocks(config.degree_bound.identities);
+    let blocks = original_program.collect_basic_blocks(config.degree_bound);
     let exe = original_program.exe;
     let debug_info = original_program.elf.debug_info();
     tracing::info!(
@@ -261,7 +260,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         .into_iter()
         .map(ApcWithStats::into_parts)
         .enumerate()
-        .map(|(i, (apc, apc_stats))| {
+        .map(|(i, (apc, apc_stats, _))| {
             let opcode = POWDR_OPCODE + i;
             let start_index = ((apc.start_pc() - pc_base as u64) / pc_step as u64)
                 .try_into()
@@ -284,11 +283,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
 
     CompiledProgram {
         exe: Arc::new(exe),
-        vm_config: SpecializedConfig::new(
-            original_config,
-            extensions,
-            config.degree_bound.identities,
-        ),
+        vm_config: SpecializedConfig::new(original_config, extensions, config.degree_bound),
     }
 }
 

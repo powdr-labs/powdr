@@ -76,14 +76,14 @@ pub fn detect_empirical_constraints(
     inputs: Vec<StdIn>,
 ) -> EmpiricalConstraints {
     tracing::info!("Collecting empirical constraints...");
-    let blocks = program.collect_basic_blocks(degree_bound.identities);
+    let blocks = program.collect_basic_blocks(degree_bound);
     let instruction_counts = blocks
         .iter()
         .map(|block| (block.start_pc, block.statements.len()))
         .collect();
 
     // Collect trace, without any autoprecompiles.
-    let program = program.compiled_program(degree_bound.identities);
+    let program = program.compiled_program(degree_bound);
 
     let mut constraint_detector = ConstraintDetector::new(instruction_counts);
 
@@ -94,7 +94,7 @@ pub fn detect_empirical_constraints(
             &program,
             i,
             input,
-            degree_bound.identities,
+            degree_bound,
             &mut constraint_detector,
         );
     }
@@ -111,7 +111,7 @@ fn detect_empirical_constraints_from_input(
     program: &CompiledProgram,
     input_index: usize,
     inputs: StdIn,
-    degree_bound: usize,
+    degree_bound: DegreeBound,
     constraint_detector: &mut ConstraintDetector,
 ) {
     let mut trace = Trace::default();

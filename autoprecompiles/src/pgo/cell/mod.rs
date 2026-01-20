@@ -133,8 +133,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
                     &empirical_constraints,
                 )
                 .ok()?;
-                let apc_with_stats =
-                    evaluate_apc::<A>(block, vm_config.instruction_handler, apc, config);
+                let apc_with_stats = evaluate_apc::<A>(block, vm_config.instruction_handler, apc);
                 let candidate = C::create(apc_with_stats, &self.data);
                 if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
                     let json_export = candidate.to_json_export(apc_candidates_dir_path);

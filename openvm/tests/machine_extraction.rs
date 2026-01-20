@@ -10,9 +10,7 @@ use crate::common::original_vm_config;
 #[test]
 fn extract_machine() {
     let original_config = original_vm_config();
-    let airs = original_config
-        .airs(DEFAULT_DEGREE_BOUND.identities)
-        .unwrap();
+    let airs = original_config.airs(DEFAULT_DEGREE_BOUND).unwrap();
     let bus_map = original_config.bus_map();
     let rendered = airs
         .airs_by_name()

@@ -33,8 +33,8 @@ impl<F, I, A, V, S> ApcWithStats<F, I, A, V, S> {
     }
 
     #[allow(clippy::type_complexity)]
-    pub fn into_parts(self) -> (Arc<Apc<F, I, A, V>>, S) {
-        (self.apc, self.stats)
+    pub fn into_parts(self) -> (Arc<Apc<F, I, A, V>>, S, EvaluationResult) {
+        (self.apc, self.stats, self.evaluation_result)
     }
 
     pub fn apc(&self) -> &Apc<F, I, A, V> {
@@ -93,14 +93,7 @@ where
     Self::InstructionHandler:
         InstructionHandler<Field = Self::Field, Instruction = Self::Instruction>,
 {
-    type Field: Serialize
-        + for<'de> Deserialize<'de>
-        + Send
-        + Sync
-        + Clone
-        + PartialOrd
-        + Ord
-        + Display;
+    type Field: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone;
     type PowdrField: FieldElement;
     type InstructionHandler: InstructionHandler + Sync;
     type BusInteractionHandler: BusInteractionHandler<Self::PowdrField>
@@ -123,10 +116,10 @@ where
 
     fn from_field(e: Self::Field) -> Self::PowdrField;
 
+    /// Given the autoprecompile and the original instructions, return the stats for a given degree bound
     fn apc_stats(
         apc: Arc<AdapterApc<Self>>,
-        vm_config: &Self::InstructionHandler,
-        config: &PowdrConfig,
+        instruction_handler: &Self::InstructionHandler,
     ) -> Self::ApcStats;
 
     fn should_skip_block(_block: &BasicBlock<Self::Instruction>) -> bool {
