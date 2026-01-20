@@ -19,6 +19,7 @@ use powdr_constraint_solver::{
     solver::Solver,
 };
 use powdr_number::FieldElement;
+use serde::Serialize;
 
 use crate::{
     export::ExportOptions,
@@ -48,7 +49,7 @@ impl From<powdr_constraint_solver::solver::Error> for Error {
 #[allow(clippy::too_many_arguments)]
 pub fn optimize_constraints<
     P: FieldElement,
-    V: Ord + Clone + Eq + Hash + Display,
+    V: Ord + Clone + Eq + Hash + Display + Serialize,
     M: MemoryBusInteraction<P, V>,
 >(
     constraint_system: IndexedConstraintSystem<P, V>,
@@ -61,12 +62,12 @@ pub fn optimize_constraints<
     memory_bus_id: Option<u64>,
     degree_bound: DegreeBound,
     new_var: &mut impl FnMut(&str) -> V,
-    _export_options: &mut ExportOptions,
+    export_options: &mut ExportOptions,
 ) -> Result<ConstraintSystem<P, V>, Error> {
     let constraint_system = solver_based_optimization(constraint_system, solver)?;
     stats_logger.log("solver-based optimization", &constraint_system);
 
-    // export_options.export_optimizer_inner_constraint_system(constraint_system.system(), "solver");
+    export_options.export_optimizer_inner_constraint_system(constraint_system.system(), "solver");
 
     let constraint_system = remove_trivial_constraints(constraint_system);
     stats_logger.log("removing trivial constraints", &constraint_system);

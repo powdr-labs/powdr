@@ -893,7 +893,13 @@ impl<T: RuntimeConstant + Serialize, V: Ord + Clone + Eq + Serialize> Serialize
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
             GroupedExpressionComponent::Quadratic(l, r) => (l, "*", r).serialize(serializer),
-            GroupedExpressionComponent::Linear(v, c) => (c, "*", v).serialize(serializer),
+            GroupedExpressionComponent::Linear(v, c) => {
+                if c.is_one() {
+                    v.serialize(serializer)
+                } else {
+                    (c, "*", v).serialize(serializer)
+                }
+            }
             GroupedExpressionComponent::Constant(c) => c.serialize(serializer),
         }
     }

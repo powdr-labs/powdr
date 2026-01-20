@@ -138,16 +138,14 @@ impl ExportOptions {
 
     pub fn export_optimizer_inner_constraint_system<T, V>(
         &mut self,
-        _constraint_system: &ConstraintSystem<T, V>,
-        _suffix: &str,
+        constraint_system: &ConstraintSystem<T, V>,
+        suffix: &str,
     ) where
         T: FieldElement,
         V: Ord + Clone + serde::Serialize,
     {
         if let ExportLevel::APCAndOptimizerSteps = self.level {
-            todo!()
-            // let machine = constraint_system_to_symbolic_machine(constraint_system.clone());
-            // self.write_to_next_file(&machine, Some(suffix));
+            self.write_to_next_file(&constraint_system, Some(suffix));
         }
     }
 
