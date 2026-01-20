@@ -11,13 +11,9 @@ use rayon::iter::{ParallelBridge, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    adapter::{
-        Adapter, AdapterApc, AdapterApcWithStats, AdapterBlock, AdapterVmConfig, PgoAdapter,
-    },
-    blocks::{count_non_overlapping, Block, SuperBlock},
-    evaluation::EvaluationResult,
-    execution_profile::ExecutionProfile,
-    EmpiricalConstraints, PowdrConfig,
+    EmpiricalConstraints, PowdrConfig, adapter::{
+        Adapter, AdapterApc, AdapterApcWithStats, AdapterPGOBlocks, AdapterVmConfig, PgoAdapter
+    }, blocks::{Block, PGOBlocks, SuperBlock}, evaluation::EvaluationResult, execution_profile::ExecutionProfile
 };
 
 use itertools::Itertools;
@@ -99,8 +95,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
 
     fn create_apcs_with_pgo(
         &self,
-        mut blocks: Vec<AdapterBlock<Self::Adapter>>,
-        block_exec_count: Option<Vec<u32>>,
+        pgo_blocks: AdapterPGOBlocks<Self::Adapter>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
@@ -110,8 +105,14 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
             return vec![];
         }
 
+        let PGOBlocks {
+            mut blocks,
+            counts,
+            execution_bb_runs,
+        } = pgo_blocks;
+
         // ensure blocks are valid for APC
-        let mut block_exec_count = block_exec_count.unwrap();
+        let mut block_exec_count = counts.unwrap();
         blocks
             .iter()
             .zip_eq(&block_exec_count)
@@ -191,6 +192,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
             candidates,
             self.max_total_apc_columns,
             config.autoprecompiles as usize,
+            execution_bb_runs.unwrap(),
             config.skip_autoprecompiles as usize,
         );
 
@@ -315,6 +317,36 @@ fn try_generate_candidate<A: Adapter, C: Candidate<A>>(
     Some(candidate)
 }
 
+// Count the number of times `sblock` appears in the `execution` runs.
+// Returns the count and an updated execution with the counted subsequences removed.
+fn count_and_update_execution(sblock: &[u64], execution: &[Vec<u64>]) -> (usize, Vec<Vec<u64>>) {
+    let mut count = 0;
+    let new_execution = execution.iter().flat_map(|run| {
+        // look at this run, counting the occurrences and returning the "sub-runs" between occurrences
+        let mut i = 0;
+        let mut sub_run_start = 0;
+        let mut sub_runs = vec![];
+        while i + sblock.len() <= run.len() {
+            if &run[i..i + sblock.len()] == sblock {
+                // a match, close the current sub-run
+                count += 1;
+                if i > sub_run_start {
+                    sub_runs.push(run[sub_run_start..i].to_vec());
+                }
+                sub_run_start = i + sblock.len();
+                i += sblock.len();
+            } else {
+                i += 1;
+            }
+        }
+        if run.len() > sub_run_start {
+            sub_runs.push(run[sub_run_start..].to_vec());
+        }
+        sub_runs
+    }).collect();
+    (count, new_execution)
+}
+
 // Select the best apc candidates according to its priority (how effective it should be according to PGO).
 // This selection takes into account "conflicting" candidates, that is,
 // it will update the priority of the remaining candidates.
@@ -322,6 +354,7 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
     candidates: Vec<C>,
     max_cost: Option<usize>,
     max_selected: usize,
+    mut execution_bb_runs: Vec<Vec<u64>>,
     mut skip: usize,
 ) -> Vec<C> {
     // candidates ordered by priority. These priorities will be updated as candidates are selected.
@@ -358,13 +391,32 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
 
     let mut selected_candidates = vec![];
     let mut cumulative_cost = 0;
-    // we go through candidates in priority order, selecting them if they fit and updating/removing conflicting candidates
-    while let Some((idx, prio)) = ordered_candidates.pop() {
+    // We go through candidates in priority order (greedy selection).
+    // When a candidate is confirmed, we update the execution by removing its ocurrences.
+    // So, whenever we look at a new candidate, we recalculate its priority
+    // based on the current execution, re-inserting it back if it changed.
+    while let Some((idx, mut prio)) = ordered_candidates.pop() {
+        let c = &candidates[idx];
+        let apc = c.apc();
+        let bbs = apc.block.original_pcs();
+
+        // Check if the priority of this candidate has changed by re-counting it over the updated execution.
+        let (count, new_execution) = count_and_update_execution(&bbs, &execution_bb_runs);
+        if count == 0 {
+            // The item no longer runs, remove it
+            continue;
+        } else if count < prio.exec_count {
+            // Re-insert it into the queue with the updated priority
+            prio.exec_count = count;
+            ordered_candidates.push(idx, prio);
+            continue;
+        }
+
         if skip > 0 {
             skip -= 1;
             continue;
         }
-        let c = &candidates[idx];
+
         // add candidate if it fits
         if let Some(max_cost) = max_cost {
             if cumulative_cost + prio.cost > max_cost {
@@ -373,72 +425,10 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
             }
         }
 
-        // The item fits, increment the cumulative cost
+        // The item fits, increment the cumulative cost and update the execution by removing its occurrences
         cumulative_cost += prio.cost;
-
-        // Check for conflicts in remaining candidates and update/remove them
-        let apc = c.apc();
-        let bbs = apc.block.original_pcs();
-        let mut to_remove = vec![];
-        let mut to_discount = vec![];
-        for (other_idx, _) in ordered_candidates.iter() {
-            let other_candidate = &candidates[*other_idx];
-            let other_apc = other_candidate.apc();
-            let other_bbs = other_apc.block.original_pcs();
-
-            match check_overlap(&bbs, &other_bbs) {
-                Some(BlockOverlap::FirstIncludesSecond(count)) => {
-                    if other_bbs.len() > 1 {
-                        // TODO: discounting the other one here has corner cases:
-                        // for example, 'aaa' and 'aa': we can't just simply discount 'aa' by the count of 'aaa'.
-                        // Given a run like 'aaaaaaaaaa', 5-3=2 which is wrong (if we used 'aaa' then 'aa' would never run).
-                        // Another similar case is 'baba' and 'ab' in a run like 'babababababa'.
-                        to_remove.push(*other_idx);
-                    } else {
-                        // For normal basic blocks the above is not an issue:
-                        // running 'aaa' once will prevent 'a' from running exactly 3 times
-                        to_discount
-                            .push((*other_idx, c.execution_count().checked_mul(count).unwrap()));
-                    }
-                }
-                Some(BlockOverlap::SecondIncludesFirst(_)) => {
-                    // If the first block is always preferred, the second can't run
-                    // TODO: could the following case exist?
-                    // 'a' is chosen over 'ba', but 'b' followed by 'a' is worse than 'ba'?
-                    to_remove.push(*other_idx);
-                }
-                Some(BlockOverlap::FirstOverlapsSecond) => {
-                    // TODO: ideally we'd just discount here, but we would need more info:
-                    // for example, if 'ab' is selected: 'bc' and 'bd' could be discounted,
-                    // but we need to know the counts of both 'abc' and 'abd' to do it properly.
-                    to_remove.push(*other_idx);
-                }
-                Some(BlockOverlap::SecondOverlapsFirst) => {
-                    // TODO: this is similar to the case above
-                    to_remove.push(*other_idx);
-                }
-                None => (),
-            }
-        }
-
+        execution_bb_runs = new_execution;
         selected_candidates.push(idx);
-
-        // update remaining candidates that will be chosen less because of this one
-        for (other_idx, count) in to_discount {
-            let mut new_priority = ordered_candidates.get(&other_idx).unwrap().1.clone();
-
-            // `count` is how many times to discount the other apc for each time the selected one runs
-            new_priority.exec_count -= count as usize;
-            if new_priority.exec_count == 0 {
-                to_remove.push(other_idx);
-            } else {
-                ordered_candidates.push(other_idx, new_priority);
-            }
-        }
-
-        for other_idx in to_remove {
-            ordered_candidates.remove(&other_idx);
-        }
 
         if selected_candidates.len() >= max_selected {
             break;
@@ -460,50 +450,38 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
         .collect()
 }
 
-enum BlockOverlap {
-    // Second block is fully included in the first block this many times
-    // e.g.: 'abc' and 'ab'
-    FirstIncludesSecond(u32),
-    // Some prefix of the second block is a suffix of the first
-    // e.g.: 'abc' and 'bcd'
-    FirstOverlapsSecond,
-    // First block is fully included in the second this many times
-    // e.g.: 'abc' and 'ab'
-    // e.g.: 'ab' and 'abc'
-    #[allow(unused)]
-    SecondIncludesFirst(u32),
-    // Some prefix of the first block is a suffix of the second
-    // e.g.: 'bcd' and 'abc'
-    SecondOverlapsFirst,
-}
+#[cfg(test)]
+mod test {
+    use super::*;
 
-/// returns true if a suffix of the first sequence is a prefix of the second
-fn suffix_in_common_with_prefix(first: &[u64], second: &[u64]) -> bool {
-    let mut prefix_len = 1;
-    while prefix_len <= second.len() && prefix_len <= first.len() {
-        if first[first.len() - prefix_len..] == second[..prefix_len] {
-            return true;
-        }
-        prefix_len += 1;
-    }
-    false
-}
+    #[test]
+    fn test_count_and_update_execution() {
+        let sblock = vec![1,2];
+        let runs = vec![
+            vec![0,1,2,3],
+            vec![1,2],
+            vec![1,2,3],
+            vec![2,3,4,5],
+            vec![0,1,2],
+            vec![1,2,3,1,2],
+            vec![2,1,2,1,2,1,2,1],
+            vec![1,1,1,2,2,2,1,2,3,3,1,2,4,4],
+        ];
 
-/// Check if and how two superblocks overlap (each sequence is the starting PC of its composing basic blocks)
-fn check_overlap(first: &[u64], second: &[u64]) -> Option<BlockOverlap> {
-    let count_second_in_first = count_non_overlapping(first, second);
-    if count_second_in_first > 0 {
-        return Some(BlockOverlap::FirstIncludesSecond(count_second_in_first));
+        assert_eq!(
+            count_and_update_execution(&sblock, &runs),
+            (
+                12,
+                vec![
+                    vec![0], vec![3],
+                    vec![3],
+                    vec![2,3,4,5],
+                    vec![0],
+                    vec![3],
+                    vec![2], vec![1],
+                    vec![1,1], vec![2,2], vec![3,3], vec![4,4],
+                ],
+            )
+        );
     }
-    let count_first_in_second = count_non_overlapping(second, first);
-    if count_first_in_second > 0 {
-        return Some(BlockOverlap::SecondIncludesFirst(count_first_in_second));
-    }
-    if suffix_in_common_with_prefix(first, second) {
-        return Some(BlockOverlap::FirstOverlapsSecond);
-    }
-    if suffix_in_common_with_prefix(second, first) {
-        return Some(BlockOverlap::SecondOverlapsFirst);
-    }
-    None
 }

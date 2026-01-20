@@ -3,10 +3,7 @@ use std::{cmp::Reverse, collections::BTreeMap};
 use itertools::Itertools;
 
 use crate::{
-    adapter::{Adapter, AdapterApcWithStats, AdapterBlock, AdapterVmConfig, PgoAdapter},
-    execution_profile::ExecutionProfile,
-    pgo::create_apcs_for_all_blocks,
-    EmpiricalConstraints, PowdrConfig,
+    EmpiricalConstraints, PowdrConfig, adapter::{Adapter, AdapterApcWithStats, AdapterPGOBlocks, AdapterVmConfig, PgoAdapter}, blocks::PGOBlocks, execution_profile::ExecutionProfile, pgo::create_apcs_for_all_blocks
 };
 
 pub struct InstructionPgo<A> {
@@ -28,42 +25,46 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
 
     fn create_apcs_with_pgo(
         &self,
-        blocks: Vec<AdapterBlock<Self::Adapter>>,
-        // execution count of blocks (indexes into the `blocks` vec)
-        block_exec_count: Option<Vec<u32>>,
+        pgo_blocks: AdapterPGOBlocks<Self::Adapter>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         _labels: BTreeMap<u64, Vec<String>>,
         empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
+        if config.autoprecompiles == 0 {
+            return vec![];
+        }
+
+        let PGOBlocks {
+            blocks,
+            counts,
+            execution_bb_runs: _,
+        } = pgo_blocks;
+
         tracing::info!(
             "Generating autoprecompiles with instruction PGO for {} blocks",
             blocks.len()
         );
 
-        if config.autoprecompiles == 0 {
-            return vec![];
-        }
-
         // ensure blocks are valid for APC
-        let block_exec_count = block_exec_count.unwrap();
+        let counts = counts.unwrap();
         blocks
             .iter()
             .enumerate()
-            .for_each(|(idx, b)| assert!(block_exec_count[idx] > 0 && b.statements().count() > 1));
+            .for_each(|(idx, b)| assert!(counts[idx] > 0 && b.statements().count() > 1));
 
         tracing::debug!(
             "Retained {} basic blocks after filtering by pc_idx_count",
             blocks.len()
         );
 
-        // TODO: similar to the cell PGO case, we should take into account that selecting some superblock might lower the execution count of overlapping blocks.
+        // TODO: similar to the cell PGO case, we should take into account that selecting some superblock might lower the execution count of conflicting blocks.
 
         // sort blocks by execution count * number of instructions
         let blocks = blocks.into_iter()
             .enumerate()
             .map(|(idx, block)| {
-                let count = block_exec_count[idx];
+                let count = counts[idx];
                 (count, block)
             })
             .sorted_by_key(|(count, b)| Reverse(count * b.statements().count() as u32))

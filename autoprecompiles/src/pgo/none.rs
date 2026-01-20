@@ -3,9 +3,7 @@ use std::collections::BTreeMap;
 use derivative::Derivative;
 
 use crate::{
-    adapter::{Adapter, AdapterApcWithStats, AdapterBlock, AdapterVmConfig, PgoAdapter},
-    pgo::create_apcs_for_all_blocks,
-    EmpiricalConstraints, PowdrConfig,
+    EmpiricalConstraints, PowdrConfig, adapter::{Adapter, AdapterApcWithStats, AdapterPGOBlocks, AdapterVmConfig, PgoAdapter}, pgo::create_apcs_for_all_blocks
 };
 
 #[derive(Derivative)]
@@ -19,14 +17,14 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
 
     fn create_apcs_with_pgo(
         &self,
-        mut blocks: Vec<AdapterBlock<Self::Adapter>>,
-        _block_exec_count: Option<Vec<u32>>,
+        pgo_blocks: AdapterPGOBlocks<Self::Adapter>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         _labels: BTreeMap<u64, Vec<String>>,
         empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
         // cost = number_of_original_instructions
+        let mut blocks = pgo_blocks.blocks;
         blocks.sort_by_key(|b| std::cmp::Reverse(b.statements().count()));
 
         // Debug print blocks by descending cost

@@ -159,14 +159,24 @@ pub fn count_non_overlapping<T: Eq>(haystack: &[T], needle: &[T]) -> u32 {
     count
 }
 
+pub struct PGOBlocks<I> {
+    /// Superblocks of len (1..=max_len) seen in the execution.
+    pub blocks: Vec<Block<I>>,
+    /// Count of each of the seen superblocks. None if running without PGO.
+    pub counts: Option<Vec<u32>>,
+    /// Basic block runs in the given PGO execution.
+    /// `None` if running without PGO.
+    pub execution_bb_runs: Option<Vec<Vec<u64>>>,
+}
+
 /// Uses the PC sequence of a given execution to detect superblocks.
 /// Returns all blocks and superblocks (of up a to maximum sequence length), together with their execution counts.
-/// Doesn't return blocks with a single instruction or that were never executed.
+/// Ignores invalid APC blocks (i.e., single instruction) and blocks that were never executed.
 pub fn generate_superblocks<I: Clone>(
     execution_pc_list: &[u64],
     basic_blocks: &[BasicBlock<I>],
     max_len: usize,
-) -> (Vec<Block<I>>, Vec<u32>) {
+) -> PGOBlocks<I> {
     tracing::info!(
         "Detecting superblocks of size <= {max_len}, over the sequence of {} PCs",
         execution_pc_list.len()
@@ -179,9 +189,10 @@ pub fn generate_superblocks<I: Clone>(
         .map(|(idx, bb)| (bb.start_pc, idx))
         .collect();
 
-    // set of all superblocks seen. Each superblock is identified by the starting PCs of its basic blocks.
-    let mut seen_superblocks: HashSet<Vec<usize>> = HashSet::new();
-    // list basic block runs in the execution (i.e., sequences of BBs without single-instruction BBs in between)
+    // Set of all superblocks seen. Each superblock is identified by the starting PCs of its basic blocks.
+    let mut seen_superblocks: HashSet<Vec<u64>> = HashSet::new();
+    // List of basic block runs in the execution (i.e., sequences of BBs without single-instruction BBs in between).
+    // Each BB is identified by its starting PC
     let mut execution_bb_runs = vec![];
     let mut current_run = vec![];
 
@@ -194,7 +205,7 @@ pub fn generate_superblocks<I: Clone>(
             continue;
         };
 
-        // if starting a single instruction BB, clear current sequence
+        // if starting a single instruction BB (i.e., invalid for APC), end current run
         if basic_blocks[bb_idx].statements.len() <= 1 {
             if !current_run.is_empty() {
                 // add superblocks seen in this run
@@ -206,7 +217,16 @@ pub fn generate_superblocks<I: Clone>(
             continue;
         }
 
-        current_run.push(bb_idx);
+        current_run.push(*pc);
+    }
+
+    // end the last run
+    if !current_run.is_empty() {
+        // add superblocks seen in this run
+        for len in 1..=std::cmp::min(max_len, current_run.len()) {
+            seen_superblocks.extend(current_run.windows(len).map(|w| w.to_vec()));
+        }
+        execution_bb_runs.push(std::mem::take(&mut current_run));
     }
 
     tracing::info!(
@@ -235,9 +255,10 @@ pub fn generate_superblocks<I: Clone>(
     let mut super_blocks = vec![];
     let mut counts = vec![];
     superblock_count.into_iter().for_each(|(sblock, count)| {
+        // convert PCs into BasicBlocks
         let mut blocks = sblock
             .iter()
-            .map(|&idx| basic_blocks[idx].clone())
+            .map(|start_pc| basic_blocks[bb_start_pc_to_idx[start_pc]].clone())
             .collect_vec();
 
         if blocks.len() == 1 {
@@ -248,5 +269,9 @@ pub fn generate_superblocks<I: Clone>(
         counts.push(count);
     });
 
-    (super_blocks, counts)
+    PGOBlocks {
+        blocks: super_blocks,
+        counts: Some(counts),
+        execution_bb_runs: Some(execution_bb_runs),
+    }
 }

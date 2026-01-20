@@ -6,7 +6,7 @@ use std::{fmt::Display, sync::Arc};
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
-use crate::blocks::{generate_superblocks, Block};
+use crate::blocks::{Block, PGOBlocks, generate_superblocks};
 use crate::empirical_constraints::EmpiricalConstraints;
 use crate::execution::{ExecutionState, OptimisticConstraints};
 use crate::execution_profile::ExecutionProfile;
@@ -58,27 +58,26 @@ pub trait PgoAdapter {
             .collect();
 
         // generate superblocks if profiling data is available
-        let (blocks, execution_count) = if let Some(prof) = self.profiling_data() {
+        let exec_blocks = if let Some(prof) = self.profiling_data() {
             // generate_superblocks already filters out unexecuted blocks and single instruction blocks
-            let (blocks, count) = generate_superblocks(
+            generate_superblocks(
                 &prof.pc_list,
                 &filtered_blocks,
                 config.superblock_max_bb_count as usize,
-            );
-            (blocks, Some(count))
+            )
         } else {
-            (
-                filtered_blocks
+            PGOBlocks {
+                blocks: filtered_blocks
                     .into_iter()
                     .map(|bb| Block::Basic(bb))
                     .collect(),
-                None,
-            )
+                counts: None,
+                execution_bb_runs: None,
+            }
         };
 
         self.create_apcs_with_pgo(
-            blocks,
-            execution_count,
+            exec_blocks,
             config,
             vm_config,
             labels,
@@ -88,11 +87,7 @@ pub trait PgoAdapter {
 
     fn create_apcs_with_pgo(
         &self,
-        blocks: Vec<AdapterBlock<Self::Adapter>>,
-        // frequency of each block during PGO execution.
-        // This is None when there's no profiling data (NonePgo).
-        // If present, has one entry for each of the given `blocks`.
-        block_exec_count: Option<Vec<u32>>,
+        exec_blocks: AdapterPGOBlocks<Self::Adapter>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
@@ -175,3 +170,4 @@ pub type AdapterOptimisticConstraints<A> = OptimisticConstraints<
 >;
 pub type AdapterBasicBlock<A> = BasicBlock<<A as Adapter>::Instruction>;
 pub type AdapterBlock<A> = Block<<A as Adapter>::Instruction>;
+pub type AdapterPGOBlocks<A> = PGOBlocks<<A as Adapter>::Instruction>;
