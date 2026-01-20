@@ -273,7 +273,7 @@ fn test_batch_replace_with_duplicate_constraints() {
 
     // Verify that (x + y) is no longer in the system
     let has_x_plus_y = final_constraints.iter().any(|c| {
-        matches!(&c.expression, expr if format!("{}", expr).contains("x") && format!("{}", expr).contains("y"))
+        matches!(&c.expression, expr if format!("{expr}").contains("x") && format!("{expr}").contains("y"))
     });
     assert!(!has_x_plus_y, "x + y should have been replaced");
 
