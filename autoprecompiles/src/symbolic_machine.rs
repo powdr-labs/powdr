@@ -297,7 +297,7 @@ pub fn constraint_system_to_symbolic_machine<P: FieldElement>(
     }
 }
 
-fn symbolic_bus_interaction_to_bus_interaction<P: FieldElement>(
+pub fn symbolic_bus_interaction_to_bus_interaction<P: FieldElement>(
     bus_interaction: &SymbolicBusInteraction<P>,
 ) -> BusInteraction<GroupedExpression<P, AlgebraicReference>> {
     BusInteraction {
