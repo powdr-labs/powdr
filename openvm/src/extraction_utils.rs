@@ -107,14 +107,17 @@ impl<F> OriginalAirs<F> {
         &mut self,
         opcode: VmOpcode,
         air_name: String,
-        machine: impl Fn() -> Result<(SymbolicMachine<F>, AirMetrics), UnsupportedOpenVmReferenceError>,
+        machine: impl Fn(
+            DegreeBound,
+        )
+            -> Result<(SymbolicMachine<F>, AirMetrics), UnsupportedOpenVmReferenceError>,
     ) -> Result<(), UnsupportedOpenVmReferenceError> {
         if self.opcode_to_air.contains_key(&opcode) {
             panic!("Opcode {opcode} already exists");
         }
         // Insert the machine only if `air_name` isn't already present
         if !self.air_name_to_machine.contains_key(&air_name) {
-            let machine_instance = machine()?;
+            let machine_instance = machine(self.degree_bound)?;
             self.air_name_to_machine
                 .insert(air_name.clone(), machine_instance);
         }
@@ -333,7 +336,7 @@ impl OriginalVmConfig {
             .try_fold(
                 OriginalAirs::new(degree_bound),
                 |mut airs, (op, air_ref)| {
-                    airs.insert_opcode(op, air_ref.name(), || {
+                    airs.insert_opcode(op, air_ref.name(), |degree_bound| {
                         let columns = get_columns(air_ref.clone());
                         let constraints = get_constraints(air_ref.clone());
                         let metrics = get_air_metrics(air_ref.clone(), degree_bound.identities);

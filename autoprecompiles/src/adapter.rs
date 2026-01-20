@@ -116,7 +116,7 @@ where
 
     fn from_field(e: Self::Field) -> Self::PowdrField;
 
-    /// Given the autoprecompile and the original instructions, return the stats for a given degree bound
+    /// Given the autoprecompile and the original instructions, return the stats
     fn apc_stats(
         apc: Arc<AdapterApc<Self>>,
         instruction_handler: &Self::InstructionHandler,
