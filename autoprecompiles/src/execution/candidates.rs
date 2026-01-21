@@ -329,6 +329,10 @@ mod tests {
 
         type Value = usize;
 
+        fn value_limb(_: Self::Value, _: usize) -> Self::Value {
+            todo!("Limbs are currently untested")
+        }
+
         fn pc(&self) -> Self::Value {
             self.pc
         }

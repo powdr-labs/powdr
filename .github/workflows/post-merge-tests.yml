@@ -62,7 +62,7 @@ jobs:
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
 
           # prove with 100 APCs
-          APC=100 /usr/bin/time -v ./run.sh --mode prove-stark || exit 1
+          /usr/bin/time -v ./run.sh --apc 100  --mode prove-stark || exit 1
           echo "Finished proving with 100 APCs"
 
       - name: Save revisions and run info

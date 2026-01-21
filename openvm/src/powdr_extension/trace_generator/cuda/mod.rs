@@ -18,7 +18,8 @@ use openvm_stark_backend::{
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
     expression::{AlgebraicExpression, AlgebraicReference},
-    Apc, SymbolicBusInteraction,
+    symbolic_machine::SymbolicBusInteraction,
+    Apc,
 };
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
@@ -199,14 +200,17 @@ impl PowdrTraceGeneratorGpu {
 
     fn try_generate_witness(
         &self,
-        mut original_arenas: OriginalArenas<DenseRecordArena>,
+        original_arenas: OriginalArenas<DenseRecordArena>,
     ) -> Option<DeviceMatrix<BabyBear>> {
-        let num_apc_calls = original_arenas.number_of_calls();
+        let mut original_arenas = match original_arenas {
+            OriginalArenas::Initialized(arenas) => arenas,
+            OriginalArenas::Uninitialized => {
+                // if the arenas are uninitialized, the apc was not called, so we return early
+                return None;
+            }
+        };
 
-        if num_apc_calls == 0 {
-            // If the APC isn't called, early return with an empty trace.
-            return None;
-        }
+        let num_apc_calls = original_arenas.number_of_calls;
 
         let chip_inventory = {
             let airs: AirInventory<BabyBearSC> =

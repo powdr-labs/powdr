@@ -36,7 +36,7 @@ use powdr_autoprecompiles::evaluation::{evaluate_apc, EvaluationResult};
 use powdr_autoprecompiles::execution::ExecutionState;
 use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::pgo::{ApcCandidateJsonExport, Candidate, KnapsackItem};
-use powdr_autoprecompiles::SymbolicBusInteraction;
+use powdr_autoprecompiles::symbolic_machine::SymbolicBusInteraction;
 use powdr_autoprecompiles::VmConfig;
 use powdr_autoprecompiles::{Apc, PowdrConfig};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
@@ -77,6 +77,10 @@ impl<'a, T: PrimeField32> ExecutionState for OpenVmExecutionState<'a, T> {
                 .get_f::<T>(REGISTER_ADDRESS_SPACE, addr.0 as u32)
                 .as_canonical_u32()
         }
+    }
+
+    fn value_limb(value: Self::Value, limb_index: usize) -> Self::Value {
+        value >> (limb_index * 8) & 0xff
     }
 }
 
@@ -127,7 +131,7 @@ impl<F> PcStep for Instr<F> {
 }
 
 impl<F: PrimeField32> Instruction<F> for Instr<F> {
-    fn pc_lookup_row(&self, pc: Option<u64>) -> Vec<Option<F>> {
+    fn pc_lookup_row(&self, pc: u64) -> Vec<F> {
         let args = [
             self.0.opcode.to_field(),
             self.0.a,
@@ -140,8 +144,8 @@ impl<F: PrimeField32> Instruction<F> for Instr<F> {
         ];
         // The PC lookup row has the format:
         // [pc, opcode, a, b, c, d, e, f, g]
-        let pc = pc.map(|pc| F::from_canonical_u32(pc.try_into().unwrap()));
-        once(pc).chain(args.into_iter().map(Some)).collect()
+        let pc = F::from_canonical_u32(pc.try_into().unwrap());
+        once(pc).chain(args).collect()
     }
 }
 
@@ -216,7 +220,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         &config,
         vm_config,
         labels,
-        empirical_constraints,
+        empirical_constraints.apply_pc_threshold(),
     );
     metrics::gauge!("total_apc_gen_time_ms").set(start.elapsed().as_millis() as f64);
 
