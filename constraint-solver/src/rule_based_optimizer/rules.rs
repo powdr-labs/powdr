@@ -5,6 +5,7 @@
 
 use crepe::crepe;
 use itertools::Itertools;
+use num_traits::One;
 use powdr_number::FieldElement;
 
 use crate::{
@@ -75,6 +76,8 @@ crepe! {
     // the system that does not have the constraints `e1` and `e2` but has
     // the new constraint `replacement` is equivalent.
     struct ReplacePairOfAlgebraicConstraintsBy(Expr, Expr, Expr);
+
+       struct ReplaceAlgebraicConstraintsBy([Option<Expr>; 10], [Option<Expr>; 10]);
 
     //////////////////// STRUCTURAL PROPERTIES OF EXPRESSIONS //////////////////////
 
@@ -474,6 +477,27 @@ crepe! {
       let constrs = [constr_0, constr_1, constr_2, constr_3, constr_4, constr_5, constr_6, constr_7, constr_8, constr_9],
       let vars = [a_0, a_1, a_2, a_3];
 
+    ReplaceAlgebraicConstraintsBy(extend_none(constrs), extend_none(replacement)) <-
+      Env(env),
+      EqualZeroCheck(constrs, result, vars),
+      let replacement = {
+        let result = GroupedExpression::from_unknown_variable(result);
+        assert!(vars.len() == 4);
+        let vars = vars.into_iter().map(|v| GroupedExpression::from_unknown_variable(v)).collect_vec();
+        let sum_of_vars = vars.iter().cloned().sum::<GroupedExpression<_, _>>();
+        let sum_inv_var = GroupedExpression::from_unknown_variable(
+          env.new_var("inv_of_sum", ComputationMethod::QuotientOrZero(One::one(), sum_of_vars.clone()))
+        );
+        [
+          // TODO is this still correct if the sum of the variables is zero but they are not all zero?
+          env.insert_owned(result.clone() * vars[0].clone()),
+          env.insert_owned(result.clone() * vars[1].clone()),
+          env.insert_owned(result.clone() * vars[2].clone()),
+          env.insert_owned(result.clone() * vars[3].clone()),
+          env.insert_owned(result.clone() + sum_inv_var * sum_of_vars - One::one()),
+        ]
+      };
+
     //////////////// COMBINE CONSTRAINTS WITH NON-NEGATIVE FACTORS /////////////////////
 
     // If we have `x * a = 0` and `x * b = 0` and `a` and `b` are
@@ -572,6 +596,16 @@ crepe! {
       Equivalence(v1, v2), (v2 > v1);
     ActionRule(Action::ReplaceAlgebraicConstraintBy(e1, e2)) <-
       ReplaceAlgebraicConstraintBy(e1, e2);
-    ActionRule(Action::ReplacePairOfAlgebraicConstraintsBy(e1, e2, r)) <-
+    ActionRule(Action::ReplaceAlgebraicConstraintsBy(extend_none([e1, e2]), extend_none([r]))) <-
       ReplacePairOfAlgebraicConstraintsBy(e1, e2, r);
+    ActionRule(Action::ReplaceAlgebraicConstraintsBy(e1, e2)) <-
+      ReplaceAlgebraicConstraintsBy(e1, e2);
+}
+
+fn extend_none<const N1: usize, const N2: usize>(items: [Expr; N1]) -> [Option<Expr>; N2] {
+    let mut output = [None; N2];
+    for (i, item) in items.iter().enumerate() {
+        output[i] = Some(*item);
+    }
+    output
 }

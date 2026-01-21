@@ -27,7 +27,8 @@ pub enum Action<T: FieldElement> {
     /// Replace one algebraic constraint by another.
     ReplaceAlgebraicConstraintBy(Expr, Expr),
     #[allow(dead_code)]
-    /// Replace a pair of algebraic constraints (the first two) by
-    /// another (the third).
-    ReplacePairOfAlgebraicConstraintsBy(Expr, Expr, Expr),
+    /// Replace a list of algebraic constraints by another list of
+    /// algebraic constraints. We use an array of Option instead of
+    /// a Vec here since we cannot use dynamic types here.
+    ReplaceAlgebraicConstraintsBy([Option<Expr>; 10], [Option<Expr>; 10]),
 }
