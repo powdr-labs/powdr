@@ -3,6 +3,7 @@
 // `Env`. We need it and it is probably fine.
 #![allow(clippy::mutable_key_type)]
 
+use crate::rule_based_optimizer::{driver::undo_variable_transform, item_db::ItemDB};
 use crepe::crepe;
 use itertools::Itertools;
 use powdr_number::FieldElement;
@@ -16,7 +17,54 @@ use crate::{
         types::{Action, Expr, Var},
     },
 };
+use std::{
+    fmt::{Debug, Display},
+    hash::Hash,
+};
+fn printhead_exp<T: FieldElement>(env: &Environment<T>, expr: &Expr) -> bool {
+    env.on_expr(*expr, (), |ge, ()| {
+        println!(" \n head expression is {}", ge);
+        let variables = ge.referenced_unknown_variables().cloned().collect_vec();
+        for v in variables {
+            let var_name = env
+                .var_to_string
+                .get(&v)
+                .cloned()
+                .unwrap_or(format!("{:?}", v));
+            println!("  variable: {} ({:?})", var_name, v);
+        }
+    });
 
+    true
+}
+
+fn printtail_exp<T: FieldElement>(env: &Environment<T>, expr: &Expr) -> bool {
+    env.on_expr(*expr, (), |ge, ()| {
+        println!(" \n tail expression is {}", ge);
+        let variables = ge.referenced_unknown_variables().cloned().collect_vec();
+        for v in variables {
+            let var_name = env
+                .var_to_string
+                .get(&v)
+                .cloned()
+                .unwrap_or(format!("{:?}", v));
+            println!("  variable: {} ({:?})", var_name, v);
+        }
+    });
+
+    true
+}
+fn print_range<T: FieldElement>(
+    env: &Environment<T>,
+    rc_head: &RangeConstraint<T>,
+    rc_tail: &RangeConstraint<T>,
+) -> bool {
+    println!(
+        " head range constraint: {:?}, tail range constraint: {:?} ",
+        rc_head, rc_tail
+    );
+    true
+}
 // This file contains the set of datalog rules executed on the constraint system.
 // Facts/relations will be produced according to the rules from existing
 // facts until a fixed point is reached.
@@ -305,6 +353,127 @@ crepe! {
 
     //////////////// COMBINE CONSTRAINTS WITH NON-NEGATIVE FACTORS /////////////////////
 
+   struct ReplaceEightOfAlgebraicConstraintsBy(Expr, Expr, Expr,Expr, Expr, Expr, Expr, Expr, Expr);
+    ReplaceEightOfAlgebraicConstraintsBy(e0, e1, e2, e3, e4, e5, e6, e7, replacement) <-
+      Env(env),
+      ProductConstraint(e0, x, a0),
+      ProductConstraint(e1, x, a1),
+      (e0 < e1),
+      ProductConstraint(e2, x, a2),
+      (e1 < e2),
+      ProductConstraint(e3, x, a3),
+      (e2 < e3),
+      ProductConstraint(e4, x, a4),
+      (e3 < e4),
+      ProductConstraint(e5, x, a5),
+      (e4 < e5),
+      ProductConstraint(e6, x, a6),
+      (e5 < e6),
+      ProductConstraint(e7, x, a7),
+      (e6 < e7),
+      RangeConstraintOnExpression(a0, rc_a0),
+      RangeConstraintOnExpression(a1, rc_a1),
+      RangeConstraintOnExpression(a2, rc_a2),
+      RangeConstraintOnExpression(a3, rc_a3),
+      RangeConstraintOnExpression(a4, rc_a4),
+      RangeConstraintOnExpression(a5, rc_a5),
+      RangeConstraintOnExpression(a6, rc_a6),
+      RangeConstraintOnExpression(a7, rc_a7),
+      (rc_a0.range().0 == T::zero()
+        && rc_a1.range().0 == T::zero()
+        && rc_a2.range().0 == T::zero()
+        && rc_a3.range().0 == T::zero()
+        && rc_a4.range().0 == T::zero()
+        && rc_a5.range().0 == T::zero()
+        && rc_a6.range().0 == T::zero()
+        && rc_a7.range().0 == T::zero()
+        && !rc_a0.combine_sum(&rc_a1).combine_sum(&rc_a2.combine_sum(&rc_a3)).combine_sum(&rc_a4).combine_sum(&rc_a5).combine_sum(&rc_a6).combine_sum(&rc_a7).is_unconstrained()),
+      let replacement = env.insert_owned(env.extract(x) * (env.extract(a0) + env.extract(a1) + env.extract(a2) + env.extract(a3)+ env.extract(a4) + env.extract(a5) + env.extract(a6) + env.extract(a7)));
+
+    struct ReplacedExpressionInEight(Expr);
+    ReplacedExpressionInEight(e) <-
+      ReplaceEightOfAlgebraicConstraintsBy(e, _, _, _, _, _, _, _, _);
+    ReplacedExpressionInEight(e) <-
+      ReplaceEightOfAlgebraicConstraintsBy(_, e, _, _, _, _, _, _, _);
+    ReplacedExpressionInEight(e) <-
+      ReplaceEightOfAlgebraicConstraintsBy(_, _, e, _, _, _, _, _, _);
+    ReplacedExpressionInEight(e) <-
+      ReplaceEightOfAlgebraicConstraintsBy(_, _, _, e, _, _, _, _, _);
+    ReplacedExpressionInEight(e) <-
+      ReplaceEightOfAlgebraicConstraintsBy(_, _, _, _, e, _, _, _, _);
+    ReplacedExpressionInEight(e) <-
+      ReplaceEightOfAlgebraicConstraintsBy(_, _, _, _, _, e, _, _, _);
+    ReplacedExpressionInEight(e) <-
+      ReplaceEightOfAlgebraicConstraintsBy(_, _, _, _, _, _, e, _, _);
+    ReplacedExpressionInEight(e) <-
+      ReplaceEightOfAlgebraicConstraintsBy(_, _, _, _, _, _, _, e, _);
+
+    struct ReplaceFourOfAlgebraicConstraintsBy(Expr, Expr, Expr, Expr, Expr);
+    ReplaceFourOfAlgebraicConstraintsBy(e0, e1, e2, e3, replacement) <-
+      Env(env),
+      ProductConstraint(e0, x, a0),
+      ProductConstraint(e1, x, a1),
+      ProductConstraint(e2, x, a2),
+      ProductConstraint(e3, x, a3),
+      !ReplacedExpressionInEight(e0),
+      !ReplacedExpressionInEight(e1),
+      !ReplacedExpressionInEight(e2),
+      !ReplacedExpressionInEight(e3),
+      (e0 < e1),
+      (e1 < e2),
+      (e2 < e3),
+      RangeConstraintOnExpression(a0, rc_a0),
+      RangeConstraintOnExpression(a1, rc_a1),
+      RangeConstraintOnExpression(a2, rc_a2),
+      RangeConstraintOnExpression(a3, rc_a3),
+      (rc_a0.range().0 == T::zero()
+        && rc_a1.range().0 == T::zero()
+        && rc_a2.range().0 == T::zero()
+        && rc_a3.range().0 == T::zero()
+        && !rc_a0.combine_sum(&rc_a1).combine_sum(&rc_a2.combine_sum(&rc_a3)).is_unconstrained()),
+      let replacement = env.insert_owned(env.extract(x) * (env.extract(a0) + env.extract(a1) + env.extract(a2) + env.extract(a3)));
+
+    struct ReplacedExpressionInFour(Expr);
+    ReplacedExpressionInFour(e) <-
+      ReplaceFourOfAlgebraicConstraintsBy(e, _, _, _, _);
+    ReplacedExpressionInFour(e) <-
+      ReplaceFourOfAlgebraicConstraintsBy(_, e, _, _, _);
+    ReplacedExpressionInFour(e) <-
+      ReplaceFourOfAlgebraicConstraintsBy(_, _, e, _, _);
+    ReplacedExpressionInFour(e) <-
+      ReplaceFourOfAlgebraicConstraintsBy(_, _, _, e, _);
+
+    struct ReplaceTripleOfAlgebraicConstraintsBy(Expr, Expr, Expr, Expr);
+    ReplaceTripleOfAlgebraicConstraintsBy(e1, e2, e3, replacement) <-
+      Env(env),
+      ProductConstraint(e1, x, a),
+      ProductConstraint(e2, x, b),
+      ProductConstraint(e3, x, c),
+      !ReplacedExpressionInEight(e1),
+      !ReplacedExpressionInEight(e2),
+      !ReplacedExpressionInEight(e3),
+      !ReplacedExpressionInFour(e1),
+      !ReplacedExpressionInFour(e2),
+      !ReplacedExpressionInFour(e3),
+      (e1 < e2),
+      (e2 < e3),
+      RangeConstraintOnExpression(a, rc_a),
+      RangeConstraintOnExpression(b, rc_b),
+      RangeConstraintOnExpression(c, rc_c),
+      (rc_a.range().0 == T::zero()
+        && rc_b.range().0 == T::zero()
+        && rc_c.range().0 == T::zero() && !rc_a.combine_sum(&rc_b).combine_sum(&rc_c).is_unconstrained()),
+      let replacement = env.insert_owned(env.extract(x) * (env.extract(a) + env.extract(b) + env.extract(c)));
+
+      struct ReplaceExpressionInTriple(Expr);
+    ReplaceExpressionInTriple(e) <-
+      ReplaceTripleOfAlgebraicConstraintsBy(e, _, _, _);
+    ReplaceExpressionInTriple(e) <-
+      ReplaceTripleOfAlgebraicConstraintsBy(_, e, _, _);
+    ReplaceExpressionInTriple(e) <-
+      ReplaceTripleOfAlgebraicConstraintsBy(_, _, e, _);
+
+
     // If we have `x * a = 0` and `x * b = 0` and `a` and `b` are
     // both non-negative and their sum is constrained, then we can replace
     // both constraints by `x * (a + b) = 0`.
@@ -312,12 +481,20 @@ crepe! {
       Env(env),
       ProductConstraint(e1, x, a),
       ProductConstraint(e2, x, b),
+      !ReplacedExpressionInEight(e1),
+      !ReplacedExpressionInEight(e2),
+      !ReplacedExpressionInFour(e1),
+      !ReplacedExpressionInFour(e2),
+      !ReplaceExpressionInTriple(e1),
+      !ReplaceExpressionInTriple(e2),
       (e1 < e2),
       RangeConstraintOnExpression(a, rc_a),
       RangeConstraintOnExpression(b, rc_b),
       (rc_a.range().0 == T::zero()
         && rc_b.range().0 == T::zero() && !rc_a.combine_sum(&rc_b).is_unconstrained()),
       let replacement = env.insert_owned(env.extract(x) * (env.extract(a) + env.extract(b)));
+
+
 
     //////////////////////// AFFINE SOLVING //////////////////////////
 
@@ -354,12 +531,18 @@ crepe! {
     RangeConstraintOnExpression(tail, rc_tail),
     (rc_head.range().0 == T::from(0)),
     (rc_tail.range().0 == T::from(0)),
-    (rc_head.range().1 + rc_tail.range().1 < T::from(-1));
+    (rc_head.combine_sum(&rc_tail).range().1 < T::from(-1));
 
-    EqualZero(head) <- EntailsZeroHeadAndTail(head,_);
-    EqualZero(tail) <- EntailsZeroHeadAndTail(_, tail);
+    EqualZero(head) <-
+    EntailsZeroHeadAndTail(head, tail),
+    LinearExpression(head, v, coeff),
+    Env(env),
+    (printhead_exp(&env,&head));
+    EqualZero(tail) <- EntailsZeroHeadAndTail(_, tail),
+    Env(env),
+    (printtail_exp(&env,&tail));
 
-    Assignment(v, val) <- EqualZero(e), Solvable(e, v, val);
+    Assignment(v, T::zero()) <- EqualZero(e), LinearExpression(e, v, coeff);
 
     ///////////////////////////////// OUTPUT ACTIONS //////////////////////////
 
@@ -427,6 +610,11 @@ crepe! {
       Equivalence(v1, v2), (v2 > v1);
     ActionRule(Action::ReplaceAlgebraicConstraintBy(e1, e2)) <-
       ReplaceAlgebraicConstraintBy(e1, e2);
+    ActionRule(Action::ReplaceEightOfAlgebraicConstraintsBy(e0, e1, e2, e3, e4, e5, e6, e7, r)) <-
+      ReplaceEightOfAlgebraicConstraintsBy(e0, e1, e2, e3, e4, e5, e6, e7, r);
+    ActionRule(Action::ReplaceFourOfAlgebraicConstraintsBy(e0, e1, e2, e3, r)) <-
+      ReplaceFourOfAlgebraicConstraintsBy(e0, e1, e2, e3, r);
     ActionRule(Action::ReplacePairOfAlgebraicConstraintsBy(e1, e2, r)) <-
       ReplacePairOfAlgebraicConstraintsBy(e1, e2, r);
+
 }
