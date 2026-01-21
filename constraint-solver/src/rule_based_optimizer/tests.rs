@@ -1,6 +1,7 @@
 use std::fmt::Display;
 use std::hash::Hash;
 
+use crate::rule_based_optimizer::driver::{batch_replace_algebraic_constraints, ReplacementAction};
 use crate::{
     algebraic_constraint,
     constraint_system::{BusInteraction, BusInteractionHandler, DefaultBusInteractionHandler},
@@ -9,7 +10,9 @@ use crate::{
     range_constraint::RangeConstraint,
     rule_based_optimizer::driver::rule_based_optimization,
 };
+
 use expect_test::expect;
+use itertools::Itertools;
 use num_traits::Zero;
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 
@@ -226,31 +229,21 @@ fn test_rule_based_optimization_quadratic_equality() {
 fn test_batch_replace_with_duplicate_constraints() {
     // Direct test of batch_replace_algebraic_constraints with duplicate constraints
     // This verifies that the HashSet-based tracking correctly handles duplicates
-
-    use crate::rule_based_optimizer::driver::{
-        batch_replace_algebraic_constraints, ReplacementAction,
-    };
-
     let mut system: IndexedConstraintSystem<BabyBearField, String> =
         IndexedConstraintSystem::default();
 
     // Create a system with duplicate constraints
-    // Constraint 1: x + y = 0
-    // Constraint 2: x + y = 0 (duplicate)
-    // Constraint 3: z = 5
     system.add_algebraic_constraints([
         assert_zero(v("x") + v("y")),
-        assert_zero(v("x") + v("y")), // Duplicate
+        assert_zero(v("x") + v("y")),
         assert_zero(v("z") - c(5)),
     ]);
 
     assert_eq!(system.system().algebraic_constraints.len(), 3);
 
-    // Create a replacement action: replace (x + y = 0) with (a = 0)
-    // If the duplicate handling is broken, the algorithm might think it found
-    // the constraint twice and proceed with the replacement incorrectly
+    // Replace "x + y = 0" and "z - 5 = 0" by "a = 0"
     let replacements = vec![ReplacementAction {
-        replace: vec![v("x") + v("y")],
+        replace: vec![v("x") + v("y"), v("z") - c(5)],
         replace_by: vec![v("a")],
     }];
 
@@ -260,65 +253,137 @@ fn test_batch_replace_with_duplicate_constraints() {
     // The replacement should succeed because we found the constraint to replace (even though it appears twice)
     assert!(result, "Replacement should succeed");
 
-    // After replacement, we should have replaced both instances of (x + y = 0) with (a = 0)
-    let final_constraints = &system.system().algebraic_constraints;
-
-    // We should have removed the 2 duplicate (x + y) constraints and added 1 (a) constraint
-    // So: 3 - 2 + 1 = 2 constraints
-    assert_eq!(
-        final_constraints.len(),
-        2,
-        "Should have 2 constraints after replacement"
-    );
-
-    // Verify that (x + y) is no longer in the system
-    let has_x_plus_y = final_constraints.iter().any(|c| {
-        matches!(&c.expression, expr if format!("{expr}").contains("x") && format!("{expr}").contains("y"))
-    });
-    assert!(!has_x_plus_y, "x + y should have been replaced");
-
-    // Verify that 'a' is in the system
-    let has_a = final_constraints
-        .iter()
-        .any(|c| format!("{}", c.expression).contains("a"));
-    assert!(has_a, "Replacement constraint 'a' should be in the system");
-
-    // Verify the exact form of the final constraints
-    let constraints_str = final_constraints
-        .iter()
-        .map(|c| format!("{}", c.expression))
-        .collect::<Vec<_>>()
-        .join(", ");
-    // Should have 'a' and 'z' constraints (z was the unchanged constraint)
-    assert!(
-        constraints_str.contains("a") && constraints_str.contains("z"),
-        "Final constraints should contain 'a' and 'z', got: {constraints_str}"
+    expect!["a = 0"].assert_eq(
+        &system
+            .system()
+            .algebraic_constraints
+            .iter()
+            .format("\n")
+            .to_string(),
     );
 }
 
 #[test]
-fn test_rule_based_optimization_with_duplicate_constraints() {
-    // Integration test that the batch replacement correctly handles duplicate constraints
+fn test_batch_replace_with_duplicate_constraints2() {
     let mut system: IndexedConstraintSystem<BabyBearField, String> =
         IndexedConstraintSystem::default();
 
-    // Add the same constraint twice: x + y = 0
+    system.add_algebraic_constraints([assert_zero(v("x") + v("y")), assert_zero(v("z") - c(5))]);
+
+    // Replacement has "x + y" twice, should get reduced to just a single one.
+    let replacements = vec![ReplacementAction {
+        replace: vec![v("x") + v("y"), v("x") + v("y")],
+        replace_by: vec![v("a")],
+    }];
+
+    let result = batch_replace_algebraic_constraints(&mut system, replacements, None);
+
+    assert!(result, "Replacement should succeed");
+    expect![[r#"
+        z - 5 = 0
+        a = 0"#]]
+    .assert_eq(
+        &system
+            .system()
+            .algebraic_constraints
+            .iter()
+            .format("\n")
+            .to_string(),
+    );
+}
+
+#[test]
+fn test_batch_replace_with_duplicate_constraints3() {
+    let mut system: IndexedConstraintSystem<BabyBearField, String> =
+        IndexedConstraintSystem::default();
+
     system.add_algebraic_constraints([
+        // x + y is contained twice, both should be replaced.
         assert_zero(v("x") + v("y")),
-        assert_zero(v("x") + v("y")), // Duplicate
+        assert_zero(v("x") + v("y")),
         assert_zero(v("z") - c(5)),
     ]);
 
-    let optimized_system = rule_based_optimization(
-        system,
-        NoRangeConstraints,
-        DefaultBusInteractionHandler::default(),
-        &mut new_var(),
-        None,
+    let replacements = vec![ReplacementAction {
+        replace: vec![v("x") + v("y")],
+        replace_by: vec![v("a")],
+    }];
+
+    let result = batch_replace_algebraic_constraints(&mut system, replacements, None);
+
+    assert!(result, "Replacement should succeed");
+    expect![[r#"
+        z - 5 = 0
+        a = 0"#]]
+    .assert_eq(
+        &system
+            .system()
+            .algebraic_constraints
+            .iter()
+            .format("\n")
+            .to_string(),
+    );
+}
+
+#[test]
+fn test_batch_replace_with_conflict() {
+    let mut system: IndexedConstraintSystem<BabyBearField, String> =
+        IndexedConstraintSystem::default();
+
+    system.add_algebraic_constraints([assert_zero(v("x") + v("y")), assert_zero(v("z") - c(5))]);
+
+    // both actions need "x + y", only the first can proceed
+    let replacements = vec![
+        ReplacementAction {
+            replace: vec![v("x") + v("y")],
+            replace_by: vec![v("a")],
+        },
+        ReplacementAction {
+            replace: vec![v("x") + v("y"), v("z") - c(5)],
+            replace_by: vec![v("b")],
+        },
+    ];
+
+    let result = batch_replace_algebraic_constraints(&mut system, replacements, None);
+
+    assert!(result, "Replacement should succeed");
+    expect![[r#"
+        z - 5 = 0
+        a = 0"#]]
+    .assert_eq(
+        &system
+            .system()
+            .algebraic_constraints
+            .iter()
+            .format("\n")
+            .to_string(),
     );
 
-    let constraints = &optimized_system.0.system().algebraic_constraints;
+    let mut system: IndexedConstraintSystem<BabyBearField, String> =
+        IndexedConstraintSystem::default();
 
-    // Check that we still have valid constraints
-    assert!(!constraints.is_empty(), "System should have constraints");
+    system.add_algebraic_constraints([assert_zero(v("x") + v("y")), assert_zero(v("z") - c(5))]);
+    // both actions need "x + y", only the first can proceed, now reverse order.
+    let replacements = vec![
+        ReplacementAction {
+            replace: vec![v("x") + v("y"), v("z") - c(5)],
+            replace_by: vec![v("b")],
+        },
+        ReplacementAction {
+            replace: vec![v("x") + v("y")],
+            replace_by: vec![v("a")],
+        },
+    ];
+
+    let result = batch_replace_algebraic_constraints(&mut system, replacements, None);
+
+    assert!(result, "Replacement should succeed");
+    expect!["b = 0"].assert_eq(
+        &system
+            .system()
+            .algebraic_constraints
+            .iter()
+            .format("\n")
+            .to_string(),
+    );
 }

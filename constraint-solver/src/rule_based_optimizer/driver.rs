@@ -321,6 +321,7 @@ pub(crate) fn batch_replace_algebraic_constraints<
     degree_bound: Option<DegreeBound>,
 ) -> bool {
     // Filter out replacements that violate degree bounds
+    // and also filter out duplicate left hand sides.
     let valid_replacements: Vec<_> = replacements
         .into_iter()
         .filter(|replacement| {
@@ -334,55 +335,45 @@ pub(crate) fn batch_replace_algebraic_constraints<
             }
             within_bound
         })
+        .map(|replacement| ReplacementAction {
+            replace: replacement.replace.into_iter().unique().collect(),
+            replace_by: replacement.replace_by,
+        })
         .collect();
 
-    // Build a map from constraints to replace to the replacement indices that need them
-    let mut replace_to_replacement_indices: HashMap<&GroupedExpression<T, V>, Vec<usize>> =
-        HashMap::new();
-    for (replacement_idx, replacement) in valid_replacements.iter().enumerate() {
-        for replace_expr in &replacement.replace {
-            replace_to_replacement_indices
-                .entry(replace_expr)
-                .or_default()
-                .push(replacement_idx);
-        }
-    }
+    // Build a map from constraints to search for to their index in the replacement list.
+    // Note that the same expression can be present in multiple lists!
+    let replace_to_index: HashMap<&GroupedExpression<T, V>, Vec<usize>> = valid_replacements
+        .iter()
+        .enumerate()
+        .flat_map(|(i, r)| r.replace.iter().map(move |e| (e, i)))
+        .into_group_map();
 
-    // Single pass through constraints to identify which constraints to replace are present
-    // Track which unique constraints to replace have been found for each replacement
+    // Compute which of the expressions to search for have been found for each replacement action.
     let mut replacement_found: Vec<HashSet<&GroupedExpression<T, V>>> =
-        vec![HashSet::new(); valid_replacements.len()];
+        vec![Default::default(); valid_replacements.len()];
 
     for constraint in system.algebraic_constraints() {
-        if let Some(replacement_indices) =
-            replace_to_replacement_indices.get(&constraint.expression)
-        {
-            for &replacement_idx in replacement_indices {
-                replacement_found[replacement_idx].insert(&constraint.expression);
+        if let Some(replacement_indices) = replace_to_index.get(&constraint.expression) {
+            for &i in replacement_indices {
+                replacement_found[i].insert(&constraint.expression);
             }
         }
     }
 
-    // Determine which replacements are complete (all constraints to replace found)
-    // A replacement is complete if we found all unique expressions to replace
-    let complete_replacement_indices: Vec<usize> = valid_replacements
-        .iter()
-        .enumerate()
-        .filter(|(idx, replacement)| {
-            let unique_replace: HashSet<_> = replacement.replace.iter().collect();
-            replacement_found[*idx].len() == unique_replace.len()
-        })
-        .map(|(idx, _)| idx)
-        .collect();
-
-    // Handle conflicts - if multiple complete replacements want the same constraint,
-    // only the first one (in sorted order) gets it
     let mut constraints_to_remove: HashSet<&GroupedExpression<T, V>> = HashSet::new();
     let mut replacement_constraints = Vec::new();
-    let mut skipped_indices = HashSet::new();
 
-    for &replacement_idx in &complete_replacement_indices {
-        let replacement = &valid_replacements[replacement_idx];
+    for (index, replacement) in valid_replacements.iter().enumerate() {
+        if replacement_found[index].len() != replacement.replace.len() {
+            log::debug!(
+                "Incomplete replacement: wanted to replace {} but found only {}/{} constraints in the system.",
+                replacement.replace.iter().format(", "),
+                replacement_found[index].len(),
+                replacement.replace.len()
+            );
+            continue;
+        }
 
         // Check if any of this replacement's constraints to replace have already been claimed
         let has_conflict = replacement
@@ -391,7 +382,10 @@ pub(crate) fn batch_replace_algebraic_constraints<
             .any(|replace_expr| constraints_to_remove.contains(replace_expr));
 
         if has_conflict {
-            skipped_indices.insert(replacement_idx);
+            log::debug!(
+                "Skipping replacement of {} due to conflict with earlier replacement.",
+                replacement.replace.iter().format(", ")
+            );
         } else {
             // No conflict, this replacement can proceed
             constraints_to_remove.extend(replacement.replace.iter());
@@ -402,24 +396,6 @@ pub(crate) fn batch_replace_algebraic_constraints<
     if constraints_to_remove.is_empty() {
         // All replacements were skipped due to conflicts
         return false;
-    }
-
-    // Log warnings for incomplete and skipped replacements
-    for (idx, replacement) in valid_replacements.iter().enumerate() {
-        let unique_replace: HashSet<_> = replacement.replace.iter().collect();
-        if replacement_found[idx].len() != unique_replace.len() {
-            log::debug!(
-                "Was about to replace constraints {} but found only {}/{} unique in the system.",
-                replacement.replace.iter().format(", "),
-                replacement_found[idx].len(),
-                unique_replace.len()
-            );
-        } else if skipped_indices.contains(&idx) {
-            log::debug!(
-                "Skipping replacement of {} due to conflict with earlier replacement.",
-                replacement.replace.iter().format(", ")
-            );
-        }
     }
 
     // Remove old constraints and add new ones
