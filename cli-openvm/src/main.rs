@@ -140,12 +140,6 @@ enum Commands {
         /// Size of each chunk (default: 1000)
         #[arg(long, default_value_t = 1000)]
         chunk_size: usize,
-
-        /// If active, generates "optimistic" precompiles. Optimistic precompiles are smaller in size
-        /// but may fail at runtime if the assumptions they make are violated.
-        #[arg(long)]
-        #[arg(default_value_t = false)]
-        optimistic_precompiles: bool,
     },
 }
 
@@ -297,23 +291,15 @@ fn run_command(command: Commands) {
             guest,
             input,
             chunk_size,
-            optimistic_precompiles,
         } => {
-            let mut powdr_config = default_powdr_openvm_config(0, 0);
-            powdr_config = powdr_config.with_optimistic_precompiles(optimistic_precompiles);
+            let powdr_config = default_powdr_openvm_config(0, 0);
             let guest_program = compile_openvm(&guest, guest_opts).unwrap();
-            let empirical_constraints = maybe_compute_empirical_constraints(
-                &guest_program,
-                &powdr_config,
-                stdin_from(input),
-            );
 
             let effectiveness = powdr_openvm::get_full_circuit_effectiveness(
                 &guest_program,
                 stdin_from(input),
-                &powdr_config,
+                powdr_config.degree_bound,
                 chunk_size,
-                &empirical_constraints,
             );
 
             tracing::info!("\n=== Full Circuit Effectiveness ===");

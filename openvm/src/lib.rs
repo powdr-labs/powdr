@@ -893,9 +893,8 @@ pub fn execution_profile_from_guest(
 ///
 /// * `program` - The original compiled program to analyze
 /// * `inputs` - The standard input to use for execution
-/// * `powdr_config` - Configuration for the autoprecompile generation
+/// * `degree_bound` - Degree bound for APC generation
 /// * `chunk_size` - Size of each chunk (e.g., 1000 instructions)
-/// * `empirical_constraints` - Empirical constraints to use during APC generation
 ///
 /// # Returns
 ///
@@ -903,9 +902,8 @@ pub fn execution_profile_from_guest(
 pub fn get_full_circuit_effectiveness(
     program: &OriginalCompiledProgram,
     inputs: StdIn,
-    powdr_config: &PowdrConfig,
+    degree_bound: DegreeBound,
     chunk_size: usize,
-    empirical_constraints: &EmpiricalConstraints,
 ) -> FullCircuitEffectiveness {
     let OriginalCompiledProgram { exe, vm_config, .. } = program;
     let prog = Prog::from(&exe.program);
@@ -921,7 +919,7 @@ pub fn get_full_circuit_effectiveness(
     // Get the VM config for APC generation
     let original_config = OriginalVmConfig::new(vm_config.clone());
     let airs = original_config
-        .airs(powdr_config.degree_bound)
+        .airs(degree_bound)
         .expect("Failed to convert the AIR of an OpenVM instruction");
     let bus_map = original_config.bus_map();
 
@@ -944,9 +942,8 @@ pub fn get_full_circuit_effectiveness(
                 .unwrap();
         },
         adapter_vm_config,
-        powdr_config.degree_bound,
+        degree_bound,
         chunk_size,
-        empirical_constraints,
     )
 }
 

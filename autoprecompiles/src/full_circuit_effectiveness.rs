@@ -40,7 +40,6 @@ pub fn compute_full_circuit_effectiveness<A: Adapter + Send + Sync>(
     vm_config: AdapterVmConfig<A>,
     degree_bound: DegreeBound,
     chunk_size: usize,
-    empirical_constraints: &EmpiricalConstraints,
 ) -> FullCircuitEffectiveness
 where
     A::Instruction: Send + Sync,
@@ -70,29 +69,40 @@ where
     let results: Vec<_> = chunks
         .into_par_iter()
         .enumerate()
-        .filter_map(|(i, block): (usize, BasicBlock<A::Instruction>)| {
-            if i % 100 == 0 {
+        .filter(|(i, block)| {
+            if *i % 100 == 0 {
                 tracing::debug!("Processing chunk {}/{}", i + 1, num_chunks);
             }
-
+            
             // Build the APC for this chunk
-            let apc = crate::build::<A>(
+            crate::build::<A>(
                 block.clone(),
                 vm_config.clone(),
                 degree_bound,
                 None, // No APC candidates directory
-                empirical_constraints,
+                &EmpiricalConstraints::default(),
             )
-            .ok()?;
+            .is_ok()
+        })
+        .map(|(_, block)| {
+            // Build the APC for this chunk (we know it succeeds from the filter)
+            let apc = crate::build::<A>(
+                block.clone(),
+                vm_config.clone(),
+                degree_bound,
+                None,
+                &EmpiricalConstraints::default(),
+            )
+            .unwrap();
 
             // Evaluate the APC to get before/after stats
             let apc_with_stats = evaluate_apc::<A>(block, vm_config.instruction_handler, apc);
             let eval_result = apc_with_stats.evaluation_result();
 
-            Some((
+            (
                 eval_result.before.main_columns,
                 eval_result.after.main_columns,
-            ))
+            )
         })
         .collect();
 
@@ -160,7 +170,7 @@ fn chunk_execution_into_blocks<A: Adapter>(
                     statements.push(instruction.clone());
                 }
             } else {
-                tracing::warn!("PC {} not found in program", pc);
+                panic!("PC {pc} not found in program");
             }
         }
 
