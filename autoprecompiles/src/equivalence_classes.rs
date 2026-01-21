@@ -111,6 +111,37 @@ impl<T: Eq + Hash + Clone> Partition<T> {
             .into_values()
             .collect()
     }
+
+    /// Modify elements while keeping their original class.
+    /// The mapped elements must not Eq collide with each other.
+    pub fn map_elements<T2: Eq + Hash + Clone, F: Fn(T) -> T2>(self, f: F) -> Partition<T2> {
+        let mut new_class_of: HashMap<T2, usize> = Default::default();
+        for (elem, class) in self.class_of {
+            if new_class_of.insert(f(elem), class).is_some() {
+                panic!("Partition element mapping collision");
+            }
+        }
+        Partition::<T2> {
+            class_of: new_class_of,
+            num_classes: self.num_classes,
+        }
+    }
+
+    /// This is currently only used for superblocks.
+    /// Partitions are calculated independently for each basic block and then combined.
+    /// Since equivalence classes across basic blocks are not related,
+    /// they need to be different when combined into a superblock.
+    /// Elements from the two partitions must also not Eq collide.
+    pub fn combine(mut self, other: Self) -> Self {
+        let class_shift = self.num_classes;
+        for (elem, class) in other.class_of {
+            if self.class_of.insert(elem, class + class_shift).is_some() {
+                panic!("Partition join element collision");
+            }
+        }
+        self.num_classes += other.num_classes;
+        self
+    }
 }
 
 /// Number of partitions to combine in each chunk before parallelizing.

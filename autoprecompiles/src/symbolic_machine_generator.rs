@@ -5,7 +5,7 @@ use powdr_number::FieldElement;
 
 use crate::{
     adapter::Adapter,
-    blocks::{BasicBlock, Instruction},
+    blocks::{Block, Instruction},
     expression::AlgebraicExpression,
     powdr,
     symbolic_machine::{SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine},
@@ -116,7 +116,7 @@ fn convert_expression<T, U>(
 /// Converts a basic block into a symbolic machines (all instruction circuits
 /// concatenated) and a column allocator.
 pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
-    block: &BasicBlock<A::Instruction>,
+    block: &Block<A::Instruction>,
     instruction_handler: &A::InstructionHandler,
     bus_map: &BusMap<A::CustomBusTypes>,
 ) -> (SymbolicMachine<A::PowdrField>, ColumnAllocator) {
@@ -132,7 +132,7 @@ pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
 /// Converts a basic block into a list of symbolic machines (one per instruction)
 /// and a column allocator. All columns are globally unique across all instructions.
 pub(crate) fn statements_to_symbolic_machines<A: Adapter>(
-    block: &BasicBlock<A::Instruction>,
+    block: &Block<A::Instruction>,
     instruction_handler: &A::InstructionHandler,
     bus_map: &BusMap<A::CustomBusTypes>,
 ) -> (Vec<SymbolicMachine<A::PowdrField>>, ColumnAllocator) {
@@ -140,7 +140,7 @@ pub(crate) fn statements_to_symbolic_machines<A: Adapter>(
     let mut global_idx = 0;
     let mut machines: Vec<SymbolicMachine<A::PowdrField>> = Vec::new();
 
-    for (i, (instr, pc)) in block.statements.iter().zip_eq(block.pcs()).enumerate() {
+    for (i, (instr, pc)) in block.statements().zip_eq(block.pcs()).enumerate() {
         let machine = instruction_handler
             .get_instruction_air_and_id(instr)
             .1

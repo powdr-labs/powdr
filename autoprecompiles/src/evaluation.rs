@@ -1,8 +1,7 @@
 use std::{fmt::Display, iter::Sum, ops::Add, sync::Arc};
 
 use crate::{
-    adapter::{Adapter, AdapterApc, AdapterApcWithStats, AdapterBasicBlock},
-    InstructionHandler, SymbolicMachine,
+    InstructionHandler, SymbolicMachine, adapter::{Adapter, AdapterApc, AdapterApcWithStats, AdapterBlock}
 };
 
 use serde::{Deserialize, Serialize};
@@ -62,13 +61,12 @@ pub struct EvaluationResult {
 /// basic block in software.
 /// This is used by different pgo strategies in different stages. For example, for cell PGO, this is done before selection, and for instruction PGO, it is done after.
 pub fn evaluate_apc<A: Adapter>(
-    basic_block: AdapterBasicBlock<A>,
+    basic_block: &AdapterBlock<A>,
     instruction_handler: &A::InstructionHandler,
     apc: AdapterApc<A>,
 ) -> AdapterApcWithStats<A> {
     let before = basic_block
-        .statements
-        .iter()
+        .statements()
         .map(|instruction| instruction_handler.get_instruction_air_stats(instruction))
         .sum();
     let after = AirStats::new(apc.machine());

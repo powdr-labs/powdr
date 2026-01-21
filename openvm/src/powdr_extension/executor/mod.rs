@@ -332,9 +332,7 @@ impl PowdrExecutor {
         use openvm_instructions::program::DEFAULT_PC_STEP;
         use openvm_stark_backend::{
             p3_field::Field,
-            p3_maybe_rayon::prelude::{
-                IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator,
-            },
+            p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator},
         };
 
         let &Instruction {
@@ -368,9 +366,9 @@ impl PowdrExecutor {
             original_instructions: self
                 .apc
                 .block
-                .statements
-                .par_iter()
+                .statements()
                 .enumerate()
+                .par_bridge()
                 .map(|(idx, instruction)| {
                     let executor = executor_inventory
                         .get_executor(instruction.0.opcode)
@@ -492,7 +490,6 @@ impl PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>> for PowdrExecutor 
         for (instruction, cached_meta) in self
             .apc
             .instructions()
-            .iter()
             .zip_eq(&self.cached_instructions_meta)
         {
             let executor = &self.executor_inventory.executors[cached_meta.executor_index];
@@ -566,11 +563,8 @@ impl PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExecutor {
             original_arenas.ensure_initialized(apc_call_count, &self.air_by_opcode_id, &self.apc);
 
         // execute the original instructions one by one
-        for (instruction, cached_meta) in self
-            .apc
-            .instructions()
-            .iter()
-            .zip(&self.cached_instructions_meta)
+        for (instruction, cached_meta) in
+            self.apc.instructions().zip(&self.cached_instructions_meta)
         {
             let executor = &self.executor_inventory.executors[cached_meta.executor_index];
 
@@ -627,7 +621,6 @@ impl PowdrExecutor {
 
         let cached_instructions_meta = apc
             .instructions()
-            .iter()
             .zip_eq(apc.subs.iter())
             .map(|(instruction, sub)| {
                 let executor_index = *executor_inventory

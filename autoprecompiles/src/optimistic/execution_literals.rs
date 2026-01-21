@@ -7,7 +7,7 @@ use crate::symbolic_machine::{
 use crate::symbolic_machine_generator::statements_to_symbolic_machines;
 use crate::{
     adapter::{Adapter, AdapterVmConfig},
-    blocks::BasicBlock,
+    blocks::Block,
     bus_map::BusType,
     execution::{LocalOptimisticLiteral, OptimisticLiteral},
     expression::AlgebraicReference,
@@ -20,7 +20,7 @@ use powdr_constraint_solver::inliner::DegreeBound;
 /// Maps an algebraic reference to an execution literal, if it represents the limb of a
 /// memory access to an address known at compile time.
 pub fn optimistic_literals<A: Adapter>(
-    block: &BasicBlock<A::Instruction>,
+    block: &Block<A::Instruction>,
     vm_config: &AdapterVmConfig<A>,
     degree_bound: &DegreeBound,
 ) -> BTreeMap<AlgebraicReference, OptimisticLiteral<Vec<<A as Adapter>::PowdrField>>> {
@@ -80,6 +80,7 @@ fn extract_concrete_memory_accesses<A: Adapter>(
         &vm_config.bus_map,
         // The optimizer might introduce new columns, but we'll discard later.
         dummy_column_allocator,
+        &Default::default(), // TODO(leandro): fix this
     )
     .unwrap();
 
