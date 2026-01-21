@@ -13,7 +13,7 @@ use crate::{
     range_constraint::RangeConstraint,
     rule_based_optimizer::{
         environment::Environment,
-        types::{Action, Expr, Var},
+        types::{Action, Expr, ReplaceConstraintsAction, Var},
     },
 };
 
@@ -421,6 +421,11 @@ crepe! {
       Equivalence(v1, v2), (v2 > v1);
     ActionRule(Action::ReplaceAlgebraicConstraintBy(e1, e2)) <-
       ReplaceAlgebraicConstraintBy(e1, e2);
+
+    @output
+    pub struct ReplaceConstraintsActionRule(pub ReplaceConstraintsAction);
+    ReplaceConstraintsActionRule(ReplaceConstraintsAction{ to_replace, replace_by }) <-
+      ReplaceAlgebraicConstraintsBy(to_replace, replace_by);
 }
 
 fn extend_by_none<const N1: usize, const N2: usize>(items: [Expr; N1]) -> [Option<Expr>; N2] {

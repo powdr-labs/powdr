@@ -144,7 +144,7 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
 
         // Uncomment this to get a runtime profile of the individual
         // rules.
-        // let ((actions,), profile) = rt.run_with_profiling();
+        // let ((actions, large_actions), profile) = rt.run_with_profiling();
         // profile.report();
         let (actions, large_actions) = rt.run();
         let (expr_db_, new_var_generator) = env.terminate();
@@ -223,17 +223,17 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                         degree_bound,
                     )
                 }
-                Action::ReplacePairOfAlgebraicConstraintsBy(e1, e2, replacement) => {
-                    progress |= replace_algebraic_constraints(
-                        &mut system,
-                        [e1, e2],
-                        [replacement],
-                        &expr_db_,
-                        &var_mapper,
-                        degree_bound,
-                    )
-                }
             }
+        }
+        for action in large_actions.into_iter().map(|a| a.0).sorted() {
+            progress |= replace_algebraic_constraints(
+                &mut system,
+                action.to_replace.iter().flatten().copied(),
+                action.replace_by.iter().flatten().copied(),
+                &expr_db_,
+                &var_mapper,
+                degree_bound,
+            )
         }
         if !progress {
             break;

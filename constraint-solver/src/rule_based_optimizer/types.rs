@@ -33,6 +33,8 @@ pub enum Action<T: FieldElement> {
 /// This is a separate type from `Action` because it is much larger.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ReplaceConstraintsAction {
+    /// The constraints to be replaced. Up to 10, increase the size if needed.
     pub to_replace: [Option<Expr>; 10],
-    pub replace_by: [Option<Expr>; 10],
+    /// The constraints to replace by. Up to 5, increase the size if needed.
+    pub replace_by: [Option<Expr>; 5],
 }
