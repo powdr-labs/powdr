@@ -169,7 +169,7 @@ pub fn capture_execution_trace<A: Adapter>(
     // in memory collector storage
     let collector = TraceCollector::new::<A>(program);
 
-    // build subscriber
+    // build subscriber  
     let subscriber = Registry::default().with(collector.clone());
 
     // dispatch constructs a local subscriber at trace level that is invoked during data collection but doesn't override the global one at info level
@@ -177,7 +177,9 @@ pub fn capture_execution_trace<A: Adapter>(
     tracing::dispatcher::with_default(&dispatch, execute_fn);
 
     // Extract the collected data
-    collector.into_vec()
+    let pc_trace = collector.into_vec();
+    tracing::debug!("Captured {} PCs in the execution trace", pc_trace.len());
+    pc_trace
 }
 
 // holds basic type fields of execution objects captured in trace by subscriber
@@ -213,10 +215,13 @@ impl TraceCollector {
     }
 
     fn into_vec(self) -> Vec<u64> {
-        Arc::try_unwrap(self.pc_trace)
-            .expect("TraceCollector has more than one reference")
-            .into_inner()
-            .unwrap()
+        match Arc::try_unwrap(self.pc_trace) {
+            Ok(mutex) => mutex.into_inner().unwrap(),
+            Err(arc) => {
+                // If we can't unwrap the Arc, just lock it and clone the vec
+                arc.lock().unwrap().clone()
+            }
+        }
     }
 
     fn push(&self, pc: u64) {
