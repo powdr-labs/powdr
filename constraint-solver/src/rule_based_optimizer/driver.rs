@@ -175,6 +175,10 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         // some will fail depending on the order in which they are applied).
         // We try to ensure that at least the outcome is deterministic by
         // sorting the actions.
+
+        // Collect replacement actions to process them in batch
+        let mut replacement_actions = Vec::new();
+
         for action in actions.into_iter().map(|a| a.0).sorted() {
             match action {
                 Action::UpdateRangeConstraintOnVar(var, rc) => {
@@ -214,27 +218,27 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                     progress = true;
                 }
                 Action::ReplaceAlgebraicConstraintBy(e1, replacement) => {
-                    progress |= replace_algebraic_constraints(
-                        &mut system,
+                    replacement_actions.push(ReplacementAction::new(
                         [e1],
                         [replacement],
                         &expr_db_,
                         &var_mapper,
-                        degree_bound,
-                    )
+                    ));
                 }
             }
         }
         for action in large_actions.into_iter().map(|a| a.0).sorted() {
-            progress |= replace_algebraic_constraints(
-                &mut system,
+            replacement_actions.push(ReplacementAction::new(
                 action.to_replace.iter().flatten().copied(),
                 action.replace_by.iter().flatten().copied(),
                 &expr_db_,
                 &var_mapper,
-                degree_bound,
-            )
+            ));
         }
+
+        progress |=
+            batch_replace_algebraic_constraints(&mut system, replacement_actions, degree_bound);
+
         if !progress {
             break;
         }
@@ -244,69 +248,165 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
     (system, assignments)
 }
 
-/// Replaces all of the algebraic constraints in `old` by the ones in `replacement`.
-/// Returns true if the replacement was successful, i.e. all of the `old` constraints
-/// were found and replaced.
-///
-/// If degree_bound is None, the replacement is only done if the degree does not increase.
-/// If degree_bound is Some(bound), the replacement is only done if the degree
-/// stays within the bound.
-fn replace_algebraic_constraints<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
-    system: &mut IndexedConstraintSystem<T, V>,
-    old: impl IntoIterator<Item = Expr>,
-    replacement: impl IntoIterator<Item = Expr>,
-    expr_db: &ItemDB<GroupedExpression<T, Var>, Expr>,
-    var_mapper: &ItemDB<V, Var>,
-    degree_bound: Option<DegreeBound>,
-) -> bool {
-    // Undo the variable transformation.
-    let mut old_found = old
-        .into_iter()
-        .map(|e| undo_variable_transform(&expr_db[e], var_mapper))
-        .map(|e| (e, false))
-        .collect::<HashMap<_, _>>();
-    let replacement = replacement
-        .into_iter()
-        .map(|e| undo_variable_transform(&expr_db[e], var_mapper))
-        .collect_vec();
+/// A single replacement operation: replace `replace` constraints with `replace_by` constraints.
+pub(crate) struct ReplacementAction<T, V> {
+    /// Constraints to be replaced.
+    pub(crate) replace: Vec<GroupedExpression<T, V>>,
+    /// Replacement constraints.
+    pub(crate) replace_by: Vec<GroupedExpression<T, V>>,
+}
 
-    let max_old_degree = old_found.keys().map(|e| e.degree()).max().unwrap_or(0);
-    let max_new_degree = replacement.iter().map(|e| e.degree()).max().unwrap_or(0);
-    // If the degree does not increase, we do it in any case. If the degree increases, we
-    // only do it if a degree bound is given and it stays within the bound.
-    if max_new_degree > max_old_degree
-        && (degree_bound.is_none() || max_new_degree > degree_bound.unwrap().identities)
-    {
-        log::debug!(
-            "Skipping replacement of {} by {} due to degree constraints.",
-            old_found.keys().format(", "),
-            replacement.iter().format(", ")
-        );
-        return false;
-    }
-    // TODO special case for a single element in old:
-    // We could run retain_algebraic_constraints right away
-    // and thus iterate only once.
-    for c in system.algebraic_constraints() {
-        if old_found.contains_key(&c.expression) {
-            *old_found.get_mut(&c.expression).unwrap() = true;
+impl<T: FieldElement, V: Hash + Eq + Ord + Clone + Display> ReplacementAction<T, V> {
+    /// Creates a new ReplacementAction from expression IDs, performing variable transformation.
+    fn new(
+        replace: impl IntoIterator<Item = Expr>,
+        replace_by: impl IntoIterator<Item = Expr>,
+        expr_db: &ItemDB<GroupedExpression<T, Var>, Expr>,
+        var_mapper: &ItemDB<V, Var>,
+    ) -> Self {
+        Self {
+            replace: replace
+                .into_iter()
+                .map(|e| undo_variable_transform(&expr_db[e], var_mapper))
+                .collect(),
+            replace_by: replace_by
+                .into_iter()
+                .map(|e| undo_variable_transform(&expr_db[e], var_mapper))
+                .collect(),
         }
     }
-    if old_found.values().any(|found| !*found) {
-        log::warn!(
-            "Was about to replace constraints {} but did not find all in the system.",
-            old_found.keys().format(", ")
-        );
-        false
-    } else {
-        system.retain_algebraic_constraints(|c| !old_found.contains_key(&c.expression));
-        system.add_algebraic_constraints(
-            replacement
-                .into_iter()
-                .map(AlgebraicConstraint::assert_zero),
-        );
-        true
+}
+
+/// Checks if a replacement action satisfies the degree bound constraints.
+/// Returns true if the replacement is allowed, false otherwise.
+///
+/// If degree_bound is None, the replacement is only allowed if the degree does not increase.
+/// If degree_bound is Some(bound), the replacement is allowed if the new degree stays within the bound.
+fn is_replacement_within_degree_bound<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
+    replacement: &ReplacementAction<T, V>,
+    degree_bound: Option<DegreeBound>,
+) -> bool {
+    let max_old_degree = replacement
+        .replace
+        .iter()
+        .map(|e| e.degree())
+        .max()
+        .unwrap_or(0);
+    let max_new_degree = replacement
+        .replace_by
+        .iter()
+        .map(|e| e.degree())
+        .max()
+        .unwrap_or(0);
+
+    // Check if the degree increase is acceptable
+    let degree_increase = max_new_degree > max_old_degree;
+    match degree_bound {
+        None => !degree_increase,
+        Some(bound) => max_new_degree <= bound.identities,
     }
+}
+
+/// Batch replaces multiple sets of algebraic constraints in a single pass through the constraint system.
+/// Returns true if at least one replacement was successful.
+///
+/// If degree_bound is None, replacements are only done if the degree does not increase.
+/// If degree_bound is Some(bound), replacements are only done if the degree stays within the bound.
+pub(crate) fn batch_replace_algebraic_constraints<
+    T: FieldElement,
+    V: Hash + Eq + Ord + Clone + Display,
+>(
+    system: &mut IndexedConstraintSystem<T, V>,
+    replacements: Vec<ReplacementAction<T, V>>,
+    degree_bound: Option<DegreeBound>,
+) -> bool {
+    // Filter out replacements that violate degree bounds
+    // and also filter out duplicate left hand sides.
+    let valid_replacements: Vec<_> = replacements
+        .into_iter()
+        .filter(|replacement| {
+            let within_bound = is_replacement_within_degree_bound(replacement, degree_bound);
+            if !within_bound {
+                log::debug!(
+                    "Skipping replacement of {} by {} due to degree constraints.",
+                    replacement.replace.iter().format(", "),
+                    replacement.replace_by.iter().format(", ")
+                );
+            }
+            within_bound
+        })
+        .map(|replacement| ReplacementAction {
+            replace: replacement.replace.into_iter().unique().collect(),
+            replace_by: replacement.replace_by,
+        })
+        .collect();
+
+    // Build a map from constraints to search for to their index in the replacement list.
+    // Note that the same expression can be present in multiple lists!
+    let replace_to_index: HashMap<&GroupedExpression<T, V>, Vec<usize>> = valid_replacements
+        .iter()
+        .enumerate()
+        .flat_map(|(i, r)| r.replace.iter().map(move |e| (e, i)))
+        .into_group_map();
+
+    // Compute which of the expressions to search for have been found for each replacement action.
+    let mut replacement_found: Vec<HashSet<&GroupedExpression<T, V>>> =
+        vec![Default::default(); valid_replacements.len()];
+
+    for constraint in system.algebraic_constraints() {
+        if let Some(replacement_indices) = replace_to_index.get(&constraint.expression) {
+            for &i in replacement_indices {
+                replacement_found[i].insert(&constraint.expression);
+            }
+        }
+    }
+
+    let mut constraints_to_remove: HashSet<&GroupedExpression<T, V>> = HashSet::new();
+    let mut replacement_constraints = Vec::new();
+
+    for (index, replacement) in valid_replacements.iter().enumerate() {
+        if replacement_found[index].len() != replacement.replace.len() {
+            log::debug!(
+                "Incomplete replacement: wanted to replace {} but found only {}/{} constraints in the system.",
+                replacement.replace.iter().format(", "),
+                replacement_found[index].len(),
+                replacement.replace.len()
+            );
+            continue;
+        }
+
+        // Check if any of this replacement's constraints to replace have already been claimed
+        let has_conflict = replacement
+            .replace
+            .iter()
+            .any(|replace_expr| constraints_to_remove.contains(replace_expr));
+
+        if has_conflict {
+            log::debug!(
+                "Skipping replacement of {} due to conflict with earlier replacement.",
+                replacement.replace.iter().format(", ")
+            );
+        } else {
+            // No conflict, this replacement can proceed
+            constraints_to_remove.extend(replacement.replace.iter());
+            replacement_constraints.extend(replacement.replace_by.iter().cloned());
+        }
+    }
+
+    if constraints_to_remove.is_empty() {
+        // All replacements were skipped due to conflicts
+        return false;
+    }
+
+    // Remove old constraints and add new ones
+    system.retain_algebraic_constraints(|c| !constraints_to_remove.contains(&c.expression));
+    system.add_algebraic_constraints(
+        replacement_constraints
+            .into_iter()
+            .map(AlgebraicConstraint::assert_zero),
+    );
+
+    true
 }
 
 /// Transform the constraint system such that variables and expressions are
