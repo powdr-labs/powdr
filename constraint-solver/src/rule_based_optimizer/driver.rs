@@ -63,7 +63,7 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         .map(|v| (var_mapper.id(v), range_constraints.get(v)))
         .filter(|(_, rc)| !rc.is_unconstrained())
         .collect();
-
+    let mut loop_index = 0;
     loop {
         // Transform the constraint system into a simpler representation
         // using IDs for variables and expressions.
@@ -144,8 +144,13 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
 
         // Uncomment this to get a runtime profile of the individual
         // rules.
-        // let ((actions,), profile) = rt.run_with_profiling();
-        // profile.report();
+        println!(
+            "\n \n --------------------------This is the {:?} loop----------",
+            loop_index
+        );
+        loop_index += 1;
+        //let ((actions,), profile) = rt.run_with_profiling();
+        //profile.report();
         let (actions,) = rt.run();
         let (expr_db_, new_var_generator) = env.terminate();
 
@@ -193,16 +198,23 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                         } else {
                             range_constraints_on_vars.insert(var, new_rc);
                         }
+                        // println!("range constraints update");
+                        // println!("update variable {} with range constraint {}", var, rc);
                         progress = true;
                     }
                 }
                 Action::SubstituteVariableByConstant(var, val) => {
+                    println!(
+                        "substitute variable {} by constant update {} \n",
+                        var_mapper[var], val
+                    );
                     system.substitute_by_known(&var_mapper[var], &val);
                     assignments
                         .push((var_mapper[var].clone(), GroupedExpression::from_number(val)));
                     progress = true;
                 }
                 Action::SubstituteVariableByVariable(v1, v2) => {
+                    println!("substitute variable {} by variable {}", v1, v2);
                     assignments.push((
                         var_mapper[v1].clone(),
                         GroupedExpression::from_unknown_variable(var_mapper[v2].clone()),
@@ -221,7 +233,55 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                         &expr_db_,
                         &var_mapper,
                         degree_bound,
-                    )
+                    );
+                    if progress == true {
+                        println!("replace algebraic constraint by");
+                        println!("replace {:?} with {:?}", e1, replacement);
+                    }
+                }
+                Action::ReplaceEightOfAlgebraicConstraintsBy(
+                    e0,
+                    e1,
+                    e2,
+                    e3,
+                    e4,
+                    e5,
+                    e6,
+                    e7,
+                    replacement,
+                ) => {
+                    progress |= replace_algebraic_constraints(
+                        &mut system,
+                        [e0, e1, e2, e3, e4, e5, e6, e7],
+                        [replacement],
+                        &expr_db_,
+                        &var_mapper,
+                        degree_bound,
+                    );
+                    if progress == true {
+                        println!("replace eight of algebraic constraint");
+                        println!(
+                            "replace {:?}, {:?}, {:?}, {:?}, {:?}, {:?}, {:?}, {:?} by {:?}",
+                            e0, e1, e2, e3, e4, e5, e6, e7, replacement
+                        );
+                    }
+                }
+                Action::ReplaceFourOfAlgebraicConstraintsBy(e0, e1, e2, e3, replacement) => {
+                    progress |= replace_algebraic_constraints(
+                        &mut system,
+                        [e0, e1, e2, e3],
+                        [replacement],
+                        &expr_db_,
+                        &var_mapper,
+                        degree_bound,
+                    );
+                    if progress == true {
+                        println!("replace four of algebraic constraint");
+                        println!(
+                            "replace {:?}, {:?}, {:?}, {:?} by {:?}",
+                            e0, e1, e2, e3, replacement
+                        );
+                    }
                 }
                 Action::ReplacePairOfAlgebraicConstraintsBy(e1, e2, replacement) => {
                     progress |= replace_algebraic_constraints(
@@ -231,7 +291,27 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                         &expr_db_,
                         &var_mapper,
                         degree_bound,
-                    )
+                    );
+                    if progress == true {
+                        println!("replace pair of algebraic constraint");
+                        println!("replace {:?} and {:?} by {:?}", e1, e2, replacement);
+                        let mut old_found = [e1, e2]
+                            .into_iter()
+                            .map(|e| undo_variable_transform(&expr_db_[e], &var_mapper))
+                            .map(|e| (e, false))
+                            .collect::<HashMap<_, _>>();
+                        let replacement = [replacement]
+                            .into_iter()
+                            .map(|e| undo_variable_transform(&expr_db_[e], &var_mapper))
+                            .collect_vec();
+
+                        old_found
+                            .iter()
+                            .for_each(|expr| println!("old expression is {}", expr.0));
+                        replacement
+                            .iter()
+                            .for_each(|repl| println!("replacement is {} \n", repl));
+                    }
                 }
             }
         }
@@ -293,10 +373,10 @@ fn replace_algebraic_constraints<T: FieldElement, V: Hash + Eq + Ord + Clone + D
         }
     }
     if old_found.values().any(|found| !*found) {
-        log::warn!(
-            "Was about to replace constraints {} but did not find all in the system.",
-            old_found.keys().format(", ")
-        );
+        // log::warn!(
+        //     "Was about to replace constraints {} but did not find all in the system.",
+        //     old_found.keys().format(", ")
+        // );
         false
     } else {
         system.retain_algebraic_constraints(|c| !old_found.contains_key(&c.expression));
@@ -347,7 +427,7 @@ fn transform_variables<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
 }
 
 /// Undo the effect of `transform_variables`, transforming from `Var` back to `V`.
-fn undo_variable_transform<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
+pub fn undo_variable_transform<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
     expr: &GroupedExpression<T, Var>,
     var_mapper: &ItemDB<V, Var>,
 ) -> GroupedExpression<T, V> {

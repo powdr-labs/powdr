@@ -25,7 +25,7 @@ use crate::{
 /// It is available to the rules as a singleton with interior mutability.
 pub struct Environment<T: FieldElement> {
     expressions: RefCell<ItemDB<GroupedExpression<T, Var>, Expr>>,
-    var_to_string: HashMap<Var, String>,
+    pub var_to_string: HashMap<Var, String>,
 
     /// Variables that only occurr once in the system
     /// (also only once in the constraint they occur in).

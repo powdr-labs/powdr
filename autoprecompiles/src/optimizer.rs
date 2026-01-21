@@ -28,6 +28,7 @@ use crate::{
     stats_logger::{self, StatsLogger},
     BusMap, BusType, DegreeBound, SymbolicBusInteraction, SymbolicMachine,
 };
+use powdr_constraint_solver::grouped_expression::NoRangeConstraints;
 
 /// Optimizes a given symbolic machine and returns an equivalent, but "simpler" one.
 /// All constraints in the returned machine will respect the given degree bound.
@@ -63,16 +64,16 @@ pub fn optimize<A: Adapter>(
 
     // We could run the rule system before ever constructing the solver.
     // Currently, it does not yet save time.
-    // let mut constraint_system = rule_based_optimization(
-    //     constraint_system,
-    //     NoRangeConstraints,
-    //     bus_interaction_handler.clone(),
-    //     &mut new_var,
-    //     // No degree bound given, i.e. only perform replacements that
-    //     // do not increase the degree.
-    //     None,
-    // )
-    // .0;
+    let mut constraint_system = rule_based_optimization(
+        constraint_system,
+        NoRangeConstraints,
+        bus_interaction_handler.clone(),
+        &mut new_var,
+        // No degree bound given, i.e. only perform replacements that
+        // do not increase the degree.
+        None,
+    )
+    .0;
     stats_logger.log("rule-based optimization", &constraint_system);
 
     let mut solver = new_solver(

@@ -14,6 +14,20 @@ impl Display for Var {
     }
 }
 
+use std::str::FromStr;
+impl FromStr for Var {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // expects "v_<number>"
+        let id = s
+            .strip_prefix("v_")
+            .and_then(|n| n.parse::<usize>().ok())
+            .ok_or(())?;
+        Ok(Var(id))
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, From, Into)]
 pub struct Expr(usize);
 
@@ -30,4 +44,6 @@ pub enum Action<T: FieldElement> {
     /// Replace a pair of algebraic constraints (the first two) by
     /// another (the third).
     ReplacePairOfAlgebraicConstraintsBy(Expr, Expr, Expr),
+    ReplaceEightOfAlgebraicConstraintsBy(Expr, Expr, Expr, Expr, Expr, Expr, Expr, Expr, Expr),
+    ReplaceFourOfAlgebraicConstraintsBy(Expr, Expr, Expr, Expr, Expr),
 }

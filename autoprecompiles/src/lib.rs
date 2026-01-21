@@ -26,6 +26,7 @@ use std::sync::Arc;
 use symbolic_machine_generator::statements_to_symbolic_machine;
 
 use powdr_number::FieldElement;
+use std::time::Instant;
 
 pub mod adapter;
 pub mod blocks;
@@ -482,6 +483,7 @@ pub fn build<A: Adapter>(
     metrics::counter!("before_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
 
+    let start = std::time::Instant::now();
     let (machine, column_allocator) = optimizer::optimize::<A>(
         machine,
         vm_config.bus_interaction_handler,
@@ -489,6 +491,7 @@ pub fn build<A: Adapter>(
         &vm_config.bus_map,
         column_allocator,
     )?;
+    println!("optimize now Took {:?}", start.elapsed());
 
     // add guards to constraints that are not satisfied by zeroes
     let (machine, column_allocator) = add_guards(machine, column_allocator);

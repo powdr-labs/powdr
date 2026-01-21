@@ -238,9 +238,15 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
             let mut quadratic = self.quadratic.into_iter();
             let (hl, hr) = quadratic.next().unwrap();
             self.quadratic = quadratic.collect();
+            if self.is_zero() {
+                return None;
+            }
             Some(((hl * hr), self))
         } else if !self.linear.is_empty() {
             let (hv, hc) = self.linear.pop_first()?;
+            if self.is_zero() {
+                return None;
+            }
             Some((GroupedExpressionComponent::Linear(hv, hc).into(), self))
         } else {
             None
