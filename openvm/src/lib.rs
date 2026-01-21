@@ -930,7 +930,7 @@ pub fn get_full_circuit_effectiveness(
         .rv32m
         .unwrap()
         .range_tuple_checker_sizes;
-    
+
     let adapter_vm_config = powdr_autoprecompiles::VmConfig {
         instruction_handler: &airs,
         bus_interaction_handler: crate::bus_interaction_handler::OpenVmBusInteractionHandler::new(
