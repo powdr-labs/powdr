@@ -1,6 +1,7 @@
 use std::collections::{BTreeSet, HashMap};
 use std::hash::Hash;
 
+use derivative::Derivative;
 use itertools::Itertools;
 use rayon::prelude::*;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -13,9 +14,11 @@ pub type EquivalenceClass<T> = BTreeSet<T>;
 ///
 /// Internally represented as a map from element to class ID for efficient intersection operations.
 /// Serializes as Vec<Vec<T>> for JSON compatibility (JSON requires string keys in objects).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Derivative)]
+#[derivative(Default(bound = ""))]
 pub struct Partition<T> {
     /// Maps each element to its class ID (0..num_classes)
+    /// If an element is not present, it is in a singleton class.
     class_of: HashMap<T, usize>,
     /// Number of classes
     num_classes: usize,
@@ -64,6 +67,7 @@ where
 
 impl<T: Eq + Hash + Clone> Partition<T> {
     /// Returns all equivalence classes as a Vec<Vec<T>>.
+    /// Singleton classes are omitted.
     /// This is O(n) where n is the number of elements.
     #[allow(clippy::iter_over_hash_type)] // Order within classes doesn't matter semantically
     pub fn to_classes(&self) -> Vec<Vec<T>> {
@@ -106,6 +110,37 @@ impl<T: Eq + Hash + Clone> Partition<T> {
             .into_group_map()
             .into_values()
             .collect()
+    }
+
+    /// Modify elements while keeping their original class.
+    /// The mapped elements must not Eq collide with each other.
+    pub fn map_elements<T2: Eq + Hash + Clone, F: Fn(T) -> T2>(self, f: F) -> Partition<T2> {
+        let mut new_class_of: HashMap<T2, usize> = Default::default();
+        for (elem, class) in self.class_of {
+            if new_class_of.insert(f(elem), class).is_some() {
+                panic!("Partition element mapping collision");
+            }
+        }
+        Partition::<T2> {
+            class_of: new_class_of,
+            num_classes: self.num_classes,
+        }
+    }
+
+    /// This is currently only used for superblocks.
+    /// Partitions are calculated independently for each basic block and then combined.
+    /// Since equivalence classes across basic blocks are not related,
+    /// they need to be different when combined into a superblock.
+    /// Elements from the two partitions must also not Eq collide.
+    pub fn combine(mut self, other: Self) -> Self {
+        let class_shift = self.num_classes;
+        for (elem, class) in other.class_of {
+            if self.class_of.insert(elem, class + class_shift).is_some() {
+                panic!("Partition join element collision");
+            }
+        }
+        self.num_classes += other.num_classes;
+        self
     }
 }
 
@@ -193,5 +228,13 @@ mod tests {
         let expected = partition(vec![vec![2, 3], vec![6, 7]]);
 
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_default_partition_yields_no_classes() {
+        // The default partition puts every element in its own singleton class,
+        // which are omitted in the list of equivalence classes.
+        let partition: Partition<u32> = Partition::default();
+        assert_eq!(partition.to_classes().len(), 0);
     }
 }

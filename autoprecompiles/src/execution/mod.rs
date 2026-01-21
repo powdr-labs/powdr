@@ -32,6 +32,8 @@ pub trait ExecutionState {
     /// Return the pc at this point
     fn pc(&self) -> Self::Value;
 
+    fn value_limb(value: Self::Value, limb_index: usize) -> Self::Value;
+
     /// Read a register at this point
     fn reg(&self, address: &Self::RegisterAddress) -> Self::Value;
 }

@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     EmpiricalConstraints, PowdrConfig, adapter::{
         Adapter, AdapterApc, AdapterApcWithStats, AdapterPGOBlocks, AdapterVmConfig, PgoAdapter
-    }, blocks::{Block, PGOBlocks, SuperBlock}, evaluation::EvaluationResult, execution_profile::ExecutionProfile
+    }, blocks::{Block, PGOBlocks, SuperBlock}, evaluation::{EvaluationResult, evaluate_apc}, execution_profile::ExecutionProfile
 };
 
 use itertools::Itertools;
@@ -22,10 +22,8 @@ use itertools::Itertools;
 pub trait Candidate<A: Adapter>: Sized {
     /// Try to create an autoprecompile candidate from a block.
     fn create(
-        apc: Arc<AdapterApc<A>>,
+        apc_with_stats: AdapterApcWithStats<A>,
         exec_count: u32,
-        vm_config: AdapterVmConfig<A>,
-        max_degree: usize,
     ) -> Self;
 
     /// Get the autoprecompile associated with this candidate.
@@ -128,7 +126,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
             if block_exec_count[i] < block_exec_count_cutoff {
                 tracing::debug!(
                     "Skipping block {:?} due to execution count below cutoff ({})",
-                    blocks[i].original_pcs(),
+                    blocks[i].original_bb_pcs(),
                     block_exec_count[i],
                 );
                 // remove block
@@ -171,7 +169,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
                     // TODO: probably remove this debug print
                     tracing::debug!(
                         "Generated APC pcs {:?}, effectiveness: {:?}, freq: {:?}",
-                        json_export.original_block.original_pcs(),
+                        json_export.original_block.original_bb_pcs(),
                         json_export.cost_before as f64 / json_export.cost_after as f64,
                         json_export.execution_frequency
                     );
@@ -204,7 +202,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
                 .inspect(|c| {
                     tracing::debug!(
                         "\tAPC pcs {:?}, effectiveness: {:?}, freq: {:?}",
-                        c.original_block.original_pcs(),
+                        c.original_block.original_bb_pcs(),
                         c.cost_before / c.cost_after,
                         c.execution_frequency,
                     );
@@ -301,17 +299,13 @@ fn try_generate_candidate<A: Adapter, C: Candidate<A>>(
         config.degree_bound,
         config.apc_candidates_dir_path.as_deref(),
         empirical_constraints,
-    )
-    .ok()?;
-    let candidate = C::create(
-        Arc::new(apc),
-        block_exec_count,
-        vm_config.clone(),
-        config.degree_bound.identities,
-    );
+    ).ok()?;
+    let apc_with_stats = evaluate_apc::<A>(&block, vm_config.instruction_handler, apc);
+    let candidate = C::create(apc_with_stats, block_exec_count);
+
     tracing::debug!(
         "Generated APC pcs {:?} (took {:?})",
-        block.original_pcs(),
+        block.original_bb_pcs(),
         start.elapsed()
     );
     Some(candidate)
@@ -368,7 +362,7 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
                 cells_saved_per_row: candidate.cells_saved_per_row(),
                 cost: candidate.width(),
                 // TODO: with super blocks this is not unique
-                tie_breaker: candidate.apc().original_pcs()[0] as usize,
+                tie_breaker: candidate.apc().original_bb_pcs()[0] as usize,
             };
             (idx, priority)
         })
@@ -381,7 +375,7 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
             let json = c.to_json_export(Path::new("")); // just for debug printing
             tracing::debug!(
                 "\tAPC pcs {:?}, effectiveness: {:?}, freq: {:?}, priority: {:?}",
-                json.original_block.original_pcs(),
+                json.original_block.original_bb_pcs(),
                 json.cost_before / json.cost_after,
                 json.execution_frequency,
                 prio.priority(),
@@ -398,7 +392,7 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
     while let Some((idx, mut prio)) = ordered_candidates.pop() {
         let c = &candidates[idx];
         let apc = c.apc();
-        let bbs = apc.block.original_pcs();
+        let bbs = apc.block.original_bb_pcs();
 
         // Check if the priority of this candidate has changed by re-counting it over the updated execution.
         let (count, new_execution) = count_and_update_execution(&bbs, &execution_bb_runs);

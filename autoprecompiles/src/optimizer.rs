@@ -4,21 +4,18 @@ use std::hash::Hash;
 use std::{collections::BTreeMap, fmt::Display};
 
 use itertools::Itertools;
-use powdr_constraint_solver::constraint_system::{
-    AlgebraicConstraint, ComputationMethod, DerivedVariable,
-};
+use powdr_constraint_solver::grouped_expression::GroupedExpression;
 use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
 use powdr_constraint_solver::inliner::{self, inline_everything_below_degree_bound};
 use powdr_constraint_solver::rule_based_optimizer::rule_based_optimization;
 use powdr_constraint_solver::solver::new_solver;
-use powdr_constraint_solver::{
-    constraint_system::{BusInteraction, ConstraintSystem},
-    grouped_expression::GroupedExpression,
-};
 use powdr_number::FieldElement;
 
 use crate::constraint_optimizer::trivial_simplifications;
 use crate::range_constraint_optimizer::optimize_range_constraints;
+use crate::symbolic_machine::{
+    constraint_system_to_symbolic_machine, symbolic_machine_to_constraint_system,
+};
 use crate::ColumnAllocator;
 use crate::{
     adapter::Adapter,
@@ -27,7 +24,7 @@ use crate::{
     expression_conversion::{algebraic_to_grouped_expression, grouped_expression_to_algebraic},
     powdr::{self},
     stats_logger::{self, StatsLogger},
-    BusMap, BusType, DegreeBound, SymbolicBusInteraction, SymbolicMachine,
+    BusMap, BusType, DegreeBound, SymbolicMachine,
 };
 
 /// Optimizes a given symbolic machine and returns an equivalent, but "simpler" one.
@@ -245,110 +242,6 @@ pub fn optimize_exec_bus<T: FieldElement>(
     }
 
     machine
-}
-
-fn symbolic_machine_to_constraint_system<P: FieldElement>(
-    symbolic_machine: SymbolicMachine<P>,
-) -> ConstraintSystem<P, AlgebraicReference> {
-    ConstraintSystem {
-        algebraic_constraints: symbolic_machine
-            .constraints
-            .iter()
-            .map(|constraint| {
-                AlgebraicConstraint::assert_zero(algebraic_to_grouped_expression(&constraint.expr))
-            })
-            .collect(),
-        bus_interactions: symbolic_machine
-            .bus_interactions
-            .iter()
-            .map(symbolic_bus_interaction_to_bus_interaction)
-            .collect(),
-        derived_variables: symbolic_machine
-            .derived_columns
-            .iter()
-            .map(|(v, method)| {
-                let method = match method {
-                    ComputationMethod::Constant(c) => ComputationMethod::Constant(*c),
-                    ComputationMethod::QuotientOrZero(e1, e2) => ComputationMethod::QuotientOrZero(
-                        algebraic_to_grouped_expression(e1),
-                        algebraic_to_grouped_expression(e2),
-                    ),
-                };
-                DerivedVariable {
-                    variable: v.clone(),
-                    computation_method: method,
-                }
-            })
-            .collect(),
-    }
-}
-
-fn constraint_system_to_symbolic_machine<P: FieldElement>(
-    constraint_system: ConstraintSystem<P, AlgebraicReference>,
-) -> SymbolicMachine<P> {
-    SymbolicMachine {
-        constraints: constraint_system
-            .algebraic_constraints
-            .into_iter()
-            .map(|constraint| grouped_expression_to_algebraic(constraint.expression).into())
-            .collect(),
-        bus_interactions: constraint_system
-            .bus_interactions
-            .into_iter()
-            .map(bus_interaction_to_symbolic_bus_interaction)
-            .collect(),
-        derived_columns: constraint_system
-            .derived_variables
-            .into_iter()
-            .map(|derived_var| {
-                let method = match derived_var.computation_method {
-                    ComputationMethod::Constant(c) => ComputationMethod::Constant(c),
-                    ComputationMethod::QuotientOrZero(e1, e2) => ComputationMethod::QuotientOrZero(
-                        grouped_expression_to_algebraic(e1),
-                        grouped_expression_to_algebraic(e2),
-                    ),
-                };
-                (derived_var.variable, method)
-            })
-            .collect(),
-    }
-}
-
-fn symbolic_bus_interaction_to_bus_interaction<P: FieldElement>(
-    bus_interaction: &SymbolicBusInteraction<P>,
-) -> BusInteraction<GroupedExpression<P, AlgebraicReference>> {
-    BusInteraction {
-        bus_id: GroupedExpression::from_number(P::from(bus_interaction.id)),
-        payload: bus_interaction
-            .args
-            .iter()
-            .map(|arg| algebraic_to_grouped_expression(arg))
-            .collect(),
-        multiplicity: algebraic_to_grouped_expression(&bus_interaction.mult),
-    }
-}
-
-fn bus_interaction_to_symbolic_bus_interaction<P: FieldElement>(
-    bus_interaction: BusInteraction<GroupedExpression<P, AlgebraicReference>>,
-) -> SymbolicBusInteraction<P> {
-    // We set the bus_id to a constant in `bus_interaction_to_symbolic_bus_interaction`,
-    // so this should always succeed.
-    let id = bus_interaction
-        .bus_id
-        .try_to_number()
-        .unwrap()
-        .to_arbitrary_integer()
-        .try_into()
-        .unwrap();
-    SymbolicBusInteraction {
-        id,
-        args: bus_interaction
-            .payload
-            .into_iter()
-            .map(|arg| grouped_expression_to_algebraic(arg))
-            .collect(),
-        mult: grouped_expression_to_algebraic(bus_interaction.multiplicity),
-    }
 }
 
 pub fn simplify_expression<T: FieldElement>(e: AlgebraicExpression<T>) -> AlgebraicExpression<T> {

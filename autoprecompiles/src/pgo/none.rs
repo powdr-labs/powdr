@@ -31,7 +31,7 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
         for block in &blocks {
             tracing::debug!(
                 "Basic block pcs: {:?}, number_of_instructions: {}",
-                block.original_pcs(),
+                block.original_bb_pcs(),
                 block.statements().count(),
             );
         }

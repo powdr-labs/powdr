@@ -73,7 +73,7 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
                 let value = count * number_of_instructions as u32;
                 tracing::debug!(
                     "Basic block pcs: {:?}, value: {value}, frequency: {count}, number_of_instructions: {number_of_instructions}",
-                    b.original_pcs(),
+                    b.original_bb_pcs(),
                 );
             })
             .map(|(_, block)| block).collect::<Vec<_>>();

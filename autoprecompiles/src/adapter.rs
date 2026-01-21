@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::blocks::{Block, PGOBlocks, generate_superblocks};
 use crate::empirical_constraints::EmpiricalConstraints;
+use crate::evaluation::EvaluationResult;
 use crate::execution::{ExecutionState, OptimisticConstraints};
 use crate::execution_profile::ExecutionProfile;
 use crate::{
@@ -21,23 +22,33 @@ use crate::{
 #[derive(Serialize, Deserialize)]
 pub struct ApcWithStats<F, I, A, V, S> {
     apc: Arc<Apc<F, I, A, V>>,
-    stats: Option<S>,
+    stats: S,
+    evaluation_result: EvaluationResult,
 }
 impl<F, I, A, V, S> ApcWithStats<F, I, A, V, S> {
-    pub fn with_stats(mut self, stats: S) -> Self {
-        self.stats = Some(stats);
-        self
+    pub fn new(apc: Arc<Apc<F, I, A, V>>, stats: S, evaluation_result: EvaluationResult) -> Self {
+        Self {
+            apc,
+            stats,
+            evaluation_result,
+        }
     }
 
     #[allow(clippy::type_complexity)]
-    pub fn into_parts(self) -> (Arc<Apc<F, I, A, V>>, Option<S>) {
-        (self.apc, self.stats)
+    pub fn into_parts(self) -> (Arc<Apc<F, I, A, V>>, S, EvaluationResult) {
+        (self.apc, self.stats, self.evaluation_result)
     }
-}
 
-impl<F, I, A, V, S> From<Arc<Apc<F, I, A, V>>> for ApcWithStats<F, I, A, V, S> {
-    fn from(apc: Arc<Apc<F, I, A, V>>) -> Self {
-        Self { apc, stats: None }
+    pub fn apc(&self) -> &Apc<F, I, A, V> {
+        &self.apc
+    }
+
+    pub fn stats(&self) -> &S {
+        &self.stats
+    }
+
+    pub fn evaluation_result(&self) -> EvaluationResult {
+        self.evaluation_result
     }
 }
 
@@ -131,6 +142,12 @@ where
     fn into_field(e: Self::PowdrField) -> Self::Field;
 
     fn from_field(e: Self::Field) -> Self::PowdrField;
+
+    /// Given the autoprecompile and the original instructions, return the stats
+    fn apc_stats(
+        apc: Arc<AdapterApc<Self>>,
+        instruction_handler: &Self::InstructionHandler,
+    ) -> Self::ApcStats;
 
     fn should_skip_block(_block: &BasicBlock<Self::Instruction>) -> bool {
         false

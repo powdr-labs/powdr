@@ -1,11 +1,10 @@
-use std::sync::Arc;
-
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use strum::{Display, EnumString};
 
 use crate::{
-    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, ApcWithStats},
+    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig},
     blocks::Block,
+    evaluation::evaluate_apc,
     execution_profile::ExecutionProfile,
     EmpiricalConstraints, PowdrConfig,
 };
@@ -98,19 +97,19 @@ fn create_apcs_for_all_blocks<A: Adapter>(
             tracing::debug!(
                 "Accelerating block of length {} and original pcs {:?}",
                 block.statements().count(),
-                block.original_pcs(),
+                block.original_bb_pcs(),
             );
 
-            crate::build::<A>(
-                block,
+            let apc = crate::build::<A>(
+                block.clone(),
                 vm_config.clone(),
                 config.degree_bound,
                 config.apc_candidates_dir_path.as_deref(),
                 &empirical_constraints,
             )
-            .unwrap()
+            .unwrap();
+
+            evaluate_apc::<A>(&block, vm_config.instruction_handler, apc)
         })
-        .map(Arc::new)
-        .map(ApcWithStats::from)
         .collect()
 }
