@@ -17,7 +17,6 @@ use crate::GpuBabyBearPoseidon2Engine;
 use crate::GpuBackend;
 use crate::RangeTupleCheckerChipGPU;
 use crate::VariableRangeCheckerChipGPU;
-use openvm_circuit_primitives::var_range::VariableRangeCheckerChip;
 use std::sync::Arc;
 
 /// The shared chips which can be used by the PowdrChipGpu.
@@ -169,9 +168,9 @@ impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, SharedPerip
 
         // The range checker is already present in the builder because it's is used by the system, so we don't add it again.
         assert!(inventory
-            .find_chip::<Arc<VariableRangeCheckerChip>>()
-            .nth(1)
-            .is_none());
+            .find_chip::<Arc<VariableRangeCheckerChipGPU>>()
+            .next()
+            .is_some());
 
         Ok(())
     }
