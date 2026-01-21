@@ -925,11 +925,7 @@ pub fn get_full_circuit_effectiveness(
         .expect("Failed to convert the AIR of an OpenVM instruction");
     let bus_map = original_config.bus_map();
 
-    let range_tuple_checker_sizes = vm_config
-        .sdk
-        .rv32m
-        .unwrap()
-        .range_tuple_checker_sizes;
+    let range_tuple_checker_sizes = vm_config.sdk.rv32m.unwrap().range_tuple_checker_sizes;
 
     let adapter_vm_config = powdr_autoprecompiles::VmConfig {
         instruction_handler: &airs,
@@ -953,7 +949,6 @@ pub fn get_full_circuit_effectiveness(
         empirical_constraints,
     )
 }
-
 
 #[cfg(test)]
 mod tests {

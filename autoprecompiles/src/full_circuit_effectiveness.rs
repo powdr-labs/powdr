@@ -68,7 +68,7 @@ where
             if i % 100 == 0 {
                 tracing::debug!("Processing chunk {}/{}", i + 1, num_chunks);
             }
-            
+
             // Build the APC for this chunk
             let apc = crate::build::<A>(
                 block.clone(),
@@ -82,16 +82,20 @@ where
             // Evaluate the APC to get before/after stats
             let apc_with_stats = evaluate_apc::<A>(block, vm_config.instruction_handler, apc);
             let eval_result = apc_with_stats.evaluation_result();
-            
-            Some((eval_result.before.main_columns, eval_result.after.main_columns))
+
+            Some((
+                eval_result.before.main_columns,
+                eval_result.after.main_columns,
+            ))
         })
         .collect();
 
     // Aggregate results
-    let (total_before, total_after): (usize, usize) = results.into_iter().fold(
-        (0, 0),
-        |(acc_before, acc_after), (before, after)| (acc_before + before, acc_after + after),
-    );
+    let (total_before, total_after): (usize, usize) = results
+        .into_iter()
+        .fold((0, 0), |(acc_before, acc_after), (before, after)| {
+            (acc_before + before, acc_after + after)
+        });
 
     let effectiveness = if total_after > 0 {
         total_before as f64 / total_after as f64
@@ -122,7 +126,7 @@ fn chunk_execution_into_blocks<A: Adapter>(
     chunk_size: usize,
 ) -> Vec<BasicBlock<A::Instruction>> {
     let pc_step = A::Instruction::pc_step() as u64;
-    
+
     // Build a map of PC to instruction
     let mut pc_to_instruction = std::collections::HashMap::new();
     let base_pc = program.base_pc();
@@ -140,7 +144,7 @@ fn chunk_execution_into_blocks<A: Adapter>(
 
         let start_pc = chunk[0];
         let mut statements = Vec::new();
-        
+
         for &pc in chunk {
             if let Some(instruction) = pc_to_instruction.get(&pc) {
                 statements.push(instruction.clone());
@@ -160,7 +164,6 @@ fn chunk_execution_into_blocks<A: Adapter>(
     blocks
 }
 
-
 /// Captures the list of PCs during execution (not just counts)
 pub fn capture_execution_trace<A: Adapter>(
     program: &A::Program,
@@ -169,7 +172,7 @@ pub fn capture_execution_trace<A: Adapter>(
     // in memory collector storage
     let collector = TraceCollector::new::<A>(program);
 
-    // build subscriber  
+    // build subscriber
     let subscriber = Registry::default().with(collector.clone());
 
     // dispatch constructs a local subscriber at trace level that is invoked during data collection but doesn't override the global one at info level

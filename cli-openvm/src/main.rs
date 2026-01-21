@@ -316,22 +316,19 @@ fn run_command(command: Commands) {
                 &empirical_constraints,
             );
 
-            println!("\n=== Full Circuit Effectiveness ===");
-            println!(
-                "Total instructions: {}",
-                effectiveness.total_instructions
-            );
-            println!("Number of chunks: {}", effectiveness.num_chunks);
-            println!(
+            tracing::info!("\n=== Full Circuit Effectiveness ===");
+            tracing::info!("Total instructions: {}", effectiveness.total_instructions);
+            tracing::info!("Number of chunks: {}", effectiveness.num_chunks);
+            tracing::info!(
                 "Total main columns before: {}",
                 effectiveness.total_main_columns_before
             );
-            println!(
+            tracing::info!(
                 "Total main columns after: {}",
                 effectiveness.total_main_columns_after
             );
-            println!("Effectiveness: {:.2}x", effectiveness.effectiveness);
-            println!("==================================\n");
+            tracing::info!("Effectiveness: {:.2}x", effectiveness.effectiveness);
+            tracing::info!("==================================\n");
         }
     }
 }
