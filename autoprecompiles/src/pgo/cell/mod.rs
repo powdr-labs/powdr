@@ -116,14 +116,14 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
             .zip_eq(&block_exec_count)
             .for_each(|(block, count)| assert!(*count > 0 && block.statements().count() > 1));
 
-        // filter out blocks with low execution count
+        // filter out superblocks with low execution count
         let block_exec_count_cutoff = std::env::var("POWDR_BLOCK_EXEC_COUNT_CUTOFF")
             .ok()
             .and_then(|s| s.parse::<u32>().ok())
             .unwrap_or(0);
         let mut skipped = 0;
         for i in (0..blocks.len()).rev() {
-            if block_exec_count[i] < block_exec_count_cutoff {
+            if blocks[i].is_superblock() && block_exec_count[i] < block_exec_count_cutoff {
                 tracing::debug!(
                     "Skipping block {:?} due to execution count below cutoff ({})",
                     blocks[i].original_bb_pcs(),

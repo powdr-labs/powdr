@@ -55,6 +55,10 @@ impl<I: PcStep> Block<I> {
 }
 
 impl<I> Block<I> {
+    pub fn is_superblock(&self) -> bool {
+        matches!(self, Block::Super(_))
+    }
+
     /// Starting PCs of each original basic block
     pub fn original_bb_pcs(&self) -> Vec<u64> {
         match self {
