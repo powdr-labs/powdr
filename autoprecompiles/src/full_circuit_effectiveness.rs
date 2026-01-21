@@ -2,6 +2,7 @@ use crate::adapter::{Adapter, AdapterVmConfig};
 use crate::blocks::{BasicBlock, PcStep, Program};
 use crate::empirical_constraints::EmpiricalConstraints;
 use crate::evaluation::evaluate_apc;
+use crate::InstructionHandler;
 use crate::DegreeBound;
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
@@ -51,7 +52,12 @@ where
     tracing::info!("Captured {} PCs in the execution trace", total_instructions);
 
     // Chunk the execution into basic blocks
-    let chunks = chunk_execution_into_blocks::<A>(program, &pc_trace, chunk_size);
+    let chunks = chunk_execution_into_blocks::<A>(
+        program,
+        &pc_trace,
+        chunk_size,
+        vm_config.instruction_handler,
+    );
     let num_chunks = chunks.len();
     tracing::info!(
         "Chunked execution into {} chunks of up to {} instructions each",
@@ -120,10 +126,12 @@ where
 }
 
 /// Chunks the execution trace into basic blocks of the specified size.
+/// Only includes instructions that are allowed by the instruction handler.
 fn chunk_execution_into_blocks<A: Adapter>(
     program: &A::Program,
     pc_trace: &[u64],
     chunk_size: usize,
+    instruction_handler: &A::InstructionHandler,
 ) -> Vec<BasicBlock<A::Instruction>> {
     let pc_step = A::Instruction::pc_step() as u64;
 
@@ -135,7 +143,7 @@ fn chunk_execution_into_blocks<A: Adapter>(
         pc_to_instruction.insert(pc, instruction);
     }
 
-    // Chunk the trace
+    // Chunk the trace, filtering out disallowed instructions
     let mut blocks = Vec::new();
     for chunk in pc_trace.chunks(chunk_size) {
         if chunk.is_empty() {
@@ -147,12 +155,16 @@ fn chunk_execution_into_blocks<A: Adapter>(
 
         for &pc in chunk {
             if let Some(instruction) = pc_to_instruction.get(&pc) {
-                statements.push(instruction.clone());
+                // Only include instructions that are allowed by the instruction handler
+                if instruction_handler.is_allowed(instruction) {
+                    statements.push(instruction.clone());
+                }
             } else {
                 tracing::warn!("PC {} not found in program", pc);
             }
         }
 
+        // Only create a block if we have at least one statement
         if !statements.is_empty() {
             blocks.push(BasicBlock {
                 start_pc,
