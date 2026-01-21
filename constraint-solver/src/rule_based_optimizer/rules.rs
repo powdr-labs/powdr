@@ -71,10 +71,10 @@ crepe! {
     // be replaced by new_expr (and new_expression is in some way "simpler").
     struct ReplaceAlgebraicConstraintBy(Expr, Expr);
 
-    // ReplacePairOfAlgebraicConstraintsBy(e1, e2, replacement) =>
-    // the system that does not have the constraints `e1` and `e2` but has
-    // the new constraint `replacement` is equivalent.
-    struct ReplacePairOfAlgebraicConstraintsBy(Expr, Expr, Expr);
+    // ReplaceAlgebraicConstraintsBy(e1, e2) =>
+    // the system that does not have the constraints in `e1` but has
+    // the new constraints in `e2` is equivalent.
+    struct ReplaceAlgebraicConstraintsBy([Option<Expr>; 10], [Option<Expr>; 5]);
 
     //////////////////// STRUCTURAL PROPERTIES OF EXPRESSIONS //////////////////////
 
@@ -328,7 +328,7 @@ crepe! {
     // If we have `x * a = 0` and `x * b = 0` and `a` and `b` are
     // both non-negative and their sum is constrained, then we can replace
     // both constraints by `x * (a + b) = 0`.
-    ReplacePairOfAlgebraicConstraintsBy(e1, e2, replacement) <-
+    ReplaceAlgebraicConstraintsBy(extend_by_none([e1, e2]), replacement) <-
       Env(env),
       ProductConstraint(e1, x, a),
       ProductConstraint(e2, x, b),
@@ -337,7 +337,7 @@ crepe! {
       RangeConstraintOnExpression(b, rc_b),
       (rc_a.range().0 == T::zero()
         && rc_b.range().0 == T::zero() && !rc_a.combine_sum(&rc_b).is_unconstrained()),
-      let replacement = env.insert_owned(env.extract(x) * (env.extract(a) + env.extract(b)));
+      let replacement = extend_by_none([env.insert_owned(env.extract(x) * (env.extract(a) + env.extract(b)))]);
 
     //////////////////////// AFFINE SOLVING //////////////////////////
 
@@ -421,6 +421,12 @@ crepe! {
       Equivalence(v1, v2), (v2 > v1);
     ActionRule(Action::ReplaceAlgebraicConstraintBy(e1, e2)) <-
       ReplaceAlgebraicConstraintBy(e1, e2);
-    ActionRule(Action::ReplacePairOfAlgebraicConstraintsBy(e1, e2, r)) <-
-      ReplacePairOfAlgebraicConstraintsBy(e1, e2, r);
+}
+
+fn extend_by_none<const N1: usize, const N2: usize>(items: [Expr; N1]) -> [Option<Expr>; N2] {
+    let mut output = [None; N2];
+    for (i, item) in items.iter().enumerate() {
+        output[i] = Some(*item);
+    }
+    output
 }
