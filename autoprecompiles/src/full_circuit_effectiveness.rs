@@ -69,40 +69,29 @@ where
     let results: Vec<_> = chunks
         .into_par_iter()
         .enumerate()
-        .filter(|(i, block)| {
-            if *i % 100 == 0 {
+        .filter_map(|(i, block)| {
+            if i % 100 == 0 {
                 tracing::debug!("Processing chunk {}/{}", i + 1, num_chunks);
             }
-            
+
             // Build the APC for this chunk
-            crate::build::<A>(
+            let apc = crate::build::<A>(
                 block.clone(),
                 vm_config.clone(),
                 degree_bound,
                 None, // No APC candidates directory
                 &EmpiricalConstraints::default(),
             )
-            .is_ok()
-        })
-        .map(|(_, block)| {
-            // Build the APC for this chunk (we know it succeeds from the filter)
-            let apc = crate::build::<A>(
-                block.clone(),
-                vm_config.clone(),
-                degree_bound,
-                None,
-                &EmpiricalConstraints::default(),
-            )
-            .unwrap();
+            .ok()?;
 
             // Evaluate the APC to get before/after stats
             let apc_with_stats = evaluate_apc::<A>(block, vm_config.instruction_handler, apc);
             let eval_result = apc_with_stats.evaluation_result();
 
-            (
+            Some((
                 eval_result.before.main_columns,
                 eval_result.after.main_columns,
-            )
+            ))
         })
         .collect();
 
