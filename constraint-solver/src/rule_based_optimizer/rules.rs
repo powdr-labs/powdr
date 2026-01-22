@@ -159,8 +159,6 @@ crepe! {
     AffinelyRelated(e1, f, e2, o1 - o2 * f) <-
       AffineExpression(e1, f1, v, o1), // e1 = f1 * v + o1
       AffineExpression(e2, f2, v, o2),
-      // The swapped case will be computed by another rule.
-      (e1 <= e2),
       // Optimization: Compute f1 / f2 only once.
       let f = f1 / f2;
       // e2 = f2 * v + o2
@@ -169,21 +167,10 @@ crepe! {
     AffinelyRelated(e1, f, e2, o) <-
       AffinelyRelated(tail1, f, tail2, o),
       // The swapped case and the equal will be computed by other rules.
-      (tail1 <= tail2),
       ExpressionSumHeadTail(e1, head1, tail1),
+      LinearExpression(head1, v, f1),
       ExpressionSumHeadTail(e2, head2, tail2),
-      AffinelyRelated(head1, f, head2, T::zero());
-
-    // AffinelyRelated(e1, f, e2, T::zero()) <-
-    //   ExpressionSumHeadTail(e1, head1, tail),
-    //   ExpressionSumHeadTail(e2, head2, tail),
-    //   (head1 < head2),
-    //   AffinelyRelated(head1, f, head2, T::zero());
-
-    AffinelyRelated(e1, f_inv, e2, -o * f_inv) <-
-      // e2 = f * e1 + o <=> e1 = e2 / f - o / f
-      AffinelyRelated(e2, f, e1, o),
-      let f_inv = T::one() / f;
+      LinearExpression(head2, v, f1 / f);
 
     // HasProductSummand(e, l, r) => e contains a summand of the form l * r
     struct HasProductSummand(Expr, Expr, Expr);
