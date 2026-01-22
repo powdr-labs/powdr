@@ -354,6 +354,7 @@ $$\forall w', \forall s, C'(w') \wedge \Sigma(B'(w')) = s
 \implies C(I(w')) \wedge \Sigma(B(I(w'))) = s$$
 
 Our proof will actually match this equivalent statement instead:
+
 $$\forall w', \forall w, \forall s, C'(w') \wedge \Sigma(B'(w')) = s \wedge w = I(w')
 \implies C(w) \wedge \Sigma(B(w)) = s$$
 
