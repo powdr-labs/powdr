@@ -150,44 +150,34 @@ crepe! {
       ExpressionSumHeadTail(e2, head, tail2);
 
     // AffinelyRelated(e1, f, e2, c) => e1 = f * e2 + c
+    // Note this is currently only implemented for affine e1 and e2.
     // This only works if e1 and e2 have at least one variable
     // and both e1 and e2 have to "pre-exist" as expressions.
     // This means this rule cannot be used to subtract constants
     // or multiply/divide by constants alone.
     struct AffinelyRelated<T: FieldElement>(Expr, T, Expr, T);
-    AffinelyRelated(e1, f1 / f2, e2, o1 - o2 * f1 / f2) <-
+    AffinelyRelated(e1, f, e2, o1 - o2 * f) <-
       AffineExpression(e1, f1, v, o1), // e1 = f1 * v + o1
-      AffineExpression(e2, f2, v, o2); // e2 = f2 * v + o2
+      AffineExpression(e2, f2, v, o2),
+      // The swapped case will be computed by another rule.
+      (e1 < e2),
+      // Optimization: Compute f1 / f2 only once.
+      let f = f1 / f2;
+      // e2 = f2 * v + o2
       // e1 = (e2 - o2) / f2 * f1 + o1 = e2 * (f1 / f2) + (o1 - o2 * f1 / f2)
 
-    // just a join-lookup table.
-    struct AffinelyRelatedIntermediateTail<T: FieldElement>(Expr, Expr, T, Expr, T);
-    AffinelyRelatedIntermediateTail(e1, head1, f, tail2, c) <-
+    AffinelyRelated(e1, f, e2, o) <-
+      AffinelyRelated(tail1, f, tail2, o),
+      // The swapped case will be computed by another rule.
+      (tail1 < tail2),
       ExpressionSumHeadTail(e1, head1, tail1),
-      AffinelyRelated(tail1, f, tail2, c);
-    // just a join-lookup table.
-    struct AffinelyRelatedIntermediateHead<T: FieldElement>(Expr, Expr, T, Expr);
-    AffinelyRelatedIntermediateHead(e2, tail2, f, head1) <-
       ExpressionSumHeadTail(e2, head2, tail2),
       AffinelyRelated(head1, f, head2, T::zero());
-    AffinelyRelated(e1, f, e2, c) <-
-      AffinelyRelatedIntermediateTail(e1, head1, f, tail2, c),
-      AffinelyRelatedIntermediateHead(e2, tail2, f, head1);
-    AffinelyRelated(e1, f1 * f2, e2, T::zero()) <-
-      Product(e1, l1, r1),
-      (l1 < r1),
-      AffinelyRelated(l1, f1, l2, T::zero()),
-      Product(e2, l2, r2),
-      (l2 < r2),
-      AffinelyRelated(r1, f2, r2, T::zero());
-    AffinelyRelated(e1, f, e2, o1 - f * o2) <-
-      ExpressionSumHeadTail(e2, head2, tail2),
-      AffinelyRelated(e1, f, head2, o1),
-      Constant(tail2, o2);
-    AffinelyRelated(e1, T::one() / f, e2, -o / f) <-
-      // e2 = f * e1 + o <=> e1 = e2 / f - o / f
-      AffinelyRelated(e2, f, e1, o);
 
+    AffinelyRelated(e1, f_inv, e2, -o * f_inv) <-
+      // e2 = f * e1 + o <=> e1 = e2 / f - o / f
+      AffinelyRelated(e2, f, e1, o),
+      let f_inv = T::one() / f;
 
     // HasProductSummand(e, l, r) => e contains a summand of the form l * r
     struct HasProductSummand(Expr, Expr, Expr);
