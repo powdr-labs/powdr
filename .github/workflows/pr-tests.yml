@@ -175,7 +175,7 @@ jobs:
         run: |
           cd openvm-reth-benchmark
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
-          APC=10 PGO_TYPE="instruction" /usr/bin/time -v ./run.sh --mode compile
+          PGO_TYPE="instruction" /usr/bin/time -v ./run.sh --apc 10 --mode compile
 
       # Check that reth commit is on main.
       # Do that after the actual test so that the step above passes when checking that a
@@ -255,3 +255,52 @@ jobs:
       - name: Run quick GPU tests from powdr-openvm only
         run: cargo nextest run --archive-file tests_gpu.tar.zst --workspace-remap . --verbose --no-tests=warn
         # run: cargo nextest run --archive-file tests_gpu.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/7 --no-tests=warn
+
+  test_apc_reth_app_proof:
+    # runs-on: server-dev
+    runs-on: warp-ubuntu-2404-x64-32x
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: ⚡ Cache rust
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-apc-reth-app-proof-${{ hashFiles('**/Cargo.toml') }}
+
+      - name: Build
+        run: cargo build --release -p powdr-openvm
+
+      - name: Install cargo openvm
+        # Rust 1.90 is needed by fresher versions of dependencies of cargo-openvm.
+        run: |
+          rustup toolchain install 1.90
+          cargo +1.90 install --git 'http://github.com/openvm-org/openvm.git' cargo-openvm
+
+      - name: Setup python venv
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install -r openvm/scripts/requirements.txt
+          pip install -r autoprecompiles/scripts/requirements.txt
+
+      - name: Patch benchmark
+        uses: ./.github/actions/patch-openvm-reth-benchmark
+
+      - name: Run reth benchmark
+        run: |
+          source .venv/bin/activate
+          cd openvm-reth-benchmark
+          RES_DIR=reth
+          mkdir -p $RES_DIR
+          echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
+
+          # prove with 3 APCs
+          APC=3 ./run.sh --mode prove-app || exit 1
+          echo "Finished proving with 3 APCs"

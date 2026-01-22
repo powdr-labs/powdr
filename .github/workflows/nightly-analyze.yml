@@ -41,6 +41,13 @@ jobs:
           # Set outputs for later steps
           echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
 
+          # Save report as output (using delimiter for multiline)
+          {
+            echo "report<<EOF"
+            cat analysis_report.md
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
           # Print report to logs as well
           cat analysis_report.md
 
@@ -49,12 +56,19 @@ jobs:
 
       - name: Check for regressions
         if: ${{ steps.analysis.outputs.exit_code == '1' }}
-        run: |
-          echo "::error::Performance regressions detected! See job summary for details."
-          exit 1
+        run: echo "::warning::Performance regressions detected! See job summary for details."
 
       - name: Check for errors
         if: ${{ steps.analysis.outputs.exit_code == '2' }}
-        run: |
-          echo "::warning::Errors occurred during analysis. See job summary for details."
-          exit 1
+        run: echo "::warning::Errors occurred during analysis. See job summary for details."
+
+      - name: Send report to Matrix
+        uses: fadenb/matrix-chat-message@v0.0.6
+        with:
+          homeserver: ${{ secrets.MATRIX_HOMESERVER }}
+          token: ${{ secrets.MATRIX_ACCESS_TOKEN }}
+          channel: ${{ secrets.MATRIX_ROOM_ID }}
+          message: |
+            ${{ steps.analysis.outputs.report }}
+
+            [View workflow run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})

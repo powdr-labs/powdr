@@ -41,7 +41,7 @@ pub mod apc_builder_utils {
     pub fn compile(basic_block: Vec<Instruction<BabyBear>>) -> String {
         let original_config = original_vm_config();
         let degree_bound = DEFAULT_DEGREE_BOUND;
-        let airs = original_config.airs(degree_bound.identities).unwrap();
+        let airs = original_config.airs(degree_bound).unwrap();
         let bus_map = original_config.bus_map();
 
         let vm_config = VmConfig {
@@ -67,15 +67,21 @@ pub mod apc_builder_utils {
 
         let apc = build::<BabyBearOpenVmApcAdapter>(
             basic_block.clone(),
-            vm_config,
+            vm_config.clone(),
             degree_bound,
             apc_path,
             &EmpiricalConstraints::default(),
         )
         .unwrap();
-        let apc = apc.machine();
 
-        let evaluation = evaluate_apc(&basic_block.statements, &airs, apc);
+        let apc_with_stats = evaluate_apc::<BabyBearOpenVmApcAdapter>(
+            basic_block,
+            vm_config.instruction_handler,
+            apc,
+        );
+
+        let evaluation = apc_with_stats.evaluation_result();
+        let apc = &apc_with_stats.apc().machine;
 
         format!(
             "Instructions:\n{basic_block_str}\n\n{evaluation}\n\n{}",

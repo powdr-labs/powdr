@@ -77,7 +77,7 @@ impl<A: Arena> OriginalArenas<A> {
         apc_call_count_estimate: impl Fn() -> usize,
         original_airs: &OriginalAirs<BabyBear>,
         apc: &Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, u32>>,
-    ) {
+    ) -> &mut InitializedOriginalArenas<A> {
         match self {
             OriginalArenas::Uninitialized => {
                 *self = OriginalArenas::Initialized(InitializedOriginalArenas::new(
@@ -85,57 +85,12 @@ impl<A: Arena> OriginalArenas<A> {
                     original_airs,
                     apc,
                 ));
+                match self {
+                    OriginalArenas::Initialized(i) => i,
+                    _ => unreachable!(),
+                }
             }
-            OriginalArenas::Initialized(_) => {}
-        }
-    }
-
-    /// Returns a mutable reference to the arena of the given vector index.
-    /// - Panics if the arenas are not initialized.
-    pub fn arena_mut_by_index(&mut self, index: usize) -> &mut ArenaPair<A> {
-        match self {
-            OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
-            OriginalArenas::Initialized(initialized) => initialized.arena_mut_by_index(index),
-        }
-    }
-
-    pub fn real_arena_mut_by_index(&mut self, index: usize) -> &mut A {
-        match self {
-            OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
-            OriginalArenas::Initialized(initialized) => initialized.real_arena_mut_by_index(index),
-        }
-    }
-
-    pub fn dummy_arena_mut_by_index(&mut self, index: usize) -> &mut A {
-        match self {
-            OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
-            OriginalArenas::Initialized(initialized) => initialized.dummy_arena_mut_by_index(index),
-        }
-    }
-
-    /// Returns the arena of the given air name.
-    /// - Panics if the arenas are not initialized.
-    pub fn take_real_arena(&mut self, air_name: &str) -> Option<A> {
-        match self {
-            OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
-            OriginalArenas::Initialized(initialized) => initialized.take_real_arena(air_name),
-        }
-    }
-
-    /// Returns a mutable reference to the number of calls.
-    /// - Panics if the arenas are not initialized.
-    pub fn number_of_calls_mut(&mut self) -> &mut usize {
-        match self {
-            OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
-            OriginalArenas::Initialized(initialized) => &mut initialized.number_of_calls,
-        }
-    }
-
-    /// Returns the number of calls. If not initialized, `Preflight::execute` is never called, and thus return 0.
-    pub fn number_of_calls(&self) -> usize {
-        match self {
-            OriginalArenas::Uninitialized => 0,
-            OriginalArenas::Initialized(initialized) => initialized.number_of_calls,
+            OriginalArenas::Initialized(i) => i,
         }
     }
 }
@@ -209,7 +164,7 @@ impl<A: Arena> InitializedOriginalArenas<A> {
         &mut self.arena_mut_by_index(index).dummy
     }
 
-    fn take_real_arena(&mut self, air_name: &str) -> Option<A> {
+    pub fn take_real_arena(&mut self, air_name: &str) -> Option<A> {
         let index = *self.air_name_to_arena_index.get(air_name)?;
         self.arenas[index].take().map(|arena_pair| arena_pair.real)
     }
@@ -530,7 +485,9 @@ impl PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>> for PowdrExecutor 
         // Recover an estimate of how many times the APC is called in this segment based on the current ctx height and width
         let apc_call_count = || ctx.trace_buffer.len() / ctx.width;
 
-        original_arenas.ensure_initialized(apc_call_count, &self.air_by_opcode_id, &self.apc);
+        let original_arenas =
+            original_arenas.ensure_initialized(apc_call_count, &self.air_by_opcode_id, &self.apc);
+
         // execute the original instructions one by one
         for (instruction, cached_meta) in self
             .apc
@@ -563,7 +520,7 @@ impl PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>> for PowdrExecutor 
         }
 
         // Update the real number of calls to the APC
-        *original_arenas.number_of_calls_mut() += 1;
+        original_arenas.number_of_calls += 1;
 
         Ok(())
     }
@@ -605,7 +562,9 @@ impl PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExecutor {
             buf.len() / bytes_per_row
         };
 
-        original_arenas.ensure_initialized(apc_call_count, &self.air_by_opcode_id, &self.apc);
+        let original_arenas =
+            original_arenas.ensure_initialized(apc_call_count, &self.air_by_opcode_id, &self.apc);
+
         // execute the original instructions one by one
         for (instruction, cached_meta) in self
             .apc
@@ -638,7 +597,7 @@ impl PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExecutor {
         }
 
         // Update the real number of calls to the APC
-        *original_arenas.number_of_calls_mut() += 1;
+        original_arenas.number_of_calls += 1;
 
         Ok(())
     }
