@@ -301,15 +301,15 @@ The first condition is **completeness**, which says that when $S$ is satisfiable
 $E$ gives a satisfying assignment for $S'$ with the same effects (stateful bus
 interactions). Formally:
 
-$$\forall w, \forall s, C(w) \wedge \sum(B(w)) = s
-\implies C'(E(w)) \wedge \sum(B'(E(w))) = s$$
+$$\forall w, \forall s, C(w) \wedge \Sigma(B(w)) = s
+\implies C'(E(w)) \wedge \Sigma(B'(E(w))) = s$$
 
 The second condition is **soundness**, which says that when $S'$ is satisfiable, $S$
 is too, and with the same effects. Formally, there should exists an efficient
 $I(w') \to w$ such that:
 
-$$\forall w', \forall s, C'(w') \wedge \sum(B'(w')) = s
-\implies C(I(w')) \wedge \sum(B(I(w'))) = s$$
+$$\forall w', \forall s, C'(w') \wedge \Sigma(B'(w')) = s
+\implies C(I(w')) \wedge \Sigma(B(I(w'))) = s$$
 
 ### Worked example
 
@@ -350,27 +350,32 @@ $I$ is defined as follows: $x \gets 8, y \gets y', z \gets z', b \gets 0$.
 
 Now, we must show that
 
-$$\forall w', \forall s, C'(w') \wedge \sum(B'(w')) = s
-\implies C(I(w')) \wedge \sum(B(I(w'))) = s$$
+$$\forall w', \forall s, C'(w') \wedge \Sigma(B'(w')) = s
+\implies C(I(w')) \wedge \Sigma(B(I(w'))) = s$$
+
+Our proof will actually match this equivalent statement instead:
+$$\forall w', \forall w, \forall s, C'(w') \wedge \Sigma(B'(w')) = s \wedge w = I(w')
+\implies C(w) \wedge \Sigma(B(w)) = s$$
 
 Proof:
 
 * Fix $w' = (y', z')$.
-* Per $I$, we have
-  * $x = 8$
-  * $y = y'$
-  * $z = z'$
-  * $b = 0$
+* Fix $w = (x, y, z, b)$.
 * Fix $s$.
 * To show the $\implies$, assume
+  * $w = I(w')$; that is:
+    * $x = 8$
+    * $y = y'$
+    * $z = z'$
+    * $b = 0$
   * $y' + z' = 4$
   * $s = \mathsf{toMs}((2, 8, y', z'), 1)$
 * And now we need to show each of the following goals:
-  * $x = 8$
+  * $x = 8$, since it is part of $C(w)$
     * we already have this
-  * $x + y + z = 12$
+  * $x + y + z = 12$, since it is also part of $C(w)$
     * we have this since we have $x=8, y=y', z=z', y'+z'=4$
-  * $b(b-1) = 0$
+  * $b(b-1) = 0$, since it is also part of $C(w)$
     * we have this since $b=0$
   * $s = \mathsf{toMs}((2, x, y, z), 1) + \mathsf{toMs}((2, x, y, z), b) + \mathsf{toMs}((2, 8, y, z), -b)$
     * we have
@@ -390,15 +395,21 @@ $E$ is defined as $y' \gets y, z' \gets z$.
 
 We must show that
 
-$$\forall w, \forall s, C(w) \wedge \sum(B(w)) = s
-\implies C'(E(w)) \wedge \sum(B'(E(w))) = s$$
+$$\forall w, \forall s, C(w) \wedge \Sigma(B(w)) = s
+\implies C'(E(w)) \wedge \Sigma(B'(E(w))) = s$$
+
+Again, we will instead show the equivalent
+
+$$\forall w, \forall w', \forall s, C(w) \wedge \Sigma(B(w)) = s \wedge w' = E(w)
+\implies C'(w') \wedge \Sigma(B'(w')) = s$$
 
 * Fix $w = (x, y, z, b)$.
-* Per $E$, we have
-  * $y' = y$
-  * $z' = z$
+* Fix $w' = (y', z')$.
 * Fix $s$.
 * To show the $\implies$, assume
+  * $w'=E(w)$, that is:
+    * $y' = y$
+    * $z' = z$
   * $x = 8$
   * $x + y + z = 12$
   * $s = \mathsf{toMs}((2, x, y, z), 1) + \mathsf{toMs}((2, x, y, z), b) + \mathsf{toMs}((2, 8, y, z), -b)$
