@@ -168,11 +168,17 @@ crepe! {
 
     AffinelyRelated(e1, f, e2, o) <-
       AffinelyRelated(tail1, f, tail2, o),
-      // The swapped case will be computed by another rule.
+      // The swapped case and the equal will be computed by other rules.
       (tail1 <= tail2),
       ExpressionSumHeadTail(e1, head1, tail1),
       ExpressionSumHeadTail(e2, head2, tail2),
       AffinelyRelated(head1, f, head2, T::zero());
+
+    // AffinelyRelated(e1, f, e2, T::zero()) <-
+    //   ExpressionSumHeadTail(e1, head1, tail),
+    //   ExpressionSumHeadTail(e2, head2, tail),
+    //   (head1 < head2),
+    //   AffinelyRelated(head1, f, head2, T::zero());
 
     AffinelyRelated(e1, f_inv, e2, -o * f_inv) <-
       // e2 = f * e1 + o <=> e1 = e2 / f - o / f
