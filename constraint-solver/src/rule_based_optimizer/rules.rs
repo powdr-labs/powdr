@@ -470,12 +470,22 @@ crepe! {
       BooleanVar(diff_marker_1),
       BooleanVar(diff_marker_2),
       BooleanVar(diff_marker_3),
+      RangeConstraintOnVar(a_0, rc_a0),
+      RangeConstraintOnVar(a_1, rc_a1),
+      RangeConstraintOnVar(a_2, rc_a2),
+      RangeConstraintOnVar(a_3, rc_a3),
+      // The next is needed so that the constraint `result + sum_inv_var * sum_of_vars - 1 = 0`
+      // works. If there is a way to get the sum to be zero but not all variables are zero,
+      // then this constraint cannot be satisfied.
+      ( rc_a0.range().0 == T::zero() && rc_a1.range().0 == T::zero()
+        && rc_a2.range().0 == T::zero() && rc_a3.range().0 == T::zero()
+        && rc_a0.combine_sum(&rc_a1).combine_sum(&rc_a2).combine_sum(&rc_a3).range().1 < T::from(-1)),
       // (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0) * (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0 - 1) = 0
       BooleanExpressionConstraint(constr_9, one_minus_diff_marker_sum),
       let constrs = [constr_0, constr_1, constr_2, constr_3, constr_4, constr_5, constr_6, constr_7, constr_8, constr_9],
       let vars = [a_0, a_1, a_2, a_3];
 
-    ReplaceAlgebraicConstraintsBy(extend_none(constrs), extend_none(replacement)) <-
+    ReplaceAlgebraicConstraintsBy(extend_by_none(constrs), extend_by_none(replacement)) <-
       Env(env),
       EqualZeroCheck(constrs, result, vars),
       let replacement = {
@@ -487,12 +497,8 @@ crepe! {
           env.new_var("inv_of_sum", ComputationMethod::QuotientOrZero(One::one(), sum_of_vars.clone()))
         );
         [
-          // TODO is this still correct if the sum of the variables is zero but they are not all zero?
-          env.insert_owned(result.clone() * vars[0].clone()),
-          env.insert_owned(result.clone() * vars[1].clone()),
-          env.insert_owned(result.clone() * vars[2].clone()),
-          env.insert_owned(result.clone() * vars[3].clone()),
-          env.insert_owned(result.clone() + sum_inv_var * sum_of_vars - One::one()),
+          env.insert_owned(result.clone() * sum_of_vars.clone()),
+          env.insert_owned(result + sum_inv_var * sum_of_vars - One::one()),
         ]
       };
 

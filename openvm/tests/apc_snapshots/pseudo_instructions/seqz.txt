@@ -42,6 +42,6 @@ mult=is_valid * 1, args=[15360 * writes_aux__base__prev_timestamp_0 + 15360 * wr
 
 // Algebraic constraints:
 cmp_result_0 * (cmp_result_0 - 1) = 0
-inv_of_sum_37 * (b__0_0 + b__1_0 + b__2_0 + b__3_0) + cmp_result_0 - 1 * is_valid = 0
 cmp_result_0 * (b__0_0 + b__1_0 + b__2_0 + b__3_0) = 0
+inv_of_sum_37 * (b__0_0 + b__1_0 + b__2_0 + b__3_0) + cmp_result_0 - 1 * is_valid = 0
 is_valid * (is_valid - 1) = 0
