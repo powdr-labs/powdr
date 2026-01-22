@@ -195,6 +195,8 @@ pub fn generate_superblocks<I: Clone>(
         execution_pc_list.len()
     );
 
+    let start = std::time::Instant::now();
+
     // make a hash map from start_pc to BB
     let bb_start_pc_to_idx: HashMap<_, _> = basic_blocks
         .iter()
@@ -243,11 +245,14 @@ pub fn generate_superblocks<I: Clone>(
     }
 
     tracing::info!(
-        "Found {} superblocks in {} basic block runs!",
+        "Found {} blocks in {} basic block runs! Took {:?}",
         seen_superblocks.len(),
-        execution_bb_runs.len()
+        execution_bb_runs.len(),
+        start.elapsed(),
     );
 
+    tracing::info!("Computing execution counts for each block...");
+    let start = std::time::Instant::now();
     // here, we go over the BB runs to count how many times each superblock can be executed
     let superblock_count: HashMap<_, _> = seen_superblocks
         .into_par_iter()
@@ -281,6 +286,8 @@ pub fn generate_superblocks<I: Clone>(
         }
         counts.push(count);
     });
+
+    tracing::info!("Counting done, took {:?}", start.elapsed());
 
     PGOBlocks {
         blocks: super_blocks,

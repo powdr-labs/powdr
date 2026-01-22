@@ -41,6 +41,9 @@ pub trait Candidate<A: Adapter>: Sized {
     /// Return a JSON export of the APC candidate.
     fn to_json_export(&self, apc_candidates_dir_path: &Path) -> ApcCandidateJsonExport;
 
+    /// Return a JSON export of the APC candidate.
+    fn to_json_export2(&self, apc_candidates_dir_path: &Path, execution_frequency: usize) -> ApcCandidateJsonExport;
+
     /// Convert the candidate into an autoprecompile and its statistics.
     fn into_apc_and_stats(self) -> AdapterApcWithStats<A>;
 }
@@ -198,7 +201,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
             tracing::debug!("Selected candidates:");
             let selected: Vec<_> = selected_candidates
                 .iter()
-                .map(|c| c.to_json_export(apc_candidates_dir_path))
+                .map(|(c, count)| c.to_json_export2(apc_candidates_dir_path, *count))
                 .inspect(|c| {
                     tracing::debug!(
                         "\tAPC pcs {:?}, effectiveness: {:?}, freq: {:?}",
@@ -221,7 +224,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
 
         let res: Vec<_> = selected_candidates
             .into_iter()
-            .map(|c| c.into_apc_and_stats())
+            .map(|(c, _)| c.into_apc_and_stats())
             .collect();
 
         // Write the APC candidates JSON to disk if the directory is specified.
@@ -341,22 +344,20 @@ fn count_and_update_execution(sblock: &[u64], execution: &[Vec<u64>]) -> (usize,
     (count, new_execution)
 }
 
-// Select the best apc candidates according to its priority (how effective it should be according to PGO).
-// This selection takes into account "conflicting" candidates, that is,
-// it will update the priority of the remaining candidates.
+// Try to select the best apc candidates (according to PGO).
+// Returns the ordered candidates together with how much they would run in the given selection order.
 fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
     candidates: Vec<C>,
     max_cost: Option<usize>,
     max_selected: usize,
     mut execution_bb_runs: Vec<Vec<u64>>,
     mut skip: usize,
-) -> Vec<C> {
-    // candidates ordered by priority. These priorities will be updated as candidates are selected.
-    // We store indexes here because the items need to be Eq.
-    let mut ordered_candidates: PriorityQueue<_, _> = candidates
-        .iter()
-        .enumerate()
-        .map(|(idx, candidate)| {
+) -> Vec<(C, usize)> {
+    // with the assumption that larger superblocks (more BBs) are more effective or at least equivalent to its components, we split candidates into size groups.
+    // Each group is internally sorted by candidate priority
+    let size_groups: BTreeMap<usize, PriorityQueue<_, _>> = candidates.iter().enumerate().fold(
+        Default::default(),
+        |mut acc, (idx, candidate)| {
             let priority = WeightedPriority {
                 exec_count: candidate.execution_count() as usize,
                 cells_saved_per_row: candidate.cells_saved_per_row(),
@@ -364,80 +365,91 @@ fn select_apc_candidates<A: Adapter, C: Candidate<A>>(
                 // TODO: with super blocks this is not unique
                 tie_breaker: candidate.apc().original_bb_pcs()[0] as usize,
             };
-            (idx, priority)
-        })
-        .collect();
+            let size = candidate.apc().original_bb_pcs().len();
+            acc.entry(size).or_default().push(idx, priority);
+            acc
+        });
+
 
     if tracing::enabled!(tracing::Level::DEBUG) {
         tracing::debug!("All candidates sorted by priority:");
-        for (idx, prio) in ordered_candidates.clone().into_sorted_iter() {
-            let c = &candidates[idx];
-            let json = c.to_json_export(Path::new("")); // just for debug printing
-            tracing::debug!(
-                "\tAPC pcs {:?}, effectiveness: {:?}, freq: {:?}, priority: {:?}",
-                json.original_block.original_bb_pcs(),
-                json.cost_before / json.cost_after,
-                json.execution_frequency,
-                prio.priority(),
-            );
+        for (size, group) in size_groups.iter().rev() {
+            tracing::debug!("Size {size}:");
+            for (idx, prio) in group.clone().into_sorted_iter() {
+                let c = &candidates[idx];
+                let json = c.to_json_export(Path::new("")); // just for debug printing
+                tracing::debug!(
+                    "\tAPC pcs {:?}, effectiveness: {:?}, freq: {:?}, priority: {:?}",
+                    json.original_block.original_bb_pcs(),
+                    json.cost_before / json.cost_after,
+                    json.execution_frequency,
+                    prio.priority(),
+                );
+            }
         }
     }
 
     let mut selected_candidates = vec![];
     let mut cumulative_cost = 0;
-    // We go through candidates in priority order (greedy selection).
-    // When a candidate is confirmed, we update the execution by removing its ocurrences.
-    // So, whenever we look at a new candidate, we recalculate its priority
-    // based on the current execution, re-inserting it back if it changed.
-    while let Some((idx, mut prio)) = ordered_candidates.pop() {
-        let c = &candidates[idx];
-        let apc = c.apc();
-        let bbs = apc.block.original_bb_pcs();
+    // start from the largest superblocks down to basic blocks
+    let start = std::time::Instant::now();
+    for mut group_candidates in size_groups.into_values().rev() {
+        // We go through candidates in the group in priority order (greedy selection).
+        // When a candidate is confirmed, we update the execution by removing its ocurrences.
+        // So, whenever we look at a new candidate, we recalculate its priority
+        // based on the current execution, re-inserting it back if it changed.
+        while let Some((idx, mut prio)) = group_candidates.pop() {
+            let c = &candidates[idx];
+            let apc = c.apc();
+            let bbs = apc.block.original_bb_pcs();
 
-        // Check if the priority of this candidate has changed by re-counting it over the updated execution.
-        let (count, new_execution) = count_and_update_execution(&bbs, &execution_bb_runs);
-        if count == 0 {
-            // The item no longer runs, remove it
-            continue;
-        } else if count < prio.exec_count {
-            // Re-insert it into the queue with the updated priority
-            prio.exec_count = count;
-            ordered_candidates.push(idx, prio);
-            continue;
-        }
-
-        if skip > 0 {
-            skip -= 1;
-            continue;
-        }
-
-        // add candidate if it fits
-        if let Some(max_cost) = max_cost {
-            if cumulative_cost + prio.cost > max_cost {
-                // The item does not fit, skip it
+            // Check if the priority of this candidate has changed by re-counting it over the updated execution.
+            let (count, new_execution) = count_and_update_execution(&bbs, &execution_bb_runs);
+            if count == 0 {
+                // The item no longer runs, remove it
+                continue;
+            } else if count < prio.exec_count {
+                // Re-insert it into the queue with the updated priority
+                prio.exec_count = count;
+                group_candidates.push(idx, prio);
                 continue;
             }
-        }
 
-        // The item fits, increment the cumulative cost and update the execution by removing its occurrences
-        cumulative_cost += prio.cost;
-        execution_bb_runs = new_execution;
-        selected_candidates.push(idx);
+            if skip > 0 {
+                skip -= 1;
+                continue;
+            }
 
-        if selected_candidates.len() >= max_selected {
-            break;
+            // add candidate if it fits
+            if let Some(max_cost) = max_cost {
+                if cumulative_cost + prio.cost > max_cost {
+                    // The item does not fit, skip it
+                    continue;
+                }
+            }
+
+            // The item fits, increment the cumulative cost and update the execution by removing its occurrences
+            cumulative_cost += prio.cost;
+            execution_bb_runs = new_execution;
+            selected_candidates.push((idx, count));
+
+            if selected_candidates.len() >= max_selected {
+                break;
+            }
         }
     }
+    tracing::debug!("APC selection took {:?}", start.elapsed());
 
     // filter the candidates using the selected indices (and ordering)
     candidates
         .into_iter()
         .enumerate()
         .filter_map(|(idx, c)| {
-            selected_candidates
+            let position = selected_candidates
                 .iter()
-                .position(|i| *i == idx)
-                .map(|position| (position, c))
+                .position(|(i, _)| *i == idx)?;
+            let count = selected_candidates[position].1;
+            Some((position, (c, count)))
         })
         .sorted_by_key(|(position, _)| *position)
         .map(|(_, c)| c)

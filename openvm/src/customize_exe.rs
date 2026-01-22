@@ -335,6 +335,11 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
 
     /// Return a JSON export of the APC candidate.
     fn to_json_export(&self, apc_candidates_dir_path: &Path) -> ApcCandidateJsonExport {
+        self.to_json_export2(apc_candidates_dir_path, self.execution_frequency)
+    }
+
+    /// Return a JSON export of the APC candidate.
+    fn to_json_export2(&self, apc_candidates_dir_path: &Path, execution_frequency: usize) -> ApcCandidateJsonExport {
         let blocks = self
             .apc_with_stats
             .apc()
@@ -346,7 +351,7 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
             })
             .collect();
         ApcCandidateJsonExport {
-            execution_frequency: self.execution_frequency,
+            execution_frequency: execution_frequency,
             original_block: SuperBlock { blocks },
             stats: self.apc_with_stats.evaluation_result(),
             width_before: self.apc_with_stats.stats().widths.before.total(),
