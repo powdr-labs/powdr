@@ -138,7 +138,8 @@ crepe! {
       ExpressionSumHeadTail(e, _, tail),
       HasSummand(tail, summand);
 
-    // DifferBySummand(e1, e2, s) => e1 = e2 + s and `s` is not a sum.
+    // DifferBySummand(e1, e2, s) => e1 = e2 + s and `s` is not a sum
+    // and not a constant.
     // Note that `e1` and `e2` must "pre-exist" as expressions, i.e.
     // this rule cannot be used to split out a linear summand
     // from an expression but only to "compare" two expressions.
@@ -150,36 +151,24 @@ crepe! {
       ExpressionSumHeadTail(e1, head, tail1),
       ExpressionSumHeadTail(e2, head, tail2);
 
-    // AffinelyRelated(e1, f, e2, c) => e1 = f * e2 + c
-    // This only works if e1 and e2 have at least one variable
-    // and both e1 and e2 have to "pre-exist" as expressions.
-    // This means this rule cannot be used to subtract constants
-    // or multiply/divide by constants alone.
-    struct AffinelyRelated<T: FieldElement>(Expr, T, Expr, T);
-    AffinelyRelated(e1, f1 / f2, e2, o1 - o2 * f1 / f2) <-
-      AffineExpression(e1, f1, v, o1), // e1 = f1 * v + o1
-      AffineExpression(e2, f2, v, o2); // e2 = f2 * v + o2
-      // e1 = (e2 - o2) / f2 * f1 + o1 = e2 * (f1 / f2) + (o1 - o2 * f1 / f2)
-    AffinelyRelated(e1, f, e2, c) <-
-      ExpressionSumHeadTail(e1, head1, tail1),
-      AffinelyRelated(tail1, f, tail2, c),
-      ExpressionSumHeadTail(e2, head2, tail2),
-      AffinelyRelated(head1, f, head2, T::zero());
-    AffinelyRelated(e1, f1 * f2, e2, T::zero()) <-
-      Product(e1, l1, r1),
-      (l1 < r1),
-      AffinelyRelated(l1, f1, l2, T::zero()),
-      Product(e2, l2, r2),
-      (l2 < r2),
-      AffinelyRelated(r1, f2, r2, T::zero());
-    AffinelyRelated(e1, f, e2, o1 + o2) <-
-      ExpressionSumHeadTail(e2, head2, tail2),
-      AffinelyRelated(e1, f, head2, o1),
-      Constant(tail2, o2);
-    AffinelyRelated(e1, T::one() / f, e2, -o / f) <-
-      // e2 = f * e1 + o <=> e1 = e2 / f - o / f
-      AffinelyRelated(e2, f, e1, o);
+    // DifferByConstant(e1, e2, diff) => e1 = e2 + diff
+    // Note that both e1 and e2 must pre-exist, so this cannot
+    // be used to add or subtract constants from expressions.
+    struct DifferByConstant<T: FieldElement>(Expr, Expr, T);
+    DifferByConstant(e, e, T::zero()) <- Expression(e);
+    DifferByConstant(e1, e2, c) <- DifferByNonzeroConstant(e1, e2, c);
 
+    struct DifferByNonzeroConstant<T: FieldElement>(Expr, Expr, T);
+    DifferByNonzeroConstant(e1, e2, o1 - o2) <-
+      AffineExpression(e1, f, v, o1),
+      AffineExpression(e2, f, v, o2),
+      (o1 != o2);
+    DifferByNonzeroConstant(e1, e2, c) <-
+      DifferByNonzeroConstant(tail1, tail2, c),
+      ExpressionSumHeadTail(e1, head, tail1),
+      ExpressionSumHeadTail(e2, head, tail2);
+    DifferByNonzeroConstant(e1, e2, -o) <-
+      DifferByNonzeroConstant(e2, e1, o);
 
     // HasProductSummand(e, l, r) => e contains a summand of the form l * r
     struct HasProductSummand(Expr, Expr, Expr);
@@ -250,19 +239,11 @@ crepe! {
       RangeConstraintOnVar(v, rc),
       (rc.range() == (T::zero(), T::one()));
 
-    // BooleanExpressionConstraint(constr, e) =>
-    // constr is an algebraic constraint that forces (e = 0 or e = 1).
+    // BooleanExpressionConstraint(constr, e) => constr = `e * (e - 1) = 0`
     struct BooleanExpressionConstraint(Expr, Expr);
     BooleanExpressionConstraint(constr, e) <-
       ProductConstraint(constr, e, r),
-      AffinelyRelated(r, f, e, o),
-      // e * (f * e + o) = 0, i.e. e = 0 or f * e + o = 0
-      // i.e. e = 0 or e = -o/f
-      // for boolean we need -o/f = 1 <=> o + f = 0
-      (f + o == T::zero());
-    BooleanExpressionConstraint(constr, e1) <-
-      BooleanExpressionConstraint(constr, e2),
-      AffinelyRelated(e1, -T::one(), e2, T::one());
+      DifferByConstant(e, r, One::one());
 
     //////////////////////// SINGLE-OCCURRENCE VARIABLES //////////////////////////
 
@@ -481,6 +462,8 @@ crepe! {
         && rc_a2.range().0 == T::zero() && rc_a3.range().0 == T::zero()
         && rc_a0.combine_sum(&rc_a1).combine_sum(&rc_a2).combine_sum(&rc_a3).range().1 < T::from(-1)),
       // (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0) * (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0 - 1) = 0
+      Env(env),
+      ({println!("XXX {}", env.format_expr(one_minus_diff_marker_sum)); true}),
       BooleanExpressionConstraint(constr_9, one_minus_diff_marker_sum),
       let constrs = [constr_0, constr_1, constr_2, constr_3, constr_4, constr_5, constr_6, constr_7, constr_8, constr_9],
       let vars = [a_0, a_1, a_2, a_3];
@@ -544,10 +527,10 @@ crepe! {
     //   E = ((expr + offset) * (expr) = 0) is a constraint and
     //   expr is affine with at least 2 variables.
     struct QuadraticEquivalenceCandidate<T: FieldElement>(Expr, Expr, T);
-    QuadraticEquivalenceCandidate(e, r, o / f) <-
+    QuadraticEquivalenceCandidate(e, r, o) <-
        Env(env),
        ProductConstraint(e, l, r),
-       AffinelyRelated(l, f, r, o), // l = f * r + o
+       DifferByConstant(l, r, o), // l = r + o
        IsAffine(l),
        ({env.affine_var_count(l).unwrap_or(0) > 1});
 
