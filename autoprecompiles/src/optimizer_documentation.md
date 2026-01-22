@@ -404,6 +404,8 @@ Again, we will instead show the equivalent
 $$\forall w, \forall w', \forall s, C(w) \wedge \Sigma(B(w)) = s \wedge w' = E(w)
 \implies C'(w') \wedge \Sigma(B'(w')) = s$$
 
+Proof:
+
 * Fix $w = (x, y, z, b)$.
 * Fix $w' = (y', z')$.
 * Fix $s$.
