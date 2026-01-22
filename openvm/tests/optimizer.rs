@@ -59,15 +59,15 @@ fn test_optimize() {
     // This cbor file above has the `is_valid` column removed, this is why the number below
     // might be one less than in other tests.
     expect![[r#"
-        1753
+        3121
     "#]]
     .assert_debug_eq(&machine.main_columns().count());
     expect![[r#"
-        1512
+        2572
     "#]]
     .assert_debug_eq(&machine.bus_interactions.len());
     expect![[r#"
-        182
+        530
     "#]]
     .assert_debug_eq(&machine.constraints.len());
 }
@@ -93,15 +93,15 @@ fn test_ecrecover() {
     // This cbor file above has the `is_valid` column removed, this is why the number below
     // might be one less than in other tests.
     expect![[r#"
-        2852
+        2872
     "#]]
     .assert_debug_eq(&machine.main_columns().count());
     expect![[r#"
-        1619
+        1635
     "#]]
     .assert_debug_eq(&machine.bus_interactions.len());
     expect![[r#"
-        2870
+        2878
     "#]]
     .assert_debug_eq(&machine.constraints.len());
 }

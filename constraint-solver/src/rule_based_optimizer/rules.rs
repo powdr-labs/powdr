@@ -243,11 +243,6 @@ crepe! {
       Solvable(l, v, c1),
       Solvable(r, v, c2);
 
-    struct BooleanVar(Var);
-    BooleanVar(v) <-
-      RangeConstraintOnVar(v, rc),
-      (rc.range() == (T::zero(), T::one()));
-
     //////////////////////// SINGLE-OCCURRENCE VARIABLES //////////////////////////
 
     // Combine multiple variables that only occur in the same algebraic constraint.
@@ -397,14 +392,14 @@ crepe! {
     //------- quadratic equivalence -----
 
     // QuadraticEquivalenceCandidate(E, expr, offset) =>
-    //   E = ((expr + offset) * (expr) = 0) is a constraint and
+    //   E = (expr * (expr + offset) = 0) is a constraint and
     //   expr is affine with at least 2 variables.
     struct QuadraticEquivalenceCandidate<T: FieldElement>(Expr, Expr, T);
     QuadraticEquivalenceCandidate(e, r, o / f) <-
        Env(env),
        ProductConstraint(e, l, r),
-       AffinelyRelated(l, f, r, o), // l = f * r + o
        IsAffine(l),
+       AffinelyRelated(r, f, l, o), // r = f * l + o
        ({env.affine_var_count(l).unwrap_or(0) > 1});
 
     // QuadraticEquivalenceCandidatePair(expr1, expr2, offset1 / coeff, v1, v2) =>
