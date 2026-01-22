@@ -164,7 +164,7 @@ crepe! {
       // Optimization: Compute f1 / f2 only once.
       let f = f1 / f2;
       // e2 = f2 * v + o2
-      // e1 = (e2 - o2) / f2 * f1 + o1 = e2 * (f1 / f2) + (o1 - o2 * f1 / f2)
+      // e1 = f1 * (e2 - o2) / f2 + o1 = e2 * (f1 / f2) + (o1 - o2 * f1 / f2)
 
     AffinelyRelated(e1, f, e2, o) <-
       AffinelyRelated(tail1, f, tail2, o),
