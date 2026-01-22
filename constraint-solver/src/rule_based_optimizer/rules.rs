@@ -391,8 +391,8 @@ crepe! {
     QuadraticEquivalenceCandidate(e, r, o / f) <-
        Env(env),
        ProductConstraint(e, l, r),
-       IsAffine(l),
        AffinelyRelated(l, f, r, o), // r = f * l + o
+       IsAffine(l),
        ({env.affine_var_count(l).unwrap_or(0) > 1});
 
     // QuadraticEquivalenceCandidatePair(expr1, expr2, offset1 / coeff, v1, v2) =>
