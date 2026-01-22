@@ -292,26 +292,130 @@ and all other keys to $0$. Then, we define $\Sigma(B)$ to be $\sum_i
 
 Now we can define equivalence, which has two conditions. Assume two systems
 $S = (C, B)$ and $S' = (C', B')$ in variable $w$ and $w'$, respectively. The $S$
-is the input to powdr and $S'$ is the output. powder also outputs a function $E$
+is the input to powdr and $S'$ is the output. powdr also outputs a function $E$
 that maps $w$ to $w'$. Most of the variables in $w'$ have the same name as some
 variable in $w$---they takes its value. Other variables have an entry in the
 "derived variables", which explains how to compute them from $w$.
 
-The first condition is completeness, which says that when $S$ is satisfiable,
+The first condition is **completeness**, which says that when $S$ is satisfiable,
 $E$ gives a satisfying assignment for $S'$ with the same effects (stateful bus
 interactions). Formally:
 
 $$\forall w, \forall s, C(w) \wedge \sum(B(w)) = s
 \implies C'(E(w)) \wedge \sum(B'(E(w))) = s$$
 
-The second condition is soundness, which says that when $S'$ is satisfiable, $S$
+The second condition is **soundness**, which says that when $S'$ is satisfiable, $S$
 is too, and with the same effects. Formally, there should exists an efficient
 $I(w') \to w$ such that:
 
 $$\forall w', \forall s, C'(w') \wedge \sum(B'(w')) = s
 \implies C(I(w')) \wedge \sum(B(I(w'))) = s$$
 
-#### Connection to prior definitions from the literature
+### Worked example
+
+We will give equivalent two systems, as examples.
+
+The first system, $S = (B, C)$ is a slightly more complex version of the
+informal example above, with $b$ in place of $w$.
+
+> $d_0 = (2, x, y, z), m_0 = 1$
+>
+> $d_1 = (2, x, y, z), m_1 = b$
+>
+> $d_2 = (2, 8, y, z), m_2 = -b$
+>
+> $C = (x = 8 \wedge x + y + z = 12 \wedge b(b-1) = 0)$
+
+The second system $S' = (B', C')$ is:
+
+> $d'_0 = (2, 8, y', z'), m'_0 = 1$
+>
+> $C' = (y' + z' = 4)$
+
+Algorithmically, one optimizes $S$ into $S'$ by the following transformations:
+
+1. Since $x = 8$, substitute $8$ for $x$.
+2. Now, we have $d_1 = d_2$, and $m_1 = -m_2$, so remove both bus
+   interactions--they have equal data and their multiplicities sum to 0.
+3. $b$ appears in no bus interactions, and in no algebraic constraints with
+   other variables. Moreover, the constraints it does appear in are satisfiable.
+   Remove them.
+
+Now, we prove that these systems are equivalent under the prior definition. That
+is, we prove soundness and completeness.
+
+#### Soundness
+
+$I$ is defined as follows: $x \gets 8, y \gets y', z \gets z', b \gets 0$.
+
+Now, we must show that
+
+$$\forall w', \forall s, C'(w') \wedge \sum(B'(w')) = s
+\implies C(I(w')) \wedge \sum(B(I(w'))) = s$$
+
+Proof:
+
+* Fix $w' = (y', z')$.
+* Per $I$, we have
+  * $x = 8$
+  * $y = y'$
+  * $z = z'$
+  * $b = 0$
+* Fix $s$.
+* To show the $\implies$, assume
+  * $y' + z' = 4$
+  * $s = \mathsf{toMs}((2, 8, y', z'), 1)$
+* And now we need to show each of the following goals:
+  * $x = 8$
+    * we already have this
+  * $x + y + z = 12$
+    * we have this since we have $x=8, y=y', z=z', y'+z'=4$
+  * $b(b-1) = 0$
+    * we have this since $b=0$
+  * $s = \mathsf{toMs}((2, x, y, z), 1) + \mathsf{toMs}((2, x, y, z), b) + \mathsf{toMs}((2, 8, y, z), -b)$
+    * we have
+        $s = \mathsf{toMs}((2, 8, y', z'), 1)$
+    * which is
+        $s = \mathsf{toMs}((2, 8, y, z), 1)$
+    * since $x=0$, we have
+        $s = \mathsf{toMs}((2, x, y, z), 1)$
+    * since 0 multiplicities are an identity for $+$, we have
+        $s = \mathsf{toMs}((2, x, y, z), 1) + \mathsf{toMs}((2, x, y, z), 0) + \mathsf{toMs}((2, 8, y, z), 0)$
+    * since $b=0$, we have or goal:
+        $s = \mathsf{toMs}((2, x, y, z), 1) + \mathsf{toMs}((2, x, y, z), b) + \mathsf{toMs}((2, 8, y, z), -b)$
+
+#### Completeness
+
+$E$ is defined as $y' \gets y, z' \gets z$.
+
+We must show that
+
+$$\forall w, \forall s, C(w) \wedge \sum(B(w)) = s
+\implies C'(E(w)) \wedge \sum(B'(E(w))) = s$$
+
+* Fix $w = (x, y, z, b)$.
+* Per $E$, we have
+  * $y' = y$
+  * $z' = z$
+* Fix $s$.
+* To show the $\implies$, assume
+  * $x = 8$
+  * $x + y + z = 12$
+  * $s = \mathsf{toMs}((2, x, y, z), 1) + \mathsf{toMs}((2, x, y, z), b) + \mathsf{toMs}((2, 8, y, z), -b)$
+* And now we need to show each of the following goals:
+  * $x' + y' = 4$
+    * we have this from $x' = x, y' = y, x = 8, x + y + z = 12$
+  * $s = \mathsf{toMs}((2, 8, y', z'), 1)$
+    * we have:
+      $s = \mathsf{toMs}((2, x, y, z), 1) + \mathsf{toMs}((2, x, y, z), b) + \mathsf{toMs}((2, 8, y, z), -b)$
+    * since $x = 8$, we have:
+      $s = \mathsf{toMs}((2, 8, y, z), 1) + \mathsf{toMs}((2, 8, y, z), b) + \mathsf{toMs}((2, 8, y, z), -b)$
+    * by additive inverse for multiset multiplicities we have:
+      $s = \mathsf{toMs}((2, 8, y, z), 1)$
+    * by $y'=y,x'=x$, we have our goal:
+      $s = \mathsf{toMs}((2, 8, y', z'), 1)$
+
+### Connection to prior definitions from the literature
 
 Our definition is an instantiation of Ozdemir et al.'s definition of ZKP
 compiler correctness from the paper ["Bounded Verification for
@@ -334,9 +438,9 @@ our result, would also need to account for the zkVM's design. Our result would
 say something like (secure zkSNARK for plonkish constraints) + (correct zkVM) +
 (correct powdr) = (secure zkSNARK for RISC-V).
 
-#### Connections to Georg's definition
+### Connections to Georg's definition
 
-Our definition strengthens Georg's slightly. In that soundness definition,
+Our definition strengthens Georg's slightly. In his soundness definition,
 $I$ and $E$ are de-skolemized (their outputs are existentially quantified). This
 is equivalent to removing the requirement that $I$ and $E$ be efficient. An
 inefficient $E$ really wouldn't work, because then you can't compute the witness
