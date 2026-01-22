@@ -399,7 +399,7 @@ crepe! {
        Env(env),
        ProductConstraint(e, l, r),
        IsAffine(l),
-       AffinelyRelated(r, f, l, o), // r = f * l + o
+       AffinelyRelated(l, f, r, o), // r = f * l + o
        ({env.affine_var_count(l).unwrap_or(0) > 1});
 
     // QuadraticEquivalenceCandidatePair(expr1, expr2, offset1 / coeff, v1, v2) =>
