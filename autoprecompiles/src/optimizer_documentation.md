@@ -291,7 +291,7 @@ and all other keys to $0$. Then, we define $\Sigma(B)$ to be $\sum_i
 \textsf{toMs}(d_i, m_i)$
 
 Now we can define equivalence, which has two conditions. Assume two systems
-$S = (C, B)$ and $S' = (C', B')$ in variable $w$ and $w'$, respectively. The $S$
+$S = (C, B)$ and $S' = (C', B')$ in variable $w$ and $w'$, respectively. $S$
 is the input to powdr and $S'$ is the output. powdr also outputs a function $E$
 that maps $w$ to $w'$. Most of the variables in $w'$ have the same name as some
 variable in $w$---they takes its value. Other variables have an entry in the
@@ -313,9 +313,9 @@ $$\forall w', \forall s, C'(w') \wedge \Sigma(B'(w')) = s
 
 ### Worked example
 
-We will give equivalent two systems, as examples.
+We will give two equivalent systems, as examples.
 
-The first system, $S = (B, C)$ is a slightly more complex version of the
+The first system, $S = (C, B)$ is a slightly more complex version of the
 informal example above, with $b$ in place of $w$.
 
 > $d_0 = (2, x, y, z), m_0 = 1$
@@ -383,11 +383,11 @@ Proof:
         $s = \mathsf{toMs}((2, 8, y', z'), 1)$
     * which is
         $s = \mathsf{toMs}((2, 8, y, z), 1)$
-    * since $x=0$, we have
+    * since $x=8$, we have
         $s = \mathsf{toMs}((2, x, y, z), 1)$
     * since 0 multiplicities are an identity for $+$, we have
         $s = \mathsf{toMs}((2, x, y, z), 1) + \mathsf{toMs}((2, x, y, z), 0) + \mathsf{toMs}((2, 8, y, z), 0)$
-    * since $b=0$, we have or goal:
+    * since $b=0$, we have our goal:
         $s = \mathsf{toMs}((2, x, y, z), 1) + \mathsf{toMs}((2, x, y, z), b) + \mathsf{toMs}((2, 8, y, z), -b)$
 
 #### Completeness
@@ -415,8 +415,8 @@ $$\forall w, \forall w', \forall s, C(w) \wedge \Sigma(B(w)) = s \wedge w' = E(w
   * $x + y + z = 12$
   * $s = \mathsf{toMs}((2, x, y, z), 1) + \mathsf{toMs}((2, x, y, z), b) + \mathsf{toMs}((2, 8, y, z), -b)$
 * And now we need to show each of the following goals:
-  * $x' + y' = 4$
-    * we have this from $x' = x, y' = y, x = 8, x + y + z = 12$
+  * $y' + z' = 4$
+    * we have this from $y' = y, z' = z, x = 8, x + y + z = 12$
   * $s = \mathsf{toMs}((2, 8, y', z'), 1)$
     * we have:
       $s = \mathsf{toMs}((2, x, y, z), 1) + \mathsf{toMs}((2, x, y, z), b) + \mathsf{toMs}((2, 8, y, z), -b)$
