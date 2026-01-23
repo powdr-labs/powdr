@@ -269,15 +269,15 @@ produce the same values in the stateful bus interaction, the systems are equival
 Now let's proceed formally.
 
 Let $S = (C, B)$ be a system, defined over a vector of variables, $w$. Let
-$C$ be the constraints of the system: a formula over $w$. It includes the
+$C$ be the stateless constraints of the system: a formula over $w$. This includes the
 algebraic constraints, stateless buses, and any constraints enforced by stateful
-buses on their interactions. Let $B = ( (d_i, m_i))_{i=1}^{|B|}$ be the stateful
-bus interactions. It is a fixed-length sequence, indexed by $i$. Each
-interaction is a pair. The first component, $d_i$, is the data, a fixed-length
-list of field terms, so its type is $\mathbb{F}^+$ (sequences of positive
-length). Assume the bus ID is represented as the first entry in $d_i$, for
-simplicity. The second component of an interaction is $m_i$, the multiplicity,
-which is a field term.
+buses on their interactions. Let $B$ be the stateful bus interactions.
+It is a fixed-length sequence of interactions. Each interaction is a pair.
+The first component, $d$, is the data, a fixed-length
+list of algebraic expression, so its type is $\mathbb{F}^+$ (sequences of positive
+length). Assume the bus ID is represented as the first entry in $d$, for
+simplicity. The second component of an interaction is $m$, the multiplicity,
+which is an algebraic expression.
 
 The bus interactions will be aggregated into a special kind of multiset. We
 refer to a map from $\mathbb{F}^+ \to \mathbb{F}$ as a “field multiset” (aka
@@ -285,10 +285,10 @@ refer to a map from $\mathbb{F}^+ \to \mathbb{F}$ as a “field multiset” (aka
 which each key in the map appears with multiplicity equal to its value. Note
 that these multisets can be added pointwise. That is, for multisets $m$ and
 $m'$, their sum $m + m'$ maps each key $k$ to $m(k) + m'(k)$. We interpret a bus
-interactions as a multiset with one key and the specified multiplicity. That is,
-we define $\textsf{toMs}(d, m)$ to be the field multiset that sends $d$ to $m$
-and all other keys to $0$. Then, we define $\Sigma(B)$ to be $\sum_i
-\textsf{toMs}(d_i, m_i)$
+interaction as a multiset with one key and the specified multiplicity. That is,
+we define $\textsf{toMs}(d, m)$ to be the field multiset that maps $d$ to $m$
+and all other keys to $0$. Then, we define $\Sigma(B)$ to be $\sum_{(d,m) \in B}
+\textsf{toMs}(d, m)$
 
 Now we can define equivalence, which has two conditions. Assume two systems
 $S = (C, B)$ and $S' = (C', B')$ in variable $w$ and $w'$, respectively. $S$
@@ -495,7 +495,10 @@ Currently, we know of one unformalized requirement:
   changed to respect it.
 
   We expect that it will be easy to very a requirement like this one once we
-  figure out exactly what we need to verify.
+  figure out exactly what we need to verify. It is also possible that this
+  requirement will end up being something that is not the responsibility of the
+  optimizer and is instead the responsibility of a different part of the
+  pipeline.
 
 ## Optimization Steps
 
