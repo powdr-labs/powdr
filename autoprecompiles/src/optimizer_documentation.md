@@ -468,7 +468,7 @@ existential soundness.
 In the foregoing, we noted that stateless bus interactions and algebraic
 constraints are represented by $C$. Now, we discuss $C$ in more detail.
 
-The algebraic constraints are just QF_FF predicates over the variables $w$. More
+In terms of SMT theories, the algebraic constraints are just QF_FF (quantifier-free over a finite field) predicates over the variables $w$. More
 specifically, they are $\mathbb{F}$ equalities over terms constructed with $+$
 and $\times$ in $\mathbb{F}$.
 
