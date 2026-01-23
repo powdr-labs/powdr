@@ -1,10 +1,10 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     fmt::Display,
 };
 
 use itertools::{Either, Itertools};
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 /// Tools to detect basic blocks in a program
@@ -182,6 +182,21 @@ pub struct PGOBlocks<I> {
     pub execution_bb_runs: Option<Vec<Vec<u64>>>,
 }
 
+/// Find all superblocks up to max_len in run and count their ocurrences
+fn superblocks_in_run(run: &[u64], max_len: usize) -> HashMap<Vec<u64>, u32> {
+    let mut superblocks_in_run = HashMap::new();
+    // first, we identify the superblocks in this run
+    for len in 1..=std::cmp::min(max_len, run.len()) {
+        superblocks_in_run.extend(run.windows(len).map(|w| (w.to_vec(), 0)));
+    }
+    // then we count their ocurrences
+    for (sblock, tally) in superblocks_in_run.iter_mut() {
+        let count = count_non_overlapping(&run, sblock);
+        *tally += count;
+    }
+    superblocks_in_run
+}
+
 /// Uses the PC sequence of a given execution to detect superblocks.
 /// Returns all blocks and superblocks (of up a to maximum sequence length), together with their execution counts.
 /// Ignores invalid APC blocks (i.e., single instruction) and blocks that were never executed.
@@ -204,75 +219,51 @@ pub fn generate_superblocks<I: Clone>(
         .map(|(idx, bb)| (bb.start_pc, idx))
         .collect();
 
-    // Set of all superblocks seen. Each superblock is identified by the starting PCs of its basic blocks.
-    let mut seen_superblocks: HashSet<Vec<u64>> = HashSet::new();
     // List of basic block runs in the execution (i.e., sequences of BBs without single-instruction BBs in between).
     // Each BB is identified by its starting PC
     let mut execution_bb_runs = vec![];
     let mut current_run = vec![];
 
-    // here, we go over the execution PCs to:
-    // (1) identify basic block runs
-    // (2) collect the superblocks seen in the execution
+    // split execution into basic block runs
     for pc in execution_pc_list {
         let Some(&bb_idx) = bb_start_pc_to_idx.get(pc) else {
             // still in the same BB
             continue;
         };
-
         // if starting a single instruction BB (i.e., invalid for APC), end current run
         if basic_blocks[bb_idx].statements.len() <= 1 {
             if !current_run.is_empty() {
-                // add superblocks seen in this run
-                for len in 1..=std::cmp::min(max_len, current_run.len()) {
-                    seen_superblocks.extend(current_run.windows(len).map(|w| w.to_vec()));
-                }
                 execution_bb_runs.push(std::mem::take(&mut current_run));
             }
             continue;
         }
-
         current_run.push(*pc);
     }
-
-    // end the last run
     if !current_run.is_empty() {
-        // add superblocks seen in this run
-        for len in 1..=std::cmp::min(max_len, current_run.len()) {
-            seen_superblocks.extend(current_run.windows(len).map(|w| w.to_vec()));
-        }
         execution_bb_runs.push(std::mem::take(&mut current_run));
     }
 
+    // find and count the ocurrences of superblocks of up to max_len in each run
+    let superblock_counts = execution_bb_runs.par_iter().map(|run| {
+        superblocks_in_run(run, max_len)
+    }).reduce(HashMap::new, |mut a, b| {
+        for (sblock, count) in b {
+            *a.entry(sblock).or_insert(0) += count;
+        }
+        a
+    });
+
     tracing::info!(
         "Found {} blocks in {} basic block runs! Took {:?}",
-        seen_superblocks.len(),
+        superblock_counts.len(),
         execution_bb_runs.len(),
         start.elapsed(),
     );
 
-    tracing::info!("Computing execution counts for each block...");
-    let start = std::time::Instant::now();
-    // here, we go over the BB runs to count how many times each superblock can be executed
-    let superblock_count: HashMap<_, _> = seen_superblocks
-        .into_par_iter()
-        .filter_map(|sblock| {
-            let count: u32 = execution_bb_runs
-                .iter()
-                .map(|run| count_non_overlapping(run, &sblock))
-                .sum();
-            if count > 0 {
-                Some((sblock, count))
-            } else {
-                None
-            }
-        })
-        .collect();
-
     // build the resulting BasicBlock's and counts
     let mut super_blocks = vec![];
     let mut counts = vec![];
-    superblock_count.into_iter().for_each(|(sblock, count)| {
+    superblock_counts.into_iter().for_each(|(sblock, count)| {
         // convert PCs into BasicBlocks
         let mut blocks = sblock
             .iter()
@@ -286,8 +277,6 @@ pub fn generate_superblocks<I: Clone>(
         }
         counts.push(count);
     });
-
-    tracing::info!("Counting done, took {:?}", start.elapsed());
 
     PGOBlocks {
         blocks: super_blocks,
