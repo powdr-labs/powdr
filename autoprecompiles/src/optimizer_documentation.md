@@ -274,7 +274,7 @@ algebraic constraints, stateless buses, and any constraints enforced by stateful
 buses on their interactions. Let $B$ be the stateful bus interactions.
 It is a fixed-length sequence of interactions. Each interaction is a pair.
 The first component, $d$, is the data, a fixed-length
-list of algebraic expression, so its type is $\mathbb{F}^+$ (sequences of positive
+list of algebraic expressions, so its type is $\mathbb{F}^+$ (sequences of positive
 length). Assume the bus ID is represented as the first entry in $d$, for
 simplicity. The second component of an interaction is $m$, the multiplicity,
 which is an algebraic expression.
@@ -286,17 +286,18 @@ which each key in the map appears with multiplicity equal to its value. Note
 that these multisets can be added pointwise. That is, for multisets $m$ and
 $m'$, their sum $m + m'$ maps each key $k$ to $m(k) + m'(k)$. We interpret a bus
 interaction as a multiset with one key and the specified multiplicity. That is,
-we define $\textsf{toMs}(d, m)$ to be the field multiset that maps $d$ to $m$
-and all other keys to $0$. Then, we define $\Sigma(B)$ to be $\sum_{(d,m) \in B}
-\textsf{toMs}(d, m)$
+we define $\textsf{toMs}(d, m)$ to be the field multiset that maps key $d$ to
+value $m$ and all other keys to value $0$. Then, we define $\Sigma(B)$ to be
+$\sum_{(d,m) \in B} \textsf{toMs}(d, m)$
 
-Now we can define equivalence, which has two conditions. Assume two systems
-$S = (C, B)$ and $S' = (C', B')$ in variable $w$ and $w'$, respectively. $S$
-is the input to powdr and $S'$ is the output. powdr also outputs an efficiently
-polytime function $E$ that maps $w$ to $w'$. Most of the variables in $w'$ have
-the same name as some variable in $w$---they takes its value. Other variables
-have an entry in the "derived variables", which explains how to compute them
-from $w$.
+Now we can define equivalence, between systems. Assume two systems $S = (C, B)$
+and $S' = (C', B')$ in variable $w$ and $w'$, respectively. $S$ is the input to
+powdr and $S'$ is the output. powdr also outputs an efficiently polytime
+function $E$ that maps $w$ to $w'$. Most of the variables in $w'$ have the same
+name as some variable in $w$---they takes its value. Other variables have an
+entry in the "derived variables", which explains how to compute them from $w$.
+
+Equivalence has two conditions.
 
 The first condition is **completeness**, which says that when $S$ is satisfiable,
 $E$ gives a satisfying assignment for $S'$ with the same effects (stateful bus
@@ -310,7 +311,7 @@ The second condition is **soundness**, which says that when $S'$ is satisfiable,
 is too, and with the same effects. Formally, there should exists an efficient
 $I(w') \to w$ such that: for all $w'$ and $s$,
 if $C'(w') \wedge \Sigma(B'(w')) = s$,
-then $C(w) \wedge \Sigma(B(w)) = s$,
+then $C(w) \wedge \Sigma(B(w)) = s$.
 
 ### Worked example
 
@@ -349,21 +350,21 @@ is, we prove soundness and completeness.
 
 $I(w') \to w$ is defined as follows: $x \gets 8, y \gets y', z \gets z', b \gets 0$.
 
-Roughly, we must show that there is some $I(w') \to w$ such that:
+Roughly, we must show:
 
-$$\forall w', \forall s, C'(w') \wedge \Sigma(B'(w')) = s
+$$\forall w', \forall s, C'(w') \wedge \Sigma(B'(w')) = s \land w = I(w')
 \implies C(w) \wedge \Sigma(B(w)) = s$$
 
 Proof:
 
 * Fix $w' = (y', z')$.
 * Fix $s$.
-* Since $w = I(w')$, we have:
-  * $x = 8$
-  * $y = y'$
-  * $z = z'$
-  * $b = 0$
 * To show the $\implies$, assume
+  * $w = I(w')$, that is:
+    * $x = 8$
+    * $y = y'$
+    * $z = z'$
+    * $b = 0$
   * $y' + z' = 4$
   * $s = \mathsf{toMs}((2, 8, y', z'), 1)$
 * And now we need to show each of the following goals:
@@ -389,14 +390,9 @@ Proof:
 
 $E$ is defined as $y' \gets y, z' \gets z$.
 
-We must show that
+Roughly, we must show:
 
-$$\forall w, \forall s, C(w) \wedge \Sigma(B(w)) = s
-\implies C'(E(w)) \wedge \Sigma(B'(E(w))) = s$$
-
-Again, we will instead show the equivalent
-
-$$\forall w, \forall w', \forall s, C(w) \wedge \Sigma(B(w)) = s \wedge w' = E(w)
+$$\forall w, \forall s, C(w) \wedge \Sigma(B(w)) = s \wedge w' = E(w)
 \implies C'(w') \wedge \Sigma(B'(w')) = s$$
 
 Proof:
