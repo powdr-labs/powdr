@@ -43,6 +43,9 @@ powdr-openvm-hints-guest = { path = "./openvm/extensions/hints-guest", version =
 powdr-openvm-hints-transpiler = { path = "./openvm/extensions/hints-transpiler", version = "0.1.4" }
 powdr-openvm-hints-circuit = { path = "./openvm/extensions/hints-circuit", version = "0.1.4" }
 
+# external deps
+itertools = "0.14"
+
 # openvm
 openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1" }
 openvm-build = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1" }
