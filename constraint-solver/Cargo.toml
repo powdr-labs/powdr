@@ -10,7 +10,7 @@ repository = { workspace = true }
 [dependencies]
 powdr-number.workspace = true
 
-itertools = "0.13"
+itertools.workspace = true
 num-traits = "0.2.15"
 derive_more = "0.99.17"
 auto_enums = "0.8.5"
