@@ -180,6 +180,7 @@ crepe! {
       Product(e, l, r);
 
     // SameVars(e1, e2) => e1 and e2 are affine expressions with the same variables.
+    // TODO could do SubSetOfVars in both directions.
     struct SameVars(Expr, Expr);
     SameVars(e1, e2) <-
       AffineExpression(e1, _, v, _),
@@ -189,6 +190,21 @@ crepe! {
       ExpressionSumHeadTail(e1, head1, tail1),
       SameVars(head1, head2),
       ExpressionSumHeadTail(e2, head2, tail2);
+
+    // SubsetOfVars(e1, e2) => e1 is an affine expressions and all variables in e1 also appear in e2
+    struct SubsetOfVars(Expr, Expr);
+    SubsetOfVars(e1, e2) <-
+      AffineExpression(e1, _, v, _),
+      ContainsVariable(e2, v);
+    SubsetOfVars(e1, e2) <-
+      SubsetOfVars(tail1, tail2),
+      ExpressionSumHeadTail(e1, head1, tail1),
+      LinearExpression(head1, v, _),
+      ExpressionSumHeadTail(e2, head2, tail2),
+      LinearExpression(head2, v, _);
+    SubsetOfVars(e1, e2) <-
+      SubsetOfVars(e1, tail2),
+      ExpressionSumHeadTail(e2, _, tail2);
 
     // AllVarsBoolean(e) => e is an affine expressian and all variables in e are boolean variables
     struct AllVarsBoolean(Expr);
@@ -412,22 +428,56 @@ crepe! {
       AllVarsBoolean(e),
       ((f + c).is_zero());
 
+    // We want to match expressions of the form f_1 * v_1 + f_2 * v_2 + ... + f_n * v_n + c = 0
+    // where all v_i are boolean and exactly one of the f_i equals -c.
+    // We do this in two stages: Expressions of that form where none of the f_i equals -c and then
+    // transition to the case where one of them does.
+
+    // BooleanSumStage0(e, f) => e is an affine expression of boolean variables where
+    //   the constant term is -f and none of the coefficients is equal to f.
+    struct BooleanSumStage0<T: FieldElement>(Expr, T);
+    BooleanSumStage0(e, -c) <- Constant(e, c);
+    BooleanSumStage0(e, f) <-
+      BooleanSumStage0(tail, f),
+      ExpressionSumHeadTail(e, head, tail),
+      LinearExpression(head, v, coeff),
+      BooleanVar(v),
+      (coeff != f);
+
+    // BooleanSumStage1(e, v, f) => e is an affine expression of boolean variables where
+    //   the constant term is -f and f appears exactly once as coefficient of a variable and that
+    //   variable is v.
+    struct BooleanSumStage1<T: FieldElement>(Expr, Var, T);
+    BooleanSumStage1(e, v, f) <-
+      BooleanSumStage0(tail, f),
+      ExpressionSumHeadTail(e, head, tail),
+      LinearExpression(head, v, f),
+      BooleanVar(v);
+    BooleanSumStage1(e, v, f) <-
+      BooleanSumStage1(tail, v, f),
+      ExpressionSumHeadTail(e, head, tail),
+      LinearExpression(head, v2, coeff),
+      BooleanVar(v2),
+      (coeff != f);
+
+
     Assignment(v, T::from(1)) <-
       ExactlyOneSet(e1),
-      SameVars(e1, e2),
+      Env(env),
       AlgebraicConstraint(e2),
-      IsAffine(e2),
-      HasSummand(e2, c_e), Constant(c_e, c), // TODO need to check if HasSummand can also extract the constant part
-      HasSummand(e2, v_e), LinearExpression(v_e, v, -c);
+      SubsetOfVars(e2, e1),
+      BooleanSumStage1(e2, v, _),
+      ({println!("ExactlyOneSet found for expr {}, {} = 1", env.format_expr(e2), env.format_var(v)); true})
+      ;
     Assignment(v, T::from(0)) <-
-      ExactlyOneSet(e1),
       AlgebraicConstraint(e1),
-      SameVars(e1, e2),
+      ExactlyOneSet(e1),
       AlgebraicConstraint(e2),
-      IsAffine(e2),
-      HasSummand(e2, c_e), Constant(c_e, c1), // TODO need to check if HasSummand can also extract the constant part
-      HasSummand(e2, v_e), LinearExpression(v_e, v, c2),
-      (c1 != c2);
+      SubsetOfVars(e2, e1),
+      BooleanSumStage1(e2, v2, _),
+      HasSummand(e2, summand),
+      LinearExpression(summand, v, _),
+      (v != v2);
 
 
     ///////////////////////////////// OUTPUT ACTIONS //////////////////////////

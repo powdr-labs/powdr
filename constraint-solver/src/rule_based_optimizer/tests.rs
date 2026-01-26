@@ -405,6 +405,8 @@ fn one_hot_flags() {
         assert_zero(
             v("flag0") * c(0) + v("flag1") * c(1) + v("flag2") * c(2) + v("flag3") * c(3) - c(2),
         ),
+        assert_zero(v("flag0") * (v("x") - v("y"))),
+        assert_zero(v("flag2") * (v("r") - v("t"))),
     ]);
 
     let optimized_system = rule_based_optimization(
@@ -415,11 +417,5 @@ fn one_hot_flags() {
         None,
     );
 
-    expect![[r#"(flag0) * (flag0 - 1) = 0
-(flag1) * (flag1 - 1) = 0
-(flag2) * (flag2 - 1) = 0
-(flag3) * (flag3 - 1) = 0
-flag0 + flag1 + flag2 + flag3 - 1 = 0
-flag1 + 2 * flag2 + 3 * flag3 - 2 = 0"#]]
-    .assert_eq(&optimized_system.0.to_string());
+    expect!["r - t = 0"].assert_eq(&optimized_system.0.to_string());
 }
