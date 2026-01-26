@@ -78,7 +78,8 @@ impl ExportOptions {
         suffix: Option<&str>,
         bus_map: &BusMap<A::CustomBusTypes>,
     ) {
-        let path = self.write_to_next_file(&instructions_to_powdr_field::<A>(apc.clone()), suffix);
+        let apc = instructions_to_powdr_field::<A>(apc.clone());
+        let path = self.write_to_next_file(&APCWithBusMap { apc: &apc, bus_map }, suffix);
 
         // For debugging, also serialize a human-readable version of the final precompile
         let rendered = apc.machine.render(bus_map);
@@ -234,4 +235,11 @@ impl<T> PcStep for SimpleInstruction<T> {
     fn pc_step() -> u32 {
         unimplemented!()
     }
+}
+
+#[derive(Serialize, Deserialize)]
+struct APCWithBusMap<Apc, BusMap> {
+    #[serde(flatten)]
+    pub apc: Apc,
+    pub bus_map: BusMap,
 }
