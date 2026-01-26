@@ -26,14 +26,12 @@ def load_apc_data(json_path, effectiveness_type='cost'):
     rows = []
     for item in data:
         cost_before, cost_after = get_before_after_cost(item, effectiveness_type)
-        assert cost_before == item["width_before"]
         rows.append({
             'start_pc': item['original_block']['start_pc'],
             'cost_before': cost_before * item['execution_frequency'],
             'cost_after': cost_after * item['execution_frequency'],
             'effectiveness': cost_before / cost_after,
             'instructions': len(item['original_block']['statements']),
-            'software_version_cells': item['width_before'] * item['execution_frequency'],
         })
 
     return pd.DataFrame(rows)
@@ -53,12 +51,19 @@ def plot_effectiveness(json_path, filename=None, effectiveness_type='cost'):
     """Generate bar plot of effectiveness data."""
     df = load_apc_data(json_path, effectiveness_type)
     total_cost_before = df['cost_before'].sum()
-    total_cost_after = df['cost_after'].sum()
 
-    print(f"Total cost before: {total_cost_before}")
+    # Print top 10 basic blocks
+    top10 = df.nlargest(10, 'cost_before')[['start_pc', 'cost_before', 'effectiveness', 'instructions']]
+    print(top10)
+    top10['cost_before'] = top10['cost_before'].apply(format_cell_count)
+    top10.columns = ['Start PC', 'Cost before', 'Effectiveness', 'Instructions']
+    print(f"\nTop 10 Basic Blocks by {effectiveness_type}:")
+    print(top10.to_string(index=False))
+    print()
     
     # Calculate weighted mean effectiveness
-    mean_effectiveness = (df['effectiveness'] * df['cost_after']).sum() / total_cost_after
+    mean_effectiveness = (df['effectiveness'] * df['cost_before']).sum() / total_cost_before
+    print(f"Mean effectiveness: {mean_effectiveness:.2f}")
     
     # Separate large and small APCs (< 0.1% threshold)
     threshold = total_cost_before * 0.001
