@@ -121,6 +121,15 @@ crepe! {
     Expression(head) <- ExpressionSumHeadTail(_, head, _);
     Expression(tail) <- ExpressionSumHeadTail(_, _, tail);
 
+    // SimpleSum(e, f, c) => e is of the form f * v_1 + f * v_2 + ... + f * v_n + c,
+    //                      n >= 1
+    struct SimpleSum<T: FieldElement>(Expr, T, T);
+    SimpleSum(e, f, c) <-
+      ExpressionSumHeadTail(e, head, tail),
+      SimpleSum(tail, f, c),
+      LinearExpression(head, _, f);
+    SimpleSum(e, f, c) <- AffineExpression(e, f, _, c);
+
     // IsAffine(e) => e is an affine expression, i.e. does not have super-linear parts.
     struct IsAffine(Expr);
     IsAffine(e) <-
@@ -136,6 +145,14 @@ crepe! {
     HasSummand(e, summand) <-
       ExpressionSumHeadTail(e, _, tail),
       HasSummand(tail, summand);
+
+    // AffineConstant(e, c) => e is an affine expression with constant part c
+    struct AffineConstant<T: FieldElement>(Expr, T);
+    AffineConstant(e, c) <-
+      AffineExpression(e, _, _, c);
+    AffineConstant(e, c) <-
+      AffineConstant(tail, c),
+      ExpressionSumHeadTail(e, _, tail);
 
     // DifferBySummand(e1, e2, s) => e1 = e2 + s and `s` is not a sum.
     // Note that `e1` and `e2` must "pre-exist" as expressions, i.e.
@@ -162,6 +179,26 @@ crepe! {
       AlgebraicConstraint(e),
       Product(e, l, r);
 
+    // SameVars(e1, e2) => e1 and e2 are affine expressions with the same variables.
+    struct SameVars(Expr, Expr);
+    SameVars(e1, e2) <-
+      AffineExpression(e1, _, v, _),
+      AffineExpression(e2, _, v, _);
+    SameVars(e1, e2) <-
+      SameVars(tail1, tail2),
+      ExpressionSumHeadTail(e1, head1, tail1),
+      SameVars(head1, head2),
+      ExpressionSumHeadTail(e2, head2, tail2);
+
+    // AllVarsBoolean(e) => e is an affine expressian and all variables in e are boolean variables
+    struct AllVarsBoolean(Expr);
+    AllVarsBoolean(e) <-
+      AffineExpression(e, _, v, _),
+      BooleanVar(v);
+    AllVarsBoolean(e) <-
+      ExpressionSumHeadTail(e, head, tail),
+      AllVarsBoolean(head),
+      AllVarsBoolean(tail);
 
     //////////////////////// RANGE CONSTRAINTS //////////////////////////
 
@@ -212,6 +249,10 @@ crepe! {
       (l < r),
       Solvable(l, v, c1),
       Solvable(r, v, c2);
+
+    // BooleanVar(v) => v is 0 or 1
+    struct BooleanVar(Var);
+    BooleanVar(v) <- RangeConstraintOnVar(v, RangeConstraint::from_mask(1));
 
     //////////////////// RANGE PROPERTIES OF EXPRESSIONS //////////////////////
     // NonNegativeExpression(e) => range of e is [0, a] for some a < P - 1
@@ -363,14 +404,30 @@ crepe! {
 
     ///////////////////////////////// ONE-HOT FLAG ///////////////////////////
 
+    // ExacttlyOneSet(e) => exactly one variable in e is one, all others are zero.
     struct ExactlyOneSet(Expr);
-    ExactlyOneSet(e) <- Constant(e, T::from(1));
-
     ExactlyOneSet(e) <-
-    ExpressionSumHeadTail(e, head, tail),
-    AtMostOneSet(tail),
-    LinearExpression(head, v, T::from(1)),
-    BooleanVar(v);
+      AlgebraicConstraint(e),
+      SimpleSum(e, f, c),
+      AllVarsBoolean(e),
+      ((f + c).is_zero());
+
+    Assignment(v, T::from(1)) <-
+      ExactlyOneSet(e1),
+      SameVars(e1, e2),
+      AlgebraicConstraint(e2),
+      IsAffine(e2),
+      HasSummand(e2, c_e), Constant(c_e, c), // TODO need to check if HasSummand can also extract the constant part
+      HasSummand(e2, v_e), LinearExpression(v_e, v, -c);
+    Assignment(v, T::from(0)) <-
+      ExactlyOneSet(e1),
+      AlgebraicConstraint(e1),
+      SameVars(e1, e2),
+      AlgebraicConstraint(e2),
+      IsAffine(e2),
+      HasSummand(e2, c_e), Constant(c_e, c1), // TODO need to check if HasSummand can also extract the constant part
+      HasSummand(e2, v_e), LinearExpression(v_e, v, c2),
+      (c1 != c2);
 
 
     ///////////////////////////////// OUTPUT ACTIONS //////////////////////////
