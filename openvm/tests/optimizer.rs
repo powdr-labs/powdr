@@ -1,7 +1,8 @@
 use expect_test::expect;
 use powdr_autoprecompiles::bus_map::BusMap;
 use powdr_autoprecompiles::optimizer::optimize;
-use powdr_autoprecompiles::{ColumnAllocator, SymbolicMachine};
+use powdr_autoprecompiles::symbolic_machine::SymbolicMachine;
+use powdr_autoprecompiles::ColumnAllocator;
 use powdr_number::BabyBearField;
 use powdr_openvm::bus_map::{
     OpenVmBusType, DEFAULT_BITWISE_LOOKUP, DEFAULT_EXECUTION_BRIDGE, DEFAULT_MEMORY,

@@ -3,15 +3,20 @@ use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 pub use crate::equivalence_classes::{EquivalenceClass, Partition};
 
 use crate::{
     adapter::Adapter,
-    blocks::BasicBlock,
+    blocks::{BasicBlock, PcStep},
     expression::{AlgebraicExpression, AlgebraicReference},
-    SymbolicConstraint,
+    optimistic::{
+        algebraic_references::BlockCellAlgebraicReferenceMapper,
+        config::optimistic_precompile_config,
+    },
+    symbolic_machine::SymbolicConstraint,
 };
 
 /// "Constraints" that were inferred from execution statistics. They hold empirically
@@ -22,12 +27,22 @@ pub struct EmpiricalConstraints {
     /// The range might not hold in 100% of cases.
     pub column_ranges_by_pc: BTreeMap<u32, Vec<(u32, u32)>>,
     /// For each basic block (identified by its starting PC), the equivalence classes of columns.
-    /// Each equivalence class is a list of (instruction index in block, column index).
     pub equivalence_classes_by_block: BTreeMap<u64, Partition<BlockCell>>,
     pub debug_info: DebugInfo,
     /// Count of how many times each program counter was executed in the sampled executions.
     /// This can be used to set a threshold for applying constraints only to frequently executed PCs.
     pub pc_counts: BTreeMap<u32, u64>,
+}
+
+/// Empirical constraints for a specific basic block.
+pub struct BlockEmpiricalConstraints {
+    /// The starting program counter of the basic block.
+    block_pc: u64,
+    /// For each program counter in the block, the range constraints for each column, if any.
+    /// The range might not hold in 100% of cases.
+    pub column_ranges_by_pc: BTreeMap<u32, BTreeMap<usize, (u32, u32)>>,
+    /// The equivalence classes of columns in the block.
+    pub equivalence_classes: Partition<BlockCell>,
 }
 
 /// Debug information mapping AIR ids to program counters and column names.
@@ -79,30 +94,93 @@ impl EmpiricalConstraints {
         }
     }
 
+    /// Extracts the empirical constraints relevant for a specific basic block.
+    pub fn for_block<I: PcStep>(&self, block: &BasicBlock<I>) -> BlockEmpiricalConstraints {
+        let block_pc: u32 = block.start_pc.try_into().unwrap();
+        let next_block_pc = block_pc + <I as PcStep>::pc_step() * (block.statements.len() as u32);
+
+        BlockEmpiricalConstraints {
+            block_pc: block.start_pc,
+            column_ranges_by_pc: self
+                .column_ranges_by_pc
+                .range(block_pc..next_block_pc)
+                .map(|(&pc, ranges)| (pc, ranges.iter().cloned().enumerate().collect()))
+                .collect(),
+            equivalence_classes: self
+                .equivalence_classes_by_block
+                .get(&(block_pc as u64))
+                .cloned()
+                .unwrap_or_default(),
+        }
+    }
+
     /// Returns a new `EmpiricalConstraints` instance containing only the constraints
     /// (both range and equivalence) that are based on a number of executions greater
-    /// than or equal to `threshold`. This should mitigate overfitting to rare execution paths.
-    pub fn apply_pc_threshold(&self, threshold: u64) -> Self {
+    /// than or equal to a threshold passed in the `POWDR_OP_EXECUTION_COUNT_THRESHOLD`
+    /// environment variable (or `DEFAULT_EXECUTION_COUNT_THRESHOLD`).
+    /// This should mitigate overfitting to rare execution paths.
+    pub fn apply_pc_threshold(self) -> Self {
+        let threshold = optimistic_precompile_config().execution_count_threshold;
         EmpiricalConstraints {
             column_ranges_by_pc: self
                 .column_ranges_by_pc
-                .iter()
+                .into_iter()
                 .filter(|(pc, _)| self.pc_counts.get(pc).cloned().unwrap_or(0) >= threshold)
-                .map(|(pc, ranges)| (*pc, ranges.clone()))
                 .collect(),
             equivalence_classes_by_block: self
                 .equivalence_classes_by_block
-                .iter()
-                .filter(|(&block_pc, _)| {
+                .into_iter()
+                .filter(|&(block_pc, _)| {
                     // For equivalence classes, it is enough to check the pc_counts of the first
                     // instruction in the block, as all other instruction will be executed at least
                     // as often.
                     self.pc_counts.get(&(block_pc as u32)).cloned().unwrap_or(0) >= threshold
                 })
-                .map(|(block_pc, classes)| (*block_pc, classes.clone()))
                 .collect(),
             pc_counts: self.pc_counts.clone(),
             debug_info: self.debug_info.clone(),
+        }
+    }
+}
+
+impl BlockEmpiricalConstraints {
+    /// Returns a new `BlockEmpiricalConstraints` instance containing only the
+    /// constraints (both range and equivalence) for which the provided
+    /// predicate on `BlockCell`s returns true.
+    pub fn filtered(self, predicate: impl Fn(&BlockCell) -> bool, pc_step: u32) -> Self {
+        let column_ranges_by_pc = self
+            .column_ranges_by_pc
+            .into_iter()
+            .map(|(pc, ranges)| {
+                let instruction_idx = ((pc - (self.block_pc as u32)) / pc_step) as usize;
+                let ranges = ranges
+                    .into_iter()
+                    .enumerate()
+                    .filter_map(|(col_idx, range)| {
+                        let cell = BlockCell::new(instruction_idx, col_idx);
+                        // Keep the range only if the predicate holds for the cell
+                        predicate(&cell).then_some(range)
+                    })
+                    .collect();
+                (pc, ranges)
+            })
+            .collect();
+        let equivalence_classes = self
+            .equivalence_classes
+            .to_classes()
+            .into_iter()
+            .map(|class| {
+                // Remove cells from the equivalence class for which the predicate does not hold
+                class
+                    .into_iter()
+                    .filter(|cell| predicate(cell))
+                    .collect_vec()
+            })
+            .collect();
+        Self {
+            block_pc: self.block_pc,
+            column_ranges_by_pc,
+            equivalence_classes,
         }
     }
 }
@@ -155,14 +233,10 @@ impl BlockCell {
     }
 }
 
-/// For any program line that was not executed at least this many times in the traces,
-/// discard any empirical constraints associated with it.
-const DEFAULT_EXECUTION_COUNT_THRESHOLD: u64 = 100;
-
 /// Generates symbolic constraints based on empirical constraints for a given basic block.
 pub struct ConstraintGenerator<'a, A: Adapter> {
-    empirical_constraints: EmpiricalConstraints,
-    algebraic_references: BTreeMap<BlockCell, AlgebraicReference>,
+    empirical_constraints: BlockEmpiricalConstraints,
+    algebraic_references: BlockCellAlgebraicReferenceMapper,
     block: &'a BasicBlock<A::Instruction>,
 }
 
@@ -171,41 +245,15 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
     ///
     /// Arguments:
     /// - `empirical_constraints`: The empirical constraints to use.
-    /// - `subs`: A mapping from instruction index and column index to polynomial IDs.
-    ///   This would typically come from a `ColumnAllocator`.
-    /// - `columns`: An iterator over the algebraic references for the columns in the block.
+    /// - `algebraic_references`: The mapping from block cells to algebraic references.
     /// - `block`: The basic block for which to generate constraints.
     pub fn new(
-        empirical_constraints: &EmpiricalConstraints,
-        subs: &[Vec<u64>],
-        columns: impl Iterator<Item = AlgebraicReference>,
+        empirical_constraints: BlockEmpiricalConstraints,
+        algebraic_references: BlockCellAlgebraicReferenceMapper,
         block: &'a BasicBlock<A::Instruction>,
     ) -> Self {
-        let poly_id_to_block_cell = subs
-            .iter()
-            .enumerate()
-            .flat_map(|(instr_index, subs)| {
-                subs.iter().enumerate().map(move |(col_index, &poly_id)| {
-                    (poly_id, BlockCell::new(instr_index, col_index))
-                })
-            })
-            .collect::<BTreeMap<_, _>>();
-        let algebraic_references = columns
-            .map(|r| (*poly_id_to_block_cell.get(&r.id).unwrap(), r.clone()))
-            .collect::<BTreeMap<_, _>>();
-
-        let execution_count_threshold = std::env::var("POWDR_OP_EXECUTION_COUNT_THRESHOLD")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(DEFAULT_EXECUTION_COUNT_THRESHOLD);
-        tracing::info!(
-            "Using execution count threshold: {}",
-            execution_count_threshold
-        );
-
         Self {
-            empirical_constraints: empirical_constraints
-                .apply_pc_threshold(execution_count_threshold),
+            empirical_constraints,
             algebraic_references,
             block,
         }
@@ -213,7 +261,7 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
 
     fn get_algebraic_reference(&self, block_cell: &BlockCell) -> AlgebraicReference {
         self.algebraic_references
-            .get(block_cell)
+            .get_algebraic_reference(block_cell)
             .cloned()
             .unwrap_or_else(|| {
                 panic!(
@@ -223,12 +271,20 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
             })
     }
 
+    /// Generates all equality constraints
+    pub fn generate_constraints(&self) -> Vec<EqualityConstraint<A::PowdrField>> {
+        self.range_constraints()
+            .into_iter()
+            .chain(self.equivalence_constraints())
+            .collect_vec()
+    }
+
     /// Generates constraints of the form `var = <value>` for columns whose value is
     /// always the same empirically.
     // TODO: We could also enforce looser range constraints.
     // This is a bit more complicated though, because we'd have to add bus interactions
     // to actually enforce them.
-    pub fn range_constraints(&self) -> Vec<SymbolicConstraint<<A as Adapter>::PowdrField>> {
+    fn range_constraints(&self) -> Vec<EqualityConstraint<A::PowdrField>> {
         let mut constraints = Vec::new();
 
         for i in 0..self.block.statements.len() {
@@ -237,15 +293,16 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
             else {
                 continue;
             };
-            for (col_index, (min, max)) in range_constraints.iter().enumerate() {
-                let block_cell = BlockCell::new(i, col_index);
+            for (col_index, (min, max)) in range_constraints {
+                let block_cell = BlockCell::new(i, *col_index);
                 if min == max {
                     let value = A::PowdrField::from(*min as u64);
                     let reference = self.get_algebraic_reference(&block_cell);
-                    let constraint = AlgebraicExpression::Reference(reference)
-                        - AlgebraicExpression::Number(value);
 
-                    constraints.push(SymbolicConstraint { expr: constraint });
+                    constraints.push(EqualityConstraint {
+                        left: EqualityExpression::Reference(reference),
+                        right: EqualityExpression::Number(value),
+                    });
                 }
             }
         }
@@ -253,26 +310,53 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
         constraints
     }
 
-    pub fn equivalence_constraints(&self) -> Vec<SymbolicConstraint<<A as Adapter>::PowdrField>> {
+    fn equivalence_constraints(&self) -> Vec<EqualityConstraint<A::PowdrField>> {
         let mut constraints = Vec::new();
 
-        if let Some(equivalence_classes) = self
-            .empirical_constraints
-            .equivalence_classes_by_block
-            .get(&self.block.start_pc)
-        {
-            for equivalence_class in equivalence_classes.to_classes() {
-                let first = equivalence_class.first().unwrap();
-                let first_ref = self.get_algebraic_reference(first);
-                for other in equivalence_class.iter().skip(1) {
-                    let other_ref = self.get_algebraic_reference(other);
-                    let constraint = AlgebraicExpression::Reference(first_ref.clone())
-                        - AlgebraicExpression::Reference(other_ref.clone());
-                    constraints.push(SymbolicConstraint { expr: constraint });
-                }
+        for equivalence_class in self.empirical_constraints.equivalence_classes.to_classes() {
+            let first = equivalence_class.first().unwrap();
+            let first_ref = self.get_algebraic_reference(first);
+            for other in equivalence_class.iter().skip(1) {
+                let other_ref = self.get_algebraic_reference(other);
+                constraints.push(EqualityConstraint {
+                    left: EqualityExpression::Reference(first_ref.clone()),
+                    right: EqualityExpression::Reference(other_ref.clone()),
+                });
             }
         }
 
         constraints
+    }
+}
+
+/// An expression used in equality constraints.
+/// This is a simplified version of `AlgebraicExpression` that only allows
+/// references and numbers.
+pub enum EqualityExpression<T> {
+    Reference(AlgebraicReference),
+    Number(T),
+}
+
+impl<T> From<EqualityExpression<T>> for AlgebraicExpression<T> {
+    fn from(expr: EqualityExpression<T>) -> Self {
+        match expr {
+            EqualityExpression::Reference(r) => AlgebraicExpression::Reference(r),
+            EqualityExpression::Number(n) => AlgebraicExpression::Number(n),
+        }
+    }
+}
+
+/// An equality constraint between two `EqualityExpression`s.
+pub struct EqualityConstraint<T> {
+    pub left: EqualityExpression<T>,
+    pub right: EqualityExpression<T>,
+}
+
+impl<T> From<EqualityConstraint<T>> for SymbolicConstraint<T> {
+    fn from(constraint: EqualityConstraint<T>) -> Self {
+        SymbolicConstraint {
+            expr: AlgebraicExpression::from(constraint.left)
+                - AlgebraicExpression::from(constraint.right),
+        }
     }
 }
