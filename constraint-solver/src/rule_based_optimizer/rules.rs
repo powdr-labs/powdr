@@ -469,9 +469,8 @@ crepe! {
         && rc_a2.range().0 == T::zero() && rc_a3.range().0 == T::zero()
         && rc_a0.combine_sum(&rc_a1).combine_sum(&rc_a2).combine_sum(&rc_a3).range().1 < T::from(-1)),
       // (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0) * (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0 - 1) = 0
-      Env(env),
-      ({println!("XXX {}", env.format_expr(one_minus_diff_marker_sum)); true}),
-      BooleanExpressionConstraint(constr_9, one_minus_diff_marker_sum),
+      BooleanExpressionConstraint(constr_9, diff_marker_sum),
+      AffinelyRelated(diff_marker_sum, T::from(-1), one_minus_diff_marker_sum, T::from(1)),
       let constrs = [constr_0, constr_1, constr_2, constr_3, constr_4, constr_5, constr_6, constr_7, constr_8, constr_9],
       let vars = [a_0, a_1, a_2, a_3];
 
