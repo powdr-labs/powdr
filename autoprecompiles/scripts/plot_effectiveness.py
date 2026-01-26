@@ -51,6 +51,7 @@ def plot_effectiveness(json_path, filename=None, effectiveness_type='cost'):
     """Generate bar plot of effectiveness data."""
     df = load_apc_data(json_path, effectiveness_type)
     total_cost_before = df['cost_before'].sum()
+    total_cost_after = df['cost_after'].sum()
 
     # Print top 10 basic blocks
     top10 = df.nlargest(10, 'cost_before')[['start_pc', 'cost_before', 'effectiveness', 'instructions']]
@@ -61,8 +62,9 @@ def plot_effectiveness(json_path, filename=None, effectiveness_type='cost'):
     print(top10.to_string(index=False))
     print()
     
-    # Calculate weighted mean effectiveness
-    mean_effectiveness = (df['effectiveness'] * df['cost_before']).sum() / total_cost_before
+    # Calculate weighted mean effectiveness, corresponding to the overall effectiveness
+    # assuming that all basic blocks are accelerated.
+    mean_effectiveness = (df['effectiveness'] * df['cost_after']).sum() / total_cost_after
     print(f"Mean effectiveness: {mean_effectiveness:.2f}")
     
     # Separate large and small APCs (< 0.1% threshold)
