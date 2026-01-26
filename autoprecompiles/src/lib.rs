@@ -176,7 +176,7 @@ impl<T, I, A, V> Apc<T, I, A, V> {
 
     /// The PC of the first line of the basic block. Can be used to identify the APC.
     pub fn start_pc(&self) -> u64 {
-        self.block.start_pc
+        self.block.start_pc()
     }
 
     /// The instructions in the basic block.
@@ -320,7 +320,7 @@ pub fn build<A: Adapter>(
         );
     }
 
-    let labels = [("apc_start_pc", block.start_pc.to_string())];
+    let labels = [("apc_start_pc", block.start_pc().to_string())];
     metrics::counter!("before_opt_cols", &labels)
         .absolute(machine.unique_references().count() as u64);
     metrics::counter!("before_opt_constraints", &labels)

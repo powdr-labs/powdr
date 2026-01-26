@@ -96,11 +96,11 @@ impl EmpiricalConstraints {
 
     /// Extracts the empirical constraints relevant for a specific basic block.
     pub fn for_block<I: PcStep>(&self, block: &BasicBlock<I>) -> BlockEmpiricalConstraints {
-        let block_pc: u32 = block.start_pc.try_into().unwrap();
+        let block_pc: u32 = block.start_pc().try_into().unwrap();
         let next_block_pc = block_pc + <I as PcStep>::pc_step() * (block.statements.len() as u32);
 
         BlockEmpiricalConstraints {
-            block_pc: block.start_pc,
+            block_pc: block.start_pc(),
             column_ranges_by_pc: self
                 .column_ranges_by_pc
                 .range(block_pc..next_block_pc)
@@ -266,7 +266,7 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
             .unwrap_or_else(|| {
                 panic!(
                     "Missing reference for in block {}: {block_cell:?}",
-                    self.block.start_pc
+                    self.block.start_pc()
                 )
             })
     }
@@ -288,7 +288,7 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
         let mut constraints = Vec::new();
 
         for i in 0..self.block.statements.len() {
-            let pc = (self.block.start_pc + (i * 4) as u64) as u32;
+            let pc = (self.block.start_pc() + (i * 4) as u64) as u32;
             let Some(range_constraints) = self.empirical_constraints.column_ranges_by_pc.get(&pc)
             else {
                 continue;

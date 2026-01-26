@@ -5,6 +5,7 @@ use crate::evaluation::evaluate_apc;
 use crate::DegreeBound;
 use crate::InstructionHandler;
 use indicatif::{ProgressBar, ProgressStyle};
+use itertools::Itertools;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
@@ -74,21 +75,22 @@ where
         .into_par_iter()
         .map(|block| {
             // Build the APC for this chunk
-            let Ok(apc) = crate::build::<A>(
+            let apc = match crate::build::<A>(
                 block.clone(),
                 vm_config.clone(),
                 degree_bound,
                 None, // No APC candidates directory
                 &EmpiricalConstraints::default(),
-            ) else {
-                tracing::error!(
-                    "Failed to build APC for block starting at PC 0x{:x}",
-                    block.start_pc
-                );
-                for statement in &block.statements {
-                    tracing::error!("   {}", statement);
+            ) {
+                Ok(apc) => apc,
+                Err(e) => {
+                    tracing::error!("Failed to build APC for block (pcs: {:?}):", block.pcs);
+                    for (statement, pc) in block.statements.iter().zip_eq(block.pcs.iter()) {
+                        tracing::error!("   0x{:x} {}", pc, statement);
+                    }
+                    tracing::error!("Error: {:?}", e);
+                    panic!("APC build failed");
                 }
-                panic!("APC build failed");
             };
 
             // Evaluate the APC to get before/after stats
@@ -153,7 +155,7 @@ fn chunk_execution_into_blocks<A: Adapter>(
     }
 
     // Chunk the trace, filtering out disallowed instructions
-    let mut block_builder = BlockBuilder::new(pc_trace[0], chunk_size);
+    let mut block_builder = BlockBuilder::new(chunk_size);
     for &pc in pc_trace {
         let instruction = pc_to_instruction.get(&pc).unwrap();
         // Only include instructions that are allowed by the instruction handler
@@ -166,16 +168,16 @@ fn chunk_execution_into_blocks<A: Adapter>(
 }
 
 struct BlockBuilder<I> {
-    current_start_pc: u64,
+    current_pcs: Vec<u64>,
     current_statements: Vec<I>,
     blocks: Vec<BasicBlock<I>>,
     chunk_size: usize,
 }
 
 impl<I> BlockBuilder<I> {
-    fn new(start_pc: u64, chunk_size: usize) -> Self {
+    fn new(chunk_size: usize) -> Self {
         Self {
-            current_start_pc: start_pc,
+            current_pcs: Vec::new(),
             current_statements: Vec::new(),
             blocks: Vec::new(),
             chunk_size,
@@ -184,23 +186,23 @@ impl<I> BlockBuilder<I> {
 
     fn add_instruction(&mut self, pc: u64, instruction: I) {
         if self.current_statements.len() >= self.chunk_size {
-            self.finish_current_block(pc);
+            self.finish_current_block();
         }
+        self.current_pcs.push(pc);
         self.current_statements.push(instruction);
     }
 
-    fn finish_current_block(&mut self, pc: u64) {
+    fn finish_current_block(&mut self) {
         if !self.current_statements.is_empty() {
             self.blocks.push(BasicBlock {
-                start_pc: self.current_start_pc,
+                pcs: std::mem::take(&mut self.current_pcs),
                 statements: std::mem::take(&mut self.current_statements),
             });
         }
-        self.current_start_pc = pc;
     }
 
     fn into_blocks(mut self) -> Vec<BasicBlock<I>> {
-        self.finish_current_block(0);
+        self.finish_current_block();
         self.blocks
     }
 }

@@ -13,10 +13,8 @@ pub fn collect_basic_blocks<A: Adapter>(
     instruction_handler: &A::InstructionHandler,
 ) -> Vec<BasicBlock<A::Instruction>> {
     let mut blocks = Vec::new();
-    let mut curr_block = BasicBlock {
-        start_pc: program.instruction_index_to_pc(0),
-        statements: Vec::new(),
-    };
+    let mut curr_block =
+        BasicBlock::from_start_pc_and_statements(program.instruction_index_to_pc(0), Vec::new());
     for (i, instr) in program.instructions().enumerate() {
         let is_target = jumpdest_set.contains(&program.instruction_index_to_pc(i));
         let is_branching = instruction_handler.is_branching(&instr);
@@ -29,15 +27,15 @@ pub fn collect_basic_blocks<A: Adapter>(
                 blocks.push(curr_block);
             }
             // Push the instruction itself
-            blocks.push(BasicBlock {
-                start_pc: program.instruction_index_to_pc(i),
-                statements: vec![instr.clone()],
-            });
+            blocks.push(BasicBlock::from_start_pc_and_statements(
+                program.instruction_index_to_pc(i),
+                vec![instr.clone()],
+            ));
             // Skip the instruction and start a new block from the next instruction.
-            curr_block = BasicBlock {
-                start_pc: program.instruction_index_to_pc(i + 1),
-                statements: Vec::new(),
-            };
+            curr_block = BasicBlock::from_start_pc_and_statements(
+                program.instruction_index_to_pc(i + 1),
+                Vec::new(),
+            );
         } else {
             // If the instruction is a target, we need to close the previous block
             // as is if not empty and start a new block from this instruction.
@@ -45,20 +43,20 @@ pub fn collect_basic_blocks<A: Adapter>(
                 if !curr_block.statements.is_empty() {
                     blocks.push(curr_block);
                 }
-                curr_block = BasicBlock {
-                    start_pc: program.instruction_index_to_pc(i),
-                    statements: Vec::new(),
-                };
+                curr_block = BasicBlock::from_start_pc_and_statements(
+                    program.instruction_index_to_pc(i),
+                    Vec::new(),
+                );
             }
             curr_block.statements.push(instr.clone());
             // If the instruction is a branch, we need to close this block
             // with this instruction and start a new block from the next one.
             if is_branching {
                 blocks.push(curr_block); // guaranteed to be non-empty because an instruction was just pushed
-                curr_block = BasicBlock {
-                    start_pc: program.instruction_index_to_pc(i + 1),
-                    statements: Vec::new(),
-                };
+                curr_block = BasicBlock::from_start_pc_and_statements(
+                    program.instruction_index_to_pc(i + 1),
+                    Vec::new(),
+                );
             }
         }
     }

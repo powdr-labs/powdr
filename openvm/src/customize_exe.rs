@@ -211,14 +211,14 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         tracing::debug!("Basic blocks sorted by execution count (top 10):");
         for (count, block) in blocks
             .iter()
-            .filter_map(|block| Some((pgo.pc_execution_count(block.start_pc)?, block)))
+            .filter_map(|block| Some((pgo.pc_execution_count(block.start_pc())?, block)))
             .sorted_by_key(|(count, _)| *count)
             .rev()
             .take(10)
         {
             let name = debug_info
                 .symbols
-                .try_get_one_or_preceding(block.start_pc)
+                .try_get_one_or_preceding(block.start_pc())
                 .map(|(symbol, offset)| format!("{} + {offset}", rustc_demangle::demangle(symbol)))
                 .unwrap_or_default();
             tracing::debug!("Basic block (executed {count} times), {name}:\n{block}",);
@@ -328,7 +328,7 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
         pgo_program_pc_count: &HashMap<u64, u32>,
     ) -> Self {
         let execution_frequency = *pgo_program_pc_count
-            .get(&apc_with_stats.apc().block.start_pc)
+            .get(&apc_with_stats.apc().block.start_pc())
             .unwrap_or(&0) as usize;
 
         Self {
@@ -342,7 +342,7 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
         ApcCandidateJsonExport {
             execution_frequency: self.execution_frequency,
             original_block: BasicBlock {
-                start_pc: self.apc_with_stats.apc().block.start_pc,
+                pcs: self.apc_with_stats.apc().block.pcs.clone(),
                 statements: self
                     .apc_with_stats
                     .apc()
