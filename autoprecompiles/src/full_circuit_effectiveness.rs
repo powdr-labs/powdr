@@ -4,7 +4,8 @@ use crate::empirical_constraints::EmpiricalConstraints;
 use crate::evaluation::evaluate_apc;
 use crate::DegreeBound;
 use crate::InstructionHandler;
-use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
+use indicatif::{ProgressBar, ProgressStyle};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use tracing::dispatcher::Dispatch;
@@ -46,7 +47,7 @@ where
 {
     // Capture the execution trace
     tracing::info!("Capturing execution trace...");
-    let pc_trace = capture_execution_trace::<A>(program, execute_fn);
+    let pc_trace = capture_pc_trace::<A>(program, execute_fn);
     let total_instructions = pc_trace.len();
     tracing::info!("Captured {} PCs in the execution trace", total_instructions);
 
@@ -66,32 +67,41 @@ where
 
     // Process chunks in parallel
     tracing::info!("Processing chunks in parallel...");
+    let pb = ProgressBar::new(num_chunks as u64).with_style(
+        ProgressStyle::with_template("[{elapsed_precise}] [{bar:50}] {wide_msg}").unwrap(),
+    );
     let results: Vec<_> = chunks
         .into_par_iter()
-        .enumerate()
-        .filter_map(|(i, block)| {
-            if i % 100 == 0 {
-                tracing::debug!("Processing chunk {}/{}", i + 1, num_chunks);
-            }
-
+        .map(|block| {
             // Build the APC for this chunk
-            let apc = crate::build::<A>(
+            let Ok(apc) = crate::build::<A>(
                 block.clone(),
                 vm_config.clone(),
                 degree_bound,
                 None, // No APC candidates directory
                 &EmpiricalConstraints::default(),
-            )
-            .ok()?;
+            ) else {
+                tracing::error!(
+                    "Failed to build APC for block starting at PC 0x{:x}",
+                    block.start_pc
+                );
+                for statement in &block.statements {
+                    tracing::error!("   {}", statement);
+                }
+                panic!("APC build failed");
+            };
 
             // Evaluate the APC to get before/after stats
+            // TODO: Get total columns. In OpenVM, this can be done by doing:
+            // stats().widths.{before,after}.total()
             let apc_with_stats = evaluate_apc::<A>(block, vm_config.instruction_handler, apc);
             let eval_result = apc_with_stats.evaluation_result();
 
-            Some((
+            pb.inc(1);
+            (
                 eval_result.before.main_columns,
                 eval_result.after.main_columns,
-            ))
+            )
         })
         .collect();
 
@@ -143,43 +153,60 @@ fn chunk_execution_into_blocks<A: Adapter>(
     }
 
     // Chunk the trace, filtering out disallowed instructions
-    let mut blocks = Vec::new();
-    for chunk in pc_trace.chunks(chunk_size) {
-        if chunk.is_empty() {
-            continue;
-        }
-
-        let start_pc = chunk[0];
-        let mut statements = Vec::new();
-
-        for &pc in chunk {
-            if let Some(instruction) = pc_to_instruction.get(&pc) {
-                // Only include instructions that are allowed by the instruction handler
-                if instruction_handler.is_allowed(instruction) {
-                    statements.push(instruction.clone());
-                }
-            } else {
-                panic!("PC {pc} not found in program");
-            }
-        }
-
-        // Only create a block if we have at least one statement
-        if !statements.is_empty() {
-            blocks.push(BasicBlock {
-                start_pc,
-                statements,
-            });
+    let mut block_builder = BlockBuilder::new(pc_trace[0], chunk_size);
+    for &pc in pc_trace {
+        let instruction = pc_to_instruction.get(&pc).unwrap();
+        // Only include instructions that are allowed by the instruction handler
+        if instruction_handler.is_allowed(instruction) {
+            block_builder.add_instruction(pc, instruction.clone());
         }
     }
 
-    blocks
+    block_builder.into_blocks()
+}
+
+struct BlockBuilder<I> {
+    current_start_pc: u64,
+    current_statements: Vec<I>,
+    blocks: Vec<BasicBlock<I>>,
+    chunk_size: usize,
+}
+
+impl<I> BlockBuilder<I> {
+    fn new(start_pc: u64, chunk_size: usize) -> Self {
+        Self {
+            current_start_pc: start_pc,
+            current_statements: Vec::new(),
+            blocks: Vec::new(),
+            chunk_size,
+        }
+    }
+
+    fn add_instruction(&mut self, pc: u64, instruction: I) {
+        if self.current_statements.len() >= self.chunk_size {
+            self.finish_current_block(pc);
+        }
+        self.current_statements.push(instruction);
+    }
+
+    fn finish_current_block(&mut self, pc: u64) {
+        if !self.current_statements.is_empty() {
+            self.blocks.push(BasicBlock {
+                start_pc: self.current_start_pc,
+                statements: std::mem::take(&mut self.current_statements),
+            });
+        }
+        self.current_start_pc = pc;
+    }
+
+    fn into_blocks(mut self) -> Vec<BasicBlock<I>> {
+        self.finish_current_block(0);
+        self.blocks
+    }
 }
 
 /// Captures the list of PCs during execution (not just counts)
-pub fn capture_execution_trace<A: Adapter>(
-    program: &A::Program,
-    execute_fn: impl FnOnce(),
-) -> Vec<u64> {
+pub fn capture_pc_trace<A: Adapter>(program: &A::Program, execute_fn: impl FnOnce()) -> Vec<u64> {
     // in memory collector storage
     let collector = TraceCollector::new::<A>(program);
 
