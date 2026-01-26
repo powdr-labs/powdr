@@ -534,10 +534,10 @@ crepe! {
     //   E = (expr * (expr + offset) = 0) is a constraint and
     //   expr is affine with at least 2 variables.
     struct QuadraticEquivalenceCandidate<T: FieldElement>(Expr, Expr, T);
-    QuadraticEquivalenceCandidate(e, r, o) <-
+    QuadraticEquivalenceCandidate(e, r, o / f) <-
        Env(env),
        ProductConstraint(e, l, r),
-       AffinelyRelated(l, _, r, o), // r = f * l + o
+       AffinelyRelated(l, f, r, o), // r = f * l + o
        IsAffine(l),
        ({env.affine_var_count(l).unwrap_or(0) > 1});
 
