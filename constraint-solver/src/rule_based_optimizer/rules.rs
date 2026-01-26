@@ -179,34 +179,27 @@ crepe! {
       AlgebraicConstraint(e),
       Product(e, l, r);
 
-    // SameVars(e1, e2) => e1 and e2 are affine expressions with the same variables.
-    // TODO could do SubSetOfVars in both directions.
-    struct SameVars(Expr, Expr);
-    SameVars(e1, e2) <-
+    // BooleanAndSubsetOfVars(e1, e2) => e1 and e2 are affine expressions only containing boolean variables and
+    //   all variables in e1 also appear in e2
+    struct BooleanAndSubsetOfVars(Expr, Expr);
+    BooleanAndSubsetOfVars(e1, e2) <-
       AffineExpression(e1, _, v, _),
-      AffineExpression(e2, _, v, _);
-    SameVars(e1, e2) <-
-      SameVars(tail1, tail2),
-      ExpressionSumHeadTail(e1, head1, tail1),
-      SameVars(head1, head2),
-      ExpressionSumHeadTail(e2, head2, tail2);
-
-    // SubsetOfVars(e1, e2) => e1 is an affine expressions and all variables in e1 also appear in e2
-    struct SubsetOfVars(Expr, Expr);
-    SubsetOfVars(e1, e2) <-
-      AffineExpression(e1, _, v, _),
-      ContainsVariable(e2, v);
-    SubsetOfVars(e1, e2) <-
-      SubsetOfVars(tail1, tail2),
+      ContainsVariable(e2, v),
+      AllVarsBoolean(e1),
+      AllVarsBoolean(e2);
+    BooleanAndSubsetOfVars(e1, e2) <-
+      BooleanAndSubsetOfVars(tail1, tail2),
       ExpressionSumHeadTail(e1, head1, tail1),
       LinearExpression(head1, v, _),
+      BooleanVar(v),
       ExpressionSumHeadTail(e2, head2, tail2),
       LinearExpression(head2, v, _);
-    SubsetOfVars(e1, e2) <-
-      SubsetOfVars(e1, tail2),
-      ExpressionSumHeadTail(e2, _, tail2);
+    BooleanAndSubsetOfVars(e1, e2) <-
+      BooleanAndSubsetOfVars(e1, tail2),
+      ExpressionSumHeadTail(e2, _, tail2),
+      AllVarsBoolean(e2);
 
-    // AllVarsBoolean(e) => e is an affine expressian and all variables in e are boolean variables
+    // AllVarsBoolean(e) => e is an affine expression and all variables in e are boolean variables
     struct AllVarsBoolean(Expr);
     AllVarsBoolean(e) <-
       AffineExpression(e, _, v, _),
@@ -463,17 +456,15 @@ crepe! {
 
     Assignment(v, T::from(1)) <-
       ExactlyOneSet(e1),
-      Env(env),
-      AlgebraicConstraint(e2),
-      SubsetOfVars(e2, e1),
-      BooleanSumStage1(e2, v, _),
-      ({println!("ExactlyOneSet found for expr {}, {} = 1", env.format_expr(e2), env.format_var(v)); true})
-      ;
-    Assignment(v, T::from(0)) <-
       AlgebraicConstraint(e1),
-      ExactlyOneSet(e1),
+      BooleanAndSubsetOfVars(e2, e1),
       AlgebraicConstraint(e2),
-      SubsetOfVars(e2, e1),
+      BooleanSumStage1(e2, v, _);
+    Assignment(v, T::from(0)) <-
+      ExactlyOneSet(e1),
+      AlgebraicConstraint(e1),
+      BooleanAndSubsetOfVars(e2, e1),
+      AlgebraicConstraint(e2),
       BooleanSumStage1(e2, v2, _),
       HasSummand(e2, summand),
       LinearExpression(summand, v, _),
