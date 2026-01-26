@@ -95,16 +95,21 @@ impl PowdrTraceGeneratorCpu {
 
     pub fn generate_witness(
         &self,
-        mut original_arenas: OriginalArenas<MatrixRecordArena<BabyBear>>,
+        original_arenas: OriginalArenas<MatrixRecordArena<BabyBear>>,
     ) -> DenseMatrix<BabyBear> {
         use powdr_autoprecompiles::trace_handler::{generate_trace, TraceData};
 
-        let num_apc_calls = original_arenas.number_of_calls();
-        if num_apc_calls == 0 {
-            // If the APC isn't called, early return with an empty trace.
-            let width = self.apc.machine().main_columns().count();
-            return RowMajorMatrix::new(vec![], width);
-        }
+        let width = self.apc.machine().main_columns().count();
+
+        let mut original_arenas = match original_arenas {
+            OriginalArenas::Initialized(arenas) => arenas,
+            OriginalArenas::Uninitialized => {
+                // if the arenas are uninitialized, the apc was not called, so we return an empty trace
+                return RowMajorMatrix::new(vec![], width);
+            }
+        };
+
+        let num_apc_calls = original_arenas.number_of_calls;
 
         let chip_inventory = {
             let airs: AirInventory<BabyBearSC> =

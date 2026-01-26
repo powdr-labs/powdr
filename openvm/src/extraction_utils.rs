@@ -36,7 +36,8 @@ use openvm_stark_sdk::p3_baby_bear::{self, BabyBear};
 use powdr_autoprecompiles::bus_map::BusType;
 use powdr_autoprecompiles::evaluation::AirStats;
 use powdr_autoprecompiles::expression::try_convert;
-use powdr_autoprecompiles::{Apc, InstructionHandler, SymbolicMachine};
+use powdr_autoprecompiles::symbolic_machine::SymbolicMachine;
+use powdr_autoprecompiles::{Apc, DegreeBound, InstructionHandler};
 use serde::{Deserialize, Serialize};
 use std::iter::Sum;
 use std::ops::Deref;
@@ -51,8 +52,10 @@ use crate::utils::symbolic_to_algebraic;
 // TODO: Use `<PackedChallenge<BabyBearSC> as FieldExtensionAlgebra<Val<BabyBearSC>>>::D` instead after fixing p3 dependency
 const EXT_DEGREE: usize = 4;
 
-#[derive(Clone, Serialize, Deserialize, Default)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct OriginalAirs<F> {
+    /// The degree bound used when building the airs
+    pub(crate) degree_bound: DegreeBound,
     /// Maps a VM opcode to the name of the (unique) AIR that implements it.
     pub(crate) opcode_to_air: HashMap<VmOpcode, String>,
     /// Maps an AIR name to its symbolic machine and metrics.
@@ -91,6 +94,10 @@ impl<F> InstructionHandler for OriginalAirs<F> {
             .map(|metrics| metrics.clone().into())
             .unwrap()
     }
+
+    fn degree_bound(&self) -> DegreeBound {
+        self.degree_bound
+    }
 }
 
 impl<F> OriginalAirs<F> {
@@ -100,14 +107,17 @@ impl<F> OriginalAirs<F> {
         &mut self,
         opcode: VmOpcode,
         air_name: String,
-        machine: impl Fn() -> Result<(SymbolicMachine<F>, AirMetrics), UnsupportedOpenVmReferenceError>,
+        machine: impl Fn(
+            DegreeBound,
+        )
+            -> Result<(SymbolicMachine<F>, AirMetrics), UnsupportedOpenVmReferenceError>,
     ) -> Result<(), UnsupportedOpenVmReferenceError> {
         if self.opcode_to_air.contains_key(&opcode) {
             panic!("Opcode {opcode} already exists");
         }
         // Insert the machine only if `air_name` isn't already present
         if !self.air_name_to_machine.contains_key(&air_name) {
-            let machine_instance = machine()?;
+            let machine_instance = machine(self.degree_bound)?;
             self.air_name_to_machine
                 .insert(air_name.clone(), machine_instance);
         }
@@ -132,6 +142,14 @@ impl<F> OriginalAirs<F> {
         self.air_name_to_machine
             .iter()
             .map(|(name, (machine, _))| (name, machine))
+    }
+
+    fn with_degree_bound(degree_bound: DegreeBound) -> Self {
+        Self {
+            degree_bound,
+            opcode_to_air: Default::default(),
+            air_name_to_machine: Default::default(),
+        }
     }
 }
 
@@ -291,7 +309,7 @@ impl OriginalVmConfig {
     /// Returns an error if the conversion from the OpenVM expression type fails.
     pub fn airs(
         &self,
-        max_degree: usize,
+        degree_bound: DegreeBound,
     ) -> Result<OriginalAirs<BabyBear>, UnsupportedOpenVmReferenceError> {
         let chip_complex = &self.chip_complex();
 
@@ -315,36 +333,39 @@ impl OriginalVmConfig {
                 let air_ref = &chip_inventory.airs().ext_airs()[insertion_index];
                 (op, air_ref)
             }) // find executor for opcode
-            .try_fold(OriginalAirs::default(), |mut airs, (op, air_ref)| {
-                airs.insert_opcode(op, air_ref.name(), || {
-                    let columns = get_columns(air_ref.clone());
-                    let constraints = get_constraints(air_ref.clone());
-                    let metrics = get_air_metrics(air_ref.clone(), max_degree);
+            .try_fold(
+                OriginalAirs::with_degree_bound(degree_bound),
+                |mut airs, (op, air_ref)| {
+                    airs.insert_opcode(op, air_ref.name(), |degree_bound| {
+                        let columns = get_columns(air_ref.clone());
+                        let constraints = get_constraints(air_ref.clone());
+                        let metrics = get_air_metrics(air_ref.clone(), degree_bound.identities);
 
-                    let powdr_exprs = constraints
-                        .constraints
-                        .iter()
-                        .map(|expr| try_convert(symbolic_to_algebraic(expr, &columns)))
-                        .collect::<Result<Vec<_>, _>>()?;
+                        let powdr_exprs = constraints
+                            .constraints
+                            .iter()
+                            .map(|expr| try_convert(symbolic_to_algebraic(expr, &columns)))
+                            .collect::<Result<Vec<_>, _>>()?;
 
-                    let powdr_bus_interactions = constraints
-                        .interactions
-                        .iter()
-                        .map(|expr| openvm_bus_interaction_to_powdr(expr, &columns))
-                        .collect::<Result<_, _>>()?;
+                        let powdr_bus_interactions = constraints
+                            .interactions
+                            .iter()
+                            .map(|expr| openvm_bus_interaction_to_powdr(expr, &columns))
+                            .collect::<Result<_, _>>()?;
 
-                    Ok((
-                        SymbolicMachine {
-                            constraints: powdr_exprs.into_iter().map(Into::into).collect(),
-                            bus_interactions: powdr_bus_interactions,
-                            derived_columns: vec![],
-                        },
-                        metrics,
-                    ))
-                })?;
+                        Ok((
+                            SymbolicMachine {
+                                constraints: powdr_exprs.into_iter().map(Into::into).collect(),
+                                bus_interactions: powdr_bus_interactions,
+                                derived_columns: vec![],
+                            },
+                            metrics,
+                        ))
+                    })?;
 
-                Ok(airs)
-            })
+                    Ok(airs)
+                },
+            )
     }
 
     pub fn bus_map(&self) -> BusMap {
@@ -600,7 +621,7 @@ impl Sum<AirWidthsDiff> for AirWidthsDiff {
 
 #[cfg(test)]
 mod tests {
-    use crate::DEFAULT_OPENVM_DEGREE_BOUND;
+    use crate::{DEFAULT_DEGREE_BOUND, DEFAULT_OPENVM_DEGREE_BOUND};
 
     use super::*;
     use openvm_algebra_circuit::{Fp2Extension, ModularExtension};
@@ -673,8 +694,7 @@ mod tests {
             hints: HintsExtension,
         };
         let base_config = OriginalVmConfig::new(ext_config);
-        let specialized_config =
-            SpecializedConfig::new(base_config, vec![], DEFAULT_OPENVM_DEGREE_BOUND);
+        let specialized_config = SpecializedConfig::new(base_config, vec![], DEFAULT_DEGREE_BOUND);
         export_pil(writer, &specialized_config);
         let output = String::from_utf8(writer.clone()).unwrap();
         assert!(!output.is_empty(), "PIL output should not be empty");

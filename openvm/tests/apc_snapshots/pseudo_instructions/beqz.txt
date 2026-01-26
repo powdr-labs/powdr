@@ -17,7 +17,7 @@ Symbolic machine using 12 unique main columns:
   a__2_0
   a__3_0
   cmp_result_0
-  free_var_31
+  free_var_28
   is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):
@@ -39,5 +39,5 @@ mult=is_valid * 1, args=[15360 * reads_aux__1__base__prev_timestamp_0 + 15360 * 
 // Algebraic constraints:
 cmp_result_0 * (cmp_result_0 - 1) = 0
 cmp_result_0 * (a__0_0 + a__1_0 + a__2_0 + a__3_0) = 0
-free_var_31 * (a__0_0 + a__1_0 + a__2_0 + a__3_0) + cmp_result_0 - 1 * is_valid = 0
+free_var_28 * (a__0_0 + a__1_0 + a__2_0 + a__3_0) + cmp_result_0 - 1 * is_valid = 0
 is_valid * (is_valid - 1) = 0

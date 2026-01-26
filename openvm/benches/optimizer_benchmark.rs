@@ -1,5 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use powdr_autoprecompiles::{optimizer::optimize, ColumnAllocator, SymbolicMachine};
+use powdr_autoprecompiles::{
+    optimizer::optimize, symbolic_machine::SymbolicMachine, ColumnAllocator,
+};
 use powdr_number::BabyBearField;
 use powdr_openvm::{
     bus_interaction_handler::OpenVmBusInteractionHandler, bus_map::default_openvm_bus_map,

@@ -28,17 +28,16 @@ use openvm_stark_backend::{
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::adapter::{
-    Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig, ApcWithStats, PgoAdapter,
+    Adapter, AdapterApc, AdapterApcWithStats, ApcWithStats, PgoAdapter,
 };
-use powdr_autoprecompiles::blocks::{BasicBlock, Instruction};
+use powdr_autoprecompiles::blocks::{BasicBlock, Instruction, PcStep};
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
-use powdr_autoprecompiles::evaluation::{evaluate_apc, EvaluationResult};
 use powdr_autoprecompiles::execution::ExecutionState;
 use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::pgo::{ApcCandidateJsonExport, Candidate, KnapsackItem};
-use powdr_autoprecompiles::SymbolicBusInteraction;
-use powdr_autoprecompiles::VmConfig;
-use powdr_autoprecompiles::{Apc, PowdrConfig};
+use powdr_autoprecompiles::symbolic_machine::SymbolicBusInteraction;
+use powdr_autoprecompiles::PowdrConfig;
+use powdr_autoprecompiles::{InstructionHandler, VmConfig};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use serde::{Deserialize, Serialize};
 
@@ -78,6 +77,10 @@ impl<'a, T: PrimeField32> ExecutionState for OpenVmExecutionState<'a, T> {
                 .as_canonical_u32()
         }
     }
+
+    fn value_limb(value: Self::Value, limb_index: usize) -> Self::Value {
+        value >> (limb_index * 8) & 0xff
+    }
 }
 
 /// A type to represent register addresses during execution
@@ -107,6 +110,33 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     fn from_field(e: Self::Field) -> Self::PowdrField {
         BabyBearField::from(e.as_canonical_u32())
     }
+
+    fn apc_stats(
+        apc: Arc<AdapterApc<Self>>,
+        instruction_handler: &Self::InstructionHandler,
+    ) -> Self::ApcStats {
+        // Get the metrics for the apc using the same degree bound as the one used for the instruction chips
+        let apc_metrics = get_air_metrics(
+            Arc::new(PowdrAir::new(apc.clone())),
+            instruction_handler.degree_bound().identities,
+        );
+        let width_after = apc_metrics.widths;
+
+        // Sum up the metrics for each instruction
+        let width_before = apc
+            .block
+            .statements
+            .iter()
+            .map(|instr| {
+                instruction_handler
+                    .get_instruction_metrics(instr.0.opcode)
+                    .unwrap()
+                    .widths
+            })
+            .sum();
+
+        OvmApcStats::new(AirWidthsDiff::new(width_before, width_after))
+    }
 }
 
 /// A newtype wrapper around `OpenVmInstruction` to implement the `Instruction` trait.
@@ -120,8 +150,14 @@ impl<F: PrimeField32> Display for Instr<F> {
     }
 }
 
+impl<F> PcStep for Instr<F> {
+    fn pc_step() -> u32 {
+        DEFAULT_PC_STEP
+    }
+}
+
 impl<F: PrimeField32> Instruction<F> for Instr<F> {
-    fn pc_lookup_row(&self, pc: Option<u64>) -> Vec<Option<F>> {
+    fn pc_lookup_row(&self, pc: u64) -> Vec<F> {
         let args = [
             self.0.opcode.to_field(),
             self.0.a,
@@ -134,8 +170,8 @@ impl<F: PrimeField32> Instruction<F> for Instr<F> {
         ];
         // The PC lookup row has the format:
         // [pc, opcode, a, b, c, d, e, f, g]
-        let pc = pc.map(|pc| F::from_canonical_u32(pc.try_into().unwrap()));
-        once(pc).chain(args.into_iter().map(Some)).collect()
+        let pc = F::from_canonical_u32(pc.try_into().unwrap());
+        once(pc).chain(args).collect()
     }
 }
 
@@ -146,7 +182,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
     empirical_constraints: EmpiricalConstraints,
 ) -> CompiledProgram {
     let original_config = OriginalVmConfig::new(original_program.vm_config.clone());
-    let airs = original_config.airs(config.degree_bound.identities).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
+    let airs = original_config.airs(config.degree_bound).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
     let bus_map = original_config.bus_map();
 
     let range_tuple_checker_sizes = original_program
@@ -164,7 +200,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         bus_map: bus_map.clone(),
     };
 
-    let blocks = original_program.collect_basic_blocks(config.degree_bound.identities);
+    let blocks = original_program.collect_basic_blocks(config.degree_bound);
     let exe = original_program.exe;
     let debug_info = original_program.elf.debug_info();
     tracing::info!(
@@ -210,7 +246,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         &config,
         vm_config,
         labels,
-        empirical_constraints,
+        empirical_constraints.apply_pc_threshold(),
     );
     metrics::gauge!("total_apc_gen_time_ms").set(start.elapsed().as_millis() as f64);
 
@@ -226,7 +262,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         .into_iter()
         .map(ApcWithStats::into_parts)
         .enumerate()
-        .map(|(i, (apc, apc_stats))| {
+        .map(|(i, (apc, apc_stats, _))| {
             let opcode = POWDR_OPCODE + i;
             let start_index = ((apc.start_pc() - pc_base as u64) / pc_step as u64)
                 .try_into()
@@ -249,11 +285,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
 
     CompiledProgram {
         exe: Arc::new(exe),
-        vm_config: SpecializedConfig::new(
-            original_config,
-            extensions,
-            config.degree_bound.identities,
-        ),
+        vm_config: SpecializedConfig::new(original_config, extensions, config.degree_bound),
     }
 }
 
@@ -275,10 +307,8 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32>(
 
 #[derive(Serialize, Deserialize)]
 pub struct OpenVmApcCandidate<F, I> {
-    apc: Arc<Apc<F, I, OpenVmRegisterAddress, u32>>,
+    apc_with_stats: ApcWithStats<F, I, OpenVmRegisterAddress, u32, OvmApcStats>,
     execution_frequency: usize,
-    widths: AirWidthsDiff,
-    stats: EvaluationResult,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -294,41 +324,16 @@ impl OvmApcStats {
 
 impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear, Instr<BabyBear>> {
     fn create(
-        apc: Arc<AdapterApc<BabyBearOpenVmApcAdapter<'a>>>,
+        apc_with_stats: AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a>>,
         pgo_program_pc_count: &HashMap<u64, u32>,
-        vm_config: AdapterVmConfig<BabyBearOpenVmApcAdapter>,
-        max_degree: usize,
     ) -> Self {
-        let apc_metrics = get_air_metrics(Arc::new(PowdrAir::new(apc.clone())), max_degree);
-        let width_after = apc_metrics.widths;
-
-        let width_before = apc
-            .block
-            .statements
-            .iter()
-            .map(|instr| {
-                vm_config
-                    .instruction_handler
-                    .get_instruction_metrics(instr.0.opcode)
-                    .unwrap()
-                    .widths
-            })
-            .sum();
-
-        let stats = evaluate_apc(
-            &apc.block.statements,
-            vm_config.instruction_handler,
-            apc.machine(),
-        );
-
-        let execution_frequency =
-            *pgo_program_pc_count.get(&apc.block.start_pc).unwrap_or(&0) as usize;
+        let execution_frequency = *pgo_program_pc_count
+            .get(&apc_with_stats.apc().block.start_pc)
+            .unwrap_or(&0) as usize;
 
         Self {
-            apc,
+            apc_with_stats,
             execution_frequency,
-            widths: AirWidthsDiff::new(width_before, width_after),
-            stats,
         }
     }
 
@@ -337,42 +342,43 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
         ApcCandidateJsonExport {
             execution_frequency: self.execution_frequency,
             original_block: BasicBlock {
-                start_pc: self.apc.block.start_pc,
+                start_pc: self.apc_with_stats.apc().block.start_pc,
                 statements: self
-                    .apc
+                    .apc_with_stats
+                    .apc()
                     .block
                     .statements
                     .iter()
                     .map(ToString::to_string)
                     .collect(),
             },
-            stats: self.stats,
-            width_before: self.widths.before.total(),
+            stats: self.apc_with_stats.evaluation_result(),
+            width_before: self.apc_with_stats.stats().widths.before.total(),
             value: self.value(),
-            cost_before: self.widths.before.total() as f64,
-            cost_after: self.widths.after.total() as f64,
+            cost_before: self.apc_with_stats.stats().widths.before.total() as f64,
+            cost_after: self.apc_with_stats.stats().widths.after.total() as f64,
             apc_candidate_file: apc_candidates_dir_path
-                .join(format!("apc_{}.cbor", self.apc.start_pc()))
+                .join(format!("apc_{}.cbor", self.apc_with_stats.apc().start_pc()))
                 .display()
                 .to_string(),
         }
     }
 
     fn into_apc_and_stats(self) -> AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a>> {
-        ApcWithStats::from(self.apc).with_stats(OvmApcStats::new(self.widths))
+        self.apc_with_stats
     }
 }
 
 impl<P, I> OpenVmApcCandidate<P, I> {
     fn cells_saved_per_row(&self) -> usize {
         // The number of cells saved per row is the difference between the width before and after the APC.
-        self.widths.columns_saved().total()
+        self.apc_with_stats.stats().widths.columns_saved().total()
     }
 }
 
 impl<P, I> KnapsackItem for OpenVmApcCandidate<P, I> {
     fn cost(&self) -> usize {
-        self.widths.after.total()
+        self.apc_with_stats.stats().widths.after.total()
     }
 
     fn value(&self) -> usize {
@@ -387,6 +393,6 @@ impl<P, I> KnapsackItem for OpenVmApcCandidate<P, I> {
     }
 
     fn tie_breaker(&self) -> usize {
-        self.apc.start_pc() as usize
+        self.apc_with_stats.apc().start_pc() as usize
     }
 }
