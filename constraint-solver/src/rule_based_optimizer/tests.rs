@@ -390,43 +390,6 @@ fn test_batch_replace_with_conflict() {
 }
 
 #[test]
-fn test_rule_split_constraints_based_on_minimal_range() {
-    let mut system = IndexedConstraintSystem::default();
-    //opcode_sub_flag_21 + 2 * opcode_xor_flag_21 + 3 * opcode_or_flag_21 + 4 * opcode_and_flag_21 = 0
-    system.add_algebraic_constraints([assert_zero(
-        v("opcode_sub_flag_21")
-            + c(2) * v("opcode_xor_flag_21")
-            + c(3) * v("opcode_or_flag_21")
-            + c(4) * v("opcode_and_flag_21"),
-    )]);
-
-    let range_constraints = std::collections::HashMap::from([
-        ("opcode_sub_flag_21", RangeConstraint::from_mask(0x1u32)),
-        ("opcode_xor_flag_21", RangeConstraint::from_mask(0x1u32)),
-        ("opcode_or_flag_21", RangeConstraint::from_mask(0x1u32)),
-        ("opcode_and_flag_21", RangeConstraint::from_mask(0x1u32)),
-    ]);
-
-    let mut solver = crate::solver::new_solver(
-        system.clone().into(),
-        DefaultBusInteractionHandler::default(),
-    );
-    #[allow(clippy::iter_over_hash_type)]
-    for (var, constraint) in range_constraints {
-        solver.add_range_constraint(&var.to_string(), constraint);
-    }
-
-    let optimized_system = rule_based_optimization(
-        system,
-        solver,
-        DefaultBusInteractionHandler::default(),
-        &mut new_var(),
-        None,
-    );
-    assert_eq!(optimized_system.0.system().algebraic_constraints.len(), 0);
-}
-
-#[test]
 fn one_hot_flags() {
     let mut system = IndexedConstraintSystem::default();
     //opcode_sub_flag_21 + 2 * opcode_xor_flag_21 + 3 * opcode_or_flag_21 + 4 * opcode_and_flag_21 = 0

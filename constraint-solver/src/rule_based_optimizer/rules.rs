@@ -361,54 +361,6 @@ crepe! {
       AlgebraicConstraint(e),
       Solvable(e, var, v);
 
-    ///////////////////////////////// MINIMAL RANGE //////////////////////////
-
-    // If an algebraic constraint e = 0 has the following properties:
-    // 1. expression e has range constraint [0, a] with a < P - 1,
-    // 2. e = head + tail, and both head, tail >= 0,
-    // 3. head is a linear expression coeff * var,
-    // 4. range of (head + tail) is [0, b] with b < P - 1,
-    // then both head and tail must be zero.
-    // This rule replaces the variable var by zero.
-
-    // Find algebraic constraint e = 0, and expression e has range constraint [0, a] with a < P,
-    // e = head + tail, and both head, tail >= 0
-    struct MinimalRangeAlgebraicConstraintCandidate(Expr);
-    MinimalRangeAlgebraicConstraintCandidate(e) <-
-      AlgebraicConstraint(e),
-      RangeConstraintOnExpression(e, e_rc),
-      (e_rc.range().1 < T::from(-1)),
-      ExpressionSumHeadTail(e, head, tail),
-      NonNegativeExpression(head),
-      NonNegativeExpression(tail),
-      RangeConstraintOnExpression(head, rc_head),
-      RangeConstraintOnExpression(tail, rc_tail),
-      (rc_head.combine_sum(&rc_tail).range().1 < T::from(-1));
-
-    // Find a tail expression that has range constraint [0, a] with a < P,
-    // head + tail = 0, and both head, tail >= 0
-    // Tail must be zero and can be used to iteratively reduced.
-    MinimalRangeAlgebraicConstraintCandidate(tail) <-
-      MinimalRangeAlgebraicConstraintCandidate(e),
-      RangeConstraintOnExpression(e, e_rc),
-      (e_rc.range().1 < T::from(-1)),
-      ExpressionSumHeadTail(e, head, tail),
-      NonNegativeExpression(head),
-      NonNegativeExpression(tail),
-      RangeConstraintOnExpression(head, rc_head),
-      RangeConstraintOnExpression(tail, rc_tail),
-      (rc_head.combine_sum(&rc_tail).range().1 < T::from(-1));
-
-
-    struct MinimalRangeZeroDeducible<T: FieldElement>(Expr, Expr,Expr, Var, T);
-    MinimalRangeZeroDeducible(e, head, tail, var, coeff) <-
-      MinimalRangeAlgebraicConstraintCandidate(e),
-      ExpressionSumHeadTail(e, head, tail),
-      LinearExpression(head, var, coeff);
-
-    Assignment(var, T::zero()) <-
-    MinimalRangeZeroDeducible(_, _, _, var, _);
-
     ///////////////////////////////// ONE-HOT FLAG ///////////////////////////
 
     struct ExactlyOneSet(Expr);
