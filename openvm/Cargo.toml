@@ -61,6 +61,7 @@ eyre = "0.6.12"
 serde = "1.0.217"
 derive_more = { version = "2.0.1", default-features = false, features = ["from"] }
 itertools = "0.14.0"
+num-format = "0.4.4"
 
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.17", features = ["std", "env-filter"] }

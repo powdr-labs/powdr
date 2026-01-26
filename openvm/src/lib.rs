@@ -5,6 +5,7 @@
 
 use derive_more::From;
 use eyre::Result;
+use num_format::{Locale, ToFormattedString};
 use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
 use openvm_circuit::arch::execution_mode::metered::segment_ctx::SegmentationLimits;
 use openvm_circuit::arch::{
@@ -948,8 +949,16 @@ pub fn get_full_circuit_effectiveness(
     let after_sum: usize = result.stats.iter().map(|s| s.widths.after.total()).sum();
     let total_effectiveness = before_sum as f64 / after_sum as f64;
 
-    tracing::info!("\n=== Full Circuit Effectiveness ===");
+    tracing::info!("=== Full Circuit Effectiveness ===");
     tracing::info!("Total instructions: {}", result.total_instructions);
+    tracing::info!(
+        "Software trace cells: {}",
+        before_sum.to_formatted_string(&Locale::en)
+    );
+    tracing::info!(
+        "APC trace cells: {}",
+        after_sum.to_formatted_string(&Locale::en)
+    );
     tracing::info!("Effectiveness: {:.2}x", total_effectiveness);
     tracing::info!("==================================\n");
 }
@@ -1109,7 +1118,7 @@ mod tests {
             .precompiles
             .iter()
             .for_each(|precompile| {
-                assert!(!pgo_data.keys().contains(&precompile.apc.block.start_pc));
+                assert!(!pgo_data.keys().contains(&precompile.apc.block.start_pc()));
             });
 
         let result = prove(&program, false, false, stdin, None);
