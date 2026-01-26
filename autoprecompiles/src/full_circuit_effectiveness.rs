@@ -7,6 +7,7 @@ use crate::InstructionHandler;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use tracing::dispatcher::Dispatch;
 use tracing::field::Field as TracingField;
@@ -65,10 +66,29 @@ where
         chunk_size
     );
 
+    // Print histogram of chunk sizes, with bucket size chunk_size / 10
+    let bucket_size = chunk_size / 10;
+    let mut size_buckets: BTreeMap<usize, usize> = BTreeMap::new();
+    for chunk in &chunks {
+        let size = chunk.statements.len();
+        let bucket = (size + bucket_size - 1) / bucket_size * bucket_size;
+        *size_buckets.entry(bucket).or_default() += 1;
+    }
+    tracing::info!("Chunk size summary:");
+    for (bucket, count) in size_buckets {
+        tracing::info!(
+            "  {}-{} instructions: {}",
+            bucket - bucket_size + 1,
+            bucket,
+            count
+        );
+    }
+
     // Process chunks in parallel
     tracing::info!("Processing chunks in parallel...");
     let pb = ProgressBar::new(num_chunks as u64).with_style(
-        ProgressStyle::with_template("[{elapsed_precise}] [{bar:50}] {wide_msg}").unwrap(),
+        ProgressStyle::with_template("[{elapsed_precise}] [{bar:50}] {percent}% ETA {eta_precise}")
+            .unwrap(),
     );
     let results: Vec<_> = chunks
         .into_par_iter()
@@ -235,7 +255,6 @@ pub fn capture_pc_trace<A: Adapter>(program: &A::Program, execute_fn: impl FnOnc
 
     // Extract the collected data
     let pc_trace = collector.into_vec();
-    tracing::debug!("Captured {} PCs in the execution trace", pc_trace.len());
     pc_trace
 }
 
