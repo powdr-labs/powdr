@@ -371,13 +371,13 @@ crepe! {
     // EntailsZeroHeadAndTail(e1, e2) => e1 = 0 and e2 = 0
     struct EntailsZeroHeadAndTail(Expr, Expr);
     EntailsZeroHeadAndTail(head, tail) <-
-    EqualZero(e),
-    ExpressionSumHeadTail(e, head, tail),
-    RangeConstraintOnExpression(head, rc_head),
-    RangeConstraintOnExpression(tail, rc_tail),
-    (rc_head.range().0 == T::from(0)),
-    (rc_tail.range().0 == T::from(0)),
-    (rc_head.range().1.to_integer() + rc_tail.range().1.to_integer() < T::from(-1).to_integer());
+      EqualZero(e),
+      ExpressionSumHeadTail(e, head, tail),
+      RangeConstraintOnExpression(head, rc_head),
+      RangeConstraintOnExpression(tail, rc_tail),
+      (rc_head.range().0 == T::from(0)),
+      (rc_tail.range().0 == T::from(0)),
+      (rc_head.range().1.to_integer() + rc_tail.range().1.to_integer() < T::from(-1).to_integer());
 
     EqualZero(head) <- EntailsZeroHeadAndTail(head,_);
     EqualZero(tail) <- EntailsZeroHeadAndTail(_, tail);
