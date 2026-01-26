@@ -5,6 +5,7 @@ use openvm_instructions::program::{Program as OpenVmProgram, DEFAULT_PC_STEP};
 use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::blocks::{collect_basic_blocks, BasicBlock, Program};
+use powdr_autoprecompiles::DegreeBound;
 use powdr_riscv_elf::ElfProgram;
 use serde::{Deserialize, Serialize};
 
@@ -27,7 +28,10 @@ pub struct OriginalCompiledProgram {
 
 impl OriginalCompiledProgram {
     /// Segments the program into basic blocks. The degree bound does not influence the result (see TODO below).
-    pub fn collect_basic_blocks(&self, degree_bound: usize) -> Vec<BasicBlock<Instr<BabyBear>>> {
+    pub fn collect_basic_blocks(
+        &self,
+        degree_bound: DegreeBound,
+    ) -> Vec<BasicBlock<Instr<BabyBear>>> {
         // TODO: This only needs to build the airs so that `collect_basic_blocks` can call
         // `is_branching` and `is_allowed` on it. If we had a better way to do that, we could
         // remove the degree_bound parameter.
@@ -75,13 +79,13 @@ impl OriginalCompiledProgram {
     }
 
     /// Converts to a `CompiledProgram` with the original vm config (without autoprecompiles).
-    pub fn compiled_program(&self, max_degree: usize) -> CompiledProgram {
+    pub fn compiled_program(&self, degree_bound: DegreeBound) -> CompiledProgram {
         CompiledProgram {
             exe: self.exe.clone(),
             vm_config: SpecializedConfig::new(
                 OriginalVmConfig::new(self.vm_config.clone()),
                 Vec::new(),
-                max_degree,
+                degree_bound,
             ),
         }
     }

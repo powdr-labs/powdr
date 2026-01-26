@@ -444,9 +444,9 @@ impl SpecializedConfig {
     pub fn new(
         base_config: OriginalVmConfig,
         precompiles: Vec<PowdrPrecompile<BabyBear>>,
-        max_degree: usize,
+        degree_bound: DegreeBound,
     ) -> Self {
-        let airs = base_config.airs(max_degree).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
+        let airs = base_config.airs(degree_bound).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
         let bus_map = base_config.bus_map();
         let powdr_extension = PowdrExtension::new(precompiles, base_config.clone(), bus_map, airs);
         Self {
@@ -753,7 +753,7 @@ impl CompiledProgram {
 
                     powdr_air_metrics.push((
                         get_air_metrics(air.clone(), max_degree),
-                        apc_stats.next().unwrap().map(|stats| stats.widths),
+                        Some(apc_stats.next().unwrap().widths),
                     ));
                 } else {
                     use crate::extraction_utils::get_air_metrics;
