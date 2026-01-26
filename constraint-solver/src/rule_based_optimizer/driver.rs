@@ -144,9 +144,9 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
 
         // Uncomment this to get a runtime profile of the individual
         // rules.
-        let ((actions, large_actions), profile) = rt.run_with_profiling();
-        profile.report();
-        // let (actions, large_actions) = rt.run();
+        // let ((actions, large_actions), profile) = rt.run_with_profiling();
+        // profile.report();
+        let (actions, large_actions) = rt.run();
         let (expr_db_, new_var_generator) = env.terminate();
 
         // Re-create the variables that were created using the

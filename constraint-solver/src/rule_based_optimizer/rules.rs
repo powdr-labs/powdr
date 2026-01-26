@@ -151,24 +151,28 @@ crepe! {
       ExpressionSumHeadTail(e1, head, tail1),
       ExpressionSumHeadTail(e2, head, tail2);
 
-    // DifferByConstant(e1, e2, diff) => e1 = e2 + diff
-    // Note that both e1 and e2 must pre-exist, so this cannot
-    // be used to add or subtract constants from expressions.
-    struct DifferByConstant<T: FieldElement>(Expr, Expr, T);
-    DifferByConstant(e, e, T::zero()) <- Expression(e);
-    DifferByConstant(e1, e2, c) <- DifferByNonzeroConstant(e1, e2, c);
+    // AffinelyRelated(e1, f, e2, c) => e1 = f * e2 + c
+    // Note this is currently only implemented for affine e1 and e2.
+    // This only works if e1 and e2 have at least one variable
+    // and both e1 and e2 have to "pre-exist" as expressions.
+    // This means this rule cannot be used to subtract constants
+    // or multiply/divide by constants alone.
+    struct AffinelyRelated<T: FieldElement>(Expr, T, Expr, T);
+    AffinelyRelated(e1, f, e2, o1 - o2 * f) <-
+      AffineExpression(e1, f1, v, o1), // e1 = f1 * v + o1
+      AffineExpression(e2, f2, v, o2),
+      // Optimization: Compute f1 / f2 only once.
+      let f = f1 / f2;
+      // e2 = f2 * v + o2
+      // e1 = f1 * (e2 - o2) / f2 + o1 = e2 * (f1 / f2) + (o1 - o2 * f1 / f2)
 
-    struct DifferByNonzeroConstant<T: FieldElement>(Expr, Expr, T);
-    DifferByNonzeroConstant(e1, e2, o1 - o2) <-
-      AffineExpression(e1, f, v, o1),
-      AffineExpression(e2, f, v, o2),
-      (o1 != o2);
-    DifferByNonzeroConstant(e1, e2, c) <-
-      DifferByNonzeroConstant(tail1, tail2, c),
-      ExpressionSumHeadTail(e1, head, tail1),
-      ExpressionSumHeadTail(e2, head, tail2);
-    DifferByNonzeroConstant(e1, e2, -o) <-
-      DifferByNonzeroConstant(e2, e1, o);
+    AffinelyRelated(e1, f, e2, o) <-
+      AffinelyRelated(tail1, f, tail2, o),
+      // The swapped case and the equal will be computed by other rules.
+      ExpressionSumHeadTail(e1, head1, tail1),
+      LinearExpression(head1, v, f1),
+      ExpressionSumHeadTail(e2, head2, tail2),
+      LinearExpression(head2, v, f1 / f);
 
     // HasProductSummand(e, l, r) => e contains a summand of the form l * r
     struct HasProductSummand(Expr, Expr, Expr);
@@ -234,16 +238,19 @@ crepe! {
       Solvable(l, v, c1),
       Solvable(r, v, c2);
 
+    // BooleanVar(v) => v is 0 or 1
     struct BooleanVar(Var);
-    BooleanVar(v) <-
-      RangeConstraintOnVar(v, rc),
-      (rc.range() == (T::zero(), T::one()));
+    BooleanVar(v) <- RangeConstraintOnVar(v, RangeConstraint::from_mask(1));
 
-    // BooleanExpressionConstraint(constr, e) => constr = `e * (e - 1) = 0`
+    // BooleanExpressionConstraint(constr, e) => if constr is satisfied then e = 1 or e = 0
     struct BooleanExpressionConstraint(Expr, Expr);
-    BooleanExpressionConstraint(constr, e) <-
-      ProductConstraint(constr, e, r),
-      DifferByConstant(e, r, One::one());
+    BooleanExpressionConstraint(constr, r) <-
+      ProductConstraint(constr, l, r),
+      // l = f * r + c, i.e. constr = (f * r + c) * r = 0
+      // <=> (r + c / f) * r = 0
+      // i.e. c / f = -1 <=> c = -f
+      AffinelyRelated(l, f, r, c),
+      (c == -f);
 
     //////////////////////// SINGLE-OCCURRENCE VARIABLES //////////////////////////
 
@@ -524,13 +531,13 @@ crepe! {
     //------- quadratic equivalence -----
 
     // QuadraticEquivalenceCandidate(E, expr, offset) =>
-    //   E = ((expr + offset) * (expr) = 0) is a constraint and
+    //   E = (expr * (expr + offset) = 0) is a constraint and
     //   expr is affine with at least 2 variables.
     struct QuadraticEquivalenceCandidate<T: FieldElement>(Expr, Expr, T);
     QuadraticEquivalenceCandidate(e, r, o) <-
        Env(env),
        ProductConstraint(e, l, r),
-       DifferByConstant(l, r, o), // l = r + o
+       AffinelyRelated(l, _, r, o), // r = f * l + o
        IsAffine(l),
        ({env.affine_var_count(l).unwrap_or(0) > 1});
 
