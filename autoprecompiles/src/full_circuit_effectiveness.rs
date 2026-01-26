@@ -21,15 +21,9 @@ use tracing_subscriber::{
 
 /// Result of computing full circuit effectiveness
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FullCircuitEffectiveness {
-    /// Total number of main columns before optimization (sum across all chunks)
-    pub total_main_columns_before: usize,
-    /// Total number of main columns after optimization (sum across all chunks)
-    pub total_main_columns_after: usize,
-    /// Effectiveness ratio (before / after)
-    pub effectiveness: f64,
-    /// Number of chunks processed
-    pub num_chunks: usize,
+pub struct FullCircuitEffectiveness<S> {
+    /// The statistics per chunk
+    pub stats: Vec<S>,
     /// Total number of instructions in the execution
     pub total_instructions: usize,
 }
@@ -42,7 +36,7 @@ pub fn compute_full_circuit_effectiveness<A: Adapter + Send + Sync>(
     vm_config: AdapterVmConfig<A>,
     degree_bound: DegreeBound,
     chunk_size: usize,
-) -> FullCircuitEffectiveness
+) -> FullCircuitEffectiveness<A::ApcStats>
 where
     A::Instruction: Send + Sync,
 {
@@ -71,7 +65,7 @@ where
     let mut size_buckets: BTreeMap<usize, usize> = BTreeMap::new();
     for chunk in &chunks {
         let size = chunk.statements.len();
-        let bucket = (size + bucket_size - 1) / bucket_size * bucket_size;
+        let bucket = size.div_ceil(bucket_size) * bucket_size;
         *size_buckets.entry(bucket).or_default() += 1;
     }
     tracing::info!("Chunk size summary:");
@@ -117,44 +111,15 @@ where
             };
 
             // Evaluate the APC to get before/after stats
-            // TODO: Get total columns. In OpenVM, this can be done by doing:
-            // stats().widths.{before,after}.total()
             let apc_with_stats = evaluate_apc::<A>(block, vm_config.instruction_handler, apc);
-            let eval_result = apc_with_stats.evaluation_result();
 
             pb.inc(1);
-            (
-                eval_result.before.main_columns,
-                eval_result.after.main_columns,
-            )
+            apc_with_stats.into_stats()
         })
         .collect();
 
-    // Aggregate results
-    let (total_before, total_after): (usize, usize) = results
-        .into_iter()
-        .fold((0, 0), |(acc_before, acc_after), (before, after)| {
-            (acc_before + before, acc_after + after)
-        });
-
-    let effectiveness = if total_after > 0 {
-        total_before as f64 / total_after as f64
-    } else {
-        0.0
-    };
-
-    tracing::info!(
-        "Full circuit effectiveness: {:.2}x ({} -> {} main columns)",
-        effectiveness,
-        total_before,
-        total_after
-    );
-
     FullCircuitEffectiveness {
-        total_main_columns_before: total_before,
-        total_main_columns_after: total_after,
-        effectiveness,
-        num_chunks,
+        stats: results,
         total_instructions,
     }
 }
@@ -254,8 +219,7 @@ pub fn capture_pc_trace<A: Adapter>(program: &A::Program, execute_fn: impl FnOnc
     tracing::dispatcher::with_default(&dispatch, execute_fn);
 
     // Extract the collected data
-    let pc_trace = collector.into_vec();
-    pc_trace
+    collector.into_vec()
 }
 
 // holds basic type fields of execution objects captured in trace by subscriber

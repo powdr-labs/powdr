@@ -295,26 +295,12 @@ fn run_command(command: Commands) {
             let powdr_config = default_powdr_openvm_config(0, 0);
             let guest_program = compile_openvm(&guest, guest_opts).unwrap();
 
-            let effectiveness = powdr_openvm::get_full_circuit_effectiveness(
+            powdr_openvm::get_full_circuit_effectiveness(
                 &guest_program,
                 stdin_from(input),
                 powdr_config.degree_bound,
                 chunk_size,
             );
-
-            tracing::info!("\n=== Full Circuit Effectiveness ===");
-            tracing::info!("Total instructions: {}", effectiveness.total_instructions);
-            tracing::info!("Number of chunks: {}", effectiveness.num_chunks);
-            tracing::info!(
-                "Total main columns before: {}",
-                effectiveness.total_main_columns_before
-            );
-            tracing::info!(
-                "Total main columns after: {}",
-                effectiveness.total_main_columns_after
-            );
-            tracing::info!("Effectiveness: {:.2}x", effectiveness.effectiveness);
-            tracing::info!("==================================\n");
         }
     }
 }

@@ -40,9 +40,7 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::evaluation::AirStats;
-use powdr_autoprecompiles::full_circuit_effectiveness::{
-    compute_full_circuit_effectiveness, FullCircuitEffectiveness,
-};
+use powdr_autoprecompiles::full_circuit_effectiveness::compute_full_circuit_effectiveness;
 use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::PowdrExtension;
@@ -904,7 +902,7 @@ pub fn get_full_circuit_effectiveness(
     inputs: StdIn,
     degree_bound: DegreeBound,
     chunk_size: usize,
-) -> FullCircuitEffectiveness {
+) {
     let OriginalCompiledProgram { exe, vm_config, .. } = program;
     let prog = Prog::from(&exe.program);
 
@@ -935,7 +933,7 @@ pub fn get_full_circuit_effectiveness(
     };
 
     // Compute effectiveness
-    compute_full_circuit_effectiveness::<BabyBearOpenVmApcAdapter>(
+    let result = compute_full_circuit_effectiveness::<BabyBearOpenVmApcAdapter>(
         &prog,
         || {
             sdk.execute_interpreted(exe.clone(), inputs.clone())
@@ -944,7 +942,16 @@ pub fn get_full_circuit_effectiveness(
         adapter_vm_config,
         degree_bound,
         chunk_size,
-    )
+    );
+
+    let before_sum: usize = result.stats.iter().map(|s| s.widths.before.total()).sum();
+    let after_sum: usize = result.stats.iter().map(|s| s.widths.after.total()).sum();
+    let total_effectiveness = before_sum as f64 / after_sum as f64;
+
+    tracing::info!("\n=== Full Circuit Effectiveness ===");
+    tracing::info!("Total instructions: {}", result.total_instructions);
+    tracing::info!("Effectiveness: {:.2}x", total_effectiveness);
+    tracing::info!("==================================\n");
 }
 
 #[cfg(test)]
