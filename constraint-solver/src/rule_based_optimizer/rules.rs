@@ -76,6 +76,13 @@ crepe! {
     // the new constraint `replacement` is equivalent.
     struct ReplacePairOfAlgebraicConstraintsBy(Expr, Expr, Expr);
 
+    //////////////////// BASIC SEMANTIC PROPERTIES OF EXRESSIONS //////////////////////
+
+
+    // EqualZero(e) => e = 0 for all satisfying assignments.
+    struct EqualZero(Expr);
+    EqualZero(e) <- AlgebraicConstraint(e);
+
     //////////////////// STRUCTURAL PROPERTIES OF EXPRESSIONS //////////////////////
 
     // ContainsVariable(e, v) => v appears inside e.
@@ -350,20 +357,16 @@ crepe! {
     // Assignment(var, v) => any satisfying assignment has var = v.
     struct Assignment<T: FieldElement>(Var, T);
     Assignment(var, v) <-
-      AlgebraicConstraint(e),
+      EqualZero(e),
       Solvable(e, var, v);
 
     ///////////////////////////////// NO-WRAP ZERO SUM //////////////////////////
 
-    // If an algebraic constraint e = 0 has the following properties:
-    // 1. e = head + tail, and both head, tail >= 0,
-    // 2. head is a linear expression coeff * var,
-    // 3. range of (head + tail) is [0, b] with b < P - 1, i.e., their sum does not wrap.
+    // If an algebraic constraint head + tail = 0 has the following properties:
+    // 1. the range constraint of head is [0, a] with a < P - 1,
+    // 2. the range constraint of tail is [0, b] with b < P - 1,
+    // 3. a + b (as integers) < P - 1,
     // then both head and tail must be zero.
-    // This rule replaces the variable var by zero.
-
-    struct EqualZero(Expr);
-    EqualZero(e) <- AlgebraicConstraint(e);
 
     // EntailsZeroHeadAndTail(e1, e2) => e1 = 0 and e2 = 0
     struct EntailsZeroHeadAndTail(Expr, Expr);
@@ -379,8 +382,6 @@ crepe! {
     EqualZero(head) <- EntailsZeroHeadAndTail(head,_);
     EqualZero(tail) <- EntailsZeroHeadAndTail(_, tail);
 
-    Assignment(v, val) <- EqualZero(e), Solvable(e, v, val);
-
     ///////////////////////////////// OUTPUT ACTIONS //////////////////////////
 
     struct Equivalence(Var, Var);
@@ -393,7 +394,7 @@ crepe! {
     struct QuadraticEquivalenceCandidate<T: FieldElement>(Expr, Expr, T);
     QuadraticEquivalenceCandidate(e, r, offset) <-
        Env(env),
-       AlgebraicConstraint(e),
+       EqualZero(e),
        Product(e, l, r), // note that this will always produce two facts for (l, r) and (r, l)
        ({env.affine_var_count(l).unwrap_or(0) > 1 && env.affine_var_count(r).unwrap_or(0) > 1}),
        let Some(offset) = env.constant_difference(l, r);
