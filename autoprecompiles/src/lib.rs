@@ -129,6 +129,8 @@ pub trait InstructionHandler {
     /// Returns the degree bound used for the instructions
     fn degree_bound(&self) -> DegreeBound;
 
+    fn is_phantom(&self, instruction: &Self::Instruction) -> bool;
+
     /// Returns the AIR for the given instruction.
     fn get_instruction_air_and_id(
         &self,

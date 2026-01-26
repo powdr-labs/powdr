@@ -5,7 +5,6 @@ use crate::evaluation::evaluate_apc;
 use crate::DegreeBound;
 use crate::InstructionHandler;
 use indicatif::{ProgressBar, ProgressStyle};
-use itertools::Itertools;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
@@ -85,7 +84,11 @@ where
                 Ok(apc) => apc,
                 Err(e) => {
                     tracing::error!("Failed to build APC for block (pcs: {:?}):", block.pcs);
-                    for (statement, pc) in block.statements.iter().zip_eq(block.pcs.iter()) {
+                    for (i, statement) in block.statements.iter().enumerate() {
+                        let pc = block.pcs[i];
+                        if i > 0 && block.pcs[i - 1] != pc - A::Instruction::pc_step() as u64 {
+                            tracing::error!("--- jump in PCs ---");
+                        }
                         tracing::error!("   0x{:x} {}", pc, statement);
                     }
                     tracing::error!("Error: {:?}", e);
@@ -153,14 +156,25 @@ fn chunk_execution_into_blocks<A: Adapter>(
         let pc = base_pc + (i as u64 * pc_step);
         pc_to_instruction.insert(pc, instruction);
     }
-
     // Chunk the trace, filtering out disallowed instructions
     let mut block_builder = BlockBuilder::new(chunk_size);
     for &pc in pc_trace {
         let instruction = pc_to_instruction.get(&pc).unwrap();
+
         // Only include instructions that are allowed by the instruction handler
         if instruction_handler.is_allowed(instruction) {
             block_builder.add_instruction(pc, instruction.clone());
+        } else {
+            // Ignore blacklisted instruction and start a new block
+            block_builder.finish_current_block();
+        }
+
+        // If the next instruction is a phantom instruction, start a new block
+        let next_pc = pc + pc_step;
+        if let Some(next_instruction) = pc_to_instruction.get(&next_pc) {
+            if instruction_handler.is_phantom(next_instruction) {
+                block_builder.finish_current_block();
+            }
         }
     }
 
