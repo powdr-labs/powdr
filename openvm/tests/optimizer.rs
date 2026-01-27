@@ -52,17 +52,19 @@ fn load_machine_json() {
 
 #[test]
 fn test_optimize() {
-    let file = std::fs::File::open("tests/keccak_apc_pre_opt.cbor").unwrap();
-    let reader = std::io::BufReader::new(file);
-    let machine: SymbolicMachine<BabyBearField> = serde_cbor::from_reader(reader).unwrap();
+    let file = std::fs::File::open("tests/keccak_apc_pre_opt.json.gz").unwrap();
+    let reader = flate2::read::GzDecoder::new(file);
+    let apc: ApcWithBusMap<TestApc, BusMap<TestBusType>> = serde_json::from_reader(reader).unwrap();
+
+    let machine: SymbolicMachine<BabyBearField> = apc.apc.machine;
     assert!(machine.derived_columns.is_empty());
 
     let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&machine);
-    let machine = optimize::<BabyBearOpenVmApcAdapter>(
+    let machine = optimize(
         machine,
         OpenVmBusInteractionHandler::default(),
         DEFAULT_DEGREE_BOUND,
-        &default_openvm_bus_map(),
+        &apc.bus_map,
         column_allocator,
         &mut Default::default(),
     )

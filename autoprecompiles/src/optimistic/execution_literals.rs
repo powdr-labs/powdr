@@ -74,7 +74,7 @@ fn extract_concrete_memory_accesses<A: Adapter>(
     // Note that the optimizer would still remove some memory accesses, if the instruction
     // accesses the same register multiple times.
     let dummy_column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&symbolic_machine);
-    let (symbolic_machine, _) = optimize::<A>(
+    let (symbolic_machine, _) = optimize::<_, _, _, A::MemoryBusInteraction<_>>(
         symbolic_machine.clone(),
         vm_config.bus_interaction_handler.clone(),
         *degree_bound,
