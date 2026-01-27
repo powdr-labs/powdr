@@ -9,7 +9,7 @@ use crate::symbolic_machine::{SymbolicBusInteraction, SymbolicConstraint};
 
 pub type AlgebraicExpression<T> = powdr_expression::AlgebraicExpression<T, AlgebraicReference>;
 
-#[derive(Debug, Clone, Eq, Deserialize)]
+#[derive(Debug, Clone, Eq)]
 pub struct AlgebraicReference {
     /// Name of the polynomial - just for informational purposes.
     /// Comparisons are based on the ID.
@@ -54,6 +54,28 @@ impl Serialize for AlgebraicReference {
         S: serde::Serializer,
     {
         serializer.serialize_str(&format!("{}@{}", self.name, self.id))
+    }
+}
+
+impl<'de> Deserialize<'de> for AlgebraicReference {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        let Some(separator_pos) = s.rfind('@') else {
+            return Err(serde::de::Error::custom(format!(
+                "Invalid format for AlgebraicReference: {s}",
+            )));
+        };
+        let name = Arc::new(s[..separator_pos].to_string());
+        let id: u64 = s[separator_pos + 1..].parse().map_err(|_| {
+            serde::de::Error::custom(format!(
+                "Invalid ID in AlgebraicReference: {}",
+                &s[separator_pos + 1..]
+            ))
+        })?;
+        Ok(AlgebraicReference { name, id })
     }
 }
 

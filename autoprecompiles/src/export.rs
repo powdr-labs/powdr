@@ -217,7 +217,7 @@ fn instructions_to_powdr_field<A: Adapter>(
 
 /// Dummy instruction type that is used to store the converted field type.
 #[derive(Serialize, Deserialize, Clone)]
-struct SimpleInstruction<T>(Vec<T>);
+pub struct SimpleInstruction<T>(Vec<T>);
 
 impl<T: Display> Display for SimpleInstruction<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -238,7 +238,7 @@ impl<T> PcStep for SimpleInstruction<T> {
 }
 
 #[derive(Serialize, Deserialize)]
-struct APCWithBusMap<Apc, BusMap> {
+pub struct ApcWithBusMap<Apc, BusMap> {
     #[serde(flatten)]
     pub apc: Apc,
     pub bus_map: BusMap,

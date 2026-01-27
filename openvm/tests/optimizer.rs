@@ -1,8 +1,9 @@
 use expect_test::expect;
 use powdr_autoprecompiles::bus_map::BusMap;
+use powdr_autoprecompiles::export::{ApcWithBusMap, SimpleInstruction};
 use powdr_autoprecompiles::optimizer::optimize;
 use powdr_autoprecompiles::symbolic_machine::SymbolicMachine;
-use powdr_autoprecompiles::ColumnAllocator;
+use powdr_autoprecompiles::{Apc, ColumnAllocator};
 use powdr_number::BabyBearField;
 use powdr_openvm::bus_map::{
     OpenVmBusType, DEFAULT_BITWISE_LOOKUP, DEFAULT_EXECUTION_BRIDGE, DEFAULT_MEMORY,
@@ -13,27 +14,38 @@ use powdr_openvm::{
 };
 use powdr_openvm::{BabyBearOpenVmApcAdapter, BusType, DEFAULT_DEGREE_BOUND};
 
+use serde::{Deserialize, Serialize};
 use test_log::test;
 
+type TestApc = Apc<BabyBearField, SimpleInstruction<BabyBearField>, (), ()>;
+
+/// These custom bus types are those from Openvm.
+#[derive(Serialize, Deserialize)]
+enum TestBusType {
+    VariableRangeChecker,
+    TupleRangeChecker,
+    BitwiseLookup,
+}
+
 #[test]
-fn load_machine_cbor() {
-    let file = std::fs::File::open("tests/keccak_apc_pre_opt.cbor").unwrap();
-    let reader = std::io::BufReader::new(file);
-    let machine: SymbolicMachine<BabyBearField> = serde_cbor::from_reader(reader).unwrap();
+fn load_machine_json() {
+    let file = std::fs::File::open("tests/keccak_apc_pre_opt.json.gz").unwrap();
+    let reader = flate2::read::GzDecoder::new(file);
+    let apc: ApcWithBusMap<TestApc, BusMap<TestBusType>> = serde_json::from_reader(reader).unwrap();
+
+    let machine: SymbolicMachine<BabyBearField> = apc.apc.machine;
     assert!(machine.derived_columns.is_empty());
 
-    // This cbor file above has the `is_valid` column removed, this is why the number below
-    // might be one less than in other tests.
     expect![[r#"
-        27194
+        27521
     "#]]
     .assert_debug_eq(&machine.main_columns().count());
     expect![[r#"
-        13167
+        13262
     "#]]
     .assert_debug_eq(&machine.bus_interactions.len());
     expect![[r#"
-        27689
+        28627
     "#]]
     .assert_debug_eq(&machine.constraints.len());
 }
