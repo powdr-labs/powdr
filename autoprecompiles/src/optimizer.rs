@@ -20,7 +20,6 @@ use crate::symbolic_machine::{
 };
 use crate::ColumnAllocator;
 use crate::{
-    adapter::Adapter,
     constraint_optimizer::optimize_constraints,
     expression::{AlgebraicExpression, AlgebraicReference},
     expression_conversion::{algebraic_to_grouped_expression, grouped_expression_to_algebraic},

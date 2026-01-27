@@ -9,10 +9,11 @@ use powdr_openvm::bus_map::{
     OpenVmBusType, DEFAULT_BITWISE_LOOKUP, DEFAULT_EXECUTION_BRIDGE, DEFAULT_MEMORY,
     DEFAULT_PC_LOOKUP, DEFAULT_VARIABLE_RANGE_CHECKER,
 };
+use powdr_openvm::memory_bus_interaction::OpenVmMemoryBusInteraction;
 use powdr_openvm::{
     bus_interaction_handler::OpenVmBusInteractionHandler, bus_map::default_openvm_bus_map,
 };
-use powdr_openvm::{BabyBearOpenVmApcAdapter, BusType, DEFAULT_DEGREE_BOUND};
+use powdr_openvm::{BusType, DEFAULT_DEGREE_BOUND};
 
 use serde::{Deserialize, Serialize};
 use test_log::test;
@@ -20,7 +21,7 @@ use test_log::test;
 type TestApc = Apc<BabyBearField, SimpleInstruction<BabyBearField>, (), ()>;
 
 /// These custom bus types are those from Openvm.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone, Copy, Debug, derive_more::Display)]
 enum TestBusType {
     VariableRangeChecker,
     TupleRangeChecker,
@@ -60,7 +61,7 @@ fn test_optimize() {
     assert!(machine.derived_columns.is_empty());
 
     let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&machine);
-    let machine = optimize(
+    let machine = optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
         machine,
         OpenVmBusInteractionHandler::default(),
         DEFAULT_DEGREE_BOUND,
@@ -95,7 +96,7 @@ fn test_ecrecover() {
     assert!(machine.derived_columns.is_empty());
 
     let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&machine);
-    let machine = optimize::<BabyBearOpenVmApcAdapter>(
+    let machine = optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
         machine,
         OpenVmBusInteractionHandler::default(),
         DEFAULT_DEGREE_BOUND,
@@ -130,7 +131,7 @@ fn test_sha256() {
     assert!(machine.derived_columns.is_empty());
     let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&machine);
 
-    let machine = optimize::<BabyBearOpenVmApcAdapter>(
+    let machine = optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
         machine,
         OpenVmBusInteractionHandler::default(),
         DEFAULT_DEGREE_BOUND,
@@ -194,7 +195,7 @@ fn test_optimize_reth_op() {
     assert!(machine.derived_columns.is_empty());
 
     let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&machine);
-    let machine = optimize::<BabyBearOpenVmApcAdapter>(
+    let machine = optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
         machine,
         bus_int_handler,
         DEFAULT_DEGREE_BOUND,

@@ -79,7 +79,7 @@ impl ExportOptions {
         bus_map: &BusMap<A::CustomBusTypes>,
     ) {
         let apc = instructions_to_powdr_field::<A>(apc.clone());
-        let path = self.write_to_next_file(&APCWithBusMap { apc: &apc, bus_map }, suffix);
+        let path = self.write_to_next_file(&ApcWithBusMap { apc: &apc, bus_map }, suffix);
 
         // For debugging, also serialize a human-readable version of the final precompile
         let rendered = apc.machine.render(bus_map);

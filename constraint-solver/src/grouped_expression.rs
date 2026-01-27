@@ -1221,7 +1221,7 @@ mod tests {
         let four = GroupedExpression::from_runtime_constant(GoldilocksField::from(4));
         let expr = four.clone() * (x.clone() * x.clone()) + four.clone() * x.clone() + four;
         let serialized = serde_json::to_string(&expr).unwrap();
-        expect!([r#"[[[[4,"*","X"],"*",[1,"*","X"]],"+",[4,"*","X"]],"+",4]"#])
+        expect!([r#"[[[[4,"*","X"],"*","X"],"+",[4,"*","X"]],"+",4]"#])
             .assert_eq(&serialized);
     }
 
