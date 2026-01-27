@@ -28,6 +28,8 @@ pub struct FullCircuitEffectiveness<S> {
     pub total_instructions: usize,
 }
 
+const SAMPLE_SIZE: usize = 1000;
+
 /// Computes the effectiveness of compiling the entire execution into circuits
 /// by chunking the execution and processing each chunk in parallel.
 pub fn compute_full_circuit_effectiveness<A: Adapter + Send + Sync>(
@@ -77,6 +79,31 @@ where
             count
         );
     }
+
+    tracing::info!("Selecting up to {SAMPLE_SIZE} chunks randomly...");
+    // Select randomly, weighted by chunk size
+    let chunks: Vec<BasicBlock<A::Instruction>> = if num_chunks > SAMPLE_SIZE {
+        use rand::prelude::*;
+        let mut rng = rand::rng();
+        let total_size: usize = chunks.iter().map(|c| c.statements.len()).sum();
+        let mut selected_chunks = Vec::new();
+        let mut cumulative_sizes = Vec::new();
+        let mut cum_size = 0;
+        for chunk in &chunks {
+            cum_size += chunk.statements.len();
+            cumulative_sizes.push(cum_size);
+        }
+        for _ in 0..SAMPLE_SIZE {
+            let r = rng.random_range(0..total_size);
+            // Binary search to find the chunk
+            let idx = cumulative_sizes.binary_search(&r).unwrap_or_else(|x| x);
+            selected_chunks.push(chunks[idx].clone());
+        }
+        selected_chunks
+    } else {
+        chunks
+    };
+    let num_chunks = chunks.len();
 
     // Process chunks in parallel
     tracing::info!("Processing chunks in parallel...");

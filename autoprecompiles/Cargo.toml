@@ -11,6 +11,7 @@ powdr-expression.workspace = true
 powdr-number.workspace = true
 powdr-constraint-solver.workspace = true
 
+rand = "0.9.2"
 indicatif = "0.18.3"
 itertools = "0.13"
 log = "0.4.18"
