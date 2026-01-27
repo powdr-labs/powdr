@@ -156,7 +156,7 @@ crepe! {
       Product(summand, l, r);
     HasProductSummand(e, r, l) <- HasProductSummand(e, l, r);
 
-    // ProductConstraint(e, l, r) => e is an algebraic constraint of the form l * r = 0
+    // ProductConstraint(e, l, r) => e is an algebraic constraint of the form l * r = e
     struct ProductConstraint(Expr, Expr, Expr);
     ProductConstraint(e, l, r) <-
       AlgebraicConstraint(e),
