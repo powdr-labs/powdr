@@ -11,25 +11,30 @@ def load_apc_data(json_path, effectiveness_type='cost'):
     with open(json_path, 'r') as f:
         data = json.load(f)["apcs"]
     
-    def calculate_effectiveness(item, eff_type):
+    def get_before_after_cost(item, eff_type):
         if eff_type == 'cost':
-            return item['cost_before'] / item['cost_after']
+            return (item['cost_before'], item['cost_after'])
         elif eff_type == 'main_columns':
-            return item['stats']['before']['main_columns'] / item['stats']['after']['main_columns']
+            return (item['stats']['before']['main_columns'], item['stats']['after']['main_columns'])
         elif eff_type == 'constraints':
-            return item['stats']['before']['constraints'] / item['stats']['after']['constraints']
+            return (item['stats']['before']['constraints'], item['stats']['after']['constraints'])
         elif eff_type == 'bus_interactions':
-            return item['stats']['before']['bus_interactions'] / item['stats']['after']['bus_interactions']
+            return (item['stats']['before']['bus_interactions'], item['stats']['after']['bus_interactions'])
         else:
             raise ValueError(f"Unknown effectiveness type: {eff_type}")
-    
-    return pd.DataFrame([{
-        'start_pc': item['original_block']['start_pc'],
-        'effectiveness': calculate_effectiveness(item, effectiveness_type),
-        'instructions': len(item['original_block']['statements']),
-        'software_version_cells': item['width_before'] * item['execution_frequency'],
-        'width_before': item['width_before']
-    } for item in data])
+        
+    rows = []
+    for item in data:
+        cost_before, cost_after = get_before_after_cost(item, effectiveness_type)
+        rows.append({
+            'start_pc': item['original_block']['start_pc'],
+            'cost_before': cost_before * item['execution_frequency'],
+            'cost_after': cost_after * item['execution_frequency'],
+            'effectiveness': cost_before / cost_after,
+            'instructions': len(item['original_block']['statements']),
+        })
+
+    return pd.DataFrame(rows)
 
 def format_cell_count(count):
     """Format cell count with appropriate units."""
@@ -45,34 +50,36 @@ def format_cell_count(count):
 def plot_effectiveness(json_path, filename=None, effectiveness_type='cost'):
     """Generate bar plot of effectiveness data."""
     df = load_apc_data(json_path, effectiveness_type)
-    total_cells = df['software_version_cells'].sum()
-    
+    total_cost_before = df['cost_before'].sum()
+
     # Print top 10 basic blocks
-    top10 = df.nlargest(10, 'software_version_cells')[['start_pc', 'software_version_cells', 'effectiveness', 'instructions', 'width_before']]
-    top10['software_version_cells'] = top10['software_version_cells'].apply(format_cell_count)
-    top10.columns = ['Start PC', 'Trace Cells', 'Effectiveness', 'Instructions', 'Width Before']
-    print(f"\nTop 10 Basic Blocks by Trace Cells (Effectiveness: {effectiveness_type}):")
+    top10 = df.nlargest(10, 'cost_before')[['start_pc', 'cost_before', 'effectiveness', 'instructions']]
+    print(top10)
+    top10['cost_before'] = top10['cost_before'].apply(format_cell_count)
+    top10.columns = ['Start PC', 'Cost before', 'Effectiveness', 'Instructions']
+    print(f"\nTop 10 Basic Blocks by {effectiveness_type}:")
     print(top10.to_string(index=False))
     print()
     
     # Calculate weighted mean effectiveness
-    mean_effectiveness = (df['effectiveness'] * df['software_version_cells']).sum() / total_cells
+    mean_effectiveness = (df['effectiveness'] * df['cost_before']).sum() / total_cost_before
+    print(f"Mean effectiveness: {mean_effectiveness:.2f}")
     
     # Separate large and small APCs (< 0.1% threshold)
-    threshold = total_cells * 0.001
-    df_large = df[df['software_version_cells'] >= threshold].copy()
-    df_small = df[df['software_version_cells'] < threshold]
+    threshold = total_cost_before * 0.001
+    df_large = df[df['cost_before'] >= threshold].copy()
+    df_small = df[df['cost_before'] < threshold]
     
     # Sort large APCs by cost
-    df_large = df_large.sort_values('software_version_cells', ascending=False)
+    df_large = df_large.sort_values('cost_before', ascending=False)
     
     # Create 'Other' entry if there are small APCs
     if len(df_small) > 0:
-        other_cells = df_small['software_version_cells'].sum()
-        other_effectiveness = (df_small['effectiveness'] * df_small['software_version_cells']).sum() / other_cells
+        other_cost = df_small['cost_before'].sum()
+        other_effectiveness = (df_small['effectiveness'] * df_small['cost_before']).sum() / other_cost
         other_row = pd.DataFrame([{
             'effectiveness': other_effectiveness,
-            'software_version_cells': other_cells,
+            'cost_before': other_cost,
             'instructions': -1,  # Special marker for Other
             'is_other': True
         }])
@@ -92,7 +99,7 @@ def plot_effectiveness(json_path, filename=None, effectiveness_type='cost'):
     # Plot bars
     x_pos = 0
     for idx, row in df_plot.iterrows():
-        width = row['software_version_cells']
+        width = row['cost_before']
         
         if row.get('is_other', False):
             color = 'lightgray'
@@ -103,7 +110,7 @@ def plot_effectiveness(json_path, filename=None, effectiveness_type='cost'):
                color=color, edgecolor='black', linewidth=0.5, alpha=0.8)
         
         # Label 'Other' box if it's wide enough
-        if row.get('is_other', False) and width > total_cells * 0.02:  # Only label if > 2% of total width
+        if row.get('is_other', False) and width > total_cost_before * 0.02:  # Only label if > 2% of total width
             ax.text(x_pos + width/2, row['effectiveness']/2, 
                    f'Other\n({len(df_small)} APCs)',
                    ha='center', va='center', fontsize=10, 
@@ -112,14 +119,14 @@ def plot_effectiveness(json_path, filename=None, effectiveness_type='cost'):
         x_pos += width
     
     # Formatting
-    ax.set_xlabel('Cumulative instruction trace cells (software version)', fontsize=12)
+    ax.set_xlabel('Cumulative cost before (software version)', fontsize=12)
     ax.set_ylabel('Effectiveness', fontsize=12)
     ax.set_title(f"Effectiveness by Basic Block (reduction in {effectiveness_type})", fontsize=14)
     ax.grid(True, alpha=0.3, axis='y')
     ax.axhline(mean_effectiveness, color='red', linestyle='--', linewidth=2, alpha=0.7)
     
     # Format x-axis
-    ax.set_xlim(0, total_cells)
+    ax.set_xlim(0, total_cost_before)
     x_ticks = ax.get_xticks()
     ax.set_xticklabels([format_cell_count(x) for x in x_ticks])
     
