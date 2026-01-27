@@ -44,7 +44,8 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
         // drop any block whose start index cannot be found in pc_idx_count,
         // because a basic block might not be executed at all.
         // Also only keep basic blocks with more than one original instruction.
-        blocks.retain(|b| pgo_program_pc_count.contains_key(&b.start_pc()) && b.statements.len() > 1);
+        blocks
+            .retain(|b| pgo_program_pc_count.contains_key(&b.start_pc()) && b.statements.len() > 1);
 
         tracing::debug!(
             "Retained {} basic blocks after filtering by pc_idx_count",
