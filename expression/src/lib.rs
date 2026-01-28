@@ -215,10 +215,7 @@ where
     T: Serialize,
     R: Serialize,
 {
-    let mut state = serializer.serialize_tuple(2)?;
-    state.serialize_element(&un_op.op)?;
-    state.serialize_element(un_op.expr.as_ref())?;
-    state.end()
+    (&un_op.op, un_op.expr.as_ref()).serialize(serializer)
 }
 
 fn serialize_binary_operation<S, T, R>(
@@ -230,11 +227,7 @@ where
     T: Serialize,
     R: Serialize,
 {
-    let mut state = serializer.serialize_tuple(3)?;
-    state.serialize_element(bin_op.left.as_ref())?;
-    state.serialize_element(&bin_op.op)?;
-    state.serialize_element(bin_op.right.as_ref())?;
-    state.end()
+    (bin_op.left.as_ref(), &bin_op.op, bin_op.right.as_ref()).serialize(serializer)
 }
 
 #[cfg(test)]
