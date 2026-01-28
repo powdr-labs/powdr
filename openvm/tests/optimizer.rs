@@ -75,15 +75,15 @@ fn test_optimize() {
     // This cbor file above has the `is_valid` column removed, this is why the number below
     // might be one less than in other tests.
     expect![[r#"
-        1753
+        2021
     "#]]
     .assert_debug_eq(&machine.main_columns().count());
     expect![[r#"
-        1512
+        1734
     "#]]
     .assert_debug_eq(&machine.bus_interactions.len());
     expect![[r#"
-        182
+        186
     "#]]
     .assert_debug_eq(&machine.constraints.len());
 }
