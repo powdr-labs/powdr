@@ -1,5 +1,7 @@
+use std::collections::BTreeMap;
+
 use itertools::Itertools;
-use powdr_number::FieldElement;
+use powdr_number::{FieldElement, LargeInt};
 
 use crate::{constraint_system::BusInteraction, range_constraint::RangeConstraint};
 
@@ -59,6 +61,57 @@ impl<T: FieldElement> BusInteractionHandler<T> for DefaultBusInteractionHandler<
         &self,
         bus_interaction: BusInteraction<RangeConstraint<T>>,
     ) -> BusInteraction<RangeConstraint<T>> {
+        bus_interaction
+    }
+}
+
+/// A handler for a single bus ID, taking the current range constraints
+/// for the payload and the multiplicity, returning updated range constraints
+/// for the payload.
+pub type SingleBusInteractionHandler<T> =
+    Box<dyn Fn(&[RangeConstraint<T>], T) -> Vec<RangeConstraint<T>>>;
+
+/// A bus interaction handler that automatically deals with resolving the bus ID.
+/// You only need to provide a handler for each bus ID that gets supplied with the
+/// payload and multiplicity and returns updated range constraints for the payload.
+pub struct DelegatingBusInteractionHandler<T: FieldElement> {
+    handler_map: BTreeMap<u64, SingleBusInteractionHandler<T>>,
+}
+
+impl<T: FieldElement> DelegatingBusInteractionHandler<T> {
+    pub fn new(handlers: impl IntoIterator<Item = (u64, SingleBusInteractionHandler<T>)>) -> Self {
+        Self {
+            handler_map: handlers.into_iter().collect(),
+        }
+    }
+}
+
+impl<T: FieldElement> BusInteractionHandler<T> for DelegatingBusInteractionHandler<T> {
+    fn handle_bus_interaction(
+        &self,
+        bus_interaction: BusInteraction<RangeConstraint<T>>,
+    ) -> BusInteraction<RangeConstraint<T>> {
+        let (Some(bus_id), Some(multiplicity)) = (
+            bus_interaction.bus_id.try_to_single_value(),
+            bus_interaction.multiplicity.try_to_single_value(),
+        ) else {
+            return bus_interaction;
+        };
+
+        if multiplicity.is_zero() {
+            return bus_interaction;
+        }
+
+        if let Some(handler) = self
+            .handler_map
+            .get(&bus_id.to_integer().try_into_u64().unwrap())
+        {
+            let payload_constraints = handler(&bus_interaction.payload, multiplicity);
+            return BusInteraction {
+                payload: payload_constraints,
+                ..bus_interaction
+            };
+        }
         bus_interaction
     }
 }
