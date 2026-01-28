@@ -5,7 +5,7 @@ use std::{
 
 use powdr_number::ExpressionConvertible;
 use schemars::JsonSchema;
-use serde::{ser::SerializeTuple, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 pub mod display;
 pub mod visitors;
