@@ -23,11 +23,18 @@ pub enum Action<T: FieldElement> {
     SubstituteVariableByConstant(Var, T),
     /// Substitute the first variable by the second.
     SubstituteVariableByVariable(Var, Var),
-    #[allow(dead_code)]
     /// Replace one algebraic constraint by another.
     ReplaceAlgebraicConstraintBy(Expr, Expr),
-    #[allow(dead_code)]
-    /// Replace a pair of algebraic constraints (the first two) by
-    /// another (the third).
-    ReplacePairOfAlgebraicConstraintsBy(Expr, Expr, Expr),
+}
+
+/// Replace a list of algebraic constraints by another list of
+/// algebraic constraints. We use an array of Option instead of
+/// a Vec because this type needs to be `Copy`.
+/// This is a separate type from `Action` because it is much larger.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ReplaceConstraintsAction {
+    /// The constraints to be replaced. Up to 10, increase the size if needed.
+    pub to_replace: [Option<Expr>; 10],
+    /// The constraints to replace by. Up to 5, increase the size if needed.
+    pub replace_by: [Option<Expr>; 5],
 }
