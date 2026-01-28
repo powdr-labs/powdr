@@ -59,7 +59,7 @@ powdr-openvm-hints-circuit.workspace = true
 indicatif = "0.18.3"
 eyre = "0.6.12"
 serde = "1.0.217"
-derive_more = { version = "2.0.1", default-features = false, features = ["from"] }
+derive_more = { version = "2.0.1", default-features = false, features = ["from", "display"] }
 itertools = "0.14.0"
 
 tracing = "0.1.40"
@@ -88,6 +88,7 @@ openvm-bigint-circuit.workspace = true
 openvm-pairing-circuit.workspace = true
 openvm-pairing-transpiler.workspace = true
 serde_cbor = "0.11.2"
+serde_json = "1.0.140"
 expect-test = "1.5.1"
 criterion = { version = "0.4", features = ["html_reports"] }
 tracing-log = "0.2.0"

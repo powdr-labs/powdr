@@ -107,7 +107,13 @@ where
         Self::PowdrField,
         V,
     >;
-    type CustomBusTypes: Clone + Display + Sync + Eq + PartialEq;
+    type CustomBusTypes: Clone
+        + Display
+        + Sync
+        + Eq
+        + PartialEq
+        + Serialize
+        + for<'de> Deserialize<'de>;
     type ApcStats: Send + Sync;
     type AirId: Eq + Hash + Send + Sync;
     type ExecutionState: ExecutionState;
