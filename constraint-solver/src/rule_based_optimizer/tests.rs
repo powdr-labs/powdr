@@ -1,10 +1,11 @@
 use std::fmt::Display;
 use std::hash::Hash;
 
+use crate::bus_interaction_handler::DefaultBusInteractionHandler;
 use crate::rule_based_optimizer::driver::{batch_replace_algebraic_constraints, ReplacementAction};
 use crate::{
     algebraic_constraint,
-    constraint_system::{BusInteraction, BusInteractionHandler, DefaultBusInteractionHandler},
+    constraint_system::{BusInteraction, BusInteractionHandler},
     grouped_expression::{GroupedExpression, NoRangeConstraints},
     indexed_constraint_system::IndexedConstraintSystem,
     range_constraint::RangeConstraint,
