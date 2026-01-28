@@ -14,7 +14,7 @@ powdr-syscalls.workspace = true
 
 gimli = "0.31"
 goblin = "0.8"
-itertools = "0.13"
+itertools.workspace = true
 log = "0.4.27"
 raki = "0.1.4"
 thiserror = "1.0"
