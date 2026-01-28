@@ -109,15 +109,15 @@ fn test_ecrecover() {
     // This cbor file above has the `is_valid` column removed, this is why the number below
     // might be one less than in other tests.
     expect![[r#"
-        2852
+        3730
     "#]]
     .assert_debug_eq(&machine.main_columns().count());
     expect![[r#"
-        1619
+        2314
     "#]]
     .assert_debug_eq(&machine.bus_interactions.len());
     expect![[r#"
-        2870
+        3114
     "#]]
     .assert_debug_eq(&machine.constraints.len());
 }
@@ -147,15 +147,15 @@ fn test_sha256() {
     // This cbor file above has the `is_valid` column removed, this is why the number below
     // might be one less than in other tests.
     expect![[r#"
-        12391
+        12034
     "#]]
     .assert_debug_eq(&machine.main_columns().count());
     expect![[r#"
-        9753
+        9539
     "#]]
     .assert_debug_eq(&machine.bus_interactions.len());
     expect![[r#"
-        3746
+        3770
     "#]]
     .assert_debug_eq(&machine.constraints.len());
 }
