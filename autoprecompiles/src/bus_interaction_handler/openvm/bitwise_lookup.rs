@@ -1,4 +1,4 @@
-use powdr_autoprecompiles::range_constraint_optimizer::RangeConstraints;
+use crate::range_constraint_optimizer::RangeConstraints;
 use powdr_constraint_solver::{
     grouped_expression::GroupedExpression, range_constraint::RangeConstraint,
 };
@@ -106,9 +106,8 @@ pub fn bitwise_lookup_pure_range_constraints<T: FieldElement, V: Ord + Clone + E
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        bus_interaction_handler::{test_utils::*, OpenVmBusInteractionHandler},
-        bus_map::DEFAULT_BITWISE_LOOKUP,
+    use crate::bus_interaction_handler::openvm::{
+        bus_map::DEFAULT_BITWISE_LOOKUP, test_utils::*, OpenVmBusInteractionHandler,
     };
 
     use super::*;
@@ -134,7 +133,12 @@ mod tests {
 
     #[test]
     fn test_byte_constraint() {
-        let result = run(default(), default(), default(), value(0));
+        let result = run(
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            value(0),
+        );
 
         assert_eq!(result.len(), 4);
         assert_eq!(result[0], mask(0xff));
@@ -145,7 +149,12 @@ mod tests {
 
     #[test]
     fn test_xor_known() {
-        let result = run(value(0b10101010), value(0b11001100), default(), value(1));
+        let result = run(
+            value(0b10101010),
+            value(0b11001100),
+            Default::default(),
+            value(1),
+        );
 
         assert_eq!(result.len(), 4);
         assert_eq!(result[0], value(0b10101010));
@@ -156,7 +165,12 @@ mod tests {
 
     #[test]
     fn test_xor_unknown() {
-        let result = run(default(), default(), default(), value(1));
+        let result = run(
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            value(1),
+        );
 
         assert_eq!(result.len(), 4);
         assert_eq!(result[0], mask(0xff));
@@ -167,7 +181,7 @@ mod tests {
 
     #[test]
     fn test_xor_one_unknown() {
-        let result = run(mask(0xabcd), value(0), default(), value(1));
+        let result = run(mask(0xabcd), value(0), Default::default(), value(1));
 
         assert_eq!(result.len(), 4);
         // Note that this constraint could be tighter (0xcd), but the solver
@@ -184,7 +198,12 @@ mod tests {
 
     #[test]
     fn test_unknown_operation() {
-        let result = run(default(), default(), default(), default());
+        let result = run(
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+        );
 
         assert_eq!(result.len(), 4);
         assert_eq!(result[0], mask(0xff));

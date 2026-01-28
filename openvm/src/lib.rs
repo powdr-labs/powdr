@@ -67,7 +67,6 @@ use crate::extraction_utils::{export_pil, AirWidths, OriginalVmConfig};
 use crate::powdr_extension::{PowdrExtensionExecutor, PowdrPrecompile};
 
 mod air_builder;
-pub mod bus_map;
 pub mod cuda_abi;
 mod empirical_constraints;
 pub mod extraction_utils;
@@ -79,6 +78,8 @@ mod utils;
 pub use opcode::instruction_allowlist;
 pub use powdr_autoprecompiles::DegreeBound;
 pub use powdr_autoprecompiles::PgoConfig;
+
+pub use powdr_autoprecompiles::bus_interaction_handler::openvm::bus_map;
 
 pub use crate::empirical_constraints::detect_empirical_constraints;
 
@@ -145,7 +146,6 @@ pub use customize_exe::{customize, BabyBearOpenVmApcAdapter, Instr, POWDR_OPCODE
 // A module for our extension
 mod powdr_extension;
 
-pub mod bus_interaction_handler;
 pub mod instruction_formatter;
 pub mod memory_bus_interaction;
 

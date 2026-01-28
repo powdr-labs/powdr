@@ -1,4 +1,4 @@
-use powdr_autoprecompiles::range_constraint_optimizer::RangeConstraints;
+use crate::range_constraint_optimizer::RangeConstraints;
 use powdr_constraint_solver::{
     grouped_expression::GroupedExpression, range_constraint::RangeConstraint,
 };
@@ -52,9 +52,10 @@ pub fn variable_range_checker_pure_range_constraints<T: FieldElement, V: Ord + C
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        bus_interaction_handler::{test_utils::*, OpenVmBusInteractionHandler},
+    use crate::bus_interaction_handler::openvm::{
         bus_map::DEFAULT_VARIABLE_RANGE_CHECKER,
+        test_utils::{mask, range, value},
+        OpenVmBusInteractionHandler,
     };
 
     use super::*;
@@ -78,8 +79,8 @@ mod tests {
 
     #[test]
     fn test_unknown_bits() {
-        let x = default();
-        let bits = default();
+        let x = Default::default();
+        let bits = Default::default();
         let result = run(x, bits);
         assert_eq!(result.len(), 2);
         assert_eq!(
@@ -91,7 +92,7 @@ mod tests {
 
     #[test]
     fn test_known_bits() {
-        let x = default();
+        let x = Default::default();
         let bits = value(12);
         let result = run(x, bits);
         assert_eq!(result.len(), 2);

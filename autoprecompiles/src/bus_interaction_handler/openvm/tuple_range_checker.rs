@@ -1,4 +1,4 @@
-use powdr_autoprecompiles::range_constraint_optimizer::RangeConstraints;
+use crate::range_constraint_optimizer::RangeConstraints;
 use powdr_constraint_solver::{
     grouped_expression::GroupedExpression, range_constraint::RangeConstraint,
 };
@@ -55,11 +55,11 @@ impl TupleRangeCheckerHandler {
 
 #[cfg(test)]
 mod tests {
-    use crate::bus_interaction_handler::{test_utils::*, OpenVmBusInteractionHandler};
+    use crate::bus_interaction_handler::openvm::{
+        bus_map::DEFAULT_TUPLE_RANGE_CHECKER, test_utils::value, OpenVmBusInteractionHandler,
+    };
 
     use super::*;
-    use crate::bus_map::DEFAULT_TUPLE_RANGE_CHECKER;
-    use openvm_rv32im_circuit::Rv32M;
     use powdr_constraint_solver::constraint_system::{BusInteraction, BusInteractionHandler};
     use powdr_number::BabyBearField;
 
@@ -80,19 +80,15 @@ mod tests {
 
     #[test]
     fn test_unknown() {
-        let x = default();
-        let y = default();
+        let x = Default::default();
+        let y = Default::default();
         let result = run(x, y);
         assert_eq!(result.len(), 2);
-        let range_tuple_checker_sizes = Rv32M::default().range_tuple_checker_sizes;
         let (x_rc, y_rc) = (
+            RangeConstraint::from_range(BabyBearField::from(0), BabyBearField::from(255)),
             RangeConstraint::from_range(
                 BabyBearField::from(0),
-                BabyBearField::from(range_tuple_checker_sizes[0] - 1),
-            ),
-            RangeConstraint::from_range(
-                BabyBearField::from(0),
-                BabyBearField::from(range_tuple_checker_sizes[1] - 1),
+                BabyBearField::from(8 * (1 << 8) - 1),
             ),
         );
         assert_eq!(result[0], x_rc);
