@@ -1,3 +1,5 @@
+use std::io::BufReader;
+
 use expect_test::expect;
 use powdr_autoprecompiles::bus_map::BusMap;
 use powdr_autoprecompiles::export::{ApcWithBusMap, SimpleInstruction};
@@ -186,13 +188,16 @@ fn default_reth_openvm_bus_map() -> BusMap<OpenVmBusType> {
 
 #[test]
 fn test_optimize_reth_op() {
-    let bus_map = default_reth_openvm_bus_map();
-    let bus_int_handler = OpenVmBusInteractionHandler::new(bus_map.clone(), [256, 8192]);
+    let file = std::fs::File::open("tests/apc_reth_op_bug.json").unwrap();
+    //let reader = flate2::read::GzDecoder::new(file);
+    let reader = BufReader::new(file);
+    let apc: ApcWithBusMap<TestApc, BusMap<TestBusType>> = serde_json::from_reader(reader).unwrap();
 
-    let file = std::fs::File::open("tests/apc_reth_op_bug.cbor").unwrap();
-    let reader = std::io::BufReader::new(file);
-    let machine: SymbolicMachine<BabyBearField> = serde_cbor::from_reader(reader).unwrap();
+    let machine: SymbolicMachine<BabyBearField> = apc.apc.machine;
     assert!(machine.derived_columns.is_empty());
+
+    let bus_map = &apc.bus_map;
+    let bus_int_handler = OpenVmBusInteractionHandler::new(bus_map.clone(), [256, 8192]);
 
     let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&machine);
     let machine = optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
