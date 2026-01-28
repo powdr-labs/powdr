@@ -45,6 +45,10 @@ impl<F, I, A, V, S> ApcWithStats<F, I, A, V, S> {
         &self.stats
     }
 
+    pub fn into_stats(self) -> S {
+        self.stats
+    }
+
     pub fn evaluation_result(&self) -> EvaluationResult {
         self.evaluation_result
     }

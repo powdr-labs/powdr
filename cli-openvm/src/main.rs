@@ -130,6 +130,17 @@ enum Commands {
         #[arg(default_value_t = false)]
         optimistic_precompiles: bool,
     },
+
+    GetFullCircuitEffectiveness {
+        guest: String,
+
+        #[arg(long)]
+        input: Option<u32>,
+
+        /// Size of each chunk (default: 1000)
+        #[arg(long, default_value_t = 1000)]
+        chunk_size: usize,
+    },
 }
 
 fn main() -> Result<(), io::Error> {
@@ -274,6 +285,22 @@ fn run_command(command: Commands) {
             } else {
                 compile_and_prove()
             }
+        }
+
+        Commands::GetFullCircuitEffectiveness {
+            guest,
+            input,
+            chunk_size,
+        } => {
+            let powdr_config = default_powdr_openvm_config(0, 0);
+            let guest_program = compile_openvm(&guest, guest_opts).unwrap();
+
+            powdr_openvm::get_full_circuit_effectiveness(
+                &guest_program,
+                stdin_from(input),
+                powdr_config.degree_bound,
+                chunk_size,
+            );
         }
     }
 }

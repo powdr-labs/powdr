@@ -32,7 +32,7 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
         for block in &blocks {
             tracing::debug!(
                 "Basic block start_pc: {}, number_of_instructions: {}",
-                block.start_pc,
+                block.start_pc(),
                 block.statements.len(),
             );
         }

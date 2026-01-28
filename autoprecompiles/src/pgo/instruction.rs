@@ -44,7 +44,8 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
         // drop any block whose start index cannot be found in pc_idx_count,
         // because a basic block might not be executed at all.
         // Also only keep basic blocks with more than one original instruction.
-        blocks.retain(|b| pgo_program_pc_count.contains_key(&b.start_pc) && b.statements.len() > 1);
+        blocks
+            .retain(|b| pgo_program_pc_count.contains_key(&b.start_pc()) && b.statements.len() > 1);
 
         tracing::debug!(
             "Retained {} basic blocks after filtering by pc_idx_count",
@@ -53,20 +54,20 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
 
         // cost = cells_saved_per_row
         blocks.sort_by(|a, b| {
-            let a_cnt = pgo_program_pc_count[&a.start_pc];
-            let b_cnt = pgo_program_pc_count[&b.start_pc];
+            let a_cnt = pgo_program_pc_count[&a.start_pc()];
+            let b_cnt = pgo_program_pc_count[&b.start_pc()];
             (b_cnt * (b.statements.len() as u32)).cmp(&(a_cnt * (a.statements.len() as u32)))
         });
 
         // Debug print blocks by descending cost
         for block in &blocks {
-            let frequency = pgo_program_pc_count[&block.start_pc];
+            let frequency = pgo_program_pc_count[&block.start_pc()];
             let number_of_instructions = block.statements.len();
             let value = frequency * number_of_instructions as u32;
 
             tracing::debug!(
                     "Basic block start_pc: {start_pc}, value: {value}, frequency: {frequency}, number_of_instructions: {number_of_instructions}",
-                    start_pc = block.start_pc,
+                    start_pc = block.start_pc(),
                 );
         }
 

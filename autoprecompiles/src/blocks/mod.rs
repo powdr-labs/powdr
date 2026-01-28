@@ -10,20 +10,37 @@ pub use detection::collect_basic_blocks;
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BasicBlock<I> {
     /// The program counter of the first instruction in this block.
-    pub start_pc: u64,
+    pub pcs: Vec<u64>,
     pub statements: Vec<I>,
 }
 
 impl<I: PcStep> BasicBlock<I> {
+    pub fn from_start_pc_and_statements(start_pc: u64, statements: Vec<I>) -> Self {
+        let pcs = (0..statements.len())
+            .map(|i| start_pc + (i as u64 * I::pc_step() as u64))
+            .collect();
+        Self { pcs, statements }
+    }
+}
+
+impl<I> BasicBlock<I> {
+    pub fn start_pc(&self) -> u64 {
+        self.pcs
+            .first()
+            .copied()
+            .expect("basic block must have at least one pc")
+    }
+
     /// Returns an iterator over the program counters of the instructions in this block.
     pub fn pcs(&self) -> impl Iterator<Item = u64> + '_ {
-        (0..self.statements.len()).map(move |i| self.start_pc + (i as u64 * I::pc_step() as u64))
+        self.pcs.iter().copied()
     }
 }
 
 impl<I: Display> Display for BasicBlock<I> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "BasicBlock(start_pc: {}, statements: [", self.start_pc)?;
+        // TODO: Show all PCs.
+        writeln!(f, "BasicBlock(start_pc: {}, statements: [", self.start_pc())?;
         for (i, instr) in self.statements.iter().enumerate() {
             writeln!(f, "   instr {i:>3}:   {instr}")?;
         }

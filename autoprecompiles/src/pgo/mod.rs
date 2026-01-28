@@ -91,7 +91,7 @@ fn create_apcs_for_all_blocks<A: Adapter>(
             tracing::debug!(
                 "Accelerating block of length {} and start pc {}",
                 block.statements.len(),
-                block.start_pc
+                block.start_pc()
             );
 
             let apc = crate::build::<A>(

@@ -56,10 +56,10 @@ pub mod apc_builder_utils {
             .collect::<Vec<_>>()
             .join("\n");
 
-        let basic_block = BasicBlock {
-            statements: basic_block.into_iter().map(Instr).collect(),
-            start_pc: 0,
-        };
+        let basic_block = BasicBlock::from_start_pc_and_statements(
+            0,
+            basic_block.into_iter().map(Instr).collect(),
+        );
 
         // Use this env var to output serialized APCs for tests as well.
         let apc_path_var = std::env::var("APC_CBOR_PATH").ok();
