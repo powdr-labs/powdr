@@ -243,23 +243,32 @@ BusInteraction { bus_id = 2, multiplicity = 1, payload = [x, y, z] }
 w * (w - 1) = 0
 ```
 
-System B:
+System B:[^variables]
 ```
-y + z = 4
-BusInteraction { bus_id = 2, multiplicity = 1, payload = [8, y, z] }
+y' + z' = 4
+BusInteraction { bus_id = 2, multiplicity = 1, payload = [8, y', z'] }
 ```
+
+[^variables]:
+    In this pair of systems, and throughout the rest of this document, we will use
+    unprimed variables for the first system and primed ones for the second system.
+    When two variables have the same name (modulo primes), that means the variables
+    are informally *intended* to have the same value. We will formalize this idea
+    later.
 
 Let us assume that the bus with ID 2 is stateful and allows all combinations of values between 0 and 100 (inclusive).
-Note that the variables `y` and `z` are not uniquely determined in either system, so the stateful bus
-acts both as input and output for the system. TODO can that be or do we need one send and one receive?
+Note that the variables `y`/`y'` and `z`/`z'` are not uniquely determined in either system. The stateful bus
+acts both as input and output for the system.
 
-Note that System B is obtained from System A by substituting `x = 8` and removing `w`.
+Note that System B is obtained from System A by substituting `x = 8`, removing `w`, and replacing `y,z` with `y',z'`.
 
 All satisfying assignments of System A must have `x = 8` and either `w = 0` or `w = 1`.
-Such an assignment also satisfies System B and it produces the same values for the stateful bus interaction.
+Such an assignment also satisfies System B (with the variables primed)
+and it produces the same values for the stateful bus interaction.
 
 The converse is a bit more complicated: Satisfying assignments of system B only assign the variables
-`y` and `z`. So we need to extend the assignment for System A into a satisfying one. For `x`, the only
+`y'` and `z'`.  We can give `y` and `z` the same values in system A, but we need
+to extend the assignment so that it assigns `x` and `w` and satisfies System A. For `x`, the only
 choice we have is `x = 8`, but there are two ways to extend the assignment with regards to `w` such that
 it is still satisfying, `w = 0` or `w = 1`. Since both ways to extend the assignment
 produce the same values in the stateful bus interaction, the systems are equivalent.
@@ -282,7 +291,8 @@ which is an algebraic expression.
 The bus interactions will be aggregated into a special kind of multiset. We
 refer to a map from $\mathbb{F}^+ \to \mathbb{F}$ as a “field multiset” (aka
 “multiset”). This name reflects an interpretation of the map as a multiset in
-which each key in the map appears with multiplicity equal to its value. Note
+which each key in the map appears with multiplicity equal to its
+value.[^fmultiset] Note
 that these multisets can be added pointwise. That is, for multisets $m$ and
 $m'$, their sum $m + m'$ maps each key $k$ to $m(k) + m'(k)$. We interpret a bus
 interaction as a multiset with one key and the specified multiplicity. That is,
@@ -290,28 +300,45 @@ we define $\textsf{toMs}(d, m)$ to be the field multiset that maps key $d$ to
 value $m$ and all other keys to value $0$. Then, we define $\Sigma(B)$ to be
 $\sum_{(d,m) \in B} \textsf{toMs}(d, m)$
 
+[^fmultiset]:
+    A field multiset is slightly different than a standard multiset. In a
+    standard multiset, the multiplicities are natural numbers, not field
+    elements. Thus, in a field multiset, multiplicities can cancel out and can
+    be negative. For example, in a field multiset over $\mathbb{F}_2$, for a key
+    $k$, containing $k$ twice is equivalent to containing $k$ zero times.
+    We use field multisets because the cryptography used to create zkVMs can
+    prove properties of field multisets, but not standard multisets.
+    While some SMT solvers, like cvc5, do have a theory of standard
+    multisets ([link][bags]), field multisets are more naturally encoded using
+    the theory of arrays, with pointwise addition.
+
+[bags]: https://cvc5.github.io/docs/cvc5-1.3.2/theories/bags.html
+
+
 Now we can define equivalence, between systems. Assume two systems $S = (C, B)$
-and $S' = (C', B')$ in variable $w$ and $w'$, respectively. $S$ is the input to
-powdr and $S'$ is the output. powdr also outputs an efficiently polytime
-function $E$ that maps $w$ to $w'$. Most of the variables in $w'$ have the same
-name as some variable in $w$---they takes its value. Other variables have an
-entry in the "derived variables", which explains how to compute them from $w$.
+and $S' = (C', B')$ in variables $w$ and $w'$, respectively.
 
 Equivalence has two conditions.
 
 The first condition is **completeness**, which says that when $S$ is satisfiable,
-$E$ gives a satisfying assignment for $S'$ with the same effects (stateful bus
-interactions). Formally: for all $w$ and $s$,
+so is $S'$, and with the same effects (stateful bus interactions). Formally,
+there should exist an efficient $E(w) \to w'$ such that: for all $w$ and $s$,
 if $C(w) \wedge \Sigma(B(w)) = s$,
 then $C'(w') \wedge \Sigma(B'(w')) = s$,
 where $w' = E(w)$.
-
 
 The second condition is **soundness**, which says that when $S'$ is satisfiable, $S$
 is too, and with the same effects. Formally, there should exists an efficient
 $I(w') \to w$ such that: for all $w'$ and $s$,
 if $C'(w') \wedge \Sigma(B'(w')) = s$,
-then $C(w) \wedge \Sigma(B(w)) = s$.
+then $C(w) \wedge \Sigma(B(w)) = s$,
+where $w = I(w')$.
+
+In the context of powdr, $S$ is the input to the optimization pipeline and $S'$
+is the output. The pipeline also implicitly outputs $E$, which is encoded as
+follows. Most of the variables in $w'$ have the same name as some variable in
+$w$---they takes its value. Other variables have an entry in the "derived
+variables", which explains how to compute them from $w$.
 
 ### Worked example
 
@@ -346,19 +373,28 @@ Algorithmically, one optimizes $S$ into $S'$ by the following transformations:
 Now, we prove that these systems are equivalent under the prior definition. That
 is, we prove soundness and completeness.
 
+TODO: A question for everyone: would it be better to use entirely different
+variable names for the two systems, instead of primes?
+
 #### Soundness
 
-$I(w') \to w$ is defined as follows: $x \gets 8, y \gets y', z \gets z', b \gets 0$.
+$I(w') \to w$ is defined to map $w'=(y',z')$ to $w=(x,y,z,b)$ as follows:
+$x \gets 8, y \gets y', z \gets z', b \gets 0$.
 
 Roughly, we must show:
 
 $$\forall w', \forall s, C'(w') \wedge \Sigma(B'(w')) = s \land w = I(w')
 \implies C(w) \wedge \Sigma(B(w)) = s$$
 
+Which is the same as
+
+$$\forall w', C'(w') \wedge \land w = I(w')
+\implies C(w) \wedge \Sigma(B(w)) = \Sigma(B'(w'))$$
+
+
 Proof:
 
 * Fix $w' = (y', z')$.
-* Fix $s$.
 * To show the $\implies$, assume
   * $w = I(w')$, that is:
     * $x = 8$
@@ -366,7 +402,7 @@ Proof:
     * $z = z'$
     * $b = 0$
   * $y' + z' = 4$
-  * $s = \mathsf{toMs}((2, 8, y', z'), 1)$
+  * $s = $
 * And now we need to show each of the following goals:
   * $x = 8$, since it is part of $C(w)$
     * we already have this
@@ -374,10 +410,9 @@ Proof:
     * we have this since we have $x=8, y=y', z=z', y'+z'=4$
   * $b(b-1) = 0$, since it is also part of $C(w)$
     * we have this since $b=0$
-  * $s = \mathsf{toMs}((2, x, y, z), 1) + \mathsf{toMs}((2, x, y, z), b) + \mathsf{toMs}((2, 8, y, z), -b)$
-    * we have
-        $s = \mathsf{toMs}((2, 8, y', z'), 1)$
-    * which is
+  * $\mathsf{toMs}((2, 8, y', z'), 1) = \mathsf{toMs}((2, x, y, z), 1) + \mathsf{toMs}((2, x, y, z), b) + \mathsf{toMs}((2, 8, y, z), -b)$
+    * Fist, let $s = \mathsf{toMs}((2, 8, y', z'), 1)$
+    * since $y=y'$ and $z=z'$, we have
         $s = \mathsf{toMs}((2, 8, y, z), 1)$
     * since $x=8$, we have
         $s = \mathsf{toMs}((2, x, y, z), 1)$
@@ -395,23 +430,26 @@ Roughly, we must show:
 $$\forall w, \forall s, C(w) \wedge \Sigma(B(w)) = s \wedge w' = E(w)
 \implies C'(w') \wedge \Sigma(B'(w')) = s$$
 
+Which is the same as
+
+$$\forall w, C(w) \wedge w' = E(w)
+\implies C'(w') \wedge \Sigma(B(w)) = \Sigma(B'(w'))$$
+
 Proof:
 
 * Fix $w = (x, y, z, b)$.
 * Fix $w' = (y', z')$.
-* Fix $s$.
 * To show the $\implies$, assume
   * $w'=E(w)$, that is:
     * $y' = y$
     * $z' = z$
   * $x = 8$
   * $x + y + z = 12$
-  * $s = \mathsf{toMs}((2, x, y, z), 1) + \mathsf{toMs}((2, x, y, z), b) + \mathsf{toMs}((2, 8, y, z), -b)$
 * And now we need to show each of the following goals:
   * $y' + z' = 4$
     * we have this from $y' = y, z' = z, x = 8, x + y + z = 12$
-  * $s = \mathsf{toMs}((2, 8, y', z'), 1)$
-    * we have:
+  * $\mathsf{toMs}((2, x, y, z), 1) + \mathsf{toMs}((2, x, y, z), b) + \mathsf{toMs}((2, 8, y, z), -b) = \mathsf{toMs}((2, 8, y', z'), 1)$
+    * let
       $s = \mathsf{toMs}((2, x, y, z), 1) + \mathsf{toMs}((2, x, y, z), b) + \mathsf{toMs}((2, 8, y, z), -b)$
     * since $x = 8$, we have:
       $s = \mathsf{toMs}((2, 8, y, z), 1) + \mathsf{toMs}((2, 8, y, z), b) + \mathsf{toMs}((2, 8, y, z), -b)$
