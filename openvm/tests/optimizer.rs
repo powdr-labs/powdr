@@ -87,9 +87,11 @@ fn test_optimize() {
 
 #[test]
 fn test_ecrecover() {
-    let file = std::fs::File::open("tests/ecrecover_apc_pre_opt.cbor.gz").unwrap();
+    let file = std::fs::File::open("tests/ecrecover_apc_pre_opt.json.gz").unwrap();
     let reader = flate2::read::GzDecoder::new(file);
-    let machine: SymbolicMachine<BabyBearField> = serde_cbor::from_reader(reader).unwrap();
+    let apc: ApcWithBusMap<TestApc, BusMap<TestBusType>> = serde_json::from_reader(reader).unwrap();
+
+    let machine: SymbolicMachine<BabyBearField> = apc.apc.machine;
     assert!(machine.derived_columns.is_empty());
 
     let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&machine);
@@ -122,9 +124,12 @@ fn test_ecrecover() {
 
 #[test]
 fn test_sha256() {
-    let file = std::fs::File::open("tests/sha256_apc_pre_opt.cbor.gz").unwrap();
+    let file = std::fs::File::open("tests/sha256_apc_pre_opt.json.gz").unwrap();
     let reader = flate2::read::GzDecoder::new(file);
-    let machine: SymbolicMachine<BabyBearField> = serde_cbor::from_reader(reader).unwrap();
+    let apc: ApcWithBusMap<TestApc, BusMap<OpenVmBusType>> =
+        serde_json::from_reader(reader).unwrap();
+
+    let machine: SymbolicMachine<BabyBearField> = apc.apc.machine;
     assert!(machine.derived_columns.is_empty());
     let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&machine);
 
