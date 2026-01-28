@@ -1,8 +1,12 @@
-use openvm_instructions::riscv::{RV32_MEMORY_AS, RV32_REGISTER_AS};
 use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_number::{FieldElement, LargeInt};
 
 use super::byte_constraint;
+
+/// Taken from the openvm implementation, should be kept in sync.
+pub const RV32_REGISTER_AS: u32 = 1;
+/// Taken from the openvm implementation, should be kept in sync.
+pub const RV32_MEMORY_AS: u32 = 2;
 
 pub fn handle_memory<T: FieldElement>(
     payload: &[RangeConstraint<T>],
@@ -52,9 +56,8 @@ pub fn handle_memory<T: FieldElement>(
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        bus_interaction_handler::{test_utils::*, OpenVmBusInteractionHandler},
-        bus_map::DEFAULT_MEMORY,
+    use crate::bus_interaction_handler::openvm::{
+        bus_map::DEFAULT_MEMORY, test_utils::*, OpenVmBusInteractionHandler,
     };
 
     use super::*;
@@ -87,7 +90,7 @@ mod tests {
     fn test_receive() {
         let address_space = value(RV32_MEMORY_AS as u64);
         let pointer = value(0x1234);
-        let data = vec![default(); 4];
+        let data = vec![Default::default(); 4];
         let timestamp = value(0x5678);
 
         let result = run(
@@ -112,7 +115,7 @@ mod tests {
     fn test_send() {
         let address_space = value(RV32_MEMORY_AS as u64);
         let pointer = value(0x1234);
-        let data = vec![default(); 4];
+        let data = vec![Default::default(); 4];
         let timestamp = value(0x5678);
 
         let result = run(address_space, pointer, data, timestamp, 1.into());

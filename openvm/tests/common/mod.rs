@@ -21,11 +21,11 @@ pub mod apc_builder_utils {
     use openvm_instructions::instruction::Instruction;
     use openvm_stark_sdk::p3_baby_bear::BabyBear;
     use powdr_autoprecompiles::blocks::BasicBlock;
+    use powdr_autoprecompiles::bus_interaction_handler::openvm::OpenVmBusInteractionHandler;
     use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
     use powdr_autoprecompiles::evaluation::evaluate_apc;
     use powdr_autoprecompiles::{build, VmConfig};
     use powdr_number::BabyBearField;
-    use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
     use powdr_openvm::instruction_formatter::openvm_instruction_formatter;
     use powdr_openvm::BabyBearOpenVmApcAdapter;
     use powdr_openvm::Instr;
