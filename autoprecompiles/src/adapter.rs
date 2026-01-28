@@ -19,7 +19,7 @@ use crate::{
     Apc, InstructionHandler, PowdrConfig, VmConfig,
 };
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ApcWithStats<F, I, A, V, S> {
     apc: Arc<Apc<F, I, A, V>>,
     stats: S,

@@ -305,7 +305,7 @@ pub fn openvm_bus_interaction_to_powdr<F: PrimeField32>(
     Ok(SymbolicBusInteraction { id, mult, args })
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct OpenVmApcCandidate<F, I> {
     apc_with_stats: ApcWithStats<F, I, OpenVmRegisterAddress, u32, OvmApcStats>,
     execution_frequency: usize,
@@ -350,13 +350,28 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
                 statements: b.statements.iter().map(ToString::to_string).collect(),
             })
             .collect();
+
+        let statements = self
+            .apc_with_stats
+            .apc()
+            .block.statements().map(ToString::to_string).collect();
+        let start_pc = self
+            .apc_with_stats
+            .apc()
+            .block.pcs().next().unwrap();
+
+        let cost_before = self.apc_with_stats.stats().widths.before.total();
+        let cost_after = self.apc_with_stats.stats().widths.after.total();
+
         ApcCandidateJsonExport {
             execution_frequency: execution_frequency,
-            original_block: SuperBlock { blocks },
+            block: SuperBlock { blocks },
+            original_block: BasicBlock { start_pc, statements },
             stats: self.apc_with_stats.evaluation_result(),
+            value: execution_frequency.checked_mul(cost_before - cost_after).unwrap().checked_mul(1000).unwrap(),
             width_before: self.apc_with_stats.stats().widths.before.total(),
-            cost_before: self.apc_with_stats.stats().widths.before.total() as f64,
-            cost_after: self.apc_with_stats.stats().widths.after.total() as f64,
+            cost_before: cost_before as f64,
+            cost_after: cost_after as f64,
             apc_candidate_file: apc_candidates_dir_path
                 .join(format!(
                     "apc_{}.cbor",
