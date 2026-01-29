@@ -295,20 +295,20 @@ pub fn generate_superblocks<I: Clone>(
             .map(|start_pc| basic_blocks[bb_start_pc_to_idx[start_pc]].clone())
             .collect_vec();
 
-        if count < exec_count_cutoff {
-            // skip blocks that were executed less than the cutoff
-            tracing::trace!(
-                "Skipping superblock {:?} due to execution count below cutoff ({})",
-                sblock,
-                exec_count_cutoff,
-            );
-            skipped += 1;
-            return;
-        }
-
         if blocks.len() == 1 {
             super_blocks.push(Block::Basic(blocks.pop().unwrap()));
         } else {
+            if count < exec_count_cutoff {
+                // skip superblocks that were executed less than the cutoff
+                tracing::trace!(
+                    "Skipping superblock {:?} due to execution count below cutoff ({})",
+                    sblock,
+                    exec_count_cutoff,
+                );
+                skipped += 1;
+                return;
+            }
+
             super_blocks.push(Block::Super(SuperBlock { blocks }));
         }
         counts.push(count);
