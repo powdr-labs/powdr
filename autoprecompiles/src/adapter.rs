@@ -6,7 +6,7 @@ use std::{fmt::Display, sync::Arc};
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
-use crate::blocks::{Block, PGOBlocks, generate_superblocks};
+use crate::blocks::{Block, ProgramBlocks, generate_superblocks};
 use crate::empirical_constraints::EmpiricalConstraints;
 use crate::evaluation::EvaluationResult;
 use crate::execution::{ExecutionState, OptimisticConstraints};
@@ -68,6 +68,11 @@ pub trait PgoAdapter {
             .filter(|block| !Self::Adapter::should_skip_block(block))
             .collect();
 
+        let block_exec_count_cutoff = std::env::var("POWDR_BLOCK_EXEC_COUNT_CUTOFF")
+            .ok()
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(0);
+
         // generate superblocks if profiling data is available
         let exec_blocks = if let Some(prof) = self.profiling_data() {
             // generate_superblocks already filters out unexecuted blocks and single instruction blocks
@@ -75,16 +80,14 @@ pub trait PgoAdapter {
                 &prof.pc_list,
                 &filtered_blocks,
                 config.superblock_max_bb_count as usize,
+                block_exec_count_cutoff,
             )
         } else {
-            PGOBlocks {
-                blocks: filtered_blocks
-                    .into_iter()
-                    .map(|bb| Block::Basic(bb))
-                    .collect(),
-                counts: None,
-                execution_bb_runs: None,
-            }
+            let blocks = filtered_blocks
+                .into_iter()
+                .map(|bb| Block::Basic(bb))
+                .collect();
+            ProgramBlocks::new_without_pgo(blocks)
         };
 
         self.create_apcs_with_pgo(
@@ -98,7 +101,7 @@ pub trait PgoAdapter {
 
     fn create_apcs_with_pgo(
         &self,
-        exec_blocks: AdapterPGOBlocks<Self::Adapter>,
+        exec_blocks: AdapterProgramBlocks<Self::Adapter>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
@@ -187,4 +190,4 @@ pub type AdapterOptimisticConstraints<A> = OptimisticConstraints<
 >;
 pub type AdapterBasicBlock<A> = BasicBlock<<A as Adapter>::Instruction>;
 pub type AdapterBlock<A> = Block<<A as Adapter>::Instruction>;
-pub type AdapterPGOBlocks<A> = PGOBlocks<<A as Adapter>::Instruction>;
+pub type AdapterProgramBlocks<A> = ProgramBlocks<<A as Adapter>::Instruction>;

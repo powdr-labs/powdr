@@ -4,7 +4,7 @@ use std::{
 };
 
 use itertools::{Either, Itertools};
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 /// Tools to detect basic blocks in a program
@@ -172,7 +172,7 @@ pub fn count_non_overlapping<T: Eq>(haystack: &[T], needle: &[T]) -> u32 {
     count
 }
 
-pub struct PGOBlocks<I> {
+pub struct ProgramBlocks<I> {
     /// Superblocks of len (1..=max_len) seen in the execution.
     pub blocks: Vec<Block<I>>,
     /// Count of each of the seen superblocks. None if running without PGO.
@@ -180,6 +180,20 @@ pub struct PGOBlocks<I> {
     /// Basic block runs in the given PGO execution.
     /// `None` if running without PGO.
     pub execution_bb_runs: Option<Vec<Vec<u64>>>,
+    /// Map from block to the runs it appears in (to avoid searching over the whole execution)
+    /// TODO(leandro): remove this if we dont use it
+    pub block_to_runs: Option<Vec<Vec<usize>>>,
+}
+
+impl<I> ProgramBlocks<I> {
+    pub fn new_without_pgo(blocks: Vec<Block<I>>) -> Self {
+        Self {
+            blocks,
+            counts: None,
+            execution_bb_runs: None,
+            block_to_runs: None,
+        }
+    }
 }
 
 /// Find all superblocks up to max_len in run and count their ocurrences
@@ -204,7 +218,8 @@ pub fn generate_superblocks<I: Clone>(
     execution_pc_list: &[u64],
     basic_blocks: &[BasicBlock<I>],
     max_len: usize,
-) -> PGOBlocks<I> {
+    exec_count_cutoff: u32,
+) -> ProgramBlocks<I> {
     tracing::info!(
         "Detecting superblocks of size <= {max_len}, over the sequence of {} PCs",
         execution_pc_list.len()
@@ -243,14 +258,22 @@ pub fn generate_superblocks<I: Clone>(
         execution_bb_runs.push(std::mem::take(&mut current_run));
     }
 
-    // find and count the ocurrences of superblocks of up to max_len in each run
-    let superblock_counts = execution_bb_runs.par_iter().map(|run| {
-        superblocks_in_run(run, max_len)
-    }).reduce(HashMap::new, |mut a, b| {
-        for (sblock, count) in b {
-            *a.entry(sblock).or_insert(0) += count;
+    // Find and count the ocurrences of superblocks of up to max_len in each run.
+    // Concurrently, build a map from superblock to the runs it appears in.
+    let (block_to_runs_map, superblock_counts) = execution_bb_runs.par_iter().enumerate().map(|(run_idx, run)| {
+        let run_superblock_counts = superblocks_in_run(run, max_len);
+        let block_to_run: HashMap<_, _> = run_superblock_counts.keys()
+            .map(|sblock| (sblock.clone(), vec![run_idx]))
+            .collect();
+        (block_to_run, run_superblock_counts)
+    }).reduce(||(HashMap::new(), HashMap::new()), |(mut a_runs, mut a_counts), (b_runs, b_counts)| {
+        for (sblock, count) in b_counts {
+            *a_counts.entry(sblock).or_insert(0) += count;
         }
-        a
+        for (sblock, runs) in b_runs {
+            a_runs.entry(sblock).or_default().extend(runs);
+        }
+        (a_runs, a_counts)
     });
 
     tracing::info!(
@@ -263,6 +286,8 @@ pub fn generate_superblocks<I: Clone>(
     // build the resulting BasicBlock's and counts
     let mut super_blocks = vec![];
     let mut counts = vec![];
+    let mut block_to_runs = vec![];
+    let mut skipped = 0;
     superblock_counts.into_iter().for_each(|(sblock, count)| {
         // convert PCs into BasicBlocks
         let mut blocks = sblock
@@ -270,17 +295,37 @@ pub fn generate_superblocks<I: Clone>(
             .map(|start_pc| basic_blocks[bb_start_pc_to_idx[start_pc]].clone())
             .collect_vec();
 
+        if count < exec_count_cutoff {
+            // skip blocks that were executed less than the cutoff
+            tracing::trace!(
+                "Skipping superblock {:?} due to execution count below cutoff ({})",
+                sblock,
+                exec_count_cutoff,
+            );
+            skipped += 1;
+            return;
+        }
+
         if blocks.len() == 1 {
             super_blocks.push(Block::Basic(blocks.pop().unwrap()));
         } else {
             super_blocks.push(Block::Super(SuperBlock { blocks }));
         }
         counts.push(count);
+        block_to_runs.push(block_to_runs_map[&sblock].clone());
     });
 
-    PGOBlocks {
+    tracing::info!(
+        "{} blocks were skipped due to execution cutoff of {}, {} blocks remain",
+        skipped,
+        exec_count_cutoff,
+        super_blocks.len(),
+    );
+
+    ProgramBlocks {
         blocks: super_blocks,
         counts: Some(counts),
         execution_bb_runs: Some(execution_bb_runs),
+        block_to_runs: Some(block_to_runs),
     }
 }

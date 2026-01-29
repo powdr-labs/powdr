@@ -10,8 +10,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     EmpiricalConstraints, PowdrConfig, adapter::{
-        Adapter, AdapterApc, AdapterApcWithStats, AdapterPGOBlocks, AdapterVmConfig, PgoAdapter
-    }, blocks::{BasicBlock, Block, PGOBlocks, SuperBlock}, evaluation::{EvaluationResult, evaluate_apc}, execution_profile::ExecutionProfile
+        Adapter, AdapterApc, AdapterApcWithStats, AdapterProgramBlocks, AdapterVmConfig, PgoAdapter
+    }, blocks::{BasicBlock, Block, SuperBlock}, evaluation::{EvaluationResult, evaluate_apc}, execution_profile::ExecutionProfile
 };
 
 use itertools::Itertools;
@@ -102,7 +102,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync + Clone> PgoAdapter
 
     fn create_apcs_with_pgo(
         &self,
-        pgo_blocks: AdapterPGOBlocks<Self::Adapter>,
+        blocks: AdapterProgramBlocks<Self::Adapter>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
@@ -112,62 +112,29 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync + Clone> PgoAdapter
             return vec![];
         }
 
-        let PGOBlocks {
-            mut blocks,
-            counts,
-            execution_bb_runs,
-        } = pgo_blocks;
-
-        // ensure blocks are valid for APC
-        let mut block_exec_count = counts.unwrap();
+        // ensure blocks are valid for APC gen
         blocks
+            .blocks
             .iter()
-            .zip_eq(&block_exec_count)
-            .for_each(|(block, count)| assert!(*count > 0 && block.statements().count() > 1));
-
-        // filter out superblocks with low execution count
-        let block_exec_count_cutoff = std::env::var("POWDR_BLOCK_EXEC_COUNT_CUTOFF")
-            .ok()
-            .and_then(|s| s.parse::<u32>().ok())
-            .unwrap_or(0);
-        let mut skipped = 0;
-        for i in (0..blocks.len()).rev() {
-            if blocks[i].is_superblock() && block_exec_count[i] < block_exec_count_cutoff {
-                tracing::trace!(
-                    "Skipping superblock {:?} due to execution count below cutoff ({})",
-                    blocks[i].original_bb_pcs(),
-                    block_exec_count[i],
-                );
-                // remove block
-                blocks.remove(i);
-                block_exec_count.remove(i);
-                skipped += 1;
-            }
-        }
-        tracing::info!(
-            "{} blocks were skipped due to execution cutoff of {}, {} blocks remain",
-            skipped,
-            block_exec_count_cutoff,
-            blocks.len(),
-        );
+            .for_each(|block| assert!(block.statements().count() > 1));
 
         // generate apc for all basic blocks and only cache the ones we eventually use
         // calculate number of trace cells saved per row for each basic block to sort them by descending cost
         tracing::info!(
             "Generating autoprecompiles with cell PGO for all ({}) basic blocks in parallel",
-            blocks.len(),
+            blocks.blocks.len(),
         );
 
         let candidates_json = Arc::new(Mutex::new(vec![]));
 
         // generate candidates in parallel
-        let candidates: Vec<_> = blocks
-            .into_iter()
-            .zip_eq(block_exec_count)
+        let candidates: Vec<_> = blocks.blocks
+            .iter()
+            .zip_eq(blocks.counts.as_ref().unwrap().iter().cloned())
             .par_bridge()
             .filter_map(|(block, count)| {
                 let candidate: C = try_generate_candidate(
-                    block,
+                    block.clone(),
                     count,
                     config,
                     &vm_config,
@@ -199,7 +166,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync + Clone> PgoAdapter
             candidates,
             self.max_total_apc_columns,
             config.autoprecompiles as usize,
-            execution_bb_runs.unwrap(),
+            &blocks,
             config.skip_autoprecompiles as usize,
         );
 

@@ -3,7 +3,7 @@ use std::{cmp::{Ordering, Reverse}, collections::{BTreeMap, HashMap}, path::Path
 use itertools::Itertools;
 use priority_queue::PriorityQueue;
 
-use crate::{adapter::Adapter, blocks::Block};
+use crate::{adapter::{Adapter, AdapterProgramBlocks}, blocks::Block};
 
 use super::Candidate;
 
@@ -46,36 +46,6 @@ impl Ord for WeightedPriority {
     fn cmp(&self, other: &Self) -> Ordering {
         self.priority().cmp(&other.priority())
     }
-}
-
-// Count the number of times `sblock` appears in the `execution` runs.
-// Returns the count and an updated execution with the counted subsequences removed.
-fn count_and_update_execution(sblock: &[u64], execution: &[Vec<u64>]) -> (usize, Vec<Vec<u64>>) {
-    let mut count = 0;
-    let new_execution = execution.iter().flat_map(|run| {
-        // look at this run, counting the occurrences and returning the "sub-runs" between occurrences
-        let mut i = 0;
-        let mut sub_run_start = 0;
-        let mut sub_runs = vec![];
-        while i + sblock.len() <= run.len() {
-            if &run[i..i + sblock.len()] == sblock {
-                // a match, close the current sub-run
-                count += 1;
-                if i > sub_run_start {
-                    sub_runs.push(run[sub_run_start..i].to_vec());
-                }
-                sub_run_start = i + sblock.len();
-                i += sblock.len();
-            } else {
-                i += 1;
-            }
-        }
-        if run.len() > sub_run_start {
-            sub_runs.push(run[sub_run_start..].to_vec());
-        }
-        sub_runs
-    }).collect();
-    (count, new_execution)
 }
 
 // returns true if the two superblocks could overlap in some execution
@@ -197,6 +167,35 @@ pub fn detect_sblock_clusters<I>(
     clusters
 }
 
+// Count the number of times `sblock` appears in the `execution` runs.
+// Returns the count and an updated execution with the counted subsequences removed.
+fn count_and_update_execution(sblock: &[u64], execution: &[Vec<u64>]) -> (usize, Vec<Vec<u64>>) {
+    let mut count = 0;
+    let new_execution = execution.iter().flat_map(|run| {
+        // look at this run, counting the occurrences and returning the "sub-runs" between occurrences
+        let mut i = 0;
+        let mut sub_run_start = 0;
+        let mut sub_runs = vec![];
+        while i + sblock.len() <= run.len() {
+            if &run[i..i + sblock.len()] == sblock {
+                // a match, close the current sub-run
+                count += 1;
+                if i > sub_run_start {
+                    sub_runs.push(run[sub_run_start..i].to_vec());
+                }
+                sub_run_start = i + sblock.len();
+                i += sblock.len();
+            } else {
+                i += 1;
+            }
+        }
+        if run.len() > sub_run_start {
+            sub_runs.push(run[sub_run_start..].to_vec());
+        }
+        sub_runs
+    }).collect();
+    (count, new_execution)
+}
 
 // Try to select the best apc candidates (according to PGO).
 // Returns the ordered candidates together with how much they would run in the given selection order.
@@ -204,7 +203,7 @@ pub fn select_apc_candidates_greedy_by_size<A: Adapter, C: Candidate<A>>(
     candidates: Vec<C>,
     max_cost: Option<usize>,
     max_selected: usize,
-    mut execution_bb_runs: Vec<Vec<u64>>,
+    blocks: &AdapterProgramBlocks<A>,
     mut skip: usize,
 ) -> Vec<(C, usize)> {
     // with the assumption that larger superblocks (more BBs) are more effective or at least equivalent to its components, we split candidates into size groups.
@@ -224,7 +223,6 @@ pub fn select_apc_candidates_greedy_by_size<A: Adapter, C: Candidate<A>>(
             acc
         });
 
-
     if tracing::enabled!(tracing::Level::DEBUG) {
         tracing::debug!("All candidates sorted by priority:");
         for (size, group) in size_groups.iter().rev() {
@@ -233,7 +231,7 @@ pub fn select_apc_candidates_greedy_by_size<A: Adapter, C: Candidate<A>>(
                 let c = &candidates[idx];
                 let json = c.to_json_export(Path::new("")); // just for debug printing
                 tracing::debug!(
-                    "\tAPC pcs {:?}, effectiveness: {:?}, freq: {:?}, priority: {:?}",
+                    "\tapc pcs {:?}, effectiveness: {:?}, freq: {:?}, priority: {:?}",
                     json.block.original_bb_pcs(),
                     json.cost_before / json.cost_after,
                     json.execution_frequency,
@@ -243,6 +241,7 @@ pub fn select_apc_candidates_greedy_by_size<A: Adapter, C: Candidate<A>>(
         }
     }
 
+    let mut execution_bb_runs = blocks.execution_bb_runs.clone().unwrap();
     let mut selected_candidates = vec![];
     let mut cumulative_cost = 0;
     // start from the largest superblocks down to basic blocks
@@ -315,7 +314,7 @@ pub fn select_apc_candidates_greedy<A: Adapter, C: Candidate<A>>(
     candidates: Vec<C>,
     max_cost: Option<usize>,
     max_selected: usize,
-    mut execution_bb_runs: Vec<Vec<u64>>,
+    blocks: &AdapterProgramBlocks<A>,
     mut skip: usize,
 ) -> Vec<(C, usize)> {
     let mut by_priority: PriorityQueue<_,_> = candidates.iter().enumerate().map(|(idx, candidate)| {
@@ -347,6 +346,7 @@ pub fn select_apc_candidates_greedy<A: Adapter, C: Candidate<A>>(
 
     let mut selected_candidates = vec![];
     let mut cumulative_cost = 0;
+    let mut execution_bb_runs = blocks.execution_bb_runs.clone().unwrap();
     // start from the largest superblocks down to basic blocks
     let start = std::time::Instant::now();
     while let Some((idx, mut prio)) = by_priority.pop() {
