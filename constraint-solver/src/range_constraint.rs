@@ -181,9 +181,60 @@ impl<T: FieldElement> RangeConstraint<T> {
             && self.max.to_arbitrary_integer() * other.max.to_arbitrary_integer()
                 < T::modulus().to_arbitrary_integer()
         {
+            // Both ranges are non-negative: [0..a] * [0..b] = [0..a*b]
             Self::from_range(self.min * other.min, self.max * other.max)
         } else {
-            Self::unconstrained()
+            // Try to handle ranges that span zero, otherwise return unconstrained
+            self.try_combine_product_around_zero(other)
+                .unwrap_or_default()
+        }
+    }
+
+    /// Tries to compute product bounds when both ranges are "small and span zero".
+    /// A range spans zero if it wraps (min > max) with max in lower half and -min small.
+    /// For ranges [-a, b] and [-c, d], the product is [-max(a*d, b*c), max(a*c, b*d)].
+    fn try_combine_product_around_zero(&self, other: &Self) -> Option<Self> {
+        // Check both ranges span zero (wrapping with small bounds)
+        let (neg_a, b) = self.try_get_signed_bounds()?;
+        let (neg_c, d) = other.try_get_signed_bounds()?;
+        let a = -neg_a;
+        let c = -neg_c;
+
+        // Compute the four products as arbitrary integers to check overflow
+        let modulus = T::modulus().to_arbitrary_integer();
+        let a_int = a.to_arbitrary_integer();
+        let b_int = b.to_arbitrary_integer();
+        let c_int = c.to_arbitrary_integer();
+        let d_int = d.to_arbitrary_integer();
+
+        let ac = &a_int * &c_int;
+        let ad = &a_int * &d_int;
+        let bc = &b_int * &c_int;
+        let bd = &b_int * &d_int;
+
+        // Check none overflow the field
+        if ac >= modulus || ad >= modulus || bc >= modulus || bd >= modulus {
+            return None;
+        }
+
+        // Product range: [-max(a*d, b*c), max(a*c, b*d)]
+        let neg_min = cmp::max(a * d, b * c);
+        let max = cmp::max(a * c, b * d);
+        Some(Self::from_range(-neg_min, max))
+    }
+
+    /// If this range represents small values around zero (wrapping range with
+    /// max in lower half and min close to modulus), returns (-neg_bound, pos_bound)
+    /// where neg_bound <= 0 and pos_bound >= 0.
+    fn try_get_signed_bounds(&self) -> Option<(T, T)> {
+        if self.min > self.max && self.max.is_in_lower_half() && !self.min.is_in_lower_half() {
+            // Range wraps around zero: values from min to modulus-1 (negative) and 0 to max (positive)
+            Some((self.min, self.max))
+        } else if self.min <= self.max && self.max.is_in_lower_half() {
+            // Non-wrapping range in lower half: [min, max] where both are non-negative
+            Some((T::zero(), self.max))
+        } else {
+            None
         }
     }
 
@@ -871,5 +922,36 @@ mod test {
         assert!(!x.is_unconstrained());
         let y = RangeConstraint::<F>::from_range(F::from(-1), F::from(0));
         assert!(!y.is_unconstrained());
+    }
+
+    #[test]
+    fn combine_product_around_zero() {
+        type F = GoldilocksField;
+
+        // Both ranges span zero: [-5, 3] * [-2, 4]
+        // neg_min = max(5*4, 3*2) = 20, max = max(5*2, 3*4) = 12
+        // Product should be [-20, 12]
+        let a = RangeConstraint::<F>::from_range(F::from(-5), 3.into());
+        let b = RangeConstraint::<F>::from_range(F::from(-2), 4.into());
+        let product = a.combine_product(&b);
+        assert_eq!(product.range(), (F::from(-20), 12.into()));
+
+        // One non-negative [0, 5] and one spanning zero [-3, 2]
+        // neg_min = max(0*2, 5*3) = 15, max = max(0*3, 5*2) = 10
+        // Product should be [-15, 10]
+        let c = RangeConstraint::<F>::from_range(0.into(), 5.into());
+        let d = RangeConstraint::<F>::from_range(F::from(-3), 2.into());
+        let product2 = c.combine_product(&d);
+        assert_eq!(product2.range(), (F::from(-15), 10.into()));
+
+        // Both non-negative (existing behavior): [2, 5] * [3, 7]
+        let e = RangeConstraint::<F>::from_range(2.into(), 5.into());
+        let f = RangeConstraint::<F>::from_range(3.into(), 7.into());
+        let product3 = e.combine_product(&f);
+        assert_eq!(product3.range(), (6.into(), 35.into()));
+
+        // Verify commutativity
+        assert_eq!(a.combine_product(&b), b.combine_product(&a));
+        assert_eq!(c.combine_product(&d), d.combine_product(&c));
     }
 }
