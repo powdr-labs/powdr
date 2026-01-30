@@ -9,7 +9,7 @@ use crate::{
     EmpiricalConstraints, PowdrConfig,
 };
 
-mod cell;
+pub mod cell;
 mod instruction;
 mod none;
 

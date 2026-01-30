@@ -1,8 +1,5 @@
 use std::{
-    collections::BTreeMap,
-    io::BufWriter,
-    path::Path,
-    sync::{Arc, Mutex},
+    cmp::Reverse, collections::BTreeMap, io::BufWriter, path::Path, sync::{Arc, Mutex}
 };
 
 use rayon::iter::{ParallelBridge, ParallelIterator};
@@ -16,7 +13,7 @@ use crate::{
 
 use itertools::Itertools;
 
-mod selection;
+pub mod selection;
 
 use selection::*;
 
@@ -121,12 +118,13 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync + Clone> PgoAdapter
         // generate apc for all basic blocks and only cache the ones we eventually use
         // calculate number of trace cells saved per row for each basic block to sort them by descending cost
         tracing::info!(
-            "Generating autoprecompiles with cell PGO for all ({}) basic blocks in parallel",
+            "Generating autoprecompiles with cell PGO for all ({}) blocks in parallel",
             blocks.blocks.len(),
         );
 
         let candidates_json = Arc::new(Mutex::new(vec![]));
 
+        let start = std::time::Instant::now();
         // generate candidates in parallel
         let candidates: Vec<_> = blocks.blocks
             .iter()
@@ -155,6 +153,26 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync + Clone> PgoAdapter
             })
             .collect();
 
+        tracing::info!("APC Generation took {:?}", start.elapsed());
+
+        /////////////////////////////////////////////////
+        let export = candidates.iter().map(|c| {
+            BlockCandidate {
+                bbs: c.apc().original_bb_pcs(),
+                cost_before: c.cells_saved_per_row() + c.width(),
+                cost_after: c.width(),
+                execution_count: c.execution_count(),
+            }
+        }).sorted_by_key(|e| Reverse(e.count())).collect_vec();
+
+        // write the export to blocks.json
+        let blocks_json = serde_json::to_string_pretty(&export).unwrap();
+        std::fs::write("block_counts.json", blocks_json).unwrap();
+
+        let execution_json = serde_json::to_string_pretty(&blocks.execution_bb_runs.as_ref().unwrap()).unwrap();
+        std::fs::write("execution_bb_runs.json", execution_json).unwrap();
+        ///////////////////////////////////////////////////
+
         tracing::info!(
             "Selecting {} APCs from {} generated candidates (skipping {})",
             config.autoprecompiles,
@@ -162,7 +180,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync + Clone> PgoAdapter
             config.skip_autoprecompiles
         );
 
-        let selected_candidates = select_apc_candidates_greedy_by_size::<A, C>(
+        let selected_candidates = select_apc_candidates_greedy::<A, C>(
             candidates,
             self.max_total_apc_columns,
             config.autoprecompiles as usize,
@@ -174,7 +192,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync + Clone> PgoAdapter
             tracing::debug!("Selected candidates:");
             let selected: Vec<_> = selected_candidates
                 .iter()
-                .map(|(c, count)| c.to_json_export2(apc_candidates_dir_path, *count))
+                .map(|(c, count)| c.to_json_export2(apc_candidates_dir_path, *count as usize))
                 .inspect(|c| {
                     tracing::debug!(
                         "\tAPC pcs {:?}, effectiveness: {:?}, freq: {:?}",

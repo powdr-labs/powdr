@@ -260,7 +260,7 @@ pub fn generate_superblocks<I: Clone>(
 
     // Find and count the ocurrences of superblocks of up to max_len in each run.
     // Concurrently, build a map from superblock to the runs it appears in.
-    let (block_to_runs_map, superblock_counts) = execution_bb_runs.par_iter().enumerate().map(|(run_idx, run)| {
+    let (mut block_to_runs_map, superblock_counts) = execution_bb_runs.par_iter().enumerate().map(|(run_idx, run)| {
         let run_superblock_counts = superblocks_in_run(run, max_len);
         let block_to_run: HashMap<_, _> = run_superblock_counts.keys()
             .map(|sblock| (sblock.clone(), vec![run_idx]))
@@ -312,7 +312,7 @@ pub fn generate_superblocks<I: Clone>(
             super_blocks.push(Block::Super(SuperBlock { blocks }));
         }
         counts.push(count);
-        block_to_runs.push(block_to_runs_map[&sblock].clone());
+        block_to_runs.push(block_to_runs_map.remove(&sblock).unwrap());
     });
 
     tracing::info!(
@@ -327,5 +327,30 @@ pub fn generate_superblocks<I: Clone>(
         counts: Some(counts),
         execution_bb_runs: Some(execution_bb_runs),
         block_to_runs: Some(block_to_runs),
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_superblocks_in_run() {
+        let run = vec![4, 1, 2, 3, 5, 1, 2, 3, 4];
+        let max_len = 3;
+        let counts = superblocks_in_run(&run, max_len);
+        println!("{:?}", counts.keys().collect::<Vec<_>>());
+        assert_eq!(counts.len(),
+                   5 + // size 1
+                   6 + // size 2
+                   6   // size 3
+        );
+        assert_eq!(counts[&vec![1]], 2);
+        assert_eq!(counts[&vec![1,2]], 2);
+        assert_eq!(counts[&vec![4]], 2);
+        assert_eq!(counts[&vec![5]], 1);
+        assert_eq!(counts[&vec![4,1,2]], 1);
+        assert_eq!(counts[&vec![1,2,3]], 2);
+        assert_eq!(counts[&vec![2,3,4]], 1);
     }
 }
