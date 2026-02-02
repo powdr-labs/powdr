@@ -1,4 +1,4 @@
-use std::{cmp::Reverse, collections::{BTreeMap, HashMap}};
+use std::{cmp::Reverse, collections::{BTreeMap, HashMap, HashSet}};
 
 use itertools::Itertools;
 use priority_queue::PriorityQueue;
@@ -14,7 +14,7 @@ pub struct BlockCandidate {
     pub cost_before: usize,
     pub cost_after: usize,
     pub execution_count: u32,
-    pub idx_runs: Vec<usize>,
+    pub idx_runs: HashSet<usize>,
 }
 
 impl BlockCandidate {
@@ -286,12 +286,13 @@ pub fn select_blocks_greedy(
     while let Some((idx, _prio)) = by_priority.pop() {
         let c = &mut blocks[idx];
         tracing::debug!("examining candidate {examined_candidates} - {:?}...", c.bbs());
+        tracing::debug!("\tpresent in {} runs", c.idx_runs.len());
         examined_candidates += 1;
 
         // Check if the priority of this candidate has changed by re-counting it over the updated execution.
         let start = std::time::Instant::now();
-        let (count, new_execution) = count_and_update_execution(c, &execution_bb_runs);
-        tracing::debug!("   count in execution took {:?}", start.elapsed());
+        let (count, new_execution) = count_and_update_execution_indexed(c, &execution_bb_runs);
+        tracing::debug!("\tcount in execution took {:?}", start.elapsed());
         if count == 0 {
             // The item no longer runs, remove it
             continue;
@@ -309,13 +310,13 @@ pub fn select_blocks_greedy(
 
         // add candidate if it fits
         if let Some(max_cost) = max_cost {
-            tracing::debug!("   candidate doesn't fit, ignoring...");
+            tracing::debug!("\tcandidate doesn't fit, ignoring...");
             if cumulative_cost + c.cost() > max_cost {
                 // The item does not fit, skip it
                 continue;
             }
         }
-        tracing::debug!("   candidate selected!");
+        tracing::debug!("\tcandidate selected!");
 
         // The item fits, increment the cumulative cost and update the execution by removing its occurrences
         cumulative_cost += c.cost();
@@ -439,7 +440,7 @@ pub fn select_apc_candidates_greedy<A: Adapter, C: Candidate<A>>(
             cost_before: c.cells_saved_per_row() + c.width(),
             cost_after: c.width(),
             execution_count: *count as u32,
-            idx_runs: block_to_runs[idx].clone(),
+            idx_runs: block_to_runs[idx].iter().cloned().collect(),
         }
     }).collect_vec();
 
@@ -484,7 +485,7 @@ pub fn select_apc_candidates_greedy_by_size<A: Adapter, C: Candidate<A>>(
             cost_before: c.cells_saved_per_row() + c.width(),
             cost_after: c.width(),
             execution_count: *count as u32,
-            idx_runs: block_to_runs[idx].clone(),
+            idx_runs: block_to_runs[idx].iter().cloned().collect(),
         }
     }).collect_vec();
 
@@ -524,7 +525,7 @@ mod test {
             cost_before: 0,
             cost_after: 0,
             execution_count: 0,
-            idx_runs: vec![], // not used
+            idx_runs: Default::default(), // not used
         };
         let runs = vec![
             (vec![0,1,2,3], 1), // 1
@@ -562,7 +563,7 @@ mod test {
             cost_before: 0,
             cost_after: 0,
             execution_count: 0,
-            idx_runs: vec![0,1,2,4,5,6,7],
+            idx_runs: [0,1,2,4,5,6,7].into_iter().collect(),
         };
 
 

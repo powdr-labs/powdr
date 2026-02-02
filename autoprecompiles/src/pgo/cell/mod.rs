@@ -171,7 +171,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync + Clone> PgoAdapter
                 cost_before: c.cells_saved_per_row() + c.width(),
                 cost_after: c.width(),
                 execution_count: c.execution_count(),
-                idx_runs: block_to_runs[idx].clone(),
+                idx_runs: block_to_runs[idx].iter().cloned().collect(),
             }
         }).sorted_by_key(|e| Reverse(e.count())).collect_vec();
 
