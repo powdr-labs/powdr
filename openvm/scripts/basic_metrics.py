@@ -95,34 +95,61 @@ def plot(metrics_files, output):
     # Stack components (bottom to top) with colors
     # App components use shades of blue, others use distinct colors
     components = [
-        ("inner_recursion_proof_time_ms", "Inner recursion proof", "#ff6e0e"),        # orange
-        ("leaf_proof_time_ms", "Leaf proof", "#ffb70e"),                              # yellow
-        ("app_proof_time_excluding_trace_ms", "App prove (excl. trace)", "#1f77b4"),  # blue
-        ("app_trace_gen_time_ms", "App trace gen", "#6baed6"),                        # light blue
-        ("app_execute_preflight_time_ms", "App execute preflight", "#9ecae1"),        # lighter blue
-        ("app_execute_metered_time_ms", "App execute metered", "#c6dbef"),            # very light blue
-        ("app_other_ms", "App other", "#08519c"),                                     # dark blue
+        ("inner_recursion_proof_time_ms", "Inner recursion", "#9b3e00"),        
+        ("leaf_proof_time_ms", "Leaf recursion", "#d69600"),                              
+        ("app_proof_time_excluding_trace_ms", "App STARK (excl. trace)", "#1f77b4"),  
+        ("app_trace_gen_time_ms", "App trace gen", "#6baed6"),                        
+        ("app_execute_preflight_time_ms", "App preflight", "#9ecae1"),        
+        ("app_execute_metered_time_ms", "App metered", "#c6dbef"),            
+        ("app_other_ms", "App other", "#08519c"),                                     
     ]
 
     # Extract labels from filenames (use parent directory name)
     import os
-    labels = [os.path.basename(os.path.dirname(f)) for f in df["filename"]]
+    x_labels = [os.path.basename(os.path.dirname(f)) for f in df["filename"]]
 
     fig, ax = plt.subplots(figsize=(10, 6))
 
     bottom = [0.0] * len(df)
+    bars_data = []  # Store bar info for labeling
     for col, label, color in components:
         values = [v / 1000 for v in df[col].tolist()]  # Convert ms to seconds
-        ax.bar(labels, values, bottom=bottom, label=label, color=color)
+        bars = ax.bar(x_labels, values, bottom=bottom, label=label, color=color)
+        bars_data.append((bars, values, bottom.copy(), color))
         bottom = [b + v for b, v in zip(bottom, values)]
 
+    # Get the total height for threshold calculation
+    max_height = max(bottom)
+    min_label_height = max_height * 0.02  # Only label segments > 3% of max height
+
+    # Add value labels to each segment
+    for bars, values, bottoms, color in bars_data:
+        for bar, value, bot, top in zip(bars, values, bottoms, bottom):
+            if value < min_label_height:
+                continue
+            # Calculate center of this segment
+            center_y = bot + value / 2
+            center_x = bar.get_x() + bar.get_width() / 2
+            # Choose text color based on background brightness
+            text_color = 'black'
+            percentage = value / top * 100 if top > 0 else 0
+            ax.text(center_x, center_y, f'{value:.1f} ({percentage:.1f}%)', ha='center', va='center',
+                    fontsize=8, color=text_color, fontweight='bold')
+
+    # Add total labels on top of each stack
+    last_bars = bars_data[-1][0]
+    for bar, total in zip(last_bars, bottom):
+        center_x = bar.get_x() + bar.get_width() / 2
+        ax.text(center_x, total + max_height * 0.01, f'Total: {total:.1f}', ha='center', va='bottom',
+                fontsize=9, color='black', fontweight='bold')
+
     ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x:.2f}'))
-    ax.set_ylabel("Proof time (s)")
+    ax.set_ylabel("Time (s)")
     ax.set_xlabel("Configuration")
     ax.set_title("Proof Time Breakdown")
     # Reverse legend so top of legend matches top of stack
-    handles, labels = ax.get_legend_handles_labels()
-    ax.legend(handles[::-1], labels[::-1], loc="upper right")
+    handles, legend_labels = ax.get_legend_handles_labels()
+    ax.legend(handles[::-1], legend_labels[::-1], loc="upper right")
 
     plt.tight_layout()
     if output:
