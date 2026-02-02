@@ -2,7 +2,7 @@ use std::{
     cmp::Reverse, collections::BTreeMap, io::BufWriter, path::Path, sync::{Arc, Mutex}
 };
 
-use rayon::iter::{ParallelBridge, ParallelIterator};
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -115,6 +115,11 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync + Clone> PgoAdapter
             .iter()
             .for_each(|block| assert!(block.statements().count() > 1));
 
+        // TODO(leandro): remove later ///////////////////////////////////////////////
+        let execution_json = serde_json::to_string_pretty(&blocks.execution_bb_runs.as_ref().unwrap()).unwrap();
+        std::fs::write("execution_bb_runs.json", execution_json).unwrap();
+        /////////////////////////////////////////////////
+
         // generate apc for all basic blocks and only cache the ones we eventually use
         // calculate number of trace cells saved per row for each basic block to sort them by descending cost
         tracing::info!(
@@ -127,9 +132,8 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync + Clone> PgoAdapter
         let start = std::time::Instant::now();
         // generate candidates in parallel
         let candidates: Vec<_> = blocks.blocks
-            .iter()
-            .zip_eq(blocks.counts.as_ref().unwrap().iter().cloned())
-            .par_bridge()
+            .par_iter()
+            .zip_eq(blocks.counts.as_ref().unwrap().par_iter().cloned())
             .filter_map(|(block, count)| {
                 let candidate: C = try_generate_candidate(
                     block.clone(),
@@ -153,24 +157,27 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync + Clone> PgoAdapter
             })
             .collect();
 
+        // TODO(leandro): this would break the blocks.counts/idx_runs association
+        assert_eq!(candidates.len(), blocks.blocks.len(), "");
+
         tracing::info!("APC Generation took {:?}", start.elapsed());
 
-        /////////////////////////////////////////////////
-        let export = candidates.iter().map(|c| {
+        // TODO(leandro): remove later ///////////////////////////////////////////////
+        let block_to_runs = blocks.block_to_runs.as_ref().unwrap();
+        let export = candidates.iter().enumerate().map(|(idx, c)| {
+            assert_eq!(blocks.blocks[idx].original_bb_pcs(), c.apc().original_bb_pcs(), "order changed!");
             BlockCandidate {
                 bbs: c.apc().original_bb_pcs(),
                 cost_before: c.cells_saved_per_row() + c.width(),
                 cost_after: c.width(),
                 execution_count: c.execution_count(),
+                idx_runs: block_to_runs[idx].clone(),
             }
         }).sorted_by_key(|e| Reverse(e.count())).collect_vec();
 
         // write the export to blocks.json
         let blocks_json = serde_json::to_string_pretty(&export).unwrap();
         std::fs::write("block_counts.json", blocks_json).unwrap();
-
-        let execution_json = serde_json::to_string_pretty(&blocks.execution_bb_runs.as_ref().unwrap()).unwrap();
-        std::fs::write("execution_bb_runs.json", execution_json).unwrap();
         ///////////////////////////////////////////////////
 
         tracing::info!(

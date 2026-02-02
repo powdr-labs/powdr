@@ -178,9 +178,10 @@ pub struct ProgramBlocks<I> {
     /// Count of each of the seen superblocks. None if running without PGO.
     pub counts: Option<Vec<u32>>,
     /// Basic block runs in the given PGO execution.
+    /// Each run is paired with the number of times it was seen in the execution.
     /// `None` if running without PGO.
-    pub execution_bb_runs: Option<Vec<Vec<u64>>>,
-    /// Map from block to the runs it appears in (to avoid searching over the whole execution)
+    pub execution_bb_runs: Option<Vec<(Vec<u64>, u32)>>,
+    /// Map from block to the runs it appears in (to avoid searching later)
     /// TODO(leandro): remove this if we dont use it
     pub block_to_runs: Option<Vec<Vec<usize>>>,
 }
@@ -206,7 +207,7 @@ fn superblocks_in_run(run: &[u64], max_len: usize) -> HashMap<Vec<u64>, u32> {
     // then we count their ocurrences
     for (sblock, tally) in superblocks_in_run.iter_mut() {
         let count = count_non_overlapping(&run, sblock);
-        *tally += count;
+        *tally = count
     }
     superblocks_in_run
 }
@@ -235,8 +236,9 @@ pub fn generate_superblocks<I: Clone>(
         .collect();
 
     // List of basic block runs in the execution (i.e., sequences of BBs without single-instruction BBs in between).
+    // The same run can appear multiple times in the execution, we keep a count using a hashmap.
     // Each BB is identified by its starting PC
-    let mut execution_bb_runs = vec![];
+    let mut execution_bb_runs = HashMap::new();
     let mut current_run = vec![];
 
     // split execution into basic block runs
@@ -248,20 +250,23 @@ pub fn generate_superblocks<I: Clone>(
         // if starting a single instruction BB (i.e., invalid for APC), end current run
         if basic_blocks[bb_idx].statements.len() <= 1 {
             if !current_run.is_empty() {
-                execution_bb_runs.push(std::mem::take(&mut current_run));
+                *execution_bb_runs.entry(std::mem::take(&mut current_run)).or_insert(0) += 1;
             }
             continue;
         }
         current_run.push(*pc);
     }
     if !current_run.is_empty() {
-        execution_bb_runs.push(std::mem::take(&mut current_run));
+        *execution_bb_runs.entry(std::mem::take(&mut current_run)).or_insert(0) += 1;
     }
+
+    let execution_bb_runs: Vec<(Vec<u64>, u32)> = execution_bb_runs.into_iter().collect();
 
     // Find and count the ocurrences of superblocks of up to max_len in each run.
     // Concurrently, build a map from superblock to the runs it appears in.
-    let (mut block_to_runs_map, superblock_counts) = execution_bb_runs.par_iter().enumerate().map(|(run_idx, run)| {
-        let run_superblock_counts = superblocks_in_run(run, max_len);
+    let (mut block_to_runs_map, superblock_counts) = execution_bb_runs.par_iter().enumerate().map(|(run_idx, (run, run_count))| {
+        let mut run_superblock_counts = superblocks_in_run(run, max_len);
+        run_superblock_counts.values_mut().for_each(|v| *v *= run_count);
         let block_to_run: HashMap<_, _> = run_superblock_counts.keys()
             .map(|sblock| (sblock.clone(), vec![run_idx]))
             .collect();
@@ -308,11 +313,14 @@ pub fn generate_superblocks<I: Clone>(
                 skipped += 1;
                 return;
             }
-
             super_blocks.push(Block::Super(SuperBlock { blocks }));
         }
+
         counts.push(count);
-        block_to_runs.push(block_to_runs_map.remove(&sblock).unwrap());
+
+        let mut runs = block_to_runs_map.remove(&sblock).unwrap();
+        runs.sort_unstable();
+        block_to_runs.push(runs);
     });
 
     tracing::info!(
@@ -321,6 +329,13 @@ pub fn generate_superblocks<I: Clone>(
         exec_count_cutoff,
         super_blocks.len(),
     );
+
+    tracing::info!(
+        "Out of those, {} are basic blocks and {} are superblocks",
+        super_blocks.iter().filter(|b| !b.is_superblock()).count(),
+        super_blocks.iter().filter(|b| b.is_superblock()).count(),
+    );
+
 
     ProgramBlocks {
         blocks: super_blocks,

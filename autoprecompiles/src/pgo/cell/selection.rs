@@ -14,6 +14,7 @@ pub struct BlockCandidate {
     pub cost_before: usize,
     pub cost_after: usize,
     pub execution_count: u32,
+    pub idx_runs: Vec<usize>,
 }
 
 impl BlockCandidate {
@@ -167,9 +168,9 @@ pub fn detect_sblock_clusters(
 
 // Count the number of times `sblock` appears in the `execution` runs.
 // Returns the count and an updated execution with the counted subsequences removed.
-fn count_and_update_execution(sblock: &BlockCandidate, execution: &[Vec<u64>]) -> (u32, Vec<Vec<u64>>) {
+fn count_and_update_execution(sblock: &BlockCandidate, execution: &[(Vec<u64>, u32)]) -> (u32, Vec<(Vec<u64>, u32)>) {
     let mut count = 0;
-    let new_execution = execution.iter().flat_map(|run| {
+    let new_execution = execution.iter().flat_map(|(run, run_count)| {
         // look at this run, counting the occurrences and returning the "sub-runs" between occurrences
         let mut i = 0;
         let mut sub_run_start = 0;
@@ -177,9 +178,9 @@ fn count_and_update_execution(sblock: &BlockCandidate, execution: &[Vec<u64>]) -
         while i + sblock.bbs.len() <= run.len() {
             if &run[i..i + sblock.bbs.len()] == sblock.bbs {
                 // a match, close the current sub-run
-                count += 1;
+                count += run_count;
                 if i > sub_run_start {
-                    sub_runs.push(run[sub_run_start..i].to_vec());
+                    sub_runs.push((run[sub_run_start..i].to_vec(), *run_count));
                 }
                 sub_run_start = i + sblock.bbs.len();
                 i += sblock.bbs.len();
@@ -188,59 +189,53 @@ fn count_and_update_execution(sblock: &BlockCandidate, execution: &[Vec<u64>]) -
             }
         }
         if run.len() > sub_run_start {
-            sub_runs.push(run[sub_run_start..].to_vec());
+            sub_runs.push((run[sub_run_start..].to_vec(), *run_count));
         }
         sub_runs
     }).collect();
     (count, new_execution)
 }
 
+
 // Count the number of times `sblock` appears in the `execution` runs.
 // Returns the count and an updated execution with the counted subsequences removed.
-//
-// Uses the block->run map to speed up the process of finding and removing blocks from the execution.
-// As we remove blocks from the execution, runs will split into sub-runs.
-// To speed up the process, we have the list of original runs the block is found in.
-// So that we can still use this mapping as the runs get split up, we add another "level" to the execution data structure:
-// instead of a sequence of runs, we keep a sequence of sub-runs per original run.
-fn count_and_update_execution_indexed(sblock: &BlockCandidate, execution: &[Vec<Vec<u64>>], block_runs: &[usize]) -> (usize, Vec<Vec<Vec<u64>>>) {
+fn count_and_update_execution_indexed(
+    sblock: &BlockCandidate,
+    execution: &[(Vec<u64>, u32)]
+) -> (u32, Vec<(Vec<u64>, u32)>) {
     let mut count = 0;
-    let new_execution = execution.iter()
-        .enumerate()
-        .map(|(idx, run)| {
-            if !block_runs.contains(&idx) {
-                // this run does not contain the block, return as is
-                return run.clone();
+    let new_execution = execution.iter().enumerate().flat_map(|(idx, (run, run_count))| {
+        if !sblock.idx_runs.contains(&idx) {
+            // this run does not contain the block, return as is
+            return vec![(run.clone(), *run_count)];
+        }
+        // look at this run, counting the occurrences and returning the "sub-runs" between occurrences
+        let mut i = 0;
+        let mut sub_run_start = 0;
+        let mut sub_runs = vec![];
+        while i + sblock.bbs.len() <= run.len() {
+            if &run[i..i + sblock.bbs.len()] == sblock.bbs {
+                // a match, close the current sub-run
+                count += run_count;
+                if i > sub_run_start {
+                    sub_runs.push((run[sub_run_start..i].to_vec(), *run_count));
+                }
+                sub_run_start = i + sblock.bbs.len();
+                i += sblock.bbs.len();
+            } else {
+                i += 1;
             }
-            run.iter().flat_map(|run| {
-                // look at this run, counting and removing the occurrences, further splitting it up
-                let mut i = 0;
-                let mut sub_run_start = 0;
-                let mut sub_runs = vec![];
-                while i + sblock.bbs.len() <= run.len() {
-                    if &run[i..i + sblock.bbs.len()] == sblock.bbs {
-                        // a match, close the current sub-run
-                        count += 1;
-                        if i > sub_run_start {
-                            sub_runs.push(run[sub_run_start..i].to_vec());
-                        }
-                        sub_run_start = i + sblock.bbs.len();
-                        i += sblock.bbs.len();
-                    } else {
-                        i += 1;
-                    }
-                }
-                if run.len() > sub_run_start {
-                    sub_runs.push(run[sub_run_start..].to_vec());
-                }
-                sub_runs
-            }).collect_vec()
-        }).collect();
+        }
+        if run.len() > sub_run_start {
+            sub_runs.push((run[sub_run_start..].to_vec(), *run_count));
+        }
+        sub_runs
+    }).collect();
     (count, new_execution)
 }
 
 // Compute the overall value and cost of a selection of candidates over the given execution
-fn compute_selection_value_and_cost(all_blocks: &[BlockCandidate], selection_order: &[usize], execution_bb_runs: &[Vec<u64>]) -> (usize, usize) {
+fn compute_selection_value_and_cost(all_blocks: &[BlockCandidate], selection_order: &[usize], execution_bb_runs: &[(Vec<u64>, u32)]) -> (usize, usize) {
     let mut execution = execution_bb_runs.to_vec();
     let mut value = 0;
     let mut cost = 0;
@@ -259,7 +254,7 @@ pub fn select_blocks_greedy(
     mut blocks: Vec<BlockCandidate>,
     max_cost: Option<usize>,
     max_selected: Option<usize>,
-    execution_bb_runs: &[Vec<u64>],
+    execution_bb_runs: &[(Vec<u64>, u32)],
     mut skip: usize,
 ) -> Vec<(usize, u32)> {
     let mut by_priority: PriorityQueue<_,_> = blocks.iter().enumerate().map(|(idx, block)| {
@@ -344,7 +339,7 @@ pub fn select_blocks_greedy_by_size(
     mut blocks: Vec<BlockCandidate>,
     max_cost: Option<usize>,
     max_selected: Option<usize>,
-    execution_bb_runs: &[Vec<u64>],
+    execution_bb_runs: &[(Vec<u64>, u32)],
     mut skip: usize,
 ) -> Vec<(usize, u32)> {
     // with the assumption that larger superblocks (more BBs) are more effective
@@ -437,12 +432,14 @@ pub fn select_apc_candidates_greedy<A: Adapter, C: Candidate<A>>(
     blocks: &AdapterProgramBlocks<A>,
     skip: usize,
 ) -> Vec<(C, u32)> {
-    let block_candidates = candidates.iter().zip(blocks.counts.as_ref().unwrap()).map(|(c, count)| {
+    let block_to_runs = blocks.block_to_runs.as_ref().unwrap();
+    let block_candidates = candidates.iter().enumerate().zip(blocks.counts.as_ref().unwrap()).map(|((idx, c), count)| {
         BlockCandidate {
             bbs: c.apc().original_bb_pcs().to_vec(),
             cost_before: c.cells_saved_per_row() + c.width(),
             cost_after: c.width(),
             execution_count: *count as u32,
+            idx_runs: block_to_runs[idx].clone(),
         }
     }).collect_vec();
 
@@ -480,12 +477,14 @@ pub fn select_apc_candidates_greedy_by_size<A: Adapter, C: Candidate<A>>(
     blocks: &AdapterProgramBlocks<A>,
     skip: usize,
 ) -> Vec<(C, u32)> {
-    let block_candidates = candidates.iter().zip(blocks.counts.as_ref().unwrap()).map(|(c, count)| {
+    let block_to_runs = blocks.block_to_runs.as_ref().unwrap();
+    let block_candidates = candidates.iter().enumerate().zip(blocks.counts.as_ref().unwrap()).map(|((idx, c), count)| {
         BlockCandidate {
             bbs: c.apc().original_bb_pcs().to_vec(),
             cost_before: c.cells_saved_per_row() + c.width(),
             cost_after: c.width(),
             execution_count: *count as u32,
+            idx_runs: block_to_runs[idx].clone(),
         }
     }).collect_vec();
 
@@ -525,30 +524,32 @@ mod test {
             cost_before: 0,
             cost_after: 0,
             execution_count: 0,
+            idx_runs: vec![], // not used
         };
         let runs = vec![
-            vec![0,1,2,3],
-            vec![1,2],
-            vec![1,2,3],
-            vec![2,3,4,5],
-            vec![0,1,2],
-            vec![1,2,3,1,2],
-            vec![2,1,2,1,2,1,2,1],
-            vec![1,1,1,2,2,2,1,2,3,3,1,2,4,4],
+            (vec![0,1,2,3], 1), // 1
+            (vec![1,2], 2), // 2
+            (vec![1,2,3], 4), // 4
+            (vec![2,3,4,5], 3), // 0
+            (vec![0,1,2], 1), // 1
+            (vec![1,2,3,1,2], 2), // 4
+            (vec![2,1,2,1,2,1,2,1], 1), // 3
+            (vec![1,1,1,2,2,2,1,2,3,3,1,2,4,4], 2), // 6
         ];
 
         assert_eq!(
             count_and_update_execution(&sblock, &runs),
             (
-                12,
+                1 + 2 + 4 + 1 + 4 + 3 + 6,
                 vec![
-                    vec![0], vec![3],
-                    vec![3],
-                    vec![2,3,4,5],
-                    vec![0],
-                    vec![3],
-                    vec![2], vec![1],
-                    vec![1,1], vec![2,2], vec![3,3], vec![4,4],
+                    (vec![0], 1), (vec![3], 1),
+                    (vec![3], 4),
+                    (vec![2,3,4,5], 3),
+                    (vec![0], 1),
+                    (vec![3], 2),
+                    (vec![2], 1), (vec![1], 1),
+                    (vec![1,1], 2), (vec![2,2], 2), (vec![3,3], 2), (vec![4,4], 2),
+                    (vec![8,2,1], 1) // 0
                 ],
             )
         );
@@ -561,32 +562,35 @@ mod test {
             cost_before: 0,
             cost_after: 0,
             execution_count: 0,
+            idx_runs: vec![0,1,2,4,5,6,7],
         };
+
+
         let runs = vec![
-            vec![vec![0,1,2,3]],
-            vec![vec![1,2]],
-            vec![vec![1,2,3]],
-            vec![vec![2,3,4,5]],
-            vec![vec![0,1,2]],
-            vec![vec![1,2,3,1,2]],
-            vec![vec![2,1,2,1,2,1,2,1]],
-            vec![vec![1,1,1,2,2,2,1,2,3,3,1,2,4,4]],
+            (vec![0,1,2,3], 1), // 1
+            (vec![1,2], 2), // 2
+            (vec![1,2,3], 4), // 4
+            (vec![2,3,4,5], 3), // 0
+            (vec![0,1,2], 1), // 1
+            (vec![1,2,3,1,2], 2), // 4
+            (vec![2,1,2,1,2,1,2,1], 1), // 3
+            (vec![1,1,1,2,2,2,1,2,3,3,1,2,4,4], 2), // 6
+            (vec![8,2,1], 1) // 0
         ];
-        let block_runs = vec![0,1,2,4,5,6,7];
 
         assert_eq!(
-            count_and_update_execution_indexed(&sblock, &runs, &block_runs),
+            count_and_update_execution_indexed(&sblock, &runs),
             (
-                12,
+                1 + 2 + 4 + 1 + 4 + 3 + 6,
                 vec![
-                    vec![vec![0], vec![3]],
-                    vec![],
-                    vec![vec![3]],
-                    vec![vec![2,3,4,5]],
-                    vec![vec![0]],
-                    vec![vec![3]],
-                    vec![vec![2], vec![1]],
-                    vec![vec![1,1], vec![2,2], vec![3,3], vec![4,4]],
+                    (vec![0], 1), (vec![3], 1),
+                    (vec![3], 4),
+                    (vec![2,3,4,5], 3),
+                    (vec![0], 1),
+                    (vec![3], 2),
+                    (vec![2], 1), (vec![1], 1),
+                    (vec![1,1], 2), (vec![2,2], 2), (vec![3,3], 2), (vec![4,4], 2),
+                    (vec![8,2,1], 1) // 0
                 ],
             )
         );
