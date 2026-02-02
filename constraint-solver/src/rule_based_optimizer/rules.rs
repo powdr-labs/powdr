@@ -76,6 +76,13 @@ crepe! {
     // the new constraint `replacement` is equivalent.
     struct ReplacePairOfAlgebraicConstraintsBy(Expr, Expr, Expr);
 
+    //////////////////// BASIC SEMANTIC PROPERTIES OF EXRESSIONS //////////////////////
+
+
+    // EqualZero(e) => e = 0 for all satisfying assignments.
+    struct EqualZero(Expr);
+    EqualZero(e) <- AlgebraicConstraint(e);
+
     //////////////////// STRUCTURAL PROPERTIES OF EXPRESSIONS //////////////////////
 
     // ContainsVariable(e, v) => v appears inside e.
@@ -373,10 +380,30 @@ crepe! {
     // Assignment(var, v) => any satisfying assignment has var = v.
     struct Assignment<T: FieldElement>(Var, T);
     Assignment(var, v) <-
-      AlgebraicConstraint(e),
+      EqualZero(e),
       Solvable(e, var, v);
 
+    ///////////////////////////////// NO-WRAP ZERO SUM //////////////////////////
 
+    // If an algebraic constraint head + tail = 0 has the following properties:
+    // 1. the range constraint of head is [0, a] with a < P - 1,
+    // 2. the range constraint of tail is [0, b] with b < P - 1,
+    // 3. a + b (as integers) < P - 1,
+    // then both head and tail must be zero.
+
+    // EntailsZeroHeadAndTail(e1, e2) => e1 = 0 and e2 = 0
+    struct EntailsZeroHeadAndTail(Expr, Expr);
+    EntailsZeroHeadAndTail(head, tail) <-
+      EqualZero(e),
+      ExpressionSumHeadTail(e, head, tail),
+      RangeConstraintOnExpression(head, rc_head),
+      RangeConstraintOnExpression(tail, rc_tail),
+      (rc_head.range().0 == T::from(0)),
+      (rc_tail.range().0 == T::from(0)),
+      (rc_head.range().1.to_integer() + rc_tail.range().1.to_integer() < T::from(-1).to_integer());
+
+    EqualZero(head) <- EntailsZeroHeadAndTail(head,_);
+    EqualZero(tail) <- EntailsZeroHeadAndTail(_, tail);
 
     ///////////////////////////////// OUTPUT ACTIONS //////////////////////////
 
