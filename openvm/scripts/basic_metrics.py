@@ -21,10 +21,15 @@ def extract_metrics(filename):
         return pd.to_numeric(df[df["metric"] == metric_name]["value"]).sum()
 
     # Compute total proof times
-    app_proof_time_ms = get_metric(app, "stark_prove_excluding_trace_time_ms")
-    leaf_proof_time_ms = get_metric(leaf, "stark_prove_excluding_trace_time_ms")
-    internal_proof_time_ms = get_metric(internal, "stark_prove_excluding_trace_time_ms")
+    app_proof_time_ms = get_metric(app, "total_proof_time_ms")
+    leaf_proof_time_ms = get_metric(leaf, "total_proof_time_ms")
+    internal_proof_time_ms = get_metric(internal, "total_proof_time_ms")
     total_proof_time_ms = app_proof_time_ms + leaf_proof_time_ms + internal_proof_time_ms
+
+    app_proof_time_excluding_trace_ms = get_metric(app, "stark_prove_excluding_trace_time_ms")
+    leaf_proof_time_excluding_trace_ms = get_metric(leaf, "stark_prove_excluding_trace_time_ms")
+    internal_proof_time_excluding_trace_ms = get_metric(internal, "stark_prove_excluding_trace_time_ms")
+    total_proof_time_excluding_trace_ms = app_proof_time_excluding_trace_ms + leaf_proof_time_excluding_trace_ms + internal_proof_time_excluding_trace_ms
 
     # Compute total column counts
     # Note that this sums the columns over *all* segments.
@@ -41,12 +46,14 @@ def extract_metrics(filename):
     metrics["app_proof_cells"] = get_metric(app, "total_cells")
     metrics["app_proof_cols"] = app_proof_cols
     metrics["total_proof_time_ms"] = total_proof_time_ms
+    metrics["total_proof_time_excluding_trace_ms"] = total_proof_time_excluding_trace_ms
     metrics["app_proof_time_ms"] = app_proof_time_ms
+    metrics["app_proof_time_excluding_trace_ms"] = app_proof_time_excluding_trace_ms
     metrics["app_execute_preflight_time_ms"] = get_metric(app, "execute_preflight_time_ms")
     metrics["app_execute_metered_time_ms"] = get_metric(app, "execute_metered_time_ms")
     metrics["app_trace_gen_time_ms"] = get_metric(app, "trace_gen_time_ms")
-    metrics["leaf_proof_time_ms"] = leaf_proof_time_ms
-    metrics["inner_recursion_proof_time_ms"] = internal_proof_time_ms
+    metrics["leaf_proof_time_excluding_trace_ms"] = leaf_proof_time_excluding_trace_ms
+    metrics["inner_recursion_proof_time_excluding_trace_ms"] = internal_proof_time_excluding_trace_ms
 
     normal_instruction_cells = get_metric(normal_instruction_air, "cells")
     openvm_precompile_cells = get_metric(openvm_precompile_air, "cells")
