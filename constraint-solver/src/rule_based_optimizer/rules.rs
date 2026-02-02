@@ -156,6 +156,29 @@ crepe! {
       ExpressionSumHeadTail(e1, head, tail1),
       ExpressionSumHeadTail(e2, head, tail2);
 
+    // AffinelyRelated(e1, f, e2, c) => e1 = f * e2 + c
+    // Note this is currently only implemented for affine e1 and e2.
+    // This only works if e1 and e2 have at least one variable
+    // and both e1 and e2 have to "pre-exist" as expressions.
+    // This means this rule cannot be used to subtract constants
+    // or multiply/divide by constants alone.
+    struct AffinelyRelated<T: FieldElement>(Expr, T, Expr, T);
+    AffinelyRelated(e1, f, e2, o1 - o2 * f) <-
+      AffineExpression(e1, f1, v, o1), // e1 = f1 * v + o1
+      AffineExpression(e2, f2, v, o2),
+      // Optimization: Compute f1 / f2 only once.
+      let f = f1 / f2;
+      // e2 = f2 * v + o2
+      // e1 = f1 * (e2 - o2) / f2 + o1 = e2 * (f1 / f2) + (o1 - o2 * f1 / f2)
+
+    AffinelyRelated(e1, f, e2, o) <-
+      AffinelyRelated(tail1, f, tail2, o),
+      // The swapped case and the equal will be computed by other rules.
+      ExpressionSumHeadTail(e1, head1, tail1),
+      LinearExpression(head1, v, f1),
+      ExpressionSumHeadTail(e2, head2, tail2),
+      LinearExpression(head2, v, f1 / f);
+
     // HasProductSummand(e, l, r) => e contains a summand of the form l * r
     struct HasProductSummand(Expr, Expr, Expr);
     HasProductSummand(e, l, r) <-
@@ -389,15 +412,15 @@ crepe! {
     //------- quadratic equivalence -----
 
     // QuadraticEquivalenceCandidate(E, expr, offset) =>
-    //   E = ((expr) * (expr + offset) = 0) is a constraint and
+    //   E = (expr * (expr + offset) = 0) is a constraint and
     //   expr is affine with at least 2 variables.
     struct QuadraticEquivalenceCandidate<T: FieldElement>(Expr, Expr, T);
-    QuadraticEquivalenceCandidate(e, r, offset) <-
+    QuadraticEquivalenceCandidate(e, r, o / f) <-
        Env(env),
-       EqualZero(e),
-       Product(e, l, r), // note that this will always produce two facts for (l, r) and (r, l)
-       ({env.affine_var_count(l).unwrap_or(0) > 1 && env.affine_var_count(r).unwrap_or(0) > 1}),
-       let Some(offset) = env.constant_difference(l, r);
+       ProductConstraint(e, l, r),
+       AffinelyRelated(l, f, r, o), // l = f * r + o
+       IsAffine(l),
+       ({env.affine_var_count(l).unwrap_or(0) > 1});
 
     // QuadraticEquivalenceCandidatePair(expr1, expr2, offset1 / coeff, v1, v2) =>
     //  (expr1) * (expr1 + offset1) = 0 and (expr2) * (expr2 + offset2) = 0 are constraints,
@@ -415,7 +438,7 @@ crepe! {
       QuadraticEquivalenceCandidate(_, expr1, offset1),
       QuadraticEquivalenceCandidate(_, expr2, offset2),
       (expr1 < expr2),
-      let Some((v1, v2,factor)) = env.differ_in_exactly_one_variable(expr1, expr2),
+      let Some((v1, v2, factor)) = env.differ_in_exactly_one_variable(expr1, expr2),
       (offset1 == offset2 * factor),
       let coeff = env.on_expr(expr1, (), |e, _| *e.coefficient_of_variable_in_affine_part(&v1).unwrap());
 
