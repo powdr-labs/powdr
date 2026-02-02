@@ -1,6 +1,9 @@
 use std::fmt::Display;
 
-use crate::{
+use bitwise_lookup::handle_bitwise_lookup;
+use itertools::Itertools;
+use memory::handle_memory;
+use powdr_autoprecompiles::{
     bus_map::BusType,
     constraint_optimizer::IsBusStateful,
     range_constraint_optimizer::{
@@ -8,9 +11,6 @@ use crate::{
         MakeRangeConstraintsError, RangeConstraintHandler, RangeConstraints,
     },
 };
-use bitwise_lookup::handle_bitwise_lookup;
-use itertools::Itertools;
-use memory::handle_memory;
 use powdr_constraint_solver::{
     constraint_system::{BusInteraction, BusInteractionHandler},
     grouped_expression::GroupedExpression,
@@ -20,7 +20,7 @@ use powdr_number::{FieldElement, LargeInt};
 use std::hash::Hash;
 use variable_range_checker::handle_variable_range_checker;
 
-use crate::bus_interaction_handler::openvm::{
+use crate::{
     bitwise_lookup::bitwise_lookup_pure_range_constraints,
     bus_map::{default_openvm_bus_map, BusMap, OpenVmBusType},
     tuple_range_checker::TupleRangeCheckerHandler,

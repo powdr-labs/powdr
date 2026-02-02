@@ -1,5 +1,4 @@
 use expect_test::expect;
-use powdr_autoprecompiles::bus_interaction_handler::openvm::OpenVmBusInteractionHandler;
 use powdr_autoprecompiles::bus_map::BusMap;
 use powdr_autoprecompiles::optimizer::optimize;
 use powdr_autoprecompiles::symbolic_machine::SymbolicMachine;
@@ -11,6 +10,7 @@ use powdr_openvm::bus_map::{
 };
 use powdr_openvm::{BabyBearOpenVmApcAdapter, BusType, DEFAULT_DEGREE_BOUND};
 
+use powdr_openvm_bus_interaction_handler::OpenVmBusInteractionHandler;
 use test_log::test;
 
 #[test]

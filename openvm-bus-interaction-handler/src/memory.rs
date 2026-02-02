@@ -56,9 +56,7 @@ pub fn handle_memory<T: FieldElement>(
 
 #[cfg(test)]
 mod tests {
-    use crate::bus_interaction_handler::openvm::{
-        bus_map::DEFAULT_MEMORY, test_utils::*, OpenVmBusInteractionHandler,
-    };
+    use crate::{bus_map::DEFAULT_MEMORY, test_utils::*, OpenVmBusInteractionHandler};
 
     use super::*;
     use powdr_constraint_solver::constraint_system::{BusInteraction, BusInteractionHandler};

@@ -79,7 +79,7 @@ pub use opcode::instruction_allowlist;
 pub use powdr_autoprecompiles::DegreeBound;
 pub use powdr_autoprecompiles::PgoConfig;
 
-pub use powdr_autoprecompiles::bus_interaction_handler::openvm::bus_map;
+pub use powdr_openvm_bus_interaction_handler::bus_map;
 
 pub use crate::empirical_constraints::detect_empirical_constraints;
 

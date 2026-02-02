@@ -1,4 +1,4 @@
-use crate::range_constraint_optimizer::RangeConstraints;
+use powdr_autoprecompiles::range_constraint_optimizer::RangeConstraints;
 use powdr_constraint_solver::{
     grouped_expression::GroupedExpression, range_constraint::RangeConstraint,
 };
@@ -106,9 +106,7 @@ pub fn bitwise_lookup_pure_range_constraints<T: FieldElement, V: Ord + Clone + E
 
 #[cfg(test)]
 mod tests {
-    use crate::bus_interaction_handler::openvm::{
-        bus_map::DEFAULT_BITWISE_LOOKUP, test_utils::*, OpenVmBusInteractionHandler,
-    };
+    use crate::{bus_map::DEFAULT_BITWISE_LOOKUP, test_utils::*, OpenVmBusInteractionHandler};
 
     use super::*;
     use powdr_constraint_solver::constraint_system::{BusInteraction, BusInteractionHandler};

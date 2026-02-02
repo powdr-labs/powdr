@@ -1,4 +1,4 @@
-use crate::range_constraint_optimizer::RangeConstraints;
+use powdr_autoprecompiles::range_constraint_optimizer::RangeConstraints;
 use powdr_constraint_solver::{
     grouped_expression::GroupedExpression, range_constraint::RangeConstraint,
 };
@@ -55,7 +55,7 @@ impl TupleRangeCheckerHandler {
 
 #[cfg(test)]
 mod tests {
-    use crate::bus_interaction_handler::openvm::{
+    use crate::{
         bus_map::DEFAULT_TUPLE_RANGE_CHECKER, test_utils::value, OpenVmBusInteractionHandler,
     };
 

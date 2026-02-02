@@ -1,4 +1,4 @@
-use crate::range_constraint_optimizer::RangeConstraints;
+use powdr_autoprecompiles::range_constraint_optimizer::RangeConstraints;
 use powdr_constraint_solver::{
     grouped_expression::GroupedExpression, range_constraint::RangeConstraint,
 };
@@ -52,7 +52,7 @@ pub fn variable_range_checker_pure_range_constraints<T: FieldElement, V: Ord + C
 
 #[cfg(test)]
 mod tests {
-    use crate::bus_interaction_handler::openvm::{
+    use crate::{
         bus_map::DEFAULT_VARIABLE_RANGE_CHECKER,
         test_utils::{mask, range, value},
         OpenVmBusInteractionHandler,

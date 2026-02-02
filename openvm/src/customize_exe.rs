@@ -46,7 +46,7 @@ use crate::{
     utils::symbolic_to_algebraic,
 };
 
-pub use powdr_autoprecompiles::bus_interaction_handler::openvm::OpenVmBusInteractionHandler;
+pub use powdr_openvm_bus_interaction_handler::OpenVmBusInteractionHandler;
 
 pub const POWDR_OPCODE: usize = 0x10ff;
 

@@ -50,7 +50,6 @@ pub mod symbolic_machine;
 pub mod symbolic_machine_generator;
 pub use pgo::{PgoConfig, PgoType};
 pub use powdr_constraint_solver::inliner::DegreeBound;
-pub mod bus_interaction_handler;
 pub mod equivalence_classes;
 pub mod execution;
 pub mod optimistic;

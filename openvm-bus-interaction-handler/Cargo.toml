@@ -1,0 +1,23 @@
+[package]
+name = "powdr-openvm-bus-interaction-handler"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+powdr-autoprecompiles.workspace = true
+powdr-expression.workspace = true
+powdr-number.workspace = true
+powdr-constraint-solver.workspace = true
+
+itertools = "0.13"
+serde = "1.0.218"
+
+
+[lints]
+workspace = true
+
+[lib]
+bench = false # See https://github.com/bheisler/criterion.rs/issues/458
