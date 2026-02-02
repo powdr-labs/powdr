@@ -98,6 +98,10 @@ impl<F> InstructionHandler for OriginalAirs<F> {
     fn degree_bound(&self) -> DegreeBound {
         self.degree_bound
     }
+
+    fn is_phantom(&self, instruction: &Self::Instruction) -> bool {
+        instruction.0.opcode == VmOpcode::from_usize(1)
+    }
 }
 
 impl<F> OriginalAirs<F> {

@@ -5,6 +5,7 @@
 
 use derive_more::From;
 use eyre::Result;
+use num_format::{Locale, ToFormattedString};
 use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
 use openvm_circuit::arch::execution_mode::metered::segment_ctx::SegmentationLimits;
 use openvm_circuit::arch::{
@@ -40,6 +41,7 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::evaluation::AirStats;
+use powdr_autoprecompiles::full_circuit_effectiveness::compute_full_circuit_effectiveness;
 use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::PowdrExtension;
@@ -880,6 +882,87 @@ pub fn execution_profile_from_guest(
     })
 }
 
+/// Computes the full circuit effectiveness by chunking the execution trace and
+/// building APCs for each chunk in parallel.
+///
+/// This function is useful for getting a "north star" number for branch prediction.
+/// It shows how effective it would be to compile the entire execution into circuits.
+///
+/// # Arguments
+///
+/// * `program` - The original compiled program to analyze
+/// * `inputs` - The standard input to use for execution
+/// * `degree_bound` - Degree bound for APC generation
+/// * `chunk_size` - Size of each chunk (e.g., 1000 instructions)
+///
+/// # Returns
+///
+/// A `FullCircuitEffectiveness` struct containing the effectiveness ratio and statistics.
+pub fn get_full_circuit_effectiveness(
+    program: &OriginalCompiledProgram,
+    inputs: StdIn,
+    degree_bound: DegreeBound,
+    chunk_size: usize,
+) {
+    let OriginalCompiledProgram { exe, vm_config, .. } = program;
+    let prog = Prog::from(&exe.program);
+
+    // Set app configuration
+    let app_fri_params =
+        FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
+    let app_config = AppConfig::new(app_fri_params, vm_config.clone());
+
+    // Prepare for execution
+    let sdk = PowdrExecutionProfileSdkCpu::new(app_config).unwrap();
+
+    // Get the VM config for APC generation
+    let original_config = OriginalVmConfig::new(vm_config.clone());
+    let airs = original_config
+        .airs(degree_bound)
+        .expect("Failed to convert the AIR of an OpenVM instruction");
+    let bus_map = original_config.bus_map();
+
+    let range_tuple_checker_sizes = vm_config.sdk.rv32m.unwrap().range_tuple_checker_sizes;
+
+    let adapter_vm_config = powdr_autoprecompiles::VmConfig {
+        instruction_handler: &airs,
+        bus_interaction_handler: crate::bus_interaction_handler::OpenVmBusInteractionHandler::new(
+            bus_map.clone(),
+            range_tuple_checker_sizes,
+        ),
+        bus_map: bus_map.clone(),
+    };
+
+    // Compute effectiveness
+    let result = compute_full_circuit_effectiveness::<BabyBearOpenVmApcAdapter>(
+        &prog,
+        || {
+            sdk.execute_interpreted(exe.clone(), inputs.clone())
+                .unwrap();
+        },
+        adapter_vm_config,
+        degree_bound,
+        chunk_size,
+    );
+
+    let before_sum: usize = result.stats.iter().map(|s| s.widths.before.total()).sum();
+    let after_sum: usize = result.stats.iter().map(|s| s.widths.after.total()).sum();
+    let total_effectiveness = before_sum as f64 / after_sum as f64;
+
+    tracing::info!("=== Full Circuit Effectiveness ===");
+    tracing::info!("Total instructions: {}", result.total_instructions);
+    tracing::info!(
+        "Software trace cells: {}",
+        before_sum.to_formatted_string(&Locale::en)
+    );
+    tracing::info!(
+        "APC trace cells: {}",
+        after_sum.to_formatted_string(&Locale::en)
+    );
+    tracing::info!("Effectiveness: {:.2}x", total_effectiveness);
+    tracing::info!("==================================\n");
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1035,7 +1118,7 @@ mod tests {
             .precompiles
             .iter()
             .for_each(|precompile| {
-                assert!(!pgo_data.keys().contains(&precompile.apc.block.start_pc));
+                assert!(!pgo_data.keys().contains(&precompile.apc.block.start_pc()));
             });
 
         let result = prove(&program, false, false, stdin, None);

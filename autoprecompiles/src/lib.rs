@@ -39,6 +39,7 @@ pub mod evaluation;
 pub mod execution_profile;
 pub mod expression;
 pub mod expression_conversion;
+pub mod full_circuit_effectiveness;
 pub mod low_degree_bus_interaction_optimizer;
 pub mod memory_optimizer;
 pub mod optimizer;
@@ -128,6 +129,8 @@ pub trait InstructionHandler {
     /// Returns the degree bound used for the instructions
     fn degree_bound(&self) -> DegreeBound;
 
+    fn is_phantom(&self, instruction: &Self::Instruction) -> bool;
+
     /// Returns the AIR for the given instruction.
     fn get_instruction_air_and_id(
         &self,
@@ -175,7 +178,7 @@ impl<T, I, A, V> Apc<T, I, A, V> {
 
     /// The PC of the first line of the basic block. Can be used to identify the APC.
     pub fn start_pc(&self) -> u64 {
-        self.block.start_pc
+        self.block.start_pc()
     }
 
     /// The instructions in the basic block.
@@ -319,7 +322,7 @@ pub fn build<A: Adapter>(
         );
     }
 
-    let labels = [("apc_start_pc", block.start_pc.to_string())];
+    let labels = [("apc_start_pc", block.start_pc().to_string())];
     metrics::counter!("before_opt_cols", &labels)
         .absolute(machine.unique_references().count() as u64);
     metrics::counter!("before_opt_constraints", &labels)
