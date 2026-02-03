@@ -631,7 +631,7 @@ impl<T: FieldElement, V: Clone + Hash + Eq> RangeConstraints<T, V> {
 
 #[cfg(test)]
 mod tests {
-    use crate::constraint_system::DefaultBusInteractionHandler;
+    use crate::bus_interaction_handler::DefaultBusInteractionHandler;
 
     use super::*;
 

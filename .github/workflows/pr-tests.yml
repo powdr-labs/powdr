@@ -166,7 +166,7 @@ jobs:
         # Rust 1.90 is needed by fresher versions of dependencies of cargo-openvm.
         run: |
           rustup toolchain install 1.90
-          cargo +1.90 install --git 'http://github.com/openvm-org/openvm.git' cargo-openvm
+          cargo +1.90 install --git 'http://github.com/powdr-labs/openvm.git' --tag "v1.4.2-powdr-rc.1" cargo-openvm
 
       - name: Patch benchmark
         uses: ./.github/actions/patch-openvm-reth-benchmark
@@ -281,7 +281,7 @@ jobs:
         # Rust 1.90 is needed by fresher versions of dependencies of cargo-openvm.
         run: |
           rustup toolchain install 1.90
-          cargo +1.90 install --git 'http://github.com/openvm-org/openvm.git' cargo-openvm
+          cargo +1.90 install --git 'http://github.com/powdr-labs/openvm.git' --tag "v1.4.2-powdr-rc.1" cargo-openvm
 
       - name: Setup python venv
         run: |
