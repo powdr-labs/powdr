@@ -398,6 +398,9 @@ crepe! {
         && !rc_a0.combine_sum(&rc_a1).combine_sum(&rc_a2.combine_sum(&rc_a3)).combine_sum(&rc_a4).combine_sum(&rc_a5).combine_sum(&rc_a6).combine_sum(&rc_a7).is_unconstrained()),
       let replacement = env.insert_owned(env.extract(x) * (env.extract(a0) + env.extract(a1) + env.extract(a2) + env.extract(a3)+ env.extract(a4) + env.extract(a5) + env.extract(a6) + env.extract(a7)));
 
+    ReplaceAlgebraicConstraintsBy(extend_by_none([e0, e1, e2, e3, e4, e5, e6, e7]), extend_by_none([replacement])) <-
+      ReplaceEightOfAlgebraicConstraintsBy(e0, e1, e2, e3, e4, e5, e6, e7, replacement);
+
     struct ReplacedExpressionInEightSet(Expr);
     ReplacedExpressionInEightSet(e) <-
       ReplaceEightOfAlgebraicConstraintsBy(e, _, _, _, _, _, _, _, _);
@@ -441,6 +444,9 @@ crepe! {
         && !rc_a0.combine_sum(&rc_a1).combine_sum(&rc_a2.combine_sum(&rc_a3)).is_unconstrained()),
       let replacement = env.insert_owned(env.extract(x) * (env.extract(a0) + env.extract(a1) + env.extract(a2) + env.extract(a3)));
 
+    ReplaceAlgebraicConstraintsBy(extend_by_none([e0, e1, e2, e3]), extend_by_none([replacement])) <-
+      ReplaceFourOfAlgebraicConstraintsBy(e0, e1, e2, e3, replacement);
+
     struct ReplacedExpressionInFourSet(Expr);
     ReplacedExpressionInFourSet(e) <-
       ReplaceFourOfAlgebraicConstraintsBy(e, _, _, _, _);
@@ -456,9 +462,11 @@ crepe! {
       Env(env),
       ProductConstraint(e1, x, a1),
       ProductConstraint(e2, x, a2),
-      ProductConstraint(e3, x, a3),
+      (e1 < e2),
       !ReplacedExpressionInEightSet(e1),
       !ReplacedExpressionInEightSet(e2),
+      ProductConstraint(e3, x, a3),
+      (e2 < e3),
       !ReplacedExpressionInEightSet(e3),
       !ReplacedExpressionInFourSet(e1),
       !ReplacedExpressionInFourSet(e2),
@@ -478,6 +486,9 @@ crepe! {
     ReplacedExpressionInTripleSet(e) <- ReplaceTripleOfAlgebraicConstraintsBy(e, _, _, _);
     ReplacedExpressionInTripleSet(e) <- ReplaceTripleOfAlgebraicConstraintsBy(_, e, _, _);
     ReplacedExpressionInTripleSet(e) <- ReplaceTripleOfAlgebraicConstraintsBy(_, _, e, _);
+
+    ReplaceAlgebraicConstraintsBy(extend_by_none([e1, e2, e3]), extend_by_none([replacement])) <-
+      ReplaceTripleOfAlgebraicConstraintsBy(e1, e2, e3, replacement);
 
 
     ReplaceAlgebraicConstraintsBy(extend_by_none([e1, e2]), replacement) <-
