@@ -10,10 +10,19 @@ use super::Candidate;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BlockCandidate {
+    // sequence of basic blocks composing this block
     pub bbs: Vec<u64>,
+    // cost of original basic blocks (before optimization)
     pub cost_before: usize,
+    // cost after optimization
     pub cost_after: usize,
+    // times this block runs in the execution.
+    // At first, this is the maximum times it could execute.
+    // During selection this value may be updated as other blocks
+    // are picked (preventing this one from running some of the time).
     pub execution_count: u32,
+    // indices of the runs in the execution where this block appears
+    // TODO(leandro): remove later if not used
     pub idx_runs: HashSet<usize>,
 }
 
@@ -297,6 +306,15 @@ pub fn select_blocks_greedy(
         tracing::trace!("\tpresent in {} runs", c.idx_runs.len());
         examined_candidates += 1;
 
+        // early ignore if too costly
+        if let Some(max_cost) = max_cost {
+            tracing::trace!("\tcandidate doesn't fit, ignoring...");
+            if cumulative_cost + c.cost() > max_cost {
+                // The item does not fit, skip it
+                continue;
+            }
+        }
+
         // Check if the priority of this candidate has changed by re-counting it over the updated execution.
         let start = std::time::Instant::now();
         let (count, new_execution) = count_and_update_execution(c, &execution_bb_runs);
@@ -316,14 +334,6 @@ pub fn select_blocks_greedy(
             continue;
         }
 
-        // add candidate if it fits
-        if let Some(max_cost) = max_cost {
-            tracing::trace!("\tcandidate doesn't fit, ignoring...");
-            if cumulative_cost + c.cost() > max_cost {
-                // The item does not fit, skip it
-                continue;
-            }
-        }
         tracing::trace!("\tcandidate selected!");
 
         // The item fits, increment the cumulative cost and update the execution by removing its occurrences
@@ -341,6 +351,359 @@ pub fn select_blocks_greedy(
 
     selected
 }
+
+// returns the indices of the selected blocks, together with their updated execution counts
+pub fn select_blocks_greedy_by_cluster(
+    mut blocks: Vec<BlockCandidate>,
+    max_cost: Option<usize>,
+    max_selected: Option<usize>,
+    execution_bb_runs: &[(Vec<u64>, u32)],
+    mut skip: usize,
+) -> Vec<(usize, u32)> {
+    assert!(max_cost.is_none() && max_selected.is_none(), "limiting not properly implemented yet");
+
+    let start = std::time::Instant::now();
+    let clusters = detect_sblock_clusters(&blocks);
+    tracing::debug!("{} clusters found, took {:?}", clusters.len(), start.elapsed());
+
+    let start = std::time::Instant::now();
+    let mut selected = vec![];
+    let mut execution_bb_runs: Vec<_> = execution_bb_runs.to_vec();
+    let mut cumulative_cost = 0;
+    for (ci, cluster) in clusters.into_iter().enumerate() {
+        tracing::debug!("Examining cluster {ci}...");
+        let mut by_priority: PriorityQueue<_,_> = cluster.iter().map(|idx| {
+            let block = &blocks[*idx];
+            let priority = block.priority();
+            (*idx, priority)
+        }).collect();
+
+
+        // start from the largest superblocks down to basic blocks
+        let mut examined_candidates = 0;
+        while let Some((idx, _prio)) = by_priority.pop() {
+            let c = &mut blocks[idx];
+            tracing::trace!("examining candidate {examined_candidates} - {:?}...", c.bbs());
+            tracing::trace!("\tpresent in {} runs", c.idx_runs.len());
+            examined_candidates += 1;
+
+            // early ignore if too costly
+            if let Some(max_cost) = max_cost {
+                tracing::trace!("\tcandidate doesn't fit, ignoring...");
+                if cumulative_cost + c.cost() > max_cost {
+                    // The item does not fit, skip it
+                    continue;
+                }
+            }
+
+            // Check if the priority of this candidate has changed by re-counting it over the updated execution.
+            let start = std::time::Instant::now();
+            let (count, new_execution) = count_and_update_execution(c, &execution_bb_runs);
+            tracing::trace!("\tcount in execution took {:?}", start.elapsed());
+            if count == 0 {
+                // The item no longer runs, remove it
+                continue;
+            } else if count < c.count() {
+                // Re-insert it into the queue with the updated priority
+                c.set_count(count);
+                by_priority.push(idx, c.priority());
+                continue;
+            }
+
+            if skip > 0 {
+                skip -= 1;
+                continue;
+            }
+
+            tracing::trace!("\tcandidate selected!");
+
+            // The item fits, increment the cumulative cost and update the execution by removing its occurrences
+            cumulative_cost += c.cost();
+            execution_bb_runs = new_execution;
+            selected.push((idx, count));
+
+            if let Some(max_selected) = max_selected {
+                if selected.len() >= max_selected {
+                    break;
+                }
+            }
+        }
+    }
+    tracing::debug!("APC selection took {:?}", start.elapsed());
+
+    selected
+}
+
+// returns the indices of the selected blocks, together with their updated execution counts
+pub fn select_blocks_greedy_by_value(
+    mut blocks: Vec<BlockCandidate>,
+    max_cost: Option<usize>,
+    max_selected: Option<usize>,
+    execution_bb_runs: &[(Vec<u64>, u32)],
+    mut skip: usize,
+) -> Vec<(usize, u32)> {
+    let mut by_priority: PriorityQueue<_,_> = blocks.iter().enumerate().map(|(idx, block)| {
+        let priority = block.value();
+        (idx, priority)
+    }).collect();
+
+    if tracing::enabled!(tracing::Level::DEBUG) {
+        tracing::debug!("All candidates sorted by priority:");
+        for (idx, prio) in by_priority.clone().into_sorted_iter() {
+            let c = &blocks[idx];
+            tracing::debug!(
+                "\tAPC pcs {:?}, effectiveness: {:?}, freq: {:?}, priority: {:?}",
+                c.bbs(),
+                c.eff(),
+                c.count(),
+                prio,
+            );
+        }
+    }
+
+    let mut selected = vec![];
+    let mut cumulative_cost = 0;
+    let mut execution_bb_runs: Vec<_> = execution_bb_runs.to_vec();
+    // let mut execution_bb_runs = execution_bb_runs.iter()
+    //     .cloned()
+    //     .map(|(run, count)| (vec![run], count))
+    //     .collect_vec();
+
+    // start from the largest superblocks down to basic blocks
+    let start = std::time::Instant::now();
+    let mut examined_candidates = 0;
+    while let Some((idx, _prio)) = by_priority.pop() {
+        let c = &mut blocks[idx];
+        tracing::trace!("examining candidate {examined_candidates} - {:?}...", c.bbs());
+        tracing::trace!("\tpresent in {} runs", c.idx_runs.len());
+        examined_candidates += 1;
+
+        // early ignore if too costly
+        if let Some(max_cost) = max_cost {
+            tracing::trace!("\tcandidate doesn't fit, ignoring...");
+            if cumulative_cost + c.cost() > max_cost {
+                // The item does not fit, skip it
+                continue;
+            }
+        }
+
+        // Check if the priority of this candidate has changed by re-counting it over the updated execution.
+        let start = std::time::Instant::now();
+        let (count, new_execution) = count_and_update_execution(c, &execution_bb_runs);
+        tracing::trace!("\tcount in execution took {:?}", start.elapsed());
+        if count == 0 {
+            // The item no longer runs, remove it
+            continue;
+        } else if count < c.count() {
+            // Re-insert it into the queue with the updated priority
+            c.set_count(count);
+            by_priority.push(idx, c.value());
+            continue;
+        }
+
+        if skip > 0 {
+            skip -= 1;
+            continue;
+        }
+
+        tracing::trace!("\tcandidate selected!");
+
+        // The item fits, increment the cumulative cost and update the execution by removing its occurrences
+        cumulative_cost += c.cost();
+        execution_bb_runs = new_execution;
+        selected.push((idx, count));
+
+        if let Some(max_selected) = max_selected {
+            if selected.len() >= max_selected {
+                break;
+            }
+        }
+    }
+    tracing::debug!("APC selection took {:?}", start.elapsed());
+
+    selected
+}
+
+// returns the indices of the selected blocks, together with their updated execution counts
+pub fn select_blocks_greedy_by_size_and_value(
+    mut blocks: Vec<BlockCandidate>,
+    max_cost: Option<usize>,
+    max_selected: Option<usize>,
+    execution_bb_runs: &[(Vec<u64>, u32)],
+    mut skip: usize,
+) -> Vec<(usize, u32)> {
+    let mut by_priority: PriorityQueue<_,_> = blocks.iter().enumerate().map(|(idx, block)| {
+        let priority = (block.bbs().len(), block.value());
+        (idx, priority)
+    }).collect();
+
+    if tracing::enabled!(tracing::Level::DEBUG) {
+        tracing::debug!("All candidates sorted by priority:");
+        for (idx, prio) in by_priority.clone().into_sorted_iter() {
+            let c = &blocks[idx];
+            tracing::debug!(
+                "\tAPC pcs {:?}, effectiveness: {:?}, freq: {:?}, priority: {:?}",
+                c.bbs(),
+                c.eff(),
+                c.count(),
+                prio,
+            );
+        }
+    }
+
+    let mut selected = vec![];
+    let mut cumulative_cost = 0;
+    let mut execution_bb_runs: Vec<_> = execution_bb_runs.to_vec();
+    // let mut execution_bb_runs = execution_bb_runs.iter()
+    //     .cloned()
+    //     .map(|(run, count)| (vec![run], count))
+    //     .collect_vec();
+
+    // start from the largest superblocks down to basic blocks
+    let start = std::time::Instant::now();
+    let mut examined_candidates = 0;
+    while let Some((idx, _prio)) = by_priority.pop() {
+        let c = &mut blocks[idx];
+        tracing::trace!("examining candidate {examined_candidates} - {:?}...", c.bbs());
+        tracing::trace!("\tpresent in {} runs", c.idx_runs.len());
+        examined_candidates += 1;
+
+        // early ignore if too costly
+        if let Some(max_cost) = max_cost {
+            tracing::trace!("\tcandidate doesn't fit, ignoring...");
+            if cumulative_cost + c.cost() > max_cost {
+                // The item does not fit, skip it
+                continue;
+            }
+        }
+
+        // Check if the priority of this candidate has changed by re-counting it over the updated execution.
+        let start = std::time::Instant::now();
+        let (count, new_execution) = count_and_update_execution(c, &execution_bb_runs);
+        tracing::trace!("\tcount in execution took {:?}", start.elapsed());
+        if count == 0 {
+            // The item no longer runs, remove it
+            continue;
+        } else if count < c.count() {
+            // Re-insert it into the queue with the updated priority
+            c.set_count(count);
+            by_priority.push(idx, (c.bbs().len(), c.value()));
+            continue;
+        }
+
+        if skip > 0 {
+            skip -= 1;
+            continue;
+        }
+
+        tracing::trace!("\tcandidate selected!");
+
+        // The item fits, increment the cumulative cost and update the execution by removing its occurrences
+        cumulative_cost += c.cost();
+        execution_bb_runs = new_execution;
+        selected.push((idx, count));
+
+        if let Some(max_selected) = max_selected {
+            if selected.len() >= max_selected {
+                break;
+            }
+        }
+    }
+    tracing::debug!("APC selection took {:?}", start.elapsed());
+
+    selected
+}
+
+// returns the indices of the selected blocks, together with their updated execution counts
+pub fn select_blocks_greedy_by_size2(
+    mut blocks: Vec<BlockCandidate>,
+    max_cost: Option<usize>,
+    max_selected: Option<usize>,
+    execution_bb_runs: &[(Vec<u64>, u32)],
+    mut skip: usize,
+) -> Vec<(usize, u32)> {
+    let mut by_priority: PriorityQueue<_,_> = blocks.iter().enumerate().map(|(idx, block)| {
+        let priority = (block.bbs().len(), block.priority());
+        (idx, priority)
+    }).collect();
+
+    if tracing::enabled!(tracing::Level::DEBUG) {
+        tracing::debug!("All candidates sorted by priority:");
+        for (idx, prio) in by_priority.clone().into_sorted_iter() {
+            let c = &blocks[idx];
+            tracing::debug!(
+                "\tAPC pcs {:?}, effectiveness: {:?}, freq: {:?}, priority: {:?}",
+                c.bbs(),
+                c.eff(),
+                c.count(),
+                prio,
+            );
+        }
+    }
+
+    let mut selected = vec![];
+    let mut cumulative_cost = 0;
+    let mut execution_bb_runs: Vec<_> = execution_bb_runs.to_vec();
+    // let mut execution_bb_runs = execution_bb_runs.iter()
+    //     .cloned()
+    //     .map(|(run, count)| (vec![run], count))
+    //     .collect_vec();
+
+    // start from the largest superblocks down to basic blocks
+    let start = std::time::Instant::now();
+    let mut examined_candidates = 0;
+    while let Some((idx, _prio)) = by_priority.pop() {
+        let c = &mut blocks[idx];
+        tracing::trace!("examining candidate {examined_candidates} - {:?}...", c.bbs());
+        tracing::trace!("\tpresent in {} runs", c.idx_runs.len());
+        examined_candidates += 1;
+
+        // early ignore if too costly
+        if let Some(max_cost) = max_cost {
+            tracing::trace!("\tcandidate doesn't fit, ignoring...");
+            if cumulative_cost + c.cost() > max_cost {
+                // The item does not fit, skip it
+                continue;
+            }
+        }
+
+        // Check if the priority of this candidate has changed by re-counting it over the updated execution.
+        let start = std::time::Instant::now();
+        let (count, new_execution) = count_and_update_execution(c, &execution_bb_runs);
+        tracing::trace!("\tcount in execution took {:?}", start.elapsed());
+        if count == 0 {
+            // The item no longer runs, remove it
+            continue;
+        } else if count < c.count() {
+            // Re-insert it into the queue with the updated priority
+            c.set_count(count);
+            by_priority.push(idx, (c.bbs().len(), c.priority()));
+            continue;
+        }
+
+        if skip > 0 {
+            skip -= 1;
+            continue;
+        }
+
+        tracing::trace!("\tcandidate selected!");
+
+        // The item fits, increment the cumulative cost and update the execution by removing its occurrences
+        cumulative_cost += c.cost();
+        execution_bb_runs = new_execution;
+        selected.push((idx, count));
+
+        if let Some(max_selected) = max_selected {
+            if selected.len() >= max_selected {
+                break;
+            }
+        }
+    }
+    tracing::debug!("APC selection took {:?}", start.elapsed());
+
+    selected
+}
+
 
 // returns the indices of the selected blocks, together with their updated execution counts.
 // Prioritizes larger superblocks.
@@ -392,6 +755,15 @@ pub fn select_blocks_greedy_by_size(
         // based on the current execution, re-inserting it back if it changed.
         while let Some((idx, _prio)) = group_candidates.pop() {
             let c = &mut blocks[idx];
+
+            // early ignore if too costly
+            if let Some(max_cost) = max_cost {
+                if cumulative_cost + c.cost() > max_cost {
+                    // The item does not fit, skip it
+                    continue;
+                }
+            }
+
             // Check if the priority of this candidate has changed by re-counting it over the updated execution.
             let (count, new_execution) = count_and_update_execution(&c, &execution_bb_runs);
             if count == 0 {
@@ -407,14 +779,6 @@ pub fn select_blocks_greedy_by_size(
             if skip > 0 {
                 skip -= 1;
                 continue;
-            }
-
-            // add candidate if it fits
-            if let Some(max_cost) = max_cost {
-                if cumulative_cost + c.cost() > max_cost {
-                    // The item does not fit, skip it
-                    continue;
-                }
             }
 
             // The item fits, increment the cumulative cost and update the execution by removing its occurrences
@@ -433,6 +797,8 @@ pub fn select_blocks_greedy_by_size(
 
     selected
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 pub fn select_apc_candidates_greedy<A: Adapter, C: Candidate<A>>(
     candidates: Vec<C>,
