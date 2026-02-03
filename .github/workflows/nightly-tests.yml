@@ -203,9 +203,6 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-release-apc-gpu-${{ hashFiles('**/Cargo.toml') }}
 
-      - name: Build
-        run: cargo build --release -p powdr-openvm --features cuda,metrics,aot
-
       - name: Install cargo openvm
         # Rust 1.90 is needed by fresher versions of dependencies of cargo-openvm.
         run: |
