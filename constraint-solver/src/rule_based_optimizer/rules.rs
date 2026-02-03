@@ -153,14 +153,6 @@ crepe! {
       ExpressionSumHeadTail(e, _, tail),
       HasSummand(tail, summand);
 
-    // AffineConstant(e, c) => e is an affine expression with constant part c
-    struct AffineConstant<T: FieldElement>(Expr, T);
-    AffineConstant(e, c) <-
-      AffineExpression(e, _, _, c);
-    AffineConstant(e, c) <-
-      AffineConstant(tail, c),
-      ExpressionSumHeadTail(e, _, tail);
-
     // DifferBySummand(e1, e2, s) => e1 = e2 + s and `s` is not a sum.
     // Note that `e1` and `e2` must "pre-exist" as expressions, i.e.
     // this rule cannot be used to split out a linear summand
