@@ -104,11 +104,18 @@ def plot(metrics_files, output):
         ("app_other_ms", "App other", "#08519c"),                                     
     ]
 
-    # Extract labels from filenames (use parent directory name)
+    # Extract labels from filenames
+    # Use parent directory name if file is metrics.json, otherwise use filename without extension
     import os
-    x_labels = [os.path.basename(os.path.dirname(f)) for f in df["filename"]]
+    def get_label(filepath):
+        basename = os.path.basename(filepath)
+        if basename == "metrics.json":
+            return os.path.basename(os.path.dirname(filepath))
+        else:
+            return os.path.splitext(basename)[0]
+    x_labels = [get_label(f) for f in df["filename"]]
 
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(12, 6))
 
     bottom = [0.0] * len(df)
     bars_data = []  # Store bar info for labeling
@@ -147,13 +154,13 @@ def plot(metrics_files, output):
     ax.set_ylabel("Time (s)")
     ax.set_xlabel("Configuration")
     ax.set_title("Proof Time Breakdown")
-    # Reverse legend so top of legend matches top of stack
+    # Reverse legend so top of legend matches top of stack, place outside plot
     handles, legend_labels = ax.get_legend_handles_labels()
-    ax.legend(handles[::-1], legend_labels[::-1], loc="upper right")
+    ax.legend(handles[::-1], legend_labels[::-1], loc="upper left", bbox_to_anchor=(1.01, 1), frameon=False)
 
     plt.tight_layout()
     if output:
-        plt.savefig(output)
+        plt.savefig(output, bbox_inches='tight')
         print(f"Plot saved to {output}")
     else:
         plt.show()
