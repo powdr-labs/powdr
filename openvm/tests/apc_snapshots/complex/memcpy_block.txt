@@ -36,8 +36,8 @@ Symbolic machine using 29 unique main columns:
   reads_aux__1__base__prev_timestamp_4
   reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_4
   cmp_result_4
+  inv_of_sum_172
   inv_of_sum_173
-  inv_of_sum_174
   free_var_176
   is_valid
 
@@ -75,7 +75,7 @@ cmp_result_4 * (cmp_result_4 - 1) = 0
 cmp_result_1 * a__0_0 = 0
 inv_of_sum_173 * a__0_0 + cmp_result_1 - 1 * is_valid = 0
 cmp_result_2 * (writes_aux__prev_data__0_2 + writes_aux__prev_data__1_2 + writes_aux__prev_data__2_2 + writes_aux__prev_data__3_2) = 0
-inv_of_sum_174 * (writes_aux__prev_data__0_2 + writes_aux__prev_data__1_2 + writes_aux__prev_data__2_2 + writes_aux__prev_data__3_2) + cmp_result_2 - 1 * is_valid = 0
+inv_of_sum_172 * (writes_aux__prev_data__0_2 + writes_aux__prev_data__1_2 + writes_aux__prev_data__2_2 + writes_aux__prev_data__3_2) + cmp_result_2 - 1 * is_valid = 0
 (1 - cmp_result_4) * (cmp_result_1 + cmp_result_2 - cmp_result_1 * cmp_result_2) = 0
 free_var_176 * (cmp_result_1 + cmp_result_2 - cmp_result_1 * cmp_result_2) - cmp_result_4 = 0
 is_valid * (is_valid - 1) = 0
