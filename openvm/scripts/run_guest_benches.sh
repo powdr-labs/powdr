@@ -58,7 +58,7 @@ run_bench guest-keccak "$input" 3 apc003
 run_bench guest-keccak "$input" 30 apc030
 
 python3 $SCRIPTS_DIR/basic_metrics.py summary-table --csv **/metrics.json > basic_metrics.csv
-python3 $SCRIPTS_DIR/basic_metrics.py plot --csv **/metrics.json -o proof_time_breakdown.png
+python3 $SCRIPTS_DIR/basic_metrics.py plot **/metrics.json -o proof_time_breakdown.png
 popd
 
 ### SHA256
@@ -75,7 +75,7 @@ run_bench guest-sha256 "$input" 3 apc003
 run_bench guest-sha256 "$input" 30 apc030
 
 python3 $SCRIPTS_DIR/basic_metrics.py summary-table --csv **/metrics.json > basic_metrics.csv
-python3 $SCRIPTS_DIR/basic_metrics.py plot --csv **/metrics.json -o proof_time_breakdown.png
+python3 $SCRIPTS_DIR/basic_metrics.py plot **/metrics.json -o proof_time_breakdown.png
 popd
 
 ### Pairing
@@ -93,7 +93,7 @@ run_bench guest-pairing "$input" 30 apc030
 # run_bench guest-pairing "$input" 100 apc100  # Save ~7mins 
 
 python3 $SCRIPTS_DIR/basic_metrics.py summary-table --csv **/metrics.json > basic_metrics.csv
-python3 $SCRIPTS_DIR/basic_metrics.py plot --csv **/metrics.json -o proof_time_breakdown.png
+python3 $SCRIPTS_DIR/basic_metrics.py plot **/metrics.json -o proof_time_breakdown.png
 popd
 
 ### U256
@@ -110,7 +110,7 @@ run_bench guest-u256 "$input" 3 apc003
 run_bench guest-u256 "$input" 30 apc030
 
 python3 $SCRIPTS_DIR/basic_metrics.py summary-table --csv **/metrics.json > basic_metrics.csv
-python3 $SCRIPTS_DIR/basic_metrics.py plot --csv **/metrics.json -o proof_time_breakdown.png
+python3 $SCRIPTS_DIR/basic_metrics.py plot **/metrics.json -o proof_time_breakdown.png
 popd
 
 ### Matmul
@@ -125,7 +125,7 @@ run_bench guest-matmul 0 10 apc010
 run_bench guest-matmul 0 30 apc030
 
 python3 "$SCRIPTS_DIR"/basic_metrics.py summary-table --csv **/metrics.json > basic_metrics.csv
-python3 "$SCRIPTS_DIR"/basic_metrics.py plot --csv **/metrics.json -o proof_time_breakdown.png
+python3 "$SCRIPTS_DIR"/basic_metrics.py plot **/metrics.json -o proof_time_breakdown.png
 popd
 
 ### ECC
@@ -148,7 +148,7 @@ run_bench guest-ecc-powdr-affine-hint $input 30 affine-hint-apc030
 # run_bench guest-ecc-powdr-affine-hint $input 100 affine-hint-apc100  # Save ~7mins
 
 python3 $SCRIPTS_DIR/basic_metrics.py summary-table --csv **/metrics.json > basic_metrics.csv
-python3 $SCRIPTS_DIR/basic_metrics.py plot --csv **/metrics.json -o proof_time_breakdown.png
+python3 $SCRIPTS_DIR/basic_metrics.py plot **/metrics.json -o proof_time_breakdown.png
 popd
 
 ### ECRECOVER
@@ -166,5 +166,5 @@ run_bench guest-ecrecover $input 30 apc030
 # run_bench guest-ecrecover $input 100 apc100  # Save ~6mins
 
 python3 $SCRIPTS_DIR/basic_metrics.py summary-table --csv **/metrics.json > basic_metrics.csv
-python3 $SCRIPTS_DIR/basic_metrics.py plot --csv **/metrics.json -o proof_time_breakdown.png
+python3 $SCRIPTS_DIR/basic_metrics.py plot **/metrics.json -o proof_time_breakdown.png
 popd
