@@ -201,35 +201,39 @@ fn count_and_update_execution(sblock: &BlockCandidate, execution: &[(Vec<u64>, u
 // Returns the count and an updated execution with the counted subsequences removed.
 fn count_and_update_execution_indexed(
     sblock: &BlockCandidate,
-    execution: &[(Vec<u64>, u32)]
-) -> (u32, Vec<(Vec<u64>, u32)>) {
+    execution: &[(Vec<Vec<u64>>, u32)]
+) -> (u32, Vec<(Vec<Vec<u64>>, u32)>) {
     let mut count = 0;
-    let new_execution = execution.iter().enumerate().flat_map(|(idx, (run, run_count))| {
+    let new_execution = execution.iter().enumerate().map(|(idx, (runs, run_count))| {
         if !sblock.idx_runs.contains(&idx) {
             // this run does not contain the block, return as is
-            return vec![(run.clone(), *run_count)];
+            return (runs.clone(), *run_count);
         }
-        // look at this run, counting the occurrences and returning the "sub-runs" between occurrences
-        let mut i = 0;
-        let mut sub_run_start = 0;
-        let mut sub_runs = vec![];
-        while i + sblock.bbs.len() <= run.len() {
-            if &run[i..i + sblock.bbs.len()] == sblock.bbs {
-                // a match, close the current sub-run
-                count += run_count;
-                if i > sub_run_start {
-                    sub_runs.push((run[sub_run_start..i].to_vec(), *run_count));
+
+        let runs = runs.iter().flat_map(|run| {
+            // look at this run, counting the occurrences and returning the "sub-runs" between occurrences
+            let mut i = 0;
+            let mut sub_run_start = 0;
+            let mut sub_runs = vec![];
+            while i + sblock.bbs.len() <= run.len() {
+                if &run[i..i + sblock.bbs.len()] == sblock.bbs {
+                    // a match, close the current sub-run
+                    count += run_count;
+                    if i > sub_run_start {
+                        sub_runs.push(run[sub_run_start..i].to_vec());
+                    }
+                    sub_run_start = i + sblock.bbs.len();
+                    i += sblock.bbs.len();
+                } else {
+                    i += 1;
                 }
-                sub_run_start = i + sblock.bbs.len();
-                i += sblock.bbs.len();
-            } else {
-                i += 1;
             }
-        }
-        if run.len() > sub_run_start {
-            sub_runs.push((run[sub_run_start..].to_vec(), *run_count));
-        }
-        sub_runs
+            if run.len() > sub_run_start {
+                sub_runs.push(run[sub_run_start..].to_vec());
+            }
+            sub_runs
+        }).collect();
+        (runs, *run_count)
     }).collect();
     (count, new_execution)
 }
@@ -279,20 +283,24 @@ pub fn select_blocks_greedy(
     let mut selected = vec![];
     let mut cumulative_cost = 0;
     let mut execution_bb_runs: Vec<_> = execution_bb_runs.to_vec();
+    // let mut execution_bb_runs = execution_bb_runs.iter()
+    //     .cloned()
+    //     .map(|(run, count)| (vec![run], count))
+    //     .collect_vec();
 
     // start from the largest superblocks down to basic blocks
     let start = std::time::Instant::now();
     let mut examined_candidates = 0;
     while let Some((idx, _prio)) = by_priority.pop() {
         let c = &mut blocks[idx];
-        tracing::debug!("examining candidate {examined_candidates} - {:?}...", c.bbs());
-        tracing::debug!("\tpresent in {} runs", c.idx_runs.len());
+        tracing::trace!("examining candidate {examined_candidates} - {:?}...", c.bbs());
+        tracing::trace!("\tpresent in {} runs", c.idx_runs.len());
         examined_candidates += 1;
 
         // Check if the priority of this candidate has changed by re-counting it over the updated execution.
         let start = std::time::Instant::now();
-        let (count, new_execution) = count_and_update_execution_indexed(c, &execution_bb_runs);
-        tracing::debug!("\tcount in execution took {:?}", start.elapsed());
+        let (count, new_execution) = count_and_update_execution(c, &execution_bb_runs);
+        tracing::trace!("\tcount in execution took {:?}", start.elapsed());
         if count == 0 {
             // The item no longer runs, remove it
             continue;
@@ -310,13 +318,13 @@ pub fn select_blocks_greedy(
 
         // add candidate if it fits
         if let Some(max_cost) = max_cost {
-            tracing::debug!("\tcandidate doesn't fit, ignoring...");
+            tracing::trace!("\tcandidate doesn't fit, ignoring...");
             if cumulative_cost + c.cost() > max_cost {
                 // The item does not fit, skip it
                 continue;
             }
         }
-        tracing::debug!("\tcandidate selected!");
+        tracing::trace!("\tcandidate selected!");
 
         // The item fits, increment the cumulative cost and update the execution by removing its occurrences
         cumulative_cost += c.cost();
@@ -568,15 +576,15 @@ mod test {
 
 
         let runs = vec![
-            (vec![0,1,2,3], 1), // 1
-            (vec![1,2], 2), // 2
-            (vec![1,2,3], 4), // 4
-            (vec![2,3,4,5], 3), // 0
-            (vec![0,1,2], 1), // 1
-            (vec![1,2,3,1,2], 2), // 4
-            (vec![2,1,2,1,2,1,2,1], 1), // 3
-            (vec![1,1,1,2,2,2,1,2,3,3,1,2,4,4], 2), // 6
-            (vec![8,2,1], 1) // 0
+            (vec![vec![0,1,2,3]], 1), // 1
+            (vec![vec![1,2]], 2), // 2
+            (vec![vec![1,2,3]], 4), // 4
+            (vec![vec![2,3,4,5]], 3), // 0
+            (vec![vec![0,1,2]], 1), // 1
+            (vec![vec![1,2,3,1,2]], 2), // 4
+            (vec![vec![2,1,2,1,2,1,2,1]], 1), // 3
+            (vec![vec![1,1,1,2,2,2,1,2,3,3,1,2,4,4]], 2), // 6
+            (vec![vec![8,2,1]], 1) // 0
         ];
 
         assert_eq!(
@@ -584,14 +592,15 @@ mod test {
             (
                 1 + 2 + 4 + 1 + 4 + 3 + 6,
                 vec![
-                    (vec![0], 1), (vec![3], 1),
-                    (vec![3], 4),
-                    (vec![2,3,4,5], 3),
-                    (vec![0], 1),
-                    (vec![3], 2),
-                    (vec![2], 1), (vec![1], 1),
-                    (vec![1,1], 2), (vec![2,2], 2), (vec![3,3], 2), (vec![4,4], 2),
-                    (vec![8,2,1], 1) // 0
+                    (vec![vec![0], vec![3]], 1),
+                    (vec![], 2),
+                    (vec![vec![3]], 4),
+                    (vec![vec![2,3,4,5]], 3),
+                    (vec![vec![0]], 1),
+                    (vec![vec![3]], 2),
+                    (vec![vec![2], vec![1]], 1),
+                    (vec![vec![1,1], vec![2,2], vec![3,3], vec![4,4]], 2),
+                    (vec![vec![8,2,1]], 1)
                 ],
             )
         );
