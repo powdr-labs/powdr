@@ -111,6 +111,6 @@ limb_shift_marker__2_0 * (a__1_0 * bit_multiplier_right_0 + bit_shift_carry__3_0
 (1 - (limb_shift_marker__0_0 + limb_shift_marker__1_0 + limb_shift_marker__2_0)) * (a__0_0 * bit_multiplier_right_0 + bit_shift_carry__3_0 - (256 * b_sign_0 * (bit_multiplier_right_0 - 1) + b__3_0)) = 0
 (1 - (limb_shift_marker__0_0 + limb_shift_marker__1_0 + limb_shift_marker__2_0)) * (a__1_0 - 255 * b_sign_0) = 0
 b_sign_0 * (b_sign_0 - 1) = 0
-(a__2_0 - 255 * b_sign_0) * (1 - (limb_shift_marker__0_0 + limb_shift_marker__1_0)) = 0
 (a__3_0 - 255 * b_sign_0) * (1 - limb_shift_marker__0_0) = 0
+(a__2_0 - 255 * b_sign_0) * (1 - (limb_shift_marker__0_0 + limb_shift_marker__1_0)) = 0
 is_valid * (is_valid - 1) = 0
