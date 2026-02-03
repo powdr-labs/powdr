@@ -4,6 +4,7 @@ import argparse
 from collections import OrderedDict
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.ticker import AutoMinorLocator
 from metrics_utils import load_metrics_dataframes, is_normal_instruction_air
 
 def extract_metrics(filename):
@@ -115,48 +116,75 @@ def plot(metrics_files, output):
             return os.path.splitext(basename)[0]
     x_labels = [get_label(f) for f in df["filename"]]
 
-    fig, ax = plt.subplots(figsize=(12, 6))
+    import numpy as np
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 7))
+    plt.subplots_adjust(bottom=0.18)  # Make room for legend at bottom
 
+    # === Left plot: Stacked bars ===
     bottom = [0.0] * len(df)
     bars_data = []  # Store bar info for labeling
     for col, label, color in components:
         values = [v / 1000 for v in df[col].tolist()]  # Convert ms to seconds
-        bars = ax.bar(x_labels, values, bottom=bottom, label=label, color=color)
+        bars = ax1.bar(x_labels, values, bottom=bottom, label=label, color=color)
         bars_data.append((bars, values, bottom.copy(), color))
         bottom = [b + v for b, v in zip(bottom, values)]
 
     # Get the total height for threshold calculation
     max_height = max(bottom)
-    min_label_height = max_height * 0.02  # Only label segments > 3% of max height
+    min_label_height = max_height * 0.02
 
     # Add value labels to each segment
     for bars, values, bottoms, color in bars_data:
         for bar, value, bot, top in zip(bars, values, bottoms, bottom):
             if value < min_label_height:
                 continue
-            # Calculate center of this segment
             center_y = bot + value / 2
             center_x = bar.get_x() + bar.get_width() / 2
-            # Choose text color based on background brightness
             text_color = 'black'
             percentage = value / top * 100 if top > 0 else 0
-            ax.text(center_x, center_y, f'{value:.1f} ({percentage:.1f}%)', ha='center', va='center',
-                    fontsize=8, color=text_color, fontweight='bold')
+            ax1.text(center_x, center_y, f'{value:.1f} ({percentage:.1f}%)', ha='center', va='center',
+                     fontsize=8, color=text_color, fontweight='bold')
 
     # Add total labels on top of each stack
     last_bars = bars_data[-1][0]
     for bar, total in zip(last_bars, bottom):
         center_x = bar.get_x() + bar.get_width() / 2
-        ax.text(center_x, total + max_height * 0.01, f'Total: {total:.1f}', ha='center', va='bottom',
-                fontsize=9, color='black', fontweight='bold')
+        ax1.text(center_x, total + max_height * 0.01, f'Total: {total:.1f}', ha='center', va='bottom',
+                 fontsize=9, color='black', fontweight='bold')
 
-    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x:.2f}'))
-    ax.set_ylabel("Time (s)")
-    ax.set_xlabel("Configuration")
-    ax.set_title("Proof Time Breakdown")
-    # Reverse legend so top of legend matches top of stack, place outside plot
-    handles, legend_labels = ax.get_legend_handles_labels()
-    ax.legend(handles[::-1], legend_labels[::-1], loc="upper left", bbox_to_anchor=(1.01, 1), frameon=False)
+    ax1.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x:.2f}'))
+    ax1.yaxis.set_minor_locator(AutoMinorLocator(2))
+    ax1.grid(axis='y', which='major', linestyle='-', alpha=0.4)
+    ax1.grid(axis='y', which='minor', linestyle='--', alpha=0.2)
+    ax1.set_axisbelow(True)
+    ax1.set_ylabel("Time (s)")
+    ax1.set_title("Stacked")
+
+    # === Right plot: Grouped bars ===
+    n_configs = len(x_labels)
+    n_components = len(components)
+    bar_width = 0.8 / n_components
+    x_pos = np.arange(n_configs)
+
+    for i, (col, label, color) in enumerate(components):
+        values = [v / 1000 for v in df[col].tolist()]
+        offset = (i - n_components / 2 + 0.5) * bar_width
+        ax2.bar(x_pos + offset, values, bar_width, label=label, color=color)
+
+    ax2.set_xticks(x_pos)
+    ax2.set_xticklabels(x_labels)
+    ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x:.2f}'))
+    ax2.yaxis.set_minor_locator(AutoMinorLocator(2))
+    ax2.grid(axis='y', which='major', linestyle='-', alpha=0.4)
+    ax2.grid(axis='y', which='minor', linestyle='--', alpha=0.2)
+    ax2.set_axisbelow(True)
+    ax2.set_ylabel("Time (s)")
+    ax2.set_title("By Component")
+
+    # Shared legend below both plots
+    handles, legend_labels = ax1.get_legend_handles_labels()
+    fig.legend(handles, legend_labels, loc="upper center", bbox_to_anchor=(0.5, 0.02),
+               ncol=len(components), frameon=False, fontsize=9)
 
     plt.tight_layout()
     if output:
