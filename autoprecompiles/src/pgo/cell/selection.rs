@@ -175,77 +175,43 @@ pub fn detect_sblock_clusters(
     clusters
 }
 
+// returns the number of matches for the candidate and the subruns after its occurrences are removed
+fn count_and_update_run(sblock: &BlockCandidate, run: &[u64], run_count: u32) -> (u32, Vec<(Vec<u64>, u32)>) {
+    let mut i = 0;
+    let mut count = 0;
+    let mut sub_run_start = 0;
+    let mut sub_runs = vec![];
+    while i + sblock.bbs.len() <= run.len() {
+        if &run[i..i + sblock.bbs.len()] == sblock.bbs {
+            // a match, close the current sub-run
+            count += 1;
+            if i > sub_run_start {
+                sub_runs.push((run[sub_run_start..i].to_vec(), run_count));
+            }
+            sub_run_start = i + sblock.bbs.len();
+            i += sblock.bbs.len();
+        } else {
+            i += 1;
+        }
+    }
+    if run.len() > sub_run_start {
+        sub_runs.push((run[sub_run_start..].to_vec(), run_count));
+    }
+    (count, sub_runs)
+}
+
 // Count the number of times `sblock` appears in the `execution` runs.
 // Returns the count and an updated execution with the counted subsequences removed.
 fn count_and_update_execution(sblock: &BlockCandidate, execution: &[(Vec<u64>, u32)]) -> (u32, Vec<(Vec<u64>, u32)>) {
-    let mut count = 0;
+    let mut total_count = 0;
     let new_execution = execution.iter().flat_map(|(run, run_count)| {
-        // look at this run, counting the occurrences and returning the "sub-runs" between occurrences
-        let mut i = 0;
-        let mut sub_run_start = 0;
-        let mut sub_runs = vec![];
-        while i + sblock.bbs.len() <= run.len() {
-            if &run[i..i + sblock.bbs.len()] == sblock.bbs {
-                // a match, close the current sub-run
-                count += run_count;
-                if i > sub_run_start {
-                    sub_runs.push((run[sub_run_start..i].to_vec(), *run_count));
-                }
-                sub_run_start = i + sblock.bbs.len();
-                i += sblock.bbs.len();
-            } else {
-                i += 1;
-            }
-        }
-        if run.len() > sub_run_start {
-            sub_runs.push((run[sub_run_start..].to_vec(), *run_count));
-        }
+        let (count, sub_runs) = count_and_update_run(sblock, run, *run_count);
+        total_count += count * *run_count;
         sub_runs
     }).collect();
-    (count, new_execution)
+    (total_count, new_execution)
 }
 
-
-// Count the number of times `sblock` appears in the `execution` runs.
-// Returns the count and an updated execution with the counted subsequences removed.
-fn count_and_update_execution_indexed(
-    sblock: &BlockCandidate,
-    execution: &[(Vec<Vec<u64>>, u32)]
-) -> (u32, Vec<(Vec<Vec<u64>>, u32)>) {
-    let mut count = 0;
-    let new_execution = execution.iter().enumerate().map(|(idx, (runs, run_count))| {
-        if !sblock.idx_runs.contains(&idx) {
-            // this run does not contain the block, return as is
-            return (runs.clone(), *run_count);
-        }
-
-        let runs = runs.iter().flat_map(|run| {
-            // look at this run, counting the occurrences and returning the "sub-runs" between occurrences
-            let mut i = 0;
-            let mut sub_run_start = 0;
-            let mut sub_runs = vec![];
-            while i + sblock.bbs.len() <= run.len() {
-                if &run[i..i + sblock.bbs.len()] == sblock.bbs {
-                    // a match, close the current sub-run
-                    count += run_count;
-                    if i > sub_run_start {
-                        sub_runs.push(run[sub_run_start..i].to_vec());
-                    }
-                    sub_run_start = i + sblock.bbs.len();
-                    i += sblock.bbs.len();
-                } else {
-                    i += 1;
-                }
-            }
-            if run.len() > sub_run_start {
-                sub_runs.push(run[sub_run_start..].to_vec());
-            }
-            sub_runs
-        }).collect();
-        (runs, *run_count)
-    }).collect();
-    (count, new_execution)
-}
 
 // Compute the overall value and cost of a selection of candidates over the given execution
 fn compute_selection_value_and_cost(all_blocks: &[BlockCandidate], selection_order: &[usize], execution_bb_runs: &[(Vec<u64>, u32)]) -> (usize, usize) {
@@ -925,48 +891,6 @@ mod test {
                     (vec![2], 1), (vec![1], 1),
                     (vec![1,1], 2), (vec![2,2], 2), (vec![3,3], 2), (vec![4,4], 2),
                     (vec![8,2,1], 1) // 0
-                ],
-            )
-        );
-    }
-
-    #[test]
-    fn test_count_and_update_execution_indexed() {
-        let sblock = BlockCandidate {
-            bbs: vec![1,2],
-            cost_before: 0,
-            cost_after: 0,
-            execution_count: 0,
-            idx_runs: [0,1,2,4,5,6,7].into_iter().collect(),
-        };
-
-
-        let runs = vec![
-            (vec![vec![0,1,2,3]], 1), // 1
-            (vec![vec![1,2]], 2), // 2
-            (vec![vec![1,2,3]], 4), // 4
-            (vec![vec![2,3,4,5]], 3), // 0
-            (vec![vec![0,1,2]], 1), // 1
-            (vec![vec![1,2,3,1,2]], 2), // 4
-            (vec![vec![2,1,2,1,2,1,2,1]], 1), // 3
-            (vec![vec![1,1,1,2,2,2,1,2,3,3,1,2,4,4]], 2), // 6
-            (vec![vec![8,2,1]], 1) // 0
-        ];
-
-        assert_eq!(
-            count_and_update_execution_indexed(&sblock, &runs),
-            (
-                1 + 2 + 4 + 1 + 4 + 3 + 6,
-                vec![
-                    (vec![vec![0], vec![3]], 1),
-                    (vec![], 2),
-                    (vec![vec![3]], 4),
-                    (vec![vec![2,3,4,5]], 3),
-                    (vec![vec![0]], 1),
-                    (vec![vec![3]], 2),
-                    (vec![vec![2], vec![1]], 1),
-                    (vec![vec![1,1], vec![2,2], vec![3,3], vec![4,4]], 2),
-                    (vec![vec![8,2,1]], 1)
                 ],
             )
         );
