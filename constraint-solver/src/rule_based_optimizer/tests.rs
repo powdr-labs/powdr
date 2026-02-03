@@ -1,14 +1,16 @@
 use std::fmt::Display;
 use std::hash::Hash;
 
+use crate::bus_interaction_handler::DefaultBusInteractionHandler;
 use crate::rule_based_optimizer::driver::{batch_replace_algebraic_constraints, ReplacementAction};
 use crate::{
     algebraic_constraint,
-    constraint_system::{BusInteraction, BusInteractionHandler, DefaultBusInteractionHandler},
+    constraint_system::{BusInteraction, BusInteractionHandler},
     grouped_expression::{GroupedExpression, NoRangeConstraints},
     indexed_constraint_system::IndexedConstraintSystem,
     range_constraint::RangeConstraint,
     rule_based_optimizer::driver::rule_based_optimization,
+    solver::Solver,
 };
 
 use expect_test::expect;
@@ -386,6 +388,43 @@ fn test_batch_replace_with_conflict() {
             .format("\n")
             .to_string(),
     );
+}
+
+#[test]
+fn test_rule_split_constraints_based_on_minimal_range() {
+    let mut system = IndexedConstraintSystem::default();
+    //opcode_sub_flag_21 + 2 * opcode_xor_flag_21 + 3 * opcode_or_flag_21 + 4 * opcode_and_flag_21 = 0
+    system.add_algebraic_constraints([assert_zero(
+        v("opcode_sub_flag_21")
+            + c(2) * v("opcode_xor_flag_21")
+            + c(3) * v("opcode_or_flag_21")
+            + c(4) * v("opcode_and_flag_21"),
+    )]);
+
+    let range_constraints = std::collections::HashMap::from([
+        ("opcode_sub_flag_21", RangeConstraint::from_mask(0x1u32)),
+        ("opcode_xor_flag_21", RangeConstraint::from_mask(0x1u32)),
+        ("opcode_or_flag_21", RangeConstraint::from_mask(0x1u32)),
+        ("opcode_and_flag_21", RangeConstraint::from_mask(0x1u32)),
+    ]);
+
+    let mut solver = crate::solver::new_solver(
+        system.clone().into(),
+        DefaultBusInteractionHandler::default(),
+    );
+    #[allow(clippy::iter_over_hash_type)]
+    for (var, constraint) in range_constraints {
+        solver.add_range_constraint(&var.to_string(), constraint);
+    }
+
+    let optimized_system = rule_based_optimization(
+        system,
+        solver,
+        DefaultBusInteractionHandler::default(),
+        &mut new_var(),
+        None,
+    );
+    assert_eq!(optimized_system.0.system().algebraic_constraints.len(), 0);
 }
 
 #[test]
