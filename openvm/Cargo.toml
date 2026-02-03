@@ -58,20 +58,20 @@ powdr-openvm-hints-transpiler.workspace = true
 powdr-openvm-hints-circuit.workspace = true
 
 indicatif = "0.18.3"
-eyre = "0.6.12"
-serde = "1.0.217"
+eyre.workspace = true
+serde.workspace = true
 derive_more = { version = "2.0.1", default-features = false, features = ["from"] }
-itertools = "0.14.0"
+itertools.workspace = true
 
-tracing = "0.1.40"
+tracing.workspace = true
 tracing-subscriber = { version = "0.3.17", features = ["std", "env-filter"] }
 
 clap = { version = "^4.3", features = ["derive"] }
 
-log = "0.4.17"
+log.workspace = true
 struct-reflection = { git = "https://github.com/gzanitti/struct-reflection-rs.git" }
 
-metrics = "0.23.0"
+metrics.workspace = true
 toml = "0.8.14"
 
 rustc-demangle = "0.1.25"
@@ -80,15 +80,15 @@ cfg-if = "1.0.0"
 
 [dev-dependencies]
 flate2 = "1.1.2"
-test-log = "0.2.12"
+test-log.workspace = true
 tempfile = "3.20.0"
-pretty_assertions = "1.4.0"
+pretty_assertions.workspace = true
 openvm-ecc-circuit.workspace = true
 openvm-algebra-circuit.workspace = true
 openvm-bigint-circuit.workspace = true
 openvm-pairing-circuit.workspace = true
 openvm-pairing-transpiler.workspace = true
-serde_cbor = "0.11.2"
+serde_cbor.workspace = true
 expect-test = "1.5.1"
 criterion = { version = "0.4", features = ["html_reports"] }
 tracing-log = "0.2.0"
