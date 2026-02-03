@@ -25,12 +25,15 @@ enum TestBusType {
     BitwiseLookup,
 }
 
+fn import_apc_from_gzipped_json(file: &str) -> ApcWithBusMap<TestApc, BusMap<TestBusType>> {
+    let file = std::fs::File::open(file).unwrap();
+    let reader = flate2::read::GzDecoder::new(file);
+    serde_json::from_reader(reader).unwrap()
+}
+
 #[test]
 fn load_machine_json() {
-    let file = std::fs::File::open("tests/keccak_apc_pre_opt.json.gz").unwrap();
-    let reader = flate2::read::GzDecoder::new(file);
-    let apc: ApcWithBusMap<TestApc, BusMap<TestBusType>> = serde_json::from_reader(reader).unwrap();
-
+    let apc = import_apc_from_gzipped_json("tests/keccak_apc_pre_opt.json.gz");
     let machine: SymbolicMachine<BabyBearField> = apc.apc.machine;
     assert!(machine.derived_columns.is_empty());
 
@@ -50,9 +53,7 @@ fn load_machine_json() {
 
 #[test]
 fn test_optimize() {
-    let file = std::fs::File::open("tests/keccak_apc_pre_opt.json.gz").unwrap();
-    let reader = flate2::read::GzDecoder::new(file);
-    let apc: ApcWithBusMap<TestApc, BusMap<TestBusType>> = serde_json::from_reader(reader).unwrap();
+    let apc = import_apc_from_gzipped_json("tests/keccak_apc_pre_opt.json.gz");
 
     let machine: SymbolicMachine<BabyBearField> = apc.apc.machine;
     assert!(machine.derived_columns.is_empty());
@@ -87,9 +88,7 @@ fn test_optimize() {
 
 #[test]
 fn test_ecrecover() {
-    let file = std::fs::File::open("tests/ecrecover_apc_pre_opt.json.gz").unwrap();
-    let reader = flate2::read::GzDecoder::new(file);
-    let apc: ApcWithBusMap<TestApc, BusMap<TestBusType>> = serde_json::from_reader(reader).unwrap();
+    let apc = import_apc_from_gzipped_json("tests/ecrecover_apc_pre_opt.json.gz");
 
     let machine: SymbolicMachine<BabyBearField> = apc.apc.machine;
     assert!(machine.derived_columns.is_empty());
@@ -124,10 +123,7 @@ fn test_ecrecover() {
 
 #[test]
 fn test_sha256() {
-    let file = std::fs::File::open("tests/sha256_apc_pre_opt.json.gz").unwrap();
-    let reader = flate2::read::GzDecoder::new(file);
-    let apc: ApcWithBusMap<TestApc, BusMap<OpenVmBusType>> =
-        serde_json::from_reader(reader).unwrap();
+    let apc = import_apc_from_gzipped_json("tests/sha256_apc_pre_opt.json.gz");
 
     let machine: SymbolicMachine<BabyBearField> = apc.apc.machine;
     assert!(machine.derived_columns.is_empty());

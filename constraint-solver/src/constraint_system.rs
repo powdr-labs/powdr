@@ -82,7 +82,6 @@ impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
 #[derive(Clone, Serialize)]
 #[serde(bound(serialize = "V: Clone + Ord + Eq + Serialize, T: RuntimeConstant + Serialize"))]
 pub struct DerivedVariable<T, V> {
-    // TODO this should be serialized into a tuple instead of a struct
     pub variable: V,
     pub computation_method: ComputationMethod<T, GroupedExpression<T, V>>,
 }
