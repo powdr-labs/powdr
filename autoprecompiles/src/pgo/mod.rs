@@ -1,11 +1,12 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use strum::{Display, EnumString};
 
 use crate::{
-    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, ApcWithStats},
+    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig},
     blocks::BasicBlock,
+    evaluation::evaluate_apc,
     EmpiricalConstraints, PowdrConfig,
 };
 
@@ -93,16 +94,16 @@ fn create_apcs_for_all_blocks<A: Adapter>(
                 block.start_pc
             );
 
-            crate::build::<A>(
-                block,
+            let apc = crate::build::<A>(
+                block.clone(),
                 vm_config.clone(),
                 config.degree_bound,
                 config.apc_candidates_dir_path.as_deref(),
                 &empirical_constraints,
             )
-            .unwrap()
+            .unwrap();
+
+            evaluate_apc::<A>(block, vm_config.instruction_handler, apc)
         })
-        .map(Arc::new)
-        .map(ApcWithStats::from)
         .collect()
 }

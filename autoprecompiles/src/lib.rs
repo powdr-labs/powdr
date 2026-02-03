@@ -2,13 +2,16 @@ use crate::adapter::{
     Adapter, AdapterApc, AdapterApcOverPowdrField, AdapterBasicBlock, AdapterOptimisticConstraints,
     AdapterVmConfig,
 };
-use crate::blocks::BasicBlock;
+use crate::blocks::{BasicBlock, PcStep};
 use crate::bus_map::{BusMap, BusType};
 use crate::empirical_constraints::{ConstraintGenerator, EmpiricalConstraints};
 use crate::evaluation::AirStats;
 use crate::execution::OptimisticConstraints;
 use crate::expression_conversion::algebraic_to_grouped_expression;
 use crate::optimistic::algebraic_references::BlockCellAlgebraicReferenceMapper;
+use crate::optimistic::config::optimistic_precompile_config;
+use crate::optimistic::execution_constraint_generator::generate_execution_constraints;
+use crate::optimistic::execution_literals::optimistic_literals;
 use crate::symbolic_machine::{SymbolicConstraint, SymbolicMachine};
 use crate::symbolic_machine_generator::convert_apc_field_type;
 use expression::{AlgebraicExpression, AlgebraicReference};
@@ -38,7 +41,6 @@ pub mod expression;
 pub mod expression_conversion;
 pub mod low_degree_bus_interaction_optimizer;
 pub mod memory_optimizer;
-mod optimistic;
 pub mod optimizer;
 pub mod pgo;
 pub mod powdr;
@@ -50,6 +52,7 @@ pub use pgo::{PgoConfig, PgoType};
 pub use powdr_constraint_solver::inliner::DegreeBound;
 pub mod equivalence_classes;
 pub mod execution;
+pub mod optimistic;
 pub mod trace_handler;
 
 #[derive(Clone)]
@@ -121,6 +124,9 @@ pub trait InstructionHandler {
     type Field;
     type Instruction;
     type AirId;
+
+    /// Returns the degree bound used for the instructions
+    fn degree_bound(&self) -> DegreeBound;
 
     /// Returns the AIR for the given instruction.
     fn get_instruction_air_and_id(
@@ -238,6 +244,11 @@ impl ColumnAllocator {
         self.next_poly_id += 1;
         id
     }
+
+    /// Returns whether the given poly_id is known (i.e., was issued by this allocator)
+    pub fn is_known_id(&self, poly_id: u64) -> bool {
+        poly_id < self.next_poly_id
+    }
 }
 
 pub fn build<A: Adapter>(
@@ -256,19 +267,47 @@ pub fn build<A: Adapter>(
     );
 
     // Generate constraints for optimistic precompiles.
+    let should_generate_execution_constraints =
+        optimistic_precompile_config().restrict_optimistic_precompiles;
     let algebraic_references =
         BlockCellAlgebraicReferenceMapper::new(&column_allocator.subs, machine.main_columns());
-    let constraint_generator = ConstraintGenerator::<A>::new(
-        empirical_constraints.for_block(&block),
-        algebraic_references,
-        &block,
-    );
-    let range_analyzer_constraints = constraint_generator.range_constraints();
-    let equivalence_analyzer_constraints = constraint_generator.equivalence_constraints();
+    let empirical_constraints = empirical_constraints.for_block(&block);
+
+    // TODO: Use execution constraints
+    let (empirical_constraints, _execution_constraints) = if should_generate_execution_constraints {
+        // Filter constraints to only contain execution-checkable columns,
+        // generate execution constraints for them.
+        let optimistic_literals = optimistic_literals::<A>(&block, &vm_config, &degree_bound);
+
+        let empirical_constraints = empirical_constraints.filtered(
+            |block_cell| {
+                let algebraic_reference = algebraic_references
+                    .get_algebraic_reference(block_cell)
+                    .unwrap();
+                optimistic_literals.contains_key(algebraic_reference)
+            },
+            <A::Instruction as PcStep>::pc_step(),
+        );
+
+        let empirical_constraints =
+            ConstraintGenerator::<A>::new(empirical_constraints, algebraic_references, &block)
+                .generate_constraints();
+
+        let execution_constraints =
+            generate_execution_constraints(&empirical_constraints, &optimistic_literals);
+        (empirical_constraints, execution_constraints)
+    } else {
+        // Don't filter empirical constraints, return empty execution constraints.
+        let empirical_constraints =
+            ConstraintGenerator::<A>::new(empirical_constraints, algebraic_references, &block)
+                .generate_constraints();
+        (empirical_constraints, vec![])
+    };
 
     // Add empirical constraints to the baseline
-    machine.constraints.extend(range_analyzer_constraints);
-    machine.constraints.extend(equivalence_analyzer_constraints);
+    machine
+        .constraints
+        .extend(empirical_constraints.into_iter().map(Into::into));
 
     if let Some(path) = apc_candidates_dir_path {
         serialize_apc_from_machine::<A>(
