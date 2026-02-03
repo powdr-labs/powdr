@@ -30,7 +30,7 @@ pub struct ExportOptions {
 
 #[derive(Default)]
 pub enum ExportLevel {
-    /// Export the unoptimizend and optimizend autoprecompile.
+    /// Export the unoptimized and optimized autoprecompile.
     #[default]
     OnlyAPC,
     /// In addition to the above, also export the state at each
