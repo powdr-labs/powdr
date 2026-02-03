@@ -154,7 +154,8 @@ jobs:
           # The APC candidates would be the same for all runs, so just keep the last one
           mv apcs/apc_candidates.json $RES_DIR/apc_candidates.json
 
-          python ../openvm/scripts/basic_metrics.py --csv $RES_DIR/apc000.json $RES_DIR/apc003.json $RES_DIR/apc010.json $RES_DIR/apc030.json $RES_DIR/apc100.json > $RES_DIR/basic_metrics.csv
+          python ../openvm/scripts/basic_metrics.py summary-table --csv $RES_DIR/apc000.json $RES_DIR/apc003.json $RES_DIR/apc010.json $RES_DIR/apc030.json $RES_DIR/apc100.json > $RES_DIR/basic_metrics.csv
+          python ../openvm/scripts/basic_metrics.py plot $RES_DIR/apc000.json $RES_DIR/apc003.json $RES_DIR/apc010.json $RES_DIR/apc030.json $RES_DIR/apc100.json -o $RES_DIR/proof_time_breakdown.png
           python ../autoprecompiles/scripts/plot_effectiveness.py $RES_DIR/apc_candidates.json --output $RES_DIR/effectiveness.png
 
           mv $RES_DIR ../results/
