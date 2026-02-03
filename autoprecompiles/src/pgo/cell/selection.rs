@@ -385,7 +385,7 @@ pub fn select_blocks_greedy_by_size(
     let mut cumulative_cost = 0;
     // start from the largest superblocks down to basic blocks
     let start = std::time::Instant::now();
-    for mut group_candidates in size_groups.into_values().rev() {
+    'outer: for mut group_candidates in size_groups.into_values().rev() {
         // We go through candidates in the group in priority order (greedy selection).
         // When a candidate is confirmed, we update the execution by removing its ocurrences.
         // So, whenever we look at a new candidate, we recalculate its priority
@@ -424,7 +424,7 @@ pub fn select_blocks_greedy_by_size(
 
             if let Some(max_selected) = max_selected {
                 if selected.len() >= max_selected {
-                    break;
+                    break 'outer;
                 }
             }
         }
