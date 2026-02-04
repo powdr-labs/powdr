@@ -254,6 +254,10 @@ mod tests {
         fn value_limb(value: Self::Value, limb_index: usize) -> Self::Value {
             value >> (limb_index * LIMB_WIDTH) & (!0u8 >> (8 - LIMB_WIDTH))
         }
+
+        fn global_clk(&self) -> usize {
+            todo!()
+        }
     }
 
     // An execution state with a single limb of 8 bits
