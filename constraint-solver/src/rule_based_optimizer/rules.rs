@@ -128,6 +128,15 @@ crepe! {
     Expression(head) <- ExpressionSumHeadTail(_, head, _);
     Expression(tail) <- ExpressionSumHeadTail(_, _, tail);
 
+    // SimpleSum(e, f, c) => e is of the form f * v_1 + f * v_2 + ... + f * v_n + c,
+    //                      n >= 1
+    struct SimpleSum<T: FieldElement>(Expr, T, T);
+    SimpleSum(e, f, c) <-
+      ExpressionSumHeadTail(e, head, tail),
+      SimpleSum(tail, f, c),
+      LinearExpression(head, _, f);
+    SimpleSum(e, f, c) <- AffineExpression(e, f, _, c);
+
     // IsAffine(e) => e is an affine expression, i.e. does not have super-linear parts.
     struct IsAffine(Expr);
     IsAffine(e) <-
@@ -192,6 +201,35 @@ crepe! {
       AlgebraicConstraint(e),
       Product(e, l, r);
 
+    // BooleanAndSubsetOfVars(e1, e2) => e1 and e2 are affine expressions only containing boolean variables and
+    //   all variables in e1 also appear in e2
+    struct BooleanAndSubsetOfVars(Expr, Expr);
+    BooleanAndSubsetOfVars(e1, e2) <-
+      AffineExpression(e1, _, v, _),
+      ContainsVariable(e2, v),
+      AffineAndAllVarsBoolean(e1),
+      AffineAndAllVarsBoolean(e2);
+    BooleanAndSubsetOfVars(e1, e2) <-
+      BooleanAndSubsetOfVars(tail1, tail2),
+      ExpressionSumHeadTail(e1, head1, tail1),
+      LinearExpression(head1, v, _),
+      BooleanVar(v),
+      ExpressionSumHeadTail(e2, head2, tail2),
+      LinearExpression(head2, v, _);
+    BooleanAndSubsetOfVars(e1, e2) <-
+      BooleanAndSubsetOfVars(e1, tail2),
+      ExpressionSumHeadTail(e2, _, tail2),
+      AffineAndAllVarsBoolean(e2);
+
+    // AffineAndAllVarsBoolean(e) => e is an affine expression and all variables in e are boolean variables
+    struct AffineAndAllVarsBoolean(Expr);
+    AffineAndAllVarsBoolean(e) <-
+      AffineExpression(e, _, v, _),
+      BooleanVar(v);
+    AffineAndAllVarsBoolean(e) <-
+      ExpressionSumHeadTail(e, head, tail),
+      AffineAndAllVarsBoolean(head),
+      AffineAndAllVarsBoolean(tail);
 
     //////////////////////// RANGE CONSTRAINTS //////////////////////////
 
@@ -242,6 +280,10 @@ crepe! {
       (l < r),
       Solvable(l, v, c1),
       Solvable(r, v, c2);
+
+    // BooleanVar(v) => v is 0 or 1
+    struct BooleanVar(Var);
+    BooleanVar(v) <- RangeConstraintOnVar(v, RangeConstraint::from_mask(1));
 
     //////////////////////// SINGLE-OCCURRENCE VARIABLES //////////////////////////
 
@@ -404,6 +446,52 @@ crepe! {
 
     EqualZero(head) <- EntailsZeroHeadAndTail(head,_);
     EqualZero(tail) <- EntailsZeroHeadAndTail(_, tail);
+
+
+    ///////////////////////////////// ONE-HOT FLAG ///////////////////////////
+
+    // ExactlyOneSet(e) => exactly one variable in e is one, all others are zero.
+    struct ExactlyOneSet(Expr);
+    ExactlyOneSet(e) <-
+      AlgebraicConstraint(e),
+      SimpleSum(e, f, c),
+      AffineAndAllVarsBoolean(e),
+      ((f + c).is_zero());
+
+    // We want to match expressions of the form f_1 * v_1 + f_2 * v_2 + ... + f_n * v_n + c = 0
+    // where all v_i are boolean and exactly one of the f_i equals -c.
+
+    // AffineSumCountCoeffs(e, None, f) => e is an affine expression where
+    //   the constant term is -f no variable has the coefficient f.
+    // AffineSumCountCoeffs(e, Some(v), f) => e is an affine expression where
+    //   the constant term is -f and exactly one variable has the coefficient f and
+    //   that variable is v.
+    struct AffineSumCountCoeffs<T: FieldElement>(Expr, Option<Var>, T);
+    AffineSumCountCoeffs(e, None, -c) <- Constant(e, c);
+    AffineSumCountCoeffs(e, Some(v), f) <-
+      AffineSumCountCoeffs(tail, None, f),
+      ExpressionSumHeadTail(e, head, tail),
+      LinearExpression(head, v, f);
+    AffineSumCountCoeffs(e, v1, f) <-
+      AffineSumCountCoeffs(tail, v1, f),
+      ExpressionSumHeadTail(e, head, tail),
+      LinearExpression(head, _, coeff),
+      (coeff != f);
+
+    Assignment(v, T::from((Some(v) == v2) as u32)) <-
+      ExactlyOneSet(e1),
+      AlgebraicConstraint(e1),
+      BooleanAndSubsetOfVars(e2, e1),
+      // At this point, we know that at most one of the variables in e2 is one,
+      // the rest is zero.
+      AlgebraicConstraint(e2),
+      AffineSumCountCoeffs(e2, v2, _),
+      // At this point, either no variable in e2 has coefficient -c (v2 == None)
+      // or exactly one variable (v2.unwrap()) has coefficient -c.
+      // In any case, the variable equal to v2.unwrap() is one, the rest zero.
+      HasSummand(e2, summand),
+      LinearExpression(summand, v, _);
+
 
     ///////////////////////////////// OUTPUT ACTIONS //////////////////////////
 
