@@ -47,10 +47,12 @@ impl BlockCandidate {
         self.cost_after
     }
 
-    pub fn priority(&self) -> (usize, usize) {
-        let value_scaled = self.value().checked_mul(1000).unwrap();
-        // TODO: tie breaker not unique with superblocks
-        (value_scaled / self.cost_after, self.bbs[0] as usize)
+    pub fn priority(&self) -> Priority {
+        Priority {
+            value: self.value(),
+            cost: self.cost(),
+            tie: self.bbs[0],
+        }
     }
 
     pub fn count(&self) -> u32 {
@@ -61,6 +63,40 @@ impl BlockCandidate {
         self.execution_count = new_count;
     }
 }
+
+#[derive(Clone, Debug)]
+// Avoid value/cost integer ratio by using cross-multiplication
+pub struct Priority {
+    value: usize,
+    cost: usize,
+    tie: u64,
+}
+
+impl PartialEq for Priority {
+    fn eq(&self, other: &Self) -> bool {
+        self.value * other.cost == other.value * self.cost
+            && self.tie == other.tie
+    }
+}
+
+impl Eq for Priority {}
+
+impl PartialOrd for Priority {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Priority {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        let lhs = self.value.checked_mul(other.cost).unwrap();
+        let rhs = other.value.checked_mul(self.cost).unwrap();
+
+        lhs.cmp(&rhs)
+            .then_with(|| self.tie.cmp(&other.tie))
+    }
+}
+
 
 // returns true if the two superblocks could overlap in some execution
 pub fn sblocks_overlap(a: &[u64], b: &[u64]) -> bool {
