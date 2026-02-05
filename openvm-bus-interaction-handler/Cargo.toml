@@ -12,8 +12,8 @@ powdr-expression.workspace = true
 powdr-number.workspace = true
 powdr-constraint-solver.workspace = true
 
-itertools = "0.13"
-serde = "1.0.218"
+itertools.workspace = true
+serde.workspace = true
 
 
 [lints]
