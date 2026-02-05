@@ -1,5 +1,6 @@
-use std::{cmp::Reverse, collections::{BTreeMap, HashMap, HashSet}, sync::{Arc, Mutex}};
+use std::{collections::{BTreeMap, HashSet}, sync::{Arc, Mutex}};
 
+use cluster::{evaluate_clusters_seeded, select_from_cluster_evaluation};
 use itertools::Itertools;
 use priority_queue::PriorityQueue;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -8,6 +9,8 @@ use serde::{Deserialize, Serialize};
 use crate::{adapter::{Adapter, AdapterProgramBlocks}};
 
 use super::Candidate;
+
+pub mod cluster;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BlockCandidate {
@@ -98,120 +101,6 @@ impl Ord for Priority {
     }
 }
 
-
-// returns true if the two superblocks could overlap in some execution
-pub fn sblocks_overlap(a: &[u64], b: &[u64]) -> bool {
-    if a.is_empty() || b.is_empty() {
-        return false;
-    }
-
-    let min_len = a.len().min(b.len());
-
-    // a prefix == b suffix
-    for k in 1..=min_len {
-        if a[..k] == b[b.len() - k..] {
-            return true;
-        }
-    }
-
-    // b prefix == a suffix
-    for k in 1..=min_len {
-        if b[..k] == a[a.len() - k..] {
-            return true;
-        }
-    }
-
-    // a fully contained in b
-    if a.len() <= b.len() && b.windows(a.len()).any(|w| w == a) {
-        return true;
-    }
-
-    // b fully contained in a
-    if b.len() <= a.len() && a.windows(b.len()).any(|w| w == b) {
-        return true;
-    }
-
-    false
-}
-
-// returns the connected components for a graph where:
-// - each candidate is a vertex
-// - there is an edge if two candidate superblocks may overlap
-// the return value refer to the indices in the given candidates sequence
-pub fn detect_sblock_clusters(
-    blocks: &[BlockCandidate],
-) -> Vec<Vec<usize>> {
-    let n = blocks.len();
-    if n == 0 {
-        return Vec::new();
-    }
-
-    // Disjoint Set Union (Union-Find) over candidate indices.
-    struct Dsu {
-        parent: Vec<usize>,
-        rank: Vec<u8>,
-    }
-    impl Dsu {
-        fn new(n: usize) -> Self {
-            Self {
-                parent: (0..n).collect(),
-                rank: vec![0; n],
-            }
-        }
-        fn find(&mut self, x: usize) -> usize {
-            if self.parent[x] != x {
-                let p = self.parent[x];
-                self.parent[x] = self.find(p);
-            }
-            self.parent[x]
-        }
-        fn union(&mut self, a: usize, b: usize) {
-            let mut ra = self.find(a);
-            let mut rb = self.find(b);
-            if ra == rb {
-                return;
-            }
-            let rka = self.rank[ra];
-            let rkb = self.rank[rb];
-            if rka < rkb {
-                std::mem::swap(&mut ra, &mut rb);
-            }
-            self.parent[rb] = ra;
-            if rka == rkb {
-                self.rank[ra] = rka.saturating_add(1);
-            }
-        }
-    }
-
-    let mut dsu = Dsu::new(n);
-
-    // Add an edge between i and j when their BB sequences overlap.
-    for i in 0..n {
-        for j in (i + 1)..n {
-            if sblocks_overlap(&blocks[i].bbs, &blocks[j].bbs) {
-                dsu.union(i, j);
-            }
-        }
-    }
-
-    // Gather connected components (clusters).
-    let mut comps: HashMap<usize, Vec<usize>> = HashMap::new();
-
-    for i in 0..n {
-        let root = dsu.find(i);
-        comps.entry(root).or_default().push(i);
-    }
-
-    // Return as Vec<Vec<usize>> (optionally sorted for stability).
-    let mut clusters: Vec<Vec<usize>> = comps.into_values().collect();
-    for c in &mut clusters {
-        c.sort_unstable();
-    }
-    clusters.sort_by_key(|c| Reverse(c.len()));
-
-    clusters
-}
-
 // returns the number of matches for the candidate and the subruns after its occurrences are removed
 fn count_and_update_run(sblock: &BlockCandidate, run: &[u64], run_count: u32) -> (u32, Vec<(Vec<u64>, u32)>) {
     let mut i = 0;
@@ -250,36 +139,19 @@ fn count_and_update_execution(sblock: &BlockCandidate, execution: &[(Vec<u64>, u
 }
 
 
-// Compute the overall value and cost of a selection of candidates over the given execution
-fn compute_selection_value_and_cost(all_blocks: &[BlockCandidate], selection_order: &[usize], execution_bb_runs: &[(Vec<u64>, u32)]) -> (usize, usize) {
-    let mut execution = execution_bb_runs.to_vec();
-    let mut value = 0;
-    let mut cost = 0;
-    for idx in selection_order {
-        let c = &all_blocks[*idx];
-        let (count, new_execution) = count_and_update_execution(&c, &execution);
-        value += c.value_per_row() * count as usize;
-        cost += c.cost();
-        execution = new_execution;
-    }
-    (value, cost)
-}
-
-pub fn select_greedy_with_blocked(
-    mut blocks: Vec<BlockCandidate>,
+fn select_greedy_with_blocked(
+    mut all_blocks: Vec<BlockCandidate>,
+    // indices of the relevant candidates in all_blocks
+    candidates: Vec<usize>,
+    // these are candidates blocked from being chosen
+    blocked: &[usize],
     max_cost: Option<usize>,
     max_selected: Option<usize>,
     mut execution_bb_runs: Vec<(Vec<u64>, u32)>,
-    mut skip: usize,
-    // these are blocked from being chosen
-    blocked: &[usize],
 ) -> Vec<(usize, u32)> {
-    let mut by_priority: PriorityQueue<_,_> = blocks
-        .iter()
-        .enumerate()
-        .filter(|(idx, _)| !blocked.contains(idx))
-        .map(|(idx, block)| (idx, block.priority()))
-        .collect();
+    let mut by_priority: PriorityQueue<_,_> = candidates.iter().filter_map(|idx| {
+        (!blocked.contains(idx)).then_some((*idx, all_blocks[*idx].priority()))
+    }).collect();
 
     let mut selected = vec![];
     let mut cumulative_cost = 0;
@@ -287,7 +159,7 @@ pub fn select_greedy_with_blocked(
     let total_candidates = by_priority.len();
 
     while let Some((idx, _prio)) = by_priority.pop() {
-        let c = &mut blocks[idx];
+        let c = &mut all_blocks[idx];
         tracing::trace!("examining {examined_candidates} of {total_candidates} - {:?}...", c.bbs());
         tracing::trace!("\tpresent in {} runs", c.idx_runs.len());
         examined_candidates += 1;
@@ -312,11 +184,6 @@ pub fn select_greedy_with_blocked(
             // Re-insert it into the queue with the updated priority
             c.set_count(count);
             by_priority.push(idx, c.priority());
-            continue;
-        }
-
-        if skip > 0 {
-            skip -= 1;
             continue;
         }
 
@@ -362,9 +229,10 @@ pub fn select_blocks_greedy(
     max_cost: Option<usize>,
     max_selected: Option<usize>,
     execution_bb_runs: &[(Vec<u64>, u32)],
-    skip: usize,
+    _skip: usize,
 ) -> Vec<(usize, u32)> {
-    select_greedy_with_blocked(blocks, max_cost, max_selected, execution_bb_runs.to_vec(), skip, &Vec::new())
+    let candidates = (0..blocks.len()).collect_vec();
+    select_greedy_with_blocked(blocks, candidates, &[], max_cost, max_selected, execution_bb_runs.to_vec())
 }
 
 pub fn savings_and_cost(blocks: &[BlockCandidate], selected: &[(usize, u32)]) -> (usize, usize) {
@@ -380,44 +248,63 @@ pub fn savings_and_cost(blocks: &[BlockCandidate], selected: &[(usize, u32)]) ->
 /// generate seeds from the given pool sizes.
 /// Each item in the input is the number of elements to use for combinations of seeds of that size.
 /// The first element is for seeds of size 1, the second of size 2 and so on.
-/// E.g.: [20, 10] means generate combinations of size 1 using the top 20 elements,
-/// and combinations of size 2 using the top 10 elements.
-/// The returned seeds reference the indexes of the input blocks.
+/// E.g.: [20, 10] means generate combinations of size 1 using the first 20 sorted candidates,
+/// and combinations of size 2 using the first 10 sorted candidates.
+/// The returned seeds reference the indices of the input blocks.
 pub fn combination_seeds(
-    blocks: &[BlockCandidate],
-    pool_sizes: Vec<usize>,
+    sorted_candidates: &[usize],
+    pool_sizes: &[usize],
 ) -> Vec<Vec<usize>> {
-    tracing::debug!("generating combination seeds");
-    let sorted_candidates: Vec<usize> = blocks.iter().enumerate()
-        .map(|(idx, block)| (idx, block.priority()))
-        .sorted_by_key(|(_, prio)| Reverse(prio.clone()))
-        .map(|(idx, _)| idx)
-        .collect::<Vec<_>>();
     pool_sizes.iter().enumerate().flat_map(|(i, size)| {
         let seed_size = i + 1;
         let seeds: Vec<Vec<usize>> = sorted_candidates.iter().cloned().take(*size).combinations(seed_size).collect();
-        tracing::debug!("\t{} seeds of len {}", seeds.len(), seed_size);
         seeds
     }).collect()
 }
 
 /// same as `combination_seeds` but uses permutations
 pub fn permutation_seeds(
-    blocks: &[BlockCandidate],
-    pool_sizes: Vec<usize>,
+    sorted_candidates: &[usize],
+    pool_sizes: &[usize],
 ) -> Vec<Vec<usize>> {
-    tracing::debug!("generating permutation seeds");
-    let sorted_candidates: Vec<usize> = blocks.iter().enumerate()
-        .map(|(idx, block)| (idx, block.priority()))
-        .sorted_by_key(|(_, prio)| Reverse(prio.clone()))
-        .map(|(idx, _)| idx)
-        .collect::<Vec<_>>();
     pool_sizes.iter().enumerate().flat_map(|(i, size)| {
         let seed_size = i + 1;
         let seeds: Vec<Vec<usize>> = sorted_candidates.iter().cloned().take(*size).permutations(seed_size).collect();
-        tracing::debug!("\t{} seeds of len {}", seeds.len(), seed_size);
         seeds
     }).collect()
+}
+
+pub fn select_from_clusters(
+    blocks: Vec<BlockCandidate>,
+    pool_sizes: &[usize],
+    max_cost: Option<usize>,
+    max_selected: Option<usize>,
+    execution_bb_runs: &[(Vec<u64>, u32)],
+    _skip: usize,
+) -> Vec<(usize, u32)> {
+    tracing::info!("Doing cluster evaluation");
+    let start = std::time::Instant::now();
+    let cluster_selections = evaluate_clusters_seeded(
+        &blocks,
+        pool_sizes,
+        max_cost,
+        max_selected,
+        &execution_bb_runs,
+    );
+    tracing::info!("Cluster evaluation done, took {:?}", start.elapsed());
+
+    let sel = if let Some(budget) = max_cost {
+        select_from_cluster_evaluation(&cluster_selections, budget)
+    } else {
+        // pick best selection from each cluster
+        cluster_selections.into_iter().flat_map(|mut s| {
+            let (_cost, _savings, selection_idx, num_picks) = s.cost_points.pop().unwrap();
+            let (_seed, selection) = s.selections.remove(selection_idx);
+            assert_eq!(selection.len(), num_picks);
+            selection
+        }).collect()
+    };
+    sel
 }
 
 pub fn select_blocks_greedy_seeded(
@@ -425,10 +312,11 @@ pub fn select_blocks_greedy_seeded(
     max_cost: Option<usize>,
     max_selected: Option<usize>,
     execution_bb_runs: &[(Vec<u64>, u32)],
-    skip: usize,
+    _skip: usize,
     seeds: Vec<Vec<usize>>,
 ) -> Vec<(usize, u32)> {
     let tried_seeds: Arc<Mutex<HashSet<Vec<usize>>>> = Default::default();
+    let candidates = (0..blocks.len()).collect_vec();
 
     let try_seed = |seed: &Vec<usize>, tried_seeds: &Mutex<HashSet<Vec<usize>>>| -> Option<Vec<(usize, u32)>> {
         if tried_seeds.lock().unwrap().contains(seed) {
@@ -439,7 +327,7 @@ pub fn select_blocks_greedy_seeded(
         tracing::trace!("trying seed {:?}...", seed);
 
         let start = std::time::Instant::now();
-        let (mut selection, new_execution) = apply_selection(&blocks.clone(), seed, execution_bb_runs.to_vec());
+        let (mut selection, new_execution) = apply_selection(&blocks, seed, execution_bb_runs.to_vec());
 
         // some of the items in the seed may be invalid (i.e., get zero count after previous choices),
         // so we check if we already tried it before
@@ -465,11 +353,11 @@ pub fn select_blocks_greedy_seeded(
         // compute rest of the selection greedly
         let rest_selection = select_greedy_with_blocked(
             blocks.clone(),
+            candidates.clone(),
+            seed,
             remaining_budget,
             max_selected,
             new_execution,
-            skip,
-            seed,
         );
 
         tracing::trace!("\tselection for seed {:?} took {:?}", seed, start.elapsed());
@@ -500,88 +388,6 @@ pub fn select_blocks_greedy_seeded(
     tracing::trace!("best seed {:?} - savings: {:?} - took {:?}", seed, savings, start.elapsed());
 
     selection
-}
-
-// returns the indices of the selected blocks, together with their updated execution counts
-pub fn select_blocks_greedy_by_cluster(
-    mut blocks: Vec<BlockCandidate>,
-    max_cost: Option<usize>,
-    max_selected: Option<usize>,
-    execution_bb_runs: &[(Vec<u64>, u32)],
-    mut skip: usize,
-) -> Vec<(usize, u32)> {
-    assert!(max_cost.is_none() && max_selected.is_none(), "limiting not properly implemented yet");
-
-    let start = std::time::Instant::now();
-    let clusters = detect_sblock_clusters(&blocks);
-    tracing::debug!("{} clusters found, took {:?}", clusters.len(), start.elapsed());
-
-    let start = std::time::Instant::now();
-    let mut selected = vec![];
-    let mut execution_bb_runs: Vec<_> = execution_bb_runs.to_vec();
-    let mut cumulative_cost = 0;
-    for (ci, cluster) in clusters.into_iter().enumerate() {
-        tracing::debug!("Examining cluster {ci}...");
-        let mut by_priority: PriorityQueue<_,_> = cluster.iter().map(|idx| {
-            let block = &blocks[*idx];
-            let priority = block.priority();
-            (*idx, priority)
-        }).collect();
-
-
-        // start from the largest superblocks down to basic blocks
-        let mut examined_candidates = 0;
-        while let Some((idx, _prio)) = by_priority.pop() {
-            let c = &mut blocks[idx];
-            tracing::trace!("examining candidate {examined_candidates} - {:?}...", c.bbs());
-            tracing::trace!("\tpresent in {} runs", c.idx_runs.len());
-            examined_candidates += 1;
-
-            // early ignore if too costly
-            if let Some(max_cost) = max_cost {
-                tracing::trace!("\tcandidate doesn't fit, ignoring...");
-                if cumulative_cost + c.cost() > max_cost {
-                    // The item does not fit, skip it
-                    continue;
-                }
-            }
-
-            // Check if the priority of this candidate has changed by re-counting it over the updated execution.
-            let start = std::time::Instant::now();
-            let (count, new_execution) = count_and_update_execution(c, &execution_bb_runs);
-            tracing::trace!("\tcount in execution took {:?}", start.elapsed());
-            if count == 0 {
-                // The item no longer runs, remove it
-                continue;
-            } else if count < c.count() {
-                // Re-insert it into the queue with the updated priority
-                c.set_count(count);
-                by_priority.push(idx, c.priority());
-                continue;
-            }
-
-            if skip > 0 {
-                skip -= 1;
-                continue;
-            }
-
-            tracing::trace!("\tcandidate selected!");
-
-            // The item fits, increment the cumulative cost and update the execution by removing its occurrences
-            cumulative_cost += c.cost();
-            execution_bb_runs = new_execution;
-            selected.push((idx, count));
-
-            if let Some(max_selected) = max_selected {
-                if selected.len() >= max_selected {
-                    break;
-                }
-            }
-        }
-    }
-    tracing::debug!("APC selection took {:?}", start.elapsed());
-
-    selected
 }
 
 // returns the indices of the selected blocks, together with their updated execution counts
@@ -1078,39 +884,5 @@ mod test {
                 ],
             )
         );
-    }
-
-    #[test]
-    fn test_overlaps() {
-        assert!(!sblocks_overlap(&[], &[]));
-        assert!(!sblocks_overlap(&[], &[1]));
-        assert!(!sblocks_overlap(&[1], &[]));
-        assert!(!sblocks_overlap(&[1,2,3], &[1,3,2]));
-        assert!(!sblocks_overlap(&[1,2], &[1,3]));
-        assert!(!sblocks_overlap(&[2,1,2], &[3,1,3]));
-
-        assert!(sblocks_overlap(&[1], &[1]));
-        assert!(sblocks_overlap(&[1,2], &[1,2]));
-
-        assert!(sblocks_overlap(&[1], &[1,2]));
-        assert!(sblocks_overlap(&[2,1], &[1]));
-
-        assert!(sblocks_overlap(&[2,1,2], &[1]));
-        assert!(sblocks_overlap(&[1], &[2,1,2]));
-
-        assert!(sblocks_overlap(&[2,1,1,2], &[1,1]));
-        assert!(sblocks_overlap(&[1,1], &[2,1,1,2]));
-
-        assert!(sblocks_overlap(&[1,2,3], &[1,2]));
-        assert!(sblocks_overlap(&[1,2], &[1,2,3]));
-
-        assert!(sblocks_overlap(&[1,2,3], &[2,3,4]));
-        assert!(sblocks_overlap(&[2,3,4], &[1,2,3]));
-
-        assert!(sblocks_overlap(&[1,2,3], &[2,3,4]));
-        assert!(sblocks_overlap(&[2,3,4], &[1,2,3]));
-
-        assert!(sblocks_overlap(&[1,2,3], &[2,3,4]));
-        assert!(sblocks_overlap(&[2,3,4], &[1,2,3]));
     }
 }
