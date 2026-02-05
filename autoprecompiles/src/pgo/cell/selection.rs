@@ -264,54 +264,37 @@ fn compute_selection_value_and_cost(all_blocks: &[BlockCandidate], selection_ord
     (value, cost)
 }
 
-// returns the indices of the selected blocks, together with their updated execution counts
-pub fn select_blocks_greedy(
+pub fn select_greedy_with_blocked(
     mut blocks: Vec<BlockCandidate>,
     max_cost: Option<usize>,
     max_selected: Option<usize>,
-    execution_bb_runs: &[(Vec<u64>, u32)],
+    mut execution_bb_runs: Vec<(Vec<u64>, u32)>,
     mut skip: usize,
+    // these are blocked from being chosen
+    blocked: &[usize],
 ) -> Vec<(usize, u32)> {
-    let mut by_priority: PriorityQueue<_,_> = blocks.iter().enumerate().map(|(idx, block)| {
-        let priority = block.priority();
-        (idx, priority)
-    }).collect();
-
-    if tracing::enabled!(tracing::Level::DEBUG) {
-        tracing::debug!("All candidates sorted by priority:");
-        for (idx, prio) in by_priority.clone().into_sorted_iter() {
-            let c = &blocks[idx];
-            tracing::debug!(
-                "\tAPC pcs {:?}, effectiveness: {:?}, freq: {:?}, priority: {:?}",
-                c.bbs(),
-                c.eff(),
-                c.count(),
-                prio,
-            );
-        }
-    }
+    let mut by_priority: PriorityQueue<_,_> = blocks
+        .iter()
+        .enumerate()
+        .filter(|(idx, _)| !blocked.contains(idx))
+        .map(|(idx, block)| (idx, block.priority()))
+        .collect();
 
     let mut selected = vec![];
     let mut cumulative_cost = 0;
-    let mut execution_bb_runs: Vec<_> = execution_bb_runs.to_vec();
-    // let mut execution_bb_runs = execution_bb_runs.iter()
-    //     .cloned()
-    //     .map(|(run, count)| (vec![run], count))
-    //     .collect_vec();
-
-    // start from the largest superblocks down to basic blocks
-    let start = std::time::Instant::now();
     let mut examined_candidates = 0;
+    let total_candidates = by_priority.len();
+
     while let Some((idx, _prio)) = by_priority.pop() {
         let c = &mut blocks[idx];
-        tracing::trace!("examining candidate {examined_candidates} - {:?}...", c.bbs());
+        tracing::trace!("examining {examined_candidates} of {total_candidates} - {:?}...", c.bbs());
         tracing::trace!("\tpresent in {} runs", c.idx_runs.len());
         examined_candidates += 1;
 
-        // early ignore if too costly
-        if let Some(max_cost) = max_cost {
+        // ignore if too costly
+        if let Some(budget) = max_cost {
             tracing::trace!("\tcandidate doesn't fit, ignoring...");
-            if cumulative_cost + c.cost() > max_cost {
+            if cumulative_cost + c.cost() > budget {
                 // The item does not fit, skip it
                 continue;
             }
@@ -349,10 +332,154 @@ pub fn select_blocks_greedy(
             }
         }
     }
-    tracing::debug!("APC selection took {:?}", start.elapsed());
-
     selected
 }
+
+// apply the given selection of candidates to the execution
+pub fn apply_selection(
+    blocks: &[BlockCandidate],
+    selection: &[usize],
+    mut execution_bb_runs: Vec<(Vec<u64>, u32)>,
+) -> (Vec<(usize, u32)>, Vec<(Vec<u64>, u32)>) {
+    let mut counts = vec![];
+    for idx in selection {
+        let b = &blocks[*idx];
+        let (count, new_execution) = count_and_update_execution(b, &execution_bb_runs);
+
+        if count > 0 {
+            counts.push((*idx, count));
+        }
+        execution_bb_runs = new_execution;
+    }
+    (counts, execution_bb_runs)
+}
+
+
+// returns the indices of the selected blocks, together with their updated execution counts
+pub fn select_blocks_greedy(
+    blocks: Vec<BlockCandidate>,
+    max_cost: Option<usize>,
+    max_selected: Option<usize>,
+    execution_bb_runs: &[(Vec<u64>, u32)],
+    skip: usize,
+) -> Vec<(usize, u32)> {
+    select_greedy_with_blocked(blocks, max_cost, max_selected, execution_bb_runs.to_vec(), skip, &Vec::new())
+}
+
+pub fn savings_and_cost(blocks: &[BlockCandidate], selected: &[(usize, u32)]) -> (usize, usize) {
+    let savings = selected.iter().map(|(idx, count)| {
+        blocks[*idx].value_per_row() * *count as usize
+    }).sum::<usize>();
+    let cost = selected.iter().map(|(idx, _count)| {
+        blocks[*idx].cost()
+    }).sum::<usize>();
+    (savings, cost)
+}
+
+pub fn select_blocks_greedy_seeded(
+    blocks: Vec<BlockCandidate>,
+    max_cost: Option<usize>,
+    max_selected: Option<usize>,
+    execution_bb_runs: &[(Vec<u64>, u32)],
+    skip: usize,
+    pool1: usize, // number of choices for single element seeds
+    pool2: usize, // number of choices for two element seeds
+    pool3: usize, // number of choices for three element seeds
+    pool4: usize, // number of choices for four element seeds
+) -> Vec<(usize, u32)> {
+    // select top candidates by priority
+    let sorted_candidates: Vec<usize> = blocks.iter().enumerate()
+        .map(|(idx, block)| (idx, block.priority()))
+        .sorted_by_key(|(_, prio)| Reverse(prio.clone()))
+        .map(|(idx, _)| idx)
+        .collect::<Vec<_>>();
+    // TODO: some points:
+    // - `combinations` respects the order of the input
+    // - given that, does it make sense to use permutations here instead of combinations?
+    let pool1: Vec<Vec<usize>> = sorted_candidates.iter().cloned().take(pool1).combinations(1).collect();
+    tracing::debug!("trying {} seeds of len 1", pool1.len());
+    let pool2: Vec<Vec<usize>> = sorted_candidates.iter().cloned().take(pool2).combinations(2).collect();
+    tracing::debug!("trying {} seeds of len 2", pool2.len());
+    let pool3: Vec<Vec<usize>> = sorted_candidates.iter().cloned().take(pool3).combinations(3).collect();
+    tracing::debug!("trying {} seeds of len 3", pool3.len());
+    let pool4: Vec<Vec<usize>> = sorted_candidates.iter().cloned().take(pool4).combinations(4).collect();
+    tracing::debug!("trying {} seeds of len 4", pool4.len());
+
+    let mut tried_seeds: HashSet<Vec<usize>> = Default::default();
+
+    let try_seed = |seed: &Vec<usize>, tried_seeds: &HashSet<Vec<usize>>| -> Option<Vec<(usize, u32)>> {
+        if tried_seeds.contains(seed) {
+            tracing::debug!("\tseed {:?} already tried, skipping", &seed);
+            return None;
+        }
+
+        tracing::debug!("trying seed {:?}...", seed);
+        // for idx in seed {
+        //     tracing::debug!("\t{:?}:{:?}", idx, &blocks[*idx].bbs);
+        // }
+
+        let start = std::time::Instant::now();
+        let (mut selection, new_execution) = apply_selection(&blocks.clone(), seed, execution_bb_runs.to_vec());
+        // tracing::debug!("\tseed result: {:?}", &selection);
+
+        // some of the items in the seed may be invalid (i.e., get zero count after previous choices),
+        // so we check if we already tried it before
+        let actual_seed: Vec<_> = selection.iter().map(|(idx, _)| *idx).collect();
+        if tried_seeds.contains(&actual_seed) {
+            tracing::debug!("\tseed {:?} is equivalent to {:?}, skipping", &seed, &actual_seed);
+            return None;
+        }
+
+        // check we're not over budget already
+        let (_savings, cost) = savings_and_cost(&blocks, &selection);
+        let remaining_budget = match max_cost {
+            Some(budget) => {
+                if cost > budget {
+                    tracing::debug!("\tskipping seed - cost {} exceeds budget {}", cost, budget);
+                    return None;
+                }
+                Some(budget - cost)
+            }
+            None => None,
+        };
+
+        // compute rest of the selection greedly
+        let rest_selection = select_greedy_with_blocked(
+            blocks.clone(),
+            remaining_budget,
+            max_selected,
+            new_execution,
+            skip,
+            seed,
+        );
+
+        tracing::debug!("\tselection {:?} took {:?}", seed, start.elapsed());
+        selection.extend(rest_selection);
+        Some(selection)
+    };
+
+    let start = std::time::Instant::now();
+    let (savings, seed, selection) = pool1.into_iter().chain(pool2).chain(pool3).chain(pool4).filter_map(|seed| {
+        if let Some(selection) = try_seed(&seed, &tried_seeds) {
+            tried_seeds.insert(selection.iter().take(1).map(|(idx, _)| *idx).collect());
+            tried_seeds.insert(selection.iter().take(2).map(|(idx, _)| *idx).collect());
+            tried_seeds.insert(selection.iter().take(3).map(|(idx, _)| *idx).collect());
+            tried_seeds.insert(selection.iter().take(4).map(|(idx, _)| *idx).collect());
+            let (savings, cost) = savings_and_cost(&blocks, &selection);
+            if let Some(budget) = max_cost {
+                assert!(cost <= budget);
+            }
+            Some((savings, seed, selection))
+        } else {
+            None
+        }
+    }).max_by_key(|(savings, _, _)| *savings).unwrap();
+
+    tracing::debug!("best seed {:?} - savings: {:?} - took {:?}", seed, savings, start.elapsed());
+
+    selection
+}
+
 
 // returns the indices of the selected blocks, together with their updated execution counts
 pub fn select_blocks_greedy_by_cluster(
@@ -449,11 +576,11 @@ pub fn select_blocks_greedy_by_value(
         (idx, priority)
     }).collect();
 
-    if tracing::enabled!(tracing::Level::DEBUG) {
-        tracing::debug!("All candidates sorted by priority:");
+    if tracing::enabled!(tracing::Level::TRACE) {
+        tracing::trace!("All candidates sorted by priority:");
         for (idx, prio) in by_priority.clone().into_sorted_iter() {
             let c = &blocks[idx];
-            tracing::debug!(
+            tracing::trace!(
                 "\tAPC pcs {:?}, effectiveness: {:?}, freq: {:?}, priority: {:?}",
                 c.bbs(),
                 c.eff(),
@@ -728,13 +855,13 @@ pub fn select_blocks_greedy_by_size(
             acc
         });
 
-    if tracing::enabled!(tracing::Level::DEBUG) {
-        tracing::debug!("All candidates sorted by priority:");
+    if tracing::enabled!(tracing::Level::TRACE) {
+        tracing::trace!("All candidates sorted by priority:");
         for (size, group) in size_groups.iter().rev() {
-            tracing::debug!("Size {size}:");
+            tracing::trace!("Size {size}:");
             for (idx, prio) in group.clone().into_sorted_iter() {
                 let c = &blocks[idx];
-                tracing::debug!(
+                tracing::trace!(
                     "\tAPC pcs {:?}, effectiveness: {:?}, freq: {:?}, priority: {:?}",
                     c.bbs(),
                     c.eff(),
