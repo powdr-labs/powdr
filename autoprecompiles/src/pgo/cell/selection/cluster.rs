@@ -134,13 +134,11 @@ pub fn evaluate_clusters_seeded(
     execution_bb_runs: &[(Vec<u64>, u32)],
 ) -> Vec<ClusterEvaluation> {
     let clusters = detect_sblock_clusters(all_blocks);
-    let count = clusters.len();
     tracing::debug!("{} clusters detected.", clusters.len());
     clusters
         .into_iter()
         .enumerate()
         .map(|(idx, cluster)| {
-            tracing::debug!("Evaluating cluster {idx} of {count}, len {}", cluster.len());
             let start = std::time::Instant::now();
             let eval = evaluate_cluster_seeded(
                 all_blocks,
@@ -150,7 +148,7 @@ pub fn evaluate_clusters_seeded(
                 max_selected,
                 execution_bb_runs,
             );
-            tracing::debug!("Took {:?}", start.elapsed());
+            tracing::debug!("Evaluating cluster {idx} took {:?}", start.elapsed());
             eval
         })
         .collect()
@@ -299,8 +297,7 @@ fn evaluate_cluster_seeded(
             return None;
         }
 
-        let (mut selection, new_execution) =
-            apply_selection(all_blocks, seed, relevant_runs.clone());
+        let (mut selection, new_execution) = apply_selection(all_blocks, seed, &relevant_runs);
 
         // some of the items in the seed may be invalid (i.e., get zero count after previous choices),
         // so we check if we already tried it before

@@ -223,19 +223,23 @@ fn select_greedy_with_blocked(
 pub fn apply_selection(
     blocks: &[BlockCandidate],
     selection: &[usize],
-    mut execution_bb_runs: Vec<(Vec<u64>, u32)>,
+    execution_bb_runs: &[(Vec<u64>, u32)],
 ) -> (Vec<(usize, u32)>, Vec<(Vec<u64>, u32)>) {
     let mut counts = vec![];
+    let mut current_exec = None;
+    let mut current_exec_ref = execution_bb_runs;
     for idx in selection {
         let b = &blocks[*idx];
-        let (count, new_execution) = count_and_update_execution(b, &execution_bb_runs);
+        let (count, new_execution) = count_and_update_execution(b, current_exec_ref);
 
         if count > 0 {
             counts.push((*idx, count));
         }
-        execution_bb_runs = new_execution;
+
+        current_exec = Some(new_execution);
+        current_exec_ref = current_exec.as_ref().unwrap();
     }
-    (counts, execution_bb_runs)
+    (counts, current_exec.unwrap_or(execution_bb_runs.to_vec()))
 }
 
 // returns the indices of the selected blocks, together with their updated execution counts
@@ -368,7 +372,7 @@ pub fn select_blocks_greedy_seeded(
 
         let start = std::time::Instant::now();
         let (mut selection, new_execution) =
-            apply_selection(&blocks, seed, execution_bb_runs.to_vec());
+            apply_selection(&blocks, seed, execution_bb_runs);
 
         // some of the items in the seed may be invalid (i.e., get zero count after previous choices),
         // so we check if we already tried it before
