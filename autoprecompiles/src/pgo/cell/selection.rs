@@ -1,7 +1,8 @@
-use std::{cmp::Reverse, collections::{BTreeMap, HashMap, HashSet}};
+use std::{cmp::Reverse, collections::{BTreeMap, HashMap, HashSet}, sync::{Arc, Mutex}};
 
 use itertools::Itertools;
 use priority_queue::PriorityQueue;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 use crate::{adapter::{Adapter, AdapterProgramBlocks}};
@@ -376,57 +377,75 @@ pub fn savings_and_cost(blocks: &[BlockCandidate], selected: &[(usize, u32)]) ->
     (savings, cost)
 }
 
+/// generate seeds from the given pool sizes.
+/// Each item in the input is the number of elements to use for combinations of seeds of that size.
+/// The first element is for seeds of size 1, the second of size 2 and so on.
+/// E.g.: [20, 10] means generate combinations of size 1 using the top 20 elements,
+/// and combinations of size 2 using the top 10 elements.
+/// The returned seeds reference the indexes of the input blocks.
+pub fn combination_seeds(
+    blocks: &[BlockCandidate],
+    pool_sizes: Vec<usize>,
+) -> Vec<Vec<usize>> {
+    tracing::debug!("generating combination seeds");
+    let sorted_candidates: Vec<usize> = blocks.iter().enumerate()
+        .map(|(idx, block)| (idx, block.priority()))
+        .sorted_by_key(|(_, prio)| Reverse(prio.clone()))
+        .map(|(idx, _)| idx)
+        .collect::<Vec<_>>();
+    pool_sizes.iter().enumerate().flat_map(|(i, size)| {
+        let seed_size = i + 1;
+        let seeds: Vec<Vec<usize>> = sorted_candidates.iter().cloned().take(*size).combinations(seed_size).collect();
+        tracing::debug!("\t{} seeds of len {}", seeds.len(), seed_size);
+        seeds
+    }).collect()
+}
+
+/// same as `combination_seeds` but uses permutations
+pub fn permutation_seeds(
+    blocks: &[BlockCandidate],
+    pool_sizes: Vec<usize>,
+) -> Vec<Vec<usize>> {
+    tracing::debug!("generating permutation seeds");
+    let sorted_candidates: Vec<usize> = blocks.iter().enumerate()
+        .map(|(idx, block)| (idx, block.priority()))
+        .sorted_by_key(|(_, prio)| Reverse(prio.clone()))
+        .map(|(idx, _)| idx)
+        .collect::<Vec<_>>();
+    pool_sizes.iter().enumerate().flat_map(|(i, size)| {
+        let seed_size = i + 1;
+        let seeds: Vec<Vec<usize>> = sorted_candidates.iter().cloned().take(*size).permutations(seed_size).collect();
+        tracing::debug!("\t{} seeds of len {}", seeds.len(), seed_size);
+        seeds
+    }).collect()
+}
+
 pub fn select_blocks_greedy_seeded(
     blocks: Vec<BlockCandidate>,
     max_cost: Option<usize>,
     max_selected: Option<usize>,
     execution_bb_runs: &[(Vec<u64>, u32)],
     skip: usize,
-    pool1: usize, // number of choices for single element seeds
-    pool2: usize, // number of choices for two element seeds
-    pool3: usize, // number of choices for three element seeds
-    pool4: usize, // number of choices for four element seeds
+    seeds: Vec<Vec<usize>>,
 ) -> Vec<(usize, u32)> {
-    // select top candidates by priority
-    let sorted_candidates: Vec<usize> = blocks.iter().enumerate()
-        .map(|(idx, block)| (idx, block.priority()))
-        .sorted_by_key(|(_, prio)| Reverse(prio.clone()))
-        .map(|(idx, _)| idx)
-        .collect::<Vec<_>>();
-    // TODO: some points:
-    // - `combinations` respects the order of the input
-    // - given that, does it make sense to use permutations here instead of combinations?
-    let pool1: Vec<Vec<usize>> = sorted_candidates.iter().cloned().take(pool1).combinations(1).collect();
-    tracing::debug!("trying {} seeds of len 1", pool1.len());
-    let pool2: Vec<Vec<usize>> = sorted_candidates.iter().cloned().take(pool2).combinations(2).collect();
-    tracing::debug!("trying {} seeds of len 2", pool2.len());
-    let pool3: Vec<Vec<usize>> = sorted_candidates.iter().cloned().take(pool3).combinations(3).collect();
-    tracing::debug!("trying {} seeds of len 3", pool3.len());
-    let pool4: Vec<Vec<usize>> = sorted_candidates.iter().cloned().take(pool4).combinations(4).collect();
-    tracing::debug!("trying {} seeds of len 4", pool4.len());
+    let tried_seeds: Arc<Mutex<HashSet<Vec<usize>>>> = Default::default();
 
-    let mut tried_seeds: HashSet<Vec<usize>> = Default::default();
-
-    let try_seed = |seed: &Vec<usize>, tried_seeds: &HashSet<Vec<usize>>| -> Option<Vec<(usize, u32)>> {
-        if tried_seeds.contains(seed) {
-            tracing::debug!("\tseed {:?} already tried, skipping", &seed);
+    let try_seed = |seed: &Vec<usize>, tried_seeds: &Mutex<HashSet<Vec<usize>>>| -> Option<Vec<(usize, u32)>> {
+        if tried_seeds.lock().unwrap().contains(seed) {
+            tracing::trace!("\tseed {:?} already tried, skipping", &seed);
             return None;
         }
 
-        tracing::debug!("trying seed {:?}...", seed);
-        // for idx in seed {
-        //     tracing::debug!("\t{:?}:{:?}", idx, &blocks[*idx].bbs);
-        // }
+        tracing::trace!("trying seed {:?}...", seed);
 
         let start = std::time::Instant::now();
         let (mut selection, new_execution) = apply_selection(&blocks.clone(), seed, execution_bb_runs.to_vec());
-        // tracing::debug!("\tseed result: {:?}", &selection);
 
         // some of the items in the seed may be invalid (i.e., get zero count after previous choices),
         // so we check if we already tried it before
         let actual_seed: Vec<_> = selection.iter().map(|(idx, _)| *idx).collect();
-        if tried_seeds.contains(&actual_seed) {
-            tracing::debug!("\tseed {:?} is equivalent to {:?}, skipping", &seed, &actual_seed);
+        if tried_seeds.lock().unwrap().contains(&actual_seed) {
+            tracing::trace!("\tseed {:?} is equivalent to {:?}, skipping", &seed, &actual_seed);
             return None;
         }
 
@@ -435,7 +454,7 @@ pub fn select_blocks_greedy_seeded(
         let remaining_budget = match max_cost {
             Some(budget) => {
                 if cost > budget {
-                    tracing::debug!("\tskipping seed - cost {} exceeds budget {}", cost, budget);
+                    tracing::trace!("\tskipping seed - cost {} exceeds budget {}", cost, budget);
                     return None;
                 }
                 Some(budget - cost)
@@ -453,18 +472,21 @@ pub fn select_blocks_greedy_seeded(
             seed,
         );
 
-        tracing::debug!("\tselection {:?} took {:?}", seed, start.elapsed());
+        tracing::trace!("\tselection for seed {:?} took {:?}", seed, start.elapsed());
         selection.extend(rest_selection);
         Some(selection)
     };
 
     let start = std::time::Instant::now();
-    let (savings, seed, selection) = pool1.into_iter().chain(pool2).chain(pool3).chain(pool4).filter_map(|seed| {
+    let (savings, seed, selection) = seeds.into_par_iter().filter_map(|seed| {
         if let Some(selection) = try_seed(&seed, &tried_seeds) {
-            tried_seeds.insert(selection.iter().take(1).map(|(idx, _)| *idx).collect());
-            tried_seeds.insert(selection.iter().take(2).map(|(idx, _)| *idx).collect());
-            tried_seeds.insert(selection.iter().take(3).map(|(idx, _)| *idx).collect());
-            tried_seeds.insert(selection.iter().take(4).map(|(idx, _)| *idx).collect());
+            {
+                let mut tried_seeds = tried_seeds.lock().unwrap();
+                tried_seeds.insert(selection.iter().take(1).map(|(idx, _)| *idx).collect());
+                tried_seeds.insert(selection.iter().take(2).map(|(idx, _)| *idx).collect());
+                tried_seeds.insert(selection.iter().take(3).map(|(idx, _)| *idx).collect());
+                tried_seeds.insert(selection.iter().take(4).map(|(idx, _)| *idx).collect());
+            }
             let (savings, cost) = savings_and_cost(&blocks, &selection);
             if let Some(budget) = max_cost {
                 assert!(cost <= budget);
@@ -475,11 +497,10 @@ pub fn select_blocks_greedy_seeded(
         }
     }).max_by_key(|(savings, _, _)| *savings).unwrap();
 
-    tracing::debug!("best seed {:?} - savings: {:?} - took {:?}", seed, savings, start.elapsed());
+    tracing::trace!("best seed {:?} - savings: {:?} - took {:?}", seed, savings, start.elapsed());
 
     selection
 }
-
 
 // returns the indices of the selected blocks, together with their updated execution counts
 pub fn select_blocks_greedy_by_cluster(
