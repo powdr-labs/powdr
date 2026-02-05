@@ -1,11 +1,15 @@
-use std::{cmp::Reverse, collections::{BTreeMap, HashMap, HashSet, btree_map::Entry}, sync::{Arc, Mutex}};
+use std::{
+    cmp::Reverse,
+    collections::{btree_map::Entry, BTreeMap, HashMap, HashSet},
+    sync::{Arc, Mutex},
+};
 
 use itertools::Itertools;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::pgo::cell::selection::{apply_selection, savings_and_cost, select_greedy_with_blocked};
 
-use super::{BlockCandidate, combination_seeds};
+use super::{combination_seeds, BlockCandidate};
 
 // returns true if the two superblocks could overlap in some execution
 pub fn sblocks_overlap(a: &BlockCandidate, b: &BlockCandidate) -> bool {
@@ -50,9 +54,7 @@ pub fn sblocks_overlap(a: &BlockCandidate, b: &BlockCandidate) -> bool {
 // - each candidate is a vertex
 // - there is an edge if two candidate superblocks may overlap
 // the return value refer to the indices in the given candidates sequence
-pub fn detect_sblock_clusters(
-    blocks: &[BlockCandidate],
-) -> Vec<Vec<usize>> {
+pub fn detect_sblock_clusters(blocks: &[BlockCandidate]) -> Vec<Vec<usize>> {
     let n = blocks.len();
     if n == 0 {
         return Vec::new();
@@ -134,20 +136,31 @@ pub fn evaluate_clusters_seeded(
     let clusters = detect_sblock_clusters(all_blocks);
     let count = clusters.len();
     tracing::debug!("{} clusters detected.", clusters.len());
-    clusters.into_iter().enumerate().map(|(idx, cluster)| {
-        tracing::debug!("Evaluating cluster {idx} of {count}, len {}", cluster.len());
-        let start = std::time::Instant::now();
-        let eval = evaluate_cluster_seeded(all_blocks, cluster, pool_sizes, max_cost, max_selected, execution_bb_runs);
-        tracing::debug!("Took {:?}", start.elapsed());
-        eval
-    }).collect()
+    clusters
+        .into_iter()
+        .enumerate()
+        .map(|(idx, cluster)| {
+            tracing::debug!("Evaluating cluster {idx} of {count}, len {}", cluster.len());
+            let start = std::time::Instant::now();
+            let eval = evaluate_cluster_seeded(
+                all_blocks,
+                cluster,
+                pool_sizes,
+                max_cost,
+                max_selected,
+                execution_bb_runs,
+            );
+            tracing::debug!("Took {:?}", start.elapsed());
+            eval
+        })
+        .collect()
 }
 
 pub fn select_from_cluster_evaluation(
     clusters: &[ClusterEvaluation],
     budget: usize,
 ) -> Vec<(usize, u32)> {
-   let m = clusters.len();
+    let m = clusters.len();
 
     // dp[b] = best savings achievable with total cost exactly b after processing current clusters
     let mut dp: Vec<Option<usize>> = vec![None; budget + 1];
@@ -159,12 +172,19 @@ pub fn select_from_cluster_evaluation(
     for (k, ce) in clusters.iter().enumerate() {
         let mut next: Vec<Option<usize>> = vec![None; budget + 1];
 
+        #[allow(clippy::needless_range_loop)]
         for b in 0..=budget {
-            let Some(cur_s) = dp[b] else { continue; };
+            let Some(cur_s) = dp[b] else {
+                continue;
+            };
 
-            for (opt_idx, &(c, s, _sel_idx, _n)) in ce.cost_points.iter().enumerate() {
+            for (opt_idx, &(c, s, _selection_idx, _num_elements)) in
+                ce.cost_points.iter().enumerate()
+            {
                 let nb = b + c;
-                if nb > budget { continue; }
+                if nb > budget {
+                    continue;
+                }
                 let ns = cur_s + s;
 
                 match next[nb] {
@@ -183,6 +203,7 @@ pub fn select_from_cluster_evaluation(
     // pick best b <= budget
     let mut best_b = 0usize;
     let mut best_s = 0usize;
+    #[allow(clippy::needless_range_loop)]
     for b in 0..=budget {
         if let Some(s) = dp[b] {
             if s > best_s {
@@ -205,10 +226,18 @@ pub fn select_from_cluster_evaluation(
     // materialize final selection: concat selected prefixes for each cluster
     let mut out: Vec<(usize, u32)> = Vec::new();
     for (ce, &opt_idx) in clusters.iter().zip(chosen_opt_idx.iter()) {
-        let (_c, _s, sel_idx, n) = ce.cost_points[opt_idx];
-        if n == 0 { continue; } // (0,0,0,0) means pick nothing
-        let picks = &ce.selections[sel_idx].1;
-        out.extend(picks.iter().take(n).cloned());
+        let (_cost, _savings, selection_idx, num_elements) = ce.cost_points[opt_idx];
+        if num_elements == 0 {
+            continue;
+        } // (0,0,0,0) means pick nothing
+        let picks = &ce.selections[selection_idx].1;
+        assert!(
+            num_elements <= picks.len(),
+            "num_elements {} exceeds selection length {}",
+            num_elements,
+            picks.len()
+        );
+        out.extend(picks.iter().take(num_elements).cloned());
     }
 
     out
@@ -247,24 +276,31 @@ fn evaluate_cluster_seeded(
 
     // sort cluster by priority
     cluster.sort_by_cached_key(|idx| Reverse(all_blocks[*idx].priority()));
-    let seeds = combination_seeds(&cluster, &pool_sizes);
+    let seeds = combination_seeds(&cluster, pool_sizes);
 
     // filter execution for only runs involving this cluster
-    let relevant_runs: Vec<_> = execution_bb_runs.into_iter().cloned().enumerate().filter_map(|(run_idx, run)| {
-        cluster.iter().any(|idx| {
-            let block = &all_blocks[*idx];
-            block.idx_runs.contains(&run_idx)
-        }).then_some(run)
-    }).collect();
+    let cluster_run_mask: HashSet<_> = cluster
+        .iter()
+        .flat_map(|idx| &all_blocks[*idx].idx_runs)
+        .cloned()
+        .collect();
+    let relevant_runs: Vec<_> = execution_bb_runs
+        .iter()
+        .enumerate()
+        .filter_map(|(run_idx, run)| cluster_run_mask.contains(&run_idx).then_some(run.clone()))
+        .collect();
 
     let tried_seeds: Arc<Mutex<HashSet<Vec<usize>>>> = Default::default();
 
-    let try_seed = |seed: &Vec<usize>, tried_seeds: &Mutex<HashSet<Vec<usize>>>| -> Option<Vec<(usize, u32)>> {
+    let try_seed = |seed: &Vec<usize>,
+                    tried_seeds: &Mutex<HashSet<Vec<usize>>>|
+     -> Option<Vec<(usize, u32)>> {
         if tried_seeds.lock().unwrap().contains(seed) {
             return None;
         }
 
-        let (mut selection, new_execution) = apply_selection(&all_blocks, seed, relevant_runs.clone());
+        let (mut selection, new_execution) =
+            apply_selection(all_blocks, seed, relevant_runs.clone());
 
         // some of the items in the seed may be invalid (i.e., get zero count after previous choices),
         // so we check if we already tried it before
@@ -274,7 +310,7 @@ fn evaluate_cluster_seeded(
         }
 
         // check we're not over budget with the seed already
-        let (_savings, cost) = savings_and_cost(&all_blocks, &selection);
+        let (_savings, cost) = savings_and_cost(all_blocks, &selection);
         let remaining_budget = match max_cost {
             Some(budget) => {
                 if cost > budget {
@@ -299,44 +335,52 @@ fn evaluate_cluster_seeded(
         Some(selection)
     };
 
-    let seeded_selections: Vec<_> = seeds.into_par_iter().filter_map(|seed| {
-        if let Some(selection) = try_seed(&seed, &tried_seeds) {
-            {
-                let mut tried_seeds = tried_seeds.lock().unwrap();
-                tried_seeds.insert(selection.iter().take(1).map(|(idx, _)| *idx).collect());
-                tried_seeds.insert(selection.iter().take(2).map(|(idx, _)| *idx).collect());
-                tried_seeds.insert(selection.iter().take(3).map(|(idx, _)| *idx).collect());
-                tried_seeds.insert(selection.iter().take(4).map(|(idx, _)| *idx).collect());
+    let seeded_selections: Vec<_> = seeds
+        .into_par_iter()
+        .filter_map(|seed| {
+            if let Some(selection) = try_seed(&seed, &tried_seeds) {
+                {
+                    let mut tried_seeds = tried_seeds.lock().unwrap();
+                    tried_seeds.insert(selection.iter().take(1).map(|(idx, _)| *idx).collect());
+                    tried_seeds.insert(selection.iter().take(2).map(|(idx, _)| *idx).collect());
+                    tried_seeds.insert(selection.iter().take(3).map(|(idx, _)| *idx).collect());
+                    tried_seeds.insert(selection.iter().take(4).map(|(idx, _)| *idx).collect());
+                }
+                let (_savings, cost) = savings_and_cost(all_blocks, &selection);
+                if let Some(budget) = max_cost {
+                    assert!(cost <= budget);
+                }
+                Some((seed, selection))
+            } else {
+                None
             }
-            let (_savings, cost) = savings_and_cost(&all_blocks, &selection);
-            if let Some(budget) = max_cost {
-                assert!(cost <= budget);
-            }
-            Some((seed, selection))
-        } else {
-            None
-        }
-    }).collect();
+        })
+        .collect();
 
     // For each selection and number of elements picked, generate a (cost, value) tuple.
-    let cost_points: Vec<_> = seeded_selections.iter().enumerate().flat_map(|(selection_idx, (_seed, selection))| {
-        (1..selection.len()).map(move |num_picked| {
-            let (savings, cost) = savings_and_cost(&all_blocks, &selection[0..num_picked]);
-            (cost, savings, selection_idx, num_picked)
+    let cost_points: Vec<_> = seeded_selections
+        .iter()
+        .enumerate()
+        .flat_map(|(selection_idx, (_seed, selection))| {
+            (1..=selection.len()).map(move |num_picked| {
+                let (savings, cost) = savings_and_cost(all_blocks, &selection[0..num_picked]);
+                (cost, savings, selection_idx, num_picked)
+            })
         })
-    }).sorted().collect();
+        .sorted()
+        .collect();
 
     let mut best_at_cost: BTreeMap<usize, (usize, usize, usize)> = Default::default();
     for (cost, savings, selection_idx, num_picked) in cost_points {
         match best_at_cost.entry(cost) {
             Entry::Vacant(e) => {
                 e.insert((savings, selection_idx, num_picked));
-            },
+            }
             Entry::Occupied(mut e) => {
                 if savings >= e.get().0 {
                     e.insert((savings, selection_idx, num_picked));
                 }
-            },
+            }
         }
     }
 
@@ -349,12 +393,16 @@ fn evaluate_cluster_seeded(
         }
     }
 
-    ClusterEvaluation { cluster, selections: seeded_selections, cost_points }
+    ClusterEvaluation {
+        cluster,
+        selections: seeded_selections,
+        cost_points,
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::pgo::cell::selection::{BlockCandidate, cluster::sblocks_overlap};
+    use crate::pgo::cell::selection::{cluster::sblocks_overlap, BlockCandidate};
 
     #[test]
     fn test_overlaps() {
@@ -371,32 +419,32 @@ mod tests {
         assert!(!sblocks_overlap(&b(&[]), &b(&[])));
         assert!(!sblocks_overlap(&b(&[]), &b(&[1])));
         assert!(!sblocks_overlap(&b(&[1]), &b(&[])));
-        assert!(!sblocks_overlap(&b(&[1,2,3]), &b(&[1,3,2])));
-        assert!(!sblocks_overlap(&b(&[1,2]), &b(&[1,3])));
-        assert!(!sblocks_overlap(&b(&[2,1,2]), &b(&[3,1,3])));
+        assert!(!sblocks_overlap(&b(&[1, 2, 3]), &b(&[1, 3, 2])));
+        assert!(!sblocks_overlap(&b(&[1, 2]), &b(&[1, 3])));
+        assert!(!sblocks_overlap(&b(&[2, 1, 2]), &b(&[3, 1, 3])));
 
         assert!(sblocks_overlap(&b(&[1]), &b(&[1])));
-        assert!(sblocks_overlap(&b(&[1,2]), &b(&[1,2])));
+        assert!(sblocks_overlap(&b(&[1, 2]), &b(&[1, 2])));
 
-        assert!(sblocks_overlap(&b(&[1]), &b(&[1,2])));
-        assert!(sblocks_overlap(&b(&[2,1]), &b(&[1])));
+        assert!(sblocks_overlap(&b(&[1]), &b(&[1, 2])));
+        assert!(sblocks_overlap(&b(&[2, 1]), &b(&[1])));
 
-        assert!(sblocks_overlap(&b(&[2,1,2]), &b(&[1])));
-        assert!(sblocks_overlap(&b(&[1]), &b(&[2,1,2])));
+        assert!(sblocks_overlap(&b(&[2, 1, 2]), &b(&[1])));
+        assert!(sblocks_overlap(&b(&[1]), &b(&[2, 1, 2])));
 
-        assert!(sblocks_overlap(&b(&[2,1,1,2]), &b(&[1,1])));
-        assert!(sblocks_overlap(&b(&[1,1]), &b(&[2,1,1,2])));
+        assert!(sblocks_overlap(&b(&[2, 1, 1, 2]), &b(&[1, 1])));
+        assert!(sblocks_overlap(&b(&[1, 1]), &b(&[2, 1, 1, 2])));
 
-        assert!(sblocks_overlap(&b(&[1,2,3]), &b(&[1,2])));
-        assert!(sblocks_overlap(&b(&[1,2]), &b(&[1,2,3])));
+        assert!(sblocks_overlap(&b(&[1, 2, 3]), &b(&[1, 2])));
+        assert!(sblocks_overlap(&b(&[1, 2]), &b(&[1, 2, 3])));
 
-        assert!(sblocks_overlap(&b(&[1,2,3]), &b(&[2,3,4])));
-        assert!(sblocks_overlap(&b(&[2,3,4]), &b(&[1,2,3])));
+        assert!(sblocks_overlap(&b(&[1, 2, 3]), &b(&[2, 3, 4])));
+        assert!(sblocks_overlap(&b(&[2, 3, 4]), &b(&[1, 2, 3])));
 
-        assert!(sblocks_overlap(&b(&[1,2,3]), &b(&[2,3,4])));
-        assert!(sblocks_overlap(&b(&[2,3,4]), &b(&[1,2,3])));
+        assert!(sblocks_overlap(&b(&[1, 2, 3]), &b(&[2, 3, 4])));
+        assert!(sblocks_overlap(&b(&[2, 3, 4]), &b(&[1, 2, 3])));
 
-        assert!(sblocks_overlap(&b(&[1,2,3]), &b(&[2,3,4])));
-        assert!(sblocks_overlap(&b(&[2,3,4]), &b(&[1,2,3])));
+        assert!(sblocks_overlap(&b(&[1, 2, 3]), &b(&[2, 3, 4])));
+        assert!(sblocks_overlap(&b(&[2, 3, 4]), &b(&[1, 2, 3])));
     }
 }

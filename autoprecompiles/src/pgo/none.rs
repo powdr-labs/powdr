@@ -3,7 +3,9 @@ use std::collections::BTreeMap;
 use derivative::Derivative;
 
 use crate::{
-    EmpiricalConstraints, PowdrConfig, adapter::{Adapter, AdapterApcWithStats, AdapterProgramBlocks, AdapterVmConfig, PgoAdapter}, pgo::create_apcs_for_all_blocks
+    adapter::{Adapter, AdapterApcWithStats, AdapterProgramBlocks, AdapterVmConfig, PgoAdapter},
+    pgo::create_apcs_for_all_blocks,
+    EmpiricalConstraints, PowdrConfig,
 };
 
 #[derive(Derivative)]

@@ -1,4 +1,7 @@
-use std::{collections::{BTreeMap, HashSet}, sync::{Arc, Mutex}};
+use std::{
+    collections::{BTreeMap, HashSet},
+    sync::{Arc, Mutex},
+};
 
 use cluster::{evaluate_clusters_seeded, select_from_cluster_evaluation};
 use itertools::Itertools;
@@ -6,7 +9,7 @@ use priority_queue::PriorityQueue;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
-use crate::{adapter::{Adapter, AdapterProgramBlocks}};
+use crate::adapter::{Adapter, AdapterProgramBlocks};
 
 use super::Candidate;
 
@@ -44,7 +47,9 @@ impl BlockCandidate {
     }
 
     pub fn value(&self) -> usize {
-        (self.count() as usize).checked_mul(self.value_per_row()).unwrap()
+        (self.count() as usize)
+            .checked_mul(self.value_per_row())
+            .unwrap()
     }
 
     pub fn cost(&self) -> usize {
@@ -78,8 +83,7 @@ pub struct Priority {
 
 impl PartialEq for Priority {
     fn eq(&self, other: &Self) -> bool {
-        self.value * other.cost == other.value * self.cost
-            && self.tie == other.tie
+        self.value * other.cost == other.value * self.cost && self.tie == other.tie
     }
 }
 
@@ -96,13 +100,16 @@ impl Ord for Priority {
         let lhs = self.value.checked_mul(other.cost).unwrap();
         let rhs = other.value.checked_mul(self.cost).unwrap();
 
-        lhs.cmp(&rhs)
-            .then_with(|| self.tie.cmp(&other.tie))
+        lhs.cmp(&rhs).then_with(|| self.tie.cmp(&other.tie))
     }
 }
 
 // returns the number of matches for the candidate and the subruns after its occurrences are removed
-fn count_and_update_run(sblock: &BlockCandidate, run: &[u64], run_count: u32) -> (u32, Vec<(Vec<u64>, u32)>) {
+fn count_and_update_run(
+    sblock: &BlockCandidate,
+    run: &[u64],
+    run_count: u32,
+) -> (u32, Vec<(Vec<u64>, u32)>) {
     let mut i = 0;
     let mut count = 0;
     let mut sub_run_start = 0;
@@ -128,16 +135,21 @@ fn count_and_update_run(sblock: &BlockCandidate, run: &[u64], run_count: u32) ->
 
 // Count the number of times `sblock` appears in the `execution` runs.
 // Returns the count and an updated execution with the counted subsequences removed.
-fn count_and_update_execution(sblock: &BlockCandidate, execution: &[(Vec<u64>, u32)]) -> (u32, Vec<(Vec<u64>, u32)>) {
+fn count_and_update_execution(
+    sblock: &BlockCandidate,
+    execution: &[(Vec<u64>, u32)],
+) -> (u32, Vec<(Vec<u64>, u32)>) {
     let mut total_count = 0;
-    let new_execution = execution.iter().flat_map(|(run, run_count)| {
-        let (count, sub_runs) = count_and_update_run(sblock, run, *run_count);
-        total_count += count * *run_count;
-        sub_runs
-    }).collect();
+    let new_execution = execution
+        .iter()
+        .flat_map(|(run, run_count)| {
+            let (count, sub_runs) = count_and_update_run(sblock, run, *run_count);
+            total_count += count * *run_count;
+            sub_runs
+        })
+        .collect();
     (total_count, new_execution)
 }
-
 
 fn select_greedy_with_blocked(
     mut all_blocks: Vec<BlockCandidate>,
@@ -149,9 +161,10 @@ fn select_greedy_with_blocked(
     max_selected: Option<usize>,
     mut execution_bb_runs: Vec<(Vec<u64>, u32)>,
 ) -> Vec<(usize, u32)> {
-    let mut by_priority: PriorityQueue<_,_> = candidates.iter().filter_map(|idx| {
-        (!blocked.contains(idx)).then_some((*idx, all_blocks[*idx].priority()))
-    }).collect();
+    let mut by_priority: PriorityQueue<_, _> = candidates
+        .iter()
+        .filter_map(|idx| (!blocked.contains(idx)).then_some((*idx, all_blocks[*idx].priority())))
+        .collect();
 
     let mut selected = vec![];
     let mut cumulative_cost = 0;
@@ -160,7 +173,10 @@ fn select_greedy_with_blocked(
 
     while let Some((idx, _prio)) = by_priority.pop() {
         let c = &mut all_blocks[idx];
-        tracing::trace!("examining {examined_candidates} of {total_candidates} - {:?}...", c.bbs());
+        tracing::trace!(
+            "examining {examined_candidates} of {total_candidates} - {:?}...",
+            c.bbs()
+        );
         tracing::trace!("\tpresent in {} runs", c.idx_runs.len());
         examined_candidates += 1;
 
@@ -222,7 +238,6 @@ pub fn apply_selection(
     (counts, execution_bb_runs)
 }
 
-
 // returns the indices of the selected blocks, together with their updated execution counts
 pub fn select_blocks_greedy(
     blocks: Vec<BlockCandidate>,
@@ -232,16 +247,25 @@ pub fn select_blocks_greedy(
     _skip: usize,
 ) -> Vec<(usize, u32)> {
     let candidates = (0..blocks.len()).collect_vec();
-    select_greedy_with_blocked(blocks, candidates, &[], max_cost, max_selected, execution_bb_runs.to_vec())
+    select_greedy_with_blocked(
+        blocks,
+        candidates,
+        &[],
+        max_cost,
+        max_selected,
+        execution_bb_runs.to_vec(),
+    )
 }
 
 pub fn savings_and_cost(blocks: &[BlockCandidate], selected: &[(usize, u32)]) -> (usize, usize) {
-    let savings = selected.iter().map(|(idx, count)| {
-        blocks[*idx].value_per_row() * *count as usize
-    }).sum::<usize>();
-    let cost = selected.iter().map(|(idx, _count)| {
-        blocks[*idx].cost()
-    }).sum::<usize>();
+    let savings = selected
+        .iter()
+        .map(|(idx, count)| blocks[*idx].value_per_row() * *count as usize)
+        .sum::<usize>();
+    let cost = selected
+        .iter()
+        .map(|(idx, _count)| blocks[*idx].cost())
+        .sum::<usize>();
     (savings, cost)
 }
 
@@ -251,27 +275,39 @@ pub fn savings_and_cost(blocks: &[BlockCandidate], selected: &[(usize, u32)]) ->
 /// E.g.: [20, 10] means generate combinations of size 1 using the first 20 sorted candidates,
 /// and combinations of size 2 using the first 10 sorted candidates.
 /// The returned seeds reference the indices of the input blocks.
-pub fn combination_seeds(
-    sorted_candidates: &[usize],
-    pool_sizes: &[usize],
-) -> Vec<Vec<usize>> {
-    pool_sizes.iter().enumerate().flat_map(|(i, size)| {
-        let seed_size = i + 1;
-        let seeds: Vec<Vec<usize>> = sorted_candidates.iter().cloned().take(*size).combinations(seed_size).collect();
-        seeds
-    }).collect()
+pub fn combination_seeds(sorted_candidates: &[usize], pool_sizes: &[usize]) -> Vec<Vec<usize>> {
+    pool_sizes
+        .iter()
+        .enumerate()
+        .flat_map(|(i, size)| {
+            let seed_size = i + 1;
+            let seeds: Vec<Vec<usize>> = sorted_candidates
+                .iter()
+                .cloned()
+                .take(*size)
+                .combinations(seed_size)
+                .collect();
+            seeds
+        })
+        .collect()
 }
 
 /// same as `combination_seeds` but uses permutations
-pub fn permutation_seeds(
-    sorted_candidates: &[usize],
-    pool_sizes: &[usize],
-) -> Vec<Vec<usize>> {
-    pool_sizes.iter().enumerate().flat_map(|(i, size)| {
-        let seed_size = i + 1;
-        let seeds: Vec<Vec<usize>> = sorted_candidates.iter().cloned().take(*size).permutations(seed_size).collect();
-        seeds
-    }).collect()
+pub fn permutation_seeds(sorted_candidates: &[usize], pool_sizes: &[usize]) -> Vec<Vec<usize>> {
+    pool_sizes
+        .iter()
+        .enumerate()
+        .flat_map(|(i, size)| {
+            let seed_size = i + 1;
+            let seeds: Vec<Vec<usize>> = sorted_candidates
+                .iter()
+                .cloned()
+                .take(*size)
+                .permutations(seed_size)
+                .collect();
+            seeds
+        })
+        .collect()
 }
 
 pub fn select_from_clusters(
@@ -297,12 +333,14 @@ pub fn select_from_clusters(
         select_from_cluster_evaluation(&cluster_selections, budget)
     } else {
         // pick best selection from each cluster
-        cluster_selections.into_iter().flat_map(|mut s| {
-            let (_cost, _savings, selection_idx, num_picks) = s.cost_points.pop().unwrap();
-            let (_seed, selection) = s.selections.remove(selection_idx);
-            assert_eq!(selection.len(), num_picks);
-            selection
-        }).collect()
+        cluster_selections
+            .into_iter()
+            .flat_map(|mut s| {
+                let (_cost, _savings, selection_idx, num_picks) = s.cost_points.pop().unwrap();
+                let (_seed, selection) = s.selections.remove(selection_idx);
+                selection.into_iter().take(num_picks)
+            })
+            .collect()
     };
     sel
 }
@@ -318,7 +356,9 @@ pub fn select_blocks_greedy_seeded(
     let tried_seeds: Arc<Mutex<HashSet<Vec<usize>>>> = Default::default();
     let candidates = (0..blocks.len()).collect_vec();
 
-    let try_seed = |seed: &Vec<usize>, tried_seeds: &Mutex<HashSet<Vec<usize>>>| -> Option<Vec<(usize, u32)>> {
+    let try_seed = |seed: &Vec<usize>,
+                    tried_seeds: &Mutex<HashSet<Vec<usize>>>|
+     -> Option<Vec<(usize, u32)>> {
         if tried_seeds.lock().unwrap().contains(seed) {
             tracing::trace!("\tseed {:?} already tried, skipping", &seed);
             return None;
@@ -327,13 +367,18 @@ pub fn select_blocks_greedy_seeded(
         tracing::trace!("trying seed {:?}...", seed);
 
         let start = std::time::Instant::now();
-        let (mut selection, new_execution) = apply_selection(&blocks, seed, execution_bb_runs.to_vec());
+        let (mut selection, new_execution) =
+            apply_selection(&blocks, seed, execution_bb_runs.to_vec());
 
         // some of the items in the seed may be invalid (i.e., get zero count after previous choices),
         // so we check if we already tried it before
         let actual_seed: Vec<_> = selection.iter().map(|(idx, _)| *idx).collect();
         if tried_seeds.lock().unwrap().contains(&actual_seed) {
-            tracing::trace!("\tseed {:?} is equivalent to {:?}, skipping", &seed, &actual_seed);
+            tracing::trace!(
+                "\tseed {:?} is equivalent to {:?}, skipping",
+                &seed,
+                &actual_seed
+            );
             return None;
         }
 
@@ -366,26 +411,35 @@ pub fn select_blocks_greedy_seeded(
     };
 
     let start = std::time::Instant::now();
-    let (savings, seed, selection) = seeds.into_par_iter().filter_map(|seed| {
-        if let Some(selection) = try_seed(&seed, &tried_seeds) {
-            {
-                let mut tried_seeds = tried_seeds.lock().unwrap();
-                tried_seeds.insert(selection.iter().take(1).map(|(idx, _)| *idx).collect());
-                tried_seeds.insert(selection.iter().take(2).map(|(idx, _)| *idx).collect());
-                tried_seeds.insert(selection.iter().take(3).map(|(idx, _)| *idx).collect());
-                tried_seeds.insert(selection.iter().take(4).map(|(idx, _)| *idx).collect());
+    let (savings, seed, selection) = seeds
+        .into_par_iter()
+        .filter_map(|seed| {
+            if let Some(selection) = try_seed(&seed, &tried_seeds) {
+                {
+                    let mut tried_seeds = tried_seeds.lock().unwrap();
+                    tried_seeds.insert(selection.iter().take(1).map(|(idx, _)| *idx).collect());
+                    tried_seeds.insert(selection.iter().take(2).map(|(idx, _)| *idx).collect());
+                    tried_seeds.insert(selection.iter().take(3).map(|(idx, _)| *idx).collect());
+                    tried_seeds.insert(selection.iter().take(4).map(|(idx, _)| *idx).collect());
+                }
+                let (savings, cost) = savings_and_cost(&blocks, &selection);
+                if let Some(budget) = max_cost {
+                    assert!(cost <= budget);
+                }
+                Some((savings, seed, selection))
+            } else {
+                None
             }
-            let (savings, cost) = savings_and_cost(&blocks, &selection);
-            if let Some(budget) = max_cost {
-                assert!(cost <= budget);
-            }
-            Some((savings, seed, selection))
-        } else {
-            None
-        }
-    }).max_by_key(|(savings, _, _)| *savings).unwrap();
+        })
+        .max_by_key(|(savings, _, _)| *savings)
+        .unwrap();
 
-    tracing::trace!("best seed {:?} - savings: {:?} - took {:?}", seed, savings, start.elapsed());
+    tracing::trace!(
+        "best seed {:?} - savings: {:?} - took {:?}",
+        seed,
+        savings,
+        start.elapsed()
+    );
 
     selection
 }
@@ -398,10 +452,14 @@ pub fn select_blocks_greedy_by_value(
     execution_bb_runs: &[(Vec<u64>, u32)],
     mut skip: usize,
 ) -> Vec<(usize, u32)> {
-    let mut by_priority: PriorityQueue<_,_> = blocks.iter().enumerate().map(|(idx, block)| {
-        let priority = block.value();
-        (idx, priority)
-    }).collect();
+    let mut by_priority: PriorityQueue<_, _> = blocks
+        .iter()
+        .enumerate()
+        .map(|(idx, block)| {
+            let priority = block.value();
+            (idx, priority)
+        })
+        .collect();
 
     if tracing::enabled!(tracing::Level::TRACE) {
         tracing::trace!("All candidates sorted by priority:");
@@ -430,7 +488,10 @@ pub fn select_blocks_greedy_by_value(
     let mut examined_candidates = 0;
     while let Some((idx, _prio)) = by_priority.pop() {
         let c = &mut blocks[idx];
-        tracing::trace!("examining candidate {examined_candidates} - {:?}...", c.bbs());
+        tracing::trace!(
+            "examining candidate {examined_candidates} - {:?}...",
+            c.bbs()
+        );
         tracing::trace!("\tpresent in {} runs", c.idx_runs.len());
         examined_candidates += 1;
 
@@ -488,10 +549,14 @@ pub fn select_blocks_greedy_by_size_and_value(
     execution_bb_runs: &[(Vec<u64>, u32)],
     mut skip: usize,
 ) -> Vec<(usize, u32)> {
-    let mut by_priority: PriorityQueue<_,_> = blocks.iter().enumerate().map(|(idx, block)| {
-        let priority = (block.bbs().len(), block.value());
-        (idx, priority)
-    }).collect();
+    let mut by_priority: PriorityQueue<_, _> = blocks
+        .iter()
+        .enumerate()
+        .map(|(idx, block)| {
+            let priority = (block.bbs().len(), block.value());
+            (idx, priority)
+        })
+        .collect();
 
     if tracing::enabled!(tracing::Level::DEBUG) {
         tracing::debug!("All candidates sorted by priority:");
@@ -520,7 +585,10 @@ pub fn select_blocks_greedy_by_size_and_value(
     let mut examined_candidates = 0;
     while let Some((idx, _prio)) = by_priority.pop() {
         let c = &mut blocks[idx];
-        tracing::trace!("examining candidate {examined_candidates} - {:?}...", c.bbs());
+        tracing::trace!(
+            "examining candidate {examined_candidates} - {:?}...",
+            c.bbs()
+        );
         tracing::trace!("\tpresent in {} runs", c.idx_runs.len());
         examined_candidates += 1;
 
@@ -578,10 +646,14 @@ pub fn select_blocks_greedy_by_size2(
     execution_bb_runs: &[(Vec<u64>, u32)],
     mut skip: usize,
 ) -> Vec<(usize, u32)> {
-    let mut by_priority: PriorityQueue<_,_> = blocks.iter().enumerate().map(|(idx, block)| {
-        let priority = (block.bbs().len(), block.priority());
-        (idx, priority)
-    }).collect();
+    let mut by_priority: PriorityQueue<_, _> = blocks
+        .iter()
+        .enumerate()
+        .map(|(idx, block)| {
+            let priority = (block.bbs().len(), block.priority());
+            (idx, priority)
+        })
+        .collect();
 
     if tracing::enabled!(tracing::Level::DEBUG) {
         tracing::debug!("All candidates sorted by priority:");
@@ -610,7 +682,10 @@ pub fn select_blocks_greedy_by_size2(
     let mut examined_candidates = 0;
     while let Some((idx, _prio)) = by_priority.pop() {
         let c = &mut blocks[idx];
-        tracing::trace!("examining candidate {examined_candidates} - {:?}...", c.bbs());
+        tracing::trace!(
+            "examining candidate {examined_candidates} - {:?}...",
+            c.bbs()
+        );
         tracing::trace!("\tpresent in {} runs", c.idx_runs.len());
         examined_candidates += 1;
 
@@ -660,7 +735,6 @@ pub fn select_blocks_greedy_by_size2(
     selected
 }
 
-
 // returns the indices of the selected blocks, together with their updated execution counts.
 // Prioritizes larger superblocks.
 pub fn select_blocks_greedy_by_size(
@@ -674,13 +748,15 @@ pub fn select_blocks_greedy_by_size(
     // or at least equivalent to its components, we split candidates into size
     // groups.
     // Each group is internally sorted by candidate priority
-    let size_groups: BTreeMap<usize, PriorityQueue<_, _>> = blocks.iter().enumerate().fold(
-        Default::default(),
-        |mut acc, (idx, candidate)| {
-            let size = candidate.bbs().len();
-            acc.entry(size).or_default().push(idx, candidate.priority());
-            acc
-        });
+    let size_groups: BTreeMap<usize, PriorityQueue<_, _>> =
+        blocks
+            .iter()
+            .enumerate()
+            .fold(Default::default(), |mut acc, (idx, candidate)| {
+                let size = candidate.bbs().len();
+                acc.entry(size).or_default().push(idx, candidate.priority());
+                acc
+            });
 
     if tracing::enabled!(tracing::Level::TRACE) {
         tracing::trace!("All candidates sorted by priority:");
@@ -764,15 +840,18 @@ pub fn select_apc_candidates_greedy<A: Adapter, C: Candidate<A>>(
     skip: usize,
 ) -> Vec<(C, u32)> {
     let block_to_runs = blocks.block_to_runs.as_ref().unwrap();
-    let block_candidates = candidates.iter().enumerate().zip(blocks.counts.as_ref().unwrap()).map(|((idx, c), count)| {
-        BlockCandidate {
+    let block_candidates = candidates
+        .iter()
+        .enumerate()
+        .zip(blocks.counts.as_ref().unwrap())
+        .map(|((idx, c), count)| BlockCandidate {
             bbs: c.apc().original_bb_pcs().to_vec(),
             cost_before: c.cells_saved_per_row() + c.width(),
             cost_after: c.width(),
             execution_count: *count as u32,
             idx_runs: block_to_runs[idx].iter().cloned().collect(),
-        }
-    }).collect_vec();
+        })
+        .collect_vec();
 
     let selected = select_blocks_greedy(
         block_candidates,
@@ -782,15 +861,12 @@ pub fn select_apc_candidates_greedy<A: Adapter, C: Candidate<A>>(
         skip,
     );
 
-
     // filter the candidates using the selected indices (and ordering)
     candidates
         .into_iter()
         .enumerate()
         .filter_map(|(idx, c)| {
-            let position = selected
-                .iter()
-                .position(|(i, _)| *i == idx)?;
+            let position = selected.iter().position(|(i, _)| *i == idx)?;
             let count = selected[position].1;
             Some((position, (c, count)))
         })
@@ -809,15 +885,18 @@ pub fn select_apc_candidates_greedy_by_size<A: Adapter, C: Candidate<A>>(
     skip: usize,
 ) -> Vec<(C, u32)> {
     let block_to_runs = blocks.block_to_runs.as_ref().unwrap();
-    let block_candidates = candidates.iter().enumerate().zip(blocks.counts.as_ref().unwrap()).map(|((idx, c), count)| {
-        BlockCandidate {
+    let block_candidates = candidates
+        .iter()
+        .enumerate()
+        .zip(blocks.counts.as_ref().unwrap())
+        .map(|((idx, c), count)| BlockCandidate {
             bbs: c.apc().original_bb_pcs().to_vec(),
             cost_before: c.cells_saved_per_row() + c.width(),
             cost_after: c.width(),
             execution_count: *count as u32,
             idx_runs: block_to_runs[idx].iter().cloned().collect(),
-        }
-    }).collect_vec();
+        })
+        .collect_vec();
 
     let selected = select_blocks_greedy_by_size(
         block_candidates,
@@ -832,9 +911,7 @@ pub fn select_apc_candidates_greedy_by_size<A: Adapter, C: Candidate<A>>(
         .into_iter()
         .enumerate()
         .filter_map(|(idx, c)| {
-            let position = selected
-                .iter()
-                .position(|(i, _)| *i == idx)?;
+            let position = selected.iter().position(|(i, _)| *i == idx)?;
             let count = selected[position].1;
             Some((position, (c, count)))
         })
@@ -843,7 +920,6 @@ pub fn select_apc_candidates_greedy_by_size<A: Adapter, C: Candidate<A>>(
         .collect()
 }
 
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -851,21 +927,21 @@ mod test {
     #[test]
     fn test_count_and_update_execution() {
         let sblock = BlockCandidate {
-            bbs: vec![1,2],
+            bbs: vec![1, 2],
             cost_before: 0,
             cost_after: 0,
             execution_count: 0,
             idx_runs: Default::default(), // not used
         };
         let runs = vec![
-            (vec![0,1,2,3], 1), // 1
-            (vec![1,2], 2), // 2
-            (vec![1,2,3], 4), // 4
-            (vec![2,3,4,5], 3), // 0
-            (vec![0,1,2], 1), // 1
-            (vec![1,2,3,1,2], 2), // 4
-            (vec![2,1,2,1,2,1,2,1], 1), // 3
-            (vec![1,1,1,2,2,2,1,2,3,3,1,2,4,4], 2), // 6
+            (vec![0, 1, 2, 3], 1),                               // 1
+            (vec![1, 2], 2),                                     // 2
+            (vec![1, 2, 3], 4),                                  // 4
+            (vec![2, 3, 4, 5], 3),                               // 0
+            (vec![0, 1, 2], 1),                                  // 1
+            (vec![1, 2, 3, 1, 2], 2),                            // 4
+            (vec![2, 1, 2, 1, 2, 1, 2, 1], 1),                   // 3
+            (vec![1, 1, 1, 2, 2, 2, 1, 2, 3, 3, 1, 2, 4, 4], 2), // 6
         ];
 
         assert_eq!(
@@ -873,14 +949,19 @@ mod test {
             (
                 1 + 2 + 4 + 1 + 4 + 3 + 6,
                 vec![
-                    (vec![0], 1), (vec![3], 1),
+                    (vec![0], 1),
+                    (vec![3], 1),
                     (vec![3], 4),
-                    (vec![2,3,4,5], 3),
+                    (vec![2, 3, 4, 5], 3),
                     (vec![0], 1),
                     (vec![3], 2),
-                    (vec![2], 1), (vec![1], 1),
-                    (vec![1,1], 2), (vec![2,2], 2), (vec![3,3], 2), (vec![4,4], 2),
-                    (vec![8,2,1], 1) // 0
+                    (vec![2], 1),
+                    (vec![1], 1),
+                    (vec![1, 1], 2),
+                    (vec![2, 2], 2),
+                    (vec![3, 3], 2),
+                    (vec![4, 4], 2),
+                    (vec![8, 2, 1], 1) // 0
                 ],
             )
         );

@@ -1,14 +1,22 @@
 use std::{
-    cmp::Reverse, collections::BTreeMap, io::BufWriter, path::Path, sync::{Arc, Mutex}
+    cmp::Reverse,
+    collections::BTreeMap,
+    io::BufWriter,
+    path::Path,
+    sync::{Arc, Mutex},
 };
 
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    EmpiricalConstraints, PowdrConfig, adapter::{
-        Adapter, AdapterApc, AdapterApcWithStats, AdapterProgramBlocks, AdapterVmConfig, PgoAdapter
-    }, blocks::{BasicBlock, Block, SuperBlock}, evaluation::{EvaluationResult, evaluate_apc}, execution_profile::ExecutionProfile
+    adapter::{
+        Adapter, AdapterApc, AdapterApcWithStats, AdapterProgramBlocks, AdapterVmConfig, PgoAdapter,
+    },
+    blocks::{BasicBlock, Block, SuperBlock},
+    evaluation::{evaluate_apc, EvaluationResult},
+    execution_profile::ExecutionProfile,
+    EmpiricalConstraints, PowdrConfig,
 };
 
 use itertools::Itertools;
@@ -20,10 +28,7 @@ use selection::*;
 /// Trait for autoprecompile candidates.
 pub trait Candidate<A: Adapter>: Sized {
     /// Try to create an autoprecompile candidate from a block.
-    fn create(
-        apc_with_stats: AdapterApcWithStats<A>,
-        exec_count: u32,
-    ) -> Self;
+    fn create(apc_with_stats: AdapterApcWithStats<A>, exec_count: u32) -> Self;
 
     /// Get the autoprecompile associated with this candidate.
     fn apc(&self) -> &AdapterApc<A>;
@@ -41,7 +46,11 @@ pub trait Candidate<A: Adapter>: Sized {
     fn to_json_export(&self, apc_candidates_dir_path: &Path) -> ApcCandidateJsonExport;
 
     /// Return a JSON export of the APC candidate.
-    fn to_json_export2(&self, apc_candidates_dir_path: &Path, execution_frequency: usize) -> ApcCandidateJsonExport;
+    fn to_json_export2(
+        &self,
+        apc_candidates_dir_path: &Path,
+        execution_frequency: usize,
+    ) -> ApcCandidateJsonExport;
 
     /// Convert the candidate into an autoprecompile and its statistics.
     fn into_apc_and_stats(self) -> AdapterApcWithStats<A>;
@@ -116,7 +125,8 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync + Clone> PgoAdapter
             .for_each(|block| assert!(block.statements().count() > 1));
 
         // TODO(leandro): remove later ///////////////////////////////////////////////
-        let execution_json = serde_json::to_string_pretty(&blocks.execution_bb_runs.as_ref().unwrap()).unwrap();
+        let execution_json =
+            serde_json::to_string_pretty(&blocks.execution_bb_runs.as_ref().unwrap()).unwrap();
         std::fs::write("execution_bb_runs.json", execution_json).unwrap();
         /////////////////////////////////////////////////
 
@@ -131,7 +141,8 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync + Clone> PgoAdapter
 
         let start = std::time::Instant::now();
         // generate candidates in parallel
-        let candidates: Vec<_> = blocks.blocks
+        let candidates: Vec<_> = blocks
+            .blocks
             .par_iter()
             .zip_eq(blocks.counts.as_ref().unwrap().par_iter().cloned())
             .filter_map(|(block, count)| {
@@ -164,16 +175,25 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync + Clone> PgoAdapter
 
         // TODO(leandro): remove later ///////////////////////////////////////////////
         let block_to_runs = blocks.block_to_runs.as_ref().unwrap();
-        let export = candidates.iter().enumerate().map(|(idx, c)| {
-            assert_eq!(blocks.blocks[idx].original_bb_pcs(), c.apc().original_bb_pcs(), "order changed!");
-            BlockCandidate {
-                bbs: c.apc().original_bb_pcs(),
-                cost_before: c.cells_saved_per_row() + c.width(),
-                cost_after: c.width(),
-                execution_count: c.execution_count(),
-                idx_runs: block_to_runs[idx].iter().cloned().collect(),
-            }
-        }).sorted_by_key(|e| Reverse(e.count())).collect_vec();
+        let export = candidates
+            .iter()
+            .enumerate()
+            .map(|(idx, c)| {
+                assert_eq!(
+                    blocks.blocks[idx].original_bb_pcs(),
+                    c.apc().original_bb_pcs(),
+                    "order changed!"
+                );
+                BlockCandidate {
+                    bbs: c.apc().original_bb_pcs(),
+                    cost_before: c.cells_saved_per_row() + c.width(),
+                    cost_after: c.width(),
+                    execution_count: c.execution_count(),
+                    idx_runs: block_to_runs[idx].iter().cloned().collect(),
+                }
+            })
+            .sorted_by_key(|e| Reverse(e.count()))
+            .collect_vec();
 
         // write the export to blocks.json
         let blocks_json = serde_json::to_string_pretty(&export).unwrap();
@@ -259,7 +279,8 @@ fn try_generate_candidate<A: Adapter, C: Candidate<A>>(
         config.degree_bound,
         config.apc_candidates_dir_path.as_deref(),
         empirical_constraints,
-    ).ok()?;
+    )
+    .ok()?;
     let apc_with_stats = evaluate_apc::<A>(&block, vm_config.instruction_handler, apc);
     let candidate = C::create(apc_with_stats, block_exec_count);
 
@@ -270,4 +291,3 @@ fn try_generate_candidate<A: Adapter, C: Candidate<A>>(
     );
     Some(candidate)
 }
-

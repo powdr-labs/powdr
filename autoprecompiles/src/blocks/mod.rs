@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    fmt::Display,
-};
+use std::{collections::HashMap, fmt::Display};
 
 use itertools::{Either, Itertools};
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
@@ -49,7 +46,9 @@ impl<I: PcStep> Block<I> {
     pub fn pcs(&self) -> impl Iterator<Item = u64> + '_ {
         match self {
             Block::Basic(basic_block) => Either::Left(basic_block.pcs()),
-            Block::Super(super_block) => Either::Right(super_block.blocks.iter().flat_map(BasicBlock::pcs)),
+            Block::Super(super_block) => {
+                Either::Right(super_block.blocks.iter().flat_map(BasicBlock::pcs))
+            }
         }
     }
 }
@@ -250,36 +249,50 @@ pub fn generate_superblocks<I: Clone>(
         // if starting a single instruction BB (i.e., invalid for APC), end current run
         if basic_blocks[bb_idx].statements.len() <= 1 {
             if !current_run.is_empty() {
-                *execution_bb_runs.entry(std::mem::take(&mut current_run)).or_insert(0) += 1;
+                *execution_bb_runs
+                    .entry(std::mem::take(&mut current_run))
+                    .or_insert(0) += 1;
             }
             continue;
         }
         current_run.push(*pc);
     }
     if !current_run.is_empty() {
-        *execution_bb_runs.entry(std::mem::take(&mut current_run)).or_insert(0) += 1;
+        *execution_bb_runs
+            .entry(std::mem::take(&mut current_run))
+            .or_insert(0) += 1;
     }
 
     let execution_bb_runs: Vec<(Vec<u64>, u32)> = execution_bb_runs.into_iter().collect();
 
     // Find and count the ocurrences of superblocks of up to max_len in each run.
     // Concurrently, build a map from superblock to the runs it appears in.
-    let (mut block_to_runs_map, superblock_counts) = execution_bb_runs.par_iter().enumerate().map(|(run_idx, (run, run_count))| {
-        let mut run_superblock_counts = superblocks_in_run(run, max_len);
-        run_superblock_counts.values_mut().for_each(|v| *v *= run_count);
-        let block_to_run: HashMap<_, _> = run_superblock_counts.keys()
-            .map(|sblock| (sblock.clone(), vec![run_idx]))
-            .collect();
-        (block_to_run, run_superblock_counts)
-    }).reduce(||(HashMap::new(), HashMap::new()), |(mut a_runs, mut a_counts), (b_runs, b_counts)| {
-        for (sblock, count) in b_counts {
-            *a_counts.entry(sblock).or_insert(0) += count;
-        }
-        for (sblock, runs) in b_runs {
-            a_runs.entry(sblock).or_default().extend(runs);
-        }
-        (a_runs, a_counts)
-    });
+    let (mut block_to_runs_map, superblock_counts) = execution_bb_runs
+        .par_iter()
+        .enumerate()
+        .map(|(run_idx, (run, run_count))| {
+            let mut run_superblock_counts = superblocks_in_run(run, max_len);
+            run_superblock_counts
+                .values_mut()
+                .for_each(|v| *v *= run_count);
+            let block_to_run: HashMap<_, _> = run_superblock_counts
+                .keys()
+                .map(|sblock| (sblock.clone(), vec![run_idx]))
+                .collect();
+            (block_to_run, run_superblock_counts)
+        })
+        .reduce(
+            || (HashMap::new(), HashMap::new()),
+            |(mut a_runs, mut a_counts), (b_runs, b_counts)| {
+                for (sblock, count) in b_counts {
+                    *a_counts.entry(sblock).or_insert(0) += count;
+                }
+                for (sblock, runs) in b_runs {
+                    a_runs.entry(sblock).or_default().extend(runs);
+                }
+                (a_runs, a_counts)
+            },
+        );
 
     tracing::info!(
         "Found {} blocks in {} basic block runs! Took {:?}",
@@ -336,7 +349,6 @@ pub fn generate_superblocks<I: Clone>(
         super_blocks.iter().filter(|b| b.is_superblock()).count(),
     );
 
-
     ProgramBlocks {
         blocks: super_blocks,
         counts: Some(counts),
@@ -355,17 +367,18 @@ mod test {
         let max_len = 3;
         let counts = superblocks_in_run(&run, max_len);
         println!("{:?}", counts.keys().collect::<Vec<_>>());
-        assert_eq!(counts.len(),
-                   5 + // size 1
+        assert_eq!(
+            counts.len(),
+            5 + // size 1
                    6 + // size 2
-                   6   // size 3
+                   6 // size 3
         );
         assert_eq!(counts[&vec![1]], 2);
-        assert_eq!(counts[&vec![1,2]], 2);
+        assert_eq!(counts[&vec![1, 2]], 2);
         assert_eq!(counts[&vec![4]], 2);
         assert_eq!(counts[&vec![5]], 1);
-        assert_eq!(counts[&vec![4,1,2]], 1);
-        assert_eq!(counts[&vec![1,2,3]], 2);
-        assert_eq!(counts[&vec![2,3,4]], 1);
+        assert_eq!(counts[&vec![4, 1, 2]], 1);
+        assert_eq!(counts[&vec![1, 2, 3]], 2);
+        assert_eq!(counts[&vec![2, 3, 4]], 1);
     }
 }

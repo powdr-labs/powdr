@@ -33,9 +33,9 @@ use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::execution::ExecutionState;
 use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::pgo::{ApcCandidateJsonExport, Candidate};
-use powdr_autoprecompiles::VmConfig;
 use powdr_autoprecompiles::symbolic_machine::SymbolicBusInteraction;
 use powdr_autoprecompiles::PowdrConfig;
+use powdr_autoprecompiles::VmConfig;
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use serde::{Deserialize, Serialize};
 
@@ -339,7 +339,11 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
     }
 
     /// Return a JSON export of the APC candidate.
-    fn to_json_export2(&self, apc_candidates_dir_path: &Path, execution_frequency: usize) -> ApcCandidateJsonExport {
+    fn to_json_export2(
+        &self,
+        apc_candidates_dir_path: &Path,
+        execution_frequency: usize,
+    ) -> ApcCandidateJsonExport {
         let blocks = self
             .apc_with_stats
             .apc()
@@ -354,11 +358,11 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
         let statements = self
             .apc_with_stats
             .apc()
-            .block.statements().map(ToString::to_string).collect();
-        let start_pc = self
-            .apc_with_stats
-            .apc()
-            .block.pcs().next().unwrap();
+            .block
+            .statements()
+            .map(ToString::to_string)
+            .collect();
+        let start_pc = self.apc_with_stats.apc().block.pcs().next().unwrap();
 
         let cost_before = self.apc_with_stats.stats().widths.before.total();
         let cost_after = self.apc_with_stats.stats().widths.after.total();
@@ -366,9 +370,16 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
         ApcCandidateJsonExport {
             execution_frequency: execution_frequency,
             block: SuperBlock { blocks },
-            original_block: BasicBlock { start_pc, statements },
+            original_block: BasicBlock {
+                start_pc,
+                statements,
+            },
             stats: self.apc_with_stats.evaluation_result(),
-            value: execution_frequency.checked_mul(cost_before - cost_after).unwrap().checked_mul(1000).unwrap(),
+            value: execution_frequency
+                .checked_mul(cost_before - cost_after)
+                .unwrap()
+                .checked_mul(1000)
+                .unwrap(),
             width_before: self.apc_with_stats.stats().widths.before.total(),
             cost_before: cost_before as f64,
             cost_after: cost_after as f64,

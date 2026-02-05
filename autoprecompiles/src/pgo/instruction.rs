@@ -3,7 +3,11 @@ use std::{cmp::Reverse, collections::BTreeMap};
 use itertools::Itertools;
 
 use crate::{
-    EmpiricalConstraints, PowdrConfig, adapter::{Adapter, AdapterApcWithStats, AdapterProgramBlocks, AdapterVmConfig, PgoAdapter}, blocks::ProgramBlocks, execution_profile::ExecutionProfile, pgo::create_apcs_for_all_blocks
+    adapter::{Adapter, AdapterApcWithStats, AdapterProgramBlocks, AdapterVmConfig, PgoAdapter},
+    blocks::ProgramBlocks,
+    execution_profile::ExecutionProfile,
+    pgo::create_apcs_for_all_blocks,
+    EmpiricalConstraints, PowdrConfig,
 };
 
 pub struct InstructionPgo<A> {
@@ -35,11 +39,7 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
             return vec![];
         }
 
-        let ProgramBlocks {
-            blocks,
-            counts,
-            ..
-        } = blocks;
+        let ProgramBlocks { blocks, counts, .. } = blocks;
 
         tracing::info!(
             "Generating autoprecompiles with instruction PGO for {} blocks",

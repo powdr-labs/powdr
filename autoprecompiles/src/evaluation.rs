@@ -1,7 +1,8 @@
 use std::{fmt::Display, iter::Sum, ops::Add, sync::Arc};
 
 use crate::{
-    InstructionHandler, SymbolicMachine, adapter::{Adapter, AdapterApc, AdapterApcWithStats, AdapterBlock}
+    adapter::{Adapter, AdapterApc, AdapterApcWithStats, AdapterBlock},
+    InstructionHandler, SymbolicMachine,
 };
 
 use serde::{Deserialize, Serialize};
