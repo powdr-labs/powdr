@@ -19,7 +19,7 @@ type TestApc = Apc<BabyBearField, SimpleInstruction<BabyBearField>, (), ()>;
 
 /// These custom bus types are those from Openvm.
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone, Copy, Debug, derive_more::Display)]
-enum TestBusType {
+pub enum TestBusType {
     VariableRangeChecker,
     TupleRangeChecker,
     BitwiseLookup,

@@ -15,7 +15,6 @@ itertools.workspace = true
 log.workspace = true
 num-traits.workspace = true
 serde.workspace = true
-serde_cbor.workspace = true
 tracing.workspace = true
 tracing-subscriber = { version = "0.3.17", features = ["std", "env-filter"] }
 serde_json.workspace = true
