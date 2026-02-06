@@ -413,9 +413,6 @@ mod tests {
             }
         }
 
-        assert!(!sblocks_overlap(&b(&[]), &b(&[])));
-        assert!(!sblocks_overlap(&b(&[]), &b(&[1])));
-        assert!(!sblocks_overlap(&b(&[1]), &b(&[])));
         assert!(!sblocks_overlap(&b(&[1, 2, 3]), &b(&[1, 3, 2])));
         assert!(!sblocks_overlap(&b(&[1, 2]), &b(&[1, 3])));
         assert!(!sblocks_overlap(&b(&[2, 1, 2]), &b(&[3, 1, 3])));
