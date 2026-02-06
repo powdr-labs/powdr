@@ -59,7 +59,7 @@ powdr-openvm-hints-circuit.workspace = true
 indicatif = "0.18.3"
 eyre.workspace = true
 serde.workspace = true
-derive_more = { version = "2.0.1", default-features = false, features = ["from"] }
+derive_more.workspace = true
 itertools.workspace = true
 
 tracing.workspace = true
