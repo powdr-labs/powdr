@@ -1,6 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashSet},
-    sync::{Arc, Mutex},
+    collections::{BTreeMap, HashSet}, sync::{Arc, Mutex}
 };
 
 use cluster::{evaluate_clusters_seeded, select_from_cluster_evaluation};
@@ -314,7 +313,41 @@ pub fn permutation_seeds(sorted_candidates: &[usize], pool_sizes: &[usize]) -> V
         .collect()
 }
 
-pub fn select_from_clusters(
+
+pub fn prune_seeds(
+    seeds: Vec<Vec<usize>>,
+    blocks: &[BlockCandidate],
+    keep: usize,
+) -> Vec<Vec<usize>> {
+    // Quick heuristic: sum of values divided by total cost
+    let mut scored_seeds: Vec<_> = seeds.into_iter()
+        .map(|seed| {
+            let total_value: usize = seed.iter().map(|idx| blocks[*idx].value()).sum();
+            let total_cost: usize = seed.iter().map(|idx| blocks[*idx].cost()).sum();
+            let score = total_value as f64 / total_cost as f64;
+            (score, seed)
+        })
+        .collect();
+
+    scored_seeds.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+
+    scored_seeds.into_iter()
+        .take(keep)
+        .map(|(_, seed)| seed)
+        .collect()
+}
+
+// just for debugging
+pub fn log_seeds(seeds: &[Vec<usize>]) {
+    tracing::debug!("generated {} seeds:", seeds.len());
+    // group by len and count
+    let by_len = seeds.into_iter().into_group_map_by(|s| s.len()).into_iter().sorted_by_key(|(len, _)| *len);
+    for (len, group) in by_len {
+        tracing::debug!("\t{} seeds of length {}", group.len(), len);
+    }
+}
+
+pub fn select_from_clusters_seeded(
     blocks: Vec<BlockCandidate>,
     pool_sizes: &[usize],
     max_cost: Option<usize>,
@@ -349,7 +382,7 @@ pub fn select_from_clusters(
     sel
 }
 
-pub fn select_blocks_greedy_seeded(
+pub fn select_blocks_seeded(
     blocks: Vec<BlockCandidate>,
     max_cost: Option<usize>,
     max_selected: Option<usize>,
