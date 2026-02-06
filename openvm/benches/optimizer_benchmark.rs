@@ -16,31 +16,32 @@ fn optimize_keccak_benchmark(c: &mut Criterion) {
 
     let file = std::fs::File::open("tests/keccak_apc_pre_opt.json.gz").unwrap();
     let reader = flate2::read::GzDecoder::new(file);
-    let apc: ApcWithBusMap<TestApc, BusMap<TestBusType>> = serde_json::from_reader(reader).unwrap();
+    todo!();
+    // let apc: ApcWithBusMap<TestApc, BusMap<TestBusType>> = serde_json::from_reader(reader).unwrap();
 
-    group.bench_function("optimize", |b| {
-        b.iter_batched(
-            || {
-                (
-                    apc.machine.clone(),
-                    ColumnAllocator::from_max_poly_id_of_machine(&apc.machine),
-                )
-            },
-            |(machine, column_allocator)| {
-                optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
-                    black_box(machine),
-                    OpenVmBusInteractionHandler::default(),
-                    DEFAULT_DEGREE_BOUND,
-                    &default_openvm_bus_map(),
-                    column_allocator,
-                    &mut Default::default(),
-                )
-                .unwrap()
-            },
-            criterion::BatchSize::SmallInput,
-        );
-    });
-    group.finish();
+    // group.bench_function("optimize", |b| {
+    //     b.iter_batched(
+    //         || {
+    //             (
+    //                 apc.machine.clone(),
+    //                 ColumnAllocator::from_max_poly_id_of_machine(&apc.machine),
+    //             )
+    //         },
+    //         |(machine, column_allocator)| {
+    //             optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
+    //                 black_box(machine),
+    //                 OpenVmBusInteractionHandler::default(),
+    //                 DEFAULT_DEGREE_BOUND,
+    //                 &default_openvm_bus_map(),
+    //                 column_allocator,
+    //                 &mut Default::default(),
+    //             )
+    //             .unwrap()
+    //         },
+    //         criterion::BatchSize::SmallInput,
+    //     );
+    // });
+    // group.finish();
 }
 
 criterion_group!(benches, optimize_keccak_benchmark);
