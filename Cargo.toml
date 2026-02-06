@@ -96,7 +96,7 @@ openvm-cuda-common = { git = "https://github.com/powdr-labs/stark-backend.git", 
 # external dependencies
 num-traits = "0.2.19"
 itertools = "0.14"
-derive_more = "0.99.17"
+derive_more = { version = "2", features = ["full"] }
 log = "0.4.27"
 serde = "1.0.228"
 tracing = "0.1.40"

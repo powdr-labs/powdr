@@ -154,7 +154,8 @@ jobs:
           # The APC candidates would be the same for all runs, so just keep the last one
           mv apcs/apc_candidates.json $RES_DIR/apc_candidates.json
 
-          python ../openvm/scripts/basic_metrics.py --csv $RES_DIR/apc000.json $RES_DIR/apc003.json $RES_DIR/apc010.json $RES_DIR/apc030.json $RES_DIR/apc100.json > $RES_DIR/basic_metrics.csv
+          python ../openvm/scripts/basic_metrics.py summary-table --csv $RES_DIR/apc000.json $RES_DIR/apc003.json $RES_DIR/apc010.json $RES_DIR/apc030.json $RES_DIR/apc100.json > $RES_DIR/basic_metrics.csv
+          python ../openvm/scripts/basic_metrics.py plot $RES_DIR/apc000.json $RES_DIR/apc003.json $RES_DIR/apc010.json $RES_DIR/apc030.json $RES_DIR/apc100.json -o $RES_DIR/proof_time_breakdown.png
           python ../autoprecompiles/scripts/plot_effectiveness.py $RES_DIR/apc_candidates.json --output $RES_DIR/effectiveness.png
 
           mv $RES_DIR ../results/
@@ -183,6 +184,112 @@ jobs:
           external_repository: powdr-labs/bench-results
           publish_dir: ./results
           destination_dir: results/${{ steps.date.outputs.value }}/
+          keep_files: true
+          enable_jekyll: true
+
+  test_apc_gpu:
+    runs-on: [self-hosted, GPU]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: ⚡ Cache rust
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-apc-gpu-${{ hashFiles('**/Cargo.toml') }}
+
+      - name: Install cargo openvm
+        # Rust 1.90 is needed by fresher versions of dependencies of cargo-openvm.
+        run: |
+          rustup toolchain install 1.90
+          cargo +1.90 install --git 'http://github.com/powdr-labs/openvm.git' --tag "v1.4.2-powdr-rc.1" cargo-openvm
+
+      - name: Setup python venv
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install -r openvm/scripts/requirements.txt
+          pip install -r autoprecompiles/scripts/requirements.txt
+
+      - name: Remove old results if present
+        run: |
+          rm -rf results
+          mkdir -p results
+
+      - name: Patch benchmark
+        uses: ./.github/actions/patch-openvm-reth-benchmark
+
+      - name: Run reth benchmark (GPU)
+        run: |
+          source .venv/bin/activate
+          cd openvm-reth-benchmark
+          RES_DIR=reth_gpu
+          mkdir -p $RES_DIR
+          echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
+
+          # prove with no APCs
+          ./run.sh --cuda --apc 0 --mode prove-stark || exit 1
+          # remove apc cache to not interfere with the next runs
+          rm -rf apc-cache
+          echo "Finished proving with no APCs"
+          mv metrics.json $RES_DIR/apc000.json
+          python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc000.png $RES_DIR/apc000.json > $RES_DIR/trace_cells_apc000.txt
+
+          # prove with 10 APCs
+          ./run.sh --cuda --apc 10 --mode prove-stark || exit 1
+          # remove apc cache to not interfere with the next runs
+          rm -rf apc-cache
+          echo "Finished proving with 10 APCs"
+          mv metrics.json $RES_DIR/apc010.json
+          python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc010.png $RES_DIR/apc010.json > $RES_DIR/trace_cells_apc010.txt
+
+          # prove with 30 APCs
+          ./run.sh --cuda --apc 30 --mode prove-stark || exit 1
+          # remove apc cache to not interfere with the next runs
+          rm -rf apc-cache
+          echo "Finished proving with 30 APCs"
+          mv metrics.json $RES_DIR/apc030.json
+          python ../openvm/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc030.png $RES_DIR/apc030.json > $RES_DIR/trace_cells_apc030.txt
+
+          # The APC candidates would be the same for all runs, so just keep the last one
+          mv apcs/apc_candidates.json $RES_DIR/apc_candidates.json
+
+          python ../openvm/scripts/basic_metrics.py summary-table --csv $RES_DIR/apc000.json $RES_DIR/apc010.json $RES_DIR/apc030.json > $RES_DIR/basic_metrics.csv
+          python ../openvm/scripts/basic_metrics.py plot $RES_DIR/apc000.json $RES_DIR/apc010.json $RES_DIR/apc030.json -o $RES_DIR/proof_time_breakdown.png
+          python ../autoprecompiles/scripts/plot_effectiveness.py $RES_DIR/apc_candidates.json --output $RES_DIR/effectiveness.png
+
+          mv $RES_DIR ../results/
+
+      - name: Save revisions and run info
+        run: |
+          echo "openvm-reth-benchmark: $(git -C openvm-reth-benchmark rev-parse HEAD)" > results/run.txt
+          echo "powdr: $(git rev-parse HEAD)" >> results/run.txt
+          echo "run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" >> results/run.txt
+
+      - name: upload result artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results-gpu
+          path: |
+            results/*
+
+      - name: get the date/time
+        id: date
+        run: echo "value=$(date +'%Y-%m-%d-%H%M')" >> $GITHUB_OUTPUT
+
+      - name: commit to bench results
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          personal_token: ${{ secrets.BENCH_RESULTS_TOKEN }}
+          external_repository: powdr-labs/bench-results
+          publish_dir: ./results
+          destination_dir: results/${{ steps.date.outputs.value }}-gpu/
           keep_files: true
           enable_jekyll: true
 
