@@ -3,6 +3,7 @@ use std::hash::Hash;
 use std::{collections::BTreeMap, fmt::Display};
 
 use itertools::Itertools;
+use powdr_constraint_solver::constraint_system::BusInteractionHandler;
 use powdr_constraint_solver::grouped_expression::GroupedExpression;
 use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
 use powdr_constraint_solver::inliner::{self, inline_everything_below_degree_bound};
@@ -10,14 +11,15 @@ use powdr_constraint_solver::rule_based_optimizer::rule_based_optimization;
 use powdr_constraint_solver::solver::new_solver;
 use powdr_number::FieldElement;
 
-use crate::constraint_optimizer::trivial_simplifications;
-use crate::range_constraint_optimizer::optimize_range_constraints;
+use crate::constraint_optimizer::{trivial_simplifications, IsBusStateful};
+use crate::export::ExportOptions;
+use crate::memory_optimizer::MemoryBusInteraction;
+use crate::range_constraint_optimizer::{optimize_range_constraints, RangeConstraintHandler};
 use crate::symbolic_machine::{
     constraint_system_to_symbolic_machine, symbolic_machine_to_constraint_system,
 };
 use crate::ColumnAllocator;
 use crate::{
-    adapter::Adapter,
     constraint_optimizer::optimize_constraints,
     expression::{AlgebraicExpression, AlgebraicReference},
     expression_conversion::{algebraic_to_grouped_expression, grouped_expression_to_algebraic},
@@ -29,19 +31,28 @@ use crate::{
 /// Optimizes a given symbolic machine and returns an equivalent, but "simpler" one.
 /// All constraints in the returned machine will respect the given degree bound.
 /// New variables may be introduced in the process.
-pub fn optimize<A: Adapter>(
-    mut machine: SymbolicMachine<A::PowdrField>,
-    bus_interaction_handler: A::BusInteractionHandler,
+pub fn optimize<T, B, BusTypes, MemoryBus>(
+    mut machine: SymbolicMachine<T>,
+    bus_interaction_handler: B,
     degree_bound: DegreeBound,
-    bus_map: &BusMap<A::CustomBusTypes>,
+    bus_map: &BusMap<BusTypes>,
     mut column_allocator: ColumnAllocator,
-) -> Result<(SymbolicMachine<A::PowdrField>, ColumnAllocator), crate::constraint_optimizer::Error> {
+    export_options: &mut ExportOptions,
+) -> Result<(SymbolicMachine<T>, ColumnAllocator), crate::constraint_optimizer::Error>
+where
+    T: FieldElement,
+    B: BusInteractionHandler<T> + IsBusStateful<T> + RangeConstraintHandler<T> + Clone,
+    BusTypes: PartialEq + Eq + Clone + Display,
+    MemoryBus: MemoryBusInteraction<T, AlgebraicReference>,
+{
     let mut stats_logger = StatsLogger::start(&machine);
 
     if let Some(exec_bus_id) = bus_map.get_bus_id(&BusType::ExecutionBridge) {
         machine = optimize_exec_bus(machine, exec_bus_id);
         stats_logger.log("exec bus optimization", &machine);
     }
+
+    export_options.export_optimizer_outer(&machine, "exec_bus");
 
     let mut new_var = |name: &str| {
         let id = column_allocator.issue_next_poly_id();
@@ -70,6 +81,7 @@ pub fn optimize<A: Adapter>(
     //     None,
     // )
     // .0;
+    // export_options.export_optimizer_outer(&machine, "02_rule_based_optimization");
     stats_logger.log("rule-based optimization", &constraint_system);
 
     let mut solver = new_solver(
@@ -78,8 +90,10 @@ pub fn optimize<A: Adapter>(
     );
     stats_logger.log("constructing the solver", &constraint_system);
     loop {
+        export_options
+            .export_optimizer_outer_constraint_system(constraint_system.system(), "loop_iteration");
         let stats = stats_logger::Stats::from(&constraint_system);
-        constraint_system = optimize_constraints::<_, _, A::MemoryBusInteraction<_>>(
+        constraint_system = optimize_constraints::<_, _, MemoryBus>(
             constraint_system,
             &mut solver,
             bus_interaction_handler.clone(),
@@ -87,6 +101,7 @@ pub fn optimize<A: Adapter>(
             bus_map.get_bus_id(&BusType::Memory),
             degree_bound,
             &mut new_var,
+            export_options,
         )?
         .into();
         if stats == stats_logger::Stats::from(&constraint_system) {
@@ -99,6 +114,7 @@ pub fn optimize<A: Adapter>(
         inline_everything_below_degree_bound(degree_bound),
     );
     stats_logger.log("inlining", &constraint_system);
+    export_options.export_optimizer_outer_constraint_system(constraint_system.system(), "inlining");
 
     let (constraint_system, _) = rule_based_optimization(
         constraint_system,
@@ -107,6 +123,8 @@ pub fn optimize<A: Adapter>(
         &mut new_var,
         Some(degree_bound),
     );
+    export_options
+        .export_optimizer_outer_constraint_system(constraint_system.system(), "rule_based");
     // Note that the rest of the optimization does not benefit from optimizing range constraints,
     // so we only do it once at the end.
     let constraint_system = optimize_range_constraints(
@@ -115,6 +133,8 @@ pub fn optimize<A: Adapter>(
         degree_bound,
     );
     stats_logger.log("optimizing range constraints", &constraint_system);
+    export_options
+        .export_optimizer_outer_constraint_system(&constraint_system, "range_constraints");
 
     let constraint_system = trivial_simplifications(
         constraint_system.into(),
@@ -123,6 +143,7 @@ pub fn optimize<A: Adapter>(
     )
     .system()
     .clone();
+    export_options.export_optimizer_outer_constraint_system(&constraint_system, "trivial_simp");
 
     // Sanity check: Degree bound should be respected:
     for algebraic_constraint in &constraint_system.algebraic_constraints {
@@ -150,8 +171,7 @@ pub fn optimize<A: Adapter>(
         !constraint_system
             .bus_interactions
             .iter()
-            .any(|b| b.bus_id
-                == GroupedExpression::from_number(A::PowdrField::from(pc_lookup_bus_id))),
+            .any(|b| b.bus_id == GroupedExpression::from_number(T::from(pc_lookup_bus_id))),
         "Expected all PC lookups to be removed."
     );
     Ok((

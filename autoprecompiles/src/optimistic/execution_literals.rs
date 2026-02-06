@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use crate::export::ExportOptions;
 use crate::memory_optimizer::MemoryBusInteraction;
 use crate::symbolic_machine::{
     symbolic_bus_interaction_to_bus_interaction, SymbolicBusInteraction,
@@ -73,13 +74,14 @@ fn extract_concrete_memory_accesses<A: Adapter>(
     // Note that the optimizer would still remove some memory accesses, if the instruction
     // accesses the same register multiple times.
     let dummy_column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&symbolic_machine);
-    let (symbolic_machine, _) = optimize::<A>(
+    let (symbolic_machine, _) = optimize::<_, _, _, A::MemoryBusInteraction<_>>(
         symbolic_machine.clone(),
         vm_config.bus_interaction_handler.clone(),
         *degree_bound,
         &vm_config.bus_map,
         // The optimizer might introduce new columns, but we'll discard later.
         dummy_column_allocator,
+        &mut ExportOptions::default(),
     )
     .unwrap();
 
