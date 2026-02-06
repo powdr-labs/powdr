@@ -30,7 +30,6 @@ derivative.workspace = true
 expect-test = "1.5.1"
 flate2 = "1.1.2"
 powdr-openvm-bus-interaction-handler.workspace = true
-pretty_assertions.workspace = true
 test-log.workspace = true
 criterion = { version = "0.4", features = ["html_reports"] }
 
