@@ -32,6 +32,7 @@ flate2 = "1.1.2"
 powdr-openvm-bus-interaction-handler.workspace = true
 pretty_assertions.workspace = true
 test-log.workspace = true
+criterion = { version = "0.4", features = ["html_reports"] }
 
 [package.metadata.cargo-udeps.ignore]
 development = ["env_logger"]
@@ -41,3 +42,7 @@ workspace = true
 
 [lib]
 bench = false # See https://github.com/bheisler/criterion.rs/issues/458
+
+[[bench]]
+name = "optimizer_benchmark"
+harness = false
