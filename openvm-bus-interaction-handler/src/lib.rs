@@ -30,6 +30,7 @@ use crate::{
 mod bitwise_lookup;
 pub mod bus_map;
 mod memory;
+pub mod memory_bus_interaction;
 mod tuple_range_checker;
 mod variable_range_checker;
 

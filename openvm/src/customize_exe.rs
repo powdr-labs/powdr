@@ -9,7 +9,6 @@ use std::sync::Arc;
 use crate::bus_map::OpenVmBusType;
 use crate::extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs, OriginalVmConfig};
 use crate::instruction_formatter::openvm_instruction_formatter;
-use crate::memory_bus_interaction::{OpenVmMemoryBusInteraction, REGISTER_ADDRESS_SPACE};
 use crate::powdr_extension::chip::PowdrAir;
 use crate::program::Prog;
 use crate::utils::UnsupportedOpenVmReferenceError;
@@ -46,7 +45,10 @@ use crate::{
     utils::symbolic_to_algebraic,
 };
 
-pub use powdr_openvm_bus_interaction_handler::OpenVmBusInteractionHandler;
+pub use powdr_openvm_bus_interaction_handler::{
+    memory_bus_interaction::{OpenVmMemoryBusInteraction, REGISTER_ADDRESS_SPACE},
+    OpenVmBusInteractionHandler,
+};
 
 pub const POWDR_OPCODE: usize = 0x10ff;
 

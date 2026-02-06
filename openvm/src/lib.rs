@@ -147,7 +147,6 @@ pub use customize_exe::{customize, BabyBearOpenVmApcAdapter, Instr, POWDR_OPCODE
 mod powdr_extension;
 
 pub mod instruction_formatter;
-pub mod memory_bus_interaction;
 
 /// A custom VmConfig that wraps the SdkVmConfig, adding our custom extension.
 #[derive(Serialize, Deserialize, Clone)]
