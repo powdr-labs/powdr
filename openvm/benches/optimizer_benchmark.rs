@@ -5,7 +5,8 @@ use powdr_autoprecompiles::{
 };
 use powdr_number::BabyBearField;
 use powdr_openvm::{
-    bus_map::default_openvm_bus_map, memory_bus_interaction::OpenVmMemoryBusInteraction, DEFAULT_DEGREE_BOUND,
+    bus_map::default_openvm_bus_map, memory_bus_interaction::OpenVmMemoryBusInteraction,
+    DEFAULT_DEGREE_BOUND,
 };
 use powdr_openvm_bus_interaction_handler::OpenVmBusInteractionHandler;
 
