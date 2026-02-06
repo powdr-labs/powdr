@@ -52,6 +52,7 @@ powdr-number.workspace = true
 powdr-riscv-elf.workspace = true
 powdr-autoprecompiles.workspace = true
 powdr-constraint-solver.workspace = true
+powdr-openvm-bus-interaction-handler.workspace = true
 
 powdr-openvm-hints-transpiler.workspace = true
 powdr-openvm-hints-circuit.workspace = true

@@ -41,11 +41,12 @@ use powdr_autoprecompiles::{InstructionHandler, VmConfig};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use serde::{Deserialize, Serialize};
 
-use crate::bus_interaction_handler::OpenVmBusInteractionHandler;
 use crate::{
     powdr_extension::{PowdrOpcode, PowdrPrecompile},
     utils::symbolic_to_algebraic,
 };
+
+pub use powdr_openvm_bus_interaction_handler::OpenVmBusInteractionHandler;
 
 pub const POWDR_OPCODE: usize = 0x10ff;
 
