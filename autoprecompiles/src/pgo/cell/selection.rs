@@ -1,11 +1,12 @@
 use std::{
-    collections::{BTreeMap, HashSet}, sync::{Arc, Mutex}
+    collections::{BTreeMap, HashMap, HashSet},
+    sync::{Arc, Mutex},
 };
 
 use cluster::{evaluate_clusters_seeded, select_from_cluster_evaluation};
 use itertools::Itertools;
 use priority_queue::PriorityQueue;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 use crate::adapter::{Adapter, AdapterProgramBlocks};
@@ -957,6 +958,158 @@ pub fn select_apc_candidates_greedy_by_size<A: Adapter, C: Candidate<A>>(
         .collect()
 }
 
+/// For each block `a`, returns a list of container indices `s_idx` where `s` is a
+/// strictly larger block whose `bbs` contain `a.bbs` as a contiguous subsequence.
+fn build_containment_map(blocks: &[BlockCandidate]) -> Vec<Vec<usize>> {
+    let mut map: Vec<Vec<usize>> = vec![vec![]; blocks.len()];
+    for (a_idx, a) in blocks.iter().enumerate() {
+        for (s_idx, s) in blocks.iter().enumerate() {
+            if s.bbs.len() <= a.bbs.len() {
+                continue;
+            }
+            // Pre-filter: skip if they share no runs
+            if a.idx_runs.is_disjoint(&s.idx_runs) {
+                continue;
+            }
+            if s.bbs.windows(a.bbs.len()).any(|w| w == a.bbs.as_slice()) {
+                map[a_idx].push(s_idx);
+            }
+        }
+    }
+    map
+}
+
+/// Maps each `bbs` sequence to its block index for O(1) remainder lookup.
+fn build_bbs_index(blocks: &[BlockCandidate]) -> HashMap<Vec<u64>, usize> {
+    blocks
+        .iter()
+        .enumerate()
+        .map(|(idx, b)| (b.bbs.clone(), idx))
+        .collect()
+}
+
+/// Computes the static regret penalty for each block.
+/// For each block A contained in superblock S, the synergy lost by picking A
+/// instead of S is: S.vpr - A.vpr - remainder_parts.vpr
+/// The penalty is S.count() * synergy, taken as the max over all containers.
+fn compute_regret_penalties(
+    blocks: &[BlockCandidate],
+    containment_map: &[Vec<usize>],
+    bbs_index: &HashMap<Vec<u64>, usize>,
+) -> Vec<usize> {
+    blocks
+        .par_iter()
+        .enumerate()
+        .map(|(a_idx, a)| {
+            let mut max_penalty: usize = 0;
+            for &s_idx in &containment_map[a_idx] {
+                let s = &blocks[s_idx];
+                // Find where A appears in S and compute remainder value
+                for (pos, window) in s.bbs.windows(a.bbs.len()).enumerate() {
+                    if window != a.bbs.as_slice() {
+                        continue;
+                    }
+                    let prefix = &s.bbs[..pos];
+                    let suffix = &s.bbs[pos + a.bbs.len()..];
+
+                    let prefix_vpr = if prefix.is_empty() {
+                        0
+                    } else {
+                        bbs_index.get(prefix).map(|i| blocks[*i].value_per_row()).unwrap_or(0)
+                    };
+                    let suffix_vpr = if suffix.is_empty() {
+                        0
+                    } else {
+                        bbs_index.get(suffix).map(|i| blocks[*i].value_per_row()).unwrap_or(0)
+                    };
+
+                    let parts_vpr = a.value_per_row() + prefix_vpr + suffix_vpr;
+                    if s.value_per_row() > parts_vpr {
+                        let synergy_per_row = s.value_per_row() - parts_vpr;
+                        let penalty = (s.count() as usize).saturating_mul(synergy_per_row);
+                        max_penalty = max_penalty.max(penalty);
+                    }
+                }
+            }
+            max_penalty
+        })
+        .collect()
+}
+
+fn regret_priority(block: &BlockCandidate, penalty: usize) -> Priority {
+    let adjusted_value = block.value().saturating_sub(penalty);
+    Priority {
+        value: adjusted_value,
+        cost: block.cost(),
+        tie: block.bbs[0],
+    }
+}
+
+/// Greedy selection with regret-based priority adjustment.
+/// Same signature as `select_blocks_greedy`.
+pub fn select_blocks_greedy_with_regret(
+    mut blocks: Vec<BlockCandidate>,
+    max_cost: Option<usize>,
+    max_selected: Option<usize>,
+    execution_bb_runs: &[(Vec<u64>, u32)],
+    _skip: usize,
+) -> Vec<(usize, u32)> {
+    let containment_map = build_containment_map(&blocks);
+    let bbs_index = build_bbs_index(&blocks);
+    let penalties = compute_regret_penalties(&blocks, &containment_map, &bbs_index);
+
+    let mut by_priority: PriorityQueue<_, _> = blocks
+        .iter()
+        .enumerate()
+        .map(|(idx, block)| (idx, regret_priority(block, penalties[idx])))
+        .collect();
+
+    let mut selected = vec![];
+    let mut cumulative_cost = 0;
+    let mut execution_bb_runs: Vec<_> = execution_bb_runs.to_vec();
+    let mut examined_candidates = 0;
+    let total_candidates = by_priority.len();
+
+    let start = std::time::Instant::now();
+    while let Some((idx, _prio)) = by_priority.pop() {
+        let c = &mut blocks[idx];
+        tracing::trace!(
+            "examining {examined_candidates} of {total_candidates} - {:?}...",
+            c.bbs()
+        );
+        examined_candidates += 1;
+
+        if let Some(budget) = max_cost {
+            if cumulative_cost + c.cost() > budget {
+                continue;
+            }
+        }
+
+        let (count, new_execution) = count_and_update_execution(c, &execution_bb_runs);
+        if count == 0 {
+            continue;
+        } else if count < c.count() {
+            c.set_count(count);
+            by_priority.push(idx, regret_priority(c, penalties[idx]));
+            continue;
+        }
+
+        tracing::trace!("\tcandidate selected!");
+        cumulative_cost += c.cost();
+        execution_bb_runs = new_execution;
+        selected.push((idx, count));
+
+        if let Some(max_selected) = max_selected {
+            if selected.len() >= max_selected {
+                break;
+            }
+        }
+    }
+    tracing::debug!("APC regret selection took {:?}", start.elapsed());
+
+    selected
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -1003,5 +1156,104 @@ mod test {
                 ],
             )
         );
+    }
+
+    fn make_block(bbs: Vec<u64>, cost_before: usize, cost_after: usize, count: u32, idx_runs: HashSet<usize>) -> BlockCandidate {
+        BlockCandidate {
+            bbs,
+            cost_before,
+            cost_after,
+            execution_count: count,
+            idx_runs,
+        }
+    }
+
+    #[test]
+    fn test_build_containment_map() {
+        let blocks = vec![
+            make_block(vec![1, 2], 10, 5, 10, [0, 1].into()),       // 0: A
+            make_block(vec![3], 8, 4, 10, [0].into()),               // 1: B
+            make_block(vec![1, 2, 3], 20, 8, 10, [0].into()),       // 2: S = [1,2,3]
+        ];
+        let cmap = build_containment_map(&blocks);
+        // A=[1,2] is contained in S=[1,2,3]
+        assert_eq!(cmap[0], vec![2]);
+        // B=[3] is contained in S=[1,2,3]
+        assert_eq!(cmap[1], vec![2]);
+        // S is not contained in anything
+        assert!(cmap[2].is_empty());
+    }
+
+    #[test]
+    fn test_compute_regret_penalties() {
+        // A=[1,2] value_per_row=5, B=[3] value_per_row=4, S=[1,2,3] value_per_row=12
+        let blocks = vec![
+            make_block(vec![1, 2], 10, 5, 100, [0, 1].into()),
+            make_block(vec![3], 8, 4, 100, [0].into()),
+            make_block(vec![1, 2, 3], 20, 8, 100, [0].into()),
+        ];
+        let cmap = build_containment_map(&blocks);
+        let bbs_index = build_bbs_index(&blocks);
+        let penalties = compute_regret_penalties(&blocks, &cmap, &bbs_index);
+
+        // For A: S.vpr(12) - A.vpr(5) - suffix_B.vpr(4) = 3, penalty = 100 * 3 = 300
+        assert_eq!(penalties[0], 300);
+        // For B: S.vpr(12) - B.vpr(4) - prefix_A.vpr(5) = 3, penalty = 100 * 3 = 300
+        assert_eq!(penalties[1], 300);
+        // S has no containers
+        assert_eq!(penalties[2], 0);
+    }
+
+    #[test]
+    fn test_regret_selection_prefers_superblock() {
+        // From the plan example:
+        // A=[1,2] (value_per_row=4000-20=3980? no, cost_before-cost_after)
+        // Let's use: A=[1,2] cost_before=40, cost_after=20 => vpr=20
+        //            B=[3]   cost_before=30, cost_after=15 => vpr=15
+        //            S=[1,2,3] cost_before=50, cost_after=25 => vpr=25
+        // With count=100 each, run = [1,2,3] repeated 100 times
+        let run: Vec<u64> = (0..100).flat_map(|_| vec![1, 2, 3]).collect();
+        let execution = vec![(run, 1u32)];
+
+        let blocks = vec![
+            make_block(vec![1, 2], 40, 20, 100, [0].into()),
+            make_block(vec![3], 30, 15, 100, [0].into()),
+            make_block(vec![1, 2, 3], 50, 25, 100, [0].into()),
+        ];
+
+        // Without regret: greedy picks by value/cost density
+        let selected_plain = select_blocks_greedy(
+            blocks.clone(), None, None, &execution, 0,
+        );
+        let (savings_plain, _cost_plain) = savings_and_cost(&blocks, &selected_plain);
+
+        // With regret
+        let selected_regret = select_blocks_greedy_with_regret(
+            blocks.clone(), None, None, &execution, 0,
+        );
+        let (savings_regret, _cost_regret) = savings_and_cost(&blocks, &selected_regret);
+
+        // Regret should do at least as well as plain greedy
+        assert!(
+            savings_regret >= savings_plain,
+            "regret savings ({savings_regret}) should be >= plain savings ({savings_plain})"
+        );
+    }
+
+    #[test]
+    fn test_regret_no_containment() {
+        // When there's no containment, regret selection should behave like plain greedy
+        let execution = vec![(vec![1, 2, 3, 4], 10u32)];
+        let blocks = vec![
+            make_block(vec![1, 2], 20, 10, 10, [0].into()),
+            make_block(vec![3, 4], 20, 10, 10, [0].into()),
+        ];
+
+        let selected_plain = select_blocks_greedy(blocks.clone(), None, None, &execution, 0);
+        let selected_regret = select_blocks_greedy_with_regret(blocks.clone(), None, None, &execution, 0);
+
+        let (savings_plain, _) = savings_and_cost(&blocks, &selected_plain);
+        let (savings_regret, _) = savings_and_cost(&blocks, &selected_regret);
+        assert_eq!(savings_plain, savings_regret);
     }
 }
