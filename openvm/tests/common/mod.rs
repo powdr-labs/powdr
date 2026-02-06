@@ -25,11 +25,11 @@ pub mod apc_builder_utils {
     use powdr_autoprecompiles::evaluation::evaluate_apc;
     use powdr_autoprecompiles::{build, VmConfig};
     use powdr_number::BabyBearField;
-    use powdr_openvm::bus_interaction_handler::OpenVmBusInteractionHandler;
     use powdr_openvm::instruction_formatter::openvm_instruction_formatter;
     use powdr_openvm::BabyBearOpenVmApcAdapter;
     use powdr_openvm::Instr;
     use powdr_openvm::DEFAULT_DEGREE_BOUND;
+    use powdr_openvm_bus_interaction_handler::OpenVmBusInteractionHandler;
     use pretty_assertions::assert_eq;
     use std::fs;
     use std::path::Path;

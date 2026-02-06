@@ -4,9 +4,9 @@ use powdr_autoprecompiles::{
 };
 use powdr_number::BabyBearField;
 use powdr_openvm::{
-    bus_interaction_handler::OpenVmBusInteractionHandler, bus_map::default_openvm_bus_map,
-    BabyBearOpenVmApcAdapter, DEFAULT_DEGREE_BOUND,
+    bus_map::default_openvm_bus_map, BabyBearOpenVmApcAdapter, DEFAULT_DEGREE_BOUND,
 };
+use powdr_openvm_bus_interaction_handler::OpenVmBusInteractionHandler;
 
 /// Benching the `test_optimize` test
 fn optimize_keccak_benchmark(c: &mut Criterion) {

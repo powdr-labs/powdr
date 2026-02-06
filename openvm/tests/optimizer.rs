@@ -5,14 +5,12 @@ use powdr_autoprecompiles::symbolic_machine::SymbolicMachine;
 use powdr_autoprecompiles::ColumnAllocator;
 use powdr_number::BabyBearField;
 use powdr_openvm::bus_map::{
-    OpenVmBusType, DEFAULT_BITWISE_LOOKUP, DEFAULT_EXECUTION_BRIDGE, DEFAULT_MEMORY,
-    DEFAULT_PC_LOOKUP, DEFAULT_VARIABLE_RANGE_CHECKER,
-};
-use powdr_openvm::{
-    bus_interaction_handler::OpenVmBusInteractionHandler, bus_map::default_openvm_bus_map,
+    default_openvm_bus_map, OpenVmBusType, DEFAULT_BITWISE_LOOKUP, DEFAULT_EXECUTION_BRIDGE,
+    DEFAULT_MEMORY, DEFAULT_PC_LOOKUP, DEFAULT_VARIABLE_RANGE_CHECKER,
 };
 use powdr_openvm::{BabyBearOpenVmApcAdapter, BusType, DEFAULT_DEGREE_BOUND};
 
+use powdr_openvm_bus_interaction_handler::OpenVmBusInteractionHandler;
 use test_log::test;
 
 #[test]

@@ -3,7 +3,6 @@ use std::fmt::Display;
 use bitwise_lookup::handle_bitwise_lookup;
 use itertools::Itertools;
 use memory::handle_memory;
-use openvm_rv32im_circuit::Rv32M;
 use powdr_autoprecompiles::{
     bus_map::BusType,
     constraint_optimizer::IsBusStateful,
@@ -22,16 +21,16 @@ use std::hash::Hash;
 use variable_range_checker::handle_variable_range_checker;
 
 use crate::{
-    bus_interaction_handler::{
-        bitwise_lookup::bitwise_lookup_pure_range_constraints,
-        tuple_range_checker::TupleRangeCheckerHandler,
-        variable_range_checker::variable_range_checker_pure_range_constraints,
-    },
+    bitwise_lookup::bitwise_lookup_pure_range_constraints,
     bus_map::{default_openvm_bus_map, BusMap, OpenVmBusType},
+    tuple_range_checker::TupleRangeCheckerHandler,
+    variable_range_checker::variable_range_checker_pure_range_constraints,
 };
 
 mod bitwise_lookup;
+pub mod bus_map;
 mod memory;
+pub mod memory_bus_interaction;
 mod tuple_range_checker;
 mod variable_range_checker;
 
@@ -42,12 +41,12 @@ pub struct OpenVmBusInteractionHandler<T: FieldElement> {
     _phantom: std::marker::PhantomData<T>,
 }
 
+/// Taken from openvm implementation, should be kept in sync.
+const DEFAULT_RANGE_TUPLE_CHECKER_SIZES: [u32; 2] = [1 << 8, 8 * (1 << 8)];
+
 impl<T: FieldElement> Default for OpenVmBusInteractionHandler<T> {
     fn default() -> Self {
-        Self::new(
-            default_openvm_bus_map(),
-            Rv32M::default().range_tuple_checker_sizes,
-        )
+        Self::new(default_openvm_bus_map(), DEFAULT_RANGE_TUPLE_CHECKER_SIZES)
     }
 }
 
@@ -274,9 +273,5 @@ mod test_utils {
 
     pub fn range(start: u64, end: u64) -> RangeConstraint<BabyBearField> {
         RangeConstraint::from_range(BabyBearField::from(start), BabyBearField::from(end))
-    }
-
-    pub fn default() -> RangeConstraint<BabyBearField> {
-        RangeConstraint::default()
     }
 }
