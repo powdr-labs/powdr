@@ -5,7 +5,6 @@ use powdr_autoprecompiles::optimizer::optimize;
 use powdr_autoprecompiles::symbolic_machine::SymbolicMachine;
 use powdr_autoprecompiles::{Apc, ColumnAllocator, DegreeBound};
 use powdr_number::BabyBearField;
-
 use powdr_openvm_bus_interaction_handler::memory_bus_interaction::OpenVmMemoryBusInteraction;
 use powdr_openvm_bus_interaction_handler::{
     bus_map::{default_openvm_bus_map, OpenVmBusType},
