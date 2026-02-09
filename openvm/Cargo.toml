@@ -87,8 +87,6 @@ openvm-algebra-circuit.workspace = true
 openvm-bigint-circuit.workspace = true
 openvm-pairing-circuit.workspace = true
 openvm-pairing-transpiler.workspace = true
-serde_cbor.workspace = true
-serde_json.workspace = true
 expect-test = "1.5.1"
 tracing-log = "0.2.0"
 
