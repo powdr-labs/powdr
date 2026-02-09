@@ -39,9 +39,11 @@ enum Commands {
         #[arg(long, default_value_t = PgoType::default())]
         pgo: PgoType,
 
-        /// Enable superblocks of size (number of basic blocks) up to the given value
+        /// Enable superblocks of size (number of basic blocks) up to the given value.
+        /// A value of 1 means only basic blocks are considered.
         #[arg(long)]
-        superblocks: Option<u8>,
+        #[arg(default_value_t = 1)]
+        superblocks: u8,
 
         /// When `--pgo-mode cell`, the optional max columns
         #[clap(long)]
@@ -73,9 +75,11 @@ enum Commands {
         #[arg(long, default_value_t = PgoType::default())]
         pgo: PgoType,
 
-        /// Enable superblocks of size (number of basic blocks) up to the given value
+        /// Enable superblocks of size (number of basic blocks) up to the given value.
+        /// A value of 1 means only basic blocks are considered.
         #[arg(long)]
-        superblocks: Option<u8>,
+        #[arg(default_value_t = 1)]
+        superblocks: u8,
 
         /// When `--pgo-mode cell`, the optional max columns
         #[clap(long)]
@@ -118,9 +122,11 @@ enum Commands {
         #[arg(long, default_value_t = PgoType::default())]
         pgo: PgoType,
 
-        /// Enable superblocks of size (number of basic blocks) up to the given value
+        /// Enable superblocks of size (number of basic blocks) up to the given value.
+        /// A value of 1 means only basic blocks are considered.
         #[arg(long)]
-        superblocks: Option<u8>,
+        #[arg(default_value_t = 1)]
+        superblocks: u8,
 
         /// When `--pgo-mode cell`, the optional max columns
         #[clap(long)]
@@ -175,10 +181,9 @@ fn run_command(command: Commands) {
             if let Some(apc_candidates_dir) = apc_candidates_dir {
                 powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
             }
-            powdr_config = powdr_config.with_optimistic_precompiles(optimistic_precompiles);
-            if let Some(sblock_max_len) = superblocks {
-                powdr_config = powdr_config.with_superblocks(sblock_max_len);
-            }
+            powdr_config = powdr_config
+                .with_optimistic_precompiles(optimistic_precompiles)
+                .with_superblocks(superblocks);
             let guest_program = compile_openvm(&guest, guest_opts.clone()).unwrap();
             let execution_profile =
                 powdr_openvm::execution_profile_from_guest(&guest_program, stdin_from(input));
@@ -215,10 +220,9 @@ fn run_command(command: Commands) {
             if let Some(apc_candidates_dir) = apc_candidates_dir {
                 powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
             }
-            powdr_config = powdr_config.with_optimistic_precompiles(optimistic_precompiles);
-            if let Some(sblock_max_len) = superblocks {
-                powdr_config = powdr_config.with_superblocks(sblock_max_len);
-            }
+            powdr_config = powdr_config
+                .with_optimistic_precompiles(optimistic_precompiles)
+                .with_superblocks(superblocks);
             let guest_program = compile_openvm(&guest, guest_opts.clone()).unwrap();
             let empirical_constraints = maybe_compute_empirical_constraints(
                 &guest_program,
@@ -266,10 +270,9 @@ fn run_command(command: Commands) {
             if let Some(apc_candidates_dir) = &apc_candidates_dir {
                 powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
             }
-            powdr_config = powdr_config.with_optimistic_precompiles(optimistic_precompiles);
-            if let Some(sblock_max_len) = superblocks {
-                powdr_config = powdr_config.with_superblocks(sblock_max_len);
-            }
+            powdr_config = powdr_config
+                .with_optimistic_precompiles(optimistic_precompiles)
+                .with_superblocks(superblocks);
             let guest_program = compile_openvm(&guest, guest_opts).unwrap();
             let empirical_constraints = maybe_compute_empirical_constraints(
                 &guest_program,
