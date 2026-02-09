@@ -1031,7 +1031,9 @@ mod tests {
             .precompiles
             .iter()
             .for_each(|precompile| {
-                assert!(!pgo_data.pc_count.contains_key(&precompile.apc.block.start_pc));
+                assert!(!pgo_data
+                    .pc_count
+                    .contains_key(&precompile.apc.block.start_pc));
             });
 
         let result = prove(&program, false, false, stdin, None);

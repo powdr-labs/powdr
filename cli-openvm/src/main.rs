@@ -171,8 +171,7 @@ fn run_command(command: Commands) {
             apc_candidates_dir,
             optimistic_precompiles,
         } => {
-            let mut powdr_config =
-                default_powdr_openvm_config(autoprecompiles as u64, skip as u64);
+            let mut powdr_config = default_powdr_openvm_config(autoprecompiles as u64, skip as u64);
             if let Some(apc_candidates_dir) = apc_candidates_dir {
                 powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
             }
@@ -212,8 +211,7 @@ fn run_command(command: Commands) {
             apc_candidates_dir,
             optimistic_precompiles,
         } => {
-            let mut powdr_config =
-                default_powdr_openvm_config(autoprecompiles as u64, skip as u64);
+            let mut powdr_config = default_powdr_openvm_config(autoprecompiles as u64, skip as u64);
             if let Some(apc_candidates_dir) = apc_candidates_dir {
                 powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
             }
@@ -264,8 +262,7 @@ fn run_command(command: Commands) {
             apc_candidates_dir,
             optimistic_precompiles,
         } => {
-            let mut powdr_config =
-                default_powdr_openvm_config(autoprecompiles as u64, skip as u64);
+            let mut powdr_config = default_powdr_openvm_config(autoprecompiles as u64, skip as u64);
             if let Some(apc_candidates_dir) = &apc_candidates_dir {
                 powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
             }

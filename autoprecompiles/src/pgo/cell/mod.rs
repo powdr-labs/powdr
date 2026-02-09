@@ -12,8 +12,8 @@ use crate::{
     adapter::{Adapter, AdapterApcWithStats, AdapterBasicBlock, AdapterVmConfig, PgoAdapter},
     blocks::BasicBlock,
     evaluation::{evaluate_apc, EvaluationResult},
-    pgo::cell::selection::parallel_fractional_knapsack,
     execution_profile::ExecutionProfile,
+    pgo::cell::selection::parallel_fractional_knapsack,
     EmpiricalConstraints, PowdrConfig,
 };
 

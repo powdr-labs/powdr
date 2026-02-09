@@ -199,7 +199,6 @@ impl<I> ProgramBlocks<I> {
     }
 }
 
-
 /// Find basic block runs in the execution (sequence of PCs).
 /// A run is interrupted upon hitting an invalid APC block (i.e., a single-instruction block).
 /// Returns a list of the runs, together with how many times it appears (a run may repeat in the execution).
@@ -207,7 +206,7 @@ fn detect_execution_bb_runs<I>(
     basic_blocks: &[BasicBlock<I>],
     // map from PC to the index of the basic block starting at that PC
     start_pc_to_bb: &HashMap<u64, usize>,
-    execution: &[u64]
+    execution: &[u64],
 ) -> Vec<(Vec<u64>, u32)> {
     // Basic block runs in the execution (i.e., sequences of BBs without single-instruction BBs in between).
     // The same run can appear multiple times in the execution, so we keep a count using a hashmap.
@@ -241,8 +240,6 @@ fn detect_execution_bb_runs<I>(
     execution_bb_runs.into_iter().collect()
 }
 
-
-
 /// Find all superblocks up to max_len in run and count their ocurrences
 fn count_superblocks_in_run(run: &[u64], max_len: usize) -> HashMap<Vec<u64>, u32> {
     let mut superblocks_in_run = HashMap::new();
@@ -251,8 +248,9 @@ fn count_superblocks_in_run(run: &[u64], max_len: usize) -> HashMap<Vec<u64>, u3
         superblocks_in_run.extend(run.windows(len).map(|w| (w.to_vec(), 0)));
     }
     // then we count their ocurrences
+    #[allow(clippy::iter_over_hash_type)]
     for (sblock, tally) in superblocks_in_run.iter_mut() {
-        let count = count_non_overlapping(&run, sblock);
+        let count = count_non_overlapping(run, sblock);
         *tally = count
     }
     superblocks_in_run
@@ -268,27 +266,26 @@ fn count_superblocks_in_execution(
         .par_iter()
         .enumerate()
         .map(|(run_idx, (run, run_count))| {
-            count_superblocks_in_run(run, max_len).into_iter().map(|(sblock, count)| {
-                (sblock, (count * run_count, vec![run_idx]))
-            }).collect()
+            count_superblocks_in_run(run, max_len)
+                .into_iter()
+                .map(|(sblock, count)| (sblock, (count * run_count, vec![run_idx])))
+                .collect()
         })
-        .reduce(
-            HashMap::new,
-            |mut sblocks_a, sblocks_b| {
-                for (sblock, (count, runs)) in sblocks_b {
-                    match sblocks_a.entry(sblock) {
-                        std::collections::hash_map::Entry::Vacant(entry) => {
-                            entry.insert((count, runs));
-                        }
-                        std::collections::hash_map::Entry::Occupied(mut entry) => {
-                            entry.get_mut().0 += count;
-                            entry.get_mut().1.extend(runs);
-                        }
+        .reduce(HashMap::new, |mut sblocks_a, sblocks_b| {
+            #[allow(clippy::iter_over_hash_type)]
+            for (sblock, (count, runs)) in sblocks_b {
+                match sblocks_a.entry(sblock) {
+                    std::collections::hash_map::Entry::Vacant(entry) => {
+                        entry.insert((count, runs));
+                    }
+                    std::collections::hash_map::Entry::Occupied(mut entry) => {
+                        entry.get_mut().0 += count;
+                        entry.get_mut().1.extend(runs);
                     }
                 }
-                sblocks_a
-            },
-        );
+            }
+            sblocks_a
+        });
     sblocks
 }
 
@@ -315,11 +312,8 @@ pub fn detect_superblocks<I: Clone>(
         .map(|(idx, bb)| (bb.start_pc, idx))
         .collect();
 
-    let execution_bb_runs = detect_execution_bb_runs(
-        basic_blocks,
-        &bb_start_pc_to_idx,
-        execution_pc_list,
-    );
+    let execution_bb_runs =
+        detect_execution_bb_runs(basic_blocks, &bb_start_pc_to_idx, execution_pc_list);
 
     let blocks_found = count_superblocks_in_execution(&execution_bb_runs, max_len);
 
@@ -335,34 +329,36 @@ pub fn detect_superblocks<I: Clone>(
     let mut counts = vec![];
     let mut block_to_runs = vec![];
     let mut skipped = 0;
-    blocks_found.into_iter().for_each(|(sblock, (count, mut runs))| {
-        // convert PCs into BasicBlock's
-        let mut blocks = sblock
-            .iter()
-            .map(|start_pc| basic_blocks[bb_start_pc_to_idx[start_pc]].clone())
-            .collect_vec();
+    blocks_found
+        .into_iter()
+        .for_each(|(sblock, (count, mut runs))| {
+            // convert PCs into BasicBlock's
+            let mut blocks = sblock
+                .iter()
+                .map(|start_pc| basic_blocks[bb_start_pc_to_idx[start_pc]].clone())
+                .collect_vec();
 
-        if blocks.len() == 1 {
-            super_blocks.push(Block::Basic(blocks.pop().unwrap()));
-        } else {
-            if count < exec_count_cutoff {
-                // skip superblocks that were executed less than the cutoff
-                tracing::trace!(
-                    "Skipping superblock {:?} due to execution count below cutoff ({})",
-                    sblock,
-                    exec_count_cutoff,
-                );
-                skipped += 1;
-                return;
+            if blocks.len() == 1 {
+                super_blocks.push(Block::Basic(blocks.pop().unwrap()));
+            } else {
+                if count < exec_count_cutoff {
+                    // skip superblocks that were executed less than the cutoff
+                    tracing::trace!(
+                        "Skipping superblock {:?} due to execution count below cutoff ({})",
+                        sblock,
+                        exec_count_cutoff,
+                    );
+                    skipped += 1;
+                    return;
+                }
+                super_blocks.push(Block::Super(SuperBlock { blocks }));
             }
-            super_blocks.push(Block::Super(SuperBlock { blocks }));
-        }
 
-        counts.push(count);
+            counts.push(count);
 
-        runs.sort_unstable();
-        block_to_runs.push(runs);
-    });
+            runs.sort_unstable();
+            block_to_runs.push(runs);
+        });
 
     tracing::info!(
         "{} blocks were skipped due to execution cutoff of {}, {} blocks remain",
@@ -394,9 +390,7 @@ mod test {
         let run = vec![4, 1, 2, 3, 5, 1, 2, 3, 4];
         let max_len = 3;
         let counts = count_superblocks_in_run(&run, max_len);
-        assert_eq!(
-            counts.len(), 17
-        );
+        assert_eq!(counts.len(), 17);
         assert_eq!(counts[&vec![1]], 2);
         assert_eq!(counts[&vec![2]], 2);
         assert_eq!(counts[&vec![3]], 2);
