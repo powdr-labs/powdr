@@ -26,6 +26,7 @@ impl<I: PcStep> BasicBlock<I> {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+/// A sequence of basic blocks observed during execution.
 pub struct SuperBlock<I> {
     pub blocks: Vec<BasicBlock<I>>,
 }
@@ -37,6 +38,8 @@ impl<I> SuperBlock<I> {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+/// A sequence of instructions that can be made into an autoprecompile.
+/// It can be either a basic block or a superblock.
 pub enum Block<I> {
     Basic(BasicBlock<I>),
     Super(SuperBlock<I>),
