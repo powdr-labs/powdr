@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::empirical_constraints::EmpiricalConstraints;
 use crate::evaluation::EvaluationResult;
 use crate::execution::{ExecutionState, OptimisticConstraints};
+use crate::execution_profile::ExecutionProfile;
 use crate::{
     blocks::{BasicBlock, Instruction, Program},
     constraint_optimizer::IsBusStateful,
@@ -83,7 +84,12 @@ pub trait PgoAdapter {
         empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>>;
 
-    fn pc_execution_count(&self, _pc: u64) -> Option<u32> {
+    fn pc_execution_count(&self, pc: u64) -> Option<u32> {
+        self.profiling_data()
+            .and_then(|prof| prof.pc_count.get(&pc).cloned())
+    }
+
+    fn profiling_data(&self) -> Option<&ExecutionProfile> {
         None
     }
 }

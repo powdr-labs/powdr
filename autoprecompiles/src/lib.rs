@@ -68,6 +68,9 @@ pub struct PowdrConfig {
     pub apc_candidates_dir_path: Option<PathBuf>,
     /// Whether to use optimistic precompiles.
     pub should_use_optimistic_precompiles: bool,
+    /// If >1, enables superblock autoprecompiles composed of up to that number of basic blocks.
+    /// The default of 1 means that only basic blocks are considered.
+    pub superblock_max_bb_count: u8,
 }
 
 impl PowdrConfig {
@@ -78,6 +81,7 @@ impl PowdrConfig {
             degree_bound,
             apc_candidates_dir_path: None,
             should_use_optimistic_precompiles: false,
+            superblock_max_bb_count: 1,
         }
     }
 
@@ -88,6 +92,15 @@ impl PowdrConfig {
 
     pub fn with_optimistic_precompiles(mut self, should_use_optimistic_precompiles: bool) -> Self {
         self.should_use_optimistic_precompiles = should_use_optimistic_precompiles;
+        self
+    }
+
+    pub fn with_superblocks(mut self, superblock_max_bb_count: u8) -> Self {
+        assert!(
+            superblock_max_bb_count > 0,
+            "superblock_max_bb_count must be greater than 0"
+        );
+        self.superblock_max_bb_count = superblock_max_bb_count;
         self
     }
 }
