@@ -252,9 +252,8 @@ fn count_superblocks_in_run(run: &[u64], max_len: usize) -> HashMap<Vec<u64>, u3
     }
     // then we count their ocurrences
     #[allow(clippy::iter_over_hash_type)]
-    for (sblock, tally) in superblocks_in_run.iter_mut() {
-        let count = count_non_overlapping(run, sblock);
-        *tally = count
+    for (sblock, count) in superblocks_in_run.iter_mut() {
+        *count = count_non_overlapping(run, sblock);
     }
     superblocks_in_run
 }
