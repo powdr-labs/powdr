@@ -183,19 +183,6 @@ impl<T: FieldElement> Environment<T> {
         Some((self.insert(&l), self.insert(&r)))
     }
 
-    /// Returns Some(C) if `a - b = C' and both are affine.
-    pub fn constant_difference(&self, a: Expr, b: Expr) -> Option<T> {
-        let db = self.expressions.borrow();
-        let a = &db[a];
-        let b = &db[b];
-        (a.is_affine()
-            && b.is_affine()
-            && a.linear_components()
-                .zip(b.linear_components())
-                .all(|(x, y)| x == y))
-        .then(|| *a.constant_offset() - *b.constant_offset())
-    }
-
     /// If this returns Some((v1, v2, factor)), then
     /// a is obtained from b * factor by substituting v2 by v1.
     pub fn differ_in_exactly_one_variable(&self, a_id: Expr, b_id: Expr) -> Option<(Var, Var, T)> {

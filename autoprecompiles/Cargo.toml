@@ -11,22 +11,22 @@ powdr-expression.workspace = true
 powdr-number.workspace = true
 powdr-constraint-solver.workspace = true
 
-itertools = "0.13"
-log = "0.4.18"
-num-traits = "0.2.15"
-serde = "1.0.218"
-serde_cbor = "0.11.2"
-tracing = "0.1.40"
+itertools.workspace = true
+log.workspace = true
+num-traits.workspace = true
+serde.workspace = true
+serde_cbor.workspace = true
+tracing.workspace = true
 tracing-subscriber = { version = "0.3.17", features = ["std", "env-filter"] }
-serde_json = "1.0.140"
+serde_json.workspace = true
 rayon = "1.10.0"
 strum = { version = "0.27.0", features = ["derive"] }
 
-metrics = "0.23.0"
+metrics.workspace = true
 deepsize2 = "0.1.0"
-derive_more = "0.99.17"
+derive_more.workspace = true
+derivative.workspace = true
 priority-queue = "2.7.0"
-derivative = "2.2.0"
 
 [package.metadata.cargo-udeps.ignore]
 development = ["env_logger"]
