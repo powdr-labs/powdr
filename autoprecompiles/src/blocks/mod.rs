@@ -245,17 +245,18 @@ fn detect_execution_bb_runs<I>(
     execution_bb_runs.into_iter().collect()
 }
 
-/// Find all superblocks up to max_len in run and count their ocurrences
-fn count_superblocks_in_run(run: &[u64], max_len: usize) -> HashMap<Vec<u64>, u32> {
+/// Find all superblocks up to max_len in the basic block run and count their ocurrences.
+/// Returns a map from superblock (sequence of PCs identifying its basic blocks) and their count.
+fn count_superblocks_in_run(bb_run: &[u64], max_len: usize) -> HashMap<Vec<u64>, u32> {
     let mut superblocks_in_run = HashMap::new();
     // first, we identify the superblocks in this run
-    for len in 1..=std::cmp::min(max_len, run.len()) {
-        superblocks_in_run.extend(run.windows(len).map(|w| (w.to_vec(), 0)));
+    for len in 1..=std::cmp::min(max_len, bb_run.len()) {
+        superblocks_in_run.extend(bb_run.windows(len).map(|w| (w.to_vec(), 0)));
     }
     // then we count their ocurrences
     #[allow(clippy::iter_over_hash_type)]
     for (sblock, count) in superblocks_in_run.iter_mut() {
-        *count = count_non_overlapping(run, sblock);
+        *count = count_non_overlapping(bb_run, sblock);
     }
     superblocks_in_run
 }
