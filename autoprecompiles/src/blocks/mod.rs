@@ -32,6 +32,8 @@ pub struct SuperBlock<I> {
 }
 
 impl<I> SuperBlock<I> {
+    /// Starting PCs of the original basic blocks.
+    /// Uniquely identifies a superblock.
     pub fn original_bb_pcs(&self) -> Vec<u64> {
         self.blocks.iter().map(|b| b.start_pc).collect()
     }
