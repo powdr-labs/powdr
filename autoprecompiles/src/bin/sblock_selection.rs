@@ -9,7 +9,7 @@ fn is_block_in_run(bbs: &[u64], run: &[u64]) -> bool {
     run.windows(bbs.len()).any(|window| window == bbs)
 }
 
-const MAX_COST: Option<usize> = Some(6_000);
+const MAX_COST: Option<usize> = Some(600_000);
 const MAX_SELECTED: Option<usize> = None;
 const SKIP: usize = 0;
 
@@ -56,7 +56,7 @@ fn main() {
             .unwrap()
     );
 
-    // check idx_runs is proper
+    // just checking that idx_runs values is correct
     tracing::info!("Checking block idx_runs...");
     for b in &blocks {
         for idx in &b.idx_runs {
@@ -72,16 +72,16 @@ fn main() {
 
     ////////////////////////////////////////////////////////////
 
-    // tracing::info!("Selecting greedy by density...");
-    // let start = std::time::Instant::now();
-    // let selected = selection::select_blocks_greedy(blocks.clone(), MAX_COST, MAX_SELECTED, &execution_bb_runs, SKIP);
-    // let (savings, cost) = selection::savings_and_cost(&blocks, &selected);
-    // tracing::info!("Total savings greedy: {}\tcost: {} took: {:?}", savings, cost, start.elapsed());
+    tracing::info!("Selecting greedy by density...");
+    let start = std::time::Instant::now();
+    let selected = selection::select_blocks_greedy(blocks.clone(), MAX_COST, MAX_SELECTED, &execution_bb_runs, SKIP);
+    let (savings, cost) = selection::savings_and_cost(&blocks, &selected);
+    tracing::info!("Total savings greedy: {}\tcost: {} took: {:?}", savings, cost, start.elapsed());
 
-    // tracing::info!("Selecting greedy by value...");
-    // let selected = selection::select_blocks_greedy_by_value(blocks.clone(), MAX_COST, MAX_SELECTED, &execution_bb_runs, SKIP);
-    // let (savings, cost) = selection::savings_and_cost(&blocks, &selected);
-    // tracing::info!("Total savings greedy by value: {}\tcost: {}", savings, cost);
+    tracing::info!("Selecting greedy by value...");
+    let selected = selection::select_blocks_greedy_by_value(blocks.clone(), MAX_COST, MAX_SELECTED, &execution_bb_runs, SKIP);
+    let (savings, cost) = selection::savings_and_cost(&blocks, &selected);
+    tracing::info!("Total savings greedy by value: {}\tcost: {}", savings, cost);
 
     //////////////////////////////////////////////////////////
 
@@ -94,7 +94,7 @@ fn main() {
         .map(|(idx, _)| idx)
         .collect::<Vec<_>>();
 
-    let seeds = selection::combination_seeds(&indices_by_density, &[20, 20, 20, 20]);
+    let seeds = selection::combination_seeds(&indices_by_density, &[15, 15, 15, 15]);
     selection::log_seeds(&seeds);
 
     let start = std::time::Instant::now();
@@ -116,21 +116,21 @@ fn main() {
 
     //////////////////////////////////////////////////////////
 
-    // let start = std::time::Instant::now();
-    // tracing::info!("Selecting from clusters using seeded initial selection...");
-    // let selected = selection::select_from_clusters_seeded(
-    //     blocks.clone(),
-    //     &[15, 15, 15, 15],
-    //     MAX_COST,
-    //     MAX_SELECTED,
-    //     &execution_bb_runs,
-    //     SKIP,
-    // );
-    // let (savings, cost) = selection::savings_and_cost(&blocks, &selected);
-    // tracing::info!(
-    //     "Total savings cluster seeded selection: {}\tcost: {} took: {:?}",
-    //     savings,
-    //     cost,
-    //     start.elapsed()
-    // );
+    tracing::info!("Selecting from clusters...");
+    let start = std::time::Instant::now();
+    let selected = selection::select_from_clusters_seeded(
+        blocks.clone(),
+        &[15, 15, 15, 15],
+        MAX_COST,
+        MAX_SELECTED,
+        &execution_bb_runs,
+        SKIP,
+    );
+    let (savings, cost) = selection::savings_and_cost(&blocks, &selected);
+    tracing::info!(
+        "Total savings cluster seeded: {}\tcost: {} took: {:?}",
+        savings,
+        cost,
+        start.elapsed()
+    );
 }
