@@ -12,6 +12,7 @@ use crate::{
     adapter::{Adapter, AdapterApcWithStats, AdapterBasicBlock, AdapterVmConfig, PgoAdapter},
     blocks::BasicBlock,
     evaluation::{evaluate_apc, EvaluationResult},
+    export::{ExportLevel, ExportOptions},
     pgo::cell::selection::parallel_fractional_knapsack,
     EmpiricalConstraints, PowdrConfig,
 };
@@ -129,7 +130,11 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
                     block.clone(),
                     vm_config.clone(),
                     config.degree_bound,
-                    config.apc_candidates_dir_path.as_deref(),
+                    ExportOptions::new(
+                        config.apc_candidates_dir_path.clone(),
+                        block.start_pc,
+                        ExportLevel::OnlyAPC,
+                    ),
                     &empirical_constraints,
                 )
                 .ok()?;

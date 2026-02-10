@@ -23,6 +23,7 @@ pub mod apc_builder_utils {
     use powdr_autoprecompiles::blocks::BasicBlock;
     use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
     use powdr_autoprecompiles::evaluation::evaluate_apc;
+    use powdr_autoprecompiles::export::ExportOptions;
     use powdr_autoprecompiles::{build, VmConfig};
     use powdr_number::BabyBearField;
     use powdr_openvm::instruction_formatter::openvm_instruction_formatter;
@@ -62,14 +63,14 @@ pub mod apc_builder_utils {
         };
 
         // Use this env var to output serialized APCs for tests as well.
-        let apc_path_var = std::env::var("APC_CBOR_PATH").ok();
-        let apc_path: Option<&Path> = apc_path_var.as_deref().map(Path::new);
+        let export_path = std::env::var("APC_EXPORT_PATH").ok();
+        let export_level = std::env::var("APC_EXPORT_LEVEL").ok();
 
         let apc = build::<BabyBearOpenVmApcAdapter>(
             basic_block.clone(),
             vm_config.clone(),
             degree_bound,
-            apc_path,
+            ExportOptions::from_env_vars(export_path, export_level, basic_block.start_pc),
             &EmpiricalConstraints::default(),
         )
         .unwrap();

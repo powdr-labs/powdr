@@ -15,15 +15,18 @@ pub use crate::algebraic_constraint::AlgebraicConstraint;
 pub use crate::bus_interaction_handler::BusInteractionHandler;
 
 /// Description of a constraint system.
-#[derive(Derivative)]
+#[derive(Derivative, Serialize)]
 #[derivative(Default(bound = ""), Clone)]
+#[serde(bound(serialize = "V: Clone + Ord + Eq + Serialize, T: RuntimeConstant + Serialize"))]
 pub struct ConstraintSystem<T, V> {
     /// The algebraic expressions which have to evaluate to zero.
+    #[serde(rename = "constraints")]
     pub algebraic_constraints: Vec<AlgebraicConstraint<GroupedExpression<T, V>>>,
     /// Bus interactions, which can further restrict variables.
     /// Exact semantics are up to the implementation of BusInteractionHandler
     pub bus_interactions: Vec<BusInteraction<GroupedExpression<T, V>>>,
     /// Newly added variables whose values are derived from existing variables.
+    #[serde(rename = "derived_columns")]
     pub derived_variables: Vec<DerivedVariable<T, V>>,
 }
 
@@ -76,7 +79,8 @@ impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize)]
+#[serde(bound(serialize = "V: Clone + Ord + Eq + Serialize, T: RuntimeConstant + Serialize"))]
 pub struct DerivedVariable<T, V> {
     pub variable: V,
     pub computation_method: ComputationMethod<T, GroupedExpression<T, V>>,
@@ -146,15 +150,18 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq>
 }
 
 /// A bus interaction.
-#[derive(Clone, Debug, Hash, Eq, PartialEq)]
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Serialize)]
 pub struct BusInteraction<V> {
     /// The ID of the bus.
+    #[serde(rename = "id")]
     pub bus_id: V,
-    /// The payload of the bus interaction.
-    pub payload: Vec<V>,
     /// The multiplicity of the bus interaction. In most cases,
     /// this should evaluate to 1 or -1.
+    #[serde(rename = "mult")]
     pub multiplicity: V,
+    /// The payload of the bus interaction.
+    #[serde(rename = "args")]
+    pub payload: Vec<V>,
 }
 
 impl<V> BusInteraction<V> {
