@@ -26,6 +26,7 @@ metrics.workspace = true
 deepsize2 = "0.1.0"
 derive_more.workspace = true
 derivative.workspace = true
+priority-queue = "2.7.0"
 
 [package.metadata.cargo-udeps.ignore]
 development = ["env_logger"]

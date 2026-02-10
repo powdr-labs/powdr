@@ -160,7 +160,6 @@ pub fn record_arena_dimension_by_air_name_per_apc_call<F>(
     air_by_opcode_id: &OriginalAirs<F>,
 ) -> BTreeMap<String, RecordArenaDimension> {
     apc.instructions()
-        .iter()
         .map(|instr| &instr.0.opcode)
         .zip_eq(apc.subs.iter().map(|sub| sub.is_empty()))
         .fold(
