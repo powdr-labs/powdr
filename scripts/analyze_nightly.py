@@ -3,7 +3,8 @@
 Nightly regression analyzer for benchmark results.
 
 This script analyzes the latest nightly benchmark results and compares them
-to the previous nightly run. It reports any performance regressions.
+to the previous nightly run. It reports any performance regressions in
+APC (autoprecompile) configurations only, ignoring manual precompile results.
 
 Results are fetched from: https://github.com/powdr-labs/bench-results/tree/gh-pages/results
 """
@@ -43,14 +44,6 @@ def is_apc_config(config: str) -> bool:
     return False
 
 
-def get_apc_count(config: str) -> Optional[int]:
-    """Extract APC count from config name, or None if not an APC config."""
-    match = APC_PATTERN.search(config)
-    if match:
-        return int(match.group(1))
-    return None
-
-
 @dataclass
 class BenchmarkResult:
     """Holds the best result for a benchmark."""
@@ -71,7 +64,6 @@ class ComparisonResult:
     change_percent: float
     is_regression: bool
     config_changed: bool  # True if best config differs between runs
-    apc_regression: bool  # True if regressed from APC to non-APC config
 
 
 def fetch_url(url: str, headers: Optional[dict] = None) -> str:
@@ -127,23 +119,26 @@ def fetch_benchmark_results(run_dir: str, benchmark: str) -> Optional[BenchmarkR
 
     try:
         df = pd.read_csv(StringIO(content))
-        results: dict[str, float] = {
+        all_results: dict[str, float] = {
             str(row['filename']): float(row['total_proof_time_ms'])
             for _, row in df.iterrows()
         }
 
-        if not results:
+        # Only consider APC configs (apc count > 0), ignoring manual and baseline (apc000)
+        apc_results = {k: v for k, v in all_results.items() if is_apc_config(k)}
+
+        if not apc_results:
             return None
 
-        # Find the best (lowest) total_proof_time_ms
-        best_config = min(results, key=lambda k: results[k])
-        best_time = results[best_config]
+        # Find the best (lowest) total_proof_time_ms among APC configs
+        best_config = min(apc_results, key=lambda k: apc_results[k])
+        best_time = apc_results[best_config]
 
         return BenchmarkResult(
             benchmark=benchmark,
             best_config=best_config,
             best_time_ms=best_time,
-            all_results=results
+            all_results=all_results
         )
     except (KeyError, ValueError) as e:
         print(f"Warning: Malformed CSV for {benchmark} in {run_dir}: {e}", file=sys.stderr)
@@ -168,12 +163,6 @@ def compare_results(
     # Check if best config changed
     config_changed = latest.best_config != previous.best_config
 
-    # Check if regressed from APC to non-APC
-    # This is an error if previous used APCs but latest doesn't
-    previous_uses_apc = is_apc_config(previous.best_config)
-    latest_uses_apc = is_apc_config(latest.best_config)
-    apc_regression = previous_uses_apc and not latest_uses_apc
-
     return ComparisonResult(
         benchmark=latest.benchmark,
         latest_time_ms=latest.best_time_ms,
@@ -183,7 +172,6 @@ def compare_results(
         change_percent=change_percent,
         is_regression=is_regression,
         config_changed=config_changed,
-        apc_regression=apc_regression,
     )
 
 
@@ -348,11 +336,11 @@ def main():
         previous_result = fetch_benchmark_results(previous_run, benchmark)
 
         if latest_result is None:
-            errors.append(f"{benchmark}: Latest results not found or malformed")
+            errors.append(f"{benchmark}: No APC results found in latest run")
             continue
 
         if previous_result is None:
-            errors.append(f"{benchmark}: Previous results not found or malformed")
+            errors.append(f"{benchmark}: No APC results found in previous run")
             continue
 
         comparison = compare_results(
@@ -362,15 +350,10 @@ def main():
         )
         comparisons.append(comparison)
 
-        # Check for config changes and APC regressions
-        if comparison.apc_regression:
-            errors.append(
-                f"{benchmark}: APC regression - best config changed from APC "
-                f"({comparison.previous_config}) to non-APC ({comparison.latest_config})"
-            )
-        elif comparison.config_changed:
+        # Check for config changes
+        if comparison.config_changed:
             warnings.append(
-                f"{benchmark}: Best config changed from {comparison.previous_config} "
+                f"{benchmark}: Best APC config changed from {comparison.previous_config} "
                 f"to {comparison.latest_config}"
             )
 
@@ -389,7 +372,6 @@ def main():
                     "change_percent": c.change_percent,
                     "is_regression": c.is_regression,
                     "config_changed": c.config_changed,
-                    "apc_regression": c.apc_regression,
                 }
                 for c in comparisons
             ],
