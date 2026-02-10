@@ -182,9 +182,9 @@ fn select_greedy_with_blocked(
 
         // ignore if too costly
         if let Some(budget) = max_cost {
-            tracing::trace!("\tcandidate doesn't fit, ignoring...");
             if cumulative_cost + c.cost() > budget {
                 // The item does not fit, skip it
+                tracing::trace!("\tcandidate doesn't fit, ignoring...");
                 continue;
             }
         }
@@ -535,9 +535,9 @@ pub fn select_blocks_greedy_by_value(
 
         // early ignore if too costly
         if let Some(max_cost) = max_cost {
-            tracing::trace!("\tcandidate doesn't fit, ignoring...");
             if cumulative_cost + c.cost() > max_cost {
                 // The item does not fit, skip it
+                tracing::trace!("\tcandidate doesn't fit, ignoring...");
                 continue;
             }
         }
@@ -632,9 +632,9 @@ pub fn select_blocks_greedy_by_size_and_value(
 
         // early ignore if too costly
         if let Some(max_cost) = max_cost {
-            tracing::trace!("\tcandidate doesn't fit, ignoring...");
             if cumulative_cost + c.cost() > max_cost {
                 // The item does not fit, skip it
+                tracing::trace!("\tcandidate doesn't fit, ignoring...");
                 continue;
             }
         }
@@ -729,9 +729,9 @@ pub fn select_blocks_greedy_by_size2(
 
         // early ignore if too costly
         if let Some(max_cost) = max_cost {
-            tracing::trace!("\tcandidate doesn't fit, ignoring...");
             if cumulative_cost + c.cost() > max_cost {
                 // The item does not fit, skip it
+                tracing::trace!("\tcandidate doesn't fit, ignoring...");
                 continue;
             }
         }
