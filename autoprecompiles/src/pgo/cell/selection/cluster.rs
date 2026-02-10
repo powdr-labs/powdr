@@ -267,8 +267,8 @@ fn evaluate_cluster_seeded(
         let selection = vec![(cluster[0], block.count())];
         return ClusterEvaluation {
             cluster,
-            selections: vec![(seed, selection)],
-            cost_points: vec![(0, 0, 0, 0), (cost, savings, 0, 1)],
+            selections: vec![(vec![], vec![]), (seed, selection)],
+            cost_points: vec![(0, 0, 0, 0), (cost, savings, 1, 1)],
         };
     }
 
@@ -332,7 +332,7 @@ fn evaluate_cluster_seeded(
         Some(selection)
     };
 
-    let seeded_selections: Vec<_> = seeds
+    let mut seeded_selections: Vec<_> = seeds
         .into_par_iter()
         .filter_map(|seed| {
             if let Some(selection) = try_seed(&seed, &tried_seeds) {
@@ -381,7 +381,11 @@ fn evaluate_cluster_seeded(
         }
     }
 
-    let mut cost_points = vec![(0, 0, 0, 0)]; // insert the option of picking nothing from this cluster
+    // insert the option of picking nothing from this cluster
+    let pick_nothing_idx = seeded_selections.len();
+    seeded_selections.push((vec![], vec![]));
+
+    let mut cost_points = vec![(0, 0, pick_nothing_idx, 0)];
     let mut best_savings_so_far = 0;
     for (cost, (savings, selection_idx, num_picked)) in best_at_cost {
         if savings > best_savings_so_far {
