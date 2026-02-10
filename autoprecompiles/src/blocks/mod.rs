@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fmt::Display;
 
-use itertools::{Either, Itertools};
+use itertools::Itertools;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
@@ -26,89 +26,57 @@ impl<I: PcStep> BasicBlock<I> {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-/// A sequence of basic blocks observed during execution.
+/// A sequence of basic blocks that can be made into an autoprecompile.
+/// A single basic block is represented as a SuperBlock with one element.
 pub struct SuperBlock<I> {
     pub blocks: Vec<BasicBlock<I>>,
 }
 
 impl<I> SuperBlock<I> {
+    /// Wraps a single basic block into a SuperBlock.
+    pub fn from_basic_block(bb: BasicBlock<I>) -> Self {
+        Self { blocks: vec![bb] }
+    }
+
+    /// Whether this is a true superblock (more than one basic block).
+    pub fn is_basic_block(&self) -> bool {
+        self.blocks.len() == 1
+    }
+
     /// Starting PCs of the original basic blocks.
     /// Uniquely identifies a superblock.
     pub fn original_bb_pcs(&self) -> Vec<u64> {
         self.blocks.iter().map(|b| b.start_pc).collect()
     }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-/// A sequence of instructions that can be made into an autoprecompile.
-/// It can be either a basic block or a superblock.
-pub enum Block<I> {
-    Basic(BasicBlock<I>),
-    Super(SuperBlock<I>),
-}
-
-impl<I: PcStep> Block<I> {
-    /// Returns an iterator over the program counters of the instructions in this block.
-    pub fn pcs(&self) -> impl Iterator<Item = u64> + '_ {
-        match self {
-            Block::Basic(basic_block) => Either::Left(basic_block.pcs()),
-            Block::Super(super_block) => {
-                Either::Right(super_block.blocks.iter().flat_map(BasicBlock::pcs))
-            }
-        }
-    }
-}
-
-impl<I> Block<I> {
-    pub fn is_superblock(&self) -> bool {
-        matches!(self, Block::Super(_))
-    }
-
-    /// Starting PCs of each original basic block
-    pub fn original_bb_pcs(&self) -> Vec<u64> {
-        match self {
-            Block::Basic(basic_block) => vec![basic_block.start_pc],
-            Block::Super(super_block) => super_block.original_bb_pcs(),
-        }
-    }
 
     /// Instruction index of the start of each original basic block
     pub fn insn_indexed_bb_pcs(&self) -> Vec<(usize, u64)> {
-        match self {
-            Block::Basic(basic_block) => {
-                vec![(0, basic_block.start_pc)]
-            }
-            Block::Super(super_block) => {
-                let mut idx = 0;
-                super_block
-                    .blocks
-                    .iter()
-                    .map(|b| {
-                        let elem = (idx, b.start_pc);
-                        idx += b.statements.len();
-                        elem
-                    })
-                    .collect()
-            }
-        }
+        let mut idx = 0;
+        self.blocks
+            .iter()
+            .map(|b| {
+                let elem = (idx, b.start_pc);
+                idx += b.statements.len();
+                elem
+            })
+            .collect()
     }
 
     /// Iterator over the original basic blocks
     pub fn original_bbs(&self) -> impl Iterator<Item = &BasicBlock<I>> {
-        match self {
-            Block::Basic(basic_block) => Either::Left(std::iter::once(basic_block)),
-            Block::Super(super_block) => Either::Right(super_block.blocks.iter()),
-        }
+        self.blocks.iter()
     }
 
     /// Iterator over all instructions in the block, in order
     pub fn statements(&self) -> impl Iterator<Item = &I> + Clone {
-        match self {
-            Block::Basic(basic_block) => Either::Left(basic_block.statements.iter()),
-            Block::Super(super_block) => {
-                Either::Right(super_block.blocks.iter().flat_map(|b| &b.statements))
-            }
-        }
+        self.blocks.iter().flat_map(|b| &b.statements)
+    }
+}
+
+impl<I: PcStep> SuperBlock<I> {
+    /// Returns an iterator over the program counters of the instructions in this block.
+    pub fn pcs(&self) -> impl Iterator<Item = u64> + '_ {
+        self.blocks.iter().flat_map(BasicBlock::pcs)
     }
 }
 
@@ -182,7 +150,7 @@ pub fn count_non_overlapping<T: Eq>(haystack: &[T], needle: &[T]) -> u32 {
 /// Blocks (basic blocks and superblocks) for a given program, together with execution data (if PGO is enabled).
 pub struct ProgramBlocks<I> {
     /// Blocks seen in the execution (basic blocks and superblocks up to some length).
-    pub blocks: Vec<Block<I>>,
+    pub blocks: Vec<SuperBlock<I>>,
     /// Count of each of the seen superblocks. None if running without PGO.
     pub counts: Option<Vec<u32>>,
     /// Basic block runs in the given PGO execution.
@@ -194,7 +162,7 @@ pub struct ProgramBlocks<I> {
 }
 
 impl<I> ProgramBlocks<I> {
-    pub fn new_without_pgo(blocks: Vec<Block<I>>) -> Self {
+    pub fn new_without_pgo(blocks: Vec<SuperBlock<I>>) -> Self {
         Self {
             blocks,
             counts: None,
@@ -338,26 +306,22 @@ pub fn detect_superblocks<I: Clone>(
         .into_iter()
         .for_each(|(sblock, (count, mut runs))| {
             // convert PCs into BasicBlock's
-            let mut blocks = sblock
+            let blocks = sblock
                 .iter()
                 .map(|start_pc| basic_blocks[bb_start_pc_to_idx[start_pc]].clone())
                 .collect_vec();
 
-            if blocks.len() == 1 {
-                super_blocks.push(Block::Basic(blocks.pop().unwrap()));
-            } else {
-                if count < exec_count_cutoff {
-                    // skip superblocks that were executed less than the cutoff
-                    tracing::trace!(
-                        "Skipping superblock {:?} due to execution count below cutoff ({})",
-                        sblock,
-                        exec_count_cutoff,
-                    );
-                    skipped += 1;
-                    return;
-                }
-                super_blocks.push(Block::Super(SuperBlock { blocks }));
+            if blocks.len() > 1 && count < exec_count_cutoff {
+                // skip superblocks that were executed less than the cutoff
+                tracing::trace!(
+                    "Skipping superblock {:?} due to execution count below cutoff ({})",
+                    sblock,
+                    exec_count_cutoff,
+                );
+                skipped += 1;
+                return;
             }
+            super_blocks.push(SuperBlock { blocks });
 
             counts.push(count);
 
@@ -374,8 +338,8 @@ pub fn detect_superblocks<I: Clone>(
 
     tracing::info!(
         "Out of those, {} are basic blocks and {} are superblocks",
-        super_blocks.iter().filter(|b| !b.is_superblock()).count(),
-        super_blocks.iter().filter(|b| b.is_superblock()).count(),
+        super_blocks.iter().filter(|b| b.is_basic_block()).count(),
+        super_blocks.iter().filter(|b| !b.is_basic_block()).count(),
     );
 
     ProgramBlocks {
