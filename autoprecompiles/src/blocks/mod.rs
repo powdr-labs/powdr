@@ -38,7 +38,7 @@ impl<I> SuperBlock<I> {
         Self { blocks: vec![bb] }
     }
 
-    /// Whether this is a true superblock (more than one basic block).
+    /// Whether this is just a basic block
     pub fn is_basic_block(&self) -> bool {
         self.blocks.len() == 1
     }
