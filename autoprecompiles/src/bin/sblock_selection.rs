@@ -73,6 +73,18 @@ fn main() {
 
     ////////////////////////////////////////////////
 
+    // SELECT FROM BASIC BLOCKS ONLY
+    let bbs_only: Vec<_> = blocks.iter().filter(|b| b.bbs.len() == 1).cloned().collect();
+
+    tracing::info!("Selecting BBs only (greedy)...");
+    let start = std::time::Instant::now();
+    let selected = selection::select_blocks_greedy(bbs_only.clone(), Some(6_000), MAX_SELECTED, &execution_bb_runs, SKIP);
+    let (savings, cost) = selection::savings_and_cost(&bbs_only, &selected);
+    tracing::info!("Total savings BBs only: {}\tcost: {} took: {:?}", savings, cost, start.elapsed());
+
+
+    ////////////////////////////////////////////////
+
     let indices_by_density: Vec<usize> = blocks
         .iter()
         .enumerate()
@@ -88,8 +100,16 @@ fn main() {
         (600_000, [20, 20, 15, 15]),
     ].into_iter().collect();
 
-    for budget in [6_000, 60_000, 600_000] {
+    for budget in [60_000, 600_000] {
         tracing::info!("== COST = {budget} =============================");
+
+        tracing::info!("Selecting BBs only (greedy)...");
+        let start = std::time::Instant::now();
+        let selected = selection::select_blocks_greedy(bbs_only.clone(), Some(budget), MAX_SELECTED, &execution_bb_runs, SKIP);
+        let (savings, cost) = selection::savings_and_cost(&bbs_only, &selected);
+        tracing::info!("Total savings BBs only: {}\tcost: {} took: {:?}", savings, cost, start.elapsed());
+
+
         tracing::info!("Selecting greedy by density...");
         let start = std::time::Instant::now();
         let selected = selection::select_blocks_greedy(blocks.clone(), Some(budget), MAX_SELECTED, &execution_bb_runs, SKIP);
@@ -97,9 +117,10 @@ fn main() {
         tracing::info!("Total savings greedy: {}\tcost: {} took: {:?}", savings, cost, start.elapsed());
 
         tracing::info!("Selecting greedy by value...");
+        let start = std::time::Instant::now();
         let selected = selection::select_blocks_greedy_by_value(blocks.clone(), Some(budget), MAX_SELECTED, &execution_bb_runs, SKIP);
         let (savings, cost) = selection::savings_and_cost(&blocks, &selected);
-        tracing::info!("Total savings greedy by value: {}\tcost: {}", savings, cost);
+        tracing::info!("Total savings greedy by value: {}\tcost: {} took: {:?}", savings, cost, start.elapsed());
 
         ///////////////////////////////////////////////////////////////
 

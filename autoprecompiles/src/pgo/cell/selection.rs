@@ -210,6 +210,8 @@ fn select_greedy_with_blocked(
         execution_bb_runs = new_execution;
         selected.push((idx, count));
 
+        tracing::trace!("\tremaining budget: {:?}", max_cost.map(|b| b.saturating_sub(cumulative_cost)));
+
         if let Some(max_selected) = max_selected {
             if selected.len() >= max_selected {
                 break;
