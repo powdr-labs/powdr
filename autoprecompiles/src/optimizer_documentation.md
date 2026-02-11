@@ -279,8 +279,7 @@ Now let's proceed formally.
 
 Let $S = (C, B)$ be a system, defined over a vector of variables, $w$. Let
 $C$ be the stateless constraints of the system: a formula over $w$. This includes the
-algebraic constraints, stateless buses, and any constraints enforced by stateful
-buses on their interactions. Let $B$ be the stateful bus interactions.
+algebraic constraints and stateless buses. Let $B$ be the stateful bus interactions.
 It is a fixed-length sequence of interactions. Each interaction is a pair.
 The first component, $d$, is the data, a fixed-length
 list of algebraic expressions, so its type is $\mathbb{F}^+$ (sequences of positive
