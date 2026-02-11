@@ -36,8 +36,8 @@ jobs:
           key: ${{ runner.os }}-cargo-pr-tests
       - name: Install Rust toolchain nightly-2025-10-01 (with clippy and rustfmt)
         run: rustup toolchain install nightly-2025-10-01 --component clippy,rustfmt,rust-src
-      - name: Install Rust toolchain 1.90
-        run: rustup toolchain install 1.90
+      - name: Install Rust toolchain 1.93
+        run: rustup toolchain install 1.93
       - name: Install riscv target
         run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2025-10-01
       - name: Install test dependencies
@@ -78,10 +78,10 @@ jobs:
         run: cargo build --release -p powdr-openvm
 
       - name: Install cargo openvm
-        # Rust 1.90 is needed by fresher versions of dependencies of cargo-openvm.
+        # Rust 1.93 is needed by fresher versions of dependencies of cargo-openvm.
         run: |
-          rustup toolchain install 1.90
-          cargo +1.90 install --git 'http://github.com/powdr-labs/openvm.git' --tag "v1.4.2-powdr-rc.1" cargo-openvm
+          rustup toolchain install 1.93
+          cargo +1.93 install --git 'http://github.com/powdr-labs/openvm.git' --tag "v1.4.2-powdr-rc.1" cargo-openvm
 
       - name: Setup python venv
         run: |
@@ -205,10 +205,10 @@ jobs:
           key: ${{ runner.os }}-cargo-release-apc-gpu-${{ hashFiles('**/Cargo.toml') }}
 
       - name: Install cargo openvm
-        # Rust 1.90 is needed by fresher versions of dependencies of cargo-openvm.
+        # Rust 1.93 is needed by fresher versions of dependencies of cargo-openvm.
         run: |
-          rustup toolchain install 1.90
-          cargo +1.90 install --git 'http://github.com/powdr-labs/openvm.git' --tag "v1.4.2-powdr-rc.1" cargo-openvm
+          rustup toolchain install 1.93
+          cargo +1.93 install --git 'http://github.com/powdr-labs/openvm.git' --tag "v1.4.2-powdr-rc.1" cargo-openvm
 
       - name: Setup python venv
         run: |
