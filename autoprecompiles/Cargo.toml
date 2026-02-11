@@ -15,7 +15,6 @@ itertools.workspace = true
 log.workspace = true
 num-traits.workspace = true
 serde.workspace = true
-serde_cbor.workspace = true
 tracing.workspace = true
 tracing-subscriber = { version = "0.3.17", features = ["std", "env-filter"] }
 serde_json.workspace = true
@@ -27,6 +26,13 @@ deepsize2 = "0.1.0"
 derive_more.workspace = true
 derivative.workspace = true
 
+[dev-dependencies]
+expect-test = "1.5.1"
+flate2 = "1.1.2"
+powdr-openvm-bus-interaction-handler.workspace = true
+test-log.workspace = true
+criterion = { version = "0.4", features = ["html_reports"] }
+
 [package.metadata.cargo-udeps.ignore]
 development = ["env_logger"]
 
@@ -35,3 +41,7 @@ workspace = true
 
 [lib]
 bench = false # See https://github.com/bheisler/criterion.rs/issues/458
+
+[[bench]]
+name = "optimizer_benchmark"
+harness = false

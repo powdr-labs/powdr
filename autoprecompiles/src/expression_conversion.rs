@@ -2,16 +2,18 @@ use powdr_constraint_solver::{
     grouped_expression::{GroupedExpression, GroupedExpressionComponent},
     runtime_constant::RuntimeConstant,
 };
-use powdr_expression::{AlgebraicUnaryOperation, AlgebraicUnaryOperator};
+use powdr_expression::{AlgebraicExpression, AlgebraicUnaryOperation, AlgebraicUnaryOperator};
 use powdr_number::{ExpressionConvertible, FieldElement};
-
-use crate::expression::{AlgebraicExpression, AlgebraicReference};
 
 /// Turns an algebraic expression into a grouped expression,
 /// assuming all [`AlgebraicReference`]s are unknown variables.
-pub fn algebraic_to_grouped_expression<T: FieldElement>(
-    expr: &AlgebraicExpression<T>,
-) -> GroupedExpression<T, AlgebraicReference> {
+pub fn algebraic_to_grouped_expression<T, V>(
+    expr: &AlgebraicExpression<T, V>,
+) -> GroupedExpression<T, V>
+where
+    T: FieldElement,
+    V: Ord + Clone,
+{
     expr.to_expression(&|n| GroupedExpression::from_number(*n), &|reference| {
         GroupedExpression::from_unknown_variable(reference.clone())
     })
@@ -20,9 +22,13 @@ pub fn algebraic_to_grouped_expression<T: FieldElement>(
 /// Turns a grouped expression back into an algebraic expression.
 /// Tries to simplify the expression wrt negation and constant factors
 /// to aid human readability.
-pub fn grouped_expression_to_algebraic<T: FieldElement>(
-    expr: GroupedExpression<T, AlgebraicReference>,
-) -> AlgebraicExpression<T> {
+pub fn grouped_expression_to_algebraic<T, V>(
+    expr: GroupedExpression<T, V>,
+) -> powdr_expression::AlgebraicExpression<T, V>
+where
+    T: FieldElement,
+    V: Ord + Clone,
+{
     // Turn the expression into a list of to-be-summed items and try to
     // simplify on the way.
     let items = expr.into_summands().filter_map(|c| match c {
@@ -72,7 +78,7 @@ pub fn grouped_expression_to_algebraic<T: FieldElement>(
     }
 }
 
-fn field_element_to_algebraic_expression<T: FieldElement>(v: T) -> AlgebraicExpression<T> {
+fn field_element_to_algebraic_expression<T: FieldElement, V>(v: T) -> AlgebraicExpression<T, V> {
     if v.is_in_lower_half() {
         AlgebraicExpression::from(v)
     } else {
@@ -82,7 +88,9 @@ fn field_element_to_algebraic_expression<T: FieldElement>(v: T) -> AlgebraicExpr
 
 /// If `e` is negated, returns the expression without negation and `true`,
 /// otherwise returns the un-modified expression and `false`.
-fn extract_negation_if_possible<T>(e: AlgebraicExpression<T>) -> (AlgebraicExpression<T>, bool) {
+fn extract_negation_if_possible<T, V>(
+    e: AlgebraicExpression<T, V>,
+) -> (AlgebraicExpression<T, V>, bool) {
     match e {
         AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation {
             op: AlgebraicUnaryOperator::Minus,

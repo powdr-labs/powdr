@@ -79,7 +79,6 @@ rustc-demangle = "0.1.25"
 cfg-if = "1.0.0"
 
 [dev-dependencies]
-flate2 = "1.1.2"
 test-log.workspace = true
 tempfile = "3.20.0"
 pretty_assertions.workspace = true
@@ -88,9 +87,7 @@ openvm-algebra-circuit.workspace = true
 openvm-bigint-circuit.workspace = true
 openvm-pairing-circuit.workspace = true
 openvm-pairing-transpiler.workspace = true
-serde_cbor.workspace = true
 expect-test = "1.5.1"
-criterion = { version = "0.4", features = ["html_reports"] }
 tracing-log = "0.2.0"
 
 [build-dependencies]
@@ -98,7 +95,3 @@ openvm-cuda-builder = { workspace = true, optional = true }
 
 [lib]
 bench = false # See https://github.com/bheisler/criterion.rs/issues/458
-
-[[bench]]
-name = "optimizer_benchmark"
-harness = false

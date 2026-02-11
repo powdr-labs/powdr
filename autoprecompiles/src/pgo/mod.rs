@@ -6,6 +6,7 @@ use crate::{
     blocks::BasicBlock,
     evaluation::evaluate_apc,
     execution_profile::ExecutionProfile,
+    export::{ExportLevel, ExportOptions},
     EmpiricalConstraints, PowdrConfig,
 };
 
@@ -100,11 +101,16 @@ fn create_apcs_for_all_blocks<A: Adapter>(
                 block.start_pc
             );
 
+            let export_options = ExportOptions::new(
+                config.apc_candidates_dir_path.clone(),
+                block.start_pc,
+                ExportLevel::OnlyAPC,
+            );
             let apc = crate::build::<A>(
                 block.clone(),
                 vm_config.clone(),
                 config.degree_bound,
-                config.apc_candidates_dir_path.as_deref(),
+                export_options,
                 &empirical_constraints,
             )
             .unwrap();
