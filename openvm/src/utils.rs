@@ -4,12 +4,17 @@ use std::{collections::BTreeMap, sync::Arc};
 use itertools::Itertools;
 use openvm_stark_backend::{
     air_builders::symbolic::{
-        SymbolicConstraints, symbolic_expression::SymbolicExpression, symbolic_variable::{Entry, SymbolicVariable}
+        symbolic_expression::SymbolicExpression,
+        symbolic_variable::{Entry, SymbolicVariable},
+        SymbolicConstraints,
     },
     interaction::{Interaction, SymbolicInteraction},
     p3_field::PrimeField32,
 };
-use powdr_autoprecompiles::{expression::{AlgebraicReference, try_convert}, symbolic_machine::SymbolicBusInteraction};
+use powdr_autoprecompiles::{
+    expression::{try_convert, AlgebraicReference},
+    symbolic_machine::SymbolicBusInteraction,
+};
 use powdr_expression::AlgebraicExpression;
 
 use crate::bus_map::BusMap;
