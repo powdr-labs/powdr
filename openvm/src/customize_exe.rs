@@ -11,7 +11,6 @@ use crate::extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs, Orig
 use crate::instruction_formatter::openvm_instruction_formatter;
 use crate::powdr_extension::chip::PowdrAir;
 use crate::program::Prog;
-use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::OriginalCompiledProgram;
 use crate::{CompiledProgram, SpecializedConfig};
 use derive_more::From;
@@ -21,10 +20,7 @@ use openvm_circuit::system::memory::online::GuestMemory;
 use openvm_instructions::instruction::Instruction as OpenVmInstruction;
 use openvm_instructions::program::DEFAULT_PC_STEP;
 use openvm_instructions::VmOpcode;
-use openvm_stark_backend::{
-    interaction::SymbolicInteraction,
-    p3_field::{FieldAlgebra, PrimeField32},
-};
+use openvm_stark_backend::p3_field::{FieldAlgebra, PrimeField32};
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::adapter::{
     Adapter, AdapterApc, AdapterApcWithStats, ApcWithStats, PgoAdapter,
@@ -32,18 +28,13 @@ use powdr_autoprecompiles::adapter::{
 use powdr_autoprecompiles::blocks::{BasicBlock, Instruction, PcStep};
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::execution::ExecutionState;
-use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::pgo::{ApcCandidateJsonExport, Candidate, KnapsackItem};
-use powdr_autoprecompiles::symbolic_machine::SymbolicBusInteraction;
 use powdr_autoprecompiles::PowdrConfig;
 use powdr_autoprecompiles::{InstructionHandler, VmConfig};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    powdr_extension::{PowdrOpcode, PowdrPrecompile},
-    utils::symbolic_to_algebraic,
-};
+use crate::powdr_extension::{PowdrOpcode, PowdrPrecompile};
 
 pub use powdr_openvm_bus_interaction_handler::{
     memory_bus_interaction::{OpenVmMemoryBusInteraction, REGISTER_ADDRESS_SPACE},
@@ -294,22 +285,6 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         exe: Arc::new(exe),
         vm_config: SpecializedConfig::new(original_config, extensions, config.degree_bound),
     }
-}
-
-pub fn openvm_bus_interaction_to_powdr<F: PrimeField32>(
-    interaction: &SymbolicInteraction<F>,
-    columns: &[Arc<String>],
-) -> Result<SymbolicBusInteraction<F>, UnsupportedOpenVmReferenceError> {
-    let id = interaction.bus_index as u64;
-
-    let mult = try_convert(symbolic_to_algebraic(&interaction.count, columns))?;
-    let args = interaction
-        .message
-        .iter()
-        .map(|e| try_convert(symbolic_to_algebraic(e, columns)))
-        .collect::<Result<_, _>>()?;
-
-    Ok(SymbolicBusInteraction { id, mult, args })
 }
 
 #[derive(Serialize, Deserialize)]

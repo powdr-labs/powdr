@@ -19,7 +19,7 @@ use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupCh
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_instructions::VmOpcode;
 
-use crate::utils::get_pil;
+use crate::utils::{get_pil, openvm_bus_interaction_to_powdr};
 use openvm_stark_backend::air_builders::symbolic::SymbolicRapBuilder;
 use openvm_stark_backend::config::Val;
 use openvm_stark_backend::interaction::fri_log_up::find_interaction_chunks;
@@ -46,7 +46,7 @@ use std::sync::MutexGuard;
 
 use crate::utils::UnsupportedOpenVmReferenceError;
 
-use crate::customize_exe::{openvm_bus_interaction_to_powdr, OpenVmRegisterAddress};
+use crate::customize_exe::OpenVmRegisterAddress;
 use crate::utils::symbolic_to_algebraic;
 
 // TODO: Use `<PackedChallenge<BabyBearSC> as FieldExtensionAlgebra<Val<BabyBearSC>>>::D` instead after fixing p3 dependency
