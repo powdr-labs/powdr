@@ -7,13 +7,13 @@ edition = "2021"
 members = []
 
 [dependencies]
-openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1", features = [
+openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "2dd3ebcf6d1ba6c8545", features = [
   "std",
 ] }
 
-openvm-algebra-guest = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1", default-features = false }
-openvm-ecc-guest = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1", default-features = false }
-openvm-pairing = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1", default-features = false, features = [
+openvm-algebra-guest = { git = "https://github.com/powdr-labs/openvm.git", rev = "2dd3ebcf6d1ba6c8545", default-features = false }
+openvm-ecc-guest = { git = "https://github.com/powdr-labs/openvm.git", rev = "2dd3ebcf6d1ba6c8545", default-features = false }
+openvm-pairing = { git = "https://github.com/powdr-labs/openvm.git", rev = "2dd3ebcf6d1ba6c8545", default-features = false, features = [
   "bn254",
 ] }
 
