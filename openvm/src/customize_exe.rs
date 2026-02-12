@@ -84,6 +84,10 @@ impl<'a, T: PrimeField32> ExecutionState for OpenVmExecutionState<'a, T> {
     fn value_limb(value: Self::Value, limb_index: usize) -> Self::Value {
         value >> (limb_index * 8) & 0xff
     }
+
+    fn global_clk(&self) -> usize {
+        unimplemented!("OpenVM does not give us access to a global clock")
+    }
 }
 
 /// A type to represent register addresses during execution
