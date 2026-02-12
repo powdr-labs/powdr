@@ -282,10 +282,10 @@ $C$ be the stateless constraints of the system: a formula over $w$. This include
 algebraic constraints and stateless buses. Let $B$ be the stateful bus interactions.
 It is a fixed-length sequence of interactions. Each interaction is a pair.
 The first component, $d$, is the data, a fixed-length
-list of algebraic expressions, so its type is $\mathbb{F}^+$ (sequences of positive
-length). Assume the bus ID is represented as the first entry in $d$, for
-simplicity. The second component of an interaction is $m$, the multiplicity,
-which is an algebraic expression.
+list of algebraic expressions, so its type is $\mathbb{F}^+$ (sequences of
+positive length of algebraic expressions over $\mathbb{F}$). Assume the bus ID
+is represented as the first entry in $d$, for simplicity. The second component
+of an interaction is $m$, the multiplicity, which is an algebraic expression.
 
 The bus interactions will be aggregated into a special kind of multiset. We
 refer to a map from $\mathbb{F}^+ \to \mathbb{F}$ as a “field multiset” (aka
@@ -371,9 +371,6 @@ Algorithmically, one optimizes $S$ into $S'$ by the following transformations:
 
 Now, we prove that these systems are equivalent under the prior definition. That
 is, we prove soundness and completeness.
-
-TODO: A question for everyone: would it be better to use entirely different
-variable names for the two systems, instead of primes?
 
 #### Soundness
 
