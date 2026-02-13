@@ -72,7 +72,7 @@ pub mod opcode;
 mod program;
 pub mod symbolic_instruction_builder;
 pub mod trace_generation;
-mod utils;
+pub mod utils;
 pub use opcode::instruction_allowlist;
 pub use powdr_autoprecompiles::DegreeBound;
 pub use powdr_autoprecompiles::PgoConfig;
