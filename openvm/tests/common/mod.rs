@@ -76,8 +76,11 @@ pub mod apc_builder_utils {
         )
         .unwrap();
 
-        let apc_with_stats =
-            evaluate_apc::<BabyBearOpenVmApcAdapter>(superblock, vm_config.instruction_handler, apc);
+        let apc_with_stats = evaluate_apc::<BabyBearOpenVmApcAdapter>(
+            superblock,
+            vm_config.instruction_handler,
+            apc,
+        );
 
         let evaluation = apc_with_stats.evaluation_result();
         let apc = &apc_with_stats.apc().machine;
