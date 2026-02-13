@@ -261,8 +261,7 @@ pub fn build<A: Adapter>(
     mut export_options: ExportOptions,
     empirical_constraints: &EmpiricalConstraints,
 ) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
-    assert!(block.is_basic_block(), "superblocks not supported yet");
-    let basic_block = block.original_bbs().next().unwrap();
+    let basic_block = block.try_as_basic_block().expect("superblocks not supported yet");
     let start = std::time::Instant::now();
 
     let (mut machine, column_allocator) = statements_to_symbolic_machine::<A>(

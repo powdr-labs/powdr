@@ -57,7 +57,7 @@ pub mod apc_builder_utils {
             .collect::<Vec<_>>()
             .join("\n");
 
-        let sblock: SuperBlock<_> = BasicBlock {
+        let superblock: SuperBlock<_> = BasicBlock {
             statements: basic_block.into_iter().map(Instr).collect(),
             start_pc: 0,
         }
@@ -68,16 +68,16 @@ pub mod apc_builder_utils {
         let export_level = std::env::var("APC_EXPORT_LEVEL").ok();
 
         let apc = build::<BabyBearOpenVmApcAdapter>(
-            sblock.clone(),
+            superblock.clone(),
             vm_config.clone(),
             degree_bound,
-            ExportOptions::from_env_vars(export_path, export_level, &sblock.original_bbs_pcs()),
+            ExportOptions::from_env_vars(export_path, export_level, &superblock.original_bbs_pcs()),
             &EmpiricalConstraints::default(),
         )
         .unwrap();
 
         let apc_with_stats =
-            evaluate_apc::<BabyBearOpenVmApcAdapter>(sblock, vm_config.instruction_handler, apc);
+            evaluate_apc::<BabyBearOpenVmApcAdapter>(superblock, vm_config.instruction_handler, apc);
 
         let evaluation = apc_with_stats.evaluation_result();
         let apc = &apc_with_stats.apc().machine;

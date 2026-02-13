@@ -127,20 +127,20 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
         // map–reduce over blocks into a single BinaryHeap<ApcCandidate<P>> capped at max_cache
         let res = parallel_fractional_knapsack(
             blocks.into_par_iter().filter_map(|block| {
-                let sblock: SuperBlock<_> = block.into();
+                let superblock: SuperBlock<_> = block.into();
                 let apc = crate::build::<A>(
-                    sblock.clone(),
+                    superblock.clone(),
                     vm_config.clone(),
                     config.degree_bound,
                     ExportOptions::new(
                         config.apc_candidates_dir_path.clone(),
-                        &sblock.original_bbs_pcs(),
+                        &superblock.original_bbs_pcs(),
                         ExportLevel::OnlyAPC,
                     ),
                     &empirical_constraints,
                 )
                 .ok()?;
-                let apc_with_stats = evaluate_apc::<A>(sblock, vm_config.instruction_handler, apc);
+                let apc_with_stats = evaluate_apc::<A>(superblock, vm_config.instruction_handler, apc);
                 let candidate = C::create(apc_with_stats, &self.data.pc_count);
                 if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
                     let json_export = candidate.to_json_export(apc_candidates_dir_path);

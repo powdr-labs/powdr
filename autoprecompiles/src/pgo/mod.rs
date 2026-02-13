@@ -87,20 +87,20 @@ fn create_apcs_for_all_blocks<A: Adapter>(
         .skip(config.skip_autoprecompiles as usize)
         .take(n_acc)
         .map(|block| {
-            let sblock: SuperBlock<_> = block.into();
+            let superblock: SuperBlock<_> = block.into();
             tracing::debug!(
                 "Accelerating block of length {} and start pcs {:?}",
-                sblock.statements().count(),
-                sblock.original_bbs_pcs(),
+                superblock.statements().count(),
+                superblock.original_bbs_pcs(),
             );
 
             let export_options = ExportOptions::new(
                 config.apc_candidates_dir_path.clone(),
-                &sblock.original_bbs_pcs(),
+                &superblock.original_bbs_pcs(),
                 ExportLevel::OnlyAPC,
             );
             let apc = crate::build::<A>(
-                sblock.clone(),
+                superblock.clone(),
                 vm_config.clone(),
                 config.degree_bound,
                 export_options,
@@ -108,7 +108,7 @@ fn create_apcs_for_all_blocks<A: Adapter>(
             )
             .unwrap();
 
-            evaluate_apc::<A>(sblock, vm_config.instruction_handler, apc)
+            evaluate_apc::<A>(superblock, vm_config.instruction_handler, apc)
         })
         .collect()
 }
