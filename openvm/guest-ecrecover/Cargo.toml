@@ -8,7 +8,7 @@ edition = "2021"
 openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2", features = [
   "std",
 ] }
-k256 = { git = "https://github.com/powdr-labs/elliptic-curves-k256", rev = "v1.4.2-powdr-rc.1", default-features = false, features = [
+k256 = { git = "https://github.com/powdr-labs/elliptic-curves-k256", rev = "24aea585eee85846dda62acc83a5099b6623e86e", default-features = false, features = [
   "expose-field",
   "arithmetic",
   "ecdsa",
