@@ -9,12 +9,7 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    adapter::{Adapter, AdapterApcWithStats, AdapterBasicBlock, AdapterVmConfig, PgoAdapter},
-    blocks::BasicBlock,
-    evaluation::{evaluate_apc, EvaluationResult},
-    export::{ExportLevel, ExportOptions},
-    pgo::cell::selection::parallel_fractional_knapsack,
-    EmpiricalConstraints, PowdrConfig,
+    EmpiricalConstraints, PowdrConfig, adapter::{Adapter, AdapterApcWithStats, AdapterBasicBlock, AdapterVmConfig, PgoAdapter}, blocks::{BasicBlock, SuperBlock}, evaluation::{EvaluationResult, evaluate_apc}, execution_profile::ExecutionProfile, export::{ExportLevel, ExportOptions}, pgo::cell::selection::parallel_fractional_knapsack
 };
 
 mod selection;
@@ -59,13 +54,13 @@ pub struct ApcCandidateJsonExport {
 
 pub struct CellPgo<A, C> {
     _marker: std::marker::PhantomData<(A, C)>,
-    data: HashMap<u64, u32>,
+    data: ExecutionProfile,
     max_total_apc_columns: Option<usize>,
 }
 
 impl<A, C> CellPgo<A, C> {
     pub fn with_pgo_data_and_max_columns(
-        data: HashMap<u64, u32>,
+        data: ExecutionProfile,
         max_total_apc_columns: Option<usize>,
     ) -> Self {
         Self {
@@ -102,10 +97,10 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
             return vec![];
         }
 
-        // drop any block whose start index cannot be found in pc_idx_count,
+        // drop any block whose start pc cannot be found in the execution,
         // because a basic block might not be executed at all.
         // Also only keep basic blocks with more than one original instruction.
-        blocks.retain(|b| self.data.contains_key(&b.start_pc) && b.statements.len() > 1);
+        blocks.retain(|b| self.data.pc_count.contains_key(&b.start_pc) && b.statements.len() > 1);
 
         tracing::debug!(
             "Retained {} basic blocks after filtering by pc_idx_count",
@@ -126,20 +121,21 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
         // map–reduce over blocks into a single BinaryHeap<ApcCandidate<P>> capped at max_cache
         let res = parallel_fractional_knapsack(
             blocks.into_par_iter().filter_map(|block| {
+                let sblock: SuperBlock<_> = block.into();
                 let apc = crate::build::<A>(
-                    block.clone(),
+                    sblock.clone(),
                     vm_config.clone(),
                     config.degree_bound,
                     ExportOptions::new(
                         config.apc_candidates_dir_path.clone(),
-                        block.start_pc,
+                        &sblock.original_bbs_pcs(),
                         ExportLevel::OnlyAPC,
                     ),
                     &empirical_constraints,
                 )
                 .ok()?;
-                let apc_with_stats = evaluate_apc::<A>(block, vm_config.instruction_handler, apc);
-                let candidate = C::create(apc_with_stats, &self.data);
+                let apc_with_stats = evaluate_apc::<A>(sblock, vm_config.instruction_handler, apc);
+                let candidate = C::create(apc_with_stats, &self.data.pc_count);
                 if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
                     let json_export = candidate.to_json_export(apc_candidates_dir_path);
                     apc_candidates.lock().unwrap().push(json_export);
@@ -168,6 +164,6 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
     }
 
     fn pc_execution_count(&self, pc: u64) -> Option<u32> {
-        self.data.get(&pc).cloned()
+        self.data.pc_count.get(&pc).cloned()
     }
 }

@@ -10,8 +10,8 @@ use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    adapter::{Adapter, AdapterApcOverPowdrField, AdapterBasicBlock, AdapterOptimisticConstraints},
-    blocks::{BasicBlock, Instruction, PcStep},
+    adapter::{Adapter, AdapterApcOverPowdrField, AdapterOptimisticConstraints},
+    blocks::{BasicBlock, Instruction, PcStep, SuperBlock},
     bus_map::BusMap,
     execution::ExecutionState,
     expression::AlgebraicReference,
@@ -45,9 +45,9 @@ impl ExportOptions {
     /// Creates a new export options instance. Does not export anything unless
     /// a path is given. `path` is a path to a file name prefix.
     /// During export, a sequence number and an extension will be appended.
-    pub fn new(path: Option<PathBuf>, start_pc: u64, level: ExportLevel) -> Self {
+    pub fn new(path: Option<PathBuf>, start_pcs: &[u64], level: ExportLevel) -> Self {
         ExportOptions {
-            path: path.map(|p| p.join(format!("apc_candidate_{start_pc}"))),
+            path: path.map(|p| p.join(format!("apc_candidate_{}", start_pcs.iter().join("_")))),
             level,
             sequence_number: 0,
         }
@@ -56,7 +56,7 @@ impl ExportOptions {
     pub fn from_env_vars(
         export_path: Option<String>,
         export_level: Option<String>,
-        start_pc: u64,
+        start_pcs: &[u64],
     ) -> Self {
         let path = export_path.map(PathBuf::from);
         let level = match export_level.as_deref() {
@@ -65,7 +65,7 @@ impl ExportOptions {
             Some("3") => ExportLevel::APCAndOptimizerSteps,
             _ => ExportLevel::OnlyAPC,
         };
-        ExportOptions::new(path, start_pc, level)
+        ExportOptions::new(path, start_pcs, level)
     }
 
     pub fn export_requested(&self) -> bool {
@@ -92,7 +92,7 @@ impl ExportOptions {
 
     pub fn export_apc_from_machine<A: Adapter>(
         &mut self,
-        block: AdapterBasicBlock<A>,
+        block: SuperBlock<A::Instruction>,
         machine: SymbolicMachine<A::PowdrField>,
         column_allocator: &ColumnAllocator,
         bus_map: &BusMap<A::CustomBusTypes>,
@@ -187,26 +187,34 @@ fn instructions_to_powdr_field<A: Adapter>(
     <<A as Adapter>::ExecutionState as ExecutionState>::RegisterAddress,
     <<A as Adapter>::ExecutionState as ExecutionState>::Value,
 > {
-    let block = BasicBlock {
-        start_pc: apc.block.start_pc,
-        statements: apc
-            .block
-            .statements
-            .iter()
-            .map(|instr| {
-                SimpleInstruction(
-                    // Extract the data by providing a dummy pc
-                    // and removing it again.
-                    instr
-                        .pc_lookup_row(778)
-                        .iter()
-                        .skip(1)
-                        .map(|x| A::from_field(x.clone()))
-                        .collect(),
-                )
-            })
-            .collect(),
-    };
+    let blocks: Vec<_> = apc
+        .block
+        .original_bbs()
+        .map(|b| {
+            BasicBlock {
+                start_pc: b.start_pc,
+                statements: b
+                    .statements
+                    .iter()
+                    .map(|instr| {
+                        SimpleInstruction(
+                            // Extract the data by providing a dummy pc
+                            // and removing it again.
+                            instr
+                                .pc_lookup_row(778)
+                                .iter()
+                                .skip(1)
+                                .map(|x| A::from_field(x.clone()))
+                                .collect(),
+                        )
+                    })
+                    .collect(),
+            }
+        })
+        .collect();
+
+    let block = SuperBlock::from(blocks);
+
     Apc {
         block,
         machine: apc.machine,

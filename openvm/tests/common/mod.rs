@@ -20,7 +20,7 @@ pub fn original_vm_config() -> OriginalVmConfig {
 pub mod apc_builder_utils {
     use openvm_instructions::instruction::Instruction;
     use openvm_stark_sdk::p3_baby_bear::BabyBear;
-    use powdr_autoprecompiles::blocks::BasicBlock;
+    use powdr_autoprecompiles::blocks::{BasicBlock, SuperBlock};
     use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
     use powdr_autoprecompiles::evaluation::evaluate_apc;
     use powdr_autoprecompiles::export::ExportOptions;
@@ -57,29 +57,27 @@ pub mod apc_builder_utils {
             .collect::<Vec<_>>()
             .join("\n");
 
-        let basic_block = BasicBlock {
+        let sblock: SuperBlock<_> = BasicBlock {
             statements: basic_block.into_iter().map(Instr).collect(),
             start_pc: 0,
-        };
+        }
+        .into();
 
         // Use this env var to output serialized APCs for tests as well.
         let export_path = std::env::var("APC_EXPORT_PATH").ok();
         let export_level = std::env::var("APC_EXPORT_LEVEL").ok();
 
         let apc = build::<BabyBearOpenVmApcAdapter>(
-            basic_block.clone(),
+            sblock.clone(),
             vm_config.clone(),
             degree_bound,
-            ExportOptions::from_env_vars(export_path, export_level, basic_block.start_pc),
+            ExportOptions::from_env_vars(export_path, export_level, &sblock.original_bbs_pcs()),
             &EmpiricalConstraints::default(),
         )
         .unwrap();
 
-        let apc_with_stats = evaluate_apc::<BabyBearOpenVmApcAdapter>(
-            basic_block,
-            vm_config.instruction_handler,
-            apc,
-        );
+        let apc_with_stats =
+            evaluate_apc::<BabyBearOpenVmApcAdapter>(sblock, vm_config.instruction_handler, apc);
 
         let evaluation = apc_with_stats.evaluation_result();
         let apc = &apc_with_stats.apc().machine;

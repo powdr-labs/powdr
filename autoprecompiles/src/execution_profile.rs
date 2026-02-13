@@ -15,12 +15,19 @@ use tracing_subscriber::{
     Layer,
 };
 
-// Produces execution count by pc
-// Used in Pgo::Cell and Pgo::Instruction to help rank basic blocks to create APCs for
+#[derive(Clone)]
+/// Program execution information for PGO
+pub struct ExecutionProfile {
+    /// execution count of each pc
+    pub pc_count: HashMap<u64, u32>,
+}
+
+/// Produces information about the program's execution for PGO.
+/// Used in Pgo::Cell and Pgo::Instruction to help rank basic blocks to create APCs for
 pub fn execution_profile<A: Adapter>(
     program: &A::Program,
     execute_fn: impl FnOnce(),
-) -> HashMap<u64, u32> {
+) -> ExecutionProfile {
     // in memory collector storage
     let collector = PgoCollector::new::<A>(program);
 
@@ -50,7 +57,9 @@ pub fn execution_profile<A: Adapter>(
         });
     }
 
-    pc_index_count
+    ExecutionProfile {
+        pc_count: pc_index_count,
+    }
 }
 
 // holds basic type fields of execution objects captured in trace by subscriber

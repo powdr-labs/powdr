@@ -1,5 +1,5 @@
 use crate::adapter::{Adapter, AdapterApc, AdapterVmConfig};
-use crate::blocks::{BasicBlock, PcStep};
+use crate::blocks::{PcStep, SuperBlock};
 use crate::bus_map::{BusMap, BusType};
 use crate::empirical_constraints::{ConstraintGenerator, EmpiricalConstraints};
 use crate::evaluation::AirStats;
@@ -152,8 +152,8 @@ pub struct Substitution {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Apc<T, I, A, V> {
-    /// The basic block this APC is based on
-    pub block: BasicBlock<I>,
+    /// The block this APC is based on
+    pub block: SuperBlock<I>,
     /// The symbolic machine for this APC
     pub machine: SymbolicMachine<T>,
     /// For each original instruction, the substitutions from original columns to APC columns
@@ -171,20 +171,25 @@ impl<T, I, A, V> Apc<T, I, A, V> {
         &self.machine
     }
 
-    /// The PC of the first line of the basic block. Can be used to identify the APC.
-    pub fn start_pc(&self) -> u64 {
-        self.block.start_pc
+    /// If this is a basic block, return the single start PC.
+    pub fn try_bb_start_pc(&self) -> Option<u64> {
+        self.block.try_as_basic_block().map(|b| b.start_pc)
     }
 
-    /// The instructions in the basic block.
-    pub fn instructions(&self) -> &[I] {
-        &self.block.statements
+    /// The instructions in the block.
+    pub fn instructions(&self) -> impl Iterator<Item = &I> + Clone {
+        self.block.statements()
     }
 
-    /// Create a new APC based on the given basic block, symbolic machine and column allocator
+    /// The PCs of the original basic blocks composing this APC. Can be used to identify the APC.
+    pub fn bb_pcs(&self) -> Vec<u64> {
+        self.block.original_bbs_pcs()
+    }
+
+    /// Create a new APC based on the given super block, symbolic machine and column allocator
     /// The column allocator only issues the subs which are actually used in the machine
     fn new(
-        block: BasicBlock<I>,
+        block: SuperBlock<I>,
         machine: SymbolicMachine<T>,
         optimistic_constraints: OptimisticConstraints<A, V>,
         column_allocator: &ColumnAllocator,
@@ -250,16 +255,21 @@ impl ColumnAllocator {
 }
 
 pub fn build<A: Adapter>(
-    block: BasicBlock<A::Instruction>,
+    block: SuperBlock<A::Instruction>,
     vm_config: AdapterVmConfig<A>,
     degree_bound: DegreeBound,
     mut export_options: ExportOptions,
     empirical_constraints: &EmpiricalConstraints,
 ) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
+    assert!(
+        block.is_basic_block(),
+        "superblocks not supported yet"
+    );
+    let basic_block = block.original_bbs().next().unwrap();
     let start = std::time::Instant::now();
 
     let (mut machine, column_allocator) = statements_to_symbolic_machine::<A>(
-        &block,
+        basic_block,
         vm_config.instruction_handler,
         &vm_config.bus_map,
     );
@@ -269,13 +279,13 @@ pub fn build<A: Adapter>(
         optimistic_precompile_config().restrict_optimistic_precompiles;
     let algebraic_references =
         BlockCellAlgebraicReferenceMapper::new(&column_allocator.subs, machine.main_columns());
-    let empirical_constraints = empirical_constraints.for_block(&block);
+    let empirical_constraints = empirical_constraints.for_block(basic_block);
 
     // TODO: Use execution constraints
     let (empirical_constraints, _execution_constraints) = if should_generate_execution_constraints {
         // Filter constraints to only contain execution-checkable columns,
         // generate execution constraints for them.
-        let optimistic_literals = optimistic_literals::<A>(&block, &vm_config, &degree_bound);
+        let optimistic_literals = optimistic_literals::<A>(basic_block, &vm_config, &degree_bound);
 
         let empirical_constraints = empirical_constraints.filtered(
             |block_cell| {
@@ -288,7 +298,7 @@ pub fn build<A: Adapter>(
         );
 
         let empirical_constraints =
-            ConstraintGenerator::<A>::new(empirical_constraints, algebraic_references, &block)
+            ConstraintGenerator::<A>::new(empirical_constraints, algebraic_references, basic_block)
                 .generate_constraints();
 
         let execution_constraints =
@@ -297,7 +307,7 @@ pub fn build<A: Adapter>(
     } else {
         // Don't filter empirical constraints, return empty execution constraints.
         let empirical_constraints =
-            ConstraintGenerator::<A>::new(empirical_constraints, algebraic_references, &block)
+            ConstraintGenerator::<A>::new(empirical_constraints, algebraic_references, basic_block)
                 .generate_constraints();
         (empirical_constraints, vec![])
     };
@@ -317,7 +327,10 @@ pub fn build<A: Adapter>(
         );
     }
 
-    let labels = [("apc_start_pc", block.start_pc.to_string())];
+    let labels = [(
+        "apc_start_pc",
+        block.original_bbs_pcs().into_iter().join("_"),
+    )];
     metrics::counter!("before_opt_cols", &labels)
         .absolute(machine.unique_references().count() as u64);
     metrics::counter!("before_opt_constraints", &labels)

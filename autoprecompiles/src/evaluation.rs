@@ -1,7 +1,7 @@
 use std::{fmt::Display, iter::Sum, ops::Add, sync::Arc};
 
 use crate::{
-    adapter::{Adapter, AdapterApc, AdapterApcWithStats, AdapterBasicBlock},
+    adapter::{Adapter, AdapterApc, AdapterApcWithStats, AdapterSuperBlock},
     InstructionHandler, SymbolicMachine,
 };
 
@@ -51,24 +51,22 @@ impl Sum<AirStats> for AirStats {
 /// Evaluation result of an APC evaluation
 pub struct EvaluationResult {
     /// Statistics before optimizations, i.e., the sum of the AIR stats
-    /// of all AIRs that *would* be involved in proving this basic block
+    /// of all AIRs that *would* be involved in proving this block
     /// if it was run in software.
     pub before: AirStats,
     /// The AIR stats of the APC.
     pub after: AirStats,
 }
 
-/// Evaluate an APC by comparing its cost to the cost of executing the
-/// basic block in software.
+/// Evaluate an APC by comparing its cost to the cost of executing the original instructions in software.
 /// This is used by different pgo strategies in different stages. For example, for cell PGO, this is done before selection, and for instruction PGO, it is done after.
 pub fn evaluate_apc<A: Adapter>(
-    basic_block: AdapterBasicBlock<A>,
+    block: AdapterSuperBlock<A>,
     instruction_handler: &A::InstructionHandler,
     apc: AdapterApc<A>,
 ) -> AdapterApcWithStats<A> {
-    let before = basic_block
-        .statements
-        .iter()
+    let before = block
+        .statements()
         .map(|instruction| instruction_handler.get_instruction_air_stats(instruction))
         .sum();
     let after = AirStats::new(apc.machine());
