@@ -145,6 +145,8 @@ where
     .clone();
     export_options.export_optimizer_outer_constraint_system(&constraint_system, "trivial_simp");
 
+    stats_logger.finalize(&constraint_system);
+
     // Sanity check: Degree bound should be respected:
     for algebraic_constraint in &constraint_system.algebraic_constraints {
         assert!(

@@ -10,23 +10,34 @@ use crate::{powdr::UniqueReferences, SymbolicMachine};
 
 pub struct StatsLogger {
     start_time: Instant,
+    step_start_time: Instant,
 }
 
 impl StatsLogger {
     pub fn start(system: impl Into<Stats>) -> Self {
         log::info!("Starting optimization - {}", system.into());
+        let start_time = Instant::now();
+        let step_start_time = start_time;
         StatsLogger {
-            start_time: Instant::now(),
+            start_time,
+            step_start_time,
         }
     }
 
     pub fn log(&mut self, step: &str, system: impl Into<Stats>) {
-        let elapsed = self.start_time.elapsed().as_secs_f32();
-        log::info!(
+        let elapsed = self.step_start_time.elapsed().as_secs_f32();
+        log::debug!(
             "After {step:<32} (took {elapsed:7.4} s) - {}",
             system.into()
         );
-        self.start_time = Instant::now();
+        self.step_start_time = Instant::now();
+    }
+    pub fn finalize(self, system: impl Into<Stats>) {
+        let elapsed = self.start_time.elapsed().as_secs_f32();
+        log::info!(
+            "Optimization took (took {elapsed:7.4} s) - {}",
+            system.into()
+        );
     }
 }
 
