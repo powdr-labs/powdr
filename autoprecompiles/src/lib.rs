@@ -261,10 +261,7 @@ pub fn build<A: Adapter>(
     mut export_options: ExportOptions,
     empirical_constraints: &EmpiricalConstraints,
 ) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
-    assert!(
-        block.is_basic_block(),
-        "superblocks not supported yet"
-    );
+    assert!(block.is_basic_block(), "superblocks not supported yet");
     let basic_block = block.original_bbs().next().unwrap();
     let start = std::time::Instant::now();
 

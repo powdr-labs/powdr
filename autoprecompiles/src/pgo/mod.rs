@@ -2,7 +2,12 @@ use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterato
 use strum::{Display, EnumString};
 
 use crate::{
-    EmpiricalConstraints, PowdrConfig, adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig}, blocks::{BasicBlock, SuperBlock}, evaluation::evaluate_apc, execution_profile::ExecutionProfile, export::{ExportLevel, ExportOptions}
+    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig},
+    blocks::{BasicBlock, SuperBlock},
+    evaluation::evaluate_apc,
+    execution_profile::ExecutionProfile,
+    export::{ExportLevel, ExportOptions},
+    EmpiricalConstraints, PowdrConfig,
 };
 
 mod cell;

@@ -41,7 +41,6 @@ impl<I> From<Vec<BasicBlock<I>>> for SuperBlock<I> {
     }
 }
 
-
 impl<I> SuperBlock<I> {
     pub fn is_basic_block(&self) -> bool {
         self.blocks.len() == 1

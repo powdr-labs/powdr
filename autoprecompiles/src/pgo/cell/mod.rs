@@ -9,7 +9,13 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    EmpiricalConstraints, PowdrConfig, adapter::{Adapter, AdapterApcWithStats, AdapterBasicBlock, AdapterVmConfig, PgoAdapter}, blocks::{BasicBlock, SuperBlock}, evaluation::{EvaluationResult, evaluate_apc}, execution_profile::ExecutionProfile, export::{ExportLevel, ExportOptions}, pgo::cell::selection::parallel_fractional_knapsack
+    adapter::{Adapter, AdapterApcWithStats, AdapterBasicBlock, AdapterVmConfig, PgoAdapter},
+    blocks::{BasicBlock, SuperBlock},
+    evaluation::{evaluate_apc, EvaluationResult},
+    execution_profile::ExecutionProfile,
+    export::{ExportLevel, ExportOptions},
+    pgo::cell::selection::parallel_fractional_knapsack,
+    EmpiricalConstraints, PowdrConfig,
 };
 
 mod selection;

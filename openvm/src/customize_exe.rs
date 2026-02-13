@@ -335,7 +335,12 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
         pgo_program_pc_count: &HashMap<u64, u32>,
     ) -> Self {
         let execution_frequency = *pgo_program_pc_count
-            .get(&apc_with_stats.apc().try_bb_start_pc().unwrap())
+            .get(
+                &apc_with_stats
+                    .apc()
+                    .try_bb_start_pc()
+                    .expect("superblocks not supported"),
+            )
             .unwrap_or(&0) as usize;
 
         Self {
