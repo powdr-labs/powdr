@@ -91,12 +91,12 @@ fn create_apcs_for_all_blocks<A: Adapter>(
             tracing::debug!(
                 "Accelerating block of length {} and start pcs {:?}",
                 superblock.statements().count(),
-                superblock.original_bbs_pcs(),
+                superblock.start_pcs(),
             );
 
             let export_options = ExportOptions::new(
                 config.apc_candidates_dir_path.clone(),
-                &superblock.original_bbs_pcs(),
+                &superblock.start_pcs(),
                 ExportLevel::OnlyAPC,
             );
             let apc = crate::build::<A>(

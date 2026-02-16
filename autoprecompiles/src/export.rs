@@ -189,7 +189,7 @@ fn instructions_to_powdr_field<A: Adapter>(
 > {
     let blocks: Vec<_> = apc
         .block
-        .original_bbs()
+        .blocks()
         .map(|b| {
             BasicBlock {
                 start_pc: b.start_pc,

@@ -171,11 +171,6 @@ impl<T, I, A, V> Apc<T, I, A, V> {
         &self.machine
     }
 
-    /// If this is a basic block, return the single start PC.
-    pub fn try_bb_start_pc(&self) -> Option<u64> {
-        self.block.try_as_basic_block().map(|b| b.start_pc)
-    }
-
     /// The instructions in the block.
     pub fn instructions(&self) -> impl Iterator<Item = &I> + Clone {
         self.block.statements()
@@ -183,7 +178,7 @@ impl<T, I, A, V> Apc<T, I, A, V> {
 
     /// The PCs of the original basic blocks composing this APC. Can be used to identify the APC.
     pub fn bb_pcs(&self) -> Vec<u64> {
-        self.block.original_bbs_pcs()
+        self.block.start_pcs()
     }
 
     /// Create a new APC based on the given super block, symbolic machine and column allocator
@@ -325,10 +320,7 @@ pub fn build<A: Adapter>(
         );
     }
 
-    let labels = [(
-        "apc_start_pc",
-        block.original_bbs_pcs().into_iter().join("_"),
-    )];
+    let labels = [("apc_start_pc", block.start_pcs().into_iter().join("_"))];
     metrics::counter!("before_opt_cols", &labels)
         .absolute(machine.unique_references().count() as u64);
     metrics::counter!("before_opt_constraints", &labels)

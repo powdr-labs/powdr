@@ -55,12 +55,12 @@ impl<I> SuperBlock<I> {
     }
 
     /// Sequence of basic block start PCs, uniquely identifies this superblock
-    pub fn original_bbs_pcs(&self) -> Vec<u64> {
+    pub fn start_pcs(&self) -> Vec<u64> {
         self.blocks.iter().map(|b| b.start_pc).collect()
     }
 
     /// Sequence of basic blocks composing this superblock
-    pub fn original_bbs(&self) -> impl Iterator<Item = &BasicBlock<I>> {
+    pub fn blocks(&self) -> impl Iterator<Item = &BasicBlock<I>> {
         self.blocks.iter()
     }
 
@@ -79,8 +79,8 @@ impl<I: PcStep> SuperBlock<I> {
 
 impl<I: Display> Display for SuperBlock<I> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.blocks.len() == 1 {
-            return write!(f, "{}", &self.blocks[0]);
+        if let Some(bb) = self.try_as_basic_block() {
+            return bb.fmt(f);
         }
         writeln!(f, "SuperBlock(")?;
         let mut insn_idx = 0;

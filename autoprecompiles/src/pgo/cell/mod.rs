@@ -134,7 +134,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
                     config.degree_bound,
                     ExportOptions::new(
                         config.apc_candidates_dir_path.clone(),
-                        &superblock.original_bbs_pcs(),
+                        &superblock.start_pcs(),
                         ExportLevel::OnlyAPC,
                     ),
                     &empirical_constraints,

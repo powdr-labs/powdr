@@ -71,7 +71,7 @@ pub mod apc_builder_utils {
             superblock.clone(),
             vm_config.clone(),
             degree_bound,
-            ExportOptions::from_env_vars(export_path, export_level, &superblock.original_bbs_pcs()),
+            ExportOptions::from_env_vars(export_path, export_level, &superblock.start_pcs()),
             &EmpiricalConstraints::default(),
         )
         .unwrap();
