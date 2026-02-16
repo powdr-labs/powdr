@@ -25,7 +25,7 @@ pub struct ApcCall<S> {
     pub to: S,
 }
 
-impl<E: ExecutionState, A: Apc<E>, S: Snapshot> ApcCandidates<E, A, S> {
+impl<E: ExecutionState, A: Apc<E>, S> ApcCandidates<E, A, S> {
     pub fn new(apcs: Vec<A>) -> Self {
         Self {
             apcs,
@@ -54,7 +54,10 @@ impl<E: ExecutionState, A: Apc<E>, S: Snapshot> ApcCandidates<E, A, S> {
                     if candidate.total_check_count
                         == optimistic_constraint_evaluator.instruction_index()
                     {
-                        candidate.status = CandidateStatus::Done(snapshot_callback());
+                        candidate.status = CandidateStatus::Done(Clocked::new(
+                            state.global_clk(),
+                            snapshot_callback(),
+                        ));
                     }
                     true
                 }
@@ -140,8 +143,8 @@ impl<E: ExecutionState, A: Apc<E>, S: Snapshot> ApcCandidates<E, A, S> {
                 };
                 ApcCall {
                     apc_id: candidate.apc_id,
-                    from: candidate.from_snapshot,
-                    to,
+                    from: candidate.from_snapshot.snapshot,
+                    to: to.snapshot,
                 }
             })
             .collect()
@@ -162,7 +165,7 @@ impl<E: ExecutionState, A: Apc<E>, S: Snapshot> ApcCandidates<E, A, S> {
             Ok(ApcCandidate {
                 total_check_count: apc.cycle_count() + 1,
                 apc_id,
-                from_snapshot: snapshot(),
+                from_snapshot: Clocked::new(state.global_clk(), snapshot()),
                 status: CandidateStatus::InProgress(evaluator),
             })
         }?;
@@ -171,9 +174,9 @@ impl<E: ExecutionState, A: Apc<E>, S: Snapshot> ApcCandidates<E, A, S> {
     }
 
     fn candidate_range(candidate: &ApcCandidate<E, S>) -> (usize, usize) {
-        let start = candidate.from_snapshot.instret();
+        let start = candidate.from_snapshot.global_clk;
         let end = match &candidate.status {
-            CandidateStatus::Done(snapshot) => snapshot.instret(),
+            CandidateStatus::Done(snapshot) => snapshot.global_clk,
             CandidateStatus::InProgress(_) => {
                 unreachable!("candidate_range called on candidate still in progress")
             }
@@ -219,9 +222,24 @@ struct ApcCandidate<E: ExecutionState, S> {
     /// The id of the apc candidate being run
     pub apc_id: usize,
     /// The state of the execution when this candidate was introduced
-    pub from_snapshot: S,
+    pub from_snapshot: Clocked<S>,
     /// The status of this candidate
     pub status: CandidateStatus<E, S>,
+}
+
+#[derive(Debug)]
+struct Clocked<S> {
+    global_clk: usize,
+    snapshot: S,
+}
+
+impl<S> Clocked<S> {
+    fn new(global_clk: usize, snapshot: S) -> Self {
+        Self {
+            global_clk,
+            snapshot,
+        }
+    }
 }
 
 /// A trait to represent APCs at execution time
@@ -236,19 +254,12 @@ pub trait Apc<E: ExecutionState> {
     fn priority(&self) -> usize;
 }
 
-/// A trait to represent execution state snapshots at execution time
-/// TODO: Maybe `Snapshot` is incorrect as we only care about instret here
-pub trait Snapshot {
-    // How many cycles happened to lead to this snapshot
-    fn instret(&self) -> usize;
-}
-
 #[derive(Debug)]
-pub enum CandidateStatus<E: ExecutionState, S> {
+enum CandidateStatus<E: ExecutionState, S> {
     /// We don't know yet if this apc candidate is valid. The conditions must be verified
     InProgress(OptimisticConstraintEvaluator<E::RegisterAddress, E::Value>),
     /// We know the candidate is valid until the given `Snapshot`
-    Done(S),
+    Done(Clocked<S>),
 }
 
 #[cfg(test)]
@@ -340,6 +351,10 @@ mod tests {
         fn reg(&self, _address: &Self::RegisterAddress) -> Self::Value {
             todo!("Constraints on register values is currently untested")
         }
+
+        fn global_clk(&self) -> usize {
+            self.instret
+        }
     }
 
     #[derive(Clone, PartialEq, Debug, Copy)]
@@ -349,12 +364,6 @@ mod tests {
 
     fn s(instret: usize) -> TestSnapshot {
         TestSnapshot { instret }
-    }
-
-    impl Snapshot for TestSnapshot {
-        fn instret(&self) -> usize {
-            self.instret
-        }
     }
 
     struct TestVm {

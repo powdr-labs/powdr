@@ -10,15 +10,15 @@ repository = { workspace = true }
 [dependencies]
 powdr-number.workspace = true
 
-itertools = "0.13"
-num-traits = "0.2.15"
-derive_more = "0.99.17"
+num-traits.workspace = true
+derive_more.workspace = true
 serde = { version = "1.0", default-features = false, features = ["alloc", "derive", "rc"] }
 schemars = { version = "0.8.16", features = ["preserve_order"]}
 
 [dev-dependencies]
-test-log = "0.2.12"
-pretty_assertions = "1.4.0"
+test-log.workspace = true
+pretty_assertions.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true

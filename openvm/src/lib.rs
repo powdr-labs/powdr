@@ -67,7 +67,6 @@ use crate::extraction_utils::{export_pil, AirWidths, OriginalVmConfig};
 use crate::powdr_extension::{PowdrExtensionExecutor, PowdrPrecompile};
 
 mod air_builder;
-pub mod bus_map;
 pub mod cuda_abi;
 mod empirical_constraints;
 pub mod extraction_utils;
@@ -75,10 +74,12 @@ pub mod opcode;
 mod program;
 pub mod symbolic_instruction_builder;
 pub mod trace_generation;
-mod utils;
+pub mod utils;
 pub use opcode::instruction_allowlist;
 pub use powdr_autoprecompiles::DegreeBound;
 pub use powdr_autoprecompiles::PgoConfig;
+
+pub use powdr_openvm_bus_interaction_handler::bus_map;
 
 pub use crate::empirical_constraints::detect_empirical_constraints;
 
@@ -145,9 +146,7 @@ pub use customize_exe::{customize, BabyBearOpenVmApcAdapter, Instr, POWDR_OPCODE
 // A module for our extension
 mod powdr_extension;
 
-pub mod bus_interaction_handler;
 pub mod instruction_formatter;
-pub mod memory_bus_interaction;
 
 /// A custom VmConfig that wraps the SdkVmConfig, adding our custom extension.
 #[derive(Serialize, Deserialize, Clone)]
@@ -1592,27 +1591,36 @@ mod tests {
             expected.assert_debug_eq(&columns_saved.unwrap());
         }
 
-        // In Cell PGO, check that the apc candidates were persisted to disk
-        let json_files_count = std::fs::read_dir(apc_candidates_dir_path)
+        let files = std::fs::read_dir(apc_candidates_dir_path)
             .unwrap()
             .filter_map(Result::ok)
-            .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "json"))
-            .count();
-        let cbor_files_count = std::fs::read_dir(apc_candidates_dir_path)
-            .unwrap()
-            .filter_map(Result::ok)
-            .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "cbor"))
-            .count();
-        assert!(cbor_files_count > 0, "No APC candidate files found");
+            .map(|entry| {
+                entry
+                    .path()
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string()
+            })
+            .collect_vec();
+        // Check that the snapshot json files are there.
+        assert!(
+            files
+                .iter()
+                .any(|filename| filename.starts_with("apc_candidate_")
+                    && filename.ends_with(".json")),
+            "APC candidates snapshot JSON file not found"
+        );
         if is_cell_pgo {
-            assert_eq!(
-                json_files_count, 1,
-                "Expected exactly one APC candidate JSON file"
+            // In Cell PGO, check that the apc candidates were persisted to disk
+            assert!(
+                files.contains(&"apc_candidates.json".to_string()),
+                "Candidates file not present."
             );
         } else {
-            assert_eq!(
-                json_files_count, 0,
-                "Unexpected APC candidate JSON files found"
+            assert!(
+                !files.contains(&"apc_candidates.json".to_string()),
+                "Candidates file present, but not expected."
             );
         }
     }

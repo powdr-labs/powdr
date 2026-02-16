@@ -12,6 +12,7 @@ members = [
   "syscalls",
   "autoprecompiles",
   "openvm",
+  "openvm-bus-interaction-handler",
   "cli-openvm",
   "openvm/extensions/hints-guest",
   "openvm/extensions/hints-transpiler",
@@ -38,46 +39,47 @@ powdr-riscv-types = { path = "./riscv-types", version = "0.1.4" }
 powdr-syscalls = { path = "./syscalls", version = "0.1.4" }
 powdr-autoprecompiles = { path = "./autoprecompiles", version = "0.1.4" }
 powdr-openvm = { path = "./openvm", version = "0.1.4" }
+powdr-openvm-bus-interaction-handler = { path = "./openvm-bus-interaction-handler", version = "0.1.4" }
 
 powdr-openvm-hints-guest = { path = "./openvm/extensions/hints-guest", version = "0.1.4" }
 powdr-openvm-hints-transpiler = { path = "./openvm/extensions/hints-transpiler", version = "0.1.4" }
 powdr-openvm-hints-circuit = { path = "./openvm/extensions/hints-circuit", version = "0.1.4" }
 
 # openvm
-openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1" }
-openvm-build = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1" }
-openvm-rv32im-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1" }
-openvm-rv32im-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1" }
-openvm-rv32im-guest = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1", default-features = false }
-openvm-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1" }
-openvm-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1" }
-openvm-circuit-derive = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1" }
-openvm-circuit-primitives = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1" }
-openvm-circuit-primitives-derive = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1" }
-openvm-instructions = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1" }
-openvm-instructions-derive = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1" }
-openvm-sdk = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1", default-features = false, features = [
+openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2" }
+openvm-build = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2" }
+openvm-rv32im-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2" }
+openvm-rv32im-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2" }
+openvm-rv32im-guest = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2", default-features = false }
+openvm-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2" }
+openvm-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2" }
+openvm-circuit-derive = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2" }
+openvm-circuit-primitives = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2" }
+openvm-circuit-primitives-derive = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2" }
+openvm-instructions = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2" }
+openvm-instructions-derive = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2" }
+openvm-sdk = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2", default-features = false, features = [
   "parallel",
   "jemalloc",
   "nightly-features",
   "evm-prove",
 ] }
-openvm-ecc-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1" }
-openvm-ecc-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1" }
-openvm-keccak256-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1" }
-openvm-keccak256-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1" }
-openvm-sha256-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1" }
-openvm-sha256-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1" }
-openvm-algebra-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1" }
-openvm-algebra-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1" }
-openvm-bigint-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1" }
-openvm-bigint-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1" }
-openvm-pairing-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1" }
-openvm-pairing-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1" }
-openvm-native-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1", default-features = false }
-openvm-native-recursion = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1", default-features = false }
-openvm-platform = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1" }
-openvm-custom-insn = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.1" }
+openvm-ecc-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2" }
+openvm-ecc-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2" }
+openvm-keccak256-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2" }
+openvm-keccak256-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2" }
+openvm-sha256-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2" }
+openvm-sha256-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2" }
+openvm-algebra-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2" }
+openvm-algebra-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2" }
+openvm-bigint-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2" }
+openvm-bigint-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2" }
+openvm-pairing-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2" }
+openvm-pairing-transpiler = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2" }
+openvm-native-circuit = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2", default-features = false }
+openvm-native-recursion = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2", default-features = false }
+openvm-platform = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2" }
+openvm-custom-insn = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2" }
 
 # stark-backend
 openvm-stark-sdk = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "v1.2.2-powdr", default-features = false, features = [
@@ -92,6 +94,24 @@ openvm-stark-backend = { git = "https://github.com/powdr-labs/stark-backend.git"
 openvm-cuda-backend = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "v1.2.2-powdr", default-features = false }
 openvm-cuda-builder = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "v1.2.2-powdr", default-features = false }
 openvm-cuda-common = { git = "https://github.com/powdr-labs/stark-backend.git", rev = "v1.2.2-powdr", default-features = false }
+
+# external dependencies
+num-traits = "0.2.19"
+itertools = "0.14"
+derive_more = { version = "2", features = ["full"] }
+log = "0.4.27"
+serde = "1.0.228"
+tracing = "0.1.40"
+eyre = "0.6.12"
+serde_cbor = "0.11.2"
+metrics = "0.23.0"
+derivative = "2.2.0"
+serde_json = "^1.0.140"
+
+# dev dependencies
+test-log = "0.2.19"
+pretty_assertions = "1.4.1"
+env_logger = "0.11.8"
 
 [profile.pr-tests]
 inherits = "dev"
