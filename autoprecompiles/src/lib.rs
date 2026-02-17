@@ -177,7 +177,7 @@ impl<T, I, A, V> Apc<T, I, A, V> {
     }
 
     /// The PCs of the original basic blocks composing this APC. Can be used to identify the APC.
-    pub fn bb_pcs(&self) -> Vec<u64> {
+    pub fn start_pcs(&self) -> Vec<u64> {
         self.block.start_pcs()
     }
 
