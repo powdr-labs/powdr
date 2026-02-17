@@ -330,7 +330,7 @@ impl PowdrExecutor {
         Ctx: ExecutionCtxTrait,
     {
         use openvm_instructions::program::DEFAULT_PC_STEP;
-        use openvm_stark_backend::p3_field::Field;
+        use openvm_stark_backend::{p3_field::Field, p3_maybe_rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator}};
 
         let &Instruction {
             a,
@@ -363,6 +363,9 @@ impl PowdrExecutor {
             original_instructions: self
                 .apc
                 .instructions()
+                // note: `par_bridge` doesn't work here because it does not preserve ordering
+                .collect_vec()
+                .par_iter()
                 .enumerate()
                 .map(|(idx, instruction)| {
                     let executor = executor_inventory
