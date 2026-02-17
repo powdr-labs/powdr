@@ -9,6 +9,8 @@ mod detection;
 
 pub use detection::collect_basic_blocks;
 
+use crate::PowdrConfig;
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BasicBlock<I> {
     /// The program counter of the first instruction in this block.
@@ -287,17 +289,15 @@ fn count_superblocks_in_execution(
 /// Returns the detected blocks, together with their execution information.
 /// Does not return invalid APC blocks (i.e., single instruction) and blocks that are never executed.
 pub fn detect_superblocks<I: Clone>(
+    cfg: &PowdrConfig,
     // program execution as a sequence of PCs
     execution_pc_list: &[u64],
     // all program basic blocks (including single instruction ones), in no particular order
     basic_blocks: Vec<BasicBlock<I>>,
-    // maximum number of basic blocks in a superblock
-    max_len: usize,
-    // superblocks with execution count under this value are ignored
-    exec_count_cutoff: u32,
 ) -> ExecutionBlocks<I> {
     tracing::info!(
-        "Detecting superblocks of size <= {max_len}, over the sequence of {} PCs",
+        "Detecting superblocks with <= {} basic blocks, over the sequence of {} PCs",
+        cfg.superblock_max_bb_count,
         execution_pc_list.len()
     );
 
@@ -312,7 +312,7 @@ pub fn detect_superblocks<I: Clone>(
     let execution_bb_runs =
         detect_execution_bb_runs(&start_pc_to_bb, execution_pc_list);
 
-    let blocks_found = count_superblocks_in_execution(&execution_bb_runs, max_len);
+    let blocks_found = count_superblocks_in_execution(&execution_bb_runs, cfg.superblock_max_bb_count as usize);
 
     tracing::info!(
         "Found {} blocks in {} basic block runs. Took {:?}",
@@ -323,43 +323,45 @@ pub fn detect_superblocks<I: Clone>(
 
     // build the result
     let mut block_stats = vec![];
-    let mut skipped = 0;
+    let mut skipped_exec_count = 0;
+    let mut skipped_max_insn = 0;
     blocks_found
         .into_iter()
-        .for_each(|(sblock, (count, mut runs))| {
-            // convert PCs into BasicBlock's
-            let blocks: Vec<_> = sblock
+        .for_each(|(sblock_pcs, (count, mut runs))| {
+            let block = SuperBlock::from(sblock_pcs
                 .iter()
                 .map(|start_pc| start_pc_to_bb[start_pc].clone())
-                .collect();
+                .collect_vec());
 
-            if blocks.len() > 1 && count < exec_count_cutoff {
-                // skip superblocks that were executed less than the cutoff
-                tracing::trace!(
-                    "Skipping superblock {:?} due to execution count below cutoff ({})",
-                    sblock,
-                    exec_count_cutoff,
-                );
-                skipped += 1;
+            // skip superblocks that were executed less than the cutoff
+            if !block.is_basic_block() && count < cfg.superblock_exec_count_cutoff as u32 {
+                skipped_exec_count += 1;
                 return;
             }
+
+            // skip superblocks with too many instructions
+            if !block.is_basic_block() && block.statements().count() > cfg.superblock_max_instructions as usize {
+                skipped_max_insn += 1;
+                return;
+            }
+
             runs.sort_unstable();
             block_stats.push(BlockAndStats {
-                block: SuperBlock::from(blocks),
+                block,
                 count: Some(count),
                 runs: Some(runs),
             });
         });
 
     tracing::info!(
-        "{} blocks were skipped due to execution cutoff of {}, {} blocks remain",
-        skipped,
-        exec_count_cutoff,
-        block_stats.len(),
+        "{} blocks skipped due to execution cutoff, {} skipped due to instruction count",
+        skipped_exec_count,
+        skipped_max_insn,
     );
 
     tracing::info!(
-        "Out of those, {} are basic blocks and {} are superblocks",
+        "Of the {} remaining blocks, {} are basic blocks and {} are superblocks",
+        block_stats.len(),
         block_stats.iter().filter(|b| b.block.is_basic_block()).count(),
         block_stats.iter().filter(|b| !b.block.is_basic_block()).count(),
     );

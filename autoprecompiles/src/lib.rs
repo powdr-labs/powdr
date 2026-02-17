@@ -60,6 +60,13 @@ pub struct PowdrConfig {
     /// Number of basic blocks to skip for autoprecompiles.
     /// This is either the largest N if no PGO, or the costliest N with PGO.
     pub skip_autoprecompiles: u64,
+    /// Maximum number of basic blocks included in a superblock.
+    /// Default of 1 means only basic blocks are considered.
+    pub superblock_max_bb_count: u8,
+    /// Maximum number of instructions included in a superblock.
+    pub superblock_max_instructions: u32,
+    /// Superblocks executed less than the cutoff are ignored.
+    pub superblock_exec_count_cutoff: u32,
     /// Max degree of constraints.
     pub degree_bound: DegreeBound,
     /// The path to the APC candidates dir, if any.
@@ -69,14 +76,34 @@ pub struct PowdrConfig {
 }
 
 impl PowdrConfig {
-    pub fn new(autoprecompiles: u64, skip_autoprecompiles: u64, degree_bound: DegreeBound) -> Self {
+    pub fn new(
+        autoprecompiles: u64,
+        skip_autoprecompiles: u64,
+        degree_bound: DegreeBound,
+    ) -> Self {
         Self {
             autoprecompiles,
             skip_autoprecompiles,
+            // superblocks disabled by default
+            superblock_max_bb_count: 1,
+            superblock_max_instructions: u32::MAX,
+            superblock_exec_count_cutoff: 1,
             degree_bound,
             apc_candidates_dir_path: None,
             should_use_optimistic_precompiles: false,
         }
+    }
+
+    pub fn with_superblocks(mut self, max_bb_count: u8, max_instructions: Option<u32>, exec_count_cutoff: Option<u32>) -> Self {
+        assert!(max_bb_count > 0, "superblock_max_bb_count must be greater than 0");
+        self.superblock_max_bb_count = max_bb_count;
+        if let Some(max_instructions) = max_instructions {
+            self.superblock_max_instructions = max_instructions;
+        }
+        if let Some(exec_count_cutoff) = exec_count_cutoff {
+            self.superblock_exec_count_cutoff = exec_count_cutoff;
+        }
+        self
     }
 
     pub fn with_apc_candidates_dir<P: AsRef<Path>>(mut self, path: P) -> Self {
