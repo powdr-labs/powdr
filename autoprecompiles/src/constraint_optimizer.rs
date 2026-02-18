@@ -104,7 +104,7 @@ pub fn optimize_constraints<
         // do not increase the degree.
         None,
     );
-    solver.add_algebraic_constraints((&assignments).into_iter().map(|(v, val)| {
+    solver.add_algebraic_constraints(assignments.iter().map(|(v, val)| {
         AlgebraicConstraint::assert_eq(
             GroupedExpression::from_unknown_variable(v.clone()),
             val.clone(),
