@@ -76,11 +76,7 @@ pub struct PowdrConfig {
 }
 
 impl PowdrConfig {
-    pub fn new(
-        autoprecompiles: u64,
-        skip_autoprecompiles: u64,
-        degree_bound: DegreeBound,
-    ) -> Self {
+    pub fn new(autoprecompiles: u64, skip_autoprecompiles: u64, degree_bound: DegreeBound) -> Self {
         Self {
             autoprecompiles,
             skip_autoprecompiles,
@@ -94,8 +90,16 @@ impl PowdrConfig {
         }
     }
 
-    pub fn with_superblocks(mut self, max_bb_count: u8, max_instructions: Option<u32>, exec_count_cutoff: Option<u32>) -> Self {
-        assert!(max_bb_count > 0, "superblock_max_bb_count must be greater than 0");
+    pub fn with_superblocks(
+        mut self,
+        max_bb_count: u8,
+        max_instructions: Option<u32>,
+        exec_count_cutoff: Option<u32>,
+    ) -> Self {
+        assert!(
+            max_bb_count > 0,
+            "superblock_max_bb_count must be greater than 0"
+        );
         self.superblock_max_bb_count = max_bb_count;
         if let Some(max_instructions) = max_instructions {
             self.superblock_max_instructions = max_instructions;

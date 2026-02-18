@@ -1,4 +1,7 @@
-use std::{collections::{BTreeMap, HashMap}, fmt::Display};
+use std::{
+    collections::{BTreeMap, HashMap},
+    fmt::Display,
+};
 
 use itertools::Itertools;
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator};
@@ -9,7 +12,10 @@ mod detection;
 
 pub use detection::collect_basic_blocks;
 
-use crate::PowdrConfig;
+use crate::{
+    adapter::{Adapter, AdapterBasicBlock},
+    PowdrConfig,
+};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BasicBlock<I> {
@@ -144,7 +150,6 @@ pub trait Instruction<T>: Clone + Display + PcStep {
     fn pc_lookup_row(&self, pc: u64) -> Vec<T>;
 }
 
-
 /// A sequence of basic blocks seen in the execution, identified by their start PCs.
 /// A run is interrupted by an invalid APC block (i.e., single instruction).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -171,11 +176,14 @@ pub struct ExecutionBlocks<I> {
 impl<I> ExecutionBlocks<I> {
     pub fn new_without_pgo(blocks: Vec<SuperBlock<I>>) -> Self {
         Self {
-            blocks: blocks.into_iter().map(|block| BlockAndStats {
-                block,
-                count: None,
-                runs: None,
-            }).collect(),
+            blocks: blocks
+                .into_iter()
+                .map(|block| BlockAndStats {
+                    block,
+                    count: None,
+                    runs: None,
+                })
+                .collect(),
             execution_bb_runs: None,
         }
     }
@@ -214,15 +222,19 @@ fn detect_execution_bb_runs<I>(
     let mut pos = 0;
     while pos < execution.len() {
         let pc = execution[pos];
-        let bb = start_pc_to_bb.get(&pc).expect("PC in execution not part of any basic blocks");
-        // if starting a single instruction BB (i.e., invalid for APC), end current run
-        if bb.statements.len() <= 1 {
+        let bb = start_pc_to_bb
+            .get(&pc)
+            .expect("PC in execution not part of any basic blocks");
+        assert!(!bb.statements.is_empty());
+        if bb.statements.len() == 1 {
+            // if starting a single instruction BB (i.e., invalid for APC), end current run
             if !current_run.is_empty() {
                 *execution_bb_runs
                     .entry(std::mem::take(&mut current_run))
                     .or_insert(0) += 1;
             }
         } else {
+            // extend the run with this basic block
             current_run.push(pc);
         }
         // move to next bb
@@ -234,13 +246,18 @@ fn detect_execution_bb_runs<I>(
             .or_insert(0) += 1;
     }
 
-    execution_bb_runs.into_iter().map(|(run, count)| (ExecutionBasicBlockRun(run), count)).collect()
+    execution_bb_runs
+        .into_iter()
+        .map(|(run, count)| (ExecutionBasicBlockRun(run), count))
+        .collect()
 }
-
 
 /// Find all superblocks up to max_len in the basic block run and count their occurrences.
 /// Returns a map from superblock to their count.
-fn count_superblocks_in_run(bb_run: &ExecutionBasicBlockRun, max_len: usize) -> BTreeMap<Vec<u64>, u32> {
+fn count_superblocks_in_run(
+    bb_run: &ExecutionBasicBlockRun,
+    max_len: usize,
+) -> BTreeMap<Vec<u64>, u32> {
     let mut superblocks_in_run = BTreeMap::new();
     // first, we identify the superblocks in this run
     for len in 1..=std::cmp::min(max_len, bb_run.0.len()) {
@@ -288,13 +305,13 @@ fn count_superblocks_in_execution(
 /// Detect basic blocks and superblocks present in the given execution.
 /// Returns the detected blocks, together with their execution information.
 /// Does not return invalid APC blocks (i.e., single instruction) and blocks that are never executed.
-pub fn detect_superblocks<I: Clone>(
+pub fn detect_superblocks<A: Adapter>(
     cfg: &PowdrConfig,
     // program execution as a sequence of PCs
     execution_pc_list: &[u64],
     // all program basic blocks (including single instruction ones), in no particular order
-    basic_blocks: Vec<BasicBlock<I>>,
-) -> ExecutionBlocks<I> {
+    basic_blocks: Vec<AdapterBasicBlock<A>>,
+) -> ExecutionBlocks<A::Instruction> {
     tracing::info!(
         "Detecting superblocks with <= {} basic blocks, over the sequence of {} PCs",
         cfg.superblock_max_bb_count,
@@ -309,10 +326,10 @@ pub fn detect_superblocks<I: Clone>(
         .map(|bb| (bb.start_pc, bb))
         .collect();
 
-    let execution_bb_runs =
-        detect_execution_bb_runs(&start_pc_to_bb, execution_pc_list);
+    let execution_bb_runs = detect_execution_bb_runs(&start_pc_to_bb, execution_pc_list);
 
-    let blocks_found = count_superblocks_in_execution(&execution_bb_runs, cfg.superblock_max_bb_count as usize);
+    let blocks_found =
+        count_superblocks_in_execution(&execution_bb_runs, cfg.superblock_max_bb_count as usize);
 
     tracing::info!(
         "Found {} blocks in {} basic block runs. Took {:?}",
@@ -325,23 +342,34 @@ pub fn detect_superblocks<I: Clone>(
     let mut block_stats = vec![];
     let mut skipped_exec_count = 0;
     let mut skipped_max_insn = 0;
+    let mut skipped_adapter = 0;
     blocks_found
         .into_iter()
         .for_each(|(sblock_pcs, (count, mut runs))| {
-            let block = SuperBlock::from(sblock_pcs
-                .iter()
-                .map(|start_pc| start_pc_to_bb[start_pc].clone())
-                .collect_vec());
+            let block = SuperBlock::from(
+                sblock_pcs
+                    .iter()
+                    .map(|start_pc| start_pc_to_bb[start_pc].clone())
+                    .collect_vec(),
+            );
 
             // skip superblocks that were executed less than the cutoff
-            if !block.is_basic_block() && count < cfg.superblock_exec_count_cutoff as u32 {
+            if !block.is_basic_block() && count < cfg.superblock_exec_count_cutoff {
                 skipped_exec_count += 1;
                 return;
             }
 
             // skip superblocks with too many instructions
-            if !block.is_basic_block() && block.statements().count() > cfg.superblock_max_instructions as usize {
+            if !block.is_basic_block()
+                && block.statements().count() > cfg.superblock_max_instructions as usize
+            {
                 skipped_max_insn += 1;
+                return;
+            }
+
+            // skip by adapter rules
+            if A::should_skip_block(&block) {
+                skipped_adapter += 1;
                 return;
             }
 
@@ -354,16 +382,23 @@ pub fn detect_superblocks<I: Clone>(
         });
 
     tracing::info!(
-        "{} blocks skipped due to execution cutoff, {} skipped due to instruction count",
+        "Skipped blocks: {} to execution cutoff, {} to instruction count, {} to adapter filter",
         skipped_exec_count,
         skipped_max_insn,
+        skipped_adapter,
     );
 
     tracing::info!(
         "Of the {} remaining blocks, {} are basic blocks and {} are superblocks",
         block_stats.len(),
-        block_stats.iter().filter(|b| b.block.is_basic_block()).count(),
-        block_stats.iter().filter(|b| !b.block.is_basic_block()).count(),
+        block_stats
+            .iter()
+            .filter(|b| b.block.is_basic_block())
+            .count(),
+        block_stats
+            .iter()
+            .filter(|b| !b.block.is_basic_block())
+            .count(),
     );
 
     ExecutionBlocks {

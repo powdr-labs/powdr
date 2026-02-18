@@ -6,10 +6,11 @@ use std::{fmt::Display, sync::Arc};
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
-use crate::blocks::SuperBlock;
+use crate::blocks::{detect_superblocks, ExecutionBlocks, SuperBlock};
 use crate::empirical_constraints::EmpiricalConstraints;
 use crate::evaluation::EvaluationResult;
 use crate::execution::{ExecutionState, OptimisticConstraints};
+use crate::execution_profile::ExecutionProfile;
 use crate::{
     blocks::{BasicBlock, Instruction, Program},
     constraint_optimizer::IsBusStateful,
@@ -62,30 +63,38 @@ pub trait PgoAdapter {
         labels: BTreeMap<u64, Vec<String>>,
         empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
-        let filtered_blocks = blocks
-            .into_iter()
-            .filter(|block| !Self::Adapter::should_skip_block(block))
-            .collect();
-        self.create_apcs_with_pgo(
-            filtered_blocks,
-            config,
-            vm_config,
-            labels,
-            empirical_constraints,
-        )
+        let blocks = if let Some(prof) = self.execution_profile() {
+            detect_superblocks::<Self::Adapter>(config, &prof.pc_list, blocks)
+        } else {
+            let superblocks = blocks
+                .into_iter()
+                .map(SuperBlock::from)
+                .filter(|sb| !Self::Adapter::should_skip_block(sb))
+                // filter invalid APC candidates
+                .filter(|sb| sb.statements().count() > 1)
+                .collect();
+            ExecutionBlocks::new_without_pgo(superblocks)
+        };
+
+        self.create_apcs_with_pgo(blocks, config, vm_config, labels, empirical_constraints)
     }
 
     fn create_apcs_with_pgo(
         &self,
-        blocks: Vec<AdapterBasicBlock<Self::Adapter>>,
+        exec_blocks: AdapterExecutionBlocks<Self::Adapter>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
         empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>>;
 
-    fn pc_execution_count(&self, _pc: u64) -> Option<u32> {
+    fn execution_profile(&self) -> Option<&ExecutionProfile> {
         None
+    }
+
+    fn pc_execution_count(&self, pc: u64) -> Option<u32> {
+        self.execution_profile()
+            .and_then(|prof| prof.pc_count.get(&pc).cloned())
     }
 }
 
@@ -129,7 +138,7 @@ where
         instruction_handler: &Self::InstructionHandler,
     ) -> Self::ApcStats;
 
-    fn should_skip_block(_block: &BasicBlock<Self::Instruction>) -> bool {
+    fn should_skip_block(_block: &SuperBlock<Self::Instruction>) -> bool {
         false
     }
 }
@@ -167,3 +176,4 @@ pub type AdapterOptimisticConstraints<A> = OptimisticConstraints<
 >;
 pub type AdapterBasicBlock<A> = BasicBlock<<A as Adapter>::Instruction>;
 pub type AdapterSuperBlock<A> = SuperBlock<<A as Adapter>::Instruction>;
+pub type AdapterExecutionBlocks<A> = ExecutionBlocks<<A as Adapter>::Instruction>;
