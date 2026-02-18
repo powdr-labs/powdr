@@ -122,9 +122,7 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
 
         // Sum up the metrics for each instruction
         let width_before = apc
-            .block
-            .statements
-            .iter()
+            .instructions()
             .map(|instr| {
                 instruction_handler
                     .get_instruction_metrics(instr.0.opcode)
@@ -262,7 +260,12 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         .enumerate()
         .map(|(i, (apc, apc_stats, _))| {
             let opcode = POWDR_OPCODE + i;
-            let start_index = ((apc.start_pc() - pc_base as u64) / pc_step as u64)
+            let start_pc = apc
+                .block
+                .try_as_basic_block()
+                .expect("superblocks unsupported")
+                .start_pc;
+            let start_index = ((start_pc - pc_base as u64) / pc_step as u64)
                 .try_into()
                 .unwrap();
 
@@ -271,7 +274,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
             program.add_apc_instruction_at_pc_index(start_index, VmOpcode::from_usize(opcode));
 
             PowdrPrecompile::new(
-                format!("PowdrAutoprecompile_{}", apc.start_pc()),
+                format!("PowdrAutoprecompile_{}", start_pc),
                 PowdrOpcode {
                     class_offset: opcode,
                 },
@@ -310,7 +313,14 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
         pgo_program_pc_count: &HashMap<u64, u32>,
     ) -> Self {
         let execution_frequency = *pgo_program_pc_count
-            .get(&apc_with_stats.apc().block.start_pc)
+            .get(
+                &apc_with_stats
+                    .apc()
+                    .block
+                    .try_as_basic_block()
+                    .expect("superblocks unsupported")
+                    .start_pc,
+            )
             .unwrap_or(&0) as usize;
 
         Self {
@@ -324,13 +334,17 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
         ApcCandidateJsonExport {
             execution_frequency: self.execution_frequency,
             original_block: BasicBlock {
-                start_pc: self.apc_with_stats.apc().block.start_pc,
-                statements: self
+                start_pc: self
                     .apc_with_stats
                     .apc()
                     .block
-                    .statements
-                    .iter()
+                    .try_as_basic_block()
+                    .expect("superblocks unsupported")
+                    .start_pc,
+                instructions: self
+                    .apc_with_stats
+                    .apc()
+                    .instructions()
                     .map(ToString::to_string)
                     .collect(),
             },
@@ -340,7 +354,15 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
             cost_before: self.apc_with_stats.stats().widths.before.total() as f64,
             cost_after: self.apc_with_stats.stats().widths.after.total() as f64,
             apc_candidate_file: apc_candidates_dir_path
-                .join(format!("apc_{}.cbor", self.apc_with_stats.apc().start_pc()))
+                .join(format!(
+                    "apc_{}.cbor",
+                    self.apc_with_stats
+                        .apc()
+                        .block
+                        .try_as_basic_block()
+                        .expect("superblocks unsupported")
+                        .start_pc
+                ))
                 .display()
                 .to_string(),
         }
@@ -375,6 +397,11 @@ impl<P, I> KnapsackItem for OpenVmApcCandidate<P, I> {
     }
 
     fn tie_breaker(&self) -> usize {
-        self.apc_with_stats.apc().start_pc() as usize
+        self.apc_with_stats
+            .apc()
+            .block
+            .try_as_basic_block()
+            .unwrap()
+            .start_pc as usize
     }
 }

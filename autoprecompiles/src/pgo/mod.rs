@@ -1,12 +1,11 @@
-use std::collections::HashMap;
-
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use strum::{Display, EnumString};
 
 use crate::{
     adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig},
-    blocks::BasicBlock,
+    blocks::{BasicBlock, SuperBlock},
     evaluation::evaluate_apc,
+    execution_profile::ExecutionProfile,
     export::{ExportLevel, ExportOptions},
     EmpiricalConstraints, PowdrConfig,
 };
@@ -22,15 +21,14 @@ pub use {
 };
 
 /// Three modes for profiler guided optimization with different cost functions to sort the basic blocks by descending cost and select the most costly ones to accelerate.
-/// The inner HashMap contains number of time a pc is executed.
 #[derive(Default)]
 pub enum PgoConfig {
     /// value = cells saved per apc * times executed
     /// cost = number of columns in the apc
     /// constraint of max total columns
-    Cell(HashMap<u64, u32>, Option<usize>),
+    Cell(ExecutionProfile, Option<usize>),
     /// value = instruction per apc * times executed
-    Instruction(HashMap<u64, u32>),
+    Instruction(ExecutionProfile),
     /// value = instruction per apc
     #[default]
     None,
@@ -40,8 +38,8 @@ impl PgoConfig {
     /// Returns the number of times a certain pc was executed in the profile.
     pub fn pc_execution_count(&self, pc: u64) -> Option<u32> {
         match self {
-            PgoConfig::Cell(pc_count, _) | PgoConfig::Instruction(pc_count) => {
-                pc_count.get(&pc).copied()
+            PgoConfig::Cell(prof, _) | PgoConfig::Instruction(prof) => {
+                prof.pc_count.get(&pc).copied()
             }
             PgoConfig::None => None,
         }
@@ -64,7 +62,7 @@ pub enum PgoType {
 pub fn pgo_config(
     pgo: PgoType,
     max_columns: Option<usize>,
-    execution_profile: HashMap<u64, u32>,
+    execution_profile: ExecutionProfile,
 ) -> PgoConfig {
     match pgo {
         PgoType::Cell => PgoConfig::Cell(execution_profile, max_columns),
@@ -89,19 +87,20 @@ fn create_apcs_for_all_blocks<A: Adapter>(
         .skip(config.skip_autoprecompiles as usize)
         .take(n_acc)
         .map(|block| {
+            let superblock: SuperBlock<_> = block.into();
             tracing::debug!(
-                "Accelerating block of length {} and start pc {}",
-                block.statements.len(),
-                block.start_pc
+                "Accelerating block of length {} and start pcs {:?}",
+                superblock.instructions().count(),
+                superblock.start_pcs(),
             );
 
             let export_options = ExportOptions::new(
                 config.apc_candidates_dir_path.clone(),
-                block.start_pc,
+                &superblock.start_pcs(),
                 ExportLevel::OnlyAPC,
             );
             let apc = crate::build::<A>(
-                block.clone(),
+                superblock.clone(),
                 vm_config.clone(),
                 config.degree_bound,
                 export_options,
@@ -109,7 +108,7 @@ fn create_apcs_for_all_blocks<A: Adapter>(
             )
             .unwrap();
 
-            evaluate_apc::<A>(block, vm_config.instruction_handler, apc)
+            evaluate_apc::<A>(superblock, vm_config.instruction_handler, apc)
         })
         .collect()
 }

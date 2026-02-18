@@ -53,7 +53,6 @@ where
     // Keep only instructions that produce dummy records
     let instructions_with_subs = apc
         .instructions()
-        .iter()
         .zip_eq(apc.subs.iter())
         .filter(|(_, subs)| !subs.is_empty());
 
