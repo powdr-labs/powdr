@@ -69,6 +69,7 @@ pub trait PgoAdapter {
             let superblocks = blocks
                 .into_iter()
                 .map(SuperBlock::from)
+                // filter by adapter rules
                 .filter(|sb| !Self::Adapter::should_skip_block(sb))
                 // filter invalid APC candidates
                 .filter(|sb| sb.statements().count() > 1)
