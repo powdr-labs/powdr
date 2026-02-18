@@ -1,6 +1,6 @@
 use expect_test::expect;
 use powdr_autoprecompiles::bus_map::BusMap;
-use powdr_autoprecompiles::export::{ApcWithBusMap, SimpleInstruction};
+use powdr_autoprecompiles::export::{ApcWithBusMap, ExportOptions, SimpleInstruction};
 use powdr_autoprecompiles::optimizer::optimize;
 use powdr_autoprecompiles::symbolic_machine::SymbolicMachine;
 use powdr_autoprecompiles::{Apc, ColumnAllocator, DegreeBound};
@@ -166,7 +166,7 @@ fn test_optimize_reth_op() {
         DEFAULT_DEGREE_BOUND,
         bus_map,
         column_allocator,
-        &mut Default::default(),
+        &mut ExportOptions::from_env_vars(Some("3".to_string()), Some("/tmp/e".to_string()), 0),
     )
     .unwrap()
     .0;

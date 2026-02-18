@@ -26,7 +26,7 @@ pub struct ExportOptions {
     pub path: Option<PathBuf>,
     pub level: ExportLevel,
     sequence_number: usize,
-    substituted_variables: Vec<(String, String)>,
+    substituted_variables: Vec<String>,
 }
 
 #[derive(Default)]
@@ -156,18 +156,16 @@ impl ExportOptions {
     /// so that they can be exported together with the final export.
     pub fn register_substituted_variables<Var, Expr>(
         &mut self,
-        vars: impl Iterator<Item = (Var, Expr)>,
+        vars: impl IntoIterator<Item = (Var, Expr)>,
     ) where
         Var: serde::Serialize,
         Expr: serde::Serialize,
     {
         if self.export_requested() {
-            self.substituted_variables.extend(vars.map(|(v, e)| {
-                (
-                    serde_json::to_string(&v).unwrap(),
-                    serde_json::to_string(&e).unwrap(),
-                )
-            }));
+            self.substituted_variables.extend(
+                vars.into_iter()
+                    .map(|(v, e)| serde_json::to_string(&(v, e)).unwrap()),
+            );
         }
     }
 
@@ -178,15 +176,7 @@ impl ExportOptions {
             let file_stub = path.file_name().unwrap().to_string_lossy();
             let path = path.with_file_name(format!("{file_stub}_substitutions.json"));
             let mut writer = create_file_if_not_exists(&path);
-            let mut sep = "";
-            write!(&mut writer, "[").unwrap();
-            for (var, expr) in &self.substituted_variables {
-                write!(&mut writer, "{sep}[{var},{expr}]").unwrap();
-                if sep == "" {
-                    sep = ",";
-                }
-            }
-            write!(&mut writer, "]").unwrap();
+            write!(&mut writer, "[{}]", self.substituted_variables.join(",")).unwrap();
             writer.flush().unwrap();
         }
     }

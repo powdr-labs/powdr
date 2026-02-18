@@ -79,9 +79,9 @@ where
     //     // No degree bound given, i.e. only perform replacements that
     //     // do not increase the degree.
     //     None,
-    //     // TODO also store the replaced variables
     // )
     // .0;
+    // export_options.register_substituted_variables(assignments);
     // export_options.export_optimizer_outer(&machine, "02_rule_based_optimization");
     stats_logger.log("rule-based optimization", &constraint_system);
 
@@ -109,13 +109,12 @@ where
             break;
         }
     }
-
-    // TODO store replaced variables
-    let constraint_system = inliner::replace_constrained_witness_columns(
+    let (constraint_system, substitutions) = inliner::replace_constrained_witness_columns(
         constraint_system,
         inline_everything_below_degree_bound(degree_bound),
     );
     stats_logger.log("inlining", &constraint_system);
+    export_options.register_substituted_variables(substitutions.into_iter());
     export_options.export_optimizer_outer_constraint_system(constraint_system.system(), "inlining");
 
     let (constraint_system, _) = rule_based_optimization(

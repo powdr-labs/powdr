@@ -6,7 +6,7 @@ use itertools::Itertools;
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fmt::Display;
 use std::hash::Hash;
 
@@ -18,18 +18,22 @@ pub struct DegreeBound {
 
 /// Reduce variables in the constraint system by inlining them,
 /// if the callback `should_inline` returns true.
+/// Returns the modified system and a list of inlined variables and their expressions.
 pub fn replace_constrained_witness_columns<
     T: FieldElement,
     V: Ord + Clone + Hash + Eq + Display,
 >(
     mut constraint_system: IndexedConstraintSystem<T, V>,
     should_inline: impl Fn(&V, &GroupedExpression<T, V>, &IndexedConstraintSystem<T, V>) -> bool,
-) -> IndexedConstraintSystem<T, V> {
+) -> (
+    IndexedConstraintSystem<T, V>,
+    BTreeMap<V, GroupedExpression<T, V>>,
+) {
     let mut to_remove_idx = HashSet::new();
-    let mut inlined_vars = HashSet::new();
+    let mut substitutions = BTreeMap::new();
     let constraint_count = constraint_system.algebraic_constraints().len();
     loop {
-        let inlined_vars_count = inlined_vars.len();
+        let inlined_vars_count = substitutions.len();
         for curr_idx in (0..constraint_count).rev() {
             let constraint = &constraint_system.algebraic_constraints()[curr_idx];
 
@@ -38,16 +42,15 @@ pub fn replace_constrained_witness_columns<
                     log::trace!("Substituting {var} = {expr}");
                     log::trace!("  (from identity {constraint})");
 
-                    // TODO store in export
                     constraint_system.substitute_by_unknown(&var, &expr);
                     to_remove_idx.insert(curr_idx);
-                    inlined_vars.insert(var);
+                    substitutions.insert(var, expr);
 
                     break;
                 }
             }
         }
-        if inlined_vars.len() == inlined_vars_count {
+        if substitutions.len() == inlined_vars_count {
             // No more variables to inline
             break;
         }
@@ -64,9 +67,9 @@ pub fn replace_constrained_witness_columns<
     // sanity check
     assert!(constraint_system
         .referenced_unknown_variables()
-        .all(|var| { !inlined_vars.contains(var) }));
+        .all(|var| { !substitutions.contains_key(var) }));
 
-    constraint_system
+    (constraint_system, substitutions)
 }
 
 /// Returns an inlining discriminator that allows everything to be inlined as long as
@@ -180,7 +183,7 @@ mod test {
             ])
             .into();
 
-        let constraint_system =
+        let (constraint_system, _) =
             replace_constrained_witness_columns(constraint_system, bounds(3, 3));
         assert_eq!(constraint_system.algebraic_constraints().len(), 2);
     }
@@ -203,7 +206,7 @@ mod test {
             .with_bus_interactions(bus_interactions)
             .into();
 
-        let constraint_system =
+        let (constraint_system, _) =
             replace_constrained_witness_columns(constraint_system, bounds(3, 3));
         // 1) a + b + c = 0        => a = -b - c
         // 2) b + d - 1 = 0        => d = -b + 1
@@ -255,7 +258,7 @@ mod test {
             .with_bus_interactions(bus_interactions)
             .into();
 
-        let constraint_system =
+        let (constraint_system, _) =
             replace_constrained_witness_columns(constraint_system, bounds(3, 3));
 
         let constraints = constraint_system.algebraic_constraints();
@@ -288,7 +291,7 @@ mod test {
             .with_constraints(identities)
             .into();
 
-        let constraint_system =
+        let (constraint_system, _) =
             replace_constrained_witness_columns(constraint_system, bounds(3, 3));
 
         let constraints = constraint_system.algebraic_constraints();
@@ -313,7 +316,7 @@ mod test {
             .with_bus_interactions(bus_interactions)
             .into();
 
-        let constraint_system =
+        let (constraint_system, _) =
             replace_constrained_witness_columns(constraint_system, bounds(3, 3));
         // 1) y = x + 3
         // 2) z = y + 2 ⇒ z = (x + 3) + 2 = x + 5
@@ -358,7 +361,7 @@ mod test {
             )
             .into();
 
-        let constraint_system =
+        let (constraint_system, _) =
             replace_constrained_witness_columns(constraint_system, bounds(3, 3));
 
         let constraints = constraint_system.algebraic_constraints();
@@ -431,9 +434,9 @@ mod test {
             .into();
 
         // Apply the same optimization to both systems
-        let optimal_system = replace_constrained_witness_columns(optimal_system, bounds(5, 5));
+        let (optimal_system, _) = replace_constrained_witness_columns(optimal_system, bounds(5, 5));
 
-        let suboptimal_system =
+        let (suboptimal_system, _) =
             replace_constrained_witness_columns(suboptimal_system, bounds(5, 5));
 
         // Assert the difference in optimization results
