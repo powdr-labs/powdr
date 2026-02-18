@@ -215,6 +215,7 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
     // Assert that all substitutions are affine so that the degree
     // does not increase.
     assert!(assignments.iter().all(|(_, expr)| expr.is_affine()));
+    // TODO store
     constraint_system.apply_substitutions(assignments);
 
     // Now try to replace bus interaction fields that the solver knows to be constant

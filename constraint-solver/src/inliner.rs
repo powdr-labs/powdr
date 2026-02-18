@@ -38,6 +38,7 @@ pub fn replace_constrained_witness_columns<
                     log::trace!("Substituting {var} = {expr}");
                     log::trace!("  (from identity {constraint})");
 
+                    // TODO store in export
                     constraint_system.substitute_by_unknown(&var, &expr);
                     to_remove_idx.insert(curr_idx);
                     inlined_vars.insert(var);

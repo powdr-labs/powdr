@@ -79,6 +79,7 @@ where
     //     // No degree bound given, i.e. only perform replacements that
     //     // do not increase the degree.
     //     None,
+    //     // TODO also store the replaced variables
     // )
     // .0;
     // export_options.export_optimizer_outer(&machine, "02_rule_based_optimization");
@@ -109,6 +110,7 @@ where
         }
     }
 
+    // TODO store replaced variables
     let constraint_system = inliner::replace_constrained_witness_columns(
         constraint_system,
         inline_everything_below_degree_bound(degree_bound),

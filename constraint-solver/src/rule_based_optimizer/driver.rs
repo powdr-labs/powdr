@@ -179,6 +179,7 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         // Collect replacement actions to process them in batch
         let mut replacement_actions = Vec::new();
 
+        // TODO store substitutions
         for action in actions.into_iter().map(|a| a.0).sorted() {
             match action {
                 Action::UpdateRangeConstraintOnVar(var, rc) => {
