@@ -18,6 +18,7 @@ use crate::{
 };
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+/// A sequence of instructions starting at a given PC.
 pub struct BasicBlock<I> {
     /// The program counter of the first instruction in this block.
     pub start_pc: u64,
@@ -32,6 +33,8 @@ impl<I: PcStep> BasicBlock<I> {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+/// A sequence of basic blocks that can be made into an autoprecompile.
+/// A single basic block is represented as a SuperBlock with one element.
 pub struct SuperBlock<I> {
     blocks: Vec<BasicBlock<I>>,
 }
