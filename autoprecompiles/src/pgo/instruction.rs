@@ -45,7 +45,8 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
         // drop any block whose start pc cannot be found in the execution,
         // because a basic block might not be executed at all.
         // Also only keep basic blocks with more than one original instruction.
-        blocks.retain(|b| pgo_program_pc_count.contains_key(&b.start_pc) && b.statements.len() > 1);
+        blocks
+            .retain(|b| pgo_program_pc_count.contains_key(&b.start_pc) && b.instructions.len() > 1);
 
         tracing::debug!(
             "Retained {} basic blocks after filtering by pc_idx_count",
@@ -56,13 +57,13 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
         blocks.sort_by(|a, b| {
             let a_cnt = pgo_program_pc_count[&a.start_pc];
             let b_cnt = pgo_program_pc_count[&b.start_pc];
-            (b_cnt * (b.statements.len() as u32)).cmp(&(a_cnt * (a.statements.len() as u32)))
+            (b_cnt * (b.instructions.len() as u32)).cmp(&(a_cnt * (a.instructions.len() as u32)))
         });
 
         // Debug print blocks by descending cost
         for block in &blocks {
             let frequency = pgo_program_pc_count[&block.start_pc];
-            let number_of_instructions = block.statements.len();
+            let number_of_instructions = block.instructions.len();
             let value = frequency * number_of_instructions as u32;
 
             tracing::debug!(

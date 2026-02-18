@@ -1,5 +1,7 @@
 use std::fmt::Display;
 
+use itertools::Itertools;
+use rayon::iter::{IndexedParallelIterator, IntoParallelIterator};
 use serde::{Deserialize, Serialize};
 
 /// Tools to detect basic blocks in a program
@@ -11,13 +13,13 @@ pub use detection::collect_basic_blocks;
 pub struct BasicBlock<I> {
     /// The program counter of the first instruction in this block.
     pub start_pc: u64,
-    pub statements: Vec<I>,
+    pub instructions: Vec<I>,
 }
 
 impl<I: PcStep> BasicBlock<I> {
     /// Returns an iterator over the program counters of the instructions in this block.
     pub fn pcs(&self) -> impl Iterator<Item = u64> + '_ {
-        (0..self.statements.len()).map(move |i| self.start_pc + (i as u64 * I::pc_step() as u64))
+        (0..self.instructions.len()).map(move |i| self.start_pc + (i as u64 * I::pc_step() as u64))
     }
 }
 
@@ -64,9 +66,18 @@ impl<I> SuperBlock<I> {
         self.blocks.iter()
     }
 
-    /// Sequence of statements across all basic blocks in this superblock
-    pub fn statements(&self) -> impl Iterator<Item = &I> + Clone {
-        self.blocks.iter().flat_map(|b| &b.statements)
+    /// Sequence of instructions across all basic blocks in this superblock
+    pub fn instructions(&self) -> impl Iterator<Item = &I> + Clone {
+        self.blocks.iter().flat_map(|b| &b.instructions)
+    }
+
+    /// Parallel iterator over instructions across all basic blocks in this superblock
+    pub fn par_instructions(&self) -> impl IndexedParallelIterator<Item = &I>
+    where
+        I: Sync,
+    {
+        // note: we need collect_vec() because parallel flat_map does not implement IndexedParallelIterator
+        self.instructions().collect_vec().into_par_iter()
     }
 }
 
@@ -86,7 +97,7 @@ impl<I: Display> Display for SuperBlock<I> {
         let mut insn_idx = 0;
         for block in &self.blocks {
             writeln!(f, "   pc: {}, statements: [", block.start_pc)?;
-            for instr in block.statements.iter() {
+            for instr in block.instructions.iter() {
                 writeln!(f, "      instr {insn_idx:>3}:   {instr}")?;
                 insn_idx += 1;
             }
@@ -99,7 +110,7 @@ impl<I: Display> Display for SuperBlock<I> {
 impl<I: Display> Display for BasicBlock<I> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "BasicBlock(start_pc: {}, statements: [", self.start_pc)?;
-        for (i, instr) in self.statements.iter().enumerate() {
+        for (i, instr) in self.instructions.iter().enumerate() {
             writeln!(f, "   instr {i:>3}:   {instr}")?;
         }
         write!(f, "])")

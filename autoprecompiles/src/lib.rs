@@ -173,7 +173,7 @@ impl<T, I, A, V> Apc<T, I, A, V> {
 
     /// The instructions in the block.
     pub fn instructions(&self) -> impl Iterator<Item = &I> + Clone {
-        self.block.statements()
+        self.block.instructions()
     }
 
     /// The PCs of the original basic blocks composing this APC. Can be used to identify the APC.

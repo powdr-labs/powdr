@@ -97,7 +97,7 @@ impl EmpiricalConstraints {
     /// Extracts the empirical constraints relevant for a specific basic block.
     pub fn for_block<I: PcStep>(&self, block: &BasicBlock<I>) -> BlockEmpiricalConstraints {
         let block_pc: u32 = block.start_pc.try_into().unwrap();
-        let next_block_pc = block_pc + <I as PcStep>::pc_step() * (block.statements.len() as u32);
+        let next_block_pc = block_pc + <I as PcStep>::pc_step() * (block.instructions.len() as u32);
 
         BlockEmpiricalConstraints {
             block_pc: block.start_pc,
@@ -287,7 +287,7 @@ impl<'a, A: Adapter> ConstraintGenerator<'a, A> {
     fn range_constraints(&self) -> Vec<EqualityConstraint<A::PowdrField>> {
         let mut constraints = Vec::new();
 
-        for i in 0..self.block.statements.len() {
+        for i in 0..self.block.instructions.len() {
             let pc = (self.block.start_pc + (i * 4) as u64) as u32;
             let Some(range_constraints) = self.empirical_constraints.column_ranges_by_pc.get(&pc)
             else {

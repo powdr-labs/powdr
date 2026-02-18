@@ -193,8 +193,8 @@ fn instructions_to_powdr_field<A: Adapter>(
         .map(|b| {
             BasicBlock {
                 start_pc: b.start_pc,
-                statements: b
-                    .statements
+                instructions: b
+                    .instructions
                     .iter()
                     .map(|instr| {
                         SimpleInstruction(

@@ -58,7 +58,7 @@ pub mod apc_builder_utils {
             .join("\n");
 
         let superblock: SuperBlock<_> = BasicBlock {
-            statements: basic_block.into_iter().map(Instr).collect(),
+            instructions: basic_block.into_iter().map(Instr).collect(),
             start_pc: 0,
         }
         .into();

@@ -341,7 +341,7 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
                     .try_as_basic_block()
                     .expect("superblocks unsupported")
                     .start_pc,
-                statements: self
+                instructions: self
                     .apc_with_stats
                     .apc()
                     .instructions()

@@ -15,7 +15,7 @@ pub fn collect_basic_blocks<A: Adapter>(
     let mut blocks = Vec::new();
     let mut curr_block = BasicBlock {
         start_pc: program.instruction_index_to_pc(0),
-        statements: Vec::new(),
+        instructions: Vec::new(),
     };
     for (i, instr) in program.instructions().enumerate() {
         let is_target = jumpdest_set.contains(&program.instruction_index_to_pc(i));
@@ -25,45 +25,45 @@ pub fn collect_basic_blocks<A: Adapter>(
         // If this opcode cannot be in an apc, we make sure it's alone in a BB.
         if !is_allowed {
             // If not empty, push the current block.
-            if !curr_block.statements.is_empty() {
+            if !curr_block.instructions.is_empty() {
                 blocks.push(curr_block);
             }
             // Push the instruction itself
             blocks.push(BasicBlock {
                 start_pc: program.instruction_index_to_pc(i),
-                statements: vec![instr.clone()],
+                instructions: vec![instr.clone()],
             });
             // Skip the instruction and start a new block from the next instruction.
             curr_block = BasicBlock {
                 start_pc: program.instruction_index_to_pc(i + 1),
-                statements: Vec::new(),
+                instructions: Vec::new(),
             };
         } else {
             // If the instruction is a target, we need to close the previous block
             // as is if not empty and start a new block from this instruction.
             if is_target {
-                if !curr_block.statements.is_empty() {
+                if !curr_block.instructions.is_empty() {
                     blocks.push(curr_block);
                 }
                 curr_block = BasicBlock {
                     start_pc: program.instruction_index_to_pc(i),
-                    statements: Vec::new(),
+                    instructions: Vec::new(),
                 };
             }
-            curr_block.statements.push(instr.clone());
+            curr_block.instructions.push(instr.clone());
             // If the instruction is a branch, we need to close this block
             // with this instruction and start a new block from the next one.
             if is_branching {
                 blocks.push(curr_block); // guaranteed to be non-empty because an instruction was just pushed
                 curr_block = BasicBlock {
                     start_pc: program.instruction_index_to_pc(i + 1),
-                    statements: Vec::new(),
+                    instructions: Vec::new(),
                 };
             }
         }
     }
 
-    if !curr_block.statements.is_empty() {
+    if !curr_block.instructions.is_empty() {
         blocks.push(curr_block);
     }
 

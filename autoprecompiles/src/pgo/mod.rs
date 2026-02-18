@@ -90,7 +90,7 @@ fn create_apcs_for_all_blocks<A: Adapter>(
             let superblock: SuperBlock<_> = block.into();
             tracing::debug!(
                 "Accelerating block of length {} and start pcs {:?}",
-                superblock.statements().count(),
+                superblock.instructions().count(),
                 superblock.start_pcs(),
             );
 
