@@ -72,7 +72,7 @@ pub trait PgoAdapter {
                 // filter by adapter rules
                 .filter(|sb| !Self::Adapter::should_skip_block(sb))
                 // filter invalid APC candidates
-                .filter(|sb| sb.statements().count() > 1)
+                .filter(|sb| sb.instructions().count() > 1)
                 .collect();
             ExecutionBlocks::new_without_pgo(superblocks)
         };

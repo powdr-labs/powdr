@@ -95,11 +95,11 @@ fn create_apcs_for_all_blocks<A: Adapter>(
 
             let export_options = ExportOptions::new(
                 config.apc_candidates_dir_path.clone(),
-                &block.start_pcs(),
+                &superblock.start_pcs(),
                 ExportLevel::OnlyAPC,
             );
             let apc = crate::build::<A>(
-                block.clone(),
+                superblock.clone(),
                 vm_config.clone(),
                 config.degree_bound,
                 export_options,
@@ -107,7 +107,7 @@ fn create_apcs_for_all_blocks<A: Adapter>(
             )
             .unwrap();
 
-            evaluate_apc::<A>(block, vm_config.instruction_handler, apc)
+            evaluate_apc::<A>(superblock, vm_config.instruction_handler, apc)
         })
         .collect()
 }

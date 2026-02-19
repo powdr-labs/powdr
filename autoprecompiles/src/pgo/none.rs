@@ -31,7 +31,7 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
             .into_iter()
             // sort by number of instructions in the block, descending
             .sorted_by_key(|block_and_stats| {
-                Reverse(block_and_stats.block.statements().count() as u32)
+                Reverse(block_and_stats.block.instructions().count() as u32)
             })
             .map(|block_and_stats| {
                 let block = block_and_stats.block;
@@ -42,7 +42,7 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
                 tracing::debug!(
                     "Basic block start_pc: {}, number_of_instructions: {}",
                     block.pcs().next().unwrap(),
-                    block.statements().count(),
+                    block.instructions().count(),
                 );
 
                 block

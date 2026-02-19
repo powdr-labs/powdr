@@ -48,13 +48,13 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
             .into_iter()
             // sort by frequency * number of instructions in the block, descending
             .sorted_by_key(|block_and_stats| {
-                Reverse(block_and_stats.count.unwrap() * block_and_stats.block.statements().count() as u32)
+                Reverse(block_and_stats.count.unwrap() * block_and_stats.block.instructions().count() as u32)
             })
             .map(|block_and_stats| {
                 let block = block_and_stats.block;
                 assert!(block.is_basic_block(), "Instruction PGO does not support superblocks");
                 let frequency = block_and_stats.count.unwrap();
-                let number_of_instructions = block.statements().count();
+                let number_of_instructions = block.instructions().count();
                 let value = frequency * number_of_instructions as u32;
 
                 tracing::debug!(

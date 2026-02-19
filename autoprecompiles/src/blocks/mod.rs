@@ -4,7 +4,7 @@ use std::{
 };
 
 use itertools::Itertools;
-use rayon::iter::{IndexedParallelIterator, IntoParallelIterator};
+use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 /// Tools to detect basic blocks in a program
@@ -228,8 +228,8 @@ fn detect_execution_bb_runs<I>(
         let bb = start_pc_to_bb
             .get(&pc)
             .expect("PC in execution not part of any basic blocks");
-        assert!(!bb.statements.is_empty());
-        if bb.statements.len() == 1 {
+        assert!(!bb.instructions.is_empty());
+        if bb.instructions.len() == 1 {
             // if starting a single instruction BB (i.e., invalid for APC), end current run
             if !current_run.is_empty() {
                 *execution_bb_runs
@@ -241,7 +241,7 @@ fn detect_execution_bb_runs<I>(
             current_run.push(pc);
         }
         // move to next bb
-        pos += bb.statements.len();
+        pos += bb.instructions.len();
     }
     if !current_run.is_empty() {
         *execution_bb_runs
@@ -364,7 +364,7 @@ pub fn detect_superblocks<A: Adapter>(
 
             // skip superblocks with too many instructions
             if !block.is_basic_block()
-                && block.statements().count() > cfg.superblock_max_instructions as usize
+                && block.instructions().count() > cfg.superblock_max_instructions as usize
             {
                 skipped_max_insn += 1;
                 return;
