@@ -28,7 +28,7 @@ struct Cli {
 #[derive(Args)]
 struct SuperBlockArgs {
     /// When larger than 1, enables superblocks with up to the given number of basic blocks.
-    #[arg(long, default_value_t = 1)]
+    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..))]
     superblocks: u8,
 
     /// Maximum number of instructions in a superblock
