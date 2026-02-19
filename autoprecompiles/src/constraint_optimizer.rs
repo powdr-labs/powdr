@@ -64,7 +64,7 @@ pub fn optimize_constraints<
     new_var: &mut impl FnMut(&str) -> V,
     export_options: &mut ExportOptions,
 ) -> Result<ConstraintSystem<P, V>, Error> {
-    let constraint_system = solver_based_optimization(constraint_system, solver)?;
+    let constraint_system = solver_based_optimization(constraint_system, solver, export_options)?;
     stats_logger.log("solver-based optimization", &constraint_system);
     export_options.export_optimizer_inner_constraint_system(constraint_system.system(), "solver");
 
@@ -104,10 +104,14 @@ pub fn optimize_constraints<
         // do not increase the degree.
         None,
     );
-    solver.add_algebraic_constraints(assignments.into_iter().map(|(v, val)| {
-        AlgebraicConstraint::assert_eq(GroupedExpression::from_unknown_variable(v), val)
+    solver.add_algebraic_constraints(assignments.iter().map(|(v, val)| {
+        AlgebraicConstraint::assert_eq(
+            GroupedExpression::from_unknown_variable(v.clone()),
+            val.clone(),
+        )
     }));
     stats_logger.log("rule-based optimization", &constraint_system);
+    export_options.register_substituted_variables(assignments);
     export_options
         .export_optimizer_inner_constraint_system(constraint_system.system(), "rule_based");
 
@@ -201,9 +205,10 @@ pub fn trivial_simplifications<P: FieldElement, V: Ord + Clone + Eq + Hash + Dis
     constraint_system
 }
 
-fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
+fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display + Serialize>(
     mut constraint_system: IndexedConstraintSystem<T, V>,
     solver: &mut impl Solver<T, V>,
+    export_options: &mut ExportOptions,
 ) -> Result<IndexedConstraintSystem<T, V>, Error> {
     let assignments = solver.solve()?;
     log::trace!("Solver figured out the following assignments:");
@@ -215,6 +220,11 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
     // Assert that all substitutions are affine so that the degree
     // does not increase.
     assert!(assignments.iter().all(|(_, expr)| expr.is_affine()));
+    export_options.register_substituted_variables(
+        assignments
+            .iter()
+            .map(|(v, expr)| (v.clone(), expr.clone())),
+    );
     constraint_system.apply_substitutions(assignments);
 
     // Now try to replace bus interaction fields that the solver knows to be constant

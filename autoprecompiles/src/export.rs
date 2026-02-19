@@ -26,6 +26,7 @@ pub struct ExportOptions {
     pub path: Option<PathBuf>,
     pub level: ExportLevel,
     sequence_number: usize,
+    substituted_variables: Vec<String>,
 }
 
 #[derive(Default)]
@@ -50,6 +51,7 @@ impl ExportOptions {
             path: path.map(|p| p.join(format!("apc_candidate_{}", start_pcs.iter().join("_")))),
             level,
             sequence_number: 0,
+            substituted_variables: Vec::new(),
         }
     }
     /// Constructs export options from environment variables.
@@ -150,6 +152,35 @@ impl ExportOptions {
         }
     }
 
+    /// Registers a sequence of variables that have been substituted during optimization,
+    /// so that they can be exported together with the final export.
+    pub fn register_substituted_variables<Var, Expr>(
+        &mut self,
+        vars: impl IntoIterator<Item = (Var, Expr)>,
+    ) where
+        Var: serde::Serialize,
+        Expr: serde::Serialize,
+    {
+        if self.export_requested() {
+            self.substituted_variables.extend(
+                vars.into_iter()
+                    .map(|(v, e)| serde_json::to_string(&(v, e)).unwrap()),
+            );
+        }
+    }
+
+    /// Exports the registered substituted variables to a separate json file.
+    pub fn export_substituted_variables(&mut self) {
+        if self.export_requested() {
+            let path = self.path.clone().unwrap();
+            let file_stub = path.file_name().unwrap().to_string_lossy();
+            let path = path.with_file_name(format!("{file_stub}_substitutions.json"));
+            let mut writer = create_file_if_not_exists(&path);
+            write!(&mut writer, "[{}]", self.substituted_variables.join(",")).unwrap();
+            writer.flush().unwrap();
+        }
+    }
+
     /// Path to the next file to export to. Uses an increasing sequence number
     /// and also adds the `info` into the file name.
     fn next_path(&mut self, info: Option<&str>) -> PathBuf {
@@ -165,15 +196,22 @@ impl ExportOptions {
 
     fn write_to_next_file(&mut self, data: &impl serde::Serialize, info: Option<&str>) -> PathBuf {
         let path = self.next_path(info);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).unwrap();
-        }
-        let file = std::fs::File::create(&path).unwrap();
-        let mut writer_unopt = BufWriter::new(file);
-        serde_json::to_writer(&mut writer_unopt, data).unwrap();
-        writer_unopt.flush().unwrap();
+        self.write_to_file(data, path.clone());
         path
     }
+
+    fn write_to_file(&mut self, data: &impl serde::Serialize, path: PathBuf) {
+        let mut writer = create_file_if_not_exists(&path);
+        serde_json::to_writer(&mut writer, data).unwrap();
+        writer.flush().unwrap();
+    }
+}
+
+fn create_file_if_not_exists(path: &PathBuf) -> BufWriter<std::fs::File> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).unwrap();
+    }
+    BufWriter::new(std::fs::File::create(path).unwrap())
 }
 
 /// Converts the APC to use an instruction type that stores field elements

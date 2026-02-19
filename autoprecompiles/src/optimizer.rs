@@ -81,6 +81,7 @@ where
     //     None,
     // )
     // .0;
+    // export_options.register_substituted_variables(assignments);
     // export_options.export_optimizer_outer(&machine, "02_rule_based_optimization");
     stats_logger.log("rule-based optimization", &constraint_system);
 
@@ -108,12 +109,12 @@ where
             break;
         }
     }
-
-    let constraint_system = inliner::replace_constrained_witness_columns(
+    let (constraint_system, substitutions) = inliner::replace_constrained_witness_columns(
         constraint_system,
         inline_everything_below_degree_bound(degree_bound),
     );
     stats_logger.log("inlining", &constraint_system);
+    export_options.register_substituted_variables(substitutions);
     export_options.export_optimizer_outer_constraint_system(constraint_system.system(), "inlining");
 
     let (constraint_system, _) = rule_based_optimization(
@@ -146,6 +147,8 @@ where
     export_options.export_optimizer_outer_constraint_system(&constraint_system, "trivial_simp");
 
     stats_logger.finalize(&constraint_system);
+
+    export_options.export_substituted_variables();
 
     // Sanity check: Degree bound should be respected:
     for algebraic_constraint in &constraint_system.algebraic_constraints {
