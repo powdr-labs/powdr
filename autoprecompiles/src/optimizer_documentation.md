@@ -225,7 +225,9 @@ and they perform some checks also in the quadratic terms, but this part is not c
 
 ## Equivalence Notion
 
-TODO define the property of a Constraint System the optimizer preserves
+### Introduction and Example
+
+We start with some informal intuition and an example.
 
 We call two Constraint Systems _equivalent_ if every satisfying assignment for one system
 can be extended to a satisfying assignment for the other system and every such extension
@@ -241,26 +243,287 @@ BusInteraction { bus_id = 2, multiplicity = 1, payload = [x, y, z] }
 w * (w - 1) = 0
 ```
 
-System B:
+System B:[^variables]
 ```
-y + z = 4
-BusInteraction { bus_id = 2, multiplicity = 1, payload = [8, y, z] }
+y' + z' = 4
+BusInteraction { bus_id = 2, multiplicity = 1, payload = [8, y', z'] }
 ```
+
+[^variables]:
+    In this pair of systems, and throughout the rest of this document, we will use
+    unprimed variables for the first system and primed ones for the second system.
+    When two variables have the same name (modulo primes), that means the variables
+    are informally *intended* to have the same value. We will formalize this idea
+    later.
 
 Let us assume that the bus with ID 2 is stateful and allows all combinations of values between 0 and 100 (inclusive).
-Note that the variables `y` and `z` are not uniquely determined in either system, so the stateful bus
-acts both as input and output for the system. TODO can that be or do we need one send and one receive?
+Note that the variables `y`/`y'` and `z`/`z'` are not uniquely determined in either system. The stateful bus
+acts both as input and output for the system.
 
-Note that System B is obtained from System A by substituting `x = 8` and removing `w`.
+Note that System B is obtained from System A by substituting `x = 8`, removing `w`, and replacing `y,z` with `y',z'`.
 
 All satisfying assignments of System A must have `x = 8` and either `w = 0` or `w = 1`.
-Such an assignment also satisfies System B and it produces the same values for the stateful bus interaction.
+Such an assignment also satisfies System B (with the variables primed)
+and it produces the same values for the stateful bus interaction.
 
 The converse is a bit more complicated: Satisfying assignments of system B only assign the variables
-`y` and `z`. So we need to extend the assignment for System A into a satisfying one. For `x`, the only
+`y'` and `z'`.  We can give `y` and `z` the same values in system A, but we need
+to extend the assignment so that it assigns `x` and `w` and satisfies System A. For `x`, the only
 choice we have is `x = 8`, but there are two ways to extend the assignment with regards to `w` such that
 it is still satisfying, `w = 0` or `w = 1`. Since both ways to extend the assignment
 produce the same values in the stateful bus interaction, the systems are equivalent.
+
+### Abstract Equivalence Definition
+
+Now let's proceed formally.
+
+Let $S = (C, B)$ be a system, defined over a vector of variables, $w$. Let
+$C$ be the stateless constraints of the system: a formula over $w$. This includes the
+algebraic constraints and stateless buses. Let $B$ be the stateful bus interactions.
+It is a fixed-length sequence of interactions. Each interaction is a pair.
+The first component, $d$, is the data, a fixed-length
+list of algebraic expressions, so its type is $\mathbb{F}^+$ (sequences of
+positive length of algebraic expressions over $\mathbb{F}$). Assume the bus ID
+is represented as the first entry in $d$, for simplicity. The second component
+of an interaction is $m$, the multiplicity, which is an algebraic expression.
+
+The bus interactions will be aggregated into a special kind of multiset. We
+refer to a map from $\mathbb{F}^+ \to \mathbb{F}$ as a “field multiset” (aka
+“multiset”). This name reflects an interpretation of the map as a multiset in
+which each key in the map appears with multiplicity equal to its
+value.[^fmultiset] Note
+that these multisets can be added pointwise. That is, for multisets $m$ and
+$m'$, their sum $m + m'$ maps each key $k$ to $m(k) + m'(k)$. We interpret a bus
+interaction as a multiset with one key and the specified multiplicity. That is,
+we define $\textsf{toMs}(d, m)$ to be the field multiset that maps key $d$ to
+value $m$ and all other keys to value $0$. Then, we define $\Sigma(B)$ to be
+$\sum_{(d,m) \in B} \textsf{toMs}(d, m)$
+
+[^fmultiset]:
+    A field multiset is slightly different than a standard multiset. In a
+    standard multiset, the multiplicities are natural numbers, not field
+    elements. Thus, in a field multiset, multiplicities can cancel out and can
+    be negative. For example, in a field multiset over $\mathbb{F}_2$, for a key
+    $k$, containing $k$ twice is equivalent to containing $k$ zero times.
+    We use field multisets because the cryptography used to create zkVMs can
+    prove properties of field multisets, but not standard multisets.
+    While some SMT solvers, like cvc5, do have a theory of standard
+    multisets ([link][bags]), field multisets are more naturally encoded using
+    the theory of arrays, with pointwise addition.
+
+[bags]: https://cvc5.github.io/docs/cvc5-1.3.2/theories/bags.html
+
+
+Now we can define equivalence, between systems. Assume two systems $S = (C, B)$
+and $S' = (C', B')$ in variables $w$ and $w'$, respectively.
+
+Equivalence has two conditions.
+
+The first condition is **completeness**, which says that when $S$ is satisfiable,
+so is $S'$, and with the same effects (stateful bus interactions). Formally,
+there should exist an efficient $E(w) \to w'$ such that: for all $w$ and $s$,
+if $C(w) \wedge \Sigma(B(w)) = s$,
+then $C'(w') \wedge \Sigma(B'(w')) = s$,
+where $w' = E(w)$.
+
+The second condition is **soundness**, which says that when $S'$ is satisfiable, $S$
+is too, and with the same effects. Formally, there should exists an efficient
+$I(w') \to w$ such that: for all $w'$ and $s$,
+if $C'(w') \wedge \Sigma(B'(w')) = s$,
+then $C(w) \wedge \Sigma(B(w)) = s$,
+where $w = I(w')$.
+
+In the context of powdr, $S$ is the input to the optimization pipeline and $S'$
+is the output. The pipeline also implicitly outputs $E$, which is encoded as
+follows. Most of the variables in $w'$ have the same name as some variable in
+$w$---they takes its value. Other variables have an entry in the "derived
+variables", which explains how to compute them from $w$.
+
+### Worked example
+
+We will give two equivalent systems, as examples.
+
+The first system, $S = (C, B)$ is a slightly more complex version of the
+informal example above, with $b$ in place of $w$.
+
+> $d_0 = (2, x, y, z), m_0 = 1$
+>
+> $d_1 = (2, x, y, z), m_1 = b$
+>
+> $d_2 = (2, 8, y, z), m_2 = -b$
+>
+> $C = (x = 8 \wedge x + y + z = 12 \wedge b(b-1) = 0)$
+
+The second system $S' = (B', C')$ is:
+
+> $d'_0 = (2, 8, y', z'), m'_0 = 1$
+>
+> $C' = (y' + z' = 4)$
+
+Algorithmically, one optimizes $S$ into $S'$ by the following transformations:
+
+1. Since $x = 8$, substitute $8$ for $x$.
+2. Now, we have $d_1 = d_2$, and $m_1 = -m_2$, so remove both bus
+   interactions--they have equal data and their multiplicities sum to 0.
+3. $b$ appears in no bus interactions, and in no algebraic constraints with
+   other variables. Moreover, the constraints it does appear in are satisfiable.
+   Remove them.
+
+Now, we prove that these systems are equivalent under the prior definition. That
+is, we prove soundness and completeness.
+
+#### Soundness
+
+$I(w') \to w$ is defined to map $w'=(y',z')$ to $w=(x,y,z,b)$ as follows:
+$x \gets 8, y \gets y', z \gets z', b \gets 0$.
+
+Roughly, we must show:
+
+$$\forall w', \forall s, C'(w') \wedge \Sigma(B'(w')) = s \land w = I(w')
+\implies C(w) \wedge \Sigma(B(w)) = s$$
+
+Which is the same as
+
+$$\forall w', C'(w') \wedge \land w = I(w')
+\implies C(w) \wedge \Sigma(B(w)) = \Sigma(B'(w'))$$
+
+
+Proof:
+
+* Fix $w' = (y', z')$.
+* To show the $\implies$, assume
+  * $w = I(w')$, that is:
+    * $x = 8$
+    * $y = y'$
+    * $z = z'$
+    * $b = 0$
+  * $y' + z' = 4$
+  * $s = $
+* And now we need to show each of the following goals:
+  * $x = 8$, since it is part of $C(w)$
+    * we already have this
+  * $x + y + z = 12$, since it is also part of $C(w)$
+    * we have this since we have $x=8, y=y', z=z', y'+z'=4$
+  * $b(b-1) = 0$, since it is also part of $C(w)$
+    * we have this since $b=0$
+  * $\mathsf{toMs}((2, 8, y', z'), 1) = \mathsf{toMs}((2, x, y, z), 1) + \mathsf{toMs}((2, x, y, z), b) + \mathsf{toMs}((2, 8, y, z), -b)$
+    * Fist, let $s = \mathsf{toMs}((2, 8, y', z'), 1)$
+    * since $y=y'$ and $z=z'$, we have
+        $s = \mathsf{toMs}((2, 8, y, z), 1)$
+    * since $x=8$, we have
+        $s = \mathsf{toMs}((2, x, y, z), 1)$
+    * since 0 multiplicities are an identity for $+$, we have
+        $s = \mathsf{toMs}((2, x, y, z), 1) + \mathsf{toMs}((2, x, y, z), 0) + \mathsf{toMs}((2, 8, y, z), 0)$
+    * since $b=0$, we have our goal:
+        $s = \mathsf{toMs}((2, x, y, z), 1) + \mathsf{toMs}((2, x, y, z), b) + \mathsf{toMs}((2, 8, y, z), -b)$
+
+#### Completeness
+
+$E$ is defined as $y' \gets y, z' \gets z$.
+
+Roughly, we must show:
+
+$$\forall w, \forall s, C(w) \wedge \Sigma(B(w)) = s \wedge w' = E(w)
+\implies C'(w') \wedge \Sigma(B'(w')) = s$$
+
+Which is the same as
+
+$$\forall w, C(w) \wedge w' = E(w)
+\implies C'(w') \wedge \Sigma(B(w)) = \Sigma(B'(w'))$$
+
+Proof:
+
+* Fix $w = (x, y, z, b)$.
+* Fix $w' = (y', z')$.
+* To show the $\implies$, assume
+  * $w'=E(w)$, that is:
+    * $y' = y$
+    * $z' = z$
+  * $x = 8$
+  * $x + y + z = 12$
+* And now we need to show each of the following goals:
+  * $y' + z' = 4$
+    * we have this from $y' = y, z' = z, x = 8, x + y + z = 12$
+  * $\mathsf{toMs}((2, x, y, z), 1) + \mathsf{toMs}((2, x, y, z), b) + \mathsf{toMs}((2, 8, y, z), -b) = \mathsf{toMs}((2, 8, y', z'), 1)$
+    * let
+      $s = \mathsf{toMs}((2, x, y, z), 1) + \mathsf{toMs}((2, x, y, z), b) + \mathsf{toMs}((2, 8, y, z), -b)$
+    * since $x = 8$, we have:
+      $s = \mathsf{toMs}((2, 8, y, z), 1) + \mathsf{toMs}((2, 8, y, z), b) + \mathsf{toMs}((2, 8, y, z), -b)$
+    * by additive inverse for multiset multiplicities we have:
+      $s = \mathsf{toMs}((2, 8, y, z), 1)$
+    * by $y'=y,x'=x$, we have our goal:
+      $s = \mathsf{toMs}((2, 8, y', z'), 1)$
+
+### Connection to prior definitions from the literature
+
+Our definition is an instantiation of Ozdemir et al.'s definition of ZKP
+compiler correctness from the paper ["Bounded Verification for
+Finite-Field-Blasting in a Compiler for Zero Knowledge Proofs"][1]. Start from
+their Definition 1. To see this, set:
+
+* their $w$ and $w'$ to our $w$ and $w'$,
+* their $x$ and $x'$ to our $s$ (both are $s$),
+* their $\phi(x,w)$ to our $C(w) \wedge \Sigma(B(w)) = s$,
+* their $\phi'(x',w')$ to our $C'(w') \wedge \Sigma(B'(w')) = s$,
+* their $\mathsf{Ext}_x(x)$ to the identity function from $s$ to itself,
+* their $\mathsf{Ext}_w(x, w)$ to our $E$, and
+* their $\mathsf{Inv}(x', i')$ to our $I$.
+
+This alignment bodes very well for our definition. Ozdemir et al. proved that a
+ZKP compiler that is correct by their definition can securely compose with a
+zkSNARK for the compiler's output language to give a zkSNARK for the compiler's
+input language. We would hope to show a similar result using our definition. But
+our result, would also need to account for the zkVM's design. Our result would
+say something like (secure zkSNARK for plonkish constraints) + (correct zkVM) +
+(correct powdr) = (secure zkSNARK for RISC-V).
+
+### Connections to Georg's definition
+
+Our definition strengthens Georg's slightly. In his soundness definition,
+$I$ and $E$ are de-skolemized (their outputs are existentially quantified). This
+is equivalent to removing the requirement that $I$ and $E$ be efficient. An
+inefficient $E$ really wouldn't work, because then you can't compute the witness
+$w'$. Fortunately, powdr outputs $E$ (encoded in the variable derivations). An
+inefficient $I$ means that powdr would compose with a zkSNARG, but not a
+zkSNARK. That is, it no longer applies to knowledge soundness, just to
+existential soundness.
+
+### Constraints
+
+In the foregoing, we noted that stateless bus interactions and algebraic
+constraints are represented by $C$. Now, we discuss $C$ in more detail.
+
+In terms of SMT theories, the algebraic constraints are just QF_FF (quantifier-free over a finite field) predicates over the variables $w$. More
+specifically, they are $\mathbb{F}$ equalities over terms constructed with $+$
+and $\times$ in $\mathbb{F}$.
+
+The are a few different bus interactions, that contribute to $C$:
+
+* TODO
+
+### Requirements that are not yet formalized.
+
+The definition above is a living object. There are requirements for powdr that
+we have not yet formalized, and there may be some that we are not yet aware of.
+Most of these are likely weird invariants that OpenVM implicitly assumes in its
+own definition of correctness.
+
+Currently, we know of one unformalized requirement:
+
+* Under all satisfying assignments, a constraints system must ensure that the
+  different between the execution step counter in its final execution bus send
+  and its initial execution bus receive is at most the total number of bus
+  interactions. This requirement is used to prevent overflows related to the
+  step counter and the bus multiplicities. Powdr is currently violating this
+  requirement[2]. But also, this requirement is not tight. Many looser
+  requirements could also prevent overflow. And, powdr might be able to be
+  changed to respect it.
+
+  We expect that it will be easy to very a requirement like this one once we
+  figure out exactly what we need to verify. It is also possible that this
+  requirement will end up being something that is not the responsibility of the
+  optimizer and is instead the responsibility of a different part of the
+  pipeline.
 
 ## Optimization Steps
 
@@ -326,3 +589,5 @@ which is crucial for memory optimization to solve the aliasing problem.
 
 #### Equal Zero Check
 
+[1]: https://eprint.iacr.org/2023/778.pdf
+[2]: https://github.com/powdr-labs/powdr/issues/3542
