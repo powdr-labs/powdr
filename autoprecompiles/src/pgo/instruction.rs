@@ -1,7 +1,9 @@
-use std::collections::{BTreeMap, HashMap};
+use std::{cmp::Reverse, collections::BTreeMap};
+
+use itertools::Itertools;
 
 use crate::{
-    adapter::{Adapter, AdapterApcWithStats, AdapterBasicBlock, AdapterVmConfig, PgoAdapter},
+    adapter::{Adapter, AdapterApcWithStats, AdapterExecutionBlocks, AdapterVmConfig, PgoAdapter},
     execution_profile::ExecutionProfile,
     pgo::create_apcs_for_all_blocks,
     EmpiricalConstraints, PowdrConfig,
@@ -26,7 +28,7 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
 
     fn create_apcs_with_pgo(
         &self,
-        mut blocks: Vec<AdapterBasicBlock<Self::Adapter>>,
+        exec_blocks: AdapterExecutionBlocks<Self::Adapter>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         _labels: BTreeMap<u64, Vec<String>>,
@@ -34,43 +36,38 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
         tracing::info!(
             "Generating autoprecompiles with instruction PGO for {} blocks",
-            blocks.len()
+            exec_blocks.blocks.len()
         );
 
         if config.autoprecompiles == 0 {
             return vec![];
         }
 
-        let pgo_program_pc_count: &HashMap<u64, u32> = &self.data.pc_count;
-        // drop any block whose start pc cannot be found in the execution,
-        // because a basic block might not be executed at all.
-        // Also only keep basic blocks with more than one original instruction.
-        blocks
-            .retain(|b| pgo_program_pc_count.contains_key(&b.start_pc) && b.instructions.len() > 1);
+        let blocks = exec_blocks
+            .blocks
+            .into_iter()
+            // sort by frequency * number of instructions in the block, descending
+            .sorted_by_key(|block_and_stats| {
+                Reverse(block_and_stats.count.unwrap() * block_and_stats.block.instructions().count() as u32)
+            })
+            .map(|block_and_stats| {
+                let block = block_and_stats.block;
+                assert!(block.is_basic_block(), "Instruction PGO does not support superblocks");
+                let frequency = block_and_stats.count.unwrap();
+                let number_of_instructions = block.instructions().count();
+                let value = frequency * number_of_instructions as u32;
 
-        tracing::debug!(
-            "Retained {} basic blocks after filtering by pc_idx_count",
-            blocks.len()
-        );
-
-        // cost = cells_saved_per_row
-        blocks.sort_by(|a, b| {
-            let a_cnt = pgo_program_pc_count[&a.start_pc];
-            let b_cnt = pgo_program_pc_count[&b.start_pc];
-            (b_cnt * (b.instructions.len() as u32)).cmp(&(a_cnt * (a.instructions.len() as u32)))
-        });
-
-        // Debug print blocks by descending cost
-        for block in &blocks {
-            let frequency = pgo_program_pc_count[&block.start_pc];
-            let number_of_instructions = block.instructions.len();
-            let value = frequency * number_of_instructions as u32;
-
-            tracing::debug!(
-                    "Basic block start_pc: {start_pc}, value: {value}, frequency: {frequency}, number_of_instructions: {number_of_instructions}",
-                    start_pc = block.start_pc,
+                tracing::debug!(
+                    "Basic block start_pc: {}, value: {}, frequency: {}, number_of_instructions: {}",
+                    block.pcs().next().unwrap(),
+                    value,
+                    frequency,
+                    number_of_instructions,
                 );
-        }
+
+                block
+            })
+            .collect();
 
         create_apcs_for_all_blocks::<Self::Adapter>(
             blocks,
@@ -80,7 +77,7 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
         )
     }
 
-    fn pc_execution_count(&self, pc: u64) -> Option<u32> {
-        self.data.pc_count.get(&pc).cloned()
+    fn execution_profile(&self) -> Option<&ExecutionProfile> {
+        Some(&self.data)
     }
 }

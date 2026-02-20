@@ -12,7 +12,7 @@ use powdr_openvm::{detect_empirical_constraints, OriginalCompiledProgram};
 #[cfg(feature = "metrics")]
 use openvm_stark_sdk::metrics_tracing::TimingMetricsLayer;
 
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand};
 use std::{io, path::PathBuf};
 use tracing::Level;
 use tracing_forest::ForestLayer;
@@ -25,6 +25,21 @@ struct Cli {
     command: Option<Commands>,
 }
 
+#[derive(Args)]
+struct SuperBlockArgs {
+    /// When larger than 1, enables superblocks with up to the given number of basic blocks.
+    #[arg(long, default_value_t = 1)]
+    superblocks: u8,
+
+    /// Maximum number of instructions in a superblock
+    #[arg(long)]
+    superblocks_max_instructions: Option<u32>,
+
+    /// Ignore superblocks executed less times than the cutoff
+    #[arg(long)]
+    superblocks_exec_count_cutoff: Option<u32>,
+}
+
 #[derive(Subcommand)]
 enum Commands {
     Compile {
@@ -35,6 +50,9 @@ enum Commands {
 
         #[arg(long, default_value_t = 0)]
         skip: usize,
+
+        #[command(flatten)]
+        superblocks: SuperBlockArgs,
 
         #[arg(long, default_value_t = PgoType::default())]
         pgo: PgoType,
@@ -65,6 +83,9 @@ enum Commands {
 
         #[arg(long, default_value_t = 0)]
         skip: usize,
+
+        #[command(flatten)]
+        superblocks: SuperBlockArgs,
 
         #[arg(long, default_value_t = PgoType::default())]
         pgo: PgoType,
@@ -98,6 +119,9 @@ enum Commands {
 
         #[arg(long, default_value_t = 0)]
         skip: usize,
+
+        #[command(flatten)]
+        superblocks: SuperBlockArgs,
 
         #[arg(long)]
         #[arg(default_value_t = false)]
@@ -152,6 +176,7 @@ fn run_command(command: Commands) {
             guest,
             autoprecompiles,
             skip,
+            superblocks,
             pgo,
             max_columns,
             input,
@@ -162,7 +187,13 @@ fn run_command(command: Commands) {
             if let Some(apc_candidates_dir) = apc_candidates_dir {
                 powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
             }
-            powdr_config = powdr_config.with_optimistic_precompiles(optimistic_precompiles);
+            powdr_config = powdr_config
+                .with_optimistic_precompiles(optimistic_precompiles)
+                .with_superblocks(
+                    superblocks.superblocks,
+                    superblocks.superblocks_max_instructions,
+                    superblocks.superblocks_exec_count_cutoff,
+                );
             let guest_program = compile_openvm(&guest, guest_opts.clone()).unwrap();
             let execution_profile =
                 powdr_openvm::execution_profile_from_guest(&guest_program, stdin_from(input));
@@ -187,6 +218,7 @@ fn run_command(command: Commands) {
             guest,
             autoprecompiles,
             skip,
+            superblocks,
             pgo,
             max_columns,
             input,
@@ -198,7 +230,13 @@ fn run_command(command: Commands) {
             if let Some(apc_candidates_dir) = apc_candidates_dir {
                 powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
             }
-            powdr_config = powdr_config.with_optimistic_precompiles(optimistic_precompiles);
+            powdr_config = powdr_config
+                .with_optimistic_precompiles(optimistic_precompiles)
+                .with_superblocks(
+                    superblocks.superblocks,
+                    superblocks.superblocks_max_instructions,
+                    superblocks.superblocks_exec_count_cutoff,
+                );
             let guest_program = compile_openvm(&guest, guest_opts.clone()).unwrap();
             let empirical_constraints = maybe_compute_empirical_constraints(
                 &guest_program,
@@ -232,6 +270,7 @@ fn run_command(command: Commands) {
             guest,
             autoprecompiles,
             skip,
+            superblocks,
             mock,
             recursion,
             pgo,
@@ -245,7 +284,13 @@ fn run_command(command: Commands) {
             if let Some(apc_candidates_dir) = &apc_candidates_dir {
                 powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
             }
-            powdr_config = powdr_config.with_optimistic_precompiles(optimistic_precompiles);
+            powdr_config = powdr_config
+                .with_optimistic_precompiles(optimistic_precompiles)
+                .with_superblocks(
+                    superblocks.superblocks,
+                    superblocks.superblocks_max_instructions,
+                    superblocks.superblocks_exec_count_cutoff,
+                );
             let guest_program = compile_openvm(&guest, guest_opts).unwrap();
             let empirical_constraints = maybe_compute_empirical_constraints(
                 &guest_program,
