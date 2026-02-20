@@ -43,7 +43,7 @@ def main():
     for i, candidate in enumerate(data):
         start_pc = candidate["original_block"]["start_pc"]
         freq = candidate["execution_frequency"]
-        num_statements = len(candidate["original_block"]["statements"])
+        num_instructions = len(candidate["original_block"]["instructions"])
         
         # Get optimization stats
         before_constraints = candidate["stats"]["before"]["constraints"]
@@ -69,7 +69,7 @@ def main():
             'index': i + 1,
             'start_pc': start_pc,
             'freq': freq,
-            'num_statements': num_statements,
+            'num_instructions': num_instructions,
             'before_constraints': before_constraints,
             'after_constraints': after_constraints,
             'before_main_columns': before_main_columns,
@@ -96,7 +96,7 @@ def main():
     output_lines.append("=" * 120)
     
     total_candidates = len(data)
-    total_statements = sum(len(c["original_block"]["statements"]) for c in data)
+    total_instructions = sum(len(c["original_block"]["instructions"]) for c in data)
     
     total_cost_before = sum(c["cost_before"] for c in data)
     total_cost_after = sum(c["cost_after"] for c in data)
@@ -115,8 +115,8 @@ def main():
     total_bus_interactions_improvement_factor = total_before_bus_interactions / total_after_bus_interactions
     
     output_lines.append(f"# of APC Candidates: {total_candidates}")
-    output_lines.append(f"Sum of Instructions: {total_statements}")
-    output_lines.append(f"Average Instructions per APC Candidate: {total_statements / total_candidates:.1f}")
+    output_lines.append(f"Sum of Instructions: {total_instructions}")
+    output_lines.append(f"Average Instructions per APC Candidate: {total_instructions / total_candidates:.1f}")
     output_lines.append("")
     output_lines.append(f"Sum of Cost: {total_cost_before} → {total_cost_after} ({total_cost_improvement_factor:.2f}x reduction)")
     output_lines.append(f"Sum of Main Columns: {total_before_main_columns} → {total_after_main_columns} ({main_columns_improvement_factor:.2f}x reduction)")
@@ -126,7 +126,7 @@ def main():
     # Statement count distribution
     stmt_dist = {}
     for c in data:
-        stmt_count = len(c["original_block"]["statements"])
+        stmt_count = len(c["original_block"]["instructions"])
         stmt_dist[stmt_count] = stmt_dist.get(stmt_count, 0) + 1
     
     output_lines.append("")
@@ -177,7 +177,7 @@ def main():
         row = [
             i + 1,
             f"{candidate['start_pc']:.0f}",
-            candidate['num_statements'],
+            candidate['num_instructions'],
             f"{candidate['freq']}x",
             f"{candidate['value']:.0f}",
             f"{candidate['cost_before']:.0f} -> {candidate['cost_after']:.0f} ({candidate['cost_improvement_factor']:.1f}x)",
