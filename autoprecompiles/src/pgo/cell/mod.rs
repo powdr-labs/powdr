@@ -81,7 +81,7 @@ impl<A, C> CellPgo<A, C> {
 
 /// This version is used by external tools to support multiple versions of the json export.
 /// Version should be incremented whenever a breaking change is made to the type (or inner types).
-const JSON_EXPORT_VERSION: usize = 1;
+const JSON_EXPORT_VERSION: usize = 2;
 
 #[derive(Serialize, Deserialize)]
 struct JsonExport {
