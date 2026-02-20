@@ -39,6 +39,8 @@ pub trait Candidate<A: Adapter>: Sized + KnapsackItem {
 }
 
 #[derive(Serialize, Deserialize)]
+/// NOTE: When making changes to this field or any of the contained types,
+/// JSON_EXPORT_VERSION must be updated
 pub struct ApcCandidateJsonExport {
     // execution_frequency
     pub execution_frequency: usize,
@@ -77,10 +79,25 @@ impl<A, C> CellPgo<A, C> {
     }
 }
 
+/// This version is used by external tools to support multiple versions of the json export.
+/// Version should be incremented whenever a breaking change is made to the type (or inner types).
+const JSON_EXPORT_VERSION: usize = 2;
+
 #[derive(Serialize, Deserialize)]
 struct JsonExport {
+    version: usize,
     apcs: Vec<ApcCandidateJsonExport>,
     labels: BTreeMap<u64, Vec<String>>,
+}
+
+impl JsonExport {
+    fn new(apcs: Vec<ApcCandidateJsonExport>, labels: BTreeMap<u64, Vec<String>>) -> Self {
+        Self {
+            version: JSON_EXPORT_VERSION,
+            apcs,
+            labels,
+        }
+    }
 }
 
 impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for CellPgo<A, C> {
@@ -159,7 +176,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
         // Write the APC candidates JSON to disk if the directory is specified.
         if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
             let apcs = apc_candidates.lock().unwrap().drain(..).collect();
-            let json = JsonExport { apcs, labels };
+            let json = JsonExport::new(apcs, labels);
             let json_path = apc_candidates_dir_path.join("apc_candidates.json");
             let file = std::fs::File::create(&json_path)
                 .expect("Failed to create file for APC candidates JSON");

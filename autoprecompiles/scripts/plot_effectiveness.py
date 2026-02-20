@@ -31,7 +31,7 @@ def load_apc_data(json_path, effectiveness_type='cost'):
             'cost_before': cost_before * item['execution_frequency'],
             'cost_after': cost_after * item['execution_frequency'],
             'effectiveness': cost_before / cost_after,
-            'instructions': len(item['original_block']['statements']),
+            'instructions': len(item['original_block']['instructions']),
         })
 
     return pd.DataFrame(rows)
