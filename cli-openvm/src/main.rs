@@ -347,7 +347,7 @@ fn validate_superblock_args(args: &SuperBlockArgs, pgo: PgoType) {
         Cli::command()
             .error(
                 clap::error::ErrorKind::ArgumentConflict,
-                "`--superblocks-exec-count-cutoff` flag requires `--superblocks > 1`."
+                "`--superblocks-exec-count-cutoff` flag requires `--superblocks > 1`.",
             )
             .exit();
     }
@@ -355,7 +355,7 @@ fn validate_superblock_args(args: &SuperBlockArgs, pgo: PgoType) {
         Cli::command()
             .error(
                 clap::error::ErrorKind::ArgumentConflict,
-                "`--superblocks-max-instructions` flag requires `--superblocks > 1`."
+                "`--superblocks-max-instructions` flag requires `--superblocks > 1`.",
             )
             .exit();
     }

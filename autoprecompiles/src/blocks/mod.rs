@@ -379,11 +379,7 @@ pub fn detect_superblocks<A: Adapter>(
             }
 
             runs.sort_unstable();
-            block_stats.push(BlockAndStats {
-                block,
-                count,
-                runs,
-            });
+            block_stats.push(BlockAndStats { block, count, runs });
         });
 
     tracing::info!(
