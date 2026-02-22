@@ -183,6 +183,7 @@ fn run_command(command: Commands) {
             apc_candidates_dir,
             optimistic_precompiles,
         } => {
+            validate_superblock_args(&superblocks, pgo);
             let mut powdr_config = default_powdr_openvm_config(autoprecompiles as u64, skip as u64);
             if let Some(apc_candidates_dir) = apc_candidates_dir {
                 powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
@@ -226,6 +227,7 @@ fn run_command(command: Commands) {
             apc_candidates_dir,
             optimistic_precompiles,
         } => {
+            validate_superblock_args(&superblocks, pgo);
             let mut powdr_config = default_powdr_openvm_config(autoprecompiles as u64, skip as u64);
             if let Some(apc_candidates_dir) = apc_candidates_dir {
                 powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
@@ -280,6 +282,7 @@ fn run_command(command: Commands) {
             apc_candidates_dir,
             optimistic_precompiles,
         } => {
+            validate_superblock_args(&superblocks, pgo);
             let mut powdr_config = default_powdr_openvm_config(autoprecompiles as u64, skip as u64);
             if let Some(apc_candidates_dir) = &apc_candidates_dir {
                 powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
@@ -329,6 +332,33 @@ fn write_program_to_file(program: CompiledProgram, filename: &str) -> Result<(),
     let mut file = File::create(filename)?;
     serde_cbor::to_writer(&mut file, &program).map_err(io::Error::other)?;
     Ok(())
+}
+
+fn validate_superblock_args(args: &SuperBlockArgs, pgo: PgoType) {
+    if args.superblocks > 1 && !matches!(pgo, PgoType::Cell) {
+        Cli::command()
+            .error(
+                clap::error::ErrorKind::ArgumentConflict,
+                "superblocks are only supported with `--pgo cell`",
+            )
+            .exit();
+    }
+    if args.superblocks_exec_count_cutoff.is_some() && args.superblocks == 1 {
+        Cli::command()
+            .error(
+                clap::error::ErrorKind::ArgumentConflict,
+                "`--superblocks-exec-count-cutoff` flag requires `--superblocks > 1`."
+            )
+            .exit();
+    }
+    if args.superblocks_max_instructions.is_some() && args.superblocks == 1 {
+        Cli::command()
+            .error(
+                clap::error::ErrorKind::ArgumentConflict,
+                "`--superblocks-max-instructions` flag requires `--superblocks > 1`."
+            )
+            .exit();
+    }
 }
 
 fn stdin_from(input: Option<u32>) -> StdIn {
