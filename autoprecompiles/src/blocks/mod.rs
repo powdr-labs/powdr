@@ -164,9 +164,9 @@ pub struct ExecutionBasicBlockRun(pub Vec<u64>);
 pub struct BlockAndStats<I> {
     pub block: SuperBlock<I>,
     /// amount of times this block appears in the execution
-    pub count: Option<u32>,
+    pub count: u32,
     /// the indices of the basic block runs this block appears in (to avoid searching the whole execution later)
-    pub runs: Option<Vec<usize>>,
+    pub runs: Vec<usize>,
 }
 
 /// The result of superblock generation: a set of blocks with optional statistics for PGO.
@@ -175,7 +175,7 @@ pub struct ExecutionBlocks<I> {
     pub blocks: Vec<BlockAndStats<I>>,
     /// Basic block runs in the execution (if PGO is enabled).
     /// Each run is paired with the number of times it was seen.
-    pub execution_bb_runs: Option<Vec<(ExecutionBasicBlockRun, u32)>>,
+    pub execution_bb_runs: Vec<(ExecutionBasicBlockRun, u32)>,
 }
 
 impl<I> ExecutionBlocks<I> {
@@ -185,11 +185,11 @@ impl<I> ExecutionBlocks<I> {
                 .into_iter()
                 .map(|block| BlockAndStats {
                     block,
-                    count: None,
-                    runs: None,
+                    count: 0,
+                    runs: vec![],
                 })
                 .collect(),
-            execution_bb_runs: None,
+            execution_bb_runs: vec![],
         }
     }
 }
@@ -381,8 +381,8 @@ pub fn detect_superblocks<A: Adapter>(
             runs.sort_unstable();
             block_stats.push(BlockAndStats {
                 block,
-                count: Some(count),
-                runs: Some(runs),
+                count,
+                runs,
             });
         });
 
@@ -408,7 +408,7 @@ pub fn detect_superblocks<A: Adapter>(
 
     ExecutionBlocks {
         blocks: block_stats,
-        execution_bb_runs: Some(execution_bb_runs),
+        execution_bb_runs,
     }
 }
 
