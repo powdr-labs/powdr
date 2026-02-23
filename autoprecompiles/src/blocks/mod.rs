@@ -74,6 +74,19 @@ impl<I> SuperBlock<I> {
         self.blocks.iter().map(|b| b.start_pc).collect()
     }
 
+    /// Instruction index of the start of each original basic
+    pub fn insn_indexed_bb_pcs(&self) -> Vec<(usize, u64)> {
+        let mut idx = 0;
+        self.blocks
+            .iter()
+            .map(|b| {
+                let elem = (idx, b.start_pc);
+                idx += b.instructions.len();
+                elem
+            })
+            .collect()
+    }
+
     /// Sequence of basic blocks composing this superblock
     pub fn blocks(&self) -> impl Iterator<Item = &BasicBlock<I>> {
         self.blocks.iter()

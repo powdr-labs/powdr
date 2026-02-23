@@ -111,6 +111,36 @@ impl<T: Eq + Hash + Clone> Partition<T> {
             .into_values()
             .collect()
     }
+
+    /// Combine two partitions of disjoint universes into a single partition.
+    /// Elements from the two partitions must also not Eq collide.
+    pub fn combine(mut self, other: Self) -> Self {
+        let class_shift = self.num_classes;
+        #[allow(clippy::iter_over_hash_type)]
+        for (elem, class) in other.class_of {
+            if self.class_of.insert(elem, class + class_shift).is_some() {
+                panic!("Partition join element collision");
+            }
+        }
+        self.num_classes += other.num_classes;
+        self
+    }
+
+    /// Modify elements while keeping their original class.
+    /// The mapped elements must not Eq collide with each other.
+    pub fn map_elements<T2: Eq + Hash + Clone, F: Fn(T) -> T2>(self, f: F) -> Partition<T2> {
+        let mut new_class_of: HashMap<T2, usize> = Default::default();
+        #[allow(clippy::iter_over_hash_type)]
+        for (elem, class) in self.class_of {
+            if new_class_of.insert(f(elem), class).is_some() {
+                panic!("Partition element mapping collision");
+            }
+        }
+        Partition::<T2> {
+            class_of: new_class_of,
+            num_classes: self.num_classes,
+        }
+    }
 }
 
 /// Number of partitions to combine in each chunk before parallelizing.

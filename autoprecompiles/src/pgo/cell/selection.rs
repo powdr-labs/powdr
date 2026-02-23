@@ -18,6 +18,8 @@ pub struct BlockCandidate {
     pub cost_before: usize,
     // cost after optimization
     pub cost_after: usize,
+    // value gained each time this candidate is used
+    pub value_per_use: usize,
     // times this block could run in the execution
     pub execution_count: u32,
     // indices of the runs in the execution where this block appears
@@ -33,6 +35,7 @@ impl BlockCandidate {
             start_pcs: block.block.start_pcs(),
             cost_before: apc.cost_before_opt(),
             cost_after: apc.cost_after_opt(),
+            value_per_use: apc.value_per_use(),
             execution_count: block.count,
             idx_runs: block.runs.clone(),
         }
