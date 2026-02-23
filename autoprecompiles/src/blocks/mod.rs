@@ -181,10 +181,7 @@ impl<I> ExecutionBlocks<I> {
         Self {
             blocks: blocks
                 .into_iter()
-                .map(|block| BlockAndStats {
-                    block,
-                    count: 0,
-                })
+                .map(|block| BlockAndStats { block, count: 0 })
                 .collect(),
             execution_bb_runs: vec![],
         }
@@ -283,7 +280,9 @@ fn count_superblocks_in_execution(
         .map(|(run, run_count)| {
             count_superblocks_in_run(run, max_len)
                 .into_iter()
-                .map(|(sblock, sblock_occurrences_in_run)| (sblock, sblock_occurrences_in_run * run_count))
+                .map(|(sblock, sblock_occurrences_in_run)| {
+                    (sblock, sblock_occurrences_in_run * run_count)
+                })
                 .collect()
         })
         .reduce(BTreeMap::new, |mut sblocks_a, sblocks_b| {
@@ -337,38 +336,36 @@ pub fn detect_superblocks<A: Adapter>(
     let mut skipped_exec_count = 0;
     let mut skipped_max_insn = 0;
     let mut skipped_adapter = 0;
-    blocks_found
-        .into_iter()
-        .for_each(|(sblock_pcs, count)| {
-            let block = SuperBlock::from(
-                sblock_pcs
-                    .iter()
-                    .map(|start_pc| start_pc_to_bb[start_pc].clone())
-                    .collect_vec(),
-            );
+    blocks_found.into_iter().for_each(|(sblock_pcs, count)| {
+        let block = SuperBlock::from(
+            sblock_pcs
+                .iter()
+                .map(|start_pc| start_pc_to_bb[start_pc].clone())
+                .collect_vec(),
+        );
 
-            // skip superblocks that were executed less than the cutoff
-            if !block.is_basic_block() && count < cfg.superblock_exec_count_cutoff {
-                skipped_exec_count += 1;
-                return;
-            }
+        // skip superblocks that were executed less than the cutoff
+        if !block.is_basic_block() && count < cfg.superblock_exec_count_cutoff {
+            skipped_exec_count += 1;
+            return;
+        }
 
-            // skip superblocks with too many instructions
-            if !block.is_basic_block()
-                && block.instructions().count() > cfg.superblock_max_instructions as usize
-            {
-                skipped_max_insn += 1;
-                return;
-            }
+        // skip superblocks with too many instructions
+        if !block.is_basic_block()
+            && block.instructions().count() > cfg.superblock_max_instructions as usize
+        {
+            skipped_max_insn += 1;
+            return;
+        }
 
-            // skip by adapter rules
-            if A::should_skip_block(&block) {
-                skipped_adapter += 1;
-                return;
-            }
+        // skip by adapter rules
+        if A::should_skip_block(&block) {
+            skipped_adapter += 1;
+            return;
+        }
 
-            block_stats.push(BlockAndStats { block, count });
-        });
+        block_stats.push(BlockAndStats { block, count });
+    });
 
     tracing::info!(
         "Skipped blocks: {} to execution cutoff, {} to instruction count, {} to adapter filter",
