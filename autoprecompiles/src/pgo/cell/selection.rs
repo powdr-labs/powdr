@@ -1,203 +1,187 @@
-use std::{
-    cmp::{Ordering, Reverse},
-    collections::BinaryHeap,
-    iter::once,
-};
+use priority_queue::PriorityQueue;
+use serde::{Deserialize, Serialize};
 
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use crate::{adapter::Adapter, blocks::{BlockAndStats, ExecutionBasicBlockRun}};
 
-pub trait KnapsackItem {
-    /// Cost of the item, used for sorting and knapsack algorithm.
-    fn cost(&self) -> usize;
-    /// Value of the item, used for sorting and knapsack algorithm. Should be much larger than `cost` to avoid ties.
-    fn value(&self) -> usize;
-    /// Tie breaker for the case when two candidates have the same cost and value. When a tie occurs, the item with higher value of this function is chosen.
-    fn tie_breaker(&self) -> usize;
+use super::ApcCandidate;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+// A candidate block, used during block selection
+pub struct BlockCandidate {
+    // sequence of basic blocks composing this block
+    pub start_pcs: Vec<u64>,
+    // cost of original basic blocks (before optimization)
+    pub cost_before: usize,
+    // cost after optimization
+    pub cost_after: usize,
+    // times this block could run in the execution
+    pub execution_count: u32,
+    // indices of the runs in the execution where this block appears
+    pub idx_runs: Vec<usize>,
 }
 
-/// Fractional knapsack algorithm that uses parallel iterators to find the best items.
-/// It returns an iterator over the items that fit into the knapsack, sorted by their density (value/cost).
-pub(crate) fn parallel_fractional_knapsack<E: KnapsackItem + Send>(
-    elements: impl IntoParallelIterator<Item = E>,
-    max_count: usize,
-    max_cost: Option<usize>,
-) -> impl Iterator<Item = E> {
-    struct KnapsackItemWrapper<E> {
-        item: E,
-    }
-
-    impl<E: KnapsackItem> KnapsackItemWrapper<E> {
-        fn density(&self) -> usize {
-            // Note: If the value and cost are of similar magnitude, this would lead to ties.
-            self.item.value() / self.item.cost()
+impl BlockCandidate {
+    pub fn new<A: Adapter, C: ApcCandidate<A>>(
+        block: &BlockAndStats<A::Instruction>,
+        apc: &C,
+    ) -> Self {
+        Self {
+            start_pcs: block.block.start_pcs(),
+            cost_before: apc.cost_before_opt(),
+            cost_after: apc.cost_after_opt(),
+            execution_count: block.count,
+            idx_runs: block.runs.clone(),
         }
     }
 
-    impl<E: KnapsackItem> Ord for KnapsackItemWrapper<E> {
-        fn cmp(&self, other: &Self) -> Ordering {
-            self.density()
-                .cmp(&other.density())
-                .then_with(|| self.item.tie_breaker().cmp(&other.item.tie_breaker()))
-        }
+    fn value_per_row(&self) -> usize {
+        self.cost_before - self.cost_after
     }
 
-    impl<E: KnapsackItem> PartialEq for KnapsackItemWrapper<E> {
-        fn eq(&self, other: &Self) -> bool {
-            self.cmp(other) == Ordering::Equal
-        }
-    }
-    impl<E: KnapsackItem> Eq for KnapsackItemWrapper<E> {}
-    impl<E: KnapsackItem> PartialOrd for KnapsackItemWrapper<E> {
-        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-            Some(self.cmp(other))
-        }
+    pub fn value(&self) -> usize {
+        (self.execution_count as usize)
+            .checked_mul(self.value_per_row())
+            .unwrap()
     }
 
-    elements
-        .into_par_iter()
-        .map(|e| once(Reverse(KnapsackItemWrapper { item: e })).collect())
-        .reduce(BinaryHeap::new, |mut acc, mut heap| {
-            for elem in heap.drain() {
-                acc.push(elem);
-                if acc.len() > max_count {
-                    acc.pop();
-                }
-            }
-            acc
-        })
-        // TODO: use `into_sorted_iter` when it is available without nightly feature
-        .into_sorted_vec()
-        .into_iter()
-        .map(|Reverse(e)| e.item)
-        .scan(0, move |cumulative_cost, e| {
-            if let Some(max_cost) = max_cost {
-                // Try to add the item
-                if *cumulative_cost + e.cost() <= max_cost {
-                    // The item fits, increment the cumulative cost
-                    *cumulative_cost += e.cost();
-                    Some(Some(e))
-                } else {
-                    // The item does not fit, skip it
-                    Some(None)
-                }
-            } else {
-                // No max cost, just return the item
-                Some(Some(e))
-            }
-        })
-        .flatten()
+    fn cost(&self) -> usize {
+        self.cost_after
+    }
+
+    fn density(&self) -> Density {
+        Density {
+            value: self.value(),
+            cost: self.cost(),
+            tie: self.start_pcs[0],
+        }
+    }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#[derive(Clone, Debug)]
+pub struct Density {
+    value: usize,
+    cost: usize,
+    tie: u64,
+}
 
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    struct TestItem {
-        index: usize,
-        cost: usize,
-        value: usize,
+impl PartialEq for Density {
+    fn eq(&self, other: &Self) -> bool {
+        self.value * other.cost == other.value * self.cost && self.tie == other.tie
     }
+}
 
-    impl TestItem {
-        fn new(index: usize, cost: usize, density: usize) -> Self {
-            Self {
-                index,
-                cost,
-                value: cost * density,
+impl Eq for Density {}
+
+impl PartialOrd for Density {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Density {
+    // Avoids value/cost integer ratio by using cross-multiplication
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        let lhs = self.value.checked_mul(other.cost).unwrap();
+        let rhs = other.value.checked_mul(self.cost).unwrap();
+
+        lhs.cmp(&rhs).then_with(|| self.tie.cmp(&other.tie))
+    }
+}
+
+/// Counts the occurrences of a candidate in a basic block run.
+/// Returns the count and the sub-runs after the candidate is removed.
+fn count_and_update_run(
+    sblock: &BlockCandidate,
+    run: &ExecutionBasicBlockRun,
+    run_count: u32,
+) -> (u32, Vec<(ExecutionBasicBlockRun, u32)>) {
+    let mut i = 0;
+    let mut count = 0;
+    let mut sub_run_start = 0;
+    let mut sub_runs = vec![];
+    while i + sblock.start_pcs.len() <= run.0.len() {
+        if run.0[i..i + sblock.start_pcs.len()] == sblock.start_pcs {
+            // a match, close the current sub-run
+            count += 1;
+            if i > sub_run_start {
+                sub_runs.push((ExecutionBasicBlockRun(run.0[sub_run_start..i].to_vec()), run_count));
             }
+            sub_run_start = i + sblock.start_pcs.len();
+            i += sblock.start_pcs.len();
+        } else {
+            i += 1;
         }
     }
+    if run.0.len() > sub_run_start {
+        sub_runs.push((ExecutionBasicBlockRun(run.0[sub_run_start..].to_vec()), run_count));
+    }
+    (count, sub_runs)
+}
 
-    impl KnapsackItem for TestItem {
-        fn cost(&self) -> usize {
-            self.cost
+/// Count the occurences of a candidate in the execution (multiple basic block runs).
+/// Returns the count and an updated execution with the candidates removed.
+fn count_and_update_execution(
+    sblock: &BlockCandidate,
+    execution: &[(ExecutionBasicBlockRun, u32)],
+) -> (u32, Vec<(ExecutionBasicBlockRun, u32)>) {
+    let mut total_count = 0;
+    let new_execution = execution
+        .iter()
+        .flat_map(|(run, run_count)| {
+            let (count, sub_runs) = count_and_update_run(sblock, run, *run_count);
+            total_count += count * *run_count;
+            sub_runs
+        })
+        .collect();
+    (total_count, new_execution)
+}
+
+/// Greedily select blocks based on density.
+/// Returns the indices of the selected blocks, together with how many times each would run if applied in the selected order.
+pub fn select_blocks_greedy(
+    mut all_blocks: Vec<BlockCandidate>,
+    budget: usize,
+    max_selected: usize,
+    execution_bb_runs: &[(ExecutionBasicBlockRun, u32)],
+) -> Vec<(usize, u32)> {
+    // keep candidates by priority. As a candidate is selected, remaining priorities will be (lazily) updated.
+    let mut by_priority: PriorityQueue<_, _> = (0..all_blocks.len())
+        .map(|idx| (idx, all_blocks[idx].density()))
+        .collect();
+
+    let mut selected = vec![];
+    let mut cumulative_cost = 0;
+    let mut current_execution = execution_bb_runs.to_vec();
+
+    while let Some((idx, _prio)) = by_priority.pop() {
+        let c = &mut all_blocks[idx];
+
+        // ignore if too costly
+        if cumulative_cost + c.cost() > budget {
+            // The item does not fit, skip it
+            continue;
         }
 
-        fn value(&self) -> usize {
-            self.value
+        // check if the priority of this candidate has changed by re-counting it over the remaining execution.
+        let (count, new_execution) = count_and_update_execution(c, &current_execution);
+        if count == 0 {
+            // candidate no longer runs, remove it
+            continue;
+        } else if count < c.execution_count {
+            // re-insert with updated priority
+            c.execution_count = count;
+            by_priority.push(idx, c.density());
+            continue;
         }
 
-        fn tie_breaker(&self) -> usize {
-            self.index
+        // the item fits, increment the cumulative cost and update the execution by removing its occurrences
+        cumulative_cost += c.cost();
+        current_execution = new_execution;
+        selected.push((idx, count));
+
+        if selected.len() >= max_selected {
+            break;
         }
     }
-
-    #[test]
-    fn tie() {
-        let items = vec![TestItem::new(0, 1, 10), TestItem::new(1, 1, 10)];
-
-        let max_count = 10;
-        let max_cost = 1;
-
-        // In case of tie, the second item (with larger index) should be chosen
-        for _ in 0..10 {
-            let result: Vec<_> =
-                parallel_fractional_knapsack(items.clone(), max_count, Some(max_cost)).collect();
-            assert_eq!(result.len(), 1);
-            assert_eq!(result[0].index, 1);
-        }
-    }
-
-    #[test]
-    fn all_items_fit() {
-        let items = vec![TestItem::new(0, 1, 2), TestItem::new(1, 2, 1)];
-
-        let max_count = 10;
-        let max_cost = 3;
-
-        // All items fit, so both should be returned in the order of their (density, index)
-        for _ in 0..10 {
-            let result: Vec<_> =
-                parallel_fractional_knapsack(items.clone(), max_count, Some(max_cost)).collect();
-            assert_eq!(result, items);
-        }
-    }
-
-    #[test]
-    fn some_items_fit() {
-        let items = vec![
-            TestItem::new(0, 1, 3),
-            TestItem::new(1, 2, 2),
-            TestItem::new(2, 3, 1),
-        ];
-
-        let max_count = 10;
-        let max_cost = 3;
-
-        // Only the first two items fit, since their costs add up to 3 and they have the highest density
-        for _ in 0..10 {
-            let result: Vec<_> =
-                parallel_fractional_knapsack(items.clone(), max_count, Some(max_cost)).collect();
-            assert_eq!(result.as_slice(), &items[0..2]);
-        }
-    }
-
-    #[test]
-    fn many_with_ties_and_skips() {
-        let items = vec![
-            TestItem::new(1, 1, 10),
-            TestItem::new(0, 1, 10),
-            TestItem::new(3, 2, 5),
-            TestItem::new(2, 2, 5),
-            TestItem::new(4, 3, 3), // should be skipped due to cost
-            TestItem::new(5, 1, 2),
-        ];
-
-        let max_count = 10;
-        let max_cost = 7;
-
-        // Only the first four items fit, since they have the highest density and their costs add up to 6 with the final item blowing up the max_cost.
-        // Due to the same density, tie is broken by items with higher index coming up first.
-        for _ in 0..10 {
-            let result: Vec<_> =
-                parallel_fractional_knapsack(items.clone(), max_count, Some(max_cost)).collect();
-            assert_eq!(result.len(), 5);
-            assert_eq!(result[0].index, 1);
-            assert_eq!(result[1].index, 0);
-            assert_eq!(result[2].index, 3);
-            assert_eq!(result[3].index, 2);
-            assert_eq!(result[4].index, 5);
-        }
-    }
+    selected
 }

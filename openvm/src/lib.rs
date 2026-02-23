@@ -3,6 +3,7 @@
 #![cfg_attr(feature = "tco", feature(explicit_tail_calls))]
 #![cfg_attr(feature = "tco", feature(core_intrinsics))]
 
+use customize_exe::OpenVmApcCandidate;
 use derive_more::From;
 use eyre::Result;
 use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
@@ -53,7 +54,6 @@ use std::iter::Sum;
 use std::ops::Add;
 use std::path::{Path, PathBuf};
 
-use crate::customize_exe::OpenVmApcCandidate;
 use crate::powdr_extension::chip::PowdrAir;
 pub use crate::program::Prog;
 pub use crate::program::{CompiledProgram, OriginalCompiledProgram};
