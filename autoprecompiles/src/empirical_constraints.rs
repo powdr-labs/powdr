@@ -110,7 +110,7 @@ impl EmpiricalConstraints {
 
         let bb_independent_equivalence_classes =
             block
-                .insn_indexed_bb_pcs()
+                .instruction_indexed_start_pcs()
                 .into_iter()
                 .map(|(insn_idx, bb_pc)| {
                     self.equivalence_classes_by_block

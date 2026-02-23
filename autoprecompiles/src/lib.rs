@@ -358,7 +358,7 @@ pub fn build<A: Adapter>(
     // Instruction indices where each basic block starts in a superblock
     // TODO(leandro): move info to machine
     let basic_block_indices: std::collections::HashSet<usize> = block
-        .insn_indexed_bb_pcs()
+        .instruction_indexed_start_pcs()
         .into_iter()
         .map(|(idx, _)| idx)
         .collect();
@@ -405,7 +405,7 @@ fn superblock_pc_constraints<A: Adapter>(
     block: &SuperBlock<A::Instruction>,
 ) -> Vec<AdapterOptimisticConstraint<A>> {
     block
-        .insn_indexed_bb_pcs()
+        .instruction_indexed_start_pcs()
         .into_iter()
         .skip(1)
         .map(|(instr_idx, pc)| {
