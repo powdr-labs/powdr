@@ -267,7 +267,6 @@ impl PowdrTraceGeneratorGpu {
             self.apc
                 // go through original instructions
                 .instructions()
-                .iter()
                 // along with their substitutions
                 .zip_eq(self.apc.subs())
                 // map to `(air_name, substitutions)`

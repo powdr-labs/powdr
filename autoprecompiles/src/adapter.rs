@@ -6,6 +6,7 @@ use std::{fmt::Display, sync::Arc};
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
+use crate::blocks::SuperBlock;
 use crate::empirical_constraints::EmpiricalConstraints;
 use crate::evaluation::EvaluationResult;
 use crate::execution::{ExecutionState, OptimisticConstraints};
@@ -165,3 +166,4 @@ pub type AdapterOptimisticConstraints<A> = OptimisticConstraints<
     <<A as Adapter>::ExecutionState as ExecutionState>::Value,
 >;
 pub type AdapterBasicBlock<A> = BasicBlock<<A as Adapter>::Instruction>;
+pub type AdapterSuperBlock<A> = SuperBlock<<A as Adapter>::Instruction>;

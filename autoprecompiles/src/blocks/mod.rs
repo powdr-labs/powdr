@@ -1,5 +1,7 @@
 use std::fmt::Display;
 
+use itertools::Itertools;
+use rayon::iter::{IndexedParallelIterator, IntoParallelIterator};
 use serde::{Deserialize, Serialize};
 
 /// Tools to detect basic blocks in a program
@@ -11,20 +13,104 @@ pub use detection::collect_basic_blocks;
 pub struct BasicBlock<I> {
     /// The program counter of the first instruction in this block.
     pub start_pc: u64,
-    pub statements: Vec<I>,
+    pub instructions: Vec<I>,
 }
 
 impl<I: PcStep> BasicBlock<I> {
     /// Returns an iterator over the program counters of the instructions in this block.
     pub fn pcs(&self) -> impl Iterator<Item = u64> + '_ {
-        (0..self.statements.len()).map(move |i| self.start_pc + (i as u64 * I::pc_step() as u64))
+        (0..self.instructions.len()).map(move |i| self.start_pc + (i as u64 * I::pc_step() as u64))
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SuperBlock<I> {
+    blocks: Vec<BasicBlock<I>>,
+}
+
+impl<I> From<BasicBlock<I>> for SuperBlock<I> {
+    fn from(basic_block: BasicBlock<I>) -> Self {
+        SuperBlock {
+            blocks: vec![basic_block],
+        }
+    }
+}
+
+impl<I> From<Vec<BasicBlock<I>>> for SuperBlock<I> {
+    fn from(blocks: Vec<BasicBlock<I>>) -> Self {
+        assert!(!blocks.is_empty());
+        SuperBlock { blocks }
+    }
+}
+
+impl<I> SuperBlock<I> {
+    pub fn is_basic_block(&self) -> bool {
+        self.blocks.len() == 1
+    }
+
+    pub fn try_as_basic_block(&self) -> Option<&BasicBlock<I>> {
+        if self.is_basic_block() {
+            Some(&self.blocks[0])
+        } else {
+            None
+        }
+    }
+
+    /// Sequence of basic block start PCs, uniquely identifies this superblock
+    pub fn start_pcs(&self) -> Vec<u64> {
+        self.blocks.iter().map(|b| b.start_pc).collect()
+    }
+
+    /// Sequence of basic blocks composing this superblock
+    pub fn blocks(&self) -> impl Iterator<Item = &BasicBlock<I>> {
+        self.blocks.iter()
+    }
+
+    /// Sequence of instructions across all basic blocks in this superblock
+    pub fn instructions(&self) -> impl Iterator<Item = &I> + Clone {
+        self.blocks.iter().flat_map(|b| &b.instructions)
+    }
+
+    /// Parallel iterator over instructions across all basic blocks in this superblock
+    pub fn par_instructions(&self) -> impl IndexedParallelIterator<Item = &I>
+    where
+        I: Sync,
+    {
+        // note: we need collect_vec() because parallel flat_map does not implement IndexedParallelIterator
+        self.instructions().collect_vec().into_par_iter()
+    }
+}
+
+impl<I: PcStep> SuperBlock<I> {
+    /// Returns an iterator over the program counters of the instructions in this block.
+    pub fn pcs(&self) -> impl Iterator<Item = u64> + '_ {
+        self.blocks.iter().flat_map(BasicBlock::pcs)
+    }
+}
+
+impl<I: Display> Display for SuperBlock<I> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(bb) = self.try_as_basic_block() {
+            return bb.fmt(f);
+        }
+        writeln!(f, "SuperBlock(")?;
+        let mut insn_idx = 0;
+        for block in &self.blocks {
+            writeln!(f, "   pc: {}, statements: [", block.start_pc)?;
+            for instr in block.instructions.iter() {
+                writeln!(f, "      instr {insn_idx:>3}:   {instr}")?;
+                insn_idx += 1;
+            }
+            write!(f, "   ],")?;
+        }
+        write!(f, ")")
     }
 }
 
 impl<I: Display> Display for BasicBlock<I> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "BasicBlock(start_pc: {}, statements: [", self.start_pc)?;
-        for (i, instr) in self.statements.iter().enumerate() {
+        for (i, instr) in self.instructions.iter().enumerate() {
             writeln!(f, "   instr {i:>3}:   {instr}")?;
         }
         write!(f, "])")

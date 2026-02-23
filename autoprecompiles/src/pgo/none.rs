@@ -26,14 +26,14 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
         empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
         // cost = number_of_original_instructions
-        blocks.sort_by(|a, b| b.statements.len().cmp(&a.statements.len()));
+        blocks.sort_by(|a, b| b.instructions.len().cmp(&a.instructions.len()));
 
         // Debug print blocks by descending cost
         for block in &blocks {
             tracing::debug!(
                 "Basic block start_pc: {}, number_of_instructions: {}",
                 block.start_pc,
-                block.statements.len(),
+                block.instructions.len(),
             );
         }
 

@@ -80,7 +80,7 @@ pub fn detect_empirical_constraints(
     let blocks = program.collect_basic_blocks(degree_bound);
     let instruction_counts = blocks
         .iter()
-        .map(|block| (block.start_pc, block.statements.len()))
+        .map(|block| (block.start_pc, block.instructions.len()))
         .collect();
 
     // Collect trace, without any autoprecompiles.

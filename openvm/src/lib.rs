@@ -40,6 +40,7 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::evaluation::AirStats;
+use powdr_autoprecompiles::execution_profile::ExecutionProfile;
 use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::PowdrExtension;
@@ -50,10 +51,7 @@ use std::fs::File;
 use std::io::BufWriter;
 use std::iter::Sum;
 use std::ops::Add;
-use std::{
-    collections::HashMap,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use crate::customize_exe::OpenVmApcCandidate;
 use crate::powdr_extension::chip::PowdrAir;
@@ -857,11 +855,11 @@ pub fn prove(
     Ok(())
 }
 
-// Same as execution_profile below but for guest path inputs.
+// Generate execution profile for a guest program
 pub fn execution_profile_from_guest(
     program: &OriginalCompiledProgram,
     inputs: StdIn,
-) -> HashMap<u64, u32> {
+) -> ExecutionProfile {
     let OriginalCompiledProgram { exe, vm_config, .. } = program;
     let program = Prog::from(&exe.program);
 
@@ -1034,7 +1032,10 @@ mod tests {
             .precompiles
             .iter()
             .for_each(|precompile| {
-                assert!(!pgo_data.keys().contains(&precompile.apc.block.start_pc));
+                assert!(!pgo_data
+                    .pc_count
+                    .keys()
+                    .contains(&precompile.apc.block.try_as_basic_block().unwrap().start_pc));
             });
 
         let result = prove(&program, false, false, stdin, None);

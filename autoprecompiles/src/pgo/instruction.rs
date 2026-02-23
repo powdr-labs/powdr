@@ -2,17 +2,18 @@ use std::collections::{BTreeMap, HashMap};
 
 use crate::{
     adapter::{Adapter, AdapterApcWithStats, AdapterBasicBlock, AdapterVmConfig, PgoAdapter},
+    execution_profile::ExecutionProfile,
     pgo::create_apcs_for_all_blocks,
     EmpiricalConstraints, PowdrConfig,
 };
 
 pub struct InstructionPgo<A> {
     _marker: std::marker::PhantomData<A>,
-    data: HashMap<u64, u32>,
+    data: ExecutionProfile,
 }
 
 impl<A> InstructionPgo<A> {
-    pub fn with_pgo_data(data: HashMap<u64, u32>) -> Self {
+    pub fn with_pgo_data(data: ExecutionProfile) -> Self {
         Self {
             _marker: std::marker::PhantomData,
             data,
@@ -40,11 +41,12 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
             return vec![];
         }
 
-        let pgo_program_pc_count: &HashMap<u64, u32> = &self.data;
-        // drop any block whose start index cannot be found in pc_idx_count,
+        let pgo_program_pc_count: &HashMap<u64, u32> = &self.data.pc_count;
+        // drop any block whose start pc cannot be found in the execution,
         // because a basic block might not be executed at all.
         // Also only keep basic blocks with more than one original instruction.
-        blocks.retain(|b| pgo_program_pc_count.contains_key(&b.start_pc) && b.statements.len() > 1);
+        blocks
+            .retain(|b| pgo_program_pc_count.contains_key(&b.start_pc) && b.instructions.len() > 1);
 
         tracing::debug!(
             "Retained {} basic blocks after filtering by pc_idx_count",
@@ -55,13 +57,13 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
         blocks.sort_by(|a, b| {
             let a_cnt = pgo_program_pc_count[&a.start_pc];
             let b_cnt = pgo_program_pc_count[&b.start_pc];
-            (b_cnt * (b.statements.len() as u32)).cmp(&(a_cnt * (a.statements.len() as u32)))
+            (b_cnt * (b.instructions.len() as u32)).cmp(&(a_cnt * (a.instructions.len() as u32)))
         });
 
         // Debug print blocks by descending cost
         for block in &blocks {
             let frequency = pgo_program_pc_count[&block.start_pc];
-            let number_of_instructions = block.statements.len();
+            let number_of_instructions = block.instructions.len();
             let value = frequency * number_of_instructions as u32;
 
             tracing::debug!(
@@ -79,6 +81,6 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
     }
 
     fn pc_execution_count(&self, pc: u64) -> Option<u32> {
-        self.data.get(&pc).cloned()
+        self.data.pc_count.get(&pc).cloned()
     }
 }
