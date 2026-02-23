@@ -165,8 +165,6 @@ pub struct BlockAndStats<I> {
     pub block: SuperBlock<I>,
     /// amount of times this block appears in the execution
     pub count: u32,
-    /// the indices of the basic block runs this block appears in (to avoid searching the whole execution later)
-    pub runs: Vec<usize>,
 }
 
 /// The result of superblock generation: a set of blocks with optional statistics for PGO.
@@ -186,7 +184,6 @@ impl<I> ExecutionBlocks<I> {
                 .map(|block| BlockAndStats {
                     block,
                     count: 0,
-                    runs: vec![],
                 })
                 .collect(),
             execution_bb_runs: vec![],
@@ -258,7 +255,7 @@ fn detect_execution_bb_runs<I>(
 }
 
 /// Find all superblocks up to max_len in the basic block run and count their occurrences.
-/// Returns a map from superblock to their count.
+/// Returns a map from superblock to its count.
 fn count_superblocks_in_run(
     bb_run: &ExecutionBasicBlockRun,
     max_len: usize,
@@ -275,32 +272,24 @@ fn count_superblocks_in_run(
     superblocks_in_run
 }
 
-/// Find and count the occurrences of blocks of up to max_len in each run.
-/// Returns a map from block to its count and the indices of the runs it is found in.
+/// Find all superblocks up to max_len in the execution and count their occurrences.
+/// Returns a map from superblock to its count.
 fn count_superblocks_in_execution(
     execution_bb_runs: &[(ExecutionBasicBlockRun, u32)],
     max_len: usize,
-) -> BTreeMap<Vec<u64>, (u32, Vec<usize>)> {
+) -> BTreeMap<Vec<u64>, u32> {
     let sblocks = execution_bb_runs
         .par_iter()
-        .enumerate()
-        .map(|(run_idx, (run, run_count))| {
+        .map(|(run, run_count)| {
             count_superblocks_in_run(run, max_len)
                 .into_iter()
-                .map(|(sblock, count)| (sblock, (count * run_count, vec![run_idx])))
+                .map(|(sblock, sblock_occurrences_in_run)| (sblock, sblock_occurrences_in_run * run_count))
                 .collect()
         })
         .reduce(BTreeMap::new, |mut sblocks_a, sblocks_b| {
-            for (sblock, (count, runs)) in sblocks_b {
-                match sblocks_a.entry(sblock) {
-                    std::collections::btree_map::Entry::Vacant(entry) => {
-                        entry.insert((count, runs));
-                    }
-                    std::collections::btree_map::Entry::Occupied(mut entry) => {
-                        entry.get_mut().0 += count;
-                        entry.get_mut().1.extend(runs);
-                    }
-                }
+            // merge counts of b into a
+            for (sblock, count) in sblocks_b {
+                *sblocks_a.entry(sblock).or_insert(0) += count;
             }
             sblocks_a
         });
@@ -350,7 +339,7 @@ pub fn detect_superblocks<A: Adapter>(
     let mut skipped_adapter = 0;
     blocks_found
         .into_iter()
-        .for_each(|(sblock_pcs, (count, mut runs))| {
+        .for_each(|(sblock_pcs, count)| {
             let block = SuperBlock::from(
                 sblock_pcs
                     .iter()
@@ -378,8 +367,7 @@ pub fn detect_superblocks<A: Adapter>(
                 return;
             }
 
-            runs.sort_unstable();
-            block_stats.push(BlockAndStats { block, count, runs });
+            block_stats.push(BlockAndStats { block, count });
         });
 
     tracing::info!(
