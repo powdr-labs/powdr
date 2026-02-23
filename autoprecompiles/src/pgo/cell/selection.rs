@@ -22,8 +22,6 @@ pub struct BlockCandidate {
     pub value_per_use: usize,
     // times this block could run in the execution
     pub execution_count: u32,
-    // indices of the runs in the execution where this block appears
-    pub idx_runs: Vec<usize>,
 }
 
 impl BlockCandidate {
@@ -37,7 +35,6 @@ impl BlockCandidate {
             cost_after: apc.cost_after_opt(),
             value_per_use: apc.value_per_use(),
             execution_count: block.count,
-            idx_runs: block.runs.clone(),
         }
     }
 
