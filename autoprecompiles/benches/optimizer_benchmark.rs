@@ -28,6 +28,13 @@ fn optimize_keccak_benchmark(c: &mut Criterion) {
     let reader = flate2::read::GzDecoder::new(file);
     let apc: ApcWithBusMap<TestApc, BusMap<OpenVmBusType>> =
         serde_json::from_reader(reader).unwrap();
+    let basic_block_boundaries: Vec<usize> = apc
+        .apc
+        .block
+        .instruction_indexed_start_pcs()
+        .into_iter()
+        .map(|(idx, _)| idx)
+        .collect();
 
     group.bench_function("optimize", |b| {
         b.iter_batched(
@@ -40,6 +47,7 @@ fn optimize_keccak_benchmark(c: &mut Criterion) {
             |(machine, column_allocator)| {
                 optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
                     black_box(machine),
+                    &basic_block_boundaries,
                     OpenVmBusInteractionHandler::default(),
                     DEFAULT_DEGREE_BOUND,
                     &apc.bus_map,

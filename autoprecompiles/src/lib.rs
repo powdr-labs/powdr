@@ -13,7 +13,10 @@ use crate::optimistic::execution_literals::optimistic_literals;
 use crate::symbolic_machine::{SymbolicConstraint, SymbolicMachine};
 use crate::symbolic_machine_generator::convert_apc_field_type;
 use adapter::AdapterOptimisticConstraint;
-use execution::{ExecutionState, LocalOptimisticLiteral, OptimisticConstraint, OptimisticExpression, OptimisticLiteral};
+use execution::{
+    ExecutionState, LocalOptimisticLiteral, OptimisticConstraint, OptimisticExpression,
+    OptimisticLiteral,
+};
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
 use powdr::UniqueReferences;
@@ -355,9 +358,7 @@ pub fn build<A: Adapter>(
     metrics::counter!("before_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
 
-    // Instruction indices where each basic block starts in a superblock
-    // TODO(leandro): move info to machine
-    let basic_block_indices: std::collections::HashSet<usize> = block
+    let basic_block_boundaries: Vec<usize> = block
         .instruction_indexed_start_pcs()
         .into_iter()
         .map(|(idx, _)| idx)
@@ -365,11 +366,11 @@ pub fn build<A: Adapter>(
 
     let (machine, column_allocator) = optimizer::optimize::<_, _, _, A::MemoryBusInteraction<_>>(
         machine,
+        &basic_block_boundaries,
         vm_config.bus_interaction_handler,
         degree_bound,
         &vm_config.bus_map,
         column_allocator,
-        &basic_block_indices,
         &mut export_options,
     )?;
 

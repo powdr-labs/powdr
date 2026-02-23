@@ -108,21 +108,20 @@ impl EmpiricalConstraints {
             })
             .collect();
 
-        let bb_independent_equivalence_classes =
-            block
-                .instruction_indexed_start_pcs()
-                .into_iter()
-                .map(|(insn_idx, bb_pc)| {
-                    self.equivalence_classes_by_block
-                        .get(&bb_pc)
-                        .cloned()
-                        .unwrap_or_default()
-                        // shift instructions indices according to index in super block
-                        .map_elements(|mut elem| {
-                            elem.instruction_idx += insn_idx;
-                            elem
-                        })
-                });
+        let bb_independent_equivalence_classes = block
+            .instruction_indexed_start_pcs()
+            .into_iter()
+            .map(|(insn_idx, bb_pc)| {
+                self.equivalence_classes_by_block
+                    .get(&bb_pc)
+                    .cloned()
+                    .unwrap_or_default()
+                    // shift instructions indices according to index in super block
+                    .map_elements(|mut elem| {
+                        elem.instruction_idx += insn_idx;
+                        elem
+                    })
+            });
 
         let equivalence_classes = bb_independent_equivalence_classes
             .into_iter()
