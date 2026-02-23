@@ -20,7 +20,7 @@ use openvm_instructions::VmOpcode;
 use openvm_stark_backend::p3_field::{FieldAlgebra, PrimeField32};
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::adapter::{
-    Adapter, AdapterApc, AdapterApcWithStats, ApcWithStats, PgoAdapter
+    Adapter, AdapterApc, AdapterApcWithStats, ApcWithStats, PgoAdapter,
 };
 use powdr_autoprecompiles::blocks::{Instruction, PcStep};
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
@@ -301,7 +301,9 @@ impl OvmApcStats {
 #[derive(Serialize, Deserialize)]
 pub struct OpenVmApcCandidate<F, I>(ApcWithStats<F, I, OpenVmRegisterAddress, u32, OvmApcStats>);
 
-impl<'a> ApcCandidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear, Instr<BabyBear>> {
+impl<'a> ApcCandidate<BabyBearOpenVmApcAdapter<'a>>
+    for OpenVmApcCandidate<BabyBear, Instr<BabyBear>>
+{
     fn create(apc_with_stats: AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a>>) -> Self {
         Self(apc_with_stats)
     }

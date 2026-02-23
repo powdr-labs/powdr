@@ -1,7 +1,11 @@
+use itertools::Itertools;
 use priority_queue::PriorityQueue;
 use serde::{Deserialize, Serialize};
 
-use crate::{adapter::Adapter, blocks::{BlockAndStats, ExecutionBasicBlockRun}};
+use crate::{
+    adapter::Adapter,
+    blocks::{BlockAndStats, ExecutionBasicBlockRun},
+};
 
 use super::ApcCandidate;
 
@@ -34,7 +38,7 @@ impl BlockCandidate {
         }
     }
 
-    fn value_per_row(&self) -> usize {
+    pub fn value_per_row(&self) -> usize {
         self.cost_before - self.cost_after
     }
 
@@ -44,11 +48,11 @@ impl BlockCandidate {
             .unwrap()
     }
 
-    fn cost(&self) -> usize {
+    pub fn cost(&self) -> usize {
         self.cost_after
     }
 
-    fn density(&self) -> Density {
+    pub fn density(&self) -> Density {
         Density {
             value: self.value(),
             cost: self.cost(),
@@ -104,7 +108,10 @@ fn count_and_update_run(
             // a match, close the current sub-run
             count += 1;
             if i > sub_run_start {
-                sub_runs.push((ExecutionBasicBlockRun(run.0[sub_run_start..i].to_vec()), run_count));
+                sub_runs.push((
+                    ExecutionBasicBlockRun(run.0[sub_run_start..i].to_vec()),
+                    run_count,
+                ));
             }
             sub_run_start = i + sblock.start_pcs.len();
             i += sblock.start_pcs.len();
@@ -113,7 +120,10 @@ fn count_and_update_run(
         }
     }
     if run.0.len() > sub_run_start {
-        sub_runs.push((ExecutionBasicBlockRun(run.0[sub_run_start..].to_vec()), run_count));
+        sub_runs.push((
+            ExecutionBasicBlockRun(run.0[sub_run_start..].to_vec()),
+            run_count,
+        ));
     }
     (count, sub_runs)
 }
@@ -138,15 +148,22 @@ fn count_and_update_execution(
 
 /// Greedily select blocks based on density.
 /// Returns the indices of the selected blocks, together with how many times each would run if applied in the selected order.
-pub fn select_blocks_greedy(
-    mut all_blocks: Vec<BlockCandidate>,
+pub fn select_blocks_greedy<A: Adapter, C: ApcCandidate<A>>(
+    apcs: &[C],
+    blocks: &[BlockAndStats<A::Instruction>],
     budget: usize,
     max_selected: usize,
     execution_bb_runs: &[(ExecutionBasicBlockRun, u32)],
 ) -> Vec<(usize, u32)> {
+    let mut candidates = blocks
+        .iter()
+        .zip_eq(apcs)
+        .map(|(b, apc)| BlockCandidate::new(b, apc))
+        .collect::<Vec<_>>();
+
     // keep candidates by priority. As a candidate is selected, remaining priorities will be (lazily) updated.
-    let mut by_priority: PriorityQueue<_, _> = (0..all_blocks.len())
-        .map(|idx| (idx, all_blocks[idx].density()))
+    let mut by_priority: PriorityQueue<_, _> = (0..candidates.len())
+        .map(|idx| (idx, candidates[idx].density()))
         .collect();
 
     let mut selected = vec![];
@@ -154,7 +171,7 @@ pub fn select_blocks_greedy(
     let mut current_execution = execution_bb_runs.to_vec();
 
     while let Some((idx, _prio)) = by_priority.pop() {
-        let c = &mut all_blocks[idx];
+        let c = &mut candidates[idx];
 
         // ignore if too costly
         if cumulative_cost + c.cost() > budget {

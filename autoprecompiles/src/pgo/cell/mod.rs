@@ -1,17 +1,13 @@
-use std::{
-    collections::BTreeMap,
-    io::BufWriter,
-    path::Path,
-};
+use std::{collections::BTreeMap, io::BufWriter, path::Path};
 
 use itertools::Itertools;
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use selection::{BlockCandidate, select_blocks_greedy};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use selection::select_blocks_greedy;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     adapter::{Adapter, AdapterApcWithStats, AdapterExecutionBlocks, AdapterVmConfig, PgoAdapter},
-    blocks::{BasicBlock, SuperBlock},
+    blocks::{BasicBlock, BlockAndStats, SuperBlock},
     evaluation::{evaluate_apc, EvaluationResult},
     execution_profile::ExecutionProfile,
     export::{ExportLevel, ExportOptions},
@@ -111,15 +107,20 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
             return vec![];
         }
 
+        let AdapterExecutionBlocks::<Self::Adapter> {
+            blocks,
+            execution_bb_runs,
+        } = exec_blocks;
+
         tracing::info!(
             "Generating autoprecompiles for all {} blocks in parallel",
-            exec_blocks.blocks.len(),
+            blocks.len(),
         );
 
-        // generate apcs in parallel
-        let (apcs, candidates): (Vec<_>, Vec<_>) = exec_blocks
-            .blocks
-            .par_iter()
+        // Generate apcs in parallel.
+        // Produces two matching vectors: one with the APCs and another with the corresponding originating block.
+        let (apcs, blocks): (Vec<_>, Vec<_>) = blocks
+            .into_par_iter()
             .filter_map(|block_and_stats| {
                 let start = std::time::Instant::now();
                 let res = try_generate_candidate::<A, C>(
@@ -127,27 +128,23 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
                     config,
                     &vm_config,
                     &empirical_constraints,
-                ).map(|apc| {
-                    let candidate = BlockCandidate::new(
-                        block_and_stats,
-                        &apc,
-                    );
-                    (apc, candidate)
-                })?;
+                )?;
                 tracing::debug!(
                     "Generated APC for block {:?}, (took {:?})",
                     block_and_stats.block.start_pcs(),
                     start.elapsed()
                 );
-                Some(res)
+                Some((res, block_and_stats))
             })
             .collect();
 
         // write the APC candidates JSON to disk if the directory is specified.
         if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
-            let apcs = apcs.iter().zip(candidates.iter())
+            let apcs = apcs
+                .iter()
+                .zip(blocks.iter())
                 .map(|(apc, candidate)| {
-                    apc_candidate_json_export::<A,_>(apc, candidate, apc_candidates_dir_path)
+                    apc_candidate_json_export::<A, _>(apc, candidate, apc_candidates_dir_path)
                 })
                 .collect();
             let json = JsonExport::new(apcs, labels);
@@ -161,19 +158,14 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
         // select best candidates
         let budget = self.max_total_apc_columns.unwrap_or(usize::MAX);
         let max_selected = (config.autoprecompiles + config.skip_autoprecompiles) as usize;
-        let mut selection = select_blocks_greedy(
-            candidates,
-            budget,
-            max_selected,
-            &exec_blocks.execution_bb_runs,
-        );
+        let mut selection =
+            select_blocks_greedy(&apcs, &blocks, budget, max_selected, &execution_bb_runs);
 
         // skip first N per config
         selection.drain(..config.skip_autoprecompiles as usize);
 
         // filter the apcs using the selection indices, keeping selection order
-        apcs
-            .into_iter()
+        apcs.into_iter()
             .enumerate()
             .filter_map(|(idx, apc)| {
                 let position = selection.iter().position(|(i, _)| *i == idx)?;
@@ -215,8 +207,8 @@ fn try_generate_candidate<A: Adapter, C: ApcCandidate<A>>(
 
 fn apc_candidate_json_export<A: Adapter, C: ApcCandidate<A>>(
     apc: &C,
-    candidate: &BlockCandidate,
-    apc_candidates_dir_path: &Path
+    block: &BlockAndStats<A::Instruction>,
+    apc_candidates_dir_path: &Path,
 ) -> ApcCandidateJsonExport {
     let original_blocks: Vec<_> = apc
         .inner()
@@ -229,20 +221,18 @@ fn apc_candidate_json_export<A: Adapter, C: ApcCandidate<A>>(
         })
         .collect();
 
-    let start_pcs = &candidate.start_pcs.iter().join("_");
+    let start_pcs = &block.block.start_pcs().iter().join("_");
 
     ApcCandidateJsonExport {
-        execution_frequency: candidate.execution_count as usize,
+        execution_frequency: block.count as usize,
         original_blocks,
         stats: apc.inner().evaluation_result(),
-        width_before: candidate.cost_before,
-        value: candidate.value(),
-        cost_before: candidate.cost_before as f64,
-        cost_after: candidate.cost_after as f64,
+        width_before: apc.cost_before_opt(),
+        value: apc.value_per_use() * block.count as usize,
+        cost_before: apc.cost_before_opt() as f64,
+        cost_after: apc.cost_after_opt() as f64,
         apc_candidate_file: apc_candidates_dir_path
-            .join(format!(
-                "apc_{start_pcs}.cbor",
-            ))
+            .join(format!("apc_{start_pcs}.cbor",))
             .display()
             .to_string(),
     }
