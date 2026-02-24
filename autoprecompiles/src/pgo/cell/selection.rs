@@ -38,13 +38,9 @@ impl BlockCandidate {
         }
     }
 
-    pub fn value_per_row(&self) -> usize {
-        self.cost_before - self.cost_after
-    }
-
     pub fn value(&self) -> usize {
         (self.execution_count as usize)
-            .checked_mul(self.value_per_row())
+            .checked_mul(self.value_per_use)
             .unwrap()
     }
 
