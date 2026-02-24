@@ -147,7 +147,8 @@ fn count_and_update_execution(
 }
 
 /// Greedily select blocks based on density.
-/// Returns the indices of the selected blocks, together with how many times each would run if applied in the selected order.
+/// Once a candidate is selected, the value of the remaining candidates are updated to reflect the new execution (with the selection removed).
+/// Returns the indices of the selected blocks, together with how many times each would run if applied over the execution in the selected order.
 pub fn select_blocks_greedy<A: Adapter, C: ApcCandidate<A>>(
     apcs: &[C],
     blocks: &[BlockAndStats<A::Instruction>],
