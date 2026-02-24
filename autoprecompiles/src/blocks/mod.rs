@@ -14,10 +14,7 @@ mod detection;
 
 pub use detection::collect_basic_blocks;
 
-use crate::{
-    adapter::{Adapter, AdapterBasicBlock},
-    PowdrConfig,
-};
+use crate::PowdrConfig;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 /// A sequence of instructions starting at a given PC.
@@ -311,13 +308,13 @@ fn count_superblocks_in_execution(
 /// Detect basic blocks and superblocks present in the given execution.
 /// Returns the detected blocks, together with their execution information.
 /// Does not return invalid APC blocks (i.e., single instruction) and blocks that are never executed.
-pub fn detect_superblocks<A: Adapter>(
+pub fn detect_superblocks<I: Clone>(
     cfg: &PowdrConfig,
     // program execution as a sequence of PCs
     execution_pc_list: &[u64],
     // all program basic blocks (including single instruction ones), in no particular order
-    basic_blocks: Vec<AdapterBasicBlock<A>>,
-) -> ExecutionBlocks<A::Instruction> {
+    basic_blocks: Vec<BasicBlock<I>>,
+) -> ExecutionBlocks<I> {
     tracing::info!(
         "Detecting superblocks with <= {} basic blocks, over the sequence of {} PCs",
         cfg.superblock_max_bb_count,
@@ -348,7 +345,6 @@ pub fn detect_superblocks<A: Adapter>(
     let mut block_stats = vec![];
     let mut skipped_exec_count = 0;
     let mut skipped_max_insn = 0;
-    let mut skipped_adapter = 0;
     blocks_found.into_iter().for_each(|(sblock_pcs, count)| {
         let block = SuperBlock::from(
             sblock_pcs
@@ -358,22 +354,14 @@ pub fn detect_superblocks<A: Adapter>(
         );
 
         // skip superblocks that were executed less than the cutoff
-        if !block.is_basic_block() && count < cfg.superblock_exec_count_cutoff {
+        if count < cfg.superblock_exec_count_cutoff {
             skipped_exec_count += 1;
             return;
         }
 
         // skip superblocks with too many instructions
-        if !block.is_basic_block()
-            && block.instructions().count() > cfg.superblock_max_instructions as usize
-        {
+        if block.instructions().count() > cfg.superblock_max_instructions as usize {
             skipped_max_insn += 1;
-            return;
-        }
-
-        // skip by adapter rules
-        if A::should_skip_block(&block) {
-            skipped_adapter += 1;
             return;
         }
 
@@ -381,10 +369,9 @@ pub fn detect_superblocks<A: Adapter>(
     });
 
     tracing::info!(
-        "Skipped blocks: {} to execution cutoff, {} to instruction count, {} to adapter filter",
+        "Skipped blocks: {} to execution cutoff, {} to instruction count",
         skipped_exec_count,
         skipped_max_insn,
-        skipped_adapter,
     );
 
     tracing::info!(
@@ -408,6 +395,10 @@ pub fn detect_superblocks<A: Adapter>(
 
 #[cfg(test)]
 mod test {
+    use std::collections::BTreeMap;
+
+    use crate::{DegreeBound, PowdrConfig};
+
     use super::*;
 
     #[test]
@@ -436,5 +427,51 @@ mod test {
         assert_eq!(counts[&vec![4, 1, 2]], 1);
         assert_eq!(counts[&vec![1, 2, 3]], 2);
         assert_eq!(counts[&vec![2, 3, 4]], 1);
+    }
+
+    #[test]
+    fn test_detect_superblocks_counts_and_execution_runs() {
+        let bb = |start_pc: u64, len: usize| BasicBlock {
+            start_pc,
+            instructions: vec![(); len],
+        };
+
+        let cfg = PowdrConfig::new(
+            10,
+            0,
+            DegreeBound {
+                identities: 2,
+                bus_interactions: 2,
+            },
+        )
+        .with_superblocks(2, None, None);
+
+        let basic_blocks = vec![bb(100, 2), bb(200, 2), bb(300, 1), bb(400, 3), bb(500, 2)];
+
+        let execution = vec![100, 101, 200, 201, 300, 400, 401, 402, 100, 101, 200, 201];
+
+        let result = detect_superblocks(&cfg, &execution, basic_blocks);
+
+        assert_eq!(
+            result.execution_bb_runs,
+            vec![
+                (ExecutionBasicBlockRun(vec![100, 200]), 1),
+                (ExecutionBasicBlockRun(vec![400, 100, 200]), 1),
+            ]
+        );
+
+        let counts = result
+            .blocks
+            .into_iter()
+            .map(|entry| (entry.block.start_pcs(), entry.count))
+            .collect::<BTreeMap<_, _>>();
+
+        assert_eq!(counts.get(&vec![100]), Some(&2));
+        assert_eq!(counts.get(&vec![200]), Some(&2));
+        assert_eq!(counts.get(&vec![400]), Some(&1));
+        assert_eq!(counts.get(&vec![100, 200]), Some(&2));
+        assert_eq!(counts.get(&vec![400, 100]), Some(&1));
+        assert!(!counts.contains_key(&vec![300]));
+        assert!(!counts.contains_key(&vec![500]));
     }
 }

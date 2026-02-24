@@ -64,13 +64,11 @@ pub trait PgoAdapter {
         empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
         let blocks = if let Some(prof) = self.execution_profile() {
-            detect_superblocks::<Self::Adapter>(config, &prof.pc_list, blocks)
+            detect_superblocks(config, &prof.pc_list, blocks)
         } else {
             let superblocks = blocks
                 .into_iter()
                 .map(SuperBlock::from)
-                // filter by adapter rules
-                .filter(|sb| !Self::Adapter::should_skip_block(sb))
                 // filter invalid APC candidates
                 .filter(|sb| sb.instructions().count() > 1)
                 .collect();
@@ -138,10 +136,6 @@ where
         apc: Arc<AdapterApc<Self>>,
         instruction_handler: &Self::InstructionHandler,
     ) -> Self::ApcStats;
-
-    fn should_skip_block(_block: &SuperBlock<Self::Instruction>) -> bool {
-        false
-    }
 }
 
 pub type AdapterApcWithStats<A> = ApcWithStats<
