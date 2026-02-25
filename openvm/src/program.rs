@@ -29,9 +29,6 @@ pub struct OriginalCompiledProgram {
 impl OriginalCompiledProgram {
     /// Segments the program into basic blocks. The degree bound does not influence the result (see TODO below).
     pub fn collect_basic_blocks(&self) -> Vec<BasicBlock<Instr<BabyBear>>> {
-        // TODO: This only needs to build the airs so that `collect_basic_blocks` can call
-        // `is_branching` and `is_allowed` on it. If we had a better way to do that, we could
-        // remove the degree_bound parameter.
         let labels = self.elf.text_labels();
 
         let jumpdest_set = self.add_extra_targets(labels.clone(), DEFAULT_PC_STEP);
