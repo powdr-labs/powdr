@@ -5,9 +5,14 @@ use crate::{
     rule_based_optimizer::types::Var,
 };
 
+/// A request for a new variable from the rule system. The variable will be assigned a tentative ID and name
+/// generated from the prefix. Both the ID and the name will be re-generated when the replacements are processed.
 pub struct NewVarRequest<T> {
+    /// The final ID computed when the replacements are processed.
     pub final_id: Option<Var>,
+    /// A prefix to be used for generating a descriptive name.
     pub prefix: String,
+    /// The way to compute the variable during witness generation.
     pub computation_method: ComputationMethod<T, GroupedExpression<T, Var>>,
 }
 
