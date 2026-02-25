@@ -8,7 +8,7 @@ use crate::{
 use derivative::Derivative;
 use itertools::Itertools;
 use powdr_number::FieldElement;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{fmt::Display, hash::Hash};
 
 pub use crate::algebraic_constraint::AlgebraicConstraint;
@@ -79,7 +79,7 @@ impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct DerivedVariable<T, V, E> {
     pub variable: V,
     pub computation_method: ComputationMethod<T, E>,
@@ -91,6 +91,37 @@ impl<T, V, E> DerivedVariable<T, V, E> {
             variable,
             computation_method,
         }
+    }
+}
+
+impl<T, V, E> Serialize for DerivedVariable<T, V, E>
+where
+    V: Serialize,
+    ComputationMethod<T, E>: Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        (&self.variable, &self.computation_method).serialize(serializer)
+    }
+}
+
+impl<'de, T, V, E> Deserialize<'de> for DerivedVariable<T, V, E>
+where
+    V: Deserialize<'de>,
+    ComputationMethod<T, E>: Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let (variable, computation_method) =
+            <(V, ComputationMethod<T, E>)>::deserialize(deserializer)?;
+        Ok(Self {
+            variable,
+            computation_method,
+        })
     }
 }
 
