@@ -147,9 +147,7 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
             let apcs = apcs
                 .iter()
                 .zip(blocks.iter())
-                .map(|(apc, candidate)| {
-                    apc_candidate_json_export::<A, _>(apc, candidate)
-                })
+                .map(|(apc, candidate)| apc_candidate_json_export::<A, _>(apc, candidate))
                 .collect();
             let json = JsonExport::new(apcs, labels);
             let json_path = apc_candidates_dir_path.join("apc_candidates.json");
