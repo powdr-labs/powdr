@@ -47,8 +47,6 @@ use powdr_extension::PowdrExtension;
 use powdr_openvm_hints_circuit::{HintsExtension, HintsExtensionExecutor, HintsProverExt};
 use powdr_openvm_hints_transpiler::HintsTranspilerExtension;
 use serde::{Deserialize, Serialize};
-use std::fs::File;
-use std::io::BufWriter;
 use std::iter::Sum;
 use std::ops::Add;
 use std::path::{Path, PathBuf};
@@ -61,7 +59,7 @@ use crate::trace_generation::do_with_trace;
 
 #[cfg(test)]
 use crate::extraction_utils::AirWidthsDiff;
-use crate::extraction_utils::{export_pil, AirWidths, OriginalVmConfig};
+use crate::extraction_utils::{AirWidths, OriginalVmConfig};
 use crate::powdr_extension::{PowdrExtensionExecutor, PowdrPrecompile};
 
 mod air_builder;
@@ -576,11 +574,6 @@ pub fn compile_exe(
             empirical_constraints,
         ),
     };
-    // Export the compiled program to a PIL file for debugging purposes.
-    export_pil(
-        &mut BufWriter::new(File::create("debug.pil").unwrap()),
-        &compiled.vm_config,
-    );
     Ok(compiled)
 }
 

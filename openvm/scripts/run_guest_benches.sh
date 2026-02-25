@@ -38,7 +38,6 @@ run_bench() {
     fi
 
     # Clean up some files that we don't want to to push.
-    rm debug.pil
     rm -f "${run_name}"/apc_candidate_*
 }
 
