@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, io::BufWriter, path::Path};
+use std::{collections::BTreeMap, io::BufWriter};
 
 use itertools::Itertools;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -48,8 +48,6 @@ pub struct ApcCandidateJsonExport {
     pub cost_before: f64,
     // cost after optimization, used for effectiveness calculation and ranking of candidates
     pub cost_after: f64,
-    // path to the apc candidate file
-    pub apc_candidate_file: String,
 }
 
 pub struct CellPgo<A, C> {
@@ -73,7 +71,13 @@ impl<A, C> CellPgo<A, C> {
 
 /// This version is used by external tools to support multiple versions of the json export.
 /// Version should be incremented whenever a breaking change is made to the type (or inner types).
-const JSON_EXPORT_VERSION: usize = 3;
+/// Version Log:
+/// 0: Serialize only APCs as Vec<ApcCandidateJsonExport>
+/// 1: Add labels to the JSON export
+/// 2: Rename apcs[*].original_block.statements -> apcs[*].original_block.instructions
+/// 3. Remove apcs[*].apc_candidate_file
+/// 4. superblocks: original_blocks: Vec<BasicBlock<_>>
+const JSON_EXPORT_VERSION: usize = 4;
 
 #[derive(Serialize, Deserialize)]
 struct JsonExport {
@@ -144,7 +148,7 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
                 .iter()
                 .zip(blocks.iter())
                 .map(|(apc, candidate)| {
-                    apc_candidate_json_export::<A, _>(apc, candidate, apc_candidates_dir_path)
+                    apc_candidate_json_export::<A, _>(apc, candidate)
                 })
                 .collect();
             let json = JsonExport::new(apcs, labels);
@@ -208,7 +212,6 @@ fn try_generate_candidate<A: Adapter, C: ApcCandidate<A>>(
 fn apc_candidate_json_export<A: Adapter, C: ApcCandidate<A>>(
     apc: &C,
     block: &BlockAndStats<A::Instruction>,
-    apc_candidates_dir_path: &Path,
 ) -> ApcCandidateJsonExport {
     let original_blocks: Vec<_> = apc
         .inner()
@@ -221,8 +224,6 @@ fn apc_candidate_json_export<A: Adapter, C: ApcCandidate<A>>(
         })
         .collect();
 
-    let start_pcs = &block.block.start_pcs().iter().join("_");
-
     ApcCandidateJsonExport {
         execution_frequency: block.count as usize,
         original_blocks,
@@ -231,9 +232,5 @@ fn apc_candidate_json_export<A: Adapter, C: ApcCandidate<A>>(
         value: apc.value_per_use() * block.count as usize,
         cost_before: apc.cost_before_opt() as f64,
         cost_after: apc.cost_after_opt() as f64,
-        apc_candidate_file: apc_candidates_dir_path
-            .join(format!("apc_{start_pcs}.cbor",))
-            .display()
-            .to_string(),
     }
 }
