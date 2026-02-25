@@ -21,7 +21,7 @@ use powdr_autoprecompiles::{
     symbolic_machine::SymbolicBusInteraction,
     Apc,
 };
-use powdr_constraint_solver::constraint_system::ComputationMethod;
+use powdr_constraint_solver::constraint_system::{ComputationMethod, DerivedVariable};
 use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 
 use crate::{
@@ -103,17 +103,20 @@ fn emit_expr_span(
 
 /// Compile derived columns to GPU bytecode according to input order.
 fn compile_derived_to_gpu(
-    derived_columns: &[(
+    derived_columns: &[DerivedVariable<
+        BabyBear,
         AlgebraicReference,
-        ComputationMethod<BabyBear, AlgebraicExpression<BabyBear>>,
-    )],
+        AlgebraicExpression<BabyBear>,
+    >],
     apc_poly_id_to_index: &BTreeMap<u64, usize>,
     apc_height: usize,
 ) -> (Vec<DerivedExprSpec>, Vec<u32>) {
     let mut specs = Vec::with_capacity(derived_columns.len());
     let mut bytecode = Vec::new();
 
-    for (col, computation_method) in derived_columns {
+    for derived_column in derived_columns {
+        let (col, computation_method) =
+            (&derived_column.variable, &derived_column.computation_method);
         let apc_col_index = apc_poly_id_to_index[&col.id];
         let off = bytecode.len() as u32;
         match computation_method {
