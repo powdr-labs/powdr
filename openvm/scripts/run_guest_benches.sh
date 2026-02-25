@@ -39,7 +39,7 @@ run_bench() {
 
     # Clean up some files that we don't want to to push.
     rm debug.pil
-    rm -f "${run_name}"/*.cbor
+    rm -f "${run_name}"/apc_candidate_*
 }
 
 # TODO: Some benchmarks are currently disabled to keep the nightly run below 6h.
