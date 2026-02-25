@@ -27,7 +27,7 @@ pub struct ConstraintSystem<T, V> {
     pub bus_interactions: Vec<BusInteraction<GroupedExpression<T, V>>>,
     /// Newly added variables whose values are derived from existing variables.
     #[serde(rename = "derived_columns")]
-    pub derived_variables: Vec<DerivedVariable<T, V>>,
+    pub derived_variables: Vec<DerivedVariable<T, V, GroupedExpression<T, V>>>,
 }
 
 impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display for ConstraintSystem<T, V> {
@@ -79,20 +79,18 @@ impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
     }
 }
 
-#[derive(Clone)]
-pub struct DerivedVariable<T, V> {
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DerivedVariable<T, V, E> {
     pub variable: V,
-    pub computation_method: ComputationMethod<T, GroupedExpression<T, V>>,
+    pub computation_method: ComputationMethod<T, E>,
 }
 
-impl<T: RuntimeConstant + Serialize, V: Clone + Ord + Eq + Serialize> Serialize
-    for DerivedVariable<T, V>
-{
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        (&self.variable, &self.computation_method).serialize(serializer)
+impl<T, V, E> DerivedVariable<T, V, E> {
+    pub fn new(variable: V, computation_method: ComputationMethod<T, E>) -> Self {
+        Self {
+            variable,
+            computation_method,
+        }
     }
 }
 

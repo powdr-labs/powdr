@@ -15,7 +15,7 @@ use crate::symbolic_machine_generator::convert_apc_field_type;
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
 use powdr::UniqueReferences;
-use powdr_constraint_solver::constraint_system::ComputationMethod;
+use powdr_constraint_solver::constraint_system::{ComputationMethod, DerivedVariable};
 use powdr_expression::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
 };
@@ -416,9 +416,10 @@ fn add_guards<T: FieldElement>(
     };
     let is_valid = AlgebraicExpression::Reference(is_valid_ref.clone());
 
-    machine
-        .derived_columns
-        .push((is_valid_ref, ComputationMethod::Constant(T::one())));
+    machine.derived_columns.push(DerivedVariable::new(
+        is_valid_ref,
+        ComputationMethod::Constant(T::one()),
+    ));
 
     machine.constraints = machine
         .constraints
