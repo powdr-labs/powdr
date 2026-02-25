@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::iter::once;
-use std::path::Path;
 use std::sync::Arc;
 
 use crate::bus_map::OpenVmBusType;
@@ -330,7 +329,7 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
     }
 
     /// Return a JSON export of the APC candidate.
-    fn to_json_export(&self, apc_candidates_dir_path: &Path) -> ApcCandidateJsonExport {
+    fn to_json_export(&self) -> ApcCandidateJsonExport {
         ApcCandidateJsonExport {
             execution_frequency: self.execution_frequency,
             original_block: BasicBlock {
@@ -353,18 +352,6 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
             value: self.value(),
             cost_before: self.apc_with_stats.stats().widths.before.total() as f64,
             cost_after: self.apc_with_stats.stats().widths.after.total() as f64,
-            apc_candidate_file: apc_candidates_dir_path
-                .join(format!(
-                    "apc_{}.cbor",
-                    self.apc_with_stats
-                        .apc()
-                        .block
-                        .try_as_basic_block()
-                        .expect("superblocks unsupported")
-                        .start_pc
-                ))
-                .display()
-                .to_string(),
         }
     }
 
