@@ -119,7 +119,7 @@ impl<T: Eq + Hash + Clone> Partition<T> {
         #[allow(clippy::iter_over_hash_type)]
         for (elem, class) in other.class_of {
             if self.class_of.insert(elem, class + class_shift).is_some() {
-                panic!("Partition join element collision");
+                panic!("Partition combine element collision");
             }
         }
         self.num_classes += other.num_classes;
@@ -235,5 +235,40 @@ mod tests {
         // which are omitted in the list of equivalence classes.
         let partition: Partition<u32> = Partition::default();
         assert_eq!(partition.to_classes().len(), 0);
+    }
+
+    #[test]
+    fn test_map_elements() {
+        let p = partition(vec![vec![1u32, 2], vec![3, 4]]);
+        let mapped: Partition<String> = p.map_elements(|x| x.to_string());
+        let expected: Partition<String> = vec![vec!["1", "2"], vec!["3", "4"]]
+            .into_iter()
+            .map(|v| v.into_iter().map(str::to_string))
+            .collect();
+        assert_eq!(mapped, expected);
+    }
+
+    #[test]
+    #[should_panic(expected = "Partition element mapping collision")]
+    fn test_map_elements_panics_on_collision() {
+        let p = partition(vec![vec![1, 2]]);
+        p.map_elements(|_| 0u32);
+    }
+
+    #[test]
+    fn test_combine() {
+        let p1 = partition(vec![vec![1, 2], vec![3, 4]]);
+        let p2 = partition(vec![vec![5, 6], vec![7, 8]]);
+        let combined = p1.combine(p2);
+        let expected = partition(vec![vec![1, 2], vec![3, 4], vec![5, 6], vec![7, 8]]);
+        assert_eq!(combined, expected);
+    }
+
+    #[test]
+    #[should_panic(expected = "Partition combine element collision")]
+    fn test_combine_panics_on_collision() {
+        let p1 = partition(vec![vec![1, 2]]);
+        let p2 = partition(vec![vec![1, 3]]);
+        p1.combine(p2);
     }
 }
