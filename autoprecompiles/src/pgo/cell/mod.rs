@@ -1,7 +1,6 @@
 use std::{
     collections::{BTreeMap, HashMap},
     io::BufWriter,
-    path::Path,
     sync::{Arc, Mutex},
 };
 
@@ -32,7 +31,7 @@ pub trait Candidate<A: Adapter>: Sized + KnapsackItem {
     ) -> Self;
 
     /// Return a JSON export of the APC candidate.
-    fn to_json_export(&self, apc_candidates_dir_path: &Path) -> ApcCandidateJsonExport;
+    fn to_json_export(&self) -> ApcCandidateJsonExport;
 
     /// Convert the candidate into an autoprecompile and its statistics.
     fn into_apc_and_stats(self) -> AdapterApcWithStats<A>;
@@ -56,8 +55,6 @@ pub struct ApcCandidateJsonExport {
     pub cost_before: f64,
     // cost after optimization, used for effectiveness calculation and ranking of candidates
     pub cost_after: f64,
-    // path to the apc candidate file
-    pub apc_candidate_file: String,
 }
 
 pub struct CellPgo<A, C> {
@@ -81,7 +78,12 @@ impl<A, C> CellPgo<A, C> {
 
 /// This version is used by external tools to support multiple versions of the json export.
 /// Version should be incremented whenever a breaking change is made to the type (or inner types).
-const JSON_EXPORT_VERSION: usize = 2;
+/// Version Log:
+/// 0: Serialize only APCs as Vec<ApcCandidateJsonExport>
+/// 1: Add labels to the JSON export
+/// 2: Rename apcs[*].original_block.statements -> apcs[*].original_block.instructions
+/// 3. Remove apcs[*].apc_candidate_file
+const JSON_EXPORT_VERSION: usize = 3;
 
 #[derive(Serialize, Deserialize)]
 struct JsonExport {
@@ -153,8 +155,8 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
                     let apc_with_stats =
                         evaluate_apc::<A>(superblock, vm_config.instruction_handler, apc);
                     let candidate = C::create(apc_with_stats, &self.data.pc_count);
-                    if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
-                        let json_export = candidate.to_json_export(apc_candidates_dir_path);
+                    if config.apc_candidates_dir_path.is_some() {
+                        let json_export = candidate.to_json_export();
                         apc_candidates.lock().unwrap().push(json_export);
                     }
                     Some(candidate)
