@@ -66,7 +66,7 @@ pub struct Density {
 
 impl PartialEq for Density {
     fn eq(&self, other: &Self) -> bool {
-        self.value * other.cost == other.value * self.cost && self.tie == other.tie
+        self.cmp(other) == std::cmp::Ordering::Equal
     }
 }
 
