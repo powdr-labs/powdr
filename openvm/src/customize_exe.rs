@@ -62,13 +62,7 @@ impl<'a, T: PrimeField32> ExecutionState for OpenVmExecutionState<'a, T> {
     }
 
     fn reg(&self, addr: &Self::RegisterAddress) -> Self::Value {
-        unsafe {
-            self.0
-                .memory
-                .memory
-                .get_f::<T>(REGISTER_ADDRESS_SPACE, addr.0 as u32)
-                .as_canonical_u32()
-        }
+        unimplemented!()
     }
 
     fn value_limb(value: Self::Value, limb_index: usize) -> Self::Value {
