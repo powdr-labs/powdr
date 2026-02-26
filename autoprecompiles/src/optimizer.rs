@@ -1,6 +1,6 @@
 use std::fmt::Debug;
+use std::fmt::Display;
 use std::hash::Hash;
-use std::{collections::BTreeMap, fmt::Display};
 
 use itertools::Itertools;
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
@@ -16,14 +16,14 @@ use crate::export::ExportOptions;
 use crate::memory_optimizer::MemoryBusInteraction;
 use crate::range_constraint_optimizer::{optimize_range_constraints, RangeConstraintHandler};
 use crate::symbolic_machine::{
-    SymbolicConstraint, constraint_system_to_symbolic_machine, symbolic_machine_to_constraint_system
+    constraint_system_to_symbolic_machine, symbolic_machine_to_constraint_system,
+    SymbolicConstraint,
 };
 use crate::ColumnAllocator;
 use crate::{
     constraint_optimizer::optimize_constraints,
     expression::{AlgebraicExpression, AlgebraicReference},
     expression_conversion::{algebraic_to_grouped_expression, grouped_expression_to_algebraic},
-    powdr::{self},
     stats_logger::{self, StatsLogger},
     BusMap, BusType, DegreeBound, SymbolicMachine,
 };
@@ -34,7 +34,7 @@ use crate::{
 pub fn optimize<T, B, BusTypes, MemoryBus>(
     mut machine: SymbolicMachine<T>,
     // instruction indices of the start of the original basic blocks
-    basic_block_boundaries: &[usize],
+    _basic_block_boundaries: &[usize],
     bus_interaction_handler: B,
     degree_bound: DegreeBound,
     bus_map: &BusMap<BusTypes>,
@@ -50,7 +50,7 @@ where
     let mut stats_logger = StatsLogger::start(&machine);
 
     if let Some(exec_bus_id) = bus_map.get_bus_id(&BusType::ExecutionBridge) {
-        machine = optimize_exec_bus(machine, exec_bus_id, basic_block_boundaries);
+        machine = optimize_exec_bus(machine, exec_bus_id);
         stats_logger.log("exec bus optimization", &machine);
     }
 
@@ -187,14 +187,12 @@ where
 pub fn optimize_exec_bus<T: FieldElement>(
     mut machine: SymbolicMachine<T>,
     exec_bus_id: u64,
-    basic_block_boundaries: &[usize],
 ) -> SymbolicMachine<T> {
     let mut first_seen = false;
     let mut receive = true;
     let mut latest_send = None;
     let mut instruction_idx = 0;
-    let mut subs: BTreeMap<AlgebraicExpression<T>, AlgebraicExpression<T>> = Default::default();
-    let mut cross_block_constraints = vec![];
+    let mut execution_bus_constraints = vec![];
     machine.bus_interactions.retain(|bus_int| {
         if bus_int.id != exec_bus_id {
             return true;
@@ -215,8 +213,7 @@ pub fn optimize_exec_bus<T: FieldElement>(
                 .args
                 .iter()
                 .map(|arg| {
-                    let mut arg = arg.clone();
-                    powdr::substitute_subexpressions(&mut arg, &subs);
+                    let arg = arg.clone();
                     simplify_expression(arg)
                 })
                 .collect();
@@ -230,14 +227,9 @@ pub fn optimize_exec_bus<T: FieldElement>(
                 .args
                 .iter()
                 .zip_eq(latest_send.as_ref().unwrap().args.iter())
-            {   
-                if basic_block_boundaries.contains(&instruction_idx) {
-                    // If we're are a cross block boundary, we constrain the execution data with algebraic constraints
-                    cross_block_constraints.push(SymbolicConstraint::from(bus_arg.clone() - send_arg.clone()))
-                } else {
-                    // Within a block, we use a syntactic substitution
-                    subs.insert(bus_arg.clone(), send_arg.clone());
-                }
+            {
+                execution_bus_constraints
+                    .push(SymbolicConstraint::from(bus_arg.clone() - send_arg.clone()))
             }
             false
         };
@@ -250,20 +242,7 @@ pub fn optimize_exec_bus<T: FieldElement>(
     // Re-add the last send
     machine.bus_interactions.push(latest_send.unwrap());
 
-    for c in &mut machine.constraints {
-        powdr::substitute_subexpressions(&mut c.expr, &subs);
-        c.expr = simplify_expression(c.expr.clone());
-    }
-    for b in &mut machine.bus_interactions {
-        powdr::substitute_subexpressions(&mut b.mult, &subs);
-        b.mult = simplify_expression(b.mult.clone());
-        for a in &mut b.args {
-            powdr::substitute_subexpressions(a, &subs);
-            *a = simplify_expression(a.clone());
-        }
-    }
-
-    machine.constraints.extend(cross_block_constraints);
+    machine.constraints.extend(execution_bus_constraints);
 
     machine
 }
