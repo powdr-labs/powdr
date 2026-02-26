@@ -1,6 +1,6 @@
 use std::fmt::Debug;
+use std::fmt::Display;
 use std::hash::Hash;
-use std::{collections::BTreeMap, fmt::Display};
 
 use itertools::Itertools;
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
@@ -17,13 +17,13 @@ use crate::memory_optimizer::MemoryBusInteraction;
 use crate::range_constraint_optimizer::{optimize_range_constraints, RangeConstraintHandler};
 use crate::symbolic_machine::{
     constraint_system_to_symbolic_machine, symbolic_machine_to_constraint_system,
+    SymbolicConstraint,
 };
 use crate::ColumnAllocator;
 use crate::{
     constraint_optimizer::optimize_constraints,
     expression::{AlgebraicExpression, AlgebraicReference},
     expression_conversion::{algebraic_to_grouped_expression, grouped_expression_to_algebraic},
-    powdr::{self},
     stats_logger::{self, StatsLogger},
     BusMap, BusType, DegreeBound, SymbolicMachine,
 };
@@ -189,7 +189,7 @@ pub fn optimize_exec_bus<T: FieldElement>(
     let mut first_seen = false;
     let mut receive = true;
     let mut latest_send = None;
-    let mut subs: BTreeMap<AlgebraicExpression<T>, AlgebraicExpression<T>> = Default::default();
+    let mut execution_bus_constraints = vec![];
     machine.bus_interactions.retain(|bus_int| {
         if bus_int.id != exec_bus_id {
             return true;
@@ -210,8 +210,7 @@ pub fn optimize_exec_bus<T: FieldElement>(
                 .args
                 .iter()
                 .map(|arg| {
-                    let mut arg = arg.clone();
-                    powdr::substitute_subexpressions(&mut arg, &subs);
+                    let arg = arg.clone();
                     simplify_expression(arg)
                 })
                 .collect();
@@ -225,7 +224,8 @@ pub fn optimize_exec_bus<T: FieldElement>(
                 .iter()
                 .zip_eq(latest_send.as_ref().unwrap().args.iter())
             {
-                subs.insert(bus_arg.clone(), send_arg.clone());
+                execution_bus_constraints
+                    .push(SymbolicConstraint::from(bus_arg.clone() - send_arg.clone()))
             }
             false
         };
@@ -238,18 +238,8 @@ pub fn optimize_exec_bus<T: FieldElement>(
     // Re-add the last send
     machine.bus_interactions.push(latest_send.unwrap());
 
-    for c in &mut machine.constraints {
-        powdr::substitute_subexpressions(&mut c.expr, &subs);
-        c.expr = simplify_expression(c.expr.clone());
-    }
-    for b in &mut machine.bus_interactions {
-        powdr::substitute_subexpressions(&mut b.mult, &subs);
-        b.mult = simplify_expression(b.mult.clone());
-        for a in &mut b.args {
-            powdr::substitute_subexpressions(a, &subs);
-            *a = simplify_expression(a.clone());
-        }
-    }
+    // Add the constraints which replace the execution bus interactions
+    machine.constraints.extend(execution_bus_constraints);
 
     machine
 }
