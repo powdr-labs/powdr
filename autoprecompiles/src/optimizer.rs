@@ -16,7 +16,7 @@ use crate::export::ExportOptions;
 use crate::memory_optimizer::MemoryBusInteraction;
 use crate::range_constraint_optimizer::{optimize_range_constraints, RangeConstraintHandler};
 use crate::symbolic_machine::{
-    constraint_system_to_symbolic_machine, symbolic_machine_to_constraint_system,
+    SymbolicConstraint, constraint_system_to_symbolic_machine, symbolic_machine_to_constraint_system
 };
 use crate::ColumnAllocator;
 use crate::{
@@ -194,6 +194,7 @@ pub fn optimize_exec_bus<T: FieldElement>(
     let mut latest_send = None;
     let mut instruction_idx = 0;
     let mut subs: BTreeMap<AlgebraicExpression<T>, AlgebraicExpression<T>> = Default::default();
+    let mut cross_block_constraints = vec![];
     machine.bus_interactions.retain(|bus_int| {
         if bus_int.id != exec_bus_id {
             return true;
@@ -223,19 +224,20 @@ pub fn optimize_exec_bus<T: FieldElement>(
             latest_send = Some(send);
             instruction_idx += 1;
             false
-        } else if basic_block_boundaries.contains(&instruction_idx) {
-            // At basic block indices: don't substitute, just remove both send and receive.
-            // The PC transition is enforced by constraints.
-            latest_send = None;
-            false
         } else {
             // Equate the latest send to the new receive and remove the bus interaction
             for (bus_arg, send_arg) in bus_int
                 .args
                 .iter()
                 .zip_eq(latest_send.as_ref().unwrap().args.iter())
-            {
-                subs.insert(bus_arg.clone(), send_arg.clone());
+            {   
+                if basic_block_boundaries.contains(&instruction_idx) {
+                    // If we're are a cross block boundary, we constrain the execution data with algebraic constraints
+                    cross_block_constraints.push(SymbolicConstraint::from(bus_arg.clone() - send_arg.clone()))
+                } else {
+                    // Within a block, we use a syntactic substitution
+                    subs.insert(bus_arg.clone(), send_arg.clone());
+                }
             }
             false
         };
@@ -260,6 +262,8 @@ pub fn optimize_exec_bus<T: FieldElement>(
             *a = simplify_expression(a.clone());
         }
     }
+
+    machine.constraints.extend(cross_block_constraints);
 
     machine
 }

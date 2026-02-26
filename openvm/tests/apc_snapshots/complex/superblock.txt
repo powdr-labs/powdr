@@ -3,11 +3,11 @@ Instructions:
   ADD rd_ptr = 9, rs1_ptr = 9, rs2 = 1, rs2_as = 0
 
 APC advantage:
-  - Main columns: 62 -> 23 (2.70x reduction)
+  - Main columns: 62 -> 21 (2.95x reduction)
   - Bus interactions: 31 -> 16 (1.94x reduction)
-  - Constraints: 33 -> 8 (4.12x reduction)
+  - Constraints: 33 -> 6 (5.50x reduction)
 
-Symbolic machine using 23 unique main columns:
+Symbolic machine using 21 unique main columns:
   from_state__timestamp_0
   reads_aux__0__base__prev_timestamp_0
   reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0
@@ -17,8 +17,6 @@ Symbolic machine using 23 unique main columns:
   a__1_0
   a__2_0
   a__3_0
-  cmp_result_0
-  from_state__timestamp_1
   reads_aux__0__base__prev_timestamp_1
   reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_1
   writes_aux__prev_data__0_1
@@ -34,7 +32,7 @@ Symbolic machine using 23 unique main columns:
 
 // Bus 0 (EXECUTION_BRIDGE):
 mult=is_valid * -1, args=[0, from_state__timestamp_0]
-mult=is_valid * 1, args=[8, from_state__timestamp_1 + 3]
+mult=is_valid * 1, args=[8, from_state__timestamp_0 + 5]
 
 // Bus 1 (MEMORY):
 mult=is_valid * -1, args=[1, 8, a__0_0, a__1_0, a__2_0, a__3_0, reads_aux__0__base__prev_timestamp_0]
@@ -42,7 +40,7 @@ mult=is_valid * 1, args=[1, 8, a__0_0, a__1_0, a__2_0, a__3_0, from_state__times
 mult=is_valid * -1, args=[1, 0, 0, 0, 0, 0, reads_aux__1__base__prev_timestamp_0]
 mult=is_valid * 1, args=[1, 0, 0, 0, 0, 0, from_state__timestamp_0 + 1]
 mult=is_valid * -1, args=[1, 9, writes_aux__prev_data__0_1, writes_aux__prev_data__1_1, writes_aux__prev_data__2_1, writes_aux__prev_data__3_1, reads_aux__0__base__prev_timestamp_1]
-mult=is_valid * 1, args=[1, 9, a__0_1, a__1_1, a__2_1, a__3_1, from_state__timestamp_1 + 2]
+mult=is_valid * 1, args=[1, 9, a__0_1, a__1_1, a__2_1, a__3_1, from_state__timestamp_0 + 4]
 
 // Bus 3 (VARIABLE_RANGE_CHECKER):
 mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0, 17]
@@ -50,18 +48,16 @@ mult=is_valid * 1, args=[15360 * reads_aux__0__base__prev_timestamp_0 + 15360 * 
 mult=is_valid * 1, args=[reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0, 17]
 mult=is_valid * 1, args=[15360 * reads_aux__1__base__prev_timestamp_0 + 15360 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0 - 15360 * from_state__timestamp_0, 12]
 mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_1, 17]
-mult=is_valid * 1, args=[15360 * reads_aux__0__base__prev_timestamp_1 + 15360 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_1 + 15360 - 15360 * from_state__timestamp_1, 12]
+mult=is_valid * 1, args=[15360 * reads_aux__0__base__prev_timestamp_1 + 15360 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_1 - (15360 * from_state__timestamp_0 + 15360), 12]
 
 // Bus 6 (BITWISE_LOOKUP):
 mult=is_valid * 1, args=[a__0_1, a__1_1, 0, 0]
 mult=is_valid * 1, args=[a__2_1, a__3_1, 0, 0]
 
 // Algebraic constraints:
-cmp_result_0 * (cmp_result_0 - 1) = 0
 (7864320 * a__0_1 - (7864320 * writes_aux__prev_data__0_1 + 7864320 * is_valid)) * (7864320 * a__0_1 - (7864320 * writes_aux__prev_data__0_1 + 7864321)) = 0
 (30720 * a__0_1 + 7864320 * a__1_1 - (30720 * writes_aux__prev_data__0_1 + 7864320 * writes_aux__prev_data__1_1 + 30720 * is_valid)) * (30720 * a__0_1 + 7864320 * a__1_1 - (30720 * writes_aux__prev_data__0_1 + 7864320 * writes_aux__prev_data__1_1 + 30721)) = 0
 (120 * a__0_1 + 30720 * a__1_1 + 7864320 * a__2_1 - (120 * writes_aux__prev_data__0_1 + 30720 * writes_aux__prev_data__1_1 + 7864320 * writes_aux__prev_data__2_1 + 120 * is_valid)) * (120 * a__0_1 + 30720 * a__1_1 + 7864320 * a__2_1 - (120 * writes_aux__prev_data__0_1 + 30720 * writes_aux__prev_data__1_1 + 7864320 * writes_aux__prev_data__2_1 + 121)) = 0
 (943718400 * writes_aux__prev_data__0_1 + 120 * a__1_1 + 30720 * a__2_1 + 7864320 * a__3_1 + 943718400 * is_valid - (120 * writes_aux__prev_data__1_1 + 30720 * writes_aux__prev_data__2_1 + 7864320 * writes_aux__prev_data__3_1 + 943718400 * a__0_1)) * (943718400 * writes_aux__prev_data__0_1 + 120 * a__1_1 + 30720 * a__2_1 + 7864320 * a__3_1 + 943718399 - (120 * writes_aux__prev_data__1_1 + 30720 * writes_aux__prev_data__2_1 + 7864320 * writes_aux__prev_data__3_1 + 943718400 * a__0_1)) = 0
-cmp_result_0 * (a__0_0 + a__1_0 + a__2_0 + a__3_0) = 0
-free_var_64 * (a__0_0 + a__1_0 + a__2_0 + a__3_0) + cmp_result_0 - 1 * is_valid = 0
+free_var_64 * (a__0_0 + a__1_0 + a__2_0 + a__3_0) - 1 * is_valid = 0
 is_valid * (is_valid - 1) = 0
