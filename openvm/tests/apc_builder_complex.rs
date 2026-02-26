@@ -5,7 +5,24 @@ use powdr_openvm::symbolic_instruction_builder::*;
 use test_log::test;
 
 fn assert_machine_output(program: Vec<Instruction<BabyBear>>, test_name: &str) {
-    common::apc_builder_utils::assert_machine_output(program, "complex", test_name);
+    common::apc_builder_utils::assert_machine_output(vec![program], "complex", test_name);
+}
+
+#[test]
+fn superblock() {
+    let program = vec![
+        vec![
+            // If x8 == 0, jump to a dummy address outside this superblock.
+            // Otherwise, fall through to the second block below.
+            beq(8, 0, 42),
+        ],
+        vec![
+            // Second block reached via fallthrough when branch is not taken.
+            add(9, 9, 1, 0),
+        ],
+    ];
+
+    common::apc_builder_utils::assert_machine_output(program, "complex", "superblock");
 }
 
 #[test]

@@ -18,6 +18,7 @@ pub fn original_vm_config() -> OriginalVmConfig {
 }
 
 pub mod apc_builder_utils {
+    use itertools::Itertools;
     use openvm_instructions::instruction::Instruction;
     use openvm_stark_sdk::p3_baby_bear::BabyBear;
     use powdr_autoprecompiles::blocks::{BasicBlock, SuperBlock};
@@ -39,7 +40,7 @@ pub mod apc_builder_utils {
 
     // This code is not dead, but somehow the compiler thinks so.
     #[allow(dead_code)]
-    pub fn compile(basic_block: Vec<Instruction<BabyBear>>) -> String {
+    pub fn compile(basic_blocks: Vec<Vec<Instruction<BabyBear>>>) -> String {
         let original_config = original_vm_config();
         let degree_bound = DEFAULT_DEGREE_BOUND;
         let airs = original_config.airs(degree_bound).unwrap();
@@ -51,17 +52,29 @@ pub mod apc_builder_utils {
             bus_map: bus_map.clone(),
         };
 
-        let basic_block_str = basic_block
+        let basic_block_str = basic_blocks
             .iter()
+            .flatten()
             .map(|inst| format!("  {}", openvm_instruction_formatter(inst)))
             .collect::<Vec<_>>()
             .join("\n");
 
-        let superblock: SuperBlock<_> = BasicBlock {
-            instructions: basic_block.into_iter().map(Instr).collect(),
-            start_pc: 0,
-        }
-        .into();
+        let superblock: SuperBlock<_> = SuperBlock::from(
+            basic_blocks
+                .into_iter()
+                // convert the instructions
+                .map(|basic_block| basic_block.into_iter().map(Instr).collect_vec())
+                // build the superblocks based on the accumulated start pc
+                .scan(0u64, |current_start_pc, instructions| {
+                    let start_pc = *current_start_pc;
+                    *current_start_pc += instructions.len() as u64 * 4;
+                    Some(BasicBlock {
+                        instructions,
+                        start_pc,
+                    })
+                })
+                .collect::<Vec<_>>(),
+        );
 
         // Use this env var to output serialized APCs for tests as well.
         let export_path = std::env::var("APC_EXPORT_PATH").ok();
@@ -91,7 +104,7 @@ pub mod apc_builder_utils {
     // This code is not dead, but somehow the compiler thinks so.
     #[allow(dead_code)]
     pub fn assert_machine_output(
-        program: Vec<Instruction<BabyBear>>,
+        program: Vec<Vec<Instruction<BabyBear>>>,
         module_name: &str,
         test_name: &str,
     ) {

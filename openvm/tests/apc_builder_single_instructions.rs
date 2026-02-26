@@ -5,7 +5,11 @@ use powdr_openvm::symbolic_instruction_builder::*;
 use test_log::test;
 
 fn assert_machine_output(program: Vec<Instruction<BabyBear>>, test_name: &str) {
-    common::apc_builder_utils::assert_machine_output(program, "single_instructions", test_name);
+    common::apc_builder_utils::assert_machine_output(
+        vec![program],
+        "single_instructions",
+        test_name,
+    );
 }
 
 // ALU Chip instructions
