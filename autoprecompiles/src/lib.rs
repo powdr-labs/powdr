@@ -358,15 +358,8 @@ pub fn build<A: Adapter>(
     metrics::counter!("before_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
 
-    let basic_block_boundaries: Vec<usize> = block
-        .instruction_indexed_start_pcs()
-        .into_iter()
-        .map(|(idx, _)| idx)
-        .collect();
-
     let (machine, column_allocator) = optimizer::optimize::<_, _, _, A::MemoryBusInteraction<_>>(
         machine,
-        &basic_block_boundaries,
         vm_config.bus_interaction_handler,
         degree_bound,
         &vm_config.bus_map,

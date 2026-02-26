@@ -48,13 +48,6 @@ fn load_machine_json() {
 #[test]
 fn test_optimize() {
     let apc = import_apc_from_gzipped_json("tests/keccak_apc_pre_opt.json.gz");
-    let basic_block_boundaries: Vec<usize> = apc
-        .apc
-        .block
-        .instruction_indexed_start_pcs()
-        .into_iter()
-        .map(|(idx, _)| idx)
-        .collect();
 
     let machine: SymbolicMachine<BabyBearField> = apc.apc.machine;
     assert!(machine.derived_columns.is_empty());
@@ -62,7 +55,6 @@ fn test_optimize() {
     let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&machine);
     let machine = optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
         machine,
-        &basic_block_boundaries,
         OpenVmBusInteractionHandler::default(),
         DEFAULT_DEGREE_BOUND,
         &apc.bus_map,
@@ -91,13 +83,6 @@ fn test_optimize() {
 #[test]
 fn test_ecrecover() {
     let apc = import_apc_from_gzipped_json("tests/ecrecover_apc_pre_opt.json.gz");
-    let basic_block_boundaries: Vec<usize> = apc
-        .apc
-        .block
-        .instruction_indexed_start_pcs()
-        .into_iter()
-        .map(|(idx, _)| idx)
-        .collect();
 
     let machine: SymbolicMachine<BabyBearField> = apc.apc.machine;
     assert!(machine.derived_columns.is_empty());
@@ -105,7 +90,6 @@ fn test_ecrecover() {
     let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&machine);
     let machine = optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
         machine,
-        &basic_block_boundaries,
         OpenVmBusInteractionHandler::default(),
         DEFAULT_DEGREE_BOUND,
         &default_openvm_bus_map(),
@@ -134,13 +118,6 @@ fn test_ecrecover() {
 #[test]
 fn test_sha256() {
     let apc = import_apc_from_gzipped_json("tests/sha256_apc_pre_opt.json.gz");
-    let basic_block_boundaries: Vec<usize> = apc
-        .apc
-        .block
-        .instruction_indexed_start_pcs()
-        .into_iter()
-        .map(|(idx, _)| idx)
-        .collect();
 
     let machine: SymbolicMachine<BabyBearField> = apc.apc.machine;
     assert!(machine.derived_columns.is_empty());
@@ -148,7 +125,6 @@ fn test_sha256() {
 
     let machine = optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
         machine,
-        &basic_block_boundaries,
         OpenVmBusInteractionHandler::default(),
         DEFAULT_DEGREE_BOUND,
         &default_openvm_bus_map(),
@@ -177,13 +153,6 @@ fn test_sha256() {
 #[test]
 fn test_optimize_reth_op() {
     let apc = import_apc_from_gzipped_json("tests/apc_reth_op_bug.json.gz");
-    let basic_block_boundaries: Vec<usize> = apc
-        .apc
-        .block
-        .instruction_indexed_start_pcs()
-        .into_iter()
-        .map(|(idx, _)| idx)
-        .collect();
 
     let machine: SymbolicMachine<BabyBearField> = apc.apc.machine;
     assert!(machine.derived_columns.is_empty());
@@ -194,7 +163,6 @@ fn test_optimize_reth_op() {
     let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&machine);
     let machine = optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
         machine,
-        &basic_block_boundaries,
         bus_int_handler,
         DEFAULT_DEGREE_BOUND,
         bus_map,
