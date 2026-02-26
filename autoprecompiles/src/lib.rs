@@ -165,12 +165,6 @@ pub trait InstructionHandler {
 
     /// Returns the AIR stats for the given instruction.
     fn get_instruction_air_stats(&self, instruction: &Self::Instruction) -> AirStats;
-
-    /// Returns whether the given instruction is allowed in an autoprecompile.
-    fn is_allowed(&self, instruction: &Self::Instruction) -> bool;
-
-    /// Returns whether the given instruction is a branching instruction.
-    fn is_branching(&self, instruction: &Self::Instruction) -> bool;
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

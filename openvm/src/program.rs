@@ -28,16 +28,8 @@ pub struct OriginalCompiledProgram {
 
 impl OriginalCompiledProgram {
     /// Segments the program into basic blocks. The degree bound does not influence the result (see TODO below).
-    pub fn collect_basic_blocks(
-        &self,
-        degree_bound: DegreeBound,
-    ) -> Vec<BasicBlock<Instr<BabyBear>>> {
-        // TODO: This only needs to build the airs so that `collect_basic_blocks` can call
-        // `is_branching` and `is_allowed` on it. If we had a better way to do that, we could
-        // remove the degree_bound parameter.
+    pub fn collect_basic_blocks(&self) -> Vec<BasicBlock<Instr<BabyBear>>> {
         let labels = self.elf.text_labels();
-        let original_config = OriginalVmConfig::new(self.vm_config.clone());
-        let airs = original_config.airs(degree_bound).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
 
         let jumpdest_set = self.add_extra_targets(labels.clone(), DEFAULT_PC_STEP);
 
@@ -49,7 +41,7 @@ impl OriginalCompiledProgram {
             .map(|&x| x as u64)
             .collect::<BTreeSet<_>>();
 
-        collect_basic_blocks::<BabyBearOpenVmApcAdapter>(&program, &jumpdest_set, &airs)
+        collect_basic_blocks::<BabyBearOpenVmApcAdapter>(&program, &jumpdest_set)
     }
 
     /// Besides the base RISCV-V branching instructions, the bigint extension adds two more branching

@@ -3,14 +3,12 @@ use std::collections::BTreeSet;
 use crate::{
     adapter::Adapter,
     blocks::{BasicBlock, Program},
-    InstructionHandler,
 };
 
 /// Collects basic blocks from a program
 pub fn collect_basic_blocks<A: Adapter>(
     program: &A::Program,
     jumpdest_set: &BTreeSet<u64>,
-    instruction_handler: &A::InstructionHandler,
 ) -> Vec<BasicBlock<A::Instruction>> {
     let mut blocks = Vec::new();
     let mut curr_block = BasicBlock {
@@ -19,8 +17,8 @@ pub fn collect_basic_blocks<A: Adapter>(
     };
     for (i, instr) in program.instructions().enumerate() {
         let is_target = jumpdest_set.contains(&program.instruction_index_to_pc(i));
-        let is_branching = instruction_handler.is_branching(&instr);
-        let is_allowed = instruction_handler.is_allowed(&instr);
+        let is_branching = A::is_branching(&instr);
+        let is_allowed = A::is_allowed(&instr);
 
         // If this opcode cannot be in an apc, we make sure it's alone in a BB.
         if !is_allowed {

@@ -3,7 +3,6 @@ use std::sync::{Arc, Mutex};
 
 use crate::air_builder::AirKeygenBuilder;
 use crate::bus_map::{BusMap, OpenVmBusType};
-use crate::opcode::branch_opcodes_set;
 use crate::powdr_extension::executor::RecordArenaDimension;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
 use crate::{AirMetrics, ExtendedVmConfig, ExtendedVmConfigExecutor, Instr};
@@ -79,14 +78,6 @@ impl<F> InstructionHandler for OriginalAirs<F> {
             .clone();
         let air = &self.air_name_to_machine.get(&id).unwrap().0;
         (id, air)
-    }
-
-    fn is_allowed(&self, instruction: &Self::Instruction) -> bool {
-        self.opcode_to_air.contains_key(&instruction.0.opcode)
-    }
-
-    fn is_branching(&self, instruction: &Self::Instruction) -> bool {
-        branch_opcodes_set().contains(&instruction.0.opcode)
     }
 
     fn get_instruction_air_stats(&self, instruction: &Self::Instruction) -> AirStats {

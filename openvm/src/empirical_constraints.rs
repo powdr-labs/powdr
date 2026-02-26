@@ -77,7 +77,7 @@ pub fn detect_empirical_constraints(
     inputs: Vec<StdIn>,
 ) -> EmpiricalConstraints {
     tracing::info!("Collecting empirical constraints...");
-    let blocks = program.collect_basic_blocks(degree_bound);
+    let blocks = program.collect_basic_blocks();
     let instruction_counts = blocks
         .iter()
         .map(|block| (block.start_pc, block.instructions.len()))

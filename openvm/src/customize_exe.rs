@@ -8,9 +8,10 @@ use std::sync::Arc;
 use crate::bus_map::OpenVmBusType;
 use crate::extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs, OriginalVmConfig};
 use crate::instruction_formatter::openvm_instruction_formatter;
+use crate::opcode::branch_opcodes_set;
 use crate::powdr_extension::chip::PowdrAir;
 use crate::program::Prog;
-use crate::OriginalCompiledProgram;
+use crate::{instruction_allowlist, OriginalCompiledProgram};
 use crate::{CompiledProgram, SpecializedConfig};
 use derive_more::From;
 use itertools::Itertools;
@@ -132,6 +133,14 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
 
         OvmApcStats::new(AirWidthsDiff::new(width_before, width_after))
     }
+
+    fn is_allowed(instruction: &Self::Instruction) -> bool {
+        instruction_allowlist().contains(&instruction.0.opcode)
+    }
+
+    fn is_branching(instruction: &Self::Instruction) -> bool {
+        branch_opcodes_set().contains(&instruction.0.opcode)
+    }
 }
 
 /// A newtype wrapper around `OpenVmInstruction` to implement the `Instruction` trait.
@@ -195,7 +204,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
         bus_map: bus_map.clone(),
     };
 
-    let blocks = original_program.collect_basic_blocks(config.degree_bound);
+    let blocks = original_program.collect_basic_blocks();
     let exe = original_program.exe;
     let debug_info = original_program.elf.debug_info();
     tracing::info!(
