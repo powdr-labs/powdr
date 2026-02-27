@@ -4,6 +4,7 @@ use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
 use crate::{
     extraction_utils::{OriginalAirs, OriginalVmConfig},
+    instruction_sets::{riscv::RiscvISA, OpenVmISA},
     powdr_extension::{
         executor::OriginalArenas,
         trace_generator::cpu::{PowdrPeripheryInstancesCpu, PowdrTraceGeneratorCpu},
@@ -30,17 +31,17 @@ use powdr_autoprecompiles::{
     symbolic_machine::SymbolicMachine,
 };
 
-pub struct PowdrChipCpu {
+pub struct PowdrChipCpu<ISA: OpenVmISA> {
     pub name: String,
     pub record_arena_by_air_name: Rc<RefCell<OriginalArenas<MatrixRecordArena<BabyBear>>>>,
-    pub trace_generator: PowdrTraceGeneratorCpu,
+    pub trace_generator: PowdrTraceGeneratorCpu<ISA>,
 }
 
-impl PowdrChipCpu {
+impl PowdrChipCpu<RiscvISA> {
     pub(crate) fn new(
-        precompile: PowdrPrecompile<BabyBear>,
-        original_airs: OriginalAirs<BabyBear>,
-        base_config: OriginalVmConfig,
+        precompile: PowdrPrecompile<BabyBear, RiscvISA>,
+        original_airs: OriginalAirs<BabyBear, RiscvISA>,
+        base_config: OriginalVmConfig<RiscvISA>,
         periphery: PowdrPeripheryInstancesCpu,
     ) -> Self {
         let PowdrPrecompile {

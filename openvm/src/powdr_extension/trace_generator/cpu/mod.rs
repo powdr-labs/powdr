@@ -16,14 +16,11 @@ use powdr_autoprecompiles::{trace_handler::TraceTrait, Apc};
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 
 use crate::{
-    customize_exe::OpenVmRegisterAddress,
-    extraction_utils::{OriginalAirs, OriginalVmConfig},
-    powdr_extension::{
+    BabyBearSC, Instr, RiscvISA, customize_exe::OpenVmRegisterAddress, extraction_utils::{OriginalAirs, OriginalVmConfig}, instruction_sets::OpenVmISA, powdr_extension::{
         chip::PowdrChipCpu,
         executor::OriginalArenas,
         trace_generator::{common::create_dummy_airs, cpu::inventory::create_dummy_chip_complex},
-    },
-    BabyBearSC, Instr,
+    }
 };
 use openvm_stark_backend::p3_field::PrimeField32;
 
@@ -59,7 +56,7 @@ impl<F> From<Arc<RowMajorMatrix<F>>> for SharedCpuTrace<F> {
     }
 }
 
-impl<R, PB: ProverBackend<Matrix = Arc<RowMajorMatrix<BabyBear>>>> Chip<R, PB> for PowdrChipCpu {
+impl<R, PB: ProverBackend<Matrix = Arc<RowMajorMatrix<BabyBear>>>> Chip<R, PB> for PowdrChipCpu<RiscvISA> {
     fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
         tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
 
@@ -71,18 +68,18 @@ impl<R, PB: ProverBackend<Matrix = Arc<RowMajorMatrix<BabyBear>>>> Chip<R, PB> f
     }
 }
 
-pub struct PowdrTraceGeneratorCpu {
-    pub apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, u32>>,
-    pub original_airs: OriginalAirs<BabyBear>,
-    pub config: OriginalVmConfig,
+pub struct PowdrTraceGeneratorCpu<ISA: OpenVmISA> {
+    pub apc: Arc<Apc<BabyBear, Instr<BabyBear, ISA>, OpenVmRegisterAddress, u32>>,
+    pub original_airs: OriginalAirs<BabyBear, ISA>,
+    pub config: OriginalVmConfig<ISA>,
     pub periphery: PowdrPeripheryInstancesCpu,
 }
 
-impl PowdrTraceGeneratorCpu {
+impl PowdrTraceGeneratorCpu<RiscvISA> {
     pub fn new(
-        apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, u32>>,
-        original_airs: OriginalAirs<BabyBear>,
-        config: OriginalVmConfig,
+        apc: Arc<Apc<BabyBear, Instr<BabyBear, RiscvISA>, OpenVmRegisterAddress, u32>>,
+        original_airs: OriginalAirs<BabyBear, RiscvISA>,
+        config: OriginalVmConfig<RiscvISA>,
         periphery: PowdrPeripheryInstancesCpu,
     ) -> Self {
         Self {
@@ -113,11 +110,11 @@ impl PowdrTraceGeneratorCpu {
 
         let chip_inventory = {
             let airs: AirInventory<BabyBearSC> =
-                create_dummy_airs(&self.config.sdk_config.sdk, self.periphery.dummy.clone())
+                create_dummy_airs(&self.config.config.sdk, self.periphery.dummy.clone())
                     .expect("Failed to create dummy airs");
 
             create_dummy_chip_complex(
-                &self.config.sdk_config.sdk,
+                &self.config.config.sdk,
                 airs,
                 self.periphery.dummy.clone(),
             )

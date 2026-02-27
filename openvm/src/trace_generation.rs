@@ -18,7 +18,7 @@ use openvm_stark_sdk::{
 };
 use tracing::info_span;
 
-use crate::{BabyBearSC, CompiledProgram};
+use crate::{BabyBearSC, CompiledProgram, RiscvISA, instruction_sets::OpenVmISA};
 use crate::{PowdrSdkCpu, SpecializedConfigCpuBuilder};
 
 #[cfg(not(feature = "cuda"))]
@@ -39,7 +39,7 @@ use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
 /// Given a program and input, generates the trace segment by segment and calls the provided
 /// callback with the VM, proving key, and proving context (containing the trace) for each segment.
 pub fn do_with_trace(
-    program: &CompiledProgram,
+    program: &CompiledProgram<RiscvISA>,
     inputs: StdIn,
     callback: impl FnMut(
         usize,
@@ -49,14 +49,14 @@ pub fn do_with_trace(
     ),
 ) -> Result<(), Box<dyn std::error::Error>> {
     let sdk = PowdrSdk::new(create_app_config(program))?;
-    do_with_trace_with_sdk::<BabyBearPoseidon2Engine, SpecializedConfigBuilder, _>(
+    do_with_trace_with_sdk::<RiscvISA, BabyBearPoseidon2Engine, SpecializedConfigBuilder, _>(
         program, inputs, sdk, callback,
     )
 }
 
 /// Like [`do_with_trace`], but always uses the CPU engine and CPU VM config builder.
 pub fn do_with_cpu_trace(
-    program: &CompiledProgram,
+    program: &CompiledProgram<RiscvISA>,
     inputs: StdIn,
     callback: impl FnMut(
         usize,
@@ -66,13 +66,13 @@ pub fn do_with_cpu_trace(
     ),
 ) -> Result<(), Box<dyn std::error::Error>> {
     let sdk = PowdrSdkCpu::new(create_app_config(program))?;
-    do_with_trace_with_sdk::<CpuBabyBearPoseidon2Engine, SpecializedConfigCpuBuilder, _>(
+    do_with_trace_with_sdk::<RiscvISA, CpuBabyBearPoseidon2Engine, SpecializedConfigCpuBuilder, _>(
         program, inputs, sdk, callback,
     )
 }
 
-fn do_with_trace_with_sdk<E, VB, NB>(
-    program: &CompiledProgram,
+fn do_with_trace_with_sdk<ISA: OpenVmISA, E, VB, NB>(
+    program: &CompiledProgram<ISA>,
     inputs: StdIn,
     sdk: GenericSdk<E, VB, NB>,
     mut callback: impl FnMut(
@@ -143,7 +143,7 @@ where
     Ok(())
 }
 
-fn create_app_config(program: &CompiledProgram) -> AppConfig<crate::SpecializedConfig> {
+fn create_app_config<ISA: OpenVmISA>(program: &CompiledProgram<ISA>) -> AppConfig<crate::SpecializedConfig<ISA>> {
     let app_fri_params =
         FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
     AppConfig::new(app_fri_params, program.vm_config.clone())

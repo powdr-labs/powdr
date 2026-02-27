@@ -21,7 +21,9 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::iter::once;
 
+use crate::RiscvISA;
 use crate::bus_map::default_openvm_bus_map;
+use crate::instruction_sets::OpenVmISA;
 use crate::trace_generation::do_with_cpu_trace;
 use crate::{CompiledProgram, OriginalCompiledProgram};
 
@@ -72,7 +74,7 @@ impl Trace {
 }
 
 pub fn detect_empirical_constraints(
-    program: &OriginalCompiledProgram,
+    program: &OriginalCompiledProgram<RiscvISA>,
     degree_bound: DegreeBound,
     inputs: Vec<StdIn>,
 ) -> EmpiricalConstraints {
@@ -105,7 +107,7 @@ pub fn detect_empirical_constraints(
 }
 
 fn detect_empirical_constraints_from_input(
-    program: &CompiledProgram,
+    program: &CompiledProgram<RiscvISA>,
     input_index: usize,
     inputs: StdIn,
     degree_bound: DegreeBound,
@@ -117,7 +119,7 @@ fn detect_empirical_constraints_from_input(
     let max_segments = optimistic_precompile_config().max_segments;
 
     do_with_cpu_trace(program, inputs, |seg_idx, vm, _pk, ctx| {
-        let airs = program.vm_config.sdk.airs(degree_bound).unwrap();
+        let airs = program.vm_config.original.airs(degree_bound).unwrap();
         let global_airs = vm
             .config()
             .create_airs()

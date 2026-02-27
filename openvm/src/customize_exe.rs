@@ -3,15 +3,16 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::iter::once;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use crate::bus_map::OpenVmBusType;
 use crate::extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs, OriginalVmConfig};
-use crate::instruction_formatter::openvm_instruction_formatter;
-use crate::opcode::branch_opcodes_set;
+use crate::instruction_sets::OpenVmISA;
+use crate::instruction_sets::riscv::RiscvISA;
 use crate::powdr_extension::chip::PowdrAir;
 use crate::program::Prog;
-use crate::{instruction_allowlist, OriginalCompiledProgram};
+use crate::{OriginalCompiledProgram};
 use crate::{CompiledProgram, SpecializedConfig};
 use derive_more::From;
 use itertools::Itertools;
@@ -48,12 +49,6 @@ pub const POWDR_OPCODE: usize = 0x10ff;
 /// The lifetime parameter is used because we use a reference to the `OpenVmProgram` in the `Prog` type.
 pub struct BabyBearOpenVmApcAdapter<'a, ISA> {
     _marker: std::marker::PhantomData<&'a ISA>,
-}
-
-trait OpenVmISA {
-    fn is_allowed(opcode: VmOpcode) -> bool;
-
-    fn is_branching(opcode: VmOpcode) -> bool;
 }
 
 #[derive(From)]
@@ -94,10 +89,10 @@ pub struct OpenVmRegisterAddress(u8);
 impl<'a, ISA: OpenVmISA> Adapter for BabyBearOpenVmApcAdapter<'a, ISA> {
     type PowdrField = BabyBearField;
     type Field = BabyBear;
-    type InstructionHandler = OriginalAirs<Self::Field>;
+    type InstructionHandler = OriginalAirs<Self::Field, ISA>;
     type BusInteractionHandler = OpenVmBusInteractionHandler<Self::PowdrField>;
     type Program = Prog<'a, Self::Field>;
-    type Instruction = Instr<Self::Field>;
+    type Instruction = Instr<Self::Field, ISA>;
     type MemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash> =
         OpenVmMemoryBusInteraction<Self::PowdrField, V>;
     type CustomBusTypes = OpenVmBusType;
@@ -131,7 +126,7 @@ impl<'a, ISA: OpenVmISA> Adapter for BabyBearOpenVmApcAdapter<'a, ISA> {
             .instructions()
             .map(|instr| {
                 instruction_handler
-                    .get_instruction_metrics(instr.0.opcode)
+                    .get_instruction_metrics(instr.inner.opcode)
                     .unwrap()
                     .widths
             })
@@ -141,42 +136,67 @@ impl<'a, ISA: OpenVmISA> Adapter for BabyBearOpenVmApcAdapter<'a, ISA> {
     }
 
     fn is_allowed(instruction: &Self::Instruction) -> bool {
-        ISA::is_allowed(instruction.0.opcode)
+        ISA::is_allowed(instruction.inner.opcode)
     }
 
     fn is_branching(instruction: &Self::Instruction) -> bool {
-        ISA::is_branching(instruction.0.opcode)
+        ISA::is_branching(instruction.inner.opcode)
     }
 }
 
 /// A newtype wrapper around `OpenVmInstruction` to implement the `Instruction` trait.
 /// This is necessary because we cannot implement a foreign trait for a foreign type.
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Instr<F>(pub OpenVmInstruction<F>);
+#[derive(Serialize, Deserialize)]
+pub struct Instr<F, ISA> {
+    pub inner: OpenVmInstruction<F>,
+    _marker: PhantomData<ISA>,
+}
 
-impl<F: PrimeField32> Display for Instr<F> {
+impl<F, ISA> From<OpenVmInstruction<F>> for Instr<F, ISA> {
+    fn from(value: OpenVmInstruction<F>) -> Self {
+        Self {
+            inner: value,
+            _marker: PhantomData,
+        }
+    }
+}
+
+// TODO: derive, probably the compiler being too conservative here
+impl<F, ISA> Clone for Instr<F, ISA>
+where
+    OpenVmInstruction<F>: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<F: PrimeField32, ISA: OpenVmISA> Display for Instr<F, ISA> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", openvm_instruction_formatter(&self.0))
+        write!(f, "{}", ISA::format(&self.inner))
     }
 }
 
-impl<F> PcStep for Instr<F> {
+impl<F, ISA: OpenVmISA> PcStep for Instr<F, ISA> {
     fn pc_step() -> u32 {
-        DEFAULT_PC_STEP
+        ISA::DEFAULT_PC_STEP
     }
 }
 
-impl<F: PrimeField32> Instruction<F> for Instr<F> {
+impl<F: PrimeField32, ISA: OpenVmISA> Instruction<F> for Instr<F, ISA> {
     fn pc_lookup_row(&self, pc: u64) -> Vec<F> {
         let args = [
-            self.0.opcode.to_field(),
-            self.0.a,
-            self.0.b,
-            self.0.c,
-            self.0.d,
-            self.0.e,
-            self.0.f,
-            self.0.g,
+            self.inner.opcode.to_field(),
+            self.inner.a,
+            self.inner.b,
+            self.inner.c,
+            self.inner.d,
+            self.inner.e,
+            self.inner.f,
+            self.inner.g,
         ];
         // The PC lookup row has the format:
         // [pc, opcode, a, b, c, d, e, f, g]
@@ -184,129 +204,6 @@ impl<F: PrimeField32> Instruction<F> for Instr<F> {
         once(pc).chain(args).collect()
     }
 }
-
-pub struct RiscvISA;
-
-impl OpenVmISA for RiscvISA {
-    fn is_allowed(opcode: VmOpcode) -> bool {
-        instruction_allowlist().contains(&opcode)
-    }
-
-    fn is_branching(opcode: VmOpcode) -> bool {
-        branch_opcodes_set().contains(&opcode)
-    }
-}
-
-pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a, RiscvISA>>>(
-    original_program: OriginalCompiledProgram,
-    config: PowdrConfig,
-    pgo: P,
-    empirical_constraints: EmpiricalConstraints,
-) -> CompiledProgram {
-    let original_config = OriginalVmConfig::new(original_program.vm_config.clone());
-    let airs = original_config.airs(config.degree_bound).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
-    let bus_map = original_config.bus_map();
-
-    let vm_config = VmConfig {
-        instruction_handler: &airs,
-        bus_interaction_handler: OpenVmBusInteractionHandler::new(bus_map.clone()),
-        bus_map: bus_map.clone(),
-    };
-
-    let blocks = original_program.collect_basic_blocks();
-    let exe = original_program.exe;
-    let debug_info = original_program.elf.debug_info();
-    tracing::info!(
-        "Got {} basic blocks from `collect_basic_blocks`",
-        blocks.len()
-    );
-    if tracing::enabled!(tracing::Level::DEBUG) {
-        tracing::debug!("Basic blocks sorted by execution count (top 10):");
-        for (count, block) in blocks
-            .iter()
-            .filter_map(|block| Some((pgo.pc_execution_count(block.start_pc)?, block)))
-            .sorted_by_key(|(count, _)| *count)
-            .rev()
-            .take(10)
-        {
-            let name = debug_info
-                .symbols
-                .try_get_one_or_preceding(block.start_pc)
-                .map(|(symbol, offset)| format!("{} + {offset}", rustc_demangle::demangle(symbol)))
-                .unwrap_or_default();
-            tracing::debug!("Basic block (executed {count} times), {name}:\n{block}",);
-        }
-    }
-
-    let labels = debug_info
-        .symbols
-        .table()
-        .iter()
-        .map(|(addr, names)| {
-            (
-                *addr as u64,
-                names
-                    .iter()
-                    .map(|name| rustc_demangle::demangle(name).to_string())
-                    .collect(),
-            )
-        })
-        .collect();
-
-    let start = std::time::Instant::now();
-    let apcs = pgo.filter_blocks_and_create_apcs_with_pgo(
-        blocks,
-        &config,
-        vm_config,
-        labels,
-        empirical_constraints.apply_pc_threshold(),
-    );
-    metrics::gauge!("total_apc_gen_time_ms").set(start.elapsed().as_millis() as f64);
-
-    let pc_base = exe.program.pc_base;
-    let pc_step = DEFAULT_PC_STEP;
-    // We need to clone the program because we need to modify it to add the apc instructions.
-    let mut exe = (*exe).clone();
-    let program = &mut exe.program;
-
-    tracing::info!("Adjust the program with the autoprecompiles");
-
-    let extensions = apcs
-        .into_iter()
-        .map(ApcWithStats::into_parts)
-        .enumerate()
-        .map(|(i, (apc, apc_stats, _))| {
-            let opcode = POWDR_OPCODE + i;
-            let start_pc = apc
-                .block
-                .try_as_basic_block()
-                .expect("superblocks unsupported")
-                .start_pc;
-            let start_index = ((start_pc - pc_base as u64) / pc_step as u64)
-                .try_into()
-                .unwrap();
-
-            // We encode in the program that the prover should execute the apc instruction instead of the original software version.
-            // This is only for witgen: the program in the program chip is left unchanged.
-            program.add_apc_instruction_at_pc_index(start_index, VmOpcode::from_usize(opcode));
-
-            PowdrPrecompile::new(
-                format!("PowdrAutoprecompile_{}", start_pc),
-                PowdrOpcode {
-                    class_offset: opcode,
-                },
-                apc,
-                apc_stats,
-            )
-        })
-        .collect();
-
-    CompiledProgram {
-        exe: Arc::new(exe),
-        vm_config: SpecializedConfig::new(original_config, extensions, config.degree_bound),
-    }
-}
-
 #[derive(Serialize, Deserialize)]
 pub struct OpenVmApcCandidate<F, I> {
     apc_with_stats: ApcWithStats<F, I, OpenVmRegisterAddress, u32, OvmApcStats>,
@@ -325,7 +222,7 @@ impl OvmApcStats {
 }
 
 impl<'a, ISA: OpenVmISA> Candidate<BabyBearOpenVmApcAdapter<'a, ISA>>
-    for OpenVmApcCandidate<BabyBear, Instr<BabyBear>>
+    for OpenVmApcCandidate<BabyBear, Instr<BabyBear, ISA>>
 {
     fn create(
         apc_with_stats: AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a, ISA>>,

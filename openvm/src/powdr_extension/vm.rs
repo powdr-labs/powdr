@@ -11,11 +11,13 @@ use openvm_circuit_derive::{
     AotExecutor, AotMeteredExecutor, Executor, MeteredExecutor, PreflightExecutor,
 };
 use openvm_instructions::LocalOpcode;
+use openvm_instructions::instruction::Instruction;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 
 use crate::bus_map::BusMap;
 use crate::customize_exe::{OpenVmRegisterAddress, OvmApcStats};
 use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
+use crate::instruction_sets::OpenVmISA;
 use crate::powdr_extension::chip::PowdrAir;
 use crate::powdr_extension::executor::{OriginalArenas, PowdrExecutor};
 use openvm_circuit::{
@@ -30,25 +32,25 @@ use openvm_stark_backend::{
 use powdr_autoprecompiles::Apc;
 use serde::{Deserialize, Serialize};
 
-use crate::Instr;
+use crate::{Instr, RiscvISA};
 
 use super::PowdrOpcode;
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(bound = "F: Field")]
-pub struct PowdrExtension<F> {
-    pub precompiles: Vec<PowdrPrecompile<F>>,
-    pub base_config: OriginalVmConfig,
+pub struct PowdrExtension<F, ISA: OpenVmISA> {
+    pub precompiles: Vec<PowdrPrecompile<F, ISA>>,
+    pub base_config: OriginalVmConfig<ISA>,
     pub bus_map: BusMap,
-    pub airs: OriginalAirs<F>,
+    pub airs: OriginalAirs<F, ISA>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "F: Field")]
-pub struct PowdrPrecompile<F> {
+pub struct PowdrPrecompile<F, ISA> {
     pub name: String,
     pub opcode: PowdrOpcode,
-    pub apc: Arc<Apc<F, Instr<F>, OpenVmRegisterAddress, u32>>,
+    pub apc: Arc<Apc<F, Instr<F, ISA>, OpenVmRegisterAddress, u32>>,
     pub apc_stats: OvmApcStats,
     #[serde(skip)]
     pub apc_record_arena_cpu: Rc<RefCell<OriginalArenas<MatrixRecordArena<F>>>>,
@@ -56,11 +58,11 @@ pub struct PowdrPrecompile<F> {
     pub apc_record_arena_gpu: Rc<RefCell<OriginalArenas<DenseRecordArena>>>,
 }
 
-impl<F> PowdrPrecompile<F> {
+impl<F, ISA> PowdrPrecompile<F, ISA> {
     pub fn new(
         name: String,
         opcode: PowdrOpcode,
-        apc: Arc<Apc<F, Instr<F>, OpenVmRegisterAddress, u32>>,
+        apc: Arc<Apc<F, Instr<F, ISA>, OpenVmRegisterAddress, u32>>,
         apc_stats: OvmApcStats,
     ) -> Self {
         Self {
@@ -75,12 +77,12 @@ impl<F> PowdrPrecompile<F> {
     }
 }
 
-impl<F> PowdrExtension<F> {
+impl<F, ISA: OpenVmISA> PowdrExtension<F, ISA> {
     pub fn new(
-        precompiles: Vec<PowdrPrecompile<F>>,
-        base_config: OriginalVmConfig,
+        precompiles: Vec<PowdrPrecompile<F, ISA>>,
+        base_config: OriginalVmConfig<ISA>,
         bus_map: BusMap,
-        airs: OriginalAirs<F>,
+        airs: OriginalAirs<F, ISA>,
     ) -> Self {
         Self {
             precompiles,
@@ -102,12 +104,12 @@ impl<F> PowdrExtension<F> {
     Chip,
 )]
 #[allow(clippy::large_enum_variant)]
-pub enum PowdrExtensionExecutor {
-    Powdr(PowdrExecutor),
+pub enum PowdrExtensionExecutor<ISA> {
+    Powdr(PowdrExecutor<ISA>),
 }
 
-impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear> {
-    type Executor = PowdrExtensionExecutor;
+impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear, RiscvISA> {
+    type Executor = PowdrExtensionExecutor<RiscvISA>;
 
     fn extend_execution(
         &self,
@@ -132,7 +134,7 @@ impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear> {
     }
 }
 
-impl<SC> VmCircuitExtension<SC> for PowdrExtension<Val<SC>>
+impl<SC, ISA: OpenVmISA> VmCircuitExtension<SC> for PowdrExtension<Val<SC>, ISA>
 where
     SC: StarkGenericConfig,
     Val<SC>: PrimeField32,

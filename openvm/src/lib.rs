@@ -52,10 +52,11 @@ use std::ops::Add;
 use std::path::{Path, PathBuf};
 
 use crate::customize_exe::OpenVmApcCandidate;
-pub use crate::customize_exe::RiscvISA;
+use crate::instruction_sets::OpenVmISA;
+pub use crate::instruction_sets::riscv::RiscvISA;
 use crate::powdr_extension::chip::PowdrAir;
 pub use crate::program::Prog;
-pub use crate::program::{CompiledProgram, OriginalCompiledProgram};
+pub use crate::instruction_sets::riscv::program::{CompiledProgram, OriginalCompiledProgram};
 use crate::trace_generation::do_with_trace;
 
 #[cfg(test)]
@@ -67,12 +68,10 @@ mod air_builder;
 pub mod cuda_abi;
 mod empirical_constraints;
 pub mod extraction_utils;
-pub mod opcode;
 mod program;
-pub mod symbolic_instruction_builder;
+mod instruction_sets;
 pub mod trace_generation;
 pub mod utils;
-pub use opcode::instruction_allowlist;
 pub use powdr_autoprecompiles::DegreeBound;
 pub use powdr_autoprecompiles::PgoConfig;
 
@@ -138,18 +137,19 @@ pub use powdr_autoprecompiles::bus_map::BusType;
 /// We do not use the transpiler, instead we customize an already transpiled program
 mod customize_exe;
 
-pub use customize_exe::{customize, BabyBearOpenVmApcAdapter, Instr, POWDR_OPCODE};
+pub use instruction_sets::riscv::customize_exe::{customize};
+pub use customize_exe::{BabyBearOpenVmApcAdapter, Instr, POWDR_OPCODE};
+
 
 // A module for our extension
 mod powdr_extension;
 
-pub mod instruction_formatter;
-
 /// A custom VmConfig that wraps the SdkVmConfig, adding our custom extension.
 #[derive(Serialize, Deserialize, Clone)]
-pub struct SpecializedConfig {
-    pub sdk: OriginalVmConfig,
-    pub powdr: PowdrExtension<BabyBear>,
+#[serde(bound = "")]
+pub struct SpecializedConfig<ISA: OpenVmISA> {
+    pub original: OriginalVmConfig<ISA>,
+    pub powdr: PowdrExtension<BabyBear, ISA>,
 }
 
 #[cfg(feature = "cuda")]
@@ -192,13 +192,13 @@ impl<E> VmBuilder<E> for SpecializedConfigCpuBuilder
 where
     E: StarkEngine<SC = BabyBearSC, PB = CpuBackend<BabyBearSC>, PD = CpuDevice<BabyBearSC>>,
 {
-    type VmConfig = SpecializedConfig;
+    type VmConfig = SpecializedConfig<RiscvISA>;
     type SystemChipInventory = SystemChipInventory<BabyBearSC>;
     type RecordArena = MatrixRecordArena<Val<BabyBearSC>>;
 
     fn create_chip_complex(
         &self,
-        config: &SpecializedConfig,
+        config: &SpecializedConfig<RiscvISA>,
         circuit: AirInventory<BabyBearSC>,
     ) -> Result<
         VmChipComplex<BabyBearSC, Self::RecordArena, E::PB, Self::SystemChipInventory>,
@@ -206,7 +206,7 @@ where
     > {
         let mut chip_complex = VmBuilder::<E>::create_chip_complex(
             &SdkVmCpuBuilder,
-            &config.sdk.sdk_config.sdk,
+            &config.original.config.sdk,
             circuit,
         )?;
         let inventory = &mut chip_complex.inventory;
@@ -278,14 +278,14 @@ pub struct PeripheryBusIds {
 
 struct PowdrCpuProverExt;
 
-impl<E, RA> VmProverExtension<E, RA, PowdrExtension<BabyBear>> for PowdrCpuProverExt
+impl<E, RA> VmProverExtension<E, RA, PowdrExtension<BabyBear, RiscvISA>> for PowdrCpuProverExt
 where
     E: StarkEngine<SC = BabyBearSC, PB = CpuBackend<BabyBearSC>, PD = CpuDevice<BabyBearSC>>,
     RA: RowMajorMatrixArena<BabyBear>,
 {
     fn extend_prover(
         &self,
-        extension: &PowdrExtension<BabyBear>,
+        extension: &PowdrExtension<BabyBear, RiscvISA>,
         inventory: &mut ChipInventory<<E as StarkEngine>::SC, RA, <E as StarkEngine>::PB>,
     ) -> Result<(), ChipInventoryError> {
         // TODO: here we make assumptions about the existence of some chips in the periphery. Make this more flexible
@@ -360,16 +360,16 @@ where
     }
 }
 
-impl TranspilerConfig<BabyBear> for SpecializedConfig {
+impl TranspilerConfig<BabyBear> for SpecializedConfig<RiscvISA> {
     fn transpiler(&self) -> Transpiler<BabyBear> {
-        self.sdk.config().transpiler()
+        self.original.config().transpiler()
     }
 }
 
 // For generation of the init file, we delegate to the underlying SdkVmConfig.
-impl InitFileGenerator for SpecializedConfig {
+impl InitFileGenerator for SpecializedConfig<RiscvISA> {
     fn generate_init_file_contents(&self) -> Option<String> {
-        self.sdk.config().generate_init_file_contents()
+        self.original.config().generate_init_file_contents()
     }
 
     fn write_to_init_file(
@@ -377,21 +377,21 @@ impl InitFileGenerator for SpecializedConfig {
         manifest_dir: &Path,
         init_file_name: Option<&str>,
     ) -> std::io::Result<()> {
-        self.sdk
+        self.original
             .config()
             .write_to_init_file(manifest_dir, init_file_name)
     }
 }
 
-impl AsRef<SystemConfig> for SpecializedConfig {
+impl AsRef<SystemConfig> for SpecializedConfig<RiscvISA> {
     fn as_ref(&self) -> &SystemConfig {
-        self.sdk.as_ref()
+        self.original.as_ref()
     }
 }
 
-impl AsMut<SystemConfig> for SpecializedConfig {
+impl AsMut<SystemConfig> for SpecializedConfig<RiscvISA> {
     fn as_mut(&mut self) -> &mut SystemConfig {
-        self.sdk.as_mut()
+        self.original.as_mut()
     }
 }
 
@@ -410,43 +410,43 @@ pub enum SpecializedExecutor {
     #[any_enum]
     SdkExecutor(ExtendedVmConfigExecutor<BabyBear>),
     #[any_enum]
-    PowdrExecutor(PowdrExtensionExecutor),
+    PowdrExecutor(PowdrExtensionExecutor<RiscvISA>),
 }
 
 // TODO: derive VmCircuitConfig, currently not possible because we don't have SC/F everywhere
 // Also `start_new_extension` is normally only used in derive
-impl VmCircuitConfig<BabyBearSC> for SpecializedConfig {
+impl VmCircuitConfig<BabyBearSC> for SpecializedConfig<RiscvISA> {
     fn create_airs(&self) -> Result<AirInventory<BabyBearSC>, AirInventoryError> {
-        let mut inventory = self.sdk.create_airs()?;
+        let mut inventory = self.original.create_airs()?;
         inventory.start_new_extension();
         self.powdr.extend_circuit(&mut inventory)?;
         Ok(inventory)
     }
 }
 
-impl VmExecutionConfig<BabyBear> for SpecializedConfig {
+impl VmExecutionConfig<BabyBear> for SpecializedConfig<RiscvISA> {
     type Executor = SpecializedExecutor;
 
     fn create_executors(
         &self,
     ) -> Result<ExecutorInventory<Self::Executor>, ExecutorInventoryError> {
-        let mut inventory = self.sdk.create_executors()?.transmute();
+        let mut inventory = self.original.create_executors()?.transmute();
         inventory = inventory.extend(&self.powdr)?;
         Ok(inventory)
     }
 }
 
-impl SpecializedConfig {
+impl<ISA: OpenVmISA> SpecializedConfig<ISA> {
     pub fn new(
-        base_config: OriginalVmConfig,
-        precompiles: Vec<PowdrPrecompile<BabyBear>>,
+        base_config: OriginalVmConfig<ISA>,
+        precompiles: Vec<PowdrPrecompile<BabyBear, ISA>>,
         degree_bound: DegreeBound,
     ) -> Self {
         let airs = base_config.airs(degree_bound).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
         let bus_map = base_config.bus_map();
         let powdr_extension = PowdrExtension::new(precompiles, base_config.clone(), bus_map, airs);
         Self {
-            sdk: base_config,
+            original: base_config,
             powdr: powdr_extension,
         }
     }
@@ -477,7 +477,7 @@ pub fn build_elf_path<P: AsRef<Path>>(
 pub fn compile_openvm(
     guest: &str,
     guest_opts: GuestOptions,
-) -> Result<OriginalCompiledProgram, Box<dyn std::error::Error>> {
+) -> Result<OriginalCompiledProgram<RiscvISA>, Box<dyn std::error::Error>> {
     // Build the ELF with guest options and a target filter.
     // We need these extra Rust flags to get the labels.
     let guest_opts = guest_opts.with_rustc_flags(vec!["-C", "link-arg=--emit-relocs"]);
@@ -528,21 +528,21 @@ pub fn compile_openvm(
 
     Ok(OriginalCompiledProgram {
         exe,
-        vm_config,
+        vm_config: OriginalVmConfig::new(vm_config),
         elf,
     })
 }
 
 pub fn compile_exe(
-    original_program: OriginalCompiledProgram,
+    original_program: OriginalCompiledProgram<RiscvISA>,
     config: PowdrConfig,
     pgo_config: PgoConfig,
     empirical_constraints: EmpiricalConstraints,
-) -> Result<CompiledProgram, Box<dyn std::error::Error>> {
+) -> Result<CompiledProgram<RiscvISA>, Box<dyn std::error::Error>> {
     let compiled = match pgo_config {
         PgoConfig::Cell(pgo_data, max_total_columns) => {
             let max_total_apc_columns: Option<usize> = max_total_columns.map(|max_total_columns| {
-                let original_config = OriginalVmConfig::new(original_program.vm_config.clone());
+                let original_config = original_program.vm_config.clone();
 
                 let total_non_apc_columns: usize = original_config
                     .chip_inventory_air_metrics(config.degree_bound.identities)
@@ -712,7 +712,7 @@ impl AirMetrics {
 }
 
 #[cfg(test)]
-impl CompiledProgram {
+impl<ISA: OpenVmISA> CompiledProgram<ISA> {
     // Return a tuple of (powdr AirMetrics, non-powdr AirMetrics)
     fn air_metrics(
         &self,
@@ -758,7 +758,7 @@ impl CompiledProgram {
     }
 }
 
-pub fn execute(program: CompiledProgram, inputs: StdIn) -> Result<(), Box<dyn std::error::Error>> {
+pub fn execute(program: CompiledProgram<RiscvISA>, inputs: StdIn) -> Result<(), Box<dyn std::error::Error>> {
     let CompiledProgram { exe, vm_config } = program;
 
     // Set app configuration
@@ -780,7 +780,7 @@ pub fn execute(program: CompiledProgram, inputs: StdIn) -> Result<(), Box<dyn st
 }
 
 pub fn prove(
-    program: &CompiledProgram,
+    program: &CompiledProgram<RiscvISA>,
     mock: bool,
     recursion: bool,
     inputs: StdIn,
@@ -797,7 +797,7 @@ pub fn prove(
         // DefaultSegmentationStrategy { max_segment_len: 4194204, max_cells_per_chip_in_segment: 503304480 }
         if let Some(segment_height) = segment_height {
             vm_config
-                .sdk
+                .original
                 .config_mut()
                 .sdk
                 .system
@@ -851,7 +851,7 @@ pub fn prove(
 
 // Generate execution profile for a guest program
 pub fn execution_profile_from_guest(
-    program: &OriginalCompiledProgram,
+    program: &OriginalCompiledProgram<RiscvISA>,
     inputs: StdIn,
 ) -> ExecutionProfile {
     let OriginalCompiledProgram { exe, vm_config, .. } = program;
@@ -860,7 +860,7 @@ pub fn execution_profile_from_guest(
     // Set app configuration
     let app_fri_params =
         FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
-    let app_config = AppConfig::new(app_fri_params, vm_config.clone());
+    let app_config = AppConfig::new(app_fri_params, vm_config.clone().config);
 
     // prepare for execute
     let sdk = PowdrExecutionProfileSdkCpu::new(app_config).unwrap();

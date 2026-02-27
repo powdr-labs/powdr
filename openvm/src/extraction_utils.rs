@@ -1,10 +1,12 @@
 use std::collections::{BTreeMap, HashMap};
+use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
 
 use crate::air_builder::AirKeygenBuilder;
 use crate::bus_map::{BusMap, OpenVmBusType};
+use crate::instruction_sets::OpenVmISA;
 use crate::powdr_extension::executor::RecordArenaDimension;
-use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
+use crate::{BabyBearSC, SpecializedConfig};
 use crate::{AirMetrics, ExtendedVmConfig, ExtendedVmConfigExecutor, Instr};
 use crate::{BabyBearPoseidon2Engine, ExtendedVmConfigCpuBuilder};
 use itertools::Itertools;
@@ -52,7 +54,7 @@ use crate::utils::symbolic_to_algebraic;
 const EXT_DEGREE: usize = 4;
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct OriginalAirs<F> {
+pub struct OriginalAirs<F, ISA> {
     /// The degree bound used when building the airs
     pub(crate) degree_bound: DegreeBound,
     /// Maps a VM opcode to the name of the (unique) AIR that implements it.
@@ -60,11 +62,13 @@ pub struct OriginalAirs<F> {
     /// Maps an AIR name to its symbolic machine and metrics.
     /// Note that this map only contains AIRs that implement instructions.
     pub(crate) air_name_to_machine: BTreeMap<String, (SymbolicMachine<F>, AirMetrics)>,
+    // TODO: necessary?
+    _marker: PhantomData<ISA>, 
 }
 
-impl<F> InstructionHandler for OriginalAirs<F> {
+impl<F, ISA> InstructionHandler for OriginalAirs<F, ISA> {
     type Field = F;
-    type Instruction = Instr<F>;
+    type Instruction = Instr<F, ISA>;
     type AirId = String;
 
     fn get_instruction_air_and_id(
@@ -73,7 +77,7 @@ impl<F> InstructionHandler for OriginalAirs<F> {
     ) -> (Self::AirId, &SymbolicMachine<Self::Field>) {
         let id = self
             .opcode_to_air
-            .get(&instruction.0.opcode)
+            .get(&instruction.inner.opcode)
             .unwrap()
             .clone();
         let air = &self.air_name_to_machine.get(&id).unwrap().0;
@@ -81,7 +85,7 @@ impl<F> InstructionHandler for OriginalAirs<F> {
     }
 
     fn get_instruction_air_stats(&self, instruction: &Self::Instruction) -> AirStats {
-        self.get_instruction_metrics(instruction.0.opcode)
+        self.get_instruction_metrics(instruction.inner.opcode)
             .map(|metrics| metrics.clone().into())
             .unwrap()
     }
@@ -91,7 +95,7 @@ impl<F> InstructionHandler for OriginalAirs<F> {
     }
 }
 
-impl<F> OriginalAirs<F> {
+impl<F, ISA> OriginalAirs<F, ISA> {
     /// Insert a new opcode, generating the air if it does not exist
     /// Panics if the opcode already exists
     pub fn insert_opcode(
@@ -140,18 +144,19 @@ impl<F> OriginalAirs<F> {
             degree_bound,
             opcode_to_air: Default::default(),
             air_name_to_machine: Default::default(),
+            _marker: PhantomData,
         }
     }
 }
 
 /// For each air name, the dimension of a record arena needed to store the
 /// records for a single APC call.
-pub fn record_arena_dimension_by_air_name_per_apc_call<F>(
-    apc: &Apc<F, Instr<F>, OpenVmRegisterAddress, u32>,
-    air_by_opcode_id: &OriginalAirs<F>,
+pub fn record_arena_dimension_by_air_name_per_apc_call<F, ISA>(
+    apc: &Apc<F, Instr<F, ISA>, OpenVmRegisterAddress, u32>,
+    air_by_opcode_id: &OriginalAirs<F, ISA>,
 ) -> BTreeMap<String, RecordArenaDimension> {
     apc.instructions()
-        .map(|instr| &instr.0.opcode)
+        .map(|instr| &instr.inner.opcode)
         .zip_eq(apc.subs.iter().map(|sub| sub.is_empty()))
         .fold(
             BTreeMap::new(),
@@ -211,85 +216,84 @@ impl<'a> Deref for ChipComplexGuard<'a> {
 
 /// A wrapper around the `ExtendedVmConfig` that caches a chip complex.
 #[derive(Serialize, Deserialize, Clone)]
-pub struct OriginalVmConfig {
-    pub sdk_config: ExtendedVmConfig,
+pub struct OriginalVmConfig<ISA: OpenVmISA> {
+    pub config: ISA::OriginalConfig,
     #[serde(skip)]
     pub chip_complex: CachedChipComplex,
 }
 
 // TODO: derive `VmCircuitConfig`, currently not possible because we don't have SC/F everywhere
-impl<SC: StarkGenericConfig> VmCircuitConfig<SC> for OriginalVmConfig
-where
-    Val<SC>: PrimeField32,
+impl<ISA: OpenVmISA> VmCircuitConfig<BabyBearSC> for OriginalVmConfig<ISA>
 {
-    fn create_airs(&self) -> Result<AirInventory<SC>, AirInventoryError> {
-        self.sdk_config.create_airs()
+    fn create_airs(&self) -> Result<AirInventory<BabyBearSC>, AirInventoryError> {
+        self.config.create_airs()
     }
 }
 
-impl<F: PrimeField32> VmExecutionConfig<F> for OriginalVmConfig {
-    type Executor = ExtendedVmConfigExecutor<F>;
+impl<ISA: OpenVmISA> VmExecutionConfig<BabyBear> for OriginalVmConfig<ISA> {
+    type Executor = <ISA::OriginalConfig as VmExecutionConfig<BabyBear>>::Executor;
 
     fn create_executors(
         &self,
     ) -> Result<ExecutorInventory<Self::Executor>, ExecutorInventoryError> {
-        self.sdk_config.create_executors()
+        self.config.create_executors()
     }
 }
 
-impl AsRef<SystemConfig> for OriginalVmConfig {
+impl<ISA: OpenVmISA> AsRef<SystemConfig> for OriginalVmConfig<ISA> {
     fn as_ref(&self) -> &SystemConfig {
-        self.sdk_config.as_ref()
+        self.config.as_ref()
     }
 }
 
-impl AsMut<SystemConfig> for OriginalVmConfig {
+impl<ISA: OpenVmISA> AsMut<SystemConfig> for OriginalVmConfig<ISA> {
     fn as_mut(&mut self) -> &mut SystemConfig {
-        self.sdk_config.as_mut()
+        self.config.as_mut()
     }
 }
 
-impl OriginalVmConfig {
-    pub fn new(sdk_config: ExtendedVmConfig) -> Self {
+impl<ISA: OpenVmISA> OriginalVmConfig<ISA> {
+    pub fn new(config: ISA::OriginalConfig) -> Self {
         Self {
-            sdk_config,
+            config,
             chip_complex: Default::default(),
         }
     }
 
-    pub fn config(&self) -> &ExtendedVmConfig {
-        &self.sdk_config
+    pub fn config(&self) -> &ISA::OriginalConfig {
+        &self.config
     }
 
-    pub fn config_mut(&mut self) -> &mut ExtendedVmConfig {
+    pub fn config_mut(&mut self) -> &mut ISA::OriginalConfig {
         let mut guard = self.chip_complex.lock().expect("Mutex poisoned");
         *guard = None; // Invalidate cache
-        &mut self.sdk_config
+        &mut self.config
     }
 
     /// Returns a guard that provides access to the chip complex, initializing it if necessary.
     fn chip_complex(&self) -> ChipComplexGuard<'_> {
-        let mut guard = self.chip_complex.lock().expect("Mutex poisoned");
+        // let mut guard = self.chip_complex.lock().expect("Mutex poisoned");
 
-        if guard.is_none() {
-            // This is the expensive part that we want to run a single time: create the chip complex
-            let airs = self
-                .sdk_config
-                .sdk
-                .create_airs()
-                .expect("Failed to create air inventory");
-            let complex =
-                <ExtendedVmConfigCpuBuilder as VmBuilder<BabyBearPoseidon2Engine>>::create_chip_complex(
-                    &ExtendedVmConfigCpuBuilder,
-                    &self.sdk_config,
-                    airs,
-                )
-                .expect("Failed to create chip complex");
-            // Store the complex in the guard
-            *guard = Some(complex);
-        }
+        // if guard.is_none() {
+        //     // This is the expensive part that we want to run a single time: create the chip complex
+        //     let airs = self
+        //         .config
+        //         .sdk
+        //         .create_airs()
+        //         .expect("Failed to create air inventory");
+        //     let complex =
+        //         <ExtendedVmConfigCpuBuilder as VmBuilder<BabyBearPoseidon2Engine>>::create_chip_complex(
+        //             &ExtendedVmConfigCpuBuilder,
+        //             &self.config,
+        //             airs,
+        //         )
+        //         .expect("Failed to create chip complex");
+        //     // Store the complex in the guard
+        //     *guard = Some(complex);
+        // }
 
-        ChipComplexGuard { guard }
+        // ChipComplexGuard { guard }
+        todo!("make generic or move to riscv")
     }
 
     /// Given a VM configuration and a set of used instructions, computes:
@@ -300,15 +304,15 @@ impl OriginalVmConfig {
     pub fn airs(
         &self,
         degree_bound: DegreeBound,
-    ) -> Result<OriginalAirs<BabyBear>, UnsupportedOpenVmReferenceError> {
+    ) -> Result<OriginalAirs<BabyBear, ISA>, UnsupportedOpenVmReferenceError> {
         let chip_complex = &self.chip_complex();
 
         let chip_inventory = &chip_complex.inventory;
 
-        let executor_inventory: ExecutorInventory<ExtendedVmConfigExecutor<Val<BabyBearSC>>> =
+        let executor_inventory=
             self.create_executors().unwrap();
 
-        let instruction_allowlist = instruction_allowlist();
+        let instruction_allowlist = ISA::instruction_allowlist();
 
         instruction_allowlist
             .into_iter()
@@ -432,10 +436,10 @@ impl OriginalVmConfig {
     }
 }
 
-pub fn export_pil(writer: &mut impl std::io::Write, vm_config: &SpecializedConfig) {
+pub fn export_pil<ISA: OpenVmISA>(writer: &mut impl std::io::Write, vm_config: &SpecializedConfig<ISA>) {
     let blacklist = ["KeccakVmAir"];
-    let bus_map = vm_config.sdk.bus_map();
-    let chip_complex = vm_config.sdk.chip_complex();
+    let bus_map = vm_config.original.bus_map();
+    let chip_complex = vm_config.original.chip_complex();
 
     for air in chip_complex
         .inventory
