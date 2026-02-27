@@ -51,7 +51,8 @@ use std::iter::Sum;
 use std::ops::Add;
 use std::path::{Path, PathBuf};
 
-use crate::customize_exe::{OpenVmApcCandidate, RiscvISA};
+use crate::customize_exe::OpenVmApcCandidate;
+pub use crate::customize_exe::RiscvISA;
 use crate::powdr_extension::chip::PowdrAir;
 pub use crate::program::Prog;
 pub use crate::program::{CompiledProgram, OriginalCompiledProgram};
