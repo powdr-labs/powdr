@@ -183,6 +183,10 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
     pgo: P,
     empirical_constraints: EmpiricalConstraints,
 ) -> CompiledProgram {
+    if config.superblock_max_bb_count > 1 {
+        panic!("Superblocks not yet supported in OpenVM");
+    }
+
     let original_config = OriginalVmConfig::new(original_program.vm_config.clone());
     let airs = original_config.airs(config.degree_bound).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
     let bus_map = original_config.bus_map();
