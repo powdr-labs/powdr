@@ -136,6 +136,10 @@ where
         apc: Arc<AdapterApc<Self>>,
         instruction_handler: &Self::InstructionHandler,
     ) -> Self::ApcStats;
+
+    fn is_branching(instr: &Self::Instruction) -> bool;
+
+    fn is_allowed(instr: &Self::Instruction) -> bool;
 }
 
 pub type AdapterApcWithStats<A> = ApcWithStats<

@@ -79,11 +79,21 @@ impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
     }
 }
 
-#[derive(Clone, Serialize)]
-#[serde(bound(serialize = "V: Clone + Ord + Eq + Serialize, T: RuntimeConstant + Serialize"))]
+#[derive(Clone)]
 pub struct DerivedVariable<T, V> {
     pub variable: V,
     pub computation_method: ComputationMethod<T, GroupedExpression<T, V>>,
+}
+
+impl<T: RuntimeConstant + Serialize, V: Clone + Ord + Eq + Serialize> Serialize
+    for DerivedVariable<T, V>
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        (&self.variable, &self.computation_method).serialize(serializer)
+    }
 }
 
 /// Specifies a way to compute the value of a variable from other variables.
