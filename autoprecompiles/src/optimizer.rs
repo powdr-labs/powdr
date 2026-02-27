@@ -22,8 +22,7 @@ use crate::symbolic_machine::{
 use crate::ColumnAllocator;
 use crate::{
     constraint_optimizer::optimize_constraints,
-    expression::{AlgebraicExpression, AlgebraicReference},
-    expression_conversion::{algebraic_to_grouped_expression, grouped_expression_to_algebraic},
+    expression::AlgebraicReference,
     stats_logger::{self, StatsLogger},
     BusMap, BusType, DegreeBound, SymbolicMachine,
 };
@@ -205,17 +204,7 @@ pub fn optimize_exec_bus<T: FieldElement>(
             true
         } else if !receive {
             // Save the latest send and remove the bus interaction
-            let mut send = bus_int.clone();
-            send.args = bus_int
-                .args
-                .iter()
-                .map(|arg| {
-                    let arg = arg.clone();
-                    simplify_expression(arg)
-                })
-                .collect();
-
-            latest_send = Some(send);
+            latest_send = Some(bus_int.clone());
             false
         } else {
             // Equate the latest send to the new receive and remove the bus interaction
@@ -242,10 +231,6 @@ pub fn optimize_exec_bus<T: FieldElement>(
     machine.constraints.extend(execution_bus_constraints);
 
     machine
-}
-
-pub fn simplify_expression<T: FieldElement>(e: AlgebraicExpression<T>) -> AlgebraicExpression<T> {
-    grouped_expression_to_algebraic(algebraic_to_grouped_expression(&e))
 }
 
 /// A wrapped variable: Either a regular variable or a bus interaction field.
