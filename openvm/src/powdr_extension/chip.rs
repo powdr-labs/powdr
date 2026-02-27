@@ -1,16 +1,14 @@
 // Mostly taken from [this openvm extension](https://github.com/openvm-org/openvm/blob/1b76fd5a900a7d69850ee9173969f70ef79c4c76/extensions/rv32im/circuit/src/auipc/core.rs#L1)
 
-use std::{cell::RefCell, collections::BTreeMap, rc::Rc, sync::Arc};
+use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
 use crate::{
-    customize_exe::OpenVmRegisterAddress,
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     powdr_extension::{
         executor::OriginalArenas,
         trace_generator::cpu::{PowdrPeripheryInstancesCpu, PowdrTraceGeneratorCpu},
         PowdrPrecompile,
     },
-    Instr,
 };
 
 use itertools::Itertools;
@@ -29,7 +27,7 @@ use openvm_stark_backend::{
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
     expression::{AlgebraicEvaluator, AlgebraicReference, WitnessEvaluator},
-    Apc,
+    symbolic_machine::SymbolicMachine,
 };
 
 pub struct PowdrChipCpu {
@@ -65,7 +63,7 @@ impl PowdrChipCpu {
 pub struct PowdrAir<F> {
     /// The columns in arbitrary order
     columns: Vec<AlgebraicReference>,
-    apc: Arc<Apc<F, Instr<F>, OpenVmRegisterAddress, u32>>,
+    machine: SymbolicMachine<F>,
 }
 
 impl<F: PrimeField32> ColumnsAir<F> for PowdrAir<F> {
@@ -75,10 +73,10 @@ impl<F: PrimeField32> ColumnsAir<F> for PowdrAir<F> {
 }
 
 impl<F: PrimeField32> PowdrAir<F> {
-    pub fn new(apc: Arc<Apc<F, Instr<F>, OpenVmRegisterAddress, u32>>) -> Self {
+    pub fn new(machine: SymbolicMachine<F>) -> Self {
         Self {
-            columns: apc.machine().main_columns().collect(),
-            apc,
+            columns: machine.main_columns().collect(),
+            machine,
         }
     }
 }
@@ -111,12 +109,12 @@ where
 
         let witness_evaluator = WitnessEvaluator::new(&witness_values);
 
-        for constraint in &self.apc.machine().constraints {
+        for constraint in &self.machine.constraints {
             let constraint = witness_evaluator.eval_constraint(constraint);
             builder.assert_zero(constraint.expr);
         }
 
-        for interaction in &self.apc.machine().bus_interactions {
+        for interaction in &self.machine.bus_interactions {
             let interaction = witness_evaluator.eval_bus_interaction(interaction);
             // TODO: is this correct?
             let count_weight = 1;

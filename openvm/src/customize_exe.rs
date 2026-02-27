@@ -115,7 +115,7 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     ) -> Self::ApcStats {
         // Get the metrics for the apc using the same degree bound as the one used for the instruction chips
         let apc_metrics = get_air_metrics(
-            Arc::new(PowdrAir::new(apc.clone())),
+            Arc::new(PowdrAir::new(apc.machine.clone())),
             instruction_handler.degree_bound().identities,
         );
         let width_after = apc_metrics.widths;

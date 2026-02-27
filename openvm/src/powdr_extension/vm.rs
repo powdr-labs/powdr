@@ -139,7 +139,7 @@ where
 {
     fn extend_circuit(&self, inventory: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {
         for precompile in &self.precompiles {
-            inventory.add_air(PowdrAir::new(precompile.apc.clone()));
+            inventory.add_air(PowdrAir::new(precompile.apc.machine.clone()));
         }
         Ok(())
     }
