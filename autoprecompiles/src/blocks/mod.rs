@@ -102,6 +102,22 @@ impl<I> SuperBlock<I> {
         // note: we need collect_vec() because parallel flat_map does not implement IndexedParallelIterator
         self.instructions().collect_vec().into_par_iter()
     }
+
+    /// Apply fn to every instruction in this superblock, returning a new superblock with the transformed instructions.
+    pub fn map_instructions<F, I2>(self, f: F) -> SuperBlock<I2>
+    where F: Fn(I) -> I2 + Clone
+    {
+        SuperBlock {
+            blocks: self
+                .blocks
+                .into_iter()
+                .map(|b| BasicBlock {
+                    start_pc: b.start_pc,
+                    instructions: b.instructions.into_iter().map(f.clone()).collect(),
+                })
+                .collect(),
+        }
+    }
 }
 
 impl<I: PcStep> SuperBlock<I> {

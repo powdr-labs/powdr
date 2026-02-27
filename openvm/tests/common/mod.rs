@@ -18,17 +18,17 @@ pub fn original_vm_config() -> OriginalVmConfig {
 }
 
 pub mod apc_builder_utils {
+    use itertools::Itertools;
     use openvm_instructions::instruction::Instruction;
     use openvm_stark_sdk::p3_baby_bear::BabyBear;
-    use powdr_autoprecompiles::blocks::{BasicBlock, SuperBlock};
+    use powdr_autoprecompiles::blocks::SuperBlock;
     use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
     use powdr_autoprecompiles::evaluation::evaluate_apc;
     use powdr_autoprecompiles::export::ExportOptions;
     use powdr_autoprecompiles::{build, VmConfig};
     use powdr_number::BabyBearField;
     use powdr_openvm::instruction_formatter::openvm_instruction_formatter;
-    use powdr_openvm::BabyBearOpenVmApcAdapter;
-    use powdr_openvm::Instr;
+    use powdr_openvm::{BabyBearOpenVmApcAdapter, Instr};
     use powdr_openvm::DEFAULT_DEGREE_BOUND;
     use powdr_openvm_bus_interaction_handler::OpenVmBusInteractionHandler;
     use pretty_assertions::assert_eq;
@@ -39,7 +39,7 @@ pub mod apc_builder_utils {
 
     // This code is not dead, but somehow the compiler thinks so.
     #[allow(dead_code)]
-    pub fn compile(basic_block: Vec<Instruction<BabyBear>>) -> String {
+    pub fn compile(superblock: SuperBlock<Instruction<BabyBear>>) -> String {
         let original_config = original_vm_config();
         let degree_bound = DEFAULT_DEGREE_BOUND;
         let airs = original_config.airs(degree_bound).unwrap();
@@ -51,17 +51,11 @@ pub mod apc_builder_utils {
             bus_map: bus_map.clone(),
         };
 
-        let basic_block_str = basic_block
-            .iter()
+        let superblock_str = superblock
+            .instructions()
             .map(|inst| format!("  {}", openvm_instruction_formatter(inst)))
-            .collect::<Vec<_>>()
             .join("\n");
-
-        let superblock: SuperBlock<_> = BasicBlock {
-            instructions: basic_block.into_iter().map(Instr).collect(),
-            start_pc: 0,
-        }
-        .into();
+        let superblock = superblock.map_instructions(Instr);
 
         // Use this env var to output serialized APCs for tests as well.
         let export_path = std::env::var("APC_EXPORT_PATH").ok();
@@ -83,7 +77,7 @@ pub mod apc_builder_utils {
         let apc = &apc_with_stats.apc().machine;
 
         format!(
-            "Instructions:\n{basic_block_str}\n\n{evaluation}\n\n{}",
+            "Instructions:\n{superblock_str}\n\n{evaluation}\n\n{}",
             apc.render(&bus_map)
         )
     }
@@ -91,11 +85,11 @@ pub mod apc_builder_utils {
     // This code is not dead, but somehow the compiler thinks so.
     #[allow(dead_code)]
     pub fn assert_machine_output(
-        program: Vec<Instruction<BabyBear>>,
+        program: SuperBlock<Instruction<BabyBear>>,
         module_name: &str,
         test_name: &str,
     ) {
-        let actual = compile(program.to_vec());
+        let actual = compile(program);
 
         let expected_path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("tests")
