@@ -52,11 +52,12 @@ use std::ops::Add;
 use std::path::{Path, PathBuf};
 
 use crate::customize_exe::OpenVmApcCandidate;
-use crate::instruction_sets::OpenVmISA;
+pub use crate::instruction_sets::riscv::program::{CompiledProgram, OriginalCompiledProgram};
 pub use crate::instruction_sets::riscv::RiscvISA;
+pub use crate::instruction_sets::riscv::{instruction_formatter, symbolic_instruction_builder};
+use crate::instruction_sets::OpenVmISA;
 use crate::powdr_extension::chip::PowdrAir;
 pub use crate::program::Prog;
-pub use crate::instruction_sets::riscv::program::{CompiledProgram, OriginalCompiledProgram};
 use crate::trace_generation::do_with_trace;
 
 #[cfg(test)]
@@ -68,8 +69,8 @@ mod air_builder;
 pub mod cuda_abi;
 mod empirical_constraints;
 pub mod extraction_utils;
-mod program;
 mod instruction_sets;
+mod program;
 pub mod trace_generation;
 pub mod utils;
 pub use powdr_autoprecompiles::DegreeBound;
@@ -137,9 +138,8 @@ pub use powdr_autoprecompiles::bus_map::BusType;
 /// We do not use the transpiler, instead we customize an already transpiled program
 mod customize_exe;
 
-pub use instruction_sets::riscv::customize_exe::{customize};
 pub use customize_exe::{BabyBearOpenVmApcAdapter, Instr, POWDR_OPCODE};
-
+pub use instruction_sets::riscv::customize_exe::customize;
 
 // A module for our extension
 mod powdr_extension;
@@ -712,7 +712,7 @@ impl AirMetrics {
 }
 
 #[cfg(test)]
-impl<ISA: OpenVmISA> CompiledProgram<ISA> {
+impl CompiledProgram<RiscvISA> {
     // Return a tuple of (powdr AirMetrics, non-powdr AirMetrics)
     fn air_metrics(
         &self,
@@ -758,7 +758,10 @@ impl<ISA: OpenVmISA> CompiledProgram<ISA> {
     }
 }
 
-pub fn execute(program: CompiledProgram<RiscvISA>, inputs: StdIn) -> Result<(), Box<dyn std::error::Error>> {
+pub fn execute(
+    program: CompiledProgram<RiscvISA>,
+    inputs: StdIn,
+) -> Result<(), Box<dyn std::error::Error>> {
     let CompiledProgram { exe, vm_config } = program;
 
     // Set app configuration

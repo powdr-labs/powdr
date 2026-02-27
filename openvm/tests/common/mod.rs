@@ -1,8 +1,8 @@
 use openvm_sdk::config::SdkVmConfig;
-use powdr_openvm::{extraction_utils::OriginalVmConfig, ExtendedVmConfig};
+use powdr_openvm::{extraction_utils::OriginalVmConfig, ExtendedVmConfig, RiscvISA};
 use powdr_openvm_hints_circuit::HintsExtension;
 
-pub fn original_vm_config() -> OriginalVmConfig {
+pub fn original_vm_config() -> OriginalVmConfig<RiscvISA> {
     let sdk_vm_config = SdkVmConfig::builder()
         .system(Default::default())
         .rv32i(Default::default())
@@ -58,7 +58,7 @@ pub mod apc_builder_utils {
             .join("\n");
 
         let superblock: SuperBlock<_> = BasicBlock {
-            instructions: basic_block.into_iter().map(Instr).collect(),
+            instructions: basic_block.into_iter().map(Instr::from).collect(),
             start_pc: 0,
         }
         .into();

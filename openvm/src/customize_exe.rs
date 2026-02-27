@@ -7,35 +7,23 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use crate::bus_map::OpenVmBusType;
-use crate::extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs, OriginalVmConfig};
+use crate::extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs};
 use crate::instruction_sets::OpenVmISA;
-use crate::instruction_sets::riscv::RiscvISA;
 use crate::powdr_extension::chip::PowdrAir;
 use crate::program::Prog;
-use crate::{OriginalCompiledProgram};
-use crate::{CompiledProgram, SpecializedConfig};
 use derive_more::From;
-use itertools::Itertools;
 use openvm_circuit::arch::VmState;
 use openvm_circuit::system::memory::online::GuestMemory;
 use openvm_instructions::instruction::Instruction as OpenVmInstruction;
-use openvm_instructions::program::DEFAULT_PC_STEP;
-use openvm_instructions::VmOpcode;
 use openvm_stark_backend::p3_field::{FieldAlgebra, PrimeField32};
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
-use powdr_autoprecompiles::adapter::{
-    Adapter, AdapterApc, AdapterApcWithStats, ApcWithStats, PgoAdapter,
-};
+use powdr_autoprecompiles::adapter::{Adapter, AdapterApc, AdapterApcWithStats, ApcWithStats};
 use powdr_autoprecompiles::blocks::{BasicBlock, Instruction, PcStep};
-use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::execution::ExecutionState;
 use powdr_autoprecompiles::pgo::{ApcCandidateJsonExport, Candidate, KnapsackItem};
-use powdr_autoprecompiles::PowdrConfig;
-use powdr_autoprecompiles::{InstructionHandler, VmConfig};
+use powdr_autoprecompiles::InstructionHandler;
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use serde::{Deserialize, Serialize};
-
-use crate::powdr_extension::{PowdrOpcode, PowdrPrecompile};
 
 pub use powdr_openvm_bus_interaction_handler::{
     memory_bus_interaction::{OpenVmMemoryBusInteraction, REGISTER_ADDRESS_SPACE},

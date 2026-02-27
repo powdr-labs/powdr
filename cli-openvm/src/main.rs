@@ -6,7 +6,7 @@ use openvm_stark_sdk::bench::serialize_metric_snapshot;
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::pgo::{pgo_config, PgoType};
 use powdr_autoprecompiles::PowdrConfig;
-use powdr_openvm::{compile_openvm, default_powdr_openvm_config, CompiledProgram, GuestOptions};
+use powdr_openvm::{CompiledProgram, GuestOptions, RiscvISA, compile_openvm, default_powdr_openvm_config};
 use powdr_openvm::{detect_empirical_constraints, OriginalCompiledProgram};
 
 #[cfg(feature = "metrics")]
@@ -326,7 +326,7 @@ fn run_command(command: Commands) {
     }
 }
 
-fn write_program_to_file(program: CompiledProgram, filename: &str) -> Result<(), io::Error> {
+fn write_program_to_file(program: CompiledProgram<RiscvISA>, filename: &str) -> Result<(), io::Error> {
     use std::fs::File;
 
     let mut file = File::create(filename)?;
@@ -397,7 +397,7 @@ pub fn run_with_metric_collection_to_file<R>(file: std::fs::File, f: impl FnOnce
 /// If optimistic precompiles are enabled, compute empirical constraints from the execution
 /// of the guest program on the given stdin, and save them to disk.
 fn maybe_compute_empirical_constraints(
-    guest_program: &OriginalCompiledProgram,
+    guest_program: &OriginalCompiledProgram<RiscvISA>,
     powdr_config: &PowdrConfig,
     stdin: StdIn,
 ) -> EmpiricalConstraints {

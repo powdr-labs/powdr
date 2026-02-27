@@ -16,11 +16,15 @@ use powdr_autoprecompiles::{trace_handler::TraceTrait, Apc};
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 
 use crate::{
-    BabyBearSC, Instr, RiscvISA, customize_exe::OpenVmRegisterAddress, extraction_utils::{OriginalAirs, OriginalVmConfig}, instruction_sets::OpenVmISA, powdr_extension::{
+    customize_exe::OpenVmRegisterAddress,
+    extraction_utils::{OriginalAirs, OriginalVmConfig},
+    instruction_sets::OpenVmISA,
+    powdr_extension::{
         chip::PowdrChipCpu,
         executor::OriginalArenas,
         trace_generator::{common::create_dummy_airs, cpu::inventory::create_dummy_chip_complex},
-    }
+    },
+    BabyBearSC, Instr, RiscvISA,
 };
 use openvm_stark_backend::p3_field::PrimeField32;
 
@@ -56,7 +60,9 @@ impl<F> From<Arc<RowMajorMatrix<F>>> for SharedCpuTrace<F> {
     }
 }
 
-impl<R, PB: ProverBackend<Matrix = Arc<RowMajorMatrix<BabyBear>>>> Chip<R, PB> for PowdrChipCpu<RiscvISA> {
+impl<R, PB: ProverBackend<Matrix = Arc<RowMajorMatrix<BabyBear>>>> Chip<R, PB>
+    for PowdrChipCpu<RiscvISA>
+{
     fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
         tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
 
@@ -113,13 +119,9 @@ impl PowdrTraceGeneratorCpu<RiscvISA> {
                 create_dummy_airs(&self.config.config.sdk, self.periphery.dummy.clone())
                     .expect("Failed to create dummy airs");
 
-            create_dummy_chip_complex(
-                &self.config.config.sdk,
-                airs,
-                self.periphery.dummy.clone(),
-            )
-            .expect("Failed to create chip complex")
-            .inventory
+            create_dummy_chip_complex(&self.config.config.sdk, airs, self.periphery.dummy.clone())
+                .expect("Failed to create chip complex")
+                .inventory
         };
 
         let dummy_trace_by_air_name: HashMap<String, SharedCpuTrace<BabyBear>> = chip_inventory

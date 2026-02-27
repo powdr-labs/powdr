@@ -1,5 +1,5 @@
-use crate::{format_fe};
 use super::opcode::*;
+use crate::format_fe;
 use openvm_instructions::{instruction::Instruction, VmOpcode};
 use openvm_stark_backend::p3_field::PrimeField32;
 

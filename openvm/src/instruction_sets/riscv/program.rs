@@ -1,7 +1,7 @@
 use std::{collections::BTreeSet, sync::Arc};
 
 use openvm_instructions::exe::VmExe;
-use openvm_instructions::program::{DEFAULT_PC_STEP};
+use openvm_instructions::program::DEFAULT_PC_STEP;
 use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::blocks::{collect_basic_blocks, BasicBlock};
@@ -10,11 +10,12 @@ use powdr_riscv_elf::ElfProgram;
 use serde::{Deserialize, Serialize};
 
 use crate::extraction_utils::OriginalVmConfig;
-use crate::instruction_sets::OpenVmISA;
 use crate::instruction_sets::riscv::opcode::branch_opcodes_bigint_set;
-use crate::{BabyBearOpenVmApcAdapter, ExtendedVmConfig, Instr, Prog, RiscvISA, SpecializedConfig};
+use crate::instruction_sets::OpenVmISA;
+use crate::{BabyBearOpenVmApcAdapter, Instr, Prog, RiscvISA, SpecializedConfig};
 
 #[derive(Serialize, Deserialize, Clone)]
+#[serde(bound = "")]
 pub struct CompiledProgram<ISA: OpenVmISA> {
     pub exe: Arc<VmExe<BabyBear>>,
     pub vm_config: SpecializedConfig<ISA>,
@@ -75,11 +76,7 @@ impl<ISA: OpenVmISA> OriginalCompiledProgram<ISA> {
     pub fn compiled_program(&self, degree_bound: DegreeBound) -> CompiledProgram<ISA> {
         CompiledProgram {
             exe: self.exe.clone(),
-            vm_config: SpecializedConfig::new(
-                self.vm_config.clone(),
-                Vec::new(),
-                degree_bound,
-            ),
+            vm_config: SpecializedConfig::new(self.vm_config.clone(), Vec::new(), degree_bound),
         }
     }
 }

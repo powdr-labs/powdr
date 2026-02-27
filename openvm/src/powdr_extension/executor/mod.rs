@@ -7,9 +7,12 @@ use std::{
 };
 
 use crate::{
-    Instr, RiscvISA, customize_exe::{OpenVmExecutionState, OpenVmRegisterAddress}, extraction_utils::{
-        OriginalAirs, OriginalVmConfig, record_arena_dimension_by_air_name_per_apc_call
-    }, instruction_sets::OpenVmISA
+    customize_exe::{OpenVmExecutionState, OpenVmRegisterAddress},
+    extraction_utils::{
+        record_arena_dimension_by_air_name_per_apc_call, OriginalAirs, OriginalVmConfig,
+    },
+    instruction_sets::OpenVmISA,
+    Instr, RiscvISA,
 };
 
 use itertools::Itertools;

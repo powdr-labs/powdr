@@ -2,10 +2,19 @@ use std::sync::Arc;
 
 use itertools::Itertools;
 use openvm_instructions::VmOpcode;
-use powdr_autoprecompiles::{PowdrConfig, VmConfig, adapter::{ApcWithStats, PgoAdapter}, empirical_constraints::EmpiricalConstraints};
+use powdr_autoprecompiles::{
+    adapter::{ApcWithStats, PgoAdapter},
+    empirical_constraints::EmpiricalConstraints,
+    PowdrConfig, VmConfig,
+};
 use powdr_openvm_bus_interaction_handler::OpenVmBusInteractionHandler;
 
-use crate::{BabyBearOpenVmApcAdapter, CompiledProgram, OriginalCompiledProgram, POWDR_OPCODE, RiscvISA, SpecializedConfig, extraction_utils::OriginalVmConfig, instruction_sets::OpenVmISA, powdr_extension::{PowdrOpcode, PowdrPrecompile}};
+use crate::{
+    instruction_sets::OpenVmISA,
+    powdr_extension::{PowdrOpcode, PowdrPrecompile},
+    BabyBearOpenVmApcAdapter, CompiledProgram, OriginalCompiledProgram, RiscvISA,
+    SpecializedConfig, POWDR_OPCODE,
+};
 
 // TODO: make generic on ISA
 pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a, RiscvISA>>>(

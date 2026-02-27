@@ -7,11 +7,8 @@ use std::sync::Arc;
 
 use derive_more::From;
 use openvm_circuit::arch::{DenseRecordArena, MatrixRecordArena};
-use openvm_circuit_derive::{
-    AotExecutor, AotMeteredExecutor, Executor, MeteredExecutor, PreflightExecutor,
-};
-use openvm_instructions::LocalOpcode;
 use openvm_instructions::instruction::Instruction;
+use openvm_instructions::LocalOpcode;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 
 use crate::bus_map::BusMap;
@@ -23,7 +20,6 @@ use crate::powdr_extension::executor::{OriginalArenas, PowdrExecutor};
 use openvm_circuit::{
     arch::{AirInventory, AirInventoryError, VmCircuitExtension, VmExecutionExtension},
     circuit_derive::Chip,
-    derive::AnyEnum,
 };
 use openvm_stark_backend::{
     config::{StarkGenericConfig, Val},
@@ -93,19 +89,142 @@ impl<F, ISA: OpenVmISA> PowdrExtension<F, ISA> {
     }
 }
 
-#[derive(
-    From,
-    AnyEnum,
-    PreflightExecutor,
-    Executor,
-    MeteredExecutor,
-    AotExecutor,
-    AotMeteredExecutor,
-    Chip,
-)]
+#[derive(From, Chip)]
 #[allow(clippy::large_enum_variant)]
 pub enum PowdrExtensionExecutor<ISA> {
     Powdr(PowdrExecutor<ISA>),
+}
+
+impl<ISA: 'static> openvm_circuit::arch::AnyEnum for PowdrExtensionExecutor<ISA> {
+    fn as_any_kind(&self) -> &dyn std::any::Any {
+        match self {
+            Self::Powdr(x) => x,
+        }
+    }
+
+    fn as_any_kind_mut(&mut self) -> &mut dyn std::any::Any {
+        match self {
+            Self::Powdr(x) => x,
+        }
+    }
+}
+
+impl<ISA: OpenVmISA> openvm_circuit::arch::InterpreterExecutor<BabyBear>
+    for PowdrExtensionExecutor<ISA>
+{
+    fn pre_compute_size(&self) -> usize {
+        match self {
+            Self::Powdr(x) => x.pre_compute_size(),
+        }
+    }
+
+    #[cfg(not(feature = "tco"))]
+    fn pre_compute<Ctx>(
+        &self,
+        pc: u32,
+        inst: &Instruction<BabyBear>,
+        data: &mut [u8],
+    ) -> Result<
+        openvm_circuit::arch::ExecuteFunc<BabyBear, Ctx>,
+        openvm_circuit::arch::StaticProgramError,
+    >
+    where
+        Ctx: openvm_circuit::arch::execution_mode::ExecutionCtxTrait,
+    {
+        match self {
+            Self::Powdr(x) => x.pre_compute(pc, inst, data),
+        }
+    }
+
+    #[cfg(feature = "tco")]
+    fn handler<Ctx>(
+        &self,
+        pc: u32,
+        inst: &Instruction<BabyBear>,
+        data: &mut [u8],
+    ) -> Result<
+        openvm_circuit::arch::Handler<BabyBear, Ctx>,
+        openvm_circuit::arch::StaticProgramError,
+    >
+    where
+        Ctx: openvm_circuit::arch::execution_mode::ExecutionCtxTrait,
+    {
+        match self {
+            Self::Powdr(x) => x.handler(pc, inst, data),
+        }
+    }
+}
+
+impl<ISA: OpenVmISA> openvm_circuit::arch::InterpreterMeteredExecutor<BabyBear>
+    for PowdrExtensionExecutor<ISA>
+{
+    fn metered_pre_compute_size(&self) -> usize {
+        match self {
+            Self::Powdr(x) => x.metered_pre_compute_size(),
+        }
+    }
+
+    #[cfg(not(feature = "tco"))]
+    fn metered_pre_compute<Ctx>(
+        &self,
+        chip_idx: usize,
+        pc: u32,
+        inst: &Instruction<BabyBear>,
+        data: &mut [u8],
+    ) -> Result<
+        openvm_circuit::arch::ExecuteFunc<BabyBear, Ctx>,
+        openvm_circuit::arch::StaticProgramError,
+    >
+    where
+        Ctx: openvm_circuit::arch::execution_mode::MeteredExecutionCtxTrait,
+    {
+        match self {
+            Self::Powdr(x) => x.metered_pre_compute(chip_idx, pc, inst, data),
+        }
+    }
+
+    #[cfg(feature = "tco")]
+    fn metered_handler<Ctx>(
+        &self,
+        chip_idx: usize,
+        pc: u32,
+        inst: &Instruction<BabyBear>,
+        data: &mut [u8],
+    ) -> Result<
+        openvm_circuit::arch::Handler<BabyBear, Ctx>,
+        openvm_circuit::arch::StaticProgramError,
+    >
+    where
+        Ctx: openvm_circuit::arch::execution_mode::MeteredExecutionCtxTrait,
+    {
+        match self {
+            Self::Powdr(x) => x.metered_handler(chip_idx, pc, inst, data),
+        }
+    }
+}
+
+impl<ISA> openvm_circuit::arch::PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>>
+    for PowdrExtensionExecutor<ISA>
+{
+    fn execute(
+        &self,
+        state: openvm_circuit::arch::VmStateMut<
+            BabyBear,
+            openvm_circuit::system::memory::online::TracingMemory,
+            MatrixRecordArena<BabyBear>,
+        >,
+        instruction: &Instruction<BabyBear>,
+    ) -> Result<(), openvm_circuit::arch::ExecutionError> {
+        match self {
+            Self::Powdr(x) => x.execute(state, instruction),
+        }
+    }
+
+    fn get_opcode_name(&self, opcode: usize) -> String {
+        match self {
+            Self::Powdr(x) => x.get_opcode_name(opcode),
+        }
+    }
 }
 
 impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear, RiscvISA> {

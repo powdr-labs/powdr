@@ -4,28 +4,23 @@ use std::sync::{Arc, Mutex};
 
 use crate::air_builder::AirKeygenBuilder;
 use crate::bus_map::{BusMap, OpenVmBusType};
-use crate::instruction_sets::OpenVmISA;
+use crate::instruction_sets::{OpenVmISA, OriginalCpuChipComplex};
 use crate::powdr_extension::executor::RecordArenaDimension;
+use crate::{AirMetrics, Instr};
 use crate::{BabyBearSC, SpecializedConfig};
-use crate::{AirMetrics, ExtendedVmConfig, ExtendedVmConfigExecutor, Instr};
-use crate::{BabyBearPoseidon2Engine, ExtendedVmConfigCpuBuilder};
 use itertools::Itertools;
 use openvm_circuit::arch::{
-    AirInventory, AirInventoryError, ExecutorInventory, ExecutorInventoryError, MatrixRecordArena,
-    SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig, VmExecutionConfig,
+    AirInventory, AirInventoryError, ExecutorInventory, ExecutorInventoryError, SystemConfig,
+    VmCircuitConfig, VmExecutionConfig,
 };
 use openvm_circuit::system::memory::interface::MemoryInterfaceAirs;
-use openvm_circuit::system::SystemChipInventory;
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_instructions::VmOpcode;
 
 use crate::utils::{get_pil, openvm_bus_interaction_to_powdr};
 use openvm_stark_backend::air_builders::symbolic::SymbolicRapBuilder;
-use openvm_stark_backend::config::Val;
 use openvm_stark_backend::interaction::fri_log_up::find_interaction_chunks;
-use openvm_stark_backend::p3_field::PrimeField32;
-use openvm_stark_backend::prover::cpu::CpuBackend;
 use openvm_stark_backend::{
     air_builders::symbolic::SymbolicConstraints, config::StarkGenericConfig, rap::AnyRap,
 };
@@ -63,7 +58,7 @@ pub struct OriginalAirs<F, ISA> {
     /// Note that this map only contains AIRs that implement instructions.
     pub(crate) air_name_to_machine: BTreeMap<String, (SymbolicMachine<F>, AirMetrics)>,
     // TODO: necessary?
-    _marker: PhantomData<ISA>, 
+    _marker: PhantomData<ISA>,
 }
 
 impl<F, ISA> InstructionHandler for OriginalAirs<F, ISA> {
@@ -185,12 +180,7 @@ pub fn record_arena_dimension_by_air_name_per_apc_call<F, ISA>(
         )
 }
 
-type ChipComplex = VmChipComplex<
-    BabyBearSC,
-    MatrixRecordArena<Val<BabyBearSC>>,
-    CpuBackend<BabyBearSC>,
-    SystemChipInventory<BabyBearSC>,
->;
+type ChipComplex = OriginalCpuChipComplex;
 
 /// A lazy chip complex that is initialized on the first access
 type LazyChipComplex = Option<ChipComplex>;
@@ -223,8 +213,7 @@ pub struct OriginalVmConfig<ISA: OpenVmISA> {
 }
 
 // TODO: derive `VmCircuitConfig`, currently not possible because we don't have SC/F everywhere
-impl<ISA: OpenVmISA> VmCircuitConfig<BabyBearSC> for OriginalVmConfig<ISA>
-{
+impl<ISA: OpenVmISA> VmCircuitConfig<BabyBearSC> for OriginalVmConfig<ISA> {
     fn create_airs(&self) -> Result<AirInventory<BabyBearSC>, AirInventoryError> {
         self.config.create_airs()
     }
@@ -272,28 +261,21 @@ impl<ISA: OpenVmISA> OriginalVmConfig<ISA> {
 
     /// Returns a guard that provides access to the chip complex, initializing it if necessary.
     fn chip_complex(&self) -> ChipComplexGuard<'_> {
-        // let mut guard = self.chip_complex.lock().expect("Mutex poisoned");
+        let mut guard = self.chip_complex.lock().expect("Mutex poisoned");
 
-        // if guard.is_none() {
-        //     // This is the expensive part that we want to run a single time: create the chip complex
-        //     let airs = self
-        //         .config
-        //         .sdk
-        //         .create_airs()
-        //         .expect("Failed to create air inventory");
-        //     let complex =
-        //         <ExtendedVmConfigCpuBuilder as VmBuilder<BabyBearPoseidon2Engine>>::create_chip_complex(
-        //             &ExtendedVmConfigCpuBuilder,
-        //             &self.config,
-        //             airs,
-        //         )
-        //         .expect("Failed to create chip complex");
-        //     // Store the complex in the guard
-        //     *guard = Some(complex);
-        // }
+        if guard.is_none() {
+            // This is the expensive part that we want to run a single time: create the chip complex
+            let airs = self
+                .config
+                .create_airs()
+                .expect("Failed to create air inventory");
+            let complex = ISA::create_original_chip_complex(&self.config, airs)
+                .expect("Failed to create chip complex");
+            // Store the complex in the guard
+            *guard = Some(complex);
+        }
 
-        // ChipComplexGuard { guard }
-        todo!("make generic or move to riscv")
+        ChipComplexGuard { guard }
     }
 
     /// Given a VM configuration and a set of used instructions, computes:
@@ -309,8 +291,7 @@ impl<ISA: OpenVmISA> OriginalVmConfig<ISA> {
 
         let chip_inventory = &chip_complex.inventory;
 
-        let executor_inventory=
-            self.create_executors().unwrap();
+        let executor_inventory = self.create_executors().unwrap();
 
         let instruction_allowlist = ISA::instruction_allowlist();
 
@@ -436,7 +417,10 @@ impl<ISA: OpenVmISA> OriginalVmConfig<ISA> {
     }
 }
 
-pub fn export_pil<ISA: OpenVmISA>(writer: &mut impl std::io::Write, vm_config: &SpecializedConfig<ISA>) {
+pub fn export_pil<ISA: OpenVmISA>(
+    writer: &mut impl std::io::Write,
+    vm_config: &SpecializedConfig<ISA>,
+) {
     let blacklist = ["KeccakVmAir"];
     let bus_map = vm_config.original.bus_map();
     let chip_complex = vm_config.original.chip_complex();
@@ -615,7 +599,7 @@ impl Sum<AirWidthsDiff> for AirWidthsDiff {
 
 #[cfg(test)]
 mod tests {
-    use crate::{DEFAULT_DEGREE_BOUND, DEFAULT_OPENVM_DEGREE_BOUND};
+    use crate::{RiscvISA, DEFAULT_DEGREE_BOUND, DEFAULT_OPENVM_DEGREE_BOUND};
 
     use super::*;
     use openvm_algebra_circuit::{Fp2Extension, ModularExtension};
@@ -673,7 +657,7 @@ mod tests {
             .pairing(PairingExtension::new(supported_pairing_curves))
             .build();
 
-        let _ = OriginalVmConfig::new(ExtendedVmConfig {
+        let _ = OriginalVmConfig::<RiscvISA>::new(ExtendedVmConfig {
             sdk: sdk_vm_config,
             hints: HintsExtension,
         })
@@ -687,7 +671,7 @@ mod tests {
             sdk: SdkVmConfig::riscv32(),
             hints: HintsExtension,
         };
-        let base_config = OriginalVmConfig::new(ext_config);
+        let base_config = OriginalVmConfig::<RiscvISA>::new(ext_config);
         let specialized_config = SpecializedConfig::new(base_config, vec![], DEFAULT_DEGREE_BOUND);
         export_pil(writer, &specialized_config);
         let output = String::from_utf8(writer.clone()).unwrap();

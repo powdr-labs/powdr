@@ -21,10 +21,9 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::iter::once;
 
-use crate::RiscvISA;
 use crate::bus_map::default_openvm_bus_map;
-use crate::instruction_sets::OpenVmISA;
 use crate::trace_generation::do_with_cpu_trace;
+use crate::RiscvISA;
 use crate::{CompiledProgram, OriginalCompiledProgram};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]

@@ -18,7 +18,7 @@ use openvm_stark_sdk::{
 };
 use tracing::info_span;
 
-use crate::{BabyBearSC, CompiledProgram, RiscvISA, instruction_sets::OpenVmISA};
+use crate::{instruction_sets::OpenVmISA, BabyBearSC, CompiledProgram, RiscvISA};
 use crate::{PowdrSdkCpu, SpecializedConfigCpuBuilder};
 
 #[cfg(not(feature = "cuda"))]
@@ -143,7 +143,9 @@ where
     Ok(())
 }
 
-fn create_app_config<ISA: OpenVmISA>(program: &CompiledProgram<ISA>) -> AppConfig<crate::SpecializedConfig<ISA>> {
+fn create_app_config<ISA: OpenVmISA>(
+    program: &CompiledProgram<ISA>,
+) -> AppConfig<crate::SpecializedConfig<ISA>> {
     let app_fri_params =
         FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
     AppConfig::new(app_fri_params, program.vm_config.clone())
