@@ -46,8 +46,14 @@ pub const POWDR_OPCODE: usize = 0x10ff;
 /// An adapter for the BabyBear OpenVM precompiles.
 /// Note: This could be made generic over the field, but the implementation of `Candidate` is BabyBear-specific.
 /// The lifetime parameter is used because we use a reference to the `OpenVmProgram` in the `Prog` type.
-pub struct BabyBearOpenVmApcAdapter<'a> {
-    _marker: std::marker::PhantomData<&'a ()>,
+pub struct BabyBearOpenVmApcAdapter<'a, ISA> {
+    _marker: std::marker::PhantomData<&'a ISA>,
+}
+
+trait OpenVmISA {
+    fn is_allowed(opcode: VmOpcode) -> bool;
+
+    fn is_branching(opcode: VmOpcode) -> bool;
 }
 
 #[derive(From)]
@@ -85,7 +91,7 @@ impl<'a, T: PrimeField32> ExecutionState for OpenVmExecutionState<'a, T> {
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct OpenVmRegisterAddress(u8);
 
-impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
+impl<'a, ISA: OpenVmISA> Adapter for BabyBearOpenVmApcAdapter<'a, ISA> {
     type PowdrField = BabyBearField;
     type Field = BabyBear;
     type InstructionHandler = OriginalAirs<Self::Field>;
@@ -135,11 +141,11 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     }
 
     fn is_allowed(instruction: &Self::Instruction) -> bool {
-        instruction_allowlist().contains(&instruction.0.opcode)
+        ISA::is_allowed(instruction.0.opcode)
     }
 
     fn is_branching(instruction: &Self::Instruction) -> bool {
-        branch_opcodes_set().contains(&instruction.0.opcode)
+        ISA::is_branching(instruction.0.opcode)
     }
 }
 
@@ -179,7 +185,19 @@ impl<F: PrimeField32> Instruction<F> for Instr<F> {
     }
 }
 
-pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
+pub struct RiscvISA;
+
+impl OpenVmISA for RiscvISA {
+    fn is_allowed(opcode: VmOpcode) -> bool {
+        instruction_allowlist().contains(&opcode)
+    }
+
+    fn is_branching(opcode: VmOpcode) -> bool {
+        branch_opcodes_set().contains(&opcode)
+    }
+}
+
+pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a, RiscvISA>>>(
     original_program: OriginalCompiledProgram,
     config: PowdrConfig,
     pgo: P,
@@ -306,9 +324,11 @@ impl OvmApcStats {
     }
 }
 
-impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear, Instr<BabyBear>> {
+impl<'a, ISA: OpenVmISA> Candidate<BabyBearOpenVmApcAdapter<'a, ISA>>
+    for OpenVmApcCandidate<BabyBear, Instr<BabyBear>>
+{
     fn create(
-        apc_with_stats: AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a>>,
+        apc_with_stats: AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a, ISA>>,
         pgo_program_pc_count: &HashMap<u64, u32>,
     ) -> Self {
         let execution_frequency = *pgo_program_pc_count
@@ -355,7 +375,7 @@ impl<'a> Candidate<BabyBearOpenVmApcAdapter<'a>> for OpenVmApcCandidate<BabyBear
         }
     }
 
-    fn into_apc_and_stats(self) -> AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a>> {
+    fn into_apc_and_stats(self) -> AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a, ISA>> {
         self.apc_with_stats
     }
 }

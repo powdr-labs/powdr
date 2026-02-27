@@ -9,6 +9,7 @@ use powdr_autoprecompiles::DegreeBound;
 use powdr_riscv_elf::ElfProgram;
 use serde::{Deserialize, Serialize};
 
+use crate::customize_exe::RiscvISA;
 use crate::extraction_utils::OriginalVmConfig;
 use crate::opcode::branch_opcodes_bigint_set;
 use crate::{BabyBearOpenVmApcAdapter, ExtendedVmConfig, Instr, SpecializedConfig};
@@ -41,7 +42,7 @@ impl OriginalCompiledProgram {
             .map(|&x| x as u64)
             .collect::<BTreeSet<_>>();
 
-        collect_basic_blocks::<BabyBearOpenVmApcAdapter>(&program, &jumpdest_set)
+        collect_basic_blocks::<BabyBearOpenVmApcAdapter<RiscvISA>>(&program, &jumpdest_set)
     }
 
     /// Besides the base RISCV-V branching instructions, the bigint extension adds two more branching

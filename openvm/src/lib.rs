@@ -51,7 +51,7 @@ use std::iter::Sum;
 use std::ops::Add;
 use std::path::{Path, PathBuf};
 
-use crate::customize_exe::OpenVmApcCandidate;
+use crate::customize_exe::{OpenVmApcCandidate, RiscvISA};
 use crate::powdr_extension::chip::PowdrAir;
 pub use crate::program::Prog;
 pub use crate::program::{CompiledProgram, OriginalCompiledProgram};
@@ -864,7 +864,7 @@ pub fn execution_profile_from_guest(
     // prepare for execute
     let sdk = PowdrExecutionProfileSdkCpu::new(app_config).unwrap();
 
-    execution_profile::<BabyBearOpenVmApcAdapter>(&program, || {
+    execution_profile::<BabyBearOpenVmApcAdapter<RiscvISA>>(&program, || {
         sdk.execute_interpreted(exe.clone(), inputs.clone())
             .unwrap();
     })
