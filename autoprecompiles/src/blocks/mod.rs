@@ -105,7 +105,8 @@ impl<I> SuperBlock<I> {
 
     /// Apply fn to every instruction in this superblock, returning a new superblock with the transformed instructions.
     pub fn map_instructions<F, I2>(self, f: F) -> SuperBlock<I2>
-    where F: Fn(I) -> I2 + Clone
+    where
+        F: Fn(I) -> I2 + Clone,
     {
         SuperBlock {
             blocks: self
