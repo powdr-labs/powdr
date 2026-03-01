@@ -8,10 +8,9 @@ use eyre::Result;
 use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
 use openvm_circuit::arch::execution_mode::metered::segment_ctx::SegmentationLimits;
 use openvm_circuit::arch::{
-    debug_proving_ctx, AirInventory, AirInventoryError, ChipInventory, ChipInventoryError,
-    ExecutorInventory, ExecutorInventoryError, InitFileGenerator, MatrixRecordArena,
-    RowMajorMatrixArena, SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig,
-    VmCircuitExtension, VmExecutionConfig, VmProverExtension,
+    debug_proving_ctx, AirInventory, ChipInventory, ChipInventoryError, InitFileGenerator,
+    MatrixRecordArena, RowMajorMatrixArena, SystemConfig, VmBuilder, VmChipComplex,
+    VmProverExtension,
 };
 use openvm_circuit::system::SystemChipInventory;
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
@@ -39,46 +38,39 @@ use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
-use powdr_autoprecompiles::evaluation::AirStats;
 use powdr_autoprecompiles::execution_profile::ExecutionProfile;
 use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
-use powdr_extension::PowdrExtension;
+use powdr_openvm_common::apc_air::PowdrAir;
+use powdr_openvm_common::chip::PowdrChipCpu;
+#[cfg(test)]
+use powdr_openvm_common::extraction_utils::AirMetrics;
+use powdr_openvm_common::extraction_utils::OriginalVmConfig;
+use powdr_openvm_common::program::Prog;
+use powdr_openvm_common::vm::{PowdrExtension, PowdrExtensionExecutor};
+use powdr_openvm_common::{
+    BabyBearOpenVmApcAdapter, OpenVmApcCandidate, PeripheryBusIds, SpecializedConfig,
+};
 use powdr_openvm_hints_circuit::{HintsExtension, HintsExtensionExecutor, HintsProverExt};
 use powdr_openvm_hints_transpiler::HintsTranspilerExtension;
 use serde::{Deserialize, Serialize};
-use std::iter::Sum;
-use std::ops::Add;
 use std::path::{Path, PathBuf};
 
-use crate::customize_exe::OpenVmApcCandidate;
 pub use crate::instruction_sets::riscv::program::{CompiledProgram, OriginalCompiledProgram};
+use crate::instruction_sets::riscv::trace_generation::do_with_trace;
 pub use crate::instruction_sets::riscv::RiscvISA;
 pub use crate::instruction_sets::riscv::{instruction_formatter, symbolic_instruction_builder};
-use crate::instruction_sets::OpenVmISA;
-use crate::powdr_extension::chip::PowdrAir;
-pub use crate::program::Prog;
-use crate::trace_generation::do_with_trace;
+use crate::powdr_extension::trace_generator::cpu::new_periphery_instances;
 
-#[cfg(test)]
-use crate::extraction_utils::AirWidthsDiff;
-use crate::extraction_utils::{AirWidths, OriginalVmConfig};
-use crate::powdr_extension::{PowdrExtensionExecutor, PowdrPrecompile};
-
-mod air_builder;
 pub mod cuda_abi;
-mod empirical_constraints;
 pub mod extraction_utils;
 mod instruction_sets;
-mod program;
-pub mod trace_generation;
-pub mod utils;
 pub use powdr_autoprecompiles::DegreeBound;
 pub use powdr_autoprecompiles::PgoConfig;
 
 pub use powdr_openvm_bus_interaction_handler::bus_map;
 
-pub use crate::empirical_constraints::detect_empirical_constraints;
+pub use crate::instruction_sets::riscv::empirical_constraints::detect_empirical_constraints;
 
 pub type BabyBearSC = BabyBearPoseidon2Config;
 
@@ -135,22 +127,11 @@ fn format_fe<F: PrimeField32>(v: F) -> String {
 pub use openvm_build::GuestOptions;
 pub use powdr_autoprecompiles::bus_map::BusType;
 
-/// We do not use the transpiler, instead we customize an already transpiled program
-mod customize_exe;
-
-pub use customize_exe::{BabyBearOpenVmApcAdapter, Instr, POWDR_OPCODE};
 pub use instruction_sets::riscv::customize_exe::customize;
+pub use powdr_openvm_common::instruction::Instr;
 
 // A module for our extension
 mod powdr_extension;
-
-/// A custom VmConfig that wraps the SdkVmConfig, adding our custom extension.
-#[derive(Serialize, Deserialize, Clone)]
-#[serde(bound = "")]
-pub struct SpecializedConfig<ISA: OpenVmISA> {
-    pub original: OriginalVmConfig<ISA>,
-    pub powdr: PowdrExtension<BabyBear, ISA>,
-}
 
 #[cfg(feature = "cuda")]
 #[derive(Default, Clone)]
@@ -269,13 +250,6 @@ impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, PowdrExtens
     }
 }
 
-#[derive(Clone)]
-pub struct PeripheryBusIds {
-    pub range_checker: u16,
-    pub bitwise_lookup: Option<u16>,
-    pub tuple_range_checker: Option<u16>,
-}
-
 struct PowdrCpuProverExt;
 
 impl<E, RA> VmProverExtension<E, RA, PowdrExtension<BabyBear, RiscvISA>> for PowdrCpuProverExt
@@ -290,7 +264,6 @@ where
     ) -> Result<(), ChipInventoryError> {
         // TODO: here we make assumptions about the existence of some chips in the periphery. Make this more flexible
 
-        use crate::powdr_extension::trace_generator::cpu::PowdrPeripheryInstancesCpu;
         let bitwise_lookup = inventory
             .find_chip::<SharedBitwiseOperationLookupChip<8>>()
             .next()
@@ -305,7 +278,7 @@ where
             .cloned();
 
         // Create the shared chips and the dummy shared chips
-        let shared_chips_pair = PowdrPeripheryInstancesCpu::new(
+        let shared_chips_pair = new_periphery_instances(
             range_checker.clone(),
             bitwise_lookup,
             tuple_range_checker,
@@ -313,8 +286,6 @@ where
         );
 
         for precompile in &extension.precompiles {
-            use crate::powdr_extension::chip::PowdrChipCpu;
-
             inventory.next_air::<PowdrAir<BabyBear>>()?;
             let chip = PowdrChipCpu::new(
                 precompile.clone(),
@@ -360,41 +331,6 @@ where
     }
 }
 
-impl TranspilerConfig<BabyBear> for SpecializedConfig<RiscvISA> {
-    fn transpiler(&self) -> Transpiler<BabyBear> {
-        self.original.config().transpiler()
-    }
-}
-
-// For generation of the init file, we delegate to the underlying SdkVmConfig.
-impl InitFileGenerator for SpecializedConfig<RiscvISA> {
-    fn generate_init_file_contents(&self) -> Option<String> {
-        self.original.config().generate_init_file_contents()
-    }
-
-    fn write_to_init_file(
-        &self,
-        manifest_dir: &Path,
-        init_file_name: Option<&str>,
-    ) -> std::io::Result<()> {
-        self.original
-            .config()
-            .write_to_init_file(manifest_dir, init_file_name)
-    }
-}
-
-impl AsRef<SystemConfig> for SpecializedConfig<RiscvISA> {
-    fn as_ref(&self) -> &SystemConfig {
-        self.original.as_ref()
-    }
-}
-
-impl AsMut<SystemConfig> for SpecializedConfig<RiscvISA> {
-    fn as_mut(&mut self) -> &mut SystemConfig {
-        self.original.as_mut()
-    }
-}
-
 #[allow(clippy::large_enum_variant)]
 #[derive(
     From,
@@ -411,45 +347,6 @@ pub enum SpecializedExecutor {
     SdkExecutor(ExtendedVmConfigExecutor<BabyBear>),
     #[any_enum]
     PowdrExecutor(PowdrExtensionExecutor<RiscvISA>),
-}
-
-// TODO: derive VmCircuitConfig, currently not possible because we don't have SC/F everywhere
-// Also `start_new_extension` is normally only used in derive
-impl VmCircuitConfig<BabyBearSC> for SpecializedConfig<RiscvISA> {
-    fn create_airs(&self) -> Result<AirInventory<BabyBearSC>, AirInventoryError> {
-        let mut inventory = self.original.create_airs()?;
-        inventory.start_new_extension();
-        self.powdr.extend_circuit(&mut inventory)?;
-        Ok(inventory)
-    }
-}
-
-impl VmExecutionConfig<BabyBear> for SpecializedConfig<RiscvISA> {
-    type Executor = SpecializedExecutor;
-
-    fn create_executors(
-        &self,
-    ) -> Result<ExecutorInventory<Self::Executor>, ExecutorInventoryError> {
-        let mut inventory = self.original.create_executors()?.transmute();
-        inventory = inventory.extend(&self.powdr)?;
-        Ok(inventory)
-    }
-}
-
-impl<ISA: OpenVmISA> SpecializedConfig<ISA> {
-    pub fn new(
-        base_config: OriginalVmConfig<ISA>,
-        precompiles: Vec<PowdrPrecompile<BabyBear, ISA>>,
-        degree_bound: DegreeBound,
-    ) -> Self {
-        let airs = base_config.airs(degree_bound).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
-        let bus_map = base_config.bus_map();
-        let powdr_extension = PowdrExtension::new(precompiles, base_config.clone(), bus_map, airs);
-        Self {
-            original: base_config,
-            powdr: powdr_extension,
-        }
-    }
 }
 
 pub fn build_elf_path<P: AsRef<Path>>(
@@ -555,7 +452,7 @@ pub fn compile_exe(
             customize(
                 original_program,
                 config,
-                CellPgo::<_, OpenVmApcCandidate<_, _>>::with_pgo_data_and_max_columns(
+                CellPgo::<_, OpenVmApcCandidate<RiscvISA>>::with_pgo_data_and_max_columns(
                     pgo_data,
                     max_total_apc_columns,
                 ),
@@ -667,47 +564,6 @@ impl InitFileGenerator for ExtendedVmConfig {
         init_file_name: Option<&str>,
     ) -> std::io::Result<()> {
         self.sdk.write_to_init_file(manifest_dir, init_file_name)
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize, Default, Debug, Eq, PartialEq)]
-pub struct AirMetrics {
-    pub widths: AirWidths,
-    pub constraints: usize,
-    pub bus_interactions: usize,
-}
-
-impl From<AirMetrics> for AirStats {
-    fn from(metrics: AirMetrics) -> Self {
-        AirStats {
-            main_columns: metrics.widths.main,
-            constraints: metrics.constraints,
-            bus_interactions: metrics.bus_interactions,
-        }
-    }
-}
-
-impl Add for AirMetrics {
-    type Output = AirMetrics;
-
-    fn add(self, rhs: AirMetrics) -> AirMetrics {
-        AirMetrics {
-            widths: self.widths + rhs.widths,
-            constraints: self.constraints + rhs.constraints,
-            bus_interactions: self.bus_interactions + rhs.bus_interactions,
-        }
-    }
-}
-
-impl Sum<AirMetrics> for AirMetrics {
-    fn sum<I: Iterator<Item = AirMetrics>>(iter: I) -> AirMetrics {
-        iter.fold(AirMetrics::default(), Add::add)
-    }
-}
-
-impl AirMetrics {
-    pub fn total_width(&self) -> usize {
-        self.widths.total()
     }
 }
 
@@ -879,6 +735,7 @@ mod tests {
     use super::*;
     use expect_test::{expect, Expect};
     use itertools::Itertools;
+    use powdr_openvm_common::extraction_utils::AirWidths;
     use pretty_assertions::assert_eq;
     use test_log::test;
 

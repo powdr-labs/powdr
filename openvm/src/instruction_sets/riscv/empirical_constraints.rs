@@ -22,7 +22,7 @@ use std::collections::HashMap;
 use std::iter::once;
 
 use crate::bus_map::default_openvm_bus_map;
-use crate::trace_generation::do_with_cpu_trace;
+use crate::instruction_sets::riscv::trace_generation::do_with_cpu_trace;
 use crate::RiscvISA;
 use crate::{CompiledProgram, OriginalCompiledProgram};
 
@@ -130,7 +130,7 @@ fn detect_empirical_constraints_from_input(
         for (air_id, proving_context) in &ctx.per_air {
             let main = proving_context.common_main.as_ref().unwrap();
             let air_name = global_airs[air_id].name();
-            let Some((machine, _)) = &airs.air_name_to_machine.get(&air_name) else {
+            let Some(machine) = &airs.get_air_machine(&air_name) else {
                 // air_name_to_machine only contains instruction AIRs, and we are only
                 // interested in those here.
                 continue;

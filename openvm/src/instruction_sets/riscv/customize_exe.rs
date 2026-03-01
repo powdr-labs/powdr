@@ -8,13 +8,12 @@ use powdr_autoprecompiles::{
     PowdrConfig, VmConfig,
 };
 use powdr_openvm_bus_interaction_handler::OpenVmBusInteractionHandler;
-
-use crate::{
-    instruction_sets::OpenVmISA,
-    powdr_extension::{PowdrOpcode, PowdrPrecompile},
-    BabyBearOpenVmApcAdapter, CompiledProgram, OriginalCompiledProgram, RiscvISA,
+use powdr_openvm_common::{
+    isa::OpenVmISA, opcode::PowdrOpcode, vm::PowdrPrecompile, BabyBearOpenVmApcAdapter,
     SpecializedConfig, POWDR_OPCODE,
 };
+
+use crate::{CompiledProgram, OriginalCompiledProgram, RiscvISA};
 
 // TODO: make generic on ISA
 pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a, RiscvISA>>>(
@@ -23,7 +22,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a, RiscvI
     pgo: P,
     empirical_constraints: EmpiricalConstraints,
 ) -> CompiledProgram<RiscvISA> {
-    let original_config = OriginalVmConfig::new(original_program.vm_config.clone());
+    let original_config = original_program.vm_config.clone();
     let airs = original_config.airs(config.degree_bound).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
     let bus_map = original_config.bus_map();
 

@@ -16,6 +16,7 @@ use openvm_stark_sdk::{
     },
     engine::{StarkEngine, StarkFriEngine},
 };
+use powdr_openvm_common::SpecializedConfig;
 use tracing::info_span;
 
 use crate::{instruction_sets::OpenVmISA, BabyBearSC, CompiledProgram, RiscvISA};
@@ -145,7 +146,7 @@ where
 
 fn create_app_config<ISA: OpenVmISA>(
     program: &CompiledProgram<ISA>,
-) -> AppConfig<crate::SpecializedConfig<ISA>> {
+) -> AppConfig<SpecializedConfig<ISA>> {
     let app_fri_params =
         FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
     AppConfig::new(app_fri_params, program.vm_config.clone())

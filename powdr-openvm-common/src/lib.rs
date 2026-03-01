@@ -1,36 +1,149 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display, marker::PhantomData, path::Path, sync::Arc};
 
-use std::fmt::Display;
-use std::hash::Hash;
-use std::iter::once;
-use std::marker::PhantomData;
-use std::sync::Arc;
-
-use crate::bus_map::OpenVmBusType;
-use crate::extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs};
-use crate::instruction_sets::OpenVmISA;
-use crate::powdr_extension::chip::PowdrAir;
-use crate::program::Prog;
-use derive_more::From;
-use openvm_circuit::arch::VmState;
-use openvm_circuit::system::memory::online::GuestMemory;
-use openvm_instructions::instruction::Instruction as OpenVmInstruction;
+use openvm_circuit::{
+    arch::{
+        AirInventory, AirInventoryError, ExecutorInventory, ExecutorInventoryError,
+        InitFileGenerator, SystemConfig, VmCircuitConfig, VmCircuitExtension, VmExecutionConfig,
+        VmState,
+    },
+    system::memory::online::GuestMemory,
+};
+use openvm_sdk::config::TranspilerConfig;
 use openvm_stark_backend::p3_field::{FieldAlgebra, PrimeField32};
-use openvm_stark_sdk::p3_baby_bear::BabyBear;
-use powdr_autoprecompiles::adapter::{Adapter, AdapterApc, AdapterApcWithStats, ApcWithStats};
-use powdr_autoprecompiles::blocks::{BasicBlock, Instruction, PcStep};
-use powdr_autoprecompiles::execution::ExecutionState;
-use powdr_autoprecompiles::pgo::{ApcCandidateJsonExport, Candidate, KnapsackItem};
-use powdr_autoprecompiles::InstructionHandler;
+use openvm_stark_sdk::{
+    config::baby_bear_poseidon2::BabyBearPoseidon2Config, p3_baby_bear::BabyBear,
+};
+use openvm_transpiler::transpiler::Transpiler;
+use powdr_autoprecompiles::{
+    adapter::{Adapter, AdapterApc, AdapterApcWithStats, ApcWithStats},
+    blocks::BasicBlock,
+    execution::ExecutionState,
+    pgo::{ApcCandidateJsonExport, Candidate, KnapsackItem},
+    DegreeBound, InstructionHandler,
+};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
-use serde::{Deserialize, Serialize};
-
-pub use powdr_openvm_bus_interaction_handler::{
-    memory_bus_interaction::{OpenVmMemoryBusInteraction, REGISTER_ADDRESS_SPACE},
+use powdr_openvm_bus_interaction_handler::{
+    bus_map::OpenVmBusType, memory_bus_interaction::OpenVmMemoryBusInteraction,
     OpenVmBusInteractionHandler,
 };
+use serde::{Deserialize, Serialize};
+
+use crate::{
+    apc_air::PowdrAir,
+    extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs, OriginalVmConfig},
+    instruction::Instr,
+    isa::OpenVmISA,
+    program::Prog,
+    vm::{PowdrExtension, PowdrPrecompile},
+};
+use std::hash::Hash;
+
+pub mod air_builder;
+pub mod apc_air;
+pub mod chip;
+pub mod executor;
+pub mod extraction_utils;
+pub mod instruction;
+pub mod isa;
+pub mod opcode;
+pub mod program;
+pub mod trace_generator;
+pub mod utils;
+pub mod vm;
+
+pub type BabyBearSC = BabyBearPoseidon2Config;
 
 pub const POWDR_OPCODE: usize = 0x10ff;
+
+#[derive(Clone)]
+pub struct PeripheryBusIds {
+    pub range_checker: u16,
+    pub bitwise_lookup: Option<u16>,
+    pub tuple_range_checker: Option<u16>,
+}
+
+/// A custom VmConfig that wraps the SdkVmConfig, adding our custom extension.
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(bound = "")]
+pub struct SpecializedConfig<ISA: OpenVmISA> {
+    pub original: OriginalVmConfig<ISA>,
+    pub powdr: PowdrExtension<BabyBear, ISA>,
+}
+
+impl<ISA: OpenVmISA> TranspilerConfig<BabyBear> for SpecializedConfig<ISA> {
+    fn transpiler(&self) -> Transpiler<BabyBear> {
+        self.original.config().transpiler()
+    }
+}
+
+// For generation of the init file, we delegate to the underlying SdkVmConfig.
+impl<ISA: OpenVmISA> InitFileGenerator for SpecializedConfig<ISA> {
+    fn generate_init_file_contents(&self) -> Option<String> {
+        self.original.config().generate_init_file_contents()
+    }
+
+    fn write_to_init_file(
+        &self,
+        manifest_dir: &Path,
+        init_file_name: Option<&str>,
+    ) -> std::io::Result<()> {
+        self.original
+            .config()
+            .write_to_init_file(manifest_dir, init_file_name)
+    }
+}
+
+impl<ISA: OpenVmISA> AsRef<SystemConfig> for SpecializedConfig<ISA> {
+    fn as_ref(&self) -> &SystemConfig {
+        self.original.as_ref()
+    }
+}
+
+impl<ISA: OpenVmISA> AsMut<SystemConfig> for SpecializedConfig<ISA> {
+    fn as_mut(&mut self) -> &mut SystemConfig {
+        self.original.as_mut()
+    }
+}
+
+// TODO: derive VmCircuitConfig, currently not possible because we don't have SC/F everywhere
+// Also `start_new_extension` is normally only used in derive
+impl<ISA: OpenVmISA> VmCircuitConfig<BabyBearSC> for SpecializedConfig<ISA> {
+    fn create_airs(&self) -> Result<AirInventory<BabyBearSC>, AirInventoryError> {
+        let mut inventory = self.original.create_airs()?;
+        inventory.start_new_extension();
+        self.powdr.extend_circuit(&mut inventory)?;
+        Ok(inventory)
+    }
+}
+
+impl<ISA: OpenVmISA> VmExecutionConfig<BabyBear> for SpecializedConfig<ISA> {
+    type Executor = ISA::Executor;
+
+    fn create_executors(
+        &self,
+    ) -> Result<ExecutorInventory<Self::Executor>, ExecutorInventoryError> {
+        let mut inventory: ExecutorInventory<Self::Executor> =
+            self.original.create_executors()?.transmute();
+        inventory = inventory.extend(&self.powdr)?;
+        Ok(inventory)
+    }
+}
+
+impl<ISA: OpenVmISA> SpecializedConfig<ISA> {
+    pub fn new(
+        base_config: OriginalVmConfig<ISA>,
+        precompiles: Vec<PowdrPrecompile<BabyBear, ISA>>,
+        degree_bound: DegreeBound,
+    ) -> Self {
+        let airs = base_config.airs(degree_bound).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
+        let bus_map = base_config.bus_map();
+        let powdr_extension = PowdrExtension::new(precompiles, base_config.clone(), bus_map, airs);
+        Self {
+            original: base_config,
+            powdr: powdr_extension,
+        }
+    }
+}
 
 /// An adapter for the BabyBear OpenVM precompiles.
 /// Note: This could be made generic over the field, but the implementation of `Candidate` is BabyBear-specific.
@@ -39,30 +152,35 @@ pub struct BabyBearOpenVmApcAdapter<'a, ISA> {
     _marker: std::marker::PhantomData<&'a ISA>,
 }
 
-#[derive(From)]
-pub struct OpenVmExecutionState<'a, T>(&'a VmState<T, GuestMemory>);
+pub struct OpenVmExecutionState<'a, ISA> {
+    inner: &'a VmState<BabyBear, GuestMemory>,
+    _marker: PhantomData<ISA>,
+}
+
+impl<'a, ISA> From<&'a VmState<BabyBear, GuestMemory>> for OpenVmExecutionState<'a, ISA> {
+    fn from(inner: &'a VmState<BabyBear, GuestMemory>) -> Self {
+        Self {
+            inner,
+            _marker: PhantomData,
+        }
+    }
+}
 
 // TODO: This is not tested yet as apc compilation does not currently output any optimistic constraints
-impl<'a, T: PrimeField32> ExecutionState for OpenVmExecutionState<'a, T> {
-    type RegisterAddress = OpenVmRegisterAddress;
+impl<'a, ISA: OpenVmISA> ExecutionState for OpenVmExecutionState<'a, ISA> {
+    type RegisterAddress = ISA::RegisterAddress;
     type Value = u32;
 
     fn pc(&self) -> Self::Value {
-        self.0.pc()
+        self.inner.pc()
     }
 
     fn reg(&self, addr: &Self::RegisterAddress) -> Self::Value {
-        unsafe {
-            self.0
-                .memory
-                .memory
-                .get_f::<T>(REGISTER_ADDRESS_SPACE, addr.0 as u32)
-                .as_canonical_u32()
-        }
+        ISA::get_register_value(addr)
     }
 
     fn value_limb(value: Self::Value, limb_index: usize) -> Self::Value {
-        value >> (limb_index * 8) & 0xff
+        ISA::value_limb(value, limb_index)
     }
 
     fn global_clk(&self) -> usize {
@@ -70,23 +188,22 @@ impl<'a, T: PrimeField32> ExecutionState for OpenVmExecutionState<'a, T> {
     }
 }
 
-/// A type to represent register addresses during execution
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct OpenVmRegisterAddress(u8);
-
 impl<'a, ISA: OpenVmISA> Adapter for BabyBearOpenVmApcAdapter<'a, ISA> {
     type PowdrField = BabyBearField;
     type Field = BabyBear;
     type InstructionHandler = OriginalAirs<Self::Field, ISA>;
+    // TODO: is this riscv specific? if so, move to isa trait
     type BusInteractionHandler = OpenVmBusInteractionHandler<Self::PowdrField>;
     type Program = Prog<'a, Self::Field>;
     type Instruction = Instr<Self::Field, ISA>;
+    // TODO: is this riscv specific? if so, move to isa trait
     type MemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash> =
         OpenVmMemoryBusInteraction<Self::PowdrField, V>;
+    // TODO: is this riscv specific? if so, move to isa trait
     type CustomBusTypes = OpenVmBusType;
     type ApcStats = OvmApcStats;
     type AirId = String;
-    type ExecutionState = OpenVmExecutionState<'a, BabyBear>;
+    type ExecutionState = OpenVmExecutionState<'a, ISA>;
 
     fn into_field(e: Self::PowdrField) -> Self::Field {
         openvm_stark_sdk::p3_baby_bear::BabyBear::from_canonical_u32(
@@ -132,69 +249,10 @@ impl<'a, ISA: OpenVmISA> Adapter for BabyBearOpenVmApcAdapter<'a, ISA> {
     }
 }
 
-/// A newtype wrapper around `OpenVmInstruction` to implement the `Instruction` trait.
-/// This is necessary because we cannot implement a foreign trait for a foreign type.
 #[derive(Serialize, Deserialize)]
-pub struct Instr<F, ISA> {
-    pub inner: OpenVmInstruction<F>,
-    _marker: PhantomData<ISA>,
-}
-
-impl<F, ISA> From<OpenVmInstruction<F>> for Instr<F, ISA> {
-    fn from(value: OpenVmInstruction<F>) -> Self {
-        Self {
-            inner: value,
-            _marker: PhantomData,
-        }
-    }
-}
-
-// TODO: derive, probably the compiler being too conservative here
-impl<F, ISA> Clone for Instr<F, ISA>
-where
-    OpenVmInstruction<F>: Clone,
-{
-    fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<F: PrimeField32, ISA: OpenVmISA> Display for Instr<F, ISA> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", ISA::format(&self.inner))
-    }
-}
-
-impl<F, ISA: OpenVmISA> PcStep for Instr<F, ISA> {
-    fn pc_step() -> u32 {
-        ISA::DEFAULT_PC_STEP
-    }
-}
-
-impl<F: PrimeField32, ISA: OpenVmISA> Instruction<F> for Instr<F, ISA> {
-    fn pc_lookup_row(&self, pc: u64) -> Vec<F> {
-        let args = [
-            self.inner.opcode.to_field(),
-            self.inner.a,
-            self.inner.b,
-            self.inner.c,
-            self.inner.d,
-            self.inner.e,
-            self.inner.f,
-            self.inner.g,
-        ];
-        // The PC lookup row has the format:
-        // [pc, opcode, a, b, c, d, e, f, g]
-        let pc = F::from_canonical_u32(pc.try_into().unwrap());
-        once(pc).chain(args).collect()
-    }
-}
-#[derive(Serialize, Deserialize)]
-pub struct OpenVmApcCandidate<F, I> {
-    apc_with_stats: ApcWithStats<F, I, OpenVmRegisterAddress, u32, OvmApcStats>,
+pub struct OpenVmApcCandidate<ISA: OpenVmISA> {
+    apc_with_stats:
+        ApcWithStats<BabyBear, Instr<BabyBear, ISA>, ISA::RegisterAddress, u32, OvmApcStats>,
     execution_frequency: usize,
 }
 
@@ -209,9 +267,7 @@ impl OvmApcStats {
     }
 }
 
-impl<'a, ISA: OpenVmISA> Candidate<BabyBearOpenVmApcAdapter<'a, ISA>>
-    for OpenVmApcCandidate<BabyBear, Instr<BabyBear, ISA>>
-{
+impl<'a, ISA: OpenVmISA> Candidate<BabyBearOpenVmApcAdapter<'a, ISA>> for OpenVmApcCandidate<ISA> {
     fn create(
         apc_with_stats: AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a, ISA>>,
         pgo_program_pc_count: &HashMap<u64, u32>,
@@ -265,14 +321,14 @@ impl<'a, ISA: OpenVmISA> Candidate<BabyBearOpenVmApcAdapter<'a, ISA>>
     }
 }
 
-impl<P, I> OpenVmApcCandidate<P, I> {
+impl<ISA: OpenVmISA> OpenVmApcCandidate<ISA> {
     fn cells_saved_per_row(&self) -> usize {
         // The number of cells saved per row is the difference between the width before and after the APC.
         self.apc_with_stats.stats().widths.columns_saved().total()
     }
 }
 
-impl<P, I> KnapsackItem for OpenVmApcCandidate<P, I> {
+impl<ISA: OpenVmISA> KnapsackItem for OpenVmApcCandidate<ISA> {
     fn cost(&self) -> usize {
         self.apc_with_stats.stats().widths.after.total()
     }

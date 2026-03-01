@@ -7,12 +7,12 @@ use std::{
 };
 
 use crate::{
-    customize_exe::{OpenVmExecutionState, OpenVmRegisterAddress},
     extraction_utils::{
         record_arena_dimension_by_air_name_per_apc_call, OriginalAirs, OriginalVmConfig,
     },
-    instruction_sets::OpenVmISA,
-    Instr, RiscvISA,
+    instruction::Instr,
+    isa::OpenVmISA,
+    OpenVmExecutionState,
 };
 
 use itertools::Itertools;
@@ -24,15 +24,12 @@ use openvm_circuit::arch::{
 };
 #[cfg(feature = "aot")]
 use openvm_circuit::arch::{AotExecutor, AotMeteredExecutor};
-use openvm_circuit_derive::create_handler;
 use openvm_circuit_primitives::AlignedBytesBorrow;
 use openvm_instructions::instruction::Instruction;
-use openvm_sdk::config::SdkVmConfigExecutor;
-use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
     execution::{OptimisticConstraintEvaluator, OptimisticConstraints},
-    Apc,
+    Apc, InstructionHandler,
 };
 
 use openvm_circuit::{
@@ -46,10 +43,10 @@ use openvm_circuit::{
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
 /// It holds arenas for each original use for both cpu and gpu execution, so that this struct can be agnostic to the execution backend.
 /// When using the cpu backend, only `original_arenas_cpu` is used, and vice versa for gpu execution.
-pub struct PowdrExecutor<ISA> {
+pub struct PowdrExecutor<ISA: OpenVmISA> {
     pub air_by_opcode_id: OriginalAirs<BabyBear, ISA>,
-    pub executor_inventory: ExecutorInventory<SdkVmConfigExecutor<BabyBear>>,
-    pub apc: Arc<Apc<BabyBear, Instr<BabyBear, ISA>, OpenVmRegisterAddress, u32>>,
+    pub executor_inventory: ExecutorInventory<ISA::DummyExecutor>,
+    pub apc: Arc<Apc<BabyBear, Instr<BabyBear, ISA>, ISA::RegisterAddress, u32>>,
     pub original_arenas_cpu: Rc<RefCell<OriginalArenas<MatrixRecordArena<BabyBear>>>>,
     pub original_arenas_gpu: Rc<RefCell<OriginalArenas<DenseRecordArena>>>,
     pub height_change: u32,
@@ -73,11 +70,11 @@ pub enum OriginalArenas<A> {
 impl<A: Arena> OriginalArenas<A> {
     /// Given an estimate of how many times the APC is called in this segment, and the original airs and apc,
     /// initializes the arenas iff not already initialized.
-    fn ensure_initialized<ISA>(
+    fn ensure_initialized<ISA: OpenVmISA>(
         &mut self,
         apc_call_count_estimate: impl Fn() -> usize,
         original_airs: &OriginalAirs<BabyBear, ISA>,
-        apc: &Arc<Apc<BabyBear, Instr<BabyBear, ISA>, OpenVmRegisterAddress, u32>>,
+        apc: &Arc<Apc<BabyBear, Instr<BabyBear, ISA>, ISA::RegisterAddress, u32>>,
     ) -> &mut InitializedOriginalArenas<A> {
         match self {
             OriginalArenas::Uninitialized => {
@@ -108,10 +105,10 @@ pub struct InitializedOriginalArenas<A> {
 
 impl<A: Arena> InitializedOriginalArenas<A> {
     /// Creates a new instance of `InitializedOriginalArenas`.
-    pub fn new<ISA>(
+    pub fn new<ISA: OpenVmISA>(
         apc_call_count_estimate: usize,
         original_airs: &OriginalAirs<BabyBear, ISA>,
-        apc: &Arc<Apc<BabyBear, Instr<BabyBear, ISA>, OpenVmRegisterAddress, u32>>,
+        apc: &Arc<Apc<BabyBear, Instr<BabyBear, ISA>, ISA::RegisterAddress, u32>>,
     ) -> Self {
         let record_arena_dimensions =
             record_arena_dimension_by_air_name_per_apc_call(apc, original_airs);
@@ -193,17 +190,17 @@ struct CachedInstructionMeta {
 /// A struct to interpret the pre-compute data as for PowdrExecutor.
 #[derive(AlignedBytesBorrow, Clone)]
 #[repr(C)]
-struct PowdrPreCompute<F, Ctx> {
+struct PowdrPreCompute<Ctx, ISA: OpenVmISA> {
     height_change: u32,
-    original_instructions: Vec<(ExecuteFunc<F, Ctx>, Vec<u8>)>,
-    optimistic_constraints: OptimisticConstraints<OpenVmRegisterAddress, u32>,
+    original_instructions: Vec<(ExecuteFunc<BabyBear, Ctx>, Vec<u8>)>,
+    optimistic_constraints: OptimisticConstraints<ISA::RegisterAddress, u32>,
 }
 
 impl<ISA: OpenVmISA> InterpreterExecutor<BabyBear> for PowdrExecutor<ISA> {
     fn pre_compute_size(&self) -> usize {
         // TODO: do we know `ExecutionCtx` is correct? It's only one implementation of `ExecutionCtxTrait`.
         // A clean fix would be to add `Ctx` as a generic parameter to this method in the `Executor` trait, but that would be a breaking change.
-        size_of::<PowdrPreCompute<BabyBear, ExecutionCtx>>()
+        size_of::<PowdrPreCompute<ExecutionCtx, ISA>>()
     }
 
     #[cfg(not(feature = "tco"))]
@@ -216,11 +213,11 @@ impl<ISA: OpenVmISA> InterpreterExecutor<BabyBear> for PowdrExecutor<ISA> {
     where
         Ctx: ExecutionCtxTrait,
     {
-        let pre_compute: &mut PowdrPreCompute<BabyBear, Ctx> = data.borrow_mut();
+        let pre_compute: &mut PowdrPreCompute<Ctx, ISA> = data.borrow_mut();
 
         self.pre_compute_impl::<Ctx>(pc, inst, pre_compute)?;
 
-        Ok(execute_e1_impl::<BabyBear, Ctx>)
+        Ok(execute_e1_impl::<Ctx, ISA>)
     }
 
     #[cfg(feature = "tco")]
@@ -243,7 +240,7 @@ impl<ISA: OpenVmISA> InterpreterMeteredExecutor<BabyBear> for PowdrExecutor<ISA>
     fn metered_pre_compute_size(&self) -> usize {
         // TODO: do we know `MeteredCtx` is correct? It's only one implementation of `MeteredExecutionCtxTrait`.
         // A clean fix would be to add `Ctx` as a generic parameter to this method in the `MeteredExecutor` trait, but that would be a breaking change.
-        size_of::<E2PreCompute<PowdrPreCompute<BabyBear, MeteredCtx>>>()
+        size_of::<E2PreCompute<PowdrPreCompute<MeteredCtx, ISA>>>()
     }
 
     #[cfg(not(feature = "tco"))]
@@ -257,12 +254,12 @@ impl<ISA: OpenVmISA> InterpreterMeteredExecutor<BabyBear> for PowdrExecutor<ISA>
     where
         Ctx: MeteredExecutionCtxTrait,
     {
-        let pre_compute: &mut E2PreCompute<PowdrPreCompute<BabyBear, Ctx>> = data.borrow_mut();
+        let pre_compute: &mut E2PreCompute<PowdrPreCompute<Ctx, ISA>> = data.borrow_mut();
         pre_compute.chip_idx = chip_idx as u32;
 
         self.pre_compute_impl::<Ctx>(pc, inst, &mut pre_compute.data)?;
 
-        Ok(execute_e2_impl::<BabyBear, Ctx>)
+        Ok(execute_e2_impl::<Ctx, ISA>)
     }
 
     #[cfg(feature = "tco")]
@@ -325,16 +322,13 @@ impl<ISA: OpenVmISA> PowdrExecutor<ISA> {
         &self,
         pc: u32,
         inst: &Instruction<BabyBear>,
-        data: &mut PowdrPreCompute<BabyBear, Ctx>,
+        data: &mut PowdrPreCompute<Ctx, ISA>,
     ) -> Result<(), StaticProgramError>
     where
         Ctx: ExecutionCtxTrait,
     {
         use openvm_instructions::program::DEFAULT_PC_STEP;
-        use openvm_stark_backend::{
-            p3_field::Field,
-            p3_maybe_rayon::prelude::{IndexedParallelIterator, ParallelIterator},
-        };
+        use openvm_stark_backend::p3_field::Field;
 
         let &Instruction {
             a,
@@ -367,7 +361,7 @@ impl<ISA: OpenVmISA> PowdrExecutor<ISA> {
             original_instructions: self
                 .apc
                 .block
-                .par_instructions()
+                .instructions()
                 .enumerate()
                 .map(|(idx, instruction)| {
                     let executor = executor_inventory
@@ -406,14 +400,14 @@ impl<ISA: OpenVmISA> PowdrExecutor<ISA> {
 
 /// The implementation of the execute function, shared between Executor and MeteredExecutor.
 #[inline(always)]
-unsafe fn execute_e12_impl<F: PrimeField32, CTX: ExecutionCtxTrait>(
-    pre_compute: &PowdrPreCompute<F, CTX>,
-    exec_state: &mut VmExecState<F, GuestMemory, CTX>,
+unsafe fn execute_e12_impl<CTX: ExecutionCtxTrait, ISA: OpenVmISA>(
+    pre_compute: &PowdrPreCompute<CTX, ISA>,
+    exec_state: &mut VmExecState<BabyBear, GuestMemory, CTX>,
 ) {
     let mut optimistic_constraint_evalutator = OptimisticConstraintEvaluator::new();
     // Check the state before execution
     assert!(optimistic_constraint_evalutator
-        .try_next_execution_step(
+        .try_next_execution_step::<OpenVmExecutionState<'_, ISA>>(
             &OpenVmExecutionState::from(&exec_state.vm_state),
             &pre_compute.optimistic_constraints
         )
@@ -422,7 +416,7 @@ unsafe fn execute_e12_impl<F: PrimeField32, CTX: ExecutionCtxTrait>(
         executor(data.as_ptr(), exec_state);
         // Check the state after each original instruction
         assert!(optimistic_constraint_evalutator
-            .try_next_execution_step(
+            .try_next_execution_step::<OpenVmExecutionState<'_, ISA>>(
                 &OpenVmExecutionState::from(&exec_state.vm_state),
                 &pre_compute.optimistic_constraints
             )
@@ -430,36 +424,39 @@ unsafe fn execute_e12_impl<F: PrimeField32, CTX: ExecutionCtxTrait>(
     }
 }
 
-#[create_handler]
-unsafe fn execute_e1_impl<F: PrimeField32, CTX: ExecutionCtxTrait>(
+// TODO: create handler, current derive doesnt work because of generics. same for e2.
+// #[create_handler]
+unsafe fn execute_e1_impl<CTX: ExecutionCtxTrait, ISA: OpenVmISA>(
     pre_compute: *const u8,
-    exec_state: &mut VmExecState<F, GuestMemory, CTX>,
+    exec_state: &mut VmExecState<BabyBear, GuestMemory, CTX>,
 ) {
-    let pre_compute: &PowdrPreCompute<F, CTX> =
-        std::slice::from_raw_parts(pre_compute, size_of::<PowdrPreCompute<F, CTX>>()).borrow();
-    execute_e12_impl::<F, CTX>(pre_compute, exec_state);
+    let pre_compute: &PowdrPreCompute<CTX, ISA> =
+        std::slice::from_raw_parts(pre_compute, size_of::<PowdrPreCompute<CTX, ISA>>()).borrow();
+    execute_e12_impl::<CTX, ISA>(pre_compute, exec_state);
 }
 
-#[create_handler]
-unsafe fn execute_e2_impl<F: PrimeField32, CTX: MeteredExecutionCtxTrait>(
+// #[create_handler]
+unsafe fn execute_e2_impl<CTX: MeteredExecutionCtxTrait, ISA: OpenVmISA>(
     pre_compute: *const u8,
-    exec_state: &mut VmExecState<F, GuestMemory, CTX>,
+    exec_state: &mut VmExecState<BabyBear, GuestMemory, CTX>,
 ) {
-    let pre_compute: &E2PreCompute<PowdrPreCompute<F, CTX>> = std::slice::from_raw_parts(
+    let pre_compute: &E2PreCompute<PowdrPreCompute<CTX, ISA>> = std::slice::from_raw_parts(
         pre_compute,
-        size_of::<E2PreCompute<PowdrPreCompute<F, CTX>>>(),
+        size_of::<E2PreCompute<PowdrPreCompute<CTX, ISA>>>(),
     )
     .borrow();
     exec_state.ctx.on_height_change(
         pre_compute.chip_idx as usize,
         pre_compute.data.height_change,
     );
-    execute_e12_impl::<F, CTX>(&pre_compute.data, exec_state);
+    execute_e12_impl::<CTX, ISA>(&pre_compute.data, exec_state);
 }
 
 // Preflight execution is implemented separately for CPU and GPU backends, because they use a different arena from `self`
 // TODO: reduce code duplication between the two implementations. The main issue now is we need to use the concrete arena types.
-impl<ISA> PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>> for PowdrExecutor<ISA> {
+impl<ISA: OpenVmISA> PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>>
+    for PowdrExecutor<ISA>
+{
     fn execute(
         &self,
         state: VmStateMut<BabyBear, TracingMemory, MatrixRecordArena<BabyBear>>,
@@ -528,7 +525,7 @@ impl<ISA> PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>> for PowdrExec
 }
 
 // The GPU preflight executor implementation
-impl PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExecutor<RiscvISA> {
+impl<ISA: OpenVmISA> PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExecutor<ISA> {
     fn execute(
         &self,
         state: VmStateMut<BabyBear, TracingMemory, DenseRecordArena>,
@@ -601,16 +598,16 @@ impl PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExecutor<RiscvISA> {
     }
 }
 
-impl PowdrExecutor<RiscvISA> {
+impl<ISA: OpenVmISA> PowdrExecutor<ISA> {
     pub fn new(
-        air_by_opcode_id: OriginalAirs<BabyBear, RiscvISA>,
-        base_config: OriginalVmConfig<RiscvISA>,
-        apc: Arc<Apc<BabyBear, Instr<BabyBear, RiscvISA>, OpenVmRegisterAddress, u32>>,
+        air_by_opcode_id: OriginalAirs<BabyBear, ISA>,
+        base_config: OriginalVmConfig<ISA>,
+        apc: Arc<Apc<BabyBear, Instr<BabyBear, ISA>, ISA::RegisterAddress, u32>>,
         record_arena_by_air_name_cpu: Rc<RefCell<OriginalArenas<MatrixRecordArena<BabyBear>>>>,
         record_arena_by_air_name_gpu: Rc<RefCell<OriginalArenas<DenseRecordArena>>>,
         height_change: u32,
     ) -> Self {
-        let executor_inventory = base_config.config.sdk.create_executors().unwrap();
+        let executor_inventory = ISA::lower(base_config.config).create_executors().unwrap();
 
         let arena_index_by_name =
             record_arena_dimension_by_air_name_per_apc_call(apc.as_ref(), &air_by_opcode_id)
@@ -628,12 +625,9 @@ impl PowdrExecutor<RiscvISA> {
                     .get(&instruction.inner.opcode)
                     .expect("missing executor for opcode")
                     as usize;
-                let air_name = air_by_opcode_id
-                    .opcode_to_air
-                    .get(&instruction.inner.opcode)
-                    .expect("missing air for opcode");
+                let (air_name, _) = air_by_opcode_id.get_instruction_air_and_id(instruction);
                 let arena_index = *arena_index_by_name
-                    .get(air_name)
+                    .get(&air_name)
                     .expect("missing arena for air");
                 CachedInstructionMeta {
                     executor_index,

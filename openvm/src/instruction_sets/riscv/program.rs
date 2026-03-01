@@ -6,13 +6,14 @@ use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::blocks::{collect_basic_blocks, BasicBlock};
 use powdr_autoprecompiles::DegreeBound;
+use powdr_openvm_common::extraction_utils::OriginalVmConfig;
+use powdr_openvm_common::{BabyBearOpenVmApcAdapter, SpecializedConfig};
 use powdr_riscv_elf::ElfProgram;
 use serde::{Deserialize, Serialize};
 
-use crate::extraction_utils::OriginalVmConfig;
 use crate::instruction_sets::riscv::opcode::branch_opcodes_bigint_set;
 use crate::instruction_sets::OpenVmISA;
-use crate::{BabyBearOpenVmApcAdapter, Instr, Prog, RiscvISA, SpecializedConfig};
+use crate::{Instr, Prog, RiscvISA};
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(bound = "")]

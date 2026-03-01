@@ -2,7 +2,7 @@ use openvm_instructions::program::Program as OpenVmProgram;
 use openvm_stark_backend::p3_field::PrimeField32;
 use powdr_autoprecompiles::blocks::Program;
 
-use crate::{instruction_sets::OpenVmISA, Instr};
+use crate::{instruction::Instr, isa::OpenVmISA};
 
 /// A newtype wrapper around `OpenVmProgram` to implement the `Program` trait.
 /// This is necessary because we cannot implement a foreign trait for a foreign type.

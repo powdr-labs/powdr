@@ -8,10 +8,10 @@ repository.workspace = true
 
 [features]
 default = []
-aot = ["openvm-sdk/aot", "powdr-openvm-hints-circuit/aot"]
-tco = ["openvm-sdk/tco", "powdr-openvm-hints-circuit/tco"]
-metrics = ["openvm-sdk/metrics", "openvm-stark-backend/metrics", "openvm-stark-sdk/metrics"]
-cuda = ["openvm-sdk/cuda", "openvm-circuit-primitives/cuda", "dep:openvm-cuda-backend", "dep:openvm-cuda-common", "dep:openvm-cuda-builder"]
+aot = ["powdr-openvm-common/aot", "powdr-openvm-hints-circuit/aot"]
+tco = ["powdr-openvm-common/tco", "powdr-openvm-hints-circuit/tco"]
+metrics = ["powdr-openvm-common/metrics"]
+cuda = ["powdr-openvm-common/cuda"]
 
 [dependencies]
 openvm.workspace = true
@@ -53,6 +53,7 @@ powdr-riscv-elf.workspace = true
 powdr-autoprecompiles.workspace = true
 powdr-constraint-solver.workspace = true
 powdr-openvm-bus-interaction-handler.workspace = true
+powdr-openvm-common.workspace = true
 
 powdr-openvm-hints-transpiler.workspace = true
 powdr-openvm-hints-circuit.workspace = true
