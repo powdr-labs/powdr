@@ -409,7 +409,7 @@ impl OriginalVmConfig {
             .chain(shared_range_tuple_checker.into_iter().map(|chip| {
                 (
                     chip.bus().inner.index,
-                    BusType::Other(OpenVmBusType::TupleRangeChecker),
+                    BusType::Other(OpenVmBusType::TupleRangeChecker(chip.bus().sizes)),
                 )
             }))
             .map(|(id, bus_type)| (id as u64, bus_type)),

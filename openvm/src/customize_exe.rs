@@ -189,18 +189,9 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
     let airs = original_config.airs(config.degree_bound).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
     let bus_map = original_config.bus_map();
 
-    let range_tuple_checker_sizes = original_program
-        .vm_config
-        .sdk
-        .rv32m
-        .unwrap()
-        .range_tuple_checker_sizes;
     let vm_config = VmConfig {
         instruction_handler: &airs,
-        bus_interaction_handler: OpenVmBusInteractionHandler::new(
-            bus_map.clone(),
-            range_tuple_checker_sizes,
-        ),
+        bus_interaction_handler: OpenVmBusInteractionHandler::new(bus_map.clone()),
         bus_map: bus_map.clone(),
     };
 

@@ -157,7 +157,7 @@ fn test_optimize_reth_op() {
     assert!(machine.derived_columns.is_empty());
 
     let bus_map = &apc.bus_map;
-    let bus_int_handler = OpenVmBusInteractionHandler::new(bus_map.clone(), [256, 8192]);
+    let bus_int_handler = OpenVmBusInteractionHandler::new(bus_map.clone());
 
     let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&machine);
     let machine = optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
