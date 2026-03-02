@@ -163,8 +163,9 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
         let mut selection =
             select_blocks_greedy(&apcs, &blocks, budget, max_selected, &execution_bb_runs);
 
-        // skip first N per config
-        selection.drain(..config.skip_autoprecompiles as usize);
+        // skip per config
+        let skip = (config.skip_autoprecompiles as usize).min(selection.len());
+        selection.drain(..skip);
 
         // filter the apcs using the selection indices, keeping selection order
         apcs.into_iter()
@@ -227,7 +228,10 @@ fn apc_candidate_json_export<A: Adapter, C: ApcCandidate<A>>(
         original_blocks,
         stats: apc.inner().evaluation_result(),
         width_before: apc.cost_before_opt(),
-        value: apc.value_per_use() * block.count as usize,
+        value: apc
+            .value_per_use()
+            .checked_mul(block.count as usize)
+            .unwrap(),
         cost_before: apc.cost_before_opt() as f64,
         cost_after: apc.cost_after_opt() as f64,
     }
