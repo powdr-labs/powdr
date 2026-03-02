@@ -552,12 +552,13 @@ pub fn prove(
 
 #[cfg(test)]
 mod tests {
-    use crate::instruction_sets::riscv::program::air_metrics;
-
     use super::*;
     use expect_test::{expect, Expect};
     use itertools::Itertools;
-    use powdr_openvm_common::extraction_utils::{AirWidths, AirWidthsDiff};
+    use powdr_openvm_common::{
+        execution_profile_from_guest,
+        extraction_utils::{AirWidths, AirWidthsDiff},
+    };
     use pretty_assertions::assert_eq;
     use test_log::test;
 
@@ -1237,7 +1238,7 @@ mod tests {
         )
         .unwrap();
 
-        let (powdr_air_metrics, non_powdr_air_metrics) = air_metrics(compiled_program, max_degree);
+        let (powdr_air_metrics, non_powdr_air_metrics) = compiled_program.air_metrics(max_degree);
 
         expected_metrics.powdr_expected_sum.assert_debug_eq(
             &powdr_air_metrics

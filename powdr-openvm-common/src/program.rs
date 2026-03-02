@@ -1,10 +1,13 @@
+use openvm_circuit::arch::{VmBuilder, VmCircuitConfig};
 use openvm_instructions::program::Program as OpenVmProgram;
 use openvm_stark_backend::p3_field::PrimeField32;
 use powdr_autoprecompiles::blocks::Program;
 
 use crate::extraction_utils::OriginalVmConfig;
+use crate::extraction_utils::{get_air_metrics, AirMetrics, AirWidthsDiff};
+use crate::BabyBearPoseidon2Engine;
 use crate::{instruction::Instr, isa::OpenVmISA};
-use crate::{BabyBearOpenVmApcAdapter, SpecializedConfig};
+use crate::{BabyBearOpenVmApcAdapter, SpecializedConfig, SpecializedConfigCpuBuilder};
 
 /// A newtype wrapper around `OpenVmProgram` to implement the `Program` trait.
 /// This is necessary because we cannot implement a foreign trait for a foreign type.
@@ -103,5 +106,54 @@ impl<ISA: OpenVmISA> OriginalCompiledProgram<ISA> {
             exe: self.exe.clone(),
             vm_config: SpecializedConfig::new(self.vm_config.clone(), Vec::new(), degree_bound),
         }
+    }
+}
+
+impl<ISA: OpenVmISA> CompiledProgram<ISA> {
+    // Return a tuple of (powdr AirMetrics, non-powdr AirMetrics)
+    pub fn air_metrics(
+        &self,
+        max_degree: usize,
+    ) -> (Vec<(AirMetrics, Option<AirWidthsDiff>)>, Vec<AirMetrics>) {
+        let air_inventory = self.vm_config.create_airs().unwrap();
+
+        let chip_complex = <SpecializedConfigCpuBuilder<ISA> as VmBuilder<
+            BabyBearPoseidon2Engine,
+        >>::create_chip_complex(
+            &SpecializedConfigCpuBuilder::default(),
+            &self.vm_config,
+            air_inventory,
+        )
+        .unwrap();
+
+        let inventory = chip_complex.inventory;
+
+        // Order of precompile is the same as that of Powdr executors in chip inventory
+        let mut apc_stats = self
+            .vm_config
+            .powdr
+            .precompiles
+            .iter()
+            .map(|precompile| precompile.apc_stats.clone());
+
+        inventory.airs().ext_airs().iter().fold(
+            (Vec::new(), Vec::new()),
+            |(mut powdr_air_metrics, mut non_powdr_air_metrics), air| {
+                let name = air.name();
+                // We actually give name "powdr_air_for_opcode_<opcode>" to the AIRs,
+                // but OpenVM uses the actual Rust type (PowdrAir) as the name in this method.
+                // TODO this is hacky but not sure how to do it better rn.
+                if name.starts_with("PowdrAir") {
+                    powdr_air_metrics.push((
+                        get_air_metrics(air.clone(), max_degree),
+                        Some(apc_stats.next().unwrap().widths),
+                    ));
+                } else {
+                    non_powdr_air_metrics.push(get_air_metrics(air.clone(), max_degree));
+                }
+
+                (powdr_air_metrics, non_powdr_air_metrics)
+            },
+        )
     }
 }

@@ -29,7 +29,6 @@ use openvm_sdk::config::SdkVmCpuBuilder;
 
 pub mod instruction_formatter;
 pub mod opcode;
-pub mod program;
 pub mod symbolic_instruction_builder;
 
 // Clone should not be required
