@@ -26,7 +26,9 @@ impl Display for OpenVmBusType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             OpenVmBusType::VariableRangeChecker => write!(f, "VARIABLE_RANGE_CHECKER"),
-            OpenVmBusType::TupleRangeChecker(sizes) => write!(f, "TUPLE_RANGE_CHECKER_{sizes:?}"),
+            OpenVmBusType::TupleRangeChecker(sizes) => {
+                write!(f, "TUPLE_RANGE_CHECKER_{}_{}", sizes[0], sizes[1])
+            }
             OpenVmBusType::BitwiseLookup => write!(f, "BITWISE_LOOKUP"),
         }
     }

@@ -61,14 +61,13 @@ impl<T: FieldElement> OpenVmBusInteractionHandler<T> {
         self.bus_map
             .all_types_by_id()
             .values()
-            .filter_map(|ty| {
+            .find_map(|ty| {
                 if let BusType::Other(OpenVmBusType::TupleRangeChecker(sizes)) = ty {
                     Some(*sizes)
                 } else {
                     None
                 }
             })
-            .next()
             .unwrap()
     }
 }
