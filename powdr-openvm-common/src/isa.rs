@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use openvm_circuit::arch::{
     AirInventory, AnyEnum, ChipInventory, ChipInventoryError, DenseRecordArena, Executor,
@@ -13,6 +13,7 @@ use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use serde::{Deserialize, Serialize};
 
+use crate::program::OriginalCompiledProgram;
 use crate::trace_generator::cpu::periphery::SharedPeripheryChipsCpu;
 use crate::vm::PowdrExtensionExecutor;
 use crate::BabyBearSC;
@@ -28,6 +29,9 @@ pub type OriginalCpuChipInventory =
 
 pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
     const DEFAULT_PC_STEP: u32;
+
+    type Program;
+
     type RegisterAddress: PartialEq
         + Eq
         + std::hash::Hash
@@ -85,11 +89,11 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
 
     fn instruction_allowlist() -> HashSet<VmOpcode>;
 
-    fn extra_targets() -> HashSet<VmOpcode>;
-
     fn get_register_value(register: &Self::RegisterAddress) -> u32;
 
     fn value_limb(value: u32, limb_index: usize) -> u32;
 
     fn format<F: PrimeField32>(instruction: &Instruction<F>) -> String;
+
+    fn get_labels(elf: &OriginalCompiledProgram<Self>) -> BTreeMap<u64, Vec<String>>;
 }

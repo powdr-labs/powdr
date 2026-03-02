@@ -41,11 +41,9 @@ impl<'a, F: PrimeField32, ISA: OpenVmISA> Program<Instr<F, ISA>> for Prog<'a, F>
 use std::{collections::BTreeSet, sync::Arc};
 
 use openvm_instructions::exe::VmExe;
-use openvm_instructions::program::DEFAULT_PC_STEP;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::blocks::{collect_basic_blocks, BasicBlock};
 use powdr_autoprecompiles::DegreeBound;
-use powdr_riscv_elf::ElfProgram;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -59,45 +57,20 @@ pub struct CompiledProgram<ISA: OpenVmISA> {
 pub struct OriginalCompiledProgram<ISA: OpenVmISA> {
     pub exe: Arc<VmExe<BabyBear>>,
     pub vm_config: OriginalVmConfig<ISA>,
-    pub elf: ElfProgram,
+    pub elf: ISA::Program,
 }
 
 impl<ISA: OpenVmISA> OriginalCompiledProgram<ISA> {
     /// Segments the program into basic blocks
     pub fn collect_basic_blocks(&self) -> Vec<BasicBlock<Instr<BabyBear, ISA>>> {
-        let labels = self.elf.text_labels();
-
-        let jumpdest_set = self.add_extra_targets(labels.clone(), DEFAULT_PC_STEP);
+        let jumpdest_set = ISA::get_labels(self);
 
         let program = Prog::from(&self.exe.program);
 
         // Convert the jump destinations to u64 for compatibility with the `collect_basic_blocks` function.
-        let jumpdest_set = jumpdest_set
-            .iter()
-            .map(|&x| x as u64)
-            .collect::<BTreeSet<_>>();
+        let jumpdest_set = jumpdest_set.keys().copied().collect::<BTreeSet<_>>();
 
         collect_basic_blocks::<BabyBearOpenVmApcAdapter<ISA>>(&program, &jumpdest_set)
-    }
-
-    fn add_extra_targets(&self, mut labels: BTreeSet<u32>, pc_step: u32) -> BTreeSet<u32> {
-        let branch_opcodes_bigint = ISA::extra_targets();
-        let program = &self.exe.program;
-        let new_labels = program
-            .instructions_and_debug_infos
-            .iter()
-            .enumerate()
-            .filter_map(|(i, instr)| {
-                let instr = instr.as_ref().unwrap().0.clone();
-                let adjusted_pc = program.pc_base + (i as u32) * pc_step;
-                let op = instr.opcode;
-                branch_opcodes_bigint
-                    .contains(&op)
-                    .then_some(adjusted_pc + instr.c.as_canonical_u32())
-            });
-        labels.extend(new_labels);
-
-        labels
     }
 
     /// Converts to a `CompiledProgram` with the original vm config (without autoprecompiles).

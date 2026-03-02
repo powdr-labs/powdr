@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use derive_more::From;
 use openvm_circuit::arch::{AirInventory, ChipInventoryError, VmBuilder};
@@ -14,8 +14,10 @@ use openvm_stark_sdk::{
 };
 use powdr_openvm_common::{
     isa::{OpenVmISA, OriginalCpuChipComplex, OriginalCpuChipInventory},
+    program::OriginalCompiledProgram,
     vm::PowdrExtensionExecutor,
 };
+use powdr_riscv_elf::ElfProgram;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -127,13 +129,80 @@ impl OpenVmISA for RiscvISA {
         unimplemented!("execution constraints are currently unused")
     }
 
-    /// Besides the base RISCV-V branching instructions, the bigint extension adds two more branching
-    /// instruction classes over BranchEqual and BranchLessThan.
-    /// Those instructions have the form <INSTR rs0 rs1 target_offset ...>, where target_offset is the
-    /// relative jump we're interested in.
-    /// This means that for a given program address A containing the instruction above,
-    /// we add A + target_offset as a target as well.
-    fn extra_targets() -> HashSet<VmOpcode> {
-        branch_opcodes_bigint_set()
+    type Program = ElfProgram;
+
+    fn get_labels(program: &OriginalCompiledProgram<Self>) -> BTreeMap<u64, Vec<String>> {
+        let labels = program.elf.text_labels();
+        add_extra_targets(program, labels.clone(), DEFAULT_PC_STEP);
+
+        let debug_info = program.elf.debug_info();
+        // tracing::info!(
+        //     "Got {} basic blocks from `collect_basic_blocks`",
+        //     blocks.len()
+        // );
+        // if tracing::enabled!(tracing::Level::DEBUG) {
+        //     tracing::debug!("Basic blocks sorted by execution count (top 10):");
+        //     for (count, block) in blocks
+        //         .iter()
+        //         .filter_map(|block| Some((pgo.pc_execution_count(block.start_pc)?, block)))
+        //         .sorted_by_key(|(count, _)| *count)
+        //         .rev()
+        //         .take(10)
+        //     {
+        //         let name = debug_info
+        //             .symbols
+        //             .try_get_one_or_preceding(block.start_pc)
+        //             .map(|(symbol, offset)| format!("{} + {offset}", rustc_demangle::demangle(symbol)))
+        //             .unwrap_or_default();
+        //         tracing::debug!("Basic block (executed {count} times), {name}:\n{block}",);
+        //     }
+        // }
+
+        let labels = debug_info
+            .symbols
+            .table()
+            .iter()
+            .map(|(addr, names)| {
+                (
+                    *addr as u64,
+                    names
+                        .iter()
+                        .map(|name| rustc_demangle::demangle(name).to_string())
+                        .collect(),
+                )
+            })
+            .collect();
+
+        labels
     }
+}
+
+/// Besides the base RISCV-V branching instructions, the bigint extension adds two more branching
+/// instruction classes over BranchEqual and BranchLessThan.
+/// Those instructions have the form <INSTR rs0 rs1 target_offset ...>, where target_offset is the
+/// relative jump we're interested in.
+/// This means that for a given program address A containing the instruction above,
+/// we add A + target_offset as a target as well.
+fn add_extra_targets(
+    compiled_program: &OriginalCompiledProgram<RiscvISA>,
+    mut labels: BTreeSet<u32>,
+    pc_step: u32,
+) -> BTreeSet<u32> {
+    let branch_opcodes_bigint = branch_opcodes_bigint_set();
+    let program = &compiled_program.exe.program;
+    let new_labels = program
+        .instructions_and_debug_infos
+        .iter()
+        .enumerate()
+        .filter_map(|(i, instr)| {
+            let instr = instr.as_ref().unwrap().0.clone();
+            let adjusted_pc = program.pc_base + (i as u32) * pc_step;
+            let op = instr.opcode;
+            branch_opcodes_bigint
+                .contains(&op)
+                .then_some(adjusted_pc + instr.c.as_canonical_u32())
+        });
+    labels.extend(new_labels);
+
+    labels
 }
