@@ -1,7 +1,7 @@
 Instructions:
-  LOADB rd_rs2_ptr = 8, rs1_ptr = 2, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
-  STOREB rd_rs2_ptr = 8, rs1_ptr = 3, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
-  ADD rd_ptr = 8, rs1_ptr = 0, rs2 = 3, rs2_as = 0
+  0: LOADB rd_rs2_ptr = 8, rs1_ptr = 2, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
+  4: STOREB rd_rs2_ptr = 8, rs1_ptr = 3, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
+  8: ADD rd_ptr = 8, rs1_ptr = 0, rs2 = 3, rs2_as = 0
 
 APC advantage:
   - Main columns: 113 -> 50 (2.26x reduction)

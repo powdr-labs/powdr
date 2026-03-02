@@ -1,5 +1,5 @@
 Instructions:
-  ADD rd_ptr = 48, rs1_ptr = 0, rs2 = 216, rs2_as = 0
+  0: ADD rd_ptr = 48, rs1_ptr = 0, rs2 = 216, rs2_as = 0
 
 APC advantage:
   - Main columns: 36 -> 10 (3.60x reduction)
