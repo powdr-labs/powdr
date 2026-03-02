@@ -1,7 +1,7 @@
 Instructions:
-  ADD rd_ptr = 10, rs1_ptr = 0, rs2 = 33, rs2_as = 0
-  BEQ 8 10 40 1 1
-  ADD rd_ptr = 9, rs1_ptr = 9, rs2 = 1, rs2_as = 0
+  0: ADD rd_ptr = 10, rs1_ptr = 0, rs2 = 33, rs2_as = 0
+  4: BEQ 8 10 40 1 1
+  8: ADD rd_ptr = 9, rs1_ptr = 9, rs2 = 1, rs2_as = 0
 
 APC advantage:
   - Main columns: 98 -> 27 (3.63x reduction)

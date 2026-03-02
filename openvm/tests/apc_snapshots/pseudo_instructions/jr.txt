@@ -1,5 +1,5 @@
 Instructions:
-  JAL 1 0 8 1 0
+  0: JAL 1 0 8 1 0
 
 APC advantage:
   - Main columns: 18 -> 2 (9.00x reduction)

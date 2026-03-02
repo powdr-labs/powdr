@@ -1,5 +1,5 @@
 Instructions:
-  SLTU rd_ptr = 8, rs1_ptr = 0, rs2 = 5, rs2_as = 1
+  0: SLTU rd_ptr = 8, rs1_ptr = 0, rs2 = 5, rs2_as = 1
 
 APC advantage:
   - Main columns: 37 -> 22 (1.68x reduction)

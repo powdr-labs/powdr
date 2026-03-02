@@ -1,5 +1,5 @@
 Instructions:
-  BLT 8 5 2 1 1
+  0: BLT 8 5 2 1 1
 
 APC advantage:
   - Main columns: 32 -> 22 (1.45x reduction)

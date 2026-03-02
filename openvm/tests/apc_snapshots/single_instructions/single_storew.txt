@@ -1,5 +1,5 @@
 Instructions:
-  STOREW rd_rs2_ptr = 8, rs1_ptr = 2, imm = 4, mem_as = 2, needs_write = 1, imm_sign = 1
+  0: STOREW rd_rs2_ptr = 8, rs1_ptr = 2, imm = 4, mem_as = 2, needs_write = 1, imm_sign = 1
 
 APC advantage:
   - Main columns: 41 -> 22 (1.86x reduction)

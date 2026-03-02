@@ -51,11 +51,12 @@ pub mod apc_builder_utils {
             bus_map: bus_map.clone(),
         };
 
+        let superblock = superblock.map_instructions(Instr);
         let superblock_str = superblock
             .instructions()
-            .map(|inst| format!("  {}", openvm_instruction_formatter(inst)))
+            .zip(superblock.pcs())
+            .map(|(inst, pc)| format!("  {pc}: {}", openvm_instruction_formatter(&inst.0)))
             .join("\n");
-        let superblock = superblock.map_instructions(Instr);
 
         // Use this env var to output serialized APCs for tests as well.
         let export_path = std::env::var("APC_EXPORT_PATH").ok();
