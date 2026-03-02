@@ -9,7 +9,7 @@ def autopct_with_billions(pct, total):
     val = pct * total / 100
     return f'{pct:.1f}%\n{val/1e9:.2f}B'
 
-def main(metrics_path, output_path=None, subtitle=None):
+def compute_cells_by_air(metrics_path):
     # Load only the app dataframe
     app, _, _ = load_metrics_dataframes(metrics_path)
     
@@ -28,11 +28,16 @@ def main(metrics_path, output_path=None, subtitle=None):
 
     # Group and threshold
     cells_by_air = df.groupby('air_name')['cells'].sum().sort_values(ascending=False)
-    print("Cells by AIR:")
-    print(cells_by_air)
 
     # Sanity check: #cells should match total_cells
     assert total_cells == cells_by_air.sum()
+
+    return cells_by_air
+
+def main(metrics_path, output_path=None, subtitle=None):
+    cells_by_air = compute_cells_by_air(metrics_path)
+    print("Cells by AIR:")
+    print(cells_by_air)
 
     threshold_ratio = 0.015
     threshold = threshold_ratio * cells_by_air.sum()
