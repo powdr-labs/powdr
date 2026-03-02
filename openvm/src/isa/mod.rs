@@ -1,35 +1,43 @@
 use std::collections::HashSet;
 
-use openvm_circuit::arch::{AirInventory, ChipInventory, ChipInventoryError, VmBuilder};
-use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
-use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
-use openvm_circuit_primitives::var_range::SharedVariableRangeCheckerChip;
+use derive_more::From;
+use openvm_circuit::arch::{AirInventory, ChipInventoryError, VmBuilder};
+use openvm_circuit_derive::{
+    AnyEnum, AotExecutor, AotMeteredExecutor, Executor, MeteredExecutor, PreflightExecutor,
+};
+use openvm_circuit_primitives::Chip;
 use openvm_instructions::{instruction::Instruction, program::DEFAULT_PC_STEP, VmOpcode};
 use openvm_sdk::config::{SdkVmConfig, SdkVmConfigExecutor};
-use openvm_stark_backend::{
-    config::StarkGenericConfig, p3_field::PrimeField32, prover::hal::ProverBackend,
+use openvm_stark_backend::p3_field::PrimeField32;
+use openvm_stark_sdk::{
+    config::baby_bear_poseidon2::BabyBearPoseidon2Engine, p3_baby_bear::BabyBear,
 };
-use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
+use powdr_openvm_common::{
+    isa::{OpenVmISA, OriginalCpuChipComplex, OriginalCpuChipInventory},
+    vm::PowdrExtensionExecutor,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    get_periphery_bus_ids,
-    instruction_sets::{
-        riscv::opcode::{branch_opcodes_bigint_set, branch_opcodes_set, instruction_allowlist},
-        OpenVmISA, OriginalCpuChipComplex, OriginalCpuChipInventory,
+    isa::{
+        opcode::{branch_opcodes_bigint_set, branch_opcodes_set, instruction_allowlist},
+        trace_generator::{
+            cpu::{create_dummy_chip_complex, SharedPeripheryChipsCpu},
+            create_dummy_airs,
+        },
     },
-    powdr_extension::trace_generator::{
-        cpu::{create_dummy_chip_complex, new_periphery_instances, SharedPeripheryChipsCpu},
-        create_dummy_airs,
-    },
-    BabyBearSC, ExtendedVmConfig, ExtendedVmConfigCpuBuilder,
+    BabyBearSC, ExtendedVmConfig, ExtendedVmConfigCpuBuilder, ExtendedVmConfigExecutor,
 };
 
 use openvm_sdk::config::SdkVmCpuBuilder;
 
+/// The core logic of our extension
+pub mod chip;
 pub mod instruction_formatter;
 pub mod opcode;
 pub mod symbolic_instruction_builder;
+/// The trace generator for the powdr instructions
+pub mod trace_generator;
 
 // Clone should not be required
 #[derive(Clone, Default)]
@@ -39,14 +47,31 @@ pub struct RiscvISA;
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct OpenVmRegisterAddress(u8);
 
+#[allow(clippy::large_enum_variant)]
+#[derive(
+    From,
+    AnyEnum,
+    Chip,
+    Executor,
+    MeteredExecutor,
+    AotExecutor,
+    AotMeteredExecutor,
+    PreflightExecutor,
+)]
+pub enum SpecializedExecutor {
+    #[any_enum]
+    SdkExecutor(ExtendedVmConfigExecutor<BabyBear>),
+    #[any_enum]
+    PowdrExecutor(PowdrExtensionExecutor<RiscvISA>),
+}
+
 impl OpenVmISA for RiscvISA {
     const DEFAULT_PC_STEP: u32 = DEFAULT_PC_STEP;
 
     type DummyExecutor = SdkVmConfigExecutor<openvm_stark_sdk::p3_baby_bear::BabyBear>;
     type DummyConfig = SdkVmConfig;
-    type DummyInventoryContext = SharedPeripheryChipsCpu;
     type DummyBuilder = SdkVmCpuBuilder;
-    type Executor = crate::SpecializedExecutor;
+    type Executor = SpecializedExecutor;
     type OriginalConfig = ExtendedVmConfig;
 
     fn is_allowed(opcode: VmOpcode) -> bool {
@@ -81,7 +106,7 @@ impl OpenVmISA for RiscvISA {
     }
     fn create_dummy_inventory(
         config: &Self::OriginalConfig,
-        shared_chips: Self::DummyInventoryContext,
+        shared_chips: SharedPeripheryChipsCpu<Self>,
     ) -> OriginalCpuChipInventory {
         let dummy_config = Self::lower(config.clone());
         let airs = create_dummy_airs(&dummy_config, shared_chips.clone())
@@ -92,48 +117,18 @@ impl OpenVmISA for RiscvISA {
             .inventory
     }
 
-    fn shared_chips_pair<SC, RA, PB>(
-        inventory: &mut ChipInventory<SC, RA, PB>,
-    ) -> powdr_openvm_common::trace_generator::cpu::PowdrPeripheryInstancesCpu<
-        Self::DummyInventoryContext,
-    >
-    where
-        SC: StarkGenericConfig,
-        PB: ProverBackend,
-    {
-        let bitwise_lookup = inventory
-            .find_chip::<SharedBitwiseOperationLookupChip<8>>()
-            .next()
-            .cloned();
-        let range_checker = inventory
-            .find_chip::<SharedVariableRangeCheckerChip>()
-            .next()
-            .unwrap();
-        let tuple_range_checker = inventory
-            .find_chip::<SharedRangeTupleCheckerChip<2>>()
-            .next()
-            .cloned();
-
-        new_periphery_instances(
-            range_checker.clone(),
-            bitwise_lookup,
-            tuple_range_checker,
-            get_periphery_bus_ids(inventory),
-        )
-    }
-
     type RegisterAddress = OpenVmRegisterAddress;
 
     fn get_register_value(_register: &Self::RegisterAddress) -> u32 {
-        todo!()
+        unimplemented!("execution constraints are currently unused")
     }
 
     fn value_limb(_value: u32, _limb: usize) -> u32 {
-        todo!()
+        unimplemented!("execution constraints are currently unused")
     }
 
     fn apply_interaction(
-        periphery: &Self::DummyInventoryContext,
+        periphery: &SharedPeripheryChipsCpu<Self>,
         bus_id: u16,
         mult: u32,
         args: impl Iterator<Item = u32>,

@@ -1,6 +1,8 @@
 use std::{collections::HashMap, fmt::Display, marker::PhantomData, path::Path, sync::Arc};
 
-use crate::execution_profile::execution_profile;
+use crate::{
+    execution_profile::execution_profile, trace_generator::cpu::periphery::new_periphery_instances,
+};
 use openvm_circuit::{
     arch::{
         AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecutorInventory,
@@ -10,15 +12,23 @@ use openvm_circuit::{
     },
     system::{memory::online::GuestMemory, SystemChipInventory},
 };
+use openvm_circuit_primitives::{
+    bitwise_op_lookup::{BitwiseOperationLookupAir, SharedBitwiseOperationLookupChip},
+    range_tuple::{RangeTupleCheckerAir, SharedRangeTupleCheckerChip},
+    var_range::{SharedVariableRangeCheckerChip, VariableRangeCheckerAir},
+};
 use openvm_native_circuit::NativeCpuBuilder;
 use openvm_sdk::{
     config::{AppConfig, TranspilerConfig, DEFAULT_APP_LOG_BLOWUP},
     GenericSdk, StdIn,
 };
 use openvm_stark_backend::{
-    config::Val,
+    config::{StarkGenericConfig, Val},
     p3_field::{FieldAlgebra, PrimeField32},
-    prover::cpu::{CpuBackend, CpuDevice},
+    prover::{
+        cpu::{CpuBackend, CpuDevice},
+        hal::ProverBackend,
+    },
 };
 use openvm_stark_sdk::config::{baby_bear_poseidon2::BabyBearPoseidon2Engine, FriParameters};
 use openvm_stark_sdk::{
@@ -429,7 +439,25 @@ where
         extension: &PowdrExtension<BabyBear, ISA>,
         inventory: &mut ChipInventory<<E as StarkEngine>::SC, RA, <E as StarkEngine>::PB>,
     ) -> Result<(), ChipInventoryError> {
-        let shared_chips_pair = ISA::shared_chips_pair(inventory);
+        let bitwise_lookup = inventory
+            .find_chip::<SharedBitwiseOperationLookupChip<8>>()
+            .next()
+            .cloned();
+        let range_checker = inventory
+            .find_chip::<SharedVariableRangeCheckerChip>()
+            .next()
+            .unwrap();
+        let tuple_range_checker = inventory
+            .find_chip::<SharedRangeTupleCheckerChip<2>>()
+            .next()
+            .cloned();
+
+        let shared_chips_pair = new_periphery_instances(
+            range_checker.clone(),
+            bitwise_lookup,
+            tuple_range_checker,
+            get_periphery_bus_ids(inventory),
+        );
 
         for precompile in &extension.precompiles {
             inventory.next_air::<PowdrAir<BabyBear>>()?;
@@ -443,6 +471,37 @@ where
         }
 
         Ok(())
+    }
+}
+
+// Helper function to get the periphery bus ids from the `AirInventory`.
+// This is the most robust method because bus ids are assigned at air creation time.
+fn get_periphery_bus_ids<SC, RA, PB>(inventory: &ChipInventory<SC, RA, PB>) -> PeripheryBusIds
+where
+    SC: StarkGenericConfig,
+    PB: ProverBackend,
+{
+    let air_inventory = inventory.airs();
+    let range_checker_bus_id = air_inventory
+        .find_air::<VariableRangeCheckerAir>()
+        .next()
+        .unwrap()
+        .bus
+        .inner
+        .index;
+    let bitwise_lookup_bus_id = air_inventory
+        .find_air::<BitwiseOperationLookupAir<8>>()
+        .next()
+        .map(|air| air.bus.inner.index);
+    let tuple_range_checker_bus_id = air_inventory
+        .find_air::<RangeTupleCheckerAir<2>>()
+        .next()
+        .map(|air| air.bus.inner.index);
+
+    PeripheryBusIds {
+        range_checker: range_checker_bus_id,
+        bitwise_lookup: bitwise_lookup_bus_id,
+        tuple_range_checker: tuple_range_checker_bus_id,
     }
 }
 

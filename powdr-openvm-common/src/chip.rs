@@ -7,7 +7,9 @@ use crate::{
     executor::OriginalArenas,
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     isa::OpenVmISA,
-    trace_generator::cpu::{PowdrPeripheryInstancesCpu, PowdrTraceGeneratorCpu},
+    trace_generator::cpu::{
+        periphery::SharedPeripheryChipsCpu, PowdrPeripheryInstancesCpu, PowdrTraceGeneratorCpu,
+    },
     vm::PowdrPrecompile,
 };
 
@@ -22,7 +24,7 @@ impl<ISA: OpenVmISA> PowdrChipCpu<ISA> {
         precompile: PowdrPrecompile<BabyBear, ISA>,
         original_airs: OriginalAirs<BabyBear, ISA>,
         base_config: OriginalVmConfig<ISA>,
-        periphery: PowdrPeripheryInstancesCpu<ISA::DummyInventoryContext>,
+        periphery: PowdrPeripheryInstancesCpu<SharedPeripheryChipsCpu<ISA>>,
     ) -> Self {
         let PowdrPrecompile {
             name,

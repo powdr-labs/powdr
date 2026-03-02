@@ -1,5 +1,6 @@
 // Mostly taken from [this openvm extension](https://github.com/openvm-org/openvm/blob/1b76fd5a900a7d69850ee9173969f70ef79c4c76/extensions/rv32im/circuit/src/auipc/core.rs#L1)
 
+// TODO: Move to common
 #[cfg(feature = "cuda")]
 mod cuda {
     use std::{cell::RefCell, rc::Rc};

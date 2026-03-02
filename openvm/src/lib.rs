@@ -3,19 +3,14 @@
 #![cfg_attr(feature = "tco", feature(explicit_tail_calls))]
 #![cfg_attr(feature = "tco", feature(core_intrinsics))]
 
-use derive_more::From;
 use eyre::Result;
 use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
 use openvm_circuit::arch::execution_mode::metered::segment_ctx::SegmentationLimits;
 use openvm_circuit::arch::{
-    debug_proving_ctx, AirInventory, ChipInventory, ChipInventoryError, InitFileGenerator,
-    MatrixRecordArena, SystemConfig, VmBuilder, VmChipComplex, VmProverExtension,
+    debug_proving_ctx, AirInventory, ChipInventoryError, InitFileGenerator, MatrixRecordArena,
+    SystemConfig, VmBuilder, VmChipComplex, VmProverExtension,
 };
 use openvm_circuit::system::SystemChipInventory;
-use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
-use openvm_circuit_derive::{
-    AotExecutor, AotMeteredExecutor, Executor, MeteredExecutor, PreflightExecutor,
-};
 use openvm_sdk::config::SdkVmCpuBuilder;
 
 use openvm_sdk::config::TranspilerConfig;
@@ -24,10 +19,9 @@ use openvm_sdk::{
     config::{AppConfig, SdkVmConfig, SdkVmConfigExecutor, DEFAULT_APP_LOG_BLOWUP},
     Sdk, StdIn,
 };
-use openvm_stark_backend::config::{StarkGenericConfig, Val};
+use openvm_stark_backend::config::Val;
 use openvm_stark_backend::engine::StarkEngine;
 use openvm_stark_backend::prover::cpu::{CpuBackend, CpuDevice};
-use openvm_stark_backend::prover::hal::ProverBackend;
 use openvm_stark_sdk::config::{baby_bear_poseidon2::BabyBearPoseidon2Config, FriParameters};
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
@@ -38,21 +32,20 @@ use powdr_autoprecompiles::PowdrConfig;
 use powdr_openvm_common::extraction_utils::AirMetrics;
 use powdr_openvm_common::extraction_utils::OriginalVmConfig;
 use powdr_openvm_common::trace_generation::do_with_trace;
-use powdr_openvm_common::vm::PowdrExtensionExecutor;
+use powdr_openvm_common::OpenVmApcCandidate;
 #[cfg(not(feature = "cuda"))]
 use powdr_openvm_common::PowdrSdkCpu;
-use powdr_openvm_common::{OpenVmApcCandidate, PeripheryBusIds};
 use powdr_openvm_hints_circuit::{HintsExtension, HintsExtensionExecutor, HintsProverExt};
 use powdr_openvm_hints_transpiler::HintsTranspilerExtension;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-pub use crate::instruction_sets::riscv::RiscvISA;
-pub use crate::instruction_sets::riscv::{instruction_formatter, symbolic_instruction_builder};
+pub use crate::isa::RiscvISA;
+pub use crate::isa::{instruction_formatter, symbolic_instruction_builder};
 pub use powdr_openvm_common::program::{CompiledProgram, OriginalCompiledProgram};
 
-pub mod extraction_utils;
-mod instruction_sets;
+pub mod isa;
+
 pub use powdr_autoprecompiles::DegreeBound;
 pub use powdr_autoprecompiles::PgoConfig;
 
@@ -80,10 +73,6 @@ cfg_if::cfg_if! {
     }
 }
 
-use openvm_circuit_primitives::bitwise_op_lookup::BitwiseOperationLookupAir;
-use openvm_circuit_primitives::range_tuple::RangeTupleCheckerAir;
-use openvm_circuit_primitives::var_range::VariableRangeCheckerAir;
-
 pub const DEFAULT_OPENVM_DEGREE_BOUND: usize = 2 * DEFAULT_APP_LOG_BLOWUP + 1;
 pub const DEFAULT_DEGREE_BOUND: DegreeBound = DegreeBound {
     identities: DEFAULT_OPENVM_DEGREE_BOUND,
@@ -98,9 +87,6 @@ pub use openvm_build::GuestOptions;
 pub use powdr_autoprecompiles::bus_map::BusType;
 pub use powdr_openvm_common::customize_exe::customize;
 pub use powdr_openvm_common::instruction::Instr;
-
-// A module for our extension
-mod powdr_extension;
 
 #[cfg(feature = "cuda")]
 #[derive(Default, Clone)]
@@ -187,55 +173,6 @@ impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, PowdrExtens
 
         Ok(())
     }
-}
-
-// Helper function to get the periphery bus ids from the `AirInventory`.
-// This is the most robust method because bus ids are assigned at air creation time.
-fn get_periphery_bus_ids<SC, RA, PB>(inventory: &ChipInventory<SC, RA, PB>) -> PeripheryBusIds
-where
-    SC: StarkGenericConfig,
-    PB: ProverBackend,
-{
-    let air_inventory = inventory.airs();
-    let range_checker_bus_id = air_inventory
-        .find_air::<VariableRangeCheckerAir>()
-        .next()
-        .unwrap()
-        .bus
-        .inner
-        .index;
-    let bitwise_lookup_bus_id = air_inventory
-        .find_air::<BitwiseOperationLookupAir<8>>()
-        .next()
-        .map(|air| air.bus.inner.index);
-    let tuple_range_checker_bus_id = air_inventory
-        .find_air::<RangeTupleCheckerAir<2>>()
-        .next()
-        .map(|air| air.bus.inner.index);
-
-    PeripheryBusIds {
-        range_checker: range_checker_bus_id,
-        bitwise_lookup: bitwise_lookup_bus_id,
-        tuple_range_checker: tuple_range_checker_bus_id,
-    }
-}
-
-#[allow(clippy::large_enum_variant)]
-#[derive(
-    From,
-    AnyEnum,
-    Chip,
-    Executor,
-    MeteredExecutor,
-    AotExecutor,
-    AotMeteredExecutor,
-    PreflightExecutor,
-)]
-pub enum SpecializedExecutor {
-    #[any_enum]
-    SdkExecutor(ExtendedVmConfigExecutor<BabyBear>),
-    #[any_enum]
-    PowdrExecutor(PowdrExtensionExecutor<RiscvISA>),
 }
 
 pub fn build_elf_path<P: AsRef<Path>>(
@@ -1730,5 +1667,92 @@ mod tests {
         //     total_columns <= MAX_TOTAL_COLUMNS,
         //     "Total columns exceeded the limit: {total_columns} > {MAX_TOTAL_COLUMNS}"
         // );
+    }
+
+    mod extraction {
+        use crate::{
+            ExtendedVmConfig, RiscvISA, DEFAULT_DEGREE_BOUND, DEFAULT_OPENVM_DEGREE_BOUND,
+        };
+
+        use openvm_algebra_circuit::{Fp2Extension, ModularExtension};
+        use openvm_bigint_circuit::Int256;
+        use openvm_circuit::arch::SystemConfig;
+        use openvm_ecc_circuit::{WeierstrassExtension, SECP256K1_CONFIG};
+        use openvm_pairing_circuit::{PairingCurve, PairingExtension};
+        use openvm_rv32im_circuit::Rv32M;
+        use openvm_sdk::config::SdkVmConfig;
+        use powdr_openvm_common::{
+            extraction_utils::{export_pil, OriginalVmConfig},
+            SpecializedConfig,
+        };
+        use powdr_openvm_hints_circuit::HintsExtension;
+
+        #[test]
+        fn test_get_bus_map() {
+            let use_kzg_intrinsics = true;
+
+            let system_config = SystemConfig::default()
+                .with_continuations()
+                .with_max_constraint_degree(DEFAULT_OPENVM_DEGREE_BOUND)
+                .with_public_values(32);
+            let int256 = Int256::default();
+            let bn_config = PairingCurve::Bn254.curve_config();
+            let bls_config = PairingCurve::Bls12_381.curve_config();
+            let rv32m = Rv32M {
+                range_tuple_checker_sizes: int256.range_tuple_checker_sizes,
+            };
+            let mut supported_moduli = vec![
+                bn_config.modulus.clone(),
+                bn_config.scalar.clone(),
+                SECP256K1_CONFIG.modulus.clone(),
+                SECP256K1_CONFIG.scalar.clone(),
+            ];
+            let mut supported_complex_moduli =
+                vec![("Bn254Fp2".to_string(), bn_config.modulus.clone())];
+            let mut supported_curves = vec![bn_config.clone(), SECP256K1_CONFIG.clone()];
+            let mut supported_pairing_curves = vec![PairingCurve::Bn254];
+            if use_kzg_intrinsics {
+                supported_moduli.push(bls_config.modulus.clone());
+                supported_moduli.push(bls_config.scalar.clone());
+                supported_complex_moduli
+                    .push(("Bls12_381Fp2".to_string(), bls_config.modulus.clone()));
+                supported_curves.push(bls_config.clone());
+                supported_pairing_curves.push(PairingCurve::Bls12_381);
+            }
+            let sdk_vm_config = SdkVmConfig::builder()
+                .system(system_config.into())
+                .rv32i(Default::default())
+                .rv32m(rv32m)
+                .io(Default::default())
+                .keccak(Default::default())
+                .sha256(Default::default())
+                .bigint(int256)
+                .modular(ModularExtension::new(supported_moduli))
+                .fp2(Fp2Extension::new(supported_complex_moduli))
+                .ecc(WeierstrassExtension::new(supported_curves))
+                .pairing(PairingExtension::new(supported_pairing_curves))
+                .build();
+
+            let _ = OriginalVmConfig::<RiscvISA>::new(ExtendedVmConfig {
+                sdk: sdk_vm_config,
+                hints: HintsExtension,
+            })
+            .bus_map();
+        }
+
+        #[test]
+        fn test_export_pil() {
+            let writer = &mut Vec::new();
+            let ext_config = ExtendedVmConfig {
+                sdk: SdkVmConfig::riscv32(),
+                hints: HintsExtension,
+            };
+            let base_config = OriginalVmConfig::<RiscvISA>::new(ext_config);
+            let specialized_config =
+                SpecializedConfig::new(base_config, vec![], DEFAULT_DEGREE_BOUND);
+            export_pil(writer, &specialized_config);
+            let output = String::from_utf8(writer.clone()).unwrap();
+            assert!(!output.is_empty(), "PIL output should not be empty");
+        }
     }
 }

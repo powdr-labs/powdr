@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use openvm_circuit::arch::{
     AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecutorInventoryBuilder,
     ExecutorInventoryError, VmCircuitExtension, VmExecutionExtension, VmProverExtension,
@@ -11,34 +13,35 @@ use openvm_circuit_primitives::{
 };
 use openvm_stark_backend::{config::StarkGenericConfig, p3_field::PrimeField32};
 
+use super::PowdrPeripheryInstancesCpu;
 use itertools::Itertools;
 use openvm_circuit::arch::RowMajorMatrixArena;
 use openvm_stark_backend::config::Val;
 use openvm_stark_backend::engine::StarkEngine;
 use openvm_stark_backend::prover::cpu::{CpuBackend, CpuDevice};
-use powdr_openvm_common::trace_generator::cpu::PowdrPeripheryInstancesCpu;
 
-use crate::powdr_extension::trace_generator::common::DummyExecutor;
-use crate::PeripheryBusIds;
+use crate::{isa::OpenVmISA, trace_generator::common::DummyExecutor, PeripheryBusIds};
 
 #[derive(Clone)]
-pub struct SharedPeripheryChipsCpu {
+pub struct SharedPeripheryChipsCpu<ISA> {
     pub bitwise_lookup_8: Option<SharedBitwiseOperationLookupChip<8>>,
     pub range_checker: SharedVariableRangeCheckerChip,
     pub tuple_range_checker: Option<SharedRangeTupleCheckerChip<2>>,
+    _marker: PhantomData<ISA>,
 }
 
-pub fn new_periphery_instances(
+pub fn new_periphery_instances<ISA>(
     range_checker: SharedVariableRangeCheckerChip,
     bitwise_8: Option<SharedBitwiseOperationLookupChip<8>>,
     tuple_range_checker: Option<SharedRangeTupleCheckerChip<2>>,
     bus_ids: PeripheryBusIds,
-) -> PowdrPeripheryInstancesCpu<SharedPeripheryChipsCpu> {
+) -> PowdrPeripheryInstancesCpu<SharedPeripheryChipsCpu<ISA>> {
     PowdrPeripheryInstancesCpu {
         real: SharedPeripheryChipsCpu {
             bitwise_lookup_8: bitwise_8.clone(),
             range_checker: range_checker.clone(),
             tuple_range_checker: tuple_range_checker.clone(),
+            _marker: PhantomData,
         },
         // Bitwise lookup and tuple range checker do not need to be shared with the main execution:
         // If we did share, we'd have to roll back the side effects of execution and apply the side effects from the apc air onto the main periphery.
@@ -55,13 +58,14 @@ pub fn new_periphery_instances(
                     *tuple_range_checker.bus(),
                 ))
             }),
+            _marker: PhantomData,
         },
         bus_ids,
     }
 }
 
-impl<F: PrimeField32> VmExecutionExtension<F> for SharedPeripheryChipsCpu {
-    type Executor = DummyExecutor<F>;
+impl<F: PrimeField32, ISA: OpenVmISA> VmExecutionExtension<F> for SharedPeripheryChipsCpu<ISA> {
+    type Executor = DummyExecutor<F, ISA>;
 
     fn extend_execution(
         &self,
@@ -72,7 +76,9 @@ impl<F: PrimeField32> VmExecutionExtension<F> for SharedPeripheryChipsCpu {
     }
 }
 
-impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChipsCpu {
+impl<SC: StarkGenericConfig, ISA: OpenVmISA> VmCircuitExtension<SC>
+    for SharedPeripheryChipsCpu<ISA>
+{
     fn extend_circuit(&self, inventory: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {
         // create dummy airs
         if let Some(bitwise_lookup_8) = &self.bitwise_lookup_8 {
@@ -110,7 +116,7 @@ pub struct SharedPeripheryChipsCpuProverExt;
 // We implement an extension to make it easy to pre-load the shared chips into the VM inventory.
 // This implementation is specific to CpuBackend because the lookup chips (VariableRangeChecker,
 // BitwiseOperationLookupChip) are specific to CpuBackend.
-impl<E, SC, RA> VmProverExtension<E, RA, SharedPeripheryChipsCpu>
+impl<E, SC, RA, ISA: OpenVmISA> VmProverExtension<E, RA, SharedPeripheryChipsCpu<ISA>>
     for SharedPeripheryChipsCpuProverExt
 where
     SC: StarkGenericConfig,
@@ -120,7 +126,7 @@ where
 {
     fn extend_prover(
         &self,
-        extension: &SharedPeripheryChipsCpu,
+        extension: &SharedPeripheryChipsCpu<ISA>,
         inventory: &mut ChipInventory<SC, RA, CpuBackend<SC>>,
     ) -> Result<(), ChipInventoryError> {
         // Sanity check that the shared chips are not already present in the builder.
@@ -150,7 +156,7 @@ where
     }
 }
 
-impl SharedPeripheryChipsCpu {
+impl<ISA> SharedPeripheryChipsCpu<ISA> {
     /// Sends concrete values to the shared chips using a given bus id.
     /// Panics if the bus id doesn't match any of the chips' bus ids.
     pub fn apply(

@@ -11,10 +11,10 @@ use openvm_rv32im_circuit::Rv32ImCpuProverExt;
 use openvm_sdk::config::SdkVmConfig;
 use openvm_sha256_circuit::Sha2CpuProverExt;
 
-use super::periphery::SharedPeripheryChipsCpu;
-use crate::BabyBearSC;
+use crate::{BabyBearSC, RiscvISA};
+use powdr_openvm_common::trace_generator::cpu::periphery::SharedPeripheryChipsCpu;
+use powdr_openvm_common::trace_generator::cpu::periphery::SharedPeripheryChipsCpuProverExt;
 
-use super::periphery::SharedPeripheryChipsCpuProverExt;
 use openvm_circuit::arch::MatrixRecordArena;
 use openvm_circuit::system::SystemChipInventory;
 use openvm_stark_backend::config::Val;
@@ -25,10 +25,11 @@ pub type DummyChipComplex<SC> =
     VmChipComplex<SC, MatrixRecordArena<Val<SC>>, CpuBackend<SC>, SystemChipInventory<SC>>;
 use openvm_ecc_circuit::EccCpuProverExt;
 use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
+
 pub fn create_dummy_chip_complex(
     config: &SdkVmConfig,
     circuit: AirInventory<BabyBearSC>,
-    shared_chips: SharedPeripheryChipsCpu,
+    shared_chips: SharedPeripheryChipsCpu<RiscvISA>,
 ) -> Result<DummyChipComplex<BabyBearSC>, ChipInventoryError> {
     let config = config.to_inner();
     let mut chip_complex = VmBuilder::<BabyBearPoseidon2Engine>::create_chip_complex(

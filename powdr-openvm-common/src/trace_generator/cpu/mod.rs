@@ -21,8 +21,10 @@ use crate::{
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     instruction::Instr,
     isa::OpenVmISA,
+    trace_generator::cpu::periphery::SharedPeripheryChipsCpu,
     BabyBearSC, PeripheryBusIds,
 };
+pub mod periphery;
 
 /// The shared chips which can be used by the PowdrChip.
 #[derive(Clone)]
@@ -39,7 +41,7 @@ pub struct PowdrTraceGeneratorCpu<ISA: OpenVmISA> {
     pub apc: Arc<Apc<BabyBear, Instr<BabyBear, ISA>, ISA::RegisterAddress, u32>>,
     pub original_airs: OriginalAirs<BabyBear, ISA>,
     pub config: OriginalVmConfig<ISA>,
-    pub periphery: PowdrPeripheryInstancesCpu<ISA::DummyInventoryContext>,
+    pub periphery: PowdrPeripheryInstancesCpu<SharedPeripheryChipsCpu<ISA>>,
 }
 
 impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
@@ -47,7 +49,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
         apc: Arc<Apc<BabyBear, Instr<BabyBear, ISA>, ISA::RegisterAddress, u32>>,
         original_airs: OriginalAirs<BabyBear, ISA>,
         config: OriginalVmConfig<ISA>,
-        periphery: PowdrPeripheryInstancesCpu<ISA::DummyInventoryContext>,
+        periphery: PowdrPeripheryInstancesCpu<SharedPeripheryChipsCpu<ISA>>,
     ) -> Self {
         Self {
             apc,

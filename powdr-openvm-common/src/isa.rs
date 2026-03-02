@@ -8,16 +8,12 @@ use openvm_circuit::arch::{
 use openvm_circuit::system::SystemChipInventory;
 use openvm_instructions::{instruction::Instruction, VmOpcode};
 use openvm_sdk::config::TranspilerConfig;
-use openvm_stark_backend::{
-    config::{StarkGenericConfig, Val},
-    p3_field::PrimeField32,
-    prover::{cpu::CpuBackend, hal::ProverBackend},
-};
+use openvm_stark_backend::{config::Val, p3_field::PrimeField32, prover::cpu::CpuBackend};
 use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use serde::{Deserialize, Serialize};
 
-use crate::trace_generator::cpu::PowdrPeripheryInstancesCpu;
+use crate::trace_generator::cpu::periphery::SharedPeripheryChipsCpu;
 use crate::vm::PowdrExtensionExecutor;
 use crate::{BabyBearSC, PeripheryBusIds};
 
@@ -43,7 +39,8 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
         + Send
         + Sync;
 
-    type DummyExecutor: InterpreterExecutor<BabyBear>
+    type DummyExecutor: AnyEnum
+        + InterpreterExecutor<BabyBear>
         + Executor<BabyBear>
         + MeteredExecutor<BabyBear>
         + PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>>
@@ -51,7 +48,6 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
     type DummyConfig: VmConfig<BabyBearSC>
         + VmExecutionConfig<BabyBear, Executor = Self::DummyExecutor>
         + TranspilerConfig<BabyBear>;
-    type DummyInventoryContext: Clone;
     type DummyBuilder: Clone
         + Default
         + VmBuilder<
@@ -80,15 +76,8 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
 
     fn create_dummy_inventory(
         config: &Self::OriginalConfig,
-        context: Self::DummyInventoryContext,
+        context: SharedPeripheryChipsCpu<Self>,
     ) -> OriginalCpuChipInventory;
-
-    fn shared_chips_pair<SC, RA, PB>(
-        inventory: &mut ChipInventory<SC, RA, PB>,
-    ) -> PowdrPeripheryInstancesCpu<Self::DummyInventoryContext>
-    where
-        SC: StarkGenericConfig,
-        PB: ProverBackend;
 
     fn is_allowed(opcode: VmOpcode) -> bool;
 
@@ -105,7 +94,7 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
     fn format<F: PrimeField32>(instruction: &Instruction<F>) -> String;
 
     fn apply_interaction(
-        periphery: &Self::DummyInventoryContext,
+        periphery: &SharedPeripheryChipsCpu<Self>,
         bus_id: u16,
         mult: u32,
         args: impl Iterator<Item = u32>,
