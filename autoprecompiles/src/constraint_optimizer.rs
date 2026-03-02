@@ -125,6 +125,7 @@ pub fn optimize_constraints<
     );
 
     let constraint_system = optimize_memory::<_, _, M>(constraint_system, solver, memory_bus_id);
+
     stats_logger.log("memory optimization", &constraint_system);
     export_options.export_optimizer_inner_constraint_system(&constraint_system, "memory");
 
@@ -383,7 +384,7 @@ fn can_always_be_satisfied_via_free_variable<
 /// them is safe.
 /// Note that if there were unsatisfiable constraints, they might also be removed, which would
 /// change the statement being proven.
-fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
+pub fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
     mut constraint_system: IndexedConstraintSystem<T, V>,
     solver: &mut impl Solver<T, V>,
     bus_interaction_handler: impl IsBusStateful<T> + Clone,

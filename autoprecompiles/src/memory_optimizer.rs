@@ -118,6 +118,9 @@ pub trait MemoryBusInteraction<T, V>: Sized {
     /// Returns the data part of the memory bus interaction.
     fn data(&self) -> &[GroupedExpression<T, V>];
 
+    /// Returns the timestamp part of the memory bus interaction.
+    fn timestamp(&self) -> &GroupedExpression<T, V>;
+
     /// Returns the operation of the memory bus interaction.
     fn op(&self) -> MemoryOp;
 
@@ -158,10 +161,11 @@ fn redundant_memory_interactions_indices<
     let mut new_constraints = Vec::new();
 
     // Track memory contents by memory type while we go through bus interactions.
-    // This maps an address to the index of the previous send on that address and the
-    // data currently stored there.
+    // This maps an address to the index of the previous send on that address, the
+    // data currently stored there and the timestamp used in the last send.
     type Data<T, V> = Vec<GroupedExpression<T, V>>;
-    let mut memory_contents: HashMap<Address<T, V>, (usize, Data<T, V>)> = Default::default();
+    let mut memory_contents: HashMap<Address<T, V>, (usize, Data<T, V>, GroupedExpression<T, V>)> =
+        Default::default();
     let mut to_remove: Vec<usize> = Default::default();
 
     // TODO we assume that memory interactions are sorted by timestamp.
@@ -186,12 +190,17 @@ fn redundant_memory_interactions_indices<
                 // If there is an unconsumed send to this address, consume it.
                 // In that case, we can replace both bus interactions with equality constraints
                 // between the data that would have been sent and received.
-                if let Some((previous_send, existing_values)) = memory_contents.remove(&addr) {
+                if let Some((previous_send, existing_values, pevious_timestamp)) =
+                    memory_contents.remove(&addr)
+                {
                     for (existing, new) in existing_values.iter().zip_eq(mem_int.data().iter()) {
                         new_constraints.push(AlgebraicConstraint::assert_zero(
                             existing.clone() - new.clone(),
                         ));
                     }
+                    new_constraints.push(AlgebraicConstraint::assert_zero(
+                        pevious_timestamp - mem_int.timestamp().clone(),
+                    ));
                     to_remove.extend([index, previous_send]);
                 }
             }
@@ -206,7 +215,10 @@ fn redundant_memory_interactions_indices<
                         // Two addresses are different if they differ in at least one component.
                         .any(|(a, b)| solver.are_expressions_known_to_be_different(a, b))
                 });
-                memory_contents.insert(addr.clone(), (index, mem_int.data().to_vec()));
+                memory_contents.insert(
+                    addr.clone(),
+                    (index, mem_int.data().to_vec(), mem_int.timestamp().clone()),
+                );
             }
         }
     }
