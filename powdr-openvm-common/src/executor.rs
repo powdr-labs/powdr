@@ -3,16 +3,14 @@ use std::{
     cell::RefCell,
     collections::HashMap,
     rc::Rc,
-    sync::Arc,
 };
 
 use crate::{
     extraction_utils::{
         record_arena_dimension_by_air_name_per_apc_call, OriginalAirs, OriginalVmConfig,
     },
-    instruction::Instr,
     isa::OpenVmISA,
-    OpenVmExecutionState,
+    IsaApc, OpenVmExecutionState,
 };
 
 use itertools::Itertools;
@@ -29,7 +27,7 @@ use openvm_instructions::instruction::Instruction;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
     execution::{OptimisticConstraintEvaluator, OptimisticConstraints},
-    Apc, InstructionHandler,
+    InstructionHandler,
 };
 
 use openvm_circuit::{
@@ -46,7 +44,7 @@ use openvm_circuit::{
 pub struct PowdrExecutor<ISA: OpenVmISA> {
     pub air_by_opcode_id: OriginalAirs<BabyBear, ISA>,
     pub executor_inventory: ExecutorInventory<ISA::DummyExecutor>,
-    pub apc: Arc<Apc<BabyBear, Instr<BabyBear, ISA>, ISA::RegisterAddress, u32>>,
+    pub apc: IsaApc<BabyBear, ISA>,
     pub original_arenas_cpu: Rc<RefCell<OriginalArenas<MatrixRecordArena<BabyBear>>>>,
     pub original_arenas_gpu: Rc<RefCell<OriginalArenas<DenseRecordArena>>>,
     pub height_change: u32,
@@ -74,7 +72,7 @@ impl<A: Arena> OriginalArenas<A> {
         &mut self,
         apc_call_count_estimate: impl Fn() -> usize,
         original_airs: &OriginalAirs<BabyBear, ISA>,
-        apc: &Arc<Apc<BabyBear, Instr<BabyBear, ISA>, ISA::RegisterAddress, u32>>,
+        apc: &IsaApc<BabyBear, ISA>,
     ) -> &mut InitializedOriginalArenas<A> {
         match self {
             OriginalArenas::Uninitialized => {
@@ -108,7 +106,7 @@ impl<A: Arena> InitializedOriginalArenas<A> {
     pub fn new<ISA: OpenVmISA>(
         apc_call_count_estimate: usize,
         original_airs: &OriginalAirs<BabyBear, ISA>,
-        apc: &Arc<Apc<BabyBear, Instr<BabyBear, ISA>, ISA::RegisterAddress, u32>>,
+        apc: &IsaApc<BabyBear, ISA>,
     ) -> Self {
         let record_arena_dimensions =
             record_arena_dimension_by_air_name_per_apc_call(apc, original_airs);
@@ -602,7 +600,7 @@ impl<ISA: OpenVmISA> PowdrExecutor<ISA> {
     pub fn new(
         air_by_opcode_id: OriginalAirs<BabyBear, ISA>,
         base_config: OriginalVmConfig<ISA>,
-        apc: Arc<Apc<BabyBear, Instr<BabyBear, ISA>, ISA::RegisterAddress, u32>>,
+        apc: IsaApc<BabyBear, ISA>,
         record_arena_by_air_name_cpu: Rc<RefCell<OriginalArenas<MatrixRecordArena<BabyBear>>>>,
         record_arena_by_air_name_gpu: Rc<RefCell<OriginalArenas<DenseRecordArena>>>,
         height_change: u32,

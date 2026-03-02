@@ -12,17 +12,16 @@ use openvm_stark_backend::{
     Chip,
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
-use powdr_autoprecompiles::{trace_handler::TraceTrait, Apc};
+use powdr_autoprecompiles::trace_handler::TraceTrait;
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 
 use crate::{
     chip::PowdrChipCpu,
     executor::OriginalArenas,
     extraction_utils::{OriginalAirs, OriginalVmConfig},
-    instruction::Instr,
     isa::OpenVmISA,
     trace_generator::cpu::periphery::SharedPeripheryChipsCpu,
-    BabyBearSC, PeripheryBusIds,
+    BabyBearSC, IsaApc, PeripheryBusIds,
 };
 pub mod periphery;
 
@@ -38,7 +37,7 @@ pub struct PowdrPeripheryInstancesCpu<S> {
 }
 
 pub struct PowdrTraceGeneratorCpu<ISA: OpenVmISA> {
-    pub apc: Arc<Apc<BabyBear, Instr<BabyBear, ISA>, ISA::RegisterAddress, u32>>,
+    pub apc: IsaApc<BabyBear, ISA>,
     pub original_airs: OriginalAirs<BabyBear, ISA>,
     pub config: OriginalVmConfig<ISA>,
     pub periphery: PowdrPeripheryInstancesCpu<SharedPeripheryChipsCpu<ISA>>,
@@ -46,7 +45,7 @@ pub struct PowdrTraceGeneratorCpu<ISA: OpenVmISA> {
 
 impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
     pub fn new(
-        apc: Arc<Apc<BabyBear, Instr<BabyBear, ISA>, ISA::RegisterAddress, u32>>,
+        apc: IsaApc<BabyBear, ISA>,
         original_airs: OriginalAirs<BabyBear, ISA>,
         config: OriginalVmConfig<ISA>,
         periphery: PowdrPeripheryInstancesCpu<SharedPeripheryChipsCpu<ISA>>,
@@ -179,8 +178,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
 
                         let ConcreteBusInteraction { id, mult, args } =
                             evaluator.eval_bus_interaction(interaction);
-                        ISA::apply_interaction(
-                            &self.periphery.real,
+                        self.periphery.real.apply(
                             id as u16,
                             mult.as_canonical_u32(),
                             args.map(|arg| arg.as_canonical_u32()),

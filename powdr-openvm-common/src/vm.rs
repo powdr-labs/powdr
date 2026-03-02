@@ -3,7 +3,6 @@
 use std::cell::RefCell;
 use std::iter::once;
 use std::rc::Rc;
-use std::sync::Arc;
 
 use derive_more::From;
 use openvm_circuit::arch::{DenseRecordArena, MatrixRecordArena};
@@ -18,7 +17,7 @@ use crate::{
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     isa::OpenVmISA,
     opcode::PowdrOpcode,
-    OvmApcStats,
+    IsaApc, OvmApcStats,
 };
 use openvm_circuit::{
     arch::{AirInventory, AirInventoryError, VmCircuitExtension, VmExecutionExtension},
@@ -28,10 +27,7 @@ use openvm_stark_backend::{
     config::{StarkGenericConfig, Val},
     p3_field::{Field, PrimeField32},
 };
-use powdr_autoprecompiles::Apc;
 use serde::{Deserialize, Serialize};
-
-use crate::Instr;
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(bound = "F: Field")]
@@ -47,7 +43,7 @@ pub struct PowdrExtension<F, ISA: OpenVmISA> {
 pub struct PowdrPrecompile<F, ISA: OpenVmISA> {
     pub name: String,
     pub opcode: PowdrOpcode,
-    pub apc: Arc<Apc<F, Instr<F, ISA>, ISA::RegisterAddress, u32>>,
+    pub apc: IsaApc<F, ISA>,
     pub apc_stats: OvmApcStats,
     #[serde(skip)]
     pub apc_record_arena_cpu: Rc<RefCell<OriginalArenas<MatrixRecordArena<F>>>>,
@@ -59,7 +55,7 @@ impl<F, ISA: OpenVmISA> PowdrPrecompile<F, ISA> {
     pub fn new(
         name: String,
         opcode: PowdrOpcode,
-        apc: Arc<Apc<F, Instr<F, ISA>, ISA::RegisterAddress, u32>>,
+        apc: IsaApc<F, ISA>,
         apc_stats: OvmApcStats,
     ) -> Self {
         Self {

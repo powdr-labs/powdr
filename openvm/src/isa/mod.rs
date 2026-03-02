@@ -127,16 +127,6 @@ impl OpenVmISA for RiscvISA {
         unimplemented!("execution constraints are currently unused")
     }
 
-    fn apply_interaction(
-        periphery: &SharedPeripheryChipsCpu<Self>,
-        bus_id: u16,
-        mult: u32,
-        args: impl Iterator<Item = u32>,
-        periphery_bus_ids: &powdr_openvm_common::PeripheryBusIds,
-    ) {
-        periphery.apply(bus_id, mult, args, periphery_bus_ids);
-    }
-
     /// Besides the base RISCV-V branching instructions, the bigint extension adds two more branching
     /// instruction classes over BranchEqual and BranchLessThan.
     /// Those instructions have the form <INSTR rs0 rs1 target_offset ...>, where target_offset is the

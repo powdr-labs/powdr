@@ -79,6 +79,8 @@ pub mod vm;
 pub mod trace_generation;
 
 pub type BabyBearSC = BabyBearPoseidon2Config;
+pub type IsaApc<F, ISA> =
+    Arc<powdr_autoprecompiles::Apc<F, Instr<F, ISA>, <ISA as OpenVmISA>::RegisterAddress, u32>>;
 
 pub const POWDR_OPCODE: usize = 0x10ff;
 

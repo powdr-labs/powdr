@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::trace_generator::cpu::periphery::SharedPeripheryChipsCpu;
 use crate::vm::PowdrExtensionExecutor;
-use crate::{BabyBearSC, PeripheryBusIds};
+use crate::BabyBearSC;
 
 pub type OriginalCpuChipComplex = VmChipComplex<
     BabyBearSC,
@@ -92,12 +92,4 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
     fn value_limb(value: u32, limb_index: usize) -> u32;
 
     fn format<F: PrimeField32>(instruction: &Instruction<F>) -> String;
-
-    fn apply_interaction(
-        periphery: &SharedPeripheryChipsCpu<Self>,
-        bus_id: u16,
-        mult: u32,
-        args: impl Iterator<Item = u32>,
-        periphery_bus_ids: &PeripheryBusIds,
-    );
 }
