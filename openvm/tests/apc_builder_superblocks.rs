@@ -80,19 +80,23 @@ fn many_blocks() {
     // x12 = x11 + 5 = 15
     // x8 = x12 = 15
     let program = [
-        bb(0, vec![
-            add(10, 0, 10, 0), // x10 = 10
-            bne(10, 11, 100),
-        ]),
+        bb(
+            0,
+            vec![
+                add(10, 0, 10, 0), // x10 = 10
+                bne(10, 11, 100),
+            ],
+        ),
         // PC=8, BNE fallthrough (x10 = x11)
-        bb(8, vec![
-            add(12, 11, 5, 0), // x12 = x11 + 5 = 15 (known after propagation)
-            beq(8, 12, 60),    // PC=12, BEQ jump to PC+60=72
-        ]),
+        bb(
+            8,
+            vec![
+                add(12, 11, 5, 0), // x12 = x11 + 5 = 15 (known after propagation)
+                beq(8, 12, 60),    // PC=12, BEQ jump to PC+60=72
+            ],
+        ),
         // PC=72, BEQ jump (x8 = x12 = 15)
-        bb(72, vec![
-            add(9, 9, 1, 0),
-        ]),
+        bb(72, vec![add(9, 9, 1, 0)]),
     ];
 
     assert_machine_output(program.to_vec(), "many_blocks");
