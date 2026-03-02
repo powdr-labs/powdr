@@ -68,8 +68,6 @@ pub enum SpecializedExecutor {
 }
 
 impl OpenVmISA for RiscvISA {
-    const DEFAULT_PC_STEP: u32 = DEFAULT_PC_STEP;
-
     type DummyExecutor = SdkVmConfigExecutor<openvm_stark_sdk::p3_baby_bear::BabyBear>;
     type DummyConfig = SdkVmConfig;
     type DummyBuilder = SdkVmCpuBuilder;

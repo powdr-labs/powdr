@@ -4,7 +4,7 @@ use crate::{
     isa::OpenVmISA, opcode::PowdrOpcode, program::CompiledProgram, vm::PowdrPrecompile,
     BabyBearOpenVmApcAdapter, SpecializedConfig, POWDR_OPCODE,
 };
-use openvm_instructions::VmOpcode;
+use openvm_instructions::{program::DEFAULT_PC_STEP, VmOpcode};
 use powdr_autoprecompiles::{
     adapter::{ApcWithStats, PgoAdapter},
     empirical_constraints::EmpiricalConstraints,
@@ -45,7 +45,7 @@ pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAd
     metrics::gauge!("total_apc_gen_time_ms").set(start.elapsed().as_millis() as f64);
 
     let pc_base = exe.program.pc_base;
-    let pc_step = ISA::DEFAULT_PC_STEP;
+    let pc_step = DEFAULT_PC_STEP;
     // We need to clone the program because we need to modify it to add the apc instructions.
     let mut exe = (*exe).clone();
     let program = &mut exe.program;

@@ -28,8 +28,7 @@ pub type OriginalCpuChipInventory =
     ChipInventory<BabyBearSC, MatrixRecordArena<Val<BabyBearSC>>, CpuBackend<BabyBearSC>>;
 
 pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
-    const DEFAULT_PC_STEP: u32;
-
+    /// The original program, for example, an elf for riscv. It must allow recovering the jump destinations / labels.
     type Program;
 
     type RegisterAddress: PartialEq
@@ -49,9 +48,11 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
         + MeteredExecutor<BabyBear>
         + PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>>
         + PreflightExecutor<BabyBear, DenseRecordArena>;
+
     type DummyConfig: VmConfig<BabyBearSC>
         + VmExecutionConfig<BabyBear, Executor = Self::DummyExecutor>
         + TranspilerConfig<BabyBear>;
+
     type DummyBuilder: Clone
         + Default
         + VmBuilder<
@@ -60,17 +61,20 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
             SystemChipInventory = SystemChipInventory<BabyBearSC>,
             RecordArena = MatrixRecordArena<Val<BabyBearSC>>,
         >;
+
     type Executor: AnyEnum
         + From<<Self::OriginalConfig as VmExecutionConfig<BabyBear>>::Executor>
         + From<PowdrExtensionExecutor<Self>>
         + PreflightExecutor<BabyBear>
         + Executor<BabyBear>
         + MeteredExecutor<BabyBear>;
+
     type OriginalConfig: VmConfig<BabyBearSC>
         + VmExecutionConfig<BabyBear>
         + Clone
         + TranspilerConfig<BabyBear>;
 
+    /// Extract the dummy config from an original config. See riscv implementation for a distinction.
     fn lower(original: Self::OriginalConfig) -> Self::DummyConfig;
 
     fn create_original_chip_complex(
@@ -78,22 +82,30 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
         airs: AirInventory<BabyBearSC>,
     ) -> Result<OriginalCpuChipComplex, ChipInventoryError>;
 
+    /// Given a config of the vanilla VM and a shared periphery (non-instruction chips), create a dummy inventory
     fn create_dummy_inventory(
         config: &Self::OriginalConfig,
         context: SharedPeripheryChipsCpu<Self>,
     ) -> OriginalCpuChipInventory;
 
+    /// Whether a given opcode is allowed. TODO: overlaps with `instruction_allowlist`
     fn is_allowed(opcode: VmOpcode) -> bool;
 
+    /// Whether a given opcode is branching
     fn is_branching(opcode: VmOpcode) -> bool;
 
+    /// The set of instructions which are allowed to be put into autoprecompiles
     fn instruction_allowlist() -> HashSet<VmOpcode>;
 
+    /// Return the value of register `register` as an u32
     fn get_register_value(register: &Self::RegisterAddress) -> u32;
 
+    /// Return the `limb_index`-th limb of `value` as a u32, where `value` is a memory value
     fn value_limb(value: u32, limb_index: usize) -> u32;
 
+    /// Format an instruction of this ISA
     fn format<F: PrimeField32>(instruction: &Instruction<F>) -> String;
 
-    fn get_labels(elf: &OriginalCompiledProgram<Self>) -> BTreeMap<u64, Vec<String>>;
+    /// Given an original program (elf + compiled exe), return the pcs which correspond to labels
+    fn get_labels(original_program: &OriginalCompiledProgram<Self>) -> BTreeMap<u64, Vec<String>>;
 }

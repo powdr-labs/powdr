@@ -1,6 +1,8 @@
 use std::{fmt::Display, iter::once, marker::PhantomData};
 
-use openvm_instructions::instruction::Instruction as OpenVmInstruction;
+use openvm_instructions::{
+    instruction::Instruction as OpenVmInstruction, program::DEFAULT_PC_STEP,
+};
 use openvm_stark_backend::p3_field::PrimeField32;
 use powdr_autoprecompiles::blocks::{Instruction, PcStep};
 use serde::{Deserialize, Serialize};
@@ -45,7 +47,7 @@ impl<F: PrimeField32, ISA: OpenVmISA> Display for Instr<F, ISA> {
 
 impl<F, ISA: OpenVmISA> PcStep for Instr<F, ISA> {
     fn pc_step() -> u32 {
-        ISA::DEFAULT_PC_STEP
+        DEFAULT_PC_STEP
     }
 }
 
