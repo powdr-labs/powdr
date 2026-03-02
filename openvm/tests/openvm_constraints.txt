@@ -902,7 +902,7 @@ mult=0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag
 mult=opcode_div_flag + opcode_rem_flag, args=[2 * (b__3 - b_sign * 128), 2 * (c__3 - c_sign * 128), 0, 0]
 mult=0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag - (zero_divisor + r_zero), args=[lt_diff - 1, 0, 0, 0]
 
-// Bus 7 (TUPLE_RANGE_CHECKER):
+// Bus 7 (TUPLE_RANGE_CHECKER_256_2048):
 mult=0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag, args=[q__0, (0 + (r__0 + c__0 * q__0) - b__0) * 2005401601]
 mult=0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag, args=[q__1, ((0 + (r__0 + c__0 * q__0) - b__0) * 2005401601 + (r__1 + c__0 * q__1 + c__1 * q__0) - b__1) * 2005401601]
 mult=0 + opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag, args=[q__2, (((0 + (r__0 + c__0 * q__0) - b__0) * 2005401601 + (r__1 + c__0 * q__1 + c__1 * q__0) - b__1) * 2005401601 + (r__2 + c__0 * q__2 + c__1 * q__1 + c__2 * q__0) - b__2) * 2005401601]
@@ -1047,7 +1047,7 @@ mult=0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag, args=[writes
 // Bus 6 (BITWISE_LOOKUP):
 mult=opcode_mulh_flag + opcode_mulhsu_flag, args=[2 * (b__3 - b_ext * 465814468 * 128), (opcode_mulh_flag + 1) * (c__3 - c_ext * 465814468 * 128), 0, 0]
 
-// Bus 7 (TUPLE_RANGE_CHECKER):
+// Bus 7 (TUPLE_RANGE_CHECKER_256_2048):
 mult=0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag, args=[a_mul__0, 2005401601 * (0 + (0 + b__0 * c__0) - a_mul__0)]
 mult=0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag, args=[a_mul__1, 2005401601 * (2005401601 * (0 + (0 + b__0 * c__0) - a_mul__0) + (0 + b__0 * c__1 + b__1 * c__0) - a_mul__1)]
 mult=0 + opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag, args=[a_mul__2, 2005401601 * (2005401601 * (2005401601 * (0 + (0 + b__0 * c__0) - a_mul__0) + (0 + b__0 * c__1 + b__1 * c__0) - a_mul__1) + (0 + b__0 * c__2 + b__1 * c__1 + b__2 * c__0) - a_mul__2)]
@@ -1128,7 +1128,7 @@ mult=is_valid, args=[reads_aux__1__base__timestamp_lt_aux__lower_decomp__1, 12]
 mult=is_valid, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__0, 17]
 mult=is_valid, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__1, 12]
 
-// Bus 7 (TUPLE_RANGE_CHECKER):
+// Bus 7 (TUPLE_RANGE_CHECKER_256_2048):
 mult=is_valid, args=[a__0, 2005401601 * (0 + (0 + b__0 * c__0) - a__0)]
 mult=is_valid, args=[a__1, 2005401601 * (2005401601 * (0 + (0 + b__0 * c__0) - a__0) + (0 + b__0 * c__1 + b__1 * c__0) - a__1)]
 mult=is_valid, args=[a__2, 2005401601 * (2005401601 * (2005401601 * (0 + (0 + b__0 * c__0) - a__0) + (0 + b__0 * c__1 + b__1 * c__0) - a__1) + (0 + b__0 * c__2 + b__1 * c__1 + b__2 * c__0) - a__2)]
