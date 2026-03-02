@@ -20,7 +20,6 @@ use openvm_sdk::config::SdkVmCpuBuilder;
 
 use openvm_sdk::config::TranspilerConfig;
 use openvm_sdk::prover::{verify_app_proof, AggStarkProver};
-use openvm_sdk::GenericSdk;
 use openvm_sdk::{
     config::{AppConfig, SdkVmConfig, SdkVmConfigExecutor, DEFAULT_APP_LOG_BLOWUP},
     Sdk, StdIn,
@@ -30,24 +29,22 @@ use openvm_stark_backend::engine::StarkEngine;
 use openvm_stark_backend::prover::cpu::{CpuBackend, CpuDevice};
 use openvm_stark_backend::prover::hal::ProverBackend;
 use openvm_stark_sdk::config::{
-    baby_bear_poseidon2::{BabyBearPoseidon2Config, BabyBearPoseidon2Engine},
+    baby_bear_poseidon2::BabyBearPoseidon2Config,
     FriParameters,
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
-use powdr_autoprecompiles::execution_profile::ExecutionProfile;
 use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
-use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
+use powdr_autoprecompiles::PowdrConfig;
 #[cfg(test)]
 use powdr_openvm_common::extraction_utils::AirMetrics;
 use powdr_openvm_common::extraction_utils::OriginalVmConfig;
-use powdr_openvm_common::program::Prog;
 use powdr_openvm_common::trace_generation::do_with_trace;
 use powdr_openvm_common::vm::PowdrExtensionExecutor;
 #[cfg(not(feature = "cuda"))]
 use powdr_openvm_common::PowdrSdkCpu;
-use powdr_openvm_common::{BabyBearOpenVmApcAdapter, OpenVmApcCandidate, PeripheryBusIds};
+use powdr_openvm_common::{OpenVmApcCandidate, PeripheryBusIds};
 use powdr_openvm_hints_circuit::{HintsExtension, HintsExtensionExecutor, HintsProverExt};
 use powdr_openvm_hints_transpiler::HintsTranspilerExtension;
 use serde::{Deserialize, Serialize};
@@ -89,9 +86,6 @@ cfg_if::cfg_if! {
 use openvm_circuit_primitives::bitwise_op_lookup::BitwiseOperationLookupAir;
 use openvm_circuit_primitives::range_tuple::RangeTupleCheckerAir;
 use openvm_circuit_primitives::var_range::VariableRangeCheckerAir;
-use openvm_native_circuit::NativeCpuBuilder;
-pub type PowdrExecutionProfileSdkCpu =
-    GenericSdk<BabyBearPoseidon2Engine, ExtendedVmConfigCpuBuilder, NativeCpuBuilder>;
 
 pub const DEFAULT_OPENVM_DEGREE_BOUND: usize = 2 * DEFAULT_APP_LOG_BLOWUP + 1;
 pub const DEFAULT_DEGREE_BOUND: DegreeBound = DegreeBound {
@@ -557,28 +551,6 @@ pub fn prove(
     }
 
     Ok(())
-}
-
-// Generate execution profile for a guest program
-pub fn execution_profile_from_guest(
-    program: &OriginalCompiledProgram<RiscvISA>,
-    inputs: StdIn,
-) -> ExecutionProfile {
-    let OriginalCompiledProgram { exe, vm_config, .. } = program;
-    let program = Prog::from(&exe.program);
-
-    // Set app configuration
-    let app_fri_params =
-        FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
-    let app_config = AppConfig::new(app_fri_params, vm_config.clone().config);
-
-    // prepare for execute
-    let sdk = PowdrExecutionProfileSdkCpu::new(app_config).unwrap();
-
-    execution_profile::<BabyBearOpenVmApcAdapter<RiscvISA>>(&program, || {
-        sdk.execute_interpreted(exe.clone(), inputs.clone())
-            .unwrap();
-    })
 }
 
 #[cfg(test)]

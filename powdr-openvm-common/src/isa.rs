@@ -10,13 +10,10 @@ use openvm_instructions::{instruction::Instruction, VmOpcode};
 use openvm_sdk::config::TranspilerConfig;
 use openvm_stark_backend::{
     config::{StarkGenericConfig, Val},
-    engine::StarkEngine,
     p3_field::PrimeField32,
-    prover::{
-        cpu::{CpuBackend, CpuDevice},
-        hal::ProverBackend,
-    },
+    prover::{cpu::CpuBackend, hal::ProverBackend},
 };
+use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use serde::{Deserialize, Serialize};
 
@@ -47,21 +44,22 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
         + Sync;
 
     type DummyExecutor: InterpreterExecutor<BabyBear>
+        + Executor<BabyBear>
+        + MeteredExecutor<BabyBear>
         + PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>>
         + PreflightExecutor<BabyBear, DenseRecordArena>;
     type DummyConfig: VmConfig<BabyBearSC>
-        + VmExecutionConfig<BabyBear, Executor = Self::DummyExecutor>;
+        + VmExecutionConfig<BabyBear, Executor = Self::DummyExecutor>
+        + TranspilerConfig<BabyBear>;
     type DummyInventoryContext: Clone;
-    type DummyBuilder<E>: Clone
+    type DummyBuilder: Clone
         + Default
         + VmBuilder<
-            E,
+            BabyBearPoseidon2Engine,
             VmConfig = Self::DummyConfig,
             SystemChipInventory = SystemChipInventory<BabyBearSC>,
             RecordArena = MatrixRecordArena<Val<BabyBearSC>>,
-        >
-    where
-        E: StarkEngine<SC = BabyBearSC, PB = CpuBackend<BabyBearSC>, PD = CpuDevice<BabyBearSC>>;
+        >;
     type Executor: AnyEnum
         + From<<Self::OriginalConfig as VmExecutionConfig<BabyBear>>::Executor>
         + From<PowdrExtensionExecutor<Self>>

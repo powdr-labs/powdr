@@ -1,5 +1,6 @@
 use std::{collections::HashMap, fmt::Display, marker::PhantomData, path::Path, sync::Arc};
 
+use crate::execution_profile::execution_profile;
 use openvm_circuit::{
     arch::{
         AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecutorInventory,
@@ -10,13 +11,16 @@ use openvm_circuit::{
     system::{memory::online::GuestMemory, SystemChipInventory},
 };
 use openvm_native_circuit::NativeCpuBuilder;
-use openvm_sdk::{config::TranspilerConfig, GenericSdk};
+use openvm_sdk::{
+    config::{AppConfig, TranspilerConfig, DEFAULT_APP_LOG_BLOWUP},
+    GenericSdk, StdIn,
+};
 use openvm_stark_backend::{
     config::Val,
     p3_field::{FieldAlgebra, PrimeField32},
     prover::cpu::{CpuBackend, CpuDevice},
 };
-use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
+use openvm_stark_sdk::config::{baby_bear_poseidon2::BabyBearPoseidon2Engine, FriParameters};
 use openvm_stark_sdk::{
     config::baby_bear_poseidon2::BabyBearPoseidon2Config, engine::StarkEngine,
     p3_baby_bear::BabyBear,
@@ -26,6 +30,7 @@ use powdr_autoprecompiles::{
     adapter::{Adapter, AdapterApc, AdapterApcWithStats, ApcWithStats},
     blocks::BasicBlock,
     execution::ExecutionState,
+    execution_profile::{self, ExecutionProfile},
     pgo::{ApcCandidateJsonExport, Candidate, KnapsackItem},
     DegreeBound, InstructionHandler,
 };
@@ -42,7 +47,7 @@ use crate::{
     extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs, OriginalVmConfig},
     instruction::Instr,
     isa::OpenVmISA,
-    program::Prog,
+    program::{OriginalCompiledProgram, Prog},
     vm::{PowdrExtension, PowdrPrecompile},
 };
 use std::hash::Hash;
@@ -372,6 +377,12 @@ pub struct SpecializedConfigCpuBuilder<ISA> {
 impl<E, ISA: OpenVmISA> VmBuilder<E> for SpecializedConfigCpuBuilder<ISA>
 where
     E: StarkEngine<SC = BabyBearSC, PB = CpuBackend<BabyBearSC>, PD = CpuDevice<BabyBearSC>>,
+    ISA::DummyBuilder: VmBuilder<
+        E,
+        VmConfig = ISA::DummyConfig,
+        SystemChipInventory = SystemChipInventory<BabyBearSC>,
+        RecordArena = MatrixRecordArena<Val<BabyBearSC>>,
+    >,
 {
     type VmConfig = SpecializedConfig<ISA>;
     type SystemChipInventory = SystemChipInventory<BabyBearSC>;
@@ -386,7 +397,7 @@ where
         ChipInventoryError,
     > {
         let mut chip_complex = VmBuilder::<E>::create_chip_complex(
-            &<ISA as OpenVmISA>::DummyBuilder::<E>::default(),
+            &<ISA as OpenVmISA>::DummyBuilder::default(),
             &ISA::lower(config.original.config.clone()),
             circuit,
         )?;
@@ -435,3 +446,28 @@ where
 
 pub type PowdrSdkCpu<ISA> =
     GenericSdk<BabyBearPoseidon2Engine, SpecializedConfigCpuBuilder<ISA>, NativeCpuBuilder>;
+
+pub type PowdrExecutionProfileSdkCpu<ISA> =
+    GenericSdk<BabyBearPoseidon2Engine, <ISA as OpenVmISA>::DummyBuilder, NativeCpuBuilder>;
+
+// Generate execution profile for a guest program
+pub fn execution_profile_from_guest<ISA: OpenVmISA>(
+    program: &OriginalCompiledProgram<ISA>,
+    inputs: StdIn,
+) -> ExecutionProfile {
+    let OriginalCompiledProgram { exe, vm_config, .. } = program;
+    let program = Prog::from(&exe.program);
+
+    // Set app configuration
+    let app_fri_params =
+        FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
+    let app_config = AppConfig::new(app_fri_params, ISA::lower(vm_config.clone().config));
+
+    // prepare for execute
+    let sdk = PowdrExecutionProfileSdkCpu::<ISA>::new(app_config).unwrap();
+
+    execution_profile::<BabyBearOpenVmApcAdapter<ISA>>(&program, || {
+        sdk.execute_interpreted(exe.clone(), inputs.clone())
+            .unwrap();
+    })
+}

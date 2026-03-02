@@ -48,14 +48,7 @@ impl OpenVmISA for RiscvISA {
     type DummyExecutor = SdkVmConfigExecutor<openvm_stark_sdk::p3_baby_bear::BabyBear>;
     type DummyConfig = SdkVmConfig;
     type DummyInventoryContext = SharedPeripheryChipsCpu;
-    type DummyBuilder<E>
-        = SdkVmCpuBuilder
-    where
-        E: openvm_stark_backend::engine::StarkEngine<
-            SC = BabyBearSC,
-            PB = openvm_stark_backend::prover::cpu::CpuBackend<BabyBearSC>,
-            PD = openvm_stark_backend::prover::cpu::CpuDevice<BabyBearSC>,
-        >;
+    type DummyBuilder = SdkVmCpuBuilder;
     type Executor = crate::SpecializedExecutor;
     type OriginalConfig = ExtendedVmConfig;
 

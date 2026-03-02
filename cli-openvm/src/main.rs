@@ -198,8 +198,10 @@ fn run_command(command: Commands) {
                     superblocks.superblocks_exec_count_cutoff,
                 );
             let guest_program = compile_openvm(&guest, guest_opts.clone()).unwrap();
-            let execution_profile =
-                powdr_openvm::execution_profile_from_guest(&guest_program, stdin_from(input));
+            let execution_profile = powdr_openvm_common::execution_profile_from_guest::<RiscvISA>(
+                &guest_program,
+                stdin_from(input),
+            );
 
             let empirical_constraints = maybe_compute_empirical_constraints(
                 &guest_program,
@@ -247,8 +249,10 @@ fn run_command(command: Commands) {
                 &powdr_config,
                 stdin_from(input),
             );
-            let execution_profile =
-                powdr_openvm::execution_profile_from_guest(&guest_program, stdin_from(input));
+            let execution_profile = powdr_openvm_common::execution_profile_from_guest::<RiscvISA>(
+                &guest_program,
+                stdin_from(input),
+            );
             let pgo_config = pgo_config(pgo, max_columns, execution_profile);
             let compile_and_exec = || {
                 let program = powdr_openvm::compile_exe(
@@ -303,8 +307,10 @@ fn run_command(command: Commands) {
                 stdin_from(input),
             );
 
-            let execution_profile =
-                powdr_openvm::execution_profile_from_guest(&guest_program, stdin_from(input));
+            let execution_profile = powdr_openvm_common::execution_profile_from_guest::<RiscvISA>(
+                &guest_program,
+                stdin_from(input),
+            );
             let pgo_config = pgo_config(pgo, max_columns, execution_profile);
             let compile_and_prove = || {
                 let program = powdr_openvm::compile_exe(

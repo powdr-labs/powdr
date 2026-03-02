@@ -22,6 +22,7 @@ openvm-stark-backend.workspace = true
 powdr-autoprecompiles.workspace = true
 
 powdr-openvm.workspace = true
+powdr-openvm-common.workspace = true
 
 eyre.workspace = true
 
