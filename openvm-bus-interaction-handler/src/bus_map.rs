@@ -4,6 +4,8 @@ use std::fmt::Display;
 use powdr_autoprecompiles::bus_map::BusType;
 use serde::{Deserialize, Serialize};
 
+use crate::DEFAULT_RANGE_TUPLE_CHECKER_SIZES;
+
 pub const DEFAULT_EXECUTION_BRIDGE: u64 = 0;
 pub const DEFAULT_MEMORY: u64 = 1;
 pub const DEFAULT_PC_LOOKUP: u64 = 2;
@@ -14,7 +16,7 @@ pub const DEFAULT_TUPLE_RANGE_CHECKER: u64 = 7;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OpenVmBusType {
     VariableRangeChecker,
-    TupleRangeChecker,
+    TupleRangeChecker([u32; 2]),
     BitwiseLookup,
 }
 
@@ -24,7 +26,7 @@ impl Display for OpenVmBusType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             OpenVmBusType::VariableRangeChecker => write!(f, "VARIABLE_RANGE_CHECKER"),
-            OpenVmBusType::TupleRangeChecker => write!(f, "TUPLE_RANGE_CHECKER"),
+            OpenVmBusType::TupleRangeChecker(sizes) => write!(f, "TUPLE_RANGE_CHECKER_{sizes:?}"),
             OpenVmBusType::BitwiseLookup => write!(f, "BITWISE_LOOKUP"),
         }
     }
@@ -45,7 +47,9 @@ pub fn default_openvm_bus_map() -> BusMap {
         ),
         (
             DEFAULT_TUPLE_RANGE_CHECKER,
-            BusType::Other(OpenVmBusType::TupleRangeChecker),
+            BusType::Other(OpenVmBusType::TupleRangeChecker(
+                DEFAULT_RANGE_TUPLE_CHECKER_SIZES,
+            )),
         ),
     ];
     BusMap::from_id_type_pairs(bus_ids)

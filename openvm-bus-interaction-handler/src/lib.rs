@@ -37,7 +37,6 @@ mod variable_range_checker;
 #[derive(Clone)]
 pub struct OpenVmBusInteractionHandler<T: FieldElement> {
     bus_map: BusMap,
-    tuple_range_checker_handler: TupleRangeCheckerHandler,
     _phantom: std::marker::PhantomData<T>,
 }
 
@@ -46,17 +45,31 @@ const DEFAULT_RANGE_TUPLE_CHECKER_SIZES: [u32; 2] = [1 << 8, 8 * (1 << 8)];
 
 impl<T: FieldElement> Default for OpenVmBusInteractionHandler<T> {
     fn default() -> Self {
-        Self::new(default_openvm_bus_map(), DEFAULT_RANGE_TUPLE_CHECKER_SIZES)
+        Self::new(default_openvm_bus_map())
     }
 }
 
 impl<T: FieldElement> OpenVmBusInteractionHandler<T> {
-    pub fn new(bus_map: BusMap, range_tuple_checker_sizes: [u32; 2]) -> Self {
+    pub fn new(bus_map: BusMap) -> Self {
         Self {
             bus_map,
-            tuple_range_checker_handler: TupleRangeCheckerHandler::new(range_tuple_checker_sizes),
             _phantom: std::marker::PhantomData,
         }
+    }
+
+    pub fn tuple_range_checker_sizes(&self) -> [u32; 2] {
+        self.bus_map
+            .all_types_by_id()
+            .values()
+            .filter_map(|ty| {
+                if let BusType::Other(OpenVmBusType::TupleRangeChecker(sizes)) = ty {
+                    Some(*sizes)
+                } else {
+                    None
+                }
+            })
+            .next()
+            .unwrap()
     }
 }
 
@@ -93,9 +106,10 @@ impl<T: FieldElement> BusInteractionHandler<T> for OpenVmBusInteractionHandler<T
             BusType::Other(OpenVmBusType::VariableRangeChecker) => {
                 handle_variable_range_checker(&bus_interaction.payload)
             }
-            BusType::Other(OpenVmBusType::TupleRangeChecker) => self
-                .tuple_range_checker_handler
-                .handle_bus_interaction(&bus_interaction.payload),
+            BusType::Other(OpenVmBusType::TupleRangeChecker(sizes)) => {
+                TupleRangeCheckerHandler::new(sizes)
+                    .handle_bus_interaction(&bus_interaction.payload)
+            }
         };
         BusInteraction {
             payload: payload_constraints,
@@ -117,7 +131,7 @@ impl<T: FieldElement> IsBusStateful<T> for OpenVmBusInteractionHandler<T> {
             BusType::PcLookup => false,
             BusType::Other(OpenVmBusType::BitwiseLookup) => false,
             BusType::Other(OpenVmBusType::VariableRangeChecker) => false,
-            BusType::Other(OpenVmBusType::TupleRangeChecker) => false,
+            BusType::Other(OpenVmBusType::TupleRangeChecker(_)) => false,
         }
     }
 }
@@ -142,9 +156,10 @@ impl<T: FieldElement> RangeConstraintHandler<T> for OpenVmBusInteractionHandler<
             BusType::Other(OpenVmBusType::VariableRangeChecker) => {
                 variable_range_checker_pure_range_constraints(&bus_interaction.payload)
             }
-            BusType::Other(OpenVmBusType::TupleRangeChecker) => self
-                .tuple_range_checker_handler
-                .pure_range_constraints(&bus_interaction.payload),
+            BusType::Other(OpenVmBusType::TupleRangeChecker(sizes)) => {
+                TupleRangeCheckerHandler::new(sizes)
+                    .pure_range_constraints(&bus_interaction.payload)
+            }
         }
     }
 
@@ -153,9 +168,9 @@ impl<T: FieldElement> RangeConstraintHandler<T> for OpenVmBusInteractionHandler<
         mut range_constraints: RangeConstraints<T, V>,
     ) -> Result<Vec<BusInteraction<GroupedExpression<T, V>>>, MakeRangeConstraintsError> {
         let mut byte_constraints = filter_byte_constraints(&mut range_constraints);
-        let tuple_range_checker_ranges = self
-            .tuple_range_checker_handler
-            .tuple_range_checker_ranges::<T>();
+        let tuple_range_checker_sizes = self.tuple_range_checker_sizes();
+        let tuple_range_checker_ranges =
+            TupleRangeCheckerHandler::new(tuple_range_checker_sizes).tuple_range_checker_ranges();
         assert_eq!(
             tuple_range_checker_ranges.0,
             RangeConstraint::from_mask(0xffu64),
@@ -183,7 +198,9 @@ impl<T: FieldElement> RangeConstraintHandler<T> for OpenVmBusInteractionHandler<
                 // Expects (x, y), where `x` is in the range [0, MAX_0] and `y` is in the range [0, MAX_1]
                 let bus_id = self
                     .bus_map
-                    .get_bus_id(&BusType::Other(OpenVmBusType::TupleRangeChecker))
+                    .get_bus_id(&BusType::Other(OpenVmBusType::TupleRangeChecker(
+                        tuple_range_checker_sizes,
+                    )))
                     .unwrap();
                 BusInteraction {
                     bus_id: GroupedExpression::from_number(T::from(bus_id)),
