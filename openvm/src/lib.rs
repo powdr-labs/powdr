@@ -28,10 +28,7 @@ use openvm_stark_backend::config::{StarkGenericConfig, Val};
 use openvm_stark_backend::engine::StarkEngine;
 use openvm_stark_backend::prover::cpu::{CpuBackend, CpuDevice};
 use openvm_stark_backend::prover::hal::ProverBackend;
-use openvm_stark_sdk::config::{
-    baby_bear_poseidon2::BabyBearPoseidon2Config,
-    FriParameters,
-};
+use openvm_stark_sdk::config::{baby_bear_poseidon2::BabyBearPoseidon2Config, FriParameters};
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
@@ -61,7 +58,7 @@ pub use powdr_autoprecompiles::PgoConfig;
 
 pub use powdr_openvm_bus_interaction_handler::bus_map;
 
-pub use crate::instruction_sets::riscv::empirical_constraints::detect_empirical_constraints;
+pub use powdr_openvm_common::empirical_constraints::detect_empirical_constraints;
 
 pub type BabyBearSC = BabyBearPoseidon2Config;
 
@@ -97,9 +94,9 @@ pub fn default_powdr_openvm_config(apc: u64, skip: u64) -> PowdrConfig {
     PowdrConfig::new(apc, skip, DEFAULT_DEGREE_BOUND)
 }
 
-pub use instruction_sets::riscv::customize_exe::customize;
 pub use openvm_build::GuestOptions;
 pub use powdr_autoprecompiles::bus_map::BusType;
+pub use powdr_openvm_common::customize_exe::customize;
 pub use powdr_openvm_common::instruction::Instr;
 
 // A module for our extension

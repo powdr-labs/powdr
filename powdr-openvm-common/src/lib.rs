@@ -54,6 +54,8 @@ use std::hash::Hash;
 
 pub mod apc_air;
 pub mod chip;
+pub mod customize_exe;
+pub mod empirical_constraints;
 pub mod executor;
 pub mod extraction_utils;
 pub mod instruction;

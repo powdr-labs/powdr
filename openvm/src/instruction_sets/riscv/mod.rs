@@ -27,8 +27,6 @@ use crate::{
 
 use openvm_sdk::config::SdkVmCpuBuilder;
 
-pub mod customize_exe;
-pub mod empirical_constraints;
 pub mod instruction_formatter;
 pub mod opcode;
 pub mod program;

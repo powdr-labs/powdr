@@ -36,6 +36,9 @@ derive_more.workspace = true
 powdr-constraint-solver.workspace = true
 powdr-riscv-elf.workspace = true
 tracing.workspace = true
+rustc-demangle = "0.1.25"
+metrics.workspace = true
+indicatif = "0.18.3"
 
 [build-dependencies]
 openvm-cuda-builder = { workspace = true, optional = true }

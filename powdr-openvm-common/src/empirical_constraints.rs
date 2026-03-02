@@ -1,3 +1,6 @@
+use crate::isa::OpenVmISA;
+use crate::program::CompiledProgram;
+use crate::trace_generation::do_with_cpu_trace;
 use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
 use itertools::Itertools;
@@ -16,15 +19,13 @@ use powdr_autoprecompiles::expression::AlgebraicEvaluator;
 use powdr_autoprecompiles::expression::RowEvaluator;
 use powdr_autoprecompiles::optimistic::config::optimistic_precompile_config;
 use powdr_autoprecompiles::DegreeBound;
-use powdr_openvm_common::trace_generation::do_with_cpu_trace;
+use powdr_openvm_bus_interaction_handler::bus_map::default_openvm_bus_map;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::iter::once;
 
-use crate::bus_map::default_openvm_bus_map;
-use crate::RiscvISA;
-use crate::{CompiledProgram, OriginalCompiledProgram};
+use crate::OriginalCompiledProgram;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 struct Timestamp {
@@ -72,8 +73,8 @@ impl Trace {
     }
 }
 
-pub fn detect_empirical_constraints(
-    program: &OriginalCompiledProgram<RiscvISA>,
+pub fn detect_empirical_constraints<ISA: OpenVmISA>(
+    program: &OriginalCompiledProgram<ISA>,
     degree_bound: DegreeBound,
     inputs: Vec<StdIn>,
 ) -> EmpiricalConstraints {
@@ -105,8 +106,8 @@ pub fn detect_empirical_constraints(
     constraint_detector.finalize()
 }
 
-fn detect_empirical_constraints_from_input(
-    program: &CompiledProgram<RiscvISA>,
+fn detect_empirical_constraints_from_input<ISA: OpenVmISA>(
+    program: &CompiledProgram<ISA>,
     input_index: usize,
     inputs: StdIn,
     degree_bound: DegreeBound,

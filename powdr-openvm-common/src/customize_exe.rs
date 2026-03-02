@@ -1,5 +1,9 @@
 use std::sync::Arc;
 
+use crate::{
+    isa::OpenVmISA, opcode::PowdrOpcode, program::CompiledProgram, vm::PowdrPrecompile,
+    BabyBearOpenVmApcAdapter, SpecializedConfig, POWDR_OPCODE,
+};
 use itertools::Itertools;
 use openvm_instructions::VmOpcode;
 use powdr_autoprecompiles::{
@@ -8,20 +12,15 @@ use powdr_autoprecompiles::{
     PowdrConfig, VmConfig,
 };
 use powdr_openvm_bus_interaction_handler::OpenVmBusInteractionHandler;
-use powdr_openvm_common::{
-    isa::OpenVmISA, opcode::PowdrOpcode, vm::PowdrPrecompile, BabyBearOpenVmApcAdapter,
-    SpecializedConfig, POWDR_OPCODE,
-};
 
-use crate::{CompiledProgram, OriginalCompiledProgram, RiscvISA};
+use crate::OriginalCompiledProgram;
 
-// TODO: make generic on ISA, currently blocked by the periphery, the dummy config is assumed to be SdkVmConfig here
-pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a, RiscvISA>>>(
-    original_program: OriginalCompiledProgram<RiscvISA>,
+pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a, ISA>>>(
+    original_program: OriginalCompiledProgram<ISA>,
     config: PowdrConfig,
     pgo: P,
     empirical_constraints: EmpiricalConstraints,
-) -> CompiledProgram<RiscvISA> {
+) -> CompiledProgram<ISA> {
     let original_config = original_program.vm_config.clone();
     let airs = original_config.airs(config.degree_bound).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
     let bus_map = original_config.bus_map();
@@ -83,7 +82,7 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a, RiscvI
     metrics::gauge!("total_apc_gen_time_ms").set(start.elapsed().as_millis() as f64);
 
     let pc_base = exe.program.pc_base;
-    let pc_step = RiscvISA::DEFAULT_PC_STEP;
+    let pc_step = ISA::DEFAULT_PC_STEP;
     // We need to clone the program because we need to modify it to add the apc instructions.
     let mut exe = (*exe).clone();
     let program = &mut exe.program;
