@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     instruction_sets::{
-        riscv::opcode::{branch_opcodes_set, instruction_allowlist},
+        riscv::opcode::{branch_opcodes_bigint_set, branch_opcodes_set, instruction_allowlist},
         OpenVmISA, OriginalCpuChipComplex, OriginalCpuChipInventory,
     },
     powdr_extension::trace_generator::{
@@ -105,5 +105,15 @@ impl OpenVmISA for RiscvISA {
         periphery_bus_ids: &powdr_openvm_common::PeripheryBusIds,
     ) {
         periphery.apply(bus_id, mult, args, periphery_bus_ids);
+    }
+
+    /// Besides the base RISCV-V branching instructions, the bigint extension adds two more branching
+    /// instruction classes over BranchEqual and BranchLessThan.
+    /// Those instructions have the form <INSTR rs0 rs1 target_offset ...>, where target_offset is the
+    /// relative jump we're interested in.
+    /// This means that for a given program address A containing the instruction above,
+    /// we add A + target_offset as a target as well.
+    fn extra_targets() -> HashSet<VmOpcode> {
+        branch_opcodes_bigint_set()
     }
 }

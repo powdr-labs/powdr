@@ -33,6 +33,7 @@ serde.workspace = true
 powdr-number.workspace = true
 derive_more.workspace = true
 powdr-constraint-solver.workspace = true
+powdr-riscv-elf.workspace = true
 tracing.workspace = true
 
 [build-dependencies]

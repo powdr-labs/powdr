@@ -1,83 +1,60 @@
-use std::{collections::BTreeSet, sync::Arc};
+#[cfg(test)]
+use openvm_circuit::arch::{VmBuilder, VmCircuitConfig};
+#[cfg(test)]
+use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
+#[cfg(test)]
+use powdr_openvm_common::{
+    extraction_utils::{get_air_metrics, AirMetrics, AirWidthsDiff},
+    program::CompiledProgram,
+};
 
-use openvm_instructions::exe::VmExe;
-use openvm_instructions::program::DEFAULT_PC_STEP;
-use openvm_stark_backend::p3_field::PrimeField32;
-use openvm_stark_sdk::p3_baby_bear::BabyBear;
-use powdr_autoprecompiles::blocks::{collect_basic_blocks, BasicBlock};
-use powdr_autoprecompiles::DegreeBound;
-use powdr_openvm_common::extraction_utils::OriginalVmConfig;
-use powdr_openvm_common::{BabyBearOpenVmApcAdapter, SpecializedConfig};
-use powdr_riscv_elf::ElfProgram;
-use serde::{Deserialize, Serialize};
+#[cfg(test)]
+use crate::{RiscvISA, SpecializedConfigCpuBuilder};
 
-use crate::instruction_sets::riscv::opcode::branch_opcodes_bigint_set;
-use crate::instruction_sets::OpenVmISA;
-use crate::{Instr, Prog, RiscvISA};
+// TODO: This cannot be generic over ISA because SpecializedConfigCpuBuilder is not
+#[cfg(test)]
+// Return a tuple of (powdr AirMetrics, non-powdr AirMetrics)
+pub fn air_metrics(
+    program: CompiledProgram<RiscvISA>,
+    max_degree: usize,
+) -> (Vec<(AirMetrics, Option<AirWidthsDiff>)>, Vec<AirMetrics>) {
+    let air_inventory = program.vm_config.create_airs().unwrap();
 
-#[derive(Serialize, Deserialize, Clone)]
-#[serde(bound = "")]
-pub struct CompiledProgram<ISA: OpenVmISA> {
-    pub exe: Arc<VmExe<BabyBear>>,
-    pub vm_config: SpecializedConfig<ISA>,
-}
+    let chip_complex =
+        <SpecializedConfigCpuBuilder as VmBuilder<BabyBearPoseidon2Engine>>::create_chip_complex(
+            &SpecializedConfigCpuBuilder,
+            &program.vm_config,
+            air_inventory,
+        )
+        .unwrap();
 
-// the original openvm program and config without powdr extension, along with the elf
-pub struct OriginalCompiledProgram<ISA: OpenVmISA> {
-    pub exe: Arc<VmExe<BabyBear>>,
-    pub vm_config: OriginalVmConfig<ISA>,
-    pub elf: ElfProgram,
-}
+    let inventory = chip_complex.inventory;
 
-impl<ISA: OpenVmISA> OriginalCompiledProgram<ISA> {
-    /// Segments the program into basic blocks
-    pub fn collect_basic_blocks(&self) -> Vec<BasicBlock<Instr<BabyBear, RiscvISA>>> {
-        let labels = self.elf.text_labels();
+    // Order of precompile is the same as that of Powdr executors in chip inventory
+    let mut apc_stats = program
+        .vm_config
+        .powdr
+        .precompiles
+        .iter()
+        .map(|precompile| precompile.apc_stats.clone());
 
-        let jumpdest_set = self.add_extra_targets(labels.clone(), DEFAULT_PC_STEP);
+    inventory.airs().ext_airs().iter().fold(
+        (Vec::new(), Vec::new()),
+        |(mut powdr_air_metrics, mut non_powdr_air_metrics), air| {
+            let name = air.name();
+            // We actually give name "powdr_air_for_opcode_<opcode>" to the AIRs,
+            // but OpenVM uses the actual Rust type (PowdrAir) as the name in this method.
+            // TODO this is hacky but not sure how to do it better rn.
+            if name.starts_with("PowdrAir") {
+                powdr_air_metrics.push((
+                    get_air_metrics(air.clone(), max_degree),
+                    Some(apc_stats.next().unwrap().widths),
+                ));
+            } else {
+                non_powdr_air_metrics.push(get_air_metrics(air.clone(), max_degree));
+            }
 
-        let program = Prog::from(&self.exe.program);
-
-        // Convert the jump destinations to u64 for compatibility with the `collect_basic_blocks` function.
-        let jumpdest_set = jumpdest_set
-            .iter()
-            .map(|&x| x as u64)
-            .collect::<BTreeSet<_>>();
-
-        collect_basic_blocks::<BabyBearOpenVmApcAdapter<RiscvISA>>(&program, &jumpdest_set)
-    }
-
-    /// Besides the base RISCV-V branching instructions, the bigint extension adds two more branching
-    /// instruction classes over BranchEqual and BranchLessThan.
-    /// Those instructions have the form <INSTR rs0 rs1 target_offset ...>, where target_offset is the
-    /// relative jump we're interested in.
-    /// This means that for a given program address A containing the instruction above,
-    /// we add A + target_offset as a target as well.
-    fn add_extra_targets(&self, mut labels: BTreeSet<u32>, pc_step: u32) -> BTreeSet<u32> {
-        let branch_opcodes_bigint = branch_opcodes_bigint_set();
-        let program = &self.exe.program;
-        let new_labels = program
-            .instructions_and_debug_infos
-            .iter()
-            .enumerate()
-            .filter_map(|(i, instr)| {
-                let instr = instr.as_ref().unwrap().0.clone();
-                let adjusted_pc = program.pc_base + (i as u32) * pc_step;
-                let op = instr.opcode;
-                branch_opcodes_bigint
-                    .contains(&op)
-                    .then_some(adjusted_pc + instr.c.as_canonical_u32())
-            });
-        labels.extend(new_labels);
-
-        labels
-    }
-
-    /// Converts to a `CompiledProgram` with the original vm config (without autoprecompiles).
-    pub fn compiled_program(&self, degree_bound: DegreeBound) -> CompiledProgram<ISA> {
-        CompiledProgram {
-            exe: self.exe.clone(),
-            vm_config: SpecializedConfig::new(self.vm_config.clone(), Vec::new(), degree_bound),
-        }
-    }
+            (powdr_air_metrics, non_powdr_air_metrics)
+        },
+    )
 }

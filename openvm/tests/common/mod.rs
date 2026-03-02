@@ -1,5 +1,6 @@
 use openvm_sdk::config::SdkVmConfig;
-use powdr_openvm::{extraction_utils::OriginalVmConfig, ExtendedVmConfig, RiscvISA};
+use powdr_openvm::{ExtendedVmConfig, RiscvISA};
+use powdr_openvm_common::extraction_utils::OriginalVmConfig;
 use powdr_openvm_hints_circuit::HintsExtension;
 
 pub fn original_vm_config() -> OriginalVmConfig<RiscvISA> {
@@ -28,9 +29,10 @@ pub mod apc_builder_utils {
     use powdr_number::BabyBearField;
     use powdr_openvm::instruction_formatter::openvm_instruction_formatter;
     use powdr_openvm::Instr;
+    use powdr_openvm::RiscvISA;
     use powdr_openvm::DEFAULT_DEGREE_BOUND;
-    use powdr_openvm::{BabyBearOpenVmApcAdapter, RiscvISA};
     use powdr_openvm_bus_interaction_handler::OpenVmBusInteractionHandler;
+    use powdr_openvm_common::BabyBearOpenVmApcAdapter;
     use pretty_assertions::assert_eq;
     use std::fs;
     use std::path::Path;

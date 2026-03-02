@@ -51,10 +51,12 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static {
         + TranspilerConfig<BabyBear>;
 
     fn lower(original: Self::OriginalConfig) -> Self::DummyConfig;
+
     fn create_original_chip_complex(
         config: &Self::OriginalConfig,
         airs: AirInventory<BabyBearSC>,
     ) -> Result<OriginalCpuChipComplex, ChipInventoryError>;
+
     fn create_dummy_inventory(
         config: &Self::OriginalConfig,
         context: Self::DummyInventoryContext,
@@ -65,6 +67,8 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static {
     fn is_branching(opcode: VmOpcode) -> bool;
 
     fn instruction_allowlist() -> HashSet<VmOpcode>;
+
+    fn extra_targets() -> HashSet<VmOpcode>;
 
     fn get_register_value(register: &Self::RegisterAddress) -> u32;
 

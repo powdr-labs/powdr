@@ -36,6 +36,7 @@ use crate::{
     BabyBearSC, Instr,
 };
 
+pub mod cuda_abi;
 mod inventory;
 mod periphery;
 

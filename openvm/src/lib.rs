@@ -34,7 +34,6 @@ use openvm_stark_sdk::config::{
     baby_bear_poseidon2::{BabyBearPoseidon2Config, BabyBearPoseidon2Engine},
     FriParameters,
 };
-use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
@@ -56,13 +55,12 @@ use powdr_openvm_hints_transpiler::HintsTranspilerExtension;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-pub use crate::instruction_sets::riscv::program::{CompiledProgram, OriginalCompiledProgram};
 use crate::instruction_sets::riscv::trace_generation::do_with_trace;
 pub use crate::instruction_sets::riscv::RiscvISA;
 pub use crate::instruction_sets::riscv::{instruction_formatter, symbolic_instruction_builder};
 use crate::powdr_extension::trace_generator::cpu::new_periphery_instances;
+pub use powdr_openvm_common::program::{CompiledProgram, OriginalCompiledProgram};
 
-pub mod cuda_abi;
 pub mod extraction_utils;
 mod instruction_sets;
 pub use powdr_autoprecompiles::DegreeBound;
@@ -115,19 +113,9 @@ pub fn default_powdr_openvm_config(apc: u64, skip: u64) -> PowdrConfig {
     PowdrConfig::new(apc, skip, DEFAULT_DEGREE_BOUND)
 }
 
-fn format_fe<F: PrimeField32>(v: F) -> String {
-    let v = v.as_canonical_u32();
-    if v < F::ORDER_U32 / 2 {
-        format!("{v}")
-    } else {
-        format!("-{}", F::ORDER_U32 - v)
-    }
-}
-
+pub use instruction_sets::riscv::customize_exe::customize;
 pub use openvm_build::GuestOptions;
 pub use powdr_autoprecompiles::bus_map::BusType;
-
-pub use instruction_sets::riscv::customize_exe::customize;
 pub use powdr_openvm_common::instruction::Instr;
 
 // A module for our extension
@@ -567,53 +555,6 @@ impl InitFileGenerator for ExtendedVmConfig {
     }
 }
 
-#[cfg(test)]
-impl CompiledProgram<RiscvISA> {
-    // Return a tuple of (powdr AirMetrics, non-powdr AirMetrics)
-    fn air_metrics(
-        &self,
-        max_degree: usize,
-    ) -> (Vec<(AirMetrics, Option<AirWidthsDiff>)>, Vec<AirMetrics>) {
-        let air_inventory = self.vm_config.create_airs().unwrap();
-
-        let chip_complex = <SpecializedConfigCpuBuilder as VmBuilder<BabyBearPoseidon2Engine>>::create_chip_complex(&SpecializedConfigCpuBuilder, &self.vm_config, air_inventory).unwrap();
-
-        let inventory = chip_complex.inventory;
-
-        // Order of precompile is the same as that of Powdr executors in chip inventory
-        let mut apc_stats = self
-            .vm_config
-            .powdr
-            .precompiles
-            .iter()
-            .map(|precompile| precompile.apc_stats.clone());
-
-        inventory.airs().ext_airs().iter().fold(
-            (Vec::new(), Vec::new()),
-            |(mut powdr_air_metrics, mut non_powdr_air_metrics), air| {
-                let name = air.name();
-                // We actually give name "powdr_air_for_opcode_<opcode>" to the AIRs,
-                // but OpenVM uses the actual Rust type (PowdrAir) as the name in this method.
-                // TODO this is hacky but not sure how to do it better rn.
-                if name.starts_with("PowdrAir") {
-                    use crate::extraction_utils::get_air_metrics;
-
-                    powdr_air_metrics.push((
-                        get_air_metrics(air.clone(), max_degree),
-                        Some(apc_stats.next().unwrap().widths),
-                    ));
-                } else {
-                    use crate::extraction_utils::get_air_metrics;
-
-                    non_powdr_air_metrics.push(get_air_metrics(air.clone(), max_degree));
-                }
-
-                (powdr_air_metrics, non_powdr_air_metrics)
-            },
-        )
-    }
-}
-
 pub fn execute(
     program: CompiledProgram<RiscvISA>,
     inputs: StdIn,
@@ -732,10 +673,12 @@ pub fn execution_profile_from_guest(
 
 #[cfg(test)]
 mod tests {
+    use crate::instruction_sets::riscv::program::air_metrics;
+
     use super::*;
     use expect_test::{expect, Expect};
     use itertools::Itertools;
-    use powdr_openvm_common::extraction_utils::AirWidths;
+    use powdr_openvm_common::extraction_utils::{AirWidths, AirWidthsDiff};
     use pretty_assertions::assert_eq;
     use test_log::test;
 
@@ -1415,7 +1358,7 @@ mod tests {
         )
         .unwrap();
 
-        let (powdr_air_metrics, non_powdr_air_metrics) = compiled_program.air_metrics(max_degree);
+        let (powdr_air_metrics, non_powdr_air_metrics) = air_metrics(compiled_program, max_degree);
 
         expected_metrics.powdr_expected_sum.assert_debug_eq(
             &powdr_air_metrics
