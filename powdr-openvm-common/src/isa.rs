@@ -1,17 +1,26 @@
 use std::collections::HashSet;
 
 use openvm_circuit::arch::{
-    AirInventory, AnyEnum, ChipInventory, ChipInventoryError, DenseRecordArena,
-    InterpreterExecutor, MatrixRecordArena, PreflightExecutor, VmChipComplex, VmConfig,
-    VmExecutionConfig,
+    AirInventory, AnyEnum, ChipInventory, ChipInventoryError, DenseRecordArena, Executor,
+    InterpreterExecutor, MatrixRecordArena, MeteredExecutor, PreflightExecutor, VmBuilder,
+    VmChipComplex, VmConfig, VmExecutionConfig,
 };
 use openvm_circuit::system::SystemChipInventory;
 use openvm_instructions::{instruction::Instruction, VmOpcode};
 use openvm_sdk::config::TranspilerConfig;
-use openvm_stark_backend::{config::Val, p3_field::PrimeField32, prover::cpu::CpuBackend};
+use openvm_stark_backend::{
+    config::{StarkGenericConfig, Val},
+    engine::StarkEngine,
+    p3_field::PrimeField32,
+    prover::{
+        cpu::{CpuBackend, CpuDevice},
+        hal::ProverBackend,
+    },
+};
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use serde::{Deserialize, Serialize};
 
+use crate::trace_generator::cpu::PowdrPeripheryInstancesCpu;
 use crate::vm::PowdrExtensionExecutor;
 use crate::{BabyBearSC, PeripheryBusIds};
 
@@ -24,7 +33,7 @@ pub type OriginalCpuChipComplex = VmChipComplex<
 pub type OriginalCpuChipInventory =
     ChipInventory<BabyBearSC, MatrixRecordArena<Val<BabyBearSC>>, CpuBackend<BabyBearSC>>;
 
-pub trait OpenVmISA: Send + Sync + Clone + 'static {
+pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
     const DEFAULT_PC_STEP: u32;
     type RegisterAddress: PartialEq
         + Eq
@@ -43,11 +52,25 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static {
     type DummyConfig: VmConfig<BabyBearSC>
         + VmExecutionConfig<BabyBear, Executor = Self::DummyExecutor>;
     type DummyInventoryContext: Clone;
+    type DummyBuilder<E>: Clone
+        + Default
+        + VmBuilder<
+            E,
+            VmConfig = Self::DummyConfig,
+            SystemChipInventory = SystemChipInventory<BabyBearSC>,
+            RecordArena = MatrixRecordArena<Val<BabyBearSC>>,
+        >
+    where
+        E: StarkEngine<SC = BabyBearSC, PB = CpuBackend<BabyBearSC>, PD = CpuDevice<BabyBearSC>>;
     type Executor: AnyEnum
         + From<<Self::OriginalConfig as VmExecutionConfig<BabyBear>>::Executor>
-        + From<PowdrExtensionExecutor<Self>>;
+        + From<PowdrExtensionExecutor<Self>>
+        + PreflightExecutor<BabyBear>
+        + Executor<BabyBear>
+        + MeteredExecutor<BabyBear>;
     type OriginalConfig: VmConfig<BabyBearSC>
         + VmExecutionConfig<BabyBear>
+        + Clone
         + TranspilerConfig<BabyBear>;
 
     fn lower(original: Self::OriginalConfig) -> Self::DummyConfig;
@@ -61,6 +84,13 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static {
         config: &Self::OriginalConfig,
         context: Self::DummyInventoryContext,
     ) -> OriginalCpuChipInventory;
+
+    fn shared_chips_pair<SC, RA, PB>(
+        inventory: &mut ChipInventory<SC, RA, PB>,
+    ) -> PowdrPeripheryInstancesCpu<Self::DummyInventoryContext>
+    where
+        SC: StarkGenericConfig,
+        PB: ProverBackend;
 
     fn is_allowed(opcode: VmOpcode) -> bool;
 

@@ -15,7 +15,7 @@ use powdr_openvm_common::{
 
 use crate::{CompiledProgram, OriginalCompiledProgram, RiscvISA};
 
-// TODO: make generic on ISA
+// TODO: make generic on ISA, currently blocked by the periphery, the dummy config is assumed to be SdkVmConfig here
 pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a, RiscvISA>>>(
     original_program: OriginalCompiledProgram<RiscvISA>,
     config: PowdrConfig,

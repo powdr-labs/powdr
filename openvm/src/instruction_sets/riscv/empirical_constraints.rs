@@ -16,13 +16,13 @@ use powdr_autoprecompiles::expression::AlgebraicEvaluator;
 use powdr_autoprecompiles::expression::RowEvaluator;
 use powdr_autoprecompiles::optimistic::config::optimistic_precompile_config;
 use powdr_autoprecompiles::DegreeBound;
+use powdr_openvm_common::trace_generation::do_with_cpu_trace;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::iter::once;
 
 use crate::bus_map::default_openvm_bus_map;
-use crate::instruction_sets::riscv::trace_generation::do_with_cpu_trace;
 use crate::RiscvISA;
 use crate::{CompiledProgram, OriginalCompiledProgram};
 

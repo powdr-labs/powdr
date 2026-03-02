@@ -2,16 +2,24 @@ use std::{collections::HashMap, fmt::Display, marker::PhantomData, path::Path, s
 
 use openvm_circuit::{
     arch::{
-        AirInventory, AirInventoryError, ExecutorInventory, ExecutorInventoryError,
-        InitFileGenerator, SystemConfig, VmCircuitConfig, VmCircuitExtension, VmExecutionConfig,
-        VmState,
+        AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecutorInventory,
+        ExecutorInventoryError, InitFileGenerator, MatrixRecordArena, RowMajorMatrixArena,
+        SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig, VmCircuitExtension,
+        VmExecutionConfig, VmProverExtension, VmState,
     },
-    system::memory::online::GuestMemory,
+    system::{memory::online::GuestMemory, SystemChipInventory},
 };
-use openvm_sdk::config::TranspilerConfig;
-use openvm_stark_backend::p3_field::{FieldAlgebra, PrimeField32};
+use openvm_native_circuit::NativeCpuBuilder;
+use openvm_sdk::{config::TranspilerConfig, GenericSdk};
+use openvm_stark_backend::{
+    config::Val,
+    p3_field::{FieldAlgebra, PrimeField32},
+    prover::cpu::{CpuBackend, CpuDevice},
+};
+use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
 use openvm_stark_sdk::{
-    config::baby_bear_poseidon2::BabyBearPoseidon2Config, p3_baby_bear::BabyBear,
+    config::baby_bear_poseidon2::BabyBearPoseidon2Config, engine::StarkEngine,
+    p3_baby_bear::BabyBear,
 };
 use openvm_transpiler::transpiler::Transpiler;
 use powdr_autoprecompiles::{
@@ -30,6 +38,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     apc_air::PowdrAir,
+    chip::PowdrChipCpu,
     extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs, OriginalVmConfig},
     instruction::Instr,
     isa::OpenVmISA,
@@ -38,7 +47,6 @@ use crate::{
 };
 use std::hash::Hash;
 
-pub mod air_builder;
 pub mod apc_air;
 pub mod chip;
 pub mod executor;
@@ -50,6 +58,8 @@ pub mod program;
 pub mod trace_generator;
 pub mod utils;
 pub mod vm;
+// TODO: this is actually do_with_trace etc, rename
+pub mod trace_generation;
 
 pub type BabyBearSC = BabyBearPoseidon2Config;
 
@@ -353,3 +363,75 @@ impl<ISA: OpenVmISA> KnapsackItem for OpenVmApcCandidate<ISA> {
             .start_pc as usize
     }
 }
+
+#[derive(Default, Clone)]
+pub struct SpecializedConfigCpuBuilder<ISA> {
+    _marker: PhantomData<ISA>,
+}
+
+impl<E, ISA: OpenVmISA> VmBuilder<E> for SpecializedConfigCpuBuilder<ISA>
+where
+    E: StarkEngine<SC = BabyBearSC, PB = CpuBackend<BabyBearSC>, PD = CpuDevice<BabyBearSC>>,
+{
+    type VmConfig = SpecializedConfig<ISA>;
+    type SystemChipInventory = SystemChipInventory<BabyBearSC>;
+    type RecordArena = MatrixRecordArena<Val<BabyBearSC>>;
+
+    fn create_chip_complex(
+        &self,
+        config: &SpecializedConfig<ISA>,
+        circuit: AirInventory<BabyBearSC>,
+    ) -> Result<
+        VmChipComplex<BabyBearSC, Self::RecordArena, E::PB, Self::SystemChipInventory>,
+        ChipInventoryError,
+    > {
+        let mut chip_complex = VmBuilder::<E>::create_chip_complex(
+            &<ISA as OpenVmISA>::DummyBuilder::<E>::default(),
+            &ISA::lower(config.original.config.clone()),
+            circuit,
+        )?;
+        let inventory = &mut chip_complex.inventory;
+        VmProverExtension::<E, _, _>::extend_prover(
+            &PowdrCpuProverExt::<ISA>::default(),
+            &config.powdr,
+            inventory,
+        )?;
+        Ok(chip_complex)
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct PowdrCpuProverExt<ISA> {
+    _marker: PhantomData<ISA>,
+}
+
+impl<E, RA, ISA: OpenVmISA> VmProverExtension<E, RA, PowdrExtension<BabyBear, ISA>>
+    for PowdrCpuProverExt<ISA>
+where
+    E: StarkEngine<SC = BabyBearSC, PB = CpuBackend<BabyBearSC>, PD = CpuDevice<BabyBearSC>>,
+    RA: RowMajorMatrixArena<BabyBear>,
+{
+    fn extend_prover(
+        &self,
+        extension: &PowdrExtension<BabyBear, ISA>,
+        inventory: &mut ChipInventory<<E as StarkEngine>::SC, RA, <E as StarkEngine>::PB>,
+    ) -> Result<(), ChipInventoryError> {
+        let shared_chips_pair = ISA::shared_chips_pair(inventory);
+
+        for precompile in &extension.precompiles {
+            inventory.next_air::<PowdrAir<BabyBear>>()?;
+            let chip = PowdrChipCpu::new(
+                precompile.clone(),
+                extension.airs.clone(),
+                extension.base_config.clone(),
+                shared_chips_pair.clone(),
+            );
+            inventory.add_executor_chip(chip);
+        }
+
+        Ok(())
+    }
+}
+
+pub type PowdrSdkCpu<ISA> =
+    GenericSdk<BabyBearPoseidon2Engine, SpecializedConfigCpuBuilder<ISA>, NativeCpuBuilder>;

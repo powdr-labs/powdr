@@ -1,23 +1,31 @@
 use std::collections::HashSet;
 
-use openvm_circuit::arch::{AirInventory, ChipInventoryError, VmBuilder};
+use openvm_circuit::arch::{AirInventory, ChipInventory, ChipInventoryError, VmBuilder};
+use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
+use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
+use openvm_circuit_primitives::var_range::SharedVariableRangeCheckerChip;
 use openvm_instructions::{instruction::Instruction, program::DEFAULT_PC_STEP, VmOpcode};
 use openvm_sdk::config::{SdkVmConfig, SdkVmConfigExecutor};
-use openvm_stark_backend::p3_field::PrimeField32;
+use openvm_stark_backend::{
+    config::StarkGenericConfig, p3_field::PrimeField32, prover::hal::ProverBackend,
+};
 use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    get_periphery_bus_ids,
     instruction_sets::{
         riscv::opcode::{branch_opcodes_bigint_set, branch_opcodes_set, instruction_allowlist},
         OpenVmISA, OriginalCpuChipComplex, OriginalCpuChipInventory,
     },
     powdr_extension::trace_generator::{
-        cpu::{create_dummy_chip_complex, SharedPeripheryChipsCpu},
+        cpu::{create_dummy_chip_complex, new_periphery_instances, SharedPeripheryChipsCpu},
         create_dummy_airs,
     },
     BabyBearSC, ExtendedVmConfig, ExtendedVmConfigCpuBuilder,
 };
+
+use openvm_sdk::config::SdkVmCpuBuilder;
 
 pub mod customize_exe;
 pub mod empirical_constraints;
@@ -25,10 +33,9 @@ pub mod instruction_formatter;
 pub mod opcode;
 pub mod program;
 pub mod symbolic_instruction_builder;
-pub mod trace_generation;
 
 // Clone should not be required
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct RiscvISA;
 
 /// A type to represent register addresses during execution
@@ -41,6 +48,14 @@ impl OpenVmISA for RiscvISA {
     type DummyExecutor = SdkVmConfigExecutor<openvm_stark_sdk::p3_baby_bear::BabyBear>;
     type DummyConfig = SdkVmConfig;
     type DummyInventoryContext = SharedPeripheryChipsCpu;
+    type DummyBuilder<E>
+        = SdkVmCpuBuilder
+    where
+        E: openvm_stark_backend::engine::StarkEngine<
+            SC = BabyBearSC,
+            PB = openvm_stark_backend::prover::cpu::CpuBackend<BabyBearSC>,
+            PD = openvm_stark_backend::prover::cpu::CpuDevice<BabyBearSC>,
+        >;
     type Executor = crate::SpecializedExecutor;
     type OriginalConfig = ExtendedVmConfig;
 
@@ -85,6 +100,36 @@ impl OpenVmISA for RiscvISA {
         create_dummy_chip_complex(&dummy_config, airs, shared_chips)
             .expect("Failed to create chip complex")
             .inventory
+    }
+
+    fn shared_chips_pair<SC, RA, PB>(
+        inventory: &mut ChipInventory<SC, RA, PB>,
+    ) -> powdr_openvm_common::trace_generator::cpu::PowdrPeripheryInstancesCpu<
+        Self::DummyInventoryContext,
+    >
+    where
+        SC: StarkGenericConfig,
+        PB: ProverBackend,
+    {
+        let bitwise_lookup = inventory
+            .find_chip::<SharedBitwiseOperationLookupChip<8>>()
+            .next()
+            .cloned();
+        let range_checker = inventory
+            .find_chip::<SharedVariableRangeCheckerChip>()
+            .next()
+            .unwrap();
+        let tuple_range_checker = inventory
+            .find_chip::<SharedRangeTupleCheckerChip<2>>()
+            .next()
+            .cloned();
+
+        new_periphery_instances(
+            range_checker.clone(),
+            bitwise_lookup,
+            tuple_range_checker,
+            get_periphery_bus_ids(inventory),
+        )
     }
 
     type RegisterAddress = OpenVmRegisterAddress;

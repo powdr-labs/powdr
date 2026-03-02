@@ -33,7 +33,6 @@ use std::ops::Deref;
 use std::ops::{Add, Sub};
 use std::sync::MutexGuard;
 
-use crate::air_builder::AirKeygenBuilder;
 use crate::executor::RecordArenaDimension;
 use crate::instruction::Instr;
 use crate::isa::{OpenVmISA, OriginalCpuChipComplex};
@@ -41,6 +40,9 @@ use crate::utils::symbolic_to_algebraic;
 use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::utils::{get_pil, openvm_bus_interaction_to_powdr};
 use crate::{BabyBearSC, SpecializedConfig};
+use air_builder::AirKeygenBuilder;
+
+mod air_builder;
 
 // TODO: Use `<PackedChallenge<BabyBearSC> as FieldExtensionAlgebra<Val<BabyBearSC>>>::D` instead after fixing p3 dependency
 const EXT_DEGREE: usize = 4;

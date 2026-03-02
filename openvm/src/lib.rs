@@ -9,8 +9,7 @@ use openvm_build::{build_guest_package, find_unique_executable, get_package, Tar
 use openvm_circuit::arch::execution_mode::metered::segment_ctx::SegmentationLimits;
 use openvm_circuit::arch::{
     debug_proving_ctx, AirInventory, ChipInventory, ChipInventoryError, InitFileGenerator,
-    MatrixRecordArena, RowMajorMatrixArena, SystemConfig, VmBuilder, VmChipComplex,
-    VmProverExtension,
+    MatrixRecordArena, SystemConfig, VmBuilder, VmChipComplex, VmProverExtension,
 };
 use openvm_circuit::system::SystemChipInventory;
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
@@ -40,25 +39,22 @@ use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::execution_profile::ExecutionProfile;
 use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
-use powdr_openvm_common::apc_air::PowdrAir;
-use powdr_openvm_common::chip::PowdrChipCpu;
 #[cfg(test)]
 use powdr_openvm_common::extraction_utils::AirMetrics;
 use powdr_openvm_common::extraction_utils::OriginalVmConfig;
 use powdr_openvm_common::program::Prog;
-use powdr_openvm_common::vm::{PowdrExtension, PowdrExtensionExecutor};
-use powdr_openvm_common::{
-    BabyBearOpenVmApcAdapter, OpenVmApcCandidate, PeripheryBusIds, SpecializedConfig,
-};
+use powdr_openvm_common::trace_generation::do_with_trace;
+use powdr_openvm_common::vm::PowdrExtensionExecutor;
+#[cfg(not(feature = "cuda"))]
+use powdr_openvm_common::PowdrSdkCpu;
+use powdr_openvm_common::{BabyBearOpenVmApcAdapter, OpenVmApcCandidate, PeripheryBusIds};
 use powdr_openvm_hints_circuit::{HintsExtension, HintsExtensionExecutor, HintsProverExt};
 use powdr_openvm_hints_transpiler::HintsTranspilerExtension;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-use crate::instruction_sets::riscv::trace_generation::do_with_trace;
 pub use crate::instruction_sets::riscv::RiscvISA;
 pub use crate::instruction_sets::riscv::{instruction_formatter, symbolic_instruction_builder};
-use crate::powdr_extension::trace_generator::cpu::new_periphery_instances;
 pub use powdr_openvm_common::program::{CompiledProgram, OriginalCompiledProgram};
 
 pub mod extraction_utils;
@@ -90,16 +86,10 @@ cfg_if::cfg_if! {
     }
 }
 
-use openvm_circuit_primitives::bitwise_op_lookup::{
-    BitwiseOperationLookupAir, SharedBitwiseOperationLookupChip,
-};
-use openvm_circuit_primitives::range_tuple::{RangeTupleCheckerAir, SharedRangeTupleCheckerChip};
-use openvm_circuit_primitives::var_range::{
-    SharedVariableRangeCheckerChip, VariableRangeCheckerAir,
-};
+use openvm_circuit_primitives::bitwise_op_lookup::BitwiseOperationLookupAir;
+use openvm_circuit_primitives::range_tuple::RangeTupleCheckerAir;
+use openvm_circuit_primitives::var_range::VariableRangeCheckerAir;
 use openvm_native_circuit::NativeCpuBuilder;
-pub type PowdrSdkCpu =
-    GenericSdk<BabyBearPoseidon2Engine, SpecializedConfigCpuBuilder, NativeCpuBuilder>;
 pub type PowdrExecutionProfileSdkCpu =
     GenericSdk<BabyBearPoseidon2Engine, ExtendedVmConfigCpuBuilder, NativeCpuBuilder>;
 
@@ -154,36 +144,6 @@ impl VmBuilder<GpuBabyBearPoseidon2Engine> for SpecializedConfigGpuBuilder {
     }
 }
 
-#[derive(Default, Clone)]
-pub struct SpecializedConfigCpuBuilder;
-
-impl<E> VmBuilder<E> for SpecializedConfigCpuBuilder
-where
-    E: StarkEngine<SC = BabyBearSC, PB = CpuBackend<BabyBearSC>, PD = CpuDevice<BabyBearSC>>,
-{
-    type VmConfig = SpecializedConfig<RiscvISA>;
-    type SystemChipInventory = SystemChipInventory<BabyBearSC>;
-    type RecordArena = MatrixRecordArena<Val<BabyBearSC>>;
-
-    fn create_chip_complex(
-        &self,
-        config: &SpecializedConfig<RiscvISA>,
-        circuit: AirInventory<BabyBearSC>,
-    ) -> Result<
-        VmChipComplex<BabyBearSC, Self::RecordArena, E::PB, Self::SystemChipInventory>,
-        ChipInventoryError,
-    > {
-        let mut chip_complex = VmBuilder::<E>::create_chip_complex(
-            &SdkVmCpuBuilder,
-            &config.original.config.sdk,
-            circuit,
-        )?;
-        let inventory = &mut chip_complex.inventory;
-        VmProverExtension::<E, _, _>::extend_prover(&PowdrCpuProverExt, &config.powdr, inventory)?;
-        Ok(chip_complex)
-    }
-}
-
 #[cfg(feature = "cuda")]
 struct PowdrGpuProverExt;
 
@@ -226,56 +186,6 @@ impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, PowdrExtens
 
             inventory.next_air::<PowdrAir<BabyBear>>()?;
             let chip = PowdrChipGpu::new(
-                precompile.clone(),
-                extension.airs.clone(),
-                extension.base_config.clone(),
-                shared_chips_pair.clone(),
-            );
-            inventory.add_executor_chip(chip);
-        }
-
-        Ok(())
-    }
-}
-
-struct PowdrCpuProverExt;
-
-impl<E, RA> VmProverExtension<E, RA, PowdrExtension<BabyBear, RiscvISA>> for PowdrCpuProverExt
-where
-    E: StarkEngine<SC = BabyBearSC, PB = CpuBackend<BabyBearSC>, PD = CpuDevice<BabyBearSC>>,
-    RA: RowMajorMatrixArena<BabyBear>,
-{
-    fn extend_prover(
-        &self,
-        extension: &PowdrExtension<BabyBear, RiscvISA>,
-        inventory: &mut ChipInventory<<E as StarkEngine>::SC, RA, <E as StarkEngine>::PB>,
-    ) -> Result<(), ChipInventoryError> {
-        // TODO: here we make assumptions about the existence of some chips in the periphery. Make this more flexible
-
-        let bitwise_lookup = inventory
-            .find_chip::<SharedBitwiseOperationLookupChip<8>>()
-            .next()
-            .cloned();
-        let range_checker = inventory
-            .find_chip::<SharedVariableRangeCheckerChip>()
-            .next()
-            .unwrap();
-        let tuple_range_checker = inventory
-            .find_chip::<SharedRangeTupleCheckerChip<2>>()
-            .next()
-            .cloned();
-
-        // Create the shared chips and the dummy shared chips
-        let shared_chips_pair = new_periphery_instances(
-            range_checker.clone(),
-            bitwise_lookup,
-            tuple_range_checker,
-            get_periphery_bus_ids(inventory),
-        );
-
-        for precompile in &extension.precompiles {
-            inventory.next_air::<PowdrAir<BabyBear>>()?;
-            let chip = PowdrChipCpu::new(
                 precompile.clone(),
                 extension.airs.clone(),
                 extension.base_config.clone(),

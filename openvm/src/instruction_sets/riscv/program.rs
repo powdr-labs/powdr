@@ -4,14 +4,13 @@ use openvm_circuit::arch::{VmBuilder, VmCircuitConfig};
 use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
 #[cfg(test)]
 use powdr_openvm_common::{
-    extraction_utils::{get_air_metrics, AirMetrics, AirWidthsDiff},
-    program::CompiledProgram,
+    SpecializedConfigCpuBuilder, extraction_utils::{AirMetrics, AirWidthsDiff, get_air_metrics}, program::CompiledProgram
 };
 
 #[cfg(test)]
-use crate::{RiscvISA, SpecializedConfigCpuBuilder};
+use crate::{RiscvISA};
 
-// TODO: This cannot be generic over ISA because SpecializedConfigCpuBuilder is not
+// TODO: MODE TO COMMON
 #[cfg(test)]
 // Return a tuple of (powdr AirMetrics, non-powdr AirMetrics)
 pub fn air_metrics(
@@ -21,8 +20,8 @@ pub fn air_metrics(
     let air_inventory = program.vm_config.create_airs().unwrap();
 
     let chip_complex =
-        <SpecializedConfigCpuBuilder as VmBuilder<BabyBearPoseidon2Engine>>::create_chip_complex(
-            &SpecializedConfigCpuBuilder,
+        <SpecializedConfigCpuBuilder<RiscvISA> as VmBuilder<BabyBearPoseidon2Engine>>::create_chip_complex(
+            &SpecializedConfigCpuBuilder::default(),
             &program.vm_config,
             air_inventory,
         )
