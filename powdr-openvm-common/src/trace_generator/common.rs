@@ -10,7 +10,7 @@ use crate::isa::OpenVmISA;
 #[derive(Chip, PreflightExecutor, Executor, MeteredExecutor, AnyEnum)]
 pub enum DummyExecutor<F: PrimeField32, ISA: OpenVmISA> {
     #[any_enum]
-    Sdk(ISA::OriginalExecutor<F>),
+    Base(ISA::OriginalExecutor<F>),
     #[any_enum]
     Shared(SharedExecutor<F>),
 }
