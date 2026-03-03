@@ -146,7 +146,7 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
         if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
             let apcs = apcs
                 .iter()
-                .zip(blocks.iter())
+                .zip_eq(&blocks)
                 .map(|(apc, candidate)| apc_candidate_json_export::<A, _>(apc, candidate))
                 .collect();
             let json = JsonExport::new(apcs, labels);
@@ -171,7 +171,7 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
         apcs.into_iter()
             .enumerate()
             .filter_map(|(idx, apc)| {
-                let position = selection.iter().position(|(i, _)| *i == idx)?;
+                let position = selection.iter().position(|i| *i == idx)?;
                 Some((position, apc))
             })
             .sorted_by_key(|(position, _)| *position)

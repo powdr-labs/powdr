@@ -143,7 +143,7 @@ pub fn select_blocks_greedy<A: Adapter, C: ApcCandidate<A>>(
     budget: usize,
     max_selected: usize,
     execution_bb_runs: &[(ExecutionBasicBlockRun, u32)],
-) -> Vec<(usize, u32)> {
+) -> Vec<usize> {
     let mut candidates = blocks
         .iter()
         .zip_eq(apcs)
@@ -183,7 +183,7 @@ pub fn select_blocks_greedy<A: Adapter, C: ApcCandidate<A>>(
         // the item fits, increment the cumulative cost and update the execution by removing its occurrences
         cumulative_cost += c.cost();
         current_execution = new_execution;
-        selected.push((idx, count));
+        selected.push(idx);
 
         if selected.len() >= max_selected {
             break;
