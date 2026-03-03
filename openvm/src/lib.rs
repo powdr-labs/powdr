@@ -73,16 +73,6 @@ cfg_if::cfg_if! {
     }
 }
 
-pub const DEFAULT_OPENVM_DEGREE_BOUND: usize = 2 * DEFAULT_APP_LOG_BLOWUP + 1;
-pub const DEFAULT_DEGREE_BOUND: DegreeBound = DegreeBound {
-    identities: DEFAULT_OPENVM_DEGREE_BOUND,
-    bus_interactions: DEFAULT_OPENVM_DEGREE_BOUND - 1,
-};
-
-pub fn default_powdr_openvm_config(apc: u64, skip: u64) -> PowdrConfig {
-    PowdrConfig::new(apc, skip, DEFAULT_DEGREE_BOUND)
-}
-
 pub use openvm_build::GuestOptions;
 pub use powdr_autoprecompiles::bus_map::BusType;
 pub use powdr_openvm_common::customize_exe::customize;

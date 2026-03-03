@@ -43,7 +43,7 @@ use powdr_autoprecompiles::{
     execution::ExecutionState,
     execution_profile::{self, ExecutionProfile},
     pgo::{ApcCandidateJsonExport, Candidate, KnapsackItem},
-    DegreeBound, InstructionHandler,
+    DegreeBound, InstructionHandler, PowdrConfig,
 };
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use powdr_openvm_bus_interaction_handler::{
@@ -78,6 +78,16 @@ pub mod utils;
 pub mod vm;
 // TODO: this is actually do_with_trace etc, rename
 pub mod trace_generation;
+
+pub const DEFAULT_OPENVM_DEGREE_BOUND: usize = 2 * DEFAULT_APP_LOG_BLOWUP + 1;
+pub const DEFAULT_DEGREE_BOUND: DegreeBound = DegreeBound {
+    identities: DEFAULT_OPENVM_DEGREE_BOUND,
+    bus_interactions: DEFAULT_OPENVM_DEGREE_BOUND - 1,
+};
+
+pub fn default_powdr_openvm_config(apc: u64, skip: u64) -> PowdrConfig {
+    PowdrConfig::new(apc, skip, DEFAULT_DEGREE_BOUND)
+}
 
 pub type BabyBearSC = BabyBearPoseidon2Config;
 pub type IsaApc<F, ISA> =

@@ -333,6 +333,8 @@ impl<ISA: OpenVmISA> OriginalVmConfig<ISA> {
                 OriginalAirs::with_degree_bound(degree_bound),
                 |mut airs, (op, air_ref)| {
                     airs.insert_opcode(op, air_ref.name(), |degree_bound| {
+                        println!("add {op} with air {}", air_ref.name());
+
                         let columns = get_columns(air_ref.clone());
                         let constraints = get_constraints(air_ref.clone());
                         let metrics = get_air_metrics(air_ref.clone(), degree_bound.identities);

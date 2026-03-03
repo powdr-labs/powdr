@@ -7,14 +7,15 @@ use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::pgo::{pgo_config, PgoType};
 use powdr_autoprecompiles::PowdrConfig;
 use powdr_openvm::{
-    compile_openvm, default_powdr_openvm_config, detect_empirical_constraints, CompiledProgram,
-    GuestOptions, OriginalCompiledProgram, RiscvISA,
+    compile_openvm, detect_empirical_constraints, CompiledProgram, GuestOptions,
+    OriginalCompiledProgram, RiscvISA,
 };
 
 #[cfg(feature = "metrics")]
 use openvm_stark_sdk::metrics_tracing::TimingMetricsLayer;
 
 use clap::{Args, CommandFactory, Parser, Subcommand};
+use powdr_openvm_common::default_powdr_openvm_config;
 use std::{io, path::PathBuf};
 use tracing::Level;
 use tracing_forest::ForestLayer;
