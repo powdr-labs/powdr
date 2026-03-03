@@ -171,7 +171,10 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
         apcs.into_iter()
             .enumerate()
             .filter_map(|(idx, apc)| {
-                selection.iter().position(|i| *i == idx).map(|pos| (pos, apc))
+                selection
+                    .iter()
+                    .position(|i| *i == idx)
+                    .map(|pos| (pos, apc))
             })
             .sorted_by_key(|(position, _)| *position)
             .map(|(_, apc)| apc.into_inner())
