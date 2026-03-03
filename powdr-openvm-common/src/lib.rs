@@ -270,7 +270,7 @@ impl<'a, ISA: OpenVmISA> Adapter for BabyBearOpenVmApcAdapter<'a, ISA> {
     }
 
     fn is_allowed(instruction: &Self::Instruction) -> bool {
-        ISA::is_allowed(instruction.inner.opcode)
+        ISA::instruction_allowlist().contains(&instruction.inner.opcode)
     }
 
     fn is_branching(instruction: &Self::Instruction) -> bool {

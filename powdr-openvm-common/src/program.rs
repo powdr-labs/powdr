@@ -54,13 +54,13 @@ pub struct CompiledProgram<ISA: OpenVmISA> {
 }
 
 // the original openvm program and config without powdr extension, along with the elf
-pub struct OriginalCompiledProgram<ISA: OpenVmISA> {
+pub struct OriginalCompiledProgram<'a, ISA: OpenVmISA> {
     pub exe: Arc<VmExe<BabyBear>>,
     pub vm_config: OriginalVmConfig<ISA>,
-    pub elf: ISA::Program,
+    pub elf: ISA::Program<'a>,
 }
 
-impl<ISA: OpenVmISA> OriginalCompiledProgram<ISA> {
+impl<'a, ISA: OpenVmISA> OriginalCompiledProgram<'a, ISA> {
     /// Segments the program into basic blocks
     pub fn collect_basic_blocks(&self) -> Vec<BasicBlock<Instr<BabyBear, ISA>>> {
         let jumpdest_set = ISA::get_labels(self);

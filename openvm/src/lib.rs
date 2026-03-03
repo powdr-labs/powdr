@@ -200,7 +200,7 @@ pub fn build_elf_path<P: AsRef<Path>>(
 pub fn compile_openvm(
     guest: &str,
     guest_opts: GuestOptions,
-) -> Result<OriginalCompiledProgram<RiscvISA>, Box<dyn std::error::Error>> {
+) -> Result<OriginalCompiledProgram<'static, RiscvISA>, Box<dyn std::error::Error>> {
     // Build the ELF with guest options and a target filter.
     // We need these extra Rust flags to get the labels.
     let guest_opts = guest_opts.with_rustc_flags(vec!["-C", "link-arg=--emit-relocs"]);

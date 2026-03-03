@@ -74,10 +74,6 @@ impl OpenVmISA for RiscvISA {
     type Executor = SpecializedExecutor;
     type OriginalConfig = ExtendedVmConfig;
 
-    fn is_allowed(opcode: VmOpcode) -> bool {
-        instruction_allowlist().contains(&opcode)
-    }
-
     fn is_branching(opcode: VmOpcode) -> bool {
         branch_opcodes_set().contains(&opcode)
     }
@@ -127,7 +123,7 @@ impl OpenVmISA for RiscvISA {
         unimplemented!("execution constraints are currently unused")
     }
 
-    type Program = ElfProgram;
+    type Program<'a> = ElfProgram;
 
     fn get_labels(program: &OriginalCompiledProgram<Self>) -> BTreeMap<u64, Vec<String>> {
         let labels = program.elf.text_labels();

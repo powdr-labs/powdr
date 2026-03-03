@@ -29,7 +29,7 @@ pub type OriginalCpuChipInventory =
 
 pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
     /// The original program, for example, an elf for riscv. It must allow recovering the jump destinations / labels.
-    type Program;
+    type Program<'a>;
 
     type RegisterAddress: PartialEq
         + Eq
@@ -87,9 +87,6 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
         config: &Self::OriginalConfig,
         context: SharedPeripheryChipsCpu<Self>,
     ) -> OriginalCpuChipInventory;
-
-    /// Whether a given opcode is allowed. TODO: overlaps with `instruction_allowlist`
-    fn is_allowed(opcode: VmOpcode) -> bool;
 
     /// Whether a given opcode is branching
     fn is_branching(opcode: VmOpcode) -> bool;
