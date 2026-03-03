@@ -104,7 +104,10 @@ fn count_and_update_run(
         .tuples()
         .filter_map(|(start, end)| {
             if start != end {
-                Some((ExecutionBasicBlockRun(run.0[start..end].to_vec()), run_count))
+                Some((
+                    ExecutionBasicBlockRun(run.0[start..end].to_vec()),
+                    run_count,
+                ))
             } else {
                 None
             }
