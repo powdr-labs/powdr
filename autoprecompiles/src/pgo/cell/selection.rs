@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     adapter::Adapter,
-    blocks::{BlockAndStats, ExecutionBasicBlockRun},
+    blocks::{find_non_overlapping, BlockAndStats, ExecutionBasicBlockRun},
 };
 
 use super::ApcCandidate;
@@ -95,33 +95,22 @@ fn count_and_update_run(
     run: &ExecutionBasicBlockRun,
     run_count: u32,
 ) -> (u32, Vec<(ExecutionBasicBlockRun, u32)>) {
-    let mut i = 0;
-    let mut count = 0;
-    let mut sub_run_start = 0;
-    let mut sub_runs = vec![];
-    while i + sblock.start_pcs.len() <= run.0.len() {
-        if run.0[i..i + sblock.start_pcs.len()] == sblock.start_pcs {
-            // a match, close the current sub-run
-            count += 1;
-            if i > sub_run_start {
-                sub_runs.push((
-                    ExecutionBasicBlockRun(run.0[sub_run_start..i].to_vec()),
-                    run_count,
-                ));
+    let sblock_len = sblock.start_pcs.len();
+    let matches = find_non_overlapping(&run.0, &sblock.start_pcs);
+    let match_intervals = matches.iter().flat_map(|i| [*i, *i + sblock_len]);
+    let sub_runs = std::iter::once(0)
+        .chain(match_intervals)
+        .chain(std::iter::once(run.0.len()))
+        .tuples()
+        .filter_map(|(start, end)| {
+            if start != end {
+                Some((ExecutionBasicBlockRun(run.0[start..end].to_vec()), run_count))
+            } else {
+                None
             }
-            sub_run_start = i + sblock.start_pcs.len();
-            i += sblock.start_pcs.len();
-        } else {
-            i += 1;
-        }
-    }
-    if run.0.len() > sub_run_start {
-        sub_runs.push((
-            ExecutionBasicBlockRun(run.0[sub_run_start..].to_vec()),
-            run_count,
-        ));
-    }
-    (count, sub_runs)
+        })
+        .collect();
+    (matches.len() as u32, sub_runs)
 }
 
 /// Count the occurences of a candidate in the execution (multiple basic block runs).
@@ -198,4 +187,61 @@ pub fn select_blocks_greedy<A: Adapter, C: ApcCandidate<A>>(
         }
     }
     selected
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn sblock(start_pcs: Vec<u64>) -> BlockCandidate {
+        BlockCandidate {
+            start_pcs,
+            cost_before: 0,
+            cost_after: 0,
+            value_per_use: 0,
+            execution_count: 0,
+        }
+    }
+
+    fn run(pcs: Vec<u64>) -> ExecutionBasicBlockRun {
+        ExecutionBasicBlockRun(pcs)
+    }
+
+    #[test]
+    fn test_count_and_update_run() {
+        // no match: full run returned as single sub-run
+        let (count, sub_runs) = count_and_update_run(&sblock(vec![1, 2]), &run(vec![3, 4, 5]), 1);
+        assert_eq!(count, 0);
+        assert_eq!(sub_runs, vec![(run(vec![3, 4, 5]), 1)]);
+
+        // match at start
+        let (count, sub_runs) =
+            count_and_update_run(&sblock(vec![1, 2]), &run(vec![1, 2, 3, 4]), 1);
+        assert_eq!(count, 1);
+        assert_eq!(sub_runs, vec![(run(vec![3, 4]), 1)]);
+
+        // match at end
+        let (count, sub_runs) =
+            count_and_update_run(&sblock(vec![3, 4]), &run(vec![1, 2, 3, 4]), 1);
+        assert_eq!(count, 1);
+        assert_eq!(sub_runs, vec![(run(vec![1, 2]), 1)]);
+
+        // match in middle
+        let (count, sub_runs) =
+            count_and_update_run(&sblock(vec![2, 3]), &run(vec![1, 2, 3, 4]), 1);
+        assert_eq!(count, 1);
+        assert_eq!(sub_runs, vec![(run(vec![1]), 1), (run(vec![4]), 1)]);
+
+        // multiple matches
+        let (count, sub_runs) =
+            count_and_update_run(&sblock(vec![1, 2]), &run(vec![1, 2, 3, 1, 2, 4]), 1);
+        assert_eq!(count, 2);
+        assert_eq!(sub_runs, vec![(run(vec![3]), 1), (run(vec![4]), 1)]);
+
+        // full run is the match: no sub-runs
+        let (count, sub_runs) =
+            count_and_update_run(&sblock(vec![1, 2, 3]), &run(vec![1, 2, 3]), 1);
+        assert_eq!(count, 1);
+        assert_eq!(sub_runs, vec![]);
+    }
 }

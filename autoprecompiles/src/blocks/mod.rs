@@ -215,20 +215,20 @@ impl<I> ExecutionBlocks<I> {
     }
 }
 
-/// Count how many times the `needle` sequence appears inside the `haystack` sequence.
-/// Does not count overlapping occurrences (e.g. `aba` is counted only twice in `abababa`).
-pub fn count_non_overlapping<T: Eq>(haystack: &[T], needle: &[T]) -> u32 {
-    let mut count = 0;
+/// Find the starting indices of non-overlapping occurrences of `needle` in `haystack`.
+/// (e.g. `aba` is found at indices [0, 4] in `abababa`).
+pub fn find_non_overlapping<T: Eq>(haystack: &[T], needle: &[T]) -> Vec<usize> {
+    let mut indices = vec![];
     let mut pos = 0;
     while pos + needle.len() <= haystack.len() {
         if haystack[pos..pos + needle.len()] == needle[..] {
-            count += 1;
+            indices.push(pos);
             pos += needle.len();
         } else {
             pos += 1;
         }
     }
-    count
+    indices
 }
 
 /// Find basic block runs in the execution.
@@ -291,7 +291,7 @@ fn count_superblocks_in_run(
     }
     // then we count their occurrences
     for (sblock, count) in superblocks_in_run.iter_mut() {
-        *count = count_non_overlapping(&bb_run.0, sblock);
+        *count = find_non_overlapping(&bb_run.0, sblock).len() as u32;
     }
     superblocks_in_run
 }
@@ -419,11 +419,11 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_count_non_overlapping() {
-        assert_eq!(count_non_overlapping(&[1, 2, 1, 2, 1], &[1, 2, 1]), 1);
-        assert_eq!(count_non_overlapping(&[1, 2, 3], &[1, 2, 3]), 1);
-        assert_eq!(count_non_overlapping(&[1, 2, 3], &[4]), 0);
-        assert_eq!(count_non_overlapping(&[1, 1, 1], &[1]), 3);
+    fn test_find_non_overlapping() {
+        assert_eq!(find_non_overlapping(&[1, 2, 1, 2, 1], &[1, 2, 1]), vec![0]);
+        assert_eq!(find_non_overlapping(&[1, 2, 3], &[1, 2, 3]), vec![0]);
+        assert_eq!(find_non_overlapping(&[1, 2, 3], &[4]), vec![] as Vec<usize>);
+        assert_eq!(find_non_overlapping(&[1, 1, 1], &[1]), vec![0, 1, 2]);
     }
 
     #[test]
