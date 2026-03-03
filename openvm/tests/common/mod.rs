@@ -52,10 +52,12 @@ pub mod apc_builder_utils {
         };
 
         let superblock = superblock.map_instructions(Instr);
+        // for aligning the output
+        let max_pc_digits = superblock.pcs().max().unwrap().max(1).ilog10() as usize + 1;
         let superblock_str = superblock
             .instructions()
             .zip(superblock.pcs())
-            .map(|(inst, pc)| format!("  {pc}: {}", openvm_instruction_formatter(&inst.0)))
+            .map(|(inst, pc)| format!("  {pc:>max_pc_digits$}: {}", openvm_instruction_formatter(&inst.0)))
             .join("\n");
 
         // Use this env var to output serialized APCs for tests as well.

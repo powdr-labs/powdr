@@ -1,7 +1,7 @@
 Instructions:
-  0: LOADW rd_rs2_ptr = 60, rs1_ptr = 56, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
-  4: LOADW rd_rs2_ptr = 64, rs1_ptr = 56, imm = 4, mem_as = 2, needs_write = 1, imm_sign = 0
-  8: LOADW rd_rs2_ptr = 68, rs1_ptr = 56, imm = 8, mem_as = 2, needs_write = 1, imm_sign = 0
+   0: LOADW rd_rs2_ptr = 60, rs1_ptr = 56, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
+   4: LOADW rd_rs2_ptr = 64, rs1_ptr = 56, imm = 4, mem_as = 2, needs_write = 1, imm_sign = 0
+   8: LOADW rd_rs2_ptr = 68, rs1_ptr = 56, imm = 8, mem_as = 2, needs_write = 1, imm_sign = 0
   12: LOADW rd_rs2_ptr = 20, rs1_ptr = 56, imm = 12, mem_as = 2, needs_write = 1, imm_sign = 0
   16: STOREW rd_rs2_ptr = 60, rs1_ptr = 52, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
   20: STOREW rd_rs2_ptr = 64, rs1_ptr = 52, imm = 4, mem_as = 2, needs_write = 1, imm_sign = 0
