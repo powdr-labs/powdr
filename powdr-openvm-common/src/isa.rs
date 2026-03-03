@@ -42,7 +42,9 @@ pub enum SpecializedExecutor<F: PrimeField32, ISA: OpenVmISA> {
     PowdrExecutor(PowdrExtensionExecutor<ISA>),
 }
 
-impl<F: PrimeField32, ISA: OpenVmISA> From<PowdrExtensionExecutor<ISA>> for SpecializedExecutor<F, ISA> {
+impl<F: PrimeField32, ISA: OpenVmISA> From<PowdrExtensionExecutor<ISA>>
+    for SpecializedExecutor<F, ISA>
+{
     fn from(value: PowdrExtensionExecutor<ISA>) -> Self {
         Self::PowdrExecutor(value)
     }

@@ -1,7 +1,8 @@
 use std::{collections::HashMap, fmt::Display, marker::PhantomData, path::Path, sync::Arc};
 
 use crate::{
-    execution_profile::execution_profile, isa::SpecializedExecutor, trace_generator::cpu::periphery::new_periphery_instances
+    execution_profile::execution_profile, isa::SpecializedExecutor,
+    trace_generator::cpu::periphery::new_periphery_instances,
 };
 use openvm_circuit::{
     arch::{
