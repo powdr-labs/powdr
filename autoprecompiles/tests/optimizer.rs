@@ -153,7 +153,6 @@ fn test_sha256() {
 #[test]
 fn test_optimize_reth_op() {
     let apc = import_apc_from_gzipped_json("tests/apc_reth_op_bug.json.gz");
-
     let machine: SymbolicMachine<BabyBearField> = apc.apc.machine;
     assert!(machine.derived_columns.is_empty());
 
