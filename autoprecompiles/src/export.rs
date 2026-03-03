@@ -175,7 +175,7 @@ impl ExportOptions {
             let path = self.path.clone().unwrap();
             let file_stub = path.file_name().unwrap().to_string_lossy();
             let path = path.with_file_name(format!("{file_stub}_substitutions.json"));
-            let mut writer = create_file_if_not_exists(&path);
+            let mut writer = create_full_path(&path);
             write!(&mut writer, "[{}]", self.substituted_variables.join(",")).unwrap();
             writer.flush().unwrap();
         }
@@ -201,13 +201,13 @@ impl ExportOptions {
     }
 
     fn write_to_file(&mut self, data: &impl serde::Serialize, path: PathBuf) {
-        let mut writer = create_file_if_not_exists(&path);
+        let mut writer = create_full_path(&path);
         serde_json::to_writer(&mut writer, data).unwrap();
         writer.flush().unwrap();
     }
 }
 
-fn create_file_if_not_exists(path: &PathBuf) -> BufWriter<std::fs::File> {
+fn create_full_path(path: &PathBuf) -> BufWriter<std::fs::File> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).unwrap();
     }
