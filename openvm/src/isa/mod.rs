@@ -7,7 +7,6 @@ use openvm_circuit_derive::{
 };
 use openvm_circuit_primitives::Chip;
 use openvm_instructions::{instruction::Instruction, program::DEFAULT_PC_STEP, VmOpcode};
-use openvm_sdk::config::{SdkVmConfig, SdkVmConfigExecutor};
 use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::{
     config::baby_bear_poseidon2::BabyBearPoseidon2Engine, p3_baby_bear::BabyBear,
@@ -31,7 +30,6 @@ use crate::{
     BabyBearSC, ExtendedVmConfig, ExtendedVmConfigCpuBuilder, ExtendedVmConfigExecutor,
 };
 
-use openvm_sdk::config::SdkVmCpuBuilder;
 
 /// The core logic of our extension
 pub mod chip;
@@ -68,11 +66,10 @@ pub enum SpecializedExecutor {
 }
 
 impl OpenVmISA for RiscvISA {
-    type DummyExecutor = SdkVmConfigExecutor<openvm_stark_sdk::p3_baby_bear::BabyBear>;
-    type DummyConfig = SdkVmConfig;
-    type DummyBuilder = SdkVmCpuBuilder;
-    type Executor = SpecializedExecutor;
+    type OriginalExecutor = ExtendedVmConfigExecutor<openvm_stark_sdk::p3_baby_bear::BabyBear>;
     type OriginalConfig = ExtendedVmConfig;
+    type OriginalBuilder = ExtendedVmConfigCpuBuilder;
+    type Executor = SpecializedExecutor;
 
     fn is_branching(opcode: VmOpcode) -> bool {
         branch_opcodes_set().contains(&opcode)
@@ -84,10 +81,6 @@ impl OpenVmISA for RiscvISA {
 
     fn instruction_allowlist() -> HashSet<VmOpcode> {
         instruction_allowlist()
-    }
-
-    fn lower(original: Self::OriginalConfig) -> Self::DummyConfig {
-        original.sdk
     }
 
     fn create_original_chip_complex(
@@ -104,11 +97,10 @@ impl OpenVmISA for RiscvISA {
         config: &Self::OriginalConfig,
         shared_chips: SharedPeripheryChipsCpu<Self>,
     ) -> OriginalCpuChipInventory {
-        let dummy_config = Self::lower(config.clone());
-        let airs = create_dummy_airs(&dummy_config, shared_chips.clone())
-            .expect("Failed to create dummy airs");
+        let airs =
+            create_dummy_airs(config, shared_chips.clone()).expect("Failed to create dummy airs");
 
-        create_dummy_chip_complex(&dummy_config, airs, shared_chips)
+        create_dummy_chip_complex(config, airs, shared_chips)
             .expect("Failed to create chip complex")
             .inventory
     }

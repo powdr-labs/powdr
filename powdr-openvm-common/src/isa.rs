@@ -42,22 +42,22 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
         + Send
         + Sync;
 
-    type DummyExecutor: AnyEnum
+    type OriginalExecutor: AnyEnum
         + InterpreterExecutor<BabyBear>
         + Executor<BabyBear>
         + MeteredExecutor<BabyBear>
         + PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>>
         + PreflightExecutor<BabyBear, DenseRecordArena>;
 
-    type DummyConfig: VmConfig<BabyBearSC>
-        + VmExecutionConfig<BabyBear, Executor = Self::DummyExecutor>
+    type OriginalConfig: VmConfig<BabyBearSC>
+        + VmExecutionConfig<BabyBear, Executor = Self::OriginalExecutor>
         + TranspilerConfig<BabyBear>;
 
-    type DummyBuilder: Clone
+    type OriginalBuilder: Clone
         + Default
         + VmBuilder<
             BabyBearPoseidon2Engine,
-            VmConfig = Self::DummyConfig,
+            VmConfig = Self::OriginalConfig,
             SystemChipInventory = SystemChipInventory<BabyBearSC>,
             RecordArena = MatrixRecordArena<Val<BabyBearSC>>,
         >;
@@ -68,14 +68,6 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
         + PreflightExecutor<BabyBear>
         + Executor<BabyBear>
         + MeteredExecutor<BabyBear>;
-
-    type OriginalConfig: VmConfig<BabyBearSC>
-        + VmExecutionConfig<BabyBear>
-        + Clone
-        + TranspilerConfig<BabyBear>;
-
-    /// Extract the dummy config from an original config. See riscv implementation for a distinction.
-    fn lower(original: Self::OriginalConfig) -> Self::DummyConfig;
 
     fn create_original_chip_complex(
         config: &Self::OriginalConfig,

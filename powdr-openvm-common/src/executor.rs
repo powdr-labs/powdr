@@ -43,7 +43,7 @@ use openvm_circuit::{
 /// When using the cpu backend, only `original_arenas_cpu` is used, and vice versa for gpu execution.
 pub struct PowdrExecutor<ISA: OpenVmISA> {
     pub air_by_opcode_id: OriginalAirs<BabyBear, ISA>,
-    pub executor_inventory: ExecutorInventory<ISA::DummyExecutor>,
+    pub executor_inventory: ExecutorInventory<ISA::OriginalExecutor>,
     pub apc: IsaApc<BabyBear, ISA>,
     pub original_arenas_cpu: Rc<RefCell<OriginalArenas<MatrixRecordArena<BabyBear>>>>,
     pub original_arenas_gpu: Rc<RefCell<OriginalArenas<DenseRecordArena>>>,
@@ -605,7 +605,7 @@ impl<ISA: OpenVmISA> PowdrExecutor<ISA> {
         record_arena_by_air_name_gpu: Rc<RefCell<OriginalArenas<DenseRecordArena>>>,
         height_change: u32,
     ) -> Self {
-        let executor_inventory = ISA::lower(base_config.config).create_executors().unwrap();
+        let executor_inventory = base_config.config.create_executors().unwrap();
 
         let arena_index_by_name =
             record_arena_dimension_by_air_name_per_apc_call(apc.as_ref(), &air_by_opcode_id)

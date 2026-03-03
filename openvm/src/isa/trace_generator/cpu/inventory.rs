@@ -8,10 +8,9 @@ use openvm_keccak256_circuit::Keccak256CpuProverExt;
 use openvm_native_circuit::NativeCpuProverExt;
 use openvm_pairing_circuit::PairingProverExt;
 use openvm_rv32im_circuit::Rv32ImCpuProverExt;
-use openvm_sdk::config::SdkVmConfig;
 use openvm_sha256_circuit::Sha2CpuProverExt;
 
-use crate::{BabyBearSC, RiscvISA};
+use crate::{BabyBearSC, ExtendedVmConfig, RiscvISA};
 use powdr_openvm_common::trace_generator::cpu::periphery::SharedPeripheryChipsCpu;
 use powdr_openvm_common::trace_generator::cpu::periphery::SharedPeripheryChipsCpuProverExt;
 
@@ -27,11 +26,11 @@ use openvm_ecc_circuit::EccCpuProverExt;
 use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
 
 pub fn create_dummy_chip_complex(
-    config: &SdkVmConfig,
+    config: &ExtendedVmConfig,
     circuit: AirInventory<BabyBearSC>,
     shared_chips: SharedPeripheryChipsCpu<RiscvISA>,
 ) -> Result<DummyChipComplex<BabyBearSC>, ChipInventoryError> {
-    let config = config.to_inner();
+    let config = config.sdk.to_inner();
     let mut chip_complex = VmBuilder::<BabyBearPoseidon2Engine>::create_chip_complex(
         &SystemCpuBuilder,
         &config.system,

@@ -391,9 +391,9 @@ pub struct SpecializedConfigCpuBuilder<ISA> {
 impl<E, ISA: OpenVmISA> VmBuilder<E> for SpecializedConfigCpuBuilder<ISA>
 where
     E: StarkEngine<SC = BabyBearSC, PB = CpuBackend<BabyBearSC>, PD = CpuDevice<BabyBearSC>>,
-    ISA::DummyBuilder: VmBuilder<
+    ISA::OriginalBuilder: VmBuilder<
         E,
-        VmConfig = ISA::DummyConfig,
+        VmConfig = ISA::OriginalConfig,
         SystemChipInventory = SystemChipInventory<BabyBearSC>,
         RecordArena = MatrixRecordArena<Val<BabyBearSC>>,
     >,
@@ -411,8 +411,8 @@ where
         ChipInventoryError,
     > {
         let mut chip_complex = VmBuilder::<E>::create_chip_complex(
-            &<ISA as OpenVmISA>::DummyBuilder::default(),
-            &ISA::lower(config.original.config.clone()),
+            &<ISA as OpenVmISA>::OriginalBuilder::default(),
+            &config.original.config.clone(),
             circuit,
         )?;
         let inventory = &mut chip_complex.inventory;
@@ -511,7 +511,7 @@ pub type PowdrSdkCpu<ISA> =
     GenericSdk<BabyBearPoseidon2Engine, SpecializedConfigCpuBuilder<ISA>, NativeCpuBuilder>;
 
 pub type PowdrExecutionProfileSdkCpu<ISA> =
-    GenericSdk<BabyBearPoseidon2Engine, <ISA as OpenVmISA>::DummyBuilder, NativeCpuBuilder>;
+    GenericSdk<BabyBearPoseidon2Engine, <ISA as OpenVmISA>::OriginalBuilder, NativeCpuBuilder>;
 
 // Generate execution profile for a guest program
 pub fn execution_profile_from_guest<ISA: OpenVmISA>(
@@ -524,7 +524,7 @@ pub fn execution_profile_from_guest<ISA: OpenVmISA>(
     // Set app configuration
     let app_fri_params =
         FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
-    let app_config = AppConfig::new(app_fri_params, ISA::lower(vm_config.clone().config));
+    let app_config = AppConfig::new(app_fri_params, vm_config.clone().config);
 
     // prepare for execute
     let sdk = PowdrExecutionProfileSdkCpu::<ISA>::new(app_config).unwrap();

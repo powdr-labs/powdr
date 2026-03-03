@@ -1,13 +1,12 @@
 use openvm_circuit::arch::{AirInventory, AirInventoryError, VmCircuitConfig, VmCircuitExtension};
-use openvm_sdk::config::SdkVmConfig;
 
-use crate::BabyBearSC;
+use crate::{BabyBearSC, ExtendedVmConfig};
 
 pub fn create_dummy_airs<E: VmCircuitExtension<BabyBearSC>>(
-    config: &SdkVmConfig,
+    config: &ExtendedVmConfig,
     shared_chips: E,
 ) -> Result<AirInventory<BabyBearSC>, AirInventoryError> {
-    let config = config.to_inner();
+    let config = config.sdk.to_inner();
     let mut inventory = config.system.create_airs()?;
 
     // CHANGE: add dummy periphery
