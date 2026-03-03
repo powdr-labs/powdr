@@ -144,6 +144,22 @@ where
     }
 }
 
+struct MemoryContent<T, V> {
+    bus_index: usize,
+    data: Vec<GroupedExpression<T, V>>,
+    timestamp: GroupedExpression<T, V>,
+}
+
+impl<T: Clone, V: Clone> MemoryContent<T, V> {
+    fn from_bus_interaction<M: MemoryBusInteraction<T, V>>(bus_index: usize, mem_int: M) -> Self {
+        Self {
+            bus_index,
+            data: mem_int.data().to_vec(),
+            timestamp: mem_int.timestamp().clone(),
+        }
+    }
+}
+
 /// Tries to find indices of bus interactions that can be removed in the given machine
 /// and also returns a set of new constraints to be added.
 fn redundant_memory_interactions_indices<
@@ -163,9 +179,7 @@ fn redundant_memory_interactions_indices<
     // Track memory contents by memory type while we go through bus interactions.
     // This maps an address to the index of the previous send on that address, the
     // data currently stored there and the timestamp used in the last send.
-    type Data<T, V> = Vec<GroupedExpression<T, V>>;
-    let mut memory_contents: HashMap<Address<T, V>, (usize, Data<T, V>, GroupedExpression<T, V>)> =
-        Default::default();
+    let mut memory_contents: HashMap<Address<T, V>, MemoryContent<T, V>> = Default::default();
     let mut to_remove: Vec<usize> = Default::default();
 
     // TODO we assume that memory interactions are sorted by timestamp.
@@ -190,18 +204,16 @@ fn redundant_memory_interactions_indices<
                 // If there is an unconsumed send to this address, consume it.
                 // In that case, we can replace both bus interactions with equality constraints
                 // between the data that would have been sent and received.
-                if let Some((previous_send, existing_values, pevious_timestamp)) =
-                    memory_contents.remove(&addr)
-                {
-                    for (existing, new) in existing_values.iter().zip_eq(mem_int.data().iter()) {
+                if let Some(existing) = memory_contents.remove(&addr) {
+                    for (existing, new) in existing.data.iter().zip_eq(mem_int.data().iter()) {
                         new_constraints.push(AlgebraicConstraint::assert_zero(
                             existing.clone() - new.clone(),
                         ));
                     }
                     new_constraints.push(AlgebraicConstraint::assert_zero(
-                        pevious_timestamp - mem_int.timestamp().clone(),
+                        &existing.timestamp - mem_int.timestamp(),
                     ));
-                    to_remove.extend([index, previous_send]);
+                    to_remove.extend([index, existing.bus_index]);
                 }
             }
             MemoryOp::SetNew => {
@@ -217,7 +229,7 @@ fn redundant_memory_interactions_indices<
                 });
                 memory_contents.insert(
                     addr.clone(),
-                    (index, mem_int.data().to_vec(), mem_int.timestamp().clone()),
+                    MemoryContent::from_bus_interaction(index, mem_int),
                 );
             }
         }
