@@ -6,6 +6,10 @@ use openvm_circuit::arch::{
     VmChipComplex, VmConfig, VmExecutionConfig,
 };
 use openvm_circuit::system::SystemChipInventory;
+use openvm_circuit_derive::{
+    AnyEnum, AotExecutor, AotMeteredExecutor, Executor, MeteredExecutor, PreflightExecutor,
+};
+use openvm_circuit_primitives::Chip;
 use openvm_instructions::{instruction::Instruction, VmOpcode};
 use openvm_sdk::config::TranspilerConfig;
 use openvm_stark_backend::{config::Val, p3_field::PrimeField32, prover::cpu::CpuBackend};
@@ -27,6 +31,23 @@ pub type OriginalCpuChipComplex = VmChipComplex<
 pub type OriginalCpuChipInventory =
     ChipInventory<BabyBearSC, MatrixRecordArena<Val<BabyBearSC>>, CpuBackend<BabyBearSC>>;
 
+#[allow(clippy::large_enum_variant)]
+#[derive(
+    AnyEnum, Chip, Executor, MeteredExecutor, AotExecutor, AotMeteredExecutor, PreflightExecutor,
+)]
+pub enum SpecializedExecutor<F: PrimeField32, ISA: OpenVmISA> {
+    #[any_enum]
+    OriginalExecutor(ISA::OriginalExecutor<F>),
+    #[any_enum]
+    PowdrExecutor(PowdrExtensionExecutor<ISA>),
+}
+
+impl<F: PrimeField32, ISA: OpenVmISA> From<PowdrExtensionExecutor<ISA>> for SpecializedExecutor<F, ISA> {
+    fn from(value: PowdrExtensionExecutor<ISA>) -> Self {
+        Self::PowdrExecutor(value)
+    }
+}
+
 pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
     /// The original program, for example, an elf for riscv. It must allow recovering the jump destinations / labels.
     type Program<'a>;
@@ -42,15 +63,16 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
         + Send
         + Sync;
 
-    type OriginalExecutor: AnyEnum
-        + InterpreterExecutor<BabyBear>
-        + Executor<BabyBear>
-        + MeteredExecutor<BabyBear>
-        + PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>>
-        + PreflightExecutor<BabyBear, DenseRecordArena>;
+    type OriginalExecutor<F: PrimeField32>: AnyEnum
+        + InterpreterExecutor<F>
+        + Executor<F>
+        + MeteredExecutor<F>
+        + PreflightExecutor<F, MatrixRecordArena<F>>
+        + PreflightExecutor<F, DenseRecordArena>
+        + Into<SpecializedExecutor<F, Self>>;
 
     type OriginalConfig: VmConfig<BabyBearSC>
-        + VmExecutionConfig<BabyBear, Executor = Self::OriginalExecutor>
+        + VmExecutionConfig<BabyBear, Executor = Self::OriginalExecutor<BabyBear>>
         + TranspilerConfig<BabyBear>;
 
     type OriginalBuilder: Clone
@@ -61,13 +83,6 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
             SystemChipInventory = SystemChipInventory<BabyBearSC>,
             RecordArena = MatrixRecordArena<Val<BabyBearSC>>,
         >;
-
-    type Executor: AnyEnum
-        + From<<Self::OriginalConfig as VmExecutionConfig<BabyBear>>::Executor>
-        + From<PowdrExtensionExecutor<Self>>
-        + PreflightExecutor<BabyBear>
-        + Executor<BabyBear>
-        + MeteredExecutor<BabyBear>;
 
     fn create_original_chip_complex(
         config: &Self::OriginalConfig,

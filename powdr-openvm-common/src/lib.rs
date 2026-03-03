@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fmt::Display, marker::PhantomData, path::Path, sync::Arc};
 
 use crate::{
-    execution_profile::execution_profile, trace_generator::cpu::periphery::new_periphery_instances,
+    execution_profile::execution_profile, isa::SpecializedExecutor, trace_generator::cpu::periphery::new_periphery_instances
 };
 use openvm_circuit::{
     arch::{
@@ -146,7 +146,7 @@ impl<ISA: OpenVmISA> VmCircuitConfig<BabyBearSC> for SpecializedConfig<ISA> {
 }
 
 impl<ISA: OpenVmISA> VmExecutionConfig<BabyBear> for SpecializedConfig<ISA> {
-    type Executor = ISA::Executor;
+    type Executor = SpecializedExecutor<BabyBear, ISA>;
 
     fn create_executors(
         &self,

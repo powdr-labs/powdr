@@ -1,20 +1,12 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
-use derive_more::From;
 use openvm_circuit::arch::{AirInventory, ChipInventoryError, VmBuilder};
-use openvm_circuit_derive::{
-    AnyEnum, AotExecutor, AotMeteredExecutor, Executor, MeteredExecutor, PreflightExecutor,
-};
-use openvm_circuit_primitives::Chip;
 use openvm_instructions::{instruction::Instruction, program::DEFAULT_PC_STEP, VmOpcode};
 use openvm_stark_backend::p3_field::PrimeField32;
-use openvm_stark_sdk::{
-    config::baby_bear_poseidon2::BabyBearPoseidon2Engine, p3_baby_bear::BabyBear,
-};
+use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
 use powdr_openvm_common::{
-    isa::{OpenVmISA, OriginalCpuChipComplex, OriginalCpuChipInventory},
+    isa::{OpenVmISA, OriginalCpuChipComplex, OriginalCpuChipInventory, SpecializedExecutor},
     program::OriginalCompiledProgram,
-    vm::PowdrExtensionExecutor,
 };
 use powdr_riscv_elf::ElfProgram;
 use serde::{Deserialize, Serialize};
@@ -29,7 +21,6 @@ use crate::{
     },
     BabyBearSC, ExtendedVmConfig, ExtendedVmConfigCpuBuilder, ExtendedVmConfigExecutor,
 };
-
 
 /// The core logic of our extension
 pub mod chip;
@@ -47,29 +38,17 @@ pub struct RiscvISA;
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct OpenVmRegisterAddress(u8);
 
-#[allow(clippy::large_enum_variant)]
-#[derive(
-    From,
-    AnyEnum,
-    Chip,
-    Executor,
-    MeteredExecutor,
-    AotExecutor,
-    AotMeteredExecutor,
-    PreflightExecutor,
-)]
-pub enum SpecializedExecutor {
-    #[any_enum]
-    SdkExecutor(ExtendedVmConfigExecutor<BabyBear>),
-    #[any_enum]
-    PowdrExecutor(PowdrExtensionExecutor<RiscvISA>),
+// This seems trivial but it's tricky to put into powdr-openvm-common because of some From implementation issues.
+impl<F: PrimeField32> From<ExtendedVmConfigExecutor<F>> for SpecializedExecutor<F, RiscvISA> {
+    fn from(value: ExtendedVmConfigExecutor<F>) -> Self {
+        Self::OriginalExecutor(value)
+    }
 }
 
 impl OpenVmISA for RiscvISA {
-    type OriginalExecutor = ExtendedVmConfigExecutor<openvm_stark_sdk::p3_baby_bear::BabyBear>;
+    type OriginalExecutor<F: PrimeField32> = ExtendedVmConfigExecutor<F>;
     type OriginalConfig = ExtendedVmConfig;
     type OriginalBuilder = ExtendedVmConfigCpuBuilder;
-    type Executor = SpecializedExecutor;
 
     fn is_branching(opcode: VmOpcode) -> bool {
         branch_opcodes_set().contains(&opcode)
