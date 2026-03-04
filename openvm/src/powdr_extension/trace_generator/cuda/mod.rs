@@ -114,10 +114,12 @@ fn compile_derived_to_gpu(
     let mut specs = Vec::with_capacity(derived_columns.len());
     let mut bytecode = Vec::new();
 
-    for derived_column in derived_columns {
-        let (col, computation_method) =
-            (&derived_column.variable, &derived_column.computation_method);
-        let apc_col_index = apc_poly_id_to_index[&col.id];
+    for DerivedVariable {
+        variable,
+        computation_method,
+    } in derived_columns
+    {
+        let apc_col_index = apc_poly_id_to_index[&variable.id];
         let off = bytecode.len() as u32;
         match computation_method {
             ComputationMethod::Constant(c) => {
