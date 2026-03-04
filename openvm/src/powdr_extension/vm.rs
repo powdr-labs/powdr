@@ -24,7 +24,7 @@ use openvm_circuit::{
     derive::AnyEnum,
 };
 use openvm_stark_backend::{
-    config::{StarkGenericConfig, Val},
+    StarkProtocolConfig, Val,
     p3_field::{Field, PrimeField32},
 };
 use powdr_autoprecompiles::Apc;
@@ -134,7 +134,7 @@ impl VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear> {
 
 impl<SC> VmCircuitExtension<SC> for PowdrExtension<Val<SC>>
 where
-    SC: StarkGenericConfig,
+    SC: StarkProtocolConfig,
     Val<SC>: PrimeField32,
 {
     fn extend_circuit(&self, inventory: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {

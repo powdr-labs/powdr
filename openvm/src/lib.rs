@@ -14,27 +14,20 @@ use openvm_circuit::arch::{
     VmCircuitExtension, VmExecutionConfig, VmProverExtension,
 };
 use openvm_circuit::system::SystemChipInventory;
-use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
+use openvm_circuit::derive::AnyEnum;
 use openvm_circuit_derive::{
     AotExecutor, AotMeteredExecutor, Executor, MeteredExecutor, PreflightExecutor,
 };
-use openvm_sdk::config::SdkVmCpuBuilder;
-
-use openvm_sdk::config::TranspilerConfig;
-use openvm_sdk::prover::{verify_app_proof, AggStarkProver};
-use openvm_sdk::GenericSdk;
-use openvm_sdk::{
-    config::{AppConfig, SdkVmConfig, SdkVmConfigExecutor, DEFAULT_APP_LOG_BLOWUP},
+use openvm_sdk_config::{SdkVmCpuBuilder, SdkVmConfig, SdkVmConfigExecutor, TranspilerConfig};
+use sdk_v2::prover::verify_app_proof;
+use sdk_v2::GenericSdk;
+use sdk_v2::{
+    config::{AppConfig, AggregationSystemParams, DEFAULT_APP_LOG_BLOWUP, DEFAULT_APP_L_SKIP, default_app_params},
     Sdk, StdIn,
 };
-use openvm_stark_backend::config::{StarkGenericConfig, Val};
-use openvm_stark_backend::engine::StarkEngine;
-use openvm_stark_backend::prover::cpu::{CpuBackend, CpuDevice};
-use openvm_stark_backend::prover::hal::ProverBackend;
-use openvm_stark_sdk::config::{
-    baby_bear_poseidon2::{BabyBearPoseidon2Config, BabyBearPoseidon2Engine},
-    FriParameters,
-};
+use openvm_stark_backend::{StarkProtocolConfig, Val, StarkEngine, SystemParams};
+use openvm_stark_backend::prover::{CpuBackend, CpuDevice, ProverBackend};
+use openvm_stark_sdk::config::baby_bear_poseidon2::{BabyBearPoseidon2Config, BabyBearPoseidon2CpuEngine};
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
@@ -83,13 +76,12 @@ pub type BabyBearSC = BabyBearPoseidon2Config;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "cuda")] {
-        pub use openvm_cuda_backend::engine::GpuBabyBearPoseidon2Engine;
-        pub use openvm_native_circuit::NativeGpuBuilder;
-        pub type PowdrSdkGpu = GenericSdk<GpuBabyBearPoseidon2Engine, SpecializedConfigGpuBuilder, NativeGpuBuilder>;
-        pub type PowdrExecutionProfileSdkGpu = GenericSdk<GpuBabyBearPoseidon2Engine, ExtendedVmConfigGpuBuilder, NativeGpuBuilder>;
+        pub use openvm_cuda_backend::engine::GpuBabyBearPoseidon2CpuEngine;
+        pub type PowdrSdkGpu = GenericSdk<GpuBabyBearPoseidon2CpuEngine, SpecializedConfigGpuBuilder>;
+        pub type PowdrExecutionProfileSdkGpu = GenericSdk<GpuBabyBearPoseidon2CpuEngine, ExtendedVmConfigGpuBuilder>;
 
         pub use openvm_circuit::system::cuda::{extensions::SystemGpuBuilder, SystemChipInventoryGPU};
-        pub use openvm_sdk::config::SdkVmGpuBuilder;
+        pub use openvm_sdk_config::SdkVmGpuBuilder;
         pub use openvm_cuda_backend::prover_backend::GpuBackend;
         pub use openvm_circuit_primitives::bitwise_op_lookup::BitwiseOperationLookupChipGPU;
         pub use openvm_circuit_primitives::range_tuple::RangeTupleCheckerChipGPU;
@@ -99,6 +91,7 @@ cfg_if::cfg_if! {
     }
 }
 
+use openvm_circuit_primitives::Chip;
 use openvm_circuit_primitives::bitwise_op_lookup::{
     BitwiseOperationLookupAir, SharedBitwiseOperationLookupChip,
 };
@@ -106,11 +99,10 @@ use openvm_circuit_primitives::range_tuple::{RangeTupleCheckerAir, SharedRangeTu
 use openvm_circuit_primitives::var_range::{
     SharedVariableRangeCheckerChip, VariableRangeCheckerAir,
 };
-use openvm_native_circuit::NativeCpuBuilder;
 pub type PowdrSdkCpu =
-    GenericSdk<BabyBearPoseidon2Engine, SpecializedConfigCpuBuilder, NativeCpuBuilder>;
+    GenericSdk<BabyBearPoseidon2CpuEngine, SpecializedConfigCpuBuilder>;
 pub type PowdrExecutionProfileSdkCpu =
-    GenericSdk<BabyBearPoseidon2Engine, ExtendedVmConfigCpuBuilder, NativeCpuBuilder>;
+    GenericSdk<BabyBearPoseidon2CpuEngine, ExtendedVmConfigCpuBuilder>;
 
 pub const DEFAULT_OPENVM_DEGREE_BOUND: usize = 2 * DEFAULT_APP_LOG_BLOWUP + 1;
 pub const DEFAULT_DEGREE_BOUND: DegreeBound = DegreeBound {
@@ -156,7 +148,7 @@ pub struct SpecializedConfig {
 pub struct SpecializedConfigGpuBuilder;
 
 #[cfg(feature = "cuda")]
-impl VmBuilder<GpuBabyBearPoseidon2Engine> for SpecializedConfigGpuBuilder {
+impl VmBuilder<GpuBabyBearPoseidon2CpuEngine> for SpecializedConfigGpuBuilder {
     type VmConfig = SpecializedConfig;
     type SystemChipInventory = SystemChipInventoryGPU;
     type RecordArena = DenseRecordArena;
@@ -169,13 +161,13 @@ impl VmBuilder<GpuBabyBearPoseidon2Engine> for SpecializedConfigGpuBuilder {
         VmChipComplex<BabyBearSC, Self::RecordArena, GpuBackend, Self::SystemChipInventory>,
         ChipInventoryError,
     > {
-        let mut chip_complex = VmBuilder::<GpuBabyBearPoseidon2Engine>::create_chip_complex(
+        let mut chip_complex = VmBuilder::<GpuBabyBearPoseidon2CpuEngine>::create_chip_complex(
             &SdkVmGpuBuilder,
             &config.sdk.sdk_config.sdk,
             circuit,
         )?;
         let inventory = &mut chip_complex.inventory;
-        VmProverExtension::<GpuBabyBearPoseidon2Engine, _, _>::extend_prover(
+        VmProverExtension::<GpuBabyBearPoseidon2CpuEngine, _, _>::extend_prover(
             &PowdrGpuProverExt,
             &config.powdr,
             inventory,
@@ -218,7 +210,7 @@ where
 struct PowdrGpuProverExt;
 
 #[cfg(feature = "cuda")]
-impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, PowdrExtension<BabyBear>>
+impl VmProverExtension<GpuBabyBearPoseidon2CpuEngine, DenseRecordArena, PowdrExtension<BabyBear>>
     for PowdrGpuProverExt
 {
     fn extend_prover(
@@ -332,7 +324,7 @@ where
 // This is the most robust method because bus ids are assigned at air creation time.
 fn get_periphery_bus_ids<SC, RA, PB>(inventory: &ChipInventory<SC, RA, PB>) -> PeripheryBusIds
 where
-    SC: StarkGenericConfig,
+    SC: StarkProtocolConfig,
     PB: ProverBackend,
 {
     let air_inventory = inventory.airs();
@@ -493,10 +485,11 @@ pub fn compile_openvm(
         let toml = std::fs::read_to_string(&openvm_toml_path)?;
         toml::from_str(&toml)?
     } else {
-        AppConfig::riscv32()
+        let system_params = default_app_params(DEFAULT_APP_LOG_BLOWUP, DEFAULT_APP_L_SKIP, 21);
+        AppConfig::riscv32(system_params)
     };
 
-    let mut sdk = Sdk::new(app_config)?;
+    let mut sdk = Sdk::new(app_config, AggregationSystemParams::default())?;
 
     let transpiler = sdk.transpiler().unwrap();
 
@@ -627,7 +620,7 @@ where
 pub struct ExtendedVmConfigGpuBuilder;
 
 #[cfg(feature = "cuda")]
-impl VmBuilder<GpuBabyBearPoseidon2Engine> for ExtendedVmConfigGpuBuilder {
+impl VmBuilder<GpuBabyBearPoseidon2CpuEngine> for ExtendedVmConfigGpuBuilder {
     type VmConfig = ExtendedVmConfig;
     type SystemChipInventory = SystemChipInventoryGPU;
     type RecordArena = DenseRecordArena;
@@ -640,13 +633,13 @@ impl VmBuilder<GpuBabyBearPoseidon2Engine> for ExtendedVmConfigGpuBuilder {
         VmChipComplex<BabyBearSC, Self::RecordArena, GpuBackend, Self::SystemChipInventory>,
         ChipInventoryError,
     > {
-        let mut chip_complex = VmBuilder::<GpuBabyBearPoseidon2Engine>::create_chip_complex(
+        let mut chip_complex = VmBuilder::<GpuBabyBearPoseidon2CpuEngine>::create_chip_complex(
             &SdkVmGpuBuilder,
             &config.sdk,
             circuit,
         )?;
         let inventory = &mut chip_complex.inventory;
-        VmProverExtension::<GpuBabyBearPoseidon2Engine, _, _>::extend_prover(
+        VmProverExtension::<GpuBabyBearPoseidon2CpuEngine, _, _>::extend_prover(
             &HintsProverExt,
             &config.hints,
             inventory,
@@ -719,7 +712,7 @@ impl CompiledProgram {
     ) -> (Vec<(AirMetrics, Option<AirWidthsDiff>)>, Vec<AirMetrics>) {
         let air_inventory = self.vm_config.create_airs().unwrap();
 
-        let chip_complex = <SpecializedConfigCpuBuilder as VmBuilder<BabyBearPoseidon2Engine>>::create_chip_complex(&SpecializedConfigCpuBuilder, &self.vm_config, air_inventory).unwrap();
+        let chip_complex = <SpecializedConfigCpuBuilder as VmBuilder<BabyBearPoseidon2CpuEngine>>::create_chip_complex(&SpecializedConfigCpuBuilder, &self.vm_config, air_inventory).unwrap();
 
         let inventory = chip_complex.inventory;
 
@@ -761,15 +754,15 @@ pub fn execute(program: CompiledProgram, inputs: StdIn) -> Result<(), Box<dyn st
     let CompiledProgram { exe, vm_config } = program;
 
     // Set app configuration
-    let app_fri_params =
-        FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
-    let app_config = AppConfig::new(app_fri_params, vm_config.clone());
+    let system_params = default_app_params(DEFAULT_APP_LOG_BLOWUP, DEFAULT_APP_L_SKIP, 21);
+    let app_config = AppConfig::new(vm_config.clone(), system_params);
+    let agg_params = AggregationSystemParams::default();
 
     // prepare for execute
     #[cfg(feature = "cuda")]
-    let sdk = PowdrSdkGpu::new(app_config).unwrap();
+    let sdk = PowdrSdkGpu::new(app_config, agg_params).unwrap();
     #[cfg(not(feature = "cuda"))]
-    let sdk = PowdrSdkCpu::new(app_config).unwrap();
+    let sdk = PowdrSdkCpu::new(app_config, agg_params).unwrap();
 
     let output = sdk.execute(exe.clone(), inputs.clone()).unwrap();
 
@@ -786,8 +779,8 @@ pub fn prove(
     segment_height: Option<usize>, // uses the default height if None
 ) -> Result<(), Box<dyn std::error::Error>> {
     if mock {
-        do_with_trace(program, inputs, |_segment_idx, vm, pk, ctx| {
-            debug_proving_ctx(vm, pk, &ctx);
+        do_with_trace(program, inputs, |_segment_idx, vm, _pk, ctx| {
+            debug_proving_ctx(vm, &ctx);
         })?;
     } else {
         let exe = &program.exe;
@@ -801,45 +794,44 @@ pub fn prove(
                 .sdk
                 .system
                 .config
-                .segmentation_limits =
-                SegmentationLimits::default().with_max_trace_height(segment_height as u32);
+                .segmentation_config
+                .limits
+                .max_trace_height = segment_height as u32;
             tracing::debug!("Setting max segment len to {}", segment_height);
         }
 
         // Set app configuration
-        let app_fri_params =
-            FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
-        let app_config = AppConfig::new(app_fri_params, vm_config.clone());
+        let system_params = default_app_params(DEFAULT_APP_LOG_BLOWUP, DEFAULT_APP_L_SKIP, 21);
+        let app_config = AppConfig::new(vm_config.clone(), system_params);
+        let agg_params = AggregationSystemParams::default();
 
         // Create the SDK
         #[cfg(feature = "cuda")]
-        let sdk = PowdrSdkGpu::new(app_config).unwrap();
+        let sdk = PowdrSdkGpu::new(app_config, agg_params).unwrap();
         #[cfg(not(feature = "cuda"))]
-        let sdk = PowdrSdkCpu::new(app_config).unwrap();
-        let mut app_prover = sdk.app_prover(exe.clone())?;
-
-        // Generate a proof
-        tracing::info!("Generating app proof...");
-        let start = std::time::Instant::now();
-        let app_proof = app_prover.prove(inputs.clone())?;
-        tracing::info!("App proof took {:?}", start.elapsed());
-
-        tracing::info!("Public values: {:?}", app_proof.user_public_values);
-
-        // Verify
-        let app_vk = sdk.app_pk().get_app_vk();
-        verify_app_proof(&app_vk, &app_proof)?;
-        tracing::info!("App proof verification done.");
+        let sdk = PowdrSdkCpu::new(app_config, agg_params).unwrap();
 
         if recursion {
-            let mut agg_prover: AggStarkProver<_, _> = sdk.prover(exe.clone())?.agg_prover;
-
-            // Note that this proof is not verified. We assume that any valid app proof
-            // (verified above) also leads to a valid aggregation proof.
-            // If this was not the case, it would be a completeness bug in OpenVM.
+            // Generate a full aggregated STARK proof
+            tracing::info!("Generating aggregated STARK proof...");
             let start = std::time::Instant::now();
-            let _ = agg_prover.generate_root_verifier_input(app_proof)?;
-            tracing::info!("Agg proof (inner recursion) took {:?}", start.elapsed());
+            let (_proof, _baseline) = sdk.prove(exe.clone(), inputs.clone())?;
+            tracing::info!("Aggregated STARK proof took {:?}", start.elapsed());
+        } else {
+            // Generate app-level proof only
+            let mut app_prover = sdk.app_prover(exe.clone())?;
+            tracing::info!("Generating app proof...");
+            let start = std::time::Instant::now();
+            let app_proof = app_prover.prove(inputs.clone())?;
+            tracing::info!("App proof took {:?}", start.elapsed());
+
+            tracing::info!("Public values: {:?}", app_proof.user_public_values);
+
+            // Verify
+            let app_vk = sdk.app_pk().get_app_vk();
+            let memory_dimensions = app_prover.memory_dimensions();
+            verify_app_proof::<BabyBearPoseidon2CpuEngine>(&app_vk.vk, memory_dimensions, &app_proof)?;
+            tracing::info!("App proof verification done.");
         }
 
         tracing::info!("All done.");
@@ -857,15 +849,15 @@ pub fn execution_profile_from_guest(
     let program = Prog::from(&exe.program);
 
     // Set app configuration
-    let app_fri_params =
-        FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
-    let app_config = AppConfig::new(app_fri_params, vm_config.clone());
+    let system_params = default_app_params(DEFAULT_APP_LOG_BLOWUP, DEFAULT_APP_L_SKIP, 21);
+    let app_config = AppConfig::new(vm_config.clone(), system_params);
+    let agg_params = AggregationSystemParams::default();
 
     // prepare for execute
-    let sdk = PowdrExecutionProfileSdkCpu::new(app_config).unwrap();
+    let sdk = PowdrExecutionProfileSdkCpu::new(app_config, agg_params).unwrap();
 
     execution_profile::<BabyBearOpenVmApcAdapter>(&program, || {
-        sdk.execute_interpreted(exe.clone(), inputs.clone())
+        sdk.execute(exe.clone(), inputs.clone())
             .unwrap();
     })
 }

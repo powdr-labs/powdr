@@ -26,7 +26,7 @@ use openvm_circuit::arch::{AotExecutor, AotMeteredExecutor};
 use openvm_circuit_derive::create_handler;
 use openvm_circuit_primitives::AlignedBytesBorrow;
 use openvm_instructions::instruction::Instruction;
-use openvm_sdk::config::SdkVmConfigExecutor;
+use openvm_sdk_config::SdkVmConfigExecutor;
 use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{

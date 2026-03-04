@@ -306,7 +306,7 @@ impl PowdrTraceGeneratorGpu {
                         // get the device dummy trace for this air
                         let dummy_trace = &dummy_trace_by_air_name[*air_name];
 
-                        use openvm_stark_backend::prover::hal::MatrixDimensions;
+                        use openvm_stark_backend::prover::MatrixDimensions;
                         airs.push(OriginalAir {
                             width: dummy_trace.width() as i32,
                             height: dummy_trace.height() as i32,

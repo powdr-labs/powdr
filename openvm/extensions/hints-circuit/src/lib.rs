@@ -12,9 +12,8 @@ use openvm_circuit::derive::{
 };
 use openvm_circuit::system::phantom::PhantomExecutor;
 use openvm_instructions::PhantomDiscriminant;
-use openvm_stark_backend::config::{StarkGenericConfig, Val};
 use openvm_stark_backend::p3_field::{Field, PrimeField32};
-use openvm_stark_sdk::engine::StarkEngine;
+use openvm_stark_backend::{StarkProtocolConfig, Val, StarkEngine};
 use powdr_openvm_hints_transpiler::HintsPhantom;
 use serde::{Deserialize, Serialize};
 
@@ -60,7 +59,7 @@ impl<F: PrimeField32> VmExecutionExtension<F> for HintsExtension {
     }
 }
 
-impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for HintsExtension {
+impl<SC: StarkProtocolConfig> VmCircuitExtension<SC> for HintsExtension {
     fn extend_circuit(&self, _: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {
         Ok(())
     }

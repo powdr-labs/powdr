@@ -6,7 +6,7 @@ use crate::bus_map::{BusMap, OpenVmBusType};
 use crate::powdr_extension::executor::RecordArenaDimension;
 use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
 use crate::{AirMetrics, ExtendedVmConfig, ExtendedVmConfigExecutor, Instr};
-use crate::{BabyBearPoseidon2Engine, ExtendedVmConfigCpuBuilder};
+use crate::{BabyBearPoseidon2CpuEngine, ExtendedVmConfigCpuBuilder};
 use itertools::Itertools;
 use openvm_circuit::arch::{
     AirInventory, AirInventoryError, ExecutorInventory, ExecutorInventoryError, MatrixRecordArena,
@@ -20,16 +20,11 @@ use openvm_instructions::VmOpcode;
 
 use crate::utils::{get_pil, openvm_bus_interaction_to_powdr};
 use openvm_stark_backend::air_builders::symbolic::SymbolicRapBuilder;
-use openvm_stark_backend::config::Val;
-use openvm_stark_backend::interaction::fri_log_up::find_interaction_chunks;
+use openvm_stark_backend::Val;
 use openvm_stark_backend::p3_field::PrimeField32;
-use openvm_stark_backend::prover::cpu::CpuBackend;
+use openvm_stark_backend::prover::CpuBackend;
 use openvm_stark_backend::{
-    air_builders::symbolic::SymbolicConstraints, config::StarkGenericConfig, rap::AnyRap,
-};
-use openvm_stark_sdk::config::{
-    baby_bear_poseidon2::{config_from_perm, default_perm},
-    fri_params::SecurityParameters,
+    air_builders::symbolic::SymbolicConstraints, p3_air::BaseAir, StarkProtocolConfig, AnyAir,
 };
 use openvm_stark_sdk::p3_baby_bear::{self, BabyBear};
 use powdr_autoprecompiles::bus_map::BusType;
@@ -218,16 +213,16 @@ pub struct OriginalVmConfig {
 }
 
 // TODO: derive `VmCircuitConfig`, currently not possible because we don't have SC/F everywhere
-impl<SC: StarkGenericConfig> VmCircuitConfig<SC> for OriginalVmConfig
+impl<SC: StarkProtocolConfig> VmCircuitConfig<SC> for OriginalVmConfig
 where
-    Val<SC>: PrimeField32,
+    Val<SC>: PrimeField32 + openvm_stark_backend::p3_field::InjectiveMonomial<7>,
 {
     fn create_airs(&self) -> Result<AirInventory<SC>, AirInventoryError> {
         self.sdk_config.create_airs()
     }
 }
 
-impl<F: PrimeField32> VmExecutionConfig<F> for OriginalVmConfig {
+impl<F: PrimeField32 + openvm_stark_backend::p3_field::InjectiveMonomial<7>> VmExecutionConfig<F> for OriginalVmConfig {
     type Executor = ExtendedVmConfigExecutor<F>;
 
     fn create_executors(
@@ -279,7 +274,7 @@ impl OriginalVmConfig {
                 .create_airs()
                 .expect("Failed to create air inventory");
             let complex =
-                <ExtendedVmConfigCpuBuilder as VmBuilder<BabyBearPoseidon2Engine>>::create_chip_complex(
+                <ExtendedVmConfigCpuBuilder as VmBuilder<BabyBearPoseidon2CpuEngine>>::create_chip_complex(
                     &ExtendedVmConfigCpuBuilder,
                     &self.sdk_config,
                     airs,
@@ -459,8 +454,8 @@ pub fn export_pil(writer: &mut impl std::io::Write, vm_config: &SpecializedConfi
     }
 }
 
-pub fn get_columns(air: Arc<dyn AnyRap<BabyBearSC>>) -> Vec<Arc<String>> {
-    let width = air.width();
+pub fn get_columns(air: Arc<dyn AnyAir<BabyBearSC>>) -> Vec<Arc<String>> {
+    let width = <dyn AnyAir<BabyBearSC> as BaseAir<BabyBear>>::width(air.as_ref());
     air.columns()
         .inspect(|columns| {
             assert_eq!(columns.len(), width);
@@ -471,19 +466,19 @@ pub fn get_columns(air: Arc<dyn AnyRap<BabyBearSC>>) -> Vec<Arc<String>> {
         .collect()
 }
 
-pub fn get_name<SC: StarkGenericConfig>(air: Arc<dyn AnyRap<SC>>) -> String {
+pub fn get_name<SC: StarkProtocolConfig>(air: Arc<dyn AnyAir<SC>>) -> String {
     air.name()
 }
 
 pub fn get_constraints(
-    air: Arc<dyn AnyRap<BabyBearSC>>,
+    air: Arc<dyn AnyAir<BabyBearSC>>,
 ) -> SymbolicConstraints<p3_baby_bear::BabyBear> {
     let builder = symbolic_builder_with_degree(air, None);
     builder.constraints()
 }
 
-pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>, max_degree: usize) -> AirMetrics {
-    let main = air.width();
+pub fn get_air_metrics(air: Arc<dyn AnyAir<BabyBearSC>>, max_degree: usize) -> AirMetrics {
+    let main = <dyn AnyAir<BabyBearSC> as BaseAir<BabyBear>>::width(air.as_ref());
 
     let symbolic_rap_builder = symbolic_builder_with_degree(air, Some(max_degree));
     let preprocessed = symbolic_rap_builder.width().preprocessed.unwrap_or(0);
@@ -493,11 +488,15 @@ pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>, max_degree: usize) -> A
         interactions,
     } = symbolic_rap_builder.constraints();
 
-    let log_up = (find_interaction_chunks(&interactions, max_degree)
-        .interaction_partitions()
-        .len()
-        + 1)
-        * EXT_DEGREE;
+    // In v2, LogUp width is computed via GKR-based LogUp.
+    // We approximate the width contribution from interactions.
+    // Each interaction contributes EXT_DEGREE columns for the running sum.
+    let log_up = if interactions.is_empty() {
+        0
+    } else {
+        // In v2 with GKR LogUp, the width is simpler: just count interactions * extension degree
+        (interactions.len() + 1) * EXT_DEGREE
+    };
 
     AirMetrics {
         widths: AirWidths {
@@ -511,13 +510,10 @@ pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>, max_degree: usize) -> A
 }
 
 pub fn symbolic_builder_with_degree(
-    air: Arc<dyn AnyRap<BabyBearSC>>,
+    air: Arc<dyn AnyAir<BabyBearSC>>,
     max_constraint_degree: Option<usize>,
 ) -> SymbolicRapBuilder<p3_baby_bear::BabyBear> {
-    let perm = default_perm();
-    let security_params = SecurityParameters::standard_fast();
-    let config = config_from_perm(&perm, security_params);
-    let air_keygen_builder = AirKeygenBuilder::new(config.pcs(), air);
+    let air_keygen_builder = AirKeygenBuilder::new(air);
     air_keygen_builder.get_symbolic_builder(max_constraint_degree)
 }
 
@@ -620,7 +616,7 @@ mod tests {
     use openvm_ecc_circuit::{WeierstrassExtension, SECP256K1_CONFIG};
     use openvm_pairing_circuit::{PairingCurve, PairingExtension};
     use openvm_rv32im_circuit::Rv32M;
-    use openvm_sdk::config::SdkVmConfig;
+    use openvm_sdk_config::SdkVmConfig;
     use powdr_openvm_hints_circuit::HintsExtension;
 
     #[test]

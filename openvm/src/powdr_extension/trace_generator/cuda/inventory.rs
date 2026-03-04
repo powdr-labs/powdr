@@ -2,7 +2,7 @@ use openvm_circuit::arch::{
     AirInventory, ChipInventoryError, VmBuilder, VmChipComplex, VmProverExtension,
 };
 use openvm_pairing_circuit::PairingProverExt;
-use openvm_sdk::config::SdkVmConfig;
+use sdk_v2::config::SdkVmConfig;
 
 use crate::{
     powdr_extension::trace_generator::cuda::periphery::SharedPeripheryChipsGpuProverExt, BabyBearSC,
@@ -10,7 +10,7 @@ use crate::{
 
 use crate::powdr_extension::trace_generator::cuda::periphery::SharedPeripheryChipsGpu;
 use crate::DenseRecordArena;
-use crate::GpuBabyBearPoseidon2Engine;
+use crate::GpuBabyBearPoseidon2CpuEngine;
 use crate::GpuBackend;
 use crate::SystemGpuBuilder;
 use openvm_circuit::system::cuda::SystemChipInventoryGPU;
@@ -26,11 +26,11 @@ pub fn create_dummy_chip_complex(
     use openvm_bigint_circuit::Int256GpuProverExt;
     use openvm_ecc_circuit::EccProverExt;
     use openvm_keccak256_circuit::Keccak256GpuProverExt;
-    use openvm_native_circuit::NativeGpuProverExt;
+    use // TODO: NativeGpuProverExt removed in v2;
     use openvm_rv32im_circuit::Rv32ImGpuProverExt;
-    use openvm_sha256_circuit::Sha256GpuProverExt;
+    use openvm_sha2_circuit::Sha256GpuProverExt;
 
-    type E = GpuBabyBearPoseidon2Engine;
+    type E = GpuBabyBearPoseidon2CpuEngine;
 
     let config = config.to_inner();
     let mut chip_complex =

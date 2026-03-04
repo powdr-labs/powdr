@@ -1,4 +1,4 @@
-use openvm_sdk::config::SdkVmConfig;
+use openvm_sdk_config::SdkVmConfig;
 use powdr_openvm::{extraction_utils::OriginalVmConfig, ExtendedVmConfig};
 use powdr_openvm_hints_circuit::HintsExtension;
 

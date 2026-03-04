@@ -9,13 +9,13 @@ use openvm_circuit_primitives::{
     range_tuple::{RangeTupleCheckerAir, RangeTupleCheckerChip, SharedRangeTupleCheckerChip},
     var_range::{SharedVariableRangeCheckerChip, VariableRangeCheckerAir},
 };
-use openvm_stark_backend::{config::StarkGenericConfig, p3_field::PrimeField32};
+use openvm_stark_backend::{StarkProtocolConfig, p3_field::PrimeField32};
 
 use itertools::Itertools;
 use openvm_circuit::arch::RowMajorMatrixArena;
-use openvm_stark_backend::config::Val;
-use openvm_stark_backend::engine::StarkEngine;
-use openvm_stark_backend::prover::cpu::{CpuBackend, CpuDevice};
+use openvm_stark_backend::Val;
+use openvm_stark_backend::StarkEngine;
+use openvm_stark_backend::prover::{CpuBackend, CpuDevice};
 
 use crate::powdr_extension::trace_generator::common::DummyExecutor;
 use crate::PeripheryBusIds;
@@ -72,7 +72,7 @@ impl PowdrPeripheryInstancesCpu {
     }
 }
 
-impl<F: PrimeField32> VmExecutionExtension<F> for SharedPeripheryChipsCpu {
+impl<F: PrimeField32 + openvm_stark_backend::p3_field::InjectiveMonomial<7>> VmExecutionExtension<F> for SharedPeripheryChipsCpu {
     type Executor = DummyExecutor<F>;
 
     fn extend_execution(
@@ -84,7 +84,7 @@ impl<F: PrimeField32> VmExecutionExtension<F> for SharedPeripheryChipsCpu {
     }
 }
 
-impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChipsCpu {
+impl<SC: StarkProtocolConfig> VmCircuitExtension<SC> for SharedPeripheryChipsCpu {
     fn extend_circuit(&self, inventory: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {
         // create dummy airs
         if let Some(bitwise_lookup_8) = &self.bitwise_lookup_8 {
@@ -125,7 +125,9 @@ pub struct SharedPeripheryChipsCpuProverExt;
 impl<E, SC, RA> VmProverExtension<E, RA, SharedPeripheryChipsCpu>
     for SharedPeripheryChipsCpuProverExt
 where
-    SC: StarkGenericConfig,
+    SC: StarkProtocolConfig,
+    SC::F: Ord + openvm_stark_backend::p3_field::InjectiveMonomial<7>,
+    SC::EF: Ord,
     E: StarkEngine<SC = SC, PB = CpuBackend<SC>, PD = CpuDevice<SC>>,
     RA: RowMajorMatrixArena<Val<SC>>,
     Val<SC>: PrimeField32,

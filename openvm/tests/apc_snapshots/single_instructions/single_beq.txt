@@ -7,44 +7,44 @@ APC advantage:
   - Constraints: 11 -> 7 (1.57x reduction)
 
 Symbolic machine using 16 unique main columns:
-  from_state__timestamp_0
-  reads_aux__0__base__prev_timestamp_0
-  reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0
-  reads_aux__1__base__prev_timestamp_0
-  reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0
-  a__0_0
-  a__1_0
-  a__2_0
-  a__3_0
-  b__0_0
-  b__1_0
-  b__2_0
-  b__3_0
-  cmp_result_0
+  unknown_1_0
+  unknown_4_0
+  unknown_5_0
+  unknown_7_0
+  unknown_8_0
+  unknown_10_0
+  unknown_11_0
+  unknown_12_0
+  unknown_13_0
+  unknown_14_0
+  unknown_15_0
+  unknown_16_0
+  unknown_17_0
+  unknown_18_0
   free_var_30
   is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):
-mult=is_valid * -1, args=[0, from_state__timestamp_0]
-mult=is_valid * 1, args=[4 - 2 * cmp_result_0, from_state__timestamp_0 + 2]
+mult=is_valid * -1, args=[0, unknown_1_0]
+mult=is_valid * 1, args=[4 - 2 * unknown_18_0, unknown_1_0 + 2]
 
 // Bus 1 (MEMORY):
-mult=is_valid * -1, args=[1, 8, a__0_0, a__1_0, a__2_0, a__3_0, reads_aux__0__base__prev_timestamp_0]
-mult=is_valid * 1, args=[1, 8, a__0_0, a__1_0, a__2_0, a__3_0, from_state__timestamp_0]
-mult=is_valid * -1, args=[1, 5, b__0_0, b__1_0, b__2_0, b__3_0, reads_aux__1__base__prev_timestamp_0]
-mult=is_valid * 1, args=[1, 5, b__0_0, b__1_0, b__2_0, b__3_0, from_state__timestamp_0 + 1]
+mult=is_valid * -1, args=[1, 8, unknown_10_0, unknown_11_0, unknown_12_0, unknown_13_0, unknown_4_0]
+mult=is_valid * 1, args=[1, 8, unknown_10_0, unknown_11_0, unknown_12_0, unknown_13_0, unknown_1_0]
+mult=is_valid * -1, args=[1, 5, unknown_14_0, unknown_15_0, unknown_16_0, unknown_17_0, unknown_7_0]
+mult=is_valid * 1, args=[1, 5, unknown_14_0, unknown_15_0, unknown_16_0, unknown_17_0, unknown_1_0 + 1]
 
 // Bus 3 (VARIABLE_RANGE_CHECKER):
-mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0, 17]
-mult=is_valid * 1, args=[15360 * reads_aux__0__base__prev_timestamp_0 + 15360 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0 + 15360 - 15360 * from_state__timestamp_0, 12]
-mult=is_valid * 1, args=[reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0, 17]
-mult=is_valid * 1, args=[15360 * reads_aux__1__base__prev_timestamp_0 + 15360 * reads_aux__1__base__timestamp_lt_aux__lower_decomp__0_0 - 15360 * from_state__timestamp_0, 12]
+mult=is_valid * 1, args=[unknown_5_0, 17]
+mult=is_valid * 1, args=[15360 * unknown_4_0 + 15360 * unknown_5_0 + 15360 - 15360 * unknown_1_0, 12]
+mult=is_valid * 1, args=[unknown_8_0, 17]
+mult=is_valid * 1, args=[15360 * unknown_7_0 + 15360 * unknown_8_0 - 15360 * unknown_1_0, 12]
 
 // Algebraic constraints:
-cmp_result_0 * (cmp_result_0 - 1) = 0
-cmp_result_0 * (a__0_0 - b__0_0) = 0
-cmp_result_0 * (a__1_0 - b__1_0) = 0
-cmp_result_0 * (a__2_0 - b__2_0) = 0
-cmp_result_0 * (a__3_0 - b__3_0) = 0
-free_var_30 * ((a__0_0 - b__0_0) * (a__0_0 - b__0_0) + (a__1_0 - b__1_0) * (a__1_0 - b__1_0) + (a__2_0 - b__2_0) * (a__2_0 - b__2_0) + (a__3_0 - b__3_0) * (a__3_0 - b__3_0)) + cmp_result_0 - 1 * is_valid = 0
+unknown_18_0 * (unknown_18_0 - 1) = 0
+unknown_18_0 * (unknown_10_0 - unknown_14_0) = 0
+unknown_18_0 * (unknown_11_0 - unknown_15_0) = 0
+unknown_18_0 * (unknown_12_0 - unknown_16_0) = 0
+unknown_18_0 * (unknown_13_0 - unknown_17_0) = 0
+free_var_30 * ((unknown_10_0 - unknown_14_0) * (unknown_10_0 - unknown_14_0) + (unknown_11_0 - unknown_15_0) * (unknown_11_0 - unknown_15_0) + (unknown_12_0 - unknown_16_0) * (unknown_12_0 - unknown_16_0) + (unknown_13_0 - unknown_17_0) * (unknown_13_0 - unknown_17_0)) + unknown_18_0 - 1 * is_valid = 0
 is_valid * (is_valid - 1) = 0

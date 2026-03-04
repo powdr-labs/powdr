@@ -8,12 +8,12 @@ use openvm_circuit_primitives::{
     range_tuple::{RangeTupleCheckerAir, RangeTupleCheckerChip},
     var_range::VariableRangeCheckerAir,
 };
-use openvm_stark_backend::{config::StarkGenericConfig, p3_field::PrimeField32};
+use openvm_stark_backend::{config::StarkProtocolConfig, p3_field::PrimeField32};
 
 use crate::BabyBearSC;
 use crate::BitwiseOperationLookupChipGPU;
 use crate::DenseRecordArena;
-use crate::GpuBabyBearPoseidon2Engine;
+use crate::GpuBabyBearPoseidon2CpuEngine;
 use crate::GpuBackend;
 use crate::RangeTupleCheckerChipGPU;
 use crate::VariableRangeCheckerChipGPU;
@@ -92,7 +92,7 @@ impl<F: PrimeField32> VmExecutionExtension<F> for SharedPeripheryChipsGpu {
     }
 }
 
-impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChipsGpu {
+impl<SC: StarkProtocolConfig> VmCircuitExtension<SC> for SharedPeripheryChipsGpu {
     fn extend_circuit(&self, inventory: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {
         // create dummy airs
         if let Some(bitwise_lookup_8) = &self.bitwise_lookup_8 {
@@ -141,7 +141,7 @@ impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChipsGpu 
 
 pub struct SharedPeripheryChipsGpuProverExt;
 
-impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, SharedPeripheryChipsGpu>
+impl VmProverExtension<GpuBabyBearPoseidon2CpuEngine, DenseRecordArena, SharedPeripheryChipsGpu>
     for SharedPeripheryChipsGpuProverExt
 {
     fn extend_prover(

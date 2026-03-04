@@ -8,10 +8,10 @@ repository.workspace = true
 
 [features]
 default = []
-aot = ["openvm-sdk/aot", "powdr-openvm-hints-circuit/aot"]
-tco = ["openvm-sdk/tco", "powdr-openvm-hints-circuit/tco"]
-metrics = ["openvm-sdk/metrics", "openvm-stark-backend/metrics", "openvm-stark-sdk/metrics"]
-cuda = ["openvm-sdk/cuda", "openvm-circuit-primitives/cuda", "dep:openvm-cuda-backend", "dep:openvm-cuda-common", "dep:openvm-cuda-builder"]
+aot = ["sdk-v2/aot", "powdr-openvm-hints-circuit/aot"]
+tco = ["sdk-v2/tco", "powdr-openvm-hints-circuit/tco"]
+metrics = ["sdk-v2/metrics", "openvm-stark-backend/metrics", "openvm-stark-sdk/metrics"]
+cuda = ["sdk-v2/cuda", "openvm-circuit-primitives/cuda", "dep:openvm-cuda-backend", "dep:openvm-cuda-common", "dep:openvm-cuda-builder"]
 
 [dependencies]
 openvm.workspace = true
@@ -26,22 +26,20 @@ openvm-circuit-primitives.workspace = true
 openvm-circuit-primitives-derive.workspace = true
 openvm-instructions.workspace = true
 openvm-instructions-derive.workspace = true
-openvm-sdk.workspace = true
+sdk-v2.workspace = true
+openvm-sdk-config.workspace = true
 openvm-ecc-circuit.workspace = true
 openvm-ecc-transpiler.workspace = true
 openvm-keccak256-circuit.workspace = true
 openvm-keccak256-transpiler.workspace = true
-openvm-sha256-circuit.workspace = true
-openvm-sha256-transpiler.workspace = true
+openvm-sha2-circuit.workspace = true
+openvm-sha2-transpiler.workspace = true
 openvm-algebra-circuit.workspace = true
 openvm-algebra-transpiler.workspace = true
 openvm-bigint-circuit.workspace = true
 openvm-bigint-transpiler.workspace = true
 openvm-pairing-circuit.workspace = true
 openvm-pairing-transpiler.workspace = true
-openvm-native-circuit.workspace = true
-openvm-native-recursion.workspace = true
-
 openvm-stark-sdk.workspace = true
 openvm-stark-backend.workspace = true
 openvm-cuda-backend = { workspace = true, optional = true }

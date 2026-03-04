@@ -15,14 +15,14 @@ use itertools::Itertools;
 use openvm_circuit::arch::MatrixRecordArena;
 use openvm_stark_backend::{
     p3_air::{Air, BaseAir},
-    rap::ColumnsAir,
+    ColumnsAir,
 };
 
 use openvm_stark_backend::{
     interaction::InteractionBuilder,
     p3_field::PrimeField32,
     p3_matrix::Matrix,
-    rap::{BaseAirWithPublicValues, PartitionedBaseAir},
+    BaseAirWithPublicValues, PartitionedBaseAir,
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
@@ -98,13 +98,14 @@ where
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
-        let witnesses = main.row_slice(0);
+        let witnesses = main.row_slice(0).expect("row_slice(0) should exist");
         // TODO: cache?
+        let witness_slice: &[AB::Var] = &*witnesses;
         let witness_values: BTreeMap<u64, AB::Var> = self
             .columns
             .iter()
             .map(|c| c.id)
-            .zip_eq(witnesses.iter().cloned())
+            .zip_eq(witness_slice.iter().copied())
             .collect();
 
         let witness_evaluator = WitnessEvaluator::new(&witness_values);

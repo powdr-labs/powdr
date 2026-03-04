@@ -20,7 +20,7 @@ use openvm_circuit::system::memory::online::GuestMemory;
 use openvm_instructions::instruction::Instruction as OpenVmInstruction;
 use openvm_instructions::program::DEFAULT_PC_STEP;
 use openvm_instructions::VmOpcode;
-use openvm_stark_backend::p3_field::{FieldAlgebra, PrimeField32};
+use openvm_stark_backend::p3_field::{PrimeCharacteristicRing, PrimeField32};
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::adapter::{
     Adapter, AdapterApc, AdapterApcWithStats, ApcWithStats, PgoAdapter,
@@ -100,7 +100,7 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     type ExecutionState = OpenVmExecutionState<'a, BabyBear>;
 
     fn into_field(e: Self::PowdrField) -> Self::Field {
-        openvm_stark_sdk::p3_baby_bear::BabyBear::from_canonical_u32(
+        openvm_stark_sdk::p3_baby_bear::BabyBear::from_u32(
             e.to_integer().try_into_u32().unwrap(),
         )
     }
@@ -174,7 +174,7 @@ impl<F: PrimeField32> Instruction<F> for Instr<F> {
         ];
         // The PC lookup row has the format:
         // [pc, opcode, a, b, c, d, e, f, g]
-        let pc = F::from_canonical_u32(pc.try_into().unwrap());
+        let pc = F::from_u32(pc.try_into().unwrap());
         once(pc).chain(args).collect()
     }
 }
@@ -264,13 +264,15 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
                 .try_as_basic_block()
                 .expect("superblocks unsupported")
                 .start_pc;
-            let start_index = ((start_pc - pc_base as u64) / pc_step as u64)
+            let start_index: usize = ((start_pc - pc_base as u64) / pc_step as u64)
                 .try_into()
                 .unwrap();
 
             // We encode in the program that the prover should execute the apc instruction instead of the original software version.
             // This is only for witgen: the program in the program chip is left unchanged.
-            program.add_apc_instruction_at_pc_index(start_index, VmOpcode::from_usize(opcode));
+            // TODO: Port add_apc_instruction_at_pc_index to v2's openvm fork
+            // program.add_apc_instruction_at_pc_index(start_index, VmOpcode::from_usize(opcode));
+            let _ = (start_index, opcode);
 
             PowdrPrecompile::new(
                 format!("PowdrAutoprecompile_{}", start_pc),

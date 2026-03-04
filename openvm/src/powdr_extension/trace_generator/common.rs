@@ -1,7 +1,7 @@
 use openvm_circuit::arch::{AirInventory, AirInventoryError, VmCircuitConfig, VmCircuitExtension};
 use openvm_circuit::system::phantom::PhantomExecutor;
 use openvm_circuit_primitives::Chip;
-use openvm_sdk::config::SdkVmConfig;
+use openvm_sdk_config::SdkVmConfig;
 
 use crate::BabyBearSC;
 use crate::ExtendedVmConfigExecutor;
@@ -30,12 +30,7 @@ pub fn create_dummy_airs<E: VmCircuitExtension<BabyBearSC>>(
     if let Some(sha256) = &config.sha256 {
         VmCircuitExtension::extend_circuit(sha256, &mut inventory)?;
     }
-    if let Some(native) = &config.native {
-        VmCircuitExtension::extend_circuit(native, &mut inventory)?;
-    }
-    if let Some(castf) = &config.castf {
-        VmCircuitExtension::extend_circuit(castf, &mut inventory)?;
-    }
+    // native and castf extensions not in v2's SdkVmConfig
     if let Some(rv32m) = &config.rv32m {
         VmCircuitExtension::extend_circuit(rv32m, &mut inventory)?;
     }
@@ -58,6 +53,7 @@ pub fn create_dummy_airs<E: VmCircuitExtension<BabyBearSC>>(
 }
 
 use derive_more::From;
+use openvm_circuit::arch::VmField;
 use openvm_circuit_derive::AnyEnum;
 use openvm_circuit_derive::Executor;
 use openvm_circuit_derive::MeteredExecutor;
@@ -66,7 +62,7 @@ use openvm_stark_backend::p3_field::PrimeField32;
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Chip, PreflightExecutor, Executor, MeteredExecutor, From, AnyEnum)]
-pub enum DummyExecutor<F: PrimeField32> {
+pub enum DummyExecutor<F: VmField> {
     #[any_enum]
     Sdk(ExtendedVmConfigExecutor<F>),
     #[any_enum]
@@ -74,6 +70,6 @@ pub enum DummyExecutor<F: PrimeField32> {
 }
 
 #[derive(Chip, PreflightExecutor, Executor, MeteredExecutor, From, AnyEnum)]
-pub enum SharedExecutor<F: PrimeField32> {
+pub enum SharedExecutor<F: VmField> {
     Phantom(PhantomExecutor<F>),
 }
