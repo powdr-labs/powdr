@@ -63,12 +63,12 @@ pub struct OriginalCompiledProgram<'a, ISA: OpenVmISA> {
 impl<'a, ISA: OpenVmISA> OriginalCompiledProgram<'a, ISA> {
     /// Segments the program into basic blocks
     pub fn collect_basic_blocks(&self) -> Vec<BasicBlock<Instr<BabyBear, ISA>>> {
-        let jumpdest_set = ISA::get_labels_debug(&self.elf);
+        let jumpdest_set = ISA::get_jump_destinations(&self);
 
         let program = Prog::from(&self.exe.program);
 
         // Convert the jump destinations to u64 for compatibility with the `collect_basic_blocks` function.
-        let jumpdest_set = jumpdest_set.keys().copied().collect::<BTreeSet<_>>();
+        let jumpdest_set = jumpdest_set.into_iter().map(|pc| pc.into()).collect::<BTreeSet<_>>();
 
         collect_basic_blocks::<BabyBearOpenVmApcAdapter<ISA>>(&program, &jumpdest_set)
     }
