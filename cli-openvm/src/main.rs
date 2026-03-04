@@ -29,18 +29,44 @@ struct Cli {
 }
 
 #[derive(Args)]
-struct SuperBlockArgs {
+struct SharedArgs {
+    #[arg(long, default_value_t = 0)]
+    autoprecompiles: usize,
+
+    #[arg(long, default_value_t = 0)]
+    skip: usize,
+
+    #[arg(long)]
+    input: Option<u32>,
+
+    #[arg(long, default_value_t = PgoType::default())]
+    pgo: PgoType,
+
+    /// When `--pgo-mode cell`, the optional max columns
+    #[clap(long)]
+    max_columns: Option<usize>,
+
+    /// When `--pgo-mode cell`, the directory to persist all APC candidates + a metrics summary
+    #[arg(long)]
+    apc_candidates_dir: Option<PathBuf>,
+
+    /// Maximum number of instructions in an APC
+    #[arg(long)]
+    apc_max_instructions: Option<u32>,
+
+    /// Ignore APCs executed less times than the cutoff
+    #[arg(long)]
+    apc_exec_count_cutoff: Option<u32>,
+
+    /// If active, generates "optimistic" precompiles. Optimistic precompiles are smaller in size
+    /// but may fail at runtime if the assumptions they make are violated.
+    #[arg(long)]
+    #[arg(default_value_t = false)]
+    optimistic_precompiles: bool,
+
     /// When larger than 1, enables superblocks with up to the given number of basic blocks.
     #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..))]
     superblocks: u8,
-
-    /// Maximum number of instructions in a superblock
-    #[arg(long)]
-    superblocks_max_instructions: Option<u32>,
-
-    /// Ignore superblocks executed less times than the cutoff
-    #[arg(long)]
-    superblocks_exec_count_cutoff: Option<u32>,
 }
 
 #[derive(Subcommand)]
@@ -48,83 +74,25 @@ enum Commands {
     Compile {
         guest: String,
 
-        #[arg(long, default_value_t = 0)]
-        autoprecompiles: usize,
-
-        #[arg(long, default_value_t = 0)]
-        skip: usize,
-
         #[command(flatten)]
-        superblocks: SuperBlockArgs,
-
-        #[arg(long, default_value_t = PgoType::default())]
-        pgo: PgoType,
-
-        /// When `--pgo-mode cell`, the optional max columns
-        #[clap(long)]
-        max_columns: Option<usize>,
-
-        #[arg(long)]
-        input: Option<u32>,
-
-        /// When `--pgo-mode cell`, the directory to persist all APC candidates + a metrics summary
-        #[arg(long)]
-        apc_candidates_dir: Option<PathBuf>,
-
-        /// If active, generates "optimistic" precompiles. Optimistic precompiles are smaller in size
-        /// but may fail at runtime if the assumptions they make are violated.
-        #[arg(long)]
-        #[arg(default_value_t = false)]
-        optimistic_precompiles: bool,
+        shared: SharedArgs,
     },
 
     Execute {
         guest: String,
 
-        #[arg(long, default_value_t = 0)]
-        autoprecompiles: usize,
-
-        #[arg(long, default_value_t = 0)]
-        skip: usize,
-
         #[command(flatten)]
-        superblocks: SuperBlockArgs,
-
-        #[arg(long, default_value_t = PgoType::default())]
-        pgo: PgoType,
-
-        /// When `--pgo-mode cell`, the optional max columns
-        #[clap(long)]
-        max_columns: Option<usize>,
-
-        #[arg(long)]
-        input: Option<u32>,
+        shared: SharedArgs,
 
         #[arg(long)]
         metrics: Option<PathBuf>,
-
-        /// When `--pgo-mode cell`, the directory to persist all APC candidates + a metrics summary
-        #[arg(long)]
-        apc_candidates_dir: Option<PathBuf>,
-
-        /// If active, generates "optimistic" precompiles. Optimistic precompiles are smaller in size
-        /// but may fail at runtime if the assumptions they make are violated.
-        #[arg(long)]
-        #[arg(default_value_t = false)]
-        optimistic_precompiles: bool,
     },
 
     Prove {
         guest: String,
 
-        #[arg(long, default_value_t = 0)]
-        autoprecompiles: usize,
-
-        #[arg(long, default_value_t = 0)]
-        skip: usize,
-
         #[command(flatten)]
-        superblocks: SuperBlockArgs,
+        shared: SharedArgs,
 
         #[arg(long)]
         #[arg(default_value_t = false)]
@@ -134,28 +102,8 @@ enum Commands {
         #[arg(default_value_t = false)]
         recursion: bool,
 
-        #[arg(long, default_value_t = PgoType::default())]
-        pgo: PgoType,
-
-        /// When `--pgo-mode cell`, the optional max columns
-        #[clap(long)]
-        max_columns: Option<usize>,
-
-        #[arg(long)]
-        input: Option<u32>,
-
         #[arg(long)]
         metrics: Option<PathBuf>,
-
-        /// When `--pgo-mode cell`, the directory to persist all APC candidates + a metrics summary
-        #[arg(long)]
-        apc_candidates_dir: Option<PathBuf>,
-
-        /// If active, generates "optimistic" precompiles. Optimistic precompiles are smaller in size
-        /// but may fail at runtime if the assumptions they make are violated.
-        #[arg(long)]
-        #[arg(default_value_t = false)]
-        optimistic_precompiles: bool,
     },
 }
 
@@ -172,44 +120,45 @@ fn main() -> Result<(), io::Error> {
     }
 }
 
+fn build_powdr_config(shared: &SharedArgs) -> PowdrConfig {
+    let mut powdr_config =
+        default_powdr_openvm_config(shared.autoprecompiles as u64, shared.skip as u64);
+    if let Some(apc_candidates_dir) = &shared.apc_candidates_dir {
+        powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
+    }
+    powdr_config
+        .with_optimistic_precompiles(shared.optimistic_precompiles)
+        .with_superblocks(
+            shared.superblocks,
+            shared.apc_max_instructions,
+            shared.apc_exec_count_cutoff,
+        )
+}
+
 fn run_command(command: Commands) {
     let guest_opts = GuestOptions::default();
     match command {
-        Commands::Compile {
-            guest,
-            autoprecompiles,
-            skip,
-            superblocks,
-            pgo,
-            max_columns,
-            input,
-            apc_candidates_dir,
-            optimistic_precompiles,
-        } => {
-            validate_superblock_args(&superblocks, pgo);
-            let mut powdr_config = default_powdr_openvm_config(autoprecompiles as u64, skip as u64);
-            if let Some(apc_candidates_dir) = apc_candidates_dir {
-                powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
-            }
-            powdr_config = powdr_config
-                .with_optimistic_precompiles(optimistic_precompiles)
-                .with_superblocks(
-                    superblocks.superblocks,
-                    superblocks.superblocks_max_instructions,
-                    superblocks.superblocks_exec_count_cutoff,
-                );
+        Commands::Compile { guest, shared } => {
+            validate_shared_args(&shared);
+            let powdr_config = build_powdr_config(&shared);
             let guest_program = compile_openvm(&guest, guest_opts.clone()).unwrap();
+<<<<<<< HEAD
             let execution_profile = powdr_openvm_common::execution_profile_from_guest::<RiscvISA>(
                 &guest_program,
                 stdin_from(input),
+=======
+            let execution_profile = powdr_openvm::execution_profile_from_guest(
+                &guest_program,
+                stdin_from(shared.input),
+>>>>>>> 2fa3833ecee9bcd1fb57a3a6cf9ef6924432e72b
             );
 
             let empirical_constraints = maybe_compute_empirical_constraints(
                 &guest_program,
                 &powdr_config,
-                stdin_from(input),
+                stdin_from(shared.input),
             );
-            let pgo_config = pgo_config(pgo, max_columns, execution_profile);
+            let pgo_config = pgo_config(shared.pgo, shared.max_columns, execution_profile);
             let program = powdr_openvm::compile_exe(
                 guest_program,
                 powdr_config,
@@ -222,39 +171,38 @@ fn run_command(command: Commands) {
 
         Commands::Execute {
             guest,
-            autoprecompiles,
-            skip,
-            superblocks,
-            pgo,
-            max_columns,
-            input,
+            shared,
             metrics,
-            apc_candidates_dir,
-            optimistic_precompiles,
         } => {
-            validate_superblock_args(&superblocks, pgo);
-            let mut powdr_config = default_powdr_openvm_config(autoprecompiles as u64, skip as u64);
-            if let Some(apc_candidates_dir) = apc_candidates_dir {
-                powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
+            validate_shared_args(&shared);
+            if shared.superblocks > 1 {
+                Cli::command()
+                    .error(
+                        clap::error::ErrorKind::ArgumentConflict,
+                        "OpenVM execution with superblocks not yet supported.",
+                    )
+                    .exit();
             }
-            powdr_config = powdr_config
-                .with_optimistic_precompiles(optimistic_precompiles)
-                .with_superblocks(
-                    superblocks.superblocks,
-                    superblocks.superblocks_max_instructions,
-                    superblocks.superblocks_exec_count_cutoff,
-                );
+            let powdr_config = build_powdr_config(&shared);
             let guest_program = compile_openvm(&guest, guest_opts.clone()).unwrap();
             let empirical_constraints = maybe_compute_empirical_constraints(
                 &guest_program,
                 &powdr_config,
-                stdin_from(input),
+                stdin_from(shared.input),
             );
+<<<<<<< HEAD
             let execution_profile = powdr_openvm_common::execution_profile_from_guest::<RiscvISA>(
                 &guest_program,
                 stdin_from(input),
             );
             let pgo_config = pgo_config(pgo, max_columns, execution_profile);
+=======
+            let execution_profile = powdr_openvm::execution_profile_from_guest(
+                &guest_program,
+                stdin_from(shared.input),
+            );
+            let pgo_config = pgo_config(shared.pgo, shared.max_columns, execution_profile);
+>>>>>>> 2fa3833ecee9bcd1fb57a3a6cf9ef6924432e72b
             let compile_and_exec = || {
                 let program = powdr_openvm::compile_exe(
                     guest_program,
@@ -263,7 +211,7 @@ fn run_command(command: Commands) {
                     empirical_constraints,
                 )
                 .unwrap();
-                powdr_openvm::execute(program, stdin_from(input)).unwrap();
+                powdr_openvm::execute(program, stdin_from(shared.input)).unwrap();
             };
             if let Some(metrics_path) = metrics {
                 run_with_metric_collection_to_file(
@@ -277,42 +225,33 @@ fn run_command(command: Commands) {
 
         Commands::Prove {
             guest,
-            autoprecompiles,
-            skip,
-            superblocks,
+            shared,
             mock,
             recursion,
-            pgo,
-            max_columns,
-            input,
             metrics,
-            apc_candidates_dir,
-            optimistic_precompiles,
         } => {
-            validate_superblock_args(&superblocks, pgo);
-            let mut powdr_config = default_powdr_openvm_config(autoprecompiles as u64, skip as u64);
-            if let Some(apc_candidates_dir) = &apc_candidates_dir {
-                powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
+            validate_shared_args(&shared);
+            if shared.superblocks > 1 {
+                Cli::command()
+                    .error(
+                        clap::error::ErrorKind::ArgumentConflict,
+                        "OpenVM execution with superblocks not yet supported.",
+                    )
+                    .exit();
             }
-            powdr_config = powdr_config
-                .with_optimistic_precompiles(optimistic_precompiles)
-                .with_superblocks(
-                    superblocks.superblocks,
-                    superblocks.superblocks_max_instructions,
-                    superblocks.superblocks_exec_count_cutoff,
-                );
+            let powdr_config = build_powdr_config(&shared);
             let guest_program = compile_openvm(&guest, guest_opts).unwrap();
             let empirical_constraints = maybe_compute_empirical_constraints(
                 &guest_program,
                 &powdr_config,
-                stdin_from(input),
+                stdin_from(shared.input),
             );
 
-            let execution_profile = powdr_openvm_common::execution_profile_from_guest::<RiscvISA>(
+            let execution_profile = powdr_openvm_common::execution_profile_from_guest(
                 &guest_program,
-                stdin_from(input),
+                stdin_from(shared.input),
             );
-            let pgo_config = pgo_config(pgo, max_columns, execution_profile);
+            let pgo_config = pgo_config(shared.pgo, shared.max_columns, execution_profile);
             let compile_and_prove = || {
                 let program = powdr_openvm::compile_exe(
                     guest_program,
@@ -321,7 +260,8 @@ fn run_command(command: Commands) {
                     empirical_constraints,
                 )
                 .unwrap();
-                powdr_openvm::prove(&program, mock, recursion, stdin_from(input), None).unwrap()
+                powdr_openvm::prove(&program, mock, recursion, stdin_from(shared.input), None)
+                    .unwrap()
             };
             if let Some(metrics_path) = metrics {
                 run_with_metric_collection_to_file(
@@ -346,28 +286,12 @@ fn write_program_to_file(
     Ok(())
 }
 
-fn validate_superblock_args(args: &SuperBlockArgs, pgo: PgoType) {
-    if args.superblocks > 1 && !matches!(pgo, PgoType::Cell) {
+fn validate_shared_args(args: &SharedArgs) {
+    if args.superblocks > 1 && !matches!(args.pgo, PgoType::Cell) {
         Cli::command()
             .error(
                 clap::error::ErrorKind::ArgumentConflict,
                 "superblocks are only supported with `--pgo cell`",
-            )
-            .exit();
-    }
-    if args.superblocks_exec_count_cutoff.is_some() && args.superblocks == 1 {
-        Cli::command()
-            .error(
-                clap::error::ErrorKind::ArgumentConflict,
-                "`--superblocks-exec-count-cutoff` flag requires `--superblocks > 1`.",
-            )
-            .exit();
-    }
-    if args.superblocks_max_instructions.is_some() && args.superblocks == 1 {
-        Cli::command()
-            .error(
-                clap::error::ErrorKind::ArgumentConflict,
-                "`--superblocks-max-instructions` flag requires `--superblocks > 1`.",
             )
             .exit();
     }
