@@ -1,5 +1,5 @@
 Instructions:
-  JALR 0 1 0 1 0
+  0: JALR 0 1 0 1 0
 
 APC advantage:
   - Main columns: 28 -> 11 (2.55x reduction)

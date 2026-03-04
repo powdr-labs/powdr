@@ -1,8 +1,8 @@
 Instructions:
-  ADD rd_ptr = 8, rs1_ptr = 8, rs2 = 16777200, rs2_as = 0
-  STOREW rd_rs2_ptr = 4, rs1_ptr = 8, imm = 12, mem_as = 2, needs_write = 1, imm_sign = 0
-  AUIPC 4 0 0 1 0
-  JALR 4 4 1780 1 0
+   0: ADD rd_ptr = 8, rs1_ptr = 8, rs2 = 16777200, rs2_as = 0
+   4: STOREW rd_rs2_ptr = 4, rs1_ptr = 8, imm = 12, mem_as = 2, needs_write = 1, imm_sign = 0
+   8: AUIPC 4 0 0 1 0
+  12: JALR 4 4 1780 1 0
 
 APC advantage:
   - Main columns: 125 -> 26 (4.81x reduction)

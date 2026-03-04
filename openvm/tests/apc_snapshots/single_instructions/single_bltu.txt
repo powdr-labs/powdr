@@ -1,5 +1,5 @@
 Instructions:
-  BLTU 8 5 2 1 1
+  0: BLTU 8 5 2 1 1
 
 APC advantage:
   - Main columns: 32 -> 20 (1.60x reduction)
