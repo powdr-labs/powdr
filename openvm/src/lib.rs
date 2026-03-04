@@ -52,6 +52,9 @@ pub use powdr_autoprecompiles::PgoConfig;
 pub use powdr_openvm_bus_interaction_handler::bus_map;
 
 pub use powdr_openvm_common::empirical_constraints::detect_empirical_constraints;
+pub use powdr_openvm_common::{
+    default_powdr_openvm_config, DEFAULT_DEGREE_BOUND, DEFAULT_OPENVM_DEGREE_BOUND,
+};
 
 pub type BabyBearSC = BabyBearPoseidon2Config;
 
