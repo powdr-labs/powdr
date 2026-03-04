@@ -11,6 +11,7 @@ use powdr_constraint_solver::rule_based_optimizer::rule_based_optimization;
 use powdr_constraint_solver::solver::new_solver;
 use powdr_number::FieldElement;
 
+use crate::constraint_optimizer;
 use crate::constraint_optimizer::{trivial_simplifications, IsBusStateful};
 use crate::export::ExportOptions;
 use crate::memory_optimizer::MemoryBusInteraction;
@@ -115,6 +116,17 @@ where
     stats_logger.log("inlining", &constraint_system);
     export_options.register_substituted_variables(substitutions);
     export_options.export_optimizer_outer_constraint_system(constraint_system.system(), "inlining");
+
+    let constraint_system = constraint_optimizer::remove_disconnected_columns(
+        constraint_system,
+        &mut solver,
+        bus_interaction_handler.clone(),
+    );
+    stats_logger.log("removing disconnected columns", &constraint_system);
+    export_options.export_optimizer_inner_constraint_system(
+        constraint_system.system(),
+        "remove_disconnected",
+    );
 
     let (constraint_system, _) = rule_based_optimization(
         constraint_system,
