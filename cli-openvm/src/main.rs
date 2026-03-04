@@ -142,15 +142,9 @@ fn run_command(command: Commands) {
             validate_shared_args(&shared);
             let powdr_config = build_powdr_config(&shared);
             let guest_program = compile_openvm(&guest, guest_opts.clone()).unwrap();
-<<<<<<< HEAD
-            let execution_profile = powdr_openvm_common::execution_profile_from_guest::<RiscvISA>(
-                &guest_program,
-                stdin_from(input),
-=======
-            let execution_profile = powdr_openvm::execution_profile_from_guest(
+            let execution_profile = powdr_openvm_common::execution_profile_from_guest(
                 &guest_program,
                 stdin_from(shared.input),
->>>>>>> 2fa3833ecee9bcd1fb57a3a6cf9ef6924432e72b
             );
 
             let empirical_constraints = maybe_compute_empirical_constraints(
@@ -190,19 +184,11 @@ fn run_command(command: Commands) {
                 &powdr_config,
                 stdin_from(shared.input),
             );
-<<<<<<< HEAD
-            let execution_profile = powdr_openvm_common::execution_profile_from_guest::<RiscvISA>(
-                &guest_program,
-                stdin_from(input),
-            );
-            let pgo_config = pgo_config(pgo, max_columns, execution_profile);
-=======
-            let execution_profile = powdr_openvm::execution_profile_from_guest(
+            let execution_profile = powdr_openvm_common::execution_profile_from_guest(
                 &guest_program,
                 stdin_from(shared.input),
             );
             let pgo_config = pgo_config(shared.pgo, shared.max_columns, execution_profile);
->>>>>>> 2fa3833ecee9bcd1fb57a3a6cf9ef6924432e72b
             let compile_and_exec = || {
                 let program = powdr_openvm::compile_exe(
                     guest_program,
