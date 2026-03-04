@@ -138,10 +138,12 @@ impl OpenVmISA for RiscvISA {
         labels
     }
 
-    fn get_jump_destinations(program: &OriginalCompiledProgram<Self>) -> BTreeSet<u32> {
+    fn get_jump_destinations(program: &OriginalCompiledProgram<Self>) -> BTreeSet<u64> {
         let labels = program.elf.text_labels();
 
-        add_extra_targets(program, labels.clone(), DEFAULT_PC_STEP)
+        let jump_dest = add_extra_targets(program, labels.clone(), DEFAULT_PC_STEP);
+
+        jump_dest.into_iter().map(Into::into).collect()
     }
 }
 

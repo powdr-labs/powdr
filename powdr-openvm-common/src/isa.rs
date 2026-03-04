@@ -115,5 +115,5 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
     fn get_labels_debug<'a>(program: &Self::Program<'a>) -> BTreeMap<u64, Vec<String>>;
 
     /// Given an original program (elf + compiled exe), return the pcs which correspond to labels
-    fn get_jump_destinations(original_program: &OriginalCompiledProgram<Self>) -> BTreeSet<u32>;
+    fn get_jump_destinations(original_program: &OriginalCompiledProgram<Self>) -> BTreeSet<u64>;
 }

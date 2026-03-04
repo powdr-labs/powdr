@@ -38,7 +38,7 @@ impl<'a, F: PrimeField32, ISA: OpenVmISA> Program<Instr<F, ISA>> for Prog<'a, F>
     }
 }
 
-use std::{collections::BTreeSet, sync::Arc};
+use std::sync::Arc;
 
 use openvm_instructions::exe::VmExe;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
@@ -66,9 +66,6 @@ impl<'a, ISA: OpenVmISA> OriginalCompiledProgram<'a, ISA> {
         let jumpdest_set = ISA::get_jump_destinations(&self);
 
         let program = Prog::from(&self.exe.program);
-
-        // Convert the jump destinations to u64 for compatibility with the `collect_basic_blocks` function.
-        let jumpdest_set = jumpdest_set.into_iter().map(|pc| pc.into()).collect::<BTreeSet<_>>();
 
         collect_basic_blocks::<BabyBearOpenVmApcAdapter<ISA>>(&program, &jumpdest_set)
     }
