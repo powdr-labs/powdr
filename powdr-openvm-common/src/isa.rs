@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use openvm_circuit::arch::{
     AirInventory, AnyEnum, ChipInventory, ChipInventoryError, DenseRecordArena, Executor,
@@ -112,6 +112,8 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
     /// Format an instruction of this ISA
     fn format<F: PrimeField32>(instruction: &Instruction<F>) -> String;
 
+    fn get_labels_debug<'a>(program: &Self::Program<'a>) -> BTreeMap<u64, Vec<String>>;
+
     /// Given an original program (elf + compiled exe), return the pcs which correspond to labels
-    fn get_labels(original_program: &OriginalCompiledProgram<Self>) -> BTreeMap<u64, Vec<String>>;
+    fn get_jump_destinations(original_program: &OriginalCompiledProgram<Self>) -> BTreeSet<u32>;
 }

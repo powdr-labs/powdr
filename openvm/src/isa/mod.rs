@@ -96,11 +96,8 @@ impl OpenVmISA for RiscvISA {
 
     type Program<'a> = ElfProgram;
 
-    fn get_labels(program: &OriginalCompiledProgram<Self>) -> BTreeMap<u64, Vec<String>> {
-        let labels = program.elf.text_labels();
-        add_extra_targets(program, labels.clone(), DEFAULT_PC_STEP);
-
-        let debug_info = program.elf.debug_info();
+    fn get_labels_debug<'a>(program: &Self::Program<'a>) -> BTreeMap<u64, Vec<String>> {
+        let debug_info = program.debug_info();
         // tracing::info!(
         //     "Got {} basic blocks from `collect_basic_blocks`",
         //     blocks.len()
@@ -139,6 +136,12 @@ impl OpenVmISA for RiscvISA {
             .collect();
 
         labels
+    }
+
+    fn get_jump_destinations(program: &OriginalCompiledProgram<Self>) -> BTreeSet<u32> {
+        let labels = program.elf.text_labels();
+
+        add_extra_targets(program, labels.clone(), DEFAULT_PC_STEP)
     }
 }
 

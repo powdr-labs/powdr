@@ -30,7 +30,7 @@ pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAd
         bus_map: bus_map.clone(),
     };
 
-    let labels = ISA::get_labels(&original_program);
+    let labels = ISA::get_labels_debug(&original_program.elf);
     let blocks = original_program.collect_basic_blocks();
     let exe = original_program.exe;
 
