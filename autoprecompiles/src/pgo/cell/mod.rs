@@ -165,19 +165,13 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
 
         // skip per config
         let skip = (config.skip_autoprecompiles as usize).min(selection.len());
-        selection.drain(..skip);
 
-        // filter the apcs using the selection indices, keeping selection order
-        apcs.into_iter()
-            .enumerate()
-            .filter_map(|(idx, apc)| {
-                selection
-                    .iter()
-                    .position(|i| *i == idx)
-                    .map(|pos| (pos, apc))
-            })
-            .sorted_by_key(|(position, _)| *position)
-            .map(|(_, apc)| apc.into_inner())
+        // filter and order the apcs using the selection
+        let mut apcs: Vec<_> = apcs.into_iter().map(|apc| Some(apc.into_inner())).collect();
+        selection
+            .into_iter()
+            .skip(skip)
+            .map(|position| apcs[position].take().unwrap())
             .collect()
     }
 
