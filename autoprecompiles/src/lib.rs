@@ -63,10 +63,10 @@ pub struct PowdrConfig {
     /// Maximum number of basic blocks included in a superblock.
     /// Default of 1 means only basic blocks are considered.
     pub superblock_max_bb_count: u8,
-    /// Maximum number of instructions included in a superblock.
-    pub superblock_max_instructions: u32,
-    /// Superblocks executed less than the cutoff are ignored.
-    pub superblock_exec_count_cutoff: u32,
+    /// Maximum number of instructions included in an Apc.
+    pub apc_max_instructions: u32,
+    /// Apcs executed less than the cutoff are ignored.
+    pub apc_exec_count_cutoff: u32,
     /// Max degree of constraints.
     pub degree_bound: DegreeBound,
     /// The path to the APC candidates dir, if any.
@@ -82,8 +82,8 @@ impl PowdrConfig {
             skip_autoprecompiles,
             // superblocks disabled by default
             superblock_max_bb_count: 1,
-            superblock_max_instructions: u32::MAX,
-            superblock_exec_count_cutoff: 1,
+            apc_max_instructions: u32::MAX,
+            apc_exec_count_cutoff: 1,
             degree_bound,
             apc_candidates_dir_path: None,
             should_use_optimistic_precompiles: false,
@@ -102,10 +102,10 @@ impl PowdrConfig {
         );
         self.superblock_max_bb_count = max_bb_count;
         if let Some(max_instructions) = max_instructions {
-            self.superblock_max_instructions = max_instructions;
+            self.apc_max_instructions = max_instructions;
         }
         if let Some(exec_count_cutoff) = exec_count_cutoff {
-            self.superblock_exec_count_cutoff = exec_count_cutoff;
+            self.apc_exec_count_cutoff = exec_count_cutoff;
         }
         self
     }
