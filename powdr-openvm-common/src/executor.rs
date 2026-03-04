@@ -354,7 +354,7 @@ impl<ISA: OpenVmISA> PowdrExecutor<ISA> {
 
         let executor_inventory = &self.executor_inventory;
         // Set the data using the original instructions
-        *data = PowdrPreCompute {
+        let new_data = PowdrPreCompute {
             height_change: self.height_change,
             original_instructions: self
                 .apc
@@ -379,6 +379,11 @@ impl<ISA: OpenVmISA> PowdrExecutor<ISA> {
                 .collect::<Result<Vec<_>, StaticProgramError>>()?,
             optimistic_constraints: self.apc.optimistic_constraints.clone(),
         };
+        // `data` is backed by raw pre-compute bytes and may be uninitialized here.
+        // Avoid dropping the previous bytes as if they were a valid `PowdrPreCompute`.
+        unsafe {
+            std::ptr::write(data, new_data);
+        }
 
         Ok(())
     }
