@@ -67,10 +67,10 @@ pub fn do_with_cpu_trace(
 }
 
 fn do_with_trace_with_sdk<E, VB>(
-    _program: &CompiledProgram,
-    _inputs: StdIn,
-    _sdk: GenericSdk<E, VB>,
-    mut _callback: impl FnMut(
+    program: &CompiledProgram,
+    inputs: StdIn,
+    sdk: GenericSdk<E, VB>,
+    mut callback: impl FnMut(
         usize,
         &VirtualMachine<E, VB>,
         &MultiStarkProvingKey<BabyBearSC>,
@@ -84,10 +84,50 @@ where
         + MeteredExecutor<Val<E::SC>>
         + PreflightExecutor<Val<E::SC>, VB::RecordArena>,
 {
-    // TODO: The v2 API changed significantly for segment-by-segment proving.
-    // The keygen/proving flow works differently in v2 (WHIR-based).
-    // This needs to be adapted once the proving flow is fully ported.
-    tracing::warn!("do_with_trace: v2 segment-by-segment proving not yet ported");
+    use openvm_stark_backend::p3_field::PrimeField32;
+
+    let app_pk = sdk.app_pk();
+    let pk = &*app_pk.app_vm_pk.vm_pk;
+
+    let mut app_prover = sdk.app_prover(program.exe.clone())?;
+    let instance = app_prover.instance_mut();
+
+    // Metered execution to get segment boundaries
+    let inputs_streams: openvm_circuit::arch::Streams<Val<E::SC>> = inputs.into();
+    instance.reset_state(inputs_streams.clone());
+    let exe = instance.exe().clone();
+    let metered_ctx = instance.vm.build_metered_ctx(&exe);
+    let metered_interpreter = instance.vm.metered_interpreter(&exe)?;
+    let (segments, _) = metered_interpreter.execute_metered(inputs_streams, metered_ctx)?;
+
+    // For each segment: preflight → generate proving context → callback
+    let mut state = instance.state_mut().take();
+    for (seg_idx, segment) in segments.into_iter().enumerate() {
+        let _span = info_span!("trace_segment", segment = seg_idx).entered();
+        let Segment {
+            num_insns,
+            trace_heights,
+            ..
+        } = segment;
+        let from_state = state.take().unwrap();
+        instance.vm.transport_init_memory_to_device(&from_state.memory);
+        let PreflightExecutionOutput {
+            system_records,
+            record_arenas,
+            to_state,
+        } = instance.vm.execute_preflight(
+            &mut instance.interpreter,
+            from_state,
+            Some(num_insns),
+            &trace_heights,
+        )?;
+        state = Some(to_state);
+
+        let ctx = instance.vm.generate_proving_ctx(system_records, record_arenas)?;
+        callback(seg_idx, &instance.vm, pk, ctx);
+    }
+    *instance.state_mut() = state;
+
     Ok(())
 }
 
