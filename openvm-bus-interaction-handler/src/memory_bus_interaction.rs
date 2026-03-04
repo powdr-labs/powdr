@@ -17,6 +17,7 @@ pub struct OpenVmMemoryBusInteraction<T: FieldElement, V> {
     op: MemoryOp,
     address: OpenVmAddress<T, V>,
     data: Vec<GroupedExpression<T, V>>,
+    timestamp: GroupedExpression<T, V>,
 }
 
 #[derive(Clone, Hash, Eq, PartialEq, Debug)]
@@ -61,7 +62,7 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction
             _ => return Err(MemoryBusInteractionConversionError),
         };
 
-        let [address_space, addr, data @ .., _timestamp] = &bus_interaction.payload[..] else {
+        let [address_space, addr, data @ .., timestamp] = &bus_interaction.payload[..] else {
             panic!();
         };
         let Some(address_space) = address_space.try_to_number() else {
@@ -75,6 +76,7 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction
             op,
             address,
             data: data.to_vec(),
+            timestamp: timestamp.clone(),
         }))
     }
 
@@ -84,6 +86,10 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction
 
     fn data(&self) -> &[GroupedExpression<T, V>] {
         &self.data
+    }
+
+    fn timestamp(&self) -> &GroupedExpression<T, V> {
+        &self.timestamp
     }
 
     fn op(&self) -> MemoryOp {
