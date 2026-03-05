@@ -19,7 +19,7 @@ use openvm_circuit_derive::{
 };
 use openvm_sdk_config::{SdkVmConfig, SdkVmConfigExecutor, SdkVmCpuBuilder, TranspilerConfig};
 use openvm_stark_backend::prover::{CpuBackend, CpuDevice, ProverBackend};
-use openvm_stark_backend::{StarkEngine, StarkProtocolConfig, Val};
+use openvm_stark_backend::{StarkEngine, StarkProtocolConfig, SystemParams, Val};
 use openvm_stark_sdk::config::baby_bear_poseidon2::{
     BabyBearPoseidon2Config, BabyBearPoseidon2CpuEngine,
 };
@@ -483,13 +483,24 @@ pub fn compile_openvm(
     let target_path = path.to_str().unwrap();
 
     // try to load the sdk config from the openvm.toml file, otherwise use the default
+    let default_system_params = default_app_params(DEFAULT_APP_LOG_BLOWUP, DEFAULT_APP_L_SKIP, 21);
     let openvm_toml_path = path.join("openvm.toml");
     let app_config = if openvm_toml_path.exists() {
+        // Parse app_vm_config from the TOML, with system_params optional (defaults if absent)
+        #[derive(serde::Deserialize)]
+        struct AppConfigToml {
+            app_vm_config: SdkVmConfig,
+            #[serde(default)]
+            system_params: Option<SystemParams>,
+        }
         let toml = std::fs::read_to_string(&openvm_toml_path)?;
-        toml::from_str(&toml)?
+        let parsed: AppConfigToml = toml::from_str(&toml)?;
+        AppConfig::new(
+            parsed.app_vm_config,
+            parsed.system_params.unwrap_or(default_system_params),
+        )
     } else {
-        let system_params = default_app_params(DEFAULT_APP_LOG_BLOWUP, DEFAULT_APP_L_SKIP, 21);
-        AppConfig::riscv32(system_params)
+        AppConfig::riscv32(default_system_params)
     };
 
     let mut sdk = Sdk::new(app_config, AggregationSystemParams::default())?;
