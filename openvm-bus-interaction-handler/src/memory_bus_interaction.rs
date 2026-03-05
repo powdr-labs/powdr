@@ -95,21 +95,4 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction
     fn op(&self) -> MemoryOp {
         self.op
     }
-
-    fn register_address(&self) -> Option<usize> {
-        if self.address.address_space == REGISTER_ADDRESS_SPACE.into() {
-            // We assume that the address is a concrete number.
-            Some(
-                self.address
-                    .local_address
-                    .try_to_number()
-                    .expect("Register address must be a concrete number")
-                    .to_degree()
-                    .try_into()
-                    .unwrap(),
-            )
-        } else {
-            None
-        }
-    }
 }
