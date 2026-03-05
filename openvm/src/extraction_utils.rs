@@ -43,8 +43,6 @@ use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::customize_exe::OpenVmRegisterAddress;
 use crate::utils::symbolic_to_algebraic;
 
-// TODO: Use `<PackedChallenge<BabyBearSC> as FieldExtensionAlgebra<Val<BabyBearSC>>>::D` instead after fixing p3 dependency
-const EXT_DEGREE: usize = 4;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct OriginalAirs<F> {
@@ -488,21 +486,10 @@ pub fn get_air_metrics(air: Arc<dyn AnyAir<BabyBearSC>>, max_degree: usize) -> A
         interactions,
     } = symbolic_rap_builder.constraints();
 
-    // In v2, LogUp width is computed via GKR-based LogUp.
-    // We approximate the width contribution from interactions.
-    // Each interaction contributes EXT_DEGREE columns for the running sum.
-    let log_up = if interactions.is_empty() {
-        0
-    } else {
-        // In v2 with GKR LogUp, the width is simpler: just count interactions * extension degree
-        (interactions.len() + 1) * EXT_DEGREE
-    };
-
     AirMetrics {
         widths: AirWidths {
             preprocessed,
             main,
-            log_up,
         },
         constraints: constraints.len(),
         bus_interactions: interactions.len(),
@@ -521,7 +508,6 @@ pub fn symbolic_builder_with_degree(
 pub struct AirWidths {
     pub preprocessed: usize,
     pub main: usize,
-    pub log_up: usize,
 }
 
 impl Add for AirWidths {
@@ -530,7 +516,6 @@ impl Add for AirWidths {
         AirWidths {
             preprocessed: self.preprocessed + rhs.preprocessed,
             main: self.main + rhs.main,
-            log_up: self.log_up + rhs.log_up,
         }
     }
 }
@@ -541,7 +526,6 @@ impl Sub for AirWidths {
         AirWidths {
             preprocessed: self.preprocessed - rhs.preprocessed,
             main: self.main - rhs.main,
-            log_up: self.log_up - rhs.log_up,
         }
     }
 }
@@ -554,7 +538,7 @@ impl Sum<AirWidths> for AirWidths {
 
 impl AirWidths {
     pub fn total(&self) -> usize {
-        self.preprocessed + self.main + self.log_up
+        self.preprocessed + self.main
     }
 }
 
@@ -562,11 +546,10 @@ impl std::fmt::Display for AirWidths {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Total Width: {} (Preprocessed: {} Main: {}, Log Up: {})",
-            self.preprocessed + self.main + self.log_up,
+            "Total Width: {} (Preprocessed: {}, Main: {})",
+            self.preprocessed + self.main,
             self.preprocessed,
             self.main,
-            self.log_up
         )
     }
 }

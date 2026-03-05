@@ -20,7 +20,7 @@ openvm-rv32im-circuit.workspace = true
 openvm-rv32im-transpiler.workspace = true
 openvm-rv32im-guest.workspace = true
 openvm-transpiler.workspace = true
-openvm-circuit.workspace = true
+openvm-circuit = { workspace = true, features = ["test-utils"] }
 openvm-circuit-derive.workspace = true
 openvm-circuit-primitives.workspace = true
 openvm-circuit-primitives-derive.workspace = true
