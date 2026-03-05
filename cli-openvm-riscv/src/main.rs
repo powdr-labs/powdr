@@ -6,7 +6,9 @@ use openvm_stark_sdk::bench::serialize_metric_snapshot;
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::pgo::{pgo_config, PgoType};
 use powdr_autoprecompiles::PowdrConfig;
-use powdr_openvm_riscv::{compile_openvm, default_powdr_openvm_config, CompiledProgram, GuestOptions};
+use powdr_openvm_riscv::{
+    compile_openvm, default_powdr_openvm_config, CompiledProgram, GuestOptions,
+};
 use powdr_openvm_riscv::{detect_empirical_constraints, OriginalCompiledProgram};
 
 #[cfg(feature = "metrics")]
