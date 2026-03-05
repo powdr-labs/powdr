@@ -13,7 +13,7 @@ use openvm_circuit::derive::{
 use openvm_circuit::system::phantom::PhantomExecutor;
 use openvm_instructions::PhantomDiscriminant;
 use openvm_stark_backend::p3_field::{Field, PrimeField32};
-use openvm_stark_backend::{StarkProtocolConfig, Val, StarkEngine};
+use openvm_stark_backend::{StarkEngine, StarkProtocolConfig, Val};
 use powdr_openvm_hints_transpiler::HintsPhantom;
 use serde::{Deserialize, Serialize};
 

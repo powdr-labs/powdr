@@ -29,11 +29,7 @@ impl<F: PrimeField32> PhantomSubExecutor<F> for ReverseBytesSubEx {
         // read memory
         let bytes = unsafe { memory.read::<u8, 4>(RV32_MEMORY_AS, rs1) };
         // write hint as bytes in reverse
-        let hint_bytes = bytes
-            .into_iter()
-            .rev()
-            .map(|b| F::from_u8(b))
-            .collect();
+        let hint_bytes = bytes.into_iter().rev().map(|b| F::from_u8(b)).collect();
         streams.hint_stream = hint_bytes;
         Ok(())
     }
@@ -132,10 +128,7 @@ impl<F: PrimeField32> PhantomSubExecutor<F> for K256InverseField10x26SubEx {
         let inv = elem.invert().normalize();
         // okay to transmute in the opposite direction
         let inv_bytes: [u8; FIELD10X26_BYTES] = unsafe { std::mem::transmute(inv.0) };
-        streams.hint_stream = inv_bytes
-            .into_iter()
-            .map(|b| F::from_u8(b))
-            .collect();
+        streams.hint_stream = inv_bytes.into_iter().map(|b| F::from_u8(b)).collect();
 
         Ok(())
     }
