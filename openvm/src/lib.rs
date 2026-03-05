@@ -1,86 +1,100 @@
-use std::{marker::PhantomData, path::Path, sync::Arc};
+#![cfg_attr(feature = "tco", allow(internal_features))]
+#![cfg_attr(feature = "tco", allow(incomplete_features))]
+#![cfg_attr(feature = "tco", feature(explicit_tail_calls))]
+#![cfg_attr(feature = "tco", feature(core_intrinsics))]
 
-#[cfg(feature = "cuda")]
-use crate::{chip::PowdrChipGpu, trace_generator::cuda::periphery::PowdrPeripheryInstancesGpu};
-use crate::{
-    customize_exe::{BabyBearOpenVmApcAdapter, Instr},
-    execution_profile::execution_profile,
-    isa::SpecializedExecutor,
-    powdr_extension::{
-        chip::{PowdrAir, PowdrChipCpu},
-        trace_generator::cpu::PowdrPeripheryInstancesCpu,
-        PowdrExtension, PowdrPrecompile,
-    },
-    program::CompiledProgram,
+use openvm_circuit::arch::{
+    AirInventory, AirInventoryError, ChipInventory, ChipInventoryError,
+    ExecutorInventory, ExecutorInventoryError, InitFileGenerator, MatrixRecordArena,
+    RowMajorMatrixArena, SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig,
+    VmCircuitExtension, VmExecutionConfig, VmProverExtension,
 };
-#[cfg(feature = "cuda")]
-use openvm_circuit::{arch::DenseRecordArena, system::cuda::SystemChipInventoryGPU};
-use openvm_circuit::{
-    arch::{
-        AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecutorInventory,
-        ExecutorInventoryError, InitFileGenerator, MatrixRecordArena, RowMajorMatrixArena,
-        SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig, VmCircuitExtension,
-        VmExecutionConfig, VmProverExtension,
-    },
-    system::SystemChipInventory,
+use openvm_circuit::system::SystemChipInventory;
+use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
+use openvm_circuit_derive::{
+    AotExecutor, AotMeteredExecutor, Executor, MeteredExecutor, PreflightExecutor,
 };
-#[cfg(feature = "cuda")]
-use openvm_circuit_primitives::{
-    bitwise_op_lookup::BitwiseOperationLookupChipGPU, range_tuple::RangeTupleCheckerChipGPU,
-    var_range::VariableRangeCheckerChipGPU,
-};
-use openvm_circuit_primitives::{
-    bitwise_op_lookup::{BitwiseOperationLookupAir, SharedBitwiseOperationLookupChip},
-    range_tuple::{RangeTupleCheckerAir, SharedRangeTupleCheckerChip},
-    var_range::{SharedVariableRangeCheckerChip, VariableRangeCheckerAir},
-};
-#[cfg(feature = "cuda")]
-pub use openvm_cuda_backend::{engine::GpuBabyBearPoseidon2Engine, prover_backend::GpuBackend};
-use openvm_native_circuit::NativeCpuBuilder;
-#[cfg(feature = "cuda")]
-use openvm_native_circuit::NativeGpuBuilder;
+
+use openvm_sdk::config::TranspilerConfig;
+use openvm_sdk::GenericSdk;
 use openvm_sdk::{
-    config::{AppConfig, TranspilerConfig, DEFAULT_APP_LOG_BLOWUP},
-    GenericSdk, StdIn,
+    config::{AppConfig, DEFAULT_APP_LOG_BLOWUP}, StdIn,
 };
-use openvm_stark_backend::{
-    config::{StarkGenericConfig, Val},
-    p3_field::PrimeField32,
-    prover::{
-        cpu::{CpuBackend, CpuDevice},
-        hal::ProverBackend,
-    },
+use openvm_stark_backend::config::{StarkGenericConfig, Val};
+use openvm_stark_backend::engine::StarkEngine;
+use openvm_stark_backend::prover::cpu::{CpuBackend, CpuDevice};
+use openvm_stark_backend::prover::hal::ProverBackend;
+use openvm_stark_sdk::config::{
+    baby_bear_poseidon2::{BabyBearPoseidon2Config, BabyBearPoseidon2Engine},
+    FriParameters,
 };
-use openvm_stark_sdk::config::{baby_bear_poseidon2::BabyBearPoseidon2Engine, FriParameters};
-use openvm_stark_sdk::{
-    config::baby_bear_poseidon2::BabyBearPoseidon2Config, engine::StarkEngine,
-    p3_baby_bear::BabyBear,
-};
+use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
+use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
-use powdr_autoprecompiles::{
-    execution_profile::{self, ExecutionProfile},
-    DegreeBound, PowdrConfig,
-};
+use powdr_autoprecompiles::execution_profile::ExecutionProfile;
+use powdr_autoprecompiles::DegreeBound;
+use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
+use powdr_extension::PowdrExtension;
 use serde::{Deserialize, Serialize};
+use std::marker::PhantomData;
+use std::path::Path;
+use std::sync::Arc;
 
-use crate::{
-    extraction_utils::OriginalVmConfig,
-    isa::OpenVmISA,
-    program::{OriginalCompiledProgram, Prog},
-};
+use crate::isa::OpenVmISA;
+use crate::powdr_extension::chip::{PowdrAir, PowdrChipCpu};
+use crate::powdr_extension::trace_generator::cpu::PowdrPeripheryInstancesCpu;
+pub use crate::program::Prog;
+pub use crate::program::{CompiledProgram, OriginalCompiledProgram};
+
+#[cfg(test)]
+use crate::extraction_utils::AirWidthsDiff;
+use crate::extraction_utils::OriginalVmConfig;
+use crate::powdr_extension::{PowdrExtensionExecutor, PowdrPrecompile};
 
 mod air_builder;
 #[cfg(feature = "cuda")]
 pub mod cuda_abi;
-pub mod customize_exe;
-pub mod empirical_constraints;
+mod empirical_constraints;
 pub mod extraction_utils;
-pub mod isa;
-pub mod powdr_extension;
-pub mod program;
-pub mod utils;
-// TODO: this is actually do_with_trace etc, rename
+mod program;
 pub mod trace_generation;
+pub mod utils;
+pub use powdr_openvm_bus_interaction_handler::bus_map;
+
+pub use crate::empirical_constraints::detect_empirical_constraints;
+
+pub type BabyBearSC = BabyBearPoseidon2Config;
+
+cfg_if::cfg_if! {
+    if #[cfg(feature = "cuda")] {
+        pub use openvm_cuda_backend::engine::GpuBabyBearPoseidon2Engine;
+        pub use openvm_native_circuit::NativeGpuBuilder;
+        pub type PowdrSdkGpu = GenericSdk<GpuBabyBearPoseidon2Engine, SpecializedConfigGpuBuilder, NativeGpuBuilder>;
+        pub type PowdrExecutionProfileSdkGpu = GenericSdk<GpuBabyBearPoseidon2Engine, ExtendedVmConfigGpuBuilder, NativeGpuBuilder>;
+
+        pub use openvm_circuit::system::cuda::{extensions::SystemGpuBuilder, SystemChipInventoryGPU};
+        pub use openvm_sdk::config::SdkVmGpuBuilder;
+        pub use openvm_cuda_backend::prover_backend::GpuBackend;
+        pub use openvm_circuit_primitives::bitwise_op_lookup::BitwiseOperationLookupChipGPU;
+        pub use openvm_circuit_primitives::range_tuple::RangeTupleCheckerChipGPU;
+        pub use openvm_circuit_primitives::var_range::VariableRangeCheckerChipGPU;
+        pub use openvm_cuda_backend::base::DeviceMatrix;
+        pub use openvm_circuit::arch::DenseRecordArena;
+    }
+}
+
+use openvm_circuit_primitives::bitwise_op_lookup::{
+    BitwiseOperationLookupAir, SharedBitwiseOperationLookupChip,
+};
+use openvm_circuit_primitives::range_tuple::{RangeTupleCheckerAir, SharedRangeTupleCheckerChip};
+use openvm_circuit_primitives::var_range::{
+    SharedVariableRangeCheckerChip, VariableRangeCheckerAir,
+};
+use openvm_native_circuit::NativeCpuBuilder;
+pub type PowdrSdkCpu<ISA> =
+    GenericSdk<BabyBearPoseidon2Engine, SpecializedConfigCpuBuilder<ISA>, NativeCpuBuilder>;
+pub type PowdrExecutionProfileSdkCpu<ISA> =
+    GenericSdk<BabyBearPoseidon2Engine, <ISA as OpenVmISA>::OriginalBuilderCpu, NativeCpuBuilder>;
 
 pub const DEFAULT_OPENVM_DEGREE_BOUND: usize = 2 * DEFAULT_APP_LOG_BLOWUP + 1;
 pub const DEFAULT_DEGREE_BOUND: DegreeBound = DegreeBound {
@@ -92,18 +106,22 @@ pub fn default_powdr_openvm_config(apc: u64, skip: u64) -> PowdrConfig {
     PowdrConfig::new(apc, skip, DEFAULT_DEGREE_BOUND)
 }
 
-pub type BabyBearSC = BabyBearPoseidon2Config;
-pub type IsaApc<F, ISA> =
-    Arc<powdr_autoprecompiles::Apc<F, Instr<F, ISA>, <ISA as OpenVmISA>::RegisterAddress, u32>>;
-
-pub const POWDR_OPCODE: usize = 0x10ff;
-
-#[derive(Clone)]
-pub struct PeripheryBusIds {
-    pub range_checker: u16,
-    pub bitwise_lookup: Option<u16>,
-    pub tuple_range_checker: Option<u16>,
+pub fn format_fe<F: PrimeField32>(v: F) -> String {
+    let v = v.as_canonical_u32();
+    if v < F::ORDER_U32 / 2 {
+        format!("{v}")
+    } else {
+        format!("-{}", F::ORDER_U32 - v)
+    }
 }
+
+/// We do not use the transpiler, instead we customize an already transpiled program
+mod customize_exe;
+
+pub use customize_exe::{customize, BabyBearOpenVmApcAdapter, Instr, POWDR_OPCODE};
+// A module for our extension
+mod isa;
+mod powdr_extension;
 
 /// A custom VmConfig that wraps the SdkVmConfig, adding our custom extension.
 #[derive(Serialize, Deserialize, Clone)]
@@ -111,81 +129,6 @@ pub struct PeripheryBusIds {
 pub struct SpecializedConfig<ISA: OpenVmISA> {
     pub original: OriginalVmConfig<ISA>,
     pub powdr: PowdrExtension<BabyBear, ISA>,
-}
-
-impl<ISA: OpenVmISA> TranspilerConfig<BabyBear> for SpecializedConfig<ISA> {
-    fn transpiler(&self) -> Transpiler<BabyBear> {
-        self.original.config().transpiler()
-    }
-}
-
-// For generation of the init file, we delegate to the underlying SdkVmConfig.
-impl<ISA: OpenVmISA> InitFileGenerator for SpecializedConfig<ISA> {
-    fn generate_init_file_contents(&self) -> Option<String> {
-        self.original.config().generate_init_file_contents()
-    }
-
-    fn write_to_init_file(
-        &self,
-        manifest_dir: &Path,
-        init_file_name: Option<&str>,
-    ) -> std::io::Result<()> {
-        self.original
-            .config()
-            .write_to_init_file(manifest_dir, init_file_name)
-    }
-}
-
-impl<ISA: OpenVmISA> AsRef<SystemConfig> for SpecializedConfig<ISA> {
-    fn as_ref(&self) -> &SystemConfig {
-        self.original.as_ref()
-    }
-}
-
-impl<ISA: OpenVmISA> AsMut<SystemConfig> for SpecializedConfig<ISA> {
-    fn as_mut(&mut self) -> &mut SystemConfig {
-        self.original.as_mut()
-    }
-}
-
-// TODO: derive VmCircuitConfig, currently not possible because we don't have SC/F everywhere
-// Also `start_new_extension` is normally only used in derive
-impl<ISA: OpenVmISA> VmCircuitConfig<BabyBearSC> for SpecializedConfig<ISA> {
-    fn create_airs(&self) -> Result<AirInventory<BabyBearSC>, AirInventoryError> {
-        let mut inventory = self.original.create_airs()?;
-        inventory.start_new_extension();
-        self.powdr.extend_circuit(&mut inventory)?;
-        Ok(inventory)
-    }
-}
-
-impl<ISA: OpenVmISA> VmExecutionConfig<BabyBear> for SpecializedConfig<ISA> {
-    type Executor = SpecializedExecutor<BabyBear, ISA>;
-
-    fn create_executors(
-        &self,
-    ) -> Result<ExecutorInventory<Self::Executor>, ExecutorInventoryError> {
-        let mut inventory: ExecutorInventory<Self::Executor> =
-            self.original.create_executors()?.transmute();
-        inventory = inventory.extend(&self.powdr)?;
-        Ok(inventory)
-    }
-}
-
-impl<ISA: OpenVmISA> SpecializedConfig<ISA> {
-    pub fn new(
-        base_config: OriginalVmConfig<ISA>,
-        precompiles: Vec<PowdrPrecompile<BabyBear, ISA>>,
-        degree_bound: DegreeBound,
-    ) -> Self {
-        let airs = base_config.airs(degree_bound).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
-        let bus_map = base_config.bus_map();
-        let powdr_extension = PowdrExtension::new(precompiles, base_config.clone(), bus_map, airs);
-        Self {
-            original: base_config,
-            powdr: powdr_extension,
-        }
-    }
 }
 
 #[derive(Default, Clone)]
@@ -281,6 +224,13 @@ where
     }
 }
 
+#[derive(Clone)]
+pub struct PeripheryBusIds {
+    pub range_checker: u16,
+    pub bitwise_lookup: Option<u16>,
+    pub tuple_range_checker: Option<u16>,
+}
+
 #[cfg(feature = "cuda")]
 #[derive(Default)]
 struct PowdrGpuProverExt<ISA> {
@@ -367,32 +317,98 @@ where
     }
 }
 
-pub type PowdrSdkCpu<ISA> =
-    GenericSdk<BabyBearPoseidon2Engine, SpecializedConfigCpuBuilder<ISA>, NativeCpuBuilder>;
+impl<ISA: OpenVmISA> TranspilerConfig<BabyBear> for SpecializedConfig<ISA> {
+    fn transpiler(&self) -> Transpiler<BabyBear> {
+        self.original.config().transpiler()
+    }
+}
 
-pub type PowdrExecutionProfileSdkCpu<ISA> =
-    GenericSdk<BabyBearPoseidon2Engine, <ISA as OpenVmISA>::OriginalBuilderCpu, NativeCpuBuilder>;
+// For generation of the init file, we delegate to the underlying SdkVmConfig.
+impl<ISA: OpenVmISA> InitFileGenerator for SpecializedConfig<ISA> {
+    fn generate_init_file_contents(&self) -> Option<String> {
+        self.original.config().generate_init_file_contents()
+    }
 
-// Generate execution profile for a guest program
-pub fn execution_profile_from_guest<ISA: OpenVmISA>(
-    program: &OriginalCompiledProgram<ISA>,
-    inputs: StdIn,
-) -> ExecutionProfile {
-    let OriginalCompiledProgram { exe, vm_config, .. } = program;
-    let program = Prog::from(&exe.program);
+    fn write_to_init_file(
+        &self,
+        manifest_dir: &Path,
+        init_file_name: Option<&str>,
+    ) -> std::io::Result<()> {
+        self.original
+            .config()
+            .write_to_init_file(manifest_dir, init_file_name)
+    }
+}
 
-    // Set app configuration
-    let app_fri_params =
-        FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
-    let app_config = AppConfig::new(app_fri_params, vm_config.clone().config);
+impl<ISA: OpenVmISA> AsRef<SystemConfig> for SpecializedConfig<ISA> {
+    fn as_ref(&self) -> &SystemConfig {
+        self.original.as_ref()
+    }
+}
 
-    // prepare for execute
-    let sdk = PowdrExecutionProfileSdkCpu::<ISA>::new(app_config).unwrap();
+impl<ISA: OpenVmISA> AsMut<SystemConfig> for SpecializedConfig<ISA> {
+    fn as_mut(&mut self) -> &mut SystemConfig {
+        self.original.as_mut()
+    }
+}
 
-    execution_profile::<BabyBearOpenVmApcAdapter<ISA>>(&program, || {
-        sdk.execute_interpreted(exe.clone(), inputs.clone())
-            .unwrap();
-    })
+#[allow(clippy::large_enum_variant)]
+#[derive(
+    AnyEnum, Chip, Executor, MeteredExecutor, AotExecutor, AotMeteredExecutor, PreflightExecutor,
+)]
+pub enum SpecializedExecutor<F: PrimeField32, ISA: OpenVmISA> {
+    #[any_enum]
+    OriginalExecutor(ISA::OriginalExecutor<F>),
+    #[any_enum]
+    PowdrExecutor(PowdrExtensionExecutor<ISA>),
+}
+
+impl<F: PrimeField32, ISA: OpenVmISA> From<PowdrExtensionExecutor<ISA>>
+    for SpecializedExecutor<F, ISA>
+{
+    fn from(value: PowdrExtensionExecutor<ISA>) -> Self {
+        Self::PowdrExecutor(value)
+    }
+}
+
+// TODO: derive VmCircuitConfig, currently not possible because we don't have SC/F everywhere
+// Also `start_new_extension` is normally only used in derive
+impl<ISA: OpenVmISA> VmCircuitConfig<BabyBearSC> for SpecializedConfig<ISA> {
+    fn create_airs(&self) -> Result<AirInventory<BabyBearSC>, AirInventoryError> {
+        let mut inventory = self.original.create_airs()?;
+        inventory.start_new_extension();
+        self.powdr.extend_circuit(&mut inventory)?;
+        Ok(inventory)
+    }
+}
+
+impl<ISA: OpenVmISA> VmExecutionConfig<BabyBear> for SpecializedConfig<ISA> {
+    type Executor = SpecializedExecutor<BabyBear, ISA>;
+
+    fn create_executors(
+        &self,
+    ) -> Result<ExecutorInventory<Self::Executor>, ExecutorInventoryError> {
+        let mut inventory: ExecutorInventory<Self::Executor> =
+            self.original.create_executors()?.transmute();
+        inventory = inventory.extend(&self.powdr)?;
+        Ok(inventory)
+    }
+}
+
+impl<ISA: OpenVmISA> SpecializedConfig<ISA> {
+    pub fn new(
+        base_config: OriginalVmConfig<ISA>,
+        precompiles: Vec<PowdrPrecompile<BabyBear, ISA>>,
+        degree_bound: DegreeBound,
+    ) -> Self {
+        let airs = base_config.airs(degree_bound).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
+        let bus_map = base_config.bus_map();
+        let powdr_extension = PowdrExtension::new(precompiles, base_config.clone(), bus_map, airs);
+        Self {
+            original: base_config,
+            powdr: powdr_extension,
+        }
+    }
 }
 
 pub fn execute<ISA: OpenVmISA>(
@@ -460,11 +476,27 @@ impl<ISA: OpenVmISA> VmBuilder<GpuBabyBearPoseidon2Engine> for SpecializedConfig
     }
 }
 
-pub fn format_fe<F: PrimeField32>(v: F) -> String {
-    let v = v.as_canonical_u32();
-    if v < F::ORDER_U32 / 2 {
-        format!("{v}")
-    } else {
-        format!("-{}", F::ORDER_U32 - v)
-    }
+// Generate execution profile for a guest program
+pub fn execution_profile_from_guest<ISA: OpenVmISA>(
+    program: &OriginalCompiledProgram<ISA>,
+    inputs: StdIn,
+) -> ExecutionProfile {
+    let OriginalCompiledProgram { exe, vm_config, .. } = program;
+    let program = Prog::from(&exe.program);
+
+    // Set app configuration
+    let app_fri_params =
+        FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
+    let app_config = AppConfig::new(app_fri_params, vm_config.clone().config);
+
+    // prepare for execute
+    let sdk = PowdrExecutionProfileSdkCpu::<ISA>::new(app_config).unwrap();
+
+    execution_profile::<BabyBearOpenVmApcAdapter<ISA>>(&program, || {
+        sdk.execute_interpreted(exe.clone(), inputs.clone())
+            .unwrap();
+    })
 }
+
+pub type IsaApc<F, ISA> =
+    Arc<powdr_autoprecompiles::Apc<F, Instr<F, ISA>, <ISA as OpenVmISA>::RegisterAddress, u32>>;

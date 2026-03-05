@@ -1,36 +1,44 @@
-use std::{
-    collections::HashMap, fmt::Display, hash::Hash, iter::once, marker::PhantomData, sync::Arc,
-};
+use std::collections::HashMap;
 
-use crate::{
-    extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs},
-    isa::OpenVmISA,
-    powdr_extension::{chip::PowdrAir, PowdrOpcode, PowdrPrecompile},
-    program::{CompiledProgram, Prog},
-    SpecializedConfig, POWDR_OPCODE,
-};
-use openvm_circuit::{arch::VmState, system::memory::online::GuestMemory};
+use std::fmt::Display;
+use std::hash::Hash;
+use std::iter::once;
+use std::marker::PhantomData;
+use std::sync::Arc;
+
+use crate::extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs};
+use crate::isa::OpenVmISA;
+use crate::powdr_extension::chip::PowdrAir;
+use crate::program::Prog;
+use crate::OriginalCompiledProgram;
+use crate::{CompiledProgram, SpecializedConfig};
+use openvm_circuit::arch::VmState;
+use openvm_circuit::system::memory::online::GuestMemory;
 use openvm_instructions::instruction::Instruction as OpenVmInstruction;
-use openvm_instructions::{program::DEFAULT_PC_STEP, VmOpcode};
-
+use openvm_instructions::program::DEFAULT_PC_STEP;
+use openvm_instructions::VmOpcode;
 use openvm_stark_backend::p3_field::{FieldAlgebra, PrimeField32};
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
-use powdr_autoprecompiles::{
-    adapter::{Adapter, AdapterApc, AdapterApcWithStats, ApcWithStats, PgoAdapter},
-    blocks::{BasicBlock, Instruction, PcStep},
-    empirical_constraints::EmpiricalConstraints,
-    execution::ExecutionState,
-    pgo::{ApcCandidateJsonExport, Candidate, KnapsackItem},
-    InstructionHandler, PowdrConfig, VmConfig,
+use powdr_autoprecompiles::adapter::{
+    Adapter, AdapterApc, AdapterApcWithStats, ApcWithStats, PgoAdapter,
 };
+use powdr_autoprecompiles::blocks::{BasicBlock, Instruction, PcStep};
+use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
+use powdr_autoprecompiles::execution::ExecutionState;
+use powdr_autoprecompiles::pgo::{ApcCandidateJsonExport, Candidate, KnapsackItem};
+use powdr_autoprecompiles::PowdrConfig;
+use powdr_autoprecompiles::{InstructionHandler, VmConfig};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
-use powdr_openvm_bus_interaction_handler::{
-    bus_map::OpenVmBusType, memory_bus_interaction::OpenVmMemoryBusInteraction,
-    OpenVmBusInteractionHandler,
-};
+use powdr_openvm_bus_interaction_handler::bus_map::OpenVmBusType;
 use serde::{Deserialize, Serialize};
 
-use crate::OriginalCompiledProgram;
+use crate::powdr_extension::{PowdrOpcode, PowdrPrecompile};
+
+pub use powdr_openvm_bus_interaction_handler::{
+    memory_bus_interaction::OpenVmMemoryBusInteraction, OpenVmBusInteractionHandler,
+};
+
+pub const POWDR_OPCODE: usize = 0x10ff;
 
 /// An adapter for the BabyBear OpenVM precompiles.
 /// Note: This could be made generic over the field, but the implementation of `Candidate` is BabyBear-specific.
@@ -79,14 +87,11 @@ impl<'a, ISA: OpenVmISA> Adapter for BabyBearOpenVmApcAdapter<'a, ISA> {
     type PowdrField = BabyBearField;
     type Field = BabyBear;
     type InstructionHandler = OriginalAirs<Self::Field, ISA>;
-    // TODO: is this riscv specific? if so, move to isa trait
     type BusInteractionHandler = OpenVmBusInteractionHandler<Self::PowdrField>;
     type Program = Prog<'a, Self::Field>;
     type Instruction = Instr<Self::Field, ISA>;
-    // TODO: is this riscv specific? if so, move to isa trait
     type MemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash> =
         OpenVmMemoryBusInteraction<Self::PowdrField, V>;
-    // TODO: is this riscv specific? if so, move to isa trait
     type CustomBusTypes = OpenVmBusType;
     type ApcStats = OvmApcStats;
     type AirId = String;

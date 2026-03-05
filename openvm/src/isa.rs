@@ -8,10 +8,6 @@ use openvm_circuit::arch::{
 #[cfg(feature = "cuda")]
 use openvm_circuit::system::cuda::SystemChipInventoryGPU;
 use openvm_circuit::system::SystemChipInventory;
-use openvm_circuit_derive::{
-    AnyEnum, AotExecutor, AotMeteredExecutor, Executor, MeteredExecutor, PreflightExecutor,
-};
-use openvm_circuit_primitives::Chip;
 #[cfg(feature = "cuda")]
 use openvm_cuda_backend::engine::GpuBabyBearPoseidon2Engine;
 #[cfg(feature = "cuda")]
@@ -26,8 +22,8 @@ use serde::{Deserialize, Serialize};
 use crate::powdr_extension::trace_generator::cpu::SharedPeripheryChipsCpu;
 #[cfg(feature = "cuda")]
 use crate::trace_generator::cuda::periphery::SharedPeripheryChipsGpu;
-use crate::BabyBearSC;
-use crate::{powdr_extension::PowdrExtensionExecutor, program::OriginalCompiledProgram};
+use crate::program::OriginalCompiledProgram;
+use crate::{BabyBearSC, SpecializedExecutor};
 
 pub type OriginalCpuChipComplex = VmChipComplex<
     BabyBearSC,
@@ -43,25 +39,6 @@ pub type OriginalGpuChipComplex =
     VmChipComplex<BabyBearSC, DenseRecordArena, GpuBackend, SystemChipInventoryGPU>;
 #[cfg(feature = "cuda")]
 pub type OriginalGpuChipInventory = ChipInventory<BabyBearSC, DenseRecordArena, GpuBackend>;
-
-#[allow(clippy::large_enum_variant)]
-#[derive(
-    AnyEnum, Chip, Executor, MeteredExecutor, AotExecutor, AotMeteredExecutor, PreflightExecutor,
-)]
-pub enum SpecializedExecutor<F: PrimeField32, ISA: OpenVmISA> {
-    #[any_enum]
-    OriginalExecutor(ISA::OriginalExecutor<F>),
-    #[any_enum]
-    PowdrExecutor(PowdrExtensionExecutor<ISA>),
-}
-
-impl<F: PrimeField32, ISA: OpenVmISA> From<PowdrExtensionExecutor<ISA>>
-    for SpecializedExecutor<F, ISA>
-{
-    fn from(value: PowdrExtensionExecutor<ISA>) -> Self {
-        Self::PowdrExecutor(value)
-    }
-}
 
 pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
     /// The original program, for example, an elf for riscv. It must allow recovering the jump destinations / labels.
