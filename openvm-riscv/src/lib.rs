@@ -1550,10 +1550,7 @@ mod tests {
         use openvm_pairing_circuit::{PairingCurve, PairingExtension};
         use openvm_rv32im_circuit::Rv32M;
         use openvm_sdk::config::SdkVmConfig;
-        use powdr_openvm::{
-            extraction_utils::{export_pil, OriginalVmConfig},
-            SpecializedConfig,
-        };
+        use powdr_openvm::{extraction_utils::OriginalVmConfig, SpecializedConfig};
         use powdr_openvm_riscv_hints_circuit::HintsExtension;
 
         #[test]
@@ -1607,21 +1604,6 @@ mod tests {
                 hints: HintsExtension,
             })
             .bus_map();
-        }
-
-        #[test]
-        fn test_export_pil() {
-            let writer = &mut Vec::new();
-            let ext_config = ExtendedVmConfig {
-                sdk: SdkVmConfig::riscv32(),
-                hints: HintsExtension,
-            };
-            let base_config = OriginalVmConfig::<RiscvISA>::new(ext_config);
-            let specialized_config =
-                SpecializedConfig::new(base_config, vec![], DEFAULT_DEGREE_BOUND);
-            export_pil(writer, &specialized_config);
-            let output = String::from_utf8(writer.clone()).unwrap();
-            assert!(!output.is_empty(), "PIL output should not be empty");
         }
     }
 }

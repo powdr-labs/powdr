@@ -38,9 +38,9 @@ use crate::isa::{OpenVmISA, OriginalCpuChipComplex};
 use crate::powdr_extension::executor::RecordArenaDimension;
 use crate::utils::symbolic_to_algebraic;
 use crate::utils::UnsupportedOpenVmReferenceError;
-use crate::utils::{get_pil, openvm_bus_interaction_to_powdr};
+use crate::utils::openvm_bus_interaction_to_powdr;
 use crate::AirMetrics;
-use crate::{air_builder::AirKeygenBuilder, BabyBearSC, SpecializedConfig};
+use crate::{air_builder::AirKeygenBuilder, BabyBearSC};
 
 // TODO: Use `<PackedChallenge<BabyBearSC> as FieldExtensionAlgebra<Val<BabyBearSC>>>::D` instead after fixing p3 dependency
 const EXT_DEGREE: usize = 4;
@@ -344,6 +344,7 @@ impl<ISA: OpenVmISA> OriginalVmConfig<ISA> {
                         BusType::ExecutionBridge,
                     ),
                     (
+                        // TODO: make getting memory bus index a helper function
                         match &memory_air.interface {
                             MemoryInterfaceAirs::Volatile { boundary } => {
                                 boundary.memory_bus.inner.index
@@ -542,39 +543,4 @@ impl Sum<AirWidthsDiff> for AirWidthsDiff {
         let zero = AirWidthsDiff::new(AirWidths::default(), AirWidths::default());
         iter.fold(zero, Add::add)
     }
-}
-
-pub fn export_pil_from_airs(
-    writer: &mut impl std::io::Write,
-    airs: impl Iterator<Item = Arc<dyn AnyRap<BabyBearSC>>>,
-    bus_map: &BusMap,
-) {
-    let blacklist = ["KeccakVmAir"];
-
-    for air in airs {
-        let name = get_name(air.clone());
-
-        if blacklist.contains(&name.as_str()) {
-            continue;
-        }
-
-        let columns = get_columns(air.clone());
-        let constraints = get_constraints(air.clone());
-        let pil = get_pil(&name, &constraints, &columns, vec![], bus_map);
-        writeln!(writer, "{pil}\n").unwrap();
-    }
-}
-
-pub fn export_pil<ISA: OpenVmISA>(
-    writer: &mut impl std::io::Write,
-    vm_config: &SpecializedConfig<ISA>,
-) {
-    let chip_complex = vm_config.original.chip_complex();
-    let airs = chip_complex
-        .inventory
-        .executor_idx_to_insertion_idx
-        .iter()
-        .map(|insertion_idx| chip_complex.inventory.airs().ext_airs()[*insertion_idx].clone());
-
-    export_pil_from_airs(writer, airs, &vm_config.original.bus_map());
 }
