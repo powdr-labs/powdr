@@ -33,8 +33,6 @@ use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
 use powdr_autoprecompiles::PowdrConfig;
 use powdr_openvm::customize_exe::OpenVmApcCandidate;
-#[cfg(test)]
-use powdr_openvm::extraction_utils::AirMetrics;
 use powdr_openvm::extraction_utils::OriginalVmConfig;
 use powdr_openvm::trace_generation::do_with_trace;
 use powdr_openvm::BabyBearSC;
@@ -364,6 +362,7 @@ mod tests {
     use powdr_openvm::{
         execution_profile_from_guest,
         extraction_utils::{AirWidths, AirWidthsDiff},
+        AirMetrics,
     };
     use pretty_assertions::assert_eq;
     use test_log::test;
@@ -1539,9 +1538,7 @@ mod tests {
     }
 
     mod extraction {
-        use crate::{
-            ExtendedVmConfig, RiscvISA, DEFAULT_DEGREE_BOUND, DEFAULT_OPENVM_DEGREE_BOUND,
-        };
+        use crate::{ExtendedVmConfig, RiscvISA, DEFAULT_OPENVM_DEGREE_BOUND};
 
         use openvm_algebra_circuit::{Fp2Extension, ModularExtension};
         use openvm_bigint_circuit::Int256;
@@ -1550,7 +1547,7 @@ mod tests {
         use openvm_pairing_circuit::{PairingCurve, PairingExtension};
         use openvm_rv32im_circuit::Rv32M;
         use openvm_sdk::config::SdkVmConfig;
-        use powdr_openvm::{extraction_utils::OriginalVmConfig, SpecializedConfig};
+        use powdr_openvm::extraction_utils::OriginalVmConfig;
         use powdr_openvm_riscv_hints_circuit::HintsExtension;
 
         #[test]

@@ -15,7 +15,10 @@ use openvm_cuda_backend::prover_backend::GpuBackend;
 use openvm_stark_backend::{config::StarkGenericConfig, p3_field::PrimeField32};
 use powdr_openvm_bus_interaction_handler::bus_map::DEFAULT_TUPLE_RANGE_CHECKER;
 
-use crate::{isa::OpenVmISA, trace_generator::common::DummyExecutor, BabyBearSC, PeripheryBusIds};
+use crate::{
+    isa::OpenVmISA, powdr_extension::trace_generator::common::DummyExecutor, BabyBearSC,
+    PeripheryBusIds,
+};
 use std::{marker::PhantomData, sync::Arc};
 
 /// The shared chips which can be used by the PowdrChipGpu.
@@ -38,7 +41,7 @@ pub struct SharedPeripheryChipsGpu<ISA> {
 }
 
 impl<ISA> PowdrPeripheryInstancesGpu<ISA> {
-    pub(crate) fn new(
+    pub fn new(
         range_checker: Arc<VariableRangeCheckerChipGPU>,
         bitwise_8: Option<Arc<BitwiseOperationLookupChipGPU<8>>>,
         tuple_range_checker: Option<Arc<RangeTupleCheckerChipGPU<2>>>,

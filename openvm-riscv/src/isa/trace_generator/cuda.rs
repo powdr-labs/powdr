@@ -4,9 +4,8 @@ use openvm_circuit::{
 };
 use openvm_pairing_circuit::PairingProverExt;
 use powdr_openvm::{
-    trace_generator::cuda::{
-        periphery::{SharedPeripheryChipsGpu, SharedPeripheryChipsGpuProverExt},
-        GpuDummyChipComplex,
+    powdr_extension::trace_generator::cuda::{
+        GpuDummyChipComplex, SharedPeripheryChipsGpu, SharedPeripheryChipsGpuProverExt,
     },
     BabyBearSC, GpuBabyBearPoseidon2Engine,
 };

@@ -47,6 +47,10 @@ use std::sync::Arc;
 use crate::isa::OpenVmISA;
 use crate::powdr_extension::chip::{PowdrAir, PowdrChipCpu};
 use crate::powdr_extension::trace_generator::cpu::PowdrPeripheryInstancesCpu;
+#[cfg(feature = "cuda")]
+use crate::powdr_extension::{
+    chip::PowdrChipGpu, trace_generator::cuda::PowdrPeripheryInstancesGpu,
+};
 pub use crate::program::Prog;
 pub use crate::program::{CompiledProgram, OriginalCompiledProgram};
 
@@ -55,7 +59,6 @@ use crate::extraction_utils::{get_air_metrics, AirWidths, OriginalVmConfig};
 use crate::powdr_extension::{PowdrExtensionExecutor, PowdrPrecompile};
 
 mod air_builder;
-#[cfg(feature = "cuda")]
 pub mod cuda_abi;
 pub mod empirical_constraints;
 pub mod extraction_utils;
@@ -72,8 +75,8 @@ cfg_if::cfg_if! {
     if #[cfg(feature = "cuda")] {
         pub use openvm_cuda_backend::engine::GpuBabyBearPoseidon2Engine;
         pub use openvm_native_circuit::NativeGpuBuilder;
-        pub type PowdrSdkGpu = GenericSdk<GpuBabyBearPoseidon2Engine, SpecializedConfigGpuBuilder, NativeGpuBuilder>;
-        pub type PowdrExecutionProfileSdkGpu = GenericSdk<GpuBabyBearPoseidon2Engine, ExtendedVmConfigGpuBuilder, NativeGpuBuilder>;
+        pub type PowdrSdkGpu<ISA> = GenericSdk<GpuBabyBearPoseidon2Engine, SpecializedConfigGpuBuilder<ISA>, NativeGpuBuilder>;
+        pub type PowdrExecutionProfileSdkGpu<ISA> = GenericSdk<GpuBabyBearPoseidon2Engine, <ISA as OpenVmISA>::OriginalBuilderGpu, NativeGpuBuilder>;
 
         pub use openvm_circuit::system::cuda::{extensions::SystemGpuBuilder, SystemChipInventoryGPU};
         pub use openvm_sdk::config::SdkVmGpuBuilder;
@@ -438,12 +441,6 @@ pub fn execute<ISA: OpenVmISA>(
     Ok(())
 }
 
-#[cfg(feature = "cuda")]
-pub type PowdrSdkGpu<ISA> =
-    GenericSdk<GpuBabyBearPoseidon2Engine, SpecializedConfigGpuBuilder<ISA>, NativeGpuBuilder>;
-#[cfg(feature = "cuda")]
-pub type PowdrExecutionProfileSdkGpu<ISA> =
-    GenericSdk<BabyBearPoseidon2Engine, <ISA as OpenVmISA>::OriginalBuilderGpu, NativeCpuBuilder>;
 #[cfg(feature = "cuda")]
 #[derive(Default, Clone)]
 pub struct SpecializedConfigGpuBuilder<ISA> {

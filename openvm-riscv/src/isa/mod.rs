@@ -6,7 +6,7 @@ use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
 #[cfg(feature = "cuda")]
 use powdr_openvm::{
-    isa::OriginalGpuChipComplex, trace_generator::cuda::periphery::SharedPeripheryChipsGpu,
+    isa::OriginalGpuChipComplex, powdr_extension::trace_generator::SharedPeripheryChipsGpu,
 };
 use powdr_openvm::{
     isa::{OpenVmISA, OriginalCpuChipComplex},

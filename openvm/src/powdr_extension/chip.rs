@@ -141,6 +141,7 @@ mod cuda {
 
     use crate::{
         extraction_utils::{OriginalAirs, OriginalVmConfig},
+        isa::OpenVmISA,
         powdr_extension::{
             executor::OriginalArenas,
             trace_generator::cuda::{PowdrPeripheryInstancesGpu, PowdrTraceGeneratorGpu},

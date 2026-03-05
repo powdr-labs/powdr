@@ -36,9 +36,9 @@ use std::sync::MutexGuard;
 use crate::customize_exe::Instr;
 use crate::isa::{OpenVmISA, OriginalCpuChipComplex};
 use crate::powdr_extension::executor::RecordArenaDimension;
+use crate::utils::openvm_bus_interaction_to_powdr;
 use crate::utils::symbolic_to_algebraic;
 use crate::utils::UnsupportedOpenVmReferenceError;
-use crate::utils::openvm_bus_interaction_to_powdr;
 use crate::AirMetrics;
 use crate::{air_builder::AirKeygenBuilder, BabyBearSC};
 

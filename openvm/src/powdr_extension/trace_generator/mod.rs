@@ -7,4 +7,4 @@ mod common;
 pub use cpu::{DummyChipComplex, SharedPeripheryChipsCpu};
 
 #[cfg(feature = "cuda")]
-pub use cuda::{};
+pub use cuda::{GpuDummyChipComplex, SharedPeripheryChipsGpu};

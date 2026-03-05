@@ -21,19 +21,20 @@ use powdr_constraint_solver::constraint_system::ComputationMethod;
 use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 
 use crate::{
-    chip::PowdrChipGpu,
     cuda_abi::{self, DerivedExprSpec, DevInteraction, ExprSpan, OpCode, OriginalAir, Subst},
-    executor::OriginalArenas,
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     isa::OpenVmISA,
-    BabyBearSC, IsaApc,
+    powdr_extension::{chip::PowdrChipGpu, executor::OriginalArenas},
+    BabyBearSC, GpuBackend, IsaApc,
 };
 
 mod inventory;
 mod periphery;
 
 pub use inventory::GpuDummyChipComplex;
-pub use periphery::PowdrPeripheryInstancesGpu;
+pub use periphery::{
+    PowdrPeripheryInstancesGpu, SharedPeripheryChipsGpu, SharedPeripheryChipsGpuProverExt,
+};
 
 /// Encodes an algebraic expression into GPU stack-machine bytecode.
 ///
