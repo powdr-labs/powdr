@@ -32,12 +32,12 @@ use openvm_transpiler::transpiler::Transpiler;
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
 use powdr_autoprecompiles::PowdrConfig;
+use powdr_openvm::customize_exe::OpenVmApcCandidate;
 #[cfg(test)]
 use powdr_openvm::extraction_utils::AirMetrics;
 use powdr_openvm::extraction_utils::OriginalVmConfig;
 use powdr_openvm::trace_generation::do_with_trace;
 use powdr_openvm::BabyBearSC;
-use powdr_openvm::customize_exe::OpenVmApcCandidate;
 #[cfg(not(feature = "cuda"))]
 use powdr_openvm::PowdrSdkCpu;
 #[cfg(feature = "cuda")]
