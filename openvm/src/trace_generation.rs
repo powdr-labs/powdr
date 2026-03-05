@@ -1,6 +1,6 @@
 use openvm_circuit::arch::{
     execution_mode::Segment, Executor, MeteredExecutor, PreflightExecutionOutput,
-    PreflightExecutor, VirtualMachine, VmBuilder, VmCircuitConfig, VmExecutionConfig, VmInstance,
+    PreflightExecutor, VirtualMachine, VmBuilder, VmExecutionConfig,
 };
 use openvm_stark_backend::StarkEngine;
 use openvm_stark_backend::Val;
@@ -88,8 +88,6 @@ where
         + MeteredExecutor<Val<E::SC>>
         + PreflightExecutor<Val<E::SC>, VB::RecordArena>,
 {
-    use openvm_stark_backend::p3_field::PrimeField32;
-
     let app_pk = sdk.app_pk();
     let pk = &*app_pk.app_vm_pk.vm_pk;
 

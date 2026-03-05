@@ -58,7 +58,6 @@ use openvm_circuit_derive::AnyEnum;
 use openvm_circuit_derive::Executor;
 use openvm_circuit_derive::MeteredExecutor;
 use openvm_circuit_derive::PreflightExecutor;
-use openvm_stark_backend::p3_field::PrimeField32;
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Chip, PreflightExecutor, Executor, MeteredExecutor, From, AnyEnum)]

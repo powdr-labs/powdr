@@ -3,7 +3,7 @@ use openvm_circuit::system::memory::online::GuestMemory;
 use openvm_instructions::riscv::RV32_MEMORY_AS;
 use openvm_instructions::PhantomDiscriminant;
 use openvm_rv32im_circuit::adapters::read_rv32_register;
-use openvm_stark_backend::p3_field::{PrimeCharacteristicRing, PrimeField32};
+use openvm_stark_backend::p3_field::PrimeField32;
 use rand::rngs::StdRng;
 
 use crate::field10x26_k256;

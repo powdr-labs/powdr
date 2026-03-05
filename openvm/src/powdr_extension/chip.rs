@@ -98,7 +98,7 @@ where
         let main = builder.main();
         let witnesses = main.row_slice(0).expect("row_slice(0) should exist");
         // TODO: cache?
-        let witness_slice: &[AB::Var] = &*witnesses;
+        let witness_slice: &[AB::Var] = &witnesses;
         let witness_values: BTreeMap<u64, AB::Var> = self
             .columns
             .iter()

@@ -9,10 +9,7 @@ use openvm_circuit_primitives::Chip;
 use openvm_stark_backend::{
     p3_field::PrimeCharacteristicRing,
     p3_matrix::dense::{DenseMatrix, RowMajorMatrix},
-    prover::{
-        AirProvingContext, ColMajorMatrix, MatrixDimensions, MatrixView, ProverBackend,
-        StridedColMajorMatrixView,
-    },
+    prover::{AirProvingContext, ColMajorMatrix, ProverBackend, StridedColMajorMatrixView},
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{trace_handler::TraceTrait, Apc};

@@ -6,7 +6,6 @@
 use derive_more::From;
 use eyre::Result;
 use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
-use openvm_circuit::arch::execution_mode::metered::segment_ctx::SegmentationLimits;
 use openvm_circuit::arch::{
     debug_proving_ctx, AirInventory, AirInventoryError, ChipInventory, ChipInventoryError,
     ExecutorInventory, ExecutorInventoryError, InitFileGenerator, MatrixRecordArena,
@@ -20,7 +19,7 @@ use openvm_circuit_derive::{
 };
 use openvm_sdk_config::{SdkVmConfig, SdkVmConfigExecutor, SdkVmCpuBuilder, TranspilerConfig};
 use openvm_stark_backend::prover::{CpuBackend, CpuDevice, ProverBackend};
-use openvm_stark_backend::{StarkEngine, StarkProtocolConfig, SystemParams, Val};
+use openvm_stark_backend::{StarkEngine, StarkProtocolConfig, Val};
 use openvm_stark_sdk::config::baby_bear_poseidon2::{
     BabyBearPoseidon2Config, BabyBearPoseidon2CpuEngine,
 };
@@ -834,7 +833,7 @@ pub fn prove(
             // Verify
             let app_vk = sdk.app_pk().get_app_vk();
             let memory_dimensions = app_prover.memory_dimensions();
-            verify_app_proof::<BabyBearPoseidon2CpuEngine>(
+            let _pvs = verify_app_proof::<BabyBearPoseidon2CpuEngine>(
                 &app_vk.vk,
                 memory_dimensions,
                 &app_proof,
