@@ -8,7 +8,7 @@ edition = "2021"
 # The `rev` here must point to the same version used in the workspace.
 # Otherwise, there is conflict with the `powdr-openvm-riscv-hints-guest` dependency (which is part of the workspace).
 openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2" }
-powdr-openvm-riscv-hints-guest = { path = "../extensions/hints-riscv-guest/" }
+powdr-openvm-riscv-hints-guest = { path = "../extensions/hints-guest/" }
 
 [profile.release-with-debug]
 inherits = "release"
