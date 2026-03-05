@@ -18,11 +18,12 @@ use powdr_autoprecompiles::trace_handler::TraceTrait;
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 
 use crate::{
-    chip::PowdrChipCpu,
-    executor::OriginalArenas,
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     isa::OpenVmISA,
-    trace_generator::cpu::periphery::SharedPeripheryChipsCpu,
+    powdr_extension::{
+        chip::PowdrChipCpu, executor::OriginalArenas,
+        trace_generator::cpu::periphery::SharedPeripheryChipsCpu,
+    },
     BabyBearSC, IsaApc, PeripheryBusIds,
 };
 pub mod periphery;

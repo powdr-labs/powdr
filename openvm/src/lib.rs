@@ -3,8 +3,13 @@ use std::{collections::HashMap, fmt::Display, marker::PhantomData, path::Path, s
 #[cfg(feature = "cuda")]
 use crate::{chip::PowdrChipGpu, trace_generator::cuda::periphery::PowdrPeripheryInstancesGpu};
 use crate::{
-    execution_profile::execution_profile, isa::SpecializedExecutor, program::CompiledProgram,
-    trace_generator::cpu::periphery::new_periphery_instances,
+    execution_profile::execution_profile,
+    isa::SpecializedExecutor,
+    powdr_extension::{
+        chip::PowdrChipCpu, trace_generator::cpu::periphery::new_periphery_instances,
+        PowdrExtension, PowdrPrecompile,
+    },
+    program::CompiledProgram,
 };
 #[cfg(feature = "cuda")]
 use openvm_circuit::{arch::DenseRecordArena, system::cuda::SystemChipInventoryGPU};
@@ -67,28 +72,22 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     apc_air::PowdrAir,
-    chip::PowdrChipCpu,
     extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs, OriginalVmConfig},
     instruction::Instr,
     isa::OpenVmISA,
     program::{OriginalCompiledProgram, Prog},
-    vm::{PowdrExtension, PowdrPrecompile},
 };
 use std::hash::Hash;
 
 pub mod apc_air;
-pub mod chip;
 pub mod customize_exe;
 pub mod empirical_constraints;
-pub mod executor;
 pub mod extraction_utils;
 pub mod instruction;
 pub mod isa;
-pub mod opcode;
+pub mod powdr_extension;
 pub mod program;
-pub mod trace_generator;
 pub mod utils;
-pub mod vm;
 // TODO: this is actually do_with_trace etc, rename
 pub mod trace_generation;
 
@@ -676,5 +675,14 @@ impl<ISA: OpenVmISA> VmBuilder<GpuBabyBearPoseidon2Engine> for SpecializedConfig
             inventory,
         )?;
         Ok(chip_complex)
+    }
+}
+
+pub fn format_fe<F: PrimeField32>(v: F) -> String {
+    let v = v.as_canonical_u32();
+    if v < F::ORDER_U32 / 2 {
+        format!("{v}")
+    } else {
+        format!("-{}", F::ORDER_U32 - v)
     }
 }

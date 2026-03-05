@@ -23,12 +23,15 @@ use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use serde::{Deserialize, Serialize};
 
-use crate::program::OriginalCompiledProgram;
-use crate::trace_generator::cpu::periphery::SharedPeripheryChipsCpu;
 #[cfg(feature = "cuda")]
 use crate::trace_generator::cuda::periphery::SharedPeripheryChipsGpu;
-use crate::vm::PowdrExtensionExecutor;
 use crate::BabyBearSC;
+use crate::{
+    powdr_extension::{
+        trace_generator::cpu::periphery::SharedPeripheryChipsCpu, PowdrExtensionExecutor,
+    },
+    program::OriginalCompiledProgram,
+};
 
 pub type OriginalCpuChipComplex = VmChipComplex<
     BabyBearSC,

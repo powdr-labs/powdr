@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use crate::{
-    isa::OpenVmISA, opcode::PowdrOpcode, program::CompiledProgram, vm::PowdrPrecompile,
+    isa::OpenVmISA,
+    powdr_extension::{PowdrOpcode, PowdrPrecompile},
+    program::CompiledProgram,
     BabyBearOpenVmApcAdapter, SpecializedConfig, POWDR_OPCODE,
 };
 use openvm_instructions::{program::DEFAULT_PC_STEP, VmOpcode};

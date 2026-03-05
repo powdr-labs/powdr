@@ -1,5 +1,6 @@
 use std::marker::PhantomData;
 
+use crate::powdr_extension::trace_generator::common::DummyExecutor;
 use openvm_circuit::arch::{
     AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecutorInventoryBuilder,
     ExecutorInventoryError, VmCircuitExtension, VmExecutionExtension, VmProverExtension,
@@ -20,7 +21,7 @@ use openvm_stark_backend::config::Val;
 use openvm_stark_backend::engine::StarkEngine;
 use openvm_stark_backend::prover::cpu::{CpuBackend, CpuDevice};
 
-use crate::{isa::OpenVmISA, trace_generator::common::DummyExecutor, PeripheryBusIds};
+use crate::{isa::OpenVmISA, PeripheryBusIds};
 
 #[derive(Clone)]
 pub struct SharedPeripheryChipsCpu<ISA> {

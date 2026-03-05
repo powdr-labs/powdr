@@ -1,15 +1,7 @@
 use super::opcode::*;
 use openvm_instructions::{instruction::Instruction, VmOpcode};
 use openvm_stark_backend::p3_field::PrimeField32;
-
-fn format_fe<F: PrimeField32>(v: F) -> String {
-    let v = v.as_canonical_u32();
-    if v < F::ORDER_U32 / 2 {
-        format!("{v}")
-    } else {
-        format!("-{}", F::ORDER_U32 - v)
-    }
-}
+use powdr_openvm::format_fe;
 
 pub fn openvm_instruction_formatter<F: PrimeField32>(instruction: &Instruction<F>) -> String {
     let Instruction {

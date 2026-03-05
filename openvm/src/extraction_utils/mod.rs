@@ -33,9 +33,9 @@ use std::ops::Deref;
 use std::ops::{Add, Sub};
 use std::sync::MutexGuard;
 
-use crate::executor::RecordArenaDimension;
 use crate::instruction::Instr;
 use crate::isa::{OpenVmISA, OriginalCpuChipComplex};
+use crate::powdr_extension::executor::RecordArenaDimension;
 use crate::utils::symbolic_to_algebraic;
 use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::utils::{get_pil, openvm_bus_interaction_to_powdr};

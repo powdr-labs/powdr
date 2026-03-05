@@ -13,10 +13,12 @@ use powdr_openvm_bus_interaction_handler::bus_map::BusMap;
 
 use crate::{
     apc_air::PowdrAir,
-    executor::{OriginalArenas, PowdrExecutor},
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     isa::OpenVmISA,
-    opcode::PowdrOpcode,
+    powdr_extension::{
+        executor::{OriginalArenas, PowdrExecutor},
+        PowdrOpcode,
+    },
     IsaApc, OvmApcStats,
 };
 use openvm_circuit::{

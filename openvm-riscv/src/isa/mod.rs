@@ -10,8 +10,8 @@ use powdr_openvm::{
 };
 use powdr_openvm::{
     isa::{OpenVmISA, OriginalCpuChipComplex, SpecializedExecutor},
+    powdr_extension::trace_generator::cpu::periphery::SharedPeripheryChipsCpu,
     program::OriginalCompiledProgram,
-    trace_generator::cpu::periphery::SharedPeripheryChipsCpu,
     BabyBearSC,
 };
 use powdr_riscv_elf::ElfProgram;

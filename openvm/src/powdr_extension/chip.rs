@@ -4,13 +4,15 @@ use openvm_circuit::arch::MatrixRecordArena;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 
 use crate::{
-    executor::OriginalArenas,
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     isa::OpenVmISA,
-    trace_generator::cpu::{
-        periphery::SharedPeripheryChipsCpu, PowdrPeripheryInstancesCpu, PowdrTraceGeneratorCpu,
+    powdr_extension::{
+        executor::OriginalArenas,
+        trace_generator::cpu::{
+            periphery::SharedPeripheryChipsCpu, PowdrPeripheryInstancesCpu, PowdrTraceGeneratorCpu,
+        },
+        PowdrPrecompile,
     },
-    vm::PowdrPrecompile,
 };
 
 pub struct PowdrChipCpu<ISA: OpenVmISA> {
