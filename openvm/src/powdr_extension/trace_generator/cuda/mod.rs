@@ -23,16 +23,13 @@ use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 
 use crate::{
     chip::PowdrChipGpu,
+    cuda_abi::{self, DerivedExprSpec, DevInteraction, ExprSpan, OpCode, OriginalAir, Subst},
     executor::OriginalArenas,
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     isa::OpenVmISA,
-    trace_generator::cuda::cuda_abi::{
-        DerivedExprSpec, DevInteraction, ExprSpan, OpCode, OriginalAir, Subst,
-    },
     BabyBearSC, IsaApc,
 };
 
-mod cuda_abi;
 pub mod periphery;
 
 pub use periphery::PowdrPeripheryInstancesGpu;

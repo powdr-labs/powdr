@@ -79,7 +79,10 @@ use crate::{
 };
 use std::hash::Hash;
 
+mod air_builder;
 pub mod apc_air;
+#[cfg(feature = "cuda")]
+pub mod cuda_abi;
 pub mod customize_exe;
 pub mod empirical_constraints;
 pub mod extraction_utils;

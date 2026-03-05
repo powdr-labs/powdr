@@ -39,10 +39,7 @@ use crate::powdr_extension::executor::RecordArenaDimension;
 use crate::utils::symbolic_to_algebraic;
 use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::utils::{get_pil, openvm_bus_interaction_to_powdr};
-use crate::{BabyBearSC, SpecializedConfig};
-use air_builder::AirKeygenBuilder;
-
-mod air_builder;
+use crate::{air_builder::AirKeygenBuilder, BabyBearSC, SpecializedConfig};
 
 // TODO: Use `<PackedChallenge<BabyBearSC> as FieldExtensionAlgebra<Val<BabyBearSC>>>::D` instead after fixing p3 dependency
 const EXT_DEGREE: usize = 4;
