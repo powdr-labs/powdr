@@ -50,16 +50,16 @@ The main CLI is `powdr_openvm_riscv` (in `cli-openvm-riscv/`):
 
 ```bash
 # Compile a guest program with autoprecompiles
-cargo run -p powdr-openvm-riscv-cli -- compile guest-keccak --autoprecompiles 10 --pgo instruction --input 100
+cargo run -p cli-openvm-riscv -- compile guest-keccak --autoprecompiles 10 --pgo instruction --input 100
 
 # Execute a compiled program
-cargo run -p powdr-openvm-riscv-cli -- execute guest-keccak --autoprecompiles 10 --input 100
+cargo run -p cli-openvm-riscv -- execute guest-keccak --autoprecompiles 10 --input 100
 
 # Prove (generate ZK proof)
-cargo run -p powdr-openvm-riscv-cli -- prove guest-keccak --autoprecompiles 1 --input 10
+cargo run -p cli-openvm-riscv -- prove guest-keccak --autoprecompiles 1 --input 10
 
 # Mock prove (debug mode, verifies constraints without full proof)
-cargo run -p powdr-openvm-riscv-cli -- prove guest-keccak --mock --autoprecompiles 1 --input 10
+cargo run -p cli-openvm-riscv -- prove guest-keccak --mock --autoprecompiles 1 --input 10
 ```
 
 ## Architecture
@@ -88,7 +88,7 @@ cargo run -p powdr-openvm-riscv-cli -- prove guest-keccak --mock --autoprecompil
 - **expression** (`expression/`): Core algebraic expression types (`AlgebraicExpression`, operators)
 - **number** (`number/`): Field element abstractions
 - **riscv-elf** (`riscv-elf/`): ELF file parsing for RISC-V binaries
-- **powdr-openvm-riscv-cli** (`cli-openvm-riscv/`): Command-line interface
+- **cli-openvm-riscv** (`cli-openvm-riscv/`): Command-line interface
 
 ### Guest Programs
 
