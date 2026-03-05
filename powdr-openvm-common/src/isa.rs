@@ -23,8 +23,6 @@ use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "cuda")]
-use crate::extraction_utils::OriginalVmConfig;
 use crate::program::OriginalCompiledProgram;
 use crate::trace_generator::cpu::periphery::SharedPeripheryChipsCpu;
 #[cfg(feature = "cuda")]

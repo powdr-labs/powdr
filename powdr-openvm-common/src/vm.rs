@@ -200,6 +200,53 @@ impl<ISA: OpenVmISA> openvm_circuit::arch::InterpreterMeteredExecutor<BabyBear>
     }
 }
 
+#[cfg(feature = "aot")]
+impl<ISA: OpenVmISA> openvm_circuit::arch::AotExecutor<BabyBear> for PowdrExtensionExecutor<ISA>
+where
+    PowdrExecutor<ISA>: openvm_circuit::arch::AotExecutor<BabyBear>,
+{
+    fn is_aot_supported(&self, inst: &Instruction<BabyBear>) -> bool {
+        match self {
+            Self::Powdr(x) => x.is_aot_supported(inst),
+        }
+    }
+
+    fn generate_x86_asm(
+        &self,
+        inst: &Instruction<BabyBear>,
+        pc: u32,
+    ) -> Result<String, openvm_circuit::arch::AotError> {
+        match self {
+            Self::Powdr(x) => x.generate_x86_asm(inst, pc),
+        }
+    }
+}
+
+#[cfg(feature = "aot")]
+impl<ISA: OpenVmISA> openvm_circuit::arch::AotMeteredExecutor<BabyBear>
+    for PowdrExtensionExecutor<ISA>
+where
+    PowdrExecutor<ISA>: openvm_circuit::arch::AotMeteredExecutor<BabyBear>,
+{
+    fn is_aot_metered_supported(&self, inst: &Instruction<BabyBear>) -> bool {
+        match self {
+            Self::Powdr(x) => x.is_aot_metered_supported(inst),
+        }
+    }
+
+    fn generate_x86_metered_asm(
+        &self,
+        inst: &Instruction<BabyBear>,
+        pc: u32,
+        chip_idx: usize,
+        config: &openvm_circuit::arch::SystemConfig,
+    ) -> Result<String, openvm_circuit::arch::AotError> {
+        match self {
+            Self::Powdr(x) => x.generate_x86_metered_asm(inst, pc, chip_idx, config),
+        }
+    }
+}
+
 impl<ISA: OpenVmISA, RA> openvm_circuit::arch::PreflightExecutor<BabyBear, RA>
     for PowdrExtensionExecutor<ISA>
 where

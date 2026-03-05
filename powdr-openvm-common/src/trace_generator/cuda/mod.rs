@@ -1,11 +1,8 @@
-use std::{
-    collections::{BTreeMap, HashMap},
-    sync::Arc,
-};
+use std::collections::{BTreeMap, HashMap};
 
 use itertools::Itertools;
 use openvm_circuit::{
-    arch::{AirInventory, ChipInventory, DenseRecordArena, VmChipComplex},
+    arch::{ChipInventory, DenseRecordArena, VmChipComplex},
     system::cuda::SystemChipInventoryGPU,
     utils::next_power_of_two_or_zero,
 };
@@ -20,9 +17,8 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
     expression::{AlgebraicExpression, AlgebraicReference},
     symbolic_machine::SymbolicBusInteraction,
-    Apc,
 };
-use powdr_constraint_solver::constraint_system::{ComputationMethod, DerivedVariable};
+use powdr_constraint_solver::constraint_system::ComputationMethod;
 use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 
 use crate::{
@@ -33,7 +29,7 @@ use crate::{
     trace_generator::cuda::cuda_abi::{
         DerivedExprSpec, DevInteraction, ExprSpan, OpCode, OriginalAir, Subst,
     },
-    BabyBearSC, Instr, IsaApc,
+    BabyBearSC, IsaApc,
 };
 
 mod cuda_abi;

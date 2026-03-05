@@ -41,7 +41,7 @@ use powdr_openvm_common::OpenVmApcCandidate;
 #[cfg(not(feature = "cuda"))]
 use powdr_openvm_common::PowdrSdkCpu;
 #[cfg(feature = "cuda")]
-use powdr_openvm_common::{BabyBearSC, GpuBabyBearPoseidon2Engine, GpuBackend, PowdrSdkGpu};
+use powdr_openvm_common::{GpuBabyBearPoseidon2Engine, GpuBackend, PowdrSdkGpu};
 use powdr_openvm_hints_circuit::{HintsExtension, HintsExtensionExecutor, HintsProverExt};
 use powdr_openvm_hints_transpiler::HintsTranspilerExtension;
 use serde::{Deserialize, Serialize};

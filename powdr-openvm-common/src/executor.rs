@@ -281,7 +281,7 @@ impl<ISA: OpenVmISA> InterpreterMeteredExecutor<BabyBear> for PowdrExecutor<ISA>
 }
 
 #[cfg(feature = "aot")]
-impl AotExecutor<BabyBear> for PowdrExecutor {
+impl<ISA: OpenVmISA> AotExecutor<BabyBear> for PowdrExecutor<ISA> {
     fn is_aot_supported(&self, _inst: &Instruction<BabyBear>) -> bool {
         false
     }
@@ -296,7 +296,7 @@ impl AotExecutor<BabyBear> for PowdrExecutor {
 }
 
 #[cfg(feature = "aot")]
-impl AotMeteredExecutor<BabyBear> for PowdrExecutor {
+impl<ISA: OpenVmISA> AotMeteredExecutor<BabyBear> for PowdrExecutor<ISA> {
     fn is_aot_metered_supported(&self, _inst: &Instruction<BabyBear>) -> bool {
         false
     }
