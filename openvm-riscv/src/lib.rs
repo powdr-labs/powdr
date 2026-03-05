@@ -37,7 +37,7 @@ use powdr_openvm::extraction_utils::AirMetrics;
 use powdr_openvm::extraction_utils::OriginalVmConfig;
 use powdr_openvm::trace_generation::do_with_trace;
 use powdr_openvm::BabyBearSC;
-use powdr_openvm::OpenVmApcCandidate;
+use powdr_openvm::customize_exe::OpenVmApcCandidate;
 #[cfg(not(feature = "cuda"))]
 use powdr_openvm::PowdrSdkCpu;
 #[cfg(feature = "cuda")]
@@ -66,7 +66,7 @@ pub use powdr_openvm::{
 pub use openvm_build::GuestOptions;
 pub use powdr_autoprecompiles::bus_map::BusType;
 pub use powdr_openvm::customize_exe::customize;
-pub use powdr_openvm::instruction::Instr;
+pub use powdr_openvm::customize_exe::Instr;
 
 pub fn build_elf_path<P: AsRef<Path>>(
     guest_opts: GuestOptions,

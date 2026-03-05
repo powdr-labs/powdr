@@ -1,27 +1,121 @@
-use std::{collections::HashMap, fmt::Display, iter::once, marker::PhantomData, sync::Arc};
+use std::{
+    collections::HashMap, fmt::Display, hash::Hash, iter::once, marker::PhantomData, sync::Arc,
+};
 
 use crate::{
-    extraction_utils::AirWidthsDiff,
+    apc_air::PowdrAir,
+    extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs},
     isa::OpenVmISA,
     powdr_extension::{PowdrOpcode, PowdrPrecompile},
-    program::CompiledProgram,
+    program::{CompiledProgram, Prog},
     BabyBearOpenVmApcAdapter, OpenVmExecutionState, SpecializedConfig, POWDR_OPCODE,
 };
 use openvm_instructions::instruction::Instruction as OpenVmInstruction;
 use openvm_instructions::{program::DEFAULT_PC_STEP, VmOpcode};
 
-use openvm_stark_backend::p3_field::PrimeField32;
+use openvm_stark_backend::p3_field::{FieldAlgebra, PrimeField32};
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
-    PowdrConfig, VmConfig, adapter::{AdapterApcWithStats, ApcWithStats, PgoAdapter}, blocks::{BasicBlock, Instruction, PcStep}, empirical_constraints::EmpiricalConstraints, execution::ExecutionState, pgo::{ApcCandidateJsonExport, Candidate, KnapsackItem}
+    adapter::{Adapter, AdapterApc, AdapterApcWithStats, ApcWithStats, PgoAdapter},
+    blocks::{BasicBlock, Instruction, PcStep},
+    empirical_constraints::EmpiricalConstraints,
+    execution::ExecutionState,
+    pgo::{ApcCandidateJsonExport, Candidate, KnapsackItem},
+    InstructionHandler, PowdrConfig, VmConfig,
 };
-use powdr_openvm_bus_interaction_handler::OpenVmBusInteractionHandler;
+use powdr_number::{BabyBearField, FieldElement, LargeInt};
+use powdr_openvm_bus_interaction_handler::{
+    bus_map::OpenVmBusType, memory_bus_interaction::OpenVmMemoryBusInteraction,
+    OpenVmBusInteractionHandler,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::OriginalCompiledProgram;
 
 /// A newtype wrapper around `OpenVmInstruction` to implement the `Instruction` trait.
 /// This is necessary because we cannot implement a foreign trait for a foreign type.
+// TODO: This is not tested yet as apc compilation does not currently output any optimistic constraints
+impl<'a, F: PrimeField32, ISA: OpenVmISA> ExecutionState for OpenVmExecutionState<'a, F, ISA> {
+    type RegisterAddress = ISA::RegisterAddress;
+    type Value = u32;
+
+    fn pc(&self) -> Self::Value {
+        self.inner.pc()
+    }
+
+    fn reg(&self, addr: &Self::RegisterAddress) -> Self::Value {
+        ISA::get_register_value(addr)
+    }
+
+    fn value_limb(value: Self::Value, limb_index: usize) -> Self::Value {
+        ISA::value_limb(value, limb_index)
+    }
+
+    fn global_clk(&self) -> usize {
+        unimplemented!("OpenVM does not give us access to a global clock")
+    }
+}
+
+impl<'a, ISA: OpenVmISA> Adapter for BabyBearOpenVmApcAdapter<'a, ISA> {
+    type PowdrField = BabyBearField;
+    type Field = BabyBear;
+    type InstructionHandler = OriginalAirs<Self::Field, ISA>;
+    // TODO: is this riscv specific? if so, move to isa trait
+    type BusInteractionHandler = OpenVmBusInteractionHandler<Self::PowdrField>;
+    type Program = Prog<'a, Self::Field>;
+    type Instruction = Instr<Self::Field, ISA>;
+    // TODO: is this riscv specific? if so, move to isa trait
+    type MemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash> =
+        OpenVmMemoryBusInteraction<Self::PowdrField, V>;
+    // TODO: is this riscv specific? if so, move to isa trait
+    type CustomBusTypes = OpenVmBusType;
+    type ApcStats = OvmApcStats;
+    type AirId = String;
+    type ExecutionState = OpenVmExecutionState<'a, BabyBear, ISA>;
+
+    fn into_field(e: Self::PowdrField) -> Self::Field {
+        openvm_stark_sdk::p3_baby_bear::BabyBear::from_canonical_u32(
+            e.to_integer().try_into_u32().unwrap(),
+        )
+    }
+
+    fn from_field(e: Self::Field) -> Self::PowdrField {
+        BabyBearField::from(e.as_canonical_u32())
+    }
+
+    fn apc_stats(
+        apc: Arc<AdapterApc<Self>>,
+        instruction_handler: &Self::InstructionHandler,
+    ) -> Self::ApcStats {
+        // Get the metrics for the apc using the same degree bound as the one used for the instruction chips
+        let apc_metrics = get_air_metrics(
+            Arc::new(PowdrAir::new(apc.machine.clone())),
+            instruction_handler.degree_bound().identities,
+        );
+        let width_after = apc_metrics.widths;
+
+        // Sum up the metrics for each instruction
+        let width_before = apc
+            .instructions()
+            .map(|instr| {
+                instruction_handler
+                    .get_instruction_metrics(instr.inner.opcode)
+                    .unwrap()
+                    .widths
+            })
+            .sum();
+
+        OvmApcStats::new(AirWidthsDiff::new(width_before, width_after))
+    }
+
+    fn is_allowed(instruction: &Self::Instruction) -> bool {
+        ISA::instruction_allowlist().contains(&instruction.inner.opcode)
+    }
+
+    fn is_branching(instruction: &Self::Instruction) -> bool {
+        ISA::is_branching(instruction.inner.opcode)
+    }
+}
 
 #[derive(Serialize, Deserialize)]
 pub struct Instr<F, ISA> {
@@ -79,28 +173,6 @@ impl<F: PrimeField32, ISA: OpenVmISA> Instruction<F> for Instr<F, ISA> {
         // [pc, opcode, a, b, c, d, e, f, g]
         let pc = F::from_canonical_u32(pc.try_into().unwrap());
         once(pc).chain(args).collect()
-    }
-}
-
-// TODO: This is not tested yet as apc compilation does not currently output any optimistic constraints
-impl<'a, F: PrimeField32, ISA: OpenVmISA> ExecutionState for OpenVmExecutionState<'a, F, ISA> {
-    type RegisterAddress = ISA::RegisterAddress;
-    type Value = u32;
-
-    fn pc(&self) -> Self::Value {
-        self.inner.pc()
-    }
-
-    fn reg(&self, addr: &Self::RegisterAddress) -> Self::Value {
-        ISA::get_register_value(addr)
-    }
-
-    fn value_limb(value: Self::Value, limb_index: usize) -> Self::Value {
-        ISA::value_limb(value, limb_index)
-    }
-
-    fn global_clk(&self) -> usize {
-        unimplemented!("OpenVM does not give us access to a global clock")
     }
 }
 

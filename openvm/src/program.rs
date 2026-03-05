@@ -6,8 +6,8 @@ use powdr_autoprecompiles::blocks::Program;
 use crate::customize_exe::Instr;
 use crate::extraction_utils::OriginalVmConfig;
 use crate::extraction_utils::{get_air_metrics, AirMetrics, AirWidthsDiff};
+use crate::isa::OpenVmISA;
 use crate::BabyBearPoseidon2Engine;
-use crate::{isa::OpenVmISA};
 use crate::{BabyBearOpenVmApcAdapter, SpecializedConfig, SpecializedConfigCpuBuilder};
 
 /// A newtype wrapper around `OpenVmProgram` to implement the `Program` trait.
