@@ -33,7 +33,7 @@ use std::ops::Deref;
 use std::ops::{Add, Sub};
 use std::sync::MutexGuard;
 
-use crate::instruction::Instr;
+use crate::customize_exe::Instr;
 use crate::isa::{OpenVmISA, OriginalCpuChipComplex};
 use crate::powdr_extension::executor::RecordArenaDimension;
 use crate::utils::symbolic_to_algebraic;

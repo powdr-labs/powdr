@@ -1,20 +1,108 @@
-use std::sync::Arc;
+use std::{collections::HashMap, fmt::Display, iter::once, marker::PhantomData, sync::Arc};
 
 use crate::{
+    extraction_utils::AirWidthsDiff,
     isa::OpenVmISA,
     powdr_extension::{PowdrOpcode, PowdrPrecompile},
     program::CompiledProgram,
-    BabyBearOpenVmApcAdapter, SpecializedConfig, POWDR_OPCODE,
+    BabyBearOpenVmApcAdapter, OpenVmExecutionState, SpecializedConfig, POWDR_OPCODE,
 };
+use openvm_instructions::instruction::Instruction as OpenVmInstruction;
 use openvm_instructions::{program::DEFAULT_PC_STEP, VmOpcode};
+
+use openvm_stark_backend::p3_field::PrimeField32;
+use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
-    adapter::{ApcWithStats, PgoAdapter},
-    empirical_constraints::EmpiricalConstraints,
-    PowdrConfig, VmConfig,
+    PowdrConfig, VmConfig, adapter::{AdapterApcWithStats, ApcWithStats, PgoAdapter}, blocks::{BasicBlock, Instruction, PcStep}, empirical_constraints::EmpiricalConstraints, execution::ExecutionState, pgo::{ApcCandidateJsonExport, Candidate, KnapsackItem}
 };
 use powdr_openvm_bus_interaction_handler::OpenVmBusInteractionHandler;
+use serde::{Deserialize, Serialize};
 
 use crate::OriginalCompiledProgram;
+
+/// A newtype wrapper around `OpenVmInstruction` to implement the `Instruction` trait.
+/// This is necessary because we cannot implement a foreign trait for a foreign type.
+
+#[derive(Serialize, Deserialize)]
+pub struct Instr<F, ISA> {
+    pub inner: OpenVmInstruction<F>,
+    _marker: PhantomData<ISA>,
+}
+
+impl<F, ISA> From<OpenVmInstruction<F>> for Instr<F, ISA> {
+    fn from(value: OpenVmInstruction<F>) -> Self {
+        Self {
+            inner: value,
+            _marker: PhantomData,
+        }
+    }
+}
+
+// TODO: derive, probably the compiler being too conservative here
+impl<F, ISA> Clone for Instr<F, ISA>
+where
+    OpenVmInstruction<F>: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<F: PrimeField32, ISA: OpenVmISA> Display for Instr<F, ISA> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", ISA::format(&self.inner))
+    }
+}
+
+impl<F, ISA: OpenVmISA> PcStep for Instr<F, ISA> {
+    fn pc_step() -> u32 {
+        DEFAULT_PC_STEP
+    }
+}
+
+impl<F: PrimeField32, ISA: OpenVmISA> Instruction<F> for Instr<F, ISA> {
+    fn pc_lookup_row(&self, pc: u64) -> Vec<F> {
+        let args = [
+            self.inner.opcode.to_field(),
+            self.inner.a,
+            self.inner.b,
+            self.inner.c,
+            self.inner.d,
+            self.inner.e,
+            self.inner.f,
+            self.inner.g,
+        ];
+        // The PC lookup row has the format:
+        // [pc, opcode, a, b, c, d, e, f, g]
+        let pc = F::from_canonical_u32(pc.try_into().unwrap());
+        once(pc).chain(args).collect()
+    }
+}
+
+// TODO: This is not tested yet as apc compilation does not currently output any optimistic constraints
+impl<'a, F: PrimeField32, ISA: OpenVmISA> ExecutionState for OpenVmExecutionState<'a, F, ISA> {
+    type RegisterAddress = ISA::RegisterAddress;
+    type Value = u32;
+
+    fn pc(&self) -> Self::Value {
+        self.inner.pc()
+    }
+
+    fn reg(&self, addr: &Self::RegisterAddress) -> Self::Value {
+        ISA::get_register_value(addr)
+    }
+
+    fn value_limb(value: Self::Value, limb_index: usize) -> Self::Value {
+        ISA::value_limb(value, limb_index)
+    }
+
+    fn global_clk(&self) -> usize {
+        unimplemented!("OpenVM does not give us access to a global clock")
+    }
+}
 
 pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a, ISA>>>(
     original_program: OriginalCompiledProgram<ISA>,
@@ -87,5 +175,110 @@ pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAd
     CompiledProgram {
         exe: Arc::new(exe),
         vm_config: SpecializedConfig::new(original_config, extensions, config.degree_bound),
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct OpenVmApcCandidate<ISA: OpenVmISA> {
+    apc_with_stats:
+        ApcWithStats<BabyBear, Instr<BabyBear, ISA>, ISA::RegisterAddress, u32, OvmApcStats>,
+    execution_frequency: usize,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct OvmApcStats {
+    pub widths: AirWidthsDiff,
+}
+
+impl OvmApcStats {
+    pub fn new(widths: AirWidthsDiff) -> Self {
+        Self { widths }
+    }
+}
+
+impl<'a, ISA: OpenVmISA> Candidate<BabyBearOpenVmApcAdapter<'a, ISA>> for OpenVmApcCandidate<ISA> {
+    fn create(
+        apc_with_stats: AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a, ISA>>,
+        pgo_program_pc_count: &HashMap<u64, u32>,
+    ) -> Self {
+        let execution_frequency = *pgo_program_pc_count
+            .get(
+                &apc_with_stats
+                    .apc()
+                    .block
+                    .try_as_basic_block()
+                    .expect("superblocks unsupported")
+                    .start_pc,
+            )
+            .unwrap_or(&0) as usize;
+
+        Self {
+            apc_with_stats,
+            execution_frequency,
+        }
+    }
+
+    /// Return a JSON export of the APC candidate.
+    fn to_json_export(&self) -> ApcCandidateJsonExport {
+        ApcCandidateJsonExport {
+            execution_frequency: self.execution_frequency,
+            original_block: BasicBlock {
+                start_pc: self
+                    .apc_with_stats
+                    .apc()
+                    .block
+                    .try_as_basic_block()
+                    .expect("superblocks unsupported")
+                    .start_pc,
+                instructions: self
+                    .apc_with_stats
+                    .apc()
+                    .instructions()
+                    .map(ToString::to_string)
+                    .collect(),
+            },
+            stats: self.apc_with_stats.evaluation_result(),
+            width_before: self.apc_with_stats.stats().widths.before.total(),
+            value: self.value(),
+            cost_before: self.apc_with_stats.stats().widths.before.total() as f64,
+            cost_after: self.apc_with_stats.stats().widths.after.total() as f64,
+        }
+    }
+
+    fn into_apc_and_stats(self) -> AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a, ISA>> {
+        self.apc_with_stats
+    }
+}
+
+impl<ISA: OpenVmISA> OpenVmApcCandidate<ISA> {
+    fn cells_saved_per_row(&self) -> usize {
+        // The number of cells saved per row is the difference between the width before and after the APC.
+        self.apc_with_stats.stats().widths.columns_saved().total()
+    }
+}
+
+impl<ISA: OpenVmISA> KnapsackItem for OpenVmApcCandidate<ISA> {
+    fn cost(&self) -> usize {
+        self.apc_with_stats.stats().widths.after.total()
+    }
+
+    fn value(&self) -> usize {
+        // For an APC which is called once and saves 1 cell, this would be 1.
+        let value = self
+            .execution_frequency
+            .checked_mul(self.cells_saved_per_row())
+            .unwrap();
+        // We need `value()` to be much larger than `cost()` to avoid ties when ranking by `value() / cost()`
+        // Therefore, we scale it up by a constant factor.
+        value.checked_mul(1000).unwrap()
+    }
+
+    fn tie_breaker(&self) -> usize {
+        self.apc_with_stats
+            .apc()
+            .block
+            .try_as_basic_block()
+            .unwrap()
+            .start_pc as usize
     }
 }

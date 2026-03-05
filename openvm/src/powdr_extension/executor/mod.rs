@@ -22,8 +22,10 @@ use openvm_circuit::arch::{
 };
 #[cfg(feature = "aot")]
 use openvm_circuit::arch::{AotExecutor, AotMeteredExecutor};
+use openvm_circuit_derive::create_handler;
 use openvm_circuit_primitives::AlignedBytesBorrow;
 use openvm_instructions::instruction::Instruction;
+use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
     execution::{OptimisticConstraintEvaluator, OptimisticConstraints},
@@ -188,9 +190,9 @@ struct CachedInstructionMeta {
 /// A struct to interpret the pre-compute data as for PowdrExecutor.
 #[derive(AlignedBytesBorrow, Clone)]
 #[repr(C)]
-struct PowdrPreCompute<Ctx, ISA: OpenVmISA> {
+struct PowdrPreCompute<F, Ctx, ISA: OpenVmISA> {
     height_change: u32,
-    original_instructions: Vec<(ExecuteFunc<BabyBear, Ctx>, Vec<u8>)>,
+    original_instructions: Vec<(ExecuteFunc<F, Ctx>, Vec<u8>)>,
     optimistic_constraints: OptimisticConstraints<ISA::RegisterAddress, u32>,
 }
 
@@ -198,7 +200,7 @@ impl<ISA: OpenVmISA> InterpreterExecutor<BabyBear> for PowdrExecutor<ISA> {
     fn pre_compute_size(&self) -> usize {
         // TODO: do we know `ExecutionCtx` is correct? It's only one implementation of `ExecutionCtxTrait`.
         // A clean fix would be to add `Ctx` as a generic parameter to this method in the `Executor` trait, but that would be a breaking change.
-        size_of::<PowdrPreCompute<ExecutionCtx, ISA>>()
+        size_of::<PowdrPreCompute<BabyBear, ExecutionCtx, ISA>>()
     }
 
     #[cfg(not(feature = "tco"))]
@@ -211,11 +213,11 @@ impl<ISA: OpenVmISA> InterpreterExecutor<BabyBear> for PowdrExecutor<ISA> {
     where
         Ctx: ExecutionCtxTrait,
     {
-        let pre_compute: &mut PowdrPreCompute<Ctx, ISA> = data.borrow_mut();
+        let pre_compute: &mut PowdrPreCompute<BabyBear, Ctx, ISA> = data.borrow_mut();
 
         self.pre_compute_impl::<Ctx>(pc, inst, pre_compute)?;
 
-        Ok(execute_e1_impl::<Ctx, ISA>)
+        Ok(execute_e1_impl::<BabyBear, Ctx, ISA>)
     }
 
     #[cfg(feature = "tco")]
@@ -238,7 +240,7 @@ impl<ISA: OpenVmISA> InterpreterMeteredExecutor<BabyBear> for PowdrExecutor<ISA>
     fn metered_pre_compute_size(&self) -> usize {
         // TODO: do we know `MeteredCtx` is correct? It's only one implementation of `MeteredExecutionCtxTrait`.
         // A clean fix would be to add `Ctx` as a generic parameter to this method in the `MeteredExecutor` trait, but that would be a breaking change.
-        size_of::<E2PreCompute<PowdrPreCompute<MeteredCtx, ISA>>>()
+        size_of::<E2PreCompute<PowdrPreCompute<BabyBear, MeteredCtx, ISA>>>()
     }
 
     #[cfg(not(feature = "tco"))]
@@ -252,12 +254,12 @@ impl<ISA: OpenVmISA> InterpreterMeteredExecutor<BabyBear> for PowdrExecutor<ISA>
     where
         Ctx: MeteredExecutionCtxTrait,
     {
-        let pre_compute: &mut E2PreCompute<PowdrPreCompute<Ctx, ISA>> = data.borrow_mut();
+        let pre_compute: &mut E2PreCompute<PowdrPreCompute<BabyBear, Ctx, ISA>> = data.borrow_mut();
         pre_compute.chip_idx = chip_idx as u32;
 
         self.pre_compute_impl::<Ctx>(pc, inst, &mut pre_compute.data)?;
 
-        Ok(execute_e2_impl::<Ctx, ISA>)
+        Ok(execute_e2_impl::<BabyBear, Ctx, ISA>)
     }
 
     #[cfg(feature = "tco")]
@@ -320,13 +322,16 @@ impl<ISA: OpenVmISA> PowdrExecutor<ISA> {
         &self,
         pc: u32,
         inst: &Instruction<BabyBear>,
-        data: &mut PowdrPreCompute<Ctx, ISA>,
+        data: &mut PowdrPreCompute<BabyBear, Ctx, ISA>,
     ) -> Result<(), StaticProgramError>
     where
         Ctx: ExecutionCtxTrait,
     {
         use openvm_instructions::program::DEFAULT_PC_STEP;
-        use openvm_stark_backend::p3_field::Field;
+        use openvm_stark_backend::{
+            p3_field::Field,
+            p3_maybe_rayon::prelude::{IndexedParallelIterator, ParallelIterator},
+        };
 
         let &Instruction {
             a,
@@ -354,12 +359,12 @@ impl<ISA: OpenVmISA> PowdrExecutor<ISA> {
 
         let executor_inventory = &self.executor_inventory;
         // Set the data using the original instructions
-        let new_data = PowdrPreCompute {
+        *data = PowdrPreCompute {
             height_change: self.height_change,
             original_instructions: self
                 .apc
                 .block
-                .instructions()
+                .par_instructions()
                 .enumerate()
                 .map(|(idx, instruction)| {
                     let executor = executor_inventory
@@ -379,11 +384,6 @@ impl<ISA: OpenVmISA> PowdrExecutor<ISA> {
                 .collect::<Result<Vec<_>, StaticProgramError>>()?,
             optimistic_constraints: self.apc.optimistic_constraints.clone(),
         };
-        // `data` is backed by raw pre-compute bytes and may be uninitialized here.
-        // Avoid dropping the previous bytes as if they were a valid `PowdrPreCompute`.
-        unsafe {
-            std::ptr::write(data, new_data);
-        }
 
         Ok(())
     }
@@ -403,14 +403,14 @@ impl<ISA: OpenVmISA> PowdrExecutor<ISA> {
 
 /// The implementation of the execute function, shared between Executor and MeteredExecutor.
 #[inline(always)]
-unsafe fn execute_e12_impl<CTX: ExecutionCtxTrait, ISA: OpenVmISA>(
-    pre_compute: &PowdrPreCompute<CTX, ISA>,
-    exec_state: &mut VmExecState<BabyBear, GuestMemory, CTX>,
+unsafe fn execute_e12_impl<F: PrimeField32, CTX: ExecutionCtxTrait, ISA: OpenVmISA>(
+    pre_compute: &PowdrPreCompute<F, CTX, ISA>,
+    exec_state: &mut VmExecState<F, GuestMemory, CTX>,
 ) {
     let mut optimistic_constraint_evalutator = OptimisticConstraintEvaluator::new();
     // Check the state before execution
     assert!(optimistic_constraint_evalutator
-        .try_next_execution_step::<OpenVmExecutionState<'_, ISA>>(
+        .try_next_execution_step::<OpenVmExecutionState<'_, F, ISA>>(
             &OpenVmExecutionState::from(&exec_state.vm_state),
             &pre_compute.optimistic_constraints
         )
@@ -419,7 +419,7 @@ unsafe fn execute_e12_impl<CTX: ExecutionCtxTrait, ISA: OpenVmISA>(
         executor(data.as_ptr(), exec_state);
         // Check the state after each original instruction
         assert!(optimistic_constraint_evalutator
-            .try_next_execution_step::<OpenVmExecutionState<'_, ISA>>(
+            .try_next_execution_step::<OpenVmExecutionState<'_, F, ISA>>(
                 &OpenVmExecutionState::from(&exec_state.vm_state),
                 &pre_compute.optimistic_constraints
             )
@@ -427,32 +427,31 @@ unsafe fn execute_e12_impl<CTX: ExecutionCtxTrait, ISA: OpenVmISA>(
     }
 }
 
-// TODO: create handler, current derive doesnt work because of generics. same for e2.
-// #[create_handler]
-unsafe fn execute_e1_impl<CTX: ExecutionCtxTrait, ISA: OpenVmISA>(
+#[create_handler]
+unsafe fn execute_e1_impl<F: PrimeField32, CTX: ExecutionCtxTrait, ISA: OpenVmISA>(
     pre_compute: *const u8,
-    exec_state: &mut VmExecState<BabyBear, GuestMemory, CTX>,
+    exec_state: &mut VmExecState<F, GuestMemory, CTX>,
 ) {
-    let pre_compute: &PowdrPreCompute<CTX, ISA> =
-        std::slice::from_raw_parts(pre_compute, size_of::<PowdrPreCompute<CTX, ISA>>()).borrow();
-    execute_e12_impl::<CTX, ISA>(pre_compute, exec_state);
+    let pre_compute: &PowdrPreCompute<F, CTX, ISA> =
+        std::slice::from_raw_parts(pre_compute, size_of::<PowdrPreCompute<F, CTX, ISA>>()).borrow();
+    execute_e12_impl::<F, CTX, ISA>(pre_compute, exec_state);
 }
 
-// #[create_handler]
-unsafe fn execute_e2_impl<CTX: MeteredExecutionCtxTrait, ISA: OpenVmISA>(
+#[create_handler]
+unsafe fn execute_e2_impl<F: PrimeField32, CTX: MeteredExecutionCtxTrait, ISA: OpenVmISA>(
     pre_compute: *const u8,
-    exec_state: &mut VmExecState<BabyBear, GuestMemory, CTX>,
+    exec_state: &mut VmExecState<F, GuestMemory, CTX>,
 ) {
-    let pre_compute: &E2PreCompute<PowdrPreCompute<CTX, ISA>> = std::slice::from_raw_parts(
+    let pre_compute: &E2PreCompute<PowdrPreCompute<F, CTX, ISA>> = std::slice::from_raw_parts(
         pre_compute,
-        size_of::<E2PreCompute<PowdrPreCompute<CTX, ISA>>>(),
+        size_of::<E2PreCompute<PowdrPreCompute<F, CTX, ISA>>>(),
     )
     .borrow();
     exec_state.ctx.on_height_change(
         pre_compute.chip_idx as usize,
         pre_compute.data.height_change,
     );
-    execute_e12_impl::<CTX, ISA>(&pre_compute.data, exec_state);
+    execute_e12_impl::<F, CTX, ISA>(&pre_compute.data, exec_state);
 }
 
 // Preflight execution is implemented separately for CPU and GPU backends, because they use a different arena from `self`

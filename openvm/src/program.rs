@@ -3,10 +3,11 @@ use openvm_instructions::program::Program as OpenVmProgram;
 use openvm_stark_backend::p3_field::PrimeField32;
 use powdr_autoprecompiles::blocks::Program;
 
+use crate::customize_exe::Instr;
 use crate::extraction_utils::OriginalVmConfig;
 use crate::extraction_utils::{get_air_metrics, AirMetrics, AirWidthsDiff};
 use crate::BabyBearPoseidon2Engine;
-use crate::{instruction::Instr, isa::OpenVmISA};
+use crate::{isa::OpenVmISA};
 use crate::{BabyBearOpenVmApcAdapter, SpecializedConfig, SpecializedConfigCpuBuilder};
 
 /// A newtype wrapper around `OpenVmProgram` to implement the `Program` trait.

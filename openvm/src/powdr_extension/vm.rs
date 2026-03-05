@@ -12,14 +12,9 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_openvm_bus_interaction_handler::bus_map::BusMap;
 
 use crate::{
-    apc_air::PowdrAir,
-    extraction_utils::{OriginalAirs, OriginalVmConfig},
-    isa::OpenVmISA,
-    powdr_extension::{
-        executor::{OriginalArenas, PowdrExecutor},
-        PowdrOpcode,
-    },
-    IsaApc, OvmApcStats,
+    IsaApc, apc_air::PowdrAir, customize_exe::OvmApcStats, extraction_utils::{OriginalAirs, OriginalVmConfig}, isa::OpenVmISA, powdr_extension::{
+        PowdrOpcode, executor::{OriginalArenas, PowdrExecutor}
+    }
 };
 use openvm_circuit::{
     arch::{AirInventory, AirInventoryError, VmCircuitExtension, VmExecutionExtension},

@@ -20,7 +20,7 @@ runs:
         mkdir -p .cargo
         cat <<'EOF' > .cargo/config.toml
         [patch."https://github.com/powdr-labs/powdr.git"]
-        powdr-openvm-riscv = { path = "../openvm" }
+        powdr-openvm-riscv = { path = "../openvm-riscv" }
         powdr-riscv-elf = { path = "../riscv-elf" }
         powdr-number = { path = "../number" }
         powdr-autoprecompiles = { path = "../autoprecompiles" }

@@ -1,16 +1,11 @@
 use std::{collections::HashMap, sync::Arc};
 
 use itertools::Itertools;
-use openvm_circuit::{
-    arch::{ChipInventory, MatrixRecordArena, VmChipComplex},
-    system::SystemChipInventory,
-    utils::next_power_of_two_or_zero,
-};
+use openvm_circuit::{arch::MatrixRecordArena, utils::next_power_of_two_or_zero};
 use openvm_stark_backend::{
-    config::Val,
     p3_field::{Field, FieldAlgebra, PrimeField32},
     p3_matrix::dense::{DenseMatrix, RowMajorMatrix},
-    prover::{cpu::CpuBackend, hal::ProverBackend, types::AirProvingContext},
+    prover::{hal::ProverBackend, types::AirProvingContext},
     Chip,
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
@@ -20,35 +15,62 @@ use powdr_constraint_solver::constraint_system::ComputationMethod;
 use crate::{
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     isa::OpenVmISA,
-    powdr_extension::{
-        chip::PowdrChipCpu, executor::OriginalArenas,
-        trace_generator::cpu::periphery::SharedPeripheryChipsCpu,
-    },
-    BabyBearSC, IsaApc, PeripheryBusIds,
+    powdr_extension::{chip::PowdrChipCpu, executor::OriginalArenas},
+    IsaApc,
 };
-pub mod periphery;
 
-/// A dummy inventory used for execution of autoprecompiles
-/// It extends the `SdkVmConfigExecutor` and `SdkVmConfigPeriphery`, providing them with shared, pre-loaded periphery chips to avoid memory allocations by each SDK chip
-pub type DummyChipComplex<SC> =
-    VmChipComplex<SC, MatrixRecordArena<Val<SC>>, CpuBackend<SC>, SystemChipInventory<SC>>;
+/// The inventory of the PowdrExecutor, which contains the executors for each opcode.
+mod inventory;
+/// The shared periphery chips used by the PowdrTraceGenerator
+mod periphery;
 
-/// The shared chips which can be used by the PowdrChip.
-#[derive(Clone)]
-pub struct PowdrPeripheryInstancesCpu<S> {
-    /// The real chips used for the main execution.
-    pub real: S,
-    /// The dummy chips used for all APCs. They share the range checker but create new instances of the bitwise lookup chip and the tuple range checker.
-    pub dummy: S,
-    /// The bus ids of the periphery
-    pub bus_ids: PeripheryBusIds,
+pub use inventory::DummyChipComplex;
+pub use periphery::{
+    PowdrPeripheryInstancesCpu, SharedPeripheryChipsCpu, SharedPeripheryChipsCpuProverExt,
+};
+
+/// A wrapper around a DenseMatrix to implement `TraceTrait` which is required for `generate_trace`.
+pub struct SharedCpuTrace<F> {
+    pub matrix: Arc<RowMajorMatrix<F>>,
+}
+
+impl<F: Send + Sync> TraceTrait<F> for SharedCpuTrace<F> {
+    type Values = Vec<F>;
+
+    fn width(&self) -> usize {
+        self.matrix.width
+    }
+
+    fn values(&self) -> &Self::Values {
+        &self.matrix.values
+    }
+}
+
+impl<F> From<Arc<RowMajorMatrix<F>>> for SharedCpuTrace<F> {
+    fn from(matrix: Arc<RowMajorMatrix<F>>) -> Self {
+        Self { matrix }
+    }
+}
+
+impl<R, PB: ProverBackend<Matrix = Arc<RowMajorMatrix<BabyBear>>>, ISA: OpenVmISA> Chip<R, PB>
+    for PowdrChipCpu<ISA>
+{
+    fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
+        tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
+
+        let trace = self
+            .trace_generator
+            .generate_witness(self.record_arena_by_air_name.take());
+
+        AirProvingContext::simple(Arc::new(trace), vec![])
+    }
 }
 
 pub struct PowdrTraceGeneratorCpu<ISA: OpenVmISA> {
     pub apc: IsaApc<BabyBear, ISA>,
     pub original_airs: OriginalAirs<BabyBear, ISA>,
     pub config: OriginalVmConfig<ISA>,
-    pub periphery: PowdrPeripheryInstancesCpu<SharedPeripheryChipsCpu<ISA>>,
+    pub periphery: PowdrPeripheryInstancesCpu<ISA>,
 }
 
 impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
@@ -56,7 +78,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
         apc: IsaApc<BabyBear, ISA>,
         original_airs: OriginalAirs<BabyBear, ISA>,
         config: OriginalVmConfig<ISA>,
-        periphery: PowdrPeripheryInstancesCpu<SharedPeripheryChipsCpu<ISA>>,
+        periphery: PowdrPeripheryInstancesCpu<ISA>,
     ) -> Self {
         Self {
             apc,
@@ -84,11 +106,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
 
         let num_apc_calls = original_arenas.number_of_calls;
 
-        let chip_inventory: ChipInventory<
-            BabyBearSC,
-            MatrixRecordArena<BabyBear>,
-            CpuBackend<BabyBearSC>,
-        > = {
+        let chip_inventory = {
             let airs = ISA::create_dummy_airs(self.config.config(), self.periphery.dummy.clone())
                 .expect("Failed to create dummy airs");
 
@@ -118,7 +136,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
 
                 let shared_trace = chip.generate_proving_ctx(record_arena).common_main.unwrap();
 
-                Some((air_name, shared_trace.into()))
+                Some((air_name, SharedCpuTrace::from(shared_trace)))
             })
             .collect();
 
@@ -207,42 +225,5 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
             });
 
         RowMajorMatrix::new(values, width)
-    }
-}
-
-/// A wrapper around a DenseMatrix to implement `TraceTrait` which is required for `generate_trace`.
-pub struct SharedCpuTrace<F> {
-    pub matrix: Arc<RowMajorMatrix<F>>,
-}
-
-impl<F: Send + Sync> TraceTrait<F> for SharedCpuTrace<F> {
-    type Values = Vec<F>;
-
-    fn width(&self) -> usize {
-        self.matrix.width
-    }
-
-    fn values(&self) -> &Self::Values {
-        &self.matrix.values
-    }
-}
-
-impl<F> From<Arc<RowMajorMatrix<F>>> for SharedCpuTrace<F> {
-    fn from(matrix: Arc<RowMajorMatrix<F>>) -> Self {
-        Self { matrix }
-    }
-}
-
-impl<R, PB: ProverBackend<Matrix = Arc<RowMajorMatrix<BabyBear>>>, ISA: OpenVmISA> Chip<R, PB>
-    for PowdrChipCpu<ISA>
-{
-    fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
-        tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
-
-        let trace = self
-            .trace_generator
-            .generate_witness(self.record_arena_by_air_name.take());
-
-        AirProvingContext::simple(Arc::new(trace), vec![])
     }
 }

@@ -14,7 +14,6 @@ use openvm_circuit_primitives::{
 };
 use openvm_stark_backend::{config::StarkGenericConfig, p3_field::PrimeField32};
 
-use super::PowdrPeripheryInstancesCpu;
 use itertools::Itertools;
 use openvm_circuit::arch::RowMajorMatrixArena;
 use openvm_stark_backend::config::Val;
@@ -22,6 +21,17 @@ use openvm_stark_backend::engine::StarkEngine;
 use openvm_stark_backend::prover::cpu::{CpuBackend, CpuDevice};
 
 use crate::{isa::OpenVmISA, PeripheryBusIds};
+
+/// The shared chips which can be used by the PowdrChip.
+#[derive(Clone)]
+pub struct PowdrPeripheryInstancesCpu<ISA> {
+    /// The real chips used for the main execution.
+    pub real: SharedPeripheryChipsCpu<ISA>,
+    /// The dummy chips used for all APCs. They share the range checker but create new instances of the bitwise lookup chip and the tuple range checker.
+    pub dummy: SharedPeripheryChipsCpu<ISA>,
+    /// The bus ids of the periphery
+    pub bus_ids: PeripheryBusIds,
+}
 
 #[derive(Clone)]
 pub struct SharedPeripheryChipsCpu<ISA> {
@@ -31,37 +41,39 @@ pub struct SharedPeripheryChipsCpu<ISA> {
     _marker: PhantomData<ISA>,
 }
 
-pub fn new_periphery_instances<ISA>(
-    range_checker: SharedVariableRangeCheckerChip,
-    bitwise_8: Option<SharedBitwiseOperationLookupChip<8>>,
-    tuple_range_checker: Option<SharedRangeTupleCheckerChip<2>>,
-    bus_ids: PeripheryBusIds,
-) -> PowdrPeripheryInstancesCpu<SharedPeripheryChipsCpu<ISA>> {
-    PowdrPeripheryInstancesCpu {
-        real: SharedPeripheryChipsCpu {
-            bitwise_lookup_8: bitwise_8.clone(),
-            range_checker: range_checker.clone(),
-            tuple_range_checker: tuple_range_checker.clone(),
-            _marker: PhantomData,
-        },
-        // Bitwise lookup and tuple range checker do not need to be shared with the main execution:
-        // If we did share, we'd have to roll back the side effects of execution and apply the side effects from the apc air onto the main periphery.
-        // By not sharing them, we can throw away the dummy ones after execution and only apply the side effects from the apc air onto the main periphery.
-        dummy: SharedPeripheryChipsCpu {
-            bitwise_lookup_8: bitwise_8.map(|bitwise_8| {
-                SharedBitwiseOperationLookupChip::new(BitwiseOperationLookupChip::new(
-                    bitwise_8.bus(),
-                ))
-            }),
-            range_checker: range_checker.clone(),
-            tuple_range_checker: tuple_range_checker.map(|tuple_range_checker| {
-                SharedRangeTupleCheckerChip::new(RangeTupleCheckerChip::new(
-                    *tuple_range_checker.bus(),
-                ))
-            }),
-            _marker: PhantomData,
-        },
-        bus_ids,
+impl<ISA> PowdrPeripheryInstancesCpu<ISA> {
+    pub fn new(
+        range_checker: SharedVariableRangeCheckerChip,
+        bitwise_8: Option<SharedBitwiseOperationLookupChip<8>>,
+        tuple_range_checker: Option<SharedRangeTupleCheckerChip<2>>,
+        bus_ids: PeripheryBusIds,
+    ) -> Self {
+        Self {
+            real: SharedPeripheryChipsCpu {
+                bitwise_lookup_8: bitwise_8.clone(),
+                range_checker: range_checker.clone(),
+                tuple_range_checker: tuple_range_checker.clone(),
+                _marker: PhantomData,
+            },
+            // Bitwise lookup and tuple range checker do not need to be shared with the main execution:
+            // If we did share, we'd have to roll back the side effects of execution and apply the side effects from the apc air onto the main periphery.
+            // By not sharing them, we can throw away the dummy ones after execution and only apply the side effects from the apc air onto the main periphery.
+            dummy: SharedPeripheryChipsCpu {
+                bitwise_lookup_8: bitwise_8.map(|bitwise_8| {
+                    SharedBitwiseOperationLookupChip::new(BitwiseOperationLookupChip::new(
+                        bitwise_8.bus(),
+                    ))
+                }),
+                range_checker: range_checker.clone(),
+                tuple_range_checker: tuple_range_checker.map(|tuple_range_checker| {
+                    SharedRangeTupleCheckerChip::new(RangeTupleCheckerChip::new(
+                        *tuple_range_checker.bus(),
+                    ))
+                }),
+                _marker: PhantomData,
+            },
+            bus_ids,
+        }
     }
 }
 
