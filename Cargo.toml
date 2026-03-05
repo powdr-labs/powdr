@@ -11,12 +11,12 @@ members = [
   "isa-utils",
   "syscalls",
   "autoprecompiles",
-  "openvm",
+  "openvm-riscv",
   "openvm-bus-interaction-handler",
-  "cli-openvm",
-  "openvm/extensions/hints-guest",
-  "openvm/extensions/hints-transpiler",
-  "openvm/extensions/hints-circuit",
+  "cli-openvm-riscv",
+  "openvm-riscv/extensions/hints-riscv-guest",
+  "openvm-riscv/extensions/hints-riscv-transpiler",
+  "openvm-riscv/extensions/hints-riscv-circuit",
 ]
 
 exclude = ["riscv-runtime"]
@@ -38,12 +38,12 @@ powdr-riscv-elf = { path = "./riscv-elf", version = "0.1.4" }
 powdr-riscv-types = { path = "./riscv-types", version = "0.1.4" }
 powdr-syscalls = { path = "./syscalls", version = "0.1.4" }
 powdr-autoprecompiles = { path = "./autoprecompiles", version = "0.1.4" }
-powdr-openvm = { path = "./openvm", version = "0.1.4" }
+powdr-openvm-riscv = { path = "./openvm-riscv", version = "0.1.4" }
 powdr-openvm-bus-interaction-handler = { path = "./openvm-bus-interaction-handler", version = "0.1.4" }
 
-powdr-openvm-hints-guest = { path = "./openvm/extensions/hints-guest", version = "0.1.4" }
-powdr-openvm-hints-transpiler = { path = "./openvm/extensions/hints-transpiler", version = "0.1.4" }
-powdr-openvm-hints-circuit = { path = "./openvm/extensions/hints-circuit", version = "0.1.4" }
+powdr-openvm-riscv-hints-guest = { path = "./openvm-riscv/extensions/hints-riscv-guest", version = "0.1.4" }
+powdr-openvm-riscv-hints-transpiler = { path = "./openvm-riscv/extensions/hints-riscv-transpiler", version = "0.1.4" }
+powdr-openvm-riscv-hints-circuit = { path = "./openvm-riscv/extensions/hints-riscv-circuit", version = "0.1.4" }
 
 # openvm
 openvm = { git = "https://github.com/powdr-labs/openvm.git", rev = "v1.4.2-powdr-rc.2" }

@@ -41,25 +41,25 @@ cargo nextest run --run-ignored only
 cargo nextest run -E 'test(_large)' --run-ignored only
 
 # Run tests in specific package
-cargo nextest run -p powdr-openvm
+cargo nextest run -p powdr-openvm-riscv
 ```
 
 ## CLI Usage
 
-The main CLI is `powdr_openvm` (in `cli-openvm/`):
+The main CLI is `powdr_openvm_riscv` (in `cli-openvm-riscv/`):
 
 ```bash
 # Compile a guest program with autoprecompiles
-cargo run -p cli-openvm -- compile guest-keccak --autoprecompiles 10 --pgo instruction --input 100
+cargo run -p powdr-openvm-riscv-cli -- compile guest-keccak --autoprecompiles 10 --pgo instruction --input 100
 
 # Execute a compiled program
-cargo run -p cli-openvm -- execute guest-keccak --autoprecompiles 10 --input 100
+cargo run -p powdr-openvm-riscv-cli -- execute guest-keccak --autoprecompiles 10 --input 100
 
 # Prove (generate ZK proof)
-cargo run -p cli-openvm -- prove guest-keccak --autoprecompiles 1 --input 10
+cargo run -p powdr-openvm-riscv-cli -- prove guest-keccak --autoprecompiles 1 --input 10
 
 # Mock prove (debug mode, verifies constraints without full proof)
-cargo run -p cli-openvm -- prove guest-keccak --mock --autoprecompiles 1 --input 10
+cargo run -p powdr-openvm-riscv-cli -- prove guest-keccak --mock --autoprecompiles 1 --input 10
 ```
 
 ## Architecture
@@ -78,7 +78,7 @@ cargo run -p cli-openvm -- prove guest-keccak --mock --autoprecompiles 1 --input
   - `range_constraint.rs`: Range analysis for variables
   - `inliner.rs`: Constraint inlining with degree bounds
 
-- **openvm** (`openvm/`): OpenVM integration layer. Connects powdr optimizations to the OpenVM zkVM:
+- **openvm-riscv** (`openvm-riscv/`): OpenVM integration layer. Connects powdr optimizations to the OpenVM zkVM:
   - `customize_exe.rs`: Modifies OpenVM executables to use APCs
   - `powdr_extension/`: OpenVM circuit extension for APCs
   - `trace_generation.rs`: Generates execution traces for proving
@@ -88,11 +88,11 @@ cargo run -p cli-openvm -- prove guest-keccak --mock --autoprecompiles 1 --input
 - **expression** (`expression/`): Core algebraic expression types (`AlgebraicExpression`, operators)
 - **number** (`number/`): Field element abstractions
 - **riscv-elf** (`riscv-elf/`): ELF file parsing for RISC-V binaries
-- **cli-openvm** (`cli-openvm/`): Command-line interface
+- **powdr-openvm-riscv-cli** (`cli-openvm-riscv/`): Command-line interface
 
 ### Guest Programs
 
-Example guest programs in `openvm/guest-*` directories (keccak, sha256, ecc, pairing, etc.) are used for testing and benchmarking.
+Example guest programs in `openvm-riscv/guest-*` directories (keccak, sha256, ecc, pairing, etc.) are used for testing and benchmarking.
 
 ## Key Concepts
 
