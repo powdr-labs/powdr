@@ -1,7 +1,6 @@
-use std::{cell::RefCell, rc::Rc};
+// Mostly taken from [this openvm extension](https://github.com/openvm-org/openvm/blob/1b76fd5a900a7d69850ee9173969f70ef79c4c76/extensions/rv32im/circuit/src/auipc/core.rs#L1)
 
-use openvm_circuit::arch::MatrixRecordArena;
-use openvm_stark_sdk::p3_baby_bear::BabyBear;
+use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
 use crate::{
     extraction_utils::{OriginalAirs, OriginalVmConfig},
@@ -13,16 +12,20 @@ use crate::{
     },
 };
 
-use std::collections::BTreeMap;
-
 use itertools::Itertools;
+use openvm_circuit::arch::MatrixRecordArena;
+use openvm_stark_backend::{
+    p3_air::{Air, BaseAir},
+    rap::ColumnsAir,
+};
+
 use openvm_stark_backend::{
     interaction::InteractionBuilder,
-    p3_air::{Air, BaseAir},
     p3_field::PrimeField32,
     p3_matrix::Matrix,
-    rap::{BaseAirWithPublicValues, ColumnsAir, PartitionedBaseAir},
+    rap::{BaseAirWithPublicValues, PartitionedBaseAir},
 };
+use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
     expression::{AlgebraicEvaluator, AlgebraicReference, WitnessEvaluator},
     symbolic_machine::SymbolicMachine,
@@ -137,11 +140,12 @@ mod cuda {
     use openvm_stark_sdk::p3_baby_bear::BabyBear;
 
     use crate::{
-        executor::OriginalArenas,
         extraction_utils::{OriginalAirs, OriginalVmConfig},
-        isa::OpenVmISA,
-        trace_generator::cuda::{PowdrPeripheryInstancesGpu, PowdrTraceGeneratorGpu},
-        vm::PowdrPrecompile,
+        powdr_extension::{
+            executor::OriginalArenas,
+            trace_generator::cuda::{PowdrPeripheryInstancesGpu, PowdrTraceGeneratorGpu},
+            PowdrPrecompile,
+        },
     };
 
     pub struct PowdrChipGpu<ISA: OpenVmISA> {

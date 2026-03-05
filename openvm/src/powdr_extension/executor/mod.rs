@@ -6,11 +6,12 @@ use std::{
 };
 
 use crate::{
+    customize_exe::OpenVmExecutionState,
     extraction_utils::{
         record_arena_dimension_by_air_name_per_apc_call, OriginalAirs, OriginalVmConfig,
     },
     isa::OpenVmISA,
-    IsaApc, OpenVmExecutionState,
+    IsaApc,
 };
 
 use itertools::Itertools;

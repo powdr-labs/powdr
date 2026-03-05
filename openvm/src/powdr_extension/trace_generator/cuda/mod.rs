@@ -30,12 +30,10 @@ use crate::{
     BabyBearSC, IsaApc,
 };
 
-pub mod periphery;
+mod inventory;
+mod periphery;
 
 pub use periphery::PowdrPeripheryInstancesGpu;
-
-pub type GpuDummyChipComplex<SC> =
-    VmChipComplex<SC, DenseRecordArena, GpuBackend, SystemChipInventoryGPU>;
 
 /// Encodes an algebraic expression into GPU stack-machine bytecode.
 ///

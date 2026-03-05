@@ -6,22 +6,19 @@ use std::rc::Rc;
 
 use derive_more::From;
 use openvm_circuit::arch::{DenseRecordArena, MatrixRecordArena};
+#[cfg(not(feature = "tco"))]
 use openvm_instructions::instruction::Instruction;
 use openvm_instructions::LocalOpcode;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_openvm_bus_interaction_handler::bus_map::BusMap;
 
-use crate::{
-    apc_air::PowdrAir,
-    customize_exe::OvmApcStats,
-    extraction_utils::{OriginalAirs, OriginalVmConfig},
-    isa::OpenVmISA,
-    powdr_extension::{
-        executor::{OriginalArenas, PowdrExecutor},
-        PowdrOpcode,
-    },
-    IsaApc,
-};
+use crate::customize_exe::OvmApcStats;
+use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
+use crate::isa::OpenVmISA;
+use crate::powdr_extension::chip::PowdrAir;
+use crate::powdr_extension::executor::{OriginalArenas, PowdrExecutor};
+use crate::powdr_extension::PowdrOpcode;
+use crate::IsaApc;
 use openvm_circuit::{
     arch::{AirInventory, AirInventoryError, VmCircuitExtension, VmExecutionExtension},
     circuit_derive::Chip,
@@ -93,6 +90,45 @@ impl<F, ISA: OpenVmISA> PowdrExtension<F, ISA> {
 #[allow(clippy::large_enum_variant)]
 pub enum PowdrExtensionExecutor<ISA: OpenVmISA> {
     Powdr(PowdrExecutor<ISA>),
+}
+
+impl<ISA: OpenVmISA> VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear, ISA> {
+    type Executor = PowdrExtensionExecutor<ISA>;
+
+    fn extend_execution(
+        &self,
+        inventory: &mut openvm_circuit::arch::ExecutorInventoryBuilder<BabyBear, Self::Executor>,
+    ) -> Result<(), openvm_circuit::arch::ExecutorInventoryError> {
+        for precompile in &self.precompiles {
+            // The apc chip uses a single row per call
+            let height_change = 1;
+
+            let powdr_executor = PowdrExtensionExecutor::Powdr(PowdrExecutor::new(
+                self.airs.clone(),
+                self.base_config.clone(),
+                precompile.apc.clone(),
+                precompile.apc_record_arena_cpu.clone(),
+                precompile.apc_record_arena_gpu.clone(),
+                height_change,
+            ));
+            inventory.add_executor(powdr_executor, once(precompile.opcode.global_opcode()))?;
+        }
+
+        Ok(())
+    }
+}
+
+impl<SC, ISA: OpenVmISA> VmCircuitExtension<SC> for PowdrExtension<Val<SC>, ISA>
+where
+    SC: StarkGenericConfig,
+    Val<SC>: PrimeField32,
+{
+    fn extend_circuit(&self, inventory: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {
+        for precompile in &self.precompiles {
+            inventory.add_air(PowdrAir::new(precompile.apc.machine.clone()));
+        }
+        Ok(())
+    }
 }
 
 impl<ISA: OpenVmISA> openvm_circuit::arch::AnyEnum for PowdrExtensionExecutor<ISA> {
@@ -276,44 +312,5 @@ where
                 RA,
             >>::get_opcode_name(x, opcode),
         }
-    }
-}
-
-impl<ISA: OpenVmISA> VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear, ISA> {
-    type Executor = PowdrExtensionExecutor<ISA>;
-
-    fn extend_execution(
-        &self,
-        inventory: &mut openvm_circuit::arch::ExecutorInventoryBuilder<BabyBear, Self::Executor>,
-    ) -> Result<(), openvm_circuit::arch::ExecutorInventoryError> {
-        for precompile in &self.precompiles {
-            // The apc chip uses a single row per call
-            let height_change = 1;
-
-            let powdr_executor = PowdrExtensionExecutor::Powdr(PowdrExecutor::new(
-                self.airs.clone(),
-                self.base_config.clone(),
-                precompile.apc.clone(),
-                precompile.apc_record_arena_cpu.clone(),
-                precompile.apc_record_arena_gpu.clone(),
-                height_change,
-            ));
-            inventory.add_executor(powdr_executor, once(precompile.opcode.global_opcode()))?;
-        }
-
-        Ok(())
-    }
-}
-
-impl<SC, ISA: OpenVmISA> VmCircuitExtension<SC> for PowdrExtension<Val<SC>, ISA>
-where
-    SC: StarkGenericConfig,
-    Val<SC>: PrimeField32,
-{
-    fn extend_circuit(&self, inventory: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {
-        for precompile in &self.precompiles {
-            inventory.add_air(PowdrAir::new(precompile.apc.machine.clone()));
-        }
-        Ok(())
     }
 }

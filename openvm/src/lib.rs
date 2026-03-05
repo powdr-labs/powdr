@@ -3,12 +3,13 @@ use std::{marker::PhantomData, path::Path, sync::Arc};
 #[cfg(feature = "cuda")]
 use crate::{chip::PowdrChipGpu, trace_generator::cuda::periphery::PowdrPeripheryInstancesGpu};
 use crate::{
-    customize_exe::Instr,
+    customize_exe::{BabyBearOpenVmApcAdapter, Instr},
     execution_profile::execution_profile,
     isa::SpecializedExecutor,
     powdr_extension::{
-        chip::PowdrChipCpu, trace_generator::cpu::PowdrPeripheryInstancesCpu, PowdrExtension,
-        PowdrPrecompile,
+        chip::{PowdrAir, PowdrChipCpu},
+        trace_generator::cpu::PowdrPeripheryInstancesCpu,
+        PowdrExtension, PowdrPrecompile,
     },
     program::CompiledProgram,
 };
@@ -19,9 +20,9 @@ use openvm_circuit::{
         AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecutorInventory,
         ExecutorInventoryError, InitFileGenerator, MatrixRecordArena, RowMajorMatrixArena,
         SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig, VmCircuitExtension,
-        VmExecutionConfig, VmProverExtension, VmState,
+        VmExecutionConfig, VmProverExtension,
     },
-    system::{memory::online::GuestMemory, SystemChipInventory},
+    system::SystemChipInventory,
 };
 #[cfg(feature = "cuda")]
 use openvm_circuit_primitives::{
@@ -63,14 +64,12 @@ use powdr_autoprecompiles::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    apc_air::PowdrAir,
     extraction_utils::OriginalVmConfig,
     isa::OpenVmISA,
     program::{OriginalCompiledProgram, Prog},
 };
 
 mod air_builder;
-pub mod apc_air;
 #[cfg(feature = "cuda")]
 pub mod cuda_abi;
 pub mod customize_exe;
@@ -185,29 +184,6 @@ impl<ISA: OpenVmISA> SpecializedConfig<ISA> {
         Self {
             original: base_config,
             powdr: powdr_extension,
-        }
-    }
-}
-
-/// An adapter for the BabyBear OpenVM precompiles.
-/// Note: This could be made generic over the field, but the implementation of `Candidate` is BabyBear-specific.
-/// The lifetime parameter is used because we use a reference to the `OpenVmProgram` in the `Prog` type.
-pub struct BabyBearOpenVmApcAdapter<'a, ISA> {
-    _marker: std::marker::PhantomData<&'a ISA>,
-}
-
-pub struct OpenVmExecutionState<'a, F, ISA> {
-    inner: &'a VmState<F, GuestMemory>,
-    _marker: PhantomData<ISA>,
-}
-
-impl<'a, F: PrimeField32, ISA> From<&'a VmState<F, GuestMemory>>
-    for OpenVmExecutionState<'a, F, ISA>
-{
-    fn from(inner: &'a VmState<F, GuestMemory>) -> Self {
-        Self {
-            inner,
-            _marker: PhantomData,
         }
     }
 }

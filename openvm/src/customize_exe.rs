@@ -3,13 +3,13 @@ use std::{
 };
 
 use crate::{
-    apc_air::PowdrAir,
     extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs},
     isa::OpenVmISA,
-    powdr_extension::{PowdrOpcode, PowdrPrecompile},
+    powdr_extension::{chip::PowdrAir, PowdrOpcode, PowdrPrecompile},
     program::{CompiledProgram, Prog},
-    BabyBearOpenVmApcAdapter, OpenVmExecutionState, SpecializedConfig, POWDR_OPCODE,
+    SpecializedConfig, POWDR_OPCODE,
 };
+use openvm_circuit::{arch::VmState, system::memory::online::GuestMemory};
 use openvm_instructions::instruction::Instruction as OpenVmInstruction;
 use openvm_instructions::{program::DEFAULT_PC_STEP, VmOpcode};
 
@@ -32,8 +32,27 @@ use serde::{Deserialize, Serialize};
 
 use crate::OriginalCompiledProgram;
 
-/// A newtype wrapper around `OpenVmInstruction` to implement the `Instruction` trait.
-/// This is necessary because we cannot implement a foreign trait for a foreign type.
+/// An adapter for the BabyBear OpenVM precompiles.
+/// Note: This could be made generic over the field, but the implementation of `Candidate` is BabyBear-specific.
+/// The lifetime parameter is used because we use a reference to the `OpenVmProgram` in the `Prog` type.
+pub struct BabyBearOpenVmApcAdapter<'a, ISA> {
+    _marker: std::marker::PhantomData<&'a ISA>,
+}
+pub struct OpenVmExecutionState<'a, F, ISA> {
+    inner: &'a VmState<F, GuestMemory>,
+    _marker: PhantomData<ISA>,
+}
+
+impl<'a, F: PrimeField32, ISA> From<&'a VmState<F, GuestMemory>>
+    for OpenVmExecutionState<'a, F, ISA>
+{
+    fn from(inner: &'a VmState<F, GuestMemory>) -> Self {
+        Self {
+            inner,
+            _marker: PhantomData,
+        }
+    }
+}
 // TODO: This is not tested yet as apc compilation does not currently output any optimistic constraints
 impl<'a, F: PrimeField32, ISA: OpenVmISA> ExecutionState for OpenVmExecutionState<'a, F, ISA> {
     type RegisterAddress = ISA::RegisterAddress;
