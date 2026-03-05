@@ -35,7 +35,7 @@ pub struct PowdrChipCpu<ISA: OpenVmISA> {
 }
 
 impl<ISA: OpenVmISA> PowdrChipCpu<ISA> {
-    pub fn new(
+    pub(crate) fn new(
         precompile: PowdrPrecompile<BabyBear, ISA>,
         original_airs: OriginalAirs<BabyBear, ISA>,
         base_config: OriginalVmConfig<ISA>,
