@@ -26,7 +26,7 @@ pub fn create_dummy_chip_complex(
     use openvm_bigint_circuit::Int256GpuProverExt;
     use openvm_ecc_circuit::EccProverExt;
     use openvm_keccak256_circuit::Keccak256GpuProverExt;
-    use // TODO: NativeGpuProverExt removed in v2;
+    // TODO: NativeGpuProverExt removed in v2
     use openvm_rv32im_circuit::Rv32ImGpuProverExt;
     use openvm_sha2_circuit::Sha256GpuProverExt;
 

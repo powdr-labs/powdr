@@ -13,21 +13,17 @@ use openvm_circuit::arch::{
     RowMajorMatrixArena, SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig,
     VmCircuitExtension, VmExecutionConfig, VmProverExtension,
 };
-use openvm_circuit::system::SystemChipInventory;
 use openvm_circuit::derive::AnyEnum;
+use openvm_circuit::system::SystemChipInventory;
 use openvm_circuit_derive::{
     AotExecutor, AotMeteredExecutor, Executor, MeteredExecutor, PreflightExecutor,
 };
-use openvm_sdk_config::{SdkVmCpuBuilder, SdkVmConfig, SdkVmConfigExecutor, TranspilerConfig};
-use sdk_v2::prover::verify_app_proof;
-use sdk_v2::GenericSdk;
-use sdk_v2::{
-    config::{AppConfig, AggregationSystemParams, DEFAULT_APP_LOG_BLOWUP, DEFAULT_APP_L_SKIP, default_app_params},
-    Sdk, StdIn,
-};
-use openvm_stark_backend::{StarkProtocolConfig, Val, StarkEngine, SystemParams};
+use openvm_sdk_config::{SdkVmConfig, SdkVmConfigExecutor, SdkVmCpuBuilder, TranspilerConfig};
 use openvm_stark_backend::prover::{CpuBackend, CpuDevice, ProverBackend};
-use openvm_stark_sdk::config::baby_bear_poseidon2::{BabyBearPoseidon2Config, BabyBearPoseidon2CpuEngine};
+use openvm_stark_backend::{StarkEngine, StarkProtocolConfig, SystemParams, Val};
+use openvm_stark_sdk::config::baby_bear_poseidon2::{
+    BabyBearPoseidon2Config, BabyBearPoseidon2CpuEngine,
+};
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
@@ -39,6 +35,15 @@ use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::PowdrExtension;
 use powdr_openvm_hints_circuit::{HintsExtension, HintsExtensionExecutor, HintsProverExt};
 use powdr_openvm_hints_transpiler::HintsTranspilerExtension;
+use sdk_v2::prover::verify_app_proof;
+use sdk_v2::GenericSdk;
+use sdk_v2::{
+    config::{
+        default_app_params, AggregationSystemParams, AppConfig, DEFAULT_APP_LOG_BLOWUP,
+        DEFAULT_APP_L_SKIP,
+    },
+    Sdk, StdIn,
+};
 use serde::{Deserialize, Serialize};
 use std::iter::Sum;
 use std::ops::Add;
@@ -91,7 +96,6 @@ cfg_if::cfg_if! {
     }
 }
 
-use openvm_circuit_primitives::Chip;
 use openvm_circuit_primitives::bitwise_op_lookup::{
     BitwiseOperationLookupAir, SharedBitwiseOperationLookupChip,
 };
@@ -99,8 +103,8 @@ use openvm_circuit_primitives::range_tuple::{RangeTupleCheckerAir, SharedRangeTu
 use openvm_circuit_primitives::var_range::{
     SharedVariableRangeCheckerChip, VariableRangeCheckerAir,
 };
-pub type PowdrSdkCpu =
-    GenericSdk<BabyBearPoseidon2CpuEngine, SpecializedConfigCpuBuilder>;
+use openvm_circuit_primitives::Chip;
+pub type PowdrSdkCpu = GenericSdk<BabyBearPoseidon2CpuEngine, SpecializedConfigCpuBuilder>;
 pub type PowdrExecutionProfileSdkCpu =
     GenericSdk<BabyBearPoseidon2CpuEngine, ExtendedVmConfigCpuBuilder>;
 
@@ -830,7 +834,11 @@ pub fn prove(
             // Verify
             let app_vk = sdk.app_pk().get_app_vk();
             let memory_dimensions = app_prover.memory_dimensions();
-            verify_app_proof::<BabyBearPoseidon2CpuEngine>(&app_vk.vk, memory_dimensions, &app_proof)?;
+            verify_app_proof::<BabyBearPoseidon2CpuEngine>(
+                &app_vk.vk,
+                memory_dimensions,
+                &app_proof,
+            )?;
             tracing::info!("App proof verification done.");
         }
 
@@ -857,8 +865,7 @@ pub fn execution_profile_from_guest(
     let sdk = PowdrExecutionProfileSdkCpu::new(app_config, agg_params).unwrap();
 
     execution_profile::<BabyBearOpenVmApcAdapter>(&program, || {
-        sdk.execute(exe.clone(), inputs.clone())
-            .unwrap();
+        sdk.execute(exe.clone(), inputs.clone()).unwrap();
     })
 }
 
