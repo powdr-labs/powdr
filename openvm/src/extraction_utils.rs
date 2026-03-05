@@ -39,51 +39,11 @@ use crate::powdr_extension::executor::RecordArenaDimension;
 use crate::utils::symbolic_to_algebraic;
 use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::utils::{get_pil, openvm_bus_interaction_to_powdr};
+use crate::AirMetrics;
 use crate::{air_builder::AirKeygenBuilder, BabyBearSC, SpecializedConfig};
 
 // TODO: Use `<PackedChallenge<BabyBearSC> as FieldExtensionAlgebra<Val<BabyBearSC>>>::D` instead after fixing p3 dependency
 const EXT_DEGREE: usize = 4;
-
-#[derive(Clone, Serialize, Deserialize, Default, Debug, Eq, PartialEq)]
-pub struct AirMetrics {
-    pub widths: AirWidths,
-    pub constraints: usize,
-    pub bus_interactions: usize,
-}
-
-impl From<AirMetrics> for AirStats {
-    fn from(metrics: AirMetrics) -> Self {
-        AirStats {
-            main_columns: metrics.widths.main,
-            constraints: metrics.constraints,
-            bus_interactions: metrics.bus_interactions,
-        }
-    }
-}
-
-impl Add for AirMetrics {
-    type Output = AirMetrics;
-
-    fn add(self, rhs: AirMetrics) -> AirMetrics {
-        AirMetrics {
-            widths: self.widths + rhs.widths,
-            constraints: self.constraints + rhs.constraints,
-            bus_interactions: self.bus_interactions + rhs.bus_interactions,
-        }
-    }
-}
-
-impl Sum<AirMetrics> for AirMetrics {
-    fn sum<I: Iterator<Item = AirMetrics>>(iter: I) -> AirMetrics {
-        iter.fold(AirMetrics::default(), Add::add)
-    }
-}
-
-impl AirMetrics {
-    pub fn total_width(&self) -> usize {
-        self.widths.total()
-    }
-}
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct OriginalAirs<F, ISA> {

@@ -20,9 +20,9 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use serde::{Deserialize, Serialize};
 
 use crate::powdr_extension::trace_generator::cpu::SharedPeripheryChipsCpu;
+use crate::program::OriginalCompiledProgram;
 #[cfg(feature = "cuda")]
 use crate::trace_generator::cuda::periphery::SharedPeripheryChipsGpu;
-use crate::program::OriginalCompiledProgram;
 use crate::{BabyBearSC, SpecializedExecutor};
 
 pub type OriginalCpuChipComplex = VmChipComplex<

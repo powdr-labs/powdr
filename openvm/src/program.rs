@@ -1,52 +1,17 @@
-use openvm_circuit::arch::{VmBuilder, VmCircuitConfig};
-use openvm_instructions::program::Program as OpenVmProgram;
-use openvm_stark_backend::p3_field::PrimeField32;
-use powdr_autoprecompiles::blocks::Program;
-
-use crate::customize_exe::Instr;
-use crate::extraction_utils::OriginalVmConfig;
-use crate::extraction_utils::{get_air_metrics, AirMetrics, AirWidthsDiff};
-use crate::isa::OpenVmISA;
-use crate::BabyBearPoseidon2Engine;
-use crate::{BabyBearOpenVmApcAdapter, SpecializedConfig, SpecializedConfigCpuBuilder};
-
-/// A newtype wrapper around `OpenVmProgram` to implement the `Program` trait.
-/// This is necessary because we cannot implement a foreign trait for a foreign type.
-pub struct Prog<'a, F>(&'a OpenVmProgram<F>);
-
-impl<'a, F> From<&'a OpenVmProgram<F>> for Prog<'a, F> {
-    fn from(program: &'a OpenVmProgram<F>) -> Self {
-        Prog(program)
-    }
-}
-
-impl<'a, F: PrimeField32, ISA: OpenVmISA> Program<Instr<F, ISA>> for Prog<'a, F> {
-    fn base_pc(&self) -> u64 {
-        self.0.pc_base as u64
-    }
-
-    fn instructions(&self) -> Box<dyn Iterator<Item = Instr<F, ISA>> + '_> {
-        Box::new(
-            self.0
-                .instructions_and_debug_infos
-                .iter()
-                .filter_map(|x| x.as_ref().map(|i| Instr::from(i.0.clone()))),
-        )
-    }
-
-    fn length(&self) -> u32 {
-        self.0.instructions_and_debug_infos.len() as u32
-    }
-}
-
 use std::sync::Arc;
 
 use openvm_instructions::exe::VmExe;
+use openvm_instructions::program::Program as OpenVmProgram;
+use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
-use powdr_autoprecompiles::blocks::{collect_basic_blocks, BasicBlock};
+use powdr_autoprecompiles::blocks::{collect_basic_blocks, BasicBlock, Program};
 use powdr_autoprecompiles::DegreeBound;
 use serde::{Deserialize, Serialize};
 
+use crate::customize_exe::Instr;
+use crate::extraction_utils::OriginalVmConfig;
+use crate::isa::OpenVmISA;
+use crate::{BabyBearOpenVmApcAdapter, SpecializedConfig};
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(bound = "")]
 pub struct CompiledProgram<ISA: OpenVmISA> {
@@ -80,51 +45,31 @@ impl<'a, ISA: OpenVmISA> OriginalCompiledProgram<'a, ISA> {
     }
 }
 
-impl<ISA: OpenVmISA> CompiledProgram<ISA> {
-    // Return a tuple of (powdr AirMetrics, non-powdr AirMetrics)
-    pub fn air_metrics(
-        &self,
-        max_degree: usize,
-    ) -> (Vec<(AirMetrics, Option<AirWidthsDiff>)>, Vec<AirMetrics>) {
-        let air_inventory = self.vm_config.create_airs().unwrap();
+/// A newtype wrapper around `OpenVmProgram` to implement the `Program` trait.
+/// This is necessary because we cannot implement a foreign trait for a foreign type.
+pub struct Prog<'a, F>(&'a OpenVmProgram<F>);
 
-        let chip_complex = <SpecializedConfigCpuBuilder<ISA> as VmBuilder<
-            BabyBearPoseidon2Engine,
-        >>::create_chip_complex(
-            &SpecializedConfigCpuBuilder::default(),
-            &self.vm_config,
-            air_inventory,
+impl<'a, F> From<&'a OpenVmProgram<F>> for Prog<'a, F> {
+    fn from(program: &'a OpenVmProgram<F>) -> Self {
+        Prog(program)
+    }
+}
+
+impl<'a, F: PrimeField32, ISA: OpenVmISA> Program<Instr<F, ISA>> for Prog<'a, F> {
+    fn base_pc(&self) -> u64 {
+        self.0.pc_base as u64
+    }
+
+    fn instructions(&self) -> Box<dyn Iterator<Item = Instr<F, ISA>> + '_> {
+        Box::new(
+            self.0
+                .instructions_and_debug_infos
+                .iter()
+                .filter_map(|x| x.as_ref().map(|i| Instr::from(i.0.clone()))),
         )
-        .unwrap();
+    }
 
-        let inventory = chip_complex.inventory;
-
-        // Order of precompile is the same as that of Powdr executors in chip inventory
-        let mut apc_stats = self
-            .vm_config
-            .powdr
-            .precompiles
-            .iter()
-            .map(|precompile| precompile.apc_stats.clone());
-
-        inventory.airs().ext_airs().iter().fold(
-            (Vec::new(), Vec::new()),
-            |(mut powdr_air_metrics, mut non_powdr_air_metrics), air| {
-                let name = air.name();
-                // We actually give name "powdr_air_for_opcode_<opcode>" to the AIRs,
-                // but OpenVM uses the actual Rust type (PowdrAir) as the name in this method.
-                // TODO this is hacky but not sure how to do it better rn.
-                if name.starts_with("PowdrAir") {
-                    powdr_air_metrics.push((
-                        get_air_metrics(air.clone(), max_degree),
-                        Some(apc_stats.next().unwrap().widths),
-                    ));
-                } else {
-                    non_powdr_air_metrics.push(get_air_metrics(air.clone(), max_degree));
-                }
-
-                (powdr_air_metrics, non_powdr_air_metrics)
-            },
-        )
+    fn length(&self) -> u32 {
+        self.0.instructions_and_debug_infos.len() as u32
     }
 }

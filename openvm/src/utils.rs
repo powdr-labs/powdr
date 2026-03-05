@@ -17,7 +17,7 @@ use powdr_autoprecompiles::{
 };
 use powdr_expression::AlgebraicExpression;
 
-use powdr_openvm_bus_interaction_handler::bus_map::BusMap;
+use crate::bus_map::BusMap;
 
 pub enum OpenVmReference {
     /// Reference to a witness column. The boolean indicates if the reference is to the next row.

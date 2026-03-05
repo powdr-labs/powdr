@@ -4,10 +4,10 @@
 #![cfg_attr(feature = "tco", feature(core_intrinsics))]
 
 use openvm_circuit::arch::{
-    AirInventory, AirInventoryError, ChipInventory, ChipInventoryError,
-    ExecutorInventory, ExecutorInventoryError, InitFileGenerator, MatrixRecordArena,
-    RowMajorMatrixArena, SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig,
-    VmCircuitExtension, VmExecutionConfig, VmProverExtension,
+    AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecutorInventory,
+    ExecutorInventoryError, InitFileGenerator, MatrixRecordArena, RowMajorMatrixArena,
+    SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig, VmCircuitExtension, VmExecutionConfig,
+    VmProverExtension,
 };
 use openvm_circuit::system::SystemChipInventory;
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
@@ -18,7 +18,8 @@ use openvm_circuit_derive::{
 use openvm_sdk::config::TranspilerConfig;
 use openvm_sdk::GenericSdk;
 use openvm_sdk::{
-    config::{AppConfig, DEFAULT_APP_LOG_BLOWUP}, StdIn,
+    config::{AppConfig, DEFAULT_APP_LOG_BLOWUP},
+    StdIn,
 };
 use openvm_stark_backend::config::{StarkGenericConfig, Val};
 use openvm_stark_backend::engine::StarkEngine;
@@ -31,12 +32,15 @@ use openvm_stark_sdk::config::{
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
+use powdr_autoprecompiles::evaluation::AirStats;
 use powdr_autoprecompiles::execution_profile::ExecutionProfile;
 use powdr_autoprecompiles::DegreeBound;
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::PowdrExtension;
 use serde::{Deserialize, Serialize};
+use std::iter::Sum;
 use std::marker::PhantomData;
+use std::ops::Add;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -46,17 +50,16 @@ use crate::powdr_extension::trace_generator::cpu::PowdrPeripheryInstancesCpu;
 pub use crate::program::Prog;
 pub use crate::program::{CompiledProgram, OriginalCompiledProgram};
 
-#[cfg(test)]
 use crate::extraction_utils::AirWidthsDiff;
-use crate::extraction_utils::OriginalVmConfig;
+use crate::extraction_utils::{get_air_metrics, AirWidths, OriginalVmConfig};
 use crate::powdr_extension::{PowdrExtensionExecutor, PowdrPrecompile};
 
 mod air_builder;
 #[cfg(feature = "cuda")]
 pub mod cuda_abi;
-mod empirical_constraints;
+pub mod empirical_constraints;
 pub mod extraction_utils;
-mod program;
+pub mod program;
 pub mod trace_generation;
 pub mod utils;
 pub use powdr_openvm_bus_interaction_handler::bus_map;
@@ -116,12 +119,12 @@ pub fn format_fe<F: PrimeField32>(v: F) -> String {
 }
 
 /// We do not use the transpiler, instead we customize an already transpiled program
-mod customize_exe;
+pub mod customize_exe;
 
 pub use customize_exe::{customize, BabyBearOpenVmApcAdapter, Instr, POWDR_OPCODE};
 // A module for our extension
-mod isa;
-mod powdr_extension;
+pub mod isa;
+pub mod powdr_extension;
 
 /// A custom VmConfig that wraps the SdkVmConfig, adding our custom extension.
 #[derive(Serialize, Deserialize, Clone)]
@@ -473,6 +476,96 @@ impl<ISA: OpenVmISA> VmBuilder<GpuBabyBearPoseidon2Engine> for SpecializedConfig
             inventory,
         )?;
         Ok(chip_complex)
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, Default, Debug, Eq, PartialEq)]
+pub struct AirMetrics {
+    pub widths: AirWidths,
+    pub constraints: usize,
+    pub bus_interactions: usize,
+}
+
+impl From<AirMetrics> for AirStats {
+    fn from(metrics: AirMetrics) -> Self {
+        AirStats {
+            main_columns: metrics.widths.main,
+            constraints: metrics.constraints,
+            bus_interactions: metrics.bus_interactions,
+        }
+    }
+}
+
+impl Add for AirMetrics {
+    type Output = AirMetrics;
+
+    fn add(self, rhs: AirMetrics) -> AirMetrics {
+        AirMetrics {
+            widths: self.widths + rhs.widths,
+            constraints: self.constraints + rhs.constraints,
+            bus_interactions: self.bus_interactions + rhs.bus_interactions,
+        }
+    }
+}
+
+impl Sum<AirMetrics> for AirMetrics {
+    fn sum<I: Iterator<Item = AirMetrics>>(iter: I) -> AirMetrics {
+        iter.fold(AirMetrics::default(), Add::add)
+    }
+}
+
+impl AirMetrics {
+    pub fn total_width(&self) -> usize {
+        self.widths.total()
+    }
+}
+
+impl<ISA: OpenVmISA> CompiledProgram<ISA> {
+    // Return a tuple of (powdr AirMetrics, non-powdr AirMetrics)
+    pub fn air_metrics(
+        &self,
+        max_degree: usize,
+    ) -> (Vec<(AirMetrics, Option<AirWidthsDiff>)>, Vec<AirMetrics>) {
+        let air_inventory = self.vm_config.create_airs().unwrap();
+
+        let chip_complex = <SpecializedConfigCpuBuilder<ISA> as VmBuilder<
+            BabyBearPoseidon2Engine,
+        >>::create_chip_complex(
+            &SpecializedConfigCpuBuilder::default(),
+            &self.vm_config,
+            air_inventory,
+        )
+        .unwrap();
+
+        let inventory = chip_complex.inventory;
+
+        // Order of precompile is the same as that of Powdr executors in chip inventory
+        let mut apc_stats = self
+            .vm_config
+            .powdr
+            .precompiles
+            .iter()
+            .map(|precompile| precompile.apc_stats.clone());
+
+        inventory.airs().ext_airs().iter().fold(
+            (Vec::new(), Vec::new()),
+            |(mut powdr_air_metrics, mut non_powdr_air_metrics), air| {
+                let name = air.name();
+                // We actually give name "powdr_air_for_opcode_<opcode>" to the AIRs,
+                // but OpenVM uses the actual Rust type (PowdrAir) as the name in this method.
+                // TODO this is hacky but not sure how to do it better rn.
+                if name.starts_with("PowdrAir") {
+                    powdr_air_metrics.push((
+                        get_air_metrics(air.clone(), max_degree),
+                        Some(apc_stats.next().unwrap().widths),
+                    ));
+                } else {
+                    non_powdr_air_metrics.push(get_air_metrics(air.clone(), max_degree));
+                }
+
+                (powdr_air_metrics, non_powdr_air_metrics)
+            },
+        )
     }
 }
 

@@ -24,8 +24,9 @@ mod inventory;
 /// The shared periphery chips used by the PowdrTraceGenerator
 mod periphery;
 
+pub use inventory::DummyChipComplex;
 pub use periphery::{
-    PowdrPeripheryInstancesCpu, SharedPeripheryChipsCpu,
+    PowdrPeripheryInstancesCpu, SharedPeripheryChipsCpu, SharedPeripheryChipsCpuProverExt,
 };
 
 /// A wrapper around a DenseMatrix to implement `TraceTrait` which is required for `generate_trace`.

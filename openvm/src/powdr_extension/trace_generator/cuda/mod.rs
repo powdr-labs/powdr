@@ -2,11 +2,10 @@ use std::collections::{BTreeMap, HashMap};
 
 use itertools::Itertools;
 use openvm_circuit::{
-    arch::{ChipInventory, DenseRecordArena, VmChipComplex},
-    system::cuda::SystemChipInventoryGPU,
+    arch::{ChipInventory, DenseRecordArena},
     utils::next_power_of_two_or_zero,
 };
-use openvm_cuda_backend::{base::DeviceMatrix, prover_backend::GpuBackend};
+use openvm_cuda_backend::base::DeviceMatrix;
 use openvm_cuda_common::copy::MemCopyH2D;
 use openvm_stark_backend::{
     p3_field::PrimeField32,
@@ -33,6 +32,7 @@ use crate::{
 mod inventory;
 mod periphery;
 
+pub use inventory::GpuDummyChipComplex;
 pub use periphery::PowdrPeripheryInstancesGpu;
 
 /// Encodes an algebraic expression into GPU stack-machine bytecode.

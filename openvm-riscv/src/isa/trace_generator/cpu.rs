@@ -7,9 +7,8 @@ use openvm_native_circuit::NativeCpuProverExt;
 use openvm_pairing_circuit::PairingProverExt;
 use openvm_rv32im_circuit::Rv32ImCpuProverExt;
 use openvm_sha256_circuit::Sha2CpuProverExt;
-use powdr_openvm::powdr_extension::trace_generator::cpu::{
-    DummyChipComplex, SharedPeripheryChipsCpu, SharedPeripheryChipsCpuProverExt,
-};
+use powdr_openvm::powdr_extension::trace_generator::cpu::SharedPeripheryChipsCpuProverExt;
+use powdr_openvm::powdr_extension::trace_generator::{DummyChipComplex, SharedPeripheryChipsCpu};
 use powdr_openvm::BabyBearSC;
 
 use crate::{ExtendedVmConfig, RiscvISA};

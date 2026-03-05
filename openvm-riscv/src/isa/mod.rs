@@ -9,10 +9,10 @@ use powdr_openvm::{
     isa::OriginalGpuChipComplex, trace_generator::cuda::periphery::SharedPeripheryChipsGpu,
 };
 use powdr_openvm::{
-    isa::{OpenVmISA, OriginalCpuChipComplex, SpecializedExecutor},
+    isa::{OpenVmISA, OriginalCpuChipComplex},
     powdr_extension::trace_generator::cpu::SharedPeripheryChipsCpu,
     program::OriginalCompiledProgram,
-    BabyBearSC,
+    BabyBearSC, SpecializedExecutor,
 };
 use powdr_riscv_elf::ElfProgram;
 use serde::{Deserialize, Serialize};
