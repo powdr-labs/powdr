@@ -4,26 +4,29 @@ use openvm_circuit::arch::{AirInventory, ChipInventoryError, VmBuilder};
 use openvm_instructions::{instruction::Instruction, program::DEFAULT_PC_STEP, VmOpcode};
 use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
+#[cfg(feature = "cuda")]
 use powdr_openvm_common::{
-    isa::{OpenVmISA, OriginalCpuChipComplex, OriginalCpuChipInventory, SpecializedExecutor},
+    isa::OriginalGpuChipComplex, trace_generator::cuda::periphery::SharedPeripheryChipsGpu,
+};
+use powdr_openvm_common::{
+    isa::{OpenVmISA, OriginalCpuChipComplex, SpecializedExecutor},
     program::OriginalCompiledProgram,
+    trace_generator::cpu::periphery::SharedPeripheryChipsCpu,
+    BabyBearSC,
 };
 use powdr_riscv_elf::ElfProgram;
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "cuda")]
+use crate::ExtendedVmConfigGpuBuilder;
 use crate::{
     isa::{
         opcode::{branch_opcodes_bigint_set, branch_opcodes_set, instruction_allowlist},
-        trace_generator::{
-            cpu::{create_dummy_chip_complex, SharedPeripheryChipsCpu},
-            create_dummy_airs,
-        },
+        trace_generator::{create_dummy_airs, create_dummy_chip_complex_cpu},
     },
-    BabyBearSC, ExtendedVmConfig, ExtendedVmConfigCpuBuilder, ExtendedVmConfigExecutor,
+    ExtendedVmConfig, ExtendedVmConfigCpuBuilder, ExtendedVmConfigExecutor,
 };
 
-/// The core logic of our extension
-pub mod chip;
 pub mod instruction_formatter;
 pub mod opcode;
 pub mod symbolic_instruction_builder;
@@ -48,7 +51,9 @@ impl<F: PrimeField32> From<ExtendedVmConfigExecutor<F>> for SpecializedExecutor<
 impl OpenVmISA for RiscvISA {
     type OriginalExecutor<F: PrimeField32> = ExtendedVmConfigExecutor<F>;
     type OriginalConfig = ExtendedVmConfig;
-    type OriginalBuilder = ExtendedVmConfigCpuBuilder;
+    type OriginalBuilderCpu = ExtendedVmConfigCpuBuilder;
+    #[cfg(feature = "cuda")]
+    type OriginalBuilderGpu = ExtendedVmConfigGpuBuilder;
 
     fn is_branching(opcode: VmOpcode) -> bool {
         branch_opcodes_set().contains(&opcode)
@@ -71,17 +76,6 @@ impl OpenVmISA for RiscvISA {
             config,
             airs,
         )
-    }
-    fn create_dummy_inventory(
-        config: &Self::OriginalConfig,
-        shared_chips: SharedPeripheryChipsCpu<Self>,
-    ) -> OriginalCpuChipInventory {
-        let airs =
-            create_dummy_airs(config, shared_chips.clone()).expect("Failed to create dummy airs");
-
-        create_dummy_chip_complex(config, airs, shared_chips)
-            .expect("Failed to create chip complex")
-            .inventory
     }
 
     type RegisterAddress = OpenVmRegisterAddress;
@@ -144,6 +138,37 @@ impl OpenVmISA for RiscvISA {
         let jump_dest = add_extra_targets(program, labels.clone(), DEFAULT_PC_STEP);
 
         jump_dest.into_iter().map(Into::into).collect()
+    }
+
+    fn create_dummy_airs<
+        E: openvm_circuit::arch::VmCircuitExtension<powdr_openvm_common::BabyBearSC>,
+    >(
+        config: &Self::OriginalConfig,
+        shared_chips: E,
+    ) -> Result<
+        AirInventory<powdr_openvm_common::BabyBearSC>,
+        openvm_circuit::arch::AirInventoryError,
+    > {
+        create_dummy_airs(config, shared_chips)
+    }
+
+    fn create_dummy_chip_complex_cpu(
+        config: &Self::OriginalConfig,
+        circuit: AirInventory<powdr_openvm_common::BabyBearSC>,
+        shared_chips: SharedPeripheryChipsCpu<Self>,
+    ) -> Result<OriginalCpuChipComplex, ChipInventoryError> {
+        create_dummy_chip_complex_cpu(config, circuit, shared_chips)
+    }
+
+    #[cfg(feature = "cuda")]
+    fn create_dummy_chip_complex_gpu(
+        config: &Self::OriginalConfig,
+        circuit: AirInventory<powdr_openvm_common::BabyBearSC>,
+        shared_chips: SharedPeripheryChipsGpu<Self>,
+    ) -> Result<OriginalGpuChipComplex, ChipInventoryError> {
+        use crate::isa::trace_generator::create_dummy_chip_complex_gpu;
+
+        create_dummy_chip_complex_gpu(config, circuit, shared_chips)
     }
 }
 

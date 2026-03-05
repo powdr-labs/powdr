@@ -1,43 +1,43 @@
-use crate::{powdr_extension::trace_generator::common::DummyExecutor, PeripheryBusIds};
 use openvm_circuit::arch::{
-    AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecutorInventoryBuilder,
-    ExecutorInventoryError, VmCircuitExtension, VmExecutionExtension, VmProverExtension,
+    AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, DenseRecordArena,
+    ExecutorInventoryBuilder, ExecutorInventoryError, VmCircuitExtension, VmExecutionExtension,
+    VmProverExtension,
 };
 use openvm_circuit_primitives::{
-    bitwise_op_lookup::{BitwiseOperationLookupAir, BitwiseOperationLookupChip},
-    range_tuple::{RangeTupleCheckerAir, RangeTupleCheckerChip},
-    var_range::VariableRangeCheckerAir,
+    bitwise_op_lookup::{
+        BitwiseOperationLookupAir, BitwiseOperationLookupChip, BitwiseOperationLookupChipGPU,
+    },
+    range_tuple::{RangeTupleCheckerAir, RangeTupleCheckerChip, RangeTupleCheckerChipGPU},
+    var_range::{VariableRangeCheckerAir, VariableRangeCheckerChipGPU},
 };
+use openvm_cuda_backend::engine::GpuBabyBearPoseidon2Engine;
+use openvm_cuda_backend::prover_backend::GpuBackend;
 use openvm_stark_backend::{config::StarkGenericConfig, p3_field::PrimeField32};
+use powdr_openvm_bus_interaction_handler::bus_map::DEFAULT_TUPLE_RANGE_CHECKER;
 
-use crate::BabyBearSC;
-use crate::BitwiseOperationLookupChipGPU;
-use crate::DenseRecordArena;
-use crate::GpuBabyBearPoseidon2Engine;
-use crate::GpuBackend;
-use crate::RangeTupleCheckerChipGPU;
-use crate::VariableRangeCheckerChipGPU;
-use std::sync::Arc;
+use crate::{isa::OpenVmISA, trace_generator::common::DummyExecutor, BabyBearSC, PeripheryBusIds};
+use std::{marker::PhantomData, sync::Arc};
 
 /// The shared chips which can be used by the PowdrChipGpu.
 #[derive(Clone)]
-pub struct PowdrPeripheryInstancesGpu {
+pub struct PowdrPeripheryInstancesGpu<ISA> {
     /// The real chips used for the main execution.
-    pub real: SharedPeripheryChipsGpu,
+    pub real: SharedPeripheryChipsGpu<ISA>,
     /// The dummy chips used for all APCs. They share the range checker but create new instances of the bitwise lookup chip and the tuple range checker.
-    pub dummy: SharedPeripheryChipsGpu,
+    pub dummy: SharedPeripheryChipsGpu<ISA>,
     /// The bus ids of the periphery
     pub bus_ids: PeripheryBusIds,
 }
 
 #[derive(Clone)]
-pub struct SharedPeripheryChipsGpu {
+pub struct SharedPeripheryChipsGpu<ISA> {
     pub bitwise_lookup_8: Option<std::sync::Arc<BitwiseOperationLookupChipGPU<8>>>,
     pub range_checker: std::sync::Arc<VariableRangeCheckerChipGPU>,
     pub tuple_range_checker: Option<std::sync::Arc<RangeTupleCheckerChipGPU<2>>>,
+    _marker: PhantomData<ISA>,
 }
 
-impl PowdrPeripheryInstancesGpu {
+impl<ISA> PowdrPeripheryInstancesGpu<ISA> {
     pub(crate) fn new(
         range_checker: Arc<VariableRangeCheckerChipGPU>,
         bitwise_8: Option<Arc<BitwiseOperationLookupChipGPU<8>>>,
@@ -49,6 +49,7 @@ impl PowdrPeripheryInstancesGpu {
                 bitwise_lookup_8: bitwise_8.clone(),
                 range_checker: range_checker.clone(),
                 tuple_range_checker: tuple_range_checker.clone(),
+                _marker: PhantomData,
             },
             dummy: SharedPeripheryChipsGpu {
                 // BitwiseLookupChipGPU is always initialized via `hybrid()` with a CPU chip in all available extensions of `SdkVmGpuBuilder::create_chip_complex()`.
@@ -74,14 +75,15 @@ impl PowdrPeripheryInstancesGpu {
                         }
                     })
                 }),
+                _marker: PhantomData,
             },
             bus_ids,
         }
     }
 }
 
-impl<F: PrimeField32> VmExecutionExtension<F> for SharedPeripheryChipsGpu {
-    type Executor = DummyExecutor<F>;
+impl<F: PrimeField32, ISA: OpenVmISA> VmExecutionExtension<F> for SharedPeripheryChipsGpu<ISA> {
+    type Executor = DummyExecutor<F, ISA>;
 
     fn extend_execution(
         &self,
@@ -92,7 +94,9 @@ impl<F: PrimeField32> VmExecutionExtension<F> for SharedPeripheryChipsGpu {
     }
 }
 
-impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChipsGpu {
+impl<SC: StarkGenericConfig, ISA: OpenVmISA> VmCircuitExtension<SC>
+    for SharedPeripheryChipsGpu<ISA>
+{
     fn extend_circuit(&self, inventory: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {
         // create dummy airs
         if let Some(bitwise_lookup_8) = &self.bitwise_lookup_8 {
@@ -107,8 +111,6 @@ impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChipsGpu 
 
         if let Some(tuple_range_checker) = &self.tuple_range_checker {
             use openvm_circuit_primitives::range_tuple::RangeTupleCheckerBus;
-
-            use crate::bus_map::DEFAULT_TUPLE_RANGE_CHECKER;
 
             assert!(inventory
                 .find_air::<RangeTupleCheckerAir<2>>()
@@ -141,12 +143,13 @@ impl<SC: StarkGenericConfig> VmCircuitExtension<SC> for SharedPeripheryChipsGpu 
 
 pub struct SharedPeripheryChipsGpuProverExt;
 
-impl VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, SharedPeripheryChipsGpu>
+impl<ISA: OpenVmISA>
+    VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, SharedPeripheryChipsGpu<ISA>>
     for SharedPeripheryChipsGpuProverExt
 {
     fn extend_prover(
         &self,
-        extension: &SharedPeripheryChipsGpu,
+        extension: &SharedPeripheryChipsGpu<ISA>,
         inventory: &mut ChipInventory<BabyBearSC, DenseRecordArena, GpuBackend>,
     ) -> Result<(), ChipInventoryError> {
         // Sanity check that the shared chips are not already present in the builder.

@@ -1,15 +1,21 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use openvm_circuit::arch::{
-    AirInventory, AnyEnum, ChipInventory, ChipInventoryError, DenseRecordArena, Executor,
-    InterpreterExecutor, MatrixRecordArena, MeteredExecutor, PreflightExecutor, VmBuilder,
-    VmChipComplex, VmConfig, VmExecutionConfig,
+    AirInventory, AirInventoryError, AnyEnum, ChipInventory, ChipInventoryError, DenseRecordArena,
+    Executor, InterpreterExecutor, MatrixRecordArena, MeteredExecutor, PreflightExecutor,
+    VmBuilder, VmChipComplex, VmCircuitExtension, VmConfig, VmExecutionConfig,
 };
+#[cfg(feature = "cuda")]
+use openvm_circuit::system::cuda::SystemChipInventoryGPU;
 use openvm_circuit::system::SystemChipInventory;
 use openvm_circuit_derive::{
     AnyEnum, AotExecutor, AotMeteredExecutor, Executor, MeteredExecutor, PreflightExecutor,
 };
 use openvm_circuit_primitives::Chip;
+#[cfg(feature = "cuda")]
+use openvm_cuda_backend::engine::GpuBabyBearPoseidon2Engine;
+#[cfg(feature = "cuda")]
+use openvm_cuda_backend::prover_backend::GpuBackend;
 use openvm_instructions::{instruction::Instruction, VmOpcode};
 use openvm_sdk::config::TranspilerConfig;
 use openvm_stark_backend::{config::Val, p3_field::PrimeField32, prover::cpu::CpuBackend};
@@ -17,8 +23,12 @@ use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "cuda")]
+use crate::extraction_utils::OriginalVmConfig;
 use crate::program::OriginalCompiledProgram;
 use crate::trace_generator::cpu::periphery::SharedPeripheryChipsCpu;
+#[cfg(feature = "cuda")]
+use crate::trace_generator::cuda::periphery::SharedPeripheryChipsGpu;
 use crate::vm::PowdrExtensionExecutor;
 use crate::BabyBearSC;
 
@@ -30,6 +40,12 @@ pub type OriginalCpuChipComplex = VmChipComplex<
 >;
 pub type OriginalCpuChipInventory =
     ChipInventory<BabyBearSC, MatrixRecordArena<Val<BabyBearSC>>, CpuBackend<BabyBearSC>>;
+
+#[cfg(feature = "cuda")]
+pub type OriginalGpuChipComplex =
+    VmChipComplex<BabyBearSC, DenseRecordArena, GpuBackend, SystemChipInventoryGPU>;
+#[cfg(feature = "cuda")]
+pub type OriginalGpuChipInventory = ChipInventory<BabyBearSC, DenseRecordArena, GpuBackend>;
 
 #[allow(clippy::large_enum_variant)]
 #[derive(
@@ -77,7 +93,7 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
         + VmExecutionConfig<BabyBear, Executor = Self::OriginalExecutor<BabyBear>>
         + TranspilerConfig<BabyBear>;
 
-    type OriginalBuilder: Clone
+    type OriginalBuilderCpu: Clone
         + Default
         + VmBuilder<
             BabyBearPoseidon2Engine,
@@ -86,16 +102,38 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
             RecordArena = MatrixRecordArena<Val<BabyBearSC>>,
         >;
 
+    #[cfg(feature = "cuda")]
+    type OriginalBuilderGpu: Clone
+        + Default
+        + VmBuilder<
+            GpuBabyBearPoseidon2Engine,
+            VmConfig = Self::OriginalConfig,
+            SystemChipInventory = SystemChipInventoryGPU,
+            RecordArena = DenseRecordArena,
+        >;
+
+    fn create_dummy_airs<E: VmCircuitExtension<BabyBearSC>>(
+        config: &Self::OriginalConfig,
+        shared_chips: E,
+    ) -> Result<AirInventory<BabyBearSC>, AirInventoryError>;
+
     fn create_original_chip_complex(
         config: &Self::OriginalConfig,
         airs: AirInventory<BabyBearSC>,
     ) -> Result<OriginalCpuChipComplex, ChipInventoryError>;
 
-    /// Given a config of the vanilla VM and a shared periphery (non-instruction chips), create a dummy inventory
-    fn create_dummy_inventory(
+    fn create_dummy_chip_complex_cpu(
         config: &Self::OriginalConfig,
-        context: SharedPeripheryChipsCpu<Self>,
-    ) -> OriginalCpuChipInventory;
+        circuit: AirInventory<BabyBearSC>,
+        shared_chips: SharedPeripheryChipsCpu<Self>,
+    ) -> Result<OriginalCpuChipComplex, ChipInventoryError>;
+
+    #[cfg(feature = "cuda")]
+    fn create_dummy_chip_complex_gpu(
+        config: &Self::OriginalConfig,
+        circuit: AirInventory<BabyBearSC>,
+        shared_chips: SharedPeripheryChipsGpu<Self>,
+    ) -> Result<OriginalGpuChipComplex, ChipInventoryError>;
 
     /// Whether a given opcode is branching
     fn is_branching(opcode: VmOpcode) -> bool;

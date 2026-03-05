@@ -200,15 +200,17 @@ impl<ISA: OpenVmISA> openvm_circuit::arch::InterpreterMeteredExecutor<BabyBear>
     }
 }
 
-impl<ISA: OpenVmISA> openvm_circuit::arch::PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>>
+impl<ISA: OpenVmISA, RA> openvm_circuit::arch::PreflightExecutor<BabyBear, RA>
     for PowdrExtensionExecutor<ISA>
+where
+    PowdrExecutor<ISA>: openvm_circuit::arch::PreflightExecutor<BabyBear, RA>,
 {
     fn execute(
         &self,
         state: openvm_circuit::arch::VmStateMut<
             BabyBear,
             openvm_circuit::system::memory::online::TracingMemory,
-            MatrixRecordArena<BabyBear>,
+            RA,
         >,
         instruction: &Instruction<BabyBear>,
     ) -> Result<(), openvm_circuit::arch::ExecutionError> {
@@ -221,7 +223,7 @@ impl<ISA: OpenVmISA> openvm_circuit::arch::PreflightExecutor<BabyBear, MatrixRec
         match self {
             Self::Powdr(x) => <PowdrExecutor<ISA> as openvm_circuit::arch::PreflightExecutor<
                 BabyBear,
-                MatrixRecordArena<BabyBear>,
+                RA,
             >>::get_opcode_name(x, opcode),
         }
     }

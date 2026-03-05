@@ -197,7 +197,7 @@ fn run_command(command: Commands) {
                     empirical_constraints,
                 )
                 .unwrap();
-                powdr_openvm::execute(program, stdin_from(shared.input)).unwrap();
+                powdr_openvm_common::execute(program, stdin_from(shared.input)).unwrap();
             };
             if let Some(metrics_path) = metrics {
                 run_with_metric_collection_to_file(

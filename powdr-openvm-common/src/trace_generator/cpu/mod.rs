@@ -2,10 +2,12 @@ use std::{collections::HashMap, sync::Arc};
 
 use itertools::Itertools;
 use openvm_circuit::{
-    arch::{ChipInventory, MatrixRecordArena},
+    arch::{ChipInventory, MatrixRecordArena, VmChipComplex},
+    system::SystemChipInventory,
     utils::next_power_of_two_or_zero,
 };
 use openvm_stark_backend::{
+    config::Val,
     p3_field::{Field, FieldAlgebra, PrimeField32},
     p3_matrix::dense::{DenseMatrix, RowMajorMatrix},
     prover::{cpu::CpuBackend, hal::ProverBackend, types::AirProvingContext},
@@ -24,6 +26,11 @@ use crate::{
     BabyBearSC, IsaApc, PeripheryBusIds,
 };
 pub mod periphery;
+
+/// A dummy inventory used for execution of autoprecompiles
+/// It extends the `SdkVmConfigExecutor` and `SdkVmConfigPeriphery`, providing them with shared, pre-loaded periphery chips to avoid memory allocations by each SDK chip
+pub type DummyChipComplex<SC> =
+    VmChipComplex<SC, MatrixRecordArena<Val<SC>>, CpuBackend<SC>, SystemChipInventory<SC>>;
 
 /// The shared chips which can be used by the PowdrChip.
 #[derive(Clone)]
@@ -80,7 +87,18 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
             BabyBearSC,
             MatrixRecordArena<BabyBear>,
             CpuBackend<BabyBearSC>,
-        > = ISA::create_dummy_inventory(self.config.config(), self.periphery.dummy.clone());
+        > = {
+            let airs = ISA::create_dummy_airs(self.config.config(), self.periphery.dummy.clone())
+                .expect("Failed to create dummy airs");
+
+            ISA::create_dummy_chip_complex_cpu(
+                self.config.config(),
+                airs,
+                self.periphery.dummy.clone(),
+            )
+            .expect("Failed to create chip complex")
+            .inventory
+        };
 
         let dummy_trace_by_air_name: HashMap<String, SharedCpuTrace<BabyBear>> = chip_inventory
             .chips()

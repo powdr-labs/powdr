@@ -1,26 +1,22 @@
-use openvm_circuit::arch::{
-    AirInventory, ChipInventoryError, VmBuilder, VmChipComplex, VmProverExtension,
+use openvm_circuit::{
+    arch::{AirInventory, ChipInventoryError, VmBuilder, VmProverExtension},
+    system::cuda::extensions::SystemGpuBuilder,
 };
 use openvm_pairing_circuit::PairingProverExt;
-use openvm_sdk::config::SdkVmConfig;
-
-use crate::{
-    powdr_extension::trace_generator::cuda::periphery::SharedPeripheryChipsGpuProverExt, BabyBearSC,
+use powdr_openvm_common::{
+    trace_generator::cuda::{
+        periphery::{SharedPeripheryChipsGpu, SharedPeripheryChipsGpuProverExt},
+        GpuDummyChipComplex,
+    },
+    BabyBearSC, GpuBabyBearPoseidon2Engine,
 };
 
-use crate::powdr_extension::trace_generator::cuda::periphery::SharedPeripheryChipsGpu;
-use crate::DenseRecordArena;
-use crate::GpuBabyBearPoseidon2Engine;
-use crate::GpuBackend;
-use crate::SystemGpuBuilder;
-use openvm_circuit::system::cuda::SystemChipInventoryGPU;
-pub type GpuDummyChipComplex<SC> =
-    VmChipComplex<SC, DenseRecordArena, GpuBackend, SystemChipInventoryGPU>;
+use crate::{ExtendedVmConfig, RiscvISA};
 
-pub fn create_dummy_chip_complex(
-    config: &SdkVmConfig,
+pub fn create_dummy_chip_complex_gpu(
+    config: &ExtendedVmConfig,
     circuit: AirInventory<BabyBearSC>,
-    shared_chips: SharedPeripheryChipsGpu,
+    shared_chips: SharedPeripheryChipsGpu<RiscvISA>,
 ) -> Result<GpuDummyChipComplex<BabyBearSC>, ChipInventoryError> {
     use openvm_algebra_circuit::AlgebraProverExt;
     use openvm_bigint_circuit::Int256GpuProverExt;
@@ -32,7 +28,7 @@ pub fn create_dummy_chip_complex(
 
     type E = GpuBabyBearPoseidon2Engine;
 
-    let config = config.to_inner();
+    let config = config.sdk.to_inner();
     let mut chip_complex =
         VmBuilder::<E>::create_chip_complex(&SystemGpuBuilder, &config.system, circuit)?;
     let inventory = &mut chip_complex.inventory;

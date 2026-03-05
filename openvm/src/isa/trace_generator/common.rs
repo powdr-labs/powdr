@@ -1,6 +1,7 @@
 use openvm_circuit::arch::{AirInventory, AirInventoryError, VmCircuitConfig, VmCircuitExtension};
+use powdr_openvm_common::BabyBearSC;
 
-use crate::{BabyBearSC, ExtendedVmConfig};
+use crate::ExtendedVmConfig;
 
 pub fn create_dummy_airs<E: VmCircuitExtension<BabyBearSC>>(
     config: &ExtendedVmConfig,
