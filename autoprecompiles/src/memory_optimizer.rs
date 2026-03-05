@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::Hash;
 
@@ -44,36 +44,7 @@ pub fn optimize_memory<
     // TODO perform substitutions instead
     system.algebraic_constraints.extend(new_constraints);
 
-    assert!(check_register_operation_consistency::<_, _, M>(
-        &system,
-        memory_bus_id
-    ));
-
     system
-}
-
-// Check that the number of register memory bus interactions for each concrete address in the precompile is even.
-// Assumption: all register memory bus interactions feature a concrete address.
-pub fn check_register_operation_consistency<T, V, M: MemoryBusInteraction<T, V>>(
-    system: &ConstraintSystem<T, V>,
-    memory_bus_id: u64,
-) -> bool {
-    let count_per_addr = system
-        .bus_interactions
-        .iter()
-        .filter_map(|bus_int| {
-            M::try_from_bus_interaction(bus_int, memory_bus_id)
-                .ok()
-                // We ignore conversion failures here, since we also did that in a previous version.
-                .flatten()
-        })
-        .filter_map(|mem_int| mem_int.register_address())
-        .fold(BTreeMap::new(), |mut map, addr| {
-            *map.entry(addr).or_insert(0) += 1;
-            map
-        });
-
-    count_per_addr.values().all(|&v| v == 2)
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -123,9 +94,6 @@ pub trait MemoryBusInteraction<T, V>: Sized {
 
     /// Returns the operation of the memory bus interaction.
     fn op(&self) -> MemoryOp;
-
-    /// Returns the register address of the memory bus interaction, if it is a register memory access.
-    fn register_address(&self) -> Option<usize>;
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
