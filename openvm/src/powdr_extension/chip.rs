@@ -19,9 +19,7 @@ use openvm_stark_backend::{
 };
 
 use openvm_stark_backend::{
-    interaction::InteractionBuilder,
-    p3_field::PrimeField32,
-    p3_matrix::Matrix,
+    interaction::InteractionBuilder, p3_field::PrimeField32, p3_matrix::Matrix,
     BaseAirWithPublicValues, PartitionedBaseAir,
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;

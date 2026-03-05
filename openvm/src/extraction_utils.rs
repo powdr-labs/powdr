@@ -20,11 +20,11 @@ use openvm_instructions::VmOpcode;
 
 use crate::utils::{get_pil, openvm_bus_interaction_to_powdr};
 use openvm_stark_backend::air_builders::symbolic::SymbolicRapBuilder;
-use openvm_stark_backend::Val;
 use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_backend::prover::CpuBackend;
+use openvm_stark_backend::Val;
 use openvm_stark_backend::{
-    air_builders::symbolic::SymbolicConstraints, p3_air::BaseAir, StarkProtocolConfig, AnyAir,
+    air_builders::symbolic::SymbolicConstraints, p3_air::BaseAir, AnyAir, StarkProtocolConfig,
 };
 use openvm_stark_sdk::p3_baby_bear::{self, BabyBear};
 use powdr_autoprecompiles::bus_map::BusType;
@@ -42,7 +42,6 @@ use crate::utils::UnsupportedOpenVmReferenceError;
 
 use crate::customize_exe::OpenVmRegisterAddress;
 use crate::utils::symbolic_to_algebraic;
-
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct OriginalAirs<F> {
@@ -220,7 +219,9 @@ where
     }
 }
 
-impl<F: PrimeField32 + openvm_stark_backend::p3_field::InjectiveMonomial<7>> VmExecutionConfig<F> for OriginalVmConfig {
+impl<F: PrimeField32 + openvm_stark_backend::p3_field::InjectiveMonomial<7>> VmExecutionConfig<F>
+    for OriginalVmConfig
+{
     type Executor = ExtendedVmConfigExecutor<F>;
 
     fn create_executors(
@@ -487,10 +488,7 @@ pub fn get_air_metrics(air: Arc<dyn AnyAir<BabyBearSC>>, max_degree: usize) -> A
     } = symbolic_rap_builder.constraints();
 
     AirMetrics {
-        widths: AirWidths {
-            preprocessed,
-            main,
-        },
+        widths: AirWidths { preprocessed, main },
         constraints: constraints.len(),
         bus_interactions: interactions.len(),
     }

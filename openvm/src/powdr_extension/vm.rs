@@ -24,8 +24,8 @@ use openvm_circuit::{
     derive::AnyEnum,
 };
 use openvm_stark_backend::{
-    StarkProtocolConfig, Val,
     p3_field::{Field, PrimeField32},
+    StarkProtocolConfig, Val,
 };
 use powdr_autoprecompiles::Apc;
 use serde::{Deserialize, Serialize};

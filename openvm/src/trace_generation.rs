@@ -2,13 +2,16 @@ use openvm_circuit::arch::{
     execution_mode::Segment, Executor, MeteredExecutor, PreflightExecutionOutput,
     PreflightExecutor, VirtualMachine, VmBuilder, VmCircuitConfig, VmExecutionConfig, VmInstance,
 };
-use sdk_v2::{
-    config::{AppConfig, AggregationSystemParams, DEFAULT_APP_LOG_BLOWUP, DEFAULT_APP_L_SKIP, default_app_params},
-    GenericSdk, StdIn,
-};
+use openvm_stark_backend::StarkEngine;
 use openvm_stark_backend::Val;
 use openvm_stark_backend::{keygen::types::MultiStarkProvingKey, prover::ProvingContext};
-use openvm_stark_backend::StarkEngine;
+use sdk_v2::{
+    config::{
+        default_app_params, AggregationSystemParams, AppConfig, DEFAULT_APP_LOG_BLOWUP,
+        DEFAULT_APP_L_SKIP,
+    },
+    GenericSdk, StdIn,
+};
 use tracing::info_span;
 
 use crate::{BabyBearSC, CompiledProgram};
@@ -61,9 +64,10 @@ pub fn do_with_cpu_trace(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (app_config, agg_params) = create_app_config(program);
     let sdk = PowdrSdkCpu::new(app_config, agg_params)?;
-    do_with_trace_with_sdk::<openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2CpuEngine, SpecializedConfigCpuBuilder>(
-        program, inputs, sdk, callback,
-    )
+    do_with_trace_with_sdk::<
+        openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2CpuEngine,
+        SpecializedConfigCpuBuilder,
+    >(program, inputs, sdk, callback)
 }
 
 fn do_with_trace_with_sdk<E, VB>(
@@ -110,7 +114,9 @@ where
             ..
         } = segment;
         let from_state = state.take().unwrap();
-        instance.vm.transport_init_memory_to_device(&from_state.memory);
+        instance
+            .vm
+            .transport_init_memory_to_device(&from_state.memory);
         let PreflightExecutionOutput {
             system_records,
             record_arenas,
@@ -123,7 +129,9 @@ where
         )?;
         state = Some(to_state);
 
-        let ctx = instance.vm.generate_proving_ctx(system_records, record_arenas)?;
+        let ctx = instance
+            .vm
+            .generate_proving_ctx(system_records, record_arenas)?;
         callback(seg_idx, &instance.vm, pk, ctx);
     }
     *instance.state_mut() = state;
@@ -131,7 +139,9 @@ where
     Ok(())
 }
 
-fn create_app_config(program: &CompiledProgram) -> (AppConfig<crate::SpecializedConfig>, AggregationSystemParams) {
+fn create_app_config(
+    program: &CompiledProgram,
+) -> (AppConfig<crate::SpecializedConfig>, AggregationSystemParams) {
     let system_params = default_app_params(DEFAULT_APP_LOG_BLOWUP, DEFAULT_APP_L_SKIP, 21);
     let app_config = AppConfig::new(program.vm_config.clone(), system_params);
     (app_config, AggregationSystemParams::default())

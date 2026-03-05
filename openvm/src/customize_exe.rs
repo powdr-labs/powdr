@@ -100,9 +100,7 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     type ExecutionState = OpenVmExecutionState<'a, BabyBear>;
 
     fn into_field(e: Self::PowdrField) -> Self::Field {
-        openvm_stark_sdk::p3_baby_bear::BabyBear::from_u32(
-            e.to_integer().try_into_u32().unwrap(),
-        )
+        openvm_stark_sdk::p3_baby_bear::BabyBear::from_u32(e.to_integer().try_into_u32().unwrap())
     }
 
     fn from_field(e: Self::Field) -> Self::PowdrField {

@@ -5,12 +5,15 @@ use openvm_circuit::{
     arch::{AirInventory, MatrixRecordArena},
     utils::next_power_of_two_or_zero,
 };
+use openvm_circuit_primitives::Chip;
 use openvm_stark_backend::{
     p3_field::PrimeCharacteristicRing,
     p3_matrix::dense::{DenseMatrix, RowMajorMatrix},
-    prover::{ColMajorMatrix, MatrixDimensions, MatrixView, ProverBackend, AirProvingContext, StridedColMajorMatrixView},
+    prover::{
+        AirProvingContext, ColMajorMatrix, MatrixDimensions, MatrixView, ProverBackend,
+        StridedColMajorMatrixView,
+    },
 };
-use openvm_circuit_primitives::Chip;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{trace_handler::TraceTrait, Apc};
 use powdr_constraint_solver::constraint_system::ComputationMethod;
@@ -145,7 +148,8 @@ impl PowdrTraceGeneratorCpu {
 
                 let col_major_trace = chip.generate_proving_ctx(record_arena).common_main;
                 // Convert ColMajorMatrix to RowMajorMatrix for SharedCpuTrace
-                let row_major_trace = StridedColMajorMatrixView::from(col_major_trace.as_view()).to_row_major_matrix();
+                let row_major_trace = StridedColMajorMatrixView::from(col_major_trace.as_view())
+                    .to_row_major_matrix();
 
                 Some((air_name, SharedCpuTrace::from(Arc::new(row_major_trace))))
             })
