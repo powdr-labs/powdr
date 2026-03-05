@@ -130,48 +130,48 @@ iter_over_hash_type = "deny"
 
 # Local development patches - uncomment both sections together.
 # The local openvm also needs to have stark-backend patched so all types match.
-[patch."https://github.com/powdr-labs/stark-backend.git"]
-openvm-stark-sdk = { path = "../stark-backend/crates/stark-sdk", default-features = false }
-openvm-stark-backend = { path = "../stark-backend/crates/stark-backend", default-features = false }
-openvm-codec-derive = { path = "../stark-backend/crates/stark-backend/codec-derive", default-features = false }
-openvm-cuda-backend = { path = "../stark-backend/crates/cuda-backend", default-features = false }
-openvm-cuda-builder = { path = "../stark-backend/crates/cuda-builder", default-features = false }
-openvm-cuda-common = { path = "../stark-backend/crates/cuda-common", default-features = false }
-
-[patch."https://github.com/powdr-labs/openvm.git"]
-openvm = { path = "../openvm/crates/toolchain/openvm" }
-openvm-build = { path = "../openvm/crates/toolchain/build" }
-openvm-rv32im-circuit = { path = "../openvm/extensions/rv32im/circuit/" }
-openvm-rv32im-transpiler = { path = "../openvm/extensions/rv32im/transpiler" }
-openvm-rv32im-guest = { path = "../openvm/extensions/rv32im/guest" }
-openvm-transpiler = { path = "../openvm/crates/toolchain/transpiler" }
-openvm-circuit = { path = "../openvm/crates/vm" }
-openvm-circuit-derive = { path = "../openvm/crates/vm/derive" }
-openvm-circuit-primitives = { path = "../openvm/crates/circuits/primitives" }
-openvm-circuit-primitives-derive = { path = "../openvm/crates/circuits/primitives/derive" }
-sdk-v2 = { path = "../openvm/crates/sdk-v2" }
-openvm-sdk-config = { path = "../openvm/crates/sdk-config" }
-openvm-ecc-circuit = { path = "../openvm/extensions/ecc/circuit" }
-openvm-ecc-transpiler = { path = "../openvm/extensions/ecc/transpiler" }
-openvm-keccak256-circuit = { path = "../openvm/extensions/keccak256/circuit" }
-openvm-keccak256-transpiler = { path = "../openvm/extensions/keccak256/transpiler" }
-openvm-sha2-circuit = { path = "../openvm/extensions/sha2/circuit" }
-openvm-sha2-transpiler = { path = "../openvm/extensions/sha2/transpiler" }
-openvm-algebra-circuit = { path = "../openvm/extensions/algebra/circuit" }
-openvm-algebra-transpiler = { path = "../openvm/extensions/algebra/transpiler" }
-openvm-bigint-circuit = { path = "../openvm/extensions/bigint/circuit" }
-openvm-bigint-transpiler = { path = "../openvm/extensions/bigint/transpiler" }
-openvm-pairing-circuit = { path = "../openvm/extensions/pairing/circuit" }
-openvm-pairing-transpiler = { path = "../openvm/extensions/pairing/transpiler" }
-openvm-platform = { path = "../openvm/crates/toolchain/platform" }
-openvm-custom-insn = { path = "../openvm/crates/toolchain/custom_insn" }
-openvm-instructions = { path = "../openvm/crates/toolchain/instructions" }
-openvm-instructions-derive = { path = "../openvm/crates/toolchain/instructions/derive" }
-openvm-poseidon2-air = { path = "../openvm/crates/circuits/poseidon2-air" }
-openvm-mod-circuit-builder = { path = "../openvm/crates/circuits/mod-builder" }
-openvm-sha2-air = { path = "../openvm/crates/circuits/sha2-air" }
-openvm-rv32-adapters = { path = "../openvm/extensions/rv32-adapters" }
-openvm-macros-common = { path = "../openvm/crates/toolchain/macros" }
-continuations-v2 = { path = "../openvm/crates/continuations-v2" }
-recursion-circuit = { path = "../openvm/crates/recursion" }
-openvm-deferral-circuit = { path = "../openvm/extensions/deferral/circuit" }
+# [patch."https://github.com/powdr-labs/stark-backend.git"]
+# openvm-stark-sdk = { path = "../stark-backend/crates/stark-sdk", default-features = false }
+# openvm-stark-backend = { path = "../stark-backend/crates/stark-backend", default-features = false }
+# openvm-codec-derive = { path = "../stark-backend/crates/stark-backend/codec-derive", default-features = false }
+# openvm-cuda-backend = { path = "../stark-backend/crates/cuda-backend", default-features = false }
+# openvm-cuda-builder = { path = "../stark-backend/crates/cuda-builder", default-features = false }
+# openvm-cuda-common = { path = "../stark-backend/crates/cuda-common", default-features = false }
+#
+# [patch."https://github.com/powdr-labs/openvm.git"]
+# openvm = { path = "../openvm/crates/toolchain/openvm" }
+# openvm-build = { path = "../openvm/crates/toolchain/build" }
+# openvm-rv32im-circuit = { path = "../openvm/extensions/rv32im/circuit/" }
+# openvm-rv32im-transpiler = { path = "../openvm/extensions/rv32im/transpiler" }
+# openvm-rv32im-guest = { path = "../openvm/extensions/rv32im/guest" }
+# openvm-transpiler = { path = "../openvm/crates/toolchain/transpiler" }
+# openvm-circuit = { path = "../openvm/crates/vm" }
+# openvm-circuit-derive = { path = "../openvm/crates/vm/derive" }
+# openvm-circuit-primitives = { path = "../openvm/crates/circuits/primitives" }
+# openvm-circuit-primitives-derive = { path = "../openvm/crates/circuits/primitives/derive" }
+# sdk-v2 = { path = "../openvm/crates/sdk-v2" }
+# openvm-sdk-config = { path = "../openvm/crates/sdk-config" }
+# openvm-ecc-circuit = { path = "../openvm/extensions/ecc/circuit" }
+# openvm-ecc-transpiler = { path = "../openvm/extensions/ecc/transpiler" }
+# openvm-keccak256-circuit = { path = "../openvm/extensions/keccak256/circuit" }
+# openvm-keccak256-transpiler = { path = "../openvm/extensions/keccak256/transpiler" }
+# openvm-sha2-circuit = { path = "../openvm/extensions/sha2/circuit" }
+# openvm-sha2-transpiler = { path = "../openvm/extensions/sha2/transpiler" }
+# openvm-algebra-circuit = { path = "../openvm/extensions/algebra/circuit" }
+# openvm-algebra-transpiler = { path = "../openvm/extensions/algebra/transpiler" }
+# openvm-bigint-circuit = { path = "../openvm/extensions/bigint/circuit" }
+# openvm-bigint-transpiler = { path = "../openvm/extensions/bigint/transpiler" }
+# openvm-pairing-circuit = { path = "../openvm/extensions/pairing/circuit" }
+# openvm-pairing-transpiler = { path = "../openvm/extensions/pairing/transpiler" }
+# openvm-platform = { path = "../openvm/crates/toolchain/platform" }
+# openvm-custom-insn = { path = "../openvm/crates/toolchain/custom_insn" }
+# openvm-instructions = { path = "../openvm/crates/toolchain/instructions" }
+# openvm-instructions-derive = { path = "../openvm/crates/toolchain/instructions/derive" }
+# openvm-poseidon2-air = { path = "../openvm/crates/circuits/poseidon2-air" }
+# openvm-mod-circuit-builder = { path = "../openvm/crates/circuits/mod-builder" }
+# openvm-sha2-air = { path = "../openvm/crates/circuits/sha2-air" }
+# openvm-rv32-adapters = { path = "../openvm/extensions/rv32-adapters" }
+# openvm-macros-common = { path = "../openvm/crates/toolchain/macros" }
+# continuations-v2 = { path = "../openvm/crates/continuations-v2" }
+# recursion-circuit = { path = "../openvm/crates/recursion" }
+# openvm-deferral-circuit = { path = "../openvm/extensions/deferral/circuit" }
