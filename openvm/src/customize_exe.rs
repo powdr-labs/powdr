@@ -46,18 +46,18 @@ pub struct BabyBearOpenVmApcAdapter<'a, ISA> {
     _marker: std::marker::PhantomData<&'a ISA>,
 }
 
-/// The openvm execution state, used for execution constraint checking. Currently unused.
+/// The openvm execution state, used for execution constraint checking
 pub struct OpenVmExecutionState<'a, F, ISA> {
-    _inner: &'a VmState<F, GuestMemory>,
+    inner: &'a VmState<F, GuestMemory>,
     _marker: PhantomData<ISA>,
 }
 
 impl<'a, F: PrimeField32, ISA> From<&'a VmState<F, GuestMemory>>
     for OpenVmExecutionState<'a, F, ISA>
 {
-    fn from(_inner: &'a VmState<F, GuestMemory>) -> Self {
+    fn from(inner: &'a VmState<F, GuestMemory>) -> Self {
         Self {
-            _inner,
+            inner,
             _marker: PhantomData,
         }
     }
@@ -68,7 +68,7 @@ impl<'a, F: PrimeField32, ISA: OpenVmISA> ExecutionState for OpenVmExecutionStat
     type Value = u32;
 
     fn pc(&self) -> Self::Value {
-        unimplemented!("optimistic constraints are currently unused")
+        self.inner.pc()
     }
 
     fn reg(&self, _addr: &Self::RegisterAddress) -> Self::Value {
