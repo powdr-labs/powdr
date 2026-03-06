@@ -188,7 +188,7 @@ jobs:
           enable_jekyll: true
 
   test_apc_gpu:
-    runs-on: [self-hosted, GPU]
+    runs-on: [self-hosted, gpu-shared]
 
     steps:
       - uses: actions/checkout@v4
