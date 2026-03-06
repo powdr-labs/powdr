@@ -36,9 +36,9 @@ use std::sync::MutexGuard;
 use crate::customize_exe::Instr;
 use crate::isa::{OpenVmISA, OriginalCpuChipComplex};
 use crate::powdr_extension::executor::RecordArenaDimension;
-use crate::utils::openvm_bus_interaction_to_powdr;
-use crate::utils::symbolic_to_algebraic;
-use crate::utils::UnsupportedOpenVmReferenceError;
+use crate::utils::{
+    openvm_bus_interaction_to_powdr, symbolic_to_algebraic, UnsupportedOpenVmReferenceError,
+};
 use crate::AirMetrics;
 use crate::{air_builder::AirKeygenBuilder, BabyBearSC};
 
@@ -87,6 +87,8 @@ impl<F, ISA> InstructionHandler for OriginalAirs<F, ISA> {
 }
 
 impl<F, ISA> OriginalAirs<F, ISA> {
+    /// Insert a new opcode, generating the air if it does not exist
+    /// Panics if the opcode already exists
     pub fn insert_opcode(
         &mut self,
         opcode: VmOpcode,
@@ -99,6 +101,7 @@ impl<F, ISA> OriginalAirs<F, ISA> {
         if self.opcode_to_air.contains_key(&opcode) {
             panic!("Opcode {opcode} already exists");
         }
+        // Insert the machine only if `air_name` isn't already present
         if !self.air_name_to_machine.contains_key(&air_name) {
             let machine_instance = machine(self.degree_bound)?;
             self.air_name_to_machine
@@ -143,6 +146,8 @@ impl<F, ISA> OriginalAirs<F, ISA> {
     }
 }
 
+/// For each air name, the dimension of a record arena needed to store the
+/// records for a single APC call.
 pub fn record_arena_dimension_by_air_name_per_apc_call<F, ISA>(
     apc: &Apc<F, Instr<F, ISA>, (), ()>,
     air_by_opcode_id: &OriginalAirs<F, ISA>,
@@ -153,8 +158,10 @@ pub fn record_arena_dimension_by_air_name_per_apc_call<F, ISA>(
         .fold(
             BTreeMap::new(),
             |mut acc, (opcode, should_use_dummy_arena)| {
+                // Get the air name for this opcode
                 let air_name = air_by_opcode_id.opcode_to_air.get(opcode).unwrap();
 
+                // Increment the height for this air name, initializing if necessary
                 let entry = acc.entry(air_name.clone()).or_insert_with(|| {
                     let (_, air_metrics) =
                         air_by_opcode_id.air_name_to_machine.get(air_name).unwrap();
@@ -177,9 +184,13 @@ pub fn record_arena_dimension_by_air_name_per_apc_call<F, ISA>(
 
 type ChipComplex = OriginalCpuChipComplex;
 
+/// A lazy chip complex that is initialized on the first access
 type LazyChipComplex = Option<ChipComplex>;
+
+/// A shared and mutable reference to a `LazyChipComplex`.
 type CachedChipComplex = Arc<Mutex<LazyChipComplex>>;
 
+/// A guard that provides access to the chip complex, ensuring it is initialized.
 pub struct ChipComplexGuard<'a> {
     guard: MutexGuard<'a, LazyChipComplex>,
 }
@@ -188,12 +199,14 @@ impl<'a> Deref for ChipComplexGuard<'a> {
     type Target = ChipComplex;
 
     fn deref(&self) -> &Self::Target {
+        // Unwrap is safe here because we ensure that the chip complex is initialized
         self.guard
             .as_ref()
             .expect("Chip complex should be initialized")
     }
 }
 
+/// A wrapper around the original VM config that caches a chip complex.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct OriginalVmConfig<ISA: OpenVmISA> {
     pub config: ISA::Config,
@@ -201,6 +214,7 @@ pub struct OriginalVmConfig<ISA: OpenVmISA> {
     pub chip_complex: CachedChipComplex,
 }
 
+// TODO: derive `VmCircuitConfig`, currently not possible because we don't have SC/F everywhere
 impl<ISA: OpenVmISA> VmCircuitConfig<BabyBearSC> for OriginalVmConfig<ISA> {
     fn create_airs(&self) -> Result<AirInventory<BabyBearSC>, AirInventoryError> {
         self.config.create_airs()
@@ -243,14 +257,16 @@ impl<ISA: OpenVmISA> OriginalVmConfig<ISA> {
 
     pub fn config_mut(&mut self) -> &mut ISA::Config {
         let mut guard = self.chip_complex.lock().expect("Mutex poisoned");
-        *guard = None;
+        *guard = None; // Invalidate cache
         &mut self.config
     }
 
+    /// Returns a guard that provides access to the chip complex, initializing it if necessary.
     pub fn chip_complex(&self) -> ChipComplexGuard<'_> {
         let mut guard = self.chip_complex.lock().expect("Mutex poisoned");
 
         if guard.is_none() {
+            // This is the expensive part that we want to run a single time: create the chip complex
             let airs = self
                 .config
                 .create_airs()
@@ -263,6 +279,11 @@ impl<ISA: OpenVmISA> OriginalVmConfig<ISA> {
         ChipComplexGuard { guard }
     }
 
+    /// Given a VM configuration and a set of used instructions, computes:
+    /// - The opcode -> AIR map
+    /// - The bus map
+    ///
+    /// Returns an error if the conversion from the OpenVM expression type fails.
     pub fn airs(
         &self,
         degree_bound: DegreeBound,

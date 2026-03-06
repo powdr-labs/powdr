@@ -144,7 +144,9 @@ impl<'a, ISA: OpenVmISA> Adapter for BabyBearOpenVmApcAdapter<'a, ISA> {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+/// A newtype wrapper around `OpenVmInstruction` to implement the `Instruction` trait.
+/// This is necessary because we cannot implement a foreign trait for a foreign type.
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Instr<F, ISA> {
     pub inner: OpenVmInstruction<F>,
     _marker: PhantomData<ISA>,
@@ -154,19 +156,6 @@ impl<F, ISA> From<OpenVmInstruction<F>> for Instr<F, ISA> {
     fn from(value: OpenVmInstruction<F>) -> Self {
         Self {
             inner: value,
-            _marker: PhantomData,
-        }
-    }
-}
-
-// TODO: derive, probably the compiler being too conservative here
-impl<F, ISA> Clone for Instr<F, ISA>
-where
-    OpenVmInstruction<F>: Clone,
-{
-    fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
             _marker: PhantomData,
         }
     }
