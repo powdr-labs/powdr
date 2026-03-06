@@ -1,11 +1,8 @@
-use std::{
-    collections::{BTreeMap, HashMap},
-    sync::Arc,
-};
+use std::collections::{BTreeMap, HashMap};
 
 use itertools::Itertools;
 use openvm_circuit::{
-    arch::{AirInventory, DenseRecordArena},
+    arch::{ChipInventory, DenseRecordArena},
     utils::next_power_of_two_or_zero,
 };
 use openvm_cuda_backend::base::DeviceMatrix;
@@ -19,27 +16,25 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
     expression::{AlgebraicExpression, AlgebraicReference},
     symbolic_machine::SymbolicBusInteraction,
-    Apc,
 };
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 
 use crate::{
     cuda_abi::{self, DerivedExprSpec, DevInteraction, ExprSpan, OpCode, OriginalAir, Subst},
-    customize_exe::OpenVmRegisterAddress,
     extraction_utils::{OriginalAirs, OriginalVmConfig},
-    powdr_extension::{
-        chip::PowdrChipGpu,
-        executor::OriginalArenas,
-        trace_generator::{common::create_dummy_airs, cuda::inventory::create_dummy_chip_complex},
-    },
-    BabyBearSC, Instr,
+    isa::{IsaApc, OpenVmISA},
+    powdr_extension::{chip::PowdrChipGpu, executor::OriginalArenas},
+    BabyBearSC, GpuBackend,
 };
 
 mod inventory;
 mod periphery;
 
-pub use periphery::PowdrPeripheryInstancesGpu;
+pub use inventory::GpuDummyChipComplex;
+pub use periphery::{
+    PowdrPeripheryInstancesGpu, SharedPeripheryChipsGpu, SharedPeripheryChipsGpuProverExt,
+};
 
 /// Encodes an algebraic expression into GPU stack-machine bytecode.
 ///
@@ -176,19 +171,19 @@ pub fn compile_bus_to_gpu(
     (interactions, arg_spans, bytecode)
 }
 
-pub struct PowdrTraceGeneratorGpu {
-    pub apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, u32>>,
-    pub original_airs: OriginalAirs<BabyBear>,
-    pub config: OriginalVmConfig,
-    pub periphery: PowdrPeripheryInstancesGpu,
+pub struct PowdrTraceGeneratorGpu<ISA: OpenVmISA> {
+    pub apc: IsaApc<BabyBear, ISA>,
+    pub original_airs: OriginalAirs<BabyBear, ISA>,
+    pub config: OriginalVmConfig<ISA>,
+    pub periphery: PowdrPeripheryInstancesGpu<ISA>,
 }
 
-impl PowdrTraceGeneratorGpu {
+impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
     pub fn new(
-        apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, u32>>,
-        original_airs: OriginalAirs<BabyBear>,
-        config: OriginalVmConfig,
-        periphery: PowdrPeripheryInstancesGpu,
+        apc: IsaApc<BabyBear, ISA>,
+        original_airs: OriginalAirs<BabyBear, ISA>,
+        config: OriginalVmConfig<ISA>,
+        periphery: PowdrPeripheryInstancesGpu<ISA>,
     ) -> Self {
         Self {
             apc,
@@ -212,13 +207,12 @@ impl PowdrTraceGeneratorGpu {
 
         let num_apc_calls = original_arenas.number_of_calls;
 
-        let chip_inventory = {
-            let airs: AirInventory<BabyBearSC> =
-                create_dummy_airs(&self.config.sdk_config.sdk, self.periphery.dummy.clone())
-                    .expect("Failed to create dummy airs");
+        let chip_inventory: ChipInventory<BabyBearSC, DenseRecordArena, GpuBackend> = {
+            let airs = ISA::create_dummy_airs(self.config.config(), self.periphery.dummy.clone())
+                .expect("Failed to create dummy airs");
 
-            create_dummy_chip_complex(
-                &self.config.sdk_config.sdk,
+            ISA::create_dummy_chip_complex_gpu(
+                self.config.config(),
                 airs,
                 self.periphery.dummy.clone(),
             )
@@ -274,7 +268,7 @@ impl PowdrTraceGeneratorGpu {
                     if subs.is_empty() {
                         None
                     } else {
-                        Some((&self.original_airs.opcode_to_air[&instr.0.opcode], subs))
+                        Some((&self.original_airs.opcode_to_air[&instr.inner.opcode], subs))
                     }
                 })
                 // group by air name. This results in `HashMap<air_name, Vec<subs>>` where the length of the vector is the number of rows which are created in this air, per apc call
@@ -395,7 +389,9 @@ impl PowdrTraceGeneratorGpu {
     }
 }
 
-impl<R, PB: ProverBackend<Matrix = DeviceMatrix<BabyBear>>> Chip<R, PB> for PowdrChipGpu {
+impl<R, PB: ProverBackend<Matrix = DeviceMatrix<BabyBear>>, ISA: OpenVmISA> Chip<R, PB>
+    for PowdrChipGpu<ISA>
+{
     fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
         tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
 
