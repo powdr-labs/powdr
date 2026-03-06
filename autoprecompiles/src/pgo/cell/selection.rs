@@ -117,7 +117,7 @@ fn count_and_update_run(
 }
 
 /// Count the occurences of a candidate in the execution (multiple basic block runs).
-/// Returns the count and an updated execution with the candidates removed.
+/// Returns the count and an updated execution with the candidate removed.
 fn count_and_update_execution(
     sblock: &BlockCandidate,
     execution: &[(ExecutionBasicBlockRun, u32)],
