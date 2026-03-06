@@ -1,17 +1,15 @@
 use std::fmt::Display;
 use std::hash::Hash;
 use std::iter::once;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
-use crate::bus_map::OpenVmBusType;
-use crate::extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs, OriginalVmConfig};
-use crate::instruction_formatter::openvm_instruction_formatter;
-use crate::opcode::branch_opcodes_set;
+use crate::extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs};
+use crate::isa::OpenVmISA;
 use crate::powdr_extension::chip::PowdrAir;
 use crate::program::Prog;
-use crate::{instruction_allowlist, OriginalCompiledProgram};
+use crate::OriginalCompiledProgram;
 use crate::{CompiledProgram, SpecializedConfig};
-use derive_more::From;
 use itertools::Itertools;
 use openvm_circuit::arch::VmState;
 use openvm_circuit::system::memory::online::GuestMemory;
@@ -30,13 +28,13 @@ use powdr_autoprecompiles::pgo::ApcCandidate;
 use powdr_autoprecompiles::PowdrConfig;
 use powdr_autoprecompiles::{InstructionHandler, VmConfig};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
+use powdr_openvm_bus_interaction_handler::bus_map::OpenVmBusType;
 use serde::{Deserialize, Serialize};
 
 use crate::powdr_extension::{PowdrOpcode, PowdrPrecompile};
 
 pub use powdr_openvm_bus_interaction_handler::{
-    memory_bus_interaction::{OpenVmMemoryBusInteraction, REGISTER_ADDRESS_SPACE},
-    OpenVmBusInteractionHandler,
+    memory_bus_interaction::OpenVmMemoryBusInteraction, OpenVmBusInteractionHandler,
 };
 
 pub const POWDR_OPCODE: usize = 0x10ff;
@@ -44,58 +42,61 @@ pub const POWDR_OPCODE: usize = 0x10ff;
 /// An adapter for the BabyBear OpenVM precompiles.
 /// Note: This could be made generic over the field, but the implementation of `Candidate` is BabyBear-specific.
 /// The lifetime parameter is used because we use a reference to the `OpenVmProgram` in the `Prog` type.
-pub struct BabyBearOpenVmApcAdapter<'a> {
-    _marker: std::marker::PhantomData<&'a ()>,
+pub struct BabyBearOpenVmApcAdapter<'a, ISA> {
+    _marker: std::marker::PhantomData<&'a ISA>,
 }
 
-#[derive(From)]
-pub struct OpenVmExecutionState<'a, T>(&'a VmState<T, GuestMemory>);
+/// The openvm execution state, used for execution constraint checking. Currently unused.
+pub struct OpenVmExecutionState<'a, F, ISA> {
+    _inner: &'a VmState<F, GuestMemory>,
+    _marker: PhantomData<ISA>,
+}
 
+impl<'a, F: PrimeField32, ISA> From<&'a VmState<F, GuestMemory>>
+    for OpenVmExecutionState<'a, F, ISA>
+{
+    fn from(_inner: &'a VmState<F, GuestMemory>) -> Self {
+        Self {
+            _inner,
+            _marker: PhantomData,
+        }
+    }
+}
 // TODO: This is not tested yet as apc compilation does not currently output any optimistic constraints
-impl<'a, T: PrimeField32> ExecutionState for OpenVmExecutionState<'a, T> {
-    type RegisterAddress = OpenVmRegisterAddress;
+impl<'a, F: PrimeField32, ISA: OpenVmISA> ExecutionState for OpenVmExecutionState<'a, F, ISA> {
+    type RegisterAddress = ();
     type Value = u32;
 
     fn pc(&self) -> Self::Value {
-        self.0.pc()
+        unimplemented!("optimistic constraints are currently unused")
     }
 
-    fn reg(&self, addr: &Self::RegisterAddress) -> Self::Value {
-        unsafe {
-            self.0
-                .memory
-                .memory
-                .get_f::<T>(REGISTER_ADDRESS_SPACE, addr.0 as u32)
-                .as_canonical_u32()
-        }
+    fn reg(&self, _addr: &Self::RegisterAddress) -> Self::Value {
+        unimplemented!("optimistic constraints are currently unused")
     }
 
-    fn value_limb(value: Self::Value, limb_index: usize) -> Self::Value {
-        value >> (limb_index * 8) & 0xff
+    fn value_limb(_value: Self::Value, _limb_index: usize) -> Self::Value {
+        unimplemented!("optimistic constraints are currently unused")
     }
 
     fn global_clk(&self) -> usize {
-        unimplemented!("OpenVM does not give us access to a global clock")
+        unimplemented!("optimistic constraints are currently unused")
     }
 }
 
-/// A type to represent register addresses during execution
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct OpenVmRegisterAddress(u8);
-
-impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
+impl<'a, ISA: OpenVmISA> Adapter for BabyBearOpenVmApcAdapter<'a, ISA> {
     type PowdrField = BabyBearField;
     type Field = BabyBear;
-    type InstructionHandler = OriginalAirs<Self::Field>;
+    type InstructionHandler = OriginalAirs<Self::Field, ISA>;
     type BusInteractionHandler = OpenVmBusInteractionHandler<Self::PowdrField>;
     type Program = Prog<'a, Self::Field>;
-    type Instruction = Instr<Self::Field>;
+    type Instruction = Instr<Self::Field, ISA>;
     type MemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash> =
         OpenVmMemoryBusInteraction<Self::PowdrField, V>;
     type CustomBusTypes = OpenVmBusType;
     type ApcStats = OvmApcStats;
     type AirId = String;
-    type ExecutionState = OpenVmExecutionState<'a, BabyBear>;
+    type ExecutionState = OpenVmExecutionState<'a, BabyBear, ISA>;
 
     fn into_field(e: Self::PowdrField) -> Self::Field {
         openvm_stark_sdk::p3_baby_bear::BabyBear::from_canonical_u32(
@@ -113,7 +114,7 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     ) -> Self::ApcStats {
         // Get the metrics for the apc using the same degree bound as the one used for the instruction chips
         let apc_metrics = get_air_metrics(
-            Arc::new(PowdrAir::new(apc.clone())),
+            Arc::new(PowdrAir::new(apc.machine.clone())),
             instruction_handler.degree_bound().identities,
         );
         let width_after = apc_metrics.widths;
@@ -123,7 +124,7 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
             .instructions()
             .map(|instr| {
                 instruction_handler
-                    .get_instruction_metrics(instr.0.opcode)
+                    .get_instruction_metrics(instr.inner.opcode)
                     .unwrap()
                     .widths
             })
@@ -133,42 +134,65 @@ impl<'a> Adapter for BabyBearOpenVmApcAdapter<'a> {
     }
 
     fn is_allowed(instruction: &Self::Instruction) -> bool {
-        instruction_allowlist().contains(&instruction.0.opcode)
+        ISA::allowed_opcodes().contains(&instruction.inner.opcode)
     }
 
     fn is_branching(instruction: &Self::Instruction) -> bool {
-        branch_opcodes_set().contains(&instruction.0.opcode)
+        ISA::branching_opcodes().contains(&instruction.inner.opcode)
     }
 }
 
-/// A newtype wrapper around `OpenVmInstruction` to implement the `Instruction` trait.
-/// This is necessary because we cannot implement a foreign trait for a foreign type.
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Instr<F>(pub OpenVmInstruction<F>);
+#[derive(Serialize, Deserialize)]
+pub struct Instr<F, ISA> {
+    pub inner: OpenVmInstruction<F>,
+    _marker: PhantomData<ISA>,
+}
 
-impl<F: PrimeField32> Display for Instr<F> {
+impl<F, ISA> From<OpenVmInstruction<F>> for Instr<F, ISA> {
+    fn from(value: OpenVmInstruction<F>) -> Self {
+        Self {
+            inner: value,
+            _marker: PhantomData,
+        }
+    }
+}
+
+// TODO: derive, probably the compiler being too conservative here
+impl<F, ISA> Clone for Instr<F, ISA>
+where
+    OpenVmInstruction<F>: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<F: PrimeField32, ISA: OpenVmISA> Display for Instr<F, ISA> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", openvm_instruction_formatter(&self.0))
+        write!(f, "{}", ISA::format(&self.inner))
     }
 }
 
-impl<F> PcStep for Instr<F> {
+impl<F, ISA: OpenVmISA> PcStep for Instr<F, ISA> {
     fn pc_step() -> u32 {
         DEFAULT_PC_STEP
     }
 }
 
-impl<F: PrimeField32> Instruction<F> for Instr<F> {
+impl<F: PrimeField32, ISA: OpenVmISA> Instruction<F> for Instr<F, ISA> {
     fn pc_lookup_row(&self, pc: u64) -> Vec<F> {
         let args = [
-            self.0.opcode.to_field(),
-            self.0.a,
-            self.0.b,
-            self.0.c,
-            self.0.d,
-            self.0.e,
-            self.0.f,
-            self.0.g,
+            self.inner.opcode.to_field(),
+            self.inner.a,
+            self.inner.b,
+            self.inner.c,
+            self.inner.d,
+            self.inner.e,
+            self.inner.f,
+            self.inner.g,
         ];
         // The PC lookup row has the format:
         // [pc, opcode, a, b, c, d, e, f, g]
@@ -177,38 +201,27 @@ impl<F: PrimeField32> Instruction<F> for Instr<F> {
     }
 }
 
-pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
-    original_program: OriginalCompiledProgram,
+pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a, ISA>>>(
+    original_program: OriginalCompiledProgram<ISA>,
     config: PowdrConfig,
     pgo: P,
     empirical_constraints: EmpiricalConstraints,
-) -> CompiledProgram {
+) -> CompiledProgram<ISA> {
     if config.superblock_max_bb_count > 1 {
         panic!("Superblocks not yet supported in OpenVM");
     }
-
-    let original_config = OriginalVmConfig::new(original_program.vm_config.clone());
+    let original_config = original_program.vm_config.clone();
     let airs = original_config.airs(config.degree_bound).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
     let bus_map = original_config.bus_map();
 
-    let range_tuple_checker_sizes = original_program
-        .vm_config
-        .sdk
-        .rv32m
-        .unwrap()
-        .range_tuple_checker_sizes;
     let vm_config = VmConfig {
         instruction_handler: &airs,
-        bus_interaction_handler: OpenVmBusInteractionHandler::new(
-            bus_map.clone(),
-            range_tuple_checker_sizes,
-        ),
+        bus_interaction_handler: OpenVmBusInteractionHandler::new(bus_map.clone()),
         bus_map: bus_map.clone(),
     };
 
+    let symbols = ISA::get_symbol_table(&original_program.elf);
     let blocks = original_program.collect_basic_blocks();
-    let exe = original_program.exe;
-    let debug_info = original_program.elf.debug_info();
     tracing::info!(
         "Got {} basic blocks from `collect_basic_blocks`",
         blocks.len()
@@ -222,36 +235,27 @@ pub fn customize<'a, P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a>>>(
             .rev()
             .take(10)
         {
-            let name = debug_info
-                .symbols
+            let name = symbols
                 .try_get_one_or_preceding(block.start_pc)
-                .map(|(symbol, offset)| format!("{} + {offset}", rustc_demangle::demangle(symbol)))
+                .map(|(symbol, offset)| format!("{} + {offset}", symbol))
                 .unwrap_or_default();
             tracing::debug!("Basic block (executed {count} times), {name}:\n{block}",);
         }
     }
 
-    let labels = debug_info
-        .symbols
-        .table()
-        .iter()
-        .map(|(addr, names)| {
-            (
-                *addr as u64,
-                names
-                    .iter()
-                    .map(|name| rustc_demangle::demangle(name).to_string())
-                    .collect(),
-            )
-        })
+    let symbols = symbols
+        .into_table()
+        .into_iter()
+        .map(|(key, values)| (key.into(), values))
         .collect();
 
+    let exe = original_program.exe;
     let start = std::time::Instant::now();
     let apcs = pgo.filter_blocks_and_create_apcs_with_pgo(
         blocks,
         &config,
         vm_config,
-        labels,
+        symbols,
         empirical_constraints.apply_pc_threshold(),
     );
     metrics::gauge!("total_apc_gen_time_ms").set(start.elapsed().as_millis() as f64);
@@ -306,26 +310,26 @@ pub struct OvmApcStats {
 }
 
 impl OvmApcStats {
-    fn new(widths: AirWidthsDiff) -> Self {
+    pub fn new(widths: AirWidthsDiff) -> Self {
         Self { widths }
     }
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct OpenVmApcCandidate<F, I>(ApcWithStats<F, I, OpenVmRegisterAddress, u32, OvmApcStats>);
+pub struct OpenVmApcCandidate<ISA: OpenVmISA>(ApcWithStats<BabyBear, Instr<BabyBear, ISA>, (), u32, OvmApcStats>);
 
-impl<'a> ApcCandidate<BabyBearOpenVmApcAdapter<'a>>
-    for OpenVmApcCandidate<BabyBear, Instr<BabyBear>>
+impl<'a, ISA: OpenVmISA> ApcCandidate<BabyBearOpenVmApcAdapter<'a, ISA>>
+    for OpenVmApcCandidate<ISA>
 {
-    fn create(apc_with_stats: AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a>>) -> Self {
+    fn create(apc_with_stats: AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a, ISA>>) -> Self {
         Self(apc_with_stats)
     }
 
-    fn inner(&self) -> &AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a>> {
+    fn inner(&self) -> &AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a, ISA>> {
         &self.0
     }
 
-    fn into_inner(self) -> AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a>> {
+    fn into_inner(self) -> AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a, ISA>> {
         self.0
     }
 

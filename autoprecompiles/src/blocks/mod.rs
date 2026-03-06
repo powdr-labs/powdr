@@ -371,13 +371,13 @@ pub fn detect_superblocks<I: Clone>(
         );
 
         // skip superblocks that were executed less than the cutoff
-        if count < cfg.superblock_exec_count_cutoff {
+        if count < cfg.apc_exec_count_cutoff {
             skipped_exec_count += 1;
             return;
         }
 
         // skip superblocks with too many instructions
-        if block.instructions().count() > cfg.superblock_max_instructions as usize {
+        if block.instructions().count() > cfg.apc_max_instructions as usize {
             skipped_max_insn += 1;
             return;
         }
