@@ -42,15 +42,9 @@ use std::iter::Sum;
 use std::marker::PhantomData;
 use std::ops::Add;
 use std::path::Path;
-use std::sync::Arc;
 
 use crate::isa::OpenVmISA;
-use crate::powdr_extension::chip::{PowdrAir, PowdrChipCpu};
-use crate::powdr_extension::trace_generator::cpu::PowdrPeripheryInstancesCpu;
-#[cfg(feature = "cuda")]
-use crate::powdr_extension::{
-    chip::PowdrChipGpu, trace_generator::cuda::PowdrPeripheryInstancesGpu,
-};
+use crate::powdr_extension::chip::PowdrAir;
 pub use crate::program::Prog;
 pub use crate::program::{CompiledProgram, OriginalCompiledProgram};
 
@@ -76,7 +70,7 @@ cfg_if::cfg_if! {
         pub use openvm_cuda_backend::engine::GpuBabyBearPoseidon2Engine;
         pub use openvm_native_circuit::NativeGpuBuilder;
         pub type PowdrSdkGpu<ISA> = GenericSdk<GpuBabyBearPoseidon2Engine, SpecializedConfigGpuBuilder<ISA>, NativeGpuBuilder>;
-        pub type PowdrExecutionProfileSdkGpu<ISA> = GenericSdk<GpuBabyBearPoseidon2Engine, <ISA as OpenVmISA>::OriginalBuilderGpu, NativeGpuBuilder>;
+        pub type PowdrExecutionProfileSdkGpu<ISA> = GenericSdk<GpuBabyBearPoseidon2Engine, <ISA as OpenVmISA>::GpuBuilder, NativeGpuBuilder>;
 
         pub use openvm_circuit::system::cuda::{extensions::SystemGpuBuilder, SystemChipInventoryGPU};
         pub use openvm_sdk::config::SdkVmGpuBuilder;
@@ -100,7 +94,7 @@ use openvm_native_circuit::NativeCpuBuilder;
 pub type PowdrSdkCpu<ISA> =
     GenericSdk<BabyBearPoseidon2Engine, SpecializedConfigCpuBuilder<ISA>, NativeCpuBuilder>;
 pub type PowdrExecutionProfileSdkCpu<ISA> =
-    GenericSdk<BabyBearPoseidon2Engine, <ISA as OpenVmISA>::OriginalBuilderCpu, NativeCpuBuilder>;
+    GenericSdk<BabyBearPoseidon2Engine, <ISA as OpenVmISA>::CpuBuilder, NativeCpuBuilder>;
 
 pub const DEFAULT_OPENVM_DEGREE_BOUND: usize = 2 * DEFAULT_APP_LOG_BLOWUP + 1;
 pub const DEFAULT_DEGREE_BOUND: DegreeBound = DegreeBound {
@@ -125,6 +119,7 @@ pub fn format_fe<F: PrimeField32>(v: F) -> String {
 pub mod customize_exe;
 
 pub use customize_exe::{customize, BabyBearOpenVmApcAdapter, Instr, POWDR_OPCODE};
+
 // A module for our extension
 pub mod isa;
 pub mod powdr_extension;
@@ -137,6 +132,41 @@ pub struct SpecializedConfig<ISA: OpenVmISA> {
     pub powdr: PowdrExtension<BabyBear, ISA>,
 }
 
+#[cfg(feature = "cuda")]
+#[derive(Default, Clone)]
+pub struct SpecializedConfigGpuBuilder<ISA> {
+    _marker: PhantomData<ISA>,
+}
+
+#[cfg(feature = "cuda")]
+impl<ISA: OpenVmISA> VmBuilder<GpuBabyBearPoseidon2Engine> for SpecializedConfigGpuBuilder<ISA> {
+    type VmConfig = SpecializedConfig<ISA>;
+    type SystemChipInventory = SystemChipInventoryGPU;
+    type RecordArena = DenseRecordArena;
+
+    fn create_chip_complex(
+        &self,
+        config: &SpecializedConfig<ISA>,
+        circuit: AirInventory<BabyBearSC>,
+    ) -> Result<
+        VmChipComplex<BabyBearSC, Self::RecordArena, GpuBackend, Self::SystemChipInventory>,
+        ChipInventoryError,
+    > {
+        let mut chip_complex = VmBuilder::<GpuBabyBearPoseidon2Engine>::create_chip_complex(
+            &<ISA as OpenVmISA>::GpuBuilder::default(),
+            &config.original.config,
+            circuit,
+        )?;
+        let inventory = &mut chip_complex.inventory;
+        VmProverExtension::<GpuBabyBearPoseidon2Engine, _, _>::extend_prover(
+            &PowdrGpuProverExt::<ISA>::default(),
+            &config.powdr,
+            inventory,
+        )?;
+        Ok(chip_complex)
+    }
+}
+
 #[derive(Default, Clone)]
 pub struct SpecializedConfigCpuBuilder<ISA> {
     _marker: PhantomData<ISA>,
@@ -145,9 +175,9 @@ pub struct SpecializedConfigCpuBuilder<ISA> {
 impl<E, ISA: OpenVmISA> VmBuilder<E> for SpecializedConfigCpuBuilder<ISA>
 where
     E: StarkEngine<SC = BabyBearSC, PB = CpuBackend<BabyBearSC>, PD = CpuDevice<BabyBearSC>>,
-    ISA::OriginalBuilderCpu: VmBuilder<
+    ISA::CpuBuilder: VmBuilder<
         E,
-        VmConfig = ISA::OriginalConfig,
+        VmConfig = ISA::Config,
         SystemChipInventory = SystemChipInventory<BabyBearSC>,
         RecordArena = MatrixRecordArena<Val<BabyBearSC>>,
     >,
@@ -165,8 +195,8 @@ where
         ChipInventoryError,
     > {
         let mut chip_complex = VmBuilder::<E>::create_chip_complex(
-            &<ISA as OpenVmISA>::OriginalBuilderCpu::default(),
-            &config.original.config.clone(),
+            &<ISA as OpenVmISA>::CpuBuilder::default(),
+            &config.original.config,
             circuit,
         )?;
         let inventory = &mut chip_complex.inventory;
@@ -177,64 +207,6 @@ where
         )?;
         Ok(chip_complex)
     }
-}
-
-#[derive(Clone, Default)]
-pub struct PowdrCpuProverExt<ISA> {
-    _marker: PhantomData<ISA>,
-}
-
-impl<E, RA, ISA: OpenVmISA> VmProverExtension<E, RA, PowdrExtension<BabyBear, ISA>>
-    for PowdrCpuProverExt<ISA>
-where
-    E: StarkEngine<SC = BabyBearSC, PB = CpuBackend<BabyBearSC>, PD = CpuDevice<BabyBearSC>>,
-    RA: RowMajorMatrixArena<BabyBear>,
-{
-    fn extend_prover(
-        &self,
-        extension: &PowdrExtension<BabyBear, ISA>,
-        inventory: &mut ChipInventory<<E as StarkEngine>::SC, RA, <E as StarkEngine>::PB>,
-    ) -> Result<(), ChipInventoryError> {
-        let bitwise_lookup = inventory
-            .find_chip::<SharedBitwiseOperationLookupChip<8>>()
-            .next()
-            .cloned();
-        let range_checker = inventory
-            .find_chip::<SharedVariableRangeCheckerChip>()
-            .next()
-            .unwrap();
-        let tuple_range_checker = inventory
-            .find_chip::<SharedRangeTupleCheckerChip<2>>()
-            .next()
-            .cloned();
-
-        let shared_chips_pair = PowdrPeripheryInstancesCpu::new(
-            range_checker.clone(),
-            bitwise_lookup,
-            tuple_range_checker,
-            get_periphery_bus_ids(inventory),
-        );
-
-        for precompile in &extension.precompiles {
-            inventory.next_air::<PowdrAir<BabyBear>>()?;
-            let chip = PowdrChipCpu::new(
-                precompile.clone(),
-                extension.airs.clone(),
-                extension.base_config.clone(),
-                shared_chips_pair.clone(),
-            );
-            inventory.add_executor_chip(chip);
-        }
-
-        Ok(())
-    }
-}
-
-#[derive(Clone)]
-pub struct PeripheryBusIds {
-    pub range_checker: u16,
-    pub bitwise_lookup: Option<u16>,
-    pub tuple_range_checker: Option<u16>,
 }
 
 #[cfg(feature = "cuda")]
@@ -256,6 +228,7 @@ impl<ISA: OpenVmISA>
         use std::sync::Arc;
         // TODO: here we make assumptions about the existence of some chips in the periphery. Make this more flexible
 
+        use crate::powdr_extension::trace_generator::cuda::PowdrPeripheryInstancesGpu;
         let bitwise_lookup = inventory
             .find_chip::<Arc<BitwiseOperationLookupChipGPU<8>>>()
             .next()
@@ -278,8 +251,74 @@ impl<ISA: OpenVmISA>
         );
 
         for precompile in &extension.precompiles {
+            use crate::powdr_extension::chip::PowdrChipGpu;
+
             inventory.next_air::<PowdrAir<BabyBear>>()?;
             let chip = PowdrChipGpu::new(
+                precompile.clone(),
+                extension.airs.clone(),
+                extension.base_config.clone(),
+                shared_chips_pair.clone(),
+            );
+            inventory.add_executor_chip(chip);
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Clone)]
+pub struct PeripheryBusIds {
+    pub range_checker: u16,
+    pub bitwise_lookup: Option<u16>,
+    pub tuple_range_checker: Option<u16>,
+}
+
+#[derive(Clone, Default)]
+pub struct PowdrCpuProverExt<ISA> {
+    _marker: PhantomData<ISA>,
+}
+
+impl<E, RA, ISA: OpenVmISA> VmProverExtension<E, RA, PowdrExtension<BabyBear, ISA>>
+    for PowdrCpuProverExt<ISA>
+where
+    E: StarkEngine<SC = BabyBearSC, PB = CpuBackend<BabyBearSC>, PD = CpuDevice<BabyBearSC>>,
+    RA: RowMajorMatrixArena<BabyBear>,
+{
+    fn extend_prover(
+        &self,
+        extension: &PowdrExtension<BabyBear, ISA>,
+        inventory: &mut ChipInventory<<E as StarkEngine>::SC, RA, <E as StarkEngine>::PB>,
+    ) -> Result<(), ChipInventoryError> {
+        // TODO: here we make assumptions about the existence of some chips in the periphery. Make this more flexible
+
+        use crate::powdr_extension::trace_generator::cpu::PowdrPeripheryInstancesCpu;
+        let bitwise_lookup = inventory
+            .find_chip::<SharedBitwiseOperationLookupChip<8>>()
+            .next()
+            .cloned();
+        let range_checker = inventory
+            .find_chip::<SharedVariableRangeCheckerChip>()
+            .next()
+            .unwrap();
+        let tuple_range_checker = inventory
+            .find_chip::<SharedRangeTupleCheckerChip<2>>()
+            .next()
+            .cloned();
+
+        // Create the shared chips and the dummy shared chips
+        let shared_chips_pair = PowdrPeripheryInstancesCpu::new(
+            range_checker.clone(),
+            bitwise_lookup,
+            tuple_range_checker,
+            get_periphery_bus_ids(inventory),
+        );
+
+        for precompile in &extension.precompiles {
+            use crate::powdr_extension::chip::PowdrChipCpu;
+
+            inventory.next_air::<PowdrAir<BabyBear>>()?;
+            let chip = PowdrChipCpu::new(
                 precompile.clone(),
                 extension.airs.clone(),
                 extension.base_config.clone(),
@@ -364,11 +403,12 @@ impl<ISA: OpenVmISA> AsMut<SystemConfig> for SpecializedConfig<ISA> {
 )]
 pub enum SpecializedExecutor<F: PrimeField32, ISA: OpenVmISA> {
     #[any_enum]
-    OriginalExecutor(ISA::OriginalExecutor<F>),
+    OriginalExecutor(ISA::Executor<F>),
     #[any_enum]
     PowdrExecutor(PowdrExtensionExecutor<ISA>),
 }
 
+// We implement `From` by hand because we cannot prove that `ISA::Executor != PowdrExtensionExecutor`
 impl<F: PrimeField32, ISA: OpenVmISA> From<PowdrExtensionExecutor<ISA>>
     for SpecializedExecutor<F, ISA>
 {
@@ -394,8 +434,7 @@ impl<ISA: OpenVmISA> VmExecutionConfig<BabyBear> for SpecializedConfig<ISA> {
     fn create_executors(
         &self,
     ) -> Result<ExecutorInventory<Self::Executor>, ExecutorInventoryError> {
-        let mut inventory: ExecutorInventory<Self::Executor> =
-            self.original.create_executors()?.transmute();
+        let mut inventory = self.original.create_executors()?.transmute();
         inventory = inventory.extend(&self.powdr)?;
         Ok(inventory)
     }
@@ -414,65 +453,6 @@ impl<ISA: OpenVmISA> SpecializedConfig<ISA> {
             original: base_config,
             powdr: powdr_extension,
         }
-    }
-}
-
-pub fn execute<ISA: OpenVmISA>(
-    program: CompiledProgram<ISA>,
-    inputs: StdIn,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let CompiledProgram { exe, vm_config } = program;
-
-    // Set app configuration
-    let app_fri_params =
-        FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
-    let app_config = AppConfig::new(app_fri_params, vm_config.clone());
-
-    // prepare for execute
-    #[cfg(feature = "cuda")]
-    let sdk = PowdrSdkGpu::new(app_config).unwrap();
-    #[cfg(not(feature = "cuda"))]
-    let sdk = PowdrSdkCpu::new(app_config).unwrap();
-
-    let output = sdk.execute(exe.clone(), inputs.clone()).unwrap();
-
-    tracing::info!("Public values output: {:?}", output);
-
-    Ok(())
-}
-
-#[cfg(feature = "cuda")]
-#[derive(Default, Clone)]
-pub struct SpecializedConfigGpuBuilder<ISA> {
-    _marker: PhantomData<ISA>,
-}
-
-#[cfg(feature = "cuda")]
-impl<ISA: OpenVmISA> VmBuilder<GpuBabyBearPoseidon2Engine> for SpecializedConfigGpuBuilder<ISA> {
-    type VmConfig = SpecializedConfig<ISA>;
-    type SystemChipInventory = SystemChipInventoryGPU;
-    type RecordArena = DenseRecordArena;
-
-    fn create_chip_complex(
-        &self,
-        config: &SpecializedConfig<ISA>,
-        circuit: AirInventory<BabyBearSC>,
-    ) -> Result<
-        VmChipComplex<BabyBearSC, Self::RecordArena, GpuBackend, Self::SystemChipInventory>,
-        ChipInventoryError,
-    > {
-        let mut chip_complex = VmBuilder::<GpuBabyBearPoseidon2Engine>::create_chip_complex(
-            &<ISA as OpenVmISA>::OriginalBuilderGpu::default(),
-            &config.original.config.clone(),
-            circuit,
-        )?;
-        let inventory = &mut chip_complex.inventory;
-        VmProverExtension::<GpuBabyBearPoseidon2Engine, _, _>::extend_prover(
-            &PowdrGpuProverExt::<ISA>::default(),
-            &config.powdr,
-            inventory,
-        )?;
-        Ok(chip_complex)
     }
 }
 
@@ -566,6 +546,30 @@ impl<ISA: OpenVmISA> CompiledProgram<ISA> {
     }
 }
 
+pub fn execute<ISA: OpenVmISA>(
+    program: CompiledProgram<ISA>,
+    inputs: StdIn,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let CompiledProgram { exe, vm_config } = program;
+
+    // Set app configuration
+    let app_fri_params =
+        FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
+    let app_config = AppConfig::new(app_fri_params, vm_config.clone());
+
+    // prepare for execute
+    #[cfg(feature = "cuda")]
+    let sdk = PowdrSdkGpu::new(app_config).unwrap();
+    #[cfg(not(feature = "cuda"))]
+    let sdk = PowdrSdkCpu::new(app_config).unwrap();
+
+    let output = sdk.execute(exe.clone(), inputs.clone()).unwrap();
+
+    tracing::info!("Public values output: {:?}", output);
+
+    Ok(())
+}
+
 // Generate execution profile for a guest program
 pub fn execution_profile_from_guest<ISA: OpenVmISA>(
     program: &OriginalCompiledProgram<ISA>,
@@ -587,6 +591,3 @@ pub fn execution_profile_from_guest<ISA: OpenVmISA>(
             .unwrap();
     })
 }
-
-pub type IsaApc<F, ISA> =
-    Arc<powdr_autoprecompiles::Apc<F, Instr<F, ISA>, <ISA as OpenVmISA>::RegisterAddress, u32>>;

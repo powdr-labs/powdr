@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashSet};
 
 use openvm_circuit::arch::{AirInventory, ChipInventoryError, VmBuilder};
 use openvm_instructions::{instruction::Instruction, program::DEFAULT_PC_STEP, VmOpcode};
@@ -14,7 +14,7 @@ use powdr_openvm::{
     program::OriginalCompiledProgram,
     BabyBearSC, SpecializedExecutor,
 };
-use powdr_riscv_elf::ElfProgram;
+use powdr_riscv_elf::{debug_info::SymbolTable, ElfProgram};
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "cuda")]
@@ -49,26 +49,26 @@ impl<F: PrimeField32> From<ExtendedVmConfigExecutor<F>> for SpecializedExecutor<
 }
 
 impl OpenVmISA for RiscvISA {
-    type OriginalExecutor<F: PrimeField32> = ExtendedVmConfigExecutor<F>;
-    type OriginalConfig = ExtendedVmConfig;
-    type OriginalBuilderCpu = ExtendedVmConfigCpuBuilder;
+    type Executor<F: PrimeField32> = ExtendedVmConfigExecutor<F>;
+    type Config = ExtendedVmConfig;
+    type CpuBuilder = ExtendedVmConfigCpuBuilder;
     #[cfg(feature = "cuda")]
-    type OriginalBuilderGpu = ExtendedVmConfigGpuBuilder;
+    type GpuBuilder = ExtendedVmConfigGpuBuilder;
 
-    fn is_branching(opcode: VmOpcode) -> bool {
-        branch_opcodes_set().contains(&opcode)
+    fn branching_opcodes() -> HashSet<VmOpcode> {
+        branch_opcodes_set()
     }
 
     fn format<F: PrimeField32>(instruction: &Instruction<F>) -> String {
         instruction_formatter::openvm_instruction_formatter(instruction)
     }
 
-    fn instruction_allowlist() -> HashSet<VmOpcode> {
+    fn allowed_opcodes() -> HashSet<VmOpcode> {
         instruction_allowlist()
     }
 
     fn create_original_chip_complex(
-        config: &Self::OriginalConfig,
+        config: &Self::Config,
         airs: AirInventory<BabyBearSC>,
     ) -> Result<OriginalCpuChipComplex, ChipInventoryError> {
         <ExtendedVmConfigCpuBuilder as VmBuilder<BabyBearPoseidon2Engine>>::create_chip_complex(
@@ -90,44 +90,24 @@ impl OpenVmISA for RiscvISA {
 
     type Program<'a> = ElfProgram;
 
-    fn get_labels_debug<'a>(program: &Self::Program<'a>) -> BTreeMap<u64, Vec<String>> {
+    fn get_symbol_table<'a>(program: &Self::Program<'a>) -> SymbolTable {
         let debug_info = program.debug_info();
-        // tracing::info!(
-        //     "Got {} basic blocks from `collect_basic_blocks`",
-        //     blocks.len()
-        // );
-        // if tracing::enabled!(tracing::Level::DEBUG) {
-        //     tracing::debug!("Basic blocks sorted by execution count (top 10):");
-        //     for (count, block) in blocks
-        //         .iter()
-        //         .filter_map(|block| Some((pgo.pc_execution_count(block.start_pc)?, block)))
-        //         .sorted_by_key(|(count, _)| *count)
-        //         .rev()
-        //         .take(10)
-        //     {
-        //         let name = debug_info
-        //             .symbols
-        //             .try_get_one_or_preceding(block.start_pc)
-        //             .map(|(symbol, offset)| format!("{} + {offset}", rustc_demangle::demangle(symbol)))
-        //             .unwrap_or_default();
-        //         tracing::debug!("Basic block (executed {count} times), {name}:\n{block}",);
-        //     }
-        // }
-
-        let labels = debug_info
-            .symbols
-            .table()
-            .iter()
-            .map(|(addr, names)| {
-                (
-                    *addr as u64,
-                    names
-                        .iter()
-                        .map(|name| rustc_demangle::demangle(name).to_string())
-                        .collect(),
-                )
-            })
-            .collect();
+        let labels = SymbolTable::from_table(
+            debug_info
+                .symbols
+                .table()
+                .iter()
+                .map(|(addr, names)| {
+                    (
+                        *addr,
+                        names
+                            .iter()
+                            .map(|name| rustc_demangle::demangle(name).to_string())
+                            .collect(),
+                    )
+                })
+                .collect(),
+        );
 
         labels
     }
@@ -141,7 +121,7 @@ impl OpenVmISA for RiscvISA {
     }
 
     fn create_dummy_airs<E: openvm_circuit::arch::VmCircuitExtension<powdr_openvm::BabyBearSC>>(
-        config: &Self::OriginalConfig,
+        config: &Self::Config,
         shared_chips: E,
     ) -> Result<AirInventory<powdr_openvm::BabyBearSC>, openvm_circuit::arch::AirInventoryError>
     {
@@ -149,7 +129,7 @@ impl OpenVmISA for RiscvISA {
     }
 
     fn create_dummy_chip_complex_cpu(
-        config: &Self::OriginalConfig,
+        config: &Self::Config,
         circuit: AirInventory<powdr_openvm::BabyBearSC>,
         shared_chips: SharedPeripheryChipsCpu<Self>,
     ) -> Result<OriginalCpuChipComplex, ChipInventoryError> {
@@ -158,7 +138,7 @@ impl OpenVmISA for RiscvISA {
 
     #[cfg(feature = "cuda")]
     fn create_dummy_chip_complex_gpu(
-        config: &Self::OriginalConfig,
+        config: &Self::Config,
         circuit: AirInventory<powdr_openvm::BabyBearSC>,
         shared_chips: SharedPeripheryChipsGpu<Self>,
     ) -> Result<OriginalGpuChipComplex, ChipInventoryError> {
@@ -168,7 +148,7 @@ impl OpenVmISA for RiscvISA {
     }
 }
 
-/// Besides the base RISCV-V branching instructions, the bigint extension adds two more branching
+/// Besides the base RISC-V branching instructions, the bigint extension adds two more branching
 /// instruction classes over BranchEqual and BranchLessThan.
 /// Those instructions have the form <INSTR rs0 rs1 target_offset ...>, where target_offset is the
 /// relative jump we're interested in.

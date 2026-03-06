@@ -12,6 +12,7 @@ use crate::powdr_extension::chip::PowdrAir;
 use crate::program::Prog;
 use crate::OriginalCompiledProgram;
 use crate::{CompiledProgram, SpecializedConfig};
+use itertools::Itertools;
 use openvm_circuit::arch::VmState;
 use openvm_circuit::system::memory::online::GuestMemory;
 use openvm_instructions::instruction::Instruction as OpenVmInstruction;
@@ -133,11 +134,11 @@ impl<'a, ISA: OpenVmISA> Adapter for BabyBearOpenVmApcAdapter<'a, ISA> {
     }
 
     fn is_allowed(instruction: &Self::Instruction) -> bool {
-        ISA::instruction_allowlist().contains(&instruction.inner.opcode)
+        ISA::allowed_opcodes().contains(&instruction.inner.opcode)
     }
 
     fn is_branching(instruction: &Self::Instruction) -> bool {
-        ISA::is_branching(instruction.inner.opcode)
+        ISA::branching_opcodes().contains(&instruction.inner.opcode)
     }
 }
 
@@ -216,16 +217,42 @@ pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAd
         bus_map: bus_map.clone(),
     };
 
-    let labels = ISA::get_labels_debug(&original_program.elf);
+    let symbols = ISA::get_symbol_table(&original_program.elf);
     let blocks = original_program.collect_basic_blocks();
-    let exe = original_program.exe;
+    tracing::info!(
+        "Got {} basic blocks from `collect_basic_blocks`",
+        blocks.len()
+    );
+    if tracing::enabled!(tracing::Level::DEBUG) {
+        tracing::debug!("Basic blocks sorted by execution count (top 10):");
+        for (count, block) in blocks
+            .iter()
+            .filter_map(|block| Some((pgo.pc_execution_count(block.start_pc)?, block)))
+            .sorted_by_key(|(count, _)| *count)
+            .rev()
+            .take(10)
+        {
+            let name = symbols
+                .try_get_one_or_preceding(block.start_pc)
+                .map(|(symbol, offset)| format!("{} + {offset}", symbol))
+                .unwrap_or_default();
+            tracing::debug!("Basic block (executed {count} times), {name}:\n{block}",);
+        }
+    }
 
+    let symbols = symbols
+        .into_table()
+        .into_iter()
+        .map(|(key, values)| (key.into(), values))
+        .collect();
+
+    let exe = original_program.exe;
     let start = std::time::Instant::now();
     let apcs = pgo.filter_blocks_and_create_apcs_with_pgo(
         blocks,
         &config,
         vm_config,
-        labels,
+        symbols,
         empirical_constraints.apply_pc_threshold(),
     );
     metrics::gauge!("total_apc_gen_time_ms").set(start.elapsed().as_millis() as f64);

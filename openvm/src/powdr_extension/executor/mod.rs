@@ -10,8 +10,7 @@ use crate::{
     extraction_utils::{
         record_arena_dimension_by_air_name_per_apc_call, OriginalAirs, OriginalVmConfig,
     },
-    isa::OpenVmISA,
-    IsaApc,
+    isa::{IsaApc, OpenVmISA},
 };
 
 use itertools::Itertools;
@@ -46,7 +45,7 @@ use openvm_circuit::{
 /// When using the cpu backend, only `original_arenas_cpu` is used, and vice versa for gpu execution.
 pub struct PowdrExecutor<ISA: OpenVmISA> {
     pub air_by_opcode_id: OriginalAirs<BabyBear, ISA>,
-    pub executor_inventory: ExecutorInventory<ISA::OriginalExecutor<BabyBear>>,
+    pub executor_inventory: ExecutorInventory<ISA::Executor<BabyBear>>,
     pub apc: IsaApc<BabyBear, ISA>,
     pub original_arenas_cpu: Rc<RefCell<OriginalArenas<MatrixRecordArena<BabyBear>>>>,
     pub original_arenas_gpu: Rc<RefCell<OriginalArenas<DenseRecordArena>>>,

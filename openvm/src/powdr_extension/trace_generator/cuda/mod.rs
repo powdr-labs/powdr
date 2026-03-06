@@ -23,9 +23,9 @@ use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 use crate::{
     cuda_abi::{self, DerivedExprSpec, DevInteraction, ExprSpan, OpCode, OriginalAir, Subst},
     extraction_utils::{OriginalAirs, OriginalVmConfig},
-    isa::OpenVmISA,
+    isa::{IsaApc, OpenVmISA},
     powdr_extension::{chip::PowdrChipGpu, executor::OriginalArenas},
-    BabyBearSC, GpuBackend, IsaApc,
+    BabyBearSC, GpuBackend,
 };
 
 mod inventory;

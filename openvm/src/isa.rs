@@ -1,4 +1,5 @@
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashSet};
+use std::sync::Arc;
 
 use openvm_circuit::arch::{
     AirInventory, AirInventoryError, AnyEnum, ChipInventory, ChipInventoryError, DenseRecordArena,
@@ -17,13 +18,14 @@ use openvm_sdk::config::TranspilerConfig;
 use openvm_stark_backend::{config::Val, p3_field::PrimeField32, prover::cpu::CpuBackend};
 use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
+use powdr_riscv_elf::debug_info::SymbolTable;
 use serde::{Deserialize, Serialize};
 
 use crate::powdr_extension::trace_generator::cpu::SharedPeripheryChipsCpu;
 #[cfg(feature = "cuda")]
 use crate::powdr_extension::trace_generator::SharedPeripheryChipsGpu;
 use crate::program::OriginalCompiledProgram;
-use crate::{BabyBearSC, SpecializedExecutor};
+use crate::{BabyBearSC, Instr, SpecializedExecutor};
 
 pub type OriginalCpuChipComplex = VmChipComplex<
     BabyBearSC,
@@ -40,6 +42,9 @@ pub type OriginalGpuChipComplex =
 #[cfg(feature = "cuda")]
 pub type OriginalGpuChipInventory = ChipInventory<BabyBearSC, DenseRecordArena, GpuBackend>;
 
+pub type IsaApc<F, ISA> =
+    Arc<powdr_autoprecompiles::Apc<F, Instr<F, ISA>, <ISA as OpenVmISA>::RegisterAddress, u32>>;
+
 pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
     /// The original program, for example, an elf for riscv. It must allow recovering the jump destinations / labels.
     type Program<'a>;
@@ -55,7 +60,7 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
         + Send
         + Sync;
 
-    type OriginalExecutor<F: PrimeField32>: AnyEnum
+    type Executor<F: PrimeField32>: AnyEnum
         + InterpreterExecutor<F>
         + Executor<F>
         + MeteredExecutor<F>
@@ -65,59 +70,59 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
         + Sync
         + Into<SpecializedExecutor<F, Self>>;
 
-    type OriginalConfig: VmConfig<BabyBearSC>
-        + VmExecutionConfig<BabyBear, Executor = Self::OriginalExecutor<BabyBear>>
+    type Config: VmConfig<BabyBearSC>
+        + VmExecutionConfig<BabyBear, Executor = Self::Executor<BabyBear>>
         + TranspilerConfig<BabyBear>;
 
-    type OriginalBuilderCpu: Clone
+    type CpuBuilder: Clone
         + Default
         + VmBuilder<
             BabyBearPoseidon2Engine,
-            VmConfig = Self::OriginalConfig,
+            VmConfig = Self::Config,
             SystemChipInventory = SystemChipInventory<BabyBearSC>,
             RecordArena = MatrixRecordArena<Val<BabyBearSC>>,
         >;
 
     #[cfg(feature = "cuda")]
-    type OriginalBuilderGpu: Clone
+    type GpuBuilder: Clone
         + Default
         + VmBuilder<
             GpuBabyBearPoseidon2Engine,
-            VmConfig = Self::OriginalConfig,
+            VmConfig = Self::Config,
             SystemChipInventory = SystemChipInventoryGPU,
             RecordArena = DenseRecordArena,
         >;
 
     fn create_dummy_airs<E: VmCircuitExtension<BabyBearSC>>(
-        config: &Self::OriginalConfig,
+        config: &Self::Config,
         shared_chips: E,
     ) -> Result<AirInventory<BabyBearSC>, AirInventoryError>;
 
     fn create_original_chip_complex(
-        config: &Self::OriginalConfig,
+        config: &Self::Config,
         airs: AirInventory<BabyBearSC>,
     ) -> Result<OriginalCpuChipComplex, ChipInventoryError>;
 
     fn create_dummy_chip_complex_cpu(
-        config: &Self::OriginalConfig,
+        config: &Self::Config,
         circuit: AirInventory<BabyBearSC>,
         shared_chips: SharedPeripheryChipsCpu<Self>,
     ) -> Result<OriginalCpuChipComplex, ChipInventoryError>;
 
     #[cfg(feature = "cuda")]
     fn create_dummy_chip_complex_gpu(
-        config: &Self::OriginalConfig,
+        config: &Self::Config,
         circuit: AirInventory<BabyBearSC>,
         shared_chips: SharedPeripheryChipsGpu<Self>,
     ) -> Result<OriginalGpuChipComplex, ChipInventoryError>;
 
-    /// Whether a given opcode is branching
-    fn is_branching(opcode: VmOpcode) -> bool;
+    /// The set of branching opcodes
+    fn branching_opcodes() -> HashSet<VmOpcode>;
 
-    /// The set of instructions which are allowed to be put into autoprecompiles
-    fn instruction_allowlist() -> HashSet<VmOpcode>;
+    /// The set of opcodes which are allowed to be put into autoprecompiles
+    fn allowed_opcodes() -> HashSet<VmOpcode>;
 
-    /// Return the value of register `register` as an u32
+    /// Return the value of register `register` as a u32
     fn get_register_value(register: &Self::RegisterAddress) -> u32;
 
     /// Return the `limb_index`-th limb of `value` as a u32, where `value` is a memory value
@@ -126,8 +131,8 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
     /// Format an instruction of this ISA
     fn format<F: PrimeField32>(instruction: &Instruction<F>) -> String;
 
-    fn get_labels_debug<'a>(program: &Self::Program<'a>) -> BTreeMap<u64, Vec<String>>;
+    fn get_symbol_table<'a>(program: &Self::Program<'a>) -> SymbolTable;
 
-    /// Given an original program (elf + compiled exe), return the pcs which correspond to labels
+    /// Given an original program, return the pcs which correspond to jump destinations
     fn get_jump_destinations(original_program: &OriginalCompiledProgram<Self>) -> BTreeSet<u64>;
 }

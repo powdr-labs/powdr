@@ -14,11 +14,10 @@ use powdr_openvm_bus_interaction_handler::bus_map::BusMap;
 
 use crate::customize_exe::OvmApcStats;
 use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
-use crate::isa::OpenVmISA;
+use crate::isa::{IsaApc, OpenVmISA};
 use crate::powdr_extension::chip::PowdrAir;
 use crate::powdr_extension::executor::{OriginalArenas, PowdrExecutor};
 use crate::powdr_extension::PowdrOpcode;
-use crate::IsaApc;
 use openvm_circuit::{
     arch::{AirInventory, AirInventoryError, VmCircuitExtension, VmExecutionExtension},
     circuit_derive::Chip,
@@ -131,6 +130,7 @@ where
     }
 }
 
+// We cannot derive the implementations below due to limitations in the openvm derives
 impl<ISA: OpenVmISA> openvm_circuit::arch::AnyEnum for PowdrExtensionExecutor<ISA> {
     fn as_any_kind(&self) -> &dyn std::any::Any {
         match self {

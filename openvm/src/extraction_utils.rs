@@ -196,7 +196,7 @@ impl<'a> Deref for ChipComplexGuard<'a> {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct OriginalVmConfig<ISA: OpenVmISA> {
-    pub config: ISA::OriginalConfig,
+    pub config: ISA::Config,
     #[serde(skip)]
     pub chip_complex: CachedChipComplex,
 }
@@ -208,7 +208,7 @@ impl<ISA: OpenVmISA> VmCircuitConfig<BabyBearSC> for OriginalVmConfig<ISA> {
 }
 
 impl<ISA: OpenVmISA> VmExecutionConfig<BabyBear> for OriginalVmConfig<ISA> {
-    type Executor = <ISA::OriginalConfig as VmExecutionConfig<BabyBear>>::Executor;
+    type Executor = <ISA::Config as VmExecutionConfig<BabyBear>>::Executor;
 
     fn create_executors(
         &self,
@@ -230,18 +230,18 @@ impl<ISA: OpenVmISA> AsMut<SystemConfig> for OriginalVmConfig<ISA> {
 }
 
 impl<ISA: OpenVmISA> OriginalVmConfig<ISA> {
-    pub fn new(config: ISA::OriginalConfig) -> Self {
+    pub fn new(config: ISA::Config) -> Self {
         Self {
             config,
             chip_complex: Default::default(),
         }
     }
 
-    pub fn config(&self) -> &ISA::OriginalConfig {
+    pub fn config(&self) -> &ISA::Config {
         &self.config
     }
 
-    pub fn config_mut(&mut self) -> &mut ISA::OriginalConfig {
+    pub fn config_mut(&mut self) -> &mut ISA::Config {
         let mut guard = self.chip_complex.lock().expect("Mutex poisoned");
         *guard = None;
         &mut self.config
@@ -271,7 +271,7 @@ impl<ISA: OpenVmISA> OriginalVmConfig<ISA> {
         let chip_inventory = &chip_complex.inventory;
 
         let executor_inventory = self.create_executors().unwrap();
-        let instruction_allowlist = ISA::instruction_allowlist();
+        let instruction_allowlist = ISA::allowed_opcodes();
 
         instruction_allowlist
             .into_iter()

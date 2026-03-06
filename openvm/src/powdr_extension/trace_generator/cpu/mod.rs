@@ -14,9 +14,9 @@ use powdr_constraint_solver::constraint_system::ComputationMethod;
 
 use crate::{
     extraction_utils::{OriginalAirs, OriginalVmConfig},
+    isa::IsaApc,
     isa::OpenVmISA,
     powdr_extension::{chip::PowdrChipCpu, executor::OriginalArenas},
-    IsaApc,
 };
 
 /// The inventory of the PowdrExecutor, which contains the executors for each opcode.

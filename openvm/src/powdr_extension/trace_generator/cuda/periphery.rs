@@ -13,7 +13,6 @@ use openvm_circuit_primitives::{
 use openvm_cuda_backend::engine::GpuBabyBearPoseidon2Engine;
 use openvm_cuda_backend::prover_backend::GpuBackend;
 use openvm_stark_backend::{config::StarkGenericConfig, p3_field::PrimeField32};
-use powdr_openvm_bus_interaction_handler::bus_map::DEFAULT_TUPLE_RANGE_CHECKER;
 
 use crate::{
     isa::OpenVmISA, powdr_extension::trace_generator::common::DummyExecutor, BabyBearSC,
@@ -114,6 +113,8 @@ impl<SC: StarkGenericConfig, ISA: OpenVmISA> VmCircuitExtension<SC>
 
         if let Some(tuple_range_checker) = &self.tuple_range_checker {
             use openvm_circuit_primitives::range_tuple::RangeTupleCheckerBus;
+
+            use crate::bus_map::DEFAULT_TUPLE_RANGE_CHECKER;
 
             assert!(inventory
                 .find_air::<RangeTupleCheckerAir<2>>()
