@@ -143,9 +143,8 @@ pub fn select_blocks_greedy<A: Adapter, C: ApcCandidate<A>>(
         .collect::<Vec<_>>();
 
     // keep candidates by priority. As a candidate is selected, remaining priorities will be (lazily) updated.
-    let mut by_priority: PriorityQueue<_, _> = (0..candidates.len())
-        .map(|idx| (idx, candidates[idx].density()))
-        .collect();
+    let mut by_priority: PriorityQueue<_, _> =
+        candidates.iter().map(BlockCandidate::density).enumerate().collect();
 
     let mut selected = vec![];
     let mut cumulative_cost = 0;
