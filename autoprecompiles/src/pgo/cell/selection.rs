@@ -90,30 +90,22 @@ impl Ord for Density {
 
 /// Counts the occurrences of a candidate in a basic block run.
 /// Returns the count and the sub-runs after the candidate is removed.
-fn count_and_update_run(
+fn count_and_update_run<'a>(
     sblock: &BlockCandidate,
-    run: &ExecutionBasicBlockRun,
-    run_count: u32,
-) -> (u32, Vec<(ExecutionBasicBlockRun, u32)>) {
+    run: &'a ExecutionBasicBlockRun,
+) -> (u32, impl Iterator<Item = ExecutionBasicBlockRun> + 'a) {
     let sblock_len = sblock.start_pcs.len();
     let matches = find_non_overlapping(&run.0, &sblock.start_pcs);
-    let match_intervals = matches.iter().flat_map(|i| [*i, *i + sblock_len]);
+    let count = matches.len() as u32;
+    let match_intervals = matches.into_iter().flat_map(move |i| [i, i + sblock_len]);
     let sub_runs = std::iter::once(0)
         .chain(match_intervals)
         .chain(std::iter::once(run.0.len()))
         .tuples()
-        .filter_map(|(start, end)| {
-            if start != end {
-                Some((
-                    ExecutionBasicBlockRun(run.0[start..end].to_vec()),
-                    run_count,
-                ))
-            } else {
-                None
-            }
-        })
-        .collect();
-    (matches.len() as u32, sub_runs)
+        // skip empty sequences
+        .filter(|(start, end)| start != end)
+        .map(|(start, end)| ExecutionBasicBlockRun(run.0[start..end].to_vec()));
+    (count, sub_runs)
 }
 
 /// Count the occurences of a candidate in the execution (multiple basic block runs).
@@ -126,9 +118,9 @@ fn count_and_update_execution(
     let new_execution = execution
         .iter()
         .flat_map(|(run, run_count)| {
-            let (count, sub_runs) = count_and_update_run(sblock, run, *run_count);
+            let (count, sub_runs) = count_and_update_run(sblock, run);
             total_count += count * *run_count;
-            sub_runs
+            sub_runs.map(|sub_run| (sub_run, *run_count))
         })
         .collect();
     (total_count, new_execution)
@@ -213,38 +205,45 @@ mod test {
     #[test]
     fn test_count_and_update_run() {
         // no match: full run returned as single sub-run
-        let (count, sub_runs) = count_and_update_run(&sblock(vec![1, 2]), &run(vec![3, 4, 5]), 1);
+        let r = run(vec![3, 4, 5]);
+        let (count, sub_runs) = count_and_update_run(&sblock(vec![1, 2]), &r);
         assert_eq!(count, 0);
-        assert_eq!(sub_runs, vec![(run(vec![3, 4, 5]), 1)]);
+        assert_eq!(sub_runs.collect::<Vec<_>>(), vec![run(vec![3, 4, 5])]);
 
         // match at start
-        let (count, sub_runs) =
-            count_and_update_run(&sblock(vec![1, 2]), &run(vec![1, 2, 3, 4]), 1);
+        let r = run(vec![1, 2, 3, 4]);
+        let (count, sub_runs) = count_and_update_run(&sblock(vec![1, 2]), &r);
         assert_eq!(count, 1);
-        assert_eq!(sub_runs, vec![(run(vec![3, 4]), 1)]);
+        assert_eq!(sub_runs.collect::<Vec<_>>(), vec![run(vec![3, 4])]);
 
         // match at end
-        let (count, sub_runs) =
-            count_and_update_run(&sblock(vec![3, 4]), &run(vec![1, 2, 3, 4]), 1);
+        let r = run(vec![1, 2, 3, 4]);
+        let (count, sub_runs) = count_and_update_run(&sblock(vec![3, 4]), &r);
         assert_eq!(count, 1);
-        assert_eq!(sub_runs, vec![(run(vec![1, 2]), 1)]);
+        assert_eq!(sub_runs.collect::<Vec<_>>(), vec![run(vec![1, 2])]);
 
         // match in middle
-        let (count, sub_runs) =
-            count_and_update_run(&sblock(vec![2, 3]), &run(vec![1, 2, 3, 4]), 1);
+        let r = run(vec![1, 2, 3, 4]);
+        let (count, sub_runs) = count_and_update_run(&sblock(vec![2, 3]), &r);
         assert_eq!(count, 1);
-        assert_eq!(sub_runs, vec![(run(vec![1]), 1), (run(vec![4]), 1)]);
+        assert_eq!(
+            sub_runs.collect::<Vec<_>>(),
+            vec![run(vec![1]), run(vec![4])]
+        );
 
         // multiple matches
-        let (count, sub_runs) =
-            count_and_update_run(&sblock(vec![1, 2]), &run(vec![1, 2, 3, 1, 2, 4]), 1);
+        let r = run(vec![1, 2, 3, 1, 2, 4]);
+        let (count, sub_runs) = count_and_update_run(&sblock(vec![1, 2]), &r);
         assert_eq!(count, 2);
-        assert_eq!(sub_runs, vec![(run(vec![3]), 1), (run(vec![4]), 1)]);
+        assert_eq!(
+            sub_runs.collect::<Vec<_>>(),
+            vec![run(vec![3]), run(vec![4])]
+        );
 
         // full run is the match: no sub-runs
-        let (count, sub_runs) =
-            count_and_update_run(&sblock(vec![1, 2, 3]), &run(vec![1, 2, 3]), 1);
+        let r = run(vec![1, 2, 3]);
+        let (count, sub_runs) = count_and_update_run(&sblock(vec![1, 2, 3]), &r);
         assert_eq!(count, 1);
-        assert_eq!(sub_runs, vec![]);
+        assert_eq!(sub_runs.collect::<Vec<_>>(), vec![]);
     }
 }
