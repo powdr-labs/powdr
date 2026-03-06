@@ -78,16 +78,6 @@ impl OpenVmISA for RiscvISA {
         )
     }
 
-    type RegisterAddress = OpenVmRegisterAddress;
-
-    fn get_register_value(_register: &Self::RegisterAddress) -> u32 {
-        unimplemented!("execution constraints are currently unused")
-    }
-
-    fn value_limb(_value: u32, _limb: usize) -> u32 {
-        unimplemented!("execution constraints are currently unused")
-    }
-
     type Program<'a> = ElfProgram;
 
     fn get_symbol_table<'a>(program: &Self::Program<'a>) -> SymbolTable {

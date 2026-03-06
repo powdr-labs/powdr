@@ -190,17 +190,17 @@ struct CachedInstructionMeta {
 /// A struct to interpret the pre-compute data as for PowdrExecutor.
 #[derive(AlignedBytesBorrow, Clone)]
 #[repr(C)]
-struct PowdrPreCompute<F, Ctx, ISA: OpenVmISA> {
+struct PowdrPreCompute<F, Ctx> {
     height_change: u32,
     original_instructions: Vec<(ExecuteFunc<F, Ctx>, Vec<u8>)>,
-    optimistic_constraints: OptimisticConstraints<ISA::RegisterAddress, u32>,
+    optimistic_constraints: OptimisticConstraints<(), ()>,
 }
 
 impl<ISA: OpenVmISA> InterpreterExecutor<BabyBear> for PowdrExecutor<ISA> {
     fn pre_compute_size(&self) -> usize {
         // TODO: do we know `ExecutionCtx` is correct? It's only one implementation of `ExecutionCtxTrait`.
         // A clean fix would be to add `Ctx` as a generic parameter to this method in the `Executor` trait, but that would be a breaking change.
-        size_of::<PowdrPreCompute<BabyBear, ExecutionCtx, ISA>>()
+        size_of::<PowdrPreCompute<BabyBear, ExecutionCtx>>()
     }
 
     #[cfg(not(feature = "tco"))]
@@ -213,7 +213,7 @@ impl<ISA: OpenVmISA> InterpreterExecutor<BabyBear> for PowdrExecutor<ISA> {
     where
         Ctx: ExecutionCtxTrait,
     {
-        let pre_compute: &mut PowdrPreCompute<BabyBear, Ctx, ISA> = data.borrow_mut();
+        let pre_compute: &mut PowdrPreCompute<BabyBear, Ctx> = data.borrow_mut();
 
         self.pre_compute_impl::<Ctx>(pc, inst, pre_compute)?;
 
@@ -240,7 +240,7 @@ impl<ISA: OpenVmISA> InterpreterMeteredExecutor<BabyBear> for PowdrExecutor<ISA>
     fn metered_pre_compute_size(&self) -> usize {
         // TODO: do we know `MeteredCtx` is correct? It's only one implementation of `MeteredExecutionCtxTrait`.
         // A clean fix would be to add `Ctx` as a generic parameter to this method in the `MeteredExecutor` trait, but that would be a breaking change.
-        size_of::<E2PreCompute<PowdrPreCompute<BabyBear, MeteredCtx, ISA>>>()
+        size_of::<E2PreCompute<PowdrPreCompute<BabyBear, MeteredCtx>>>()
     }
 
     #[cfg(not(feature = "tco"))]
@@ -254,7 +254,7 @@ impl<ISA: OpenVmISA> InterpreterMeteredExecutor<BabyBear> for PowdrExecutor<ISA>
     where
         Ctx: MeteredExecutionCtxTrait,
     {
-        let pre_compute: &mut E2PreCompute<PowdrPreCompute<BabyBear, Ctx, ISA>> = data.borrow_mut();
+        let pre_compute: &mut E2PreCompute<PowdrPreCompute<BabyBear, Ctx>> = data.borrow_mut();
         pre_compute.chip_idx = chip_idx as u32;
 
         self.pre_compute_impl::<Ctx>(pc, inst, &mut pre_compute.data)?;
@@ -322,7 +322,7 @@ impl<ISA: OpenVmISA> PowdrExecutor<ISA> {
         &self,
         pc: u32,
         inst: &Instruction<BabyBear>,
-        data: &mut PowdrPreCompute<BabyBear, Ctx, ISA>,
+        data: &mut PowdrPreCompute<BabyBear, Ctx>,
     ) -> Result<(), StaticProgramError>
     where
         Ctx: ExecutionCtxTrait,
@@ -404,7 +404,7 @@ impl<ISA: OpenVmISA> PowdrExecutor<ISA> {
 /// The implementation of the execute function, shared between Executor and MeteredExecutor.
 #[inline(always)]
 unsafe fn execute_e12_impl<F: PrimeField32, CTX: ExecutionCtxTrait, ISA: OpenVmISA>(
-    pre_compute: &PowdrPreCompute<F, CTX, ISA>,
+    pre_compute: &PowdrPreCompute<F, CTX>,
     exec_state: &mut VmExecState<F, GuestMemory, CTX>,
 ) {
     let mut optimistic_constraint_evalutator = OptimisticConstraintEvaluator::new();
@@ -432,8 +432,8 @@ unsafe fn execute_e1_impl<F: PrimeField32, CTX: ExecutionCtxTrait, ISA: OpenVmIS
     pre_compute: *const u8,
     exec_state: &mut VmExecState<F, GuestMemory, CTX>,
 ) {
-    let pre_compute: &PowdrPreCompute<F, CTX, ISA> =
-        std::slice::from_raw_parts(pre_compute, size_of::<PowdrPreCompute<F, CTX, ISA>>()).borrow();
+    let pre_compute: &PowdrPreCompute<F, CTX> =
+        std::slice::from_raw_parts(pre_compute, size_of::<PowdrPreCompute<F, CTX>>()).borrow();
     execute_e12_impl::<F, CTX, ISA>(pre_compute, exec_state);
 }
 
@@ -442,9 +442,9 @@ unsafe fn execute_e2_impl<F: PrimeField32, CTX: MeteredExecutionCtxTrait, ISA: O
     pre_compute: *const u8,
     exec_state: &mut VmExecState<F, GuestMemory, CTX>,
 ) {
-    let pre_compute: &E2PreCompute<PowdrPreCompute<F, CTX, ISA>> = std::slice::from_raw_parts(
+    let pre_compute: &E2PreCompute<PowdrPreCompute<F, CTX>> = std::slice::from_raw_parts(
         pre_compute,
-        size_of::<E2PreCompute<PowdrPreCompute<F, CTX, ISA>>>(),
+        size_of::<E2PreCompute<PowdrPreCompute<F, CTX>>>(),
     )
     .borrow();
     exec_state.ctx.on_height_change(

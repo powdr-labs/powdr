@@ -19,7 +19,6 @@ use openvm_stark_backend::{config::Val, p3_field::PrimeField32, prover::cpu::Cpu
 use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_riscv_elf::debug_info::SymbolTable;
-use serde::{Deserialize, Serialize};
 
 use crate::powdr_extension::trace_generator::cpu::SharedPeripheryChipsCpu;
 #[cfg(feature = "cuda")]
@@ -42,23 +41,11 @@ pub type OriginalGpuChipComplex =
 #[cfg(feature = "cuda")]
 pub type OriginalGpuChipInventory = ChipInventory<BabyBearSC, DenseRecordArena, GpuBackend>;
 
-pub type IsaApc<F, ISA> =
-    Arc<powdr_autoprecompiles::Apc<F, Instr<F, ISA>, <ISA as OpenVmISA>::RegisterAddress, u32>>;
+pub type IsaApc<F, ISA> = Arc<powdr_autoprecompiles::Apc<F, Instr<F, ISA>, (), ()>>;
 
 pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
     /// The original program, for example, an elf for riscv. It must allow recovering the jump destinations / labels.
     type Program<'a>;
-
-    type RegisterAddress: PartialEq
-        + Eq
-        + std::hash::Hash
-        + Clone
-        + Copy
-        + std::fmt::Debug
-        + Serialize
-        + for<'a> Deserialize<'a>
-        + Send
-        + Sync;
 
     type Executor<F: PrimeField32>: AnyEnum
         + InterpreterExecutor<F>
@@ -121,12 +108,6 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
 
     /// The set of opcodes which are allowed to be put into autoprecompiles
     fn allowed_opcodes() -> HashSet<VmOpcode>;
-
-    /// Return the value of register `register` as a u32
-    fn get_register_value(register: &Self::RegisterAddress) -> u32;
-
-    /// Return the `limb_index`-th limb of `value` as a u32, where `value` is a memory value
-    fn value_limb(value: u32, limb_index: usize) -> u32;
 
     /// Format an instruction of this ISA
     fn format<F: PrimeField32>(instruction: &Instruction<F>) -> String;

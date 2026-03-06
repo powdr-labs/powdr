@@ -47,40 +47,42 @@ pub const POWDR_OPCODE: usize = 0x10ff;
 pub struct BabyBearOpenVmApcAdapter<'a, ISA> {
     _marker: std::marker::PhantomData<&'a ISA>,
 }
+
+/// The openvm execution state, used for execution constraint checking. Currently unused.
 pub struct OpenVmExecutionState<'a, F, ISA> {
-    inner: &'a VmState<F, GuestMemory>,
+    _inner: &'a VmState<F, GuestMemory>,
     _marker: PhantomData<ISA>,
 }
 
 impl<'a, F: PrimeField32, ISA> From<&'a VmState<F, GuestMemory>>
     for OpenVmExecutionState<'a, F, ISA>
 {
-    fn from(inner: &'a VmState<F, GuestMemory>) -> Self {
+    fn from(_inner: &'a VmState<F, GuestMemory>) -> Self {
         Self {
-            inner,
+            _inner,
             _marker: PhantomData,
         }
     }
 }
 // TODO: This is not tested yet as apc compilation does not currently output any optimistic constraints
 impl<'a, F: PrimeField32, ISA: OpenVmISA> ExecutionState for OpenVmExecutionState<'a, F, ISA> {
-    type RegisterAddress = ISA::RegisterAddress;
-    type Value = u32;
+    type RegisterAddress = ();
+    type Value = ();
 
     fn pc(&self) -> Self::Value {
-        self.inner.pc()
+        unimplemented!("optimistic constraints are currently unused")
     }
 
-    fn reg(&self, addr: &Self::RegisterAddress) -> Self::Value {
-        ISA::get_register_value(addr)
+    fn reg(&self, _addr: &Self::RegisterAddress) -> Self::Value {
+        unimplemented!("optimistic constraints are currently unused")
     }
 
-    fn value_limb(value: Self::Value, limb_index: usize) -> Self::Value {
-        ISA::value_limb(value, limb_index)
+    fn value_limb(_value: Self::Value, _limb_index: usize) -> Self::Value {
+        unimplemented!("optimistic constraints are currently unused")
     }
 
     fn global_clk(&self) -> usize {
-        unimplemented!("OpenVM does not give us access to a global clock")
+        unimplemented!("optimistic constraints are currently unused")
     }
 }
 
@@ -303,8 +305,7 @@ pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAd
 
 #[derive(Serialize, Deserialize)]
 pub struct OpenVmApcCandidate<ISA: OpenVmISA> {
-    apc_with_stats:
-        ApcWithStats<BabyBear, Instr<BabyBear, ISA>, ISA::RegisterAddress, u32, OvmApcStats>,
+    apc_with_stats: ApcWithStats<BabyBear, Instr<BabyBear, ISA>, (), (), OvmApcStats>,
     execution_frequency: usize,
 }
 
