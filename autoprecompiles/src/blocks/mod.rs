@@ -71,7 +71,8 @@ impl<I> SuperBlock<I> {
         self.blocks.iter().map(|b| b.start_pc).collect()
     }
 
-    /// Instruction index of the start pc of each original basic block
+    /// For each basic block in the superblock, returns the index of its first instruction
+    /// (within the superblock's flat instruction list) together with the block's start PC.
     pub fn instruction_indexed_start_pcs(&self) -> Vec<(usize, u64)> {
         let mut idx = 0;
         self.blocks
