@@ -371,7 +371,8 @@ pub fn build<A: Adapter>(
     metrics::counter!("after_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
 
-    // TODO: add optimistic constraints here
+    // TODO: for now, we only include optimistic constraints related to superblock PCs.
+    // Optimistic constraints from empirical constraints are still missing.
     let pc_constraints = superblock_pc_constraints::<A>(&block);
     let optimistic_constraints = OptimisticConstraints::from_constraints(pc_constraints);
 
