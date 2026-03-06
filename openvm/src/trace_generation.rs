@@ -1,3 +1,6 @@
+use crate::PowdrSdkCpu;
+use crate::SpecializedConfigCpuBuilder;
+use crate::{isa::OpenVmISA, program::CompiledProgram, SpecializedConfig};
 use openvm_circuit::arch::{
     execution_mode::Segment, Executor, MeteredExecutor, PreflightExecutionOutput,
     PreflightExecutor, VirtualMachine, VmBuilder, VmCircuitConfig, VmExecutionConfig, VmInstance,
@@ -18,8 +21,7 @@ use openvm_stark_sdk::{
 };
 use tracing::info_span;
 
-use crate::{BabyBearSC, CompiledProgram};
-use crate::{PowdrSdkCpu, SpecializedConfigCpuBuilder};
+use crate::BabyBearSC;
 
 #[cfg(not(feature = "cuda"))]
 use crate::PowdrSdkCpu as PowdrSdk;
@@ -38,41 +40,41 @@ use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
 
 /// Given a program and input, generates the trace segment by segment and calls the provided
 /// callback with the VM, proving key, and proving context (containing the trace) for each segment.
-pub fn do_with_trace(
-    program: &CompiledProgram,
+pub fn do_with_trace<ISA: OpenVmISA>(
+    program: &CompiledProgram<ISA>,
     inputs: StdIn,
     callback: impl FnMut(
         usize,
-        &VirtualMachine<BabyBearPoseidon2Engine, SpecializedConfigBuilder>,
+        &VirtualMachine<BabyBearPoseidon2Engine, SpecializedConfigBuilder<ISA>>,
         &MultiStarkProvingKey<BabyBearSC>,
         ProvingContext<<BabyBearPoseidon2Engine as StarkEngine>::PB>,
     ),
 ) -> Result<(), Box<dyn std::error::Error>> {
     let sdk = PowdrSdk::new(create_app_config(program))?;
-    do_with_trace_with_sdk::<BabyBearPoseidon2Engine, SpecializedConfigBuilder, _>(
+    do_with_trace_with_sdk::<ISA, BabyBearPoseidon2Engine, SpecializedConfigBuilder<ISA>, _>(
         program, inputs, sdk, callback,
     )
 }
 
 /// Like [`do_with_trace`], but always uses the CPU engine and CPU VM config builder.
-pub fn do_with_cpu_trace(
-    program: &CompiledProgram,
+pub fn do_with_cpu_trace<ISA: OpenVmISA>(
+    program: &CompiledProgram<ISA>,
     inputs: StdIn,
     callback: impl FnMut(
         usize,
-        &VirtualMachine<CpuBabyBearPoseidon2Engine, SpecializedConfigCpuBuilder>,
+        &VirtualMachine<CpuBabyBearPoseidon2Engine, SpecializedConfigCpuBuilder<ISA>>,
         &MultiStarkProvingKey<BabyBearSC>,
         ProvingContext<<CpuBabyBearPoseidon2Engine as StarkEngine>::PB>,
     ),
 ) -> Result<(), Box<dyn std::error::Error>> {
     let sdk = PowdrSdkCpu::new(create_app_config(program))?;
-    do_with_trace_with_sdk::<CpuBabyBearPoseidon2Engine, SpecializedConfigCpuBuilder, _>(
+    do_with_trace_with_sdk::<ISA, CpuBabyBearPoseidon2Engine, SpecializedConfigCpuBuilder<ISA>, _>(
         program, inputs, sdk, callback,
     )
 }
 
-fn do_with_trace_with_sdk<E, VB, NB>(
-    program: &CompiledProgram,
+fn do_with_trace_with_sdk<ISA: OpenVmISA, E, VB, NB>(
+    program: &CompiledProgram<ISA>,
     inputs: StdIn,
     sdk: GenericSdk<E, VB, NB>,
     mut callback: impl FnMut(
@@ -143,7 +145,9 @@ where
     Ok(())
 }
 
-fn create_app_config(program: &CompiledProgram) -> AppConfig<crate::SpecializedConfig> {
+fn create_app_config<ISA: OpenVmISA>(
+    program: &CompiledProgram<ISA>,
+) -> AppConfig<SpecializedConfig<ISA>> {
     let app_fri_params =
         FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
     AppConfig::new(app_fri_params, program.vm_config.clone())

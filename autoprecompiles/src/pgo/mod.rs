@@ -3,7 +3,7 @@ use strum::{Display, EnumString};
 
 use crate::{
     adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig},
-    blocks::{BasicBlock, SuperBlock},
+    blocks::SuperBlock,
     evaluation::evaluate_apc,
     execution_profile::ExecutionProfile,
     export::{ExportLevel, ExportOptions},
@@ -74,7 +74,7 @@ pub fn pgo_config(
 // Only used for PgoConfig::Instruction and PgoConfig::None,
 // because PgoConfig::Cell caches all APCs in sorting stage.
 fn create_apcs_for_all_blocks<A: Adapter>(
-    blocks: Vec<BasicBlock<A::Instruction>>,
+    blocks: Vec<SuperBlock<A::Instruction>>,
     config: &PowdrConfig,
     vm_config: AdapterVmConfig<A>,
     empirical_constraints: EmpiricalConstraints,
@@ -86,8 +86,7 @@ fn create_apcs_for_all_blocks<A: Adapter>(
         .into_par_iter()
         .skip(config.skip_autoprecompiles as usize)
         .take(n_acc)
-        .map(|block| {
-            let superblock: SuperBlock<_> = block.into();
+        .map(|superblock| {
             tracing::debug!(
                 "Accelerating block of length {} and start pcs {:?}",
                 superblock.instructions().count(),

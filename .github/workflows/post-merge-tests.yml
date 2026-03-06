@@ -43,13 +43,13 @@ jobs:
           cargo +1.90 install --git 'http://github.com/powdr-labs/openvm.git' --rev "v1.4.2-powdr-rc.2" --locked cargo-openvm
 
       - name: Run keccak with 100 APCs
-        run: /usr/bin/time -v cargo run --bin powdr_openvm -r prove guest-keccak --input 10000 --autoprecompiles 100 --recursion
+        run: /usr/bin/time -v cargo run --bin powdr_openvm_riscv -r prove guest-keccak --input 10000 --autoprecompiles 100 --recursion
 
       - name: Run ECC with 100 APCs
-        run: /usr/bin/time -v cargo run --bin powdr_openvm -r prove guest-ecc-powdr-affine-hint --input 20 --autoprecompiles 100 --recursion
+        run: /usr/bin/time -v cargo run --bin powdr_openvm_riscv -r prove guest-ecc-powdr-affine-hint --input 20 --autoprecompiles 100 --recursion
 
       - name: Run ecrecover with 100 APCs
-        run: /usr/bin/time -v cargo run --bin powdr_openvm -r prove guest-ecrecover --input 20 --autoprecompiles 100 --recursion
+        run: /usr/bin/time -v cargo run --bin powdr_openvm_riscv -r prove guest-ecrecover --input 20 --autoprecompiles 100 --recursion
 
       - name: Patch benchmark
         uses: ./.github/actions/patch-openvm-reth-benchmark

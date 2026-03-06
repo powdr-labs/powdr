@@ -1,7 +1,6 @@
 use std::{
     collections::{BTreeMap, HashMap},
     io::BufWriter,
-    path::Path,
     sync::{Arc, Mutex},
 };
 
@@ -9,7 +8,7 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    adapter::{Adapter, AdapterApcWithStats, AdapterBasicBlock, AdapterVmConfig, PgoAdapter},
+    adapter::{Adapter, AdapterApcWithStats, AdapterExecutionBlocks, AdapterVmConfig, PgoAdapter},
     blocks::{BasicBlock, SuperBlock},
     evaluation::{evaluate_apc, EvaluationResult},
     execution_profile::ExecutionProfile,
@@ -32,7 +31,7 @@ pub trait Candidate<A: Adapter>: Sized + KnapsackItem {
     ) -> Self;
 
     /// Return a JSON export of the APC candidate.
-    fn to_json_export(&self, apc_candidates_dir_path: &Path) -> ApcCandidateJsonExport;
+    fn to_json_export(&self) -> ApcCandidateJsonExport;
 
     /// Convert the candidate into an autoprecompile and its statistics.
     fn into_apc_and_stats(self) -> AdapterApcWithStats<A>;
@@ -56,8 +55,6 @@ pub struct ApcCandidateJsonExport {
     pub cost_before: f64,
     // cost after optimization, used for effectiveness calculation and ranking of candidates
     pub cost_after: f64,
-    // path to the apc candidate file
-    pub apc_candidate_file: String,
 }
 
 pub struct CellPgo<A, C> {
@@ -81,7 +78,12 @@ impl<A, C> CellPgo<A, C> {
 
 /// This version is used by external tools to support multiple versions of the json export.
 /// Version should be incremented whenever a breaking change is made to the type (or inner types).
-const JSON_EXPORT_VERSION: usize = 2;
+/// Version Log:
+/// 0: Serialize only APCs as Vec<ApcCandidateJsonExport>
+/// 1: Add labels to the JSON export
+/// 2: Rename apcs[*].original_block.statements -> apcs[*].original_block.instructions
+/// 3. Remove apcs[*].apc_candidate_file
+const JSON_EXPORT_VERSION: usize = 3;
 
 #[derive(Serialize, Deserialize)]
 struct JsonExport {
@@ -105,7 +107,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
 
     fn create_apcs_with_pgo(
         &self,
-        mut blocks: Vec<AdapterBasicBlock<Self::Adapter>>,
+        exec_blocks: AdapterExecutionBlocks<Self::Adapter>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
@@ -113,59 +115,52 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
         tracing::info!(
             "Generating autoprecompiles with cell PGO for {} blocks",
-            blocks.len()
+            exec_blocks.blocks.len()
         );
 
         if config.autoprecompiles == 0 {
             return vec![];
         }
 
-        // drop any block whose start pc cannot be found in the execution,
-        // because a basic block might not be executed at all.
-        // Also only keep basic blocks with more than one original instruction.
-        blocks.retain(|b| self.data.pc_count.contains_key(&b.start_pc) && b.instructions.len() > 1);
-
-        tracing::debug!(
-            "Retained {} basic blocks after filtering by pc_idx_count",
-            blocks.len()
-        );
-
         // generate apc for all basic blocks and only cache the ones we eventually use
         // calculate number of trace cells saved per row for each basic block to sort them by descending cost
         let max_cache = (config.autoprecompiles + config.skip_autoprecompiles) as usize;
         tracing::info!(
-        "Generating autoprecompiles for all ({}) basic blocks in parallel and caching costliest {}",
-        blocks.len(),
-        max_cache,
-    );
+            "Generating autoprecompiles for all ({}) blocks in parallel and caching costliest {}",
+            exec_blocks.blocks.len(),
+            max_cache,
+        );
 
         let apc_candidates = Arc::new(Mutex::new(vec![]));
 
         // map–reduce over blocks into a single BinaryHeap<ApcCandidate<P>> capped at max_cache
         let res = parallel_fractional_knapsack(
-            blocks.into_par_iter().filter_map(|block| {
-                let superblock: SuperBlock<_> = block.into();
-                let apc = crate::build::<A>(
-                    superblock.clone(),
-                    vm_config.clone(),
-                    config.degree_bound,
-                    ExportOptions::new(
-                        config.apc_candidates_dir_path.clone(),
-                        &superblock.start_pcs(),
-                        ExportLevel::OnlyAPC,
-                    ),
-                    &empirical_constraints,
-                )
-                .ok()?;
-                let apc_with_stats =
-                    evaluate_apc::<A>(superblock, vm_config.instruction_handler, apc);
-                let candidate = C::create(apc_with_stats, &self.data.pc_count);
-                if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
-                    let json_export = candidate.to_json_export(apc_candidates_dir_path);
-                    apc_candidates.lock().unwrap().push(json_export);
-                }
-                Some(candidate)
-            }),
+            exec_blocks
+                .blocks
+                .into_par_iter()
+                .filter_map(|block_and_stats| {
+                    let superblock: SuperBlock<_> = block_and_stats.block;
+                    let apc = crate::build::<A>(
+                        superblock.clone(),
+                        vm_config.clone(),
+                        config.degree_bound,
+                        ExportOptions::new(
+                            config.apc_candidates_dir_path.clone(),
+                            &superblock.start_pcs(),
+                            ExportLevel::OnlyAPC,
+                        ),
+                        &empirical_constraints,
+                    )
+                    .ok()?;
+                    let apc_with_stats =
+                        evaluate_apc::<A>(superblock, vm_config.instruction_handler, apc);
+                    let candidate = C::create(apc_with_stats, &self.data.pc_count);
+                    if config.apc_candidates_dir_path.is_some() {
+                        let json_export = candidate.to_json_export();
+                        apc_candidates.lock().unwrap().push(json_export);
+                    }
+                    Some(candidate)
+                }),
             max_cache,
             self.max_total_apc_columns,
         )
@@ -187,7 +182,7 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
         res
     }
 
-    fn pc_execution_count(&self, pc: u64) -> Option<u32> {
-        self.data.pc_count.get(&pc).cloned()
+    fn execution_profile(&self) -> Option<&ExecutionProfile> {
+        Some(&self.data)
     }
 }
