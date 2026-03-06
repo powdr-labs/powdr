@@ -316,7 +316,9 @@ impl OvmApcStats {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct OpenVmApcCandidate<ISA: OpenVmISA>(ApcWithStats<BabyBear, Instr<BabyBear, ISA>, (), u32, OvmApcStats>);
+pub struct OpenVmApcCandidate<ISA: OpenVmISA>(
+    ApcWithStats<BabyBear, Instr<BabyBear, ISA>, (), u32, OvmApcStats>,
+);
 
 impl<'a, ISA: OpenVmISA> ApcCandidate<BabyBearOpenVmApcAdapter<'a, ISA>>
     for OpenVmApcCandidate<ISA>
