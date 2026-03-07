@@ -583,8 +583,8 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let config = default_powdr_openvm_config(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        // should create two segments
-        prove_simple(GUEST_KECCAK, config, stdin, PgoConfig::None, Some(4_000));
+        // should create two segments (v2 requires power-of-two max_trace_height)
+        prove_simple(GUEST_KECCAK, config, stdin, PgoConfig::None, Some(4_096));
     }
 
     #[test]
@@ -1329,10 +1329,10 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 19909,
+                            main: 18344,
                         },
-                        constraints: 11080,
-                        bus_interactions: 13432,
+                        constraints: 10604,
+                        bus_interactions: 12361,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1345,11 +1345,11 @@ mod tests {
                 AirWidthsDiff {
                     before: AirWidths {
                         preprocessed: 0,
-                        main: 150546,
+                        main: 143228,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 19909,
+                        main: 18344,
                     },
                 }
             "#]]),
@@ -1478,14 +1478,14 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 3242,
+                            main: 7127,
                         },
-                        constraints: 592,
-                        bus_interactions: 2564,
+                        constraints: 1803,
+                        bus_interactions: 5261,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
-                    22
+                    63
                 "#]],
                 non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
                 non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
@@ -1494,11 +1494,11 @@ mod tests {
                 AirWidthsDiff {
                     before: AirWidths {
                         preprocessed: 0,
-                        main: 32376,
+                        main: 47344,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 3242,
+                        main: 7127,
                     },
                 }
             "#]]),
