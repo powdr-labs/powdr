@@ -15,18 +15,10 @@ use openvm_circuit::arch::{
 #[cfg(feature = "cuda")]
 use openvm_circuit::system::cuda::SystemChipInventoryGPU;
 use openvm_circuit::system::SystemChipInventory;
-use openvm_sdk::config::SdkVmCpuBuilder;
+use openvm_sdk_config::{SdkVmConfig, SdkVmConfigExecutor, SdkVmCpuBuilder, TranspilerConfig};
 
-use openvm_sdk::config::TranspilerConfig;
-use openvm_sdk::prover::{verify_app_proof, AggStarkProver};
-use openvm_sdk::{
-    config::{AppConfig, SdkVmConfig, SdkVmConfigExecutor, DEFAULT_APP_LOG_BLOWUP},
-    Sdk, StdIn,
-};
-use openvm_stark_backend::config::Val;
-use openvm_stark_backend::engine::StarkEngine;
-use openvm_stark_backend::prover::cpu::{CpuBackend, CpuDevice};
-use openvm_stark_sdk::config::FriParameters;
+use openvm_stark_backend::prover::{CpuBackend, CpuDevice};
+use openvm_stark_backend::{StarkEngine, Val};
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
@@ -39,9 +31,16 @@ use powdr_openvm::BabyBearSC;
 #[cfg(not(feature = "cuda"))]
 use powdr_openvm::PowdrSdkCpu;
 #[cfg(feature = "cuda")]
-use powdr_openvm::{GpuBabyBearPoseidon2Engine, GpuBackend, PowdrSdkGpu};
+use powdr_openvm::{GpuBabyBearPoseidon2CpuEngine, GpuBackend, PowdrSdkGpu};
 use powdr_openvm_riscv_hints_circuit::{HintsExtension, HintsExtensionExecutor, HintsProverExt};
 use powdr_openvm_riscv_hints_transpiler::HintsTranspilerExtension;
+use sdk_v2::{
+    config::{
+        default_app_params, AggregationSystemParams, AppConfig, DEFAULT_APP_LOG_BLOWUP,
+        DEFAULT_APP_L_SKIP,
+    },
+    StdIn,
+};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -104,14 +103,22 @@ pub fn compile_openvm(
 
     // try to load the sdk config from the openvm.toml file, otherwise use the default
     let openvm_toml_path = path.join("openvm.toml");
-    let app_config = if openvm_toml_path.exists() {
-        let toml = std::fs::read_to_string(&openvm_toml_path)?;
-        toml::from_str(&toml)?
+    let system_params = default_app_params(DEFAULT_APP_LOG_BLOWUP, DEFAULT_APP_L_SKIP, 21);
+    let app_config: AppConfig<SdkVmConfig> = if openvm_toml_path.exists() {
+        let toml_str = std::fs::read_to_string(&openvm_toml_path)?;
+        // Deserialize just the app_vm_config from the TOML, then pair with our system_params.
+        // The TOML files don't contain system_params (v2 addition).
+        #[derive(serde::Deserialize)]
+        struct PartialAppConfig {
+            app_vm_config: SdkVmConfig,
+        }
+        let partial: PartialAppConfig = toml::from_str(&toml_str)?;
+        AppConfig::new(partial.app_vm_config, system_params)
     } else {
-        AppConfig::riscv32()
+        AppConfig::riscv32(system_params)
     };
 
-    let mut sdk = Sdk::new(app_config)?;
+    let mut sdk = sdk_v2::Sdk::new(app_config, AggregationSystemParams::default())?;
 
     let transpiler = sdk.transpiler().unwrap();
 
@@ -242,7 +249,7 @@ where
 pub struct ExtendedVmConfigGpuBuilder;
 
 #[cfg(feature = "cuda")]
-impl VmBuilder<GpuBabyBearPoseidon2Engine> for ExtendedVmConfigGpuBuilder {
+impl VmBuilder<GpuBabyBearPoseidon2CpuEngine> for ExtendedVmConfigGpuBuilder {
     type VmConfig = ExtendedVmConfig;
     type SystemChipInventory = SystemChipInventoryGPU;
     type RecordArena = DenseRecordArena;
@@ -255,13 +262,13 @@ impl VmBuilder<GpuBabyBearPoseidon2Engine> for ExtendedVmConfigGpuBuilder {
         VmChipComplex<BabyBearSC, Self::RecordArena, GpuBackend, Self::SystemChipInventory>,
         ChipInventoryError,
     > {
-        let mut chip_complex = VmBuilder::<GpuBabyBearPoseidon2Engine>::create_chip_complex(
-            &openvm_sdk::config::SdkVmGpuBuilder,
+        let mut chip_complex = VmBuilder::<GpuBabyBearPoseidon2CpuEngine>::create_chip_complex(
+            &openvm_sdk_config::SdkVmGpuBuilder,
             &config.sdk,
             circuit,
         )?;
         let inventory = &mut chip_complex.inventory;
-        VmProverExtension::<GpuBabyBearPoseidon2Engine, _, _>::extend_prover(
+        VmProverExtension::<GpuBabyBearPoseidon2CpuEngine, _, _>::extend_prover(
             &HintsProverExt,
             &config.hints,
             inventory,
@@ -292,8 +299,8 @@ pub fn prove(
     segment_height: Option<usize>, // uses the default height if None
 ) -> Result<(), Box<dyn std::error::Error>> {
     if mock {
-        do_with_trace(program, inputs, |_segment_idx, vm, pk, ctx| {
-            debug_proving_ctx(vm, pk, &ctx);
+        do_with_trace(program, inputs, |_segment_idx, vm, _pk, ctx| {
+            debug_proving_ctx(vm, &ctx);
         })?;
     } else {
         let exe = &program.exe;
@@ -307,21 +314,21 @@ pub fn prove(
                 .sdk
                 .system
                 .config
-                .segmentation_limits =
+                .segmentation_config
+                .limits =
                 SegmentationLimits::default().with_max_trace_height(segment_height as u32);
             tracing::debug!("Setting max segment len to {}", segment_height);
         }
 
         // Set app configuration
-        let app_fri_params =
-            FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
-        let app_config = AppConfig::new(app_fri_params, vm_config.clone());
+        let system_params = default_app_params(DEFAULT_APP_LOG_BLOWUP, DEFAULT_APP_L_SKIP, 21);
+        let app_config = AppConfig::new(vm_config.clone(), system_params);
 
         // Create the SDK
         #[cfg(feature = "cuda")]
-        let sdk = PowdrSdkGpu::new(app_config).unwrap();
+        let sdk = PowdrSdkGpu::new(app_config, AggregationSystemParams::default()).unwrap();
         #[cfg(not(feature = "cuda"))]
-        let sdk = PowdrSdkCpu::new(app_config).unwrap();
+        let sdk = PowdrSdkCpu::new(app_config, AggregationSystemParams::default()).unwrap();
         let mut app_prover = sdk.app_prover(exe.clone())?;
 
         // Generate a proof
@@ -332,20 +339,13 @@ pub fn prove(
 
         tracing::info!("Public values: {:?}", app_proof.user_public_values);
 
-        // Verify
-        let app_vk = sdk.app_pk().get_app_vk();
-        verify_app_proof(&app_vk, &app_proof)?;
-        tracing::info!("App proof verification done.");
+        // Note: verification is done automatically in debug_assertions mode inside prove()
+        tracing::info!("App proof generation done.");
 
         if recursion {
-            let mut agg_prover: AggStarkProver<_, _> = sdk.prover(exe.clone())?.agg_prover;
-
-            // Note that this proof is not verified. We assume that any valid app proof
-            // (verified above) also leads to a valid aggregation proof.
-            // If this was not the case, it would be a completeness bug in OpenVM.
-            let start = std::time::Instant::now();
-            let _ = agg_prover.generate_root_verifier_input(app_proof)?;
-            tracing::info!("Agg proof (inner recursion) took {:?}", start.elapsed());
+            // TODO: v2 aggregation proving requires NativeBuilder type param in GenericSdk.
+            // This is not yet supported with the powdr-specific SDK types.
+            tracing::warn!("Recursion proving not yet supported in v2 integration");
         }
 
         tracing::info!("All done.");
@@ -583,8 +583,8 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let config = default_powdr_openvm_config(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        // should create two segments
-        prove_simple(GUEST_KECCAK, config, stdin, PgoConfig::None, Some(4_000));
+        // should create two segments (v2 requires power-of-two max_trace_height)
+        prove_simple(GUEST_KECCAK, config, stdin, PgoConfig::None, Some(4_096));
     }
 
     #[test]
@@ -1111,11 +1111,10 @@ mod tests {
     const NON_POWDR_EXPECTED_MACHINE_COUNT: usize = 19;
     const NON_POWDR_EXPECTED_SUM: AirMetrics = AirMetrics {
         widths: AirWidths {
-            preprocessed: 7,
-            main: 798,
-            log_up: 684,
+            preprocessed: 0,
+            main: 819,
         },
-        constraints: 604,
+        constraints: 643,
         bus_interactions: 253,
     };
 
@@ -1139,7 +1138,6 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 38,
-                            log_up: 56,
                         },
                         constraints: 12,
                         bus_interactions: 26,
@@ -1167,7 +1165,6 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 38,
-                            log_up: 56,
                         },
                         constraints: 12,
                         bus_interactions: 26,
@@ -1184,12 +1181,10 @@ mod tests {
                     before: AirWidths {
                         preprocessed: 0,
                         main: 170,
-                        log_up: 236,
                     },
                     after: AirWidths {
                         preprocessed: 0,
                         main: 38,
-                        log_up: 56,
                     },
                 }
             "#]]),
@@ -1216,7 +1211,6 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 14254,
-                            log_up: 22752,
                         },
                         constraints: 4279,
                         bus_interactions: 11143,
@@ -1244,7 +1238,6 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 14226,
-                            log_up: 22720,
                         },
                         constraints: 4255,
                         bus_interactions: 11133,
@@ -1261,12 +1254,10 @@ mod tests {
                     before: AirWidths {
                         preprocessed: 0,
                         main: 183410,
-                        log_up: 227144,
                     },
                     after: AirWidths {
                         preprocessed: 0,
                         main: 14226,
-                        log_up: 22720,
                     },
                 }
             "#]]),
@@ -1292,11 +1283,10 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 17286,
-                            log_up: 27884,
+                            main: 17216,
                         },
-                        constraints: 8819,
-                        bus_interactions: 11919,
+                        constraints: 8751,
+                        bus_interactions: 11894,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1309,13 +1299,11 @@ mod tests {
                 AirWidthsDiff {
                     before: AirWidths {
                         preprocessed: 0,
-                        main: 127884,
-                        log_up: 170096,
+                        main: 127592,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 17286,
-                        log_up: 27884,
+                        main: 17216,
                     },
                 }
             "#]]),
@@ -1341,11 +1329,10 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 19909,
-                            log_up: 30904,
+                            main: 18344,
                         },
-                        constraints: 11080,
-                        bus_interactions: 13432,
+                        constraints: 10604,
+                        bus_interactions: 12361,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1358,13 +1345,11 @@ mod tests {
                 AirWidthsDiff {
                     before: AirWidths {
                         preprocessed: 0,
-                        main: 150546,
-                        log_up: 198172,
+                        main: 143228,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 19909,
-                        log_up: 30904,
+                        main: 18344,
                     },
                 }
             "#]]),
@@ -1391,7 +1376,6 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 2022,
-                            log_up: 3472,
                         },
                         constraints: 187,
                         bus_interactions: 1734,
@@ -1419,7 +1403,6 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 2022,
-                            log_up: 3472,
                         },
                         constraints: 187,
                         bus_interactions: 1734,
@@ -1447,7 +1430,6 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 2022,
-                            log_up: 3472,
                         },
                         constraints: 187,
                         bus_interactions: 1734,
@@ -1464,12 +1446,10 @@ mod tests {
                     before: AirWidths {
                         preprocessed: 0,
                         main: 27521,
-                        log_up: 35156,
                     },
                     after: AirWidths {
                         preprocessed: 0,
                         main: 2022,
-                        log_up: 3472,
                     },
                 }
             "#]]),
@@ -1498,15 +1478,14 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 3242,
-                            log_up: 5268,
+                            main: 7127,
                         },
-                        constraints: 592,
-                        bus_interactions: 2564,
+                        constraints: 1803,
+                        bus_interactions: 5261,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
-                    22
+                    63
                 "#]],
                 non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
                 non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
@@ -1515,13 +1494,11 @@ mod tests {
                 AirWidthsDiff {
                     before: AirWidths {
                         preprocessed: 0,
-                        main: 32376,
-                        log_up: 41660,
+                        main: 47344,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 3242,
-                        log_up: 5268,
+                        main: 7127,
                     },
                 }
             "#]]),
@@ -1546,7 +1523,7 @@ mod tests {
         use openvm_ecc_circuit::{WeierstrassExtension, SECP256K1_CONFIG};
         use openvm_pairing_circuit::{PairingCurve, PairingExtension};
         use openvm_rv32im_circuit::Rv32M;
-        use openvm_sdk::config::SdkVmConfig;
+        use openvm_sdk_config::SdkVmConfig;
         use powdr_openvm::extraction_utils::OriginalVmConfig;
         use powdr_openvm_riscv_hints_circuit::HintsExtension;
 

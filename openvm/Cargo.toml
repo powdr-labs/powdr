@@ -8,10 +8,10 @@ repository.workspace = true
 
 [features]
 default = []
-aot = ["openvm-sdk/aot"]
-tco = ["openvm-sdk/tco"]
-metrics = ["openvm-sdk/metrics", "openvm-stark-backend/metrics", "openvm-stark-sdk/metrics"]
-cuda = ["openvm-sdk/cuda", "openvm-circuit-primitives/cuda", "dep:openvm-cuda-backend", "dep:openvm-cuda-common", "dep:openvm-cuda-builder"]
+aot = ["sdk-v2/aot"]
+tco = ["sdk-v2/tco"]
+metrics = ["sdk-v2/metrics", "openvm-stark-backend/metrics", "openvm-stark-sdk/metrics"]
+cuda = ["sdk-v2/cuda", "openvm-circuit-primitives/cuda", "dep:openvm-cuda-backend", "dep:openvm-cuda-common", "dep:openvm-cuda-builder"]
 
 [dependencies]
 itertools.workspace = true
@@ -25,11 +25,11 @@ powdr-expression.workspace = true
 powdr-openvm-bus-interaction-handler.workspace = true
 openvm-circuit-derive.workspace = true
 openvm-circuit-primitives-derive.workspace = true
-openvm-sdk.workspace = true
+sdk-v2.workspace = true
+openvm-sdk-config.workspace = true
 openvm-cuda-backend = { workspace = true, optional = true }
 openvm-cuda-common = { workspace = true, optional = true }
 openvm-transpiler.workspace = true
-openvm-native-circuit.workspace = true
 serde.workspace = true
 powdr-number.workspace = true
 derive_more.workspace = true

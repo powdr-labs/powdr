@@ -2,11 +2,11 @@ use std::{collections::HashMap, sync::Arc};
 
 use itertools::Itertools;
 use openvm_circuit::{arch::MatrixRecordArena, utils::next_power_of_two_or_zero};
+use openvm_circuit_primitives::Chip;
 use openvm_stark_backend::{
-    p3_field::{Field, FieldAlgebra, PrimeField32},
+    p3_field::{Field, PrimeCharacteristicRing, PrimeField32},
     p3_matrix::dense::{DenseMatrix, RowMajorMatrix},
-    prover::{hal::ProverBackend, types::AirProvingContext},
-    Chip,
+    prover::{AirProvingContext, ColMajorMatrix, ProverBackend, StridedColMajorMatrixView},
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::trace_handler::TraceTrait;
@@ -52,17 +52,20 @@ impl<F> From<Arc<RowMajorMatrix<F>>> for SharedCpuTrace<F> {
     }
 }
 
-impl<R, PB: ProverBackend<Matrix = Arc<RowMajorMatrix<BabyBear>>>, ISA: OpenVmISA> Chip<R, PB>
+impl<R, PB: ProverBackend<Matrix = ColMajorMatrix<BabyBear>>, ISA: OpenVmISA> Chip<R, PB>
     for PowdrChipCpu<ISA>
 {
     fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
         tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
 
-        let trace = self
+        let row_major = self
             .trace_generator
             .generate_witness(self.record_arena_by_air_name.take());
 
-        AirProvingContext::simple(Arc::new(trace), vec![])
+        // Convert from row-major to column-major
+        let col_major = ColMajorMatrix::from_row_major(&row_major);
+
+        AirProvingContext::simple(col_major, vec![])
     }
 }
 
@@ -134,9 +137,12 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
                     }
                 };
 
-                let shared_trace = chip.generate_proving_ctx(record_arena).common_main.unwrap();
+                let col_major_trace = chip.generate_proving_ctx(record_arena).common_main;
+                // Convert ColMajorMatrix to RowMajorMatrix for SharedCpuTrace
+                let row_major_trace = StridedColMajorMatrixView::from(col_major_trace.as_view())
+                    .to_row_major_matrix();
 
-                Some((air_name, SharedCpuTrace::from(shared_trace)))
+                Some((air_name, SharedCpuTrace::from(Arc::new(row_major_trace))))
             })
             .collect();
 
@@ -155,7 +161,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
         // allocate for apc trace
         let width = apc_poly_id_to_index.len();
         let height = next_power_of_two_or_zero(num_apc_calls);
-        let mut values = <BabyBear as FieldAlgebra>::zero_vec(height * width);
+        let mut values = <BabyBear as PrimeCharacteristicRing>::zero_vec(height * width);
 
         // go through the final table and fill in the values
         values

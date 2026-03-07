@@ -3,21 +3,17 @@ use crate::SpecializedConfigCpuBuilder;
 use crate::{isa::OpenVmISA, program::CompiledProgram, SpecializedConfig};
 use openvm_circuit::arch::{
     execution_mode::Segment, Executor, MeteredExecutor, PreflightExecutionOutput,
-    PreflightExecutor, VirtualMachine, VmBuilder, VmCircuitConfig, VmExecutionConfig, VmInstance,
+    PreflightExecutor, VirtualMachine, VmBuilder, VmExecutionConfig,
 };
-use openvm_native_circuit::NativeConfig;
-use openvm_sdk::{
-    config::{AppConfig, DEFAULT_APP_LOG_BLOWUP},
-    prover::vm::new_local_prover,
-    GenericSdk, StdIn,
-};
-use openvm_stark_backend::config::Val;
-use openvm_stark_backend::{keygen::types::MultiStarkProvingKey, prover::types::ProvingContext};
-use openvm_stark_sdk::{
+use openvm_stark_backend::StarkEngine;
+use openvm_stark_backend::Val;
+use openvm_stark_backend::{keygen::types::MultiStarkProvingKey, prover::ProvingContext};
+use sdk_v2::{
     config::{
-        baby_bear_poseidon2::BabyBearPoseidon2Engine as CpuBabyBearPoseidon2Engine, FriParameters,
+        default_app_params, AggregationSystemParams, AppConfig, DEFAULT_APP_LOG_BLOWUP,
+        DEFAULT_APP_L_SKIP,
     },
-    engine::{StarkEngine, StarkFriEngine},
+    GenericSdk, StdIn,
 };
 use tracing::info_span;
 
@@ -34,9 +30,9 @@ use crate::SpecializedConfigCpuBuilder as SpecializedConfigBuilder;
 use crate::SpecializedConfigGpuBuilder as SpecializedConfigBuilder;
 
 #[cfg(feature = "cuda")]
-use openvm_cuda_backend::engine::GpuBabyBearPoseidon2Engine as BabyBearPoseidon2Engine;
+use openvm_cuda_backend::BabyBearPoseidon2GpuEngine as BabyBearPoseidon2CpuEngine;
 #[cfg(not(feature = "cuda"))]
-use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
+use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2CpuEngine;
 
 /// Given a program and input, generates the trace segment by segment and calls the provided
 /// callback with the VM, proving key, and proving context (containing the trace) for each segment.
@@ -45,13 +41,14 @@ pub fn do_with_trace<ISA: OpenVmISA>(
     inputs: StdIn,
     callback: impl FnMut(
         usize,
-        &VirtualMachine<BabyBearPoseidon2Engine, SpecializedConfigBuilder<ISA>>,
+        &VirtualMachine<BabyBearPoseidon2CpuEngine, SpecializedConfigBuilder<ISA>>,
         &MultiStarkProvingKey<BabyBearSC>,
-        ProvingContext<<BabyBearPoseidon2Engine as StarkEngine>::PB>,
+        ProvingContext<<BabyBearPoseidon2CpuEngine as StarkEngine>::PB>,
     ),
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let sdk = PowdrSdk::new(create_app_config(program))?;
-    do_with_trace_with_sdk::<ISA, BabyBearPoseidon2Engine, SpecializedConfigBuilder<ISA>, _>(
+    let (app_config, agg_params) = create_app_config(program);
+    let sdk = PowdrSdk::new(app_config, agg_params)?;
+    do_with_trace_with_sdk::<ISA, BabyBearPoseidon2CpuEngine, SpecializedConfigBuilder<ISA>>(
         program, inputs, sdk, callback,
     )
 }
@@ -62,21 +59,29 @@ pub fn do_with_cpu_trace<ISA: OpenVmISA>(
     inputs: StdIn,
     callback: impl FnMut(
         usize,
-        &VirtualMachine<CpuBabyBearPoseidon2Engine, SpecializedConfigCpuBuilder<ISA>>,
+        &VirtualMachine<
+            openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2CpuEngine,
+            SpecializedConfigCpuBuilder<ISA>,
+        >,
         &MultiStarkProvingKey<BabyBearSC>,
-        ProvingContext<<CpuBabyBearPoseidon2Engine as StarkEngine>::PB>,
+        ProvingContext<
+            <openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2CpuEngine as StarkEngine>::PB,
+        >,
     ),
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let sdk = PowdrSdkCpu::new(create_app_config(program))?;
-    do_with_trace_with_sdk::<ISA, CpuBabyBearPoseidon2Engine, SpecializedConfigCpuBuilder<ISA>, _>(
-        program, inputs, sdk, callback,
-    )
+    let (app_config, agg_params) = create_app_config(program);
+    let sdk = PowdrSdkCpu::new(app_config, agg_params)?;
+    do_with_trace_with_sdk::<
+        ISA,
+        openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2CpuEngine,
+        SpecializedConfigCpuBuilder<ISA>,
+    >(program, inputs, sdk, callback)
 }
 
-fn do_with_trace_with_sdk<ISA: OpenVmISA, E, VB, NB>(
+fn do_with_trace_with_sdk<ISA: OpenVmISA, E, VB>(
     program: &CompiledProgram<ISA>,
     inputs: StdIn,
-    sdk: GenericSdk<E, VB, NB>,
+    sdk: GenericSdk<E, VB>,
     mut callback: impl FnMut(
         usize,
         &VirtualMachine<E, VB>,
@@ -85,70 +90,65 @@ fn do_with_trace_with_sdk<ISA: OpenVmISA, E, VB, NB>(
     ),
 ) -> Result<(), Box<dyn std::error::Error>>
 where
-    E: StarkFriEngine<SC = BabyBearSC>,
+    E: StarkEngine<SC = BabyBearSC>,
     VB: VmBuilder<E> + Clone,
     <VB::VmConfig as VmExecutionConfig<Val<E::SC>>>::Executor: Executor<Val<E::SC>>
         + MeteredExecutor<Val<E::SC>>
         + PreflightExecutor<Val<E::SC>, VB::RecordArena>,
-    NB: VmBuilder<E, VmConfig = NativeConfig> + Clone,
-    <NativeConfig as VmExecutionConfig<Val<E::SC>>>::Executor:
-        PreflightExecutor<Val<E::SC>, NB::RecordArena>,
 {
-    let exe = sdk.convert_to_exe(program.exe.clone())?;
-    // Build owned vm instance, so we can mutate it later
-    let vm_builder = sdk.app_vm_builder().clone();
-    let vm_pk = sdk.app_pk().app_vm_pk.clone();
-    let mut vm_instance: VmInstance<_, _> = new_local_prover(vm_builder, &vm_pk, exe.clone())?;
+    let app_pk = sdk.app_pk();
+    let pk = &*app_pk.app_vm_pk.vm_pk;
 
-    vm_instance.reset_state(inputs.clone());
-    let metered_ctx = vm_instance.vm.build_metered_ctx(&exe);
-    let metered_interpreter = vm_instance.vm.metered_interpreter(vm_instance.exe())?;
-    let (segments, _) = metered_interpreter.execute_metered(inputs.clone(), metered_ctx)?;
-    let mut state = vm_instance.state_mut().take();
+    let mut app_prover = sdk.app_prover(program.exe.clone())?;
+    let instance = app_prover.instance_mut();
 
-    // Move `vm` and `interpreter` out of `vm_instance`
-    // (after this, you can't use `vm_instance` anymore).
-    let mut vm = vm_instance.vm;
-    let mut interpreter = vm_instance.interpreter;
+    // Metered execution to get segment boundaries
+    let inputs_streams: openvm_circuit::arch::Streams<Val<E::SC>> = inputs.into();
+    instance.reset_state(inputs_streams.clone());
+    let exe = instance.exe().clone();
+    let metered_ctx = instance.vm.build_metered_ctx(&exe);
+    let metered_interpreter = instance.vm.metered_interpreter(&exe)?;
+    let (segments, _) = metered_interpreter.execute_metered(inputs_streams, metered_ctx)?;
 
-    // Get reusable inputs for `debug_proving_ctx`, the mock prover API from OVM.
-    let air_inv = vm.config().create_airs()?;
-    let pk = air_inv.keygen::<E>(&vm.engine);
-
+    // For each segment: preflight → generate proving context → callback
+    let mut state = instance.state_mut().take();
     for (seg_idx, segment) in segments.into_iter().enumerate() {
-        let _segment_span = info_span!("prove_segment", segment = seg_idx).entered();
-        // We need a separate span so the metric label includes "segment" from _segment_span
-        let _prove_span = info_span!("total_proof").entered();
+        let _span = info_span!("trace_segment", segment = seg_idx).entered();
         let Segment {
             num_insns,
             trace_heights,
             ..
         } = segment;
-        let from_state = Option::take(&mut state).unwrap();
-        vm.transport_init_memory_to_device(&from_state.memory);
+        let from_state = state.take().unwrap();
+        instance
+            .vm
+            .transport_init_memory_to_device(&from_state.memory);
         let PreflightExecutionOutput {
             system_records,
             record_arenas,
             to_state,
-        } = vm.execute_preflight(
-            &mut interpreter,
+        } = instance.vm.execute_preflight(
+            &mut instance.interpreter,
             from_state,
             Some(num_insns),
             &trace_heights,
         )?;
         state = Some(to_state);
 
-        let ctx = vm.generate_proving_ctx(system_records, record_arenas)?;
-
-        callback(seg_idx, &vm, &pk, ctx);
+        let ctx = instance
+            .vm
+            .generate_proving_ctx(system_records, record_arenas)?;
+        callback(seg_idx, &instance.vm, pk, ctx);
     }
+    *instance.state_mut() = state;
+
     Ok(())
 }
 
 fn create_app_config<ISA: OpenVmISA>(
     program: &CompiledProgram<ISA>,
-) -> AppConfig<SpecializedConfig<ISA>> {
-    let app_fri_params =
-        FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
-    AppConfig::new(app_fri_params, program.vm_config.clone())
+) -> (AppConfig<SpecializedConfig<ISA>>, AggregationSystemParams) {
+    let system_params = default_app_params(DEFAULT_APP_LOG_BLOWUP, DEFAULT_APP_L_SKIP, 21);
+    let app_config = AppConfig::new(program.vm_config.clone(), system_params);
+    (app_config, AggregationSystemParams::default())
 }

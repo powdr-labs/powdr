@@ -7,7 +7,7 @@ use openvm_circuit::arch::{
     AirInventory, AirInventoryError, ChipInventory, ChipInventoryError, ExecutorInventory,
     ExecutorInventoryError, InitFileGenerator, MatrixRecordArena, RowMajorMatrixArena,
     SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig, VmCircuitExtension, VmExecutionConfig,
-    VmProverExtension,
+    VmField, VmProverExtension,
 };
 use openvm_circuit::system::SystemChipInventory;
 use openvm_circuit::{circuit_derive::Chip, derive::AnyEnum};
@@ -15,19 +15,11 @@ use openvm_circuit_derive::{
     AotExecutor, AotMeteredExecutor, Executor, MeteredExecutor, PreflightExecutor,
 };
 
-use openvm_sdk::config::TranspilerConfig;
-use openvm_sdk::GenericSdk;
-use openvm_sdk::{
-    config::{AppConfig, DEFAULT_APP_LOG_BLOWUP},
-    StdIn,
-};
-use openvm_stark_backend::config::{StarkGenericConfig, Val};
-use openvm_stark_backend::engine::StarkEngine;
-use openvm_stark_backend::prover::cpu::{CpuBackend, CpuDevice};
-use openvm_stark_backend::prover::hal::ProverBackend;
-use openvm_stark_sdk::config::{
-    baby_bear_poseidon2::{BabyBearPoseidon2Config, BabyBearPoseidon2Engine},
-    FriParameters,
+use openvm_sdk_config::TranspilerConfig;
+use openvm_stark_backend::prover::{CpuBackend, CpuDevice, ProverBackend};
+use openvm_stark_backend::{StarkEngine, StarkProtocolConfig, Val};
+use openvm_stark_sdk::config::baby_bear_poseidon2::{
+    BabyBearPoseidon2Config, BabyBearPoseidon2CpuEngine,
 };
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
@@ -37,6 +29,13 @@ use powdr_autoprecompiles::execution_profile::ExecutionProfile;
 use powdr_autoprecompiles::DegreeBound;
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::PowdrExtension;
+use sdk_v2::{
+    config::{
+        default_app_params, AggregationSystemParams, AppConfig, DEFAULT_APP_LOG_BLOWUP,
+        DEFAULT_APP_L_SKIP,
+    },
+    GenericSdk, StdIn,
+};
 use serde::{Deserialize, Serialize};
 use std::iter::Sum;
 use std::marker::PhantomData;
@@ -67,14 +66,12 @@ pub type BabyBearSC = BabyBearPoseidon2Config;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "cuda")] {
-        pub use openvm_cuda_backend::engine::GpuBabyBearPoseidon2Engine;
-        pub use openvm_native_circuit::NativeGpuBuilder;
-        pub type PowdrSdkGpu<ISA> = GenericSdk<GpuBabyBearPoseidon2Engine, SpecializedConfigGpuBuilder<ISA>, NativeGpuBuilder>;
-        pub type PowdrExecutionProfileSdkGpu<ISA> = GenericSdk<GpuBabyBearPoseidon2Engine, <ISA as OpenVmISA>::GpuBuilder, NativeGpuBuilder>;
+        pub use openvm_cuda_backend::BabyBearPoseidon2GpuEngine as GpuBabyBearPoseidon2CpuEngine;
+        pub type PowdrSdkGpu<ISA> = GenericSdk<GpuBabyBearPoseidon2CpuEngine, SpecializedConfigGpuBuilder<ISA>>;
+        pub type PowdrExecutionProfileSdkGpu<ISA> = GenericSdk<GpuBabyBearPoseidon2CpuEngine, <ISA as OpenVmISA>::GpuBuilder>;
 
         pub use openvm_circuit::system::cuda::{extensions::SystemGpuBuilder, SystemChipInventoryGPU};
-        pub use openvm_sdk::config::SdkVmGpuBuilder;
-        pub use openvm_cuda_backend::prover_backend::GpuBackend;
+        pub use openvm_cuda_backend::GpuBackend;
         pub use openvm_circuit_primitives::bitwise_op_lookup::BitwiseOperationLookupChipGPU;
         pub use openvm_circuit_primitives::range_tuple::RangeTupleCheckerChipGPU;
         pub use openvm_circuit_primitives::var_range::VariableRangeCheckerChipGPU;
@@ -90,11 +87,10 @@ use openvm_circuit_primitives::range_tuple::{RangeTupleCheckerAir, SharedRangeTu
 use openvm_circuit_primitives::var_range::{
     SharedVariableRangeCheckerChip, VariableRangeCheckerAir,
 };
-use openvm_native_circuit::NativeCpuBuilder;
 pub type PowdrSdkCpu<ISA> =
-    GenericSdk<BabyBearPoseidon2Engine, SpecializedConfigCpuBuilder<ISA>, NativeCpuBuilder>;
+    GenericSdk<BabyBearPoseidon2CpuEngine, SpecializedConfigCpuBuilder<ISA>>;
 pub type PowdrExecutionProfileSdkCpu<ISA> =
-    GenericSdk<BabyBearPoseidon2Engine, <ISA as OpenVmISA>::CpuBuilder, NativeCpuBuilder>;
+    GenericSdk<BabyBearPoseidon2CpuEngine, <ISA as OpenVmISA>::CpuBuilder>;
 
 pub const DEFAULT_OPENVM_DEGREE_BOUND: usize = 2 * DEFAULT_APP_LOG_BLOWUP + 1;
 pub const DEFAULT_DEGREE_BOUND: DegreeBound = DegreeBound {
@@ -139,7 +135,7 @@ pub struct SpecializedConfigGpuBuilder<ISA> {
 }
 
 #[cfg(feature = "cuda")]
-impl<ISA: OpenVmISA> VmBuilder<GpuBabyBearPoseidon2Engine> for SpecializedConfigGpuBuilder<ISA> {
+impl<ISA: OpenVmISA> VmBuilder<GpuBabyBearPoseidon2CpuEngine> for SpecializedConfigGpuBuilder<ISA> {
     type VmConfig = SpecializedConfig<ISA>;
     type SystemChipInventory = SystemChipInventoryGPU;
     type RecordArena = DenseRecordArena;
@@ -152,13 +148,13 @@ impl<ISA: OpenVmISA> VmBuilder<GpuBabyBearPoseidon2Engine> for SpecializedConfig
         VmChipComplex<BabyBearSC, Self::RecordArena, GpuBackend, Self::SystemChipInventory>,
         ChipInventoryError,
     > {
-        let mut chip_complex = VmBuilder::<GpuBabyBearPoseidon2Engine>::create_chip_complex(
+        let mut chip_complex = VmBuilder::<GpuBabyBearPoseidon2CpuEngine>::create_chip_complex(
             &<ISA as OpenVmISA>::GpuBuilder::default(),
             &config.original.config,
             circuit,
         )?;
         let inventory = &mut chip_complex.inventory;
-        VmProverExtension::<GpuBabyBearPoseidon2Engine, _, _>::extend_prover(
+        VmProverExtension::<GpuBabyBearPoseidon2CpuEngine, _, _>::extend_prover(
             &PowdrGpuProverExt::<ISA>::default(),
             &config.powdr,
             inventory,
@@ -217,8 +213,11 @@ struct PowdrGpuProverExt<ISA> {
 
 #[cfg(feature = "cuda")]
 impl<ISA: OpenVmISA>
-    VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, PowdrExtension<BabyBear, ISA>>
-    for PowdrGpuProverExt<ISA>
+    VmProverExtension<
+        GpuBabyBearPoseidon2CpuEngine,
+        DenseRecordArena,
+        PowdrExtension<BabyBear, ISA>,
+    > for PowdrGpuProverExt<ISA>
 {
     fn extend_prover(
         &self,
@@ -335,7 +334,7 @@ where
 // This is the most robust method because bus ids are assigned at air creation time.
 fn get_periphery_bus_ids<SC, RA, PB>(inventory: &ChipInventory<SC, RA, PB>) -> PeripheryBusIds
 where
-    SC: StarkGenericConfig,
+    SC: StarkProtocolConfig,
     PB: ProverBackend,
 {
     let air_inventory = inventory.airs();
@@ -401,7 +400,7 @@ impl<ISA: OpenVmISA> AsMut<SystemConfig> for SpecializedConfig<ISA> {
 #[derive(
     AnyEnum, Chip, Executor, MeteredExecutor, AotExecutor, AotMeteredExecutor, PreflightExecutor,
 )]
-pub enum SpecializedExecutor<F: PrimeField32, ISA: OpenVmISA> {
+pub enum SpecializedExecutor<F: VmField, ISA: OpenVmISA> {
     #[any_enum]
     OriginalExecutor(ISA::Executor<F>),
     #[any_enum]
@@ -409,9 +408,7 @@ pub enum SpecializedExecutor<F: PrimeField32, ISA: OpenVmISA> {
 }
 
 // We implement `From` by hand because we cannot prove that `ISA::Executor != PowdrExtensionExecutor`
-impl<F: PrimeField32, ISA: OpenVmISA> From<PowdrExtensionExecutor<ISA>>
-    for SpecializedExecutor<F, ISA>
-{
+impl<F: VmField, ISA: OpenVmISA> From<PowdrExtensionExecutor<ISA>> for SpecializedExecutor<F, ISA> {
     fn from(value: PowdrExtensionExecutor<ISA>) -> Self {
         Self::PowdrExecutor(value)
     }
@@ -506,7 +503,7 @@ impl<ISA: OpenVmISA> CompiledProgram<ISA> {
         let air_inventory = self.vm_config.create_airs().unwrap();
 
         let chip_complex = <SpecializedConfigCpuBuilder<ISA> as VmBuilder<
-            BabyBearPoseidon2Engine,
+            BabyBearPoseidon2CpuEngine,
         >>::create_chip_complex(
             &SpecializedConfigCpuBuilder::default(),
             &self.vm_config,
@@ -528,9 +525,6 @@ impl<ISA: OpenVmISA> CompiledProgram<ISA> {
             (Vec::new(), Vec::new()),
             |(mut powdr_air_metrics, mut non_powdr_air_metrics), air| {
                 let name = air.name();
-                // We actually give name "powdr_air_for_opcode_<opcode>" to the AIRs,
-                // but OpenVM uses the actual Rust type (PowdrAir) as the name in this method.
-                // TODO this is hacky but not sure how to do it better rn.
                 if name.starts_with("PowdrAir") {
                     powdr_air_metrics.push((
                         get_air_metrics(air.clone(), max_degree),
@@ -553,15 +547,14 @@ pub fn execute<ISA: OpenVmISA>(
     let CompiledProgram { exe, vm_config } = program;
 
     // Set app configuration
-    let app_fri_params =
-        FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
-    let app_config = AppConfig::new(app_fri_params, vm_config.clone());
+    let system_params = default_app_params(DEFAULT_APP_LOG_BLOWUP, DEFAULT_APP_L_SKIP, 21);
+    let app_config = AppConfig::new(vm_config.clone(), system_params);
 
     // prepare for execute
     #[cfg(feature = "cuda")]
-    let sdk = PowdrSdkGpu::new(app_config).unwrap();
+    let sdk = PowdrSdkGpu::new(app_config, AggregationSystemParams::default()).unwrap();
     #[cfg(not(feature = "cuda"))]
-    let sdk = PowdrSdkCpu::new(app_config).unwrap();
+    let sdk = PowdrSdkCpu::new(app_config, AggregationSystemParams::default()).unwrap();
 
     let output = sdk.execute(exe.clone(), inputs.clone()).unwrap();
 
@@ -579,15 +572,15 @@ pub fn execution_profile_from_guest<ISA: OpenVmISA>(
     let program = Prog::from(&exe.program);
 
     // Set app configuration
-    let app_fri_params =
-        FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
-    let app_config = AppConfig::new(app_fri_params, vm_config.clone().config);
+    let system_params = default_app_params(DEFAULT_APP_LOG_BLOWUP, DEFAULT_APP_L_SKIP, 21);
+    let app_config = AppConfig::new(vm_config.clone().config, system_params);
 
     // prepare for execute
-    let sdk = PowdrExecutionProfileSdkCpu::<ISA>::new(app_config).unwrap();
+    let sdk =
+        PowdrExecutionProfileSdkCpu::<ISA>::new(app_config, AggregationSystemParams::default())
+            .unwrap();
 
     execution_profile::<BabyBearOpenVmApcAdapter<ISA>>(&program, || {
-        sdk.execute_interpreted(exe.clone(), inputs.clone())
-            .unwrap();
+        sdk.execute(exe.clone(), inputs.clone()).unwrap();
     })
 }
