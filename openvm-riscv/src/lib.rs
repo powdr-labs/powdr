@@ -106,7 +106,14 @@ pub fn compile_openvm(
     let system_params = default_app_params(DEFAULT_APP_LOG_BLOWUP, DEFAULT_APP_L_SKIP, 21);
     let app_config: AppConfig<SdkVmConfig> = if openvm_toml_path.exists() {
         let toml_str = std::fs::read_to_string(&openvm_toml_path)?;
-        toml::from_str(&toml_str)?
+        // Deserialize just the app_vm_config from the TOML, then pair with our system_params.
+        // The TOML files don't contain system_params (v2 addition).
+        #[derive(serde::Deserialize)]
+        struct PartialAppConfig {
+            app_vm_config: SdkVmConfig,
+        }
+        let partial: PartialAppConfig = toml::from_str(&toml_str)?;
+        AppConfig::new(partial.app_vm_config, system_params)
     } else {
         AppConfig::riscv32(system_params)
     };
@@ -1276,10 +1283,10 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 17286,
+                            main: 17216,
                         },
-                        constraints: 8819,
-                        bus_interactions: 11919,
+                        constraints: 8751,
+                        bus_interactions: 11894,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1296,7 +1303,7 @@ mod tests {
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 17286,
+                        main: 17216,
                     },
                 }
             "#]]),
