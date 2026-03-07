@@ -160,10 +160,7 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                 &var_mapper,
             );
             system.extend(ConstraintSystem {
-                derived_variables: vec![DerivedVariable {
-                    variable: v.clone(),
-                    computation_method,
-                }],
+                derived_variables: vec![DerivedVariable::new(v.clone(), computation_method)],
                 ..Default::default()
             });
         }

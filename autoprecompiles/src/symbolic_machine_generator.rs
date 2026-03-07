@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use powdr_constraint_solver::constraint_system::ComputationMethod;
+use powdr_constraint_solver::constraint_system::{ComputationMethod, DerivedVariable};
 use powdr_expression::AlgebraicBinaryOperation;
 use powdr_number::FieldElement;
 
@@ -44,8 +44,8 @@ pub fn convert_machine_field_type<T, U>(
         derived_columns: machine
             .derived_columns
             .into_iter()
-            .map(|(v, method)| {
-                let method = match method {
+            .map(|derived_variable| {
+                let method = match derived_variable.computation_method {
                     ComputationMethod::Constant(c) => {
                         ComputationMethod::Constant(convert_field_element(c))
                     }
@@ -54,7 +54,7 @@ pub fn convert_machine_field_type<T, U>(
                         convert_expression(e2, convert_field_element),
                     ),
                 };
-                (v, method)
+                DerivedVariable::new(derived_variable.variable, method)
             })
             .collect(),
     }
