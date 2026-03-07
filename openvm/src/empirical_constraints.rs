@@ -1,3 +1,6 @@
+use crate::isa::OpenVmISA;
+use crate::program::CompiledProgram;
+use crate::trace_generation::do_with_cpu_trace;
 use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
 use itertools::Itertools;
@@ -15,15 +18,14 @@ use powdr_autoprecompiles::expression::AlgebraicEvaluator;
 use powdr_autoprecompiles::expression::RowEvaluator;
 use powdr_autoprecompiles::optimistic::config::optimistic_precompile_config;
 use powdr_autoprecompiles::DegreeBound;
+use powdr_openvm_bus_interaction_handler::bus_map::default_openvm_bus_map;
 use sdk_v2::StdIn;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::iter::once;
 
-use crate::bus_map::default_openvm_bus_map;
-use crate::trace_generation::do_with_cpu_trace;
-use crate::{CompiledProgram, OriginalCompiledProgram};
+use crate::OriginalCompiledProgram;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 struct Timestamp {
@@ -71,8 +73,8 @@ impl Trace {
     }
 }
 
-pub fn detect_empirical_constraints(
-    program: &OriginalCompiledProgram,
+pub fn detect_empirical_constraints<ISA: OpenVmISA>(
+    program: &OriginalCompiledProgram<ISA>,
     degree_bound: DegreeBound,
     inputs: Vec<StdIn>,
 ) -> EmpiricalConstraints {
@@ -104,8 +106,8 @@ pub fn detect_empirical_constraints(
     constraint_detector.finalize()
 }
 
-fn detect_empirical_constraints_from_input(
-    program: &CompiledProgram,
+fn detect_empirical_constraints_from_input<ISA: OpenVmISA>(
+    program: &CompiledProgram<ISA>,
     input_index: usize,
     inputs: StdIn,
     degree_bound: DegreeBound,
@@ -117,7 +119,7 @@ fn detect_empirical_constraints_from_input(
     let max_segments = optimistic_precompile_config().max_segments;
 
     do_with_cpu_trace(program, inputs, |seg_idx, vm, _pk, ctx| {
-        let airs = program.vm_config.sdk.airs(degree_bound).unwrap();
+        let airs = program.vm_config.original.airs(degree_bound).unwrap();
         let global_airs = vm
             .config()
             .create_airs()
@@ -133,7 +135,7 @@ fn detect_empirical_constraints_from_input(
             )
             .to_row_major_matrix();
             let air_name = global_airs[air_id].name();
-            let Some((machine, _)) = &airs.air_name_to_machine.get(&air_name) else {
+            let Some(machine) = &airs.get_air_machine(&air_name) else {
                 // air_name_to_machine only contains instruction AIRs, and we are only
                 // interested in those here.
                 continue;

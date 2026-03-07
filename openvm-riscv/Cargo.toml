@@ -1,0 +1,94 @@
+[package]
+name = "powdr-openvm-riscv"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+aot = ["powdr-openvm/aot", "powdr-openvm-riscv-hints-circuit/aot"]
+tco = ["powdr-openvm/tco", "powdr-openvm-riscv-hints-circuit/tco"]
+metrics = ["powdr-openvm/metrics"]
+cuda = ["powdr-openvm/cuda"]
+
+[dependencies]
+openvm.workspace = true
+openvm-build.workspace = true
+openvm-rv32im-circuit.workspace = true
+openvm-rv32im-transpiler.workspace = true
+openvm-rv32im-guest.workspace = true
+openvm-transpiler.workspace = true
+openvm-circuit.workspace = true
+openvm-circuit-derive.workspace = true
+openvm-circuit-primitives.workspace = true
+openvm-circuit-primitives-derive.workspace = true
+openvm-instructions.workspace = true
+openvm-instructions-derive.workspace = true
+sdk-v2.workspace = true
+openvm-sdk-config.workspace = true
+openvm-ecc-circuit.workspace = true
+openvm-ecc-transpiler.workspace = true
+openvm-keccak256-circuit.workspace = true
+openvm-keccak256-transpiler.workspace = true
+openvm-sha2-circuit.workspace = true
+openvm-sha2-transpiler.workspace = true
+openvm-algebra-circuit.workspace = true
+openvm-algebra-transpiler.workspace = true
+openvm-bigint-circuit.workspace = true
+openvm-bigint-transpiler.workspace = true
+openvm-pairing-circuit.workspace = true
+openvm-pairing-transpiler.workspace = true
+
+openvm-stark-sdk.workspace = true
+openvm-stark-backend.workspace = true
+
+powdr-expression.workspace = true
+powdr-number.workspace = true
+powdr-riscv-elf.workspace = true
+powdr-autoprecompiles.workspace = true
+powdr-constraint-solver.workspace = true
+powdr-openvm-bus-interaction-handler.workspace = true
+powdr-openvm.workspace = true
+
+powdr-openvm-riscv-hints-transpiler.workspace = true
+powdr-openvm-riscv-hints-circuit.workspace = true
+
+eyre.workspace = true
+serde.workspace = true
+derive_more.workspace = true
+itertools.workspace = true
+
+tracing.workspace = true
+tracing-subscriber = { version = "0.3.17", features = ["std", "env-filter"] }
+
+clap = { version = "^4.3", features = ["derive"] }
+
+log.workspace = true
+struct-reflection = { git = "https://github.com/gzanitti/struct-reflection-rs.git" }
+
+metrics.workspace = true
+toml = "0.8.14"
+
+rustc-demangle = "0.1.25"
+
+cfg-if = "1.0.0"
+
+[dev-dependencies]
+test-log.workspace = true
+tempfile = "3.20.0"
+pretty_assertions.workspace = true
+openvm-ecc-circuit.workspace = true
+openvm-algebra-circuit.workspace = true
+openvm-bigint-circuit.workspace = true
+openvm-pairing-circuit.workspace = true
+openvm-pairing-transpiler.workspace = true
+expect-test = "1.5.1"
+tracing-log = "0.2.0"
+
+[build-dependencies]
+openvm-cuda-builder = { workspace = true, optional = true }
+
+[lib]
+bench = false # See https://github.com/bheisler/criterion.rs/issues/458
