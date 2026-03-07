@@ -1106,7 +1106,6 @@ mod tests {
         widths: AirWidths {
             preprocessed: 7,
             main: 798,
-            log_up: 684,
         },
         constraints: 604,
         bus_interactions: 253,
@@ -1132,7 +1131,6 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 38,
-                            log_up: 56,
                         },
                         constraints: 12,
                         bus_interactions: 26,
@@ -1160,7 +1158,6 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 38,
-                            log_up: 56,
                         },
                         constraints: 12,
                         bus_interactions: 26,
@@ -1177,12 +1174,10 @@ mod tests {
                     before: AirWidths {
                         preprocessed: 0,
                         main: 170,
-                        log_up: 236,
                     },
                     after: AirWidths {
                         preprocessed: 0,
                         main: 38,
-                        log_up: 56,
                     },
                 }
             "#]]),
@@ -1209,7 +1204,6 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 14254,
-                            log_up: 22752,
                         },
                         constraints: 4279,
                         bus_interactions: 11143,
@@ -1237,7 +1231,6 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 14226,
-                            log_up: 22720,
                         },
                         constraints: 4255,
                         bus_interactions: 11133,
@@ -1254,12 +1247,10 @@ mod tests {
                     before: AirWidths {
                         preprocessed: 0,
                         main: 183410,
-                        log_up: 227144,
                     },
                     after: AirWidths {
                         preprocessed: 0,
                         main: 14226,
-                        log_up: 22720,
                     },
                 }
             "#]]),
@@ -1286,7 +1277,6 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 17286,
-                            log_up: 27884,
                         },
                         constraints: 8819,
                         bus_interactions: 11919,
@@ -1303,12 +1293,10 @@ mod tests {
                     before: AirWidths {
                         preprocessed: 0,
                         main: 127884,
-                        log_up: 170096,
                     },
                     after: AirWidths {
                         preprocessed: 0,
                         main: 17286,
-                        log_up: 27884,
                     },
                 }
             "#]]),
@@ -1335,7 +1323,6 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 19909,
-                            log_up: 30904,
                         },
                         constraints: 11080,
                         bus_interactions: 13432,
@@ -1352,12 +1339,10 @@ mod tests {
                     before: AirWidths {
                         preprocessed: 0,
                         main: 150546,
-                        log_up: 198172,
                     },
                     after: AirWidths {
                         preprocessed: 0,
                         main: 19909,
-                        log_up: 30904,
                     },
                 }
             "#]]),
@@ -1384,7 +1369,6 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 2022,
-                            log_up: 3472,
                         },
                         constraints: 187,
                         bus_interactions: 1734,
@@ -1412,7 +1396,6 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 2022,
-                            log_up: 3472,
                         },
                         constraints: 187,
                         bus_interactions: 1734,
@@ -1440,7 +1423,6 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 2022,
-                            log_up: 3472,
                         },
                         constraints: 187,
                         bus_interactions: 1734,
@@ -1457,12 +1439,10 @@ mod tests {
                     before: AirWidths {
                         preprocessed: 0,
                         main: 27521,
-                        log_up: 35156,
                     },
                     after: AirWidths {
                         preprocessed: 0,
                         main: 2022,
-                        log_up: 3472,
                     },
                 }
             "#]]),
@@ -1492,7 +1472,6 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 3242,
-                            log_up: 5268,
                         },
                         constraints: 592,
                         bus_interactions: 2564,
@@ -1509,12 +1488,10 @@ mod tests {
                     before: AirWidths {
                         preprocessed: 0,
                         main: 32376,
-                        log_up: 41660,
                     },
                     after: AirWidths {
                         preprocessed: 0,
                         main: 3242,
-                        log_up: 5268,
                     },
                 }
             "#]]),
@@ -1539,7 +1516,7 @@ mod tests {
         use openvm_ecc_circuit::{WeierstrassExtension, SECP256K1_CONFIG};
         use openvm_pairing_circuit::{PairingCurve, PairingExtension};
         use openvm_rv32im_circuit::Rv32M;
-        use openvm_sdk::config::SdkVmConfig;
+        use openvm_sdk_config::SdkVmConfig;
         use powdr_openvm::extraction_utils::OriginalVmConfig;
         use powdr_openvm_riscv_hints_circuit::HintsExtension;
 
