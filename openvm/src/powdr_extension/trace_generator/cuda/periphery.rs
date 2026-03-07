@@ -84,7 +84,9 @@ impl<ISA> PowdrPeripheryInstancesGpu<ISA> {
     }
 }
 
-impl<F: PrimeField32, ISA: OpenVmISA> VmExecutionExtension<F> for SharedPeripheryChipsGpu<ISA> {
+impl<F: PrimeField32 + openvm_stark_backend::p3_field::InjectiveMonomial<7>, ISA: OpenVmISA>
+    VmExecutionExtension<F> for SharedPeripheryChipsGpu<ISA>
+{
     type Executor = DummyExecutor<F, ISA>;
 
     fn extend_execution(

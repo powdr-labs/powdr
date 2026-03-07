@@ -1104,10 +1104,10 @@ mod tests {
     const NON_POWDR_EXPECTED_MACHINE_COUNT: usize = 19;
     const NON_POWDR_EXPECTED_SUM: AirMetrics = AirMetrics {
         widths: AirWidths {
-            preprocessed: 7,
-            main: 798,
+            preprocessed: 0,
+            main: 819,
         },
-        constraints: 604,
+        constraints: 643,
         bus_interactions: 253,
     };
 
