@@ -66,12 +66,12 @@ pub type BabyBearSC = BabyBearPoseidon2Config;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "cuda")] {
-        pub use openvm_cuda_backend::engine::GpuBabyBearPoseidon2CpuEngine;
+        pub use openvm_cuda_backend::BabyBearPoseidon2GpuEngine as GpuBabyBearPoseidon2CpuEngine;
         pub type PowdrSdkGpu<ISA> = GenericSdk<GpuBabyBearPoseidon2CpuEngine, SpecializedConfigGpuBuilder<ISA>>;
         pub type PowdrExecutionProfileSdkGpu<ISA> = GenericSdk<GpuBabyBearPoseidon2CpuEngine, <ISA as OpenVmISA>::GpuBuilder>;
 
         pub use openvm_circuit::system::cuda::{extensions::SystemGpuBuilder, SystemChipInventoryGPU};
-        pub use openvm_cuda_backend::prover_backend::GpuBackend;
+        pub use openvm_cuda_backend::GpuBackend;
         pub use openvm_circuit_primitives::bitwise_op_lookup::BitwiseOperationLookupChipGPU;
         pub use openvm_circuit_primitives::range_tuple::RangeTupleCheckerChipGPU;
         pub use openvm_circuit_primitives::var_range::VariableRangeCheckerChipGPU;

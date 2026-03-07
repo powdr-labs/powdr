@@ -10,9 +10,9 @@ use openvm_circuit::arch::{
 use openvm_circuit::system::cuda::SystemChipInventoryGPU;
 use openvm_circuit::system::SystemChipInventory;
 #[cfg(feature = "cuda")]
-use openvm_cuda_backend::engine::GpuBabyBearPoseidon2CpuEngine;
+use openvm_cuda_backend::BabyBearPoseidon2GpuEngine as GpuBabyBearPoseidon2CpuEngine;
 #[cfg(feature = "cuda")]
-use openvm_cuda_backend::prover_backend::GpuBackend;
+use openvm_cuda_backend::GpuBackend;
 use openvm_instructions::{instruction::Instruction, VmOpcode};
 use openvm_sdk_config::TranspilerConfig;
 use openvm_stark_backend::{p3_field::PrimeField32, prover::CpuBackend, Val};

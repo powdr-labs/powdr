@@ -5,12 +5,12 @@ use openvm_circuit::{
     arch::{ChipInventory, DenseRecordArena},
     utils::next_power_of_two_or_zero,
 };
+use openvm_circuit_primitives::Chip;
 use openvm_cuda_backend::base::DeviceMatrix;
 use openvm_cuda_common::copy::MemCopyH2D;
 use openvm_stark_backend::{
     p3_field::PrimeField32,
-    prover::{hal::ProverBackend, types::AirProvingContext},
-    Chip,
+    prover::{AirProvingContext, ProverBackend},
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{

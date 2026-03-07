@@ -10,8 +10,8 @@ use openvm_circuit_primitives::{
     range_tuple::{RangeTupleCheckerAir, RangeTupleCheckerChip, RangeTupleCheckerChipGPU},
     var_range::{VariableRangeCheckerAir, VariableRangeCheckerChipGPU},
 };
-use openvm_cuda_backend::engine::GpuBabyBearPoseidon2CpuEngine;
-use openvm_cuda_backend::prover_backend::GpuBackend;
+use openvm_cuda_backend::BabyBearPoseidon2GpuEngine as GpuBabyBearPoseidon2CpuEngine;
+use openvm_cuda_backend::GpuBackend;
 use openvm_stark_backend::{p3_field::PrimeField32, StarkProtocolConfig};
 
 use crate::{

@@ -30,7 +30,7 @@ use crate::SpecializedConfigCpuBuilder as SpecializedConfigBuilder;
 use crate::SpecializedConfigGpuBuilder as SpecializedConfigBuilder;
 
 #[cfg(feature = "cuda")]
-use openvm_cuda_backend::engine::GpuBabyBearPoseidon2CpuEngine as BabyBearPoseidon2CpuEngine;
+use openvm_cuda_backend::BabyBearPoseidon2GpuEngine as BabyBearPoseidon2CpuEngine;
 #[cfg(not(feature = "cuda"))]
 use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2CpuEngine;
 
