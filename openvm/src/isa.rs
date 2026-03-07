@@ -41,7 +41,7 @@ pub type OriginalGpuChipComplex =
 #[cfg(feature = "cuda")]
 pub type OriginalGpuChipInventory = ChipInventory<BabyBearSC, DenseRecordArena, GpuBackend>;
 
-pub type IsaApc<F, ISA> = Arc<powdr_autoprecompiles::Apc<F, Instr<F, ISA>, (), ()>>;
+pub type IsaApc<F, ISA> = Arc<powdr_autoprecompiles::Apc<F, Instr<F, ISA>, (), u32>>;
 
 pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
     /// The original program, for example, an elf for riscv. It must allow recovering the jump destinations / labels.

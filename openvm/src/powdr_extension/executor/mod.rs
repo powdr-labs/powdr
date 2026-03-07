@@ -193,7 +193,7 @@ struct CachedInstructionMeta {
 struct PowdrPreCompute<F, Ctx> {
     height_change: u32,
     original_instructions: Vec<(ExecuteFunc<F, Ctx>, Vec<u8>)>,
-    optimistic_constraints: OptimisticConstraints<(), ()>,
+    optimistic_constraints: OptimisticConstraints<(), u32>,
 }
 
 impl<ISA: OpenVmISA> InterpreterExecutor<BabyBear> for PowdrExecutor<ISA> {

@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::blocks::{detect_superblocks, ExecutionBlocks, SuperBlock};
 use crate::empirical_constraints::EmpiricalConstraints;
 use crate::evaluation::EvaluationResult;
-use crate::execution::{ExecutionState, OptimisticConstraints};
+use crate::execution::{ExecutionState, OptimisticConstraint, OptimisticConstraints};
 use crate::execution_profile::ExecutionProfile;
 use crate::{
     blocks::{BasicBlock, Instruction, Program},
@@ -170,6 +170,10 @@ pub type AdapterVmConfig<'a, A> = VmConfig<
 >;
 pub type AdapterExecutionState<A> = <A as Adapter>::ExecutionState;
 pub type AdapterOptimisticConstraints<A> = OptimisticConstraints<
+    <<A as Adapter>::ExecutionState as ExecutionState>::RegisterAddress,
+    <<A as Adapter>::ExecutionState as ExecutionState>::Value,
+>;
+pub type AdapterOptimisticConstraint<A> = OptimisticConstraint<
     <<A as Adapter>::ExecutionState as ExecutionState>::RegisterAddress,
     <<A as Adapter>::ExecutionState as ExecutionState>::Value,
 >;
