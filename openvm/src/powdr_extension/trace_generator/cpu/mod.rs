@@ -179,9 +179,9 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
 
                 // Fill in the columns we have to compute from other columns
                 // (these are either new columns or for example the "is_valid" column).
-                for (column, computation_method) in columns_to_compute {
-                    let col_index = apc_poly_id_to_index[&column.id];
-                    row_slice[col_index] = match computation_method {
+                for derived_column in columns_to_compute {
+                    let col_index = apc_poly_id_to_index[&derived_column.variable.id];
+                    row_slice[col_index] = match &derived_column.computation_method {
                         ComputationMethod::Constant(c) => *c,
                         ComputationMethod::QuotientOrZero(e1, e2) => {
                             use powdr_number::ExpressionConvertible;
