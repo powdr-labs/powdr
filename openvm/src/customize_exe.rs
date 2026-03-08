@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use std::fmt::Display;
 use std::hash::Hash;
 use std::iter::once;
@@ -23,10 +21,10 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::adapter::{
     Adapter, AdapterApc, AdapterApcWithStats, ApcWithStats, PgoAdapter,
 };
-use powdr_autoprecompiles::blocks::{BasicBlock, Instruction, PcStep};
+use powdr_autoprecompiles::blocks::{Instruction, PcStep};
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::execution::ExecutionState;
-use powdr_autoprecompiles::pgo::{ApcCandidateJsonExport, Candidate, KnapsackItem};
+use powdr_autoprecompiles::pgo::ApcCandidate;
 use powdr_autoprecompiles::PowdrConfig;
 use powdr_autoprecompiles::{InstructionHandler, VmConfig};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
@@ -48,18 +46,18 @@ pub struct BabyBearOpenVmApcAdapter<'a, ISA> {
     _marker: std::marker::PhantomData<&'a ISA>,
 }
 
-/// The openvm execution state, used for execution constraint checking. Currently unused.
+/// The openvm execution state, used for execution constraint checking
 pub struct OpenVmExecutionState<'a, F, ISA> {
-    _inner: &'a VmState<F, GuestMemory>,
+    inner: &'a VmState<F, GuestMemory>,
     _marker: PhantomData<ISA>,
 }
 
 impl<'a, F: PrimeField32, ISA> From<&'a VmState<F, GuestMemory>>
     for OpenVmExecutionState<'a, F, ISA>
 {
-    fn from(_inner: &'a VmState<F, GuestMemory>) -> Self {
+    fn from(inner: &'a VmState<F, GuestMemory>) -> Self {
         Self {
-            _inner,
+            inner,
             _marker: PhantomData,
         }
     }
@@ -67,10 +65,10 @@ impl<'a, F: PrimeField32, ISA> From<&'a VmState<F, GuestMemory>>
 // TODO: This is not tested yet as apc compilation does not currently output any optimistic constraints
 impl<'a, F: PrimeField32, ISA: OpenVmISA> ExecutionState for OpenVmExecutionState<'a, F, ISA> {
     type RegisterAddress = ();
-    type Value = ();
+    type Value = u32;
 
     fn pc(&self) -> Self::Value {
-        unimplemented!("optimistic constraints are currently unused")
+        self.inner.pc()
     }
 
     fn reg(&self, _addr: &Self::RegisterAddress) -> Self::Value {
@@ -209,6 +207,9 @@ pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAd
     pgo: P,
     empirical_constraints: EmpiricalConstraints,
 ) -> CompiledProgram<ISA> {
+    if config.superblock_max_bb_count > 1 {
+        panic!("Superblocks not yet supported in OpenVM");
+    }
     let original_config = original_program.vm_config.clone();
     let airs = original_config.airs(config.degree_bound).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
     let bus_map = original_config.bus_map();
@@ -303,12 +304,6 @@ pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAd
     }
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct OpenVmApcCandidate<ISA: OpenVmISA> {
-    apc_with_stats: ApcWithStats<BabyBear, Instr<BabyBear, ISA>, (), (), OvmApcStats>,
-    execution_frequency: usize,
-}
-
 #[derive(Clone, Serialize, Deserialize)]
 pub struct OvmApcStats {
     pub widths: AirWidthsDiff,
@@ -320,89 +315,35 @@ impl OvmApcStats {
     }
 }
 
-impl<'a, ISA: OpenVmISA> Candidate<BabyBearOpenVmApcAdapter<'a, ISA>> for OpenVmApcCandidate<ISA> {
-    fn create(
-        apc_with_stats: AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a, ISA>>,
-        pgo_program_pc_count: &HashMap<u64, u32>,
-    ) -> Self {
-        let execution_frequency = *pgo_program_pc_count
-            .get(
-                &apc_with_stats
-                    .apc()
-                    .block
-                    .try_as_basic_block()
-                    .expect("superblocks unsupported")
-                    .start_pc,
-            )
-            .unwrap_or(&0) as usize;
+#[derive(Serialize, Deserialize)]
+pub struct OpenVmApcCandidate<ISA: OpenVmISA>(
+    ApcWithStats<BabyBear, Instr<BabyBear, ISA>, (), u32, OvmApcStats>,
+);
 
-        Self {
-            apc_with_stats,
-            execution_frequency,
-        }
+impl<'a, ISA: OpenVmISA> ApcCandidate<BabyBearOpenVmApcAdapter<'a, ISA>>
+    for OpenVmApcCandidate<ISA>
+{
+    fn create(apc_with_stats: AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a, ISA>>) -> Self {
+        Self(apc_with_stats)
     }
 
-    /// Return a JSON export of the APC candidate.
-    fn to_json_export(&self) -> ApcCandidateJsonExport {
-        ApcCandidateJsonExport {
-            execution_frequency: self.execution_frequency,
-            original_block: BasicBlock {
-                start_pc: self
-                    .apc_with_stats
-                    .apc()
-                    .block
-                    .try_as_basic_block()
-                    .expect("superblocks unsupported")
-                    .start_pc,
-                instructions: self
-                    .apc_with_stats
-                    .apc()
-                    .instructions()
-                    .map(ToString::to_string)
-                    .collect(),
-            },
-            stats: self.apc_with_stats.evaluation_result(),
-            width_before: self.apc_with_stats.stats().widths.before.total(),
-            value: self.value(),
-            cost_before: self.apc_with_stats.stats().widths.before.total() as f64,
-            cost_after: self.apc_with_stats.stats().widths.after.total() as f64,
-        }
+    fn inner(&self) -> &AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a, ISA>> {
+        &self.0
     }
 
-    fn into_apc_and_stats(self) -> AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a, ISA>> {
-        self.apc_with_stats
-    }
-}
-
-impl<ISA: OpenVmISA> OpenVmApcCandidate<ISA> {
-    fn cells_saved_per_row(&self) -> usize {
-        // The number of cells saved per row is the difference between the width before and after the APC.
-        self.apc_with_stats.stats().widths.columns_saved().total()
-    }
-}
-
-impl<ISA: OpenVmISA> KnapsackItem for OpenVmApcCandidate<ISA> {
-    fn cost(&self) -> usize {
-        self.apc_with_stats.stats().widths.after.total()
+    fn into_inner(self) -> AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a, ISA>> {
+        self.0
     }
 
-    fn value(&self) -> usize {
-        // For an APC which is called once and saves 1 cell, this would be 1.
-        let value = self
-            .execution_frequency
-            .checked_mul(self.cells_saved_per_row())
-            .unwrap();
-        // We need `value()` to be much larger than `cost()` to avoid ties when ranking by `value() / cost()`
-        // Therefore, we scale it up by a constant factor.
-        value.checked_mul(1000).unwrap()
+    fn cost_before_opt(&self) -> usize {
+        self.0.stats().widths.before.total()
     }
 
-    fn tie_breaker(&self) -> usize {
-        self.apc_with_stats
-            .apc()
-            .block
-            .try_as_basic_block()
-            .unwrap()
-            .start_pc as usize
+    fn cost_after_opt(&self) -> usize {
+        self.0.stats().widths.after.total()
+    }
+
+    fn value_per_use(&self) -> usize {
+        self.cost_before_opt() - self.cost_after_opt()
     }
 }

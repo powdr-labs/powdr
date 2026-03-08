@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     adapter::{Adapter, AdapterApcOverPowdrField, AdapterOptimisticConstraints},
-    blocks::{BasicBlock, Instruction, PcStep, SuperBlock},
+    blocks::{Instruction, PcStep, SuperBlock},
     bus_map::BusMap,
     execution::ExecutionState,
     expression::AlgebraicReference,
@@ -225,33 +225,18 @@ fn instructions_to_powdr_field<A: Adapter>(
     <<A as Adapter>::ExecutionState as ExecutionState>::RegisterAddress,
     <<A as Adapter>::ExecutionState as ExecutionState>::Value,
 > {
-    let blocks: Vec<_> = apc
-        .block
-        .blocks()
-        .map(|b| {
-            BasicBlock {
-                start_pc: b.start_pc,
-                instructions: b
-                    .instructions
-                    .iter()
-                    .map(|instr| {
-                        SimpleInstruction(
-                            // Extract the data by providing a dummy pc
-                            // and removing it again.
-                            instr
-                                .pc_lookup_row(778)
-                                .iter()
-                                .skip(1)
-                                .map(|x| A::from_field(x.clone()))
-                                .collect(),
-                        )
-                    })
-                    .collect(),
-            }
-        })
-        .collect();
-
-    let block = SuperBlock::from(blocks);
+    let block = apc.block.map_instructions(|instr| {
+        SimpleInstruction(
+            // Extract the data by providing a dummy pc
+            // and removing it again.
+            instr
+                .pc_lookup_row(778)
+                .iter()
+                .skip(1)
+                .map(|x| A::from_field(x.clone()))
+                .collect(),
+        )
+    });
 
     Apc {
         block,
