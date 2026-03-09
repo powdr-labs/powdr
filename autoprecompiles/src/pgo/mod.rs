@@ -1,11 +1,12 @@
-use std::{collections::HashMap, sync::Arc};
-
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use strum::{Display, EnumString};
 
 use crate::{
-    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig, ApcWithStats},
-    blocks::BasicBlock,
+    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig},
+    blocks::SuperBlock,
+    evaluation::evaluate_apc,
+    execution_profile::ExecutionProfile,
+    export::{ExportLevel, ExportOptions},
     EmpiricalConstraints, PowdrConfig,
 };
 
@@ -14,21 +15,20 @@ mod instruction;
 mod none;
 
 pub use {
-    cell::{ApcCandidateJsonExport, Candidate, CellPgo, KnapsackItem},
+    cell::{ApcCandidate, CellPgo},
     instruction::InstructionPgo,
     none::NonePgo,
 };
 
 /// Three modes for profiler guided optimization with different cost functions to sort the basic blocks by descending cost and select the most costly ones to accelerate.
-/// The inner HashMap contains number of time a pc is executed.
 #[derive(Default)]
 pub enum PgoConfig {
     /// value = cells saved per apc * times executed
     /// cost = number of columns in the apc
     /// constraint of max total columns
-    Cell(HashMap<u64, u32>, Option<usize>),
+    Cell(ExecutionProfile, Option<usize>),
     /// value = instruction per apc * times executed
-    Instruction(HashMap<u64, u32>),
+    Instruction(ExecutionProfile),
     /// value = instruction per apc
     #[default]
     None,
@@ -38,8 +38,8 @@ impl PgoConfig {
     /// Returns the number of times a certain pc was executed in the profile.
     pub fn pc_execution_count(&self, pc: u64) -> Option<u32> {
         match self {
-            PgoConfig::Cell(pc_count, _) | PgoConfig::Instruction(pc_count) => {
-                pc_count.get(&pc).copied()
+            PgoConfig::Cell(prof, _) | PgoConfig::Instruction(prof) => {
+                prof.pc_count.get(&pc).copied()
             }
             PgoConfig::None => None,
         }
@@ -62,7 +62,7 @@ pub enum PgoType {
 pub fn pgo_config(
     pgo: PgoType,
     max_columns: Option<usize>,
-    execution_profile: HashMap<u64, u32>,
+    execution_profile: ExecutionProfile,
 ) -> PgoConfig {
     match pgo {
         PgoType::Cell => PgoConfig::Cell(execution_profile, max_columns),
@@ -74,7 +74,7 @@ pub fn pgo_config(
 // Only used for PgoConfig::Instruction and PgoConfig::None,
 // because PgoConfig::Cell caches all APCs in sorting stage.
 fn create_apcs_for_all_blocks<A: Adapter>(
-    blocks: Vec<BasicBlock<A::Instruction>>,
+    blocks: Vec<SuperBlock<A::Instruction>>,
     config: &PowdrConfig,
     vm_config: AdapterVmConfig<A>,
     empirical_constraints: EmpiricalConstraints,
@@ -86,23 +86,28 @@ fn create_apcs_for_all_blocks<A: Adapter>(
         .into_par_iter()
         .skip(config.skip_autoprecompiles as usize)
         .take(n_acc)
-        .map(|block| {
+        .map(|superblock| {
             tracing::debug!(
-                "Accelerating block of length {} and start pc {}",
-                block.statements.len(),
-                block.start_pc
+                "Accelerating block of length {} and start pcs {:?}",
+                superblock.instructions().count(),
+                superblock.start_pcs(),
             );
 
-            crate::build::<A>(
-                block,
+            let export_options = ExportOptions::new(
+                config.apc_candidates_dir_path.clone(),
+                &superblock.start_pcs(),
+                ExportLevel::OnlyAPC,
+            );
+            let apc = crate::build::<A>(
+                superblock.clone(),
                 vm_config.clone(),
                 config.degree_bound,
-                config.apc_candidates_dir_path.as_deref(),
+                export_options,
                 &empirical_constraints,
             )
-            .unwrap()
+            .unwrap();
+
+            evaluate_apc::<A>(vm_config.instruction_handler, apc)
         })
-        .map(Arc::new)
-        .map(ApcWithStats::from)
         .collect()
 }

@@ -11,6 +11,7 @@ use itertools::Itertools;
 use num_traits::One;
 use num_traits::Zero;
 use powdr_number::FieldElement;
+use serde::{Serialize, Serializer};
 
 use super::range_constraint::RangeConstraint;
 use super::symbolic_expression::SymbolicExpression;
@@ -280,7 +281,10 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
                     .into_iter()
                     .map(|(v, c)| GroupedExpressionComponent::Linear(v, c)),
             )
-            .chain(once(GroupedExpressionComponent::Constant(self.constant)))
+            .chain(
+                (!self.constant.is_zero())
+                    .then_some(GroupedExpressionComponent::Constant(self.constant)),
+            )
     }
 
     /// Computes the degree of a GroupedExpression in the unknown variables.
@@ -847,6 +851,60 @@ impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> GroupedExpression<T
     }
 }
 
+impl<T: RuntimeConstant + Serialize, V: Ord + Clone + Eq + Serialize> Serialize
+    for GroupedExpression<T, V>
+{
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let summands = self.clone().into_summands().collect::<Vec<_>>();
+        if summands.is_empty() {
+            T::zero().serialize(serializer)
+        } else {
+            SumSerializer::new(&summands).serialize(serializer)
+        }
+    }
+}
+
+/// Serializes [1, 2, 3] into ((1, "+", 2), "+", 3),
+struct SumSerializer<'a, I> {
+    items: &'a [I],
+}
+
+impl<'a, I> SumSerializer<'a, I> {
+    pub fn new(items: &'a [I]) -> Self {
+        assert!(!items.is_empty());
+        Self { items }
+    }
+}
+
+impl<'a, I: Serialize> Serialize for SumSerializer<'a, I> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let (last, beginning) = self.items.split_last().unwrap();
+        if beginning.is_empty() {
+            last.serialize(serializer)
+        } else {
+            (&SumSerializer { items: beginning }, "+", last).serialize(serializer)
+        }
+    }
+}
+
+impl<T: RuntimeConstant + Serialize, V: Ord + Clone + Eq + Serialize> Serialize
+    for GroupedExpressionComponent<T, V>
+{
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            GroupedExpressionComponent::Quadratic(l, r) => (l, "*", r).serialize(serializer),
+            GroupedExpressionComponent::Linear(v, c) => {
+                if c.is_one() {
+                    v.serialize(serializer)
+                } else {
+                    (c, "*", v).serialize(serializer)
+                }
+            }
+            GroupedExpressionComponent::Constant(c) => c.serialize(serializer),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -1143,5 +1201,33 @@ mod tests {
             RangeConstraint::from_range(-GoldilocksField::from(3), 5.into()),
         )]);
         expect!("[3, 28] & 0x1f").assert_eq(&expr.range_constraint(&rc3).to_string());
+    }
+
+    #[test]
+    fn serialize_sum() {
+        let expr = [1, 2, 3];
+        let serialized = serde_json::to_string(&SumSerializer::new(&expr)).unwrap();
+        expect!(r#"[[1,"+",2],"+",3]"#).assert_eq(&serialized);
+
+        let expr = [1];
+        let serialized = serde_json::to_string(&SumSerializer::new(&expr)).unwrap();
+        expect!("1").assert_eq(&serialized);
+    }
+
+    #[test]
+    fn serialize_grouped_expression() {
+        let x: GroupedExpression<GoldilocksField, &str> =
+            GroupedExpression::from_unknown_variable("X");
+        let four = GroupedExpression::from_runtime_constant(GoldilocksField::from(4));
+        let expr = four.clone() * (x.clone() * x.clone()) + four.clone() * x.clone() + four;
+        let serialized = serde_json::to_string(&expr).unwrap();
+        expect!([r#"[[[[4,"*","X"],"*","X"],"+",[4,"*","X"]],"+",4]"#]).assert_eq(&serialized);
+    }
+
+    #[test]
+    fn serialize_zero() {
+        let expr: GroupedExpression<GoldilocksField, &str> = GroupedExpression::zero();
+        let serialized = serde_json::to_string(&expr).unwrap();
+        expect!("0").assert_eq(&serialized);
     }
 }

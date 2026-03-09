@@ -1,40 +1,33 @@
 use std::{collections::HashMap, sync::Arc};
 
 use itertools::Itertools;
-use openvm_circuit::{
-    arch::{AirInventory, MatrixRecordArena},
-    utils::next_power_of_two_or_zero,
-};
+use openvm_circuit::{arch::MatrixRecordArena, utils::next_power_of_two_or_zero};
 use openvm_stark_backend::{
-    p3_field::FieldAlgebra,
+    p3_field::{Field, FieldAlgebra, PrimeField32},
     p3_matrix::dense::{DenseMatrix, RowMajorMatrix},
     prover::{hal::ProverBackend, types::AirProvingContext},
     Chip,
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
-use powdr_autoprecompiles::{trace_handler::TraceTrait, Apc};
+use powdr_autoprecompiles::trace_handler::TraceTrait;
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 
 use crate::{
-    customize_exe::OpenVmRegisterAddress,
     extraction_utils::{OriginalAirs, OriginalVmConfig},
-    powdr_extension::{
-        chip::PowdrChipCpu,
-        executor::OriginalArenas,
-        trace_generator::{common::create_dummy_airs, cpu::inventory::create_dummy_chip_complex},
-    },
-    BabyBearSC, Instr,
+    isa::IsaApc,
+    isa::OpenVmISA,
+    powdr_extension::{chip::PowdrChipCpu, executor::OriginalArenas},
 };
-use openvm_stark_backend::p3_field::PrimeField32;
-
-use openvm_stark_backend::p3_field::Field;
 
 /// The inventory of the PowdrExecutor, which contains the executors for each opcode.
 mod inventory;
 /// The shared periphery chips used by the PowdrTraceGenerator
 mod periphery;
 
-pub use periphery::PowdrPeripheryInstancesCpu;
+pub use inventory::DummyChipComplex;
+pub use periphery::{
+    PowdrPeripheryInstancesCpu, SharedPeripheryChipsCpu, SharedPeripheryChipsCpuProverExt,
+};
 
 /// A wrapper around a DenseMatrix to implement `TraceTrait` which is required for `generate_trace`.
 pub struct SharedCpuTrace<F> {
@@ -59,7 +52,9 @@ impl<F> From<Arc<RowMajorMatrix<F>>> for SharedCpuTrace<F> {
     }
 }
 
-impl<R, PB: ProverBackend<Matrix = Arc<RowMajorMatrix<BabyBear>>>> Chip<R, PB> for PowdrChipCpu {
+impl<R, PB: ProverBackend<Matrix = Arc<RowMajorMatrix<BabyBear>>>, ISA: OpenVmISA> Chip<R, PB>
+    for PowdrChipCpu<ISA>
+{
     fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
         tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
 
@@ -71,19 +66,19 @@ impl<R, PB: ProverBackend<Matrix = Arc<RowMajorMatrix<BabyBear>>>> Chip<R, PB> f
     }
 }
 
-pub struct PowdrTraceGeneratorCpu {
-    pub apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, u32>>,
-    pub original_airs: OriginalAirs<BabyBear>,
-    pub config: OriginalVmConfig,
-    pub periphery: PowdrPeripheryInstancesCpu,
+pub struct PowdrTraceGeneratorCpu<ISA: OpenVmISA> {
+    pub apc: IsaApc<BabyBear, ISA>,
+    pub original_airs: OriginalAirs<BabyBear, ISA>,
+    pub config: OriginalVmConfig<ISA>,
+    pub periphery: PowdrPeripheryInstancesCpu<ISA>,
 }
 
-impl PowdrTraceGeneratorCpu {
+impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
     pub fn new(
-        apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, u32>>,
-        original_airs: OriginalAirs<BabyBear>,
-        config: OriginalVmConfig,
-        periphery: PowdrPeripheryInstancesCpu,
+        apc: IsaApc<BabyBear, ISA>,
+        original_airs: OriginalAirs<BabyBear, ISA>,
+        config: OriginalVmConfig<ISA>,
+        periphery: PowdrPeripheryInstancesCpu<ISA>,
     ) -> Self {
         Self {
             apc,
@@ -95,24 +90,28 @@ impl PowdrTraceGeneratorCpu {
 
     pub fn generate_witness(
         &self,
-        mut original_arenas: OriginalArenas<MatrixRecordArena<BabyBear>>,
+        original_arenas: OriginalArenas<MatrixRecordArena<BabyBear>>,
     ) -> DenseMatrix<BabyBear> {
         use powdr_autoprecompiles::trace_handler::{generate_trace, TraceData};
 
-        let num_apc_calls = original_arenas.number_of_calls();
-        if num_apc_calls == 0 {
-            // If the APC isn't called, early return with an empty trace.
-            let width = self.apc.machine().main_columns().count();
-            return RowMajorMatrix::new(vec![], width);
-        }
+        let width = self.apc.machine().main_columns().count();
+
+        let mut original_arenas = match original_arenas {
+            OriginalArenas::Initialized(arenas) => arenas,
+            OriginalArenas::Uninitialized => {
+                // if the arenas are uninitialized, the apc was not called, so we return an empty trace
+                return RowMajorMatrix::new(vec![], width);
+            }
+        };
+
+        let num_apc_calls = original_arenas.number_of_calls;
 
         let chip_inventory = {
-            let airs: AirInventory<BabyBearSC> =
-                create_dummy_airs(&self.config.sdk_config.sdk, self.periphery.dummy.clone())
-                    .expect("Failed to create dummy airs");
+            let airs = ISA::create_dummy_airs(self.config.config(), self.periphery.dummy.clone())
+                .expect("Failed to create dummy airs");
 
-            create_dummy_chip_complex(
-                &self.config.sdk_config.sdk,
+            ISA::create_dummy_chip_complex_cpu(
+                self.config.config(),
                 airs,
                 self.periphery.dummy.clone(),
             )
@@ -180,9 +179,9 @@ impl PowdrTraceGeneratorCpu {
 
                 // Fill in the columns we have to compute from other columns
                 // (these are either new columns or for example the "is_valid" column).
-                for (column, computation_method) in columns_to_compute {
-                    let col_index = apc_poly_id_to_index[&column.id];
-                    row_slice[col_index] = match computation_method {
+                for derived_column in columns_to_compute {
+                    let col_index = apc_poly_id_to_index[&derived_column.variable.id];
+                    row_slice[col_index] = match &derived_column.computation_method {
                         ComputationMethod::Constant(c) => *c,
                         ComputationMethod::QuotientOrZero(e1, e2) => {
                             use powdr_number::ExpressionConvertible;

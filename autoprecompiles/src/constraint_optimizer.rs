@@ -19,8 +19,10 @@ use powdr_constraint_solver::{
     solver::Solver,
 };
 use powdr_number::FieldElement;
+use serde::Serialize;
 
 use crate::{
+    export::ExportOptions,
     low_degree_bus_interaction_optimizer::LowDegreeBusInteractionOptimizer,
     memory_optimizer::{optimize_memory, MemoryBusInteraction},
     range_constraint_optimizer::RangeConstraintHandler,
@@ -44,9 +46,10 @@ impl From<powdr_constraint_solver::solver::Error> for Error {
 /// - Panics if the solver fails.
 /// - Removes trivial constraints (e.g. `0 = 0` or bus interaction with multiplicity `0`)
 ///   from the constraint system.
+#[allow(clippy::too_many_arguments)]
 pub fn optimize_constraints<
     P: FieldElement,
-    V: Ord + Clone + Eq + Hash + Display,
+    V: Ord + Clone + Eq + Hash + Display + Serialize,
     M: MemoryBusInteraction<P, V>,
 >(
     constraint_system: IndexedConstraintSystem<P, V>,
@@ -59,26 +62,38 @@ pub fn optimize_constraints<
     memory_bus_id: Option<u64>,
     degree_bound: DegreeBound,
     new_var: &mut impl FnMut(&str) -> V,
+    export_options: &mut ExportOptions,
 ) -> Result<ConstraintSystem<P, V>, Error> {
-    let constraint_system = solver_based_optimization(constraint_system, solver)?;
+    let constraint_system = solver_based_optimization(constraint_system, solver, export_options)?;
     stats_logger.log("solver-based optimization", &constraint_system);
+    export_options.export_optimizer_inner_constraint_system(constraint_system.system(), "solver");
 
     let constraint_system = remove_trivial_constraints(constraint_system);
     stats_logger.log("removing trivial constraints", &constraint_system);
+    export_options
+        .export_optimizer_inner_constraint_system(constraint_system.system(), "remove_trivial");
 
     let constraint_system =
         remove_free_variables(constraint_system, solver, bus_interaction_handler.clone());
     stats_logger.log("removing free variables", &constraint_system);
+    export_options
+        .export_optimizer_inner_constraint_system(constraint_system.system(), "remove_free");
 
     let constraint_system =
         remove_disconnected_columns(constraint_system, solver, bus_interaction_handler.clone());
     stats_logger.log("removing disconnected columns", &constraint_system);
+    export_options.export_optimizer_inner_constraint_system(
+        constraint_system.system(),
+        "remove_disconnected",
+    );
 
     let constraint_system = trivial_simplifications(
         constraint_system,
         bus_interaction_handler.clone(),
         stats_logger,
     );
+    export_options
+        .export_optimizer_inner_constraint_system(constraint_system.system(), "trivial_simp");
 
     let (constraint_system, assignments) = rule_based_optimization(
         constraint_system,
@@ -89,10 +104,16 @@ pub fn optimize_constraints<
         // do not increase the degree.
         None,
     );
-    solver.add_algebraic_constraints(assignments.into_iter().map(|(v, val)| {
-        AlgebraicConstraint::assert_eq(GroupedExpression::from_unknown_variable(v), val)
+    solver.add_algebraic_constraints(assignments.iter().map(|(v, val)| {
+        AlgebraicConstraint::assert_eq(
+            GroupedExpression::from_unknown_variable(v.clone()),
+            val.clone(),
+        )
     }));
     stats_logger.log("rule-based optimization", &constraint_system);
+    export_options.register_substituted_variables(assignments);
+    export_options
+        .export_optimizer_inner_constraint_system(constraint_system.system(), "rule_based");
 
     // At this point, we throw away the index and only keep the constraint system, since the rest of the optimisations are defined on the system alone
     let constraint_system: ConstraintSystem<P, V> = constraint_system.into();
@@ -102,9 +123,15 @@ pub fn optimize_constraints<
         "substituting fields in bus interactions",
         &constraint_system,
     );
+    export_options.export_optimizer_inner_constraint_system(
+        &constraint_system,
+        "substitute_bus_interactio_fields",
+    );
 
     let constraint_system = optimize_memory::<_, _, M>(constraint_system, solver, memory_bus_id);
+
     stats_logger.log("memory optimization", &constraint_system);
+    export_options.export_optimizer_inner_constraint_system(&constraint_system, "memory");
 
     let constraint_system = LowDegreeBusInteractionOptimizer::new(
         solver,
@@ -116,6 +143,7 @@ pub fn optimize_constraints<
         "low degree bus interaction optimization",
         &constraint_system,
     );
+    export_options.export_optimizer_inner_constraint_system(&constraint_system, "low_degree_bus");
 
     Ok(constraint_system)
 }
@@ -178,9 +206,10 @@ pub fn trivial_simplifications<P: FieldElement, V: Ord + Clone + Eq + Hash + Dis
     constraint_system
 }
 
-fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
+fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display + Serialize>(
     mut constraint_system: IndexedConstraintSystem<T, V>,
     solver: &mut impl Solver<T, V>,
+    export_options: &mut ExportOptions,
 ) -> Result<IndexedConstraintSystem<T, V>, Error> {
     let assignments = solver.solve()?;
     log::trace!("Solver figured out the following assignments:");
@@ -192,6 +221,11 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display>(
     // Assert that all substitutions are affine so that the degree
     // does not increase.
     assert!(assignments.iter().all(|(_, expr)| expr.is_affine()));
+    export_options.register_substituted_variables(
+        assignments
+            .iter()
+            .map(|(v, expr)| (v.clone(), expr.clone())),
+    );
     constraint_system.apply_substitutions(assignments);
 
     // Now try to replace bus interaction fields that the solver knows to be constant
@@ -360,7 +394,7 @@ fn can_always_be_satisfied_via_free_variable<
 /// them is safe.
 /// Note that if there were unsatisfiable constraints, they might also be removed, which would
 /// change the statement being proven.
-fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
+pub fn remove_disconnected_columns<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
     mut constraint_system: IndexedConstraintSystem<T, V>,
     solver: &mut impl Solver<T, V>,
     bus_interaction_handler: impl IsBusStateful<T> + Clone,

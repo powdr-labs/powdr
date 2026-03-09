@@ -34,7 +34,7 @@ jobs:
         run: |
           # Run analysis and capture stdout (report) separately from stderr (logs)
           set +e
-          python ./scripts/analyze_nightly.py > analysis_report.md
+          python ./scripts/analyze_nightly.py --regression-threshold 2 > analysis_report.md
           EXIT_CODE=$?
           set -e
 

@@ -5,7 +5,7 @@ mod candidates;
 mod evaluator;
 
 pub use ast::*;
-pub use candidates::{Apc, ApcCall, ApcCandidates, Snapshot};
+pub use candidates::{Apc, ApcCall, ApcCandidates};
 pub use evaluator::{OptimisticConstraintEvaluator, OptimisticConstraints};
 pub trait ExecutionState {
     type RegisterAddress: PartialEq
@@ -19,6 +19,7 @@ pub trait ExecutionState {
         + Send
         + Sync;
     type Value: PartialEq
+        + TryFrom<u64>
         + Eq
         + std::fmt::Debug
         + Serialize
@@ -31,6 +32,11 @@ pub trait ExecutionState {
     /// Return the pc at this point
     fn pc(&self) -> Self::Value;
 
+    fn value_limb(value: Self::Value, limb_index: usize) -> Self::Value;
+
     /// Read a register at this point
     fn reg(&self, address: &Self::RegisterAddress) -> Self::Value;
+
+    /// Return the value of a the clock. The returned value must be strictly increasing within this execution.
+    fn global_clk(&self) -> usize;
 }

@@ -1,51 +1,43 @@
-use std::{
-    collections::{BTreeMap, HashMap},
-    io::BufWriter,
-    path::Path,
-    sync::{Arc, Mutex},
-};
+use std::{collections::BTreeMap, io::BufWriter};
 
+use itertools::Itertools;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use selection::select_blocks_greedy;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    adapter::{
-        Adapter, AdapterApc, AdapterApcWithStats, AdapterBasicBlock, AdapterVmConfig, PgoAdapter,
-    },
-    blocks::BasicBlock,
-    evaluation::EvaluationResult,
-    pgo::cell::selection::parallel_fractional_knapsack,
+    adapter::{Adapter, AdapterApcWithStats, AdapterExecutionBlocks, AdapterVmConfig, PgoAdapter},
+    blocks::{BasicBlock, BlockAndStats, SuperBlock},
+    evaluation::{evaluate_apc, EvaluationResult},
+    execution_profile::ExecutionProfile,
+    export::{ExportLevel, ExportOptions},
     EmpiricalConstraints, PowdrConfig,
 };
 
 mod selection;
 
-pub use selection::KnapsackItem;
-
 /// Trait for autoprecompile candidates.
-/// Implementors of this trait wrap an APC with additional data used by the `KnapsackItem` trait to select the most cost-effective APCs.
-pub trait Candidate<A: Adapter>: Sized + KnapsackItem {
-    /// Try to create an autoprecompile candidate from a block.
-    fn create(
-        apc: Arc<AdapterApc<A>>,
-        pgo_program_pc_count: &HashMap<u64, u32>,
-        vm_config: AdapterVmConfig<A>,
-        max_degree: usize,
-    ) -> Self;
-
-    /// Return a JSON export of the APC candidate.
-    fn to_json_export(&self, apc_candidates_dir_path: &Path) -> ApcCandidateJsonExport;
-
-    /// Convert the candidate into an autoprecompile and its statistics.
-    fn into_apc_and_stats(self) -> AdapterApcWithStats<A>;
+/// Provides ApcWithStats with logic for evaluating a candidate.
+pub trait ApcCandidate<A: Adapter>: Sized {
+    fn create(apc_with_stats: AdapterApcWithStats<A>) -> Self;
+    fn inner(&self) -> &AdapterApcWithStats<A>;
+    fn into_inner(self) -> AdapterApcWithStats<A>;
+    // cost of the APC before optimization
+    fn cost_before_opt(&self) -> usize;
+    // cost of the APC after optimization
+    fn cost_after_opt(&self) -> usize;
+    // value of the APC for each time it is used
+    fn value_per_use(&self) -> usize;
 }
 
 #[derive(Serialize, Deserialize)]
+/// NOTE: When making changes to this field or any of the contained types,
+/// JSON_EXPORT_VERSION must be updated
 pub struct ApcCandidateJsonExport {
     // execution_frequency
     pub execution_frequency: usize,
     // original instructions (pretty printed)
-    pub original_block: BasicBlock<String>,
+    pub original_blocks: Vec<BasicBlock<String>>,
     // before and after optimization stats
     pub stats: EvaluationResult,
     // width before optimisation, used for software version cells in effectiveness plot
@@ -56,19 +48,17 @@ pub struct ApcCandidateJsonExport {
     pub cost_before: f64,
     // cost after optimization, used for effectiveness calculation and ranking of candidates
     pub cost_after: f64,
-    // path to the apc candidate file
-    pub apc_candidate_file: String,
 }
 
 pub struct CellPgo<A, C> {
     _marker: std::marker::PhantomData<(A, C)>,
-    data: HashMap<u64, u32>,
+    data: ExecutionProfile,
     max_total_apc_columns: Option<usize>,
 }
 
 impl<A, C> CellPgo<A, C> {
     pub fn with_pgo_data_and_max_columns(
-        data: HashMap<u64, u32>,
+        data: ExecutionProfile,
         max_total_apc_columns: Option<usize>,
     ) -> Self {
         Self {
@@ -79,87 +69,87 @@ impl<A, C> CellPgo<A, C> {
     }
 }
 
+/// This version is used by external tools to support multiple versions of the json export.
+/// Version should be incremented whenever a breaking change is made to the type (or inner types).
+/// Version Log:
+/// 0: Serialize only APCs as Vec<ApcCandidateJsonExport>
+/// 1: Add labels to the JSON export
+/// 2: Rename apcs[*].original_block.statements -> apcs[*].original_block.instructions
+/// 3. Remove apcs[*].apc_candidate_file
+/// 4. superblocks: original_blocks: Vec<BasicBlock<_>>
+const JSON_EXPORT_VERSION: usize = 4;
+
 #[derive(Serialize, Deserialize)]
 struct JsonExport {
+    version: usize,
     apcs: Vec<ApcCandidateJsonExport>,
     labels: BTreeMap<u64, Vec<String>>,
 }
 
-impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for CellPgo<A, C> {
+impl JsonExport {
+    fn new(apcs: Vec<ApcCandidateJsonExport>, labels: BTreeMap<u64, Vec<String>>) -> Self {
+        Self {
+            version: JSON_EXPORT_VERSION,
+            apcs,
+            labels,
+        }
+    }
+}
+
+impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for CellPgo<A, C> {
     type Adapter = A;
 
     fn create_apcs_with_pgo(
         &self,
-        mut blocks: Vec<AdapterBasicBlock<Self::Adapter>>,
+        exec_blocks: AdapterExecutionBlocks<Self::Adapter>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
         empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
-        tracing::info!(
-            "Generating autoprecompiles with cell PGO for {} blocks",
-            blocks.len()
-        );
-
         if config.autoprecompiles == 0 {
             return vec![];
         }
 
-        // drop any block whose start index cannot be found in pc_idx_count,
-        // because a basic block might not be executed at all.
-        // Also only keep basic blocks with more than one original instruction.
-        blocks.retain(|b| self.data.contains_key(&b.start_pc) && b.statements.len() > 1);
+        let AdapterExecutionBlocks::<Self::Adapter> {
+            blocks,
+            execution_bb_runs,
+        } = exec_blocks;
 
-        tracing::debug!(
-            "Retained {} basic blocks after filtering by pc_idx_count",
-            blocks.len()
+        tracing::info!(
+            "Generating autoprecompiles for all {} blocks in parallel",
+            blocks.len(),
         );
 
-        // generate apc for all basic blocks and only cache the ones we eventually use
-        // calculate number of trace cells saved per row for each basic block to sort them by descending cost
-        let max_cache = (config.autoprecompiles + config.skip_autoprecompiles) as usize;
-        tracing::info!(
-        "Generating autoprecompiles for all ({}) basic blocks in parallel and caching costliest {}",
-        blocks.len(),
-        max_cache,
-    );
-
-        let apc_candidates = Arc::new(Mutex::new(vec![]));
-
-        // map–reduce over blocks into a single BinaryHeap<ApcCandidate<P>> capped at max_cache
-        let res = parallel_fractional_knapsack(
-            blocks.into_par_iter().filter_map(|block| {
-                let apc = crate::build::<A>(
-                    block.clone(),
-                    vm_config.clone(),
-                    config.degree_bound,
-                    config.apc_candidates_dir_path.as_deref(),
+        // Generate apcs in parallel.
+        // Produces two matching vectors: one with the APCs and another with the corresponding originating block.
+        let (apcs, blocks): (Vec<_>, Vec<_>) = blocks
+            .into_par_iter()
+            .filter_map(|block_and_stats| {
+                let start = std::time::Instant::now();
+                let res = try_generate_candidate::<A, C>(
+                    block_and_stats.block.clone(),
+                    config,
+                    &vm_config,
                     &empirical_constraints,
-                )
-                .ok()?;
-                let candidate = C::create(
-                    Arc::new(apc),
-                    &self.data,
-                    vm_config.clone(),
-                    config.degree_bound.identities,
+                )?;
+                tracing::debug!(
+                    "Generated APC for block {:?}, (took {:?})",
+                    block_and_stats.block.start_pcs(),
+                    start.elapsed()
                 );
-                if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
-                    let json_export = candidate.to_json_export(apc_candidates_dir_path);
-                    apc_candidates.lock().unwrap().push(json_export);
-                }
-                Some(candidate)
-            }),
-            max_cache,
-            self.max_total_apc_columns,
-        )
-        .skip(config.skip_autoprecompiles as usize)
-        .map(C::into_apc_and_stats)
-        .collect();
+                Some((res, block_and_stats))
+            })
+            .collect();
 
-        // Write the APC candidates JSON to disk if the directory is specified.
+        // write the APC candidates JSON to disk if the directory is specified.
         if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
-            let apcs = apc_candidates.lock().unwrap().drain(..).collect();
-            let json = JsonExport { apcs, labels };
+            let apcs = apcs
+                .iter()
+                .zip_eq(&blocks)
+                .map(|(apc, candidate)| apc_candidate_json_export::<A, _>(apc, candidate))
+                .collect();
+            let json = JsonExport::new(apcs, labels);
             let json_path = apc_candidates_dir_path.join("apc_candidates.json");
             let file = std::fs::File::create(&json_path)
                 .expect("Failed to create file for APC candidates JSON");
@@ -167,10 +157,78 @@ impl<A: Adapter + Send + Sync, C: Candidate<A> + Send + Sync> PgoAdapter for Cel
                 .expect("Failed to write APC candidates JSON to file");
         }
 
-        res
+        // select best candidates
+        let budget = self.max_total_apc_columns.unwrap_or(usize::MAX);
+        let max_selected = (config.autoprecompiles + config.skip_autoprecompiles) as usize;
+        let selection =
+            select_blocks_greedy(&apcs, &blocks, budget, max_selected, &execution_bb_runs);
+
+        // skip per config
+        let skip = (config.skip_autoprecompiles as usize).min(selection.len());
+
+        // filter and order the apcs using the selection
+        let mut apcs: Vec<_> = apcs.into_iter().map(|apc| Some(apc.into_inner())).collect();
+        selection
+            .into_iter()
+            .skip(skip)
+            .map(|position| apcs[position].take().unwrap())
+            .collect()
     }
 
-    fn pc_execution_count(&self, pc: u64) -> Option<u32> {
-        self.data.get(&pc).cloned()
+    fn execution_profile(&self) -> Option<&ExecutionProfile> {
+        Some(&self.data)
+    }
+}
+
+// Try and build an autoprecompile candidate from a superblock.
+fn try_generate_candidate<A: Adapter, C: ApcCandidate<A>>(
+    block: SuperBlock<A::Instruction>,
+    config: &PowdrConfig,
+    vm_config: &AdapterVmConfig<A>,
+    empirical_constraints: &EmpiricalConstraints,
+) -> Option<C> {
+    let export_options = ExportOptions::new(
+        config.apc_candidates_dir_path.clone(),
+        &block.start_pcs(),
+        ExportLevel::OnlyAPC,
+    );
+    let apc = crate::build::<A>(
+        block.clone(),
+        vm_config.clone(),
+        config.degree_bound,
+        export_options,
+        empirical_constraints,
+    )
+    .ok()?;
+    let apc_with_stats = evaluate_apc::<A>(vm_config.instruction_handler, apc);
+    Some(C::create(apc_with_stats))
+}
+
+fn apc_candidate_json_export<A: Adapter, C: ApcCandidate<A>>(
+    apc: &C,
+    block: &BlockAndStats<A::Instruction>,
+) -> ApcCandidateJsonExport {
+    let original_blocks: Vec<_> = apc
+        .inner()
+        .apc()
+        .block
+        .blocks()
+        .map(|b| BasicBlock {
+            start_pc: b.start_pc,
+            instructions: b.instructions.iter().map(ToString::to_string).collect(),
+        })
+        .collect();
+
+    ApcCandidateJsonExport {
+        execution_frequency: block.count as usize,
+        original_blocks,
+        stats: apc.inner().evaluation_result(),
+        width_before: apc.cost_before_opt(),
+        value: apc
+            .value_per_use()
+            .checked_mul(block.count as usize)
+            .unwrap(),
+        cost_before: apc.cost_before_opt() as f64,
+        cost_after: apc.cost_after_opt() as f64,
     }
 }

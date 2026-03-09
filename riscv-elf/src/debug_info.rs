@@ -493,6 +493,15 @@ impl SymbolTable {
             .last()
             .and_then(|(a, v)| v.first().map(|s| (s.as_str(), addr - a)))
     }
+
+    /// Return the inner table
+    pub fn into_table(self) -> BTreeMap<u32, Vec<String>> {
+        self.0
+    }
+
+    pub fn from_table(table: BTreeMap<u32, Vec<String>>) -> Self {
+        Self(table)
+    }
 }
 
 fn read_symbol_table(elf: &Elf) -> Vec<(String, u32)> {

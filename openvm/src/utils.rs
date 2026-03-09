@@ -8,10 +8,13 @@ use openvm_stark_backend::{
         symbolic_variable::{Entry, SymbolicVariable},
         SymbolicConstraints,
     },
-    interaction::Interaction,
+    interaction::{Interaction, SymbolicInteraction},
     p3_field::PrimeField32,
 };
-use powdr_autoprecompiles::expression::AlgebraicReference;
+use powdr_autoprecompiles::{
+    expression::{try_convert, AlgebraicReference},
+    symbolic_machine::SymbolicBusInteraction,
+};
 use powdr_expression::AlgebraicExpression;
 
 use crate::bus_map::BusMap;
@@ -98,6 +101,22 @@ pub fn symbolic_to_algebraic<F: PrimeField32>(
             AlgebraicExpression::Reference(OpenVmReference::IsTransition)
         }
     }
+}
+
+pub fn openvm_bus_interaction_to_powdr<F: PrimeField32>(
+    interaction: &SymbolicInteraction<F>,
+    columns: &[Arc<String>],
+) -> Result<SymbolicBusInteraction<F>, UnsupportedOpenVmReferenceError> {
+    let id = interaction.bus_index as u64;
+
+    let mult = try_convert(symbolic_to_algebraic(&interaction.count, columns))?;
+    let args = interaction
+        .message
+        .iter()
+        .map(|e| try_convert(symbolic_to_algebraic(e, columns)))
+        .collect::<Result<_, _>>()?;
+
+    Ok(SymbolicBusInteraction { id, mult, args })
 }
 
 pub fn get_pil<F: PrimeField32>(

@@ -1,27 +1,31 @@
-use crate::adapter::{
-    Adapter, AdapterApc, AdapterApcOverPowdrField, AdapterBasicBlock, AdapterOptimisticConstraints,
-    AdapterVmConfig,
-};
-use crate::blocks::BasicBlock;
+use crate::adapter::{Adapter, AdapterApc, AdapterVmConfig};
+use crate::blocks::SuperBlock;
 use crate::bus_map::{BusMap, BusType};
 use crate::empirical_constraints::{ConstraintGenerator, EmpiricalConstraints};
 use crate::evaluation::AirStats;
 use crate::execution::OptimisticConstraints;
+use crate::export::ExportOptions;
 use crate::expression_conversion::algebraic_to_grouped_expression;
 use crate::optimistic::algebraic_references::BlockCellAlgebraicReferenceMapper;
+use crate::optimistic::config::optimistic_precompile_config;
+use crate::optimistic::execution_constraint_generator::generate_execution_constraints;
+use crate::optimistic::execution_literals::optimistic_literals;
+use crate::symbolic_machine::{SymbolicConstraint, SymbolicMachine};
 use crate::symbolic_machine_generator::convert_apc_field_type;
+use adapter::AdapterOptimisticConstraint;
+use execution::{
+    ExecutionState, LocalOptimisticLiteral, OptimisticConstraint, OptimisticExpression,
+    OptimisticLiteral,
+};
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
 use powdr::UniqueReferences;
-use powdr_expression::AlgebraicUnaryOperator;
+use powdr_constraint_solver::constraint_system::{ComputationMethod, DerivedVariable};
 use powdr_expression::{
-    visitors::Children, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
-use std::fmt::Display;
-use std::io::BufWriter;
-use std::iter::once;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use symbolic_machine_generator::statements_to_symbolic_machine;
@@ -39,17 +43,19 @@ pub mod expression;
 pub mod expression_conversion;
 pub mod low_degree_bus_interaction_optimizer;
 pub mod memory_optimizer;
-mod optimistic;
 pub mod optimizer;
 pub mod pgo;
 pub mod powdr;
 pub mod range_constraint_optimizer;
 mod stats_logger;
+pub mod symbolic_machine;
 pub mod symbolic_machine_generator;
 pub use pgo::{PgoConfig, PgoType};
 pub use powdr_constraint_solver::inliner::DegreeBound;
 pub mod equivalence_classes;
 pub mod execution;
+pub mod export;
+pub mod optimistic;
 pub mod trace_handler;
 
 #[derive(Clone)]
@@ -59,6 +65,13 @@ pub struct PowdrConfig {
     /// Number of basic blocks to skip for autoprecompiles.
     /// This is either the largest N if no PGO, or the costliest N with PGO.
     pub skip_autoprecompiles: u64,
+    /// Maximum number of basic blocks included in a superblock.
+    /// Default of 1 means only basic blocks are considered.
+    pub superblock_max_bb_count: u8,
+    /// Maximum number of instructions included in an Apc.
+    pub apc_max_instructions: u32,
+    /// Apcs executed less than the cutoff are ignored.
+    pub apc_exec_count_cutoff: u32,
     /// Max degree of constraints.
     pub degree_bound: DegreeBound,
     /// The path to the APC candidates dir, if any.
@@ -72,10 +85,34 @@ impl PowdrConfig {
         Self {
             autoprecompiles,
             skip_autoprecompiles,
+            // superblocks disabled by default
+            superblock_max_bb_count: 1,
+            apc_max_instructions: u32::MAX,
+            apc_exec_count_cutoff: 1,
             degree_bound,
             apc_candidates_dir_path: None,
             should_use_optimistic_precompiles: false,
         }
+    }
+
+    pub fn with_superblocks(
+        mut self,
+        max_bb_count: u8,
+        max_instructions: Option<u32>,
+        exec_count_cutoff: Option<u32>,
+    ) -> Self {
+        assert!(
+            max_bb_count > 0,
+            "superblock_max_bb_count must be greater than 0"
+        );
+        self.superblock_max_bb_count = max_bb_count;
+        if let Some(max_instructions) = max_instructions {
+            self.apc_max_instructions = max_instructions;
+        }
+        if let Some(exec_count_cutoff) = exec_count_cutoff {
+            self.apc_exec_count_cutoff = exec_count_cutoff;
+        }
+        self
     }
 
     pub fn with_apc_candidates_dir<P: AsRef<Path>>(mut self, path: P) -> Self {
@@ -86,210 +123,6 @@ impl PowdrConfig {
     pub fn with_optimistic_precompiles(mut self, should_use_optimistic_precompiles: bool) -> Self {
         self.should_use_optimistic_precompiles = should_use_optimistic_precompiles;
         self
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Hash, Eq, Serialize, Deserialize)]
-pub struct SymbolicInstructionStatement<T> {
-    pub opcode: T,
-    pub args: Vec<T>,
-}
-
-impl<T> IntoIterator for SymbolicInstructionStatement<T> {
-    type IntoIter = std::iter::Chain<std::iter::Once<T>, std::vec::IntoIter<T>>;
-    type Item = T;
-
-    fn into_iter(self) -> Self::IntoIter {
-        once(self.opcode).chain(self.args)
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SymbolicConstraint<T> {
-    pub expr: AlgebraicExpression<T>,
-}
-
-impl<T: Display> Display for SymbolicConstraint<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.expr)
-    }
-}
-
-impl<T> From<AlgebraicExpression<T>> for SymbolicConstraint<T> {
-    fn from(expr: AlgebraicExpression<T>) -> Self {
-        let expr = match expr {
-            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation {
-                op: AlgebraicUnaryOperator::Minus,
-                expr,
-            }) => *expr, // Remove the negation at the outside.
-            other => other,
-        };
-        Self { expr }
-    }
-}
-
-impl<T> Children<AlgebraicExpression<T>> for SymbolicConstraint<T> {
-    fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
-        Box::new(once(&self.expr))
-    }
-
-    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
-        Box::new(once(&mut self.expr))
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
-pub struct SymbolicBusInteraction<T> {
-    pub id: u64,
-    pub mult: AlgebraicExpression<T>,
-    pub args: Vec<AlgebraicExpression<T>>,
-}
-
-impl<T: Display> Display for SymbolicBusInteraction<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "(id={}, mult={}, args=[{}])",
-            self.id,
-            self.mult,
-            self.args.iter().join(", ")
-        )
-    }
-}
-
-impl<T: Copy> SymbolicBusInteraction<T> {
-    pub fn try_multiplicity_to_number(&self) -> Option<T> {
-        match self.mult {
-            AlgebraicExpression::Number(n) => Some(n),
-            _ => None,
-        }
-    }
-}
-
-impl<T> Children<AlgebraicExpression<T>> for SymbolicBusInteraction<T> {
-    fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
-        Box::new(once(&self.mult).chain(&self.args))
-    }
-
-    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
-        Box::new(once(&mut self.mult).chain(&mut self.args))
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub enum BusInteractionKind {
-    Send,
-    Receive,
-}
-
-/// A machine comprised of algebraic constraints, bus interactions and potentially derived columns.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SymbolicMachine<T> {
-    /// Constraints whose expressions have to evaluate to zero for an assignment to be satisfying.
-    pub constraints: Vec<SymbolicConstraint<T>>,
-    /// Bus interactions that model communication with other machines / chips or static lookups.
-    pub bus_interactions: Vec<SymbolicBusInteraction<T>>,
-    /// Columns that have been newly created during the optimization process with a method
-    /// to compute their values from other columns.
-    pub derived_columns: Vec<(AlgebraicReference, ComputationMethod<T>)>,
-}
-
-type ComputationMethod<T> =
-    powdr_constraint_solver::constraint_system::ComputationMethod<T, AlgebraicExpression<T>>;
-
-impl<T> SymbolicMachine<T> {
-    pub fn main_columns(&self) -> impl Iterator<Item = AlgebraicReference> + use<'_, T> {
-        self.unique_references()
-    }
-
-    pub fn concatenate(mut self, other: SymbolicMachine<T>) -> Self {
-        self.constraints.extend(other.constraints);
-        self.bus_interactions.extend(other.bus_interactions);
-        self.derived_columns.extend(other.derived_columns);
-        self
-    }
-}
-
-impl<T: Display> Display for SymbolicMachine<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for bus_interaction in &self.bus_interactions {
-            writeln!(f, "{bus_interaction}")?;
-        }
-        for constraint in &self.constraints {
-            writeln!(f, "{constraint} = 0")?;
-        }
-        Ok(())
-    }
-}
-
-impl<T: Display + Ord + Clone> SymbolicMachine<T> {
-    pub fn render<C: Display + Clone + PartialEq + Eq>(&self, bus_map: &BusMap<C>) -> String {
-        let main_columns = self.main_columns().sorted().collect_vec();
-        let mut output = format!(
-            "Symbolic machine using {} unique main columns:\n  {}\n",
-            main_columns.len(),
-            main_columns.iter().join("\n  ")
-        );
-        let bus_interactions_by_bus = self
-            .bus_interactions
-            .iter()
-            .map(|bus_interaction| (bus_interaction.id, bus_interaction))
-            .into_group_map()
-            .into_iter()
-            // sorted_by_key is stable, so we'll keep the order within each bus
-            .sorted_by_key(|(bus_id, _)| *bus_id)
-            .collect::<Vec<_>>();
-        for (bus_id, bus_interactions) in &bus_interactions_by_bus {
-            let bus_type = bus_map.bus_type(*bus_id);
-            output.push_str(&format!("\n// Bus {bus_id} ({bus_type}):\n",));
-            for bus_interaction in bus_interactions {
-                output.push_str(&format!(
-                    "mult={}, args=[{}]\n",
-                    bus_interaction.mult,
-                    bus_interaction.args.iter().join(", ")
-                ));
-            }
-        }
-
-        if !self.constraints.is_empty() {
-            output.push_str("\n// Algebraic constraints:\n");
-        }
-
-        for constraint in &self.constraints {
-            output.push_str(&format!("{constraint} = 0\n"));
-        }
-
-        output.trim().to_string()
-    }
-}
-
-impl<T> SymbolicMachine<T> {
-    pub fn degree(&self) -> usize {
-        self.children().map(|e| e.degree()).max().unwrap_or(0)
-    }
-}
-
-impl<T> Children<AlgebraicExpression<T>> for SymbolicMachine<T> {
-    fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
-        Box::new(
-            self.constraints
-                .iter()
-                .flat_map(|c| c.children())
-                .chain(self.bus_interactions.iter().flat_map(|i| i.children())),
-        )
-    }
-
-    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
-        Box::new(
-            self.constraints
-                .iter_mut()
-                .flat_map(|c| c.children_mut())
-                .chain(
-                    self.bus_interactions
-                        .iter_mut()
-                        .flat_map(|i| i.children_mut()),
-                ),
-        )
     }
 }
 
@@ -326,6 +159,9 @@ pub trait InstructionHandler {
     type Instruction;
     type AirId;
 
+    /// Returns the degree bound used for the instructions
+    fn degree_bound(&self) -> DegreeBound;
+
     /// Returns the AIR for the given instruction.
     fn get_instruction_air_and_id(
         &self,
@@ -334,15 +170,9 @@ pub trait InstructionHandler {
 
     /// Returns the AIR stats for the given instruction.
     fn get_instruction_air_stats(&self, instruction: &Self::Instruction) -> AirStats;
-
-    /// Returns whether the given instruction is allowed in an autoprecompile.
-    fn is_allowed(&self, instruction: &Self::Instruction) -> bool;
-
-    /// Returns whether the given instruction is a branching instruction.
-    fn is_branching(&self, instruction: &Self::Instruction) -> bool;
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Substitution {
     /// The index of the original column in the original air
     pub original_poly_index: usize,
@@ -350,10 +180,10 @@ pub struct Substitution {
     pub apc_poly_id: u64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Apc<T, I, A, V> {
-    /// The basic block this APC is based on
-    pub block: BasicBlock<I>,
+    /// The block this APC is based on
+    pub block: SuperBlock<I>,
     /// The symbolic machine for this APC
     pub machine: SymbolicMachine<T>,
     /// For each original instruction, the substitutions from original columns to APC columns
@@ -371,20 +201,20 @@ impl<T, I, A, V> Apc<T, I, A, V> {
         &self.machine
     }
 
-    /// The PC of the first line of the basic block. Can be used to identify the APC.
-    pub fn start_pc(&self) -> u64 {
-        self.block.start_pc
+    /// The instructions in the block.
+    pub fn instructions(&self) -> impl Iterator<Item = &I> + Clone {
+        self.block.instructions()
     }
 
-    /// The instructions in the basic block.
-    pub fn instructions(&self) -> &[I] {
-        &self.block.statements
+    /// The PCs of the original basic blocks composing this APC. Can be used to identify the APC.
+    pub fn start_pcs(&self) -> Vec<u64> {
+        self.block.start_pcs()
     }
 
-    /// Create a new APC based on the given basic block, symbolic machine and column allocator
+    /// Create a new APC based on the given super block, symbolic machine and column allocator
     /// The column allocator only issues the subs which are actually used in the machine
     fn new(
-        block: BasicBlock<I>,
+        block: SuperBlock<I>,
         machine: SymbolicMachine<T>,
         optimistic_constraints: OptimisticConstraints<A, V>,
         column_allocator: &ColumnAllocator,
@@ -442,13 +272,18 @@ impl ColumnAllocator {
         self.next_poly_id += 1;
         id
     }
+
+    /// Returns whether the given poly_id is known (i.e., was issued by this allocator)
+    pub fn is_known_id(&self, poly_id: u64) -> bool {
+        poly_id < self.next_poly_id
+    }
 }
 
 pub fn build<A: Adapter>(
-    block: BasicBlock<A::Instruction>,
+    block: SuperBlock<A::Instruction>,
     vm_config: AdapterVmConfig<A>,
     degree_bound: DegreeBound,
-    apc_candidates_dir_path: Option<&Path>,
+    mut export_options: ExportOptions,
     empirical_constraints: &EmpiricalConstraints,
 ) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
     let start = std::time::Instant::now();
@@ -460,31 +295,56 @@ pub fn build<A: Adapter>(
     );
 
     // Generate constraints for optimistic precompiles.
+    let should_generate_execution_constraints =
+        optimistic_precompile_config().restrict_optimistic_precompiles;
     let algebraic_references =
         BlockCellAlgebraicReferenceMapper::new(&column_allocator.subs, machine.main_columns());
-    let constraint_generator = ConstraintGenerator::<A>::new(
-        empirical_constraints.for_block(&block),
-        algebraic_references,
-        &block,
-    );
-    let range_analyzer_constraints = constraint_generator.range_constraints();
-    let equivalence_analyzer_constraints = constraint_generator.equivalence_constraints();
+    let empirical_constraints = empirical_constraints.for_block(&block);
+
+    // TODO: Use execution constraints
+    let (empirical_constraints, _execution_constraints) = if should_generate_execution_constraints {
+        // Filter constraints to only contain execution-checkable columns,
+        // generate execution constraints for them.
+        let optimistic_literals = optimistic_literals::<A>(&block, &vm_config, &degree_bound);
+
+        let empirical_constraints = empirical_constraints.filtered(|block_cell| {
+            let algebraic_reference = algebraic_references
+                .get_algebraic_reference(block_cell)
+                .unwrap();
+            optimistic_literals.contains_key(algebraic_reference)
+        });
+
+        let empirical_constraints =
+            ConstraintGenerator::<A>::new(empirical_constraints, algebraic_references, &block)
+                .generate_constraints();
+
+        let execution_constraints =
+            generate_execution_constraints(&empirical_constraints, &optimistic_literals);
+        (empirical_constraints, execution_constraints)
+    } else {
+        // Don't filter empirical constraints, return empty execution constraints.
+        let empirical_constraints =
+            ConstraintGenerator::<A>::new(empirical_constraints, algebraic_references, &block)
+                .generate_constraints();
+        (empirical_constraints, vec![])
+    };
 
     // Add empirical constraints to the baseline
-    machine.constraints.extend(range_analyzer_constraints);
-    machine.constraints.extend(equivalence_analyzer_constraints);
+    machine
+        .constraints
+        .extend(empirical_constraints.into_iter().map(Into::into));
 
-    if let Some(path) = apc_candidates_dir_path {
-        serialize_apc_from_machine::<A>(
+    if export_options.export_requested() {
+        export_options.export_apc_from_machine::<A>(
             block.clone(),
             machine.clone(),
             &column_allocator,
-            path,
+            &vm_config.bus_map,
             Some("unopt"),
         );
     }
 
-    let labels = [("apc_start_pc", block.start_pc.to_string())];
+    let labels = [("apc_start_pc", block.start_pcs().into_iter().join("_"))];
     metrics::counter!("before_opt_cols", &labels)
         .absolute(machine.unique_references().count() as u64);
     metrics::counter!("before_opt_constraints", &labels)
@@ -492,12 +352,13 @@ pub fn build<A: Adapter>(
     metrics::counter!("before_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
 
-    let (machine, column_allocator) = optimizer::optimize::<A>(
+    let (machine, column_allocator) = optimizer::optimize::<_, _, _, A::MemoryBusInteraction<_>>(
         machine,
         vm_config.bus_interaction_handler,
         degree_bound,
         &vm_config.bus_map,
         column_allocator,
+        &mut export_options,
     )?;
 
     // add guards to constraints that are not satisfied by zeroes
@@ -510,18 +371,15 @@ pub fn build<A: Adapter>(
     metrics::counter!("after_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
 
-    // TODO: add optimistic constraints here
-    let optimistic_constraints = OptimisticConstraints::from_constraints(vec![]);
+    // TODO: for now, we only include optimistic constraints related to superblock PCs.
+    // Optimistic constraints from empirical constraints are still missing.
+    let pc_constraints = superblock_pc_constraints::<A>(&block);
+    let optimistic_constraints = OptimisticConstraints::from_constraints(pc_constraints);
 
     let apc = Apc::new(block, machine, optimistic_constraints, &column_allocator);
 
-    if let Some(path) = apc_candidates_dir_path {
-        serialize_apc::<A>(&apc, path, None);
-
-        // For debugging, also serialize a human-readable version of the final precompile
-        let rendered = apc.machine.render(&vm_config.bus_map);
-        let path = make_path(path, apc.start_pc(), None, "txt");
-        std::fs::write(path, rendered).unwrap();
+    if export_options.export_requested() {
+        export_options.export_apc::<A>(&apc, None, &vm_config.bus_map);
     }
 
     let apc = convert_apc_field_type(apc, &A::into_field);
@@ -531,38 +389,27 @@ pub fn build<A: Adapter>(
     Ok(apc)
 }
 
-fn make_path(base_path: &Path, start_pc: u64, suffix: Option<&str>, extension: &str) -> PathBuf {
-    let suffix = suffix.map(|s| format!("_{s}")).unwrap_or_default();
-    base_path
-        .join(format!("apc_candidate_{start_pc}{suffix}"))
-        .with_extension(extension)
-}
-
-fn serialize_apc<A: Adapter>(apc: &AdapterApcOverPowdrField<A>, path: &Path, suffix: Option<&str>) {
-    std::fs::create_dir_all(path).expect("Failed to create directory for APC candidates");
-
-    let ser_path = make_path(path, apc.start_pc(), suffix, "cbor");
-    let file_unopt =
-        std::fs::File::create(&ser_path).expect("Failed to create file for {suffix} APC candidate");
-    let writer_unopt = BufWriter::new(file_unopt);
-    serde_cbor::to_writer(writer_unopt, &apc)
-        .expect("Failed to write {suffix} APC candidate to file");
-}
-
-fn serialize_apc_from_machine<A: Adapter>(
-    block: AdapterBasicBlock<A>,
-    machine: SymbolicMachine<A::PowdrField>,
-    column_allocator: &ColumnAllocator,
-    path: &Path,
-    suffix: Option<&str>,
-) {
-    let apc = Apc::new(
-        block,
-        machine,
-        AdapterOptimisticConstraints::<A>::empty(),
-        column_allocator,
-    );
-    serialize_apc::<A>(&apc, path, suffix);
+/// Generate optimistic constraints for superblock jumps
+fn superblock_pc_constraints<A: Adapter>(
+    block: &SuperBlock<A::Instruction>,
+) -> Vec<AdapterOptimisticConstraint<A>> {
+    block
+        .instruction_indexed_start_pcs()
+        .into_iter()
+        .map(|(instr_idx, pc)| {
+            let left = OptimisticExpression::Literal(OptimisticLiteral {
+                instr_idx,
+                val: LocalOptimisticLiteral::Pc,
+            });
+            let Ok(pc_value) =
+                <<A as Adapter>::ExecutionState as ExecutionState>::Value::try_from(pc)
+            else {
+                panic!("PC doesn't fit in Value type");
+            };
+            let right = OptimisticExpression::Number(pc_value);
+            OptimisticConstraint { left, right }
+        })
+        .collect()
 }
 
 fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
@@ -618,9 +465,10 @@ fn add_guards<T: FieldElement>(
     };
     let is_valid = AlgebraicExpression::Reference(is_valid_ref.clone());
 
-    machine
-        .derived_columns
-        .push((is_valid_ref, ComputationMethod::Constant(T::one())));
+    machine.derived_columns.push(DerivedVariable::new(
+        is_valid_ref,
+        ComputationMethod::Constant(T::one()),
+    ));
 
     machine.constraints = machine
         .constraints

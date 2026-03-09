@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use powdr_constraint_solver::constraint_system::ComputationMethod;
+use powdr_constraint_solver::constraint_system::DerivedVariable;
 use rayon::prelude::*;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Display;
@@ -24,10 +24,7 @@ pub struct TraceData<'a, F, D> {
     pub apc_poly_id_to_index: BTreeMap<u64, usize>,
     /// Indices of columns to compute and the way to compute them
     /// (from other values).
-    pub columns_to_compute: &'a [(
-        AlgebraicReference,
-        ComputationMethod<F, AlgebraicExpression<F>>,
-    )],
+    pub columns_to_compute: &'a [DerivedVariable<F, AlgebraicReference, AlgebraicExpression<F>>],
 }
 
 pub trait TraceTrait<F>: Send + Sync {
@@ -53,7 +50,6 @@ where
     // Keep only instructions that produce dummy records
     let instructions_with_subs = apc
         .instructions()
-        .iter()
         .zip_eq(apc.subs.iter())
         .filter(|(_, subs)| !subs.is_empty());
 

@@ -179,7 +179,8 @@ mod tests {
 
     use super::*;
     use crate::{
-        constraint_system::{BusInteraction, DefaultBusInteractionHandler},
+        bus_interaction_handler::DefaultBusInteractionHandler,
+        constraint_system::BusInteraction,
         solver::{
             base::{BaseSolver, VarDispenserImpl},
             var_transformation::Variable,

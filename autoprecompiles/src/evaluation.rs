@@ -1,6 +1,9 @@
-use std::{fmt::Display, iter::Sum, ops::Add};
+use std::{fmt::Display, iter::Sum, ops::Add, sync::Arc};
 
-use crate::{blocks::Instruction, InstructionHandler, SymbolicMachine};
+use crate::{
+    adapter::{Adapter, AdapterApc, AdapterApcWithStats},
+    InstructionHandler, SymbolicMachine,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -18,7 +21,7 @@ pub struct AirStats {
 }
 
 impl AirStats {
-    pub fn new<F: Clone + Ord + std::fmt::Display>(machine: &SymbolicMachine<F>) -> Self {
+    pub fn new<F>(machine: &SymbolicMachine<F>) -> Self {
         Self {
             main_columns: machine.main_columns().count(),
             constraints: machine.constraints.len(),
@@ -48,31 +51,31 @@ impl Sum<AirStats> for AirStats {
 /// Evaluation result of an APC evaluation
 pub struct EvaluationResult {
     /// Statistics before optimizations, i.e., the sum of the AIR stats
-    /// of all AIRs that *would* be involved in proving this basic block
+    /// of all AIRs that *would* be involved in proving this block
     /// if it was run in software.
     pub before: AirStats,
     /// The AIR stats of the APC.
     pub after: AirStats,
 }
 
-/// Evaluate an APC by comparing its cost to the cost of executing the
-/// basic block in software.
-pub fn evaluate_apc<IH>(
-    basic_block: &[IH::Instruction],
-    instruction_handler: &IH,
-    machine: &SymbolicMachine<impl Clone + Ord + std::fmt::Display>,
-) -> EvaluationResult
-where
-    IH: InstructionHandler,
-    IH::Field: Clone + Ord + std::fmt::Display,
-    IH::Instruction: Instruction<IH::Field>,
-{
-    let before = basic_block
-        .iter()
+/// Evaluate an APC by comparing its cost to the cost of executing the original instructions in software.
+/// This is used by different pgo strategies in different stages. For example, for cell PGO, this is done before selection, and for instruction PGO, it is done after.
+pub fn evaluate_apc<A: Adapter>(
+    instruction_handler: &A::InstructionHandler,
+    apc: AdapterApc<A>,
+) -> AdapterApcWithStats<A> {
+    let before = apc
+        .block
+        .instructions()
         .map(|instruction| instruction_handler.get_instruction_air_stats(instruction))
         .sum();
-    let after = AirStats::new(machine);
-    EvaluationResult { before, after }
+    let after = AirStats::new(apc.machine());
+    let evaluation_result = EvaluationResult { before, after };
+
+    let apc = Arc::new(apc);
+    let apc_stats = A::apc_stats(apc.clone(), instruction_handler);
+
+    AdapterApcWithStats::<A>::new(apc, apc_stats, evaluation_result)
 }
 
 impl Display for EvaluationResult {

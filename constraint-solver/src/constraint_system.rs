@@ -1,4 +1,5 @@
 use crate::{
+    bus_interaction_handler::ViolatesBusRules,
     effect::Effect,
     grouped_expression::{GroupedExpression, RangeConstraintProvider},
     range_constraint::RangeConstraint,
@@ -7,22 +8,26 @@ use crate::{
 use derivative::Derivative;
 use itertools::Itertools;
 use powdr_number::FieldElement;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{fmt::Display, hash::Hash};
 
 pub use crate::algebraic_constraint::AlgebraicConstraint;
+pub use crate::bus_interaction_handler::BusInteractionHandler;
 
 /// Description of a constraint system.
-#[derive(Derivative)]
+#[derive(Derivative, Serialize)]
 #[derivative(Default(bound = ""), Clone)]
+#[serde(bound(serialize = "V: Clone + Ord + Eq + Serialize, T: RuntimeConstant + Serialize"))]
 pub struct ConstraintSystem<T, V> {
     /// The algebraic expressions which have to evaluate to zero.
+    #[serde(rename = "constraints")]
     pub algebraic_constraints: Vec<AlgebraicConstraint<GroupedExpression<T, V>>>,
     /// Bus interactions, which can further restrict variables.
     /// Exact semantics are up to the implementation of BusInteractionHandler
     pub bus_interactions: Vec<BusInteraction<GroupedExpression<T, V>>>,
     /// Newly added variables whose values are derived from existing variables.
-    pub derived_variables: Vec<DerivedVariable<T, V>>,
+    #[serde(rename = "derived_columns")]
+    pub derived_variables: Vec<DerivedVariable<T, V, GroupedExpression<T, V>>>,
 }
 
 impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display for ConstraintSystem<T, V> {
@@ -74,10 +79,50 @@ impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
     }
 }
 
-#[derive(Clone)]
-pub struct DerivedVariable<T, V> {
+#[derive(Clone, Debug)]
+pub struct DerivedVariable<T, V, E> {
     pub variable: V,
-    pub computation_method: ComputationMethod<T, GroupedExpression<T, V>>,
+    pub computation_method: ComputationMethod<T, E>,
+}
+
+impl<T, V, E> DerivedVariable<T, V, E> {
+    pub fn new(variable: V, computation_method: ComputationMethod<T, E>) -> Self {
+        Self {
+            variable,
+            computation_method,
+        }
+    }
+}
+
+impl<T, V, E> Serialize for DerivedVariable<T, V, E>
+where
+    V: Serialize,
+    ComputationMethod<T, E>: Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        (&self.variable, &self.computation_method).serialize(serializer)
+    }
+}
+
+impl<'de, T, V, E> Deserialize<'de> for DerivedVariable<T, V, E>
+where
+    V: Deserialize<'de>,
+    ComputationMethod<T, E>: Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let (variable, computation_method) =
+            <(V, ComputationMethod<T, E>)>::deserialize(deserializer)?;
+        Ok(Self {
+            variable,
+            computation_method,
+        })
+    }
 }
 
 /// Specifies a way to compute the value of a variable from other variables.
@@ -144,15 +189,18 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq>
 }
 
 /// A bus interaction.
-#[derive(Clone, Debug, Hash, Eq, PartialEq)]
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Serialize)]
 pub struct BusInteraction<V> {
     /// The ID of the bus.
+    #[serde(rename = "id")]
     pub bus_id: V,
-    /// The payload of the bus interaction.
-    pub payload: Vec<V>,
     /// The multiplicity of the bus interaction. In most cases,
     /// this should evaluate to 1 or -1.
+    #[serde(rename = "mult")]
     pub multiplicity: V,
+    /// The payload of the bus interaction.
+    #[serde(rename = "args")]
+    pub payload: Vec<V>,
 }
 
 impl<V> BusInteraction<V> {
@@ -259,66 +307,6 @@ impl<T, V> BusInteraction<GroupedExpression<T, V>> {
             self.fields()
                 .flat_map(|expr| expr.referenced_unknown_variables()),
         )
-    }
-}
-
-/// The sent / received data could not be received / sent.
-#[derive(Debug)]
-pub struct ViolatesBusRules {}
-
-/// A trait for handling bus interactions.
-pub trait BusInteractionHandler<T: FieldElement> {
-    /// Handles a bus interaction, by transforming taking a bus interaction
-    /// (with the fields represented by range constraints) and returning
-    /// updated range constraints.
-    /// The idea is that a certain combination of range constraints on elements
-    /// can be further restricted given internal knowledge about the specific
-    /// bus interaction, in particular if some elements are restricted to just
-    /// a few or even concrete values.
-    /// The range constraints are intersected with the previous ones by the
-    /// caller, so there is no need to do that in the implementation of this
-    /// trait.
-    fn handle_bus_interaction(
-        &self,
-        bus_interaction: BusInteraction<RangeConstraint<T>>,
-    ) -> BusInteraction<RangeConstraint<T>>;
-
-    /// Like handle_bus_interaction, but returns an error if the current bus
-    /// interaction violates the rules of the bus (e.g. [1234] in [BYTES]).
-    fn handle_bus_interaction_checked(
-        &self,
-        bus_interaction: BusInteraction<RangeConstraint<T>>,
-    ) -> Result<BusInteraction<RangeConstraint<T>>, ViolatesBusRules> {
-        let previous_constraints = bus_interaction.clone();
-        let new_constraints = self.handle_bus_interaction(bus_interaction);
-
-        // Intersect the old and new range constraints. If they don't overlap,
-        // there is a contradiction.
-        for (previous_rc, new_rc) in previous_constraints
-            .fields()
-            .zip_eq(new_constraints.fields())
-        {
-            if previous_rc.is_disjoint(new_rc) {
-                return Err(ViolatesBusRules {});
-            }
-        }
-        Ok(new_constraints)
-    }
-}
-
-/// A default bus interaction handler that does nothing. Using it is
-/// equivalent to ignoring bus interactions.
-#[derive(Default, Clone)]
-pub struct DefaultBusInteractionHandler<T: FieldElement> {
-    _marker: std::marker::PhantomData<T>,
-}
-
-impl<T: FieldElement> BusInteractionHandler<T> for DefaultBusInteractionHandler<T> {
-    fn handle_bus_interaction(
-        &self,
-        bus_interaction: BusInteraction<RangeConstraint<T>>,
-    ) -> BusInteraction<RangeConstraint<T>> {
-        bus_interaction
     }
 }
 

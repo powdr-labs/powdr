@@ -13,7 +13,7 @@ use crate::{
     range_constraint::RangeConstraint,
     rule_based_optimizer::{
         environment::Environment,
-        types::{Action, Expr, Var},
+        types::{Action, Expr, ReplaceConstraintsAction, Var},
     },
 };
 
@@ -71,10 +71,17 @@ crepe! {
     // be replaced by new_expr (and new_expression is in some way "simpler").
     struct ReplaceAlgebraicConstraintBy(Expr, Expr);
 
-    // ReplacePairOfAlgebraicConstraintsBy(e1, e2, replacement) =>
-    // the system that does not have the constraints `e1` and `e2` but has
-    // the new constraint `replacement` is equivalent.
-    struct ReplacePairOfAlgebraicConstraintsBy(Expr, Expr, Expr);
+    // ReplaceAlgebraicConstraintsBy(e1, e2) =>
+    // the system that does not have the constraints in `e1` but has
+    // the new constraints in `e2` is equivalent.
+    struct ReplaceAlgebraicConstraintsBy([Option<Expr>; 10], [Option<Expr>; 5]);
+
+    //////////////////// BASIC SEMANTIC PROPERTIES OF EXRESSIONS //////////////////////
+
+
+    // EqualZero(e) => e = 0 for all satisfying assignments.
+    struct EqualZero(Expr);
+    EqualZero(e) <- AlgebraicConstraint(e);
 
     //////////////////// STRUCTURAL PROPERTIES OF EXPRESSIONS //////////////////////
 
@@ -121,6 +128,15 @@ crepe! {
     Expression(head) <- ExpressionSumHeadTail(_, head, _);
     Expression(tail) <- ExpressionSumHeadTail(_, _, tail);
 
+    // SimpleSum(e, f, c) => e is of the form f * v_1 + f * v_2 + ... + f * v_n + c,
+    //                      n >= 1
+    struct SimpleSum<T: FieldElement>(Expr, T, T);
+    SimpleSum(e, f, c) <-
+      ExpressionSumHeadTail(e, head, tail),
+      SimpleSum(tail, f, c),
+      LinearExpression(head, _, f);
+    SimpleSum(e, f, c) <- AffineExpression(e, f, _, c);
+
     // IsAffine(e) => e is an affine expression, i.e. does not have super-linear parts.
     struct IsAffine(Expr);
     IsAffine(e) <-
@@ -149,6 +165,29 @@ crepe! {
       ExpressionSumHeadTail(e1, head, tail1),
       ExpressionSumHeadTail(e2, head, tail2);
 
+    // AffinelyRelated(e1, f, e2, c) => e1 = f * e2 + c
+    // Note this is currently only implemented for affine e1 and e2.
+    // This only works if e1 and e2 have at least one variable
+    // and both e1 and e2 have to "pre-exist" as expressions.
+    // This means this rule cannot be used to subtract constants
+    // or multiply/divide by constants alone.
+    struct AffinelyRelated<T: FieldElement>(Expr, T, Expr, T);
+    AffinelyRelated(e1, f, e2, o1 - o2 * f) <-
+      AffineExpression(e1, f1, v, o1), // e1 = f1 * v + o1
+      AffineExpression(e2, f2, v, o2),
+      // Optimization: Compute f1 / f2 only once.
+      let f = f1 / f2;
+      // e2 = f2 * v + o2
+      // e1 = f1 * (e2 - o2) / f2 + o1 = e2 * (f1 / f2) + (o1 - o2 * f1 / f2)
+
+    AffinelyRelated(e1, f, e2, o) <-
+      AffinelyRelated(tail1, f, tail2, o),
+      // The swapped case and the equal will be computed by other rules.
+      ExpressionSumHeadTail(e1, head1, tail1),
+      LinearExpression(head1, v, f1),
+      ExpressionSumHeadTail(e2, head2, tail2),
+      LinearExpression(head2, v, f1 / f);
+
     // HasProductSummand(e, l, r) => e contains a summand of the form l * r
     struct HasProductSummand(Expr, Expr, Expr);
     HasProductSummand(e, l, r) <-
@@ -162,6 +201,35 @@ crepe! {
       AlgebraicConstraint(e),
       Product(e, l, r);
 
+    // BooleanAndSubsetOfVars(e1, e2) => e1 and e2 are affine expressions only containing boolean variables and
+    //   all variables in e1 also appear in e2
+    struct BooleanAndSubsetOfVars(Expr, Expr);
+    BooleanAndSubsetOfVars(e1, e2) <-
+      AffineExpression(e1, _, v, _),
+      ContainsVariable(e2, v),
+      AffineAndAllVarsBoolean(e1),
+      AffineAndAllVarsBoolean(e2);
+    BooleanAndSubsetOfVars(e1, e2) <-
+      BooleanAndSubsetOfVars(tail1, tail2),
+      ExpressionSumHeadTail(e1, head1, tail1),
+      LinearExpression(head1, v, _),
+      BooleanVar(v),
+      ExpressionSumHeadTail(e2, head2, tail2),
+      LinearExpression(head2, v, _);
+    BooleanAndSubsetOfVars(e1, e2) <-
+      BooleanAndSubsetOfVars(e1, tail2),
+      ExpressionSumHeadTail(e2, _, tail2),
+      AffineAndAllVarsBoolean(e2);
+
+    // AffineAndAllVarsBoolean(e) => e is an affine expression and all variables in e are boolean variables
+    struct AffineAndAllVarsBoolean(Expr);
+    AffineAndAllVarsBoolean(e) <-
+      AffineExpression(e, _, v, _),
+      BooleanVar(v);
+    AffineAndAllVarsBoolean(e) <-
+      ExpressionSumHeadTail(e, head, tail),
+      AffineAndAllVarsBoolean(head),
+      AffineAndAllVarsBoolean(tail);
 
     //////////////////////// RANGE CONSTRAINTS //////////////////////////
 
@@ -212,6 +280,10 @@ crepe! {
       (l < r),
       Solvable(l, v, c1),
       Solvable(r, v, c2);
+
+    // BooleanVar(v) => v is 0 or 1
+    struct BooleanVar(Var);
+    BooleanVar(v) <- RangeConstraintOnVar(v, RangeConstraint::from_mask(1));
 
     //////////////////////// SINGLE-OCCURRENCE VARIABLES //////////////////////////
 
@@ -328,7 +400,7 @@ crepe! {
     // If we have `x * a = 0` and `x * b = 0` and `a` and `b` are
     // both non-negative and their sum is constrained, then we can replace
     // both constraints by `x * (a + b) = 0`.
-    ReplacePairOfAlgebraicConstraintsBy(e1, e2, replacement) <-
+    ReplaceAlgebraicConstraintsBy(extend_by_none([e1, e2]), replacement) <-
       Env(env),
       ProductConstraint(e1, x, a),
       ProductConstraint(e2, x, b),
@@ -337,7 +409,7 @@ crepe! {
       RangeConstraintOnExpression(b, rc_b),
       (rc_a.range().0 == T::zero()
         && rc_b.range().0 == T::zero() && !rc_a.combine_sum(&rc_b).is_unconstrained()),
-      let replacement = env.insert_owned(env.extract(x) * (env.extract(a) + env.extract(b)));
+      let replacement = extend_by_none([env.insert_owned(env.extract(x) * (env.extract(a) + env.extract(b)))]);
 
     //////////////////////// AFFINE SOLVING //////////////////////////
 
@@ -350,9 +422,75 @@ crepe! {
     // Assignment(var, v) => any satisfying assignment has var = v.
     struct Assignment<T: FieldElement>(Var, T);
     Assignment(var, v) <-
-      AlgebraicConstraint(e),
+      EqualZero(e),
       Solvable(e, var, v);
 
+    ///////////////////////////////// NO-WRAP ZERO SUM //////////////////////////
+
+    // If an algebraic constraint head + tail = 0 has the following properties:
+    // 1. the range constraint of head is [0, a] with a < P - 1,
+    // 2. the range constraint of tail is [0, b] with b < P - 1,
+    // 3. a + b (as integers) < P - 1,
+    // then both head and tail must be zero.
+
+    // EntailsZeroHeadAndTail(e1, e2) => e1 = 0 and e2 = 0
+    struct EntailsZeroHeadAndTail(Expr, Expr);
+    EntailsZeroHeadAndTail(head, tail) <-
+      EqualZero(e),
+      ExpressionSumHeadTail(e, head, tail),
+      RangeConstraintOnExpression(head, rc_head),
+      RangeConstraintOnExpression(tail, rc_tail),
+      (rc_head.range().0 == T::from(0)),
+      (rc_tail.range().0 == T::from(0)),
+      (rc_head.range().1.to_integer() + rc_tail.range().1.to_integer() < T::from(-1).to_integer());
+
+    EqualZero(head) <- EntailsZeroHeadAndTail(head,_);
+    EqualZero(tail) <- EntailsZeroHeadAndTail(_, tail);
+
+
+    ///////////////////////////////// ONE-HOT FLAG ///////////////////////////
+
+    // ExactlyOneSet(e) => exactly one variable in e is one, all others are zero.
+    struct ExactlyOneSet(Expr);
+    ExactlyOneSet(e) <-
+      AlgebraicConstraint(e),
+      SimpleSum(e, f, c),
+      AffineAndAllVarsBoolean(e),
+      ((f + c).is_zero());
+
+    // We want to match expressions of the form f_1 * v_1 + f_2 * v_2 + ... + f_n * v_n + c = 0
+    // where all v_i are boolean and exactly one of the f_i equals -c.
+
+    // AffineSumCountCoeffs(e, None, f) => e is an affine expression where
+    //   the constant term is -f no variable has the coefficient f.
+    // AffineSumCountCoeffs(e, Some(v), f) => e is an affine expression where
+    //   the constant term is -f and exactly one variable has the coefficient f and
+    //   that variable is v.
+    struct AffineSumCountCoeffs<T: FieldElement>(Expr, Option<Var>, T);
+    AffineSumCountCoeffs(e, None, -c) <- Constant(e, c);
+    AffineSumCountCoeffs(e, Some(v), f) <-
+      AffineSumCountCoeffs(tail, None, f),
+      ExpressionSumHeadTail(e, head, tail),
+      LinearExpression(head, v, f);
+    AffineSumCountCoeffs(e, v1, f) <-
+      AffineSumCountCoeffs(tail, v1, f),
+      ExpressionSumHeadTail(e, head, tail),
+      LinearExpression(head, _, coeff),
+      (coeff != f);
+
+    Assignment(v, T::from((Some(v) == v2) as u32)) <-
+      ExactlyOneSet(e1),
+      AlgebraicConstraint(e1),
+      BooleanAndSubsetOfVars(e2, e1),
+      // At this point, we know that at most one of the variables in e2 is one,
+      // the rest is zero.
+      AlgebraicConstraint(e2),
+      AffineSumCountCoeffs(e2, v2, _),
+      // At this point, either no variable in e2 has coefficient -c (v2 == None)
+      // or exactly one variable (v2.unwrap()) has coefficient -c.
+      // In any case, the variable equal to v2.unwrap() is one, the rest zero.
+      HasSummand(e2, summand),
+      LinearExpression(summand, v, _);
 
 
     ///////////////////////////////// OUTPUT ACTIONS //////////////////////////
@@ -362,15 +500,15 @@ crepe! {
     //------- quadratic equivalence -----
 
     // QuadraticEquivalenceCandidate(E, expr, offset) =>
-    //   E = ((expr) * (expr + offset) = 0) is a constraint and
+    //   E = (expr * (expr + offset) = 0) is a constraint and
     //   expr is affine with at least 2 variables.
     struct QuadraticEquivalenceCandidate<T: FieldElement>(Expr, Expr, T);
-    QuadraticEquivalenceCandidate(e, r, offset) <-
+    QuadraticEquivalenceCandidate(e, r, o / f) <-
        Env(env),
-       AlgebraicConstraint(e),
-       Product(e, l, r), // note that this will always produce two facts for (l, r) and (r, l)
-       ({env.affine_var_count(l).unwrap_or(0) > 1 && env.affine_var_count(r).unwrap_or(0) > 1}),
-       let Some(offset) = env.constant_difference(l, r);
+       ProductConstraint(e, l, r),
+       AffinelyRelated(l, f, r, o), // l = f * r + o
+       IsAffine(l),
+       ({env.affine_var_count(l).unwrap_or(0) > 1});
 
     // QuadraticEquivalenceCandidatePair(expr1, expr2, offset1 / coeff, v1, v2) =>
     //  (expr1) * (expr1 + offset1) = 0 and (expr2) * (expr2 + offset2) = 0 are constraints,
@@ -388,7 +526,7 @@ crepe! {
       QuadraticEquivalenceCandidate(_, expr1, offset1),
       QuadraticEquivalenceCandidate(_, expr2, offset2),
       (expr1 < expr2),
-      let Some((v1, v2,factor)) = env.differ_in_exactly_one_variable(expr1, expr2),
+      let Some((v1, v2, factor)) = env.differ_in_exactly_one_variable(expr1, expr2),
       (offset1 == offset2 * factor),
       let coeff = env.on_expr(expr1, (), |e, _| *e.coefficient_of_variable_in_affine_part(&v1).unwrap());
 
@@ -421,6 +559,17 @@ crepe! {
       Equivalence(v1, v2), (v2 > v1);
     ActionRule(Action::ReplaceAlgebraicConstraintBy(e1, e2)) <-
       ReplaceAlgebraicConstraintBy(e1, e2);
-    ActionRule(Action::ReplacePairOfAlgebraicConstraintsBy(e1, e2, r)) <-
-      ReplacePairOfAlgebraicConstraintsBy(e1, e2, r);
+
+    @output
+    pub struct ReplaceConstraintsActionRule(pub ReplaceConstraintsAction);
+    ReplaceConstraintsActionRule(ReplaceConstraintsAction{ to_replace, replace_by }) <-
+      ReplaceAlgebraicConstraintsBy(to_replace, replace_by);
+}
+
+fn extend_by_none<const N1: usize, const N2: usize>(items: [Expr; N1]) -> [Option<Expr>; N2] {
+    let mut output = [None; N2];
+    for (i, item) in items.iter().enumerate() {
+        output[i] = Some(*item);
+    }
+    output
 }

@@ -2,9 +2,8 @@ use std::collections::BTreeMap;
 
 use num_traits::identities::{One, Zero};
 use powdr_constraint_solver::{
-    constraint_system::{
-        BusInteraction, BusInteractionHandler, ConstraintSystem, DefaultBusInteractionHandler,
-    },
+    bus_interaction_handler::DefaultBusInteractionHandler,
+    constraint_system::{BusInteraction, BusInteractionHandler, ConstraintSystem},
     grouped_expression::GroupedExpression,
     range_constraint::RangeConstraint,
     solver::{solve_system, Error},

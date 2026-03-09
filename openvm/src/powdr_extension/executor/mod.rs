@@ -3,15 +3,14 @@ use std::{
     cell::RefCell,
     collections::HashMap,
     rc::Rc,
-    sync::Arc,
 };
 
 use crate::{
-    customize_exe::{OpenVmExecutionState, OpenVmRegisterAddress},
+    customize_exe::OpenVmExecutionState,
     extraction_utils::{
         record_arena_dimension_by_air_name_per_apc_call, OriginalAirs, OriginalVmConfig,
     },
-    Instr,
+    isa::{IsaApc, OpenVmISA},
 };
 
 use itertools::Itertools;
@@ -26,12 +25,11 @@ use openvm_circuit::arch::{AotExecutor, AotMeteredExecutor};
 use openvm_circuit_derive::create_handler;
 use openvm_circuit_primitives::AlignedBytesBorrow;
 use openvm_instructions::instruction::Instruction;
-use openvm_sdk::config::SdkVmConfigExecutor;
 use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
     execution::{OptimisticConstraintEvaluator, OptimisticConstraints},
-    Apc,
+    InstructionHandler,
 };
 
 use openvm_circuit::{
@@ -45,10 +43,10 @@ use openvm_circuit::{
 /// A struct which holds the state of the execution based on the original instructions in this block and a dummy inventory.
 /// It holds arenas for each original use for both cpu and gpu execution, so that this struct can be agnostic to the execution backend.
 /// When using the cpu backend, only `original_arenas_cpu` is used, and vice versa for gpu execution.
-pub struct PowdrExecutor {
-    pub air_by_opcode_id: OriginalAirs<BabyBear>,
-    pub executor_inventory: ExecutorInventory<SdkVmConfigExecutor<BabyBear>>,
-    pub apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, u32>>,
+pub struct PowdrExecutor<ISA: OpenVmISA> {
+    pub air_by_opcode_id: OriginalAirs<BabyBear, ISA>,
+    pub executor_inventory: ExecutorInventory<ISA::Executor<BabyBear>>,
+    pub apc: IsaApc<BabyBear, ISA>,
     pub original_arenas_cpu: Rc<RefCell<OriginalArenas<MatrixRecordArena<BabyBear>>>>,
     pub original_arenas_gpu: Rc<RefCell<OriginalArenas<DenseRecordArena>>>,
     pub height_change: u32,
@@ -72,12 +70,12 @@ pub enum OriginalArenas<A> {
 impl<A: Arena> OriginalArenas<A> {
     /// Given an estimate of how many times the APC is called in this segment, and the original airs and apc,
     /// initializes the arenas iff not already initialized.
-    fn ensure_initialized(
+    fn ensure_initialized<ISA: OpenVmISA>(
         &mut self,
         apc_call_count_estimate: impl Fn() -> usize,
-        original_airs: &OriginalAirs<BabyBear>,
-        apc: &Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, u32>>,
-    ) {
+        original_airs: &OriginalAirs<BabyBear, ISA>,
+        apc: &IsaApc<BabyBear, ISA>,
+    ) -> &mut InitializedOriginalArenas<A> {
         match self {
             OriginalArenas::Uninitialized => {
                 *self = OriginalArenas::Initialized(InitializedOriginalArenas::new(
@@ -85,57 +83,12 @@ impl<A: Arena> OriginalArenas<A> {
                     original_airs,
                     apc,
                 ));
+                match self {
+                    OriginalArenas::Initialized(i) => i,
+                    _ => unreachable!(),
+                }
             }
-            OriginalArenas::Initialized(_) => {}
-        }
-    }
-
-    /// Returns a mutable reference to the arena of the given vector index.
-    /// - Panics if the arenas are not initialized.
-    pub fn arena_mut_by_index(&mut self, index: usize) -> &mut ArenaPair<A> {
-        match self {
-            OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
-            OriginalArenas::Initialized(initialized) => initialized.arena_mut_by_index(index),
-        }
-    }
-
-    pub fn real_arena_mut_by_index(&mut self, index: usize) -> &mut A {
-        match self {
-            OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
-            OriginalArenas::Initialized(initialized) => initialized.real_arena_mut_by_index(index),
-        }
-    }
-
-    pub fn dummy_arena_mut_by_index(&mut self, index: usize) -> &mut A {
-        match self {
-            OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
-            OriginalArenas::Initialized(initialized) => initialized.dummy_arena_mut_by_index(index),
-        }
-    }
-
-    /// Returns the arena of the given air name.
-    /// - Panics if the arenas are not initialized.
-    pub fn take_real_arena(&mut self, air_name: &str) -> Option<A> {
-        match self {
-            OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
-            OriginalArenas::Initialized(initialized) => initialized.take_real_arena(air_name),
-        }
-    }
-
-    /// Returns a mutable reference to the number of calls.
-    /// - Panics if the arenas are not initialized.
-    pub fn number_of_calls_mut(&mut self) -> &mut usize {
-        match self {
-            OriginalArenas::Uninitialized => panic!("original arenas are uninitialized"),
-            OriginalArenas::Initialized(initialized) => &mut initialized.number_of_calls,
-        }
-    }
-
-    /// Returns the number of calls. If not initialized, `Preflight::execute` is never called, and thus return 0.
-    pub fn number_of_calls(&self) -> usize {
-        match self {
-            OriginalArenas::Uninitialized => 0,
-            OriginalArenas::Initialized(initialized) => initialized.number_of_calls,
+            OriginalArenas::Initialized(i) => i,
         }
     }
 }
@@ -152,10 +105,10 @@ pub struct InitializedOriginalArenas<A> {
 
 impl<A: Arena> InitializedOriginalArenas<A> {
     /// Creates a new instance of `InitializedOriginalArenas`.
-    pub fn new(
+    pub fn new<ISA: OpenVmISA>(
         apc_call_count_estimate: usize,
-        original_airs: &OriginalAirs<BabyBear>,
-        apc: &Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, u32>>,
+        original_airs: &OriginalAirs<BabyBear, ISA>,
+        apc: &IsaApc<BabyBear, ISA>,
     ) -> Self {
         let record_arena_dimensions =
             record_arena_dimension_by_air_name_per_apc_call(apc, original_airs);
@@ -209,7 +162,7 @@ impl<A: Arena> InitializedOriginalArenas<A> {
         &mut self.arena_mut_by_index(index).dummy
     }
 
-    fn take_real_arena(&mut self, air_name: &str) -> Option<A> {
+    pub fn take_real_arena(&mut self, air_name: &str) -> Option<A> {
         let index = *self.air_name_to_arena_index.get(air_name)?;
         self.arenas[index].take().map(|arena_pair| arena_pair.real)
     }
@@ -240,10 +193,10 @@ struct CachedInstructionMeta {
 struct PowdrPreCompute<F, Ctx> {
     height_change: u32,
     original_instructions: Vec<(ExecuteFunc<F, Ctx>, Vec<u8>)>,
-    optimistic_constraints: OptimisticConstraints<OpenVmRegisterAddress, u32>,
+    optimistic_constraints: OptimisticConstraints<(), u32>,
 }
 
-impl InterpreterExecutor<BabyBear> for PowdrExecutor {
+impl<ISA: OpenVmISA> InterpreterExecutor<BabyBear> for PowdrExecutor<ISA> {
     fn pre_compute_size(&self) -> usize {
         // TODO: do we know `ExecutionCtx` is correct? It's only one implementation of `ExecutionCtxTrait`.
         // A clean fix would be to add `Ctx` as a generic parameter to this method in the `Executor` trait, but that would be a breaking change.
@@ -264,7 +217,7 @@ impl InterpreterExecutor<BabyBear> for PowdrExecutor {
 
         self.pre_compute_impl::<Ctx>(pc, inst, pre_compute)?;
 
-        Ok(execute_e1_impl::<BabyBear, Ctx>)
+        Ok(execute_e1_impl::<BabyBear, Ctx, ISA>)
     }
 
     #[cfg(feature = "tco")]
@@ -283,7 +236,7 @@ impl InterpreterExecutor<BabyBear> for PowdrExecutor {
     }
 }
 
-impl InterpreterMeteredExecutor<BabyBear> for PowdrExecutor {
+impl<ISA: OpenVmISA> InterpreterMeteredExecutor<BabyBear> for PowdrExecutor<ISA> {
     fn metered_pre_compute_size(&self) -> usize {
         // TODO: do we know `MeteredCtx` is correct? It's only one implementation of `MeteredExecutionCtxTrait`.
         // A clean fix would be to add `Ctx` as a generic parameter to this method in the `MeteredExecutor` trait, but that would be a breaking change.
@@ -306,7 +259,7 @@ impl InterpreterMeteredExecutor<BabyBear> for PowdrExecutor {
 
         self.pre_compute_impl::<Ctx>(pc, inst, &mut pre_compute.data)?;
 
-        Ok(execute_e2_impl::<BabyBear, Ctx>)
+        Ok(execute_e2_impl::<BabyBear, Ctx, ISA>)
     }
 
     #[cfg(feature = "tco")]
@@ -330,7 +283,7 @@ impl InterpreterMeteredExecutor<BabyBear> for PowdrExecutor {
 }
 
 #[cfg(feature = "aot")]
-impl AotExecutor<BabyBear> for PowdrExecutor {
+impl<ISA: OpenVmISA> AotExecutor<BabyBear> for PowdrExecutor<ISA> {
     fn is_aot_supported(&self, _inst: &Instruction<BabyBear>) -> bool {
         false
     }
@@ -345,7 +298,7 @@ impl AotExecutor<BabyBear> for PowdrExecutor {
 }
 
 #[cfg(feature = "aot")]
-impl AotMeteredExecutor<BabyBear> for PowdrExecutor {
+impl<ISA: OpenVmISA> AotMeteredExecutor<BabyBear> for PowdrExecutor<ISA> {
     fn is_aot_metered_supported(&self, _inst: &Instruction<BabyBear>) -> bool {
         false
     }
@@ -361,7 +314,7 @@ impl AotMeteredExecutor<BabyBear> for PowdrExecutor {
     }
 }
 
-impl PowdrExecutor {
+impl<ISA: OpenVmISA> PowdrExecutor<ISA> {
     #[cfg(not(feature = "tco"))]
     /// The implementation of pre_compute, shared between Executor and MeteredExecutor.
     #[inline]
@@ -377,9 +330,7 @@ impl PowdrExecutor {
         use openvm_instructions::program::DEFAULT_PC_STEP;
         use openvm_stark_backend::{
             p3_field::Field,
-            p3_maybe_rayon::prelude::{
-                IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator,
-            },
+            p3_maybe_rayon::prelude::{IndexedParallelIterator, ParallelIterator},
         };
 
         let &Instruction {
@@ -408,25 +359,24 @@ impl PowdrExecutor {
 
         let executor_inventory = &self.executor_inventory;
         // Set the data using the original instructions
-        *data = PowdrPreCompute {
+        let new_data = PowdrPreCompute {
             height_change: self.height_change,
             original_instructions: self
                 .apc
                 .block
-                .statements
-                .par_iter()
+                .par_instructions()
                 .enumerate()
                 .map(|(idx, instruction)| {
                     let executor = executor_inventory
-                        .get_executor(instruction.0.opcode)
+                        .get_executor(instruction.inner.opcode)
                         .ok_or(StaticProgramError::ExecutorNotFound {
-                            opcode: instruction.0.opcode,
+                            opcode: instruction.inner.opcode,
                         })?;
                     let pre_compute_size = executor.pre_compute_size();
                     let mut pre_compute_data = vec![0u8; pre_compute_size];
                     let execute_func = executor.pre_compute::<Ctx>(
                         pc + idx as u32 * DEFAULT_PC_STEP,
-                        &instruction.0,
+                        &instruction.inner,
                         &mut pre_compute_data,
                     )?;
                     Ok((execute_func, pre_compute_data.to_vec()))
@@ -434,6 +384,9 @@ impl PowdrExecutor {
                 .collect::<Result<Vec<_>, StaticProgramError>>()?,
             optimistic_constraints: self.apc.optimistic_constraints.clone(),
         };
+        unsafe {
+            std::ptr::write(data, new_data);
+        }
 
         Ok(())
     }
@@ -453,14 +406,14 @@ impl PowdrExecutor {
 
 /// The implementation of the execute function, shared between Executor and MeteredExecutor.
 #[inline(always)]
-unsafe fn execute_e12_impl<F: PrimeField32, CTX: ExecutionCtxTrait>(
+unsafe fn execute_e12_impl<F: PrimeField32, CTX: ExecutionCtxTrait, ISA: OpenVmISA>(
     pre_compute: &PowdrPreCompute<F, CTX>,
     exec_state: &mut VmExecState<F, GuestMemory, CTX>,
 ) {
     let mut optimistic_constraint_evalutator = OptimisticConstraintEvaluator::new();
     // Check the state before execution
     assert!(optimistic_constraint_evalutator
-        .try_next_execution_step(
+        .try_next_execution_step::<OpenVmExecutionState<'_, F, ISA>>(
             &OpenVmExecutionState::from(&exec_state.vm_state),
             &pre_compute.optimistic_constraints
         )
@@ -469,7 +422,7 @@ unsafe fn execute_e12_impl<F: PrimeField32, CTX: ExecutionCtxTrait>(
         executor(data.as_ptr(), exec_state);
         // Check the state after each original instruction
         assert!(optimistic_constraint_evalutator
-            .try_next_execution_step(
+            .try_next_execution_step::<OpenVmExecutionState<'_, F, ISA>>(
                 &OpenVmExecutionState::from(&exec_state.vm_state),
                 &pre_compute.optimistic_constraints
             )
@@ -478,17 +431,17 @@ unsafe fn execute_e12_impl<F: PrimeField32, CTX: ExecutionCtxTrait>(
 }
 
 #[create_handler]
-unsafe fn execute_e1_impl<F: PrimeField32, CTX: ExecutionCtxTrait>(
+unsafe fn execute_e1_impl<F: PrimeField32, CTX: ExecutionCtxTrait, ISA: OpenVmISA>(
     pre_compute: *const u8,
     exec_state: &mut VmExecState<F, GuestMemory, CTX>,
 ) {
     let pre_compute: &PowdrPreCompute<F, CTX> =
         std::slice::from_raw_parts(pre_compute, size_of::<PowdrPreCompute<F, CTX>>()).borrow();
-    execute_e12_impl::<F, CTX>(pre_compute, exec_state);
+    execute_e12_impl::<F, CTX, ISA>(pre_compute, exec_state);
 }
 
 #[create_handler]
-unsafe fn execute_e2_impl<F: PrimeField32, CTX: MeteredExecutionCtxTrait>(
+unsafe fn execute_e2_impl<F: PrimeField32, CTX: MeteredExecutionCtxTrait, ISA: OpenVmISA>(
     pre_compute: *const u8,
     exec_state: &mut VmExecState<F, GuestMemory, CTX>,
 ) {
@@ -501,12 +454,14 @@ unsafe fn execute_e2_impl<F: PrimeField32, CTX: MeteredExecutionCtxTrait>(
         pre_compute.chip_idx as usize,
         pre_compute.data.height_change,
     );
-    execute_e12_impl::<F, CTX>(&pre_compute.data, exec_state);
+    execute_e12_impl::<F, CTX, ISA>(&pre_compute.data, exec_state);
 }
 
 // Preflight execution is implemented separately for CPU and GPU backends, because they use a different arena from `self`
 // TODO: reduce code duplication between the two implementations. The main issue now is we need to use the concrete arena types.
-impl PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>> for PowdrExecutor {
+impl<ISA: OpenVmISA> PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>>
+    for PowdrExecutor<ISA>
+{
     fn execute(
         &self,
         state: VmStateMut<BabyBear, TracingMemory, MatrixRecordArena<BabyBear>>,
@@ -530,12 +485,13 @@ impl PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>> for PowdrExecutor 
         // Recover an estimate of how many times the APC is called in this segment based on the current ctx height and width
         let apc_call_count = || ctx.trace_buffer.len() / ctx.width;
 
-        original_arenas.ensure_initialized(apc_call_count, &self.air_by_opcode_id, &self.apc);
+        let original_arenas =
+            original_arenas.ensure_initialized(apc_call_count, &self.air_by_opcode_id, &self.apc);
+
         // execute the original instructions one by one
         for (instruction, cached_meta) in self
             .apc
             .instructions()
-            .iter()
             .zip_eq(&self.cached_instructions_meta)
         {
             let executor = &self.executor_inventory.executors[cached_meta.executor_index];
@@ -559,11 +515,11 @@ impl PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>> for PowdrExecutor 
                 metrics,
             };
 
-            executor.execute(state, &instruction.0)?;
+            executor.execute(state, &instruction.inner)?;
         }
 
         // Update the real number of calls to the APC
-        *original_arenas.number_of_calls_mut() += 1;
+        original_arenas.number_of_calls += 1;
 
         Ok(())
     }
@@ -574,7 +530,7 @@ impl PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>> for PowdrExecutor 
 }
 
 // The GPU preflight executor implementation
-impl PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExecutor {
+impl<ISA: OpenVmISA> PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExecutor<ISA> {
     fn execute(
         &self,
         state: VmStateMut<BabyBear, TracingMemory, DenseRecordArena>,
@@ -605,13 +561,12 @@ impl PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExecutor {
             buf.len() / bytes_per_row
         };
 
-        original_arenas.ensure_initialized(apc_call_count, &self.air_by_opcode_id, &self.apc);
+        let original_arenas =
+            original_arenas.ensure_initialized(apc_call_count, &self.air_by_opcode_id, &self.apc);
+
         // execute the original instructions one by one
-        for (instruction, cached_meta) in self
-            .apc
-            .instructions()
-            .iter()
-            .zip(&self.cached_instructions_meta)
+        for (instruction, cached_meta) in
+            self.apc.instructions().zip(&self.cached_instructions_meta)
         {
             let executor = &self.executor_inventory.executors[cached_meta.executor_index];
 
@@ -634,11 +589,11 @@ impl PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExecutor {
                 metrics,
             };
 
-            executor.execute(state, &instruction.0)?;
+            executor.execute(state, &instruction.inner)?;
         }
 
         // Update the real number of calls to the APC
-        *original_arenas.number_of_calls_mut() += 1;
+        original_arenas.number_of_calls += 1;
 
         Ok(())
     }
@@ -648,16 +603,16 @@ impl PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExecutor {
     }
 }
 
-impl PowdrExecutor {
+impl<ISA: OpenVmISA> PowdrExecutor<ISA> {
     pub fn new(
-        air_by_opcode_id: OriginalAirs<BabyBear>,
-        base_config: OriginalVmConfig,
-        apc: Arc<Apc<BabyBear, Instr<BabyBear>, OpenVmRegisterAddress, u32>>,
+        air_by_opcode_id: OriginalAirs<BabyBear, ISA>,
+        base_config: OriginalVmConfig<ISA>,
+        apc: IsaApc<BabyBear, ISA>,
         record_arena_by_air_name_cpu: Rc<RefCell<OriginalArenas<MatrixRecordArena<BabyBear>>>>,
         record_arena_by_air_name_gpu: Rc<RefCell<OriginalArenas<DenseRecordArena>>>,
         height_change: u32,
     ) -> Self {
-        let executor_inventory = base_config.sdk_config.sdk.create_executors().unwrap();
+        let executor_inventory = base_config.config.create_executors().unwrap();
 
         let arena_index_by_name =
             record_arena_dimension_by_air_name_per_apc_call(apc.as_ref(), &air_by_opcode_id)
@@ -668,20 +623,16 @@ impl PowdrExecutor {
 
         let cached_instructions_meta = apc
             .instructions()
-            .iter()
             .zip_eq(apc.subs.iter())
             .map(|(instruction, sub)| {
                 let executor_index = *executor_inventory
                     .instruction_lookup
-                    .get(&instruction.0.opcode)
+                    .get(&instruction.inner.opcode)
                     .expect("missing executor for opcode")
                     as usize;
-                let air_name = air_by_opcode_id
-                    .opcode_to_air
-                    .get(&instruction.0.opcode)
-                    .expect("missing air for opcode");
+                let (air_name, _) = air_by_opcode_id.get_instruction_air_and_id(instruction);
                 let arena_index = *arena_index_by_name
-                    .get(air_name)
+                    .get(&air_name)
                     .expect("missing arena for air");
                 CachedInstructionMeta {
                     executor_index,

@@ -6,11 +6,13 @@ use crate::{
 };
 
 use num_traits::{One, Zero};
+use serde::Serialize;
 
 pub mod solve;
 
 /// An algebraic constraint
-#[derive(Copy, Clone, Debug, Hash, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
 pub struct AlgebraicConstraint<V> {
     /// The expression representing the constraint, which must evaluate to 0 for the constraint to be satisfied.
     pub expression: V,

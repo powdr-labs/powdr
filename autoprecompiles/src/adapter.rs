@@ -6,8 +6,11 @@ use std::{fmt::Display, sync::Arc};
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
+use crate::blocks::{detect_superblocks, ExecutionBlocks, SuperBlock};
 use crate::empirical_constraints::EmpiricalConstraints;
-use crate::execution::{ExecutionState, OptimisticConstraints};
+use crate::evaluation::EvaluationResult;
+use crate::execution::{ExecutionState, OptimisticConstraint, OptimisticConstraints};
+use crate::execution_profile::ExecutionProfile;
 use crate::{
     blocks::{BasicBlock, Instruction, Program},
     constraint_optimizer::IsBusStateful,
@@ -19,23 +22,33 @@ use crate::{
 #[derive(Serialize, Deserialize)]
 pub struct ApcWithStats<F, I, A, V, S> {
     apc: Arc<Apc<F, I, A, V>>,
-    stats: Option<S>,
+    stats: S,
+    evaluation_result: EvaluationResult,
 }
 impl<F, I, A, V, S> ApcWithStats<F, I, A, V, S> {
-    pub fn with_stats(mut self, stats: S) -> Self {
-        self.stats = Some(stats);
-        self
+    pub fn new(apc: Arc<Apc<F, I, A, V>>, stats: S, evaluation_result: EvaluationResult) -> Self {
+        Self {
+            apc,
+            stats,
+            evaluation_result,
+        }
     }
 
     #[allow(clippy::type_complexity)]
-    pub fn into_parts(self) -> (Arc<Apc<F, I, A, V>>, Option<S>) {
-        (self.apc, self.stats)
+    pub fn into_parts(self) -> (Arc<Apc<F, I, A, V>>, S, EvaluationResult) {
+        (self.apc, self.stats, self.evaluation_result)
     }
-}
 
-impl<F, I, A, V, S> From<Arc<Apc<F, I, A, V>>> for ApcWithStats<F, I, A, V, S> {
-    fn from(apc: Arc<Apc<F, I, A, V>>) -> Self {
-        Self { apc, stats: None }
+    pub fn apc(&self) -> &Apc<F, I, A, V> {
+        &self.apc
+    }
+
+    pub fn stats(&self) -> &S {
+        &self.stats
+    }
+
+    pub fn evaluation_result(&self) -> EvaluationResult {
+        self.evaluation_result
     }
 }
 
@@ -50,30 +63,37 @@ pub trait PgoAdapter {
         labels: BTreeMap<u64, Vec<String>>,
         empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
-        let filtered_blocks = blocks
-            .into_iter()
-            .filter(|block| !Self::Adapter::should_skip_block(block))
-            .collect();
-        self.create_apcs_with_pgo(
-            filtered_blocks,
-            config,
-            vm_config,
-            labels,
-            empirical_constraints,
-        )
+        let blocks = if let Some(prof) = self.execution_profile() {
+            detect_superblocks(config, &prof.pc_list, blocks)
+        } else {
+            let superblocks = blocks
+                .into_iter()
+                .map(SuperBlock::from)
+                // filter invalid APC candidates
+                .filter(|sb| sb.instructions().count() > 1)
+                .collect();
+            ExecutionBlocks::new_without_pgo(superblocks)
+        };
+
+        self.create_apcs_with_pgo(blocks, config, vm_config, labels, empirical_constraints)
     }
 
     fn create_apcs_with_pgo(
         &self,
-        blocks: Vec<AdapterBasicBlock<Self::Adapter>>,
+        exec_blocks: AdapterExecutionBlocks<Self::Adapter>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
         empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>>;
 
-    fn pc_execution_count(&self, _pc: u64) -> Option<u32> {
+    fn execution_profile(&self) -> Option<&ExecutionProfile> {
         None
+    }
+
+    fn pc_execution_count(&self, pc: u64) -> Option<u32> {
+        self.execution_profile()
+            .and_then(|prof| prof.pc_count.get(&pc).cloned())
     }
 }
 
@@ -96,7 +116,13 @@ where
         Self::PowdrField,
         V,
     >;
-    type CustomBusTypes: Clone + Display + Sync + Eq + PartialEq;
+    type CustomBusTypes: Clone
+        + Display
+        + Sync
+        + Eq
+        + PartialEq
+        + Serialize
+        + for<'de> Deserialize<'de>;
     type ApcStats: Send + Sync;
     type AirId: Eq + Hash + Send + Sync;
     type ExecutionState: ExecutionState;
@@ -105,9 +131,15 @@ where
 
     fn from_field(e: Self::Field) -> Self::PowdrField;
 
-    fn should_skip_block(_block: &BasicBlock<Self::Instruction>) -> bool {
-        false
-    }
+    /// Given the autoprecompile and the original instructions, return the stats
+    fn apc_stats(
+        apc: Arc<AdapterApc<Self>>,
+        instruction_handler: &Self::InstructionHandler,
+    ) -> Self::ApcStats;
+
+    fn is_branching(instr: &Self::Instruction) -> bool;
+
+    fn is_allowed(instr: &Self::Instruction) -> bool;
 }
 
 pub type AdapterApcWithStats<A> = ApcWithStats<
@@ -141,4 +173,10 @@ pub type AdapterOptimisticConstraints<A> = OptimisticConstraints<
     <<A as Adapter>::ExecutionState as ExecutionState>::RegisterAddress,
     <<A as Adapter>::ExecutionState as ExecutionState>::Value,
 >;
+pub type AdapterOptimisticConstraint<A> = OptimisticConstraint<
+    <<A as Adapter>::ExecutionState as ExecutionState>::RegisterAddress,
+    <<A as Adapter>::ExecutionState as ExecutionState>::Value,
+>;
 pub type AdapterBasicBlock<A> = BasicBlock<<A as Adapter>::Instruction>;
+pub type AdapterSuperBlock<A> = SuperBlock<<A as Adapter>::Instruction>;
+pub type AdapterExecutionBlocks<A> = ExecutionBlocks<<A as Adapter>::Instruction>;
