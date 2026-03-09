@@ -24,6 +24,15 @@ fn single_add_1() {
 }
 
 #[test]
+fn single_add_reg() {
+    let program = [
+        // [x3] = [x2] + [x1]
+        add(3, 2, 1, 1),
+    ];
+    assert_machine_output(program.to_vec(), "single_add_reg");
+}
+
+#[test]
 fn single_sub() {
     let program = [
         // [x8] = [x7] - [x5]
