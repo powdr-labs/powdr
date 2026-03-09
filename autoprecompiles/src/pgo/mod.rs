@@ -15,7 +15,7 @@ mod instruction;
 mod none;
 
 pub use {
-    cell::{ApcCandidateJsonExport, Candidate, CellPgo, KnapsackItem},
+    cell::{ApcCandidate, CellPgo},
     instruction::InstructionPgo,
     none::NonePgo,
 };
@@ -107,7 +107,7 @@ fn create_apcs_for_all_blocks<A: Adapter>(
             )
             .unwrap();
 
-            evaluate_apc::<A>(superblock, vm_config.instruction_handler, apc)
+            evaluate_apc::<A>(vm_config.instruction_handler, apc)
         })
         .collect()
 }

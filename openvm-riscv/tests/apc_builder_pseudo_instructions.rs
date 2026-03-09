@@ -1,11 +1,16 @@
 mod common;
 use openvm_instructions::instruction::Instruction;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
+use powdr_autoprecompiles::blocks::BasicBlock;
 use powdr_openvm_riscv::symbolic_instruction_builder::*;
 use test_log::test;
 
 fn assert_machine_output(program: Vec<Instruction<BabyBear>>, test_name: &str) {
-    common::apc_builder_utils::assert_machine_output(program, "pseudo_instructions", test_name);
+    let bb = BasicBlock {
+        start_pc: 0,
+        instructions: program,
+    };
+    common::apc_builder_utils::assert_machine_output(bb.into(), "pseudo_instructions", test_name);
 }
 
 // Arithmetic pseudo instructions

@@ -144,7 +144,7 @@ impl<F, ISA> OriginalAirs<F, ISA> {
 }
 
 pub fn record_arena_dimension_by_air_name_per_apc_call<F, ISA>(
-    apc: &Apc<F, Instr<F, ISA>, (), ()>,
+    apc: &Apc<F, Instr<F, ISA>, (), u32>,
     air_by_opcode_id: &OriginalAirs<F, ISA>,
 ) -> BTreeMap<String, RecordArenaDimension> {
     apc.instructions()

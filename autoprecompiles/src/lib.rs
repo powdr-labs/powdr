@@ -1,5 +1,5 @@
 use crate::adapter::{Adapter, AdapterApc, AdapterVmConfig};
-use crate::blocks::{PcStep, SuperBlock};
+use crate::blocks::SuperBlock;
 use crate::bus_map::{BusMap, BusType};
 use crate::empirical_constraints::{ConstraintGenerator, EmpiricalConstraints};
 use crate::evaluation::AirStats;
@@ -12,10 +12,15 @@ use crate::optimistic::execution_constraint_generator::generate_execution_constr
 use crate::optimistic::execution_literals::optimistic_literals;
 use crate::symbolic_machine::{SymbolicConstraint, SymbolicMachine};
 use crate::symbolic_machine_generator::convert_apc_field_type;
+use adapter::AdapterOptimisticConstraint;
+use execution::{
+    ExecutionState, LocalOptimisticLiteral, OptimisticConstraint, OptimisticExpression,
+    OptimisticLiteral,
+};
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
 use powdr::UniqueReferences;
-use powdr_constraint_solver::constraint_system::ComputationMethod;
+use powdr_constraint_solver::constraint_system::{ComputationMethod, DerivedVariable};
 use powdr_expression::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
 };
@@ -281,13 +286,10 @@ pub fn build<A: Adapter>(
     mut export_options: ExportOptions,
     empirical_constraints: &EmpiricalConstraints,
 ) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
-    let basic_block = block
-        .try_as_basic_block()
-        .expect("superblocks not supported yet");
     let start = std::time::Instant::now();
 
     let (mut machine, column_allocator) = statements_to_symbolic_machine::<A>(
-        basic_block,
+        &block,
         vm_config.instruction_handler,
         &vm_config.bus_map,
     );
@@ -297,26 +299,23 @@ pub fn build<A: Adapter>(
         optimistic_precompile_config().restrict_optimistic_precompiles;
     let algebraic_references =
         BlockCellAlgebraicReferenceMapper::new(&column_allocator.subs, machine.main_columns());
-    let empirical_constraints = empirical_constraints.for_block(basic_block);
+    let empirical_constraints = empirical_constraints.for_block(&block);
 
     // TODO: Use execution constraints
     let (empirical_constraints, _execution_constraints) = if should_generate_execution_constraints {
         // Filter constraints to only contain execution-checkable columns,
         // generate execution constraints for them.
-        let optimistic_literals = optimistic_literals::<A>(basic_block, &vm_config, &degree_bound);
+        let optimistic_literals = optimistic_literals::<A>(&block, &vm_config, &degree_bound);
 
-        let empirical_constraints = empirical_constraints.filtered(
-            |block_cell| {
-                let algebraic_reference = algebraic_references
-                    .get_algebraic_reference(block_cell)
-                    .unwrap();
-                optimistic_literals.contains_key(algebraic_reference)
-            },
-            <A::Instruction as PcStep>::pc_step(),
-        );
+        let empirical_constraints = empirical_constraints.filtered(|block_cell| {
+            let algebraic_reference = algebraic_references
+                .get_algebraic_reference(block_cell)
+                .unwrap();
+            optimistic_literals.contains_key(algebraic_reference)
+        });
 
         let empirical_constraints =
-            ConstraintGenerator::<A>::new(empirical_constraints, algebraic_references, basic_block)
+            ConstraintGenerator::<A>::new(empirical_constraints, algebraic_references, &block)
                 .generate_constraints();
 
         let execution_constraints =
@@ -325,7 +324,7 @@ pub fn build<A: Adapter>(
     } else {
         // Don't filter empirical constraints, return empty execution constraints.
         let empirical_constraints =
-            ConstraintGenerator::<A>::new(empirical_constraints, algebraic_references, basic_block)
+            ConstraintGenerator::<A>::new(empirical_constraints, algebraic_references, &block)
                 .generate_constraints();
         (empirical_constraints, vec![])
     };
@@ -372,8 +371,10 @@ pub fn build<A: Adapter>(
     metrics::counter!("after_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
 
-    // TODO: add optimistic constraints here
-    let optimistic_constraints = OptimisticConstraints::from_constraints(vec![]);
+    // TODO: for now, we only include optimistic constraints related to superblock PCs.
+    // Optimistic constraints from empirical constraints are still missing.
+    let pc_constraints = superblock_pc_constraints::<A>(&block);
+    let optimistic_constraints = OptimisticConstraints::from_constraints(pc_constraints);
 
     let apc = Apc::new(block, machine, optimistic_constraints, &column_allocator);
 
@@ -386,6 +387,29 @@ pub fn build<A: Adapter>(
     metrics::gauge!("apc_gen_time_ms", &labels).set(start.elapsed().as_millis() as f64);
 
     Ok(apc)
+}
+
+/// Generate optimistic constraints for superblock jumps
+fn superblock_pc_constraints<A: Adapter>(
+    block: &SuperBlock<A::Instruction>,
+) -> Vec<AdapterOptimisticConstraint<A>> {
+    block
+        .instruction_indexed_start_pcs()
+        .into_iter()
+        .map(|(instr_idx, pc)| {
+            let left = OptimisticExpression::Literal(OptimisticLiteral {
+                instr_idx,
+                val: LocalOptimisticLiteral::Pc,
+            });
+            let Ok(pc_value) =
+                <<A as Adapter>::ExecutionState as ExecutionState>::Value::try_from(pc)
+            else {
+                panic!("PC doesn't fit in Value type");
+            };
+            let right = OptimisticExpression::Number(pc_value);
+            OptimisticConstraint { left, right }
+        })
+        .collect()
 }
 
 fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
@@ -441,9 +465,10 @@ fn add_guards<T: FieldElement>(
     };
     let is_valid = AlgebraicExpression::Reference(is_valid_ref.clone());
 
-    machine
-        .derived_columns
-        .push((is_valid_ref, ComputationMethod::Constant(T::one())));
+    machine.derived_columns.push(DerivedVariable::new(
+        is_valid_ref,
+        ComputationMethod::Constant(T::one()),
+    ));
 
     machine.constraints = machine
         .constraints
