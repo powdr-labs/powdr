@@ -44,8 +44,8 @@ pub type OriginalGpuChipInventory = ChipInventory<BabyBearSC, DenseRecordArena, 
 pub type IsaApc<F, ISA> = Arc<powdr_autoprecompiles::Apc<F, Instr<F, ISA>, (), u32>>;
 
 pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
-    /// The original program, for example, an elf for riscv. It must allow recovering the jump destinations / labels.
-    type Program<'a>;
+    /// The original linked program, for example, an elf for riscv. It must allow recovering the jump destinations.
+    type LinkedProgram<'a>;
 
     type Executor<F: PrimeField32>: AnyEnum
         + InterpreterExecutor<F>
@@ -112,7 +112,7 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
     /// Format an instruction of this ISA
     fn format<F: PrimeField32>(instruction: &Instruction<F>) -> String;
 
-    fn get_symbol_table<'a>(program: &Self::Program<'a>) -> SymbolTable;
+    fn get_symbol_table<'a>(program: &Self::LinkedProgram<'a>) -> SymbolTable;
 
     /// Given an original program, return the pcs which correspond to jump destinations
     fn get_jump_destinations(original_program: &OriginalCompiledProgram<Self>) -> BTreeSet<u64>;

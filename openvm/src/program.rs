@@ -23,7 +23,7 @@ pub struct CompiledProgram<ISA: OpenVmISA> {
 pub struct OriginalCompiledProgram<'a, ISA: OpenVmISA> {
     pub exe: Arc<VmExe<BabyBear>>,
     pub vm_config: OriginalVmConfig<ISA>,
-    pub elf: ISA::Program<'a>,
+    pub linked_program: ISA::LinkedProgram<'a>,
 }
 
 impl<'a, ISA: OpenVmISA> OriginalCompiledProgram<'a, ISA> {
