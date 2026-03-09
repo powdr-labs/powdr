@@ -1,17 +1,17 @@
 Instructions:
-  LOADB rd_rs2_ptr = 68, rs1_ptr = 44, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
-  ADD rd_ptr = 56, rs1_ptr = 44, rs2 = 1, rs2_as = 0
-  ADD rd_ptr = 52, rs1_ptr = 64, rs2 = 1, rs2_as = 0
-  STOREB rd_rs2_ptr = 68, rs1_ptr = 64, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
-  ADD rd_ptr = 48, rs1_ptr = 48, rs2 = 16777215, rs2_as = 0
-  AND rd_ptr = 44, rs1_ptr = 60, rs2 = 3, rs2_as = 0
-  SLTU rd_ptr = 44, rs1_ptr = 0, rs2 = 44, rs2_as = 1
-  SLTU rd_ptr = 64, rs1_ptr = 0, rs2 = 48, rs2_as = 1
-  AND rd_ptr = 68, rs1_ptr = 44, rs2 = 64, rs2_as = 1
-  ADD rd_ptr = 60, rs1_ptr = 60, rs2 = 1, rs2_as = 0
-  ADD rd_ptr = 44, rs1_ptr = 56, rs2 = 0, rs2_as = 0
-  ADD rd_ptr = 64, rs1_ptr = 52, rs2 = 0, rs2_as = 0
-  BNE 68 0 -48 1 1
+   0: LOADB rd_rs2_ptr = 68, rs1_ptr = 44, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
+   4: ADD rd_ptr = 56, rs1_ptr = 44, rs2 = 1, rs2_as = 0
+   8: ADD rd_ptr = 52, rs1_ptr = 64, rs2 = 1, rs2_as = 0
+  12: STOREB rd_rs2_ptr = 68, rs1_ptr = 64, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
+  16: ADD rd_ptr = 48, rs1_ptr = 48, rs2 = 16777215, rs2_as = 0
+  20: AND rd_ptr = 44, rs1_ptr = 60, rs2 = 3, rs2_as = 0
+  24: SLTU rd_ptr = 44, rs1_ptr = 0, rs2 = 44, rs2_as = 1
+  28: SLTU rd_ptr = 64, rs1_ptr = 0, rs2 = 48, rs2_as = 1
+  32: AND rd_ptr = 68, rs1_ptr = 44, rs2 = 64, rs2_as = 1
+  36: ADD rd_ptr = 60, rs1_ptr = 60, rs2 = 1, rs2_as = 0
+  40: ADD rd_ptr = 44, rs1_ptr = 56, rs2 = 0, rs2_as = 0
+  44: ADD rd_ptr = 64, rs1_ptr = 52, rs2 = 0, rs2_as = 0
+  48: BNE 68 0 -48 1 1
 
 APC advantage:
   - Main columns: 465 -> 105 (4.43x reduction)
