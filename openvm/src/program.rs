@@ -27,6 +27,18 @@ pub struct OriginalCompiledProgram<'a, ISA: OpenVmISA> {
 }
 
 impl<'a, ISA: OpenVmISA> OriginalCompiledProgram<'a, ISA> {
+    pub fn new(
+        exe: Arc<VmExe<BabyBear>>,
+        vm_config: OriginalVmConfig<ISA>,
+        linked_program: ISA::LinkedProgram<'a>,
+    ) -> Self {
+        Self {
+            exe,
+            vm_config,
+            linked_program,
+        }
+    }
+
     /// Segments the program into basic blocks
     pub fn collect_basic_blocks(&self) -> Vec<BasicBlock<Instr<BabyBear, ISA>>> {
         let jumpdest_set = ISA::get_jump_destinations(self);
