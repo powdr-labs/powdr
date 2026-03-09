@@ -1,5 +1,5 @@
 Instructions:
-  STOREB rd_rs2_ptr = 8, rs1_ptr = 2, imm = 3, mem_as = 2, needs_write = 1, imm_sign = 0
+  0: STOREB rd_rs2_ptr = 8, rs1_ptr = 2, imm = 3, mem_as = 2, needs_write = 1, imm_sign = 0
 
 APC advantage:
   - Main columns: 41 -> 30 (1.37x reduction)

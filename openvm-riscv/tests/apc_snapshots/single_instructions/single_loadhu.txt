@@ -1,5 +1,5 @@
 Instructions:
-  LOADHU rd_rs2_ptr = 0, rs1_ptr = 2, imm = 22, mem_as = 2, needs_write = 0, imm_sign = 0
+  0: LOADHU rd_rs2_ptr = 0, rs1_ptr = 2, imm = 22, mem_as = 2, needs_write = 0, imm_sign = 0
 
 APC advantage:
   - Main columns: 41 -> 18 (2.28x reduction)
