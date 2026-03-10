@@ -207,9 +207,6 @@ pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAd
     pgo: P,
     empirical_constraints: EmpiricalConstraints,
 ) -> CompiledProgram<ISA> {
-    if config.superblock_max_bb_count > 1 {
-        panic!("Superblocks not yet supported in OpenVM");
-    }
     let original_config = original_program.vm_config.clone();
     let airs = original_config.airs(config.degree_bound).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
     let bus_map = original_config.bus_map();
@@ -277,7 +274,7 @@ pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAd
             let start_pc = apc
                 .block
                 .try_as_basic_block()
-                .expect("superblocks unsupported")
+                .expect("Superblocks not yet supported in OpenVM")
                 .start_pc;
             let start_index = ((start_pc - pc_base as u64) / pc_step as u64)
                 .try_into()
