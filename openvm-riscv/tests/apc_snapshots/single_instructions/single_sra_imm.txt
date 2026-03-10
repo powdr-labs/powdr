@@ -1,0 +1,57 @@
+Instructions:
+  0: SRA rd_ptr = 68, rs1_ptr = 40, rs2 = 3, rs2_as = 0
+
+APC advantage:
+  - Main columns: 53 -> 19 (2.79x reduction)
+  - Bus interactions: 24 -> 17 (1.41x reduction)
+  - Constraints: 76 -> 2 (38.00x reduction)
+
+Symbolic machine using 19 unique main columns:
+  from_state__timestamp_0
+  reads_aux__0__base__prev_timestamp_0
+  reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0
+  writes_aux__base__prev_timestamp_0
+  writes_aux__base__timestamp_lt_aux__lower_decomp__0_0
+  writes_aux__prev_data__0_0
+  writes_aux__prev_data__1_0
+  writes_aux__prev_data__2_0
+  writes_aux__prev_data__3_0
+  a__0_0
+  a__1_0
+  a__2_0
+  a__3_0
+  b__0_0
+  b__1_0
+  b__2_0
+  b__3_0
+  b_sign_0
+  is_valid
+
+// Bus 0 (EXECUTION_BRIDGE):
+mult=is_valid * -1, args=[0, from_state__timestamp_0]
+mult=is_valid * 1, args=[4, from_state__timestamp_0 + 3]
+
+// Bus 1 (MEMORY):
+mult=is_valid * -1, args=[1, 40, b__0_0, b__1_0, b__2_0, b__3_0, reads_aux__0__base__prev_timestamp_0]
+mult=is_valid * 1, args=[1, 40, b__0_0, b__1_0, b__2_0, b__3_0, from_state__timestamp_0]
+mult=is_valid * -1, args=[1, 68, writes_aux__prev_data__0_0, writes_aux__prev_data__1_0, writes_aux__prev_data__2_0, writes_aux__prev_data__3_0, writes_aux__base__prev_timestamp_0]
+mult=is_valid * 1, args=[1, 68, a__0_0, a__1_0, a__2_0, a__3_0, from_state__timestamp_0 + 2]
+
+// Bus 3 (VARIABLE_RANGE_CHECKER):
+mult=is_valid * 1, args=[b__0_0 + 256 * b__1_0 + 65536 * b__2_0 + 16777216 * b__3_0 - (8 * a__0_0 + 2048 * a__1_0 + 524288 * a__2_0 + 134217728 * a__3_0 + 134217743 * b_sign_0), 3]
+mult=is_valid * 1, args=[b__1_0 + 256 * b__2_0 + 65536 * b__3_0 + 117440512 * b_sign_0 - (8 * a__1_0 + 2048 * a__2_0 + 524288 * a__3_0), 3]
+mult=is_valid * 1, args=[b__2_0 + 256 * b__3_0 + 458752 * b_sign_0 - (8 * a__2_0 + 2048 * a__3_0), 3]
+mult=is_valid * 1, args=[b__3_0 + 1792 * b_sign_0 - 8 * a__3_0, 3]
+mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0, 17]
+mult=is_valid * 1, args=[15360 * reads_aux__0__base__prev_timestamp_0 + 15360 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0 + 15360 - 15360 * from_state__timestamp_0, 12]
+mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__0_0, 17]
+mult=is_valid * 1, args=[15360 * writes_aux__base__prev_timestamp_0 + 15360 * writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 - (15360 * from_state__timestamp_0 + 15360), 12]
+
+// Bus 6 (BITWISE_LOOKUP):
+mult=is_valid * 1, args=[b__3_0, 128, b__3_0 + 128 - 256 * b_sign_0, 1]
+mult=is_valid * 1, args=[a__0_0, a__1_0, 0, 0]
+mult=is_valid * 1, args=[a__2_0, a__3_0, 0, 0]
+
+// Algebraic constraints:
+b_sign_0 * (b_sign_0 - 1) = 0
+is_valid * (is_valid - 1) = 0

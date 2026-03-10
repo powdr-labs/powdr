@@ -24,6 +24,15 @@ fn single_add_1() {
 }
 
 #[test]
+fn single_add_reg() {
+    let program = [
+        // [x3] = [x2] + [x1]
+        add(3, 2, 1, 1),
+    ];
+    assert_machine_output(program.to_vec(), "single_add_reg");
+}
+
+#[test]
 fn single_sub() {
     let program = [
         // [x8] = [x7] - [x5]
@@ -42,6 +51,24 @@ fn single_and_0() {
 }
 
 #[test]
+fn single_and() {
+    let program = [
+        // [x8] = [x7] & [x5]
+        and(8, 7, 5, 1),
+    ];
+    assert_machine_output(program.to_vec(), "single_and");
+}
+
+#[test]
+fn single_or() {
+    let program = [
+        // [x8] = [x7] | [x5]
+        or(8, 7, 5, 1),
+    ];
+    assert_machine_output(program.to_vec(), "single_or");
+}
+
+#[test]
 fn single_xor() {
     let program = [
         // [x8] = [x7] ^ [x5]
@@ -57,6 +84,25 @@ fn single_mul() {
         mul(8, 7, 5, 1, 0),
     ];
     assert_machine_output(program.to_vec(), "single_mul");
+}
+
+// Set Less Than instructions
+#[test]
+fn single_slt() {
+    let program = [
+        // [x8] = 1 if [x7] < [x5] (signed) else 0
+        slt(8, 7, 5, 1),
+    ];
+    assert_machine_output(program.to_vec(), "single_slt");
+}
+
+#[test]
+fn single_sltu() {
+    let program = [
+        // [x8] = 1 if [x7] < [x5] (unsigned) else 0
+        sltu(8, 7, 5, 1),
+    ];
+    assert_machine_output(program.to_vec(), "single_sltu");
 }
 
 // Load/Store Chip instructions
@@ -233,8 +279,29 @@ fn single_sll_by_8() {
 }
 
 #[test]
+fn single_sll_reg() {
+    // r68 = r40 << val(r3)
+    let program = [sll(68, 40, 3, 1)];
+    assert_machine_output(program.to_vec(), "single_sll_reg");
+}
+
+#[test]
+fn single_srl_reg() {
+    // r68 = r40 >> val(r3)
+    let program = [srl(68, 40, 3, 1)];
+    assert_machine_output(program.to_vec(), "single_srl_reg");
+}
+
+#[test]
 fn single_sra() {
     // r68 = sign_extend(r40 >> val(R3))
     let program = [sra(68, 40, 3, 1)];
     assert_machine_output(program.to_vec(), "single_sra");
+}
+
+#[test]
+fn single_sra_imm() {
+    // r68 = sign_extend(r40 >> 3)
+    let program = [sra(68, 40, 3, 0)];
+    assert_machine_output(program.to_vec(), "single_sra_imm");
 }
