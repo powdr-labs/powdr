@@ -235,6 +235,7 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
             ));
         }
 
+        replacement_actions.sort();
         progress |=
             batch_replace_algebraic_constraints(&mut system, replacement_actions, degree_bound);
 
@@ -289,6 +290,7 @@ fn undo_variable_transform_and_recreate_new_variables<
 }
 
 /// A single replacement operation: replace `replace` constraints with `replace_by` constraints.
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct ReplacementAction<T, V> {
     /// Constraints to be replaced.
     pub(crate) replace: Vec<GroupedExpression<T, V>>,

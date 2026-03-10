@@ -238,3 +238,32 @@ fn single_sra() {
     let program = [sra(68, 40, 3, 1)];
     assert_machine_output(program.to_vec(), "single_sra");
 }
+
+// DivRem Chip instructions
+#[test]
+fn single_div() {
+    // [x8] = [x7] / [x5] (signed)
+    let program = [div(8, 7, 5, 1, 0)];
+    assert_machine_output(program.to_vec(), "single_div");
+}
+
+#[test]
+fn single_divu() {
+    // [x8] = [x7] / [x5] (unsigned)
+    let program = [divu(8, 7, 5, 1, 0)];
+    assert_machine_output(program.to_vec(), "single_divu");
+}
+
+#[test]
+fn single_rem() {
+    // [x8] = [x7] % [x5] (signed)
+    let program = [rem(8, 7, 5, 1, 0)];
+    assert_machine_output(program.to_vec(), "single_rem");
+}
+
+#[test]
+fn single_remu() {
+    // [x8] = [x7] % [x5] (unsigned)
+    let program = [remu(8, 7, 5, 1, 0)];
+    assert_machine_output(program.to_vec(), "single_remu");
+}
