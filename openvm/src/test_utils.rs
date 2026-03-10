@@ -39,12 +39,7 @@ pub fn compile_apc<ISA: OpenVmISA>(
     let superblock_str = superblock
         .instructions()
         .zip(superblock.pcs())
-        .map(|(inst, pc)| {
-            format!(
-                "  {pc:>max_pc_digits$}: {}",
-                ISA::format(&inst.inner)
-            )
-        })
+        .map(|(inst, pc)| format!("  {pc:>max_pc_digits$}: {}", ISA::format(&inst.inner)))
         .join("\n");
 
     let export_path = std::env::var("APC_EXPORT_PATH").ok();
@@ -117,9 +112,7 @@ pub fn assert_apc_snapshot(
             // Expectation file does not exist or is different from "actual" and we are allowed to update it.
             fs::create_dir_all(expected_path.parent().unwrap()).unwrap();
             fs::write(&expected_path, actual).unwrap();
-            println!(
-                "Expected output for `{test_name}` was created. Re-run the test to confirm."
-            );
+            println!("Expected output for `{test_name}` was created. Re-run the test to confirm.");
         }
     }
 }
