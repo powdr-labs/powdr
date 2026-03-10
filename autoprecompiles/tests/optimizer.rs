@@ -1,4 +1,5 @@
 use expect_test::expect;
+use itertools::Itertools;
 use powdr_autoprecompiles::bus_map::BusMap;
 use powdr_autoprecompiles::export::{ApcWithBusMap, SimpleInstruction};
 use powdr_autoprecompiles::optimizer::optimize;
