@@ -1,0 +1,12 @@
+[package]
+name = "keccak-example"
+version = "0.0.0"
+edition = "2021"
+
+[workspace]
+members = []
+
+[dependencies]
+openvm = { git = "https://github.com/powdr-labs/openvm.git", tag = "v1.4.2-powdr-rc.3" }
+openvm-platform = { git = "https://github.com/powdr-labs/openvm.git", tag = "v1.4.2-powdr-rc.3" }
+openvm-keccak256 = { git = "https://github.com/powdr-labs/openvm.git", tag = "v1.4.2-powdr-rc.3" }

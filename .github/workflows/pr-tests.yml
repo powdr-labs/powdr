@@ -148,7 +148,7 @@ jobs:
   # This job requires secrets.RPC_1 and uses pull_request_target to work with external PRs
 
   build_gpu:
-    runs-on: [self-hosted, GPU]
+    runs-on: [self-hosted, gpu-shared]
     timeout-minutes: 10
 
     steps:
@@ -173,7 +173,7 @@ jobs:
         run: cargo build --all-targets --features cuda,metrics,aot --all --profile pr-tests --verbose
       - uses: taiki-e/install-action@nextest
       - name: Create tests archive (GPU, features=cuda)
-        run: cargo nextest archive --archive-file tests_gpu.tar.zst --cargo-profile pr-tests --workspace --package powdr-openvm --features cuda
+        run: cargo nextest archive --archive-file tests_gpu.tar.zst --cargo-profile pr-tests --workspace --package powdr-openvm-riscv --features cuda
       - name: Upload build artifacts (GPU)
         uses: actions/upload-artifact@v4
         with:
@@ -183,7 +183,7 @@ jobs:
 
   test_quick_gpu:
     needs: build_gpu
-    runs-on: [self-hosted, GPU]
+    runs-on: [self-hosted, gpu-shared]
     timeout-minutes: 30
     # TODO: we only have one runner on our GPU server, so can't partition yet; uncomment these once we have proper runners
     # strategy:
@@ -203,7 +203,7 @@ jobs:
           submodules: recursive
       - name: Init testing instance (GPU)
         uses: ./.github/actions/init-testing-instance-gpu
-      - name: Run quick GPU tests from powdr-openvm only
+      - name: Run quick GPU tests from powdr-openvm-riscv only
         run: cargo nextest run --archive-file tests_gpu.tar.zst --workspace-remap . --verbose --no-tests=warn
         # run: cargo nextest run --archive-file tests_gpu.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/7 --no-tests=warn
 

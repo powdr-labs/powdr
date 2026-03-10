@@ -1,11 +1,11 @@
 use itertools::Itertools;
-use powdr_constraint_solver::constraint_system::ComputationMethod;
+use powdr_constraint_solver::constraint_system::{ComputationMethod, DerivedVariable};
 use powdr_expression::AlgebraicBinaryOperation;
 use powdr_number::FieldElement;
 
 use crate::{
     adapter::Adapter,
-    blocks::{BasicBlock, Instruction},
+    blocks::{Instruction, SuperBlock},
     expression::AlgebraicExpression,
     powdr,
     symbolic_machine::{SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine},
@@ -44,8 +44,8 @@ pub fn convert_machine_field_type<T, U>(
         derived_columns: machine
             .derived_columns
             .into_iter()
-            .map(|(v, method)| {
-                let method = match method {
+            .map(|derived_variable| {
+                let method = match derived_variable.computation_method {
                     ComputationMethod::Constant(c) => {
                         ComputationMethod::Constant(convert_field_element(c))
                     }
@@ -54,7 +54,7 @@ pub fn convert_machine_field_type<T, U>(
                         convert_expression(e2, convert_field_element),
                     ),
                 };
-                (v, method)
+                DerivedVariable::new(derived_variable.variable, method)
             })
             .collect(),
     }
@@ -116,7 +116,7 @@ fn convert_expression<T, U>(
 /// Converts a basic block into a symbolic machines (all instruction circuits
 /// concatenated) and a column allocator.
 pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
-    block: &BasicBlock<A::Instruction>,
+    block: &SuperBlock<A::Instruction>,
     instruction_handler: &A::InstructionHandler,
     bus_map: &BusMap<A::CustomBusTypes>,
 ) -> (SymbolicMachine<A::PowdrField>, ColumnAllocator) {
@@ -132,7 +132,7 @@ pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
 /// Converts a basic block into a list of symbolic machines (one per instruction)
 /// and a column allocator. All columns are globally unique across all instructions.
 pub(crate) fn statements_to_symbolic_machines<A: Adapter>(
-    block: &BasicBlock<A::Instruction>,
+    block: &SuperBlock<A::Instruction>,
     instruction_handler: &A::InstructionHandler,
     bus_map: &BusMap<A::CustomBusTypes>,
 ) -> (Vec<SymbolicMachine<A::PowdrField>>, ColumnAllocator) {
@@ -140,7 +140,7 @@ pub(crate) fn statements_to_symbolic_machines<A: Adapter>(
     let mut global_idx = 0;
     let mut machines: Vec<SymbolicMachine<A::PowdrField>> = Vec::new();
 
-    for (i, (instr, pc)) in block.instructions.iter().zip_eq(block.pcs()).enumerate() {
+    for (i, (instr, pc)) in block.instructions().zip_eq(block.pcs()).enumerate() {
         let machine = instruction_handler
             .get_instruction_air_and_id(instr)
             .1

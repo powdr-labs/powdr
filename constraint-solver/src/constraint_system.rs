@@ -8,7 +8,7 @@ use crate::{
 use derivative::Derivative;
 use itertools::Itertools;
 use powdr_number::FieldElement;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{fmt::Display, hash::Hash};
 
 pub use crate::algebraic_constraint::AlgebraicConstraint;
@@ -27,7 +27,7 @@ pub struct ConstraintSystem<T, V> {
     pub bus_interactions: Vec<BusInteraction<GroupedExpression<T, V>>>,
     /// Newly added variables whose values are derived from existing variables.
     #[serde(rename = "derived_columns")]
-    pub derived_variables: Vec<DerivedVariable<T, V>>,
+    pub derived_variables: Vec<DerivedVariable<T, V, GroupedExpression<T, V>>>,
 }
 
 impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display for ConstraintSystem<T, V> {
@@ -79,11 +79,50 @@ impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
     }
 }
 
-#[derive(Clone, Serialize)]
-#[serde(bound(serialize = "V: Clone + Ord + Eq + Serialize, T: RuntimeConstant + Serialize"))]
-pub struct DerivedVariable<T, V> {
+#[derive(Clone, Debug)]
+pub struct DerivedVariable<T, V, E> {
     pub variable: V,
-    pub computation_method: ComputationMethod<T, GroupedExpression<T, V>>,
+    pub computation_method: ComputationMethod<T, E>,
+}
+
+impl<T, V, E> DerivedVariable<T, V, E> {
+    pub fn new(variable: V, computation_method: ComputationMethod<T, E>) -> Self {
+        Self {
+            variable,
+            computation_method,
+        }
+    }
+}
+
+impl<T, V, E> Serialize for DerivedVariable<T, V, E>
+where
+    V: Serialize,
+    ComputationMethod<T, E>: Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        (&self.variable, &self.computation_method).serialize(serializer)
+    }
+}
+
+impl<'de, T, V, E> Deserialize<'de> for DerivedVariable<T, V, E>
+where
+    V: Deserialize<'de>,
+    ComputationMethod<T, E>: Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let (variable, computation_method) =
+            <(V, ComputationMethod<T, E>)>::deserialize(deserializer)?;
+        Ok(Self {
+            variable,
+            computation_method,
+        })
+    }
 }
 
 /// Specifies a way to compute the value of a variable from other variables.

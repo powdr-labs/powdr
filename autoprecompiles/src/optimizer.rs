@@ -1,6 +1,6 @@
 use std::fmt::Debug;
+use std::fmt::Display;
 use std::hash::Hash;
-use std::{collections::BTreeMap, fmt::Display};
 
 use itertools::Itertools;
 use powdr_constraint_solver::constraint_system::BusInteractionHandler;
@@ -11,19 +11,19 @@ use powdr_constraint_solver::rule_based_optimizer::rule_based_optimization;
 use powdr_constraint_solver::solver::new_solver;
 use powdr_number::FieldElement;
 
+use crate::constraint_optimizer;
 use crate::constraint_optimizer::{trivial_simplifications, IsBusStateful};
 use crate::export::ExportOptions;
 use crate::memory_optimizer::MemoryBusInteraction;
 use crate::range_constraint_optimizer::{optimize_range_constraints, RangeConstraintHandler};
 use crate::symbolic_machine::{
     constraint_system_to_symbolic_machine, symbolic_machine_to_constraint_system,
+    SymbolicConstraint,
 };
 use crate::ColumnAllocator;
 use crate::{
     constraint_optimizer::optimize_constraints,
-    expression::{AlgebraicExpression, AlgebraicReference},
-    expression_conversion::{algebraic_to_grouped_expression, grouped_expression_to_algebraic},
-    powdr::{self},
+    expression::AlgebraicReference,
     stats_logger::{self, StatsLogger},
     BusMap, BusType, DegreeBound, SymbolicMachine,
 };
@@ -81,6 +81,7 @@ where
     //     None,
     // )
     // .0;
+    // export_options.register_substituted_variables(assignments);
     // export_options.export_optimizer_outer(&machine, "02_rule_based_optimization");
     stats_logger.log("rule-based optimization", &constraint_system);
 
@@ -108,13 +109,24 @@ where
             break;
         }
     }
-
-    let constraint_system = inliner::replace_constrained_witness_columns(
+    let (constraint_system, substitutions) = inliner::replace_constrained_witness_columns(
         constraint_system,
         inline_everything_below_degree_bound(degree_bound),
     );
     stats_logger.log("inlining", &constraint_system);
+    export_options.register_substituted_variables(substitutions);
     export_options.export_optimizer_outer_constraint_system(constraint_system.system(), "inlining");
+
+    let constraint_system = constraint_optimizer::remove_disconnected_columns(
+        constraint_system,
+        &mut solver,
+        bus_interaction_handler.clone(),
+    );
+    stats_logger.log("removing disconnected columns", &constraint_system);
+    export_options.export_optimizer_inner_constraint_system(
+        constraint_system.system(),
+        "remove_disconnected",
+    );
 
     let (constraint_system, _) = rule_based_optimization(
         constraint_system,
@@ -146,6 +158,8 @@ where
     export_options.export_optimizer_outer_constraint_system(&constraint_system, "trivial_simp");
 
     stats_logger.finalize(&constraint_system);
+
+    export_options.export_substituted_variables();
 
     // Sanity check: Degree bound should be respected:
     for algebraic_constraint in &constraint_system.algebraic_constraints {
@@ -189,7 +203,7 @@ pub fn optimize_exec_bus<T: FieldElement>(
     let mut first_seen = false;
     let mut receive = true;
     let mut latest_send = None;
-    let mut subs: BTreeMap<AlgebraicExpression<T>, AlgebraicExpression<T>> = Default::default();
+    let mut execution_bus_constraints = vec![];
     machine.bus_interactions.retain(|bus_int| {
         if bus_int.id != exec_bus_id {
             return true;
@@ -205,18 +219,7 @@ pub fn optimize_exec_bus<T: FieldElement>(
             true
         } else if !receive {
             // Save the latest send and remove the bus interaction
-            let mut send = bus_int.clone();
-            send.args = bus_int
-                .args
-                .iter()
-                .map(|arg| {
-                    let mut arg = arg.clone();
-                    powdr::substitute_subexpressions(&mut arg, &subs);
-                    simplify_expression(arg)
-                })
-                .collect();
-
-            latest_send = Some(send);
+            latest_send = Some(bus_int.clone());
             false
         } else {
             // Equate the latest send to the new receive and remove the bus interaction
@@ -225,7 +228,8 @@ pub fn optimize_exec_bus<T: FieldElement>(
                 .iter()
                 .zip_eq(latest_send.as_ref().unwrap().args.iter())
             {
-                subs.insert(bus_arg.clone(), send_arg.clone());
+                execution_bus_constraints
+                    .push(SymbolicConstraint::from(bus_arg.clone() - send_arg.clone()))
             }
             false
         };
@@ -238,24 +242,10 @@ pub fn optimize_exec_bus<T: FieldElement>(
     // Re-add the last send
     machine.bus_interactions.push(latest_send.unwrap());
 
-    for c in &mut machine.constraints {
-        powdr::substitute_subexpressions(&mut c.expr, &subs);
-        c.expr = simplify_expression(c.expr.clone());
-    }
-    for b in &mut machine.bus_interactions {
-        powdr::substitute_subexpressions(&mut b.mult, &subs);
-        b.mult = simplify_expression(b.mult.clone());
-        for a in &mut b.args {
-            powdr::substitute_subexpressions(a, &subs);
-            *a = simplify_expression(a.clone());
-        }
-    }
+    // Add the constraints which replace the execution bus interactions
+    machine.constraints.extend(execution_bus_constraints);
 
     machine
-}
-
-pub fn simplify_expression<T: FieldElement>(e: AlgebraicExpression<T>) -> AlgebraicExpression<T> {
-    grouped_expression_to_algebraic(algebraic_to_grouped_expression(&e))
 }
 
 /// A wrapped variable: Either a regular variable or a bus interaction field.

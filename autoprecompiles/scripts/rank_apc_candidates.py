@@ -41,9 +41,9 @@ def main():
     candidates_with_densitys = []
     
     for i, candidate in enumerate(data):
-        start_pc = candidate["original_block"]["start_pc"]
+        start_pcs = [b["start_pc"] for b in candidate["original_blocks"]]
         freq = candidate["execution_frequency"]
-        num_instructions = len(candidate["original_block"]["instructions"])
+        num_instructions = sum(len(b["instructions"]) for b in candidate["original_blocks"])
         
         # Get optimization stats
         before_constraints = candidate["stats"]["before"]["constraints"]
@@ -67,7 +67,7 @@ def main():
         
         candidates_with_densitys.append({
             'index': i + 1,
-            'start_pc': start_pc,
+            'start_pcs': start_pcs,
             'freq': freq,
             'num_instructions': num_instructions,
             'before_constraints': before_constraints,
@@ -96,7 +96,7 @@ def main():
     output_lines.append("=" * 120)
     
     total_candidates = len(data)
-    total_instructions = sum(len(c["original_block"]["instructions"]) for c in data)
+    total_instructions = sum(len(b["instructions"]) for c in data for b in c["original_blocks"])
     
     total_cost_before = sum(c["cost_before"] for c in data)
     total_cost_after = sum(c["cost_after"] for c in data)
@@ -126,7 +126,7 @@ def main():
     # Statement count distribution
     stmt_dist = {}
     for c in data:
-        stmt_count = len(c["original_block"]["instructions"])
+        stmt_count = sum(len(b["instructions"]) for b in c["original_blocks"])
         stmt_dist[stmt_count] = stmt_dist.get(stmt_count, 0) + 1
     
     output_lines.append("")
@@ -167,7 +167,7 @@ def main():
     
     # Prepare table data for tabulate
     table_headers = [
-        "Rank", "Start PC", "# of Instr", "Freq", "Value", "Cost Before -> After (Redux)", 
+        "Rank", "Start PCs", "# of Instr", "Freq", "Value", "Cost Before -> After (Redux)", 
         "Density", "Main Cols Before -> After (Redux)",
         "Constraints Before -> After (Redux)", "Bus Int Before -> After (Redux)"
     ]
@@ -176,7 +176,7 @@ def main():
     for i, candidate in enumerate(candidates_with_densitys):
         row = [
             i + 1,
-            f"{candidate['start_pc']:.0f}",
+            str(candidate['start_pcs']),
             candidate['num_instructions'],
             f"{candidate['freq']}x",
             f"{candidate['value']:.0f}",

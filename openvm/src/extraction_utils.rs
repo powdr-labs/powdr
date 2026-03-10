@@ -1,30 +1,18 @@
 use std::collections::{BTreeMap, HashMap};
+use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
 
-use crate::air_builder::AirKeygenBuilder;
-use crate::bus_map::{BusMap, OpenVmBusType};
-use crate::opcode::branch_opcodes_set;
-use crate::powdr_extension::executor::RecordArenaDimension;
-use crate::{opcode::instruction_allowlist, BabyBearSC, SpecializedConfig};
-use crate::{AirMetrics, ExtendedVmConfig, ExtendedVmConfigExecutor, Instr};
-use crate::{BabyBearPoseidon2Engine, ExtendedVmConfigCpuBuilder};
 use itertools::Itertools;
 use openvm_circuit::arch::{
-    AirInventory, AirInventoryError, ExecutorInventory, ExecutorInventoryError, MatrixRecordArena,
-    SystemConfig, VmBuilder, VmChipComplex, VmCircuitConfig, VmExecutionConfig,
+    AirInventory, AirInventoryError, ExecutorInventory, ExecutorInventoryError, SystemConfig,
+    VmCircuitConfig, VmExecutionConfig,
 };
 use openvm_circuit::system::memory::interface::MemoryInterfaceAirs;
-use openvm_circuit::system::SystemChipInventory;
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_instructions::VmOpcode;
-
-use crate::utils::{get_pil, openvm_bus_interaction_to_powdr};
 use openvm_stark_backend::air_builders::symbolic::SymbolicRapBuilder;
-use openvm_stark_backend::config::Val;
 use openvm_stark_backend::interaction::fri_log_up::find_interaction_chunks;
-use openvm_stark_backend::p3_field::PrimeField32;
-use openvm_stark_backend::prover::cpu::CpuBackend;
 use openvm_stark_backend::{
     air_builders::symbolic::SymbolicConstraints, config::StarkGenericConfig, rap::AnyRap,
 };
@@ -38,22 +26,27 @@ use powdr_autoprecompiles::evaluation::AirStats;
 use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::symbolic_machine::SymbolicMachine;
 use powdr_autoprecompiles::{Apc, DegreeBound, InstructionHandler};
+use powdr_openvm_bus_interaction_handler::bus_map::{BusMap, OpenVmBusType};
 use serde::{Deserialize, Serialize};
 use std::iter::Sum;
 use std::ops::Deref;
 use std::ops::{Add, Sub};
 use std::sync::MutexGuard;
 
-use crate::utils::UnsupportedOpenVmReferenceError;
-
-use crate::customize_exe::OpenVmRegisterAddress;
+use crate::customize_exe::Instr;
+use crate::isa::{OpenVmISA, OriginalCpuChipComplex};
+use crate::powdr_extension::executor::RecordArenaDimension;
+use crate::utils::openvm_bus_interaction_to_powdr;
 use crate::utils::symbolic_to_algebraic;
+use crate::utils::UnsupportedOpenVmReferenceError;
+use crate::AirMetrics;
+use crate::{air_builder::AirKeygenBuilder, BabyBearSC};
 
 // TODO: Use `<PackedChallenge<BabyBearSC> as FieldExtensionAlgebra<Val<BabyBearSC>>>::D` instead after fixing p3 dependency
 const EXT_DEGREE: usize = 4;
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct OriginalAirs<F> {
+pub struct OriginalAirs<F, ISA> {
     /// The degree bound used when building the airs
     pub(crate) degree_bound: DegreeBound,
     /// Maps a VM opcode to the name of the (unique) AIR that implements it.
@@ -61,11 +54,12 @@ pub struct OriginalAirs<F> {
     /// Maps an AIR name to its symbolic machine and metrics.
     /// Note that this map only contains AIRs that implement instructions.
     pub(crate) air_name_to_machine: BTreeMap<String, (SymbolicMachine<F>, AirMetrics)>,
+    _marker: PhantomData<ISA>,
 }
 
-impl<F> InstructionHandler for OriginalAirs<F> {
+impl<F, ISA> InstructionHandler for OriginalAirs<F, ISA> {
     type Field = F;
-    type Instruction = Instr<F>;
+    type Instruction = Instr<F, ISA>;
     type AirId = String;
 
     fn get_instruction_air_and_id(
@@ -74,23 +68,15 @@ impl<F> InstructionHandler for OriginalAirs<F> {
     ) -> (Self::AirId, &SymbolicMachine<Self::Field>) {
         let id = self
             .opcode_to_air
-            .get(&instruction.0.opcode)
+            .get(&instruction.inner.opcode)
             .unwrap()
             .clone();
         let air = &self.air_name_to_machine.get(&id).unwrap().0;
         (id, air)
     }
 
-    fn is_allowed(&self, instruction: &Self::Instruction) -> bool {
-        self.opcode_to_air.contains_key(&instruction.0.opcode)
-    }
-
-    fn is_branching(&self, instruction: &Self::Instruction) -> bool {
-        branch_opcodes_set().contains(&instruction.0.opcode)
-    }
-
     fn get_instruction_air_stats(&self, instruction: &Self::Instruction) -> AirStats {
-        self.get_instruction_metrics(instruction.0.opcode)
+        self.get_instruction_metrics(instruction.inner.opcode)
             .map(|metrics| metrics.clone().into())
             .unwrap()
     }
@@ -100,9 +86,7 @@ impl<F> InstructionHandler for OriginalAirs<F> {
     }
 }
 
-impl<F> OriginalAirs<F> {
-    /// Insert a new opcode, generating the air if it does not exist
-    /// Panics if the opcode already exists
+impl<F, ISA> OriginalAirs<F, ISA> {
     pub fn insert_opcode(
         &mut self,
         opcode: VmOpcode,
@@ -115,7 +99,6 @@ impl<F> OriginalAirs<F> {
         if self.opcode_to_air.contains_key(&opcode) {
             panic!("Opcode {opcode} already exists");
         }
-        // Insert the machine only if `air_name` isn't already present
         if !self.air_name_to_machine.contains_key(&air_name) {
             let machine_instance = machine(self.degree_bound)?;
             self.air_name_to_machine
@@ -149,26 +132,29 @@ impl<F> OriginalAirs<F> {
             degree_bound,
             opcode_to_air: Default::default(),
             air_name_to_machine: Default::default(),
+            _marker: PhantomData,
         }
+    }
+
+    pub fn get_air_machine(&self, air_name: &str) -> Option<&SymbolicMachine<F>> {
+        self.air_name_to_machine
+            .get(air_name)
+            .map(|(machine, _)| machine)
     }
 }
 
-/// For each air name, the dimension of a record arena needed to store the
-/// records for a single APC call.
-pub fn record_arena_dimension_by_air_name_per_apc_call<F>(
-    apc: &Apc<F, Instr<F>, OpenVmRegisterAddress, u32>,
-    air_by_opcode_id: &OriginalAirs<F>,
+pub fn record_arena_dimension_by_air_name_per_apc_call<F, ISA>(
+    apc: &Apc<F, Instr<F, ISA>, (), u32>,
+    air_by_opcode_id: &OriginalAirs<F, ISA>,
 ) -> BTreeMap<String, RecordArenaDimension> {
     apc.instructions()
-        .map(|instr| &instr.0.opcode)
+        .map(|instr| &instr.inner.opcode)
         .zip_eq(apc.subs.iter().map(|sub| sub.is_empty()))
         .fold(
             BTreeMap::new(),
             |mut acc, (opcode, should_use_dummy_arena)| {
-                // Get the air name for this opcode
                 let air_name = air_by_opcode_id.opcode_to_air.get(opcode).unwrap();
 
-                // Increment the height for this air name, initializing if necessary
                 let entry = acc.entry(air_name.clone()).or_insert_with(|| {
                     let (_, air_metrics) =
                         air_by_opcode_id.air_name_to_machine.get(air_name).unwrap();
@@ -189,20 +175,11 @@ pub fn record_arena_dimension_by_air_name_per_apc_call<F>(
         )
 }
 
-type ChipComplex = VmChipComplex<
-    BabyBearSC,
-    MatrixRecordArena<Val<BabyBearSC>>,
-    CpuBackend<BabyBearSC>,
-    SystemChipInventory<BabyBearSC>,
->;
+type ChipComplex = OriginalCpuChipComplex;
 
-/// A lazy chip complex that is initialized on the first access
 type LazyChipComplex = Option<ChipComplex>;
-
-/// A shared and mutable reference to a `LazyChipComplex`.
 type CachedChipComplex = Arc<Mutex<LazyChipComplex>>;
 
-/// A guard that provides access to the chip complex, ensuring it is initialized.
 pub struct ChipComplexGuard<'a> {
     guard: MutexGuard<'a, LazyChipComplex>,
 }
@@ -211,113 +188,90 @@ impl<'a> Deref for ChipComplexGuard<'a> {
     type Target = ChipComplex;
 
     fn deref(&self) -> &Self::Target {
-        // Unwrap is safe here because we ensure that the chip complex is initialized
         self.guard
             .as_ref()
             .expect("Chip complex should be initialized")
     }
 }
 
-/// A wrapper around the `ExtendedVmConfig` that caches a chip complex.
 #[derive(Serialize, Deserialize, Clone)]
-pub struct OriginalVmConfig {
-    pub sdk_config: ExtendedVmConfig,
+pub struct OriginalVmConfig<ISA: OpenVmISA> {
+    pub config: ISA::Config,
     #[serde(skip)]
     pub chip_complex: CachedChipComplex,
 }
 
-// TODO: derive `VmCircuitConfig`, currently not possible because we don't have SC/F everywhere
-impl<SC: StarkGenericConfig> VmCircuitConfig<SC> for OriginalVmConfig
-where
-    Val<SC>: PrimeField32,
-{
-    fn create_airs(&self) -> Result<AirInventory<SC>, AirInventoryError> {
-        self.sdk_config.create_airs()
+impl<ISA: OpenVmISA> VmCircuitConfig<BabyBearSC> for OriginalVmConfig<ISA> {
+    fn create_airs(&self) -> Result<AirInventory<BabyBearSC>, AirInventoryError> {
+        self.config.create_airs()
     }
 }
 
-impl<F: PrimeField32> VmExecutionConfig<F> for OriginalVmConfig {
-    type Executor = ExtendedVmConfigExecutor<F>;
+impl<ISA: OpenVmISA> VmExecutionConfig<BabyBear> for OriginalVmConfig<ISA> {
+    type Executor = <ISA::Config as VmExecutionConfig<BabyBear>>::Executor;
 
     fn create_executors(
         &self,
     ) -> Result<ExecutorInventory<Self::Executor>, ExecutorInventoryError> {
-        self.sdk_config.create_executors()
+        self.config.create_executors()
     }
 }
 
-impl AsRef<SystemConfig> for OriginalVmConfig {
+impl<ISA: OpenVmISA> AsRef<SystemConfig> for OriginalVmConfig<ISA> {
     fn as_ref(&self) -> &SystemConfig {
-        self.sdk_config.as_ref()
+        self.config.as_ref()
     }
 }
 
-impl AsMut<SystemConfig> for OriginalVmConfig {
+impl<ISA: OpenVmISA> AsMut<SystemConfig> for OriginalVmConfig<ISA> {
     fn as_mut(&mut self) -> &mut SystemConfig {
-        self.sdk_config.as_mut()
+        self.config.as_mut()
     }
 }
 
-impl OriginalVmConfig {
-    pub fn new(sdk_config: ExtendedVmConfig) -> Self {
+impl<ISA: OpenVmISA> OriginalVmConfig<ISA> {
+    pub fn new(config: ISA::Config) -> Self {
         Self {
-            sdk_config,
+            config,
             chip_complex: Default::default(),
         }
     }
 
-    pub fn config(&self) -> &ExtendedVmConfig {
-        &self.sdk_config
+    pub fn config(&self) -> &ISA::Config {
+        &self.config
     }
 
-    pub fn config_mut(&mut self) -> &mut ExtendedVmConfig {
+    pub fn config_mut(&mut self) -> &mut ISA::Config {
         let mut guard = self.chip_complex.lock().expect("Mutex poisoned");
-        *guard = None; // Invalidate cache
-        &mut self.sdk_config
+        *guard = None;
+        &mut self.config
     }
 
-    /// Returns a guard that provides access to the chip complex, initializing it if necessary.
-    fn chip_complex(&self) -> ChipComplexGuard<'_> {
+    pub fn chip_complex(&self) -> ChipComplexGuard<'_> {
         let mut guard = self.chip_complex.lock().expect("Mutex poisoned");
 
         if guard.is_none() {
-            // This is the expensive part that we want to run a single time: create the chip complex
             let airs = self
-                .sdk_config
-                .sdk
+                .config
                 .create_airs()
                 .expect("Failed to create air inventory");
-            let complex =
-                <ExtendedVmConfigCpuBuilder as VmBuilder<BabyBearPoseidon2Engine>>::create_chip_complex(
-                    &ExtendedVmConfigCpuBuilder,
-                    &self.sdk_config,
-                    airs,
-                )
+            let complex = ISA::create_original_chip_complex(&self.config, airs)
                 .expect("Failed to create chip complex");
-            // Store the complex in the guard
             *guard = Some(complex);
         }
 
         ChipComplexGuard { guard }
     }
 
-    /// Given a VM configuration and a set of used instructions, computes:
-    /// - The opcode -> AIR map
-    /// - The bus map
-    ///
-    /// Returns an error if the conversion from the OpenVM expression type fails.
     pub fn airs(
         &self,
         degree_bound: DegreeBound,
-    ) -> Result<OriginalAirs<BabyBear>, UnsupportedOpenVmReferenceError> {
+    ) -> Result<OriginalAirs<BabyBear, ISA>, UnsupportedOpenVmReferenceError> {
         let chip_complex = &self.chip_complex();
-
         let chip_inventory = &chip_complex.inventory;
 
-        let executor_inventory: ExecutorInventory<ExtendedVmConfigExecutor<Val<BabyBearSC>>> =
-            self.create_executors().unwrap();
-
-        let instruction_allowlist = instruction_allowlist();
+        let executor_inventory = self.create_executors().unwrap();
+        let instruction_allowlist = ISA::allowed_opcodes();
 
         instruction_allowlist
             .into_iter()
@@ -331,7 +285,7 @@ impl OriginalVmConfig {
                 let insertion_index = chip_inventory.executor_idx_to_insertion_idx[executor_id];
                 let air_ref = &chip_inventory.airs().ext_airs()[insertion_index];
                 (op, air_ref)
-            }) // find executor for opcode
+            })
             .try_fold(
                 OriginalAirs::with_degree_bound(degree_bound),
                 |mut airs, (op, air_ref)| {
@@ -418,7 +372,7 @@ impl OriginalVmConfig {
             .chain(shared_range_tuple_checker.into_iter().map(|chip| {
                 (
                     chip.bus().inner.index,
-                    BusType::Other(OpenVmBusType::TupleRangeChecker),
+                    BusType::Other(OpenVmBusType::TupleRangeChecker(chip.bus().sizes)),
                 )
             }))
             .map(|(id, bus_type)| (id as u64, bus_type)),
@@ -438,33 +392,6 @@ impl OriginalVmConfig {
                 (name, metrics)
             })
             .collect()
-    }
-}
-
-pub fn export_pil(writer: &mut impl std::io::Write, vm_config: &SpecializedConfig) {
-    let blacklist = ["KeccakVmAir"];
-    let bus_map = vm_config.sdk.bus_map();
-    let chip_complex = vm_config.sdk.chip_complex();
-
-    for air in chip_complex
-        .inventory
-        .executor_idx_to_insertion_idx
-        .iter()
-        .map(|insertion_idx| &chip_complex.inventory.airs().ext_airs()[*insertion_idx])
-    {
-        let name = get_name(air.clone());
-
-        if blacklist.contains(&name.as_str()) {
-            log::warn!("Skipping blacklisted AIR: {name}");
-            continue;
-        }
-
-        let columns = get_columns(air.clone());
-
-        let constraints = get_constraints(air.clone());
-
-        let pil = get_pil(&name, &constraints, &columns, vec![], &bus_map);
-        writeln!(writer, "{pil}\n").unwrap();
     }
 }
 
@@ -615,87 +542,5 @@ impl Sum<AirWidthsDiff> for AirWidthsDiff {
     fn sum<I: Iterator<Item = AirWidthsDiff>>(iter: I) -> AirWidthsDiff {
         let zero = AirWidthsDiff::new(AirWidths::default(), AirWidths::default());
         iter.fold(zero, Add::add)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::{DEFAULT_DEGREE_BOUND, DEFAULT_OPENVM_DEGREE_BOUND};
-
-    use super::*;
-    use openvm_algebra_circuit::{Fp2Extension, ModularExtension};
-    use openvm_bigint_circuit::Int256;
-    use openvm_circuit::arch::SystemConfig;
-    use openvm_ecc_circuit::{WeierstrassExtension, SECP256K1_CONFIG};
-    use openvm_pairing_circuit::{PairingCurve, PairingExtension};
-    use openvm_rv32im_circuit::Rv32M;
-    use openvm_sdk::config::SdkVmConfig;
-    use powdr_openvm_hints_circuit::HintsExtension;
-
-    #[test]
-    fn test_get_bus_map() {
-        // Adapted from openvm-reth-benchmark for a config which has a lot of extensions
-        let use_kzg_intrinsics = true;
-
-        let system_config = SystemConfig::default()
-            .with_continuations()
-            .with_max_constraint_degree(DEFAULT_OPENVM_DEGREE_BOUND)
-            .with_public_values(32);
-        let int256 = Int256::default();
-        let bn_config = PairingCurve::Bn254.curve_config();
-        let bls_config = PairingCurve::Bls12_381.curve_config();
-        let rv32m = Rv32M {
-            range_tuple_checker_sizes: int256.range_tuple_checker_sizes,
-        };
-        let mut supported_moduli = vec![
-            bn_config.modulus.clone(),
-            bn_config.scalar.clone(),
-            SECP256K1_CONFIG.modulus.clone(),
-            SECP256K1_CONFIG.scalar.clone(),
-        ];
-        let mut supported_complex_moduli =
-            vec![("Bn254Fp2".to_string(), bn_config.modulus.clone())];
-        let mut supported_curves = vec![bn_config.clone(), SECP256K1_CONFIG.clone()];
-        let mut supported_pairing_curves = vec![PairingCurve::Bn254];
-        if use_kzg_intrinsics {
-            supported_moduli.push(bls_config.modulus.clone());
-            supported_moduli.push(bls_config.scalar.clone());
-            supported_complex_moduli.push(("Bls12_381Fp2".to_string(), bls_config.modulus.clone()));
-            supported_curves.push(bls_config.clone());
-            supported_pairing_curves.push(PairingCurve::Bls12_381);
-        }
-        let sdk_vm_config = SdkVmConfig::builder()
-            .system(system_config.into())
-            .rv32i(Default::default())
-            .rv32m(rv32m)
-            .io(Default::default())
-            .keccak(Default::default())
-            .sha256(Default::default())
-            .bigint(int256)
-            .modular(ModularExtension::new(supported_moduli))
-            .fp2(Fp2Extension::new(supported_complex_moduli))
-            .ecc(WeierstrassExtension::new(supported_curves))
-            .pairing(PairingExtension::new(supported_pairing_curves))
-            .build();
-
-        let _ = OriginalVmConfig::new(ExtendedVmConfig {
-            sdk: sdk_vm_config,
-            hints: HintsExtension,
-        })
-        .bus_map();
-    }
-
-    #[test]
-    fn test_export_pil() {
-        let writer = &mut Vec::new();
-        let ext_config = ExtendedVmConfig {
-            sdk: SdkVmConfig::riscv32(),
-            hints: HintsExtension,
-        };
-        let base_config = OriginalVmConfig::new(ext_config);
-        let specialized_config = SpecializedConfig::new(base_config, vec![], DEFAULT_DEGREE_BOUND);
-        export_pil(writer, &specialized_config);
-        let output = String::from_utf8(writer.clone()).unwrap();
-        assert!(!output.is_empty(), "PIL output should not be empty");
     }
 }
