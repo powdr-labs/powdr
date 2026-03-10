@@ -94,7 +94,7 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                 .collect(),
             single_occurrence_vars,
             // The NewVarGenerator will be used to generate fresh variables.
-            // because of lifetime and determinism issuse, we pass the next ID that
+            // because of lifetime and determinism issues, we pass the next ID that
             // the var_mapper would use here and then re-create the
             // variables in a deterministic sequence further down.
             NewVarGenerator::new(var_mapper.next_free_id()),
