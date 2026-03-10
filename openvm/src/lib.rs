@@ -61,6 +61,9 @@ pub mod trace_generation;
 pub mod utils;
 pub use powdr_openvm_bus_interaction_handler::bus_map;
 
+#[cfg(feature = "test-utils")]
+pub mod test_utils;
+
 pub use crate::empirical_constraints::detect_empirical_constraints;
 
 pub type BabyBearSC = BabyBearPoseidon2Config;
