@@ -6,6 +6,7 @@ use itertools::Itertools;
 use powdr_number::FieldElement;
 
 use crate::range_constraint::RangeConstraint;
+use crate::rule_based_optimizer::new_var_generator::NewVarRequest;
 use crate::{
     algebraic_constraint::AlgebraicConstraint,
     constraint_system::{
@@ -93,9 +94,9 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                 .collect(),
             single_occurrence_vars,
             // The NewVarGenerator will be used to generate fresh variables.
-            // because of lifetime issuse, we pass the next ID that
+            // because of lifetime and determinism issues, we pass the next ID that
             // the var_mapper would use here and then re-create the
-            // variables in the same sequence further down.
+            // variables in a deterministic sequence further down.
             NewVarGenerator::new(var_mapper.next_free_id()),
         );
 
@@ -149,22 +150,6 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         let (actions, large_actions) = rt.run();
         let (expr_db_, new_var_generator) = env.terminate();
 
-        // Re-create the variables that were created using the
-        // new_var_generator inside the rule system using
-        // the var mapper, ensuring that the same IDs are used.
-        for (var, prefix) in new_var_generator.requests() {
-            let v = new_var(prefix);
-            assert_eq!(var_mapper.insert(&v), *var);
-            let computation_method = undo_variable_transform_in_computation_method(
-                new_var_generator.computation_method(var),
-                &var_mapper,
-            );
-            system.extend(ConstraintSystem {
-                derived_variables: vec![DerivedVariable::new(v.clone(), computation_method)],
-                ..Default::default()
-            });
-        }
-
         let mut progress = false;
         // Try to execute the actions that were determined by the rules.
         // Since the rules are "non-deterministic", some actions might conflict
@@ -175,6 +160,9 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
 
         // Collect replacement actions to process them in batch
         let mut replacement_actions = Vec::new();
+
+        // Data structure to determine and record the final deterministic IDs of new variables
+        let mut new_vars = new_var_generator.requests();
 
         for action in actions.into_iter().map(|a| a.0).sorted() {
             match action {
@@ -218,8 +206,15 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
                     replacement_actions.push(ReplacementAction::new(
                         [e1],
                         [replacement],
-                        &expr_db_,
-                        &var_mapper,
+                        &mut |e| {
+                            undo_variable_transform_and_recreate_new_variables(
+                                &expr_db_[e],
+                                &mut var_mapper,
+                                &mut new_vars,
+                                &mut system,
+                                new_var,
+                            )
+                        },
                     ));
                 }
             }
@@ -228,8 +223,15 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
             replacement_actions.push(ReplacementAction::new(
                 action.to_replace.iter().flatten().copied(),
                 action.replace_by.iter().flatten().copied(),
-                &expr_db_,
-                &var_mapper,
+                &mut |e| {
+                    undo_variable_transform_and_recreate_new_variables(
+                        &expr_db_[e],
+                        &mut var_mapper,
+                        &mut new_vars,
+                        &mut system,
+                        new_var,
+                    )
+                },
             ));
         }
 
@@ -245,6 +247,47 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
     (system, assignments)
 }
 
+/// Mainly transforms a `GroupedExpression<T, Var>` back into a `GroupedExpression<T, V>`, but also re-creates
+/// any variables that were newly generated inside the expression and adds potential computation methods
+/// to the constraint system.
+/// This is needed in order to ensure a deterministic creation order for new variables.
+fn undo_variable_transform_and_recreate_new_variables<
+    T: FieldElement,
+    V: Hash + Eq + Ord + Clone + Display,
+>(
+    expr: &GroupedExpression<T, Var>,
+    var_mapper: &mut ItemDB<V, Var>,
+    new_vars: &mut HashMap<Var, NewVarRequest<T>>,
+    system: &mut IndexedConstraintSystem<T, V>,
+    new_var_callback: &mut impl FnMut(&str) -> V,
+) -> GroupedExpression<T, V> {
+    expr.transform_var_type(&mut |v| {
+        let v = if let Some(request) = &mut new_vars.get_mut(v) {
+            if request.final_id.is_none() {
+                // We have not assigned a final ID yet, request a new variable from the global
+                // callback and insert it into the variable ID database to get a new ID.
+                let v = new_var_callback(&request.prefix);
+                request.final_id = Some(var_mapper.insert(&v));
+                let computation_method = undo_variable_transform_in_computation_method(
+                    &request.computation_method,
+                    var_mapper,
+                );
+                system.extend(ConstraintSystem {
+                    derived_variables: vec![DerivedVariable {
+                        variable: v.clone(),
+                        computation_method,
+                    }],
+                    ..Default::default()
+                });
+            }
+            request.final_id.unwrap()
+        } else {
+            *v
+        };
+        var_mapper[v].clone()
+    })
+}
+
 /// A single replacement operation: replace `replace` constraints with `replace_by` constraints.
 pub(crate) struct ReplacementAction<T, V> {
     /// Constraints to be replaced.
@@ -258,18 +301,13 @@ impl<T: FieldElement, V: Hash + Eq + Ord + Clone + Display> ReplacementAction<T,
     fn new(
         replace: impl IntoIterator<Item = Expr>,
         replace_by: impl IntoIterator<Item = Expr>,
-        expr_db: &ItemDB<GroupedExpression<T, Var>, Expr>,
-        var_mapper: &ItemDB<V, Var>,
+        mut transform: &mut impl FnMut(Expr) -> GroupedExpression<T, V>,
     ) -> Self {
+        let replace = replace.into_iter().map(&mut transform).collect_vec();
+        let replace_by = replace_by.into_iter().map(&mut transform).collect_vec();
         Self {
-            replace: replace
-                .into_iter()
-                .map(|e| undo_variable_transform(&expr_db[e], var_mapper))
-                .collect(),
-            replace_by: replace_by
-                .into_iter()
-                .map(|e| undo_variable_transform(&expr_db[e], var_mapper))
-                .collect(),
+            replace,
+            replace_by,
         }
     }
 }
@@ -309,6 +347,9 @@ fn is_replacement_within_degree_bound<T: FieldElement, V: Hash + Eq + Ord + Clon
 ///
 /// If degree_bound is None, replacements are only done if the degree does not increase.
 /// If degree_bound is Some(bound), replacements are only done if the degree stays within the bound.
+///
+/// Consults the `new_var_generator` and re-assigns the IDs of all generated variables such that they
+/// are deterministically generated.
 pub(crate) fn batch_replace_algebraic_constraints<
     T: FieldElement,
     V: Hash + Eq + Ord + Clone + Display,
