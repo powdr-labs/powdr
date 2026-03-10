@@ -3,6 +3,7 @@ name: PR tests
 on:
   workflow_dispatch:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
   push:
     branches:
@@ -148,6 +149,7 @@ jobs:
   # This job requires secrets.RPC_1 and uses pull_request_target to work with external PRs
 
   build_gpu:
+    if: github.event.pull_request.draft != true
     runs-on: [self-hosted, gpu-shared]
     timeout-minutes: 10
 
@@ -182,6 +184,7 @@ jobs:
             tests_gpu.tar.zst
 
   test_quick_gpu:
+    if: github.event.pull_request.draft != true
     needs: build_gpu
     runs-on: [self-hosted, gpu-shared]
     timeout-minutes: 30
