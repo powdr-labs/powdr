@@ -1519,7 +1519,7 @@ mod tests {
     }
 
     mod extraction {
-        use crate::{ExtendedVmConfig, RiscvISA, DEFAULT_OPENVM_DEGREE_BOUND};
+        use crate::{ExtendedVmConfig, RiscvISA};
 
         use openvm_algebra_circuit::{Fp2Extension, ModularExtension};
         use openvm_bigint_circuit::Int256;
