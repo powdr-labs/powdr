@@ -1535,8 +1535,7 @@ mod tests {
         fn test_get_bus_map() {
             let use_kzg_intrinsics = true;
 
-            let system_config = SystemConfig::default()
-                .with_public_values(32);
+            let system_config = SystemConfig::default().with_public_values(32);
             let int256 = Int256::default();
             let bn_config = PairingCurve::Bn254.curve_config();
             let bls_config = PairingCurve::Bls12_381.curve_config();
