@@ -1,7 +1,7 @@
 Instructions:
-  STOREW rd_rs2_ptr = 5, rs1_ptr = 2, imm = 12, mem_as = 2, needs_write = 1, imm_sign = 0
-  STOREW rd_rs2_ptr = 6, rs1_ptr = 2, imm = 16, mem_as = 2, needs_write = 1, imm_sign = 0
-  STOREW rd_rs2_ptr = 7, rs1_ptr = 2, imm = 20, mem_as = 2, needs_write = 1, imm_sign = 0
+  0: STOREW rd_rs2_ptr = 5, rs1_ptr = 2, imm = 12, mem_as = 2, needs_write = 1, imm_sign = 0
+  4: STOREW rd_rs2_ptr = 6, rs1_ptr = 2, imm = 16, mem_as = 2, needs_write = 1, imm_sign = 0
+  8: STOREW rd_rs2_ptr = 7, rs1_ptr = 2, imm = 20, mem_as = 2, needs_write = 1, imm_sign = 0
 
 APC advantage:
   - Main columns: 123 -> 50 (2.46x reduction)

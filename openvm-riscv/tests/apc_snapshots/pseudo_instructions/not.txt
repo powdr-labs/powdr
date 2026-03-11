@@ -1,5 +1,5 @@
 Instructions:
-  XOR rd_ptr = 8, rs1_ptr = 5, rs2 = 16777215, rs2_as = 0
+  0: XOR rd_ptr = 8, rs1_ptr = 5, rs2 = 16777215, rs2_as = 0
 
 APC advantage:
   - Main columns: 36 -> 14 (2.57x reduction)

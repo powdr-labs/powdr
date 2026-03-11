@@ -1,7 +1,7 @@
 Instructions:
-  SRL rd_ptr = 1, rs1_ptr = 3, rs2 = 1, rs2_as = 0
-  SLL rd_ptr = 2, rs1_ptr = 3, rs2 = 31, rs2_as = 0
-  OR rd_ptr = 3, rs1_ptr = 1, rs2 = 2, rs2_as = 1
+  0: SRL rd_ptr = 1, rs1_ptr = 3, rs2 = 1, rs2_as = 0
+  4: SLL rd_ptr = 2, rs1_ptr = 3, rs2 = 31, rs2_as = 0
+  8: OR rd_ptr = 3, rs1_ptr = 1, rs2 = 2, rs2_as = 1
 
 APC advantage:
   - Main columns: 142 -> 26 (5.46x reduction)

@@ -1,5 +1,5 @@
 Instructions:
-  SLL rd_ptr = 68, rs1_ptr = 40, rs2 = 8, rs2_as = 0
+  0: SLL rd_ptr = 68, rs1_ptr = 40, rs2 = 8, rs2_as = 0
 
 APC advantage:
   - Main columns: 53 -> 14 (3.79x reduction)

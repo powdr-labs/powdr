@@ -1,5 +1,5 @@
 Instructions:
-  LOADB rd_rs2_ptr = 0, rs1_ptr = 2, imm = 3, mem_as = 2, needs_write = 0, imm_sign = 0
+  0: LOADB rd_rs2_ptr = 0, rs1_ptr = 2, imm = 3, mem_as = 2, needs_write = 0, imm_sign = 0
 
 APC advantage:
   - Main columns: 36 -> 19 (1.89x reduction)

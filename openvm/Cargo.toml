@@ -12,6 +12,7 @@ aot = ["sdk-v2/aot"]
 tco = ["sdk-v2/tco"]
 metrics = ["sdk-v2/metrics", "openvm-stark-backend/metrics", "openvm-stark-sdk/metrics"]
 cuda = ["sdk-v2/cuda", "openvm-circuit-primitives/cuda", "dep:openvm-cuda-backend", "dep:openvm-cuda-common", "dep:openvm-cuda-builder"]
+test-utils = ["dep:pretty_assertions"]
 
 [dependencies]
 itertools.workspace = true
@@ -40,6 +41,7 @@ metrics.workspace = true
 indicatif = "0.18.3"
 cfg-if = "1.0.4"
 powdr-riscv-elf.workspace = true
+pretty_assertions = { workspace = true, optional = true }
 
 [build-dependencies]
 openvm-cuda-builder = { workspace = true, optional = true }

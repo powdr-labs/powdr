@@ -150,7 +150,7 @@ pub fn compile_openvm(
     Ok(OriginalCompiledProgram {
         exe,
         vm_config: OriginalVmConfig::new(vm_config),
-        elf,
+        linked_program: elf,
     })
 }
 

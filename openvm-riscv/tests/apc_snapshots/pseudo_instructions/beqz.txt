@@ -1,5 +1,5 @@
 Instructions:
-  BEQ 5 0 8 1 1
+  0: BEQ 5 0 8 1 1
 
 APC advantage:
   - Main columns: 26 -> 12 (2.17x reduction)

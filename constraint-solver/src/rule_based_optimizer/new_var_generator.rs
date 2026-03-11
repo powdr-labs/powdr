@@ -5,10 +5,20 @@ use crate::{
     rule_based_optimizer::types::Var,
 };
 
+/// A request for a new variable from the rule system. The variable will be assigned a tentative ID and name
+/// generated from the prefix. Both the ID and the name will be re-generated when the replacements are processed.
+pub struct NewVarRequest<T> {
+    /// The final ID computed when the replacements are processed.
+    pub final_id: Option<Var>,
+    /// A prefix to be used for generating a descriptive name.
+    pub prefix: String,
+    /// The way to compute the variable during witness generation.
+    pub computation_method: ComputationMethod<T, GroupedExpression<T, Var>>,
+}
+
 pub struct NewVarGenerator<T> {
     counter: usize,
-    requests: Vec<(Var, String)>,
-    computation_methods: HashMap<Var, ComputationMethod<T, GroupedExpression<T, Var>>>,
+    requests: HashMap<Var, NewVarRequest<T>>,
 }
 
 impl<T> NewVarGenerator<T> {
@@ -16,7 +26,6 @@ impl<T> NewVarGenerator<T> {
         Self {
             counter: initial_counter,
             requests: Default::default(),
-            computation_methods: Default::default(),
         }
     }
 
@@ -26,20 +35,19 @@ impl<T> NewVarGenerator<T> {
         computation_method: ComputationMethod<T, GroupedExpression<T, Var>>,
     ) -> Var {
         let var = Var::from(self.counter);
-        self.requests.push((var, prefix.to_string()));
-        self.computation_methods.insert(var, computation_method);
+        self.requests.insert(
+            var,
+            NewVarRequest {
+                final_id: None,
+                prefix: prefix.to_string(),
+                computation_method,
+            },
+        );
         self.counter += 1;
         var
     }
 
-    pub fn requests(&self) -> &Vec<(Var, String)> {
-        &self.requests
-    }
-
-    pub fn computation_method(
-        &self,
-        var: &Var,
-    ) -> &ComputationMethod<T, GroupedExpression<T, Var>> {
-        self.computation_methods.get(var).unwrap()
+    pub fn requests(self) -> HashMap<Var, NewVarRequest<T>> {
+        self.requests
     }
 }

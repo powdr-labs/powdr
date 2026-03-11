@@ -1,5 +1,5 @@
 Instructions:
-  SRA rd_ptr = 68, rs1_ptr = 40, rs2 = 3, rs2_as = 1
+  0: SRA rd_ptr = 68, rs1_ptr = 40, rs2 = 3, rs2_as = 1
 
 APC advantage:
   - Main columns: 53 -> 40 (1.32x reduction)

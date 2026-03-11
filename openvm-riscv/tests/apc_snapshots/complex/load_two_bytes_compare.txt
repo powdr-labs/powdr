@@ -1,7 +1,7 @@
 Instructions:
-  LOADB rd_rs2_ptr = 52, rs1_ptr = 40, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
-  LOADB rd_rs2_ptr = 56, rs1_ptr = 44, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
-  BNE 52 56 28 1 1
+  0: LOADB rd_rs2_ptr = 52, rs1_ptr = 40, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
+  4: LOADB rd_rs2_ptr = 56, rs1_ptr = 44, imm = 0, mem_as = 2, needs_write = 1, imm_sign = 0
+  8: BNE 52 56 28 1 1
 
 APC advantage:
   - Main columns: 98 -> 51 (1.92x reduction)

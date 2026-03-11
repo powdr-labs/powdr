@@ -5,6 +5,7 @@
 
 use crepe::crepe;
 use itertools::Itertools;
+use num_traits::One;
 use powdr_number::FieldElement;
 
 use crate::{
@@ -153,7 +154,8 @@ crepe! {
       ExpressionSumHeadTail(e, _, tail),
       HasSummand(tail, summand);
 
-    // DifferBySummand(e1, e2, s) => e1 = e2 + s and `s` is not a sum.
+    // DifferBySummand(e1, e2, s) => e1 = e2 + s and `s` is not a sum
+    // and not a constant.
     // Note that `e1` and `e2` must "pre-exist" as expressions, i.e.
     // this rule cannot be used to split out a linear summand
     // from an expression but only to "compare" two expressions.
@@ -285,6 +287,16 @@ crepe! {
     struct BooleanVar(Var);
     BooleanVar(v) <- RangeConstraintOnVar(v, RangeConstraint::from_mask(1));
 
+    // BooleanExpressionConstraint(constr, e) => if constr is satisfied then e = 1 or e = 0
+    struct BooleanExpressionConstraint(Expr, Expr);
+    BooleanExpressionConstraint(constr, r) <-
+      ProductConstraint(constr, l, r),
+      // l = f * r + c, i.e. constr = (f * r + c) * r = 0
+      // <=> (r + c / f) * r = 0
+      // i.e. c / f = -1 <=> c = -f
+      AffinelyRelated(l, f, r, c),
+      (c == -f);
+
     //////////////////////// SINGLE-OCCURRENCE VARIABLES //////////////////////////
 
     // Combine multiple variables that only occur in the same algebraic constraint.
@@ -394,6 +406,135 @@ crepe! {
         let replacement = r + GroupedExpression::from_unknown_variable(combined_var) * factor;
         Some(env.insert_owned(replacement))
       })();
+
+    //////////////////// EQUAL ZERO TEST ////////////////////////
+
+    // PlusMinusResult(e, e1, v2) =>
+    //   e = e1 * (2 * v2 - 1)
+    struct PlusMinusResult(Expr, Expr, Var);
+    PlusMinusResult(e, e1, v2) <-
+      Product(e, e1, r),
+      AffineExpression(r, coeff, v2, offset),
+        (coeff == T::from(2)),
+        (offset == T::from(-1));
+
+    // DiffMarkerConstraint(e, diff_marker, e2, cmp_result, diff_val) =>
+    //   e = diff_marker * (e2 * (2 * cmp_result - 1) + diff_val)
+    // (up to a factor)
+    struct DiffMarkerConstraint(Expr, Var, Expr, Var, Var);
+    DiffMarkerConstraint(e, diff_marker, e2, cmp_result, diff_val) <-
+      ProductConstraint(e, l, r),
+      LinearExpression(l, diff_marker, _),
+      // Note: the quadratic part has to be the head
+      ExpressionSumHeadTail(r, r1, r2),
+        PlusMinusResult(r1, e2, cmp_result),
+        LinearExpression(r2, diff_val, _);
+
+    // NegatedDiffMarkerConstraint(e, diff_marker, diff_expr, v, result, n) =>
+    //   e is the constraint diff_marker_expr * (v * (2 * result - 1)) = 0
+    //   and diff_marker_expr is of the form `1 - diff_marker1 - diff_marker2 - ...`
+    //   such that we have n variables and there is another
+    //   NegatedDiffMarkerConstraint with n-1 variables used to derive this one.
+    struct NegatedDiffMarkerConstraint(Expr, Var, Expr, Var, Var, u32);
+    NegatedDiffMarkerConstraint(e, diff_marker, l, v, result, 0) <-
+      ProductConstraint(e, l, r),
+      AffineExpression(l, T::from(-1), diff_marker, T::from(1)),
+      PlusMinusResult(r, r2, result),
+      LinearExpression(r2, v, T::from(-1));
+    NegatedDiffMarkerConstraint(e, diff_marker, l, v, result, n + 1) <-
+      ProductConstraint(e, l, r),
+        NegatedDiffMarkerConstraint(_, _, diff_marker_expr2, _, result, n),
+        DifferBySummand(l, diff_marker_expr2, diff_marker_e),
+          LinearExpression(diff_marker_e, diff_marker, T::from(-1)),
+      PlusMinusResult(r, r2, result),
+      LinearExpression(r2, v, T::from(-1));
+
+    // NegatedDiffMarkerConstraintFinal(e, diff_marker, l, result, n) =>
+    //   e is the constraint diff_marker_expr * (result) = 0
+    //   and diff_marker_expr is of the form `1 - diff_marker1 - diff_marker2 - ...`
+    //   such that we have n variables and there is another
+    //   NegatedDiffMarkerConstraint with n-1 variables used to derive this one.
+    struct NegatedDiffMarkerConstraintFinal(Expr, Var, Expr, Var, u32);
+    NegatedDiffMarkerConstraintFinal(e, diff_marker, l, result, n + 1) <-
+      ProductConstraint(e, l, r),
+        NegatedDiffMarkerConstraint(_, _, diff_marker_expr2, _, result, n),
+        DifferBySummand(l, diff_marker_expr2, diff_marker_e),
+          LinearExpression(diff_marker_e, diff_marker, T::from(-1)),
+      LinearExpression(r, result, T::from(1));
+
+    struct NegatedDiffMarkerConstraintFinalNegated(Expr, Var, Var, Var, u32);
+    NegatedDiffMarkerConstraintFinalNegated(e, diff_marker, v, result, n + 1) <-
+      ProductConstraint(e, l, r),
+        NegatedDiffMarkerConstraint(_, _, diff_marker_expr2, _, result, n),
+        DifferBySummand(l, diff_marker_expr2, diff_marker_e),
+          LinearExpression(diff_marker_e, diff_marker, T::from(-1)),
+      PlusMinusResult(r, r2, result),
+      AffineExpression(r2, T::from(-1), v, T::from(1));
+
+    // EqualZeroCheck(constrs, result, vars) =>
+    //   constrsexprs can be equivalently replaced by a constraint that models
+    //   result = 1 if all vars are zero, and result = 0 otherwise.
+    struct EqualZeroCheck([Expr; 10], Var, [Var; 4]);
+    EqualZeroCheck(constrs, result, vars) <-
+      // (1 - diff_marker__3_0) * (a__3_0 * (2 * cmp_result_0 - 1)) = 0
+      NegatedDiffMarkerConstraint(constr_0, diff_marker_3, _, a_3, result, 0),
+      // (1 - (diff_marker__2_0 + diff_marker__3_0)) * (a__2_0 * (2 * cmp_result_0 - 1)) = 0
+      NegatedDiffMarkerConstraint(constr_1, diff_marker_2, _, a_2, result, 1),
+      // (1 - (diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0)) * (a__1_0 * (2 * cmp_result_0 - 1)) = 0
+      NegatedDiffMarkerConstraint(constr_2, diff_marker_1, _, a_1, result, 2),
+      // (1 - (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0)) * cmp_result_0 = 0
+      NegatedDiffMarkerConstraintFinal(constr_3, diff_marker_0, one_minus_diff_marker_sum, result, 3),
+      // (1 - (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0)) * ((1 - a__0_0) * (2 * cmp_result_0 - 1)) = 0
+      NegatedDiffMarkerConstraintFinalNegated(constr_4, diff_marker_0, a_0, result, 3),
+      // diff_marker__0_0 * ((a__0_0 - 1) * (2 * cmp_result_0 - 1) + diff_val_0) = 0
+      DiffMarkerConstraint(constr_5, diff_marker_0, a_0_e, result, diff_val),
+        AffineExpression(a_0_e, a_0_e_coeff, a_0, a_0_e_offset), (a_0_e_coeff == T::from(1)), (a_0_e_offset == T::from(-1)),
+      // diff_marker__1_0 * (a__1_0 * (2 * cmp_result_0 - 1) + diff_val_0) = 0
+      DiffMarkerConstraint(constr_6, diff_marker_1, a_1_e, result, diff_val),
+        LinearExpression(a_1_e, a_1, T::from(1)),
+      // diff_marker__2_0 * (a__2_0 * (2 * cmp_result_0 - 1) + diff_val_0) = 0
+      DiffMarkerConstraint(constr_7, diff_marker_2, a_2_e, result, diff_val),
+        LinearExpression(a_2_e, a_2, T::from(1)),
+      // diff_marker__3_0 * (a__3_0 * (2 * cmp_result_0 - 1) + diff_val_0) = 0
+      DiffMarkerConstraint(constr_8, diff_marker_3, a_3_e, result, diff_val),
+        LinearExpression(a_3_e, a_3, T::from(1)),
+      BooleanVar(result),
+      BooleanVar(diff_marker_0),
+      BooleanVar(diff_marker_1),
+      BooleanVar(diff_marker_2),
+      BooleanVar(diff_marker_3),
+      RangeConstraintOnVar(a_0, rc_a0),
+      RangeConstraintOnVar(a_1, rc_a1),
+      RangeConstraintOnVar(a_2, rc_a2),
+      RangeConstraintOnVar(a_3, rc_a3),
+      // The next is needed so that the constraint `result + sum_inv_var * sum_of_vars - 1 = 0`
+      // works. If there is a way to get the sum to be zero but not all variables are zero,
+      // then this constraint cannot be satisfied.
+      ( rc_a0.range().0 == T::zero() && rc_a1.range().0 == T::zero()
+        && rc_a2.range().0 == T::zero() && rc_a3.range().0 == T::zero()
+        && rc_a0.combine_sum(&rc_a1).combine_sum(&rc_a2).combine_sum(&rc_a3).range().1 < T::from(-1)),
+      // (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0) * (diff_marker__0_0 + diff_marker__1_0 + diff_marker__2_0 + diff_marker__3_0 - 1) = 0
+      BooleanExpressionConstraint(constr_9, diff_marker_sum),
+      AffinelyRelated(diff_marker_sum, T::from(-1), one_minus_diff_marker_sum, T::from(1)),
+      let constrs = [constr_0, constr_1, constr_2, constr_3, constr_4, constr_5, constr_6, constr_7, constr_8, constr_9],
+      let vars = [a_0, a_1, a_2, a_3];
+
+    ReplaceAlgebraicConstraintsBy(extend_by_none(constrs), extend_by_none(replacement)) <-
+      Env(env),
+      EqualZeroCheck(constrs, result, vars),
+      let replacement = {
+        let result = GroupedExpression::from_unknown_variable(result);
+        assert!(vars.len() == 4);
+        let vars = vars.into_iter().map(|v| GroupedExpression::from_unknown_variable(v)).collect_vec();
+        let sum_of_vars = vars.iter().cloned().sum::<GroupedExpression<_, _>>();
+        let sum_inv_var = GroupedExpression::from_unknown_variable(
+          env.new_var("inv_of_sum", ComputationMethod::QuotientOrZero(One::one(), sum_of_vars.clone()))
+        );
+        [
+          env.insert_owned(result.clone() * sum_of_vars.clone()),
+          env.insert_owned(result + sum_inv_var * sum_of_vars - One::one()),
+        ]
+      };
 
     //////////////// COMBINE CONSTRAINTS WITH NON-NEGATIVE FACTORS /////////////////////
 

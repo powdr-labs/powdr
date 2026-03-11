@@ -79,9 +79,9 @@ impl OpenVmISA for RiscvISA {
         )
     }
 
-    type Program<'a> = ElfProgram;
+    type LinkedProgram<'a> = ElfProgram;
 
-    fn get_symbol_table<'a>(program: &Self::Program<'a>) -> SymbolTable {
+    fn get_symbol_table<'a>(program: &Self::LinkedProgram<'a>) -> SymbolTable {
         let debug_info = program.debug_info();
         let labels = SymbolTable::from_table(
             debug_info
@@ -104,7 +104,7 @@ impl OpenVmISA for RiscvISA {
     }
 
     fn get_jump_destinations(program: &OriginalCompiledProgram<Self>) -> BTreeSet<u64> {
-        let labels = program.elf.text_labels();
+        let labels = program.linked_program.text_labels();
 
         let jump_dest = add_extra_targets(program, labels.clone(), DEFAULT_PC_STEP);
 

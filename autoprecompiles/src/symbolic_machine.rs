@@ -120,7 +120,7 @@ pub struct SymbolicMachine<T> {
     pub bus_interactions: Vec<SymbolicBusInteraction<T>>,
     /// Columns that have been newly created during the optimization process with a method
     /// to compute their values from other columns.
-    pub derived_columns: Vec<(AlgebraicReference, ComputationMethod<T>)>,
+    pub derived_columns: Vec<DerivedVariable<T, AlgebraicReference, AlgebraicExpression<T>>>,
 }
 
 type ComputationMethod<T> =
@@ -241,8 +241,8 @@ pub fn symbolic_machine_to_constraint_system<P: FieldElement>(
         derived_variables: symbolic_machine
             .derived_columns
             .iter()
-            .map(|(v, method)| {
-                let method = match method {
+            .map(|derived_variable| {
+                let method = match &derived_variable.computation_method {
                     ComputationMethod::Constant(c) => {
                         constraint_system::ComputationMethod::Constant(*c)
                     }
@@ -253,10 +253,7 @@ pub fn symbolic_machine_to_constraint_system<P: FieldElement>(
                         )
                     }
                 };
-                DerivedVariable {
-                    variable: v.clone(),
-                    computation_method: method,
-                }
+                DerivedVariable::new(derived_variable.variable.clone(), method)
             })
             .collect(),
     }
@@ -291,7 +288,7 @@ pub fn constraint_system_to_symbolic_machine<P: FieldElement>(
                         )
                     }
                 };
-                (derived_var.variable, method)
+                DerivedVariable::new(derived_var.variable, method)
             })
             .collect(),
     }

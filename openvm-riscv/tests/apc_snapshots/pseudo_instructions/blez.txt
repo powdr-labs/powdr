@@ -1,5 +1,5 @@
 Instructions:
-  BGE 0 5 8 1 1
+  0: BGE 0 5 8 1 1
 
 APC advantage:
   - Main columns: 32 -> 17 (1.88x reduction)
