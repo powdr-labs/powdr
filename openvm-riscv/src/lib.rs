@@ -525,7 +525,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Slow"]
     fn guest_prove_simple() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
@@ -536,7 +535,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Slow"]
     fn guest_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
