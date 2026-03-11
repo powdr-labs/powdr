@@ -1,6 +1,6 @@
 use std::{
     cmp,
-    collections::{BTreeSet, HashMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
     fmt::Display,
     hash::Hash,
 };
@@ -626,8 +626,8 @@ where
     /// Returns true if any modification was made.
     pub fn simplify_invariant_expressions(
         &mut self,
-        variables: &std::collections::BTreeSet<V>,
-        valid_assignments: &[std::collections::BTreeMap<V, T>],
+        variables: &BTreeSet<V>,
+        valid_assignments: &[BTreeMap<V, T>],
     ) -> bool
     where
         T: Substitutable<V> + RuntimeConstant<FieldType = T>,
@@ -636,78 +636,36 @@ where
             return false;
         }
 
-        let first = &valid_assignments[0];
-        let rest = &valid_assignments[1..];
         let mut progress = false;
 
-        // Check algebraic constraints.
-        for constraint in &mut self
+        // Collect all mutable references to expressions that reference search variables.
+        let algebraic_exprs = self
             .constraint_system
             .constraint_system
             .algebraic_constraints
-        {
-            if !constraint
-                .expression
+            .iter_mut()
+            .map(|c| &mut c.expression);
+        let bus_field_exprs = self
+            .constraint_system
+            .constraint_system
+            .bus_interactions
+            .iter_mut()
+            .flat_map(|b| b.fields_mut());
+
+        for expr in algebraic_exprs.chain(bus_field_exprs) {
+            if !expr
                 .referenced_unknown_variables()
                 .any(|v| variables.contains(v))
             {
                 continue;
             }
-
-            let mut simplified = constraint.expression.clone();
-            for (var, val) in first {
-                simplified.substitute_by_known(var, val);
-            }
-
-            let is_invariant = rest.iter().all(|assignment| {
-                let mut expr = constraint.expression.clone();
-                for (var, val) in assignment {
-                    expr.substitute_by_known(var, val);
-                }
-                expr == simplified
-            });
-
-            if is_invariant {
+            if let Some(simplified) = try_simplify_expression(expr, valid_assignments) {
                 log::debug!(
-                    "Simplified algebraic constraint expression (removed {} variables)",
+                    "Simplified expression (removed {} variables)",
                     variables.len()
                 );
-                constraint.expression = simplified;
+                *expr = simplified;
                 progress = true;
-            }
-        }
-
-        // Check bus interaction fields.
-        for bus_interaction in &mut self.constraint_system.constraint_system.bus_interactions {
-            for field in bus_interaction.fields_mut() {
-                if !field
-                    .referenced_unknown_variables()
-                    .any(|v| variables.contains(v))
-                {
-                    continue;
-                }
-
-                let mut simplified = field.clone();
-                for (var, val) in first {
-                    simplified.substitute_by_known(var, val);
-                }
-
-                let is_invariant = rest.iter().all(|assignment| {
-                    let mut expr = field.clone();
-                    for (var, val) in assignment {
-                        expr.substitute_by_known(var, val);
-                    }
-                    expr == simplified
-                });
-
-                if is_invariant {
-                    log::debug!(
-                        "Simplified bus interaction field (removed {} variables)",
-                        variables.len()
-                    );
-                    *field = simplified;
-                    progress = true;
-                }
             }
         }
 
@@ -721,6 +679,28 @@ where
 
         progress
     }
+}
+
+/// If substituting all valid assignments into `expr` yields the same result,
+/// returns the simplified expression (with the first assignment applied).
+/// Otherwise, returns None.
+fn try_simplify_expression<T: RuntimeConstant<FieldType = T> + Substitutable<V>, V: Clone + Ord>(
+    expr: &GroupedExpression<T, V>,
+    valid_assignments: &[BTreeMap<V, T::FieldType>],
+) -> Option<GroupedExpression<T, V>> {
+    let first = &valid_assignments[0];
+    let mut simplified = expr.clone();
+    for (var, val) in first {
+        simplified.substitute_by_known(var, val);
+    }
+    let is_invariant = valid_assignments[1..].iter().all(|assignment| {
+        let mut other = expr.clone();
+        for (var, val) in assignment {
+            other.substitute_by_known(var, val);
+        }
+        other == simplified
+    });
+    is_invariant.then_some(simplified)
 }
 
 impl<T: RuntimeConstant + Display, V: Clone + Ord + Display + Hash> Display

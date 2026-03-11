@@ -423,10 +423,11 @@ where
             ) {
                 Ok(result) if result.range_constraints.is_empty() => {
                     // Try expression simplification even if no range constraints were found.
-                    progress |= self
+                    let simplified = self
                         .constraint_system
                         .simplify_invariant_expressions(&variable_set, &result.valid_assignments);
-                    if !progress {
+                    progress |= simplified;
+                    if !simplified {
                         unsuccessful_variable_sets.insert(variable_set);
                     }
                 }
