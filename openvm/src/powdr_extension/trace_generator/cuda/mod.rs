@@ -261,10 +261,12 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
             .map(|(index, c)| (c.id, index))
             .collect();
 
-        // allocate for apc trace
+        // allocate for apc trace (zero-initialized so columns not covered
+        // by substitutions or derived expressions default to zero, matching the CPU path)
         let width = apc_poly_id_to_index.len();
         let height = next_power_of_two_or_zero(num_apc_calls);
         let mut output = DeviceMatrix::<BabyBear>::with_capacity(height, width);
+        output.buffer().fill_zero().unwrap();
 
         // Prepare `OriginalAir` and `Subst` arrays
         let (airs, substitutions) = {
@@ -408,7 +410,7 @@ impl<R, PB: ProverBackend<Matrix = DeviceMatrix<BabyBear>>, ISA: OpenVmISA> Chip
         let trace = self
             .trace_generator
             .try_generate_witness(self.record_arena_by_air_name.take())
-            .unwrap_or_else(|| DeviceMatrix::with_capacity(0, 0));
+            .unwrap_or_else(DeviceMatrix::dummy);
 
         AirProvingContext {
             cached_mains: vec![],
