@@ -525,6 +525,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Slow"]
     fn guest_prove_simple() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
@@ -535,6 +536,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Slow"]
     fn guest_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
@@ -570,6 +572,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Slow"]
     fn keccak_small_prove_simple() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
@@ -578,6 +581,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Slow"]
     fn keccak_small_prove_simple_multi_segment() {
         // Set the default segmentation height to a small value to test multi-segment proving
         let mut stdin = StdIn::default();
@@ -641,6 +645,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Slow"]
     fn keccak_small_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
@@ -660,6 +665,7 @@ mod tests {
 
     // Create multiple APC for 10 Keccak iterations to test different PGO modes
     #[test]
+    #[ignore = "Slow"]
     fn keccak_prove_multiple_pgo_modes() {
         use std::time::Instant;
         // Config
@@ -782,6 +788,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Slow"]
     fn sha256_small_prove_simple() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_SHA256_ITER_SMALL);
@@ -800,6 +807,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Slow"]
     fn sha256_small_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_SHA256_ITER_SMALL);
@@ -818,6 +826,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Slow"]
     fn sha256_prove_multiple_pgo_modes() {
         use std::time::Instant;
 
@@ -914,6 +923,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Slow"]
     fn ecc_hint_prove() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ECC_ITER);
@@ -930,6 +940,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Slow"]
     fn ecrecover_prove() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ECRECOVER_ITER);
@@ -980,6 +991,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Slow"]
     fn ecc_projective_prove() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ECC_ITER);
@@ -1120,6 +1132,7 @@ mod tests {
     };
 
     #[test]
+    #[ignore = "Slow"]
     fn guest_machine_pgo_modes() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
@@ -1197,6 +1210,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Slow"]
     fn sha256_machine_pgo() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_SHA256_ITER_SMALL);
@@ -1274,6 +1288,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Slow"]
     fn ecc_hint_machine_pgo_cell() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ECC_ITER);
@@ -1323,6 +1338,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Slow"]
     fn ecrecover_machine_pgo_cell() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ECRECOVER_ITER);
@@ -1372,6 +1388,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Slow"]
     fn keccak_machine_pgo_modes() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
@@ -1477,6 +1494,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Slow"]
     fn keccak_machine_cell_pgo_max_columns() {
         const MAX_TOTAL_COLUMNS: usize = 10_000;
 

@@ -47,6 +47,7 @@ fn load_machine_json() {
 }
 
 #[test]
+#[ignore = "Slow"]
 fn test_optimize() {
     let apc = import_apc_from_gzipped_json("tests/keccak_apc_pre_opt.json.gz");
 
@@ -82,6 +83,7 @@ fn test_optimize() {
 }
 
 #[test]
+#[ignore = "Slow"]
 fn test_ecrecover() {
     let apc = import_apc_from_gzipped_json("tests/ecrecover_apc_pre_opt.json.gz");
 
@@ -117,6 +119,7 @@ fn test_ecrecover() {
 }
 
 #[test]
+#[ignore = "Slow"]
 fn test_sha256() {
     let apc = import_apc_from_gzipped_json("tests/sha256_apc_pre_opt.json.gz");
 

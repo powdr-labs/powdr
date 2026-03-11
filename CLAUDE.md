@@ -27,21 +27,23 @@ cargo clippy --all --all-targets --features metrics -- -D warnings
 
 ## Testing
 
+Always run tests in release mode (`--release`). Slow tests are marked `#[ignore]` and skipped by default.
+
 ```bash
-# Run all default tests
-cargo nextest run
+# Run default tests (skips slow #[ignore] tests)
+cargo nextest run --release
 
 # Run a single test
-cargo nextest run <test_name>
+cargo nextest run --release <test_name>
 
-# Run ignored (longer) tests
-cargo nextest run --run-ignored only
+# Run ignored (slow) tests only
+cargo nextest run --release --run-ignored only
 
 # Run only large tests
-cargo nextest run -E 'test(_large)' --run-ignored only
+cargo nextest run --release -E 'test(_large)' --run-ignored only
 
 # Run tests in specific package
-cargo nextest run -p powdr-openvm
+cargo nextest run --release -p powdr-openvm
 ```
 
 ## CLI Usage
