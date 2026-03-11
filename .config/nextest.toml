@@ -1,4 +1,4 @@
-# Profiles to fail 
+# Profiles to fail after a timeout, but continue with the other tests 
 [profile.quick-10]
 slow-timeout = { period = "10s", terminate-after = 1 }
 fail-fast = false
