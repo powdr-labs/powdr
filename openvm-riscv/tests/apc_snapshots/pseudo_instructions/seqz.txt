@@ -1,67 +1,47 @@
 Instructions:
-  SLTU rd_ptr = 8, rs1_ptr = 5, rs2 = 1, rs2_as = 0
+  0: SLTU rd_ptr = 8, rs1_ptr = 5, rs2 = 1, rs2_as = 0
 
 APC advantage:
-  - Main columns: 37 -> 20 (1.85x reduction)
-  - Bus interactions: 18 -> 11 (1.64x reduction)
-  - Constraints: 28 -> 17 (1.65x reduction)
+  - Main columns: 37 -> 16 (2.31x reduction)
+  - Bus interactions: 18 -> 10 (1.80x reduction)
+  - Constraints: 28 -> 4 (7.00x reduction)
 
-Symbolic machine using 20 unique main columns:
-  unknown_1_0
-  unknown_6_0
-  unknown_7_0
-  unknown_12_0
-  unknown_13_0
-  unknown_15_0
-  unknown_16_0
-  unknown_17_0
-  unknown_18_0
-  unknown_19_0
-  unknown_20_0
-  unknown_21_0
-  unknown_22_0
-  unknown_27_0
-  unknown_32_0
-  unknown_33_0
-  unknown_34_0
-  unknown_35_0
-  unknown_36_0
+Symbolic machine using 16 unique main columns:
+  from_state__timestamp_0
+  reads_aux__0__base__prev_timestamp_0
+  reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0
+  writes_aux__base__prev_timestamp_0
+  writes_aux__base__timestamp_lt_aux__lower_decomp__0_0
+  writes_aux__prev_data__0_0
+  writes_aux__prev_data__1_0
+  writes_aux__prev_data__2_0
+  writes_aux__prev_data__3_0
+  b__0_0
+  b__1_0
+  b__2_0
+  b__3_0
+  cmp_result_0
+  inv_of_sum_37
   is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):
-mult=is_valid * -1, args=[0, unknown_1_0]
-mult=is_valid * 1, args=[4, unknown_1_0 + 3]
+mult=is_valid * -1, args=[0, from_state__timestamp_0]
+mult=is_valid * 1, args=[4, from_state__timestamp_0 + 3]
 
 // Bus 1 (MEMORY):
-mult=is_valid * -1, args=[1, 5, unknown_19_0, unknown_20_0, unknown_21_0, unknown_22_0, unknown_6_0]
-mult=is_valid * 1, args=[1, 5, unknown_19_0, unknown_20_0, unknown_21_0, unknown_22_0, unknown_1_0]
-mult=is_valid * -1, args=[1, 8, unknown_15_0, unknown_16_0, unknown_17_0, unknown_18_0, unknown_12_0]
-mult=is_valid * 1, args=[1, 8, unknown_27_0, 0, 0, 0, unknown_1_0 + 2]
+mult=is_valid * -1, args=[1, 5, b__0_0, b__1_0, b__2_0, b__3_0, reads_aux__0__base__prev_timestamp_0]
+mult=is_valid * 1, args=[1, 5, b__0_0, b__1_0, b__2_0, b__3_0, from_state__timestamp_0]
+mult=is_valid * -1, args=[1, 8, writes_aux__prev_data__0_0, writes_aux__prev_data__1_0, writes_aux__prev_data__2_0, writes_aux__prev_data__3_0, writes_aux__base__prev_timestamp_0]
+mult=is_valid * 1, args=[1, 8, cmp_result_0, 0, 0, 0, from_state__timestamp_0 + 2]
 
 // Bus 3 (VARIABLE_RANGE_CHECKER):
-mult=is_valid * 1, args=[unknown_7_0, 17]
-mult=is_valid * 1, args=[15360 * unknown_6_0 + 15360 * unknown_7_0 + 15360 - 15360 * unknown_1_0, 12]
-mult=is_valid * 1, args=[unknown_13_0, 17]
-mult=is_valid * 1, args=[15360 * unknown_12_0 + 15360 * unknown_13_0 - (15360 * unknown_1_0 + 15360), 12]
-
-// Bus 6 (BITWISE_LOOKUP):
-mult=unknown_32_0 + unknown_33_0 + unknown_34_0 + unknown_35_0, args=[unknown_36_0 - 1, 0, 0, 0]
+mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0, 17]
+mult=is_valid * 1, args=[15360 * reads_aux__0__base__prev_timestamp_0 + 15360 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0 + 15360 - 15360 * from_state__timestamp_0, 12]
+mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__0_0, 17]
+mult=is_valid * 1, args=[15360 * writes_aux__base__prev_timestamp_0 + 15360 * writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 - (15360 * from_state__timestamp_0 + 15360), 12]
 
 // Algebraic constraints:
-unknown_27_0 * (unknown_27_0 - 1) = 0
-unknown_35_0 * (unknown_35_0 - 1) = 0
-(1 - unknown_35_0) * (unknown_22_0 * (2 * unknown_27_0 - 1)) = 0
-unknown_35_0 * (unknown_22_0 * (2 * unknown_27_0 - 1) + unknown_36_0) = 0
-unknown_34_0 * (unknown_34_0 - 1) = 0
-(1 - (unknown_34_0 + unknown_35_0)) * (unknown_21_0 * (2 * unknown_27_0 - 1)) = 0
-unknown_34_0 * (unknown_21_0 * (2 * unknown_27_0 - 1) + unknown_36_0) = 0
-unknown_33_0 * (unknown_33_0 - 1) = 0
-(1 - (unknown_33_0 + unknown_34_0 + unknown_35_0)) * (unknown_20_0 * (2 * unknown_27_0 - 1)) = 0
-unknown_33_0 * (unknown_20_0 * (2 * unknown_27_0 - 1) + unknown_36_0) = 0
-unknown_32_0 * (unknown_32_0 - 1) = 0
-(1 * is_valid - (unknown_32_0 + unknown_33_0 + unknown_34_0 + unknown_35_0)) * ((1 - unknown_19_0) * (2 * unknown_27_0 - 1)) = 0
-unknown_32_0 * ((unknown_19_0 - 1) * (2 * unknown_27_0 - 1) + unknown_36_0) = 0
-(unknown_32_0 + unknown_33_0 + unknown_34_0 + unknown_35_0) * (unknown_32_0 + unknown_33_0 + unknown_34_0 + unknown_35_0 - 1) = 0
-(1 - (unknown_32_0 + unknown_33_0 + unknown_34_0 + unknown_35_0)) * unknown_27_0 = 0
-(1 - is_valid) * (unknown_32_0 + unknown_33_0 + unknown_34_0 + unknown_35_0) = 0
+cmp_result_0 * (cmp_result_0 - 1) = 0
+cmp_result_0 * (b__0_0 + b__1_0 + b__2_0 + b__3_0) = 0
+inv_of_sum_37 * (b__0_0 + b__1_0 + b__2_0 + b__3_0) + cmp_result_0 - 1 * is_valid = 0
 is_valid * (is_valid - 1) = 0

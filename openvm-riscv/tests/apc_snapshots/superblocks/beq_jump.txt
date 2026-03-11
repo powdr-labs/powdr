@@ -9,60 +9,60 @@ APC advantage:
   - Constraints: 55 -> 5 (11.00x reduction)
 
 Symbolic machine using 22 unique main columns:
-  unknown_1_0
-  unknown_6_0
-  unknown_7_0
-  unknown_12_0
-  unknown_13_0
-  unknown_15_0
-  unknown_16_0
-  unknown_17_0
-  unknown_18_0
-  unknown_4_1
-  unknown_5_1
-  unknown_6_2
-  unknown_7_2
-  unknown_15_2
-  unknown_16_2
-  unknown_17_2
-  unknown_18_2
-  unknown_19_2
-  unknown_20_2
-  unknown_21_2
-  unknown_22_2
+  from_state__timestamp_0
+  reads_aux__0__base__prev_timestamp_0
+  reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0
+  writes_aux__base__prev_timestamp_0
+  writes_aux__base__timestamp_lt_aux__lower_decomp__0_0
+  writes_aux__prev_data__0_0
+  writes_aux__prev_data__1_0
+  writes_aux__prev_data__2_0
+  writes_aux__prev_data__3_0
+  reads_aux__0__base__prev_timestamp_1
+  reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_1
+  reads_aux__0__base__prev_timestamp_2
+  reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_2
+  writes_aux__prev_data__0_2
+  writes_aux__prev_data__1_2
+  writes_aux__prev_data__2_2
+  writes_aux__prev_data__3_2
+  a__0_2
+  a__1_2
+  a__2_2
+  a__3_2
   is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):
-mult=is_valid * -1, args=[0, unknown_1_0]
-mult=is_valid * 1, args=[48, unknown_1_0 + 8]
+mult=is_valid * -1, args=[0, from_state__timestamp_0]
+mult=is_valid * 1, args=[48, from_state__timestamp_0 + 8]
 
 // Bus 1 (MEMORY):
-mult=is_valid * -1, args=[1, 0, 0, 0, 0, 0, unknown_6_0]
-mult=is_valid * 1, args=[1, 0, 0, 0, 0, 0, unknown_1_0]
-mult=is_valid * -1, args=[1, 10, unknown_15_0, unknown_16_0, unknown_17_0, unknown_18_0, unknown_12_0]
-mult=is_valid * -1, args=[1, 8, 33, 0, 0, 0, unknown_4_1]
-mult=is_valid * 1, args=[1, 8, 33, 0, 0, 0, unknown_1_0 + 3]
-mult=is_valid * 1, args=[1, 10, 33, 0, 0, 0, unknown_1_0 + 4]
-mult=is_valid * -1, args=[1, 9, unknown_15_2, unknown_16_2, unknown_17_2, unknown_18_2, unknown_6_2]
-mult=is_valid * 1, args=[1, 9, unknown_19_2, unknown_20_2, unknown_21_2, unknown_22_2, unknown_1_0 + 7]
+mult=is_valid * -1, args=[1, 0, 0, 0, 0, 0, reads_aux__0__base__prev_timestamp_0]
+mult=is_valid * 1, args=[1, 0, 0, 0, 0, 0, from_state__timestamp_0]
+mult=is_valid * -1, args=[1, 10, writes_aux__prev_data__0_0, writes_aux__prev_data__1_0, writes_aux__prev_data__2_0, writes_aux__prev_data__3_0, writes_aux__base__prev_timestamp_0]
+mult=is_valid * -1, args=[1, 8, 33, 0, 0, 0, reads_aux__0__base__prev_timestamp_1]
+mult=is_valid * 1, args=[1, 8, 33, 0, 0, 0, from_state__timestamp_0 + 3]
+mult=is_valid * 1, args=[1, 10, 33, 0, 0, 0, from_state__timestamp_0 + 4]
+mult=is_valid * -1, args=[1, 9, writes_aux__prev_data__0_2, writes_aux__prev_data__1_2, writes_aux__prev_data__2_2, writes_aux__prev_data__3_2, reads_aux__0__base__prev_timestamp_2]
+mult=is_valid * 1, args=[1, 9, a__0_2, a__1_2, a__2_2, a__3_2, from_state__timestamp_0 + 7]
 
 // Bus 3 (VARIABLE_RANGE_CHECKER):
-mult=is_valid * 1, args=[unknown_7_0, 17]
-mult=is_valid * 1, args=[15360 * unknown_6_0 + 15360 * unknown_7_0 + 15360 - 15360 * unknown_1_0, 12]
-mult=is_valid * 1, args=[unknown_13_0, 17]
-mult=is_valid * 1, args=[15360 * unknown_12_0 + 15360 * unknown_13_0 - (15360 * unknown_1_0 + 15360), 12]
-mult=is_valid * 1, args=[unknown_5_1, 17]
-mult=is_valid * 1, args=[15360 * unknown_4_1 + 15360 * unknown_5_1 - (15360 * unknown_1_0 + 30720), 12]
-mult=is_valid * 1, args=[unknown_7_2, 17]
-mult=is_valid * 1, args=[15360 * unknown_6_2 + 15360 * unknown_7_2 - (15360 * unknown_1_0 + 61440), 12]
+mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0, 17]
+mult=is_valid * 1, args=[15360 * reads_aux__0__base__prev_timestamp_0 + 15360 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_0 + 15360 - 15360 * from_state__timestamp_0, 12]
+mult=is_valid * 1, args=[writes_aux__base__timestamp_lt_aux__lower_decomp__0_0, 17]
+mult=is_valid * 1, args=[15360 * writes_aux__base__prev_timestamp_0 + 15360 * writes_aux__base__timestamp_lt_aux__lower_decomp__0_0 - (15360 * from_state__timestamp_0 + 15360), 12]
+mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_1, 17]
+mult=is_valid * 1, args=[15360 * reads_aux__0__base__prev_timestamp_1 + 15360 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_1 - (15360 * from_state__timestamp_0 + 30720), 12]
+mult=is_valid * 1, args=[reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_2, 17]
+mult=is_valid * 1, args=[15360 * reads_aux__0__base__prev_timestamp_2 + 15360 * reads_aux__0__base__timestamp_lt_aux__lower_decomp__0_2 - (15360 * from_state__timestamp_0 + 61440), 12]
 
 // Bus 6 (BITWISE_LOOKUP):
-mult=is_valid * 1, args=[unknown_19_2, unknown_20_2, 0, 0]
-mult=is_valid * 1, args=[unknown_21_2, unknown_22_2, 0, 0]
+mult=is_valid * 1, args=[a__0_2, a__1_2, 0, 0]
+mult=is_valid * 1, args=[a__2_2, a__3_2, 0, 0]
 
 // Algebraic constraints:
-(7864320 * unknown_19_2 - (7864320 * unknown_15_2 + 7864320 * is_valid)) * (7864320 * unknown_19_2 - (7864320 * unknown_15_2 + 7864321)) = 0
-(30720 * unknown_19_2 + 7864320 * unknown_20_2 - (30720 * unknown_15_2 + 7864320 * unknown_16_2 + 30720 * is_valid)) * (30720 * unknown_19_2 + 7864320 * unknown_20_2 - (30720 * unknown_15_2 + 7864320 * unknown_16_2 + 30721)) = 0
-(120 * unknown_19_2 + 30720 * unknown_20_2 + 7864320 * unknown_21_2 - (120 * unknown_15_2 + 30720 * unknown_16_2 + 7864320 * unknown_17_2 + 120 * is_valid)) * (120 * unknown_19_2 + 30720 * unknown_20_2 + 7864320 * unknown_21_2 - (120 * unknown_15_2 + 30720 * unknown_16_2 + 7864320 * unknown_17_2 + 121)) = 0
-(943718400 * unknown_15_2 + 120 * unknown_20_2 + 30720 * unknown_21_2 + 7864320 * unknown_22_2 + 943718400 * is_valid - (120 * unknown_16_2 + 30720 * unknown_17_2 + 7864320 * unknown_18_2 + 943718400 * unknown_19_2)) * (943718400 * unknown_15_2 + 120 * unknown_20_2 + 30720 * unknown_21_2 + 7864320 * unknown_22_2 + 943718399 - (120 * unknown_16_2 + 30720 * unknown_17_2 + 7864320 * unknown_18_2 + 943718400 * unknown_19_2)) = 0
+(7864320 * a__0_2 - (7864320 * writes_aux__prev_data__0_2 + 7864320 * is_valid)) * (7864320 * a__0_2 - (7864320 * writes_aux__prev_data__0_2 + 7864321)) = 0
+(30720 * a__0_2 + 7864320 * a__1_2 - (30720 * writes_aux__prev_data__0_2 + 7864320 * writes_aux__prev_data__1_2 + 30720 * is_valid)) * (30720 * a__0_2 + 7864320 * a__1_2 - (30720 * writes_aux__prev_data__0_2 + 7864320 * writes_aux__prev_data__1_2 + 30721)) = 0
+(120 * a__0_2 + 30720 * a__1_2 + 7864320 * a__2_2 - (120 * writes_aux__prev_data__0_2 + 30720 * writes_aux__prev_data__1_2 + 7864320 * writes_aux__prev_data__2_2 + 120 * is_valid)) * (120 * a__0_2 + 30720 * a__1_2 + 7864320 * a__2_2 - (120 * writes_aux__prev_data__0_2 + 30720 * writes_aux__prev_data__1_2 + 7864320 * writes_aux__prev_data__2_2 + 121)) = 0
+(943718400 * writes_aux__prev_data__0_2 + 120 * a__1_2 + 30720 * a__2_2 + 7864320 * a__3_2 + 943718400 * is_valid - (120 * writes_aux__prev_data__1_2 + 30720 * writes_aux__prev_data__2_2 + 7864320 * writes_aux__prev_data__3_2 + 943718400 * a__0_2)) * (943718400 * writes_aux__prev_data__0_2 + 120 * a__1_2 + 30720 * a__2_2 + 7864320 * a__3_2 + 943718399 - (120 * writes_aux__prev_data__1_2 + 30720 * writes_aux__prev_data__2_2 + 7864320 * writes_aux__prev_data__3_2 + 943718400 * a__0_2)) = 0
 is_valid * (is_valid - 1) = 0
