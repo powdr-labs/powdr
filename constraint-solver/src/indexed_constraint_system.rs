@@ -618,6 +618,109 @@ where
             self.queue = ConstraintSystemQueue::new(self.constraint_system.system());
         }
     }
+
+    /// For each expression in the constraint system that references any of the given
+    /// variables, checks if substituting all provided assignments produces the same
+    /// result. If so, applies the substitution (using the first assignment),
+    /// effectively removing the search variables from that expression.
+    /// Returns true if any modification was made.
+    pub fn simplify_invariant_expressions(
+        &mut self,
+        variables: &std::collections::BTreeSet<V>,
+        valid_assignments: &[std::collections::BTreeMap<V, T>],
+    ) -> bool
+    where
+        T: Substitutable<V> + RuntimeConstant<FieldType = T>,
+    {
+        if valid_assignments.len() < 2 {
+            return false;
+        }
+
+        let first = &valid_assignments[0];
+        let rest = &valid_assignments[1..];
+        let mut progress = false;
+
+        // Check algebraic constraints.
+        for constraint in &mut self
+            .constraint_system
+            .constraint_system
+            .algebraic_constraints
+        {
+            if !constraint
+                .expression
+                .referenced_unknown_variables()
+                .any(|v| variables.contains(v))
+            {
+                continue;
+            }
+
+            let mut simplified = constraint.expression.clone();
+            for (var, val) in first {
+                simplified.substitute_by_known(var, val);
+            }
+
+            let is_invariant = rest.iter().all(|assignment| {
+                let mut expr = constraint.expression.clone();
+                for (var, val) in assignment {
+                    expr.substitute_by_known(var, val);
+                }
+                expr == simplified
+            });
+
+            if is_invariant {
+                log::debug!(
+                    "Simplified algebraic constraint expression (removed {} variables)",
+                    variables.len()
+                );
+                constraint.expression = simplified;
+                progress = true;
+            }
+        }
+
+        // Check bus interaction fields.
+        for bus_interaction in &mut self.constraint_system.constraint_system.bus_interactions {
+            for field in bus_interaction.fields_mut() {
+                if !field
+                    .referenced_unknown_variables()
+                    .any(|v| variables.contains(v))
+                {
+                    continue;
+                }
+
+                let mut simplified = field.clone();
+                for (var, val) in first {
+                    simplified.substitute_by_known(var, val);
+                }
+
+                let is_invariant = rest.iter().all(|assignment| {
+                    let mut expr = field.clone();
+                    for (var, val) in assignment {
+                        expr.substitute_by_known(var, val);
+                    }
+                    expr == simplified
+                });
+
+                if is_invariant {
+                    log::debug!(
+                        "Simplified bus interaction field (removed {} variables)",
+                        variables.len()
+                    );
+                    *field = simplified;
+                    progress = true;
+                }
+            }
+        }
+
+        if progress {
+            // Re-queue all constraints referencing the search variables,
+            // since the simplifications may enable further solving.
+            for var in variables {
+                self.variable_updated(var);
+            }
+        }
+
+        progress
+    }
 }
 
 impl<T: RuntimeConstant + Display, V: Clone + Ord + Display + Hash> Display

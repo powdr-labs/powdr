@@ -22,9 +22,17 @@ const MAX_SEARCH_WIDTH: u64 = 1 << 10;
 /// The maximum range width of a variable to be considered for exhaustive search.
 const MAX_VAR_RANGE_WIDTH: u64 = 5;
 
-/// Goes through all possible assignments for the given variables and tries no deduce
+/// Result of an exhaustive search on a set of variables.
+pub struct ExhaustiveSearchResult<T: FieldElement, V> {
+    pub range_constraints: BTreeMap<V, RangeConstraint<T>>,
+    /// The valid (non-contradictory) assignments found during the search.
+    /// Can be used to simplify expressions that are invariant across all valid assignments.
+    pub valid_assignments: Vec<BTreeMap<V, T>>,
+}
+
+/// Goes through all possible assignments for the given variables and tries to deduce
 /// new range constraints (on any variable) for each of the assignments. Returns the union of the obtained
-/// range constraints over all assignments.
+/// range constraints over all assignments, plus the valid assignments themselves (for expression simplification).
 /// Can also return range constraints for the input variables if some of them lead
 /// to a contradiction.
 /// Returns an error if all assignments are contradictory.
@@ -33,25 +41,31 @@ pub fn exhaustive_search_on_variable_set<T: FieldElement, V: Clone + Hash + Ord 
     variables: &BTreeSet<V>,
     range_constraints: impl RangeConstraintProvider<T, V> + Clone,
     bus_interaction_handler: &impl BusInteractionHandler<T>,
-) -> Result<BTreeMap<V, RangeConstraint<T>>, Error> {
-    let mut new_constraints =
-        get_all_possible_assignments(variables.iter().cloned(), &range_constraints).filter_map(
-            |assignments| {
-                derive_new_range_constraints(
-                    constraint_system,
-                    assignments,
-                    &range_constraints,
-                    bus_interaction_handler,
-                )
-                .ok()
-            },
-        );
-    let Some(first_assignment_constraints) = new_constraints.next() else {
-        // No assignment satisfied the constraint system.
+) -> Result<ExhaustiveSearchResult<T, V>, Error> {
+    // Collect valid assignments and their derived range constraints.
+    let mut valid_assignments = Vec::new();
+    let mut constraint_results = Vec::new();
+
+    for assignments in get_all_possible_assignments(variables.iter().cloned(), &range_constraints) {
+        if let Ok(rc) = derive_new_range_constraints(
+            constraint_system,
+            assignments.clone(),
+            &range_constraints,
+            bus_interaction_handler,
+        ) {
+            valid_assignments.push(assignments);
+            constraint_results.push(rc);
+        }
+    }
+
+    if valid_assignments.is_empty() {
         return Err(Error::ExhaustiveSearchError);
-    };
-    // Compute the disjunction of the effects af each assignment.
-    let result = new_constraints.try_fold(first_assignment_constraints, |mut acc, new_constr| {
+    }
+
+    // Compute the disjunction of the range constraint effects across all valid assignments.
+    let mut iter = constraint_results.into_iter();
+    let first = iter.next().unwrap();
+    let result = iter.try_fold(first, |mut acc, new_constr| {
         for (var, rc) in &mut acc {
             let other_rc = new_constr.get(var).cloned().unwrap_or_default();
             *rc = rc.disjunction(&other_rc)
@@ -65,10 +79,11 @@ pub fn exhaustive_search_on_variable_set<T: FieldElement, V: Clone + Hash + Ord 
         }
         Ok(acc)
     });
-    match result {
-        Ok(assignments) => Ok(assignments),
-        Err(_) => Ok(Default::default()),
-    }
+    let range_constraints = result.unwrap_or_default();
+    Ok(ExhaustiveSearchResult {
+        range_constraints,
+        valid_assignments,
+    })
 }
 
 /// Returns all unique sets of variables that appear together in an identity

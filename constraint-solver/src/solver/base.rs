@@ -421,14 +421,22 @@ where
                 &*self,
                 &self.bus_interaction_handler,
             ) {
-                Ok(assignments) if assignments.is_empty() => {
-                    // No new information was found.
-                    unsuccessful_variable_sets.insert(variable_set);
+                Ok(result) if result.range_constraints.is_empty() => {
+                    // Try expression simplification even if no range constraints were found.
+                    progress |= self
+                        .constraint_system
+                        .simplify_invariant_expressions(&variable_set, &result.valid_assignments);
+                    if !progress {
+                        unsuccessful_variable_sets.insert(variable_set);
+                    }
                 }
-                Ok(assignments) => {
-                    for (var, rc) in assignments {
+                Ok(result) => {
+                    for (var, rc) in result.range_constraints {
                         progress |= self.apply_range_constraint_update(&var, rc);
                     }
+                    progress |= self
+                        .constraint_system
+                        .simplify_invariant_expressions(&variable_set, &result.valid_assignments);
                 }
                 // Might error out if a contradiction was found.
                 Err(e) => return Err(e),

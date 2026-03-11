@@ -196,3 +196,13 @@ fn rotate() {
     let program = [srl(1, 3, 1, 0), sll(2, 3, 31, 0), or(3, 1, 2, 1)];
     assert_machine_output(program.to_vec(), "rotate");
 }
+
+#[test]
+fn same_register_not_optimized() {
+    // Load a constant into register 3, then store a byte from the same register.
+    // Both instructions access register 3 (the first writes, the second reads).
+    // The memory optimizer should be able to merge the read/write pairs.
+    // Reproduces: https://github.com/powdr-labs/powdr/issues/3653
+    let program = [add(3, 0, 123, 0), storeb(3, 1, 0, 2, 1, 0)];
+    assert_machine_output(program.to_vec(), "same_register_not_optimized");
+}
