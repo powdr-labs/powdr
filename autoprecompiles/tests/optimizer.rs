@@ -242,3 +242,112 @@ fn test_optimize_reth_op() {
     "#]]
     .assert_debug_eq(&machine.constraints.len());
 }
+
+// Helper for WOMIR APC optimization tests.
+// Uses the bus_map from the serialized fixture (same pattern as test_optimize_reth_op).
+fn optimize_womir_fixture(fixture: &str) -> SymbolicMachine<BabyBearField> {
+    let apc = import_apc_from_gzipped_json(fixture);
+    let machine: SymbolicMachine<BabyBearField> = apc.apc.machine;
+    assert!(machine.derived_columns.is_empty());
+
+    let bus_map = &apc.bus_map;
+    let bus_int_handler = OpenVmBusInteractionHandler::new(bus_map.clone());
+    let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&machine);
+
+    optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
+        machine,
+        bus_int_handler,
+        DEFAULT_DEGREE_BOUND,
+        bus_map,
+        column_allocator,
+        &mut Default::default(),
+    )
+    .unwrap()
+    .0
+}
+
+/// Verify that all WOMIR fixture files deserialize correctly.
+#[test]
+fn load_womir_fixtures() {
+    let fixtures = [
+        "tests/womir_struct_copy_pc2211432.json.gz",
+        "tests/womir_bigint_arith_pc2152724.json.gz",
+        "tests/womir_struct_compare_pc520876.json.gz",
+        "tests/womir_bigint_mul_pc2234668.json.gz",
+        "tests/womir_bitfield_extract_pc2295204.json.gz",
+    ];
+    for fixture in fixtures {
+        let apc = import_apc_from_gzipped_json(fixture);
+        let machine: SymbolicMachine<BabyBearField> = apc.apc.machine;
+        assert!(machine.derived_columns.is_empty());
+        assert!(machine.main_columns().count() > 0);
+        assert!(!machine.bus_interactions.is_empty());
+        assert!(!machine.constraints.is_empty());
+    }
+}
+
+/// WOMIR reth block: struct copy (908 instrs, 509 LOADW + 198 STOREW).
+/// Regression test for optimizer performance on large WOMIR blocks.
+#[test]
+#[ignore = "takes ~40 min to run"]
+fn test_womir_struct_copy() {
+    let machine = optimize_womir_fixture("tests/womir_struct_copy_pc2211432.json.gz");
+    println!(
+        "cols={}, bus_interactions={}, constraints={}",
+        machine.main_columns().count(),
+        machine.bus_interactions.len(),
+        machine.constraints.len()
+    );
+}
+
+/// WOMIR reth block: big-integer arithmetic (916 instrs, Mul64 + shifts + adds).
+#[test]
+#[ignore = "takes ~40 min to run"]
+fn test_womir_bigint_arith() {
+    let machine = optimize_womir_fixture("tests/womir_bigint_arith_pc2152724.json.gz");
+    println!(
+        "cols={}, bus_interactions={}, constraints={}",
+        machine.main_columns().count(),
+        machine.bus_interactions.len(),
+        machine.constraints.len()
+    );
+}
+
+/// WOMIR reth block: struct comparison (916 instrs, LOADW + Eq).
+#[test]
+#[ignore = "takes ~37 min to run"]
+fn test_womir_struct_compare() {
+    let machine = optimize_womir_fixture("tests/womir_struct_compare_pc520876.json.gz");
+    println!(
+        "cols={}, bus_interactions={}, constraints={}",
+        machine.main_columns().count(),
+        machine.bus_interactions.len(),
+        machine.constraints.len()
+    );
+}
+
+/// WOMIR reth block: big-integer arithmetic (884 instrs, Mul64 + shifts).
+#[test]
+#[ignore = "takes ~35 min to run"]
+fn test_womir_bigint_mul() {
+    let machine = optimize_womir_fixture("tests/womir_bigint_mul_pc2234668.json.gz");
+    println!(
+        "cols={}, bus_interactions={}, constraints={}",
+        machine.main_columns().count(),
+        machine.bus_interactions.len(),
+        machine.constraints.len()
+    );
+}
+
+/// WOMIR reth block: bitfield extraction (888 instrs, LOADW + STOREW + AND + SRL).
+#[test]
+#[ignore = "takes ~34 min to run"]
+fn test_womir_bitfield_extract() {
+    let machine = optimize_womir_fixture("tests/womir_bitfield_extract_pc2295204.json.gz");
+    println!(
+        "cols={}, bus_interactions={}, constraints={}",
+        machine.main_columns().count(),
+        machine.bus_interactions.len(),
+        machine.constraints.len()
+    );
+}
