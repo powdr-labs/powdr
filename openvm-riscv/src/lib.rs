@@ -329,23 +329,27 @@ pub fn prove(
         let sdk = PowdrSdkGpu::new(app_config, AggregationSystemParams::default()).unwrap();
         #[cfg(not(feature = "cuda"))]
         let sdk = PowdrSdkCpu::new(app_config, AggregationSystemParams::default()).unwrap();
-        let mut app_prover = sdk.app_prover(exe.clone())?;
-
-        // Generate a proof
-        tracing::info!("Generating app proof...");
-        let start = std::time::Instant::now();
-        let app_proof = app_prover.prove(inputs.clone())?;
-        tracing::info!("App proof took {:?}", start.elapsed());
-
-        tracing::info!("Public values: {:?}", app_proof.user_public_values);
-
-        // Note: verification is done automatically in debug_assertions mode inside prove()
-        tracing::info!("App proof generation done.");
 
         if recursion {
-            // TODO: v2 aggregation proving requires NativeBuilder type param in GenericSdk.
-            // This is not yet supported with the powdr-specific SDK types.
-            tracing::warn!("Recursion proving not yet supported in v2 integration");
+            // Use StarkProver which does app proving + aggregation (recursion)
+            let mut stark_prover = sdk.prover(exe.clone())?;
+            tracing::info!("Generating STARK proof (app + aggregation)...");
+            let start = std::time::Instant::now();
+            let _stark_proof = stark_prover.prove(inputs.clone())?;
+            tracing::info!("STARK proof (with recursion) took {:?}", start.elapsed());
+        } else {
+            let mut app_prover = sdk.app_prover(exe.clone())?;
+
+            // Generate a proof
+            tracing::info!("Generating app proof...");
+            let start = std::time::Instant::now();
+            let app_proof = app_prover.prove(inputs.clone())?;
+            tracing::info!("App proof took {:?}", start.elapsed());
+
+            tracing::info!("Public values: {:?}", app_proof.user_public_values);
+
+            // Note: verification is done automatically in debug_assertions mode inside prove()
+            tracing::info!("App proof generation done.");
         }
 
         tracing::info!("All done.");
