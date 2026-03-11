@@ -7,7 +7,6 @@ use openvm_circuit::arch::{
     AirInventory, AirInventoryError, ExecutorInventory, ExecutorInventoryError, SystemConfig,
     VmCircuitConfig, VmExecutionConfig,
 };
-use openvm_circuit::system::memory::interface::MemoryInterfaceAirs;
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_instructions::VmOpcode;
@@ -336,15 +335,7 @@ impl<ISA: OpenVmISA> OriginalVmConfig<ISA> {
                         BusType::ExecutionBridge,
                     ),
                     (
-                        // TODO: make getting memory bus index a helper function
-                        match &memory_air.interface {
-                            MemoryInterfaceAirs::Volatile { boundary } => {
-                                boundary.memory_bus.inner.index
-                            }
-                            MemoryInterfaceAirs::Persistent { boundary, .. } => {
-                                boundary.memory_bus.inner.index
-                            }
-                        },
+                        memory_air.interface.boundary.memory_bus.inner.index,
                         BusType::Memory,
                     ),
                     (connector_air.program_bus.index(), BusType::PcLookup),
