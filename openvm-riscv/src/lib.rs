@@ -8,9 +8,11 @@ use openvm_build::{build_guest_package, find_unique_executable, get_package, Tar
 use openvm_circuit::arch::execution_mode::metered::segment_ctx::SegmentationLimits;
 #[cfg(feature = "cuda")]
 use openvm_circuit::arch::DenseRecordArena;
+#[cfg(debug_assertions)]
+use openvm_circuit::arch::debug_proving_ctx;
 use openvm_circuit::arch::{
-    debug_proving_ctx, AirInventory, ChipInventoryError, InitFileGenerator, MatrixRecordArena,
-    SystemConfig, VmBuilder, VmChipComplex, VmProverExtension,
+    AirInventory, ChipInventoryError, InitFileGenerator, MatrixRecordArena, SystemConfig,
+    VmBuilder, VmChipComplex, VmProverExtension,
 };
 #[cfg(feature = "cuda")]
 use openvm_circuit::system::cuda::SystemChipInventoryGPU;
@@ -299,8 +301,11 @@ pub fn prove(
     segment_height: Option<usize>, // uses the default height if None
 ) -> Result<(), Box<dyn std::error::Error>> {
     if mock {
-        do_with_trace(program, inputs, |_segment_idx, vm, _pk, ctx| {
-            debug_proving_ctx(vm, &ctx);
+        do_with_trace(program, inputs, |_segment_idx, _vm, _pk, _ctx| {
+            #[cfg(debug_assertions)]
+            debug_proving_ctx(_vm, &_ctx);
+            #[cfg(not(debug_assertions))]
+            tracing::warn!("mock proving skips debug checks in release mode");
         })?;
     } else {
         let exe = &program.exe;
