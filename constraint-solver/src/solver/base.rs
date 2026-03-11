@@ -421,13 +421,34 @@ where
                 &*self,
                 &self.bus_interaction_handler,
             ) {
-                Ok(assignments) if assignments.is_empty() => {
-                    // No new information was found.
-                    unsuccessful_variable_sets.insert(variable_set);
-                }
-                Ok(assignments) => {
-                    for (var, rc) in assignments {
+                Ok(result) => {
+                    let has_range_constraints = !result.range_constraints.is_empty();
+                    for (var, rc) in result.range_constraints {
                         progress |= self.apply_range_constraint_update(&var, rc);
+                    }
+                    // Try to simplify expressions when multiple valid assignments exist.
+                    let simplified = if result.valid_assignments.len() > 1 {
+                        let modified_vars = self
+                            .constraint_system
+                            .system_mut()
+                            .simplify_via_flag_assignments(
+                                &variable_set,
+                                &result.valid_assignments,
+                            );
+                        if !modified_vars.is_empty() {
+                            progress = true;
+                            for var in &modified_vars {
+                                self.constraint_system.variable_updated(var);
+                            }
+                            true
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    };
+                    if !has_range_constraints && !simplified {
+                        unsuccessful_variable_sets.insert(variable_set);
                     }
                 }
                 // Might error out if a contradiction was found.
