@@ -1,6 +1,6 @@
 use std::{
     cmp,
-    collections::{BTreeSet, HashMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
     fmt::Display,
     hash::Hash,
 };
@@ -338,6 +338,152 @@ impl<T: RuntimeConstant, V: Hash + Ord + Eq> IndexedConstraintSystem<T, V> {
     }
 }
 
+impl<T: RuntimeConstant + Substitutable<V> + Display, V: Clone + Hash + Ord + Eq + Display>
+    IndexedConstraintSystem<T, V>
+{
+    /// For each constraint referencing the flag variables, substitutes all valid
+    /// assignments and checks if the resulting "residual" expression is the same
+    /// across all assignments. If so, replaces the constraint expression with the
+    /// simplified residual (eliminating the flag variables from it).
+    ///
+    /// Returns the set of all variables whose constraints were modified (i.e., the
+    /// variables that still remain in the simplified constraints and should be re-queued).
+    pub fn simplify_via_flag_assignments(
+        &mut self,
+        flag_variables: &BTreeSet<V>,
+        valid_assignments: &[BTreeMap<V, T>],
+    ) -> BTreeSet<V> {
+        assert!(valid_assignments.len() >= 2);
+
+        // Collect all constraint items that reference any flag variable.
+        let items: BTreeSet<ConstraintSystemItem> = flag_variables
+            .iter()
+            .filter_map(|v| self.variable_occurrences.get(v))
+            .flatten()
+            .copied()
+            .collect();
+
+        let mut modified_vars = BTreeSet::new();
+
+        for item in &items {
+            match item {
+                ConstraintSystemItem::AlgebraicConstraint(idx) => {
+                    let expr = &self.constraint_system.algebraic_constraints[*idx].expression;
+                    // Only process if the expression actually references a flag variable.
+                    if !expr
+                        .referenced_unknown_variables()
+                        .any(|v| flag_variables.contains(v))
+                    {
+                        continue;
+                    }
+                    if let Some(residual) =
+                        compute_constant_residual(expr, flag_variables, valid_assignments)
+                    {
+                        log::debug!(
+                            "Simplifying constraint via exhaustive search: {expr} -> {residual}"
+                        );
+                        // Track all non-flag variables in the modified constraint.
+                        modified_vars.extend(residual.referenced_unknown_variables().cloned());
+                        // Replace the expression.
+                        self.constraint_system.algebraic_constraints[*idx].expression = residual;
+                        // Update variable occurrences: remove flag variables from this item.
+                        for fv in flag_variables {
+                            if let Some(occ) = self.variable_occurrences.get_mut(fv) {
+                                occ.remove(item);
+                            }
+                        }
+                    }
+                }
+                ConstraintSystemItem::BusInteraction(idx) => {
+                    let bus = &self.constraint_system.bus_interactions[*idx];
+                    // Check each field independently.
+                    let simplified_fields: Vec<_> = bus
+                        .fields()
+                        .map(|field_expr| {
+                            if !field_expr
+                                .referenced_unknown_variables()
+                                .any(|v| flag_variables.contains(v))
+                            {
+                                return None;
+                            }
+                            compute_constant_residual(field_expr, flag_variables, valid_assignments)
+                        })
+                        .collect();
+
+                    if simplified_fields.iter().any(|s| s.is_some()) {
+                        for (field_expr, simplified) in self.constraint_system.bus_interactions
+                            [*idx]
+                            .fields_mut()
+                            .zip(simplified_fields.into_iter())
+                        {
+                            if let Some(residual) = simplified {
+                                log::debug!(
+                                    "Simplifying bus interaction field via exhaustive search: {field_expr} -> {residual}"
+                                );
+                                modified_vars
+                                    .extend(residual.referenced_unknown_variables().cloned());
+                                *field_expr = residual;
+                            }
+                        }
+                        // Update variable occurrences: only remove flag variables
+                        // that no longer appear in any field of this bus interaction.
+                        let bus = &self.constraint_system.bus_interactions[*idx];
+                        for fv in flag_variables {
+                            let still_referenced = bus
+                                .fields()
+                                .any(|f| f.referenced_unknown_variables().any(|v| v == fv));
+                            if !still_referenced {
+                                if let Some(occ) = self.variable_occurrences.get_mut(fv) {
+                                    occ.remove(item);
+                                }
+                            }
+                        }
+                    }
+                }
+                ConstraintSystemItem::DerivedVariable(_) => {
+                    // Skip derived variables.
+                }
+            }
+        }
+
+        modified_vars
+    }
+}
+
+/// Checks if substituting all valid flag assignments into the expression always
+/// produces the same residual. If so, returns the residual.
+fn compute_constant_residual<T: RuntimeConstant + Substitutable<V>, V: Clone + Ord + Eq>(
+    expr: &GroupedExpression<T, V>,
+    flag_variables: &BTreeSet<V>,
+    valid_assignments: &[BTreeMap<V, T>],
+) -> Option<GroupedExpression<T, V>> {
+    let mut iter = valid_assignments.iter();
+    let first = iter.next()?;
+    let residual = substitute_flags(expr, flag_variables, first);
+    for assignment in iter {
+        let other_residual = substitute_flags(expr, flag_variables, assignment);
+        if other_residual != residual {
+            return None;
+        }
+    }
+    Some(residual)
+}
+
+/// Substitutes all flag variables in the expression with their assigned values.
+fn substitute_flags<T: RuntimeConstant + Substitutable<V>, V: Clone + Ord + Eq>(
+    expr: &GroupedExpression<T, V>,
+    flag_variables: &BTreeSet<V>,
+    assignment: &BTreeMap<V, T>,
+) -> GroupedExpression<T, V> {
+    let mut result = expr.clone();
+    for fv in flag_variables {
+        if let Some(val) = assignment.get(fv) {
+            result.substitute_by_known(fv, val);
+        }
+    }
+    result
+}
+
 impl<T: RuntimeConstant + Substitutable<V>, V: Clone + Hash + Ord + Eq>
     IndexedConstraintSystem<T, V>
 {
@@ -525,6 +671,12 @@ where
     /// Returns a reference to the underlying indexed constraint system.
     pub fn system(&self) -> &IndexedConstraintSystem<T, V> {
         &self.constraint_system
+    }
+
+    /// Returns a mutable reference to the underlying indexed constraint system.
+    /// Callers must manually re-queue affected constraints via `variable_updated`.
+    pub fn system_mut(&mut self) -> &mut IndexedConstraintSystem<T, V> {
+        &mut self.constraint_system
     }
 
     /// Removes the next item from the queue and returns it.
