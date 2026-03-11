@@ -386,36 +386,6 @@ fn ternary_flags() {
 }
 
 #[test]
-fn invariant_expression_simplification() {
-    // Tests the invariant expression simplification feature of exhaustive search.
-    // We have two one-hot boolean flags. The expression `flag0 + flag1` always evaluates
-    // to 1 for all valid assignments (since exactly one flag is active), but the solver
-    // can't determine this algebraically because the flags are individually unknown.
-    // The invariant expression check should simplify `v - fp - (flag0 + flag1)` to `v - fp - 1`.
-    // Combined with `fp = 10`, this allows the solver to determine `v = 11`.
-    // Without the simplification, the constraint has 4 unknowns and can't be solved.
-    let constraint_system = ConstraintSystem::default().with_constraints(vec![
-        // Boolean flags
-        var("flag0") * (var("flag0") - constant(1)),
-        var("flag1") * (var("flag1") - constant(1)),
-        // Exactly one flag is active
-        var("flag0") + var("flag1") - constant(1),
-        // v - fp - (flag0 + flag1) = 0
-        // Since flag0 + flag1 = 1 for all valid assignments, the solver should
-        // simplify this to v - fp - 1 = 0.
-        var("v") - var("fp") - (var("flag0") + var("flag1")),
-        // fp is known, so after simplification v = fp + 1 = 11.
-        var("fp") - constant(10),
-    ]);
-
-    assert_solve_result(
-        constraint_system,
-        DefaultBusInteractionHandler::default(),
-        vec![("fp", 10.into()), ("v", 11.into())],
-    );
-}
-
-#[test]
 fn bit_decomposition_bug() {
     let algebraic_constraints = vec![
         var("cmp_result_0") * (var("cmp_result_0") - constant(1)),

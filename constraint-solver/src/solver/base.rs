@@ -674,6 +674,55 @@ mod tests {
     }
 
     #[test]
+    fn invariant_expression_simplification() {
+        use expect_test::expect;
+
+        type InternalVar = Variable<Var>;
+        type InternalExpr = GroupedExpression<GoldilocksField, InternalVar>;
+
+        fn ivar(name: Var) -> InternalExpr {
+            InternalExpr::from_unknown_variable(InternalVar::from(name))
+        }
+        fn iconst(value: u64) -> InternalExpr {
+            InternalExpr::from_number(GoldilocksField::from(value))
+        }
+
+        let mut solver =
+            BaseSolver::<_, _, _, VarDispenserImpl>::new(DefaultBusInteractionHandler::default());
+        solver.add_algebraic_constraints(
+            [
+                // Boolean flags
+                ivar("flag0") * (ivar("flag0") - iconst(1)),
+                ivar("flag1") * (ivar("flag1") - iconst(1)),
+                // Exactly one flag is active
+                ivar("flag0") + ivar("flag1") - iconst(1),
+                // v - fp - (flag0 + flag1) = 0
+                ivar("v") - ivar("fp") - (ivar("flag0") + ivar("flag1")),
+            ]
+            .into_iter()
+            .map(AlgebraicConstraint::assert_zero),
+        );
+        solver.solve().unwrap();
+
+        // After solving, the invariant expression simplification should have
+        // simplified `v - fp - (flag0 + flag1)` to `v - fp - 1`.
+        // The key line is `-(fp - v + 1) = 0`, i.e. `v = fp + 1`.
+        // The flag constraints are fully resolved (many `0 = 0`).
+        expect![[r#"
+            0 = 0
+            0 = 0
+            0 = 0
+            0 = 0
+            0 = 0
+            0 = 0
+            0 = 0
+            0 = 0
+            0 = 0
+            -(fp - v + 1) = 0"#]]
+        .assert_eq(&solver.to_string());
+    }
+
+    #[test]
     fn is_known_to_by_nonzero() {
         let mut solver = BaseSolver::<GoldilocksField, Var, _, NoVarDispenser>::new(
             DefaultBusInteractionHandler::default(),
