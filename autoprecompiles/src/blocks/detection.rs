@@ -11,35 +11,60 @@ fn merge_with_target_on_unconditional_jump_impl<I: Clone>(
 ) -> Vec<BasicBlock<I>> {
     let blocks_by_start_pc: HashMap<u64, &BasicBlock<I>> =
         blocks.iter().map(|b| (b.start_pc(), b)).collect();
-    let mut merged = Vec::with_capacity(blocks.len());
+    let mut memo: HashMap<u64, Vec<(u64, I)>> = HashMap::new();
 
-    for curr in blocks {
-        let maybe_target_pc = curr
-            .instructions
-            .last()
-            .and_then(|(pc, instr)| unconditional_jump_target(instr, *pc));
+    fn expanded_block_instructions<I: Clone>(
+        start_pc: u64,
+        blocks_by_start_pc: &HashMap<u64, &BasicBlock<I>>,
+        unconditional_jump_target: &impl Fn(&I, u64) -> Option<u64>,
+        memo: &mut HashMap<u64, Vec<(u64, I)>>,
+        visiting: &mut BTreeSet<u64>,
+    ) -> Vec<(u64, I)> {
+        if let Some(cached) = memo.get(&start_pc) {
+            return cached.clone();
+        }
+        let curr = blocks_by_start_pc[&start_pc];
+        let mut instructions = curr.instructions.clone();
 
-        let Some(target_pc) = maybe_target_pc else {
-            merged.push(curr.clone());
-            continue;
-        };
-
-        if target_pc == curr.start_pc() {
-            // Avoid duplicating self-looping blocks.
-            merged.push(curr.clone());
-            continue;
+        if !visiting.insert(start_pc) {
+            return instructions;
         }
 
-        if let Some(target) = blocks_by_start_pc.get(&target_pc) {
-            let mut instructions = curr.instructions.clone();
-            instructions.extend(target.instructions.clone());
-            merged.push(BasicBlock { instructions });
-        } else {
-            merged.push(curr.clone());
+        if let Some((last_pc, last_instr)) = curr.instructions.last() {
+            if let Some(target_pc) = unconditional_jump_target(last_instr, *last_pc) {
+                if target_pc != start_pc && blocks_by_start_pc.contains_key(&target_pc) {
+                    let target_instructions = expanded_block_instructions(
+                        target_pc,
+                        blocks_by_start_pc,
+                        unconditional_jump_target,
+                        memo,
+                        visiting,
+                    );
+                    instructions.extend(target_instructions);
+                }
+            }
         }
+
+        visiting.remove(&start_pc);
+        memo.insert(start_pc, instructions.clone());
+        instructions
     }
 
-    merged
+    blocks
+        .iter()
+        .map(|b| {
+            let mut visiting = BTreeSet::new();
+            BasicBlock {
+                instructions: expanded_block_instructions(
+                    b.start_pc(),
+                    &blocks_by_start_pc,
+                    unconditional_jump_target,
+                    &mut memo,
+                    &mut visiting,
+                ),
+            }
+        })
+        .collect()
 }
 
 /// Collects basic blocks from a program
@@ -130,6 +155,7 @@ mod tests {
     enum TestInstr {
         A,
         BJumpToA,
+        CJumpToB,
     }
 
     impl PcStep for TestInstr {
@@ -183,5 +209,41 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(block_instrs.contains(&vec![&TestInstr::A]));
         assert!(block_instrs.contains(&vec![&TestInstr::BJumpToA, &TestInstr::A]));
+    }
+
+    #[test]
+    fn detects_long_unconditional_jump_chains() {
+        // Program order is A, B, C where B -> A and C -> B (unconditional).
+        let program = TestProgram {
+            instrs: vec![TestInstr::A, TestInstr::BJumpToA, TestInstr::CJumpToB],
+        };
+        // Force block starts so base blocks are A, B, C.
+        let jumpdest_set = BTreeSet::from([4u64, 8u64]);
+
+        let blocks = collect_basic_blocks_impl(
+            &program,
+            &jumpdest_set,
+            &|instr| matches!(instr, TestInstr::BJumpToA | TestInstr::CJumpToB),
+            &|_| true,
+            &|instr, _pc| match instr {
+                TestInstr::BJumpToA => Some(0),
+                TestInstr::CJumpToB => Some(4),
+                _ => None,
+            },
+        );
+
+        assert_eq!(blocks.len(), 3);
+        let block_instrs = blocks
+            .iter()
+            .map(|b| b.instructions.iter().map(|(_, i)| i).collect::<Vec<_>>())
+            .collect::<Vec<_>>();
+
+        assert!(block_instrs.contains(&vec![&TestInstr::A]));
+        assert!(block_instrs.contains(&vec![&TestInstr::BJumpToA, &TestInstr::A]));
+        assert!(block_instrs.contains(&vec![
+            &TestInstr::CJumpToB,
+            &TestInstr::BJumpToA,
+            &TestInstr::A
+        ]));
     }
 }
