@@ -139,7 +139,10 @@ fn collect_basic_blocks_impl<I: Clone + PcStep, P: Program<I>>(
 
     let blocks =
         merge_with_target_on_unconditional_jump_impl::<I>(&blocks, unconditional_jump_target);
-    tracing::info!("Got {} basic blocks from `collect_basic_blocks`", blocks.len());
+    tracing::info!(
+        "Got {} basic blocks from `collect_basic_blocks`",
+        blocks.len()
+    );
     blocks
 }
 

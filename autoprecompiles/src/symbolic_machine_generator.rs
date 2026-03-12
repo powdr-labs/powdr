@@ -142,7 +142,7 @@ pub(crate) fn statements_to_symbolic_machines<A: Adapter>(
 
     for (i, (pc, instr)) in block.instructions().enumerate() {
         let machine = instruction_handler
-            .get_instruction_air_and_id(&instr)
+            .get_instruction_air_and_id(instr)
             .1
             .clone();
 
