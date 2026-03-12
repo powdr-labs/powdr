@@ -39,14 +39,6 @@ impl<V> AlgebraicConstraint<V> {
     }
 }
 
-impl<V: Clone> AlgebraicConstraint<&V> {
-    pub(crate) fn cloned(&self) -> AlgebraicConstraint<V> {
-        AlgebraicConstraint {
-            expression: self.expression.clone(),
-        }
-    }
-}
-
 impl<T: RuntimeConstant, V: Clone + Ord> AlgebraicConstraint<GroupedExpression<T, V>> {
     /// Returns a constraint which asserts that the two expressions are equal.
     pub fn assert_eq(expression: GroupedExpression<T, V>, other: GroupedExpression<T, V>) -> Self {

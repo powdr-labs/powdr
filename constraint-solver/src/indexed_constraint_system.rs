@@ -169,6 +169,26 @@ impl<T: RuntimeConstant, V: Clone + Eq> IndexedConstraintSystem<T, V> {
         &self.constraint_system.bus_interactions
     }
 
+    /// Replaces the expression of the algebraic constraint at the given index.
+    /// Variable occurrences may become stale (matching convention of `substitute_by_unknown`).
+    pub fn replace_algebraic_expression(
+        &mut self,
+        index: usize,
+        new_expression: GroupedExpression<T, V>,
+    ) {
+        self.constraint_system.algebraic_constraints[index].expression = new_expression;
+    }
+
+    /// Replaces the bus interaction at the given index.
+    /// Variable occurrences may become stale (matching convention of `substitute_by_unknown`).
+    pub fn replace_bus_interaction(
+        &mut self,
+        index: usize,
+        new_bus: BusInteraction<GroupedExpression<T, V>>,
+    ) {
+        self.constraint_system.bus_interactions[index] = new_bus;
+    }
+
     /// Returns all (unknown) variables in the system. Might contain variables
     /// that do not appear in the system any more (because the constraints were deleted).
     /// Does not contain repetitions and is very efficient but returns the variables in a
@@ -527,6 +547,12 @@ where
         &self.constraint_system
     }
 
+    /// Returns a mutable reference to the underlying indexed constraint system.
+    /// Changes made through this reference bypass the queue.
+    pub fn system_mut(&mut self) -> &mut IndexedConstraintSystem<T, V> {
+        &mut self.constraint_system
+    }
+
     /// Removes the next item from the queue and returns it.
     pub fn pop_front<'a>(&'a mut self) -> Option<ConstraintRef<'a, T, V>> {
         self.queue.pop_front().map(|item| {
@@ -593,6 +619,11 @@ where
                     .push(ConstraintSystemItem::BusInteraction(initial_len + i));
                 c
             }));
+    }
+
+    /// Enqueues all constraints for re-processing.
+    pub fn enqueue_all(&mut self) {
+        self.queue = ConstraintSystemQueue::new(self.constraint_system.system());
     }
 
     pub fn retain_algebraic_constraints(

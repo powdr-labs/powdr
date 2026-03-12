@@ -230,15 +230,15 @@ fn test_optimize_reth_op() {
     .0;
 
     expect![[r#"
-        446
+        449
     "#]]
     .assert_debug_eq(&machine.main_columns().count());
     expect![[r#"
-        356
+        357
     "#]]
     .assert_debug_eq(&machine.bus_interactions.len());
     expect![[r#"
-        313
+        316
     "#]]
     .assert_debug_eq(&machine.constraints.len());
 }
