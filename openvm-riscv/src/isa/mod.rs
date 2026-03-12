@@ -59,6 +59,21 @@ impl OpenVmISA for RiscvISA {
         branch_opcodes_set()
     }
 
+    fn unconditional_branching_opcodes() -> HashSet<VmOpcode> {
+        opcode::unconditional_branch_opcodes_set()
+    }
+
+    fn unconditional_jump_target<F: PrimeField32>(
+        instruction: &Instruction<F>,
+        pc: u64,
+    ) -> Option<u64> {
+        match instruction.opcode.as_usize() {
+            opcode::OPCODE_JAL => Some(pc + instruction.c.as_canonical_u32() as u64),
+            opcode::OPCODE_JALR => None,
+            _ => None,
+        }
+    }
+
     fn format<F: PrimeField32>(instruction: &Instruction<F>) -> String {
         instruction_formatter::openvm_instruction_formatter(instruction)
     }

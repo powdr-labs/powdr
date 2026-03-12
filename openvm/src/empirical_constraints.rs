@@ -82,7 +82,7 @@ pub fn detect_empirical_constraints<ISA: OpenVmISA>(
     let blocks = program.collect_basic_blocks();
     let instruction_counts = blocks
         .iter()
-        .map(|block| (block.start_pc, block.instructions.len()))
+        .map(|block| (block.start_pc(), block.instructions.len()))
         .collect();
 
     // Collect trace, without any autoprecompiles.
@@ -408,10 +408,6 @@ impl ConstraintDetector {
 
                 if let Some(&count) = self.block_instruction_counts.get(&block_id) {
                     let rows = once(first).chain(it.take(count - 1)).collect_vec();
-
-                    for (r1, r2) in rows.iter().tuple_windows() {
-                        assert_eq!(r2.pc, r1.pc + 4);
-                    }
 
                     Some(Some((block_id, ConcreteBlock { rows })))
                 } else {

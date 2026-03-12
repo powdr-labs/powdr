@@ -1,9 +1,45 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use crate::{
     adapter::Adapter,
     blocks::{BasicBlock, Program},
 };
+
+fn merge_with_target_on_unconditional_jump<A: Adapter>(
+    blocks: &[BasicBlock<A::Instruction>],
+) -> Vec<BasicBlock<A::Instruction>> {
+    let blocks_by_start_pc: HashMap<u64, &BasicBlock<A::Instruction>> =
+        blocks.iter().map(|b| (b.start_pc(), b)).collect();
+    let mut merged = Vec::with_capacity(blocks.len());
+
+    for curr in blocks {
+        let maybe_target_pc = curr
+            .instructions
+            .last()
+            .and_then(|(pc, instr)| A::unconditional_jump_target(instr, *pc));
+
+        let Some(target_pc) = maybe_target_pc else {
+            merged.push(curr.clone());
+            continue;
+        };
+
+        if target_pc == curr.start_pc() {
+            // Avoid duplicating self-looping blocks.
+            merged.push(curr.clone());
+            continue;
+        }
+
+        if let Some(target) = blocks_by_start_pc.get(&target_pc) {
+            let mut instructions = curr.instructions.clone();
+            instructions.extend(target.instructions.clone());
+            merged.push(BasicBlock { instructions });
+        } else {
+            merged.push(curr.clone());
+        }
+    }
+
+    merged
+}
 
 /// Collects basic blocks from a program
 pub fn collect_basic_blocks<A: Adapter>(
@@ -12,52 +48,46 @@ pub fn collect_basic_blocks<A: Adapter>(
 ) -> Vec<BasicBlock<A::Instruction>> {
     let mut blocks = Vec::new();
     let mut curr_block = BasicBlock {
-        start_pc: program.instruction_index_to_pc(0),
         instructions: Vec::new(),
     };
+
     for (i, instr) in program.instructions().enumerate() {
-        let is_target = jumpdest_set.contains(&program.instruction_index_to_pc(i));
+        let pc = program.instruction_index_to_pc(i);
+        let is_target = jumpdest_set.contains(&pc);
         let is_branching = A::is_branching(&instr);
         let is_allowed = A::is_allowed(&instr);
 
-        // If this opcode cannot be in an apc, we make sure it's alone in a BB.
+        // If this opcode cannot be in an APC, make sure it's alone in a basic block.
         if !is_allowed {
-            // If not empty, push the current block.
             if !curr_block.instructions.is_empty() {
                 blocks.push(curr_block);
+                curr_block = BasicBlock {
+                    instructions: Vec::new(),
+                };
             }
-            // Push the instruction itself
             blocks.push(BasicBlock {
-                start_pc: program.instruction_index_to_pc(i),
-                instructions: vec![instr.clone()],
+                instructions: vec![(pc, instr.clone())],
             });
-            // Skip the instruction and start a new block from the next instruction.
+            continue;
+        }
+
+        // If the instruction is a target, we need to close the previous block
+        // as-is (if non-empty) and start a new block from this instruction.
+        if is_target && !curr_block.instructions.is_empty() {
+            blocks.push(curr_block);
             curr_block = BasicBlock {
-                start_pc: program.instruction_index_to_pc(i + 1),
                 instructions: Vec::new(),
             };
-        } else {
-            // If the instruction is a target, we need to close the previous block
-            // as is if not empty and start a new block from this instruction.
-            if is_target {
-                if !curr_block.instructions.is_empty() {
-                    blocks.push(curr_block);
-                }
-                curr_block = BasicBlock {
-                    start_pc: program.instruction_index_to_pc(i),
-                    instructions: Vec::new(),
-                };
-            }
-            curr_block.instructions.push(instr.clone());
-            // If the instruction is a branch, we need to close this block
-            // with this instruction and start a new block from the next one.
-            if is_branching {
-                blocks.push(curr_block); // guaranteed to be non-empty because an instruction was just pushed
-                curr_block = BasicBlock {
-                    start_pc: program.instruction_index_to_pc(i + 1),
-                    instructions: Vec::new(),
-                };
-            }
+        }
+
+        curr_block.instructions.push((pc, instr.clone()));
+
+        // If the instruction is a branch, close this block with this instruction.
+        if is_branching {
+            blocks.push(curr_block);
+            curr_block = BasicBlock {
+                instructions: Vec::new(),
+            };
         }
     }
 
@@ -65,10 +95,7 @@ pub fn collect_basic_blocks<A: Adapter>(
         blocks.push(curr_block);
     }
 
-    tracing::info!(
-        "Got {} basic blocks from `collect_basic_blocks`",
-        blocks.len()
-    );
-
+    let blocks = merge_with_target_on_unconditional_jump::<A>(&blocks);
+    tracing::info!("Got {} basic blocks from `collect_basic_blocks`", blocks.len());
     blocks
 }

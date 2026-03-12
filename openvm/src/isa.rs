@@ -106,6 +106,15 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
     /// The set of branching opcodes
     fn branching_opcodes() -> HashSet<VmOpcode>;
 
+    /// The set of branching opcodes that always jump.
+    fn unconditional_branching_opcodes() -> HashSet<VmOpcode>;
+
+    /// Returns the static target of an unconditional jump, if known.
+    fn unconditional_jump_target<F: PrimeField32>(
+        instruction: &Instruction<F>,
+        pc: u64,
+    ) -> Option<u64>;
+
     /// The set of opcodes which are allowed to be put into autoprecompiles
     fn allowed_opcodes() -> HashSet<VmOpcode>;
 

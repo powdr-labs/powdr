@@ -214,8 +214,11 @@ fn apc_candidate_json_export<A: Adapter, C: ApcCandidate<A>>(
         .block
         .blocks()
         .map(|b| BasicBlock {
-            start_pc: b.start_pc,
-            instructions: b.instructions.iter().map(ToString::to_string).collect(),
+            instructions: b
+                .instructions
+                .iter()
+                .map(|(pc, i)| (*pc, i.to_string()))
+                .collect(),
         })
         .collect();
 

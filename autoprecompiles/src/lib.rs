@@ -202,7 +202,7 @@ impl<T, I, A, V> Apc<T, I, A, V> {
     }
 
     /// The instructions in the block.
-    pub fn instructions(&self) -> impl Iterator<Item = &I> + Clone {
+    pub fn instructions(&self) -> impl Iterator<Item = &(u64, I)> + Clone {
         self.block.instructions()
     }
 

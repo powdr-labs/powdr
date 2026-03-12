@@ -327,10 +327,9 @@ impl<ISA: OpenVmISA> PowdrExecutor<ISA> {
     where
         Ctx: ExecutionCtxTrait,
     {
-        use openvm_instructions::program::DEFAULT_PC_STEP;
         use openvm_stark_backend::{
             p3_field::Field,
-            p3_maybe_rayon::prelude::{IndexedParallelIterator, ParallelIterator},
+            p3_maybe_rayon::prelude::ParallelIterator,
         };
 
         let &Instruction {
@@ -365,8 +364,7 @@ impl<ISA: OpenVmISA> PowdrExecutor<ISA> {
                 .apc
                 .block
                 .par_instructions()
-                .enumerate()
-                .map(|(idx, instruction)| {
+                .map(|(pc, instruction)| {
                     let executor = executor_inventory
                         .get_executor(instruction.inner.opcode)
                         .ok_or(StaticProgramError::ExecutorNotFound {
@@ -375,7 +373,7 @@ impl<ISA: OpenVmISA> PowdrExecutor<ISA> {
                     let pre_compute_size = executor.pre_compute_size();
                     let mut pre_compute_data = vec![0u8; pre_compute_size];
                     let execute_func = executor.pre_compute::<Ctx>(
-                        pc + idx as u32 * DEFAULT_PC_STEP,
+                        *pc as u32,
                         &instruction.inner,
                         &mut pre_compute_data,
                     )?;
@@ -489,7 +487,7 @@ impl<ISA: OpenVmISA> PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>>
             original_arenas.ensure_initialized(apc_call_count, &self.air_by_opcode_id, &self.apc);
 
         // execute the original instructions one by one
-        for (instruction, cached_meta) in self
+        for ((_, instruction), cached_meta) in self
             .apc
             .instructions()
             .zip_eq(&self.cached_instructions_meta)
@@ -565,7 +563,7 @@ impl<ISA: OpenVmISA> PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExec
             original_arenas.ensure_initialized(apc_call_count, &self.air_by_opcode_id, &self.apc);
 
         // execute the original instructions one by one
-        for (instruction, cached_meta) in
+        for ((_, instruction), cached_meta) in
             self.apc.instructions().zip(&self.cached_instructions_meta)
         {
             let executor = &self.executor_inventory.executors[cached_meta.executor_index];
@@ -624,7 +622,7 @@ impl<ISA: OpenVmISA> PowdrExecutor<ISA> {
         let cached_instructions_meta = apc
             .instructions()
             .zip_eq(apc.subs.iter())
-            .map(|(instruction, sub)| {
+            .map(|((_, instruction), sub)| {
                 let executor_index = *executor_inventory
                     .instruction_lookup
                     .get(&instruction.inner.opcode)

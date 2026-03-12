@@ -139,6 +139,9 @@ where
 
     fn is_branching(instr: &Self::Instruction) -> bool;
 
+    /// Returns the static jump target of an unconditional jump, if known.
+    fn unconditional_jump_target(instr: &Self::Instruction, pc: u64) -> Option<u64>;
+
     fn is_allowed(instr: &Self::Instruction) -> bool;
 }
 
