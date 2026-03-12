@@ -455,7 +455,7 @@ mod test {
     #[test]
     fn test_detect_superblocks_counts_and_execution_runs() {
         let bb = |start_pc: u64, len: usize| BasicBlock {
-            instructions: (0..len).map(|pc| (pc, ())).collect(),
+            instructions: (0..len).map(|pc| (start_pc + pc as u64, ())).collect(),
         };
 
         let cfg = PowdrConfig::new(
