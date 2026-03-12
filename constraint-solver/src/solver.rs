@@ -5,7 +5,7 @@ use crate::constraint_system::{
 };
 use crate::grouped_expression::GroupedExpression;
 use crate::range_constraint::RangeConstraint;
-use crate::solver::base::{BaseSolver, VarDispenserImpl};
+use crate::solver::base::BaseSolver;
 use crate::solver::var_transformation::VarTransformation;
 
 use super::grouped_expression::RangeConstraintProvider;
@@ -43,9 +43,7 @@ where
     T: FieldElement,
     V: Ord + Clone + Hash + Eq + Display,
 {
-    let mut solver = VarTransformation::new(BaseSolver::<_, _, _, VarDispenserImpl>::new(
-        bus_interaction_handler,
-    ));
+    let mut solver = VarTransformation::new(BaseSolver::new(bus_interaction_handler));
     solver.add_algebraic_constraints(constraint_system.algebraic_constraints);
     solver.add_bus_interactions(constraint_system.bus_interactions);
     solver
