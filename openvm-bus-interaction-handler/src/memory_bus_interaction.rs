@@ -17,7 +17,7 @@ pub struct OpenVmMemoryBusInteraction<T: FieldElement, V> {
     op: MemoryOp,
     address: OpenVmAddress<T, V>,
     data: Vec<GroupedExpression<T, V>>,
-    timestamp: GroupedExpression<T, V>,
+    timestamp: Vec<GroupedExpression<T, V>>,
 }
 
 #[derive(Clone, Hash, Eq, PartialEq, Debug)]
@@ -76,7 +76,7 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction
             op,
             address,
             data: data.to_vec(),
-            timestamp: timestamp.clone(),
+            timestamp: vec![timestamp.clone()],
         }))
     }
 
@@ -88,7 +88,7 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction
         &self.data
     }
 
-    fn timestamp(&self) -> &GroupedExpression<T, V> {
+    fn timestamp(&self) -> &[GroupedExpression<T, V>] {
         &self.timestamp
     }
 

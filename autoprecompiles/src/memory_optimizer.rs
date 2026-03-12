@@ -90,7 +90,7 @@ pub trait MemoryBusInteraction<T, V>: Sized {
     fn data(&self) -> &[GroupedExpression<T, V>];
 
     /// Returns the timestamp part of the memory bus interaction.
-    fn timestamp(&self) -> &GroupedExpression<T, V>;
+    fn timestamp(&self) -> &[GroupedExpression<T, V>];
 
     /// Returns the operation of the memory bus interaction.
     fn op(&self) -> MemoryOp;
@@ -115,7 +115,7 @@ where
 struct MemoryContent<T, V> {
     bus_index: usize,
     data: Vec<GroupedExpression<T, V>>,
-    timestamp: GroupedExpression<T, V>,
+    timestamp: Vec<GroupedExpression<T, V>>,
 }
 
 impl<T: Clone, V: Clone> MemoryContent<T, V> {
@@ -123,7 +123,7 @@ impl<T: Clone, V: Clone> MemoryContent<T, V> {
         Self {
             bus_index,
             data: mem_int.data().to_vec(),
-            timestamp: mem_int.timestamp().clone(),
+            timestamp: mem_int.timestamp().to_vec(),
         }
     }
 }
@@ -178,9 +178,13 @@ fn redundant_memory_interactions_indices<
                             existing.clone() - new.clone(),
                         ));
                     }
-                    new_constraints.push(AlgebraicConstraint::assert_zero(
-                        &existing.timestamp - mem_int.timestamp(),
-                    ));
+                    for (existing, new) in
+                        existing.timestamp.iter().zip_eq(mem_int.timestamp().iter())
+                    {
+                        new_constraints.push(AlgebraicConstraint::assert_zero(
+                            existing.clone() - new.clone(),
+                        ));
+                    }
                     to_remove.extend([index, existing.bus_index]);
                 }
             }
