@@ -88,7 +88,7 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction
         &self.data
     }
 
-    fn timestamp(&self) -> &[GroupedExpression<T, V>] {
+    fn timestamp_limbs(&self) -> &[GroupedExpression<T, V>] {
         &self.timestamp
     }
 
