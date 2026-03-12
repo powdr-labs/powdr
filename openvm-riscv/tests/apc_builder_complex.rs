@@ -7,8 +7,11 @@ use test_log::test;
 
 fn assert_machine_output(program: Vec<Instruction<BabyBear>>, test_name: &str) {
     let bb = BasicBlock {
-        start_pc: 0,
-        instructions: program,
+        instructions: program
+            .into_iter()
+            .enumerate()
+            .map(|(i, instr)| ((i as u64) * 4, instr))
+            .collect(),
     };
     common::apc_builder_utils::assert_machine_output(bb.into(), "complex", test_name);
 }

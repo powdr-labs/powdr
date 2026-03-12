@@ -38,8 +38,7 @@ pub fn compile_apc<ISA: OpenVmISA>(
     let max_pc_digits = superblock.pcs().max().unwrap().max(1).ilog10() as usize + 1;
     let superblock_str = superblock
         .instructions()
-        .zip(superblock.pcs())
-        .map(|(inst, pc)| format!("  {pc:>max_pc_digits$}: {}", ISA::format(&inst.inner)))
+        .map(|(pc, inst)| format!("  {pc:>max_pc_digits$}: {}", ISA::format(&inst.inner)))
         .join("\n");
 
     let export_path = std::env::var("APC_EXPORT_PATH").ok();

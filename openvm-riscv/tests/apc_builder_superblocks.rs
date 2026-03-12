@@ -14,8 +14,11 @@ fn bb(
     instructions: Vec<Instruction<BabyBear>>,
 ) -> BasicBlock<Instruction<BabyBear>> {
     BasicBlock {
-        start_pc,
-        instructions,
+        instructions: instructions
+            .into_iter()
+            .enumerate()
+            .map(|(i, instr)| (start_pc + (i as u64) * 4, instr))
+            .collect(),
     }
 }
 
