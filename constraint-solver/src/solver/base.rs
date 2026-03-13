@@ -632,43 +632,69 @@ impl<T: FieldElement, V: Clone + Hash + Eq> RangeConstraints<T, V> {
 #[cfg(test)]
 mod tests {
     use crate::bus_interaction_handler::DefaultBusInteractionHandler;
+    use expect_test::expect;
 
     use super::*;
 
     use powdr_number::GoldilocksField;
 
-    type Var = &'static str;
+    type VarName = &'static str;
+    type Var = Variable<VarName>;
     type Qse = GroupedExpression<GoldilocksField, Var>;
 
-    fn var(name: Var) -> Qse {
-        Qse::from_unknown_variable(name)
+    fn var(name: VarName) -> Qse {
+        Qse::from_unknown_variable(Variable::Original(name))
     }
 
     fn constant(value: u64) -> Qse {
         Qse::from_number(GoldilocksField::from(value))
     }
 
-    #[derive(Default)]
-    struct NoVarDispenser;
-    impl<V> VarDispenser<V> for NoVarDispenser {
-        fn next_boolean(&mut self) -> V {
-            unreachable!("This solver does not use boolean variables.")
-        }
+    #[test]
+    fn expression_simplification() {
+        let mut solver =
+            BaseSolver::<_, _, _, VarDispenserImpl>::new(DefaultBusInteractionHandler::default());
+        solver.add_algebraic_constraints(
+            [
+                // Boolean flags
+                var("flag0") * (var("flag0") - constant(1)),
+                var("flag1") * (var("flag1") - constant(1)),
+                var("flag2") * (var("flag2") - constant(1)),
+                // Exactly one flag is active
+                var("flag0") + var("flag1") + var("flag2") - constant(1),
+                // This SHOULD simplify to `v - fp - 1`, but is currently not:
+                // https://github.com/powdr-labs/powdr/issues/3653
+                // Note that if we remove `fp` here it works: Exhaustive search figures out
+                // that v = 1 for all possible assignments of the flags.
+                var("v") - var("fp") - (var("flag0") + var("flag1") + var("flag2")),
+            ]
+            .into_iter()
+            .map(AlgebraicConstraint::assert_zero),
+        );
+        solver.solve().unwrap();
 
-        fn next_linear(&mut self) -> V {
-            unreachable!("This solver does not use linear variables.")
-        }
-
-        fn all_linearized_vars(&self) -> impl Iterator<Item = V> {
-            vec![].into_iter()
-        }
+        expect![[r#"
+            (flag0) * (flag0 - 1) = 0
+            flag0 - lin_0 - 1 = 0
+            (flag0) * (lin_0) = 0
+            0 = 0
+            (flag1) * (flag1 - 1) = 0
+            flag1 - lin_2 - 1 = 0
+            (flag1) * (lin_2) = 0
+            0 = 0
+            (flag2) * (flag2 - 1) = 0
+            flag2 - lin_4 - 1 = 0
+            (flag2) * (lin_4) = 0
+            0 = 0
+            flag0 + flag1 + flag2 - 1 = 0
+            -(flag0 + flag1 + flag2 + fp - v) = 0"#]]
+        .assert_eq(&solver.to_string());
     }
 
     #[test]
     fn is_known_to_by_nonzero() {
-        let mut solver = BaseSolver::<GoldilocksField, Var, _, NoVarDispenser>::new(
-            DefaultBusInteractionHandler::default(),
-        );
+        let mut solver =
+            BaseSolver::<_, _, _, VarDispenserImpl>::new(DefaultBusInteractionHandler::default());
         assert!(!solver.are_expressions_known_to_be_different(&constant(0), &constant(0)));
         assert!(solver.are_expressions_known_to_be_different(&constant(1), &constant(0)));
         assert!(solver.are_expressions_known_to_be_different(&constant(7), &constant(0)));
@@ -685,11 +711,11 @@ mod tests {
         );
 
         solver.add_range_constraint(
-            &"a",
+            &Variable::Original("a"),
             RangeConstraint::from_range(GoldilocksField::from(3), GoldilocksField::from(4)),
         );
         solver.add_range_constraint(
-            &"b",
+            &Variable::Original("b"),
             RangeConstraint::from_range(GoldilocksField::from(3), GoldilocksField::from(4)),
         );
         assert!(solver.are_expressions_known_to_be_different(&(var("a")), &constant(0)));
