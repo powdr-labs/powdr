@@ -32,7 +32,7 @@ use std::iter::once;
 /// It also replaces bus interaction fields by new variables.
 ///
 /// For both of these transforming components, the original constraints are also kept unmodified.
-pub struct BaseSolver<T: FieldElement, V, BusInterHandler, VarDisp> {
+pub struct BaseSolver<T: FieldElement, V, BusInterHandler> {
     /// The constraint system to solve. During the solving process, any expressions will
     /// be simplified as much as possible.
     constraint_system: IndexedConstraintSystemWithQueue<T, V>,
@@ -47,50 +47,41 @@ pub struct BaseSolver<T: FieldElement, V, BusInterHandler, VarDisp> {
     /// A cache of expressions that are equivalent to a given expression.
     equivalent_expressions_cache: HashMap<GroupedExpression<T, V>, Vec<GroupedExpression<T, V>>>,
     /// A dispenser for fresh variables.
-    var_dispenser: VarDisp,
+    var_dispenser: VarDispenser,
     /// The boolean extraction component.
     boolean_extractor: BooleanExtractor<T, V>,
     /// The linearizing component.
     linearizer: Linearizer<T, V>,
 }
 
-pub trait VarDispenser<V> {
-    /// Returns a fresh new variable of kind "boolean".
-    fn next_boolean(&mut self) -> V;
-
-    /// Returns a fresh new variable of kind "linear".
-    fn next_linear(&mut self) -> V;
-
-    /// Returns an iterator over all variables of kind "linear" dispensed in the past.
-    fn all_linearized_vars(&self) -> impl Iterator<Item = V>;
-}
-
 #[derive(Default)]
-pub struct VarDispenserImpl {
+struct VarDispenser {
     next_boolean_id: usize,
     next_linearized_id: usize,
 }
 
-impl<V> VarDispenser<Variable<V>> for VarDispenserImpl {
-    fn next_boolean(&mut self) -> Variable<V> {
+impl VarDispenser {
+    /// Returns a fresh new variable of kind "boolean".
+    fn next_boolean<V>(&mut self) -> Variable<V> {
         let id = self.next_boolean_id;
         self.next_boolean_id += 1;
         Variable::Boolean(id)
     }
 
-    fn next_linear(&mut self) -> Variable<V> {
+    /// Returns a fresh new variable of kind "linear".
+    fn next_linear<V>(&mut self) -> Variable<V> {
         let id = self.next_linearized_id;
         self.next_linearized_id += 1;
         Variable::Linearized(id)
     }
 
     /// Returns an iterator over all linearized variables dispensed in the past.
-    fn all_linearized_vars(&self) -> impl Iterator<Item = Variable<V>> {
+    fn all_linearized_vars<V>(&self) -> impl Iterator<Item = Variable<V>> {
         (0..self.next_linearized_id).map(Variable::Linearized)
     }
 }
 
-impl<T: FieldElement, V, B, VD: Default> BaseSolver<T, V, B, VD> {
+impl<T: FieldElement, V, B> BaseSolver<T, V, B> {
     pub fn new(bus_interaction_handler: B) -> Self {
         BaseSolver {
             constraint_system: Default::default(),
@@ -105,7 +96,7 @@ impl<T: FieldElement, V, B, VD: Default> BaseSolver<T, V, B, VD> {
     }
 }
 
-impl<T, V, BusInter, VD> RangeConstraintProvider<T, V> for BaseSolver<T, V, BusInter, VD>
+impl<T, V, BusInter> RangeConstraintProvider<T, V> for BaseSolver<T, V, BusInter>
 where
     V: Clone + Hash + Eq,
     T: FieldElement,
@@ -115,21 +106,21 @@ where
     }
 }
 
-impl<T: FieldElement + Display, V: Clone + Ord + Hash + Display, BusInter, VD> Display
-    for BaseSolver<T, V, BusInter, VD>
+impl<T: FieldElement + Display, V: Clone + Ord + Hash + Display, BusInter> Display
+    for BaseSolver<T, V, BusInter>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.constraint_system)
     }
 }
 
-impl<T, V, BusInter: BusInteractionHandler<T>, VD: VarDispenser<V>> Solver<T, V>
-    for BaseSolver<T, V, BusInter, VD>
+impl<T, OrigV, BusInter: BusInteractionHandler<T>> Solver<T, Variable<OrigV>>
+    for BaseSolver<T, Variable<OrigV>, BusInter>
 where
-    V: Ord + Clone + Hash + Eq + Display,
+    OrigV: Ord + Clone + Hash + Eq + Display,
     T: FieldElement,
 {
-    fn solve(&mut self) -> Result<Vec<VariableAssignment<T, V>>, Error> {
+    fn solve(&mut self) -> Result<Vec<VariableAssignment<T, Variable<OrigV>>>, Error> {
         self.equivalent_expressions_cache.clear();
         self.loop_until_no_progress()?;
         let assignments = std::mem::take(&mut self.assignments_to_return);
@@ -146,7 +137,9 @@ where
 
     fn add_algebraic_constraints(
         &mut self,
-        constraints: impl IntoIterator<Item = AlgebraicConstraint<GroupedExpression<T, V>>>,
+        constraints: impl IntoIterator<
+            Item = AlgebraicConstraint<GroupedExpression<T, Variable<OrigV>>>,
+        >,
     ) {
         self.equivalent_expressions_cache.clear();
 
@@ -170,7 +163,9 @@ where
 
     fn add_bus_interactions(
         &mut self,
-        bus_interactions: impl IntoIterator<Item = BusInteraction<GroupedExpression<T, V>>>,
+        bus_interactions: impl IntoIterator<
+            Item = BusInteraction<GroupedExpression<T, Variable<OrigV>>>,
+        >,
     ) {
         self.equivalent_expressions_cache.clear();
         let mut constraints_to_add = vec![];
@@ -186,12 +181,12 @@ where
             .add_bus_interactions(bus_interactions);
     }
 
-    fn add_range_constraint(&mut self, variable: &V, constraint: RangeConstraint<T>) {
+    fn add_range_constraint(&mut self, variable: &Variable<OrigV>, constraint: RangeConstraint<T>) {
         self.equivalent_expressions_cache.clear();
         self.apply_range_constraint_update(variable, constraint);
     }
 
-    fn retain_variables(&mut self, variables_to_keep: &HashSet<V>) {
+    fn retain_variables(&mut self, variables_to_keep: &HashSet<Variable<OrigV>>) {
         self.equivalent_expressions_cache.clear();
         assert!(self.assignments_to_return.is_empty());
 
@@ -199,7 +194,7 @@ where
         // connect quadratic terms with the original constraints. We could try to find
         // those, but let's just keep all of them for now.
         let mut variables_to_keep = variables_to_keep.clone();
-        variables_to_keep.extend(self.var_dispenser.all_linearized_vars());
+        variables_to_keep.extend(self.var_dispenser.all_linearized_vars::<OrigV>());
 
         self.constraint_system.retain_algebraic_constraints(|c| {
             c.referenced_unknown_variables()
@@ -223,7 +218,7 @@ where
 
     fn range_constraint_for_expression(
         &self,
-        expr: &GroupedExpression<T, V>,
+        expr: &GroupedExpression<T, Variable<OrigV>>,
     ) -> RangeConstraint<T> {
         self.linearizer
             .internalized_versions_of_expression(expr)
@@ -232,7 +227,10 @@ where
             })
     }
 
-    fn try_to_equivalent_constant(&self, expr: &GroupedExpression<T, V>) -> Option<T> {
+    fn try_to_equivalent_constant(
+        &self,
+        expr: &GroupedExpression<T, Variable<OrigV>>,
+    ) -> Option<T> {
         self.linearizer
             .internalized_versions_of_expression(expr)
             .filter_map(|e| e.try_to_number())
@@ -241,8 +239,8 @@ where
 
     fn are_expressions_known_to_be_different(
         &mut self,
-        a: &GroupedExpression<T, V>,
-        b: &GroupedExpression<T, V>,
+        a: &GroupedExpression<T, Variable<OrigV>>,
+        b: &GroupedExpression<T, Variable<OrigV>>,
     ) -> bool {
         if let (Some(a), Some(b)) = (a.try_to_known(), b.try_to_known()) {
             return a != b;
@@ -259,20 +257,20 @@ where
     }
 }
 
-impl<T, V, BusInter: BusInteractionHandler<T>, VD: VarDispenser<V>> BaseSolver<T, V, BusInter, VD>
+impl<T, OrigV, BusInter: BusInteractionHandler<T>> BaseSolver<T, Variable<OrigV>, BusInter>
 where
-    V: Ord + Clone + Hash + Eq + Display,
+    OrigV: Ord + Clone + Hash + Eq + Display,
     T: FieldElement,
 {
     /// Tries to performs boolean extraction on `constr`, i.e. tries to turn quadratic constraints into affine constraints
     /// by introducing new boolean variables.
     fn try_extract_boolean(
         &mut self,
-        constr: AlgebraicConstraint<&GroupedExpression<T, V>>,
-    ) -> Option<AlgebraicConstraint<GroupedExpression<T, V>>> {
+        constr: AlgebraicConstraint<&GroupedExpression<T, Variable<OrigV>>>,
+    ) -> Option<AlgebraicConstraint<GroupedExpression<T, Variable<OrigV>>>> {
         let result = self
             .boolean_extractor
-            .try_extract_boolean(constr, || self.var_dispenser.next_boolean())?;
+            .try_extract_boolean(constr, || self.var_dispenser.next_boolean::<OrigV>())?;
         if let Some(var) = result.new_unconstrained_boolean_variable {
             // If we created a boolean variable, we constrain it to be boolean.
             self.add_range_constraint(&var, RangeConstraint::from_mask(1));
@@ -286,13 +284,13 @@ where
     /// and equivalences needed after linearization.
     fn linearize_constraint(
         &mut self,
-        constr: AlgebraicConstraint<GroupedExpression<T, V>>,
-    ) -> impl Iterator<Item = AlgebraicConstraint<GroupedExpression<T, V>>> {
+        constr: AlgebraicConstraint<GroupedExpression<T, Variable<OrigV>>>,
+    ) -> impl Iterator<Item = AlgebraicConstraint<GroupedExpression<T, Variable<OrigV>>>> {
         let mut constrs = vec![constr.clone()];
         if !constr.expression.is_affine() {
             let linearized = self.linearizer.linearize_expression(
                 constr.expression,
-                &mut || self.var_dispenser.next_linear(),
+                &mut || self.var_dispenser.next_linear::<OrigV>(),
                 &mut constrs,
             );
             constrs.push(AlgebraicConstraint::assert_zero(linearized));
@@ -307,28 +305,21 @@ where
     /// Note that the constraints added to `constraint_collection` are not yet boolean-extracted or linearized.
     fn linearize_bus_interaction(
         &mut self,
-        bus_interaction: BusInteraction<GroupedExpression<T, V>>,
-        constraint_collection: &mut Vec<AlgebraicConstraint<GroupedExpression<T, V>>>,
-    ) -> BusInteraction<GroupedExpression<T, V>> {
+        bus_interaction: BusInteraction<GroupedExpression<T, Variable<OrigV>>>,
+        constraint_collection: &mut Vec<AlgebraicConstraint<GroupedExpression<T, Variable<OrigV>>>>,
+    ) -> BusInteraction<GroupedExpression<T, Variable<OrigV>>> {
         bus_interaction
             .fields()
             .map(|expr| {
                 self.linearizer.substitute_by_var(
                     expr.clone(),
-                    &mut || self.var_dispenser.next_linear(),
+                    &mut || self.var_dispenser.next_linear::<OrigV>(),
                     constraint_collection,
                 )
             })
             .collect()
     }
-}
 
-impl<T, V, BusInter: BusInteractionHandler<T>, VD> BaseSolver<T, V, BusInter, VD>
-where
-    V: Ord + Clone + Hash + Eq + Display,
-    T: FieldElement,
-    VD: VarDispenser<V>,
-{
     fn loop_until_no_progress(&mut self) -> Result<(), Error> {
         loop {
             let mut progress = false;
@@ -441,8 +432,8 @@ where
     /// The vector is always non-empty, it returns at least `expression` itself.
     fn equivalent_expressions(
         &mut self,
-        expression: &GroupedExpression<T, V>,
-    ) -> Vec<GroupedExpression<T, V>> {
+        expression: &GroupedExpression<T, Variable<OrigV>>,
+    ) -> Vec<GroupedExpression<T, Variable<OrigV>>> {
         if expression.is_quadratic() {
             // This case is too complicated.
             return vec![expression.clone()];
@@ -472,7 +463,7 @@ where
         exprs
     }
 
-    fn apply_effect(&mut self, effect: Effect<T, V>) -> bool {
+    fn apply_effect(&mut self, effect: Effect<T, Variable<OrigV>>) -> bool {
         match effect {
             Effect::Assignment(v, expr) => {
                 self.apply_assignment(&v, &GroupedExpression::from_runtime_constant(expr))
@@ -489,7 +480,7 @@ where
 
     fn apply_range_constraint_update(
         &mut self,
-        variable: &V,
+        variable: &Variable<OrigV>,
         range_constraint: RangeConstraint<T>,
     ) -> bool {
         if self.range_constraints.update(variable, &range_constraint) {
@@ -507,7 +498,11 @@ where
         }
     }
 
-    fn apply_assignment(&mut self, variable: &V, expr: &GroupedExpression<T, V>) -> bool {
+    fn apply_assignment(
+        &mut self,
+        variable: &Variable<OrigV>,
+        expr: &GroupedExpression<T, Variable<OrigV>>,
+    ) -> bool {
         log::debug!("({variable} := {expr})");
         self.constraint_system.substitute_by_unknown(variable, expr);
 
@@ -523,7 +518,9 @@ where
             .flat_map(|constr| {
                 let result = self
                     .boolean_extractor
-                    .try_extract_boolean(constr, &mut || self.var_dispenser.next_boolean())?;
+                    .try_extract_boolean(constr, &mut || {
+                        self.var_dispenser.next_boolean::<OrigV>()
+                    })?;
                 vars_to_boolean_constrain.extend(result.new_unconstrained_boolean_variable);
                 Some(result.constraint)
             })
@@ -543,7 +540,9 @@ where
     /// Returns true if at least one new constraint was added.
     fn add_algebraic_constraints_if_new(
         &mut self,
-        constraints: impl IntoIterator<Item = AlgebraicConstraint<GroupedExpression<T, V>>>,
+        constraints: impl IntoIterator<
+            Item = AlgebraicConstraint<GroupedExpression<T, Variable<OrigV>>>,
+        >,
     ) -> bool {
         let constraints_to_add = constraints
             .into_iter()
@@ -560,7 +559,7 @@ where
     /// Returns true if the system contains the given algebraic constraint.
     fn contains_algebraic_constraint(
         &self,
-        constraint: &AlgebraicConstraint<GroupedExpression<T, V>>,
+        constraint: &AlgebraicConstraint<GroupedExpression<T, Variable<OrigV>>>,
     ) -> bool {
         let constraint_ref = ConstraintRef::AlgebraicConstraint(constraint.as_ref());
         let vars = constraint.referenced_unknown_variables();
@@ -652,8 +651,7 @@ mod tests {
 
     #[test]
     fn expression_simplification() {
-        let mut solver =
-            BaseSolver::<_, _, _, VarDispenserImpl>::new(DefaultBusInteractionHandler::default());
+        let mut solver = BaseSolver::new(DefaultBusInteractionHandler::default());
         solver.add_algebraic_constraints(
             [
                 // Boolean flags
@@ -693,8 +691,7 @@ mod tests {
 
     #[test]
     fn is_known_to_by_nonzero() {
-        let mut solver =
-            BaseSolver::<_, _, _, VarDispenserImpl>::new(DefaultBusInteractionHandler::default());
+        let mut solver = BaseSolver::new(DefaultBusInteractionHandler::default());
         assert!(!solver.are_expressions_known_to_be_different(&constant(0), &constant(0)));
         assert!(solver.are_expressions_known_to_be_different(&constant(1), &constant(0)));
         assert!(solver.are_expressions_known_to_be_different(&constant(7), &constant(0)));

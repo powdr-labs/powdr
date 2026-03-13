@@ -181,11 +181,7 @@ mod tests {
     use crate::{
         bus_interaction_handler::DefaultBusInteractionHandler,
         constraint_system::BusInteraction,
-        solver::{
-            base::{BaseSolver, VarDispenserImpl},
-            var_transformation::Variable,
-            Solver,
-        },
+        solver::{base::BaseSolver, var_transformation::Variable, Solver},
     };
 
     type Qse = GroupedExpression<GoldilocksField, Variable<&'static str>>;
@@ -222,8 +218,7 @@ mod tests {
 
     #[test]
     fn solver_transforms() {
-        let mut solver =
-            BaseSolver::<_, _, _, VarDispenserImpl>::new(DefaultBusInteractionHandler::default());
+        let mut solver = BaseSolver::new(DefaultBusInteractionHandler::default());
         solver.add_algebraic_constraints(
             [
                 (var("x") + var("y")) * (var("z") + constant(1)) * (var("x") - constant(1)),
