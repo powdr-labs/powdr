@@ -379,8 +379,8 @@ where
     }
 
     /// Find groups of variables with a small set of possible assignments.
-    /// For each group, performs an exhaustive search in the possible assignments
-    /// to deduce new range constraints (also on other variables).
+    /// For each group, tries all possible assignments and simplifies constraints
+    /// where all assignments produce the same expression.
     /// This might be expensive.
     fn exhaustive_search(&mut self) -> Result<bool, Error> {
         log::debug!("Starting exhaustive search...");
@@ -396,6 +396,7 @@ where
         );
 
         let mut progress = false;
+        let mut simplifications_made = false;
         let mut unsuccessful_variable_sets = BTreeSet::new();
 
         for mut variable_set in variable_sets {
@@ -408,32 +409,48 @@ where
             if unsuccessful_variable_sets.contains(&variable_set) {
                 // It can happen that we process the same variable set twice because
                 // assignments can make previously different sets equal.
-                // We have processed this variable set before, and it did not
-                // yield new information.
-                // It could be that other assignments created in the meantime
-                // lead to progress but this is rare and we will catch it in the
-                // next loop iteration.
+                // Other assignments created in the meantime could lead to progress
+                // but this is rare and we will catch it in the next loop iteration.
                 continue;
             }
-            match exhaustive_search::exhaustive_search_on_variable_set(
-                self.constraint_system.system(),
+            let result = exhaustive_search::simplify_by_exhaustive_search(
+                self.constraint_system.system().algebraic_constraints(),
+                self.constraint_system.system().bus_interactions(),
                 &variable_set,
                 &*self,
                 &self.bus_interaction_handler,
-            ) {
-                Ok(assignments) if assignments.is_empty() => {
-                    // No new information was found.
-                    unsuccessful_variable_sets.insert(variable_set);
+            )?;
+            if result.is_empty() {
+                unsuccessful_variable_sets.insert(variable_set);
+            } else {
+                for (i, expr) in result.algebraic {
+                    // Replace without enqueuing; we call solve_in_isolation below.
+                    self.constraint_system
+                        .system_mut()
+                        .replace_algebraic_expression(i, expr);
+                    simplifications_made = true;
                 }
-                Ok(assignments) => {
-                    for (var, rc) in assignments {
-                        progress |= self.apply_range_constraint_update(&var, rc);
-                    }
+                for (i, bus) in result.bus_interactions {
+                    // Replace without enqueuing; we call solve_in_isolation below.
+                    self.constraint_system
+                        .system_mut()
+                        .replace_bus_interaction(i, bus);
+                    simplifications_made = true;
                 }
-                // Might error out if a contradiction was found.
-                Err(e) => return Err(e),
+                for (var, rc) in result.range_constraints {
+                    progress |= self.apply_range_constraint_update(&var, rc);
+                }
             }
         }
+
+        if simplifications_made {
+            // Re-enqueue all constraints so that solve_in_isolation can process
+            // the simplified expressions. We do this once after all variable sets
+            // are processed to avoid repeated re-processing.
+            self.constraint_system.enqueue_all();
+            progress |= self.solve_in_isolation()?;
+        }
+
         Ok(progress)
     }
 
@@ -662,10 +679,7 @@ mod tests {
                 var("flag2") * (var("flag2") - constant(1)),
                 // Exactly one flag is active
                 var("flag0") + var("flag1") + var("flag2") - constant(1),
-                // This SHOULD simplify to `v - fp - 1`, but is currently not:
-                // https://github.com/powdr-labs/powdr/issues/3653
-                // Note that if we remove `fp` here it works: Exhaustive search figures out
-                // that v = 1 for all possible assignments of the flags.
+                // Simplifies to `v - fp - 1` thanks to exhaustive search (see #3653).
                 var("v") - var("fp") - (var("flag0") + var("flag1") + var("flag2")),
             ]
             .into_iter()
@@ -674,20 +688,20 @@ mod tests {
         solver.solve().unwrap();
 
         expect![[r#"
-            (flag0) * (flag0 - 1) = 0
-            flag0 - lin_0 - 1 = 0
-            (flag0) * (lin_0) = 0
             0 = 0
-            (flag1) * (flag1 - 1) = 0
-            flag1 - lin_2 - 1 = 0
-            (flag1) * (lin_2) = 0
             0 = 0
-            (flag2) * (flag2 - 1) = 0
-            flag2 - lin_4 - 1 = 0
-            (flag2) * (lin_4) = 0
             0 = 0
-            flag0 + flag1 + flag2 - 1 = 0
-            -(flag0 + flag1 + flag2 + fp - v) = 0"#]]
+            0 = 0
+            0 = 0
+            0 = 0
+            0 = 0
+            0 = 0
+            0 = 0
+            0 = 0
+            0 = 0
+            0 = 0
+            0 = 0
+            -(fp - v + 1) = 0"#]]
         .assert_eq(&solver.to_string());
     }
 
