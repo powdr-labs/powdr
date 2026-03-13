@@ -58,6 +58,7 @@ run_bench guest-keccak "$input" 30 apc030
 
 python3 $SCRIPTS_DIR/basic_metrics.py summary-table --csv **/metrics.json > basic_metrics.csv
 python3 $SCRIPTS_DIR/basic_metrics.py plot **/metrics.json -o proof_time_breakdown.png
+python3 $SCRIPTS_DIR/basic_metrics.py combine **/metrics.json > combined_metrics.json
 popd
 
 ### SHA256
@@ -75,6 +76,7 @@ run_bench guest-sha256 "$input" 30 apc030
 
 python3 $SCRIPTS_DIR/basic_metrics.py summary-table --csv **/metrics.json > basic_metrics.csv
 python3 $SCRIPTS_DIR/basic_metrics.py plot **/metrics.json -o proof_time_breakdown.png
+python3 $SCRIPTS_DIR/basic_metrics.py combine **/metrics.json > combined_metrics.json
 popd
 
 ### Pairing
@@ -93,6 +95,7 @@ run_bench guest-pairing "$input" 30 apc030
 
 python3 $SCRIPTS_DIR/basic_metrics.py summary-table --csv **/metrics.json > basic_metrics.csv
 python3 $SCRIPTS_DIR/basic_metrics.py plot **/metrics.json -o proof_time_breakdown.png
+python3 $SCRIPTS_DIR/basic_metrics.py combine **/metrics.json > combined_metrics.json
 popd
 
 ### U256
@@ -110,6 +113,7 @@ run_bench guest-u256 "$input" 30 apc030
 
 python3 $SCRIPTS_DIR/basic_metrics.py summary-table --csv **/metrics.json > basic_metrics.csv
 python3 $SCRIPTS_DIR/basic_metrics.py plot **/metrics.json -o proof_time_breakdown.png
+python3 $SCRIPTS_DIR/basic_metrics.py combine **/metrics.json > combined_metrics.json
 popd
 
 ### Matmul
@@ -125,6 +129,7 @@ run_bench guest-matmul 0 30 apc030
 
 python3 "$SCRIPTS_DIR"/basic_metrics.py summary-table --csv **/metrics.json > basic_metrics.csv
 python3 "$SCRIPTS_DIR"/basic_metrics.py plot **/metrics.json -o proof_time_breakdown.png
+python3 "$SCRIPTS_DIR"/basic_metrics.py combine **/metrics.json > combined_metrics.json
 popd
 
 ### ECC
@@ -148,6 +153,7 @@ run_bench guest-ecc-powdr-affine-hint $input 30 affine-hint-apc030
 
 python3 $SCRIPTS_DIR/basic_metrics.py summary-table --csv **/metrics.json > basic_metrics.csv
 python3 $SCRIPTS_DIR/basic_metrics.py plot **/metrics.json -o proof_time_breakdown.png
+python3 $SCRIPTS_DIR/basic_metrics.py combine **/metrics.json > combined_metrics.json
 popd
 
 ### ECRECOVER
@@ -166,4 +172,5 @@ run_bench guest-ecrecover $input 30 apc030
 
 python3 $SCRIPTS_DIR/basic_metrics.py summary-table --csv **/metrics.json > basic_metrics.csv
 python3 $SCRIPTS_DIR/basic_metrics.py plot **/metrics.json -o proof_time_breakdown.png
+python3 $SCRIPTS_DIR/basic_metrics.py combine **/metrics.json > combined_metrics.json
 popd

@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metrics Viewer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+
+        .navbar {
+            background: white;
+            border-bottom: 1px solid #dee2e6;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+        }
+        .navbar-brand { color: #333; font-weight: 700; }
+        .data-source { color: #888; font-size: 0.85rem; margin-left: 1rem; }
+
+        /* Upload section */
+        #uploadSection {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 80vh;
+        }
+        .upload-container { max-width: 600px; width: 100%; }
+        .dropzone {
+            border: 3px dashed #dee2e6;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background-color: white;
+        }
+        .dropzone:hover, .dropzone.drag-over {
+            border-color: #0d6efd;
+            background-color: #e7f1ff;
+        }
+        .dropzone h4 { color: #333; }
+        .url-input-group { margin-top: 1.5rem; }
+        .btn-load {
+            background: #0d6efd;
+            border: none;
+            color: white;
+        }
+        .btn-load:hover { background: #0b5ed7; color: white; }
+
+        /* App section */
+        #appSection { display: none; }
+        .pane {
+            background-color: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 1rem;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .pane h5 {
+            color: #333;
+            margin-bottom: 0.75rem;
+            font-weight: 600;
+        }
+
+        /* Summary table */
+        .summary-table {
+            width: 100%;
+            font-size: 0.85rem;
+        }
+        .summary-table th {
+            background: #f8f9fa;
+            color: #333;
+            padding: 8px;
+            white-space: nowrap;
+            cursor: pointer;
+            user-select: none;
+            border-bottom: 2px solid #dee2e6;
+        }
+        .summary-table th:hover { background: #e9ecef; }
+        .summary-table td {
+            padding: 6px 8px;
+            border-bottom: 1px solid #dee2e6;
+            white-space: nowrap;
+        }
+        .summary-table tr {
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .summary-table tr:hover { background: #e7f1ff; }
+        .summary-table tr.selected { background: #cfe2ff; outline: 2px solid #0d6efd; }
+
+        /* Pie chart placeholder */
+        .pie-placeholder {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 400px;
+            color: #999;
+            font-style: italic;
+        }
+
+        /* Chart tooltips */
+        .chart-tooltip {
+            position: absolute;
+            pointer-events: none;
+            background: rgba(255, 255, 255, 0.97);
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 0.8rem;
+            color: #333;
+            z-index: 100;
+            white-space: nowrap;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+
+        /* Stacked bar chart */
+        .bar-group { cursor: pointer; }
+        .bar-group:hover rect { opacity: 0.85; }
+
+        /* Loading */
+        .loading-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(248, 249, 250, 0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .loading-overlay .spinner-border { color: #0d6efd; }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container-fluid">
+            <span class="navbar-brand">Metrics Viewer</span>
+            <span class="data-source" id="dataSourceLabel"></span>
+        </div>
+    </nav>
+
+    <div id="uploadSection">
+        <div class="upload-container">
+            <div class="dropzone" id="dropzone">
+                <h4>Drop combined metrics JSON here</h4>
+                <p class="text-muted">or click to select a file</p>
+                <p class="text-muted small">
+                    Generate with: <code>python3 basic_metrics.py combine **/metrics.json &gt; combined.json</code>
+                </p>
+                <input type="file" id="fileInput" accept=".json" style="display:none">
+            </div>
+            <div class="url-input-group input-group">
+                <input type="text" class="form-control" id="urlInput"
+                       placeholder="Or paste a URL to combined metrics JSON...">
+                <button class="btn btn-load" id="urlLoadBtn">Load</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="appSection" class="container-fluid mt-3">
+        <div class="row">
+            <div class="col-lg-8">
+                <div class="pane">
+                    <h5>Proof Time Breakdown</h5>
+                    <div id="barChart"></div>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="pane">
+                    <h5>Trace Cells by AIR <span id="pieRunName" class="text-muted" style="font-size:0.8rem"></span></h5>
+                    <div id="pieChart">
+                        <div class="pie-placeholder">Select a run to view trace cells</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-12">
+                <div class="pane">
+                    <h5>Summary Table</h5>
+                    <div style="overflow-x:auto">
+                        <table class="summary-table" id="summaryTable">
+                            <thead><tr></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="loading-overlay" id="loadingOverlay" style="display:none">
+        <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+
+<script>
+// ============================================================
+// State
+// ============================================================
+let combinedData = null;
+let allMetrics = [];
+let selectedRunName = null;
+
+// ============================================================
+// Data Processing (ports of Python logic)
+// ============================================================
+
+function loadMetricsDataframes(metricsJson) {
+    const entries = [...(metricsJson.counter || []), ...(metricsJson.gauge || [])].map(c => {
+        const obj = Object.fromEntries(c.labels);
+        obj.metric = c.metric;
+        obj.value = c.value;
+        return obj;
+    });
+
+    let app = entries.filter(e => (e.group || '').startsWith('app_proof'));
+    if (app.length === 0) {
+        app = entries.filter(e => (e.group || '').startsWith('reth'));
+    }
+    const leaf = entries.filter(e => (e.group || '').startsWith('leaf'));
+    const internal = entries.filter(e => (e.group || '').startsWith('internal'));
+
+    return { app, leaf, internal };
+}
+
+function isNormalInstructionAir(airName) {
+    const match = (airName || '').match(/^VmAirWrapper<[^,]+,\s*([^>]+?)(?:<(\d+)(?:,\s*\d+)*>)?\s*>$/);
+    if (!match) return false;
+    const coreName = match[1];
+    const numLimbs = match[2];
+    if (coreName === 'FieldExpressionCoreAir') return false;
+    if (numLimbs && parseInt(numLimbs) !== 4) return false;
+    return true;
+}
+
+function getMetric(df, metricName) {
+    return df.filter(e => e.metric === metricName)
+             .reduce((sum, e) => sum + parseFloat(e.value || 0), 0);
+}
+
+function extractMetrics(runName, metricsJson) {
+    const { app, leaf, internal } = loadMetricsDataframes(metricsJson);
+    const m = {};
+
+    m.name = runName;
+
+    const powdrAir = app.filter(e => (e.air_name || '').startsWith('PowdrAir'));
+    const nonPowdrAir = app.filter(e => !(e.air_name || '').startsWith('PowdrAir'));
+    const normalInstructionAir = nonPowdrAir.filter(e => isNormalInstructionAir(e.air_name || ''));
+    const openVmPrecompileAir = nonPowdrAir.filter(e => !isNormalInstructionAir(e.air_name || ''));
+
+    m.app_proof_time_ms = getMetric(app, 'total_proof_time_ms');
+    m.leaf_proof_time_ms = getMetric(leaf, 'total_proof_time_ms');
+    m.inner_recursion_proof_time_ms = getMetric(internal, 'total_proof_time_ms');
+    m.total_proof_time_ms = m.app_proof_time_ms + m.leaf_proof_time_ms + m.inner_recursion_proof_time_ms;
+
+    m.app_proof_time_excluding_trace_ms = getMetric(app, 'stark_prove_excluding_trace_time_ms');
+    m.leaf_proof_time_excluding_trace_ms = getMetric(leaf, 'stark_prove_excluding_trace_time_ms');
+    m.inner_recursion_proof_time_excluding_trace_ms = getMetric(internal, 'stark_prove_excluding_trace_time_ms');
+    m.total_proof_time_excluding_trace_ms = m.app_proof_time_excluding_trace_ms + m.leaf_proof_time_excluding_trace_ms + m.inner_recursion_proof_time_excluding_trace_ms;
+
+    const mainCols = getMetric(app, 'main_cols');
+    const prepCols = getMetric(app, 'prep_cols');
+    const permCols = getMetric(app, 'perm_cols');
+    m.app_proof_cols = mainCols + prepCols + permCols;
+
+    m.num_segments = app.reduce((max, e) => Math.max(max, parseFloat(e.segment || 0)), -1) + 1;
+
+    m.app_proof_cells = getMetric(app, 'total_cells');
+    m.app_execute_preflight_time_ms = getMetric(app, 'execute_preflight_time_ms');
+    m.app_execute_metered_time_ms = getMetric(app, 'execute_metered_time_ms');
+    m.app_trace_gen_time_ms = getMetric(app, 'trace_gen_time_ms');
+
+    m.app_other_ms = m.app_proof_time_ms
+        - m.app_proof_time_excluding_trace_ms
+        - m.app_execute_preflight_time_ms
+        - m.app_execute_metered_time_ms
+        - m.app_trace_gen_time_ms;
+    if (m.app_other_ms < 0) m.app_other_ms = 0;
+
+    const normalCells = getMetric(normalInstructionAir, 'cells');
+    const openVmCells = getMetric(openVmPrecompileAir, 'cells');
+    const powdrCells = getMetric(powdrAir, 'cells');
+
+    m.normal_instruction_ratio = m.app_proof_cells > 0 ? normalCells / m.app_proof_cells : 0;
+    m.openvm_precompile_ratio = m.app_proof_cells > 0 ? openVmCells / m.app_proof_cells : 0;
+    m.powdr_ratio = m.app_proof_cells > 0 ? powdrCells / m.app_proof_cells : 0;
+    m.powdr_rows = getMetric(powdrAir, 'rows');
+
+    return m;
+}
+
+function computeCellsByAir(metricsJson) {
+    const { app } = loadMetricsDataframes(metricsJson);
+    const cellEntries = app.filter(e => e.metric === 'cells');
+
+    const cellsByAir = {};
+    cellEntries.forEach(e => {
+        const name = e.air_name || 'unknown';
+        cellsByAir[name] = (cellsByAir[name] || 0) + parseFloat(e.value || 0);
+    });
+
+    // Sort descending
+    const sorted = Object.entries(cellsByAir).sort((a, b) => b[1] - a[1]);
+    const total = sorted.reduce((s, [, v]) => s + v, 0);
+
+    // Apply 1.5% threshold
+    const threshold = total * 0.015;
+    const large = [];
+    let otherSum = 0;
+    for (const [name, val] of sorted) {
+        if (val >= threshold) {
+            large.push({ name, value: val });
+        } else {
+            otherSum += val;
+        }
+    }
+    if (otherSum > 0) {
+        large.push({ name: 'Other', value: otherSum });
+    }
+
+    return { items: large, total };
+}
+
+// ============================================================
+// Components
+// ============================================================
+const COMPONENTS = [
+    { key: 'inner_recursion_proof_time_ms', label: 'Inner recursion', color: '#9b3e00' },
+    { key: 'leaf_proof_time_ms', label: 'Leaf recursion', color: '#d69600' },
+    { key: 'app_proof_time_excluding_trace_ms', label: 'App STARK (excl. trace)', color: '#1f77b4' },
+    { key: 'app_trace_gen_time_ms', label: 'App trace gen', color: '#6baed6' },
+    { key: 'app_execute_preflight_time_ms', label: 'App preflight', color: '#9ecae1' },
+    { key: 'app_execute_metered_time_ms', label: 'App metered', color: '#c6dbef' },
+    { key: 'app_other_ms', label: 'App other', color: '#08519c' },
+];
+
+// ============================================================
+// Format helpers
+// ============================================================
+function fmtSeconds(ms) { return (ms / 1000).toFixed(1) + 's'; }
+function fmtCells(n) {
+    if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+    if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+    return n.toLocaleString();
+}
+function fmtPct(ratio) { return (ratio * 100).toFixed(1) + '%'; }
+
+// ============================================================
+// Stacked Bar Chart
+// ============================================================
+function createBarChart(metrics) {
+    const container = d3.select('#barChart');
+    container.selectAll('*').remove();
+
+    const margin = { top: 30, right: 20, bottom: 80, left: 60 };
+    const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
+    const height = 400 - margin.top - margin.bottom;
+
+    const svg = container.append('svg')
+        .attr('width', width + margin.left + margin.right)
+        .attr('height', height + margin.top + margin.bottom);
+    const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+    const runNames = metrics.map(m => m.name);
+
+    // Compute stacked data
+    const stackData = metrics.map(m => {
+        const d = { name: m.name };
+        COMPONENTS.forEach(c => { d[c.key] = Math.max(0, m[c.key]) / 1000; }); // ms -> s
+        return d;
+    });
+
+    const keys = COMPONENTS.map(c => c.key);
+    const stack = d3.stack().keys(keys);
+    const series = stack(stackData);
+
+    const maxY = d3.max(stackData, d => keys.reduce((s, k) => s + d[k], 0));
+
+    const x = d3.scaleBand().domain(runNames).range([0, width]).padding(0.3);
+    const y = d3.scaleLinear().domain([0, maxY * 1.08]).range([height, 0]);
+
+    // Grid
+    g.append('g').attr('class', 'grid')
+        .call(d3.axisLeft(y).tickSize(-width).tickFormat(''))
+        .selectAll('line').attr('stroke', '#dee2e6').attr('stroke-opacity', 0.7);
+    g.selectAll('.grid .domain').remove();
+
+    // Tooltip
+    const tooltip = d3.select('body').append('div').attr('class', 'chart-tooltip').style('display', 'none');
+
+    // Bars
+    const colorMap = {};
+    COMPONENTS.forEach(c => { colorMap[c.key] = c.color; });
+    const labelMap = {};
+    COMPONENTS.forEach(c => { labelMap[c.key] = c.label; });
+
+    series.forEach(s => {
+        g.selectAll(`.bar-${s.key}`)
+            .data(s)
+            .enter().append('rect')
+            .attr('class', d => `bar-group bar-${d.data.name}`)
+            .attr('x', d => x(d.data.name))
+            .attr('y', d => y(d[1]))
+            .attr('height', d => y(d[0]) - y(d[1]))
+            .attr('width', x.bandwidth())
+            .attr('fill', colorMap[s.key])
+            .attr('data-run', d => d.data.name)
+            .on('click', (event, d) => selectRun(d.data.name))
+            .on('mouseover', (event, d) => {
+                const val = (d[1] - d[0]).toFixed(1);
+                const total = keys.reduce((sum, k) => sum + d.data[k], 0);
+                const pct = total > 0 ? ((d[1] - d[0]) / total * 100).toFixed(1) : '0';
+                tooltip.style('display', 'block')
+                    .html(`<strong>${d.data.name}</strong><br>${labelMap[s.key]}: ${val}s (${pct}%)`);
+            })
+            .on('mousemove', event => {
+                tooltip.style('left', (event.pageX + 12) + 'px').style('top', (event.pageY - 20) + 'px');
+            })
+            .on('mouseout', () => tooltip.style('display', 'none'));
+    });
+
+    // Value labels inside segments
+    const minLabelHeight = maxY * 0.03;
+    series.forEach(s => {
+        s.forEach(d => {
+            const val = d[1] - d[0];
+            if (val < minLabelHeight) return;
+            const total = keys.reduce((sum, k) => sum + d.data[k], 0);
+            const pct = total > 0 ? (val / total * 100).toFixed(1) : '0';
+            g.append('text')
+                .attr('x', x(d.data.name) + x.bandwidth() / 2)
+                .attr('y', y((d[0] + d[1]) / 2))
+                .attr('text-anchor', 'middle')
+                .attr('dominant-baseline', 'middle')
+                .attr('fill', '#333')
+                .attr('font-size', '10px')
+                .attr('font-weight', 'bold')
+                .attr('pointer-events', 'none')
+                .text(`${val.toFixed(1)} (${pct}%)`);
+        });
+    });
+
+    // Total labels on top
+    stackData.forEach(d => {
+        const total = keys.reduce((s, k) => s + d[k], 0);
+        g.append('text')
+            .attr('x', x(d.name) + x.bandwidth() / 2)
+            .attr('y', y(total) - 5)
+            .attr('text-anchor', 'middle')
+            .attr('fill', '#333')
+            .attr('font-size', '11px')
+            .attr('font-weight', 'bold')
+            .text(`Total: ${total.toFixed(1)}s`);
+    });
+
+    // Axes
+    g.append('g').attr('transform', `translate(0,${height})`)
+        .call(d3.axisBottom(x))
+        .selectAll('text').attr('fill', '#333');
+    g.append('g')
+        .call(d3.axisLeft(y).tickFormat(d => d.toFixed(1) + 's'))
+        .selectAll('text').attr('fill', '#333');
+
+    // Style axis lines
+    svg.selectAll('.domain').attr('stroke', '#dee2e6');
+    svg.selectAll('.tick line').attr('stroke', '#dee2e6');
+
+    // Legend
+    const legend = svg.append('g')
+        .attr('transform', `translate(${margin.left}, ${height + margin.top + 35})`);
+    const legendItemWidth = width / COMPONENTS.length;
+    COMPONENTS.forEach((c, i) => {
+        const lg = legend.append('g').attr('transform', `translate(${i * legendItemWidth}, 0)`);
+        lg.append('rect').attr('width', 12).attr('height', 12).attr('fill', c.color).attr('rx', 2);
+        lg.append('text').attr('x', 16).attr('y', 10).text(c.label)
+            .attr('fill', '#666').attr('font-size', '10px');
+    });
+
+    updateBarSelection();
+}
+
+function updateBarSelection() {
+    d3.selectAll('#barChart rect[data-run]').each(function() {
+        const el = d3.select(this);
+        if (el.attr('data-run') === selectedRunName) {
+            el.attr('stroke', '#ffc107').attr('stroke-width', 3);
+        } else {
+            el.attr('stroke', 'none');
+        }
+    });
+}
+
+// ============================================================
+// Summary Table
+// ============================================================
+const TABLE_COLUMNS = [
+    { key: 'name', label: 'Run', fmt: v => v },
+    { key: 'num_segments', label: 'Segments', fmt: v => v },
+    { key: 'app_proof_cells', label: 'App Cells', fmt: fmtCells },
+    { key: 'total_proof_time_ms', label: 'Total Time', fmt: fmtSeconds },
+    { key: 'app_proof_time_ms', label: 'App Time', fmt: fmtSeconds },
+    { key: 'leaf_proof_time_ms', label: 'Leaf Time', fmt: fmtSeconds },
+    { key: 'inner_recursion_proof_time_ms', label: 'Inner Recursion', fmt: fmtSeconds },
+    { key: 'app_trace_gen_time_ms', label: 'Trace Gen', fmt: fmtSeconds },
+    { key: 'powdr_ratio', label: 'Powdr Ratio', fmt: fmtPct },
+    { key: 'normal_instruction_ratio', label: 'Normal Instr Ratio', fmt: fmtPct },
+    { key: 'openvm_precompile_ratio', label: 'OpenVM Precomp Ratio', fmt: fmtPct },
+];
+
+let tableSortKey = 'name';
+let tableSortAsc = true;
+
+function createSummaryTable(metrics) {
+    const table = document.getElementById('summaryTable');
+    const thead = table.querySelector('thead tr');
+    const tbody = table.querySelector('tbody');
+
+    thead.innerHTML = '';
+    TABLE_COLUMNS.forEach(col => {
+        const th = document.createElement('th');
+        th.textContent = col.label;
+        th.onclick = () => {
+            if (tableSortKey === col.key) {
+                tableSortAsc = !tableSortAsc;
+            } else {
+                tableSortKey = col.key;
+                tableSortAsc = true;
+            }
+            renderTableBody(metrics);
+        };
+        thead.appendChild(th);
+    });
+
+    renderTableBody(metrics);
+}
+
+function renderTableBody(metrics) {
+    const tbody = document.querySelector('#summaryTable tbody');
+    tbody.innerHTML = '';
+
+    const sorted = [...metrics].sort((a, b) => {
+        const va = a[tableSortKey], vb = b[tableSortKey];
+        const cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
+        return tableSortAsc ? cmp : -cmp;
+    });
+
+    sorted.forEach(m => {
+        const tr = document.createElement('tr');
+        if (m.name === selectedRunName) tr.classList.add('selected');
+        tr.onclick = () => selectRun(m.name);
+        TABLE_COLUMNS.forEach(col => {
+            const td = document.createElement('td');
+            td.textContent = col.fmt(m[col.key]);
+            tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+    });
+}
+
+function updateTableSelection() {
+    document.querySelectorAll('#summaryTable tbody tr').forEach(tr => {
+        const name = tr.querySelector('td')?.textContent;
+        tr.classList.toggle('selected', name === selectedRunName);
+    });
+}
+
+// ============================================================
+// Pie Chart
+// ============================================================
+function createPieChart(runName) {
+    const container = d3.select('#pieChart');
+    container.selectAll('*').remove();
+    document.getElementById('pieRunName').textContent = runName ? `(${runName})` : '';
+
+    if (!runName || !combinedData[runName]) {
+        container.append('div').attr('class', 'pie-placeholder').text('Select a run to view trace cells');
+        return;
+    }
+
+    const { items, total } = computeCellsByAir(combinedData[runName]);
+    if (items.length === 0) {
+        container.append('div').attr('class', 'pie-placeholder').text('No cell data available');
+        return;
+    }
+
+    const size = 380;
+    const radius = size / 2 - 10;
+    const svg = container.append('svg')
+        .attr('width', size)
+        .attr('height', size + items.length * 18 + 20);
+    const g = svg.append('g').attr('transform', `translate(${size/2},${size/2})`);
+
+    const colors = d3.scaleOrdinal()
+        .domain(items.map(d => d.name))
+        .range(d3.quantize(t => d3.interpolateSpectral(t * 0.8 + 0.1), Math.max(items.length, 3)));
+
+    const pie = d3.pie().value(d => d.value).sort(null);
+    const arc = d3.arc().innerRadius(0).outerRadius(radius);
+
+    const arcs = g.selectAll('arc')
+        .data(pie(items))
+        .enter().append('g');
+
+    arcs.append('path')
+        .attr('d', arc)
+        .attr('fill', d => colors(d.data.name))
+        .attr('stroke', 'white')
+        .attr('stroke-width', 1.5);
+
+    // Labels for big slices
+    const labelArcs = arcs.filter(d => d.data.value / total > 0.05);
+    labelArcs.append('text')
+        .attr('transform', d => `translate(${arc.centroid(d)})`)
+        .attr('text-anchor', 'middle')
+        .attr('fill', '#333')
+        .attr('font-size', '10px')
+        .attr('font-weight', 'bold')
+        .each(function(d) {
+            const pct = (d.data.value / total * 100).toFixed(1);
+            const billions = (d.data.value / 1e9).toFixed(2);
+            d3.select(this).append('tspan').attr('x', 0).attr('dy', '-0.4em').text(`${pct}%`);
+            d3.select(this).append('tspan').attr('x', 0).attr('dy', '1.2em').text(`${billions}B`);
+        });
+
+    // Legend below pie
+    const legendG = svg.append('g')
+        .attr('transform', `translate(10, ${size + 10})`);
+
+    items.forEach((item, i) => {
+        const lg = legendG.append('g').attr('transform', `translate(0, ${i * 18})`);
+        lg.append('rect').attr('width', 12).attr('height', 12).attr('fill', colors(item.name)).attr('rx', 2);
+        const pct = (item.value / total * 100).toFixed(1);
+        lg.append('text').attr('x', 18).attr('y', 10)
+            .attr('fill', '#333').attr('font-size', '11px')
+            .text(`${pct}% - ${item.name}`);
+    });
+}
+
+// ============================================================
+// Selection
+// ============================================================
+function selectRun(runName) {
+    if (selectedRunName === runName) {
+        selectedRunName = null;
+    } else {
+        selectedRunName = runName;
+    }
+    updateBarSelection();
+    updateTableSelection();
+    createPieChart(selectedRunName);
+    updateUrl();
+}
+
+// ============================================================
+// Data Loading
+// ============================================================
+function processAndRender(data) {
+    combinedData = data;
+    allMetrics = Object.entries(data).map(([name, json]) => extractMetrics(name, json));
+
+    document.getElementById('uploadSection').style.display = 'none';
+    document.getElementById('appSection').style.display = 'block';
+
+    createBarChart(allMetrics);
+    createSummaryTable(allMetrics);
+    createPieChart(selectedRunName);
+}
+
+function handleFile(file) {
+    const reader = new FileReader();
+    reader.onload = e => {
+        try {
+            const data = JSON.parse(e.target.result);
+            document.getElementById('dataSourceLabel').textContent = file.name;
+            processAndRender(data);
+        } catch (err) {
+            alert('Failed to parse JSON: ' + err.message);
+        }
+    };
+    reader.readAsText(file);
+}
+
+async function loadFromUrl(url) {
+    // Convert GitHub blob URLs to raw
+    const rawUrl = url.replace(
+        /github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.*)/,
+        'raw.githubusercontent.com/$1/$2/$3/$4'
+    );
+
+    document.getElementById('loadingOverlay').style.display = 'flex';
+    try {
+        const resp = await fetch(rawUrl);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        document.getElementById('dataSourceLabel').textContent = url.split('/').pop();
+        processAndRender(data);
+    } catch (err) {
+        alert('Failed to load: ' + err.message);
+    } finally {
+        document.getElementById('loadingOverlay').style.display = 'none';
+    }
+}
+
+// ============================================================
+// URL Parameters
+// ============================================================
+function updateUrl() {
+    const params = new URLSearchParams(window.location.search);
+    if (selectedRunName) {
+        params.set('run', selectedRunName);
+    } else {
+        params.delete('run');
+    }
+    const newUrl = window.location.pathname + '?' + params.toString();
+    history.replaceState(null, '', newUrl);
+}
+
+// ============================================================
+// Event Handlers
+// ============================================================
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+dropzone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropzone.classList.remove('drag-over');
+    if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => { if (fileInput.files.length) handleFile(fileInput.files[0]); });
+
+document.getElementById('urlLoadBtn').addEventListener('click', () => {
+    const url = document.getElementById('urlInput').value.trim();
+    if (url) loadFromUrl(url);
+});
+document.getElementById('urlInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+        const url = e.target.value.trim();
+        if (url) loadFromUrl(url);
+    }
+});
+
+// Responsive chart redraw
+window.addEventListener('resize', () => {
+    if (allMetrics.length > 0) {
+        createBarChart(allMetrics);
+        if (selectedRunName) createPieChart(selectedRunName);
+    }
+});
+
+// Auto-load from URL params
+(function init() {
+    const params = new URLSearchParams(window.location.search);
+    const dataUrl = params.get('data') || params.get('url');
+    const run = params.get('run');
+    if (run) selectedRunName = run;
+    if (dataUrl) loadFromUrl(dataUrl);
+})();
+</script>
+</body>
+</html>

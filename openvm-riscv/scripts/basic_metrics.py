@@ -1,11 +1,25 @@
 #!/usr/bin/env python3
 
 import argparse
+import json
+import os
 from collections import OrderedDict
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoMinorLocator
 from metrics_utils import load_metrics_dataframes, is_normal_instruction_air
+
+
+def get_label(filepath):
+    """Extract a label from a metrics file path.
+
+    Use parent directory name if file is metrics.json, otherwise use filename without extension.
+    """
+    basename = os.path.basename(filepath)
+    if basename == "metrics.json":
+        return os.path.basename(os.path.dirname(filepath))
+    else:
+        return os.path.splitext(basename)[0]
 
 def extract_metrics(filename):
     app, leaf, internal = load_metrics_dataframes(filename)
@@ -105,15 +119,6 @@ def plot(metrics_files, output):
         ("app_other_ms", "App other", "#08519c"),                                     
     ]
 
-    # Extract labels from filenames
-    # Use parent directory name if file is metrics.json, otherwise use filename without extension
-    import os
-    def get_label(filepath):
-        basename = os.path.basename(filepath)
-        if basename == "metrics.json":
-            return os.path.basename(os.path.dirname(filepath))
-        else:
-            return os.path.splitext(basename)[0]
     x_labels = [get_label(f) for f in df["filename"]]
 
     import numpy as np
@@ -193,6 +198,15 @@ def plot(metrics_files, output):
     else:
         plt.show()
 
+def combine(metrics_files):
+    combined = OrderedDict()
+    for filepath in metrics_files:
+        label = get_label(filepath)
+        with open(filepath) as f:
+            combined[label] = json.load(f)
+    print(json.dumps(combined, indent=2))
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Print basic metrics from a set of metrics JSON files.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -205,8 +219,13 @@ if __name__ == "__main__":
     plot_parser.add_argument('metrics_files', nargs='+', help='Paths to the metrics JSON files')
     plot_parser.add_argument('--output', '-o', help='Output file path (if not specified, displays interactively)')
 
+    combine_parser = subparsers.add_parser("combine", help="Combine metrics JSON files into a single JSON")
+    combine_parser.add_argument('metrics_files', nargs='+', help='Paths to the metrics JSON files')
+
     args = parser.parse_args()
     if args.command == "summary-table":
         summary_table(args.metrics_files, args.csv)
     elif args.command == "plot":
         plot(args.metrics_files, args.output)
+    elif args.command == "combine":
+        combine(args.metrics_files)
