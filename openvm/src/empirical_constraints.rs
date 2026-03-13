@@ -5,8 +5,7 @@ use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
 use itertools::Itertools;
 use openvm_circuit::arch::VmCircuitConfig;
-use openvm_sdk::StdIn;
-use openvm_stark_backend::p3_field::FieldAlgebra;
+use openvm_stark_backend::p3_field::PrimeCharacteristicRing;
 use openvm_stark_backend::p3_maybe_rayon::prelude::IntoParallelIterator;
 use openvm_stark_backend::p3_maybe_rayon::prelude::ParallelIterator;
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
@@ -20,6 +19,7 @@ use powdr_autoprecompiles::expression::RowEvaluator;
 use powdr_autoprecompiles::optimistic::config::optimistic_precompile_config;
 use powdr_autoprecompiles::DegreeBound;
 use powdr_openvm_bus_interaction_handler::bus_map::default_openvm_bus_map;
+use sdk_v2::StdIn;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -128,8 +128,12 @@ fn detect_empirical_constraints_from_input<ISA: OpenVmISA>(
             .enumerate()
             .collect::<HashMap<_, _>>();
 
-        for (air_id, proving_context) in &ctx.per_air {
-            let main = proving_context.common_main.as_ref().unwrap();
+        for (air_id, proving_context) in &ctx.per_trace {
+            // Convert to row-major for row-based iteration
+            let main = openvm_stark_backend::prover::StridedColMajorMatrixView::from(
+                proving_context.common_main.as_view(),
+            )
+            .to_row_major_matrix();
             let air_name = global_airs[air_id].name();
             let Some(machine) = &airs.get_air_machine(&air_name) else {
                 // air_name_to_machine only contains instruction AIRs, and we are only

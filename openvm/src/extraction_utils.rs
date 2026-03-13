@@ -7,18 +7,12 @@ use openvm_circuit::arch::{
     AirInventory, AirInventoryError, ExecutorInventory, ExecutorInventoryError, SystemConfig,
     VmCircuitConfig, VmExecutionConfig,
 };
-use openvm_circuit::system::memory::interface::MemoryInterfaceAirs;
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
 use openvm_instructions::VmOpcode;
 use openvm_stark_backend::air_builders::symbolic::SymbolicRapBuilder;
-use openvm_stark_backend::interaction::fri_log_up::find_interaction_chunks;
 use openvm_stark_backend::{
-    air_builders::symbolic::SymbolicConstraints, config::StarkGenericConfig, rap::AnyRap,
-};
-use openvm_stark_sdk::config::{
-    baby_bear_poseidon2::{config_from_perm, default_perm},
-    fri_params::SecurityParameters,
+    air_builders::symbolic::SymbolicConstraints, p3_air::BaseAir, AnyAir, StarkProtocolConfig,
 };
 use openvm_stark_sdk::p3_baby_bear::{self, BabyBear};
 use powdr_autoprecompiles::bus_map::BusType;
@@ -41,9 +35,6 @@ use crate::utils::symbolic_to_algebraic;
 use crate::utils::UnsupportedOpenVmReferenceError;
 use crate::AirMetrics;
 use crate::{air_builder::AirKeygenBuilder, BabyBearSC};
-
-// TODO: Use `<PackedChallenge<BabyBearSC> as FieldExtensionAlgebra<Val<BabyBearSC>>>::D` instead after fixing p3 dependency
-const EXT_DEGREE: usize = 4;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct OriginalAirs<F, ISA> {
@@ -344,15 +335,7 @@ impl<ISA: OpenVmISA> OriginalVmConfig<ISA> {
                         BusType::ExecutionBridge,
                     ),
                     (
-                        // TODO: make getting memory bus index a helper function
-                        match &memory_air.interface {
-                            MemoryInterfaceAirs::Volatile { boundary } => {
-                                boundary.memory_bus.inner.index
-                            }
-                            MemoryInterfaceAirs::Persistent { boundary, .. } => {
-                                boundary.memory_bus.inner.index
-                            }
-                        },
+                        memory_air.interface.boundary.memory_bus.inner.index,
                         BusType::Memory,
                     ),
                     (connector_air.program_bus.index(), BusType::PcLookup),
@@ -395,8 +378,8 @@ impl<ISA: OpenVmISA> OriginalVmConfig<ISA> {
     }
 }
 
-pub fn get_columns(air: Arc<dyn AnyRap<BabyBearSC>>) -> Vec<Arc<String>> {
-    let width = air.width();
+pub fn get_columns(air: Arc<dyn AnyAir<BabyBearSC>>) -> Vec<Arc<String>> {
+    let width = <dyn AnyAir<BabyBearSC> as BaseAir<BabyBear>>::width(air.as_ref());
     air.columns()
         .inspect(|columns| {
             assert_eq!(columns.len(), width);
@@ -407,19 +390,19 @@ pub fn get_columns(air: Arc<dyn AnyRap<BabyBearSC>>) -> Vec<Arc<String>> {
         .collect()
 }
 
-pub fn get_name<SC: StarkGenericConfig>(air: Arc<dyn AnyRap<SC>>) -> String {
+pub fn get_name<SC: StarkProtocolConfig>(air: Arc<dyn AnyAir<SC>>) -> String {
     air.name()
 }
 
 pub fn get_constraints(
-    air: Arc<dyn AnyRap<BabyBearSC>>,
+    air: Arc<dyn AnyAir<BabyBearSC>>,
 ) -> SymbolicConstraints<p3_baby_bear::BabyBear> {
     let builder = symbolic_builder_with_degree(air, None);
     builder.constraints()
 }
 
-pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>, max_degree: usize) -> AirMetrics {
-    let main = air.width();
+pub fn get_air_metrics(air: Arc<dyn AnyAir<BabyBearSC>>, max_degree: usize) -> AirMetrics {
+    let main = <dyn AnyAir<BabyBearSC> as BaseAir<BabyBear>>::width(air.as_ref());
 
     let symbolic_rap_builder = symbolic_builder_with_degree(air, Some(max_degree));
     let preprocessed = symbolic_rap_builder.width().preprocessed.unwrap_or(0);
@@ -429,31 +412,18 @@ pub fn get_air_metrics(air: Arc<dyn AnyRap<BabyBearSC>>, max_degree: usize) -> A
         interactions,
     } = symbolic_rap_builder.constraints();
 
-    let log_up = (find_interaction_chunks(&interactions, max_degree)
-        .interaction_partitions()
-        .len()
-        + 1)
-        * EXT_DEGREE;
-
     AirMetrics {
-        widths: AirWidths {
-            preprocessed,
-            main,
-            log_up,
-        },
+        widths: AirWidths { preprocessed, main },
         constraints: constraints.len(),
         bus_interactions: interactions.len(),
     }
 }
 
 pub fn symbolic_builder_with_degree(
-    air: Arc<dyn AnyRap<BabyBearSC>>,
+    air: Arc<dyn AnyAir<BabyBearSC>>,
     max_constraint_degree: Option<usize>,
 ) -> SymbolicRapBuilder<p3_baby_bear::BabyBear> {
-    let perm = default_perm();
-    let security_params = SecurityParameters::standard_fast();
-    let config = config_from_perm(&perm, security_params);
-    let air_keygen_builder = AirKeygenBuilder::new(config.pcs(), air);
+    let air_keygen_builder = AirKeygenBuilder::new(air);
     air_keygen_builder.get_symbolic_builder(max_constraint_degree)
 }
 
@@ -461,7 +431,6 @@ pub fn symbolic_builder_with_degree(
 pub struct AirWidths {
     pub preprocessed: usize,
     pub main: usize,
-    pub log_up: usize,
 }
 
 impl Add for AirWidths {
@@ -470,7 +439,6 @@ impl Add for AirWidths {
         AirWidths {
             preprocessed: self.preprocessed + rhs.preprocessed,
             main: self.main + rhs.main,
-            log_up: self.log_up + rhs.log_up,
         }
     }
 }
@@ -481,7 +449,6 @@ impl Sub for AirWidths {
         AirWidths {
             preprocessed: self.preprocessed - rhs.preprocessed,
             main: self.main - rhs.main,
-            log_up: self.log_up - rhs.log_up,
         }
     }
 }
@@ -494,7 +461,7 @@ impl Sum<AirWidths> for AirWidths {
 
 impl AirWidths {
     pub fn total(&self) -> usize {
-        self.preprocessed + self.main + self.log_up
+        self.preprocessed + self.main
     }
 }
 
@@ -502,11 +469,10 @@ impl std::fmt::Display for AirWidths {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Total Width: {} (Preprocessed: {} Main: {}, Log Up: {})",
-            self.preprocessed + self.main + self.log_up,
+            "Total Width: {} (Preprocessed: {}, Main: {})",
+            self.preprocessed + self.main,
             self.preprocessed,
             self.main,
-            self.log_up
         )
     }
 }

@@ -4,19 +4,19 @@ use std::sync::Arc;
 use openvm_circuit::arch::{
     AirInventory, AirInventoryError, AnyEnum, ChipInventory, ChipInventoryError, DenseRecordArena,
     Executor, InterpreterExecutor, MatrixRecordArena, MeteredExecutor, PreflightExecutor,
-    VmBuilder, VmChipComplex, VmCircuitExtension, VmConfig, VmExecutionConfig,
+    VmBuilder, VmChipComplex, VmCircuitExtension, VmConfig, VmExecutionConfig, VmField,
 };
 #[cfg(feature = "cuda")]
 use openvm_circuit::system::cuda::SystemChipInventoryGPU;
 use openvm_circuit::system::SystemChipInventory;
 #[cfg(feature = "cuda")]
-use openvm_cuda_backend::engine::GpuBabyBearPoseidon2Engine;
+use openvm_cuda_backend::BabyBearPoseidon2GpuEngine as GpuBabyBearPoseidon2CpuEngine;
 #[cfg(feature = "cuda")]
-use openvm_cuda_backend::prover_backend::GpuBackend;
+use openvm_cuda_backend::GpuBackend;
 use openvm_instructions::{instruction::Instruction, VmOpcode};
-use openvm_sdk::config::TranspilerConfig;
-use openvm_stark_backend::{config::Val, p3_field::PrimeField32, prover::cpu::CpuBackend};
-use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
+use openvm_sdk_config::TranspilerConfig;
+use openvm_stark_backend::{p3_field::PrimeField32, prover::CpuBackend, Val};
+use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2CpuEngine;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_riscv_elf::debug_info::SymbolTable;
 
@@ -47,7 +47,7 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
     /// The original linked program, for example, an elf for riscv. It must allow recovering the jump destinations.
     type LinkedProgram<'a>;
 
-    type Executor<F: PrimeField32>: AnyEnum
+    type Executor<F: VmField>: AnyEnum
         + InterpreterExecutor<F>
         + Executor<F>
         + MeteredExecutor<F>
@@ -64,7 +64,7 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
     type CpuBuilder: Clone
         + Default
         + VmBuilder<
-            BabyBearPoseidon2Engine,
+            BabyBearPoseidon2CpuEngine,
             VmConfig = Self::Config,
             SystemChipInventory = SystemChipInventory<BabyBearSC>,
             RecordArena = MatrixRecordArena<Val<BabyBearSC>>,
@@ -74,7 +74,7 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
     type GpuBuilder: Clone
         + Default
         + VmBuilder<
-            GpuBabyBearPoseidon2Engine,
+            GpuBabyBearPoseidon2CpuEngine,
             VmConfig = Self::Config,
             SystemChipInventory = SystemChipInventoryGPU,
             RecordArena = DenseRecordArena,
