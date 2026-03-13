@@ -40,9 +40,8 @@ fn merge_with_target_on_unconditional_jump_impl<I: Clone>(
         }
 
         // Get the last instruction of the block, and optionally the one before that
-        let mut rev = curr.instructions.iter().rev();
-        let last = rev.next().unwrap();
-        let previous = rev.next();
+        let (last, rest) = curr.instructions.split_last().unwrap();
+        let previous = rest.last();
 
         // Check if it jumps to some static target
         if let Some(target_pc) = unconditional_jump_target(last, previous) {
