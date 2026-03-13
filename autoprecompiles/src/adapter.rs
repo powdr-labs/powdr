@@ -139,6 +139,13 @@ where
 
     fn is_branching(instr: &Self::Instruction) -> bool;
 
+    /// Returns the static jump target of after a series of instructions, if known.
+    /// For now, we have a fixed window of two instructions.
+    fn static_jump_target(
+        instruction: &(u64, Self::Instruction),
+        previous: Option<&(u64, Self::Instruction)>,
+    ) -> Option<u64>;
+
     fn is_allowed(instr: &Self::Instruction) -> bool;
 }
 

@@ -67,7 +67,7 @@ pub fn evaluate_apc<A: Adapter>(
     let before = apc
         .block
         .instructions()
-        .map(|instruction| instruction_handler.get_instruction_air_stats(instruction))
+        .map(|instruction| instruction_handler.get_instruction_air_stats(&instruction.1))
         .sum();
     let after = AirStats::new(apc.machine());
     let evaluation_result = EvaluationResult { before, after };

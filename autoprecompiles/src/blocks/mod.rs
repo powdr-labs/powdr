@@ -3,6 +3,7 @@ use std::{
     fmt::Display,
 };
 
+use derive_where::derive_where;
 use itertools::Itertools;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
@@ -17,17 +18,22 @@ pub use detection::collect_basic_blocks;
 use crate::PowdrConfig;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive_where(Default)]
 /// A sequence of instructions starting at a given PC.
 pub struct BasicBlock<I> {
-    /// The program counter of the first instruction in this block.
-    pub start_pc: u64,
-    pub instructions: Vec<I>,
+    pub instructions: Vec<(u64, I)>,
+}
+
+impl<I> BasicBlock<I> {
+    pub fn start_pc(&self) -> u64 {
+        self.instructions[0].0
+    }
 }
 
 impl<I: PcStep> BasicBlock<I> {
     /// Returns an iterator over the program counters of the instructions in this block.
     pub fn pcs(&self) -> impl Iterator<Item = u64> + '_ {
-        (0..self.instructions.len()).map(move |i| self.start_pc + (i as u64 * I::pc_step() as u64))
+        self.instructions.iter().map(|(pc, _)| *pc)
     }
 }
 
@@ -68,7 +74,7 @@ impl<I> SuperBlock<I> {
 
     /// Sequence of basic block start PCs, uniquely identifies this superblock
     pub fn start_pcs(&self) -> Vec<u64> {
-        self.blocks.iter().map(|b| b.start_pc).collect()
+        self.blocks.iter().map(|b| b.start_pc()).collect()
     }
 
     /// For each basic block in the superblock, returns the index of its first instruction
@@ -78,7 +84,7 @@ impl<I> SuperBlock<I> {
         self.blocks
             .iter()
             .map(|b| {
-                let elem = (idx, b.start_pc);
+                let elem = (idx, b.start_pc());
                 idx += b.instructions.len();
                 elem
             })
@@ -91,12 +97,12 @@ impl<I> SuperBlock<I> {
     }
 
     /// Sequence of instructions across all basic blocks in this superblock
-    pub fn instructions(&self) -> impl Iterator<Item = &I> + Clone {
+    pub fn instructions(&self) -> impl Iterator<Item = &(u64, I)> + Clone {
         self.blocks.iter().flat_map(|b| &b.instructions)
     }
 
     /// Parallel iterator over instructions across all basic blocks in this superblock
-    pub fn par_instructions(&self) -> impl IndexedParallelIterator<Item = &I>
+    pub fn par_instructions(&self) -> impl IndexedParallelIterator<Item = &(u64, I)>
     where
         I: Sync,
     {
@@ -114,8 +120,11 @@ impl<I> SuperBlock<I> {
                 .blocks
                 .into_iter()
                 .map(|b| BasicBlock {
-                    start_pc: b.start_pc,
-                    instructions: b.instructions.into_iter().map(f.clone()).collect(),
+                    instructions: b
+                        .instructions
+                        .into_iter()
+                        .map(|(pc, i)| (pc, f(i)))
+                        .collect(),
                 })
                 .collect(),
         }
@@ -135,12 +144,10 @@ impl<I: Display> Display for SuperBlock<I> {
             return bb.fmt(f);
         }
         writeln!(f, "SuperBlock(")?;
-        let mut insn_idx = 0;
         for block in &self.blocks {
-            writeln!(f, "   pc: {}, statements: [", block.start_pc)?;
-            for instr in block.instructions.iter() {
-                writeln!(f, "      instr {insn_idx:>3}:   {instr}")?;
-                insn_idx += 1;
+            writeln!(f, "   statements: [")?;
+            for (pc, instr) in block.instructions.iter() {
+                writeln!(f, "      instr {pc:>3}:   {instr}")?;
             }
             write!(f, "   ],")?;
         }
@@ -150,9 +157,9 @@ impl<I: Display> Display for SuperBlock<I> {
 
 impl<I: Display> Display for BasicBlock<I> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "BasicBlock(start_pc: {}, statements: [", self.start_pc)?;
-        for (i, instr) in self.instructions.iter().enumerate() {
-            writeln!(f, "   instr {i:>3}:   {instr}")?;
+        writeln!(f, "BasicBlock(statements: [")?;
+        for (i, (pc, instr)) in self.instructions.iter().enumerate() {
+            writeln!(f, "   instr {i:>3} (pc = {pc}):   {instr}")?;
         }
         write!(f, "])")
     }
@@ -344,7 +351,7 @@ pub fn detect_superblocks<I: Clone>(
     // index basic blocks by start PC
     let start_pc_to_bb: HashMap<_, _> = basic_blocks
         .into_iter()
-        .map(|bb| (bb.start_pc, bb))
+        .map(|bb| (bb.start_pc(), bb))
         .collect();
 
     let execution_bb_runs = detect_execution_bb_runs(&start_pc_to_bb, execution_pc_list);
@@ -450,8 +457,7 @@ mod test {
     #[test]
     fn test_detect_superblocks_counts_and_execution_runs() {
         let bb = |start_pc: u64, len: usize| BasicBlock {
-            start_pc,
-            instructions: vec![(); len],
+            instructions: (0..len).map(|pc| (start_pc + pc as u64, ())).collect(),
         };
 
         let cfg = PowdrConfig::new(

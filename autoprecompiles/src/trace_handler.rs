@@ -57,7 +57,7 @@ where
         .clone()
         .map(|(instruction, _)| {
             instruction_handler
-                .get_instruction_air_and_id(instruction)
+                .get_instruction_air_and_id(&instruction.1)
                 .0
         })
         .collect::<Vec<_>>();

@@ -122,7 +122,7 @@ impl<'a, ISA: OpenVmISA> Adapter for BabyBearOpenVmApcAdapter<'a, ISA> {
         // Sum up the metrics for each instruction
         let width_before = apc
             .instructions()
-            .map(|instr| {
+            .map(|(_, instr)| {
                 instruction_handler
                     .get_instruction_metrics(instr.inner.opcode)
                     .unwrap()
@@ -139,6 +139,13 @@ impl<'a, ISA: OpenVmISA> Adapter for BabyBearOpenVmApcAdapter<'a, ISA> {
 
     fn is_branching(instruction: &Self::Instruction) -> bool {
         ISA::branching_opcodes().contains(&instruction.inner.opcode)
+    }
+
+    fn static_jump_target(
+        instruction: &(u64, Self::Instruction),
+        previous: Option<&(u64, Self::Instruction)>,
+    ) -> Option<u64> {
+        ISA::static_jump_target(instruction, previous)
     }
 }
 
@@ -227,13 +234,13 @@ pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAd
         tracing::debug!("Basic blocks sorted by execution count (top 10):");
         for (count, block) in blocks
             .iter()
-            .filter_map(|block| Some((pgo.pc_execution_count(block.start_pc)?, block)))
+            .filter_map(|block| Some((pgo.pc_execution_count(block.start_pc())?, block)))
             .sorted_by_key(|(count, _)| *count)
             .rev()
             .take(10)
         {
             let name = symbols
-                .try_get_one_or_preceding(block.start_pc)
+                .try_get_one_or_preceding(block.start_pc())
                 .map(|(symbol, offset)| format!("{} + {offset}", symbol))
                 .unwrap_or_default();
             tracing::debug!("Basic block (executed {count} times), {name}:\n{block}",);
@@ -275,7 +282,7 @@ pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAd
                 .block
                 .try_as_basic_block()
                 .expect("Superblocks not yet supported in OpenVM")
-                .start_pc;
+                .start_pc();
             let start_index = ((start_pc - pc_base as u64) / pc_step as u64)
                 .try_into()
                 .unwrap();
