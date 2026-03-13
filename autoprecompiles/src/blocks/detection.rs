@@ -5,22 +5,31 @@ use crate::{
     blocks::{BasicBlock, PcStep, Program},
 };
 
+/// Given a set of basic blocks, return a new set where if A unconditionally leads to B, then A replaced by AB in the set. B is left in the set.
 fn merge_with_target_on_unconditional_jump_impl<I: Clone>(
     blocks: &[BasicBlock<I>],
-    unconditional_jump_target: &impl Fn(&I, u64) -> Option<u64>,
+    unconditional_jump_target: &impl Fn(&(u64, I), Option<&(u64, I)>) -> Option<u64>,
 ) -> Vec<BasicBlock<I>> {
     let blocks_by_start_pc: HashMap<u64, &BasicBlock<I>> =
         blocks.iter().map(|b| (b.start_pc(), b)).collect();
-    let mut memo: HashMap<u64, Vec<(u64, I)>> = HashMap::new();
+    assert_eq!(
+        blocks.len(),
+        blocks_by_start_pc.len(),
+        "two basic blocks start at the same pc"
+    );
 
+    // A cache of the merged blocks found so far
+    let mut tails: HashMap<u64, Vec<(u64, I)>> = HashMap::new();
+
+    // Recursively expand one basic block
     fn expanded_block_instructions<I: Clone>(
         start_pc: u64,
         blocks_by_start_pc: &HashMap<u64, &BasicBlock<I>>,
-        unconditional_jump_target: &impl Fn(&I, u64) -> Option<u64>,
-        memo: &mut HashMap<u64, Vec<(u64, I)>>,
+        unconditional_jump_target: &impl Fn(&(u64, I), Option<&(u64, I)>) -> Option<u64>,
+        tails: &mut HashMap<u64, Vec<(u64, I)>>,
         visiting: &mut BTreeSet<u64>,
     ) -> Vec<(u64, I)> {
-        if let Some(cached) = memo.get(&start_pc) {
+        if let Some(cached) = tails.get(&start_pc) {
             return cached.clone();
         }
         let curr = blocks_by_start_pc[&start_pc];
@@ -30,26 +39,36 @@ fn merge_with_target_on_unconditional_jump_impl<I: Clone>(
             return instructions;
         }
 
-        if let Some((last_pc, last_instr)) = curr.instructions.last() {
-            if let Some(target_pc) = unconditional_jump_target(last_instr, *last_pc) {
-                if target_pc != start_pc && blocks_by_start_pc.contains_key(&target_pc) {
-                    let target_instructions = expanded_block_instructions(
-                        target_pc,
-                        blocks_by_start_pc,
-                        unconditional_jump_target,
-                        memo,
-                        visiting,
-                    );
-                    instructions.extend(target_instructions);
-                }
-            }
+        // Get the last instruction of the block, and optionally the one before that
+        let mut rev = curr.instructions.iter().rev();
+        let last = rev.next().unwrap();
+        let previous = rev.next();
+
+        // Check if it jumps to some static target
+        if let Some(target_pc) = unconditional_jump_target(last, previous) {
+            assert!(target_pc != start_pc, "infinite basic block loop");
+            assert!(
+                blocks_by_start_pc.contains_key(&target_pc),
+                "unconditional jump target is not a jumpdest"
+            );
+            // Recursively expand the target
+            let target_instructions = expanded_block_instructions(
+                target_pc,
+                blocks_by_start_pc,
+                unconditional_jump_target,
+                tails,
+                visiting,
+            );
+            // Merge the current block with the expansion of its target block
+            instructions.extend(target_instructions);
         }
 
         visiting.remove(&start_pc);
-        memo.insert(start_pc, instructions.clone());
+        tails.insert(start_pc, instructions.clone());
         instructions
     }
 
+    // Go through all block and expand them
     blocks
         .iter()
         .map(|b| {
@@ -59,7 +78,7 @@ fn merge_with_target_on_unconditional_jump_impl<I: Clone>(
                     b.start_pc(),
                     &blocks_by_start_pc,
                     unconditional_jump_target,
-                    &mut memo,
+                    &mut tails,
                     &mut visiting,
                 ),
             }
@@ -77,7 +96,7 @@ pub fn collect_basic_blocks<A: Adapter>(
         jumpdest_set,
         &A::is_branching,
         &A::is_allowed,
-        &A::unconditional_jump_target,
+        &A::static_jump_target,
     )
 }
 
@@ -86,7 +105,7 @@ fn collect_basic_blocks_impl<I: Clone + PcStep, P: Program<I>>(
     jumpdest_set: &BTreeSet<u64>,
     is_branching: &impl Fn(&I) -> bool,
     is_allowed: &impl Fn(&I) -> bool,
-    unconditional_jump_target: &impl Fn(&I, u64) -> Option<u64>,
+    unconditional_jump_target: &impl Fn(&(u64, I), Option<&(u64, I)>) -> Option<u64>,
 ) -> Vec<BasicBlock<I>> {
     let mut blocks = Vec::new();
     let mut curr_block = BasicBlock {
@@ -99,14 +118,14 @@ fn collect_basic_blocks_impl<I: Clone + PcStep, P: Program<I>>(
         let is_branching = is_branching(&instr);
         let is_allowed = is_allowed(&instr);
 
-        // If this opcode cannot be in an APC, make sure it's alone in a basic block.
+        // If this opcode cannot be in an apc, we make sure it's alone in a BB.
         if !is_allowed {
+            // If not empty, push the current block.
             if !curr_block.instructions.is_empty() {
                 blocks.push(curr_block);
-                curr_block = BasicBlock {
-                    instructions: Vec::new(),
-                };
+                curr_block = BasicBlock::default();
             }
+            // Push the instruction itself
             blocks.push(BasicBlock {
                 instructions: vec![(pc, instr.clone())],
             });
@@ -114,12 +133,10 @@ fn collect_basic_blocks_impl<I: Clone + PcStep, P: Program<I>>(
         }
 
         // If the instruction is a target, we need to close the previous block
-        // as-is (if non-empty) and start a new block from this instruction.
+        // as is if not empty and start a new block from this instruction.
         if is_target && !curr_block.instructions.is_empty() {
             blocks.push(curr_block);
-            curr_block = BasicBlock {
-                instructions: Vec::new(),
-            };
+            curr_block = BasicBlock::default();
         }
 
         curr_block.instructions.push((pc, instr.clone()));
@@ -127,9 +144,7 @@ fn collect_basic_blocks_impl<I: Clone + PcStep, P: Program<I>>(
         // If the instruction is a branch, close this block with this instruction.
         if is_branching {
             blocks.push(curr_block);
-            curr_block = BasicBlock {
-                instructions: Vec::new(),
-            };
+            curr_block = BasicBlock::default();
         }
     }
 
@@ -137,8 +152,7 @@ fn collect_basic_blocks_impl<I: Clone + PcStep, P: Program<I>>(
         blocks.push(curr_block);
     }
 
-    let blocks =
-        merge_with_target_on_unconditional_jump_impl::<I>(&blocks, unconditional_jump_target);
+    let blocks = merge_with_target_on_unconditional_jump_impl(&blocks, unconditional_jump_target);
     tracing::info!(
         "Got {} basic blocks from `collect_basic_blocks`",
         blocks.len()

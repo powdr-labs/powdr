@@ -48,6 +48,25 @@ impl<F: PrimeField32> From<ExtendedVmConfigExecutor<F>> for SpecializedExecutor<
     }
 }
 
+fn signed_field_to_i64<F: PrimeField32>(value: F) -> i64 {
+    let value = value.as_canonical_u32();
+    if value < F::ORDER_U32 / 2 {
+        value as i64
+    } else {
+        value as i64 - F::ORDER_U32 as i64
+    }
+}
+
+fn jalr_imm<F: PrimeField32>(instruction: &Instruction<F>) -> u32 {
+    let imm_low = instruction.c.as_canonical_u32() & 0xffff;
+    let imm_high = if instruction.g == F::ONE {
+        0xffff0000
+    } else {
+        0
+    };
+    imm_low | imm_high
+}
+
 impl OpenVmISA for RiscvISA {
     type Executor<F: PrimeField32> = ExtendedVmConfigExecutor<F>;
     type Config = ExtendedVmConfig;
@@ -59,13 +78,39 @@ impl OpenVmISA for RiscvISA {
         branch_opcodes_set()
     }
 
-    fn unconditional_jump_target<F: PrimeField32>(
-        instruction: &Instruction<F>,
-        pc: u64,
+    fn static_jump_target<F: PrimeField32>(
+        (pc, instruction): &(u64, powdr_openvm::Instr<F, Self>),
+        previous: Option<&(u64, powdr_openvm::Instr<F, Self>)>,
     ) -> Option<u64> {
-        match instruction.opcode.as_usize() {
-            opcode::OPCODE_JAL => Some(pc + instruction.c.as_canonical_u32() as u64),
-            opcode::OPCODE_JALR => None,
+        match instruction.inner.opcode.as_usize() {
+            opcode::OPCODE_JAL => pc.checked_add_signed(signed_field_to_i64(instruction.inner.c)),
+            opcode::OPCODE_JALR => {
+                let rs1_ptr = instruction.inner.b.as_canonical_u32();
+
+                // `jalr ..., x0, imm` has a statically known base.
+                if rs1_ptr == 0 {
+                    return Some(u64::from(jalr_imm(&instruction.inner) & !1));
+                }
+
+                match previous {
+                    // `auipc rd, hi` followed by `jalr ..., rd, lo`.
+                    Some((previous_pc, previous_instruction))
+                        if previous_instruction.inner.opcode.as_usize() == opcode::OPCODE_AUIPC
+                            && previous_instruction.inner.a == instruction.inner.b =>
+                    {
+                        let pc: u32 = (*pc).try_into().unwrap();
+                        let previous_pc: u32 = (*previous_pc).try_into().unwrap();
+                        // Sanity check that the two instructions are together in the program, since AUIPC does not jump.
+                        assert_eq!(previous_pc + DEFAULT_PC_STEP, pc);
+                        let auipc_base = previous_pc
+                            .wrapping_add(previous_instruction.inner.c.as_canonical_u32() << 8);
+                        Some(u64::from(
+                            (auipc_base.wrapping_add(jalr_imm(&instruction.inner))) & !1,
+                        ))
+                    }
+                    _ => None,
+                }
+            }
             _ => None,
         }
     }
@@ -177,4 +222,54 @@ fn add_extra_targets(
     labels.extend(new_labels);
 
     labels
+}
+
+#[cfg(test)]
+mod tests {
+    use openvm_instructions::instruction::Instruction;
+    use openvm_stark_backend::p3_field::FieldAlgebra;
+    use openvm_stark_sdk::p3_baby_bear::BabyBear;
+    use powdr_openvm::isa::OpenVmISA;
+
+    use super::{jalr_imm, RiscvISA};
+    use crate::isa::symbolic_instruction_builder::{auipc, jal, jalr};
+
+    #[test]
+    fn resolves_jalr_from_x0() {
+        let instruction = (0u64, jalr::<BabyBear>(0, 0, 24, 1, 0).into());
+
+        assert_eq!(RiscvISA::static_jump_target(&instruction, None), Some(24));
+    }
+
+    #[test]
+    fn resolves_auipc_jalr_pair() {
+        let previous = (100u64, auipc::<BabyBear>(4, 0, 3, 1, 0).into());
+        let instruction = (104u64, jalr::<BabyBear>(1, 4, 24, 1, 0).into());
+
+        assert_eq!(
+            RiscvISA::static_jump_target(&instruction, Some(&previous)),
+            Some(100 + (3 << 8) + 24)
+        );
+    }
+
+    #[test]
+    fn resolves_negative_jal_offset() {
+        let instruction = (
+            100u64,
+            powdr_openvm::Instr::<BabyBear, RiscvISA>::from(Instruction {
+                c: -BabyBear::from_canonical_u32(8),
+                ..jal::<BabyBear>(0, 0, 0, 1, 0)
+            }),
+        );
+
+        assert_eq!(RiscvISA::static_jump_target(&instruction, None), Some(92));
+    }
+
+    #[test]
+    fn jalr_imm_sign_extends() {
+        let mut instruction = jalr::<BabyBear>(0, 0, 8, 1, 0);
+        instruction.g = BabyBear::ONE;
+
+        assert_eq!(jalr_imm(&instruction), 0xffff0008);
+    }
 }

@@ -3,6 +3,7 @@ use std::{
     fmt::Display,
 };
 
+use derive_where::derive_where;
 use itertools::Itertools;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
@@ -17,6 +18,7 @@ pub use detection::collect_basic_blocks;
 use crate::PowdrConfig;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive_where(Default)]
 /// A sequence of instructions starting at a given PC.
 pub struct BasicBlock<I> {
     pub instructions: Vec<(u64, I)>,

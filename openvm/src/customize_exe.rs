@@ -141,8 +141,11 @@ impl<'a, ISA: OpenVmISA> Adapter for BabyBearOpenVmApcAdapter<'a, ISA> {
         ISA::branching_opcodes().contains(&instruction.inner.opcode)
     }
 
-    fn unconditional_jump_target(instruction: &Self::Instruction, pc: u64) -> Option<u64> {
-        ISA::unconditional_jump_target(&instruction.inner, pc)
+    fn static_jump_target(
+        instruction: &(u64, Self::Instruction),
+        previous: Option<&(u64, Self::Instruction)>,
+    ) -> Option<u64> {
+        ISA::static_jump_target(instruction, previous)
     }
 }
 
