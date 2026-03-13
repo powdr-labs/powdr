@@ -407,6 +407,10 @@ where
                     .is_none()
             });
             if unsuccessful_variable_sets.contains(&variable_set) {
+                // It can happen that we process the same variable set twice because
+                // assignments can make previously different sets equal.
+                // Other assignments created in the meantime could lead to progress
+                // but this is rare and we will catch it in the next loop iteration.
                 continue;
             }
             let result = exhaustive_search::simplify_by_exhaustive_search(
@@ -675,10 +679,7 @@ mod tests {
                 var("flag2") * (var("flag2") - constant(1)),
                 // Exactly one flag is active
                 var("flag0") + var("flag1") + var("flag2") - constant(1),
-                // This SHOULD simplify to `v - fp - 1`, but is currently not:
-                // https://github.com/powdr-labs/powdr/issues/3653
-                // Note that if we remove `fp` here it works: Exhaustive search figures out
-                // that v = 1 for all possible assignments of the flags.
+                // Simplifies to `v - fp - 1` thanks to exhaustive search (see #3653).
                 var("v") - var("fp") - (var("flag0") + var("flag1") + var("flag2")),
             ]
             .into_iter()

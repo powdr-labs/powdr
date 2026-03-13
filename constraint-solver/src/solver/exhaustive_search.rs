@@ -29,7 +29,7 @@ pub struct ExhaustiveSearchResult<T: FieldElement, V> {
     pub algebraic: Vec<(usize, GroupedExpression<T, V>)>,
     /// Simplified bus interactions: (index, new_bus_interaction).
     pub bus_interactions: Vec<(usize, BusInteraction<GroupedExpression<T, V>>)>,
-    /// Tightened range constraints for the search variables.
+    /// Tightened range constraints for all variables (not just search variables).
     pub range_constraints: BTreeMap<V, RangeConstraint<T>>,
 }
 
@@ -45,7 +45,7 @@ impl<T: FieldElement, V> ExhaustiveSearchResult<T, V> {
 /// For each non-contradictory assignment:
 /// - Substitutes into all constraints referencing the variables. If all assignments
 ///   produce the same simplified expression, the constraint is simplified.
-/// - Computes the disjunction of range constraints for the search variables.
+/// - Computes the disjunction of derived range constraints for all variables.
 ///
 /// Returns an error if all assignments are contradictory.
 pub fn simplify_by_exhaustive_search<T: FieldElement, V: Clone + Hash + Ord + Eq + Display>(
