@@ -50,12 +50,14 @@ input="0" # No input
 mkdir -p "$dir"
 pushd "$dir"
 
-run_bench guest-pairing-manual-precompile "$input" 0 manual
+#run_bench guest-pairing-manual-precompile "$input" 0 manual
 run_bench guest-pairing "$input" 0 apc000
 run_bench guest-pairing "$input" 3 apc003
-# run_bench guest-pairing "$input" 10 apc010  # Save ~4mins
-#run_bench guest-pairing "$input" 30 apc030
-# run_bench guest-pairing "$input" 100 apc100  # Save ~7mins 
+run_bench guest-pairing "$input" 10 apc010
+run_bench guest-pairing "$input" 30 apc030
+run_bench guest-pairing "$input" 100 apc100
+run_bench guest-pairing "$input" 300 apc300
+run_bench guest-pairing "$input" 500 apc500
 
 python3 $SCRIPTS_DIR/basic_metrics.py summary-table --csv **/metrics.json > basic_metrics.csv
 python3 $SCRIPTS_DIR/basic_metrics.py plot **/metrics.json -o proof_time_breakdown.png
