@@ -3,13 +3,15 @@ use powdr_number::FieldElement;
 use powdr_number::LargeInt;
 
 use crate::algebraic_constraint::AlgebraicConstraint;
-use crate::constraint_system::BusInteraction;
+use crate::constraint_system::{BusInteraction, BusInteractionHandler};
+use crate::effect::Effect;
 use crate::grouped_expression::GroupedExpression;
 use crate::grouped_expression::RangeConstraintProvider;
 use crate::indexed_constraint_system::IndexedConstraintSystem;
 use crate::range_constraint::RangeConstraint;
 use crate::utils::{get_all_possible_assignments, has_few_possible_assignments};
 
+use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Display;
 use std::hash::Hash;
@@ -51,6 +53,7 @@ pub fn simplify_by_exhaustive_search<T: FieldElement, V: Clone + Hash + Ord + Eq
     bus_interactions: &[BusInteraction<GroupedExpression<T, V>>],
     variables: &BTreeSet<V>,
     range_constraints: &impl RangeConstraintProvider<T, V>,
+    bus_interaction_handler: &dyn BusInteractionHandler<T>,
 ) -> Result<ExhaustiveSearchResult<T, V>, Error> {
     // For each constraint, track the simplified expression across all valid assignments.
     // None means different assignments produced different expressions.
@@ -106,6 +109,18 @@ pub fn simplify_by_exhaustive_search<T: FieldElement, V: Clone + Hash + Ord + Eq
                     .for_each(|f| f.substitute_by_known(var, val));
             }
             simplified_bus.push((i, bus));
+        }
+
+        // Enhanced contradiction detection: solve each substituted constraint individually
+        // and check for cross-constraint contradictions via range constraint intersection.
+        if is_contradictory(
+            &simplified_alg,
+            &simplified_bus,
+            &assignments,
+            range_constraints,
+            bus_interaction_handler,
+        ) {
+            continue;
         }
 
         num_valid += 1;
@@ -166,6 +181,77 @@ pub fn simplify_by_exhaustive_search<T: FieldElement, V: Clone + Hash + Ord + Eq
         bus_interactions: bus_interaction_simplifications,
         range_constraints: new_range_constraints,
     })
+}
+
+/// Checks if the given assignment is contradictory by solving each substituted
+/// constraint individually and intersecting the derived range constraints.
+/// This catches contradictions that require one level of propagation, e.g.,
+/// when one constraint derives `x = 1` and another derives `x = 8`.
+fn is_contradictory<T: FieldElement, V: Clone + Hash + Ord + Eq + Display>(
+    simplified_alg: &[(usize, GroupedExpression<T, V>)],
+    simplified_bus: &[(usize, BusInteraction<GroupedExpression<T, V>>)],
+    assignments: &BTreeMap<V, T>,
+    range_constraints: &impl RangeConstraintProvider<T, V>,
+    bus_interaction_handler: &dyn BusInteractionHandler<T>,
+) -> bool {
+    let mut derived_constraints: BTreeMap<V, RangeConstraint<T>> = BTreeMap::new();
+
+    // Add concrete assignments as range constraints.
+    for (var, val) in assignments {
+        derived_constraints.insert(var.clone(), RangeConstraint::from_value(*val));
+    }
+
+    // Solve each algebraic constraint and collect derived range constraints.
+    for (_, expr) in simplified_alg {
+        let effects = match AlgebraicConstraint::assert_zero(expr).solve(range_constraints) {
+            Ok(result) => result.effects,
+            Err(_) => return true,
+        };
+        if intersect_effects(&mut derived_constraints, effects) {
+            return true;
+        }
+    }
+
+    // Solve each bus interaction and collect derived range constraints.
+    for (_, bus) in simplified_bus {
+        let effects = match bus.solve(bus_interaction_handler, range_constraints) {
+            Ok(effects) => effects,
+            Err(_) => return true,
+        };
+        if intersect_effects(&mut derived_constraints, effects) {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Intersects effects (assignments and range constraints) into the accumulated map.
+/// Returns true if a contradiction is detected (disjoint intersection).
+fn intersect_effects<T: FieldElement, V: Clone + Ord>(
+    acc: &mut BTreeMap<V, RangeConstraint<T>>,
+    effects: impl IntoIterator<Item = Effect<T, V>>,
+) -> bool {
+    for effect in effects {
+        let (var, rc) = match effect {
+            Effect::Assignment(var, val) => (var, RangeConstraint::from_value(val)),
+            Effect::RangeConstraint(var, rc) => (var, rc),
+            _ => continue,
+        };
+        match acc.entry(var) {
+            Entry::Vacant(entry) => {
+                entry.insert(rc);
+            }
+            Entry::Occupied(mut entry) => {
+                let existing = entry.get();
+                if existing.is_disjoint(&rc) {
+                    return true;
+                }
+                entry.insert(existing.conjunction(&rc));
+            }
+        }
+    }
+    false
 }
 
 /// Returns all unique sets of variables that appear together in an identity

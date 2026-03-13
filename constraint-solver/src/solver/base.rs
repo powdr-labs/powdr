@@ -414,6 +414,7 @@ where
                 self.constraint_system.system().bus_interactions(),
                 &variable_set,
                 &*self,
+                &self.bus_interaction_handler,
             )?;
             if result.is_empty() {
                 unsuccessful_variable_sets.insert(variable_set);
