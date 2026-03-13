@@ -212,7 +212,7 @@ mod tests {
             &jumpdest_set,
             &|instr| matches!(instr, TestInstr::BJumpToA),
             &|_| true,
-            &|instr, _pc| match instr {
+            &|(_, instr), _previous| match instr {
                 TestInstr::BJumpToA => Some(0),
                 _ => None,
             },
@@ -241,7 +241,7 @@ mod tests {
             &jumpdest_set,
             &|instr| matches!(instr, TestInstr::BJumpToA | TestInstr::CJumpToB),
             &|_| true,
-            &|instr, _pc| match instr {
+            &|(_, instr), _previous| match instr {
                 TestInstr::BJumpToA => Some(0),
                 TestInstr::CJumpToB => Some(4),
                 _ => None,

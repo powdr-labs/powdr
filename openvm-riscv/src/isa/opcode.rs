@@ -146,13 +146,6 @@ pub fn branch_opcodes_set() -> HashSet<VmOpcode> {
     set
 }
 
-pub fn unconditional_branch_opcodes_set() -> HashSet<VmOpcode> {
-    [OPCODE_JAL, OPCODE_JALR]
-        .into_iter()
-        .map(VmOpcode::from_usize)
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
