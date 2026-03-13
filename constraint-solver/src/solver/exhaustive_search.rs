@@ -60,8 +60,8 @@ pub fn simplify_by_exhaustive_search<T: FieldElement, V: Clone + Hash + Ord + Eq
     let mut alg_results: HashMap<usize, Option<GroupedExpression<T, V>>> = HashMap::new();
     let mut bus_results: HashMap<usize, Option<BusInteraction<GroupedExpression<T, V>>>> =
         HashMap::new();
-    // Track disjunction of range constraints for search variables.
-    let mut var_range_constraints: Option<BTreeMap<V, RangeConstraint<T>>> = None;
+    // Track disjunction of derived range constraints across valid assignments.
+    let mut derived_range_constraints: Option<BTreeMap<V, RangeConstraint<T>>> = None;
     let mut num_valid = 0usize;
 
     for assignments in get_all_possible_assignments(variables.iter().cloned(), range_constraints) {
@@ -113,15 +113,16 @@ pub fn simplify_by_exhaustive_search<T: FieldElement, V: Clone + Hash + Ord + Eq
 
         // Enhanced contradiction detection: solve each substituted constraint individually
         // and check for cross-constraint contradictions via range constraint intersection.
-        if is_contradictory(
+        // Also derives range constraints for all variables (not just search variables).
+        let Some(new_constraints) = derive_range_constraints(
             &simplified_alg,
             &simplified_bus,
             &assignments,
             range_constraints,
             bus_interaction_handler,
-        ) {
+        ) else {
             continue;
-        }
+        };
 
         num_valid += 1;
 
@@ -139,16 +140,12 @@ pub fn simplify_by_exhaustive_search<T: FieldElement, V: Clone + Hash + Ord + Eq
             }
         }
 
-        // Merge range constraints for search variables (disjunction across assignments).
-        let assignment_rcs: BTreeMap<V, RangeConstraint<T>> = assignments
-            .into_iter()
-            .map(|(v, val)| (v, RangeConstraint::from_value(val)))
-            .collect();
-        var_range_constraints = Some(match var_range_constraints {
-            None => assignment_rcs,
+        // Merge range constraints (disjunction across valid assignments).
+        derived_range_constraints = Some(match derived_range_constraints {
+            None => new_constraints,
             Some(mut acc) => {
                 for (var, rc) in &mut acc {
-                    let other = assignment_rcs.get(var).cloned().unwrap_or_default();
+                    let other = new_constraints.get(var).cloned().unwrap_or_default();
                     *rc = rc.disjunction(&other);
                 }
                 acc
@@ -173,7 +170,7 @@ pub fn simplify_by_exhaustive_search<T: FieldElement, V: Clone + Hash + Ord + Eq
         .collect();
 
     // Only keep range constraints that are tighter than what we already know.
-    let mut new_range_constraints = var_range_constraints.unwrap_or_default();
+    let mut new_range_constraints = derived_range_constraints.unwrap_or_default();
     new_range_constraints.retain(|v, rc| range_constraints.get(v) != *rc);
 
     Ok(ExhaustiveSearchResult {
@@ -183,47 +180,44 @@ pub fn simplify_by_exhaustive_search<T: FieldElement, V: Clone + Hash + Ord + Eq
     })
 }
 
-/// Checks if the given assignment is contradictory by solving each substituted
-/// constraint individually and intersecting the derived range constraints.
-/// This catches contradictions that require one level of propagation, e.g.,
-/// when one constraint derives `x = 1` and another derives `x = 8`.
-fn is_contradictory<T: FieldElement, V: Clone + Hash + Ord + Eq + Display>(
+/// Tries to derive new range constraints from the given assignment by solving
+/// each substituted constraint individually and intersecting derived range constraints.
+/// Returns `None` if the assignment is contradictory (e.g., one constraint derives
+/// `x = 1` and another derives `x = 8`).
+fn derive_range_constraints<T: FieldElement, V: Clone + Hash + Ord + Eq + Display>(
     simplified_alg: &[(usize, GroupedExpression<T, V>)],
     simplified_bus: &[(usize, BusInteraction<GroupedExpression<T, V>>)],
     assignments: &BTreeMap<V, T>,
     range_constraints: &impl RangeConstraintProvider<T, V>,
     bus_interaction_handler: &dyn BusInteractionHandler<T>,
-) -> bool {
-    let mut derived_constraints: BTreeMap<V, RangeConstraint<T>> = BTreeMap::new();
+) -> Option<BTreeMap<V, RangeConstraint<T>>> {
+    let mut derived: BTreeMap<V, RangeConstraint<T>> = BTreeMap::new();
 
     // Add concrete assignments as range constraints.
     for (var, val) in assignments {
-        derived_constraints.insert(var.clone(), RangeConstraint::from_value(*val));
+        derived.insert(var.clone(), RangeConstraint::from_value(*val));
     }
 
     // Solve each algebraic constraint and collect derived range constraints.
     for (_, expr) in simplified_alg {
-        let effects = match AlgebraicConstraint::assert_zero(expr).solve(range_constraints) {
-            Ok(result) => result.effects,
-            Err(_) => return true,
-        };
-        if intersect_effects(&mut derived_constraints, effects) {
-            return true;
+        let effects = AlgebraicConstraint::assert_zero(expr)
+            .solve(range_constraints)
+            .ok()?
+            .effects;
+        if intersect_effects(&mut derived, effects) {
+            return None;
         }
     }
 
     // Solve each bus interaction and collect derived range constraints.
     for (_, bus) in simplified_bus {
-        let effects = match bus.solve(bus_interaction_handler, range_constraints) {
-            Ok(effects) => effects,
-            Err(_) => return true,
-        };
-        if intersect_effects(&mut derived_constraints, effects) {
-            return true;
+        let effects = bus.solve(bus_interaction_handler, range_constraints).ok()?;
+        if intersect_effects(&mut derived, effects) {
+            return None;
         }
     }
 
-    false
+    Some(derived)
 }
 
 /// Intersects effects (assignments and range constraints) into the accumulated map.
