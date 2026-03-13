@@ -8,6 +8,7 @@ use crate::{
 /// Given a set of basic blocks, return a new set where if A unconditionally leads to B, then A replaced by AB in the set. B is left in the set.
 fn merge_with_target_on_unconditional_jump_impl<I: Clone>(
     blocks: &[BasicBlock<I>],
+    is_allowed: &impl Fn(&I) -> bool,
     unconditional_jump_target: &impl Fn(&(u64, I), Option<&(u64, I)>) -> Option<u64>,
 ) -> Vec<BasicBlock<I>> {
     let blocks_by_start_pc: HashMap<u64, &BasicBlock<I>> =
@@ -25,6 +26,7 @@ fn merge_with_target_on_unconditional_jump_impl<I: Clone>(
     fn expanded_block_instructions<I: Clone>(
         start_pc: u64,
         blocks_by_start_pc: &HashMap<u64, &BasicBlock<I>>,
+        is_allowed: &impl Fn(&I) -> bool,
         unconditional_jump_target: &impl Fn(&(u64, I), Option<&(u64, I)>) -> Option<u64>,
         tails: &mut HashMap<u64, Vec<(u64, I)>>,
         visiting: &mut BTreeSet<u64>,
@@ -34,6 +36,11 @@ fn merge_with_target_on_unconditional_jump_impl<I: Clone>(
         }
         let curr = blocks_by_start_pc[&start_pc];
         let mut instructions = curr.instructions.clone();
+
+        if !curr.instructions.iter().all(|(_, instr)| is_allowed(instr)) {
+            tails.insert(start_pc, instructions.clone());
+            return instructions;
+        }
 
         if !visiting.insert(start_pc) {
             return instructions;
@@ -50,16 +57,24 @@ fn merge_with_target_on_unconditional_jump_impl<I: Clone>(
                 blocks_by_start_pc.contains_key(&target_pc),
                 "unconditional jump target is not a jumpdest"
             );
-            // Recursively expand the target
-            let target_instructions = expanded_block_instructions(
-                target_pc,
-                blocks_by_start_pc,
-                unconditional_jump_target,
-                tails,
-                visiting,
-            );
-            // Merge the current block with the expansion of its target block
-            instructions.extend(target_instructions);
+            let target = blocks_by_start_pc[&target_pc];
+            if target
+                .instructions
+                .iter()
+                .all(|(_, instr)| is_allowed(instr))
+            {
+                // Recursively expand the target
+                let target_instructions = expanded_block_instructions(
+                    target_pc,
+                    blocks_by_start_pc,
+                    is_allowed,
+                    unconditional_jump_target,
+                    tails,
+                    visiting,
+                );
+                // Merge the current block with the expansion of its target block
+                instructions.extend(target_instructions);
+            }
         }
 
         visiting.remove(&start_pc);
@@ -76,6 +91,7 @@ fn merge_with_target_on_unconditional_jump_impl<I: Clone>(
                 instructions: expanded_block_instructions(
                     b.start_pc(),
                     &blocks_by_start_pc,
+                    is_allowed,
                     unconditional_jump_target,
                     &mut tails,
                     &mut visiting,
@@ -151,7 +167,24 @@ fn collect_basic_blocks_impl<I: Clone + PcStep, P: Program<I>>(
         blocks.push(curr_block);
     }
 
-    let blocks = merge_with_target_on_unconditional_jump_impl(&blocks, unconditional_jump_target);
+    assert!(blocks
+        .iter()
+        .filter(|b| b.instructions.len() > 1)
+        .flat_map(|b| &b.instructions)
+        .all(|(_, i)| is_allowed(i)));
+
+    let blocks = merge_with_target_on_unconditional_jump_impl(
+        &blocks,
+        is_allowed,
+        unconditional_jump_target,
+    );
+
+    assert!(blocks
+        .iter()
+        .filter(|b| b.instructions.len() > 1)
+        .flat_map(|b| &b.instructions)
+        .all(|(_, i)| is_allowed(i)));
+
     tracing::info!(
         "Got {} basic blocks from `collect_basic_blocks`",
         blocks.len()
@@ -172,6 +205,9 @@ mod tests {
         A,
         BJumpToA,
         CJumpToB,
+        AJumpToB,
+        BJumpToC,
+        CDisallowed,
     }
 
     impl PcStep for TestInstr {
@@ -261,5 +297,44 @@ mod tests {
             &TestInstr::BJumpToA,
             &TestInstr::A
         ]));
+    }
+
+    #[test]
+    fn stops_expansion_before_disallowed_target() {
+        let program = TestProgram {
+            instrs: vec![
+                TestInstr::AJumpToB,
+                TestInstr::BJumpToC,
+                TestInstr::CDisallowed,
+            ],
+        };
+        let jumpdest_set = BTreeSet::from([4u64, 8u64]);
+
+        let blocks = collect_basic_blocks_impl(
+            &program,
+            &jumpdest_set,
+            &|instr| matches!(instr, TestInstr::AJumpToB | TestInstr::BJumpToC),
+            &|instr| !matches!(instr, TestInstr::CDisallowed),
+            &|(_, instr), _previous| match instr {
+                TestInstr::AJumpToB => Some(4),
+                TestInstr::BJumpToC => Some(8),
+                _ => None,
+            },
+        );
+
+        assert_eq!(blocks.len(), 3);
+        let block_instrs = blocks
+            .iter()
+            .map(|b| b.instructions.iter().map(|(_, i)| i).collect::<Vec<_>>())
+            .collect::<Vec<_>>();
+
+        assert!(block_instrs.contains(&vec![&TestInstr::AJumpToB, &TestInstr::BJumpToC]));
+        assert!(block_instrs.contains(&vec![&TestInstr::BJumpToC]));
+        assert!(block_instrs.contains(&vec![&TestInstr::CDisallowed]));
+        assert!(blocks
+            .iter()
+            .filter(|b| b.instructions.len() > 1)
+            .flat_map(|b| &b.instructions)
+            .all(|(_, instr)| !matches!(instr, TestInstr::CDisallowed)));
     }
 }
