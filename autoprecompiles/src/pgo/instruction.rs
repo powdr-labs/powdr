@@ -52,7 +52,6 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
             })
             .map(|block_and_stats| {
                 let block = block_and_stats.block;
-                assert!(block.is_basic_block(), "Instruction PGO does not support superblocks");
                 let frequency = block_and_stats.count;
                 let number_of_instructions = block.instructions().count();
                 let value = frequency * number_of_instructions as u32;
