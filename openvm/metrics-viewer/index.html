@@ -855,7 +855,7 @@ function updateTableSelection() {
 // ============================================================
 // Experiment Details (details table + pie chart)
 // ============================================================
-function renderDetailTable(title, rows, m) {
+function renderDetailTable(title, rows, m, opts = {}) {
     const baseline = getBaselineMetrics();
     let html = `<h6 style="color:#333; font-weight:600; margin-bottom:0.3rem; margin-top:0.75rem">${title}</h6>`;
     html += '<table class="details-table"><tbody>';
@@ -870,7 +870,13 @@ function renderDetailTable(title, rows, m) {
             ? ' ' + fmtComparison(m[row.key], baseline[row.key])
             : '';
         html += `<tr><th${thStyle ? ` style="${thStyle}"` : ''}>${row.label}</th>`;
-        html += `<td${tdStyle ? ` style="${tdStyle}"` : ''}>${formatted}${comparison}</td></tr>`;
+        html += `<td${tdStyle ? ` style="${tdStyle}"` : ''}>${formatted}${comparison}</td>`;
+        if (opts.pctOfKey) {
+            const total = m[opts.pctOfKey];
+            const pct = total > 0 ? (m[row.key] / total * 100).toFixed(1) + '%' : '';
+            html += `<td style="color:#888; text-align:right${weight ? ';' + weight : ''}">${pct}</td>`;
+        }
+        html += '</tr>';
     });
     html += '</tbody></table>';
     return html;
@@ -893,7 +899,7 @@ function renderDetails(runName) {
     let html = '<div class="details-row">';
     html += '<div class="details-table-col">';
     html += renderDetailTable('Basic Stats', BASIC_STATS_ROWS, m);
-    html += renderDetailTable('Proof Time', PROOF_TIME_ROWS, m);
+    html += renderDetailTable('Proof Time', PROOF_TIME_ROWS, m, { pctOfKey: 'total_proof_time_ms' });
     html += renderDetailTable('Trace Cell Distribution', CELL_DISTRIBUTION_ROWS, m);
     html += '</div>';
     html += '<div class="details-pie-col"><h6 style="color:#333; font-weight:600; margin-bottom:0.5rem; margin-top:0.75rem">Trace Cells by AIR</h6><div id="pieChart"></div></div>';
