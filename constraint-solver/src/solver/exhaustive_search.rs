@@ -90,7 +90,7 @@ pub fn exhaustive_search_on_variable_set<T: FieldElement, V: Clone + Hash + Ord 
 /// Returns all unique sets of variables that appear together in an identity
 /// (either in an algebraic constraint or in the same field of a bus interaction),
 /// IF the number of possible assignments is less than `MAX_SEARCH_WIDTH`.
-pub fn get_brute_force_candidates<'a, T: FieldElement, V: Clone + Hash + Ord>(
+pub fn get_brute_force_candidates<'a, T: FieldElement, V: Clone + Hash + Ord + Display>(
     constraint_system: &'a IndexedConstraintSystem<T, V>,
     rc: impl RangeConstraintProvider<T, V> + Clone + 'a,
 ) -> impl Iterator<Item = BTreeSet<V>> + 'a {
@@ -112,6 +112,13 @@ pub fn get_brute_force_candidates<'a, T: FieldElement, V: Clone + Hash + Ord>(
         })
         .unique()
         .filter_map(move |variables| {
+            for v in &variables {
+                println!(
+                    "Variable {} has range constraint {}",
+                    v,
+                    rc.get(v).size_estimate()
+                );
+            }
             match is_candidate_for_exhaustive_search(&variables, &rc) {
                 true => Some(variables),
                 false => {

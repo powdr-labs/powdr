@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fmt::Display,
     hash::Hash,
     iter::once,
@@ -12,12 +12,13 @@ use powdr_constraint_solver::{
     constraint_system::{
         AlgebraicConstraint, BusInteractionHandler, ConstraintRef, ConstraintSystem,
     },
-    grouped_expression::GroupedExpression,
+    grouped_expression::{GroupedExpression, RangeConstraintProvider},
     indexed_constraint_system::IndexedConstraintSystem,
     inliner::DegreeBound,
     reachability::reachable_variables,
     rule_based_optimizer::rule_based_optimization,
-    solver::Solver,
+    solver::{exhaustive_search, Solver},
+    utils::get_all_possible_assignments,
 };
 use powdr_number::FieldElement;
 use serde::Serialize;
@@ -86,6 +87,13 @@ pub fn optimize_constraints<
     export_options.export_optimizer_inner_constraint_system(
         constraint_system.system(),
         "remove_disconnected",
+    );
+
+    let constraint_system = simplify_constraints_using_exhaustive_search(constraint_system, solver);
+    stats_logger.log("simplifying using exhaustive search", &constraint_system);
+    export_options.export_optimizer_inner_constraint_system(
+        constraint_system.system(),
+        "simplify_exhaustive",
     );
 
     let constraint_system = trivial_simplifications(
@@ -443,6 +451,61 @@ fn variables_in_stateful_bus_interactions<'a, P: FieldElement, V: Ord + Clone + 
         .flat_map(|bus_interaction| bus_interaction.referenced_unknown_variables())
 }
 
+pub fn simplify_constraints_using_exhaustive_search<
+    T: FieldElement,
+    V: Clone + Ord + Eq + Hash + Display,
+>(
+    constraint_system: IndexedConstraintSystem<T, V>,
+    range_constraints: &impl RangeConstraintProvider<T, V>,
+) -> IndexedConstraintSystem<T, V> {
+    let mut variable_sets =
+        exhaustive_search::get_brute_force_candidates(&constraint_system, range_constraints)
+            .collect_vec();
+    // Start with small sets to make larger ones redundant after some assignments.
+    variable_sets.sort_by_key(|set| set.len());
+
+    println!(
+        "Found {} candidate variable sets for exhaustive search",
+        variable_sets.len()
+    );
+    let mut progress = false;
+
+    //let mut expr_substitutions = BTreeMap::new();
+
+    for mut variable_set in variable_sets {
+        println!(
+            "Trying to simplify constraints using exhaustive search for variables {{{}}}",
+            variable_set.iter().join(", ")
+        );
+        variable_set.retain(|v| range_constraints.get(v).try_to_single_value().is_none());
+        let exprs = constraint_system
+            .constraints_referencing_variables(&variable_set)
+            .flat_map(|constraint| match constraint {
+                ConstraintRef::AlgebraicConstraint(identity) => vec![identity.expression.clone()], // TODO avoid cloning?
+                ConstraintRef::BusInteraction(bus_interaction) => {
+                    bus_interaction.fields().cloned().collect_vec()
+                }
+            });
+        for expr in exprs {
+            match get_all_possible_assignments(variable_set.iter().cloned(), &range_constraints)
+                .map(|ass| {
+                    let mut sub = expr.clone();
+                    for (v, val) in ass {
+                        sub.substitute_by_known(&v, &val);
+                    }
+                    sub
+                })
+                .all_equal_value()
+            {
+                Ok(e) => println!("Replace {expr} by {e}"),
+                _ => {}
+            }
+        }
+    }
+
+    constraint_system
+}
+
 fn remove_trivial_constraints<P: FieldElement, V: PartialEq + Clone + Hash + Ord>(
     mut constraint_system: IndexedConstraintSystem<P, V>,
 ) -> IndexedConstraintSystem<P, V> {
@@ -583,9 +646,12 @@ fn remove_unreferenced_derived_variables<P: FieldElement, V: Clone + Ord + Hash 
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     use crate::memory_optimizer::MemoryOp;
 
-    use super::*;
+    use test_log::test;
+
     use expect_test::expect;
     use powdr_constraint_solver::{
         bus_interaction_handler::DefaultBusInteractionHandler,
@@ -648,23 +714,17 @@ mod tests {
             ])
             .into();
         let bus_int_handler = DefaultBusInteractionHandler::default();
-        let mut stats_logger = StatsLogger::start(&constraint_system);
-        let mut solver = new_solver(constraint_system.system().clone(), bus_int_handler.clone());
+        let mut solver = new_solver(constraint_system.system().clone(), bus_int_handler);
+        // compute and propagate constraints
+        solver.solve().unwrap();
 
-        let out = optimize_constraints::<_, _, InvalidMemoryBusInteraction>(
-            constraint_system,
-            &mut solver,
-            bus_int_handler,
-            &mut stats_logger,
-            None,
-            DegreeBound {
-                identities: 10,
-                bus_interactions: 10,
-            },
-            &mut |_| panic!(),
-            &mut Default::default(),
-        )
-        .unwrap();
-        expect![].assert_eq(&out.to_string())
+        let out = simplify_constraints_using_exhaustive_search(constraint_system, &solver);
+        expect![[r#"
+            T + X + 4 * Y - 8 * Z = 0
+            (Y - 2) * (Z + 1) = 0
+            (Y) * (Z) = 0
+            (Y) * (Y - 2) = 0
+            (Z) * (Z + 1) = 0"#]]
+        .assert_eq(&out.to_string())
     }
 }
