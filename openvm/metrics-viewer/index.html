@@ -383,29 +383,40 @@ function extractMetrics(runName, metricsJson) {
         obj.value = c.value;
         return obj;
     });
-    m.constraints = getMetric(allEntries, 'constraints');
-    m.bus_interactions = getMetric(allEntries, 'interactions');
+    const hasConstraints = allEntries.some(e => e.metric === 'constraints');
+    const hasInteractions = allEntries.some(e => e.metric === 'interactions');
+
+    m.constraints = hasConstraints ? getMetric(allEntries, 'constraints') : null;
+    m.bus_interactions = hasInteractions ? getMetric(allEntries, 'interactions') : null;
 
     // Bus interaction messages = sum over all AIRs and segments of (interactions[air] * rows[air, segment])
     // "interactions" entries are per-AIR (no segment), "rows" entries are per-AIR-per-segment in app group.
-    const interactionsByAir = {};
-    allEntries.filter(e => e.metric === 'interactions').forEach(e => {
-        interactionsByAir[e.air_name || ''] = parseFloat(e.value || 0);
-    });
-    m.bus_interaction_messages = app.filter(e => e.metric === 'rows').reduce((sum, e) => {
-        const airInteractions = interactionsByAir[e.air_name || ''] || 0;
-        return sum + airInteractions * parseFloat(e.value || 0);
-    }, 0);
+    if (hasInteractions) {
+        const interactionsByAir = {};
+        allEntries.filter(e => e.metric === 'interactions').forEach(e => {
+            interactionsByAir[e.air_name || ''] = parseFloat(e.value || 0);
+        });
+        m.bus_interaction_messages = app.filter(e => e.metric === 'rows').reduce((sum, e) => {
+            const airInteractions = interactionsByAir[e.air_name || ''] || 0;
+            return sum + airInteractions * parseFloat(e.value || 0);
+        }, 0);
+    } else {
+        m.bus_interaction_messages = null;
+    }
 
     // Constraint instances = sum over all AIRs and segments of (constraints[air] * rows[air, segment])
-    const constraintsByAir = {};
-    allEntries.filter(e => e.metric === 'constraints').forEach(e => {
-        constraintsByAir[e.air_name || ''] = parseFloat(e.value || 0);
-    });
-    m.constraint_instances = app.filter(e => e.metric === 'rows').reduce((sum, e) => {
-        const airConstraints = constraintsByAir[e.air_name || ''] || 0;
-        return sum + airConstraints * parseFloat(e.value || 0);
-    }, 0);
+    if (hasConstraints) {
+        const constraintsByAir = {};
+        allEntries.filter(e => e.metric === 'constraints').forEach(e => {
+            constraintsByAir[e.air_name || ''] = parseFloat(e.value || 0);
+        });
+        m.constraint_instances = app.filter(e => e.metric === 'rows').reduce((sum, e) => {
+            const airConstraints = constraintsByAir[e.air_name || ''] || 0;
+            return sum + airConstraints * parseFloat(e.value || 0);
+        }, 0);
+    } else {
+        m.constraint_instances = null;
+    }
 
     return m;
 }
@@ -893,6 +904,7 @@ function renderDetailTable(title, rows, m, opts = {}) {
     let html = `<h6 style="color:#333; font-weight:600; margin-bottom:0.3rem; margin-top:0.75rem">${title}</h6>`;
     html += '<table class="details-table"><tbody>';
     rows.forEach(row => {
+        if (m[row.key] == null) return; // skip unavailable metrics
         const indent = row.indent || 0;
         const padding = indent > 0 ? `padding-left:${indent * 1.2 + 0.5}em` : '';
         const weight = row.bold ? 'font-weight:700' : '';
