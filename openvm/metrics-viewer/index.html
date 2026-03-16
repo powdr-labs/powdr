@@ -264,9 +264,15 @@ let selectedRunName = null;
 let currentChartTab = 'stacked';
 
 // ============================================================
-// Data Processing (ports of Python logic)
+// Data Processing — ports of Python logic
+//
+// These functions compute all displayed numbers from raw JSON.
+// See CLAUDE.md for the mapping to Python source functions.
 // ============================================================
 
+// Port of metrics_utils.py:load_metrics_dataframes
+// Flattens counter+gauge arrays into flat objects keyed by label names,
+// then splits into app/leaf/internal by the "group" label prefix.
 function loadMetricsDataframes(metricsJson) {
     const entries = [...(metricsJson.counter || []), ...(metricsJson.gauge || [])].map(c => {
         const obj = Object.fromEntries(c.labels);
@@ -285,6 +291,9 @@ function loadMetricsDataframes(metricsJson) {
     return { app, leaf, internal };
 }
 
+// Port of metrics_utils.py:is_normal_instruction_air
+// Returns true for standard RISC-V instruction AIRs (VmAirWrapper with 4 limbs),
+// false for precompiles (FieldExpressionCoreAir, non-4-limb, or non-VmAirWrapper).
 function isNormalInstructionAir(airName) {
     const match = (airName || '').match(/^VmAirWrapper<[^,]+,\s*([^>]+?)(?:<(\d+)(?:,\s*\d+)*>)?\s*>$/);
     if (!match) return false;
@@ -295,32 +304,40 @@ function isNormalInstructionAir(airName) {
     return true;
 }
 
-function getMetric(df, metricName) {
-    return df.filter(e => e.metric === metricName)
-             .reduce((sum, e) => sum + parseFloat(e.value || 0), 0);
+// Sum all values for entries matching a given metric name.
+function getMetric(entries, metricName) {
+    return entries.filter(e => e.metric === metricName)
+                  .reduce((sum, e) => sum + parseFloat(e.value || 0), 0);
 }
 
+// Port of basic_metrics.py:extract_metrics
+// Computes all summary metrics for a single run from its raw JSON.
+// Each metric maps directly to a getMetric() call on a specific group + metric name.
 function extractMetrics(runName, metricsJson) {
     const { app, leaf, internal } = loadMetricsDataframes(metricsJson);
     const m = {};
 
     m.name = runName;
 
+    // Classify app AIRs into powdr / normal instruction / openvm precompile
     const powdrAir = app.filter(e => (e.air_name || '').startsWith('PowdrAir'));
     const nonPowdrAir = app.filter(e => !(e.air_name || '').startsWith('PowdrAir'));
     const normalInstructionAir = nonPowdrAir.filter(e => isNormalInstructionAir(e.air_name || ''));
     const openVmPrecompileAir = nonPowdrAir.filter(e => !isNormalInstructionAir(e.air_name || ''));
 
+    // Proof times by phase (all from "total_proof_time_ms" metric, split by group)
     m.app_proof_time_ms = getMetric(app, 'total_proof_time_ms');
     m.leaf_proof_time_ms = getMetric(leaf, 'total_proof_time_ms');
     m.inner_recursion_proof_time_ms = getMetric(internal, 'total_proof_time_ms');
     m.total_proof_time_ms = m.app_proof_time_ms + m.leaf_proof_time_ms + m.inner_recursion_proof_time_ms;
 
+    // STARK prove time excluding trace generation
     m.app_proof_time_excluding_trace_ms = getMetric(app, 'stark_prove_excluding_trace_time_ms');
     m.leaf_proof_time_excluding_trace_ms = getMetric(leaf, 'stark_prove_excluding_trace_time_ms');
     m.inner_recursion_proof_time_excluding_trace_ms = getMetric(internal, 'stark_prove_excluding_trace_time_ms');
     m.total_proof_time_excluding_trace_ms = m.app_proof_time_excluding_trace_ms + m.leaf_proof_time_excluding_trace_ms + m.inner_recursion_proof_time_excluding_trace_ms;
 
+    // Column counts (summed over all segments)
     const mainCols = getMetric(app, 'main_cols');
     const prepCols = getMetric(app, 'prep_cols');
     const permCols = getMetric(app, 'perm_cols');
@@ -333,6 +350,7 @@ function extractMetrics(runName, metricsJson) {
     m.app_execute_metered_time_ms = getMetric(app, 'execute_metered_time_ms');
     m.app_trace_gen_time_ms = getMetric(app, 'trace_gen_time_ms');
 
+    // "App other" = app proof time minus all known sub-components
     m.app_other_ms = m.app_proof_time_ms
         - m.app_proof_time_excluding_trace_ms
         - m.app_execute_preflight_time_ms
@@ -340,6 +358,7 @@ function extractMetrics(runName, metricsJson) {
         - m.app_trace_gen_time_ms;
     if (m.app_other_ms < 0) m.app_other_ms = 0;
 
+    // Cell ratios by AIR classification
     const normalCells = getMetric(normalInstructionAir, 'cells');
     const openVmCells = getMetric(openVmPrecompileAir, 'cells');
     const powdrCells = getMetric(powdrAir, 'cells');
@@ -352,6 +371,9 @@ function extractMetrics(runName, metricsJson) {
     return m;
 }
 
+// Port of plot_trace_cells.py:compute_cells_by_air
+// Aggregates cells by air_name from the app group, sorts descending,
+// and groups AIRs below 1.5% of total into "Other".
 function computeCellsByAir(metricsJson) {
     const { app } = loadMetricsDataframes(metricsJson);
     const cellEntries = app.filter(e => e.metric === 'cells');
@@ -362,11 +384,9 @@ function computeCellsByAir(metricsJson) {
         cellsByAir[name] = (cellsByAir[name] || 0) + parseFloat(e.value || 0);
     });
 
-    // Sort descending
     const sorted = Object.entries(cellsByAir).sort((a, b) => b[1] - a[1]);
     const total = sorted.reduce((s, [, v]) => s + v, 0);
 
-    // Apply 1.5% threshold
     const threshold = total * 0.015;
     const large = [];
     let otherSum = 0;
@@ -385,7 +405,8 @@ function computeCellsByAir(metricsJson) {
 }
 
 // ============================================================
-// Components
+// Constants — proof time breakdown components
+// Colors and order match basic_metrics.py:plot()
 // ============================================================
 const COMPONENTS = [
     { key: 'inner_recursion_proof_time_ms', label: 'Inner recursion', color: '#9b3e00' },
