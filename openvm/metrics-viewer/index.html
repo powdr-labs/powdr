@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -14,18 +15,41 @@
         .navbar {
             background: white;
             border-bottom: 1px solid #dee2e6;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
         }
-        .navbar-brand { color: #333; font-weight: 700; cursor: pointer; text-decoration: none; }
-        .navbar-brand:hover { color: #000; }
+
+        .navbar-brand {
+            color: #333;
+            font-weight: 700;
+            cursor: pointer;
+            text-decoration: none;
+        }
+
+        .navbar-brand:hover {
+            color: #000;
+        }
+
         .data-source {
-            color: #888; font-size: 0.85rem; margin-left: 1rem;
-            flex: 1 1 auto; max-width: calc(100vw - 300px);
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-            text-align: right; font-family: 'Courier New', monospace;
+            color: #888;
+            font-size: 0.85rem;
+            margin-left: 1rem;
+            flex: 1 1 auto;
+            max-width: calc(100vw - 300px);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-align: right;
+            font-family: 'Courier New', monospace;
         }
-        .data-source a { color: #666; text-decoration: underline; }
-        .data-source a:hover { color: #333; }
+
+        .data-source a {
+            color: #666;
+            text-decoration: underline;
+        }
+
+        .data-source a:hover {
+            color: #333;
+        }
 
         /* Upload section */
         #uploadSection {
@@ -34,7 +58,12 @@
             align-items: center;
             min-height: 80vh;
         }
-        .upload-container { max-width: 600px; width: 100%; }
+
+        .upload-container {
+            max-width: 600px;
+            width: 100%;
+        }
+
         .dropzone {
             border: 3px dashed #dee2e6;
             border-radius: 10px;
@@ -44,21 +73,37 @@
             transition: all 0.3s;
             background-color: white;
         }
-        .dropzone:hover, .dropzone.drag-over {
+
+        .dropzone:hover,
+        .dropzone.drag-over {
             border-color: #0d6efd;
             background-color: #e7f1ff;
         }
-        .dropzone h4 { color: #333; }
-        .url-input-group { margin-top: 1.5rem; }
+
+        .dropzone h4 {
+            color: #333;
+        }
+
+        .url-input-group {
+            margin-top: 1.5rem;
+        }
+
         .btn-load {
             background: #0d6efd;
             border: none;
             color: white;
         }
-        .btn-load:hover { background: #0b5ed7; color: white; }
+
+        .btn-load:hover {
+            background: #0b5ed7;
+            color: white;
+        }
 
         /* App section */
-        #appSection { display: none; }
+        #appSection {
+            display: none;
+        }
+
         .pane {
             background-color: white;
             border-radius: 10px;
@@ -66,6 +111,7 @@
             margin-bottom: 1rem;
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
         }
+
         .pane h5 {
             color: #333;
             margin-bottom: 0.75rem;
@@ -76,6 +122,7 @@
         .summary-table {
             font-size: 0.85rem;
         }
+
         .summary-table th {
             background: #f8f9fa;
             color: #333;
@@ -85,20 +132,39 @@
             user-select: none;
             border-bottom: 2px solid #dee2e6;
         }
-        .summary-table th:hover { background: #e9ecef; }
+
+        .summary-table th:hover {
+            background: #e9ecef;
+        }
+
         .summary-table td {
             padding: 6px 8px;
             border-bottom: 1px solid #dee2e6;
             white-space: nowrap;
         }
+
         .summary-table tr {
             cursor: pointer;
             transition: background 0.15s;
         }
-        .summary-table tr:hover { background: #e7f1ff; }
-        .summary-table tr.selected { background: #cfe2ff; outline: 2px solid #0d6efd; }
-        .summary-table .baseline-radio { text-align: center; width: 1px; }
-        .summary-table .baseline-radio input { cursor: pointer; }
+
+        .summary-table tr:hover {
+            background: #e7f1ff;
+        }
+
+        .summary-table tr.selected {
+            background: #cfe2ff;
+            outline: 2px solid #0d6efd;
+        }
+
+        .summary-table .baseline-radio {
+            text-align: center;
+            width: 1px;
+        }
+
+        .summary-table .baseline-radio input {
+            cursor: pointer;
+        }
 
         /* Pie chart placeholder */
         .pie-placeholder {
@@ -116,6 +182,7 @@
             font-size: 0.82rem;
             margin-bottom: 0.25rem;
         }
+
         .details-table th {
             background: #f8f9fa;
             color: #666;
@@ -124,27 +191,70 @@
             white-space: nowrap;
             width: 50%;
         }
+
         .details-table td {
             padding: 4px 8px;
             white-space: nowrap;
         }
-        .details-table tr { border-bottom: 1px solid #eee; }
+
+        .details-table tr {
+            border-bottom: 1px solid #eee;
+        }
 
         /* Page max width */
-        #appSection { max-width: 1600px; margin-left: auto; margin-right: auto; }
+        #appSection {
+            max-width: 1600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
 
         /* Equal height chart row */
-        .chart-row { display: flex; }
-        .chart-row > .chart-col-left { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-        .chart-row > .chart-col-right { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-        .chart-row > .chart-col-right > .pane { flex: 1; }
-        .chart-row .pane { display: flex; flex-direction: column; }
-        .chart-row .pane-body { flex: 1; overflow-y: auto; }
+        .chart-row {
+            display: flex;
+        }
+
+        .chart-row>.chart-col-left {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chart-row>.chart-col-right {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chart-row>.chart-col-right>.pane {
+            flex: 1;
+        }
+
+        .chart-row .pane {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chart-row .pane-body {
+            flex: 1;
+            overflow-y: auto;
+        }
 
         /* Details layout: table + pie side by side */
-        .details-row { display: flex; gap: 1rem; }
-        .details-row .details-table-col { flex: 1; min-width: 0; }
-        .details-row .details-pie-col { flex-shrink: 0; }
+        .details-row {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .details-row .details-table-col {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .details-row .details-pie-col {
+            flex-shrink: 0;
+        }
 
         /* Chart tooltips */
         .chart-tooltip {
@@ -158,7 +268,7 @@
             color: #333;
             z-index: 100;
             white-space: nowrap;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
         }
 
         /* Chart tabs */
@@ -167,32 +277,46 @@
             font-size: 0.85rem;
             padding: 0.3rem 0.75rem;
         }
+
         .nav-tabs .nav-link.active {
             color: #333;
             font-weight: 600;
         }
 
         /* Stacked bar chart */
-        .bar-group { cursor: pointer; }
-        .bar-group:hover rect { opacity: 0.85; }
+        .bar-group {
+            cursor: pointer;
+        }
+
+        .bar-group:hover rect {
+            opacity: 0.85;
+        }
 
         /* Loading */
         .loading-overlay {
             position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
             background: rgba(248, 249, 250, 0.9);
             display: flex;
             justify-content: center;
             align-items: center;
             z-index: 1000;
         }
-        .loading-overlay .spinner-border { color: #0d6efd; }
+
+        .loading-overlay .spinner-border {
+            color: #0d6efd;
+        }
     </style>
 </head>
+
 <body>
     <nav class="navbar">
         <div class="container-fluid">
-            <a class="navbar-brand" href="#" onclick="window.location.href = window.location.pathname; return false;">OpenVM Metrics Viewer</a>
+            <a class="navbar-brand" href="#"
+                onclick="window.location.href = window.location.pathname; return false;">OpenVM Metrics Viewer</a>
             <span class="data-source" id="dataSourceLabel"></span>
         </div>
     </nav>
@@ -206,7 +330,7 @@
             </div>
             <div class="url-input-group input-group">
                 <input type="text" class="form-control" id="urlInput"
-                       placeholder="Or paste a URL to combined metrics JSON...">
+                    placeholder="Or paste a URL to combined metrics JSON...">
                 <button class="btn btn-load" id="urlLoadBtn">Load</button>
             </div>
         </div>
@@ -219,7 +343,9 @@
                     <h5>Summary Table</h5>
                     <div style="overflow-x:auto">
                         <table class="summary-table" style="width:100%" id="summaryTable">
-                            <thead><tr></tr></thead>
+                            <thead>
+                                <tr></tr>
+                            </thead>
                             <tbody></tbody>
                         </table>
                     </div>
@@ -229,10 +355,12 @@
                         <h5 style="margin:0">Proof Time Breakdown</h5>
                         <ul class="nav nav-tabs" style="margin:0; border:none; margin-left:auto">
                             <li class="nav-item">
-                                <a class="nav-link active" href="#" id="tabStacked" onclick="switchChartTab('stacked'); return false;">Stacked</a>
+                                <a class="nav-link active" href="#" id="tabStacked"
+                                    onclick="switchChartTab('stacked'); return false;">Stacked</a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link" href="#" id="tabGrouped" onclick="switchChartTab('grouped'); return false;">By Component</a>
+                                <a class="nav-link" href="#" id="tabGrouped"
+                                    onclick="switchChartTab('grouped'); return false;">By Component</a>
                             </li>
                         </ul>
                     </div>
@@ -243,7 +371,8 @@
             </div>
             <div class="chart-col-right">
                 <div class="pane">
-                    <h5>Experiment Details <span id="pieRunName" class="text-muted" style="font-size:0.8rem"></span></h5>
+                    <h5>Experiment Details <span id="pieRunName" class="text-muted" style="font-size:0.8rem"></span>
+                    </h5>
                     <div class="pane-body">
                         <div id="detailsSection">
                             <div class="pie-placeholder">Select an experiment to view details</div>
@@ -260,904 +389,905 @@
         </div>
     </div>
 
-<script>
-// ============================================================
-// State
-// ============================================================
-let combinedData = null;
-let allMetrics = [];
-let selectedRunName = null;
-let baselineRunName = null;
-let currentChartTab = 'stacked';
+    <script>
+        // ============================================================
+        // State
+        // ============================================================
+        let combinedData = null;
+        let allMetrics = [];
+        let selectedRunName = null;
+        let baselineRunName = null;
+        let currentChartTab = 'stacked';
 
-// ============================================================
-// Data Processing — ports of Python logic
-//
-// These functions compute all displayed numbers from raw JSON.
-// See CLAUDE.md for the mapping to Python source functions.
-// ============================================================
+        // ============================================================
+        // Data Processing — ports of Python logic
+        //
+        // These functions compute all displayed numbers from raw JSON.
+        // See CLAUDE.md for the mapping to Python source functions.
+        // ============================================================
 
-// Port of metrics_utils.py:load_metrics_dataframes
-// Flattens counter+gauge arrays into flat objects keyed by label names,
-// then splits into app/leaf/internal by the "group" label prefix.
-function loadMetricsDataframes(metricsJson) {
-    const entries = [...(metricsJson.counter || []), ...(metricsJson.gauge || [])].map(c => {
-        const obj = Object.fromEntries(c.labels);
-        obj.metric = c.metric;
-        obj.value = c.value;
-        return obj;
-    });
+        // Port of metrics_utils.py:load_metrics_dataframes
+        // Flattens counter+gauge arrays into flat objects keyed by label names,
+        // then splits into app/leaf/internal by the "group" label prefix.
+        function loadMetricsDataframes(metricsJson) {
+            const entries = [...(metricsJson.counter || []), ...(metricsJson.gauge || [])].map(c => {
+                const obj = Object.fromEntries(c.labels);
+                obj.metric = c.metric;
+                obj.value = c.value;
+                return obj;
+            });
 
-    let app = entries.filter(e => (e.group || '').startsWith('app_proof'));
-    if (app.length === 0) {
-        app = entries.filter(e => (e.group || '').startsWith('reth'));
-    }
-    const leaf = entries.filter(e => (e.group || '').startsWith('leaf'));
-    const internal = entries.filter(e => (e.group || '').startsWith('internal'));
+            let app = entries.filter(e => (e.group || '').startsWith('app_proof'));
+            if (app.length === 0) {
+                app = entries.filter(e => (e.group || '').startsWith('reth'));
+            }
+            const leaf = entries.filter(e => (e.group || '').startsWith('leaf'));
+            const internal = entries.filter(e => (e.group || '').startsWith('internal'));
 
-    return { app, leaf, internal };
-}
-
-// Port of metrics_utils.py:is_normal_instruction_air
-// Returns true for standard RISC-V instruction AIRs (VmAirWrapper with 4 limbs),
-// false for precompiles (FieldExpressionCoreAir, non-4-limb, or non-VmAirWrapper).
-function isNormalInstructionAir(airName) {
-    const match = (airName || '').match(/^VmAirWrapper<[^,]+,\s*([^>]+?)(?:<(\d+)(?:,\s*\d+)*>)?\s*>$/);
-    if (!match) return false;
-    const coreName = match[1];
-    const numLimbs = match[2];
-    if (coreName === 'FieldExpressionCoreAir') return false;
-    if (numLimbs && parseInt(numLimbs) !== 4) return false;
-    return true;
-}
-
-// Sum all values for entries matching a given metric name.
-function getMetric(entries, metricName) {
-    return entries.filter(e => e.metric === metricName)
-                  .reduce((sum, e) => sum + parseFloat(e.value || 0), 0);
-}
-
-// Port of basic_metrics.py:extract_metrics
-// Computes all summary metrics for a single run from its raw JSON.
-// Each metric maps directly to a getMetric() call on a specific group + metric name.
-function extractMetrics(runName, metricsJson) {
-    const { app, leaf, internal } = loadMetricsDataframes(metricsJson);
-    const m = {};
-
-    m.name = runName;
-
-    // Classify app AIRs into powdr / normal instruction / openvm precompile
-    const powdrAir = app.filter(e => (e.air_name || '').startsWith('PowdrAir'));
-    const nonPowdrAir = app.filter(e => !(e.air_name || '').startsWith('PowdrAir'));
-    const normalInstructionAir = nonPowdrAir.filter(e => isNormalInstructionAir(e.air_name || ''));
-    const openVmPrecompileAir = nonPowdrAir.filter(e => !isNormalInstructionAir(e.air_name || ''));
-
-    // Proof times by phase (all from "total_proof_time_ms" metric, split by group)
-    m.app_proof_time_ms = getMetric(app, 'total_proof_time_ms');
-    m.leaf_proof_time_ms = getMetric(leaf, 'total_proof_time_ms');
-    m.inner_recursion_proof_time_ms = getMetric(internal, 'total_proof_time_ms');
-    m.total_proof_time_ms = m.app_proof_time_ms + m.leaf_proof_time_ms + m.inner_recursion_proof_time_ms;
-
-    // STARK prove time excluding trace generation
-    m.app_proof_time_excluding_trace_ms = getMetric(app, 'stark_prove_excluding_trace_time_ms');
-    m.leaf_proof_time_excluding_trace_ms = getMetric(leaf, 'stark_prove_excluding_trace_time_ms');
-    m.inner_recursion_proof_time_excluding_trace_ms = getMetric(internal, 'stark_prove_excluding_trace_time_ms');
-    m.total_proof_time_excluding_trace_ms = m.app_proof_time_excluding_trace_ms + m.leaf_proof_time_excluding_trace_ms + m.inner_recursion_proof_time_excluding_trace_ms;
-
-    // Column counts (summed over all segments)
-    const mainCols = getMetric(app, 'main_cols');
-    const prepCols = getMetric(app, 'prep_cols');
-    const permCols = getMetric(app, 'perm_cols');
-    m.app_proof_cols = mainCols + prepCols + permCols;
-
-    m.num_segments = app.reduce((max, e) => Math.max(max, parseFloat(e.segment || 0)), -1) + 1;
-
-    m.app_proof_cells = getMetric(app, 'total_cells');
-    m.app_execute_preflight_time_ms = getMetric(app, 'execute_preflight_time_ms');
-    m.app_execute_metered_time_ms = getMetric(app, 'execute_metered_time_ms');
-    m.app_trace_gen_time_ms = getMetric(app, 'trace_gen_time_ms');
-
-    // "App other" = app proof time minus all known sub-components
-    m.app_other_ms = m.app_proof_time_ms
-        - m.app_proof_time_excluding_trace_ms
-        - m.app_execute_preflight_time_ms
-        - m.app_execute_metered_time_ms
-        - m.app_trace_gen_time_ms;
-    if (m.app_other_ms < 0) m.app_other_ms = 0;
-
-    // Cell ratios by AIR classification
-    const normalCells = getMetric(normalInstructionAir, 'cells');
-    const openVmCells = getMetric(openVmPrecompileAir, 'cells');
-    const powdrCells = getMetric(powdrAir, 'cells');
-
-    m.normal_instruction_ratio = m.app_proof_cells > 0 ? normalCells / m.app_proof_cells : 0;
-    m.openvm_precompile_ratio = m.app_proof_cells > 0 ? openVmCells / m.app_proof_cells : 0;
-    m.powdr_ratio = m.app_proof_cells > 0 ? powdrCells / m.app_proof_cells : 0;
-    m.powdr_rows = getMetric(powdrAir, 'rows');
-
-    // Constraints and bus interactions — these are top-level per-AIR metrics
-    // (no group/segment labels), so we read them from the full entry list.
-    const allEntries = [...(metricsJson.counter || []), ...(metricsJson.gauge || [])].map(c => {
-        const obj = Object.fromEntries(c.labels);
-        obj.metric = c.metric;
-        obj.value = c.value;
-        return obj;
-    });
-    const hasConstraints = allEntries.some(e => e.metric === 'constraints');
-    const hasInteractions = allEntries.some(e => e.metric === 'interactions');
-
-    m.constraints = hasConstraints ? getMetric(allEntries, 'constraints') : null;
-    m.bus_interactions = hasInteractions ? getMetric(allEntries, 'interactions') : null;
-
-    // Bus interaction messages = sum over all AIRs and segments of (interactions[air] * rows[air, segment])
-    // "interactions" entries are per-AIR (no segment), "rows" entries are per-AIR-per-segment in app group.
-    if (hasInteractions) {
-        const interactionsByAir = {};
-        allEntries.filter(e => e.metric === 'interactions').forEach(e => {
-            interactionsByAir[e.air_name || ''] = parseFloat(e.value || 0);
-        });
-        m.bus_interaction_messages = app.filter(e => e.metric === 'rows').reduce((sum, e) => {
-            const airInteractions = interactionsByAir[e.air_name || ''] || 0;
-            return sum + airInteractions * parseFloat(e.value || 0);
-        }, 0);
-    } else {
-        m.bus_interaction_messages = null;
-    }
-
-    // Constraint instances = sum over all AIRs and segments of (constraints[air] * rows[air, segment])
-    if (hasConstraints) {
-        const constraintsByAir = {};
-        allEntries.filter(e => e.metric === 'constraints').forEach(e => {
-            constraintsByAir[e.air_name || ''] = parseFloat(e.value || 0);
-        });
-        m.constraint_instances = app.filter(e => e.metric === 'rows').reduce((sum, e) => {
-            const airConstraints = constraintsByAir[e.air_name || ''] || 0;
-            return sum + airConstraints * parseFloat(e.value || 0);
-        }, 0);
-    } else {
-        m.constraint_instances = null;
-    }
-
-    return m;
-}
-
-// Port of plot_trace_cells.py:compute_cells_by_air
-// Aggregates cells by air_name from the app group, sorts descending,
-// and groups AIRs below 1.5% of total into "Other".
-function computeCellsByAir(metricsJson) {
-    const { app } = loadMetricsDataframes(metricsJson);
-    const cellEntries = app.filter(e => e.metric === 'cells');
-
-    const cellsByAir = {};
-    cellEntries.forEach(e => {
-        const name = e.air_name || 'unknown';
-        cellsByAir[name] = (cellsByAir[name] || 0) + parseFloat(e.value || 0);
-    });
-
-    const sorted = Object.entries(cellsByAir).sort((a, b) => b[1] - a[1]);
-    const total = sorted.reduce((s, [, v]) => s + v, 0);
-
-    const threshold = total * 0.015;
-    const large = [];
-    let otherSum = 0;
-    for (const [name, val] of sorted) {
-        if (val >= threshold) {
-            large.push({ name, value: val });
-        } else {
-            otherSum += val;
+            return { app, leaf, internal };
         }
-    }
-    if (otherSum > 0) {
-        large.push({ name: 'Other', value: otherSum });
-    }
 
-    return { items: large, total };
-}
+        // Port of metrics_utils.py:is_normal_instruction_air
+        // Returns true for standard RISC-V instruction AIRs (VmAirWrapper with 4 limbs),
+        // false for precompiles (FieldExpressionCoreAir, non-4-limb, or non-VmAirWrapper).
+        function isNormalInstructionAir(airName) {
+            const match = (airName || '').match(/^VmAirWrapper<[^,]+,\s*([^>]+?)(?:<(\d+)(?:,\s*\d+)*>)?\s*>$/);
+            if (!match) return false;
+            const coreName = match[1];
+            const numLimbs = match[2];
+            if (coreName === 'FieldExpressionCoreAir') return false;
+            if (numLimbs && parseInt(numLimbs) !== 4) return false;
+            return true;
+        }
 
-// ============================================================
-// Constants — proof time breakdown components
-// Colors and order match basic_metrics.py:plot()
-// ============================================================
-const COMPONENTS = [
-    { key: 'inner_recursion_proof_time_ms', label: 'Inner recursion', color: '#9b3e00' },
-    { key: 'leaf_proof_time_ms', label: 'Leaf recursion', color: '#d69600' },
-    { key: 'app_proof_time_excluding_trace_ms', label: 'App STARK (excl. trace)', color: '#1f77b4' },
-    { key: 'app_trace_gen_time_ms', label: 'App trace gen', color: '#6baed6' },
-    { key: 'app_execute_preflight_time_ms', label: 'App preflight', color: '#9ecae1' },
-    { key: 'app_execute_metered_time_ms', label: 'App metered', color: '#c6dbef' },
-    { key: 'app_other_ms', label: 'App other', color: '#08519c' },
-];
+        // Sum all values for entries matching a given metric name.
+        function getMetric(entries, metricName) {
+            return entries.filter(e => e.metric === metricName)
+                .reduce((sum, e) => sum + parseFloat(e.value || 0), 0);
+        }
 
-// ============================================================
-// Format helpers
-// ============================================================
-// Data source display — matches autoprecompile-analyzer pattern
-function shortenUrl(urlText) {
-    if (urlText.length <= 70) return urlText;
-    return urlText.slice(0, 35) + '...' + urlText.slice(-35);
-}
+        // Port of basic_metrics.py:extract_metrics
+        // Computes all summary metrics for a single run from its raw JSON.
+        // Each metric maps directly to a getMetric() call on a specific group + metric name.
+        function extractMetrics(runName, metricsJson) {
+            const { app, leaf, internal } = loadMetricsDataframes(metricsJson);
+            const m = {};
 
-function updateDataSourceDisplay(source) {
-    const el = document.getElementById('dataSourceLabel');
-    if (source) {
-        const displayText = shortenUrl(source.replace(/^https?:\/\//i, ''));
-        el.innerHTML = `Data: <a href="${source}" target="_blank" rel="noopener noreferrer">${displayText}</a>`;
-        el.style.display = 'inline';
-    } else {
-        el.innerHTML = '';
-        el.style.display = 'none';
-    }
-}
+            m.name = runName;
 
-function fmtSeconds(ms) { return (ms / 1000).toFixed(1) + 's'; }
-function fmtCells(n) {
-    if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
-    if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
-    return n.toLocaleString();
-}
-function fmtPct(ratio) { return (ratio * 100).toFixed(1) + '%'; }
+            // Classify app AIRs into powdr / normal instruction / openvm precompile
+            const powdrAir = app.filter(e => (e.air_name || '').startsWith('PowdrAir'));
+            const nonPowdrAir = app.filter(e => !(e.air_name || '').startsWith('PowdrAir'));
+            const normalInstructionAir = nonPowdrAir.filter(e => isNormalInstructionAir(e.air_name || ''));
+            const openVmPrecompileAir = nonPowdrAir.filter(e => !isNormalInstructionAir(e.air_name || ''));
 
-// Format comparison vs baseline. "Lower is better" for all numeric stats.
-function fmtComparison(value, baselineValue) {
-    if (baselineValue === 0 || baselineValue == null || value == null) return '';
-    const ratio = value / baselineValue;
-    if (Math.abs(ratio - 1) < 0.005) return '<span style="color:#999; font-size:0.75rem">1.00x →</span>';
-    if (ratio < 1) {
-        return `<span style="color:#198754; font-size:0.75rem">${(1/ratio).toFixed(2)}x ↓</span>`;
-    } else {
-        return `<span style="color:#dc3545; font-size:0.75rem">${ratio.toFixed(2)}x ↑</span>`;
-    }
-}
+            // Proof times by phase (all from "total_proof_time_ms" metric, split by group)
+            m.app_proof_time_ms = getMetric(app, 'total_proof_time_ms');
+            m.leaf_proof_time_ms = getMetric(leaf, 'total_proof_time_ms');
+            m.inner_recursion_proof_time_ms = getMetric(internal, 'total_proof_time_ms');
+            m.total_proof_time_ms = m.app_proof_time_ms + m.leaf_proof_time_ms + m.inner_recursion_proof_time_ms;
 
-// ============================================================
-// Stacked Bar Chart
-// ============================================================
-function createBarChart(metrics) {
-    const container = d3.select('#barChart');
-    container.selectAll('*').remove();
+            // STARK prove time excluding trace generation
+            m.app_proof_time_excluding_trace_ms = getMetric(app, 'stark_prove_excluding_trace_time_ms');
+            m.leaf_proof_time_excluding_trace_ms = getMetric(leaf, 'stark_prove_excluding_trace_time_ms');
+            m.inner_recursion_proof_time_excluding_trace_ms = getMetric(internal, 'stark_prove_excluding_trace_time_ms');
+            m.total_proof_time_excluding_trace_ms = m.app_proof_time_excluding_trace_ms + m.leaf_proof_time_excluding_trace_ms + m.inner_recursion_proof_time_excluding_trace_ms;
 
-    const margin = { top: 30, right: 20, bottom: 80, left: 60 };
-    const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
-    const height = 400 - margin.top - margin.bottom;
+            // Column counts (summed over all segments)
+            const mainCols = getMetric(app, 'main_cols');
+            const prepCols = getMetric(app, 'prep_cols');
+            const permCols = getMetric(app, 'perm_cols');
+            m.app_proof_cols = mainCols + prepCols + permCols;
 
-    const svg = container.append('svg')
-        .attr('width', width + margin.left + margin.right)
-        .attr('height', height + margin.top + margin.bottom);
-    const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+            m.num_segments = app.reduce((max, e) => Math.max(max, parseFloat(e.segment || 0)), -1) + 1;
 
-    const runNames = metrics.map(m => m.name);
+            m.app_proof_cells = getMetric(app, 'total_cells');
+            m.app_execute_preflight_time_ms = getMetric(app, 'execute_preflight_time_ms');
+            m.app_execute_metered_time_ms = getMetric(app, 'execute_metered_time_ms');
+            m.app_trace_gen_time_ms = getMetric(app, 'trace_gen_time_ms');
 
-    // Compute stacked data
-    const stackData = metrics.map(m => {
-        const d = { name: m.name };
-        COMPONENTS.forEach(c => { d[c.key] = Math.max(0, m[c.key]) / 1000; }); // ms -> s
-        return d;
-    });
+            // "App other" = app proof time minus all known sub-components
+            m.app_other_ms = m.app_proof_time_ms
+                - m.app_proof_time_excluding_trace_ms
+                - m.app_execute_preflight_time_ms
+                - m.app_execute_metered_time_ms
+                - m.app_trace_gen_time_ms;
+            if (m.app_other_ms < 0) m.app_other_ms = 0;
 
-    const keys = COMPONENTS.map(c => c.key);
-    const stack = d3.stack().keys(keys);
-    const series = stack(stackData);
+            // Cell ratios by AIR classification
+            const normalCells = getMetric(normalInstructionAir, 'cells');
+            const openVmCells = getMetric(openVmPrecompileAir, 'cells');
+            const powdrCells = getMetric(powdrAir, 'cells');
 
-    const maxY = d3.max(stackData, d => keys.reduce((s, k) => s + d[k], 0));
+            m.normal_instruction_ratio = m.app_proof_cells > 0 ? normalCells / m.app_proof_cells : 0;
+            m.openvm_precompile_ratio = m.app_proof_cells > 0 ? openVmCells / m.app_proof_cells : 0;
+            m.powdr_ratio = m.app_proof_cells > 0 ? powdrCells / m.app_proof_cells : 0;
+            m.powdr_rows = getMetric(powdrAir, 'rows');
 
-    const x = d3.scaleBand().domain(runNames).range([0, width]).padding(0.3);
-    const y = d3.scaleLinear().domain([0, maxY * 1.08]).range([height, 0]);
+            // Constraints and bus interactions — these are top-level per-AIR metrics
+            // (no group/segment labels), so we read them from the full entry list.
+            const allEntries = [...(metricsJson.counter || []), ...(metricsJson.gauge || [])].map(c => {
+                const obj = Object.fromEntries(c.labels);
+                obj.metric = c.metric;
+                obj.value = c.value;
+                return obj;
+            });
+            const hasConstraints = allEntries.some(e => e.metric === 'constraints');
+            const hasInteractions = allEntries.some(e => e.metric === 'interactions');
 
-    // Grid
-    g.append('g').attr('class', 'grid')
-        .call(d3.axisLeft(y).tickSize(-width).tickFormat(''))
-        .selectAll('line').attr('stroke', '#dee2e6').attr('stroke-opacity', 0.7);
-    g.selectAll('.grid .domain').remove();
+            m.constraints = hasConstraints ? getMetric(allEntries, 'constraints') : null;
+            m.bus_interactions = hasInteractions ? getMetric(allEntries, 'interactions') : null;
 
-    // Tooltip
-    const tooltip = d3.select('body').append('div').attr('class', 'chart-tooltip').style('display', 'none');
+            // Bus interaction messages = sum over all AIRs and segments of (interactions[air] * rows[air, segment])
+            // "interactions" entries are per-AIR (no segment), "rows" entries are per-AIR-per-segment in app group.
+            if (hasInteractions) {
+                const interactionsByAir = {};
+                allEntries.filter(e => e.metric === 'interactions').forEach(e => {
+                    interactionsByAir[e.air_name || ''] = parseFloat(e.value || 0);
+                });
+                m.bus_interaction_messages = app.filter(e => e.metric === 'rows').reduce((sum, e) => {
+                    const airInteractions = interactionsByAir[e.air_name || ''] || 0;
+                    return sum + airInteractions * parseFloat(e.value || 0);
+                }, 0);
+            } else {
+                m.bus_interaction_messages = null;
+            }
 
-    // Bars
-    const colorMap = {};
-    COMPONENTS.forEach(c => { colorMap[c.key] = c.color; });
-    const labelMap = {};
-    COMPONENTS.forEach(c => { labelMap[c.key] = c.label; });
+            // Constraint instances = sum over all AIRs and segments of (constraints[air] * rows[air, segment])
+            if (hasConstraints) {
+                const constraintsByAir = {};
+                allEntries.filter(e => e.metric === 'constraints').forEach(e => {
+                    constraintsByAir[e.air_name || ''] = parseFloat(e.value || 0);
+                });
+                m.constraint_instances = app.filter(e => e.metric === 'rows').reduce((sum, e) => {
+                    const airConstraints = constraintsByAir[e.air_name || ''] || 0;
+                    return sum + airConstraints * parseFloat(e.value || 0);
+                }, 0);
+            } else {
+                m.constraint_instances = null;
+            }
 
-    series.forEach(s => {
-        g.selectAll(`.bar-${s.key}`)
-            .data(s)
-            .enter().append('rect')
-            .attr('class', d => `bar-group bar-${d.data.name}`)
-            .attr('x', d => x(d.data.name))
-            .attr('y', d => y(d[1]))
-            .attr('height', d => y(d[0]) - y(d[1]))
-            .attr('width', x.bandwidth())
-            .attr('fill', colorMap[s.key])
-            .attr('data-run', d => d.data.name)
-            .on('click', (event, d) => selectRun(d.data.name))
-            .on('mouseover', (event, d) => {
-                const val = (d[1] - d[0]).toFixed(1);
-                const total = keys.reduce((sum, k) => sum + d.data[k], 0);
-                const pct = total > 0 ? ((d[1] - d[0]) / total * 100).toFixed(1) : '0';
-                tooltip.style('display', 'block')
-                    .html(`<strong>${d.data.name}</strong><br>${labelMap[s.key]}: ${val}s (${pct}%)`);
-            })
-            .on('mousemove', event => {
-                tooltip.style('left', (event.pageX + 12) + 'px').style('top', (event.pageY - 20) + 'px');
-            })
-            .on('mouseout', () => tooltip.style('display', 'none'));
-    });
+            return m;
+        }
 
-    // Value labels inside segments
-    const minLabelHeight = maxY * 0.03;
-    series.forEach(s => {
-        s.forEach(d => {
-            const val = d[1] - d[0];
-            if (val < minLabelHeight) return;
-            const total = keys.reduce((sum, k) => sum + d.data[k], 0);
-            const pct = total > 0 ? (val / total * 100).toFixed(1) : '0';
-            g.append('text')
-                .attr('x', x(d.data.name) + x.bandwidth() / 2)
-                .attr('y', y((d[0] + d[1]) / 2))
+        // Port of plot_trace_cells.py:compute_cells_by_air
+        // Aggregates cells by air_name from the app group, sorts descending,
+        // and groups AIRs below 1.5% of total into "Other".
+        function computeCellsByAir(metricsJson) {
+            const { app } = loadMetricsDataframes(metricsJson);
+            const cellEntries = app.filter(e => e.metric === 'cells');
+
+            const cellsByAir = {};
+            cellEntries.forEach(e => {
+                const name = e.air_name || 'unknown';
+                cellsByAir[name] = (cellsByAir[name] || 0) + parseFloat(e.value || 0);
+            });
+
+            const sorted = Object.entries(cellsByAir).sort((a, b) => b[1] - a[1]);
+            const total = sorted.reduce((s, [, v]) => s + v, 0);
+
+            const threshold = total * 0.015;
+            const large = [];
+            let otherSum = 0;
+            for (const [name, val] of sorted) {
+                if (val >= threshold) {
+                    large.push({ name, value: val });
+                } else {
+                    otherSum += val;
+                }
+            }
+            if (otherSum > 0) {
+                large.push({ name: 'Other', value: otherSum });
+            }
+
+            return { items: large, total };
+        }
+
+        // ============================================================
+        // Constants — proof time breakdown components
+        // Colors and order match basic_metrics.py:plot()
+        // ============================================================
+        const COMPONENTS = [
+            { key: 'inner_recursion_proof_time_ms', label: 'Inner recursion', color: '#9b3e00' },
+            { key: 'leaf_proof_time_ms', label: 'Leaf recursion', color: '#d69600' },
+            { key: 'app_proof_time_excluding_trace_ms', label: 'App STARK (excl. trace)', color: '#1f77b4' },
+            { key: 'app_trace_gen_time_ms', label: 'App trace gen', color: '#6baed6' },
+            { key: 'app_execute_preflight_time_ms', label: 'App preflight', color: '#9ecae1' },
+            { key: 'app_execute_metered_time_ms', label: 'App metered', color: '#c6dbef' },
+            { key: 'app_other_ms', label: 'App other', color: '#08519c' },
+        ];
+
+        // ============================================================
+        // Format helpers
+        // ============================================================
+        // Data source display — matches autoprecompile-analyzer pattern
+        function shortenUrl(urlText) {
+            if (urlText.length <= 70) return urlText;
+            return urlText.slice(0, 35) + '...' + urlText.slice(-35);
+        }
+
+        function updateDataSourceDisplay(source) {
+            const el = document.getElementById('dataSourceLabel');
+            if (source) {
+                const displayText = shortenUrl(source.replace(/^https?:\/\//i, ''));
+                el.innerHTML = `Data: <a href="${source}" target="_blank" rel="noopener noreferrer">${displayText}</a>`;
+                el.style.display = 'inline';
+            } else {
+                el.innerHTML = '';
+                el.style.display = 'none';
+            }
+        }
+
+        function fmtSeconds(ms) { return (ms / 1000).toFixed(1) + 's'; }
+        function fmtCells(n) {
+            if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+            if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+            return n.toLocaleString();
+        }
+        function fmtPct(ratio) { return (ratio * 100).toFixed(1) + '%'; }
+
+        // Format comparison vs baseline. "Lower is better" for all numeric stats.
+        function fmtComparison(value, baselineValue) {
+            if (baselineValue === 0 || baselineValue == null || value == null) return '';
+            const ratio = value / baselineValue;
+            if (Math.abs(ratio - 1) < 0.005) return '<span style="color:#999; font-size:0.75rem">1.00x →</span>';
+            if (ratio < 1) {
+                return `<span style="color:#198754; font-size:0.75rem">${(1 / ratio).toFixed(2)}x ↓</span>`;
+            } else {
+                return `<span style="color:#dc3545; font-size:0.75rem">${ratio.toFixed(2)}x ↑</span>`;
+            }
+        }
+
+        // ============================================================
+        // Stacked Bar Chart
+        // ============================================================
+        function createBarChart(metrics) {
+            const container = d3.select('#barChart');
+            container.selectAll('*').remove();
+
+            const margin = { top: 30, right: 20, bottom: 80, left: 60 };
+            const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
+            const height = 400 - margin.top - margin.bottom;
+
+            const svg = container.append('svg')
+                .attr('width', width + margin.left + margin.right)
+                .attr('height', height + margin.top + margin.bottom);
+            const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+            const runNames = metrics.map(m => m.name);
+
+            // Compute stacked data
+            const stackData = metrics.map(m => {
+                const d = { name: m.name };
+                COMPONENTS.forEach(c => { d[c.key] = Math.max(0, m[c.key]) / 1000; }); // ms -> s
+                return d;
+            });
+
+            const keys = COMPONENTS.map(c => c.key);
+            const stack = d3.stack().keys(keys);
+            const series = stack(stackData);
+
+            const maxY = d3.max(stackData, d => keys.reduce((s, k) => s + d[k], 0));
+
+            const x = d3.scaleBand().domain(runNames).range([0, width]).padding(0.3);
+            const y = d3.scaleLinear().domain([0, maxY * 1.08]).range([height, 0]);
+
+            // Grid
+            g.append('g').attr('class', 'grid')
+                .call(d3.axisLeft(y).tickSize(-width).tickFormat(''))
+                .selectAll('line').attr('stroke', '#dee2e6').attr('stroke-opacity', 0.7);
+            g.selectAll('.grid .domain').remove();
+
+            // Tooltip
+            const tooltip = d3.select('body').append('div').attr('class', 'chart-tooltip').style('display', 'none');
+
+            // Bars
+            const colorMap = {};
+            COMPONENTS.forEach(c => { colorMap[c.key] = c.color; });
+            const labelMap = {};
+            COMPONENTS.forEach(c => { labelMap[c.key] = c.label; });
+
+            series.forEach(s => {
+                g.selectAll(`.bar-${s.key}`)
+                    .data(s)
+                    .enter().append('rect')
+                    .attr('class', d => `bar-group bar-${d.data.name}`)
+                    .attr('x', d => x(d.data.name))
+                    .attr('y', d => y(d[1]))
+                    .attr('height', d => y(d[0]) - y(d[1]))
+                    .attr('width', x.bandwidth())
+                    .attr('fill', colorMap[s.key])
+                    .attr('data-run', d => d.data.name)
+                    .on('click', (event, d) => selectRun(d.data.name))
+                    .on('mouseover', (event, d) => {
+                        const val = (d[1] - d[0]).toFixed(1);
+                        const total = keys.reduce((sum, k) => sum + d.data[k], 0);
+                        const pct = total > 0 ? ((d[1] - d[0]) / total * 100).toFixed(1) : '0';
+                        tooltip.style('display', 'block')
+                            .html(`<strong>${d.data.name}</strong><br>${labelMap[s.key]}: ${val}s (${pct}%)`);
+                    })
+                    .on('mousemove', event => {
+                        tooltip.style('left', (event.pageX + 12) + 'px').style('top', (event.pageY - 20) + 'px');
+                    })
+                    .on('mouseout', () => tooltip.style('display', 'none'));
+            });
+
+            // Value labels inside segments
+            const minLabelHeight = maxY * 0.03;
+            series.forEach(s => {
+                s.forEach(d => {
+                    const val = d[1] - d[0];
+                    if (val < minLabelHeight) return;
+                    const total = keys.reduce((sum, k) => sum + d.data[k], 0);
+                    const pct = total > 0 ? (val / total * 100).toFixed(1) : '0';
+                    g.append('text')
+                        .attr('x', x(d.data.name) + x.bandwidth() / 2)
+                        .attr('y', y((d[0] + d[1]) / 2))
+                        .attr('text-anchor', 'middle')
+                        .attr('dominant-baseline', 'middle')
+                        .attr('fill', '#333')
+                        .attr('font-size', '10px')
+                        .attr('font-weight', 'bold')
+                        .attr('pointer-events', 'none')
+                        .text(`${val.toFixed(1)} (${pct}%)`);
+                });
+            });
+
+            // Total labels on top
+            stackData.forEach(d => {
+                const total = keys.reduce((s, k) => s + d[k], 0);
+                g.append('text')
+                    .attr('x', x(d.name) + x.bandwidth() / 2)
+                    .attr('y', y(total) - 5)
+                    .attr('text-anchor', 'middle')
+                    .attr('fill', '#333')
+                    .attr('font-size', '11px')
+                    .attr('font-weight', 'bold')
+                    .text(`Total: ${total.toFixed(1)}s`);
+            });
+
+            // Axes
+            g.append('g').attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(x))
+                .selectAll('text').attr('fill', '#333');
+            g.append('g')
+                .call(d3.axisLeft(y).tickFormat(d => d.toFixed(1) + 's'))
+                .selectAll('text').attr('fill', '#333');
+
+            // Style axis lines
+            svg.selectAll('.domain').attr('stroke', '#dee2e6');
+            svg.selectAll('.tick line').attr('stroke', '#dee2e6');
+
+            // Legend
+            const legend = svg.append('g')
+                .attr('transform', `translate(${margin.left}, ${height + margin.top + 35})`);
+            const legendItemWidth = width / COMPONENTS.length;
+            COMPONENTS.forEach((c, i) => {
+                const lg = legend.append('g').attr('transform', `translate(${i * legendItemWidth}, 0)`);
+                lg.append('rect').attr('width', 12).attr('height', 12).attr('fill', c.color).attr('rx', 2);
+                lg.append('text').attr('x', 16).attr('y', 10).text(c.label)
+                    .attr('fill', '#666').attr('font-size', '10px');
+            });
+
+            updateBarSelection();
+        }
+
+        function updateBarSelection() {
+            d3.selectAll('#barChart rect[data-run]').each(function () {
+                const el = d3.select(this);
+                if (el.attr('data-run') === selectedRunName) {
+                    el.attr('stroke', '#ffc107').attr('stroke-width', 3);
+                } else {
+                    el.attr('stroke', 'none');
+                }
+            });
+        }
+
+        // ============================================================
+        // Grouped Bar Chart (By Component)
+        // ============================================================
+        function createGroupedBarChart(metrics) {
+            const container = d3.select('#barChart');
+            container.selectAll('*').remove();
+
+            const margin = { top: 30, right: 20, bottom: 80, left: 60 };
+            const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
+            const height = 400 - margin.top - margin.bottom;
+
+            const svg = container.append('svg')
+                .attr('width', width + margin.left + margin.right)
+                .attr('height', height + margin.top + margin.bottom);
+            const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+            const runNames = metrics.map(m => m.name);
+            const keys = COMPONENTS.map(c => c.key);
+
+            const stackData = metrics.map(m => {
+                const d = { name: m.name };
+                COMPONENTS.forEach(c => { d[c.key] = Math.max(0, m[c.key]) / 1000; });
+                return d;
+            });
+
+            const maxY = d3.max(stackData, d => d3.max(keys, k => d[k]));
+
+            const x0 = d3.scaleBand().domain(runNames).range([0, width]).padding(0.2);
+            const x1 = d3.scaleBand().domain(keys).range([0, x0.bandwidth()]).padding(0.05);
+            const y = d3.scaleLinear().domain([0, maxY * 1.08]).range([height, 0]);
+
+            // Grid
+            g.append('g').attr('class', 'grid')
+                .call(d3.axisLeft(y).tickSize(-width).tickFormat(''))
+                .selectAll('line').attr('stroke', '#dee2e6').attr('stroke-opacity', 0.7);
+            g.selectAll('.grid .domain').remove();
+
+            // Tooltip
+            const tooltip = d3.select('body').append('div').attr('class', 'chart-tooltip').style('display', 'none');
+            const colorMap = {};
+            COMPONENTS.forEach(c => { colorMap[c.key] = c.color; });
+            const labelMap = {};
+            COMPONENTS.forEach(c => { labelMap[c.key] = c.label; });
+
+            // Bars
+            stackData.forEach(d => {
+                keys.forEach(key => {
+                    g.append('rect')
+                        .attr('x', x0(d.name) + x1(key))
+                        .attr('y', y(d[key]))
+                        .attr('width', x1.bandwidth())
+                        .attr('height', height - y(d[key]))
+                        .attr('fill', colorMap[key])
+                        .attr('data-run', d.name)
+                        .style('cursor', 'pointer')
+                        .on('click', () => selectRun(d.name))
+                        .on('mouseover', (event) => {
+                            tooltip.style('display', 'block')
+                                .html(`<strong>${d.name}</strong><br>${labelMap[key]}: ${d[key].toFixed(1)}s`);
+                        })
+                        .on('mousemove', event => {
+                            tooltip.style('left', (event.pageX + 12) + 'px').style('top', (event.pageY - 20) + 'px');
+                        })
+                        .on('mouseout', () => tooltip.style('display', 'none'));
+                });
+            });
+
+            // Axes
+            g.append('g').attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(x0))
+                .selectAll('text').attr('fill', '#333');
+            g.append('g')
+                .call(d3.axisLeft(y).tickFormat(d => d.toFixed(1) + 's'))
+                .selectAll('text').attr('fill', '#333');
+
+            svg.selectAll('.domain').attr('stroke', '#dee2e6');
+            svg.selectAll('.tick line').attr('stroke', '#dee2e6');
+
+            // Legend
+            const legend = svg.append('g')
+                .attr('transform', `translate(${margin.left}, ${height + margin.top + 35})`);
+            const legendItemWidth = width / COMPONENTS.length;
+            COMPONENTS.forEach((c, i) => {
+                const lg = legend.append('g').attr('transform', `translate(${i * legendItemWidth}, 0)`);
+                lg.append('rect').attr('width', 12).attr('height', 12).attr('fill', c.color).attr('rx', 2);
+                lg.append('text').attr('x', 16).attr('y', 10).text(c.label)
+                    .attr('fill', '#666').attr('font-size', '10px');
+            });
+
+            updateBarSelection();
+        }
+
+        // ============================================================
+        // Chart Tab Switching
+        // ============================================================
+        function switchChartTab(tab) {
+            currentChartTab = tab;
+            document.getElementById('tabStacked').classList.toggle('active', tab === 'stacked');
+            document.getElementById('tabGrouped').classList.toggle('active', tab === 'grouped');
+            if (allMetrics.length > 0) {
+                if (tab === 'stacked') createBarChart(allMetrics);
+                else createGroupedBarChart(allMetrics);
+            }
+        }
+
+        function renderCurrentChart() {
+            if (currentChartTab === 'stacked') createBarChart(allMetrics);
+            else createGroupedBarChart(allMetrics);
+        }
+
+        // ============================================================
+        // Summary Table
+        // ============================================================
+        const TABLE_COLUMNS = [
+            { key: 'name', label: 'Experiment', fmt: v => v },
+            { key: 'num_segments', label: 'Segments', fmt: v => v },
+            { key: 'app_proof_cells', label: 'App Cells', fmt: fmtCells },
+            { key: 'total_proof_time_ms', label: 'Total Time', fmt: fmtSeconds },
+        ];
+
+        // Detail tables: three separate tables shown in the experiment details pane.
+
+        const BASIC_STATS_ROWS = [
+            { key: 'num_segments', label: 'Segments', fmt: v => v },
+            { key: 'app_proof_cols', label: 'App Columns', fmt: v => v.toLocaleString() },
+            { key: 'app_proof_cells', label: 'App Cells', fmt: fmtCells },
+            { key: 'constraints', label: 'Constraints', fmt: v => v.toLocaleString() },
+            { key: 'constraint_instances', label: 'Constraint Instances', fmt: fmtCells },
+            { key: 'bus_interactions', label: 'Bus Interactions', fmt: v => v.toLocaleString() },
+            { key: 'bus_interaction_messages', label: 'Bus Interaction Messages', fmt: fmtCells },
+        ];
+
+        // Nested proof time breakdown — indent level controls visual nesting.
+        const PROOF_TIME_ROWS = [
+            { key: 'app_proof_time_ms', label: 'App Proof Time', fmt: fmtSeconds, indent: 0 },
+            { key: 'app_proof_time_excluding_trace_ms', label: 'STARK (excl. trace)', fmt: fmtSeconds, indent: 1 },
+            { key: 'app_execute_metered_time_ms', label: 'Metered Execution', fmt: fmtSeconds, indent: 1 },
+            { key: 'app_execute_preflight_time_ms', label: 'Preflight Execution', fmt: fmtSeconds, indent: 1 },
+            { key: 'app_trace_gen_time_ms', label: 'Trace Gen', fmt: fmtSeconds, indent: 1 },
+            { key: 'leaf_proof_time_ms', label: 'Leaf Recursion', fmt: fmtSeconds, indent: 0 },
+            { key: 'inner_recursion_proof_time_ms', label: 'Inner Recursion', fmt: fmtSeconds, indent: 0 },
+            { key: 'total_proof_time_ms', label: 'Total', fmt: fmtSeconds, indent: 0, bold: true },
+        ];
+
+        const CELL_DISTRIBUTION_ROWS = [
+            { key: 'powdr_ratio', label: 'Powdr', fmt: fmtPct, noCompare: true },
+            { key: 'normal_instruction_ratio', label: 'Normal Instructions', fmt: fmtPct, noCompare: true },
+            { key: 'openvm_precompile_ratio', label: 'OpenVM Precompiles', fmt: fmtPct, noCompare: true },
+        ];
+
+        let tableSortKey = 'name';
+        let tableSortAsc = true;
+
+        function getBaselineMetrics() {
+            return allMetrics.find(m => m.name === baselineRunName) || null;
+        }
+
+        function selectBaseline(runName) {
+            baselineRunName = runName;
+            renderTableBody(allMetrics);
+            if (selectedRunName) renderDetails(selectedRunName);
+            updateUrl();
+        }
+
+        function createSummaryTable(metrics) {
+            const table = document.getElementById('summaryTable');
+            const thead = table.querySelector('thead tr');
+            const tbody = table.querySelector('tbody');
+
+            thead.innerHTML = '';
+            // Baseline radio column
+            const thBaseline = document.createElement('th');
+            thBaseline.textContent = 'Baseline';
+            thBaseline.classList.add('baseline-radio');
+            thead.appendChild(thBaseline);
+
+            TABLE_COLUMNS.forEach(col => {
+                const th = document.createElement('th');
+                th.textContent = col.label;
+                th.onclick = () => {
+                    if (tableSortKey === col.key) {
+                        tableSortAsc = !tableSortAsc;
+                    } else {
+                        tableSortKey = col.key;
+                        tableSortAsc = true;
+                    }
+                    renderTableBody(metrics);
+                };
+                thead.appendChild(th);
+            });
+
+            renderTableBody(metrics);
+        }
+
+        function renderTableBody(metrics) {
+            const tbody = document.querySelector('#summaryTable tbody');
+            tbody.innerHTML = '';
+            const baseline = getBaselineMetrics();
+
+            const sorted = [...metrics].sort((a, b) => {
+                const va = a[tableSortKey], vb = b[tableSortKey];
+                const cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
+                return tableSortAsc ? cmp : -cmp;
+            });
+
+            sorted.forEach(m => {
+                const tr = document.createElement('tr');
+                if (m.name === selectedRunName) tr.classList.add('selected');
+                tr.onclick = (e) => { if (e.target.tagName !== 'INPUT') selectRun(m.name); };
+
+                // Baseline radio
+                const tdRadio = document.createElement('td');
+                tdRadio.classList.add('baseline-radio');
+                const radio = document.createElement('input');
+                radio.type = 'radio';
+                radio.name = 'baseline';
+                radio.checked = m.name === baselineRunName;
+                radio.onclick = (e) => { e.stopPropagation(); selectBaseline(m.name); };
+                tdRadio.appendChild(radio);
+                tr.appendChild(tdRadio);
+
+                TABLE_COLUMNS.forEach(col => {
+                    const td = document.createElement('td');
+                    const formatted = col.fmt(m[col.key]);
+                    if (col.key === 'name' || !baseline || m.name === baselineRunName) {
+                        td.textContent = formatted;
+                    } else {
+                        td.innerHTML = formatted + ' ' + fmtComparison(m[col.key], baseline[col.key]);
+                    }
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+        }
+
+        function updateTableSelection() {
+            document.querySelectorAll('#summaryTable tbody tr').forEach(tr => {
+                const name = tr.querySelectorAll('td')[1]?.textContent;
+                tr.classList.toggle('selected', name === selectedRunName);
+            });
+        }
+
+        // ============================================================
+        // Experiment Details (details table + pie chart)
+        // ============================================================
+        function renderDetailTable(title, rows, m, opts = {}) {
+            const baseline = getBaselineMetrics();
+            let html = `<h6 style="color:#333; font-weight:600; margin-bottom:0.3rem; margin-top:0.75rem">${title}</h6>`;
+            html += '<table class="details-table"><tbody>';
+            rows.forEach(row => {
+                const indent = row.indent || 0;
+                const padding = indent > 0 ? `padding-left:${indent * 1.2 + 0.5}em` : '';
+                const weight = row.bold ? 'font-weight:700' : '';
+                const thStyle = [padding, weight].filter(Boolean).join(';');
+                const tdStyle = weight;
+                const formatted = m[row.key] != null ? row.fmt(m[row.key], m) : '<span style="color:#999">N/A</span>';
+                const comparison = (baseline && m.name !== baselineRunName && !row.noCompare)
+                    ? ' ' + fmtComparison(m[row.key], baseline[row.key])
+                    : '';
+                html += `<tr><th${thStyle ? ` style="${thStyle}"` : ''}>${row.label}</th>`;
+                html += `<td${tdStyle ? ` style="${tdStyle}"` : ''}>${formatted}${comparison}</td>`;
+                if (opts.pctOfKey) {
+                    const total = m[opts.pctOfKey];
+                    const pct = total > 0 ? (m[row.key] / total * 100).toFixed(1) + '%' : '';
+                    html += `<td style="color:#888; text-align:right${weight ? ';' + weight : ''}">${pct}</td>`;
+                }
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            return html;
+        }
+
+        function renderDetails(runName) {
+            const section = document.getElementById('detailsSection');
+            section.innerHTML = '';
+            document.getElementById('pieRunName').textContent = runName ? `(${runName})` : '';
+
+            if (!runName || !combinedData[runName]) {
+                section.innerHTML = '<div class="pie-placeholder">Select an experiment to view details</div>';
+                return;
+            }
+
+            const m = allMetrics.find(m => m.name === runName);
+            if (!m) return;
+
+            // Three detail tables + pie chart side by side
+            let html = '<div class="details-row">';
+            html += '<div class="details-table-col">';
+            html += renderDetailTable('Basic Stats', BASIC_STATS_ROWS, m);
+            html += renderDetailTable('Proof Time', PROOF_TIME_ROWS, m, { pctOfKey: 'total_proof_time_ms' });
+            html += renderDetailTable('Trace Cell Distribution', CELL_DISTRIBUTION_ROWS, m);
+            html += '</div>';
+            html += '<div class="details-pie-col"><h6 style="color:#333; font-weight:600; margin-bottom:0.5rem; margin-top:0.75rem">Trace Cells by AIR</h6><div id="pieChart"></div></div>';
+            html += '</div>';
+            section.innerHTML = html;
+
+            // Pie chart
+            createPieChart(runName);
+        }
+
+        function createPieChart(runName) {
+            const container = d3.select('#pieChart');
+            container.selectAll('*').remove();
+
+            const { items, total } = computeCellsByAir(combinedData[runName]);
+            if (items.length === 0) {
+                container.append('div').attr('class', 'pie-placeholder').text('No cell data available');
+                return;
+            }
+
+            const size = 320;
+            const radius = size / 2 - 10;
+            const svg = container.append('svg')
+                .attr('width', size)
+                .attr('height', size + items.length * 18 + 20);
+            const g = svg.append('g').attr('transform', `translate(${size / 2},${size / 2})`);
+
+            const colors = d3.scaleOrdinal()
+                .domain(items.map(d => d.name))
+                .range(d3.quantize(t => d3.interpolateSpectral(t * 0.8 + 0.1), Math.max(items.length, 3)));
+
+            const pie = d3.pie().value(d => d.value).sort(null);
+            const arc = d3.arc().innerRadius(0).outerRadius(radius);
+
+            const arcs = g.selectAll('arc')
+                .data(pie(items))
+                .enter().append('g');
+
+            arcs.append('path')
+                .attr('d', arc)
+                .attr('fill', d => colors(d.data.name))
+                .attr('stroke', 'white')
+                .attr('stroke-width', 1.5);
+
+            // Labels for big slices
+            const labelArcs = arcs.filter(d => d.data.value / total > 0.05);
+            labelArcs.append('text')
+                .attr('transform', d => `translate(${arc.centroid(d)})`)
                 .attr('text-anchor', 'middle')
-                .attr('dominant-baseline', 'middle')
                 .attr('fill', '#333')
                 .attr('font-size', '10px')
                 .attr('font-weight', 'bold')
-                .attr('pointer-events', 'none')
-                .text(`${val.toFixed(1)} (${pct}%)`);
-        });
-    });
+                .each(function (d) {
+                    const pct = (d.data.value / total * 100).toFixed(1);
+                    const billions = (d.data.value / 1e9).toFixed(2);
+                    d3.select(this).append('tspan').attr('x', 0).attr('dy', '-0.4em').text(`${pct}%`);
+                    d3.select(this).append('tspan').attr('x', 0).attr('dy', '1.2em').text(`${billions}B`);
+                });
 
-    // Total labels on top
-    stackData.forEach(d => {
-        const total = keys.reduce((s, k) => s + d[k], 0);
-        g.append('text')
-            .attr('x', x(d.name) + x.bandwidth() / 2)
-            .attr('y', y(total) - 5)
-            .attr('text-anchor', 'middle')
-            .attr('fill', '#333')
-            .attr('font-size', '11px')
-            .attr('font-weight', 'bold')
-            .text(`Total: ${total.toFixed(1)}s`);
-    });
+            // Legend below pie
+            const legendG = svg.append('g')
+                .attr('transform', `translate(10, ${size + 10})`);
 
-    // Axes
-    g.append('g').attr('transform', `translate(0,${height})`)
-        .call(d3.axisBottom(x))
-        .selectAll('text').attr('fill', '#333');
-    g.append('g')
-        .call(d3.axisLeft(y).tickFormat(d => d.toFixed(1) + 's'))
-        .selectAll('text').attr('fill', '#333');
-
-    // Style axis lines
-    svg.selectAll('.domain').attr('stroke', '#dee2e6');
-    svg.selectAll('.tick line').attr('stroke', '#dee2e6');
-
-    // Legend
-    const legend = svg.append('g')
-        .attr('transform', `translate(${margin.left}, ${height + margin.top + 35})`);
-    const legendItemWidth = width / COMPONENTS.length;
-    COMPONENTS.forEach((c, i) => {
-        const lg = legend.append('g').attr('transform', `translate(${i * legendItemWidth}, 0)`);
-        lg.append('rect').attr('width', 12).attr('height', 12).attr('fill', c.color).attr('rx', 2);
-        lg.append('text').attr('x', 16).attr('y', 10).text(c.label)
-            .attr('fill', '#666').attr('font-size', '10px');
-    });
-
-    updateBarSelection();
-}
-
-function updateBarSelection() {
-    d3.selectAll('#barChart rect[data-run]').each(function() {
-        const el = d3.select(this);
-        if (el.attr('data-run') === selectedRunName) {
-            el.attr('stroke', '#ffc107').attr('stroke-width', 3);
-        } else {
-            el.attr('stroke', 'none');
+            items.forEach((item, i) => {
+                const lg = legendG.append('g').attr('transform', `translate(0, ${i * 18})`);
+                lg.append('rect').attr('width', 12).attr('height', 12).attr('fill', colors(item.name)).attr('rx', 2);
+                const pct = (item.value / total * 100).toFixed(1);
+                lg.append('text').attr('x', 18).attr('y', 10)
+                    .attr('fill', '#333').attr('font-size', '11px')
+                    .text(`${pct}% - ${item.name}`);
+            });
         }
-    });
-}
 
-// ============================================================
-// Grouped Bar Chart (By Component)
-// ============================================================
-function createGroupedBarChart(metrics) {
-    const container = d3.select('#barChart');
-    container.selectAll('*').remove();
-
-    const margin = { top: 30, right: 20, bottom: 80, left: 60 };
-    const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
-    const height = 400 - margin.top - margin.bottom;
-
-    const svg = container.append('svg')
-        .attr('width', width + margin.left + margin.right)
-        .attr('height', height + margin.top + margin.bottom);
-    const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
-
-    const runNames = metrics.map(m => m.name);
-    const keys = COMPONENTS.map(c => c.key);
-
-    const stackData = metrics.map(m => {
-        const d = { name: m.name };
-        COMPONENTS.forEach(c => { d[c.key] = Math.max(0, m[c.key]) / 1000; });
-        return d;
-    });
-
-    const maxY = d3.max(stackData, d => d3.max(keys, k => d[k]));
-
-    const x0 = d3.scaleBand().domain(runNames).range([0, width]).padding(0.2);
-    const x1 = d3.scaleBand().domain(keys).range([0, x0.bandwidth()]).padding(0.05);
-    const y = d3.scaleLinear().domain([0, maxY * 1.08]).range([height, 0]);
-
-    // Grid
-    g.append('g').attr('class', 'grid')
-        .call(d3.axisLeft(y).tickSize(-width).tickFormat(''))
-        .selectAll('line').attr('stroke', '#dee2e6').attr('stroke-opacity', 0.7);
-    g.selectAll('.grid .domain').remove();
-
-    // Tooltip
-    const tooltip = d3.select('body').append('div').attr('class', 'chart-tooltip').style('display', 'none');
-    const colorMap = {};
-    COMPONENTS.forEach(c => { colorMap[c.key] = c.color; });
-    const labelMap = {};
-    COMPONENTS.forEach(c => { labelMap[c.key] = c.label; });
-
-    // Bars
-    stackData.forEach(d => {
-        keys.forEach(key => {
-            g.append('rect')
-                .attr('x', x0(d.name) + x1(key))
-                .attr('y', y(d[key]))
-                .attr('width', x1.bandwidth())
-                .attr('height', height - y(d[key]))
-                .attr('fill', colorMap[key])
-                .attr('data-run', d.name)
-                .style('cursor', 'pointer')
-                .on('click', () => selectRun(d.name))
-                .on('mouseover', (event) => {
-                    tooltip.style('display', 'block')
-                        .html(`<strong>${d.name}</strong><br>${labelMap[key]}: ${d[key].toFixed(1)}s`);
-                })
-                .on('mousemove', event => {
-                    tooltip.style('left', (event.pageX + 12) + 'px').style('top', (event.pageY - 20) + 'px');
-                })
-                .on('mouseout', () => tooltip.style('display', 'none'));
-        });
-    });
-
-    // Axes
-    g.append('g').attr('transform', `translate(0,${height})`)
-        .call(d3.axisBottom(x0))
-        .selectAll('text').attr('fill', '#333');
-    g.append('g')
-        .call(d3.axisLeft(y).tickFormat(d => d.toFixed(1) + 's'))
-        .selectAll('text').attr('fill', '#333');
-
-    svg.selectAll('.domain').attr('stroke', '#dee2e6');
-    svg.selectAll('.tick line').attr('stroke', '#dee2e6');
-
-    // Legend
-    const legend = svg.append('g')
-        .attr('transform', `translate(${margin.left}, ${height + margin.top + 35})`);
-    const legendItemWidth = width / COMPONENTS.length;
-    COMPONENTS.forEach((c, i) => {
-        const lg = legend.append('g').attr('transform', `translate(${i * legendItemWidth}, 0)`);
-        lg.append('rect').attr('width', 12).attr('height', 12).attr('fill', c.color).attr('rx', 2);
-        lg.append('text').attr('x', 16).attr('y', 10).text(c.label)
-            .attr('fill', '#666').attr('font-size', '10px');
-    });
-
-    updateBarSelection();
-}
-
-// ============================================================
-// Chart Tab Switching
-// ============================================================
-function switchChartTab(tab) {
-    currentChartTab = tab;
-    document.getElementById('tabStacked').classList.toggle('active', tab === 'stacked');
-    document.getElementById('tabGrouped').classList.toggle('active', tab === 'grouped');
-    if (allMetrics.length > 0) {
-        if (tab === 'stacked') createBarChart(allMetrics);
-        else createGroupedBarChart(allMetrics);
-    }
-}
-
-function renderCurrentChart() {
-    if (currentChartTab === 'stacked') createBarChart(allMetrics);
-    else createGroupedBarChart(allMetrics);
-}
-
-// ============================================================
-// Summary Table
-// ============================================================
-const TABLE_COLUMNS = [
-    { key: 'name', label: 'Experiment', fmt: v => v },
-    { key: 'num_segments', label: 'Segments', fmt: v => v },
-    { key: 'app_proof_cells', label: 'App Cells', fmt: fmtCells },
-    { key: 'total_proof_time_ms', label: 'Total Time', fmt: fmtSeconds },
-];
-
-// Detail tables: three separate tables shown in the experiment details pane.
-
-const BASIC_STATS_ROWS = [
-    { key: 'num_segments', label: 'Segments', fmt: v => v },
-    { key: 'app_proof_cols', label: 'App Columns', fmt: v => v.toLocaleString() },
-    { key: 'app_proof_cells', label: 'App Cells', fmt: fmtCells },
-    { key: 'constraints', label: 'Constraints', fmt: v => v.toLocaleString() },
-    { key: 'constraint_instances', label: 'Constraint Instances', fmt: fmtCells },
-    { key: 'bus_interactions', label: 'Bus Interactions', fmt: v => v.toLocaleString() },
-    { key: 'bus_interaction_messages', label: 'Bus Interaction Messages', fmt: fmtCells },
-];
-
-// Nested proof time breakdown — indent level controls visual nesting.
-const PROOF_TIME_ROWS = [
-    { key: 'app_proof_time_ms', label: 'App Proof Time', fmt: fmtSeconds, indent: 0 },
-    { key: 'app_proof_time_excluding_trace_ms', label: 'STARK (excl. trace)', fmt: fmtSeconds, indent: 1 },
-    { key: 'app_execute_metered_time_ms', label: 'Metered Execution', fmt: fmtSeconds, indent: 1 },
-    { key: 'app_execute_preflight_time_ms', label: 'Preflight Execution', fmt: fmtSeconds, indent: 1 },
-    { key: 'app_trace_gen_time_ms', label: 'Trace Gen', fmt: fmtSeconds, indent: 1 },
-    { key: 'leaf_proof_time_ms', label: 'Leaf Recursion', fmt: fmtSeconds, indent: 0 },
-    { key: 'inner_recursion_proof_time_ms', label: 'Inner Recursion', fmt: fmtSeconds, indent: 0 },
-    { key: 'total_proof_time_ms', label: 'Total', fmt: fmtSeconds, indent: 0, bold: true },
-];
-
-const CELL_DISTRIBUTION_ROWS = [
-    { key: 'powdr_ratio', label: 'Powdr', fmt: fmtPct, noCompare: true },
-    { key: 'normal_instruction_ratio', label: 'Normal Instructions', fmt: fmtPct, noCompare: true },
-    { key: 'openvm_precompile_ratio', label: 'OpenVM Precompiles', fmt: fmtPct, noCompare: true },
-];
-
-let tableSortKey = 'name';
-let tableSortAsc = true;
-
-function getBaselineMetrics() {
-    return allMetrics.find(m => m.name === baselineRunName) || null;
-}
-
-function selectBaseline(runName) {
-    baselineRunName = runName;
-    renderTableBody(allMetrics);
-    if (selectedRunName) renderDetails(selectedRunName);
-    updateUrl();
-}
-
-function createSummaryTable(metrics) {
-    const table = document.getElementById('summaryTable');
-    const thead = table.querySelector('thead tr');
-    const tbody = table.querySelector('tbody');
-
-    thead.innerHTML = '';
-    // Baseline radio column
-    const thBaseline = document.createElement('th');
-    thBaseline.textContent = 'Baseline';
-    thBaseline.classList.add('baseline-radio');
-    thead.appendChild(thBaseline);
-
-    TABLE_COLUMNS.forEach(col => {
-        const th = document.createElement('th');
-        th.textContent = col.label;
-        th.onclick = () => {
-            if (tableSortKey === col.key) {
-                tableSortAsc = !tableSortAsc;
+        // ============================================================
+        // Selection
+        // ============================================================
+        function selectRun(runName) {
+            if (selectedRunName === runName) {
+                selectedRunName = null;
             } else {
-                tableSortKey = col.key;
-                tableSortAsc = true;
+                selectedRunName = runName;
             }
-            renderTableBody(metrics);
-        };
-        thead.appendChild(th);
-    });
+            updateBarSelection();
+            updateTableSelection();
+            renderDetails(selectedRunName);
+            updateUrl();
+        }
 
-    renderTableBody(metrics);
-}
+        // ============================================================
+        // Data Loading
+        // ============================================================
+        function processAndRender(data) {
+            combinedData = data;
+            allMetrics = Object.entries(data).map(([name, json]) => extractMetrics(name, json));
 
-function renderTableBody(metrics) {
-    const tbody = document.querySelector('#summaryTable tbody');
-    tbody.innerHTML = '';
-    const baseline = getBaselineMetrics();
-
-    const sorted = [...metrics].sort((a, b) => {
-        const va = a[tableSortKey], vb = b[tableSortKey];
-        const cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
-        return tableSortAsc ? cmp : -cmp;
-    });
-
-    sorted.forEach(m => {
-        const tr = document.createElement('tr');
-        if (m.name === selectedRunName) tr.classList.add('selected');
-        tr.onclick = (e) => { if (e.target.tagName !== 'INPUT') selectRun(m.name); };
-
-        // Baseline radio
-        const tdRadio = document.createElement('td');
-        tdRadio.classList.add('baseline-radio');
-        const radio = document.createElement('input');
-        radio.type = 'radio';
-        radio.name = 'baseline';
-        radio.checked = m.name === baselineRunName;
-        radio.onclick = (e) => { e.stopPropagation(); selectBaseline(m.name); };
-        tdRadio.appendChild(radio);
-        tr.appendChild(tdRadio);
-
-        TABLE_COLUMNS.forEach(col => {
-            const td = document.createElement('td');
-            const formatted = col.fmt(m[col.key]);
-            if (col.key === 'name' || !baseline || m.name === baselineRunName) {
-                td.textContent = formatted;
-            } else {
-                td.innerHTML = formatted + ' ' + fmtComparison(m[col.key], baseline[col.key]);
+            // Set default baseline if not already set from URL
+            if (!baselineRunName || !allMetrics.find(m => m.name === baselineRunName)) {
+                const apc000 = allMetrics.find(m => m.name === 'apc000');
+                baselineRunName = apc000 ? 'apc000' : (allMetrics[0]?.name || null);
             }
-            tr.appendChild(td);
-        });
-        tbody.appendChild(tr);
-    });
-}
 
-function updateTableSelection() {
-    document.querySelectorAll('#summaryTable tbody tr').forEach(tr => {
-        const name = tr.querySelectorAll('td')[1]?.textContent;
-        tr.classList.toggle('selected', name === selectedRunName);
-    });
-}
+            document.getElementById('uploadSection').style.display = 'none';
+            document.getElementById('appSection').style.display = 'block';
 
-// ============================================================
-// Experiment Details (details table + pie chart)
-// ============================================================
-function renderDetailTable(title, rows, m, opts = {}) {
-    const baseline = getBaselineMetrics();
-    let html = `<h6 style="color:#333; font-weight:600; margin-bottom:0.3rem; margin-top:0.75rem">${title}</h6>`;
-    html += '<table class="details-table"><tbody>';
-    rows.forEach(row => {
-        const indent = row.indent || 0;
-        const padding = indent > 0 ? `padding-left:${indent * 1.2 + 0.5}em` : '';
-        const weight = row.bold ? 'font-weight:700' : '';
-        const thStyle = [padding, weight].filter(Boolean).join(';');
-        const tdStyle = weight;
-        const formatted = m[row.key] != null ? row.fmt(m[row.key]) : '<span style="color:#999">N/A</span>';
-        const comparison = (baseline && m.name !== baselineRunName && !row.noCompare)
-            ? ' ' + fmtComparison(m[row.key], baseline[row.key])
-            : '';
-        html += `<tr><th${thStyle ? ` style="${thStyle}"` : ''}>${row.label}</th>`;
-        html += `<td${tdStyle ? ` style="${tdStyle}"` : ''}>${formatted}${comparison}</td>`;
-        if (opts.pctOfKey) {
-            const total = m[opts.pctOfKey];
-            const pct = total > 0 ? (m[row.key] / total * 100).toFixed(1) + '%' : '';
-            html += `<td style="color:#888; text-align:right${weight ? ';' + weight : ''}">${pct}</td>`;
+            createSummaryTable(allMetrics);
+            renderCurrentChart();
+            renderDetails(selectedRunName);
+            updateUrl();
         }
-        html += '</tr>';
-    });
-    html += '</tbody></table>';
-    return html;
-}
 
-function renderDetails(runName) {
-    const section = document.getElementById('detailsSection');
-    section.innerHTML = '';
-    document.getElementById('pieRunName').textContent = runName ? `(${runName})` : '';
-
-    if (!runName || !combinedData[runName]) {
-        section.innerHTML = '<div class="pie-placeholder">Select an experiment to view details</div>';
-        return;
-    }
-
-    const m = allMetrics.find(m => m.name === runName);
-    if (!m) return;
-
-    // Three detail tables + pie chart side by side
-    let html = '<div class="details-row">';
-    html += '<div class="details-table-col">';
-    html += renderDetailTable('Basic Stats', BASIC_STATS_ROWS, m);
-    html += renderDetailTable('Proof Time', PROOF_TIME_ROWS, m, { pctOfKey: 'total_proof_time_ms' });
-    html += renderDetailTable('Trace Cell Distribution', CELL_DISTRIBUTION_ROWS, m);
-    html += '</div>';
-    html += '<div class="details-pie-col"><h6 style="color:#333; font-weight:600; margin-bottom:0.5rem; margin-top:0.75rem">Trace Cells by AIR</h6><div id="pieChart"></div></div>';
-    html += '</div>';
-    section.innerHTML = html;
-
-    // Pie chart
-    createPieChart(runName);
-}
-
-function createPieChart(runName) {
-    const container = d3.select('#pieChart');
-    container.selectAll('*').remove();
-
-    const { items, total } = computeCellsByAir(combinedData[runName]);
-    if (items.length === 0) {
-        container.append('div').attr('class', 'pie-placeholder').text('No cell data available');
-        return;
-    }
-
-    const size = 320;
-    const radius = size / 2 - 10;
-    const svg = container.append('svg')
-        .attr('width', size)
-        .attr('height', size + items.length * 18 + 20);
-    const g = svg.append('g').attr('transform', `translate(${size/2},${size/2})`);
-
-    const colors = d3.scaleOrdinal()
-        .domain(items.map(d => d.name))
-        .range(d3.quantize(t => d3.interpolateSpectral(t * 0.8 + 0.1), Math.max(items.length, 3)));
-
-    const pie = d3.pie().value(d => d.value).sort(null);
-    const arc = d3.arc().innerRadius(0).outerRadius(radius);
-
-    const arcs = g.selectAll('arc')
-        .data(pie(items))
-        .enter().append('g');
-
-    arcs.append('path')
-        .attr('d', arc)
-        .attr('fill', d => colors(d.data.name))
-        .attr('stroke', 'white')
-        .attr('stroke-width', 1.5);
-
-    // Labels for big slices
-    const labelArcs = arcs.filter(d => d.data.value / total > 0.05);
-    labelArcs.append('text')
-        .attr('transform', d => `translate(${arc.centroid(d)})`)
-        .attr('text-anchor', 'middle')
-        .attr('fill', '#333')
-        .attr('font-size', '10px')
-        .attr('font-weight', 'bold')
-        .each(function(d) {
-            const pct = (d.data.value / total * 100).toFixed(1);
-            const billions = (d.data.value / 1e9).toFixed(2);
-            d3.select(this).append('tspan').attr('x', 0).attr('dy', '-0.4em').text(`${pct}%`);
-            d3.select(this).append('tspan').attr('x', 0).attr('dy', '1.2em').text(`${billions}B`);
-        });
-
-    // Legend below pie
-    const legendG = svg.append('g')
-        .attr('transform', `translate(10, ${size + 10})`);
-
-    items.forEach((item, i) => {
-        const lg = legendG.append('g').attr('transform', `translate(0, ${i * 18})`);
-        lg.append('rect').attr('width', 12).attr('height', 12).attr('fill', colors(item.name)).attr('rx', 2);
-        const pct = (item.value / total * 100).toFixed(1);
-        lg.append('text').attr('x', 18).attr('y', 10)
-            .attr('fill', '#333').attr('font-size', '11px')
-            .text(`${pct}% - ${item.name}`);
-    });
-}
-
-// ============================================================
-// Selection
-// ============================================================
-function selectRun(runName) {
-    if (selectedRunName === runName) {
-        selectedRunName = null;
-    } else {
-        selectedRunName = runName;
-    }
-    updateBarSelection();
-    updateTableSelection();
-    renderDetails(selectedRunName);
-    updateUrl();
-}
-
-// ============================================================
-// Data Loading
-// ============================================================
-function processAndRender(data) {
-    combinedData = data;
-    allMetrics = Object.entries(data).map(([name, json]) => extractMetrics(name, json));
-
-    // Set default baseline if not already set from URL
-    if (!baselineRunName || !allMetrics.find(m => m.name === baselineRunName)) {
-        const apc000 = allMetrics.find(m => m.name === 'apc000');
-        baselineRunName = apc000 ? 'apc000' : (allMetrics[0]?.name || null);
-    }
-
-    document.getElementById('uploadSection').style.display = 'none';
-    document.getElementById('appSection').style.display = 'block';
-
-    createSummaryTable(allMetrics);
-    renderCurrentChart();
-    renderDetails(selectedRunName);
-    updateUrl();
-}
-
-function handleFile(file) {
-    const reader = new FileReader();
-    reader.onload = e => {
-        try {
-            const data = JSON.parse(e.target.result);
-            updateDataSourceDisplay(file.name);
-            processAndRender(data);
-        } catch (err) {
-            alert('Failed to parse JSON: ' + err.message);
+        function handleFile(file) {
+            const reader = new FileReader();
+            reader.onload = e => {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    updateDataSourceDisplay(file.name);
+                    processAndRender(data);
+                } catch (err) {
+                    alert('Failed to parse JSON: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
         }
-    };
-    reader.readAsText(file);
-}
 
-async function loadFromUrl(url, updateUrlParam = true) {
-    // Convert GitHub blob URLs to raw
-    const rawUrl = url.replace(
-        /github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.*)/,
-        'raw.githubusercontent.com/$1/$2/$3/$4'
-    );
+        async function loadFromUrl(url, updateUrlParam = true) {
+            // Convert GitHub blob URLs to raw
+            const rawUrl = url.replace(
+                /github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.*)/,
+                'raw.githubusercontent.com/$1/$2/$3/$4'
+            );
 
-    document.getElementById('loadingOverlay').style.display = 'flex';
-    try {
-        const resp = await fetch(rawUrl);
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const data = await resp.json();
-        updateDataSourceDisplay(url);
-        if (updateUrlParam) {
+            document.getElementById('loadingOverlay').style.display = 'flex';
+            try {
+                const resp = await fetch(rawUrl);
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const data = await resp.json();
+                updateDataSourceDisplay(url);
+                if (updateUrlParam) {
+                    const params = new URLSearchParams(window.location.search);
+                    params.set('data', url);
+                    history.replaceState(null, '', window.location.pathname + '?' + params.toString());
+                }
+                processAndRender(data);
+            } catch (err) {
+                alert('Failed to load: ' + err.message);
+            } finally {
+                document.getElementById('loadingOverlay').style.display = 'none';
+            }
+        }
+
+        // ============================================================
+        // URL Parameters
+        // ============================================================
+        function updateUrl() {
             const params = new URLSearchParams(window.location.search);
-            params.set('data', url);
-            history.replaceState(null, '', window.location.pathname + '?' + params.toString());
+            if (selectedRunName) {
+                params.set('run', selectedRunName);
+            } else {
+                params.delete('run');
+            }
+            if (baselineRunName) {
+                params.set('baseline', baselineRunName);
+            } else {
+                params.delete('baseline');
+            }
+            const newUrl = window.location.pathname + '?' + params.toString();
+            history.replaceState(null, '', newUrl);
         }
-        processAndRender(data);
-    } catch (err) {
-        alert('Failed to load: ' + err.message);
-    } finally {
-        document.getElementById('loadingOverlay').style.display = 'none';
-    }
-}
 
-// ============================================================
-// URL Parameters
-// ============================================================
-function updateUrl() {
-    const params = new URLSearchParams(window.location.search);
-    if (selectedRunName) {
-        params.set('run', selectedRunName);
-    } else {
-        params.delete('run');
-    }
-    if (baselineRunName) {
-        params.set('baseline', baselineRunName);
-    } else {
-        params.delete('baseline');
-    }
-    const newUrl = window.location.pathname + '?' + params.toString();
-    history.replaceState(null, '', newUrl);
-}
+        // ============================================================
+        // Event Handlers
+        // ============================================================
+        const dropzone = document.getElementById('dropzone');
+        const fileInput = document.getElementById('fileInput');
 
-// ============================================================
-// Event Handlers
-// ============================================================
-const dropzone = document.getElementById('dropzone');
-const fileInput = document.getElementById('fileInput');
+        dropzone.addEventListener('click', () => fileInput.click());
+        dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+        dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+        dropzone.addEventListener('drop', e => {
+            e.preventDefault();
+            dropzone.classList.remove('drag-over');
+            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+        });
+        fileInput.addEventListener('change', () => { if (fileInput.files.length) handleFile(fileInput.files[0]); });
 
-dropzone.addEventListener('click', () => fileInput.click());
-dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
-dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
-dropzone.addEventListener('drop', e => {
-    e.preventDefault();
-    dropzone.classList.remove('drag-over');
-    if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
-});
-fileInput.addEventListener('change', () => { if (fileInput.files.length) handleFile(fileInput.files[0]); });
+        document.getElementById('urlLoadBtn').addEventListener('click', () => {
+            const url = document.getElementById('urlInput').value.trim();
+            if (url) loadFromUrl(url);
+        });
+        document.getElementById('urlInput').addEventListener('keydown', e => {
+            if (e.key === 'Enter') {
+                const url = e.target.value.trim();
+                if (url) loadFromUrl(url);
+            }
+        });
 
-document.getElementById('urlLoadBtn').addEventListener('click', () => {
-    const url = document.getElementById('urlInput').value.trim();
-    if (url) loadFromUrl(url);
-});
-document.getElementById('urlInput').addEventListener('keydown', e => {
-    if (e.key === 'Enter') {
-        const url = e.target.value.trim();
-        if (url) loadFromUrl(url);
-    }
-});
+        // Responsive chart redraw
+        window.addEventListener('resize', () => {
+            if (allMetrics.length > 0) {
+                renderCurrentChart();
+                if (selectedRunName) renderDetails(selectedRunName);
+            }
+        });
 
-// Responsive chart redraw
-window.addEventListener('resize', () => {
-    if (allMetrics.length > 0) {
-        renderCurrentChart();
-        if (selectedRunName) renderDetails(selectedRunName);
-    }
-});
-
-// Auto-load from URL params
-(function init() {
-    const params = new URLSearchParams(window.location.search);
-    const dataUrl = params.get('data') || params.get('url');
-    const run = params.get('run');
-    const baseline = params.get('baseline');
-    if (run) selectedRunName = run;
-    if (baseline) baselineRunName = baseline;
-    if (dataUrl) loadFromUrl(dataUrl, false);
-})();
-</script>
+        // Auto-load from URL params
+        (function init() {
+            const params = new URLSearchParams(window.location.search);
+            const dataUrl = params.get('data') || params.get('url');
+            const run = params.get('run');
+            const baseline = params.get('baseline');
+            if (run) selectedRunName = run;
+            if (baseline) baselineRunName = baseline;
+            if (dataUrl) loadFromUrl(dataUrl, false);
+        })();
+    </script>
 </body>
+
 </html>
