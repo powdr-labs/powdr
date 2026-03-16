@@ -327,10 +327,7 @@ impl<ISA: OpenVmISA> PowdrExecutor<ISA> {
     where
         Ctx: ExecutionCtxTrait,
     {
-        use openvm_stark_backend::{
-            p3_field::Field,
-            p3_maybe_rayon::prelude::ParallelIterator,
-        };
+        use openvm_stark_backend::{p3_field::Field, p3_maybe_rayon::prelude::ParallelIterator};
 
         let &Instruction {
             a,

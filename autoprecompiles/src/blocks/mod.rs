@@ -32,7 +32,10 @@ impl<I: PcStep> BasicBlock<I> {
 
     /// Returns an iterator over the program counters of the instructions in this block.
     pub fn instructions(&self) -> impl Iterator<Item = (u64, &I)> + '_ {
-        self.instructions.iter().enumerate().map(|(index, i)| (self.start_pc + (index as u64 * I::pc_step() as u64), i))
+        self.instructions
+            .iter()
+            .enumerate()
+            .map(|(index, i)| (self.start_pc + (index as u64 * I::pc_step() as u64), i))
     }
 }
 
@@ -73,7 +76,6 @@ impl<I> SuperBlock<I> {
 }
 
 impl<I: PcStep> SuperBlock<I> {
-
     /// Sequence of basic block start PCs, uniquely identifies this superblock
     pub fn start_pcs(&self) -> Vec<u64> {
         self.blocks.iter().map(|b| b.start_pc).collect()
