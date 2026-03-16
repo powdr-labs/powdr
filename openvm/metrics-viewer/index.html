@@ -501,11 +501,11 @@ function fmtPct(ratio) { return (ratio * 100).toFixed(1) + '%'; }
 function fmtComparison(value, baselineValue) {
     if (baselineValue === 0 || baselineValue == null || value == null) return '';
     const ratio = value / baselineValue;
-    if (Math.abs(ratio - 1) < 0.005) return '<span style="color:#999; font-size:0.75rem">1.0x →</span>';
+    if (Math.abs(ratio - 1) < 0.005) return '<span style="color:#999; font-size:0.75rem">1.00x →</span>';
     if (ratio < 1) {
-        return `<span style="color:#198754; font-size:0.75rem">${(1/ratio).toFixed(1)}x ↓</span>`;
+        return `<span style="color:#198754; font-size:0.75rem">${(1/ratio).toFixed(2)}x ↓</span>`;
     } else {
-        return `<span style="color:#dc3545; font-size:0.75rem">${ratio.toFixed(1)}x ↑</span>`;
+        return `<span style="color:#dc3545; font-size:0.75rem">${ratio.toFixed(2)}x ↑</span>`;
     }
 }
 
