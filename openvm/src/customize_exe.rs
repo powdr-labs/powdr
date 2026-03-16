@@ -227,13 +227,13 @@ pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAd
         tracing::debug!("Basic blocks sorted by execution count (top 10):");
         for (count, block) in blocks
             .iter()
-            .filter_map(|block| Some((pgo.pc_execution_count(block.start_pc)?, block)))
+            .filter_map(|block| Some((pgo.pc_execution_count(block.start_pc())?, block)))
             .sorted_by_key(|(count, _)| *count)
             .rev()
             .take(10)
         {
             let name = symbols
-                .try_get_one_or_preceding(block.start_pc)
+                .try_get_one_or_preceding(block.start_pc())
                 .map(|(symbol, offset)| format!("{} + {offset}", symbol))
                 .unwrap_or_default();
             tracing::debug!("Basic block (executed {count} times), {name}:\n{block}",);

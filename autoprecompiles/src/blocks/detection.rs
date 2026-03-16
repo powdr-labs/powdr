@@ -2,14 +2,14 @@ use std::collections::BTreeSet;
 
 use crate::{
     adapter::Adapter,
-    blocks::{BasicBlock, Program},
+    blocks::{BasicBlock, Program, SuperBlock},
 };
 
 /// Collects basic blocks from a program
 pub fn collect_basic_blocks<A: Adapter>(
     program: &A::Program,
     jumpdest_set: &BTreeSet<u64>,
-) -> Vec<BasicBlock<A::Instruction>> {
+) -> Vec<SuperBlock<A::Instruction>> {
     let mut blocks = Vec::new();
     let mut curr_block = BasicBlock {
         start_pc: program.instruction_index_to_pc(0),
@@ -70,5 +70,11 @@ pub fn collect_basic_blocks<A: Adapter>(
         blocks.len()
     );
 
-    blocks
+    expand_blocks::<A>(blocks)
+}
+
+fn expand_blocks<A: Adapter>(
+    blocks: Vec<BasicBlock<A::Instruction>>,
+) -> Vec<SuperBlock<A::Instruction>> {
+    blocks.into_iter().map(SuperBlock::from).collect()
 }

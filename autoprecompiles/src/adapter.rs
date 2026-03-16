@@ -57,7 +57,7 @@ pub trait PgoAdapter {
 
     fn filter_blocks_and_create_apcs_with_pgo(
         &self,
-        blocks: Vec<AdapterBasicBlock<Self::Adapter>>,
+        blocks: Vec<AdapterSuperBlock<Self::Adapter>>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
@@ -67,9 +67,7 @@ pub trait PgoAdapter {
             detect_superblocks(config, &prof.pc_list, blocks)
         } else {
             let superblocks = blocks
-                .into_iter()
-                .map(SuperBlock::from)
-                // filter invalid APC candidates
+                .into_iter() // filter invalid APC candidates
                 .filter(|sb| sb.instructions().count() > 1)
                 .collect();
             ExecutionBlocks::new_without_pgo(superblocks)

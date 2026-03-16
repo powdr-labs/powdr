@@ -73,6 +73,18 @@ impl<I> SuperBlock<I> {
             None
         }
     }
+
+    pub fn start_pc(&self) -> u64 {
+        self.blocks[0].start_pc
+    }
+
+    pub fn len(&self) -> usize {
+        self.blocks.iter().map(|b| b.instructions.len()).sum()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 impl<I> SuperBlock<I> {
@@ -247,7 +259,7 @@ pub fn find_non_overlapping<T: Eq>(haystack: &[T], needle: &[T]) -> Vec<usize> {
 /// Returns a list of the runs, coupled with how many times each appears (a run may repeat in the execution).
 fn detect_execution_bb_runs<I>(
     // start PC to basic blocks. Should include every basic block in the program, including those with len=1 (invalid APC)
-    start_pc_to_bb: &HashMap<u64, BasicBlock<I>>,
+    start_pc_to_bb: &HashMap<u64, SuperBlock<I>>,
     execution: &[u64],
 ) -> Vec<(ExecutionBasicBlockRun, u32)> {
     // Basic block runs in the execution.
@@ -262,8 +274,8 @@ fn detect_execution_bb_runs<I>(
         let bb = start_pc_to_bb
             .get(&pc)
             .expect("PC in execution not part of any basic blocks");
-        assert!(!bb.instructions.is_empty());
-        if bb.instructions.len() == 1 {
+        assert!(!bb.is_empty());
+        if bb.len() == 1 {
             // if starting a single instruction BB (i.e., invalid for APC), end current run
             if !current_run.is_empty() {
                 *execution_bb_runs
@@ -275,7 +287,7 @@ fn detect_execution_bb_runs<I>(
             current_run.push(pc);
         }
         // move to next bb
-        pos += bb.instructions.len();
+        pos += bb.len();
     }
     if !current_run.is_empty() {
         *execution_bb_runs
@@ -341,7 +353,7 @@ pub fn detect_superblocks<I: Clone + PcStep>(
     // program execution as a sequence of PCs
     execution_pc_list: &[u64],
     // all program basic blocks (including single instruction ones), in no particular order
-    basic_blocks: Vec<BasicBlock<I>>,
+    basic_blocks: Vec<SuperBlock<I>>,
 ) -> ExecutionBlocks<I> {
     tracing::info!(
         "Detecting superblocks with <= {} basic blocks, over the sequence of {} PCs",
@@ -354,7 +366,7 @@ pub fn detect_superblocks<I: Clone + PcStep>(
     // index basic blocks by start PC
     let start_pc_to_bb: HashMap<_, _> = basic_blocks
         .into_iter()
-        .map(|bb| (bb.start_pc, bb))
+        .map(|bb| (bb.start_pc(), bb))
         .collect();
 
     let execution_bb_runs = detect_execution_bb_runs(&start_pc_to_bb, execution_pc_list);
@@ -377,7 +389,7 @@ pub fn detect_superblocks<I: Clone + PcStep>(
         let block = SuperBlock::from(
             sblock_pcs
                 .iter()
-                .map(|start_pc| start_pc_to_bb[start_pc].clone())
+                .flat_map(|start_pc| start_pc_to_bb[start_pc].clone().blocks)
                 .collect_vec(),
         );
 
@@ -468,9 +480,12 @@ mod test {
 
     #[test]
     fn test_detect_superblocks_counts_and_execution_runs() {
-        let bb = |start_pc: u64, len: usize| BasicBlock {
-            start_pc,
-            instructions: vec![TestInstruction; len],
+        let bb = |start_pc: u64, len: usize| {
+            BasicBlock {
+                start_pc,
+                instructions: vec![TestInstruction; len],
+            }
+            .into()
         };
 
         let cfg = PowdrConfig::new(
