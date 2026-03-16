@@ -35,10 +35,6 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
             })
             .map(|block_and_stats| {
                 let block = block_and_stats.block;
-                assert!(
-                    block.is_basic_block(),
-                    "None PGO does not support superblocks"
-                );
                 tracing::debug!(
                     "Basic block start_pc: {}, number_of_instructions: {}",
                     block.pcs().next().unwrap(),
