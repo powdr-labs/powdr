@@ -204,7 +204,7 @@ def combine(metrics_files):
         label = get_label(filepath)
         with open(filepath) as f:
             combined[label] = json.load(f)
-    print(json.dumps(combined, indent=2))
+    print(json.dumps(combined))
 
 
 if __name__ == "__main__":
