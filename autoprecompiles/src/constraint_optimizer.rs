@@ -8,6 +8,7 @@ use std::{
 use itertools::Itertools;
 use num_traits::Zero;
 use powdr_constraint_solver::{
+    bus_interaction_handler::DefaultBusInteractionHandler,
     constraint_system::{
         AlgebraicConstraint, BusInteractionHandler, ConstraintRef, ConstraintSystem,
     },
@@ -475,6 +476,12 @@ pub trait IsBusStateful<T: FieldElement> {
     fn is_stateful(&self, bus_id: T) -> bool;
 }
 
+impl<T: FieldElement> IsBusStateful<T> for DefaultBusInteractionHandler<T> {
+    fn is_stateful(&self, _bus_id: T) -> bool {
+        false
+    }
+}
+
 /// Removes constraints that are factors of other constraints.
 fn remove_redundant_constraints<P: FieldElement, V: Clone + Ord + Hash + Display>(
     constraint_system: IndexedConstraintSystem<P, V>,
@@ -572,4 +579,92 @@ fn remove_unreferenced_derived_variables<P: FieldElement, V: Clone + Ord + Hash 
         referenced_variables.contains(&derived_var.variable)
     });
     constraint_system
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::memory_optimizer::MemoryOp;
+
+    use super::*;
+    use expect_test::expect;
+    use powdr_constraint_solver::{
+        bus_interaction_handler::DefaultBusInteractionHandler,
+        constraint_system::{BusInteraction, ConstraintSystem},
+        solver::new_solver,
+    };
+    use powdr_number::GoldilocksField;
+
+    fn var(n: &'static str) -> GroupedExpression<GoldilocksField, &'static str> {
+        GroupedExpression::from_unknown_variable(n)
+    }
+
+    fn constant(n: u64) -> GroupedExpression<GoldilocksField, &'static str> {
+        GroupedExpression::from_number(GoldilocksField::from(n))
+    }
+
+    struct InvalidMemoryBusInteraction;
+    impl MemoryBusInteraction<GoldilocksField, &'static str> for InvalidMemoryBusInteraction {
+        type Address = Vec<GroupedExpression<GoldilocksField, &'static str>>;
+
+        fn try_from_bus_interaction(
+            _: &BusInteraction<GroupedExpression<GoldilocksField, &'static str>>,
+            _: u64,
+        ) -> Result<Option<Self>, crate::memory_optimizer::MemoryBusInteractionConversionError>
+        {
+            panic!()
+        }
+
+        fn addr(&self) -> Self::Address {
+            panic!()
+        }
+
+        fn data(&self) -> &[GroupedExpression<GoldilocksField, &'static str>] {
+            panic!()
+        }
+
+        fn timestamp(&self) -> &GroupedExpression<GoldilocksField, &'static str> {
+            panic!()
+        }
+
+        fn op(&self) -> MemoryOp {
+            panic!()
+        }
+    }
+
+    #[test]
+    fn simplify_expression_using_exhaustive_search() {
+        // X + T + Y * 4 - Z * 8 = 0;
+        // (Y - 2) * (Z + 1) = 0
+        // Y * Z = 0
+        // Y * (Y - 2) = 0
+        // Z * (Z + 1) = 0
+        let constraint_system: IndexedConstraintSystem<_, _> = ConstraintSystem::default()
+            .with_constraints(vec![
+                var("X") + var("T") + var("Y") * constant(4) - var("Z") * constant(8),
+                (var("Y") - constant(2)) * (var("Z") + constant(1)),
+                var("Y") * var("Z"),
+                var("Y") * (var("Y") - constant(2)),
+                var("Z") * (var("Z") + constant(1)),
+            ])
+            .into();
+        let bus_int_handler = DefaultBusInteractionHandler::default();
+        let mut stats_logger = StatsLogger::start(&constraint_system);
+        let mut solver = new_solver(constraint_system.system().clone(), bus_int_handler.clone());
+
+        let out = optimize_constraints::<_, _, InvalidMemoryBusInteraction>(
+            constraint_system,
+            &mut solver,
+            bus_int_handler,
+            &mut stats_logger,
+            None,
+            DegreeBound {
+                identities: 10,
+                bus_interactions: 10,
+            },
+            &mut |_| panic!(),
+            &mut Default::default(),
+        )
+        .unwrap();
+        expect![].assert_eq(&out.to_string())
+    }
 }
