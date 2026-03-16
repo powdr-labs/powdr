@@ -327,11 +327,7 @@ impl<ISA: OpenVmISA> PowdrExecutor<ISA> {
     where
         Ctx: ExecutionCtxTrait,
     {
-        use openvm_instructions::program::DEFAULT_PC_STEP;
-        use openvm_stark_backend::{
-            p3_field::Field,
-            p3_maybe_rayon::prelude::{IndexedParallelIterator, ParallelIterator},
-        };
+        use openvm_stark_backend::{p3_field::Field, p3_maybe_rayon::prelude::ParallelIterator};
 
         let &Instruction {
             a,
@@ -365,8 +361,7 @@ impl<ISA: OpenVmISA> PowdrExecutor<ISA> {
                 .apc
                 .block
                 .par_instructions()
-                .enumerate()
-                .map(|(idx, instruction)| {
+                .map(|(pc, instruction)| {
                     let executor = executor_inventory
                         .get_executor(instruction.inner.opcode)
                         .ok_or(StaticProgramError::ExecutorNotFound {
@@ -375,7 +370,7 @@ impl<ISA: OpenVmISA> PowdrExecutor<ISA> {
                     let pre_compute_size = executor.pre_compute_size();
                     let mut pre_compute_data = vec![0u8; pre_compute_size];
                     let execute_func = executor.pre_compute::<Ctx>(
-                        pc + idx as u32 * DEFAULT_PC_STEP,
+                        pc as u32,
                         &instruction.inner,
                         &mut pre_compute_data,
                     )?;

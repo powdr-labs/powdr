@@ -1,5 +1,5 @@
 use crate::adapter::{Adapter, AdapterApc, AdapterVmConfig};
-use crate::blocks::SuperBlock;
+use crate::blocks::{PcStep, SuperBlock};
 use crate::bus_map::{BusMap, BusType};
 use crate::empirical_constraints::{ConstraintGenerator, EmpiricalConstraints};
 use crate::evaluation::AirStats;
@@ -192,7 +192,7 @@ pub struct Apc<T, I, A, V> {
     pub optimistic_constraints: OptimisticConstraints<A, V>,
 }
 
-impl<T, I, A, V> Apc<T, I, A, V> {
+impl<T, I: PcStep, A, V> Apc<T, I, A, V> {
     pub fn subs(&self) -> &[Vec<Substitution>] {
         &self.subs
     }
@@ -202,8 +202,8 @@ impl<T, I, A, V> Apc<T, I, A, V> {
     }
 
     /// The instructions in the block.
-    pub fn instructions(&self) -> impl Iterator<Item = &I> + Clone {
-        self.block.instructions()
+    pub fn instructions(&self) -> impl Iterator<Item = &I> {
+        self.block.instructions().map(|(_, i)| i)
     }
 
     /// The PCs of the original basic blocks composing this APC. Can be used to identify the APC.
