@@ -18,7 +18,14 @@
         }
         .navbar-brand { color: #333; font-weight: 700; cursor: pointer; text-decoration: none; }
         .navbar-brand:hover { color: #000; }
-        .data-source { color: #888; font-size: 0.85rem; margin-left: 1rem; }
+        .data-source {
+            color: #888; font-size: 0.85rem; margin-left: 1rem;
+            flex: 1 1 auto; max-width: calc(100vw - 300px);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            text-align: right; font-family: 'Courier New', monospace;
+        }
+        .data-source a { color: #666; text-decoration: underline; }
+        .data-source a:hover { color: #333; }
 
         /* Upload section */
         #uploadSection {
@@ -456,6 +463,24 @@ const COMPONENTS = [
 // ============================================================
 // Format helpers
 // ============================================================
+// Data source display — matches autoprecompile-analyzer pattern
+function shortenUrl(urlText) {
+    if (urlText.length <= 70) return urlText;
+    return urlText.slice(0, 35) + '...' + urlText.slice(-35);
+}
+
+function updateDataSourceDisplay(source) {
+    const el = document.getElementById('dataSourceLabel');
+    if (source) {
+        const displayText = shortenUrl(source.replace(/^https?:\/\//i, ''));
+        el.innerHTML = `Data: <a href="${source}" target="_blank" rel="noopener noreferrer">${displayText}</a>`;
+        el.style.display = 'inline';
+    } else {
+        el.innerHTML = '';
+        el.style.display = 'none';
+    }
+}
+
 function fmtSeconds(ms) { return (ms / 1000).toFixed(1) + 's'; }
 function fmtCells(n) {
     if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
@@ -1026,7 +1051,7 @@ function handleFile(file) {
     reader.onload = e => {
         try {
             const data = JSON.parse(e.target.result);
-            document.getElementById('dataSourceLabel').textContent = file.name;
+            updateDataSourceDisplay(file.name);
             processAndRender(data);
         } catch (err) {
             alert('Failed to parse JSON: ' + err.message);
@@ -1047,7 +1072,7 @@ async function loadFromUrl(url, updateUrlParam = true) {
         const resp = await fetch(rawUrl);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
-        document.getElementById('dataSourceLabel').textContent = url.split('/').pop();
+        updateDataSourceDisplay(url);
         if (updateUrlParam) {
             const params = new URLSearchParams(window.location.search);
             params.set('data', url);
