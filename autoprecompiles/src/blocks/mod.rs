@@ -29,6 +29,11 @@ impl<I: PcStep> BasicBlock<I> {
     pub fn pcs(&self) -> impl Iterator<Item = u64> + '_ {
         (0..self.instructions.len()).map(move |i| self.start_pc + (i as u64 * I::pc_step() as u64))
     }
+
+    /// Returns an iterator over the program counters of the instructions in this block.
+    pub fn instructions(&self) -> impl Iterator<Item = (u64, &I)> + '_ {
+        self.instructions.iter().enumerate().map(|(index, i)| (self.start_pc + (index as u64 * I::pc_step() as u64), i))
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -65,6 +70,9 @@ impl<I> SuperBlock<I> {
             None
         }
     }
+}
+
+impl<I: PcStep> SuperBlock<I> {
 
     /// Sequence of basic block start PCs, uniquely identifies this superblock
     pub fn start_pcs(&self) -> Vec<u64> {
@@ -89,14 +97,21 @@ impl<I> SuperBlock<I> {
     pub fn blocks(&self) -> impl Iterator<Item = &BasicBlock<I>> {
         self.blocks.iter()
     }
+}
+
+impl<I: PcStep> SuperBlock<I> {
+    /// Returns an iterator over the program counters of the instructions in this block.
+    pub fn pcs(&self) -> impl Iterator<Item = u64> + '_ {
+        self.blocks.iter().flat_map(BasicBlock::pcs)
+    }
 
     /// Sequence of instructions across all basic blocks in this superblock
-    pub fn instructions(&self) -> impl Iterator<Item = &I> + Clone {
-        self.blocks.iter().flat_map(|b| &b.instructions)
+    pub fn instructions(&self) -> impl Iterator<Item = (u64, &I)> {
+        self.blocks.iter().flat_map(BasicBlock::instructions)
     }
 
     /// Parallel iterator over instructions across all basic blocks in this superblock
-    pub fn par_instructions(&self) -> impl IndexedParallelIterator<Item = &I>
+    pub fn par_instructions(&self) -> impl IndexedParallelIterator<Item = (u64, &I)>
     where
         I: Sync,
     {
@@ -119,13 +134,6 @@ impl<I> SuperBlock<I> {
                 })
                 .collect(),
         }
-    }
-}
-
-impl<I: PcStep> SuperBlock<I> {
-    /// Returns an iterator over the program counters of the instructions in this block.
-    pub fn pcs(&self) -> impl Iterator<Item = u64> + '_ {
-        self.blocks.iter().flat_map(BasicBlock::pcs)
     }
 }
 
@@ -326,7 +334,7 @@ fn count_superblocks_in_execution(
 /// Detect basic blocks and superblocks present in the given execution.
 /// Returns the detected blocks, together with their execution information.
 /// Does not return invalid APC blocks (i.e., single instruction) and blocks that are never executed.
-pub fn detect_superblocks<I: Clone>(
+pub fn detect_superblocks<I: Clone + PcStep>(
     cfg: &PowdrConfig,
     // program execution as a sequence of PCs
     execution_pc_list: &[u64],
