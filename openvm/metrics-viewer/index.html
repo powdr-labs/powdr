@@ -90,6 +90,8 @@
         }
         .summary-table tr:hover { background: #e7f1ff; }
         .summary-table tr.selected { background: #cfe2ff; outline: 2px solid #0d6efd; }
+        .summary-table .baseline-radio { text-align: center; width: 1px; }
+        .summary-table .baseline-radio input { cursor: pointer; }
 
         /* Pie chart placeholder */
         .pie-placeholder {
@@ -261,6 +263,7 @@
 let combinedData = null;
 let allMetrics = [];
 let selectedRunName = null;
+let baselineRunName = null;
 let currentChartTab = 'stacked';
 
 // ============================================================
@@ -450,6 +453,18 @@ function fmtCells(n) {
     return n.toLocaleString();
 }
 function fmtPct(ratio) { return (ratio * 100).toFixed(1) + '%'; }
+
+// Format comparison vs baseline. "Lower is better" for all numeric stats.
+function fmtComparison(value, baselineValue) {
+    if (baselineValue === 0 || baselineValue == null || value == null) return '';
+    const ratio = value / baselineValue;
+    if (Math.abs(ratio - 1) < 0.005) return '';
+    if (ratio < 1) {
+        return `<span style="color:#198754; font-size:0.75rem">${(1/ratio).toFixed(1)}x ↓</span>`;
+    } else {
+        return `<span style="color:#dc3545; font-size:0.75rem">${ratio.toFixed(1)}x ↑</span>`;
+    }
+}
 
 // ============================================================
 // Stacked Bar Chart
@@ -740,13 +755,24 @@ const PROOF_TIME_ROWS = [
 ];
 
 const CELL_DISTRIBUTION_ROWS = [
-    { key: 'powdr_ratio', label: 'Powdr', fmt: fmtPct },
-    { key: 'normal_instruction_ratio', label: 'Normal Instructions', fmt: fmtPct },
-    { key: 'openvm_precompile_ratio', label: 'OpenVM Precompiles', fmt: fmtPct },
+    { key: 'powdr_ratio', label: 'Powdr', fmt: fmtPct, noCompare: true },
+    { key: 'normal_instruction_ratio', label: 'Normal Instructions', fmt: fmtPct, noCompare: true },
+    { key: 'openvm_precompile_ratio', label: 'OpenVM Precompiles', fmt: fmtPct, noCompare: true },
 ];
 
 let tableSortKey = 'name';
 let tableSortAsc = true;
+
+function getBaselineMetrics() {
+    return allMetrics.find(m => m.name === baselineRunName) || null;
+}
+
+function selectBaseline(runName) {
+    baselineRunName = runName;
+    renderTableBody(allMetrics);
+    if (selectedRunName) renderDetails(selectedRunName);
+    updateUrl();
+}
 
 function createSummaryTable(metrics) {
     const table = document.getElementById('summaryTable');
@@ -754,6 +780,12 @@ function createSummaryTable(metrics) {
     const tbody = table.querySelector('tbody');
 
     thead.innerHTML = '';
+    // Baseline radio column
+    const thBaseline = document.createElement('th');
+    thBaseline.textContent = 'Baseline';
+    thBaseline.classList.add('baseline-radio');
+    thead.appendChild(thBaseline);
+
     TABLE_COLUMNS.forEach(col => {
         const th = document.createElement('th');
         th.textContent = col.label;
@@ -775,6 +807,7 @@ function createSummaryTable(metrics) {
 function renderTableBody(metrics) {
     const tbody = document.querySelector('#summaryTable tbody');
     tbody.innerHTML = '';
+    const baseline = getBaselineMetrics();
 
     const sorted = [...metrics].sort((a, b) => {
         const va = a[tableSortKey], vb = b[tableSortKey];
@@ -785,10 +818,27 @@ function renderTableBody(metrics) {
     sorted.forEach(m => {
         const tr = document.createElement('tr');
         if (m.name === selectedRunName) tr.classList.add('selected');
-        tr.onclick = () => selectRun(m.name);
+        tr.onclick = (e) => { if (e.target.tagName !== 'INPUT') selectRun(m.name); };
+
+        // Baseline radio
+        const tdRadio = document.createElement('td');
+        tdRadio.classList.add('baseline-radio');
+        const radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = 'baseline';
+        radio.checked = m.name === baselineRunName;
+        radio.onclick = (e) => { e.stopPropagation(); selectBaseline(m.name); };
+        tdRadio.appendChild(radio);
+        tr.appendChild(tdRadio);
+
         TABLE_COLUMNS.forEach(col => {
             const td = document.createElement('td');
-            td.textContent = col.fmt(m[col.key]);
+            const formatted = col.fmt(m[col.key]);
+            if (col.key === 'name' || !baseline || m.name === baselineRunName) {
+                td.textContent = formatted;
+            } else {
+                td.innerHTML = formatted + ' ' + fmtComparison(m[col.key], baseline[col.key]);
+            }
             tr.appendChild(td);
         });
         tbody.appendChild(tr);
@@ -797,7 +847,7 @@ function renderTableBody(metrics) {
 
 function updateTableSelection() {
     document.querySelectorAll('#summaryTable tbody tr').forEach(tr => {
-        const name = tr.querySelector('td')?.textContent;
+        const name = tr.querySelectorAll('td')[1]?.textContent;
         tr.classList.toggle('selected', name === selectedRunName);
     });
 }
@@ -806,6 +856,7 @@ function updateTableSelection() {
 // Experiment Details (details table + pie chart)
 // ============================================================
 function renderDetailTable(title, rows, m) {
+    const baseline = getBaselineMetrics();
     let html = `<h6 style="color:#333; font-weight:600; margin-bottom:0.3rem; margin-top:0.75rem">${title}</h6>`;
     html += '<table class="details-table"><tbody>';
     rows.forEach(row => {
@@ -814,8 +865,12 @@ function renderDetailTable(title, rows, m) {
         const weight = row.bold ? 'font-weight:700' : '';
         const thStyle = [padding, weight].filter(Boolean).join(';');
         const tdStyle = weight;
+        const formatted = row.fmt(m[row.key]);
+        const comparison = (baseline && m.name !== baselineRunName && !row.noCompare)
+            ? ' ' + fmtComparison(m[row.key], baseline[row.key])
+            : '';
         html += `<tr><th${thStyle ? ` style="${thStyle}"` : ''}>${row.label}</th>`;
-        html += `<td${tdStyle ? ` style="${tdStyle}"` : ''}>${row.fmt(m[row.key])}</td></tr>`;
+        html += `<td${tdStyle ? ` style="${tdStyle}"` : ''}>${formatted}${comparison}</td></tr>`;
     });
     html += '</tbody></table>';
     return html;
@@ -934,12 +989,19 @@ function processAndRender(data) {
     combinedData = data;
     allMetrics = Object.entries(data).map(([name, json]) => extractMetrics(name, json));
 
+    // Set default baseline if not already set from URL
+    if (!baselineRunName || !allMetrics.find(m => m.name === baselineRunName)) {
+        const apc000 = allMetrics.find(m => m.name === 'apc000');
+        baselineRunName = apc000 ? 'apc000' : (allMetrics[0]?.name || null);
+    }
+
     document.getElementById('uploadSection').style.display = 'none';
     document.getElementById('appSection').style.display = 'block';
 
     createSummaryTable(allMetrics);
     renderCurrentChart();
     renderDetails(selectedRunName);
+    updateUrl();
 }
 
 function handleFile(file) {
@@ -992,6 +1054,11 @@ function updateUrl() {
     } else {
         params.delete('run');
     }
+    if (baselineRunName) {
+        params.set('baseline', baselineRunName);
+    } else {
+        params.delete('baseline');
+    }
     const newUrl = window.location.pathname + '?' + params.toString();
     history.replaceState(null, '', newUrl);
 }
@@ -1036,7 +1103,9 @@ window.addEventListener('resize', () => {
     const params = new URLSearchParams(window.location.search);
     const dataUrl = params.get('data') || params.get('url');
     const run = params.get('run');
+    const baseline = params.get('baseline');
     if (run) selectedRunName = run;
+    if (baseline) baselineRunName = baseline;
     if (dataUrl) loadFromUrl(dataUrl, false);
 })();
 </script>
