@@ -105,7 +105,7 @@
         .details-table {
             width: 100%;
             font-size: 0.82rem;
-            margin-bottom: 1rem;
+            margin-bottom: 0.25rem;
         }
         .details-table th {
             background: #f8f9fa;
@@ -367,6 +367,28 @@ function extractMetrics(runName, metricsJson) {
     m.openvm_precompile_ratio = m.app_proof_cells > 0 ? openVmCells / m.app_proof_cells : 0;
     m.powdr_ratio = m.app_proof_cells > 0 ? powdrCells / m.app_proof_cells : 0;
     m.powdr_rows = getMetric(powdrAir, 'rows');
+
+    // Constraints and bus interactions — these are top-level per-AIR metrics
+    // (no group/segment labels), so we read them from the full entry list.
+    const allEntries = [...(metricsJson.counter || []), ...(metricsJson.gauge || [])].map(c => {
+        const obj = Object.fromEntries(c.labels);
+        obj.metric = c.metric;
+        obj.value = c.value;
+        return obj;
+    });
+    m.constraints = getMetric(allEntries, 'constraints');
+    m.bus_interactions = getMetric(allEntries, 'interactions');
+
+    // Bus interaction messages = sum over all AIRs and segments of (interactions[air] * rows[air, segment])
+    // "interactions" entries are per-AIR (no segment), "rows" entries are per-AIR-per-segment in app group.
+    const interactionsByAir = {};
+    allEntries.filter(e => e.metric === 'interactions').forEach(e => {
+        interactionsByAir[e.air_name || ''] = parseFloat(e.value || 0);
+    });
+    m.bus_interaction_messages = app.filter(e => e.metric === 'rows').reduce((sum, e) => {
+        const airInteractions = interactionsByAir[e.air_name || ''] || 0;
+        return sum + airInteractions * parseFloat(e.value || 0);
+    }, 0);
 
     return m;
 }
@@ -694,21 +716,33 @@ const TABLE_COLUMNS = [
     { key: 'total_proof_time_ms', label: 'Total Time', fmt: fmtSeconds },
 ];
 
-const DETAIL_ROWS = [
-    { key: 'total_proof_time_ms', label: 'Total Time', fmt: fmtSeconds },
-    { key: 'app_proof_time_ms', label: 'App Proof Time', fmt: fmtSeconds },
-    { key: 'app_proof_time_excluding_trace_ms', label: 'App STARK (excl. trace)', fmt: fmtSeconds },
-    { key: 'app_trace_gen_time_ms', label: 'App Trace Gen', fmt: fmtSeconds },
-    { key: 'app_execute_preflight_time_ms', label: 'App Preflight', fmt: fmtSeconds },
-    { key: 'app_execute_metered_time_ms', label: 'App Metered', fmt: fmtSeconds },
-    { key: 'leaf_proof_time_ms', label: 'Leaf Recursion', fmt: fmtSeconds },
-    { key: 'inner_recursion_proof_time_ms', label: 'Inner Recursion', fmt: fmtSeconds },
+// Detail tables: three separate tables shown in the experiment details pane.
+
+const BASIC_STATS_ROWS = [
     { key: 'num_segments', label: 'Segments', fmt: v => v },
     { key: 'app_proof_cells', label: 'App Cells', fmt: fmtCells },
     { key: 'app_proof_cols', label: 'App Columns', fmt: v => v.toLocaleString() },
-    { key: 'powdr_ratio', label: 'Powdr Ratio', fmt: fmtPct },
-    { key: 'normal_instruction_ratio', label: 'Normal Instr Ratio', fmt: fmtPct },
-    { key: 'openvm_precompile_ratio', label: 'OpenVM Precomp Ratio', fmt: fmtPct },
+    { key: 'constraints', label: 'Constraints', fmt: v => v.toLocaleString() },
+    { key: 'bus_interactions', label: 'Bus Interactions', fmt: v => v.toLocaleString() },
+    { key: 'bus_interaction_messages', label: 'Bus Interaction Messages', fmt: fmtCells },
+];
+
+// Nested proof time breakdown — indent level controls visual nesting.
+const PROOF_TIME_ROWS = [
+    { key: 'app_proof_time_ms', label: 'App Proof Time', fmt: fmtSeconds, indent: 0 },
+    { key: 'app_proof_time_excluding_trace_ms', label: 'STARK (excl. trace)', fmt: fmtSeconds, indent: 1 },
+    { key: 'app_execute_metered_time_ms', label: 'Metered Execution', fmt: fmtSeconds, indent: 1 },
+    { key: 'app_execute_preflight_time_ms', label: 'Preflight Execution', fmt: fmtSeconds, indent: 1 },
+    { key: 'app_trace_gen_time_ms', label: 'Trace Gen', fmt: fmtSeconds, indent: 1 },
+    { key: 'leaf_proof_time_ms', label: 'Leaf Recursion', fmt: fmtSeconds, indent: 0 },
+    { key: 'inner_recursion_proof_time_ms', label: 'Inner Recursion', fmt: fmtSeconds, indent: 0 },
+    { key: 'total_proof_time_ms', label: 'Total', fmt: fmtSeconds, indent: 0, bold: true },
+];
+
+const CELL_DISTRIBUTION_ROWS = [
+    { key: 'powdr_ratio', label: 'Powdr', fmt: fmtPct },
+    { key: 'normal_instruction_ratio', label: 'Normal Instructions', fmt: fmtPct },
+    { key: 'openvm_precompile_ratio', label: 'OpenVM Precompiles', fmt: fmtPct },
 ];
 
 let tableSortKey = 'name';
@@ -771,6 +805,22 @@ function updateTableSelection() {
 // ============================================================
 // Experiment Details (details table + pie chart)
 // ============================================================
+function renderDetailTable(title, rows, m) {
+    let html = `<h6 style="color:#333; font-weight:600; margin-bottom:0.3rem; margin-top:0.75rem">${title}</h6>`;
+    html += '<table class="details-table"><tbody>';
+    rows.forEach(row => {
+        const indent = row.indent || 0;
+        const padding = indent > 0 ? `padding-left:${indent * 1.2 + 0.5}em` : '';
+        const weight = row.bold ? 'font-weight:700' : '';
+        const thStyle = [padding, weight].filter(Boolean).join(';');
+        const tdStyle = weight;
+        html += `<tr><th${thStyle ? ` style="${thStyle}"` : ''}>${row.label}</th>`;
+        html += `<td${tdStyle ? ` style="${tdStyle}"` : ''}>${row.fmt(m[row.key])}</td></tr>`;
+    });
+    html += '</tbody></table>';
+    return html;
+}
+
 function renderDetails(runName) {
     const section = document.getElementById('detailsSection');
     section.innerHTML = '';
@@ -784,14 +834,14 @@ function renderDetails(runName) {
     const m = allMetrics.find(m => m.name === runName);
     if (!m) return;
 
-    // Details table + pie chart side by side
+    // Three detail tables + pie chart side by side
     let html = '<div class="details-row">';
-    html += '<div class="details-table-col"><table class="details-table"><tbody>';
-    DETAIL_ROWS.forEach(row => {
-        html += `<tr><th>${row.label}</th><td>${row.fmt(m[row.key])}</td></tr>`;
-    });
-    html += '</tbody></table></div>';
-    html += '<div class="details-pie-col"><h6 style="color:#333; font-weight:600; margin-bottom:0.5rem">Trace Cells by AIR</h6><div id="pieChart"></div></div>';
+    html += '<div class="details-table-col">';
+    html += renderDetailTable('Basic Stats', BASIC_STATS_ROWS, m);
+    html += renderDetailTable('Proof Time', PROOF_TIME_ROWS, m);
+    html += renderDetailTable('Trace Cell Distribution', CELL_DISTRIBUTION_ROWS, m);
+    html += '</div>';
+    html += '<div class="details-pie-col"><h6 style="color:#333; font-weight:600; margin-bottom:0.5rem; margin-top:0.75rem">Trace Cells by AIR</h6><div id="pieChart"></div></div>';
     html += '</div>';
     section.innerHTML = html;
 
