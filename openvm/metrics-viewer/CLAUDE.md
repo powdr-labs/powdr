@@ -40,7 +40,9 @@ Generate with:
 python3 openvm-riscv/scripts/basic_metrics.py combine **/metrics.json > combined_metrics.json
 ```
 
-Example input file: https://gist.githubusercontent.com/georgwiese/b146800a3b5eb633a6d5157f8aff1123/raw/e02ba2cec6a4cc063e4bff117cf46c69ff775e1e/keccak_combined.json
+Example input files:
+- Keccak (includes constraints/interactions metrics): https://gist.githubusercontent.com/georgwiese/b146800a3b5eb633a6d5157f8aff1123/raw/e02ba2cec6a4cc063e4bff117cf46c69ff775e1e/keccak_combined.json
+- Reth (older format, no constraints/interactions): https://gist.githubusercontent.com/georgwiese/0ae222db70a65e053ddd079f23e43e8b/raw/35a97605cacc5abd33fce079f69b72567a3dccab/reth_combined_2026-03-12-0537.json
 
 ## Testing
 
