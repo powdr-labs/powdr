@@ -904,13 +904,12 @@ function renderDetailTable(title, rows, m, opts = {}) {
     let html = `<h6 style="color:#333; font-weight:600; margin-bottom:0.3rem; margin-top:0.75rem">${title}</h6>`;
     html += '<table class="details-table"><tbody>';
     rows.forEach(row => {
-        if (m[row.key] == null) return; // skip unavailable metrics
         const indent = row.indent || 0;
         const padding = indent > 0 ? `padding-left:${indent * 1.2 + 0.5}em` : '';
         const weight = row.bold ? 'font-weight:700' : '';
         const thStyle = [padding, weight].filter(Boolean).join(';');
         const tdStyle = weight;
-        const formatted = row.fmt(m[row.key]);
+        const formatted = m[row.key] != null ? row.fmt(m[row.key]) : '<span style="color:#999">N/A</span>';
         const comparison = (baseline && m.name !== baselineRunName && !row.noCompare)
             ? ' ' + fmtComparison(m[row.key], baseline[row.key])
             : '';
