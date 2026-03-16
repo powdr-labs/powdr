@@ -51,8 +51,12 @@ cd openvm/metrics-viewer && python3 -m http.server 8000
 
 Load data via file upload (drag-drop) or URL parameter:
 ```
-http://localhost:8000/?data=<url>
-http://localhost:8000/?data=<url>&run=apc030
+http://localhost:8000/?data=<url>&run=<name>
+```
+
+Example, using the data above and pre-selecting the `apc030` run:
+```
+http://localhost:8000/?data=https%3A%2F%2Fgist.githubusercontent.com%2Fgeorgwiese%2Fb146800a3b5eb633a6d5157f8aff1123%2Fraw%2Fe02ba2cec6a4cc063e4bff117cf46c69ff775e1e%2Fkeccak_combined.json&run=apc030
 ```
 
 Verify:
