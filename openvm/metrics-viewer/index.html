@@ -116,6 +116,17 @@
             box-shadow: 0 2px 8px rgba(0,0,0,0.15);
         }
 
+        /* Chart tabs */
+        .nav-tabs .nav-link {
+            color: #666;
+            font-size: 0.85rem;
+            padding: 0.3rem 0.75rem;
+        }
+        .nav-tabs .nav-link.active {
+            color: #333;
+            font-weight: 600;
+        }
+
         /* Stacked bar chart */
         .bar-group { cursor: pointer; }
         .bar-group:hover rect { opacity: 0.85; }
@@ -161,22 +172,6 @@
 
     <div id="appSection" class="container-fluid mt-3">
         <div class="row">
-            <div class="col-lg-8">
-                <div class="pane">
-                    <h5>Proof Time Breakdown</h5>
-                    <div id="barChart"></div>
-                </div>
-            </div>
-            <div class="col-lg-4">
-                <div class="pane">
-                    <h5>Trace Cells by AIR <span id="pieRunName" class="text-muted" style="font-size:0.8rem"></span></h5>
-                    <div id="pieChart">
-                        <div class="pie-placeholder">Select a run to view trace cells</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="row">
             <div class="col-12">
                 <div class="pane">
                     <h5>Summary Table</h5>
@@ -185,6 +180,32 @@
                             <thead><tr></tr></thead>
                             <tbody></tbody>
                         </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-lg-8">
+                <div class="pane">
+                    <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.75rem">
+                        <h5 style="margin:0">Proof Time Breakdown</h5>
+                        <ul class="nav nav-tabs" style="margin:0; border:none; margin-left:auto">
+                            <li class="nav-item">
+                                <a class="nav-link active" href="#" id="tabStacked" onclick="switchChartTab('stacked'); return false;">Stacked</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="#" id="tabGrouped" onclick="switchChartTab('grouped'); return false;">By Component</a>
+                            </li>
+                        </ul>
+                    </div>
+                    <div id="barChart"></div>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="pane">
+                    <h5>Trace Cells by AIR <span id="pieRunName" class="text-muted" style="font-size:0.8rem"></span></h5>
+                    <div id="pieChart">
+                        <div class="pie-placeholder">Select a run to view trace cells</div>
                     </div>
                 </div>
             </div>
@@ -204,6 +225,7 @@
 let combinedData = null;
 let allMetrics = [];
 let selectedRunName = null;
+let currentChartTab = 'stacked';
 
 // ============================================================
 // Data Processing (ports of Python logic)
@@ -496,6 +518,116 @@ function updateBarSelection() {
 }
 
 // ============================================================
+// Grouped Bar Chart (By Component)
+// ============================================================
+function createGroupedBarChart(metrics) {
+    const container = d3.select('#barChart');
+    container.selectAll('*').remove();
+
+    const margin = { top: 30, right: 20, bottom: 80, left: 60 };
+    const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
+    const height = 400 - margin.top - margin.bottom;
+
+    const svg = container.append('svg')
+        .attr('width', width + margin.left + margin.right)
+        .attr('height', height + margin.top + margin.bottom);
+    const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+    const runNames = metrics.map(m => m.name);
+    const keys = COMPONENTS.map(c => c.key);
+
+    const stackData = metrics.map(m => {
+        const d = { name: m.name };
+        COMPONENTS.forEach(c => { d[c.key] = Math.max(0, m[c.key]) / 1000; });
+        return d;
+    });
+
+    const maxY = d3.max(stackData, d => d3.max(keys, k => d[k]));
+
+    const x0 = d3.scaleBand().domain(runNames).range([0, width]).padding(0.2);
+    const x1 = d3.scaleBand().domain(keys).range([0, x0.bandwidth()]).padding(0.05);
+    const y = d3.scaleLinear().domain([0, maxY * 1.08]).range([height, 0]);
+
+    // Grid
+    g.append('g').attr('class', 'grid')
+        .call(d3.axisLeft(y).tickSize(-width).tickFormat(''))
+        .selectAll('line').attr('stroke', '#dee2e6').attr('stroke-opacity', 0.7);
+    g.selectAll('.grid .domain').remove();
+
+    // Tooltip
+    const tooltip = d3.select('body').append('div').attr('class', 'chart-tooltip').style('display', 'none');
+    const colorMap = {};
+    COMPONENTS.forEach(c => { colorMap[c.key] = c.color; });
+    const labelMap = {};
+    COMPONENTS.forEach(c => { labelMap[c.key] = c.label; });
+
+    // Bars
+    stackData.forEach(d => {
+        keys.forEach(key => {
+            g.append('rect')
+                .attr('x', x0(d.name) + x1(key))
+                .attr('y', y(d[key]))
+                .attr('width', x1.bandwidth())
+                .attr('height', height - y(d[key]))
+                .attr('fill', colorMap[key])
+                .attr('data-run', d.name)
+                .style('cursor', 'pointer')
+                .on('click', () => selectRun(d.name))
+                .on('mouseover', (event) => {
+                    tooltip.style('display', 'block')
+                        .html(`<strong>${d.name}</strong><br>${labelMap[key]}: ${d[key].toFixed(1)}s`);
+                })
+                .on('mousemove', event => {
+                    tooltip.style('left', (event.pageX + 12) + 'px').style('top', (event.pageY - 20) + 'px');
+                })
+                .on('mouseout', () => tooltip.style('display', 'none'));
+        });
+    });
+
+    // Axes
+    g.append('g').attr('transform', `translate(0,${height})`)
+        .call(d3.axisBottom(x0))
+        .selectAll('text').attr('fill', '#333');
+    g.append('g')
+        .call(d3.axisLeft(y).tickFormat(d => d.toFixed(1) + 's'))
+        .selectAll('text').attr('fill', '#333');
+
+    svg.selectAll('.domain').attr('stroke', '#dee2e6');
+    svg.selectAll('.tick line').attr('stroke', '#dee2e6');
+
+    // Legend
+    const legend = svg.append('g')
+        .attr('transform', `translate(${margin.left}, ${height + margin.top + 35})`);
+    const legendItemWidth = width / COMPONENTS.length;
+    COMPONENTS.forEach((c, i) => {
+        const lg = legend.append('g').attr('transform', `translate(${i * legendItemWidth}, 0)`);
+        lg.append('rect').attr('width', 12).attr('height', 12).attr('fill', c.color).attr('rx', 2);
+        lg.append('text').attr('x', 16).attr('y', 10).text(c.label)
+            .attr('fill', '#666').attr('font-size', '10px');
+    });
+
+    updateBarSelection();
+}
+
+// ============================================================
+// Chart Tab Switching
+// ============================================================
+function switchChartTab(tab) {
+    currentChartTab = tab;
+    document.getElementById('tabStacked').classList.toggle('active', tab === 'stacked');
+    document.getElementById('tabGrouped').classList.toggle('active', tab === 'grouped');
+    if (allMetrics.length > 0) {
+        if (tab === 'stacked') createBarChart(allMetrics);
+        else createGroupedBarChart(allMetrics);
+    }
+}
+
+function renderCurrentChart() {
+    if (currentChartTab === 'stacked') createBarChart(allMetrics);
+    else createGroupedBarChart(allMetrics);
+}
+
+// ============================================================
 // Summary Table
 // ============================================================
 const TABLE_COLUMNS = [
@@ -666,8 +798,8 @@ function processAndRender(data) {
     document.getElementById('uploadSection').style.display = 'none';
     document.getElementById('appSection').style.display = 'block';
 
-    createBarChart(allMetrics);
     createSummaryTable(allMetrics);
+    renderCurrentChart();
     createPieChart(selectedRunName);
 }
 
@@ -750,7 +882,7 @@ document.getElementById('urlInput').addEventListener('keydown', e => {
 // Responsive chart redraw
 window.addEventListener('resize', () => {
     if (allMetrics.length > 0) {
-        createBarChart(allMetrics);
+        renderCurrentChart();
         if (selectedRunName) createPieChart(selectedRunName);
     }
 });
