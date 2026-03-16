@@ -67,7 +67,6 @@
 
         /* Summary table */
         .summary-table {
-            width: 100%;
             font-size: 0.85rem;
         }
         .summary-table th {
@@ -97,10 +96,42 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            min-height: 400px;
+            min-height: 300px;
             color: #999;
             font-style: italic;
         }
+
+        /* Details table */
+        .details-table {
+            width: 100%;
+            font-size: 0.82rem;
+            margin-bottom: 1rem;
+        }
+        .details-table th {
+            background: #f8f9fa;
+            color: #666;
+            padding: 4px 8px;
+            font-weight: 600;
+            white-space: nowrap;
+            width: 50%;
+        }
+        .details-table td {
+            padding: 4px 8px;
+            white-space: nowrap;
+        }
+        .details-table tr { border-bottom: 1px solid #eee; }
+
+        /* Equal height chart row */
+        .chart-row { display: flex; }
+        .chart-row > .chart-col-left { flex: 1; min-width: 0; }
+        .chart-row > .chart-col-right { flex: 1; min-width: 0; }
+        .chart-row .pane { height: 100%; display: flex; flex-direction: column; }
+        .chart-row .pane-body { flex: 1; overflow-y: auto; }
+
+        /* Details layout: table + pie side by side */
+        .details-row { display: flex; gap: 1rem; }
+        .details-row .details-table-col { flex: 1; min-width: 0; }
+        .details-row .details-pie-col { flex-shrink: 0; }
 
         /* Chart tooltips */
         .chart-tooltip {
@@ -175,8 +206,8 @@
         <div class="row">
             <div class="col-12">
                 <div class="pane">
-                    <h5>Summary Table</h5>
-                    <div style="overflow-x:auto">
+                    <h5 style="text-align:center">Summary Table</h5>
+                    <div style="overflow-x:auto; display:flex; justify-content:center">
                         <table class="summary-table" id="summaryTable">
                             <thead><tr></tr></thead>
                             <tbody></tbody>
@@ -185,8 +216,8 @@
                 </div>
             </div>
         </div>
-        <div class="row">
-            <div class="col-lg-8">
+        <div class="chart-row" style="gap:1rem">
+            <div class="chart-col-left">
                 <div class="pane">
                     <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.75rem">
                         <h5 style="margin:0">Proof Time Breakdown</h5>
@@ -199,14 +230,18 @@
                             </li>
                         </ul>
                     </div>
-                    <div id="barChart"></div>
+                    <div class="pane-body">
+                        <div id="barChart"></div>
+                    </div>
                 </div>
             </div>
-            <div class="col-lg-4">
+            <div class="chart-col-right">
                 <div class="pane">
-                    <h5>Trace Cells by AIR <span id="pieRunName" class="text-muted" style="font-size:0.8rem"></span></h5>
-                    <div id="pieChart">
-                        <div class="pie-placeholder">Select a run to view trace cells</div>
+                    <h5>Experiment Details <span id="pieRunName" class="text-muted" style="font-size:0.8rem"></span></h5>
+                    <div class="pane-body">
+                        <div id="detailsSection">
+                            <div class="pie-placeholder">Select an experiment to view details</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -632,14 +667,24 @@ function renderCurrentChart() {
 // Summary Table
 // ============================================================
 const TABLE_COLUMNS = [
-    { key: 'name', label: 'Run', fmt: v => v },
+    { key: 'name', label: 'Experiment', fmt: v => v },
     { key: 'num_segments', label: 'Segments', fmt: v => v },
     { key: 'app_proof_cells', label: 'App Cells', fmt: fmtCells },
     { key: 'total_proof_time_ms', label: 'Total Time', fmt: fmtSeconds },
-    { key: 'app_proof_time_ms', label: 'App Time', fmt: fmtSeconds },
-    { key: 'leaf_proof_time_ms', label: 'Leaf Time', fmt: fmtSeconds },
+];
+
+const DETAIL_ROWS = [
+    { key: 'total_proof_time_ms', label: 'Total Time', fmt: fmtSeconds },
+    { key: 'app_proof_time_ms', label: 'App Proof Time', fmt: fmtSeconds },
+    { key: 'app_proof_time_excluding_trace_ms', label: 'App STARK (excl. trace)', fmt: fmtSeconds },
+    { key: 'app_trace_gen_time_ms', label: 'App Trace Gen', fmt: fmtSeconds },
+    { key: 'app_execute_preflight_time_ms', label: 'App Preflight', fmt: fmtSeconds },
+    { key: 'app_execute_metered_time_ms', label: 'App Metered', fmt: fmtSeconds },
+    { key: 'leaf_proof_time_ms', label: 'Leaf Recursion', fmt: fmtSeconds },
     { key: 'inner_recursion_proof_time_ms', label: 'Inner Recursion', fmt: fmtSeconds },
-    { key: 'app_trace_gen_time_ms', label: 'Trace Gen', fmt: fmtSeconds },
+    { key: 'num_segments', label: 'Segments', fmt: v => v },
+    { key: 'app_proof_cells', label: 'App Cells', fmt: fmtCells },
+    { key: 'app_proof_cols', label: 'App Columns', fmt: v => v.toLocaleString() },
     { key: 'powdr_ratio', label: 'Powdr Ratio', fmt: fmtPct },
     { key: 'normal_instruction_ratio', label: 'Normal Instr Ratio', fmt: fmtPct },
     { key: 'openvm_precompile_ratio', label: 'OpenVM Precomp Ratio', fmt: fmtPct },
@@ -703,17 +748,39 @@ function updateTableSelection() {
 }
 
 // ============================================================
-// Pie Chart
+// Experiment Details (details table + pie chart)
 // ============================================================
-function createPieChart(runName) {
-    const container = d3.select('#pieChart');
-    container.selectAll('*').remove();
+function renderDetails(runName) {
+    const section = document.getElementById('detailsSection');
+    section.innerHTML = '';
     document.getElementById('pieRunName').textContent = runName ? `(${runName})` : '';
 
     if (!runName || !combinedData[runName]) {
-        container.append('div').attr('class', 'pie-placeholder').text('Select a run to view trace cells');
+        section.innerHTML = '<div class="pie-placeholder">Select an experiment to view details</div>';
         return;
     }
+
+    const m = allMetrics.find(m => m.name === runName);
+    if (!m) return;
+
+    // Details table + pie chart side by side
+    let html = '<div class="details-row">';
+    html += '<div class="details-table-col"><table class="details-table"><tbody>';
+    DETAIL_ROWS.forEach(row => {
+        html += `<tr><th>${row.label}</th><td>${row.fmt(m[row.key])}</td></tr>`;
+    });
+    html += '</tbody></table></div>';
+    html += '<div class="details-pie-col"><h6 style="color:#333; font-weight:600; margin-bottom:0.5rem">Trace Cells by AIR</h6><div id="pieChart"></div></div>';
+    html += '</div>';
+    section.innerHTML = html;
+
+    // Pie chart
+    createPieChart(runName);
+}
+
+function createPieChart(runName) {
+    const container = d3.select('#pieChart');
+    container.selectAll('*').remove();
 
     const { items, total } = computeCellsByAir(combinedData[runName]);
     if (items.length === 0) {
@@ -721,7 +788,7 @@ function createPieChart(runName) {
         return;
     }
 
-    const size = 380;
+    const size = 320;
     const radius = size / 2 - 10;
     const svg = container.append('svg')
         .attr('width', size)
@@ -785,7 +852,7 @@ function selectRun(runName) {
     }
     updateBarSelection();
     updateTableSelection();
-    createPieChart(selectedRunName);
+    renderDetails(selectedRunName);
     updateUrl();
 }
 
@@ -801,7 +868,7 @@ function processAndRender(data) {
 
     createSummaryTable(allMetrics);
     renderCurrentChart();
-    createPieChart(selectedRunName);
+    renderDetails(selectedRunName);
 }
 
 function handleFile(file) {
@@ -889,7 +956,7 @@ document.getElementById('urlInput').addEventListener('keydown', e => {
 window.addEventListener('resize', () => {
     if (allMetrics.length > 0) {
         renderCurrentChart();
-        if (selectedRunName) createPieChart(selectedRunName);
+        if (selectedRunName) renderDetails(selectedRunName);
     }
 });
 
