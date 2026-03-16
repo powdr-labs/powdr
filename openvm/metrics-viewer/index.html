@@ -393,6 +393,16 @@ function extractMetrics(runName, metricsJson) {
         return sum + airInteractions * parseFloat(e.value || 0);
     }, 0);
 
+    // Constraint instances = sum over all AIRs and segments of (constraints[air] * rows[air, segment])
+    const constraintsByAir = {};
+    allEntries.filter(e => e.metric === 'constraints').forEach(e => {
+        constraintsByAir[e.air_name || ''] = parseFloat(e.value || 0);
+    });
+    m.constraint_instances = app.filter(e => e.metric === 'rows').reduce((sum, e) => {
+        const airConstraints = constraintsByAir[e.air_name || ''] || 0;
+        return sum + airConstraints * parseFloat(e.value || 0);
+    }, 0);
+
     return m;
 }
 
@@ -735,9 +745,10 @@ const TABLE_COLUMNS = [
 
 const BASIC_STATS_ROWS = [
     { key: 'num_segments', label: 'Segments', fmt: v => v },
-    { key: 'app_proof_cells', label: 'App Cells', fmt: fmtCells },
     { key: 'app_proof_cols', label: 'App Columns', fmt: v => v.toLocaleString() },
+    { key: 'app_proof_cells', label: 'App Cells', fmt: fmtCells },
     { key: 'constraints', label: 'Constraints', fmt: v => v.toLocaleString() },
+    { key: 'constraint_instances', label: 'Constraint Instances', fmt: fmtCells },
     { key: 'bus_interactions', label: 'Bus Interactions', fmt: v => v.toLocaleString() },
     { key: 'bus_interaction_messages', label: 'Bus Interaction Messages', fmt: fmtCells },
 ];
