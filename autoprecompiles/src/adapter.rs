@@ -138,6 +138,11 @@ where
     fn is_branching(instr: &Self::Instruction) -> bool;
 
     fn is_allowed(instr: &Self::Instruction) -> bool;
+
+    fn static_target(
+        last: (u64, &Self::Instruction),
+        previous: Option<(u64, &Self::Instruction)>,
+    ) -> Option<u64>;
 }
 
 pub type AdapterApcWithStats<A> = ApcWithStats<

@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::{
     adapter::Adapter,
@@ -76,5 +76,61 @@ pub fn collect_basic_blocks<A: Adapter>(
 fn expand_blocks<A: Adapter>(
     blocks: Vec<BasicBlock<A::Instruction>>,
 ) -> Vec<SuperBlock<A::Instruction>> {
-    blocks.into_iter().map(SuperBlock::from).collect()
+    let mut expander = BasicBlockExpander::<A>::new(blocks.clone());
+    blocks
+        .into_iter()
+        .map(|b| expander.expand(b.into(), &mut HashSet::default()))
+        .collect()
+}
+
+struct BasicBlockExpander<A: Adapter> {
+    start_pc_to_allowed_basic_block: HashMap<u64, SuperBlock<A::Instruction>>,
+}
+
+impl<A: Adapter> BasicBlockExpander<A> {
+    fn new(basic_blocks: Vec<BasicBlock<A::Instruction>>) -> Self {
+        Self {
+            start_pc_to_allowed_basic_block: basic_blocks
+                .into_iter()
+                .filter(|b| b.instructions().all(|(_, i)| A::is_allowed(i)))
+                .map(|b| (b.start_pc, b.into()))
+                .collect(),
+        }
+    }
+
+    fn expand(
+        &mut self,
+        mut block: SuperBlock<A::Instruction>,
+        visited: &mut HashSet<u64>,
+    ) -> SuperBlock<A::Instruction> {
+        if visited.contains(&block.start_pc()) {
+            panic!("cycle detected");
+        } else {
+            visited.insert(block.start_pc());
+        }
+
+        // We do not extend blocks which contain disallowed instructions
+        if !block.instructions().all(|(_, i)| A::is_allowed(i)) {
+            return block;
+        }
+
+        let (last, previous) = {
+            let mut iter = block.instructions();
+            let last = iter.next_back().unwrap();
+            let previous = iter.next_back();
+            (last, previous)
+        };
+
+        if let Some(target_pc) = A::static_target(last, previous) {
+            if let Some(tail) = self
+                .start_pc_to_allowed_basic_block
+                .get(&target_pc)
+                .cloned()
+            {
+                block.extend(self.expand(tail, visited));
+            }
+        }
+
+        block
+    }
 }

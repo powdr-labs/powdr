@@ -140,6 +140,13 @@ impl<'a, ISA: OpenVmISA> Adapter for BabyBearOpenVmApcAdapter<'a, ISA> {
     fn is_branching(instruction: &Self::Instruction) -> bool {
         ISA::branching_opcodes().contains(&instruction.inner.opcode)
     }
+
+    fn static_target(
+        instruction: (u64, &Self::Instruction),
+        previous: Option<(u64, &Self::Instruction)>,
+    ) -> Option<u64> {
+        ISA::static_target(instruction, previous)
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -271,11 +278,7 @@ pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAd
         .enumerate()
         .map(|(i, (apc, apc_stats, _))| {
             let opcode = POWDR_OPCODE + i;
-            let start_pc = apc
-                .block
-                .try_as_basic_block()
-                .expect("Superblocks not yet supported in OpenVM")
-                .start_pc;
+            let start_pc = apc.block.start_pc();
             let start_index = ((start_pc - pc_base as u64) / pc_step as u64)
                 .try_into()
                 .unwrap();
