@@ -75,7 +75,7 @@ impl<I> SuperBlock<I> {
     }
 }
 
-impl<I: PcStep> SuperBlock<I> {
+impl<I> SuperBlock<I> {
     /// Sequence of basic block start PCs, uniquely identifies this superblock
     pub fn start_pcs(&self) -> Vec<u64> {
         self.blocks.iter().map(|b| b.start_pc).collect()
@@ -99,6 +99,23 @@ impl<I: PcStep> SuperBlock<I> {
     pub fn blocks(&self) -> impl Iterator<Item = &BasicBlock<I>> {
         self.blocks.iter()
     }
+
+    /// Apply fn to every instruction in this superblock, returning a new superblock with the transformed instructions.
+    pub fn map_instructions<F, I2>(self, f: F) -> SuperBlock<I2>
+    where
+        F: Fn(I) -> I2 + Clone,
+    {
+        SuperBlock {
+            blocks: self
+                .blocks
+                .into_iter()
+                .map(|b| BasicBlock {
+                    start_pc: b.start_pc,
+                    instructions: b.instructions.into_iter().map(f.clone()).collect(),
+                })
+                .collect(),
+        }
+    }
 }
 
 impl<I: PcStep> SuperBlock<I> {
@@ -119,23 +136,6 @@ impl<I: PcStep> SuperBlock<I> {
     {
         // note: we need collect_vec() because parallel flat_map does not implement IndexedParallelIterator
         self.instructions().collect_vec().into_par_iter()
-    }
-
-    /// Apply fn to every instruction in this superblock, returning a new superblock with the transformed instructions.
-    pub fn map_instructions<F, I2>(self, f: F) -> SuperBlock<I2>
-    where
-        F: Fn(I) -> I2 + Clone,
-    {
-        SuperBlock {
-            blocks: self
-                .blocks
-                .into_iter()
-                .map(|b| BasicBlock {
-                    start_pc: b.start_pc,
-                    instructions: b.instructions.into_iter().map(f.clone()).collect(),
-                })
-                .collect(),
-        }
     }
 }
 
@@ -429,6 +429,15 @@ mod test {
 
     use super::*;
 
+    #[derive(Clone)]
+    struct TestInstruction;
+
+    impl PcStep for TestInstruction {
+        fn pc_step() -> u32 {
+            1
+        }
+    }
+
     #[test]
     fn test_find_non_overlapping() {
         assert_eq!(find_non_overlapping(&[1, 2, 1, 2, 1], &[1, 2, 1]), vec![0]);
@@ -461,7 +470,7 @@ mod test {
     fn test_detect_superblocks_counts_and_execution_runs() {
         let bb = |start_pc: u64, len: usize| BasicBlock {
             start_pc,
-            instructions: vec![(); len],
+            instructions: vec![TestInstruction; len],
         };
 
         let cfg = PowdrConfig::new(
