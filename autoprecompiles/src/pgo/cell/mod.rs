@@ -187,11 +187,13 @@ fn try_generate_candidate<A: Adapter, C: ApcCandidate<A>>(
     vm_config: &AdapterVmConfig<A>,
     empirical_constraints: &EmpiricalConstraints,
 ) -> Option<C> {
-    let export_options = ExportOptions::new(
-        config.apc_candidates_dir_path.clone(),
-        &block.start_pcs(),
-        ExportLevel::OnlyAPC,
-    );
+    let export_path = std::env::var("APC_EXPORT_PATH").ok();
+    let export_level = std::env::var("APC_EXPORT_LEVEL").ok();
+
+    // config.apc_candidates_dir_path.clone(),
+    let export_options =
+        ExportOptions::from_env_vars(export_path, export_level, &block.start_pcs());
+
     let apc = crate::build::<A>(
         block.clone(),
         vm_config.clone(),
