@@ -1,8 +1,8 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use crate::{
     adapter::Adapter,
-    blocks::{BasicBlock, Program, StaticBlocks, SuperBlock},
+    blocks::{BasicBlock, Program, StaticBlocks},
 };
 
 /// Collects basic blocks from a program
@@ -76,15 +76,5 @@ pub fn collect_basic_blocks<A: Adapter>(
 fn expand_blocks<A: Adapter>(
     blocks: Vec<BasicBlock<A::Instruction>>,
 ) -> StaticBlocks<A::Instruction> {
-    let blocks_count = blocks.len();
-    let blocks_by_start_pc: BTreeMap<u64, SuperBlock<<A as Adapter>::Instruction>> = blocks
-        .into_iter()
-        .map(|b| (b.start_pc, SuperBlock::from(b)))
-        .collect();
-    assert_eq!(
-        blocks_by_start_pc.len(),
-        blocks_count,
-        "many basic blocks share the same start pc"
-    );
-    StaticBlocks { blocks_by_start_pc }
+    StaticBlocks::new(blocks)
 }

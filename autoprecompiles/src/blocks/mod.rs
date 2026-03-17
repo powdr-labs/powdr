@@ -180,6 +180,18 @@ pub struct StaticBlocks<I> {
 }
 
 impl<I> StaticBlocks<I> {
+    pub fn new(blocks: impl IntoIterator<Item = impl Into<SuperBlock<I>>>) -> Self {
+        let mut blocks_by_start_pc = BTreeMap::new();
+        for block in blocks.into_iter().map(Into::into) {
+            let start_pc = block.blocks[0].start_pc;
+            assert!(
+                blocks_by_start_pc.insert(start_pc, block).is_none(),
+                "multiple blocks share the same start pc: {start_pc}"
+            );
+        }
+        StaticBlocks { blocks_by_start_pc }
+    }
+
     pub fn len(&self) -> usize {
         self.blocks_by_start_pc.len()
     }
@@ -507,12 +519,9 @@ mod test {
 
     #[test]
     fn test_detect_superblocks_counts_and_execution_runs() {
-        let bb = |start_pc: u64, len: usize| {
-            BasicBlock {
-                start_pc,
-                instructions: vec![TestInstruction; len],
-            }
-            .into()
+        let bb = |start_pc: u64, len: usize| BasicBlock {
+            start_pc,
+            instructions: vec![TestInstruction; len],
         };
 
         let cfg = PowdrConfig::new(
@@ -525,7 +534,13 @@ mod test {
         )
         .with_superblocks(2, None, None);
 
-        let basic_blocks = vec![bb(100, 2), bb(200, 2), bb(300, 1), bb(400, 3), bb(500, 2)];
+        let basic_blocks = StaticBlocks::new(vec![
+            bb(100, 2),
+            bb(200, 2),
+            bb(300, 1),
+            bb(400, 3),
+            bb(500, 2),
+        ]);
 
         let execution = vec![100, 101, 200, 201, 300, 400, 401, 402, 100, 101, 200, 201];
 
