@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     fmt::Display,
     hash::Hash,
     iter::once,
@@ -468,7 +468,7 @@ pub fn simplify_constraints_using_exhaustive_search<
         "Found {} candidate variable sets for exhaustive search",
         variable_sets.len()
     );
-    let mut progress = false;
+    let progress = false;
 
     //let mut expr_substitutions = BTreeMap::new();
 
@@ -487,7 +487,7 @@ pub fn simplify_constraints_using_exhaustive_search<
                 }
             });
         for expr in exprs {
-            match get_all_possible_assignments(variable_set.iter().cloned(), &range_constraints)
+            if let Ok(e) = get_all_possible_assignments(variable_set.iter().cloned(), &range_constraints)
                 .map(|ass| {
                     let mut sub = expr.clone();
                     for (v, val) in ass {
@@ -495,11 +495,7 @@ pub fn simplify_constraints_using_exhaustive_search<
                     }
                     sub
                 })
-                .all_equal_value()
-            {
-                Ok(e) => println!("Replace {expr} by {e}"),
-                _ => {}
-            }
+                .all_equal_value() { println!("Replace {expr} by {e}") }
         }
     }
 
