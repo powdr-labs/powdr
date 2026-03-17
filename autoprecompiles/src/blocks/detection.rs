@@ -2,14 +2,14 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::{
     adapter::Adapter,
-    blocks::{BasicBlock, Program, SuperBlock},
+    blocks::{BasicBlock, Program, StaticBlocks, SuperBlock},
 };
 
 /// Collects basic blocks from a program
 pub fn collect_basic_blocks<A: Adapter>(
     program: &A::Program,
     jumpdest_set: &BTreeSet<u64>,
-) -> Vec<SuperBlock<A::Instruction>> {
+) -> StaticBlocks<A::Instruction> {
     let mut blocks = Vec::new();
     let mut curr_block = BasicBlock {
         start_pc: program.instruction_index_to_pc(0),
@@ -75,12 +75,13 @@ pub fn collect_basic_blocks<A: Adapter>(
 
 fn expand_blocks<A: Adapter>(
     blocks: Vec<BasicBlock<A::Instruction>>,
-) -> Vec<SuperBlock<A::Instruction>> {
+) -> StaticBlocks<A::Instruction> {
     let mut expander = BasicBlockExpander::<A>::new(blocks.clone());
-    blocks
-        .into_iter()
-        .map(|b| expander.expand(b.into(), &mut HashSet::default()))
-        .collect()
+    StaticBlocks::new(
+        blocks
+            .into_iter()
+            .map(|b| expander.expand(b.into(), &mut HashSet::default())),
+    )
 }
 
 struct BasicBlockExpander<A: Adapter> {
@@ -101,12 +102,12 @@ impl<A: Adapter> BasicBlockExpander<A> {
     fn expand(
         &mut self,
         mut block: SuperBlock<A::Instruction>,
-        visited: &mut HashSet<u64>,
+        visited: &mut HashSet<Vec<u64>>,
     ) -> SuperBlock<A::Instruction> {
-        if visited.contains(&block.start_pc()) {
+        if visited.contains(&block.start_pcs()) {
             panic!("cycle detected");
         } else {
-            visited.insert(block.start_pc());
+            visited.insert(block.start_pcs());
         }
 
         // We do not extend blocks which contain disallowed instructions
@@ -422,7 +423,7 @@ mod tests {
     fn blocks(instructions: Vec<TestInstruction>, jumpdest_pcs: &[u64]) -> Vec<String> {
         collect_basic_blocks::<TestAdapter>(&program(instructions), &jumpdests(jumpdest_pcs))
             .into_iter()
-            .map(|block| {
+            .map(|(_, block)| {
                 block
                     .instructions()
                     .map(|(_, instruction)| instruction.label())

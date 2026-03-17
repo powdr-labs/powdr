@@ -517,7 +517,7 @@ mod tests {
                 assert!(!pgo_data
                     .pc_count
                     .keys()
-                    .contains(&precompile.apc.block.start_pc()));
+                    .contains(&precompile.apc.block.start_pcs()[0]));
             });
 
         let result = prove(&program, false, false, stdin, None);

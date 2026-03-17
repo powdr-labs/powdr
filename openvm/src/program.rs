@@ -4,7 +4,7 @@ use openvm_instructions::exe::VmExe;
 use openvm_instructions::program::Program as OpenVmProgram;
 use openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
-use powdr_autoprecompiles::blocks::{collect_basic_blocks, Program, SuperBlock};
+use powdr_autoprecompiles::blocks::{collect_basic_blocks, Program, StaticBlocks};
 use powdr_autoprecompiles::DegreeBound;
 use serde::{Deserialize, Serialize};
 
@@ -39,8 +39,8 @@ impl<'a, ISA: OpenVmISA> OriginalCompiledProgram<'a, ISA> {
         }
     }
 
-    /// Segments the program into basic blocks
-    pub fn collect_basic_blocks(&self) -> Vec<SuperBlock<Instr<BabyBear, ISA>>> {
+    /// Segments the program into basic blocks with different start_pcs.
+    pub fn collect_basic_blocks(&self) -> StaticBlocks<Instr<BabyBear, ISA>> {
         let jumpdest_set = ISA::get_jump_destinations(self);
 
         let program = Prog::from(&self.exe.program);

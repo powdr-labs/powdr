@@ -82,7 +82,7 @@ pub fn detect_empirical_constraints<ISA: OpenVmISA>(
     let blocks = program.collect_basic_blocks();
     let instruction_counts = blocks
         .iter()
-        .map(|block| (block.start_pc(), block.len()))
+        .map(|(start_pc, block)| (*start_pc, block.len()))
         .collect();
 
     // Collect trace, without any autoprecompiles.

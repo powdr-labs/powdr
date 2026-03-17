@@ -74,10 +74,6 @@ impl<I> SuperBlock<I> {
         }
     }
 
-    pub fn start_pc(&self) -> u64 {
-        self.blocks[0].start_pc
-    }
-
     pub fn len(&self) -> usize {
         self.blocks.iter().map(|b| b.instructions.len()).sum()
     }
@@ -89,9 +85,7 @@ impl<I> SuperBlock<I> {
     pub fn extend(&mut self, other: Self) {
         self.blocks.extend(other.blocks);
     }
-}
 
-impl<I> SuperBlock<I> {
     /// Sequence of basic block start PCs, uniquely identifies this superblock
     pub fn start_pcs(&self) -> Vec<u64> {
         self.blocks.iter().map(|b| b.start_pc).collect()
@@ -181,6 +175,47 @@ impl<I: Display> Display for BasicBlock<I> {
             writeln!(f, "   instr {i:>3}:   {instr}")?;
         }
         write!(f, "])")
+    }
+}
+
+/// A collection of blocks with different start_pcs. They can be strict basic blocks (contiguous instruction sin the program) or their extension by merging following blocks as long as the pc is statically known.
+pub struct StaticBlocks<I> {
+    blocks_by_start_pc: BTreeMap<u64, SuperBlock<I>>,
+}
+
+impl<I> StaticBlocks<I> {
+    pub fn new(blocks: impl IntoIterator<Item = impl Into<SuperBlock<I>>>) -> Self {
+        let mut blocks_by_start_pc = BTreeMap::new();
+        for block in blocks.into_iter().map(Into::into) {
+            let start_pc = block.blocks[0].start_pc;
+            assert!(
+                blocks_by_start_pc.insert(start_pc, block).is_none(),
+                "multiple blocks share the same start pc: {start_pc}"
+            );
+        }
+        StaticBlocks { blocks_by_start_pc }
+    }
+
+    pub fn len(&self) -> usize {
+        self.blocks_by_start_pc.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.blocks_by_start_pc.len() == 0
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&u64, &SuperBlock<I>)> {
+        self.blocks_by_start_pc.iter()
+    }
+}
+
+impl<I> IntoIterator for StaticBlocks<I> {
+    type Item = (u64, SuperBlock<I>);
+
+    type IntoIter = std::collections::btree_map::IntoIter<u64, SuperBlock<I>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.blocks_by_start_pc.into_iter()
     }
 }
 
@@ -356,8 +391,8 @@ pub fn detect_superblocks<I: Clone + PcStep>(
     cfg: &PowdrConfig,
     // program execution as a sequence of PCs
     execution_pc_list: &[u64],
-    // all program basic blocks (including single instruction ones), in no particular order
-    basic_blocks: Vec<SuperBlock<I>>,
+    // all program basic blocks (including single instruction ones), in no particular order. They must have different start pc.
+    static_blocks: StaticBlocks<I>,
 ) -> ExecutionBlocks<I> {
     tracing::info!(
         "Detecting superblocks with <= {} basic blocks, over the sequence of {} PCs",
@@ -367,11 +402,15 @@ pub fn detect_superblocks<I: Clone + PcStep>(
 
     let start = std::time::Instant::now();
 
+    let basic_block_count = static_blocks.len();
+
     // index basic blocks by start PC
-    let start_pc_to_bb: HashMap<_, _> = basic_blocks
-        .into_iter()
-        .map(|bb| (bb.start_pc(), bb))
-        .collect();
+    let start_pc_to_bb: HashMap<_, _> = static_blocks.into_iter().collect();
+    assert_eq!(
+        start_pc_to_bb.len(),
+        basic_block_count,
+        "Many basic blocks share the same start_pc"
+    );
 
     let execution_bb_runs = detect_execution_bb_runs(&start_pc_to_bb, execution_pc_list);
 
@@ -484,12 +523,9 @@ mod test {
 
     #[test]
     fn test_detect_superblocks_counts_and_execution_runs() {
-        let bb = |start_pc: u64, len: usize| {
-            BasicBlock {
-                start_pc,
-                instructions: vec![TestInstruction; len],
-            }
-            .into()
+        let bb = |start_pc: u64, len: usize| BasicBlock {
+            start_pc,
+            instructions: vec![TestInstruction; len],
         };
 
         let cfg = PowdrConfig::new(
@@ -502,7 +538,13 @@ mod test {
         )
         .with_superblocks(2, None, None);
 
-        let basic_blocks = vec![bb(100, 2), bb(200, 2), bb(300, 1), bb(400, 3), bb(500, 2)];
+        let basic_blocks = StaticBlocks::new(vec![
+            bb(100, 2),
+            bb(200, 2),
+            bb(300, 1),
+            bb(400, 3),
+            bb(500, 2),
+        ]);
 
         let execution = vec![100, 101, 200, 201, 300, 400, 401, 402, 100, 101, 200, 201];
 

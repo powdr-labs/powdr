@@ -23,7 +23,7 @@ use powdr_autoprecompiles::adapter::{
 };
 use powdr_autoprecompiles::blocks::{Instruction, PcStep};
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
-use powdr_autoprecompiles::execution::ExecutionState;
+use powdr_autoprecompiles::execution::{ExecutionState, OptimisticConstraints};
 use powdr_autoprecompiles::pgo::ApcCandidate;
 use powdr_autoprecompiles::PowdrConfig;
 use powdr_autoprecompiles::{InstructionHandler, VmConfig};
@@ -232,15 +232,17 @@ pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAd
     );
     if tracing::enabled!(tracing::Level::DEBUG) {
         tracing::debug!("Basic blocks sorted by execution count (top 10):");
-        for (count, block) in blocks
+        for (count, (start_pc, block)) in blocks
             .iter()
-            .filter_map(|block| Some((pgo.pc_execution_count(block.start_pc())?, block)))
+            .filter_map(|(start_pc, block)| {
+                Some((pgo.pc_execution_count(*start_pc)?, (start_pc, block)))
+            })
             .sorted_by_key(|(count, _)| *count)
             .rev()
             .take(10)
         {
             let name = symbols
-                .try_get_one_or_preceding(block.start_pc())
+                .try_get_one_or_preceding(*start_pc)
                 .map(|(symbol, offset)| format!("{} + {offset}", symbol))
                 .unwrap_or_default();
             tracing::debug!("Basic block (executed {count} times), {name}:\n{block}",);
@@ -278,7 +280,13 @@ pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAd
         .enumerate()
         .map(|(i, (apc, apc_stats, _))| {
             let opcode = POWDR_OPCODE + i;
-            let start_pc = apc.block.start_pc();
+            assert_eq!(
+                apc.optimistic_constraints,
+                OptimisticConstraints::empty(),
+                "openvm does not support conditional execution constraints"
+            );
+            // By construction, if we have no optimistic constraints, start pcs are all different, so it's safe to only look at the first one here.
+            let start_pc = apc.block.start_pcs()[0];
             let start_index = ((start_pc - pc_base as u64) / pc_step as u64)
                 .try_into()
                 .unwrap();
