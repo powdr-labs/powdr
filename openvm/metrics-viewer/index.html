@@ -1405,9 +1405,9 @@ function renderDetailTable(title, rows, m, opts = {}) {
         let infoIcon = '';
         if (info) {
             const ver = detectedOpenVmVersion || 1;
-            const desc = info['descV' + ver] || info.desc || '';
-            const code = info['codeV' + ver] || info.code || '';
-            infoIcon = `<span class="metric-info">i<span class="metric-info-tooltip">${desc}<code>${code}</code></span></span>`;
+            const desc = (info['descV' + ver] || info.desc || '').replace(/"/g, '&quot;');
+            const code = (info['codeV' + ver] || info.code || '').replace(/"/g, '&quot;');
+            infoIcon = `<span class="metric-info" data-desc="${desc}" data-code="${code}">i</span>`;
         }
         const classAttr = classes.length ? ` class="${classes.join(' ')}"` : '';
         html += `<tr${classAttr} data-indent="${indent}">`;
@@ -1424,30 +1424,31 @@ function renderDetailTable(title, rows, m, opts = {}) {
     return html;
 }
 
-// Position info tooltips near the icon, avoiding viewport overflow.
-document.addEventListener('mouseover', function(e) {
-    const icon = e.target.closest('.metric-info');
-    if (!icon) return;
-    const tip = icon.querySelector('.metric-info-tooltip');
-    if (!tip) return;
-    tip.style.display = 'block';
+// Shared tooltip element for metric info icons.
+const metricInfoTip = document.createElement('div');
+metricInfoTip.className = 'metric-info-tooltip';
+document.body.appendChild(metricInfoTip);
+
+document.addEventListener('mouseenter', function(e) {
+    if (!e.target.classList || !e.target.classList.contains('metric-info')) return;
+    const icon = e.target;
+    const desc = icon.dataset.desc || '';
+    const code = icon.dataset.code || '';
+    metricInfoTip.innerHTML = desc + '<code>' + code + '</code>';
+    metricInfoTip.style.display = 'block';
     const rect = icon.getBoundingClientRect();
     let left = rect.right + 6;
     let top = rect.top - 4;
-    // Avoid right overflow
     if (left + 350 > window.innerWidth) left = rect.left - 350;
-    // Avoid bottom overflow
-    if (top + tip.offsetHeight > window.innerHeight) top = window.innerHeight - tip.offsetHeight - 8;
+    if (top + metricInfoTip.offsetHeight > window.innerHeight) top = window.innerHeight - metricInfoTip.offsetHeight - 8;
     if (top < 4) top = 4;
-    tip.style.left = left + 'px';
-    tip.style.top = top + 'px';
-});
-document.addEventListener('mouseout', function(e) {
-    const icon = e.target.closest('.metric-info');
-    if (!icon) return;
-    const tip = icon.querySelector('.metric-info-tooltip');
-    if (tip) tip.style.display = 'none';
-});
+    metricInfoTip.style.left = left + 'px';
+    metricInfoTip.style.top = top + 'px';
+}, true);
+document.addEventListener('mouseleave', function(e) {
+    if (!e.target.classList || !e.target.classList.contains('metric-info')) return;
+    metricInfoTip.style.display = 'none';
+}, true);
 
 // Toggle collapsible rows: clicking a parent shows/hides its children.
 document.addEventListener('click', function(e) {
