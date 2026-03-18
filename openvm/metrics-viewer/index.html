@@ -182,6 +182,24 @@
         .bar-group { cursor: pointer; }
         .bar-group:hover rect { opacity: 0.85; }
 
+        /* Collapsible detail table rows */
+        .details-table tr.collapsible-parent th {
+            cursor: pointer;
+            user-select: none;
+        }
+        .details-table tr.collapsible-parent th .toggle-arrow {
+            display: inline-block;
+            width: 1em;
+            font-size: 0.7em;
+            transition: transform 0.15s;
+        }
+        .details-table tr.collapsible-parent.collapsed th .toggle-arrow {
+            transform: rotate(-90deg);
+        }
+        .details-table tr.collapsed-child {
+            display: none;
+        }
+
         /* Loading */
         .loading-overlay {
             position: fixed;
@@ -199,6 +217,7 @@
     <nav class="navbar">
         <div class="container-fluid">
             <a class="navbar-brand" href="#" onclick="window.location.href = window.location.pathname; return false;">OpenVM Metrics Viewer</a>
+            <span id="versionBadge" style="display:none; font-size:0.75rem; padding:2px 8px; border-radius:4px; background:#e9ecef; color:#495057; font-weight:600; margin-left:0.5rem"></span>
             <span class="data-source" id="dataSourceLabel"></span>
         </div>
     </nav>
@@ -276,6 +295,7 @@ let allMetrics = [];
 let selectedRunName = null;
 let baselineRunName = null;
 let currentChartTab = 'stacked';
+let detectedOpenVmVersion = null; // 1 or 2
 
 // ============================================================
 // Data Shape Validation
@@ -352,6 +372,24 @@ function normalizeMetricsData(data, sourceLabel) {
 }
 
 // ============================================================
+// OpenVM Version Detection
+// ============================================================
+
+// Detects whether metrics come from OpenVM 1 or OpenVM 2.
+// OpenVM 2 has 'constraint_deg' counter and lacks 'quotient_deg'.
+// OpenVM 1 has 'quotient_deg' and 'total_cells_used'.
+function detectOpenVmVersion(combinedData) {
+    const firstRun = Object.values(combinedData)[0];
+    if (!firstRun) return 1;
+    const allMetricNames = new Set([
+        ...firstRun.counter.map(e => e.metric),
+        ...firstRun.gauge.map(e => e.metric),
+    ]);
+    if (allMetricNames.has('constraint_deg') && !allMetricNames.has('quotient_deg')) return 2;
+    return 1;
+}
+
+// ============================================================
 // Data Processing — ports of Python logic
 //
 // These functions compute all displayed numbers from raw JSON.
@@ -360,7 +398,7 @@ function normalizeMetricsData(data, sourceLabel) {
 
 // Port of metrics_utils.py:load_metrics_dataframes
 // Flattens counter+gauge arrays into flat objects keyed by label names,
-// then splits into app/leaf/internal by the "group" label prefix.
+// then splits into app/leaf/internal/compression by the "group" label prefix.
 function loadMetricsDataframes(metricsJson) {
     const entries = [...(metricsJson.counter || []), ...(metricsJson.gauge || [])].map(c => {
         const obj = Object.fromEntries(c.labels);
@@ -375,8 +413,9 @@ function loadMetricsDataframes(metricsJson) {
     }
     const leaf = entries.filter(e => (e.group || '').startsWith('leaf'));
     const internal = entries.filter(e => (e.group || '').startsWith('internal'));
+    const compression = entries.filter(e => (e.group || '') === 'compression');
 
-    return { app, leaf, internal };
+    return { app, leaf, internal, compression };
 }
 
 // Port of metrics_utils.py:is_normal_instruction_air
@@ -402,7 +441,7 @@ function getMetric(entries, metricName) {
 // Computes all summary metrics for a single run from its raw JSON.
 // Each metric maps directly to a getMetric() call on a specific group + metric name.
 function extractMetrics(runName, metricsJson) {
-    const { app, leaf, internal } = loadMetricsDataframes(metricsJson);
+    const { app, leaf, internal, compression } = loadMetricsDataframes(metricsJson);
     const m = {};
 
     m.name = runName;
@@ -413,17 +452,24 @@ function extractMetrics(runName, metricsJson) {
     const normalInstructionAir = nonPowdrAir.filter(e => isNormalInstructionAir(e.air_name || ''));
     const openVmPrecompileAir = nonPowdrAir.filter(e => !isNormalInstructionAir(e.air_name || ''));
 
-    // Proof times by phase (all from "total_proof_time_ms" metric, split by group)
-    m.app_proof_time_ms = getMetric(app, 'total_proof_time_ms');
+    // Proof times by phase (all from "total_proof_time_ms" metric, split by group).
+    // In V2, execute_metered_time_ms is outside total_proof_time_ms (it's a sibling
+    // inside app_prove_time_ms), so we use app_prove_time_ms when available.
+    const appProveTime = getMetric(app, 'app_prove_time_ms');
+    m.app_proof_time_ms = appProveTime > 0 ? appProveTime : getMetric(app, 'total_proof_time_ms');
     m.leaf_proof_time_ms = getMetric(leaf, 'total_proof_time_ms');
     m.inner_recursion_proof_time_ms = getMetric(internal, 'total_proof_time_ms');
-    m.total_proof_time_ms = m.app_proof_time_ms + m.leaf_proof_time_ms + m.inner_recursion_proof_time_ms;
+    m.compression_proof_time_ms = getMetric(compression, 'total_proof_time_ms');
+    m.total_proof_time_ms = m.app_proof_time_ms + m.leaf_proof_time_ms
+        + m.inner_recursion_proof_time_ms + m.compression_proof_time_ms;
 
     // STARK prove time excluding trace generation
     m.app_proof_time_excluding_trace_ms = getMetric(app, 'stark_prove_excluding_trace_time_ms');
     m.leaf_proof_time_excluding_trace_ms = getMetric(leaf, 'stark_prove_excluding_trace_time_ms');
     m.inner_recursion_proof_time_excluding_trace_ms = getMetric(internal, 'stark_prove_excluding_trace_time_ms');
-    m.total_proof_time_excluding_trace_ms = m.app_proof_time_excluding_trace_ms + m.leaf_proof_time_excluding_trace_ms + m.inner_recursion_proof_time_excluding_trace_ms;
+    m.compression_proof_time_excluding_trace_ms = getMetric(compression, 'stark_prove_excluding_trace_time_ms');
+    m.total_proof_time_excluding_trace_ms = m.app_proof_time_excluding_trace_ms + m.leaf_proof_time_excluding_trace_ms
+        + m.inner_recursion_proof_time_excluding_trace_ms + m.compression_proof_time_excluding_trace_ms;
 
     // Column counts (summed over all segments)
     const mainCols = getMetric(app, 'main_cols');
@@ -434,18 +480,43 @@ function extractMetrics(runName, metricsJson) {
     m.num_segments = app.reduce((max, e) => Math.max(max, parseFloat(e.segment || 0)), -1) + 1;
 
     m.app_proof_cells = getMetric(app, 'total_cells');
-    m.app_proof_cells_used = getMetric(app, 'total_cells_used');
+    m.app_proof_cells_used = getMetric(app, 'total_cells_used'); // V1 only, null-ish in V2
     m.app_execute_preflight_time_ms = getMetric(app, 'execute_preflight_time_ms');
     m.app_execute_metered_time_ms = getMetric(app, 'execute_metered_time_ms');
     m.app_trace_gen_time_ms = getMetric(app, 'trace_gen_time_ms');
 
-    // "App other" = app proof time minus all known sub-components
+    // V2: STARK sub-components (prover.* metrics)
+    m.app_trace_commit_time_ms = getMetric(app, 'prover.main_trace_commit_time_ms');
+    m.app_rap_constraints_time_ms = getMetric(app, 'prover.rap_constraints_time_ms');
+    m.app_openings_time_ms = getMetric(app, 'prover.openings_time_ms');
+    m.app_stark_other_ms = Math.max(0, m.app_proof_time_excluding_trace_ms
+        - m.app_trace_commit_time_ms - m.app_rap_constraints_time_ms - m.app_openings_time_ms);
+
+    // V2: rap_constraints sub-components (additive: logup_gkr + round0 + mle_rounds = rap)
+    m.app_rap_logup_gkr_time_ms = getMetric(app, 'prover.rap_constraints.logup_gkr_time_ms');
+    m.app_rap_round0_time_ms = getMetric(app, 'prover.rap_constraints.round0_time_ms');
+    m.app_rap_mle_rounds_time_ms = getMetric(app, 'prover.rap_constraints.mle_rounds_time_ms');
+    m.app_rap_other_ms = m.app_rap_constraints_time_ms
+        - m.app_rap_logup_gkr_time_ms - m.app_rap_round0_time_ms - m.app_rap_mle_rounds_time_ms;
+
+    // V2: openings sub-components (additive: whir + stacked_reduction = openings)
+    m.app_openings_whir_time_ms = getMetric(app, 'prover.openings.whir_time_ms');
+    m.app_openings_stacked_reduction_time_ms = getMetric(app, 'prover.openings.stacked_reduction_time_ms');
+    m.app_openings_other_ms = m.app_openings_time_ms
+        - m.app_openings_whir_time_ms - m.app_openings_stacked_reduction_time_ms;
+
+    // V2: additional per-segment sub-components
+    m.app_set_initial_memory_time_ms = getMetric(app, 'set_initial_memory_time_ms');
+
+    // "App other" = app proof time minus all known sub-components.
+    // Can be negative when sub-timers overlap (parallelism). The raw value
+    // is stored for the detail table; the bar chart clamps to 0.
     m.app_other_ms = m.app_proof_time_ms
         - m.app_proof_time_excluding_trace_ms
         - m.app_execute_preflight_time_ms
         - m.app_execute_metered_time_ms
-        - m.app_trace_gen_time_ms;
-    if (m.app_other_ms < 0) m.app_other_ms = 0;
+        - m.app_trace_gen_time_ms
+        - m.app_set_initial_memory_time_ms;
 
     // Cell ratios by AIR classification
     const normalCells = getMetric(normalInstructionAir, 'cells');
@@ -539,8 +610,9 @@ function computeCellsByAir(metricsJson) {
 // ============================================================
 // Constants — proof time breakdown components
 // Colors and order match basic_metrics.py:plot()
+// Version-dependent: V2 adds compression phase.
 // ============================================================
-const COMPONENTS = [
+const COMPONENTS_V1 = [
     { key: 'inner_recursion_proof_time_ms', label: 'Inner recursion', color: '#9b3e00' },
     { key: 'leaf_proof_time_ms', label: 'Leaf recursion', color: '#d69600' },
     { key: 'app_proof_time_excluding_trace_ms', label: 'App STARK (excl. trace)', color: '#1f77b4' },
@@ -549,6 +621,22 @@ const COMPONENTS = [
     { key: 'app_execute_metered_time_ms', label: 'App metered', color: '#c6dbef' },
     { key: 'app_other_ms', label: 'App other', color: '#08519c' },
 ];
+
+const COMPONENTS_V2 = [
+    { key: 'compression_proof_time_ms', label: 'Compression', color: '#7b2d8e' },
+    { key: 'inner_recursion_proof_time_ms', label: 'Inner recursion', color: '#9b3e00' },
+    { key: 'leaf_proof_time_ms', label: 'Leaf recursion', color: '#d69600' },
+    { key: 'app_proof_time_excluding_trace_ms', label: 'App STARK (excl. trace)', color: '#1f77b4' },
+    { key: 'app_trace_gen_time_ms', label: 'App trace gen', color: '#9ecae1' },
+    { key: 'app_set_initial_memory_time_ms', label: 'App set memory', color: '#a1d99b' },
+    { key: 'app_execute_preflight_time_ms', label: 'App preflight', color: '#c6dbef' },
+    { key: 'app_execute_metered_time_ms', label: 'App metered', color: '#dadaeb' },
+    { key: 'app_other_ms', label: 'App other', color: '#969696' },
+];
+
+function getComponents() {
+    return detectedOpenVmVersion === 2 ? COMPONENTS_V2 : COMPONENTS_V1;
+}
 
 // ============================================================
 // Format helpers
@@ -595,6 +683,7 @@ function fmtComparison(value, baselineValue) {
 // Stacked Bar Chart
 // ============================================================
 function createBarChart(metrics) {
+    const COMPONENTS = getComponents();
     const container = d3.select('#barChart');
     container.selectAll('*').remove();
 
@@ -740,6 +829,7 @@ function updateBarSelection() {
 // Grouped Bar Chart (By Component)
 // ============================================================
 function createGroupedBarChart(metrics) {
+    const COMPONENTS = getComponents();
     const container = d3.select('#barChart');
     container.selectAll('*').remove();
 
@@ -858,7 +948,7 @@ const TABLE_COLUMNS = [
 
 // Detail tables: three separate tables shown in the experiment details pane.
 
-const BASIC_STATS_ROWS = [
+const BASIC_STATS_ROWS_V1 = [
     { key: 'num_segments', label: 'Segments', fmt: v => v },
     { key: 'app_proof_cols', label: 'App Columns', fmt: v => v.toLocaleString() },
     { key: 'app_proof_cells', label: 'App Cells', fmt: fmtCells },
@@ -872,17 +962,61 @@ const BASIC_STATS_ROWS = [
     { key: 'bus_interaction_messages', label: 'Bus Interaction Messages', fmt: fmtCells },
 ];
 
+const BASIC_STATS_ROWS_V2 = [
+    { key: 'num_segments', label: 'Segments', fmt: v => v },
+    { key: 'app_proof_cols', label: 'App Columns', fmt: v => v.toLocaleString() },
+    { key: 'app_proof_cells', label: 'App Cells', fmt: fmtCells },
+    { key: 'constraints', label: 'Constraints', fmt: v => v.toLocaleString() },
+    { key: 'constraint_instances', label: 'Constraint Instances', fmt: fmtCells },
+    { key: 'bus_interactions', label: 'Bus Interactions', fmt: v => v.toLocaleString() },
+    { key: 'bus_interaction_messages', label: 'Bus Interaction Messages', fmt: fmtCells },
+];
+
 // Nested proof time breakdown — indent level controls visual nesting.
-const PROOF_TIME_ROWS = [
+const PROOF_TIME_ROWS_V1 = [
     { key: 'app_proof_time_ms', label: 'App Proof Time', fmt: fmtSeconds, indent: 0 },
     { key: 'app_proof_time_excluding_trace_ms', label: 'STARK (excl. trace)', fmt: fmtSeconds, indent: 1 },
     { key: 'app_execute_metered_time_ms', label: 'Metered Execution', fmt: fmtSeconds, indent: 1 },
     { key: 'app_execute_preflight_time_ms', label: 'Preflight Execution', fmt: fmtSeconds, indent: 1 },
     { key: 'app_trace_gen_time_ms', label: 'Trace Gen', fmt: fmtSeconds, indent: 1 },
+    { key: 'app_other_ms', label: 'Other / Overlap', fmt: fmtSeconds, indent: 1, muted: true },
     { key: 'leaf_proof_time_ms', label: 'Leaf Recursion', fmt: fmtSeconds, indent: 0 },
     { key: 'inner_recursion_proof_time_ms', label: 'Inner Recursion', fmt: fmtSeconds, indent: 0 },
     { key: 'total_proof_time_ms', label: 'Total', fmt: fmtSeconds, indent: 0, bold: true },
 ];
+
+const PROOF_TIME_ROWS_V2 = [
+    { key: 'app_proof_time_ms', label: 'App Proof Time', fmt: fmtSeconds, indent: 0 },
+    { key: 'app_proof_time_excluding_trace_ms', label: 'STARK (excl. trace)', fmt: fmtSeconds, indent: 1 },
+    { key: 'app_rap_constraints_time_ms', label: 'Constraints', fmt: fmtSeconds, indent: 2 },
+    { key: 'app_rap_logup_gkr_time_ms', label: 'LogUp GKR', fmt: fmtSeconds, indent: 3 },
+    { key: 'app_rap_round0_time_ms', label: 'Round 0', fmt: fmtSeconds, indent: 3 },
+    { key: 'app_rap_mle_rounds_time_ms', label: 'MLE Rounds', fmt: fmtSeconds, indent: 3 },
+    { key: 'app_rap_other_ms', label: 'Other', fmt: fmtSeconds, indent: 3, muted: true },
+    { key: 'app_openings_time_ms', label: 'Openings', fmt: fmtSeconds, indent: 2 },
+    { key: 'app_openings_whir_time_ms', label: 'WHIR', fmt: fmtSeconds, indent: 3 },
+    { key: 'app_openings_stacked_reduction_time_ms', label: 'Stacked Reduction', fmt: fmtSeconds, indent: 3 },
+    { key: 'app_openings_other_ms', label: 'Other', fmt: fmtSeconds, indent: 3, muted: true },
+    { key: 'app_trace_commit_time_ms', label: 'Trace Commit', fmt: fmtSeconds, indent: 2 },
+    { key: 'app_stark_other_ms', label: 'Other', fmt: fmtSeconds, indent: 2, muted: true },
+    { key: 'app_execute_preflight_time_ms', label: 'Preflight Execution', fmt: fmtSeconds, indent: 1 },
+    { key: 'app_set_initial_memory_time_ms', label: 'Set Initial Memory', fmt: fmtSeconds, indent: 1 },
+    { key: 'app_trace_gen_time_ms', label: 'Trace Gen', fmt: fmtSeconds, indent: 1 },
+    { key: 'app_execute_metered_time_ms', label: 'Metered Execution', fmt: fmtSeconds, indent: 1 },
+    { key: 'app_other_ms', label: 'Other', fmt: fmtSeconds, indent: 1, muted: true },
+    { key: 'leaf_proof_time_ms', label: 'Leaf Recursion', fmt: fmtSeconds, indent: 0 },
+    { key: 'inner_recursion_proof_time_ms', label: 'Inner Recursion', fmt: fmtSeconds, indent: 0 },
+    { key: 'compression_proof_time_ms', label: 'Compression', fmt: fmtSeconds, indent: 0 },
+    { key: 'total_proof_time_ms', label: 'Total', fmt: fmtSeconds, indent: 0, bold: true },
+];
+
+function getBasicStatsRows() {
+    return detectedOpenVmVersion === 2 ? BASIC_STATS_ROWS_V2 : BASIC_STATS_ROWS_V1;
+}
+
+function getProofTimeRows() {
+    return detectedOpenVmVersion === 2 ? PROOF_TIME_ROWS_V2 : PROOF_TIME_ROWS_V1;
+}
 
 const CELL_DISTRIBUTION_ROWS = [
     { key: 'powdr_ratio', label: 'Powdr', fmt: fmtPct, noCompare: true },
@@ -987,23 +1121,70 @@ function updateTableSelection() {
 // ============================================================
 function renderDetailTable(title, rows, m, opts = {}) {
     const baseline = getBaselineMetrics();
+    const tableId = 'detail-' + title.replace(/\s+/g, '-').toLowerCase();
+
+    // Filter out negligible "other" rows
+    const visibleRows = rows.filter(row => {
+        if (row.muted) {
+            const val = m[row.key];
+            return val != null && Math.abs(val) >= 1;
+        }
+        return true;
+    });
+
+    // Determine which rows are parents (have children at a deeper indent)
+    const parentIndices = new Set();
+    for (let i = 0; i < visibleRows.length; i++) {
+        const indent = visibleRows[i].indent || 0;
+        if (i + 1 < visibleRows.length && (visibleRows[i + 1].indent || 0) > indent) {
+            parentIndices.add(i);
+        }
+    }
+
+    // Default expand level: indent 0 parents are expanded (their indent-1 children visible),
+    // deeper parents are collapsed.
+    const defaultExpandLevel = opts.defaultExpandLevel != null ? opts.defaultExpandLevel : 0;
+
     let html = `<h6 style="color:#333; font-weight:600; margin-bottom:0.3rem; margin-top:0.75rem">${title}</h6>`;
-    html += '<table class="details-table"><tbody>';
-    rows.forEach(row => {
+    html += `<table class="details-table" id="${tableId}"><tbody>`;
+    visibleRows.forEach((row, i) => {
         const indent = row.indent || 0;
+        const val = m[row.key];
+        const isParent = parentIndices.has(i);
+        // A row is a collapsed child if any ancestor at a shallower indent
+        // is collapsed by default (indent > defaultExpandLevel + 1).
+        const isCollapsedChild = indent > defaultExpandLevel + 1;
+        const parentIsCollapsed = isParent && indent > defaultExpandLevel;
+
+        const classes = [];
+        if (isParent) classes.push('collapsible-parent');
+        if (parentIsCollapsed) classes.push('collapsed');
+        if (isCollapsedChild) classes.push('collapsed-child');
+
         const padding = indent > 0 ? `padding-left:${indent * 1.2 + 0.5}em` : '';
         const weight = row.bold ? 'font-weight:700' : '';
-        const thStyle = [padding, weight].filter(Boolean).join(';');
-        const tdStyle = weight;
-        const formatted = m[row.key] != null ? row.fmt(m[row.key], m) : '<span style="color:#999">N/A</span>';
-        const comparison = (baseline && m.name !== baselineRunName && !row.noCompare)
-            ? ' ' + fmtComparison(m[row.key], baseline[row.key])
+        const muted = row.muted ? 'color:#999; font-style:italic' : '';
+        const thStyle = [padding, weight, muted].filter(Boolean).join(';');
+        const tdStyle = [weight, muted].filter(Boolean).join(';');
+        let formatted;
+        if (val == null) {
+            formatted = '<span style="color:#999">N/A</span>';
+        } else if (row.muted && val < 0) {
+            formatted = `<span style="color:#c08000">${fmtSeconds(-val)} overlap</span>`;
+        } else {
+            formatted = row.fmt(val, m);
+        }
+        const comparison = (baseline && m.name !== baselineRunName && !row.noCompare && !row.muted)
+            ? ' ' + fmtComparison(val, baseline[row.key])
             : '';
-        html += `<tr><th${thStyle ? ` style="${thStyle}"` : ''}>${row.label}</th>`;
+        const arrow = isParent ? `<span class="toggle-arrow">&#9660;</span> ` : '';
+        const classAttr = classes.length ? ` class="${classes.join(' ')}"` : '';
+        html += `<tr${classAttr} data-indent="${indent}">`;
+        html += `<th${thStyle ? ` style="${thStyle}"` : ''}>${arrow}${row.label}</th>`;
         html += `<td${tdStyle ? ` style="${tdStyle}"` : ''}>${formatted}${comparison}</td>`;
         if (opts.pctOfKey) {
             const total = m[opts.pctOfKey];
-            const pct = total > 0 ? (m[row.key] / total * 100).toFixed(1) + '%' : '';
+            const pct = (total > 0 && val != null) ? (val / total * 100).toFixed(1) + '%' : '';
             html += `<td style="color:#888; text-align:right${weight ? ';' + weight : ''}">${pct}</td>`;
         }
         html += '</tr>';
@@ -1011,6 +1192,40 @@ function renderDetailTable(title, rows, m, opts = {}) {
     html += '</tbody></table>';
     return html;
 }
+
+// Toggle collapsible rows: clicking a parent shows/hides its children.
+document.addEventListener('click', function(e) {
+    const parentRow = e.target.closest('tr.collapsible-parent');
+    if (!parentRow) return;
+    const tbody = parentRow.closest('tbody');
+    if (!tbody) return;
+
+    const parentIndent = parseInt(parentRow.dataset.indent) || 0;
+    const isCollapsing = !parentRow.classList.contains('collapsed');
+    parentRow.classList.toggle('collapsed');
+
+    // Walk subsequent rows: toggle children (indent > parentIndent),
+    // stop when we hit a row at parentIndent or shallower.
+    let sibling = parentRow.nextElementSibling;
+    while (sibling) {
+        const sibIndent = parseInt(sibling.dataset.indent) || 0;
+        if (sibIndent <= parentIndent) break;
+        if (isCollapsing) {
+            sibling.classList.add('collapsed-child');
+            // Also collapse any nested parents
+            if (sibling.classList.contains('collapsible-parent')) {
+                sibling.classList.add('collapsed');
+            }
+        } else {
+            // Only show direct children (indent == parentIndent + 1).
+            // Deeper rows stay hidden unless their own parent is expanded.
+            if (sibIndent === parentIndent + 1) {
+                sibling.classList.remove('collapsed-child');
+            }
+        }
+        sibling = sibling.nextElementSibling;
+    }
+});
 
 function renderDetails(runName) {
     const section = document.getElementById('detailsSection');
@@ -1028,8 +1243,8 @@ function renderDetails(runName) {
     // Three detail tables + pie chart side by side
     let html = '<div class="details-row">';
     html += '<div class="details-table-col">';
-    html += renderDetailTable('Basic Stats', BASIC_STATS_ROWS, m);
-    html += renderDetailTable('Proof Time', PROOF_TIME_ROWS, m, { pctOfKey: 'total_proof_time_ms' });
+    html += renderDetailTable('Basic Stats', getBasicStatsRows(), m);
+    html += renderDetailTable('Proof Time', getProofTimeRows(), m, { pctOfKey: 'total_proof_time_ms', defaultExpandLevel: 0 });
     html += renderDetailTable('Trace Cell Distribution', CELL_DISTRIBUTION_ROWS, m);
     html += '</div>';
     html += '<div class="details-pie-col"><h6 style="color:#333; font-weight:600; margin-bottom:0.5rem; margin-top:0.75rem">Trace Cells by AIR</h6><div id="pieChart"></div></div>';
@@ -1123,6 +1338,7 @@ function selectRun(runName) {
 // ============================================================
 function processAndRender(data, sourceLabel = '') {
     combinedData = normalizeMetricsData(data, sourceLabel);
+    detectedOpenVmVersion = detectOpenVmVersion(combinedData);
     allMetrics = Object.entries(combinedData).map(([name, json]) => extractMetrics(name, json));
 
     if (allMetrics.length === 1) {
@@ -1136,6 +1352,10 @@ function processAndRender(data, sourceLabel = '') {
         const apc000 = allMetrics.find(m => m.name === 'apc000');
         baselineRunName = apc000 ? 'apc000' : (allMetrics[0]?.name || null);
     }
+
+    const badge = document.getElementById('versionBadge');
+    badge.textContent = `OpenVM ${detectedOpenVmVersion}`;
+    badge.style.display = 'inline';
 
     document.getElementById('uploadSection').style.display = 'none';
     document.getElementById('appSection').style.display = 'block';
