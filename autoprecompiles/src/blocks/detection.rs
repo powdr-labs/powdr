@@ -479,7 +479,7 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "cycle detected")]
-    fn cycle_panics() {
-        let _ = blocks(vec![ft('B'), jmp('C', 0)], &[1]);
+    fn cycle() {
+        assert_eq!(blocks(vec![ft('B'), jmp('C', 0)], &[1]), vec!["BC"]);
     }
 }
