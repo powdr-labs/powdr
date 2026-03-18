@@ -23,9 +23,7 @@ use powdr_autoprecompiles::adapter::{
 };
 use powdr_autoprecompiles::blocks::{Instruction, PcStep};
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
-use powdr_autoprecompiles::execution::{
-    ExecutionState,
-};
+use powdr_autoprecompiles::execution::ExecutionState;
 use powdr_autoprecompiles::pgo::ApcCandidate;
 use powdr_autoprecompiles::PowdrConfig;
 use powdr_autoprecompiles::{InstructionHandler, VmConfig};
@@ -276,7 +274,10 @@ pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAd
 
     tracing::info!("Adjust the program with the autoprecompiles");
 
-    assert_eq!(config.superblock_max_bb_count, 1, "openvm does not support superblocks");
+    assert_eq!(
+        config.superblock_max_bb_count, 1,
+        "openvm does not support superblocks"
+    );
 
     let extensions = apcs
         .into_iter()
