@@ -110,11 +110,7 @@ impl<A: Adapter> BasicBlockExpander<A> {
         mut block: SuperBlock<A::Instruction>,
         visited: &mut HashSet<Vec<u64>>,
     ) -> SuperBlock<A::Instruction> {
-        if visited.contains(&block.start_pcs()) {
-            return block;
-        } else {
-            visited.insert(block.start_pcs());
-        }
+        visited.insert(block.start_pcs());
 
         // We do not extend blocks which contain disallowed instructions
         if !block.instructions().all(|(_, i)| A::is_allowed(i)) {
@@ -134,7 +130,9 @@ impl<A: Adapter> BasicBlockExpander<A> {
                 .get(&target_pc)
                 .cloned()
             {
-                block.extend(self.expand(tail, visited));
+                if !visited.contains(&tail.start_pcs()) {
+                    block.extend(self.expand(tail, visited));
+                }
             }
         }
 
@@ -478,8 +476,12 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "cycle detected")]
+    fn self_cycle() {
+        assert_eq!(blocks(vec![jmp('A', 0)], &[]), vec!["A"]);
+    }
+
+    #[test]
     fn cycle() {
-        assert_eq!(blocks(vec![ft('B'), jmp('C', 0)], &[1]), vec!["BC"]);
+        assert_eq!(blocks(vec![ft('B'), jmp('C', 0)], &[1]), vec!["BC", "CB"]);
     }
 }
