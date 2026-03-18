@@ -6,7 +6,7 @@ use crate::{
 };
 
 /// Collects basic blocks from a program
-pub fn collect_basic_blocks<A: Adapter>(
+pub fn collect_static_blocks<A: Adapter>(
     program: &A::Program,
     jumpdest_set: &BTreeSet<u64>,
 ) -> StaticBlocks<A::Instruction> {

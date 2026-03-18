@@ -79,7 +79,7 @@ pub fn detect_empirical_constraints<ISA: OpenVmISA>(
     inputs: Vec<StdIn>,
 ) -> EmpiricalConstraints {
     tracing::info!("Collecting empirical constraints...");
-    let blocks = program.collect_basic_blocks();
+    let blocks = program.collect_static_blocks();
     let instruction_counts = blocks
         .iter()
         .map(|(start_pc, block)| (*start_pc, block.len()))
