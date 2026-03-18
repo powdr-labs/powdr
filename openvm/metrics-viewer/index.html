@@ -58,6 +58,12 @@
         .btn-load:hover { background: #0b5ed7; color: white; }
 
         /* App section */
+        .format-hint {
+            margin-top: 0.75rem;
+            text-align: center;
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
         #appSection { display: none; }
         .pane {
             background-color: white;
@@ -200,13 +206,14 @@
     <div id="uploadSection">
         <div class="upload-container">
             <div class="dropzone" id="dropzone">
-                <h4>Drop combined metrics JSON here</h4>
+                <h4>Drop metrics JSON here</h4>
                 <p class="text-muted">or click to select a file</p>
                 <input type="file" id="fileInput" accept=".json" style="display:none">
             </div>
+            <div class="format-hint">Supports combined metrics JSON and raw metrics JSON with <code>counter</code> + <code>gauge</code>.</div>
             <div class="url-input-group input-group">
                 <input type="text" class="form-control" id="urlInput"
-                       placeholder="Or paste a URL to combined metrics JSON...">
+                       placeholder="Or paste a URL to metrics JSON...">
                 <button class="btn btn-load" id="urlLoadBtn">Load</button>
             </div>
         </div>
@@ -269,6 +276,80 @@ let allMetrics = [];
 let selectedRunName = null;
 let baselineRunName = null;
 let currentChartTab = 'stacked';
+
+// ============================================================
+// Data Shape Validation
+// ============================================================
+function assert(condition, message) {
+    if (!condition) throw new Error(message);
+}
+
+function isObject(value) {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function hasRawMetricsShape(value) {
+    return isObject(value) && Object.prototype.hasOwnProperty.call(value, 'counter')
+        && Object.prototype.hasOwnProperty.call(value, 'gauge');
+}
+
+function assertMetricEntries(entries, fieldName, context) {
+    assert(Array.isArray(entries), `${context}.${fieldName} must be an array.`);
+    entries.forEach((entry, idx) => {
+        const entryContext = `${context}.${fieldName}[${idx}]`;
+        assert(isObject(entry), `${entryContext} must be an object.`);
+        assert(Array.isArray(entry.labels), `${entryContext}.labels must be an array.`);
+        entry.labels.forEach((label, labelIdx) => {
+            assert(Array.isArray(label) && label.length === 2, `${entryContext}.labels[${labelIdx}] must be a [key, value] pair.`);
+        });
+        assert(typeof entry.metric === 'string', `${entryContext}.metric must be a string.`);
+        assert(typeof entry.value === 'string' || typeof entry.value === 'number', `${entryContext}.value must be a string or number.`);
+    });
+}
+
+function assertRawMetricsShape(metricsJson, context) {
+    assert(isObject(metricsJson), `${context} must be a JSON object.`);
+    assert(hasRawMetricsShape(metricsJson), `${context} must contain both "counter" and "gauge" fields.`);
+    assertMetricEntries(metricsJson.counter, 'counter', context);
+    assertMetricEntries(metricsJson.gauge, 'gauge', context);
+}
+
+function inferRawRunName(source) {
+    if (!source) return 'experiment';
+
+    const sourceName = source.trim().split('?')[0].split('#')[0];
+    if (/^metrics\.json$/i.test(sourceName)) return 'experiment';
+
+    try {
+        const url = new URL(source, window.location.href);
+        const parts = url.pathname.split('/').filter(Boolean);
+        const fileName = parts[parts.length - 1] || '';
+        const parentName = parts[parts.length - 2] || '';
+        if (fileName === 'metrics.json' && parentName) return parentName;
+        if (fileName) return fileName.replace(/\.json$/i, '') || 'experiment';
+    } catch (_) {
+        const fileName = source.split('/').pop() || source;
+        if (/^metrics\.json$/i.test(fileName)) return 'experiment';
+        return fileName.replace(/\.json$/i, '') || 'experiment';
+    }
+
+    return 'experiment';
+}
+
+function normalizeMetricsData(data, sourceLabel) {
+    assert(isObject(data), 'Metrics JSON must be a JSON object.');
+
+    if (hasRawMetricsShape(data)) {
+        const runName = inferRawRunName(sourceLabel);
+        assertRawMetricsShape(data, `metrics.${runName}`);
+        return { [runName]: data };
+    }
+
+    const entries = Object.entries(data);
+    assert(entries.length > 0, 'Combined metrics JSON must contain at least one experiment.');
+    entries.forEach(([runName, metricsJson]) => assertRawMetricsShape(metricsJson, `metrics.${runName}`));
+    return data;
+}
 
 // ============================================================
 // Data Processing — ports of Python logic
@@ -1040,9 +1121,9 @@ function selectRun(runName) {
 // ============================================================
 // Data Loading
 // ============================================================
-function processAndRender(data) {
-    combinedData = data;
-    allMetrics = Object.entries(data).map(([name, json]) => extractMetrics(name, json));
+function processAndRender(data, sourceLabel = '') {
+    combinedData = normalizeMetricsData(data, sourceLabel);
+    allMetrics = Object.entries(combinedData).map(([name, json]) => extractMetrics(name, json));
 
     // Set default baseline if not already set from URL
     if (!baselineRunName || !allMetrics.find(m => m.name === baselineRunName)) {
@@ -1065,7 +1146,7 @@ function handleFile(file) {
         try {
             const data = JSON.parse(e.target.result);
             updateDataSourceDisplay(file.name);
-            processAndRender(data);
+            processAndRender(data, file.name);
         } catch (err) {
             alert('Failed to parse JSON: ' + err.message);
         }
@@ -1091,7 +1172,7 @@ async function loadFromUrl(url, updateUrlParam = true) {
             params.set('data', url);
             history.replaceState(null, '', window.location.pathname + '?' + params.toString());
         }
-        processAndRender(data);
+        processAndRender(data, url);
     } catch (err) {
         alert('Failed to load: ' + err.message);
     } finally {
