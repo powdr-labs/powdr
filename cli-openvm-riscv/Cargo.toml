@@ -9,6 +9,7 @@ repository.workspace = true
 [features]
 default = ["metrics"]
 metrics = ["powdr-openvm/metrics", "sdk-v2/metrics", "openvm-stark-backend/metrics", "openvm-stark-sdk/metrics"]
+aot = ["powdr-openvm-riscv/aot"]
 
 [[bin]]
 name = "powdr_openvm_riscv"

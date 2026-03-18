@@ -584,6 +584,6 @@ pub fn execution_profile_from_guest<ISA: OpenVmISA>(
             .unwrap();
 
     execution_profile::<BabyBearOpenVmApcAdapter<ISA>>(&program, || {
-        sdk.execute(exe.clone(), inputs.clone()).unwrap();
+        sdk.execute_interpreted(exe.clone(), inputs.clone()).unwrap();
     })
 }
