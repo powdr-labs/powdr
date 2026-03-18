@@ -178,6 +178,13 @@ jobs:
         id: date
         run: echo "value=$(date +'%Y-%m-%d-%H%M')" >> $GITHUB_OUTPUT
 
+      - name: Generate bench results README
+        run: |
+          python3 ./scripts/generate_bench_results_readme.py \
+            ./results \
+            "${{ steps.date.outputs.value }}" \
+            --output ./results/readme.md
+
       - name: commit to bench results
         uses: peaceiris/actions-gh-pages@v4
         with:
@@ -285,6 +292,13 @@ jobs:
         id: date
         run: echo "value=$(date +'%Y-%m-%d-%H%M')" >> $GITHUB_OUTPUT
 
+      - name: Generate bench results README
+        run: |
+          python3 ./scripts/generate_bench_results_readme.py \
+            ./results \
+            "${{ steps.date.outputs.value }}-gpu" \
+            --output ./results/readme.md
+
       - name: commit to bench results
         uses: peaceiris/actions-gh-pages@v4
         with:
@@ -294,4 +308,3 @@ jobs:
           destination_dir: results/${{ steps.date.outputs.value }}-gpu/
           keep_files: true
           enable_jekyll: true
-
