@@ -1,7 +1,4 @@
-use std::{
-    collections::{BTreeMap, HashMap},
-    fmt::Display,
-};
+use std::{collections::BTreeMap, fmt::Display};
 
 use itertools::Itertools;
 use rayon::iter::{
@@ -12,7 +9,7 @@ use serde::{Deserialize, Serialize};
 /// Tools to detect basic blocks in a program
 mod detection;
 
-pub use detection::collect_basic_blocks;
+pub use detection::collect_static_blocks;
 
 use crate::PowdrConfig;
 
@@ -178,7 +175,10 @@ impl<I: Display> Display for BasicBlock<I> {
     }
 }
 
-/// A collection of blocks with different start_pcs. They can be strict basic blocks (contiguous instruction sin the program) or their extension by merging following blocks as long as the pc is statically known.
+/// A collection of basic blocks and superblocks derived statically from the program.  
+/// As such, these superblocks only allow unconditional jumps.  
+/// Each block must have its own unique start PC.  
+///As a set, the blocks should cover the whole program (including invalid APC instructions).
 pub struct StaticBlocks<I> {
     blocks_by_start_pc: BTreeMap<u64, SuperBlock<I>>,
 }
@@ -201,11 +201,17 @@ impl<I> StaticBlocks<I> {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.blocks_by_start_pc.len() == 0
+        self.blocks_by_start_pc.is_empty()
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&u64, &SuperBlock<I>)> {
         self.blocks_by_start_pc.iter()
+    }
+
+    fn get(&self, pc: u64) -> &SuperBlock<I> {
+        self.blocks_by_start_pc
+            .get(&pc)
+            .expect("PC was expected to be the start of a static block")
     }
 }
 
@@ -297,8 +303,8 @@ pub fn find_non_overlapping<T: Eq>(haystack: &[T], needle: &[T]) -> Vec<usize> {
 /// A run is interrupted upon hitting an invalid APC basic block (i.e., a single-instruction block).
 /// Returns a list of the runs, coupled with how many times each appears (a run may repeat in the execution).
 fn detect_execution_bb_runs<I>(
-    // start PC to basic blocks. Should include every basic block in the program, including those with len=1 (invalid APC)
-    start_pc_to_bb: &HashMap<u64, SuperBlock<I>>,
+    // start PC to static blocks. Should include every static block in the program, including those with len=1 (invalid APC)
+    static_blocks: &StaticBlocks<I>,
     execution: &[u64],
 ) -> Vec<(ExecutionBasicBlockRun, u32)> {
     // Basic block runs in the execution.
@@ -310,9 +316,7 @@ fn detect_execution_bb_runs<I>(
     let mut pos = 0;
     while pos < execution.len() {
         let pc = execution[pos];
-        let bb = start_pc_to_bb
-            .get(&pc)
-            .expect("PC in execution not part of any basic blocks");
+        let bb = static_blocks.get(pc);
         assert!(!bb.is_empty());
         if bb.len() == 1 {
             // if starting a single instruction BB (i.e., invalid for APC), end current run
@@ -391,7 +395,7 @@ pub fn detect_superblocks<I: Clone + PcStep>(
     cfg: &PowdrConfig,
     // program execution as a sequence of PCs
     execution_pc_list: &[u64],
-    // all program basic blocks (including single instruction ones), in no particular order. They must have different start pc.
+    // all program static blocks
     static_blocks: StaticBlocks<I>,
 ) -> ExecutionBlocks<I> {
     tracing::info!(
@@ -402,17 +406,7 @@ pub fn detect_superblocks<I: Clone + PcStep>(
 
     let start = std::time::Instant::now();
 
-    let basic_block_count = static_blocks.len();
-
-    // index basic blocks by start PC
-    let start_pc_to_bb: HashMap<_, _> = static_blocks.into_iter().collect();
-    assert_eq!(
-        start_pc_to_bb.len(),
-        basic_block_count,
-        "Many basic blocks share the same start_pc"
-    );
-
-    let execution_bb_runs = detect_execution_bb_runs(&start_pc_to_bb, execution_pc_list);
+    let execution_bb_runs = detect_execution_bb_runs(&static_blocks, execution_pc_list);
 
     let blocks_found =
         count_superblocks_in_execution(&execution_bb_runs, cfg.superblock_max_bb_count as usize);
@@ -432,7 +426,7 @@ pub fn detect_superblocks<I: Clone + PcStep>(
         let block = SuperBlock::from(
             sblock_pcs
                 .iter()
-                .flat_map(|start_pc| start_pc_to_bb[start_pc].clone().blocks)
+                .flat_map(|start_pc| static_blocks.get(*start_pc).clone().blocks)
                 .collect_vec(),
         );
 

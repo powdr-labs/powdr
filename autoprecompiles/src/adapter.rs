@@ -67,8 +67,9 @@ pub trait PgoAdapter {
             detect_superblocks(config, &prof.pc_list, blocks)
         } else {
             let superblocks = blocks
-                .into_iter() // filter invalid APC candidates
+                .into_iter()
                 .map(|(_, b)| b)
+                // filter invalid APC candidates
                 .filter(|sb| sb.len() > 1)
                 .collect();
             ExecutionBlocks::new_without_pgo(superblocks)
