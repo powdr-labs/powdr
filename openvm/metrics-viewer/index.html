@@ -1125,6 +1125,12 @@ function processAndRender(data, sourceLabel = '') {
     combinedData = normalizeMetricsData(data, sourceLabel);
     allMetrics = Object.entries(combinedData).map(([name, json]) => extractMetrics(name, json));
 
+    if (allMetrics.length === 1) {
+        selectedRunName = allMetrics[0].name;
+    } else if (selectedRunName && !allMetrics.find(m => m.name === selectedRunName)) {
+        selectedRunName = null;
+    }
+
     // Set default baseline if not already set from URL
     if (!baselineRunName || !allMetrics.find(m => m.name === baselineRunName)) {
         const apc000 = allMetrics.find(m => m.name === 'apc000');
