@@ -353,6 +353,7 @@ function extractMetrics(runName, metricsJson) {
     m.num_segments = app.reduce((max, e) => Math.max(max, parseFloat(e.segment || 0)), -1) + 1;
 
     m.app_proof_cells = getMetric(app, 'total_cells');
+    m.app_proof_cells_used = getMetric(app, 'total_cells_used');
     m.app_execute_preflight_time_ms = getMetric(app, 'execute_preflight_time_ms');
     m.app_execute_metered_time_ms = getMetric(app, 'execute_metered_time_ms');
     m.app_trace_gen_time_ms = getMetric(app, 'trace_gen_time_ms');
@@ -780,6 +781,10 @@ const BASIC_STATS_ROWS = [
     { key: 'num_segments', label: 'Segments', fmt: v => v },
     { key: 'app_proof_cols', label: 'App Columns', fmt: v => v.toLocaleString() },
     { key: 'app_proof_cells', label: 'App Cells', fmt: fmtCells },
+    { key: 'app_proof_cells_used', label: 'App Cells (without padding)', fmt: (v, m) => {
+        const pct = m.app_proof_cells > 0 ? (v / m.app_proof_cells * 100) : 0;
+        return `${fmtCells(v)} <span style="color:#999">(${pct.toFixed(1)}%)</span>`;
+    }},
     { key: 'constraints', label: 'Constraints', fmt: v => v.toLocaleString() },
     { key: 'constraint_instances', label: 'Constraint Instances', fmt: fmtCells },
     { key: 'bus_interactions', label: 'Bus Interactions', fmt: v => v.toLocaleString() },
@@ -909,7 +914,7 @@ function renderDetailTable(title, rows, m, opts = {}) {
         const weight = row.bold ? 'font-weight:700' : '';
         const thStyle = [padding, weight].filter(Boolean).join(';');
         const tdStyle = weight;
-        const formatted = m[row.key] != null ? row.fmt(m[row.key]) : '<span style="color:#999">N/A</span>';
+        const formatted = m[row.key] != null ? row.fmt(m[row.key], m) : '<span style="color:#999">N/A</span>';
         const comparison = (baseline && m.name !== baselineRunName && !row.noCompare)
             ? ' ' + fmtComparison(m[row.key], baseline[row.key])
             : '';
