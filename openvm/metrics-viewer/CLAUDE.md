@@ -12,7 +12,9 @@ CLAUDE.md           # This file
 
 ## Data Format
 
-Input is a combined metrics JSON, produced by `basic_metrics.py combine`. It maps run names to raw metrics objects:
+Input can be either of these formats:
+
+1. **Combined metrics JSON** — produced by `basic_metrics.py combine`. It maps run names to raw metrics objects:
 
 ```json
 {
@@ -30,12 +32,23 @@ Input is a combined metrics JSON, produced by `basic_metrics.py combine`. It map
 }
 ```
 
-Each entry in `counter` / `gauge` has:
+2. **Raw metrics JSON** — a single experiment object with top-level `counter` and `gauge` keys:
+
+```json
+{
+  "counter": [ ... ],
+  "gauge": [ ... ]
+}
+```
+
+If the top-level object has both `counter` and `gauge`, the viewer treats it as a raw metrics file and renders a single experiment. Otherwise it treats the object as combined metrics and validates each experiment entry.
+
+Each entry in `counter` / `gauge` must have:
 - `labels`: Array of `[key, value]` pairs. Common keys: `group` (`app_proof*`, `leaf*`, `internal*`), `air_name`, `segment`.
 - `metric`: Metric name (e.g. `cells`, `total_proof_time_ms`, `trace_gen_time_ms`, `rows`, `main_cols`).
-- `value`: String-encoded numeric value.
+- `value`: String-encoded numeric value (or numeric in practice; the UI accepts both).
 
-Generate with:
+Generate a combined file with:
 ```bash
 python3 openvm-riscv/scripts/basic_metrics.py combine **/metrics.json > combined_metrics.json
 ```
@@ -56,6 +69,8 @@ Load data via file upload (drag-drop) or URL parameter:
 http://localhost:8000/?data=<url>&run=<name>
 ```
 
+For raw metrics JSON loaded from a URL, the viewer infers the experiment name from the path (for example `/apc030/metrics.json` becomes `apc030`).
+
 Example, using the data above and pre-selecting the `apc030` run:
 ```
 http://localhost:8000/?data=https%3A%2F%2Fgist.githubusercontent.com%2Fgeorgwiese%2Fb146800a3b5eb633a6d5157f8aff1123%2Fraw%2Fe02ba2cec6a4cc063e4bff117cf46c69ff775e1e%2Fkeccak_combined.json&run=apc030
@@ -70,7 +85,7 @@ Verify:
 ## URL Parameters
 
 ```
-?data=<url>           # Data source (loads combined JSON; GitHub blob URLs auto-converted to raw)
+?data=<url>           # Data source (loads raw or combined metrics JSON; GitHub blob URLs auto-converted to raw)
 &run=<name>           # Pre-select a run by name
 ```
 
@@ -79,6 +94,7 @@ Verify:
 The JavaScript in `index.html` is organized into clearly separated sections:
 
 1. **Data Processing** — ports of Python logic, these are the core functions that compute all displayed numbers:
+   - `normalizeMetricsData(json, sourceLabel)` — validates the incoming JSON shape, distinguishes raw-vs-combined input, and wraps raw files as a single experiment.
    - `loadMetricsDataframes(json)` — port of [`metrics_utils.py:load_metrics_dataframes`](../../openvm-riscv/scripts/metrics_utils.py). Flattens `counter`+`gauge` arrays into entries, splits by `group` prefix into `app`, `leaf`, `internal`.
    - `isNormalInstructionAir(name)` — port of [`metrics_utils.py:is_normal_instruction_air`](../../openvm-riscv/scripts/metrics_utils.py). Classifies AIR names as normal RISC-V instructions vs. precompiles.
    - `getMetric(entries, name)` — sums `value` for all entries matching a metric name.
