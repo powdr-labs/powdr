@@ -182,6 +182,54 @@
         .bar-group { cursor: pointer; }
         .bar-group:hover rect { opacity: 0.85; }
 
+        /* Info icon tooltip */
+        .metric-info {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            line-height: 14px;
+            text-align: center;
+            font-size: 9px;
+            font-style: normal;
+            font-weight: 700;
+            color: #999;
+            border: 1px solid #ccc;
+            border-radius: 50%;
+            cursor: help;
+            margin-left: 4px;
+            vertical-align: middle;
+            position: relative;
+        }
+        .metric-info:hover { color: #555; border-color: #999; }
+        .metric-info-tooltip {
+            display: none;
+            position: fixed;
+            z-index: 200;
+            background: #fff;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            padding: 8px 10px;
+            font-size: 0.78rem;
+            font-weight: 400;
+            color: #333;
+            white-space: normal;
+            width: 340px;
+            max-width: 90vw;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.13);
+            line-height: 1.4;
+        }
+        .metric-info-tooltip code {
+            display: block;
+            margin-top: 5px;
+            padding: 4px 6px;
+            background: #f5f5f5;
+            border-radius: 3px;
+            font-size: 0.72rem;
+            white-space: pre-wrap;
+            word-break: break-all;
+            color: #555;
+        }
+
         /* Collapsible detail table rows */
         .details-table tr.collapsible-parent th {
             cursor: pointer;
@@ -606,6 +654,163 @@ function computeCellsByAir(metricsJson) {
 
     return { items: large, total };
 }
+
+// ============================================================
+// Metric Descriptions (single source of truth)
+//
+// Each key matches a field in the metrics object produced by
+// extractMetrics(). `desc` is a human-readable explanation;
+// `code` is minimal Python that computes the value from a raw
+// metrics object `m` (with `counter` and `gauge` keys).
+//
+// Helper assumed in code snippets:
+//   entries = [dict(e['labels']) | {'metric': e['metric'], 'value': float(e['value'])}
+//              for e in m['counter'] + m['gauge']]
+//   app   = [e for e in entries if e.get('group','').startswith('app_proof')]
+//   leaf  = [e for e in entries if e.get('group','').startswith('leaf')]
+//   internal = [e for e in entries if e.get('group','').startswith('internal')]
+//   compression = [e for e in entries if e.get('group','') == 'compression']
+//   def gm(es, name): return sum(e['value'] for e in es if e['metric'] == name)
+// ============================================================
+const METRIC_INFO = {
+    // --- Basic Stats ---
+    num_segments: {
+        desc: 'Number of proving segments the app proof is split into.',
+        code: "max(int(e.get('segment', 0)) for e in app) + 1",
+    },
+    app_proof_cols: {
+        desc: 'Total columns in the app proof (main + preprocessed + permutation).',
+        code: "gm(app, 'main_cols') + gm(app, 'prep_cols') + gm(app, 'perm_cols')",
+    },
+    app_proof_cells: {
+        desc: 'Total trace cells in the app proof (rows × columns, including padding).',
+        code: "gm(app, 'total_cells')",
+    },
+    app_proof_cells_used: {
+        desc: 'Trace cells actually used (excluding padding). V1 only.',
+        code: "gm(app, 'total_cells_used')",
+    },
+    constraints: {
+        desc: 'Total number of constraint polynomials across all AIRs.',
+        code: "gm(all_entries, 'constraints')  # no group filter",
+    },
+    constraint_instances: {
+        desc: 'Sum of (constraints per AIR × rows per AIR per segment) in the app proof.',
+        code: "sum(constraints[air] * rows[air,seg] for air, seg in app)",
+    },
+    bus_interactions: {
+        desc: 'Total number of bus interaction definitions across all AIRs.',
+        code: "gm(all_entries, 'interactions')  # no group filter",
+    },
+    bus_interaction_messages: {
+        desc: 'Sum of (interactions per AIR × rows per AIR per segment) in the app proof.',
+        code: "sum(interactions[air] * rows[air,seg] for air, seg in app)",
+    },
+
+    // --- Proof Time ---
+    app_proof_time_ms: {
+        desc: 'Total wall-clock time for the app proof. V1: total_proof_time_ms for app group. V2: app_prove_time_ms (includes metered execution outside per-segment timing).',
+        code: "gm(app, 'app_prove_time_ms') or gm(app, 'total_proof_time_ms')",
+    },
+    app_proof_time_excluding_trace_ms: {
+        desc: 'STARK prover time excluding trace generation (commitments, constraint evaluation, opening proofs).',
+        code: "gm(app, 'stark_prove_excluding_trace_time_ms')",
+    },
+    app_rap_constraints_time_ms: {
+        desc: 'Time for RAP constraint evaluation (zerocheck + LogUp GKR). V2 only.',
+        code: "gm(app, 'prover.rap_constraints_time_ms')",
+    },
+    app_rap_logup_gkr_time_ms: {
+        desc: 'Time for LogUp GKR protocol within constraint evaluation. V2 only.',
+        code: "gm(app, 'prover.rap_constraints.logup_gkr_time_ms')",
+    },
+    app_rap_round0_time_ms: {
+        desc: 'Time for Round 0 of constraint evaluation (initial sumcheck round). V2 only.',
+        code: "gm(app, 'prover.rap_constraints.round0_time_ms')",
+    },
+    app_rap_mle_rounds_time_ms: {
+        desc: 'Time for MLE (multilinear extension) rounds in constraint evaluation. V2 only.',
+        code: "gm(app, 'prover.rap_constraints.mle_rounds_time_ms')",
+    },
+    app_rap_other_ms: {
+        desc: 'Residual: constraints time minus its sub-components.',
+        code: "rap_constraints - logup_gkr - round0 - mle_rounds",
+    },
+    app_openings_time_ms: {
+        desc: 'Time for polynomial opening proofs (WHIR + stacked reduction). V2 only.',
+        code: "gm(app, 'prover.openings_time_ms')",
+    },
+    app_openings_whir_time_ms: {
+        desc: 'Time for WHIR opening proof protocol. V2 only.',
+        code: "gm(app, 'prover.openings.whir_time_ms')",
+    },
+    app_openings_stacked_reduction_time_ms: {
+        desc: 'Time for stacked reduction in opening proofs. V2 only.',
+        code: "gm(app, 'prover.openings.stacked_reduction_time_ms')",
+    },
+    app_openings_other_ms: {
+        desc: 'Residual: openings time minus its sub-components.',
+        code: "openings - whir - stacked_reduction",
+    },
+    app_trace_commit_time_ms: {
+        desc: 'Time for committing the main trace (Merkle tree construction). V2 only.',
+        code: "gm(app, 'prover.main_trace_commit_time_ms')",
+    },
+    app_stark_other_ms: {
+        desc: 'Residual: STARK time minus constraints, openings, and trace commit.',
+        code: "stark_excl_trace - constraints - openings - trace_commit",
+    },
+    app_execute_preflight_time_ms: {
+        desc: 'Preflight execution: fast execution pass to determine segment boundaries and AIR heights.',
+        code: "gm(app, 'execute_preflight_time_ms')",
+    },
+    app_set_initial_memory_time_ms: {
+        desc: 'Time to set up initial memory state for each segment. V2 only.',
+        code: "gm(app, 'set_initial_memory_time_ms')",
+    },
+    app_trace_gen_time_ms: {
+        desc: 'Trace generation: full re-execution producing the execution trace for the prover.',
+        code: "gm(app, 'trace_gen_time_ms')",
+    },
+    app_execute_metered_time_ms: {
+        desc: 'Metered execution: instrumented execution pass that collects metrics.',
+        code: "gm(app, 'execute_metered_time_ms')",
+    },
+    app_other_ms: {
+        desc: 'Residual: app proof time minus all known sub-components. Negative means sub-timers overlap (parallelism).',
+        code: "app_proof - stark - preflight - metered - trace_gen - set_mem",
+    },
+    leaf_proof_time_ms: {
+        desc: 'Total proving time for the leaf aggregation layer.',
+        code: "gm(leaf, 'total_proof_time_ms')",
+    },
+    inner_recursion_proof_time_ms: {
+        desc: 'Total proving time for inner recursion aggregation layers.',
+        code: "gm(internal, 'total_proof_time_ms')",
+    },
+    compression_proof_time_ms: {
+        desc: 'Total proving time for the compression layer. V2 only.',
+        code: "gm(compression, 'total_proof_time_ms')",
+    },
+    total_proof_time_ms: {
+        desc: 'Sum of app + leaf + inner recursion + compression proving times.',
+        code: "app_proof + leaf + inner_recursion + compression",
+    },
+
+    // --- Cell Distribution ---
+    powdr_ratio: {
+        desc: 'Fraction of app trace cells belonging to powdr autoprecompile AIRs (PowdrAir*).',
+        code: "gm(powdr_airs, 'cells') / gm(app, 'total_cells')",
+    },
+    normal_instruction_ratio: {
+        desc: 'Fraction of app trace cells belonging to standard RISC-V instruction AIRs (VmAirWrapper with 4 limbs).',
+        code: "gm(normal_instruction_airs, 'cells') / gm(app, 'total_cells')",
+    },
+    openvm_precompile_ratio: {
+        desc: 'Fraction of app trace cells belonging to OpenVM built-in precompile AIRs (non-powdr, non-standard).',
+        code: "gm(openvm_precompile_airs, 'cells') / gm(app, 'total_cells')",
+    },
+};
 
 // ============================================================
 // Constants — proof time breakdown components
@@ -1178,9 +1383,13 @@ function renderDetailTable(title, rows, m, opts = {}) {
             ? ' ' + fmtComparison(val, baseline[row.key])
             : '';
         const arrow = isParent ? `<span class="toggle-arrow">&#9660;</span> ` : '';
+        const info = METRIC_INFO[row.key];
+        const infoIcon = info
+            ? `<span class="metric-info">i<span class="metric-info-tooltip">${info.desc}<code>${info.code}</code></span></span>`
+            : '';
         const classAttr = classes.length ? ` class="${classes.join(' ')}"` : '';
         html += `<tr${classAttr} data-indent="${indent}">`;
-        html += `<th${thStyle ? ` style="${thStyle}"` : ''}>${arrow}${row.label}</th>`;
+        html += `<th${thStyle ? ` style="${thStyle}"` : ''}>${arrow}${row.label}${infoIcon}</th>`;
         html += `<td${tdStyle ? ` style="${tdStyle}"` : ''}>${formatted}${comparison}</td>`;
         if (opts.pctOfKey) {
             const total = m[opts.pctOfKey];
@@ -1193,8 +1402,34 @@ function renderDetailTable(title, rows, m, opts = {}) {
     return html;
 }
 
+// Position info tooltips near the icon, avoiding viewport overflow.
+document.addEventListener('mouseover', function(e) {
+    const icon = e.target.closest('.metric-info');
+    if (!icon) return;
+    const tip = icon.querySelector('.metric-info-tooltip');
+    if (!tip) return;
+    tip.style.display = 'block';
+    const rect = icon.getBoundingClientRect();
+    let left = rect.right + 6;
+    let top = rect.top - 4;
+    // Avoid right overflow
+    if (left + 350 > window.innerWidth) left = rect.left - 350;
+    // Avoid bottom overflow
+    if (top + tip.offsetHeight > window.innerHeight) top = window.innerHeight - tip.offsetHeight - 8;
+    if (top < 4) top = 4;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+});
+document.addEventListener('mouseout', function(e) {
+    const icon = e.target.closest('.metric-info');
+    if (!icon) return;
+    const tip = icon.querySelector('.metric-info-tooltip');
+    if (tip) tip.style.display = 'none';
+});
+
 // Toggle collapsible rows: clicking a parent shows/hides its children.
 document.addEventListener('click', function(e) {
+    if (e.target.closest('.metric-info')) return;
     const parentRow = e.target.closest('tr.collapsible-parent');
     if (!parentRow) return;
     const tbody = parentRow.closest('tbody');

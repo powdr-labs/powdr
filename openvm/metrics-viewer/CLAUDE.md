@@ -190,10 +190,12 @@ The JavaScript in `index.html` is organized into clearly separated sections:
    - `extractMetrics(runName, json)` — port of [`basic_metrics.py:extract_metrics`](../../openvm-riscv/scripts/basic_metrics.py). Computes all summary metrics (proof times, cell counts, ratios) from raw JSON.
    - `computeCellsByAir(json)` — port of [`plot_trace_cells.py:compute_cells_by_air`](../../openvm-riscv/scripts/plot_trace_cells.py). Aggregates cells by AIR name with 1.5% threshold.
 
-2. **Constants** — `COMPONENTS_V1`/`COMPONENTS_V2` (proof time breakdown components with colors), `TABLE_COLUMNS`, detail row arrays (`BASIC_STATS_ROWS_V1`/`V2`, `PROOF_TIME_ROWS_V1`/`V2`). Version-aware getters (`getComponents()`, `getBasicStatsRows()`, `getProofTimeRows()`) return the right variant.
+2. **Metric Descriptions** — `METRIC_INFO` object (search for `const METRIC_INFO`). Single source of truth for human-readable descriptions and Python code snippets for every computed metric. Displayed as info-icon tooltips in the detail tables. When adding a new metric to the detail rows, add a corresponding entry here.
 
-3. **Chart Components** — `createBarChart()`, `createGroupedBarChart()`, `createPieChart()`, each rendering into their container.
+3. **Constants** — `COMPONENTS_V1`/`COMPONENTS_V2` (proof time breakdown components with colors), `TABLE_COLUMNS`, detail row arrays (`BASIC_STATS_ROWS_V1`/`V2`, `PROOF_TIME_ROWS_V1`/`V2`). Version-aware getters (`getComponents()`, `getBasicStatsRows()`, `getProofTimeRows()`) return the right variant.
 
-4. **Table Components** — `createSummaryTable()`, `renderDetails()`.
+4. **Chart Components** — `createBarChart()`, `createGroupedBarChart()`, `createPieChart()`, each rendering into their container.
 
-5. **Data Loading & URL Handling** — file upload, URL fetch, parameter sync.
+5. **Table Components** — `createSummaryTable()`, `renderDetails()`.
+
+6. **Data Loading & URL Handling** — file upload, URL fetch, parameter sync.
