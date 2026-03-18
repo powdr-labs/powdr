@@ -474,6 +474,11 @@ impl<ISA: OpenVmISA> PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>>
             metrics,
         } = state;
 
+        // We use the arena for metrics, so this line ensures that the number of rows is reported correctly.
+        // It does not allocate any extra memory, because the memory is already at initialization.
+        #[cfg(feature = "metrics")]
+        ctx.alloc_single_row();
+
         // Initialize the original arenas if not already initialized
         let mut original_arenas = self.original_arenas_cpu.as_ref().borrow_mut();
 
