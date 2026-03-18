@@ -23,7 +23,10 @@ use powdr_autoprecompiles::adapter::{
 };
 use powdr_autoprecompiles::blocks::{Instruction, PcStep};
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
-use powdr_autoprecompiles::execution::{ExecutionState, OptimisticConstraints};
+use powdr_autoprecompiles::execution::{
+    ExecutionState, LocalOptimisticLiteral, OptimisticConstraint, OptimisticConstraints,
+    OptimisticLiteral,
+};
 use powdr_autoprecompiles::pgo::ApcCandidate;
 use powdr_autoprecompiles::PowdrConfig;
 use powdr_autoprecompiles::{InstructionHandler, VmConfig};
@@ -280,13 +283,23 @@ pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAd
         .enumerate()
         .map(|(i, (apc, apc_stats, _))| {
             let opcode = POWDR_OPCODE + i;
-            assert_eq!(
-                apc.optimistic_constraints,
-                OptimisticConstraints::empty(),
-                "openvm does not support conditional execution constraints"
-            );
             // By construction, if we have no optimistic constraints, start pcs are all different, so it's safe to only look at the first one here.
             let start_pc = apc.block.start_pcs()[0];
+            assert_eq!(
+                apc.optimistic_constraints,
+                OptimisticConstraints::from_constraints(vec![OptimisticConstraint {
+                    left: powdr_autoprecompiles::execution::OptimisticExpression::Literal(
+                        OptimisticLiteral {
+                            instr_idx: 0,
+                            val: LocalOptimisticLiteral::Pc
+                        }
+                    ),
+                    right: powdr_autoprecompiles::execution::OptimisticExpression::Number(
+                        start_pc as u32
+                    )
+                }]),
+                "openvm does not support conditional execution constraints"
+            );
             let start_index = ((start_pc - pc_base as u64) / pc_step as u64)
                 .try_into()
                 .unwrap();
