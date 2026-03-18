@@ -292,7 +292,7 @@ fn load_womir_fixtures() {
 #[ignore = "takes ~40 min to run"]
 fn test_womir_struct_copy() {
     let machine = optimize_womir_fixture("tests/womir_struct_copy_pc2211432.json.gz");
-    println!(
+    eprintln!(
         "cols={}, bus_interactions={}, constraints={}",
         machine.main_columns().count(),
         machine.bus_interactions.len(),
@@ -305,7 +305,7 @@ fn test_womir_struct_copy() {
 #[ignore = "takes ~40 min to run"]
 fn test_womir_bigint_arith() {
     let machine = optimize_womir_fixture("tests/womir_bigint_arith_pc2152724.json.gz");
-    println!(
+    eprintln!(
         "cols={}, bus_interactions={}, constraints={}",
         machine.main_columns().count(),
         machine.bus_interactions.len(),
@@ -318,7 +318,7 @@ fn test_womir_bigint_arith() {
 #[ignore = "takes ~37 min to run"]
 fn test_womir_struct_compare() {
     let machine = optimize_womir_fixture("tests/womir_struct_compare_pc520876.json.gz");
-    println!(
+    eprintln!(
         "cols={}, bus_interactions={}, constraints={}",
         machine.main_columns().count(),
         machine.bus_interactions.len(),
@@ -331,7 +331,7 @@ fn test_womir_struct_compare() {
 #[ignore = "takes ~35 min to run"]
 fn test_womir_bigint_mul() {
     let machine = optimize_womir_fixture("tests/womir_bigint_mul_pc2234668.json.gz");
-    println!(
+    eprintln!(
         "cols={}, bus_interactions={}, constraints={}",
         machine.main_columns().count(),
         machine.bus_interactions.len(),
@@ -344,7 +344,7 @@ fn test_womir_bigint_mul() {
 #[ignore = "takes ~34 min to run"]
 fn test_womir_bitfield_extract() {
     let machine = optimize_womir_fixture("tests/womir_bitfield_extract_pc2295204.json.gz");
-    println!(
+    eprintln!(
         "cols={}, bus_interactions={}, constraints={}",
         machine.main_columns().count(),
         machine.bus_interactions.len(),
