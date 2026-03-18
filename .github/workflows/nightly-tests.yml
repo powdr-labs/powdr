@@ -180,7 +180,7 @@ jobs:
 
       - name: Generate bench results README
         run: |
-          python3 ./scripts/generate_bench_results_readme.py \
+          python3 ./openvm-riscv/scripts/generate_bench_results_readme.py \
             ./results \
             "${{ steps.date.outputs.value }}" \
             --output ./results/readme.md
@@ -294,7 +294,7 @@ jobs:
 
       - name: Generate bench results README
         run: |
-          python3 ./scripts/generate_bench_results_readme.py \
+          python3 ./openvm-riscv/scripts/generate_bench_results_readme.py \
             ./results \
             "${{ steps.date.outputs.value }}-gpu" \
             --output ./results/readme.md

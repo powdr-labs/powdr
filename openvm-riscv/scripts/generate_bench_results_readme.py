@@ -5,6 +5,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 BENCH_RESULTS_BLOB_BASE = "https://github.com/powdr-labs/bench-results/blob/gh-pages"
+BENCH_RESULTS_TREE_BASE = "https://github.com/powdr-labs/bench-results/tree/gh-pages"
 APC_ANALYZER_BASE = "https://powdr-labs.github.io/powdr/autoprecompile-analyzer/"
 METRICS_VIEWER_BASE = "https://powdr-labs.github.io/powdr/openvm/metrics-viewer/"
 
@@ -12,6 +13,13 @@ METRICS_VIEWER_BASE = "https://powdr-labs.github.io/powdr/openvm/metrics-viewer/
 def github_blob_url(relative_path: Path, run_id: str) -> str:
     path = Path("results") / run_id / relative_path
     return f"{BENCH_RESULTS_BLOB_BASE}/{path.as_posix()}"
+
+
+def github_tree_url(run_id: str, subdir: str | None = None) -> str:
+    path = Path("results") / run_id
+    if subdir:
+        path = path / subdir
+    return f"{BENCH_RESULTS_TREE_BASE}/{path.as_posix()}"
 
 
 def viewer_url(viewer_base: str, data_url: str) -> str:
@@ -30,36 +38,46 @@ def find_apc_candidates(experiment_dir: Path) -> Path | None:
 
 
 def generate_readme(results_dir: Path, run_id: str) -> str:
-    rows: list[str] = []
+    experiments: list[dict[str, str]] = []
 
     for experiment_dir in sorted(path for path in results_dir.iterdir() if path.is_dir()):
+        name = experiment_dir.name
         metrics_path = experiment_dir / "combined_metrics.json"
         apc_path = find_apc_candidates(experiment_dir)
 
-        metrics_link = "—"
+        entry: dict[str, str] = {"name": name}
+
         if metrics_path.exists():
             metrics_data_url = github_blob_url(metrics_path.relative_to(results_dir), run_id)
-            metrics_link = (
-                f"[metrics viewer]({viewer_url(METRICS_VIEWER_BASE, metrics_data_url)})"
-            )
+            entry["metrics_url"] = viewer_url(METRICS_VIEWER_BASE, metrics_data_url)
 
-        apc_link = "—"
         if apc_path is not None:
             apc_data_url = github_blob_url(apc_path.relative_to(results_dir), run_id)
-            apc_link = f"[apc analyzer]({viewer_url(APC_ANALYZER_BASE, apc_data_url)})"
+            entry["apc_url"] = viewer_url(APC_ANALYZER_BASE, apc_data_url)
 
-        rows.append(f"| {experiment_dir.name} | {metrics_link} | {apc_link} |")
+        entry["tree_url"] = github_tree_url(run_id, name)
+
+        experiments.append(entry)
+
+    # Put reth first if present, then the rest alphabetically.
+    experiments.sort(key=lambda e: (0 if e["name"] == "reth" else 1, e["name"]))
 
     lines = [
-        f"# Nightly bench results for {run_id}",
+        f"# Bench results — {run_id}",
         "",
-        "This file links each experiment in this nightly run to the hosted metrics viewers.",
-        "",
-        "| Experiment | OpenVM metrics viewer | APC analyzer |",
-        "| --- | --- | --- |",
-        *rows,
     ]
-    return "\n".join(lines) + "\n"
+
+    for exp in experiments:
+        name = exp["name"]
+        links = [f"📂 [Raw data]({exp['tree_url']})"]
+        if "metrics_url" in exp:
+            links.append(f"📊 [Metrics Viewer]({exp['metrics_url']})")
+        if "apc_url" in exp:
+            links.append(f"🔍 [APC Analyzer]({exp['apc_url']})")
+        lines.append(f"**{name}**: " + " &nbsp;|&nbsp; ".join(links))
+        lines.append("")
+
+    return "\n".join(lines)
 
 
 def main() -> None:
