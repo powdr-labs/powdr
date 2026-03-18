@@ -140,7 +140,7 @@ pub(crate) fn statements_to_symbolic_machines<A: Adapter>(
     let mut global_idx = 0;
     let mut machines: Vec<SymbolicMachine<A::PowdrField>> = Vec::new();
 
-    for (i, (instr, pc)) in block.instructions().zip_eq(block.pcs()).enumerate() {
+    for (i, (pc, instr)) in block.instructions().enumerate() {
         let machine = instruction_handler
             .get_instruction_air_and_id(instr)
             .1
