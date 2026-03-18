@@ -332,7 +332,7 @@ fn maybe_compute_empirical_constraints(
     );
 
     let empirical_constraints =
-        detect_empirical_constraints(guest_program, powdr_config.degree_bound, vec![stdin]);
+        detect_empirical_constraints(guest_program, powdr_config.degree_bound, vec![stdin], powdr_config.should_expand_basic_blocks);
 
     if let Some(path) = &powdr_config.apc_candidates_dir_path {
         std::fs::create_dir_all(path).expect("Failed to create apc candidates directory");

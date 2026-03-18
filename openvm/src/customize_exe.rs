@@ -141,7 +141,7 @@ impl<'a, ISA: OpenVmISA> Adapter for BabyBearOpenVmApcAdapter<'a, ISA> {
         ISA::branching_opcodes().contains(&instruction.inner.opcode)
     }
 
-    fn static_target(
+    fn try_static_target(
         instruction: (u64, &Self::Instruction),
         previous: Option<(u64, &Self::Instruction)>,
     ) -> Option<u64> {
@@ -225,7 +225,7 @@ pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAd
     };
 
     let symbols = ISA::get_symbol_table(&original_program.linked_program);
-    let blocks = original_program.collect_static_blocks();
+    let blocks = original_program.collect_static_blocks(config.should_expand_basic_blocks);
     tracing::info!(
         "Got {} basic blocks from `collect_basic_blocks`",
         blocks.len()

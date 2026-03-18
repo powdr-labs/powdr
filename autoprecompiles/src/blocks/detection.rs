@@ -9,6 +9,7 @@ use crate::{
 pub fn collect_static_blocks<A: Adapter>(
     program: &A::Program,
     jumpdest_set: &BTreeSet<u64>,
+    should_expand_basic_blocks: bool,
 ) -> StaticBlocks<A::Instruction> {
     let mut blocks = Vec::new();
     let mut curr_block = BasicBlock {
@@ -70,9 +71,14 @@ pub fn collect_static_blocks<A: Adapter>(
         blocks.len()
     );
 
-    expand_blocks::<A>(blocks)
+    if should_expand_basic_blocks {
+        expand_blocks::<A>(blocks)
+    } else {
+        StaticBlocks::new(blocks)
+    }
 }
 
+/// Expand basic blocks with their successor as long as the successor is statically know
 fn expand_blocks<A: Adapter>(
     blocks: Vec<BasicBlock<A::Instruction>>,
 ) -> StaticBlocks<A::Instruction> {
@@ -105,7 +111,7 @@ impl<A: Adapter> BasicBlockExpander<A> {
         visited: &mut HashSet<Vec<u64>>,
     ) -> SuperBlock<A::Instruction> {
         if visited.contains(&block.start_pcs()) {
-            panic!("cycle detected");
+            return block;
         } else {
             visited.insert(block.start_pcs());
         }
@@ -122,7 +128,7 @@ impl<A: Adapter> BasicBlockExpander<A> {
             (last, previous)
         };
 
-        if let Some(target_pc) = A::static_target(last, previous) {
+        if let Some(target_pc) = A::try_static_target(last, previous) {
             if let Some(tail) = self
                 .start_pc_to_allowed_basic_block
                 .get(&target_pc)
@@ -153,7 +159,7 @@ mod tests {
     use powdr_number::GoldilocksField;
     use serde::{Deserialize, Serialize};
 
-    use super::collect_basic_blocks;
+    use super::collect_static_blocks;
     use crate::{
         adapter::Adapter,
         blocks::{Instruction, PcStep, Program},
@@ -384,7 +390,7 @@ mod tests {
             !matches!(instr, TestInstruction::Disallowed(_))
         }
 
-        fn static_target(
+        fn try_static_target(
             last: (u64, &Self::Instruction),
             _previous: Option<(u64, &Self::Instruction)>,
         ) -> Option<u64> {
@@ -421,7 +427,7 @@ mod tests {
     }
 
     fn blocks(instructions: Vec<TestInstruction>, jumpdest_pcs: &[u64]) -> Vec<String> {
-        collect_basic_blocks::<TestAdapter>(&program(instructions), &jumpdests(jumpdest_pcs))
+        collect_static_blocks::<TestAdapter>(&program(instructions), &jumpdests(jumpdest_pcs), true)
             .into_iter()
             .map(|(_, block)| {
                 block

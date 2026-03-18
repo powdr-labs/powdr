@@ -40,12 +40,12 @@ impl<'a, ISA: OpenVmISA> OriginalCompiledProgram<'a, ISA> {
     }
 
     /// Segments the program into basic blocks with different start_pcs.
-    pub fn collect_static_blocks(&self) -> StaticBlocks<Instr<BabyBear, ISA>> {
+    pub fn collect_static_blocks(&self, should_expand_basic_blocks: bool) -> StaticBlocks<Instr<BabyBear, ISA>> {
         let jumpdest_set = ISA::get_jump_destinations(self);
 
         let program = Prog::from(&self.exe.program);
 
-        collect_static_blocks::<BabyBearOpenVmApcAdapter<ISA>>(&program, &jumpdest_set)
+        collect_static_blocks::<BabyBearOpenVmApcAdapter<ISA>>(&program, &jumpdest_set, should_expand_basic_blocks)
     }
 
     /// Converts to a `CompiledProgram` with the original vm config (without autoprecompiles).
