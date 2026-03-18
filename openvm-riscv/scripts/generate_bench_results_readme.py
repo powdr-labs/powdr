@@ -27,6 +27,9 @@ def viewer_url(viewer_base: str, data_url: str) -> str:
 
 
 def find_apc_candidates(experiment_dir: Path) -> Path | None:
+    # All apc_candidates.json files within an experiment should be identical
+    # (with pgo=cell, all APCs are computed regardless of how many are selected),
+    # so we just pick any one deterministically.
     candidates = sorted(experiment_dir.glob("**/apc_candidates.json"))
     if not candidates:
         return None
