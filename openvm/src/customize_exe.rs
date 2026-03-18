@@ -145,7 +145,7 @@ impl<'a, ISA: OpenVmISA> Adapter for BabyBearOpenVmApcAdapter<'a, ISA> {
         instruction: (u64, &Self::Instruction),
         previous: Option<(u64, &Self::Instruction)>,
     ) -> Option<u64> {
-        ISA::static_target(instruction, previous)
+        ISA::try_static_target(instruction, previous)
     }
 }
 

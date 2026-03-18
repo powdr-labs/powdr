@@ -78,7 +78,7 @@ impl OpenVmISA for RiscvISA {
         branch_opcodes_set()
     }
 
-    fn static_target<F: PrimeField32>(
+    fn try_static_target<F: PrimeField32>(
         (pc, instruction): (u64, &powdr_openvm::Instr<F, Self>),
         previous: Option<(u64, &powdr_openvm::Instr<F, Self>)>,
     ) -> Option<u64> {
@@ -111,7 +111,8 @@ impl OpenVmISA for RiscvISA {
                     _ => None,
                 }
             }
-            _ => None,
+            _ if Self::branching_opcodes().contains(&instruction.inner.opcode) => None,
+            _ => Some(pc + u64::from(DEFAULT_PC_STEP)),
         }
     }
 
@@ -227,11 +228,13 @@ fn add_extra_targets(
 #[cfg(test)]
 mod tests {
     use openvm_instructions::instruction::Instruction;
+    use openvm_instructions::{program::DEFAULT_PC_STEP, VmOpcode};
     use openvm_stark_backend::p3_field::FieldAlgebra;
     use openvm_stark_sdk::p3_baby_bear::BabyBear;
     use powdr_openvm::isa::OpenVmISA;
 
     use super::{jalr_imm, RiscvISA};
+    use crate::isa::opcode;
     use crate::isa::symbolic_instruction_builder::{auipc, jal, jalr};
 
     #[test]
@@ -239,7 +242,7 @@ mod tests {
         let instruction = (0u64, jalr::<BabyBear>(0, 0, 24, 1, 0).into());
 
         assert_eq!(
-            RiscvISA::static_target((instruction.0, &instruction.1), None),
+            RiscvISA::try_static_target((instruction.0, &instruction.1), None),
             Some(24)
         );
     }
@@ -250,7 +253,7 @@ mod tests {
         let instruction = (104u64, jalr::<BabyBear>(1, 4, 24, 1, 0).into());
 
         assert_eq!(
-            RiscvISA::static_target(
+            RiscvISA::try_static_target(
                 (instruction.0, &instruction.1),
                 Some((previous.0, &previous.1)),
             ),
@@ -269,8 +272,24 @@ mod tests {
         );
 
         assert_eq!(
-            RiscvISA::static_target((instruction.0, &instruction.1), None),
+            RiscvISA::try_static_target((instruction.0, &instruction.1), None),
             Some(92)
+        );
+    }
+
+    #[test]
+    fn non_branching_instruction_falls_through() {
+        let instruction = (
+            100u64,
+            powdr_openvm::Instr::<BabyBear, RiscvISA>::from(Instruction {
+                opcode: VmOpcode::from_usize(opcode::OPCODE_ADD),
+                ..Default::default()
+            }),
+        );
+
+        assert_eq!(
+            RiscvISA::try_static_target((instruction.0, &instruction.1), None),
+            Some(100 + u64::from(DEFAULT_PC_STEP))
         );
     }
 
