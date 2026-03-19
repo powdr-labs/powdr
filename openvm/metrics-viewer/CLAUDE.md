@@ -140,9 +140,9 @@ python3 openvm-riscv/scripts/basic_metrics.py combine **/metrics.json > combined
 ```
 
 Example input files:
-- OpenVM 1 — Keccak: https://gist.githubusercontent.com/georgwiese/b146800a3b5eb633a6d5157f8aff1123/raw/e02ba2cec6a4cc063e4bff117cf46c69ff775e1e/keccak_combined.json
-- OpenVM 1 — Reth (older format, no constraints/interactions): https://gist.githubusercontent.com/georgwiese/0ae222db70a65e053ddd079f23e43e8b/raw/35a97605cacc5abd33fce079f69b72567a3dccab/reth_combined_2026-03-12-0537.json
-- OpenVM 2 — Pairing: `../../metrics_pairing_openvm2_combined.json` (local file)
+- OpenVM 1 — Keccak: https://github.com/powdr-labs/bench-results/blob/gh-pages/results/2026-03-19-0538/keccak/combined_metrics.json
+- OpenVM 1 — Reth (older format, no constraints/interactions): https://github.com/powdr-labs/bench-results/blob/gh-pages/results/2026-03-19-0538/reth/combined_metrics.json
+- OpenVM 2 — Pairing: https://gist.githubusercontent.com/georgwiese/8cc98b7ed75953c76deae1e54a734370/raw/003b4ba1291ac15875cfac09163bb9fac7feffbc/metrics_pairing_openvm2_combined.json
 
 ## Testing
 
@@ -160,7 +160,7 @@ For raw metrics JSON loaded from a URL, the viewer infers the experiment name fr
 
 Example, using the data above and pre-selecting the `apc030` run:
 ```
-http://localhost:8000/?data=https%3A%2F%2Fgist.githubusercontent.com%2Fgeorgwiese%2Fb146800a3b5eb633a6d5157f8aff1123%2Fraw%2Fe02ba2cec6a4cc063e4bff117cf46c69ff775e1e%2Fkeccak_combined.json&run=apc030
+http://localhost:8000/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fbench-results%2Fblob%2Fgh-pages%2Fresults%2F2026-03-19-0538%2Fkeccak%2Fcombined_metrics.json&baseline=apc000&run=apc030
 ```
 
 Verify:

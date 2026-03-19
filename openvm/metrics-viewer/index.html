@@ -922,6 +922,26 @@ function fmtComparison(value, baselineValue) {
 }
 
 // ============================================================
+// Chart Legend Helper
+// ============================================================
+function layoutLegend(svg, COMPONENTS, x, y, availableWidth) {
+    const legendRowHeight = 18;
+    const colWidth = 180;
+    const cols = Math.max(1, Math.floor(availableWidth / colWidth));
+    const rows = Math.ceil(COMPONENTS.length / cols);
+    const legend = svg.append('g').attr('transform', `translate(${x}, ${y})`);
+    COMPONENTS.forEach((c, i) => {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        const lg = legend.append('g').attr('transform', `translate(${col * colWidth}, ${row * legendRowHeight})`);
+        lg.append('rect').attr('width', 12).attr('height', 12).attr('fill', c.color).attr('rx', 2);
+        lg.append('text').attr('x', 16).attr('y', 10).text(c.label)
+            .attr('fill', '#666').attr('font-size', '10px');
+    });
+    return rows * legendRowHeight;
+}
+
+// ============================================================
 // Stacked Bar Chart
 // ============================================================
 function createBarChart(metrics) {
@@ -929,7 +949,7 @@ function createBarChart(metrics) {
     const container = d3.select('#barChart');
     container.selectAll('*').remove();
 
-    const margin = { top: 30, right: 20, bottom: 80, left: 60 };
+    const margin = { top: 30, right: 20, bottom: 120, left: 60 };
     const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
     const height = 400 - margin.top - margin.bottom;
 
@@ -1043,15 +1063,7 @@ function createBarChart(metrics) {
     svg.selectAll('.tick line').attr('stroke', '#dee2e6');
 
     // Legend
-    const legend = svg.append('g')
-        .attr('transform', `translate(${margin.left}, ${height + margin.top + 35})`);
-    const legendItemWidth = width / COMPONENTS.length;
-    COMPONENTS.forEach((c, i) => {
-        const lg = legend.append('g').attr('transform', `translate(${i * legendItemWidth}, 0)`);
-        lg.append('rect').attr('width', 12).attr('height', 12).attr('fill', c.color).attr('rx', 2);
-        lg.append('text').attr('x', 16).attr('y', 10).text(c.label)
-            .attr('fill', '#666').attr('font-size', '10px');
-    });
+    layoutLegend(svg, COMPONENTS, margin.left, height + margin.top + 35, width);
 
     updateBarSelection();
 }
@@ -1075,7 +1087,7 @@ function createGroupedBarChart(metrics) {
     const container = d3.select('#barChart');
     container.selectAll('*').remove();
 
-    const margin = { top: 30, right: 20, bottom: 80, left: 60 };
+    const margin = { top: 30, right: 20, bottom: 120, left: 60 };
     const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
     const height = 400 - margin.top - margin.bottom;
 
@@ -1147,15 +1159,7 @@ function createGroupedBarChart(metrics) {
     svg.selectAll('.tick line').attr('stroke', '#dee2e6');
 
     // Legend
-    const legend = svg.append('g')
-        .attr('transform', `translate(${margin.left}, ${height + margin.top + 35})`);
-    const legendItemWidth = width / COMPONENTS.length;
-    COMPONENTS.forEach((c, i) => {
-        const lg = legend.append('g').attr('transform', `translate(${i * legendItemWidth}, 0)`);
-        lg.append('rect').attr('width', 12).attr('height', 12).attr('fill', c.color).attr('rx', 2);
-        lg.append('text').attr('x', 16).attr('y', 10).text(c.label)
-            .attr('fill', '#666').attr('font-size', '10px');
-    });
+    layoutLegend(svg, COMPONENTS, margin.left, height + margin.top + 35, width);
 
     updateBarSelection();
 }
