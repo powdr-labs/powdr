@@ -154,24 +154,30 @@ def extract_metrics(run_name: str, metrics_json: MetricsJson) -> Metrics:
     has_constraints = any(e["metric"] == "constraints" for e in all_entries)
     has_interactions = any(e["metric"] == "interactions" for e in all_entries)
 
-    app_air_names = {e["air_name"] for e in app if "air_name" in e}
-    app_air_entries = [e for e in all_entries if e.get("air_name") in app_air_names]
+    # Rows & segments by AIR, summed over all segments.
+    # TODO: This is incorrect, because the AIR name might not be unique.
+    # This needs to be fixed once the AIR ID is also available in the metrics, see:
+    # https://github.com/powdr-labs/stark-backend/pull/20
+    segments_by_app_air = {}
+    rows_by_app_air = {}
+    for e in app:
+        if e["metric"] == "rows":
+            segments_by_app_air[e["air_name"]] = segments_by_app_air.get(e["air_name"], 0) + 1
+            rows_by_app_air[e["air_name"]] = rows_by_app_air.get(e["air_name"], 0) + float(e["value"])
 
-    m["constraints"] = sum_metric(app_air_entries, "constraints") if has_constraints else None
-    m["bus_interactions"] = sum_metric(app_air_entries, "interactions") if has_interactions else None
+    # Constraints and interactions are listed per AIR.
+    # For the number of constraints and interactions, we weight by the number of segments for that AIR;
+    # for the number of instances and messages, we weight by the number of rows (across all segments).
+    def weighted_sum(metric_name: str, weights: dict[str, float]) -> float:
+        return sum(
+            float(e["value"]) * weights.get(e["air_name"], 0)
+            for e in all_entries if e["metric"] == metric_name
+        )
 
-    # instances = sum over app (air, segment) of per_air_count * rows
-    def compute_instances(metric_name: str) -> float:
-        by_air: dict[str, float] = {}
-        for e in app_air_entries:
-            if e["metric"] == metric_name:
-                by_air[e["air_name"]] = float(e["value"])
-        # Default 0: AIRs without a constraints/interactions entry contribute 0 instances
-        return sum(by_air.get(e["air_name"], 0) * float(e["value"])
-                   for e in app if e["metric"] == "rows")
-
-    m["constraint_instances"] = compute_instances("constraints") if has_constraints else None
-    m["bus_interaction_messages"] = compute_instances("interactions") if has_interactions else None
+    m["constraints"] = weighted_sum("constraints", segments_by_app_air) if has_constraints else None
+    m["bus_interactions"] = weighted_sum("interactions", segments_by_app_air) if has_interactions else None
+    m["constraint_instances"] = weighted_sum("constraints", rows_by_app_air) if has_constraints else None
+    m["bus_interaction_messages"] = weighted_sum("interactions", rows_by_app_air) if has_interactions else None
 
     return m
 

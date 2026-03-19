@@ -57,10 +57,10 @@ Produced by OpenVM 1 (STARK-based prover with FRI).
 
 **Group values**: `app_proof`, `leaf_*` (e.g. `leaf_0`), `internal_*` (e.g. `internal_0`).
 
-**Counter metrics** (per AIR/segment, with `group`):
-- `cells`, `rows`, `main_cols`, `prep_cols`, `perm_cols` — trace dimensions
-- `total_cells`, `total_cells_used`, `main_cells_used` — cell counts (including padding info)
-- `constraints`, `interactions` — per-AIR constraint/interaction counts (no `group` label)
+**Counter metrics** (with `group`):
+- `cells`, `rows`, `main_cols`, `prep_cols`, `perm_cols` — trace dimensions (per AIR/segment)
+- `total_cells`, `total_cells_used`, `main_cells_used` — cell counts including padding (per segment, no `air_name`)
+- `constraints`, `interactions` — per-AIR constraint/interaction counts (no `group`/`segment` labels)
 - `quotient_deg`, `fri.log_blowup`, `num_children` — FRI/quotient parameters
 - `threshold`, `weighted_sum`, `execute_metered_insns`, `execute_preflight_insns`
 

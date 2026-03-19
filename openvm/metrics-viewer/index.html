@@ -214,7 +214,7 @@
             font-weight: 400;
             color: #333;
             white-space: normal;
-            width: 340px;
+            width: 500px;
             max-width: 90vw;
             box-shadow: 0 2px 8px rgba(0,0,0,0.13);
             line-height: 1.4;
@@ -222,14 +222,21 @@
         .metric-info-tooltip code {
             display: block;
             margin-top: 5px;
-            padding: 4px 6px;
-            background: #f5f5f5;
-            border-radius: 3px;
-            font-size: 0.72rem;
+            padding: 6px 8px;
+            background: #f8f8f8;
+            border: 1px solid #e8e8e8;
+            border-radius: 4px;
+            font-size: 0.73rem;
             white-space: pre-wrap;
             word-break: break-all;
-            color: #555;
+            color: #333;
+            line-height: 1.5;
         }
+        .metric-info-tooltip code .kw { color: #8700af; font-weight: 600; }
+        .metric-info-tooltip code .fn { color: #005f87; }
+        .metric-info-tooltip code .st { color: #4e9a06; }
+        .metric-info-tooltip code .cm { color: #8f8f8f; font-style: italic; }
+        .metric-info-tooltip code .nb { color: #b07800; }
 
         /* Collapsible detail table rows */
         .details-table tr.collapsible-parent th {
@@ -577,49 +584,36 @@ function extractMetrics(runName, metricsJson) {
     m.powdr_rows = getMetric(powdrAir, 'rows');
 
     // Constraints and bus interactions — per-AIR metrics (no group/segment labels).
-    // We read from the full entry list but only count AIRs present in the app proof.
+    // Since they're per-AIR, we weight by segment count (for totals) or row count (for instances).
     const allEntries = [...metricsJson.counter, ...metricsJson.gauge].map(c => {
         const obj = Object.fromEntries(c.labels);
         obj.metric = c.metric;
         obj.value = c.value;
         return obj;
     });
-    const appAirNames = new Set(app.map(e => e.air_name).filter(Boolean));
-    const appAirEntries = allEntries.filter(e => appAirNames.has(e.air_name));
     const hasConstraints = allEntries.some(e => e.metric === 'constraints');
     const hasInteractions = allEntries.some(e => e.metric === 'interactions');
 
-    m.constraints = hasConstraints ? getMetric(appAirEntries, 'constraints') : null;
-    m.bus_interactions = hasInteractions ? getMetric(appAirEntries, 'interactions') : null;
+    // Build per-AIR weights from app rows entries:
+    //   segmentsByAppAir[air] = number of segments the AIR appears in
+    //   rowsByAppAir[air] = total rows across all segments
+    const segmentsByAppAir = {};
+    const rowsByAppAir = {};
+    app.filter(e => e.metric === 'rows').forEach(e => {
+        segmentsByAppAir[e.air_name] = (segmentsByAppAir[e.air_name] || 0) + 1;
+        rowsByAppAir[e.air_name] = (rowsByAppAir[e.air_name] || 0) + parseFloat(e.value);
+    });
 
-    // Bus interaction messages = sum over app AIRs and segments of (interactions[air] * rows[air, segment])
-    // "interactions" entries are per-AIR (no segment), "rows" entries are per-AIR-per-segment in app group.
-    if (hasInteractions) {
-        const interactionsByAir = {};
-        appAirEntries.filter(e => e.metric === 'interactions').forEach(e => {
-            interactionsByAir[e.air_name] = parseFloat(e.value);
-        });
-        m.bus_interaction_messages = app.filter(e => e.metric === 'rows').reduce((sum, e) => {
-            const airInteractions = interactionsByAir[e.air_name] || 0;
-            return sum + airInteractions * parseFloat(e.value);
-        }, 0);
-    } else {
-        m.bus_interaction_messages = null;
+    // weighted_sum: for each all_entries entry matching metricName, multiply by weight[air_name]
+    function weightedSum(metricName, weights) {
+        return allEntries.filter(e => e.metric === metricName)
+            .reduce((sum, e) => sum + parseFloat(e.value) * (weights[e.air_name] || 0), 0);
     }
 
-    // Constraint instances = sum over app AIRs and segments of (constraints[air] * rows[air, segment])
-    if (hasConstraints) {
-        const constraintsByAir = {};
-        appAirEntries.filter(e => e.metric === 'constraints').forEach(e => {
-            constraintsByAir[e.air_name] = parseFloat(e.value);
-        });
-        m.constraint_instances = app.filter(e => e.metric === 'rows').reduce((sum, e) => {
-            const airConstraints = constraintsByAir[e.air_name] || 0;
-            return sum + airConstraints * parseFloat(e.value);
-        }, 0);
-    } else {
-        m.constraint_instances = null;
-    }
+    m.constraints = hasConstraints ? weightedSum('constraints', segmentsByAppAir) : null;
+    m.bus_interactions = hasInteractions ? weightedSum('interactions', segmentsByAppAir) : null;
+    m.constraint_instances = hasConstraints ? weightedSum('constraints', rowsByAppAir) : null;
+    m.bus_interaction_messages = hasInteractions ? weightedSum('interactions', rowsByAppAir) : null;
 
     return m;
 }
@@ -658,178 +652,200 @@ function computeCellsByAir(metricsJson) {
 }
 
 // ============================================================
+// Python syntax highlighting for metric info tooltips
+// ============================================================
+function highlightPython(code) {
+    if (!code) return '';
+    const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const KW = new Set(['def','for','in','if','and','or','not','return','else','import','from',
+        'True','False','None','lambda','with','as','class','is','raise','try','except',
+        'finally','while','break','continue','pass','yield','del','assert','elif']);
+    const FN = new Set(['sum','max','min','int','float','str','len','set','dict','list','range',
+        'print','sorted','any','all','map','filter','zip','enumerate','isinstance','getattr',
+        'hasattr','type','abs','round','open','startswith']);
+    // Single-pass tokenizer: match comments, strings, words, numbers, or any other char
+    const TOKEN = /#[^\n]*|'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|\b[a-zA-Z_]\w*\b|\b\d+\.?\d*\b|./gs;
+    let out = '';
+    let m;
+    while ((m = TOKEN.exec(code)) !== null) {
+        const t = m[0];
+        if (t.startsWith('#')) { out += '<span class="cm">' + esc(t) + '</span>'; }
+        else if (t.startsWith("'") || t.startsWith('"')) { out += '<span class="st">' + esc(t) + '</span>'; }
+        else if (KW.has(t)) { out += '<span class="kw">' + esc(t) + '</span>'; }
+        else if (FN.has(t)) { out += '<span class="fn">' + esc(t) + '</span>'; }
+        else if (/^\d/.test(t)) { out += '<span class="nb">' + esc(t) + '</span>'; }
+        else { out += esc(t); }
+    }
+    return out;
+}
+
+// ============================================================
 // Metric Descriptions (single source of truth)
 //
 // Each key matches a field produced by extractMetrics().
 //   `desc` — human-readable explanation (use `descV1`/`descV2` for version-specific text)
-//   `code` — Python computing this from a `metrics` dict with 'counter' and 'gauge' keys
+//   `code` — Python snippet showing how this metric is computed
 //            (use `codeV1`/`codeV2` for version-specific code)
 //
-// For derived fields, code may reference other field names (e.g. `app_proof_time_ms`).
-//
-// The helper `sum_metric` used below is defined as:
-//   def sum_metric(group, metric):
-//       return sum(float(e['value'])
-//           for e in metrics['counter'] + metrics['gauge']
-//           if dict(e['labels']).get('group', '').startswith(group)
-//           and e['metric'] == metric)
+// Code snippets assume pre-filtered entry lists (app, leaf, internal, compression)
+// and a helper:
+//   def sum_metric(entries, metric):
+//       return sum(float(e['value']) for e in entries if e['metric'] == metric)
 // ============================================================
 const METRIC_INFO = {
     // --- Basic Stats ---
     num_segments: {
-        desc: 'Number of proving segments the app proof is split into.',
-        code: `max(int(dict(e['labels']).get('segment', 0))
-    for e in metrics['counter']
-    if dict(e['labels']).get('group', '').startswith('app_proof')) + 1`,
+        desc: 'Number of proving segments the app proof is split into. Each segment is proved independently.',
+        code: `max(int(e['segment']) for e in app_entries) + 1`,
     },
     app_proof_cols: {
-        desc: 'Total columns in the app proof (main + preprocessed + permutation).',
-        code: "sum_metric('app_proof', 'main_cols') + sum_metric('app_proof', 'prep_cols') + sum_metric('app_proof', 'perm_cols')",
+        desc: 'Total column count in the app proof, summed over all AIRs and segments (main + preprocessed + permutation trace columns).',
+        code: `sum_metric(app, 'main_cols')
++ sum_metric(app, 'prep_cols')
++ sum_metric(app, 'perm_cols')`,
     },
     app_proof_cells: {
-        desc: 'Total trace cells in the app proof (rows x columns, including padding).',
-        code: "sum_metric('app_proof', 'total_cells')",
+        desc: 'Total trace cells in the app proof, summed over all segments. Includes padding from rounding row counts up to powers of two.',
+        code: "sum_metric(app, 'total_cells')",
     },
     app_proof_cells_used: {
-        desc: 'Trace cells actually used (excluding padding).',
-        code: "sum_metric('app_proof', 'total_cells_used')",
+        desc: 'Trace cells actually used before power-of-two row padding. The percentage shows utilization (used / total).',
+        code: "sum_metric(app, 'total_cells_used')",
     },
     constraints: {
-        desc: 'Total number of constraint polynomials across app proof AIRs.',
-        code: `app_air_names = set of air_name values from app_proof entries
-sum(float(e['value'])
-    for e in metrics['counter']
-    if e['metric'] == 'constraints' and e['air_name'] in app_air_names)`,
+        desc: 'Total constraint polynomials across all app proof AIRs and segments. Since constraints are per-AIR (not per-segment), each AIR\'s count is weighted by its segment count.',
+        code: `segments_by_air = {}  # air -> segment count, from app rows
+weighted_sum("constraints", segments_by_air)`,
     },
     constraint_instances: {
-        desc: 'Sum over app proof AIRs and segments of (constraints_per_AIR x rows_per_AIR_per_segment).',
-        code: `constraints_by_air = {}  # air_name -> count, from app AIR entries with metric='constraints'
-sum(constraints_by_air[air] * rows
-    for air, rows in app_rows_by_air_segment)`,
+        desc: 'Total constraint evaluations: each AIR\'s constraint count weighted by its total row count across all segments.',
+        code: `rows_by_air = {}  # air -> total rows, from app rows
+weighted_sum("constraints", rows_by_air)`,
     },
     bus_interactions: {
-        desc: 'Total number of bus interaction definitions across app proof AIRs.',
-        code: `app_air_names = set of air_name values from app_proof entries
-sum(float(e['value'])
-    for e in metrics['counter']
-    if e['metric'] == 'interactions' and e['air_name'] in app_air_names)`,
+        desc: 'Total bus interaction definitions across all app proof AIRs and segments. Since interactions are per-AIR (not per-segment), each AIR\'s count is weighted by its segment count.',
+        code: `weighted_sum("interactions", segments_by_air)`,
     },
     bus_interaction_messages: {
-        desc: 'Sum over app proof AIRs and segments of (interactions_per_AIR x rows_per_AIR_per_segment).',
-        code: `interactions_by_air = {}  # air_name -> count, from app AIR entries with metric='interactions'
-sum(interactions_by_air[air] * rows
-    for air, rows in app_rows_by_air_segment)`,
+        desc: 'Total bus messages: each AIR\'s interaction count weighted by its total row count across all segments.',
+        code: `weighted_sum("interactions", rows_by_air)`,
     },
 
     // --- Proof Time ---
     app_proof_time_ms: {
-        descV1: 'Total wall-clock time for the app proof (sum of per-segment total_proof_time_ms).',
-        codeV1: "sum_metric('app_proof', 'total_proof_time_ms')",
-        descV2: 'Total wall-clock time for the app proof. Uses app_prove_time_ms which includes metered execution outside per-segment timing.',
-        codeV2: "sum_metric('app_proof', 'app_prove_time_ms')",
+        descV1: 'Wall-clock time for the app proof phase. Sum of total_proof_time_ms across all app_proof segments.',
+        codeV1: "sum_metric(app, 'total_proof_time_ms')",
+        descV2: 'Wall-clock time for the app proof phase. Uses app_prove_time_ms, which wraps per-segment proving and includes metered execution.',
+        codeV2: "sum_metric(app, 'app_prove_time_ms')",
     },
     app_proof_time_excluding_trace_ms: {
-        desc: 'STARK prover time excluding trace generation (commitments, constraint evaluation, opening proofs).',
-        code: "sum_metric('app_proof', 'stark_prove_excluding_trace_time_ms')",
+        desc: 'STARK prover time excluding trace generation. In V1: commitments, quotient computation, FRI opening. In V2: trace commit, constraint evaluation (LogUp GKR), and WHIR opening proofs.',
+        code: "sum_metric(app, 'stark_prove_excluding_trace_time_ms')",
     },
     app_rap_constraints_time_ms: {
-        desc: 'Time for RAP constraint evaluation (zerocheck + LogUp GKR).',
-        code: "sum_metric('app_proof', 'prover.rap_constraints_time_ms')",
+        desc: 'Time for RAP constraint evaluation, including zerocheck and the LogUp GKR protocol for bus interactions.',
+        code: "sum_metric(app, 'prover.rap_constraints_time_ms')",
     },
     app_rap_logup_gkr_time_ms: {
-        desc: 'Time for LogUp GKR protocol within constraint evaluation.',
-        code: "sum_metric('app_proof', 'prover.rap_constraints.logup_gkr_time_ms')",
+        desc: 'Time for the LogUp GKR protocol, which proves bus interaction correctness via a GKR-based sumcheck.',
+        code: "sum_metric(app, 'prover.rap_constraints.logup_gkr_time_ms')",
     },
     app_rap_round0_time_ms: {
-        desc: 'Time for Round 0 of constraint evaluation (initial sumcheck round).',
-        code: "sum_metric('app_proof', 'prover.rap_constraints.round0_time_ms')",
+        desc: 'Time for Round 0 of the constraint evaluation sumcheck (initial round before MLE rounds).',
+        code: "sum_metric(app, 'prover.rap_constraints.round0_time_ms')",
     },
     app_rap_mle_rounds_time_ms: {
-        desc: 'Time for MLE (multilinear extension) rounds in constraint evaluation.',
-        code: "sum_metric('app_proof', 'prover.rap_constraints.mle_rounds_time_ms')",
+        desc: 'Time for MLE (multilinear extension) rounds of the constraint evaluation sumcheck.',
+        code: "sum_metric(app, 'prover.rap_constraints.mle_rounds_time_ms')",
     },
     app_rap_other_ms: {
-        desc: 'Residual: constraints time minus its sub-components.',
-        code: "app_rap_constraints_time_ms - app_rap_logup_gkr_time_ms - app_rap_round0_time_ms - app_rap_mle_rounds_time_ms",
+        desc: 'Residual: constraint evaluation time minus LogUp GKR, Round 0, and MLE rounds.',
+        code: `rap_constraints - logup_gkr - round0 - mle_rounds`,
     },
     app_openings_time_ms: {
-        desc: 'Time for polynomial opening proofs (WHIR + stacked reduction).',
-        code: "sum_metric('app_proof', 'prover.openings_time_ms')",
+        desc: 'Time for polynomial opening proofs. In V2 this uses WHIR (a FRI-like protocol) with stacked polynomial reduction.',
+        code: "sum_metric(app, 'prover.openings_time_ms')",
     },
     app_openings_whir_time_ms: {
-        desc: 'Time for WHIR opening proof protocol.',
-        code: "sum_metric('app_proof', 'prover.openings.whir_time_ms')",
+        desc: 'Time for the WHIR polynomial commitment opening protocol.',
+        code: "sum_metric(app, 'prover.openings.whir_time_ms')",
     },
     app_openings_stacked_reduction_time_ms: {
-        desc: 'Time for stacked reduction in opening proofs.',
-        code: "sum_metric('app_proof', 'prover.openings.stacked_reduction_time_ms')",
+        desc: 'Time for stacked polynomial reduction, which batches multiple polynomial openings before WHIR.',
+        code: "sum_metric(app, 'prover.openings.stacked_reduction_time_ms')",
     },
     app_openings_other_ms: {
-        desc: 'Residual: openings time minus its sub-components.',
-        code: "app_openings_time_ms - app_openings_whir_time_ms - app_openings_stacked_reduction_time_ms",
+        desc: 'Residual: openings time minus WHIR and stacked reduction.',
+        code: `openings - whir - stacked_reduction`,
     },
     app_trace_commit_time_ms: {
-        desc: 'Time for committing the main trace (Merkle tree construction).',
-        code: "sum_metric('app_proof', 'prover.main_trace_commit_time_ms')",
+        desc: 'Time for committing the main execution trace via Merkle tree construction.',
+        code: "sum_metric(app, 'prover.main_trace_commit_time_ms')",
     },
     app_stark_other_ms: {
-        desc: 'Residual: STARK time minus constraints, openings, and trace commit.',
-        code: "app_proof_time_excluding_trace_ms - app_rap_constraints_time_ms - app_openings_time_ms - app_trace_commit_time_ms",
+        desc: 'Residual: STARK time minus constraint evaluation, openings, and trace commit.',
+        code: `stark_excl_trace - constraints - openings - trace_commit`,
     },
     app_execute_preflight_time_ms: {
-        desc: 'Preflight execution: fast pass to determine segment boundaries and AIR heights.',
-        code: "sum_metric('app_proof', 'execute_preflight_time_ms')",
+        desc: 'Preflight execution: a fast initial pass that determines segment boundaries and per-AIR trace heights without generating the full trace.',
+        code: "sum_metric(app, 'execute_preflight_time_ms')",
     },
     app_set_initial_memory_time_ms: {
-        desc: 'Time to set up initial memory state for each segment.',
-        code: "sum_metric('app_proof', 'set_initial_memory_time_ms')",
+        desc: 'Time to initialize the memory state at the start of each proving segment (V2 only).',
+        code: "sum_metric(app, 'set_initial_memory_time_ms')",
     },
     app_trace_gen_time_ms: {
-        desc: 'Trace generation: full re-execution producing the execution trace for the prover.',
-        code: "sum_metric('app_proof', 'trace_gen_time_ms')",
+        desc: 'Trace generation: re-executes the program to produce the full execution trace (witness) consumed by the STARK prover.',
+        code: "sum_metric(app, 'trace_gen_time_ms')",
     },
     app_execute_metered_time_ms: {
-        desc: 'Metered execution: instrumented execution pass that collects metrics.',
-        code: "sum_metric('app_proof', 'execute_metered_time_ms')",
+        desc: 'Metered execution: instrumented run that counts executed instructions per AIR to guide segment splitting and resource allocation.',
+        code: "sum_metric(app, 'execute_metered_time_ms')",
     },
     app_other_ms: {
-        desc: 'Residual: app proof time minus all known sub-components. Negative means sub-timers overlap (parallelism).',
-        codeV1: "app_proof_time_ms - app_proof_time_excluding_trace_ms - app_execute_preflight_time_ms - app_execute_metered_time_ms - app_trace_gen_time_ms",
-        codeV2: "app_proof_time_ms - app_proof_time_excluding_trace_ms - app_execute_preflight_time_ms - app_execute_metered_time_ms - app_trace_gen_time_ms - app_set_initial_memory_time_ms",
+        desc: 'Residual: app proof time minus all known sub-components. May be negative when sub-timers overlap due to parallelism.',
+        codeV1: `app_proof - stark_excl_trace - preflight
+  - metered - trace_gen`,
+        codeV2: `app_proof - stark_excl_trace - preflight
+  - metered - trace_gen - set_initial_memory`,
     },
     leaf_proof_time_ms: {
-        desc: 'Total proving time for the leaf aggregation layer.',
-        code: "sum_metric('leaf', 'total_proof_time_ms')",
+        descV1: 'Total proving time for the leaf aggregation layer (leaf_0, leaf_1, ...). Aggregates app proof segments into a smaller number of proofs.',
+        codeV1: "sum_metric(leaf, 'total_proof_time_ms')",
+        descV2: 'Total proving time for the leaf aggregation layer. Aggregates app proof segments into a smaller number of proofs.',
+        codeV2: "sum_metric(leaf, 'total_proof_time_ms')",
     },
     inner_recursion_proof_time_ms: {
-        desc: 'Total proving time for inner recursion aggregation layers.',
-        code: "sum_metric('internal', 'total_proof_time_ms')",
+        descV1: 'Total proving time for inner recursion layers (internal_0, internal_1, ...). Recursively aggregates leaf proofs.',
+        codeV1: "sum_metric(internal, 'total_proof_time_ms')",
+        descV2: 'Total proving time for inner recursion layers (internal_for_leaf, internal_recursive.*). Recursively aggregates leaf proofs.',
+        codeV2: "sum_metric(internal, 'total_proof_time_ms')",
     },
     compression_proof_time_ms: {
-        desc: 'Total proving time for the compression layer.',
-        code: "sum_metric('compression', 'total_proof_time_ms')",
+        desc: 'Total proving time for the compression layer (V2 only). Produces a compact final proof from the recursion output.',
+        code: "sum_metric(compression, 'total_proof_time_ms')",
     },
     total_proof_time_ms: {
-        desc: 'Sum of all proving phase times.',
-        codeV1: "app_proof_time_ms + leaf_proof_time_ms + inner_recursion_proof_time_ms",
-        codeV2: "app_proof_time_ms + leaf_proof_time_ms + inner_recursion_proof_time_ms + compression_proof_time_ms",
+        desc: 'Sum of all proving phases: app proof + leaf recursion + inner recursion (+ compression in V2).',
+        codeV1: `app + leaf + inner_recursion`,
+        codeV2: `app + leaf + inner_recursion + compression`,
     },
 
     // --- Cell Distribution ---
     powdr_ratio: {
-        desc: 'Fraction of app trace cells belonging to powdr autoprecompile AIRs (air_name starts with "PowdrAir").',
-        code: `sum(cells for air where air_name.startswith('PowdrAir'))
-/ app_proof_cells`,
+        desc: 'Fraction of app proof trace cells belonging to powdr autoprecompile AIRs (air_name starts with "PowdrAir"). These are synthesized circuits that replace sequences of basic instructions.',
+        code: `sum(cells for air if air_name.startswith('PowdrAir'))
+/ total_cells`,
     },
     normal_instruction_ratio: {
-        desc: 'Fraction of app trace cells belonging to standard RISC-V instruction AIRs (VmAirWrapper with 4 limbs, excluding FieldExpressionCoreAir).',
-        code: `sum(cells for air where is_normal_instruction_air(air_name))
-/ app_proof_cells`,
+        desc: 'Fraction of app proof trace cells belonging to standard RISC-V instruction AIRs: VmAirWrapper types with 4 limbs, excluding FieldExpressionCoreAir.',
+        code: `sum(cells for air if is_normal_instruction_air(air_name))
+/ total_cells`,
     },
     openvm_precompile_ratio: {
-        desc: 'Fraction of app trace cells belonging to OpenVM built-in precompile AIRs (everything else).',
-        code: `sum(cells for air where not PowdrAir and not normal_instruction)
-/ app_proof_cells`,
+        desc: 'Fraction of app proof trace cells belonging to OpenVM built-in precompile AIRs (neither powdr nor normal instruction AIRs). Includes SHA-256, Keccak, ECC, etc.',
+        code: `sum(cells for air if not powdr and not normal)
+/ total_cells`,
     },
 };
 
@@ -1437,12 +1453,12 @@ document.addEventListener('mouseenter', function(e) {
     const icon = e.target;
     const desc = icon.dataset.desc || '';
     const code = icon.dataset.code || '';
-    metricInfoTip.innerHTML = desc + '<code>' + code + '</code>';
+    metricInfoTip.innerHTML = desc + (code ? '<code>' + highlightPython(code) + '</code>' : '');
     metricInfoTip.style.display = 'block';
     const rect = icon.getBoundingClientRect();
     let left = rect.right + 6;
     let top = rect.top - 4;
-    if (left + 350 > window.innerWidth) left = rect.left - 350;
+    if (left + 510 > window.innerWidth) left = rect.left - 510;
     if (top + metricInfoTip.offsetHeight > window.innerHeight) top = window.innerHeight - metricInfoTip.offsetHeight - 8;
     if (top < 4) top = 4;
     metricInfoTip.style.left = left + 'px';
