@@ -150,17 +150,20 @@ def extract_metrics(run_name: str, metrics_json: MetricsJson) -> Metrics:
     m["normal_instruction_ratio"] = sum_metric(normal_air, "cells") / total if total > 0 else 0
     m["openvm_precompile_ratio"] = sum_metric(precompile_air, "cells") / total if total > 0 else 0
 
-    # --- Constraints & bus interactions (top-level, no group filter) ---
+    # --- Constraints & bus interactions (per-AIR, filtered to app proof AIRs) ---
     has_constraints = any(e["metric"] == "constraints" for e in all_entries)
     has_interactions = any(e["metric"] == "interactions" for e in all_entries)
 
-    m["constraints"] = sum_metric(all_entries, "constraints") if has_constraints else None
-    m["bus_interactions"] = sum_metric(all_entries, "interactions") if has_interactions else None
+    app_air_names = {e["air_name"] for e in app if "air_name" in e}
+    app_air_entries = [e for e in all_entries if e.get("air_name") in app_air_names]
 
-    # instances = sum over (air, segment) of per_air_count * rows
+    m["constraints"] = sum_metric(app_air_entries, "constraints") if has_constraints else None
+    m["bus_interactions"] = sum_metric(app_air_entries, "interactions") if has_interactions else None
+
+    # instances = sum over app (air, segment) of per_air_count * rows
     def compute_instances(metric_name: str) -> float:
         by_air: dict[str, float] = {}
-        for e in all_entries:
+        for e in app_air_entries:
             if e["metric"] == metric_name:
                 by_air[e["air_name"]] = float(e["value"])
         # Default 0: AIRs without a constraints/interactions entry contribute 0 instances
@@ -205,9 +208,9 @@ def fmt_pct(v: float) -> str:
 
 BASIC_STATS_V1: list[BasicRow] = [
     ("num_segments",            "Segments",                     lambda v: str(int(v))),
-    ("app_proof_cols",          "App Columns",                  fmt_int),
-    ("app_proof_cells",         "App Cells",                    fmt_cells),
-    ("app_proof_cells_used",    "App Cells (without padding)",  fmt_cells),
+    ("app_proof_cols",          "Columns",                  fmt_int),
+    ("app_proof_cells",         "Cells",                    fmt_cells),
+    ("app_proof_cells_used",    "Cells (without padding)",  fmt_cells),
     ("constraints",             "Constraints",                  fmt_int),
     ("constraint_instances",    "Constraint Instances",         fmt_cells),
     ("bus_interactions",        "Bus Interactions",              fmt_int),
@@ -354,7 +357,7 @@ def main() -> None:
         basic = BASIC_STATS_V2 if version == 2 else BASIC_STATS_V1
         proof = PROOF_TIME_V2 if version == 2 else PROOF_TIME_V1
 
-        print_section("Basic Stats", basic, m)
+        print_section("App Proof Basic Stats", basic, m)
         print_section("Proof Time", proof, m, pct_of_key="total_proof_time_ms")
         print_section("Trace Cell Distribution", CELL_DISTRIBUTION, m)
 

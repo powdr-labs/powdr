@@ -576,29 +576,30 @@ function extractMetrics(runName, metricsJson) {
     m.powdr_ratio = m.app_proof_cells > 0 ? powdrCells / m.app_proof_cells : 0;
     m.powdr_rows = getMetric(powdrAir, 'rows');
 
-    // Constraints and bus interactions — these are top-level per-AIR metrics
-    // (no group/segment labels), so we read them from the full entry list.
+    // Constraints and bus interactions — per-AIR metrics (no group/segment labels).
+    // We read from the full entry list but only count AIRs present in the app proof.
     const allEntries = [...metricsJson.counter, ...metricsJson.gauge].map(c => {
         const obj = Object.fromEntries(c.labels);
         obj.metric = c.metric;
         obj.value = c.value;
         return obj;
     });
+    const appAirNames = new Set(app.map(e => e.air_name).filter(Boolean));
+    const appAirEntries = allEntries.filter(e => appAirNames.has(e.air_name));
     const hasConstraints = allEntries.some(e => e.metric === 'constraints');
     const hasInteractions = allEntries.some(e => e.metric === 'interactions');
 
-    m.constraints = hasConstraints ? getMetric(allEntries, 'constraints') : null;
-    m.bus_interactions = hasInteractions ? getMetric(allEntries, 'interactions') : null;
+    m.constraints = hasConstraints ? getMetric(appAirEntries, 'constraints') : null;
+    m.bus_interactions = hasInteractions ? getMetric(appAirEntries, 'interactions') : null;
 
-    // Bus interaction messages = sum over all AIRs and segments of (interactions[air] * rows[air, segment])
+    // Bus interaction messages = sum over app AIRs and segments of (interactions[air] * rows[air, segment])
     // "interactions" entries are per-AIR (no segment), "rows" entries are per-AIR-per-segment in app group.
     if (hasInteractions) {
         const interactionsByAir = {};
-        allEntries.filter(e => e.metric === 'interactions').forEach(e => {
+        appAirEntries.filter(e => e.metric === 'interactions').forEach(e => {
             interactionsByAir[e.air_name] = parseFloat(e.value);
         });
         m.bus_interaction_messages = app.filter(e => e.metric === 'rows').reduce((sum, e) => {
-            // Default 0: AIRs without an interactions entry contribute 0 messages
             const airInteractions = interactionsByAir[e.air_name] || 0;
             return sum + airInteractions * parseFloat(e.value);
         }, 0);
@@ -606,14 +607,13 @@ function extractMetrics(runName, metricsJson) {
         m.bus_interaction_messages = null;
     }
 
-    // Constraint instances = sum over all AIRs and segments of (constraints[air] * rows[air, segment])
+    // Constraint instances = sum over app AIRs and segments of (constraints[air] * rows[air, segment])
     if (hasConstraints) {
         const constraintsByAir = {};
-        allEntries.filter(e => e.metric === 'constraints').forEach(e => {
+        appAirEntries.filter(e => e.metric === 'constraints').forEach(e => {
             constraintsByAir[e.air_name] = parseFloat(e.value);
         });
         m.constraint_instances = app.filter(e => e.metric === 'rows').reduce((sum, e) => {
-            // Default 0: AIRs without a constraints entry contribute 0 instances
             const airConstraints = constraintsByAir[e.air_name] || 0;
             return sum + airConstraints * parseFloat(e.value);
         }, 0);
@@ -695,26 +695,28 @@ const METRIC_INFO = {
         code: "sum_metric('app_proof', 'total_cells_used')",
     },
     constraints: {
-        desc: 'Total number of constraint polynomials across all AIRs.',
-        code: `sum(float(e['value'])
+        desc: 'Total number of constraint polynomials across app proof AIRs.',
+        code: `app_air_names = set of air_name values from app_proof entries
+sum(float(e['value'])
     for e in metrics['counter']
-    if e['metric'] == 'constraints')`,
+    if e['metric'] == 'constraints' and e['air_name'] in app_air_names)`,
     },
     constraint_instances: {
-        desc: 'Sum over all AIRs and segments of (constraints_per_AIR x rows_per_AIR_per_segment) in the app proof.',
-        code: `constraints_by_air = {}  # air_name -> count, from entries with metric='constraints'
+        desc: 'Sum over app proof AIRs and segments of (constraints_per_AIR x rows_per_AIR_per_segment).',
+        code: `constraints_by_air = {}  # air_name -> count, from app AIR entries with metric='constraints'
 sum(constraints_by_air[air] * rows
     for air, rows in app_rows_by_air_segment)`,
     },
     bus_interactions: {
-        desc: 'Total number of bus interaction definitions across all AIRs.',
-        code: `sum(float(e['value'])
+        desc: 'Total number of bus interaction definitions across app proof AIRs.',
+        code: `app_air_names = set of air_name values from app_proof entries
+sum(float(e['value'])
     for e in metrics['counter']
-    if e['metric'] == 'interactions')`,
+    if e['metric'] == 'interactions' and e['air_name'] in app_air_names)`,
     },
     bus_interaction_messages: {
-        desc: 'Sum over all AIRs and segments of (interactions_per_AIR x rows_per_AIR_per_segment) in the app proof.',
-        code: `interactions_by_air = {}  # air_name -> count, from entries with metric='interactions'
+        desc: 'Sum over app proof AIRs and segments of (interactions_per_AIR x rows_per_AIR_per_segment).',
+        code: `interactions_by_air = {}  # air_name -> count, from app AIR entries with metric='interactions'
 sum(interactions_by_air[air] * rows
     for air, rows in app_rows_by_air_segment)`,
     },
@@ -1166,7 +1168,7 @@ function renderCurrentChart() {
 const TABLE_COLUMNS = [
     { key: 'name', label: 'Experiment', fmt: v => v },
     { key: 'num_segments', label: 'Segments', fmt: v => v },
-    { key: 'app_proof_cells', label: 'App Cells', fmt: fmtCells },
+    { key: 'app_proof_cells', label: 'Cells', fmt: fmtCells },
     { key: 'total_proof_time_ms', label: 'Total Time', fmt: fmtSeconds },
 ];
 
@@ -1174,9 +1176,9 @@ const TABLE_COLUMNS = [
 
 const BASIC_STATS_ROWS_V1 = [
     { key: 'num_segments', label: 'Segments', fmt: v => v },
-    { key: 'app_proof_cols', label: 'App Columns', fmt: v => v.toLocaleString() },
-    { key: 'app_proof_cells', label: 'App Cells', fmt: fmtCells },
-    { key: 'app_proof_cells_used', label: 'App Cells (without padding)', fmt: (v, m) => {
+    { key: 'app_proof_cols', label: 'Columns', fmt: v => v.toLocaleString() },
+    { key: 'app_proof_cells', label: 'Cells', fmt: fmtCells },
+    { key: 'app_proof_cells_used', label: 'Cells (without padding)', fmt: (v, m) => {
         const pct = m.app_proof_cells > 0 ? (v / m.app_proof_cells * 100) : 0;
         return `${fmtCells(v)} <span style="color:#999">(${pct.toFixed(1)}%)</span>`;
     }},
@@ -1188,8 +1190,8 @@ const BASIC_STATS_ROWS_V1 = [
 
 const BASIC_STATS_ROWS_V2 = [
     { key: 'num_segments', label: 'Segments', fmt: v => v },
-    { key: 'app_proof_cols', label: 'App Columns', fmt: v => v.toLocaleString() },
-    { key: 'app_proof_cells', label: 'App Cells', fmt: fmtCells },
+    { key: 'app_proof_cols', label: 'Columns', fmt: v => v.toLocaleString() },
+    { key: 'app_proof_cells', label: 'Cells', fmt: fmtCells },
     { key: 'constraints', label: 'Constraints', fmt: v => v.toLocaleString() },
     { key: 'constraint_instances', label: 'Constraint Instances', fmt: fmtCells },
     { key: 'bus_interactions', label: 'Bus Interactions', fmt: v => v.toLocaleString() },
@@ -1502,7 +1504,7 @@ function renderDetails(runName) {
     // Three detail tables + pie chart side by side
     let html = '<div class="details-row">';
     html += '<div class="details-table-col">';
-    html += renderDetailTable('Basic Stats', getBasicStatsRows(), m);
+    html += renderDetailTable('App Proof Basic Stats', getBasicStatsRows(), m);
     html += renderDetailTable('Proof Time', getProofTimeRows(), m, { pctOfKey: 'total_proof_time_ms', defaultExpandLevel: 0 });
     html += renderDetailTable('Trace Cell Distribution', CELL_DISTRIBUTION_ROWS, m);
     html += '</div>';
