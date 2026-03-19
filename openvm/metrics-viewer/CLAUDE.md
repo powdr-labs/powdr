@@ -7,6 +7,7 @@ The goal is to make benchmark results shareable via URL without needing a Python
 ## Project Structure
 ```
 index.html          # SPA with embedded JS/CSS (D3.js v7, Bootstrap 5.3)
+spec.py             # Python reference implementation of metric computations (for auditing)
 CLAUDE.md           # This file
 ```
 
@@ -114,7 +115,7 @@ Key differences from V1:
 
 ### Version Detection
 
-The viewer auto-detects the OpenVM version by checking for `constraint_deg` (V2-only) vs `quotient_deg` (V1-only) in counter metrics. The detected version is displayed as a badge in the navbar.
+The viewer auto-detects the OpenVM version by checking for `logup_gkr` in metric names (V2-only). The detected version is displayed as a badge in the navbar.
 
 ### Proof Time Hierarchy
 
@@ -183,7 +184,7 @@ The JavaScript in `index.html` is organized into clearly separated sections:
 
 1. **Data Processing** — ports of Python logic, these are the core functions that compute all displayed numbers:
    - `normalizeMetricsData(json, sourceLabel)` — validates the incoming JSON shape, distinguishes raw-vs-combined input, and wraps raw files as a single experiment.
-   - `detectOpenVmVersion(combinedData)` — returns `1` or `2` by checking for V2-only counter metrics (`constraint_deg`).
+   - `detectOpenVmVersion(combinedData)` — returns `1` or `2` by checking for `logup_gkr` in metric names (V2-only).
    - `loadMetricsDataframes(json)` — port of [`metrics_utils.py:load_metrics_dataframes`](../../openvm-riscv/scripts/metrics_utils.py). Flattens `counter`+`gauge` arrays into entries, splits by `group` prefix into `app`, `leaf`, `internal`, `compression`.
    - `isNormalInstructionAir(name)` — port of [`metrics_utils.py:is_normal_instruction_air`](../../openvm-riscv/scripts/metrics_utils.py). Classifies AIR names as normal RISC-V instructions vs. precompiles.
    - `getMetric(entries, name)` — sums `value` for all entries matching a metric name.
