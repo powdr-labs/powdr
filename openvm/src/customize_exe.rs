@@ -281,7 +281,7 @@ pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAd
         .enumerate()
         .map(|(i, (apc, apc_stats, _))| {
             let opcode = POWDR_OPCODE + i;
-            // By construction, if we have no optimistic constraints, start pcs are all different, so it's safe to only look at the first one here.
+            // By construction, if `config.superblock_max_bb_count` is 1, start pcs are all different, so it's safe to only look at the first one here.
             let start_pc = apc.block.start_pcs()[0];
             let start_index = ((start_pc - pc_base as u64) / pc_step as u64)
                 .try_into()
