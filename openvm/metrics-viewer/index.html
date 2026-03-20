@@ -1343,11 +1343,13 @@ function renderTableBody(metrics) {
 
         TABLE_COLUMNS.forEach(col => {
             const td = document.createElement('td');
-            const formatted = col.fmt(m[col.key]);
+            const raw = m[col.key];
+            const formatted = col.fmt(raw);
+            if (raw != null && typeof raw === 'number') td.title = raw.toLocaleString();
             if (col.key === 'name' || !baseline || m.name === baselineRunName) {
                 td.textContent = formatted;
             } else {
-                td.innerHTML = formatted + ' ' + fmtComparison(m[col.key], baseline[col.key]);
+                td.innerHTML = formatted + ' ' + fmtComparison(raw, baseline[col.key]);
             }
             tr.appendChild(td);
         });
@@ -1435,7 +1437,8 @@ function renderDetailTable(title, rows, m, opts = {}) {
         const classAttr = classes.length ? ` class="${classes.join(' ')}"` : '';
         html += `<tr${classAttr} data-indent="${indent}">`;
         html += `<th${thStyle ? ` style="${thStyle}"` : ''}>${arrow}${row.label}${infoIcon}</th>`;
-        html += `<td${tdStyle ? ` style="${tdStyle}"` : ''}>${formatted}${comparison}</td>`;
+        const rawTitle = (val != null && typeof val === 'number') ? ` title="${val.toLocaleString()}"` : '';
+        html += `<td${tdStyle ? ` style="${tdStyle}"` : ''}${rawTitle}>${formatted}${comparison}</td>`;
         if (opts.pctOfKey) {
             const total = m[opts.pctOfKey];
             const pct = (total > 0 && val != null) ? (val / total * 100).toFixed(1) + '%' : '';
