@@ -15,7 +15,9 @@ pub struct ApcCandidates<E: ExecutionState, A, S> {
 }
 
 /// A selected APC call
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, deepsize2::DeepSizeOf)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, deepsize2::DeepSizeOf,
+)]
 pub struct ApcCall<S> {
     /// The index of the APC that this call runs
     pub apc_id: usize,
