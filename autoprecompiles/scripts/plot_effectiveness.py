@@ -53,7 +53,7 @@ def plot_effectiveness(json_path, filename=None, effectiveness_type='cost'):
     total_cost_before = df['cost_before'].sum()
     total_cost_after = df['cost_after'].sum()
 
-    # Print top 10 basic blocks
+    # Print top 10 superblocks
     top10 = df.nlargest(10, 'cost_before')[['start_pcs', 'cost_before', 'effectiveness', 'instructions']]
     print(top10)
     top10['cost_before'] = top10['cost_before'].apply(format_cell_count)
@@ -63,7 +63,7 @@ def plot_effectiveness(json_path, filename=None, effectiveness_type='cost'):
     print()
     
     # Calculate weighted mean effectiveness, corresponding to the overall effectiveness
-    # assuming that all basic blocks are accelerated.
+    # assuming that all superblocks are accelerated.
     mean_effectiveness = (df['effectiveness'] * df['cost_after']).sum() / total_cost_after
     print(f"Mean effectiveness: {mean_effectiveness:.2f}")
     

@@ -26,7 +26,7 @@ pub struct EmpiricalConstraints {
     /// For each program counter, the range constraints for each column.
     /// The range might not hold in 100% of cases.
     pub column_ranges_by_pc: BTreeMap<u32, Vec<(u32, u32)>>,
-    /// For each basic block (identified by its starting PC), the equivalence classes of columns.
+    /// For each static block (identified by its starting PC), the equivalence classes of columns.
     pub equivalence_classes_by_block: BTreeMap<u64, Partition<BlockCell>>,
     pub debug_info: DebugInfo,
     /// Count of how many times each program counter was executed in the sampled executions.
@@ -34,9 +34,9 @@ pub struct EmpiricalConstraints {
     pub pc_counts: BTreeMap<u32, u64>,
 }
 
-/// Empirical constraints for a specific basic block.
+/// Empirical constraints for a specific superblock.
 pub struct BlockEmpiricalConstraints {
-    /// The pcs this block executes
+    /// The pcs this superblock executes
     pcs: Vec<u64>,
     /// For each program counter in the block, the range constraints for each column, if any.
     /// The range might not hold in 100% of cases.
@@ -94,7 +94,7 @@ impl EmpiricalConstraints {
         }
     }
 
-    /// Extracts the empirical constraints relevant for a specific basic block.
+    /// Extracts the empirical constraints relevant for a specific super block.
     pub fn for_block<I: PcStep>(&self, block: &SuperBlock<I>) -> BlockEmpiricalConstraints {
         let pcs = block.pcs().collect_vec();
 
@@ -248,7 +248,7 @@ fn merge_maps<K: Ord, V: Eq + Debug>(map1: &mut BTreeMap<K, V>, map2: BTreeMap<K
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug, Copy, Clone)]
 pub struct BlockCell {
-    /// Instruction index within the basic block
+    /// Instruction index within the static block
     instruction_idx: usize,
     /// The column index within the instruction air
     column_idx: usize,

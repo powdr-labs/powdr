@@ -39,7 +39,7 @@ impl<'a, ISA: OpenVmISA> OriginalCompiledProgram<'a, ISA> {
         }
     }
 
-    /// Segments the program into basic blocks with different start_pcs.
+    /// Segments the program into static blocks
     pub fn collect_static_blocks(
         &self,
         should_expand_basic_blocks: bool,

@@ -36,7 +36,7 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
             .map(|block_and_stats| {
                 let block = block_and_stats.block;
                 tracing::debug!(
-                    "Basic block start_pc: {}, number_of_instructions: {}",
+                    "Static block start_pc: {}, number_of_instructions: {}",
                     block.pcs().next().unwrap(),
                     block.instructions().count(),
                 );

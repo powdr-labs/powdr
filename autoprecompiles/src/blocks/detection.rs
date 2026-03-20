@@ -5,7 +5,7 @@ use crate::{
     blocks::{BasicBlock, Program, StaticBlocks, SuperBlock},
 };
 
-/// Collects basic blocks from a program
+/// Collects static blocks from a program
 pub fn collect_static_blocks<A: Adapter>(
     program: &A::Program,
     jumpdest_set: &BTreeSet<u64>,
@@ -67,7 +67,7 @@ pub fn collect_static_blocks<A: Adapter>(
     }
 
     tracing::info!(
-        "Got {} basic blocks from `collect_basic_blocks`",
+        "Got {} static blocks from `collect_static_blocks`",
         blocks.len()
     );
 

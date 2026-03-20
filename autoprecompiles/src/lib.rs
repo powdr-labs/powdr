@@ -62,11 +62,11 @@ pub mod trace_handler;
 pub struct PowdrConfig {
     /// Number of autoprecompiles to generate.
     pub autoprecompiles: u64,
-    /// Number of basic blocks to skip for autoprecompiles.
+    /// Number of static blocks to skip for autoprecompiles.
     /// This is either the largest N if no PGO, or the costliest N with PGO.
     pub skip_autoprecompiles: u64,
-    /// Maximum number of basic blocks included in a superblock.
-    /// Default of 1 means only basic blocks are considered.
+    /// Maximum number of static blocks included in a superblock.
+    /// Default of 1 means only static blocks are considered.
     pub superblock_max_bb_count: u8,
     /// Maximum number of instructions included in an Apc.
     pub apc_max_instructions: u32,
@@ -214,7 +214,7 @@ impl<T, I: PcStep, A, V> Apc<T, I, A, V> {
         self.block.instructions().map(|(_, i)| i)
     }
 
-    /// The PCs of the original basic blocks composing this APC. Can be used to identify the APC.
+    /// The PCs of the original static blocks composing this APC. Can be used to identify the APC.
     pub fn start_pcs(&self) -> Vec<u64> {
         self.block.start_pcs()
     }

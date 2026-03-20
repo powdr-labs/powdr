@@ -57,7 +57,7 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
                 let value = frequency * number_of_instructions as u32;
 
                 tracing::debug!(
-                    "Basic block start_pc: {}, value: {}, frequency: {}, number_of_instructions: {}",
+                    "Static block start_pc: {}, value: {}, frequency: {}, number_of_instructions: {}",
                     block.pcs().next().unwrap(),
                     value,
                     frequency,
