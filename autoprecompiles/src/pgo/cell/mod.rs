@@ -113,7 +113,7 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
 
         let AdapterExecutionBlocks::<Self::Adapter> {
             blocks,
-            execution_bb_runs,
+            execution_static_block_runs: execution_bb_runs,
         } = exec_blocks;
 
         tracing::info!(
