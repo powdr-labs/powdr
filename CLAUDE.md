@@ -27,26 +27,33 @@ cargo clippy --all --all-targets --features metrics -- -D warnings
 
 ## Testing
 
+Always use `--release` for test runs. Use the `quick-10` profile as the default — it times out tests after 10s and continues. Check which tests timed out; only re-run them individually (without the quick profile) if you have good reason to believe your diff could affect them. All tests are run on CI anyway.
+
 ```bash
-# Run all default tests
-cargo nextest run
+# Run all tests (default, with 10s timeout per test)
+cargo nextest run --release --profile quick-10
 
 # Run a single test
-cargo nextest run <test_name>
+cargo nextest run --release <test_name>
 
 # Run ignored (longer) tests
-cargo nextest run --run-ignored only
+cargo nextest run --release --run-ignored only
 
 # Run only large tests
-cargo nextest run -E 'test(_large)' --run-ignored only
+cargo nextest run --release -E 'test(_large)' --run-ignored only
 
 # Run tests in specific package
-cargo nextest run -p powdr-openvm
+cargo nextest run --release -p powdr-openvm
+
+# Available quick profiles (timeout per test, slow tests deprioritized):
+#   --profile quick-10   (10s timeout, good default)
+#   --profile quick-30   (30s timeout)
+#   --profile quick-60   (60s timeout)
 ```
 
 ## CLI Usage
 
-The main CLI is `powdr_openvm` (in `cli-openvm/`):
+The main CLI is `powdr_openvm_riscv` (in `cli-openvm-riscv/`):
 
 ```bash
 # Compile a guest program with autoprecompiles

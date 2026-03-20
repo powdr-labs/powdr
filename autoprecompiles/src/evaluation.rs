@@ -1,7 +1,7 @@
 use std::{fmt::Display, iter::Sum, ops::Add, sync::Arc};
 
 use crate::{
-    adapter::{Adapter, AdapterApc, AdapterApcWithStats, AdapterSuperBlock},
+    adapter::{Adapter, AdapterApc, AdapterApcWithStats},
     InstructionHandler, SymbolicMachine,
 };
 
@@ -61,13 +61,13 @@ pub struct EvaluationResult {
 /// Evaluate an APC by comparing its cost to the cost of executing the original instructions in software.
 /// This is used by different pgo strategies in different stages. For example, for cell PGO, this is done before selection, and for instruction PGO, it is done after.
 pub fn evaluate_apc<A: Adapter>(
-    block: AdapterSuperBlock<A>,
     instruction_handler: &A::InstructionHandler,
     apc: AdapterApc<A>,
 ) -> AdapterApcWithStats<A> {
-    let before = block
+    let before = apc
+        .block
         .instructions()
-        .map(|instruction| instruction_handler.get_instruction_air_stats(instruction))
+        .map(|(_, instruction)| instruction_handler.get_instruction_air_stats(instruction))
         .sum();
     let after = AirStats::new(apc.machine());
     let evaluation_result = EvaluationResult { before, after };

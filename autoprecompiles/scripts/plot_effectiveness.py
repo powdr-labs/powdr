@@ -27,11 +27,11 @@ def load_apc_data(json_path, effectiveness_type='cost'):
     for item in data:
         cost_before, cost_after = get_before_after_cost(item, effectiveness_type)
         rows.append({
-            'start_pc': item['original_block']['start_pc'],
+            'start_pcs': [b['start_pc'] for b in item['original_blocks']],
             'cost_before': cost_before * item['execution_frequency'],
             'cost_after': cost_after * item['execution_frequency'],
             'effectiveness': cost_before / cost_after,
-            'instructions': len(item['original_block']['statements']),
+            'instructions': sum(len(b['instructions']) for b in item['original_blocks']),
         })
 
     return pd.DataFrame(rows)
@@ -54,10 +54,10 @@ def plot_effectiveness(json_path, filename=None, effectiveness_type='cost'):
     total_cost_after = df['cost_after'].sum()
 
     # Print top 10 basic blocks
-    top10 = df.nlargest(10, 'cost_before')[['start_pc', 'cost_before', 'effectiveness', 'instructions']]
+    top10 = df.nlargest(10, 'cost_before')[['start_pcs', 'cost_before', 'effectiveness', 'instructions']]
     print(top10)
     top10['cost_before'] = top10['cost_before'].apply(format_cell_count)
-    top10.columns = ['Start PC', 'Cost before', 'Effectiveness', 'Instructions']
+    top10.columns = ['Start PCs', 'Cost before', 'Effectiveness', 'Instructions']
     print(f"\nTop 10 Basic Blocks by {effectiveness_type}:")
     print(top10.to_string(index=False))
     print()

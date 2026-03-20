@@ -20,6 +20,7 @@ tracing-subscriber = { version = "0.3.17", features = ["std", "env-filter"] }
 serde_json.workspace = true
 rayon = "1.10.0"
 strum = { version = "0.27.0", features = ["derive"] }
+priority-queue = "2.7.0"
 
 metrics.workspace = true
 deepsize2 = "0.1.0"

@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::Hash;
 
@@ -44,36 +44,7 @@ pub fn optimize_memory<
     // TODO perform substitutions instead
     system.algebraic_constraints.extend(new_constraints);
 
-    assert!(check_register_operation_consistency::<_, _, M>(
-        &system,
-        memory_bus_id
-    ));
-
     system
-}
-
-// Check that the number of register memory bus interactions for each concrete address in the precompile is even.
-// Assumption: all register memory bus interactions feature a concrete address.
-pub fn check_register_operation_consistency<T, V, M: MemoryBusInteraction<T, V>>(
-    system: &ConstraintSystem<T, V>,
-    memory_bus_id: u64,
-) -> bool {
-    let count_per_addr = system
-        .bus_interactions
-        .iter()
-        .filter_map(|bus_int| {
-            M::try_from_bus_interaction(bus_int, memory_bus_id)
-                .ok()
-                // We ignore conversion failures here, since we also did that in a previous version.
-                .flatten()
-        })
-        .filter_map(|mem_int| mem_int.register_address())
-        .fold(BTreeMap::new(), |mut map, addr| {
-            *map.entry(addr).or_insert(0) += 1;
-            map
-        });
-
-    count_per_addr.values().all(|&v| v == 2)
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -118,11 +89,11 @@ pub trait MemoryBusInteraction<T, V>: Sized {
     /// Returns the data part of the memory bus interaction.
     fn data(&self) -> &[GroupedExpression<T, V>];
 
+    /// Returns the timestamp part of the memory bus interaction.
+    fn timestamp_limbs(&self) -> &[GroupedExpression<T, V>];
+
     /// Returns the operation of the memory bus interaction.
     fn op(&self) -> MemoryOp;
-
-    /// Returns the register address of the memory bus interaction, if it is a register memory access.
-    fn register_address(&self) -> Option<usize>;
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -138,6 +109,22 @@ where
 {
     fn from(exprs: I) -> Self {
         Self(exprs.into_iter().collect())
+    }
+}
+
+struct MemoryContent<T, V> {
+    bus_index: usize,
+    data: Vec<GroupedExpression<T, V>>,
+    timestamp_limbs: Vec<GroupedExpression<T, V>>,
+}
+
+impl<T: Clone, V: Clone> MemoryContent<T, V> {
+    fn from_bus_interaction<M: MemoryBusInteraction<T, V>>(bus_index: usize, mem_int: M) -> Self {
+        Self {
+            bus_index,
+            data: mem_int.data().to_vec(),
+            timestamp_limbs: mem_int.timestamp_limbs().to_vec(),
+        }
     }
 }
 
@@ -158,10 +145,9 @@ fn redundant_memory_interactions_indices<
     let mut new_constraints = Vec::new();
 
     // Track memory contents by memory type while we go through bus interactions.
-    // This maps an address to the index of the previous send on that address and the
-    // data currently stored there.
-    type Data<T, V> = Vec<GroupedExpression<T, V>>;
-    let mut memory_contents: HashMap<Address<T, V>, (usize, Data<T, V>)> = Default::default();
+    // This maps an address to the index of the previous send on that address, the
+    // data currently stored there and the timestamp used in the last send.
+    let mut memory_contents: HashMap<Address<T, V>, MemoryContent<T, V>> = Default::default();
     let mut to_remove: Vec<usize> = Default::default();
 
     // TODO we assume that memory interactions are sorted by timestamp.
@@ -186,13 +172,22 @@ fn redundant_memory_interactions_indices<
                 // If there is an unconsumed send to this address, consume it.
                 // In that case, we can replace both bus interactions with equality constraints
                 // between the data that would have been sent and received.
-                if let Some((previous_send, existing_values)) = memory_contents.remove(&addr) {
-                    for (existing, new) in existing_values.iter().zip_eq(mem_int.data().iter()) {
+                if let Some(existing) = memory_contents.remove(&addr) {
+                    for (existing, new) in existing.data.iter().zip_eq(mem_int.data().iter()) {
                         new_constraints.push(AlgebraicConstraint::assert_zero(
                             existing.clone() - new.clone(),
                         ));
                     }
-                    to_remove.extend([index, previous_send]);
+                    for (existing_timestamp_limb, new_timestamp_limb) in existing
+                        .timestamp_limbs
+                        .iter()
+                        .zip_eq(mem_int.timestamp_limbs().iter())
+                    {
+                        new_constraints.push(AlgebraicConstraint::assert_zero(
+                            existing_timestamp_limb.clone() - new_timestamp_limb.clone(),
+                        ));
+                    }
+                    to_remove.extend([index, existing.bus_index]);
                 }
             }
             MemoryOp::SetNew => {
@@ -206,7 +201,10 @@ fn redundant_memory_interactions_indices<
                         // Two addresses are different if they differ in at least one component.
                         .any(|(a, b)| solver.are_expressions_known_to_be_different(a, b))
                 });
-                memory_contents.insert(addr.clone(), (index, mem_int.data().to_vec()));
+                memory_contents.insert(
+                    addr.clone(),
+                    MemoryContent::from_bus_interaction(index, mem_int),
+                );
             }
         }
     }

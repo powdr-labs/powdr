@@ -17,6 +17,7 @@ pub struct OpenVmMemoryBusInteraction<T: FieldElement, V> {
     op: MemoryOp,
     address: OpenVmAddress<T, V>,
     data: Vec<GroupedExpression<T, V>>,
+    timestamp: Vec<GroupedExpression<T, V>>,
 }
 
 #[derive(Clone, Hash, Eq, PartialEq, Debug)]
@@ -61,7 +62,7 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction
             _ => return Err(MemoryBusInteractionConversionError),
         };
 
-        let [address_space, addr, data @ .., _timestamp] = &bus_interaction.payload[..] else {
+        let [address_space, addr, data @ .., timestamp] = &bus_interaction.payload[..] else {
             panic!();
         };
         let Some(address_space) = address_space.try_to_number() else {
@@ -75,6 +76,7 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction
             op,
             address,
             data: data.to_vec(),
+            timestamp: vec![timestamp.clone()],
         }))
     }
 
@@ -86,24 +88,11 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction
         &self.data
     }
 
-    fn op(&self) -> MemoryOp {
-        self.op
+    fn timestamp_limbs(&self) -> &[GroupedExpression<T, V>] {
+        &self.timestamp
     }
 
-    fn register_address(&self) -> Option<usize> {
-        if self.address.address_space == REGISTER_ADDRESS_SPACE.into() {
-            // We assume that the address is a concrete number.
-            Some(
-                self.address
-                    .local_address
-                    .try_to_number()
-                    .expect("Register address must be a concrete number")
-                    .to_degree()
-                    .try_into()
-                    .unwrap(),
-            )
-        } else {
-            None
-        }
+    fn op(&self) -> MemoryOp {
+        self.op
     }
 }

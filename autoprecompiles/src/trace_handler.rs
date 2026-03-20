@@ -1,10 +1,11 @@
 use itertools::Itertools;
-use powdr_constraint_solver::constraint_system::ComputationMethod;
+use powdr_constraint_solver::constraint_system::DerivedVariable;
 use rayon::prelude::*;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Display;
 use std::{cmp::Eq, hash::Hash};
 
+use crate::blocks::PcStep;
 use crate::expression::{AlgebraicExpression, AlgebraicReference};
 use crate::{Apc, InstructionHandler};
 
@@ -24,10 +25,7 @@ pub struct TraceData<'a, F, D> {
     pub apc_poly_id_to_index: BTreeMap<u64, usize>,
     /// Indices of columns to compute and the way to compute them
     /// (from other values).
-    pub columns_to_compute: &'a [(
-        AlgebraicReference,
-        ComputationMethod<F, AlgebraicExpression<F>>,
-    )],
+    pub columns_to_compute: &'a [DerivedVariable<F, AlgebraicReference, AlgebraicExpression<F>>],
 }
 
 pub trait TraceTrait<F>: Send + Sync {
@@ -49,15 +47,17 @@ where
     IH: InstructionHandler,
     IH::Field: Display + Clone + Send + Sync,
     IH::AirId: Eq + Hash + Send + Sync,
+    IH::Instruction: PcStep,
 {
     // Keep only instructions that produce dummy records
     let instructions_with_subs = apc
         .instructions()
         .zip_eq(apc.subs.iter())
         .filter(|(_, subs)| !subs.is_empty());
+    let instructions_with_subs = instructions_with_subs.collect::<Vec<_>>();
 
     let original_instruction_air_ids = instructions_with_subs
-        .clone()
+        .iter()
         .map(|(instruction, _)| {
             instruction_handler
                 .get_instruction_air_and_id(instruction)
@@ -88,6 +88,7 @@ where
         .collect::<Vec<_>>();
 
     let dummy_trace_index_to_apc_index_by_instruction = instructions_with_subs
+        .iter()
         .map(|(_, subs)| {
             subs.iter()
                 .map(|substitution| {

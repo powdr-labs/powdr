@@ -1,0 +1,2124 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>APC Effectiveness Analyzer</title>
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- D3.js -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+
+        .drop-zone {
+            border: 3px dashed #dee2e6;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background-color: white;
+        }
+
+        .drop-zone:hover,
+        .drop-zone.dragover {
+            border-color: #0d6efd;
+            background-color: #e7f1ff;
+        }
+
+        .chart-container {
+            background-color: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .bar-highlight {
+            stroke: #ffc10755 !important;
+            stroke-width: 2 !important;
+        }
+
+        .bar-selected {
+            stroke: #ffc107 !important;
+            stroke-width: 4 !important;
+        }
+
+        .code-panel-container {
+            position: relative;
+        }
+
+        .sticky-label-header {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background-color: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 8px 10px;
+            font-weight: bold;
+            color: #1565c0;
+            font-family: 'Courier New', monospace;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            display: none;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .sticky-label-header.active {
+            display: block;
+        }
+
+        .sticky-label-header:hover {
+            background-color: #bbdefb;
+        }
+
+        .code-panel {
+            font-family: 'Courier New', monospace;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            padding: 15px;
+            max-height: 500px;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        .label-line {
+            background-color: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 8px 10px;
+            margin: 15px 0 5px 0;
+            font-weight: bold;
+            color: #1565c0;
+        }
+
+        .label-name {
+            font-size: 11px;
+            word-break: break-all;
+            line-height: 1.4;
+        }
+
+        .labels-table {
+            width: 100%;
+            margin-top: 10px;
+            font-size: 12px;
+        }
+
+        .labels-table th {
+            cursor: pointer;
+            user-select: none;
+            padding: 8px;
+            background-color: #f8f9fa;
+            border-bottom: 2px solid #dee2e6;
+            position: relative;
+        }
+
+        .labels-table th:hover {
+            background-color: #e9ecef;
+        }
+
+        .labels-table th.sorted-asc::after {
+            content: ' ▲';
+            font-size: 10px;
+        }
+
+        .labels-table th.sorted-desc::after {
+            content: ' ▼';
+            font-size: 10px;
+        }
+
+        .labels-table td {
+            padding: 8px;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .labels-table tbody tr {
+            cursor: pointer;
+        }
+
+        .labels-table tbody tr:hover {
+            background-color: #f8f9fa;
+        }
+
+        .label-cell {
+            max-width: 400px;
+            word-break: break-all;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+        }
+
+        .collapsible-header {
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .collapsible-header:hover {
+            opacity: 0.8;
+        }
+
+        .collapse-icon {
+            transition: transform 0.3s;
+            font-size: 14px;
+        }
+
+        .collapse-icon.collapsed {
+            transform: rotate(-90deg);
+        }
+
+        .labels-table-wrapper {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+        }
+
+        .label-row {
+            position: relative;
+        }
+
+        .expand-icon {
+            display: inline-block;
+            width: 16px;
+            transition: transform 0.2s;
+            cursor: pointer;
+        }
+
+        .expand-icon.expanded {
+            transform: rotate(90deg);
+        }
+
+        .blocks-detail-row {
+            background-color: #f8f9fa;
+        }
+
+        .blocks-detail-row td:nth-child(2) {
+            padding-left: 30px !important;
+        }
+
+        .blocks-detail-row:hover {
+            background-color: #e9ecef;
+        }
+
+        .code-block {
+            border: 1px solid #dee2e6;
+            border-radius: 3px;
+            margin: 10px 0;
+            padding: 10px;
+            background-color: white;
+        }
+
+        .code-block-header {
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #495057;
+            font-size: 12px;
+        }
+
+        .code-block.selected {
+            border-color: #ffc107;
+            background-color: #fff9e6;
+            box-shadow: 0 0 5px rgba(255, 193, 7, 0.3);
+        }
+
+        .code-line {
+            margin: 2px 0;
+            padding: 2px 5px;
+            cursor: pointer;
+        }
+
+        .code-line:hover {
+            background-color: #e9ecef;
+        }
+
+        .code-line.highlighted {
+            background-color: #fff3cd;
+        }
+
+        .tooltip {
+            position: absolute;
+            text-align: left;
+            padding: 10px;
+            font: 12px sans-serif;
+            background: rgba(0, 0, 0, 0.85);
+            color: white;
+            border-radius: 5px;
+            pointer-events: none;
+            z-index: 1000;
+        }
+
+        .bar {
+            stroke: black;
+            stroke-width: 0.5;
+            opacity: 0.8;
+            cursor: pointer;
+        }
+
+        .bar:hover {
+            opacity: 1;
+        }
+
+        .mean-line {
+            stroke: red;
+            stroke-width: 2;
+            stroke-dasharray: 5, 5;
+            opacity: 0.7;
+        }
+
+        .grid line {
+            stroke: #e0e0e0;
+            stroke-opacity: 0.7;
+        }
+
+        .grid path {
+            stroke-width: 0;
+        }
+    </style>
+</head>
+
+<body>
+    <nav class="navbar navbar-dark bg-primary">
+        <div class="container-fluid">
+            <span class="navbar-brand mb-0 h1" id="pageTitle" style="cursor: pointer;">APC Effectiveness Analyzer</span>
+            <span class="text-white small ms-auto text-end" id="dataSourceDisplay"
+                style="display:none; flex:1 1 auto; max-width:calc(100vw - 220px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-family: 'Courier New', monospace;"></span>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- File Upload Section -->
+        <div id="uploadSection" class="row mb-4">
+            <div class="col-12">
+                <div class="drop-zone" id="dropZone">
+                    <h4>Drop JSON file here or click to upload</h4>
+                    <p class="text-muted">Upload APC candidates JSON file</p>
+                    <input type="file" id="fileInput" accept=".json" style="display: none;">
+                </div>
+                <div class="mt-3">
+                    <div class="input-group">
+                        <span class="input-group-text">Or paste URL:</span>
+                        <input type="text" id="urlInput" class="form-control"
+                            placeholder="https://example.com/data.json or GitHub link">
+                        <button class="btn btn-primary" id="loadUrlBtn">Load from URL</button>
+                    </div>
+                    <small class="text-muted">Supports direct JSON URLs and GitHub file links</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main App Section (hidden initially) -->
+        <div id="appSection" style="display: none;">
+            <div class="row">
+                <!-- Left column: plot + labels + code -->
+                <div class="col-12 col-lg-9">
+                    <div id="vizSection">
+                        <div class="row">
+                            <div class="col-12">
+                                <div class="chart-container">
+                                    <ul class="nav nav-pills mb-3" id="chartTabs" role="tablist">
+                                        <li class="nav-item" role="presentation">
+                                            <button class="nav-link active" id="tab-effectiveness"
+                                                type="button">Effectiveness by Basic Block</button>
+                                        </li>
+                                        <li class="nav-item" role="presentation">
+                                            <button class="nav-link" id="tab-secondary" type="button">Saved proving cost
+                                                vs added verifier cost</button>
+                                        </li>
+                                    </ul>
+                                    <div id="chartTabEffectiveness">
+                                        <div id="chart"></div>
+                                    </div>
+                                    <div id="chartTabSecondary" style="display: none;">
+                                        <div id="chartValueCost"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Labels Summary Section -->
+                        <div class="row mt-4" id="labelsSummarySection" style="display: none;">
+                            <div class="col-12">
+                                <div class="chart-container">
+                                    <div class="collapsible-header" id="labelsHeader">
+                                        <span class="collapse-icon collapsed">▼</span>
+                                        <h5 style="margin: 0;">Labels</h5>
+                                    </div>
+                                    <div id="labelsContent" style="display: none; margin-top: 10px;">
+                                        <div class="labels-table-wrapper">
+                                            <div id="labelsTableContainer"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Code Panel Section -->
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="chart-container">
+                                    <h5>Program Code</h5>
+                                    <div class="code-panel-container">
+                                        <div id="stickyLabelHeader" class="sticky-label-header"></div>
+                                        <div id="codePanel" class="code-panel">
+                                            <span class="text-muted">No data loaded</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right column: controls -->
+                <div class="col-12 col-lg-3">
+                    <div id="infoSection" class="mb-4" style="display: none;">
+                        <div class="chart-container">
+                            <h5>Info</h5>
+                            <p class="text-muted small" id="plotInfoText" style="margin-bottom: 0;">
+                            </p>
+                        </div>
+                    </div>
+
+                    <div id="controlsSection" class="mb-4" style="display: none;">
+                        <div class="chart-container">
+                            <div class="row g-3">
+                                <div class="col-12">
+                                    <label for="effectivenessType" class="form-label">Cost Metric:</label>
+                                    <select id="effectivenessType" class="form-select">
+                                        <option value="cost" selected>Total Cost</option>
+                                        <option value="main_columns">Main Columns</option>
+                                        <option value="constraints">Constraints</option>
+                                        <option value="bus_interactions">Bus Interactions</option>
+                                    </select>
+                                </div>
+                                <div class="col-12">
+                                    <label for="pcSearch" class="form-label">Block ID:</label>
+                                    <div class="input-group">
+                                        <input type="text" id="pcSearch" class="form-control">
+                                        <button class="btn btn-primary" id="pcSearchBtn">Go</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="selectedBlockSection" class="mb-4" style="display: none;">
+                        <div class="chart-container">
+                            <h5>Selected Block</h5>
+                            <div class="mb-2">
+                                <span id="codeBlockInfo" class="text-muted">Click on a bar or code line to select a
+                                    block</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentData = null;
+        let currentLabels = {};
+        let chart = null;
+        let selectedBlock = null;
+        let lastData = null;
+        let lastMeanEffectiveness = null;
+
+        // File handling
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const uploadSection = document.getElementById('uploadSection');
+        const appSection = document.getElementById('appSection');
+        const controlsSection = document.getElementById('controlsSection');
+        const vizSection = document.getElementById('vizSection');
+        const effectivenessType = document.getElementById('effectivenessType');
+        const pageTitle = document.getElementById('pageTitle');
+        const dataSourceDisplay = document.getElementById('dataSourceDisplay');
+        const pcSearch = document.getElementById('pcSearch');
+        const pcSearchBtn = document.getElementById('pcSearchBtn');
+        const tabEffectiveness = document.getElementById('tab-effectiveness');
+        const tabSecondary = document.getElementById('tab-secondary');
+        const chartTabEffectiveness = document.getElementById('chartTabEffectiveness');
+        const chartTabSecondary = document.getElementById('chartTabSecondary');
+        const plotInfoText = document.getElementById('plotInfoText');
+
+        // Plot point sizing (value-cost plot)
+        const POINT_RADIUS = 3;
+        const HOVER_RADIUS = 6;
+        const SELECTED_RADIUS = 6;
+
+        const DATA_DISPLAY_MAX = 70;
+        const DATA_DISPLAY_HEAD = 35;
+        const DATA_DISPLAY_TAIL = 35;
+
+        function shortenUrl(urlText) {
+            if (urlText.length <= DATA_DISPLAY_MAX) return urlText;
+            return `${urlText.slice(0, DATA_DISPLAY_HEAD)}...${urlText.slice(-DATA_DISPLAY_TAIL)}`;
+        }
+
+        function updateDataSourceDisplay(source) {
+            if (source) {
+                const displayText = shortenUrl(source.replace(/^https?:\/\//i, ''));
+                const href = source;
+                dataSourceDisplay.innerHTML = `Data: <a href="${href}" target="_blank" rel="noopener noreferrer" style="color: white; text-decoration: underline;">${displayText}</a>`;
+                dataSourceDisplay.style.display = 'inline';
+            } else {
+                dataSourceDisplay.innerHTML = '';
+                dataSourceDisplay.style.display = 'none';
+            }
+        }
+
+        // Drop zone events
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
+
+        // URL loading functionality
+        const urlInput = document.getElementById('urlInput');
+        const loadUrlBtn = document.getElementById('loadUrlBtn');
+
+        tabEffectiveness.addEventListener('click', () => {
+            tabEffectiveness.classList.add('active');
+            tabSecondary.classList.remove('active');
+            chartTabEffectiveness.style.display = 'block';
+            chartTabSecondary.style.display = 'none';
+            updateInfoText();
+            if (lastData) {
+                const totalBefore = lastData.reduce((sum, d) => sum + d.metric_before, 0);
+                createChart(lastData, totalBefore, lastMeanEffectiveness || 0);
+            } else if (currentData) {
+                updateVisualization();
+            }
+            const newUrl = new URL(window.location);
+            newUrl.searchParams.delete('plot');
+            window.history.replaceState({}, document.title, newUrl);
+        });
+
+        tabSecondary.addEventListener('click', () => {
+            tabSecondary.classList.add('active');
+            tabEffectiveness.classList.remove('active');
+            chartTabEffectiveness.style.display = 'none';
+            chartTabSecondary.style.display = 'block';
+            updateInfoText();
+            if (lastData) {
+                createValueCostPlot(lastData);
+            } else if (currentData) {
+                createValueCostPlot(processData());
+            }
+            const newUrl = new URL(window.location);
+            newUrl.searchParams.set('plot', 'value-cost');
+            window.history.replaceState({}, document.title, newUrl);
+        });
+        loadUrlBtn.addEventListener('click', loadFromUrl);
+        urlInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                loadFromUrl();
+            }
+        });
+
+        async function loadFromUrl() {
+            const url = urlInput.value.trim();
+            if (!url) {
+                alert('Please enter a URL');
+                return;
+            }
+
+            // Convert GitHub URLs to raw URLs
+            let fetchUrl = url;
+            if (url.includes('github.com') && !url.includes('raw.githubusercontent.com')) {
+                // Convert github.com/user/repo/blob/branch/file to raw.githubusercontent.com/user/repo/branch/file
+                fetchUrl = url.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/');
+            }
+
+            try {
+                loadUrlBtn.disabled = true;
+                loadUrlBtn.textContent = 'Loading...';
+
+                const response = await fetch(fetchUrl);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const text = await response.text();
+                try {
+                    const jsonData = JSON.parse(text);
+                    loadData(jsonData);
+                    updateDataSourceDisplay(url);
+                    uploadSection.style.display = 'none';
+                    appSection.style.display = 'block';
+                    controlsSection.style.display = 'block';
+                    vizSection.style.display = 'block';
+                    updateVisualization();
+
+                    // Update URL to include the data parameter
+                    const newUrl = new URL(window.location);
+                    newUrl.searchParams.set('data', url);
+                    window.history.replaceState({}, document.title, newUrl);
+                } catch (parseError) {
+                    alert('Error parsing JSON from URL: ' + parseError.message);
+                }
+            } catch (error) {
+                alert('Error loading URL: ' + error.message);
+            } finally {
+                loadUrlBtn.disabled = false;
+                loadUrlBtn.textContent = 'Load from URL';
+            }
+        }
+
+        effectivenessType.addEventListener('change', () => {
+            if (currentData) {
+                const selectedId = selectedBlock ? selectedBlock.block_id : null;
+                updateVisualization();
+
+                // Restore selection if it exists
+                if (selectedId) {
+                    const data = processData();
+                    const block = data.find(d => d.block_id === selectedId);
+                    if (block) {
+                        selectBlock(block);
+                    }
+                }
+            }
+        });
+
+        // PC search functionality
+        pcSearchBtn.addEventListener('click', searchForPC);
+        pcSearch.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                searchForPC();
+            }
+        });
+
+        function searchForPC() {
+            if (!currentData) {
+                alert('Please load data first');
+                return;
+            }
+
+            const input = pcSearch.value.trim();
+            if (!input) {
+                // Empty input means unselect
+                selectBlock(null);
+                return;
+            }
+
+            // Parse hex (0x...) or decimal
+            let pcValue;
+            if (input.toLowerCase().startsWith('0x')) {
+                pcValue = parseInt(input, 16);
+            } else {
+                pcValue = parseInt(input, 10);
+            }
+
+            if (isNaN(pcValue)) {
+                alert('Invalid PC address. Please enter a valid hex (0x...) or decimal number.');
+                return;
+            }
+
+            // Find the superblock that contains this PC in any of its basic blocks
+            // Each instruction is 4 bytes, so PC advances by 4
+            const data = processData();
+            const block = data.find(d => {
+                if (d.is_other) return false; // Skip "Other" grouped blocks
+                return d.original_blocks.some(b => {
+                    const endPc = b.start_pc + b.instructions.length * 4;
+                    return pcValue >= b.start_pc && pcValue < endPc;
+                });
+            });
+
+            if (block) {
+                selectBlock(block);
+            } else {
+                alert(`No block found containing PC: 0x${pcValue.toString(16)} (${pcValue})`);
+            }
+        }
+
+        pageTitle.addEventListener('click', () => {
+            currentData = null;
+            currentLabels = {};
+            selectedBlock = null;
+            uploadSection.style.display = 'block';
+            appSection.style.display = 'none';
+            controlsSection.style.display = 'none';
+            document.getElementById('selectedBlockSection').style.display = 'none';
+            document.getElementById('infoSection').style.display = 'none';
+            vizSection.style.display = 'none';
+            fileInput.value = '';
+            urlInput.value = '';
+            updateDataSourceDisplay('');
+            // Clear URL parameters when returning to upload screen
+            window.history.replaceState({}, document.title, window.location.pathname);
+        });
+
+        // Check for URL parameter on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const dataUrl = urlParams.get('url') || urlParams.get('data');
+            const plotParam = urlParams.get('plot');
+
+            if (dataUrl) {
+                urlInput.value = dataUrl;
+                loadFromUrl();
+            }
+            if (plotParam === 'value-cost') {
+                tabSecondary.click();
+            } else {
+                updateInfoText();
+            }
+        });
+
+        function handleFile(file) {
+            if (!file.name.endsWith('.json')) {
+                alert('Please upload a JSON file');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const jsonData = JSON.parse(e.target.result);
+                    loadData(jsonData);
+                    updateDataSourceDisplay('');
+                    uploadSection.style.display = 'none';
+                    appSection.style.display = 'block';
+                    controlsSection.style.display = 'block';
+                    vizSection.style.display = 'block';
+                    updateVisualization();
+                } catch (error) {
+                    alert('Error parsing JSON file: ' + error.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function updateApcDataV1(apc) {
+            // Normalize old single-block format into original_blocks array
+            apc.original_blocks = [{
+                start_pc: apc.original_block.start_pc,
+                instructions: apc.original_block.statements,
+            }];
+            return apc;
+        }
+
+        // json is a direct list of APCs
+        function loadDataV0(jsonData) {
+            return { data: jsonData.map(updateApcDataV1), labels: {} };
+        }
+
+        // json with APCs and labels but no version
+        function loadDataV1(jsonData) {
+            return { data: jsonData.apcs.map(updateApcDataV1), labels: jsonData.labels };
+        }
+
+        // json in version 2 or 3. The difference is that the `apc_candidate_file` field doesn't exist,
+        // which is not used in the visualization anyway, so we can use the same loader for both versions.
+        function loadDataV2V3(jsonData) {
+            const apcs = jsonData.apcs.map(apc => {
+                apc.original_blocks = [apc.original_block];
+                return apc;
+            });
+            return { data: apcs, labels: jsonData.labels };
+        }
+
+        // json in version 4: original_blocks is a list of BasicBlocks (may be more than one).
+        function loadDataV4(jsonData) {
+            return { data: jsonData.apcs, labels: jsonData.labels };
+        }
+
+        function loadData(jsonData) {
+            // Handle backward compatibility with older json formats
+            let result;
+            if (Array.isArray(jsonData)) {
+                result = loadDataV0(jsonData);
+            } else if (!('version' in jsonData)) {
+                result = loadDataV1(jsonData);
+            } else {
+                switch (jsonData.version) {
+                    case 2: result = loadDataV2V3(jsonData); break;
+                    case 3: result = loadDataV2V3(jsonData); break;
+                    case 4: result = loadDataV4(jsonData); break;
+                    default: throw new Error(`Unsupported version: ${jsonData.version}`);
+                }
+            }
+            currentData = result.data;
+            currentLabels = result.labels;
+            // Show right-side panes when data is loaded
+            document.getElementById('selectedBlockSection').style.display = 'block';
+            document.getElementById('infoSection').style.display = 'block';
+            controlsSection.style.display = 'block';
+            updateInfoText();
+        }
+
+        function getMetricValues(item, effType) {
+            switch (effType) {
+                case 'cost':
+                    return { before: item.cost_before, after: item.cost_after };
+                case 'main_columns':
+                    return { before: item.stats.before.main_columns, after: item.stats.after.main_columns };
+                case 'constraints':
+                    return { before: item.stats.before.constraints, after: item.stats.after.constraints };
+                case 'bus_interactions':
+                    return { before: item.stats.before.bus_interactions, after: item.stats.after.bus_interactions };
+                default:
+                    throw new Error(`Unknown effectiveness type: ${effType}`);
+            }
+        }
+
+        function calculateEffectiveness(item, effType) {
+            const { before, after } = getMetricValues(item, effType);
+            return before / after;
+        }
+
+        function formatMetric(count) {
+            if (count >= 1e9) {
+                return (count / 1e9).toFixed(1) + 'B';
+            } else if (count >= 1e6) {
+                return (count / 1e6).toFixed(1) + 'M';
+            } else if (count >= 1e3) {
+                return (count / 1e3).toFixed(1) + 'K';
+            } else {
+                return count.toFixed(0);
+            }
+        }
+
+        function processData() {
+            const effType = effectivenessType.value;
+            const processed = currentData.map(item => {
+                const { before, after } = getMetricValues(item, effType);
+                const metric_before = before * item.execution_frequency;
+                const metric_after = after * item.execution_frequency;
+                const value = (before - after) * item.execution_frequency;
+                const density = metric_after > 0 ? value / after : 0;
+                const lastBlock = item.original_blocks[item.original_blocks.length - 1];
+                const block_pcs = item.original_blocks.map(b => b.start_pc);
+                return {
+                    start_pc: item.original_blocks[0].start_pc,
+                    block_id: block_pcs.map(pc => '0x' + pc.toString(16)).join(','),
+                    block_pcs,
+                    original_blocks: item.original_blocks,
+                    end_pc: lastBlock.start_pc + lastBlock.instructions.length * 4,
+                    effectiveness: before / after,
+                    instructions: item.original_blocks.reduce((sum, b) => sum + b.instructions.length, 0),
+                    software_version_cells: metric_before, // alias used throughout charting
+                    metric_before,
+                    metric_after,
+                    metric_before_raw: before,
+                    metric_after_raw: after,
+                    value,
+                    density,
+                    width_before: item.width_before,
+                    execution_frequency: item.execution_frequency,
+                    statements: item.original_blocks.flatMap(b => b.instructions),  // flat list for legacy uses
+                    stats_after: item.stats.after  // Keep APC stats
+                };
+            });
+
+            // Sort by metric_before (matches Python)
+            processed.sort((a, b) => b.metric_before - a.metric_before);
+
+            return processed;
+        }
+
+        function updateVisualization() {
+            const data = processData();
+            const totalBefore = data.reduce((sum, d) => sum + d.metric_before, 0);
+            const totalAfter = data.reduce((sum, d) => sum + d.metric_after, 0);
+
+            // Calculate weighted mean (weight by cost after, matches Python)
+            const meanEffectiveness = totalAfter > 0
+                ? data.reduce((sum, d) => sum + d.effectiveness * d.metric_after, 0) / totalAfter
+                : 0;
+
+            lastData = data;
+            lastMeanEffectiveness = meanEffectiveness;
+
+            // Create visualizations
+            createChart(data, totalBefore, meanEffectiveness);
+            if (chartTabSecondary.style.display !== 'none') {
+                createValueCostPlot(data);
+            }
+
+            // Show all code in the code panel
+            showAllCode();
+
+            // Create labels summary table if there are labels
+            createLabelsSummary();
+
+            // Check for block parameter in URL and select it
+            const urlParams = new URLSearchParams(window.location.search);
+            const blockParam = urlParams.get('block');
+            if (blockParam) {
+                // blockParam is a comma-separated list of hex PCs (block_id)
+                const block = data.find(d => d.block_id === blockParam);
+                if (block) {
+                    selectBlock(block);
+                }
+            }
+        }
+
+        function aggregateLabelData() {
+            const effType = effectivenessType.value;
+            const labelStats = {};
+
+            // Sort blocks by PC to process them in order
+            const sortedBlocks = [...currentData].sort((a, b) =>
+                a.original_blocks[0].start_pc - b.original_blocks[0].start_pc
+            );
+
+            // Track current active label(s)
+            let currentActiveLabels = [];
+
+            // Iterate through all blocks in PC order
+            sortedBlocks.forEach(item => {
+                // Check all basic block PCs for label matches
+                const matchingPcKey = item.original_blocks
+                    .map(b => b.start_pc.toString())
+                    .find(key => currentLabels[key] && currentLabels[key].length > 0);
+
+                // Check if this block starts a new label
+                if (matchingPcKey) {
+                    currentActiveLabels = currentLabels[matchingPcKey];
+
+                    // Initialize label stats if needed
+                    currentActiveLabels.forEach(label => {
+                        if (!labelStats[label]) {
+                            labelStats[label] = {
+                                label: label,
+                                pc: item.original_blocks[0].start_pc,
+                                blocks: [],
+                                totalTraceCells: 0,
+                                totalCostBefore: 0,
+                                totalCostAfter: 0
+                            };
+                        }
+                    });
+                }
+
+                // Assign this block to all current active labels
+                currentActiveLabels.forEach(label => {
+                    labelStats[label].blocks.push(item);
+
+                    // Add trace cells (same as x-axis in chart)
+                    labelStats[label].totalTraceCells += item.width_before * item.execution_frequency;
+
+                    // Aggregate costs based on effectiveness type
+                    switch (effType) {
+                        case 'cost':
+                            labelStats[label].totalCostBefore += item.cost_before;
+                            labelStats[label].totalCostAfter += item.cost_after;
+                            break;
+                        case 'main_columns':
+                            labelStats[label].totalCostBefore += item.stats.before.main_columns;
+                            labelStats[label].totalCostAfter += item.stats.after.main_columns;
+                            break;
+                        case 'constraints':
+                            labelStats[label].totalCostBefore += item.stats.before.constraints;
+                            labelStats[label].totalCostAfter += item.stats.after.constraints;
+                            break;
+                        case 'bus_interactions':
+                            labelStats[label].totalCostBefore += item.stats.before.bus_interactions;
+                            labelStats[label].totalCostAfter += item.stats.after.bus_interactions;
+                            break;
+                    }
+                });
+            });
+
+            // Calculate effectiveness for each label (weighted by cost)
+            const labelArray = Object.values(labelStats).map(stat => {
+                // Process and sort blocks
+                const processedBlocks = stat.blocks.map(block => ({
+                    pc: block.original_blocks[0].start_pc,
+                    block_pcs: block.original_blocks.map(b => b.start_pc),
+                    traceCells: block.width_before * block.execution_frequency,
+                    effectiveness: calculateEffectiveness(block, effType),
+                    instructions: block.original_blocks.reduce((sum, b) => sum + b.instructions.length, 0)
+                }));
+
+                // Sort blocks by the same criteria as the current label sort
+                sortBlocksInLabel(processedBlocks);
+
+                return {
+                    label: stat.label,
+                    pc: stat.pc,
+                    traceCells: stat.totalTraceCells,
+                    costBefore: stat.totalCostBefore,
+                    costAfter: stat.totalCostAfter,
+                    effectiveness: stat.totalCostBefore / stat.totalCostAfter,
+                    blockCount: stat.blocks.length,
+                    blocks: processedBlocks
+                };
+            });
+
+            return labelArray;
+        }
+
+        function createValueCostPlot(data) {
+            const container = document.getElementById('chartValueCost');
+            if (!container) return;
+            d3.select(container).selectAll('*').remove();
+
+            // Sort by density (value / cost_after)
+            const sorted = [...data].sort((a, b) => b.density - a.density);
+
+            if (sorted.length === 0) {
+                container.innerHTML = '<span class="text-muted">No data available for value-cost plot.</span>';
+                return;
+            }
+
+            // Build cumulative arrays (cost scaled by execution frequency)
+            let cumulativeCost = 0;
+            let cumulativeValue = 0;
+            let cumulativeBefore = 0;
+            const series = sorted.map((d, idx) => {
+                cumulativeCost += d.metric_after_raw;
+                cumulativeValue += d.value;
+                cumulativeBefore += d.metric_before;
+                return { x: cumulativeCost, y: cumulativeValue, beforeCum: cumulativeBefore, block: d, idx };
+            });
+            const totalSoftwareCost = data.reduce((sum, d) => sum + d.metric_before, 0);
+
+            const margin = { top: 20, right: 20, bottom: 40, left: 60 };
+            const containerWidth = container.clientWidth || 300;
+            const width = containerWidth - margin.left - margin.right;
+            const height = 270 - margin.top - margin.bottom;
+
+            // Avoid log(0): start domain at min positive cost
+            const minCost = d3.min(series, d => d.x) || 1;
+            const maxCost = d3.max(series, d => d.x) || minCost;
+            const xScale = d3.scaleLog()
+                .domain([Math.max(1, minCost), maxCost])
+                .range([0, width]);
+
+            const yScale = d3.scaleLinear()
+                .domain([0, Math.max(d3.max(series, d => d.y), totalSoftwareCost)])
+                .range([height, 0]);
+
+            const svg = d3.select(container)
+                .append('svg')
+                .attr('width', width + margin.left + margin.right)
+                .attr('height', height + margin.top + margin.bottom)
+                .append('g')
+                .attr('transform', `translate(${margin.left},${margin.top})`);
+
+            // Hover guide lines
+            const guideH = svg.append('line')
+                .attr('stroke', '#bbbbbb')
+                .attr('stroke-dasharray', '4 4')
+                .attr('stroke-width', 1)
+                .style('display', 'none');
+            const guideV = svg.append('line')
+                .attr('stroke', '#bbbbbb')
+                .attr('stroke-dasharray', '4 4')
+                .attr('stroke-width', 1)
+                .style('display', 'none');
+            const guideHText = svg.append('text')
+                .style('fill', '#555')
+                .style('font-size', '11px')
+                .style('display', 'none');
+            const guideVText = svg.append('text')
+                .style('fill', '#555')
+                .style('font-size', '11px')
+                .style('display', 'none');
+
+            const line = d3.line()
+                .x(d => xScale(d.x))
+                .y(d => yScale(d.y))
+                .curve(d3.curveLinear);
+
+            // Background for deselect on click (send behind everything)
+            svg.append('rect')
+                .attr('width', width)
+                .attr('height', height)
+                .attr('fill', 'transparent')
+                .attr('pointer-events', 'all')
+                .on('click', () => selectBlock(null))
+                .lower();
+
+            svg.append('path')
+                .datum(series)
+                .attr('fill', 'none')
+                .attr('stroke', '#0d6efd')
+                .attr('stroke-width', 2)
+                .attr('d', line);
+
+            // Horizontal lines at percentages of total software cost (upper bound)
+            if (totalSoftwareCost > 0) {
+                const percentages = [0.2, 0.4, 0.6, 0.8, 1.0];
+                percentages.forEach(pct => {
+                    const yVal = totalSoftwareCost * pct;
+                    svg.append('line')
+                        .attr('x1', 0)
+                        .attr('x2', width)
+                        .attr('y1', yScale(yVal))
+                        .attr('y2', yScale(yVal))
+                        .attr('stroke', '#888')
+                        .attr('stroke-dasharray', '4 4')
+                        .attr('stroke-width', pct === 1 ? 1.5 : 1);
+
+                    const label = pct === 1
+                        ? `Software cost: ${formatMetric(yVal)}`
+                        : `${Math.round(pct * 100)}%`;
+
+                    svg.append('text')
+                        .attr('x', 5)
+                        .attr('y', yScale(yVal) - 6)
+                        .attr('text-anchor', 'start')
+                        .style('fill', '#666')
+                        .style('font-size', '11px')
+                        .text(label);
+                });
+            }
+
+            // Point labels for selected counts (powers of 10 and 3×powers of 10)
+            const refCounts = [];
+            const maxCount = series.length;
+            for (let p = 0; Math.pow(10, p) <= maxCount; p++) {
+                const pow = Math.pow(10, p);
+                if (p > 0) {
+                    refCounts.push(pow);
+                }
+                const three = 3 * pow;
+                if (three <= maxCount) refCounts.push(three);
+            }
+            const labelYOffset = 14;
+            refCounts.forEach((count, idx) => {
+                if (count > series.length || count < 1) return;
+                const point = series[count - 1];
+
+                svg.append('text')
+                    .attr('x', xScale(point.x))
+                    .attr('y', yScale(point.y) - labelYOffset)
+                    .attr('text-anchor', 'middle')
+                    .style('fill', '#555')
+                    .style('font-size', '11px')
+                    .text(`${count} APCs`);
+            });
+
+            // Tooltip
+            const tooltip = d3.select('body').append('div')
+                .attr('class', 'tooltip')
+                .style('opacity', 0);
+
+            // Secondary hover line text
+            const guideHText2 = svg.append('text')
+                .style('fill', '#555')
+                .style('font-size', '11px')
+                .style('display', 'none');
+
+            const baseColor = '#0d6efd';
+            const hoverColor = '#0b5ed7';
+            const selectedColor = '#d32f2f';
+
+            // Points
+            svg.selectAll('.value-point')
+                .data(series)
+                .enter()
+                .append('circle')
+                .attr('class', 'value-point')
+                .attr('cx', d => xScale(d.x))
+                .attr('cy', d => yScale(d.y))
+                .attr('r', POINT_RADIUS)
+                .attr('fill', baseColor)
+                .attr('stroke', baseColor)
+                .attr('stroke-width', 1)
+                .on('mouseover', function (event, d) {
+                    const isSelected = selectedBlock && !selectedBlock.is_other && selectedBlock.block_id === d.block.block_id;
+                    d3.select(this)
+                        .attr('r', isSelected ? SELECTED_RADIUS : HOVER_RADIUS)
+                        .attr('fill', isSelected ? selectedColor : hoverColor)
+                        .attr('stroke', isSelected ? selectedColor : hoverColor);
+                    tooltip.transition().duration(200).style('opacity', 0.9);
+                    const b = d.block;
+                    const bPcsDisplay = b.block_pcs.length === 1
+                        ? `0x${b.start_pc.toString(16)}`
+                        : b.block_pcs.map(pc => '0x' + pc.toString(16)).join(', ');
+                    tooltip.html(
+                        `<strong>PC: ${bPcsDisplay}</strong><br/>
+                         Execution frequency: ${formatMetric(b.execution_frequency)}<br/>
+                         Instructions: ${b.instructions}<br/>
+                         Cost (software version): ${formatMetric(b.metric_before)}<br/>
+                         Cost (accelerated): ${formatMetric(b.metric_after)}<br/>
+                         Effectiveness: ${b.effectiveness.toFixed(2)}<br/>
+                         Verifier cost (accelerated): ${formatMetric(b.metric_after_raw)}<br/>
+                         APC size: ${b.stats_after.main_columns} cols, ${b.stats_after.bus_interactions} bus, ${b.stats_after.constraints} constraints`
+                    )
+                        .style('left', (event.pageX + 10) + 'px')
+                        .style('top', (event.pageY + 10) + 'px');
+
+                    // Guides
+                    guideH
+                        .attr('x1', 0)
+                        .attr('x2', width)
+                        .attr('y1', yScale(d.y))
+                        .attr('y2', yScale(d.y))
+                        .style('display', 'block');
+                    guideV
+                        .attr('x1', xScale(d.x))
+                        .attr('x2', xScale(d.x))
+                        .attr('y1', 0)
+                        .attr('y2', height)
+                        .style('display', 'block');
+
+                    const pctSaved = totalSoftwareCost > 0 ? (d.y / totalSoftwareCost * 100) : 0;
+                    const pctAccel = totalSoftwareCost > 0 ? (d.beforeCum / totalSoftwareCost * 100) : 0;
+                    const reductionFactor = (100 - pctSaved) > 0 ? (100 / (100 - pctSaved)) : Infinity;
+
+                    const isFirstHalf = xScale(d.x) < (width / 2);
+                    // Horizontal labels: right side for first half, left side for second half
+                    const hLabelX = isFirstHalf ? width - 5 : 5;
+                    const hAnchor = isFirstHalf ? 'end' : 'start';
+                    guideHText
+                        .attr('x', hLabelX)
+                        .attr('y', yScale(d.y) - 6)
+                        .attr('text-anchor', hAnchor)
+                        .style('display', 'block')
+                        .text(`Accelerated prover cost: ${formatMetric(d.beforeCum)} (${pctAccel.toFixed(1)}%)`);
+
+                    guideHText2
+                        .attr('x', hLabelX)
+                        .attr('y', yScale(d.y) + 14)
+                        .attr('text-anchor', hAnchor)
+                        .style('display', 'block')
+                        .text(`Saved prover cost: ${formatMetric(d.y)} (${pctSaved.toFixed(1)}%, ${reductionFactor === Infinity ? '∞' : reductionFactor.toFixed(2) + 'x'} reduction)`);
+
+                    guideVText
+                        .attr('x', isFirstHalf ? xScale(d.x) + 4 : xScale(d.x) - 4)
+                        .attr('y', 20)
+                        .attr('text-anchor', isFirstHalf ? 'start' : 'end')
+                        .style('display', 'block')
+                        .text(`Verifier cost: ${formatMetric(d.x)} · APCs: ${d.idx + 1}`);
+                })
+                .on('mouseout', function () {
+                    tooltip.transition().duration(300).style('opacity', 0);
+                    updateValueCostPointStyles();
+                    guideH.style('display', 'none');
+                    guideV.style('display', 'none');
+                    guideHText.style('display', 'none');
+                    guideHText2.style('display', 'none');
+                    guideVText.style('display', 'none');
+                })
+                .on('click', function (event, d) {
+                    event.stopPropagation();
+                    selectBlock(d.block);
+                });
+
+            // Apply selection styling initially
+            updateValueCostPointStyles();
+
+            // Axes
+            svg.append('g')
+                .attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(xScale).ticks(5, "~s"));
+
+            svg.append('g')
+                .call(d3.axisLeft(yScale).ticks(5).tickFormat(formatMetric));
+
+            // Labels
+            svg.append('text')
+                .attr('transform', `translate(${width / 2}, ${height + margin.bottom - 5})`)
+                .style('text-anchor', 'middle')
+                .text('Added verifier cost (log)');
+
+            svg.append('text')
+                .attr('transform', 'rotate(-90)')
+                .attr('y', 0 - margin.left + 15)
+                .attr('x', 0 - (height / 2))
+                .style('text-anchor', 'middle')
+                .text('Saved prover cost');
+        }
+
+        function sortBlocksInLabel(blocks) {
+            // Sort blocks by trace cells (descending) by default
+            blocks.sort((a, b) => {
+                const column = currentLabelSort.column;
+                let aVal, bVal;
+
+                switch (column) {
+                    case 'traceCells':
+                        aVal = a.traceCells;
+                        bVal = b.traceCells;
+                        break;
+                    case 'effectiveness':
+                        aVal = a.effectiveness;
+                        bVal = b.effectiveness;
+                        break;
+                    case 'pc':
+                        aVal = a.pc;
+                        bVal = b.pc;
+                        break;
+                    case 'blockCount':
+                        // For blockCount, sort by traceCells instead
+                        aVal = a.traceCells;
+                        bVal = b.traceCells;
+                        break;
+                    default:
+                        aVal = a.traceCells;
+                        bVal = b.traceCells;
+                }
+
+                if (currentLabelSort.direction === 'asc') {
+                    return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+                } else {
+                    return aVal > bVal ? -1 : aVal < bVal ? 1 : 0;
+                }
+            });
+        }
+
+        let currentLabelSort = { column: 'traceCells', direction: 'desc' };
+
+        function createLabelsSummary() {
+            const labelsSummarySection = document.getElementById('labelsSummarySection');
+            const labelsTableContainer = document.getElementById('labelsTableContainer');
+
+            // Check if there are any labels
+            if (Object.keys(currentLabels).length === 0) {
+                labelsSummarySection.style.display = 'none';
+                return;
+            }
+
+            const labelData = aggregateLabelData();
+
+            if (labelData.length === 0) {
+                labelsSummarySection.style.display = 'none';
+                return;
+            }
+
+            labelsSummarySection.style.display = 'block';
+
+            // Set up collapsible behavior (only once)
+            const labelsHeader = document.getElementById('labelsHeader');
+            const labelsContent = document.getElementById('labelsContent');
+            const collapseIcon = labelsHeader.querySelector('.collapse-icon');
+
+            // Remove old listener if exists and add new one
+            labelsHeader.replaceWith(labelsHeader.cloneNode(true));
+            const newLabelsHeader = document.getElementById('labelsHeader');
+            const newCollapseIcon = newLabelsHeader.querySelector('.collapse-icon');
+
+            newLabelsHeader.addEventListener('click', function () {
+                const content = document.getElementById('labelsContent');
+                const icon = this.querySelector('.collapse-icon');
+
+                if (content.style.display === 'none') {
+                    content.style.display = 'block';
+                    icon.classList.remove('collapsed');
+                } else {
+                    content.style.display = 'none';
+                    icon.classList.add('collapsed');
+                }
+            });
+
+            // Sort data
+            sortLabelData(labelData, currentLabelSort.column, currentLabelSort.direction);
+
+            // Get metric name for column header
+            const effType = effectivenessType.options[effectivenessType.selectedIndex].text;
+
+            // Create table
+            let tableHtml = `
+                <table class="table labels-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 30px;"></th>
+                            <th data-column="pc">PC</th>
+                            <th data-column="label">Label</th>
+                            <th data-column="blockCount">Blocks</th>
+                            <th data-column="traceCells">Trace Cells</th>
+                            <th data-column="effectiveness">Effectiveness (${effType})</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            labelData.forEach((row, idx) => {
+                const labelId = `label-${idx}`;
+                tableHtml += `
+                    <tr class="label-row" data-pc="${row.pc}" data-label-id="${labelId}">
+                        <td><span class="expand-icon">►</span></td>
+                        <td>0x${row.pc.toString(16)}</td>
+                        <td class="label-cell">${escapeHtml(row.label)}</td>
+                        <td>${row.blockCount}</td>
+                        <td>${formatMetric(row.traceCells)}</td>
+                        <td>${row.effectiveness.toFixed(2)}</td>
+                    </tr>
+                `;
+
+                // Add blocks as separate rows
+                row.blocks.forEach(block => {
+                    tableHtml += `
+                        <tr class="blocks-detail-row" id="${labelId}-detail-${block.pc}" style="display: none;" data-block-pc="${block.pc}" data-label-id="${labelId}">
+                            <td></td>
+                            <td>0x${block.pc.toString(16)}</td>
+                            <td>...</td>
+                            <td></td>
+                            <td>${formatMetric(block.traceCells)}</td>
+                            <td>${block.effectiveness.toFixed(2)}</td>
+                        </tr>
+                    `;
+                });
+            });
+
+            tableHtml += `
+                    </tbody>
+                </table>
+            `;
+
+            labelsTableContainer.innerHTML = tableHtml;
+
+            // Add sort indicators
+            document.querySelectorAll('.labels-table th').forEach(th => {
+                const column = th.getAttribute('data-column');
+                th.classList.remove('sorted-asc', 'sorted-desc');
+                if (column === currentLabelSort.column) {
+                    th.classList.add(`sorted-${currentLabelSort.direction}`);
+                }
+            });
+
+            // Add click handlers for sorting
+            document.querySelectorAll('.labels-table th').forEach(th => {
+                th.addEventListener('click', function () {
+                    const column = this.getAttribute('data-column');
+                    if (currentLabelSort.column === column) {
+                        // Toggle direction
+                        currentLabelSort.direction = currentLabelSort.direction === 'asc' ? 'desc' : 'asc';
+                    } else {
+                        // New column, default to descending
+                        currentLabelSort.column = column;
+                        currentLabelSort.direction = 'desc';
+                    }
+                    createLabelsSummary();
+                });
+            });
+
+            // Add click handlers for label rows (expand/collapse)
+            document.querySelectorAll('.label-row').forEach(tr => {
+                const expandIcon = tr.querySelector('.expand-icon');
+                const labelId = tr.getAttribute('data-label-id');
+
+                // Click on expand icon or first cell to expand
+                const expandCell = tr.querySelector('td:first-child');
+                expandCell.addEventListener('click', function (e) {
+                    e.stopPropagation();
+
+                    // Find all detail rows for this label
+                    const detailRows = document.querySelectorAll(`[data-label-id="${labelId}"].blocks-detail-row`);
+                    const isExpanded = expandIcon.classList.contains('expanded');
+
+                    if (isExpanded) {
+                        detailRows.forEach(row => row.style.display = 'none');
+                        expandIcon.classList.remove('expanded');
+                    } else {
+                        detailRows.forEach(row => row.style.display = 'table-row');
+                        expandIcon.classList.add('expanded');
+                    }
+                });
+
+                // Click on rest of row to select first block
+                tr.addEventListener('click', function (e) {
+                    if (e.target.closest('td:first-child')) return; // Ignore if clicking expand cell
+                    const pc = parseInt(this.getAttribute('data-pc'));
+                    const data = processData();
+                    const block = data.find(d => d.block_pcs && d.block_pcs.includes(pc));
+                    if (block) {
+                        selectBlock(block);
+                    }
+                });
+            });
+
+            // Add click handlers for individual block rows
+            document.querySelectorAll('.blocks-detail-row').forEach(tr => {
+                tr.addEventListener('click', function () {
+                    const pc = parseInt(this.getAttribute('data-block-pc'));
+                    const data = processData();
+                    const block = data.find(d => d.block_pcs && d.block_pcs.includes(pc));
+                    if (block) {
+                        selectBlock(block);
+                    }
+                });
+            });
+        }
+
+        function sortLabelData(data, column, direction) {
+            data.sort((a, b) => {
+                let aVal = a[column];
+                let bVal = b[column];
+
+                // Special handling for label (case-insensitive string sort)
+                if (column === 'label') {
+                    aVal = aVal.toLowerCase();
+                    bVal = bVal.toLowerCase();
+                }
+
+                if (direction === 'asc') {
+                    return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+                } else {
+                    return aVal > bVal ? -1 : aVal < bVal ? 1 : 0;
+                }
+            });
+        }
+
+        function highlightElements(blockId, isHover = true) {
+            // Highlight corresponding bar
+            d3.selectAll('.bar')
+                .classed('bar-highlight', d => d.block_id === blockId);
+        }
+
+        function clearHighlights() {
+            d3.selectAll('.bar').classed('bar-highlight', false);
+        }
+
+        function updateBarSelection() {
+            if (!selectedBlock || selectedBlock.is_other) return;
+            d3.selectAll('.bar')
+                .classed('bar-selected', d => d.block_id === selectedBlock.block_id);
+        }
+
+        function updateInfoText() {
+            if (!plotInfoText) return;
+            const showingEffectiveness = chartTabSecondary.style.display === 'none';
+            if (showingEffectiveness) {
+                plotInfoText.innerHTML = 'The plot shows each basic block, sorted the proving cost it causes in the software execution:<br>• The <strong>width</strong> corresponds to its cost before acceleration.<br>• The <strong>height</strong> shows the factor by which the cost is reduced after acceleration.';
+            } else {
+                plotInfoText.innerHTML = 'The plot shows the trade-off between added verifier cost and saved proving cost for accelerating basic blocks:<br>• The <strong>x-axis</strong> shows the cumulative verifier cost of accelerated blocks. APCs are added by decreasing density, i.e., the saved proving cost divided by the added verification cost.<br>• The <strong>y-axis</strong> shows the cumulative saved cost achieved by accelerating those blocks.';
+            }
+        }
+
+        function updateValueCostPointStyles() {
+            const baseColor = '#0d6efd';
+            const selectedColor = '#d32f2f';
+            d3.selectAll('.value-point').each(function (d) {
+                const isSelected = selectedBlock && !selectedBlock.is_other && selectedBlock.block_id === d.block.block_id;
+                d3.select(this)
+                    .attr('fill', isSelected ? selectedColor : baseColor)
+                    .attr('stroke', isSelected ? selectedColor : baseColor)
+                    .attr('stroke-width', 1)
+                    .attr('r', isSelected ? SELECTED_RADIUS : POINT_RADIUS);
+            });
+        }
+
+        function selectBlock(blockData) {
+            // Clear previous selection
+            d3.selectAll('.bar').classed('bar-selected', false);
+
+            // Set new selection
+            selectedBlock = blockData;
+
+            // Update URL
+            const newUrl = new URL(window.location);
+            if (blockData && !blockData.is_other) {
+                // Highlight selected bar
+                d3.selectAll('.bar')
+                    .classed('bar-selected', d => d.block_id === blockData.block_id);
+
+                // Update URL with block parameter (block_id is comma-separated hex PCs)
+                newUrl.searchParams.set('block', blockData.block_id);
+
+                // Update the PC search input field with the entry PC
+                pcSearch.value = '0x' + blockData.start_pc.toString(16);
+            } else {
+                // Clear block parameter if deselecting or selecting "Other"
+                newUrl.searchParams.delete('block');
+
+                // Clear the PC search input field
+                pcSearch.value = '';
+            }
+            window.history.replaceState({}, document.title, newUrl);
+
+            // Update code panel selection
+            updateCodePanelSelection(blockData);
+            // Update value-cost plot point styling
+            updateValueCostPointStyles();
+            // Update bar selection styling (for re-rendered charts)
+            updateBarSelection();
+        }
+
+        function showAllCode() {
+            const codePanel = document.getElementById('codePanel');
+
+            // Get all blocks sorted by start_pc
+            const allBlocks = processData().sort((a, b) => a.start_pc - b.start_pc);
+
+            let codeHtml = '';
+            allBlocks.forEach((block, index) => {
+                if (block.is_other) return; // Skip "Other" grouped blocks
+
+                // Check for gap between previous superblock and current superblock
+                if (index > 0) {
+                    const prevBlock = allBlocks[index - 1];
+                    if (!prevBlock.is_other) {
+                        const prevBlockEnd = prevBlock.end_pc;
+                        const gap = block.start_pc - prevBlockEnd;
+                        const missingInstructions = gap / 4;
+
+                        if (missingInstructions > 0) {
+                            codeHtml += `
+                                <div style="padding: 10px; margin: 10px 0; background-color: #f0f0f0; border-left: 3px solid #999; font-style: italic; color: #666;">
+                                    ... ${missingInstructions} instruction${missingInstructions !== 1 ? 's' : ''} not shown (0x${prevBlockEnd.toString(16)} - 0x${(block.start_pc - 4).toString(16)}) ...
+                                </div>
+                            `;
+                        }
+                    }
+                }
+
+                // Check all basic block PCs for labels
+                let labelData = '';
+                for (const basicBlock of block.original_blocks) {
+                    const pcKey = basicBlock.start_pc.toString();
+                    if (currentLabels[pcKey] && currentLabels[pcKey].length > 0) {
+                        const labels = currentLabels[pcKey];
+                        const labelsHtml = labels.map(label =>
+                            `<div class="label-name">${escapeHtml(label)}</div>`
+                        ).join('');
+                        labelData = JSON.stringify(labels);
+                        codeHtml += `
+                            <div class="label-line" data-pc="${block.start_pc}" data-labels='${labelData}'>
+                                ${labelsHtml}
+                            </div>
+                        `;
+                        break; // Use first matching label for the sticky header
+                    }
+                }
+
+                const blockId = `block-${block.block_pcs.join('_')}`;
+                const pcsText = block.block_pcs.length === 1
+                    ? `PC: 0x${block.start_pc.toString(16)}`
+                    : `PCs: ${block.block_pcs.map(pc => '0x' + pc.toString(16)).join(', ')}`;
+                const headerText = `${pcsText} | Cost (software): ${formatMetric(block.metric_before)} | Effectiveness: ${block.effectiveness.toFixed(2)} | Instructions: ${block.instructions}`;
+
+                // Render each basic block as a sub-section within the superblock
+                const linesHtml = block.original_blocks.map((basicBlock, bbIdx) => {
+                    const subHeader = block.original_blocks.length > 1
+                        ? `<div style="padding: 2px 8px; font-size: 0.8em; color: #888; border-top: 1px dashed #ccc; margin-top: 2px;">basic block 0x${basicBlock.start_pc.toString(16)}</div>`
+                        : '';
+                    const instrs = basicBlock.instructions.map((stmt, idx) =>
+                        `<div class="code-line" data-pc="${basicBlock.start_pc}" data-line="${idx}">${escapeHtml(stmt)}</div>`
+                    ).join('');
+                    return subHeader + instrs;
+                }).join('');
+
+                codeHtml += `
+                    <div class="code-block" id="${blockId}" data-pc="${block.start_pc}" data-labels='${labelData}'>
+                        <div class="code-block-header">${headerText}</div>
+                        ${linesHtml}
+                    </div>
+                `;
+            });
+
+            codePanel.innerHTML = codeHtml;
+
+            // Add click handlers to code lines
+            document.querySelectorAll('.code-line').forEach(line => {
+                line.addEventListener('click', function () {
+                    const pc = parseInt(this.getAttribute('data-pc'));
+                    const blockData = allBlocks.find(b => b.block_pcs && b.block_pcs.includes(pc));
+                    if (blockData) {
+                        selectBlock(blockData);
+                    }
+                });
+            });
+
+            // Set up scroll listener to update sticky header
+            updateStickyLabel();
+            codePanel.removeEventListener('scroll', updateStickyLabel);
+            codePanel.addEventListener('scroll', updateStickyLabel);
+
+            // Set up click handler for sticky header
+            const stickyHeader = document.getElementById('stickyLabelHeader');
+            if (stickyHeader) {
+                stickyHeader.removeEventListener('click', handleStickyLabelClick);
+                stickyHeader.addEventListener('click', handleStickyLabelClick);
+            }
+        }
+
+        function handleStickyLabelClick() {
+            const stickyHeader = document.getElementById('stickyLabelHeader');
+            const pc = stickyHeader.getAttribute('data-pc');
+
+            if (pc) {
+                const pcValue = parseInt(pc);
+                const data = processData();
+                const block = data.find(d => d.block_pcs && d.block_pcs.includes(pcValue));
+
+                if (block) {
+                    selectBlock(block);
+                }
+            }
+        }
+
+        function updateStickyLabel() {
+            const codePanel = document.getElementById('codePanel');
+            const stickyHeader = document.getElementById('stickyLabelHeader');
+
+            if (!codePanel || !stickyHeader) return;
+
+            // Find the first visible block or label
+            const scrollTop = codePanel.scrollTop;
+            const panelTop = codePanel.getBoundingClientRect().top;
+
+            // Get all blocks and labels
+            const elements = codePanel.querySelectorAll('.label-line, .code-block');
+            let currentLabels = null;
+            let currentPc = null;
+
+            for (let i = 0; i < elements.length; i++) {
+                const element = elements[i];
+                const elementTop = element.offsetTop;
+
+                // If this element is past our scroll position, use the previous label
+                if (elementTop > scrollTop) {
+                    break;
+                }
+
+                // Check if this element has labels
+                const labelsAttr = element.getAttribute('data-labels');
+                if (labelsAttr && labelsAttr !== '""' && labelsAttr !== '') {
+                    try {
+                        currentLabels = JSON.parse(labelsAttr);
+                        currentPc = element.getAttribute('data-pc');
+                    } catch (e) {
+                        // Ignore parse errors
+                    }
+                }
+            }
+
+            // Update sticky header
+            if (currentLabels && currentLabels.length > 0 && currentPc) {
+                const labelHtml = currentLabels.map(label =>
+                    `<div class="label-name">${escapeHtml(label)}</div>`
+                ).join('');
+                stickyHeader.innerHTML = labelHtml;
+                stickyHeader.setAttribute('data-pc', currentPc);
+                stickyHeader.classList.add('active');
+            } else {
+                stickyHeader.classList.remove('active');
+                stickyHeader.removeAttribute('data-pc');
+            }
+        }
+
+        function updateCodePanelSelection(blockData) {
+            const codeInfo = document.getElementById('codeBlockInfo');
+
+            // Remove all previous selections
+            document.querySelectorAll('.code-block').forEach(block => {
+                block.classList.remove('selected');
+            });
+            document.querySelectorAll('.code-line').forEach(line => {
+                line.classList.remove('highlighted');
+            });
+
+            if (!blockData) {
+                codeInfo.innerHTML = '<span class="text-muted">Click on a bar or code line to select a block</span>';
+                return;
+            }
+
+            if (blockData.is_other) {
+                codeInfo.innerHTML = `
+                    <strong>Other blocks (${blockData.count} APCs grouped)</strong><br/>
+                    <span>Execution frequency: ${formatMetric(blockData.execution_frequency)}</span><br/>
+                    <span>Cost (software version): ${formatMetric(blockData.software_version_cells)}</span><br/>
+                    <span>Cost (accelerated): ${formatMetric(blockData.metric_after || 0)}</span><br/>
+                    <span>Effectiveness: ${blockData.effectiveness.toFixed(2)}</span><br/>
+                    <span>Verifier cost (accelerated): n/a</span><br/>
+                    <span>APC size (total): ${blockData.stats_after.main_columns || 0} cols, ${blockData.stats_after.bus_interactions || 0} bus, ${blockData.stats_after.constraints || 0} constraints</span>
+                `;
+                return;
+            }
+
+            const pcsDisplay = blockData.block_pcs.length === 1
+                ? `0x${blockData.start_pc.toString(16)}`
+                : blockData.block_pcs.map(pc => '0x' + pc.toString(16)).join(', ');
+            codeInfo.innerHTML = `
+                <strong>Block at PC: ${pcsDisplay}</strong><br/>
+                <span>Execution frequency: ${formatMetric(blockData.execution_frequency)}</span><br/>
+                <span>Instructions: ${blockData.instructions}</span><br/>
+                <span>Cost (software version): ${formatMetric(blockData.metric_before)}</span><br/>
+                <span>Cost (accelerated): ${formatMetric(blockData.metric_after)}</span><br/>
+                <span>Effectiveness: ${blockData.effectiveness.toFixed(2)}</span><br/>
+                <span>Verifier cost (accelerated): ${formatMetric(blockData.metric_after_raw)}</span><br/>
+                <span>APC size: ${blockData.stats_after.main_columns} cols, ${blockData.stats_after.bus_interactions} bus, ${blockData.stats_after.constraints} constraints</span>
+            `;
+
+            // Highlight the selected superblock
+            const blockElement = document.getElementById(`block-${blockData.block_pcs.join('_')}`);
+            if (blockElement) {
+                blockElement.classList.add('selected');
+
+                // Highlight all lines in this block
+                blockElement.querySelectorAll('.code-line').forEach(line => {
+                    line.classList.add('highlighted');
+                });
+
+                // Scroll within the code panel only, not the whole page
+                const codePanel = document.getElementById('codePanel');
+                const blockTop = blockElement.offsetTop;
+                codePanel.scrollTo({ top: blockTop, behavior: 'smooth' });
+            }
+        }
+
+        function clearCode() {
+            // Only clear if there's no selected block
+            if (!selectedBlock) {
+                document.getElementById('codeBlockInfo').innerHTML = '<span class="text-muted">Click on a bar or code line to select a block</span>';
+                showAllCode();
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function createChart(data, totalCells, meanEffectiveness) {
+            // Clear existing chart
+            d3.select('#chart').selectAll('*').remove();
+
+            // Set dimensions and margins
+            const margin = { top: 40, right: 120, bottom: 60, left: 80 };
+            const containerWidth = document.getElementById('chart').clientWidth || 1200;
+            const width = containerWidth - margin.left - margin.right;
+            const height = 270 - margin.top - margin.bottom;
+
+            // Group small blocks (< 0.1% threshold)
+            const threshold = totalCells * 0.001;
+            const largeBlocks = data.filter(d => d.software_version_cells >= threshold);
+            const smallBlocks = data.filter(d => d.software_version_cells < threshold);
+
+            let plotData = [...largeBlocks];
+
+            if (smallBlocks.length > 0) {
+                const otherCells = smallBlocks.reduce((sum, d) => sum + d.software_version_cells, 0);
+                const otherEffectiveness = smallBlocks.reduce((sum, d) => sum + d.effectiveness * d.software_version_cells, 0) / otherCells;
+                const otherExecFreq = smallBlocks.reduce((sum, d) => sum + d.execution_frequency, 0);
+                const otherStatsAfter = smallBlocks.reduce((acc, d) => {
+                    if (d.stats_after) {
+                        acc.main_columns = (acc.main_columns || 0) + d.stats_after.main_columns;
+                        acc.bus_interactions = (acc.bus_interactions || 0) + d.stats_after.bus_interactions;
+                        acc.constraints = (acc.constraints || 0) + d.stats_after.constraints;
+                    }
+                    return acc;
+                }, {});
+                plotData.push({
+                    effectiveness: otherEffectiveness,
+                    software_version_cells: otherCells,
+                    execution_frequency: otherExecFreq,
+                    instructions: -1,
+                    is_other: true,
+                    count: smallBlocks.length,
+                    statements: [],  // No individual statements for grouped blocks
+                    stats_after: otherStatsAfter
+                });
+            }
+
+            // Calculate positions
+            let xPos = 0;
+            plotData.forEach(d => {
+                d.x = xPos;
+                d.width = d.software_version_cells;
+                xPos += d.width;
+            });
+
+            // Create SVG
+            const svg = d3.select('#chart')
+                .append('svg')
+                .attr('width', width + margin.left + margin.right)
+                .attr('height', height + margin.top + margin.bottom)
+                .on('click', function (event) {
+                    // If clicking on the background (not a bar), deselect
+                    if (event.target.tagName === 'svg') {
+                        selectBlock(null);
+                    }
+                })
+                .append('g')
+                .attr('transform', `translate(${margin.left},${margin.top})`);
+
+            // Add background rect to capture clicks
+            svg.append('rect')
+                .attr('width', width)
+                .attr('height', height)
+                .style('fill', 'none')
+                .style('pointer-events', 'all')
+                .on('click', function (event) {
+                    event.stopPropagation();
+                    selectBlock(null);
+                });
+
+            // Create scales
+            const xScale = d3.scaleLinear()
+                .domain([0, totalCells])
+                .range([0, width]);
+
+            // Calculate 99th percentile effectiveness by trace cells
+            // Sort by effectiveness ascending
+            const sortedByEffectiveness = [...plotData].sort((a, b) => a.effectiveness - b.effectiveness);
+
+            // Find the effectiveness value at 99th percentile weighted by trace cells
+            let cumulativeCells = 0;
+            const p99Threshold = totalCells * 0.99;
+            let maxEffectivenessP99 = 0;
+
+            for (const d of sortedByEffectiveness) {
+                cumulativeCells += d.software_version_cells;
+                maxEffectivenessP99 = d.effectiveness;
+                if (cumulativeCells >= p99Threshold) {
+                    break;
+                }
+            }
+
+            // Use 99th percentile for y-axis scaling
+            const yScale = d3.scaleLinear()
+                .domain([0, maxEffectivenessP99 * 1.1])
+                .range([height, 0]);
+
+            // Color scale for instructions (log scale)
+            const validInstructions = plotData.filter(d => !d.is_other && d.instructions > 0).map(d => d.instructions);
+            const instrMin = d3.min(validInstructions) || 1;
+            const instrMax = d3.max(validInstructions) || instrMin;
+            const colorScale = d3.scaleSequentialLog()
+                .domain([instrMin, instrMax])
+                .interpolator(d3.interpolateRdYlGn);
+
+            // Add grid
+            svg.append('g')
+                .attr('class', 'grid')
+                .attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(xScale)
+                    .tickSize(-height)
+                    .tickFormat(''));
+
+            svg.append('g')
+                .attr('class', 'grid')
+                .call(d3.axisLeft(yScale)
+                    .tickSize(-width)
+                    .tickFormat(''));
+
+            // Create tooltip
+            const tooltip = d3.select('body').append('div')
+                .attr('class', 'tooltip')
+                .style('opacity', 0);
+
+            // Add bars
+            svg.selectAll('.bar')
+                .data(plotData)
+                .enter().append('rect')
+                .attr('class', 'bar')
+                .attr('x', d => xScale(d.x))
+                .attr('y', d => Math.max(0, yScale(d.effectiveness)))
+                .attr('width', d => xScale(d.width) - xScale(0))
+                .attr('height', d => height - Math.max(0, yScale(d.effectiveness)))
+                .style('fill', d => d.is_other ? 'lightgray' : colorScale(d.instructions))
+                .on('mouseover', function (event, d) {
+                    // Show tooltip
+                    tooltip.transition()
+                        .duration(200)
+                        .style('opacity', .9);
+
+                    let content = '';
+                    if (d.is_other) {
+                        content = `<strong>Other (${d.count} APCs)</strong><br/>
+                                  Execution frequency: ${formatMetric(d.execution_frequency)}<br/>
+                                  Cost (software version): ${formatMetric(d.software_version_cells)}<br/>
+                                  Cost (accelerated): ${formatMetric(d.metric_after || 0)}<br/>
+                                  Effectiveness: ${d.effectiveness.toFixed(2)}<br/>
+                                  Verifier cost (accelerated): n/a<br/>
+                                  APC size (total): ${d.stats_after.main_columns || 'N/A'} cols, ${d.stats_after.bus_interactions || 'N/A'} bus, ${d.stats_after.constraints || 'N/A'} constraints`;
+                    } else {
+                        const dPcsDisplay = d.block_pcs.length === 1
+                            ? `0x${d.start_pc.toString(16)}`
+                            : d.block_pcs.map(pc => '0x' + pc.toString(16)).join(', ');
+                        content = `<strong>PC: ${dPcsDisplay}</strong><br/>
+                                  Execution frequency: ${formatMetric(d.execution_frequency)}<br/>
+                                  Instructions: ${d.instructions}<br/>
+                                  Cost (software version): ${formatMetric(d.metric_before)}<br/>
+                                  Cost (accelerated): ${formatMetric(d.metric_after)}<br/>
+                                  Effectiveness: ${d.effectiveness.toFixed(2)}<br/>
+                                  Verifier cost (accelerated): ${formatMetric(d.metric_after_raw)}<br/>
+                                  APC size: ${d.stats_after.main_columns} cols, ${d.stats_after.bus_interactions} bus, ${d.stats_after.constraints} constraints`;
+                    }
+
+                    tooltip.html(content)
+                        .style('left', (event.pageX - 50) + 'px')
+                        .style('top', (event.pageY + 20) + 'px');
+
+                    // Highlight elements (but don't change code on hover if something is selected)
+                    if (!d.is_other) {
+                        highlightElements(d.block_id, true);
+                    }
+                })
+                .on('mouseout', function (d) {
+                    // Hide tooltip
+                    tooltip.transition()
+                        .duration(500)
+                        .style('opacity', 0);
+
+                    // Clear highlights
+                    clearHighlights();
+                })
+                .on('click', function (event, d) {
+                    event.stopPropagation();
+                    // Select this superblock on click
+                    selectBlock(d);
+                });
+
+            // Note: Selection is handled in the selectBlock function after chart is created
+
+            // Add "Other" label for wide enough other blocks
+            plotData.filter(d => d.is_other && d.width > totalCells * 0.02).forEach(d => {
+                svg.append('text')
+                    .attr('x', xScale(d.x + d.width / 2))
+                    .attr('y', yScale(d.effectiveness / 2))
+                    .attr('text-anchor', 'middle')
+                    .attr('font-size', '10px')
+                    .attr('font-weight', 'bold')
+                    .text(`Other (${d.count} APCs)`);
+            });
+
+            // Add mean line
+            svg.append('line')
+                .attr('class', 'mean-line')
+                .attr('x1', 0)
+                .attr('x2', width)
+                .attr('y1', yScale(meanEffectiveness))
+                .attr('y2', yScale(meanEffectiveness));
+
+            // Add axes
+            svg.append('g')
+                .attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(xScale)
+                    .tickFormat(d => formatMetric(d)));
+
+            svg.append('g')
+                .call(d3.axisLeft(yScale));
+
+            // Add labels
+            const effType = effectivenessType.options[effectivenessType.selectedIndex].text;
+            svg.append('text')
+                .attr('transform', 'rotate(-90)')
+                .attr('y', 0 - margin.left)
+                .attr('x', 0 - (height / 2))
+                .attr('dy', '1em')
+                .style('text-anchor', 'middle')
+                .text('Effectiveness');
+
+            svg.append('text')
+                .attr('transform', `translate(${width / 2}, ${height + margin.bottom})`)
+                .style('text-anchor', 'middle')
+                .text(`Cumulative ${effType.toLowerCase()} before (software version)`);
+
+            // Add title
+            svg.append('text')
+                .attr('x', width / 2)
+                .attr('y', 0 - margin.top / 2)
+                .attr('text-anchor', 'middle')
+                .style('font-size', '16px')
+                .style('font-weight', 'bold')
+                .text(`Effectiveness by Basic Block (reduction in ${effType})`);
+
+            // Add mean text box
+            svg.append('rect')
+                .attr('x', 5)
+                .attr('y', 5)
+                .attr('width', 80)
+                .attr('height', 25)
+                .style('fill', 'wheat')
+                .style('opacity', 0.8)
+                .style('stroke', 'gray')
+                .style('stroke-width', 1)
+                .style('rx', 3);
+
+            svg.append('text')
+                .attr('x', 45)
+                .attr('y', 22)
+                .attr('text-anchor', 'middle')
+                .style('font-size', '12px')
+                .text(`Mean: ${meanEffectiveness.toFixed(2)}`);
+
+            // Add color legend
+            if (validInstructions.length > 0) {
+                const legendWidth = 20;
+                const legendHeight = 200;
+
+                const legendScale = d3.scaleLinear()
+                    .domain([Math.log10(instrMin), Math.log10(instrMax)])
+                    .range([legendHeight, 0]);
+
+                const legendAxis = d3.axisRight(legendScale)
+                    .ticks(5)
+                    .tickFormat(d => Math.pow(10, d).toFixed(0));
+
+                const legend = svg.append('g')
+                    .attr('transform', `translate(${width + 40}, ${height / 2 - legendHeight / 2})`);
+
+                // Create gradient
+                const gradientId = 'instruction-gradient';
+                const gradient = svg.append('defs')
+                    .append('linearGradient')
+                    .attr('id', gradientId)
+                    .attr('x1', '0%')
+                    .attr('y1', '100%')
+                    .attr('x2', '0%')
+                    .attr('y2', '0%');
+
+                const steps = 20;
+                for (let i = 0; i <= steps; i++) {
+                    const t = i / steps;
+                    const value = instrMin * Math.pow(instrMax / instrMin, t);
+                    gradient.append('stop')
+                        .attr('offset', `${t * 100}%`)
+                        .style('stop-color', colorScale(value));
+                }
+
+                legend.append('rect')
+                    .attr('width', legendWidth)
+                    .attr('height', legendHeight)
+                    .style('fill', `url(#${gradientId})`);
+
+                legend.append('g')
+                    .attr('transform', `translate(${legendWidth}, 0)`)
+                    .call(legendAxis);
+
+                legend.append('text')
+                    .attr('transform', `rotate(90)`)
+                    .attr('y', -legendWidth - 30)
+                    .attr('x', legendHeight / 2)
+                    .style('text-anchor', 'middle')
+                    .style('font-size', '12px')
+                    .text('Instructions (log)');
+            }
+
+            // Apply selection styling if a block is already selected
+            updateBarSelection();
+        }
+    </script>
+</body>
+
+</html>

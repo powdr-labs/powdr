@@ -210,7 +210,10 @@ impl<T: RuntimeConstant, V: Clone + Eq> IndexedConstraintSystem<T, V> {
     }
 
     /// Removes all derived variables that do not fulfill the predicate.
-    pub fn retain_derived_variables(&mut self, mut f: impl FnMut(&DerivedVariable<T, V>) -> bool) {
+    pub fn retain_derived_variables(
+        &mut self,
+        mut f: impl FnMut(&DerivedVariable<T, V, GroupedExpression<T, V>>) -> bool,
+    ) {
         retain(
             &mut self.constraint_system.derived_variables,
             &mut self.variable_occurrences,
@@ -812,20 +815,20 @@ mod tests {
             algebraic_constraints: vec![],
             bus_interactions: vec![],
             derived_variables: vec![
-                DerivedVariable {
-                    variable: "d1",
-                    computation_method: ComputationMethod::QuotientOrZero(
+                DerivedVariable::new(
+                    "d1",
+                    ComputationMethod::QuotientOrZero(
                         GroupedExpression::from_unknown_variable("x1"),
                         GroupedExpression::from_unknown_variable("x2"),
                     ),
-                },
-                DerivedVariable {
-                    variable: "d2",
-                    computation_method: ComputationMethod::QuotientOrZero(
+                ),
+                DerivedVariable::new(
+                    "d2",
+                    ComputationMethod::QuotientOrZero(
                         GroupedExpression::from_unknown_variable("y1"),
                         GroupedExpression::from_unknown_variable("y2"),
                     ),
-                },
+                ),
             ],
         }
         .into();

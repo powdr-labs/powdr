@@ -12,10 +12,15 @@ use crate::optimistic::execution_constraint_generator::generate_execution_constr
 use crate::optimistic::execution_literals::optimistic_literals;
 use crate::symbolic_machine::{SymbolicConstraint, SymbolicMachine};
 use crate::symbolic_machine_generator::convert_apc_field_type;
+use adapter::AdapterOptimisticConstraint;
+use execution::{
+    ExecutionState, LocalOptimisticLiteral, OptimisticConstraint, OptimisticExpression,
+    OptimisticLiteral,
+};
 use expression::{AlgebraicExpression, AlgebraicReference};
 use itertools::Itertools;
 use powdr::UniqueReferences;
-use powdr_constraint_solver::constraint_system::ComputationMethod;
+use powdr_constraint_solver::constraint_system::{ComputationMethod, DerivedVariable};
 use powdr_expression::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
 };
@@ -60,6 +65,13 @@ pub struct PowdrConfig {
     /// Number of basic blocks to skip for autoprecompiles.
     /// This is either the largest N if no PGO, or the costliest N with PGO.
     pub skip_autoprecompiles: u64,
+    /// Maximum number of basic blocks included in a superblock.
+    /// Default of 1 means only basic blocks are considered.
+    pub superblock_max_bb_count: u8,
+    /// Maximum number of instructions included in an Apc.
+    pub apc_max_instructions: u32,
+    /// Apcs executed less than the cutoff are ignored.
+    pub apc_exec_count_cutoff: u32,
     /// Max degree of constraints.
     pub degree_bound: DegreeBound,
     /// The path to the APC candidates dir, if any.
@@ -73,10 +85,34 @@ impl PowdrConfig {
         Self {
             autoprecompiles,
             skip_autoprecompiles,
+            // superblocks disabled by default
+            superblock_max_bb_count: 1,
+            apc_max_instructions: u32::MAX,
+            apc_exec_count_cutoff: 1,
             degree_bound,
             apc_candidates_dir_path: None,
             should_use_optimistic_precompiles: false,
         }
+    }
+
+    pub fn with_superblocks(
+        mut self,
+        max_bb_count: u8,
+        max_instructions: Option<u32>,
+        exec_count_cutoff: Option<u32>,
+    ) -> Self {
+        assert!(
+            max_bb_count > 0,
+            "superblock_max_bb_count must be greater than 0"
+        );
+        self.superblock_max_bb_count = max_bb_count;
+        if let Some(max_instructions) = max_instructions {
+            self.apc_max_instructions = max_instructions;
+        }
+        if let Some(exec_count_cutoff) = exec_count_cutoff {
+            self.apc_exec_count_cutoff = exec_count_cutoff;
+        }
+        self
     }
 
     pub fn with_apc_candidates_dir<P: AsRef<Path>>(mut self, path: P) -> Self {
@@ -134,12 +170,6 @@ pub trait InstructionHandler {
 
     /// Returns the AIR stats for the given instruction.
     fn get_instruction_air_stats(&self, instruction: &Self::Instruction) -> AirStats;
-
-    /// Returns whether the given instruction is allowed in an autoprecompile.
-    fn is_allowed(&self, instruction: &Self::Instruction) -> bool;
-
-    /// Returns whether the given instruction is a branching instruction.
-    fn is_branching(&self, instruction: &Self::Instruction) -> bool;
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -162,7 +192,7 @@ pub struct Apc<T, I, A, V> {
     pub optimistic_constraints: OptimisticConstraints<A, V>,
 }
 
-impl<T, I, A, V> Apc<T, I, A, V> {
+impl<T, I: PcStep, A, V> Apc<T, I, A, V> {
     pub fn subs(&self) -> &[Vec<Substitution>] {
         &self.subs
     }
@@ -172,8 +202,8 @@ impl<T, I, A, V> Apc<T, I, A, V> {
     }
 
     /// The instructions in the block.
-    pub fn instructions(&self) -> impl Iterator<Item = &I> + Clone {
-        self.block.instructions()
+    pub fn instructions(&self) -> impl Iterator<Item = &I> {
+        self.block.instructions().map(|(_, i)| i)
     }
 
     /// The PCs of the original basic blocks composing this APC. Can be used to identify the APC.
@@ -256,13 +286,10 @@ pub fn build<A: Adapter>(
     mut export_options: ExportOptions,
     empirical_constraints: &EmpiricalConstraints,
 ) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
-    let basic_block = block
-        .try_as_basic_block()
-        .expect("superblocks not supported yet");
     let start = std::time::Instant::now();
 
     let (mut machine, column_allocator) = statements_to_symbolic_machine::<A>(
-        basic_block,
+        &block,
         vm_config.instruction_handler,
         &vm_config.bus_map,
     );
@@ -272,26 +299,23 @@ pub fn build<A: Adapter>(
         optimistic_precompile_config().restrict_optimistic_precompiles;
     let algebraic_references =
         BlockCellAlgebraicReferenceMapper::new(&column_allocator.subs, machine.main_columns());
-    let empirical_constraints = empirical_constraints.for_block(basic_block);
+    let empirical_constraints = empirical_constraints.for_block(&block);
 
     // TODO: Use execution constraints
     let (empirical_constraints, _execution_constraints) = if should_generate_execution_constraints {
         // Filter constraints to only contain execution-checkable columns,
         // generate execution constraints for them.
-        let optimistic_literals = optimistic_literals::<A>(basic_block, &vm_config, &degree_bound);
+        let optimistic_literals = optimistic_literals::<A>(&block, &vm_config, &degree_bound);
 
-        let empirical_constraints = empirical_constraints.filtered(
-            |block_cell| {
-                let algebraic_reference = algebraic_references
-                    .get_algebraic_reference(block_cell)
-                    .unwrap();
-                optimistic_literals.contains_key(algebraic_reference)
-            },
-            <A::Instruction as PcStep>::pc_step(),
-        );
+        let empirical_constraints = empirical_constraints.filtered(|block_cell| {
+            let algebraic_reference = algebraic_references
+                .get_algebraic_reference(block_cell)
+                .unwrap();
+            optimistic_literals.contains_key(algebraic_reference)
+        });
 
         let empirical_constraints =
-            ConstraintGenerator::<A>::new(empirical_constraints, algebraic_references, basic_block)
+            ConstraintGenerator::<A>::new(empirical_constraints, algebraic_references, &block)
                 .generate_constraints();
 
         let execution_constraints =
@@ -300,7 +324,7 @@ pub fn build<A: Adapter>(
     } else {
         // Don't filter empirical constraints, return empty execution constraints.
         let empirical_constraints =
-            ConstraintGenerator::<A>::new(empirical_constraints, algebraic_references, basic_block)
+            ConstraintGenerator::<A>::new(empirical_constraints, algebraic_references, &block)
                 .generate_constraints();
         (empirical_constraints, vec![])
     };
@@ -347,8 +371,10 @@ pub fn build<A: Adapter>(
     metrics::counter!("after_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
 
-    // TODO: add optimistic constraints here
-    let optimistic_constraints = OptimisticConstraints::from_constraints(vec![]);
+    // TODO: for now, we only include optimistic constraints related to superblock PCs.
+    // Optimistic constraints from empirical constraints are still missing.
+    let pc_constraints = superblock_pc_constraints::<A>(&block);
+    let optimistic_constraints = OptimisticConstraints::from_constraints(pc_constraints);
 
     let apc = Apc::new(block, machine, optimistic_constraints, &column_allocator);
 
@@ -361,6 +387,29 @@ pub fn build<A: Adapter>(
     metrics::gauge!("apc_gen_time_ms", &labels).set(start.elapsed().as_millis() as f64);
 
     Ok(apc)
+}
+
+/// Generate optimistic constraints for superblock jumps
+fn superblock_pc_constraints<A: Adapter>(
+    block: &SuperBlock<A::Instruction>,
+) -> Vec<AdapterOptimisticConstraint<A>> {
+    block
+        .instruction_indexed_start_pcs()
+        .into_iter()
+        .map(|(instr_idx, pc)| {
+            let left = OptimisticExpression::Literal(OptimisticLiteral {
+                instr_idx,
+                val: LocalOptimisticLiteral::Pc,
+            });
+            let Ok(pc_value) =
+                <<A as Adapter>::ExecutionState as ExecutionState>::Value::try_from(pc)
+            else {
+                panic!("PC doesn't fit in Value type");
+            };
+            let right = OptimisticExpression::Number(pc_value);
+            OptimisticConstraint { left, right }
+        })
+        .collect()
 }
 
 fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
@@ -416,9 +465,10 @@ fn add_guards<T: FieldElement>(
     };
     let is_valid = AlgebraicExpression::Reference(is_valid_ref.clone());
 
-    machine
-        .derived_columns
-        .push((is_valid_ref, ComputationMethod::Constant(T::one())));
+    machine.derived_columns.push(DerivedVariable::new(
+        is_valid_ref,
+        ComputationMethod::Constant(T::one()),
+    ));
 
     machine.constraints = machine
         .constraints
