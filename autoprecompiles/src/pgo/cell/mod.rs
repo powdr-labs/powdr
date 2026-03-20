@@ -113,7 +113,7 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
 
         let AdapterExecutionBlocks::<Self::Adapter> {
             blocks,
-            execution_static_block_runs: execution_bb_runs,
+            execution_static_block_runs,
         } = exec_blocks;
 
         tracing::info!(
@@ -160,8 +160,13 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
         // select best candidates
         let budget = self.max_total_apc_columns.unwrap_or(usize::MAX);
         let max_selected = (config.autoprecompiles + config.skip_autoprecompiles) as usize;
-        let selection =
-            select_blocks_greedy(&apcs, &blocks, budget, max_selected, &execution_bb_runs);
+        let selection = select_blocks_greedy(
+            &apcs,
+            &blocks,
+            budget,
+            max_selected,
+            &execution_static_block_runs,
+        );
 
         // skip per config
         let skip = (config.skip_autoprecompiles as usize).min(selection.len());

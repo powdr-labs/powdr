@@ -63,7 +63,7 @@ def plot_effectiveness(json_path, filename=None, effectiveness_type='cost'):
     print()
     
     # Calculate weighted mean effectiveness, corresponding to the overall effectiveness
-    # assuming that all static blocks are accelerated.
+    # assuming that all superblocks are accelerated.
     mean_effectiveness = (df['effectiveness'] * df['cost_after']).sum() / total_cost_after
     print(f"Mean effectiveness: {mean_effectiveness:.2f}")
     
