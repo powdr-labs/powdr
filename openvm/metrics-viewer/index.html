@@ -705,11 +705,11 @@ const METRIC_INFO = {
 + sum_metric(app, 'perm_cols')`,
     },
     app_proof_cells: {
-        desc: 'Total trace cells in the app proof, summed over all segments. Includes padding from rounding row counts up to powers of two.',
+        desc: 'Total trace cells in the app proof, summed over all segments. Includes main, preprocessed, and permutation cells. Also includes and padding.',
         code: "sum_metric(app, 'total_cells')",
     },
     app_proof_cells_used: {
-        desc: 'Trace cells actually used before power-of-two row padding. The percentage shows utilization (used / total).',
+        desc: 'Trace cells actually used before padding. Includes main and permutation cells, NOT preprocessed cells. The percentage shows utilization (used / total).',
         code: "sum_metric(app, 'total_cells_used')",
     },
     constraints: {
