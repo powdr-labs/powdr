@@ -600,14 +600,14 @@ function extractMetrics(runName, metricsJson) {
     const segmentsByAppAir = {};
     const rowsByAppAir = {};
     app.filter(e => e.metric === 'rows').forEach(e => {
-        segmentsByAppAir[e.air_name] = (segmentsByAppAir[e.air_name] || 0) + 1;
-        rowsByAppAir[e.air_name] = (rowsByAppAir[e.air_name] || 0) + parseFloat(e.value);
+        segmentsByAppAir[e.air_id] = (segmentsByAppAir[e.air_id] || 0) + 1;
+        rowsByAppAir[e.air_id] = (rowsByAppAir[e.air_id] || 0) + parseFloat(e.value);
     });
 
-    // weighted_sum: for each all_entries entry matching metricName, multiply by weight[air_name]
+    // weighted_sum: for each all_entries entry matching metricName, multiply by weight[air_id]
     function weightedSum(metricName, weights) {
         return allEntries.filter(e => e.metric === metricName)
-            .reduce((sum, e) => sum + parseFloat(e.value) * (weights[e.air_name] || 0), 0);
+            .reduce((sum, e) => sum + parseFloat(e.value) * (weights[e.air_id] || 0), 0);
     }
 
     m.constraints = hasConstraints ? weightedSum('constraints', segmentsByAppAir) : null;

@@ -140,9 +140,9 @@ python3 openvm-riscv/scripts/basic_metrics.py combine **/metrics.json > combined
 ```
 
 Example input files:
-- OpenVM 1 — Keccak: https://github.com/powdr-labs/bench-results/blob/gh-pages/results/2026-03-19-0538/keccak/combined_metrics.json
-- OpenVM 1 — Reth (older format, no constraints/interactions): https://github.com/powdr-labs/bench-results/blob/gh-pages/results/2026-03-19-0538/reth/combined_metrics.json
-- OpenVM 2 — Pairing: https://gist.githubusercontent.com/georgwiese/8cc98b7ed75953c76deae1e54a734370/raw/003b4ba1291ac15875cfac09163bb9fac7feffbc/metrics_pairing_openvm2_combined.json
+- OpenVM 1 — Keccak: https://github.com/powdr-labs/bench-results/blob/gh-pages/results/2026-03-22-0534/keccak/combined_metrics.json
+- OpenVM 1 — Reth (older format, no constraints/interactions): https://github.com/powdr-labs/bench-results/blob/gh-pages/results/2026-03-22-0534/reth/combined_metrics.json
+- OpenVM 2 — Pairing: https://gist.githubusercontent.com/leonardoalt/3074cb729c03470b1116674618b97267/raw/eec5e5a086bf07a57e2215843f0a3f1ada9d0d5c/metrics_v2_pairing_combined.json
 
 ## Testing
 
