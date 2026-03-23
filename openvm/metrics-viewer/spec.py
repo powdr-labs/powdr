@@ -103,6 +103,7 @@ def extract_metrics(run_name: str, metrics_json: MetricsJson) -> Metrics:
     m["app_proof_cols"] = sum_metric(app, "main_cols") + sum_metric(app, "prep_cols") + sum_metric(app, "perm_cols")
     segments = [int(e["segment"]) for e in app if "segment" in e]
     m["num_segments"] = max(segments, default=-1) + 1
+    m["num_air_instances"] = len([e for e in app if e["metric"] == "rows"])
     m["app_proof_cells"] = sum_metric(app, "total_cells")
     m["app_proof_cells_used"] = sum_metric(app, "total_cells_used")  # V1 only
 
@@ -218,6 +219,7 @@ def fmt_pct(v: float) -> str:
 
 BASIC_STATS_V1: list[BasicRow] = [
     ("num_segments",            "Segments",                     lambda v: str(int(v))),
+    ("num_air_instances",       "AIR Instances",                fmt_int),
     ("app_proof_cols",          "Columns",                  fmt_int),
     ("app_proof_cells",         "Cells",                    fmt_cells),
     ("app_proof_cells_used",    "Cells (without padding)",  fmt_cells),

@@ -544,6 +544,7 @@ function extractMetrics(runName, metricsJson) {
     m.app_proof_cols = mainCols + prepCols + permCols;
 
     m.num_segments = app.filter(e => 'segment' in e).reduce((max, e) => Math.max(max, parseInt(e.segment)), -1) + 1;
+    m.num_air_instances = app.filter(e => e.metric === 'rows').length;
 
     m.app_proof_cells = getMetric(app, 'total_cells');
     m.app_proof_cells_used = getMetric(app, 'total_cells_used'); // V1 only, null-ish in V2
@@ -702,6 +703,10 @@ const METRIC_INFO = {
     num_segments: {
         desc: 'Number of proving segments the app proof is split into.',
         code: `max(int(e['segment']) for e in app_entries) + 1`,
+    },
+    num_air_instances: {
+        desc: 'Total number of AIR instances across all segments (each AIR in each segment counts as one instance).',
+        code: `len([e for e in app if e['metric'] == 'rows'])`,
     },
     app_proof_cols: {
         desc: 'Total column count in the app proof, summed over all AIRs and segments (main + preprocessed + permutation trace columns).',
@@ -1203,6 +1208,7 @@ const TABLE_COLUMNS = [
 
 const BASIC_STATS_ROWS_V1 = [
     { key: 'num_segments', label: 'Segments', fmt: v => v },
+    { key: 'num_air_instances', label: 'AIR Instances', fmt: v => v.toLocaleString() },
     { key: 'app_proof_cols', label: 'Columns', fmt: v => v.toLocaleString() },
     { key: 'app_proof_cells', label: 'Cells', fmt: fmtCells },
     { key: 'app_proof_cells_used', label: 'Cells (without padding)', fmt: (v, m) => {
@@ -1217,6 +1223,7 @@ const BASIC_STATS_ROWS_V1 = [
 
 const BASIC_STATS_ROWS_V2 = [
     { key: 'num_segments', label: 'Segments', fmt: v => v },
+    { key: 'num_air_instances', label: 'AIR Instances', fmt: v => v.toLocaleString() },
     { key: 'app_proof_cols', label: 'Columns', fmt: v => v.toLocaleString() },
     { key: 'app_proof_cells', label: 'Cells', fmt: fmtCells },
     { key: 'constraints', label: 'Constraints', fmt: v => v.toLocaleString() },
