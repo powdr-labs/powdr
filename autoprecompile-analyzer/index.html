@@ -1169,6 +1169,7 @@
                          Cost (accelerated): ${formatMetric(b.metric_after)}<br/>
                          Effectiveness: ${b.effectiveness.toFixed(2)}<br/>
                          Verifier cost (accelerated): ${formatMetric(b.metric_after_raw)}<br/>
+                         Density (saved cost / verifier cost): ${formatMetric(b.density)}<br/>
                          APC size: ${b.stats_after.main_columns} cols, ${b.stats_after.bus_interactions} bus, ${b.stats_after.constraints} constraints`
                     )
                         .style('left', (event.pageX + 10) + 'px')
@@ -1764,6 +1765,7 @@
                 <span>Cost (accelerated): ${formatMetric(blockData.metric_after)}</span><br/>
                 <span>Effectiveness: ${blockData.effectiveness.toFixed(2)}</span><br/>
                 <span>Verifier cost (accelerated): ${formatMetric(blockData.metric_after_raw)}</span><br/>
+                <span>Density (saved cost / verifier cost): ${formatMetric(blockData.density)}</span><br/>
                 <span>APC size: ${blockData.stats_after.main_columns} cols, ${blockData.stats_after.bus_interactions} bus, ${blockData.stats_after.constraints} constraints</span>
             `;
 
@@ -1962,6 +1964,7 @@
                                   Cost (accelerated): ${formatMetric(d.metric_after)}<br/>
                                   Effectiveness: ${d.effectiveness.toFixed(2)}<br/>
                                   Verifier cost (accelerated): ${formatMetric(d.metric_after_raw)}<br/>
+                                  Density (saved cost / verifier cost): ${formatMetric(d.density)}<br/>
                                   APC size: ${d.stats_after.main_columns} cols, ${d.stats_after.bus_interactions} bus, ${d.stats_after.constraints} constraints`;
                     }
 
