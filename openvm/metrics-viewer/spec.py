@@ -106,6 +106,33 @@ def extract_metrics(run_name: str, metrics_json: MetricsJson) -> Metrics:
     m["app_proof_cells"] = sum_metric(app, "total_cells")
     m["app_proof_cells_used"] = sum_metric(app, "total_cells_used")  # V1 only
 
+    # --- Constraints & bus interactions ---
+    has_constraints = any(e["metric"] == "constraints" for e in all_entries)
+    has_interactions = any(e["metric"] == "interactions" for e in all_entries)
+
+    # Rows & segments by AIR, summed over all segments.
+    segments_by_app_air = {}
+    rows_by_app_air = {}
+    for e in app:
+        # Rows are indicated per segment and AIR
+        if e["metric"] == "rows":
+            segments_by_app_air[e["air_id"]] = segments_by_app_air.get(e["air_id"], 0) + 1
+            rows_by_app_air[e["air_id"]] = rows_by_app_air.get(e["air_id"], 0) + float(e["value"])
+
+    # Constraints and interactions are listed per AIR.
+    # For the number of constraints and interactions, we weight by the number of segments for that AIR;
+    # for the number of instances and messages, we weight by the number of rows (across all segments).
+    def weighted_sum(metric_name: str, weights: dict[str, float]) -> float:
+        return sum(
+            float(e["value"]) * weights.get(e["air_id"], 0)
+            for e in all_entries if e["metric"] == metric_name
+        )
+
+    m["constraints"] = weighted_sum("constraints", segments_by_app_air) if has_constraints else None
+    m["bus_interactions"] = weighted_sum("interactions", segments_by_app_air) if has_interactions else None
+    m["constraint_instances"] = weighted_sum("constraints", rows_by_app_air) if has_constraints else None
+    m["bus_interaction_messages"] = weighted_sum("interactions", rows_by_app_air) if has_interactions else None
+
     # --- Proof times by phase ---
     # app_prove_time_ms has no group label, so look in all_entries
     m["app_proof_time_ms"] = unique_metric(all_entries, "app_prove_time_ms")
@@ -128,7 +155,7 @@ def extract_metrics(run_name: str, metrics_json: MetricsJson) -> Metrics:
     m["app_trace_commit_time_ms"] = sum_metric(app, "prover.main_trace_commit_time_ms")
     m["app_rap_constraints_time_ms"] = sum_metric(app, "prover.rap_constraints_time_ms")
     m["app_openings_time_ms"] = sum_metric(app, "prover.openings_time_ms")
-    m["app_stark_other_ms"] = max(0, m["app_proof_time_excluding_trace_ms"]
+    m["app_stark_other_ms"] = (m["app_proof_time_excluding_trace_ms"]
         - m["app_trace_commit_time_ms"] - m["app_rap_constraints_time_ms"] - m["app_openings_time_ms"])
 
     # --- V2: rap_constraints sub-components ---
@@ -155,33 +182,6 @@ def extract_metrics(run_name: str, metrics_json: MetricsJson) -> Metrics:
     m["powdr_ratio"] = sum_metric(powdr_air, "cells") / total if total > 0 else 0
     m["normal_instruction_ratio"] = sum_metric(normal_air, "cells") / total if total > 0 else 0
     m["openvm_precompile_ratio"] = sum_metric(precompile_air, "cells") / total if total > 0 else 0
-
-    # --- Constraints & bus interactions (per-AIR, filtered to app proof AIRs) ---
-    has_constraints = any(e["metric"] == "constraints" for e in all_entries)
-    has_interactions = any(e["metric"] == "interactions" for e in all_entries)
-
-    # Rows & segments by AIR, summed over all segments.
-    segments_by_app_air = {}
-    rows_by_app_air = {}
-    for e in app:
-        # Rows are indicated per segment and AIR
-        if e["metric"] == "rows":
-            segments_by_app_air[e["air_id"]] = segments_by_app_air.get(e["air_id"], 0) + 1
-            rows_by_app_air[e["air_id"]] = rows_by_app_air.get(e["air_id"], 0) + float(e["value"])
-
-    # Constraints and interactions are listed per AIR.
-    # For the number of constraints and interactions, we weight by the number of segments for that AIR;
-    # for the number of instances and messages, we weight by the number of rows (across all segments).
-    def weighted_sum(metric_name: str, weights: dict[str, float]) -> float:
-        return sum(
-            float(e["value"]) * weights.get(e["air_id"], 0)
-            for e in all_entries if e["metric"] == metric_name
-        )
-
-    m["constraints"] = weighted_sum("constraints", segments_by_app_air) if has_constraints else None
-    m["bus_interactions"] = weighted_sum("interactions", segments_by_app_air) if has_interactions else None
-    m["constraint_instances"] = weighted_sum("constraints", rows_by_app_air) if has_constraints else None
-    m["bus_interaction_messages"] = weighted_sum("interactions", rows_by_app_air) if has_interactions else None
 
     return m
 
@@ -238,7 +238,7 @@ PROOF_TIME_V1: list[ProofRow] = [
     ("app_other_ms",                     "  Other / Overlap",     1, "r"),
     ("leaf_proof_time_ms",               "Leaf Recursion",        0, ""),
     ("inner_recursion_proof_time_ms",    "Inner Recursion",       0, ""),
-    ("total_proof_time_ms",              "Total",                 0, "b"),
+    ("total_proof_time_ms",              "Total",                 0, ""),
 ]
 
 PROOF_TIME_V2: list[ProofRow] = [
@@ -263,7 +263,7 @@ PROOF_TIME_V2: list[ProofRow] = [
     ("leaf_proof_time_ms",                  "Leaf Recursion",        0, ""),
     ("inner_recursion_proof_time_ms",       "Inner Recursion",       0, ""),
     ("compression_proof_time_ms",           "Compression",           0, ""),
-    ("total_proof_time_ms",                 "Total",                 0, "b"),
+    ("total_proof_time_ms",                 "Total",                 0, ""),
 ]
 
 CELL_DISTRIBUTION: list[BasicRow] = [
@@ -285,6 +285,9 @@ def print_section(
         key, label = row[0], row[1]
         val: float | None = m.get(key)
 
+        if key == "total_proof_time_ms":
+            print(f"  {'─' * 58}")
+
         if val is None:
             print(f"  {label:<{width}}  N/A")
             continue
@@ -297,11 +300,7 @@ def print_section(
             fmt = fmt_ms
             flags: str = row[3]  # type: ignore[no-redef]
 
-        suffix = ""
-        if "r" in flags:
-            suffix = " (residual)"
-        if "b" in flags:
-            suffix = " ***"
+        suffix = " (residual)" if "r" in flags else ""
 
         pct = f"  ({val / total * 100:5.1f}%)" if total > 0 else ""
         print(f"  {label:<{width}}  {fmt(val)}{pct}{suffix}")

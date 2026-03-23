@@ -555,8 +555,8 @@ function extractMetrics(runName, metricsJson) {
     m.app_trace_commit_time_ms = getMetric(app, 'prover.main_trace_commit_time_ms');
     m.app_rap_constraints_time_ms = getMetric(app, 'prover.rap_constraints_time_ms');
     m.app_openings_time_ms = getMetric(app, 'prover.openings_time_ms');
-    m.app_stark_other_ms = Math.max(0, m.app_proof_time_excluding_trace_ms
-        - m.app_trace_commit_time_ms - m.app_rap_constraints_time_ms - m.app_openings_time_ms);
+    m.app_stark_other_ms = m.app_proof_time_excluding_trace_ms
+        - m.app_trace_commit_time_ms - m.app_rap_constraints_time_ms - m.app_openings_time_ms;
 
     // V2: rap_constraints sub-components (additive: logup_gkr + round0 + mle_rounds = rap)
     m.app_rap_logup_gkr_time_ms = getMetric(app, 'prover.rap_constraints.logup_gkr_time_ms');
@@ -970,7 +970,7 @@ function createBarChart(metrics) {
     // Compute stacked data
     const stackData = metrics.map(m => {
         const d = { name: m.name };
-        COMPONENTS.forEach(c => { d[c.key] = Math.max(0, m[c.key]) / 1000; }); // ms -> s
+        COMPONENTS.forEach(c => { d[c.key] = m[c.key] / 1000; }); // ms -> s
         return d;
     });
 
@@ -1108,7 +1108,7 @@ function createGroupedBarChart(metrics) {
 
     const stackData = metrics.map(m => {
         const d = { name: m.name };
-        COMPONENTS.forEach(c => { d[c.key] = Math.max(0, m[c.key]) / 1000; });
+        COMPONENTS.forEach(c => { d[c.key] = m[c.key] / 1000; });
         return d;
     });
 
