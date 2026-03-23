@@ -635,20 +635,25 @@ function computeCellsByAir(metricsJson) {
     const total = sorted.reduce((s, [, v]) => s + v, 0);
 
     const threshold = total * 0.015;
-    const large = [];
+    const powdrItems = [];
+    const otherItems = [];
     let otherSum = 0;
     for (const [name, val] of sorted) {
-        if (val >= threshold) {
-            large.push({ name, value: val });
-        } else {
+        if (val < threshold) {
             otherSum += val;
+        } else if (name.startsWith('PowdrAir')) {
+            powdrItems.push({ name, value: val });
+        } else {
+            otherItems.push({ name, value: val });
         }
     }
     if (otherSum > 0) {
-        large.push({ name: 'Other', value: otherSum });
+        otherItems.push({ name: 'Other', value: otherSum });
     }
+    // PowdrAir items first, then the rest sorted by size
+    const items = [...powdrItems, ...otherItems];
 
-    return { items: large, total };
+    return { items, total };
 }
 
 // ============================================================
@@ -1571,9 +1576,15 @@ function createPieChart(runName) {
         .attr('height', size + items.length * 18 + 20);
     const g = svg.append('g').attr('transform', `translate(${size/2},${size/2})`);
 
-    const colors = d3.scaleOrdinal()
-        .domain(items.map(d => d.name))
-        .range(d3.quantize(t => d3.interpolateSpectral(t * 0.8 + 0.1), Math.max(items.length, 3)));
+    const POWDR_COLOR = '#e03e1a';
+    const nonPowdrItems = items.filter(d => !d.name.startsWith('PowdrAir'));
+    const spectralColors = d3.quantize(t => d3.interpolateSpectral(t * 0.8 + 0.1), Math.max(nonPowdrItems.length, 3));
+    const colorMap = {};
+    let ci = 0;
+    items.forEach(d => {
+        colorMap[d.name] = d.name.startsWith('PowdrAir') ? POWDR_COLOR : spectralColors[ci++];
+    });
+    const colors = name => colorMap[name];
 
     const pie = d3.pie().value(d => d.value).sort(null);
     const arc = d3.arc().innerRadius(0).outerRadius(radius);
