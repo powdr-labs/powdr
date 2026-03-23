@@ -298,7 +298,7 @@ pub fn find_non_overlapping<T: Eq>(haystack: &[T], needle: &[T]) -> Vec<usize> {
 /// Find static block runs in the execution.
 /// A run is interrupted upon hitting an invalid APC static block (i.e., a single-instruction block).
 /// Returns a list of the runs, coupled with how many times each appears (a run may repeat in the execution).
-fn detect_execution_bb_runs<I>(
+fn detect_execution_bb_runs<I: PcStep>(
     static_blocks: &StaticBlocks<I>,
     execution: &[u64],
 ) -> Vec<(ExecutionStaticBlockRun, u32)> {
@@ -324,6 +324,12 @@ fn detect_execution_bb_runs<I>(
             // extend the run with this static block
             current_run.push(pc);
         }
+
+        // Sanity check that the execution actually goes through the whole static block
+        for (expected_pc, actual_pc) in bb.pcs().zip(&execution[pos..]) {
+            debug_assert_eq!(*actual_pc, expected_pc);
+        }
+
         // move to next bb
         pos += bb.len();
     }

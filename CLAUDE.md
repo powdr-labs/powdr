@@ -105,7 +105,7 @@ Example guest programs in `openvm/guest-*` directories (keccak, sha256, ecc, pai
 
 - **Basic block**: A contiguous block of assembly instructions which are guaranteed to be executed linearly.
 - **Static block**: A possibly non contiguous list of assembly instructions which are guaranteed to be executed linearly. Can be seen as the concatenation of many basic blocks which are statically known to execute in order.
-- **Superblock**: A list of static blocks.
+- **Superblock**: A sequence of static blocks.
 - **APC (Autoprecompile)**: An optimized circuit for a superblock of assembly instructions (often RISC-V)
 - **PGO (Profile-Guided Optimization)**: Uses execution profiling to select which static blocks to optimize
   - `PgoConfig::Cell`: Optimizes based on total cell count savings
