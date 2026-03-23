@@ -74,6 +74,13 @@ def sum_metric(entries: list[Entry], metric_name: str) -> float:
     return sum(float(e["value"]) for e in entries if e["metric"] == metric_name)
 
 
+def unique_metric(entries: list[Entry], metric_name: str) -> float:
+    """Get the value of a metric that must appear exactly once."""
+    matches = [e for e in entries if e["metric"] == metric_name]
+    assert len(matches) == 1, f"Expected exactly 1 entry for '{metric_name}', found {len(matches)}"
+    return float(matches[0]["value"])
+
+
 def detect_version(metrics_json: MetricsJson) -> Literal[1, 2]:
     """Returns 2 if any metric name contains 'logup_gkr' (V2-only), else 1."""
     names = {e["metric"] for e in metrics_json["counter"] + metrics_json["gauge"]}
@@ -92,10 +99,16 @@ def extract_metrics(run_name: str, metrics_json: MetricsJson) -> Metrics:
     normal_air = [e for e in non_powdr if is_normal_instruction_air(e.get("air_name", ""))]
     precompile_air = [e for e in non_powdr if not is_normal_instruction_air(e.get("air_name", ""))]
 
+    # --- Basic stats ---
+    m["app_proof_cols"] = sum_metric(app, "main_cols") + sum_metric(app, "prep_cols") + sum_metric(app, "perm_cols")
+    segments = [int(e["segment"]) for e in app if "segment" in e]
+    m["num_segments"] = max(segments, default=-1) + 1
+    m["app_proof_cells"] = sum_metric(app, "total_cells")
+    m["app_proof_cells_used"] = sum_metric(app, "total_cells_used")  # V1 only
+
     # --- Proof times by phase ---
-    # V2 uses app_prove_time_ms (includes metered exec); V1 uses total_proof_time_ms
-    app_prove = sum_metric(app, "app_prove_time_ms")
-    m["app_proof_time_ms"] = app_prove if app_prove > 0 else sum_metric(app, "total_proof_time_ms")
+    # app_prove_time_ms has no group label, so look in all_entries
+    m["app_proof_time_ms"] = unique_metric(all_entries, "app_prove_time_ms")
     m["leaf_proof_time_ms"] = sum_metric(leaf, "total_proof_time_ms")
     m["inner_recursion_proof_time_ms"] = sum_metric(internal, "total_proof_time_ms")
     m["compression_proof_time_ms"] = sum_metric(compression, "total_proof_time_ms")
@@ -104,13 +117,6 @@ def extract_metrics(run_name: str, metrics_json: MetricsJson) -> Metrics:
 
     # --- STARK time excluding trace ---
     m["app_proof_time_excluding_trace_ms"] = sum_metric(app, "stark_prove_excluding_trace_time_ms")
-
-    # --- Basic stats ---
-    m["app_proof_cols"] = sum_metric(app, "main_cols") + sum_metric(app, "prep_cols") + sum_metric(app, "perm_cols")
-    segments = [int(e["segment"]) for e in app if "segment" in e]
-    m["num_segments"] = max(segments, default=-1) + 1
-    m["app_proof_cells"] = sum_metric(app, "total_cells")
-    m["app_proof_cells_used"] = sum_metric(app, "total_cells_used")  # V1 only
 
     # --- App time sub-components ---
     m["app_execute_preflight_time_ms"] = sum_metric(app, "execute_preflight_time_ms")

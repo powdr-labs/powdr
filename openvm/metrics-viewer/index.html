@@ -492,11 +492,24 @@ function getMetric(entries, metricName) {
                   .reduce((sum, e) => sum + parseFloat(e.value), 0);
 }
 
+// Get the value of a metric that must appear exactly once.
+function getUniqueMetric(entries, metricName) {
+    const matches = entries.filter(e => e.metric === metricName);
+    if (matches.length !== 1) throw new Error(`Expected exactly 1 entry for "${metricName}", found ${matches.length}`);
+    return parseFloat(matches[0].value);
+}
+
 // Port of basic_metrics.py:extract_metrics
 // Computes all summary metrics for a single run from its raw JSON.
 // Each metric maps directly to a getMetric() call on a specific group + metric name.
 function extractMetrics(runName, metricsJson) {
     const { app, leaf, internal, compression } = loadMetricsDataframes(metricsJson);
+    const allEntries = [...metricsJson.counter, ...metricsJson.gauge].map(c => {
+        const obj = Object.fromEntries(c.labels);
+        obj.metric = c.metric;
+        obj.value = c.value;
+        return obj;
+    });
     const m = {};
 
     m.name = runName;
@@ -507,11 +520,9 @@ function extractMetrics(runName, metricsJson) {
     const normalInstructionAir = nonPowdrAir.filter(e => isNormalInstructionAir(e.air_name || ''));
     const openVmPrecompileAir = nonPowdrAir.filter(e => !isNormalInstructionAir(e.air_name || ''));
 
-    // Proof times by phase (all from "total_proof_time_ms" metric, split by group).
-    // In V2, execute_metered_time_ms is outside total_proof_time_ms (it's a sibling
-    // inside app_prove_time_ms), so we use app_prove_time_ms when available.
-    const appProveTime = getMetric(app, 'app_prove_time_ms');
-    m.app_proof_time_ms = appProveTime > 0 ? appProveTime : getMetric(app, 'total_proof_time_ms');
+    // Proof times by phase.
+    // app_prove_time_ms has no group label, so look in allEntries.
+    m.app_proof_time_ms = getUniqueMetric(allEntries, 'app_prove_time_ms');
     m.leaf_proof_time_ms = getMetric(leaf, 'total_proof_time_ms');
     m.inner_recursion_proof_time_ms = getMetric(internal, 'total_proof_time_ms');
     m.compression_proof_time_ms = getMetric(compression, 'total_proof_time_ms');
@@ -585,12 +596,6 @@ function extractMetrics(runName, metricsJson) {
 
     // Constraints and bus interactions — per-AIR metrics (no group/segment labels).
     // Since they're per-AIR, we weight by segment count (for totals) or row count (for instances).
-    const allEntries = [...metricsJson.counter, ...metricsJson.gauge].map(c => {
-        const obj = Object.fromEntries(c.labels);
-        obj.metric = c.metric;
-        obj.value = c.value;
-        return obj;
-    });
     const hasConstraints = allEntries.some(e => e.metric === 'constraints');
     const hasInteractions = allEntries.some(e => e.metric === 'interactions');
 
@@ -734,13 +739,12 @@ weighted_sum("constraints", rows_by_air)`,
 
     // --- Proof Time ---
     app_proof_time_ms: {
-        descV1: 'Wall-clock time for the app proof phase. Sum of total_proof_time_ms across all app_proof segments.',
-        codeV1: "sum_metric(app, 'total_proof_time_ms')",
-        descV2: 'Wall-clock time for the app proof phase. Uses app_prove_time_ms, which wraps per-segment proving and includes metered execution.',
-        codeV2: "sum_metric(app, 'app_prove_time_ms')",
+        desc: 'Wall-clock time for the app proof phase.',
+        code: "unique_metric(allEntries, 'app_prove_time_ms')",
     },
     app_proof_time_excluding_trace_ms: {
-        desc: 'STARK prover time excluding trace generation. In V1: commitments, quotient computation, FRI opening. In V2: trace commit, constraint evaluation (LogUp GKR), and WHIR opening proofs.',
+        descV1: 'STARK prover time excluding trace generation: commitments, quotient computation, FRI opening.',
+        descV2: 'STARK prover time excluding trace generation: trace commit, constraint evaluation, LogUp GKR, and WHIR opening proofs.',
         code: "sum_metric(app, 'stark_prove_excluding_trace_time_ms')",
     },
     app_rap_constraints_time_ms: {
@@ -764,7 +768,8 @@ weighted_sum("constraints", rows_by_air)`,
         code: `rap_constraints - logup_gkr - round0 - mle_rounds`,
     },
     app_openings_time_ms: {
-        desc: 'Time for polynomial opening proofs. In V2 this uses WHIR (a FRI-like protocol) with stacked polynomial reduction.',
+        descV1: 'Time for polynomial opening proofs (FRI-based PCS opening).',
+        descV2: 'Time for polynomial opening proofs using WHIR (a FRI-like protocol) with stacked polynomial reduction.',
         code: "sum_metric(app, 'prover.openings_time_ms')",
     },
     app_openings_whir_time_ms: {
@@ -827,7 +832,8 @@ weighted_sum("constraints", rows_by_air)`,
         code: "sum_metric(compression, 'total_proof_time_ms')",
     },
     total_proof_time_ms: {
-        desc: 'Sum of all proving phases: app proof + leaf recursion + inner recursion (+ compression in V2).',
+        descV1: 'Sum of all proving phases: app proof + leaf recursion + inner recursion.',
+        descV2: 'Sum of all proving phases: app proof + leaf recursion + inner recursion + compression.',
         codeV1: `app + leaf + inner_recursion`,
         codeV2: `app + leaf + inner_recursion + compression`,
     },
