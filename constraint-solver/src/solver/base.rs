@@ -248,21 +248,12 @@ where
             return a != b;
         }
         let equivalent_to_a = self.equivalent_expressions(a);
-        // TODO I think the problem is that the "expressions equivalent to b"
-        // are all lin_*
         let equivalent_to_b = self.equivalent_expressions(b);
         equivalent_to_a
             .iter()
             .cartesian_product(&equivalent_to_b)
             .any(|(a_eq, b_eq)| {
-                if a_eq.to_string().contains("from_state__fp_0") && a_eq.to_string().contains("12")
-                //                    && b_eq.to_string().contains("from_state__fp_0")
-                //&& b_eq.to_string().contains("")
-                {
-                    let expr = a_eq - b_eq;
-                }
-
-                possible_concrete_values(&(a_eq - b_eq), self, 2000)
+                possible_concrete_values(&(a_eq - b_eq), self, 20)
                     .is_some_and(|mut values| values.all(|value| !value.is_zero()))
             })
     }
@@ -430,34 +421,13 @@ where
                 &*self,
                 &self.bus_interaction_handler,
             ) {
-                Ok(result) => {
-                    let has_range_constraints = !result.range_constraints.is_empty();
-                    for (var, rc) in result.range_constraints {
+                Ok(assignments) if assignments.is_empty() => {
+                    // No new information was found.
+                    unsuccessful_variable_sets.insert(variable_set);
+                }
+                Ok(assignments) => {
+                    for (var, rc) in assignments {
                         progress |= self.apply_range_constraint_update(&var, rc);
-                    }
-                    // Try to simplify expressions when multiple valid assignments exist.
-                    let simplified = if result.valid_assignments.len() > 1 {
-                        let modified_vars = self
-                            .constraint_system
-                            .system_mut()
-                            .simplify_via_flag_assignments(
-                                &variable_set,
-                                &result.valid_assignments,
-                            );
-                        if !modified_vars.is_empty() {
-                            progress = true;
-                            for var in &modified_vars {
-                                self.constraint_system.variable_updated(var);
-                            }
-                            true
-                        } else {
-                            false
-                        }
-                    } else {
-                        false
-                    };
-                    if !has_range_constraints && !simplified {
-                        unsuccessful_variable_sets.insert(variable_set);
                     }
                 }
                 // Might error out if a contradiction was found.

@@ -451,30 +451,25 @@ fn variables_in_stateful_bus_interactions<'a, P: FieldElement, V: Ord + Clone + 
         .flat_map(|bus_interaction| bus_interaction.referenced_unknown_variables())
 }
 
+/// Tries to simplify algebraic constraints and bus interaction fields by performing exhaustive
+/// search over variables with few possible values. If all assignments (that do not lead to a
+/// violated algebraic cosntraint) turn the expression into the same, simpler expression,
+/// the expression is substituted, but we also add a new algebraic constraint that forces
+/// the old and the new version to be equal because we do not know where the constraints on
+/// the variables come from.
 pub fn simplify_constraints_using_exhaustive_search<
     T: FieldElement,
     V: Clone + Ord + Eq + Hash + Display,
 >(
-    mut constraint_system: IndexedConstraintSystem<T, V>,
+    constraint_system: IndexedConstraintSystem<T, V>,
     range_constraints: &impl RangeConstraintProvider<T, V>,
 ) -> IndexedConstraintSystem<T, V> {
-    let mut variable_sets =
+    let variable_sets =
         exhaustive_search::get_brute_force_candidates(&constraint_system, range_constraints)
             .collect_vec();
-    // Start with small sets to make larger ones redundant after some assignments.
-    variable_sets.sort_by_key(|set| set.len());
-
-    println!(
-        "Found {} candidate variable sets for exhaustive search",
-        variable_sets.len()
-    );
 
     let mut substitutions = BTreeMap::default();
     for mut variable_set in variable_sets {
-        println!(
-            "Trying to simplify constraints using exhaustive search for variables {{{}}}",
-            variable_set.iter().join(", ")
-        );
         variable_set.retain(|v| range_constraints.get(v).try_to_single_value().is_none());
         let (algebraic_constraints, bus_fields) = constraint_system
             .constraints_referencing_variables(&variable_set)
@@ -763,7 +758,7 @@ mod tests {
             panic!()
         }
 
-        fn timestamp(&self) -> &GroupedExpression<GoldilocksField, &'static str> {
+        fn timestamp_limbs(&self) -> &[GroupedExpression<GoldilocksField, &'static str>] {
             panic!()
         }
 
@@ -795,11 +790,12 @@ mod tests {
 
         let out = simplify_constraints_using_exhaustive_search(constraint_system, &solver);
         expect![[r#"
-            T + X + 4 * Y - 8 * Z = 0
+            T + X + 8 = 0
             (Y - 2) * (Z + 1) = 0
             (Y) * (Z) = 0
             (Y) * (Y - 2) = 0
-            (Z) * (Z + 1) = 0"#]]
+            (Z) * (Z + 1) = 0
+            4 * Y - 8 * Z - 8 = 0"#]]
         .assert_eq(&out.to_string())
     }
 }
