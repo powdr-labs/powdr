@@ -1424,8 +1424,35 @@ function renderDetailTable(title, rows, m, opts = {}) {
     }
 
     // Default expand level: indent 0 parents are expanded (their indent-1 children visible),
-    // deeper parents are collapsed.
+    // deeper parents are collapsed. User overrides via expandState take precedence.
     const defaultExpandLevel = opts.defaultExpandLevel != null ? opts.defaultExpandLevel : 0;
+
+    // Pre-compute whether each parent is expanded, respecting persistent expandState.
+    const parentExpanded = new Map(); // index -> boolean
+    for (const i of parentIndices) {
+        const stateKey = tableId + ':' + visibleRows[i].key;
+        if (stateKey in expandState) {
+            parentExpanded.set(i, expandState[stateKey]);
+        } else {
+            parentExpanded.set(i, (visibleRows[i].indent || 0) <= defaultExpandLevel);
+        }
+    }
+
+    // Determine visibility: a row is a collapsed-child if any ancestor parent is collapsed.
+    function isHidden(rowIndex) {
+        const indent = visibleRows[rowIndex].indent || 0;
+        if (indent === 0) return false;
+        // Walk backwards to find ancestor parents
+        for (let j = rowIndex - 1; j >= 0; j--) {
+            const pIndent = visibleRows[j].indent || 0;
+            if (pIndent < indent && parentIndices.has(j)) {
+                if (!parentExpanded.get(j)) return true;
+                // Check this parent's ancestors too
+                return isHidden(j);
+            }
+        }
+        return false;
+    }
 
     let html = `<h6 style="color:#333; font-weight:600; margin-bottom:0.3rem; margin-top:0.75rem">${title}</h6>`;
     html += `<table class="details-table" id="${tableId}"><tbody>`;
@@ -1433,15 +1460,11 @@ function renderDetailTable(title, rows, m, opts = {}) {
         const indent = row.indent || 0;
         const val = m[row.key];
         const isParent = parentIndices.has(i);
-        // A row is a collapsed child if any ancestor at a shallower indent
-        // is collapsed by default (indent > defaultExpandLevel + 1).
-        const isCollapsedChild = indent > defaultExpandLevel + 1;
-        const parentIsCollapsed = isParent && indent > defaultExpandLevel;
 
         const classes = [];
         if (isParent) classes.push('collapsible-parent');
-        if (parentIsCollapsed) classes.push('collapsed');
-        if (isCollapsedChild) classes.push('collapsed-child');
+        if (isParent && !parentExpanded.get(i)) classes.push('collapsed');
+        if (isHidden(i)) classes.push('collapsed-child');
 
         const padding = indent > 0 ? `padding-left:${indent * 1.2 + 0.5}em` : '';
         const weight = row.bold ? 'font-weight:700' : '';
@@ -1469,7 +1492,8 @@ function renderDetailTable(title, rows, m, opts = {}) {
             infoIcon = `<span class="metric-info" data-desc="${desc}" data-code="${code}">i</span>`;
         }
         const classAttr = classes.length ? ` class="${classes.join(' ')}"` : '';
-        html += `<tr${classAttr} data-indent="${indent}">`;
+        const dataKey = isParent ? ` data-key="${row.key}"` : '';
+        html += `<tr${classAttr} data-indent="${indent}"${dataKey}>`;
         html += `<th${thStyle ? ` style="${thStyle}"` : ''}>${arrow}${row.label}${infoIcon}</th>`;
         const rawTitle = (val != null && typeof val === 'number') ? ` title="${val.toLocaleString()}"` : '';
         html += `<td${tdStyle ? ` style="${tdStyle}"` : ''}${rawTitle}>${formatted}${comparison}</td>`;
@@ -1510,6 +1534,10 @@ document.addEventListener('mouseleave', function(e) {
     metricInfoTip.style.display = 'none';
 }, true);
 
+// Persistent expand/collapse state: maps "tableId:rowKey" -> true (expanded) | false (collapsed).
+// null means "use default". Once a user clicks, the choice sticks across experiment switches.
+const expandState = {};
+
 // Toggle collapsible rows: clicking a parent shows/hides its children.
 document.addEventListener('click', function(e) {
     if (e.target.closest('.metric-info')) return;
@@ -1521,6 +1549,11 @@ document.addEventListener('click', function(e) {
     const parentIndent = parseInt(parentRow.dataset.indent) || 0;
     const isCollapsing = !parentRow.classList.contains('collapsed');
     parentRow.classList.toggle('collapsed');
+
+    // Persist expand/collapse state
+    const tableId = parentRow.closest('table')?.id;
+    const rowKey = parentRow.dataset.key;
+    if (tableId && rowKey) expandState[tableId + ':' + rowKey] = !isCollapsing;
 
     // Walk subsequent rows: toggle children (indent > parentIndent),
     // stop when we hit a row at parentIndent or shallower.
