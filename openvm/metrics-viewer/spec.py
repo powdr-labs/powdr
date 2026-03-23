@@ -112,20 +112,26 @@ def extract_metrics(run_name: str, metrics_json: MetricsJson) -> Metrics:
     has_interactions = any(e["metric"] == "interactions" for e in all_entries)
 
     # Rows & segments by AIR, summed over all segments.
-    segments_by_app_air = {}
-    rows_by_app_air = {}
+    # We key by (air_id, air_name) because air_id alone is only unique within a proving
+    # phase — different phases (app, leaf, compression) reuse the same air_id for
+    # unrelated AIRs. Keying by the pair is a pragmatic fix: it would break if the same
+    # (air_id, air_name) tuple appeared in two different phases, but that is unlikely
+    # since each phase uses a distinct AIR set.
+    segments_by_app_air: dict[str, float] = {}
+    rows_by_app_air: dict[str, float] = {}
     for e in app:
         # Rows are indicated per segment and AIR
         if e["metric"] == "rows":
-            segments_by_app_air[e["air_id"]] = segments_by_app_air.get(e["air_id"], 0) + 1
-            rows_by_app_air[e["air_id"]] = rows_by_app_air.get(e["air_id"], 0) + float(e["value"])
+            key = f"{e['air_id']}:{e.get('air_name', '')}"
+            segments_by_app_air[key] = segments_by_app_air.get(key, 0) + 1
+            rows_by_app_air[key] = rows_by_app_air.get(key, 0) + float(e["value"])
 
     # Constraints and interactions are listed per AIR.
     # For the number of constraints and interactions, we weight by the number of segments for that AIR;
     # for the number of instances and messages, we weight by the number of rows (across all segments).
     def weighted_sum(metric_name: str, weights: dict[str, float]) -> float:
         return sum(
-            float(e["value"]) * weights.get(e["air_id"], 0)
+            float(e["value"]) * weights.get(f"{e['air_id']}:{e.get('air_name', '')}", 0)
             for e in all_entries if e["metric"] == metric_name
         )
 

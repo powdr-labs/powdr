@@ -601,19 +601,23 @@ function extractMetrics(runName, metricsJson) {
     const hasInteractions = allEntries.some(e => e.metric === 'interactions');
 
     // Build per-AIR weights from app rows entries:
-    //   segmentsByAppAir[air] = number of segments the AIR appears in
-    //   rowsByAppAir[air] = total rows across all segments
+    //   segmentsByAppAir[key] = number of segments the AIR appears in
+    //   rowsByAppAir[key] = total rows across all segments
+    // We key by "air_id:air_name" because air_id alone is only unique within a
+    // proving phase — different phases (app, leaf, compression) reuse the same
+    // air_id for unrelated AIRs.
     const segmentsByAppAir = {};
     const rowsByAppAir = {};
     app.filter(e => e.metric === 'rows').forEach(e => {
-        segmentsByAppAir[e.air_id] = (segmentsByAppAir[e.air_id] || 0) + 1;
-        rowsByAppAir[e.air_id] = (rowsByAppAir[e.air_id] || 0) + parseFloat(e.value);
+        const key = e.air_id + ':' + (e.air_name || '');
+        segmentsByAppAir[key] = (segmentsByAppAir[key] || 0) + 1;
+        rowsByAppAir[key] = (rowsByAppAir[key] || 0) + parseFloat(e.value);
     });
 
-    // weighted_sum: for each all_entries entry matching metricName, multiply by weight[air_id]
+    // weighted_sum: for each all_entries entry matching metricName, multiply by weight
     function weightedSum(metricName, weights) {
         return allEntries.filter(e => e.metric === metricName)
-            .reduce((sum, e) => sum + parseFloat(e.value) * (weights[e.air_id] || 0), 0);
+            .reduce((sum, e) => sum + parseFloat(e.value) * (weights[e.air_id + ':' + (e.air_name || '')] || 0), 0);
     }
 
     m.constraints = hasConstraints ? weightedSum('constraints', segmentsByAppAir) : null;
