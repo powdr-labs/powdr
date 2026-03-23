@@ -869,10 +869,10 @@ const COMPONENTS_V2 = [
     { key: 'inner_recursion_proof_time_ms', label: 'Inner recursion', color: '#9b3e00' },
     { key: 'leaf_proof_time_ms', label: 'Leaf recursion', color: '#d69600' },
     { key: 'app_proof_time_excluding_trace_ms', label: 'App STARK (excl. trace)', color: '#1f77b4' },
-    { key: 'app_trace_gen_time_ms', label: 'App trace gen', color: '#9ecae1' },
-    { key: 'app_set_initial_memory_time_ms', label: 'App set memory', color: '#a1d99b' },
-    { key: 'app_execute_preflight_time_ms', label: 'App preflight', color: '#c6dbef' },
-    { key: 'app_execute_metered_time_ms', label: 'App metered', color: '#dadaeb' },
+    { key: 'app_trace_gen_time_ms', label: 'App trace gen', color: '#6baed6' },
+    { key: 'app_set_initial_memory_time_ms', label: 'App set memory', color: '#41ab5d' },
+    { key: 'app_execute_preflight_time_ms', label: 'App preflight', color: '#fd8d3c' },
+    { key: 'app_execute_metered_time_ms', label: 'App metered', color: '#c6dbef' },
     { key: 'app_other_ms', label: 'App other', color: '#969696' },
 ];
 
@@ -949,9 +949,9 @@ function createBarChart(metrics) {
     const container = d3.select('#barChart');
     container.selectAll('*').remove();
 
-    const margin = { top: 30, right: 20, bottom: 120, left: 60 };
+    const margin = { top: 30, right: 20, bottom: 140, left: 60 };
     const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
-    const height = 400 - margin.top - margin.bottom;
+    const height = 420 - margin.top - margin.bottom;
 
     const svg = container.append('svg')
         .attr('width', width + margin.left + margin.right)
@@ -1016,12 +1016,13 @@ function createBarChart(metrics) {
             .on('mouseout', () => tooltip.style('display', 'none'));
     });
 
-    // Value labels inside segments
-    const minLabelHeight = maxY * 0.03;
+    // Value labels inside segments — only show if segment is tall enough for text
+    const minSegmentPx = 18; // minimum pixel height to show a label
     series.forEach(s => {
         s.forEach(d => {
             const val = d[1] - d[0];
-            if (val < minLabelHeight) return;
+            const segmentPx = y(d[0]) - y(d[1]);
+            if (segmentPx < minSegmentPx) return;
             const total = keys.reduce((sum, k) => sum + d.data[k], 0);
             const pct = total > 0 ? (val / total * 100).toFixed(1) : '0';
             g.append('text')
@@ -1051,9 +1052,13 @@ function createBarChart(metrics) {
     });
 
     // Axes
-    g.append('g').attr('transform', `translate(0,${height})`)
-        .call(d3.axisBottom(x))
-        .selectAll('text').attr('fill', '#333');
+    const xAxis = g.append('g').attr('transform', `translate(0,${height})`)
+        .call(d3.axisBottom(x));
+    xAxis.selectAll('text').attr('fill', '#333')
+        .attr('transform', 'rotate(-35)')
+        .attr('text-anchor', 'end')
+        .attr('dx', '-0.5em')
+        .attr('dy', '0.3em');
     g.append('g')
         .call(d3.axisLeft(y).tickFormat(d => d.toFixed(1) + 's'))
         .selectAll('text').attr('fill', '#333');
@@ -1062,8 +1067,11 @@ function createBarChart(metrics) {
     svg.selectAll('.domain').attr('stroke', '#dee2e6');
     svg.selectAll('.tick line').attr('stroke', '#dee2e6');
 
-    // Legend
-    layoutLegend(svg, COMPONENTS, margin.left, height + margin.top + 35, width);
+    // Measure rotated x-axis label extent, place legend below
+    const xAxisBBox = xAxis.node().getBBox();
+    const legendY = margin.top + height + xAxisBBox.height + 15;
+    const legendHeight = layoutLegend(svg, COMPONENTS, margin.left, legendY, width);
+    svg.attr('height', legendY + legendHeight + 10);
 
     updateBarSelection();
 }
@@ -1087,9 +1095,9 @@ function createGroupedBarChart(metrics) {
     const container = d3.select('#barChart');
     container.selectAll('*').remove();
 
-    const margin = { top: 30, right: 20, bottom: 120, left: 60 };
+    const margin = { top: 30, right: 20, bottom: 140, left: 60 };
     const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
-    const height = 400 - margin.top - margin.bottom;
+    const height = 420 - margin.top - margin.bottom;
 
     const svg = container.append('svg')
         .attr('width', width + margin.left + margin.right)
@@ -1148,9 +1156,13 @@ function createGroupedBarChart(metrics) {
     });
 
     // Axes
-    g.append('g').attr('transform', `translate(0,${height})`)
-        .call(d3.axisBottom(x0))
-        .selectAll('text').attr('fill', '#333');
+    const xAxis = g.append('g').attr('transform', `translate(0,${height})`)
+        .call(d3.axisBottom(x0));
+    xAxis.selectAll('text').attr('fill', '#333')
+        .attr('transform', 'rotate(-35)')
+        .attr('text-anchor', 'end')
+        .attr('dx', '-0.5em')
+        .attr('dy', '0.3em');
     g.append('g')
         .call(d3.axisLeft(y).tickFormat(d => d.toFixed(1) + 's'))
         .selectAll('text').attr('fill', '#333');
@@ -1158,8 +1170,11 @@ function createGroupedBarChart(metrics) {
     svg.selectAll('.domain').attr('stroke', '#dee2e6');
     svg.selectAll('.tick line').attr('stroke', '#dee2e6');
 
-    // Legend
-    layoutLegend(svg, COMPONENTS, margin.left, height + margin.top + 35, width);
+    // Measure rotated x-axis label extent, place legend below
+    const xAxisBBox = xAxis.node().getBBox();
+    const legendY = margin.top + height + xAxisBBox.height + 15;
+    const legendHeight = layoutLegend(svg, COMPONENTS, margin.left, legendY, width);
+    svg.attr('height', legendY + legendHeight + 10);
 
     updateBarSelection();
 }
