@@ -23,7 +23,7 @@ import sys
 import urllib.request
 from typing import Any, Callable, Literal
 
-# A single flattened metric entry: {"group": ..., "air_name": ..., "metric": ..., "value": ..., ...}
+# A single flattened metric entry: {"group": ..., "air_name": ..., "air_id": ..., "metric": ..., "value": ..., ...}
 Entry = dict[str, str]
 # Raw metrics JSON with "counter" and "gauge" arrays
 MetricsJson = dict[str, Any]
@@ -155,22 +155,19 @@ def extract_metrics(run_name: str, metrics_json: MetricsJson) -> Metrics:
     has_interactions = any(e["metric"] == "interactions" for e in all_entries)
 
     # Rows & segments by AIR, summed over all segments.
-    # TODO: This is incorrect, because the AIR name might not be unique.
-    # This needs to be fixed once the AIR ID is also available in the metrics, see:
-    # https://github.com/powdr-labs/stark-backend/pull/20
     segments_by_app_air = {}
     rows_by_app_air = {}
     for e in app:
         if e["metric"] == "rows":
-            segments_by_app_air[e["air_name"]] = segments_by_app_air.get(e["air_name"], 0) + 1
-            rows_by_app_air[e["air_name"]] = rows_by_app_air.get(e["air_name"], 0) + float(e["value"])
+            segments_by_app_air[e["air_id"]] = segments_by_app_air.get(e["air_id"], 0) + 1
+            rows_by_app_air[e["air_id"]] = rows_by_app_air.get(e["air_id"], 0) + float(e["value"])
 
     # Constraints and interactions are listed per AIR.
     # For the number of constraints and interactions, we weight by the number of segments for that AIR;
     # for the number of instances and messages, we weight by the number of rows (across all segments).
     def weighted_sum(metric_name: str, weights: dict[str, float]) -> float:
         return sum(
-            float(e["value"]) * weights.get(e["air_name"], 0)
+            float(e["value"]) * weights.get(e["air_id"], 0)
             for e in all_entries if e["metric"] == metric_name
         )
 
