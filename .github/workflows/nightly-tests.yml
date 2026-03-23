@@ -81,7 +81,7 @@ jobs:
         # Rust 1.90 is needed by fresher versions of dependencies of cargo-openvm.
         run: |
           rustup toolchain install 1.90
-          cargo +1.90 install --git 'http://github.com/powdr-labs/openvm.git' --rev "v1.4.2-powdr-rc.2" --locked cargo-openvm
+          cargo +1.90 install --git 'http://github.com/powdr-labs/openvm.git' --rev "v1.4.2-powdr-rc.4" --locked cargo-openvm
 
       - name: Setup python venv
         run: |
@@ -156,6 +156,7 @@ jobs:
 
           python ../openvm-riscv/scripts/basic_metrics.py summary-table --csv $RES_DIR/apc000.json $RES_DIR/apc003.json $RES_DIR/apc010.json $RES_DIR/apc030.json $RES_DIR/apc100.json > $RES_DIR/basic_metrics.csv
           python ../openvm-riscv/scripts/basic_metrics.py plot $RES_DIR/apc000.json $RES_DIR/apc003.json $RES_DIR/apc010.json $RES_DIR/apc030.json $RES_DIR/apc100.json -o $RES_DIR/proof_time_breakdown.png
+          python ../openvm-riscv/scripts/basic_metrics.py combine $RES_DIR/apc000.json $RES_DIR/apc003.json $RES_DIR/apc010.json $RES_DIR/apc030.json $RES_DIR/apc100.json > $RES_DIR/combined_metrics.json
           python ../autoprecompiles/scripts/plot_effectiveness.py $RES_DIR/apc_candidates.json --output $RES_DIR/effectiveness.png
 
           mv $RES_DIR ../results/
@@ -176,6 +177,13 @@ jobs:
       - name: get the date/time
         id: date
         run: echo "value=$(date +'%Y-%m-%d-%H%M')" >> $GITHUB_OUTPUT
+
+      - name: Generate bench results README
+        run: |
+          python3 ./openvm-riscv/scripts/generate_bench_results_readme.py \
+            ./results \
+            "${{ steps.date.outputs.value }}" \
+            --output ./results/readme.md
 
       - name: commit to bench results
         uses: peaceiris/actions-gh-pages@v4
@@ -208,7 +216,7 @@ jobs:
         # Rust 1.90 is needed by fresher versions of dependencies of cargo-openvm.
         run: |
           rustup toolchain install 1.90
-          cargo +1.90 install --git 'http://github.com/powdr-labs/openvm.git' --rev "v1.4.2-powdr-rc.2" --locked cargo-openvm
+          cargo +1.90 install --git 'http://github.com/powdr-labs/openvm.git' --rev "v1.4.2-powdr-rc.4" --locked cargo-openvm
 
       - name: Setup python venv
         run: |
@@ -262,6 +270,7 @@ jobs:
 
           python ../openvm-riscv/scripts/basic_metrics.py summary-table --csv $RES_DIR/apc000.json $RES_DIR/apc010.json $RES_DIR/apc030.json > $RES_DIR/basic_metrics.csv
           python ../openvm-riscv/scripts/basic_metrics.py plot $RES_DIR/apc000.json $RES_DIR/apc010.json $RES_DIR/apc030.json -o $RES_DIR/proof_time_breakdown.png
+          python ../openvm-riscv/scripts/basic_metrics.py combine $RES_DIR/apc000.json $RES_DIR/apc010.json $RES_DIR/apc030.json > $RES_DIR/combined_metrics.json
           python ../autoprecompiles/scripts/plot_effectiveness.py $RES_DIR/apc_candidates.json --output $RES_DIR/effectiveness.png
 
           mv $RES_DIR ../results/
@@ -283,6 +292,13 @@ jobs:
         id: date
         run: echo "value=$(date +'%Y-%m-%d-%H%M')" >> $GITHUB_OUTPUT
 
+      - name: Generate bench results README
+        run: |
+          python3 ./openvm-riscv/scripts/generate_bench_results_readme.py \
+            ./results \
+            "${{ steps.date.outputs.value }}-gpu" \
+            --output ./results/readme.md
+
       - name: commit to bench results
         uses: peaceiris/actions-gh-pages@v4
         with:
@@ -292,4 +308,3 @@ jobs:
           destination_dir: results/${{ steps.date.outputs.value }}-gpu/
           keep_files: true
           enable_jekyll: true
-

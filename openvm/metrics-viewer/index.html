@@ -1,0 +1,1832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenVM Metrics Viewer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+
+        .navbar {
+            background: white;
+            border-bottom: 1px solid #dee2e6;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+        }
+        .navbar-brand { color: #333; font-weight: 700; cursor: pointer; text-decoration: none; }
+        .navbar-brand:hover { color: #000; }
+        .data-source {
+            color: #888; font-size: 0.85rem; margin-left: 1rem;
+            flex: 1 1 auto; max-width: calc(100vw - 300px);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            text-align: right; font-family: 'Courier New', monospace;
+        }
+        .data-source a { color: #666; text-decoration: underline; }
+        .data-source a:hover { color: #333; }
+
+        /* Upload section */
+        #uploadSection {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 80vh;
+        }
+        .upload-container { max-width: 600px; width: 100%; }
+        .dropzone {
+            border: 3px dashed #dee2e6;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background-color: white;
+        }
+        .dropzone:hover, .dropzone.drag-over {
+            border-color: #0d6efd;
+            background-color: #e7f1ff;
+        }
+        .dropzone h4 { color: #333; }
+        .url-input-group { margin-top: 1.5rem; }
+        .btn-load {
+            background: #0d6efd;
+            border: none;
+            color: white;
+        }
+        .btn-load:hover { background: #0b5ed7; color: white; }
+
+        /* App section */
+        .format-hint {
+            margin-top: 0.75rem;
+            text-align: center;
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+        #appSection { display: none; }
+        .pane {
+            background-color: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 1rem;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .pane h5 {
+            color: #333;
+            margin-bottom: 0.75rem;
+            font-weight: 600;
+        }
+
+        /* Summary table */
+        .summary-table {
+            font-size: 0.85rem;
+        }
+        .summary-table th {
+            background: #f8f9fa;
+            color: #333;
+            padding: 8px;
+            white-space: nowrap;
+            cursor: pointer;
+            user-select: none;
+            border-bottom: 2px solid #dee2e6;
+        }
+        .summary-table th:hover { background: #e9ecef; }
+        .summary-table td {
+            padding: 6px 8px;
+            border-bottom: 1px solid #dee2e6;
+            white-space: nowrap;
+        }
+        .summary-table tr {
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .summary-table tr:hover { background: #e7f1ff; }
+        .summary-table tr.selected { background: #cfe2ff; outline: 2px solid #0d6efd; }
+        .summary-table .baseline-radio { text-align: center; width: 1px; }
+        .summary-table .baseline-radio input { cursor: pointer; }
+
+        /* Pie chart placeholder */
+        .pie-placeholder {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 300px;
+            color: #999;
+            font-style: italic;
+        }
+
+        /* Details table */
+        .details-table {
+            width: 100%;
+            font-size: 0.82rem;
+            margin-bottom: 0.25rem;
+        }
+        .details-table th {
+            background: #f8f9fa;
+            color: #666;
+            padding: 4px 8px;
+            font-weight: 600;
+            white-space: nowrap;
+            width: 50%;
+        }
+        .details-table td {
+            padding: 4px 8px;
+            white-space: nowrap;
+        }
+        .details-table tr { border-bottom: 1px solid #eee; }
+
+        /* Page max width */
+        #appSection { max-width: 1600px; margin-left: auto; margin-right: auto; }
+
+        /* Equal height chart row */
+        .chart-row { display: flex; }
+        .chart-row > .chart-col-left { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+        .chart-row > .chart-col-right { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+        .chart-row > .chart-col-right > .pane { flex: 1; }
+        .chart-row .pane { display: flex; flex-direction: column; }
+        .chart-row .pane-body { flex: 1; overflow-y: auto; }
+
+        /* Details layout: table + pie side by side */
+        .details-row { display: flex; gap: 1rem; }
+        .details-row .details-table-col { flex: 1; min-width: 0; }
+        .details-row .details-pie-col { flex-shrink: 0; }
+
+        /* Chart tooltips */
+        .chart-tooltip {
+            position: absolute;
+            pointer-events: none;
+            background: rgba(255, 255, 255, 0.97);
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 0.8rem;
+            color: #333;
+            z-index: 100;
+            white-space: nowrap;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+
+        /* Chart tabs */
+        .nav-tabs .nav-link {
+            color: #666;
+            font-size: 0.85rem;
+            padding: 0.3rem 0.75rem;
+        }
+        .nav-tabs .nav-link.active {
+            color: #333;
+            font-weight: 600;
+        }
+
+        /* Stacked bar chart */
+        .bar-group { cursor: pointer; }
+        .bar-group:hover rect { opacity: 0.85; }
+
+        /* Info icon tooltip */
+        .details-table th { position: relative; padding-right: 24px; }
+        .metric-info {
+            position: absolute;
+            right: 4px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 14px;
+            height: 14px;
+            line-height: 14px;
+            text-align: center;
+            font-size: 9px;
+            font-style: normal;
+            font-weight: 700;
+            color: #bbb;
+            border: 1px solid #ddd;
+            border-radius: 50%;
+            cursor: help;
+        }
+        .metric-info:hover { color: #555; border-color: #999; }
+        .metric-info-tooltip {
+            display: none;
+            position: fixed;
+            z-index: 200;
+            background: #fff;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            padding: 8px 10px;
+            font-size: 0.78rem;
+            font-weight: 400;
+            color: #333;
+            white-space: normal;
+            width: 500px;
+            max-width: 90vw;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.13);
+            line-height: 1.4;
+        }
+        .metric-info-tooltip code {
+            display: block;
+            margin-top: 5px;
+            padding: 6px 8px;
+            background: #f8f8f8;
+            border: 1px solid #e8e8e8;
+            border-radius: 4px;
+            font-size: 0.73rem;
+            white-space: pre-wrap;
+            word-break: break-all;
+            color: #333;
+            line-height: 1.5;
+        }
+        .metric-info-tooltip code .kw { color: #8700af; font-weight: 600; }
+        .metric-info-tooltip code .fn { color: #005f87; }
+        .metric-info-tooltip code .st { color: #4e9a06; }
+        .metric-info-tooltip code .cm { color: #8f8f8f; font-style: italic; }
+        .metric-info-tooltip code .nb { color: #b07800; }
+
+        /* Collapsible detail table rows */
+        .details-table tr.collapsible-parent th {
+            cursor: pointer;
+            user-select: none;
+        }
+        .details-table tr.collapsible-parent th .toggle-arrow {
+            display: inline-block;
+            width: 1em;
+            font-size: 0.7em;
+            transition: transform 0.15s;
+        }
+        .details-table tr.collapsible-parent.collapsed th .toggle-arrow {
+            transform: rotate(-90deg);
+        }
+        .details-table tr.collapsed-child {
+            display: none;
+        }
+
+        /* Loading */
+        .loading-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(248, 249, 250, 0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .loading-overlay .spinner-border { color: #0d6efd; }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#" onclick="window.location.href = window.location.pathname; return false;">OpenVM Metrics Viewer</a>
+            <span id="versionBadge" style="display:none; font-size:0.75rem; padding:2px 8px; border-radius:4px; background:#e9ecef; color:#495057; font-weight:600; margin-left:0.5rem"></span>
+            <span class="data-source" id="dataSourceLabel"></span>
+        </div>
+    </nav>
+
+    <div id="uploadSection">
+        <div class="upload-container">
+            <div class="dropzone" id="dropzone">
+                <h4>Drop metrics JSON here</h4>
+                <p class="text-muted">or click to select a file</p>
+                <input type="file" id="fileInput" accept=".json" style="display:none">
+            </div>
+            <div class="format-hint">Supports combined metrics JSON and raw metrics JSON with <code>counter</code> + <code>gauge</code>.</div>
+            <div class="url-input-group input-group">
+                <input type="text" class="form-control" id="urlInput"
+                       placeholder="Or paste a URL to metrics JSON...">
+                <button class="btn btn-load" id="urlLoadBtn">Load</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="appSection" class="container-fluid mt-3">
+        <div class="chart-row" style="gap:1rem; align-items:start">
+            <div class="chart-col-left" style="gap:1rem">
+                <div class="pane">
+                    <h5>Summary Table</h5>
+                    <div style="overflow-x:auto">
+                        <table class="summary-table" style="width:100%" id="summaryTable">
+                            <thead><tr></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="pane">
+                    <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.75rem">
+                        <h5 style="margin:0">Proof Time Breakdown</h5>
+                        <ul class="nav nav-tabs" style="margin:0; border:none; margin-left:auto">
+                            <li class="nav-item">
+                                <a class="nav-link active" href="#" id="tabStacked" onclick="switchChartTab('stacked'); return false;">Stacked</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="#" id="tabGrouped" onclick="switchChartTab('grouped'); return false;">By Component</a>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="pane-body">
+                        <div id="barChart"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="chart-col-right">
+                <div class="pane">
+                    <h5>Experiment Details <span id="pieRunName" class="text-muted" style="font-size:0.8rem"></span></h5>
+                    <div class="pane-body">
+                        <div id="detailsSection">
+                            <div class="pie-placeholder">Select an experiment to view details</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="loading-overlay" id="loadingOverlay" style="display:none">
+        <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+
+<script>
+// ============================================================
+// State
+// ============================================================
+let combinedData = null;
+let allMetrics = [];
+let selectedRunName = null;
+let baselineRunName = null;
+let currentChartTab = 'stacked';
+let detectedOpenVmVersion = null; // 1 or 2
+
+// ============================================================
+// Data Shape Validation
+// ============================================================
+function assert(condition, message) {
+    if (!condition) throw new Error(message);
+}
+
+function isObject(value) {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function hasRawMetricsShape(value) {
+    return isObject(value) && Object.prototype.hasOwnProperty.call(value, 'counter')
+        && Object.prototype.hasOwnProperty.call(value, 'gauge');
+}
+
+function assertMetricEntries(entries, fieldName, context) {
+    assert(Array.isArray(entries), `${context}.${fieldName} must be an array.`);
+    entries.forEach((entry, idx) => {
+        const entryContext = `${context}.${fieldName}[${idx}]`;
+        assert(isObject(entry), `${entryContext} must be an object.`);
+        assert(Array.isArray(entry.labels), `${entryContext}.labels must be an array.`);
+        entry.labels.forEach((label, labelIdx) => {
+            assert(Array.isArray(label) && label.length === 2, `${entryContext}.labels[${labelIdx}] must be a [key, value] pair.`);
+        });
+        assert(typeof entry.metric === 'string', `${entryContext}.metric must be a string.`);
+        assert(typeof entry.value === 'string' || typeof entry.value === 'number', `${entryContext}.value must be a string or number.`);
+    });
+}
+
+function assertRawMetricsShape(metricsJson, context) {
+    assert(isObject(metricsJson), `${context} must be a JSON object.`);
+    assert(hasRawMetricsShape(metricsJson), `${context} must contain both "counter" and "gauge" fields.`);
+    assertMetricEntries(metricsJson.counter, 'counter', context);
+    assertMetricEntries(metricsJson.gauge, 'gauge', context);
+}
+
+function inferRawRunName(source) {
+    if (!source) return 'experiment';
+
+    const sourceName = source.trim().split('?')[0].split('#')[0];
+    if (/^metrics\.json$/i.test(sourceName)) return 'experiment';
+
+    try {
+        const url = new URL(source, window.location.href);
+        const parts = url.pathname.split('/').filter(Boolean);
+        const fileName = parts[parts.length - 1] || '';
+        const parentName = parts[parts.length - 2] || '';
+        if (fileName === 'metrics.json' && parentName) return parentName;
+        if (fileName) return fileName.replace(/\.json$/i, '') || 'experiment';
+    } catch (_) {
+        const fileName = source.split('/').pop() || source;
+        if (/^metrics\.json$/i.test(fileName)) return 'experiment';
+        return fileName.replace(/\.json$/i, '') || 'experiment';
+    }
+
+    return 'experiment';
+}
+
+function normalizeMetricsData(data, sourceLabel) {
+    assert(isObject(data), 'Metrics JSON must be a JSON object.');
+
+    if (hasRawMetricsShape(data)) {
+        const runName = inferRawRunName(sourceLabel);
+        assertRawMetricsShape(data, `metrics.${runName}`);
+        return { [runName]: data };
+    }
+
+    const entries = Object.entries(data);
+    assert(entries.length > 0, 'Combined metrics JSON must contain at least one experiment.');
+    entries.forEach(([runName, metricsJson]) => assertRawMetricsShape(metricsJson, `metrics.${runName}`));
+    return data;
+}
+
+// ============================================================
+// OpenVM Version Detection
+// ============================================================
+
+// Detects whether metrics come from OpenVM 1 or OpenVM 2.
+// OpenVM 2 uses LogUp GKR (metric names containing 'logup_gkr').
+function detectOpenVmVersion(combinedData) {
+    const firstRun = Object.values(combinedData)[0];
+    if (!firstRun) return 1;
+    const allMetricNames = [
+        ...firstRun.counter.map(e => e.metric),
+        ...firstRun.gauge.map(e => e.metric),
+    ];
+    if (allMetricNames.some(n => n.includes('logup_gkr'))) return 2;
+    return 1;
+}
+
+// ============================================================
+// Data Processing — ports of Python logic
+//
+// These functions compute all displayed numbers from raw JSON.
+// See CLAUDE.md for the mapping to Python source functions.
+// ============================================================
+
+// Port of metrics_utils.py:load_metrics_dataframes
+// Flattens counter+gauge arrays into flat objects keyed by label names,
+// then splits into app/leaf/internal/compression by the "group" label prefix.
+function loadMetricsDataframes(metricsJson) {
+    const entries = [...metricsJson.counter, ...metricsJson.gauge].map(c => {
+        const obj = Object.fromEntries(c.labels);
+        obj.metric = c.metric;
+        obj.value = c.value;
+        return obj;
+    });
+
+    let app = entries.filter(e => (e.group || '').startsWith('app_proof'));
+    if (app.length === 0) {
+        app = entries.filter(e => (e.group || '').startsWith('reth'));
+    }
+    const leaf = entries.filter(e => (e.group || '').startsWith('leaf'));
+    const internal = entries.filter(e => (e.group || '').startsWith('internal'));
+    const compression = entries.filter(e => (e.group || '') === 'compression');
+
+    return { app, leaf, internal, compression };
+}
+
+// Port of metrics_utils.py:is_normal_instruction_air
+// Returns true for standard RISC-V instruction AIRs (VmAirWrapper with 4 limbs),
+// false for precompiles (FieldExpressionCoreAir, non-4-limb, or non-VmAirWrapper).
+function isNormalInstructionAir(airName) {
+    const match = (airName || '').match(/^VmAirWrapper<[^,]+,\s*([^>]+?)(?:<(\d+)(?:,\s*\d+)*>)?\s*>$/);
+    if (!match) return false;
+    const coreName = match[1];
+    const numLimbs = match[2];
+    if (coreName === 'FieldExpressionCoreAir') return false;
+    if (numLimbs && parseInt(numLimbs) !== 4) return false;
+    return true;
+}
+
+// Sum all values for entries matching a given metric name.
+function getMetric(entries, metricName) {
+    return entries.filter(e => e.metric === metricName)
+                  .reduce((sum, e) => sum + parseFloat(e.value), 0);
+}
+
+// Get the value of a metric that must appear exactly once.
+function getUniqueMetric(entries, metricName) {
+    const matches = entries.filter(e => e.metric === metricName);
+    if (matches.length !== 1) throw new Error(`Expected exactly 1 entry for "${metricName}", found ${matches.length}`);
+    return parseFloat(matches[0].value);
+}
+
+// Port of basic_metrics.py:extract_metrics
+// Computes all summary metrics for a single run from its raw JSON.
+// Each metric maps directly to a getMetric() call on a specific group + metric name.
+function extractMetrics(runName, metricsJson) {
+    const { app, leaf, internal, compression } = loadMetricsDataframes(metricsJson);
+    const allEntries = [...metricsJson.counter, ...metricsJson.gauge].map(c => {
+        const obj = Object.fromEntries(c.labels);
+        obj.metric = c.metric;
+        obj.value = c.value;
+        return obj;
+    });
+    const m = {};
+
+    m.name = runName;
+
+    // Classify app AIRs into powdr / normal instruction / openvm precompile
+    const powdrAir = app.filter(e => (e.air_name || '').startsWith('PowdrAir'));
+    const nonPowdrAir = app.filter(e => !(e.air_name || '').startsWith('PowdrAir'));
+    const normalInstructionAir = nonPowdrAir.filter(e => isNormalInstructionAir(e.air_name || ''));
+    const openVmPrecompileAir = nonPowdrAir.filter(e => !isNormalInstructionAir(e.air_name || ''));
+
+    // Proof times by phase.
+    // app_prove_time_ms has no group label, so look in allEntries.
+    m.app_proof_time_ms = getUniqueMetric(allEntries, 'app_prove_time_ms');
+    m.leaf_proof_time_ms = getMetric(leaf, 'total_proof_time_ms');
+    m.inner_recursion_proof_time_ms = getMetric(internal, 'total_proof_time_ms');
+    m.compression_proof_time_ms = getMetric(compression, 'total_proof_time_ms');
+    m.total_proof_time_ms = m.app_proof_time_ms + m.leaf_proof_time_ms
+        + m.inner_recursion_proof_time_ms + m.compression_proof_time_ms;
+
+    // STARK prove time excluding trace generation
+    m.app_proof_time_excluding_trace_ms = getMetric(app, 'stark_prove_excluding_trace_time_ms');
+    m.leaf_proof_time_excluding_trace_ms = getMetric(leaf, 'stark_prove_excluding_trace_time_ms');
+    m.inner_recursion_proof_time_excluding_trace_ms = getMetric(internal, 'stark_prove_excluding_trace_time_ms');
+    m.compression_proof_time_excluding_trace_ms = getMetric(compression, 'stark_prove_excluding_trace_time_ms');
+    m.total_proof_time_excluding_trace_ms = m.app_proof_time_excluding_trace_ms + m.leaf_proof_time_excluding_trace_ms
+        + m.inner_recursion_proof_time_excluding_trace_ms + m.compression_proof_time_excluding_trace_ms;
+
+    // Column counts (summed over all segments)
+    const mainCols = getMetric(app, 'main_cols');
+    const prepCols = getMetric(app, 'prep_cols');
+    const permCols = getMetric(app, 'perm_cols');
+    m.app_proof_cols = mainCols + prepCols + permCols;
+
+    m.num_segments = app.filter(e => 'segment' in e).reduce((max, e) => Math.max(max, parseInt(e.segment)), -1) + 1;
+    m.num_air_instances = app.filter(e => e.metric === 'rows').length;
+
+    m.app_proof_cells = getMetric(app, 'total_cells');
+    m.app_proof_cells_used = getMetric(app, 'total_cells_used'); // V1 only, null-ish in V2
+    m.app_execute_preflight_time_ms = getMetric(app, 'execute_preflight_time_ms');
+    m.app_execute_metered_time_ms = getMetric(app, 'execute_metered_time_ms');
+    m.app_trace_gen_time_ms = getMetric(app, 'trace_gen_time_ms');
+
+    // V2: STARK sub-components (prover.* metrics)
+    m.app_trace_commit_time_ms = getMetric(app, 'prover.main_trace_commit_time_ms');
+    m.app_rap_constraints_time_ms = getMetric(app, 'prover.rap_constraints_time_ms');
+    m.app_openings_time_ms = getMetric(app, 'prover.openings_time_ms');
+    m.app_stark_other_ms = m.app_proof_time_excluding_trace_ms
+        - m.app_trace_commit_time_ms - m.app_rap_constraints_time_ms - m.app_openings_time_ms;
+
+    // V2: rap_constraints sub-components (additive: logup_gkr + round0 + mle_rounds = rap)
+    m.app_rap_logup_gkr_time_ms = getMetric(app, 'prover.rap_constraints.logup_gkr_time_ms');
+    m.app_rap_round0_time_ms = getMetric(app, 'prover.rap_constraints.round0_time_ms');
+    m.app_rap_mle_rounds_time_ms = getMetric(app, 'prover.rap_constraints.mle_rounds_time_ms');
+    m.app_rap_other_ms = m.app_rap_constraints_time_ms
+        - m.app_rap_logup_gkr_time_ms - m.app_rap_round0_time_ms - m.app_rap_mle_rounds_time_ms;
+
+    // V2: openings sub-components (additive: whir + stacked_reduction = openings)
+    m.app_openings_whir_time_ms = getMetric(app, 'prover.openings.whir_time_ms');
+    m.app_openings_stacked_reduction_time_ms = getMetric(app, 'prover.openings.stacked_reduction_time_ms');
+    m.app_openings_other_ms = m.app_openings_time_ms
+        - m.app_openings_whir_time_ms - m.app_openings_stacked_reduction_time_ms;
+
+    // V2: additional per-segment sub-components
+    m.app_set_initial_memory_time_ms = getMetric(app, 'set_initial_memory_time_ms');
+
+    // "App other" = app proof time minus all known sub-components.
+    // Can be negative when sub-timers overlap (parallelism). The raw value
+    // is stored for the detail table; the bar chart clamps to 0.
+    m.app_other_ms = m.app_proof_time_ms
+        - m.app_proof_time_excluding_trace_ms
+        - m.app_execute_preflight_time_ms
+        - m.app_execute_metered_time_ms
+        - m.app_trace_gen_time_ms
+        - m.app_set_initial_memory_time_ms;
+
+    // Cell ratios by AIR classification
+    const normalCells = getMetric(normalInstructionAir, 'cells');
+    const openVmCells = getMetric(openVmPrecompileAir, 'cells');
+    const powdrCells = getMetric(powdrAir, 'cells');
+
+    m.normal_instruction_ratio = m.app_proof_cells > 0 ? normalCells / m.app_proof_cells : 0;
+    m.openvm_precompile_ratio = m.app_proof_cells > 0 ? openVmCells / m.app_proof_cells : 0;
+    m.powdr_ratio = m.app_proof_cells > 0 ? powdrCells / m.app_proof_cells : 0;
+    m.powdr_rows = getMetric(powdrAir, 'rows');
+
+    // Constraints and bus interactions — per-AIR metrics (no group/segment labels).
+    // Since they're per-AIR, we weight by segment count (for totals) or row count (for instances).
+    const hasConstraints = allEntries.some(e => e.metric === 'constraints');
+    const hasInteractions = allEntries.some(e => e.metric === 'interactions');
+
+    // Build per-AIR weights from app rows entries:
+    //   segmentsByAppAir[air] = number of segments the AIR appears in
+    //   rowsByAppAir[air] = total rows across all segments
+    const segmentsByAppAir = {};
+    const rowsByAppAir = {};
+    app.filter(e => e.metric === 'rows').forEach(e => {
+        segmentsByAppAir[e.air_id] = (segmentsByAppAir[e.air_id] || 0) + 1;
+        rowsByAppAir[e.air_id] = (rowsByAppAir[e.air_id] || 0) + parseFloat(e.value);
+    });
+
+    // weighted_sum: for each all_entries entry matching metricName, multiply by weight[air_id]
+    function weightedSum(metricName, weights) {
+        return allEntries.filter(e => e.metric === metricName)
+            .reduce((sum, e) => sum + parseFloat(e.value) * (weights[e.air_id] || 0), 0);
+    }
+
+    m.constraints = hasConstraints ? weightedSum('constraints', segmentsByAppAir) : null;
+    m.bus_interactions = hasInteractions ? weightedSum('interactions', segmentsByAppAir) : null;
+    m.constraint_instances = hasConstraints ? weightedSum('constraints', rowsByAppAir) : null;
+    m.bus_interaction_messages = hasInteractions ? weightedSum('interactions', rowsByAppAir) : null;
+
+    return m;
+}
+
+// Port of plot_trace_cells.py:compute_cells_by_air
+// Aggregates cells by air_name from the app group, sorts descending,
+// and groups AIRs below 1.5% of total into "Other".
+function computeCellsByAir(metricsJson) {
+    const { app } = loadMetricsDataframes(metricsJson);
+    const cellEntries = app.filter(e => e.metric === 'cells');
+
+    const cellsByAir = {};
+    cellEntries.forEach(e => {
+        const name = e.air_name;
+        cellsByAir[name] = (cellsByAir[name] || 0) + parseFloat(e.value);
+    });
+
+    const sorted = Object.entries(cellsByAir).sort((a, b) => b[1] - a[1]);
+    const total = sorted.reduce((s, [, v]) => s + v, 0);
+
+    const threshold = total * 0.015;
+    const powdrItems = [];
+    const otherItems = [];
+    let otherSum = 0;
+    for (const [name, val] of sorted) {
+        if (val < threshold) {
+            otherSum += val;
+        } else if (name.startsWith('PowdrAir')) {
+            powdrItems.push({ name, value: val });
+        } else {
+            otherItems.push({ name, value: val });
+        }
+    }
+    if (otherSum > 0) {
+        otherItems.push({ name: 'Other', value: otherSum });
+    }
+    // PowdrAir items first, then the rest sorted by size
+    const items = [...powdrItems, ...otherItems];
+
+    return { items, total };
+}
+
+// ============================================================
+// Python syntax highlighting for metric info tooltips
+// ============================================================
+function highlightPython(code) {
+    if (!code) return '';
+    const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const KW = new Set(['def','for','in','if','and','or','not','return','else','import','from',
+        'True','False','None','lambda','with','as','class','is','raise','try','except',
+        'finally','while','break','continue','pass','yield','del','assert','elif']);
+    const FN = new Set(['sum','max','min','int','float','str','len','set','dict','list','range',
+        'print','sorted','any','all','map','filter','zip','enumerate','isinstance','getattr',
+        'hasattr','type','abs','round','open','startswith']);
+    // Single-pass tokenizer: match comments, strings, words, numbers, or any other char
+    const TOKEN = /#[^\n]*|'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|\b[a-zA-Z_]\w*\b|\b\d+\.?\d*\b|./gs;
+    let out = '';
+    let m;
+    while ((m = TOKEN.exec(code)) !== null) {
+        const t = m[0];
+        if (t.startsWith('#')) { out += '<span class="cm">' + esc(t) + '</span>'; }
+        else if (t.startsWith("'") || t.startsWith('"')) { out += '<span class="st">' + esc(t) + '</span>'; }
+        else if (KW.has(t)) { out += '<span class="kw">' + esc(t) + '</span>'; }
+        else if (FN.has(t)) { out += '<span class="fn">' + esc(t) + '</span>'; }
+        else if (/^\d/.test(t)) { out += '<span class="nb">' + esc(t) + '</span>'; }
+        else { out += esc(t); }
+    }
+    return out;
+}
+
+// ============================================================
+// Metric Descriptions (single source of truth)
+//
+// Each key matches a field produced by extractMetrics().
+//   `desc` — human-readable explanation (use `descV1`/`descV2` for version-specific text)
+//   `code` — Python snippet showing how this metric is computed
+//            (use `codeV1`/`codeV2` for version-specific code)
+//
+// Code snippets assume pre-filtered entry lists (app, leaf, internal, compression)
+// and a helper:
+//   def sum_metric(entries, metric):
+//       return sum(float(e['value']) for e in entries if e['metric'] == metric)
+// ============================================================
+const METRIC_INFO = {
+    // --- Basic Stats ---
+    num_segments: {
+        desc: 'Number of proving segments the app proof is split into.',
+        code: `max(int(e['segment']) for e in app_entries) + 1`,
+    },
+    num_air_instances: {
+        desc: 'Total number of AIR instances across all segments (each AIR in each segment counts as one instance).',
+        code: `len([e for e in app if e['metric'] == 'rows'])`,
+    },
+    app_proof_cols: {
+        desc: 'Total column count in the app proof, summed over all AIRs and segments (main + preprocessed + permutation trace columns).',
+        code: `sum_metric(app, 'main_cols')
++ sum_metric(app, 'prep_cols')
++ sum_metric(app, 'perm_cols')`,
+    },
+    app_proof_cells: {
+        descV1: 'Total trace cells in the app proof, summed over all segments. Includes main, preprocessed, and permutation cells. Also includes padding.',
+        descV2: 'Total trace cells in the app proof, summed over all segments. Includes main, preprocessed, and permutation cells.',
+        code: "sum_metric(app, 'total_cells')",
+    },
+    app_proof_cells_used: {
+        desc: 'Trace cells actually used before padding. Includes main and permutation cells, NOT preprocessed cells. The percentage shows utilization (used / total).',
+        code: "sum_metric(app, 'total_cells_used')",
+    },
+    constraints: {
+        desc: 'Total constraint polynomials across all app proof AIRs and segments.',
+        code: `segments_by_air = {}  # air -> segment count, from app rows
+weighted_sum("constraints", segments_by_air)`,
+    },
+    constraint_instances: {
+        desc: 'Total constraint evaluations: each AIR\'s constraint count weighted by its total row count across all segments.',
+        code: `rows_by_air = {}  # air -> total rows, from app rows
+weighted_sum("constraints", rows_by_air)`,
+    },
+    bus_interactions: {
+        desc: 'Total bus interaction definitions across all app proof AIRs and segments.',
+        code: `weighted_sum("interactions", segments_by_air)`,
+    },
+    bus_interaction_messages: {
+        desc: 'Total bus messages: each AIR\'s interaction count weighted by its total row count across all segments.',
+        code: `weighted_sum("interactions", rows_by_air)`,
+    },
+
+    // --- Proof Time ---
+    app_proof_time_ms: {
+        desc: 'Wall-clock time for the app proof phase.',
+        code: "unique_metric(allEntries, 'app_prove_time_ms')",
+    },
+    app_proof_time_excluding_trace_ms: {
+        descV1: 'STARK prover time excluding trace generation: commitments, quotient computation, FRI opening.',
+        descV2: 'STARK prover time excluding trace generation: trace commit, constraint evaluation, LogUp GKR, and WHIR opening proofs.',
+        code: "sum_metric(app, 'stark_prove_excluding_trace_time_ms')",
+    },
+    app_rap_constraints_time_ms: {
+        desc: 'Time for RAP constraint evaluation, including zerocheck and the LogUp GKR protocol for bus interactions.',
+        code: "sum_metric(app, 'prover.rap_constraints_time_ms')",
+    },
+    app_rap_logup_gkr_time_ms: {
+        desc: 'Time for the LogUp GKR protocol, which proves bus interaction correctness via a GKR-based sumcheck.',
+        code: "sum_metric(app, 'prover.rap_constraints.logup_gkr_time_ms')",
+    },
+    app_rap_round0_time_ms: {
+        desc: 'Time for Round 0 of the constraint evaluation sumcheck (initial round before MLE rounds).',
+        code: "sum_metric(app, 'prover.rap_constraints.round0_time_ms')",
+    },
+    app_rap_mle_rounds_time_ms: {
+        desc: 'Time for MLE (multilinear extension) rounds of the constraint evaluation sumcheck.',
+        code: "sum_metric(app, 'prover.rap_constraints.mle_rounds_time_ms')",
+    },
+    app_rap_other_ms: {
+        desc: 'Residual: constraint evaluation time minus LogUp GKR, Round 0, and MLE rounds.',
+        code: `rap_constraints - logup_gkr - round0 - mle_rounds`,
+    },
+    app_openings_time_ms: {
+        descV1: 'Time for polynomial opening proofs (FRI-based PCS opening).',
+        descV2: 'Time for polynomial opening proofs using WHIR (a FRI-like protocol) with stacked polynomial reduction.',
+        code: "sum_metric(app, 'prover.openings_time_ms')",
+    },
+    app_openings_whir_time_ms: {
+        desc: 'Time for the WHIR polynomial commitment opening protocol.',
+        code: "sum_metric(app, 'prover.openings.whir_time_ms')",
+    },
+    app_openings_stacked_reduction_time_ms: {
+        desc: 'Time for stacked polynomial reduction, which batches multiple polynomial openings before WHIR.',
+        code: "sum_metric(app, 'prover.openings.stacked_reduction_time_ms')",
+    },
+    app_openings_other_ms: {
+        desc: 'Residual: openings time minus WHIR and stacked reduction.',
+        code: `openings - whir - stacked_reduction`,
+    },
+    app_trace_commit_time_ms: {
+        desc: 'Time for committing the main execution trace via Merkle tree construction.',
+        code: "sum_metric(app, 'prover.main_trace_commit_time_ms')",
+    },
+    app_stark_other_ms: {
+        desc: 'Residual: STARK time minus constraint evaluation, openings, and trace commit.',
+        code: `stark_excl_trace - constraints - openings - trace_commit`,
+    },
+    app_execute_preflight_time_ms: {
+        desc: 'Preflight execution: a fast initial pass that determines segment boundaries and per-AIR trace heights without generating the full trace.',
+        code: "sum_metric(app, 'execute_preflight_time_ms')",
+    },
+    app_set_initial_memory_time_ms: {
+        desc: 'Time to initialize the memory state at the start of each proving segment (V2 only).',
+        code: "sum_metric(app, 'set_initial_memory_time_ms')",
+    },
+    app_trace_gen_time_ms: {
+        desc: 'Trace generation: re-executes the program to produce the full execution trace (witness) consumed by the STARK prover.',
+        code: "sum_metric(app, 'trace_gen_time_ms')",
+    },
+    app_execute_metered_time_ms: {
+        desc: 'Metered execution: instrumented run that counts executed instructions per AIR to guide segment splitting and resource allocation.',
+        code: "sum_metric(app, 'execute_metered_time_ms')",
+    },
+    app_other_ms: {
+        desc: 'Residual: app proof time minus all known sub-components. May be negative when sub-timers overlap due to parallelism.',
+        codeV1: `app_proof - stark_excl_trace - preflight
+  - metered - trace_gen`,
+        codeV2: `app_proof - stark_excl_trace - preflight
+  - metered - trace_gen - set_initial_memory`,
+    },
+    leaf_proof_time_ms: {
+        descV1: 'Total proving time for the leaf aggregation layer (leaf_0, leaf_1, ...). Aggregates app proof segments into a smaller number of proofs.',
+        codeV1: "sum_metric(leaf, 'total_proof_time_ms')",
+        descV2: 'Total proving time for the leaf aggregation layer. Aggregates app proof segments into a smaller number of proofs.',
+        codeV2: "sum_metric(leaf, 'total_proof_time_ms')",
+    },
+    inner_recursion_proof_time_ms: {
+        descV1: 'Total proving time for inner recursion layers (internal_0, internal_1, ...). Recursively aggregates leaf proofs.',
+        codeV1: "sum_metric(internal, 'total_proof_time_ms')",
+        descV2: 'Total proving time for inner recursion layers (internal_for_leaf, internal_recursive.*). Recursively aggregates leaf proofs.',
+        codeV2: "sum_metric(internal, 'total_proof_time_ms')",
+    },
+    compression_proof_time_ms: {
+        desc: 'Total proving time for the compression layer (V2 only). Produces a compact final proof from the recursion output.',
+        code: "sum_metric(compression, 'total_proof_time_ms')",
+    },
+    total_proof_time_ms: {
+        descV1: 'Sum of all proving phases: app proof + leaf recursion + inner recursion.',
+        descV2: 'Sum of all proving phases: app proof + leaf recursion + inner recursion + compression.',
+        codeV1: `app + leaf + inner_recursion`,
+        codeV2: `app + leaf + inner_recursion + compression`,
+    },
+
+    // --- Cell Distribution ---
+    powdr_ratio: {
+        desc: 'Fraction of app proof trace cells belonging to powdr autoprecompile AIRs (air_name starts with "PowdrAir"). These are synthesized circuits that replace sequences of basic instructions.',
+        code: `sum(cells for air if air_name.startswith('PowdrAir'))
+/ total_cells`,
+    },
+    normal_instruction_ratio: {
+        desc: 'Fraction of app proof trace cells belonging to standard RISC-V instruction AIRs: VmAirWrapper types with 4 limbs, excluding FieldExpressionCoreAir.',
+        code: `sum(cells for air if is_normal_instruction_air(air_name))
+/ total_cells`,
+    },
+    openvm_precompile_ratio: {
+        desc: 'Fraction of app proof trace cells belonging to OpenVM built-in precompile AIRs (neither powdr nor normal instruction AIRs). Includes SHA-256, Keccak, ECC, etc.',
+        code: `sum(cells for air if not powdr and not normal)
+/ total_cells`,
+    },
+};
+
+// ============================================================
+// Constants — proof time breakdown components
+// Colors and order match basic_metrics.py:plot()
+// Version-dependent: V2 adds compression phase.
+// ============================================================
+const COMPONENTS_V1 = [
+    { key: 'inner_recursion_proof_time_ms', label: 'Inner recursion', color: '#9b3e00' },
+    { key: 'leaf_proof_time_ms', label: 'Leaf recursion', color: '#d69600' },
+    { key: 'app_proof_time_excluding_trace_ms', label: 'App STARK (excl. trace)', color: '#1f77b4' },
+    { key: 'app_trace_gen_time_ms', label: 'App trace gen', color: '#6baed6' },
+    { key: 'app_execute_preflight_time_ms', label: 'App preflight', color: '#9ecae1' },
+    { key: 'app_execute_metered_time_ms', label: 'App metered', color: '#c6dbef' },
+    { key: 'app_other_ms', label: 'App other', color: '#08519c' },
+];
+
+const COMPONENTS_V2 = [
+    { key: 'compression_proof_time_ms', label: 'Compression', color: '#7b2d8e' },
+    { key: 'inner_recursion_proof_time_ms', label: 'Inner recursion', color: '#9b3e00' },
+    { key: 'leaf_proof_time_ms', label: 'Leaf recursion', color: '#d69600' },
+    { key: 'app_proof_time_excluding_trace_ms', label: 'App STARK (excl. trace)', color: '#1f77b4' },
+    { key: 'app_trace_gen_time_ms', label: 'App trace gen', color: '#9ecae1' },
+    { key: 'app_set_initial_memory_time_ms', label: 'App set memory', color: '#a1d99b' },
+    { key: 'app_execute_preflight_time_ms', label: 'App preflight', color: '#c6dbef' },
+    { key: 'app_execute_metered_time_ms', label: 'App metered', color: '#dadaeb' },
+    { key: 'app_other_ms', label: 'App other', color: '#969696' },
+];
+
+function getComponents() {
+    return detectedOpenVmVersion === 2 ? COMPONENTS_V2 : COMPONENTS_V1;
+}
+
+// ============================================================
+// Format helpers
+// ============================================================
+// Data source display — matches autoprecompile-analyzer pattern
+function shortenUrl(urlText) {
+    if (urlText.length <= 70) return urlText;
+    return urlText.slice(0, 35) + '...' + urlText.slice(-35);
+}
+
+function updateDataSourceDisplay(source) {
+    const el = document.getElementById('dataSourceLabel');
+    if (source) {
+        const displayText = shortenUrl(source.replace(/^https?:\/\//i, ''));
+        el.innerHTML = `Data: <a href="${source}" target="_blank" rel="noopener noreferrer">${displayText}</a>`;
+        el.style.display = 'inline';
+    } else {
+        el.innerHTML = '';
+        el.style.display = 'none';
+    }
+}
+
+function fmtSeconds(ms) { return (ms / 1000).toFixed(1) + 's'; }
+function fmtCells(n) {
+    if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+    if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+    return n.toLocaleString();
+}
+function fmtPct(ratio) { return (ratio * 100).toFixed(1) + '%'; }
+
+// Format comparison vs baseline. "Lower is better" for all numeric stats.
+function fmtComparison(value, baselineValue) {
+    if (baselineValue === 0 || baselineValue == null || value == null) return '';
+    const ratio = value / baselineValue;
+    if (Math.abs(ratio - 1) < 0.005) return '<span style="color:#999; font-size:0.75rem">1.00x →</span>';
+    if (ratio < 1) {
+        return `<span style="color:#198754; font-size:0.75rem">${(1/ratio).toFixed(2)}x ↓</span>`;
+    } else {
+        return `<span style="color:#dc3545; font-size:0.75rem">${ratio.toFixed(2)}x ↑</span>`;
+    }
+}
+
+// ============================================================
+// Chart Legend Helper
+// ============================================================
+function layoutLegend(svg, COMPONENTS, x, y, availableWidth) {
+    const legendRowHeight = 18;
+    const colWidth = 180;
+    const cols = Math.max(1, Math.floor(availableWidth / colWidth));
+    const rows = Math.ceil(COMPONENTS.length / cols);
+    const legend = svg.append('g').attr('transform', `translate(${x}, ${y})`);
+    COMPONENTS.forEach((c, i) => {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        const lg = legend.append('g').attr('transform', `translate(${col * colWidth}, ${row * legendRowHeight})`);
+        lg.append('rect').attr('width', 12).attr('height', 12).attr('fill', c.color).attr('rx', 2);
+        lg.append('text').attr('x', 16).attr('y', 10).text(c.label)
+            .attr('fill', '#666').attr('font-size', '10px');
+    });
+    return rows * legendRowHeight;
+}
+
+// ============================================================
+// Stacked Bar Chart
+// ============================================================
+function createBarChart(metrics) {
+    const COMPONENTS = getComponents();
+    const container = d3.select('#barChart');
+    container.selectAll('*').remove();
+
+    const margin = { top: 30, right: 20, bottom: 140, left: 60 };
+    const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
+    const height = 420 - margin.top - margin.bottom;
+
+    const svg = container.append('svg')
+        .attr('width', width + margin.left + margin.right)
+        .attr('height', height + margin.top + margin.bottom);
+    const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+    const runNames = metrics.map(m => m.name);
+
+    // Compute stacked data
+    const stackData = metrics.map(m => {
+        const d = { name: m.name };
+        COMPONENTS.forEach(c => { d[c.key] = m[c.key] / 1000; }); // ms -> s
+        return d;
+    });
+
+    const keys = COMPONENTS.map(c => c.key);
+    const stack = d3.stack().keys(keys);
+    const series = stack(stackData);
+
+    const maxY = d3.max(stackData, d => keys.reduce((s, k) => s + d[k], 0));
+
+    const x = d3.scaleBand().domain(runNames).range([0, width]).padding(0.3);
+    const y = d3.scaleLinear().domain([0, maxY * 1.08]).range([height, 0]);
+
+    // Grid
+    g.append('g').attr('class', 'grid')
+        .call(d3.axisLeft(y).tickSize(-width).tickFormat(''))
+        .selectAll('line').attr('stroke', '#dee2e6').attr('stroke-opacity', 0.7);
+    g.selectAll('.grid .domain').remove();
+
+    // Tooltip
+    const tooltip = d3.select('body').append('div').attr('class', 'chart-tooltip').style('display', 'none');
+
+    // Bars
+    const colorMap = {};
+    COMPONENTS.forEach(c => { colorMap[c.key] = c.color; });
+    const labelMap = {};
+    COMPONENTS.forEach(c => { labelMap[c.key] = c.label; });
+
+    series.forEach(s => {
+        g.selectAll(`.bar-${s.key}`)
+            .data(s)
+            .enter().append('rect')
+            .attr('class', d => `bar-group bar-${d.data.name}`)
+            .attr('x', d => x(d.data.name))
+            .attr('y', d => y(d[1]))
+            .attr('height', d => y(d[0]) - y(d[1]))
+            .attr('width', x.bandwidth())
+            .attr('fill', colorMap[s.key])
+            .attr('data-run', d => d.data.name)
+            .on('click', (event, d) => selectRun(d.data.name))
+            .on('mouseover', (event, d) => {
+                const val = (d[1] - d[0]).toFixed(1);
+                const total = keys.reduce((sum, k) => sum + d.data[k], 0);
+                const pct = total > 0 ? ((d[1] - d[0]) / total * 100).toFixed(1) : '0';
+                tooltip.style('display', 'block')
+                    .html(`<strong>${d.data.name}</strong><br>${labelMap[s.key]}: ${val}s (${pct}%)`);
+            })
+            .on('mousemove', event => {
+                tooltip.style('left', (event.pageX + 12) + 'px').style('top', (event.pageY - 20) + 'px');
+            })
+            .on('mouseout', () => tooltip.style('display', 'none'));
+    });
+
+    // Value labels inside segments — only show if segment is tall enough for text
+    const minSegmentPx = 18; // minimum pixel height to show a label
+    series.forEach(s => {
+        s.forEach(d => {
+            const val = d[1] - d[0];
+            const segmentPx = y(d[0]) - y(d[1]);
+            if (segmentPx < minSegmentPx) return;
+            const total = keys.reduce((sum, k) => sum + d.data[k], 0);
+            const pct = total > 0 ? (val / total * 100).toFixed(1) : '0';
+            g.append('text')
+                .attr('x', x(d.data.name) + x.bandwidth() / 2)
+                .attr('y', y((d[0] + d[1]) / 2))
+                .attr('text-anchor', 'middle')
+                .attr('dominant-baseline', 'middle')
+                .attr('fill', '#333')
+                .attr('font-size', '10px')
+                .attr('font-weight', 'bold')
+                .attr('pointer-events', 'none')
+                .text(`${val.toFixed(1)} (${pct}%)`);
+        });
+    });
+
+    // Total labels on top
+    stackData.forEach(d => {
+        const total = keys.reduce((s, k) => s + d[k], 0);
+        g.append('text')
+            .attr('x', x(d.name) + x.bandwidth() / 2)
+            .attr('y', y(total) - 5)
+            .attr('text-anchor', 'middle')
+            .attr('fill', '#333')
+            .attr('font-size', '11px')
+            .attr('font-weight', 'bold')
+            .text(`Total: ${total.toFixed(1)}s`);
+    });
+
+    // Axes
+    const xAxis = g.append('g').attr('transform', `translate(0,${height})`)
+        .call(d3.axisBottom(x));
+    xAxis.selectAll('text').attr('fill', '#333')
+        .attr('transform', 'rotate(-35)')
+        .attr('text-anchor', 'end')
+        .attr('dx', '-0.5em')
+        .attr('dy', '0.3em');
+    g.append('g')
+        .call(d3.axisLeft(y).tickFormat(d => d.toFixed(1) + 's'))
+        .selectAll('text').attr('fill', '#333');
+
+    // Style axis lines
+    svg.selectAll('.domain').attr('stroke', '#dee2e6');
+    svg.selectAll('.tick line').attr('stroke', '#dee2e6');
+
+    // Measure rotated x-axis label extent, place legend below
+    const xAxisBBox = xAxis.node().getBBox();
+    const legendY = margin.top + height + xAxisBBox.height + 15;
+    const legendHeight = layoutLegend(svg, COMPONENTS, margin.left, legendY, width);
+    svg.attr('height', legendY + legendHeight + 10);
+
+    updateBarSelection();
+}
+
+function updateBarSelection() {
+    d3.selectAll('#barChart rect[data-run]').each(function() {
+        const el = d3.select(this);
+        if (el.attr('data-run') === selectedRunName) {
+            el.attr('stroke', '#ffc107').attr('stroke-width', 3);
+        } else {
+            el.attr('stroke', 'none');
+        }
+    });
+}
+
+// ============================================================
+// Grouped Bar Chart (By Component)
+// ============================================================
+function createGroupedBarChart(metrics) {
+    const COMPONENTS = getComponents();
+    const container = d3.select('#barChart');
+    container.selectAll('*').remove();
+
+    const margin = { top: 30, right: 20, bottom: 140, left: 60 };
+    const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
+    const height = 420 - margin.top - margin.bottom;
+
+    const svg = container.append('svg')
+        .attr('width', width + margin.left + margin.right)
+        .attr('height', height + margin.top + margin.bottom);
+    const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+    const runNames = metrics.map(m => m.name);
+    const keys = COMPONENTS.map(c => c.key);
+
+    const stackData = metrics.map(m => {
+        const d = { name: m.name };
+        COMPONENTS.forEach(c => { d[c.key] = m[c.key] / 1000; });
+        return d;
+    });
+
+    const maxY = d3.max(stackData, d => d3.max(keys, k => d[k]));
+
+    const x0 = d3.scaleBand().domain(runNames).range([0, width]).padding(0.2);
+    const x1 = d3.scaleBand().domain(keys).range([0, x0.bandwidth()]).padding(0.05);
+    const y = d3.scaleLinear().domain([0, maxY * 1.08]).range([height, 0]);
+
+    // Grid
+    g.append('g').attr('class', 'grid')
+        .call(d3.axisLeft(y).tickSize(-width).tickFormat(''))
+        .selectAll('line').attr('stroke', '#dee2e6').attr('stroke-opacity', 0.7);
+    g.selectAll('.grid .domain').remove();
+
+    // Tooltip
+    const tooltip = d3.select('body').append('div').attr('class', 'chart-tooltip').style('display', 'none');
+    const colorMap = {};
+    COMPONENTS.forEach(c => { colorMap[c.key] = c.color; });
+    const labelMap = {};
+    COMPONENTS.forEach(c => { labelMap[c.key] = c.label; });
+
+    // Bars
+    stackData.forEach(d => {
+        keys.forEach(key => {
+            g.append('rect')
+                .attr('x', x0(d.name) + x1(key))
+                .attr('y', y(d[key]))
+                .attr('width', x1.bandwidth())
+                .attr('height', height - y(d[key]))
+                .attr('fill', colorMap[key])
+                .attr('data-run', d.name)
+                .style('cursor', 'pointer')
+                .on('click', () => selectRun(d.name))
+                .on('mouseover', (event) => {
+                    tooltip.style('display', 'block')
+                        .html(`<strong>${d.name}</strong><br>${labelMap[key]}: ${d[key].toFixed(1)}s`);
+                })
+                .on('mousemove', event => {
+                    tooltip.style('left', (event.pageX + 12) + 'px').style('top', (event.pageY - 20) + 'px');
+                })
+                .on('mouseout', () => tooltip.style('display', 'none'));
+        });
+    });
+
+    // Axes
+    const xAxis = g.append('g').attr('transform', `translate(0,${height})`)
+        .call(d3.axisBottom(x0));
+    xAxis.selectAll('text').attr('fill', '#333')
+        .attr('transform', 'rotate(-35)')
+        .attr('text-anchor', 'end')
+        .attr('dx', '-0.5em')
+        .attr('dy', '0.3em');
+    g.append('g')
+        .call(d3.axisLeft(y).tickFormat(d => d.toFixed(1) + 's'))
+        .selectAll('text').attr('fill', '#333');
+
+    svg.selectAll('.domain').attr('stroke', '#dee2e6');
+    svg.selectAll('.tick line').attr('stroke', '#dee2e6');
+
+    // Measure rotated x-axis label extent, place legend below
+    const xAxisBBox = xAxis.node().getBBox();
+    const legendY = margin.top + height + xAxisBBox.height + 15;
+    const legendHeight = layoutLegend(svg, COMPONENTS, margin.left, legendY, width);
+    svg.attr('height', legendY + legendHeight + 10);
+
+    updateBarSelection();
+}
+
+// ============================================================
+// Chart Tab Switching
+// ============================================================
+function switchChartTab(tab) {
+    currentChartTab = tab;
+    document.getElementById('tabStacked').classList.toggle('active', tab === 'stacked');
+    document.getElementById('tabGrouped').classList.toggle('active', tab === 'grouped');
+    if (allMetrics.length > 0) {
+        if (tab === 'stacked') createBarChart(allMetrics);
+        else createGroupedBarChart(allMetrics);
+    }
+}
+
+function renderCurrentChart() {
+    if (currentChartTab === 'stacked') createBarChart(allMetrics);
+    else createGroupedBarChart(allMetrics);
+}
+
+// ============================================================
+// Summary Table
+// ============================================================
+const TABLE_COLUMNS = [
+    { key: 'name', label: 'Experiment', fmt: v => v },
+    { key: 'num_segments', label: 'Segments', fmt: v => v },
+    { key: 'app_proof_cells', label: 'Cells', fmt: fmtCells },
+    { key: 'total_proof_time_ms', label: 'Total Time', fmt: fmtSeconds },
+];
+
+// Detail tables: three separate tables shown in the experiment details pane.
+
+const BASIC_STATS_ROWS_V1 = [
+    { key: 'num_segments', label: 'Segments', fmt: v => v },
+    { key: 'num_air_instances', label: 'AIR Instances', fmt: v => v.toLocaleString() },
+    { key: 'app_proof_cols', label: 'Columns', fmt: v => v.toLocaleString() },
+    { key: 'app_proof_cells', label: 'Cells', fmt: fmtCells },
+    { key: 'app_proof_cells_used', label: 'Cells (without padding)', fmt: (v, m) => {
+        const pct = m.app_proof_cells > 0 ? (v / m.app_proof_cells * 100) : 0;
+        return `${fmtCells(v)} <span style="color:#999">(${pct.toFixed(1)}%)</span>`;
+    }},
+    { key: 'constraints', label: 'Constraints', fmt: v => v.toLocaleString() },
+    { key: 'constraint_instances', label: 'Constraint Instances', fmt: fmtCells },
+    { key: 'bus_interactions', label: 'Bus Interactions', fmt: v => v.toLocaleString() },
+    { key: 'bus_interaction_messages', label: 'Bus Interaction Messages', fmt: fmtCells },
+];
+
+const BASIC_STATS_ROWS_V2 = [
+    { key: 'num_segments', label: 'Segments', fmt: v => v },
+    { key: 'num_air_instances', label: 'AIR Instances', fmt: v => v.toLocaleString() },
+    { key: 'app_proof_cols', label: 'Columns', fmt: v => v.toLocaleString() },
+    { key: 'app_proof_cells', label: 'Cells', fmt: fmtCells },
+    { key: 'constraints', label: 'Constraints', fmt: v => v.toLocaleString() },
+    { key: 'constraint_instances', label: 'Constraint Instances', fmt: fmtCells },
+    { key: 'bus_interactions', label: 'Bus Interactions', fmt: v => v.toLocaleString() },
+    { key: 'bus_interaction_messages', label: 'Bus Interaction Messages', fmt: fmtCells },
+];
+
+// Nested proof time breakdown — indent level controls visual nesting.
+const PROOF_TIME_ROWS_V1 = [
+    { key: 'app_proof_time_ms', label: 'App Proof Time', fmt: fmtSeconds, indent: 0 },
+    { key: 'app_proof_time_excluding_trace_ms', label: 'STARK (excl. trace)', fmt: fmtSeconds, indent: 1 },
+    { key: 'app_execute_metered_time_ms', label: 'Metered Execution', fmt: fmtSeconds, indent: 1 },
+    { key: 'app_execute_preflight_time_ms', label: 'Preflight Execution', fmt: fmtSeconds, indent: 1 },
+    { key: 'app_trace_gen_time_ms', label: 'Trace Gen', fmt: fmtSeconds, indent: 1 },
+    { key: 'app_other_ms', label: 'Other / Overlap', fmt: fmtSeconds, indent: 1, muted: true },
+    { key: 'leaf_proof_time_ms', label: 'Leaf Recursion', fmt: fmtSeconds, indent: 0 },
+    { key: 'inner_recursion_proof_time_ms', label: 'Inner Recursion', fmt: fmtSeconds, indent: 0 },
+    { key: 'total_proof_time_ms', label: 'Total', fmt: fmtSeconds, indent: 0, bold: true },
+];
+
+const PROOF_TIME_ROWS_V2 = [
+    { key: 'app_proof_time_ms', label: 'App Proof Time', fmt: fmtSeconds, indent: 0 },
+    { key: 'app_proof_time_excluding_trace_ms', label: 'STARK (excl. trace)', fmt: fmtSeconds, indent: 1 },
+    { key: 'app_rap_constraints_time_ms', label: 'Constraints', fmt: fmtSeconds, indent: 2 },
+    { key: 'app_rap_logup_gkr_time_ms', label: 'LogUp GKR', fmt: fmtSeconds, indent: 3 },
+    { key: 'app_rap_round0_time_ms', label: 'Round 0', fmt: fmtSeconds, indent: 3 },
+    { key: 'app_rap_mle_rounds_time_ms', label: 'MLE Rounds', fmt: fmtSeconds, indent: 3 },
+    { key: 'app_rap_other_ms', label: 'Other', fmt: fmtSeconds, indent: 3, muted: true },
+    { key: 'app_openings_time_ms', label: 'Openings', fmt: fmtSeconds, indent: 2 },
+    { key: 'app_openings_whir_time_ms', label: 'WHIR', fmt: fmtSeconds, indent: 3 },
+    { key: 'app_openings_stacked_reduction_time_ms', label: 'Stacked Reduction', fmt: fmtSeconds, indent: 3 },
+    { key: 'app_openings_other_ms', label: 'Other', fmt: fmtSeconds, indent: 3, muted: true },
+    { key: 'app_trace_commit_time_ms', label: 'Trace Commit', fmt: fmtSeconds, indent: 2 },
+    { key: 'app_stark_other_ms', label: 'Other', fmt: fmtSeconds, indent: 2, muted: true },
+    { key: 'app_execute_preflight_time_ms', label: 'Preflight Execution', fmt: fmtSeconds, indent: 1 },
+    { key: 'app_set_initial_memory_time_ms', label: 'Set Initial Memory', fmt: fmtSeconds, indent: 1 },
+    { key: 'app_trace_gen_time_ms', label: 'Trace Gen', fmt: fmtSeconds, indent: 1 },
+    { key: 'app_execute_metered_time_ms', label: 'Metered Execution', fmt: fmtSeconds, indent: 1 },
+    { key: 'app_other_ms', label: 'Other', fmt: fmtSeconds, indent: 1, muted: true },
+    { key: 'leaf_proof_time_ms', label: 'Leaf Recursion', fmt: fmtSeconds, indent: 0 },
+    { key: 'inner_recursion_proof_time_ms', label: 'Inner Recursion', fmt: fmtSeconds, indent: 0 },
+    { key: 'compression_proof_time_ms', label: 'Compression', fmt: fmtSeconds, indent: 0 },
+    { key: 'total_proof_time_ms', label: 'Total', fmt: fmtSeconds, indent: 0, bold: true },
+];
+
+function getBasicStatsRows() {
+    return detectedOpenVmVersion === 2 ? BASIC_STATS_ROWS_V2 : BASIC_STATS_ROWS_V1;
+}
+
+function getProofTimeRows() {
+    return detectedOpenVmVersion === 2 ? PROOF_TIME_ROWS_V2 : PROOF_TIME_ROWS_V1;
+}
+
+const CELL_DISTRIBUTION_ROWS = [
+    { key: 'powdr_ratio', label: 'Powdr', fmt: fmtPct, noCompare: true },
+    { key: 'normal_instruction_ratio', label: 'Normal Instructions', fmt: fmtPct, noCompare: true },
+    { key: 'openvm_precompile_ratio', label: 'OpenVM Precompiles', fmt: fmtPct, noCompare: true },
+];
+
+let tableSortKey = 'name';
+let tableSortAsc = true;
+
+function getBaselineMetrics() {
+    return allMetrics.find(m => m.name === baselineRunName) || null;
+}
+
+function selectBaseline(runName) {
+    baselineRunName = runName;
+    renderTableBody(allMetrics);
+    if (selectedRunName) renderDetails(selectedRunName);
+    updateUrl();
+}
+
+function createSummaryTable(metrics) {
+    const table = document.getElementById('summaryTable');
+    const thead = table.querySelector('thead tr');
+    const tbody = table.querySelector('tbody');
+
+    thead.innerHTML = '';
+    // Baseline radio column
+    const thBaseline = document.createElement('th');
+    thBaseline.textContent = 'Baseline';
+    thBaseline.classList.add('baseline-radio');
+    thead.appendChild(thBaseline);
+
+    TABLE_COLUMNS.forEach(col => {
+        const th = document.createElement('th');
+        th.textContent = col.label;
+        th.onclick = () => {
+            if (tableSortKey === col.key) {
+                tableSortAsc = !tableSortAsc;
+            } else {
+                tableSortKey = col.key;
+                tableSortAsc = true;
+            }
+            renderTableBody(metrics);
+        };
+        thead.appendChild(th);
+    });
+
+    renderTableBody(metrics);
+}
+
+function renderTableBody(metrics) {
+    const tbody = document.querySelector('#summaryTable tbody');
+    tbody.innerHTML = '';
+    const baseline = getBaselineMetrics();
+
+    const sorted = [...metrics].sort((a, b) => {
+        const va = a[tableSortKey], vb = b[tableSortKey];
+        const cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
+        return tableSortAsc ? cmp : -cmp;
+    });
+
+    sorted.forEach(m => {
+        const tr = document.createElement('tr');
+        if (m.name === selectedRunName) tr.classList.add('selected');
+        tr.onclick = (e) => { if (e.target.tagName !== 'INPUT') selectRun(m.name); };
+
+        // Baseline radio
+        const tdRadio = document.createElement('td');
+        tdRadio.classList.add('baseline-radio');
+        const radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = 'baseline';
+        radio.checked = m.name === baselineRunName;
+        radio.onclick = (e) => { e.stopPropagation(); selectBaseline(m.name); };
+        tdRadio.appendChild(radio);
+        tr.appendChild(tdRadio);
+
+        TABLE_COLUMNS.forEach(col => {
+            const td = document.createElement('td');
+            const raw = m[col.key];
+            const formatted = col.fmt(raw);
+            if (raw != null && typeof raw === 'number') td.title = raw.toLocaleString();
+            if (col.key === 'name' || !baseline || m.name === baselineRunName) {
+                td.textContent = formatted;
+            } else {
+                td.innerHTML = formatted + ' ' + fmtComparison(raw, baseline[col.key]);
+            }
+            tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+    });
+}
+
+function updateTableSelection() {
+    document.querySelectorAll('#summaryTable tbody tr').forEach(tr => {
+        const name = tr.querySelectorAll('td')[1]?.textContent;
+        tr.classList.toggle('selected', name === selectedRunName);
+    });
+}
+
+// ============================================================
+// Experiment Details (details table + pie chart)
+// ============================================================
+function renderDetailTable(title, rows, m, opts = {}) {
+    const baseline = getBaselineMetrics();
+    const tableId = 'detail-' + title.replace(/\s+/g, '-').toLowerCase();
+
+    // Filter out negligible "other" rows
+    const visibleRows = rows.filter(row => {
+        if (row.muted) {
+            const val = m[row.key];
+            return val != null && Math.abs(val) >= 1;
+        }
+        return true;
+    });
+
+    // Determine which rows are parents (have children at a deeper indent)
+    const parentIndices = new Set();
+    for (let i = 0; i < visibleRows.length; i++) {
+        const indent = visibleRows[i].indent || 0;
+        if (i + 1 < visibleRows.length && (visibleRows[i + 1].indent || 0) > indent) {
+            parentIndices.add(i);
+        }
+    }
+
+    // Default expand level: indent 0 parents are expanded (their indent-1 children visible),
+    // deeper parents are collapsed. User overrides via expandState take precedence.
+    const defaultExpandLevel = opts.defaultExpandLevel != null ? opts.defaultExpandLevel : 0;
+
+    // Pre-compute whether each parent is expanded, respecting persistent expandState.
+    const parentExpanded = new Map(); // index -> boolean
+    for (const i of parentIndices) {
+        const stateKey = tableId + ':' + visibleRows[i].key;
+        if (stateKey in expandState) {
+            parentExpanded.set(i, expandState[stateKey]);
+        } else {
+            parentExpanded.set(i, (visibleRows[i].indent || 0) <= defaultExpandLevel);
+        }
+    }
+
+    // Determine visibility: a row is a collapsed-child if any ancestor parent is collapsed.
+    function isHidden(rowIndex) {
+        const indent = visibleRows[rowIndex].indent || 0;
+        if (indent === 0) return false;
+        // Walk backwards to find ancestor parents
+        for (let j = rowIndex - 1; j >= 0; j--) {
+            const pIndent = visibleRows[j].indent || 0;
+            if (pIndent < indent && parentIndices.has(j)) {
+                if (!parentExpanded.get(j)) return true;
+                // Check this parent's ancestors too
+                return isHidden(j);
+            }
+        }
+        return false;
+    }
+
+    let html = `<h6 style="color:#333; font-weight:600; margin-bottom:0.3rem; margin-top:0.75rem">${title}</h6>`;
+    html += `<table class="details-table" id="${tableId}"><tbody>`;
+    visibleRows.forEach((row, i) => {
+        const indent = row.indent || 0;
+        const val = m[row.key];
+        const isParent = parentIndices.has(i);
+
+        const classes = [];
+        if (isParent) classes.push('collapsible-parent');
+        if (isParent && !parentExpanded.get(i)) classes.push('collapsed');
+        if (isHidden(i)) classes.push('collapsed-child');
+
+        const padding = indent > 0 ? `padding-left:${indent * 1.2 + 0.5}em` : '';
+        const weight = row.bold ? 'font-weight:700' : '';
+        const muted = row.muted ? 'color:#999; font-style:italic' : '';
+        const thStyle = [padding, weight, muted].filter(Boolean).join(';');
+        const tdStyle = [weight, muted].filter(Boolean).join(';');
+        let formatted;
+        if (val == null) {
+            formatted = '<span style="color:#999">N/A</span>';
+        } else if (row.muted && val < 0) {
+            formatted = `<span style="color:#c08000">${fmtSeconds(-val)} overlap</span>`;
+        } else {
+            formatted = row.fmt(val, m);
+        }
+        const comparison = (baseline && m.name !== baselineRunName && !row.noCompare && !row.muted)
+            ? ' ' + fmtComparison(val, baseline[row.key])
+            : '';
+        const arrow = isParent ? `<span class="toggle-arrow">&#9660;</span> ` : '';
+        const info = METRIC_INFO[row.key];
+        let infoIcon = '';
+        if (info) {
+            const ver = detectedOpenVmVersion || 1;
+            const desc = (info['descV' + ver] || info.desc || '').replace(/"/g, '&quot;');
+            const code = (info['codeV' + ver] || info.code || '').replace(/"/g, '&quot;');
+            infoIcon = `<span class="metric-info" data-desc="${desc}" data-code="${code}">i</span>`;
+        }
+        const classAttr = classes.length ? ` class="${classes.join(' ')}"` : '';
+        const dataKey = isParent ? ` data-key="${row.key}"` : '';
+        html += `<tr${classAttr} data-indent="${indent}"${dataKey}>`;
+        html += `<th${thStyle ? ` style="${thStyle}"` : ''}>${arrow}${row.label}${infoIcon}</th>`;
+        const rawTitle = (val != null && typeof val === 'number') ? ` title="${val.toLocaleString()}"` : '';
+        html += `<td${tdStyle ? ` style="${tdStyle}"` : ''}${rawTitle}>${formatted}${comparison}</td>`;
+        if (opts.pctOfKey) {
+            const total = m[opts.pctOfKey];
+            const pct = (total > 0 && val != null) ? (val / total * 100).toFixed(1) + '%' : '';
+            html += `<td style="color:#888; text-align:right${weight ? ';' + weight : ''}">${pct}</td>`;
+        }
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    return html;
+}
+
+// Shared tooltip element for metric info icons.
+const metricInfoTip = document.createElement('div');
+metricInfoTip.className = 'metric-info-tooltip';
+document.body.appendChild(metricInfoTip);
+
+document.addEventListener('mouseenter', function(e) {
+    if (!e.target.classList || !e.target.classList.contains('metric-info')) return;
+    const icon = e.target;
+    const desc = icon.dataset.desc || '';
+    const code = icon.dataset.code || '';
+    metricInfoTip.innerHTML = desc + (code ? '<code>' + highlightPython(code) + '</code>' : '');
+    metricInfoTip.style.display = 'block';
+    const rect = icon.getBoundingClientRect();
+    let left = rect.right + 6;
+    let top = rect.top - 4;
+    if (left + 510 > window.innerWidth) left = rect.left - 510;
+    if (top + metricInfoTip.offsetHeight > window.innerHeight) top = window.innerHeight - metricInfoTip.offsetHeight - 8;
+    if (top < 4) top = 4;
+    metricInfoTip.style.left = left + 'px';
+    metricInfoTip.style.top = top + 'px';
+}, true);
+document.addEventListener('mouseleave', function(e) {
+    if (!e.target.classList || !e.target.classList.contains('metric-info')) return;
+    metricInfoTip.style.display = 'none';
+}, true);
+
+// Persistent expand/collapse state: maps "tableId:rowKey" -> true (expanded) | false (collapsed).
+// null means "use default". Once a user clicks, the choice sticks across experiment switches.
+const expandState = {};
+
+// Toggle collapsible rows: clicking a parent shows/hides its children.
+document.addEventListener('click', function(e) {
+    if (e.target.closest('.metric-info')) return;
+    const parentRow = e.target.closest('tr.collapsible-parent');
+    if (!parentRow) return;
+    const tbody = parentRow.closest('tbody');
+    if (!tbody) return;
+
+    const parentIndent = parseInt(parentRow.dataset.indent) || 0;
+    const isCollapsing = !parentRow.classList.contains('collapsed');
+    parentRow.classList.toggle('collapsed');
+
+    // Persist expand/collapse state
+    const tableId = parentRow.closest('table')?.id;
+    const rowKey = parentRow.dataset.key;
+    if (tableId && rowKey) expandState[tableId + ':' + rowKey] = !isCollapsing;
+
+    // Walk subsequent rows: toggle children (indent > parentIndent),
+    // stop when we hit a row at parentIndent or shallower.
+    let sibling = parentRow.nextElementSibling;
+    while (sibling) {
+        const sibIndent = parseInt(sibling.dataset.indent) || 0;
+        if (sibIndent <= parentIndent) break;
+        if (isCollapsing) {
+            sibling.classList.add('collapsed-child');
+            // Also collapse any nested parents
+            if (sibling.classList.contains('collapsible-parent')) {
+                sibling.classList.add('collapsed');
+            }
+        } else {
+            // Only show direct children (indent == parentIndent + 1).
+            // Deeper rows stay hidden unless their own parent is expanded.
+            if (sibIndent === parentIndent + 1) {
+                sibling.classList.remove('collapsed-child');
+            }
+        }
+        sibling = sibling.nextElementSibling;
+    }
+});
+
+function renderDetails(runName) {
+    const section = document.getElementById('detailsSection');
+    section.innerHTML = '';
+    document.getElementById('pieRunName').textContent = runName ? `(${runName})` : '';
+
+    if (!runName || !combinedData[runName]) {
+        section.innerHTML = '<div class="pie-placeholder">Select an experiment to view details</div>';
+        return;
+    }
+
+    const m = allMetrics.find(m => m.name === runName);
+    if (!m) return;
+
+    // Three detail tables + pie chart side by side
+    let html = '<div class="details-row">';
+    html += '<div class="details-table-col">';
+    html += renderDetailTable('App Proof Basic Stats', getBasicStatsRows(), m);
+    html += renderDetailTable('Proof Time', getProofTimeRows(), m, { pctOfKey: 'total_proof_time_ms', defaultExpandLevel: 0 });
+    html += renderDetailTable('Trace Cell Distribution', CELL_DISTRIBUTION_ROWS, m);
+    html += '</div>';
+    html += '<div class="details-pie-col"><h6 style="color:#333; font-weight:600; margin-bottom:0.5rem; margin-top:0.75rem">Trace Cells by AIR</h6><div id="pieChart"></div></div>';
+    html += '</div>';
+    section.innerHTML = html;
+
+    // Pie chart
+    createPieChart(runName);
+}
+
+function createPieChart(runName) {
+    const container = d3.select('#pieChart');
+    container.selectAll('*').remove();
+
+    const { items, total } = computeCellsByAir(combinedData[runName]);
+    if (items.length === 0) {
+        container.append('div').attr('class', 'pie-placeholder').text('No cell data available');
+        return;
+    }
+
+    const size = 320;
+    const radius = size / 2 - 10;
+    const svg = container.append('svg')
+        .attr('width', size)
+        .attr('height', size + items.length * 18 + 20);
+    const g = svg.append('g').attr('transform', `translate(${size/2},${size/2})`);
+
+    const POWDR_COLOR = '#e03e1a';
+    const nonPowdrItems = items.filter(d => !d.name.startsWith('PowdrAir'));
+    const spectralColors = d3.quantize(t => d3.interpolateSpectral(t * 0.8 + 0.1), Math.max(nonPowdrItems.length, 3));
+    const colorMap = {};
+    let ci = 0;
+    items.forEach(d => {
+        colorMap[d.name] = d.name.startsWith('PowdrAir') ? POWDR_COLOR : spectralColors[ci++];
+    });
+    const colors = name => colorMap[name];
+
+    const pie = d3.pie().value(d => d.value).sort(null);
+    const arc = d3.arc().innerRadius(0).outerRadius(radius);
+
+    const arcs = g.selectAll('arc')
+        .data(pie(items))
+        .enter().append('g');
+
+    arcs.append('path')
+        .attr('d', arc)
+        .attr('fill', d => colors(d.data.name))
+        .attr('stroke', 'white')
+        .attr('stroke-width', 1.5);
+
+    // Labels for big slices
+    const labelArcs = arcs.filter(d => d.data.value / total > 0.05);
+    labelArcs.append('text')
+        .attr('transform', d => `translate(${arc.centroid(d)})`)
+        .attr('text-anchor', 'middle')
+        .attr('fill', '#333')
+        .attr('font-size', '10px')
+        .attr('font-weight', 'bold')
+        .each(function(d) {
+            const pct = (d.data.value / total * 100).toFixed(1);
+            const billions = (d.data.value / 1e9).toFixed(2);
+            d3.select(this).append('tspan').attr('x', 0).attr('dy', '-0.4em').text(`${pct}%`);
+            d3.select(this).append('tspan').attr('x', 0).attr('dy', '1.2em').text(`${billions}B`);
+        });
+
+    // Legend below pie
+    const legendG = svg.append('g')
+        .attr('transform', `translate(10, ${size + 10})`);
+
+    items.forEach((item, i) => {
+        const lg = legendG.append('g').attr('transform', `translate(0, ${i * 18})`);
+        lg.append('rect').attr('width', 12).attr('height', 12).attr('fill', colors(item.name)).attr('rx', 2);
+        const pct = (item.value / total * 100).toFixed(1);
+        lg.append('text').attr('x', 18).attr('y', 10)
+            .attr('fill', '#333').attr('font-size', '11px')
+            .text(`${pct}% - ${item.name}`);
+    });
+}
+
+// ============================================================
+// Selection
+// ============================================================
+function selectRun(runName) {
+    if (selectedRunName === runName) {
+        selectedRunName = null;
+    } else {
+        selectedRunName = runName;
+    }
+    updateBarSelection();
+    updateTableSelection();
+    renderDetails(selectedRunName);
+    updateUrl();
+}
+
+// ============================================================
+// Data Loading
+// ============================================================
+function processAndRender(data, sourceLabel = '') {
+    combinedData = normalizeMetricsData(data, sourceLabel);
+    detectedOpenVmVersion = detectOpenVmVersion(combinedData);
+    allMetrics = Object.entries(combinedData).map(([name, json]) => extractMetrics(name, json));
+
+    if (allMetrics.length === 1) {
+        selectedRunName = allMetrics[0].name;
+    } else if (selectedRunName && !allMetrics.find(m => m.name === selectedRunName)) {
+        selectedRunName = null;
+    }
+
+    // Set default baseline if not already set from URL
+    if (!baselineRunName || !allMetrics.find(m => m.name === baselineRunName)) {
+        const apc000 = allMetrics.find(m => m.name === 'apc000');
+        baselineRunName = apc000 ? 'apc000' : (allMetrics[0]?.name || null);
+    }
+
+    const badge = document.getElementById('versionBadge');
+    badge.textContent = `OpenVM ${detectedOpenVmVersion}`;
+    badge.style.display = 'inline';
+
+    document.getElementById('uploadSection').style.display = 'none';
+    document.getElementById('appSection').style.display = 'block';
+
+    createSummaryTable(allMetrics);
+    renderCurrentChart();
+    renderDetails(selectedRunName);
+    updateUrl();
+}
+
+function handleFile(file) {
+    const reader = new FileReader();
+    reader.onload = e => {
+        try {
+            const data = JSON.parse(e.target.result);
+            updateDataSourceDisplay(file.name);
+            processAndRender(data, file.name);
+        } catch (err) {
+            alert('Failed to parse JSON: ' + err.message);
+        }
+    };
+    reader.readAsText(file);
+}
+
+async function loadFromUrl(url, updateUrlParam = true) {
+    // Convert GitHub blob URLs to raw
+    const rawUrl = url.replace(
+        /github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.*)/,
+        'raw.githubusercontent.com/$1/$2/$3/$4'
+    );
+
+    document.getElementById('loadingOverlay').style.display = 'flex';
+    try {
+        const resp = await fetch(rawUrl);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        updateDataSourceDisplay(url);
+        if (updateUrlParam) {
+            const params = new URLSearchParams(window.location.search);
+            params.set('data', url);
+            history.replaceState(null, '', window.location.pathname + '?' + params.toString());
+        }
+        processAndRender(data, url);
+    } catch (err) {
+        alert('Failed to load: ' + err.message);
+    } finally {
+        document.getElementById('loadingOverlay').style.display = 'none';
+    }
+}
+
+// ============================================================
+// URL Parameters
+// ============================================================
+function updateUrl() {
+    const params = new URLSearchParams(window.location.search);
+    if (selectedRunName) {
+        params.set('run', selectedRunName);
+    } else {
+        params.delete('run');
+    }
+    if (baselineRunName) {
+        params.set('baseline', baselineRunName);
+    } else {
+        params.delete('baseline');
+    }
+    const newUrl = window.location.pathname + '?' + params.toString();
+    history.replaceState(null, '', newUrl);
+}
+
+// ============================================================
+// Event Handlers
+// ============================================================
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+dropzone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropzone.classList.remove('drag-over');
+    if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => { if (fileInput.files.length) handleFile(fileInput.files[0]); });
+
+document.getElementById('urlLoadBtn').addEventListener('click', () => {
+    const url = document.getElementById('urlInput').value.trim();
+    if (url) loadFromUrl(url);
+});
+document.getElementById('urlInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+        const url = e.target.value.trim();
+        if (url) loadFromUrl(url);
+    }
+});
+
+// Responsive chart redraw
+window.addEventListener('resize', () => {
+    if (allMetrics.length > 0) {
+        renderCurrentChart();
+        if (selectedRunName) renderDetails(selectedRunName);
+    }
+});
+
+// Auto-load from URL params
+(function init() {
+    const params = new URLSearchParams(window.location.search);
+    const dataUrl = params.get('data') || params.get('url');
+    const run = params.get('run');
+    const baseline = params.get('baseline');
+    if (run) selectedRunName = run;
+    if (baseline) baselineRunName = baseline;
+    if (dataUrl) loadFromUrl(dataUrl, false);
+})();
+</script>
+</body>
+</html>

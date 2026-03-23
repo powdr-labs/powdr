@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::Display;
 use std::{cmp::Eq, hash::Hash};
 
+use crate::blocks::PcStep;
 use crate::expression::{AlgebraicExpression, AlgebraicReference};
 use crate::{Apc, InstructionHandler};
 
@@ -46,15 +47,17 @@ where
     IH: InstructionHandler,
     IH::Field: Display + Clone + Send + Sync,
     IH::AirId: Eq + Hash + Send + Sync,
+    IH::Instruction: PcStep,
 {
     // Keep only instructions that produce dummy records
     let instructions_with_subs = apc
         .instructions()
         .zip_eq(apc.subs.iter())
         .filter(|(_, subs)| !subs.is_empty());
+    let instructions_with_subs = instructions_with_subs.collect::<Vec<_>>();
 
     let original_instruction_air_ids = instructions_with_subs
-        .clone()
+        .iter()
         .map(|(instruction, _)| {
             instruction_handler
                 .get_instruction_air_and_id(instruction)
@@ -85,6 +88,7 @@ where
         .collect::<Vec<_>>();
 
     let dummy_trace_index_to_apc_index_by_instruction = instructions_with_subs
+        .iter()
         .map(|(_, subs)| {
             subs.iter()
                 .map(|substitution| {
