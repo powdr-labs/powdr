@@ -502,7 +502,7 @@ pub fn simplify_constraints_using_exhaustive_search<
                 .collect_vec();
             if alg_substituted
                 .iter()
-                .any(|expr| expr.try_to_number().map_or(false, |n| !n.is_zero()))
+                .any(|expr| expr.try_to_number().is_some_and(|n| !n.is_zero()))
             {
                 // assignment leads to a conflict, ignore it.
                 continue;
@@ -522,14 +522,14 @@ pub fn simplify_constraints_using_exhaustive_search<
         }
 
         for (e, sim) in algebraic_constraints.iter().zip(simplified_alg) {
-            if let Some(sub) = sim.iter().exactly_one().ok() {
+            if let Ok(sub) = sim.iter().exactly_one() {
                 if sub != e && !sub.is_zero() {
                     substitutions.insert(e.clone(), sub.clone());
                 }
             }
         }
         for (e, sim) in bus_fields.iter().zip(simplified_bus) {
-            if let Some(sub) = sim.iter().exactly_one().ok() {
+            if let Ok(sub) = sim.iter().exactly_one() {
                 if sub != e {
                     // no "!sub.is_zero()" here, because it is progress
                     // to substitute bus interaction fields  by zero.
@@ -718,14 +718,11 @@ fn remove_unreferenced_derived_variables<P: FieldElement, V: Clone + Ord + Hash 
 mod tests {
     use super::*;
 
-    use crate::memory_optimizer::MemoryOp;
-
     use test_log::test;
 
     use expect_test::expect;
     use powdr_constraint_solver::{
-        bus_interaction_handler::DefaultBusInteractionHandler,
-        constraint_system::{BusInteraction, ConstraintSystem},
+        bus_interaction_handler::DefaultBusInteractionHandler, constraint_system::ConstraintSystem,
         solver::new_solver,
     };
     use powdr_number::GoldilocksField;
@@ -736,35 +733,6 @@ mod tests {
 
     fn constant(n: u64) -> GroupedExpression<GoldilocksField, &'static str> {
         GroupedExpression::from_number(GoldilocksField::from(n))
-    }
-
-    struct InvalidMemoryBusInteraction;
-    impl MemoryBusInteraction<GoldilocksField, &'static str> for InvalidMemoryBusInteraction {
-        type Address = Vec<GroupedExpression<GoldilocksField, &'static str>>;
-
-        fn try_from_bus_interaction(
-            _: &BusInteraction<GroupedExpression<GoldilocksField, &'static str>>,
-            _: u64,
-        ) -> Result<Option<Self>, crate::memory_optimizer::MemoryBusInteractionConversionError>
-        {
-            panic!()
-        }
-
-        fn addr(&self) -> Self::Address {
-            panic!()
-        }
-
-        fn data(&self) -> &[GroupedExpression<GoldilocksField, &'static str>] {
-            panic!()
-        }
-
-        fn timestamp_limbs(&self) -> &[GroupedExpression<GoldilocksField, &'static str>] {
-            panic!()
-        }
-
-        fn op(&self) -> MemoryOp {
-            panic!()
-        }
     }
 
     #[test]

@@ -29,6 +29,7 @@ fn import_apc_from_gzipped_json(file: &str) -> ApcWithBusMap<TestApc, BusMap<Ope
     serde_json::from_reader(reader).unwrap()
 }
 
+#[allow(clippy::print_stdout)]
 fn expect_file_contents(file_path: &Path, actual: &str, test_name: &str) {
     let should_update_expectation = std::env::var("UPDATE_EXPECT")
         .map(|v| v.as_str() == "1")
@@ -286,9 +287,6 @@ fn wasm_register_reuse() {
     let machine: SymbolicMachine<BabyBearField> = apc.apc.machine;
     assert!(machine.derived_columns.is_empty());
     let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&machine);
-
-    println!("Before optimization:");
-    println!("{}", machine);
 
     let machine = optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
         machine,
