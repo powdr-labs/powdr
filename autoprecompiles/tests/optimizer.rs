@@ -287,6 +287,9 @@ fn wasm_register_reuse() {
     assert!(machine.derived_columns.is_empty());
     let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&machine);
 
+    println!("Before optimization:");
+    println!("{}", machine);
+
     let machine = optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
         machine,
         OpenVmBusInteractionHandler::default(),
@@ -307,15 +310,15 @@ fn wasm_register_reuse() {
     );
 
     expect![[r#"
-        38
+        32
     "#]]
     .assert_debug_eq(&machine.main_columns().count());
     expect![[r#"
-        24
+        20
     "#]]
     .assert_debug_eq(&machine.bus_interactions.len());
     expect![[r#"
-        13
+        14
     "#]]
     .assert_debug_eq(&machine.constraints.len());
 }

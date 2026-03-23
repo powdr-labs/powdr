@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fmt::Display,
     hash::Hash,
     iter::once,
@@ -455,7 +455,7 @@ pub fn simplify_constraints_using_exhaustive_search<
     T: FieldElement,
     V: Clone + Ord + Eq + Hash + Display,
 >(
-    constraint_system: IndexedConstraintSystem<T, V>,
+    mut constraint_system: IndexedConstraintSystem<T, V>,
     range_constraints: &impl RangeConstraintProvider<T, V>,
 ) -> IndexedConstraintSystem<T, V> {
     let mut variable_sets =
@@ -468,38 +468,117 @@ pub fn simplify_constraints_using_exhaustive_search<
         "Found {} candidate variable sets for exhaustive search",
         variable_sets.len()
     );
-    let progress = false;
 
-    //let mut expr_substitutions = BTreeMap::new();
-
+    let mut substitutions = BTreeMap::default();
     for mut variable_set in variable_sets {
         println!(
             "Trying to simplify constraints using exhaustive search for variables {{{}}}",
             variable_set.iter().join(", ")
         );
         variable_set.retain(|v| range_constraints.get(v).try_to_single_value().is_none());
-        let exprs = constraint_system
+        let (algebraic_constraints, bus_fields) = constraint_system
             .constraints_referencing_variables(&variable_set)
-            .flat_map(|constraint| match constraint {
-                ConstraintRef::AlgebraicConstraint(identity) => vec![identity.expression.clone()], // TODO avoid cloning?
-                ConstraintRef::BusInteraction(bus_interaction) => {
-                    bus_interaction.fields().cloned().collect_vec()
-                }
-            });
-        for expr in exprs {
-            if let Ok(e) = get_all_possible_assignments(variable_set.iter().cloned(), &range_constraints)
-                .map(|ass| {
-                    let mut sub = expr.clone();
-                    for (v, val) in ass {
-                        sub.substitute_by_known(&v, &val);
+            .fold((vec![], vec![]), |(mut alg, mut bus), constraint| {
+                match constraint {
+                    // TODO avoid cloning?
+                    ConstraintRef::AlgebraicConstraint(identity) => {
+                        alg.push(identity.expression.clone())
                     }
-                    sub
-                })
-                .all_equal_value() { println!("Replace {expr} by {e}") }
+                    ConstraintRef::BusInteraction(bus_interaction) => {
+                        bus.extend(bus_interaction.fields().cloned())
+                    }
+                };
+                (alg, bus)
+            });
+        // TODO using HashSet here is too complex, because we can early exit.
+        // also it is not useful to store it as a vec, should be a HashMap or BTreeMap.
+        let mut simplified_alg: Vec<HashSet<GroupedExpression<T, V>>> =
+            vec![Default::default(); algebraic_constraints.len()];
+        let mut simplified_bus: Vec<HashSet<GroupedExpression<T, V>>> =
+            vec![Default::default(); bus_fields.len()];
+
+        for assignment in
+            get_all_possible_assignments(variable_set.iter().cloned(), range_constraints)
+        {
+            // See if the assignment conflicts with any algebraic constraint
+            let alg_substituted = algebraic_constraints
+                .iter()
+                .map(|e| apply_substitution(e.clone(), &assignment))
+                .collect_vec();
+            if alg_substituted
+                .iter()
+                .any(|expr| expr.try_to_number().map_or(false, |n| !n.is_zero()))
+            {
+                // assignment leads to a conflict, ignore it.
+                continue;
+            }
+            let bus_substituted = bus_fields
+                .iter()
+                .cloned()
+                .map(|e| apply_substitution(e, &assignment))
+                .collect_vec();
+
+            for (simplified, substituted) in simplified_alg.iter_mut().zip(alg_substituted) {
+                simplified.insert(substituted.clone());
+            }
+            for (simplified, substituted) in simplified_bus.iter_mut().zip(bus_substituted) {
+                simplified.insert(substituted.clone());
+            }
+        }
+
+        for (e, sim) in algebraic_constraints.iter().zip(simplified_alg) {
+            if let Some(sub) = sim.iter().exactly_one().ok() {
+                if sub != e && !sub.is_zero() {
+                    substitutions.insert(e.clone(), sub.clone());
+                }
+            }
+        }
+        for (e, sim) in bus_fields.iter().zip(simplified_bus) {
+            if let Some(sub) = sim.iter().exactly_one().ok() {
+                if sub != e {
+                    // no "!sub.is_zero()" here, because it is progress
+                    // to substitute bus interaction fields  by zero.
+                    substitutions.insert(e.clone(), sub.clone());
+                }
+            }
         }
     }
 
-    constraint_system
+    if substitutions.is_empty() {
+        return constraint_system;
+    }
+
+    let mut constraint_system = constraint_system.system().clone();
+    for constr in &mut constraint_system.algebraic_constraints {
+        if let Some(sub) = substitutions.get(&constr.expression) {
+            constr.expression = sub.clone();
+        }
+    }
+    for bus_interaction in &mut constraint_system.bus_interactions {
+        for field in bus_interaction.fields_mut() {
+            if let Some(sub) = substitutions.get(field) {
+                *field = sub.clone();
+            }
+        }
+    }
+    constraint_system.algebraic_constraints.extend(
+        substitutions
+            .into_iter()
+            .map(|(old, new)| AlgebraicConstraint::assert_eq(old, new)),
+    );
+
+    constraint_system.into()
+}
+
+// TODO move
+fn apply_substitution<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
+    mut expr: GroupedExpression<T, V>,
+    assignments: &BTreeMap<V, T>,
+) -> GroupedExpression<T, V> {
+    for (v, val) in assignments {
+        expr.substitute_by_known(v, val);
+    }
+    expr
 }
 
 fn remove_trivial_constraints<P: FieldElement, V: PartialEq + Clone + Hash + Ord>(

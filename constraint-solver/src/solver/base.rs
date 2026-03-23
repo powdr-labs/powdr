@@ -248,12 +248,21 @@ where
             return a != b;
         }
         let equivalent_to_a = self.equivalent_expressions(a);
+        // TODO I think the problem is that the "expressions equivalent to b"
+        // are all lin_*
         let equivalent_to_b = self.equivalent_expressions(b);
         equivalent_to_a
             .iter()
             .cartesian_product(&equivalent_to_b)
             .any(|(a_eq, b_eq)| {
-                possible_concrete_values(&(a_eq - b_eq), self, 20)
+                if a_eq.to_string().contains("from_state__fp_0") && a_eq.to_string().contains("12")
+                //                    && b_eq.to_string().contains("from_state__fp_0")
+                //&& b_eq.to_string().contains("")
+                {
+                    let expr = a_eq - b_eq;
+                }
+
+                possible_concrete_values(&(a_eq - b_eq), self, 2000)
                     .is_some_and(|mut values| values.all(|value| !value.is_zero()))
             })
     }

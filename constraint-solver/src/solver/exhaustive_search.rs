@@ -112,13 +112,6 @@ pub fn get_brute_force_candidates<'a, T: FieldElement, V: Clone + Hash + Ord + D
         })
         .unique()
         .filter_map(move |variables| {
-            for v in &variables {
-                println!(
-                    "Variable {} has range constraint {}",
-                    v,
-                    rc.get(v).size_estimate()
-                );
-            }
             match is_candidate_for_exhaustive_search(&variables, &rc) {
                 true => Some(variables),
                 false => {
