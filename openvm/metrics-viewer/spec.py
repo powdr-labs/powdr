@@ -158,6 +158,7 @@ def extract_metrics(run_name: str, metrics_json: MetricsJson) -> Metrics:
     segments_by_app_air = {}
     rows_by_app_air = {}
     for e in app:
+        # Rows are indicated per segment and AIR
         if e["metric"] == "rows":
             segments_by_app_air[e["air_id"]] = segments_by_app_air.get(e["air_id"], 0) + 1
             rows_by_app_air[e["air_id"]] = rows_by_app_air.get(e["air_id"], 0) + float(e["value"])

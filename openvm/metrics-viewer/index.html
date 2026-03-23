@@ -695,7 +695,7 @@ function highlightPython(code) {
 const METRIC_INFO = {
     // --- Basic Stats ---
     num_segments: {
-        desc: 'Number of proving segments the app proof is split into. Each segment is proved independently.',
+        desc: 'Number of proving segments the app proof is split into.',
         code: `max(int(e['segment']) for e in app_entries) + 1`,
     },
     app_proof_cols: {
@@ -705,7 +705,8 @@ const METRIC_INFO = {
 + sum_metric(app, 'perm_cols')`,
     },
     app_proof_cells: {
-        desc: 'Total trace cells in the app proof, summed over all segments. Includes main, preprocessed, and permutation cells. Also includes and padding.',
+        descV1: 'Total trace cells in the app proof, summed over all segments. Includes main, preprocessed, and permutation cells. Also includes padding.',
+        descV2: 'Total trace cells in the app proof, summed over all segments. Includes main, preprocessed, and permutation cells.',
         code: "sum_metric(app, 'total_cells')",
     },
     app_proof_cells_used: {
@@ -713,7 +714,7 @@ const METRIC_INFO = {
         code: "sum_metric(app, 'total_cells_used')",
     },
     constraints: {
-        desc: 'Total constraint polynomials across all app proof AIRs and segments. Since constraints are per-AIR (not per-segment), each AIR\'s count is weighted by its segment count.',
+        desc: 'Total constraint polynomials across all app proof AIRs and segments.',
         code: `segments_by_air = {}  # air -> segment count, from app rows
 weighted_sum("constraints", segments_by_air)`,
     },
@@ -723,7 +724,7 @@ weighted_sum("constraints", segments_by_air)`,
 weighted_sum("constraints", rows_by_air)`,
     },
     bus_interactions: {
-        desc: 'Total bus interaction definitions across all app proof AIRs and segments. Since interactions are per-AIR (not per-segment), each AIR\'s count is weighted by its segment count.',
+        desc: 'Total bus interaction definitions across all app proof AIRs and segments.',
         code: `weighted_sum("interactions", segments_by_air)`,
     },
     bus_interaction_messages: {
