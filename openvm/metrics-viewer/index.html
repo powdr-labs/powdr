@@ -635,20 +635,25 @@ function computeCellsByAir(metricsJson) {
     const total = sorted.reduce((s, [, v]) => s + v, 0);
 
     const threshold = total * 0.015;
-    const large = [];
+    const powdrItems = [];
+    const otherItems = [];
     let otherSum = 0;
     for (const [name, val] of sorted) {
-        if (val >= threshold) {
-            large.push({ name, value: val });
-        } else {
+        if (val < threshold) {
             otherSum += val;
+        } else if (name.startsWith('PowdrAir')) {
+            powdrItems.push({ name, value: val });
+        } else {
+            otherItems.push({ name, value: val });
         }
     }
     if (otherSum > 0) {
-        large.push({ name: 'Other', value: otherSum });
+        otherItems.push({ name: 'Other', value: otherSum });
     }
+    // PowdrAir items first, then the rest sorted by size
+    const items = [...powdrItems, ...otherItems];
 
-    return { items: large, total };
+    return { items, total };
 }
 
 // ============================================================
@@ -949,9 +954,9 @@ function createBarChart(metrics) {
     const container = d3.select('#barChart');
     container.selectAll('*').remove();
 
-    const margin = { top: 30, right: 20, bottom: 120, left: 60 };
+    const margin = { top: 30, right: 20, bottom: 140, left: 60 };
     const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
-    const height = 400 - margin.top - margin.bottom;
+    const height = 420 - margin.top - margin.bottom;
 
     const svg = container.append('svg')
         .attr('width', width + margin.left + margin.right)
@@ -1016,12 +1021,13 @@ function createBarChart(metrics) {
             .on('mouseout', () => tooltip.style('display', 'none'));
     });
 
-    // Value labels inside segments
-    const minLabelHeight = maxY * 0.03;
+    // Value labels inside segments — only show if segment is tall enough for text
+    const minSegmentPx = 18; // minimum pixel height to show a label
     series.forEach(s => {
         s.forEach(d => {
             const val = d[1] - d[0];
-            if (val < minLabelHeight) return;
+            const segmentPx = y(d[0]) - y(d[1]);
+            if (segmentPx < minSegmentPx) return;
             const total = keys.reduce((sum, k) => sum + d.data[k], 0);
             const pct = total > 0 ? (val / total * 100).toFixed(1) : '0';
             g.append('text')
@@ -1051,9 +1057,13 @@ function createBarChart(metrics) {
     });
 
     // Axes
-    g.append('g').attr('transform', `translate(0,${height})`)
-        .call(d3.axisBottom(x))
-        .selectAll('text').attr('fill', '#333');
+    const xAxis = g.append('g').attr('transform', `translate(0,${height})`)
+        .call(d3.axisBottom(x));
+    xAxis.selectAll('text').attr('fill', '#333')
+        .attr('transform', 'rotate(-35)')
+        .attr('text-anchor', 'end')
+        .attr('dx', '-0.5em')
+        .attr('dy', '0.3em');
     g.append('g')
         .call(d3.axisLeft(y).tickFormat(d => d.toFixed(1) + 's'))
         .selectAll('text').attr('fill', '#333');
@@ -1062,8 +1072,11 @@ function createBarChart(metrics) {
     svg.selectAll('.domain').attr('stroke', '#dee2e6');
     svg.selectAll('.tick line').attr('stroke', '#dee2e6');
 
-    // Legend
-    layoutLegend(svg, COMPONENTS, margin.left, height + margin.top + 35, width);
+    // Measure rotated x-axis label extent, place legend below
+    const xAxisBBox = xAxis.node().getBBox();
+    const legendY = margin.top + height + xAxisBBox.height + 15;
+    const legendHeight = layoutLegend(svg, COMPONENTS, margin.left, legendY, width);
+    svg.attr('height', legendY + legendHeight + 10);
 
     updateBarSelection();
 }
@@ -1087,9 +1100,9 @@ function createGroupedBarChart(metrics) {
     const container = d3.select('#barChart');
     container.selectAll('*').remove();
 
-    const margin = { top: 30, right: 20, bottom: 120, left: 60 };
+    const margin = { top: 30, right: 20, bottom: 140, left: 60 };
     const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
-    const height = 400 - margin.top - margin.bottom;
+    const height = 420 - margin.top - margin.bottom;
 
     const svg = container.append('svg')
         .attr('width', width + margin.left + margin.right)
@@ -1148,9 +1161,13 @@ function createGroupedBarChart(metrics) {
     });
 
     // Axes
-    g.append('g').attr('transform', `translate(0,${height})`)
-        .call(d3.axisBottom(x0))
-        .selectAll('text').attr('fill', '#333');
+    const xAxis = g.append('g').attr('transform', `translate(0,${height})`)
+        .call(d3.axisBottom(x0));
+    xAxis.selectAll('text').attr('fill', '#333')
+        .attr('transform', 'rotate(-35)')
+        .attr('text-anchor', 'end')
+        .attr('dx', '-0.5em')
+        .attr('dy', '0.3em');
     g.append('g')
         .call(d3.axisLeft(y).tickFormat(d => d.toFixed(1) + 's'))
         .selectAll('text').attr('fill', '#333');
@@ -1158,8 +1175,11 @@ function createGroupedBarChart(metrics) {
     svg.selectAll('.domain').attr('stroke', '#dee2e6');
     svg.selectAll('.tick line').attr('stroke', '#dee2e6');
 
-    // Legend
-    layoutLegend(svg, COMPONENTS, margin.left, height + margin.top + 35, width);
+    // Measure rotated x-axis label extent, place legend below
+    const xAxisBBox = xAxis.node().getBBox();
+    const legendY = margin.top + height + xAxisBBox.height + 15;
+    const legendHeight = layoutLegend(svg, COMPONENTS, margin.left, legendY, width);
+    svg.attr('height', legendY + legendHeight + 10);
 
     updateBarSelection();
 }
@@ -1556,9 +1576,15 @@ function createPieChart(runName) {
         .attr('height', size + items.length * 18 + 20);
     const g = svg.append('g').attr('transform', `translate(${size/2},${size/2})`);
 
-    const colors = d3.scaleOrdinal()
-        .domain(items.map(d => d.name))
-        .range(d3.quantize(t => d3.interpolateSpectral(t * 0.8 + 0.1), Math.max(items.length, 3)));
+    const POWDR_COLOR = '#e03e1a';
+    const nonPowdrItems = items.filter(d => !d.name.startsWith('PowdrAir'));
+    const spectralColors = d3.quantize(t => d3.interpolateSpectral(t * 0.8 + 0.1), Math.max(nonPowdrItems.length, 3));
+    const colorMap = {};
+    let ci = 0;
+    items.forEach(d => {
+        colorMap[d.name] = d.name.startsWith('PowdrAir') ? POWDR_COLOR : spectralColors[ci++];
+    });
+    const colors = name => colorMap[name];
 
     const pie = d3.pie().value(d => d.value).sort(null);
     const arc = d3.arc().innerRadius(0).outerRadius(radius);
