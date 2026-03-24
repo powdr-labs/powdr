@@ -1475,10 +1475,7 @@
 
         function blockTooltipHtml(b) {
             if (b.is_other) {
-                const title = b.count != null
-                    ? `<strong>Other (${b.count} APCs)</strong>`
-                    : `<strong>Other blocks (${b.count} APCs grouped)</strong>`;
-                return `${title}<br/>` +
+                return `<strong>Other (${b.count} APCs)</strong><br/>` +
                     `Execution frequency: ${formatMetric(b.execution_frequency)}<br/>` +
                     `Cost (software version): ${formatMetric(b.software_version_cells)}<br/>` +
                     `Cost (accelerated): ${formatMetric(b.metric_after || 0)}<br/>` +
