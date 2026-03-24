@@ -1474,30 +1474,29 @@
         }
 
         function blockTooltipHtml(b) {
-            const br = '<br/>';
             if (b.is_other) {
                 const title = b.count != null
-                    ? `<strong>Other (${b.count} APCs)</strong>` // hover
-                    : `<strong>Other blocks (${b.count} APCs grouped)</strong>`; // panel
-                return `${title}${br}` +
-                    `Execution frequency: ${formatMetric(b.execution_frequency)}${br}` +
-                    `Cost (software version): ${formatMetric(b.software_version_cells)}${br}` +
-                    `Cost (accelerated): ${formatMetric(b.metric_after || 0)}${br}` +
-                    `Effectiveness: ${b.effectiveness.toFixed(2)}${br}` +
-                    `Verifier cost (accelerated): n/a${br}` +
+                    ? `<strong>Other (${b.count} APCs)</strong>`
+                    : `<strong>Other blocks (${b.count} APCs grouped)</strong>`;
+                return `${title}<br/>` +
+                    `Execution frequency: ${formatMetric(b.execution_frequency)}<br/>` +
+                    `Cost (software version): ${formatMetric(b.software_version_cells)}<br/>` +
+                    `Cost (accelerated): ${formatMetric(b.metric_after || 0)}<br/>` +
+                    `Effectiveness: ${b.effectiveness.toFixed(2)}<br/>` +
+                    `Verifier cost (accelerated): n/a<br/>` +
                     `APC size (total): ${b.stats_after.main_columns || 'N/A'} cols, ${b.stats_after.bus_interactions || 'N/A'} bus, ${b.stats_after.constraints || 'N/A'} constraints`;
             }
             const pcsDisplay = b.block_pcs.length === 1
                 ? `0x${b.start_pc.toString(16)}`
                 : b.block_pcs.map(pc => '0x' + pc.toString(16)).join(', ');
-            return `<strong>PC: ${pcsDisplay}</strong>${br}` +
-                `Execution frequency: ${formatMetric(b.execution_frequency)}${br}` +
-                `Instructions: ${b.instructions}${br}` +
-                `Cost (software version): ${formatMetric(b.metric_before)}${br}` +
-                `Cost (accelerated): ${formatMetric(b.metric_after)}${br}` +
-                `Effectiveness: ${b.effectiveness.toFixed(2)}${br}` +
-                `Verifier cost (accelerated): ${formatMetric(b.metric_after_raw)}${br}` +
-                `Density (saved cost / verifier cost): ${formatMetric(b.density)}${br}` +
+            return `<strong>PC: ${pcsDisplay}</strong><br/>` +
+                `Execution frequency: ${formatMetric(b.execution_frequency)}<br/>` +
+                `Instructions: ${b.instructions}<br/>` +
+                `Cost (software version): ${formatMetric(b.metric_before)}<br/>` +
+                `Cost (accelerated): ${formatMetric(b.metric_after)}<br/>` +
+                `Effectiveness: ${b.effectiveness.toFixed(2)}<br/>` +
+                `Verifier cost (accelerated): ${formatMetric(b.metric_after_raw)}<br/>` +
+                `Density (saved cost / verifier cost): ${formatMetric(b.density)}<br/>` +
                 `APC size: ${b.stats_after.main_columns} cols, ${b.stats_after.bus_interactions} bus, ${b.stats_after.constraints} constraints`;
         }
 
