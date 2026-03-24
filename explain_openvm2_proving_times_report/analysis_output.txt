@@ -1,0 +1,714 @@
+OpenVM 2 Metrics Analysis
+================================================================================
+
+================================================================================
+  Pairing Guest Analysis
+================================================================================
+
+Experiments: metrics_pairing_v2_apc000, metrics_pairing_v2_apc003, metrics_pairing_v2_apc010, metrics_pairing_v2_apc030, metrics_pairing_v2_apc100, metrics_pairing_v2_apc300, metrics_pairing_v2_apc500
+
+Experiment           Segments     AIRs  PowdrAIRs        Cells    Constraints     Const.Inst       BusInt      BusIntMsg
+----------------------------------------------------------------------------------------------------------------------------------
+metrics_pairing_v2_apc000        5       20          0        1.90B           3.0K          1.13B         1.1K        965.50M
+metrics_pairing_v2_apc003        5       23          3        1.85B           3.4K          1.08B         1.8K        942.47M
+metrics_pairing_v2_apc010        4       30         10        1.91B           4.1K          1.14B         2.8K        974.33M
+metrics_pairing_v2_apc030        4       50         30        1.63B          15.6K        950.96M        15.4K        848.47M
+metrics_pairing_v2_apc100        3      120        100        1.19B          33.4K        740.41M        34.7K        621.79M
+metrics_pairing_v2_apc300        2      320        300      811.18M          55.0K        505.24M        67.4K        448.46M
+metrics_pairing_v2_apc500        2      520        500      806.85M          58.1K        490.99M        73.3K        448.03M
+
+Experiment             AppProof STARK(-tr)  Constraints   LogUpGKR     Round0  MLERounds   Openings       WHIR   StackRed TraceCommit
+--------------------------------------------------------------------------------------------------------------------------------------------
+metrics_pairing_v2_apc000      5.17s      2.38s        1.28s      0.98s      0.18s      0.12s      0.53s      0.41s      0.12s      0.57s
+metrics_pairing_v2_apc003      5.31s      2.37s        1.26s      0.96s      0.18s      0.12s      0.53s      0.41s      0.12s      0.57s
+metrics_pairing_v2_apc010      5.01s      2.06s        1.05s      0.74s      0.19s      0.12s      0.46s      0.33s      0.12s      0.55s
+metrics_pairing_v2_apc030      5.40s      2.20s        1.19s      0.77s      0.29s      0.13s      0.49s      0.33s      0.15s      0.52s
+metrics_pairing_v2_apc100      6.07s      2.31s        1.38s      0.77s      0.46s      0.15s      0.47s      0.26s      0.21s      0.46s
+metrics_pairing_v2_apc300      6.63s      2.58s        1.63s      0.78s      0.66s      0.18s      0.51s      0.19s      0.33s      0.43s
+metrics_pairing_v2_apc500      6.88s      2.75s        1.73s      0.82s      0.71s      0.20s      0.57s      0.19s      0.38s      0.45s
+
+--- Ratios relative to metrics_pairing_v2_apc000 (>1 means reduction, <1 means increase) ---
+
+Experiment              Cells Const.Inst  BusIntMsg STARK(-tr)  Constraints   LogUpGKR     Round0  MLERounds   Openings       WHIR   StackRed TraceCommit
+------------------------------------------------------------------------------------------------------------------------------------------------------
+metrics_pairing_v2_apc000    1.00x      1.00x      1.00x      1.00x        1.00x      1.00x      1.00x      1.00x      1.00x      1.00x      1.00x      1.00x
+metrics_pairing_v2_apc003    1.03x      1.05x      1.02x      1.01x        1.02x      1.03x      1.00x      0.99x      0.99x      1.00x      0.96x      1.00x
+metrics_pairing_v2_apc010    1.00x      0.99x      0.99x      1.15x        1.22x      1.32x      0.95x      0.98x      1.15x      1.23x      0.92x      1.03x
+metrics_pairing_v2_apc030    1.17x      1.18x      1.14x      1.08x        1.08x      1.28x      0.62x      0.90x      1.08x      1.23x      0.76x      1.09x
+metrics_pairing_v2_apc100    1.60x      1.52x      1.55x      1.03x        0.93x      1.28x      0.39x      0.79x      1.13x      1.59x      0.55x      1.23x
+metrics_pairing_v2_apc300    2.35x      2.23x      2.15x      0.92x        0.79x      1.26x      0.27x      0.65x      1.03x      2.18x      0.35x      1.31x
+metrics_pairing_v2_apc500    2.36x      2.29x      2.15x      0.87x        0.74x      1.20x      0.25x      0.60x      0.92x      2.13x      0.31x      1.26x
+
+--- Additional Statistics ---
+
+Experiment              #AIRs #PowdrAIRs  #Segments    Constraints    BusInteract    Columns
+----------------------------------------------------------------------------------------------------
+metrics_pairing_v2_apc000       20          0          5           3.0K           1.1K       3.9K
+metrics_pairing_v2_apc003       23          3          5           3.4K           1.8K       4.9K
+metrics_pairing_v2_apc010       30         10          4           4.1K           2.8K       6.3K
+metrics_pairing_v2_apc030       50         30          4          15.6K          15.4K      25.8K
+metrics_pairing_v2_apc100      120        100          3          33.4K          34.7K      56.9K
+metrics_pairing_v2_apc300      320        300          2          55.0K          67.4K     106.8K
+metrics_pairing_v2_apc500      520        500          2          58.1K          73.3K     116.1K
+
+--- Per-Segment Average STARK Times ---
+
+Experiment            #Segs  STARK/seg Constr/seg Openings/seg TrCommit/seg
+--------------------------------------------------------------------------------
+metrics_pairing_v2_apc000      5      0.48s      0.26s        0.11s        0.11s
+metrics_pairing_v2_apc003      5      0.47s      0.25s        0.11s        0.11s
+metrics_pairing_v2_apc010      4      0.52s      0.26s        0.11s        0.14s
+metrics_pairing_v2_apc030      4      0.55s      0.30s        0.12s        0.13s
+metrics_pairing_v2_apc100      3      0.77s      0.46s        0.16s        0.15s
+metrics_pairing_v2_apc300      2      1.29s      0.81s        0.26s        0.22s
+metrics_pairing_v2_apc500      2      1.38s      0.86s        0.29s        0.23s
+
+--- Cost Efficiency (time per unit) ---
+
+Experiment            STARK/Mcell STARK/Mconst   STARK/Mbus  Constr/Mconst   Open/Mcell
+------------------------------------------------------------------------------------------
+metrics_pairing_v2_apc000       1.25ms       2.12ms       2.47ms         1.14ms       0.28ms
+metrics_pairing_v2_apc003       1.28ms       2.20ms       2.51ms         1.17ms       0.29ms
+metrics_pairing_v2_apc010       1.08ms       1.82ms       2.12ms         0.93ms       0.24ms
+metrics_pairing_v2_apc030       1.35ms       2.32ms       2.60ms         1.25ms       0.30ms
+metrics_pairing_v2_apc100       1.95ms       3.12ms       3.72ms         1.86ms       0.39ms
+metrics_pairing_v2_apc300       3.18ms       5.10ms       5.75ms         3.22ms       0.63ms
+metrics_pairing_v2_apc500       3.41ms       5.61ms       6.14ms         3.52ms       0.71ms
+
+================================================================================
+  Keccak Guest Analysis
+================================================================================
+
+Experiments: metrics_keccak_v2_apc000, metrics_keccak_v2_apc003, metrics_keccak_v2_apc010, metrics_keccak_v2_apc030, metrics_keccak_v2_apc100, metrics_keccak_v2_manual
+
+Experiment           Segments     AIRs  PowdrAIRs        Cells    Constraints     Const.Inst       BusInt      BusIntMsg
+----------------------------------------------------------------------------------------------------------------------------------
+metrics_keccak_v2_apc000       48       20          0       20.97B          27.7K         17.38B         8.6K          9.88B
+metrics_keccak_v2_apc003       10       22          3        2.18B           7.9K        703.42M        20.2K          1.52B
+metrics_keccak_v2_apc010       10       29         10        2.08B           8.4K        642.33M        21.8K          1.48B
+metrics_keccak_v2_apc030        7       48         30        2.06B          11.2K        391.88M        30.2K          1.64B
+metrics_keccak_v2_apc100        7       77         63        1.97B          14.0K        335.89M        34.6K          1.61B
+metrics_keccak_v2_manual        3       24          0        2.37B          11.9K          2.45B         3.2K        314.50M
+
+Experiment             AppProof STARK(-tr)  Constraints   LogUpGKR     Round0  MLERounds   Openings       WHIR   StackRed TraceCommit
+--------------------------------------------------------------------------------------------------------------------------------------------
+metrics_keccak_v2_apc000     47.20s     21.25s       10.44s      6.97s      2.14s      1.28s      5.18s      3.98s      1.19s      5.59s
+metrics_keccak_v2_apc003     30.02s      4.20s        2.36s      1.80s      0.26s      0.30s      1.00s      0.81s      0.18s      0.82s
+metrics_keccak_v2_apc010     30.73s      4.00s        2.18s      1.61s      0.27s      0.29s      1.02s      0.81s      0.20s      0.80s
+metrics_keccak_v2_apc030     30.70s      4.31s        2.79s      2.17s      0.32s      0.28s      0.80s      0.58s      0.22s      0.71s
+metrics_keccak_v2_apc100     30.80s      4.41s        2.83s      2.18s      0.35s      0.29s      0.85s      0.58s      0.26s      0.72s
+metrics_keccak_v2_manual      3.50s      2.17s        1.09s      0.38s      0.44s      0.27s      0.38s      0.25s      0.13s      0.69s
+
+--- Ratios relative to metrics_keccak_v2_apc000 (>1 means reduction, <1 means increase) ---
+
+Experiment              Cells Const.Inst  BusIntMsg STARK(-tr)  Constraints   LogUpGKR     Round0  MLERounds   Openings       WHIR   StackRed TraceCommit
+------------------------------------------------------------------------------------------------------------------------------------------------------
+metrics_keccak_v2_apc000    1.00x      1.00x      1.00x      1.00x        1.00x      1.00x      1.00x      1.00x      1.00x      1.00x      1.00x      1.00x
+metrics_keccak_v2_apc003    9.64x     24.71x      6.50x      5.06x        4.42x      3.88x      8.13x      4.34x      5.19x      4.89x      6.77x      6.78x
+metrics_keccak_v2_apc010   10.07x     27.06x      6.70x      5.31x        4.79x      4.34x      7.92x      4.38x      5.09x      4.89x      5.96x      7.01x
+metrics_keccak_v2_apc030   10.20x     44.36x      6.02x      4.93x        3.75x      3.21x      6.77x      4.51x      6.46x      6.88x      5.44x      7.85x
+metrics_keccak_v2_apc100   10.63x     51.76x      6.15x      4.82x        3.68x      3.19x      6.16x      4.37x      6.12x      6.88x      4.53x      7.75x
+metrics_keccak_v2_manual    8.85x      7.09x     31.41x      9.79x        9.53x     18.30x      4.82x      4.81x     13.62x     15.66x      9.45x      8.10x
+
+--- Additional Statistics ---
+
+Experiment              #AIRs #PowdrAIRs  #Segments    Constraints    BusInteract    Columns
+----------------------------------------------------------------------------------------------------
+metrics_keccak_v2_apc000       20          0         48          27.7K           8.6K      34.4K
+metrics_keccak_v2_apc003       22          3         10           7.9K          20.2K      29.0K
+metrics_keccak_v2_apc010       29         10         10           8.4K          21.8K      31.2K
+metrics_keccak_v2_apc030       48         30          7          11.2K          30.2K      42.6K
+metrics_keccak_v2_apc100       77         63          7          14.0K          34.6K      49.3K
+metrics_keccak_v2_manual       24          0          3          11.9K           3.2K      14.5K
+
+--- Per-Segment Average STARK Times ---
+
+Experiment            #Segs  STARK/seg Constr/seg Openings/seg TrCommit/seg
+--------------------------------------------------------------------------------
+metrics_keccak_v2_apc000     48      0.44s      0.22s        0.11s        0.12s
+metrics_keccak_v2_apc003     10      0.42s      0.24s        0.10s        0.08s
+metrics_keccak_v2_apc010     10      0.40s      0.22s        0.10s        0.08s
+metrics_keccak_v2_apc030      7      0.62s      0.40s        0.11s        0.10s
+metrics_keccak_v2_apc100      7      0.63s      0.40s        0.12s        0.10s
+metrics_keccak_v2_manual      3      0.72s      0.36s        0.13s        0.23s
+
+--- Cost Efficiency (time per unit) ---
+
+Experiment            STARK/Mcell STARK/Mconst   STARK/Mbus  Constr/Mconst   Open/Mcell
+------------------------------------------------------------------------------------------
+metrics_keccak_v2_apc000       1.01ms       1.22ms       2.15ms         0.60ms       0.25ms
+metrics_keccak_v2_apc003       1.93ms       5.97ms       2.76ms         3.36ms       0.46ms
+metrics_keccak_v2_apc010       1.92ms       6.23ms       2.71ms         3.39ms       0.49ms
+metrics_keccak_v2_apc030       2.09ms      10.99ms       2.63ms         7.11ms       0.39ms
+metrics_keccak_v2_apc100       2.23ms      13.12ms       2.74ms         8.44ms       0.43ms
+metrics_keccak_v2_manual       0.92ms       0.88ms       6.90ms         0.45ms       0.16ms
+
+--- Per-AIR Detail for Pairing/metrics_pairing_v2_apc000 ---
+
+AIR Name                                                             Rows   Cols        Cells  Constraints Interactions Segments
+----------------------------------------------------------------------------------------------------------------------------------
+VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>           18.87M     36      679.48M         22.0         20.0        5
+VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>           9.44M     41      386.92M         25.0         17.0        5
+VmAirWrapper<Rv32BaseAluAdapterAir, LessThanCoreAir<4, 8>           9.44M     37      349.18M         28.0         18.0        5
+VmAirWrapper<Rv32MultAdapterAir, MulHCoreAir<4, 8>                  4.46M     39      173.80M         11.0         24.0        5
+VmAirWrapper<Rv32MultAdapterAir, MultiplicationCoreAir<4,           4.46M     31      138.15M          4.0         19.0        5
+VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>            2.36M     26       61.34M         11.0         11.0        5
+VmAirWrapper<Rv32BaseAluAdapterAir, ShiftCoreAir<4, 8>             589.8K     53       31.26M         76.0         24.0        5
+VmAirWrapper<Rv32CondRdWriteAdapterAir, Rv32JalLuiCoreAir>         983.0K     18       17.69M          9.0         10.0        5
+ProgramAir                                                          1.31M     10       13.11M          0.0          1.0        5
+Poseidon2PeripheryAir<BabyBearParameters>, 1>                       41.0K    300       12.29M        282.0          1.0        5
+VmAirWrapper<Rv32BranchAdapterAir, BranchLessThanCoreAir<4         278.5K     32        8.91M         25.0         13.0        5
+RangeTupleCheckerAir<2>                                             2.62M      3        7.86M          8.0          1.0        5
+VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>                  278.5K     28        7.80M          9.0         16.0        5
+BitwiseOperationLookupAir<8>                                       327.7K     18        5.90M         19.0          2.0        5
+VariableRangeCheckerAir                                             1.31M      4        5.24M         10.0          1.0        5
+VmAirWrapper<Rv32RdWriteAdapterAir, Rv32AuipcCoreAir>              139.3K     20        2.79M          5.0         12.0        5
+MemoryMerkleAir<8>                                                  55.3K     32        1.77M         33.0          4.0        5
+PersistentBoundaryAir<8>                                            55.3K     21        1.16M          3.0          4.0        5
+VmAirWrapper<Rv32LoadStoreAdapterAir, LoadSignExtendCoreAi          736.0     36        26.5K         18.0         18.0        4
+VmConnectorAir                                                       10.0      6         60.0          8.0          5.0        5
+
+  All AIR stats:
+    Total unique AIRs: 20
+    Total cells: 1.90B
+    Sum of constraints (per-AIR): 606
+    Sum of interactions (per-AIR): 221
+    Max columns: 300, Avg: 39.5
+
+--- Per-AIR Detail for Pairing/metrics_pairing_v2_apc003 ---
+
+AIR Name                                                             Rows   Cols        Cells  Constraints Interactions Segments
+----------------------------------------------------------------------------------------------------------------------------------
+VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>           17.83M     36      641.73M         22.0         20.0        5
+VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>           8.91M     41      365.43M         25.0         17.0        5
+VmAirWrapper<Rv32BaseAluAdapterAir, LessThanCoreAir<4, 8>           8.91M     37      329.78M         28.0         18.0        5
+VmAirWrapper<Rv32MultAdapterAir, MulHCoreAir<4, 8>                  4.46M     39      173.80M         11.0         24.0        5
+VmAirWrapper<Rv32MultAdapterAir, MultiplicationCoreAir<4,           4.46M     31      138.15M          4.0         19.0        5
+VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>            2.23M     26       57.93M         11.0         11.0        5
+VmAirWrapper<Rv32BaseAluAdapterAir, ShiftCoreAir<4, 8>             557.1K     53       29.52M         76.0         24.0        5
+PowdrAir<BabyBearParameters>                                       204.8K    132       27.03M         45.0         89.0        5
+VmAirWrapper<Rv32CondRdWriteAdapterAir, Rv32JalLuiCoreAir>          1.11M     18       20.05M          9.0         10.0        5
+ProgramAir                                                          1.31M     10       13.11M          0.0          1.0        5
+Poseidon2PeripheryAir<BabyBearParameters>, 1>                       41.0K    300       12.29M        282.0          1.0        5
+RangeTupleCheckerAir<2>                                             2.62M      3        7.86M          8.0          1.0        5
+VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>                  278.5K     28        7.80M          9.0         16.0        5
+BitwiseOperationLookupAir<8>                                       327.7K     18        5.90M         19.0          2.0        5
+VariableRangeCheckerAir                                             1.31M      4        5.24M         10.0          1.0        5
+VmAirWrapper<Rv32RdWriteAdapterAir, Rv32AuipcCoreAir>              139.3K     20        2.79M          5.0         12.0        5
+PowdrAir<BabyBearParameters>                                        51.7K     36        1.86M         16.0         24.0        5
+MemoryMerkleAir<8>                                                  55.3K     32        1.77M         33.0          4.0        5
+VmAirWrapper<Rv32BranchAdapterAir, BranchLessThanCoreAir<4          43.0K     32        1.38M         25.0         13.0        5
+PowdrAir<BabyBearParameters>                                        34.8K     35        1.22M         10.0         23.0        5
+PersistentBoundaryAir<8>                                            55.3K     21        1.16M          3.0          4.0        5
+VmAirWrapper<Rv32LoadStoreAdapterAir, LoadSignExtendCoreAi          720.0     36        25.9K         18.0         18.0        4
+VmConnectorAir                                                       10.0      6         60.0          8.0          5.0        5
+
+  PowdrAir stats:
+    Count: 3
+    Avg columns: 67.7, Max: 132
+    Avg constraints: 23.7
+    Avg interactions: 45.3
+
+  All AIR stats:
+    Total unique AIRs: 23
+    Total cells: 1.85B
+    Sum of constraints (per-AIR): 677
+    Sum of interactions (per-AIR): 357
+    Max columns: 300, Avg: 43.2
+
+--- Per-AIR Detail for Pairing/metrics_pairing_v2_apc010 ---
+
+AIR Name                                                             Rows   Cols        Cells  Constraints Interactions Segments
+----------------------------------------------------------------------------------------------------------------------------------
+VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>           16.78M     36      603.98M         22.0         20.0        4
+VmAirWrapper<Rv32BaseAluAdapterAir, LessThanCoreAir<4, 8>          12.58M     37      465.57M         28.0         18.0        4
+VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>           8.39M     41      343.93M         25.0         17.0        4
+VmAirWrapper<Rv32MultAdapterAir, MulHCoreAir<4, 8>                  4.19M     39      163.58M         11.0         24.0        4
+VmAirWrapper<Rv32MultAdapterAir, MultiplicationCoreAir<4,           4.19M     31      130.02M          4.0         19.0        4
+VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>            2.10M     26       54.53M         11.0         11.0        4
+PowdrAir<BabyBearParameters>                                       229.4K    132       30.28M         45.0         89.0        4
+VmAirWrapper<Rv32BaseAluAdapterAir, ShiftCoreAir<4, 8>             524.3K     53       27.79M         76.0         24.0        4
+VmAirWrapper<Rv32CondRdWriteAdapterAir, Rv32JalLuiCoreAir>          1.05M     18       18.87M          9.0         10.0        4
+Poseidon2PeripheryAir<BabyBearParameters>, 1>                       36.9K    300       11.06M        282.0          1.0        4
+ProgramAir                                                          1.05M     10       10.49M          0.0          1.0        4
+VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>                  262.1K     28        7.34M          9.0         16.0        4
+RangeTupleCheckerAir<2>                                             2.10M      3        6.29M          8.0          1.0        4
+PowdrAir<BabyBearParameters>                                        24.6K    244        6.00M        178.0        137.0        4
+PowdrAir<BabyBearParameters>                                        24.6K    233        5.73M        165.0        131.0        4
+BitwiseOperationLookupAir<8>                                       262.1K     18        4.72M         19.0          2.0        4
+VariableRangeCheckerAir                                             1.05M      4        4.19M         10.0          1.0        4
+VmAirWrapper<Rv32RdWriteAdapterAir, Rv32AuipcCoreAir>              131.1K     20        2.62M          5.0         12.0        4
+PowdrAir<BabyBearParameters>                                        51.2K     36        1.84M         16.0         24.0        4
+MemoryMerkleAir<8>                                                  53.2K     32        1.70M         33.0          4.0        4
+VmAirWrapper<Rv32BranchAdapterAir, BranchLessThanCoreAir<4          41.0K     32        1.31M         25.0         13.0        4
+PowdrAir<BabyBearParameters>                                        32.8K     35        1.15M         10.0         23.0        4
+PersistentBoundaryAir<8>                                            53.2K     21        1.12M          3.0          4.0        4
+PowdrAir<BabyBearParameters>                                        32.8K     31        1.02M          4.0         23.0        4
+PowdrAir<BabyBearParameters>                                        32.8K     19       622.6K          4.0         15.0        4
+PowdrAir<BabyBearParameters>                                        32.8K     19       622.6K          4.0         15.0        4
+PowdrAir<BabyBearParameters>                                        32.8K     19       622.6K          4.0         15.0        4
+PowdrAir<BabyBearParameters>                                        32.8K     19       622.6K          4.0         15.0        4
+VmAirWrapper<Rv32LoadStoreAdapterAir, LoadSignExtendCoreAi          768.0     36        27.6K         18.0         18.0        3
+VmConnectorAir                                                        8.0      6         48.0          8.0          5.0        4
+
+  PowdrAir stats:
+    Count: 10
+    Avg columns: 78.7, Max: 244
+    Avg constraints: 43.4
+    Avg interactions: 48.7
+
+  All AIR stats:
+    Total unique AIRs: 30
+    Total cells: 1.91B
+    Sum of constraints (per-AIR): 1040
+    Sum of interactions (per-AIR): 708
+    Max columns: 300, Avg: 52.6
+
+--- Per-AIR Detail for Pairing/metrics_pairing_v2_apc030 ---
+
+AIR Name                                                             Rows   Cols        Cells  Constraints Interactions Segments
+----------------------------------------------------------------------------------------------------------------------------------
+VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>           14.68M     36      528.48M         22.0         20.0        4
+VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>           6.82M     41      279.45M         25.0         17.0        4
+VmAirWrapper<Rv32BaseAluAdapterAir, LessThanCoreAir<4, 8>           7.34M     37      271.58M         28.0         18.0        4
+VmAirWrapper<Rv32MultAdapterAir, MulHCoreAir<4, 8>                  3.41M     39      132.91M         11.0         24.0        4
+VmAirWrapper<Rv32MultAdapterAir, MultiplicationCoreAir<4,           3.41M     31      105.64M          4.0         19.0        4
+VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>            2.36M     26       61.34M         11.0         11.0        4
+PowdrAir<BabyBearParameters>                                       213.0K    132       28.11M         45.0         89.0        4
+VmAirWrapper<Rv32BaseAluAdapterAir, ShiftCoreAir<4, 8>             458.8K     53       24.31M         76.0         24.0        4
+VmAirWrapper<Rv32CondRdWriteAdapterAir, Rv32JalLuiCoreAir>         786.4K     18       14.16M          9.0         10.0        4
+PowdrAir<BabyBearParameters>                                        22.5K    628       14.15M        287.0        427.0        4
+ProgramAir                                                          1.05M     10       10.49M          0.0          1.0        4
+Poseidon2PeripheryAir<BabyBearParameters>, 1>                       32.8K    300        9.83M        282.0          1.0        4
+VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>                  229.4K     28        6.42M          9.0         16.0        4
+RangeTupleCheckerAir<2>                                             2.10M      3        6.29M          8.0          1.0        4
+PowdrAir<BabyBearParameters>                                        22.5K    278        6.26M        151.0        181.0        4
+PowdrAir<BabyBearParameters>                                        22.5K    264        5.95M        147.0        177.0        4
+PowdrAir<BabyBearParameters>                                        22.5K    260        5.86M        161.0        164.0        4
+PowdrAir<BabyBearParameters>                                        22.5K    258        5.81M        149.0        167.0        4
+PowdrAir<BabyBearParameters>                                        22.5K    258        5.81M        147.0        173.0        4
+PowdrAir<BabyBearParameters>                                        22.5K    252        5.68M        147.0        169.0        4
+PowdrAir<BabyBearParameters>                                        22.5K    252        5.68M        147.0        169.0        4
+PowdrAir<BabyBearParameters>                                        22.5K    246        5.54M        159.0        154.0        4
+PowdrAir<BabyBearParameters>                                        22.5K    246        5.54M        159.0        154.0        4
+PowdrAir<BabyBearParameters>                                        22.5K    246        5.54M        159.0        154.0        4
+PowdrAir<BabyBearParameters>                                        22.5K    246        5.54M        159.0        154.0        4
+PowdrAir<BabyBearParameters>                                        22.5K    246        5.54M        159.0        154.0        4
+PowdrAir<BabyBearParameters>                                        22.5K    244        5.50M        178.0        137.0        4
+PowdrAir<BabyBearParameters>                                        22.5K    240        5.41M        159.0        150.0        4
+PowdrAir<BabyBearParameters>                                        22.5K    240        5.41M        159.0        150.0        4
+PowdrAir<BabyBearParameters>                                        22.5K    238        5.36M        157.0        148.0        4
+  ... and 20 more AIRs
+
+  PowdrAir stats:
+    Count: 30
+    Avg columns: 188.9, Max: 628
+    Avg constraints: 110.1
+    Avg interactions: 121.2
+
+  All AIR stats:
+    Total unique AIRs: 50
+    Total cells: 1.63B
+    Sum of constraints (per-AIR): 3910
+    Sum of interactions (per-AIR): 3858
+    Max columns: 628, Avg: 129.1
+
+--- Per-AIR Detail for Pairing/metrics_pairing_v2_apc100 ---
+
+AIR Name                                                             Rows   Cols        Cells  Constraints Interactions Segments
+----------------------------------------------------------------------------------------------------------------------------------
+VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>            8.39M     36      301.99M         22.0         20.0        3
+VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>           5.24M     41      214.96M         25.0         17.0        3
+VmAirWrapper<Rv32BaseAluAdapterAir, LessThanCoreAir<4, 8>           5.24M     37      193.99M         28.0         18.0        3
+VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>            1.31M     26       34.08M         11.0         11.0        3
+VmAirWrapper<Rv32MultAdapterAir, MulHCoreAir<4, 8>                 688.1K     39       26.84M         11.0         24.0        3
+PowdrAir<BabyBearParameters>                                       163.8K    132       21.63M         45.0         89.0        3
+VmAirWrapper<Rv32MultAdapterAir, MultiplicationCoreAir<4,          659.5K     31       20.44M          4.0         19.0        3
+VmAirWrapper<Rv32BaseAluAdapterAir, ShiftCoreAir<4, 8>             327.7K     53       17.37M         76.0         24.0        3
+VmAirWrapper<Rv32CondRdWriteAdapterAir, Rv32JalLuiCoreAir>         655.4K     18       11.80M          9.0         10.0        3
+Poseidon2PeripheryAir<BabyBearParameters>, 1>                       36.9K    300       11.06M        282.0          1.0        3
+PowdrAir<BabyBearParameters>                                        16.4K    628       10.29M        287.0        427.0        3
+ProgramAir                                                         786.4K     10        7.86M          0.0          1.0        3
+PowdrAir<BabyBearParameters>                                        24.6K    244        6.00M        178.0        137.0        3
+PowdrAir<BabyBearParameters>                                        16.4K    354        5.80M        183.0        235.0        3
+PowdrAir<BabyBearParameters>                                        24.6K    233        5.73M        165.0        131.0        3
+PowdrAir<BabyBearParameters>                                        16.4K    323        5.29M         52.0        230.0        3
+PowdrAir<BabyBearParameters>                                        16.4K    304        4.98M        195.0        186.0        3
+PowdrAir<BabyBearParameters>                                        16.4K    304        4.98M        169.0        194.0        3
+PowdrAir<BabyBearParameters>                                        16.4K    302        4.95M        167.0        192.0        3
+PowdrAir<BabyBearParameters>                                        16.4K    300        4.92M        181.0        187.0        3
+PowdrAir<BabyBearParameters>                                        16.4K    298        4.88M        195.0        182.0        3
+PowdrAir<BabyBearParameters>                                        16.4K    298        4.88M        195.0        182.0        3
+PowdrAir<BabyBearParameters>                                        16.4K    296        4.85M        183.0        183.0        3
+PowdrAir<BabyBearParameters>                                        16.4K    296        4.85M        181.0        187.0        3
+PowdrAir<BabyBearParameters>                                        16.4K    294        4.82M        181.0        183.0        3
+PowdrAir<BabyBearParameters>                                        16.4K    292        4.78M        185.0        181.0        3
+PowdrAir<BabyBearParameters>                                        16.4K    290        4.75M        167.0        184.0        3
+RangeTupleCheckerAir<2>                                             1.57M      3        4.72M          8.0          1.0        3
+PowdrAir<BabyBearParameters>                                        16.4K    286        4.69M        179.0        177.0        3
+PowdrAir<BabyBearParameters>                                        16.4K    284        4.65M        163.0        180.0        3
+  ... and 90 more AIRs
+
+  PowdrAir stats:
+    Count: 100
+    Avg columns: 181.7, Max: 628
+    Avg constraints: 105.2
+    Avg interactions: 113.4
+
+  All AIR stats:
+    Total unique AIRs: 120
+    Total cells: 1.19B
+    Sum of constraints (per-AIR): 11121
+    Sum of interactions (per-AIR): 11565
+    Max columns: 628, Avg: 158.0
+
+--- Per-AIR Detail for Pairing/metrics_pairing_v2_apc300 ---
+
+AIR Name                                                             Rows   Cols        Cells  Constraints Interactions Segments
+----------------------------------------------------------------------------------------------------------------------------------
+VmAirWrapper<Rv32BaseAluAdapterAir, LessThanCoreAir<4, 8>           3.15M     37      116.39M         28.0         18.0        2
+VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>            3.15M     36      113.25M         22.0         20.0        2
+VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>           2.10M     41       85.98M         25.0         17.0        2
+PowdrAir<BabyBearParameters>                                       196.6K    132       25.95M         45.0         89.0        2
+VmAirWrapper<Rv32BaseAluAdapterAir, ShiftCoreAir<4, 8>             327.7K     53       17.37M         76.0         24.0        2
+VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>           524.3K     26       13.63M         11.0         11.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    628       10.29M        287.0        427.0        2
+Poseidon2PeripheryAir<BabyBearParameters>, 1>                       24.6K    300        7.37M        282.0          1.0        2
+VmAirWrapper<Rv32CondRdWriteAdapterAir, Rv32JalLuiCoreAir>         393.2K     18        7.08M          9.0         10.0        2
+PowdrAir<BabyBearParameters>                                        24.6K    244        6.00M        178.0        137.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    354        5.80M        183.0        235.0        2
+PowdrAir<BabyBearParameters>                                        24.6K    233        5.73M        165.0        131.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    323        5.29M         52.0        230.0        2
+ProgramAir                                                         524.3K     10        5.24M          0.0          1.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    304        4.98M        195.0        186.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    304        4.98M        169.0        194.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    302        4.95M        167.0        192.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    300        4.92M        181.0        187.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    298        4.88M        195.0        182.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    298        4.88M        195.0        182.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    296        4.85M        183.0        183.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    296        4.85M        181.0        187.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    294        4.82M        181.0        183.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    292        4.78M        185.0        181.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    290        4.75M        167.0        184.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    286        4.69M        179.0        177.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    284        4.65M        163.0        180.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    284        4.65M        183.0        175.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    280        4.59M        179.0        173.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    280        4.59M        179.0        173.0        2
+  ... and 290 more AIRs
+
+  PowdrAir stats:
+    Count: 300
+    Avg columns: 179.9, Max: 628
+    Avg constraints: 91.0
+    Avg interactions: 114.5
+
+  All AIR stats:
+    Total unique AIRs: 320
+    Total cells: 811.18M
+    Sum of constraints (per-AIR): 27909
+    Sum of interactions (per-AIR): 34571
+    Max columns: 628, Avg: 171.1
+
+--- Per-AIR Detail for Pairing/metrics_pairing_v2_apc500 ---
+
+AIR Name                                                             Rows   Cols        Cells  Constraints Interactions Segments
+----------------------------------------------------------------------------------------------------------------------------------
+VmAirWrapper<Rv32BaseAluAdapterAir, LessThanCoreAir<4, 8>           3.15M     37      116.39M         28.0         18.0        2
+VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>            3.15M     36      113.25M         22.0         20.0        2
+VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>           2.10M     41       85.98M         25.0         17.0        2
+PowdrAir<BabyBearParameters>                                       196.6K    132       25.95M         45.0         89.0        2
+VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>           524.3K     26       13.63M         11.0         11.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    628       10.29M        287.0        427.0        2
+Poseidon2PeripheryAir<BabyBearParameters>, 1>                       24.6K    300        7.37M        282.0          1.0        2
+VmAirWrapper<Rv32CondRdWriteAdapterAir, Rv32JalLuiCoreAir>         393.2K     18        7.08M          9.0         10.0        2
+PowdrAir<BabyBearParameters>                                        24.6K    244        6.00M        178.0        137.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    354        5.80M        183.0        235.0        2
+PowdrAir<BabyBearParameters>                                        24.6K    233        5.73M        165.0        131.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    323        5.29M         52.0        230.0        2
+ProgramAir                                                         524.3K     10        5.24M          0.0          1.0        2
+VmAirWrapper<Rv32BaseAluAdapterAir, ShiftCoreAir<4, 8>              98.3K     53        5.21M         76.0         24.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    304        4.98M        195.0        186.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    304        4.98M        169.0        194.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    302        4.95M        167.0        192.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    300        4.92M        181.0        187.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    298        4.88M        195.0        182.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    298        4.88M        195.0        182.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    296        4.85M        183.0        183.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    296        4.85M        181.0        187.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    294        4.82M        181.0        183.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    292        4.78M        185.0        181.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    290        4.75M        167.0        184.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    286        4.69M        179.0        177.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    284        4.65M        163.0        180.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    284        4.65M        183.0        175.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    280        4.59M        179.0        173.0        2
+PowdrAir<BabyBearParameters>                                        16.4K    280        4.59M        179.0        173.0        2
+  ... and 490 more AIRs
+
+  PowdrAir stats:
+    Count: 500
+    Avg columns: 158.5, Max: 1512
+    Avg constraints: 75.0
+    Avg interactions: 101.6
+
+  All AIR stats:
+    Total unique AIRs: 520
+    Total cells: 806.85M
+    Sum of constraints (per-AIR): 38096
+    Sum of interactions (per-AIR): 51009
+    Max columns: 1512, Avg: 153.9
+
+--- Per-AIR Detail for Keccak/metrics_keccak_v2_apc000 ---
+
+AIR Name                                                             Rows   Cols        Cells  Constraints Interactions Segments
+----------------------------------------------------------------------------------------------------------------------------------
+VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>         199.23M     41        8.17B         25.0         17.0       48
+VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>          199.23M     36        7.17B         22.0         20.0       48
+VmAirWrapper<Rv32BaseAluAdapterAir, ShiftCoreAir<4, 8>             99.09M     53        5.25B         76.0         24.0       48
+VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>            3.10M     26       80.51M         11.0         11.0       48
+RangeTupleCheckerAir<2>                                            25.17M      3       75.50M          8.0          1.0       48
+BitwiseOperationLookupAir<8>                                        3.15M     18       56.62M         19.0          2.0       48
+VariableRangeCheckerAir                                            12.58M      4       50.33M         10.0          1.0       48
+VmAirWrapper<Rv32BranchAdapterAir, BranchLessThanCoreAir<4          1.56M     32       49.81M         25.0         13.0       48
+VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>                  774.1K     28       21.68M          9.0         16.0       48
+VmAirWrapper<Rv32CondRdWriteAdapterAir, Rv32JalLuiCoreAir>         778.2K     18       14.01M          9.0         10.0       48
+VmAirWrapper<Rv32RdWriteAdapterAir, Rv32AuipcCoreAir>              387.1K     20        7.74M          5.0         12.0       48
+Poseidon2PeripheryAir<BabyBearParameters>, 1>                       24.6K    300        7.37M        282.0          1.0       48
+VmAirWrapper<Rv32BaseAluAdapterAir, LessThanCoreAir<4, 8>          194.6K     37        7.20M         28.0         18.0       48
+ProgramAir                                                         393.2K     10        3.93M          0.0          1.0       48
+VmAirWrapper<Rv32MultAdapterAir, MultiplicationCoreAir<4,           48.4K     31        1.50M          4.0         19.0       48
+MemoryMerkleAir<8>                                                  24.6K     32       786.4K         33.0          4.0       48
+PersistentBoundaryAir<8>                                            24.6K     21       516.1K          3.0          4.0       48
+VmConnectorAir                                                       96.0      6        576.0          8.0          5.0       48
+Rv32HintStoreAir                                                      2.0     32         64.0         17.0         18.0        1
+PhantomAir                                                            1.0      6          6.0          0.0          3.0        1
+
+  All AIR stats:
+    Total unique AIRs: 20
+    Total cells: 20.97B
+    Sum of constraints (per-AIR): 594
+    Sum of interactions (per-AIR): 200
+    Max columns: 300, Avg: 37.7
+
+--- Per-AIR Detail for Keccak/metrics_keccak_v2_apc003 ---
+
+AIR Name                                                             Rows   Cols        Cells  Constraints Interactions Segments
+----------------------------------------------------------------------------------------------------------------------------------
+PowdrAir<BabyBearParameters>                                       606.2K   2022        1.23B        187.0         1.7K       10
+VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>           9.70M     41      397.67M         25.0         17.0       10
+VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>            4.78M     36      172.23M         22.0         20.0       10
+PowdrAir<BabyBearParameters>                                        1.20M    132      157.88M         45.0         89.0       10
+PowdrAir<BabyBearParameters>                                        1.20M     83       99.27M         55.0         44.0       10
+VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>            1.20M     26       31.10M         11.0         11.0       10
+VmAirWrapper<Rv32BranchAdapterAir, BranchLessThanCoreAir<4         606.2K     32       19.40M         25.0         13.0       10
+VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>                  598.0K     28       16.74M          9.0         16.0       10
+RangeTupleCheckerAir<2>                                             5.24M      3       15.73M          8.0          1.0       10
+BitwiseOperationLookupAir<8>                                       655.4K     18       11.80M         19.0          2.0       10
+VariableRangeCheckerAir                                             2.62M      4       10.49M         10.0          1.0       10
+VmAirWrapper<Rv32RdWriteAdapterAir, Rv32AuipcCoreAir>              299.0K     20        5.98M          5.0         12.0       10
+VmAirWrapper<Rv32BaseAluAdapterAir, LessThanCoreAir<4, 8>          151.6K     37        5.61M         28.0         18.0       10
+Poseidon2PeripheryAir<BabyBearParameters>, 1>                        5.6K    300        1.69M        282.0          1.0       10
+VmAirWrapper<Rv32CondRdWriteAdapterAir, Rv32JalLuiCoreAir>          84.0K     18        1.51M          9.0         10.0       10
+VmAirWrapper<Rv32MultAdapterAir, MultiplicationCoreAir<4,           37.4K     31        1.16M          4.0         19.0       10
+ProgramAir                                                          81.9K     10       819.2K          0.0          1.0       10
+MemoryMerkleAir<8>                                                   5.1K     32       163.8K         33.0          4.0       10
+PersistentBoundaryAir<8>                                             5.1K     21       107.5K          3.0          4.0       10
+VmConnectorAir                                                       20.0      6        120.0          8.0          5.0       10
+Rv32HintStoreAir                                                      2.0     32         64.0         17.0         18.0        1
+PhantomAir                                                            1.0      6          6.0          0.0          3.0        1
+
+  PowdrAir stats:
+    Count: 3
+    Avg columns: 745.7, Max: 2022
+    Avg constraints: 95.7
+    Avg interactions: 622.3
+
+  All AIR stats:
+    Total unique AIRs: 22
+    Total cells: 2.18B
+    Sum of constraints (per-AIR): 805
+    Sum of interactions (per-AIR): 2043
+    Max columns: 2022, Avg: 133.5
+
+--- Per-AIR Detail for Keccak/metrics_keccak_v2_apc010 ---
+
+AIR Name                                                             Rows   Cols        Cells  Constraints Interactions Segments
+----------------------------------------------------------------------------------------------------------------------------------
+PowdrAir<BabyBearParameters>                                       606.2K   2022        1.23B        187.0         1.7K       10
+VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>           9.57M     41      392.30M         25.0         17.0       10
+PowdrAir<BabyBearParameters>                                        1.20M    132      157.88M         45.0         89.0       10
+PowdrAir<BabyBearParameters>                                        1.20M     83       99.27M         55.0         44.0       10
+VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>            2.42M     36       87.29M         22.0         20.0       10
+VmAirWrapper<Rv32BranchAdapterAir, BranchLessThanCoreAir<4         598.0K     32       19.14M         25.0         13.0       10
+VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>                  598.0K     28       16.74M          9.0         16.0       10
+PowdrAir<BabyBearParameters>                                       151.6K    104       15.76M         41.0         71.0       10
+RangeTupleCheckerAir<2>                                             5.24M      3       15.73M          8.0          1.0       10
+BitwiseOperationLookupAir<8>                                       655.4K     18       11.80M         19.0          2.0       10
+VariableRangeCheckerAir                                             2.62M      4       10.49M         10.0          1.0       10
+VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>           299.0K     26        7.77M         11.0         11.0       10
+VmAirWrapper<Rv32RdWriteAdapterAir, Rv32AuipcCoreAir>              299.0K     20        5.98M          5.0         12.0       10
+PowdrAir<BabyBearParameters>                                        75.8K     35        2.65M         10.0         23.0       10
+PowdrAir<BabyBearParameters>                                        75.8K     31        2.35M          4.0         23.0       10
+Poseidon2PeripheryAir<BabyBearParameters>, 1>                        5.6K    300        1.69M        282.0          1.0       10
+PowdrAir<BabyBearParameters>                                        75.8K     19        1.44M          4.0         15.0       10
+PowdrAir<BabyBearParameters>                                        75.8K     19        1.44M          4.0         15.0       10
+PowdrAir<BabyBearParameters>                                        75.8K     19        1.44M          4.0         15.0       10
+PowdrAir<BabyBearParameters>                                        75.8K     19        1.44M          4.0         15.0       10
+VmAirWrapper<Rv32CondRdWriteAdapterAir, Rv32JalLuiCoreAir>          75.8K     18        1.36M          9.0         10.0       10
+VmAirWrapper<Rv32MultAdapterAir, MultiplicationCoreAir<4,           37.4K     31        1.16M          4.0         19.0       10
+ProgramAir                                                          81.9K     10       819.2K          0.0          1.0       10
+MemoryMerkleAir<8>                                                   5.1K     32       163.8K         33.0          4.0       10
+PersistentBoundaryAir<8>                                             5.1K     21       107.5K          3.0          4.0       10
+VmAirWrapper<Rv32BaseAluAdapterAir, LessThanCoreAir<4, 8>             4.0     37        148.0         28.0         18.0        1
+VmConnectorAir                                                       20.0      6        120.0          8.0          5.0       10
+Rv32HintStoreAir                                                      2.0     32         64.0         17.0         18.0        1
+PhantomAir                                                            1.0      6          6.0          0.0          3.0        1
+
+  PowdrAir stats:
+    Count: 10
+    Avg columns: 248.3, Max: 2022
+    Avg constraints: 35.8
+    Avg interactions: 204.4
+
+  All AIR stats:
+    Total unique AIRs: 29
+    Total cells: 2.08B
+    Sum of constraints (per-AIR): 876
+    Sum of interactions (per-AIR): 2220
+    Max columns: 2022, Avg: 109.8
+
+--- Per-AIR Detail for Keccak/metrics_keccak_v2_apc030 ---
+
+AIR Name                                                             Rows   Cols        Cells  Constraints Interactions Segments
+----------------------------------------------------------------------------------------------------------------------------------
+PowdrAir<BabyBearParameters>                                       802.8K   2022        1.62B        187.0         1.7K        7
+PowdrAir<BabyBearParameters>                                       802.8K    132      105.97M         45.0         89.0        7
+PowdrAir<BabyBearParameters>                                       802.8K     83       66.63M         55.0         44.0        7
+VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>           1.59M     41       65.16M         25.0         17.0        7
+VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>           802.8K     36       28.90M         22.0         20.0        7
+PowdrAir<BabyBearParameters>                                        25.1K    933       23.41M        200.0        686.0        7
+PowdrAir<BabyBearParameters>                                        25.1K    930       23.33M        197.0        684.0        7
+PowdrAir<BabyBearParameters>                                       200.7K    104       20.87M         41.0         71.0        7
+VmAirWrapper<Rv32BranchAdapterAir, BranchLessThanCoreAir<4         401.4K     32       12.85M         25.0         13.0        7
+RangeTupleCheckerAir<2>                                             3.67M      3       11.01M          8.0          1.0        7
+BitwiseOperationLookupAir<8>                                       458.8K     18        8.26M         19.0          2.0        7
+VariableRangeCheckerAir                                             1.84M      4        7.34M         10.0          1.0        7
+VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>                  200.7K     28        5.62M          9.0         16.0        7
+VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>           200.7K     26        5.22M         11.0         11.0        7
+PowdrAir<BabyBearParameters>                                        25.1K    159        3.99M         38.0        110.0        7
+PowdrAir<BabyBearParameters>                                       100.4K     35        3.51M         10.0         23.0        7
+PowdrAir<BabyBearParameters>                                        25.1K    133        3.34M         22.0         96.0        7
+PowdrAir<BabyBearParameters>                                        50.2K     66        3.31M         17.0         46.0        7
+PowdrAir<BabyBearParameters>                                       100.4K     31        3.11M          4.0         23.0        7
+PowdrAir<BabyBearParameters>                                        25.1K    116        2.91M         37.0         83.0        7
+PowdrAir<BabyBearParameters>                                        25.1K    107        2.68M         71.0         61.0        7
+PowdrAir<BabyBearParameters>                                       100.4K     22        2.21M         17.0         15.0        7
+PowdrAir<BabyBearParameters>                                        25.1K     80        2.01M         37.0         52.0        7
+PowdrAir<BabyBearParameters>                                        25.1K     78        1.96M         25.0         54.0        7
+PowdrAir<BabyBearParameters>                                       100.4K     19        1.91M          4.0         15.0        7
+PowdrAir<BabyBearParameters>                                       100.4K     19        1.91M          4.0         15.0        7
+PowdrAir<BabyBearParameters>                                       100.4K     19        1.91M          4.0         15.0        7
+PowdrAir<BabyBearParameters>                                       100.4K     19        1.91M          4.0         15.0        7
+PowdrAir<BabyBearParameters>                                        25.1K     62        1.56M         13.0         40.0        7
+PowdrAir<BabyBearParameters>                                        25.1K     62        1.56M         35.0         34.0        7
+  ... and 18 more AIRs
+
+  PowdrAir stats:
+    Count: 30
+    Avg columns: 184.0, Max: 2022
+    Avg constraints: 37.9
+    Avg interactions: 140.3
+
+  All AIR stats:
+    Total unique AIRs: 48
+    Total cells: 2.06B
+    Sum of constraints (per-AIR): 1650
+    Sum of interactions (per-AIR): 4367
+    Max columns: 2022, Avg: 128.9
+
+--- Per-AIR Detail for Keccak/metrics_keccak_v2_apc100 ---
+
+AIR Name                                                             Rows   Cols        Cells  Constraints Interactions Segments
+----------------------------------------------------------------------------------------------------------------------------------
+PowdrAir<BabyBearParameters>                                       802.8K   2022        1.62B        187.0         1.7K        7
+PowdrAir<BabyBearParameters>                                       802.8K    132      105.97M         45.0         89.0        7
+PowdrAir<BabyBearParameters>                                       802.8K     83       66.63M         55.0         44.0        7
+PowdrAir<BabyBearParameters>                                        25.1K    933       23.41M        200.0        686.0        7
+PowdrAir<BabyBearParameters>                                        25.1K    930       23.33M        197.0        684.0        7
+PowdrAir<BabyBearParameters>                                       200.7K    104       20.87M         41.0         71.0        7
+RangeTupleCheckerAir<2>                                             3.67M      3       11.01M          8.0          1.0        7
+BitwiseOperationLookupAir<8>                                       458.8K     18        8.26M         19.0          2.0        7
+VariableRangeCheckerAir                                             1.84M      4        7.34M         10.0          1.0        7
+PowdrAir<BabyBearParameters>                                        25.1K    159        3.99M         38.0        110.0        7
+PowdrAir<BabyBearParameters>                                        25.1K    145        3.64M         30.0        102.0        7
+VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>           100.4K     36        3.61M         22.0         20.0        7
+PowdrAir<BabyBearParameters>                                       100.4K     35        3.51M         10.0         23.0        7
+PowdrAir<BabyBearParameters>                                        25.1K    133        3.34M         22.0         96.0        7
+PowdrAir<BabyBearParameters>                                        50.2K     66        3.31M         17.0         46.0        7
+PowdrAir<BabyBearParameters>                                       100.4K     31        3.11M          4.0         23.0        7
+PowdrAir<BabyBearParameters>                                        25.1K    116        2.91M         37.0         83.0        7
+PowdrAir<BabyBearParameters>                                        25.1K    112        2.81M         21.0         80.0        7
+VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>                  100.4K     28        2.81M          9.0         16.0        7
+PowdrAir<BabyBearParameters>                                        25.1K    107        2.68M         71.0         61.0        7
+PowdrAir<BabyBearParameters>                                        25.1K    104        2.61M         73.0         51.0        7
+VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>           100.4K     26        2.61M         11.0         11.0        7
+PowdrAir<BabyBearParameters>                                       100.4K     22        2.21M         17.0         15.0        7
+PowdrAir<BabyBearParameters>                                        25.1K     80        2.01M         37.0         52.0        7
+PowdrAir<BabyBearParameters>                                        25.1K     78        1.96M         25.0         54.0        7
+PowdrAir<BabyBearParameters>                                        25.1K     76        1.91M         49.0         41.0        7
+PowdrAir<BabyBearParameters>                                       100.4K     19        1.91M          4.0         15.0        7
+PowdrAir<BabyBearParameters>                                       100.4K     19        1.91M          4.0         15.0        7
+PowdrAir<BabyBearParameters>                                       100.4K     19        1.91M          4.0         15.0        7
+PowdrAir<BabyBearParameters>                                       100.4K     19        1.91M          4.0         15.0        7
+  ... and 47 more AIRs
+
+  PowdrAir stats:
+    Count: 63
+    Avg columns: 112.9, Max: 2022
+    Avg constraints: 28.1
+    Avg interactions: 83.5
+
+  All AIR stats:
+    Total unique AIRs: 77
+    Total cells: 1.97B
+    Sum of constraints (per-AIR): 2216
+    Sum of interactions (per-AIR): 5358
+    Max columns: 2022, Avg: 99.6
+
+--- Per-AIR Detail for Keccak/metrics_keccak_v2_manual ---
+
+AIR Name                                                             Rows   Cols        Cells  Constraints Interactions Segments
+----------------------------------------------------------------------------------------------------------------------------------
+KeccakfPermAir                                                     655.4K   2634        1.73B         3.2K          2.0        3
+VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>           5.24M     41      214.96M         25.0         17.0        3
+VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>            5.24M     36      188.74M         22.0         20.0        3
+VmAirWrapper<Rv32LoadStoreAdapterAir, LoadSignExtendCoreAi          2.36M     36       84.93M         18.0         18.0        3
+XorinVmAir                                                          36.9K    914       33.69M        177.0        561.0        3
+VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>            1.18M     26       30.67M         11.0         11.0        3
+KeccakfOpAir                                                        36.9K    561       20.68M         52.0        310.0        3
+VmAirWrapper<Rv32BranchAdapterAir, BranchLessThanCoreAir<4         589.8K     32       18.87M         25.0         13.0        3
+VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>                  589.8K     28       16.52M          9.0         16.0        3
+VmAirWrapper<Rv32BaseAluAdapterAir, LessThanCoreAir<4, 8>          327.7K     37       12.12M         28.0         18.0        3
+VmAirWrapper<Rv32RdWriteAdapterAir, Rv32AuipcCoreAir>              294.9K     20        5.90M          5.0         12.0        3
+RangeTupleCheckerAir<2>                                             1.57M      3        4.72M          8.0          1.0        3
+BitwiseOperationLookupAir<8>                                       196.6K     18        3.54M         19.0          2.0        3
+VariableRangeCheckerAir                                            786.4K      4        3.15M         10.0          1.0        3
+VmAirWrapper<Rv32CondRdWriteAdapterAir, Rv32JalLuiCoreAir>         163.8K     18        2.95M          9.0         10.0        3
+VmAirWrapper<Rv32MultAdapterAir, MultiplicationCoreAir<4,           36.9K     31        1.14M          4.0         19.0        3
+Poseidon2PeripheryAir<BabyBearParameters>, 1>                        1.0K    300       307.2K        282.0          1.0        3
+ProgramAir                                                          12.3K     10       122.9K          0.0          1.0        3
+MemoryMerkleAir<8>                                                   1.3K     32        41.0K         33.0          4.0        3
+PersistentBoundaryAir<8>                                            384.0     21         8.1K          3.0          4.0        3
+VmAirWrapper<Rv32BaseAluAdapterAir, ShiftCoreAir<4, 8>                2.0     53        106.0         76.0         24.0        1
+Rv32HintStoreAir                                                      2.0     32         64.0         17.0         18.0        1
+VmConnectorAir                                                        6.0      6         36.0          8.0          5.0        3
+PhantomAir                                                            1.0      6          6.0          0.0          3.0        1
+
+  All AIR stats:
+    Total unique AIRs: 24
+    Total cells: 2.37B
+    Sum of constraints (per-AIR): 4024
+    Sum of interactions (per-AIR): 1091
+    Max columns: 2634, Avg: 204.1

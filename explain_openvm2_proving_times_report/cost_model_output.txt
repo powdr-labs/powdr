@@ -1,0 +1,245 @@
+================================================================================
+  OpenVM 2 STARK Proving Time Cost Model
+================================================================================
+
+Name                                     Segs  AIRs     Cols   Cells(M)      CI(M)     BIM(M) STARK(s)  R0(s) MLE(s) WHIR(s)
+----------------------------------------------------------------------------------------------------------------------------------
+metrics_pairing_v2_apc000                   5    20     3919     1904.7     1125.9      965.5     2.38   0.18   0.12    0.41
+metrics_pairing_v2_apc003                   5    23     4934     1845.8     1076.8      942.5     2.37   0.18   0.12    0.41
+metrics_pairing_v2_apc010                   4    30     6276     1907.6     1135.6      974.3     2.06   0.19   0.12    0.33
+metrics_pairing_v2_apc030                   4    50    25792     1627.3      951.0      848.5     2.20   0.29   0.13    0.33
+metrics_pairing_v2_apc100                   3   120    56889     1187.9      740.4      621.8     2.31   0.46   0.15    0.26
+metrics_pairing_v2_apc300                   2   320   106842      811.2      505.2      448.5     2.58   0.66   0.18    0.19
+metrics_pairing_v2_apc500                   2   520   116064      806.8      491.0      448.0     2.75   0.71   0.20    0.19
+metrics_keccak_v2_apc000                   48    20    34406    20970.0    17383.9     9877.8    21.25   2.14   1.28    3.98
+metrics_keccak_v2_apc003                   10    22    29038     2175.1      703.4     1518.6     4.20   0.26   0.30    0.81
+metrics_keccak_v2_apc010                   10    29    31165     2082.0      642.3     1475.2     4.00   0.27   0.29    0.81
+metrics_keccak_v2_apc030                    7    48    42645     2056.7      391.9     1640.6     4.31   0.32   0.28    0.58
+metrics_keccak_v2_apc100                    7    77    49303     1972.4      335.9     1606.7     4.41   0.35   0.29    0.58
+metrics_keccak_v2_manual                    3    24    14515     2369.3     2453.2      314.5     2.17   0.44   0.27    0.25
+
+
+================================================================================
+  Model 1: STARK_time = a * cells + b
+================================================================================
+  Coefficients: 0.000001 ms/cell, intercept: 1346.0 ms
+  R² = 0.9717
+
+  Name                                      Actual(s) Predicted(s)    Error
+  metrics_pairing_v2_apc000                      2.38         3.15    32.1%
+  metrics_pairing_v2_apc003                      2.37         3.09    30.8%
+  metrics_pairing_v2_apc010                      2.06         3.15    52.6%
+  metrics_pairing_v2_apc030                      2.20         2.89    31.0%
+  metrics_pairing_v2_apc100                      2.31         2.47     6.9%
+  metrics_pairing_v2_apc300                      2.58         2.11   -18.0%
+  metrics_pairing_v2_apc500                      2.75         2.11   -23.4%
+  metrics_keccak_v2_apc000                      21.25        21.20    -0.2%
+  metrics_keccak_v2_apc003                       4.20         3.41   -18.9%
+  metrics_keccak_v2_apc010                       4.00         3.32   -17.1%
+  metrics_keccak_v2_apc030                       4.31         3.29   -23.5%
+  metrics_keccak_v2_apc100                       4.41         3.21   -27.1%
+  metrics_keccak_v2_manual                       2.17         3.59    65.4%
+
+
+================================================================================
+  Model 2: STARK_time = a * cells + b * n_air_instances + c
+================================================================================
+  Coefficients:
+    cells:          0.8810 ms per Mcell
+    AIR instances:  2.47 ms per AIR instance
+    intercept:      727.1 ms
+  R² = 0.9824
+
+  Name                                      Actual(s) Predicted(s)    Error
+  metrics_pairing_v2_apc000                      2.38         2.65    11.1%
+  metrics_pairing_v2_apc003                      2.37         2.63    11.4%
+  metrics_pairing_v2_apc010                      2.06         2.70    30.8%
+  metrics_pairing_v2_apc030                      2.20         2.65    20.4%
+  metrics_pairing_v2_apc100                      2.31         2.66    15.2%
+  metrics_pairing_v2_apc300                      2.58         2.98    15.5%
+  metrics_pairing_v2_apc500                      2.75         3.27    18.9%
+  metrics_keccak_v2_apc000                      21.25        21.34     0.4%
+  metrics_keccak_v2_apc003                       4.20         3.14   -25.1%
+  metrics_keccak_v2_apc010                       4.00         3.21   -19.8%
+  metrics_keccak_v2_apc030                       4.31         3.29   -23.5%
+  metrics_keccak_v2_apc100                       4.41         3.48   -21.0%
+  metrics_keccak_v2_manual                       2.17         2.98    37.2%
+
+
+================================================================================
+  Model 3: STARK_time = a * cells + b * n_air_instances + c * total_cols + d
+================================================================================
+  Coefficients:
+    cells:          0.7581 ms per Mcell
+    AIR instances:  6.33 ms per AIR instance
+    total_cols:     -0.0239 ms per column
+    intercept:      779.7 ms
+  R² = 0.9833
+
+  Name                                      Actual(s) Predicted(s)    Error
+  metrics_pairing_v2_apc000                      2.38         2.76    15.6%
+  metrics_pairing_v2_apc003                      2.37         2.78    17.7%
+  metrics_pairing_v2_apc010                      2.06         2.83    37.0%
+  metrics_pairing_v2_apc030                      2.20         2.66    20.6%
+  metrics_pairing_v2_apc100                      2.31         2.60    12.6%
+  metrics_pairing_v2_apc300                      2.58         2.79     8.1%
+  metrics_pairing_v2_apc500                      2.75         3.33    21.0%
+  metrics_keccak_v2_apc000                      21.25        21.34     0.4%
+  metrics_keccak_v2_apc003                       4.20         3.01   -28.2%
+  metrics_keccak_v2_apc010                       4.00         3.28   -18.1%
+  metrics_keccak_v2_apc030                       4.31         3.26   -24.4%
+  metrics_keccak_v2_apc100                       4.41         3.71   -15.8%
+  metrics_keccak_v2_manual                       2.17         2.65    22.0%
+
+
+================================================================================
+  Model 4: Sub-component models
+================================================================================
+
+  Round 0: round0_time_ms
+    Features: n_air_instances, sum_constraints, sum_interactions
+      n_air_instances: 2.482764
+      sum_constraints: 0.102854
+      sum_interactions: -0.098916
+      intercept: -185.28
+    R² = 0.9334
+
+  MLE Rounds: mle_rounds_time_ms
+    Features: n_air_instances, total_cells
+      n_air_instances: 0.145143
+      total_cells: 0.000000
+      intercept: 70.74
+    R² = 0.9629
+
+  LogUp GKR: logup_gkr_time_ms
+    Features: bus_interaction_messages, n_air_instances
+      bus_interaction_messages: 0.000001
+      n_air_instances: 0.366029
+      intercept: 403.42
+    R² = 0.9663
+
+  WHIR: whir_time_ms
+    Features: total_cells, total_cols
+      total_cells: 0.000000
+      total_cols: 0.000025
+      intercept: 107.77
+    R² = 0.9720
+
+  Stacked Reduction: stacked_reduction_time_ms
+    Features: total_cols, n_air_instances
+      total_cols: -0.006742
+      n_air_instances: 1.590997
+      intercept: 12.14
+    R² = 0.9730
+
+  Trace Commit: trace_commit_time_ms
+    Features: total_cells
+      total_cells: 0.000000
+      intercept: 161.57
+    R² = 0.9971
+
+
+================================================================================
+  Model 5: Best overall model
+  STARK_time = a*cells + b*n_air_instances + c*constraint_instances + d*bus_interaction_messages + e*total_cols + f
+================================================================================
+  Coefficients:
+    total_cells                    0.00000397
+    n_air_instances                -1.21215858
+    constraint_instances           -0.00000256
+    bus_interaction_messages       -0.00000168
+    total_cols                     0.02761939
+    intercept                      -742.0
+  R² = 0.9995
+
+  Name                                      Actual(s) Predicted(s)    Error
+  metrics_pairing_v2_apc000                      2.38         2.30    -3.6%
+  metrics_pairing_v2_apc003                      2.37         2.24    -5.4%
+  metrics_pairing_v2_apc010                      2.06         2.31    11.9%
+  metrics_pairing_v2_apc030                      2.20         2.32     5.5%
+  metrics_pairing_v2_apc100                      2.31         2.16    -6.3%
+  metrics_pairing_v2_apc300                      2.58         2.62     1.8%
+  metrics_pairing_v2_apc500                      2.75         2.75    -0.0%
+  metrics_keccak_v2_apc000                      21.25        21.25    -0.0%
+  metrics_keccak_v2_apc003                       4.20         4.09    -2.6%
+  metrics_keccak_v2_apc010                       4.00         3.93    -1.7%
+  metrics_keccak_v2_apc030                       4.31         4.46     3.6%
+  metrics_keccak_v2_apc100                       4.41         4.38    -0.6%
+  metrics_keccak_v2_manual                       2.17         2.17     0.2%
+
+
+================================================================================
+  Per-AIR Overhead Analysis
+================================================================================
+
+  metrics_pairing_v2_apc003 vs metrics_pairing_v2_apc000:
+    Delta AIR instances: +15
+    Delta cells: -58.9M
+    Delta columns: +1015
+    Delta STARK time: -19ms
+    Delta Round 0: +0ms
+    Delta MLE rounds: +1ms
+    Delta Stacked Reduction: +5ms
+    Delta WHIR: +1ms
+    Round 0 per extra AIR instance: 0.00ms
+    Stacked Red per extra AIR instance: 0.33ms
+
+  metrics_pairing_v2_apc010 vs metrics_pairing_v2_apc000:
+    Delta AIR instances: +20
+    Delta cells: +3.0M
+    Delta columns: +2357
+    Delta STARK time: -319ms
+    Delta Round 0: +10ms
+    Delta MLE rounds: +2ms
+    Delta Stacked Reduction: +10ms
+    Delta WHIR: -76ms
+    Round 0 per extra AIR instance: 0.50ms
+    Stacked Red per extra AIR instance: 0.50ms
+
+  metrics_pairing_v2_apc030 vs metrics_pairing_v2_apc000:
+    Delta AIR instances: +100
+    Delta cells: -277.4M
+    Delta columns: +21873
+    Delta STARK time: -181ms
+    Delta Round 0: +111ms
+    Delta MLE rounds: +13ms
+    Delta Stacked Reduction: +37ms
+    Delta WHIR: -76ms
+    Round 0 per extra AIR instance: 1.11ms
+    Stacked Red per extra AIR instance: 0.37ms
+
+  metrics_pairing_v2_apc100 vs metrics_pairing_v2_apc000:
+    Delta AIR instances: +261
+    Delta cells: -716.8M
+    Delta columns: +52970
+    Delta STARK time: -73ms
+    Delta Round 0: +277ms
+    Delta MLE rounds: +32ms
+    Delta Stacked Reduction: +95ms
+    Delta WHIR: -152ms
+    Round 0 per extra AIR instance: 1.06ms
+    Stacked Red per extra AIR instance: 0.36ms
+
+  metrics_pairing_v2_apc300 vs metrics_pairing_v2_apc000:
+    Delta AIR instances: +524
+    Delta cells: -1093.5M
+    Delta columns: +102923
+    Delta STARK time: +195ms
+    Delta Round 0: +484ms
+    Delta MLE rounds: +64ms
+    Delta Stacked Reduction: +210ms
+    Delta WHIR: -221ms
+    Round 0 per extra AIR instance: 0.92ms
+    Stacked Red per extra AIR instance: 0.40ms
+
+  metrics_pairing_v2_apc500 vs metrics_pairing_v2_apc000:
+    Delta AIR instances: +645
+    Delta cells: -1097.8M
+    Delta columns: +112145
+    Delta STARK time: +369ms
+    Delta Round 0: +534ms
+    Delta MLE rounds: +79ms
+    Delta Stacked Reduction: +262ms
+    Delta WHIR: -217ms
+    Round 0 per extra AIR instance: 0.83ms
+    Stacked Red per extra AIR instance: 0.41ms
