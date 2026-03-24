@@ -1157,20 +1157,7 @@
                         .attr('fill', isSelected ? selectedColor : hoverColor)
                         .attr('stroke', isSelected ? selectedColor : hoverColor);
                     tooltip.transition().duration(200).style('opacity', 0.9);
-                    const b = d.block;
-                    const bPcsDisplay = b.block_pcs.length === 1
-                        ? `0x${b.start_pc.toString(16)}`
-                        : b.block_pcs.map(pc => '0x' + pc.toString(16)).join(', ');
-                    tooltip.html(
-                        `<strong>PC: ${bPcsDisplay}</strong><br/>
-                         Execution frequency: ${formatMetric(b.execution_frequency)}<br/>
-                         Instructions: ${b.instructions}<br/>
-                         Cost (software version): ${formatMetric(b.metric_before)}<br/>
-                         Cost (accelerated): ${formatMetric(b.metric_after)}<br/>
-                         Effectiveness: ${b.effectiveness.toFixed(2)}<br/>
-                         Verifier cost (accelerated): ${formatMetric(b.metric_after_raw)}<br/>
-                         APC size: ${b.stats_after.main_columns} cols, ${b.stats_after.bus_interactions} bus, ${b.stats_after.constraints} constraints`
-                    )
+                    tooltip.html(blockTooltipHtml(d.block))
                         .style('left', (event.pageX + 10) + 'px')
                         .style('top', (event.pageY + 10) + 'px');
 
@@ -1486,6 +1473,30 @@
             });
         }
 
+        function blockTooltipHtml(b) {
+            if (b.is_other) {
+                return `<strong>Other (${b.count} APCs)</strong><br/>` +
+                    `Execution frequency: ${formatMetric(b.execution_frequency)}<br/>` +
+                    `Cost (software version): ${formatMetric(b.software_version_cells)}<br/>` +
+                    `Cost (accelerated): ${formatMetric(b.metric_after || 0)}<br/>` +
+                    `Effectiveness: ${b.effectiveness.toFixed(2)}<br/>` +
+                    `Verifier cost (accelerated): n/a<br/>` +
+                    `APC size (total): ${b.stats_after.main_columns || 'N/A'} cols, ${b.stats_after.bus_interactions || 'N/A'} bus, ${b.stats_after.constraints || 'N/A'} constraints`;
+            }
+            const pcsDisplay = b.block_pcs.length === 1
+                ? `0x${b.start_pc.toString(16)}`
+                : b.block_pcs.map(pc => '0x' + pc.toString(16)).join(', ');
+            return `<strong>PC: ${pcsDisplay}</strong><br/>` +
+                `Execution frequency: ${formatMetric(b.execution_frequency)}<br/>` +
+                `Instructions: ${b.instructions}<br/>` +
+                `Cost (software version): ${formatMetric(b.metric_before)}<br/>` +
+                `Cost (accelerated): ${formatMetric(b.metric_after)}<br/>` +
+                `Effectiveness: ${b.effectiveness.toFixed(2)}<br/>` +
+                `Verifier cost (accelerated): ${formatMetric(b.metric_after_raw)}<br/>` +
+                `Density (saved cost / verifier cost): ${formatMetric(b.density)}<br/>` +
+                `APC size: ${b.stats_after.main_columns} cols, ${b.stats_after.bus_interactions} bus, ${b.stats_after.constraints} constraints`;
+        }
+
         function highlightElements(blockId, isHover = true) {
             // Highlight corresponding bar
             d3.selectAll('.bar')
@@ -1740,32 +1751,9 @@
                 return;
             }
 
-            if (blockData.is_other) {
-                codeInfo.innerHTML = `
-                    <strong>Other blocks (${blockData.count} APCs grouped)</strong><br/>
-                    <span>Execution frequency: ${formatMetric(blockData.execution_frequency)}</span><br/>
-                    <span>Cost (software version): ${formatMetric(blockData.software_version_cells)}</span><br/>
-                    <span>Cost (accelerated): ${formatMetric(blockData.metric_after || 0)}</span><br/>
-                    <span>Effectiveness: ${blockData.effectiveness.toFixed(2)}</span><br/>
-                    <span>Verifier cost (accelerated): n/a</span><br/>
-                    <span>APC size (total): ${blockData.stats_after.main_columns || 0} cols, ${blockData.stats_after.bus_interactions || 0} bus, ${blockData.stats_after.constraints || 0} constraints</span>
-                `;
-                return;
-            }
+            codeInfo.innerHTML = blockTooltipHtml(blockData);
 
-            const pcsDisplay = blockData.block_pcs.length === 1
-                ? `0x${blockData.start_pc.toString(16)}`
-                : blockData.block_pcs.map(pc => '0x' + pc.toString(16)).join(', ');
-            codeInfo.innerHTML = `
-                <strong>Block at PC: ${pcsDisplay}</strong><br/>
-                <span>Execution frequency: ${formatMetric(blockData.execution_frequency)}</span><br/>
-                <span>Instructions: ${blockData.instructions}</span><br/>
-                <span>Cost (software version): ${formatMetric(blockData.metric_before)}</span><br/>
-                <span>Cost (accelerated): ${formatMetric(blockData.metric_after)}</span><br/>
-                <span>Effectiveness: ${blockData.effectiveness.toFixed(2)}</span><br/>
-                <span>Verifier cost (accelerated): ${formatMetric(blockData.metric_after_raw)}</span><br/>
-                <span>APC size: ${blockData.stats_after.main_columns} cols, ${blockData.stats_after.bus_interactions} bus, ${blockData.stats_after.constraints} constraints</span>
-            `;
+            if (blockData.is_other) return;
 
             // Highlight the selected superblock
             const blockElement = document.getElementById(`block-${blockData.block_pcs.join('_')}`);
@@ -1942,28 +1930,7 @@
                         .duration(200)
                         .style('opacity', .9);
 
-                    let content = '';
-                    if (d.is_other) {
-                        content = `<strong>Other (${d.count} APCs)</strong><br/>
-                                  Execution frequency: ${formatMetric(d.execution_frequency)}<br/>
-                                  Cost (software version): ${formatMetric(d.software_version_cells)}<br/>
-                                  Cost (accelerated): ${formatMetric(d.metric_after || 0)}<br/>
-                                  Effectiveness: ${d.effectiveness.toFixed(2)}<br/>
-                                  Verifier cost (accelerated): n/a<br/>
-                                  APC size (total): ${d.stats_after.main_columns || 'N/A'} cols, ${d.stats_after.bus_interactions || 'N/A'} bus, ${d.stats_after.constraints || 'N/A'} constraints`;
-                    } else {
-                        const dPcsDisplay = d.block_pcs.length === 1
-                            ? `0x${d.start_pc.toString(16)}`
-                            : d.block_pcs.map(pc => '0x' + pc.toString(16)).join(', ');
-                        content = `<strong>PC: ${dPcsDisplay}</strong><br/>
-                                  Execution frequency: ${formatMetric(d.execution_frequency)}<br/>
-                                  Instructions: ${d.instructions}<br/>
-                                  Cost (software version): ${formatMetric(d.metric_before)}<br/>
-                                  Cost (accelerated): ${formatMetric(d.metric_after)}<br/>
-                                  Effectiveness: ${d.effectiveness.toFixed(2)}<br/>
-                                  Verifier cost (accelerated): ${formatMetric(d.metric_after_raw)}<br/>
-                                  APC size: ${d.stats_after.main_columns} cols, ${d.stats_after.bus_interactions} bus, ${d.stats_after.constraints} constraints`;
-                    }
+                    const content = blockTooltipHtml(d);
 
                     tooltip.html(content)
                         .style('left', (event.pageX - 50) + 'px')
