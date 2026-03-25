@@ -8,12 +8,12 @@ The observations from the problem statement are confirmed by the data. See `anal
 
 ### Pairing Guest: apc000 (baseline) vs apc500
 
-| Metric | apc000 | apc500 | Ratio |
-|--------|--------|--------|-------|
-| Trace cells | 1.90B | 807M | **2.36x reduction** |
-| Constraint instances | 1.13B | 491M | **2.29x reduction** |
-| Bus interaction messages | 966M | 448M | **2.15x reduction** |
-| **STARK (excl. trace)** | **2.38s** | **2.75s** | **0.87x (15% increase!)** |
+| Metric                   | apc000    | apc500    | Ratio                     |
+| ------------------------ | --------- | --------- | ------------------------- |
+| Trace cells              | 1.90B     | 807M      | **2.36x reduction**       |
+| Constraint instances     | 1.13B     | 491M      | **2.29x reduction**       |
+| Bus interaction messages | 966M      | 448M      | **2.15x reduction**       |
+| **STARK (excl. trace)**  | **2.38s** | **2.75s** | **0.87x (15% increase!)** |
 
 ### Keccak Guest: apc000 (baseline) vs apc003
 
@@ -115,91 +115,164 @@ Each round:
 
 **Scaling**: $O(\text{total\_cells})$ — purely proportional to trace cells.
 
-## 3. Where the Per-AIR Overhead Comes From
+## 3. Why STARK Time Doesn't Scale With Cells
 
-### 3.1 Quantifying the Per-AIR Overhead
+### 3.1 Component Breakdown: What Actually Dominates
 
-From the Pairing guest data, comparing apc000 (20 AIRs, 99 AIR instances) to apc500 (520 AIRs, 744 AIR instances):
+STARK time is a sum of sub-components with different scaling behaviors. The table below shows what fraction of STARK time each group accounts for:
 
-| Sub-component | apc000 | apc500 | Delta | Per extra AIR instance |
-|---------------|--------|--------|-------|----------------------|
-| Round 0 | 176ms | 710ms | **+534ms** | **~0.83ms** |
-| MLE Rounds | 118ms | 197ms | **+79ms** | **~0.12ms** |
-| Stacked Reduction | 116ms | 378ms | **+262ms** | **~0.41ms** |
-| LogUp GKR | 977ms | 818ms | -159ms | (scales with BIM) |
-| WHIR | 410ms | 193ms | -217ms | (scales with cells) |
-| Trace Commit | 572ms | 452ms | -120ms | (scales with cells) |
+| Experiment | R0+SR+MLE | GKR+WHIR+TC | STARK |
+|---|---|---|---|
+| pairing_apc000 | **17%** | **82%** | 2384ms |
+| pairing_apc500 | **47%** | **53%** | 2753ms |
+| keccak_apc000 | **22%** | **78%** | 21251ms |
+| keccak_apc003 | **18%** | **82%** | 4197ms |
+| keccak_manual | **39%** | **61%** | 2170ms |
 
-**Total per-AIR-instance overhead: ~1.36ms**, dominated by:
-1. **Round 0: ~0.83ms/AIR instance** — sequential GPU kernel launches + data transfer
-2. **Stacked Reduction: ~0.41ms/AIR instance** — per-commitment work in the opening phase
-3. **MLE Rounds: ~0.12ms/AIR instance** — CPU-side per-AIR batching
+For most experiments, **cell-proportional components (GKR, WHIR, Trace Commit) account for 53–82% of STARK time**. The components that process AIR instances sequentially (Round 0, Stacked Reduction, MLE Rounds) are 17–47%.
 
-With 645 extra AIR instances (744 − 99 = 645; not all AIRs are active in every segment), this amounts to **~875ms of per-AIR overhead**, explaining why the STARK time increases despite reducing cells by 2.4x.
+The exception is pairing_apc500, where the balance shifts toward per-AIR components due to 744 AIR instances.
 
-### 3.2 Why APCs Create So Many AIRs
+### 3.2 The Confounding Problem
 
-Each APC is a separate AIR. With 500 APCs across 2 segments, the actual AIR instance count is 744 (not all AIRs are active in every segment). Additionally, each PowdrAir has:
+The metrics are highly correlated: more APCs means simultaneously more AIR instances, more columns, fewer segments, fewer cells, and fewer constraint instances. Within the Pairing series:
+
+| Predictor pair | Pearson r |
+|---|---|
+| n_air_instances vs total_cols | 0.996 |
+| n_air_instances vs cells | −0.975 |
+| CI vs cells | 0.999 |
+
+This makes it impossible to determine from the Pairing series alone whether Round 0 scales with AIR instances or with columns — they predict R0 equally well ($r^2 = 0.986$ vs $0.998$).
+
+Cross-guest comparisons break this degeneracy. Univariate $r^2$ for Round 0 across all 13 experiments:
+
+| Predictor | $r^2$ with R0 |
+|---|---|
+| CI (constraint instances) | **0.868** |
+| cells | 0.843 |
+| BIM | 0.799 |
+| segments | 0.776 |
+| n_air_instances | 0.643 |
+| total_cols | 0.066 |
+
+**Constraint instances are the best single predictor of Round 0 time**, not AIR instance count. This makes sense from the code: Round 0 evaluates constraint polynomials for each AIR instance, and the GPU kernel time scales with $h_i \times c_i$ (trace height × constraints) for each instance $i$.
+
+### 3.3 Round 0: Both Fixed and Variable Cost Per AIR Instance
+
+A two-feature regression across all experiments gives ($R^2 = 0.987$):
+
+$$T_{\text{R0}} \approx 0.84 \;\text{ms} \times n_{\text{air\_inst}} + 0.08 \;\text{ms} \times \text{MCI} + 43 \;\text{ms}$$
+
+This decomposes into:
+- **Fixed per-instance overhead** (~0.84ms): kernel launch, DAG construction, memory transfer
+- **Variable per-instance compute** (~0.08ms per million CI): GPU kernel time for constraint evaluation
+
+The balance between these components shifts dramatically:
+
+| Experiment | AI | Fixed (0.84 × AI) | Variable (0.08 × CI) | Fixed % of R0 |
+|---|---|---|---|---|
+| pairing_apc500 | 744 | 625ms | 39ms | **94%** |
+| keccak_apc003 | 202 | 170ms | 56ms | **75%** |
+| keccak_apc000 | 866 | 728ms | 1391ms | **34%** |
+| keccak_manual | 66 | 55ms | 196ms | **22%** |
+
+For many-small-APC experiments (pairing_apc500), fixed overhead dominates. For experiments with heavy AIR instances (keccak_manual: 37M CI per instance), variable GPU compute dominates.
+
+### 3.4 Pairing: Per-AIR Overhead Negates Cell Reduction
+
+From the Pairing guest data, comparing apc000 (99 AIR instances) to apc500 (744 AIR instances):
+
+| Sub-component | apc000 | apc500 | Delta | Scaling driver |
+|---|---|---|---|---|
+| Round 0 | 178ms | 712ms | **+534ms** | per-AIR (sequential kernels) |
+| Stacked Reduction | 115ms | 377ms | **+262ms** | per-AIR (per-commitment) |
+| MLE Rounds | 118ms | 197ms | **+79ms** | per-AIR (CPU batching) |
+| LogUp GKR | 981ms | 817ms | −164ms | cells & BIM |
+| WHIR | 409ms | 192ms | −217ms | cells & columns |
+| Trace Commit | 568ms | 452ms | −116ms | cells |
+
+The +875ms from AIR-scaling components overwhelms the −497ms savings from cell-proportional components, producing a net **+369ms increase**. This is the only case in our data where STARK time actually *increases* despite reduced cells.
+
+### 3.5 Keccak: Bus Interactions Are the Main Driver
+
+The keccak_manual vs keccak_apc003 comparison is the most instructive:
+
+| Metric | apc003 | manual | Ratio |
+|---|---|---|---|
+| AIRs | 22 | 24 | 0.9x |
+| AIR instances | 202 | 66 | **3.1x fewer** |
+| Segments | 10 | 3 | **3.3x fewer** |
+| BIM | 1.52B | 315M | **4.8x fewer** |
+| Bus interactions | 20.2K | 3.2K | **6.3x fewer** |
+| Columns | 29K | 14.5K | **2.0x fewer** |
+| CI | 703M | 2.45B | **3.5x more** |
+| Cells | 2.18B | 2.37B | ~same |
+
+Despite having 3x fewer AIR instances, the manual precompile's winning margin comes from sub-components:
+
+| Sub-component | apc003 | manual | Ratio | Primary driver |
+|---|---|---|---|---|
+| **LogUp GKR** | **1797ms** | **381ms** | **4.7x** | **BIM (4.8x fewer)** |
+| **WHIR** | **813ms** | **254ms** | **3.2x** | **cols × segments** |
+| Trace Commit | 825ms | 690ms | 1.2x | cells (~same) |
+| Round 0 | 263ms | 444ms | **0.6x (worse!)** | CI (3.5x more) |
+| Stacked Reduction | 176ms | 126ms | 1.4x | fewer AIR instances |
+| MLE Rounds | 296ms | 267ms | 1.1x | ~same |
+
+The manual precompile is faster despite having **worse** Round 0 time (444ms vs 263ms) because its R0 AIR instances are much heavier (37M CI each vs 3.5M). The real wins are:
+
+1. **LogUp GKR: −1416ms** — from 4.8x fewer bus interaction messages
+2. **WHIR: −559ms** — from 2x fewer columns and 3.3x fewer segments
+3. Round 0: +181ms (penalty from heavier per-instance work)
+
+**Bus interaction messages, not AIR instance count, are the dominant driver of the keccak manual precompile's advantage.**
+
+### 3.6 What APCs Change About the Workload
+
+Each APC is a separate AIR with:
 - Average ~159–182 columns (vs ~40 for native OpenVM AIRs)
 - Average ~75–105 constraints per AIR
 - Average ~102–114 bus interactions per AIR
 
-This is very different from OpenVM's typical usage pattern of ~20 AIRs with ~40 columns each.
+This creates a workload profile very different from OpenVM's typical ~20 AIRs with ~40 columns:
+- Many more AIR instances per segment → Round 0 and Stacked Reduction overhead
+- Many more total columns → wider stacked matrix → WHIR and Stacked Reduction cost
+- Many bus interactions per APC → high BIM → LogUp GKR cost
 
-### 3.3 Why the Keccak Manual Precompile Does Better
+## 4. Cost Model
 
-| Metric | apc003 | manual |
-|--------|--------|--------|
-| AIRs | 22 | 24 |
-| AIR instances | 202 | 66 |
-| Segments | 10 | 3 |
-| Columns | 29K | 14.5K |
-| BIM | 1.52B | 315M |
-| STARK time | 4.20s | 2.17s |
+### 4.1 Simple Model: Cells Only
 
-The manual precompile achieves better STARK time because:
-1. **Fewer segments** (3 vs 10) → less per-segment overhead
-2. **Fewer AIR instances** (66 vs 202) → less per-AIR overhead
-3. **Far fewer bus interaction messages** (315M vs 1.52B) → faster LogUp GKR
-4. **Fewer columns** (14.5K vs 29K) → faster stacked operations
-5. **Optimized bus interactions**: The manual precompile has only 3.2K bus interactions (vs 20.2K for apc003), meaning it communicates much more efficiently with the rest of the system
+$$T_{\text{STARK}} = 0.001 \cdot \text{cells} + 1346 \;\text{ms} \quad (R^2 = 0.97)$$
 
-## 4. Scaling Analysis by Sub-Component
+This model is reasonable for the keccak baseline but fails badly for APC experiments (errors up to 65%).
 
-### 4.1 Cost Efficiency Degradation
+### 4.2 Best Fit Model
 
-The "cost per unit" increases dramatically with more APCs:
+The best overall model ($R^2 = 0.9995$, all predictions within 12%):
 
-| Experiment | STARK/Mcell | STARK/M-constraint-inst | STARK/M-BIM |
-|------------|-------------|------------------------|-------------|
-| pairing_apc000 | 1.25ms | 2.12ms | 2.47ms |
-| pairing_apc100 | 1.95ms | 3.12ms | 3.72ms |
-| pairing_apc500 | 3.41ms | 5.61ms | 6.14ms |
-| keccak_apc000 | 1.01ms | 1.22ms | 2.15ms |
-| keccak_apc003 | 1.93ms | 5.97ms | 2.76ms |
-| keccak_manual | 0.92ms | 0.88ms | 6.90ms |
+$$T_{\text{STARK}} = 3.97 \cdot \text{Mcells} + 27.6 \cdot \text{total\_cols} - 1.21 \cdot n_{\text{air\_inst}} - 2.56 \cdot \text{MCI} - 1.68 \cdot \text{MBIM} - 742 \;\text{ms}$$
 
-The cost per unit work increases **2-3x** going from baseline to 500 APCs. This means the prover is increasingly dominated by overhead rather than useful computation.
+where Mcells, MCI, MBIM are in millions. However, this model has counter-intuitive negative coefficients for $n_{\text{air\_inst}}$ and constraint instances, which indicates overfitting on 13 data points. The negative $n_{\text{air\_inst}}$ coefficient likely compensates for the fact that more AIRs correlates with fewer segments and fewer cells per AIR.
 
-### 4.2 Inherent vs Implementation Overhead
+### 4.3 Sub-Component Models
 
-**Inherent to the proof system:**
-- LogUp GKR scaling with interaction messages ✓ (expected)
-- WHIR scaling with total cells ✓ (expected)
-- Trace commit scaling with total cells ✓ (expected)
-- MLE rounds scaling with `n_max × num_AIRs` (somewhat inherent — the sumcheck protocol must visit each AIR)
+Individual sub-components are better modeled:
 
-**Implementation overhead (can potentially be optimized):**
-- **Round 0 sequential per-AIR GPU kernel launches**: This is the biggest bottleneck. Each AIR requires separate kernel launches because the constraint DAGs differ per AIR. In principle, AIRs with the same constraint structure could be batched.
-- **Stacked Reduction per-commitment overhead**: Each AIR's preprocessed/cached trace creates a separate commitment that needs to be opened. This scales linearly with the number of commitments (≈ number of AIRs).
-- **DAG construction per AIR in Round 0**: The interaction DAG (`SymbolicDagBuilder`) is rebuilt for each AIR in `evaluate_round0_interactions_gpu`. This involves CPU-side expression tree traversal and GPU memory allocation.
+| Component | Primary driver | R² | Notes |
+|-----------|---------------|-----|-------|
+| Round 0 | n_air_instances + CI | 0.987 | ~0.84ms fixed/AI + 0.08ms/M-CI |
+| Stacked Reduction | n_air_instances | 0.97 | per-commitment work |
+| MLE Rounds | n_air_instances | 0.96 | CPU-side batching |
+| LogUp GKR | bus_interaction_messages | 0.97 | dominates STARK in most cases |
+| WHIR | total_cells + total_cols | 0.97 | stacked matrix operations |
+| Trace Commit | total_cells | 0.997 | nearly perfect linear scaling |
 
-### 4.3 Per-Segment Breakdown
+### 4.4 Per-Segment Breakdown
 
-Looking at per-segment average STARK time reveals the overhead more clearly:
-
-| Experiment | Segments | STARK/segment | Constraints/seg | Openings/seg |
-|------------|----------|---------------|----------------|-------------|
+| Experiment | Segments | STARK/seg | Constraints/seg | Openings/seg |
+|------------|----------|-----------|----------------|-------------|
 | pairing_apc000 | 5 | 0.48s | 0.26s | 0.11s |
 | pairing_apc100 | 3 | 0.77s | 0.46s | 0.16s |
 | pairing_apc500 | 2 | 1.38s | 0.86s | 0.29s |
@@ -207,78 +280,56 @@ Looking at per-segment average STARK time reveals the overhead more clearly:
 | keccak_apc003 | 10 | 0.42s | 0.24s | 0.10s |
 | keccak_manual | 3 | 0.72s | 0.36s | 0.13s |
 
-For Pairing, the per-segment cost nearly **triples** from apc000 to apc500, even though cells per segment are much lower with APCs. This is because the per-AIR overhead is paid in every segment.
+For Pairing, the per-segment cost nearly **triples** from apc000 to apc500, even though cells per segment are much lower with APCs. The keccak manual precompile has a higher per-segment cost than apc003 (0.72s vs 0.42s) but wins on total because it needs only 3 segments vs 10.
 
-## 5. Cost Model
+### 4.5 Cost Efficiency
 
-### 5.1 Simple Model: Cells Only
+| Experiment | STARK/Mcell | STARK/M-CI | STARK/M-BIM |
+|------------|-------------|------------|-------------|
+| pairing_apc000 | 1.25ms | 2.12ms | 2.47ms |
+| pairing_apc100 | 1.95ms | 3.12ms | 3.72ms |
+| pairing_apc500 | 3.41ms | 5.61ms | 6.14ms |
+| keccak_apc000 | 1.01ms | 1.22ms | 2.15ms |
+| keccak_apc003 | 1.93ms | 5.97ms | 2.76ms |
+| keccak_manual | 0.92ms | 0.88ms | 6.90ms |
 
-$$T_{\text{STARK}} = 0.001 \cdot \text{cells} + 1346 \;\text{ms} \quad (R^2 = 0.97)$$
+Note the contrasting patterns: the manual precompile has the best STARK/Mcell and STARK/M-CI ratios, but the worst STARK/M-BIM — because it achieves low BIM at the cost of higher CI per cell.
 
-This model is reasonable for the keccak baseline but fails badly for APC experiments (errors up to 65%).
+## 5. Recommendations
 
-### 5.2 Best Fit Model
+### 5.1 Optimizations in APC Design (highest impact)
 
-The best overall model ($R^2 = 0.9995$, all predictions within 12%):
+1. **Reduce bus interactions per APC**: This is the highest-impact optimization. APCs have ~100–115 bus interactions each. LogUp GKR — the largest STARK component at 30–40% of time — scales with total bus interaction messages ($\text{BIM} = \sum h_i \times k_i$). The keccak manual precompile achieves 6.3x fewer bus interactions than apc003, which translates to 4.7x less GKR time. Reducing per-APC bus interactions (e.g., by batching memory reads, merging interactions) is the single most effective lever.
 
-$$T_{\text{STARK}} = 3.97 \cdot \text{Mcells} + 27.6 \cdot \text{total\_cols} - 1.21 \cdot n_{\text{air\_inst}} - 2.56 \cdot \text{MCI} - 1.68 \cdot \text{MBIM} - 742 \;\text{ms}$$
+2. **Reduce APC column count**: APCs average ~160–180 columns. WHIR operates on the stacked matrix (width = total columns, height = max trace height), and more columns directly increase WHIR and Stacked Reduction costs. Fewer columns per APC also reduce the stacked matrix width.
 
-where Mcells, MCI, MBIM are in millions. However, this model has counter-intuitive negative coefficients for $n_{\text{air\_inst}}$ and constraint instances, which indicates overfitting on 13 data points. The negative $n_{\text{air\_inst}}$ coefficient is likely compensating for the fact that more AIRs correlates with fewer segments and fewer cells per AIR.
+3. **Reduce the number of APCs (for the Pairing case)**: The pairing_apc500 case is the only experiment where per-AIR overhead actually *increases* total STARK time. The fixed per-AIR-instance overhead (~0.84ms for Round 0 kernel launch + DAG + transfer, plus Stacked Reduction) accumulates to ~36% of STARK with 744 instances. Fewer, larger APCs would help, but this is secondary to reducing BIM and columns.
 
-### 5.3 Practical Cost Model
+4. **Consider the segment trade-off**: More APCs → fewer segments (smaller traces fit in fewer segments). The keccak manual precompile's advantage partly comes from needing only 3 segments vs 10 for apc003. Each segment pays per-AIR costs for all its active AIRs, so reducing segments has a multiplicative effect.
 
-Based on the analysis, a better conceptual model decomposes per segment:
+### 5.2 Optimizations in OpenVM's Implementation
 
-$$T_{\text{STARK}} = \sum_{\text{segments}} \left( T_{\text{base}} + \alpha \cdot \text{cells}_s + \beta \cdot n_{\text{AIRs},s} + \gamma \cdot \text{cols}_s \right)$$
-
-Where:
-- $T_{\text{base}} \approx 50\text{–}100$ ms (per-segment fixed overhead)
-- $\alpha \approx 0.8\text{–}1.0$ ms/Mcell (cell-proportional work: trace commit + WHIR + LogUp GKR)
-- $\beta \approx 1.0\text{–}1.5$ ms/AIR (per-AIR overhead: Round 0 kernel launches + stacked reduction)
-- $\gamma \approx 0.002\text{–}0.005$ ms/column (column-proportional: stacked matrix operations)
-
-### 5.4 Sub-Component Models
-
-Individual sub-components are better modeled:
-
-| Component | Primary driver | Per-AIR cost | R² |
-|-----------|---------------|-------------|-----|
-| Round 0 | n_air_instances | ~2.5ms | 0.93 |
-| Stacked Reduction | n_air_instances | ~1.6ms | 0.97 |
-| MLE Rounds | n_air_instances | ~0.15ms | 0.96 |
-| LogUp GKR | bus_interaction_messages | ~0.37ms | 0.97 |
-| WHIR | total_cells + total_cols | (none) | 0.97 |
-| Trace Commit | total_cells | (none) | 0.997 |
-
-The sub-component regression yields a combined per-AIR coefficient of ~4.3ms (2.5 + 1.6 + 0.15). This is higher than the ~1.36ms/AIR derived from the direct apc000→apc500 delta in Section 3.1 because the regression coefficients absorb correlated effects: experiments with more AIRs also have fewer segments and fewer cells, so the model's per-AIR coefficient partly compensates for those reductions. The direct delta estimate (Section 3.1) is a more reliable measure of *marginal* per-AIR cost within the Pairing guest; the regression captures *average* per-AIR cost across all experiments including different guests.
-
-## 6. Recommendations
-
-### 6.1 Optimizations in OpenVM's Implementation
-
-1. **Batch Round 0 kernel launches**: The sequential per-AIR loop in Round 0 (logup_zerocheck/mod.rs:730-880) is the largest overhead source. AIRs with similar constraint structures could potentially be batched into a single GPU kernel launch. Even without structural batching, using CUDA streams to overlap AIR evaluations could help.
+1. **Batch Round 0 kernel launches**: The sequential per-AIR loop in Round 0 (logup_zerocheck/mod.rs:730-880) processes each AIR instance with separate GPU kernel launches. For many small AIR instances, the fixed overhead (~0.84ms) dominates over the actual GPU compute. Batching AIRs with similar structure into a single kernel, or overlapping launches with CUDA streams, would improve GPU utilization.
 
 2. **Reduce per-AIR GPU memory allocations**: Each AIR in Round 0 allocates intermediate buffers (`DeviceBuffer`) and transfers data. Pre-allocating a pool and reusing buffers would reduce allocation overhead.
 
-3. **Stacked Reduction optimization**: The stacked reduction creates per-AIR `StackedPcsData2` objects and loops over AIR commitments. With 500+ AIRs, this creates hundreds of small commitments. Merging AIR preprocessed traces into fewer commitments could reduce this overhead.
+3. **Stacked Reduction optimization**: Each AIR's preprocessed/cached trace creates a separate commitment. With 500+ AIRs, this creates hundreds of small commitments. Merging preprocessed traces into fewer commitments could reduce this overhead.
 
-4. **Monomial kernel optimization for many small AIRs**: The code has a `DAG_FALLBACK_MONOMIAL_RATIO` heuristic that chooses between DAG and monomial evaluation. For many similar-sized APCs, a specialized kernel that handles multiple AIRs in one launch would be beneficial.
+### 5.3 What Is Inherent vs. Fixable?
 
-### 6.2 Optimizations in APC Design
+**Inherent to the proof system:**
+- LogUp GKR scaling with bus interaction messages (the dominant cost)
+- WHIR scaling with stacked matrix dimensions
+- Trace commit scaling with total cells
+- Each AIR needing its own constraint evaluation in the sumcheck
 
-1. **Reduce the number of APCs**: Each APC adds ~1.4ms of marginal overhead per segment (Section 3.1 direct estimate). With 500 APCs across 2 segments, that's ~900ms of pure overhead — enough to negate the cell reduction benefit for the Pairing guest. Fewer, larger APCs are preferable.
+**Implementation overhead (potentially fixable):**
+- Round 0 sequential kernel launches (~0.84ms fixed cost per AIR instance)
+- DAG reconstruction per AIR in `evaluate_round0_interactions_gpu`
+- Per-AIR memory allocation/transfer in Round 0
+- Per-commitment overhead in Stacked Reduction
 
-2. **Minimize bus interactions per APC**: APCs have ~100-115 bus interactions each. The LogUp GKR cost scales with total interaction messages. Reducing interactions (e.g., by merging memory reads) directly reduces proving time.
-
-3. **Reduce APC column count**: APCs average ~160-180 columns. More columns increase the stacked matrix width, directly increasing WHIR and stacked reduction costs.
-
-4. **Consider the number of segments**: More APCs → fewer segments (traces are smaller → fit in fewer segments). This is a beneficial effect that partially offsets the per-AIR overhead. The trade-off point depends on the workload.
-
-### 6.3 Is This Inherent?
-
-The per-AIR overhead is **partially inherent** to the proof system (each AIR needs its own constraint polynomial evaluation in the sumcheck protocol) but **significantly amplified by the GPU implementation** (sequential kernel launches, per-AIR memory transfers). A more optimized implementation could likely reduce the per-AIR overhead by 2-5x through batching and pipeline optimization, but it cannot be eliminated entirely.
-
-The key insight is that OpenVM was designed for ~20 AIRs, not 500+. At that scale, the per-AIR overhead is negligible. As the number of AIRs grows, the overhead becomes the dominant cost, completely masking the cell/constraint reduction benefits.
+The fixed per-AIR overhead is significant only when there are hundreds of lightweight AIR instances (pairing_apc500). For most workloads, the cell-proportional components dominate and the per-AIR overhead is 4–7% of STARK time. The most impactful improvements come from reducing the **inherent** costs: fewer bus interactions, fewer columns, and fewer segments.
 
 ## 7. Files in This Report
 
