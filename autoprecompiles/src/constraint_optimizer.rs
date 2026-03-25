@@ -475,12 +475,11 @@ pub fn simplify_constraints_using_exhaustive_search<
             .constraints_referencing_variables(&variable_set)
             .fold((vec![], vec![]), |(mut alg, mut bus), constraint| {
                 match constraint {
-                    // TODO avoid cloning?
                     ConstraintRef::AlgebraicConstraint(identity) => {
-                        alg.push(identity.expression.clone())
+                        alg.push(identity.expression)
                     }
                     ConstraintRef::BusInteraction(bus_interaction) => {
-                        bus.extend(bus_interaction.fields().cloned())
+                        bus.extend(bus_interaction.fields())
                     }
                 };
                 (alg, bus)
@@ -498,7 +497,7 @@ pub fn simplify_constraints_using_exhaustive_search<
             // See if the assignment conflicts with any algebraic constraint
             let alg_substituted = algebraic_constraints
                 .iter()
-                .map(|e| apply_substitution(e.clone(), &assignment))
+                .map(|&e| apply_substitution(e.clone(), &assignment))
                 .collect_vec();
             if alg_substituted
                 .iter()
@@ -509,8 +508,7 @@ pub fn simplify_constraints_using_exhaustive_search<
             }
             let bus_substituted = bus_fields
                 .iter()
-                .cloned()
-                .map(|e| apply_substitution(e, &assignment))
+                .map(|&e| apply_substitution(e.clone(), &assignment))
                 .collect_vec();
 
             for (simplified, substituted) in simplified_alg.iter_mut().zip(alg_substituted) {
@@ -521,14 +519,14 @@ pub fn simplify_constraints_using_exhaustive_search<
             }
         }
 
-        for (e, sim) in algebraic_constraints.iter().zip(simplified_alg) {
+        for (&e, sim) in algebraic_constraints.iter().zip(simplified_alg) {
             if let Ok(sub) = sim.iter().exactly_one() {
                 if sub != e && !sub.is_zero() {
                     substitutions.insert(e.clone(), sub.clone());
                 }
             }
         }
-        for (e, sim) in bus_fields.iter().zip(simplified_bus) {
+        for (&e, sim) in bus_fields.iter().zip(simplified_bus) {
             if let Ok(sub) = sim.iter().exactly_one() {
                 if sub != e {
                     // no "!sub.is_zero()" here, because it is progress
