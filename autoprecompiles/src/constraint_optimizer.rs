@@ -475,9 +475,7 @@ pub fn simplify_constraints_using_exhaustive_search<
             .constraints_referencing_variables(&variable_set)
             .fold((vec![], vec![]), |(mut alg, mut bus), constraint| {
                 match constraint {
-                    ConstraintRef::AlgebraicConstraint(identity) => {
-                        alg.push(identity.expression)
-                    }
+                    ConstraintRef::AlgebraicConstraint(identity) => alg.push(identity.expression),
                     ConstraintRef::BusInteraction(bus_interaction) => {
                         bus.extend(bus_interaction.fields())
                     }
