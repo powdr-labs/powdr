@@ -119,16 +119,18 @@ The viewer auto-detects the OpenVM version by checking for `logup_gkr` in metric
 
 ### Proof Time Hierarchy
 
-**V1**: `total_proof_time_ms` (per group) is the top-level time. `execute_metered_time_ms` is inside it.
+In both V1 and V2, `execute_metered_time_ms` runs *before* segment proving and sits *outside* per-segment `total_proof_time_ms`. The viewer reports metered execution as a separate top-level phase and uses `sum(total_proof_time_ms)` for the app phase.
+
+**V1**:
 ```
-total = app.total_proof_time_ms + leaf.total_proof_time_ms + internal.total_proof_time_ms
-app.total_proof_time_ms ≈ stark_prove_excluding_trace + trace_gen + preflight + metered + other
+total = metered + sum(app.total_proof_time_ms) + leaf.total_proof_time_ms + internal.total_proof_time_ms
+app.total_proof_time_ms ≈ sum_per_segment(preflight + trace_gen + stark_excl) + small overhead
 ```
 
-**V2**: `app_prove_time_ms` is the wall-clock app time. `execute_metered_time_ms` sits *outside* `total_proof_time_ms` (which is per-segment) but inside `app_prove_time_ms`. The viewer uses `app_prove_time_ms` for app and `total_proof_time_ms` for other groups.
+**V2**:
 ```
-total = app.app_prove_time_ms + leaf.total_proof_time_ms + internal.total_proof_time_ms + compression.total_proof_time_ms
-app.app_prove_time_ms ≈ metered + sum_per_segment(preflight + set_initial_memory + trace_gen + stark_excl) + overhead
+total = metered + sum(app.total_proof_time_ms) + leaf.total_proof_time_ms + internal.total_proof_time_ms + compression.total_proof_time_ms
+app.total_proof_time_ms ≈ sum_per_segment(preflight + set_initial_memory + trace_gen + stark_excl) + small overhead
 stark_excl ≈ prover.main_trace_commit + prover.rap_constraints + prover.openings
 ```
 
