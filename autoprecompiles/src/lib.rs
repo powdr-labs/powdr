@@ -78,6 +78,8 @@ pub struct PowdrConfig {
     pub apc_candidates_dir_path: Option<PathBuf>,
     /// Whether to use optimistic precompiles.
     pub should_use_optimistic_precompiles: bool,
+    /// Whether to expand basic blocks as long as their successor is statically known
+    pub should_expand_basic_blocks: bool,
 }
 
 impl PowdrConfig {
@@ -92,6 +94,7 @@ impl PowdrConfig {
             degree_bound,
             apc_candidates_dir_path: None,
             should_use_optimistic_precompiles: false,
+            should_expand_basic_blocks: true,
         }
     }
 
@@ -122,6 +125,11 @@ impl PowdrConfig {
 
     pub fn with_optimistic_precompiles(mut self, should_use_optimistic_precompiles: bool) -> Self {
         self.should_use_optimistic_precompiles = should_use_optimistic_precompiles;
+        self
+    }
+
+    pub fn with_should_expand_basic_blocks(mut self, should_expand_basic_blocks: bool) -> Self {
+        self.should_expand_basic_blocks = should_expand_basic_blocks;
         self
     }
 }

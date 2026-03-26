@@ -140,6 +140,13 @@ impl<'a, ISA: OpenVmISA> Adapter for BabyBearOpenVmApcAdapter<'a, ISA> {
     fn is_branching(instruction: &Self::Instruction) -> bool {
         ISA::branching_opcodes().contains(&instruction.inner.opcode)
     }
+
+    fn try_static_target(
+        instruction: (u64, &Self::Instruction),
+        previous: Option<(u64, &Self::Instruction)>,
+    ) -> Option<u64> {
+        ISA::try_static_target(instruction, previous)
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -218,7 +225,7 @@ pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAd
     };
 
     let symbols = ISA::get_symbol_table(&original_program.linked_program);
-    let blocks = original_program.collect_static_blocks();
+    let blocks = original_program.collect_static_blocks(config.should_expand_basic_blocks);
     if tracing::enabled!(tracing::Level::DEBUG) {
         tracing::debug!("Static blocks sorted by execution count (top 10):");
         for (count, (start_pc, block)) in blocks
@@ -263,17 +270,19 @@ pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAd
 
     tracing::info!("Adjust the program with the autoprecompiles");
 
+    assert_eq!(
+        config.superblock_max_bb_count, 1,
+        "openvm does not support superblocks"
+    );
+
     let extensions = apcs
         .into_iter()
         .map(ApcWithStats::into_parts)
         .enumerate()
         .map(|(i, (apc, apc_stats, _))| {
             let opcode = POWDR_OPCODE + i;
-            let start_pc = apc
-                .block
-                .try_as_basic_block()
-                .expect("Superblocks not yet supported in OpenVM")
-                .start_pc;
+            // By construction, if `config.superblock_max_bb_count` is 1, start pcs are all different, so it's safe to only look at the first one here.
+            let start_pc = apc.block.start_pcs()[0];
             let start_index = ((start_pc - pc_base as u64) / pc_step as u64)
                 .try_into()
                 .unwrap();

@@ -106,6 +106,12 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
     /// The set of branching opcodes
     fn branching_opcodes() -> HashSet<VmOpcode>;
 
+    /// Return the next pc when it is statically known, including ordinary fallthrough.
+    fn try_static_target<F: PrimeField32>(
+        instruction: (u64, &Instr<F, Self>),
+        previous: Option<(u64, &Instr<F, Self>)>,
+    ) -> Option<u64>;
+
     /// The set of opcodes which are allowed to be put into autoprecompiles
     fn allowed_opcodes() -> HashSet<VmOpcode>;
 

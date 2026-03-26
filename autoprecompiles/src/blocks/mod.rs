@@ -28,7 +28,7 @@ impl<I: PcStep> BasicBlock<I> {
     }
 
     /// Returns an iterator over the program counters of the instructions in this block.
-    pub fn instructions(&self) -> impl Iterator<Item = (u64, &I)> + '_ {
+    pub fn instructions(&self) -> impl DoubleEndedIterator<Item = (u64, &I)> + '_ {
         self.instructions
             .iter()
             .enumerate()
@@ -77,6 +77,10 @@ impl<I> SuperBlock<I> {
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    pub fn extend(&mut self, other: Self) {
+        self.blocks.extend(other.blocks);
     }
 
     /// Sequence of basic block start PCs, uniquely identifies this superblock
@@ -128,7 +132,7 @@ impl<I: PcStep> SuperBlock<I> {
     }
 
     /// Sequence of instructions across all basic blocks in this superblock
-    pub fn instructions(&self) -> impl Iterator<Item = (u64, &I)> {
+    pub fn instructions(&self) -> impl DoubleEndedIterator<Item = (u64, &I)> {
         self.blocks.iter().flat_map(BasicBlock::instructions)
     }
 
