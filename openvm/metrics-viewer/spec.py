@@ -141,20 +141,22 @@ def extract_metrics(run_name: str, metrics_json: MetricsJson) -> Metrics:
     m["bus_interaction_messages"] = weighted_sum("interactions", rows_by_app_air) if has_interactions else None
 
     # --- Proof times by phase ---
-    # app_prove_time_ms has no group label, so look in all_entries
-    m["app_proof_time_ms"] = unique_metric(all_entries, "app_prove_time_ms")
+    # execute_metered runs *before* segment proving and is outside per-segment
+    # total_proof_time_ms. We report it as a separate top-level phase.
+    m["execute_metered_time_ms"] = sum_metric(app, "execute_metered_time_ms")
+    m["app_proof_time_ms"] = sum_metric(app, "total_proof_time_ms")
     m["leaf_proof_time_ms"] = sum_metric(leaf, "total_proof_time_ms")
     m["inner_recursion_proof_time_ms"] = sum_metric(internal, "total_proof_time_ms")
     m["compression_proof_time_ms"] = sum_metric(compression, "total_proof_time_ms")
-    m["total_proof_time_ms"] = (m["app_proof_time_ms"] + m["leaf_proof_time_ms"]
-        + m["inner_recursion_proof_time_ms"] + m["compression_proof_time_ms"])
+    m["total_proof_time_ms"] = (m["execute_metered_time_ms"] + m["app_proof_time_ms"]
+        + m["leaf_proof_time_ms"] + m["inner_recursion_proof_time_ms"]
+        + m["compression_proof_time_ms"])
 
     # --- STARK time excluding trace ---
     m["app_proof_time_excluding_trace_ms"] = sum_metric(app, "stark_prove_excluding_trace_time_ms")
 
     # --- App time sub-components ---
     m["app_execute_preflight_time_ms"] = sum_metric(app, "execute_preflight_time_ms")
-    m["app_execute_metered_time_ms"] = sum_metric(app, "execute_metered_time_ms")
     m["app_trace_gen_time_ms"] = sum_metric(app, "trace_gen_time_ms")
     m["app_set_initial_memory_time_ms"] = sum_metric(app, "set_initial_memory_time_ms")  # V2 only
 
@@ -179,9 +181,10 @@ def extract_metrics(run_name: str, metrics_json: MetricsJson) -> Metrics:
         - m["app_openings_whir_time_ms"] - m["app_openings_stacked_reduction_time_ms"])
 
     # --- App other (residual) ---
+    # execute_metered is a separate top-level phase, not inside app_proof_time_ms.
     m["app_other_ms"] = (m["app_proof_time_ms"]
         - m["app_proof_time_excluding_trace_ms"]
-        - m["app_execute_preflight_time_ms"] - m["app_execute_metered_time_ms"]
+        - m["app_execute_preflight_time_ms"]
         - m["app_trace_gen_time_ms"] - m["app_set_initial_memory_time_ms"])
 
     # --- Cell ratios ---
@@ -238,9 +241,9 @@ BASIC_STATS_V1: list[BasicRow] = [
 BASIC_STATS_V2: list[BasicRow] = [r for r in BASIC_STATS_V1 if r[0] != "app_proof_cells_used"]
 
 PROOF_TIME_V1: list[ProofRow] = [
-    ("app_proof_time_ms",                "App Proof Time",    0, ""),
+    ("execute_metered_time_ms",          "Metered Execution",     0, ""),
+    ("app_proof_time_ms",                "App Proof Time",        0, ""),
     ("app_proof_time_excluding_trace_ms","  STARK (excl. trace)", 1, ""),
-    ("app_execute_metered_time_ms",      "  Metered Execution",   1, ""),
     ("app_execute_preflight_time_ms",    "  Preflight Execution", 1, ""),
     ("app_trace_gen_time_ms",            "  Trace Gen",           1, ""),
     ("app_other_ms",                     "  Other / Overlap",     1, "r"),
@@ -250,6 +253,7 @@ PROOF_TIME_V1: list[ProofRow] = [
 ]
 
 PROOF_TIME_V2: list[ProofRow] = [
+    ("execute_metered_time_ms",              "Metered Execution",     0, ""),
     ("app_proof_time_ms",                    "App Proof Time",        0, ""),
     ("app_proof_time_excluding_trace_ms",    "  STARK (excl. trace)", 1, ""),
     ("app_rap_constraints_time_ms",          "    Constraints",       2, ""),
@@ -266,7 +270,6 @@ PROOF_TIME_V2: list[ProofRow] = [
     ("app_execute_preflight_time_ms",       "  Preflight Execution", 1, ""),
     ("app_set_initial_memory_time_ms",      "  Set Initial Memory",  1, ""),
     ("app_trace_gen_time_ms",               "  Trace Gen",           1, ""),
-    ("app_execute_metered_time_ms",         "  Metered Execution",   1, ""),
     ("app_other_ms",                        "  Other",               1, "r"),
     ("leaf_proof_time_ms",                  "Leaf Recursion",        0, ""),
     ("inner_recursion_proof_time_ms",       "Inner Recursion",       0, ""),
