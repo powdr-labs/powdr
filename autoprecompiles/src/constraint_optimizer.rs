@@ -8,7 +8,6 @@ use std::{
 use itertools::Itertools;
 use num_traits::Zero;
 use powdr_constraint_solver::{
-    bus_interaction_handler::DefaultBusInteractionHandler,
     constraint_system::{
         AlgebraicConstraint, BusInteractionHandler, ConstraintRef, ConstraintSystem,
     },
@@ -603,12 +602,6 @@ pub trait IsBusStateful<T: FieldElement> {
     /// interaction with the rest of the zkVM. Examples of stateful buses are memory and
     /// execution bridge. Examples of non-stateful buses are fixed lookups.
     fn is_stateful(&self, bus_id: T) -> bool;
-}
-
-impl<T: FieldElement> IsBusStateful<T> for DefaultBusInteractionHandler<T> {
-    fn is_stateful(&self, _bus_id: T) -> bool {
-        false
-    }
 }
 
 /// Removes constraints that are factors of other constraints.

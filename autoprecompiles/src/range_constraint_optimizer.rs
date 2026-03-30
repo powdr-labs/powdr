@@ -3,7 +3,6 @@ use std::fmt::Display;
 use std::hash::Hash;
 
 use itertools::Itertools;
-use powdr_constraint_solver::bus_interaction_handler::DefaultBusInteractionHandler;
 use powdr_constraint_solver::constraint_system::{
     AlgebraicConstraint, BusInteraction, BusInteractionHandler, ConstraintSystem,
 };
@@ -48,24 +47,6 @@ pub trait RangeConstraintHandler<T: FieldElement> {
         &self,
         range_constraints: RangeConstraints<T, V>,
     ) -> Result<Vec<BusInteraction<GroupedExpression<T, V>>>, MakeRangeConstraintsError>;
-}
-
-impl<T: FieldElement> RangeConstraintHandler<T> for DefaultBusInteractionHandler<T> {
-    fn pure_range_constraints<V: Ord + Clone + Eq + Display + Hash>(
-        &self,
-        _bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
-    ) -> Option<RangeConstraints<T, V>> {
-        None
-    }
-
-    fn batch_make_range_constraints<V: Ord + Clone + Eq + Display + Hash>(
-        &self,
-        _range_constraints: RangeConstraints<T, V>,
-    ) -> Result<Vec<BusInteraction<GroupedExpression<T, V>>>, MakeRangeConstraintsError> {
-        Err(MakeRangeConstraintsError(
-            "DefaultBusInteractionHandler cannot make range constraints".to_string(),
-        ))
-    }
 }
 
 /// Optimizes range constraints, minimizing the number of bus interactions.
