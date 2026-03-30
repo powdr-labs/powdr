@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use lean_compiler::{compile_program, ProgramSource};
 use lean_vm::{
-    Bytecode, ExecutionWitness, Instruction, Label, MemOrConstant, MemOrFpOrConstant, Operation, F,
+    Bytecode, Instruction, Label, MemOrConstant, MemOrFpOrConstant, Operation, F,
     NONRESERVED_PROGRAM_INPUT_START,
 };
 use lean_vm_backend::{PrimeCharacteristicRing, DIGEST_ELEMS};
@@ -301,28 +301,13 @@ fn build_u32_add_bytecode() -> Bytecode {
     }
 }
 
-/// Test u32 add with correct result
 #[test]
-fn test_u32_add_programmatic() {
-    let a: u32 = 100;
-    let b: u32 = 200;
-    let c: u32 = a.wrapping_add(b); // 300 (correct)
-
-    let public_input = vec![
-        F::new(a & 0xFFFF),
-        F::new(a >> 16),
-        F::new(b & 0xFFFF),
-        F::new(b >> 16),
-        F::new(c & 0xFFFF),
-        F::new(c >> 16),
-    ];
-
+fn u32_add_programmatic() {
     let bytecode = build_u32_add_bytecode();
-    let result =
-        lean_vm::try_execute_bytecode(&bytecode, &public_input, &ExecutionWitness::empty(), false);
-    assert!(
-        result.is_ok(),
-        "u32 add execution failed: {:?}",
-        result.err()
-    );
+    let blocks = common::extract_basic_blocks(&bytecode);
+    assert!(!blocks.is_empty(), "no basic blocks extracted");
+    for (i, bb) in blocks.into_iter().enumerate() {
+        let test_name = format!("u32_add_programmatic_block_{i}");
+        common::assert_machine_output(bb.into(), "compiled_programs", &test_name);
+    }
 }
