@@ -14,7 +14,7 @@ use powdr_autoprecompiles::adapter::{Adapter, AdapterApc};
 use powdr_autoprecompiles::blocks::Program;
 use powdr_autoprecompiles::bus_map::{BusMap, BusType};
 use powdr_autoprecompiles::execution::ExecutionState;
-use powdr_number::BabyBearField;
+use powdr_number::KoalaBearField;
 use serde::{Deserialize, Serialize};
 
 use bus_interaction_handler::LeanVmBusInteractionHandler;
@@ -82,9 +82,8 @@ impl ExecutionState for LeanVmExecutionState {
 pub struct LeanVmAdapter;
 
 impl Adapter for LeanVmAdapter {
-    // TODO: Change to KoalaBearField
-    type Field = BabyBearField;
-    type PowdrField = BabyBearField;
+    type Field = KoalaBearField;
+    type PowdrField = KoalaBearField;
     type InstructionHandler = LeanVmInstructionHandler;
     type BusInteractionHandler = LeanVmBusInteractionHandler;
     type Program = LeanVmProgram;

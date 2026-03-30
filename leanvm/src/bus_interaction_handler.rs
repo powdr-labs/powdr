@@ -8,7 +8,7 @@ use powdr_autoprecompiles::range_constraint_optimizer::{
 use powdr_constraint_solver::constraint_system::{BusInteraction, BusInteractionHandler};
 use powdr_constraint_solver::grouped_expression::GroupedExpression;
 use powdr_constraint_solver::range_constraint::RangeConstraint;
-use powdr_number::{BabyBearField, FieldElement, LargeInt};
+use powdr_number::{FieldElement, KoalaBearField, LargeInt};
 
 use crate::symbolic_machines::{EXEC_BUS_ID, MEMORY_BUS_ID};
 
@@ -23,11 +23,11 @@ const MAX_MEMORY_BITS: u32 = 26;
 #[derive(Clone, Default)]
 pub struct LeanVmBusInteractionHandler;
 
-impl BusInteractionHandler<BabyBearField> for LeanVmBusInteractionHandler {
+impl BusInteractionHandler<KoalaBearField> for LeanVmBusInteractionHandler {
     fn handle_bus_interaction(
         &self,
-        bus_interaction: BusInteraction<RangeConstraint<BabyBearField>>,
-    ) -> BusInteraction<RangeConstraint<BabyBearField>> {
+        bus_interaction: BusInteraction<RangeConstraint<KoalaBearField>>,
+    ) -> BusInteraction<RangeConstraint<KoalaBearField>> {
         let (Some(bus_id), Some(_multiplicity)) = (
             bus_interaction.bus_id.try_to_single_value(),
             bus_interaction.multiplicity.try_to_single_value(),
@@ -66,27 +66,27 @@ impl BusInteractionHandler<BabyBearField> for LeanVmBusInteractionHandler {
     }
 }
 
-impl IsBusStateful<BabyBearField> for LeanVmBusInteractionHandler {
-    fn is_stateful(&self, bus_id: BabyBearField) -> bool {
-        let exec: BabyBearField = EXEC_BUS_ID.into();
-        let mem: BabyBearField = MEMORY_BUS_ID.into();
+impl IsBusStateful<KoalaBearField> for LeanVmBusInteractionHandler {
+    fn is_stateful(&self, bus_id: KoalaBearField) -> bool {
+        let exec: KoalaBearField = EXEC_BUS_ID.into();
+        let mem: KoalaBearField = MEMORY_BUS_ID.into();
         bus_id == exec || bus_id == mem
     }
 }
 
-impl RangeConstraintHandler<BabyBearField> for LeanVmBusInteractionHandler {
+impl RangeConstraintHandler<KoalaBearField> for LeanVmBusInteractionHandler {
     fn pure_range_constraints<V: Ord + Clone + Eq + Display + Hash>(
         &self,
-        _bus_interaction: &BusInteraction<GroupedExpression<BabyBearField, V>>,
-    ) -> Option<RangeConstraints<BabyBearField, V>> {
+        _bus_interaction: &BusInteraction<GroupedExpression<KoalaBearField, V>>,
+    ) -> Option<RangeConstraints<KoalaBearField, V>> {
         // LeanVM has no dedicated range-check buses.
         None
     }
 
     fn batch_make_range_constraints<V: Ord + Clone + Eq + Display + Hash>(
         &self,
-        range_constraints: RangeConstraints<BabyBearField, V>,
-    ) -> Result<Vec<BusInteraction<GroupedExpression<BabyBearField, V>>>, MakeRangeConstraintsError>
+        range_constraints: RangeConstraints<KoalaBearField, V>,
+    ) -> Result<Vec<BusInteraction<GroupedExpression<KoalaBearField, V>>>, MakeRangeConstraintsError>
     {
         if range_constraints.is_empty() {
             return Ok(vec![]);

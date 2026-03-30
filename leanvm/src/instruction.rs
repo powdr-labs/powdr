@@ -5,7 +5,7 @@ use lean_vm::{
 };
 use lean_vm_backend::{PrimeCharacteristicRing, PrimeField32};
 use powdr_autoprecompiles::blocks::{Instruction, PcStep};
-use powdr_number::BabyBearField;
+use powdr_number::KoalaBearField;
 use serde::{Deserialize, Serialize};
 
 /// A LeanVM instruction wrapping the upstream `lean_vm::Instruction` type.
@@ -17,12 +17,11 @@ use serde::{Deserialize, Serialize};
 pub struct LeanVmInstruction(pub UpstreamInstruction);
 
 impl LeanVmInstruction {
-
     /// Returns the 12 instruction column values matching the upstream encoding:
     /// [operand_A, operand_B, operand_C, flag_A, flag_B, flag_C, flag_C_fp, flag_AB_fp,
     ///  MUL, JUMP, AUX, PRECOMPILE_DATA]
-    pub fn instruction_columns(&self) -> [BabyBearField; 12] {
-        let mut cols = [BabyBearField::from(0u64); 12];
+    pub fn instruction_columns(&self) -> [KoalaBearField; 12] {
+        let mut cols = [KoalaBearField::from(0u64); 12];
 
         match &self.0 {
             UpstreamInstruction::Computation {
@@ -36,8 +35,8 @@ impl LeanVmInstruction {
                 set_nu_b(&mut cols, res);
                 set_nu_c(&mut cols, arg_c);
                 match operation {
-                    Operation::Add => cols[10] = BabyBearField::from(1u64), // AUX=1
-                    Operation::Mul => cols[8] = BabyBearField::from(1u64),  // MUL=1
+                    Operation::Add => cols[10] = KoalaBearField::from(1u64), // AUX=1
+                    Operation::Mul => cols[8] = KoalaBearField::from(1u64),  // MUL=1
                 }
             }
             UpstreamInstruction::Deref {
@@ -45,11 +44,11 @@ impl LeanVmInstruction {
                 shift_1,
                 res,
             } => {
-                cols[0] = BabyBearField::from(*shift_0 as u64); // operand_A = shift_0
-                cols[1] = BabyBearField::from(*shift_1 as u64); // operand_B = shift_1
-                cols[4] = BabyBearField::from(1u64); // flag_B = 1 (shift_1 is immediate)
+                cols[0] = KoalaBearField::from(*shift_0 as u64); // operand_A = shift_0
+                cols[1] = KoalaBearField::from(*shift_1 as u64); // operand_B = shift_1
+                cols[4] = KoalaBearField::from(1u64); // flag_B = 1 (shift_1 is immediate)
                 set_nu_c(&mut cols, res);
-                cols[10] = BabyBearField::from(2u64); // AUX=2
+                cols[10] = KoalaBearField::from(2u64); // AUX=2
             }
             UpstreamInstruction::Jump {
                 condition,
@@ -61,7 +60,7 @@ impl LeanVmInstruction {
                 set_nu_a(&mut cols, condition);
                 set_nu_b(&mut cols, dest);
                 set_nu_c(&mut cols, updated_fp);
-                cols[9] = BabyBearField::from(1u64); // JUMP=1
+                cols[9] = KoalaBearField::from(1u64); // JUMP=1
             }
             UpstreamInstruction::Precompile { .. } => {
                 unimplemented!("Precompile instruction encoding")
@@ -72,48 +71,47 @@ impl LeanVmInstruction {
     }
 }
 
-/// Convert a KoalaBear value to BabyBearField.
-/// Only valid for small values that fit in both fields.
-fn kb_to_bb(kb: KB) -> BabyBearField {
-    BabyBearField::from(kb.as_canonical_u32() as u64)
+/// Convert a lean_vm field element to a powdr field element.
+fn lean_to_powdr(kb: KB) -> KoalaBearField {
+    KoalaBearField::from(kb.as_canonical_u32() as u64)
 }
 
-fn set_nu_a(cols: &mut [BabyBearField; 12], operand: &MemOrConstant) {
+fn set_nu_a(cols: &mut [KoalaBearField; 12], operand: &MemOrConstant) {
     match operand {
         MemOrConstant::Constant(c) => {
-            cols[0] = kb_to_bb(*c); // operand_A
-            cols[3] = BabyBearField::from(1u64); // flag_A = 1
+            cols[0] = lean_to_powdr(*c); // operand_A
+            cols[3] = KoalaBearField::from(1u64); // flag_A = 1
         }
         MemOrConstant::MemoryAfterFp { offset } => {
-            cols[0] = BabyBearField::from(*offset as u64); // operand_A
+            cols[0] = KoalaBearField::from(*offset as u64); // operand_A
         }
     }
 }
 
-fn set_nu_b(cols: &mut [BabyBearField; 12], operand: &MemOrConstant) {
+fn set_nu_b(cols: &mut [KoalaBearField; 12], operand: &MemOrConstant) {
     match operand {
         MemOrConstant::Constant(c) => {
-            cols[1] = kb_to_bb(*c); // operand_B
-            cols[4] = BabyBearField::from(1u64); // flag_B = 1
+            cols[1] = lean_to_powdr(*c); // operand_B
+            cols[4] = KoalaBearField::from(1u64); // flag_B = 1
         }
         MemOrConstant::MemoryAfterFp { offset } => {
-            cols[1] = BabyBearField::from(*offset as u64); // operand_B
+            cols[1] = KoalaBearField::from(*offset as u64); // operand_B
         }
     }
 }
 
-fn set_nu_c(cols: &mut [BabyBearField; 12], operand: &MemOrFpOrConstant) {
+fn set_nu_c(cols: &mut [KoalaBearField; 12], operand: &MemOrFpOrConstant) {
     match operand {
         MemOrFpOrConstant::Constant(c) => {
-            cols[2] = kb_to_bb(*c); // operand_C
-            cols[5] = BabyBearField::from(1u64); // flag_C = 1
+            cols[2] = lean_to_powdr(*c); // operand_C
+            cols[5] = KoalaBearField::from(1u64); // flag_C = 1
         }
         MemOrFpOrConstant::MemoryAfterFp { offset } => {
-            cols[2] = BabyBearField::from(*offset as u64); // operand_C
+            cols[2] = KoalaBearField::from(*offset as u64); // operand_C
         }
         MemOrFpOrConstant::FpRelative { offset } => {
-            cols[2] = BabyBearField::from(*offset as u64); // operand_C
-            cols[6] = BabyBearField::from(1u64); // flag_C_fp = 1
+            cols[2] = KoalaBearField::from(*offset as u64); // operand_C
+            cols[6] = KoalaBearField::from(1u64); // flag_C_fp = 1
         }
     }
 }
@@ -130,10 +128,10 @@ impl Display for LeanVmInstruction {
     }
 }
 
-impl Instruction<BabyBearField> for LeanVmInstruction {
-    fn pc_lookup_row(&self, pc: u64) -> Vec<BabyBearField> {
-        let mut row: Vec<BabyBearField> = self.instruction_columns().to_vec();
-        row.push(BabyBearField::from(pc));
+impl Instruction<KoalaBearField> for LeanVmInstruction {
+    fn pc_lookup_row(&self, pc: u64) -> Vec<KoalaBearField> {
+        let mut row: Vec<KoalaBearField> = self.instruction_columns().to_vec();
+        row.push(KoalaBearField::from(pc));
         row
     }
 }

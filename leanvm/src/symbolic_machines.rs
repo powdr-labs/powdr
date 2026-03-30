@@ -16,7 +16,7 @@ use powdr_autoprecompiles::expression::{AlgebraicExpression, AlgebraicReference}
 use powdr_autoprecompiles::symbolic_machine::{
     SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine,
 };
-use powdr_number::BabyBearField;
+use powdr_number::KoalaBearField;
 
 pub const EXEC_BUS_ID: u64 = 0;
 pub const MEMORY_BUS_ID: u64 = 1;
@@ -46,7 +46,7 @@ pub const PRECOMPILE_DATA: u64 = 19;
 
 pub const NUM_COLUMNS: u64 = 20;
 
-type Expr = AlgebraicExpression<BabyBearField>;
+type Expr = AlgebraicExpression<KoalaBearField>;
 
 fn col(id: u64, name: &str) -> Expr {
     AlgebraicExpression::Reference(AlgebraicReference {
@@ -56,7 +56,7 @@ fn col(id: u64, name: &str) -> Expr {
 }
 
 fn num(v: u64) -> Expr {
-    AlgebraicExpression::from(BabyBearField::from(v))
+    AlgebraicExpression::from(KoalaBearField::from(v))
 }
 
 fn one() -> Expr {
@@ -71,7 +71,7 @@ fn two() -> Expr {
 ///
 /// This encodes all 13 constraints from the spec (with JUMP's next_pc/next_fp constraints
 /// replaced by execution bus interactions), plus memory and PC lookup bus interactions.
-pub fn build_execution_machine() -> SymbolicMachine<BabyBearField> {
+pub fn build_execution_machine() -> SymbolicMachine<KoalaBearField> {
     let pc = col(PC, "pc");
     let fp = col(FP, "fp");
     let addr_a = col(ADDR_A, "addr_A");
@@ -120,16 +120,16 @@ pub fn build_execution_machine() -> SymbolicMachine<BabyBearField> {
 
     // DEREF = P2(AUX) = AUX * (AUX - 1) / 2
     // Note: In a prime field, /2 is multiplication by the inverse of 2.
-    // BabyBear: inv(2) = (p+1)/2
+    // KoalaBear: inv(2) = (p+1)/2
     let inv2: Expr =
-        AlgebraicExpression::from(BabyBearField::from(1u64) / BabyBearField::from(2u64));
+        AlgebraicExpression::from(KoalaBearField::from(1u64) / KoalaBearField::from(2u64));
     let deref = aux.clone() * (aux - one()) * inv2;
 
     // J = JUMP * nu_A (the "jump-and-condition" selector)
     let j = jump.clone() * nu_a.clone();
 
     // --- Constraints ---
-    let constraints: Vec<SymbolicConstraint<BabyBearField>> = vec![
+    let constraints: Vec<SymbolicConstraint<KoalaBearField>> = vec![
         // 1-3: Address constraints
         (one_minus_fa_fabfp * (addr_a - (fp.clone() + operand_a))).into(),
         (one_minus_fb_fabfp * (addr_b.clone() - (fp.clone() + operand_b.clone()))).into(),
@@ -158,7 +158,7 @@ pub fn build_execution_machine() -> SymbolicMachine<BabyBearField> {
     let next_fp = j.clone() * nu_c_for_jump() + (one() - j) * fp.clone();
 
     // --- Bus interactions ---
-    let minus_one: Expr = AlgebraicExpression::from(BabyBearField::from(-1i64));
+    let minus_one: Expr = AlgebraicExpression::from(KoalaBearField::from(-1i64));
 
     let bus_interactions = vec![
         // Execution bus: receive current state (pc, fp)

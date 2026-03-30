@@ -6,25 +6,25 @@ use powdr_autoprecompiles::memory_optimizer::{
 };
 use powdr_constraint_solver::constraint_system::BusInteraction;
 use powdr_constraint_solver::grouped_expression::GroupedExpression;
-use powdr_number::BabyBearField;
+use powdr_number::KoalaBearField;
 
 /// LeanVM memory bus interaction.
 /// Payload format: [addr, value] (read-only memory, no timestamps).
 #[derive(Clone, Debug)]
 pub struct LeanVmMemoryBusInteraction<V> {
     op: MemoryOp,
-    addr: GroupedExpression<BabyBearField, V>,
-    value: GroupedExpression<BabyBearField, V>,
+    addr: GroupedExpression<KoalaBearField, V>,
+    value: GroupedExpression<KoalaBearField, V>,
 }
 
-impl<V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction<BabyBearField, V>
+impl<V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction<KoalaBearField, V>
     for LeanVmMemoryBusInteraction<V>
 {
     /// Address is a single field element (no address space).
-    type Address = [GroupedExpression<BabyBearField, V>; 1];
+    type Address = [GroupedExpression<KoalaBearField, V>; 1];
 
     fn try_from_bus_interaction(
-        _bus_interaction: &BusInteraction<GroupedExpression<BabyBearField, V>>,
+        _bus_interaction: &BusInteraction<GroupedExpression<KoalaBearField, V>>,
         _memory_bus_id: u64,
     ) -> Result<Option<Self>, MemoryBusInteractionConversionError> {
         // LeanVM uses write-once memory (WOM), not read/write memory.
@@ -39,11 +39,11 @@ impl<V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction<BabyBearField, V
         [self.addr.clone()]
     }
 
-    fn data(&self) -> &[GroupedExpression<BabyBearField, V>] {
+    fn data(&self) -> &[GroupedExpression<KoalaBearField, V>] {
         std::slice::from_ref(&self.value)
     }
 
-    fn timestamp_limbs(&self) -> &[GroupedExpression<BabyBearField, V>] {
+    fn timestamp_limbs(&self) -> &[GroupedExpression<KoalaBearField, V>] {
         // Read-only memory, no timestamps.
         &[]
     }

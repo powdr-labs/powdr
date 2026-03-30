@@ -1,9 +1,9 @@
 use powdr_autoprecompiles::evaluation::AirStats;
 use powdr_autoprecompiles::symbolic_machine::SymbolicMachine;
 use powdr_autoprecompiles::InstructionHandler;
-use powdr_number::BabyBearField;
+use powdr_number::KoalaBearField;
 
-use crate::instruction::{LeanVmInstruction};
+use crate::instruction::LeanVmInstruction;
 use crate::symbolic_machines::build_execution_machine;
 
 pub use powdr_autoprecompiles::DegreeBound;
@@ -19,7 +19,7 @@ pub const DEFAULT_DEGREE_BOUND: DegreeBound = DegreeBound {
 /// which constraints are active.
 pub struct LeanVmInstructionHandler {
     /// The single execution table AIR, shared by all instructions.
-    machine: SymbolicMachine<BabyBearField>,
+    machine: SymbolicMachine<KoalaBearField>,
     degree_bound: DegreeBound,
 }
 
@@ -33,7 +33,7 @@ impl LeanVmInstructionHandler {
 }
 
 impl InstructionHandler for LeanVmInstructionHandler {
-    type Field = BabyBearField;
+    type Field = KoalaBearField;
     type Instruction = LeanVmInstruction;
     type AirId = String;
 

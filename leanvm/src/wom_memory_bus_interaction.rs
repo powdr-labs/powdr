@@ -4,28 +4,28 @@ use std::hash::Hash;
 use powdr_autoprecompiles::wom_memory_optimizer::{WomConversionError, WomMemoryBusInteraction};
 use powdr_constraint_solver::constraint_system::BusInteraction;
 use powdr_constraint_solver::grouped_expression::GroupedExpression;
-use powdr_number::BabyBearField;
+use powdr_number::KoalaBearField;
 
 /// LeanVM WOM bus interaction.
 /// Payload format: [addr, value].
 #[derive(Clone, Debug)]
 pub struct LeanVmWomMemoryBusInteraction<V> {
-    addr: GroupedExpression<BabyBearField, V>,
-    value: GroupedExpression<BabyBearField, V>,
+    addr: GroupedExpression<KoalaBearField, V>,
+    value: GroupedExpression<KoalaBearField, V>,
 }
 
-impl<V: Ord + Clone + Eq + Display + Hash> WomMemoryBusInteraction<BabyBearField, V>
+impl<V: Ord + Clone + Eq + Display + Hash> WomMemoryBusInteraction<KoalaBearField, V>
     for LeanVmWomMemoryBusInteraction<V>
 {
-    type Address = [GroupedExpression<BabyBearField, V>; 1];
+    type Address = [GroupedExpression<KoalaBearField, V>; 1];
 
     fn try_from_bus_interaction(
-        bus_interaction: &BusInteraction<GroupedExpression<BabyBearField, V>>,
+        bus_interaction: &BusInteraction<GroupedExpression<KoalaBearField, V>>,
         memory_bus_id: u64,
     ) -> Result<Option<Self>, WomConversionError> {
         match bus_interaction.bus_id.try_to_number() {
             None => return Ok(None),
-            Some(id) if id == BabyBearField::from(memory_bus_id) => {}
+            Some(id) if id == KoalaBearField::from(memory_bus_id) => {}
             Some(_) => return Ok(None),
         }
 
@@ -43,7 +43,7 @@ impl<V: Ord + Clone + Eq + Display + Hash> WomMemoryBusInteraction<BabyBearField
         [self.addr.clone()]
     }
 
-    fn data(&self) -> &[GroupedExpression<BabyBearField, V>] {
+    fn data(&self) -> &[GroupedExpression<KoalaBearField, V>] {
         std::slice::from_ref(&self.value)
     }
 }
