@@ -2,19 +2,17 @@ use itertools::Itertools;
 use std::fs;
 use std::path::Path;
 
+use crate::bus_interaction_handler::LeanVmBusInteractionHandler;
+use crate::instruction::LeanVmInstruction;
+use crate::instruction_handler::{LeanVmInstructionHandler, DEFAULT_DEGREE_BOUND};
+use crate::{leanvm_bus_map, LeanVmAdapter};
 use powdr_autoprecompiles::blocks::SuperBlock;
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::evaluation::evaluate_apc;
 use powdr_autoprecompiles::export::ExportOptions;
 use powdr_autoprecompiles::{build, VmConfig};
-use powdr_number::BabyBearField;
 
-use crate::bus_interaction_handler::LeanVmBusInteractionHandler;
-use crate::instruction::LeanVmInstruction;
-use crate::instruction_handler::{LeanVmInstructionHandler, DEFAULT_DEGREE_BOUND};
-use crate::{leanvm_bus_map, LeanVmAdapter};
-
-pub fn compile_apc(superblock: SuperBlock<LeanVmInstruction<BabyBearField>>) -> String {
+pub fn compile_apc(superblock: SuperBlock<LeanVmInstruction>) -> String {
     let degree_bound = DEFAULT_DEGREE_BOUND;
     let instruction_handler = LeanVmInstructionHandler::new(degree_bound);
     let bus_map = leanvm_bus_map();
@@ -88,7 +86,7 @@ pub fn assert_apc_snapshot(
 }
 
 pub fn assert_apc_machine_output(
-    program: SuperBlock<LeanVmInstruction<BabyBearField>>,
+    program: SuperBlock<LeanVmInstruction>,
     snapshot_base_dir: &Path,
     module_name: &str,
     test_name: &str,

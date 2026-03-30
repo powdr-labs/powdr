@@ -1,5 +1,5 @@
 Instructions:
-  0: JUMP a=1, b=2, c=3, fA=0, fB=0, fC=0, fCfp=0, fABfp=0
+  0: if m[fp + 1] != 0 jump to jump_target = m[fp + 2] with next(fp) = m[fp + 3]
 
 APC advantage:
   - Main columns: 20 -> 5 (4.00x reduction)

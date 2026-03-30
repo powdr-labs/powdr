@@ -1,13 +1,14 @@
 Instructions:
-  0: DEREF a=2, b=3, c=4, fA=0, fB=0, fC=0, fCfp=0, fABfp=0
+  0: m[fp + 4] = m[m[fp + 2] + 3]
 
 APC advantage:
-  - Main columns: 20 -> 3 (6.67x reduction)
+  - Main columns: 20 -> 4 (5.00x reduction)
   - Bus interactions: 6 -> 5 (1.20x reduction)
   - Constraints: 8 -> 1 (8.00x reduction)
 
-Symbolic machine using 3 unique main columns:
+Symbolic machine using 4 unique main columns:
   fp_0
+  addr_B_0
   value_B_0
   is_valid
 
@@ -16,8 +17,8 @@ mult=is_valid * -1, args=[0, fp_0]
 mult=is_valid * 1, args=[1, fp_0]
 
 // Bus 1 (MEMORY):
-mult=is_valid * 1, args=[fp_0 + 2, fp_0]
-mult=is_valid * 1, args=[fp_0 + 3, value_B_0]
+mult=is_valid * 1, args=[fp_0 + 2, addr_B_0 - 3]
+mult=is_valid * 1, args=[addr_B_0, value_B_0]
 mult=is_valid * 1, args=[fp_0 + 4, value_B_0]
 
 // Algebraic constraints:
