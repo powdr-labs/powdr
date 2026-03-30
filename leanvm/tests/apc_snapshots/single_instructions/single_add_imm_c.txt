@@ -1,5 +1,5 @@
 Instructions:
-  0: ADD a=5, b=3, c=7, fA=0, fB=0, fC=1, fCfp=0, fABfp=0
+  0: m[fp + 5] = m[fp + 3] + 7
 
 APC advantage:
   - Main columns: 20 -> 5 (4.00x reduction)
@@ -18,8 +18,8 @@ mult=is_valid * -1, args=[0, fp_0]
 mult=is_valid * 1, args=[1, fp_0]
 
 // Bus 1 (MEMORY):
-mult=is_valid * 1, args=[fp_0 + 5, value_A_0]
-mult=is_valid * 1, args=[fp_0 + 3, value_A_0 + 7]
+mult=is_valid * 1, args=[fp_0 + 3, value_A_0]
+mult=is_valid * 1, args=[fp_0 + 5, value_A_0 + 7]
 mult=is_valid * 1, args=[addr_C_0, value_C_0]
 
 // Algebraic constraints:

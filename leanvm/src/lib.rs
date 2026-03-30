@@ -18,7 +18,7 @@ use powdr_number::BabyBearField;
 use serde::{Deserialize, Serialize};
 
 use bus_interaction_handler::LeanVmBusInteractionHandler;
-use instruction::{LeanVmInstruction, LeanVmOpcode};
+use instruction::LeanVmInstruction;
 use instruction_handler::LeanVmInstructionHandler;
 use memory_bus_interaction::LeanVmMemoryBusInteraction;
 use symbolic_machines::{EXEC_BUS_ID, MEMORY_BUS_ID, PC_LOOKUP_BUS_ID};
@@ -41,12 +41,12 @@ impl Display for LeanVmCustomBusType {
 /// Stub program type (not needed for snapshot tests).
 pub struct LeanVmProgram;
 
-impl Program<LeanVmInstruction<BabyBearField>> for LeanVmProgram {
+impl Program<LeanVmInstruction> for LeanVmProgram {
     fn base_pc(&self) -> u64 {
         0
     }
 
-    fn instructions(&self) -> Box<dyn Iterator<Item = LeanVmInstruction<BabyBearField>> + '_> {
+    fn instructions(&self) -> Box<dyn Iterator<Item = LeanVmInstruction> + '_> {
         Box::new(std::iter::empty())
     }
 
@@ -88,7 +88,7 @@ impl Adapter for LeanVmAdapter {
     type InstructionHandler = LeanVmInstructionHandler;
     type BusInteractionHandler = LeanVmBusInteractionHandler;
     type Program = LeanVmProgram;
-    type Instruction = LeanVmInstruction<BabyBearField>;
+    type Instruction = LeanVmInstruction;
     type MemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash> = LeanVmMemoryBusInteraction<V>;
     type WomMemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash> =
         LeanVmWomMemoryBusInteraction<V>;
@@ -112,7 +112,7 @@ impl Adapter for LeanVmAdapter {
     }
 
     fn is_branching(instr: &Self::Instruction) -> bool {
-        instr.opcode == LeanVmOpcode::Jump
+        matches!(instr.0, lean_vm::Instruction::Jump { .. })
     }
 
     fn is_allowed(_instr: &Self::Instruction) -> bool {

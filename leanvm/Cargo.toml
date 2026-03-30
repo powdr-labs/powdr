@@ -10,6 +10,8 @@ powdr-constraint-solver = { path = "../constraint-solver" }
 powdr-expression = { path = "../expression" }
 powdr-number = { path = "../number" }
 
+lean_vm = { git = "https://github.com/leanEthereum/leanMultisig", rev = "d203fff" }
+lean_vm_backend = { git = "https://github.com/leanEthereum/leanMultisig", rev = "d203fff", package = "backend" }
 serde = { version = "1.0", features = ["derive"] }
 itertools = "0.13"
 metrics = "0.24"

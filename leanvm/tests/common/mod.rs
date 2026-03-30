@@ -1,12 +1,11 @@
 use powdr_autoprecompiles::blocks::SuperBlock;
 use powdr_leanvm::instruction::LeanVmInstruction;
 use powdr_leanvm::test_utils;
-use powdr_number::BabyBearField;
 use std::path::Path;
 
 #[allow(dead_code)]
 pub fn assert_machine_output(
-    program: SuperBlock<LeanVmInstruction<BabyBearField>>,
+    program: SuperBlock<LeanVmInstruction>,
     module_name: &str,
     test_name: &str,
 ) {

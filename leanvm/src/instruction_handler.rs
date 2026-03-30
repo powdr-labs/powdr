@@ -34,7 +34,7 @@ impl LeanVmInstructionHandler {
 
 impl InstructionHandler for LeanVmInstructionHandler {
     type Field = BabyBearField;
-    type Instruction = LeanVmInstruction<BabyBearField>;
+    type Instruction = LeanVmInstruction;
     type AirId = LeanVmOpcode;
 
     fn degree_bound(&self) -> DegreeBound {
@@ -46,7 +46,7 @@ impl InstructionHandler for LeanVmInstructionHandler {
         instruction: &Self::Instruction,
     ) -> (Self::AirId, &SymbolicMachine<Self::Field>) {
         // All instructions use the same single AIR.
-        (instruction.opcode, &self.machine)
+        (instruction.opcode(), &self.machine)
     }
 
     fn get_instruction_air_stats(&self, _instruction: &Self::Instruction) -> AirStats {

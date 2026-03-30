@@ -1,14 +1,11 @@
 mod common;
 
 use powdr_autoprecompiles::blocks::BasicBlock;
+use powdr_leanvm::instruction::LeanVmInstruction;
 use powdr_leanvm::*;
-use powdr_number::BabyBearField;
 use test_log::test;
 
-fn assert_machine_output(
-    program: Vec<instruction::LeanVmInstruction<BabyBearField>>,
-    test_name: &str,
-) {
+fn assert_machine_output(program: Vec<LeanVmInstruction>, test_name: &str) {
     let bb = BasicBlock {
         start_pc: 0,
         instructions: program,
