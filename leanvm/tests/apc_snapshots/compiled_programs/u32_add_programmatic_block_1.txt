@@ -1,0 +1,155 @@
+Instructions:
+   1: 50 = 0 + m[fp + 0]
+   2: m[fp + 1] = m[m[fp + 0] + 0]
+   3: m[fp + 2] = m[m[fp + 0] + 1]
+   4: m[fp + 3] = m[m[fp + 0] + 2]
+   5: m[fp + 4] = m[m[fp + 0] + 3]
+   6: m[fp + 5] = m[m[fp + 0] + 4]
+   7: m[fp + 6] = m[m[fp + 0] + 5]
+   8: m[fp + 7] = m[fp + 1] + m[fp + 3]
+   9: m[fp + 7] = m[fp + 5] + m[fp + 8]
+  10: m[fp + 8] = 65536 x m[fp + 9]
+  11: m[fp + 9] = m[fp + 9] x m[fp + 9]
+  12: m[fp + 10] = m[fp + 2] + m[fp + 4]
+  13: m[fp + 11] = m[fp + 10] + m[fp + 9]
+  14: m[fp + 11] = m[fp + 6] + m[fp + 12]
+  15: m[fp + 12] = 65536 x m[fp + 13]
+  16: m[fp + 13] = m[fp + 13] x m[fp + 13]
+  17: m[fp + 14] = m[m[fp + 5] + 0]
+  18: 65535 = m[fp + 5] + m[fp + 15]
+  19: m[fp + 16] = m[m[fp + 15] + 0]
+  20: m[fp + 17] = m[m[fp + 6] + 0]
+  21: 65535 = m[fp + 6] + m[fp + 18]
+  22: m[fp + 19] = m[m[fp + 18] + 0]
+  23: if 1 != 0 jump to @end_program = 0 with next(fp) = 0
+
+APC advantage:
+  - Main columns: 460 -> 52 (8.85x reduction)
+  - Bus interactions: 138 -> 41 (3.37x reduction)
+  - Constraints: 184 -> 25 (7.36x reduction)
+
+Symbolic machine using 52 unique main columns:
+  fp_0
+  addr_A_0
+  addr_B_0
+  value_A_0
+  value_B_0
+  value_B_1
+  value_B_2
+  value_B_3
+  value_B_4
+  value_B_5
+  value_B_6
+  value_A_7
+  value_B_7
+  value_A_8
+  value_B_8
+  addr_A_9
+  value_A_9
+  value_B_9
+  value_A_10
+  value_C_10
+  value_A_11
+  value_B_11
+  value_A_12
+  value_B_12
+  value_A_13
+  value_B_13
+  addr_A_14
+  value_A_14
+  value_B_14
+  value_A_15
+  value_C_15
+  addr_B_16
+  value_B_16
+  addr_B_17
+  value_A_17
+  value_B_17
+  addr_B_18
+  value_B_18
+  addr_B_19
+  value_B_19
+  addr_B_20
+  value_A_20
+  value_B_20
+  addr_B_21
+  value_B_21
+  addr_A_22
+  addr_B_22
+  addr_C_22
+  value_A_22
+  value_B_22
+  value_C_22
+  is_valid
+
+// Bus 0 (EXECUTION_BRIDGE):
+mult=is_valid * -1, args=[1, fp_0]
+mult=is_valid * 1, args=[0, 0]
+
+// Bus 1 (MEMORY):
+mult=is_valid * 1, args=[addr_A_0, value_A_0]
+mult=is_valid * 1, args=[addr_B_0, value_B_0]
+mult=is_valid * 1, args=[fp_0, 50]
+mult=is_valid * 1, args=[50, value_B_1]
+mult=is_valid * 1, args=[fp_0 + 1, value_B_1]
+mult=is_valid * 1, args=[51, value_B_2]
+mult=is_valid * 1, args=[fp_0 + 2, value_B_2]
+mult=is_valid * 1, args=[52, value_B_3]
+mult=is_valid * 1, args=[fp_0 + 3, value_B_3]
+mult=is_valid * 1, args=[53, value_B_4]
+mult=is_valid * 1, args=[fp_0 + 4, value_B_4]
+mult=is_valid * 1, args=[54, value_B_5]
+mult=is_valid * 1, args=[fp_0 + 5, value_B_5]
+mult=is_valid * 1, args=[55, value_B_6]
+mult=is_valid * 1, args=[fp_0 + 6, value_B_6]
+mult=is_valid * 1, args=[fp_0 + 7, value_B_7]
+mult=is_valid * 1, args=[fp_0 + 8, value_B_8 - value_A_8]
+mult=is_valid * 1, args=[addr_A_9, value_A_9]
+mult=is_valid * 1, args=[fp_0 + 9, -(32512 * value_B_9)]
+mult=is_valid * 1, args=[fp_0 + 10, value_B_11]
+mult=is_valid * 1, args=[fp_0 + 11, value_B_12]
+mult=is_valid * 1, args=[fp_0 + 12, value_B_13 - value_A_13]
+mult=is_valid * 1, args=[addr_A_14, value_A_14]
+mult=is_valid * 1, args=[fp_0 + 13, -(32512 * value_B_14)]
+mult=is_valid * 1, args=[addr_B_16, value_B_16]
+mult=is_valid * 1, args=[fp_0 + 14, value_B_16]
+mult=is_valid * 1, args=[addr_B_17, value_B_17]
+mult=is_valid * 1, args=[fp_0 + 15, 65535 - value_A_17]
+mult=is_valid * 1, args=[addr_B_18, value_B_18]
+mult=is_valid * 1, args=[fp_0 + 16, value_B_18]
+mult=is_valid * 1, args=[addr_B_19, value_B_19]
+mult=is_valid * 1, args=[fp_0 + 17, value_B_19]
+mult=is_valid * 1, args=[addr_B_20, value_B_20]
+mult=is_valid * 1, args=[fp_0 + 18, 65535 - value_A_20]
+mult=is_valid * 1, args=[addr_B_21, value_B_21]
+mult=is_valid * 1, args=[fp_0 + 19, value_B_21]
+mult=is_valid * 1, args=[addr_A_22, value_A_22]
+mult=is_valid * 1, args=[addr_B_22, value_B_22]
+mult=is_valid * 1, args=[addr_C_22, value_C_22]
+
+// Algebraic constraints:
+value_B_1 - value_A_7 = 0
+value_B_2 - value_A_11 = 0
+value_B_3 + value_A_7 - value_B_7 = 0
+value_B_4 + value_A_11 - value_B_11 = 0
+value_B_5 - value_A_8 = 0
+value_B_5 - addr_B_16 = 0
+value_B_5 - value_A_17 = 0
+value_B_6 - value_A_13 = 0
+value_B_6 - addr_B_19 = 0
+value_B_6 - value_A_20 = 0
+value_B_7 - value_B_8 = 0
+value_B_8 - (value_A_8 + value_B_9) = 0
+32512 * value_B_9 + value_A_10 = 0
+value_A_10 * value_C_10 + 32512 * value_B_9 = 0
+32512 * value_B_9 + value_C_10 = 0
+value_A_12 - (32512 * value_B_9 + value_B_12) = 0
+value_B_11 - value_A_12 = 0
+value_B_12 - value_B_13 = 0
+value_B_13 - (value_A_13 + value_B_14) = 0
+32512 * value_B_14 + value_A_15 = 0
+value_A_15 * value_C_15 + 32512 * value_B_14 = 0
+32512 * value_B_14 + value_C_15 = 0
+65535 * is_valid - (value_A_17 + addr_B_18) = 0
+65535 * is_valid - (value_A_20 + addr_B_21) = 0
+is_valid * (is_valid - 1) = 0
