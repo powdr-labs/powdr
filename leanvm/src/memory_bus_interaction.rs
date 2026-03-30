@@ -24,30 +24,15 @@ impl<V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction<BabyBearField, V
     type Address = [GroupedExpression<BabyBearField, V>; 1];
 
     fn try_from_bus_interaction(
-        bus_interaction: &BusInteraction<GroupedExpression<BabyBearField, V>>,
-        memory_bus_id: u64,
+        _bus_interaction: &BusInteraction<GroupedExpression<BabyBearField, V>>,
+        _memory_bus_id: u64,
     ) -> Result<Option<Self>, MemoryBusInteractionConversionError> {
-        match bus_interaction.bus_id.try_to_number() {
-            None => return Err(MemoryBusInteractionConversionError),
-            Some(id) if id == BabyBearField::from(memory_bus_id) => {}
-            Some(_) => return Ok(None),
-        }
-
-        let op = match bus_interaction.multiplicity.try_to_number() {
-            Some(n) if n == BabyBearField::from(1u64) => MemoryOp::SetNew,
-            Some(n) if n == BabyBearField::from(-1i64) => MemoryOp::GetPrevious,
-            _ => return Err(MemoryBusInteractionConversionError),
-        };
-
-        let [addr, value] = &bus_interaction.payload[..] else {
-            return Err(MemoryBusInteractionConversionError);
-        };
-
-        Ok(Some(LeanVmMemoryBusInteraction {
-            op,
-            addr: addr.clone(),
-            value: value.clone(),
-        }))
+        // LeanVM uses write-once memory (WOM), not read/write memory.
+        // The generic memory optimizer assumes read/write semantics with
+        // get-previous/set-new pairs, which doesn't apply here.
+        // Return None to disable the memory optimizer; a WOM-specific
+        // optimizer can be added later.
+        Ok(None)
     }
 
     fn addr(&self) -> Self::Address {
