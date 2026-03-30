@@ -8,6 +8,7 @@ use crate::symbolic_machines::build_execution_machine;
 
 pub use powdr_autoprecompiles::DegreeBound;
 
+// TODO: Is this correct?
 pub const DEFAULT_DEGREE_BOUND: DegreeBound = DegreeBound {
     identities: 5,
     bus_interactions: 2,
