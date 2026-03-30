@@ -1,7 +1,14 @@
-//! Builds SymbolicMachine representations for each LeanVM instruction type.
+//! Builds the single SymbolicMachine for the LeanVM execution table AIR.
 //!
-//! Each machine encodes the AIR constraints and bus interactions for a single instruction.
-//! Columns are numbered 0..19 (20 committed columns from the spec).
+//! LeanVM has ONE AIR with 20 committed columns. All 4 instructions (ADD, MUL, DEREF, JUMP)
+//! share the same table — opcode selectors (MUL, JUMP, AUX) gate which constraints are active.
+//!
+//! Compared to the original LeanVM spec which constrains next_pc/next_fp via transition
+//! constraints on down columns, we use an execution bus instead:
+//!   - Receive (pc, fp) with mult=-1
+//!   - Send (next_pc, next_fp) with mult=+1
+//!
+//! where next_pc/next_fp are algebraic expressions encoding the JUMP conditional logic.
 
 use std::sync::Arc;
 
@@ -11,34 +18,33 @@ use powdr_autoprecompiles::symbolic_machine::{
 };
 use powdr_number::BabyBearField;
 
-use crate::instruction::LeanVmOpcode;
-
 pub const EXEC_BUS_ID: u64 = 0;
 pub const MEMORY_BUS_ID: u64 = 1;
 pub const PC_LOOKUP_BUS_ID: u64 = 2;
 
-// Column indices
-const PC: u64 = 0;
-const FP: u64 = 1;
-const ADDR_A: u64 = 2;
-const ADDR_B: u64 = 3;
-const ADDR_C: u64 = 4;
-const VALUE_A: u64 = 5;
-const VALUE_B: u64 = 6;
-const VALUE_C: u64 = 7;
-const OPERAND_A: u64 = 8;
-const OPERAND_B: u64 = 9;
-const OPERAND_C: u64 = 10;
-const FLAG_A: u64 = 11;
-const FLAG_B: u64 = 12;
-const FLAG_C: u64 = 13;
-const FLAG_C_FP: u64 = 14;
-const FLAG_AB_FP: u64 = 15;
-// Opcode selector columns
-const COL_MUL: u64 = 16;
-const COL_JUMP: u64 = 17;
-const COL_AUX: u64 = 18;
-const PRECOMPILE_DATA: u64 = 19;
+// Column indices (matching leanvm_air.rs)
+pub const PC: u64 = 0;
+pub const FP: u64 = 1;
+pub const ADDR_A: u64 = 2;
+pub const ADDR_B: u64 = 3;
+pub const ADDR_C: u64 = 4;
+pub const VALUE_A: u64 = 5;
+pub const VALUE_B: u64 = 6;
+pub const VALUE_C: u64 = 7;
+pub const OPERAND_A: u64 = 8;
+pub const OPERAND_B: u64 = 9;
+pub const OPERAND_C: u64 = 10;
+pub const FLAG_A: u64 = 11;
+pub const FLAG_B: u64 = 12;
+pub const FLAG_C: u64 = 13;
+pub const FLAG_C_FP: u64 = 14;
+pub const FLAG_AB_FP: u64 = 15;
+pub const COL_MUL: u64 = 16;
+pub const COL_JUMP: u64 = 17;
+pub const COL_AUX: u64 = 18;
+pub const PRECOMPILE_DATA: u64 = 19;
+
+pub const NUM_COLUMNS: u64 = 20;
 
 type Expr = AlgebraicExpression<BabyBearField>;
 
@@ -57,9 +63,20 @@ fn one() -> Expr {
     num(1)
 }
 
-/// Build the resolved operand expressions nu_A, nu_B, nu_C.
-fn build_nus() -> (Expr, Expr, Expr) {
+fn two() -> Expr {
+    num(2)
+}
+
+/// Build the single unified SymbolicMachine for LeanVM's execution table AIR.
+///
+/// This encodes all 13 constraints from the spec (with JUMP's next_pc/next_fp constraints
+/// replaced by execution bus interactions), plus memory and PC lookup bus interactions.
+pub fn build_execution_machine() -> SymbolicMachine<BabyBearField> {
+    let pc = col(PC, "pc");
     let fp = col(FP, "fp");
+    let addr_a = col(ADDR_A, "addr_A");
+    let addr_b = col(ADDR_B, "addr_B");
+    let addr_c = col(ADDR_C, "addr_C");
     let value_a = col(VALUE_A, "value_A");
     let value_b = col(VALUE_B, "value_B");
     let value_c = col(VALUE_C, "value_C");
@@ -71,53 +88,92 @@ fn build_nus() -> (Expr, Expr, Expr) {
     let flag_c = col(FLAG_C, "flag_C");
     let flag_c_fp = col(FLAG_C_FP, "flag_C_fp");
     let flag_ab_fp = col(FLAG_AB_FP, "flag_AB_fp");
+    let mul = col(COL_MUL, "MUL");
+    let jump = col(COL_JUMP, "JUMP");
+    let aux = col(COL_AUX, "AUX");
+
+    // Derived values
+    // (1 - flag_A - flag_AB_fp)
+    let one_minus_fa_fabfp = one() - flag_a.clone() - flag_ab_fp.clone();
+    // (1 - flag_B - flag_AB_fp)
+    let one_minus_fb_fabfp = one() - flag_b.clone() - flag_ab_fp.clone();
+    // (1 - flag_C - flag_C_fp)
+    let one_minus_fc_fcfp = one() - flag_c.clone() - flag_c_fp.clone();
 
     // nu_A = flag_A * operand_A + (1 - flag_A - flag_AB_fp) * value_A + flag_AB_fp * (fp + operand_A)
     let nu_a = flag_a.clone() * operand_a.clone()
-        + (one() - flag_a - flag_ab_fp.clone()) * value_a
-        + flag_ab_fp.clone() * (fp.clone() + operand_a);
+        + one_minus_fa_fabfp.clone() * value_a.clone()
+        + flag_ab_fp.clone() * (fp.clone() + operand_a.clone());
 
     // nu_B = flag_B * operand_B + (1 - flag_B - flag_AB_fp) * value_B + flag_AB_fp * (fp + operand_B)
     let nu_b = flag_b.clone() * operand_b.clone()
-        + (one() - flag_b - flag_ab_fp.clone()) * value_b
-        + flag_ab_fp * (fp.clone() + operand_b);
+        + one_minus_fb_fabfp.clone() * value_b.clone()
+        + flag_ab_fp.clone() * (fp.clone() + operand_b.clone());
 
     // nu_C = flag_C * operand_C + (1 - flag_C - flag_C_fp) * value_C + flag_C_fp * (fp + operand_C)
     let nu_c = flag_c.clone() * operand_c.clone()
-        + (one() - flag_c - flag_c_fp.clone()) * value_c
-        + flag_c_fp * (fp + operand_c);
+        + one_minus_fc_fcfp.clone() * value_c.clone()
+        + flag_c_fp.clone() * (fp.clone() + operand_c.clone());
 
-    (nu_a, nu_b, nu_c)
-}
+    // ADD = P1(AUX) = AUX * (2 - AUX)
+    let add = aux.clone() * (two() - aux.clone());
 
-/// Address constraints: when a memory read is needed, addr must equal fp + operand.
-fn address_constraints() -> Vec<SymbolicConstraint<BabyBearField>> {
-    let fp = col(FP, "fp");
-    let flag_a = col(FLAG_A, "flag_A");
-    let flag_b = col(FLAG_B, "flag_B");
-    let flag_c = col(FLAG_C, "flag_C");
-    let flag_c_fp = col(FLAG_C_FP, "flag_C_fp");
-    let flag_ab_fp = col(FLAG_AB_FP, "flag_AB_fp");
+    // DEREF = P2(AUX) = AUX * (AUX - 1) / 2
+    // Note: In a prime field, /2 is multiplication by the inverse of 2.
+    // BabyBear: inv(2) = (p+1)/2
+    let inv2: Expr =
+        AlgebraicExpression::from(BabyBearField::from(1u64) / BabyBearField::from(2u64));
+    let deref = aux.clone() * (aux - one()) * inv2;
 
-    vec![
-        // (1 - flag_A - flag_AB_fp) * (addr_A - (fp + operand_A)) = 0
-        ((one() - flag_a - flag_ab_fp.clone())
-            * (col(ADDR_A, "addr_A") - (fp.clone() + col(OPERAND_A, "operand_A"))))
-        .into(),
-        // (1 - flag_B - flag_AB_fp) * (addr_B - (fp + operand_B)) = 0
-        ((one() - flag_b - flag_ab_fp)
-            * (col(ADDR_B, "addr_B") - (fp.clone() + col(OPERAND_B, "operand_B"))))
-        .into(),
-        // (1 - flag_C - flag_C_fp) * (addr_C - (fp + operand_C)) = 0
-        ((one() - flag_c - flag_c_fp)
-            * (col(ADDR_C, "addr_C") - (fp + col(OPERAND_C, "operand_C"))))
-        .into(),
-    ]
-}
+    // J = JUMP * nu_A (the "jump-and-condition" selector)
+    let j = jump.clone() * nu_a.clone();
 
-/// Memory bus interactions: 3 lookups per row.
-fn memory_bus_interactions() -> Vec<SymbolicBusInteraction<BabyBearField>> {
-    vec![
+    // --- Constraints ---
+    let constraints: Vec<SymbolicConstraint<BabyBearField>> = vec![
+        // 1-3: Address constraints
+        (one_minus_fa_fabfp * (addr_a - (fp.clone() + operand_a))).into(),
+        (one_minus_fb_fabfp * (addr_b.clone() - (fp.clone() + operand_b.clone()))).into(),
+        (one_minus_fc_fcfp * (addr_c - (fp.clone() + operand_c))).into(),
+        // 4: ADD * (nu_B - (nu_A + nu_C)) = 0
+        (add * (nu_b.clone() - (nu_a.clone() + nu_c.clone()))).into(),
+        // 5: MUL * (nu_B - nu_A * nu_C) = 0
+        (mul * (nu_b - nu_a.clone() * nu_c.clone())).into(),
+        // 6-7: DEREF constraints
+        (deref.clone() * (addr_b - (value_a + operand_b))).into(),
+        (deref * (value_b - nu_c.clone())).into(),
+        // 8: J * (nu_A - 1) = 0 (enforces nu_A in {0,1})
+        (j.clone() * (nu_a.clone() - one())).into(),
+    ];
+
+    // Constraints 9-12 from the original spec constrain next_pc and next_fp.
+    // Instead, we encode the next state via the execution bus.
+    //
+    // next_pc = J * nu_B + (1 - J) * (pc + 1)
+    // next_fp = J * nu_C + (1 - J) * fp
+    //
+    // For non-jump instructions (J=0): next_pc = pc+1, next_fp = fp
+    // For jump with condition=1 (J=1): next_pc = nu_B, next_fp = nu_C
+    // For jump with condition=0 (J=0): next_pc = pc+1, next_fp = fp (since JUMP*0=0)
+    let next_pc = j.clone() * nu_b_for_jump() + (one() - j.clone()) * (pc.clone() + one());
+    let next_fp = j.clone() * nu_c_for_jump() + (one() - j) * fp.clone();
+
+    // --- Bus interactions ---
+    let minus_one: Expr = AlgebraicExpression::from(BabyBearField::from(-1i64));
+
+    let bus_interactions = vec![
+        // Execution bus: receive current state (pc, fp)
+        SymbolicBusInteraction {
+            id: EXEC_BUS_ID,
+            mult: minus_one,
+            args: vec![pc.clone(), fp.clone()],
+        },
+        // Execution bus: send next state
+        SymbolicBusInteraction {
+            id: EXEC_BUS_ID,
+            mult: one(),
+            args: vec![next_pc, next_fp],
+        },
+        // Memory bus: 3 lookups per row
         SymbolicBusInteraction {
             id: MEMORY_BUS_ID,
             mult: one(),
@@ -133,161 +189,59 @@ fn memory_bus_interactions() -> Vec<SymbolicBusInteraction<BabyBearField>> {
             mult: one(),
             args: vec![col(ADDR_C, "addr_C"), col(VALUE_C, "value_C")],
         },
-    ]
-}
-
-/// PC lookup bus interaction.
-fn pc_lookup_interaction() -> SymbolicBusInteraction<BabyBearField> {
-    SymbolicBusInteraction {
-        id: PC_LOOKUP_BUS_ID,
-        mult: one(),
-        args: vec![
-            col(OPERAND_A, "operand_A"),
-            col(OPERAND_B, "operand_B"),
-            col(OPERAND_C, "operand_C"),
-            col(FLAG_A, "flag_A"),
-            col(FLAG_B, "flag_B"),
-            col(FLAG_C, "flag_C"),
-            col(FLAG_C_FP, "flag_C_fp"),
-            col(FLAG_AB_FP, "flag_AB_fp"),
-            col(COL_MUL, "MUL"),
-            col(COL_JUMP, "JUMP"),
-            col(COL_AUX, "AUX"),
-            col(PRECOMPILE_DATA, "PRECOMPILE_DATA"),
-            col(PC, "pc"),
-        ],
-    }
-}
-
-/// Execution bus interactions for non-branching instructions (ADD, MUL, DEREF):
-/// receive (pc, fp), send (pc+1, fp)
-fn exec_bus_sequential() -> Vec<SymbolicBusInteraction<BabyBearField>> {
-    let pc = col(PC, "pc");
-    let fp = col(FP, "fp");
-    let minus_one: Expr = AlgebraicExpression::from(BabyBearField::from(-1i64));
-
-    vec![
-        // Receive current state
+        // PC lookup
         SymbolicBusInteraction {
-            id: EXEC_BUS_ID,
-            mult: minus_one,
-            args: vec![pc.clone(), fp.clone()],
-        },
-        // Send next state: pc+1, fp unchanged
-        SymbolicBusInteraction {
-            id: EXEC_BUS_ID,
+            id: PC_LOOKUP_BUS_ID,
             mult: one(),
-            args: vec![pc + one(), fp],
-        },
-    ]
-}
-
-pub fn build_machine(opcode: LeanVmOpcode) -> SymbolicMachine<BabyBearField> {
-    match opcode {
-        LeanVmOpcode::Add => build_add_machine(),
-        LeanVmOpcode::Mul => build_mul_machine(),
-        LeanVmOpcode::Deref => build_deref_machine(),
-        LeanVmOpcode::Jump => build_jump_machine(),
-    }
-}
-
-fn build_add_machine() -> SymbolicMachine<BabyBearField> {
-    let (nu_a, nu_b, nu_c) = build_nus();
-
-    let mut constraints = address_constraints();
-    // ADD: nu_B = nu_A + nu_C => nu_B - nu_A - nu_C = 0
-    constraints.push((nu_b - (nu_a + nu_c)).into());
-
-    let mut bus_interactions = exec_bus_sequential();
-    bus_interactions.extend(memory_bus_interactions());
-    bus_interactions.push(pc_lookup_interaction());
-
-    SymbolicMachine {
-        constraints,
-        bus_interactions,
-        derived_columns: vec![],
-    }
-}
-
-fn build_mul_machine() -> SymbolicMachine<BabyBearField> {
-    let (nu_a, nu_b, nu_c) = build_nus();
-
-    let mut constraints = address_constraints();
-    // MUL: nu_B = nu_A * nu_C => nu_B - nu_A * nu_C = 0
-    constraints.push((nu_b - nu_a * nu_c).into());
-
-    let mut bus_interactions = exec_bus_sequential();
-    bus_interactions.extend(memory_bus_interactions());
-    bus_interactions.push(pc_lookup_interaction());
-
-    SymbolicMachine {
-        constraints,
-        bus_interactions,
-        derived_columns: vec![],
-    }
-}
-
-fn build_deref_machine() -> SymbolicMachine<BabyBearField> {
-    let (_nu_a, _nu_b, nu_c) = build_nus();
-
-    let mut constraints = address_constraints();
-    // DEREF: addr_B = value_A + operand_B
-    constraints.push(
-        (col(ADDR_B, "addr_B") - (col(VALUE_A, "value_A") + col(OPERAND_B, "operand_B"))).into(),
-    );
-    // DEREF: value_B = nu_C
-    constraints.push((col(VALUE_B, "value_B") - nu_c).into());
-
-    let mut bus_interactions = exec_bus_sequential();
-    bus_interactions.extend(memory_bus_interactions());
-    bus_interactions.push(pc_lookup_interaction());
-
-    SymbolicMachine {
-        constraints,
-        bus_interactions,
-        derived_columns: vec![],
-    }
-}
-
-fn build_jump_machine() -> SymbolicMachine<BabyBearField> {
-    let (nu_a, nu_b, nu_c) = build_nus();
-
-    let pc = col(PC, "pc");
-    let fp = col(FP, "fp");
-
-    let mut constraints = address_constraints();
-    // nu_A must be boolean: nu_A * (nu_A - 1) = 0
-    constraints.push((nu_a.clone() * (nu_a.clone() - one())).into());
-
-    // Execution bus for JUMP: conditional branching
-    // next_pc = nu_A * nu_B + (1 - nu_A) * (pc + 1)
-    // next_fp = nu_A * nu_C + (1 - nu_A) * fp
-    let next_pc = nu_a.clone() * nu_b + (one() - nu_a.clone()) * (pc.clone() + one());
-    let next_fp = nu_a.clone() * nu_c + (one() - nu_a) * fp.clone();
-
-    let minus_one: Expr = AlgebraicExpression::from(BabyBearField::from(-1i64));
-    let bus_interactions = vec![
-        // Receive current state
-        SymbolicBusInteraction {
-            id: EXEC_BUS_ID,
-            mult: minus_one,
-            args: vec![pc, fp],
-        },
-        // Send next state
-        SymbolicBusInteraction {
-            id: EXEC_BUS_ID,
-            mult: one(),
-            args: vec![next_pc, next_fp],
+            args: vec![
+                col(OPERAND_A, "operand_A"),
+                col(OPERAND_B, "operand_B"),
+                col(OPERAND_C, "operand_C"),
+                col(FLAG_A, "flag_A"),
+                col(FLAG_B, "flag_B"),
+                col(FLAG_C, "flag_C"),
+                col(FLAG_C_FP, "flag_C_fp"),
+                col(FLAG_AB_FP, "flag_AB_fp"),
+                col(COL_MUL, "MUL"),
+                col(COL_JUMP, "JUMP"),
+                col(COL_AUX, "AUX"),
+                col(PRECOMPILE_DATA, "PRECOMPILE_DATA"),
+                col(PC, "pc"),
+            ],
         },
     ];
 
-    let mut all_bus = bus_interactions;
-    all_bus.extend(memory_bus_interactions());
-    all_bus.push(pc_lookup_interaction());
-
     SymbolicMachine {
         constraints,
-        bus_interactions: all_bus,
+        bus_interactions,
         derived_columns: vec![],
     }
+}
+
+/// Rebuild nu_B from scratch (needed for the execution bus send to avoid expression cloning issues).
+/// nu_B = flag_B * operand_B + (1 - flag_B - flag_AB_fp) * value_B + flag_AB_fp * (fp + operand_B)
+fn nu_b_for_jump() -> Expr {
+    let fp = col(FP, "fp");
+    let value_b = col(VALUE_B, "value_B");
+    let operand_b = col(OPERAND_B, "operand_B");
+    let flag_b = col(FLAG_B, "flag_B");
+    let flag_ab_fp = col(FLAG_AB_FP, "flag_AB_fp");
+
+    flag_b.clone() * operand_b.clone()
+        + (one() - flag_b - flag_ab_fp.clone()) * value_b
+        + flag_ab_fp * (fp + operand_b)
+}
+
+/// Rebuild nu_C from scratch for the execution bus send.
+/// nu_C = flag_C * operand_C + (1 - flag_C - flag_C_fp) * value_C + flag_C_fp * (fp + operand_C)
+fn nu_c_for_jump() -> Expr {
+    let fp = col(FP, "fp");
+    let value_c = col(VALUE_C, "value_C");
+    let operand_c = col(OPERAND_C, "operand_C");
+    let flag_c = col(FLAG_C, "flag_C");
+    let flag_c_fp = col(FLAG_C_FP, "flag_C_fp");
+
+    flag_c.clone() * operand_c.clone()
+        + (one() - flag_c - flag_c_fp.clone()) * value_c
+        + flag_c_fp * (fp + operand_c)
 }

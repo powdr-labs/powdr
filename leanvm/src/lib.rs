@@ -61,25 +61,26 @@ impl ExecutionState for LeanVmExecutionState {
     type Value = u64;
 
     fn pc(&self) -> Self::Value {
-        0
+        unimplemented!()
     }
 
     fn value_limb(_value: Self::Value, _limb_index: usize) -> Self::Value {
-        0
+        unimplemented!()
     }
 
     fn reg(&self, _address: &Self::RegisterAddress) -> Self::Value {
-        0
+        unimplemented!()
     }
 
     fn global_clk(&self) -> usize {
-        0
+        unimplemented!()
     }
 }
 
 pub struct LeanVmAdapter;
 
 impl Adapter for LeanVmAdapter {
+    // TODO: Change to KoalaBearField
     type Field = BabyBearField;
     type PowdrField = BabyBearField;
     type InstructionHandler = LeanVmInstructionHandler;
@@ -89,7 +90,7 @@ impl Adapter for LeanVmAdapter {
     type MemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash> = LeanVmMemoryBusInteraction<V>;
     type CustomBusTypes = LeanVmCustomBusType;
     type ApcStats = ();
-    type AirId = LeanVmOpcode;
+    type AirId = String;
     type ExecutionState = LeanVmExecutionState;
 
     fn into_field(e: Self::PowdrField) -> Self::Field {
