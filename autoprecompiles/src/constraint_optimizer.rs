@@ -27,7 +27,6 @@ use crate::{
     memory_optimizer::{optimize_memory, MemoryBusInteraction},
     range_constraint_optimizer::RangeConstraintHandler,
     stats_logger::StatsLogger,
-    wom_memory_optimizer::{optimize_wom_memory, WomMemoryBusInteraction},
 };
 
 #[derive(Debug)]
@@ -52,7 +51,6 @@ pub fn optimize_constraints<
     P: FieldElement,
     V: Ord + Clone + Eq + Hash + Display + Serialize,
     M: MemoryBusInteraction<P, V>,
-    W: WomMemoryBusInteraction<P, V>,
 >(
     constraint_system: IndexedConstraintSystem<P, V>,
     solver: &mut impl Solver<P, V>,
@@ -135,11 +133,8 @@ pub fn optimize_constraints<
     stats_logger.log("memory optimization", &constraint_system);
     export_options.export_optimizer_inner_constraint_system(&constraint_system, "memory");
 
-    let constraint_system =
-        optimize_wom_memory::<_, _, W>(constraint_system, solver, memory_bus_id);
-
-    stats_logger.log("WOM memory optimization", &constraint_system);
-    export_options.export_optimizer_inner_constraint_system(&constraint_system, "wom_memory");
+    // Note: WOM memory optimization is done in the outer optimizer after inlining,
+    // because address variables need to be fully substituted first.
 
     let constraint_system = LowDegreeBusInteractionOptimizer::new(
         solver,

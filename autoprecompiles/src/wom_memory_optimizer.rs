@@ -1,10 +1,11 @@
 //! Optimizer for Write-Once Memory (WOM).
 //!
 //! In WOM, each address is written exactly once and every read returns that same value.
-//! Order does not matter. If two bus interactions access the same symbolic address,
-//! their data fields must be equal and all but the first interaction can be removed.
+//! Order does not matter. If two bus interactions access the same address (as determined
+//! by the solver), their data fields must be equal and all but the first interaction
+//! can be removed.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fmt::Display;
 use std::hash::Hash;
 
@@ -68,24 +69,17 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> WomMemoryBusInteract
     }
 }
 
-/// A WOM address, wrapped for Eq/Hash.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-struct WomAddress<T, V>(Vec<GroupedExpression<T, V>>);
-
-impl<I, T, V> From<I> for WomAddress<T, V>
-where
-    I: IntoIterator<Item = GroupedExpression<T, V>>,
-{
-    fn from(exprs: I) -> Self {
-        Self(exprs.into_iter().collect())
-    }
+struct WomInteraction<T, V> {
+    bus_index: usize,
+    addr: Vec<GroupedExpression<T, V>>,
+    data: Vec<GroupedExpression<T, V>>,
 }
 
 /// Optimizes write-once memory bus interactions.
 ///
-/// For each group of interactions accessing the same symbolic address:
+/// For each pair of interactions where the solver can prove the addresses are equal:
 /// - Adds equality constraints between their data fields
-/// - Removes all but the first interaction
+/// - Removes the duplicate interaction
 pub fn optimize_wom_memory<
     T: FieldElement,
     V: Hash + Eq + Clone + Ord + Display,
@@ -100,35 +94,63 @@ pub fn optimize_wom_memory<
         None => return system,
     };
 
-    let mut new_constraints = Vec::new();
-    // Maps address -> (bus_interaction_index, data)
-    let mut seen: HashMap<WomAddress<T, V>, (usize, Vec<GroupedExpression<T, V>>)> = HashMap::new();
-    let mut to_remove = HashSet::new();
+    // Collect all WOM interactions, substituting addresses where the solver
+    // can determine them. This is important because the address columns
+    // (addr_A_0, addr_B_0, etc.) may not have been substituted into bus
+    // interaction payloads yet, even though the solver knows their values.
+    let mut wom_interactions: Vec<WomInteraction<T, V>> = Vec::new();
 
     for (index, bus_int) in system.bus_interactions.iter().enumerate() {
         let wom_int = match M::try_from_bus_interaction(bus_int, memory_bus_id) {
             Ok(Some(wom_int)) => wom_int,
             Ok(None) => continue,
-            Err(_) => {
-                // Unknown interaction on this bus — clear knowledge to be safe.
-                seen.clear();
-                continue;
-            }
+            Err(_) => continue,
         };
 
-        let addr: WomAddress<T, V> = wom_int.addr().into();
-        let data = wom_int.data().to_vec();
+        let addr: Vec<_> = wom_int.addr().into_iter().collect();
+        wom_interactions.push(WomInteraction {
+            bus_index: index,
+            addr,
+            data: wom_int.data().to_vec(),
+        });
+    }
 
-        if let Some((_first_index, existing_data)) = seen.get(&addr) {
-            // Same address seen before: constrain data to be equal, remove this interaction.
-            for (existing, new) in existing_data.iter().zip_eq(data.iter()) {
-                new_constraints.push(AlgebraicConstraint::assert_zero(
-                    existing.clone() - new.clone(),
-                ));
+    let mut new_constraints = Vec::new();
+    let mut to_remove = HashSet::new();
+
+    // For each pair of WOM interactions, check if they access the same address.
+    // Use the solver to determine equality (handles substituted variables).
+    for i in 0..wom_interactions.len() {
+        if to_remove.contains(&wom_interactions[i].bus_index) {
+            continue;
+        }
+        for j in (i + 1)..wom_interactions.len() {
+            if to_remove.contains(&wom_interactions[j].bus_index) {
+                continue;
             }
-            to_remove.insert(index);
-        } else {
-            seen.insert(addr, (index, data));
+            let a = &wom_interactions[i];
+            let b = &wom_interactions[j];
+
+            // Check if all address components are known to be equal
+            if a.addr.len() != b.addr.len() {
+                continue;
+            }
+            let addrs_equal = a.addr.iter().zip(b.addr.iter()).all(|(x, y)| {
+                if x == y {
+                    return true;
+                }
+                let diff = x.clone() - y.clone();
+                solver.try_to_equivalent_constant(&diff) == Some(T::zero())
+            });
+            if addrs_equal {
+                // Same address: constrain data to be equal, remove the second interaction
+                for (existing, new) in a.data.iter().zip_eq(b.data.iter()) {
+                    new_constraints.push(AlgebraicConstraint::assert_zero(
+                        existing.clone() - new.clone(),
+                    ));
+                }
+                to_remove.insert(b.bus_index);
+            }
         }
     }
 

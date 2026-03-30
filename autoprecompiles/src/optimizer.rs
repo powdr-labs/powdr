@@ -3,7 +3,7 @@ use std::fmt::Display;
 use std::hash::Hash;
 
 use itertools::Itertools;
-use powdr_constraint_solver::constraint_system::BusInteractionHandler;
+use powdr_constraint_solver::constraint_system::{BusInteractionHandler, ConstraintSystem};
 use powdr_constraint_solver::grouped_expression::GroupedExpression;
 use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
 use powdr_constraint_solver::inliner::{self, inline_everything_below_degree_bound};
@@ -96,7 +96,7 @@ where
         export_options
             .export_optimizer_outer_constraint_system(constraint_system.system(), "loop_iteration");
         let stats = stats_logger::Stats::from(&constraint_system);
-        constraint_system = optimize_constraints::<_, _, MemoryBus, WomMemoryBus>(
+        constraint_system = optimize_constraints::<_, _, MemoryBus>(
             constraint_system,
             &mut solver,
             bus_interaction_handler.clone(),
@@ -118,6 +118,19 @@ where
     stats_logger.log("inlining", &constraint_system);
     export_options.register_substituted_variables(substitutions);
     export_options.export_optimizer_outer_constraint_system(constraint_system.system(), "inlining");
+
+    // WOM optimization runs after inlining so that address variables have been
+    // fully substituted (e.g., addr_B_0 → fp_0 + 3).
+    let constraint_system: IndexedConstraintSystem<_, _> = {
+        let system: ConstraintSystem<_, _> = constraint_system.into();
+        let system = crate::wom_memory_optimizer::optimize_wom_memory::<_, _, WomMemoryBus>(
+            system,
+            &mut solver,
+            bus_map.get_bus_id(&BusType::Memory),
+        );
+        stats_logger.log("WOM memory optimization", &system);
+        system.into()
+    };
 
     let constraint_system = constraint_optimizer::remove_disconnected_columns(
         constraint_system,
