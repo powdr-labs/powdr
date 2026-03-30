@@ -13,6 +13,9 @@ use test_log::test;
 /// Compile a program, extract basic blocks, and snapshot each one.
 fn compile_and_snapshot(program: &str, test_prefix: &str) {
     let bytecode = compile_program(&ProgramSource::Raw(program.to_string()));
+    for instr in &bytecode.instructions {
+        println!("{instr}");
+    }
     let blocks = common::extract_basic_blocks(&bytecode);
     assert!(!blocks.is_empty(), "no basic blocks extracted");
     for (i, bb) in blocks.into_iter().enumerate() {
@@ -33,6 +36,31 @@ def main():
     return
 "#,
         "simple_arithmetic",
+    );
+}
+
+#[test]
+fn factorial() {
+    compile_and_snapshot(
+        r#"
+def main():
+    n = 16
+    res = Array(n)
+    for i in parallel_range(0, n):
+        res[i] = factorial(10000)
+    sum: Mut = 0
+    for i in range(0, n):
+        sum = sum + res[i]
+    print(sum)
+    return
+
+def factorial(n):
+    if n == 0:
+        return 1
+    else:
+        return n * factorial(n - 1)
+"#,
+        "factorial",
     );
 }
 
