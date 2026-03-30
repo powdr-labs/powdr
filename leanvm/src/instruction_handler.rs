@@ -3,7 +3,7 @@ use powdr_autoprecompiles::symbolic_machine::SymbolicMachine;
 use powdr_autoprecompiles::InstructionHandler;
 use powdr_number::BabyBearField;
 
-use crate::instruction::{LeanVmInstruction, LeanVmOpcode};
+use crate::instruction::{LeanVmInstruction};
 use crate::symbolic_machines::build_execution_machine;
 
 pub use powdr_autoprecompiles::DegreeBound;
@@ -35,7 +35,7 @@ impl LeanVmInstructionHandler {
 impl InstructionHandler for LeanVmInstructionHandler {
     type Field = BabyBearField;
     type Instruction = LeanVmInstruction;
-    type AirId = LeanVmOpcode;
+    type AirId = String;
 
     fn degree_bound(&self) -> DegreeBound {
         self.degree_bound
@@ -43,10 +43,10 @@ impl InstructionHandler for LeanVmInstructionHandler {
 
     fn get_instruction_air_and_id(
         &self,
-        instruction: &Self::Instruction,
+        _instruction: &Self::Instruction,
     ) -> (Self::AirId, &SymbolicMachine<Self::Field>) {
         // All instructions use the same single AIR.
-        (instruction.opcode(), &self.machine)
+        ("Main".to_string(), &self.machine)
     }
 
     fn get_instruction_air_stats(&self, _instruction: &Self::Instruction) -> AirStats {

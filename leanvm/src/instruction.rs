@@ -8,26 +8,6 @@ use powdr_autoprecompiles::blocks::{Instruction, PcStep};
 use powdr_number::BabyBearField;
 use serde::{Deserialize, Serialize};
 
-/// Opcode type for LeanVM instructions, used as AirId.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum LeanVmOpcode {
-    Add,
-    Mul,
-    Deref,
-    Jump,
-}
-
-impl Display for LeanVmOpcode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            LeanVmOpcode::Add => write!(f, "ADD"),
-            LeanVmOpcode::Mul => write!(f, "MUL"),
-            LeanVmOpcode::Deref => write!(f, "DEREF"),
-            LeanVmOpcode::Jump => write!(f, "JUMP"),
-        }
-    }
-}
-
 /// A LeanVM instruction wrapping the upstream `lean_vm::Instruction` type.
 ///
 /// The 12 instruction columns from the bytecode are:
@@ -37,21 +17,6 @@ impl Display for LeanVmOpcode {
 pub struct LeanVmInstruction(pub UpstreamInstruction);
 
 impl LeanVmInstruction {
-    pub fn opcode(&self) -> LeanVmOpcode {
-        match &self.0 {
-            UpstreamInstruction::Computation {
-                operation: Operation::Add,
-                ..
-            } => LeanVmOpcode::Add,
-            UpstreamInstruction::Computation {
-                operation: Operation::Mul,
-                ..
-            } => LeanVmOpcode::Mul,
-            UpstreamInstruction::Deref { .. } => LeanVmOpcode::Deref,
-            UpstreamInstruction::Jump { .. } => LeanVmOpcode::Jump,
-            UpstreamInstruction::Precompile { .. } => unimplemented!("Precompile opcode"),
-        }
-    }
 
     /// Returns the 12 instruction column values matching the upstream encoding:
     /// [operand_A, operand_B, operand_C, flag_A, flag_B, flag_C, flag_C_fp, flag_AB_fp,
@@ -181,7 +146,6 @@ impl Serialize for LeanVmInstruction {
         use serde::ser::SerializeStruct;
         let cols = self.instruction_columns();
         let mut state = serializer.serialize_struct("LeanVmInstruction", 2)?;
-        state.serialize_field("opcode", &self.opcode())?;
         state.serialize_field("columns", &cols)?;
         state.end()
     }
