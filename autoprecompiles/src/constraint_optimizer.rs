@@ -453,7 +453,7 @@ fn variables_in_stateful_bus_interactions<'a, P: FieldElement, V: Ord + Clone + 
 
 /// Tries to simplify algebraic constraints and bus interaction fields by performing exhaustive
 /// search over variables with few possible values. If all assignments (that do not lead to a
-/// violated algebraic cosntraint) turn the expression into the same, simpler expression,
+/// violated algebraic constraints) turn the expression into the same, simpler expression,
 /// the expression is substituted, but we also add a new algebraic constraint that forces
 /// the old and the new version to be equal because we do not know where the constraints on
 /// the variables come from.
