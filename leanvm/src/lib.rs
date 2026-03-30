@@ -4,6 +4,7 @@ pub mod instruction_handler;
 pub mod memory_bus_interaction;
 pub mod symbolic_machines;
 pub mod test_utils;
+pub mod wom_memory_bus_interaction;
 
 use std::fmt::Display;
 use std::hash::Hash;
@@ -21,6 +22,7 @@ use instruction::{LeanVmInstruction, LeanVmOpcode};
 use instruction_handler::LeanVmInstructionHandler;
 use memory_bus_interaction::LeanVmMemoryBusInteraction;
 use symbolic_machines::{EXEC_BUS_ID, MEMORY_BUS_ID, PC_LOOKUP_BUS_ID};
+use wom_memory_bus_interaction::LeanVmWomMemoryBusInteraction;
 
 // Re-exports for tests
 pub use instruction::{add, deref, jump, mul};
@@ -88,6 +90,8 @@ impl Adapter for LeanVmAdapter {
     type Program = LeanVmProgram;
     type Instruction = LeanVmInstruction<BabyBearField>;
     type MemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash> = LeanVmMemoryBusInteraction<V>;
+    type WomMemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash> =
+        LeanVmWomMemoryBusInteraction<V>;
     type CustomBusTypes = LeanVmCustomBusType;
     type ApcStats = ();
     type AirId = String;

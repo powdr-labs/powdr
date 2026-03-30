@@ -54,7 +54,13 @@ fn test_optimize() {
     assert!(machine.derived_columns.is_empty());
 
     let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&machine);
-    let machine = optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
+    let machine = optimize::<
+        _,
+        _,
+        _,
+        OpenVmMemoryBusInteraction<_, _>,
+        powdr_autoprecompiles::wom_memory_optimizer::NoWomMemory<_, _>,
+    >(
         machine,
         OpenVmBusInteractionHandler::default(),
         DEFAULT_DEGREE_BOUND,
@@ -89,7 +95,13 @@ fn test_ecrecover() {
     assert!(machine.derived_columns.is_empty());
 
     let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&machine);
-    let machine = optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
+    let machine = optimize::<
+        _,
+        _,
+        _,
+        OpenVmMemoryBusInteraction<_, _>,
+        powdr_autoprecompiles::wom_memory_optimizer::NoWomMemory<_, _>,
+    >(
         machine,
         OpenVmBusInteractionHandler::default(),
         DEFAULT_DEGREE_BOUND,
@@ -124,7 +136,13 @@ fn test_sha256() {
     assert!(machine.derived_columns.is_empty());
     let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&machine);
 
-    let machine = optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
+    let machine = optimize::<
+        _,
+        _,
+        _,
+        OpenVmMemoryBusInteraction<_, _>,
+        powdr_autoprecompiles::wom_memory_optimizer::NoWomMemory<_, _>,
+    >(
         machine,
         OpenVmBusInteractionHandler::default(),
         DEFAULT_DEGREE_BOUND,
@@ -159,7 +177,13 @@ fn test_single_div_nondet() {
     assert!(machine.derived_columns.is_empty());
     let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&machine);
 
-    let machine = optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
+    let machine = optimize::<
+        _,
+        _,
+        _,
+        OpenVmMemoryBusInteraction<_, _>,
+        powdr_autoprecompiles::wom_memory_optimizer::NoWomMemory<_, _>,
+    >(
         machine,
         OpenVmBusInteractionHandler::default(),
         DEFAULT_DEGREE_BOUND,
@@ -218,7 +242,13 @@ fn test_optimize_reth_op() {
     let bus_int_handler = OpenVmBusInteractionHandler::new(bus_map.clone());
 
     let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&machine);
-    let machine = optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
+    let machine = optimize::<
+        _,
+        _,
+        _,
+        OpenVmMemoryBusInteraction<_, _>,
+        powdr_autoprecompiles::wom_memory_optimizer::NoWomMemory<_, _>,
+    >(
         machine,
         bus_int_handler,
         DEFAULT_DEGREE_BOUND,

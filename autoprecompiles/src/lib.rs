@@ -50,6 +50,7 @@ pub mod range_constraint_optimizer;
 mod stats_logger;
 pub mod symbolic_machine;
 pub mod symbolic_machine_generator;
+pub mod wom_memory_optimizer;
 pub use pgo::{PgoConfig, PgoType};
 pub use powdr_constraint_solver::inliner::DegreeBound;
 pub mod equivalence_classes;
@@ -352,14 +353,15 @@ pub fn build<A: Adapter>(
     metrics::counter!("before_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
 
-    let (machine, column_allocator) = optimizer::optimize::<_, _, _, A::MemoryBusInteraction<_>>(
-        machine,
-        vm_config.bus_interaction_handler,
-        degree_bound,
-        &vm_config.bus_map,
-        column_allocator,
-        &mut export_options,
-    )?;
+    let (machine, column_allocator) =
+        optimizer::optimize::<_, _, _, A::MemoryBusInteraction<_>, A::WomMemoryBusInteraction<_>>(
+            machine,
+            vm_config.bus_interaction_handler,
+            degree_bound,
+            &vm_config.bus_map,
+            column_allocator,
+            &mut export_options,
+        )?;
 
     // add guards to constraints that are not satisfied by zeroes
     let (machine, column_allocator) = add_guards(machine, column_allocator);

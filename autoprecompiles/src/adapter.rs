@@ -16,6 +16,7 @@ use crate::{
     constraint_optimizer::IsBusStateful,
     memory_optimizer::MemoryBusInteraction,
     range_constraint_optimizer::RangeConstraintHandler,
+    wom_memory_optimizer::WomMemoryBusInteraction,
     Apc, InstructionHandler, PowdrConfig, VmConfig,
 };
 
@@ -113,6 +114,10 @@ where
     type Program: Program<Self::Instruction> + Send;
     type Instruction: Instruction<Self::Field> + Serialize + for<'de> Deserialize<'de> + Send + Sync;
     type MemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash>: MemoryBusInteraction<
+        Self::PowdrField,
+        V,
+    >;
+    type WomMemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash>: WomMemoryBusInteraction<
         Self::PowdrField,
         V,
     >;

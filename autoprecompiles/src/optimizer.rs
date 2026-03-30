@@ -20,6 +20,7 @@ use crate::symbolic_machine::{
     constraint_system_to_symbolic_machine, symbolic_machine_to_constraint_system,
     SymbolicConstraint,
 };
+use crate::wom_memory_optimizer::WomMemoryBusInteraction;
 use crate::ColumnAllocator;
 use crate::{
     constraint_optimizer::optimize_constraints,
@@ -31,7 +32,7 @@ use crate::{
 /// Optimizes a given symbolic machine and returns an equivalent, but "simpler" one.
 /// All constraints in the returned machine will respect the given degree bound.
 /// New variables may be introduced in the process.
-pub fn optimize<T, B, BusTypes, MemoryBus>(
+pub fn optimize<T, B, BusTypes, MemoryBus, WomMemoryBus>(
     mut machine: SymbolicMachine<T>,
     bus_interaction_handler: B,
     degree_bound: DegreeBound,
@@ -44,6 +45,7 @@ where
     B: BusInteractionHandler<T> + IsBusStateful<T> + RangeConstraintHandler<T> + Clone,
     BusTypes: PartialEq + Eq + Clone + Display,
     MemoryBus: MemoryBusInteraction<T, AlgebraicReference>,
+    WomMemoryBus: WomMemoryBusInteraction<T, AlgebraicReference>,
 {
     let mut stats_logger = StatsLogger::start(&machine);
 
@@ -94,7 +96,7 @@ where
         export_options
             .export_optimizer_outer_constraint_system(constraint_system.system(), "loop_iteration");
         let stats = stats_logger::Stats::from(&constraint_system);
-        constraint_system = optimize_constraints::<_, _, MemoryBus>(
+        constraint_system = optimize_constraints::<_, _, MemoryBus, WomMemoryBus>(
             constraint_system,
             &mut solver,
             bus_interaction_handler.clone(),
