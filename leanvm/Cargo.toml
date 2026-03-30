@@ -1,0 +1,19 @@
+[package]
+name = "powdr-leanvm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+powdr-autoprecompiles = { path = "../autoprecompiles" }
+powdr-constraint-solver = { path = "../constraint-solver" }
+powdr-expression = { path = "../expression" }
+powdr-number = { path = "../number" }
+
+serde = { version = "1.0", features = ["derive"] }
+itertools = "0.13"
+metrics = "0.24"
+pretty_assertions = "1"
+
+[dev-dependencies]
+test-log = "0.2"

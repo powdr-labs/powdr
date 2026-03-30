@@ -1,0 +1,26 @@
+Instructions:
+  0: ADD a=5, b=3, c=7, fA=0, fB=0, fC=1, fCfp=0, fABfp=0
+
+APC advantage:
+  - Main columns: 20 -> 5 (4.00x reduction)
+  - Bus interactions: 6 -> 5 (1.20x reduction)
+  - Constraints: 4 -> 1 (4.00x reduction)
+
+Symbolic machine using 5 unique main columns:
+  fp_0
+  addr_C_0
+  value_A_0
+  value_C_0
+  is_valid
+
+// Bus 0 (EXECUTION_BRIDGE):
+mult=is_valid * -1, args=[0, fp_0]
+mult=is_valid * 1, args=[1, fp_0]
+
+// Bus 1 (MEMORY):
+mult=is_valid * 1, args=[fp_0 + 5, value_A_0]
+mult=is_valid * 1, args=[fp_0 + 3, value_A_0 + 7]
+mult=is_valid * 1, args=[addr_C_0, value_C_0]
+
+// Algebraic constraints:
+is_valid * (is_valid - 1) = 0
