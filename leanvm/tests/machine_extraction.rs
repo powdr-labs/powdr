@@ -1,7 +1,7 @@
 use std::{fs, io, path::Path};
 
-use powdr_leanvm::symbolic_machines::build_execution_machine;
 use powdr_leanvm::leanvm_bus_map;
+use powdr_leanvm::symbolic_machines::build_execution_machine;
 use pretty_assertions::assert_eq;
 
 #[test]
