@@ -1,0 +1,34 @@
+Instructions:
+  1: 0 = 0 + m[fp + 2]
+  2: if 1 != 0 jump to @end_program = 0 with next(fp) = m[fp + 2]
+
+APC advantage:
+  - Main columns: 40 -> 10 (4.00x reduction)
+  - Bus interactions: 12 -> 7 (1.71x reduction)
+  - Constraints: 16 -> 1 (16.00x reduction)
+
+Symbolic machine using 10 unique main columns:
+  fp_0
+  addr_A_0
+  addr_B_0
+  value_A_0
+  value_B_0
+  addr_A_1
+  addr_B_1
+  value_A_1
+  value_B_1
+  is_valid
+
+// Bus 0 (EXECUTION_BRIDGE):
+mult=is_valid * -1, args=[1, fp_0]
+mult=is_valid * 1, args=[0, 0]
+
+// Bus 1 (MEMORY):
+mult=is_valid * 1, args=[addr_A_0, value_A_0]
+mult=is_valid * 1, args=[addr_B_0, value_B_0]
+mult=is_valid * 1, args=[fp_0 + 2, 0]
+mult=is_valid * 1, args=[addr_A_1, value_A_1]
+mult=is_valid * 1, args=[addr_B_1, value_B_1]
+
+// Algebraic constraints:
+is_valid * (is_valid - 1) = 0
