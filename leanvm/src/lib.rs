@@ -6,10 +6,12 @@ pub mod symbolic_machines;
 pub mod test_utils;
 pub mod wom_memory_bus_interaction;
 
+use std::collections::BTreeSet;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::sync::Arc;
 
+use lean_vm::{Bytecode, Hint};
 use powdr_autoprecompiles::adapter::{Adapter, AdapterApc};
 use powdr_autoprecompiles::blocks::Program;
 use powdr_autoprecompiles::bus_map::{BusMap, BusType};
@@ -38,8 +40,26 @@ impl Display for LeanVmCustomBusType {
     }
 }
 
-/// Stub program type (not needed for snapshot tests).
-pub struct LeanVmProgram;
+/// Program type wrapping LeanVM bytecode.
+pub struct LeanVmProgram {
+    pub bytecode: Bytecode,
+}
+
+impl LeanVmProgram {
+    pub fn new(bytecode: Bytecode) -> Self {
+        Self { bytecode }
+    }
+
+    /// Extract jump destination PCs from label hints.
+    pub fn jumpdest_set(&self) -> BTreeSet<u64> {
+        self.bytecode
+            .hints
+            .iter()
+            .filter(|(_, hints)| hints.iter().any(|h| matches!(h, Hint::Label { .. })))
+            .map(|(pc, _)| *pc as u64)
+            .collect()
+    }
+}
 
 impl Program<LeanVmInstruction> for LeanVmProgram {
     fn base_pc(&self) -> u64 {
@@ -47,11 +67,16 @@ impl Program<LeanVmInstruction> for LeanVmProgram {
     }
 
     fn instructions(&self) -> Box<dyn Iterator<Item = LeanVmInstruction> + '_> {
-        Box::new(std::iter::empty())
+        Box::new(
+            self.bytecode
+                .instructions
+                .iter()
+                .map(|i| LeanVmInstruction(i.clone())),
+        )
     }
 
     fn length(&self) -> u32 {
-        0
+        self.bytecode.instructions.len() as u32
     }
 }
 
@@ -114,8 +139,13 @@ impl Adapter for LeanVmAdapter {
         matches!(instr.0, lean_vm::Instruction::Jump { .. })
     }
 
-    fn is_allowed(_instr: &Self::Instruction) -> bool {
-        true
+    fn is_allowed(instr: &Self::Instruction) -> bool {
+        match instr.0 {
+            lean_vm::Instruction::Computation { .. }
+            | lean_vm::Instruction::Deref { .. }
+            | lean_vm::Instruction::Jump { .. } => true,
+            lean_vm::Instruction::Precompile { .. } => false,
+        }
     }
 }
 
