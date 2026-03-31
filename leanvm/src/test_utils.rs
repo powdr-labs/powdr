@@ -29,7 +29,7 @@ pub fn compile_apc(superblock: SuperBlock<LeanVmInstruction>) -> String {
         .map(|(pc, inst)| format!("  {pc:>max_pc_digits$}: {inst}"))
         .join("\n");
 
-    let apc = build::<LeanVmAdapter>(
+    let (apc, _pre_opt_stats) = build::<LeanVmAdapter>(
         superblock,
         vm_config.clone(),
         degree_bound,

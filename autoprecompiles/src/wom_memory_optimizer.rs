@@ -201,7 +201,11 @@ fn remove_dead_wom_reads<
                     .addr()
                     .into_iter()
                     .chain(wom_int.data().iter().cloned())
-                    .flat_map(|expr| expr.referenced_unknown_variables().cloned().collect::<Vec<_>>())
+                    .flat_map(|expr| {
+                        expr.referenced_unknown_variables()
+                            .cloned()
+                            .collect::<Vec<_>>()
+                    })
                     .collect();
                 if !vars.is_empty() {
                     wom_indices.push(index);

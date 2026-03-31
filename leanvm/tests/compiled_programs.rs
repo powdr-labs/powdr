@@ -1,6 +1,7 @@
 mod common;
 
 use std::collections::BTreeMap;
+use std::path::Path;
 
 use lean_compiler::{compile_program, ProgramSource};
 use lean_vm::{
@@ -8,6 +9,13 @@ use lean_vm::{
     NONRESERVED_PROGRAM_INPUT_START,
 };
 use lean_vm_backend::{PrimeCharacteristicRing, DIGEST_ELEMS};
+use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
+use powdr_autoprecompiles::evaluation::AirStats;
+use powdr_autoprecompiles::export::ExportOptions;
+use powdr_autoprecompiles::{build, VmConfig};
+use powdr_leanvm::bus_interaction_handler::LeanVmBusInteractionHandler;
+use powdr_leanvm::instruction_handler::LeanVmInstructionHandler;
+use powdr_leanvm::{leanvm_bus_map, LeanVmAdapter, DEFAULT_DEGREE_BOUND};
 use test_log::test;
 
 /// Compile a program, extract basic blocks, and snapshot each one.
@@ -510,4 +518,70 @@ fn u32_add_programmatic() {
         let test_name = format!("u32_add_programmatic_block_{i}");
         common::assert_machine_output(bb.into(), "compiled_programs", &test_name);
     }
+}
+
+#[test]
+#[ignore = "slow compilation"]
+fn aggregation_bytecode() {
+    rec_aggregation::init_aggregation_bytecode();
+    let bytecode = rec_aggregation::get_aggregation_bytecode();
+
+    let blocks = common::extract_basic_blocks(bytecode);
+    assert!(!blocks.is_empty(), "no basic blocks extracted");
+
+    let degree_bound = DEFAULT_DEGREE_BOUND;
+    let instruction_handler = LeanVmInstructionHandler::new(degree_bound);
+    let bus_map = leanvm_bus_map();
+
+    let mut csv = String::from(
+        "start_pc,num_instructions,columns_before,constraints_before,bus_interactions_before,columns_after,constraints_after,bus_interactions_after\n",
+    );
+
+    for bb in &blocks {
+        let start_pc = bb.start_pc;
+        let num_instructions = bb.instructions.len();
+
+        let vm_config = VmConfig {
+            instruction_handler: &instruction_handler,
+            bus_interaction_handler: LeanVmBusInteractionHandler,
+            bus_map: bus_map.clone(),
+        };
+
+        let result = build::<LeanVmAdapter>(
+            bb.clone().into(),
+            vm_config,
+            degree_bound,
+            ExportOptions::default(),
+            &EmpiricalConstraints::default(),
+        );
+
+        let Ok((apc, pre_opt_stats)) = result else {
+            println!(
+                "Skipping block at PC {start_pc} ({num_instructions} instructions): build failed"
+            );
+            continue;
+        };
+
+        let post_opt_stats = AirStats::new(apc.machine());
+
+        csv.push_str(&format!(
+            "{start_pc},{num_instructions},{},{},{},{},{},{}\n",
+            pre_opt_stats.main_columns,
+            pre_opt_stats.constraints,
+            pre_opt_stats.bus_interactions,
+            post_opt_stats.main_columns,
+            post_opt_stats.constraints,
+            post_opt_stats.bus_interactions,
+        ));
+    }
+
+    let snapshot_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("apc_snapshots");
+    powdr_leanvm::test_utils::assert_apc_snapshot(
+        &csv,
+        &snapshot_dir,
+        "compiled_programs",
+        "aggregation_bytecode",
+    );
 }
