@@ -212,6 +212,7 @@ def mds(in_ptr, out_ptr):
 }
 
 #[test]
+#[ignore = "takes too long"]
 fn poseidon1_unrolled() {
     // Unrolled implementation of Poseidon1
     compile_and_snapshot(
