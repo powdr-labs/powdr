@@ -5,24 +5,16 @@ Instructions:
   88: if 1 != 0 jump to @end_program = 0 with next(fp) = m[fp + 27]
 
 APC advantage:
-  - Main columns: 80 -> 14 (5.71x reduction)
-  - Bus interactions: 24 -> 12 (2.00x reduction)
+  - Main columns: 80 -> 6 (13.33x reduction)
+  - Bus interactions: 24 -> 8 (3.00x reduction)
   - Constraints: 32 -> 2 (16.00x reduction)
 
-Symbolic machine using 14 unique main columns:
+Symbolic machine using 6 unique main columns:
   fp_0
   value_A_0
   value_B_0
   addr_B_1
   value_B_1
-  addr_A_2
-  addr_B_2
-  value_A_2
-  value_B_2
-  addr_A_3
-  addr_B_3
-  value_A_3
-  value_B_3
   is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):
@@ -35,11 +27,7 @@ mult=is_valid * 1, args=[fp_0 + 26, value_B_0]
 mult=is_valid * 1, args=[fp_0 + 21, value_B_0 - value_A_0]
 mult=is_valid * 1, args=[addr_B_1, value_B_1]
 mult=is_valid * 1, args=[fp_0 + 25, value_B_1]
-mult=is_valid * 1, args=[addr_A_2, value_A_2]
-mult=is_valid * 1, args=[addr_B_2, value_B_2]
 mult=is_valid * 1, args=[fp_0 + 27, 0]
-mult=is_valid * 1, args=[addr_A_3, value_A_3]
-mult=is_valid * 1, args=[addr_B_3, value_B_3]
 
 // Algebraic constraints:
 value_B_0 - addr_B_1 = 0

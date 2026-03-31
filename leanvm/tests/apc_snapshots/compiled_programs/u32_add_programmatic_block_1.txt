@@ -24,16 +24,12 @@ Instructions:
   23: if 1 != 0 jump to @end_program = 0 with next(fp) = 0
 
 APC advantage:
-  - Main columns: 460 -> 52 (8.85x reduction)
-  - Bus interactions: 138 -> 41 (3.37x reduction)
+  - Main columns: 460 -> 34 (13.53x reduction)
+  - Bus interactions: 138 -> 32 (4.31x reduction)
   - Constraints: 184 -> 25 (7.36x reduction)
 
-Symbolic machine using 52 unique main columns:
+Symbolic machine using 34 unique main columns:
   fp_0
-  addr_A_0
-  addr_B_0
-  value_A_0
-  value_B_0
   value_B_1
   value_B_2
   value_B_3
@@ -44,8 +40,6 @@ Symbolic machine using 52 unique main columns:
   value_B_7
   value_A_8
   value_B_8
-  addr_A_9
-  value_A_9
   value_B_9
   value_A_10
   value_C_10
@@ -55,31 +49,19 @@ Symbolic machine using 52 unique main columns:
   value_B_12
   value_A_13
   value_B_13
-  addr_A_14
-  value_A_14
   value_B_14
   value_A_15
   value_C_15
   addr_B_16
   value_B_16
-  addr_B_17
   value_A_17
-  value_B_17
   addr_B_18
   value_B_18
   addr_B_19
   value_B_19
-  addr_B_20
   value_A_20
-  value_B_20
   addr_B_21
   value_B_21
-  addr_A_22
-  addr_B_22
-  addr_C_22
-  value_A_22
-  value_B_22
-  value_C_22
   is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):
@@ -87,8 +69,6 @@ mult=is_valid * -1, args=[1, fp_0]
 mult=is_valid * 1, args=[0, 0]
 
 // Bus 1 (MEMORY):
-mult=is_valid * 1, args=[addr_A_0, value_A_0]
-mult=is_valid * 1, args=[addr_B_0, value_B_0]
 mult=is_valid * 1, args=[fp_0, 50]
 mult=is_valid * 1, args=[50, value_B_1]
 mult=is_valid * 1, args=[fp_0 + 1, value_B_1]
@@ -104,28 +84,21 @@ mult=is_valid * 1, args=[55, value_B_6]
 mult=is_valid * 1, args=[fp_0 + 6, value_B_6]
 mult=is_valid * 1, args=[fp_0 + 7, value_B_7]
 mult=is_valid * 1, args=[fp_0 + 8, value_B_8 - value_A_8]
-mult=is_valid * 1, args=[addr_A_9, value_A_9]
 mult=is_valid * 1, args=[fp_0 + 9, -(32512 * value_B_9)]
 mult=is_valid * 1, args=[fp_0 + 10, value_B_11]
 mult=is_valid * 1, args=[fp_0 + 11, value_B_12]
 mult=is_valid * 1, args=[fp_0 + 12, value_B_13 - value_A_13]
-mult=is_valid * 1, args=[addr_A_14, value_A_14]
 mult=is_valid * 1, args=[fp_0 + 13, -(32512 * value_B_14)]
 mult=is_valid * 1, args=[addr_B_16, value_B_16]
 mult=is_valid * 1, args=[fp_0 + 14, value_B_16]
-mult=is_valid * 1, args=[addr_B_17, value_B_17]
 mult=is_valid * 1, args=[fp_0 + 15, 65535 - value_A_17]
 mult=is_valid * 1, args=[addr_B_18, value_B_18]
 mult=is_valid * 1, args=[fp_0 + 16, value_B_18]
 mult=is_valid * 1, args=[addr_B_19, value_B_19]
 mult=is_valid * 1, args=[fp_0 + 17, value_B_19]
-mult=is_valid * 1, args=[addr_B_20, value_B_20]
 mult=is_valid * 1, args=[fp_0 + 18, 65535 - value_A_20]
 mult=is_valid * 1, args=[addr_B_21, value_B_21]
 mult=is_valid * 1, args=[fp_0 + 19, value_B_21]
-mult=is_valid * 1, args=[addr_A_22, value_A_22]
-mult=is_valid * 1, args=[addr_B_22, value_B_22]
-mult=is_valid * 1, args=[addr_C_22, value_C_22]
 
 // Algebraic constraints:
 value_B_1 - value_A_7 = 0

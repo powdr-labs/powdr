@@ -57,16 +57,12 @@ Instructions:
   745: if 1 != 0 jump to @function_mds = 129 with next(fp) = m[fp + 56]
 
 APC advantage:
-  - Main columns: 1120 -> 121 (9.26x reduction)
-  - Bus interactions: 336 -> 99 (3.39x reduction)
+  - Main columns: 1120 -> 109 (10.28x reduction)
+  - Bus interactions: 336 -> 93 (3.61x reduction)
   - Constraints: 448 -> 72 (6.22x reduction)
 
-Symbolic machine using 121 unique main columns:
+Symbolic machine using 109 unique main columns:
   fp_0
-  addr_A_0
-  addr_C_0
-  value_A_0
-  value_C_0
   addr_B_1
   value_B_1
   addr_B_2
@@ -168,19 +164,11 @@ Symbolic machine using 121 unique main columns:
   value_A_50
   value_B_50
   addr_B_51
-  addr_C_51
-  value_C_51
   addr_B_52
-  addr_C_52
-  value_C_52
   addr_B_53
   value_B_53
   addr_B_54
   value_B_54
-  addr_A_55
-  addr_B_55
-  value_A_55
-  value_B_55
   value_C_55
   is_valid
 
@@ -189,9 +177,7 @@ mult=is_valid * -1, args=[690, fp_0]
 mult=is_valid * 1, args=[129, value_C_55]
 
 // Bus 1 (MEMORY):
-mult=is_valid * 1, args=[addr_A_0, value_A_0]
 mult=is_valid * 1, args=[fp_0 + 5, fp_0 + 6]
-mult=is_valid * 1, args=[addr_C_0, value_C_0]
 mult=is_valid * 1, args=[fp_0 + 2, addr_B_1]
 mult=is_valid * 1, args=[addr_B_1, value_B_1]
 mult=is_valid * 1, args=[fp_0 + 22, value_B_1]
@@ -278,14 +264,10 @@ mult=is_valid * 1, args=[fp_0 + 55, value_B_49]
 mult=is_valid * 1, args=[fp_0 + 21, value_B_50]
 mult=is_valid * 1, args=[fp_0 + 56, addr_B_51]
 mult=is_valid * 1, args=[addr_B_51, 1007]
-mult=is_valid * 1, args=[addr_C_51, value_C_51]
 mult=is_valid * 1, args=[addr_B_52, fp_0]
-mult=is_valid * 1, args=[addr_C_52, value_C_52]
 mult=is_valid * 1, args=[addr_B_53, value_B_53]
 mult=is_valid * 1, args=[addr_B_54, value_B_54]
 mult=is_valid * 1, args=[fp_0 + 3, value_B_54]
-mult=is_valid * 1, args=[addr_A_55, value_A_55]
-mult=is_valid * 1, args=[addr_B_55, value_B_55]
 
 // Algebraic constraints:
 fp_0 + 6 * is_valid - value_B_53 = 0

@@ -5,7 +5,7 @@
 //! by the solver), their data fields must be equal and all but the first interaction
 //! can be removed.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::Hash;
 
@@ -155,7 +155,7 @@ pub fn optimize_wom_memory<
     }
 
     log::debug!(
-        "WOM optimizer: removed {} interactions, added {} constraints",
+        "WOM optimizer: removed {} duplicate interactions, added {} constraints",
         to_remove.len(),
         new_constraints.len()
     );
@@ -169,6 +169,103 @@ pub fn optimize_wom_memory<
 
     solver.add_algebraic_constraints(new_constraints.iter().cloned());
     system.algebraic_constraints.extend(new_constraints);
+
+    // Dead-value elimination: remove WOM interactions whose data variables
+    // are not referenced by any constraint or other bus interaction.
+    system = remove_dead_wom_reads::<_, _, M>(system, memory_bus_id);
+
+    system
+}
+
+/// Removes WOM bus interactions whose data fields contain variables that are
+/// not referenced by any other constraint or bus interaction. Such interactions
+/// read a value that is never used, so they can be safely eliminated.
+fn remove_dead_wom_reads<
+    T: FieldElement,
+    V: Hash + Eq + Clone + Ord + Display,
+    M: WomMemoryBusInteraction<T, V>,
+>(
+    mut system: ConstraintSystem<T, V>,
+    memory_bus_id: u64,
+) -> ConstraintSystem<T, V> {
+    // Iterate until no more interactions can be removed, since removing one
+    // interaction may make variables in another interaction dead.
+    loop {
+        // Identify WOM interactions and collect their data variables.
+        let mut wom_indices: Vec<usize> = Vec::new();
+        let mut wom_data_vars: Vec<HashSet<V>> = Vec::new();
+
+        for (index, bus_int) in system.bus_interactions.iter().enumerate() {
+            if let Ok(Some(wom_int)) = M::try_from_bus_interaction(bus_int, memory_bus_id) {
+                let vars: HashSet<V> = wom_int
+                    .data()
+                    .iter()
+                    .flat_map(|expr| expr.referenced_unknown_variables().cloned())
+                    .collect();
+                if !vars.is_empty() {
+                    wom_indices.push(index);
+                    wom_data_vars.push(vars);
+                }
+            }
+        }
+
+        if wom_indices.is_empty() {
+            break;
+        }
+
+        // Count how many times each variable is referenced across all constraints
+        // and bus interactions.
+        let mut var_ref_counts: HashMap<V, usize> = HashMap::new();
+        for constraint in &system.algebraic_constraints {
+            for var in constraint.referenced_unknown_variables() {
+                *var_ref_counts.entry(var.clone()).or_default() += 1;
+            }
+        }
+        for bus_int in &system.bus_interactions {
+            for var in bus_int.referenced_unknown_variables() {
+                *var_ref_counts.entry(var.clone()).or_default() += 1;
+            }
+        }
+
+        // For each WOM interaction, count how many references its own bus interaction
+        // contributes for each of its data variables.
+        let mut to_remove = HashSet::new();
+        for (bus_idx, data_vars) in wom_indices.iter().zip(wom_data_vars.iter()) {
+            // Count references from this bus interaction itself.
+            let mut self_refs: HashMap<&V, usize> = HashMap::new();
+            for var in system.bus_interactions[*bus_idx].referenced_unknown_variables() {
+                if data_vars.contains(var) {
+                    *self_refs.entry(var).or_default() += 1;
+                }
+            }
+            // A data variable is "dead" if its total reference count equals
+            // the number of references from this bus interaction alone.
+            let all_dead = data_vars.iter().all(|var| {
+                let total = var_ref_counts.get(var).copied().unwrap_or(0);
+                let from_self = self_refs.get(var).copied().unwrap_or(0);
+                total == from_self
+            });
+            if all_dead {
+                to_remove.insert(*bus_idx);
+            }
+        }
+
+        if to_remove.is_empty() {
+            break;
+        }
+
+        log::debug!(
+            "WOM optimizer: removed {} dead-value interactions",
+            to_remove.len()
+        );
+
+        system.bus_interactions = system
+            .bus_interactions
+            .into_iter()
+            .enumerate()
+            .filter_map(|(i, bus)| (!to_remove.contains(&i)).then_some(bus))
+            .collect();
+    }
 
     system
 }

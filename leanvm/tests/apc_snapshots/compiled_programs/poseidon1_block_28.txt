@@ -9,35 +9,21 @@ Instructions:
   930: if 1 != 0 jump to @function_partial_round = 690 with next(fp) = m[fp + 555]
 
 APC advantage:
-  - Main columns: 160 -> 26 (6.15x reduction)
-  - Bus interactions: 48 -> 18 (2.67x reduction)
+  - Main columns: 160 -> 12 (13.33x reduction)
+  - Bus interactions: 48 -> 11 (4.36x reduction)
   - Constraints: 64 -> 9 (7.11x reduction)
 
-Symbolic machine using 26 unique main columns:
+Symbolic machine using 12 unique main columns:
   fp_0
-  addr_A_0
-  value_A_0
   value_B_0
-  addr_A_1
-  value_A_1
   value_B_1
   addr_B_2
-  addr_C_2
-  value_C_2
   addr_B_3
-  addr_C_3
-  value_C_3
   addr_B_4
   value_B_4
   addr_B_5
   value_B_5
   addr_B_6
-  addr_C_6
-  value_C_6
-  addr_A_7
-  addr_B_7
-  value_A_7
-  value_B_7
   value_C_7
   is_valid
 
@@ -46,22 +32,15 @@ mult=is_valid * -1, args=[923, fp_0]
 mult=is_valid * 1, args=[690, value_C_7]
 
 // Bus 1 (MEMORY):
-mult=is_valid * 1, args=[addr_A_0, value_A_0]
 mult=is_valid * 1, args=[fp_0 + 553, value_B_0]
 mult=is_valid * 1, args=[fp_0 + 3, value_B_0 - 368]
-mult=is_valid * 1, args=[addr_A_1, value_A_1]
 mult=is_valid * 1, args=[fp_0 + 554, value_B_1]
 mult=is_valid * 1, args=[fp_0 + 555, addr_B_2]
 mult=is_valid * 1, args=[addr_B_2, 931]
-mult=is_valid * 1, args=[addr_C_2, value_C_2]
 mult=is_valid * 1, args=[addr_B_3, fp_0]
-mult=is_valid * 1, args=[addr_C_3, value_C_3]
 mult=is_valid * 1, args=[addr_B_4, value_B_4]
 mult=is_valid * 1, args=[addr_B_5, value_B_5]
 mult=is_valid * 1, args=[addr_B_6, 434]
-mult=is_valid * 1, args=[addr_C_6, value_C_6]
-mult=is_valid * 1, args=[addr_A_7, value_A_7]
-mult=is_valid * 1, args=[addr_B_7, value_B_7]
 
 // Algebraic constraints:
 value_B_0 - value_B_4 = 0

@@ -5,21 +5,17 @@ Instructions:
   73: if 1 != 0 jump to fp+0 = m[fp + 0] with next(fp) = m[fp + 1]
 
 APC advantage:
-  - Main columns: 80 -> 13 (6.15x reduction)
-  - Bus interactions: 24 -> 12 (2.00x reduction)
+  - Main columns: 80 -> 9 (8.89x reduction)
+  - Bus interactions: 24 -> 10 (2.40x reduction)
   - Constraints: 32 -> 3 (10.67x reduction)
 
-Symbolic machine using 13 unique main columns:
+Symbolic machine using 9 unique main columns:
   fp_0
   addr_B_0
   value_B_0
   value_A_1
   value_C_1
-  addr_A_2
-  value_A_2
   value_B_2
-  addr_A_3
-  value_A_3
   value_B_3
   value_C_3
   is_valid
@@ -34,9 +30,7 @@ mult=is_valid * 1, args=[addr_B_0, value_B_0]
 mult=is_valid * 1, args=[fp_0 + 10, value_B_0]
 mult=is_valid * 1, args=[fp_0 + 2, value_A_1]
 mult=is_valid * 1, args=[fp_0 + 11, value_A_1 * value_C_1]
-mult=is_valid * 1, args=[addr_A_2, value_A_2]
 mult=is_valid * 1, args=[fp_0 + 3, value_B_2]
-mult=is_valid * 1, args=[addr_A_3, value_A_3]
 mult=is_valid * 1, args=[fp_0, value_B_3]
 mult=is_valid * 1, args=[fp_0 + 1, value_C_3]
 
