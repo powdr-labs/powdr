@@ -1,0 +1,79 @@
+Instructions:
+  59: m[fp + 9] = m[m[fp + 8] + 3]
+  60: m[fp + 10] = m[fp + 3] + m[fp + 2]
+  61: m[fp + 9] = m[m[fp + 10] + 0]
+  62: m[fp + 11] = 1 + m[fp + 2]
+  63: 68 = m[m[fp + 12] + 0]
+  64: fp + 0 = m[m[fp + 12] + 1]
+  65: m[fp + 11] = m[m[fp + 12] + 2]
+  66: m[fp + 3] = m[m[fp + 12] + 3]
+  67: if 1 != 0 jump to @function_@parallel_loop_0_file_id: 1, line: 5 = 13 with next(fp) = m[fp + 12]
+
+APC advantage:
+  - Main columns: 180 -> 26 (6.92x reduction)
+  - Bus interactions: 54 -> 20 (2.70x reduction)
+  - Constraints: 72 -> 10 (7.20x reduction)
+
+Symbolic machine using 26 unique main columns:
+  fp_0
+  addr_B_0
+  value_B_0
+  value_A_1
+  value_B_1
+  addr_B_2
+  value_B_2
+  addr_A_3
+  value_A_3
+  value_B_3
+  addr_B_4
+  addr_C_4
+  value_C_4
+  addr_B_5
+  addr_C_5
+  value_C_5
+  addr_B_6
+  value_B_6
+  addr_B_7
+  value_B_7
+  addr_A_8
+  addr_B_8
+  value_A_8
+  value_B_8
+  value_C_8
+  is_valid
+
+// Bus 0 (EXECUTION_BRIDGE):
+mult=is_valid * -1, args=[59, fp_0]
+mult=is_valid * 1, args=[13, value_C_8]
+
+// Bus 1 (MEMORY):
+mult=is_valid * 1, args=[fp_0 + 8, addr_B_0 - 3]
+mult=is_valid * 1, args=[addr_B_0, value_B_0]
+mult=is_valid * 1, args=[fp_0 + 9, value_B_0]
+mult=is_valid * 1, args=[fp_0 + 3, value_A_1]
+mult=is_valid * 1, args=[fp_0 + 10, value_B_1]
+mult=is_valid * 1, args=[fp_0 + 2, value_B_1 - value_A_1]
+mult=is_valid * 1, args=[addr_B_2, value_B_2]
+mult=is_valid * 1, args=[addr_A_3, value_A_3]
+mult=is_valid * 1, args=[fp_0 + 11, value_B_3]
+mult=is_valid * 1, args=[fp_0 + 12, addr_B_4]
+mult=is_valid * 1, args=[addr_B_4, 68]
+mult=is_valid * 1, args=[addr_C_4, value_C_4]
+mult=is_valid * 1, args=[addr_B_5, fp_0]
+mult=is_valid * 1, args=[addr_C_5, value_C_5]
+mult=is_valid * 1, args=[addr_B_6, value_B_6]
+mult=is_valid * 1, args=[addr_B_7, value_B_7]
+mult=is_valid * 1, args=[addr_A_8, value_A_8]
+mult=is_valid * 1, args=[addr_B_8, value_B_8]
+
+// Algebraic constraints:
+value_B_0 - value_B_2 = 0
+value_A_1 - value_B_7 = 0
+value_B_1 - addr_B_2 = 0
+value_B_1 + 1 * is_valid - (value_A_1 + value_B_3) = 0
+value_B_3 - value_B_6 = 0
+addr_B_4 + 1 * is_valid - addr_B_5 = 0
+addr_B_4 + 2 * is_valid - addr_B_6 = 0
+addr_B_4 + 3 * is_valid - addr_B_7 = 0
+addr_B_4 - value_C_8 = 0
+is_valid * (is_valid - 1) = 0

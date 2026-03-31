@@ -1,0 +1,58 @@
+Instructions:
+   7: m[fp + 2] = 16 + m[fp + 5]
+   8: m[fp + 7] = m[fp + 5] x m[fp + 6]
+   9: 1 = m[fp + 8] + m[fp + 7]
+  10: 0 = m[fp + 8] x m[fp + 5]
+  11: if m[fp + 7] != 0 jump to @if_0_line_8 = 25 with next(fp) = fp + 0
+
+APC advantage:
+  - Main columns: 100 -> 19 (5.26x reduction)
+  - Bus interactions: 30 -> 12 (2.50x reduction)
+  - Constraints: 40 -> 8 (5.00x reduction)
+
+Symbolic machine using 19 unique main columns:
+  fp_0
+  addr_A_0
+  value_A_0
+  value_B_0
+  value_A_1
+  value_C_1
+  addr_B_2
+  value_A_2
+  value_B_2
+  addr_B_3
+  value_A_3
+  value_B_3
+  value_C_3
+  addr_B_4
+  addr_C_4
+  value_A_4
+  value_B_4
+  value_C_4
+  is_valid
+
+// Bus 0 (EXECUTION_BRIDGE):
+mult=is_valid * -1, args=[7, fp_0]
+mult=is_valid * 1, args=[13 * value_A_4 + 12, value_A_4 * fp_0 + (1 - value_A_4) * fp_0]
+
+// Bus 1 (MEMORY):
+mult=is_valid * 1, args=[addr_A_0, value_A_0]
+mult=is_valid * 1, args=[fp_0 + 2, value_B_0]
+mult=is_valid * 1, args=[fp_0 + 5, value_B_0 - 16]
+mult=is_valid * 1, args=[fp_0 + 7, value_A_1 * value_C_1]
+mult=is_valid * 1, args=[fp_0 + 6, value_C_1]
+mult=is_valid * 1, args=[fp_0 + 8, value_A_2]
+mult=is_valid * 1, args=[addr_B_2, value_B_2]
+mult=is_valid * 1, args=[addr_B_3, value_B_3]
+mult=is_valid * 1, args=[addr_B_4, value_B_4]
+mult=is_valid * 1, args=[addr_C_4, value_C_4]
+
+// Algebraic constraints:
+value_A_3 * value_C_3 = 0
+value_A_4 * (value_A_4 - 1) = 0
+value_B_0 - (value_A_1 + 16 * is_valid) = 0
+value_B_0 - (value_C_3 + 16 * is_valid) = 0
+value_A_1 * value_C_1 + value_A_2 - 1 * is_valid = 0
+value_A_1 * value_C_1 - value_A_4 = 0
+value_A_2 - value_A_3 = 0
+is_valid * (is_valid - 1) = 0

@@ -1,0 +1,63 @@
+Instructions:
+  1: m[fp + 2] = 3 + fp + 0
+  2: 75 = m[m[fp + 19] + 0]
+  3: fp + 0 = m[m[fp + 19] + 1]
+  4: 0 = m[m[fp + 19] + 2]
+  5: m[fp + 2] = m[m[fp + 19] + 3]
+  6: if 1 != 0 jump to @function_@parallel_loop_0_file_id: 1, line: 5 = 13 with next(fp) = m[fp + 19]
+
+APC advantage:
+  - Main columns: 120 -> 22 (5.45x reduction)
+  - Bus interactions: 36 -> 15 (2.40x reduction)
+  - Constraints: 48 -> 6 (8.00x reduction)
+
+Symbolic machine using 22 unique main columns:
+  fp_0
+  addr_A_0
+  addr_C_0
+  value_A_0
+  value_C_0
+  addr_B_1
+  addr_C_1
+  value_C_1
+  addr_B_2
+  addr_C_2
+  value_C_2
+  addr_B_3
+  addr_C_3
+  value_C_3
+  addr_B_4
+  value_B_4
+  addr_A_5
+  addr_B_5
+  value_A_5
+  value_B_5
+  value_C_5
+  is_valid
+
+// Bus 0 (EXECUTION_BRIDGE):
+mult=is_valid * -1, args=[1, fp_0]
+mult=is_valid * 1, args=[13, value_C_5]
+
+// Bus 1 (MEMORY):
+mult=is_valid * 1, args=[addr_A_0, value_A_0]
+mult=is_valid * 1, args=[fp_0 + 2, fp_0 + 3]
+mult=is_valid * 1, args=[addr_C_0, value_C_0]
+mult=is_valid * 1, args=[fp_0 + 19, addr_B_1]
+mult=is_valid * 1, args=[addr_B_1, 75]
+mult=is_valid * 1, args=[addr_C_1, value_C_1]
+mult=is_valid * 1, args=[addr_B_2, fp_0]
+mult=is_valid * 1, args=[addr_C_2, value_C_2]
+mult=is_valid * 1, args=[addr_B_3, 0]
+mult=is_valid * 1, args=[addr_C_3, value_C_3]
+mult=is_valid * 1, args=[addr_B_4, value_B_4]
+mult=is_valid * 1, args=[addr_A_5, value_A_5]
+mult=is_valid * 1, args=[addr_B_5, value_B_5]
+
+// Algebraic constraints:
+fp_0 + 3 * is_valid - value_B_4 = 0
+addr_B_1 + 1 * is_valid - addr_B_2 = 0
+addr_B_1 + 2 * is_valid - addr_B_3 = 0
+addr_B_1 + 3 * is_valid - addr_B_4 = 0
+addr_B_1 - value_C_5 = 0
+is_valid * (is_valid - 1) = 0

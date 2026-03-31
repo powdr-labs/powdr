@@ -115,6 +115,159 @@ def add_arrays(x, y):
     );
 }
 
+#[test]
+fn poseidon1() {
+    // Unrolled implementation of Poseidon1
+    compile_and_snapshot(
+        r#"
+WIDTH = 16
+HALF_FULL_ROUNDS = 4
+PARTIAL_ROUNDS = 20
+N_ROUNDS = 28
+MDS_COL = [1, 3, 13, 22, 67, 2, 15, 63, 101, 1, 2, 17, 11, 1, 51, 1]
+
+def main():
+    input_ptr = NONRESERVED_PROGRAM_INPUT_START
+    rc_ptr = input_ptr + WIDTH
+
+    # Allocate state buffers: (N_ROUNDS + 1) * WIDTH
+    # buf[0..16] = initial state, buf[16..32] = after round 0, etc.
+    buf = Array((N_ROUNDS + 1) * WIDTH)
+    for i in unroll(0, WIDTH):
+        buf[i] = input_ptr[i]
+
+    # Initial full rounds (rounds 0-3)
+    for r in unroll(0, HALF_FULL_ROUNDS):
+        full_round(buf + r * WIDTH, buf + (r + 1) * WIDTH, rc_ptr + r * WIDTH)
+
+    # Partial rounds (rounds 4-23)
+    for r in unroll(HALF_FULL_ROUNDS, HALF_FULL_ROUNDS + PARTIAL_ROUNDS):
+        partial_round(buf + r * WIDTH, buf + (r + 1) * WIDTH, rc_ptr + r * WIDTH)
+
+    # Final full rounds (rounds 24-27)
+    for r in unroll(HALF_FULL_ROUNDS + PARTIAL_ROUNDS, N_ROUNDS):
+        full_round(buf + r * WIDTH, buf + (r + 1) * WIDTH, rc_ptr + r * WIDTH)
+
+    # Compression: add initial state
+    final_ptr = buf + N_ROUNDS * WIDTH
+    compressed = Array(WIDTH)
+    for i in unroll(0, WIDTH):
+        compressed[i] = final_ptr[i] + buf[i]
+
+    # Compute precompile result
+    precompile_out = Array(8)
+    poseidon16_compress(input_ptr, input_ptr + 8, precompile_out)
+
+    # Assert first 8 elements match
+    for i in unroll(0, 8):
+        assert compressed[i] == precompile_out[i]
+
+    return
+
+def full_round(in_ptr, out_ptr, rc):
+    sboxed = Array(WIDTH)
+    for i in unroll(0, WIDTH):
+        x = in_ptr[i] + rc[i]
+        sboxed[i] = x * x * x
+    mds(sboxed, out_ptr)
+    return
+
+def partial_round(in_ptr, out_ptr, rc):
+    tmp = Array(WIDTH)
+    x0 = in_ptr[0] + rc[0]
+    tmp[0] = x0 * x0 * x0
+    for i in unroll(1, WIDTH):
+        tmp[i] = in_ptr[i] + rc[i]
+    mds(tmp, out_ptr)
+    return
+
+def mds(in_ptr, out_ptr):
+    for i in unroll(0, WIDTH):
+        acc: Mut = 0
+        for j in unroll(0, WIDTH):
+            acc = acc + in_ptr[j] * MDS_COL[(WIDTH + i - j) % WIDTH]
+        out_ptr[i] = acc
+    return
+"#,
+        "poseidon1",
+    );
+}
+
+#[test]
+fn poseidon1_unrolled() {
+    // Unrolled implementation of Poseidon1
+    compile_and_snapshot(
+        r#"
+WIDTH = 16
+HALF_FULL_ROUNDS = 4
+PARTIAL_ROUNDS = 20
+N_ROUNDS = 28
+MDS_COL = [1, 3, 13, 22, 67, 2, 15, 63, 101, 1, 2, 17, 11, 1, 51, 1]
+
+def main():
+    input_ptr = NONRESERVED_PROGRAM_INPUT_START
+    rc_ptr = input_ptr + WIDTH
+
+    buf = Array((N_ROUNDS + 1) * WIDTH)
+    for i in unroll(0, WIDTH):
+        buf[i] = input_ptr[i]
+
+    # Initial full rounds (rounds 0-3)
+    for r in unroll(0, HALF_FULL_ROUNDS):
+        sboxed = Array(WIDTH)
+        for i in unroll(0, WIDTH):
+            x = buf[r * WIDTH + i] + rc_ptr[r * WIDTH + i]
+            sboxed[i] = x * x * x
+        for i in unroll(0, WIDTH):
+            acc: Mut = 0
+            for j in unroll(0, WIDTH):
+                acc = acc + sboxed[j] * MDS_COL[(WIDTH + i - j) % WIDTH]
+            buf[(r + 1) * WIDTH + i] = acc
+
+    # Partial rounds (rounds 4-23)
+    for r in unroll(HALF_FULL_ROUNDS, HALF_FULL_ROUNDS + PARTIAL_ROUNDS):
+        tmp = Array(WIDTH)
+        x0 = buf[r * WIDTH] + rc_ptr[r * WIDTH]
+        tmp[0] = x0 * x0 * x0
+        for i in unroll(1, WIDTH):
+            tmp[i] = buf[r * WIDTH + i] + rc_ptr[r * WIDTH + i]
+        for i in unroll(0, WIDTH):
+            acc: Mut = 0
+            for j in unroll(0, WIDTH):
+                acc = acc + tmp[j] * MDS_COL[(WIDTH + i - j) % WIDTH]
+            buf[(r + 1) * WIDTH + i] = acc
+
+    # Final full rounds (rounds 24-27)
+    for r in unroll(HALF_FULL_ROUNDS + PARTIAL_ROUNDS, N_ROUNDS):
+        sboxed = Array(WIDTH)
+        for i in unroll(0, WIDTH):
+            x = buf[r * WIDTH + i] + rc_ptr[r * WIDTH + i]
+            sboxed[i] = x * x * x
+        for i in unroll(0, WIDTH):
+            acc: Mut = 0
+            for j in unroll(0, WIDTH):
+                acc = acc + sboxed[j] * MDS_COL[(WIDTH + i - j) % WIDTH]
+            buf[(r + 1) * WIDTH + i] = acc
+
+    # Compression: add initial state
+    compressed = Array(WIDTH)
+    for i in unroll(0, WIDTH):
+        compressed[i] = buf[N_ROUNDS * WIDTH + i] + buf[i]
+
+    # Compute precompile result
+    # precompile_out = Array(8)
+    # poseidon16_compress(input_ptr, input_ptr + 8, precompile_out)
+
+    # Assert first 8 elements match
+    # for i in unroll(0, 8):
+    #     assert compressed[i] == precompile_out[i]
+
+    return
+"#,
+        "poseidon1_unrolled",
+    );
+}
+
 /// Build bytecode for u32 add verification program.
 ///
 /// u32 add: c = a + b (wrapping)

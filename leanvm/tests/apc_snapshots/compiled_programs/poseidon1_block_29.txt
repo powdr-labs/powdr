@@ -1,0 +1,75 @@
+Instructions:
+  931: m[fp + 556] = 384 + m[fp + 3]
+  932: m[fp + 557] = 400 + m[fp + 3]
+  933: 939 = m[m[fp + 558] + 0]
+  934: fp + 0 = m[m[fp + 558] + 1]
+  935: m[fp + 556] = m[m[fp + 558] + 2]
+  936: m[fp + 557] = m[m[fp + 558] + 3]
+  937: 450 = m[m[fp + 558] + 4]
+  938: if 1 != 0 jump to @function_full_round = 43 with next(fp) = m[fp + 558]
+
+APC advantage:
+  - Main columns: 160 -> 26 (6.15x reduction)
+  - Bus interactions: 48 -> 18 (2.67x reduction)
+  - Constraints: 64 -> 9 (7.11x reduction)
+
+Symbolic machine using 26 unique main columns:
+  fp_0
+  addr_A_0
+  value_A_0
+  value_B_0
+  addr_A_1
+  value_A_1
+  value_B_1
+  addr_B_2
+  addr_C_2
+  value_C_2
+  addr_B_3
+  addr_C_3
+  value_C_3
+  addr_B_4
+  value_B_4
+  addr_B_5
+  value_B_5
+  addr_B_6
+  addr_C_6
+  value_C_6
+  addr_A_7
+  addr_B_7
+  value_A_7
+  value_B_7
+  value_C_7
+  is_valid
+
+// Bus 0 (EXECUTION_BRIDGE):
+mult=is_valid * -1, args=[931, fp_0]
+mult=is_valid * 1, args=[43, value_C_7]
+
+// Bus 1 (MEMORY):
+mult=is_valid * 1, args=[addr_A_0, value_A_0]
+mult=is_valid * 1, args=[fp_0 + 556, value_B_0]
+mult=is_valid * 1, args=[fp_0 + 3, value_B_0 - 384]
+mult=is_valid * 1, args=[addr_A_1, value_A_1]
+mult=is_valid * 1, args=[fp_0 + 557, value_B_1]
+mult=is_valid * 1, args=[fp_0 + 558, addr_B_2]
+mult=is_valid * 1, args=[addr_B_2, 939]
+mult=is_valid * 1, args=[addr_C_2, value_C_2]
+mult=is_valid * 1, args=[addr_B_3, fp_0]
+mult=is_valid * 1, args=[addr_C_3, value_C_3]
+mult=is_valid * 1, args=[addr_B_4, value_B_4]
+mult=is_valid * 1, args=[addr_B_5, value_B_5]
+mult=is_valid * 1, args=[addr_B_6, 450]
+mult=is_valid * 1, args=[addr_C_6, value_C_6]
+mult=is_valid * 1, args=[addr_A_7, value_A_7]
+mult=is_valid * 1, args=[addr_B_7, value_B_7]
+
+// Algebraic constraints:
+value_B_0 - value_B_4 = 0
+value_B_0 + 16 * is_valid - value_B_1 = 0
+value_B_1 - value_B_5 = 0
+addr_B_2 + 1 * is_valid - addr_B_3 = 0
+addr_B_2 + 2 * is_valid - addr_B_4 = 0
+addr_B_2 + 3 * is_valid - addr_B_5 = 0
+addr_B_2 + 4 * is_valid - addr_B_6 = 0
+addr_B_2 - value_C_7 = 0
+is_valid * (is_valid - 1) = 0

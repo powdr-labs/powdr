@@ -1,0 +1,75 @@
+Instructions:
+  859: m[fp + 529] = 240 + m[fp + 3]
+  860: m[fp + 530] = 256 + m[fp + 3]
+  861: 867 = m[m[fp + 531] + 0]
+  862: fp + 0 = m[m[fp + 531] + 1]
+  863: m[fp + 529] = m[m[fp + 531] + 2]
+  864: m[fp + 530] = m[m[fp + 531] + 3]
+  865: 306 = m[m[fp + 531] + 4]
+  866: if 1 != 0 jump to @function_partial_round = 690 with next(fp) = m[fp + 531]
+
+APC advantage:
+  - Main columns: 160 -> 26 (6.15x reduction)
+  - Bus interactions: 48 -> 18 (2.67x reduction)
+  - Constraints: 64 -> 9 (7.11x reduction)
+
+Symbolic machine using 26 unique main columns:
+  fp_0
+  addr_A_0
+  value_A_0
+  value_B_0
+  addr_A_1
+  value_A_1
+  value_B_1
+  addr_B_2
+  addr_C_2
+  value_C_2
+  addr_B_3
+  addr_C_3
+  value_C_3
+  addr_B_4
+  value_B_4
+  addr_B_5
+  value_B_5
+  addr_B_6
+  addr_C_6
+  value_C_6
+  addr_A_7
+  addr_B_7
+  value_A_7
+  value_B_7
+  value_C_7
+  is_valid
+
+// Bus 0 (EXECUTION_BRIDGE):
+mult=is_valid * -1, args=[859, fp_0]
+mult=is_valid * 1, args=[690, value_C_7]
+
+// Bus 1 (MEMORY):
+mult=is_valid * 1, args=[addr_A_0, value_A_0]
+mult=is_valid * 1, args=[fp_0 + 529, value_B_0]
+mult=is_valid * 1, args=[fp_0 + 3, value_B_0 - 240]
+mult=is_valid * 1, args=[addr_A_1, value_A_1]
+mult=is_valid * 1, args=[fp_0 + 530, value_B_1]
+mult=is_valid * 1, args=[fp_0 + 531, addr_B_2]
+mult=is_valid * 1, args=[addr_B_2, 867]
+mult=is_valid * 1, args=[addr_C_2, value_C_2]
+mult=is_valid * 1, args=[addr_B_3, fp_0]
+mult=is_valid * 1, args=[addr_C_3, value_C_3]
+mult=is_valid * 1, args=[addr_B_4, value_B_4]
+mult=is_valid * 1, args=[addr_B_5, value_B_5]
+mult=is_valid * 1, args=[addr_B_6, 306]
+mult=is_valid * 1, args=[addr_C_6, value_C_6]
+mult=is_valid * 1, args=[addr_A_7, value_A_7]
+mult=is_valid * 1, args=[addr_B_7, value_B_7]
+
+// Algebraic constraints:
+value_B_0 - value_B_4 = 0
+value_B_0 + 16 * is_valid - value_B_1 = 0
+value_B_1 - value_B_5 = 0
+addr_B_2 + 1 * is_valid - addr_B_3 = 0
+addr_B_2 + 2 * is_valid - addr_B_4 = 0
+addr_B_2 + 3 * is_valid - addr_B_5 = 0
+addr_B_2 + 4 * is_valid - addr_B_6 = 0
+addr_B_2 - value_C_7 = 0
+is_valid * (is_valid - 1) = 0
