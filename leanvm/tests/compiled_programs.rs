@@ -116,6 +116,24 @@ def add_arrays(x, y):
 }
 
 #[test]
+fn pow() {
+    compile_and_snapshot(
+        r#"
+def main():
+    input = NONRESERVED_PROGRAM_INPUT_START
+    a = input[0]
+    b = a * a
+    c = b * b
+    d = c * c
+    e = d * d
+
+    return
+"#,
+        "pow",
+    );
+}
+
+#[test]
 fn poseidon1() {
     // Unrolled implementation of Poseidon1
     compile_and_snapshot(
