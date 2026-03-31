@@ -177,9 +177,9 @@ pub fn optimize_wom_memory<
     system
 }
 
-/// Removes WOM bus interactions whose data fields contain variables that are
-/// not referenced by any other constraint or bus interaction. Such interactions
-/// read a value that is never used, so they can be safely eliminated.
+/// Removes WOM bus interactions whose address and data fields contain variables
+/// that are not referenced by any other constraint or bus interaction. Such
+/// interactions are unused and can be safely eliminated.
 fn remove_dead_wom_reads<
     T: FieldElement,
     V: Hash + Eq + Clone + Ord + Display,
@@ -193,18 +193,19 @@ fn remove_dead_wom_reads<
     loop {
         // Identify WOM interactions and collect their data variables.
         let mut wom_indices: Vec<usize> = Vec::new();
-        let mut wom_data_vars: Vec<HashSet<V>> = Vec::new();
+        let mut wom_vars: Vec<HashSet<V>> = Vec::new();
 
         for (index, bus_int) in system.bus_interactions.iter().enumerate() {
             if let Ok(Some(wom_int)) = M::try_from_bus_interaction(bus_int, memory_bus_id) {
                 let vars: HashSet<V> = wom_int
-                    .data()
-                    .iter()
-                    .flat_map(|expr| expr.referenced_unknown_variables().cloned())
+                    .addr()
+                    .into_iter()
+                    .chain(wom_int.data().iter().cloned())
+                    .flat_map(|expr| expr.referenced_unknown_variables().cloned().collect::<Vec<_>>())
                     .collect();
                 if !vars.is_empty() {
                     wom_indices.push(index);
-                    wom_data_vars.push(vars);
+                    wom_vars.push(vars);
                 }
             }
         }
@@ -230,17 +231,17 @@ fn remove_dead_wom_reads<
         // For each WOM interaction, count how many references its own bus interaction
         // contributes for each of its data variables.
         let mut to_remove = HashSet::new();
-        for (bus_idx, data_vars) in wom_indices.iter().zip(wom_data_vars.iter()) {
+        for (bus_idx, wom_vars) in wom_indices.iter().zip(wom_vars.iter()) {
             // Count references from this bus interaction itself.
             let mut self_refs: HashMap<&V, usize> = HashMap::new();
             for var in system.bus_interactions[*bus_idx].referenced_unknown_variables() {
-                if data_vars.contains(var) {
+                if wom_vars.contains(var) {
                     *self_refs.entry(var).or_default() += 1;
                 }
             }
-            // A data variable is "dead" if its total reference count equals
+            // A variable is "dead" if its total reference count equals
             // the number of references from this bus interaction alone.
-            let all_dead = data_vars.iter().all(|var| {
+            let all_dead = wom_vars.iter().all(|var| {
                 let total = var_ref_counts.get(var).copied().unwrap_or(0);
                 let from_self = self_refs.get(var).copied().unwrap_or(0);
                 total == from_self
