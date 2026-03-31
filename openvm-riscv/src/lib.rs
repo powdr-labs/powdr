@@ -19,7 +19,7 @@ use openvm_circuit::system::cuda::SystemChipInventoryGPU;
 use openvm_circuit::system::SystemChipInventory;
 use openvm_sdk_config::{SdkVmConfig, SdkVmConfigExecutor, SdkVmCpuBuilder, TranspilerConfig};
 
-use openvm_stark_backend::prover::{CpuBackend, CpuDevice};
+use openvm_cpu_backend::{CpuBackend, CpuDevice};
 use openvm_stark_backend::{StarkEngine, Val};
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
@@ -36,13 +36,11 @@ use powdr_openvm::PowdrSdkCpu;
 use powdr_openvm::{GpuBabyBearPoseidon2CpuEngine, GpuBackend, PowdrSdkGpu};
 use powdr_openvm_riscv_hints_circuit::{HintsExtension, HintsExtensionExecutor, HintsProverExt};
 use powdr_openvm_riscv_hints_transpiler::HintsTranspilerExtension;
-use sdk_v2::{
-    config::{
-        default_app_params, AggregationSystemParams, AppConfig, DEFAULT_APP_LOG_BLOWUP,
-        DEFAULT_APP_L_SKIP,
-    },
+use openvm_sdk::{
+    config::{AggregationSystemParams, AppConfig},
     StdIn,
 };
+use openvm_stark_sdk::config::{app_params_with_100_bits_security, MAX_APP_LOG_STACKED_HEIGHT};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -105,7 +103,7 @@ pub fn compile_openvm(
 
     // try to load the sdk config from the openvm.toml file, otherwise use the default
     let openvm_toml_path = path.join("openvm.toml");
-    let system_params = default_app_params(DEFAULT_APP_LOG_BLOWUP, DEFAULT_APP_L_SKIP, 21);
+    let system_params = app_params_with_100_bits_security(MAX_APP_LOG_STACKED_HEIGHT);
     let app_config: AppConfig<SdkVmConfig> = if openvm_toml_path.exists() {
         let toml_str = std::fs::read_to_string(&openvm_toml_path)?;
         // Deserialize just the app_vm_config from the TOML, then pair with our system_params.
@@ -120,7 +118,7 @@ pub fn compile_openvm(
         AppConfig::riscv32(system_params)
     };
 
-    let mut sdk = sdk_v2::Sdk::new(app_config, AggregationSystemParams::default())?;
+    let mut sdk = openvm_sdk::Sdk::new(app_config, AggregationSystemParams::default())?;
 
     let transpiler = sdk.transpiler().unwrap();
 
@@ -326,7 +324,7 @@ pub fn prove(
         }
 
         // Set app configuration
-        let system_params = default_app_params(DEFAULT_APP_LOG_BLOWUP, DEFAULT_APP_L_SKIP, 21);
+        let system_params = app_params_with_100_bits_security(MAX_APP_LOG_STACKED_HEIGHT);
         let app_config = AppConfig::new(vm_config.clone(), system_params);
 
         // Create the SDK
@@ -340,7 +338,7 @@ pub fn prove(
             let mut stark_prover = sdk.prover(exe.clone())?;
             tracing::info!("Generating STARK proof (app + aggregation)...");
             let start = std::time::Instant::now();
-            let _stark_proof = stark_prover.prove(inputs.clone())?;
+            let _stark_proof = stark_prover.prove(inputs.clone(), &[])?;
             tracing::info!("STARK proof (with recursion) took {:?}", start.elapsed());
         } else {
             let mut app_prover = sdk.app_prover(exe.clone())?;

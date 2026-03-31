@@ -8,13 +8,11 @@ use openvm_circuit::arch::{
 use openvm_stark_backend::StarkEngine;
 use openvm_stark_backend::Val;
 use openvm_stark_backend::{keygen::types::MultiStarkProvingKey, prover::ProvingContext};
-use sdk_v2::{
-    config::{
-        default_app_params, AggregationSystemParams, AppConfig, DEFAULT_APP_LOG_BLOWUP,
-        DEFAULT_APP_L_SKIP,
-    },
+use openvm_sdk::{
+    config::{AggregationSystemParams, AppConfig},
     GenericSdk, StdIn,
 };
+use openvm_stark_sdk::config::{app_params_with_100_bits_security, MAX_APP_LOG_STACKED_HEIGHT};
 use tracing::info_span;
 
 use crate::BabyBearSC;
@@ -148,7 +146,7 @@ where
 fn create_app_config<ISA: OpenVmISA>(
     program: &CompiledProgram<ISA>,
 ) -> (AppConfig<SpecializedConfig<ISA>>, AggregationSystemParams) {
-    let system_params = default_app_params(DEFAULT_APP_LOG_BLOWUP, DEFAULT_APP_L_SKIP, 21);
+    let system_params = app_params_with_100_bits_security(MAX_APP_LOG_STACKED_HEIGHT);
     let app_config = AppConfig::new(program.vm_config.clone(), system_params);
     (app_config, AggregationSystemParams::default())
 }

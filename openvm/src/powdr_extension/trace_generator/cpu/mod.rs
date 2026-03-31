@@ -6,7 +6,7 @@ use openvm_circuit_primitives::Chip;
 use openvm_stark_backend::{
     p3_field::{Field, PrimeCharacteristicRing, PrimeField32},
     p3_matrix::dense::{DenseMatrix, RowMajorMatrix},
-    prover::{AirProvingContext, ColMajorMatrix, ProverBackend, StridedColMajorMatrixView},
+    prover::{AirProvingContext, ProverBackend},
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::trace_handler::TraceTrait;
@@ -52,7 +52,7 @@ impl<F> From<Arc<RowMajorMatrix<F>>> for SharedCpuTrace<F> {
     }
 }
 
-impl<R, PB: ProverBackend<Matrix = ColMajorMatrix<BabyBear>>, ISA: OpenVmISA> Chip<R, PB>
+impl<R, PB: ProverBackend<Matrix = RowMajorMatrix<BabyBear>>, ISA: OpenVmISA> Chip<R, PB>
     for PowdrChipCpu<ISA>
 {
     fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
@@ -62,10 +62,7 @@ impl<R, PB: ProverBackend<Matrix = ColMajorMatrix<BabyBear>>, ISA: OpenVmISA> Ch
             .trace_generator
             .generate_witness(self.record_arena_by_air_name.take());
 
-        // Convert from row-major to column-major
-        let col_major = ColMajorMatrix::from_row_major(&row_major);
-
-        AirProvingContext::simple(col_major, vec![])
+        AirProvingContext::simple(row_major, vec![])
     }
 }
 
@@ -137,10 +134,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
                     }
                 };
 
-                let col_major_trace = chip.generate_proving_ctx(record_arena).common_main;
-                // Convert ColMajorMatrix to RowMajorMatrix for SharedCpuTrace
-                let row_major_trace = StridedColMajorMatrixView::from(col_major_trace.as_view())
-                    .to_row_major_matrix();
+                let row_major_trace = chip.generate_proving_ctx(record_arena).common_main;
 
                 Some((air_name, SharedCpuTrace::from(Arc::new(row_major_trace))))
             })

@@ -16,7 +16,8 @@ use openvm_circuit_derive::{
 };
 
 use openvm_sdk_config::TranspilerConfig;
-use openvm_stark_backend::prover::{CpuBackend, CpuDevice, ProverBackend};
+use openvm_cpu_backend::{CpuBackend, CpuDevice};
+use openvm_stark_backend::prover::ProverBackend;
 use openvm_stark_backend::{StarkEngine, StarkProtocolConfig, Val};
 use openvm_stark_sdk::config::baby_bear_poseidon2::{
     BabyBearPoseidon2Config, BabyBearPoseidon2CpuEngine,
@@ -29,13 +30,11 @@ use powdr_autoprecompiles::execution_profile::ExecutionProfile;
 use powdr_autoprecompiles::DegreeBound;
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::PowdrExtension;
-use sdk_v2::{
-    config::{
-        default_app_params, AggregationSystemParams, AppConfig, DEFAULT_APP_LOG_BLOWUP,
-        DEFAULT_APP_L_SKIP,
-    },
+use openvm_sdk::{
+    config::{AggregationSystemParams, AppConfig, DEFAULT_APP_LOG_BLOWUP},
     GenericSdk, StdIn,
 };
+use openvm_stark_sdk::config::{app_params_with_100_bits_security, MAX_APP_LOG_STACKED_HEIGHT};
 use serde::{Deserialize, Serialize};
 use std::iter::Sum;
 use std::marker::PhantomData;
@@ -550,7 +549,7 @@ pub fn execute<ISA: OpenVmISA>(
     let CompiledProgram { exe, vm_config } = program;
 
     // Set app configuration
-    let system_params = default_app_params(DEFAULT_APP_LOG_BLOWUP, DEFAULT_APP_L_SKIP, 21);
+    let system_params = app_params_with_100_bits_security(MAX_APP_LOG_STACKED_HEIGHT);
     let app_config = AppConfig::new(vm_config.clone(), system_params);
 
     // prepare for execute
@@ -575,7 +574,7 @@ pub fn execution_profile_from_guest<ISA: OpenVmISA>(
     let program = Prog::from(&exe.program);
 
     // Set app configuration
-    let system_params = default_app_params(DEFAULT_APP_LOG_BLOWUP, DEFAULT_APP_L_SKIP, 21);
+    let system_params = app_params_with_100_bits_security(MAX_APP_LOG_STACKED_HEIGHT);
     let app_config = AppConfig::new(vm_config.clone().config, system_params);
 
     // prepare for execute

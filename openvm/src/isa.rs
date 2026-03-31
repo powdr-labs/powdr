@@ -15,7 +15,8 @@ use openvm_cuda_backend::BabyBearPoseidon2GpuEngine as GpuBabyBearPoseidon2CpuEn
 use openvm_cuda_backend::GpuBackend;
 use openvm_instructions::{instruction::Instruction, VmOpcode};
 use openvm_sdk_config::TranspilerConfig;
-use openvm_stark_backend::{p3_field::PrimeField32, prover::CpuBackend, Val};
+use openvm_cpu_backend::CpuBackend;
+use openvm_stark_backend::{p3_field::PrimeField32, Val};
 use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2CpuEngine;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_riscv_elf::debug_info::SymbolTable;

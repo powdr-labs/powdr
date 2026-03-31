@@ -16,7 +16,7 @@ use openvm_stark_backend::{p3_field::PrimeField32, StarkProtocolConfig};
 
 use itertools::Itertools;
 use openvm_circuit::arch::RowMajorMatrixArena;
-use openvm_stark_backend::prover::{CpuBackend, CpuDevice};
+use openvm_cpu_backend::{CpuBackend, CpuDevice};
 use openvm_stark_backend::StarkEngine;
 use openvm_stark_backend::Val;
 

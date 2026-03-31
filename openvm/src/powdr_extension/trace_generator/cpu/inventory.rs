@@ -2,7 +2,7 @@ use openvm_circuit::{
     arch::{MatrixRecordArena, VmChipComplex},
     system::SystemChipInventory,
 };
-use openvm_stark_backend::prover::CpuBackend;
+use openvm_cpu_backend::CpuBackend;
 use openvm_stark_backend::Val;
 
 /// A dummy inventory used for execution of autoprecompiles

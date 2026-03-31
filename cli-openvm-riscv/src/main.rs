@@ -9,7 +9,7 @@ use powdr_openvm_riscv::{
     compile_openvm, detect_empirical_constraints, CompiledProgram, GuestOptions,
     OriginalCompiledProgram, RiscvISA,
 };
-use sdk_v2::StdIn;
+use openvm_sdk::StdIn;
 
 #[cfg(feature = "metrics")]
 use openvm_stark_sdk::metrics_tracing::TimingMetricsLayer;
