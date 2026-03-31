@@ -3,15 +3,14 @@ Instructions:
   1: m[fp + 6] = m[fp + 5] + m[fp + 7]
 
 APC advantage:
-  - Main columns: 40 -> 6 (6.67x reduction)
+  - Main columns: 40 -> 5 (8.00x reduction)
   - Bus interactions: 12 -> 7 (1.71x reduction)
-  - Constraints: 16 -> 2 (8.00x reduction)
+  - Constraints: 16 -> 1 (16.00x reduction)
 
-Symbolic machine using 6 unique main columns:
+Symbolic machine using 5 unique main columns:
   fp_0
   value_A_0
   value_B_0
-  value_A_1
   value_B_1
   is_valid
 
@@ -24,8 +23,7 @@ mult=is_valid * 1, args=[fp_0 + 3, value_A_0]
 mult=is_valid * 1, args=[fp_0 + 5, value_B_0]
 mult=is_valid * 1, args=[fp_0 + 4, value_B_0 - value_A_0]
 mult=is_valid * 1, args=[fp_0 + 6, value_B_1]
-mult=is_valid * 1, args=[fp_0 + 7, value_B_1 - value_A_1]
+mult=is_valid * 1, args=[fp_0 + 7, value_B_1 - value_B_0]
 
 // Algebraic constraints:
-value_B_0 - value_A_1 = 0
 is_valid * (is_valid - 1) = 0

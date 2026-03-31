@@ -8,10 +8,10 @@ use crate::symbolic_machines::build_execution_machine;
 
 pub use powdr_autoprecompiles::DegreeBound;
 
-// TODO: Is this correct?
+// TODO: This is BS, but interesting to test Poseidon.
 pub const DEFAULT_DEGREE_BOUND: DegreeBound = DegreeBound {
-    identities: 5,
-    bus_interactions: 2,
+    identities: 100,
+    bus_interactions: 100,
 };
 
 /// LeanVM has a single AIR for the execution table.

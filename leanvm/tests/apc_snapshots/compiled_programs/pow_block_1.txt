@@ -8,19 +8,13 @@ Instructions:
   7: if 1 != 0 jump to @end_program = 0 with next(fp) = m[fp + 7]
 
 APC advantage:
-  - Main columns: 140 -> 9 (15.56x reduction)
+  - Main columns: 140 -> 3 (46.67x reduction)
   - Bus interactions: 42 -> 9 (4.67x reduction)
-  - Constraints: 56 -> 7 (8.00x reduction)
+  - Constraints: 56 -> 1 (56.00x reduction)
 
-Symbolic machine using 9 unique main columns:
+Symbolic machine using 3 unique main columns:
   fp_0
   value_B_1
-  value_A_2
-  value_C_2
-  value_A_3
-  value_C_3
-  value_A_4
-  value_C_4
   is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):
@@ -31,16 +25,10 @@ mult=is_valid * 1, args=[0, 0]
 mult=is_valid * 1, args=[fp_0 + 2, 50]
 mult=is_valid * 1, args=[50, value_B_1]
 mult=is_valid * 1, args=[fp_0 + 3, value_B_1]
-mult=is_valid * 1, args=[fp_0 + 4, value_A_2 * value_C_2]
-mult=is_valid * 1, args=[fp_0 + 5, value_A_3 * value_C_3]
-mult=is_valid * 1, args=[fp_0 + 6, value_A_4 * value_C_4]
+mult=is_valid * 1, args=[fp_0 + 4, value_B_1 * value_B_1]
+mult=is_valid * 1, args=[fp_0 + 5, value_B_1 * value_B_1 * (value_B_1 * value_B_1)]
+mult=is_valid * 1, args=[fp_0 + 6, value_B_1 * value_B_1 * (value_B_1 * value_B_1) * (value_B_1 * value_B_1 * (value_B_1 * value_B_1))]
 mult=is_valid * 1, args=[fp_0 + 7, 0]
 
 // Algebraic constraints:
-value_B_1 - value_A_2 = 0
-value_B_1 - value_C_2 = 0
-value_A_2 * value_C_2 - value_A_3 = 0
-value_A_2 * value_C_2 - value_C_3 = 0
-value_A_3 * value_C_3 - value_A_4 = 0
-value_A_3 * value_C_3 - value_C_4 = 0
 is_valid * (is_valid - 1) = 0

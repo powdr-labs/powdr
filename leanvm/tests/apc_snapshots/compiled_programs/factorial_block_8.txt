@@ -17,86 +17,46 @@ Instructions:
   40: if 1 != 0 jump to @function_@loop_1_file_id: 1, line: 8 = 7 with next(fp) = m[fp + 18]
 
 APC advantage:
-  - Main columns: 320 -> 28 (11.43x reduction)
+  - Main columns: 320 -> 8 (40.00x reduction)
   - Bus interactions: 96 -> 23 (4.17x reduction)
-  - Constraints: 128 -> 21 (6.10x reduction)
+  - Constraints: 128 -> 1 (128.00x reduction)
 
-Symbolic machine using 28 unique main columns:
+Symbolic machine using 8 unique main columns:
   fp_0
   value_B_0
   value_A_1
-  value_B_1
-  addr_B_2
   value_B_2
   value_A_3
-  value_B_3
-  addr_B_4
   value_B_4
-  value_A_5
-  value_B_5
-  value_B_6
-  value_A_7
-  value_B_7
-  addr_B_8
-  value_B_8
-  value_B_9
   addr_B_10
-  addr_B_11
-  addr_B_12
-  value_B_12
-  addr_B_13
-  value_B_13
-  addr_B_14
-  value_B_14
-  value_C_15
   is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):
 mult=is_valid * -1, args=[25, fp_0]
-mult=is_valid * 1, args=[7, value_C_15]
+mult=is_valid * 1, args=[7, addr_B_10]
 
 // Bus 1 (MEMORY):
 mult=is_valid * 1, args=[fp_0 + 2, value_B_0]
 mult=is_valid * 1, args=[fp_0 + 9, value_B_0]
 mult=is_valid * 1, args=[fp_0 + 3, value_A_1]
-mult=is_valid * 1, args=[fp_0 + 10, value_B_1]
-mult=is_valid * 1, args=[addr_B_2, value_B_2]
+mult=is_valid * 1, args=[fp_0 + 10, value_B_0 + value_A_1]
+mult=is_valid * 1, args=[value_B_0 + value_A_1, value_B_2]
 mult=is_valid * 1, args=[fp_0 + 11, value_B_2]
 mult=is_valid * 1, args=[fp_0 + 4, value_A_3]
-mult=is_valid * 1, args=[fp_0 + 12, value_B_3]
-mult=is_valid * 1, args=[addr_B_4, value_B_4]
+mult=is_valid * 1, args=[fp_0 + 12, value_B_0 + value_A_3]
+mult=is_valid * 1, args=[value_B_0 + value_A_3, value_B_4]
 mult=is_valid * 1, args=[fp_0 + 13, value_B_4]
-mult=is_valid * 1, args=[fp_0 + 14, value_B_5]
-mult=is_valid * 1, args=[fp_0 + 15, value_B_6]
-mult=is_valid * 1, args=[fp_0 + 16, value_B_7]
-mult=is_valid * 1, args=[addr_B_8, value_B_8]
-mult=is_valid * 1, args=[fp_0 + 17, value_B_9]
+mult=is_valid * 1, args=[fp_0 + 14, value_B_2 + value_B_4]
+mult=is_valid * 1, args=[fp_0 + 15, value_B_0 + 1]
+mult=is_valid * 1, args=[fp_0 + 16, value_B_0 + value_A_1 + 1]
+mult=is_valid * 1, args=[value_B_0 + value_A_1 + 1, value_B_2 + value_B_4]
+mult=is_valid * 1, args=[fp_0 + 17, value_B_0 + 1]
 mult=is_valid * 1, args=[fp_0 + 18, addr_B_10]
 mult=is_valid * 1, args=[addr_B_10, 57]
-mult=is_valid * 1, args=[addr_B_11, fp_0]
-mult=is_valid * 1, args=[addr_B_12, value_B_12]
-mult=is_valid * 1, args=[addr_B_13, value_B_13]
-mult=is_valid * 1, args=[addr_B_14, value_B_14]
+mult=is_valid * 1, args=[addr_B_10 + 1, fp_0]
+mult=is_valid * 1, args=[addr_B_10 + 2, value_B_0 + 1]
+mult=is_valid * 1, args=[addr_B_10 + 3, value_A_1]
+mult=is_valid * 1, args=[addr_B_10 + 4, value_A_3]
 
 // Algebraic constraints:
-value_B_0 + value_A_3 - value_B_3 = 0
-value_B_0 + 1 * is_valid - value_B_9 = 0
-value_B_0 + value_A_1 - value_B_1 = 0
-value_B_0 + 1 * is_valid - value_B_6 = 0
-value_A_1 - value_A_7 = 0
-value_A_1 - value_B_13 = 0
-value_B_1 - addr_B_2 = 0
-value_B_2 - value_A_5 = 0
-value_A_3 - value_B_14 = 0
-value_B_3 - addr_B_4 = 0
-value_B_4 + value_A_5 - value_B_5 = 0
-value_B_5 - value_B_8 = 0
-value_B_6 + value_A_7 - value_B_7 = 0
-value_B_7 - addr_B_8 = 0
-value_B_9 - value_B_12 = 0
-addr_B_10 + 1 * is_valid - addr_B_11 = 0
-addr_B_10 + 2 * is_valid - addr_B_12 = 0
-addr_B_10 + 3 * is_valid - addr_B_13 = 0
-addr_B_10 + 4 * is_valid - addr_B_14 = 0
-addr_B_10 - value_C_15 = 0
 is_valid * (is_valid - 1) = 0

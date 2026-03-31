@@ -132,6 +132,18 @@ where
         system.into()
     };
 
+    // WOM optimization may introduce new equality constraints (e.g., when two
+    // memory reads at the same address are unified). Run the inliner again to
+    // eliminate the resulting redundant variables.
+    let (constraint_system, substitutions) = inliner::replace_constrained_witness_columns(
+        constraint_system,
+        inline_everything_below_degree_bound(degree_bound),
+    );
+    stats_logger.log("inlining (post-WOM)", &constraint_system);
+    export_options.register_substituted_variables(substitutions);
+    export_options
+        .export_optimizer_outer_constraint_system(constraint_system.system(), "inlining_post_wom");
+
     let constraint_system = constraint_optimizer::remove_disconnected_columns(
         constraint_system,
         &mut solver,

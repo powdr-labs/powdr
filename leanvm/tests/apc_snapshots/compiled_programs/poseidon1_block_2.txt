@@ -87,184 +87,53 @@ Instructions:
   128: if 1 != 0 jump to @function_mds = 129 with next(fp) = m[fp + 86]
 
 APC advantage:
-  - Main columns: 1720 -> 169 (10.18x reduction)
+  - Main columns: 1720 -> 38 (45.26x reduction)
   - Bus interactions: 516 -> 123 (4.20x reduction)
-  - Constraints: 688 -> 132 (5.21x reduction)
+  - Constraints: 688 -> 1 (688.00x reduction)
 
-Symbolic machine using 169 unique main columns:
+Symbolic machine using 38 unique main columns:
   fp_0
   addr_B_1
   value_B_1
   addr_B_2
   value_B_2
-  value_A_3
-  value_B_3
-  value_A_4
-  value_C_4
-  value_A_5
-  value_C_5
-  addr_B_6
   value_B_6
-  addr_B_7
   value_B_7
-  value_A_8
-  value_B_8
-  value_A_9
-  value_C_9
-  value_A_10
-  value_C_10
-  addr_B_11
   value_B_11
-  addr_B_12
   value_B_12
-  value_A_13
-  value_B_13
-  value_A_14
-  value_C_14
-  value_A_15
-  value_C_15
-  addr_B_16
   value_B_16
-  addr_B_17
   value_B_17
-  value_A_18
-  value_B_18
-  value_A_19
-  value_C_19
-  value_A_20
-  value_C_20
-  addr_B_21
   value_B_21
-  addr_B_22
   value_B_22
-  value_A_23
-  value_B_23
-  value_A_24
-  value_C_24
-  value_A_25
-  value_C_25
-  addr_B_26
   value_B_26
-  addr_B_27
   value_B_27
-  value_A_28
-  value_B_28
-  value_A_29
-  value_C_29
-  value_A_30
-  value_C_30
-  addr_B_31
   value_B_31
-  addr_B_32
   value_B_32
-  value_A_33
-  value_B_33
-  value_A_34
-  value_C_34
-  value_A_35
-  value_C_35
-  addr_B_36
   value_B_36
-  addr_B_37
   value_B_37
-  value_A_38
-  value_B_38
-  value_A_39
-  value_C_39
-  value_A_40
-  value_C_40
-  addr_B_41
   value_B_41
-  addr_B_42
   value_B_42
-  value_A_43
-  value_B_43
-  value_A_44
-  value_C_44
-  value_A_45
-  value_C_45
-  addr_B_46
   value_B_46
-  addr_B_47
   value_B_47
-  value_A_48
-  value_B_48
-  value_A_49
-  value_C_49
-  value_A_50
-  value_C_50
-  addr_B_51
   value_B_51
-  addr_B_52
   value_B_52
-  value_A_53
-  value_B_53
-  value_A_54
-  value_C_54
-  value_A_55
-  value_C_55
-  addr_B_56
   value_B_56
-  addr_B_57
   value_B_57
-  value_A_58
-  value_B_58
-  value_A_59
-  value_C_59
-  value_A_60
-  value_C_60
-  addr_B_61
   value_B_61
-  addr_B_62
   value_B_62
-  value_A_63
-  value_B_63
-  value_A_64
-  value_C_64
-  value_A_65
-  value_C_65
-  addr_B_66
   value_B_66
-  addr_B_67
   value_B_67
-  value_A_68
-  value_B_68
-  value_A_69
-  value_C_69
-  value_A_70
-  value_C_70
-  addr_B_71
   value_B_71
-  addr_B_72
   value_B_72
-  value_A_73
-  value_B_73
-  value_A_74
-  value_C_74
-  value_A_75
-  value_C_75
-  addr_B_76
   value_B_76
-  addr_B_77
   value_B_77
-  value_A_78
-  value_B_78
-  value_A_79
-  value_C_79
-  value_A_80
-  value_C_80
   addr_B_81
-  addr_B_82
-  addr_B_83
-  value_B_83
-  addr_B_84
   value_B_84
-  value_C_85
   is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):
 mult=is_valid * -1, args=[43, fp_0]
-mult=is_valid * 1, args=[129, value_C_85]
+mult=is_valid * 1, args=[129, addr_B_81]
 
 // Bus 1 (MEMORY):
 mult=is_valid * 1, args=[fp_0 + 5, fp_0 + 6]
@@ -274,251 +143,120 @@ mult=is_valid * 1, args=[fp_0 + 22, value_B_1]
 mult=is_valid * 1, args=[fp_0 + 4, addr_B_2]
 mult=is_valid * 1, args=[addr_B_2, value_B_2]
 mult=is_valid * 1, args=[fp_0 + 23, value_B_2]
-mult=is_valid * 1, args=[fp_0 + 24, value_B_3]
-mult=is_valid * 1, args=[fp_0 + 25, value_A_4 * value_C_4]
-mult=is_valid * 1, args=[fp_0 + 6, value_A_5 * value_C_5]
-mult=is_valid * 1, args=[addr_B_6, value_B_6]
+mult=is_valid * 1, args=[fp_0 + 24, value_B_1 + value_B_2]
+mult=is_valid * 1, args=[fp_0 + 25, (value_B_1 + value_B_2) * (value_B_1 + value_B_2)]
+mult=is_valid * 1, args=[fp_0 + 6, (value_B_1 + value_B_2) * (value_B_1 + value_B_2) * (value_B_1 + value_B_2)]
+mult=is_valid * 1, args=[addr_B_1 + 1, value_B_6]
 mult=is_valid * 1, args=[fp_0 + 26, value_B_6]
-mult=is_valid * 1, args=[addr_B_7, value_B_7]
+mult=is_valid * 1, args=[addr_B_2 + 1, value_B_7]
 mult=is_valid * 1, args=[fp_0 + 27, value_B_7]
-mult=is_valid * 1, args=[fp_0 + 28, value_B_8]
-mult=is_valid * 1, args=[fp_0 + 29, value_A_9 * value_C_9]
-mult=is_valid * 1, args=[fp_0 + 7, value_A_10 * value_C_10]
-mult=is_valid * 1, args=[addr_B_11, value_B_11]
+mult=is_valid * 1, args=[fp_0 + 28, value_B_6 + value_B_7]
+mult=is_valid * 1, args=[fp_0 + 29, (value_B_6 + value_B_7) * (value_B_6 + value_B_7)]
+mult=is_valid * 1, args=[fp_0 + 7, (value_B_6 + value_B_7) * (value_B_6 + value_B_7) * (value_B_6 + value_B_7)]
+mult=is_valid * 1, args=[addr_B_1 + 2, value_B_11]
 mult=is_valid * 1, args=[fp_0 + 30, value_B_11]
-mult=is_valid * 1, args=[addr_B_12, value_B_12]
+mult=is_valid * 1, args=[addr_B_2 + 2, value_B_12]
 mult=is_valid * 1, args=[fp_0 + 31, value_B_12]
-mult=is_valid * 1, args=[fp_0 + 32, value_B_13]
-mult=is_valid * 1, args=[fp_0 + 33, value_A_14 * value_C_14]
-mult=is_valid * 1, args=[fp_0 + 8, value_A_15 * value_C_15]
-mult=is_valid * 1, args=[addr_B_16, value_B_16]
+mult=is_valid * 1, args=[fp_0 + 32, value_B_11 + value_B_12]
+mult=is_valid * 1, args=[fp_0 + 33, (value_B_11 + value_B_12) * (value_B_11 + value_B_12)]
+mult=is_valid * 1, args=[fp_0 + 8, (value_B_11 + value_B_12) * (value_B_11 + value_B_12) * (value_B_11 + value_B_12)]
+mult=is_valid * 1, args=[addr_B_1 + 3, value_B_16]
 mult=is_valid * 1, args=[fp_0 + 34, value_B_16]
-mult=is_valid * 1, args=[addr_B_17, value_B_17]
+mult=is_valid * 1, args=[addr_B_2 + 3, value_B_17]
 mult=is_valid * 1, args=[fp_0 + 35, value_B_17]
-mult=is_valid * 1, args=[fp_0 + 36, value_B_18]
-mult=is_valid * 1, args=[fp_0 + 37, value_A_19 * value_C_19]
-mult=is_valid * 1, args=[fp_0 + 9, value_A_20 * value_C_20]
-mult=is_valid * 1, args=[addr_B_21, value_B_21]
+mult=is_valid * 1, args=[fp_0 + 36, value_B_16 + value_B_17]
+mult=is_valid * 1, args=[fp_0 + 37, (value_B_16 + value_B_17) * (value_B_16 + value_B_17)]
+mult=is_valid * 1, args=[fp_0 + 9, (value_B_16 + value_B_17) * (value_B_16 + value_B_17) * (value_B_16 + value_B_17)]
+mult=is_valid * 1, args=[addr_B_1 + 4, value_B_21]
 mult=is_valid * 1, args=[fp_0 + 38, value_B_21]
-mult=is_valid * 1, args=[addr_B_22, value_B_22]
+mult=is_valid * 1, args=[addr_B_2 + 4, value_B_22]
 mult=is_valid * 1, args=[fp_0 + 39, value_B_22]
-mult=is_valid * 1, args=[fp_0 + 40, value_B_23]
-mult=is_valid * 1, args=[fp_0 + 41, value_A_24 * value_C_24]
-mult=is_valid * 1, args=[fp_0 + 10, value_A_25 * value_C_25]
-mult=is_valid * 1, args=[addr_B_26, value_B_26]
+mult=is_valid * 1, args=[fp_0 + 40, value_B_21 + value_B_22]
+mult=is_valid * 1, args=[fp_0 + 41, (value_B_21 + value_B_22) * (value_B_21 + value_B_22)]
+mult=is_valid * 1, args=[fp_0 + 10, (value_B_21 + value_B_22) * (value_B_21 + value_B_22) * (value_B_21 + value_B_22)]
+mult=is_valid * 1, args=[addr_B_1 + 5, value_B_26]
 mult=is_valid * 1, args=[fp_0 + 42, value_B_26]
-mult=is_valid * 1, args=[addr_B_27, value_B_27]
+mult=is_valid * 1, args=[addr_B_2 + 5, value_B_27]
 mult=is_valid * 1, args=[fp_0 + 43, value_B_27]
-mult=is_valid * 1, args=[fp_0 + 44, value_B_28]
-mult=is_valid * 1, args=[fp_0 + 45, value_A_29 * value_C_29]
-mult=is_valid * 1, args=[fp_0 + 11, value_A_30 * value_C_30]
-mult=is_valid * 1, args=[addr_B_31, value_B_31]
+mult=is_valid * 1, args=[fp_0 + 44, value_B_26 + value_B_27]
+mult=is_valid * 1, args=[fp_0 + 45, (value_B_26 + value_B_27) * (value_B_26 + value_B_27)]
+mult=is_valid * 1, args=[fp_0 + 11, (value_B_26 + value_B_27) * (value_B_26 + value_B_27) * (value_B_26 + value_B_27)]
+mult=is_valid * 1, args=[addr_B_1 + 6, value_B_31]
 mult=is_valid * 1, args=[fp_0 + 46, value_B_31]
-mult=is_valid * 1, args=[addr_B_32, value_B_32]
+mult=is_valid * 1, args=[addr_B_2 + 6, value_B_32]
 mult=is_valid * 1, args=[fp_0 + 47, value_B_32]
-mult=is_valid * 1, args=[fp_0 + 48, value_B_33]
-mult=is_valid * 1, args=[fp_0 + 49, value_A_34 * value_C_34]
-mult=is_valid * 1, args=[fp_0 + 12, value_A_35 * value_C_35]
-mult=is_valid * 1, args=[addr_B_36, value_B_36]
+mult=is_valid * 1, args=[fp_0 + 48, value_B_31 + value_B_32]
+mult=is_valid * 1, args=[fp_0 + 49, (value_B_31 + value_B_32) * (value_B_31 + value_B_32)]
+mult=is_valid * 1, args=[fp_0 + 12, (value_B_31 + value_B_32) * (value_B_31 + value_B_32) * (value_B_31 + value_B_32)]
+mult=is_valid * 1, args=[addr_B_1 + 7, value_B_36]
 mult=is_valid * 1, args=[fp_0 + 50, value_B_36]
-mult=is_valid * 1, args=[addr_B_37, value_B_37]
+mult=is_valid * 1, args=[addr_B_2 + 7, value_B_37]
 mult=is_valid * 1, args=[fp_0 + 51, value_B_37]
-mult=is_valid * 1, args=[fp_0 + 52, value_B_38]
-mult=is_valid * 1, args=[fp_0 + 53, value_A_39 * value_C_39]
-mult=is_valid * 1, args=[fp_0 + 13, value_A_40 * value_C_40]
-mult=is_valid * 1, args=[addr_B_41, value_B_41]
+mult=is_valid * 1, args=[fp_0 + 52, value_B_36 + value_B_37]
+mult=is_valid * 1, args=[fp_0 + 53, (value_B_36 + value_B_37) * (value_B_36 + value_B_37)]
+mult=is_valid * 1, args=[fp_0 + 13, (value_B_36 + value_B_37) * (value_B_36 + value_B_37) * (value_B_36 + value_B_37)]
+mult=is_valid * 1, args=[addr_B_1 + 8, value_B_41]
 mult=is_valid * 1, args=[fp_0 + 54, value_B_41]
-mult=is_valid * 1, args=[addr_B_42, value_B_42]
+mult=is_valid * 1, args=[addr_B_2 + 8, value_B_42]
 mult=is_valid * 1, args=[fp_0 + 55, value_B_42]
-mult=is_valid * 1, args=[fp_0 + 56, value_B_43]
-mult=is_valid * 1, args=[fp_0 + 57, value_A_44 * value_C_44]
-mult=is_valid * 1, args=[fp_0 + 14, value_A_45 * value_C_45]
-mult=is_valid * 1, args=[addr_B_46, value_B_46]
+mult=is_valid * 1, args=[fp_0 + 56, value_B_41 + value_B_42]
+mult=is_valid * 1, args=[fp_0 + 57, (value_B_41 + value_B_42) * (value_B_41 + value_B_42)]
+mult=is_valid * 1, args=[fp_0 + 14, (value_B_41 + value_B_42) * (value_B_41 + value_B_42) * (value_B_41 + value_B_42)]
+mult=is_valid * 1, args=[addr_B_1 + 9, value_B_46]
 mult=is_valid * 1, args=[fp_0 + 58, value_B_46]
-mult=is_valid * 1, args=[addr_B_47, value_B_47]
+mult=is_valid * 1, args=[addr_B_2 + 9, value_B_47]
 mult=is_valid * 1, args=[fp_0 + 59, value_B_47]
-mult=is_valid * 1, args=[fp_0 + 60, value_B_48]
-mult=is_valid * 1, args=[fp_0 + 61, value_A_49 * value_C_49]
-mult=is_valid * 1, args=[fp_0 + 15, value_A_50 * value_C_50]
-mult=is_valid * 1, args=[addr_B_51, value_B_51]
+mult=is_valid * 1, args=[fp_0 + 60, value_B_46 + value_B_47]
+mult=is_valid * 1, args=[fp_0 + 61, (value_B_46 + value_B_47) * (value_B_46 + value_B_47)]
+mult=is_valid * 1, args=[fp_0 + 15, (value_B_46 + value_B_47) * (value_B_46 + value_B_47) * (value_B_46 + value_B_47)]
+mult=is_valid * 1, args=[addr_B_1 + 10, value_B_51]
 mult=is_valid * 1, args=[fp_0 + 62, value_B_51]
-mult=is_valid * 1, args=[addr_B_52, value_B_52]
+mult=is_valid * 1, args=[addr_B_2 + 10, value_B_52]
 mult=is_valid * 1, args=[fp_0 + 63, value_B_52]
-mult=is_valid * 1, args=[fp_0 + 64, value_B_53]
-mult=is_valid * 1, args=[fp_0 + 65, value_A_54 * value_C_54]
-mult=is_valid * 1, args=[fp_0 + 16, value_A_55 * value_C_55]
-mult=is_valid * 1, args=[addr_B_56, value_B_56]
+mult=is_valid * 1, args=[fp_0 + 64, value_B_51 + value_B_52]
+mult=is_valid * 1, args=[fp_0 + 65, (value_B_51 + value_B_52) * (value_B_51 + value_B_52)]
+mult=is_valid * 1, args=[fp_0 + 16, (value_B_51 + value_B_52) * (value_B_51 + value_B_52) * (value_B_51 + value_B_52)]
+mult=is_valid * 1, args=[addr_B_1 + 11, value_B_56]
 mult=is_valid * 1, args=[fp_0 + 66, value_B_56]
-mult=is_valid * 1, args=[addr_B_57, value_B_57]
+mult=is_valid * 1, args=[addr_B_2 + 11, value_B_57]
 mult=is_valid * 1, args=[fp_0 + 67, value_B_57]
-mult=is_valid * 1, args=[fp_0 + 68, value_B_58]
-mult=is_valid * 1, args=[fp_0 + 69, value_A_59 * value_C_59]
-mult=is_valid * 1, args=[fp_0 + 17, value_A_60 * value_C_60]
-mult=is_valid * 1, args=[addr_B_61, value_B_61]
+mult=is_valid * 1, args=[fp_0 + 68, value_B_56 + value_B_57]
+mult=is_valid * 1, args=[fp_0 + 69, (value_B_56 + value_B_57) * (value_B_56 + value_B_57)]
+mult=is_valid * 1, args=[fp_0 + 17, (value_B_56 + value_B_57) * (value_B_56 + value_B_57) * (value_B_56 + value_B_57)]
+mult=is_valid * 1, args=[addr_B_1 + 12, value_B_61]
 mult=is_valid * 1, args=[fp_0 + 70, value_B_61]
-mult=is_valid * 1, args=[addr_B_62, value_B_62]
+mult=is_valid * 1, args=[addr_B_2 + 12, value_B_62]
 mult=is_valid * 1, args=[fp_0 + 71, value_B_62]
-mult=is_valid * 1, args=[fp_0 + 72, value_B_63]
-mult=is_valid * 1, args=[fp_0 + 73, value_A_64 * value_C_64]
-mult=is_valid * 1, args=[fp_0 + 18, value_A_65 * value_C_65]
-mult=is_valid * 1, args=[addr_B_66, value_B_66]
+mult=is_valid * 1, args=[fp_0 + 72, value_B_61 + value_B_62]
+mult=is_valid * 1, args=[fp_0 + 73, (value_B_61 + value_B_62) * (value_B_61 + value_B_62)]
+mult=is_valid * 1, args=[fp_0 + 18, (value_B_61 + value_B_62) * (value_B_61 + value_B_62) * (value_B_61 + value_B_62)]
+mult=is_valid * 1, args=[addr_B_1 + 13, value_B_66]
 mult=is_valid * 1, args=[fp_0 + 74, value_B_66]
-mult=is_valid * 1, args=[addr_B_67, value_B_67]
+mult=is_valid * 1, args=[addr_B_2 + 13, value_B_67]
 mult=is_valid * 1, args=[fp_0 + 75, value_B_67]
-mult=is_valid * 1, args=[fp_0 + 76, value_B_68]
-mult=is_valid * 1, args=[fp_0 + 77, value_A_69 * value_C_69]
-mult=is_valid * 1, args=[fp_0 + 19, value_A_70 * value_C_70]
-mult=is_valid * 1, args=[addr_B_71, value_B_71]
+mult=is_valid * 1, args=[fp_0 + 76, value_B_66 + value_B_67]
+mult=is_valid * 1, args=[fp_0 + 77, (value_B_66 + value_B_67) * (value_B_66 + value_B_67)]
+mult=is_valid * 1, args=[fp_0 + 19, (value_B_66 + value_B_67) * (value_B_66 + value_B_67) * (value_B_66 + value_B_67)]
+mult=is_valid * 1, args=[addr_B_1 + 14, value_B_71]
 mult=is_valid * 1, args=[fp_0 + 78, value_B_71]
-mult=is_valid * 1, args=[addr_B_72, value_B_72]
+mult=is_valid * 1, args=[addr_B_2 + 14, value_B_72]
 mult=is_valid * 1, args=[fp_0 + 79, value_B_72]
-mult=is_valid * 1, args=[fp_0 + 80, value_B_73]
-mult=is_valid * 1, args=[fp_0 + 81, value_A_74 * value_C_74]
-mult=is_valid * 1, args=[fp_0 + 20, value_A_75 * value_C_75]
-mult=is_valid * 1, args=[addr_B_76, value_B_76]
+mult=is_valid * 1, args=[fp_0 + 80, value_B_71 + value_B_72]
+mult=is_valid * 1, args=[fp_0 + 81, (value_B_71 + value_B_72) * (value_B_71 + value_B_72)]
+mult=is_valid * 1, args=[fp_0 + 20, (value_B_71 + value_B_72) * (value_B_71 + value_B_72) * (value_B_71 + value_B_72)]
+mult=is_valid * 1, args=[addr_B_1 + 15, value_B_76]
 mult=is_valid * 1, args=[fp_0 + 82, value_B_76]
-mult=is_valid * 1, args=[addr_B_77, value_B_77]
+mult=is_valid * 1, args=[addr_B_2 + 15, value_B_77]
 mult=is_valid * 1, args=[fp_0 + 83, value_B_77]
-mult=is_valid * 1, args=[fp_0 + 84, value_B_78]
-mult=is_valid * 1, args=[fp_0 + 85, value_A_79 * value_C_79]
-mult=is_valid * 1, args=[fp_0 + 21, value_A_80 * value_C_80]
+mult=is_valid * 1, args=[fp_0 + 84, value_B_76 + value_B_77]
+mult=is_valid * 1, args=[fp_0 + 85, (value_B_76 + value_B_77) * (value_B_76 + value_B_77)]
+mult=is_valid * 1, args=[fp_0 + 21, (value_B_76 + value_B_77) * (value_B_76 + value_B_77) * (value_B_76 + value_B_77)]
 mult=is_valid * 1, args=[fp_0 + 86, addr_B_81]
 mult=is_valid * 1, args=[addr_B_81, 746]
-mult=is_valid * 1, args=[addr_B_82, fp_0]
-mult=is_valid * 1, args=[addr_B_83, value_B_83]
-mult=is_valid * 1, args=[addr_B_84, value_B_84]
+mult=is_valid * 1, args=[addr_B_81 + 1, fp_0]
+mult=is_valid * 1, args=[addr_B_81 + 2, fp_0 + 6]
+mult=is_valid * 1, args=[addr_B_81 + 3, value_B_84]
 mult=is_valid * 1, args=[fp_0 + 3, value_B_84]
 
 // Algebraic constraints:
-fp_0 + 6 * is_valid - value_B_83 = 0
-addr_B_1 + 1 * is_valid - addr_B_6 = 0
-addr_B_1 + 2 * is_valid - addr_B_11 = 0
-addr_B_1 + 3 * is_valid - addr_B_16 = 0
-addr_B_1 + 4 * is_valid - addr_B_21 = 0
-addr_B_1 + 5 * is_valid - addr_B_26 = 0
-addr_B_1 + 6 * is_valid - addr_B_31 = 0
-addr_B_1 + 7 * is_valid - addr_B_36 = 0
-addr_B_1 + 8 * is_valid - addr_B_41 = 0
-addr_B_1 + 9 * is_valid - addr_B_46 = 0
-addr_B_1 + 10 * is_valid - addr_B_51 = 0
-addr_B_1 + 11 * is_valid - addr_B_56 = 0
-addr_B_1 + 12 * is_valid - addr_B_61 = 0
-addr_B_1 + 13 * is_valid - addr_B_66 = 0
-addr_B_1 + 14 * is_valid - addr_B_71 = 0
-addr_B_1 + 15 * is_valid - addr_B_76 = 0
-value_B_1 - value_A_3 = 0
-addr_B_2 + 1 * is_valid - addr_B_7 = 0
-addr_B_2 + 2 * is_valid - addr_B_12 = 0
-addr_B_2 + 3 * is_valid - addr_B_17 = 0
-addr_B_2 + 4 * is_valid - addr_B_22 = 0
-addr_B_2 + 5 * is_valid - addr_B_27 = 0
-addr_B_2 + 6 * is_valid - addr_B_32 = 0
-addr_B_2 + 7 * is_valid - addr_B_37 = 0
-addr_B_2 + 8 * is_valid - addr_B_42 = 0
-addr_B_2 + 9 * is_valid - addr_B_47 = 0
-addr_B_2 + 10 * is_valid - addr_B_52 = 0
-addr_B_2 + 11 * is_valid - addr_B_57 = 0
-addr_B_2 + 12 * is_valid - addr_B_62 = 0
-addr_B_2 + 13 * is_valid - addr_B_67 = 0
-addr_B_2 + 14 * is_valid - addr_B_72 = 0
-addr_B_2 + 15 * is_valid - addr_B_77 = 0
-value_B_2 + value_A_3 - value_B_3 = 0
-value_B_3 - value_A_4 = 0
-value_B_3 - value_C_4 = 0
-value_B_3 - value_C_5 = 0
-value_A_4 * value_C_4 - value_A_5 = 0
-value_B_6 - value_A_8 = 0
-value_B_7 + value_A_8 - value_B_8 = 0
-value_B_8 - value_A_9 = 0
-value_B_8 - value_C_9 = 0
-value_B_8 - value_C_10 = 0
-value_A_9 * value_C_9 - value_A_10 = 0
-value_B_11 - value_A_13 = 0
-value_B_12 + value_A_13 - value_B_13 = 0
-value_B_13 - value_A_14 = 0
-value_B_13 - value_C_14 = 0
-value_B_13 - value_C_15 = 0
-value_A_14 * value_C_14 - value_A_15 = 0
-value_B_16 - value_A_18 = 0
-value_B_17 + value_A_18 - value_B_18 = 0
-value_B_18 - value_A_19 = 0
-value_B_18 - value_C_19 = 0
-value_B_18 - value_C_20 = 0
-value_A_19 * value_C_19 - value_A_20 = 0
-value_B_21 - value_A_23 = 0
-value_B_22 + value_A_23 - value_B_23 = 0
-value_B_23 - value_A_24 = 0
-value_B_23 - value_C_24 = 0
-value_B_23 - value_C_25 = 0
-value_A_24 * value_C_24 - value_A_25 = 0
-value_B_26 - value_A_28 = 0
-value_B_27 + value_A_28 - value_B_28 = 0
-value_B_28 - value_A_29 = 0
-value_B_28 - value_C_29 = 0
-value_B_28 - value_C_30 = 0
-value_A_29 * value_C_29 - value_A_30 = 0
-value_B_31 - value_A_33 = 0
-value_B_32 + value_A_33 - value_B_33 = 0
-value_B_33 - value_A_34 = 0
-value_B_33 - value_C_34 = 0
-value_B_33 - value_C_35 = 0
-value_A_34 * value_C_34 - value_A_35 = 0
-value_B_36 - value_A_38 = 0
-value_B_37 + value_A_38 - value_B_38 = 0
-value_B_38 - value_A_39 = 0
-value_B_38 - value_C_39 = 0
-value_B_38 - value_C_40 = 0
-value_A_39 * value_C_39 - value_A_40 = 0
-value_B_41 - value_A_43 = 0
-value_B_42 + value_A_43 - value_B_43 = 0
-value_B_43 - value_A_44 = 0
-value_B_43 - value_C_44 = 0
-value_B_43 - value_C_45 = 0
-value_A_44 * value_C_44 - value_A_45 = 0
-value_B_46 - value_A_48 = 0
-value_B_47 + value_A_48 - value_B_48 = 0
-value_B_48 - value_A_49 = 0
-value_B_48 - value_C_49 = 0
-value_B_48 - value_C_50 = 0
-value_A_49 * value_C_49 - value_A_50 = 0
-value_B_51 - value_A_53 = 0
-value_B_52 + value_A_53 - value_B_53 = 0
-value_B_53 - value_A_54 = 0
-value_B_53 - value_C_54 = 0
-value_B_53 - value_C_55 = 0
-value_A_54 * value_C_54 - value_A_55 = 0
-value_B_56 - value_A_58 = 0
-value_B_57 + value_A_58 - value_B_58 = 0
-value_B_58 - value_A_59 = 0
-value_B_58 - value_C_59 = 0
-value_B_58 - value_C_60 = 0
-value_A_59 * value_C_59 - value_A_60 = 0
-value_B_61 - value_A_63 = 0
-value_B_62 + value_A_63 - value_B_63 = 0
-value_B_63 - value_A_64 = 0
-value_B_63 - value_C_64 = 0
-value_B_63 - value_C_65 = 0
-value_A_64 * value_C_64 - value_A_65 = 0
-value_B_66 - value_A_68 = 0
-value_B_67 + value_A_68 - value_B_68 = 0
-value_B_68 - value_A_69 = 0
-value_B_68 - value_C_69 = 0
-value_B_68 - value_C_70 = 0
-value_A_69 * value_C_69 - value_A_70 = 0
-value_B_71 - value_A_73 = 0
-value_B_72 + value_A_73 - value_B_73 = 0
-value_B_73 - value_A_74 = 0
-value_B_73 - value_C_74 = 0
-value_B_73 - value_C_75 = 0
-value_A_74 * value_C_74 - value_A_75 = 0
-value_B_76 - value_A_78 = 0
-value_B_77 + value_A_78 - value_B_78 = 0
-value_B_78 - value_A_79 = 0
-value_B_78 - value_C_79 = 0
-value_B_78 - value_C_80 = 0
-value_A_79 * value_C_79 - value_A_80 = 0
-addr_B_81 + 1 * is_valid - addr_B_82 = 0
-addr_B_81 + 2 * is_valid - addr_B_83 = 0
-addr_B_81 + 3 * is_valid - addr_B_84 = 0
-addr_B_81 - value_C_85 = 0
 is_valid * (is_valid - 1) = 0

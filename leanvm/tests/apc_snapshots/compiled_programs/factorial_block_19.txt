@@ -10,31 +10,22 @@ Instructions:
   67: if 1 != 0 jump to @function_@parallel_loop_0_file_id: 1, line: 5 = 13 with next(fp) = m[fp + 12]
 
 APC advantage:
-  - Main columns: 180 -> 16 (11.25x reduction)
+  - Main columns: 180 -> 7 (25.71x reduction)
   - Bus interactions: 54 -> 15 (3.60x reduction)
-  - Constraints: 72 -> 10 (7.20x reduction)
+  - Constraints: 72 -> 1 (72.00x reduction)
 
-Symbolic machine using 16 unique main columns:
+Symbolic machine using 7 unique main columns:
   fp_0
   addr_B_0
   value_B_0
   value_A_1
   value_B_1
-  addr_B_2
-  value_B_2
-  value_B_3
   addr_B_4
-  addr_B_5
-  addr_B_6
-  value_B_6
-  addr_B_7
-  value_B_7
-  value_C_8
   is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):
 mult=is_valid * -1, args=[59, fp_0]
-mult=is_valid * 1, args=[13, value_C_8]
+mult=is_valid * 1, args=[13, addr_B_4]
 
 // Bus 1 (MEMORY):
 mult=is_valid * 1, args=[fp_0 + 8, addr_B_0 - 3]
@@ -43,22 +34,13 @@ mult=is_valid * 1, args=[fp_0 + 9, value_B_0]
 mult=is_valid * 1, args=[fp_0 + 3, value_A_1]
 mult=is_valid * 1, args=[fp_0 + 10, value_B_1]
 mult=is_valid * 1, args=[fp_0 + 2, value_B_1 - value_A_1]
-mult=is_valid * 1, args=[addr_B_2, value_B_2]
-mult=is_valid * 1, args=[fp_0 + 11, value_B_3]
+mult=is_valid * 1, args=[value_B_1, value_B_0]
+mult=is_valid * 1, args=[fp_0 + 11, value_B_1 + 1 - value_A_1]
 mult=is_valid * 1, args=[fp_0 + 12, addr_B_4]
 mult=is_valid * 1, args=[addr_B_4, 68]
-mult=is_valid * 1, args=[addr_B_5, fp_0]
-mult=is_valid * 1, args=[addr_B_6, value_B_6]
-mult=is_valid * 1, args=[addr_B_7, value_B_7]
+mult=is_valid * 1, args=[addr_B_4 + 1, fp_0]
+mult=is_valid * 1, args=[addr_B_4 + 2, value_B_1 + 1 - value_A_1]
+mult=is_valid * 1, args=[addr_B_4 + 3, value_A_1]
 
 // Algebraic constraints:
-value_B_0 - value_B_2 = 0
-value_A_1 - value_B_7 = 0
-value_B_1 - addr_B_2 = 0
-value_B_1 + 1 * is_valid - (value_A_1 + value_B_3) = 0
-value_B_3 - value_B_6 = 0
-addr_B_4 + 1 * is_valid - addr_B_5 = 0
-addr_B_4 + 2 * is_valid - addr_B_6 = 0
-addr_B_4 + 3 * is_valid - addr_B_7 = 0
-addr_B_4 - value_C_8 = 0
 is_valid * (is_valid - 1) = 0
