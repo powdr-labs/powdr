@@ -555,33 +555,45 @@ fn aggregation_bytecode() {
             &EmpiricalConstraints::default(),
         );
 
-        let Ok((apc, pre_opt_stats)) = result else {
-            println!(
-                "Skipping block at PC {start_pc} ({num_instructions} instructions): build failed"
-            );
-            continue;
-        };
-
-        let post_opt_stats = AirStats::new(apc.machine());
-
-        csv.push_str(&format!(
-            "{start_pc},{num_instructions},{},{},{},{},{},{}\n",
-            pre_opt_stats.main_columns,
-            pre_opt_stats.constraints,
-            pre_opt_stats.bus_interactions,
-            post_opt_stats.main_columns,
-            post_opt_stats.constraints,
-            post_opt_stats.bus_interactions,
-        ));
+        match result {
+            Ok((apc, pre_opt_stats)) => {
+                let post_opt_stats = AirStats::new(apc.machine());
+                csv.push_str(&format!(
+                    "{start_pc},{num_instructions},{},{},{},{},{},{}\n",
+                    pre_opt_stats.main_columns,
+                    pre_opt_stats.constraints,
+                    pre_opt_stats.bus_interactions,
+                    post_opt_stats.main_columns,
+                    post_opt_stats.constraints,
+                    post_opt_stats.bus_interactions,
+                ));
+            }
+            Err(_) => {
+                csv.push_str(&format!("{start_pc},{num_instructions},0,0,0,0,0,0\n"));
+            }
+        }
     }
 
-    let snapshot_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+    let snapshot_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
-        .join("apc_snapshots");
-    powdr_leanvm::test_utils::assert_apc_snapshot(
-        &csv,
-        &snapshot_dir,
-        "compiled_programs",
-        "aggregation_bytecode",
-    );
+        .join("apc_snapshots")
+        .join("compiled_programs")
+        .join("aggregation_bytecode.csv");
+
+    let should_update = std::env::var("UPDATE_EXPECT")
+        .map(|v| v.as_str() == "1")
+        .unwrap_or(false);
+
+    if snapshot_path.exists() && !should_update {
+        let expected = std::fs::read_to_string(&snapshot_path).unwrap();
+        pretty_assertions::assert_eq!(
+            expected.trim(),
+            csv.trim(),
+            "CSV does not match. Re-run with UPDATE_EXPECT=1 to update.",
+        );
+    } else {
+        std::fs::create_dir_all(snapshot_path.parent().unwrap()).unwrap();
+        std::fs::write(&snapshot_path, &csv).unwrap();
+        println!("Snapshot created at {snapshot_path:?}. Re-run to confirm.");
+    }
 }
