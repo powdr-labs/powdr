@@ -234,7 +234,9 @@ def mds(in_ptr, out_ptr):
     }
 
     // Build and persist CSV
-    let csv = common::build_stats_csv(&blocks, &results, "block", |i, _| i.to_string());
+    let csv = common::build_stats_csv(&blocks, &results, "start_pc,num_instructions", |_, bb| {
+        format!("{},{}", bb.start_pc, bb.instructions.len())
+    });
     common::assert_file_snapshot(&snapshot_dir.join("poseidon1.csv"), &csv, "CSV");
 }
 
