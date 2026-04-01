@@ -542,7 +542,6 @@ fn u32_add_programmatic() {
 }
 
 #[test]
-#[ignore = "slow compilation"]
 fn aggregation_bytecode() {
     rec_aggregation::init_aggregation_bytecode();
     let bytecode = rec_aggregation::get_aggregation_bytecode();

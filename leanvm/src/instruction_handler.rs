@@ -8,10 +8,14 @@ use crate::symbolic_machines::build_execution_machine;
 
 pub use powdr_autoprecompiles::DegreeBound;
 
-// TODO: This is BS, but interesting to test Poseidon.
+// TODO: According to Claude, it's 2 for bus interactions, 5 for execution constraints,
+// 6 for extension ops, and 9 for Poseidon.
+// For now, we set both to 9, so that the optimizer has a chance to optimize Poseidon constraints.
+// Once we optimize away memory accesses to store temporary values, we can lower the bus
+// interaction degree bound.
 pub const DEFAULT_DEGREE_BOUND: DegreeBound = DegreeBound {
-    identities: 100,
-    bus_interactions: 100,
+    identities: 9,
+    bus_interactions: 9,
 };
 
 /// LeanVM has a single AIR for the execution table.
