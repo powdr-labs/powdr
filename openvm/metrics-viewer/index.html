@@ -1320,7 +1320,7 @@ const PROOF_TIME_ROWS_V2 = [
     { key: 'app_proof_time_excluding_trace_ms', label: 'STARK (excl. trace)', fmt: fmtSeconds, indent: 1 },
     { key: 'app_rap_constraints_time_ms', label: 'Constraints', fmt: fmtSeconds, indent: 2 },
     { key: 'app_rap_logup_gkr_time_ms', label: 'LogUp GKR', fmt: fmtSeconds, indent: 3 },
-    { key: 'app_rap_round0_time_ms', label: 'Round 0', fmt: fmtSeconds, indent: 3 },
+    { key: 'app_rap_round0_time_ms', label: 'Round 0', fmt: fmtSeconds, indent: 3, hideIfZero: true },
     { key: 'app_rap_mle_rounds_time_ms', label: 'MLE Rounds', fmt: fmtSeconds, indent: 3 },
     { key: 'app_rap_other_ms', label: 'Other', fmt: fmtSeconds, indent: 3, muted: true },
     { key: 'app_openings_time_ms', label: 'Openings', fmt: fmtSeconds, indent: 2 },
@@ -1330,7 +1330,7 @@ const PROOF_TIME_ROWS_V2 = [
     { key: 'app_trace_commit_time_ms', label: 'Trace Commit', fmt: fmtSeconds, indent: 2 },
     { key: 'app_stark_other_ms', label: 'Other', fmt: fmtSeconds, indent: 2, muted: true },
     { key: 'app_execute_preflight_time_ms', label: 'Preflight Execution', fmt: fmtSeconds, indent: 1 },
-    { key: 'app_set_initial_memory_time_ms', label: 'Set Initial Memory', fmt: fmtSeconds, indent: 1 },
+    { key: 'app_set_initial_memory_time_ms', label: 'Set Initial Memory', fmt: fmtSeconds, indent: 1, hideIfZero: true },
     { key: 'app_trace_gen_time_ms', label: 'Trace Gen', fmt: fmtSeconds, indent: 1 },
     { key: 'app_other_ms', label: 'Other', fmt: fmtSeconds, indent: 1, muted: true },
     { key: 'leaf_proof_time_ms', label: 'Leaf Recursion', fmt: fmtSeconds, indent: 0 },
@@ -1454,10 +1454,11 @@ function renderDetailTable(title, rows, m, opts = {}) {
     const baseline = getBaselineMetrics();
     const tableId = 'detail-' + title.replace(/\s+/g, '-').toLowerCase();
 
-    // Filter out negligible "other" rows
+    // Filter out negligible "other" rows and rows hidden when zero
     const visibleRows = rows.filter(row => {
+        const val = m[row.key];
+        if (row.hideIfZero && (val == null || val === 0)) return false;
         if (row.muted) {
-            const val = m[row.key];
             return val != null && Math.abs(val) >= 1;
         }
         return true;

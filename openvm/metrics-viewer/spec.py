@@ -290,7 +290,7 @@ PROOF_TIME_V2: list[ProofRow] = [
     ("app_proof_time_excluding_trace_ms",    "  STARK (excl. trace)", 1, ""),
     ("app_rap_constraints_time_ms",          "    Constraints",       2, ""),
     ("app_rap_logup_gkr_time_ms",           "      LogUp GKR",       3, ""),
-    ("app_rap_round0_time_ms",              "      Round 0",         3, ""),
+    ("app_rap_round0_time_ms",              "      Round 0",         3, "z"),
     ("app_rap_mle_rounds_time_ms",          "      MLE Rounds",      3, ""),
     ("app_rap_other_ms",                    "      Other",           3, "r"),
     ("app_openings_time_ms",                "    Openings",          2, ""),
@@ -300,7 +300,7 @@ PROOF_TIME_V2: list[ProofRow] = [
     ("app_trace_commit_time_ms",            "    Trace Commit",      2, ""),
     ("app_stark_other_ms",                  "    Other",             2, "r"),
     ("app_execute_preflight_time_ms",       "  Preflight Execution", 1, ""),
-    ("app_set_initial_memory_time_ms",      "  Set Initial Memory",  1, ""),
+    ("app_set_initial_memory_time_ms",      "  Set Initial Memory",  1, "z"),
     ("app_trace_gen_time_ms",               "  Trace Gen",           1, ""),
     ("app_other_ms",                        "  Other",               1, "r"),
     ("leaf_proof_time_ms",                  "Leaf Recursion",        0, ""),
@@ -331,10 +331,6 @@ def print_section(
         if key == "total_proof_time_ms":
             print(f"  {'─' * 58}")
 
-        if val is None:
-            print(f"  {label:<{width}}  N/A")
-            continue
-
         # Determine formatter and flags
         if len(row) == 3:
             fmt: Formatter = row[2]  # type: ignore[assignment]
@@ -342,6 +338,14 @@ def print_section(
         else:
             fmt = fmt_ms
             flags: str = row[3]  # type: ignore[no-redef]
+
+        # Hide rows flagged with 'z' when value is zero or missing
+        if "z" in flags and (val is None or val == 0):
+            continue
+
+        if val is None:
+            print(f"  {label:<{width}}  N/A")
+            continue
 
         suffix = " (residual)" if "r" in flags else ""
 
