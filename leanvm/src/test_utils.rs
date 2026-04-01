@@ -5,20 +5,34 @@ use std::path::Path;
 use crate::bus_interaction_handler::LeanVmBusInteractionHandler;
 use crate::instruction::LeanVmInstruction;
 use crate::instruction_handler::{LeanVmInstructionHandler, DEFAULT_DEGREE_BOUND};
-use crate::{leanvm_bus_map, LeanVmAdapter};
+use crate::{leanvm_bus_map, LeanVmAdapter, LeanVmCustomBusType};
 use powdr_autoprecompiles::blocks::SuperBlock;
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
-use powdr_autoprecompiles::evaluation::evaluate_apc;
+use powdr_autoprecompiles::evaluation::{evaluate_apc, AirStats};
 use powdr_autoprecompiles::export::ExportOptions;
+use powdr_autoprecompiles::bus_map::BusMap;
 use powdr_autoprecompiles::{build, VmConfig};
 
-pub fn compile_apc(superblock: SuperBlock<LeanVmInstruction>) -> String {
+/// Result of compiling a superblock into an APC.
+pub struct CompileApcResult {
+    /// The full snapshot string (instructions + evaluation + machine).
+    pub snapshot: String,
+    /// Stats before optimization.
+    pub pre_opt: AirStats,
+    /// Stats after optimization.
+    pub post_opt: AirStats,
+}
+
+/// Compile a superblock into an APC using shared resources.
+pub fn compile_apc_with(
+    superblock: SuperBlock<LeanVmInstruction>,
+    instruction_handler: &LeanVmInstructionHandler,
+    bus_map: &BusMap<LeanVmCustomBusType>,
+) -> CompileApcResult {
     let degree_bound = DEFAULT_DEGREE_BOUND;
-    let instruction_handler = LeanVmInstructionHandler::new(degree_bound);
-    let bus_map = leanvm_bus_map();
 
     let vm_config = VmConfig {
-        instruction_handler: &instruction_handler,
+        instruction_handler,
         bus_interaction_handler: LeanVmBusInteractionHandler,
         bus_map: bus_map.clone(),
     };
@@ -29,7 +43,7 @@ pub fn compile_apc(superblock: SuperBlock<LeanVmInstruction>) -> String {
         .map(|(pc, inst)| format!("  {pc:>max_pc_digits$}: {inst}"))
         .join("\n");
 
-    let (apc, _pre_opt_stats) = build::<LeanVmAdapter>(
+    let (apc, pre_opt) = build::<LeanVmAdapter>(
         superblock,
         vm_config.clone(),
         degree_bound,
@@ -38,15 +52,29 @@ pub fn compile_apc(superblock: SuperBlock<LeanVmInstruction>) -> String {
     )
     .unwrap();
 
+    let post_opt = AirStats::new(apc.machine());
     let apc_with_stats = evaluate_apc::<LeanVmAdapter>(vm_config.instruction_handler, apc);
 
     let evaluation = apc_with_stats.evaluation_result();
-    let apc = &apc_with_stats.apc().machine;
+    let machine = &apc_with_stats.apc().machine;
 
-    format!(
+    let snapshot = format!(
         "Instructions:\n{superblock_str}\n\n{evaluation}\n\n{}",
-        apc.render(&bus_map)
-    )
+        machine.render(bus_map)
+    );
+
+    CompileApcResult {
+        snapshot,
+        pre_opt,
+        post_opt,
+    }
+}
+
+/// Compile a superblock into an APC, returning the full snapshot string.
+pub fn compile_apc(superblock: SuperBlock<LeanVmInstruction>) -> String {
+    let instruction_handler = LeanVmInstructionHandler::new(DEFAULT_DEGREE_BOUND);
+    let bus_map = leanvm_bus_map();
+    compile_apc_with(superblock, &instruction_handler, &bus_map).snapshot
 }
 
 pub fn assert_apc_snapshot(

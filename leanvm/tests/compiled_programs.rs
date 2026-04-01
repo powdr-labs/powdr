@@ -9,13 +9,6 @@ use lean_vm::{
     NONRESERVED_PROGRAM_INPUT_START,
 };
 use lean_vm_backend::{PrimeCharacteristicRing, DIGEST_ELEMS};
-use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
-use powdr_autoprecompiles::evaluation::AirStats;
-use powdr_autoprecompiles::export::ExportOptions;
-use powdr_autoprecompiles::{build, VmConfig};
-use powdr_leanvm::bus_interaction_handler::LeanVmBusInteractionHandler;
-use powdr_leanvm::instruction_handler::LeanVmInstructionHandler;
-use powdr_leanvm::{leanvm_bus_map, LeanVmAdapter, DEFAULT_DEGREE_BOUND};
 use test_log::test;
 
 /// Compile a program, extract basic blocks, and snapshot each one.
@@ -144,8 +137,7 @@ def main():
 #[test]
 fn poseidon1() {
     // Unrolled implementation of Poseidon1
-    compile_and_snapshot(
-        r#"
+    let source = r#"
 WIDTH = 16
 HALF_FULL_ROUNDS = 4
 PARTIAL_ROUNDS = 20
@@ -214,9 +206,36 @@ def mds(in_ptr, out_ptr):
             acc = acc + in_ptr[j] * MDS_COL[(WIDTH + i - j) % WIDTH]
         out_ptr[i] = acc
     return
-"#,
-        "poseidon1",
-    );
+"#;
+
+    let bytecode = compile_program(&ProgramSource::Raw(source.to_string()));
+    for instr in &bytecode.instructions {
+        println!("{instr}");
+    }
+    let blocks = common::extract_basic_blocks(&bytecode);
+    assert!(!blocks.is_empty(), "no basic blocks extracted");
+
+    let results = common::build_blocks_parallel(&blocks);
+
+    let snapshot_base_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("apc_snapshots");
+    let snapshot_dir = snapshot_base_dir.join("compiled_programs");
+
+    // Persist all APC snapshots
+    for (i, r) in results.iter().enumerate() {
+        let test_name = format!("poseidon1_block_{i}");
+        powdr_leanvm::test_utils::assert_apc_snapshot(
+            &r.as_ref().unwrap().snapshot,
+            &snapshot_base_dir,
+            "compiled_programs",
+            &test_name,
+        );
+    }
+
+    // Build and persist CSV
+    let csv = common::build_stats_csv(&blocks, &results, "block", |i, _| i.to_string());
+    common::assert_file_snapshot(&snapshot_dir.join("poseidon1.csv"), &csv, "CSV");
 }
 
 #[test]
@@ -529,71 +548,47 @@ fn aggregation_bytecode() {
     let blocks = common::extract_basic_blocks(bytecode);
     assert!(!blocks.is_empty(), "no basic blocks extracted");
 
-    let degree_bound = DEFAULT_DEGREE_BOUND;
-    let instruction_handler = LeanVmInstructionHandler::new(degree_bound);
-    let bus_map = leanvm_bus_map();
+    let results = common::build_blocks_parallel(&blocks);
 
-    let mut csv = String::from(
-        "start_pc,num_instructions,columns_before,constraints_before,bus_interactions_before,columns_after,constraints_after,bus_interactions_after\n",
-    );
+    // Build CSV
+    let csv = common::build_stats_csv(&blocks, &results, "start_pc,num_instructions", |_, bb| {
+        format!("{},{}", bb.start_pc, bb.instructions.len())
+    });
 
-    for bb in &blocks {
-        let start_pc = bb.start_pc;
-        let num_instructions = bb.instructions.len();
-
-        let vm_config = VmConfig {
-            instruction_handler: &instruction_handler,
-            bus_interaction_handler: LeanVmBusInteractionHandler,
-            bus_map: bus_map.clone(),
-        };
-
-        let result = build::<LeanVmAdapter>(
-            bb.clone().into(),
-            vm_config,
-            degree_bound,
-            ExportOptions::default(),
-            &EmpiricalConstraints::default(),
-        );
-
-        match result {
-            Ok((apc, pre_opt_stats)) => {
-                let post_opt_stats = AirStats::new(apc.machine());
-                csv.push_str(&format!(
-                    "{start_pc},{num_instructions},{},{},{},{},{},{}\n",
-                    pre_opt_stats.main_columns,
-                    pre_opt_stats.constraints,
-                    pre_opt_stats.bus_interactions,
-                    post_opt_stats.main_columns,
-                    post_opt_stats.constraints,
-                    post_opt_stats.bus_interactions,
-                ));
-            }
-            Err(_) => {
-                csv.push_str(&format!("{start_pc},{num_instructions},0,0,0,0,0,0\n"));
+    // Find lowest/highest effectiveness APCs.
+    let mut best: Option<(f64, usize)> = None;
+    let mut worst: Option<(f64, usize)> = None;
+    for (i, r) in results.iter().enumerate() {
+        if let Some(r) = r {
+            if let Some(eff) = r.effectiveness() {
+                if best.is_none_or(|(e, _)| eff > e) {
+                    best = Some((eff, i));
+                }
+                if worst.is_none_or(|(e, _)| eff < e) {
+                    worst = Some((eff, i));
+                }
             }
         }
     }
 
-    let snapshot_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+    let snapshot_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
         .join("apc_snapshots")
-        .join("compiled_programs")
-        .join("aggregation_bytecode.csv");
+        .join("compiled_programs");
 
-    let should_update = std::env::var("UPDATE_EXPECT")
-        .map(|v| v.as_str() == "1")
-        .unwrap_or(false);
+    // Snapshot CSV
+    common::assert_file_snapshot(&snapshot_dir.join("aggregation_bytecode.csv"), &csv, "CSV");
 
-    if snapshot_path.exists() && !should_update {
-        let expected = std::fs::read_to_string(&snapshot_path).unwrap();
-        pretty_assertions::assert_eq!(
-            expected.trim(),
-            csv.trim(),
-            "CSV does not match. Re-run with UPDATE_EXPECT=1 to update.",
-        );
-    } else {
-        std::fs::create_dir_all(snapshot_path.parent().unwrap()).unwrap();
-        std::fs::write(&snapshot_path, &csv).unwrap();
-        println!("Snapshot created at {snapshot_path:?}. Re-run to confirm.");
+    // Snapshot lowest and highest effectiveness APCs
+    for (label, entry) in [("best", &best), ("worst", &worst)] {
+        if let Some((_, idx)) = entry {
+            let r = results[*idx].as_ref().unwrap();
+            let name = format!("aggregation_bytecode_{label}_pc{}", r.start_pc);
+            common::assert_file_snapshot(
+                &snapshot_dir.join(format!("{name}.txt")),
+                &r.snapshot,
+                &format!("APC {label}"),
+            );
+        }
     }
 }
