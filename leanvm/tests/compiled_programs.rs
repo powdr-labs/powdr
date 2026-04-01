@@ -1,6 +1,7 @@
 mod common;
 
 use std::collections::BTreeMap;
+use std::path::Path;
 
 use lean_compiler::{compile_program, ProgramSource};
 use lean_vm::{
@@ -136,8 +137,7 @@ def main():
 #[test]
 fn poseidon1() {
     // Unrolled implementation of Poseidon1
-    compile_and_snapshot(
-        r#"
+    let source = r#"
 WIDTH = 16
 HALF_FULL_ROUNDS = 4
 PARTIAL_ROUNDS = 20
@@ -206,9 +206,36 @@ def mds(in_ptr, out_ptr):
             acc = acc + in_ptr[j] * MDS_COL[(WIDTH + i - j) % WIDTH]
         out_ptr[i] = acc
     return
-"#,
-        "poseidon1",
-    );
+"#;
+
+    let bytecode = compile_program(&ProgramSource::Raw(source.to_string()));
+    for instr in &bytecode.instructions {
+        println!("{instr}");
+    }
+    let blocks = common::extract_basic_blocks(&bytecode);
+    assert!(!blocks.is_empty(), "no basic blocks extracted");
+
+    let results = common::build_blocks_parallel(&blocks);
+
+    let snapshot_base_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("apc_snapshots");
+    let snapshot_dir = snapshot_base_dir.join("compiled_programs");
+
+    // Persist all APC snapshots
+    for (i, r) in results.iter().enumerate() {
+        let test_name = format!("poseidon1_block_{i}");
+        powdr_leanvm::test_utils::assert_apc_snapshot(
+            &r.as_ref().unwrap().snapshot,
+            &snapshot_base_dir,
+            "compiled_programs",
+            &test_name,
+        );
+    }
+
+    // Build and persist CSV
+    let csv = common::build_stats_csv(&blocks, &results, "block", |i, _| i.to_string());
+    common::assert_file_snapshot(&snapshot_dir.join("poseidon1.csv"), &csv, "CSV");
 }
 
 #[test]
@@ -509,5 +536,59 @@ fn u32_add_programmatic() {
     for (i, bb) in blocks.into_iter().enumerate() {
         let test_name = format!("u32_add_programmatic_block_{i}");
         common::assert_machine_output(bb.into(), "compiled_programs", &test_name);
+    }
+}
+
+#[test]
+#[ignore = "slow compilation"]
+fn aggregation_bytecode() {
+    rec_aggregation::init_aggregation_bytecode();
+    let bytecode = rec_aggregation::get_aggregation_bytecode();
+
+    let blocks = common::extract_basic_blocks(bytecode);
+    assert!(!blocks.is_empty(), "no basic blocks extracted");
+
+    let results = common::build_blocks_parallel(&blocks);
+
+    // Build CSV
+    let csv = common::build_stats_csv(&blocks, &results, "start_pc,num_instructions", |_, bb| {
+        format!("{},{}", bb.start_pc, bb.instructions.len())
+    });
+
+    // Find lowest/highest effectiveness APCs.
+    let mut best: Option<(f64, usize)> = None;
+    let mut worst: Option<(f64, usize)> = None;
+    for (i, r) in results.iter().enumerate() {
+        if let Some(r) = r {
+            if let Some(eff) = r.effectiveness() {
+                if best.is_none_or(|(e, _)| eff > e) {
+                    best = Some((eff, i));
+                }
+                if worst.is_none_or(|(e, _)| eff < e) {
+                    worst = Some((eff, i));
+                }
+            }
+        }
+    }
+
+    let snapshot_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("apc_snapshots")
+        .join("compiled_programs");
+
+    // Snapshot CSV
+    common::assert_file_snapshot(&snapshot_dir.join("aggregation_bytecode.csv"), &csv, "CSV");
+
+    // Snapshot lowest and highest effectiveness APCs
+    for (label, entry) in [("best", &best), ("worst", &worst)] {
+        if let Some((_, idx)) = entry {
+            let r = results[*idx].as_ref().unwrap();
+            let name = format!("aggregation_bytecode_{label}_pc{}", r.start_pc);
+            common::assert_file_snapshot(
+                &snapshot_dir.join(format!("{name}.txt")),
+                &r.snapshot,
+                &format!("APC {label}"),
+            );
+        }
     }
 }

@@ -192,7 +192,7 @@ fn try_generate_candidate<A: Adapter, C: ApcCandidate<A>>(
         &block.start_pcs(),
         ExportLevel::OnlyAPC,
     );
-    let apc = crate::build::<A>(
+    let (apc, _pre_opt_stats) = crate::build::<A>(
         block.clone(),
         vm_config.clone(),
         config.degree_bound,
