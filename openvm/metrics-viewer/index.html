@@ -26,6 +26,12 @@
         }
         .data-source a { color: #666; text-decoration: underline; }
         .data-source a:hover { color: #333; }
+        .copy-icon:hover { color: #333 !important; }
+        .copy-icon .copy-check { display: none; }
+        .copy-icon .copy-default { display: inline; }
+        .copy-icon.copied .copy-check { display: inline; }
+        .copy-icon.copied .copy-default { display: none; }
+        .copy-icon.copied { color: #1a7f37 !important; }
 
         /* Upload section */
         #uploadSection {
@@ -492,11 +498,24 @@ function getMetric(entries, metricName) {
                   .reduce((sum, e) => sum + parseFloat(e.value), 0);
 }
 
+// Get the value of a metric that must appear exactly once.
+function getUniqueMetric(entries, metricName) {
+    const matches = entries.filter(e => e.metric === metricName);
+    if (matches.length !== 1) throw new Error(`Expected exactly 1 entry for "${metricName}", found ${matches.length}`);
+    return parseFloat(matches[0].value);
+}
+
 // Port of basic_metrics.py:extract_metrics
 // Computes all summary metrics for a single run from its raw JSON.
 // Each metric maps directly to a getMetric() call on a specific group + metric name.
 function extractMetrics(runName, metricsJson) {
     const { app, leaf, internal, compression } = loadMetricsDataframes(metricsJson);
+    const allEntries = [...metricsJson.counter, ...metricsJson.gauge].map(c => {
+        const obj = Object.fromEntries(c.labels);
+        obj.metric = c.metric;
+        obj.value = c.value;
+        return obj;
+    });
     const m = {};
 
     m.name = runName;
@@ -507,15 +526,15 @@ function extractMetrics(runName, metricsJson) {
     const normalInstructionAir = nonPowdrAir.filter(e => isNormalInstructionAir(e.air_name || ''));
     const openVmPrecompileAir = nonPowdrAir.filter(e => !isNormalInstructionAir(e.air_name || ''));
 
-    // Proof times by phase (all from "total_proof_time_ms" metric, split by group).
-    // In V2, execute_metered_time_ms is outside total_proof_time_ms (it's a sibling
-    // inside app_prove_time_ms), so we use app_prove_time_ms when available.
-    const appProveTime = getMetric(app, 'app_prove_time_ms');
-    m.app_proof_time_ms = appProveTime > 0 ? appProveTime : getMetric(app, 'total_proof_time_ms');
+    // Proof times by phase.
+    // execute_metered runs *before* segment proving and is outside per-segment
+    // total_proof_time_ms. We report it as a separate top-level phase.
+    m.execute_metered_time_ms = getMetric(app, 'execute_metered_time_ms');
+    m.app_proof_time_ms = getMetric(app, 'total_proof_time_ms');
     m.leaf_proof_time_ms = getMetric(leaf, 'total_proof_time_ms');
     m.inner_recursion_proof_time_ms = getMetric(internal, 'total_proof_time_ms');
     m.compression_proof_time_ms = getMetric(compression, 'total_proof_time_ms');
-    m.total_proof_time_ms = m.app_proof_time_ms + m.leaf_proof_time_ms
+    m.total_proof_time_ms = m.execute_metered_time_ms + m.app_proof_time_ms + m.leaf_proof_time_ms
         + m.inner_recursion_proof_time_ms + m.compression_proof_time_ms;
 
     // STARK prove time excluding trace generation
@@ -533,19 +552,19 @@ function extractMetrics(runName, metricsJson) {
     m.app_proof_cols = mainCols + prepCols + permCols;
 
     m.num_segments = app.filter(e => 'segment' in e).reduce((max, e) => Math.max(max, parseInt(e.segment)), -1) + 1;
+    m.num_air_instances = app.filter(e => e.metric === 'rows').length;
 
     m.app_proof_cells = getMetric(app, 'total_cells');
     m.app_proof_cells_used = getMetric(app, 'total_cells_used'); // V1 only, null-ish in V2
     m.app_execute_preflight_time_ms = getMetric(app, 'execute_preflight_time_ms');
-    m.app_execute_metered_time_ms = getMetric(app, 'execute_metered_time_ms');
     m.app_trace_gen_time_ms = getMetric(app, 'trace_gen_time_ms');
 
     // V2: STARK sub-components (prover.* metrics)
     m.app_trace_commit_time_ms = getMetric(app, 'prover.main_trace_commit_time_ms');
     m.app_rap_constraints_time_ms = getMetric(app, 'prover.rap_constraints_time_ms');
     m.app_openings_time_ms = getMetric(app, 'prover.openings_time_ms');
-    m.app_stark_other_ms = Math.max(0, m.app_proof_time_excluding_trace_ms
-        - m.app_trace_commit_time_ms - m.app_rap_constraints_time_ms - m.app_openings_time_ms);
+    m.app_stark_other_ms = m.app_proof_time_excluding_trace_ms
+        - m.app_trace_commit_time_ms - m.app_rap_constraints_time_ms - m.app_openings_time_ms;
 
     // V2: rap_constraints sub-components (additive: logup_gkr + round0 + mle_rounds = rap)
     m.app_rap_logup_gkr_time_ms = getMetric(app, 'prover.rap_constraints.logup_gkr_time_ms');
@@ -564,12 +583,13 @@ function extractMetrics(runName, metricsJson) {
     m.app_set_initial_memory_time_ms = getMetric(app, 'set_initial_memory_time_ms');
 
     // "App other" = app proof time minus all known sub-components.
+    // "App other" = app proof time minus all known sub-components.
+    // execute_metered is a separate top-level phase, not inside app_proof_time_ms.
     // Can be negative when sub-timers overlap (parallelism). The raw value
     // is stored for the detail table; the bar chart clamps to 0.
     m.app_other_ms = m.app_proof_time_ms
         - m.app_proof_time_excluding_trace_ms
         - m.app_execute_preflight_time_ms
-        - m.app_execute_metered_time_ms
         - m.app_trace_gen_time_ms
         - m.app_set_initial_memory_time_ms;
 
@@ -585,29 +605,27 @@ function extractMetrics(runName, metricsJson) {
 
     // Constraints and bus interactions — per-AIR metrics (no group/segment labels).
     // Since they're per-AIR, we weight by segment count (for totals) or row count (for instances).
-    const allEntries = [...metricsJson.counter, ...metricsJson.gauge].map(c => {
-        const obj = Object.fromEntries(c.labels);
-        obj.metric = c.metric;
-        obj.value = c.value;
-        return obj;
-    });
     const hasConstraints = allEntries.some(e => e.metric === 'constraints');
     const hasInteractions = allEntries.some(e => e.metric === 'interactions');
 
     // Build per-AIR weights from app rows entries:
-    //   segmentsByAppAir[air] = number of segments the AIR appears in
-    //   rowsByAppAir[air] = total rows across all segments
+    //   segmentsByAppAir[key] = number of segments the AIR appears in
+    //   rowsByAppAir[key] = total rows across all segments
+    // We key by "air_id:air_name" because air_id alone is only unique within a
+    // proving phase — different phases (app, leaf, compression) reuse the same
+    // air_id for unrelated AIRs.
     const segmentsByAppAir = {};
     const rowsByAppAir = {};
     app.filter(e => e.metric === 'rows').forEach(e => {
-        segmentsByAppAir[e.air_name] = (segmentsByAppAir[e.air_name] || 0) + 1;
-        rowsByAppAir[e.air_name] = (rowsByAppAir[e.air_name] || 0) + parseFloat(e.value);
+        const key = e.air_id + ':' + (e.air_name || '');
+        segmentsByAppAir[key] = (segmentsByAppAir[key] || 0) + 1;
+        rowsByAppAir[key] = (rowsByAppAir[key] || 0) + parseFloat(e.value);
     });
 
-    // weighted_sum: for each all_entries entry matching metricName, multiply by weight[air_name]
+    // weighted_sum: for each all_entries entry matching metricName, multiply by weight
     function weightedSum(metricName, weights) {
         return allEntries.filter(e => e.metric === metricName)
-            .reduce((sum, e) => sum + parseFloat(e.value) * (weights[e.air_name] || 0), 0);
+            .reduce((sum, e) => sum + parseFloat(e.value) * (weights[e.air_id + ':' + (e.air_name || '')] || 0), 0);
     }
 
     m.constraints = hasConstraints ? weightedSum('constraints', segmentsByAppAir) : null;
@@ -635,20 +653,25 @@ function computeCellsByAir(metricsJson) {
     const total = sorted.reduce((s, [, v]) => s + v, 0);
 
     const threshold = total * 0.015;
-    const large = [];
+    const powdrItems = [];
+    const otherItems = [];
     let otherSum = 0;
     for (const [name, val] of sorted) {
-        if (val >= threshold) {
-            large.push({ name, value: val });
-        } else {
+        if (val < threshold) {
             otherSum += val;
+        } else if (name.startsWith('PowdrAir')) {
+            powdrItems.push({ name, value: val });
+        } else {
+            otherItems.push({ name, value: val });
         }
     }
     if (otherSum > 0) {
-        large.push({ name: 'Other', value: otherSum });
+        otherItems.push({ name: 'Other', value: otherSum });
     }
+    // PowdrAir items first, then the rest sorted by size
+    const items = [...powdrItems, ...otherItems];
 
-    return { items: large, total };
+    return { items, total };
 }
 
 // ============================================================
@@ -695,8 +718,12 @@ function highlightPython(code) {
 const METRIC_INFO = {
     // --- Basic Stats ---
     num_segments: {
-        desc: 'Number of proving segments the app proof is split into. Each segment is proved independently.',
+        desc: 'Number of proving segments the app proof is split into.',
         code: `max(int(e['segment']) for e in app_entries) + 1`,
+    },
+    num_air_instances: {
+        desc: 'Total number of AIR instances across all segments (each AIR in each segment counts as one instance).',
+        code: `len([e for e in app if e['metric'] == 'rows'])`,
     },
     app_proof_cols: {
         desc: 'Total column count in the app proof, summed over all AIRs and segments (main + preprocessed + permutation trace columns).',
@@ -705,7 +732,8 @@ const METRIC_INFO = {
 + sum_metric(app, 'perm_cols')`,
     },
     app_proof_cells: {
-        desc: 'Total trace cells in the app proof, summed over all segments. Includes main, preprocessed, and permutation cells. Also includes and padding.',
+        descV1: 'Total trace cells in the app proof, summed over all segments. Includes main, preprocessed, and permutation cells. Also includes padding.',
+        descV2: 'Total trace cells in the app proof, summed over all segments. Includes main, preprocessed, and permutation cells.',
         code: "sum_metric(app, 'total_cells')",
     },
     app_proof_cells_used: {
@@ -713,7 +741,7 @@ const METRIC_INFO = {
         code: "sum_metric(app, 'total_cells_used')",
     },
     constraints: {
-        desc: 'Total constraint polynomials across all app proof AIRs and segments. Since constraints are per-AIR (not per-segment), each AIR\'s count is weighted by its segment count.',
+        desc: 'Total constraint polynomials across all app proof AIRs and segments.',
         code: `segments_by_air = {}  # air -> segment count, from app rows
 weighted_sum("constraints", segments_by_air)`,
     },
@@ -723,7 +751,7 @@ weighted_sum("constraints", segments_by_air)`,
 weighted_sum("constraints", rows_by_air)`,
     },
     bus_interactions: {
-        desc: 'Total bus interaction definitions across all app proof AIRs and segments. Since interactions are per-AIR (not per-segment), each AIR\'s count is weighted by its segment count.',
+        desc: 'Total bus interaction definitions across all app proof AIRs and segments.',
         code: `weighted_sum("interactions", segments_by_air)`,
     },
     bus_interaction_messages: {
@@ -732,14 +760,17 @@ weighted_sum("constraints", rows_by_air)`,
     },
 
     // --- Proof Time ---
+    execute_metered_time_ms: {
+        desc: 'Metered execution: instrumented run that counts executed instructions per AIR to guide segment splitting. Runs before segment proving, reported as a separate top-level phase.',
+        code: "sum_metric(app, 'execute_metered_time_ms')",
+    },
     app_proof_time_ms: {
-        descV1: 'Wall-clock time for the app proof phase. Sum of total_proof_time_ms across all app_proof segments.',
-        codeV1: "sum_metric(app, 'total_proof_time_ms')",
-        descV2: 'Wall-clock time for the app proof phase. Uses app_prove_time_ms, which wraps per-segment proving and includes metered execution.',
-        codeV2: "sum_metric(app, 'app_prove_time_ms')",
+        desc: 'Sum of per-segment proving times. Does not include metered execution (which is a separate phase).',
+        code: "sum_metric(app, 'total_proof_time_ms')",
     },
     app_proof_time_excluding_trace_ms: {
-        desc: 'STARK prover time excluding trace generation. In V1: commitments, quotient computation, FRI opening. In V2: trace commit, constraint evaluation (LogUp GKR), and WHIR opening proofs.',
+        descV1: 'STARK prover time excluding trace generation: commitments, quotient computation, FRI opening.',
+        descV2: 'STARK prover time excluding trace generation: trace commit, constraint evaluation, LogUp GKR, and WHIR opening proofs.',
         code: "sum_metric(app, 'stark_prove_excluding_trace_time_ms')",
     },
     app_rap_constraints_time_ms: {
@@ -763,7 +794,8 @@ weighted_sum("constraints", rows_by_air)`,
         code: `rap_constraints - logup_gkr - round0 - mle_rounds`,
     },
     app_openings_time_ms: {
-        desc: 'Time for polynomial opening proofs. In V2 this uses WHIR (a FRI-like protocol) with stacked polynomial reduction.',
+        descV1: 'Time for polynomial opening proofs (FRI-based PCS opening).',
+        descV2: 'Time for polynomial opening proofs using WHIR (a FRI-like protocol) with stacked polynomial reduction.',
         code: "sum_metric(app, 'prover.openings_time_ms')",
     },
     app_openings_whir_time_ms: {
@@ -798,16 +830,11 @@ weighted_sum("constraints", rows_by_air)`,
         desc: 'Trace generation: re-executes the program to produce the full execution trace (witness) consumed by the STARK prover.',
         code: "sum_metric(app, 'trace_gen_time_ms')",
     },
-    app_execute_metered_time_ms: {
-        desc: 'Metered execution: instrumented run that counts executed instructions per AIR to guide segment splitting and resource allocation.',
-        code: "sum_metric(app, 'execute_metered_time_ms')",
-    },
     app_other_ms: {
-        desc: 'Residual: app proof time minus all known sub-components. May be negative when sub-timers overlap due to parallelism.',
-        codeV1: `app_proof - stark_excl_trace - preflight
-  - metered - trace_gen`,
+        desc: 'Residual: app proof time minus all known sub-components. Metered execution is a separate top-level phase. May be negative when sub-timers overlap due to parallelism.',
+        codeV1: `app_proof - stark_excl_trace - preflight - trace_gen`,
         codeV2: `app_proof - stark_excl_trace - preflight
-  - metered - trace_gen - set_initial_memory`,
+  - trace_gen - set_initial_memory`,
     },
     leaf_proof_time_ms: {
         descV1: 'Total proving time for the leaf aggregation layer (leaf_0, leaf_1, ...). Aggregates app proof segments into a smaller number of proofs.',
@@ -826,9 +853,10 @@ weighted_sum("constraints", rows_by_air)`,
         code: "sum_metric(compression, 'total_proof_time_ms')",
     },
     total_proof_time_ms: {
-        desc: 'Sum of all proving phases: app proof + leaf recursion + inner recursion (+ compression in V2).',
-        codeV1: `app + leaf + inner_recursion`,
-        codeV2: `app + leaf + inner_recursion + compression`,
+        descV1: 'Sum of all proving phases: metered execution + app proof + leaf recursion + inner recursion.',
+        descV2: 'Sum of all proving phases: metered execution + app proof + leaf recursion + inner recursion + compression.',
+        codeV1: `metered + app + leaf + inner_recursion`,
+        codeV2: `metered + app + leaf + inner_recursion + compression`,
     },
 
     // --- Cell Distribution ---
@@ -857,10 +885,10 @@ weighted_sum("constraints", rows_by_air)`,
 const COMPONENTS_V1 = [
     { key: 'inner_recursion_proof_time_ms', label: 'Inner recursion', color: '#9b3e00' },
     { key: 'leaf_proof_time_ms', label: 'Leaf recursion', color: '#d69600' },
+    { key: 'execute_metered_time_ms', label: 'Metered execution', color: '#c6dbef' },
     { key: 'app_proof_time_excluding_trace_ms', label: 'App STARK (excl. trace)', color: '#1f77b4' },
     { key: 'app_trace_gen_time_ms', label: 'App trace gen', color: '#6baed6' },
     { key: 'app_execute_preflight_time_ms', label: 'App preflight', color: '#9ecae1' },
-    { key: 'app_execute_metered_time_ms', label: 'App metered', color: '#c6dbef' },
     { key: 'app_other_ms', label: 'App other', color: '#08519c' },
 ];
 
@@ -868,11 +896,11 @@ const COMPONENTS_V2 = [
     { key: 'compression_proof_time_ms', label: 'Compression', color: '#7b2d8e' },
     { key: 'inner_recursion_proof_time_ms', label: 'Inner recursion', color: '#9b3e00' },
     { key: 'leaf_proof_time_ms', label: 'Leaf recursion', color: '#d69600' },
+    { key: 'execute_metered_time_ms', label: 'Metered execution', color: '#dadaeb' },
     { key: 'app_proof_time_excluding_trace_ms', label: 'App STARK (excl. trace)', color: '#1f77b4' },
     { key: 'app_trace_gen_time_ms', label: 'App trace gen', color: '#9ecae1' },
     { key: 'app_set_initial_memory_time_ms', label: 'App set memory', color: '#a1d99b' },
     { key: 'app_execute_preflight_time_ms', label: 'App preflight', color: '#c6dbef' },
-    { key: 'app_execute_metered_time_ms', label: 'App metered', color: '#dadaeb' },
     { key: 'app_other_ms', label: 'App other', color: '#969696' },
 ];
 
@@ -893,7 +921,13 @@ function updateDataSourceDisplay(source) {
     const el = document.getElementById('dataSourceLabel');
     if (source) {
         const displayText = shortenUrl(source.replace(/^https?:\/\//i, ''));
-        el.innerHTML = `Data: <a href="${source}" target="_blank" rel="noopener noreferrer">${displayText}</a>`;
+        el.innerHTML = `Data: <a href="${source}" target="_blank" rel="noopener noreferrer">${displayText}</a>`
+            + ` <svg class="copy-icon" onclick="navigator.clipboard.writeText('${source.replace(/'/g, "\\'")}').then(() => { this.classList.add('copied'); this.setAttribute('title','Copied!'); setTimeout(() => { this.classList.remove('copied'); this.setAttribute('title','Copy data URL'); }, 2000); })" `
+            + `title="Copy data URL" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="margin-left:0.4rem; cursor:pointer; color:#888; vertical-align:middle;">`
+            + `<path class="copy-default" d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25z"/>`
+            + `<path class="copy-default" d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25z"/>`
+            + `<path class="copy-check" d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/>`
+            + `</svg>`;
         el.style.display = 'inline';
     } else {
         el.innerHTML = '';
@@ -949,9 +983,9 @@ function createBarChart(metrics) {
     const container = d3.select('#barChart');
     container.selectAll('*').remove();
 
-    const margin = { top: 30, right: 20, bottom: 120, left: 60 };
+    const margin = { top: 30, right: 20, bottom: 140, left: 60 };
     const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
-    const height = 400 - margin.top - margin.bottom;
+    const height = 420 - margin.top - margin.bottom;
 
     const svg = container.append('svg')
         .attr('width', width + margin.left + margin.right)
@@ -963,7 +997,7 @@ function createBarChart(metrics) {
     // Compute stacked data
     const stackData = metrics.map(m => {
         const d = { name: m.name };
-        COMPONENTS.forEach(c => { d[c.key] = Math.max(0, m[c.key]) / 1000; }); // ms -> s
+        COMPONENTS.forEach(c => { d[c.key] = m[c.key] / 1000; }); // ms -> s
         return d;
     });
 
@@ -1016,12 +1050,13 @@ function createBarChart(metrics) {
             .on('mouseout', () => tooltip.style('display', 'none'));
     });
 
-    // Value labels inside segments
-    const minLabelHeight = maxY * 0.03;
+    // Value labels inside segments — only show if segment is tall enough for text
+    const minSegmentPx = 18; // minimum pixel height to show a label
     series.forEach(s => {
         s.forEach(d => {
             const val = d[1] - d[0];
-            if (val < minLabelHeight) return;
+            const segmentPx = y(d[0]) - y(d[1]);
+            if (segmentPx < minSegmentPx) return;
             const total = keys.reduce((sum, k) => sum + d.data[k], 0);
             const pct = total > 0 ? (val / total * 100).toFixed(1) : '0';
             g.append('text')
@@ -1051,9 +1086,13 @@ function createBarChart(metrics) {
     });
 
     // Axes
-    g.append('g').attr('transform', `translate(0,${height})`)
-        .call(d3.axisBottom(x))
-        .selectAll('text').attr('fill', '#333');
+    const xAxis = g.append('g').attr('transform', `translate(0,${height})`)
+        .call(d3.axisBottom(x));
+    xAxis.selectAll('text').attr('fill', '#333')
+        .attr('transform', 'rotate(-35)')
+        .attr('text-anchor', 'end')
+        .attr('dx', '-0.5em')
+        .attr('dy', '0.3em');
     g.append('g')
         .call(d3.axisLeft(y).tickFormat(d => d.toFixed(1) + 's'))
         .selectAll('text').attr('fill', '#333');
@@ -1062,8 +1101,11 @@ function createBarChart(metrics) {
     svg.selectAll('.domain').attr('stroke', '#dee2e6');
     svg.selectAll('.tick line').attr('stroke', '#dee2e6');
 
-    // Legend
-    layoutLegend(svg, COMPONENTS, margin.left, height + margin.top + 35, width);
+    // Measure rotated x-axis label extent, place legend below
+    const xAxisBBox = xAxis.node().getBBox();
+    const legendY = margin.top + height + xAxisBBox.height + 15;
+    const legendHeight = layoutLegend(svg, COMPONENTS, margin.left, legendY, width);
+    svg.attr('height', legendY + legendHeight + 10);
 
     updateBarSelection();
 }
@@ -1087,9 +1129,9 @@ function createGroupedBarChart(metrics) {
     const container = d3.select('#barChart');
     container.selectAll('*').remove();
 
-    const margin = { top: 30, right: 20, bottom: 120, left: 60 };
+    const margin = { top: 30, right: 20, bottom: 140, left: 60 };
     const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
-    const height = 400 - margin.top - margin.bottom;
+    const height = 420 - margin.top - margin.bottom;
 
     const svg = container.append('svg')
         .attr('width', width + margin.left + margin.right)
@@ -1101,7 +1143,7 @@ function createGroupedBarChart(metrics) {
 
     const stackData = metrics.map(m => {
         const d = { name: m.name };
-        COMPONENTS.forEach(c => { d[c.key] = Math.max(0, m[c.key]) / 1000; });
+        COMPONENTS.forEach(c => { d[c.key] = m[c.key] / 1000; });
         return d;
     });
 
@@ -1148,9 +1190,13 @@ function createGroupedBarChart(metrics) {
     });
 
     // Axes
-    g.append('g').attr('transform', `translate(0,${height})`)
-        .call(d3.axisBottom(x0))
-        .selectAll('text').attr('fill', '#333');
+    const xAxis = g.append('g').attr('transform', `translate(0,${height})`)
+        .call(d3.axisBottom(x0));
+    xAxis.selectAll('text').attr('fill', '#333')
+        .attr('transform', 'rotate(-35)')
+        .attr('text-anchor', 'end')
+        .attr('dx', '-0.5em')
+        .attr('dy', '0.3em');
     g.append('g')
         .call(d3.axisLeft(y).tickFormat(d => d.toFixed(1) + 's'))
         .selectAll('text').attr('fill', '#333');
@@ -1158,8 +1204,11 @@ function createGroupedBarChart(metrics) {
     svg.selectAll('.domain').attr('stroke', '#dee2e6');
     svg.selectAll('.tick line').attr('stroke', '#dee2e6');
 
-    // Legend
-    layoutLegend(svg, COMPONENTS, margin.left, height + margin.top + 35, width);
+    // Measure rotated x-axis label extent, place legend below
+    const xAxisBBox = xAxis.node().getBBox();
+    const legendY = margin.top + height + xAxisBBox.height + 15;
+    const legendHeight = layoutLegend(svg, COMPONENTS, margin.left, legendY, width);
+    svg.attr('height', legendY + legendHeight + 10);
 
     updateBarSelection();
 }
@@ -1196,6 +1245,7 @@ const TABLE_COLUMNS = [
 
 const BASIC_STATS_ROWS_V1 = [
     { key: 'num_segments', label: 'Segments', fmt: v => v },
+    { key: 'num_air_instances', label: 'AIR Instances', fmt: v => v.toLocaleString() },
     { key: 'app_proof_cols', label: 'Columns', fmt: v => v.toLocaleString() },
     { key: 'app_proof_cells', label: 'Cells', fmt: fmtCells },
     { key: 'app_proof_cells_used', label: 'Cells (without padding)', fmt: (v, m) => {
@@ -1210,6 +1260,7 @@ const BASIC_STATS_ROWS_V1 = [
 
 const BASIC_STATS_ROWS_V2 = [
     { key: 'num_segments', label: 'Segments', fmt: v => v },
+    { key: 'num_air_instances', label: 'AIR Instances', fmt: v => v.toLocaleString() },
     { key: 'app_proof_cols', label: 'Columns', fmt: v => v.toLocaleString() },
     { key: 'app_proof_cells', label: 'Cells', fmt: fmtCells },
     { key: 'constraints', label: 'Constraints', fmt: v => v.toLocaleString() },
@@ -1220,9 +1271,9 @@ const BASIC_STATS_ROWS_V2 = [
 
 // Nested proof time breakdown — indent level controls visual nesting.
 const PROOF_TIME_ROWS_V1 = [
+    { key: 'execute_metered_time_ms', label: 'Metered Execution', fmt: fmtSeconds, indent: 0 },
     { key: 'app_proof_time_ms', label: 'App Proof Time', fmt: fmtSeconds, indent: 0 },
     { key: 'app_proof_time_excluding_trace_ms', label: 'STARK (excl. trace)', fmt: fmtSeconds, indent: 1 },
-    { key: 'app_execute_metered_time_ms', label: 'Metered Execution', fmt: fmtSeconds, indent: 1 },
     { key: 'app_execute_preflight_time_ms', label: 'Preflight Execution', fmt: fmtSeconds, indent: 1 },
     { key: 'app_trace_gen_time_ms', label: 'Trace Gen', fmt: fmtSeconds, indent: 1 },
     { key: 'app_other_ms', label: 'Other / Overlap', fmt: fmtSeconds, indent: 1, muted: true },
@@ -1232,6 +1283,7 @@ const PROOF_TIME_ROWS_V1 = [
 ];
 
 const PROOF_TIME_ROWS_V2 = [
+    { key: 'execute_metered_time_ms', label: 'Metered Execution', fmt: fmtSeconds, indent: 0 },
     { key: 'app_proof_time_ms', label: 'App Proof Time', fmt: fmtSeconds, indent: 0 },
     { key: 'app_proof_time_excluding_trace_ms', label: 'STARK (excl. trace)', fmt: fmtSeconds, indent: 1 },
     { key: 'app_rap_constraints_time_ms', label: 'Constraints', fmt: fmtSeconds, indent: 2 },
@@ -1248,7 +1300,6 @@ const PROOF_TIME_ROWS_V2 = [
     { key: 'app_execute_preflight_time_ms', label: 'Preflight Execution', fmt: fmtSeconds, indent: 1 },
     { key: 'app_set_initial_memory_time_ms', label: 'Set Initial Memory', fmt: fmtSeconds, indent: 1 },
     { key: 'app_trace_gen_time_ms', label: 'Trace Gen', fmt: fmtSeconds, indent: 1 },
-    { key: 'app_execute_metered_time_ms', label: 'Metered Execution', fmt: fmtSeconds, indent: 1 },
     { key: 'app_other_ms', label: 'Other', fmt: fmtSeconds, indent: 1, muted: true },
     { key: 'leaf_proof_time_ms', label: 'Leaf Recursion', fmt: fmtSeconds, indent: 0 },
     { key: 'inner_recursion_proof_time_ms', label: 'Inner Recursion', fmt: fmtSeconds, indent: 0 },
@@ -1343,11 +1394,13 @@ function renderTableBody(metrics) {
 
         TABLE_COLUMNS.forEach(col => {
             const td = document.createElement('td');
-            const formatted = col.fmt(m[col.key]);
+            const raw = m[col.key];
+            const formatted = col.fmt(raw);
+            if (raw != null && typeof raw === 'number') td.title = raw.toLocaleString();
             if (col.key === 'name' || !baseline || m.name === baselineRunName) {
                 td.textContent = formatted;
             } else {
-                td.innerHTML = formatted + ' ' + fmtComparison(m[col.key], baseline[col.key]);
+                td.innerHTML = formatted + ' ' + fmtComparison(raw, baseline[col.key]);
             }
             tr.appendChild(td);
         });
@@ -1388,8 +1441,35 @@ function renderDetailTable(title, rows, m, opts = {}) {
     }
 
     // Default expand level: indent 0 parents are expanded (their indent-1 children visible),
-    // deeper parents are collapsed.
+    // deeper parents are collapsed. User overrides via expandState take precedence.
     const defaultExpandLevel = opts.defaultExpandLevel != null ? opts.defaultExpandLevel : 0;
+
+    // Pre-compute whether each parent is expanded, respecting persistent expandState.
+    const parentExpanded = new Map(); // index -> boolean
+    for (const i of parentIndices) {
+        const stateKey = tableId + ':' + visibleRows[i].key;
+        if (stateKey in expandState) {
+            parentExpanded.set(i, expandState[stateKey]);
+        } else {
+            parentExpanded.set(i, (visibleRows[i].indent || 0) <= defaultExpandLevel);
+        }
+    }
+
+    // Determine visibility: a row is a collapsed-child if any ancestor parent is collapsed.
+    function isHidden(rowIndex) {
+        const indent = visibleRows[rowIndex].indent || 0;
+        if (indent === 0) return false;
+        // Walk backwards to find ancestor parents
+        for (let j = rowIndex - 1; j >= 0; j--) {
+            const pIndent = visibleRows[j].indent || 0;
+            if (pIndent < indent && parentIndices.has(j)) {
+                if (!parentExpanded.get(j)) return true;
+                // Check this parent's ancestors too
+                return isHidden(j);
+            }
+        }
+        return false;
+    }
 
     let html = `<h6 style="color:#333; font-weight:600; margin-bottom:0.3rem; margin-top:0.75rem">${title}</h6>`;
     html += `<table class="details-table" id="${tableId}"><tbody>`;
@@ -1397,15 +1477,11 @@ function renderDetailTable(title, rows, m, opts = {}) {
         const indent = row.indent || 0;
         const val = m[row.key];
         const isParent = parentIndices.has(i);
-        // A row is a collapsed child if any ancestor at a shallower indent
-        // is collapsed by default (indent > defaultExpandLevel + 1).
-        const isCollapsedChild = indent > defaultExpandLevel + 1;
-        const parentIsCollapsed = isParent && indent > defaultExpandLevel;
 
         const classes = [];
         if (isParent) classes.push('collapsible-parent');
-        if (parentIsCollapsed) classes.push('collapsed');
-        if (isCollapsedChild) classes.push('collapsed-child');
+        if (isParent && !parentExpanded.get(i)) classes.push('collapsed');
+        if (isHidden(i)) classes.push('collapsed-child');
 
         const padding = indent > 0 ? `padding-left:${indent * 1.2 + 0.5}em` : '';
         const weight = row.bold ? 'font-weight:700' : '';
@@ -1433,9 +1509,11 @@ function renderDetailTable(title, rows, m, opts = {}) {
             infoIcon = `<span class="metric-info" data-desc="${desc}" data-code="${code}">i</span>`;
         }
         const classAttr = classes.length ? ` class="${classes.join(' ')}"` : '';
-        html += `<tr${classAttr} data-indent="${indent}">`;
+        const dataKey = isParent ? ` data-key="${row.key}"` : '';
+        html += `<tr${classAttr} data-indent="${indent}"${dataKey}>`;
         html += `<th${thStyle ? ` style="${thStyle}"` : ''}>${arrow}${row.label}${infoIcon}</th>`;
-        html += `<td${tdStyle ? ` style="${tdStyle}"` : ''}>${formatted}${comparison}</td>`;
+        const rawTitle = (val != null && typeof val === 'number') ? ` title="${val.toLocaleString()}"` : '';
+        html += `<td${tdStyle ? ` style="${tdStyle}"` : ''}${rawTitle}>${formatted}${comparison}</td>`;
         if (opts.pctOfKey) {
             const total = m[opts.pctOfKey];
             const pct = (total > 0 && val != null) ? (val / total * 100).toFixed(1) + '%' : '';
@@ -1473,6 +1551,10 @@ document.addEventListener('mouseleave', function(e) {
     metricInfoTip.style.display = 'none';
 }, true);
 
+// Persistent expand/collapse state: maps "tableId:rowKey" -> true (expanded) | false (collapsed).
+// null means "use default". Once a user clicks, the choice sticks across experiment switches.
+const expandState = {};
+
 // Toggle collapsible rows: clicking a parent shows/hides its children.
 document.addEventListener('click', function(e) {
     if (e.target.closest('.metric-info')) return;
@@ -1484,6 +1566,11 @@ document.addEventListener('click', function(e) {
     const parentIndent = parseInt(parentRow.dataset.indent) || 0;
     const isCollapsing = !parentRow.classList.contains('collapsed');
     parentRow.classList.toggle('collapsed');
+
+    // Persist expand/collapse state
+    const tableId = parentRow.closest('table')?.id;
+    const rowKey = parentRow.dataset.key;
+    if (tableId && rowKey) expandState[tableId + ':' + rowKey] = !isCollapsing;
 
     // Walk subsequent rows: toggle children (indent > parentIndent),
     // stop when we hit a row at parentIndent or shallower.
@@ -1553,9 +1640,15 @@ function createPieChart(runName) {
         .attr('height', size + items.length * 18 + 20);
     const g = svg.append('g').attr('transform', `translate(${size/2},${size/2})`);
 
-    const colors = d3.scaleOrdinal()
-        .domain(items.map(d => d.name))
-        .range(d3.quantize(t => d3.interpolateSpectral(t * 0.8 + 0.1), Math.max(items.length, 3)));
+    const POWDR_COLOR = '#e03e1a';
+    const nonPowdrItems = items.filter(d => !d.name.startsWith('PowdrAir'));
+    const spectralColors = d3.quantize(t => d3.interpolateSpectral(t * 0.8 + 0.1), Math.max(nonPowdrItems.length, 3));
+    const colorMap = {};
+    let ci = 0;
+    items.forEach(d => {
+        colorMap[d.name] = d.name.startsWith('PowdrAir') ? POWDR_COLOR : spectralColors[ci++];
+    });
+    const colors = name => colorMap[name];
 
     const pie = d3.pie().value(d => d.value).sort(null);
     const arc = d3.arc().innerRadius(0).outerRadius(radius);
