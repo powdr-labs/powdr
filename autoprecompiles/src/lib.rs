@@ -379,7 +379,6 @@ pub fn build<A: Adapter>(
             &vm_config.bus_map,
             &column_allocator,
         )?;
-
         // Add empirical constraints after D&C and do a final optimization pass.
         let mut machine = machine;
         machine
