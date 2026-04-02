@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, io::BufWriter};
 
 use itertools::Itertools;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use selection::select_blocks_greedy;
+use selection::{select_candidates_greedy, BlockCandidate};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -160,13 +160,48 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
         // select best candidates
         let budget = self.max_total_apc_columns.unwrap_or(usize::MAX);
         let max_selected = (config.autoprecompiles + config.skip_autoprecompiles) as usize;
-        let selection = select_blocks_greedy(
-            &apcs,
-            &blocks,
+        let candidates: Vec<BlockCandidate> = blocks
+            .iter()
+            .zip_eq(apcs.iter())
+            .map(|(b, apc)| BlockCandidate::new(b, apc))
+            .collect();
+        let selection = select_candidates_greedy(
+            candidates.clone(),
             budget,
             max_selected,
             &execution_static_block_runs,
         );
+
+        // print selection
+        tracing::info!(
+            "Selected {} APCs (budget={}, max_selected={}):",
+            selection.len(),
+            budget,
+            max_selected
+        );
+        let mut cumulative_cost = 0;
+        for (rank, &idx) in selection.iter().enumerate() {
+            let c = &candidates[idx];
+            let start_pcs_hex: Vec<String> =
+                c.start_pcs.iter().map(|pc| format!("{pc:#x}")).collect();
+            let density_val = if c.cost() > 0 {
+                c.value() as f64 / c.cost() as f64
+            } else {
+                f64::INFINITY
+            };
+            cumulative_cost += c.cost();
+            tracing::info!(
+                "  #{:<3} start_pcs={:<40} freq={:<6} cost={}->{} value={:<10} density={:<10.2} cumul_cost={}",
+                rank + 1,
+                format!("{:?}", start_pcs_hex),
+                c.execution_count,
+                c.cost_before,
+                c.cost_after,
+                c.value(),
+                density_val,
+                cumulative_cost,
+            );
+        }
 
         // skip per config
         let skip = (config.skip_autoprecompiles as usize).min(selection.len());

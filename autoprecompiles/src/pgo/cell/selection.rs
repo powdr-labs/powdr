@@ -12,8 +12,10 @@ use super::ApcCandidate;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 // A candidate block, used during block selection
 pub struct BlockCandidate {
-    // sequence of static blocks composing this block
+    // all basic block start PCs (for display/identification)
     pub start_pcs: Vec<u64>,
+    // static block start PCs as they appear in execution runs (for matching)
+    pub static_block_pcs: Vec<u64>,
     // cost of original static blocks (before optimization)
     pub cost_before: usize,
     // cost after optimization
@@ -31,6 +33,7 @@ impl BlockCandidate {
     ) -> Self {
         Self {
             start_pcs: block.block.start_pcs(),
+            static_block_pcs: block.static_block_pcs.clone(),
             cost_before: apc.cost_before_opt(),
             cost_after: apc.cost_after_opt(),
             value_per_use: apc.value_per_use(),
@@ -94,8 +97,8 @@ fn count_and_update_run<'a>(
     sblock: &BlockCandidate,
     run: &'a ExecutionStaticBlockRun,
 ) -> (u32, impl Iterator<Item = ExecutionStaticBlockRun> + 'a) {
-    let sblock_len = sblock.start_pcs.len();
-    let matches = find_non_overlapping(&run.0, &sblock.start_pcs);
+    let sblock_len = sblock.static_block_pcs.len();
+    let matches = find_non_overlapping(&run.0, &sblock.static_block_pcs);
     let count = matches.len() as u32;
     let match_intervals = matches.into_iter().flat_map(move |i| [i, i + sblock_len]);
     let sub_runs = std::iter::once(0)
@@ -202,6 +205,7 @@ mod test {
 
     fn sblock(start_pcs: Vec<u64>) -> BlockCandidate {
         BlockCandidate {
+            static_block_pcs: start_pcs.clone(),
             start_pcs,
             cost_before: 0,
             cost_after: 0,

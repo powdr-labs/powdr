@@ -260,6 +260,10 @@ pub struct BlockAndStats<I> {
     pub block: SuperBlock<I>,
     /// amount of times this block appears in the execution
     pub count: u32,
+    /// The start PCs of the constituent static blocks, as they appear in execution runs.
+    /// For a single static block [A, B], this is [A]. For a conditional superblock
+    /// combining static blocks [A, B] and [C], this is [A, C].
+    pub static_block_pcs: Vec<u64>,
 }
 
 /// The result of superblock generation: a set of blocks with optional statistics for PGO.
@@ -276,7 +280,14 @@ impl<I> ExecutionBlocks<I> {
         Self {
             blocks: blocks
                 .into_iter()
-                .map(|block| BlockAndStats { block, count: 0 })
+                .map(|block| {
+                    let static_block_pcs = vec![block.start_pcs()[0]];
+                    BlockAndStats {
+                        block,
+                        count: 0,
+                        static_block_pcs,
+                    }
+                })
                 .collect(),
             execution_static_block_runs: vec![],
         }
@@ -443,7 +454,11 @@ pub fn detect_superblocks<I: Clone + PcStep>(
             return;
         }
 
-        block_stats.push(BlockAndStats { block, count });
+        block_stats.push(BlockAndStats {
+            block,
+            count,
+            static_block_pcs: sblock_pcs,
+        });
     });
 
     tracing::info!(

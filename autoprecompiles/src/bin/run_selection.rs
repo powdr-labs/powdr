@@ -53,8 +53,13 @@ fn main() {
             let start_pcs: Vec<u64> = apc.original_blocks.iter().map(|b| b.start_pc).collect();
             let cost_before = apc.cost_before as usize;
             let cost_after = apc.cost_after as usize;
+            // NOTE: static_block_pcs is not in the JSON, so we use [first_start_pc] as
+            // an approximation. This is correct for superblock_max_bb_count=1 (each
+            // candidate is a single static block), but wrong for conditional superblocks.
+            let static_block_pcs = vec![start_pcs[0]];
             BlockCandidate {
                 start_pcs,
+                static_block_pcs,
                 cost_before,
                 cost_after,
                 value_per_use: cost_before.saturating_sub(cost_after),
