@@ -73,18 +73,6 @@ where
 
     // We could run the rule system before ever constructing the solver.
     // Currently, it does not yet save time.
-    // let mut constraint_system = rule_based_optimization(
-    //     constraint_system,
-    //     NoRangeConstraints,
-    //     bus_interaction_handler.clone(),
-    //     &mut new_var,
-    //     // No degree bound given, i.e. only perform replacements that
-    //     // do not increase the degree.
-    //     None,
-    // )
-    // .0;
-    // export_options.register_substituted_variables(assignments);
-    // export_options.export_optimizer_outer(&machine, "02_rule_based_optimization");
     stats_logger.log("rule-based optimization", &constraint_system);
 
     let mut solver = new_solver(
