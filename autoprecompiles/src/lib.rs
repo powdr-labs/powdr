@@ -366,71 +366,21 @@ pub fn build<A: Adapter>(
 
     let labels = [("apc_start_pc", block.start_pcs().into_iter().join("_"))];
 
-    // Parallel optimization strategies (env var controlled):
-    //   POWDR_NO_DNC=1       → single-pass (original, no parallelism)
-    //   POWDR_CHUNK_MERGE=1  → two-layer chunk-and-merge
-    //   POWDR_THREE_LAYER=1  → three-layer (chunk → group by sqrt(n) → final merge)
-    //   (default)            → recursive divide-and-conquer
-    let use_dnc = std::env::var("POWDR_NO_DNC").is_err();
-    let use_chunk_merge = std::env::var("POWDR_CHUNK_MERGE").is_ok();
-    let use_three_layer = std::env::var("POWDR_THREE_LAYER").is_ok();
-    let machine = if use_three_layer
-        && n_instructions > optimizer::DIVIDE_AND_CONQUER_BASE_CASE_SIZE
-    {
-        log::info!("Using three-layer optimization for {n_instructions} instructions");
-        let machine = optimizer::three_layer_optimize::<_, _, _, A::MemoryBusInteraction<_>>(
-            machines,
-            &vm_config.bus_interaction_handler,
-            degree_bound,
-            &vm_config.bus_map,
-            &column_allocator,
-            optimizer::DIVIDE_AND_CONQUER_BASE_CASE_SIZE,
-        )?;
-        let mut machine = machine;
-        machine
-            .constraints
-            .extend(empirical_constraints.into_iter().map(Into::into));
-        let (machine, _) = optimizer::optimize::<_, _, _, A::MemoryBusInteraction<_>>(
-            machine,
-            vm_config.bus_interaction_handler,
-            degree_bound,
-            &vm_config.bus_map,
-            column_allocator.clone(),
-            &mut export_options,
-        )?;
-        machine
-    } else if use_chunk_merge && n_instructions > optimizer::DIVIDE_AND_CONQUER_BASE_CASE_SIZE {
-        log::info!("Using chunk-and-merge optimization for {n_instructions} instructions");
+    // Parallel chunk-and-merge optimization: split into chunks of 10 instructions,
+    // optimize each chunk in parallel, merge all, optimize once more.
+    // Set POWDR_NO_PARALLEL=1 to disable and use the original single-pass optimizer.
+    let use_parallel = std::env::var("POWDR_NO_PARALLEL").is_err();
+    let machine = if use_parallel && n_instructions > optimizer::PARALLEL_CHUNK_SIZE {
+        log::info!("Using parallel chunk-and-merge optimization for {n_instructions} instructions");
         let machine = optimizer::chunk_and_merge_optimize::<_, _, _, A::MemoryBusInteraction<_>>(
             machines,
             &vm_config.bus_interaction_handler,
             degree_bound,
             &vm_config.bus_map,
             &column_allocator,
-            optimizer::DIVIDE_AND_CONQUER_BASE_CASE_SIZE,
+            optimizer::PARALLEL_CHUNK_SIZE,
         )?;
-        let mut machine = machine;
-        machine
-            .constraints
-            .extend(empirical_constraints.into_iter().map(Into::into));
-        let (machine, _) = optimizer::optimize::<_, _, _, A::MemoryBusInteraction<_>>(
-            machine,
-            vm_config.bus_interaction_handler,
-            degree_bound,
-            &vm_config.bus_map,
-            column_allocator.clone(),
-            &mut export_options,
-        )?;
-        machine
-    } else if use_dnc && n_instructions > optimizer::DIVIDE_AND_CONQUER_BASE_CASE_SIZE {
-        log::info!("Using divide-and-conquer optimization for {n_instructions} instructions");
-        let machine = optimizer::divide_and_conquer_optimize::<_, _, _, A::MemoryBusInteraction<_>>(
-            machines,
-            &vm_config.bus_interaction_handler,
-            degree_bound,
-            &vm_config.bus_map,
-            &column_allocator,
-        )?;
+        // Add empirical constraints after parallel optimization and do a final pass.
         let mut machine = machine;
         machine
             .constraints
@@ -445,7 +395,7 @@ pub fn build<A: Adapter>(
         )?;
         machine
     } else {
-        // Small block: concatenate and optimize directly (original path).
+        // Small block or parallel disabled: concatenate and optimize directly.
         let mut machine = machines
             .into_iter()
             .reduce(SymbolicMachine::concatenate)
@@ -453,13 +403,6 @@ pub fn build<A: Adapter>(
         machine
             .constraints
             .extend(empirical_constraints.into_iter().map(Into::into));
-
-        metrics::counter!("before_opt_cols", &labels)
-            .absolute(machine.unique_references().count() as u64);
-        metrics::counter!("before_opt_constraints", &labels)
-            .absolute(machine.unique_references().count() as u64);
-        metrics::counter!("before_opt_interactions", &labels)
-            .absolute(machine.unique_references().count() as u64);
 
         let (machine, _) = optimizer::optimize::<_, _, _, A::MemoryBusInteraction<_>>(
             machine,
