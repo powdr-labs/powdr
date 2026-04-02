@@ -240,6 +240,12 @@ pub fn optimize_exec_bus<T: FieldElement>(
 
 pub const PARALLEL_CHUNK_SIZE: usize = 10;
 
+/// Minimum number of instructions for chunk-and-merge to kick in.
+/// Below this, the single-pass optimizer is used — the merge layer overhead
+/// isn't worth it for small blocks, and the outer par_iter over APCs
+/// already provides inter-APC parallelism.
+pub const PARALLEL_MIN_INSTRUCTIONS: usize = 50;
+
 /// Two-layer parallel optimization: split instructions into chunks of `chunk_size`,
 /// optimize each chunk in parallel, merge all optimized chunks, and optimize once more.
 pub fn chunk_and_merge_optimize<T, B, BusTypes, MemoryBus>(

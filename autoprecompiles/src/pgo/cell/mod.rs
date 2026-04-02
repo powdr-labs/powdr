@@ -112,7 +112,7 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
         }
 
         let AdapterExecutionBlocks::<Self::Adapter> {
-            blocks,
+            mut blocks,
             execution_bb_runs,
         } = exec_blocks;
 
@@ -121,8 +121,32 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
             blocks.len(),
         );
 
+        // Pre-filter: only optimize blocks with the highest potential value.
+        // Use `execution_count * instruction_count` as a cheap upper bound proxy for
+        // the true cell savings value. Keep the top K candidates (K = 10 * target APCs).
+        let max_candidates = ((config.autoprecompiles + config.skip_autoprecompiles) as usize * 10)
+            .max(100)
+            .min(blocks.len());
+        if blocks.len() > max_candidates {
+            let n_before = blocks.len();
+            // Compute the threshold score at position max_candidates using a partial sort
+            let mut scores: Vec<u64> = blocks
+                .iter()
+                .map(|b| b.count as u64 * b.block.instructions().count() as u64)
+                .collect();
+            scores.select_nth_unstable_by(max_candidates, |a, b| b.cmp(a));
+            let threshold = scores[max_candidates];
+            blocks.retain(|b| b.count as u64 * b.block.instructions().count() as u64 > threshold);
+            tracing::info!(
+                "Pre-filtered {} -> {} candidate blocks (top by exec_count * instr_count)",
+                n_before,
+                blocks.len()
+            );
+        }
+
         // Generate apcs in parallel.
         // Produces two matching vectors: one with the APCs and another with the corresponding originating block.
+        let apc_gen_start = std::time::Instant::now();
         let (apcs, blocks): (Vec<_>, Vec<_>) = blocks
             .into_par_iter()
             .filter_map(|block_and_stats| {
@@ -141,6 +165,11 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
                 Some((res, block_and_stats))
             })
             .collect();
+        tracing::info!(
+            "APC generation took {:.3}s ({} APCs)",
+            apc_gen_start.elapsed().as_secs_f64(),
+            apcs.len()
+        );
 
         // write the APC candidates JSON to disk if the directory is specified.
         if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {

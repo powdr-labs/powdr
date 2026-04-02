@@ -370,7 +370,7 @@ pub fn build<A: Adapter>(
     // optimize each chunk in parallel, merge all, optimize once more.
     // Set POWDR_NO_PARALLEL=1 to disable and use the original single-pass optimizer.
     let use_parallel = std::env::var("POWDR_NO_PARALLEL").is_err();
-    let machine = if use_parallel && n_instructions > optimizer::PARALLEL_CHUNK_SIZE {
+    let machine = if use_parallel && n_instructions > optimizer::PARALLEL_MIN_INSTRUCTIONS {
         log::info!("Using parallel chunk-and-merge optimization for {n_instructions} instructions");
         let machine = optimizer::chunk_and_merge_optimize::<_, _, _, A::MemoryBusInteraction<_>>(
             machines,
