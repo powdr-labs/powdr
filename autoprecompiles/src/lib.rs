@@ -366,11 +366,38 @@ pub fn build<A: Adapter>(
 
     let labels = [("apc_start_pc", block.start_pcs().into_iter().join("_"))];
 
-    // Divide-and-conquer optimization: recursively split, optimize halves in parallel,
-    // merge, and optimize again. Empirical constraints are added after D&C.
-    // Set POWDR_NO_DNC=1 to disable D&C and use the original single-pass optimizer.
+    // Parallel optimization strategies (env var controlled):
+    //   POWDR_NO_DNC=1       → single-pass (original, no parallelism)
+    //   POWDR_CHUNK_MERGE=1  → two-layer chunk-and-merge
+    //   (default)            → recursive divide-and-conquer
     let use_dnc = std::env::var("POWDR_NO_DNC").is_err();
-    let machine = if use_dnc && n_instructions > optimizer::DIVIDE_AND_CONQUER_BASE_CASE_SIZE {
+    let use_chunk_merge = std::env::var("POWDR_CHUNK_MERGE").is_ok();
+    let machine = if use_chunk_merge
+        && n_instructions > optimizer::DIVIDE_AND_CONQUER_BASE_CASE_SIZE
+    {
+        log::info!("Using chunk-and-merge optimization for {n_instructions} instructions");
+        let machine = optimizer::chunk_and_merge_optimize::<_, _, _, A::MemoryBusInteraction<_>>(
+            machines,
+            &vm_config.bus_interaction_handler,
+            degree_bound,
+            &vm_config.bus_map,
+            &column_allocator,
+            optimizer::DIVIDE_AND_CONQUER_BASE_CASE_SIZE,
+        )?;
+        let mut machine = machine;
+        machine
+            .constraints
+            .extend(empirical_constraints.into_iter().map(Into::into));
+        let (machine, _) = optimizer::optimize::<_, _, _, A::MemoryBusInteraction<_>>(
+            machine,
+            vm_config.bus_interaction_handler,
+            degree_bound,
+            &vm_config.bus_map,
+            column_allocator.clone(),
+            &mut export_options,
+        )?;
+        machine
+    } else if use_dnc && n_instructions > optimizer::DIVIDE_AND_CONQUER_BASE_CASE_SIZE {
         log::info!("Using divide-and-conquer optimization for {n_instructions} instructions");
         let machine = optimizer::divide_and_conquer_optimize::<_, _, _, A::MemoryBusInteraction<_>>(
             machines,
@@ -379,12 +406,10 @@ pub fn build<A: Adapter>(
             &vm_config.bus_map,
             &column_allocator,
         )?;
-        // Add empirical constraints after D&C and do a final optimization pass.
         let mut machine = machine;
         machine
             .constraints
             .extend(empirical_constraints.into_iter().map(Into::into));
-
         let (machine, _) = optimizer::optimize::<_, _, _, A::MemoryBusInteraction<_>>(
             machine,
             vm_config.bus_interaction_handler,

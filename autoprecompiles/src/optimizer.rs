@@ -10,6 +10,7 @@ use powdr_constraint_solver::inliner::{self, inline_everything_below_degree_boun
 use powdr_constraint_solver::rule_based_optimizer::rule_based_optimization;
 use powdr_constraint_solver::solver::new_solver;
 use powdr_number::FieldElement;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use tracing::info;
 
 use crate::constraint_optimizer;
@@ -336,6 +337,93 @@ where
         merged.bus_interactions.len()
     );
 
+    let mut export_options = ExportOptions::default();
+    let (machine, _) = optimize::<_, _, _, MemoryBus>(
+        merged,
+        bus_interaction_handler.clone(),
+        degree_bound,
+        bus_map,
+        column_allocator.clone(),
+        &mut export_options,
+    )?;
+
+    Ok(machine)
+}
+
+/// Two-layer parallel optimization: split instructions into chunks of `chunk_size`,
+/// optimize each chunk in parallel, merge all optimized chunks, and optimize once more.
+/// Unlike divide-and-conquer, this has exactly two optimization layers (no recursion).
+pub fn chunk_and_merge_optimize<T, B, BusTypes, MemoryBus>(
+    machines: Vec<SymbolicMachine<T>>,
+    bus_interaction_handler: &B,
+    degree_bound: DegreeBound,
+    bus_map: &BusMap<BusTypes>,
+    column_allocator: &ColumnAllocator,
+    chunk_size: usize,
+) -> Result<SymbolicMachine<T>, crate::constraint_optimizer::Error>
+where
+    T: FieldElement + Send + Sync,
+    B: BusInteractionHandler<T>
+        + IsBusStateful<T>
+        + RangeConstraintHandler<T>
+        + Clone
+        + Send
+        + Sync,
+    BusTypes: PartialEq + Eq + Clone + Display + Send + Sync,
+    MemoryBus: MemoryBusInteraction<T, AlgebraicReference>,
+{
+    let n = machines.len();
+    info!("Chunk-and-merge: {n} instructions, chunk_size={chunk_size}");
+
+    // Layer 1: split into chunks and optimize each in parallel
+    let chunks: Vec<Vec<SymbolicMachine<T>>> = machines
+        .into_iter()
+        .chunks(chunk_size)
+        .into_iter()
+        .map(|chunk| chunk.collect())
+        .collect();
+    let n_chunks = chunks.len();
+    info!("Chunk-and-merge: {n_chunks} chunks");
+
+    let optimized_chunks: Vec<Result<SymbolicMachine<T>, crate::constraint_optimizer::Error>> =
+        chunks
+            .into_par_iter()
+            .map(|chunk| {
+                let machine = chunk
+                    .into_iter()
+                    .reduce(SymbolicMachine::concatenate)
+                    .unwrap();
+                let mut export_options = ExportOptions::default();
+                let (machine, _) = optimize::<_, _, _, MemoryBus>(
+                    machine,
+                    bus_interaction_handler.clone(),
+                    degree_bound,
+                    bus_map,
+                    column_allocator.clone(),
+                    &mut export_options,
+                )?;
+                Ok(machine)
+            })
+            .collect();
+
+    // Collect results, propagating any errors
+    let mut merged: Option<SymbolicMachine<T>> = None;
+    for result in optimized_chunks {
+        let machine: SymbolicMachine<T> = result?;
+        merged = Some(match merged {
+            Some(m) => m.concatenate(machine),
+            None => machine,
+        });
+    }
+    let merged = merged.unwrap();
+
+    info!(
+        "Chunk-and-merge: merged result has {} constraints, {} bus interactions",
+        merged.constraints.len(),
+        merged.bus_interactions.len()
+    );
+
+    // Layer 2: optimize the merged result
     let mut export_options = ExportOptions::default();
     let (machine, _) = optimize::<_, _, _, MemoryBus>(
         merged,
