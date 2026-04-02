@@ -109,6 +109,7 @@ where
         + Clone
         + IsBusStateful<Self::PowdrField>
         + RangeConstraintHandler<Self::PowdrField>
+        + Send
         + Sync;
     type Program: Program<Self::Instruction> + Send;
     type Instruction: Instruction<Self::Field> + Serialize + for<'de> Deserialize<'de> + Send + Sync;
@@ -118,6 +119,7 @@ where
     >;
     type CustomBusTypes: Clone
         + Display
+        + Send
         + Sync
         + Eq
         + PartialEq

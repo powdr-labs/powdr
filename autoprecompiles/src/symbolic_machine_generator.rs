@@ -113,22 +113,6 @@ fn convert_expression<T, U>(
     }
 }
 
-/// Converts a basic block into a symbolic machines (all instruction circuits
-/// concatenated) and a column allocator.
-pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
-    block: &SuperBlock<A::Instruction>,
-    instruction_handler: &A::InstructionHandler,
-    bus_map: &BusMap<A::CustomBusTypes>,
-) -> (SymbolicMachine<A::PowdrField>, ColumnAllocator) {
-    let (machines, column_allocator) =
-        statements_to_symbolic_machines::<A>(block, instruction_handler, bus_map);
-    let machine = machines
-        .into_iter()
-        .reduce(SymbolicMachine::concatenate)
-        .unwrap();
-    (machine, column_allocator)
-}
-
 /// Converts a basic block into a list of symbolic machines (one per instruction)
 /// and a column allocator. All columns are globally unique across all instructions.
 pub(crate) fn statements_to_symbolic_machines<A: Adapter>(
@@ -195,13 +179,7 @@ pub(crate) fn statements_to_symbolic_machines<A: Adapter>(
         machines.push(machine);
     }
 
-    (
-        machines,
-        ColumnAllocator {
-            subs: col_subs,
-            next_poly_id: global_idx,
-        },
-    )
+    (machines, ColumnAllocator::new(col_subs, global_idx))
 }
 
 fn exec_receive<T: FieldElement>(

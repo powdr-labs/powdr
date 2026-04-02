@@ -10,6 +10,7 @@ use powdr_constraint_solver::inliner::{self, inline_everything_below_degree_boun
 use powdr_constraint_solver::rule_based_optimizer::rule_based_optimization;
 use powdr_constraint_solver::solver::new_solver;
 use powdr_number::FieldElement;
+use tracing::info;
 
 use crate::constraint_optimizer;
 use crate::constraint_optimizer::{trivial_simplifications, IsBusStateful};
@@ -246,6 +247,106 @@ pub fn optimize_exec_bus<T: FieldElement>(
     machine.constraints.extend(execution_bus_constraints);
 
     machine
+}
+
+pub const DIVIDE_AND_CONQUER_BASE_CASE_SIZE: usize = 10;
+
+/// Optimizes a list of per-instruction symbolic machines using a divide-and-conquer
+/// strategy with parallel execution. Instead of concatenating all machines and
+/// optimizing the full result, this function:
+/// 1. Splits the machines into two halves
+/// 2. Recursively optimizes each half in parallel
+/// 3. Merges the optimized halves and optimizes the merged result
+///
+/// Base case: when the number of machines is <= DIVIDE_AND_CONQUER_BASE_CASE_SIZE,
+/// concatenate and optimize directly.
+pub fn divide_and_conquer_optimize<T, B, BusTypes, MemoryBus>(
+    machines: Vec<SymbolicMachine<T>>,
+    bus_interaction_handler: &B,
+    degree_bound: DegreeBound,
+    bus_map: &BusMap<BusTypes>,
+    column_allocator: &ColumnAllocator,
+) -> Result<SymbolicMachine<T>, crate::constraint_optimizer::Error>
+where
+    T: FieldElement + Send + Sync,
+    B: BusInteractionHandler<T>
+        + IsBusStateful<T>
+        + RangeConstraintHandler<T>
+        + Clone
+        + Send
+        + Sync,
+    BusTypes: PartialEq + Eq + Clone + Display + Send + Sync,
+    MemoryBus: MemoryBusInteraction<T, AlgebraicReference>,
+{
+    let n = machines.len();
+    if n <= DIVIDE_AND_CONQUER_BASE_CASE_SIZE {
+        info!("D&C base case: optimizing {n} instruction machines as one block",);
+        let machine = machines
+            .into_iter()
+            .reduce(SymbolicMachine::concatenate)
+            .unwrap();
+        let mut export_options = ExportOptions::default();
+        let (machine, _) = optimize::<_, _, _, MemoryBus>(
+            machine,
+            bus_interaction_handler.clone(),
+            degree_bound,
+            bus_map,
+            column_allocator.clone(),
+            &mut export_options,
+        )?;
+        return Ok(machine);
+    }
+
+    let mid = n / 2;
+    info!(
+        "D&C split: {n} instruction machines -> [{mid}, {}]",
+        n - mid
+    );
+    let mut left_machines = machines;
+    let right_machines = left_machines.split_off(mid);
+
+    let (left_result, right_result) = rayon::join(
+        || {
+            divide_and_conquer_optimize::<T, B, BusTypes, MemoryBus>(
+                left_machines,
+                bus_interaction_handler,
+                degree_bound,
+                bus_map,
+                column_allocator,
+            )
+        },
+        || {
+            divide_and_conquer_optimize::<T, B, BusTypes, MemoryBus>(
+                right_machines,
+                bus_interaction_handler,
+                degree_bound,
+                bus_map,
+                column_allocator,
+            )
+        },
+    );
+
+    let left_machine = left_result?;
+    let right_machine = right_result?;
+
+    let merged = left_machine.concatenate(right_machine);
+    info!(
+        "D&C merge: optimizing merged result ({} constraints, {} bus interactions)",
+        merged.constraints.len(),
+        merged.bus_interactions.len()
+    );
+
+    let mut export_options = ExportOptions::default();
+    let (machine, _) = optimize::<_, _, _, MemoryBus>(
+        merged,
+        bus_interaction_handler.clone(),
+        degree_bound,
+        bus_map,
+        column_allocator.clone(),
+        &mut export_options,
+    )?;
+
+    Ok(machine)
 }
 
 /// A wrapped variable: Either a regular variable or a bus interaction field.

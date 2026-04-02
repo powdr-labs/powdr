@@ -24,13 +24,12 @@ use powdr_constraint_solver::constraint_system::{ComputationMethod, DerivedVaria
 use powdr_expression::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
 };
+use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use symbolic_machine_generator::statements_to_symbolic_machine;
-
-use powdr_number::FieldElement;
 
 pub mod adapter;
 pub mod blocks;
@@ -251,31 +250,48 @@ impl<T, I: PcStep, A, V> Apc<T, I, A, V> {
     }
 }
 
-/// Allocates global poly_ids and keeps track of substitutions
+/// Allocates global poly_ids and keeps track of substitutions.
+/// Uses an atomic counter so clones share the same ID space (safe for parallel use).
 pub struct ColumnAllocator {
     /// For each original air, for each original column index, the associated poly_id in the APC air
     subs: Vec<Vec<u64>>,
-    /// The next poly_id to issue
-    next_poly_id: u64,
+    /// The next poly_id to issue (shared across clones for thread-safe allocation)
+    next_poly_id: Arc<AtomicU64>,
+}
+
+impl Clone for ColumnAllocator {
+    fn clone(&self) -> Self {
+        Self {
+            subs: self.subs.clone(),
+            next_poly_id: Arc::clone(&self.next_poly_id),
+        }
+    }
 }
 
 impl ColumnAllocator {
+    pub fn new(subs: Vec<Vec<u64>>, next_poly_id: u64) -> Self {
+        Self {
+            subs,
+            next_poly_id: Arc::new(AtomicU64::new(next_poly_id)),
+        }
+    }
+
     pub fn from_max_poly_id_of_machine(machine: &SymbolicMachine<impl FieldElement>) -> Self {
         Self {
             subs: Vec::new(),
-            next_poly_id: machine.main_columns().map(|c| c.id).max().unwrap_or(0) + 1,
+            next_poly_id: Arc::new(AtomicU64::new(
+                machine.main_columns().map(|c| c.id).max().unwrap_or(0) + 1,
+            )),
         }
     }
 
     pub fn issue_next_poly_id(&mut self) -> u64 {
-        let id = self.next_poly_id;
-        self.next_poly_id += 1;
-        id
+        self.next_poly_id.fetch_add(1, Ordering::Relaxed)
     }
 
     /// Returns whether the given poly_id is known (i.e., was issued by this allocator)
     pub fn is_known_id(&self, poly_id: u64) -> bool {
-        poly_id < self.next_poly_id
+        poly_id < self.next_poly_id.load(Ordering::Relaxed)
     }
 }
 
@@ -288,17 +304,19 @@ pub fn build<A: Adapter>(
 ) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
     let start = std::time::Instant::now();
 
-    let (mut machine, column_allocator) = statements_to_symbolic_machine::<A>(
-        &block,
-        vm_config.instruction_handler,
-        &vm_config.bus_map,
+    let (machines, column_allocator) = symbolic_machine_generator::statements_to_symbolic_machines::<
+        A,
+    >(
+        &block, vm_config.instruction_handler, &vm_config.bus_map
     );
 
     // Generate constraints for optimistic precompiles.
+    // We need the full set of columns across all instruction machines for the mapper.
     let should_generate_execution_constraints =
         optimistic_precompile_config().restrict_optimistic_precompiles;
+    let all_columns = machines.iter().flat_map(|m| m.main_columns());
     let algebraic_references =
-        BlockCellAlgebraicReferenceMapper::new(&column_allocator.subs, machine.main_columns());
+        BlockCellAlgebraicReferenceMapper::new(&column_allocator.subs, all_columns);
     let empirical_constraints = empirical_constraints.for_block(&block);
 
     // TODO: Use execution constraints
@@ -329,15 +347,17 @@ pub fn build<A: Adapter>(
         (empirical_constraints, vec![])
     };
 
-    // Add empirical constraints to the baseline
-    machine
-        .constraints
-        .extend(empirical_constraints.into_iter().map(Into::into));
+    let n_instructions = machines.len();
 
     if export_options.export_requested() {
+        let machine_for_export = machines
+            .iter()
+            .cloned()
+            .reduce(SymbolicMachine::concatenate)
+            .unwrap();
         export_options.export_apc_from_machine::<A>(
             block.clone(),
-            machine.clone(),
+            machine_for_export,
             &column_allocator,
             &vm_config.bus_map,
             Some("unopt"),
@@ -345,21 +365,63 @@ pub fn build<A: Adapter>(
     }
 
     let labels = [("apc_start_pc", block.start_pcs().into_iter().join("_"))];
-    metrics::counter!("before_opt_cols", &labels)
-        .absolute(machine.unique_references().count() as u64);
-    metrics::counter!("before_opt_constraints", &labels)
-        .absolute(machine.unique_references().count() as u64);
-    metrics::counter!("before_opt_interactions", &labels)
-        .absolute(machine.unique_references().count() as u64);
 
-    let (machine, column_allocator) = optimizer::optimize::<_, _, _, A::MemoryBusInteraction<_>>(
-        machine,
-        vm_config.bus_interaction_handler,
-        degree_bound,
-        &vm_config.bus_map,
-        column_allocator,
-        &mut export_options,
-    )?;
+    // Divide-and-conquer optimization: recursively split, optimize halves in parallel,
+    // merge, and optimize again. Empirical constraints are added after D&C.
+    // Set POWDR_NO_DNC=1 to disable D&C and use the original single-pass optimizer.
+    let use_dnc = std::env::var("POWDR_NO_DNC").is_err();
+    let machine = if use_dnc && n_instructions > optimizer::DIVIDE_AND_CONQUER_BASE_CASE_SIZE {
+        log::info!("Using divide-and-conquer optimization for {n_instructions} instructions");
+        let machine = optimizer::divide_and_conquer_optimize::<_, _, _, A::MemoryBusInteraction<_>>(
+            machines,
+            &vm_config.bus_interaction_handler,
+            degree_bound,
+            &vm_config.bus_map,
+            &column_allocator,
+        )?;
+
+        // Add empirical constraints after D&C and do a final optimization pass.
+        let mut machine = machine;
+        machine
+            .constraints
+            .extend(empirical_constraints.into_iter().map(Into::into));
+
+        let (machine, _) = optimizer::optimize::<_, _, _, A::MemoryBusInteraction<_>>(
+            machine,
+            vm_config.bus_interaction_handler,
+            degree_bound,
+            &vm_config.bus_map,
+            column_allocator.clone(),
+            &mut export_options,
+        )?;
+        machine
+    } else {
+        // Small block: concatenate and optimize directly (original path).
+        let mut machine = machines
+            .into_iter()
+            .reduce(SymbolicMachine::concatenate)
+            .unwrap();
+        machine
+            .constraints
+            .extend(empirical_constraints.into_iter().map(Into::into));
+
+        metrics::counter!("before_opt_cols", &labels)
+            .absolute(machine.unique_references().count() as u64);
+        metrics::counter!("before_opt_constraints", &labels)
+            .absolute(machine.unique_references().count() as u64);
+        metrics::counter!("before_opt_interactions", &labels)
+            .absolute(machine.unique_references().count() as u64);
+
+        let (machine, _) = optimizer::optimize::<_, _, _, A::MemoryBusInteraction<_>>(
+            machine,
+            vm_config.bus_interaction_handler,
+            degree_bound,
+            &vm_config.bus_map,
+            column_allocator.clone(),
+            &mut export_options,
+        )?;
+        machine
+    };
 
     // add guards to constraints that are not satisfied by zeroes
     let (machine, column_allocator) = add_guards(machine, column_allocator);
