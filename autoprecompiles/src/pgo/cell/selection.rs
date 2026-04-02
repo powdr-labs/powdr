@@ -136,12 +136,22 @@ pub fn select_blocks_greedy<A: Adapter, C: ApcCandidate<A>>(
     max_selected: usize,
     execution_bb_runs: &[(ExecutionStaticBlockRun, u32)],
 ) -> Vec<usize> {
-    let mut candidates = blocks
+    let candidates = blocks
         .iter()
         .zip_eq(apcs)
         .map(|(b, apc)| BlockCandidate::new(b, apc))
         .collect::<Vec<_>>();
 
+    select_candidates_greedy(candidates, budget, max_selected, execution_bb_runs)
+}
+
+/// Greedy selection over pre-built candidates. See [`select_blocks_greedy`] for details.
+pub fn select_candidates_greedy(
+    mut candidates: Vec<BlockCandidate>,
+    budget: usize,
+    max_selected: usize,
+    execution_bb_runs: &[(ExecutionStaticBlockRun, u32)],
+) -> Vec<usize> {
     // keep candidates by priority. As a candidate is selected, remaining priorities will be (lazily) updated.
     let mut by_priority: PriorityQueue<_, _> = candidates
         .iter()

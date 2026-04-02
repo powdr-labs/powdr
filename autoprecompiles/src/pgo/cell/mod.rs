@@ -14,7 +14,7 @@ use crate::{
     EmpiricalConstraints, PowdrConfig,
 };
 
-mod selection;
+pub mod selection;
 
 /// Trait for autoprecompile candidates.
 /// Provides ApcWithStats with logic for evaluating a candidate.
