@@ -376,54 +376,156 @@ where
     info!("Chunk-and-merge: {n} instructions, chunk_size={chunk_size}");
 
     // Layer 1: split into chunks and optimize each in parallel
-    let chunks: Vec<Vec<SymbolicMachine<T>>> = machines
+    let optimized = parallel_optimize_chunks::<T, B, BusTypes, MemoryBus>(
+        machines,
+        chunk_size,
+        bus_interaction_handler,
+        degree_bound,
+        bus_map,
+        column_allocator,
+    )?;
+    info!("Chunk-and-merge: {} optimized chunks", optimized.len());
+
+    // Layer 2: merge all and optimize once more
+    let merged = optimized
         .into_iter()
-        .chunks(chunk_size)
-        .into_iter()
-        .map(|chunk| chunk.collect())
-        .collect();
-    let n_chunks = chunks.len();
-    info!("Chunk-and-merge: {n_chunks} chunks");
-
-    let optimized_chunks: Vec<Result<SymbolicMachine<T>, crate::constraint_optimizer::Error>> =
-        chunks
-            .into_par_iter()
-            .map(|chunk| {
-                let machine = chunk
-                    .into_iter()
-                    .reduce(SymbolicMachine::concatenate)
-                    .unwrap();
-                let mut export_options = ExportOptions::default();
-                let (machine, _) = optimize::<_, _, _, MemoryBus>(
-                    machine,
-                    bus_interaction_handler.clone(),
-                    degree_bound,
-                    bus_map,
-                    column_allocator.clone(),
-                    &mut export_options,
-                )?;
-                Ok(machine)
-            })
-            .collect();
-
-    // Collect results, propagating any errors
-    let mut merged: Option<SymbolicMachine<T>> = None;
-    for result in optimized_chunks {
-        let machine: SymbolicMachine<T> = result?;
-        merged = Some(match merged {
-            Some(m) => m.concatenate(machine),
-            None => machine,
-        });
-    }
-    let merged = merged.unwrap();
-
+        .reduce(SymbolicMachine::concatenate)
+        .unwrap();
     info!(
         "Chunk-and-merge: merged result has {} constraints, {} bus interactions",
         merged.constraints.len(),
         merged.bus_interactions.len()
     );
 
-    // Layer 2: optimize the merged result
+    let mut export_options = ExportOptions::default();
+    let (machine, _) = optimize::<_, _, _, MemoryBus>(
+        merged,
+        bus_interaction_handler.clone(),
+        degree_bound,
+        bus_map,
+        column_allocator.clone(),
+        &mut export_options,
+    )?;
+
+    Ok(machine)
+}
+
+/// Helper: optimize a list of machines in parallel (chunk each, optimize, collect).
+fn parallel_optimize_chunks<T, B, BusTypes, MemoryBus>(
+    machines: Vec<SymbolicMachine<T>>,
+    chunk_size: usize,
+    bus_interaction_handler: &B,
+    degree_bound: DegreeBound,
+    bus_map: &BusMap<BusTypes>,
+    column_allocator: &ColumnAllocator,
+) -> Result<Vec<SymbolicMachine<T>>, crate::constraint_optimizer::Error>
+where
+    T: FieldElement + Send + Sync,
+    B: BusInteractionHandler<T>
+        + IsBusStateful<T>
+        + RangeConstraintHandler<T>
+        + Clone
+        + Send
+        + Sync,
+    BusTypes: PartialEq + Eq + Clone + Display + Send + Sync,
+    MemoryBus: MemoryBusInteraction<T, AlgebraicReference>,
+{
+    let chunks: Vec<Vec<SymbolicMachine<T>>> = machines
+        .into_iter()
+        .chunks(chunk_size)
+        .into_iter()
+        .map(|c| c.collect())
+        .collect();
+
+    let results: Vec<Result<SymbolicMachine<T>, crate::constraint_optimizer::Error>> = chunks
+        .into_par_iter()
+        .map(|chunk| {
+            let machine = chunk
+                .into_iter()
+                .reduce(SymbolicMachine::concatenate)
+                .unwrap();
+            let mut export_options = ExportOptions::default();
+            let (machine, _) = optimize::<_, _, _, MemoryBus>(
+                machine,
+                bus_interaction_handler.clone(),
+                degree_bound,
+                bus_map,
+                column_allocator.clone(),
+                &mut export_options,
+            )?;
+            Ok(machine)
+        })
+        .collect();
+
+    results.into_iter().collect()
+}
+
+/// Three-layer parallel optimization: split into chunks of `chunk_size`, optimize in
+/// parallel (layer 1), group the optimized chunks into ~sqrt(n_chunks) groups, optimize
+/// each group in parallel (layer 2), merge all and optimize once more (layer 3).
+pub fn three_layer_optimize<T, B, BusTypes, MemoryBus>(
+    machines: Vec<SymbolicMachine<T>>,
+    bus_interaction_handler: &B,
+    degree_bound: DegreeBound,
+    bus_map: &BusMap<BusTypes>,
+    column_allocator: &ColumnAllocator,
+    chunk_size: usize,
+) -> Result<SymbolicMachine<T>, crate::constraint_optimizer::Error>
+where
+    T: FieldElement + Send + Sync,
+    B: BusInteractionHandler<T>
+        + IsBusStateful<T>
+        + RangeConstraintHandler<T>
+        + Clone
+        + Send
+        + Sync,
+    BusTypes: PartialEq + Eq + Clone + Display + Send + Sync,
+    MemoryBus: MemoryBusInteraction<T, AlgebraicReference>,
+{
+    let n = machines.len();
+    info!("Three-layer: {n} instructions, chunk_size={chunk_size}");
+
+    // Layer 1: chunk instructions and optimize each in parallel
+    let layer1 = parallel_optimize_chunks::<T, B, BusTypes, MemoryBus>(
+        machines,
+        chunk_size,
+        bus_interaction_handler,
+        degree_bound,
+        bus_map,
+        column_allocator,
+    )?;
+    let n_l1 = layer1.len();
+    info!("Three-layer: layer 1 produced {n_l1} optimized chunks");
+
+    if n_l1 <= 1 {
+        // Nothing to merge further
+        return Ok(layer1.into_iter().next().unwrap());
+    }
+
+    // Layer 2: group into ~sqrt(n_l1) groups and optimize each group in parallel
+    let group_size = (n_l1 as f64).sqrt().ceil() as usize;
+    let layer2 = parallel_optimize_chunks::<T, B, BusTypes, MemoryBus>(
+        layer1,
+        group_size,
+        bus_interaction_handler,
+        degree_bound,
+        bus_map,
+        column_allocator,
+    )?;
+    let n_l2 = layer2.len();
+    info!("Three-layer: layer 2 produced {n_l2} optimized groups (group_size={group_size})");
+
+    // Layer 3: merge all and optimize once more
+    let merged = layer2
+        .into_iter()
+        .reduce(SymbolicMachine::concatenate)
+        .unwrap();
+    info!(
+        "Three-layer: final merge has {} constraints, {} bus interactions",
+        merged.constraints.len(),
+        merged.bus_interactions.len()
+    );
+
     let mut export_options = ExportOptions::default();
     let (machine, _) = optimize::<_, _, _, MemoryBus>(
         merged,
