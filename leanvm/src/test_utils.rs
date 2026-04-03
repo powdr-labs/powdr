@@ -7,10 +7,10 @@ use crate::instruction::LeanVmInstruction;
 use crate::instruction_handler::{LeanVmInstructionHandler, DEFAULT_DEGREE_BOUND};
 use crate::{leanvm_bus_map, LeanVmAdapter, LeanVmCustomBusType};
 use powdr_autoprecompiles::blocks::SuperBlock;
+use powdr_autoprecompiles::bus_map::BusMap;
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::evaluation::{evaluate_apc, AirStats};
 use powdr_autoprecompiles::export::ExportOptions;
-use powdr_autoprecompiles::bus_map::BusMap;
 use powdr_autoprecompiles::{build, VmConfig};
 
 /// Result of compiling a superblock into an APC.
