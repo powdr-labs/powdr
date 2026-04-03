@@ -133,9 +133,6 @@ pub fn optimize_constraints<
     stats_logger.log("memory optimization", &constraint_system);
     export_options.export_optimizer_inner_constraint_system(&constraint_system, "memory");
 
-    // Note: WOM memory optimization is done in the outer optimizer after inlining,
-    // because address variables need to be fully substituted first.
-
     let constraint_system = LowDegreeBusInteractionOptimizer::new(
         solver,
         bus_interaction_handler.clone(),
