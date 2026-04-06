@@ -529,7 +529,9 @@ pub fn simplify_constraints_using_exhaustive_search<
                 .iter()
                 .any(|(_, s)| s.try_to_number().is_some_and(|n| !n.is_zero()))
             {
-                // assignment leads to a conflict, ignore it.
+                // Assignment leads to a conflict. This means that there is
+                // an algebraic constraints that rules out this assignment, so
+                // we don't have to consider it.
                 continue;
             }
             // No conflict. First, update the algebraic constraints where
@@ -545,6 +547,8 @@ pub fn simplify_constraints_using_exhaustive_search<
                 existing.update(apply_substitution(e.clone(), &assignment));
             }
             // Remove bus interaction fields with conflicting simplifications
+            // This is a performance optimization, saving us time in the loop
+            // above for the next assignment candidate.
             exprs.retain(|_, simp| {
                 simp.is_algebraic_constraint || !matches!(&simp.simplified, Some(Err(())))
             });
@@ -560,6 +564,10 @@ pub fn simplify_constraints_using_exhaustive_search<
     if substitutions.is_empty() {
         return constraint_system;
     }
+    
+    // Substitute all constraints and bus interaction fields with simpler expressions.
+    // For any substitution we apply, we add a constraint of the form
+    // `<expr> = <substitution>`. This is essential for soundness.
 
     if log::log_enabled!(log::Level::Trace) {
         log::trace!("The following substitutions were found by exhaustive search:");
