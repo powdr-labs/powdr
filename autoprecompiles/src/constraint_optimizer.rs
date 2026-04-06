@@ -561,6 +561,13 @@ pub fn simplify_constraints_using_exhaustive_search<
         return constraint_system;
     }
 
+    if log::log_enabled!(log::Level::Trace) {
+        log::trace!("The following substitutions were found by exhaustive search:");
+        for (expr, sub) in &substitutions {
+            log::trace!("{expr}    ->   {sub}");
+        }
+    }
+
     let mut constraints_to_add = BTreeSet::default();
 
     let mut constraint_system = constraint_system.system().clone();
