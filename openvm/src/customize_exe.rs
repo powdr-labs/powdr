@@ -8,7 +8,7 @@ use crate::extraction_utils::{get_air_metrics, AirWidthsDiff, OriginalAirs};
 use crate::isa::OpenVmISA;
 use crate::powdr_extension::chip::PowdrAir;
 use crate::program::Prog;
-use crate::OriginalCompiledProgram;
+use crate::{memcpy_optimizer, OriginalCompiledProgram};
 use crate::{CompiledProgram, SpecializedConfig};
 use itertools::Itertools;
 use openvm_circuit::arch::VmState;
@@ -217,9 +217,11 @@ pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAd
         bus_map: bus_map.clone(),
     };
 
+    let original_program = memcpy_optimizer::optimize(original_program);
+
     let symbols = ISA::get_symbol_table(&original_program.linked_program);
     let blocks = original_program.collect_basic_blocks();
-    tracing::info!(
+    println!(
         "Got {} basic blocks from `collect_basic_blocks`",
         blocks.len()
     );

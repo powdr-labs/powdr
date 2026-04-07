@@ -60,6 +60,7 @@ pub mod program;
 pub mod trace_generation;
 pub mod utils;
 pub use powdr_openvm_bus_interaction_handler::bus_map;
+mod memcpy_optimizer;
 
 #[cfg(feature = "test-utils")]
 pub mod test_utils;
