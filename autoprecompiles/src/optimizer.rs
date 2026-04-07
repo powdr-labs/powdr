@@ -45,6 +45,7 @@ where
     BusTypes: PartialEq + Eq + Clone + Display,
     MemoryBus: MemoryBusInteraction<T, AlgebraicReference>,
 {
+    return Ok((machine, column_allocator));
     let mut stats_logger = StatsLogger::start(&machine);
 
     if let Some(exec_bus_id) = bus_map.get_bus_id(&BusType::ExecutionBridge) {
