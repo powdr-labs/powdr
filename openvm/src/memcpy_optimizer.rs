@@ -377,13 +377,18 @@ pub fn optimize<ISA: OpenVmISA>(
     let memcpy_pc = symbols
         .table()
         .iter()
-        .find(|(_, names)| names.iter().any(|n| n.contains("memcpy")))
-        .map(|(pc, _)| *pc as u64);
+        .find(|(_, names)| names.iter().any(|n| n.contains("memcpy")));
 
-    let Some(memcpy_pc) = memcpy_pc else {
-        println!("memcpy_optimizer: no memcpy symbol found");
+    let Some((memcpy_pc, names)) = memcpy_pc else {
+        tracing::info!("memcpy_optimizer: no memcpy symbol found");
         return original_program;
     };
+    let memcpy_pc: u64 = *memcpy_pc as u64;
+    tracing::info!(
+        "Using memcpy at PC 0x{:x} with symbols {}",
+        memcpy_pc,
+        names.join(", ")
+    );
 
     // Collect call sites: for each block calling memcpy with constant length,
     // record (auipc_index_in_program, length).
@@ -421,11 +426,11 @@ pub fn optimize<ISA: OpenVmISA>(
     }
 
     if calls_by_length.is_empty() {
-        println!("memcpy_optimizer: no eligible memcpy calls found");
+        tracing::info!("memcpy_optimizer: no eligible memcpy calls found");
         return original_program;
     }
 
-    println!(
+    tracing::info!(
         "memcpy_optimizer: memcpy at PC 0x{:x}, call sites by length: {:?}",
         memcpy_pc,
         calls_by_length
@@ -446,7 +451,7 @@ pub fn optimize<ISA: OpenVmISA>(
         let routine_start_index = exe.program.instructions_and_debug_infos.len();
         let routine_start_pc = pc_base + (routine_start_index as u64) * (DEFAULT_PC_STEP as u64);
 
-        println!(
+        tracing::info!(
             "memcpy_optimizer: appending specialized memcpy for length={} at PC 0x{:x} ({} instructions)",
             length,
             routine_start_pc,
@@ -490,7 +495,7 @@ pub fn optimize<ISA: OpenVmISA>(
         }
     }
 
-    println!(
+    tracing::info!(
         "memcpy_optimizer: patched {} call sites across {} lengths",
         calls_by_length.values().map(|v| v.len()).sum::<usize>(),
         calls_by_length.len()
