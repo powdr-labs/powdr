@@ -104,12 +104,12 @@ pushd "$dir"
 
 # Phase 1: Compile artifacts for each APC configuration (skipped if artifact exists)
 compile_artifact "$guest" "$input" 0   apc000 apc000.cbor
-compile_artifact "$guest" "$input" 30  apc030 apc030.cbor
+compile_artifact "$guest" "$input" 100 apc100 apc100.cbor
 compile_artifact "$guest" "$input" 300 apc300 apc300.cbor
 
 # Phase 2: Prove + profile using pre-compiled artifacts
 run_bench apc000.cbor "$input" apc000
-run_bench apc030.cbor "$input" apc030
+run_bench apc100.cbor "$input" apc100
 run_bench apc300.cbor "$input" apc300
 
 python3 $SCRIPTS_DIR/basic_metrics.py summary-table --csv **/metrics.json > basic_metrics.csv
