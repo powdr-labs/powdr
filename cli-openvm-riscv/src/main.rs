@@ -1,6 +1,7 @@
 use eyre::Result;
 use metrics_tracing_context::{MetricsLayer, TracingContextLayer};
 use metrics_util::{debugging::DebuggingRecorder, layers::Layer};
+use openvm_sdk::StdIn;
 use openvm_stark_sdk::bench::serialize_metric_snapshot;
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::pgo::{pgo_config, PgoType};
@@ -9,7 +10,6 @@ use powdr_openvm_riscv::{
     compile_openvm, detect_empirical_constraints, CompiledProgram, GuestOptions,
     OriginalCompiledProgram, RiscvISA,
 };
-use openvm_sdk::StdIn;
 
 #[cfg(feature = "metrics")]
 use openvm_stark_sdk::metrics_tracing::TimingMetricsLayer;
@@ -76,6 +76,10 @@ enum Commands {
 
         #[command(flatten)]
         shared: SharedArgs,
+
+        /// Path to write the compiled artifact (default: <guest>_compiled.cbor)
+        #[arg(long)]
+        output: Option<PathBuf>,
     },
 
     Execute {
@@ -89,7 +93,8 @@ enum Commands {
     },
 
     Prove {
-        guest: String,
+        /// Guest program name. Required unless --artifact is provided.
+        guest: Option<String>,
 
         #[command(flatten)]
         shared: SharedArgs,
@@ -104,6 +109,11 @@ enum Commands {
 
         #[arg(long)]
         metrics: Option<PathBuf>,
+
+        /// Path to a pre-compiled artifact from the Compile command.
+        /// When provided, skips compilation and loads the artifact directly.
+        #[arg(long)]
+        artifact: Option<PathBuf>,
     },
 }
 
@@ -138,7 +148,11 @@ fn build_powdr_config(shared: &SharedArgs) -> PowdrConfig {
 fn run_command(command: Commands) {
     let guest_opts = GuestOptions::default();
     match command {
-        Commands::Compile { guest, shared } => {
+        Commands::Compile {
+            guest,
+            shared,
+            output,
+        } => {
             validate_shared_args(&shared);
             let powdr_config = build_powdr_config(&shared);
             let guest_program = compile_openvm(&guest, guest_opts.clone()).unwrap();
@@ -160,7 +174,10 @@ fn run_command(command: Commands) {
                 empirical_constraints,
             )
             .unwrap();
-            write_program_to_file(program, &format!("{guest}_compiled.cbor")).unwrap();
+            let output_path =
+                output.unwrap_or_else(|| PathBuf::from(format!("{guest}_compiled.cbor")));
+            write_program_to_file(program, &output_path).unwrap();
+            tracing::info!("Compiled artifact written to {}", output_path.display());
         }
 
         Commands::Execute {
@@ -215,47 +232,63 @@ fn run_command(command: Commands) {
             mock,
             recursion,
             metrics,
+            artifact,
         } => {
-            validate_shared_args(&shared);
-            if shared.superblocks > 1 {
-                Cli::command()
-                    .error(
-                        clap::error::ErrorKind::ArgumentConflict,
-                        "OpenVM execution with superblocks not yet supported.",
+            let prove = || {
+                let program = if let Some(artifact_path) = &artifact {
+                    tracing::info!(
+                        "Loading pre-compiled artifact from {}",
+                        artifact_path.display()
+                    );
+                    read_program_from_file(artifact_path).unwrap()
+                } else {
+                    let guest = guest.as_ref().unwrap_or_else(|| {
+                        Cli::command()
+                            .error(
+                                clap::error::ErrorKind::MissingRequiredArgument,
+                                "either <GUEST> or --artifact must be provided",
+                            )
+                            .exit()
+                    });
+                    validate_shared_args(&shared);
+                    if shared.superblocks > 1 {
+                        Cli::command()
+                            .error(
+                                clap::error::ErrorKind::ArgumentConflict,
+                                "OpenVM execution with superblocks not yet supported.",
+                            )
+                            .exit();
+                    }
+                    let powdr_config = build_powdr_config(&shared);
+                    let guest_program = compile_openvm(guest, guest_opts).unwrap();
+                    let empirical_constraints = maybe_compute_empirical_constraints(
+                        &guest_program,
+                        &powdr_config,
+                        stdin_from(shared.input),
+                    );
+                    let execution_profile = powdr_openvm::execution_profile_from_guest(
+                        &guest_program,
+                        stdin_from(shared.input),
+                    );
+                    let pgo_config = pgo_config(shared.pgo, shared.max_columns, execution_profile);
+                    powdr_openvm_riscv::compile_exe(
+                        guest_program,
+                        powdr_config,
+                        pgo_config,
+                        empirical_constraints,
                     )
-                    .exit();
-            }
-            let powdr_config = build_powdr_config(&shared);
-            let guest_program = compile_openvm(&guest, guest_opts).unwrap();
-            let empirical_constraints = maybe_compute_empirical_constraints(
-                &guest_program,
-                &powdr_config,
-                stdin_from(shared.input),
-            );
-
-            let execution_profile = powdr_openvm::execution_profile_from_guest(
-                &guest_program,
-                stdin_from(shared.input),
-            );
-            let pgo_config = pgo_config(shared.pgo, shared.max_columns, execution_profile);
-            let compile_and_prove = || {
-                let program = powdr_openvm_riscv::compile_exe(
-                    guest_program,
-                    powdr_config,
-                    pgo_config,
-                    empirical_constraints,
-                )
-                .unwrap();
+                    .unwrap()
+                };
                 powdr_openvm_riscv::prove(&program, mock, recursion, stdin_from(shared.input), None)
                     .unwrap()
             };
             if let Some(metrics_path) = metrics {
                 run_with_metric_collection_to_file(
                     std::fs::File::create(metrics_path).expect("Failed to create metrics file"),
-                    compile_and_prove,
+                    prove,
                 );
             } else {
-                compile_and_prove()
+                prove()
             }
         }
     }
@@ -263,13 +296,21 @@ fn run_command(command: Commands) {
 
 fn write_program_to_file(
     program: CompiledProgram<RiscvISA>,
-    filename: &str,
+    path: &PathBuf,
 ) -> Result<(), io::Error> {
     use std::fs::File;
 
-    let mut file = File::create(filename)?;
+    let mut file = File::create(path)?;
     serde_cbor::to_writer(&mut file, &program).map_err(io::Error::other)?;
     Ok(())
+}
+
+fn read_program_from_file(path: &PathBuf) -> Result<CompiledProgram<RiscvISA>, io::Error> {
+    use std::fs::File;
+
+    let file = File::open(path)?;
+    let reader = io::BufReader::new(file);
+    serde_cbor::from_reader(reader).map_err(io::Error::other)
 }
 
 fn validate_shared_args(args: &SharedArgs) {
