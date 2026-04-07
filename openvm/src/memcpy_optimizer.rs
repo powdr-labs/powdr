@@ -286,11 +286,11 @@ fn generate_specialized_memcpy(length: u32) -> Vec<OpenVmInstruction<F>> {
     instrs.push(addi(A3_REG_PTR, X0_REG_PTR, 1));
     let beq_off1_idx = instrs.len();
     instrs.push(beq(A2_REG_PTR, A3_REG_PTR, 0)); // placeholder
-    // LI a3, 2; BEQ a2, a3, off_2
+                                                 // LI a3, 2; BEQ a2, a3, off_2
     instrs.push(addi(A3_REG_PTR, X0_REG_PTR, 2));
     let beq_off2_idx = instrs.len();
     instrs.push(beq(A2_REG_PTR, A3_REG_PTR, 0)); // placeholder
-    // Fall through: off by 3 → copy 1 head byte to align
+                                                 // Fall through: off by 3 → copy 1 head byte to align
 
     // -- Path 4: Same misalignment, off by 3 → 1 head byte --
     let off3_idx = instrs.len();
@@ -397,8 +397,7 @@ pub fn optimize<ISA: OpenVmISA>(
             continue;
         }
         if last_instr.inner.opcode.as_usize() == OPCODE_JALR {
-            if let Some(target_pc) =
-                auipc_jalr_target(&block.instructions, block.start_pc, pc_step)
+            if let Some(target_pc) = auipc_jalr_target(&block.instructions, block.start_pc, pc_step)
             {
                 if target_pc == memcpy_pc {
                     if let Some(len) = resolve_a2_constant(&block.instructions) {
@@ -409,12 +408,8 @@ pub fn optimize<ISA: OpenVmISA>(
                                 if instr.inner.opcode.as_usize() == OPCODE_AUIPC
                                     && instr.inner.a == jalr_rs1
                                 {
-                                    let auipc_pc =
-                                        block.start_pc + (i as u64) * pc_step as u64;
-                                    calls_by_length
-                                        .entry(len)
-                                        .or_default()
-                                        .push(auipc_pc);
+                                    let auipc_pc = block.start_pc + (i as u64) * pc_step as u64;
+                                    calls_by_length.entry(len).or_default().push(auipc_pc);
                                     break;
                                 }
                             }
@@ -477,8 +472,10 @@ pub fn optimize<ISA: OpenVmISA>(
             let (auipc_c, jalr_c, jalr_g) = encode_auipc_jalr(auipc_pc, target_pc);
 
             // Patch AUIPC: update c field
-            if let Some(Some((ref mut instr, _))) =
-                exe.program.instructions_and_debug_infos.get_mut(auipc_index)
+            if let Some(Some((ref mut instr, _))) = exe
+                .program
+                .instructions_and_debug_infos
+                .get_mut(auipc_index)
             {
                 instr.c = auipc_c;
             }
