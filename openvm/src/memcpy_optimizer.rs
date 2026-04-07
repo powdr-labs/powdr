@@ -507,3 +507,232 @@ pub fn optimize<ISA: OpenVmISA>(
         original_program.linked_program,
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Minimal RISC-V interpreter for the instruction subset used by specialized memcpy.
+    struct Interpreter {
+        regs: [u32; 32],
+        mem: Vec<u8>,
+        pc: u32,
+    }
+
+    /// BabyBear modulus
+    const P: u32 = 0x78000001;
+
+    impl Interpreter {
+        fn new(mem_size: usize) -> Self {
+            Self {
+                regs: [0; 32],
+                mem: vec![0; mem_size],
+                pc: 0,
+            }
+        }
+
+        fn reg(&self, ptr: u32) -> u32 {
+            let idx = (ptr / 4) as usize;
+            if idx == 0 {
+                0
+            } else {
+                self.regs[idx]
+            }
+        }
+
+        fn set_reg(&mut self, ptr: u32, val: u32) {
+            let idx = (ptr / 4) as usize;
+            if idx != 0 {
+                self.regs[idx] = val;
+            }
+        }
+
+        fn effective_addr(&self, base_ptr: u32, imm: u32, sign: u32) -> u32 {
+            let base = self.reg(base_ptr);
+            if sign == 0 {
+                base.wrapping_add(imm)
+            } else {
+                base.wrapping_sub(imm)
+            }
+        }
+
+        fn run(&mut self, instrs: &[OpenVmInstruction<F>], max_steps: usize) {
+            let pc_step = DEFAULT_PC_STEP;
+            for step in 0..max_steps {
+                let idx = self.pc as usize / pc_step as usize;
+                assert!(
+                    idx < instrs.len(),
+                    "PC out of bounds: pc={}, idx={}, len={} at step {}",
+                    self.pc,
+                    idx,
+                    instrs.len(),
+                    step
+                );
+                let instr = &instrs[idx];
+                let opcode = instr.opcode.as_usize();
+                let a = instr.a.as_canonical_u32();
+                let b = instr.b.as_canonical_u32();
+                let c_raw = instr.c.as_canonical_u32();
+                let e = instr.e.as_canonical_u32();
+                let g = instr.g.as_canonical_u32();
+
+                match opcode {
+                    OPCODE_ADD | OPCODE_AND | OPCODE_OR => {
+                        let rs1_val = self.reg(b);
+                        let operand = if e == 0 { c_raw } else { self.reg(c_raw) };
+                        let result = match opcode {
+                            OPCODE_ADD => rs1_val.wrapping_add(operand),
+                            OPCODE_AND => rs1_val & operand,
+                            OPCODE_OR => rs1_val | operand,
+                            _ => unreachable!(),
+                        };
+                        self.set_reg(a, result);
+                        self.pc += pc_step;
+                    }
+                    OPCODE_LOADW => {
+                        let addr = self.effective_addr(b, c_raw, g);
+                        assert!(
+                            addr % 4 == 0,
+                            "Unaligned LOADW at addr 0x{:x} (step {})",
+                            addr,
+                            step
+                        );
+                        let a_idx = addr as usize;
+                        let val = u32::from_le_bytes([
+                            self.mem[a_idx],
+                            self.mem[a_idx + 1],
+                            self.mem[a_idx + 2],
+                            self.mem[a_idx + 3],
+                        ]);
+                        self.set_reg(a, val);
+                        self.pc += pc_step;
+                    }
+                    OPCODE_LOADBU => {
+                        let addr = self.effective_addr(b, c_raw, g);
+                        let val = self.mem[addr as usize] as u32;
+                        self.set_reg(a, val);
+                        self.pc += pc_step;
+                    }
+                    OPCODE_STOREW => {
+                        let addr = self.effective_addr(b, c_raw, g);
+                        assert!(
+                            addr % 4 == 0,
+                            "Unaligned STOREW at addr 0x{:x} (step {})",
+                            addr,
+                            step
+                        );
+                        let val = self.reg(a);
+                        let bytes = val.to_le_bytes();
+                        let a_idx = addr as usize;
+                        self.mem[a_idx..a_idx + 4].copy_from_slice(&bytes);
+                        self.pc += pc_step;
+                    }
+                    OPCODE_STOREB => {
+                        let addr = self.effective_addr(b, c_raw, g);
+                        let val = (self.reg(a) & 0xFF) as u8;
+                        self.mem[addr as usize] = val;
+                        self.pc += pc_step;
+                    }
+                    OPCODE_BEQ | OPCODE_BNE => {
+                        let rs1_val = self.reg(a);
+                        let rs2_val = self.reg(b);
+                        let take = match opcode {
+                            OPCODE_BEQ => rs1_val == rs2_val,
+                            OPCODE_BNE => rs1_val != rs2_val,
+                            _ => unreachable!(),
+                        };
+                        if take {
+                            // Decode signed offset from BabyBear field element
+                            let offset: i32 = if c_raw > P / 2 {
+                                -(P.wrapping_sub(c_raw) as i32)
+                            } else {
+                                c_raw as i32
+                            };
+                            self.pc = (self.pc as i32 + offset) as u32;
+                        } else {
+                            self.pc += pc_step;
+                        }
+                    }
+                    OPCODE_JALR => {
+                        // JALR with rd=x0 is a return — end execution
+                        return;
+                    }
+                    _ => panic!("Unknown opcode: 0x{:x} at step {}", opcode, step),
+                }
+            }
+            panic!("Max steps exceeded ({})", max_steps);
+        }
+    }
+
+    #[test]
+    fn test_specialized_memcpy_all_alignments() {
+        // Test a variety of lengths including edge cases
+        let lengths: Vec<u32> = vec![0, 1, 2, 3, 4, 5, 7, 8, 12, 15, 16, 31, 32, 48, 63, 64, 128];
+
+        for &length in &lengths {
+            let routine = generate_specialized_memcpy(length);
+
+            for src_align in 0..4u32 {
+                for dst_align in 0..4u32 {
+                    // Place src and dst far enough apart to never overlap,
+                    // and offset from a base aligned address to test alignment.
+                    let src_base = 256 + src_align;
+                    let dst_base = 768 + dst_align;
+
+                    let mut interp = Interpreter::new(1024);
+
+                    // Fill entire memory with a sentinel value (0xAA)
+                    // so we can detect any stray writes
+                    interp.mem.fill(0xAA);
+
+                    // Fill src with a deterministic non-zero pattern (distinct from sentinel)
+                    for i in 0..length {
+                        interp.mem[(src_base + i) as usize] =
+                            ((i.wrapping_mul(7).wrapping_add(13 + length)) & 0x7F) as u8;
+                    }
+
+                    // Set argument registers
+                    interp.set_reg(A0_REG_PTR, dst_base);
+                    interp.set_reg(A1_REG_PTR, src_base);
+
+                    // Run the routine
+                    interp.run(&routine, 10_000);
+
+                    // Verify every byte was copied correctly
+                    for i in 0..length {
+                        let expected = interp.mem[(src_base + i) as usize];
+                        let actual = interp.mem[(dst_base + i) as usize];
+                        assert_eq!(
+                            actual, expected,
+                            "Mismatch at byte {} for length={}, src_align={}, dst_align={}: \
+                             expected 0x{:02x}, got 0x{:02x}",
+                            i, length, src_align, dst_align, expected, actual
+                        );
+                    }
+
+                    // Verify no stray writes: check a guard zone around the destination
+                    let guard = 16;
+                    let check_start = dst_base.saturating_sub(guard);
+                    let check_end = (dst_base + length + guard).min(1024);
+                    for addr in check_start..check_end {
+                        if addr >= dst_base && addr < dst_base + length {
+                            continue; // inside the copied region, already verified
+                        }
+                        assert_eq!(
+                            interp.mem[addr as usize],
+                            0xAA,
+                            "Stray write at addr {} (dst=[{}..{})) for \
+                             length={}, src_align={}, dst_align={}",
+                            addr,
+                            dst_base,
+                            dst_base + length,
+                            length,
+                            src_align,
+                            dst_align
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
