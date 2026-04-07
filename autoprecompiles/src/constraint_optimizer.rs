@@ -523,7 +523,7 @@ pub fn simplify_constraints_using_exhaustive_search<
             let alg_substituted: BTreeMap<_, _> = exprs
                 .iter()
                 .filter(|(_, simp)| simp.is_algebraic_constraint)
-                .map(|(&e, _)| (e, apply_substitution(e.clone(), &assignment)))
+                .map(|(&e, _)| (e, e.clone().substitute_by_known_multi(&assignment)))
                 .collect();
             if alg_substituted
                 .iter()
@@ -544,7 +544,7 @@ pub fn simplify_constraints_using_exhaustive_search<
                 .iter_mut()
                 .filter(|(_, simp)| !simp.is_algebraic_constraint)
             {
-                existing.update(apply_substitution(e.clone(), &assignment));
+                existing.update(e.clone().substitute_by_known_multi(&assignment));
             }
             // Remove bus interaction fields with conflicting simplifications
             // This is a performance optimization, saving us time in the loop
@@ -564,7 +564,7 @@ pub fn simplify_constraints_using_exhaustive_search<
     if substitutions.is_empty() {
         return constraint_system;
     }
-    
+
     // Substitute all constraints and bus interaction fields with simpler expressions.
     // For any substitution we apply, we add a constraint of the form
     // `<expr> = <substitution>`. This is essential for soundness.
@@ -605,17 +605,6 @@ pub fn simplify_constraints_using_exhaustive_search<
         .extend(constraints_to_add);
 
     constraint_system.into()
-}
-
-// TODO move
-fn apply_substitution<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
-    mut expr: GroupedExpression<T, V>,
-    assignments: &BTreeMap<V, T>,
-) -> GroupedExpression<T, V> {
-    for (v, val) in assignments {
-        expr.substitute_by_known(v, val);
-    }
-    expr
 }
 
 fn remove_trivial_constraints<P: FieldElement, V: PartialEq + Clone + Hash + Ord>(
