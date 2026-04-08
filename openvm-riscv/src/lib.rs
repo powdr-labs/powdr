@@ -47,8 +47,8 @@ use std::path::{Path, PathBuf};
 
 pub use crate::isa::RiscvISA;
 pub use crate::isa::{instruction_formatter, symbolic_instruction_builder};
-pub use powdr_openvm::program::{CompiledProgram, OriginalCompiledProgram};
 use powdr_openvm::isa::OpenVmISA;
+pub use powdr_openvm::program::{CompiledProgram, OriginalCompiledProgram};
 
 pub mod isa;
 

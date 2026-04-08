@@ -46,7 +46,7 @@ const X14: u32 = 14; // a4 (temp)
 /// Encode ADDI rd, rs1, imm (I-type)
 fn rv_addi(rd: u32, rs1: u32, imm: i32) -> u32 {
     let imm = (imm as u32) & 0xFFF;
-    (imm << 20) | (rs1 << 15) | (0b000 << 12) | (rd << 7) | 0x13
+    ((imm << 20) | (rs1 << 15)) | (rd << 7) | 0x13
 }
 
 /// Encode ANDI rd, rs1, imm (I-type)
@@ -85,7 +85,7 @@ fn rv_sb(rs2: u32, rs1: u32, imm: i32) -> u32 {
     let imm = (imm as u32) & 0xFFF;
     let imm_11_5 = (imm >> 5) & 0x7F;
     let imm_4_0 = imm & 0x1F;
-    (imm_11_5 << 25) | (rs2 << 20) | (rs1 << 15) | (0b000 << 12) | (imm_4_0 << 7) | 0x23
+    ((imm_11_5 << 25) | (rs2 << 20) | (rs1 << 15)) | (imm_4_0 << 7) | 0x23
 }
 
 /// Encode BEQ rs1, rs2, offset (B-type, offset in bytes)
@@ -117,7 +117,7 @@ fn rv_branch(funct3: u32, rs1: u32, rs2: u32, offset: i32) -> u32 {
 /// Encode JALR rd, rs1, imm (I-type)
 fn rv_jalr(rd: u32, rs1: u32, imm: i32) -> u32 {
     let imm = (imm as u32) & 0xFFF;
-    (imm << 20) | (rs1 << 15) | (0b000 << 12) | (rd << 7) | 0x67
+    ((imm << 20) | (rs1 << 15)) | (rd << 7) | 0x67
 }
 
 /// Encode JALR x0, x1, 0 (return)
@@ -311,16 +311,8 @@ fn rv_generate_specialized_memcpy(length: u32) -> Vec<u32> {
         X14,
         ((byte_path_idx as i32) - (bne_diff_idx as i32)) * 4,
     );
-    instrs[beq_off1_idx] = rv_beq(
-        X12,
-        X13,
-        ((off1_idx as i32) - (beq_off1_idx as i32)) * 4,
-    );
-    instrs[beq_off2_idx] = rv_beq(
-        X12,
-        X13,
-        ((off2_idx as i32) - (beq_off2_idx as i32)) * 4,
-    );
+    instrs[beq_off1_idx] = rv_beq(X12, X13, ((off1_idx as i32) - (beq_off1_idx as i32)) * 4);
+    instrs[beq_off2_idx] = rv_beq(X12, X13, ((off2_idx as i32) - (beq_off2_idx as i32)) * 4);
 
     instrs
 }
@@ -474,7 +466,11 @@ mod tests {
         }
 
         fn reg(&self, r: u32) -> u32 {
-            if r == 0 { 0 } else { self.regs[r as usize] }
+            if r == 0 {
+                0
+            } else {
+                self.regs[r as usize]
+            }
         }
 
         fn set_reg(&mut self, r: u32, val: u32) {
@@ -488,7 +484,12 @@ mod tests {
             for step in 0..max_steps {
                 let idx = (self.pc / 4) as usize;
                 if idx >= instrs.len() {
-                    panic!("PC out of bounds: pc=0x{:x}, idx={}, len={}", self.pc, idx, instrs.len());
+                    panic!(
+                        "PC out of bounds: pc=0x{:x}, idx={}, len={}",
+                        self.pc,
+                        idx,
+                        instrs.len()
+                    );
                 }
                 let insn = instrs[idx];
                 let opcode = rv_opcode(insn);
@@ -497,7 +498,10 @@ mod tests {
                 let funct3 = rv_funct3(insn);
 
                 if trace {
-                    eprintln!("  step {:4}: pc=0x{:04x} insn=0x{:08x}", step, self.pc, insn);
+                    eprintln!(
+                        "  step {:4}: pc=0x{:04x} insn=0x{:08x}",
+                        step, self.pc, insn
+                    );
                 }
 
                 match opcode {
@@ -507,8 +511,8 @@ mod tests {
                         let rs1_val = self.reg(rs1);
                         let result = match funct3 {
                             0b000 => rs1_val.wrapping_add(imm as u32), // ADDI
-                            0b111 => rs1_val & (imm as u32),          // ANDI
-                            0b110 => rs1_val | (imm as u32),          // ORI
+                            0b111 => rs1_val & (imm as u32),           // ANDI
+                            0b110 => rs1_val | (imm as u32),           // ORI
                             _ => panic!("Unknown I-type ALU funct3: {}", funct3),
                         };
                         self.set_reg(rd, result);
@@ -535,9 +539,14 @@ mod tests {
                         let val = match funct3 {
                             0b010 => {
                                 // LW
-                                assert!(addr % 4 == 0, "Unaligned LW at 0x{:x}", addr);
+                                assert!(addr.is_multiple_of(4), "Unaligned LW at 0x{:x}", addr);
                                 let a = addr as usize;
-                                u32::from_le_bytes([self.mem[a], self.mem[a+1], self.mem[a+2], self.mem[a+3]])
+                                u32::from_le_bytes([
+                                    self.mem[a],
+                                    self.mem[a + 1],
+                                    self.mem[a + 2],
+                                    self.mem[a + 3],
+                                ])
                             }
                             0b100 => {
                                 // LBU
@@ -561,9 +570,9 @@ mod tests {
                         match funct3 {
                             0b010 => {
                                 // SW
-                                assert!(addr % 4 == 0, "Unaligned SW at 0x{:x}", addr);
+                                assert!(addr.is_multiple_of(4), "Unaligned SW at 0x{:x}", addr);
                                 let a = addr as usize;
-                                self.mem[a..a+4].copy_from_slice(&val.to_le_bytes());
+                                self.mem[a..a + 4].copy_from_slice(&val.to_le_bytes());
                             }
                             0b000 => {
                                 // SB
@@ -589,7 +598,10 @@ mod tests {
                             let bits_4_1 = (insn >> 8) & 0xF;
                             let bits_10_5 = (insn >> 25) & 0x3F;
                             let bit_12 = (insn >> 31) & 1;
-                            let offset = (bit_12 << 12) | (bit_11 << 11) | (bits_10_5 << 5) | (bits_4_1 << 1);
+                            let offset = (bit_12 << 12)
+                                | (bit_11 << 11)
+                                | (bits_10_5 << 5)
+                                | (bits_4_1 << 1);
                             // Sign-extend from 13 bits
                             let offset = if bit_12 != 0 {
                                 offset | !0x1FFF
@@ -669,8 +681,7 @@ mod tests {
                             continue;
                         }
                         assert_eq!(
-                            interp.mem[addr as usize],
-                            0xAA,
+                            interp.mem[addr as usize], 0xAA,
                             "Stray write at addr {} for length={}, src_align={}, dst_align={}",
                             addr, length, src_align, dst_align
                         );
