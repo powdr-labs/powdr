@@ -232,6 +232,33 @@ fn rv_auipc_jalr_target(auipc_insn: u32, jalr_insn: u32, auipc_addr: u32) -> u32
     auipc_addr.wrapping_add(upper).wrapping_add(lower as u32)
 }
 
+/// Decode S-type immediate (sign-extended 12-bit, for SB/SH/SW)
+fn rv_imm_s(insn: u32) -> i32 {
+    let imm_4_0 = (insn >> 7) & 0x1F;
+    let imm_11_5 = (insn >> 25) & 0x7F;
+    let raw = (imm_11_5 << 5) | imm_4_0;
+    if raw & 0x800 != 0 {
+        (raw | 0xFFFFF000) as i32
+    } else {
+        raw as i32
+    }
+}
+
+/// Extract rs2 field (bits [24:20])
+fn rv_rs2(insn: u32) -> u32 {
+    (insn >> 20) & 0x1F
+}
+
+/// Check if instruction is LBU (opcode 0x03, funct3 = 4)
+fn is_lbu(insn: u32) -> bool {
+    rv_opcode(insn) == 0x03 && rv_funct3(insn) == 0b100
+}
+
+/// Check if instruction is SB (opcode 0x23, funct3 = 0)
+fn is_sb(insn: u32) -> bool {
+    rv_opcode(insn) == 0x23 && rv_funct3(insn) == 0b000
+}
+
 /// Check if instruction is LUI (opcode 0x37)
 fn is_lui(insn: u32) -> bool {
     rv_opcode(insn) == 0x37
@@ -1066,6 +1093,286 @@ fn find_symbols(symbols: &SymbolTable, needle: &str) -> Vec<(u32, String)> {
         .collect()
 }
 
+// ---- Inline bytecopy optimizer ----
+// Detects contiguous runs of LBU/SB instructions (byte-by-byte copies) with
+// the same base register and replaces them with a routine that uses LW/SW when
+// source and destination are word-aligned at runtime, falling back to LBU/SB
+// otherwise.
+
+const MIN_BYTECOPY_LENGTH: u32 = 12;
+
+/// A detected inline byte-copy sequence.
+struct BytecopySequence {
+    start_idx: usize,
+    end_idx: usize,
+    base_reg: u32,
+    src_offset_start: i32,
+    dst_offset_start: i32,
+    byte_count: u32,
+}
+
+/// Scan for contiguous runs of LBU/SB instructions that form a single
+/// contiguous byte copy (all same base register, source offsets consecutive,
+/// destination offsets consecutive). Returns sequences with `byte_count >= MIN_BYTECOPY_LENGTH`.
+fn scan_bytecopy_sequences(instructions: &[u32]) -> Vec<BytecopySequence> {
+    let mut result = Vec::new();
+    let mut i = 0;
+
+    while i < instructions.len() {
+        let insn = instructions[i];
+        if !is_lbu(insn) && !is_sb(insn) {
+            i += 1;
+            continue;
+        }
+
+        let base_reg = rv_rs1(insn);
+        if base_reg == X0 {
+            i += 1;
+            continue;
+        }
+
+        // Extend while instructions are LBU/SB with the same base register
+        let start = i;
+        let mut j = i;
+        while j < instructions.len() {
+            let insn_j = instructions[j];
+            if (is_lbu(insn_j) || is_sb(insn_j)) && rv_rs1(insn_j) == base_reg {
+                j += 1;
+            } else {
+                break;
+            }
+        }
+
+        if (j - start) < 2 * MIN_BYTECOPY_LENGTH as usize {
+            i = j;
+            continue;
+        }
+
+        // Match each SB to the most recent LBU that wrote the same register
+        let mut reg_src: [Option<i32>; 32] = [None; 32];
+        let mut copies: Vec<(i32, i32)> = Vec::new();
+
+        for k in start..j {
+            let insn_k = instructions[k];
+            if is_lbu(insn_k) {
+                let rd = rv_rd(insn_k);
+                if rd != 0 && rd != base_reg {
+                    reg_src[rd as usize] = Some(rv_imm_i(insn_k));
+                }
+            } else {
+                let rs2 = rv_rs2(insn_k);
+                if let Some(src) = reg_src[rs2 as usize].take() {
+                    copies.push((src, rv_imm_s(insn_k)));
+                }
+            }
+        }
+
+        if copies.len() < MIN_BYTECOPY_LENGTH as usize {
+            i = j;
+            continue;
+        }
+
+        copies.sort_by_key(|(s, _)| *s);
+
+        // Find maximal contiguous sub-groups (both src and dst stride = 1)
+        let mut g_start = 0;
+        while g_start < copies.len() {
+            let mut g_end = g_start + 1;
+            while g_end < copies.len() {
+                let (ps, pd) = copies[g_end - 1];
+                let (cs, cd) = copies[g_end];
+                if cs == ps + 1 && cd == pd + 1 {
+                    g_end += 1;
+                } else {
+                    break;
+                }
+            }
+
+            let count = (g_end - g_start) as u32;
+            if count >= MIN_BYTECOPY_LENGTH {
+                let (src_s, dst_s) = copies[g_start];
+                // Skip if source and destination ranges overlap (e.g. swaps)
+                let src_e = src_s + count as i32;
+                let dst_e = dst_s + count as i32;
+                let overlaps = src_s < dst_e && dst_s < src_e;
+                if !overlaps {
+                    result.push(BytecopySequence {
+                        start_idx: start,
+                        end_idx: j,
+                        base_reg,
+                        src_offset_start: src_s,
+                        dst_offset_start: dst_s,
+                        byte_count: count,
+                    });
+                }
+            }
+            g_start = g_end;
+        }
+
+        i = j;
+    }
+
+    result
+}
+
+/// Encode AUIPC+JALR for an unconditional jump (rd=x0, no link) using `tmp` as
+/// the scratch register for the upper immediate.
+fn rv_encode_jump(from_addr: u32, to_addr: u32, tmp: u32) -> (u32, u32) {
+    let diff = to_addr.wrapping_sub(from_addr) as i32;
+    let mut upper = diff >> 12;
+    let lower = diff & 0xFFF;
+    if lower >= 0x800 {
+        upper += 1;
+    }
+    let auipc = rv_auipc(tmp, (upper as u32) << 12);
+    let jalr = rv_jalr(X0, tmp, diff - (upper << 12));
+    (auipc, jalr)
+}
+
+/// Generate an optimized copy routine for `count` bytes from
+/// `base_reg + src_start` to `base_reg + dst_start`.
+///
+/// When source and destination have the same alignment class (src_start % 4 ==
+/// dst_start % 4) the routine checks alignment at runtime and uses LW/SW for
+/// the bulk of the copy when both addresses are word-aligned.
+fn rv_generate_bytecopy_routine(
+    base_reg: u32,
+    src_start: i32,
+    dst_start: i32,
+    count: u32,
+    tmp: u32,
+) -> Vec<u32> {
+    let mut code = Vec::new();
+
+    let can_word = (src_start & 3) == (dst_start & 3);
+    let n_words = count / 4;
+    let n_tail = count % 4;
+
+    if can_word && n_words > 0 {
+        // Runtime alignment check: (base + src_start) & 3
+        code.push(rv_addi(tmp, base_reg, src_start));
+        code.push(rv_andi(tmp, tmp, 3));
+        let branch_idx = code.len();
+        code.push(0); // BNE placeholder → byte fallback
+
+        // --- word-aligned fast path ---
+        for i in 0..n_words {
+            code.push(rv_lw(tmp, base_reg, src_start + (i as i32) * 4));
+            code.push(rv_sw(tmp, base_reg, dst_start + (i as i32) * 4));
+        }
+        for i in 0..n_tail {
+            let off = (n_words * 4 + i) as i32;
+            code.push(rv_lbu(tmp, base_reg, src_start + off));
+            code.push(rv_sb(tmp, base_reg, dst_start + off));
+        }
+        // Skip over byte fallback
+        let skip_idx = code.len();
+        code.push(0); // JAL x0, placeholder
+
+        // --- byte fallback ---
+        let fallback_offset = ((code.len() - branch_idx) as i32) * 4;
+        code[branch_idx] = rv_bne(tmp, X0, fallback_offset);
+
+        for i in 0..count {
+            code.push(rv_lbu(tmp, base_reg, src_start + i as i32));
+            code.push(rv_sb(tmp, base_reg, dst_start + i as i32));
+        }
+
+        let skip_offset = ((code.len() - skip_idx) as i32) * 4;
+        code[skip_idx] = rv_jal(X0, skip_offset);
+    } else {
+        // Cannot do word-level optimisation — straight byte copy
+        for i in 0..count {
+            code.push(rv_lbu(tmp, base_reg, src_start + i as i32));
+            code.push(rv_sb(tmp, base_reg, dst_start + i as i32));
+        }
+    }
+
+    code
+}
+
+/// Scan the ELF for inline byte-copy sequences and replace qualifying ones
+/// with routines that use word loads/stores when addresses are aligned.
+fn optimize_bytecopy(elf: &mut Elf, symbols: &mut SymbolTable, pc_base: u32) {
+    let sequences = scan_bytecopy_sequences(&elf.instructions);
+    if sequences.is_empty() {
+        return;
+    }
+
+    println!(
+        "bytecopy_opt: found {} qualifying sequence(s)",
+        sequences.len()
+    );
+
+    let nop = rv_addi(X0, X0, 0);
+    let mut patched = 0;
+
+    for seq in &sequences {
+        let seq_addr = pc_base + (seq.start_idx as u32) * 4;
+        let return_addr = pc_base + (seq.end_idx as u32) * 4;
+
+        // Pick a scratch register that is not the base
+        let tmp = if seq.base_reg != X5 { X5 } else { X6 };
+
+        // Generate the optimised copy routine
+        let mut routine = rv_generate_bytecopy_routine(
+            seq.base_reg,
+            seq.src_offset_start,
+            seq.dst_offset_start,
+            seq.byte_count,
+            tmp,
+        );
+
+        // Append return jump (AUIPC+JALR x0 back to instruction after the
+        // original LBU/SB sequence)
+        let routine_start_addr = pc_base + (elf.instructions.len() as u32) * 4;
+        let return_jump_addr = routine_start_addr + (routine.len() as u32) * 4;
+        let (ret_auipc, ret_jalr) = rv_encode_jump(return_jump_addr, return_addr, tmp);
+        routine.push(ret_auipc);
+        routine.push(ret_jalr);
+
+        let routine_insns = routine.len();
+        symbols.insert(
+            routine_start_addr,
+            format!(
+                "bytecopy_opt_{}b_{}_{}",
+                seq.byte_count, seq.src_offset_start, seq.dst_offset_start
+            ),
+        );
+        elf.instructions.extend(routine);
+
+        // Patch the original site: jump to routine + NOP remaining
+        let (fwd_auipc, fwd_jalr) = rv_encode_jump(seq_addr, routine_start_addr, tmp);
+
+        // Verify round-trip
+        let verify = rv_auipc_jalr_target(fwd_auipc, fwd_jalr, seq_addr);
+        assert_eq!(
+            verify, routine_start_addr,
+            "bytecopy fwd jump mismatch at 0x{seq_addr:x}: got 0x{verify:x}, expected 0x{routine_start_addr:x}"
+        );
+
+        elf.instructions[seq.start_idx] = fwd_auipc;
+        elf.instructions[seq.start_idx + 1] = fwd_jalr;
+        for k in (seq.start_idx + 2)..seq.end_idx {
+            elf.instructions[k] = nop;
+        }
+
+        println!(
+            "bytecopy_opt: {}b copy (base=x{}, src_off={}, dst_off={}) at 0x{seq_addr:x}, \
+             routine at 0x{routine_start_addr:x} ({routine_insns} insns), \
+             {} insns NOP'd",
+            seq.byte_count,
+            seq.base_reg,
+            seq.src_offset_start,
+            seq.dst_offset_start,
+            seq.end_idx - seq.start_idx - 2,
+        );
+        patched += 1;
+    }
+
+    println!("bytecopy_opt: patched {patched} sequence(s)");
+}
+
 /// Optimize an ELF by replacing memcpy/memmove calls with constant-length arguments
 /// with specialized unrolled routines. Modifies `elf.instructions` in place.
 /// `pc_base` is the byte address of the first instruction (lowest executable segment vaddr).
@@ -1219,6 +1526,9 @@ pub fn optimize_elf(elf: &mut Elf, symbols: &mut SymbolTable, pc_base: u32) {
             println!("memcpy_optimizer: no memcmp call sites found");
         }
     }
+
+    // Scan for inline byte-copy sequences and optimise with word copies
+    optimize_bytecopy(elf, symbols, pc_base);
 
     // Write extra symbols file for the trace analyzer.
     // Contains synthetic symbols for all appended routines.
@@ -1789,6 +2099,255 @@ mod tests {
                     }
                 }
             }
+        }
+    }
+
+    // --- Bytecopy optimizer tests ---
+
+    /// Build an LBU/SB sequence that copies `count` bytes from
+    /// base+src_start to base+dst_start, using registers t0..t4 as temps.
+    fn build_lbu_sb_sequence(base_reg: u32, src_start: i32, dst_start: i32, count: u32) -> Vec<u32> {
+        let mut code = Vec::new();
+        let temps = [X5, X6, X7, X28, X29]; // t0..t4
+        let chunk = temps.len();
+        let mut remaining = count as usize;
+        let mut offset = 0i32;
+
+        while remaining > 0 {
+            let n = remaining.min(chunk);
+            for k in 0..n {
+                code.push(rv_lbu(temps[k], base_reg, src_start + offset + k as i32));
+            }
+            for k in 0..n {
+                code.push(rv_sb(temps[k], base_reg, dst_start + offset + k as i32));
+            }
+            offset += n as i32;
+            remaining -= n;
+        }
+        code
+    }
+
+    #[test]
+    fn test_scan_bytecopy_detects_simple_copy() {
+        let seq = build_lbu_sb_sequence(X10, 0, 64, 16);
+        let found = scan_bytecopy_sequences(&seq);
+        assert_eq!(found.len(), 1, "Expected 1 sequence, got {}", found.len());
+        let s = &found[0];
+        assert_eq!(s.byte_count, 16);
+        assert_eq!(s.src_offset_start, 0);
+        assert_eq!(s.dst_offset_start, 64);
+        assert_eq!(s.base_reg, X10);
+    }
+
+    #[test]
+    fn test_scan_bytecopy_skips_short() {
+        let seq = build_lbu_sb_sequence(X10, 0, 64, 8);
+        let found = scan_bytecopy_sequences(&seq);
+        assert!(found.is_empty(), "Should skip sequences shorter than threshold");
+    }
+
+    #[test]
+    fn test_scan_bytecopy_skips_overlapping() {
+        let seq = build_lbu_sb_sequence(X10, 0, 8, 16);
+        let found = scan_bytecopy_sequences(&seq);
+        assert!(found.is_empty(), "Should skip overlapping src/dst ranges");
+    }
+
+    #[test]
+    fn test_bytecopy_routine_correctness() {
+        for count in [12u32, 16, 20, 24, 32, 48] {
+            let base_reg = X10;
+            let src_start = 0i32;
+            let dst_start = 128i32;
+            let tmp = X5;
+
+            let mut original = build_lbu_sb_sequence(base_reg, src_start, dst_start, count);
+            original.push(rv_jalr(X0, X1, 0));
+
+            let mut optimised =
+                rv_generate_bytecopy_routine(base_reg, src_start, dst_start, count, tmp);
+            optimised.push(rv_jalr(X0, X1, 0));
+
+            for base_align in 0..4u32 {
+                let base_addr = 256 + base_align;
+
+                let mut ref_interp = RvInterpreter::new(1024);
+                for b in 0..count {
+                    ref_interp.mem[(base_addr as usize) + src_start as usize + b as usize] =
+                        ((b.wrapping_mul(31).wrapping_add(7)) & 0xFF) as u8;
+                }
+                ref_interp.set_reg(base_reg, base_addr);
+                ref_interp.set_reg(X1, (original.len() as u32) * 4);
+                ref_interp.run(&original, 50_000);
+
+                let mut opt_interp = RvInterpreter::new(1024);
+                for b in 0..count {
+                    opt_interp.mem[(base_addr as usize) + src_start as usize + b as usize] =
+                        ((b.wrapping_mul(31).wrapping_add(7)) & 0xFF) as u8;
+                }
+                opt_interp.set_reg(base_reg, base_addr);
+                opt_interp.set_reg(X1, (optimised.len() as u32) * 4);
+                opt_interp.run(&optimised, 50_000);
+
+                for b in 0..count {
+                    let addr = base_addr as usize + dst_start as usize + b as usize;
+                    assert_eq!(
+                        opt_interp.mem[addr], ref_interp.mem[addr],
+                        "Mismatch at byte {b} for count={count}, base_align={base_align}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_bytecopy_routine_negative_offsets() {
+        let base_reg = X10;
+        let src_start = -64i32;
+        let dst_start = -32i32;
+        let count = 16u32;
+        let tmp = X5;
+
+        let mut original = build_lbu_sb_sequence(base_reg, src_start, dst_start, count);
+        original.push(rv_jalr(X0, X1, 0));
+
+        let mut optimised =
+            rv_generate_bytecopy_routine(base_reg, src_start, dst_start, count, tmp);
+        optimised.push(rv_jalr(X0, X1, 0));
+
+        for base_align in 0..4u32 {
+            let base_addr = 512 + base_align;
+
+            let mut ref_interp = RvInterpreter::new(1024);
+            for b in 0..count {
+                ref_interp.mem[(base_addr.wrapping_add(src_start as u32) + b) as usize] =
+                    ((b * 17 + 3) & 0xFF) as u8;
+            }
+            ref_interp.set_reg(base_reg, base_addr);
+            ref_interp.set_reg(X1, (original.len() as u32) * 4);
+            ref_interp.run(&original, 50_000);
+
+            let mut opt_interp = RvInterpreter::new(1024);
+            for b in 0..count {
+                opt_interp.mem[(base_addr.wrapping_add(src_start as u32) + b) as usize] =
+                    ((b * 17 + 3) & 0xFF) as u8;
+            }
+            opt_interp.set_reg(base_reg, base_addr);
+            opt_interp.set_reg(X1, (optimised.len() as u32) * 4);
+            opt_interp.run(&optimised, 50_000);
+
+            for b in 0..count {
+                let addr = (base_addr.wrapping_add(dst_start as u32) + b) as usize;
+                assert_eq!(
+                    opt_interp.mem[addr], ref_interp.mem[addr],
+                    "Neg-offset mismatch at byte {b}, base_align={base_align}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_bytecopy_encode_jump_roundtrip() {
+        let from = 0x10000u32;
+        let targets = [0x20000, 0x10100, 0x0FF00, 0x300000, 0x10004];
+        for &to in &targets {
+            let (auipc, jalr) = rv_encode_jump(from, to, X5);
+            let decoded = rv_auipc_jalr_target(auipc, jalr, from);
+            assert_eq!(
+                decoded, to,
+                "Jump roundtrip failed: from=0x{from:x}, to=0x{to:x}, got=0x{decoded:x}"
+            );
+            assert_eq!(rv_rd(jalr), X0, "JALR rd should be x0 for no-link jump");
+        }
+    }
+
+    #[test]
+    fn test_bytecopy_imm_s_decoding() {
+        for imm in [-2048, -64, -32, -1, 0, 1, 31, 63, 127, 2047] {
+            let insn = rv_sb(X5, X10, imm);
+            assert_eq!(rv_imm_s(insn), imm, "S-type imm roundtrip failed for {imm}");
+        }
+    }
+
+    #[test]
+    fn test_bytecopy_end_to_end_patching() {
+        let base_reg = X10;
+        let src_start = 0i32;
+        let dst_start = 64i32;
+        let count = 16u32;
+
+        let preamble = vec![rv_addi(X0, X0, 0)]; // 1 NOP
+        let byte_seq = build_lbu_sb_sequence(base_reg, src_start, dst_start, count);
+        let seq_start_idx = preamble.len();
+        let seq_end_idx = seq_start_idx + byte_seq.len();
+
+        let mut program: Vec<u32> = Vec::new();
+        program.extend(&preamble);
+        program.extend(&byte_seq);
+        program.push(rv_jalr(X0, X1, 0)); // RET
+
+        // Run original
+        let base_addr = 256u32;
+        let mut ref_interp = RvInterpreter::new(1024);
+        for b in 0..count {
+            ref_interp.mem[(base_addr + b) as usize] = (b as u8).wrapping_mul(41);
+        }
+        ref_interp.set_reg(base_reg, base_addr);
+        ref_interp.set_reg(X1, (program.len() as u32) * 4);
+        ref_interp.run(&program, 50_000);
+
+        // Scan & patch
+        let sequences = scan_bytecopy_sequences(&program);
+        assert_eq!(sequences.len(), 1);
+        let seq = &sequences[0];
+        assert_eq!(seq.start_idx, seq_start_idx);
+        assert_eq!(seq.end_idx, seq_end_idx);
+
+        let tmp = X5;
+        let pc_base = 0u32;
+
+        let mut routine = rv_generate_bytecopy_routine(
+            seq.base_reg,
+            seq.src_offset_start,
+            seq.dst_offset_start,
+            seq.byte_count,
+            tmp,
+        );
+
+        let routine_start_addr = pc_base + (program.len() as u32) * 4;
+        let return_addr = pc_base + (seq.end_idx as u32) * 4;
+        let return_jump_addr = routine_start_addr + (routine.len() as u32) * 4;
+        let (ret_auipc, ret_jalr) = rv_encode_jump(return_jump_addr, return_addr, tmp);
+        routine.push(ret_auipc);
+        routine.push(ret_jalr);
+
+        let seq_addr = pc_base + (seq.start_idx as u32) * 4;
+        let (fwd_auipc, fwd_jalr) = rv_encode_jump(seq_addr, routine_start_addr, tmp);
+
+        let mut patched = program.clone();
+        patched.extend(routine);
+        patched[seq.start_idx] = fwd_auipc;
+        patched[seq.start_idx + 1] = fwd_jalr;
+        let nop = rv_addi(X0, X0, 0);
+        for k in (seq.start_idx + 2)..seq.end_idx {
+            patched[k] = nop;
+        }
+
+        // Run patched
+        let mut opt_interp = RvInterpreter::new(1024);
+        for b in 0..count {
+            opt_interp.mem[(base_addr + b) as usize] = (b as u8).wrapping_mul(41);
+        }
+        opt_interp.set_reg(base_reg, base_addr);
+        opt_interp.set_reg(X1, (program.len() as u32) * 4);
+        opt_interp.run(&patched, 50_000);
+
+        for b in 0..count {
+            let addr = (base_addr + dst_start as u32 + b) as usize;
+            assert_eq!(
+                opt_interp.mem[addr], ref_interp.mem[addr],
+                "E2E mismatch at byte {b}"
+            );
         }
     }
 }
