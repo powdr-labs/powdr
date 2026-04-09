@@ -460,12 +460,24 @@ fn generate_html(
         })
         .collect();
 
+    // --- Map function addr → row_id in stats table ---
+    let addr_to_row: HashMap<u32, usize> = stats
+        .iter()
+        .enumerate()
+        .map(|(i, s)| (s.addr, i))
+        .collect();
+
     // --- Callers lookup for a function index ---
-    let callers_for = |fi: usize| -> Vec<(&str, u64)> {
-        let mut v: Vec<(&str, u64)> = caller_edges
+    // Returns (name, call_count, Option<row_id in stats>)
+    let callers_for = |fi: usize| -> Vec<(&str, u64, Option<usize>)> {
+        let mut v: Vec<(&str, u64, Option<usize>)> = caller_edges
             .iter()
             .filter_map(|(caller_idx, edges)| {
-                edges.get(&fi).map(|&c| (funcs[*caller_idx].name.as_str(), c))
+                edges.get(&fi).map(|&c| {
+                    let name = funcs[*caller_idx].name.as_str();
+                    let row = addr_to_row.get(&funcs[*caller_idx].addr).copied();
+                    (name, c, row)
+                })
             })
             .collect();
         v.sort_by(|a, b| b.1.cmp(&a.1));
@@ -536,7 +548,8 @@ pre {{ font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.82em;
 .block-meta {{ font-size: 0.85em; color: #8b949e; margin-bottom: 8px; }}
 .block-meta span {{ margin-right: 16px; }}
 .callers {{ margin-bottom: 8px; }}
-.callers .tag {{ display: inline-block; background: #21262d; border: 1px solid #30363d; border-radius: 4px; padding: 2px 8px; margin: 2px 4px 2px 0; font-size: 0.8em; color: #79c0ff; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+.callers .tag {{ display: inline-block; background: #21262d; border: 1px solid #30363d; border-radius: 4px; padding: 2px 8px; margin: 2px 4px 2px 0; font-size: 0.8em; color: #79c0ff; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; text-decoration: none; }}
+.callers .tag:hover {{ background: #30363d; color: #58a6ff; }}
 .block-disasm {{ max-height: 300px; overflow-y: auto; }}
 </style>
 </head>
@@ -671,13 +684,22 @@ pre {{ font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.82em;
 
         if !callers.is_empty() {
             html.push_str("<div class=\"callers\">Called from: ");
-            for (cname, count) in &callers {
-                html.push_str(&format!(
-                    "<span class=\"tag\" title=\"{}\">{} (×{})</span>",
-                    html_escape(cname),
-                    html_escape(cname),
-                    count,
-                ));
+            for (cname, count, row_id) in &callers {
+                if let Some(rid) = row_id {
+                    html.push_str(&format!(
+                        "<a class=\"tag\" href=\"#fn-{rid}\" data-row=\"{rid}\" title=\"{}\">{} (×{})</a>",
+                        html_escape(cname),
+                        html_escape(cname),
+                        count,
+                    ));
+                } else {
+                    html.push_str(&format!(
+                        "<span class=\"tag\" title=\"{}\">{} (×{})</span>",
+                        html_escape(cname),
+                        html_escape(cname),
+                        count,
+                    ));
+                }
             }
             html.push_str("</div>\n");
         }
@@ -774,6 +796,26 @@ document.getElementById('bb-search').addEventListener('input', e => {{
   const q = e.target.value.toLowerCase();
   document.querySelectorAll('#hotblocks-list .block-card').forEach(card => {{
     card.style.display = (card.dataset.fn || '').toLowerCase().includes(q) ? '' : 'none';
+  }});
+}});
+
+// --- Clickable caller tags: switch to Functions tab & scroll to function ---
+document.querySelectorAll('.callers a.tag[data-row]').forEach(a => {{
+  a.addEventListener('click', e => {{
+    e.preventDefault();
+    // Switch to Functions tab
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    const fnBtn = document.querySelector('.tab-btn[data-tab="functions"]');
+    if (fnBtn) fnBtn.classList.add('active');
+    const fnPanel = document.getElementById('tab-functions');
+    if (fnPanel) fnPanel.classList.add('active');
+    // Find and scroll to the function disassembly
+    const el = document.getElementById('fn-' + a.dataset.row);
+    if (el) {{
+      el.querySelector('.disasm-body').classList.add('open');
+      el.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+    }}
   }});
 }});
 

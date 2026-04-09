@@ -194,28 +194,135 @@ fn rv_auipc_jalr_target(auipc_insn: u32, jalr_insn: u32, auipc_addr: u32) -> u32
     auipc_addr.wrapping_add(upper).wrapping_add(lower as u32)
 }
 
-/// Try to resolve the constant value loaded into register a2 (x12) by scanning
-/// backwards from `end_idx` (exclusive) in the instruction stream.
-/// Handles ADDI x12, x0, imm pattern. Scans at most 16 instructions back.
-fn rv_resolve_a2_constant(instructions: &[u32], end_idx: usize) -> Option<u32> {
+/// Check if instruction is LUI (opcode 0x37)
+fn is_lui(insn: u32) -> bool {
+    rv_opcode(insn) == 0x37
+}
+
+/// Try to resolve the constant value loaded into a register by scanning
+/// backwards from `end_idx` (exclusive). Handles:
+///   - ADDI rd, x0, imm  (small constants)
+///   - LUI rd, upper  followed later by  ADDI rd, rd, lower
+/// Returns None if the value cannot be statically determined.
+/// `max_value`: if Some, reject constants above this threshold.
+fn rv_resolve_reg_constant(
+    instructions: &[u32],
+    end_idx: usize,
+    reg: u32,
+    max_value: Option<u32>,
+) -> Option<u32> {
     let start = end_idx.saturating_sub(16);
     for i in (start..end_idx).rev() {
         let insn = instructions[i];
         let rd = rv_rd(insn);
-        if rd != X12 {
+        if rd != reg {
             continue;
         }
         if is_addi(insn) && rv_rs1(insn) == X0 {
+            // li reg, small_imm  →  addi reg, x0, imm
             let imm = rv_imm_i(insn);
-            if imm >= 0 && imm <= MAX_MEMCPY_LENGTH as i32 {
-                return Some(imm as u32);
+            if imm < 0 {
+                return None;
+            }
+            let val = imm as u32;
+            if let Some(max) = max_value {
+                if val > max {
+                    return None;
+                }
+            }
+            return Some(val);
+        }
+        if is_addi(insn) && rv_rs1(insn) == reg {
+            // addi reg, reg, lower — look further back for LUI reg, upper
+            let lower = rv_imm_i(insn);
+            for j in (start..i).rev() {
+                let insn2 = instructions[j];
+                if rv_rd(insn2) != reg {
+                    continue;
+                }
+                if is_lui(insn2) {
+                    let upper = rv_imm_u(insn2);
+                    let val = upper.wrapping_add(lower as u32);
+                    if let Some(max) = max_value {
+                        if val > max {
+                            return None;
+                        }
+                    }
+                    return Some(val);
+                }
+                // Some other write to reg before we found LUI — give up
+                return None;
             }
             return None;
         }
-        // Any other write to x12 — give up
+        // Any other write to the register — give up
         return None;
     }
     None
+}
+
+/// Try to resolve the constant value loaded into register a2 (x12) by scanning
+/// backwards from `end_idx` (exclusive) in the instruction stream.
+/// Scans at most 16 instructions back. Rejects values above MAX_MEMCPY_LENGTH.
+fn rv_resolve_a2_constant(instructions: &[u32], end_idx: usize) -> Option<u32> {
+    rv_resolve_reg_constant(instructions, end_idx, X12, Some(MAX_MEMCPY_LENGTH))
+}
+
+/// Scan all call sites to `target_addr` and report how many have a
+/// compile-time constant in a2 (x12) vs. dynamic values.
+fn analyze_a2_constants(
+    instructions: &[u32],
+    pc_base: u32,
+    target_addr: u32,
+    label: &str,
+) {
+    let mut total_calls = 0u32;
+    let mut constant_calls = 0u32;
+    let mut constant_histogram: BTreeMap<u32, u32> = BTreeMap::new();
+
+    for i in 0..instructions.len().saturating_sub(1) {
+        let insn0 = instructions[i];
+        let insn1 = instructions[i + 1];
+        if !is_auipc(insn0) || !is_jalr(insn1) {
+            continue;
+        }
+        let auipc_rd = rv_rd(insn0);
+        if rv_rs1(insn1) != auipc_rd || rv_rd(insn1) != X1 {
+            continue;
+        }
+        let auipc_addr = pc_base + (i as u32) * 4;
+        let target = rv_auipc_jalr_target(insn0, insn1, auipc_addr);
+        if target != target_addr {
+            continue;
+        }
+
+        total_calls += 1;
+        // No max_value cap — we want to see all constants.
+        if let Some(val) = rv_resolve_reg_constant(instructions, i, X12, None) {
+            constant_calls += 1;
+            *constant_histogram.entry(val).or_default() += 1;
+        }
+    }
+
+    if total_calls == 0 {
+        println!("{label}: no call sites found");
+        return;
+    }
+
+    let dynamic_calls = total_calls - constant_calls;
+    let pct = (constant_calls as f64 / total_calls as f64) * 100.0;
+    println!(
+        "{label}: {constant_calls}/{total_calls} call sites ({pct:.1}%) have compile-time constant size, \
+         {dynamic_calls} dynamic"
+    );
+    if !constant_histogram.is_empty() {
+        let mut by_count: Vec<(u32, u32)> = constant_histogram.into_iter().collect();
+        by_count.sort_by(|a, b| b.1.cmp(&a.1));
+        println!("{label}: constant sizes (size × count):");
+        for (val, count) in &by_count {
+            println!("{label}:   {val} × {count}");
+        }
+    }
 }
 
 // ---- RISC-V routine generation ----
