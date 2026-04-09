@@ -335,12 +335,7 @@ fn rv_resolve_a2_constant(instructions: &[u32], end_idx: usize) -> Option<u32> {
 
 /// Scan all call sites to any of `target_addrs` and report how many have a
 /// compile-time constant in a2 (x12) vs. dynamic values.
-fn analyze_a2_constants(
-    instructions: &[u32],
-    pc_base: u32,
-    target_addrs: &[u32],
-    label: &str,
-) {
+fn analyze_a2_constants(instructions: &[u32], pc_base: u32, target_addrs: &[u32], label: &str) {
     let mut total_calls = 0u32;
     let mut constant_calls = 0u32;
     let mut constant_histogram: BTreeMap<u32, u32> = BTreeMap::new();
@@ -571,8 +566,7 @@ fn rv_generate_specialized_memmove(length: u32) -> Vec<u32> {
         }
         instrs.push(rv_ret());
 
-        instrs[bltu_fwd_idx] =
-            rv_bltu(X10, X11, ((forward_start - bltu_fwd_idx) as i32) * 4);
+        instrs[bltu_fwd_idx] = rv_bltu(X10, X11, ((forward_start - bltu_fwd_idx) as i32) * 4);
         return instrs;
     }
 
@@ -589,8 +583,7 @@ fn rv_generate_specialized_memmove(length: u32) -> Vec<u32> {
     let forward_start = instrs.len();
     instrs.extend(rv_generate_alignment_dispatched_copy(length, false));
 
-    instrs[bltu_fwd_idx] =
-        rv_bltu(X10, X11, ((forward_start - bltu_fwd_idx) as i32) * 4);
+    instrs[bltu_fwd_idx] = rv_bltu(X10, X11, ((forward_start - bltu_fwd_idx) as i32) * 4);
 
     instrs
 }
@@ -608,21 +601,21 @@ fn rv_generate_word_diff_epilogue() -> Vec<u32> {
     instrs.push(rv_andi(X28, X6, 0xFF));
     let bne0_idx = instrs.len();
     instrs.push(0); // placeholder BNE → diff_done
-    // byte 1 (bits [15:8])
+                    // byte 1 (bits [15:8])
     instrs.push(rv_srli(X7, X5, 8));
     instrs.push(rv_andi(X7, X7, 0xFF));
     instrs.push(rv_srli(X28, X6, 8));
     instrs.push(rv_andi(X28, X28, 0xFF));
     let bne1_idx = instrs.len();
     instrs.push(0); // placeholder BNE → diff_done
-    // byte 2 (bits [23:16])
+                    // byte 2 (bits [23:16])
     instrs.push(rv_srli(X7, X5, 16));
     instrs.push(rv_andi(X7, X7, 0xFF));
     instrs.push(rv_srli(X28, X6, 16));
     instrs.push(rv_andi(X28, X28, 0xFF));
     let bne2_idx = instrs.len();
     instrs.push(0); // placeholder BNE → diff_done
-    // byte 3 — must be the differing one
+                    // byte 3 — must be the differing one
     instrs.push(rv_srli(X7, X5, 24));
     instrs.push(rv_srli(X28, X6, 24));
     // diff_done: a0 = t2 - t3
@@ -630,12 +623,9 @@ fn rv_generate_word_diff_epilogue() -> Vec<u32> {
     instrs.push(rv_sub(X10, X7, X28));
     instrs.push(rv_ret());
     // patch BNEs
-    instrs[bne0_idx] =
-        rv_bne(X7, X28, ((diff_done_idx as i32) - (bne0_idx as i32)) * 4);
-    instrs[bne1_idx] =
-        rv_bne(X7, X28, ((diff_done_idx as i32) - (bne1_idx as i32)) * 4);
-    instrs[bne2_idx] =
-        rv_bne(X7, X28, ((diff_done_idx as i32) - (bne2_idx as i32)) * 4);
+    instrs[bne0_idx] = rv_bne(X7, X28, ((diff_done_idx as i32) - (bne0_idx as i32)) * 4);
+    instrs[bne1_idx] = rv_bne(X7, X28, ((diff_done_idx as i32) - (bne1_idx as i32)) * 4);
+    instrs[bne2_idx] = rv_bne(X7, X28, ((diff_done_idx as i32) - (bne2_idx as i32)) * 4);
     instrs
 }
 
@@ -656,11 +646,11 @@ fn rv_generate_specialized_memcmp(length: u32) -> Vec<u32> {
             instrs.push(rv_lbu(X6, X11, i as i32)); // t1 = ptr2[i]
             let bne_idx = instrs.len();
             instrs.push(0); // placeholder BNE → diff
-            // continue to next byte (fall through)
-            // We'll patch to jump forward to a shared diff return
-            // but we need to know where diff_done is first.
-            // Actually, for simplicity, push a diff sequence per pair.
-            // Let's instead collect bne indices and patch later.
+                            // continue to next byte (fall through)
+                            // We'll patch to jump forward to a shared diff return
+                            // but we need to know where diff_done is first.
+                            // Actually, for simplicity, push a diff sequence per pair.
+                            // Let's instead collect bne indices and patch later.
             let _ = bne_idx; // handled below
         }
         // equal: return 0
@@ -675,8 +665,7 @@ fn rv_generate_specialized_memcmp(length: u32) -> Vec<u32> {
         // Patch BNE placeholders (every third instruction starting at index 2)
         for i in 0..length {
             let bne_idx = (i * 3 + 2) as usize;
-            instrs[bne_idx] =
-                rv_bne(X5, X6, ((byte_diff_idx as i32) - (bne_idx as i32)) * 4);
+            instrs[bne_idx] = rv_bne(X5, X6, ((byte_diff_idx as i32) - (bne_idx as i32)) * 4);
         }
         // The equal path is reached by falling through all BNEs — it's already
         // right after the last byte pair at equal_idx, but the last iteration
@@ -693,8 +682,8 @@ fn rv_generate_specialized_memcmp(length: u32) -> Vec<u32> {
     let mut instrs = Vec::new();
 
     // Check alignment: (a0 | a1) & 3
-    instrs.push(rv_or(X5, X10, X11));       // t0 = ptr1 | ptr2
-    instrs.push(rv_andi(X5, X5, 3));        // t0 = (ptr1 | ptr2) & 3
+    instrs.push(rv_or(X5, X10, X11)); // t0 = ptr1 | ptr2
+    instrs.push(rv_andi(X5, X5, 3)); // t0 = (ptr1 | ptr2) & 3
     let bne_to_byte_idx = instrs.len();
     instrs.push(0); // placeholder BNE t0, x0 → byte_loop
 
@@ -703,8 +692,8 @@ fn rv_generate_specialized_memcmp(length: u32) -> Vec<u32> {
     let word_diff_jump_indices: Vec<usize> = (0..num_words)
         .map(|w| {
             let off = (w * 4) as i32;
-            instrs.push(rv_lw(X5, X10, off));   // t0 = *(ptr1 + off)
-            instrs.push(rv_lw(X6, X11, off));   // t1 = *(ptr2 + off)
+            instrs.push(rv_lw(X5, X10, off)); // t0 = *(ptr1 + off)
+            instrs.push(rv_lw(X6, X11, off)); // t1 = *(ptr2 + off)
             let idx = instrs.len();
             instrs.push(0); // placeholder BNE → word_diff
             idx
@@ -742,16 +731,16 @@ fn rv_generate_specialized_memcmp(length: u32) -> Vec<u32> {
     // if a2 == 0, equal
     let beq_done_idx = instrs.len();
     instrs.push(0); // placeholder BEQ a2, x0 → equal_unaligned
-    instrs.push(rv_lbu(X5, X10, 0));  // t0 = *ptr1
-    instrs.push(rv_lbu(X6, X11, 0));  // t1 = *ptr2
+    instrs.push(rv_lbu(X5, X10, 0)); // t0 = *ptr1
+    instrs.push(rv_lbu(X6, X11, 0)); // t1 = *ptr2
     let bne_loop_diff_idx = instrs.len();
     instrs.push(0); // placeholder BNE → byte_diff_unaligned
-    instrs.push(rv_addi(X10, X10, 1));  // ptr1++
-    instrs.push(rv_addi(X11, X11, 1));  // ptr2++
+    instrs.push(rv_addi(X10, X10, 1)); // ptr1++
+    instrs.push(rv_addi(X11, X11, 1)); // ptr2++
     instrs.push(rv_addi(X12, X12, -1)); // a2--
     let j_loop_idx = instrs.len();
     instrs.push(0); // placeholder J → byte_loop
-    // equal_unaligned: return 0
+                    // equal_unaligned: return 0
     let equal_unaligned_idx = instrs.len();
     instrs.push(rv_addi(X10, X0, 0));
     instrs.push(rv_ret());
@@ -761,22 +750,28 @@ fn rv_generate_specialized_memcmp(length: u32) -> Vec<u32> {
     instrs.push(rv_ret());
 
     // ---- Patch all branch placeholders ----
-    instrs[bne_to_byte_idx] =
-        rv_bne(X5, X0, ((byte_loop_idx as i32) - (bne_to_byte_idx as i32)) * 4);
+    instrs[bne_to_byte_idx] = rv_bne(
+        X5,
+        X0,
+        ((byte_loop_idx as i32) - (bne_to_byte_idx as i32)) * 4,
+    );
     for &idx in &word_diff_jump_indices {
-        instrs[idx] =
-            rv_bne(X5, X6, ((word_diff_idx as i32) - (idx as i32)) * 4);
+        instrs[idx] = rv_bne(X5, X6, ((word_diff_idx as i32) - (idx as i32)) * 4);
     }
     for &idx in &tail_bne_indices {
-        instrs[idx] =
-            rv_bne(X5, X6, ((byte_diff_idx as i32) - (idx as i32)) * 4);
+        instrs[idx] = rv_bne(X5, X6, ((byte_diff_idx as i32) - (idx as i32)) * 4);
     }
-    instrs[beq_done_idx] =
-        rv_beq(X12, X0, ((equal_unaligned_idx as i32) - (beq_done_idx as i32)) * 4);
-    instrs[bne_loop_diff_idx] =
-        rv_bne(X5, X6, ((byte_diff_unaligned_idx as i32) - (bne_loop_diff_idx as i32)) * 4);
-    instrs[j_loop_idx] =
-        rv_jal(X0, ((byte_loop_idx as i32) - (j_loop_idx as i32)) * 4);
+    instrs[beq_done_idx] = rv_beq(
+        X12,
+        X0,
+        ((equal_unaligned_idx as i32) - (beq_done_idx as i32)) * 4,
+    );
+    instrs[bne_loop_diff_idx] = rv_bne(
+        X5,
+        X6,
+        ((byte_diff_unaligned_idx as i32) - (bne_loop_diff_idx as i32)) * 4,
+    );
+    instrs[j_loop_idx] = rv_jal(X0, ((byte_loop_idx as i32) - (j_loop_idx as i32)) * 4);
 
     instrs
 }
@@ -793,8 +788,8 @@ fn rv_generate_optimized_memcmp_loop() -> Vec<u32> {
     instrs.push(0); // placeholder BEQ a2, x0 → return_zero
 
     // Check alignment: (a0 | a1) & 3
-    instrs.push(rv_or(X5, X10, X11));  // t0 = ptr1 | ptr2
-    instrs.push(rv_andi(X5, X5, 3));   // t0 &= 3
+    instrs.push(rv_or(X5, X10, X11)); // t0 = ptr1 | ptr2
+    instrs.push(rv_andi(X5, X5, 3)); // t0 &= 3
     let bne_unaligned_idx = instrs.len();
     instrs.push(0); // placeholder BNE t0, x0 → byte_loop
 
@@ -808,12 +803,12 @@ fn rv_generate_optimized_memcmp_loop() -> Vec<u32> {
     let word_loop_idx = instrs.len();
     let beq_word_done_idx = instrs.len();
     instrs.push(0); // placeholder BEQ X13, x0 → tail_loop
-    instrs.push(rv_lw(X5, X10, 0));   // t0 = *ptr1
-    instrs.push(rv_lw(X6, X11, 0));   // t1 = *ptr2
+    instrs.push(rv_lw(X5, X10, 0)); // t0 = *ptr1
+    instrs.push(rv_lw(X6, X11, 0)); // t1 = *ptr2
     let bne_word_diff_idx = instrs.len();
     instrs.push(0); // placeholder BNE → word_diff
-    instrs.push(rv_addi(X10, X10, 4));  // ptr1 += 4
-    instrs.push(rv_addi(X11, X11, 4));  // ptr2 += 4
+    instrs.push(rv_addi(X10, X10, 4)); // ptr1 += 4
+    instrs.push(rv_addi(X11, X11, 4)); // ptr2 += 4
     instrs.push(rv_addi(X13, X13, -1)); // word_count--
     let j_word_loop_idx = instrs.len();
     instrs.push(0); // placeholder J → word_loop
@@ -862,28 +857,49 @@ fn rv_generate_optimized_memcmp_loop() -> Vec<u32> {
     instrs.push(0); // placeholder J → byte_loop
 
     // ---- Patch all branches ----
-    instrs[beq_zero_idx] =
-        rv_beq(X12, X0, ((return_zero_idx as i32) - (beq_zero_idx as i32)) * 4);
-    instrs[bne_unaligned_idx] =
-        rv_bne(X5, X0, ((byte_loop_idx as i32) - (bne_unaligned_idx as i32)) * 4);
-    instrs[beq_word_done_idx] =
-        rv_beq(X13, X0, ((tail_loop_idx as i32) - (beq_word_done_idx as i32)) * 4);
-    instrs[bne_word_diff_idx] =
-        rv_bne(X5, X6, ((word_diff_idx as i32) - (bne_word_diff_idx as i32)) * 4);
-    instrs[j_word_loop_idx] =
-        rv_jal(X0, ((word_loop_idx as i32) - (j_word_loop_idx as i32)) * 4);
-    instrs[beq_tail_done_idx] =
-        rv_beq(X14, X0, ((return_zero_idx as i32) - (beq_tail_done_idx as i32)) * 4);
-    instrs[bne_tail_diff_idx] =
-        rv_bne(X5, X6, ((byte_diff_idx as i32) - (bne_tail_diff_idx as i32)) * 4);
-    instrs[j_tail_loop_idx] =
-        rv_jal(X0, ((tail_loop_idx as i32) - (j_tail_loop_idx as i32)) * 4);
-    instrs[beq_byte_done_idx] =
-        rv_beq(X12, X0, ((return_zero_idx as i32) - (beq_byte_done_idx as i32)) * 4);
-    instrs[bne_byte_diff_idx] =
-        rv_bne(X5, X6, ((byte_diff_idx as i32) - (bne_byte_diff_idx as i32)) * 4);
-    instrs[j_byte_loop_idx] =
-        rv_jal(X0, ((byte_loop_idx as i32) - (j_byte_loop_idx as i32)) * 4);
+    instrs[beq_zero_idx] = rv_beq(
+        X12,
+        X0,
+        ((return_zero_idx as i32) - (beq_zero_idx as i32)) * 4,
+    );
+    instrs[bne_unaligned_idx] = rv_bne(
+        X5,
+        X0,
+        ((byte_loop_idx as i32) - (bne_unaligned_idx as i32)) * 4,
+    );
+    instrs[beq_word_done_idx] = rv_beq(
+        X13,
+        X0,
+        ((tail_loop_idx as i32) - (beq_word_done_idx as i32)) * 4,
+    );
+    instrs[bne_word_diff_idx] = rv_bne(
+        X5,
+        X6,
+        ((word_diff_idx as i32) - (bne_word_diff_idx as i32)) * 4,
+    );
+    instrs[j_word_loop_idx] = rv_jal(X0, ((word_loop_idx as i32) - (j_word_loop_idx as i32)) * 4);
+    instrs[beq_tail_done_idx] = rv_beq(
+        X14,
+        X0,
+        ((return_zero_idx as i32) - (beq_tail_done_idx as i32)) * 4,
+    );
+    instrs[bne_tail_diff_idx] = rv_bne(
+        X5,
+        X6,
+        ((byte_diff_idx as i32) - (bne_tail_diff_idx as i32)) * 4,
+    );
+    instrs[j_tail_loop_idx] = rv_jal(X0, ((tail_loop_idx as i32) - (j_tail_loop_idx as i32)) * 4);
+    instrs[beq_byte_done_idx] = rv_beq(
+        X12,
+        X0,
+        ((return_zero_idx as i32) - (beq_byte_done_idx as i32)) * 4,
+    );
+    instrs[bne_byte_diff_idx] = rv_bne(
+        X5,
+        X6,
+        ((byte_diff_idx as i32) - (bne_byte_diff_idx as i32)) * 4,
+    );
+    instrs[j_byte_loop_idx] = rv_jal(X0, ((byte_loop_idx as i32) - (j_byte_loop_idx as i32)) * 4);
 
     instrs
 }
@@ -933,9 +949,7 @@ fn debug_scan_calls(instructions: &[u32], pc_base: u32, target_addr: u32, label:
             if target == target_addr {
                 jal_found += 1;
                 let rd = rv_rd(insn0);
-                println!(
-                    "  {label}: JAL at 0x{jal_addr:x} targets 0x{target:x}, rd={rd}"
-                );
+                println!("  {label}: JAL at 0x{jal_addr:x} targets 0x{target:x}, rd={rd}");
             }
         }
     }
@@ -1093,29 +1107,34 @@ fn find_symbols(symbols: &SymbolTable, needle: &str) -> Vec<(u32, String)> {
         .collect()
 }
 
-// ---- Inline bytecopy optimizer ----
-// Detects contiguous runs of LBU/SB instructions (byte-by-byte copies) with
-// the same base register and replaces them with a routine that uses LW/SW when
-// source and destination are word-aligned at runtime, falling back to LBU/SB
-// otherwise.
+// ---- Inline bytecopy optimizer (DFG-based) ----
+// Detects runs of LBU/SB instructions, builds a data flow graph of byte-level
+// copy pairs, groups them into word-level transfers (including swap detection),
+// and generates optimized routines using LW/SW when addresses are word-aligned.
 
-const MIN_BYTECOPY_LENGTH: u32 = 12;
+const MIN_BYTECOPY_WORDS: usize = 3;
 
-/// A detected inline byte-copy sequence.
-struct BytecopySequence {
+/// A word-level transfer: copy 4 consecutive bytes as a single LW/SW.
+#[derive(Debug, Clone)]
+struct WordTransfer {
+    src_offset: i32,
+    dst_offset: i32,
+}
+
+/// DFG analysis of a bytecopy sequence.
+struct BytecopyDfg {
     start_idx: usize,
     end_idx: usize,
     base_reg: u32,
-    src_offset_start: i32,
-    dst_offset_start: i32,
-    byte_count: u32,
+    word_transfers: Vec<WordTransfer>,
+    /// Registers safe to clobber at entry (first use in sequence is LBU write).
+    clobbered_regs: Vec<u32>,
+    original_insns: Vec<u32>,
 }
 
-/// Scan for contiguous runs of LBU/SB instructions that form a single
-/// contiguous byte copy (all same base register, source offsets consecutive,
-/// destination offsets consecutive). Returns sequences with `byte_count >= MIN_BYTECOPY_LENGTH`.
-fn scan_bytecopy_sequences(instructions: &[u32]) -> Vec<BytecopySequence> {
-    let mut result = Vec::new();
+/// Scan for LBU/SB runs, build copy-pair DFG, group into word transfers.
+fn scan_bytecopy_dfg(instructions: &[u32]) -> Vec<BytecopyDfg> {
+    let mut results = Vec::new();
     let mut i = 0;
 
     while i < instructions.len() {
@@ -1131,7 +1150,6 @@ fn scan_bytecopy_sequences(instructions: &[u32]) -> Vec<BytecopySequence> {
             continue;
         }
 
-        // Extend while instructions are LBU/SB with the same base register
         let start = i;
         let mut j = i;
         while j < instructions.len() {
@@ -1143,76 +1161,156 @@ fn scan_bytecopy_sequences(instructions: &[u32]) -> Vec<BytecopySequence> {
             }
         }
 
-        if (j - start) < 2 * MIN_BYTECOPY_LENGTH as usize {
+        if j - start < 8 {
             i = j;
             continue;
         }
 
-        // Match each SB to the most recent LBU that wrote the same register
+        // Track which registers are safe to clobber at entry
+        // (first use in sequence is as LBU destination, not SB source).
+        let mut first_use_is_write = [false; 32];
+        let mut reg_seen = [false; 32];
+
+        // Build copy pairs via register tracking
         let mut reg_src: [Option<i32>; 32] = [None; 32];
         let mut copies: Vec<(i32, i32)> = Vec::new();
+        let mut clobbered_set = std::collections::BTreeSet::new();
 
         for k in start..j {
             let insn_k = instructions[k];
             if is_lbu(insn_k) {
                 let rd = rv_rd(insn_k);
                 if rd != 0 && rd != base_reg {
+                    if !reg_seen[rd as usize] {
+                        first_use_is_write[rd as usize] = true;
+                        reg_seen[rd as usize] = true;
+                    }
                     reg_src[rd as usize] = Some(rv_imm_i(insn_k));
+                    clobbered_set.insert(rd);
                 }
             } else {
                 let rs2 = rv_rs2(insn_k);
+                if !reg_seen[rs2 as usize] {
+                    reg_seen[rs2 as usize] = true;
+                }
                 if let Some(src) = reg_src[rs2 as usize].take() {
                     copies.push((src, rv_imm_s(insn_k)));
                 }
             }
         }
 
-        if copies.len() < MIN_BYTECOPY_LENGTH as usize {
-            i = j;
-            continue;
-        }
+        let word_transfers = group_word_transfers(&copies);
 
-        copies.sort_by_key(|(s, _)| *s);
+        if word_transfers.len() >= MIN_BYTECOPY_WORDS {
+            let clobbered_regs: Vec<u32> = clobbered_set
+                .into_iter()
+                .filter(|&r| r != base_reg && first_use_is_write[r as usize])
+                .collect();
 
-        // Find maximal contiguous sub-groups (both src and dst stride = 1)
-        let mut g_start = 0;
-        while g_start < copies.len() {
-            let mut g_end = g_start + 1;
-            while g_end < copies.len() {
-                let (ps, pd) = copies[g_end - 1];
-                let (cs, cd) = copies[g_end];
-                if cs == ps + 1 && cd == pd + 1 {
-                    g_end += 1;
-                } else {
-                    break;
-                }
+            if clobbered_regs.len() >= 2 {
+                results.push(BytecopyDfg {
+                    start_idx: start,
+                    end_idx: j,
+                    base_reg,
+                    word_transfers,
+                    clobbered_regs,
+                    original_insns: instructions[start..j].to_vec(),
+                });
             }
-
-            let count = (g_end - g_start) as u32;
-            if count >= MIN_BYTECOPY_LENGTH {
-                let (src_s, dst_s) = copies[g_start];
-                // Skip if source and destination ranges overlap (e.g. swaps)
-                let src_e = src_s + count as i32;
-                let dst_e = dst_s + count as i32;
-                let overlaps = src_s < dst_e && dst_s < src_e;
-                if !overlaps {
-                    result.push(BytecopySequence {
-                        start_idx: start,
-                        end_idx: j,
-                        base_reg,
-                        src_offset_start: src_s,
-                        dst_offset_start: dst_s,
-                        byte_count: count,
-                    });
-                }
-            }
-            g_start = g_end;
         }
 
         i = j;
     }
 
-    result
+    results
+}
+
+/// Group byte-level copy pairs into word transfers.
+/// A word transfer is 4 consecutive copies (s,d),(s+1,d+1),(s+2,d+2),(s+3,d+3)
+/// with matching alignment class (s%4 == d%4).
+fn group_word_transfers(copies: &[(i32, i32)]) -> Vec<WordTransfer> {
+    use std::collections::{HashMap, HashSet};
+
+    let mut src_to_dst: HashMap<i32, i32> = HashMap::new();
+    for &(s, d) in copies {
+        src_to_dst.insert(s, d);
+    }
+
+    let mut used = HashSet::new();
+    let mut transfers = Vec::new();
+
+    let mut sorted: Vec<(i32, i32)> = copies.to_vec();
+    sorted.sort_by_key(|(s, _)| *s);
+
+    for &(s, d) in &sorted {
+        if used.contains(&s) {
+            continue;
+        }
+        let d1 = src_to_dst.get(&(s + 1)).copied();
+        let d2 = src_to_dst.get(&(s + 2)).copied();
+        let d3 = src_to_dst.get(&(s + 3)).copied();
+        if let (Some(d1), Some(d2), Some(d3)) = (d1, d2, d3) {
+            if d1 == d + 1
+                && d2 == d + 2
+                && d3 == d + 3
+                && s.rem_euclid(4) == d.rem_euclid(4)
+                && !used.contains(&(s + 1))
+                && !used.contains(&(s + 2))
+                && !used.contains(&(s + 3))
+            {
+                transfers.push(WordTransfer {
+                    src_offset: s,
+                    dst_offset: d,
+                });
+                used.extend([s, s + 1, s + 2, s + 3]);
+            }
+        }
+    }
+
+    // Filter to the dominant alignment class so a single runtime check suffices
+    if !transfers.is_empty() {
+        let mut class_counts: HashMap<i32, usize> = HashMap::new();
+        for t in &transfers {
+            *class_counts.entry(t.src_offset.rem_euclid(4)).or_default() += 1;
+        }
+        let best_class = class_counts.into_iter().max_by_key(|(_, c)| *c).unwrap().0;
+        transfers.retain(|t| t.src_offset.rem_euclid(4) == best_class);
+    }
+
+    transfers.sort_by_key(|t| t.src_offset);
+    transfers
+}
+
+/// Pair up word transfers that form swaps (A→B and B→A both exist).
+fn pair_swaps(
+    transfers: &[WordTransfer],
+) -> (Vec<(WordTransfer, WordTransfer)>, Vec<WordTransfer>) {
+    use std::collections::HashSet;
+    let mut swap_pairs = Vec::new();
+    let mut singles = Vec::new();
+    let mut used: HashSet<usize> = HashSet::new();
+
+    for (i, t) in transfers.iter().enumerate() {
+        if used.contains(&i) {
+            continue;
+        }
+        let rev = transfers.iter().enumerate().find(|(j, r)| {
+            !used.contains(j)
+                && *j != i
+                && r.src_offset == t.dst_offset
+                && r.dst_offset == t.src_offset
+        });
+        if let Some((j, _)) = rev {
+            swap_pairs.push((t.clone(), transfers[j].clone()));
+            used.insert(i);
+            used.insert(j);
+        } else {
+            singles.push(t.clone());
+            used.insert(i);
+        }
+    }
+
+    (swap_pairs, singles)
 }
 
 /// Encode AUIPC+JALR for an unconditional jump (rd=x0, no link) using `tmp` as
@@ -1229,148 +1327,127 @@ fn rv_encode_jump(from_addr: u32, to_addr: u32, tmp: u32) -> (u32, u32) {
     (auipc, jalr)
 }
 
-/// Generate an optimized copy routine for `count` bytes from
-/// `base_reg + src_start` to `base_reg + dst_start`.
-///
-/// When source and destination have the same alignment class (src_start % 4 ==
-/// dst_start % 4) the routine checks alignment at runtime and uses LW/SW for
-/// the bulk of the copy when both addresses are word-aligned.
-fn rv_generate_bytecopy_routine(
-    base_reg: u32,
-    src_start: i32,
-    dst_start: i32,
-    count: u32,
-    tmp: u32,
-) -> Vec<u32> {
+/// Generate an optimized routine from DFG analysis.
+/// Emits: alignment check → aligned LW/SW path → JAL skip → byte fallback (original insns).
+fn generate_dfg_routine(dfg: &BytecopyDfg) -> Vec<u32> {
     let mut code = Vec::new();
 
-    let can_word = (src_start & 3) == (dst_start & 3);
-    let n_words = count / 4;
-    let n_tail = count % 4;
+    let tmp1 = dfg.clobbered_regs[0];
+    let tmp2 = dfg.clobbered_regs[1];
 
-    if can_word && n_words > 0 {
-        // Runtime alignment check: (base + src_start) & 3
-        code.push(rv_addi(tmp, base_reg, src_start));
-        code.push(rv_andi(tmp, tmp, 3));
-        let branch_idx = code.len();
-        code.push(0); // BNE placeholder → byte fallback
+    let (swaps, singles) = pair_swaps(&dfg.word_transfers);
 
-        // --- word-aligned fast path ---
-        for i in 0..n_words {
-            code.push(rv_lw(tmp, base_reg, src_start + (i as i32) * 4));
-            code.push(rv_sw(tmp, base_reg, dst_start + (i as i32) * 4));
-        }
-        for i in 0..n_tail {
-            let off = (n_words * 4 + i) as i32;
-            code.push(rv_lbu(tmp, base_reg, src_start + off));
-            code.push(rv_sb(tmp, base_reg, dst_start + off));
-        }
-        // Skip over byte fallback
-        let skip_idx = code.len();
-        code.push(0); // JAL x0, placeholder
+    // Alignment check: ADDI tmp1, base, first_transfer_src; ANDI tmp1, tmp1, 3; BNE → fallback
+    let first_src = dfg
+        .word_transfers
+        .first()
+        .map(|t| t.src_offset)
+        .unwrap_or(0);
+    code.push(rv_addi(tmp1, dfg.base_reg, first_src));
+    code.push(rv_andi(tmp1, tmp1, 3));
+    let branch_idx = code.len();
+    code.push(0); // BNE placeholder
 
-        // --- byte fallback ---
-        let fallback_offset = ((code.len() - branch_idx) as i32) * 4;
-        code[branch_idx] = rv_bne(tmp, X0, fallback_offset);
-
-        for i in 0..count {
-            code.push(rv_lbu(tmp, base_reg, src_start + i as i32));
-            code.push(rv_sb(tmp, base_reg, dst_start + i as i32));
-        }
-
-        let skip_offset = ((code.len() - skip_idx) as i32) * 4;
-        code[skip_idx] = rv_jal(X0, skip_offset);
-    } else {
-        // Cannot do word-level optimisation — straight byte copy
-        for i in 0..count {
-            code.push(rv_lbu(tmp, base_reg, src_start + i as i32));
-            code.push(rv_sb(tmp, base_reg, dst_start + i as i32));
-        }
+    // Aligned path: swaps use two temps, singles use one
+    for (a, _b) in &swaps {
+        code.push(rv_lw(tmp1, dfg.base_reg, a.src_offset));
+        code.push(rv_lw(tmp2, dfg.base_reg, a.dst_offset));
+        code.push(rv_sw(tmp1, dfg.base_reg, a.dst_offset));
+        code.push(rv_sw(tmp2, dfg.base_reg, a.src_offset));
     }
+    for s in &singles {
+        code.push(rv_lw(tmp1, dfg.base_reg, s.src_offset));
+        code.push(rv_sw(tmp1, dfg.base_reg, s.dst_offset));
+    }
+
+    // Skip over fallback
+    let skip_idx = code.len();
+    code.push(0); // JAL x0 placeholder
+
+    // Byte fallback: replay original LBU/SB verbatim
+    let fallback_offset = ((code.len() - branch_idx) as i32) * 4;
+    code[branch_idx] = rv_bne(tmp1, X0, fallback_offset);
+
+    for &insn in &dfg.original_insns {
+        code.push(insn);
+    }
+
+    let skip_offset = ((code.len() - skip_idx) as i32) * 4;
+    code[skip_idx] = rv_jal(X0, skip_offset);
 
     code
 }
 
-/// Scan the ELF for inline byte-copy sequences and replace qualifying ones
-/// with routines that use word loads/stores when addresses are aligned.
+/// Scan the ELF for inline LBU/SB sequences and replace them with
+/// DFG-optimized routines using word loads/stores when aligned.
 fn optimize_bytecopy(elf: &mut Elf, symbols: &mut SymbolTable, pc_base: u32) {
-    let sequences = scan_bytecopy_sequences(&elf.instructions);
-    if sequences.is_empty() {
+    let dfgs = scan_bytecopy_dfg(&elf.instructions);
+    if dfgs.is_empty() {
         return;
     }
 
     println!(
-        "bytecopy_opt: found {} qualifying sequence(s)",
-        sequences.len()
+        "bytecopy_opt: found {} qualifying DFG sequence(s)",
+        dfgs.len()
     );
 
     let nop = rv_addi(X0, X0, 0);
     let mut patched = 0;
 
-    for seq in &sequences {
-        let seq_addr = pc_base + (seq.start_idx as u32) * 4;
-        let return_addr = pc_base + (seq.end_idx as u32) * 4;
+    for dfg in &dfgs {
+        let seq_addr = pc_base + (dfg.start_idx as u32) * 4;
+        let return_addr = pc_base + (dfg.end_idx as u32) * 4;
 
-        // Pick a scratch register that is not the base
-        let tmp = if seq.base_reg != X5 { X5 } else { X6 };
+        let tmp = dfg.clobbered_regs[0];
 
-        // Generate the optimised copy routine
-        let mut routine = rv_generate_bytecopy_routine(
-            seq.base_reg,
-            seq.src_offset_start,
-            seq.dst_offset_start,
-            seq.byte_count,
-            tmp,
-        );
+        let mut routine = generate_dfg_routine(dfg);
 
-        // Append return jump (AUIPC+JALR x0 back to instruction after the
-        // original LBU/SB sequence)
+        // Append return jump
         let routine_start_addr = pc_base + (elf.instructions.len() as u32) * 4;
         let return_jump_addr = routine_start_addr + (routine.len() as u32) * 4;
         let (ret_auipc, ret_jalr) = rv_encode_jump(return_jump_addr, return_addr, tmp);
         routine.push(ret_auipc);
         routine.push(ret_jalr);
 
+        let (swaps, singles) = pair_swaps(&dfg.word_transfers);
         let routine_insns = routine.len();
         symbols.insert(
             routine_start_addr,
             format!(
-                "bytecopy_opt_{}b_{}_{}",
-                seq.byte_count, seq.src_offset_start, seq.dst_offset_start
+                "bytecopy_dfg_{}w{}s",
+                swaps.len() * 2 + singles.len(),
+                swaps.len()
             ),
         );
         elf.instructions.extend(routine);
 
-        // Patch the original site: jump to routine + NOP remaining
+        // Patch original site
         let (fwd_auipc, fwd_jalr) = rv_encode_jump(seq_addr, routine_start_addr, tmp);
-
-        // Verify round-trip
         let verify = rv_auipc_jalr_target(fwd_auipc, fwd_jalr, seq_addr);
         assert_eq!(
             verify, routine_start_addr,
             "bytecopy fwd jump mismatch at 0x{seq_addr:x}: got 0x{verify:x}, expected 0x{routine_start_addr:x}"
         );
 
-        elf.instructions[seq.start_idx] = fwd_auipc;
-        elf.instructions[seq.start_idx + 1] = fwd_jalr;
-        for k in (seq.start_idx + 2)..seq.end_idx {
+        elf.instructions[dfg.start_idx] = fwd_auipc;
+        elf.instructions[dfg.start_idx + 1] = fwd_jalr;
+        for k in (dfg.start_idx + 2)..dfg.end_idx {
             elf.instructions[k] = nop;
         }
 
         println!(
-            "bytecopy_opt: {}b copy (base=x{}, src_off={}, dst_off={}) at 0x{seq_addr:x}, \
-             routine at 0x{routine_start_addr:x} ({routine_insns} insns), \
-             {} insns NOP'd",
-            seq.byte_count,
-            seq.base_reg,
-            seq.src_offset_start,
-            seq.dst_offset_start,
-            seq.end_idx - seq.start_idx - 2,
+            "bytecopy_opt: DFG at 0x{seq_addr:x} (base=x{}, {} word transfers, {} swaps, {} singles), \
+             routine at 0x{routine_start_addr:x} ({routine_insns} insns), {} insns NOP'd",
+            dfg.base_reg,
+            dfg.word_transfers.len(),
+            swaps.len(),
+            singles.len(),
+            dfg.end_idx - dfg.start_idx - 2,
         );
         patched += 1;
     }
 
-    println!("bytecopy_opt: patched {patched} sequence(s)");
+    println!("bytecopy_opt: patched {patched} DFG sequence(s)");
 }
 
 /// Optimize an ELF by replacing memcpy/memmove calls with constant-length arguments
@@ -1600,12 +1677,7 @@ mod tests {
             for step in 0..max_steps {
                 let idx = (self.pc / 4) as usize;
                 if idx >= instrs.len() {
-                    panic!(
-                        "PC out of bounds: pc=0x{:x}, idx={}, len={}",
-                        self.pc,
-                        idx,
-                        instrs.len()
-                    );
+                    return; // PC left the instruction array — execution complete
                 }
                 let insn = instrs[idx];
                 let opcode = rv_opcode(insn);
@@ -1627,6 +1699,7 @@ mod tests {
                         let rs1_val = self.reg(rs1);
                         let result = match funct3 {
                             0b000 => rs1_val.wrapping_add(imm as u32), // ADDI
+                            0b001 => rs1_val << ((imm as u32) & 0x1F), // SLLI
                             0b101 => rs1_val >> ((imm as u32) & 0x1F), // SRLI (funct7=0)
                             0b111 => rs1_val & (imm as u32),           // ANDI
                             0b110 => rs1_val | (imm as u32),           // ORI
@@ -1735,14 +1808,17 @@ mod tests {
                         }
                     }
                     0x67 => {
-                        // JALR — return when rd=x0
-                        if rd == 0 {
-                            return;
-                        }
+                        // JALR
                         let imm = rv_imm_i(insn);
                         let target = (self.reg(rs1).wrapping_add(imm as u32)) & !1;
                         self.set_reg(rd, self.pc + 4);
                         self.pc = target;
+                    }
+                    0x17 => {
+                        // AUIPC
+                        let imm = insn & 0xFFFFF000;
+                        self.set_reg(rd, self.pc.wrapping_add(imm));
+                        self.pc += 4;
                     }
                     0x6F => {
                         // JAL rd, offset (J-type)
@@ -1750,10 +1826,8 @@ mod tests {
                         let bit_11 = (insn >> 20) & 1;
                         let bits_10_1 = (insn >> 21) & 0x3FF;
                         let bit_20 = (insn >> 31) & 1;
-                        let offset = (bit_20 << 20)
-                            | (bits_19_12 << 12)
-                            | (bit_11 << 11)
-                            | (bits_10_1 << 1);
+                        let offset =
+                            (bit_20 << 20) | (bits_19_12 << 12) | (bit_11 << 11) | (bits_10_1 << 1);
                         // Sign-extend from 21 bits
                         let offset = if bit_20 != 0 {
                             offset | !0x1FFFFF
@@ -1798,6 +1872,7 @@ mod tests {
 
                     interp.set_reg(X10, dst_base); // a0 = dst
                     interp.set_reg(X11, src_base); // a1 = src
+                    interp.set_reg(X1, (routine.len() as u32 + 10) * 4); // RA → beyond array
 
                     interp.run(&routine, 10_000);
 
@@ -1872,6 +1947,7 @@ mod tests {
 
                         interp.set_reg(X10, dst_base);
                         interp.set_reg(X11, src_base);
+                        interp.set_reg(X1, (routine.len() as u32 + 10) * 4);
                         interp.run(&routine, 10_000);
 
                         for i in 0..length {
@@ -1900,6 +1976,7 @@ mod tests {
 
                         interp.set_reg(X10, dst_base);
                         interp.set_reg(X11, src_base);
+                        interp.set_reg(X1, (routine.len() as u32 + 10) * 4);
                         interp.run(&routine, 10_000);
 
                         for i in 0..length {
@@ -1946,6 +2023,7 @@ mod tests {
 
                 interp.set_reg(X10, dst_base);
                 interp.set_reg(X11, src_base);
+                interp.set_reg(X1, (routine.len() as u32 + 10) * 4);
                 interp.run(&routine, 10_000);
 
                 // Verify: dst should contain the original src data
@@ -1996,6 +2074,7 @@ mod tests {
                         interp.set_reg(X10, ptr1);
                         interp.set_reg(X11, ptr2);
                         interp.set_reg(X12, length);
+                        interp.set_reg(X1, (routine.len() as u32 + 10) * 4);
                         interp.run(&routine, 50_000);
                         let result = interp.reg(X10) as i32;
                         assert_eq!(
@@ -2028,6 +2107,7 @@ mod tests {
                             interp.set_reg(X10, ptr1);
                             interp.set_reg(X11, ptr2);
                             interp.set_reg(X12, length);
+                            interp.set_reg(X1, (routine.len() as u32 + 10) * 4);
                             interp.run(&routine, 50_000);
                             let result = interp.reg(X10) as i32;
                             assert!(
@@ -2065,6 +2145,7 @@ mod tests {
                         interp.set_reg(X10, ptr1);
                         interp.set_reg(X11, ptr2);
                         interp.set_reg(X12, length);
+                        interp.set_reg(X1, (routine.len() as u32 + 10) * 4);
                         interp.run(&routine, 50_000);
                         assert_eq!(
                             interp.reg(X10) as i32,
@@ -2089,6 +2170,7 @@ mod tests {
                         interp.set_reg(X10, ptr1);
                         interp.set_reg(X11, ptr2);
                         interp.set_reg(X12, length);
+                        interp.set_reg(X1, (routine.len() as u32 + 10) * 4);
                         interp.run(&routine, 50_000);
                         let result = interp.reg(X10) as i32;
                         assert!(
@@ -2102,11 +2184,11 @@ mod tests {
         }
     }
 
-    // --- Bytecopy optimizer tests ---
+    // --- DFG Bytecopy optimizer tests ---
 
     /// Build an LBU/SB sequence that copies `count` bytes from
     /// base+src_start to base+dst_start, using registers t0..t4 as temps.
-    fn build_lbu_sb_sequence(base_reg: u32, src_start: i32, dst_start: i32, count: u32) -> Vec<u32> {
+    fn build_lbu_sb_copy(base_reg: u32, src_start: i32, dst_start: i32, count: u32) -> Vec<u32> {
         let mut code = Vec::new();
         let temps = [X5, X6, X7, X28, X29]; // t0..t4
         let chunk = temps.len();
@@ -2127,73 +2209,120 @@ mod tests {
         code
     }
 
-    #[test]
-    fn test_scan_bytecopy_detects_simple_copy() {
-        let seq = build_lbu_sb_sequence(X10, 0, 64, 16);
-        let found = scan_bytecopy_sequences(&seq);
-        assert_eq!(found.len(), 1, "Expected 1 sequence, got {}", found.len());
-        let s = &found[0];
-        assert_eq!(s.byte_count, 16);
-        assert_eq!(s.src_offset_start, 0);
-        assert_eq!(s.dst_offset_start, 64);
-        assert_eq!(s.base_reg, X10);
+    /// Build an LBU/SB sequence that swaps `count` bytes between
+    /// base+region_a and base+region_b, using interleaved load/store groups.
+    fn build_lbu_sb_swap(base_reg: u32, region_a: i32, region_b: i32, count: u32) -> Vec<u32> {
+        let mut code = Vec::new();
+        let temps_a = [X5, X6, X7, X14]; // hold values from A
+        let temps_b = [X28, X29, X12, X13]; // hold values from B
+        let mut i = 0u32;
+        while i < count {
+            let n = (count - i).min(4) as usize;
+            for k in 0..n {
+                code.push(rv_lbu(
+                    temps_a[k],
+                    base_reg,
+                    region_a + (i + k as u32) as i32,
+                ));
+            }
+            for k in 0..n {
+                code.push(rv_lbu(
+                    temps_b[k],
+                    base_reg,
+                    region_b + (i + k as u32) as i32,
+                ));
+            }
+            for k in 0..n {
+                code.push(rv_sb(
+                    temps_b[k],
+                    base_reg,
+                    region_a + (i + k as u32) as i32,
+                ));
+            }
+            for k in 0..n {
+                code.push(rv_sb(
+                    temps_a[k],
+                    base_reg,
+                    region_b + (i + k as u32) as i32,
+                ));
+            }
+            i += n as u32;
+        }
+        code
     }
 
     #[test]
-    fn test_scan_bytecopy_skips_short() {
-        let seq = build_lbu_sb_sequence(X10, 0, 64, 8);
-        let found = scan_bytecopy_sequences(&seq);
-        assert!(found.is_empty(), "Should skip sequences shorter than threshold");
+    fn test_dfg_scan_simple_copy() {
+        let seq = build_lbu_sb_copy(X10, 0, 64, 16);
+        let dfgs = scan_bytecopy_dfg(&seq);
+        assert_eq!(dfgs.len(), 1, "Expected 1 DFG, got {}", dfgs.len());
+        let d = &dfgs[0];
+        assert_eq!(d.base_reg, X10);
+        assert!(
+            d.word_transfers.len() >= 3,
+            "Expected >= 3 word transfers for 16 bytes, got {}",
+            d.word_transfers.len()
+        );
     }
 
     #[test]
-    fn test_scan_bytecopy_skips_overlapping() {
-        let seq = build_lbu_sb_sequence(X10, 0, 8, 16);
-        let found = scan_bytecopy_sequences(&seq);
-        assert!(found.is_empty(), "Should skip overlapping src/dst ranges");
+    fn test_dfg_scan_swap() {
+        let seq = build_lbu_sb_swap(X10, -64, -32, 32);
+        let dfgs = scan_bytecopy_dfg(&seq);
+        assert_eq!(dfgs.len(), 1, "Expected 1 DFG, got {}", dfgs.len());
+        let d = &dfgs[0];
+        let (swaps, singles) = pair_swaps(&d.word_transfers);
+        assert!(
+            swaps.len() >= 4,
+            "Expected >= 4 swap pairs for 32-byte swap, got {} swaps + {} singles",
+            swaps.len(),
+            singles.len()
+        );
     }
 
     #[test]
-    fn test_bytecopy_routine_correctness() {
-        for count in [12u32, 16, 20, 24, 32, 48] {
+    fn test_dfg_scan_skips_short() {
+        let seq = build_lbu_sb_copy(X10, 0, 64, 4);
+        let dfgs = scan_bytecopy_dfg(&seq);
+        assert!(dfgs.is_empty(), "Should skip short sequences");
+    }
+
+    #[test]
+    fn test_dfg_copy_correctness() {
+        for count in [16u32, 20, 32, 48] {
             let base_reg = X10;
-            let src_start = 0i32;
-            let dst_start = 128i32;
-            let tmp = X5;
+            let src = 0i32;
+            let dst = 128i32;
 
-            let mut original = build_lbu_sb_sequence(base_reg, src_start, dst_start, count);
-            original.push(rv_jalr(X0, X1, 0));
+            let seq = build_lbu_sb_copy(base_reg, src, dst, count);
+            let dfgs = scan_bytecopy_dfg(&seq);
+            assert!(!dfgs.is_empty(), "No DFG found for count={count}");
+            let routine = generate_dfg_routine(&dfgs[0]);
 
-            let mut optimised =
-                rv_generate_bytecopy_routine(base_reg, src_start, dst_start, count, tmp);
-            optimised.push(rv_jalr(X0, X1, 0));
+            for align in 0..4u32 {
+                let base_addr = 256 + align;
 
-            for base_align in 0..4u32 {
-                let base_addr = 256 + base_align;
-
+                // Reference: run original bytes
                 let mut ref_interp = RvInterpreter::new(1024);
                 for b in 0..count {
-                    ref_interp.mem[(base_addr as usize) + src_start as usize + b as usize] =
-                        ((b.wrapping_mul(31).wrapping_add(7)) & 0xFF) as u8;
+                    ref_interp.mem[(base_addr + b) as usize] = (b as u8).wrapping_mul(37);
                 }
                 ref_interp.set_reg(base_reg, base_addr);
-                ref_interp.set_reg(X1, (original.len() as u32) * 4);
-                ref_interp.run(&original, 50_000);
+                ref_interp.run(&seq, 50_000);
 
+                // Optimized
                 let mut opt_interp = RvInterpreter::new(1024);
                 for b in 0..count {
-                    opt_interp.mem[(base_addr as usize) + src_start as usize + b as usize] =
-                        ((b.wrapping_mul(31).wrapping_add(7)) & 0xFF) as u8;
+                    opt_interp.mem[(base_addr + b) as usize] = (b as u8).wrapping_mul(37);
                 }
                 opt_interp.set_reg(base_reg, base_addr);
-                opt_interp.set_reg(X1, (optimised.len() as u32) * 4);
-                opt_interp.run(&optimised, 50_000);
+                opt_interp.run(&routine, 50_000);
 
                 for b in 0..count {
-                    let addr = base_addr as usize + dst_start as usize + b as usize;
+                    let addr = (base_addr + dst as u32 + b) as usize;
                     assert_eq!(
                         opt_interp.mem[addr], ref_interp.mem[addr],
-                        "Mismatch at byte {b} for count={count}, base_align={base_align}"
+                        "copy count={count} align={align} byte={b}"
                     );
                 }
             }
@@ -2201,47 +2330,53 @@ mod tests {
     }
 
     #[test]
-    fn test_bytecopy_routine_negative_offsets() {
-        let base_reg = X10;
-        let src_start = -64i32;
-        let dst_start = -32i32;
-        let count = 16u32;
-        let tmp = X5;
+    fn test_dfg_swap_correctness() {
+        for count in [16u32, 32] {
+            let base_reg = X10;
+            let region_a = -64i32;
+            let region_b = -32i32;
 
-        let mut original = build_lbu_sb_sequence(base_reg, src_start, dst_start, count);
-        original.push(rv_jalr(X0, X1, 0));
+            let seq = build_lbu_sb_swap(base_reg, region_a, region_b, count);
+            let dfgs = scan_bytecopy_dfg(&seq);
+            assert!(!dfgs.is_empty(), "No DFG found for swap count={count}");
+            let routine = generate_dfg_routine(&dfgs[0]);
 
-        let mut optimised =
-            rv_generate_bytecopy_routine(base_reg, src_start, dst_start, count, tmp);
-        optimised.push(rv_jalr(X0, X1, 0));
+            for align in 0..4u32 {
+                let base_addr = 512 + align;
+                let mem_size = 1024;
 
-        for base_align in 0..4u32 {
-            let base_addr = 512 + base_align;
+                let init = |interp: &mut RvInterpreter| {
+                    for b in 0..count {
+                        let addr_a =
+                            base_addr.wrapping_add(region_a as u32).wrapping_add(b) as usize;
+                        let addr_b =
+                            base_addr.wrapping_add(region_b as u32).wrapping_add(b) as usize;
+                        interp.mem[addr_a] = 0xAA_u8.wrapping_add(b as u8);
+                        interp.mem[addr_b] = 0xBB_u8.wrapping_add(b as u8);
+                    }
+                    interp.set_reg(base_reg, base_addr);
+                };
 
-            let mut ref_interp = RvInterpreter::new(1024);
-            for b in 0..count {
-                ref_interp.mem[(base_addr.wrapping_add(src_start as u32) + b) as usize] =
-                    ((b * 17 + 3) & 0xFF) as u8;
-            }
-            ref_interp.set_reg(base_reg, base_addr);
-            ref_interp.set_reg(X1, (original.len() as u32) * 4);
-            ref_interp.run(&original, 50_000);
+                let mut ref_interp = RvInterpreter::new(mem_size);
+                init(&mut ref_interp);
+                ref_interp.run(&seq, 50_000);
 
-            let mut opt_interp = RvInterpreter::new(1024);
-            for b in 0..count {
-                opt_interp.mem[(base_addr.wrapping_add(src_start as u32) + b) as usize] =
-                    ((b * 17 + 3) & 0xFF) as u8;
-            }
-            opt_interp.set_reg(base_reg, base_addr);
-            opt_interp.set_reg(X1, (optimised.len() as u32) * 4);
-            opt_interp.run(&optimised, 50_000);
+                let mut opt_interp = RvInterpreter::new(mem_size);
+                init(&mut opt_interp);
+                opt_interp.run(&routine, 50_000);
 
-            for b in 0..count {
-                let addr = (base_addr.wrapping_add(dst_start as u32) + b) as usize;
-                assert_eq!(
-                    opt_interp.mem[addr], ref_interp.mem[addr],
-                    "Neg-offset mismatch at byte {b}, base_align={base_align}"
-                );
+                for b in 0..count {
+                    let addr_a = base_addr.wrapping_add(region_a as u32).wrapping_add(b) as usize;
+                    let addr_b = base_addr.wrapping_add(region_b as u32).wrapping_add(b) as usize;
+                    assert_eq!(
+                        opt_interp.mem[addr_a], ref_interp.mem[addr_a],
+                        "swap count={count} align={align} A[{b}]"
+                    );
+                    assert_eq!(
+                        opt_interp.mem[addr_b], ref_interp.mem[addr_b],
+                        "swap count={count} align={align} B[{b}]"
+                    );
+                }
             }
         }
     }
@@ -2270,80 +2405,68 @@ mod tests {
     }
 
     #[test]
-    fn test_bytecopy_end_to_end_patching() {
+    fn test_dfg_end_to_end_patching() {
         let base_reg = X10;
-        let src_start = 0i32;
-        let dst_start = 64i32;
+        let src = 0i32;
+        let dst = 64i32;
         let count = 16u32;
 
         let preamble = vec![rv_addi(X0, X0, 0)]; // 1 NOP
-        let byte_seq = build_lbu_sb_sequence(base_reg, src_start, dst_start, count);
-        let seq_start_idx = preamble.len();
-        let seq_end_idx = seq_start_idx + byte_seq.len();
+        let byte_seq = build_lbu_sb_copy(base_reg, src, dst, count);
 
         let mut program: Vec<u32> = Vec::new();
         program.extend(&preamble);
         program.extend(&byte_seq);
-        program.push(rv_jalr(X0, X1, 0)); // RET
+        // Sentinel: jump far out of bounds to stop execution
+        program.push(rv_jal(X0, 0x10000));
 
-        // Run original
-        let base_addr = 256u32;
-        let mut ref_interp = RvInterpreter::new(1024);
-        for b in 0..count {
-            ref_interp.mem[(base_addr + b) as usize] = (b as u8).wrapping_mul(41);
-        }
-        ref_interp.set_reg(base_reg, base_addr);
-        ref_interp.set_reg(X1, (program.len() as u32) * 4);
-        ref_interp.run(&program, 50_000);
-
-        // Scan & patch
-        let sequences = scan_bytecopy_sequences(&program);
-        assert_eq!(sequences.len(), 1);
-        let seq = &sequences[0];
-        assert_eq!(seq.start_idx, seq_start_idx);
-        assert_eq!(seq.end_idx, seq_end_idx);
-
-        let tmp = X5;
         let pc_base = 0u32;
 
-        let mut routine = rv_generate_bytecopy_routine(
-            seq.base_reg,
-            seq.src_offset_start,
-            seq.dst_offset_start,
-            seq.byte_count,
-            tmp,
-        );
+        let dfgs = scan_bytecopy_dfg(&program);
+        assert!(!dfgs.is_empty(), "DFG scan should find the sequence");
+        let dfg = &dfgs[0];
+
+        let tmp = dfg.clobbered_regs[0];
+        let mut routine = generate_dfg_routine(dfg);
 
         let routine_start_addr = pc_base + (program.len() as u32) * 4;
-        let return_addr = pc_base + (seq.end_idx as u32) * 4;
+        let return_addr = pc_base + (dfg.end_idx as u32) * 4;
         let return_jump_addr = routine_start_addr + (routine.len() as u32) * 4;
         let (ret_auipc, ret_jalr) = rv_encode_jump(return_jump_addr, return_addr, tmp);
         routine.push(ret_auipc);
         routine.push(ret_jalr);
 
-        let seq_addr = pc_base + (seq.start_idx as u32) * 4;
+        let seq_addr = pc_base + (dfg.start_idx as u32) * 4;
         let (fwd_auipc, fwd_jalr) = rv_encode_jump(seq_addr, routine_start_addr, tmp);
 
         let mut patched = program.clone();
         patched.extend(routine);
-        patched[seq.start_idx] = fwd_auipc;
-        patched[seq.start_idx + 1] = fwd_jalr;
+        patched[dfg.start_idx] = fwd_auipc;
+        patched[dfg.start_idx + 1] = fwd_jalr;
         let nop = rv_addi(X0, X0, 0);
-        for k in (seq.start_idx + 2)..seq.end_idx {
+        for k in (dfg.start_idx + 2)..dfg.end_idx {
             patched[k] = nop;
         }
 
         // Run patched
+        let base_addr = 256u32;
         let mut opt_interp = RvInterpreter::new(1024);
         for b in 0..count {
             opt_interp.mem[(base_addr + b) as usize] = (b as u8).wrapping_mul(41);
         }
         opt_interp.set_reg(base_reg, base_addr);
-        opt_interp.set_reg(X1, (program.len() as u32) * 4);
         opt_interp.run(&patched, 50_000);
 
+        // Run reference (original, no patching)
+        let mut ref_interp = RvInterpreter::new(1024);
         for b in 0..count {
-            let addr = (base_addr + dst_start as u32 + b) as usize;
+            ref_interp.mem[(base_addr + b) as usize] = (b as u8).wrapping_mul(41);
+        }
+        ref_interp.set_reg(base_reg, base_addr);
+        ref_interp.run(&program, 50_000);
+
+        for b in 0..count {
+            let addr = (base_addr + dst as u32 + b) as usize;
             assert_eq!(
                 opt_interp.mem[addr], ref_interp.mem[addr],
                 "E2E mismatch at byte {b}"

@@ -293,7 +293,7 @@ fn is_branch_or_jump(word: u32) -> bool {
         0b1100011 | // B-type
         0b1101111 | // JAL
         0b1100111 | // JALR
-        0b1110011   // ECALL/EBREAK
+        0b1110011 // ECALL/EBREAK
     )
 }
 
@@ -342,11 +342,15 @@ fn find_basic_blocks(
 
 fn reg_name(r: usize) -> &'static str {
     const NAMES: [&str; 32] = [
-        "zero", "ra", "sp", "gp", "tp", "t0", "t1", "t2", "s0", "s1", "a0", "a1", "a2", "a3",
-        "a4", "a5", "a6", "a7", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11",
-        "t3", "t4", "t5", "t6",
+        "zero", "ra", "sp", "gp", "tp", "t0", "t1", "t2", "s0", "s1", "a0", "a1", "a2", "a3", "a4",
+        "a5", "a6", "a7", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "t3", "t4",
+        "t5", "t6",
     ];
-    if r < 32 { NAMES[r] } else { "??" }
+    if r < 32 {
+        NAMES[r]
+    } else {
+        "??"
+    }
 }
 
 fn format_instruction(insn: &Instruction) -> String {
@@ -370,10 +374,18 @@ fn format_instruction(insn: &Instruction) -> String {
         (None, None, None, None) => op,
         _ => {
             let mut s = op;
-            if let Some(d) = rd { s += &format!(" {d}"); }
-            if let Some(s1) = rs1 { s += &format!(", {s1}"); }
-            if let Some(s2) = rs2 { s += &format!(", {s2}"); }
-            if let Some(i) = imm { s += &format!(", {i}"); }
+            if let Some(d) = rd {
+                s += &format!(" {d}");
+            }
+            if let Some(s1) = rs1 {
+                s += &format!(", {s1}");
+            }
+            if let Some(s2) = rs2 {
+                s += &format!(", {s2}");
+            }
+            if let Some(i) = imm {
+                s += &format!(", {i}");
+            }
             s
         }
     }
@@ -466,7 +478,10 @@ fn generate_html(
         .map(|f| {
             format!(
                 "{{\"name\":\"{}\",\"depth\":{},\"start\":{},\"end\":{}}}",
-                js_escape(&f.name), f.depth, f.start, f.end,
+                js_escape(&f.name),
+                f.depth,
+                f.start,
+                f.end,
             )
         })
         .collect();
@@ -481,11 +496,8 @@ fn generate_html(
         .collect();
 
     // --- Map function addr → row_id in stats table ---
-    let addr_to_row: HashMap<u32, usize> = stats
-        .iter()
-        .enumerate()
-        .map(|(i, s)| (s.addr, i))
-        .collect();
+    let addr_to_row: HashMap<u32, usize> =
+        stats.iter().enumerate().map(|(i, s)| (s.addr, i)).collect();
 
     // --- Callers lookup for a function index ---
     // Returns (name, call_count, Option<row_id in stats>)
@@ -595,7 +607,8 @@ pre {{ font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.82em;
     ));
 
     // ====================== Tab 1: Timeline ======================
-    html.push_str(r##"
+    html.push_str(
+        r##"
 <div class="tab-panel active" id="tab-timeline">
 <h2>Flame Graph</h2>
 <div id="flame-controls">
@@ -608,12 +621,14 @@ pre {{ font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.82em;
   <div class="flame-tooltip" id="flame-tooltip"></div>
 </div>
 </div>
-"##);
+"##,
+    );
 
     // ====================== Tab 2: Functions ======================
     // Column order: Address | Insn Hits | Calls | % Total | Dist | Function
     // Function is last so its overflow doesn't push numeric columns off-screen.
-    html.push_str(r#"
+    html.push_str(
+        r#"
 <div class="tab-panel" id="tab-functions">
 <h2>Function Profile</h2>
 <input type="text" class="search" id="fn-search" placeholder="Filter functions…" autocomplete="off">
@@ -630,7 +645,8 @@ pre {{ font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.82em;
 </tr>
 </thead>
 <tbody>
-"#);
+"#,
+    );
 
     for (row_id, s) in stats.iter().enumerate() {
         let pct = if total_insns > 0 {
@@ -746,7 +762,13 @@ pre {{ font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.82em;
                 }
             }
         }
-        let dlines = disassemble_range(elf_bytes, elf, b.start_pc, b.end_pc - b.start_pc, &block_pc_hits);
+        let dlines = disassemble_range(
+            elf_bytes,
+            elf,
+            b.start_pc,
+            b.end_pc - b.start_pc,
+            &block_pc_hits,
+        );
         if !dlines.is_empty() {
             html.push_str("<div class=\"block-disasm\"><pre>");
             for (pc, word, hits, text) in &dlines {
