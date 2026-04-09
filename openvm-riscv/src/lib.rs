@@ -137,6 +137,8 @@ pub fn compile_openvm(
     // Optimize memcpy calls in the ELF before transpilation
     let symbols = RiscvISA::get_symbol_table(&elf_program);
     let pc_base = powdr_openvm::memcpy_optimizer::parse_pc_base(&elf_binary_path);
+    panic!();
+    println!("memcpy_opt : starting");
     powdr_openvm::memcpy_optimizer::optimize_elf(&mut elf, &symbols, pc_base);
 
     // Transpile the (possibly modified) ELF into a VmExe.

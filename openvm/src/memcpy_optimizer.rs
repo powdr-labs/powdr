@@ -8,7 +8,11 @@ const MAX_MEMCPY_LENGTH: u32 = 128;
 
 /// Parse the base address (lowest executable segment vaddr) from a raw ELF binary.
 pub fn parse_pc_base(elf_path: &Path) -> u32 {
-    let data = std::fs::read(elf_path).expect("Failed to read ELF binary");
+    parse_pc_base_data(&std::fs::read(elf_path).expect("Failed to read ELF binary"))
+}
+
+/// Parse the base address (lowest executable segment vaddr) from a raw ELF binary.
+pub fn parse_pc_base_data(data: &[u8]) -> u32 {
     assert!(data.len() > 52, "ELF too small");
     assert_eq!(&data[0..4], b"\x7fELF", "Not an ELF file");
     assert_eq!(data[4], 1, "Expected 32-bit ELF"); // EI_CLASS = ELFCLASS32
@@ -343,14 +347,13 @@ pub fn optimize_elf(elf: &mut Elf, symbols: &SymbolTable, pc_base: u32) {
         .find(|(_, names): &(&u32, &Vec<String>)| names.iter().any(|n| n.contains("memcpy")));
 
     let Some((&memcpy_addr, names)) = memcpy_entry else {
-        tracing::info!("memcpy_optimizer: no memcpy symbol found");
+        println!("memcpy_optimizer: no memcpy symbol found");
         return;
     };
     let names_str = names.join(", ");
-    tracing::info!(
+    println!(
         "memcpy_optimizer: memcpy at addr 0x{:x} ({})",
-        memcpy_addr,
-        names_str
+        memcpy_addr, names_str
     );
 
     let instructions = &elf.instructions;
@@ -383,11 +386,11 @@ pub fn optimize_elf(elf: &mut Elf, symbols: &SymbolTable, pc_base: u32) {
     }
 
     if calls_by_length.is_empty() {
-        tracing::info!("memcpy_optimizer: no eligible memcpy calls found");
+        println!("memcpy_optimizer: no eligible memcpy calls found");
         return;
     }
 
-    tracing::info!(
+    println!(
         "memcpy_optimizer: call sites by length: {:?}",
         calls_by_length
             .iter()
@@ -404,7 +407,7 @@ pub fn optimize_elf(elf: &mut Elf, symbols: &SymbolTable, pc_base: u32) {
         let routine_start_idx = elf.instructions.len();
         let routine_start_addr = pc_base + (routine_start_idx as u32) * 4;
 
-        tracing::info!(
+        println!(
             "memcpy_optimizer: length={} at addr 0x{:x} ({} instructions)",
             length,
             routine_start_addr,
@@ -417,6 +420,9 @@ pub fn optimize_elf(elf: &mut Elf, symbols: &SymbolTable, pc_base: u32) {
 
     // Patch call sites
     for (&length, auipc_indices) in &calls_by_length {
+        // if length == 32 || length == 64 {
+        //     continue;
+        // }
         let target_addr = routine_addrs[&length];
         for &auipc_idx in auipc_indices {
             let auipc_addr = pc_base + (auipc_idx as u32) * 4;
@@ -436,7 +442,7 @@ pub fn optimize_elf(elf: &mut Elf, symbols: &SymbolTable, pc_base: u32) {
         }
     }
 
-    tracing::info!(
+    println!(
         "memcpy_optimizer: patched {} call sites across {} lengths, {} -> {} instructions",
         calls_by_length.values().map(|v| v.len()).sum::<usize>(),
         calls_by_length.len(),
