@@ -997,9 +997,11 @@ fn scan_call_sites_multi(
     calls_by_length
 }
 
-/// Generate specialized routines, append to ELF, and patch call sites.
+/// Generate specialized routines, append to ELF, patch call sites,
+/// and register synthetic symbol names.
 fn generate_and_patch(
     elf: &mut Elf,
+    symbols: &mut SymbolTable,
     pc_base: u32,
     calls_by_length: &BTreeMap<u32, Vec<usize>>,
     generate_routine: fn(u32) -> Vec<u32>,
@@ -1014,13 +1016,11 @@ fn generate_and_patch(
         let routine_start_addr = pc_base + (routine_start_idx as u32) * 4;
 
         println!(
-            "{}: length={} at addr 0x{:x} ({} instructions)",
-            label,
-            length,
-            routine_start_addr,
+            "{label}: length={length} at addr 0x{routine_start_addr:x} ({} instructions)",
             routine.len()
         );
 
+        symbols.insert(routine_start_addr, format!("{label}_len{length}"));
         elf.instructions.extend(routine);
         routine_addrs.insert(length, routine_start_addr);
     }
@@ -1035,8 +1035,7 @@ fn generate_and_patch(
             let verify_target = rv_auipc_jalr_target(new_auipc, new_jalr, auipc_addr);
             assert_eq!(
                 verify_target, target_addr,
-                "AUIPC+JALR encoding mismatch at 0x{:x}: got 0x{:x}, expected 0x{:x}",
-                auipc_addr, verify_target, target_addr
+                "AUIPC+JALR encoding mismatch at 0x{auipc_addr:x}: got 0x{verify_target:x}, expected 0x{target_addr:x}"
             );
 
             elf.instructions[auipc_idx] = new_auipc;
@@ -1045,11 +1044,9 @@ fn generate_and_patch(
     }
 
     println!(
-        "{}: patched {} call sites across {} lengths, {} -> {} instructions",
-        label,
+        "{label}: patched {} call sites across {} lengths, {original_len} -> {} instructions",
         calls_by_length.values().map(|v| v.len()).sum::<usize>(),
         calls_by_length.len(),
-        original_len,
         elf.instructions.len()
     );
 }
@@ -1072,8 +1069,9 @@ fn find_symbols(symbols: &SymbolTable, needle: &str) -> Vec<(u32, String)> {
 /// Optimize an ELF by replacing memcpy/memmove calls with constant-length arguments
 /// with specialized unrolled routines. Modifies `elf.instructions` in place.
 /// `pc_base` is the byte address of the first instruction (lowest executable segment vaddr).
-pub fn optimize_elf(elf: &mut Elf, symbols: &SymbolTable, pc_base: u32) {
-    let elf_end = pc_base + (elf.instructions.len() as u32) * 4;
+pub fn optimize_elf(elf: &mut Elf, symbols: &mut SymbolTable, pc_base: u32) {
+    let original_insn_count = elf.instructions.len();
+    let elf_end = pc_base + (original_insn_count as u32) * 4;
     println!(
         "memcpy_optimizer: pc_base=0x{pc_base:x}, {} instructions (range 0x{pc_base:x}..0x{elf_end:x})",
         elf.instructions.len()
@@ -1113,10 +1111,11 @@ pub fn optimize_elf(elf: &mut Elf, symbols: &SymbolTable, pc_base: u32) {
             );
             generate_and_patch(
                 elf,
+                symbols,
                 pc_base,
                 &calls,
                 rv_generate_specialized_memcpy,
-                "memcpy_optimizer",
+                "memcpy_opt",
             );
         }
     }
@@ -1142,10 +1141,11 @@ pub fn optimize_elf(elf: &mut Elf, symbols: &SymbolTable, pc_base: u32) {
             );
             generate_and_patch(
                 elf,
+                symbols,
                 pc_base,
                 &calls,
                 rv_generate_specialized_memmove,
-                "memmove_optimizer",
+                "memmove_opt",
             );
         }
     }
@@ -1178,10 +1178,11 @@ pub fn optimize_elf(elf: &mut Elf, symbols: &SymbolTable, pc_base: u32) {
             );
             generate_and_patch(
                 elf,
+                symbols,
                 pc_base,
                 &const_calls,
                 rv_generate_specialized_memcmp,
-                "memcmp_optimizer",
+                "memcmp_opt",
             );
         }
 
@@ -1190,11 +1191,12 @@ pub fn optimize_elf(elf: &mut Elf, symbols: &SymbolTable, pc_base: u32) {
             let routine = rv_generate_optimized_memcmp_loop();
             let routine_addr = pc_base + (elf.instructions.len() as u32) * 4;
             println!(
-                "memcmp_optimizer: generic loop at 0x{routine_addr:x} ({} insns), \
+                "memcmp_opt: generic loop at 0x{routine_addr:x} ({} insns), \
                  patching {} dynamic call sites",
                 routine.len(),
                 dyn_calls.len(),
             );
+            symbols.insert(routine_addr, "memcmp_opt_loop".to_string());
             elf.instructions.extend(routine);
 
             for &auipc_idx in &dyn_calls {
@@ -1215,6 +1217,36 @@ pub fn optimize_elf(elf: &mut Elf, symbols: &SymbolTable, pc_base: u32) {
 
         if const_calls.is_empty() && dyn_calls.is_empty() {
             println!("memcpy_optimizer: no memcmp call sites found");
+        }
+    }
+
+    // Write extra symbols file for the trace analyzer.
+    // Contains synthetic symbols for all appended routines.
+    if elf.instructions.len() > original_insn_count {
+        let extra_path = "extra_symbols.txt";
+        let mut lines = Vec::new();
+        for (addr, names) in symbols.table().range(elf_end..) {
+            for name in names {
+                // Estimate size: extends to the next symbol or end of instructions
+                let next_addr = symbols
+                    .table()
+                    .range((addr + 1)..)
+                    .next()
+                    .map(|(a, _)| *a)
+                    .unwrap_or(pc_base + (elf.instructions.len() as u32) * 4);
+                let size = next_addr - addr;
+                lines.push(format!("{addr:08x} {size} {name}"));
+            }
+        }
+        if !lines.is_empty() {
+            if let Err(e) = std::fs::write(extra_path, lines.join("\n") + "\n") {
+                println!("memcpy_optimizer: failed to write {extra_path}: {e}");
+            } else {
+                println!(
+                    "memcpy_optimizer: wrote {} extra symbols to {extra_path}",
+                    lines.len()
+                );
+            }
         }
     }
 }

@@ -71,6 +71,26 @@ fn load_functions(elf: &Elf) -> Vec<Function> {
             size: sym.st_size as u32,
         })
         .collect();
+
+    // Load extra symbols from optimizer (e.g. patched memcpy/memcmp routines)
+    if let Ok(extra) = fs::read_to_string("extra_symbols.txt") {
+        for line in extra.lines() {
+            let parts: Vec<&str> = line.splitn(3, ' ').collect();
+            if parts.len() == 3 {
+                if let (Ok(addr), Ok(size)) =
+                    (u32::from_str_radix(parts[0], 16), parts[1].parse::<u32>())
+                {
+                    funcs.push(Function {
+                        name: parts[2].to_string(),
+                        addr,
+                        size,
+                    });
+                }
+            }
+        }
+        eprintln!("Loaded extra symbols from extra_symbols.txt");
+    }
+
     funcs.sort_by_key(|f| f.addr);
     funcs
 }

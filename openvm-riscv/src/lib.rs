@@ -135,10 +135,10 @@ pub fn compile_openvm(
     let elf_program = powdr_riscv_elf::load_elf(&elf_binary_path);
 
     // Optimize memcpy calls in the ELF before transpilation
-    let symbols = RiscvISA::get_symbol_table(&elf_program);
+    let mut symbols = RiscvISA::get_symbol_table(&elf_program);
     let pc_base = powdr_openvm::memcpy_optimizer::parse_pc_base(&elf_binary_path);
     println!("memcpy_opt : starting");
-    powdr_openvm::memcpy_optimizer::optimize_elf(&mut elf, &symbols, pc_base);
+    powdr_openvm::memcpy_optimizer::optimize_elf(&mut elf, &mut symbols, pc_base);
 
     // Transpile the (possibly modified) ELF into a VmExe.
     let exe = sdk.convert_to_exe(elf)?;
@@ -152,6 +152,7 @@ pub fn compile_openvm(
         exe,
         vm_config: OriginalVmConfig::new(vm_config),
         linked_program: elf_program,
+        extra_symbols: Some(symbols),
     })
 }
 
