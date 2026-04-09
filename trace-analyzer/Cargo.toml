@@ -10,6 +10,7 @@ repository.workspace = true
 [dependencies]
 goblin = "0.8"
 raki = "0.1.4"
+rustc-demangle = "0.1"
 
 [lints]
 workspace = true
