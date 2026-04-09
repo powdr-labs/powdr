@@ -703,6 +703,14 @@ pub fn optimize_elf(elf: &mut Elf, symbols: &SymbolTable, pc_base: u32) {
     } else {
         println!("memcpy_optimizer: no memmove symbol found");
     }
+
+    // Analyze memcmp call sites (report only, no patching)
+    if let Some((memcmp_addr, names_str)) = find_symbol(symbols, "memcmp") {
+        println!(
+            "memcpy_optimizer: memcmp at addr 0x{memcmp_addr:x} ({names_str})"
+        );
+        analyze_a2_constants(&elf.instructions, pc_base, memcmp_addr, "memcmp");
+    }
 }
 
 #[cfg(test)]

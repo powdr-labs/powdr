@@ -509,8 +509,13 @@ h2 {{ font-size: 1.2em; margin: 24px 0 12px; color: #79c0ff; }}
 .tab-panel.active {{ display: block; }}
 
 /* Flame graph */
+#flame-controls {{ margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }}
+#flame-controls button {{ background: #21262d; border: 1px solid #30363d; color: #c9d1d9; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85em; }}
+#flame-controls button:hover {{ background: #30363d; color: #58a6ff; }}
+#flame-controls button:disabled {{ opacity: 0.4; cursor: default; }}
+#flame-info {{ color: #8b949e; font-size: 0.85em; }}
 #flame-container {{ position: relative; width: 100%; overflow-x: auto; background: #161b22; border: 1px solid #30363d; border-radius: 6px; margin-bottom: 24px; }}
-#flame-canvas {{ display: block; }}
+#flame-canvas {{ display: block; cursor: pointer; }}
 .flame-tooltip {{ position: absolute; display: none; background: #1c2128; border: 1px solid #444c56; padding: 6px 10px; border-radius: 4px; font-size: 13px; pointer-events: none; color: #c9d1d9; z-index: 10; white-space: nowrap; }}
 
 /* Tables */
@@ -573,6 +578,11 @@ pre {{ font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.82em;
     html.push_str(r##"
 <div class="tab-panel active" id="tab-timeline">
 <h2>Flame Graph</h2>
+<div id="flame-controls">
+  <button id="flame-reset" title="Reset zoom">⟲ Reset zoom</button>
+  <button id="flame-back" title="Zoom out one level">← Back</button>
+  <span id="flame-info"></span>
+</div>
 <div id="flame-container">
   <canvas id="flame-canvas" width="1350" height="300"></canvas>
   <div class="flame-tooltip" id="flame-tooltip"></div>
@@ -819,71 +829,162 @@ document.querySelectorAll('.callers a.tag[data-row]').forEach(a => {{
   }});
 }});
 
-// --- Flame graph ---
+// --- Flame graph with zoom ---
 const flameData = [{flame_json}];
 const canvas = document.getElementById('flame-canvas');
 const ctx = canvas.getContext('2d');
 const tooltip = document.getElementById('flame-tooltip');
 const totalTS = {trace_len};
+const resetBtn = document.getElementById('flame-reset');
+const backBtn = document.getElementById('flame-back');
+const flameInfo = document.getElementById('flame-info');
+
+let viewStart = 0;
+let viewEnd = totalTS;
+let zoomStack = [];
+
+function updateButtons() {{
+  const zoomed = viewStart !== 0 || viewEnd !== totalTS;
+  resetBtn.disabled = !zoomed;
+  backBtn.disabled = zoomStack.length === 0;
+  if (zoomed) {{
+    const pct = ((viewEnd - viewStart) / totalTS * 100).toFixed(2);
+    flameInfo.textContent = 'Viewing ' + pct + '% of total trace';
+  }} else {{
+    flameInfo.textContent = '';
+  }}
+}}
 
 function drawFlame() {{
   if (flameData.length === 0) return;
   const W = canvas.width;
-  const maxDepth = flameData.reduce((m, f) => Math.max(m, f.depth), 0);
   const rowH = 22;
+
+  // Only draw frames that overlap the current view
+  const visible = flameData.filter(f => f.end >= viewStart && f.start <= viewEnd);
+  const maxDepth = visible.reduce((m, f) => Math.max(m, f.depth), 0);
   canvas.height = Math.max(60, (maxDepth + 2) * rowH);
 
   ctx.fillStyle = '#161b22';
   ctx.fillRect(0, 0, W, canvas.height);
 
   const colors = ['#238636','#1f6feb','#8957e5','#da3633','#d29922','#3fb950','#79c0ff','#f0883e'];
+  const span = viewEnd - viewStart;
 
-  flameData.forEach((f, i) => {{
-    const x = (f.start / totalTS) * W;
-    const w = Math.max(1, ((f.end - f.start + 1) / totalTS) * W);
+  visible.forEach((f, i) => {{
+    const x = ((f.start - viewStart) / span) * W;
+    const w = Math.max(1, ((f.end - f.start + 1) / span) * W);
     const y = canvas.height - (f.depth + 1) * rowH;
-    ctx.fillStyle = colors[i % colors.length];
+    if (x + w < 0 || x > W) return;
+    ctx.fillStyle = colors[flameData.indexOf(f) % colors.length];
     ctx.fillRect(x, y, w, rowH - 1);
     if (w > 40) {{
       ctx.fillStyle = '#fff';
       ctx.font = '11px monospace';
       ctx.save();
       ctx.beginPath();
-      ctx.rect(x, y, w, rowH);
+      ctx.rect(Math.max(0, x), y, w, rowH);
       ctx.clip();
-      ctx.fillText(f.name, x + 3, y + rowH - 5);
+      ctx.fillText(f.name, Math.max(0, x) + 3, y + rowH - 5);
       ctx.restore();
     }}
   }});
+  updateButtons();
+}}
+
+function hitTest(mx, my) {{
+  const W = canvas.width;
+  const rowH = 22;
+  const span = viewEnd - viewStart;
+  let best = null;
+  for (const f of flameData) {{
+    if (f.end < viewStart || f.start > viewEnd) continue;
+    const x = ((f.start - viewStart) / span) * W;
+    const w = Math.max(1, ((f.end - f.start + 1) / span) * W);
+    const y = canvas.height - (f.depth + 1) * rowH;
+    if (mx >= x && mx <= x + w && my >= y && my <= y + rowH) best = f;
+  }}
+  return best;
 }}
 
 canvas.addEventListener('mousemove', e => {{
   const rect = canvas.getBoundingClientRect();
-  const mx = e.clientX - rect.left;
-  const my = e.clientY - rect.top;
-  const W = canvas.width;
-  const maxDepth = flameData.reduce((m, f) => Math.max(m, f.depth), 0);
-  const rowH = 22;
-
-  let hit = null;
-  for (const f of flameData) {{
-    const x = (f.start / totalTS) * W;
-    const w = Math.max(1, ((f.end - f.start + 1) / totalTS) * W);
-    const y = canvas.height - (f.depth + 1) * rowH;
-    if (mx >= x && mx <= x + w && my >= y && my <= y + rowH) hit = f;
-  }}
+  const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
+  const my = (e.clientY - rect.top) * (canvas.height / rect.height);
+  const hit = hitTest(mx, my);
   if (hit) {{
     tooltip.style.display = 'block';
     tooltip.style.left = (e.clientX - rect.left + 12) + 'px';
     tooltip.style.top = (e.clientY - rect.top - 28) + 'px';
-    const pct = ((hit.end - hit.start + 1) / totalTS * 100).toFixed(2);
-    tooltip.textContent = hit.name + ' (' + pct + '%)';
+    const dur = hit.end - hit.start + 1;
+    const pctTotal = (dur / totalTS * 100).toFixed(2);
+    const pctView = (dur / (viewEnd - viewStart) * 100).toFixed(2);
+    tooltip.textContent = hit.name + ' (' + pctTotal + '% total, ' + pctView + '% view) — click to zoom';
   }} else {{
     tooltip.style.display = 'none';
   }}
 }});
 
 canvas.addEventListener('mouseleave', () => {{ tooltip.style.display = 'none'; }});
+
+canvas.addEventListener('click', e => {{
+  const rect = canvas.getBoundingClientRect();
+  const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
+  const my = (e.clientY - rect.top) * (canvas.height / rect.height);
+  const hit = hitTest(mx, my);
+  if (hit) {{
+    zoomStack.push({{ start: viewStart, end: viewEnd }});
+    viewStart = hit.start;
+    viewEnd = hit.end + 1;
+    drawFlame();
+  }}
+}});
+
+canvas.addEventListener('contextmenu', e => {{
+  e.preventDefault();
+  if (zoomStack.length > 0) {{
+    const prev = zoomStack.pop();
+    viewStart = prev.start;
+    viewEnd = prev.end;
+    drawFlame();
+  }}
+}});
+
+// Mouse wheel zoom: scroll to zoom in/out at cursor position
+canvas.addEventListener('wheel', e => {{
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const mx = (e.clientX - rect.left) / rect.width; // 0..1 position
+  const span = viewEnd - viewStart;
+  const factor = e.deltaY > 0 ? 1.3 : 1 / 1.3; // scroll down = zoom out
+  const newSpan = Math.min(totalTS, Math.max(100, span * factor));
+  const center = viewStart + mx * span;
+  let newStart = Math.max(0, center - mx * newSpan);
+  let newEnd = newStart + newSpan;
+  if (newEnd > totalTS) {{ newEnd = totalTS; newStart = Math.max(0, newEnd - newSpan); }}
+  if (newStart !== viewStart || newEnd !== viewEnd) {{
+    zoomStack.push({{ start: viewStart, end: viewEnd }});
+    viewStart = Math.floor(newStart);
+    viewEnd = Math.ceil(newEnd);
+    drawFlame();
+  }}
+}}, {{ passive: false }});
+
+resetBtn.addEventListener('click', () => {{
+  zoomStack = [];
+  viewStart = 0;
+  viewEnd = totalTS;
+  drawFlame();
+}});
+
+backBtn.addEventListener('click', () => {{
+  if (zoomStack.length > 0) {{
+    const prev = zoomStack.pop();
+    viewStart = prev.start;
+    viewEnd = prev.end;
+    drawFlame();
+  }}
+}});
 
 drawFlame();
 </script>
