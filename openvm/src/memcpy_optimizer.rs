@@ -197,6 +197,18 @@ fn rv_imm_u(insn: u32) -> u32 {
     insn & 0xFFFFF000
 }
 
+/// Decode J-type immediate (JAL): bits [31|30:21|20|19:12] → sign-extended 21-bit offset
+fn rv_imm_j(insn: u32) -> i32 {
+    let insn = insn as i32;
+    let imm20 = (insn >> 31) & 1; // bit 31 → imm[20]
+    let imm10_1 = (insn >> 21) & 0x3FF; // bits 30:21 → imm[10:1]
+    let imm11 = (insn >> 20) & 1; // bit 20 → imm[11]
+    let imm19_12 = (insn >> 12) & 0xFF; // bits 19:12 → imm[19:12]
+    let raw = (imm20 << 20) | (imm19_12 << 12) | (imm11 << 11) | (imm10_1 << 1);
+    // Sign-extend from bit 20
+    (raw << 11) >> 11
+}
+
 /// Check if instruction is AUIPC (opcode 0x17)
 fn is_auipc(insn: u32) -> bool {
     rv_opcode(insn) == 0x17
@@ -852,6 +864,62 @@ fn rv_generate_optimized_memcmp_loop() -> Vec<u32> {
 /// Scan ALL call sites to `target_addr`, partitioned into constant-length
 /// (within MAX_MEMCPY_LENGTH) and dynamic-length groups.
 /// Returns (constant_calls: BTreeMap<length, Vec<index>>, dynamic_calls: Vec<index>).
+/// Debug helper: scan for all AUIPC+JALR pairs and JAL instructions that target `target_addr`,
+/// printing diagnostics about what's found and what's filtered out.
+fn debug_scan_calls(instructions: &[u32], pc_base: u32, target_addr: u32, label: &str) {
+    let mut auipc_jalr_found = 0u32;
+    let mut jal_found = 0u32;
+    let mut auipc_jalr_rd_mismatch = 0u32;
+    let mut auipc_jalr_not_x1 = 0u32;
+
+    for i in 0..instructions.len().saturating_sub(1) {
+        let insn0 = instructions[i];
+        let insn1 = instructions[i + 1];
+
+        // Check AUIPC+JALR pattern
+        if is_auipc(insn0) && is_jalr(insn1) {
+            let auipc_rd = rv_rd(insn0);
+            let jalr_rs1 = rv_rs1(insn1);
+            let jalr_rd = rv_rd(insn1);
+            let auipc_addr = pc_base + (i as u32) * 4;
+            let target = rv_auipc_jalr_target(insn0, insn1, auipc_addr);
+            if target == target_addr {
+                auipc_jalr_found += 1;
+                if jalr_rs1 != auipc_rd {
+                    auipc_jalr_rd_mismatch += 1;
+                }
+                if jalr_rd != X1 {
+                    auipc_jalr_not_x1 += 1;
+                    println!(
+                        "  {label}: AUIPC+JALR at 0x{auipc_addr:x} targets 0x{target:x}, \
+                         but JALR rd={jalr_rd} (not x1/ra)"
+                    );
+                }
+            }
+        }
+
+        // Check JAL (J-type) pattern
+        if rv_opcode(insn0) == 0x6F {
+            let jal_addr = pc_base + (i as u32) * 4;
+            let imm = rv_imm_j(insn0);
+            let target = jal_addr.wrapping_add(imm as u32);
+            if target == target_addr {
+                jal_found += 1;
+                let rd = rv_rd(insn0);
+                println!(
+                    "  {label}: JAL at 0x{jal_addr:x} targets 0x{target:x}, rd={rd}"
+                );
+            }
+        }
+    }
+
+    println!(
+        "  {label} call scan: AUIPC+JALR targeting 0x{target_addr:x}: {auipc_jalr_found} \
+         (rd mismatch: {auipc_jalr_rd_mismatch}, not-x1: {auipc_jalr_not_x1}), \
+         JAL targeting: {jal_found}"
+    );
+}
+
 fn scan_all_call_sites(
     instructions: &[u32],
     pc_base: u32,
@@ -1004,6 +1072,11 @@ fn find_symbol(symbols: &SymbolTable, needle: &str) -> Option<(u32, String)> {
 /// with specialized unrolled routines. Modifies `elf.instructions` in place.
 /// `pc_base` is the byte address of the first instruction (lowest executable segment vaddr).
 pub fn optimize_elf(elf: &mut Elf, symbols: &SymbolTable, pc_base: u32) {
+    let elf_end = pc_base + (elf.instructions.len() as u32) * 4;
+    println!(
+        "memcpy_optimizer: pc_base=0x{pc_base:x}, {} instructions (range 0x{pc_base:x}..0x{elf_end:x})",
+        elf.instructions.len()
+    );
     // Process memcpy
     if let Some((memcpy_addr, names_str)) = find_symbol(symbols, "memcpy") {
         println!(
@@ -1067,6 +1140,12 @@ pub fn optimize_elf(elf: &mut Elf, symbols: &SymbolTable, pc_base: u32) {
         println!(
             "memcpy_optimizer: memcmp at addr 0x{memcmp_addr:x} ({names_str})"
         );
+        let elf_end_addr = pc_base + (elf.instructions.len() as u32) * 4;
+        println!(
+            "memcpy_optimizer: ELF range 0x{pc_base:x}..0x{elf_end_addr:x} ({} insns)",
+            elf.instructions.len()
+        );
+        debug_scan_calls(&elf.instructions, pc_base, memcmp_addr, "memcmp");
         analyze_a2_constants(&elf.instructions, pc_base, memcmp_addr, "memcmp");
 
         let (const_calls, dyn_calls) =
