@@ -306,12 +306,12 @@ fn rv_resolve_a2_constant(instructions: &[u32], end_idx: usize) -> Option<u32> {
     rv_resolve_reg_constant(instructions, end_idx, X12, Some(MAX_MEMCPY_LENGTH))
 }
 
-/// Scan all call sites to `target_addr` and report how many have a
+/// Scan all call sites to any of `target_addrs` and report how many have a
 /// compile-time constant in a2 (x12) vs. dynamic values.
 fn analyze_a2_constants(
     instructions: &[u32],
     pc_base: u32,
-    target_addr: u32,
+    target_addrs: &[u32],
     label: &str,
 ) {
     let mut total_calls = 0u32;
@@ -330,7 +330,7 @@ fn analyze_a2_constants(
         }
         let auipc_addr = pc_base + (i as u32) * 4;
         let target = rv_auipc_jalr_target(insn0, insn1, auipc_addr);
-        if target != target_addr {
+        if !target_addrs.contains(&target) {
             continue;
         }
 
@@ -920,10 +920,10 @@ fn debug_scan_calls(instructions: &[u32], pc_base: u32, target_addr: u32, label:
     );
 }
 
-fn scan_all_call_sites(
+fn scan_all_call_sites_multi(
     instructions: &[u32],
     pc_base: u32,
-    target_addr: u32,
+    target_addrs: &[u32],
 ) -> (BTreeMap<u32, Vec<usize>>, Vec<usize>) {
     let mut by_length: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
     let mut dynamic: Vec<usize> = Vec::new();
@@ -940,7 +940,7 @@ fn scan_all_call_sites(
         }
         let auipc_addr = pc_base + (i as u32) * 4;
         let target = rv_auipc_jalr_target(insn0, insn1, auipc_addr);
-        if target != target_addr {
+        if !target_addrs.contains(&target) {
             continue;
         }
         match rv_resolve_reg_constant(instructions, i, X12, Some(MAX_MEMCPY_LENGTH)) {
@@ -966,11 +966,11 @@ fn rv_encode_call(from_addr: u32, to_addr: u32, rd: u32) -> (u32, u32) {
     (auipc, jalr)
 }
 
-/// Scan for call sites to `target_addr` with constant a2, returning a map from length to call-site indices.
-fn scan_call_sites(
+/// Scan for call sites to any of `target_addrs` with constant a2.
+fn scan_call_sites_multi(
     instructions: &[u32],
     pc_base: u32,
-    target_addr: u32,
+    target_addrs: &[u32],
 ) -> BTreeMap<u32, Vec<usize>> {
     let mut calls_by_length: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
     for i in 0..instructions.len().saturating_sub(1) {
@@ -985,7 +985,7 @@ fn scan_call_sites(
         }
         let auipc_addr = pc_base + (i as u32) * 4;
         let target = rv_auipc_jalr_target(insn0, insn1, auipc_addr);
-        if target != target_addr {
+        if !target_addrs.contains(&target) {
             continue;
         }
         if let Some(length) = rv_resolve_a2_constant(instructions, i) {
@@ -1054,18 +1054,19 @@ fn generate_and_patch(
     );
 }
 
-/// Find a symbol address by substring match on the demangled name.
-/// Returns (address, joined name string).
-fn find_symbol(symbols: &SymbolTable, needle: &str) -> Option<(u32, String)> {
+/// Find ALL symbol addresses matching a substring on the raw or demangled name.
+/// Returns vec of (address, joined name string).
+fn find_symbols(symbols: &SymbolTable, needle: &str) -> Vec<(u32, String)> {
     symbols
         .table()
         .iter()
-        .find(|(_, names): &(&u32, &Vec<String>)| {
+        .filter(|(_, names): &(&u32, &Vec<String>)| {
             names
                 .iter()
                 .any(|n| n.contains(needle) || format!("{:#}", demangle(n)).contains(needle))
         })
         .map(|(&addr, names)| (addr, names.join(", ")))
+        .collect()
 }
 
 /// Optimize an ELF by replacing memcpy/memmove calls with constant-length arguments
@@ -1077,13 +1078,29 @@ pub fn optimize_elf(elf: &mut Elf, symbols: &SymbolTable, pc_base: u32) {
         "memcpy_optimizer: pc_base=0x{pc_base:x}, {} instructions (range 0x{pc_base:x}..0x{elf_end:x})",
         elf.instructions.len()
     );
+
+    // Collect all addresses for each function family (there may be wrappers/aliases)
+    let memcpy_addrs = find_symbols(symbols, "memcpy");
+    let memmove_addrs = find_symbols(symbols, "memmove");
+    // Filter memcmp symbols to avoid matching memcpy/memmove
+    let memcmp_addrs: Vec<_> = find_symbols(symbols, "memcmp")
+        .into_iter()
+        .filter(|(addr, _)| {
+            // Exclude addresses that are already claimed by memcpy or memmove
+            !memcpy_addrs.iter().any(|(a, _)| *a == *addr)
+                && !memmove_addrs.iter().any(|(a, _)| *a == *addr)
+        })
+        .collect();
+
     // Process memcpy
-    if let Some((memcpy_addr, names_str)) = find_symbol(symbols, "memcpy") {
-        println!(
-            "memcpy_optimizer: memcpy at addr 0x{:x} ({})",
-            memcpy_addr, names_str
-        );
-        let calls = scan_call_sites(&elf.instructions, pc_base, memcpy_addr);
+    if memcpy_addrs.is_empty() {
+        println!("memcpy_optimizer: no memcpy symbol found");
+    } else {
+        for (addr, name) in &memcpy_addrs {
+            println!("memcpy_optimizer: memcpy at addr 0x{addr:x} ({name})");
+        }
+        let target_addrs: Vec<u32> = memcpy_addrs.iter().map(|(a, _)| *a).collect();
+        let calls = scan_call_sites_multi(&elf.instructions, pc_base, &target_addrs);
         if calls.is_empty() {
             println!("memcpy_optimizer: no eligible memcpy calls found");
         } else {
@@ -1102,17 +1119,17 @@ pub fn optimize_elf(elf: &mut Elf, symbols: &SymbolTable, pc_base: u32) {
                 "memcpy_optimizer",
             );
         }
-    } else {
-        println!("memcpy_optimizer: no memcpy symbol found");
     }
 
     // Process memmove
-    if let Some((memmove_addr, names_str)) = find_symbol(symbols, "memmove") {
-        println!(
-            "memcpy_optimizer: memmove at addr 0x{:x} ({})",
-            memmove_addr, names_str
-        );
-        let calls = scan_call_sites(&elf.instructions, pc_base, memmove_addr);
+    if memmove_addrs.is_empty() {
+        println!("memcpy_optimizer: no memmove symbol found");
+    } else {
+        for (addr, name) in &memmove_addrs {
+            println!("memcpy_optimizer: memmove at addr 0x{addr:x} ({name})");
+        }
+        let target_addrs: Vec<u32> = memmove_addrs.iter().map(|(a, _)| *a).collect();
+        let calls = scan_call_sites_multi(&elf.instructions, pc_base, &target_addrs);
         if calls.is_empty() {
             println!("memcpy_optimizer: no eligible memmove calls found");
         } else {
@@ -1131,25 +1148,24 @@ pub fn optimize_elf(elf: &mut Elf, symbols: &SymbolTable, pc_base: u32) {
                 "memmove_optimizer",
             );
         }
-    } else {
-        println!("memcpy_optimizer: no memmove symbol found");
     }
 
     // Analyze and patch memcmp call sites
-    if let Some((memcmp_addr, names_str)) = find_symbol(symbols, "memcmp") {
-        println!(
-            "memcpy_optimizer: memcmp at addr 0x{memcmp_addr:x} ({names_str})"
-        );
-        let elf_end_addr = pc_base + (elf.instructions.len() as u32) * 4;
-        println!(
-            "memcpy_optimizer: ELF range 0x{pc_base:x}..0x{elf_end_addr:x} ({} insns)",
-            elf.instructions.len()
-        );
-        debug_scan_calls(&elf.instructions, pc_base, memcmp_addr, "memcmp");
-        analyze_a2_constants(&elf.instructions, pc_base, memcmp_addr, "memcmp");
+    if memcmp_addrs.is_empty() {
+        println!("memcpy_optimizer: no memcmp symbol found");
+    } else {
+        for (addr, name) in &memcmp_addrs {
+            println!("memcpy_optimizer: memcmp at addr 0x{addr:x} ({name})");
+        }
+        let target_addrs: Vec<u32> = memcmp_addrs.iter().map(|(a, _)| *a).collect();
+
+        for &addr in &target_addrs {
+            debug_scan_calls(&elf.instructions, pc_base, addr, "memcmp");
+        }
+        analyze_a2_constants(&elf.instructions, pc_base, &target_addrs, "memcmp");
 
         let (const_calls, dyn_calls) =
-            scan_all_call_sites(&elf.instructions, pc_base, memcmp_addr);
+            scan_all_call_sites_multi(&elf.instructions, pc_base, &target_addrs);
 
         // Patch constant-length call sites with specialized unrolled memcmp
         if !const_calls.is_empty() {
