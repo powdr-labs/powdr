@@ -102,6 +102,11 @@ fn rv_bne(rs1: u32, rs2: u32, offset: i32) -> u32 {
     rv_branch(0b001, rs1, rs2, offset)
 }
 
+/// Encode BLTU rs1, rs2, offset (B-type, offset in bytes, unsigned less-than)
+fn rv_bltu(rs1: u32, rs2: u32, offset: i32) -> u32 {
+    rv_branch(0b110, rs1, rs2, offset)
+}
+
 fn rv_branch(funct3: u32, rs1: u32, rs2: u32, offset: i32) -> u32 {
     let imm = (offset as u32) & 0x1FFE; // bits [12:1], bit 0 always 0
     let bit_12 = (imm >> 12) & 1;
@@ -256,6 +261,46 @@ fn rv_generate_specialized_memcpy(length: u32) -> Vec<u32> {
         return instrs;
     }
 
+    rv_generate_alignment_dispatched_copy(length, false)
+}
+
+/// Generate backward copy: same layout as forward (head bytes, words, tail bytes)
+/// but copied in reverse order for memmove overlap safety.
+fn rv_generate_backward_head_word_tail(head_bytes: u32, total_length: u32) -> Vec<u32> {
+    let remaining = total_length - head_bytes;
+    let num_words = remaining / 4;
+    let tail = remaining % 4;
+
+    let mut instrs = Vec::new();
+    // Tail bytes (at the end), backward
+    for i in (0..tail).rev() {
+        let offset = (head_bytes + num_words * 4 + i) as i32;
+        instrs.push(rv_lbu(X13, X11, offset));
+        instrs.push(rv_sb(X13, X10, offset));
+    }
+    // Words, backward
+    for w in (0..num_words).rev() {
+        let offset = (head_bytes + w * 4) as i32;
+        instrs.push(rv_lw(X13, X11, offset));
+        instrs.push(rv_sw(X13, X10, offset));
+    }
+    // Head bytes, backward
+    for i in (0..head_bytes).rev() {
+        instrs.push(rv_lbu(X13, X11, i as i32));
+        instrs.push(rv_sb(X13, X10, i as i32));
+    }
+    instrs
+}
+
+/// Generate an alignment-dispatched copy block (forward or backward).
+/// Returns the instructions for the block.
+fn rv_generate_alignment_dispatched_copy(length: u32, backward: bool) -> Vec<u32> {
+    let gen_copy = if backward {
+        rv_generate_backward_head_word_tail
+    } else {
+        rv_generate_head_word_tail
+    };
+
     let mut instrs = Vec::new();
 
     // Alignment check
@@ -266,7 +311,7 @@ fn rv_generate_specialized_memcpy(length: u32) -> Vec<u32> {
     instrs.push(0); // placeholder BNE
 
     // Path 1: Both aligned
-    instrs.extend(rv_generate_head_word_tail(0, length));
+    instrs.extend(gen_copy(0, length));
     instrs.push(rv_ret());
 
     // Not both aligned
@@ -282,29 +327,34 @@ fn rv_generate_specialized_memcpy(length: u32) -> Vec<u32> {
     let beq_off2_idx = instrs.len();
     instrs.push(0); // placeholder BEQ
 
-    // Path 4: off by 3 → 1 head byte
-    instrs.extend(rv_generate_head_word_tail(1, length));
+    // off by 3 → 1 head byte
+    instrs.extend(gen_copy(1, length));
     instrs.push(rv_ret());
 
-    // Path 3: off by 2 → 2 head bytes
+    // off by 2 → 2 head bytes
     let off2_idx = instrs.len();
-    instrs.extend(rv_generate_head_word_tail(2, length));
+    instrs.extend(gen_copy(2, length));
     instrs.push(rv_ret());
 
-    // Path 2: off by 1 → 3 head bytes
+    // off by 1 → 3 head bytes
     let off1_idx = instrs.len();
-    instrs.extend(rv_generate_head_word_tail(3, length));
+    instrs.extend(gen_copy(3, length));
     instrs.push(rv_ret());
 
-    // Path 5: byte-by-byte
+    // Byte-by-byte fallback
     let byte_path_idx = instrs.len();
-    for i in 0..length {
+    let range: Vec<u32> = if backward {
+        (0..length).rev().collect()
+    } else {
+        (0..length).collect()
+    };
+    for i in range {
         instrs.push(rv_lbu(X13, X11, i as i32));
         instrs.push(rv_sb(X13, X10, i as i32));
     }
     instrs.push(rv_ret());
 
-    // Patch branch offsets (in bytes: offset = (target_idx - branch_idx) * 4)
+    // Patch branch offsets
     instrs[bne_not_both_idx] = rv_bne(
         X13,
         X0,
@@ -317,6 +367,58 @@ fn rv_generate_specialized_memcpy(length: u32) -> Vec<u32> {
     );
     instrs[beq_off1_idx] = rv_beq(X12, X13, ((off1_idx as i32) - (beq_off1_idx as i32)) * 4);
     instrs[beq_off2_idx] = rv_beq(X12, X13, ((off2_idx as i32) - (beq_off2_idx as i32)) * 4);
+
+    instrs
+}
+
+/// Generate a specialized memmove as raw RISC-V u32 instructions for a known constant length.
+/// Unlike memcpy, memmove handles overlapping src/dst by choosing copy direction.
+fn rv_generate_specialized_memmove(length: u32) -> Vec<u32> {
+    if length == 0 {
+        return vec![rv_ret()];
+    }
+
+    if length < 4 {
+        let mut instrs = Vec::new();
+        // Direction check: if dst < src, forward copy is safe
+        let bltu_fwd_idx = instrs.len();
+        instrs.push(0); // placeholder BLTU
+
+        // Backward byte copy (dst >= src)
+        for i in (0..length).rev() {
+            instrs.push(rv_lbu(X13, X11, i as i32));
+            instrs.push(rv_sb(X13, X10, i as i32));
+        }
+        instrs.push(rv_ret());
+
+        // Forward byte copy (dst < src)
+        let forward_start = instrs.len();
+        for i in 0..length {
+            instrs.push(rv_lbu(X13, X11, i as i32));
+            instrs.push(rv_sb(X13, X10, i as i32));
+        }
+        instrs.push(rv_ret());
+
+        instrs[bltu_fwd_idx] =
+            rv_bltu(X10, X11, ((forward_start - bltu_fwd_idx) as i32) * 4);
+        return instrs;
+    }
+
+    let mut instrs = Vec::new();
+
+    // Direction check: if dst < src, jump to forward copy
+    let bltu_fwd_idx = instrs.len();
+    instrs.push(0); // placeholder BLTU
+
+    // Backward path (dst >= src)
+    instrs.extend(rv_generate_alignment_dispatched_copy(length, true));
+
+    // Forward path (dst < src)
+    let forward_start = instrs.len();
+    instrs.extend(rv_generate_alignment_dispatched_copy(length, false));
+
+    instrs[bltu_fwd_idx] =
+        rv_bltu(X10, X11, ((forward_start - bltu_fwd_idx) as i32) * 4);
 
     instrs
 }
@@ -336,79 +438,56 @@ fn rv_encode_call(from_addr: u32, to_addr: u32, rd: u32) -> (u32, u32) {
     (auipc, jalr)
 }
 
-/// Optimize an ELF by replacing memcpy calls with constant-length arguments
-/// with specialized unrolled routines. Modifies `elf.instructions` in place.
-/// `pc_base` is the byte address of the first instruction (lowest executable segment vaddr).
-pub fn optimize_elf(elf: &mut Elf, symbols: &SymbolTable, pc_base: u32) {
-    // Find memcpy function address
-    let memcpy_entry = symbols
-        .table()
-        .iter()
-        .find(|(_, names): &(&u32, &Vec<String>)| names.iter().any(|n| n.contains("memcpy")));
-
-    let Some((&memcpy_addr, names)) = memcpy_entry else {
-        println!("memcpy_optimizer: no memcpy symbol found");
-        return;
-    };
-    let names_str = names.join(", ");
-    println!(
-        "memcpy_optimizer: memcpy at addr 0x{:x} ({})",
-        memcpy_addr, names_str
-    );
-
-    let instructions = &elf.instructions;
-
-    // Scan for AUIPC+JALR pairs targeting memcpy with constant a2
-    let mut calls_by_length: BTreeMap<u32, Vec<usize>> = BTreeMap::new(); // length -> [auipc_index]
-
+/// Scan for call sites to `target_addr` with constant a2, returning a map from length to call-site indices.
+fn scan_call_sites(
+    instructions: &[u32],
+    pc_base: u32,
+    target_addr: u32,
+) -> BTreeMap<u32, Vec<usize>> {
+    let mut calls_by_length: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
     for i in 0..instructions.len().saturating_sub(1) {
         let insn0 = instructions[i];
         let insn1 = instructions[i + 1];
         if !is_auipc(insn0) || !is_jalr(insn1) {
             continue;
         }
-        // Check JALR uses AUIPC's rd and writes to ra (x1)
         let auipc_rd = rv_rd(insn0);
         if rv_rs1(insn1) != auipc_rd || rv_rd(insn1) != X1 {
             continue;
         }
         let auipc_addr = pc_base + (i as u32) * 4;
         let target = rv_auipc_jalr_target(insn0, insn1, auipc_addr);
-        if target != memcpy_addr {
+        if target != target_addr {
             continue;
         }
-        // Found a call to memcpy — check for constant a2
         if let Some(length) = rv_resolve_a2_constant(instructions, i) {
             if length <= MAX_MEMCPY_LENGTH {
                 calls_by_length.entry(length).or_default().push(i);
             }
         }
     }
+    calls_by_length
+}
 
-    if calls_by_length.is_empty() {
-        println!("memcpy_optimizer: no eligible memcpy calls found");
-        return;
-    }
-
-    println!(
-        "memcpy_optimizer: call sites by length: {:?}",
-        calls_by_length
-            .iter()
-            .map(|(len, sites)| (*len, sites.len()))
-            .collect::<Vec<_>>()
-    );
-
-    // Generate specialized routines and append to instructions
-    let mut routine_addrs: BTreeMap<u32, u32> = BTreeMap::new(); // length -> start addr
+/// Generate specialized routines, append to ELF, and patch call sites.
+fn generate_and_patch(
+    elf: &mut Elf,
+    pc_base: u32,
+    calls_by_length: &BTreeMap<u32, Vec<usize>>,
+    generate_routine: fn(u32) -> Vec<u32>,
+    label: &str,
+) {
+    let mut routine_addrs: BTreeMap<u32, u32> = BTreeMap::new();
     let original_len = elf.instructions.len();
 
     for &length in calls_by_length.keys() {
-        let routine = rv_generate_specialized_memcpy(length);
+        let routine = generate_routine(length);
         let routine_start_idx = elf.instructions.len();
         let routine_start_addr = pc_base + (routine_start_idx as u32) * 4;
 
         println!(
-            "memcpy_optimizer: length={} at addr 0x{:x} ({} instructions)",
+            "{}: length={} at addr 0x{:x} ({} instructions)",
+            label,
             length,
             routine_start_addr,
             routine.len()
@@ -418,18 +497,13 @@ pub fn optimize_elf(elf: &mut Elf, symbols: &SymbolTable, pc_base: u32) {
         routine_addrs.insert(length, routine_start_addr);
     }
 
-    // Patch call sites
-    for (&length, auipc_indices) in &calls_by_length {
-        // if length == 32 || length == 64 {
-        //     continue;
-        // }
+    for (&length, auipc_indices) in calls_by_length {
         let target_addr = routine_addrs[&length];
         for &auipc_idx in auipc_indices {
             let auipc_addr = pc_base + (auipc_idx as u32) * 4;
             let rd = rv_rd(elf.instructions[auipc_idx]);
             let (new_auipc, new_jalr) = rv_encode_call(auipc_addr, target_addr, rd);
 
-            // Verify before patching
             let verify_target = rv_auipc_jalr_target(new_auipc, new_jalr, auipc_addr);
             assert_eq!(
                 verify_target, target_addr,
@@ -443,12 +517,85 @@ pub fn optimize_elf(elf: &mut Elf, symbols: &SymbolTable, pc_base: u32) {
     }
 
     println!(
-        "memcpy_optimizer: patched {} call sites across {} lengths, {} -> {} instructions",
+        "{}: patched {} call sites across {} lengths, {} -> {} instructions",
+        label,
         calls_by_length.values().map(|v| v.len()).sum::<usize>(),
         calls_by_length.len(),
         original_len,
         elf.instructions.len()
     );
+}
+
+/// Find a symbol address by substring match. Returns (address, joined name string).
+fn find_symbol(symbols: &SymbolTable, needle: &str) -> Option<(u32, String)> {
+    symbols
+        .table()
+        .iter()
+        .find(|(_, names): &(&u32, &Vec<String>)| names.iter().any(|n| n.contains(needle)))
+        .map(|(&addr, names)| (addr, names.join(", ")))
+}
+
+/// Optimize an ELF by replacing memcpy/memmove calls with constant-length arguments
+/// with specialized unrolled routines. Modifies `elf.instructions` in place.
+/// `pc_base` is the byte address of the first instruction (lowest executable segment vaddr).
+pub fn optimize_elf(elf: &mut Elf, symbols: &SymbolTable, pc_base: u32) {
+    // Process memcpy
+    if let Some((memcpy_addr, names_str)) = find_symbol(symbols, "memcpy") {
+        println!(
+            "memcpy_optimizer: memcpy at addr 0x{:x} ({})",
+            memcpy_addr, names_str
+        );
+        let calls = scan_call_sites(&elf.instructions, pc_base, memcpy_addr);
+        if calls.is_empty() {
+            println!("memcpy_optimizer: no eligible memcpy calls found");
+        } else {
+            println!(
+                "memcpy_optimizer: memcpy call sites by length: {:?}",
+                calls
+                    .iter()
+                    .map(|(len, sites)| (*len, sites.len()))
+                    .collect::<Vec<_>>()
+            );
+            generate_and_patch(
+                elf,
+                pc_base,
+                &calls,
+                rv_generate_specialized_memcpy,
+                "memcpy_optimizer",
+            );
+        }
+    } else {
+        println!("memcpy_optimizer: no memcpy symbol found");
+    }
+
+    // Process memmove
+    if let Some((memmove_addr, names_str)) = find_symbol(symbols, "memmove") {
+        println!(
+            "memcpy_optimizer: memmove at addr 0x{:x} ({})",
+            memmove_addr, names_str
+        );
+        let calls = scan_call_sites(&elf.instructions, pc_base, memmove_addr);
+        if calls.is_empty() {
+            println!("memcpy_optimizer: no eligible memmove calls found");
+        } else {
+            println!(
+                "memcpy_optimizer: memmove call sites by length: {:?}",
+                calls
+                    .iter()
+                    .map(|(len, sites)| (*len, sites.len()))
+                    .collect::<Vec<_>>()
+            );
+            generate_and_patch(
+                elf,
+                pc_base,
+                &calls,
+                rv_generate_specialized_memmove,
+                "memmove_optimizer",
+            );
+        }
+    } else {
+        println!("memcpy_optimizer: no memmove symbol found");
+    }
 }
 
 #[cfg(test)]
@@ -596,6 +743,8 @@ mod tests {
                         let take = match funct3 {
                             0b000 => rs1_val == rs2_val, // BEQ
                             0b001 => rs1_val != rs2_val, // BNE
+                            0b110 => rs1_val < rs2_val,  // BLTU
+                            0b111 => rs1_val >= rs2_val, // BGEU
                             _ => panic!("Unknown branch funct3: {}", funct3),
                         };
                         if take {
@@ -710,6 +859,121 @@ mod tests {
                 "Encoding roundtrip failed: from=0x{:x}, to=0x{:x}, got=0x{:x}",
                 from, to, decoded
             );
+        }
+    }
+
+    #[test]
+    fn test_specialized_memmove_non_overlapping() {
+        // Test memmove with non-overlapping regions (should behave like memcpy)
+        let lengths: Vec<u32> = vec![0, 1, 2, 3, 4, 5, 7, 8, 12, 15, 16, 31, 32, 48, 63, 64, 128];
+
+        for &length in &lengths {
+            let routine = rv_generate_specialized_memmove(length);
+
+            for src_align in 0..4u32 {
+                for dst_align in 0..4u32 {
+                    // dst < src (forward path)
+                    {
+                        let src_base = 768 + src_align;
+                        let dst_base = 256 + dst_align;
+
+                        let mut interp = RvInterpreter::new(1024);
+                        interp.mem.fill(0xAA);
+
+                        for i in 0..length {
+                            interp.mem[(src_base + i) as usize] =
+                                ((i.wrapping_mul(7).wrapping_add(13 + length)) & 0x7F) as u8;
+                        }
+
+                        interp.set_reg(X10, dst_base);
+                        interp.set_reg(X11, src_base);
+                        interp.run(&routine, 10_000);
+
+                        for i in 0..length {
+                            let expected = interp.mem[(src_base + i) as usize];
+                            let actual = interp.mem[(dst_base + i) as usize];
+                            assert_eq!(
+                                actual, expected,
+                                "Forward mismatch at byte {} for length={}, src_align={}, dst_align={}",
+                                i, length, src_align, dst_align
+                            );
+                        }
+                    }
+
+                    // dst > src (backward path)
+                    {
+                        let src_base = 256 + src_align;
+                        let dst_base = 768 + dst_align;
+
+                        let mut interp = RvInterpreter::new(1024);
+                        interp.mem.fill(0xAA);
+
+                        for i in 0..length {
+                            interp.mem[(src_base + i) as usize] =
+                                ((i.wrapping_mul(7).wrapping_add(13 + length)) & 0x7F) as u8;
+                        }
+
+                        interp.set_reg(X10, dst_base);
+                        interp.set_reg(X11, src_base);
+                        interp.run(&routine, 10_000);
+
+                        for i in 0..length {
+                            let expected = interp.mem[(src_base + i) as usize];
+                            let actual = interp.mem[(dst_base + i) as usize];
+                            assert_eq!(
+                                actual, expected,
+                                "Backward mismatch at byte {} for length={}, src_align={}, dst_align={}",
+                                i, length, src_align, dst_align
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_specialized_memmove_overlapping() {
+        // Test memmove with overlapping regions where dst > src
+        let lengths: Vec<u32> = vec![4, 5, 7, 8, 12, 15, 16, 31, 32, 48, 63, 64, 128];
+
+        for &length in &lengths {
+            let routine = rv_generate_specialized_memmove(length);
+
+            // Test various overlap amounts
+            for overlap in [1, 2, 3, 4, length / 2, length - 1] {
+                if overlap == 0 || overlap >= length {
+                    continue;
+                }
+                let src_base = 256u32;
+                let dst_base = src_base + (length - overlap);
+
+                // Prepare source data
+                let src_data: Vec<u8> = (0..length)
+                    .map(|i| ((i.wrapping_mul(7).wrapping_add(13 + length)) & 0xFF) as u8)
+                    .collect();
+
+                let mut interp = RvInterpreter::new(1024);
+                interp.mem.fill(0xAA);
+                for i in 0..length {
+                    interp.mem[(src_base + i) as usize] = src_data[i as usize];
+                }
+
+                interp.set_reg(X10, dst_base);
+                interp.set_reg(X11, src_base);
+                interp.run(&routine, 10_000);
+
+                // Verify: dst should contain the original src data
+                for i in 0..length {
+                    let expected = src_data[i as usize];
+                    let actual = interp.mem[(dst_base + i) as usize];
+                    assert_eq!(
+                        actual, expected,
+                        "Overlap mismatch at byte {} for length={}, overlap={}",
+                        i, length, overlap
+                    );
+                }
+            }
         }
     }
 }
