@@ -39,11 +39,16 @@ pub fn parse_pc_base_data(data: &[u8]) -> u32 {
 // RISC-V register numbers
 const X0: u32 = 0;
 const X1: u32 = 1; // ra
-const X10: u32 = 10; // a0 (dst)
-const X11: u32 = 11; // a1 (src)
-const X12: u32 = 12; // a2 (temp)
+const X5: u32 = 5; // t0
+const X6: u32 = 6; // t1
+const X7: u32 = 7; // t2
+const X10: u32 = 10; // a0 (dst / ptr1)
+const X11: u32 = 11; // a1 (src / ptr2)
+const X12: u32 = 12; // a2 (length)
 const X13: u32 = 13; // a3 (temp)
 const X14: u32 = 14; // a4 (temp)
+const X28: u32 = 28; // t3
+const X29: u32 = 29; // t4
 
 // RISC-V instruction encoding helpers
 
@@ -62,6 +67,26 @@ fn rv_andi(rd: u32, rs1: u32, imm: i32) -> u32 {
 /// Encode OR rd, rs1, rs2 (R-type)
 fn rv_or(rd: u32, rs1: u32, rs2: u32) -> u32 {
     (rs2 << 20) | (rs1 << 15) | (0b110 << 12) | (rd << 7) | 0x33
+}
+
+/// Encode SUB rd, rs1, rs2 (R-type)
+fn rv_sub(rd: u32, rs1: u32, rs2: u32) -> u32 {
+    (0b0100000 << 25) | (rs2 << 20) | (rs1 << 15) | (0b000 << 12) | (rd << 7) | 0x33
+}
+
+/// Encode SRLI rd, rs1, shamt (I-type shift)
+fn rv_srli(rd: u32, rs1: u32, shamt: u32) -> u32 {
+    ((shamt & 0x1F) << 20) | (rs1 << 15) | (0b101 << 12) | (rd << 7) | 0x13
+}
+
+/// Encode JAL rd, offset (J-type, offset in bytes)
+fn rv_jal(rd: u32, offset: i32) -> u32 {
+    let imm = offset as u32;
+    let bit_20 = (imm >> 20) & 1;
+    let bits_10_1 = (imm >> 1) & 0x3FF;
+    let bit_11 = (imm >> 11) & 1;
+    let bits_19_12 = (imm >> 12) & 0xFF;
+    (bit_20 << 31) | (bits_10_1 << 21) | (bit_11 << 20) | (bits_19_12 << 12) | (rd << 7) | 0x6F
 }
 
 /// Encode LW rd, imm(rs1) (I-type)
@@ -530,6 +555,333 @@ fn rv_generate_specialized_memmove(length: u32) -> Vec<u32> {
     instrs
 }
 
+// ---- memcmp optimization ----
+
+/// Generate the "word_diff" epilogue: given two differing words in X5(t0) and
+/// X6(t1), find the first differing byte (little-endian) and return
+/// a0 = (byte_from_ptr1 - byte_from_ptr2) as the memcmp result.
+/// Uses X7(t2) and X28(t3) as temporaries.
+fn rv_generate_word_diff_epilogue() -> Vec<u32> {
+    let mut instrs = Vec::new();
+    // byte 0 (bits [7:0])
+    instrs.push(rv_andi(X7, X5, 0xFF));
+    instrs.push(rv_andi(X28, X6, 0xFF));
+    let bne0_idx = instrs.len();
+    instrs.push(0); // placeholder BNE → diff_done
+    // byte 1 (bits [15:8])
+    instrs.push(rv_srli(X7, X5, 8));
+    instrs.push(rv_andi(X7, X7, 0xFF));
+    instrs.push(rv_srli(X28, X6, 8));
+    instrs.push(rv_andi(X28, X28, 0xFF));
+    let bne1_idx = instrs.len();
+    instrs.push(0); // placeholder BNE → diff_done
+    // byte 2 (bits [23:16])
+    instrs.push(rv_srli(X7, X5, 16));
+    instrs.push(rv_andi(X7, X7, 0xFF));
+    instrs.push(rv_srli(X28, X6, 16));
+    instrs.push(rv_andi(X28, X28, 0xFF));
+    let bne2_idx = instrs.len();
+    instrs.push(0); // placeholder BNE → diff_done
+    // byte 3 — must be the differing one
+    instrs.push(rv_srli(X7, X5, 24));
+    instrs.push(rv_srli(X28, X6, 24));
+    // diff_done: a0 = t2 - t3
+    let diff_done_idx = instrs.len();
+    instrs.push(rv_sub(X10, X7, X28));
+    instrs.push(rv_ret());
+    // patch BNEs
+    instrs[bne0_idx] =
+        rv_bne(X7, X28, ((diff_done_idx as i32) - (bne0_idx as i32)) * 4);
+    instrs[bne1_idx] =
+        rv_bne(X7, X28, ((diff_done_idx as i32) - (bne1_idx as i32)) * 4);
+    instrs[bne2_idx] =
+        rv_bne(X7, X28, ((diff_done_idx as i32) - (bne2_idx as i32)) * 4);
+    instrs
+}
+
+/// Generate a specialized memcmp for a known constant length.
+/// a0 = ptr1, a1 = ptr2, a2 = length (already set by caller, not used).
+/// Returns a0 = comparison result (<0, 0, >0).
+fn rv_generate_specialized_memcmp(length: u32) -> Vec<u32> {
+    if length == 0 {
+        // return 0
+        return vec![rv_addi(X10, X0, 0), rv_ret()];
+    }
+
+    if length < 4 {
+        // Pure byte-by-byte: short enough that word tricks don't help.
+        let mut instrs = Vec::new();
+        for i in 0..length {
+            instrs.push(rv_lbu(X5, X10, i as i32)); // t0 = ptr1[i]
+            instrs.push(rv_lbu(X6, X11, i as i32)); // t1 = ptr2[i]
+            let bne_idx = instrs.len();
+            instrs.push(0); // placeholder BNE → diff
+            // continue to next byte (fall through)
+            // We'll patch to jump forward to a shared diff return
+            // but we need to know where diff_done is first.
+            // Actually, for simplicity, push a diff sequence per pair.
+            // Let's instead collect bne indices and patch later.
+            let _ = bne_idx; // handled below
+        }
+        // equal: return 0
+        let equal_idx = instrs.len();
+        instrs.push(rv_addi(X10, X0, 0));
+        instrs.push(rv_ret());
+        // byte_diff: return t0 - t1
+        let byte_diff_idx = instrs.len();
+        instrs.push(rv_sub(X10, X5, X6));
+        instrs.push(rv_ret());
+
+        // Patch BNE placeholders (every third instruction starting at index 2)
+        for i in 0..length {
+            let bne_idx = (i * 3 + 2) as usize;
+            instrs[bne_idx] =
+                rv_bne(X5, X6, ((byte_diff_idx as i32) - (bne_idx as i32)) * 4);
+        }
+        // The equal path is reached by falling through all BNEs — it's already
+        // right after the last byte pair at equal_idx, but the last iteration
+        // falls through into equal_idx. Let's verify: last byte pair ends at
+        // index (length-1)*3 + 2 + 1 = length*3, and equal_idx = length*3. ✓
+        let _ = equal_idx;
+        return instrs;
+    }
+
+    // length >= 4: alignment-dispatched word compare
+    let num_words = length / 4;
+    let tail = length % 4;
+
+    let mut instrs = Vec::new();
+
+    // Check alignment: (a0 | a1) & 3
+    instrs.push(rv_or(X5, X10, X11));       // t0 = ptr1 | ptr2
+    instrs.push(rv_andi(X5, X5, 3));        // t0 = (ptr1 | ptr2) & 3
+    let bne_to_byte_idx = instrs.len();
+    instrs.push(0); // placeholder BNE t0, x0 → byte_loop
+
+    // ---- Word-aligned path ----
+    // Compare words at known offsets. On mismatch, jump to word_diff epilogue.
+    let word_diff_jump_indices: Vec<usize> = (0..num_words)
+        .map(|w| {
+            let off = (w * 4) as i32;
+            instrs.push(rv_lw(X5, X10, off));   // t0 = *(ptr1 + off)
+            instrs.push(rv_lw(X6, X11, off));   // t1 = *(ptr2 + off)
+            let idx = instrs.len();
+            instrs.push(0); // placeholder BNE → word_diff
+            idx
+        })
+        .collect();
+
+    // Tail bytes (after words)
+    let tail_bne_indices: Vec<usize> = (0..tail)
+        .map(|i| {
+            let off = (num_words * 4 + i) as i32;
+            instrs.push(rv_lbu(X5, X10, off)); // t0 = ptr1[off]
+            instrs.push(rv_lbu(X6, X11, off)); // t1 = ptr2[off]
+            let idx = instrs.len();
+            instrs.push(0); // placeholder BNE → byte_diff
+            idx
+        })
+        .collect();
+
+    // Equal: return 0
+    instrs.push(rv_addi(X10, X0, 0));
+    instrs.push(rv_ret());
+
+    // word_diff epilogue: t0 and t1 have differing words
+    let word_diff_idx = instrs.len();
+    instrs.extend(rv_generate_word_diff_epilogue());
+
+    // byte_diff: return t0 - t1 (for tail bytes)
+    let byte_diff_idx = instrs.len();
+    instrs.push(rv_sub(X10, X5, X6));
+    instrs.push(rv_ret());
+
+    // ---- Byte-by-byte fallback (unaligned) ----
+    // Use a loop with a2 as counter (already = length from caller).
+    let byte_loop_idx = instrs.len();
+    // if a2 == 0, equal
+    let beq_done_idx = instrs.len();
+    instrs.push(0); // placeholder BEQ a2, x0 → equal_unaligned
+    instrs.push(rv_lbu(X5, X10, 0));  // t0 = *ptr1
+    instrs.push(rv_lbu(X6, X11, 0));  // t1 = *ptr2
+    let bne_loop_diff_idx = instrs.len();
+    instrs.push(0); // placeholder BNE → byte_diff_unaligned
+    instrs.push(rv_addi(X10, X10, 1));  // ptr1++
+    instrs.push(rv_addi(X11, X11, 1));  // ptr2++
+    instrs.push(rv_addi(X12, X12, -1)); // a2--
+    let j_loop_idx = instrs.len();
+    instrs.push(0); // placeholder J → byte_loop
+    // equal_unaligned: return 0
+    let equal_unaligned_idx = instrs.len();
+    instrs.push(rv_addi(X10, X0, 0));
+    instrs.push(rv_ret());
+    // byte_diff_unaligned: return t0 - t1
+    let byte_diff_unaligned_idx = instrs.len();
+    instrs.push(rv_sub(X10, X5, X6));
+    instrs.push(rv_ret());
+
+    // ---- Patch all branch placeholders ----
+    instrs[bne_to_byte_idx] =
+        rv_bne(X5, X0, ((byte_loop_idx as i32) - (bne_to_byte_idx as i32)) * 4);
+    for &idx in &word_diff_jump_indices {
+        instrs[idx] =
+            rv_bne(X5, X6, ((word_diff_idx as i32) - (idx as i32)) * 4);
+    }
+    for &idx in &tail_bne_indices {
+        instrs[idx] =
+            rv_bne(X5, X6, ((byte_diff_idx as i32) - (idx as i32)) * 4);
+    }
+    instrs[beq_done_idx] =
+        rv_beq(X12, X0, ((equal_unaligned_idx as i32) - (beq_done_idx as i32)) * 4);
+    instrs[bne_loop_diff_idx] =
+        rv_bne(X5, X6, ((byte_diff_unaligned_idx as i32) - (bne_loop_diff_idx as i32)) * 4);
+    instrs[j_loop_idx] =
+        rv_jal(X0, ((byte_loop_idx as i32) - (j_loop_idx as i32)) * 4);
+
+    instrs
+}
+
+/// Generate a generic optimized memcmp (loop-based, word-aligned when possible).
+/// Used for call sites where the length is not a compile-time constant.
+/// a0 = ptr1, a1 = ptr2, a2 = length.
+/// Returns a0 = comparison result.
+fn rv_generate_optimized_memcmp_loop() -> Vec<u32> {
+    let mut instrs = Vec::new();
+
+    // If length == 0, return 0
+    let beq_zero_idx = instrs.len();
+    instrs.push(0); // placeholder BEQ a2, x0 → return_zero
+
+    // Check alignment: (a0 | a1) & 3
+    instrs.push(rv_or(X5, X10, X11));  // t0 = ptr1 | ptr2
+    instrs.push(rv_andi(X5, X5, 3));   // t0 &= 3
+    let bne_unaligned_idx = instrs.len();
+    instrs.push(0); // placeholder BNE t0, x0 → byte_loop
+
+    // ---- Word-aligned path ----
+    // X13 = number of full words (a2 >> 2)
+    instrs.push(rv_srli(X13, X12, 2));
+    // X14 = tail bytes (a2 & 3)
+    instrs.push(rv_andi(X14, X12, 3));
+
+    // word_loop:
+    let word_loop_idx = instrs.len();
+    let beq_word_done_idx = instrs.len();
+    instrs.push(0); // placeholder BEQ X13, x0 → tail_loop
+    instrs.push(rv_lw(X5, X10, 0));   // t0 = *ptr1
+    instrs.push(rv_lw(X6, X11, 0));   // t1 = *ptr2
+    let bne_word_diff_idx = instrs.len();
+    instrs.push(0); // placeholder BNE → word_diff
+    instrs.push(rv_addi(X10, X10, 4));  // ptr1 += 4
+    instrs.push(rv_addi(X11, X11, 4));  // ptr2 += 4
+    instrs.push(rv_addi(X13, X13, -1)); // word_count--
+    let j_word_loop_idx = instrs.len();
+    instrs.push(0); // placeholder J → word_loop
+
+    // tail_loop: compare remaining X14 bytes
+    let tail_loop_idx = instrs.len();
+    let beq_tail_done_idx = instrs.len();
+    instrs.push(0); // placeholder BEQ X14, x0 → return_zero
+    instrs.push(rv_lbu(X5, X10, 0));
+    instrs.push(rv_lbu(X6, X11, 0));
+    let bne_tail_diff_idx = instrs.len();
+    instrs.push(0); // placeholder BNE → byte_diff
+    instrs.push(rv_addi(X10, X10, 1));
+    instrs.push(rv_addi(X11, X11, 1));
+    instrs.push(rv_addi(X14, X14, -1));
+    let j_tail_loop_idx = instrs.len();
+    instrs.push(0); // placeholder J → tail_loop
+
+    // return_zero:
+    let return_zero_idx = instrs.len();
+    instrs.push(rv_addi(X10, X0, 0));
+    instrs.push(rv_ret());
+
+    // word_diff: extract first differing byte from t0, t1
+    let word_diff_idx = instrs.len();
+    instrs.extend(rv_generate_word_diff_epilogue());
+
+    // byte_diff: return t0 - t1
+    let byte_diff_idx = instrs.len();
+    instrs.push(rv_sub(X10, X5, X6));
+    instrs.push(rv_ret());
+
+    // ---- Unaligned byte-by-byte fallback loop ----
+    // Uses a2 as counter directly.
+    let byte_loop_idx = instrs.len();
+    let beq_byte_done_idx = instrs.len();
+    instrs.push(0); // placeholder BEQ a2, x0 → return_zero
+    instrs.push(rv_lbu(X5, X10, 0));
+    instrs.push(rv_lbu(X6, X11, 0));
+    let bne_byte_diff_idx = instrs.len();
+    instrs.push(0); // placeholder BNE → byte_diff
+    instrs.push(rv_addi(X10, X10, 1));
+    instrs.push(rv_addi(X11, X11, 1));
+    instrs.push(rv_addi(X12, X12, -1));
+    let j_byte_loop_idx = instrs.len();
+    instrs.push(0); // placeholder J → byte_loop
+
+    // ---- Patch all branches ----
+    instrs[beq_zero_idx] =
+        rv_beq(X12, X0, ((return_zero_idx as i32) - (beq_zero_idx as i32)) * 4);
+    instrs[bne_unaligned_idx] =
+        rv_bne(X5, X0, ((byte_loop_idx as i32) - (bne_unaligned_idx as i32)) * 4);
+    instrs[beq_word_done_idx] =
+        rv_beq(X13, X0, ((tail_loop_idx as i32) - (beq_word_done_idx as i32)) * 4);
+    instrs[bne_word_diff_idx] =
+        rv_bne(X5, X6, ((word_diff_idx as i32) - (bne_word_diff_idx as i32)) * 4);
+    instrs[j_word_loop_idx] =
+        rv_jal(X0, ((word_loop_idx as i32) - (j_word_loop_idx as i32)) * 4);
+    instrs[beq_tail_done_idx] =
+        rv_beq(X14, X0, ((return_zero_idx as i32) - (beq_tail_done_idx as i32)) * 4);
+    instrs[bne_tail_diff_idx] =
+        rv_bne(X5, X6, ((byte_diff_idx as i32) - (bne_tail_diff_idx as i32)) * 4);
+    instrs[j_tail_loop_idx] =
+        rv_jal(X0, ((tail_loop_idx as i32) - (j_tail_loop_idx as i32)) * 4);
+    instrs[beq_byte_done_idx] =
+        rv_beq(X12, X0, ((return_zero_idx as i32) - (beq_byte_done_idx as i32)) * 4);
+    instrs[bne_byte_diff_idx] =
+        rv_bne(X5, X6, ((byte_diff_idx as i32) - (bne_byte_diff_idx as i32)) * 4);
+    instrs[j_byte_loop_idx] =
+        rv_jal(X0, ((byte_loop_idx as i32) - (j_byte_loop_idx as i32)) * 4);
+
+    instrs
+}
+
+/// Scan ALL call sites to `target_addr`, partitioned into constant-length
+/// (within MAX_MEMCPY_LENGTH) and dynamic-length groups.
+/// Returns (constant_calls: BTreeMap<length, Vec<index>>, dynamic_calls: Vec<index>).
+fn scan_all_call_sites(
+    instructions: &[u32],
+    pc_base: u32,
+    target_addr: u32,
+) -> (BTreeMap<u32, Vec<usize>>, Vec<usize>) {
+    let mut by_length: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
+    let mut dynamic: Vec<usize> = Vec::new();
+
+    for i in 0..instructions.len().saturating_sub(1) {
+        let insn0 = instructions[i];
+        let insn1 = instructions[i + 1];
+        if !is_auipc(insn0) || !is_jalr(insn1) {
+            continue;
+        }
+        let auipc_rd = rv_rd(insn0);
+        if rv_rs1(insn1) != auipc_rd || rv_rd(insn1) != X1 {
+            continue;
+        }
+        let auipc_addr = pc_base + (i as u32) * 4;
+        let target = rv_auipc_jalr_target(insn0, insn1, auipc_addr);
+        if target != target_addr {
+            continue;
+        }
+        match rv_resolve_reg_constant(instructions, i, X12, Some(MAX_MEMCPY_LENGTH)) {
+            Some(length) => by_length.entry(length).or_default().push(i),
+            None => dynamic.push(i),
+        }
+    }
+    (by_length, dynamic)
+}
+
 /// Encode AUIPC+JALR pair for a call from `from_addr` to `to_addr`.
 /// Returns (auipc_insn, jalr_insn) using register `rd` as the intermediate.
 fn rv_encode_call(from_addr: u32, to_addr: u32, rd: u32) -> (u32, u32) {
@@ -704,12 +1056,65 @@ pub fn optimize_elf(elf: &mut Elf, symbols: &SymbolTable, pc_base: u32) {
         println!("memcpy_optimizer: no memmove symbol found");
     }
 
-    // Analyze memcmp call sites (report only, no patching)
+    // Analyze and patch memcmp call sites
     if let Some((memcmp_addr, names_str)) = find_symbol(symbols, "memcmp") {
         println!(
             "memcpy_optimizer: memcmp at addr 0x{memcmp_addr:x} ({names_str})"
         );
         analyze_a2_constants(&elf.instructions, pc_base, memcmp_addr, "memcmp");
+
+        let (const_calls, dyn_calls) =
+            scan_all_call_sites(&elf.instructions, pc_base, memcmp_addr);
+
+        // Patch constant-length call sites with specialized unrolled memcmp
+        if !const_calls.is_empty() {
+            println!(
+                "memcpy_optimizer: memcmp constant-length call sites: {:?}",
+                const_calls
+                    .iter()
+                    .map(|(len, sites)| (*len, sites.len()))
+                    .collect::<Vec<_>>()
+            );
+            generate_and_patch(
+                elf,
+                pc_base,
+                &const_calls,
+                rv_generate_specialized_memcmp,
+                "memcmp_optimizer",
+            );
+        }
+
+        // Patch dynamic-length call sites with generic loop-based word memcmp
+        if !dyn_calls.is_empty() {
+            let routine = rv_generate_optimized_memcmp_loop();
+            let routine_addr = pc_base + (elf.instructions.len() as u32) * 4;
+            println!(
+                "memcmp_optimizer: generic loop at 0x{routine_addr:x} ({} insns), \
+                 patching {} dynamic call sites",
+                routine.len(),
+                dyn_calls.len(),
+            );
+            elf.instructions.extend(routine);
+
+            for &auipc_idx in &dyn_calls {
+                let auipc_addr = pc_base + (auipc_idx as u32) * 4;
+                let rd = rv_rd(elf.instructions[auipc_idx]);
+                let (new_auipc, new_jalr) = rv_encode_call(auipc_addr, routine_addr, rd);
+
+                let verify = rv_auipc_jalr_target(new_auipc, new_jalr, auipc_addr);
+                assert_eq!(
+                    verify, routine_addr,
+                    "AUIPC+JALR encoding mismatch at 0x{auipc_addr:x}"
+                );
+
+                elf.instructions[auipc_idx] = new_auipc;
+                elf.instructions[auipc_idx + 1] = new_jalr;
+            }
+        }
+
+        if const_calls.is_empty() && dyn_calls.is_empty() {
+            println!("memcpy_optimizer: no memcmp call sites found");
+        }
     }
 }
 
@@ -774,14 +1179,15 @@ mod tests {
 
                 match opcode {
                     0x13 => {
-                        // I-type ALU: ADDI, ANDI, ORI, etc.
+                        // I-type ALU: ADDI, ANDI, ORI, SRLI, etc.
                         let imm = rv_imm_i(insn);
                         let rs1_val = self.reg(rs1);
                         let result = match funct3 {
                             0b000 => rs1_val.wrapping_add(imm as u32), // ADDI
+                            0b101 => rs1_val >> ((imm as u32) & 0x1F), // SRLI (funct7=0)
                             0b111 => rs1_val & (imm as u32),           // ANDI
                             0b110 => rs1_val | (imm as u32),           // ORI
-                            _ => panic!("Unknown I-type ALU funct3: {}", funct3),
+                            _ => panic!("Unknown I-type ALU funct3: {funct3}"),
                         };
                         self.set_reg(rd, result);
                         self.pc += 4;
@@ -789,13 +1195,15 @@ mod tests {
                     0x33 => {
                         // R-type ALU
                         let rs2 = (insn >> 20) & 0x1F;
+                        let funct7 = insn >> 25;
                         let rs1_val = self.reg(rs1);
                         let rs2_val = self.reg(rs2);
-                        let result = match funct3 {
-                            0b000 => rs1_val.wrapping_add(rs2_val), // ADD
-                            0b110 => rs1_val | rs2_val,             // OR
-                            0b111 => rs1_val & rs2_val,             // AND
-                            _ => panic!("Unknown R-type funct3: {}", funct3),
+                        let result = match (funct3, funct7) {
+                            (0b000, 0b0000000) => rs1_val.wrapping_add(rs2_val), // ADD
+                            (0b000, 0b0100000) => rs1_val.wrapping_sub(rs2_val), // SUB
+                            (0b110, _) => rs1_val | rs2_val,                     // OR
+                            (0b111, _) => rs1_val & rs2_val,                     // AND
+                            _ => panic!("Unknown R-type funct3={funct3} funct7={funct7}"),
                         };
                         self.set_reg(rd, result);
                         self.pc += 4;
@@ -892,6 +1300,25 @@ mod tests {
                         let target = (self.reg(rs1).wrapping_add(imm as u32)) & !1;
                         self.set_reg(rd, self.pc + 4);
                         self.pc = target;
+                    }
+                    0x6F => {
+                        // JAL rd, offset (J-type)
+                        let bits_19_12 = (insn >> 12) & 0xFF;
+                        let bit_11 = (insn >> 20) & 1;
+                        let bits_10_1 = (insn >> 21) & 0x3FF;
+                        let bit_20 = (insn >> 31) & 1;
+                        let offset = (bit_20 << 20)
+                            | (bits_19_12 << 12)
+                            | (bit_11 << 11)
+                            | (bits_10_1 << 1);
+                        // Sign-extend from 21 bits
+                        let offset = if bit_20 != 0 {
+                            offset | !0x1FFFFF
+                        } else {
+                            offset
+                        };
+                        self.set_reg(rd, self.pc + 4);
+                        self.pc = self.pc.wrapping_add(offset);
                     }
                     _ => panic!("Unknown opcode: 0x{:02x} at pc=0x{:x}", opcode, self.pc),
                 }
@@ -1087,6 +1514,146 @@ mod tests {
                         "Overlap mismatch at byte {} for length={}, overlap={}",
                         i, length, overlap
                     );
+                }
+            }
+        }
+    }
+
+    /// Reference memcmp implementation for testing.
+    fn ref_memcmp(a: &[u8], b: &[u8]) -> i32 {
+        for (x, y) in a.iter().zip(b.iter()) {
+            if x != y {
+                return (*x as i32) - (*y as i32);
+            }
+        }
+        0
+    }
+
+    #[test]
+    fn test_specialized_memcmp_all_alignments() {
+        let lengths: Vec<u32> = vec![0, 1, 2, 3, 4, 5, 7, 8, 12, 15, 16, 31, 32, 48, 63, 64, 128];
+
+        for &length in &lengths {
+            eprintln!("=== Generating memcmp routine for length={length} ===");
+            let routine = rv_generate_specialized_memcmp(length);
+            eprintln!("  routine has {} instructions", routine.len());
+
+            for src_align in 0..4u32 {
+                for dst_align in 0..4u32 {
+                    // Test 1: equal buffers
+                    {
+                        let ptr1 = 256 + src_align;
+                        let ptr2 = 768 + dst_align;
+                        let mut interp = RvInterpreter::new(1024);
+                        for i in 0..length {
+                            let v = ((i.wrapping_mul(7).wrapping_add(13)) & 0xFF) as u8;
+                            interp.mem[(ptr1 + i) as usize] = v;
+                            interp.mem[(ptr2 + i) as usize] = v;
+                        }
+                        interp.set_reg(X10, ptr1);
+                        interp.set_reg(X11, ptr2);
+                        interp.set_reg(X12, length);
+                        interp.run(&routine, 50_000);
+                        let result = interp.reg(X10) as i32;
+                        assert_eq!(
+                            result, 0,
+                            "Expected equal (0) for length={length}, align=({src_align},{dst_align})"
+                        );
+                    }
+
+                    // Test 2: first buffer less than second (difference at various positions)
+                    if length > 0 {
+                        for diff_pos in [0, length / 2, length - 1] {
+                            let ptr1 = 256 + src_align;
+                            let ptr2 = 768 + dst_align;
+                            let mut interp = RvInterpreter::new(1024);
+                            for i in 0..length {
+                                let v = 0x42u8;
+                                interp.mem[(ptr1 + i) as usize] = v;
+                                interp.mem[(ptr2 + i) as usize] = v;
+                            }
+                            interp.mem[(ptr1 + diff_pos) as usize] = 0x10;
+                            interp.mem[(ptr2 + diff_pos) as usize] = 0x50;
+                            let a_buf: Vec<u8> = (0..length)
+                                .map(|i| interp.mem[(ptr1 + i) as usize])
+                                .collect();
+                            let b_buf: Vec<u8> = (0..length)
+                                .map(|i| interp.mem[(ptr2 + i) as usize])
+                                .collect();
+                            let expected = ref_memcmp(&a_buf, &b_buf);
+
+                            interp.set_reg(X10, ptr1);
+                            interp.set_reg(X11, ptr2);
+                            interp.set_reg(X12, length);
+                            interp.run(&routine, 50_000);
+                            let result = interp.reg(X10) as i32;
+                            assert!(
+                                (result < 0) == (expected < 0) && (result > 0) == (expected > 0),
+                                "Sign mismatch for length={length}, align=({src_align},{dst_align}), \
+                                 diff_pos={diff_pos}: got {result}, expected {expected}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_optimized_memcmp_loop() {
+        let routine = rv_generate_optimized_memcmp_loop();
+        eprintln!("Generic memcmp loop: {} instructions", routine.len());
+
+        let lengths: Vec<u32> = vec![0, 1, 2, 3, 4, 5, 7, 8, 12, 15, 16, 31, 32, 48, 63, 64, 128];
+
+        for &length in &lengths {
+            for src_align in 0..4u32 {
+                for dst_align in 0..4u32 {
+                    // Equal
+                    {
+                        let ptr1 = 256 + src_align;
+                        let ptr2 = 768 + dst_align;
+                        let mut interp = RvInterpreter::new(1024);
+                        for i in 0..length {
+                            let v = ((i.wrapping_mul(11).wrapping_add(7)) & 0xFF) as u8;
+                            interp.mem[(ptr1 + i) as usize] = v;
+                            interp.mem[(ptr2 + i) as usize] = v;
+                        }
+                        interp.set_reg(X10, ptr1);
+                        interp.set_reg(X11, ptr2);
+                        interp.set_reg(X12, length);
+                        interp.run(&routine, 50_000);
+                        assert_eq!(
+                            interp.reg(X10) as i32,
+                            0,
+                            "Expected equal for loop length={length}, align=({src_align},{dst_align})"
+                        );
+                    }
+
+                    // Difference at middle
+                    if length > 0 {
+                        let diff_pos = length / 2;
+                        let ptr1 = 256 + src_align;
+                        let ptr2 = 768 + dst_align;
+                        let mut interp = RvInterpreter::new(1024);
+                        for i in 0..length {
+                            interp.mem[(ptr1 + i) as usize] = 0x42;
+                            interp.mem[(ptr2 + i) as usize] = 0x42;
+                        }
+                        interp.mem[(ptr1 + diff_pos) as usize] = 0x80;
+                        interp.mem[(ptr2 + diff_pos) as usize] = 0x20;
+
+                        interp.set_reg(X10, ptr1);
+                        interp.set_reg(X11, ptr2);
+                        interp.set_reg(X12, length);
+                        interp.run(&routine, 50_000);
+                        let result = interp.reg(X10) as i32;
+                        assert!(
+                            result > 0,
+                            "Expected positive for loop length={length}, \
+                             align=({src_align},{dst_align}): got {result}"
+                        );
+                    }
                 }
             }
         }

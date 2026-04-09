@@ -860,9 +860,13 @@ function drawFlame() {{
   const W = canvas.width;
   const rowH = 22;
 
-  // Only draw frames that overlap the current view
-  const visible = flameData.filter(f => f.end >= viewStart && f.start <= viewEnd);
-  const maxDepth = visible.reduce((m, f) => Math.max(m, f.depth), 0);
+  // Collect visible frames with their original index for stable coloring
+  const visible = [];
+  for (let i = 0; i < flameData.length; i++) {{
+    const f = flameData[i];
+    if (f.end >= viewStart && f.start <= viewEnd) visible.push({{ f, i }});
+  }}
+  const maxDepth = visible.reduce((m, v) => Math.max(m, v.f.depth), 0);
   canvas.height = Math.max(60, (maxDepth + 2) * rowH);
 
   ctx.fillStyle = '#161b22';
@@ -871,12 +875,12 @@ function drawFlame() {{
   const colors = ['#238636','#1f6feb','#8957e5','#da3633','#d29922','#3fb950','#79c0ff','#f0883e'];
   const span = viewEnd - viewStart;
 
-  visible.forEach((f, i) => {{
+  for (const {{ f, i }} of visible) {{
     const x = ((f.start - viewStart) / span) * W;
     const w = Math.max(1, ((f.end - f.start + 1) / span) * W);
     const y = canvas.height - (f.depth + 1) * rowH;
-    if (x + w < 0 || x > W) return;
-    ctx.fillStyle = colors[flameData.indexOf(f) % colors.length];
+    if (x + w < 0 || x > W) continue;
+    ctx.fillStyle = colors[i % colors.length];
     ctx.fillRect(x, y, w, rowH - 1);
     if (w > 40) {{
       ctx.fillStyle = '#fff';
@@ -888,7 +892,7 @@ function drawFlame() {{
       ctx.fillText(f.name, Math.max(0, x) + 3, y + rowH - 5);
       ctx.restore();
     }}
-  }});
+  }}
   updateButtons();
 }}
 
@@ -963,7 +967,9 @@ canvas.addEventListener('wheel', e => {{
   let newEnd = newStart + newSpan;
   if (newEnd > totalTS) {{ newEnd = totalTS; newStart = Math.max(0, newEnd - newSpan); }}
   if (newStart !== viewStart || newEnd !== viewEnd) {{
-    zoomStack.push({{ start: viewStart, end: viewEnd }});
+    if (zoomStack.length === 0 || zoomStack.length < 200) {{
+      zoomStack.push({{ start: viewStart, end: viewEnd }});
+    }}
     viewStart = Math.floor(newStart);
     viewEnd = Math.ceil(newEnd);
     drawFlame();
