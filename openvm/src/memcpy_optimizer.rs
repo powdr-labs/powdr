@@ -3,6 +3,7 @@ use std::path::Path;
 
 use openvm_transpiler::elf::Elf;
 use powdr_riscv_elf::debug_info::SymbolTable;
+use rustc_demangle::demangle;
 
 const MAX_MEMCPY_LENGTH: u32 = 128;
 
@@ -985,12 +986,17 @@ fn generate_and_patch(
     );
 }
 
-/// Find a symbol address by substring match. Returns (address, joined name string).
+/// Find a symbol address by substring match on the demangled name.
+/// Returns (address, joined name string).
 fn find_symbol(symbols: &SymbolTable, needle: &str) -> Option<(u32, String)> {
     symbols
         .table()
         .iter()
-        .find(|(_, names): &(&u32, &Vec<String>)| names.iter().any(|n| n.contains(needle)))
+        .find(|(_, names): &(&u32, &Vec<String>)| {
+            names
+                .iter()
+                .any(|n| n.contains(needle) || format!("{:#}", demangle(n)).contains(needle))
+        })
         .map(|(&addr, names)| (addr, names.join(", ")))
 }
 

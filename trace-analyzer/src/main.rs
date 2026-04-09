@@ -655,6 +655,9 @@ pre {{ font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.82em;
                 "<span class=\"{class}\">  0x{pc:08x}:  {word:08x}  {hits:>8}  {}</span>\n",
                 html_escape(text),
             ));
+            if is_branch_or_jump(*word) {
+                html.push_str("\n");
+            }
         }
         html.push_str("</pre></div></div>\n");
     }
@@ -732,6 +735,9 @@ pre {{ font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.82em;
                     "<span class=\"{class}\">0x{pc:08x}  {word:08x}  {hits:>8}  {}</span>\n",
                     html_escape(text),
                 ));
+                if is_branch_or_jump(*word) {
+                    html.push_str("\n");
+                }
             }
             html.push_str("</pre></div>\n");
         }
@@ -875,12 +881,18 @@ function drawFlame() {{
   const colors = ['#238636','#1f6feb','#8957e5','#da3633','#d29922','#3fb950','#79c0ff','#f0883e'];
   const span = viewEnd - viewStart;
 
+  function nameHash(s) {{
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+    return (h < 0 ? -h : h) % colors.length;
+  }}
+
   for (const {{ f, i }} of visible) {{
     const x = ((f.start - viewStart) / span) * W;
     const w = Math.max(1, ((f.end - f.start + 1) / span) * W);
     const y = canvas.height - (f.depth + 1) * rowH;
     if (x + w < 0 || x > W) continue;
-    ctx.fillStyle = colors[i % colors.length];
+    ctx.fillStyle = colors[nameHash(f.name)];
     ctx.fillRect(x, y, w, rowH - 1);
     if (w > 40) {{
       ctx.fillStyle = '#fff';
