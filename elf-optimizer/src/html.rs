@@ -57,6 +57,25 @@ pub(crate) fn resolve_target(instructions: &[u32], idx: usize, pc_base: u32) -> 
             }
             None
         }
+        0x67 => {
+            // JALR — check if preceded by a matching AUIPC
+            if idx > 0 {
+                let prev = instructions[idx - 1];
+                if prev & 0x7f == 0x17 {
+                    let auipc_rd = (prev >> 7) & 0x1f;
+                    let jalr_rs1 = (insn >> 15) & 0x1f;
+                    if auipc_rd == jalr_rs1 {
+                        let prev_addr = pc_base + ((idx - 1) as u32) * 4;
+                        let upper = (prev & 0xfffff000) as i32;
+                        let lower = (insn as i32) >> 20;
+                        return Some(
+                            (prev_addr as i64 + upper as i64 + lower as i64) as u32,
+                        );
+                    }
+                }
+            }
+            None
+        }
         _ => None,
     }
 }
@@ -85,6 +104,48 @@ pub(crate) fn routine_end_idx(
         }
     }
     max_idx
+}
+
+/// Look up the best symbol name for a given address. Returns `None` for
+/// mapping symbols ($x, $d, etc.) or if there is no symbol at that address.
+fn symbol_name_at(symbols: &SymbolTable, addr: u32) -> Option<String> {
+    symbols.table().get(&addr).and_then(|names| {
+        names
+            .iter()
+            .find(|n| !(n.starts_with('$') && n.len() <= 2))
+            .map(|n| format!("{:#}", rustc_demangle::demangle(n)))
+    })
+}
+
+/// Format the link and optional symbol annotation for a resolved jump target.
+fn format_target_link(
+    escaped_asm: &str,
+    target: u32,
+    prefix: &str,
+    symbols: &SymbolTable,
+) -> String {
+    let ts = format!("0x{target:08x}");
+    let sym_annotation = symbol_name_at(symbols, target)
+        .map(|name| {
+            format!(
+                "  <a class=\"jt\" href=\"#{prefix}{target:08x}\">&lt;{}&gt;</a>",
+                html_escape(&name)
+            )
+        })
+        .unwrap_or_default();
+
+    if escaped_asm.contains(&ts) {
+        let linked = escaped_asm.replace(
+            &ts,
+            &format!("<a class=\"jt\" href=\"#{prefix}{target:08x}\">{ts}</a>"),
+        );
+        format!("{linked}{sym_annotation}")
+    } else if !sym_annotation.is_empty() {
+        // JALR without an explicit hex target in the asm text — just append annotation
+        format!("{escaped_asm}{sym_annotation}")
+    } else {
+        escaped_asm.to_string()
+    }
 }
 
 /// Disassemble a range of instructions into an HTML code block.
@@ -116,15 +177,7 @@ pub(crate) fn format_code_block(
 
         let target = resolve_target(instructions, i, pc_base);
         let with_links = if let Some(t) = target {
-            let ts = format!("0x{t:08x}");
-            if escaped.contains(&ts) {
-                escaped.replace(
-                    &ts,
-                    &format!("<a class=\"jt\" href=\"#{prefix}{t:08x}\">{ts}</a>"),
-                )
-            } else {
-                escaped
-            }
+            format_target_link(&escaped, t, prefix, symbols)
         } else {
             escaped
         };
@@ -172,15 +225,7 @@ fn format_code_block_diff(
 
         let target = resolve_target(this, i, pc_base);
         let with_links = if let Some(t) = target {
-            let ts = format!("0x{t:08x}");
-            if escaped.contains(&ts) {
-                escaped.replace(
-                    &ts,
-                    &format!("<a class=\"jt\" href=\"#{prefix}{t:08x}\">{ts}</a>"),
-                )
-            } else {
-                escaped
-            }
+            format_target_link(&escaped, t, prefix, symbols)
         } else {
             escaped
         };
@@ -396,10 +441,17 @@ a.jt{color:#58a6ff;text-decoration:none}a.jt:hover{text-decoration:underline}
 .fn-blk.open .fn-body{display:block}
 .diff-add{background:rgba(63,185,80,.15)}
 .diff-del{background:rgba(248,81,73,.15)}
-.diff-toolbar{display:flex;gap:8px;padding:8px 16px;background:#21262d;border-bottom:1px solid #30363d;align-items:center;flex-wrap:wrap}
+.diff-toolbar{display:flex;gap:8px;padding:8px 16px;background:#21262d;border:1px solid #30363d;border-radius:6px;margin-bottom:8px;align-items:center;flex-wrap:wrap;position:sticky;top:32px;z-index:50}
 .diff-toolbar button{background:#30363d;color:#c9d1d9;border:1px solid #484f58;border-radius:4px;padding:4px 12px;font-size:12px;cursor:pointer;font-family:inherit}
 .diff-toolbar button:hover{background:#484f58}
 .diff-toolbar .info{color:#8b949e;font-size:11px;margin-left:auto}
+.diff-grid{display:grid;grid-template-columns:1fr 1fr;border:1px solid #30363d;border-radius:6px;overflow:hidden;background:#161b22}
+.diff-col-hdr{padding:4px 16px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;position:sticky;top:64px;z-index:10}
+.diff-col-hdr.do{color:#f85149;background:rgba(248,81,73,.15);border-bottom:1px solid #30363d}
+.diff-col-hdr.dn{color:#3fb950;background:rgba(63,185,80,.15);border-bottom:1px solid #30363d;border-left:1px solid #30363d}
+.diff-row{display:contents}
+.diff-cell{min-width:0;overflow-x:auto;border-bottom:1px solid #21262d}
+.diff-cell+.diff-cell{border-left:1px solid #30363d}
 table{width:100%;border-collapse:collapse;font-size:12px;font-family:'SFMono-Regular',Consolas,monospace}
 th{text-align:left;padding:6px 12px;background:#21262d;border-bottom:1px solid #30363d;color:#8b949e;font-size:11px;font-weight:600}
 td{padding:4px 12px;border-bottom:1px solid #21262d}
@@ -860,28 +912,36 @@ function collapseAll(){
              </div>"
         );
 
-        let _ = write!(h, "<div class=\"sb\"><div class=\"ss\">");
+        let _ = write!(h, "<div class=\"diff-grid\">");
 
-        // Left panel (original)
-        let _ = write!(h, "<div class=\"pn po\">");
-        let _ = write!(h, "<div class=\"ph\">Original</div>");
+        // Column headers
+        let _ = write!(
+            h,
+            "<div class=\"diff-col-hdr do\">Original</div>\
+             <div class=\"diff-col-hdr dn\">Optimized</div>"
+        );
+
+        // Each function is a row with two cells (original | optimized)
         for (fi, blk) in fn_blocks.iter().enumerate() {
             let changed_class = if blk.has_changes { " fn-changed" } else { "" };
             let initially_open = if blk.has_changes { " open" } else { "" };
-            let _ = write!(
-                h,
-                "<div id=\"flo{fi}\" class=\"fn-blk{changed_class}{initially_open}\">"
-            );
             let insn_count = blk.end_idx - blk.start_idx;
             let change_label = if blk.has_changes { " ●" } else { "" };
+            let escaped_name = html_escape(&blk.name);
+
+            // Function header spans both columns
             let _ = write!(
                 h,
-                "<div class=\"fn-hdr\" onclick=\"toggleFn('flo{fi}');toggleFn('fro{fi}')\">\
-                 <span class=\"fn-name\">{}{change_label}</span>\
-                 <span class=\"fn-badge\">{insn_count} insns</span></div>",
-                html_escape(&blk.name)
+                "<div id=\"fblk{fi}\" class=\"fn-blk{changed_class}{initially_open}\" \
+                 style=\"grid-column:1/-1\">\
+                 <div class=\"fn-hdr\" onclick=\"toggleFn('fblk{fi}')\">\
+                 <span class=\"fn-name\">{escaped_name}{change_label}</span>\
+                 <span class=\"fn-badge\">{insn_count} insns</span></div>\
+                 <div class=\"fn-body\"><div style=\"display:grid;grid-template-columns:1fr 1fr\">"
             );
-            let _ = write!(h, "<div class=\"fn-body\"><div class=\"code\">");
+
+            // Left cell (original)
+            let _ = write!(h, "<div class=\"diff-cell\"><div class=\"code\">");
             let orig_end = blk.end_idx.min(original.len());
             if blk.start_idx < orig_end {
                 h.push_str(&format_code_block_diff(
@@ -895,30 +955,10 @@ function collapseAll(){
                     true,
                 ));
             }
-            let _ = write!(h, "</div></div></div>");
-        }
-        let _ = write!(h, "</div>");
+            let _ = write!(h, "</div></div>");
 
-        // Right panel (optimized)
-        let _ = write!(h, "<div class=\"pn px\">");
-        let _ = write!(h, "<div class=\"ph\">Optimized</div>");
-        for (fi, blk) in fn_blocks.iter().enumerate() {
-            let changed_class = if blk.has_changes { " fn-changed" } else { "" };
-            let initially_open = if blk.has_changes { " open" } else { "" };
-            let _ = write!(
-                h,
-                "<div id=\"fro{fi}\" class=\"fn-blk{changed_class}{initially_open}\">"
-            );
-            let insn_count = blk.end_idx - blk.start_idx;
-            let change_label = if blk.has_changes { " ●" } else { "" };
-            let _ = write!(
-                h,
-                "<div class=\"fn-hdr\" onclick=\"toggleFn('flo{fi}');toggleFn('fro{fi}')\">\
-                 <span class=\"fn-name\">{}{change_label}</span>\
-                 <span class=\"fn-badge\">{insn_count} insns</span></div>",
-                html_escape(&blk.name)
-            );
-            let _ = write!(h, "<div class=\"fn-body\"><div class=\"code\">");
+            // Right cell (optimized)
+            let _ = write!(h, "<div class=\"diff-cell\"><div class=\"code\">");
             h.push_str(&format_code_block_diff(
                 patched,
                 original,
@@ -929,11 +969,12 @@ function collapseAll(){
                 "dro_",
                 false,
             ));
-            let _ = write!(h, "</div></div></div>");
-        }
-        let _ = write!(h, "</div>");
+            let _ = write!(h, "</div></div>");
 
-        let _ = write!(h, "</div></div>"); // ss, sb
+            let _ = write!(h, "</div></div></div>"); // inner grid, fn-body, fn-blk
+        }
+
+        let _ = write!(h, "</div>"); // diff-grid
         let _ = write!(h, "</section>");
     }
 
