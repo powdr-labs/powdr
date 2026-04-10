@@ -13,8 +13,13 @@ use powdr_riscv_elf::debug_info::SymbolTable;
 
 use bytecopy::optimize_bytecopy;
 use call_site::*;
-use memcmp::{rv_generate_optimized_memcmp_loop, rv_generate_specialized_memcmp};
-use memcpy::{rv_generate_specialized_memcpy, rv_generate_specialized_memmove};
+use memcmp::{
+    rv_generate_aligned_memcmp, rv_generate_optimized_memcmp_loop, rv_generate_specialized_memcmp,
+};
+use memcpy::{
+    rv_generate_aligned_memcpy, rv_generate_aligned_memmove, rv_generate_specialized_memcpy,
+    rv_generate_specialized_memmove,
+};
 use rv_insn::*;
 
 /// Parse the base address (lowest executable segment vaddr) from a raw ELF binary.
@@ -79,25 +84,45 @@ pub fn optimize_instructions(instructions: &mut Vec<u32>, symbols: &mut SymbolTa
             println!("memcpy_optimizer: memcpy at addr 0x{addr:x} ({name})");
         }
         let target_addrs: Vec<u32> = memcpy_addrs.iter().map(|(a, _)| *a).collect();
-        let calls = scan_call_sites_multi(instructions, pc_base, &target_addrs);
-        if calls.is_empty() {
+        let (aligned, unaligned, _dyn_sites) =
+            scan_call_sites_with_alignment(instructions, pc_base, &target_addrs);
+        if aligned.is_empty() && unaligned.is_empty() {
             println!("memcpy_optimizer: no eligible memcpy calls found");
         } else {
-            println!(
-                "memcpy_optimizer: memcpy call sites by length: {:?}",
-                calls
-                    .iter()
-                    .map(|(len, sites)| (*len, sites.len()))
-                    .collect::<Vec<_>>()
-            );
-            generate_and_patch(
-                instructions,
-                symbols,
-                pc_base,
-                &calls,
-                rv_generate_specialized_memcpy,
-                "memcpy_opt",
-            );
+            if !aligned.is_empty() {
+                println!(
+                    "memcpy_optimizer: memcpy ALIGNED call sites: {:?}",
+                    aligned
+                        .iter()
+                        .map(|(len, sites)| (*len, sites.len()))
+                        .collect::<Vec<_>>()
+                );
+                generate_and_patch(
+                    instructions,
+                    symbols,
+                    pc_base,
+                    &aligned,
+                    rv_generate_aligned_memcpy,
+                    "memcpy_aligned",
+                );
+            }
+            if !unaligned.is_empty() {
+                println!(
+                    "memcpy_optimizer: memcpy unaligned call sites: {:?}",
+                    unaligned
+                        .iter()
+                        .map(|(len, sites)| (*len, sites.len()))
+                        .collect::<Vec<_>>()
+                );
+                generate_and_patch(
+                    instructions,
+                    symbols,
+                    pc_base,
+                    &unaligned,
+                    rv_generate_specialized_memcpy,
+                    "memcpy_opt",
+                );
+            }
         }
     }
 
@@ -109,25 +134,45 @@ pub fn optimize_instructions(instructions: &mut Vec<u32>, symbols: &mut SymbolTa
             println!("memcpy_optimizer: memmove at addr 0x{addr:x} ({name})");
         }
         let target_addrs: Vec<u32> = memmove_addrs.iter().map(|(a, _)| *a).collect();
-        let calls = scan_call_sites_multi(instructions, pc_base, &target_addrs);
-        if calls.is_empty() {
+        let (aligned, unaligned, _dyn_sites) =
+            scan_call_sites_with_alignment(instructions, pc_base, &target_addrs);
+        if aligned.is_empty() && unaligned.is_empty() {
             println!("memcpy_optimizer: no eligible memmove calls found");
         } else {
-            println!(
-                "memcpy_optimizer: memmove call sites by length: {:?}",
-                calls
-                    .iter()
-                    .map(|(len, sites)| (*len, sites.len()))
-                    .collect::<Vec<_>>()
-            );
-            generate_and_patch(
-                instructions,
-                symbols,
-                pc_base,
-                &calls,
-                rv_generate_specialized_memmove,
-                "memmove_opt",
-            );
+            if !aligned.is_empty() {
+                println!(
+                    "memcpy_optimizer: memmove ALIGNED call sites: {:?}",
+                    aligned
+                        .iter()
+                        .map(|(len, sites)| (*len, sites.len()))
+                        .collect::<Vec<_>>()
+                );
+                generate_and_patch(
+                    instructions,
+                    symbols,
+                    pc_base,
+                    &aligned,
+                    rv_generate_aligned_memmove,
+                    "memmove_aligned",
+                );
+            }
+            if !unaligned.is_empty() {
+                println!(
+                    "memcpy_optimizer: memmove unaligned call sites: {:?}",
+                    unaligned
+                        .iter()
+                        .map(|(len, sites)| (*len, sites.len()))
+                        .collect::<Vec<_>>()
+                );
+                generate_and_patch(
+                    instructions,
+                    symbols,
+                    pc_base,
+                    &unaligned,
+                    rv_generate_specialized_memmove,
+                    "memmove_opt",
+                );
+            }
         }
     }
 
@@ -145,14 +190,14 @@ pub fn optimize_instructions(instructions: &mut Vec<u32>, symbols: &mut SymbolTa
         }
         analyze_a2_constants(instructions, pc_base, &target_addrs, "memcmp");
 
-        let (const_calls, dyn_calls) =
-            scan_all_call_sites_multi(instructions, pc_base, &target_addrs);
+        let (aligned_const, unaligned_const, dyn_calls) =
+            scan_call_sites_with_alignment(instructions, pc_base, &target_addrs);
 
-        // Patch constant-length call sites with specialized unrolled memcmp
-        if !const_calls.is_empty() {
+        // Patch aligned constant-length call sites
+        if !aligned_const.is_empty() {
             println!(
-                "memcpy_optimizer: memcmp constant-length call sites: {:?}",
-                const_calls
+                "memcpy_optimizer: memcmp ALIGNED constant-length call sites: {:?}",
+                aligned_const
                     .iter()
                     .map(|(len, sites)| (*len, sites.len()))
                     .collect::<Vec<_>>()
@@ -161,7 +206,26 @@ pub fn optimize_instructions(instructions: &mut Vec<u32>, symbols: &mut SymbolTa
                 instructions,
                 symbols,
                 pc_base,
-                &const_calls,
+                &aligned_const,
+                rv_generate_aligned_memcmp,
+                "memcmp_aligned",
+            );
+        }
+
+        // Patch unaligned constant-length call sites with alignment-dispatched memcmp
+        if !unaligned_const.is_empty() {
+            println!(
+                "memcpy_optimizer: memcmp unaligned constant-length call sites: {:?}",
+                unaligned_const
+                    .iter()
+                    .map(|(len, sites)| (*len, sites.len()))
+                    .collect::<Vec<_>>()
+            );
+            generate_and_patch(
+                instructions,
+                symbols,
+                pc_base,
+                &unaligned_const,
                 rv_generate_specialized_memcmp,
                 "memcmp_opt",
             );
@@ -196,7 +260,7 @@ pub fn optimize_instructions(instructions: &mut Vec<u32>, symbols: &mut SymbolTa
             }
         }
 
-        if const_calls.is_empty() && dyn_calls.is_empty() {
+        if aligned_const.is_empty() && unaligned_const.is_empty() && dyn_calls.is_empty() {
             println!("memcpy_optimizer: no memcmp call sites found");
         }
     }

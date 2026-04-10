@@ -3,6 +3,7 @@
 // RISC-V register numbers
 pub(crate) const X0: u32 = 0;
 pub(crate) const X1: u32 = 1; // ra
+pub(crate) const X2: u32 = 2; // sp
 pub(crate) const X5: u32 = 5; // t0
 pub(crate) const X6: u32 = 6; // t1
 pub(crate) const X7: u32 = 7; // t2

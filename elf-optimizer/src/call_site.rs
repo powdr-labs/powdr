@@ -72,13 +72,7 @@ pub(crate) fn rv_resolve_reg_constant(
     None
 }
 
-/// Try to resolve the constant value loaded into register a2 (x12) by scanning
-/// backwards from `end_idx` (exclusive) in the instruction stream.
-pub(crate) fn rv_resolve_a2_constant(instructions: &[u32], end_idx: usize) -> Option<u32> {
-    rv_resolve_reg_constant(instructions, end_idx, X12, Some(MAX_MEMCPY_LENGTH))
-}
-
-/// Scan all call sites to any of `target_addrs` and report how many have a
+/// Scan ALL call sites to `target_addrs` and report how many have a
 /// compile-time constant in a2 (x12) vs. dynamic values.
 pub(crate) fn analyze_a2_constants(
     instructions: &[u32],
@@ -188,38 +182,12 @@ pub(crate) fn debug_scan_calls(instructions: &[u32], pc_base: u32, target_addr: 
     );
 }
 
-/// Scan ALL call sites to `target_addrs`, partitioned into constant-length
-/// (within MAX_MEMCPY_LENGTH) and dynamic-length groups.
-pub(crate) fn scan_all_call_sites_multi(
-    instructions: &[u32],
-    pc_base: u32,
-    target_addrs: &[u32],
-) -> (BTreeMap<u32, Vec<usize>>, Vec<usize>) {
-    let mut by_length: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
-    let mut dynamic: Vec<usize> = Vec::new();
-
-    for i in 0..instructions.len().saturating_sub(1) {
-        let insn0 = instructions[i];
-        let insn1 = instructions[i + 1];
-        if !is_auipc(insn0) || !is_jalr(insn1) {
-            continue;
-        }
-        let auipc_rd = rv_rd(insn0);
-        if rv_rs1(insn1) != auipc_rd || rv_rd(insn1) != X1 {
-            continue;
-        }
-        let auipc_addr = pc_base + (i as u32) * 4;
-        let target = rv_auipc_jalr_target(insn0, insn1, auipc_addr);
-        if !target_addrs.contains(&target) {
-            continue;
-        }
-        match rv_resolve_reg_constant(instructions, i, X12, Some(MAX_MEMCPY_LENGTH)) {
-            Some(length) => by_length.entry(length).or_default().push(i),
-            None => dynamic.push(i),
-        }
-    }
-    (by_length, dynamic)
-}
+/// Scan results: (aligned_by_length, unaligned_by_length, dynamic_sites).
+pub(crate) type AlignmentScanResult = (
+    BTreeMap<u32, Vec<usize>>,
+    BTreeMap<u32, Vec<usize>>,
+    Vec<usize>,
+);
 
 /// Encode AUIPC+JALR pair for a call from `from_addr` to `to_addr`.
 /// Returns (auipc_insn, jalr_insn) using register `rd` as the intermediate.
@@ -234,37 +202,6 @@ pub(crate) fn rv_encode_call(from_addr: u32, to_addr: u32, rd: u32) -> (u32, u32
     let auipc = rv_auipc(rd, (upper as u32) << 12);
     let jalr = rv_jalr(X1, rd, diff - (upper << 12));
     (auipc, jalr)
-}
-
-/// Scan for call sites to any of `target_addrs` with constant a2.
-pub(crate) fn scan_call_sites_multi(
-    instructions: &[u32],
-    pc_base: u32,
-    target_addrs: &[u32],
-) -> BTreeMap<u32, Vec<usize>> {
-    let mut calls_by_length: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
-    for i in 0..instructions.len().saturating_sub(1) {
-        let insn0 = instructions[i];
-        let insn1 = instructions[i + 1];
-        if !is_auipc(insn0) || !is_jalr(insn1) {
-            continue;
-        }
-        let auipc_rd = rv_rd(insn0);
-        if rv_rs1(insn1) != auipc_rd || rv_rd(insn1) != X1 {
-            continue;
-        }
-        let auipc_addr = pc_base + (i as u32) * 4;
-        let target = rv_auipc_jalr_target(insn0, insn1, auipc_addr);
-        if !target_addrs.contains(&target) {
-            continue;
-        }
-        if let Some(length) = rv_resolve_a2_constant(instructions, i) {
-            if length <= MAX_MEMCPY_LENGTH {
-                calls_by_length.entry(length).or_default().push(i);
-            }
-        }
-    }
-    calls_by_length
 }
 
 /// Generate specialized routines, append to instruction stream, patch call sites,
@@ -319,6 +256,104 @@ pub(crate) fn generate_and_patch(
         calls_by_length.len(),
         instructions.len()
     );
+}
+
+/// Check if a register is known to hold a 4-byte-aligned address at instruction
+/// `end_idx` (exclusive) by scanning backwards. Tracks SP-relative offsets and
+/// follows register copies/additions with aligned immediates.
+pub(crate) fn rv_resolve_reg_alignment(instructions: &[u32], end_idx: usize, reg: u32) -> bool {
+    rv_resolve_reg_alignment_depth(instructions, end_idx, reg, 0)
+}
+
+fn rv_resolve_reg_alignment_depth(
+    instructions: &[u32],
+    end_idx: usize,
+    reg: u32,
+    depth: u32,
+) -> bool {
+    if depth > 4 {
+        return false;
+    }
+    let start = end_idx.saturating_sub(20);
+    for i in (start..end_idx).rev() {
+        let insn = instructions[i];
+        let rd = rv_rd(insn);
+        if rd != reg {
+            continue;
+        }
+        if is_addi(insn) {
+            let rs1 = rv_rs1(insn);
+            let imm = rv_imm_i(insn);
+            if rs1 == X2 {
+                // SP-relative: sp is always 16-byte aligned
+                return (imm & 3) == 0;
+            }
+            if (imm & 3) == 0 {
+                // addi reg, other, aligned_offset → check other
+                return rv_resolve_reg_alignment_depth(instructions, i, rs1, depth + 1);
+            }
+            return false;
+        }
+        if is_lui(insn) {
+            // LUI sets upper 20 bits, lower 12 are 0 → always aligned
+            return true;
+        }
+        // Any other write to reg → can't determine
+        return false;
+    }
+    false
+}
+
+/// Alignment info for a call site's pointer arguments.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
+pub(crate) enum CallAlignment {
+    BothAligned,
+    NeitherKnown,
+}
+
+/// Scan call sites partitioned by constant length AND alignment.
+/// Returns (aligned_by_length, unaligned_by_length, dynamic_sites).
+pub(crate) fn scan_call_sites_with_alignment(
+    instructions: &[u32],
+    pc_base: u32,
+    target_addrs: &[u32],
+) -> AlignmentScanResult {
+    let mut aligned: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
+    let mut unaligned: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
+    let mut dynamic: Vec<usize> = Vec::new();
+
+    for i in 0..instructions.len().saturating_sub(1) {
+        let insn0 = instructions[i];
+        let insn1 = instructions[i + 1];
+        if !is_auipc(insn0) || !is_jalr(insn1) {
+            continue;
+        }
+        let auipc_rd = rv_rd(insn0);
+        if rv_rs1(insn1) != auipc_rd || rv_rd(insn1) != X1 {
+            continue;
+        }
+        let auipc_addr = pc_base + (i as u32) * 4;
+        let target = rv_auipc_jalr_target(insn0, insn1, auipc_addr);
+        if !target_addrs.contains(&target) {
+            continue;
+        }
+
+        let a0_aligned = rv_resolve_reg_alignment(instructions, i, X10);
+        let a1_aligned = rv_resolve_reg_alignment(instructions, i, X11);
+
+        match rv_resolve_reg_constant(instructions, i, X12, Some(MAX_MEMCPY_LENGTH)) {
+            Some(length) => {
+                if a0_aligned && a1_aligned {
+                    aligned.entry(length).or_default().push(i);
+                } else {
+                    unaligned.entry(length).or_default().push(i);
+                }
+            }
+            None => dynamic.push(i),
+        }
+    }
+    (aligned, unaligned, dynamic)
 }
 
 /// Find ALL symbol addresses matching a substring on the raw or demangled name.

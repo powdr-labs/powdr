@@ -176,6 +176,70 @@ pub(crate) fn rv_generate_specialized_memcmp(length: u32) -> Vec<u32> {
     instrs
 }
 
+/// Generate a specialized memcmp for known-aligned, known-length call sites.
+/// Both pointers 4-byte-aligned: skip alignment check, go straight to word compare.
+pub(crate) fn rv_generate_aligned_memcmp(length: u32) -> Vec<u32> {
+    if length == 0 {
+        return vec![rv_addi(X10, X0, 0), rv_ret()];
+    }
+
+    if length < 4 {
+        // Same as unaligned — no words to compare
+        return rv_generate_specialized_memcmp(length);
+    }
+
+    let num_words = length / 4;
+    let tail = length % 4;
+    let mut instrs = Vec::new();
+
+    // Word comparisons directly (no alignment check)
+    let word_diff_jump_indices: Vec<usize> = (0..num_words)
+        .map(|w| {
+            let off = (w * 4) as i32;
+            instrs.push(rv_lw(X5, X10, off));
+            instrs.push(rv_lw(X6, X11, off));
+            let idx = instrs.len();
+            instrs.push(0); // placeholder BNE → word_diff
+            idx
+        })
+        .collect();
+
+    // Tail bytes
+    let tail_bne_indices: Vec<usize> = (0..tail)
+        .map(|i| {
+            let off = (num_words * 4 + i) as i32;
+            instrs.push(rv_lbu(X5, X10, off));
+            instrs.push(rv_lbu(X6, X11, off));
+            let idx = instrs.len();
+            instrs.push(0); // placeholder BNE → byte_diff
+            idx
+        })
+        .collect();
+
+    // Equal: return 0
+    instrs.push(rv_addi(X10, X0, 0));
+    instrs.push(rv_ret());
+
+    // word_diff epilogue
+    let word_diff_idx = instrs.len();
+    instrs.extend(rv_generate_word_diff_epilogue());
+
+    // byte_diff: return t0 - t1
+    let byte_diff_idx = instrs.len();
+    instrs.push(rv_sub(X10, X5, X6));
+    instrs.push(rv_ret());
+
+    // Patch branches
+    for &idx in &word_diff_jump_indices {
+        instrs[idx] = rv_bne(X5, X6, ((word_diff_idx as i32) - (idx as i32)) * 4);
+    }
+    for &idx in &tail_bne_indices {
+        instrs[idx] = rv_bne(X5, X6, ((byte_diff_idx as i32) - (idx as i32)) * 4);
+    }
+
+    instrs
+}
+
 /// Generate a generic optimized memcmp (loop-based, word-aligned when possible).
 /// Used for call sites where the length is not a compile-time constant.
 /// a0 = ptr1, a1 = ptr2, a2 = length.

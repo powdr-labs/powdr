@@ -812,3 +812,191 @@ fn test_dfg_end_to_end_patching() {
         );
     }
 }
+
+#[test]
+fn test_aligned_memcpy() {
+    use crate::memcpy::rv_generate_aligned_memcpy;
+
+    let lengths: Vec<u32> = vec![0, 1, 2, 3, 4, 5, 8, 12, 16, 32, 48, 64, 128];
+
+    for &length in &lengths {
+        let routine = rv_generate_aligned_memcpy(length);
+
+        let src_base: u32 = 256;
+        let dst_base: u32 = 768;
+
+        let mut interp = RvInterpreter::new(1024);
+        interp.mem.fill(0xAA);
+        for i in 0..length {
+            interp.mem[(src_base + i) as usize] =
+                ((i.wrapping_mul(7).wrapping_add(13 + length)) & 0x7F) as u8;
+        }
+
+        interp.set_reg(X10, dst_base);
+        interp.set_reg(X11, src_base);
+        interp.set_reg(X1, (routine.len() as u32 + 10) * 4);
+
+        interp.run(&routine, 10_000);
+
+        for i in 0..length {
+            let expected = interp.mem[(src_base + i) as usize];
+            let actual = interp.mem[(dst_base + i) as usize];
+            assert_eq!(
+                actual, expected,
+                "aligned memcpy mismatch at byte {} for length={}",
+                i, length
+            );
+        }
+    }
+}
+
+#[test]
+fn test_aligned_memmove() {
+    use crate::memcpy::rv_generate_aligned_memmove;
+
+    let lengths: Vec<u32> = vec![0, 1, 2, 3, 4, 8, 16, 32, 64];
+
+    for &length in &lengths {
+        let routine = rv_generate_aligned_memmove(length);
+
+        // Forward (dst < src, aligned)
+        {
+            let src_base: u32 = 512;
+            let dst_base: u32 = 256;
+            let mut interp = RvInterpreter::new(1024);
+            interp.mem.fill(0xAA);
+            for i in 0..length {
+                interp.mem[(src_base + i) as usize] = (i & 0xFF) as u8;
+            }
+            interp.set_reg(X10, dst_base);
+            interp.set_reg(X11, src_base);
+            interp.set_reg(X1, (routine.len() as u32 + 10) * 4);
+            interp.run(&routine, 10_000);
+            for i in 0..length {
+                assert_eq!(
+                    interp.mem[(dst_base + i) as usize],
+                    (i & 0xFF) as u8,
+                    "aligned memmove fwd mismatch at {} for length={}",
+                    i,
+                    length
+                );
+            }
+        }
+
+        // Backward (overlapping, dst > src, aligned)
+        if length >= 4 {
+            let src_base: u32 = 256;
+            let dst_base: u32 = 260;
+            let mut interp = RvInterpreter::new(1024);
+            interp.mem.fill(0xAA);
+            let mut expected = vec![0u8; length as usize];
+            for i in 0..length {
+                let val = (i.wrapping_mul(3).wrapping_add(7) & 0xFF) as u8;
+                interp.mem[(src_base + i) as usize] = val;
+                expected[i as usize] = val;
+            }
+            interp.set_reg(X10, dst_base);
+            interp.set_reg(X11, src_base);
+            interp.set_reg(X1, (routine.len() as u32 + 10) * 4);
+            interp.run(&routine, 10_000);
+            for i in 0..length {
+                assert_eq!(
+                    interp.mem[(dst_base + i) as usize],
+                    expected[i as usize],
+                    "aligned memmove bwd mismatch at {} for length={}",
+                    i,
+                    length
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn test_aligned_memcmp() {
+    use crate::memcmp::rv_generate_aligned_memcmp;
+
+    let lengths: Vec<u32> = vec![0, 1, 2, 3, 4, 8, 16, 32, 64];
+
+    for &length in &lengths {
+        let routine = rv_generate_aligned_memcmp(length);
+
+        // Equal arrays
+        {
+            let ptr1: u32 = 256;
+            let ptr2: u32 = 512;
+            let mut interp = RvInterpreter::new(1024);
+            for i in 0..length {
+                let val = ((i * 7 + 3) & 0xFF) as u8;
+                interp.mem[(ptr1 + i) as usize] = val;
+                interp.mem[(ptr2 + i) as usize] = val;
+            }
+            interp.set_reg(X10, ptr1);
+            interp.set_reg(X11, ptr2);
+            interp.set_reg(X12, length);
+            interp.set_reg(X1, (routine.len() as u32 + 10) * 4);
+            interp.run(&routine, 10_000);
+            assert_eq!(
+                interp.reg(X10) as i32,
+                0,
+                "aligned memcmp should be 0 for equal data, length={}",
+                length
+            );
+        }
+
+        // Different arrays (last byte differs)
+        if length > 0 {
+            let ptr1: u32 = 256;
+            let ptr2: u32 = 512;
+            let mut interp = RvInterpreter::new(1024);
+            for i in 0..length {
+                let val = ((i * 7 + 3) & 0xFF) as u8;
+                interp.mem[(ptr1 + i) as usize] = val;
+                interp.mem[(ptr2 + i) as usize] = val;
+            }
+            interp.mem[(ptr1 + length - 1) as usize] = 0x80;
+            interp.mem[(ptr2 + length - 1) as usize] = 0x10;
+            interp.set_reg(X10, ptr1);
+            interp.set_reg(X11, ptr2);
+            interp.set_reg(X12, length);
+            interp.set_reg(X1, (routine.len() as u32 + 10) * 4);
+            interp.run(&routine, 10_000);
+            let result = interp.reg(X10) as i32;
+            assert!(
+                result > 0,
+                "aligned memcmp should be >0 when ptr1>ptr2, got {} for length={}",
+                result,
+                length
+            );
+        }
+    }
+}
+
+#[test]
+fn test_alignment_resolver() {
+    use crate::call_site::rv_resolve_reg_alignment;
+
+    // addi a0, sp, 16 → aligned
+    let instrs = vec![rv_addi(X10, X2, 16)];
+    assert!(rv_resolve_reg_alignment(&instrs, 1, X10));
+
+    // addi a0, sp, 5 → NOT aligned
+    let instrs = vec![rv_addi(X10, X2, 5)];
+    assert!(!rv_resolve_reg_alignment(&instrs, 1, X10));
+
+    // mv a0, sp (= addi a0, sp, 0) → aligned
+    let instrs = vec![rv_addi(X10, X2, 0)];
+    assert!(rv_resolve_reg_alignment(&instrs, 1, X10));
+
+    // addi a3, sp, 8; addi a0, a3, 4 → aligned (8+4=12, 12%4==0)
+    let instrs = vec![rv_addi(X13, X2, 8), rv_addi(X10, X13, 4)];
+    assert!(rv_resolve_reg_alignment(&instrs, 2, X10));
+
+    // addi a3, sp, 8; addi a0, a3, 3 → NOT aligned (offset 3)
+    let instrs = vec![rv_addi(X13, X2, 8), rv_addi(X10, X13, 3)];
+    assert!(!rv_resolve_reg_alignment(&instrs, 2, X10));
+
+    // No write to reg → not aligned
+    let instrs = vec![rv_addi(X11, X2, 8)];
+    assert!(!rv_resolve_reg_alignment(&instrs, 1, X10));
+}

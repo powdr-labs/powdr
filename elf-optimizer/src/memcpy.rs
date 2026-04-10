@@ -151,7 +151,76 @@ fn rv_generate_alignment_dispatched_copy(length: u32, backward: bool) -> Vec<u32
     instrs
 }
 
-/// Generate a specialized memmove as raw RISC-V u32 instructions for a known constant length.
+/// Generate a specialized memcpy for known-aligned, known-length call sites.
+/// Both a0 and a1 are 4-byte-aligned, so skip alignment dispatch entirely.
+pub(crate) fn rv_generate_aligned_memcpy(length: u32) -> Vec<u32> {
+    if length == 0 {
+        return vec![rv_ret()];
+    }
+    let num_words = length / 4;
+    let tail = length % 4;
+    let mut instrs = Vec::new();
+    for w in 0..num_words {
+        let offset = (w * 4) as i32;
+        instrs.push(rv_lw(X13, X11, offset));
+        instrs.push(rv_sw(X13, X10, offset));
+    }
+    for i in 0..tail {
+        let offset = (num_words * 4 + i) as i32;
+        instrs.push(rv_lbu(X13, X11, offset));
+        instrs.push(rv_sb(X13, X10, offset));
+    }
+    instrs.push(rv_ret());
+    instrs
+}
+
+/// Generate a specialized memmove for known-aligned, known-length call sites.
+/// Both pointers 4-byte-aligned; still needs direction check for overlap safety.
+pub(crate) fn rv_generate_aligned_memmove(length: u32) -> Vec<u32> {
+    if length == 0 {
+        return vec![rv_ret()];
+    }
+
+    let num_words = length / 4;
+    let tail = length % 4;
+
+    let mut instrs = Vec::new();
+
+    // Direction check: if dst < src, forward copy is safe
+    let bltu_fwd_idx = instrs.len();
+    instrs.push(0); // placeholder BLTU
+
+    // Backward path (dst >= src): copy from end to start
+    for i in (0..tail).rev() {
+        let offset = (num_words * 4 + i) as i32;
+        instrs.push(rv_lbu(X13, X11, offset));
+        instrs.push(rv_sb(X13, X10, offset));
+    }
+    for w in (0..num_words).rev() {
+        let offset = (w * 4) as i32;
+        instrs.push(rv_lw(X13, X11, offset));
+        instrs.push(rv_sw(X13, X10, offset));
+    }
+    instrs.push(rv_ret());
+
+    // Forward path (dst < src)
+    let forward_start = instrs.len();
+    for w in 0..num_words {
+        let offset = (w * 4) as i32;
+        instrs.push(rv_lw(X13, X11, offset));
+        instrs.push(rv_sw(X13, X10, offset));
+    }
+    for i in 0..tail {
+        let offset = (num_words * 4 + i) as i32;
+        instrs.push(rv_lbu(X13, X11, offset));
+        instrs.push(rv_sb(X13, X10, offset));
+    }
+    instrs.push(rv_ret());
+
+    instrs[bltu_fwd_idx] = rv_bltu(X10, X11, ((forward_start - bltu_fwd_idx) as i32) * 4);
+
+    instrs
+}
 /// Unlike memcpy, memmove handles overlapping src/dst by choosing copy direction.
 pub(crate) fn rv_generate_specialized_memmove(length: u32) -> Vec<u32> {
     if length == 0 {

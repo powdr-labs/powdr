@@ -68,9 +68,7 @@ pub(crate) fn resolve_target(instructions: &[u32], idx: usize, pc_base: u32) -> 
                         let prev_addr = pc_base + ((idx - 1) as u32) * 4;
                         let upper = (prev & 0xfffff000) as i32;
                         let lower = (insn as i32) >> 20;
-                        return Some(
-                            (prev_addr as i64 + upper as i64 + lower as i64) as u32,
-                        );
+                        return Some((prev_addr as i64 + upper as i64 + lower as i64) as u32);
                     }
                 }
             }
@@ -81,6 +79,7 @@ pub(crate) fn resolve_target(instructions: &[u32], idx: usize, pc_base: u32) -> 
 }
 
 /// Find the end of a routine (next symbol or `ret`, whichever comes first).
+#[allow(clippy::needless_range_loop)]
 pub(crate) fn routine_end_idx(
     instructions: &[u32],
     start_idx: usize,
@@ -196,6 +195,7 @@ pub(crate) fn format_code_block(
 
 /// Like `format_code_block` but highlights lines that differ between `this` and `other`.
 /// `is_original` controls whether differing lines get `diff-del` (original) or `diff-add` (optimized).
+#[allow(clippy::too_many_arguments)]
 fn format_code_block_diff(
     this: &[u32],
     other: &[u32],
@@ -358,10 +358,25 @@ pub(crate) fn generate_html_diff(
     let mut bytecopy_routine_indices: Vec<usize> = Vec::new();
 
     for (i, r) in appended.iter().enumerate() {
-        if r.name.starts_with("memcpy_opt") {
+        if r.name.starts_with("memcpy_aligned") {
+            families
+                .entry("memcpy (aligned)".into())
+                .or_default()
+                .push(i);
+        } else if r.name.starts_with("memcpy_opt") {
             families.entry("memcpy".into()).or_default().push(i);
+        } else if r.name.starts_with("memmove_aligned") {
+            families
+                .entry("memmove (aligned)".into())
+                .or_default()
+                .push(i);
         } else if r.name.starts_with("memmove_opt") {
             families.entry("memmove".into()).or_default().push(i);
+        } else if r.name.starts_with("memcmp_aligned") {
+            families
+                .entry("memcmp (aligned)".into())
+                .or_default()
+                .push(i);
         } else if r.name.starts_with("memcmp_opt") {
             families.entry("memcmp".into()).or_default().push(i);
         } else if r.name.starts_with("bytecopy_dfg") || r.name.starts_with("bytecopy_opt") {
@@ -538,6 +553,7 @@ function collapseAll(){
         );
     }
     let _ = write!(h, "<a href=\"#callsites\">call sites</a>");
+    let _ = write!(h, "<a href=\"#statistics\">statistics</a>");
     let _ = write!(h, "<a href=\"#full-diff\">full disassembly diff</a>");
     let _ = write!(h, "</nav>");
 
@@ -805,6 +821,232 @@ function collapseAll(){
             );
         }
         let _ = write!(h, "</tbody></table></div></div>");
+        let _ = write!(h, "</section>");
+    }
+
+    // ── Statistics section ─────────────────────────────────────────────────
+    {
+        let _ = write!(
+            h,
+            "<section id=\"statistics\">\
+             <h2>Optimization Statistics</h2>"
+        );
+
+        // Compute per-family stats
+        struct FamilyStats {
+            routines: usize,
+            call_sites: usize,
+            total_routine_insns: usize,
+            lengths: Vec<(String, usize)>, // (routine_name, call_count)
+        }
+
+        let mut fam_stats: BTreeMap<String, FamilyStats> = BTreeMap::new();
+        for (family, indices) in &families {
+            let mut fs = FamilyStats {
+                routines: indices.len(),
+                call_sites: 0,
+                total_routine_insns: 0,
+                lengths: Vec::new(),
+            };
+            for &ri in indices {
+                let r = &appended[ri];
+                let insns = r.end_idx - r.start_idx;
+                let sites = redirect_groups
+                    .get(&r.addr)
+                    .map(|s| s.len())
+                    .unwrap_or(0);
+                fs.call_sites += sites;
+                fs.total_routine_insns += insns;
+                fs.lengths.push((r.name.clone(), sites));
+            }
+            fam_stats.insert(family.clone(), fs);
+        }
+
+        // Summary cards
+        let _ = write!(h, "<div class=\"stats\" style=\"margin-bottom:16px\">");
+        let total_redirected: usize = fam_stats.values().map(|f| f.call_sites).sum();
+        let total_routines: usize = fam_stats.values().map(|f| f.routines).sum();
+        let total_routine_insns: usize = fam_stats.values().map(|f| f.total_routine_insns).sum();
+        let _ = write!(
+            h,
+            "<div class=\"st\"><b>{total_redirected}</b><small>call sites redirected</small></div>"
+        );
+        let _ = write!(
+            h,
+            "<div class=\"st\"><b>{}</b><small>bytecopy patches</small></div>",
+            bc_patches.len()
+        );
+        let _ = write!(
+            h,
+            "<div class=\"st\"><b>{total_routines}</b><small>specialized routines</small></div>"
+        );
+        let _ = write!(
+            h,
+            "<div class=\"st\"><b>{total_routine_insns}</b><small>routine insns total</small></div>"
+        );
+        let saved_insns = patched.len() as i64 - original.len() as i64;
+        let _ = write!(
+            h,
+            "<div class=\"st\"><b>{:+}</b><small>instruction delta</small></div>",
+            saved_insns
+        );
+        let _ = write!(h, "</div>");
+
+        // Per-family breakdown table
+        let _ = write!(
+            h,
+            "<div class=\"sb\"><table><thead><tr>\
+             <th>Family</th><th>Routines</th><th>Call Sites</th>\
+             <th>Total Routine Insns</th><th>Avg Routine Size</th>\
+             </tr></thead><tbody>"
+        );
+        for (family, fs) in &fam_stats {
+            let avg = if fs.routines > 0 {
+                fs.total_routine_insns / fs.routines
+            } else {
+                0
+            };
+            let _ = write!(
+                h,
+                "<tr><td>{family}</td><td>{}</td><td>{}</td><td>{}</td><td>{avg}</td></tr>",
+                fs.routines, fs.call_sites, fs.total_routine_insns
+            );
+        }
+        if !bc_patches.is_empty() {
+            let bc_total_insns: usize = bytecopy_routine_indices
+                .iter()
+                .map(|&ri| appended[ri].end_idx - appended[ri].start_idx)
+                .sum();
+            let avg = if !bytecopy_routine_indices.is_empty() {
+                bc_total_insns / bytecopy_routine_indices.len()
+            } else {
+                0
+            };
+            let _ = write!(
+                h,
+                "<tr><td>bytecopy (inline)</td><td>{}</td><td>{}</td><td>{bc_total_insns}</td><td>{avg}</td></tr>",
+                bytecopy_routine_indices.len(),
+                bc_patches.len()
+            );
+        }
+        let _ = write!(h, "</tbody></table></div>");
+
+        // Per-routine detail table (expandable)
+        let _ = write!(h, "<div class=\"sb\">");
+        let _ = write!(
+            h,
+            "<div class=\"sh\" onclick=\"toggle('stat-detail')\">\
+             <h3>▸ Per-Routine Detail ({} routines)</h3></div>",
+            appended.len()
+        );
+        let _ = write!(
+            h,
+            "<div id=\"stat-detail\" class=\"ct\"><table><thead><tr>\
+             <th>Routine</th><th>Family</th><th>Address</th>\
+             <th>Insns</th><th>Call Sites</th>\
+             </tr></thead><tbody>"
+        );
+
+        for (i, r) in appended.iter().enumerate() {
+            let insns = r.end_idx - r.start_idx;
+            let sites = redirect_groups
+                .get(&r.addr)
+                .map(|s| s.len())
+                .unwrap_or(0);
+            // Determine family
+            let family = if r.name.starts_with("memcpy_aligned") {
+                "memcpy (aligned)"
+            } else if r.name.starts_with("memcpy_opt") {
+                "memcpy"
+            } else if r.name.starts_with("memmove_aligned") {
+                "memmove (aligned)"
+            } else if r.name.starts_with("memmove_opt") {
+                "memmove"
+            } else if r.name.starts_with("memcmp_aligned") {
+                "memcmp (aligned)"
+            } else if r.name.starts_with("memcmp_opt") {
+                "memcmp"
+            } else if r.name.starts_with("bytecopy_dfg") || r.name.starts_with("bytecopy_opt") {
+                "bytecopy"
+            } else {
+                "other"
+            };
+            let _ = write!(
+                h,
+                "<tr><td>{}</td><td>{family}</td><td>0x{:08x}</td>\
+                 <td>{insns}</td><td>{sites}</td></tr>",
+                html_escape(&r.name),
+                r.addr
+            );
+            let _ = i; // suppress unused
+        }
+        let _ = write!(h, "</tbody></table></div></div>");
+
+        // Aligned vs unaligned comparison (if applicable)
+        let has_aligned = fam_stats.keys().any(|k| k.contains("aligned"));
+        if has_aligned {
+            let _ = write!(
+                h,
+                "<h3 style=\"margin:16px 0 8px;color:#f0f6fc\">Alignment Analysis</h3>"
+            );
+            let _ = write!(
+                h,
+                "<div class=\"sb\"><table><thead><tr>\
+                 <th>Function</th><th>Aligned Call Sites</th><th>Aligned Avg Insns</th>\
+                 <th>Unaligned Call Sites</th><th>Unaligned Avg Insns</th>\
+                 <th>Insn Savings (aligned)</th>\
+                 </tr></thead><tbody>"
+            );
+
+            // Match aligned families with their unaligned counterparts
+            let base_funcs = ["memcpy", "memmove", "memcmp"];
+            for base in &base_funcs {
+                let aligned_key = format!("{base} (aligned)");
+                let unaligned_key = base.to_string();
+                let a = fam_stats.get(&aligned_key);
+                let u = fam_stats.get(&unaligned_key);
+                if a.is_none() && u.is_none() {
+                    continue;
+                }
+                let (a_sites, a_avg) = a
+                    .map(|f| {
+                        let avg = if f.routines > 0 {
+                            f.total_routine_insns / f.routines
+                        } else {
+                            0
+                        };
+                        (f.call_sites, avg)
+                    })
+                    .unwrap_or((0, 0));
+                let (u_sites, u_avg) = u
+                    .map(|f| {
+                        let avg = if f.routines > 0 {
+                            f.total_routine_insns / f.routines
+                        } else {
+                            0
+                        };
+                        (f.call_sites, avg)
+                    })
+                    .unwrap_or((0, 0));
+                let savings = if u_avg > a_avg {
+                    format!(
+                        "-{}%",
+                        ((u_avg - a_avg) as f64 / u_avg as f64 * 100.0) as u32
+                    )
+                } else if a_avg > 0 {
+                    "0%".to_string()
+                } else {
+                    "–".to_string()
+                };
+                let _ = write!(
+                    h,
+                    "<tr><td>{base}</td><td>{a_sites}</td><td>{a_avg}</td>\
+                     <td>{u_sites}</td><td>{u_avg}</td><td>{savings}</td></tr>",
+                );
+            }
+            let _ = write!(h, "</tbody></table></div>");
+        }
+
         let _ = write!(h, "</section>");
     }
 
