@@ -7,6 +7,7 @@ mod memcmp;
 mod memcpy;
 pub(crate) mod rv_insn;
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use powdr_riscv_elf::debug_info::SymbolTable;
@@ -50,6 +51,237 @@ pub fn parse_pc_base_data(data: &[u8]) -> u32 {
     }
     assert_ne!(min_vaddr, u32::MAX, "No executable segment found");
     min_vaddr
+}
+
+/// Optimize a RISC-V ELF binary in memory.
+///
+/// Takes raw ELF bytes, applies all optimizations (memcpy/memmove/memcmp
+/// specialization and inline byte-copy → word-copy), and returns the patched
+/// ELF binary. The returned binary can be written directly to a file.
+pub fn optimize_elf(data: &[u8]) -> Vec<u8> {
+    let (pc_base, mut instructions, text_offsets) = extract_instructions(data);
+    let original_count = instructions.len();
+    let mut symbols = build_symbol_table(data);
+
+    optimize_instructions(&mut instructions, &mut symbols, pc_base);
+
+    let appended = instructions.len() - original_count;
+    patch_elf(data, &instructions, original_count, appended, &text_offsets)
+}
+
+/// Result of optimizing ELF instructions, providing access to both the
+/// instruction streams and the symbol table for further processing (e.g.
+/// generating HTML diffs or disassembly output).
+pub struct OptimizedElf {
+    /// Base address (lowest executable segment vaddr).
+    pub pc_base: u32,
+    /// Original instruction stream before optimization.
+    pub original_instructions: Vec<u32>,
+    /// Optimized instruction stream (may be longer due to appended routines).
+    pub instructions: Vec<u32>,
+    /// Symbol table (includes synthetic symbols for generated routines).
+    pub symbols: SymbolTable,
+    /// Mapping from instruction index to file offset in the original ELF.
+    text_offsets: Vec<(usize, usize)>,
+}
+
+impl OptimizedElf {
+    /// Number of instructions that were appended (generated routines).
+    pub fn appended_count(&self) -> usize {
+        self.instructions.len() - self.original_instructions.len()
+    }
+
+    /// Produce a patched ELF binary from the optimization result.
+    pub fn to_patched_elf(&self, original_data: &[u8]) -> Vec<u8> {
+        patch_elf(
+            original_data,
+            &self.instructions,
+            self.original_instructions.len(),
+            self.appended_count(),
+            &self.text_offsets,
+        )
+    }
+}
+
+/// Optimize a RISC-V ELF binary, returning the full optimization result
+/// including both instruction streams and the symbol table.
+///
+/// Use this when you need access to the intermediate data (e.g. for
+/// generating HTML diffs or disassembly). For simple patching, use
+/// [`optimize_elf`] instead.
+pub fn optimize_elf_detailed(data: &[u8]) -> OptimizedElf {
+    let (pc_base, mut instructions, text_offsets) = extract_instructions(data);
+    let original_instructions = instructions.clone();
+    let mut symbols = build_symbol_table(data);
+
+    optimize_instructions(&mut instructions, &mut symbols, pc_base);
+
+    OptimizedElf {
+        pc_base,
+        original_instructions,
+        instructions,
+        symbols,
+        text_offsets,
+    }
+}
+
+/// Extract 32-bit instructions from all executable PT_LOAD segments of a raw ELF.
+/// Returns (pc_base, instructions, text_file_offsets) where text_file_offsets
+/// maps instruction index to file offset (for binary patching).
+fn extract_instructions(data: &[u8]) -> (u32, Vec<u32>, Vec<(usize, usize)>) {
+    assert!(data.len() > 52, "ELF too small");
+    assert_eq!(&data[0..4], b"\x7fELF", "Not an ELF file");
+
+    let pc_base = parse_pc_base_data(data);
+
+    let e_phoff = u32::from_le_bytes(data[28..32].try_into().unwrap()) as usize;
+    let e_phentsize = u16::from_le_bytes(data[42..44].try_into().unwrap()) as usize;
+    let e_phnum = u16::from_le_bytes(data[44..46].try_into().unwrap()) as usize;
+
+    let mut segments: Vec<(u32, usize, usize)> = Vec::new();
+    for i in 0..e_phnum {
+        let off = e_phoff + i * e_phentsize;
+        let p_type = u32::from_le_bytes(data[off..off + 4].try_into().unwrap());
+        let p_offset = u32::from_le_bytes(data[off + 4..off + 8].try_into().unwrap()) as usize;
+        let p_vaddr = u32::from_le_bytes(data[off + 8..off + 12].try_into().unwrap());
+        let p_filesz = u32::from_le_bytes(data[off + 16..off + 20].try_into().unwrap()) as usize;
+        let p_flags = u32::from_le_bytes(data[off + 24..off + 28].try_into().unwrap());
+        if p_type == 1 && (p_flags & 1) != 0 {
+            segments.push((p_vaddr, p_offset, p_filesz));
+        }
+    }
+
+    segments.sort_by_key(|(vaddr, _, _)| *vaddr);
+
+    let mut instructions = Vec::new();
+    let mut text_offsets = Vec::new();
+
+    for (seg_vaddr, seg_file_offset, seg_size) in &segments {
+        let insn_start_in_stream = ((*seg_vaddr - pc_base) / 4) as usize;
+
+        while instructions.len() < insn_start_in_stream {
+            text_offsets.push((instructions.len(), 0));
+            instructions.push(0x00000013); // NOP
+        }
+
+        let num_insns = seg_size / 4;
+        for j in 0..num_insns {
+            let file_off = seg_file_offset + j * 4;
+            let word = u32::from_le_bytes(data[file_off..file_off + 4].try_into().unwrap());
+            text_offsets.push((instructions.len(), file_off));
+            instructions.push(word);
+        }
+    }
+
+    (pc_base, instructions, text_offsets)
+}
+
+/// Build a symbol table from the ELF's symbol table section.
+fn build_symbol_table(data: &[u8]) -> SymbolTable {
+    let elf = goblin::elf::Elf::parse(data).expect("Failed to parse ELF");
+    let mut table: BTreeMap<u32, Vec<String>> = BTreeMap::new();
+    for sym in &elf.syms {
+        if sym.st_name == 0 {
+            continue;
+        }
+        if let Some(name) = elf.strtab.get_at(sym.st_name) {
+            let addr = sym.st_value as u32;
+            table.entry(addr).or_default().push(name.to_string());
+        }
+    }
+    SymbolTable::from_table(table)
+}
+
+/// Produce a patched ELF binary by writing optimized instructions back and
+/// extending the last executable segment for any appended routines.
+fn patch_elf(
+    data: &[u8],
+    instructions: &[u32],
+    original_count: usize,
+    appended: usize,
+    text_offsets: &[(usize, usize)],
+) -> Vec<u8> {
+    let mut patched = data.to_vec();
+
+    for &(insn_idx, file_offset) in text_offsets {
+        if insn_idx < instructions.len() && file_offset > 0 {
+            let word = instructions[insn_idx];
+            patched[file_offset..file_offset + 4].copy_from_slice(&word.to_le_bytes());
+        }
+    }
+
+    if appended > 0 {
+        let e_phoff = u32::from_le_bytes(data[28..32].try_into().unwrap()) as usize;
+        let e_phentsize = u16::from_le_bytes(data[42..44].try_into().unwrap()) as usize;
+        let e_phnum = u16::from_le_bytes(data[44..46].try_into().unwrap()) as usize;
+
+        let mut last_exec_ph: Option<usize> = None;
+        let mut last_exec_vaddr_end: u32 = 0;
+
+        for i in 0..e_phnum {
+            let off = e_phoff + i * e_phentsize;
+            let p_type = u32::from_le_bytes(patched[off..off + 4].try_into().unwrap());
+            let p_vaddr = u32::from_le_bytes(patched[off + 8..off + 12].try_into().unwrap());
+            let p_memsz = u32::from_le_bytes(patched[off + 20..off + 24].try_into().unwrap());
+            let p_flags = u32::from_le_bytes(patched[off + 24..off + 28].try_into().unwrap());
+            if p_type == 1 && (p_flags & 1) != 0 {
+                let end = p_vaddr + p_memsz;
+                if end >= last_exec_vaddr_end {
+                    last_exec_vaddr_end = end;
+                    last_exec_ph = Some(i);
+                }
+            }
+        }
+
+        if let Some(ph_idx) = last_exec_ph {
+            let ph_off = e_phoff + ph_idx * e_phentsize;
+            let extra_bytes = (appended as u32) * 4;
+
+            for insn in instructions.iter().skip(original_count) {
+                patched.extend_from_slice(&insn.to_le_bytes());
+            }
+
+            let old_filesz =
+                u32::from_le_bytes(patched[ph_off + 16..ph_off + 20].try_into().unwrap());
+            let old_memsz =
+                u32::from_le_bytes(patched[ph_off + 20..ph_off + 24].try_into().unwrap());
+            patched[ph_off + 16..ph_off + 20]
+                .copy_from_slice(&(old_filesz + extra_bytes).to_le_bytes());
+            patched[ph_off + 20..ph_off + 24]
+                .copy_from_slice(&(old_memsz + extra_bytes).to_le_bytes());
+
+            let e_shoff = u32::from_le_bytes(data[32..36].try_into().unwrap()) as usize;
+            let e_shentsize = u16::from_le_bytes(data[46..48].try_into().unwrap()) as usize;
+            let e_shnum = u16::from_le_bytes(data[48..50].try_into().unwrap()) as usize;
+
+            if e_shoff > 0 && e_shentsize >= 40 {
+                for i in 0..e_shnum {
+                    let sh_off = e_shoff + i * e_shentsize;
+                    if sh_off + 40 > patched.len() {
+                        break;
+                    }
+                    let sh_type =
+                        u32::from_le_bytes(patched[sh_off + 4..sh_off + 8].try_into().unwrap());
+                    let sh_flags =
+                        u32::from_le_bytes(patched[sh_off + 8..sh_off + 12].try_into().unwrap());
+                    let sh_addr =
+                        u32::from_le_bytes(patched[sh_off + 12..sh_off + 16].try_into().unwrap());
+                    let sh_size =
+                        u32::from_le_bytes(patched[sh_off + 20..sh_off + 24].try_into().unwrap());
+                    if sh_type == 1
+                        && (sh_flags & 4) != 0
+                        && sh_addr + sh_size == last_exec_vaddr_end
+                    {
+                        patched[sh_off + 20..sh_off + 24]
+                            .copy_from_slice(&(sh_size + extra_bytes).to_le_bytes());
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    patched
 }
 
 /// Optimize a raw instruction stream (independent of the transpiler `Elf` type).
