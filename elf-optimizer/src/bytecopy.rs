@@ -206,12 +206,10 @@ pub(crate) fn pair_swaps(
     (swap_pairs, singles)
 }
 
-/// Encode LUI+JALR for an unconditional jump (rd=x0, no link) using `tmp` as
-/// the scratch register. Uses LUI (not AUIPC) to avoid confusing downstream
-/// parsers that expect AUIPC+JALR pairs to be function calls (with rd=ra).
-pub(crate) fn rv_encode_jump(from_addr: u32, to_addr: u32, tmp: u32) -> (u32, u32) {
-    // We ignore from_addr — LUI uses absolute addressing.
-    let _ = from_addr;
+/// Encode LUI+ADDI+JALR for an unconditional jump (rd=x0, no link) using
+/// `tmp` as the scratch register. Uses absolute addressing (LUI+ADDI) to
+/// avoid AUIPC, and JALR with offset=0 to satisfy downstream parsers.
+pub(crate) fn rv_encode_jump(_from_addr: u32, to_addr: u32, tmp: u32) -> (u32, u32, u32) {
     let addr = to_addr as i32;
     let mut upper = addr >> 12;
     let lower = addr & 0xFFF;
@@ -219,8 +217,9 @@ pub(crate) fn rv_encode_jump(from_addr: u32, to_addr: u32, tmp: u32) -> (u32, u3
         upper += 1;
     }
     let lui = rv_lui(tmp, (upper as u32) << 12);
-    let jalr = rv_jalr(X0, tmp, addr - (upper << 12));
-    (lui, jalr)
+    let addi = rv_addi(tmp, tmp, addr - (upper << 12));
+    let jalr = rv_jalr(X0, tmp, 0);
+    (lui, addi, jalr)
 }
 
 /// Generate an optimized routine from DFG analysis.
@@ -302,11 +301,12 @@ pub(crate) fn optimize_bytecopy(
 
         let mut routine = generate_dfg_routine(dfg);
 
-        // Append return jump
+        // Append return jump (3 instructions: LUI+ADDI+JALR)
         let routine_start_addr = pc_base + (instructions.len() as u32) * 4;
         let return_jump_addr = routine_start_addr + (routine.len() as u32) * 4;
-        let (ret_lui, ret_jalr) = rv_encode_jump(return_jump_addr, return_addr, tmp);
+        let (ret_lui, ret_addi, ret_jalr) = rv_encode_jump(return_jump_addr, return_addr, tmp);
         routine.push(ret_lui);
+        routine.push(ret_addi);
         routine.push(ret_jalr);
 
         let (swaps, singles) = pair_swaps(&dfg.word_transfers);
@@ -321,20 +321,16 @@ pub(crate) fn optimize_bytecopy(
         );
         instructions.extend(routine);
 
-        // Patch original site
-        let (fwd_lui, fwd_jalr) = rv_encode_jump(seq_addr, routine_start_addr, tmp);
-        let verify = rv_lui_jalr_target(fwd_lui, fwd_jalr);
-        assert_eq!(
-            verify, routine_start_addr,
-            "bytecopy fwd jump mismatch at 0x{seq_addr:x}: got 0x{verify:x}, expected 0x{routine_start_addr:x}"
-        );
+        // Patch original site (3 instructions: LUI+ADDI+JALR)
+        let (fwd_lui, fwd_addi, fwd_jalr) = rv_encode_jump(seq_addr, routine_start_addr, tmp);
 
         instructions[dfg.start_idx] = fwd_lui;
-        instructions[dfg.start_idx + 1] = fwd_jalr;
+        instructions[dfg.start_idx + 1] = fwd_addi;
+        instructions[dfg.start_idx + 2] = fwd_jalr;
         for item in instructions
             .iter_mut()
             .take(dfg.end_idx)
-            .skip(dfg.start_idx + 2)
+            .skip(dfg.start_idx + 3)
         {
             *item = nop;
         }
@@ -346,7 +342,7 @@ pub(crate) fn optimize_bytecopy(
             dfg.word_transfers.len(),
             swaps.len(),
             singles.len(),
-            dfg.end_idx - dfg.start_idx - 2,
+            dfg.end_idx - dfg.start_idx - 3,
         );
         patched += 1;
     }

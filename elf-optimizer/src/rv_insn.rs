@@ -202,13 +202,6 @@ pub(crate) fn rv_auipc_jalr_target(auipc_insn: u32, jalr_insn: u32, auipc_addr: 
     auipc_addr.wrapping_add(upper).wrapping_add(lower as u32)
 }
 
-/// Reconstruct jump target from a LUI+JALR pair (absolute addressing).
-pub(crate) fn rv_lui_jalr_target(lui_insn: u32, jalr_insn: u32) -> u32 {
-    let upper = rv_imm_u(lui_insn);
-    let lower = rv_imm_i(jalr_insn);
-    upper.wrapping_add(lower as u32)
-}
-
 /// Decode S-type immediate (sign-extended 12-bit, for SB/SH/SW)
 pub(crate) fn rv_imm_s(insn: u32) -> i32 {
     let imm_4_0 = (insn >> 7) & 0x1F;

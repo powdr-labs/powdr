@@ -801,14 +801,22 @@ fn test_bytecopy_encode_jump_roundtrip() {
     let from = 0x10000u32;
     let targets = [0x20000, 0x10100, 0x0FF00, 0x300000, 0x10004];
     for &to in &targets {
-        let (lui, jalr) = rv_encode_jump(from, to, X5);
-        let decoded = rv_lui_jalr_target(lui, jalr);
-        assert_eq!(
-            decoded, to,
-            "Jump roundtrip failed: from=0x{from:x}, to=0x{to:x}, got=0x{decoded:x}"
-        );
+        let (lui, addi, jalr) = rv_encode_jump(from, to, X5);
+        // LUI loads upper, ADDI adds lower, JALR jumps with offset 0
+        assert_eq!(rv_opcode(lui), 0x37, "First instruction should be LUI");
+        assert_eq!(rv_opcode(addi), 0x13, "Second instruction should be ADDI");
         assert_eq!(rv_rd(jalr), X0, "JALR rd should be x0 for no-link jump");
-        assert_eq!(rv_opcode(lui), 0x37, "First instruction should be LUI, not AUIPC");
+        assert_eq!(
+            rv_imm_i(jalr),
+            0,
+            "JALR offset should be 0 (address fully resolved by LUI+ADDI)"
+        );
+        // Verify target: LUI upper + ADDI lower
+        let resolved = (rv_imm_u(lui)).wrapping_add(rv_imm_i(addi) as u32);
+        assert_eq!(
+            resolved, to,
+            "Jump roundtrip failed: from=0x{from:x}, to=0x{to:x}, got=0x{resolved:x}"
+        );
     }
 }
 
@@ -848,19 +856,21 @@ fn test_dfg_end_to_end_patching() {
     let routine_start_addr = pc_base + (program.len() as u32) * 4;
     let return_addr = pc_base + (dfg.end_idx as u32) * 4;
     let return_jump_addr = routine_start_addr + (routine.len() as u32) * 4;
-    let (ret_lui, ret_jalr) = rv_encode_jump(return_jump_addr, return_addr, tmp);
+    let (ret_lui, ret_addi, ret_jalr) = rv_encode_jump(return_jump_addr, return_addr, tmp);
     routine.push(ret_lui);
+    routine.push(ret_addi);
     routine.push(ret_jalr);
 
     let seq_addr = pc_base + (dfg.start_idx as u32) * 4;
-    let (fwd_lui, fwd_jalr) = rv_encode_jump(seq_addr, routine_start_addr, tmp);
+    let (fwd_lui, fwd_addi, fwd_jalr) = rv_encode_jump(seq_addr, routine_start_addr, tmp);
 
     let mut patched = program.clone();
     patched.extend(routine);
     patched[dfg.start_idx] = fwd_lui;
-    patched[dfg.start_idx + 1] = fwd_jalr;
+    patched[dfg.start_idx + 1] = fwd_addi;
+    patched[dfg.start_idx + 2] = fwd_jalr;
     let nop = rv_addi(X0, X0, 0);
-    for item in patched.iter_mut().take(dfg.end_idx).skip(dfg.start_idx + 2) {
+    for item in patched.iter_mut().take(dfg.end_idx).skip(dfg.start_idx + 3) {
         *item = nop;
     }
 
