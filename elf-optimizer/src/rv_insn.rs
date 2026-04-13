@@ -130,6 +130,11 @@ pub(crate) fn rv_auipc(rd: u32, imm: u32) -> u32 {
     (imm & 0xFFFFF000) | (rd << 7) | 0x17
 }
 
+/// Encode LUI rd, imm (U-type, imm is the upper 20 bits already shifted)
+pub(crate) fn rv_lui(rd: u32, imm: u32) -> u32 {
+    (imm & 0xFFFFF000) | (rd << 7) | 0x37
+}
+
 // ---- Decoding helpers ----
 
 /// Extract opcode field (bits [6:0]) from a raw RISC-V instruction
@@ -195,6 +200,13 @@ pub(crate) fn rv_auipc_jalr_target(auipc_insn: u32, jalr_insn: u32, auipc_addr: 
     let upper = rv_imm_u(auipc_insn); // already has lower 12 bits zeroed
     let lower = rv_imm_i(jalr_insn); // sign-extended 12-bit immediate
     auipc_addr.wrapping_add(upper).wrapping_add(lower as u32)
+}
+
+/// Reconstruct jump target from a LUI+JALR pair (absolute addressing).
+pub(crate) fn rv_lui_jalr_target(lui_insn: u32, jalr_insn: u32) -> u32 {
+    let upper = rv_imm_u(lui_insn);
+    let lower = rv_imm_i(jalr_insn);
+    upper.wrapping_add(lower as u32)
 }
 
 /// Decode S-type immediate (sign-extended 12-bit, for SB/SH/SW)

@@ -801,13 +801,14 @@ fn test_bytecopy_encode_jump_roundtrip() {
     let from = 0x10000u32;
     let targets = [0x20000, 0x10100, 0x0FF00, 0x300000, 0x10004];
     for &to in &targets {
-        let (auipc, jalr) = rv_encode_jump(from, to, X5);
-        let decoded = rv_auipc_jalr_target(auipc, jalr, from);
+        let (lui, jalr) = rv_encode_jump(from, to, X5);
+        let decoded = rv_lui_jalr_target(lui, jalr);
         assert_eq!(
             decoded, to,
             "Jump roundtrip failed: from=0x{from:x}, to=0x{to:x}, got=0x{decoded:x}"
         );
         assert_eq!(rv_rd(jalr), X0, "JALR rd should be x0 for no-link jump");
+        assert_eq!(rv_opcode(lui), 0x37, "First instruction should be LUI, not AUIPC");
     }
 }
 
@@ -847,16 +848,16 @@ fn test_dfg_end_to_end_patching() {
     let routine_start_addr = pc_base + (program.len() as u32) * 4;
     let return_addr = pc_base + (dfg.end_idx as u32) * 4;
     let return_jump_addr = routine_start_addr + (routine.len() as u32) * 4;
-    let (ret_auipc, ret_jalr) = rv_encode_jump(return_jump_addr, return_addr, tmp);
-    routine.push(ret_auipc);
+    let (ret_lui, ret_jalr) = rv_encode_jump(return_jump_addr, return_addr, tmp);
+    routine.push(ret_lui);
     routine.push(ret_jalr);
 
     let seq_addr = pc_base + (dfg.start_idx as u32) * 4;
-    let (fwd_auipc, fwd_jalr) = rv_encode_jump(seq_addr, routine_start_addr, tmp);
+    let (fwd_lui, fwd_jalr) = rv_encode_jump(seq_addr, routine_start_addr, tmp);
 
     let mut patched = program.clone();
     patched.extend(routine);
-    patched[dfg.start_idx] = fwd_auipc;
+    patched[dfg.start_idx] = fwd_lui;
     patched[dfg.start_idx + 1] = fwd_jalr;
     let nop = rv_addi(X0, X0, 0);
     for item in patched.iter_mut().take(dfg.end_idx).skip(dfg.start_idx + 2) {

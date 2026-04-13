@@ -206,18 +206,21 @@ pub(crate) fn pair_swaps(
     (swap_pairs, singles)
 }
 
-/// Encode AUIPC+JALR for an unconditional jump (rd=x0, no link) using `tmp` as
-/// the scratch register for the upper immediate.
+/// Encode LUI+JALR for an unconditional jump (rd=x0, no link) using `tmp` as
+/// the scratch register. Uses LUI (not AUIPC) to avoid confusing downstream
+/// parsers that expect AUIPC+JALR pairs to be function calls (with rd=ra).
 pub(crate) fn rv_encode_jump(from_addr: u32, to_addr: u32, tmp: u32) -> (u32, u32) {
-    let diff = to_addr.wrapping_sub(from_addr) as i32;
-    let mut upper = diff >> 12;
-    let lower = diff & 0xFFF;
+    // We ignore from_addr — LUI uses absolute addressing.
+    let _ = from_addr;
+    let addr = to_addr as i32;
+    let mut upper = addr >> 12;
+    let lower = addr & 0xFFF;
     if lower >= 0x800 {
         upper += 1;
     }
-    let auipc = rv_auipc(tmp, (upper as u32) << 12);
-    let jalr = rv_jalr(X0, tmp, diff - (upper << 12));
-    (auipc, jalr)
+    let lui = rv_lui(tmp, (upper as u32) << 12);
+    let jalr = rv_jalr(X0, tmp, addr - (upper << 12));
+    (lui, jalr)
 }
 
 /// Generate an optimized routine from DFG analysis.
@@ -302,8 +305,8 @@ pub(crate) fn optimize_bytecopy(
         // Append return jump
         let routine_start_addr = pc_base + (instructions.len() as u32) * 4;
         let return_jump_addr = routine_start_addr + (routine.len() as u32) * 4;
-        let (ret_auipc, ret_jalr) = rv_encode_jump(return_jump_addr, return_addr, tmp);
-        routine.push(ret_auipc);
+        let (ret_lui, ret_jalr) = rv_encode_jump(return_jump_addr, return_addr, tmp);
+        routine.push(ret_lui);
         routine.push(ret_jalr);
 
         let (swaps, singles) = pair_swaps(&dfg.word_transfers);
@@ -319,14 +322,14 @@ pub(crate) fn optimize_bytecopy(
         instructions.extend(routine);
 
         // Patch original site
-        let (fwd_auipc, fwd_jalr) = rv_encode_jump(seq_addr, routine_start_addr, tmp);
-        let verify = rv_auipc_jalr_target(fwd_auipc, fwd_jalr, seq_addr);
+        let (fwd_lui, fwd_jalr) = rv_encode_jump(seq_addr, routine_start_addr, tmp);
+        let verify = rv_lui_jalr_target(fwd_lui, fwd_jalr);
         assert_eq!(
             verify, routine_start_addr,
             "bytecopy fwd jump mismatch at 0x{seq_addr:x}: got 0x{verify:x}, expected 0x{routine_start_addr:x}"
         );
 
-        instructions[dfg.start_idx] = fwd_auipc;
+        instructions[dfg.start_idx] = fwd_lui;
         instructions[dfg.start_idx + 1] = fwd_jalr;
         for item in instructions
             .iter_mut()
