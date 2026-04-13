@@ -194,6 +194,10 @@ fn build_symbol_table(data: &[u8]) -> SymbolTable {
 
 /// Produce a patched ELF binary by writing optimized instructions back and
 /// extending the last executable segment for any appended routines.
+///
+/// Appended instructions are spliced into the file right after the text
+/// segment, and all subsequent segment/section offsets are shifted forward
+/// so that the resulting ELF is structurally valid.
 fn patch_elf(
     data: &[u8],
     instructions: &[u32],
@@ -203,6 +207,7 @@ fn patch_elf(
 ) -> Vec<u8> {
     let mut patched = data.to_vec();
 
+    // Step 1: Patch existing instructions in-place.
     for &(insn_idx, file_offset) in text_offsets {
         if insn_idx < instructions.len() && file_offset > 0 {
             let word = instructions[insn_idx];
@@ -210,73 +215,120 @@ fn patch_elf(
         }
     }
 
-    if appended > 0 {
-        let e_phoff = u32::from_le_bytes(data[28..32].try_into().unwrap()) as usize;
-        let e_phentsize = u16::from_le_bytes(data[42..44].try_into().unwrap()) as usize;
-        let e_phnum = u16::from_le_bytes(data[44..46].try_into().unwrap()) as usize;
+    if appended == 0 {
+        return patched;
+    }
 
-        let mut last_exec_ph: Option<usize> = None;
-        let mut last_exec_vaddr_end: u32 = 0;
+    let extra_bytes = (appended as u32) * 4;
+    let extra_bytes_usize = extra_bytes as usize;
 
-        for i in 0..e_phnum {
-            let off = e_phoff + i * e_phentsize;
-            let p_type = u32::from_le_bytes(patched[off..off + 4].try_into().unwrap());
-            let p_vaddr = u32::from_le_bytes(patched[off + 8..off + 12].try_into().unwrap());
-            let p_memsz = u32::from_le_bytes(patched[off + 20..off + 24].try_into().unwrap());
-            let p_flags = u32::from_le_bytes(patched[off + 24..off + 28].try_into().unwrap());
-            if p_type == 1 && (p_flags & 1) != 0 {
-                let end = p_vaddr + p_memsz;
-                if end >= last_exec_vaddr_end {
-                    last_exec_vaddr_end = end;
-                    last_exec_ph = Some(i);
-                }
+    let e_phoff = u32::from_le_bytes(data[28..32].try_into().unwrap()) as usize;
+    let e_phentsize = u16::from_le_bytes(data[42..44].try_into().unwrap()) as usize;
+    let e_phnum = u16::from_le_bytes(data[44..46].try_into().unwrap()) as usize;
+
+    // Find the last executable segment (highest vaddr end).
+    let mut last_exec_ph: Option<usize> = None;
+    let mut last_exec_file_end: usize = 0;
+    let mut last_exec_vaddr_end: u32 = 0;
+
+    for i in 0..e_phnum {
+        let off = e_phoff + i * e_phentsize;
+        let p_type = u32::from_le_bytes(patched[off..off + 4].try_into().unwrap());
+        let p_offset = u32::from_le_bytes(patched[off + 4..off + 8].try_into().unwrap()) as usize;
+        let p_vaddr = u32::from_le_bytes(patched[off + 8..off + 12].try_into().unwrap());
+        let p_filesz = u32::from_le_bytes(patched[off + 16..off + 20].try_into().unwrap()) as usize;
+        let p_memsz = u32::from_le_bytes(patched[off + 20..off + 24].try_into().unwrap());
+        let p_flags = u32::from_le_bytes(patched[off + 24..off + 28].try_into().unwrap());
+        if p_type == 1 && (p_flags & 1) != 0 {
+            let end = p_vaddr + p_memsz;
+            if end >= last_exec_vaddr_end {
+                last_exec_vaddr_end = end;
+                last_exec_file_end = p_offset + p_filesz;
+                last_exec_ph = Some(i);
             }
         }
+    }
 
-        if let Some(ph_idx) = last_exec_ph {
-            let ph_off = e_phoff + ph_idx * e_phentsize;
-            let extra_bytes = (appended as u32) * 4;
+    let Some(ph_idx) = last_exec_ph else {
+        return patched;
+    };
 
-            for insn in instructions.iter().skip(original_count) {
-                patched.extend_from_slice(&insn.to_le_bytes());
+    // Step 2: Serialize appended instructions.
+    let mut extra_data = Vec::with_capacity(extra_bytes_usize);
+    for insn in instructions.iter().skip(original_count) {
+        extra_data.extend_from_slice(&insn.to_le_bytes());
+    }
+
+    // Step 3: Splice the extra bytes into the file at the insertion point
+    // (right after the text segment), shifting everything after it.
+    let insert_pos = last_exec_file_end;
+    patched.splice(insert_pos..insert_pos, extra_data);
+
+    // Step 4: Update the text segment's p_filesz and p_memsz.
+    let ph_off = e_phoff + ph_idx * e_phentsize;
+    let old_filesz = u32::from_le_bytes(patched[ph_off + 16..ph_off + 20].try_into().unwrap());
+    let old_memsz = u32::from_le_bytes(patched[ph_off + 20..ph_off + 24].try_into().unwrap());
+    patched[ph_off + 16..ph_off + 20].copy_from_slice(&(old_filesz + extra_bytes).to_le_bytes());
+    patched[ph_off + 20..ph_off + 24].copy_from_slice(&(old_memsz + extra_bytes).to_le_bytes());
+
+    // Step 5: Shift p_offset of all program headers that come after the
+    // insertion point in the file.
+    for i in 0..e_phnum {
+        if i == ph_idx {
+            continue;
+        }
+        let off = e_phoff + i * e_phentsize;
+        let p_offset = u32::from_le_bytes(patched[off + 4..off + 8].try_into().unwrap());
+        if p_offset as usize >= insert_pos {
+            patched[off + 4..off + 8]
+                .copy_from_slice(&(p_offset + extra_bytes).to_le_bytes());
+        }
+    }
+
+    // Step 6: Update section header table offset (e_shoff) in ELF header.
+    let e_shoff = u32::from_le_bytes(patched[32..36].try_into().unwrap()) as usize;
+    let e_shentsize = u16::from_le_bytes(patched[46..48].try_into().unwrap()) as usize;
+    let e_shnum = u16::from_le_bytes(patched[48..50].try_into().unwrap()) as usize;
+
+    if e_shoff > 0 && e_shoff >= insert_pos {
+        let new_shoff = (e_shoff + extra_bytes_usize) as u32;
+        patched[32..36].copy_from_slice(&new_shoff.to_le_bytes());
+    }
+
+    // Step 7: Shift sh_offset of all section headers that come after the
+    // insertion point, and extend the .text section's sh_size.
+    let actual_shoff = u32::from_le_bytes(patched[32..36].try_into().unwrap()) as usize;
+    if actual_shoff > 0 && e_shentsize >= 40 {
+        for i in 0..e_shnum {
+            let sh_off = actual_shoff + i * e_shentsize;
+            if sh_off + 40 > patched.len() {
+                break;
             }
 
-            let old_filesz =
-                u32::from_le_bytes(patched[ph_off + 16..ph_off + 20].try_into().unwrap());
-            let old_memsz =
-                u32::from_le_bytes(patched[ph_off + 20..ph_off + 24].try_into().unwrap());
-            patched[ph_off + 16..ph_off + 20]
-                .copy_from_slice(&(old_filesz + extra_bytes).to_le_bytes());
-            patched[ph_off + 20..ph_off + 24]
-                .copy_from_slice(&(old_memsz + extra_bytes).to_le_bytes());
+            // Shift sh_offset for sections after the insertion point.
+            let sh_file_offset =
+                u32::from_le_bytes(patched[sh_off + 16..sh_off + 20].try_into().unwrap());
+            if sh_file_offset as usize >= insert_pos {
+                patched[sh_off + 16..sh_off + 20]
+                    .copy_from_slice(&(sh_file_offset + extra_bytes).to_le_bytes());
+            }
 
-            let e_shoff = u32::from_le_bytes(data[32..36].try_into().unwrap()) as usize;
-            let e_shentsize = u16::from_le_bytes(data[46..48].try_into().unwrap()) as usize;
-            let e_shnum = u16::from_le_bytes(data[48..50].try_into().unwrap()) as usize;
-
-            if e_shoff > 0 && e_shentsize >= 40 {
-                for i in 0..e_shnum {
-                    let sh_off = e_shoff + i * e_shentsize;
-                    if sh_off + 40 > patched.len() {
-                        break;
-                    }
-                    let sh_type =
-                        u32::from_le_bytes(patched[sh_off + 4..sh_off + 8].try_into().unwrap());
-                    let sh_flags =
-                        u32::from_le_bytes(patched[sh_off + 8..sh_off + 12].try_into().unwrap());
-                    let sh_addr =
-                        u32::from_le_bytes(patched[sh_off + 12..sh_off + 16].try_into().unwrap());
-                    let sh_size =
-                        u32::from_le_bytes(patched[sh_off + 20..sh_off + 24].try_into().unwrap());
-                    if sh_type == 1
-                        && (sh_flags & 4) != 0
-                        && sh_addr + sh_size == last_exec_vaddr_end
-                    {
-                        patched[sh_off + 20..sh_off + 24]
-                            .copy_from_slice(&(sh_size + extra_bytes).to_le_bytes());
-                        break;
-                    }
-                }
+            // Extend .text section (SHT_PROGBITS with SHF_EXECINSTR whose
+            // end matches the original text segment end).
+            let sh_type =
+                u32::from_le_bytes(patched[sh_off + 4..sh_off + 8].try_into().unwrap());
+            let sh_flags =
+                u32::from_le_bytes(patched[sh_off + 8..sh_off + 12].try_into().unwrap());
+            let sh_addr =
+                u32::from_le_bytes(patched[sh_off + 12..sh_off + 16].try_into().unwrap());
+            let sh_size =
+                u32::from_le_bytes(patched[sh_off + 20..sh_off + 24].try_into().unwrap());
+            if sh_type == 1
+                && (sh_flags & 4) != 0
+                && sh_addr + sh_size == last_exec_vaddr_end
+            {
+                patched[sh_off + 20..sh_off + 24]
+                    .copy_from_slice(&(sh_size + extra_bytes).to_le_bytes());
             }
         }
     }
