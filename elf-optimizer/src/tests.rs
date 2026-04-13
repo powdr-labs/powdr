@@ -59,9 +59,34 @@ impl RvInterpreter {
                     let result = match funct3 {
                         0b000 => rs1_val.wrapping_add(imm as u32), // ADDI
                         0b001 => rs1_val << ((imm as u32) & 0x1F), // SLLI
-                        0b101 => rs1_val >> ((imm as u32) & 0x1F), // SRLI (funct7=0)
-                        0b111 => rs1_val & (imm as u32),           // ANDI
-                        0b110 => rs1_val | (imm as u32),           // ORI
+                        0b010 => {
+                            // SLTI
+                            if (rs1_val as i32) < imm {
+                                1
+                            } else {
+                                0
+                            }
+                        }
+                        0b011 => {
+                            // SLTIU
+                            if rs1_val < (imm as u32) {
+                                1
+                            } else {
+                                0
+                            }
+                        }
+                        0b100 => rs1_val ^ (imm as u32), // XORI
+                        0b101 => {
+                            let shamt = (imm as u32) & 0x1F;
+                            let funct7 = (insn >> 25) & 0x7F;
+                            if funct7 == 0b0100000 {
+                                ((rs1_val as i32) >> shamt) as u32 // SRAI
+                            } else {
+                                rs1_val >> shamt // SRLI
+                            }
+                        }
+                        0b110 => rs1_val | (imm as u32),  // ORI
+                        0b111 => rs1_val & (imm as u32),  // ANDI
                         _ => panic!("Unknown I-type ALU funct3: {funct3}"),
                     };
                     self.set_reg(rd, result);
@@ -76,8 +101,30 @@ impl RvInterpreter {
                     let result = match (funct3, funct7) {
                         (0b000, 0b0000000) => rs1_val.wrapping_add(rs2_val), // ADD
                         (0b000, 0b0100000) => rs1_val.wrapping_sub(rs2_val), // SUB
-                        (0b110, _) => rs1_val | rs2_val,                     // OR
-                        (0b111, _) => rs1_val & rs2_val,                     // AND
+                        (0b001, 0b0000000) => rs1_val << (rs2_val & 0x1F),   // SLL
+                        (0b010, 0b0000000) => {
+                            // SLT
+                            if (rs1_val as i32) < (rs2_val as i32) {
+                                1
+                            } else {
+                                0
+                            }
+                        }
+                        (0b011, 0b0000000) => {
+                            // SLTU
+                            if rs1_val < rs2_val {
+                                1
+                            } else {
+                                0
+                            }
+                        }
+                        (0b100, 0b0000000) => rs1_val ^ rs2_val, // XOR
+                        (0b101, 0b0000000) => rs1_val >> (rs2_val & 0x1F), // SRL
+                        (0b101, 0b0100000) => {
+                            ((rs1_val as i32) >> (rs2_val & 0x1F)) as u32 // SRA
+                        }
+                        (0b110, _) => rs1_val | rs2_val,  // OR
+                        (0b111, _) => rs1_val & rs2_val,  // AND
                         _ => panic!("Unknown R-type funct3={funct3} funct7={funct7}"),
                     };
                     self.set_reg(rd, result);
@@ -88,6 +135,16 @@ impl RvInterpreter {
                     let imm = rv_imm_i(insn);
                     let addr = self.reg(rs1).wrapping_add(imm as u32);
                     let val = match funct3 {
+                        0b000 => {
+                            // LB (sign-extended byte)
+                            self.mem[addr as usize] as i8 as i32 as u32
+                        }
+                        0b001 => {
+                            // LH (sign-extended halfword)
+                            let a = addr as usize;
+                            let hw = u16::from_le_bytes([self.mem[a], self.mem[a + 1]]);
+                            hw as i16 as i32 as u32
+                        }
                         0b010 => {
                             // LW
                             assert!(addr.is_multiple_of(4), "Unaligned LW at 0x{:x}", addr);
@@ -102,6 +159,11 @@ impl RvInterpreter {
                         0b100 => {
                             // LBU
                             self.mem[addr as usize] as u32
+                        }
+                        0b101 => {
+                            // LHU
+                            let a = addr as usize;
+                            u16::from_le_bytes([self.mem[a], self.mem[a + 1]]) as u32
                         }
                         _ => panic!("Unknown load funct3: {}", funct3),
                     };
@@ -119,15 +181,21 @@ impl RvInterpreter {
                     let addr = self.reg(rs1).wrapping_add(imm as u32);
                     let val = self.reg(rs2);
                     match funct3 {
+                        0b000 => {
+                            // SB
+                            self.mem[addr as usize] = (val & 0xFF) as u8;
+                        }
+                        0b001 => {
+                            // SH
+                            let a = addr as usize;
+                            self.mem[a..a + 2]
+                                .copy_from_slice(&(val as u16).to_le_bytes());
+                        }
                         0b010 => {
                             // SW
                             assert!(addr.is_multiple_of(4), "Unaligned SW at 0x{:x}", addr);
                             let a = addr as usize;
                             self.mem[a..a + 4].copy_from_slice(&val.to_le_bytes());
-                        }
-                        0b000 => {
-                            // SB
-                            self.mem[addr as usize] = (val & 0xFF) as u8;
                         }
                         _ => panic!("Unknown store funct3: {}", funct3),
                     }
@@ -139,10 +207,12 @@ impl RvInterpreter {
                     let rs1_val = self.reg(rs1);
                     let rs2_val = self.reg(rs2);
                     let take = match funct3 {
-                        0b000 => rs1_val == rs2_val, // BEQ
-                        0b001 => rs1_val != rs2_val, // BNE
-                        0b110 => rs1_val < rs2_val,  // BLTU
-                        0b111 => rs1_val >= rs2_val, // BGEU
+                        0b000 => rs1_val == rs2_val,                         // BEQ
+                        0b001 => rs1_val != rs2_val,                         // BNE
+                        0b100 => (rs1_val as i32) < (rs2_val as i32),        // BLT
+                        0b101 => (rs1_val as i32) >= (rs2_val as i32),       // BGE
+                        0b110 => rs1_val < rs2_val,                          // BLTU
+                        0b111 => rs1_val >= rs2_val,                         // BGEU
                         _ => panic!("Unknown branch funct3: {}", funct3),
                     };
                     if take {
@@ -175,6 +245,12 @@ impl RvInterpreter {
                     // AUIPC
                     let imm = insn & 0xFFFFF000;
                     self.set_reg(rd, self.pc.wrapping_add(imm));
+                    self.pc += 4;
+                }
+                0x37 => {
+                    // LUI
+                    let imm = insn & 0xFFFFF000;
+                    self.set_reg(rd, imm);
                     self.pc += 4;
                 }
                 0x6F => {
@@ -999,4 +1075,549 @@ fn test_alignment_resolver() {
     // No write to reg → not aligned
     let instrs = vec![rv_addi(X11, X2, 8)];
     assert!(!rv_resolve_reg_alignment(&instrs, 1, X10));
+}
+
+// ---------------------------------------------------------------------------
+// ELF routine constants extracted from openvm-client-eth binary.
+//
+// memcpy: musl memcpy at 0x002008f8, 259 instructions, 1036 bytes.
+// Convention: a0=dst, a1=src, a2=length. Returns a0=dst.
+// Handles all alignments internally via shift-based word copy.
+// ---------------------------------------------------------------------------
+#[cfg(test)]
+const ELF_MEMCPY: &[u32] = &[
+    0x0035f693, 0x0016b693, 0x00163713, 0x00e6e6b3, 0x0e069c63, 0x00158793, 0x00050813, 0x00058883,
+    0x00158713, 0x00180693, 0x01180023, 0xfff60613, 0x0037f593, 0x00b035b3, 0x00c03833, 0x0105f8b3,
+    0x00178793, 0x00070593, 0x00068813, 0xfc0898e3, 0x0036f593, 0x0c058263, 0x02000793, 0x22f66e63,
+    0x00300793, 0x12f58663, 0x00200793, 0x1af58263, 0x00100793, 0x22f59263, 0x00072783, 0x00f68023,
+    0x0087d593, 0x00b680a3, 0x0107d813, 0x00368593, 0x01068123, 0xffd60613, 0x01070693, 0x01000713,
+    0xff46a803, 0x0187d793, 0x00881893, 0xff86a283, 0x00f8e7b3, 0x00f5a023, 0x01885793, 0x00829813,
+    0xffc6a883, 0x00f867b3, 0x00f5a223, 0x0182d813, 0x00889293, 0x0006a783, 0x0102e833, 0x0105a423,
+    0x0188d813, 0x00879893, 0x0108e833, 0x0105a623, 0x01058593, 0xff060613, 0x01068693, 0xfac762e3,
+    0xff368713, 0x1900006f, 0x00050693, 0x00058713, 0x0036f593, 0xf40592e3, 0x01000593, 0x02b66c63,
+    0x00f00593, 0x00072783, 0x00472803, 0x00872883, 0x00c72283, 0x00f6a023, 0x0106a223, 0x0116a423,
+    0x0056a623, 0x01070713, 0xff060613, 0x01068693, 0xfcc5eae3, 0x00867593, 0x00058e63, 0x00072583,
+    0x00472783, 0x00b6a023, 0x00f6a223, 0x00868693, 0x00870713, 0x00467593, 0x16058263, 0x00072583,
+    0x00b6a023, 0x00468693, 0x00470713, 0x1500006f, 0x00072783, 0x00168593, 0x00f68023, 0xfff60613,
+    0x01070693, 0x01200713, 0xff46a803, 0x0087d793, 0x01881893, 0xff86a283, 0x00f8e7b3, 0x00f5a023,
+    0x00885793, 0x01829813, 0xffc6a883, 0x00f867b3, 0x00f5a223, 0x0082d813, 0x01889293, 0x0006a783,
+    0x0102e833, 0x0105a423, 0x0088d813, 0x01879893, 0x0108e833, 0x0105a623, 0x01058593, 0xff060613,
+    0x01068693, 0xfac762e3, 0xff168713, 0x0880006f, 0x00072783, 0x00f68023, 0x0087d813, 0x00268593,
+    0x010680a3, 0xffe60613, 0x01070693, 0x01100713, 0xff46a803, 0x0107d793, 0x01081893, 0xff86a283,
+    0x00f8e7b3, 0x00f5a023, 0x01085793, 0x01029813, 0xffc6a883, 0x00f867b3, 0x00f5a223, 0x0102d813,
+    0x01089293, 0x0006a783, 0x0102e833, 0x0105a423, 0x0108d813, 0x01079893, 0x0108e833, 0x0105a623,
+    0x01058593, 0xff060613, 0x01068693, 0xfac762e3, 0xff268713, 0x00058693, 0x01067593, 0x08059263,
+    0x00867593, 0x10059863, 0x00467593, 0x02058863, 0x00070583, 0x00170783, 0x00270803, 0x00b68023,
+    0x00f680a3, 0x00370583, 0x01068123, 0x00470713, 0x00468793, 0x00b681a3, 0x00078693, 0x00267593,
+    0x00059863, 0x00167593, 0x02059663, 0x00008067, 0x00070583, 0x00170783, 0x00b68023, 0x00270713,
+    0x00268593, 0x00f680a3, 0x00058693, 0x00167593, 0xfc058ee3, 0x00070583, 0x00b68023, 0x00008067,
+    0x00070583, 0x00170783, 0x00270803, 0x00b68023, 0x00f680a3, 0x00370583, 0x01068123, 0x00470783,
+    0x00570803, 0x00b681a3, 0x00670583, 0x00f68223, 0x010682a3, 0x00770783, 0x00b68323, 0x00870583,
+    0x00970803, 0x00f683a3, 0x00a70783, 0x00b68423, 0x010684a3, 0x00b70583, 0x00f68523, 0x00c70783,
+    0x00d70803, 0x00b685a3, 0x00e70583, 0x00f68623, 0x010686a3, 0x00f70783, 0x00b68723, 0x01070713,
+    0x01068593, 0x00f687a3, 0x00058693, 0x00867593, 0xee058ce3, 0x00070583, 0x00170783, 0x00270803,
+    0x00b68023, 0x00f680a3, 0x00370583, 0x01068123, 0x00470783, 0x00570803, 0x00b681a3, 0x00670583,
+    0x00f68223, 0x010682a3, 0x00770783, 0x00b68323, 0x00870713, 0x00868593, 0x00f683a3, 0x00058693,
+    0x00467593, 0xea0596e3, 0xed5ff06f,
+];
+
+// ---------------------------------------------------------------------------
+// memmove: compiler_builtins memmove implementation at 0x004e7cc8,
+// 258 instructions, 1032 bytes. Uses stack frame (32 bytes).
+// Convention: a0=dst, a1=src, a2=length. Returns a0=dst.
+// Handles overlapping regions and all alignments.
+// ---------------------------------------------------------------------------
+#[cfg(test)]
+const ELF_MEMMOVE_IMPL: &[u32] = &[
+    0xfe010113, 0x00812e23, 0x40b506b3, 0x0cc6f063, 0x00c508b3, 0x01000693, 0x00c58733, 0x08d66463,
+    0x0038f793, 0xffc8f693, 0x40f002b3, 0x0316f463, 0x00c58833, 0xfff80813, 0x00088313, 0x00084383,
+    0xfff30e13, 0xfe730fa3, 0xfff80813, 0x000e0313, 0xffc6e6e3, 0x00570733, 0x40f607b3, 0xffc7f393,
+    0x00377313, 0x40700833, 0x40768e33, 0x10031a63, 0x02de7463, 0x00b785b3, 0xffc58593, 0x00068613,
+    0x0005a883, 0xffc60293, 0xff162e23, 0xffc58593, 0x00028613, 0xfe5e66e3, 0x010688b3, 0x01070733,
+    0x0037f613, 0x40c885b3, 0x0d15f663, 0xfff70713, 0x00074603, 0xfff88693, 0xfec88fa3, 0xfff70713,
+    0x00068893, 0xfed5e6e3, 0x0ac0006f, 0x01000693, 0x08d66063, 0x40a006b3, 0x0036f693, 0x00d507b3,
+    0x02f57463, 0x00068713, 0x00050813, 0x00058893, 0x0008c283, 0xfff70713, 0x00580023, 0x00180813,
+    0x00188893, 0xfe0716e3, 0x00d585b3, 0x40d60633, 0xffc67713, 0x0035f893, 0x00e786b3, 0x08089463,
+    0x00d7fe63, 0x00058813, 0x00082883, 0x0117a023, 0x00478793, 0x00480813, 0xfed7e8e3, 0x00e585b3,
+    0x00367613, 0x00c68733, 0x00e6ea63, 0x0280006f, 0x00050693, 0x00c50733, 0x00e57e63, 0x0005c703,
+    0xfff60613, 0x00e68023, 0x00168693, 0x00158593, 0xfe0616e3, 0x01c12403, 0x02010113, 0x00008067,
+    0x40670eb3, 0x00010a23, 0x00100393, 0x00010923, 0x08731663, 0x00000393, 0x00000f13, 0x01410f93,
+    0x1800006f, 0x00000813, 0x00400293, 0x00012623, 0x41128333, 0x00c10293, 0x00137393, 0x0112e2b3,
+    0x06039c63, 0x00237313, 0x08031263, 0x00c12e83, 0x00389813, 0x00478293, 0x41158f33, 0x08d2fa63,
+    0x410002b3, 0x0182fe13, 0x004f2283, 0x004f0393, 0x010edeb3, 0x00478313, 0x01c29f33, 0x01df6eb3,
+    0x00878f93, 0x01d7a023, 0x00030793, 0x00038f13, 0x00028e93, 0xfcdfeae3, 0x0640006f, 0x000ecf83,
+    0x001ecf03, 0x00177393, 0x01f10a23, 0x0e039663, 0x00000413, 0x1040006f, 0x0005c803, 0x01028023,
+    0x00100813, 0x00237313, 0xf80302e3, 0x01058333, 0x00031303, 0x01028833, 0x00681023, 0x00c12e83,
+    0x00389813, 0x00478293, 0x41158f33, 0xf6d2eae3, 0x000e8293, 0x000f0393, 0x00078313, 0x00010423,
+    0x00100793, 0x00010323, 0x00f89c63, 0x00000893, 0x00000793, 0x00000e13, 0x00810e93, 0x01c0006f,
+    0x0043c883, 0x0053c783, 0x00200e13, 0x01110423, 0x00879793, 0x00610e93, 0x0015ff13, 0x000f1663,
+    0x00000393, 0x0200006f, 0x00438393, 0x01c383b3, 0x0003c883, 0x011e8023, 0x00614383, 0x00814883,
+    0x01039393, 0x0113e8b3, 0x0102d2b3, 0x41000833, 0x0117e7b3, 0x01887813, 0x010797b3, 0x0057e7b3,
+    0x00f32023, 0x00e585b3, 0x00367613, 0x00c68733, 0xe4e6e6e3, 0xe61ff06f, 0x01210f93, 0x00200393,
+    0x007e83b3, 0x0003c383, 0x007f8023, 0x01214403, 0x01414f83, 0x01041413, 0x00331393, 0x008f1f13,
+    0x01ff6fb3, 0x004e0f13, 0x01f46e33, 0x04df7663, 0x40700eb3, 0x40660fb3, 0x018ef613, 0x01f58eb3,
+    0x000e0593, 0x005e8e33, 0xffce2e03, 0x00c595b3, 0x007e5fb3, 0x00bfe5b3, 0x00588fb3, 0xffc88893,
+    0xfebfae23, 0x005885b3, 0xffce8e93, 0xfcbf6ae3, 0x005e8eb3, 0x0080006f, 0x00068593, 0x00000613,
+    0x006e82b3, 0x00400893, 0x00012c23, 0x01810f13, 0x40688eb3, 0x006f68b3, 0x001ef313, 0xffc28293,
+    0x00030863, 0x0002c603, 0x00c88023, 0x00100613, 0x002ef313, 0x00030a63, 0x00c282b3, 0x00029283,
+    0x00c88633, 0x00561023, 0x01812603, 0x407008b3, 0x0188f893, 0x011e18b3, 0x00765633, 0x01166633,
+    0xfec5ae23, 0xc95ff06f,
+];
+
+// ---------------------------------------------------------------------------
+// memcmp: compiler_builtins byte-by-byte memcmp at 0x004e80d0,
+// 12 instructions, 48 bytes.
+// Convention: a0=ptr1, a1=ptr2, a2=length. Returns a0 = signed diff of
+// first differing byte pair, or 0 if equal.
+// ---------------------------------------------------------------------------
+#[cfg(test)]
+const ELF_MEMCMP_IMPL: &[u32] = &[
+    0x02060063, 0x00054683, 0x0005c703, 0x00e69e63, 0xfff60613, 0x00158593, 0x00150513, 0xfe0614e3,
+    0x00000513, 0x00008067, 0x40e68533, 0x00008067,
+];
+
+/// Helper: run ELF memcpy (a0=dst, a1=src, a2=length) and return resulting
+/// destination bytes.
+#[cfg(test)]
+fn run_elf_memcpy(src: &[u8], dst_offset: u32, src_offset: u32, length: u32) -> Vec<u8> {
+    let mem_size = 8192;
+    let mut interp = RvInterpreter::new(mem_size);
+    interp.mem.fill(0xAA);
+    for (i, &b) in src.iter().enumerate() {
+        interp.mem[src_offset as usize + i] = b;
+    }
+    interp.set_reg(X10, dst_offset);
+    interp.set_reg(X11, src_offset);
+    interp.set_reg(X12, length);
+    interp.set_reg(X1, (ELF_MEMCPY.len() as u32 + 10) * 4);
+    interp.run(ELF_MEMCPY, 100_000);
+    interp.mem[dst_offset as usize..(dst_offset + length) as usize].to_vec()
+}
+
+/// Helper: run ELF memmove (a0=dst, a1=src, a2=length) and return resulting
+/// destination bytes. Sets up stack at top of memory.
+#[cfg(test)]
+fn run_elf_memmove(initial_mem: &mut [u8], dst_offset: u32, src_offset: u32, length: u32) -> Vec<u8> {
+    let mem_size = initial_mem.len();
+    let stack_top = (mem_size - 64) as u32; // reserve 64 bytes for stack
+    let stack_top = stack_top & !0xF; // 16-byte aligned
+    let mut interp = RvInterpreter::new(mem_size);
+    interp.mem.copy_from_slice(initial_mem);
+    interp.set_reg(X2, stack_top); // SP
+    interp.set_reg(X10, dst_offset);
+    interp.set_reg(X11, src_offset);
+    interp.set_reg(X12, length);
+    interp.set_reg(X1, (ELF_MEMMOVE_IMPL.len() as u32 + 10) * 4);
+    interp.run(ELF_MEMMOVE_IMPL, 500_000);
+    // Copy resulting memory back so caller can inspect overlapping regions
+    initial_mem.copy_from_slice(&interp.mem);
+    interp.mem[dst_offset as usize..(dst_offset + length) as usize].to_vec()
+}
+
+/// Helper: run ELF memcmp (a0=ptr1, a1=ptr2, a2=length) and return result.
+#[cfg(test)]
+fn run_elf_memcmp(mem: &[u8], ptr1: u32, ptr2: u32, length: u32) -> i32 {
+    let mut interp = RvInterpreter::new(mem.len());
+    interp.mem[..mem.len()].copy_from_slice(mem);
+    interp.set_reg(X10, ptr1);
+    interp.set_reg(X11, ptr2);
+    interp.set_reg(X12, length);
+    interp.set_reg(X1, (ELF_MEMCMP_IMPL.len() as u32 + 10) * 4);
+    interp.run(ELF_MEMCMP_IMPL, 10_000);
+    interp.reg(X10) as i32
+}
+
+/// Test that our specialized memcpy routines produce the same result as the
+/// original ELF memcpy for every length and alignment combination.
+#[test]
+fn test_elf_vs_optimized_memcpy() {
+    let lengths: Vec<u32> = vec![1, 2, 3, 4, 5, 7, 8, 12, 15, 16, 31, 32, 48, 63, 64, 128];
+
+    for &length in &lengths {
+        let routine = rv_generate_specialized_memcpy(length);
+
+        for src_align in 0..4u32 {
+            for dst_align in 0..4u32 {
+                let src_base = 2048 + src_align;
+                let dst_base = 4096 + dst_align;
+
+                // Prepare source data
+                let src_data: Vec<u8> = (0..length)
+                    .map(|i| ((i.wrapping_mul(7).wrapping_add(13 + length)) & 0xFF) as u8)
+                    .collect();
+
+                // Run ELF original
+                let elf_result = run_elf_memcpy(&src_data, dst_base, src_base, length);
+
+                // Run our optimized routine
+                let mut interp = RvInterpreter::new(8192);
+                interp.mem.fill(0xAA);
+                for (i, &b) in src_data.iter().enumerate() {
+                    interp.mem[src_base as usize + i] = b;
+                }
+                interp.set_reg(X10, dst_base);
+                interp.set_reg(X11, src_base);
+                interp.set_reg(X1, (routine.len() as u32 + 10) * 4);
+                interp.run(&routine, 10_000);
+                let opt_result: Vec<u8> =
+                    interp.mem[dst_base as usize..(dst_base + length) as usize].to_vec();
+
+                assert_eq!(
+                    elf_result, opt_result,
+                    "memcpy mismatch: length={}, src_align={}, dst_align={}",
+                    length, src_align, dst_align
+                );
+            }
+        }
+    }
+}
+
+/// Test that our specialized memcpy routines produce the same result as the
+/// original ELF memcpy for aligned arguments.
+#[test]
+fn test_elf_vs_aligned_memcpy() {
+    use crate::memcpy::rv_generate_aligned_memcpy;
+
+    let lengths: Vec<u32> = vec![4, 8, 12, 16, 32, 48, 64, 128];
+
+    for &length in &lengths {
+        let routine = rv_generate_aligned_memcpy(length);
+        let src_base: u32 = 2048; // aligned
+        let dst_base: u32 = 4096; // aligned
+
+        let src_data: Vec<u8> = (0..length)
+            .map(|i| ((i.wrapping_mul(7).wrapping_add(13 + length)) & 0xFF) as u8)
+            .collect();
+
+        let elf_result = run_elf_memcpy(&src_data, dst_base, src_base, length);
+
+        let mut interp = RvInterpreter::new(8192);
+        interp.mem.fill(0xAA);
+        for (i, &b) in src_data.iter().enumerate() {
+            interp.mem[src_base as usize + i] = b;
+        }
+        interp.set_reg(X10, dst_base);
+        interp.set_reg(X11, src_base);
+        interp.set_reg(X1, (routine.len() as u32 + 10) * 4);
+        interp.run(&routine, 10_000);
+        let opt_result: Vec<u8> =
+            interp.mem[dst_base as usize..(dst_base + length) as usize].to_vec();
+
+        assert_eq!(
+            elf_result, opt_result,
+            "aligned memcpy mismatch: length={}",
+            length
+        );
+    }
+}
+
+/// Test that our specialized memmove routines produce the same result as the
+/// original ELF memmove for non-overlapping and overlapping cases.
+#[test]
+fn test_elf_vs_optimized_memmove() {
+    let lengths: Vec<u32> = vec![1, 2, 3, 4, 5, 7, 8, 12, 15, 16, 31, 32, 48, 63, 64, 128];
+    let mem_size = 16384;
+
+    for &length in &lengths {
+        let routine = rv_generate_specialized_memmove(length);
+
+        // Non-overlapping forward (dst < src)
+        for src_align in 0..4u32 {
+            for dst_align in 0..4u32 {
+                let src_base = 4096 + src_align;
+                let dst_base = 2048 + dst_align;
+
+                let src_data: Vec<u8> = (0..length)
+                    .map(|i| ((i.wrapping_mul(7).wrapping_add(13 + length)) & 0xFF) as u8)
+                    .collect();
+
+                // ELF memmove
+                let mut elf_mem = vec![0xAA_u8; mem_size];
+                for (i, &b) in src_data.iter().enumerate() {
+                    elf_mem[src_base as usize + i] = b;
+                }
+                let elf_result = run_elf_memmove(&mut elf_mem, dst_base, src_base, length);
+
+                // Our optimized memmove
+                let mut interp = RvInterpreter::new(mem_size);
+                interp.mem.fill(0xAA);
+                for (i, &b) in src_data.iter().enumerate() {
+                    interp.mem[src_base as usize + i] = b;
+                }
+                interp.set_reg(X10, dst_base);
+                interp.set_reg(X11, src_base);
+                interp.set_reg(X1, (routine.len() as u32 + 10) * 4);
+                interp.run(&routine, 10_000);
+                let opt_result: Vec<u8> =
+                    interp.mem[dst_base as usize..(dst_base + length) as usize].to_vec();
+
+                assert_eq!(
+                    elf_result, opt_result,
+                    "memmove fwd mismatch: length={}, src_align={}, dst_align={}",
+                    length, src_align, dst_align
+                );
+            }
+        }
+
+        // Overlapping: dst > src
+        if length >= 4 {
+            for overlap in [1, 2, length / 2, length - 1] {
+                if overlap == 0 || overlap >= length {
+                    continue;
+                }
+                let src_base = 2048u32;
+                let dst_base = src_base + (length - overlap);
+
+                let src_data: Vec<u8> = (0..length)
+                    .map(|i| ((i.wrapping_mul(7).wrapping_add(13 + length)) & 0xFF) as u8)
+                    .collect();
+
+                // ELF memmove
+                let mut elf_mem = vec![0xAA_u8; mem_size];
+                for (i, &b) in src_data.iter().enumerate() {
+                    elf_mem[src_base as usize + i] = b;
+                }
+                let elf_result = run_elf_memmove(&mut elf_mem, dst_base, src_base, length);
+
+                // Our optimized memmove
+                let mut interp = RvInterpreter::new(mem_size);
+                interp.mem.fill(0xAA);
+                for (i, &b) in src_data.iter().enumerate() {
+                    interp.mem[src_base as usize + i] = b;
+                }
+                interp.set_reg(X10, dst_base);
+                interp.set_reg(X11, src_base);
+                interp.set_reg(X1, (routine.len() as u32 + 10) * 4);
+                interp.run(&routine, 10_000);
+                let opt_result: Vec<u8> =
+                    interp.mem[dst_base as usize..(dst_base + length) as usize].to_vec();
+
+                assert_eq!(
+                    elf_result, opt_result,
+                    "memmove overlap mismatch: length={}, overlap={}",
+                    length, overlap
+                );
+            }
+        }
+    }
+}
+
+/// Test that our specialized memmove routines produce the same result as the
+/// original ELF memmove for aligned arguments.
+#[test]
+fn test_elf_vs_aligned_memmove() {
+    use crate::memcpy::rv_generate_aligned_memmove;
+
+    let lengths: Vec<u32> = vec![4, 8, 16, 32, 64, 128];
+    let mem_size = 16384;
+
+    for &length in &lengths {
+        let routine = rv_generate_aligned_memmove(length);
+
+        // Forward non-overlapping (aligned)
+        let src_base: u32 = 4096;
+        let dst_base: u32 = 2048;
+
+        let src_data: Vec<u8> = (0..length)
+            .map(|i| ((i.wrapping_mul(7).wrapping_add(13 + length)) & 0xFF) as u8)
+            .collect();
+
+        let mut elf_mem = vec![0xAA_u8; mem_size];
+        for (i, &b) in src_data.iter().enumerate() {
+            elf_mem[src_base as usize + i] = b;
+        }
+        let elf_result = run_elf_memmove(&mut elf_mem, dst_base, src_base, length);
+
+        let mut interp = RvInterpreter::new(mem_size);
+        interp.mem.fill(0xAA);
+        for (i, &b) in src_data.iter().enumerate() {
+            interp.mem[src_base as usize + i] = b;
+        }
+        interp.set_reg(X10, dst_base);
+        interp.set_reg(X11, src_base);
+        interp.set_reg(X1, (routine.len() as u32 + 10) * 4);
+        interp.run(&routine, 10_000);
+        let opt_result: Vec<u8> =
+            interp.mem[dst_base as usize..(dst_base + length) as usize].to_vec();
+
+        assert_eq!(
+            elf_result, opt_result,
+            "aligned memmove mismatch: length={}",
+            length
+        );
+
+        // Overlapping backward (aligned)
+        if length >= 8 {
+            let src_base: u32 = 2048;
+            let dst_base: u32 = src_base + 4; // 4-byte overlap offset (aligned)
+
+            let mut elf_mem = vec![0xAA_u8; mem_size];
+            for (i, &b) in src_data.iter().enumerate() {
+                elf_mem[src_base as usize + i] = b;
+            }
+            let elf_result = run_elf_memmove(&mut elf_mem, dst_base, src_base, length);
+
+            let mut interp = RvInterpreter::new(mem_size);
+            interp.mem.fill(0xAA);
+            for (i, &b) in src_data.iter().enumerate() {
+                interp.mem[src_base as usize + i] = b;
+            }
+            interp.set_reg(X10, dst_base);
+            interp.set_reg(X11, src_base);
+            interp.set_reg(X1, (routine.len() as u32 + 10) * 4);
+            interp.run(&routine, 10_000);
+            let opt_result: Vec<u8> =
+                interp.mem[dst_base as usize..(dst_base + length) as usize].to_vec();
+
+            assert_eq!(
+                elf_result, opt_result,
+                "aligned memmove overlap mismatch: length={}",
+                length
+            );
+        }
+    }
+}
+
+/// Test that our specialized memcmp routines produce the same result sign as
+/// the original ELF memcmp for all alignment combinations.
+#[test]
+fn test_elf_vs_optimized_memcmp() {
+    let lengths: Vec<u32> = vec![1, 2, 3, 4, 5, 7, 8, 12, 15, 16, 31, 32, 48, 63, 64, 128];
+
+    for &length in &lengths {
+        let routine = rv_generate_specialized_memcmp(length);
+
+        for src_align in 0..4u32 {
+            for dst_align in 0..4u32 {
+                let ptr1 = 2048 + src_align;
+                let ptr2 = 4096 + dst_align;
+
+                // Test equal buffers
+                {
+                    let mut mem = vec![0u8; 8192];
+                    for i in 0..length {
+                        let v = ((i.wrapping_mul(7).wrapping_add(13)) & 0xFF) as u8;
+                        mem[ptr1 as usize + i as usize] = v;
+                        mem[ptr2 as usize + i as usize] = v;
+                    }
+
+                    let elf_res = run_elf_memcmp(&mem, ptr1, ptr2, length);
+                    assert_eq!(elf_res, 0, "ELF memcmp should return 0 for equal data");
+
+                    let mut interp = RvInterpreter::new(8192);
+                    interp.mem.copy_from_slice(&mem);
+                    interp.set_reg(X10, ptr1);
+                    interp.set_reg(X11, ptr2);
+                    interp.set_reg(X12, length);
+                    interp.set_reg(X1, (routine.len() as u32 + 10) * 4);
+                    interp.run(&routine, 50_000);
+                    let opt_res = interp.reg(X10) as i32;
+
+                    assert_eq!(
+                        opt_res, 0,
+                        "opt memcmp should be 0 for equal data, length={}, align=({},{})",
+                        length, src_align, dst_align
+                    );
+                }
+
+                // Test with difference at various positions
+                for diff_pos in [0, length / 2, length - 1] {
+                    let mut mem = vec![0u8; 8192];
+                    for i in 0..length {
+                        mem[ptr1 as usize + i as usize] = 0x42;
+                        mem[ptr2 as usize + i as usize] = 0x42;
+                    }
+                    mem[ptr1 as usize + diff_pos as usize] = 0x80;
+                    mem[ptr2 as usize + diff_pos as usize] = 0x20;
+
+                    let elf_res = run_elf_memcmp(&mem, ptr1, ptr2, length);
+
+                    let mut interp = RvInterpreter::new(8192);
+                    interp.mem.copy_from_slice(&mem);
+                    interp.set_reg(X10, ptr1);
+                    interp.set_reg(X11, ptr2);
+                    interp.set_reg(X12, length);
+                    interp.set_reg(X1, (routine.len() as u32 + 10) * 4);
+                    interp.run(&routine, 50_000);
+                    let opt_res = interp.reg(X10) as i32;
+
+                    assert_eq!(
+                        elf_res.signum(),
+                        opt_res.signum(),
+                        "memcmp sign mismatch: length={}, align=({},{}), diff_pos={}: \
+                         elf={}, opt={}",
+                        length, src_align, dst_align, diff_pos, elf_res, opt_res
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// Test that our aligned memcmp routines produce the same result sign as
+/// the original ELF memcmp.
+#[test]
+fn test_elf_vs_aligned_memcmp() {
+    use crate::memcmp::rv_generate_aligned_memcmp;
+
+    let lengths: Vec<u32> = vec![4, 8, 16, 32, 64, 128];
+
+    for &length in &lengths {
+        let routine = rv_generate_aligned_memcmp(length);
+        let ptr1: u32 = 2048;
+        let ptr2: u32 = 4096;
+
+        // Equal
+        {
+            let mut mem = vec![0u8; 8192];
+            for i in 0..length {
+                let v = ((i * 7 + 3) & 0xFF) as u8;
+                mem[ptr1 as usize + i as usize] = v;
+                mem[ptr2 as usize + i as usize] = v;
+            }
+
+            let elf_res = run_elf_memcmp(&mem, ptr1, ptr2, length);
+
+            let mut interp = RvInterpreter::new(8192);
+            interp.mem.copy_from_slice(&mem);
+            interp.set_reg(X10, ptr1);
+            interp.set_reg(X11, ptr2);
+            interp.set_reg(X12, length);
+            interp.set_reg(X1, (routine.len() as u32 + 10) * 4);
+            interp.run(&routine, 10_000);
+            let opt_res = interp.reg(X10) as i32;
+
+            assert_eq!(elf_res, 0);
+            assert_eq!(opt_res, 0, "aligned memcmp equal, length={}", length);
+        }
+
+        // Different
+        {
+            let mut mem = vec![0u8; 8192];
+            for i in 0..length {
+                mem[ptr1 as usize + i as usize] = 0x42;
+                mem[ptr2 as usize + i as usize] = 0x42;
+            }
+            mem[ptr1 as usize + (length - 1) as usize] = 0x80;
+            mem[ptr2 as usize + (length - 1) as usize] = 0x10;
+
+            let elf_res = run_elf_memcmp(&mem, ptr1, ptr2, length);
+
+            let mut interp = RvInterpreter::new(8192);
+            interp.mem.copy_from_slice(&mem);
+            interp.set_reg(X10, ptr1);
+            interp.set_reg(X11, ptr2);
+            interp.set_reg(X12, length);
+            interp.set_reg(X1, (routine.len() as u32 + 10) * 4);
+            interp.run(&routine, 10_000);
+            let opt_res = interp.reg(X10) as i32;
+
+            assert_eq!(
+                elf_res.signum(),
+                opt_res.signum(),
+                "aligned memcmp diff, length={}: elf={}, opt={}",
+                length, elf_res, opt_res
+            );
+        }
+    }
 }
