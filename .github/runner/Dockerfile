@@ -11,6 +11,8 @@
 FROM mcr.microsoft.com/dotnet/runtime-deps:6.0-jammy AS build
 
 ARG RUNNER_VERSION=2.319.1
+# Keep this in sync with RUNNER_VERSION using the upstream release SHA-256.
+ARG RUNNER_SHA256=3f6efb7488a183e291fc2c62876e14c9ee732864173734facc85a1bfb1744464
 
 RUN apt-get update && apt install -y curl \
     sudo \
@@ -39,6 +41,7 @@ USER runner
 WORKDIR /home/runner
 
 RUN curl -f -L -o runner.tar.gz https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz \
+    && echo "${RUNNER_SHA256}  runner.tar.gz" | sha256sum -c - \
     && tar xzf ./runner.tar.gz \
     && rm runner.tar.gz
 
