@@ -38,7 +38,7 @@ fn optimize_keccak_benchmark(c: &mut Criterion) {
                 )
             },
             |(machine, column_allocator)| {
-                optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
+                optimize(
                     black_box(machine),
                     OpenVmBusInteractionHandler::default(),
                     DEFAULT_DEGREE_BOUND,

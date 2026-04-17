@@ -6,7 +6,6 @@ use powdr_autoprecompiles::optimizer::optimize;
 use powdr_autoprecompiles::symbolic_machine::SymbolicMachine;
 use powdr_autoprecompiles::{Apc, ColumnAllocator, DegreeBound};
 use powdr_number::BabyBearField;
-use powdr_openvm_bus_interaction_handler::memory_bus_interaction::OpenVmMemoryBusInteraction;
 use powdr_openvm_bus_interaction_handler::{
     bus_map::{default_openvm_bus_map, OpenVmBusType},
     OpenVmBusInteractionHandler,
@@ -54,7 +53,7 @@ fn test_optimize() {
     assert!(machine.derived_columns.is_empty());
 
     let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&machine);
-    let machine = optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
+    let machine = optimize(
         machine,
         OpenVmBusInteractionHandler::default(),
         DEFAULT_DEGREE_BOUND,
@@ -89,7 +88,7 @@ fn test_ecrecover() {
     assert!(machine.derived_columns.is_empty());
 
     let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&machine);
-    let machine = optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
+    let machine = optimize(
         machine,
         OpenVmBusInteractionHandler::default(),
         DEFAULT_DEGREE_BOUND,
@@ -124,7 +123,7 @@ fn test_sha256() {
     assert!(machine.derived_columns.is_empty());
     let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&machine);
 
-    let machine = optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
+    let machine = optimize(
         machine,
         OpenVmBusInteractionHandler::default(),
         DEFAULT_DEGREE_BOUND,
@@ -159,7 +158,7 @@ fn test_single_div_nondet() {
     assert!(machine.derived_columns.is_empty());
     let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&machine);
 
-    let machine = optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
+    let machine = optimize(
         machine,
         OpenVmBusInteractionHandler::default(),
         DEFAULT_DEGREE_BOUND,
@@ -218,7 +217,7 @@ fn test_optimize_reth_op() {
     let bus_int_handler = OpenVmBusInteractionHandler::new(bus_map.clone());
 
     let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&machine);
-    let machine = optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
+    let machine = optimize(
         machine,
         bus_int_handler,
         DEFAULT_DEGREE_BOUND,
