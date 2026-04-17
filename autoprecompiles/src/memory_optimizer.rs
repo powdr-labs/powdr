@@ -196,7 +196,11 @@ fn redundant_memory_interactions_indices<
                 });
                 memory_contents.insert(
                     addr.clone(),
-                    MemoryContent::from_bus_interaction(index, mem_int.data, mem_int.timestamp_limbs),
+                    MemoryContent::from_bus_interaction(
+                        index,
+                        mem_int.data,
+                        mem_int.timestamp_limbs,
+                    ),
                 );
             }
         }
