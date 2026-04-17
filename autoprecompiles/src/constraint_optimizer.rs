@@ -50,14 +50,15 @@ impl From<powdr_constraint_solver::solver::Error> for Error {
 pub fn optimize_constraints<
     P: FieldElement,
     V: Ord + Clone + Eq + Hash + Display + Serialize,
-    M: MemoryInteractionParser<P>,
+    B: BusInteractionHandler<P>
+        + IsBusStateful<P>
+        + RangeConstraintHandler<P>
+        + MemoryInteractionParser<P>
+        + Clone,
 >(
     constraint_system: IndexedConstraintSystem<P, V>,
     solver: &mut impl Solver<P, V>,
-    bus_interaction_handler: impl BusInteractionHandler<P>
-        + IsBusStateful<P>
-        + RangeConstraintHandler<P>
-        + Clone,
+    bus_interaction_handler: B,
     stats_logger: &mut StatsLogger,
     memory_bus_id: Option<u64>,
     degree_bound: DegreeBound,
@@ -128,7 +129,7 @@ pub fn optimize_constraints<
         "substitute_bus_interactio_fields",
     );
 
-    let constraint_system = optimize_memory::<_, _, M>(constraint_system, solver, memory_bus_id);
+    let constraint_system = optimize_memory::<_, _, B>(constraint_system, solver, memory_bus_id);
 
     stats_logger.log("memory optimization", &constraint_system);
     export_options.export_optimizer_inner_constraint_system(&constraint_system, "memory");

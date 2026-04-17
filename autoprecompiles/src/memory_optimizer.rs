@@ -33,7 +33,7 @@ pub type MemoryInteractionValue<T, V, A> = Option<MemoryBusInteraction<T, V, A>>
 pub fn optimize_memory<
     T: FieldElement,
     V: Hash + Eq + Clone + Ord + Display,
-    M: MemoryInteractionParser<T>,
+    B: MemoryInteractionParser<T>,
 >(
     mut system: ConstraintSystem<T, V>,
     solver: &mut impl Solver<T, V>,
@@ -49,7 +49,7 @@ pub fn optimize_memory<
 
     // TODO use the solver here.
     let (to_remove, new_constraints) =
-        redundant_memory_interactions_indices::<_, _, M>(&system, solver, memory_bus_id);
+        redundant_memory_interactions_indices::<_, _, B>(&system, solver, memory_bus_id);
     let to_remove = to_remove.into_iter().collect::<HashSet<_>>();
     system.bus_interactions = system
         .bus_interactions
@@ -126,7 +126,7 @@ impl<T: Clone, V: Clone> MemoryContent<T, V> {
 fn redundant_memory_interactions_indices<
     T: FieldElement,
     V: Ord + Clone + Hash + Display,
-    M: MemoryInteractionParser<T>,
+    B: MemoryInteractionParser<T>,
 >(
     system: &ConstraintSystem<T, V>,
     solver: &mut impl Solver<T, V>,
@@ -145,7 +145,7 @@ fn redundant_memory_interactions_indices<
 
     // TODO we assume that memory interactions are sorted by timestamp.
     for (index, bus_int) in system.bus_interactions.iter().enumerate() {
-        let mem_int = match M::try_to_memory_interaction(bus_int, memory_bus_id) {
+        let mem_int = match B::try_to_memory_interaction(bus_int, memory_bus_id) {
             Ok(Some(mem_int)) => mem_int,
             Ok(None) => continue,
             Err(_) => {

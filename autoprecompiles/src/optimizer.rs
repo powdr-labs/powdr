@@ -97,7 +97,7 @@ where
         export_options
             .export_optimizer_outer_constraint_system(constraint_system.system(), "loop_iteration");
         let stats = stats_logger::Stats::from(&constraint_system);
-        constraint_system = optimize_constraints::<_, _, B>(
+        constraint_system = optimize_constraints(
             constraint_system,
             &mut solver,
             bus_interaction_handler.clone(),
