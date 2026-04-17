@@ -1,0 +1,383 @@
+Instructions:
+    0: remu       %x1        %x2        %x3       
+
+APC advantage:
+  - Main columns: 246 -> 153 (1.61x reduction)
+  - Bus interactions: 135 -> 100 (1.35x reduction)
+  - Constraints: 348 -> 113 (3.08x reduction)
+
+Symbolic machine using 153 unique main columns:
+  state__clk_high_0
+  state__clk_16_24_0
+  state__clk_0_16_0
+  adapter__op_a_memory__prev_value__0__0_0
+  adapter__op_a_memory__prev_value__0__1_0
+  adapter__op_a_memory__prev_value__0__2_0
+  adapter__op_a_memory__prev_value__0__3_0
+  adapter__op_a_memory__access_timestamp__prev_low_0
+  adapter__op_a_memory__access_timestamp__diff_low_limb_0
+  adapter__op_b_memory__prev_value__0__0_0
+  adapter__op_b_memory__prev_value__0__1_0
+  adapter__op_b_memory__prev_value__0__2_0
+  adapter__op_b_memory__prev_value__0__3_0
+  adapter__op_b_memory__access_timestamp__prev_low_0
+  adapter__op_b_memory__access_timestamp__diff_low_limb_0
+  adapter__op_c_memory__prev_value__0__0_0
+  adapter__op_c_memory__prev_value__0__1_0
+  adapter__op_c_memory__prev_value__0__2_0
+  adapter__op_c_memory__prev_value__0__3_0
+  adapter__op_c_memory__access_timestamp__prev_low_0
+  adapter__op_c_memory__access_timestamp__diff_low_limb_0
+  a__0__0_0
+  a__0__1_0
+  a__0__2_0
+  a__0__3_0
+  quotient__0__0_0
+  quotient__0__1_0
+  quotient__0__2_0
+  quotient__0__3_0
+  c_times_quotient__0_0
+  c_times_quotient__1_0
+  c_times_quotient__2_0
+  c_times_quotient__3_0
+  c_times_quotient__4_0
+  c_times_quotient__5_0
+  c_times_quotient__6_0
+  c_times_quotient__7_0
+  c_times_quotient_lower__carry__0_0
+  c_times_quotient_lower__carry__1_0
+  c_times_quotient_lower__carry__2_0
+  c_times_quotient_lower__carry__3_0
+  c_times_quotient_lower__carry__4_0
+  c_times_quotient_lower__carry__5_0
+  c_times_quotient_lower__carry__6_0
+  c_times_quotient_lower__carry__7_0
+  c_times_quotient_lower__carry__8_0
+  c_times_quotient_lower__carry__9_0
+  c_times_quotient_lower__carry__10_0
+  c_times_quotient_lower__carry__11_0
+  c_times_quotient_lower__carry__12_0
+  c_times_quotient_lower__carry__13_0
+  c_times_quotient_lower__carry__14_0
+  c_times_quotient_lower__carry__15_0
+  c_times_quotient_lower__product__0_0
+  c_times_quotient_lower__product__2_0
+  c_times_quotient_lower__product__4_0
+  c_times_quotient_lower__product__6_0
+  c_times_quotient_lower__product__8_0
+  c_times_quotient_lower__product__9_0
+  c_times_quotient_lower__product__10_0
+  c_times_quotient_lower__product__11_0
+  c_times_quotient_lower__product__12_0
+  c_times_quotient_lower__product__13_0
+  c_times_quotient_lower__product__14_0
+  c_times_quotient_lower__b_lower_byte__low_bytes__0_0
+  c_times_quotient_lower__b_lower_byte__low_bytes__1_0
+  c_times_quotient_lower__b_lower_byte__low_bytes__2_0
+  c_times_quotient_lower__b_lower_byte__low_bytes__3_0
+  c_times_quotient_lower__c_lower_byte__low_bytes__0_0
+  c_times_quotient_lower__c_lower_byte__low_bytes__1_0
+  c_times_quotient_lower__c_lower_byte__low_bytes__2_0
+  c_times_quotient_lower__c_lower_byte__low_bytes__3_0
+  c_times_quotient_lower__b_msb_0
+  c_times_quotient_lower__c_msb_0
+  c_times_quotient_upper__carry__0_0
+  c_times_quotient_upper__carry__1_0
+  c_times_quotient_upper__carry__2_0
+  c_times_quotient_upper__carry__3_0
+  c_times_quotient_upper__carry__4_0
+  c_times_quotient_upper__carry__5_0
+  c_times_quotient_upper__carry__6_0
+  c_times_quotient_upper__carry__7_0
+  c_times_quotient_upper__carry__8_0
+  c_times_quotient_upper__carry__9_0
+  c_times_quotient_upper__carry__10_0
+  c_times_quotient_upper__carry__11_0
+  c_times_quotient_upper__carry__12_0
+  c_times_quotient_upper__carry__13_0
+  c_times_quotient_upper__carry__14_0
+  c_times_quotient_upper__carry__15_0
+  c_times_quotient_upper__product__0_0
+  c_times_quotient_upper__product__1_0
+  c_times_quotient_upper__product__2_0
+  c_times_quotient_upper__product__3_0
+  c_times_quotient_upper__product__4_0
+  c_times_quotient_upper__product__5_0
+  c_times_quotient_upper__product__6_0
+  c_times_quotient_upper__product__7_0
+  c_times_quotient_upper__product__8_0
+  c_times_quotient_upper__product__10_0
+  c_times_quotient_upper__product__12_0
+  c_times_quotient_upper__b_lower_byte__low_bytes__0_0
+  c_times_quotient_upper__b_lower_byte__low_bytes__1_0
+  c_times_quotient_upper__b_lower_byte__low_bytes__2_0
+  c_times_quotient_upper__b_lower_byte__low_bytes__3_0
+  c_times_quotient_upper__c_lower_byte__low_bytes__0_0
+  c_times_quotient_upper__c_lower_byte__low_bytes__1_0
+  c_times_quotient_upper__c_lower_byte__low_bytes__2_0
+  c_times_quotient_upper__c_lower_byte__low_bytes__3_0
+  c_times_quotient_upper__b_msb_0
+  c_times_quotient_upper__c_msb_0
+  remainder_lt_operation__u16_compare_operation__bit_0
+  remainder_lt_operation__u16_flags__0_0
+  remainder_lt_operation__u16_flags__1_0
+  remainder_lt_operation__u16_flags__2_0
+  remainder_lt_operation__u16_flags__3_0
+  remainder_lt_operation__not_eq_inv_0
+  remainder_lt_operation__comparison_limbs__0_0
+  remainder_lt_operation__comparison_limbs__1_0
+  is_c_0__is_zero_limb__0__inverse_0
+  is_c_0__is_zero_limb__0__result_0
+  is_c_0__is_zero_limb__1__inverse_0
+  is_c_0__is_zero_limb__1__result_0
+  is_c_0__is_zero_limb__2__inverse_0
+  is_c_0__is_zero_limb__2__result_0
+  is_c_0__is_zero_limb__3__inverse_0
+  is_c_0__is_zero_limb__3__result_0
+  is_c_0__is_zero_first_half_0
+  is_c_0__result_0
+  is_overflow_b__is_diff_zero__is_zero_limb__0__inverse_0
+  is_overflow_b__is_diff_zero__is_zero_limb__0__result_0
+  is_overflow_b__is_diff_zero__is_zero_limb__1__inverse_0
+  is_overflow_b__is_diff_zero__is_zero_limb__1__result_0
+  is_overflow_b__is_diff_zero__is_zero_limb__2__inverse_0
+  is_overflow_b__is_diff_zero__is_zero_limb__2__result_0
+  is_overflow_b__is_diff_zero__is_zero_limb__3__inverse_0
+  is_overflow_b__is_diff_zero__is_zero_limb__3__result_0
+  is_overflow_b__is_diff_zero__is_zero_first_half_0
+  is_overflow_b__is_diff_zero__result_0
+  is_overflow_c__is_diff_zero__is_zero_limb__0__inverse_0
+  is_overflow_c__is_diff_zero__is_zero_limb__0__result_0
+  is_overflow_c__is_diff_zero__is_zero_limb__1__inverse_0
+  is_overflow_c__is_diff_zero__is_zero_limb__1__result_0
+  is_overflow_c__is_diff_zero__is_zero_limb__2__inverse_0
+  is_overflow_c__is_diff_zero__is_zero_limb__2__result_0
+  is_overflow_c__is_diff_zero__is_zero_limb__3__inverse_0
+  is_overflow_c__is_diff_zero__is_zero_limb__3__result_0
+  is_overflow_c__is_diff_zero__is_zero_first_half_0
+  is_overflow_c__is_diff_zero__result_0
+  b_msb__msb_0
+  rem_msb__msb_0
+  c_msb__msb_0
+  is_valid
+
+// Bus 1 (MEMORY):
+mult=is_valid * 1, args=[state__clk_high_0, adapter__op_c_memory__access_timestamp__prev_low_0, 3, 0, 0, adapter__op_c_memory__prev_value__0__0_0, adapter__op_c_memory__prev_value__0__1_0, adapter__op_c_memory__prev_value__0__2_0, adapter__op_c_memory__prev_value__0__3_0]
+mult=is_valid * -1, args=[state__clk_high_0, 65536 * state__clk_16_24_0 + state__clk_0_16_0 + 2, 3, 0, 0, adapter__op_c_memory__prev_value__0__0_0, adapter__op_c_memory__prev_value__0__1_0, adapter__op_c_memory__prev_value__0__2_0, adapter__op_c_memory__prev_value__0__3_0]
+mult=is_valid * 1, args=[state__clk_high_0, adapter__op_b_memory__access_timestamp__prev_low_0, 2, 0, 0, adapter__op_b_memory__prev_value__0__0_0, adapter__op_b_memory__prev_value__0__1_0, adapter__op_b_memory__prev_value__0__2_0, adapter__op_b_memory__prev_value__0__3_0]
+mult=is_valid * -1, args=[state__clk_high_0, 65536 * state__clk_16_24_0 + state__clk_0_16_0 + 3, 2, 0, 0, adapter__op_b_memory__prev_value__0__0_0, adapter__op_b_memory__prev_value__0__1_0, adapter__op_b_memory__prev_value__0__2_0, adapter__op_b_memory__prev_value__0__3_0]
+mult=is_valid * 1, args=[state__clk_high_0, adapter__op_a_memory__access_timestamp__prev_low_0, 1, 0, 0, adapter__op_a_memory__prev_value__0__0_0, adapter__op_a_memory__prev_value__0__1_0, adapter__op_a_memory__prev_value__0__2_0, adapter__op_a_memory__prev_value__0__3_0]
+mult=is_valid * -1, args=[state__clk_high_0, 65536 * state__clk_16_24_0 + state__clk_0_16_0 + 4, 1, 0, 0, a__0__0_0, a__0__1_0, a__0__2_0, a__0__3_0]
+
+// Bus 5 (BYTE):
+mult=is_valid * 1, args=[5, c_times_quotient_lower__b_msb_0, 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__3_0 - 8323072 * quotient__0__3_0, 0]
+mult=is_valid * 1, args=[5, c_times_quotient_lower__c_msb_0, 8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__3_0 - 8323072 * adapter__op_c_memory__prev_value__0__3_0, 0]
+mult=is_valid * 1, args=[5, c_times_quotient_upper__b_msb_0, 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__3_0 - 8323072 * quotient__0__3_0, 0]
+mult=is_valid * 1, args=[5, c_times_quotient_upper__c_msb_0, 8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__3_0 - 8323072 * adapter__op_c_memory__prev_value__0__3_0, 0]
+mult=is_valid * (1 - is_c_0__result_0), args=[6, 65536 * remainder_lt_operation__u16_compare_operation__bit_0 + remainder_lt_operation__comparison_limbs__0_0 - remainder_lt_operation__comparison_limbs__1_0, 16, 0]
+mult=is_valid * 1, args=[3, 0, c_times_quotient_lower__b_lower_byte__low_bytes__0_0, 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__0_0 - 8323072 * quotient__0__0_0]
+mult=is_valid * 1, args=[3, 0, c_times_quotient_lower__b_lower_byte__low_bytes__1_0, 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__1_0 - 8323072 * quotient__0__1_0]
+mult=is_valid * 1, args=[3, 0, c_times_quotient_lower__b_lower_byte__low_bytes__2_0, 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__2_0 - 8323072 * quotient__0__2_0]
+mult=is_valid * 1, args=[3, 0, c_times_quotient_lower__b_lower_byte__low_bytes__3_0, c_times_quotient_lower__c_lower_byte__low_bytes__0_0]
+mult=is_valid * 1, args=[3, 0, 8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__0_0 - 8323072 * adapter__op_c_memory__prev_value__0__0_0, c_times_quotient_lower__c_lower_byte__low_bytes__1_0]
+mult=is_valid * 1, args=[3, 0, 8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__1_0 - 8323072 * adapter__op_c_memory__prev_value__0__1_0, c_times_quotient_lower__c_lower_byte__low_bytes__2_0]
+mult=is_valid * 1, args=[3, 0, 8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__2_0 - 8323072 * adapter__op_c_memory__prev_value__0__2_0, c_times_quotient_lower__c_lower_byte__low_bytes__3_0]
+mult=is_valid * 1, args=[3, 0, c_times_quotient_lower__product__0_0, 8323072 * c_times_quotient_lower__product__0_0 - 8323072 * c_times_quotient__0_0]
+mult=is_valid * 1, args=[3, 0, c_times_quotient_lower__product__2_0, 8323072 * c_times_quotient_lower__product__2_0 - 8323072 * c_times_quotient__1_0]
+mult=is_valid * 1, args=[3, 0, c_times_quotient_lower__product__4_0, 8323072 * c_times_quotient_lower__product__4_0 - 8323072 * c_times_quotient__2_0]
+mult=is_valid * 1, args=[3, 0, c_times_quotient_lower__product__6_0, 8323072 * c_times_quotient_lower__product__6_0 - 8323072 * c_times_quotient__3_0]
+mult=is_valid * 1, args=[3, 0, c_times_quotient_lower__product__8_0, c_times_quotient_lower__product__9_0]
+mult=is_valid * 1, args=[3, 0, c_times_quotient_lower__product__10_0, c_times_quotient_lower__product__11_0]
+mult=is_valid * 1, args=[3, 0, c_times_quotient_lower__product__12_0, c_times_quotient_lower__product__13_0]
+mult=is_valid * 1, args=[3, 0, c_times_quotient_lower__product__14_0, c_times_quotient_lower__carry__14_0 - 256 * c_times_quotient_lower__carry__15_0]
+mult=is_valid * 1, args=[3, 0, c_times_quotient_upper__b_lower_byte__low_bytes__0_0, 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__0_0 - 8323072 * quotient__0__0_0]
+mult=is_valid * 1, args=[3, 0, c_times_quotient_upper__b_lower_byte__low_bytes__1_0, 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__1_0 - 8323072 * quotient__0__1_0]
+mult=is_valid * 1, args=[3, 0, c_times_quotient_upper__b_lower_byte__low_bytes__2_0, 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__2_0 - 8323072 * quotient__0__2_0]
+mult=is_valid * 1, args=[3, 0, c_times_quotient_upper__b_lower_byte__low_bytes__3_0, c_times_quotient_upper__c_lower_byte__low_bytes__0_0]
+mult=is_valid * 1, args=[3, 0, 8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__0_0 - 8323072 * adapter__op_c_memory__prev_value__0__0_0, c_times_quotient_upper__c_lower_byte__low_bytes__1_0]
+mult=is_valid * 1, args=[3, 0, 8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__1_0 - 8323072 * adapter__op_c_memory__prev_value__0__1_0, c_times_quotient_upper__c_lower_byte__low_bytes__2_0]
+mult=is_valid * 1, args=[3, 0, 8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__2_0 - 8323072 * adapter__op_c_memory__prev_value__0__2_0, c_times_quotient_upper__c_lower_byte__low_bytes__3_0]
+mult=is_valid * 1, args=[3, 0, c_times_quotient_upper__product__0_0, c_times_quotient_upper__product__1_0]
+mult=is_valid * 1, args=[3, 0, c_times_quotient_upper__product__2_0, c_times_quotient_upper__product__3_0]
+mult=is_valid * 1, args=[3, 0, c_times_quotient_upper__product__4_0, c_times_quotient_upper__product__5_0]
+mult=is_valid * 1, args=[3, 0, c_times_quotient_upper__product__6_0, c_times_quotient_upper__product__7_0]
+mult=is_valid * 1, args=[3, 0, c_times_quotient_upper__product__8_0, 8323072 * c_times_quotient_upper__product__8_0 - 8323072 * c_times_quotient__4_0]
+mult=is_valid * 1, args=[3, 0, c_times_quotient_upper__product__10_0, 8323072 * c_times_quotient_upper__product__10_0 - 8323072 * c_times_quotient__5_0]
+mult=is_valid * 1, args=[3, 0, c_times_quotient_upper__product__12_0, 8323072 * c_times_quotient_upper__product__12_0 - 8323072 * c_times_quotient__6_0]
+mult=is_valid * 1, args=[3, 0, c_times_quotient__7_0 + 65536 * c_times_quotient_upper__carry__15_0 - 256 * c_times_quotient_upper__carry__14_0, c_times_quotient_upper__carry__14_0 - 256 * c_times_quotient_upper__carry__15_0]
+mult=is_valid * 1, args=[3, 0, state__clk_16_24_0, state__clk_16_24_0 + 32512 * adapter__op_a_memory__access_timestamp__prev_low_0 + 32512 * adapter__op_a_memory__access_timestamp__diff_low_limb_0 - (32512 * state__clk_0_16_0 + 97536)]
+mult=is_valid * 1, args=[3, 0, state__clk_16_24_0 + 32512 * adapter__op_b_memory__access_timestamp__prev_low_0 + 32512 * adapter__op_b_memory__access_timestamp__diff_low_limb_0 - (32512 * state__clk_0_16_0 + 65024), state__clk_16_24_0 + 32512 * adapter__op_c_memory__access_timestamp__prev_low_0 + 32512 * adapter__op_c_memory__access_timestamp__diff_low_limb_0 - (32512 * state__clk_0_16_0 + 32512)]
+mult=is_valid * 1, args=[6, c_times_quotient_lower__carry__0_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient_lower__carry__1_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient_lower__carry__2_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient_lower__carry__3_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient_lower__carry__4_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient_lower__carry__5_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient_lower__carry__6_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient_lower__carry__7_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient_lower__carry__8_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient_lower__carry__9_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient_lower__carry__10_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient_lower__carry__11_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient_lower__carry__12_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient_lower__carry__13_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient_lower__carry__14_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient_lower__carry__15_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient_upper__carry__0_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient_upper__carry__1_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient_upper__carry__2_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient_upper__carry__3_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient_upper__carry__4_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient_upper__carry__5_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient_upper__carry__6_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient_upper__carry__7_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient_upper__carry__8_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient_upper__carry__9_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient_upper__carry__10_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient_upper__carry__11_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient_upper__carry__12_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient_upper__carry__13_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient_upper__carry__14_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient_upper__carry__15_0, 16, 0]
+mult=is_valid * 1, args=[6, a__0__0_0, 16, 0]
+mult=is_valid * 1, args=[6, a__0__1_0, 16, 0]
+mult=is_valid * 1, args=[6, a__0__2_0, 16, 0]
+mult=is_valid * 1, args=[6, a__0__3_0, 16, 0]
+mult=is_valid * 1, args=[6, 2 * adapter__op_b_memory__prev_value__0__3_0 - 65536 * b_msb__msb_0, 16, 0]
+mult=is_valid * 1, args=[6, 2 * adapter__op_c_memory__prev_value__0__3_0 - 65536 * c_msb__msb_0, 16, 0]
+mult=is_valid * 1, args=[6, 2 * a__0__3_0 - 65536 * rem_msb__msb_0, 16, 0]
+mult=is_valid * 1, args=[6, quotient__0__0_0, 16, 0]
+mult=is_valid * 1, args=[6, quotient__0__1_0, 16, 0]
+mult=is_valid * 1, args=[6, quotient__0__2_0, 16, 0]
+mult=is_valid * 1, args=[6, quotient__0__3_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient__0_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient__1_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient__2_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient__3_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient__4_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient__5_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient__6_0, 16, 0]
+mult=is_valid * 1, args=[6, c_times_quotient__7_0, 16, 0]
+mult=is_valid * 1, args=[6, 266338304 - 266338304 * state__clk_0_16_0, 13, 0]
+mult=is_valid * 1, args=[6, adapter__op_a_memory__access_timestamp__diff_low_limb_0, 16, 0]
+mult=is_valid * 1, args=[6, adapter__op_b_memory__access_timestamp__diff_low_limb_0, 16, 0]
+mult=is_valid * 1, args=[6, adapter__op_c_memory__access_timestamp__diff_low_limb_0, 16, 0]
+
+// Bus 7 (EXECUTION_BRIDGE):
+mult=is_valid * -1, args=[state__clk_high_0, 65536 * state__clk_16_24_0 + state__clk_0_16_0, 0, 0, 0]
+mult=is_valid * 1, args=[state__clk_high_0, 65536 * state__clk_16_24_0 + state__clk_0_16_0 + 8, 4, 0, 0]
+
+// Algebraic constraints:
+256 * c_times_quotient_lower__carry__0_0 + c_times_quotient_lower__product__0_0 - c_times_quotient_lower__b_lower_byte__low_bytes__0_0 * c_times_quotient_lower__c_lower_byte__low_bytes__0_0 = 0
+(8323072 * quotient__0__0_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__0_0) * c_times_quotient_lower__c_lower_byte__low_bytes__0_0 + 256 * c_times_quotient_lower__carry__1_0 + 8323072 * c_times_quotient_lower__product__0_0 - (c_times_quotient_lower__b_lower_byte__low_bytes__0_0 * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__0_0 - 8323072 * adapter__op_c_memory__prev_value__0__0_0) + 8323072 * c_times_quotient__0_0 + c_times_quotient_lower__carry__0_0) = 0
+(8323072 * quotient__0__0_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__0_0) * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__0_0 - 8323072 * adapter__op_c_memory__prev_value__0__0_0) + 256 * c_times_quotient_lower__carry__2_0 + c_times_quotient_lower__product__2_0 - (c_times_quotient_lower__b_lower_byte__low_bytes__0_0 * c_times_quotient_lower__c_lower_byte__low_bytes__1_0 + c_times_quotient_lower__b_lower_byte__low_bytes__1_0 * c_times_quotient_lower__c_lower_byte__low_bytes__0_0 + c_times_quotient_lower__carry__1_0) = 0
+(8323072 * quotient__0__0_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__0_0) * c_times_quotient_lower__c_lower_byte__low_bytes__1_0 + (8323072 * quotient__0__1_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__1_0) * c_times_quotient_lower__c_lower_byte__low_bytes__0_0 + 256 * c_times_quotient_lower__carry__3_0 + 8323072 * c_times_quotient_lower__product__2_0 - (c_times_quotient_lower__b_lower_byte__low_bytes__0_0 * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__1_0 - 8323072 * adapter__op_c_memory__prev_value__0__1_0) + c_times_quotient_lower__b_lower_byte__low_bytes__1_0 * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__0_0 - 8323072 * adapter__op_c_memory__prev_value__0__0_0) + 8323072 * c_times_quotient__1_0 + c_times_quotient_lower__carry__2_0) = 0
+(8323072 * quotient__0__0_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__0_0) * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__1_0 - 8323072 * adapter__op_c_memory__prev_value__0__1_0) + (8323072 * quotient__0__1_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__1_0) * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__0_0 - 8323072 * adapter__op_c_memory__prev_value__0__0_0) + 256 * c_times_quotient_lower__carry__4_0 + c_times_quotient_lower__product__4_0 - (c_times_quotient_lower__b_lower_byte__low_bytes__0_0 * c_times_quotient_lower__c_lower_byte__low_bytes__2_0 + c_times_quotient_lower__b_lower_byte__low_bytes__1_0 * c_times_quotient_lower__c_lower_byte__low_bytes__1_0 + c_times_quotient_lower__b_lower_byte__low_bytes__2_0 * c_times_quotient_lower__c_lower_byte__low_bytes__0_0 + c_times_quotient_lower__carry__3_0) = 0
+(8323072 * quotient__0__0_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__0_0) * c_times_quotient_lower__c_lower_byte__low_bytes__2_0 + (8323072 * quotient__0__1_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__1_0) * c_times_quotient_lower__c_lower_byte__low_bytes__1_0 + (8323072 * quotient__0__2_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__2_0) * c_times_quotient_lower__c_lower_byte__low_bytes__0_0 + 256 * c_times_quotient_lower__carry__5_0 + 8323072 * c_times_quotient_lower__product__4_0 - (c_times_quotient_lower__b_lower_byte__low_bytes__0_0 * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__2_0 - 8323072 * adapter__op_c_memory__prev_value__0__2_0) + c_times_quotient_lower__b_lower_byte__low_bytes__1_0 * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__1_0 - 8323072 * adapter__op_c_memory__prev_value__0__1_0) + c_times_quotient_lower__b_lower_byte__low_bytes__2_0 * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__0_0 - 8323072 * adapter__op_c_memory__prev_value__0__0_0) + 8323072 * c_times_quotient__2_0 + c_times_quotient_lower__carry__4_0) = 0
+(8323072 * quotient__0__0_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__0_0) * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__2_0 - 8323072 * adapter__op_c_memory__prev_value__0__2_0) + (8323072 * quotient__0__1_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__1_0) * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__1_0 - 8323072 * adapter__op_c_memory__prev_value__0__1_0) + (8323072 * quotient__0__2_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__2_0) * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__0_0 - 8323072 * adapter__op_c_memory__prev_value__0__0_0) + 256 * c_times_quotient_lower__carry__6_0 + c_times_quotient_lower__product__6_0 - (c_times_quotient_lower__b_lower_byte__low_bytes__0_0 * c_times_quotient_lower__c_lower_byte__low_bytes__3_0 + c_times_quotient_lower__b_lower_byte__low_bytes__1_0 * c_times_quotient_lower__c_lower_byte__low_bytes__2_0 + c_times_quotient_lower__b_lower_byte__low_bytes__2_0 * c_times_quotient_lower__c_lower_byte__low_bytes__1_0 + c_times_quotient_lower__b_lower_byte__low_bytes__3_0 * c_times_quotient_lower__c_lower_byte__low_bytes__0_0 + c_times_quotient_lower__carry__5_0) = 0
+(8323072 * quotient__0__0_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__0_0) * c_times_quotient_lower__c_lower_byte__low_bytes__3_0 + (8323072 * quotient__0__1_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__1_0) * c_times_quotient_lower__c_lower_byte__low_bytes__2_0 + (8323072 * quotient__0__2_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__2_0) * c_times_quotient_lower__c_lower_byte__low_bytes__1_0 + (8323072 * quotient__0__3_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__3_0) * c_times_quotient_lower__c_lower_byte__low_bytes__0_0 + 256 * c_times_quotient_lower__carry__7_0 + 8323072 * c_times_quotient_lower__product__6_0 - (c_times_quotient_lower__b_lower_byte__low_bytes__0_0 * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__3_0 - 8323072 * adapter__op_c_memory__prev_value__0__3_0) + c_times_quotient_lower__b_lower_byte__low_bytes__1_0 * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__2_0 - 8323072 * adapter__op_c_memory__prev_value__0__2_0) + c_times_quotient_lower__b_lower_byte__low_bytes__2_0 * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__1_0 - 8323072 * adapter__op_c_memory__prev_value__0__1_0) + c_times_quotient_lower__b_lower_byte__low_bytes__3_0 * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__0_0 - 8323072 * adapter__op_c_memory__prev_value__0__0_0) + 8323072 * c_times_quotient__3_0 + c_times_quotient_lower__carry__6_0) = 0
+(8323072 * quotient__0__0_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__0_0) * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__3_0 - 8323072 * adapter__op_c_memory__prev_value__0__3_0) + (8323072 * quotient__0__1_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__1_0) * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__2_0 - 8323072 * adapter__op_c_memory__prev_value__0__2_0) + (8323072 * quotient__0__2_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__2_0) * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__1_0 - 8323072 * adapter__op_c_memory__prev_value__0__1_0) + (8323072 * quotient__0__3_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__3_0) * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__0_0 - 8323072 * adapter__op_c_memory__prev_value__0__0_0) + 256 * c_times_quotient_lower__carry__8_0 + c_times_quotient_lower__product__8_0 - (c_times_quotient_lower__b_lower_byte__low_bytes__1_0 * c_times_quotient_lower__c_lower_byte__low_bytes__3_0 + c_times_quotient_lower__b_lower_byte__low_bytes__2_0 * c_times_quotient_lower__c_lower_byte__low_bytes__2_0 + c_times_quotient_lower__b_lower_byte__low_bytes__3_0 * c_times_quotient_lower__c_lower_byte__low_bytes__1_0 + c_times_quotient_lower__carry__7_0) = 0
+(8323072 * quotient__0__1_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__1_0) * c_times_quotient_lower__c_lower_byte__low_bytes__3_0 + (8323072 * quotient__0__2_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__2_0) * c_times_quotient_lower__c_lower_byte__low_bytes__2_0 + (8323072 * quotient__0__3_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__3_0) * c_times_quotient_lower__c_lower_byte__low_bytes__1_0 + 256 * c_times_quotient_lower__carry__9_0 + c_times_quotient_lower__product__9_0 - (c_times_quotient_lower__b_lower_byte__low_bytes__1_0 * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__3_0 - 8323072 * adapter__op_c_memory__prev_value__0__3_0) + c_times_quotient_lower__b_lower_byte__low_bytes__2_0 * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__2_0 - 8323072 * adapter__op_c_memory__prev_value__0__2_0) + c_times_quotient_lower__b_lower_byte__low_bytes__3_0 * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__1_0 - 8323072 * adapter__op_c_memory__prev_value__0__1_0) + c_times_quotient_lower__carry__8_0) = 0
+(8323072 * quotient__0__1_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__1_0) * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__3_0 - 8323072 * adapter__op_c_memory__prev_value__0__3_0) + (8323072 * quotient__0__2_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__2_0) * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__2_0 - 8323072 * adapter__op_c_memory__prev_value__0__2_0) + (8323072 * quotient__0__3_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__3_0) * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__1_0 - 8323072 * adapter__op_c_memory__prev_value__0__1_0) + 256 * c_times_quotient_lower__carry__10_0 + c_times_quotient_lower__product__10_0 - (c_times_quotient_lower__b_lower_byte__low_bytes__2_0 * c_times_quotient_lower__c_lower_byte__low_bytes__3_0 + c_times_quotient_lower__b_lower_byte__low_bytes__3_0 * c_times_quotient_lower__c_lower_byte__low_bytes__2_0 + c_times_quotient_lower__carry__9_0) = 0
+(8323072 * quotient__0__2_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__2_0) * c_times_quotient_lower__c_lower_byte__low_bytes__3_0 + (8323072 * quotient__0__3_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__3_0) * c_times_quotient_lower__c_lower_byte__low_bytes__2_0 + 256 * c_times_quotient_lower__carry__11_0 + c_times_quotient_lower__product__11_0 - (c_times_quotient_lower__b_lower_byte__low_bytes__2_0 * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__3_0 - 8323072 * adapter__op_c_memory__prev_value__0__3_0) + c_times_quotient_lower__b_lower_byte__low_bytes__3_0 * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__2_0 - 8323072 * adapter__op_c_memory__prev_value__0__2_0) + c_times_quotient_lower__carry__10_0) = 0
+(8323072 * quotient__0__2_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__2_0) * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__3_0 - 8323072 * adapter__op_c_memory__prev_value__0__3_0) + (8323072 * quotient__0__3_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__3_0) * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__2_0 - 8323072 * adapter__op_c_memory__prev_value__0__2_0) + 256 * c_times_quotient_lower__carry__12_0 + c_times_quotient_lower__product__12_0 - (c_times_quotient_lower__b_lower_byte__low_bytes__3_0 * c_times_quotient_lower__c_lower_byte__low_bytes__3_0 + c_times_quotient_lower__carry__11_0) = 0
+(8323072 * quotient__0__3_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__3_0) * c_times_quotient_lower__c_lower_byte__low_bytes__3_0 + 256 * c_times_quotient_lower__carry__13_0 + c_times_quotient_lower__product__13_0 - (c_times_quotient_lower__b_lower_byte__low_bytes__3_0 * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__3_0 - 8323072 * adapter__op_c_memory__prev_value__0__3_0) + c_times_quotient_lower__carry__12_0) = 0
+(8323072 * quotient__0__3_0 - 8323072 * c_times_quotient_lower__b_lower_byte__low_bytes__3_0) * (8323072 * c_times_quotient_lower__c_lower_byte__low_bytes__3_0 - 8323072 * adapter__op_c_memory__prev_value__0__3_0) + 256 * c_times_quotient_lower__carry__14_0 + c_times_quotient_lower__product__14_0 - c_times_quotient_lower__carry__13_0 = 0
+c_times_quotient_lower__b_msb_0 * (c_times_quotient_lower__b_msb_0 - 1) = 0
+c_times_quotient_lower__c_msb_0 * (c_times_quotient_lower__c_msb_0 - 1) = 0
+256 * c_times_quotient_upper__carry__0_0 + c_times_quotient_upper__product__0_0 - c_times_quotient_upper__b_lower_byte__low_bytes__0_0 * c_times_quotient_upper__c_lower_byte__low_bytes__0_0 = 0
+(8323072 * quotient__0__0_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__0_0) * c_times_quotient_upper__c_lower_byte__low_bytes__0_0 + 256 * c_times_quotient_upper__carry__1_0 + c_times_quotient_upper__product__1_0 - (c_times_quotient_upper__b_lower_byte__low_bytes__0_0 * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__0_0 - 8323072 * adapter__op_c_memory__prev_value__0__0_0) + c_times_quotient_upper__carry__0_0) = 0
+(8323072 * quotient__0__0_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__0_0) * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__0_0 - 8323072 * adapter__op_c_memory__prev_value__0__0_0) + 256 * c_times_quotient_upper__carry__2_0 + c_times_quotient_upper__product__2_0 - (c_times_quotient_upper__b_lower_byte__low_bytes__0_0 * c_times_quotient_upper__c_lower_byte__low_bytes__1_0 + c_times_quotient_upper__b_lower_byte__low_bytes__1_0 * c_times_quotient_upper__c_lower_byte__low_bytes__0_0 + c_times_quotient_upper__carry__1_0) = 0
+(8323072 * quotient__0__0_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__0_0) * c_times_quotient_upper__c_lower_byte__low_bytes__1_0 + (8323072 * quotient__0__1_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__1_0) * c_times_quotient_upper__c_lower_byte__low_bytes__0_0 + 256 * c_times_quotient_upper__carry__3_0 + c_times_quotient_upper__product__3_0 - (c_times_quotient_upper__b_lower_byte__low_bytes__0_0 * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__1_0 - 8323072 * adapter__op_c_memory__prev_value__0__1_0) + c_times_quotient_upper__b_lower_byte__low_bytes__1_0 * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__0_0 - 8323072 * adapter__op_c_memory__prev_value__0__0_0) + c_times_quotient_upper__carry__2_0) = 0
+(8323072 * quotient__0__0_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__0_0) * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__1_0 - 8323072 * adapter__op_c_memory__prev_value__0__1_0) + (8323072 * quotient__0__1_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__1_0) * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__0_0 - 8323072 * adapter__op_c_memory__prev_value__0__0_0) + 256 * c_times_quotient_upper__carry__4_0 + c_times_quotient_upper__product__4_0 - (c_times_quotient_upper__b_lower_byte__low_bytes__0_0 * c_times_quotient_upper__c_lower_byte__low_bytes__2_0 + c_times_quotient_upper__b_lower_byte__low_bytes__1_0 * c_times_quotient_upper__c_lower_byte__low_bytes__1_0 + c_times_quotient_upper__b_lower_byte__low_bytes__2_0 * c_times_quotient_upper__c_lower_byte__low_bytes__0_0 + c_times_quotient_upper__carry__3_0) = 0
+(8323072 * quotient__0__0_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__0_0) * c_times_quotient_upper__c_lower_byte__low_bytes__2_0 + (8323072 * quotient__0__1_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__1_0) * c_times_quotient_upper__c_lower_byte__low_bytes__1_0 + (8323072 * quotient__0__2_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__2_0) * c_times_quotient_upper__c_lower_byte__low_bytes__0_0 + 256 * c_times_quotient_upper__carry__5_0 + c_times_quotient_upper__product__5_0 - (c_times_quotient_upper__b_lower_byte__low_bytes__0_0 * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__2_0 - 8323072 * adapter__op_c_memory__prev_value__0__2_0) + c_times_quotient_upper__b_lower_byte__low_bytes__1_0 * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__1_0 - 8323072 * adapter__op_c_memory__prev_value__0__1_0) + c_times_quotient_upper__b_lower_byte__low_bytes__2_0 * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__0_0 - 8323072 * adapter__op_c_memory__prev_value__0__0_0) + c_times_quotient_upper__carry__4_0) = 0
+(8323072 * quotient__0__0_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__0_0) * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__2_0 - 8323072 * adapter__op_c_memory__prev_value__0__2_0) + (8323072 * quotient__0__1_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__1_0) * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__1_0 - 8323072 * adapter__op_c_memory__prev_value__0__1_0) + (8323072 * quotient__0__2_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__2_0) * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__0_0 - 8323072 * adapter__op_c_memory__prev_value__0__0_0) + 256 * c_times_quotient_upper__carry__6_0 + c_times_quotient_upper__product__6_0 - (c_times_quotient_upper__b_lower_byte__low_bytes__0_0 * c_times_quotient_upper__c_lower_byte__low_bytes__3_0 + c_times_quotient_upper__b_lower_byte__low_bytes__1_0 * c_times_quotient_upper__c_lower_byte__low_bytes__2_0 + c_times_quotient_upper__b_lower_byte__low_bytes__2_0 * c_times_quotient_upper__c_lower_byte__low_bytes__1_0 + c_times_quotient_upper__b_lower_byte__low_bytes__3_0 * c_times_quotient_upper__c_lower_byte__low_bytes__0_0 + c_times_quotient_upper__carry__5_0) = 0
+(8323072 * quotient__0__0_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__0_0) * c_times_quotient_upper__c_lower_byte__low_bytes__3_0 + (8323072 * quotient__0__1_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__1_0) * c_times_quotient_upper__c_lower_byte__low_bytes__2_0 + (8323072 * quotient__0__2_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__2_0) * c_times_quotient_upper__c_lower_byte__low_bytes__1_0 + (8323072 * quotient__0__3_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__3_0) * c_times_quotient_upper__c_lower_byte__low_bytes__0_0 + 256 * c_times_quotient_upper__carry__7_0 + c_times_quotient_upper__product__7_0 - (c_times_quotient_upper__b_lower_byte__low_bytes__0_0 * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__3_0 - 8323072 * adapter__op_c_memory__prev_value__0__3_0) + c_times_quotient_upper__b_lower_byte__low_bytes__1_0 * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__2_0 - 8323072 * adapter__op_c_memory__prev_value__0__2_0) + c_times_quotient_upper__b_lower_byte__low_bytes__2_0 * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__1_0 - 8323072 * adapter__op_c_memory__prev_value__0__1_0) + c_times_quotient_upper__b_lower_byte__low_bytes__3_0 * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__0_0 - 8323072 * adapter__op_c_memory__prev_value__0__0_0) + c_times_quotient_upper__carry__6_0) = 0
+(8323072 * quotient__0__0_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__0_0) * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__3_0 - 8323072 * adapter__op_c_memory__prev_value__0__3_0) + (8323072 * quotient__0__1_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__1_0) * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__2_0 - 8323072 * adapter__op_c_memory__prev_value__0__2_0) + (8323072 * quotient__0__2_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__2_0) * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__1_0 - 8323072 * adapter__op_c_memory__prev_value__0__1_0) + (8323072 * quotient__0__3_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__3_0) * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__0_0 - 8323072 * adapter__op_c_memory__prev_value__0__0_0) + 256 * c_times_quotient_upper__carry__8_0 + c_times_quotient_upper__product__8_0 - (c_times_quotient_upper__b_lower_byte__low_bytes__1_0 * c_times_quotient_upper__c_lower_byte__low_bytes__3_0 + c_times_quotient_upper__b_lower_byte__low_bytes__2_0 * c_times_quotient_upper__c_lower_byte__low_bytes__2_0 + c_times_quotient_upper__b_lower_byte__low_bytes__3_0 * c_times_quotient_upper__c_lower_byte__low_bytes__1_0 + c_times_quotient_upper__carry__7_0) = 0
+(8323072 * quotient__0__1_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__1_0) * c_times_quotient_upper__c_lower_byte__low_bytes__3_0 + (8323072 * quotient__0__2_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__2_0) * c_times_quotient_upper__c_lower_byte__low_bytes__2_0 + (8323072 * quotient__0__3_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__3_0) * c_times_quotient_upper__c_lower_byte__low_bytes__1_0 + 256 * c_times_quotient_upper__carry__9_0 + 8323072 * c_times_quotient_upper__product__8_0 - (c_times_quotient_upper__b_lower_byte__low_bytes__1_0 * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__3_0 - 8323072 * adapter__op_c_memory__prev_value__0__3_0) + c_times_quotient_upper__b_lower_byte__low_bytes__2_0 * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__2_0 - 8323072 * adapter__op_c_memory__prev_value__0__2_0) + c_times_quotient_upper__b_lower_byte__low_bytes__3_0 * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__1_0 - 8323072 * adapter__op_c_memory__prev_value__0__1_0) + 8323072 * c_times_quotient__4_0 + c_times_quotient_upper__carry__8_0) = 0
+(8323072 * quotient__0__1_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__1_0) * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__3_0 - 8323072 * adapter__op_c_memory__prev_value__0__3_0) + (8323072 * quotient__0__2_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__2_0) * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__2_0 - 8323072 * adapter__op_c_memory__prev_value__0__2_0) + (8323072 * quotient__0__3_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__3_0) * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__1_0 - 8323072 * adapter__op_c_memory__prev_value__0__1_0) + 256 * c_times_quotient_upper__carry__10_0 + c_times_quotient_upper__product__10_0 - (c_times_quotient_upper__b_lower_byte__low_bytes__2_0 * c_times_quotient_upper__c_lower_byte__low_bytes__3_0 + c_times_quotient_upper__b_lower_byte__low_bytes__3_0 * c_times_quotient_upper__c_lower_byte__low_bytes__2_0 + c_times_quotient_upper__carry__9_0) = 0
+(8323072 * quotient__0__2_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__2_0) * c_times_quotient_upper__c_lower_byte__low_bytes__3_0 + (8323072 * quotient__0__3_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__3_0) * c_times_quotient_upper__c_lower_byte__low_bytes__2_0 + 256 * c_times_quotient_upper__carry__11_0 + 8323072 * c_times_quotient_upper__product__10_0 - (c_times_quotient_upper__b_lower_byte__low_bytes__2_0 * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__3_0 - 8323072 * adapter__op_c_memory__prev_value__0__3_0) + c_times_quotient_upper__b_lower_byte__low_bytes__3_0 * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__2_0 - 8323072 * adapter__op_c_memory__prev_value__0__2_0) + 8323072 * c_times_quotient__5_0 + c_times_quotient_upper__carry__10_0) = 0
+(8323072 * quotient__0__2_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__2_0) * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__3_0 - 8323072 * adapter__op_c_memory__prev_value__0__3_0) + (8323072 * quotient__0__3_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__3_0) * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__2_0 - 8323072 * adapter__op_c_memory__prev_value__0__2_0) + 256 * c_times_quotient_upper__carry__12_0 + c_times_quotient_upper__product__12_0 - (c_times_quotient_upper__b_lower_byte__low_bytes__3_0 * c_times_quotient_upper__c_lower_byte__low_bytes__3_0 + c_times_quotient_upper__carry__11_0) = 0
+(8323072 * quotient__0__3_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__3_0) * c_times_quotient_upper__c_lower_byte__low_bytes__3_0 + 256 * c_times_quotient_upper__carry__13_0 + 8323072 * c_times_quotient_upper__product__12_0 - (c_times_quotient_upper__b_lower_byte__low_bytes__3_0 * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__3_0 - 8323072 * adapter__op_c_memory__prev_value__0__3_0) + 8323072 * c_times_quotient__6_0 + c_times_quotient_upper__carry__12_0) = 0
+(8323072 * quotient__0__3_0 - 8323072 * c_times_quotient_upper__b_lower_byte__low_bytes__3_0) * (8323072 * c_times_quotient_upper__c_lower_byte__low_bytes__3_0 - 8323072 * adapter__op_c_memory__prev_value__0__3_0) + c_times_quotient__7_0 + 65536 * c_times_quotient_upper__carry__15_0 - c_times_quotient_upper__carry__13_0 = 0
+c_times_quotient_upper__b_msb_0 * (c_times_quotient_upper__b_msb_0 - 1) = 0
+c_times_quotient_upper__c_msb_0 * (c_times_quotient_upper__c_msb_0 - 1) = 0
+1 * is_valid - (is_overflow_b__is_diff_zero__is_zero_limb__0__inverse_0 * adapter__op_b_memory__prev_value__0__0_0 + is_overflow_b__is_diff_zero__is_zero_limb__0__result_0) = 0
+is_overflow_b__is_diff_zero__is_zero_limb__0__result_0 * (is_overflow_b__is_diff_zero__is_zero_limb__0__result_0 - 1) = 0
+is_overflow_b__is_diff_zero__is_zero_limb__0__result_0 * adapter__op_b_memory__prev_value__0__0_0 = 0
+1 * is_valid - (is_overflow_b__is_diff_zero__is_zero_limb__1__inverse_0 * adapter__op_b_memory__prev_value__0__1_0 + is_overflow_b__is_diff_zero__is_zero_limb__1__result_0) = 0
+is_overflow_b__is_diff_zero__is_zero_limb__1__result_0 * (is_overflow_b__is_diff_zero__is_zero_limb__1__result_0 - 1) = 0
+is_overflow_b__is_diff_zero__is_zero_limb__1__result_0 * adapter__op_b_memory__prev_value__0__1_0 = 0
+1 * is_valid - (is_overflow_b__is_diff_zero__is_zero_limb__2__inverse_0 * adapter__op_b_memory__prev_value__0__2_0 + is_overflow_b__is_diff_zero__is_zero_limb__2__result_0) = 0
+is_overflow_b__is_diff_zero__is_zero_limb__2__result_0 * (is_overflow_b__is_diff_zero__is_zero_limb__2__result_0 - 1) = 0
+is_overflow_b__is_diff_zero__is_zero_limb__2__result_0 * adapter__op_b_memory__prev_value__0__2_0 = 0
+1 * is_valid - (is_overflow_b__is_diff_zero__is_zero_limb__3__inverse_0 * (adapter__op_b_memory__prev_value__0__3_0 - 32768) + is_overflow_b__is_diff_zero__is_zero_limb__3__result_0) = 0
+is_overflow_b__is_diff_zero__is_zero_limb__3__result_0 * (is_overflow_b__is_diff_zero__is_zero_limb__3__result_0 - 1) = 0
+is_overflow_b__is_diff_zero__is_zero_limb__3__result_0 * (adapter__op_b_memory__prev_value__0__3_0 - 32768) = 0
+is_overflow_b__is_diff_zero__result_0 * (is_overflow_b__is_diff_zero__result_0 - 1) = 0
+is_overflow_b__is_diff_zero__is_zero_first_half_0 - is_overflow_b__is_diff_zero__is_zero_limb__0__result_0 * is_overflow_b__is_diff_zero__is_zero_limb__1__result_0 = 0
+is_overflow_b__is_diff_zero__result_0 - is_overflow_b__is_diff_zero__is_zero_first_half_0 * (is_overflow_b__is_diff_zero__is_zero_limb__2__result_0 * is_overflow_b__is_diff_zero__is_zero_limb__3__result_0) = 0
+1 * is_valid - (is_overflow_c__is_diff_zero__is_zero_limb__0__inverse_0 * (adapter__op_c_memory__prev_value__0__0_0 - 65535) + is_overflow_c__is_diff_zero__is_zero_limb__0__result_0) = 0
+is_overflow_c__is_diff_zero__is_zero_limb__0__result_0 * (is_overflow_c__is_diff_zero__is_zero_limb__0__result_0 - 1) = 0
+is_overflow_c__is_diff_zero__is_zero_limb__0__result_0 * (adapter__op_c_memory__prev_value__0__0_0 - 65535) = 0
+1 * is_valid - (is_overflow_c__is_diff_zero__is_zero_limb__1__inverse_0 * (adapter__op_c_memory__prev_value__0__1_0 - 65535) + is_overflow_c__is_diff_zero__is_zero_limb__1__result_0) = 0
+is_overflow_c__is_diff_zero__is_zero_limb__1__result_0 * (is_overflow_c__is_diff_zero__is_zero_limb__1__result_0 - 1) = 0
+is_overflow_c__is_diff_zero__is_zero_limb__1__result_0 * (adapter__op_c_memory__prev_value__0__1_0 - 65535) = 0
+1 * is_valid - (is_overflow_c__is_diff_zero__is_zero_limb__2__inverse_0 * (adapter__op_c_memory__prev_value__0__2_0 - 65535) + is_overflow_c__is_diff_zero__is_zero_limb__2__result_0) = 0
+is_overflow_c__is_diff_zero__is_zero_limb__2__result_0 * (is_overflow_c__is_diff_zero__is_zero_limb__2__result_0 - 1) = 0
+is_overflow_c__is_diff_zero__is_zero_limb__2__result_0 * (adapter__op_c_memory__prev_value__0__2_0 - 65535) = 0
+1 * is_valid - (is_overflow_c__is_diff_zero__is_zero_limb__3__inverse_0 * (adapter__op_c_memory__prev_value__0__3_0 - 65535) + is_overflow_c__is_diff_zero__is_zero_limb__3__result_0) = 0
+is_overflow_c__is_diff_zero__is_zero_limb__3__result_0 * (is_overflow_c__is_diff_zero__is_zero_limb__3__result_0 - 1) = 0
+is_overflow_c__is_diff_zero__is_zero_limb__3__result_0 * (adapter__op_c_memory__prev_value__0__3_0 - 65535) = 0
+is_overflow_c__is_diff_zero__result_0 * (is_overflow_c__is_diff_zero__result_0 - 1) = 0
+is_overflow_c__is_diff_zero__is_zero_first_half_0 - is_overflow_c__is_diff_zero__is_zero_limb__0__result_0 * is_overflow_c__is_diff_zero__is_zero_limb__1__result_0 = 0
+is_overflow_c__is_diff_zero__result_0 - is_overflow_c__is_diff_zero__is_zero_first_half_0 * (is_overflow_c__is_diff_zero__is_zero_limb__2__result_0 * is_overflow_c__is_diff_zero__is_zero_limb__3__result_0) = 0
+1 * is_valid - (is_c_0__is_zero_limb__0__inverse_0 * adapter__op_c_memory__prev_value__0__0_0 + is_c_0__is_zero_limb__0__result_0) = 0
+is_c_0__is_zero_limb__0__result_0 * (is_c_0__is_zero_limb__0__result_0 - 1) = 0
+is_c_0__is_zero_limb__0__result_0 * adapter__op_c_memory__prev_value__0__0_0 = 0
+1 * is_valid - (is_c_0__is_zero_limb__1__inverse_0 * adapter__op_c_memory__prev_value__0__1_0 + is_c_0__is_zero_limb__1__result_0) = 0
+is_c_0__is_zero_limb__1__result_0 * (is_c_0__is_zero_limb__1__result_0 - 1) = 0
+is_c_0__is_zero_limb__1__result_0 * adapter__op_c_memory__prev_value__0__1_0 = 0
+1 * is_valid - (is_c_0__is_zero_limb__2__inverse_0 * adapter__op_c_memory__prev_value__0__2_0 + is_c_0__is_zero_limb__2__result_0) = 0
+is_c_0__is_zero_limb__2__result_0 * (is_c_0__is_zero_limb__2__result_0 - 1) = 0
+is_c_0__is_zero_limb__2__result_0 * adapter__op_c_memory__prev_value__0__2_0 = 0
+1 * is_valid - (is_c_0__is_zero_limb__3__inverse_0 * adapter__op_c_memory__prev_value__0__3_0 + is_c_0__is_zero_limb__3__result_0) = 0
+is_c_0__is_zero_limb__3__result_0 * (is_c_0__is_zero_limb__3__result_0 - 1) = 0
+is_c_0__is_zero_limb__3__result_0 * adapter__op_c_memory__prev_value__0__3_0 = 0
+is_c_0__result_0 * (is_c_0__result_0 - 1) = 0
+is_c_0__is_zero_first_half_0 - is_c_0__is_zero_limb__0__result_0 * is_c_0__is_zero_limb__1__result_0 = 0
+is_c_0__result_0 - is_c_0__is_zero_first_half_0 * (is_c_0__is_zero_limb__2__result_0 * is_c_0__is_zero_limb__3__result_0) = 0
+is_c_0__result_0 * (quotient__0__0_0 - 65535) = 0
+is_c_0__result_0 * (quotient__0__1_0 - 65535) = 0
+is_c_0__result_0 * (quotient__0__2_0 - 65535) = 0
+is_c_0__result_0 * (quotient__0__3_0 - 65535) = 0
+is_c_0__result_0 * (a__0__0_0 - adapter__op_b_memory__prev_value__0__0_0) = 0
+is_c_0__result_0 * (a__0__1_0 - adapter__op_b_memory__prev_value__0__1_0) = 0
+is_c_0__result_0 * (a__0__2_0 - adapter__op_b_memory__prev_value__0__2_0) = 0
+is_c_0__result_0 * (a__0__3_0 - adapter__op_b_memory__prev_value__0__3_0) = 0
+remainder_lt_operation__u16_flags__0_0 * (remainder_lt_operation__u16_flags__0_0 - 1) = 0
+remainder_lt_operation__u16_flags__1_0 * (remainder_lt_operation__u16_flags__1_0 - 1) = 0
+remainder_lt_operation__u16_flags__2_0 * (remainder_lt_operation__u16_flags__2_0 - 1) = 0
+remainder_lt_operation__u16_flags__3_0 * (remainder_lt_operation__u16_flags__3_0 - 1) = 0
+(remainder_lt_operation__u16_flags__0_0 + remainder_lt_operation__u16_flags__1_0 + remainder_lt_operation__u16_flags__2_0 + remainder_lt_operation__u16_flags__3_0) * (remainder_lt_operation__u16_flags__0_0 + remainder_lt_operation__u16_flags__1_0 + remainder_lt_operation__u16_flags__2_0 + remainder_lt_operation__u16_flags__3_0 - 1) = 0
+(1 - (remainder_lt_operation__u16_flags__3_0 + is_c_0__result_0)) * ((is_c_0__result_0 - 1) * adapter__op_c_memory__prev_value__0__3_0 + a__0__3_0) = 0
+(1 - (remainder_lt_operation__u16_flags__2_0 + remainder_lt_operation__u16_flags__3_0 + is_c_0__result_0)) * ((is_c_0__result_0 - 1) * adapter__op_c_memory__prev_value__0__2_0 + a__0__2_0) = 0
+(1 - (remainder_lt_operation__u16_flags__1_0 + remainder_lt_operation__u16_flags__2_0 + remainder_lt_operation__u16_flags__3_0 + is_c_0__result_0)) * ((is_c_0__result_0 - 1) * adapter__op_c_memory__prev_value__0__1_0 + a__0__1_0) = 0
+(1 - (remainder_lt_operation__u16_flags__0_0 + remainder_lt_operation__u16_flags__1_0 + remainder_lt_operation__u16_flags__2_0 + remainder_lt_operation__u16_flags__3_0 + is_c_0__result_0)) * ((is_c_0__result_0 - 1) * adapter__op_c_memory__prev_value__0__0_0 + a__0__0_0 - is_c_0__result_0) = 0
+a__0__3_0 * remainder_lt_operation__u16_flags__3_0 + a__0__2_0 * remainder_lt_operation__u16_flags__2_0 + a__0__1_0 * remainder_lt_operation__u16_flags__1_0 + a__0__0_0 * remainder_lt_operation__u16_flags__0_0 - remainder_lt_operation__comparison_limbs__0_0 = 0
+(1 - is_c_0__result_0) * adapter__op_c_memory__prev_value__0__3_0 * remainder_lt_operation__u16_flags__3_0 + (1 - is_c_0__result_0) * adapter__op_c_memory__prev_value__0__2_0 * remainder_lt_operation__u16_flags__2_0 + (1 - is_c_0__result_0) * adapter__op_c_memory__prev_value__0__1_0 * remainder_lt_operation__u16_flags__1_0 + ((1 - is_c_0__result_0) * adapter__op_c_memory__prev_value__0__0_0 + is_c_0__result_0) * remainder_lt_operation__u16_flags__0_0 - remainder_lt_operation__comparison_limbs__1_0 = 0
+(remainder_lt_operation__u16_flags__0_0 + remainder_lt_operation__u16_flags__1_0 + remainder_lt_operation__u16_flags__2_0 + remainder_lt_operation__u16_flags__3_0) * (remainder_lt_operation__not_eq_inv_0 * (remainder_lt_operation__comparison_limbs__0_0 - remainder_lt_operation__comparison_limbs__1_0) + is_c_0__result_0 - 1) = 0
+remainder_lt_operation__u16_compare_operation__bit_0 * (remainder_lt_operation__u16_compare_operation__bit_0 - 1) = 0
+(1 * is_valid - is_c_0__result_0) * (1 - remainder_lt_operation__u16_compare_operation__bit_0) = 0
+b_msb__msb_0 * (b_msb__msb_0 - 1) = 0
+c_msb__msb_0 * (c_msb__msb_0 - 1) = 0
+rem_msb__msb_0 * (rem_msb__msb_0 - 1) = 0
+(32512 * adapter__op_b_memory__prev_value__0__0_0 - (32512 * a__0__0_0 + 32512 * c_times_quotient__0_0)) * (32512 * adapter__op_b_memory__prev_value__0__0_0 - (32512 * a__0__0_0 + 32512 * c_times_quotient__0_0 + 1)) = 0
+(32512 * adapter__op_b_memory__prev_value__0__1_0 + 1057030144 * a__0__0_0 + 1057030144 * c_times_quotient__0_0 - (1057030144 * adapter__op_b_memory__prev_value__0__0_0 + 32512 * a__0__1_0 + 32512 * c_times_quotient__1_0)) * (32512 * adapter__op_b_memory__prev_value__0__1_0 + 1057030144 * a__0__0_0 + 1057030144 * c_times_quotient__0_0 - (1057030144 * adapter__op_b_memory__prev_value__0__0_0 + 32512 * a__0__1_0 + 32512 * c_times_quotient__1_0 + 1)) = 0
+(32512 * adapter__op_b_memory__prev_value__0__2_0 + 16129 * a__0__0_0 + 1057030144 * a__0__1_0 + 16129 * c_times_quotient__0_0 + 1057030144 * c_times_quotient__1_0 - (16129 * adapter__op_b_memory__prev_value__0__0_0 + 1057030144 * adapter__op_b_memory__prev_value__0__1_0 + 32512 * a__0__2_0 + 32512 * c_times_quotient__2_0)) * (32512 * adapter__op_b_memory__prev_value__0__2_0 + 16129 * a__0__0_0 + 1057030144 * a__0__1_0 + 16129 * c_times_quotient__0_0 + 1057030144 * c_times_quotient__1_0 - (16129 * adapter__op_b_memory__prev_value__0__0_0 + 1057030144 * adapter__op_b_memory__prev_value__0__1_0 + 32512 * a__0__2_0 + 32512 * c_times_quotient__2_0 + 1)) = 0
+(524386048 * adapter__op_b_memory__prev_value__0__0_0 + 32512 * adapter__op_b_memory__prev_value__0__3_0 + 16129 * a__0__1_0 + 1057030144 * a__0__2_0 + 16129 * c_times_quotient__1_0 + 1057030144 * c_times_quotient__2_0 - (16129 * adapter__op_b_memory__prev_value__0__1_0 + 1057030144 * adapter__op_b_memory__prev_value__0__2_0 + 524386048 * a__0__0_0 + 32512 * a__0__3_0 + 524386048 * c_times_quotient__0_0 + 32512 * c_times_quotient__3_0)) * (524386048 * adapter__op_b_memory__prev_value__0__0_0 + 32512 * adapter__op_b_memory__prev_value__0__3_0 + 16129 * a__0__1_0 + 1057030144 * a__0__2_0 + 16129 * c_times_quotient__1_0 + 1057030144 * c_times_quotient__2_0 - (16129 * adapter__op_b_memory__prev_value__0__1_0 + 1057030144 * adapter__op_b_memory__prev_value__0__2_0 + 524386048 * a__0__0_0 + 32512 * a__0__3_0 + 524386048 * c_times_quotient__0_0 + 32512 * c_times_quotient__3_0 + 1)) = 0
+(524386048 * adapter__op_b_memory__prev_value__0__1_0 + 1057022143 * a__0__0_0 + 16129 * a__0__2_0 + 1057030144 * a__0__3_0 + 1057022143 * c_times_quotient__0_0 + 16129 * c_times_quotient__2_0 + 1057030144 * c_times_quotient__3_0 - (1057022143 * adapter__op_b_memory__prev_value__0__0_0 + 16129 * adapter__op_b_memory__prev_value__0__2_0 + 1057030144 * adapter__op_b_memory__prev_value__0__3_0 + 524386048 * a__0__1_0 + 524386048 * c_times_quotient__1_0 + 32512 * c_times_quotient__4_0)) * (524386048 * adapter__op_b_memory__prev_value__0__1_0 + 1057022143 * a__0__0_0 + 16129 * a__0__2_0 + 1057030144 * a__0__3_0 + 1057022143 * c_times_quotient__0_0 + 16129 * c_times_quotient__2_0 + 1057030144 * c_times_quotient__3_0 - (1057022143 * adapter__op_b_memory__prev_value__0__0_0 + 16129 * adapter__op_b_memory__prev_value__0__2_0 + 1057030144 * adapter__op_b_memory__prev_value__0__3_0 + 524386048 * a__0__1_0 + 524386048 * c_times_quotient__1_0 + 32512 * c_times_quotient__4_0 + 1)) = 0
+(524386048 * adapter__op_b_memory__prev_value__0__2_0 + 260144641 * a__0__0_0 + 1057022143 * a__0__1_0 + 16129 * a__0__3_0 + 260144641 * c_times_quotient__0_0 + 1057022143 * c_times_quotient__1_0 + 16129 * c_times_quotient__3_0 + 1057030144 * c_times_quotient__4_0 - (260144641 * adapter__op_b_memory__prev_value__0__0_0 + 1057022143 * adapter__op_b_memory__prev_value__0__1_0 + 16129 * adapter__op_b_memory__prev_value__0__3_0 + 524386048 * a__0__2_0 + 524386048 * c_times_quotient__2_0 + 32512 * c_times_quotient__5_0)) * (524386048 * adapter__op_b_memory__prev_value__0__2_0 + 260144641 * a__0__0_0 + 1057022143 * a__0__1_0 + 16129 * a__0__3_0 + 260144641 * c_times_quotient__0_0 + 1057022143 * c_times_quotient__1_0 + 16129 * c_times_quotient__3_0 + 1057030144 * c_times_quotient__4_0 - (260144641 * adapter__op_b_memory__prev_value__0__0_0 + 1057022143 * adapter__op_b_memory__prev_value__0__1_0 + 16129 * adapter__op_b_memory__prev_value__0__3_0 + 524386048 * a__0__2_0 + 524386048 * c_times_quotient__2_0 + 32512 * c_times_quotient__5_0 + 1)) = 0
+(1048735615 * adapter__op_b_memory__prev_value__0__0_0 + 524386048 * adapter__op_b_memory__prev_value__0__3_0 + 260144641 * a__0__1_0 + 1057022143 * a__0__2_0 + 260144641 * c_times_quotient__1_0 + 1057022143 * c_times_quotient__2_0 + 16129 * c_times_quotient__4_0 + 1057030144 * c_times_quotient__5_0 - (260144641 * adapter__op_b_memory__prev_value__0__1_0 + 1057022143 * adapter__op_b_memory__prev_value__0__2_0 + 1048735615 * a__0__0_0 + 524386048 * a__0__3_0 + 1048735615 * c_times_quotient__0_0 + 524386048 * c_times_quotient__3_0 + 32512 * c_times_quotient__6_0)) * (1048735615 * adapter__op_b_memory__prev_value__0__0_0 + 524386048 * adapter__op_b_memory__prev_value__0__3_0 + 260144641 * a__0__1_0 + 1057022143 * a__0__2_0 + 260144641 * c_times_quotient__1_0 + 1057022143 * c_times_quotient__2_0 + 16129 * c_times_quotient__4_0 + 1057030144 * c_times_quotient__5_0 - (260144641 * adapter__op_b_memory__prev_value__0__1_0 + 1057022143 * adapter__op_b_memory__prev_value__0__2_0 + 1048735615 * a__0__0_0 + 524386048 * a__0__3_0 + 1048735615 * c_times_quotient__0_0 + 524386048 * c_times_quotient__3_0 + 32512 * c_times_quotient__6_0 + 1)) = 0
+(1048735615 * adapter__op_b_memory__prev_value__0__1_0 + 927974014 * a__0__0_0 + 260144641 * a__0__2_0 + 1057022143 * a__0__3_0 + 927974014 * c_times_quotient__0_0 + 260144641 * c_times_quotient__2_0 + 1057022143 * c_times_quotient__3_0 + 16129 * c_times_quotient__5_0 + 1057030144 * c_times_quotient__6_0 - (927974014 * adapter__op_b_memory__prev_value__0__0_0 + 260144641 * adapter__op_b_memory__prev_value__0__2_0 + 1057022143 * adapter__op_b_memory__prev_value__0__3_0 + 1048735615 * a__0__1_0 + 1048735615 * c_times_quotient__1_0 + 524386048 * c_times_quotient__4_0 + 32512 * c_times_quotient__7_0)) * (1048735615 * adapter__op_b_memory__prev_value__0__1_0 + 927974014 * a__0__0_0 + 260144641 * a__0__2_0 + 1057022143 * a__0__3_0 + 927974014 * c_times_quotient__0_0 + 260144641 * c_times_quotient__2_0 + 1057022143 * c_times_quotient__3_0 + 16129 * c_times_quotient__5_0 + 1057030144 * c_times_quotient__6_0 - (927974014 * adapter__op_b_memory__prev_value__0__0_0 + 260144641 * adapter__op_b_memory__prev_value__0__2_0 + 1057022143 * adapter__op_b_memory__prev_value__0__3_0 + 1048735615 * a__0__1_0 + 1048735615 * c_times_quotient__1_0 + 524386048 * c_times_quotient__4_0 + 32512 * c_times_quotient__7_0 + 1)) = 0
+is_valid * (is_valid - 1) = 0
