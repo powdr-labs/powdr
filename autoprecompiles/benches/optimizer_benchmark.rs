@@ -7,10 +7,7 @@ use powdr_autoprecompiles::{
 };
 use powdr_number::BabyBearField;
 
-use powdr_openvm_bus_interaction_handler::{
-    bus_map::OpenVmBusType, memory_bus_interaction::OpenVmMemoryBusInteraction,
-    OpenVmBusInteractionHandler,
-};
+use powdr_openvm_bus_interaction_handler::{bus_map::OpenVmBusType, OpenVmBusInteractionHandler};
 
 type TestApc = Apc<BabyBearField, SimpleInstruction<BabyBearField>, (), ()>;
 
