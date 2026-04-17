@@ -14,7 +14,7 @@ use powdr_number::FieldElement;
 use crate::constraint_optimizer;
 use crate::constraint_optimizer::{trivial_simplifications, IsBusStateful};
 use crate::export::ExportOptions;
-use crate::memory_optimizer::MemoryBusInteraction;
+use crate::memory_optimizer::MemoryInteractionParser;
 use crate::range_constraint_optimizer::{optimize_range_constraints, RangeConstraintHandler};
 use crate::symbolic_machine::{
     constraint_system_to_symbolic_machine, symbolic_machine_to_constraint_system,
@@ -43,7 +43,7 @@ where
     T: FieldElement,
     B: BusInteractionHandler<T> + IsBusStateful<T> + RangeConstraintHandler<T> + Clone,
     BusTypes: PartialEq + Eq + Clone + Display,
-    MemoryBus: MemoryBusInteraction<T, AlgebraicReference>,
+    MemoryBus: MemoryInteractionParser<T>,
 {
     let mut stats_logger = StatsLogger::start(&machine);
 

@@ -24,7 +24,7 @@ use serde::Serialize;
 use crate::{
     export::ExportOptions,
     low_degree_bus_interaction_optimizer::LowDegreeBusInteractionOptimizer,
-    memory_optimizer::{optimize_memory, MemoryBusInteraction},
+    memory_optimizer::{optimize_memory, MemoryInteractionParser},
     range_constraint_optimizer::RangeConstraintHandler,
     stats_logger::StatsLogger,
 };
@@ -50,7 +50,7 @@ impl From<powdr_constraint_solver::solver::Error> for Error {
 pub fn optimize_constraints<
     P: FieldElement,
     V: Ord + Clone + Eq + Hash + Display + Serialize,
-    M: MemoryBusInteraction<P, V>,
+    M: MemoryInteractionParser<P>,
 >(
     constraint_system: IndexedConstraintSystem<P, V>,
     solver: &mut impl Solver<P, V>,

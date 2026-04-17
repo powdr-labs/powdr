@@ -11,10 +11,10 @@ use crate::empirical_constraints::EmpiricalConstraints;
 use crate::evaluation::EvaluationResult;
 use crate::execution::{ExecutionState, OptimisticConstraint, OptimisticConstraints};
 use crate::execution_profile::ExecutionProfile;
+use crate::memory_optimizer::MemoryInteractionParser;
 use crate::{
     blocks::{BasicBlock, Instruction, Program},
     constraint_optimizer::IsBusStateful,
-    memory_optimizer::MemoryBusInteraction,
     range_constraint_optimizer::RangeConstraintHandler,
     Apc, InstructionHandler, PowdrConfig, VmConfig,
 };
@@ -108,14 +108,11 @@ where
     type BusInteractionHandler: BusInteractionHandler<Self::PowdrField>
         + Clone
         + IsBusStateful<Self::PowdrField>
+        + MemoryInteractionParser<Self::PowdrField>
         + RangeConstraintHandler<Self::PowdrField>
         + Sync;
     type Program: Program<Self::Instruction> + Send;
     type Instruction: Instruction<Self::Field> + Serialize + for<'de> Deserialize<'de> + Send + Sync;
-    type MemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash>: MemoryBusInteraction<
-        Self::PowdrField,
-        V,
-    >;
     type CustomBusTypes: Clone
         + Display
         + Sync

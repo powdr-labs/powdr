@@ -1,5 +1,4 @@
 use std::fmt::Display;
-use std::hash::Hash;
 use std::iter::once;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -33,9 +32,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::powdr_extension::{PowdrOpcode, PowdrPrecompile};
 
-pub use powdr_openvm_bus_interaction_handler::{
-    memory_bus_interaction::OpenVmMemoryBusInteraction, OpenVmBusInteractionHandler,
-};
+pub use powdr_openvm_bus_interaction_handler::OpenVmBusInteractionHandler;
 
 pub const POWDR_OPCODE: usize = 0x10ff;
 
@@ -91,8 +88,6 @@ impl<'a, ISA: OpenVmISA> Adapter for BabyBearOpenVmApcAdapter<'a, ISA> {
     type BusInteractionHandler = OpenVmBusInteractionHandler<Self::PowdrField>;
     type Program = Prog<'a, Self::Field>;
     type Instruction = Instr<Self::Field, ISA>;
-    type MemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash> =
-        OpenVmMemoryBusInteraction<Self::PowdrField, V>;
     type CustomBusTypes = OpenVmBusType;
     type ApcStats = OvmApcStats;
     type AirId = String;
