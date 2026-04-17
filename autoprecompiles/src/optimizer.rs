@@ -31,7 +31,7 @@ use crate::{
 /// Optimizes a given symbolic machine and returns an equivalent, but "simpler" one.
 /// All constraints in the returned machine will respect the given degree bound.
 /// New variables may be introduced in the process.
-pub fn optimize<T, B, BusTypes, MemoryBus>(
+pub fn optimize<T, B, BusTypes>(
     mut machine: SymbolicMachine<T>,
     bus_interaction_handler: B,
     degree_bound: DegreeBound,
@@ -41,9 +41,12 @@ pub fn optimize<T, B, BusTypes, MemoryBus>(
 ) -> Result<(SymbolicMachine<T>, ColumnAllocator), crate::constraint_optimizer::Error>
 where
     T: FieldElement,
-    B: BusInteractionHandler<T> + IsBusStateful<T> + RangeConstraintHandler<T> + Clone,
+    B: BusInteractionHandler<T>
+        + IsBusStateful<T>
+        + RangeConstraintHandler<T>
+        + MemoryInteractionParser<T>
+        + Clone,
     BusTypes: PartialEq + Eq + Clone + Display,
-    MemoryBus: MemoryInteractionParser<T>,
 {
     let mut stats_logger = StatsLogger::start(&machine);
 
@@ -94,7 +97,7 @@ where
         export_options
             .export_optimizer_outer_constraint_system(constraint_system.system(), "loop_iteration");
         let stats = stats_logger::Stats::from(&constraint_system);
-        constraint_system = optimize_constraints::<_, _, MemoryBus>(
+        constraint_system = optimize_constraints::<_, _, B>(
             constraint_system,
             &mut solver,
             bus_interaction_handler.clone(),
