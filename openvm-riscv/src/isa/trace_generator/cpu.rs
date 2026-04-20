@@ -57,7 +57,7 @@ pub fn create_dummy_chip_complex_cpu(
             inventory,
         )?;
     }
-    if let Some(sha256) = &config.sha256 {
+    if let Some(sha256) = &config.sha2 {
         VmProverExtension::<BabyBearPoseidon2CpuEngine, _, _>::extend_prover(
             &Sha2CpuProverExt,
             sha256,

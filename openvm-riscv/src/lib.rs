@@ -118,16 +118,16 @@ pub fn compile_openvm(
         AppConfig::riscv32(system_params)
     };
 
-    let mut sdk = openvm_sdk::Sdk::new(app_config, AggregationSystemParams::default())?;
-
-    let transpiler = sdk.transpiler().unwrap();
-
-    // Add our custom transpiler extensions
-    sdk.set_transpiler(
-        transpiler
-            .clone()
-            .with_extension(HintsTranspilerExtension {}),
-    );
+    // Build SDK with our custom transpiler extension
+    let transpiler = app_config
+        .app_vm_config
+        .transpiler()
+        .with_extension(HintsTranspilerExtension {});
+    let sdk = openvm_sdk::Sdk::builder()
+        .app_config(app_config)
+        .agg_params(AggregationSystemParams::default())
+        .transpiler(transpiler)
+        .build_without_transpiler()?;
 
     let elf = sdk.build(
         guest_opts.clone(),
@@ -1569,7 +1569,7 @@ mod tests {
                 .rv32m(rv32m)
                 .io(Default::default())
                 .keccak(Default::default())
-                .sha256(Default::default())
+                .sha2(Default::default())
                 .bigint(int256)
                 .modular(ModularExtension::new(supported_moduli))
                 .fp2(Fp2Extension::new(supported_complex_moduli))

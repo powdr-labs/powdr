@@ -24,7 +24,7 @@ pub fn create_dummy_airs<E: VmCircuitExtension<BabyBearSC>>(
     if let Some(keccak) = &config.keccak {
         VmCircuitExtension::extend_circuit(keccak, &mut inventory)?;
     }
-    if let Some(sha256) = &config.sha256 {
+    if let Some(sha256) = &config.sha2 {
         VmCircuitExtension::extend_circuit(sha256, &mut inventory)?;
     }
     if let Some(rv32m) = &config.rv32m {
