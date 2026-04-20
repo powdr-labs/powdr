@@ -7,7 +7,7 @@ use powdr_openvm::{
     powdr_extension::trace_generator::cuda::{
         GpuDummyChipComplex, SharedPeripheryChipsGpu, SharedPeripheryChipsGpuProverExt,
     },
-    BabyBearSC, GpuBabyBearPoseidon2Engine,
+    BabyBearSC, GpuBabyBearPoseidon2CpuEngine,
 };
 
 use crate::{ExtendedVmConfig, RiscvISA};
@@ -21,11 +21,10 @@ pub fn create_dummy_chip_complex_gpu(
     use openvm_bigint_circuit::Int256GpuProverExt;
     use openvm_ecc_circuit::EccProverExt;
     use openvm_keccak256_circuit::Keccak256GpuProverExt;
-    use openvm_native_circuit::NativeGpuProverExt;
     use openvm_rv32im_circuit::Rv32ImGpuProverExt;
-    use openvm_sha256_circuit::Sha256GpuProverExt;
+    use openvm_sha2_circuit::Sha2GpuProverExt;
 
-    type E = GpuBabyBearPoseidon2Engine;
+    type E = GpuBabyBearPoseidon2CpuEngine;
 
     let config = config.sdk.to_inner();
     let mut chip_complex =
@@ -50,13 +49,7 @@ pub fn create_dummy_chip_complex_gpu(
         VmProverExtension::<E, _, _>::extend_prover(&Keccak256GpuProverExt, keccak, inventory)?;
     }
     if let Some(sha256) = &config.sha256 {
-        VmProverExtension::<E, _, _>::extend_prover(&Sha256GpuProverExt, sha256, inventory)?;
-    }
-    if let Some(native) = &config.native {
-        VmProverExtension::<E, _, _>::extend_prover(&NativeGpuProverExt, native, inventory)?;
-    }
-    if let Some(castf) = &config.castf {
-        VmProverExtension::<E, _, _>::extend_prover(&NativeGpuProverExt, castf, inventory)?;
+        VmProverExtension::<E, _, _>::extend_prover(&Sha2GpuProverExt, sha256, inventory)?;
     }
     if let Some(rv32m) = &config.rv32m {
         VmProverExtension::<E, _, _>::extend_prover(&Rv32ImGpuProverExt, rv32m, inventory)?;
