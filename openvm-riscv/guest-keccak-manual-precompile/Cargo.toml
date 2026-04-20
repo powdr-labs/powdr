@@ -7,6 +7,6 @@ edition = "2021"
 members = []
 
 [dependencies]
-openvm = { git = "https://github.com/powdr-labs/openvm.git", tag = "v1.4.2-powdr-rc.4" }
-openvm-platform = { git = "https://github.com/powdr-labs/openvm.git", tag = "v1.4.2-powdr-rc.4" }
-openvm-keccak256 = { git = "https://github.com/powdr-labs/openvm.git", tag = "v1.4.2-powdr-rc.4" }
+openvm = { git = "https://github.com/powdr-labs/openvm.git", branch = "v2-powdr-beta.2" }
+openvm-platform = { git = "https://github.com/powdr-labs/openvm.git", branch = "v2-powdr-beta.2" }
+openvm-keccak256 = { git = "https://github.com/powdr-labs/openvm.git", branch = "v2-powdr-beta.2" }
