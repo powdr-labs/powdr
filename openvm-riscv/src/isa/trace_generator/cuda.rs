@@ -48,8 +48,8 @@ pub fn create_dummy_chip_complex_gpu(
     if let Some(keccak) = &config.keccak {
         VmProverExtension::<E, _, _>::extend_prover(&Keccak256GpuProverExt, keccak, inventory)?;
     }
-    if let Some(sha256) = &config.sha256 {
-        VmProverExtension::<E, _, _>::extend_prover(&Sha2GpuProverExt, sha256, inventory)?;
+    if let Some(sha2) = &config.sha2 {
+        VmProverExtension::<E, _, _>::extend_prover(&Sha2GpuProverExt, sha2, inventory)?;
     }
     if let Some(rv32m) = &config.rv32m {
         VmProverExtension::<E, _, _>::extend_prover(&Rv32ImGpuProverExt, rv32m, inventory)?;
