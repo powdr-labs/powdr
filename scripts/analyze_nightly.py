@@ -3,8 +3,11 @@
 Nightly regression analyzer for benchmark results.
 
 This script analyzes the latest nightly benchmark results and compares them
-to the previous nightly run. It reports any performance regressions in
+to a pinned baseline run. It reports any performance regressions in
 APC (autoprecompile) configurations only, ignoring manual precompile results.
+
+The baseline is pinned to a specific run directory and should be updated
+manually via a PR when a new baseline is established.
 
 Results are fetched from: https://github.com/powdr-labs/bench-results/tree/gh-pages/results
 """
@@ -28,6 +31,9 @@ RAW_CONTENT_BASE = "https://raw.githubusercontent.com/powdr-labs/bench-results/g
 
 # Benchmarks to analyze
 BENCHMARKS = ["keccak", "sha256", "pairing", "u256", "matmul", "ecc", "ecrecover", "reth"]
+
+# Pinned baseline run directory. Update this via PR to establish a new baseline.
+BASELINE_RUN = "2026-04-17-0655"
 
 # Date pattern for result directories (YYYY-MM-DD-HHMM)
 DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{4}$")
@@ -59,8 +65,8 @@ class ComparisonResult:
     benchmark: str
     latest_time_ms: float
     latest_config: str
-    previous_time_ms: float
-    previous_config: str
+    baseline_time_ms: float
+    baseline_config: str
     change_percent: float
     is_regression: bool
     config_changed: bool  # True if best config differs between runs
@@ -147,28 +153,28 @@ def fetch_benchmark_results(run_dir: str, benchmark: str) -> Optional[BenchmarkR
 
 def compare_results(
     latest: BenchmarkResult,
-    previous: BenchmarkResult,
+    baseline: BenchmarkResult,
     regression_threshold: float = 0.0
 ) -> ComparisonResult:
-    """Compare latest results to previous results."""
-    if previous.best_time_ms == 0:
+    """Compare latest results to baseline results."""
+    if baseline.best_time_ms == 0:
         change_percent = 0.0
         is_regression = False
     else:
         change_percent = (
-            (latest.best_time_ms - previous.best_time_ms) / previous.best_time_ms
+            (latest.best_time_ms - baseline.best_time_ms) / baseline.best_time_ms
         ) * 100
         is_regression = change_percent > regression_threshold
 
     # Check if best config changed
-    config_changed = latest.best_config != previous.best_config
+    config_changed = latest.best_config != baseline.best_config
 
     return ComparisonResult(
         benchmark=latest.benchmark,
         latest_time_ms=latest.best_time_ms,
         latest_config=latest.best_config,
-        previous_time_ms=previous.best_time_ms,
-        previous_config=previous.best_config,
+        baseline_time_ms=baseline.best_time_ms,
+        baseline_config=baseline.best_config,
         change_percent=change_percent,
         is_regression=is_regression,
         config_changed=config_changed,
@@ -196,7 +202,7 @@ def format_change_percent(change: float) -> str:
 
 def format_report(
     latest_run: str,
-    previous_run: str,
+    baseline_run: str,
     comparisons: list[ComparisonResult],
     errors: list[str],
     warnings: list[str]
@@ -210,12 +216,12 @@ def format_report(
             return
         lines.append(f"## {title}")
         lines.append("")
-        lines.append("| Benchmark | Latest (ms) | Previous (ms) | Change |")
+        lines.append("| Benchmark | Latest (ms) | Baseline (ms) | Change |")
         lines.append("|-----------|-------------|---------------|--------|")
         for r in items:
             lines.append(
                 f"| {r.benchmark} | {r.latest_time_ms:.0f} ({r.latest_config}) | "
-                f"{r.previous_time_ms:.0f} ({r.previous_config}) | "
+                f"{r.baseline_time_ms:.0f} ({r.baseline_config}) | "
                 f"{format_change_percent(r.change_percent)} |"
             )
         lines.append("")
@@ -223,7 +229,7 @@ def format_report(
     lines.append("# Nightly Benchmark Comparison Report")
     lines.append("")
     lines.append(f"**Latest run:** {latest_run}")
-    lines.append(f"**Previous run:** {previous_run}")
+    lines.append(f"**Baseline:** {baseline_run}")
     lines.append("")
 
     if errors:
@@ -267,9 +273,10 @@ def main():
         help="Specific run directory to use as latest (default: auto-detect)"
     )
     parser.add_argument(
-        "--previous",
+        "--baseline",
         type=str,
-        help="Specific run directory to use as previous (default: auto-detect)"
+        default=BASELINE_RUN,
+        help=f"Specific run directory to use as baseline (default: {BASELINE_RUN})"
     )
     parser.add_argument(
         "--benchmarks",
@@ -297,10 +304,6 @@ def main():
         print_error_report(f"Failed to parse GitHub API response: {e}")
         sys.exit(1)
 
-    if len(result_dirs) < 2:
-        print_error_report("Need at least 2 result directories to compare")
-        sys.exit(1)
-
     # Find today's run (must exist unless --latest is provided)
     if args.latest:
         latest_run = args.latest
@@ -312,17 +315,9 @@ def main():
             sys.exit(1)
         latest_run = today_runs[0]  # Most recent run today (dirs are sorted descending)
 
-    # Find previous run (most recent run that's not the latest)
-    if args.previous:
-        previous_run = args.previous
-    else:
-        previous_runs = [d for d in result_dirs if d != latest_run]
-        if not previous_runs:
-            print_error_report("No previous run found to compare against")
-            sys.exit(1)
-        previous_run = previous_runs[0]
+    baseline_run = args.baseline
 
-    print(f"Comparing {latest_run} (latest) vs {previous_run} (previous)", file=sys.stderr)
+    print(f"Comparing {latest_run} (latest) vs {baseline_run} (baseline)", file=sys.stderr)
 
     # Fetch results for each benchmark
     comparisons = []
@@ -333,19 +328,19 @@ def main():
         print(f"Analyzing {benchmark}...", file=sys.stderr)
 
         latest_result = fetch_benchmark_results(latest_run, benchmark)
-        previous_result = fetch_benchmark_results(previous_run, benchmark)
+        baseline_result = fetch_benchmark_results(baseline_run, benchmark)
 
         if latest_result is None:
             errors.append(f"{benchmark}: No APC results found in latest run")
             continue
 
-        if previous_result is None:
-            errors.append(f"{benchmark}: No APC results found in previous run")
+        if baseline_result is None:
+            errors.append(f"{benchmark}: No APC results found in baseline run")
             continue
 
         comparison = compare_results(
             latest_result,
-            previous_result,
+            baseline_result,
             args.regression_threshold
         )
         comparisons.append(comparison)
@@ -353,7 +348,7 @@ def main():
         # Check for config changes
         if comparison.config_changed:
             warnings.append(
-                f"{benchmark}: Best APC config changed from {comparison.previous_config} "
+                f"{benchmark}: Best APC config changed from {comparison.baseline_config} "
                 f"to {comparison.latest_config}"
             )
 
@@ -361,14 +356,14 @@ def main():
     if args.output_format == "json":
         output = {
             "latest_run": latest_run,
-            "previous_run": previous_run,
+            "baseline_run": baseline_run,
             "comparisons": [
                 {
                     "benchmark": c.benchmark,
                     "latest_time_ms": c.latest_time_ms,
                     "latest_config": c.latest_config,
-                    "previous_time_ms": c.previous_time_ms,
-                    "previous_config": c.previous_config,
+                    "baseline_time_ms": c.baseline_time_ms,
+                    "baseline_config": c.baseline_config,
                     "change_percent": c.change_percent,
                     "is_regression": c.is_regression,
                     "config_changed": c.config_changed,
@@ -383,7 +378,7 @@ def main():
         }
         print(json.dumps(output, indent=2))
     else:
-        report = format_report(latest_run, previous_run, comparisons, errors, warnings)
+        report = format_report(latest_run, baseline_run, comparisons, errors, warnings)
         print(report)
 
     # Exit with error code if there are regressions or errors
