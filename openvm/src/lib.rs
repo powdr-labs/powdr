@@ -15,13 +15,18 @@ use openvm_circuit_derive::{
     AotExecutor, AotMeteredExecutor, Executor, MeteredExecutor, PreflightExecutor,
 };
 
-use openvm_sdk_config::TranspilerConfig;
 use openvm_cpu_backend::{CpuBackend, CpuDevice};
+use openvm_sdk::{
+    config::{AggregationSystemParams, AppConfig, DEFAULT_APP_LOG_BLOWUP},
+    GenericSdk, StdIn,
+};
+use openvm_sdk_config::TranspilerConfig;
 use openvm_stark_backend::prover::ProverBackend;
 use openvm_stark_backend::{StarkEngine, StarkProtocolConfig, Val};
 use openvm_stark_sdk::config::baby_bear_poseidon2::{
     BabyBearPoseidon2Config, BabyBearPoseidon2CpuEngine,
 };
+use openvm_stark_sdk::config::{app_params_with_100_bits_security, MAX_APP_LOG_STACKED_HEIGHT};
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
@@ -30,11 +35,6 @@ use powdr_autoprecompiles::execution_profile::ExecutionProfile;
 use powdr_autoprecompiles::DegreeBound;
 use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
 use powdr_extension::PowdrExtension;
-use openvm_sdk::{
-    config::{AggregationSystemParams, AppConfig, DEFAULT_APP_LOG_BLOWUP},
-    GenericSdk, StdIn,
-};
-use openvm_stark_sdk::config::{app_params_with_100_bits_security, MAX_APP_LOG_STACKED_HEIGHT};
 use serde::{Deserialize, Serialize};
 use std::iter::Sum;
 use std::marker::PhantomData;
@@ -583,6 +583,7 @@ pub fn execution_profile_from_guest<ISA: OpenVmISA>(
             .unwrap();
 
     execution_profile::<BabyBearOpenVmApcAdapter<ISA>>(&program, || {
-        sdk.execute_interpreted(exe.clone(), inputs.clone()).unwrap();
+        sdk.execute_interpreted(exe.clone(), inputs.clone())
+            .unwrap();
     })
 }

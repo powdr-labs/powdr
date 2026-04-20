@@ -5,11 +5,11 @@
 
 use eyre::Result;
 use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
+#[cfg(debug_assertions)]
+use openvm_circuit::arch::debug_proving_ctx;
 use openvm_circuit::arch::execution_mode::metered::segment_ctx::SegmentationLimits;
 #[cfg(feature = "cuda")]
 use openvm_circuit::arch::DenseRecordArena;
-#[cfg(debug_assertions)]
-use openvm_circuit::arch::debug_proving_ctx;
 use openvm_circuit::arch::{
     AirInventory, ChipInventoryError, InitFileGenerator, MatrixRecordArena, SystemConfig,
     VmBuilder, VmChipComplex, VmProverExtension,
@@ -20,7 +20,12 @@ use openvm_circuit::system::SystemChipInventory;
 use openvm_sdk_config::{SdkVmConfig, SdkVmConfigExecutor, SdkVmCpuBuilder, TranspilerConfig};
 
 use openvm_cpu_backend::{CpuBackend, CpuDevice};
+use openvm_sdk::{
+    config::{AggregationSystemParams, AppConfig},
+    StdIn,
+};
 use openvm_stark_backend::{StarkEngine, Val};
+use openvm_stark_sdk::config::{app_params_with_100_bits_security, MAX_APP_LOG_STACKED_HEIGHT};
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
@@ -36,11 +41,6 @@ use powdr_openvm::PowdrSdkCpu;
 use powdr_openvm::{GpuBabyBearPoseidon2CpuEngine, GpuBackend, PowdrSdkGpu};
 use powdr_openvm_riscv_hints_circuit::{HintsExtension, HintsExtensionExecutor, HintsProverExt};
 use powdr_openvm_riscv_hints_transpiler::HintsTranspilerExtension;
-use openvm_sdk::{
-    config::{AggregationSystemParams, AppConfig},
-    StdIn,
-};
-use openvm_stark_sdk::config::{app_params_with_100_bits_security, MAX_APP_LOG_STACKED_HEIGHT};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 

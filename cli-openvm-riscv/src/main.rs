@@ -1,6 +1,7 @@
 use eyre::Result;
 use metrics_tracing_context::{MetricsLayer, TracingContextLayer};
 use metrics_util::{debugging::DebuggingRecorder, layers::Layer};
+use openvm_sdk::StdIn;
 use openvm_stark_sdk::bench::serialize_metric_snapshot;
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::pgo::{pgo_config, PgoType};
@@ -9,7 +10,6 @@ use powdr_openvm_riscv::{
     compile_openvm, detect_empirical_constraints, CompiledProgram, GuestOptions,
     OriginalCompiledProgram, RiscvISA,
 };
-use openvm_sdk::StdIn;
 
 #[cfg(feature = "metrics")]
 use openvm_stark_sdk::metrics_tracing::TimingMetricsLayer;
