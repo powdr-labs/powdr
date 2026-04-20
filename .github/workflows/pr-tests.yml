@@ -56,9 +56,9 @@ jobs:
       - name: Cargo check with Rust 1.91.1 (default features)
         run: cargo +1.91.1 check --all-targets
       - name: Lint no default features
-        run: cargo clippy --all --all-targets --features metrics --profile pr-tests --verbose -- -D warnings
+        run: cargo clippy --all --all-targets --features metrics,aot --profile pr-tests --verbose -- -D warnings
       - name: Build (CPU)
-        run: cargo build --all-targets --features metrics --all --profile pr-tests --verbose
+        run: cargo build --all-targets --features metrics,aot --all --profile pr-tests --verbose
       ###############################################################################
 
       - uses: taiki-e/install-action@nextest
