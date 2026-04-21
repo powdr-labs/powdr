@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fmt::Display,
     hash::Hash,
     iter::once,
@@ -11,12 +11,13 @@ use powdr_constraint_solver::{
     constraint_system::{
         AlgebraicConstraint, BusInteractionHandler, ConstraintRef, ConstraintSystem,
     },
-    grouped_expression::GroupedExpression,
+    grouped_expression::{GroupedExpression, RangeConstraintProvider},
     indexed_constraint_system::IndexedConstraintSystem,
     inliner::DegreeBound,
     reachability::reachable_variables,
     rule_based_optimizer::rule_based_optimization,
-    solver::Solver,
+    solver::{exhaustive_search, Solver},
+    utils::get_all_possible_assignments,
 };
 use powdr_number::FieldElement;
 use serde::Serialize;
@@ -85,6 +86,13 @@ pub fn optimize_constraints<
     export_options.export_optimizer_inner_constraint_system(
         constraint_system.system(),
         "remove_disconnected",
+    );
+
+    let constraint_system = simplify_constraints_using_exhaustive_search(constraint_system, solver);
+    stats_logger.log("simplifying using exhaustive search", &constraint_system);
+    export_options.export_optimizer_inner_constraint_system(
+        constraint_system.system(),
+        "simplify_exhaustive",
     );
 
     let constraint_system = trivial_simplifications(
@@ -442,6 +450,163 @@ fn variables_in_stateful_bus_interactions<'a, P: FieldElement, V: Ord + Clone + 
         .flat_map(|bus_interaction| bus_interaction.referenced_unknown_variables())
 }
 
+struct SimplifiedExpression<T, V> {
+    is_algebraic_constraint: bool,
+    /// The current best candidate for the simplified version of the expression.
+    /// - None means we have no candidate yet
+    /// - Some(Ok(expr)) means that all valid assignments so far result in expr
+    /// - Some(Err(())) means that we have found two valid assignments that result in different expressions.
+    simplified: Option<Result<GroupedExpression<T, V>, ()>>,
+}
+
+impl<T, V> SimplifiedExpression<T, V>
+where
+    T: FieldElement,
+    V: Clone + Ord + Eq,
+{
+    fn update(&mut self, new_expr: GroupedExpression<T, V>) {
+        match &self.simplified {
+            None => self.simplified = Some(Ok(new_expr)),
+            Some(Ok(existing)) if *existing != new_expr => {
+                self.simplified = Some(Err(()));
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Tries to simplify algebraic constraints and bus interaction fields by performing exhaustive
+/// search over variables with few possible values. If all assignments (that do not lead to a
+/// violated algebraic constraints) turn the expression into the same, simpler expression,
+/// the expression is substituted, but we also add a new algebraic constraint that forces
+/// the old and the new version to be equal because we do not know where the constraints on
+/// the variables come from.
+pub fn simplify_constraints_using_exhaustive_search<
+    T: FieldElement,
+    V: Clone + Ord + Eq + Hash + Display,
+>(
+    constraint_system: IndexedConstraintSystem<T, V>,
+    range_constraints: &impl RangeConstraintProvider<T, V>,
+) -> IndexedConstraintSystem<T, V> {
+    let mut substitutions = BTreeMap::default();
+    for variable_set in
+        exhaustive_search::get_brute_force_candidates(&constraint_system, range_constraints)
+    {
+        let mut exprs: BTreeMap<&GroupedExpression<T, V>, SimplifiedExpression<T, V>> =
+            constraint_system
+                .constraints_referencing_variables(&variable_set)
+                .flat_map(|constraint| match constraint {
+                    ConstraintRef::AlgebraicConstraint(identity) => {
+                        vec![(identity.expression, true)]
+                    }
+                    ConstraintRef::BusInteraction(bus_interaction) => bus_interaction
+                        .fields()
+                        .map(|field| (field, false))
+                        .collect_vec(),
+                })
+                .fold(Default::default(), |mut acc, (expr, is_alg)| {
+                    // Make sure that for the same expression as bus field and
+                    // algebraic constraint, the algebraic constraint "wins"
+                    acc.entry(expr)
+                        .or_insert_with(|| SimplifiedExpression {
+                            is_algebraic_constraint: is_alg,
+                            simplified: None,
+                        })
+                        .is_algebraic_constraint |= is_alg;
+                    acc
+                });
+
+        for assignment in
+            get_all_possible_assignments(variable_set.iter().cloned(), range_constraints)
+        {
+            // First check all algebraic constraints if this is a conflict.
+            let alg_substituted: BTreeMap<_, _> = exprs
+                .iter()
+                .filter(|(_, simp)| simp.is_algebraic_constraint)
+                .map(|(&e, _)| (e, e.clone().substitute_by_known_multi(&assignment)))
+                .collect();
+            if alg_substituted
+                .iter()
+                .any(|(_, s)| s.try_to_number().is_some_and(|n| !n.is_zero()))
+            {
+                // Assignment leads to a conflict. This means that there is
+                // an algebraic constraints that rules out this assignment, so
+                // we don't have to consider it.
+                continue;
+            }
+            // No conflict. First, update the algebraic constraints where
+            // we already computed the simplified version.
+            for (e, s) in alg_substituted {
+                exprs.get_mut(e).unwrap().update(s);
+            }
+            // Now update the bus interaction fields.
+            for (&e, existing) in exprs
+                .iter_mut()
+                .filter(|(_, simp)| !simp.is_algebraic_constraint)
+            {
+                existing.update(e.clone().substitute_by_known_multi(&assignment));
+            }
+            // Remove bus interaction fields with conflicting simplifications
+            // This is a performance optimization, saving us time in the loop
+            // above for the next assignment candidate.
+            exprs.retain(|_, simp| {
+                simp.is_algebraic_constraint || !matches!(&simp.simplified, Some(Err(())))
+            });
+        }
+
+        substitutions.extend(exprs.into_iter().filter_map(|(e, simp)| {
+            simp.simplified
+                .and_then(|res| res.ok())
+                .and_then(|s| (s != *e).then(|| (e.clone(), s)))
+        }));
+    }
+
+    if substitutions.is_empty() {
+        return constraint_system;
+    }
+
+    // Substitute all constraints and bus interaction fields with simpler expressions.
+    // For any substitution we apply, we add a constraint of the form
+    // `<expr> = <substitution>`. This is essential for soundness.
+
+    if log::log_enabled!(log::Level::Trace) {
+        log::trace!("The following substitutions were found by exhaustive search:");
+        for (expr, sub) in &substitutions {
+            log::trace!("{expr}    ->   {sub}");
+        }
+    }
+
+    let mut constraints_to_add = BTreeSet::default();
+
+    let mut constraint_system = constraint_system.system().clone();
+    for constr in &mut constraint_system.algebraic_constraints {
+        if let Some(sub) = substitutions.get(&constr.expression) {
+            // If the substitution is zero, we are only removing and re-adding the constraint.
+            if !sub.is_zero() {
+                constraints_to_add.insert(AlgebraicConstraint::assert_eq(
+                    constr.expression.clone(),
+                    sub.clone(),
+                ));
+                constr.expression = sub.clone();
+            }
+        }
+    }
+    for bus_interaction in &mut constraint_system.bus_interactions {
+        for field in bus_interaction.fields_mut() {
+            if let Some(sub) = substitutions.get(field) {
+                constraints_to_add
+                    .insert(AlgebraicConstraint::assert_eq(field.clone(), sub.clone()));
+                *field = sub.clone();
+            }
+        }
+    }
+    constraint_system
+        .algebraic_constraints
+        .extend(constraints_to_add);
+
+    constraint_system.into()
+}
+
 fn remove_trivial_constraints<P: FieldElement, V: PartialEq + Clone + Hash + Ord>(
     mut constraint_system: IndexedConstraintSystem<P, V>,
 ) -> IndexedConstraintSystem<P, V> {
@@ -572,4 +737,58 @@ fn remove_unreferenced_derived_variables<P: FieldElement, V: Clone + Ord + Hash 
         referenced_variables.contains(&derived_var.variable)
     });
     constraint_system
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use test_log::test;
+
+    use expect_test::expect;
+    use powdr_constraint_solver::{
+        bus_interaction_handler::DefaultBusInteractionHandler, constraint_system::ConstraintSystem,
+        solver::new_solver,
+    };
+    use powdr_number::GoldilocksField;
+
+    fn var(n: &'static str) -> GroupedExpression<GoldilocksField, &'static str> {
+        GroupedExpression::from_unknown_variable(n)
+    }
+
+    fn constant(n: u64) -> GroupedExpression<GoldilocksField, &'static str> {
+        GroupedExpression::from_number(GoldilocksField::from(n))
+    }
+
+    #[test]
+    fn simplify_expression_using_exhaustive_search() {
+        // X + T + Y * 4 - Z * 8 = 0;
+        // (Y - 2) * (Z + 1) = 0
+        // Y * Z = 0
+        // Y * (Y - 2) = 0
+        // Z * (Z + 1) = 0
+        let constraint_system: IndexedConstraintSystem<_, _> = ConstraintSystem::default()
+            .with_constraints(vec![
+                var("X") + var("T") + var("Y") * constant(4) - var("Z") * constant(8),
+                (var("Y") - constant(2)) * (var("Z") + constant(1)),
+                var("Y") * var("Z"),
+                var("Y") * (var("Y") - constant(2)),
+                var("Z") * (var("Z") + constant(1)),
+            ])
+            .into();
+        let bus_int_handler = DefaultBusInteractionHandler::default();
+        let mut solver = new_solver(constraint_system.system().clone(), bus_int_handler);
+        // compute and propagate constraints
+        solver.solve().unwrap();
+
+        let out = simplify_constraints_using_exhaustive_search(constraint_system, &solver);
+        expect![[r#"
+            T + X + 8 = 0
+            (Y - 2) * (Z + 1) = 0
+            (Y) * (Z) = 0
+            (Y) * (Y - 2) = 0
+            (Z) * (Z + 1) = 0
+            4 * Y - 8 * Z - 8 = 0"#]]
+        .assert_eq(&out.to_string())
+    }
 }

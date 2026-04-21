@@ -456,6 +456,14 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq> GroupedExpressi
         }
     }
 
+    /// Substitute multiple variables in an expression.
+    pub fn substitute_by_known_multi(mut self, assignments: &BTreeMap<V, T>) -> Self {
+        for (v, val) in assignments {
+            self.substitute_by_known(v, val);
+        }
+        self
+    }
+
     /// Substitute an unknown variable by a GroupedExpression.
     ///
     /// Note this does NOT work properly if the variable is used inside a
