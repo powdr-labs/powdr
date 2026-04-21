@@ -93,6 +93,8 @@ impl<'a, ISA: OpenVmISA> Adapter for BabyBearOpenVmApcAdapter<'a, ISA> {
     type Instruction = Instr<Self::Field, ISA>;
     type MemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash> =
         OpenVmMemoryBusInteraction<Self::PowdrField, V>;
+    type WomMemoryBusInteraction<V: Ord + Clone + Eq + Display + Hash> =
+        powdr_autoprecompiles::wom_memory_optimizer::NoWomMemory<Self::PowdrField, V>;
     type CustomBusTypes = OpenVmBusType;
     type ApcStats = OvmApcStats;
     type AirId = String;

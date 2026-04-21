@@ -3,7 +3,7 @@ use std::fmt::Display;
 use std::hash::Hash;
 
 use itertools::Itertools;
-use powdr_constraint_solver::constraint_system::BusInteractionHandler;
+use powdr_constraint_solver::constraint_system::{BusInteractionHandler, ConstraintSystem};
 use powdr_constraint_solver::grouped_expression::GroupedExpression;
 use powdr_constraint_solver::indexed_constraint_system::IndexedConstraintSystem;
 use powdr_constraint_solver::inliner::{self, inline_everything_below_degree_bound};
@@ -20,6 +20,7 @@ use crate::symbolic_machine::{
     constraint_system_to_symbolic_machine, symbolic_machine_to_constraint_system,
     SymbolicConstraint,
 };
+use crate::wom_memory_optimizer::WomMemoryBusInteraction;
 use crate::ColumnAllocator;
 use crate::{
     constraint_optimizer::optimize_constraints,
@@ -31,7 +32,7 @@ use crate::{
 /// Optimizes a given symbolic machine and returns an equivalent, but "simpler" one.
 /// All constraints in the returned machine will respect the given degree bound.
 /// New variables may be introduced in the process.
-pub fn optimize<T, B, BusTypes, MemoryBus>(
+pub fn optimize<T, B, BusTypes, MemoryBus, WomMemoryBus>(
     mut machine: SymbolicMachine<T>,
     bus_interaction_handler: B,
     degree_bound: DegreeBound,
@@ -44,6 +45,7 @@ where
     B: BusInteractionHandler<T> + IsBusStateful<T> + RangeConstraintHandler<T> + Clone,
     BusTypes: PartialEq + Eq + Clone + Display,
     MemoryBus: MemoryBusInteraction<T, AlgebraicReference>,
+    WomMemoryBus: WomMemoryBusInteraction<T, AlgebraicReference>,
 {
     let mut stats_logger = StatsLogger::start(&machine);
 
@@ -116,6 +118,31 @@ where
     stats_logger.log("inlining", &constraint_system);
     export_options.register_substituted_variables(substitutions);
     export_options.export_optimizer_outer_constraint_system(constraint_system.system(), "inlining");
+
+    // WOM optimization runs after inlining so that address variables have been
+    // fully substituted (e.g., addr_B_0 → fp_0 + 3).
+    let constraint_system: IndexedConstraintSystem<_, _> = {
+        let system: ConstraintSystem<_, _> = constraint_system.into();
+        let system = crate::wom_memory_optimizer::optimize_wom_memory::<_, _, WomMemoryBus>(
+            system,
+            &mut solver,
+            bus_map.get_bus_id(&BusType::Memory),
+        );
+        stats_logger.log("WOM memory optimization", &system);
+        system.into()
+    };
+
+    // WOM optimization may introduce new equality constraints (e.g., when two
+    // memory reads at the same address are unified). Run the inliner again to
+    // eliminate the resulting redundant variables.
+    let (constraint_system, substitutions) = inliner::replace_constrained_witness_columns(
+        constraint_system,
+        inline_everything_below_degree_bound(degree_bound),
+    );
+    stats_logger.log("inlining (post-WOM)", &constraint_system);
+    export_options.register_substituted_variables(substitutions);
+    export_options
+        .export_optimizer_outer_constraint_system(constraint_system.system(), "inlining_post_wom");
 
     let constraint_system = constraint_optimizer::remove_disconnected_columns(
         constraint_system,

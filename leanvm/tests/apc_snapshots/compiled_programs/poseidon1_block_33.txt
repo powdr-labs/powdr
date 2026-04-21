@@ -1,0 +1,151 @@
+Instructions:
+  963: m[fp + 568] = 448 + m[fp + 3]
+  964: m[fp + 585] = m[m[fp + 568] + 0]
+  965: m[fp + 569] = m[fp + 585] + m[fp + 4]
+  966: m[fp + 586] = m[m[fp + 568] + 1]
+  967: m[fp + 570] = m[fp + 586] + m[fp + 5]
+  968: m[fp + 587] = m[m[fp + 568] + 2]
+  969: m[fp + 571] = m[fp + 587] + m[fp + 6]
+  970: m[fp + 588] = m[m[fp + 568] + 3]
+  971: m[fp + 572] = m[fp + 588] + m[fp + 7]
+  972: m[fp + 589] = m[m[fp + 568] + 4]
+  973: m[fp + 573] = m[fp + 589] + m[fp + 8]
+  974: m[fp + 590] = m[m[fp + 568] + 5]
+  975: m[fp + 574] = m[fp + 590] + m[fp + 9]
+  976: m[fp + 591] = m[m[fp + 568] + 6]
+  977: m[fp + 575] = m[fp + 591] + m[fp + 10]
+  978: m[fp + 592] = m[m[fp + 568] + 7]
+  979: m[fp + 576] = m[fp + 592] + m[fp + 11]
+  980: m[fp + 593] = m[m[fp + 568] + 8]
+  981: m[fp + 577] = m[fp + 593] + m[fp + 12]
+  982: m[fp + 594] = m[m[fp + 568] + 9]
+  983: m[fp + 578] = m[fp + 594] + m[fp + 13]
+  984: m[fp + 595] = m[m[fp + 568] + 10]
+  985: m[fp + 579] = m[fp + 595] + m[fp + 14]
+  986: m[fp + 596] = m[m[fp + 568] + 11]
+  987: m[fp + 580] = m[fp + 596] + m[fp + 15]
+  988: m[fp + 597] = m[m[fp + 568] + 12]
+  989: m[fp + 581] = m[fp + 597] + m[fp + 16]
+  990: m[fp + 598] = m[m[fp + 568] + 13]
+  991: m[fp + 582] = m[fp + 598] + m[fp + 17]
+  992: m[fp + 599] = m[m[fp + 568] + 14]
+  993: m[fp + 583] = m[fp + 599] + m[fp + 18]
+  994: m[fp + 600] = m[m[fp + 568] + 15]
+  995: m[fp + 584] = m[fp + 600] + m[fp + 19]
+
+APC advantage:
+  - Main columns: 660 -> 35 (18.86x reduction)
+  - Bus interactions: 198 -> 68 (2.91x reduction)
+  - Constraints: 264 -> 1 (264.00x reduction)
+
+Symbolic machine using 35 unique main columns:
+  fp_0
+  value_B_0
+  value_B_1
+  value_B_2
+  value_B_3
+  value_B_4
+  value_B_5
+  value_B_6
+  value_B_7
+  value_B_8
+  value_B_9
+  value_B_10
+  value_B_11
+  value_B_12
+  value_B_13
+  value_B_14
+  value_B_15
+  value_B_16
+  value_B_17
+  value_B_18
+  value_B_19
+  value_B_20
+  value_B_21
+  value_B_22
+  value_B_23
+  value_B_24
+  value_B_25
+  value_B_26
+  value_B_27
+  value_B_28
+  value_B_29
+  value_B_30
+  value_B_31
+  value_B_32
+  is_valid
+
+// Bus 0 (EXECUTION_BRIDGE):
+mult=is_valid * -1, args=[963, fp_0]
+mult=is_valid * 1, args=[996, fp_0]
+
+// Bus 1 (MEMORY):
+mult=is_valid * 1, args=[fp_0 + 568, value_B_0]
+mult=is_valid * 1, args=[fp_0 + 3, value_B_0 - 448]
+mult=is_valid * 1, args=[value_B_0, value_B_1]
+mult=is_valid * 1, args=[fp_0 + 585, value_B_1]
+mult=is_valid * 1, args=[fp_0 + 569, value_B_2]
+mult=is_valid * 1, args=[fp_0 + 4, value_B_2 - value_B_1]
+mult=is_valid * 1, args=[value_B_0 + 1, value_B_3]
+mult=is_valid * 1, args=[fp_0 + 586, value_B_3]
+mult=is_valid * 1, args=[fp_0 + 570, value_B_4]
+mult=is_valid * 1, args=[fp_0 + 5, value_B_4 - value_B_3]
+mult=is_valid * 1, args=[value_B_0 + 2, value_B_5]
+mult=is_valid * 1, args=[fp_0 + 587, value_B_5]
+mult=is_valid * 1, args=[fp_0 + 571, value_B_6]
+mult=is_valid * 1, args=[fp_0 + 6, value_B_6 - value_B_5]
+mult=is_valid * 1, args=[value_B_0 + 3, value_B_7]
+mult=is_valid * 1, args=[fp_0 + 588, value_B_7]
+mult=is_valid * 1, args=[fp_0 + 572, value_B_8]
+mult=is_valid * 1, args=[fp_0 + 7, value_B_8 - value_B_7]
+mult=is_valid * 1, args=[value_B_0 + 4, value_B_9]
+mult=is_valid * 1, args=[fp_0 + 589, value_B_9]
+mult=is_valid * 1, args=[fp_0 + 573, value_B_10]
+mult=is_valid * 1, args=[fp_0 + 8, value_B_10 - value_B_9]
+mult=is_valid * 1, args=[value_B_0 + 5, value_B_11]
+mult=is_valid * 1, args=[fp_0 + 590, value_B_11]
+mult=is_valid * 1, args=[fp_0 + 574, value_B_12]
+mult=is_valid * 1, args=[fp_0 + 9, value_B_12 - value_B_11]
+mult=is_valid * 1, args=[value_B_0 + 6, value_B_13]
+mult=is_valid * 1, args=[fp_0 + 591, value_B_13]
+mult=is_valid * 1, args=[fp_0 + 575, value_B_14]
+mult=is_valid * 1, args=[fp_0 + 10, value_B_14 - value_B_13]
+mult=is_valid * 1, args=[value_B_0 + 7, value_B_15]
+mult=is_valid * 1, args=[fp_0 + 592, value_B_15]
+mult=is_valid * 1, args=[fp_0 + 576, value_B_16]
+mult=is_valid * 1, args=[fp_0 + 11, value_B_16 - value_B_15]
+mult=is_valid * 1, args=[value_B_0 + 8, value_B_17]
+mult=is_valid * 1, args=[fp_0 + 593, value_B_17]
+mult=is_valid * 1, args=[fp_0 + 577, value_B_18]
+mult=is_valid * 1, args=[fp_0 + 12, value_B_18 - value_B_17]
+mult=is_valid * 1, args=[value_B_0 + 9, value_B_19]
+mult=is_valid * 1, args=[fp_0 + 594, value_B_19]
+mult=is_valid * 1, args=[fp_0 + 578, value_B_20]
+mult=is_valid * 1, args=[fp_0 + 13, value_B_20 - value_B_19]
+mult=is_valid * 1, args=[value_B_0 + 10, value_B_21]
+mult=is_valid * 1, args=[fp_0 + 595, value_B_21]
+mult=is_valid * 1, args=[fp_0 + 579, value_B_22]
+mult=is_valid * 1, args=[fp_0 + 14, value_B_22 - value_B_21]
+mult=is_valid * 1, args=[value_B_0 + 11, value_B_23]
+mult=is_valid * 1, args=[fp_0 + 596, value_B_23]
+mult=is_valid * 1, args=[fp_0 + 580, value_B_24]
+mult=is_valid * 1, args=[fp_0 + 15, value_B_24 - value_B_23]
+mult=is_valid * 1, args=[value_B_0 + 12, value_B_25]
+mult=is_valid * 1, args=[fp_0 + 597, value_B_25]
+mult=is_valid * 1, args=[fp_0 + 581, value_B_26]
+mult=is_valid * 1, args=[fp_0 + 16, value_B_26 - value_B_25]
+mult=is_valid * 1, args=[value_B_0 + 13, value_B_27]
+mult=is_valid * 1, args=[fp_0 + 598, value_B_27]
+mult=is_valid * 1, args=[fp_0 + 582, value_B_28]
+mult=is_valid * 1, args=[fp_0 + 17, value_B_28 - value_B_27]
+mult=is_valid * 1, args=[value_B_0 + 14, value_B_29]
+mult=is_valid * 1, args=[fp_0 + 599, value_B_29]
+mult=is_valid * 1, args=[fp_0 + 583, value_B_30]
+mult=is_valid * 1, args=[fp_0 + 18, value_B_30 - value_B_29]
+mult=is_valid * 1, args=[value_B_0 + 15, value_B_31]
+mult=is_valid * 1, args=[fp_0 + 600, value_B_31]
+mult=is_valid * 1, args=[fp_0 + 584, value_B_32]
+mult=is_valid * 1, args=[fp_0 + 19, value_B_32 - value_B_31]
+
+// Algebraic constraints:
+is_valid * (is_valid - 1) = 0

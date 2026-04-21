@@ -1,0 +1,38 @@
+Instructions:
+  851: m[fp + 526] = 224 + m[fp + 3]
+  852: m[fp + 527] = 240 + m[fp + 3]
+  853: 859 = m[m[fp + 528] + 0]
+  854: fp + 0 = m[m[fp + 528] + 1]
+  855: m[fp + 526] = m[m[fp + 528] + 2]
+  856: m[fp + 527] = m[m[fp + 528] + 3]
+  857: 290 = m[m[fp + 528] + 4]
+  858: if 1 != 0 jump to @function_partial_round = 690 with next(fp) = m[fp + 528]
+
+APC advantage:
+  - Main columns: 160 -> 4 (40.00x reduction)
+  - Bus interactions: 48 -> 11 (4.36x reduction)
+  - Constraints: 64 -> 1 (64.00x reduction)
+
+Symbolic machine using 4 unique main columns:
+  fp_0
+  value_B_0
+  addr_B_2
+  is_valid
+
+// Bus 0 (EXECUTION_BRIDGE):
+mult=is_valid * -1, args=[851, fp_0]
+mult=is_valid * 1, args=[690, addr_B_2]
+
+// Bus 1 (MEMORY):
+mult=is_valid * 1, args=[fp_0 + 526, value_B_0]
+mult=is_valid * 1, args=[fp_0 + 3, value_B_0 - 224]
+mult=is_valid * 1, args=[fp_0 + 527, value_B_0 + 16]
+mult=is_valid * 1, args=[fp_0 + 528, addr_B_2]
+mult=is_valid * 1, args=[addr_B_2, 859]
+mult=is_valid * 1, args=[addr_B_2 + 1, fp_0]
+mult=is_valid * 1, args=[addr_B_2 + 2, value_B_0]
+mult=is_valid * 1, args=[addr_B_2 + 3, value_B_0 + 16]
+mult=is_valid * 1, args=[addr_B_2 + 4, 290]
+
+// Algebraic constraints:
+is_valid * (is_valid - 1) = 0

@@ -50,6 +50,7 @@ pub mod range_constraint_optimizer;
 mod stats_logger;
 pub mod symbolic_machine;
 pub mod symbolic_machine_generator;
+pub mod wom_memory_optimizer;
 pub use pgo::{PgoConfig, PgoType};
 pub use powdr_constraint_solver::inliner::DegreeBound;
 pub mod equivalence_classes;
@@ -285,7 +286,7 @@ pub fn build<A: Adapter>(
     degree_bound: DegreeBound,
     mut export_options: ExportOptions,
     empirical_constraints: &EmpiricalConstraints,
-) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
+) -> Result<(AdapterApc<A>, evaluation::AirStats), crate::constraint_optimizer::Error> {
     let start = std::time::Instant::now();
 
     let (mut machine, column_allocator) = statements_to_symbolic_machine::<A>(
@@ -344,6 +345,8 @@ pub fn build<A: Adapter>(
         );
     }
 
+    let pre_opt_stats = evaluation::AirStats::new(&machine);
+
     let labels = [("apc_start_pc", block.start_pcs().into_iter().join("_"))];
     metrics::counter!("before_opt_cols", &labels)
         .absolute(machine.unique_references().count() as u64);
@@ -352,14 +355,15 @@ pub fn build<A: Adapter>(
     metrics::counter!("before_opt_interactions", &labels)
         .absolute(machine.unique_references().count() as u64);
 
-    let (machine, column_allocator) = optimizer::optimize::<_, _, _, A::MemoryBusInteraction<_>>(
-        machine,
-        vm_config.bus_interaction_handler,
-        degree_bound,
-        &vm_config.bus_map,
-        column_allocator,
-        &mut export_options,
-    )?;
+    let (machine, column_allocator) =
+        optimizer::optimize::<_, _, _, A::MemoryBusInteraction<_>, A::WomMemoryBusInteraction<_>>(
+            machine,
+            vm_config.bus_interaction_handler,
+            degree_bound,
+            &vm_config.bus_map,
+            column_allocator,
+            &mut export_options,
+        )?;
 
     // add guards to constraints that are not satisfied by zeroes
     let (machine, column_allocator) = add_guards(machine, column_allocator);
@@ -386,7 +390,7 @@ pub fn build<A: Adapter>(
 
     metrics::gauge!("apc_gen_time_ms", &labels).set(start.elapsed().as_millis() as f64);
 
-    Ok(apc)
+    Ok((apc, pre_opt_stats))
 }
 
 /// Generate optimistic constraints for superblock jumps

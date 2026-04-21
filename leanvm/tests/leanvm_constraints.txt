@@ -1,0 +1,44 @@
+# Execution Table
+Symbolic machine using 20 unique main columns:
+  pc
+  fp
+  addr_A
+  addr_B
+  addr_C
+  value_A
+  value_B
+  value_C
+  operand_A
+  operand_B
+  operand_C
+  flag_A
+  flag_B
+  flag_C
+  flag_C_fp
+  flag_AB_fp
+  MUL
+  JUMP
+  AUX
+  PRECOMPILE_DATA
+
+// Bus 0 (EXECUTION_BRIDGE):
+mult=2130706432, args=[pc, fp]
+mult=1, args=[JUMP * (flag_A * operand_A + (1 - flag_A - flag_AB_fp) * value_A + flag_AB_fp * (fp + operand_A)) * (flag_B * operand_B + (1 - flag_B - flag_AB_fp) * value_B + flag_AB_fp * (fp + operand_B)) + (1 - JUMP * (flag_A * operand_A + (1 - flag_A - flag_AB_fp) * value_A + flag_AB_fp * (fp + operand_A))) * (pc + 1), JUMP * (flag_A * operand_A + (1 - flag_A - flag_AB_fp) * value_A + flag_AB_fp * (fp + operand_A)) * (flag_C * operand_C + (1 - flag_C - flag_C_fp) * value_C + flag_C_fp * (fp + operand_C)) + (1 - JUMP * (flag_A * operand_A + (1 - flag_A - flag_AB_fp) * value_A + flag_AB_fp * (fp + operand_A))) * fp]
+
+// Bus 1 (MEMORY):
+mult=1, args=[addr_A, value_A]
+mult=1, args=[addr_B, value_B]
+mult=1, args=[addr_C, value_C]
+
+// Bus 2 (PC_LOOKUP):
+mult=1, args=[operand_A, operand_B, operand_C, flag_A, flag_B, flag_C, flag_C_fp, flag_AB_fp, MUL, JUMP, AUX, PRECOMPILE_DATA, pc]
+
+// Algebraic constraints:
+(1 - flag_A - flag_AB_fp) * (addr_A - (fp + operand_A)) = 0
+(1 - flag_B - flag_AB_fp) * (addr_B - (fp + operand_B)) = 0
+(1 - flag_C - flag_C_fp) * (addr_C - (fp + operand_C)) = 0
+AUX * (2 - AUX) * (flag_B * operand_B + (1 - flag_B - flag_AB_fp) * value_B + flag_AB_fp * (fp + operand_B) - (flag_A * operand_A + (1 - flag_A - flag_AB_fp) * value_A + flag_AB_fp * (fp + operand_A) + (flag_C * operand_C + (1 - flag_C - flag_C_fp) * value_C + flag_C_fp * (fp + operand_C)))) = 0
+MUL * (flag_B * operand_B + (1 - flag_B - flag_AB_fp) * value_B + flag_AB_fp * (fp + operand_B) - (flag_A * operand_A + (1 - flag_A - flag_AB_fp) * value_A + flag_AB_fp * (fp + operand_A)) * (flag_C * operand_C + (1 - flag_C - flag_C_fp) * value_C + flag_C_fp * (fp + operand_C))) = 0
+AUX * (AUX - 1) * 1065353217 * (addr_B - (value_A + operand_B)) = 0
+AUX * (AUX - 1) * 1065353217 * (value_B - (flag_C * operand_C + (1 - flag_C - flag_C_fp) * value_C + flag_C_fp * (fp + operand_C))) = 0
+JUMP * (flag_A * operand_A + (1 - flag_A - flag_AB_fp) * value_A + flag_AB_fp * (fp + operand_A)) * (flag_A * operand_A + (1 - flag_A - flag_AB_fp) * value_A + flag_AB_fp * (fp + operand_A) - 1) = 0

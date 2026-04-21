@@ -18,6 +18,7 @@ members = [
   "openvm-riscv/extensions/hints-guest",
   "openvm-riscv/extensions/hints-transpiler",
   "openvm-riscv/extensions/hints-circuit",
+  "leanvm",
 ]
 
 exclude = ["riscv-runtime"]
@@ -41,6 +42,7 @@ powdr-syscalls = { path = "./syscalls", version = "0.1.4" }
 powdr-autoprecompiles = { path = "./autoprecompiles", version = "0.1.4" }
 powdr-openvm-riscv = { path = "./openvm-riscv", version = "0.1.4" }
 powdr-openvm-bus-interaction-handler = { path = "./openvm-bus-interaction-handler", version = "0.1.4" }
+powdr-leanvm = { path = "./leanvm", version = "0.1.4" }
 powdr-openvm = { path = "./openvm", version = "0.1.4" }
 
 powdr-openvm-riscv-hints-guest = { path = "./openvm-riscv/extensions/hints-guest", version = "0.1.4" }

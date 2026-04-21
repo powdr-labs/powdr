@@ -44,7 +44,7 @@ pub fn compile_apc<ISA: OpenVmISA>(
     let export_path = std::env::var("APC_EXPORT_PATH").ok();
     let export_level = std::env::var("APC_EXPORT_LEVEL").ok();
 
-    let apc = build::<BabyBearOpenVmApcAdapter<ISA>>(
+    let (apc, _pre_opt_stats) = build::<BabyBearOpenVmApcAdapter<ISA>>(
         superblock.clone(),
         vm_config.clone(),
         degree_bound,
