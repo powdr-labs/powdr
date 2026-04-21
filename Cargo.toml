@@ -18,6 +18,7 @@ members = [
   "openvm-riscv/extensions/hints-guest",
   "openvm-riscv/extensions/hints-transpiler",
   "openvm-riscv/extensions/hints-circuit",
+  "sp1-benchmarks"
 ]
 
 exclude = ["riscv-runtime"]
@@ -114,6 +115,13 @@ serde_json = "^1.0.140"
 test-log = "0.2.19"
 pretty_assertions = "1.4.1"
 env_logger = "0.11.8"
+
+[patch."https://github.com/powdr-labs/powdr.git"]
+powdr-riscv-elf = { path = "./riscv-elf" }
+powdr-number = { path = "./number" }
+powdr-autoprecompiles = { path = "./autoprecompiles" }
+powdr-expression = { path = "./expression" }
+powdr-constraint-solver = { path = "./constraint-solver" }
 
 [profile.pr-tests]
 inherits = "dev"
