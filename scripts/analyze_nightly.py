@@ -287,19 +287,21 @@ def main():
     args = parser.parse_args()
 
     # Get result directories
-    print("Fetching results directories...", file=sys.stderr)
-    try:
-        result_dirs = get_results_directories()
-    except (URLError, HTTPError) as e:
-        print_error_report(f"Could not fetch results directories: {e}")
-        sys.exit(1)
-    except json.JSONDecodeError as e:
-        print_error_report(f"Failed to parse GitHub API response: {e}")
-        sys.exit(1)
-
-    if len(result_dirs) < 2:
-        print_error_report("Need at least 2 result directories to compare")
-        sys.exit(1)
+    result_dirs = []
+    if not args.latest or not args.previous:
+        print("Fetching results directories...", file=sys.stderr)
+        try:
+            result_dirs = get_results_directories()
+        except (URLError, HTTPError) as e:
+            print_error_report(f"Could not fetch results directories: {e}")
+            sys.exit(1)
+        except json.JSONDecodeError as e:
+            print_error_report(f"Failed to parse GitHub API response: {e}")
+            sys.exit(1)
+    
+        if len(result_dirs) < 2:
+            print_error_report("Need at least 2 result directories to compare")
+            sys.exit(1)
 
     # Find today's run (must exist unless --latest is provided)
     if args.latest:
