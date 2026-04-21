@@ -298,6 +298,28 @@ pub fn prove(
     inputs: StdIn,
     segment_height: Option<usize>, // uses the default height if None
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // Apply the segment-height override up-front so the mock path (which re-reads
+    // `program.vm_config` via `do_with_trace`) also benefits. Without this, only the
+    // proving path below was shrinking per-chip GPU allocations — mock runs still
+    // blew past device memory on shared GPU runners.
+    let mut program_storage;
+    let program = if let Some(segment_height) = segment_height {
+        program_storage = program.clone();
+        program_storage
+            .vm_config
+            .original
+            .config_mut()
+            .sdk
+            .system
+            .config
+            .segmentation_config
+            .limits = SegmentationLimits::default().with_max_trace_height(segment_height as u32);
+        tracing::debug!("Setting max segment len to {}", segment_height);
+        &program_storage
+    } else {
+        program
+    };
+
     if mock {
         do_with_trace(program, inputs, |_segment_idx, _vm, _pk, _ctx| {
             #[cfg(debug_assertions)]
@@ -307,21 +329,7 @@ pub fn prove(
         })?;
     } else {
         let exe = &program.exe;
-        let mut vm_config = program.vm_config.clone();
-
-        // DefaultSegmentationStrategy { max_segment_len: 4194204, max_cells_per_chip_in_segment: 503304480 }
-        if let Some(segment_height) = segment_height {
-            vm_config
-                .original
-                .config_mut()
-                .sdk
-                .system
-                .config
-                .segmentation_config
-                .limits =
-                SegmentationLimits::default().with_max_trace_height(segment_height as u32);
-            tracing::debug!("Setting max segment len to {}", segment_height);
-        }
+        let vm_config = program.vm_config.clone();
 
         // Set app configuration
         let system_params = app_params_with_100_bits_security(MAX_APP_LOG_STACKED_HEIGHT);
@@ -374,6 +382,13 @@ mod tests {
     use pretty_assertions::assert_eq;
     use test_log::test;
 
+    // Cap per-chip GPU trace allocations for tests that don't care about the
+    // default segment height. The OpenVM default is 2^22 rows (~4 GiB per chip),
+    // which pushes concurrent GPU tests past the memory on our shared runner.
+    // All small test inputs here fit easily in 2^20 rows and still run in a
+    // single segment.
+    const TEST_DEFAULT_SEGMENT_HEIGHT: usize = 1 << 20;
+
     #[allow(clippy::too_many_arguments)]
     fn compile_and_prove(
         guest: &str,
@@ -387,6 +402,7 @@ mod tests {
         let guest = compile_openvm(guest, GuestOptions::default()).unwrap();
         let program =
             compile_exe(guest, config, pgo_config, EmpiricalConstraints::default()).unwrap();
+        let segment_height = segment_height.or(Some(TEST_DEFAULT_SEGMENT_HEIGHT));
         prove(&program, mock, recursion, stdin, segment_height)
     }
 

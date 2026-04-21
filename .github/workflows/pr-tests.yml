@@ -207,9 +207,7 @@ jobs:
       - name: Init testing instance (GPU)
         uses: ./.github/actions/init-testing-instance-gpu
       - name: Run quick GPU tests from powdr-openvm-riscv only
-        # --test-threads=1 serializes tests so concurrent GPU allocations don't contend
-        # for device memory on our shared GPU runner (see failures on run 24668152600).
-        run: cargo nextest run --archive-file tests_gpu.tar.zst --workspace-remap . --verbose --no-tests=warn --test-threads=1
+        run: cargo nextest run --archive-file tests_gpu.tar.zst --workspace-remap . --verbose --no-tests=warn
         # run: cargo nextest run --archive-file tests_gpu.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/7 --no-tests=warn
 
   # NOTE: test_apc_reth_app_proof has been moved to pr-tests-with-secrets.yml
