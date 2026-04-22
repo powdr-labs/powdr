@@ -10,4 +10,7 @@ members = []
 openvm = { git = "https://github.com/powdr-labs/openvm.git", branch = "v2-powdr-beta.2", features = [
   "std",
 ] }
-openvm-ruint = { git = "https://github.com/powdr-labs/openvm.git", branch = "v2-powdr-beta.2", package = "ruint" }
+openvm-bigint-guest = { git = "https://github.com/powdr-labs/openvm.git", branch = "v2-powdr-beta.2", features = [
+  "export-intrinsics",
+] }
+openvm-ruint = { git = "https://github.com/openvm-org/uint.git", branch = "v1.14.0-openvm", package = "ruint" }

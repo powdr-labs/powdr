@@ -7,7 +7,7 @@ edition = "2024"
 members = []
 
 [dependencies]
-openvm = { git = "https://github.com/powdr-labs/openvm.git", branch = "v2-powdr", features = [
+openvm = { git = "https://github.com/powdr-labs/openvm.git", branch = "v2-powdr-beta.2", features = [
   "std",
 ] }
 
