@@ -347,10 +347,9 @@ pub fn build<A: Adapter>(
     let labels = [("apc_start_pc", block.start_pcs().into_iter().join("_"))];
     metrics::counter!("before_opt_cols", &labels)
         .absolute(machine.unique_references().count() as u64);
-    metrics::counter!("before_opt_constraints", &labels)
-        .absolute(machine.unique_references().count() as u64);
+    metrics::counter!("before_opt_constraints", &labels).absolute(machine.constraints.len() as u64);
     metrics::counter!("before_opt_interactions", &labels)
-        .absolute(machine.unique_references().count() as u64);
+        .absolute(machine.bus_interactions.len() as u64);
 
     let (machine, column_allocator) = optimizer::optimize::<_, _, _, A::MemoryBusInteraction<_>>(
         machine,
@@ -366,10 +365,9 @@ pub fn build<A: Adapter>(
 
     metrics::counter!("after_opt_cols", &labels)
         .absolute(machine.unique_references().count() as u64);
-    metrics::counter!("after_opt_constraints", &labels)
-        .absolute(machine.unique_references().count() as u64);
+    metrics::counter!("after_opt_constraints", &labels).absolute(machine.constraints.len() as u64);
     metrics::counter!("after_opt_interactions", &labels)
-        .absolute(machine.unique_references().count() as u64);
+        .absolute(machine.bus_interactions.len() as u64);
 
     // TODO: for now, we only include optimistic constraints related to superblock PCs.
     // Optimistic constraints from empirical constraints are still missing.
