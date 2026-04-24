@@ -113,7 +113,7 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
 
         let AdapterExecutionBlocks::<Self::Adapter> {
             blocks,
-            execution_static_block_runs,
+            execution_bb_runs,
         } = exec_blocks;
 
         tracing::info!(
@@ -169,7 +169,8 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
             candidates.clone(),
             budget,
             max_selected,
-            &execution_static_block_runs,
+            true,
+            &execution_bb_runs,
         );
 
         // print selection

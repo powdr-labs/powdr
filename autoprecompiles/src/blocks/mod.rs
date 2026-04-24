@@ -213,6 +213,20 @@ impl<I> StaticBlocks<I> {
             .get(&pc)
             .expect("PC was expected to be the start of a static block")
     }
+
+    /// Find the static block containing basic block with the given start PC.
+    /// Returns the containing static block.
+    fn get_containing(&self, bb_pc: u64) -> &SuperBlock<I> {
+        // First try direct lookup (bb_pc is the start of a static block)
+        if let Some(sb) = self.blocks_by_start_pc.get(&bb_pc) {
+            return sb;
+        }
+        // Otherwise search for the static block containing this basic block
+        self.blocks_by_start_pc
+            .values()
+            .find(|sb| sb.blocks.iter().any(|b| b.start_pc == bb_pc))
+            .unwrap_or_else(|| panic!("basic block {bb_pc} not found in any static block"))
+    }
 }
 
 impl<I> IntoIterator for StaticBlocks<I> {
@@ -250,29 +264,25 @@ pub trait Instruction<T>: Clone + Display + PcStep {
     fn pc_lookup_row(&self, pc: u64) -> Vec<T>;
 }
 
-/// A sequence of static blocks seen in the execution, identified by their start PCs.
+/// A sequence of basic block start PCs seen in the execution.
 /// A run is interrupted by an invalid APC block (i.e., single instruction).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ExecutionStaticBlockRun(pub Vec<u64>);
+pub struct ExecutionBasicBlockRun(pub Vec<u64>);
 
 /// A superblock present in the program, together with execution statistics (if PGO is enabled)
 pub struct BlockAndStats<I> {
     pub block: SuperBlock<I>,
     /// amount of times this block appears in the execution
     pub count: u32,
-    /// The start PCs of the constituent static blocks, as they appear in execution runs.
-    /// For a single static block [A, B], this is [A]. For a conditional superblock
-    /// combining static blocks [A, B] and [C], this is [A, C].
-    pub static_block_pcs: Vec<u64>,
 }
 
 /// The result of superblock generation: a set of blocks with optional statistics for PGO.
 pub struct ExecutionBlocks<I> {
     /// Superblocks seen in the execution.
     pub blocks: Vec<BlockAndStats<I>>,
-    /// Static block runs in the execution (if PGO is enabled).
+    /// Basic block runs in the execution (if PGO is enabled).
     /// Each run is paired with the number of times it was seen.
-    pub execution_static_block_runs: Vec<(ExecutionStaticBlockRun, u32)>,
+    pub execution_bb_runs: Vec<(ExecutionBasicBlockRun, u32)>,
 }
 
 impl<I> ExecutionBlocks<I> {
@@ -280,16 +290,9 @@ impl<I> ExecutionBlocks<I> {
         Self {
             blocks: blocks
                 .into_iter()
-                .map(|block| {
-                    let static_block_pcs = vec![block.start_pcs()[0]];
-                    BlockAndStats {
-                        block,
-                        count: 0,
-                        static_block_pcs,
-                    }
-                })
+                .map(|block| BlockAndStats { block, count: 0 })
                 .collect(),
-            execution_static_block_runs: vec![],
+            execution_bb_runs: vec![],
         }
     }
 }
@@ -310,17 +313,15 @@ pub fn find_non_overlapping<T: Eq>(haystack: &[T], needle: &[T]) -> Vec<usize> {
     indices
 }
 
-/// Find static block runs in the execution.
-/// A run is interrupted upon hitting an invalid APC static block (i.e., a single-instruction block).
-/// Returns a list of the runs, coupled with how many times each appears (a run may repeat in the execution).
+/// Find basic block runs in the execution.
+/// A run is interrupted upon hitting an invalid APC block (i.e., a single-instruction block).
+/// Each static block is expanded into its constituent basic block start PCs.
+/// Returns a list of the runs, coupled with how many times each appears.
 fn detect_execution_bb_runs<I>(
     static_blocks: &StaticBlocks<I>,
     execution: &[u64],
-) -> Vec<(ExecutionStaticBlockRun, u32)> {
-    // Static block runs in the execution.
-    // The same run can appear multiple times in the execution, so we keep a count using a hashmap.
-    // Each BB is identified by its starting PC.
-    let mut execution_static_block_runs = BTreeMap::new();
+) -> Vec<(ExecutionBasicBlockRun, u32)> {
+    let mut execution_bb_runs = BTreeMap::new();
     let mut current_run = vec![];
 
     let mut pos = 0;
@@ -329,78 +330,59 @@ fn detect_execution_bb_runs<I>(
         let bb = static_blocks.get(pc);
         assert!(!bb.is_empty());
         if bb.len() == 1 {
-            // if starting a single instruction BB (i.e., invalid for APC), end current run
+            // single instruction BB (invalid for APC), end current run
             if !current_run.is_empty() {
-                *execution_static_block_runs
+                *execution_bb_runs
                     .entry(std::mem::take(&mut current_run))
                     .or_insert(0) += 1;
             }
         } else {
-            // extend the run with this static block
-            current_run.push(pc);
+            // expand static block into its basic block start PCs
+            for block in bb.blocks() {
+                current_run.push(block.start_pc);
+            }
         }
-        // move to next bb
         pos += bb.len();
     }
     if !current_run.is_empty() {
-        *execution_static_block_runs
+        *execution_bb_runs
             .entry(std::mem::take(&mut current_run))
             .or_insert(0) += 1;
     }
 
-    execution_static_block_runs
+    execution_bb_runs
         .into_iter()
-        .map(|(run, count)| (ExecutionStaticBlockRun(run), count))
+        .map(|(run, count)| (ExecutionBasicBlockRun(run), count))
         .collect()
 }
 
-/// Find all superblocks up to max_len in the static block run and count their occurrences.
-/// Returns a map from superblock to its count.
-fn count_superblocks_in_run(
-    bb_run: &ExecutionStaticBlockRun,
-    max_len: usize,
+/// Count occurrences of a set of candidates (identified by their basic block start PC sequences)
+/// across all execution runs. Returns a map from candidate start PCs to count.
+fn count_candidates_in_execution(
+    execution_bb_runs: &[(ExecutionBasicBlockRun, u32)],
+    candidates: &[Vec<u64>],
 ) -> BTreeMap<Vec<u64>, u32> {
-    let mut superblocks_in_run = BTreeMap::new();
-    // first, we identify the superblocks in this run
-    for len in 1..=std::cmp::min(max_len, bb_run.0.len()) {
-        superblocks_in_run.extend(bb_run.0.windows(len).map(|w| (w.to_vec(), 0)));
-    }
-    // then we count their occurrences
-    for (sblock, count) in superblocks_in_run.iter_mut() {
-        *count = find_non_overlapping(&bb_run.0, sblock).len() as u32;
-    }
-    superblocks_in_run
-}
-
-/// Find all superblocks up to max_len in the execution and count their occurrences.
-/// Returns a map from superblock to its count.
-fn count_superblocks_in_execution(
-    execution_bb_runs: &[(ExecutionStaticBlockRun, u32)],
-    max_len: usize,
-) -> BTreeMap<Vec<u64>, u32> {
-    let sblocks = execution_bb_runs
+    // Count each candidate independently across all runs
+    candidates
         .par_iter()
-        .map(|(run, run_count)| {
-            count_superblocks_in_run(run, max_len)
-                .into_iter()
-                .map(|(sblock, sblock_occurrences_in_run)| {
-                    (sblock, sblock_occurrences_in_run * run_count)
+        .map(|candidate| {
+            let count: u32 = execution_bb_runs
+                .iter()
+                .map(|(run, run_count)| {
+                    find_non_overlapping(&run.0, candidate).len() as u32 * run_count
                 })
-                .collect()
+                .sum();
+            (candidate.clone(), count)
         })
-        .reduce(BTreeMap::new, |mut sblocks_a, sblocks_b| {
-            // merge counts of b into a
-            for (sblock, count) in sblocks_b {
-                *sblocks_a.entry(sblock).or_insert(0) += count;
-            }
-            sblocks_a
-        });
-    sblocks
+        .collect()
 }
 
-/// Detect basic blocks and superblocks present in the given execution.
+/// Detect basic blocks and static blocks present in the given execution.
 /// Returns the detected blocks, together with their execution information.
 /// Does not return invalid APC blocks (i.e., single instruction) and blocks that are never executed.
+///
+/// Produces candidates for both individual basic blocks and full static blocks.
+/// Execution runs are over basic blocks, so candidates are counted independently.
 pub fn detect_superblocks<I: Clone + PcStep>(
     cfg: &PowdrConfig,
     // program execution as a sequence of PCs
@@ -408,58 +390,81 @@ pub fn detect_superblocks<I: Clone + PcStep>(
     // all program static blocks
     static_blocks: StaticBlocks<I>,
 ) -> ExecutionBlocks<I> {
+    assert!(
+        cfg.superblock_max_bb_count == 1,
+        "superblocks not being currently handled",
+    );
+
     tracing::info!(
-        "Detecting superblocks with <= {} static blocks, over the sequence of {} PCs",
-        cfg.superblock_max_bb_count,
+        "Detecting blocks over the sequence of {} PCs",
         execution_pc_list.len()
     );
 
     let start = std::time::Instant::now();
 
-    let execution_static_block_runs = detect_execution_bb_runs(&static_blocks, execution_pc_list);
+    let execution_bb_runs = detect_execution_bb_runs(&static_blocks, execution_pc_list);
 
-    let blocks_found = count_superblocks_in_execution(
-        &execution_static_block_runs,
-        cfg.superblock_max_bb_count as usize,
-    );
+    // Build candidate list: each static block + each individual basic block within multi-BB
+    // static blocks. Candidates are identified by their basic block start PC sequences.
+    let mut candidate_pcs: Vec<Vec<u64>> = vec![];
+    for (_, sblock) in static_blocks.iter() {
+        // The full static block
+        let full_pcs: Vec<u64> = sblock.start_pcs();
+        candidate_pcs.push(full_pcs.clone());
+        // Individual basic blocks (only if the static block has more than one)
+        if full_pcs.len() > 1 {
+            for pc in &full_pcs {
+                candidate_pcs.push(vec![*pc]);
+            }
+        }
+    }
+    // Deduplicate (a basic block PC may appear in multiple static blocks)
+    candidate_pcs.sort();
+    candidate_pcs.dedup();
+
+    let counts = count_candidates_in_execution(&execution_bb_runs, &candidate_pcs);
 
     tracing::info!(
-        "Found {} blocks in {} static block runs. Took {:?}",
-        blocks_found.len(),
-        execution_static_block_runs.len(),
+        "Found {} candidate patterns in {} basic block runs. Took {:?}",
+        counts.len(),
+        execution_bb_runs.len(),
         start.elapsed(),
     );
 
-    // build the result
+    // Build the result: look up each candidate's basic blocks from the static blocks
     let mut block_stats = vec![];
     let mut skipped_exec_count = 0;
     let mut skipped_max_insn = 0;
-    blocks_found.into_iter().for_each(|(sblock_pcs, count)| {
-        let block = SuperBlock::from(
-            sblock_pcs
-                .iter()
-                .flat_map(|start_pc| static_blocks.get(*start_pc).clone().blocks)
-                .collect_vec(),
-        );
-
-        // skip superblocks that were executed less than the cutoff
+    for (bb_pcs, count) in counts {
         if count < cfg.apc_exec_count_cutoff {
             skipped_exec_count += 1;
-            return;
+            continue;
         }
 
-        // skip superblocks with too many instructions
+        // Build the SuperBlock from individual basic blocks.
+        // For a single BB [X], look it up in the static block that contains it.
+        // For a full static block [A, B, C], look up the static block at A.
+        let block = if bb_pcs.len() == 1 {
+            // Single basic block — find it within its containing static block
+            let pc = bb_pcs[0];
+            let containing = static_blocks.get_containing(pc);
+            let bb = containing
+                .blocks()
+                .find(|b| b.start_pc == pc)
+                .unwrap_or_else(|| panic!("basic block {pc} not found in static block"));
+            SuperBlock::from(bb.clone())
+        } else {
+            // Full static block — look up by first PC
+            static_blocks.get(bb_pcs[0]).clone()
+        };
+
         if block.instructions().count() > cfg.apc_max_instructions as usize {
             skipped_max_insn += 1;
-            return;
+            continue;
         }
 
-        block_stats.push(BlockAndStats {
-            block,
-            count,
-            static_block_pcs: sblock_pcs,
-        });
-    });
+        block_stats.push(BlockAndStats { block, count });
+    }
 
     tracing::info!(
         "Skipped blocks: {} to execution cutoff, {} to instruction count",
@@ -468,7 +473,7 @@ pub fn detect_superblocks<I: Clone + PcStep>(
     );
 
     tracing::info!(
-        "Of the {} remaining blocks, {} are basic blocks and {} are superblocks. Note: Static superblocks are classified as superblocks.",
+        "{} remaining candidates: {} basic blocks and {} static blocks.",
         block_stats.len(),
         block_stats
             .iter()
@@ -482,7 +487,7 @@ pub fn detect_superblocks<I: Clone + PcStep>(
 
     ExecutionBlocks {
         blocks: block_stats,
-        execution_static_block_runs,
+        execution_bb_runs,
     }
 }
 
@@ -512,27 +517,23 @@ mod test {
     }
 
     #[test]
-    fn test_superblocks_in_run() {
-        let run = ExecutionStaticBlockRun(vec![4, 1, 2, 3, 5, 1, 2, 3, 4]);
-        let max_len = 3;
-        let counts = count_superblocks_in_run(&run, max_len);
-        assert_eq!(
-            counts.len(),
-            5 + // size 1
-            6 + // size 2
-            6 // size 3
-        );
-        assert_eq!(counts[&vec![1]], 2);
-        assert_eq!(counts[&vec![1, 2]], 2);
-        assert_eq!(counts[&vec![4]], 2);
-        assert_eq!(counts[&vec![5]], 1);
-        assert_eq!(counts[&vec![4, 1, 2]], 1);
+    fn test_count_candidates_in_execution() {
+        let runs = vec![
+            (ExecutionBasicBlockRun(vec![1, 2, 3, 4]), 2),
+            (ExecutionBasicBlockRun(vec![3, 4, 1]), 1),
+        ];
+        let candidates = vec![vec![1], vec![3, 4], vec![1, 2, 3]];
+        let counts = count_candidates_in_execution(&runs, &candidates);
+        // [1] appears: 2 times in first run * 2 + 1 time in second run = 5
+        assert_eq!(counts[&vec![1]], 5);
+        // [3, 4] appears: 1 time in first run * 2 + 1 time in second run = 3
+        assert_eq!(counts[&vec![3, 4]], 3);
+        // [1, 2, 3] appears: 1 time in first run * 2 + 0 in second = 2
         assert_eq!(counts[&vec![1, 2, 3]], 2);
-        assert_eq!(counts[&vec![2, 3, 4]], 1);
     }
 
     #[test]
-    fn test_detect_superblocks_counts_and_execution_runs() {
+    fn test_detect_superblocks_basic_block_runs() {
         let bb = |start_pc: u64, len: usize| BasicBlock {
             start_pc,
             instructions: vec![TestInstruction; len],
@@ -545,26 +546,22 @@ mod test {
                 identities: 2,
                 bus_interactions: 2,
             },
-        )
-        .with_superblocks(2, None, None);
+        );
 
-        let basic_blocks = StaticBlocks::new(vec![
-            bb(100, 2),
-            bb(200, 2),
-            bb(300, 1),
-            bb(400, 3),
-            bb(500, 2),
-        ]);
+        // Static blocks: 100 (2 insn), 200 (2 insn), 300 (1 insn, invalid), 400 (3 insn)
+        let basic_blocks = StaticBlocks::new(vec![bb(100, 2), bb(200, 2), bb(300, 1), bb(400, 3)]);
 
+        // Execution: [100,101], [200,201], [300], [400,401,402], [100,101], [200,201]
         let execution = vec![100, 101, 200, 201, 300, 400, 401, 402, 100, 101, 200, 201];
 
         let result = detect_superblocks(&cfg, &execution, basic_blocks);
 
+        // Runs should be basic-block level (300 is invalid, breaks the run)
         assert_eq!(
-            result.execution_static_block_runs,
+            result.execution_bb_runs,
             vec![
-                (ExecutionStaticBlockRun(vec![100, 200]), 1),
-                (ExecutionStaticBlockRun(vec![400, 100, 200]), 1),
+                (ExecutionBasicBlockRun(vec![100, 200]), 1),
+                (ExecutionBasicBlockRun(vec![400, 100, 200]), 1),
             ]
         );
 
@@ -574,12 +571,11 @@ mod test {
             .map(|entry| (entry.block.start_pcs(), entry.count))
             .collect::<BTreeMap<_, _>>();
 
+        // Each single-BB static block counted independently
         assert_eq!(counts.get(&vec![100]), Some(&2));
         assert_eq!(counts.get(&vec![200]), Some(&2));
         assert_eq!(counts.get(&vec![400]), Some(&1));
-        assert_eq!(counts.get(&vec![100, 200]), Some(&2));
-        assert_eq!(counts.get(&vec![400, 100]), Some(&1));
+        // 300 is single-instruction (invalid), not counted
         assert!(!counts.contains_key(&vec![300]));
-        assert!(!counts.contains_key(&vec![500]));
     }
 }

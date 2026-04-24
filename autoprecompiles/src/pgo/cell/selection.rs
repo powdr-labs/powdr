@@ -2,9 +2,11 @@ use itertools::Itertools;
 use priority_queue::PriorityQueue;
 use serde::{Deserialize, Serialize};
 
+use std::collections::HashSet;
+
 use crate::{
     adapter::Adapter,
-    blocks::{find_non_overlapping, BlockAndStats, ExecutionStaticBlockRun},
+    blocks::{find_non_overlapping, BlockAndStats, ExecutionBasicBlockRun},
 };
 
 use super::ApcCandidate;
@@ -12,11 +14,9 @@ use super::ApcCandidate;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 // A candidate block, used during block selection
 pub struct BlockCandidate {
-    // all basic block start PCs (for display/identification)
+    // basic block start PCs composing this candidate
     pub start_pcs: Vec<u64>,
-    // static block start PCs as they appear in execution runs (for matching)
-    pub static_block_pcs: Vec<u64>,
-    // cost of original static blocks (before optimization)
+    // cost of original blocks (before optimization)
     pub cost_before: usize,
     // cost after optimization
     pub cost_after: usize,
@@ -33,7 +33,6 @@ impl BlockCandidate {
     ) -> Self {
         Self {
             start_pcs: block.block.start_pcs(),
-            static_block_pcs: block.static_block_pcs.clone(),
             cost_before: apc.cost_before_opt(),
             cost_after: apc.cost_after_opt(),
             value_per_use: apc.value_per_use(),
@@ -95,10 +94,10 @@ impl Ord for Density {
 /// Returns the count and the sub-runs after the candidate is removed.
 fn count_and_update_run<'a>(
     sblock: &BlockCandidate,
-    run: &'a ExecutionStaticBlockRun,
-) -> (u32, impl Iterator<Item = ExecutionStaticBlockRun> + 'a) {
-    let sblock_len = sblock.static_block_pcs.len();
-    let matches = find_non_overlapping(&run.0, &sblock.static_block_pcs);
+    run: &'a ExecutionBasicBlockRun,
+) -> (u32, impl Iterator<Item = ExecutionBasicBlockRun> + 'a) {
+    let sblock_len = sblock.start_pcs.len();
+    let matches = find_non_overlapping(&run.0, &sblock.start_pcs);
     let count = matches.len() as u32;
     let match_intervals = matches.into_iter().flat_map(move |i| [i, i + sblock_len]);
     let sub_runs = std::iter::once(0)
@@ -107,7 +106,7 @@ fn count_and_update_run<'a>(
         .tuples()
         // skip empty sequences
         .filter(|(start, end)| start != end)
-        .map(|(start, end)| ExecutionStaticBlockRun(run.0[start..end].to_vec()));
+        .map(|(start, end)| ExecutionBasicBlockRun(run.0[start..end].to_vec()));
     (count, sub_runs)
 }
 
@@ -115,8 +114,8 @@ fn count_and_update_run<'a>(
 /// Returns the count and an updated execution with the candidate removed.
 fn count_and_update_execution(
     sblock: &BlockCandidate,
-    execution: &[(ExecutionStaticBlockRun, u32)],
-) -> (u32, Vec<(ExecutionStaticBlockRun, u32)>) {
+    execution: &[(ExecutionBasicBlockRun, u32)],
+) -> (u32, Vec<(ExecutionBasicBlockRun, u32)>) {
     let mut total_count = 0;
     let new_execution = execution
         .iter()
@@ -137,7 +136,8 @@ pub fn select_blocks_greedy<A: Adapter, C: ApcCandidate<A>>(
     blocks: &[BlockAndStats<A::Instruction>],
     budget: usize,
     max_selected: usize,
-    execution_bb_runs: &[(ExecutionStaticBlockRun, u32)],
+    one_per_start_pc: bool,
+    execution_bb_runs: &[(ExecutionBasicBlockRun, u32)],
 ) -> Vec<usize> {
     let candidates = blocks
         .iter()
@@ -145,15 +145,25 @@ pub fn select_blocks_greedy<A: Adapter, C: ApcCandidate<A>>(
         .map(|(b, apc)| BlockCandidate::new(b, apc))
         .collect::<Vec<_>>();
 
-    select_candidates_greedy(candidates, budget, max_selected, execution_bb_runs)
+    select_candidates_greedy(
+        candidates,
+        budget,
+        max_selected,
+        one_per_start_pc,
+        execution_bb_runs,
+    )
 }
 
 /// Greedy selection over pre-built candidates. See [`select_blocks_greedy`] for details.
+///
+/// If `one_per_start_pc` is true, at most one candidate per starting PC (first basic block)
+/// can be selected. This prevents selecting both a basic block and the static block containing it.
 pub fn select_candidates_greedy(
     mut candidates: Vec<BlockCandidate>,
     budget: usize,
     max_selected: usize,
-    execution_bb_runs: &[(ExecutionStaticBlockRun, u32)],
+    one_per_start_pc: bool,
+    execution_bb_runs: &[(ExecutionBasicBlockRun, u32)],
 ) -> Vec<usize> {
     // keep candidates by priority. As a candidate is selected, remaining priorities will be (lazily) updated.
     let mut by_priority: PriorityQueue<_, _> = candidates
@@ -165,20 +175,24 @@ pub fn select_candidates_greedy(
     let mut selected = vec![];
     let mut cumulative_cost = 0;
     let mut current_execution = execution_bb_runs.to_vec();
+    let mut selected_start_pcs: HashSet<u64> = HashSet::new();
 
     while let Some((idx, _prio)) = by_priority.pop() {
         let c = &mut candidates[idx];
 
         // ignore if too costly
         if cumulative_cost + c.cost() > budget {
-            // The item does not fit, skip it
+            continue;
+        }
+
+        // enforce one candidate per start PC
+        if one_per_start_pc && selected_start_pcs.contains(&c.start_pcs[0]) {
             continue;
         }
 
         // check if the priority of this candidate has changed by re-counting it over the remaining execution.
         let (count, new_execution) = count_and_update_execution(c, &current_execution);
         if count == 0 {
-            // candidate no longer runs, remove it
             continue;
         } else if count < c.execution_count {
             // re-insert with updated priority
@@ -190,6 +204,7 @@ pub fn select_candidates_greedy(
         // the item fits, increment the cumulative cost and update the execution by removing its occurrences
         cumulative_cost += c.cost();
         current_execution = new_execution;
+        selected_start_pcs.insert(c.start_pcs[0]);
         selected.push(idx);
 
         if selected.len() >= max_selected {
@@ -205,7 +220,6 @@ mod test {
 
     fn sblock(start_pcs: Vec<u64>) -> BlockCandidate {
         BlockCandidate {
-            static_block_pcs: start_pcs.clone(),
             start_pcs,
             cost_before: 0,
             cost_after: 0,
@@ -214,8 +228,8 @@ mod test {
         }
     }
 
-    fn run(pcs: Vec<u64>) -> ExecutionStaticBlockRun {
-        ExecutionStaticBlockRun(pcs)
+    fn run(pcs: Vec<u64>) -> ExecutionBasicBlockRun {
+        ExecutionBasicBlockRun(pcs)
     }
 
     #[test]

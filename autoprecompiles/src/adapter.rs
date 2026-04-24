@@ -75,21 +75,15 @@ pub trait PgoAdapter {
             ExecutionBlocks::new_without_pgo(superblocks)
         };
 
-        // Dump execution_static_block_runs to JSON if the directory is specified.
+        // Dump execution basic block runs to JSON if the directory is specified.
         if let Some(dir) = &config.apc_candidates_dir_path {
             std::fs::create_dir_all(dir).expect("Failed to create apc candidates directory");
-            let json_path = dir.join("execution_static_block_runs.json");
-            let file = std::fs::File::create(&json_path)
-                .expect("Failed to create execution_static_block_runs.json");
-            serde_json::to_writer(
-                std::io::BufWriter::new(file),
-                &blocks.execution_static_block_runs,
-            )
-            .expect("Failed to write execution_static_block_runs.json");
-            tracing::info!(
-                "Wrote execution_static_block_runs to {}",
-                json_path.display()
-            );
+            let json_path = dir.join("execution_bb_runs.json");
+            let file =
+                std::fs::File::create(&json_path).expect("Failed to create execution_bb_runs.json");
+            serde_json::to_writer(std::io::BufWriter::new(file), &blocks.execution_bb_runs)
+                .expect("Failed to write execution_bb_runs.json");
+            tracing::info!("Wrote execution_bb_runs to {}", json_path.display());
 
             if std::env::var("DUMP_RUNS").is_ok() {
                 tracing::info!("DUMP_RUNS set, exiting after dumping execution runs");
