@@ -200,10 +200,17 @@ def plot(metrics_files, output):
 
 def combine(metrics_files):
     combined = OrderedDict()
+    label_to_filepath = {}
     for filepath in metrics_files:
         label = get_label(filepath)
+        if label in combined:
+            raise SystemExit(
+                f"Error: duplicate metrics label '{label}' for files "
+                f"'{label_to_filepath[label]}' and '{filepath}'."
+            )
         with open(filepath) as f:
             combined[label] = json.load(f)
+        label_to_filepath[label] = filepath
     print(json.dumps(combined))
 
 
