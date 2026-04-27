@@ -83,6 +83,7 @@ openvm-native-recursion = { git = "https://github.com/powdr-labs/openvm.git", br
 openvm-platform = { git = "https://github.com/powdr-labs/openvm.git", branch = "v2-powdr-beta.2" }
 openvm-custom-insn = { git = "https://github.com/powdr-labs/openvm.git", branch = "v2-powdr-beta.2" }
 openvm-poseidon2-air = { git = "https://github.com/powdr-labs/openvm.git", branch = "v2-powdr-beta.2" }
+openvm-deferral-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "v2-powdr-beta.2" }
 
 # stark-backend
 openvm-stark-sdk = { git = "https://github.com/powdr-labs/stark-backend.git", tag = "v2.0.0-beta.2-powdr", default-features = false, features = [

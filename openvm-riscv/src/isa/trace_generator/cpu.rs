@@ -1,4 +1,5 @@
 use openvm_algebra_circuit::AlgebraCpuProverExt;
+use openvm_deferral_circuit::DeferralCpuProverExt;
 use openvm_bigint_circuit::Int256CpuProverExt;
 use openvm_circuit::arch::{AirInventory, ChipInventoryError, VmBuilder, VmProverExtension};
 use openvm_circuit::system::SystemCpuBuilder;
@@ -103,6 +104,13 @@ pub fn create_dummy_chip_complex_cpu(
         VmProverExtension::<BabyBearPoseidon2CpuEngine, _, _>::extend_prover(
             &EccCpuProverExt,
             ecc,
+            inventory,
+        )?;
+    }
+    if let Some(deferral) = &config.deferral {
+        VmProverExtension::<BabyBearPoseidon2CpuEngine, _, _>::extend_prover(
+            &DeferralCpuProverExt,
+            deferral,
             inventory,
         )?;
     }

@@ -45,5 +45,8 @@ pub fn create_dummy_airs<E: VmCircuitExtension<BabyBearSC>>(
     if let Some(ecc) = &config.ecc {
         VmCircuitExtension::extend_circuit(ecc, &mut inventory)?;
     }
+    if let Some(deferral) = &config.deferral {
+        VmCircuitExtension::extend_circuit(deferral, &mut inventory)?;
+    }
     Ok(inventory)
 }

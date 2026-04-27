@@ -2,6 +2,7 @@ use openvm_circuit::{
     arch::{AirInventory, ChipInventoryError, VmBuilder, VmProverExtension},
     system::cuda::extensions::SystemGpuBuilder,
 };
+use openvm_deferral_circuit::DeferralProverExt;
 use openvm_pairing_circuit::PairingProverExt;
 use powdr_openvm::{
     powdr_extension::trace_generator::cuda::{
@@ -68,6 +69,9 @@ pub fn create_dummy_chip_complex_gpu(
     }
     if let Some(ecc) = &config.ecc {
         VmProverExtension::<E, _, _>::extend_prover(&EccProverExt, ecc, inventory)?;
+    }
+    if let Some(deferral) = &config.deferral {
+        VmProverExtension::<E, _, _>::extend_prover(&DeferralProverExt, deferral, inventory)?;
     }
     Ok(chip_complex)
 }

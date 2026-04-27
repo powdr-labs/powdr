@@ -527,6 +527,9 @@ impl<ISA: OpenVmISA> CompiledProgram<ISA> {
             (Vec::new(), Vec::new()),
             |(mut powdr_air_metrics, mut non_powdr_air_metrics), air| {
                 let name = air.name();
+                // We actually give name "powdr_air_for_opcode_<opcode>" to the AIRs,
+                // but OpenVM uses the actual Rust type (PowdrAir) as the name in this method.
+                // TODO this is hacky but not sure how to do it better rn.
                 if name.starts_with("PowdrAir") {
                     powdr_air_metrics.push((
                         get_air_metrics(air.clone(), max_degree),

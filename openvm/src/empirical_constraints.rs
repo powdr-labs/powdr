@@ -129,7 +129,7 @@ fn detect_empirical_constraints_from_input<ISA: OpenVmISA>(
             .collect::<HashMap<_, _>>();
 
         for (air_id, proving_context) in &ctx.per_trace {
-            let main = proving_context.common_main.clone();
+            let main = &proving_context.common_main;
             let air_name = global_airs[air_id].name();
             let Some(machine) = &airs.get_air_machine(&air_name) else {
                 // air_name_to_machine only contains instruction AIRs, and we are only
