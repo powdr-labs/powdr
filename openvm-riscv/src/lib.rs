@@ -349,6 +349,9 @@ pub fn prove(
             tracing::info!("Verifying recursive proof...");
             let baseline = stark_prover.generate_baseline();
             let agg_vk = sdk.agg_vk();
+            #[cfg(feature = "cuda")]
+            PowdrSdkGpu::<RiscvISA>::verify_proof(agg_vk.as_ref().clone(), baseline, &stark_proof)?;
+            #[cfg(not(feature = "cuda"))]
             PowdrSdkCpu::<RiscvISA>::verify_proof(agg_vk.as_ref().clone(), baseline, &stark_proof)?;
             tracing::info!("Recursive proof verified.");
         } else {
