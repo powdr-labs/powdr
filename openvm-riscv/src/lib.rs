@@ -17,7 +17,9 @@ use openvm_circuit::arch::{
 #[cfg(feature = "cuda")]
 use openvm_circuit::system::cuda::SystemChipInventoryGPU;
 use openvm_circuit::system::SystemChipInventory;
+use openvm_sdk::prover::verify_app_proof;
 use openvm_sdk_config::{SdkVmConfig, SdkVmConfigExecutor, SdkVmCpuBuilder, TranspilerConfig};
+use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2CpuEngine as BabyBearPoseidon2Engine;
 
 use openvm_cpu_backend::{CpuBackend, CpuDevice};
 use openvm_sdk::{
@@ -103,18 +105,12 @@ pub fn compile_openvm(
 
     // try to load the sdk config from the openvm.toml file, otherwise use the default
     let openvm_toml_path = path.join("openvm.toml");
-    let system_params = app_params_with_100_bits_security(MAX_APP_LOG_STACKED_HEIGHT);
     let app_config: AppConfig<SdkVmConfig> = if openvm_toml_path.exists() {
         let toml_str = std::fs::read_to_string(&openvm_toml_path)?;
-        // Deserialize just the app_vm_config from the TOML, then pair with our system_params.
-        // The TOML files don't contain system_params (v2 addition).
-        #[derive(serde::Deserialize)]
-        struct PartialAppConfig {
-            app_vm_config: SdkVmConfig,
-        }
-        let partial: PartialAppConfig = toml::from_str(&toml_str)?;
-        AppConfig::new(partial.app_vm_config, system_params)
+        // system_params has a serde default, so it's optional in the TOML
+        toml::from_str(&toml_str)?
     } else {
+        let system_params = app_params_with_100_bits_security(MAX_APP_LOG_STACKED_HEIGHT);
         AppConfig::riscv32(system_params)
     };
 
@@ -346,8 +342,15 @@ pub fn prove(
             let mut stark_prover = sdk.prover(exe.clone())?;
             tracing::info!("Generating STARK proof (app + aggregation)...");
             let start = std::time::Instant::now();
-            let _stark_proof = stark_prover.prove(inputs.clone(), &[])?;
+            let (stark_proof, _) = stark_prover.prove(inputs.clone(), &[])?;
             tracing::info!("STARK proof (with recursion) took {:?}", start.elapsed());
+
+            // Verify the recursive proof
+            tracing::info!("Verifying recursive proof...");
+            let baseline = stark_prover.generate_baseline();
+            let agg_vk = sdk.agg_vk();
+            PowdrSdkCpu::<RiscvISA>::verify_proof(agg_vk.as_ref().clone(), baseline, &stark_proof)?;
+            tracing::info!("Recursive proof verified.");
         } else {
             let mut app_prover = sdk.app_prover(exe.clone())?;
 
@@ -357,10 +360,16 @@ pub fn prove(
             let app_proof = app_prover.prove(inputs.clone())?;
             tracing::info!("App proof took {:?}", start.elapsed());
 
-            tracing::info!("Public values: {:?}", app_proof.user_public_values);
+            // Verify the app proof
+            tracing::info!("Verifying app proof...");
+            let _ = verify_app_proof::<BabyBearPoseidon2Engine>(
+                app_prover.app_vm_vk(),
+                app_prover.memory_dimensions(),
+                &app_proof,
+            )?;
+            tracing::info!("App proof verified.");
 
-            // Note: verification is done automatically in debug_assertions mode inside prove()
-            tracing::info!("App proof generation done.");
+            tracing::info!("Public values: {:?}", app_proof.user_public_values);
         }
 
         tracing::info!("All done.");

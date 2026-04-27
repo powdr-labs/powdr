@@ -1,8 +1,8 @@
 use openvm_algebra_circuit::AlgebraCpuProverExt;
-use openvm_deferral_circuit::DeferralCpuProverExt;
 use openvm_bigint_circuit::Int256CpuProverExt;
 use openvm_circuit::arch::{AirInventory, ChipInventoryError, VmBuilder, VmProverExtension};
 use openvm_circuit::system::SystemCpuBuilder;
+use openvm_deferral_circuit::DeferralCpuProverExt;
 use openvm_keccak256_circuit::Keccak256CpuProverExt;
 use openvm_pairing_circuit::PairingProverExt;
 use openvm_rv32im_circuit::Rv32ImCpuProverExt;
