@@ -51,7 +51,7 @@ mkdir -p "$dir"
 pushd "$dir"
 
 run_bench guest-keccak-manual-precompile "$input" 0 manual
-run_bench guest-keccak "$input" 0 apc000
+# run_bench guest-keccak "$input" 0 apc000  # Too slow on CPU (~25min)
 # run_bench guest-keccak "$input" 3 apc003  # Save ~6mins
 # run_bench guest-keccak "$input" 10 apc010  # Save ~3mins
 run_bench guest-keccak "$input" 30 apc030
@@ -69,7 +69,7 @@ mkdir -p "$dir"
 pushd "$dir"
 
 run_bench guest-sha256-manual-precompile "$input" 0 manual
-run_bench guest-sha256 "$input" 0 apc000
+# run_bench guest-sha256 "$input" 0 apc000  # Too slow on CPU (~22min)
 # run_bench guest-sha256 "$input" 3 apc003  # Save ~4mins
 # run_bench guest-sha256 "$input" 10 apc010  # Save ~5mins
 run_bench guest-sha256 "$input" 30 apc030
