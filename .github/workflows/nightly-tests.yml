@@ -109,11 +109,13 @@ jobs:
           mkdir -p results
 
       - name: Run guest benchmarks
-        # `--emit-relocs` only matters for the guest cargo invocations
-        # `cargo openvm build` does inside the script; powdr-riscv-elf needs
-        # the reloc sections to translate the ELF.
-        env:
-          RUSTFLAGS: "-C link-arg=--emit-relocs"
+        # NOTE: don't set RUSTFLAGS here. This step's `cargo run --bin
+        # powdr_openvm_riscv` is a HOST build, and `cargo openvm build`
+        # is invoked from inside that binary via powdr's `compile_openvm`
+        # which already adds `-C link-arg=--emit-relocs` itself
+        # (openvm-riscv/src/lib.rs::build_elf_path). Setting the env here
+        # would forward the flag into host build-script linking, where
+        # `cc` rejects it.
         run: |
           source .venv/bin/activate
           bash ./openvm-riscv/scripts/run_guest_benches.sh
