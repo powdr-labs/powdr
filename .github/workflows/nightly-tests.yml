@@ -6,7 +6,6 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: "-C target-cpu=native"
   RUST_BACKTRACE: 1
   JEMALLOC_SYS_WITH_MALLOC_CONF: "retain:true,background_thread:true,metadata_thp:always,dirty_decay_ms:10000,muzzy_decay_ms:10000,abort_conf:true"
   POWDR_OPENVM_SEGMENT_DELTA: 50000
@@ -18,6 +17,12 @@ jobs:
       contents: write
       deployments: write
       pull-requests: write
+    # NOTE: RUSTFLAGS lives on the bench job only. test_apc and test_apc_gpu
+    # invoke `cargo openvm build` for the riscv32 guest, where a `target-cpu=
+    # native` from the host (e.g. `raptorlake`) is rejected by rustc-LLVM with
+    # "RV32 target requires an RV32 CPU". Keep it scoped to the host bench job.
+    env:
+      RUSTFLAGS: "-C target-cpu=native"
 
     steps:
       - uses: actions/checkout@v4
