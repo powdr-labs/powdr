@@ -83,6 +83,14 @@ jobs:
           rustup toolchain install 1.91.1
           cargo +1.91.1 install --git 'https://github.com/powdr-labs/openvm.git' --tag "v2.0.0-beta.2-powdr" cargo-openvm
 
+      - name: Install OpenVM guest toolchain
+        # `cargo openvm build` invokes `cargo +nightly-2026-01-18 build --target
+        # riscv32im-risc0-zkvm-elf -Z build-std=...`, which needs both the
+        # nightly toolchain and its `rust-src` component.
+        run: |
+          rustup toolchain install nightly-2026-01-18
+          rustup component add rust-src --toolchain nightly-2026-01-18
+
       - name: Setup python venv
         run: |
           python3 -m venv .venv
@@ -217,6 +225,14 @@ jobs:
         run: |
           rustup toolchain install 1.91.1
           cargo +1.91.1 install --git 'https://github.com/powdr-labs/openvm.git' --tag "v2.0.0-beta.2-powdr" cargo-openvm
+
+      - name: Install OpenVM guest toolchain
+        # `cargo openvm build` invokes `cargo +nightly-2026-01-18 build --target
+        # riscv32im-risc0-zkvm-elf -Z build-std=...`, which needs both the
+        # nightly toolchain and its `rust-src` component.
+        run: |
+          rustup toolchain install nightly-2026-01-18
+          rustup component add rust-src --toolchain nightly-2026-01-18
 
       - name: Setup python venv
         run: |
