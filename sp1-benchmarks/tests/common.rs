@@ -16,6 +16,7 @@ use sp1_core_machine::autoprecompiles::{
 };
 use sp1_primitives::SP1Field;
 
+#[allow(clippy::print_stdout)]
 pub fn assert_machine_output(basic_block: Vec<Instruction>, module_name: &str, test_name: &str) {
     let instruction_handler = Sp1InstructionHandler::<SP1Field>::new();
     let vm_config = sp1_vm_config(&instruction_handler);
@@ -81,6 +82,7 @@ pub fn assert_machine_output(basic_block: Vec<Instruction>, module_name: &str, t
             // Expectation file does not exist or is different from "actual" and we are allowed to update it.
             fs::create_dir_all(expected_path.parent().unwrap()).unwrap();
             fs::write(&expected_path, actual).unwrap();
+
             println!("Expected output for `{test_name}` was created. Re-run the test to confirm.");
         }
     }
