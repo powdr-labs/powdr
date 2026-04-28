@@ -124,11 +124,6 @@ jobs:
         uses: ./.github/actions/patch-openvm-eth
 
       - name: Run reth benchmark
-        # POWDR_APC_CANDIDATES_DIR makes openvm-eth's apc compile dump
-        # `apc_candidates.json` (and per-block JSON/TXT) into the named
-        # directory; the post-bench step below moves it into $RES_DIR.
-        env:
-          POWDR_APC_CANDIDATES_DIR: apcs
         run: |
           source .venv/bin/activate
           cd openvm-eth
@@ -267,8 +262,6 @@ jobs:
         uses: ./.github/actions/patch-openvm-eth
 
       - name: Run reth benchmark (GPU)
-        env:
-          POWDR_APC_CANDIDATES_DIR: apcs
         run: |
           source .venv/bin/activate
           cd openvm-eth
