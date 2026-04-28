@@ -3,11 +3,11 @@ Instructions:
     1: ld         %x10       %x12       8         
 
 APC advantage:
-  - Main columns: 78 -> 39 (2.00x reduction)
-  - Bus interactions: 42 -> 24 (1.75x reduction)
+  - Main columns: 78 -> 38 (2.05x reduction)
+  - Bus interactions: 42 -> 23 (1.83x reduction)
   - Constraints: 50 -> 13 (3.85x reduction)
 
-Symbolic machine using 39 unique main columns:
+Symbolic machine using 38 unique main columns:
   state__clk_high_0
   state__clk_16_24_0
   state__clk_0_16_0
@@ -32,7 +32,6 @@ Symbolic machine using 39 unique main columns:
   memory_access__access_timestamp__compare_low_0
   memory_access__access_timestamp__diff_low_limb_0
   memory_access__access_timestamp__diff_high_limb_0
-  state__clk_16_24_1
   address_operation__addr_operation__value__0_1
   address_operation__addr_operation__value__1_1
   address_operation__addr_operation__value__2_1
@@ -61,7 +60,7 @@ mult=is_valid * -1, args=[state__clk_high_0, 65536 * state__clk_16_24_0 + state_
 // Bus 5 (BYTE):
 mult=is_valid * 1, args=[3, 0, memory_access__access_timestamp__diff_high_limb_0, state__clk_16_24_0]
 mult=is_valid * 1, args=[3, 0, state__clk_16_24_0 + 32512 * adapter__op_a_memory__access_timestamp__prev_low_0 + 32512 * adapter__op_a_memory__access_timestamp__diff_low_limb_0 - (32512 * state__clk_0_16_0 + 97536), state__clk_16_24_0 + 32512 * adapter__op_b_memory__access_timestamp__prev_low_0 + 32512 * adapter__op_b_memory__access_timestamp__diff_low_limb_0 - (32512 * state__clk_0_16_0 + 65024)]
-mult=is_valid * 1, args=[3, 0, memory_access__access_timestamp__diff_high_limb_1, state__clk_16_24_1]
+mult=is_valid * 1, args=[3, 0, memory_access__access_timestamp__diff_high_limb_1, 0]
 mult=is_valid * 1, args=[6, -(266338304 * adapter__op_b_memory__prev_value__0__0_0), 13, 0]
 mult=is_valid * 1, args=[6, memory_access__access_timestamp__diff_low_limb_0, 16, 0]
 mult=is_valid * 1, args=[6, 266338304 - 266338304 * state__clk_0_16_0, 13, 0]
@@ -72,7 +71,6 @@ mult=is_valid * 1, args=[6, address_operation__addr_operation__value__1_1, 16, 0
 mult=is_valid * 1, args=[6, address_operation__addr_operation__value__2_1, 16, 0]
 mult=is_valid * 1, args=[6, -(266338304 * address_operation__addr_operation__value__0_1), 13, 0]
 mult=is_valid * 1, args=[6, memory_access__access_timestamp__diff_low_limb_1, 16, 0]
-mult=is_valid * 1, args=[6, 8192 * state__clk_16_24_0 + 266338305 - (266338304 * state__clk_0_16_0 + 8192 * state__clk_16_24_1), 13, 0]
 
 // Bus 7 (EXECUTION_BRIDGE):
 mult=is_valid * -1, args=[state__clk_high_0, 65536 * state__clk_16_24_0 + state__clk_0_16_0, 0, 0, 0]
