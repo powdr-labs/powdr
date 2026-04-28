@@ -1,19 +1,18 @@
 name: "Patch openvm-reth-benchmark"
-description: "Checks out powdr-labs/openvm-reth-benchmark at a fixed ref and patches it to use local powdr crates"
+description: "Checks out powdr-labs/openvm-eth at a fixed ref and patches it to use local powdr crates"
 
 runs:
   using: "composite"
   steps:
-    - name: Checkout openvm-reth-benchmark
+    - name: Checkout openvm-eth
       uses: actions/checkout@v4
       with:
-        repository: powdr-labs/openvm-reth-benchmark
+        repository: powdr-labs/openvm-eth
         # Set once here — no inputs required elsewhere
-        # Should always point to the latest main commit
-        ref: 4a697fec23cb00849039f0bcaab5432929e05b38
+        ref: 543868bc811fb9863ad21bf5a77173e3b3898928
         path: openvm-reth-benchmark
 
-    - name: Patch openvm-reth-benchmark to use local powdr
+    - name: Patch openvm-eth to use local powdr
       shell: bash
       run: |
         cd openvm-reth-benchmark
