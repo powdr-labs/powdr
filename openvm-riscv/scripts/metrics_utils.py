@@ -5,11 +5,12 @@ import json
 import re
 import pandas as pd
 
-def load_metrics_dataframes(filename):
-    """Load metrics JSON file and return app, leaf, and internal dataframes.
+def load_metrics_dataframes(filename, include_compression=False):
+    """Load metrics JSON file and return proof phase dataframes.
     
     Each dataframe has a "metric" and "value" column, along with optional columns
-    like "air_name", or "segment".
+    like "air_name", or "segment". By default this returns app, leaf, and
+    internal dataframes; set include_compression to also return compression.
     """
     with open(filename) as f:
         metrics_json = json.load(f)
@@ -31,7 +32,11 @@ def load_metrics_dataframes(filename):
 
     leaf = df[df["group"].fillna('').str.startswith("leaf")]
     internal = df[df["group"].fillna('').str.startswith("internal")]
-    
+    compression = df[df["group"].fillna('') == "compression"]
+
+    if include_compression:
+        return app, leaf, internal, compression
+
     return app, leaf, internal
 
 def is_normal_instruction_air(air_name):

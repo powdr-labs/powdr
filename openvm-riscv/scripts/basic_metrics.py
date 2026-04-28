@@ -22,7 +22,7 @@ def get_label(filepath):
         return os.path.splitext(basename)[0]
 
 def extract_metrics(filename):
-    app, leaf, internal = load_metrics_dataframes(filename)
+    app, leaf, internal, compression = load_metrics_dataframes(filename, include_compression=True)
     metrics = OrderedDict()
 
     powdr_air = app[app["air_name"].fillna('').str.startswith("PowdrAir")]
@@ -36,16 +36,42 @@ def extract_metrics(filename):
     def get_metric(df, metric_name):
         return pd.to_numeric(df[df["metric"] == metric_name]["value"]).sum()
 
-    # Compute total proof times
+    # Compute proof times by phase. execute_metered runs before segment proving
+    # and is outside per-segment total_proof_time_ms.
+    execute_metered_time_ms = get_metric(app, "execute_metered_time_ms")
     app_proof_time_ms = get_metric(app, "total_proof_time_ms")
     leaf_proof_time_ms = get_metric(leaf, "total_proof_time_ms")
     internal_proof_time_ms = get_metric(internal, "total_proof_time_ms")
-    total_proof_time_ms = app_proof_time_ms + leaf_proof_time_ms + internal_proof_time_ms
+    compression_proof_time_ms = get_metric(compression, "total_proof_time_ms")
+    total_proof_time_ms = (
+        execute_metered_time_ms
+        + app_proof_time_ms
+        + leaf_proof_time_ms
+        + internal_proof_time_ms
+        + compression_proof_time_ms
+    )
 
     app_proof_time_excluding_trace_ms = get_metric(app, "stark_prove_excluding_trace_time_ms")
     leaf_proof_time_excluding_trace_ms = get_metric(leaf, "stark_prove_excluding_trace_time_ms")
     internal_proof_time_excluding_trace_ms = get_metric(internal, "stark_prove_excluding_trace_time_ms")
-    total_proof_time_excluding_trace_ms = app_proof_time_excluding_trace_ms + leaf_proof_time_excluding_trace_ms + internal_proof_time_excluding_trace_ms
+    compression_proof_time_excluding_trace_ms = get_metric(compression, "stark_prove_excluding_trace_time_ms")
+    total_proof_time_excluding_trace_ms = (
+        app_proof_time_excluding_trace_ms
+        + leaf_proof_time_excluding_trace_ms
+        + internal_proof_time_excluding_trace_ms
+        + compression_proof_time_excluding_trace_ms
+    )
+
+    app_execute_preflight_time_ms = get_metric(app, "execute_preflight_time_ms")
+    app_trace_gen_time_ms = get_metric(app, "trace_gen_time_ms")
+    app_set_initial_memory_time_ms = get_metric(app, "set_initial_memory_time_ms")
+    app_other_ms = (
+        app_proof_time_ms
+        - app_proof_time_excluding_trace_ms
+        - app_execute_preflight_time_ms
+        - app_trace_gen_time_ms
+        - app_set_initial_memory_time_ms
+    )
 
     # Compute total column counts
     # Note that this sums the columns over *all* segments.
@@ -63,15 +89,20 @@ def extract_metrics(filename):
     metrics["app_proof_cols"] = app_proof_cols
     metrics["total_proof_time_ms"] = total_proof_time_ms
     metrics["total_proof_time_excluding_trace_ms"] = total_proof_time_excluding_trace_ms
+    metrics["execute_metered_time_ms"] = execute_metered_time_ms
     metrics["app_proof_time_ms"] = app_proof_time_ms
     metrics["app_proof_time_excluding_trace_ms"] = app_proof_time_excluding_trace_ms
-    metrics["app_execute_preflight_time_ms"] = get_metric(app, "execute_preflight_time_ms")
-    metrics["app_execute_metered_time_ms"] = get_metric(app, "execute_metered_time_ms")
-    metrics["app_trace_gen_time_ms"] = get_metric(app, "trace_gen_time_ms")
+    metrics["app_execute_preflight_time_ms"] = app_execute_preflight_time_ms
+    metrics["app_execute_metered_time_ms"] = execute_metered_time_ms
+    metrics["app_trace_gen_time_ms"] = app_trace_gen_time_ms
+    metrics["app_set_initial_memory_time_ms"] = app_set_initial_memory_time_ms
+    metrics["app_other_ms"] = app_other_ms
     metrics["leaf_proof_time_ms"] = leaf_proof_time_ms
     metrics["leaf_proof_time_excluding_trace_ms"] = leaf_proof_time_excluding_trace_ms
     metrics["inner_recursion_proof_time_ms"] = internal_proof_time_ms
     metrics["inner_recursion_proof_time_excluding_trace_ms"] = internal_proof_time_excluding_trace_ms
+    metrics["compression_proof_time_ms"] = compression_proof_time_ms
+    metrics["compression_proof_time_excluding_trace_ms"] = compression_proof_time_excluding_trace_ms
 
     normal_instruction_cells = get_metric(normal_instruction_air, "cells")
     openvm_precompile_cells = get_metric(openvm_precompile_air, "cells")
@@ -98,26 +129,30 @@ def plot(metrics_files, output):
     file_metrics = [ extract_metrics(filename) for filename in metrics_files ]
     df = pd.DataFrame(file_metrics)
 
-    # Compute app "other" time
-    df["app_other_ms"] = (
-        df["app_proof_time_ms"]
-        - df["app_proof_time_excluding_trace_ms"]
-        - df["app_execute_preflight_time_ms"]
-        - df["app_execute_metered_time_ms"]
-        - df["app_trace_gen_time_ms"]
-    )
-
     # Stack components (bottom to top) with colors
     # App components use shades of blue, others use distinct colors
-    components = [
-        ("inner_recursion_proof_time_ms", "Inner recursion", "#9b3e00"),        
-        ("leaf_proof_time_ms", "Leaf recursion", "#d69600"),                              
-        ("app_proof_time_excluding_trace_ms", "App STARK (excl. trace)", "#1f77b4"),  
-        ("app_trace_gen_time_ms", "App trace gen", "#6baed6"),                        
-        ("app_execute_preflight_time_ms", "App preflight", "#9ecae1"),        
-        ("app_execute_metered_time_ms", "App metered", "#c6dbef"),            
-        ("app_other_ms", "App other", "#08519c"),                                     
-    ]
+    if df["compression_proof_time_ms"].sum() > 0 or df["app_set_initial_memory_time_ms"].sum() > 0:
+        components = [
+            ("compression_proof_time_ms", "Compression", "#7b2d8e"),
+            ("inner_recursion_proof_time_ms", "Inner recursion", "#9b3e00"),
+            ("leaf_proof_time_ms", "Leaf recursion", "#d69600"),
+            ("execute_metered_time_ms", "Metered execution", "#dadaeb"),
+            ("app_proof_time_excluding_trace_ms", "App STARK (excl. trace)", "#1f77b4"),
+            ("app_trace_gen_time_ms", "App trace gen", "#9ecae1"),
+            ("app_set_initial_memory_time_ms", "App set memory", "#a1d99b"),
+            ("app_execute_preflight_time_ms", "App preflight", "#c6dbef"),
+            ("app_other_ms", "App other", "#969696"),
+        ]
+    else:
+        components = [
+            ("inner_recursion_proof_time_ms", "Inner recursion", "#9b3e00"),
+            ("leaf_proof_time_ms", "Leaf recursion", "#d69600"),
+            ("execute_metered_time_ms", "Metered execution", "#c6dbef"),
+            ("app_proof_time_excluding_trace_ms", "App STARK (excl. trace)", "#1f77b4"),
+            ("app_trace_gen_time_ms", "App trace gen", "#6baed6"),
+            ("app_execute_preflight_time_ms", "App preflight", "#9ecae1"),
+            ("app_other_ms", "App other", "#08519c"),
+        ]
 
     x_labels = [get_label(f) for f in df["filename"]]
 
