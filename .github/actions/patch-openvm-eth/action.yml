@@ -1,4 +1,4 @@
-name: "Patch openvm-reth-benchmark"
+name: "Patch openvm-eth"
 description: "Checks out powdr-labs/openvm-eth at a fixed ref and patches it to use local powdr crates"
 
 runs:
@@ -10,12 +10,12 @@ runs:
         repository: powdr-labs/openvm-eth
         # Set once here — no inputs required elsewhere
         ref: 543868bc811fb9863ad21bf5a77173e3b3898928
-        path: openvm-reth-benchmark
+        path: openvm-eth
 
     - name: Patch openvm-eth to use local powdr
       shell: bash
       run: |
-        cd openvm-reth-benchmark
+        cd openvm-eth
         mkdir -p .cargo
         cat <<'EOF' > .cargo/config.toml
         [patch."https://github.com/powdr-labs/powdr.git"]

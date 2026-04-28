@@ -52,11 +52,11 @@ jobs:
         run: /usr/bin/time -v cargo run --bin powdr_openvm_riscv -r prove guest-ecrecover --input 20 --autoprecompiles 100 --recursion
 
       - name: Patch benchmark
-        uses: ./.github/actions/patch-openvm-reth-benchmark
+        uses: ./.github/actions/patch-openvm-eth
 
       - name: Run reth benchmark
         run: |
-          cd openvm-reth-benchmark
+          cd openvm-eth
           RES_DIR=reth
           mkdir -p $RES_DIR
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
@@ -67,7 +67,7 @@ jobs:
 
       - name: Save revisions and run info
         run: |
-          echo "openvm-reth-benchmark: $(git -C openvm-reth-benchmark rev-parse HEAD)" > run.txt
+          echo "openvm-eth: $(git -C openvm-eth rev-parse HEAD)" > run.txt
           echo "powdr: $(git rev-parse HEAD)" >> run.txt
           echo "run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" >> run.txt
 

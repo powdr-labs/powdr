@@ -109,12 +109,12 @@ jobs:
           bash ./openvm-riscv/scripts/run_guest_benches.sh
 
       - name: Patch benchmark
-        uses: ./.github/actions/patch-openvm-reth-benchmark
+        uses: ./.github/actions/patch-openvm-eth
 
       - name: Run reth benchmark
         run: |
           source .venv/bin/activate
-          cd openvm-reth-benchmark
+          cd openvm-eth
           RES_DIR=reth
           mkdir -p $RES_DIR
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
@@ -171,7 +171,7 @@ jobs:
 
       - name: Save revisions and run info
         run: |
-          echo "openvm-reth-benchmark: $(git -C openvm-reth-benchmark rev-parse HEAD)" > results/run.txt
+          echo "openvm-eth: $(git -C openvm-eth rev-parse HEAD)" > results/run.txt
           echo "powdr: $(git rev-parse HEAD)" >> results/run.txt
           echo "run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" >> results/run.txt
 
@@ -247,12 +247,27 @@ jobs:
           mkdir -p results
 
       - name: Patch benchmark
-        uses: ./.github/actions/patch-openvm-reth-benchmark
+        uses: ./.github/actions/patch-openvm-eth
+
+      - name: Probe guest build (diagnostic)
+        # cargo-openvm pipes its child cargo's stderr into `tty_println`,
+        # which writes to /dev/tty when available and only falls back to
+        # eprintln otherwise. On this runner the tty path appears to be
+        # opened successfully but its writes don't reach the GHA log, so a
+        # plain `cargo openvm build` shows just "Building guest package:"
+        # then `code = 101` with no rustc diagnostics. Setting
+        # OPENVM_GUEST_LOGFILE=/dev/stdout forces those writes back into the
+        # captured stdout so the underlying error is visible.
+        run: |
+          cd openvm-eth/bin/stateless-guest
+          set +e
+          OPENVM_GUEST_LOGFILE=/dev/stdout cargo openvm build 2>&1 | tail -200
+          echo "guest probe exit=$?"
 
       - name: Run reth benchmark (GPU)
         run: |
           source .venv/bin/activate
-          cd openvm-reth-benchmark
+          cd openvm-eth
           RES_DIR=reth_gpu
           mkdir -p $RES_DIR
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
@@ -293,7 +308,7 @@ jobs:
 
       - name: Save revisions and run info
         run: |
-          echo "openvm-reth-benchmark: $(git -C openvm-reth-benchmark rev-parse HEAD)" > results/run.txt
+          echo "openvm-eth: $(git -C openvm-eth rev-parse HEAD)" > results/run.txt
           echo "powdr: $(git rev-parse HEAD)" >> results/run.txt
           echo "run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" >> results/run.txt
 
