@@ -124,8 +124,6 @@ jobs:
         uses: ./.github/actions/patch-openvm-eth
 
       - name: Run reth benchmark
-        env:
-          RUSTFLAGS: "-C link-arg=--emit-relocs"
         run: |
           source .venv/bin/activate
           cd openvm-eth
@@ -264,8 +262,6 @@ jobs:
         uses: ./.github/actions/patch-openvm-eth
 
       - name: Run reth benchmark (GPU)
-        env:
-          RUSTFLAGS: "-C link-arg=--emit-relocs"
         run: |
           source .venv/bin/activate
           cd openvm-eth
