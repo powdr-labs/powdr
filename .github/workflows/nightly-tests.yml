@@ -64,12 +64,6 @@ jobs:
 
   test_apc:
     runs-on: server-dev
-    # cargo-openvm's CLI reads RUSTFLAGS into the encoded rustflags it hands
-    # to the guest cargo build; we need `--emit-relocs` in the guest ELF so
-    # that powdr-riscv-elf can translate it (otherwise it bails with "We
-    # can only translate PIE ELFs (-pie) or ELFs with relocation symbols").
-    env:
-      RUSTFLAGS: "-C link-arg=--emit-relocs"
 
     steps:
       - uses: actions/checkout@v4
@@ -115,6 +109,11 @@ jobs:
           mkdir -p results
 
       - name: Run guest benchmarks
+        # `--emit-relocs` only matters for the guest cargo invocations
+        # `cargo openvm build` does inside the script; powdr-riscv-elf needs
+        # the reloc sections to translate the ELF.
+        env:
+          RUSTFLAGS: "-C link-arg=--emit-relocs"
         run: |
           source .venv/bin/activate
           bash ./openvm-riscv/scripts/run_guest_benches.sh
@@ -123,6 +122,8 @@ jobs:
         uses: ./.github/actions/patch-openvm-eth
 
       - name: Run reth benchmark
+        env:
+          RUSTFLAGS: "-C link-arg=--emit-relocs"
         run: |
           source .venv/bin/activate
           cd openvm-eth
@@ -216,12 +217,6 @@ jobs:
 
   test_apc_gpu:
     runs-on: [self-hosted, gpu-shared]
-    # cargo-openvm's CLI reads RUSTFLAGS into the encoded rustflags it hands
-    # to the guest cargo build; we need `--emit-relocs` in the guest ELF so
-    # that powdr-riscv-elf can translate it (otherwise it bails with "We
-    # can only translate PIE ELFs (-pie) or ELFs with relocation symbols").
-    env:
-      RUSTFLAGS: "-C link-arg=--emit-relocs"
 
     steps:
       - uses: actions/checkout@v4
@@ -267,6 +262,8 @@ jobs:
         uses: ./.github/actions/patch-openvm-eth
 
       - name: Run reth benchmark (GPU)
+        env:
+          RUSTFLAGS: "-C link-arg=--emit-relocs"
         run: |
           source .venv/bin/activate
           cd openvm-eth
