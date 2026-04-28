@@ -52,12 +52,36 @@ pub fn assert_machine_output(basic_block: Vec<Instruction>, module_name: &str, t
         .join("apc_snapshots")
         .join(module_name)
         .join(format!("{test_name}.txt"));
-    let expected = fs::read_to_string(&expected_path).unwrap();
 
-    assert_eq!(
-        expected.trim(),
-        actual.trim(),
-        "The output of `{test_name}` does not match {}",
-        expected_path.display()
-    );
+    let should_update_expectation = std::env::var("UPDATE_EXPECT")
+        .map(|v| v.as_str() == "1")
+        .unwrap_or(false);
+
+    let expected = expected_path
+        .exists()
+        .then(|| fs::read_to_string(&expected_path).unwrap());
+
+    match (expected, should_update_expectation) {
+        (Some(expected), _) if expected == actual => {
+            // Test succeeded.
+        }
+        (Some(expected), false) => {
+            // The expectation file exists, is different from "actual" and we are
+            // not allowed to update it.
+            assert_eq!(
+                expected.trim(),
+                actual.trim(),
+                "The output of `{test_name}` does not match the expected output. \
+                 To overwrite the expected output with the currently generated one, \
+                 re-run the test with the environment variable `UPDATE_EXPECT=1` or \
+                 delete the file `{test_name}.txt`.",
+            );
+        }
+        _ => {
+            // Expectation file does not exist or is different from "actual" and we are allowed to update it.
+            fs::create_dir_all(expected_path.parent().unwrap()).unwrap();
+            fs::write(&expected_path, actual).unwrap();
+            println!("Expected output for `{test_name}` was created. Re-run the test to confirm.");
+        }
+    }
 }
