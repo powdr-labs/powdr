@@ -7,6 +7,6 @@ edition = "2021"
 members = []
 
 [dependencies]
-openvm = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr" }
-openvm-platform = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr" }
-openvm-keccak256 = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr" }
+openvm = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait" }
+openvm-platform = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait" }
+openvm-keccak256 = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait" }

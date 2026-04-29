@@ -7,10 +7,10 @@ edition = "2021"
 members = []
 
 [dependencies]
-openvm = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr", features = [
+openvm = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait", features = [
   "std",
 ] }
-openvm-bigint-guest = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr", features = [
+openvm-bigint-guest = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait", features = [
   "export-intrinsics",
 ] }
 openvm-ruint = { git = "https://github.com/openvm-org/uint.git", branch = "v1.14.0-openvm", package = "ruint" }

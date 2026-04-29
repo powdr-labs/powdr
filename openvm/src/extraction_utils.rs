@@ -4,8 +4,8 @@ use std::sync::{Arc, Mutex};
 
 use itertools::Itertools;
 use openvm_circuit::arch::{
-    AirInventory, AirInventoryError, ExecutorInventory, ExecutorInventoryError, SystemConfig,
-    VmCircuitConfig, VmExecutionConfig,
+    AirInventory, AirInventoryError, AnyAirWithColumns, ExecutorInventory, ExecutorInventoryError,
+    SystemConfig, VmCircuitConfig, VmExecutionConfig,
 };
 use openvm_circuit_primitives::bitwise_op_lookup::SharedBitwiseOperationLookupChip;
 use openvm_circuit_primitives::range_tuple::SharedRangeTupleCheckerChip;
@@ -375,8 +375,8 @@ impl<ISA: OpenVmISA> OriginalVmConfig<ISA> {
     }
 }
 
-pub fn get_columns(air: Arc<dyn AnyAir<BabyBearSC>>) -> Vec<Arc<String>> {
-    let width = <dyn AnyAir<BabyBearSC> as BaseAir<BabyBear>>::width(air.as_ref());
+pub fn get_columns(air: Arc<dyn AnyAirWithColumns<BabyBearSC>>) -> Vec<Arc<String>> {
+    let width = <dyn AnyAirWithColumns<BabyBearSC> as BaseAir<BabyBear>>::width(air.as_ref());
     air.columns()
         .inspect(|columns| {
             assert_eq!(columns.len(), width);

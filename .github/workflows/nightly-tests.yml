@@ -86,7 +86,7 @@ jobs:
         # Rust 1.91.1 is needed by fresher versions of dependencies of cargo-openvm.
         run: |
           rustup toolchain install 1.91.1
-          cargo +1.91.1 install --git 'https://github.com/powdr-labs/openvm.git' --tag "v2.0.0-beta.2-powdr" cargo-openvm
+          cargo +1.91.1 install --git 'https://github.com/powdr-labs/openvm.git' --branch "georgwiese/columns-air-trait" cargo-openvm
 
       - name: Install OpenVM guest toolchain
         # `cargo openvm build` invokes `cargo +nightly-2026-01-18 build --target
@@ -236,7 +236,7 @@ jobs:
         # Rust 1.91.1 is needed by fresher versions of dependencies of cargo-openvm.
         run: |
           rustup toolchain install 1.91.1
-          cargo +1.91.1 install --git 'https://github.com/powdr-labs/openvm.git' --tag "v2.0.0-beta.2-powdr" cargo-openvm
+          cargo +1.91.1 install --git 'https://github.com/powdr-labs/openvm.git' --branch "georgwiese/columns-air-trait" cargo-openvm
 
       - name: Install OpenVM guest toolchain
         # `cargo openvm build` invokes `cargo +nightly-2026-01-18 build --target
