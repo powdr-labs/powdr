@@ -47,18 +47,18 @@ jobs:
       ##### The block below is shared between cache build and PR build workflows #####
       - name: Install Rust toolchain nightly-2025-10-01 (with clippy and rustfmt)
         run: rustup toolchain install nightly-2025-10-01 --component clippy,rustfmt
-      - name: Install Rust toolchain 1.91 (stable)
-        run: rustup toolchain install 1.91
+      - name: Install Rust toolchain 1.91.1 (stable)
+        run: rustup toolchain install 1.91.1
       - name: Set cargo to perform shallow clones
         run: echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
       - name: Format
         run: cargo fmt --all --check --verbose
-      - name: Cargo check with Rust 1.91 (default features)
-        run: cargo +1.91 check --all-targets
+      - name: Cargo check with Rust 1.91.1 (default features)
+        run: cargo +1.91.1 check --all-targets
       - name: Lint no default features
-        run: cargo clippy --all --all-targets --features metrics --profile pr-tests --verbose -- -D warnings
+        run: cargo clippy --all --all-targets --features metrics,aot --profile pr-tests --verbose -- -D warnings
       - name: Build (CPU)
-        run: cargo build --all-targets --features metrics --all --profile pr-tests --verbose
+        run: cargo build --all-targets --features metrics,aot --all --profile pr-tests --verbose
       ###############################################################################
 
       - uses: taiki-e/install-action@nextest
@@ -161,14 +161,14 @@ jobs:
 
       - name: Install Rust toolchain nightly-2025-10-01 (with clippy and rustfmt)
         run: rustup toolchain install nightly-2025-10-01 --component clippy,rustfmt
-      - name: Install Rust toolchain 1.91 (stable)
-        run: rustup toolchain install 1.91
+      - name: Install Rust toolchain 1.91.1 (stable)
+        run: rustup toolchain install 1.91.1
       - name: Set cargo to perform shallow clones
         run: echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
       - name: Format
         run: cargo fmt --all --check --verbose
-      - name: Cargo check with Rust 1.91 (all features)
-        run: cargo +1.91 check --all-targets
+      - name: Cargo check with Rust 1.91.1 (all features)
+        run: cargo +1.91.1 check --all-targets
       - name: Lint no default features
         run: cargo clippy --all --all-targets --features cuda,metrics,aot --profile pr-tests --verbose -- -D warnings
       - name: Build (GPU)
@@ -207,7 +207,10 @@ jobs:
       - name: Init testing instance (GPU)
         uses: ./.github/actions/init-testing-instance-gpu
       - name: Run quick GPU tests from powdr-openvm-riscv only
-        run: cargo nextest run --archive-file tests_gpu.tar.zst --workspace-remap . --verbose --no-tests=warn
+        # Cap parallelism so concurrent GPU allocations fit in ~20 GiB of device
+        # memory on our shared runner. Heavy APC tests can each consume several
+        # GiB, so we run at most 4 at a time.
+        run: cargo nextest run --archive-file tests_gpu.tar.zst --workspace-remap . --verbose --no-tests=warn --test-threads=4
         # run: cargo nextest run --archive-file tests_gpu.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/7 --no-tests=warn
 
   # NOTE: test_apc_reth_app_proof has been moved to pr-tests-with-secrets.yml

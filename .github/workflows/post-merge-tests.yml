@@ -37,10 +37,10 @@ jobs:
         run: cargo build --release -p powdr-openvm
 
       - name: Install cargo openvm
-        # Rust 1.91 is needed by fresher versions of dependencies of cargo-openvm.
+        # Rust 1.91.1 is needed by fresher versions of dependencies of cargo-openvm.
         run: |
-          rustup toolchain install 1.91
-          cargo +1.91 install --git 'http://github.com/powdr-labs/openvm.git' --rev "v1.4.2-powdr-rc.4" --locked cargo-openvm
+          rustup toolchain install 1.91.1
+          cargo +1.91.1 install --git 'https://github.com/powdr-labs/openvm.git' --tag "v2.0.0-beta.2-powdr" cargo-openvm
 
       - name: Run keccak with 100 APCs
         run: /usr/bin/time -v cargo run --bin powdr_openvm_riscv -r prove guest-keccak --input 10000 --autoprecompiles 100 --recursion
@@ -52,11 +52,11 @@ jobs:
         run: /usr/bin/time -v cargo run --bin powdr_openvm_riscv -r prove guest-ecrecover --input 20 --autoprecompiles 100 --recursion
 
       - name: Patch benchmark
-        uses: ./.github/actions/patch-openvm-reth-benchmark
+        uses: ./.github/actions/patch-openvm-eth
 
       - name: Run reth benchmark
         run: |
-          cd openvm-reth-benchmark
+          cd openvm-eth
           RES_DIR=reth
           mkdir -p $RES_DIR
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
@@ -67,7 +67,7 @@ jobs:
 
       - name: Save revisions and run info
         run: |
-          echo "openvm-reth-benchmark: $(git -C openvm-reth-benchmark rev-parse HEAD)" > run.txt
+          echo "openvm-eth: $(git -C openvm-eth rev-parse HEAD)" > run.txt
           echo "powdr: $(git rev-parse HEAD)" >> run.txt
           echo "run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" >> run.txt
 

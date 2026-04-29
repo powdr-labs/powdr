@@ -10,9 +10,9 @@ use openvm_circuit_primitives::{
     range_tuple::{RangeTupleCheckerAir, RangeTupleCheckerChip, RangeTupleCheckerChipGPU},
     var_range::{VariableRangeCheckerAir, VariableRangeCheckerChipGPU},
 };
-use openvm_cuda_backend::engine::GpuBabyBearPoseidon2Engine;
-use openvm_cuda_backend::prover_backend::GpuBackend;
-use openvm_stark_backend::{config::StarkGenericConfig, p3_field::PrimeField32};
+use openvm_cuda_backend::BabyBearPoseidon2GpuEngine as GpuBabyBearPoseidon2CpuEngine;
+use openvm_cuda_backend::GpuBackend;
+use openvm_stark_backend::{p3_field::PrimeField32, StarkProtocolConfig};
 
 use crate::{
     isa::OpenVmISA, powdr_extension::trace_generator::common::DummyExecutor, BabyBearSC,
@@ -84,7 +84,9 @@ impl<ISA> PowdrPeripheryInstancesGpu<ISA> {
     }
 }
 
-impl<F: PrimeField32, ISA: OpenVmISA> VmExecutionExtension<F> for SharedPeripheryChipsGpu<ISA> {
+impl<F: PrimeField32 + openvm_stark_backend::p3_field::InjectiveMonomial<7>, ISA: OpenVmISA>
+    VmExecutionExtension<F> for SharedPeripheryChipsGpu<ISA>
+{
     type Executor = DummyExecutor<F, ISA>;
 
     fn extend_execution(
@@ -96,7 +98,7 @@ impl<F: PrimeField32, ISA: OpenVmISA> VmExecutionExtension<F> for SharedPeripher
     }
 }
 
-impl<SC: StarkGenericConfig, ISA: OpenVmISA> VmCircuitExtension<SC>
+impl<SC: StarkProtocolConfig, ISA: OpenVmISA> VmCircuitExtension<SC>
     for SharedPeripheryChipsGpu<ISA>
 {
     fn extend_circuit(&self, inventory: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {
@@ -148,7 +150,7 @@ impl<SC: StarkGenericConfig, ISA: OpenVmISA> VmCircuitExtension<SC>
 pub struct SharedPeripheryChipsGpuProverExt;
 
 impl<ISA: OpenVmISA>
-    VmProverExtension<GpuBabyBearPoseidon2Engine, DenseRecordArena, SharedPeripheryChipsGpu<ISA>>
+    VmProverExtension<GpuBabyBearPoseidon2CpuEngine, DenseRecordArena, SharedPeripheryChipsGpu<ISA>>
     for SharedPeripheryChipsGpuProverExt
 {
     fn extend_prover(

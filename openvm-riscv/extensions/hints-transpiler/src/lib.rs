@@ -58,7 +58,7 @@ impl<F: PrimeField32> TranspilerExtension<F> for HintsTranspilerExtension {
 
         let instruction = Instruction::phantom(
             PhantomDiscriminant(disc as u16),
-            F::from_canonical_usize(RV32_REGISTER_NUM_LIMBS * insn.rs1),
+            F::from_usize(RV32_REGISTER_NUM_LIMBS * insn.rs1),
             F::ZERO,
             0,
         );
