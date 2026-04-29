@@ -509,6 +509,7 @@ mod tests {
             a.clone() * (a.clone() - one.clone()),
             (a.clone() - one.clone()) * a.clone(),
             (three * a.clone()) * (five.clone() * a.clone() - five),
+            a.clone() * a.clone() - a.clone(),
         ];
 
         for constraint in constraints {
