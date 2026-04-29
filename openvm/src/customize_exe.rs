@@ -26,7 +26,7 @@ use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::execution::ExecutionState;
 use powdr_autoprecompiles::pgo::ApcCandidate;
 use powdr_autoprecompiles::PowdrConfig;
-use powdr_autoprecompiles::{InstructionHandler, VmConfig};
+use powdr_autoprecompiles::VmConfig;
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use powdr_openvm_bus_interaction_handler::bus_map::OpenVmBusType;
 use serde::{Deserialize, Serialize};
@@ -110,11 +110,7 @@ impl<'a, ISA: OpenVmISA> Adapter for BabyBearOpenVmApcAdapter<'a, ISA> {
         apc: Arc<AdapterApc<Self>>,
         instruction_handler: &Self::InstructionHandler,
     ) -> Self::ApcStats {
-        // Get the metrics for the apc using the same degree bound as the one used for the instruction chips
-        let apc_metrics = get_air_metrics(
-            Arc::new(PowdrAir::new(apc.machine.clone())),
-            instruction_handler.degree_bound().identities,
-        );
+        let apc_metrics = get_air_metrics(Arc::new(PowdrAir::new(apc.machine.clone())));
         let width_after = apc_metrics.widths;
 
         // Sum up the metrics for each instruction
