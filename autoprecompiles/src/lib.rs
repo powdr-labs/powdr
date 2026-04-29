@@ -33,6 +33,7 @@ use symbolic_machine_generator::statements_to_symbolic_machine;
 use powdr_number::FieldElement;
 
 pub mod adapter;
+pub mod apc_cache;
 pub mod blocks;
 pub mod bus_map;
 pub mod constraint_optimizer;
@@ -76,6 +77,10 @@ pub struct PowdrConfig {
     pub degree_bound: DegreeBound,
     /// The path to the APC candidates dir, if any.
     pub apc_candidates_dir_path: Option<PathBuf>,
+    /// Directory holding pre-generated APCs for the guest. When set, PGO
+    /// selectors load APCs from this directory by start PC instead of
+    /// building them from scratch.
+    pub apc_cache_dir_path: Option<PathBuf>,
     /// Whether to use optimistic precompiles.
     pub should_use_optimistic_precompiles: bool,
 }
@@ -91,6 +96,7 @@ impl PowdrConfig {
             apc_exec_count_cutoff: 1,
             degree_bound,
             apc_candidates_dir_path: None,
+            apc_cache_dir_path: None,
             should_use_optimistic_precompiles: false,
         }
     }
@@ -117,6 +123,11 @@ impl PowdrConfig {
 
     pub fn with_apc_candidates_dir<P: AsRef<Path>>(mut self, path: P) -> Self {
         self.apc_candidates_dir_path = Some(path.as_ref().to_path_buf());
+        self
+    }
+
+    pub fn with_apc_cache_dir<P: AsRef<Path>>(mut self, path: P) -> Self {
+        self.apc_cache_dir_path = Some(path.as_ref().to_path_buf());
         self
     }
 

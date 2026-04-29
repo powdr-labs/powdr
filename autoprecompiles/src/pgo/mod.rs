@@ -2,7 +2,8 @@ use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterato
 use strum::{Display, EnumString};
 
 use crate::{
-    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig},
+    adapter::{Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig},
+    apc_cache,
     blocks::SuperBlock,
     evaluation::evaluate_apc,
     execution_profile::ExecutionProfile,
@@ -93,21 +94,40 @@ fn create_apcs_for_all_blocks<A: Adapter>(
                 superblock.start_pcs(),
             );
 
-            let export_options = ExportOptions::new(
-                config.apc_candidates_dir_path.clone(),
-                &superblock.start_pcs(),
-                ExportLevel::OnlyAPC,
-            );
-            let apc = crate::build::<A>(
-                superblock.clone(),
-                vm_config.clone(),
-                config.degree_bound,
-                export_options,
-                &empirical_constraints,
-            )
-            .unwrap();
+            let apc =
+                build_or_load_apc::<A>(superblock, config, &vm_config, &empirical_constraints)
+                    .unwrap();
 
             evaluate_apc::<A>(vm_config.instruction_handler, apc)
         })
         .collect()
+}
+
+/// Build an APC for the given block, or load it from the on-disk cache if
+/// `config.apc_cache_dir_path` is set and a cache entry exists.
+pub(crate) fn build_or_load_apc<A: Adapter>(
+    block: SuperBlock<A::Instruction>,
+    config: &PowdrConfig,
+    vm_config: &AdapterVmConfig<A>,
+    empirical_constraints: &EmpiricalConstraints,
+) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
+    if let Some(cache_dir) = &config.apc_cache_dir_path {
+        if let Some(cached) = apc_cache::try_load_apc::<A>(cache_dir, &block.start_pcs()) {
+            tracing::debug!("Loaded cached APC for block {:?}", block.start_pcs());
+            return Ok(cached);
+        }
+    }
+
+    let export_options = ExportOptions::new(
+        config.apc_candidates_dir_path.clone(),
+        &block.start_pcs(),
+        ExportLevel::OnlyAPC,
+    );
+    crate::build::<A>(
+        block,
+        vm_config.clone(),
+        config.degree_bound,
+        export_options,
+        empirical_constraints,
+    )
 }

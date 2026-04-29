@@ -17,6 +17,7 @@ num-traits.workspace = true
 serde.workspace = true
 tracing.workspace = true
 tracing-subscriber = { version = "0.3.17", features = ["std", "env-filter"] }
+serde_cbor.workspace = true
 serde_json.workspace = true
 rayon = "1.10.0"
 strum = { version = "0.27.0", features = ["derive"] }
