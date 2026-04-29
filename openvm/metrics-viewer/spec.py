@@ -92,6 +92,17 @@ def detect_version(metrics_json: MetricsJson) -> Literal[1, 2]:
     return 1
 
 
+def detect_v2_backend(metrics_json: MetricsJson) -> Literal["gpu", "cpu", None]:
+    """For V2 runs, identify whether they came from the GPU or CPU prover backend.
+    Returns None for V1 runs."""
+    names = {e["metric"] for e in metrics_json["counter"] + metrics_json["gauge"]}
+    if any("logup_gkr" in n for n in names):
+        return "gpu"
+    if "prove_zerocheck_and_logup_time_ms" in names:
+        return "cpu"
+    return None
+
+
 def extract_metrics(run_name: str, metrics_json: MetricsJson) -> Metrics:
     """Port of extractMetrics from index.html. Returns dict of all computed values."""
     all_entries, app, leaf, internal, compression = load_metrics_dataframes(metrics_json)
@@ -406,9 +417,13 @@ def main() -> None:
 
     for run_name, metrics_json in runs.items():
         version = detect_version(metrics_json)
+        backend = detect_v2_backend(metrics_json)
         m = extract_metrics(run_name, metrics_json)
 
-        print(f"\nExperiment: {run_name}  (OpenVM {version})")
+        version_str = f"OpenVM {version}"
+        if backend:
+            version_str += f" ({backend.upper()})"
+        print(f"\nExperiment: {run_name}  ({version_str})")
 
         basic = BASIC_STATS_V2 if version == 2 else BASIC_STATS_V1
         proof = PROOF_TIME_V2 if version == 2 else PROOF_TIME_V1

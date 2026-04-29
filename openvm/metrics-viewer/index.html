@@ -454,6 +454,20 @@ function detectOpenVmVersion(combinedData) {
     return 1;
 }
 
+// For V2 runs, identify whether they came from the GPU or CPU prover backend.
+// Returns null for V1 runs.
+function detectV2Backend(combinedData) {
+    const firstRun = Object.values(combinedData)[0];
+    if (!firstRun) return null;
+    const allMetricNames = [
+        ...firstRun.counter.map(e => e.metric),
+        ...firstRun.gauge.map(e => e.metric),
+    ];
+    if (allMetricNames.some(n => n.includes('logup_gkr'))) return 'gpu';
+    if (allMetricNames.some(n => n === 'prove_zerocheck_and_logup_time_ms')) return 'cpu';
+    return null;
+}
+
 // ============================================================
 // Data Processing — ports of Python logic
 //
@@ -1761,7 +1775,10 @@ function processAndRender(data, sourceLabel = '') {
     }
 
     const badge = document.getElementById('versionBadge');
-    badge.textContent = `OpenVM ${detectedOpenVmVersion}`;
+    const backend = detectV2Backend(combinedData);
+    badge.textContent = backend
+        ? `OpenVM ${detectedOpenVmVersion} (${backend.toUpperCase()})`
+        : `OpenVM ${detectedOpenVmVersion}`;
     badge.style.display = 'inline';
 
     document.getElementById('uploadSection').style.display = 'none';
