@@ -162,7 +162,7 @@ pub fn compile_exe(
                 let original_config = original_program.vm_config.clone();
 
                 let total_non_apc_columns: usize = original_config
-                    .chip_inventory_air_metrics(config.degree_bound.identities)
+                    .chip_inventory_air_metrics()
                     .values()
                     .map(|m| m.total_width())
                     .sum::<usize>();
@@ -1068,7 +1068,6 @@ mod tests {
         let config = default_powdr_openvm_config(guest.apc, guest.skip)
             .with_apc_candidates_dir(apc_candidates_dir_path);
         let is_cell_pgo = matches!(guest.pgo_config, PgoConfig::Cell(_, _));
-        let max_degree = config.degree_bound.identities;
         let guest_program = compile_openvm(guest.name, GuestOptions::default()).unwrap();
         let compiled_program = compile_exe(
             guest_program,
@@ -1078,7 +1077,7 @@ mod tests {
         )
         .unwrap();
 
-        let (powdr_air_metrics, non_powdr_air_metrics) = compiled_program.air_metrics(max_degree);
+        let (powdr_air_metrics, non_powdr_air_metrics) = compiled_program.air_metrics();
 
         expected_metrics.powdr_expected_sum.assert_debug_eq(
             &powdr_air_metrics

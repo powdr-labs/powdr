@@ -498,10 +498,7 @@ impl AirMetrics {
 
 impl<ISA: OpenVmISA> CompiledProgram<ISA> {
     // Return a tuple of (powdr AirMetrics, non-powdr AirMetrics)
-    pub fn air_metrics(
-        &self,
-        max_degree: usize,
-    ) -> (Vec<(AirMetrics, Option<AirWidthsDiff>)>, Vec<AirMetrics>) {
+    pub fn air_metrics(&self) -> (Vec<(AirMetrics, Option<AirWidthsDiff>)>, Vec<AirMetrics>) {
         let air_inventory = self.vm_config.create_airs().unwrap();
 
         let chip_complex = <SpecializedConfigCpuBuilder<ISA> as VmBuilder<
@@ -532,11 +529,11 @@ impl<ISA: OpenVmISA> CompiledProgram<ISA> {
                 // TODO this is hacky but not sure how to do it better rn.
                 if name.starts_with("PowdrAir") {
                     powdr_air_metrics.push((
-                        get_air_metrics(air.clone(), max_degree),
+                        get_air_metrics(air.clone()),
                         Some(apc_stats.next().unwrap().widths),
                     ));
                 } else {
-                    non_powdr_air_metrics.push(get_air_metrics(air.clone(), max_degree));
+                    non_powdr_air_metrics.push(get_air_metrics(air.clone()));
                 }
 
                 (powdr_air_metrics, non_powdr_air_metrics)

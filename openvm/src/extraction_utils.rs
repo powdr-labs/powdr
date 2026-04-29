@@ -82,16 +82,13 @@ impl<F, ISA> OriginalAirs<F, ISA> {
         &mut self,
         opcode: VmOpcode,
         air_name: String,
-        machine: impl Fn(
-            DegreeBound,
-        )
-            -> Result<(SymbolicMachine<F>, AirMetrics), UnsupportedOpenVmReferenceError>,
+        machine: impl Fn() -> Result<(SymbolicMachine<F>, AirMetrics), UnsupportedOpenVmReferenceError>,
     ) -> Result<(), UnsupportedOpenVmReferenceError> {
         if self.opcode_to_air.contains_key(&opcode) {
             panic!("Opcode {opcode} already exists");
         }
         if !self.air_name_to_machine.contains_key(&air_name) {
-            let machine_instance = machine(self.degree_bound)?;
+            let machine_instance = machine()?;
             self.air_name_to_machine
                 .insert(air_name.clone(), machine_instance);
         }
@@ -280,10 +277,10 @@ impl<ISA: OpenVmISA> OriginalVmConfig<ISA> {
             .try_fold(
                 OriginalAirs::with_degree_bound(degree_bound),
                 |mut airs, (op, air_ref)| {
-                    airs.insert_opcode(op, air_ref.name(), |degree_bound| {
+                    airs.insert_opcode(op, air_ref.name(), || {
                         let columns = get_columns(air_ref.clone());
                         let constraints = get_constraints(air_ref.clone());
-                        let metrics = get_air_metrics(air_ref.clone(), degree_bound.identities);
+                        let metrics = get_air_metrics(air_ref.clone());
 
                         let powdr_exprs = constraints
                             .constraints
@@ -362,7 +359,7 @@ impl<ISA: OpenVmISA> OriginalVmConfig<ISA> {
         )
     }
 
-    pub fn chip_inventory_air_metrics(&self, max_degree: usize) -> HashMap<String, AirMetrics> {
+    pub fn chip_inventory_air_metrics(&self) -> HashMap<String, AirMetrics> {
         let inventory = &self.chip_complex().inventory;
 
         inventory
@@ -371,7 +368,7 @@ impl<ISA: OpenVmISA> OriginalVmConfig<ISA> {
             .iter()
             .map(|air| {
                 let name = air.name();
-                let metrics = get_air_metrics(air.clone(), max_degree);
+                let metrics = get_air_metrics(air.clone());
                 (name, metrics)
             })
             .collect()
@@ -397,14 +394,14 @@ pub fn get_name<SC: StarkProtocolConfig>(air: Arc<dyn AnyAir<SC>>) -> String {
 pub fn get_constraints(
     air: Arc<dyn AnyAir<BabyBearSC>>,
 ) -> SymbolicConstraints<p3_baby_bear::BabyBear> {
-    let builder = symbolic_builder_with_degree(air, None);
+    let builder = symbolic_builder(air);
     builder.constraints()
 }
 
-pub fn get_air_metrics(air: Arc<dyn AnyAir<BabyBearSC>>, max_degree: usize) -> AirMetrics {
+pub fn get_air_metrics(air: Arc<dyn AnyAir<BabyBearSC>>) -> AirMetrics {
     let main = <dyn AnyAir<BabyBearSC> as BaseAir<BabyBear>>::width(air.as_ref());
 
-    let symbolic_rap_builder = symbolic_builder_with_degree(air, Some(max_degree));
+    let symbolic_rap_builder = symbolic_builder(air);
     let preprocessed = symbolic_rap_builder.width().preprocessed.unwrap_or(0);
 
     let SymbolicConstraints {
@@ -419,12 +416,10 @@ pub fn get_air_metrics(air: Arc<dyn AnyAir<BabyBearSC>>, max_degree: usize) -> A
     }
 }
 
-pub fn symbolic_builder_with_degree(
+pub fn symbolic_builder(
     air: Arc<dyn AnyAir<BabyBearSC>>,
-    max_constraint_degree: Option<usize>,
 ) -> SymbolicRapBuilder<p3_baby_bear::BabyBear> {
-    let air_keygen_builder = AirKeygenBuilder::new(air);
-    air_keygen_builder.get_symbolic_builder(max_constraint_degree)
+    AirKeygenBuilder::new(air).get_symbolic_builder()
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, Debug)]
