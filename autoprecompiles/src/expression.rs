@@ -321,9 +321,9 @@ where
                 linear,
                 products,
             } => {
-                let lin = linear.iter().fold(*constant, |acc, &(idx, coeff)| {
-                    acc + coeff * row[idx]
-                });
+                let lin = linear
+                    .iter()
+                    .fold(*constant, |acc, &(idx, coeff)| acc + coeff * row[idx]);
                 products
                     .iter()
                     .fold(lin, |acc, &(a, b, coeff)| acc + coeff * row[a] * row[b])
