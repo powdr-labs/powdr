@@ -133,9 +133,9 @@ impl<F: PrimeField32> PartitionedBaseAir<F> for PowdrAir<F> {}
 
 #[cfg(feature = "cuda")]
 mod cuda {
-    use std::{cell::RefCell, rc::Rc};
+    use std::{cell::OnceCell, cell::RefCell, rc::Rc};
 
-    use openvm_circuit::arch::DenseRecordArena;
+    use openvm_circuit::arch::{ChipInventory, DenseRecordArena};
     use openvm_stark_sdk::p3_baby_bear::BabyBear;
 
     use crate::{
@@ -146,7 +146,12 @@ mod cuda {
             trace_generator::cuda::{PowdrPeripheryInstancesGpu, PowdrTraceGeneratorGpu},
             PowdrPrecompile,
         },
+        BabyBearSC, GpuBackend,
     };
+
+    /// Shared cache for the dummy chip inventory used by all APC GPU trace generators.
+    pub type DummyInventoryCache =
+        Rc<OnceCell<ChipInventory<BabyBearSC, DenseRecordArena, GpuBackend>>>;
 
     pub struct PowdrChipGpu<ISA: OpenVmISA> {
         pub name: String,
@@ -160,6 +165,7 @@ mod cuda {
             original_airs: OriginalAirs<BabyBear, ISA>,
             base_config: OriginalVmConfig<ISA>,
             periphery: PowdrPeripheryInstancesGpu<ISA>,
+            cached_dummy_inventory: DummyInventoryCache,
         ) -> Self {
             let PowdrPrecompile {
                 name,
@@ -167,8 +173,13 @@ mod cuda {
                 apc_record_arena_gpu: apc_record_arena,
                 ..
             } = precompile;
-            let trace_generator =
-                PowdrTraceGeneratorGpu::new(apc, original_airs, base_config, periphery);
+            let trace_generator = PowdrTraceGeneratorGpu::new(
+                apc,
+                original_airs,
+                base_config,
+                periphery,
+                cached_dummy_inventory,
+            );
 
             Self {
                 name,

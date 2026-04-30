@@ -251,6 +251,12 @@ impl<ISA: OpenVmISA>
             get_periphery_bus_ids(inventory),
         );
 
+        // Shared cache for dummy chip inventory — built once, reused by all APC chips
+        let cached_dummy_inventory = {
+            use crate::powdr_extension::chip::DummyInventoryCache;
+            DummyInventoryCache::default()
+        };
+
         for precompile in &extension.precompiles {
             use crate::powdr_extension::chip::PowdrChipGpu;
 
@@ -260,6 +266,7 @@ impl<ISA: OpenVmISA>
                 extension.airs.clone(),
                 extension.base_config.clone(),
                 shared_chips_pair.clone(),
+                cached_dummy_inventory.clone(),
             );
             inventory.add_executor_chip(chip);
         }

@@ -182,6 +182,8 @@ pub struct PowdrTraceGeneratorGpu<ISA: OpenVmISA> {
     pub original_airs: OriginalAirs<BabyBear, ISA>,
     pub config: OriginalVmConfig<ISA>,
     pub periphery: PowdrPeripheryInstancesGpu<ISA>,
+    cached_dummy_inventory:
+        std::rc::Rc<std::cell::OnceCell<ChipInventory<BabyBearSC, DenseRecordArena, GpuBackend>>>,
 }
 
 impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
@@ -190,12 +192,16 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         original_airs: OriginalAirs<BabyBear, ISA>,
         config: OriginalVmConfig<ISA>,
         periphery: PowdrPeripheryInstancesGpu<ISA>,
+        cached_dummy_inventory: std::rc::Rc<
+            std::cell::OnceCell<ChipInventory<BabyBearSC, DenseRecordArena, GpuBackend>>,
+        >,
     ) -> Self {
         Self {
             apc,
             original_airs,
             config,
             periphery,
+            cached_dummy_inventory,
         }
     }
 
@@ -213,19 +219,21 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
 
         let num_apc_calls = original_arenas.number_of_calls;
 
-        let chip_inventory: ChipInventory<BabyBearSC, DenseRecordArena, GpuBackend> =
+        let chip_inventory =
             info_span!("gpu_powdr_create_dummy_chips").in_scope(|| {
-                let airs =
-                    ISA::create_dummy_airs(self.config.config(), self.periphery.dummy.clone())
-                        .expect("Failed to create dummy airs");
+                self.cached_dummy_inventory.get_or_init(|| {
+                    let airs =
+                        ISA::create_dummy_airs(self.config.config(), self.periphery.dummy.clone())
+                            .expect("Failed to create dummy airs");
 
-                ISA::create_dummy_chip_complex_gpu(
-                    self.config.config(),
-                    airs,
-                    self.periphery.dummy.clone(),
-                )
-                .expect("Failed to create chip complex")
-                .inventory
+                    ISA::create_dummy_chip_complex_gpu(
+                        self.config.config(),
+                        airs,
+                        self.periphery.dummy.clone(),
+                    )
+                    .expect("Failed to create chip complex")
+                    .inventory
+                })
             });
 
         let dummy_trace_by_air_name: HashMap<String, DeviceMatrix<BabyBear>> =
