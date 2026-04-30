@@ -155,7 +155,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
 
         // Build dense Vec indexed by poly ID for O(1) column lookups in the hot loop.
         let width = apc_poly_id_to_index.len();
-        let id_to_idx: Vec<usize> = {
+        let apc_poly_id_to_index: Vec<usize> = {
             let max_id = apc_poly_id_to_index.keys().last().copied().unwrap_or(0) as usize;
             let mut vec = vec![0usize; max_id + 1];
             for (&id, &index) in &apc_poly_id_to_index {
@@ -169,7 +169,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
             use powdr_autoprecompiles::expression::CompiledBusInteraction;
             CompiledBusInteraction::compile_all(
                 &self.apc.machine().bus_interactions,
-                &id_to_idx,
+                &apc_poly_id_to_index,
                 BabyBear::ZERO,
                 BabyBear::ONE,
             )
@@ -204,21 +204,21 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
 
                 // Compute derived columns
                 for derived_column in columns_to_compute {
-                    let col_index = id_to_idx[derived_column.variable.id as usize];
+                    let col_index = apc_poly_id_to_index[derived_column.variable.id as usize];
                     row_slice[col_index] = match &derived_column.computation_method {
                         ComputationMethod::Constant(c) => *c,
                         ComputationMethod::QuotientOrZero(e1, e2) => {
                             use powdr_number::ExpressionConvertible;
 
                             let divisor_val = e2.to_expression(&|n| *n, &|column_ref| {
-                                row_slice[id_to_idx[column_ref.id as usize]]
+                                row_slice[apc_poly_id_to_index[column_ref.id as usize]]
                             });
                             if divisor_val.is_zero() {
                                 BabyBear::ZERO
                             } else {
                                 divisor_val.inverse()
                                     * e1.to_expression(&|n| *n, &|column_ref| {
-                                        row_slice[id_to_idx[column_ref.id as usize]]
+                                        row_slice[apc_poly_id_to_index[column_ref.id as usize]]
                                     })
                             }
                         }
