@@ -11,7 +11,10 @@ CUDA kernels                        2ms        2ms
 ```
 
 G4 (cache dummy chip complex): 32ms saved. Committed.
+G2-easy (pre-warm VPMM pool): FAILED — pool already warm, added overhead.
+G2-hard (CUDA streams): Not implemented — ~420ms savings but requires Chip trait change across all OpenVM.
 G1-G3 require modifying OpenVM's GPU chip trace generation infrastructure.
+G5 (skip zero-row): Not implemented — already a no-op (chips are already filtered).
 
 ### Detailed dummy_traces analysis
 
