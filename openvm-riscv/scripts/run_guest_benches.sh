@@ -13,8 +13,9 @@ SCRIPT_PATH=$(realpath "${BASH_SOURCE[0]}")
 SCRIPTS_DIR=$(dirname "$SCRIPT_PATH")
 
 # Pre-generate APCs for a guest into a shared cache directory once per guest, so
-# the per-`apc-count` runs below can reuse them via --apc-cache-dir instead of
-# rebuilding APCs from scratch on every invocation.
+# the per-`apc-count` runs below can reuse them via --apc-candidates-dir instead
+# of rebuilding APCs from scratch on every invocation. The same directory holds
+# both the cached APCs and the candidate snapshots / aggregated `apc_candidates.json`.
 generate_apcs() {
     guest="$1"
     apcs_dir="$2"
@@ -24,7 +25,7 @@ generate_apcs() {
     echo ""
 
     cargo run --bin powdr_openvm_riscv -r --features metrics -- \
-        generate-apcs "$guest" --apcs-dir "$apcs_dir"
+        generate-apcs "$guest" --apc-candidates-dir "$apcs_dir"
 }
 
 run_bench() {
@@ -44,17 +45,20 @@ run_bench() {
         --log "${run_name}"/psrecord.csv \
         --log-format csv \
         --plot "${run_name}"/psrecord.png \
-        "cargo run --bin powdr_openvm_riscv -r --features metrics prove \"$guest\" --input \"$input\" --autoprecompiles \"$apcs\" --metrics \"${run_name}/metrics.json\" --recursion --apc-candidates-dir \"${run_name}\" --apc-cache-dir \"${apcs_cache_dir}\""
+        "cargo run --bin powdr_openvm_riscv -r --features metrics prove \"$guest\" --input \"$input\" --autoprecompiles \"$apcs\" --metrics \"${run_name}/metrics.json\" --recursion --apc-candidates-dir \"${apcs_cache_dir}\""
 
     python3 "$SCRIPTS_DIR"/plot_trace_cells.py -o "${run_name}"/trace_cells.png "${run_name}"/metrics.json > "${run_name}"/trace_cells.txt
 
-    # apc_candidates.json is only available when apcs > 0
-    if [ "${apcs:-0}" -ne 0 ]; then
-        python3 "$SCRIPTS_DIR"/../../autoprecompiles/scripts/plot_effectiveness.py "${run_name}"/apc_candidates.json --output "${run_name}"/effectiveness.png
+    # apc_candidates.json is shared across runs of the same guest (lives in the cache dir).
+    if [ "${apcs:-0}" -ne 0 ] && [ -f "${apcs_cache_dir}/apc_candidates.json" ]; then
+        python3 "$SCRIPTS_DIR"/../../autoprecompiles/scripts/plot_effectiveness.py "${apcs_cache_dir}/apc_candidates.json" --output "${run_name}"/effectiveness.png
     fi
+}
 
-    # Clean up some files that we don't want to to push.
-    rm -f "${run_name}"/apc_candidate_*
+# After all runs for a guest, drop the per-block snapshot JSONs we don't push.
+cleanup_apc_candidates() {
+    apcs_cache_dir="$1"
+    rm -f "${apcs_cache_dir}"/apc_candidate_*
 }
 
 # TODO: Some benchmarks are currently disabled to keep the nightly run below 6h.
@@ -74,6 +78,8 @@ run_bench guest-keccak "$input" 0 apc000 "$cache"
 # run_bench guest-keccak "$input" 3 apc003 "$cache"  # Save ~6mins
 # run_bench guest-keccak "$input" 10 apc010 "$cache"  # Save ~3mins
 run_bench guest-keccak "$input" 30 apc030 "$cache"
+
+cleanup_apc_candidates "$cache"
 
 python3 $SCRIPTS_DIR/basic_metrics.py summary-table --csv **/metrics.json > basic_metrics.csv
 python3 $SCRIPTS_DIR/basic_metrics.py plot **/metrics.json -o proof_time_breakdown.png
@@ -95,6 +101,8 @@ run_bench guest-sha256 "$input" 0 apc000 "$cache"
 # run_bench guest-sha256 "$input" 3 apc003 "$cache"  # Save ~4mins
 # run_bench guest-sha256 "$input" 10 apc010 "$cache"  # Save ~5mins
 run_bench guest-sha256 "$input" 30 apc030 "$cache"
+
+cleanup_apc_candidates "$cache"
 
 python3 $SCRIPTS_DIR/basic_metrics.py summary-table --csv **/metrics.json > basic_metrics.csv
 python3 $SCRIPTS_DIR/basic_metrics.py plot **/metrics.json -o proof_time_breakdown.png
@@ -118,6 +126,8 @@ run_bench guest-pairing "$input" 0 apc000 "$cache"
 run_bench guest-pairing "$input" 30 apc030 "$cache"
 # run_bench guest-pairing "$input" 100 apc100 "$cache"  # Save ~7mins
 
+cleanup_apc_candidates "$cache"
+
 python3 $SCRIPTS_DIR/basic_metrics.py summary-table --csv **/metrics.json > basic_metrics.csv
 python3 $SCRIPTS_DIR/basic_metrics.py plot **/metrics.json -o proof_time_breakdown.png
 python3 $SCRIPTS_DIR/basic_metrics.py combine **/metrics.json > combined_metrics.json
@@ -139,6 +149,8 @@ run_bench guest-u256 "$input" 0 apc000 "$cache"
 # run_bench guest-u256 "$input" 10 apc010 "$cache"  # Save ~4mins
 run_bench guest-u256 "$input" 30 apc030 "$cache"
 
+cleanup_apc_candidates "$cache"
+
 python3 $SCRIPTS_DIR/basic_metrics.py summary-table --csv **/metrics.json > basic_metrics.csv
 python3 $SCRIPTS_DIR/basic_metrics.py plot **/metrics.json -o proof_time_breakdown.png
 python3 $SCRIPTS_DIR/basic_metrics.py combine **/metrics.json > combined_metrics.json
@@ -157,6 +169,8 @@ run_bench guest-matmul 0 0 apc000 "$cache"
 run_bench guest-matmul 0 3 apc003 "$cache"
 # run_bench guest-matmul 0 10 apc010 "$cache"  # Save ~1min
 run_bench guest-matmul 0 30 apc030 "$cache"
+
+cleanup_apc_candidates "$cache"
 
 python3 "$SCRIPTS_DIR"/basic_metrics.py summary-table --csv **/metrics.json > basic_metrics.csv
 python3 "$SCRIPTS_DIR"/basic_metrics.py plot **/metrics.json -o proof_time_breakdown.png
@@ -187,6 +201,9 @@ run_bench guest-ecc-powdr-affine-hint $input 0 affine-hint-apc000 "$cache_aff"
 run_bench guest-ecc-powdr-affine-hint $input 30 affine-hint-apc030 "$cache_aff"
 # run_bench guest-ecc-powdr-affine-hint $input 100 affine-hint-apc100 "$cache_aff"  # Save ~7mins
 
+cleanup_apc_candidates "$cache_proj"
+cleanup_apc_candidates "$cache_aff"
+
 python3 $SCRIPTS_DIR/basic_metrics.py summary-table --csv **/metrics.json > basic_metrics.csv
 python3 $SCRIPTS_DIR/basic_metrics.py plot **/metrics.json -o proof_time_breakdown.png
 python3 $SCRIPTS_DIR/basic_metrics.py combine **/metrics.json > combined_metrics.json
@@ -208,6 +225,8 @@ run_bench guest-ecrecover $input 0 apc000 "$cache"
 # run_bench guest-ecrecover $input 10 apc010 "$cache"  # Save ~6mins
 run_bench guest-ecrecover $input 30 apc030 "$cache"
 # run_bench guest-ecrecover $input 100 apc100 "$cache"  # Save ~6mins
+
+cleanup_apc_candidates "$cache"
 
 python3 $SCRIPTS_DIR/basic_metrics.py summary-table --csv **/metrics.json > basic_metrics.csv
 python3 $SCRIPTS_DIR/basic_metrics.py plot **/metrics.json -o proof_time_breakdown.png

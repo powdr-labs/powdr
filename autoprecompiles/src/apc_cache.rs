@@ -46,15 +46,19 @@ pub fn save_apc<A: Adapter>(dir: &Path, apc: &AdapterApc<A>) {
         .unwrap_or_else(|e| panic!("Failed to serialize APC to {}: {e}", path.display()));
 }
 
-/// Build APCs for every basic block in `blocks` and write each to `output_dir`.
-/// This is the offline step used by the `generate-apcs` CLI command.
+/// Build APCs for every basic block in `blocks` and write each to
+/// `config.apc_candidates_dir_path`. This is the offline step used by the
+/// `generate-apcs` CLI command.
 pub fn generate_and_cache_apcs<A: Adapter>(
     blocks: Vec<SuperBlock<A::Instruction>>,
     config: &PowdrConfig,
     vm_config: crate::adapter::AdapterVmConfig<A>,
     empirical_constraints: EmpiricalConstraints,
-    output_dir: &Path,
 ) {
+    let output_dir = config
+        .apc_candidates_dir_path
+        .as_deref()
+        .expect("generate_and_cache_apcs requires apc_candidates_dir_path to be set");
     std::fs::create_dir_all(output_dir).expect("Failed to create APC cache directory");
 
     tracing::info!(

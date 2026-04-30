@@ -150,15 +150,11 @@ pub fn compile_openvm(
     })
 }
 
-/// Build APCs for every basic block in the guest and write them to `output_dir`,
-/// keyed by start PC. Subsequent runs can pass the same directory via
-/// [`PowdrConfig::with_apc_cache_dir`] to skip APC construction during PGO selection.
-pub fn generate_apcs(
-    original_program: OriginalCompiledProgram<RiscvISA>,
-    config: PowdrConfig,
-    empirical_constraints: EmpiricalConstraints,
-    output_dir: &std::path::Path,
-) {
+/// Build APCs for every basic block in the guest and write them to
+/// `config.apc_candidates_dir_path`, keyed by start PC. Subsequent runs can pass
+/// the same directory via [`PowdrConfig::with_apc_candidates_dir`] to skip APC
+/// construction during PGO selection.
+pub fn generate_apcs(original_program: OriginalCompiledProgram<RiscvISA>, config: PowdrConfig) {
     let original_config = original_program.vm_config.clone();
     let airs = original_config
         .airs(config.degree_bound)
@@ -182,13 +178,7 @@ pub fn generate_apcs(
 
     powdr_autoprecompiles::apc_cache::generate_and_cache_apcs::<
         powdr_openvm::BabyBearOpenVmApcAdapter<'_, RiscvISA>,
-    >(
-        blocks,
-        &config,
-        vm_config,
-        empirical_constraints,
-        output_dir,
-    );
+    >(blocks, &config, vm_config, EmpiricalConstraints::default());
 }
 
 pub fn compile_exe(

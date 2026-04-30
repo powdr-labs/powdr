@@ -111,7 +111,7 @@ pub(crate) fn build_or_load_apc<A: Adapter>(
     vm_config: &AdapterVmConfig<A>,
     empirical_constraints: &EmpiricalConstraints,
 ) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
-    if let Some(cache_dir) = &config.apc_cache_dir_path {
+    if let Some(cache_dir) = &config.apc_candidates_dir_path {
         if let Some(cached) = apc_cache::try_load_apc::<A>(cache_dir, &block.start_pcs()) {
             tracing::debug!("Loaded cached APC for block {:?}", block.start_pcs());
             return Ok(cached);
