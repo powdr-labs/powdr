@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use itertools::Itertools;
+use tracing::info_span;
 use openvm_circuit::{
     arch::{ChipInventory, DenseRecordArena},
     utils::next_power_of_two_or_zero,
@@ -212,45 +213,49 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
 
         let num_apc_calls = original_arenas.number_of_calls;
 
-        let chip_inventory: ChipInventory<BabyBearSC, DenseRecordArena, GpuBackend> = {
-            let airs = ISA::create_dummy_airs(self.config.config(), self.periphery.dummy.clone())
-                .expect("Failed to create dummy airs");
+        let chip_inventory: ChipInventory<BabyBearSC, DenseRecordArena, GpuBackend> =
+            info_span!("gpu_powdr_create_dummy_chips").in_scope(|| {
+                let airs =
+                    ISA::create_dummy_airs(self.config.config(), self.periphery.dummy.clone())
+                        .expect("Failed to create dummy airs");
 
-            ISA::create_dummy_chip_complex_gpu(
-                self.config.config(),
-                airs,
-                self.periphery.dummy.clone(),
-            )
-            .expect("Failed to create chip complex")
-            .inventory
-        };
+                ISA::create_dummy_chip_complex_gpu(
+                    self.config.config(),
+                    airs,
+                    self.periphery.dummy.clone(),
+                )
+                .expect("Failed to create chip complex")
+                .inventory
+            });
 
-        let dummy_trace_by_air_name: HashMap<String, DeviceMatrix<BabyBear>> = chip_inventory
-            .chips()
-            .iter()
-            .enumerate()
-            .rev()
-            .filter_map(|(insertion_idx, chip)| {
-                let air_name = chip_inventory.airs().ext_airs()[insertion_idx].name();
+        let dummy_trace_by_air_name: HashMap<String, DeviceMatrix<BabyBear>> =
+            info_span!("gpu_powdr_dummy_traces").in_scope(|| {
+                chip_inventory
+                    .chips()
+                    .iter()
+                    .enumerate()
+                    .rev()
+                    .filter_map(|(insertion_idx, chip)| {
+                        let air_name = chip_inventory.airs().ext_airs()[insertion_idx].name();
 
-                let record_arena = {
-                    match original_arenas.take_real_arena(&air_name) {
-                        Some(ra) => ra,
-                        None => return None, // skip this iteration, because we only have record arena for chips that are used
-                    }
-                };
+                        let record_arena = {
+                            match original_arenas.take_real_arena(&air_name) {
+                                Some(ra) => ra,
+                                None => return None,
+                            }
+                        };
 
-                // We might have initialized an arena for an AIR which ends up having no real records. It gets filtered out here.
-                let ctx = chip.generate_proving_ctx(record_arena);
-                let m = ctx.common_main;
-                use openvm_stark_backend::prover::MatrixDimensions;
-                if m.height() > 0 {
-                    Some((air_name, m))
-                } else {
-                    None
-                }
-            })
-            .collect();
+                        let ctx = chip.generate_proving_ctx(record_arena);
+                        let m = ctx.common_main;
+                        use openvm_stark_backend::prover::MatrixDimensions;
+                        if m.height() > 0 {
+                            Some((air_name, m))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
+            });
 
         // Map from apc poly id to its index in the final apc trace
         let apc_poly_id_to_index: BTreeMap<u64, usize> = self
@@ -265,11 +270,19 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         // by substitutions or derived expressions default to zero, matching the CPU path)
         let width = apc_poly_id_to_index.len();
         let height = next_power_of_two_or_zero(num_apc_calls);
+        #[cfg(feature = "metrics")]
+        {
+            metrics::gauge!("gpu_powdr_apc_calls").set(num_apc_calls as f64);
+            metrics::gauge!("gpu_powdr_apc_width").set(width as f64);
+            metrics::gauge!("gpu_powdr_apc_height").set(height as f64);
+            metrics::gauge!("gpu_powdr_bus_interactions")
+                .set(self.apc.machine.bus_interactions.len() as f64);
+        }
         let mut output = DeviceMatrix::<BabyBear>::with_capacity(height, width);
         output.buffer().fill_zero().unwrap();
 
         // Prepare `OriginalAir` and `Subst` arrays
-        let (airs, substitutions) = {
+        let (airs, substitutions) = info_span!("gpu_powdr_prepare_subs").in_scope(|| {
             self.apc
                 // go through original instructions
                 .instructions()
@@ -325,34 +338,40 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
                         (airs, substitutions)
                     },
                 )
-        };
+        });
 
-        // Send the airs and substitutions to device
-        let airs = airs.to_device().unwrap();
-        let substitutions = substitutions.to_device().unwrap();
-
-        cuda_abi::apc_tracegen(&mut output, airs, substitutions, num_apc_calls).unwrap();
+        // Send the airs and substitutions to device and run tracegen kernel
+        info_span!("gpu_powdr_apc_tracegen").in_scope(|| {
+            let airs = airs.to_device().unwrap();
+            let substitutions = substitutions.to_device().unwrap();
+            cuda_abi::apc_tracegen(&mut output, airs, substitutions, num_apc_calls).unwrap();
+        });
 
         // Apply derived columns using the GPU expression evaluator
-        let (derived_specs, derived_bc) = compile_derived_to_gpu(
-            &self.apc.machine.derived_columns,
-            &apc_poly_id_to_index,
-            height,
-        );
-        // In practice `d_specs` is never empty, because we will always have `is_valid`
-        let d_specs = derived_specs.to_device().unwrap();
-        let d_bc = derived_bc.to_device().unwrap();
-        cuda_abi::apc_apply_derived_expr(&mut output, d_specs, d_bc, num_apc_calls).unwrap();
+        info_span!("gpu_powdr_apply_derived").in_scope(|| {
+            let (derived_specs, derived_bc) = compile_derived_to_gpu(
+                &self.apc.machine.derived_columns,
+                &apc_poly_id_to_index,
+                height,
+            );
+            let d_specs = derived_specs.to_device().unwrap();
+            let d_bc = derived_bc.to_device().unwrap();
+            cuda_abi::apc_apply_derived_expr(&mut output, d_specs, d_bc, num_apc_calls).unwrap();
+        });
 
         // Encode bus interactions for GPU consumption
-        let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
-            &self.apc.machine.bus_interactions,
-            &apc_poly_id_to_index,
-            height,
-        );
-        let bus_interactions = bus_interactions.to_device().unwrap();
-        let arg_spans = arg_spans.to_device().unwrap();
-        let bytecode = bytecode.to_device().unwrap();
+        let (bus_interactions, arg_spans, bytecode) =
+            info_span!("gpu_powdr_compile_bus").in_scope(|| {
+                let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
+                    &self.apc.machine.bus_interactions,
+                    &apc_poly_id_to_index,
+                    height,
+                );
+                let bus_interactions = bus_interactions.to_device().unwrap();
+                let arg_spans = arg_spans.to_device().unwrap();
+                let bytecode = bytecode.to_device().unwrap();
+                (bus_interactions, arg_spans, bytecode)
+            });
 
         // Gather GPU inputs for periphery (bus ids, count device buffers)
         let periphery = &self.periphery.real;
@@ -372,30 +391,28 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         let bitwise_count_u32 = periphery.bitwise_lookup_8.as_ref().unwrap().count.as_ref();
 
         // Launch GPU apply-bus to update periphery histograms on device
-        // Note that this is implicitly serialized after `apc_tracegen`,
-        // because we use the default host to device stream, which only launches
-        // the next kernel function after the prior (`apc_tracegen`) returns.
-        // This is important because bus evaluation depends on trace results.
-        cuda_abi::apc_apply_bus(
-            // APC related
-            &output,
-            num_apc_calls,
-            // Interaction related
-            bytecode,
-            bus_interactions,
-            arg_spans,
-            // Variable range checker related
-            var_range_bus_id,
-            var_range_count,
-            // Tuple range checker related
-            tuple2_bus_id,
-            tuple2_count_u32,
-            tuple2_sizes,
-            // Bitwise related
-            bitwise_bus_id,
-            bitwise_count_u32,
-        )
-        .unwrap();
+        info_span!("gpu_powdr_apply_bus").in_scope(|| {
+            cuda_abi::apc_apply_bus(
+                // APC related
+                &output,
+                num_apc_calls,
+                // Interaction related
+                bytecode,
+                bus_interactions,
+                arg_spans,
+                // Variable range checker related
+                var_range_bus_id,
+                var_range_count,
+                // Tuple range checker related
+                tuple2_bus_id,
+                tuple2_count_u32,
+                tuple2_sizes,
+                // Bitwise related
+                bitwise_bus_id,
+                bitwise_count_u32,
+            )
+            .unwrap();
+        });
 
         Some(output)
     }
