@@ -3,6 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use itertools::Itertools;
 use openvm_circuit::{arch::MatrixRecordArena, utils::next_power_of_two_or_zero};
 use openvm_circuit_primitives::Chip;
+use openvm_stark_backend::p3_maybe_rayon::prelude::*;
 use openvm_stark_backend::{
     p3_field::{Field, PrimeCharacteristicRing, PrimeField32},
     p3_matrix::dense::{DenseMatrix, RowMajorMatrix},
@@ -178,65 +179,64 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
         let height = next_power_of_two_or_zero(num_apc_calls);
         let mut values = <BabyBear as PrimeCharacteristicRing>::zero_vec(height * width);
 
-        // go through the final table and fill in the values (parallelized)
-        {
-            use openvm_stark_backend::p3_maybe_rayon::prelude::*;
+        // Go through the final table and fill in the values.
+        // Parallelized: the original code used chunks_mut (serial) because the
+        // periphery.apply() calls were not thread-safe. Now that periphery chips
+        // use AtomicU32 counters, we can use par_chunks_mut safely.
+        // Extract references to avoid capturing `self` (ISA::Config is not Sync).
+        let periphery_real = &self.periphery.real;
+        let periphery_bus_ids = &self.periphery.bus_ids;
 
-            // Extract references to avoid capturing `self` (ISA::Config is not Sync)
-            let periphery_real = &self.periphery.real;
-            let periphery_bus_ids = &self.periphery.bus_ids;
-
-            values
-                .par_chunks_mut(width)
-                .zip(dummy_values.into_par_iter())
-                .for_each(|(row_slice, dummy_values)| {
-                    // Copy dummy rows to APC row
-                    for (dummy_row, dummy_trace_index_to_apc_index) in dummy_values
-                        .iter()
-                        .map(|r| &r.data[r.start..r.start + r.length])
-                        .zip_eq(&dummy_trace_index_to_apc_index_by_instruction)
-                    {
-                        for (dummy_trace_index, apc_index) in dummy_trace_index_to_apc_index {
-                            row_slice[*apc_index] = dummy_row[*dummy_trace_index];
-                        }
+        values
+            .par_chunks_mut(width)
+            .zip(dummy_values.into_par_iter())
+            .for_each(|(row_slice, dummy_values)| {
+                // Copy dummy rows to APC row
+                for (dummy_row, dummy_trace_index_to_apc_index) in dummy_values
+                    .iter()
+                    .map(|r| &r.data[r.start..r.start + r.length])
+                    .zip_eq(&dummy_trace_index_to_apc_index_by_instruction)
+                {
+                    for (dummy_trace_index, apc_index) in dummy_trace_index_to_apc_index {
+                        row_slice[*apc_index] = dummy_row[*dummy_trace_index];
                     }
+                }
 
-                    // Compute derived columns
-                    for derived_column in columns_to_compute {
-                        let col_index = id_to_idx[derived_column.variable.id as usize];
-                        row_slice[col_index] = match &derived_column.computation_method {
-                            ComputationMethod::Constant(c) => *c,
-                            ComputationMethod::QuotientOrZero(e1, e2) => {
-                                use powdr_number::ExpressionConvertible;
+                // Compute derived columns
+                for derived_column in columns_to_compute {
+                    let col_index = id_to_idx[derived_column.variable.id as usize];
+                    row_slice[col_index] = match &derived_column.computation_method {
+                        ComputationMethod::Constant(c) => *c,
+                        ComputationMethod::QuotientOrZero(e1, e2) => {
+                            use powdr_number::ExpressionConvertible;
 
-                                let divisor_val = e2.to_expression(&|n| *n, &|column_ref| {
-                                    row_slice[id_to_idx[column_ref.id as usize]]
-                                });
-                                if divisor_val.is_zero() {
-                                    BabyBear::ZERO
-                                } else {
-                                    divisor_val.inverse()
-                                        * e1.to_expression(&|n| *n, &|column_ref| {
-                                            row_slice[id_to_idx[column_ref.id as usize]]
-                                        })
-                                }
+                            let divisor_val = e2.to_expression(&|n| *n, &|column_ref| {
+                                row_slice[id_to_idx[column_ref.id as usize]]
+                            });
+                            if divisor_val.is_zero() {
+                                BabyBear::ZERO
+                            } else {
+                                divisor_val.inverse()
+                                    * e1.to_expression(&|n| *n, &|column_ref| {
+                                        row_slice[id_to_idx[column_ref.id as usize]]
+                                    })
                             }
-                        };
-                    }
+                        }
+                    };
+                }
 
-                    // Evaluate bus interactions using compiled expressions.
-                    // Periphery chips use AtomicU32 counters — thread-safe.
-                    for ci in &compiled_interactions {
-                        let mult = ci.mult.eval(row_slice);
-                        periphery_real.apply(
-                            ci.id as u16,
-                            mult.as_canonical_u32(),
-                            ci.args.iter().map(|a| a.eval(row_slice).as_canonical_u32()),
-                            periphery_bus_ids,
-                        );
-                    }
-                });
-        }
+                // Evaluate bus interactions using compiled expressions.
+                // Periphery chips use AtomicU32 counters — thread-safe.
+                for ci in &compiled_interactions {
+                    let mult = ci.mult.eval(row_slice);
+                    periphery_real.apply(
+                        ci.id as u16,
+                        mult.as_canonical_u32(),
+                        ci.args.iter().map(|a| a.eval(row_slice).as_canonical_u32()),
+                        periphery_bus_ids,
+                    );
+                }
+            });
 
         RowMajorMatrix::new(values, width)
     }
