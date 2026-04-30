@@ -4,16 +4,19 @@
 //! and inline byte-copy → word-copy transformations to a RISC-V ELF binary.
 //!
 //! Usage:
-//!   elf-optimizer <input.elf> [--asm | --bin <output.elf> | --html <output.html>]
+//!   elf-optimizer <input.elf> [--asm | --bin <output.elf> | --html <output.html>
+//!                              | --profile <profile.csv> <output.html>]
 //!
 //! Modes:
-//!   --asm              Print disassembly of the optimized instruction stream
-//!   --bin <output>     Write a patched ELF binary (copies input, patches text section)
-//!   --html <output>    Generate an interactive HTML diff view of the optimizations
-//!   (default)          Print optimization summary only
+//!   --asm                          Print disassembly of the optimized instruction stream
+//!   --bin <output>                 Write a patched ELF binary (copies input, patches text section)
+//!   --html <output>                Generate an interactive HTML diff view of the optimizations
+//!   --profile <csv> <output.html>  Generate an HTML profile report from a `pc,count` CSV
+//!   (default)                      Print optimization summary only
 
 mod disasm;
 mod html;
+mod profile;
 
 use std::env;
 use std::fs;
@@ -24,15 +27,17 @@ use powdr_elf_optimizer::optimize_elf_detailed;
 
 use disasm::disasm;
 use html::generate_html_diff;
+use profile::generate_profile_html;
 
 fn print_usage(prog: &str) {
-    eprintln!("Usage: {prog} <input.elf> [--asm | --bin <output.elf> | --html <output.html>]");
+    eprintln!("Usage: {prog} <input.elf> [--asm | --bin <output.elf> | --html <output.html> | --profile <profile.csv> <output.html>]");
     eprintln!();
     eprintln!("Modes:");
-    eprintln!("  --asm              Print disassembly of the optimized instruction stream");
-    eprintln!("  --bin <output>     Write patched ELF binary");
-    eprintln!("  --html <output>    Generate interactive HTML diff of optimizations");
-    eprintln!("  (default)          Print optimization summary only");
+    eprintln!("  --asm                          Print disassembly of the optimized instruction stream");
+    eprintln!("  --bin <output>                 Write patched ELF binary");
+    eprintln!("  --html <output>                Generate interactive HTML diff of optimizations");
+    eprintln!("  --profile <csv> <output.html>  Generate HTML profile report from `pc,count` CSV");
+    eprintln!("  (default)                      Print optimization summary only");
 }
 
 fn main() {
@@ -54,6 +59,7 @@ fn main() {
         Asm,
         Bin(String),
         Html(String),
+        Profile(String, String),
     }
     let mode = if args.len() >= 3 {
         match args[2].as_str() {
@@ -71,6 +77,13 @@ fn main() {
                     process::exit(1);
                 }
                 Mode::Html(args[3].clone())
+            }
+            "--profile" => {
+                if args.len() < 5 {
+                    eprintln!("Error: --profile requires <profile.csv> <output.html>");
+                    process::exit(1);
+                }
+                Mode::Profile(args[3].clone(), args[4].clone())
             }
             _ => {
                 print_usage(&args[0]);
@@ -110,6 +123,15 @@ fn main() {
                 output_path,
             );
             println!("Wrote HTML diff to {output_path}");
+        }
+        Mode::Profile(ref csv_path, ref output_path) => {
+            generate_profile_html(
+                &result.instructions,
+                &result.symbols,
+                result.pc_base,
+                Path::new(csv_path),
+                output_path,
+            );
         }
         Mode::Asm => {
             for (i, &insn) in result.instructions.iter().enumerate() {
