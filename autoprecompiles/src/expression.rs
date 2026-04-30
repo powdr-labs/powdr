@@ -253,20 +253,24 @@ where
     }
 }
 
-// ---- Compiled expression evaluation (O2 optimization) ----
-
 use powdr_expression::{AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 
 /// Pre-compiled expression for fast per-row evaluation without recursive AST walking.
+///
+/// At build time, each `AlgebraicExpression` is analyzed once and compiled into the most
+/// efficient variant. The specialized variants (`Constant`, `DirectLoad`, `LinearCombination`)
+/// avoid the recursive enum-matching, closure dispatch, and trait-object overhead of
+/// `AlgebraicExpression::to_expression()`. `General` is the fallback for degree-2+
+/// expressions that can't be decomposed into a linear combination.
 pub enum CompiledExpr<F> {
-    /// Compile-time constant.
+    /// Expression is a compile-time constant. Zero cost per row.
     Constant(F),
-    /// Single column load: row[col_idx].
+    /// Expression is a single column read: `row[col_idx]`. One array access per row.
     DirectLoad(usize),
-    /// constant + sum(coeff * row[col_idx]).
+    /// Expression is `constant + sum(coeff * row[col_idx])`. Tight multiply-accumulate loop.
     LinearCombination { constant: F, terms: Vec<(usize, F)> },
-    /// Pre-resolved general expression (references already mapped to column indices).
-    /// Used for degree-2+ expressions. The AlgebraicReference.id stores the column index directly.
+    /// Degree-2+ expression that can't be linearized. Falls back to recursive AST walk,
+    /// but with references pre-resolved to column indices (no BTreeMap lookup needed).
     General(AlgebraicExpression<F>),
 }
 
