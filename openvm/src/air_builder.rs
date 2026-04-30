@@ -17,10 +17,7 @@ impl<SC: StarkProtocolConfig> AirKeygenBuilder<SC> {
         AirKeygenBuilder { air }
     }
 
-    pub fn get_symbolic_builder(
-        &self,
-        _max_constraint_degree: Option<usize>,
-    ) -> SymbolicRapBuilder<Val<SC>> {
+    pub fn get_symbolic_builder(&self) -> SymbolicRapBuilder<Val<SC>> {
         let preprocessed_width: Option<usize> =
             BaseAir::<Val<SC>>::preprocessed_trace(self.air.as_ref()).map(|t| t.width);
         let width = TraceWidth {
