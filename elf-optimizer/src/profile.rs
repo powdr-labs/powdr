@@ -400,7 +400,18 @@ function selectTab(name){
  document.querySelectorAll('.tabnav button').forEach(function(e){e.classList.remove('active')});
  var p=document.getElementById('tab-'+name);if(p)p.classList.add('active');
  var b=document.getElementById('btn-'+name);if(b)b.classList.add('active');
- if(name==='flame'&&!window._flameDrawn){drawFlame();window._flameDrawn=true}
+ if(name==='flame'&&!window._flameDrawn){
+  // Use rAF so the tabpane is laid out (clientWidth>0) before we measure.
+  requestAnimationFrame(function(){
+   try{
+    if(drawFlame())window._flameDrawn=true;
+   }catch(err){
+    console.error('flame render failed:',err);
+    var w=document.getElementById('flameWrap');
+    if(w)w.innerHTML='<p style="color:#f85149;padding:12px">Flame chart failed to render: '+(err&&err.message||err)+'</p>';
+   }
+  });
+ }
 }
 // ── Flame chart (icicle grouped by `::` module path) ────────────────────
 // FLAME_DATA is injected as a JSON variable in a separate script block.
@@ -447,11 +458,13 @@ function colorFor(name,depth){
 }
 function drawFlame(){
  var data=window.FLAME_DATA;
- if(!data){return}
+ if(!data||!data.funcs){console.warn('FLAME_DATA missing');return false}
+ console.log('drawFlame: building tree from',data.funcs.length,'funcs');
  var tree=buildFlameTree(data.funcs);
  window._flameTree=tree;
  window._flameRoot=tree;
  renderFlame(tree);
+ return true;
 }
 function renderFlame(root){
  var container=document.getElementById('flameWrap');
@@ -475,8 +488,8 @@ function renderFlame(root){
   r.setAttribute('x',x0);r.setAttribute('y',d*rowH);
   r.setAttribute('width',Math.max(w-1,0.5));r.setAttribute('height',rowH-1);
   r.setAttribute('fill',colorFor(n.n,d));
-  r.dataset.name=n.n;r.dataset.value=n.v;
-  if(n.id)r.dataset.id=n.id;
+  r.setAttribute('data-name',n.n);r.setAttribute('data-value',n.v);
+  if(n.id)r.setAttribute('data-id',n.id);
   r.addEventListener('mouseenter',showTip);
   r.addEventListener('mousemove',moveTip);
   r.addEventListener('mouseleave',hideTip);
@@ -530,10 +543,12 @@ function flameSearch(){
 function jumpToFromFlame(id){selectTab('funcs');setTimeout(function(){jumpTo(id)},50)}
 function showTip(e){
  var t=document.getElementById('tip'),r=e.target,total=window._flameTree?window._flameTree.v:1;
- var v=parseInt(r.dataset.value,10);
- t.innerHTML='<b>'+r.dataset.name.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</b><br>'+
+ var v=parseInt(r.getAttribute('data-value'),10);
+ var nm=r.getAttribute('data-name')||'';
+ var did=r.getAttribute('data-id');
+ t.innerHTML='<b>'+nm.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</b><br>'+
    v.toLocaleString()+' samples · '+((v/total)*100).toFixed(3)+'% of attributed'+
-   (r.dataset.id?'<br><span style="color:#8b949e">click to zoom · shift+click to jump to function</span>':'<br><span style="color:#8b949e">click to zoom</span>');
+   (did?'<br><span style="color:#8b949e">click to zoom · shift+click to jump to function</span>':'<br><span style="color:#8b949e">click to zoom</span>');
  t.style.display='block';moveTip(e);
 }
 function moveTip(e){var t=document.getElementById('tip');t.style.left=(e.clientX+12)+'px';t.style.top=(e.clientY+12)+'px'}
@@ -726,8 +741,7 @@ function hideTip(){document.getElementById('tip').style.display='none'}
         );
     }
     h.push_str("]};</script>\n");
-
-    h.push_str("</div>\n<script>filterRows()</script>\n</body></html>\n");
+    h.push_str("<script>filterRows()</script>\n</body></html>\n");
 
     fs::write(output_path, h.as_bytes()).unwrap_or_else(|e| {
         eprintln!("Error writing {output_path}: {e}");
