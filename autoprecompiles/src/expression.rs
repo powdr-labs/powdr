@@ -176,20 +176,22 @@ where
     }
 }
 
-/// Evaluates an `AlgebraicExpression` to a concrete value by subsituting the polynomial references by known values where known value is looked up via a column index mapping.
+/// Evaluates an `AlgebraicExpression` to a concrete value by substituting the polynomial
+/// references by known values where known value is looked up via a dense Vec index mapping.
 pub struct MappingRowEvaluator<'a, F>
 where
     F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy,
 {
     pub row: &'a [F],
-    pub witness_id_to_index: &'a BTreeMap<u64, usize>,
+    /// Dense Vec indexed by polynomial ID -> column index in row.
+    pub witness_id_to_index: &'a [usize],
 }
 
 impl<'a, F> MappingRowEvaluator<'a, F>
 where
     F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy,
 {
-    pub fn new(row: &'a [F], witness_id_to_index: &'a BTreeMap<u64, usize>) -> Self {
+    pub fn new(row: &'a [F], witness_id_to_index: &'a [usize]) -> Self {
         Self {
             row,
             witness_id_to_index,
@@ -206,7 +208,7 @@ where
     }
 
     fn eval_var(&self, algebraic_var: &AlgebraicReference) -> F {
-        let index = self.witness_id_to_index[&(algebraic_var.id)];
+        let index = self.witness_id_to_index[algebraic_var.id as usize];
         self.row[index]
     }
 }
