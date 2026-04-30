@@ -11,7 +11,6 @@ use openvm_stark_backend::{
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::trace_handler::TraceTrait;
 use powdr_constraint_solver::constraint_system::ComputationMethod;
-use tracing::info_span;
 
 use crate::{
     extraction_utils::{OriginalAirs, OriginalVmConfig},
@@ -107,7 +106,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
 
         let num_apc_calls = original_arenas.number_of_calls;
 
-        let chip_inventory = info_span!("powdr_create_dummy_chips").in_scope(|| {
+        let chip_inventory = {
             let airs = ISA::create_dummy_airs(self.config.config(), self.periphery.dummy.clone())
                 .expect("Failed to create dummy airs");
 
@@ -118,45 +117,40 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
             )
             .expect("Failed to create chip complex")
             .inventory
-        });
+        };
 
-        let dummy_trace_by_air_name: HashMap<String, SharedCpuTrace<BabyBear>> =
-            info_span!("powdr_dummy_traces").in_scope(|| {
-                chip_inventory
-                    .chips()
-                    .iter()
-                    .enumerate()
-                    .rev()
-                    .filter_map(|(insertion_idx, chip)| {
-                        let air_name = chip_inventory.airs().ext_airs()[insertion_idx].name();
+        let dummy_trace_by_air_name: HashMap<String, SharedCpuTrace<BabyBear>> = chip_inventory
+            .chips()
+            .iter()
+            .enumerate()
+            .rev()
+            .filter_map(|(insertion_idx, chip)| {
+                let air_name = chip_inventory.airs().ext_airs()[insertion_idx].name();
 
-                        let record_arena = {
-                            match original_arenas.take_real_arena(&air_name) {
-                                Some(ra) => ra,
-                                None => return None,
-                            }
-                        };
+                let record_arena = {
+                    match original_arenas.take_real_arena(&air_name) {
+                        Some(ra) => ra,
+                        None => return None,
+                    }
+                };
 
-                        let row_major_trace = chip.generate_proving_ctx(record_arena).common_main;
+                let row_major_trace = chip.generate_proving_ctx(record_arena).common_main;
 
-                        Some((air_name, SharedCpuTrace::from(Arc::new(row_major_trace))))
-                    })
-                    .collect()
-            });
+                Some((air_name, SharedCpuTrace::from(Arc::new(row_major_trace))))
+            })
+            .collect();
 
         let TraceData {
             dummy_values,
             dummy_trace_index_to_apc_index_by_instruction,
             apc_poly_id_to_index,
             columns_to_compute,
-        } = info_span!("powdr_generate_trace_data").in_scope(|| {
-            generate_trace(
-                &dummy_trace_by_air_name,
-                &self.original_airs,
-                num_apc_calls,
-                &self.apc,
-            )
-        });
+        } = generate_trace(
+            &dummy_trace_by_air_name,
+            &self.original_airs,
+            num_apc_calls,
+            &self.apc,
+        );
 
         // Convert BTreeMap to dense Vec for O(1) lookups in the hot loop.
         let width = apc_poly_id_to_index.len();
@@ -182,23 +176,11 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
 
         // allocate for apc trace
         let height = next_power_of_two_or_zero(num_apc_calls);
-        #[cfg(feature = "metrics")]
-        {
-            metrics::gauge!("powdr_apc_calls").set(num_apc_calls as f64);
-            metrics::gauge!("powdr_apc_width").set(width as f64);
-            metrics::gauge!("powdr_apc_height").set(height as f64);
-            metrics::gauge!("powdr_bus_interactions")
-                .set(self.apc.machine().bus_interactions.len() as f64);
-            metrics::gauge!("powdr_columns_to_compute").set(columns_to_compute.len() as f64);
-        }
         let mut values = <BabyBear as PrimeCharacteristicRing>::zero_vec(height * width);
 
         // go through the final table and fill in the values (parallelized)
-        info_span!("powdr_fill_rows_and_replay").in_scope(|| {
+        {
             use openvm_stark_backend::p3_maybe_rayon::prelude::*;
-            use std::time::Instant;
-
-            let t_start = Instant::now();
 
             // Extract references to avoid capturing `self` (ISA::Config is not Sync)
             let periphery_real = &self.periphery.real;
@@ -208,7 +190,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
                 .par_chunks_mut(width)
                 .zip(dummy_values.into_par_iter())
                 .for_each(|(row_slice, dummy_values)| {
-                    // Phase 1: copy dummy rows to APC row
+                    // Copy dummy rows to APC row
                     for (dummy_row, dummy_trace_index_to_apc_index) in dummy_values
                         .iter()
                         .map(|r| &r.data[r.start..r.start + r.length])
@@ -219,7 +201,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
                         }
                     }
 
-                    // Phase 2: compute derived columns
+                    // Compute derived columns
                     for derived_column in columns_to_compute {
                         let col_index = id_to_idx[derived_column.variable.id as usize];
                         row_slice[col_index] = match &derived_column.computation_method {
@@ -242,8 +224,8 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
                         };
                     }
 
-                    // Phase 3: evaluate bus interactions using compiled expressions
-                    // periphery chips use AtomicU32 counters — thread-safe
+                    // Evaluate bus interactions using compiled expressions.
+                    // Periphery chips use AtomicU32 counters — thread-safe.
                     for ci in &compiled_interactions {
                         let mult = ci.mult.eval(row_slice);
                         periphery_real.apply(
@@ -254,14 +236,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
                         );
                     }
                 });
-
-            #[cfg(feature = "metrics")]
-            {
-                let elapsed_ms = t_start.elapsed().as_millis() as f64;
-                metrics::gauge!("powdr_fill_wall_time_ms").set(elapsed_ms);
-                metrics::gauge!("powdr_replay_row_count").set(num_apc_calls as f64);
-            }
-        });
+        }
 
         RowMajorMatrix::new(values, width)
     }
