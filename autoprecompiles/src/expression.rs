@@ -321,13 +321,11 @@ where
                 resolved.id = id_to_idx[r.id as usize] as u64;
                 AE::Reference(resolved)
             }
-            AE::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-                AE::new_binary(
-                    Self::resolve_refs(left, id_to_idx),
-                    *op,
-                    Self::resolve_refs(right, id_to_idx),
-                )
-            }
+            AE::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => AE::new_binary(
+                Self::resolve_refs(left, id_to_idx),
+                *op,
+                Self::resolve_refs(right, id_to_idx),
+            ),
             AE::UnaryOperation(powdr_expression::AlgebraicUnaryOperation { op, expr }) => {
                 AE::new_unary(*op, Self::resolve_refs(expr, id_to_idx))
             }

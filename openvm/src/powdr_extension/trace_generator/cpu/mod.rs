@@ -161,11 +161,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
         // Convert BTreeMap to dense Vec for O(1) lookups in the hot loop.
         let width = apc_poly_id_to_index.len();
         let id_to_idx: Vec<usize> = {
-            let max_id = apc_poly_id_to_index
-                .keys()
-                .last()
-                .copied()
-                .unwrap_or(0) as usize;
+            let max_id = apc_poly_id_to_index.keys().last().copied().unwrap_or(0) as usize;
             let mut vec = vec![0usize; max_id + 1];
             for (&id, &index) in &apc_poly_id_to_index {
                 vec[id as usize] = index;
