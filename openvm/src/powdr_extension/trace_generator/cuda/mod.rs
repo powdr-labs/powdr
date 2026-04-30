@@ -230,7 +230,9 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
 
         let dummy_trace_by_air_name: HashMap<String, DeviceMatrix<BabyBear>> =
             info_span!("gpu_powdr_dummy_traces").in_scope(|| {
-                chip_inventory
+                let mut chip_count = 0u32;
+                let mut total_cells = 0u64;
+                let result: HashMap<_, _> = chip_inventory
                     .chips()
                     .iter()
                     .enumerate()
@@ -245,16 +247,34 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
                             }
                         };
 
+                        let t0 = std::time::Instant::now();
                         let ctx = chip.generate_proving_ctx(record_arena);
                         let m = ctx.common_main;
                         use openvm_stark_backend::prover::MatrixDimensions;
+                        let elapsed_ms = t0.elapsed().as_millis();
                         if m.height() > 0 {
+                            let cells = (m.height() * m.width()) as u64;
+                            tracing::info!(
+                                air = air_name.as_str(),
+                                rows = m.height(),
+                                cols = m.width(),
+                                elapsed_ms,
+                                "gpu_dummy_trace_chip"
+                            );
+                            chip_count += 1;
+                            total_cells += cells;
                             Some((air_name, m))
                         } else {
                             None
                         }
                     })
-                    .collect()
+                    .collect();
+                #[cfg(feature = "metrics")]
+                {
+                    metrics::gauge!("gpu_powdr_dummy_chip_count").set(chip_count as f64);
+                    metrics::gauge!("gpu_powdr_dummy_total_cells").set(total_cells as f64);
+                }
+                result
             });
 
         // Map from apc poly id to its index in the final apc trace
