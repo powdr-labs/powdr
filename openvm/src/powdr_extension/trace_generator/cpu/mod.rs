@@ -197,25 +197,22 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
         }
         let mut values = <BabyBear as PrimeCharacteristicRing>::zero_vec(height * width);
 
-        // go through the final table and fill in the values
+        // go through the final table and fill in the values (parallelized)
         info_span!("powdr_fill_rows_and_replay").in_scope(|| {
+            use openvm_stark_backend::p3_maybe_rayon::prelude::*;
             use std::time::Instant;
 
-            let mut copy_ns: u64 = 0;
-            let mut derived_ns: u64 = 0;
-            let mut eval_ns: u64 = 0;
-            let mut apply_ns: u64 = 0;
-            let mut row_count: u64 = 0;
+            let t_start = Instant::now();
+
+            // Extract references to avoid capturing `self` (ISA::Config is not Sync)
+            let periphery_real = &self.periphery.real;
+            let periphery_bus_ids = &self.periphery.bus_ids;
 
             values
-                .chunks_mut(width)
-                .zip(dummy_values)
+                .par_chunks_mut(width)
+                .zip(dummy_values.into_par_iter())
                 .for_each(|(row_slice, dummy_values)| {
-                    row_count += 1;
-
                     // Phase 1: copy dummy rows to APC row
-                    let t0 = Instant::now();
-                    use powdr_autoprecompiles::expression::MappingRowEvaluator;
                     for (dummy_row, dummy_trace_index_to_apc_index) in dummy_values
                         .iter()
                         .map(|r| &r.data[r.start..r.start + r.length])
@@ -225,8 +222,6 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
                             row_slice[*apc_index] = dummy_row[*dummy_trace_index];
                         }
                     }
-                    let t1 = Instant::now();
-                    copy_ns += (t1 - t0).as_nanos() as u64;
 
                     // Phase 2: compute derived columns
                     for derived_column in columns_to_compute {
@@ -250,35 +245,26 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
                             }
                         };
                     }
-                    let t2 = Instant::now();
-                    derived_ns += (t2 - t1).as_nanos() as u64;
 
                     // Phase 3: evaluate bus interactions using compiled expressions
+                    // periphery chips use AtomicU32 counters — thread-safe
                     for ci in &compiled_interactions {
                         let mult = ci.mult.eval(row_slice);
-                        self.periphery.real.apply(
+                        periphery_real.apply(
                             ci.id as u16,
                             mult.as_canonical_u32(),
                             ci.args.iter().map(|a| a.eval(row_slice).as_canonical_u32()),
-                            &self.periphery.bus_ids,
+                            periphery_bus_ids,
                         );
                     }
-                    let t3 = Instant::now();
-                    // eval+apply combined since they're interleaved per interaction
-                    eval_ns += (t3 - t2).as_nanos() as u64;
                 });
 
             #[cfg(feature = "metrics")]
             {
-                metrics::gauge!("powdr_copy_dummy_rows_time_ms")
-                    .set(copy_ns as f64 / 1_000_000.0);
-                metrics::gauge!("powdr_derived_columns_time_ms")
-                    .set(derived_ns as f64 / 1_000_000.0);
-                metrics::gauge!("powdr_bus_replay_time_ms")
-                    .set(eval_ns as f64 / 1_000_000.0);
-                metrics::gauge!("powdr_replay_row_count").set(row_count as f64);
+                let elapsed_ms = t_start.elapsed().as_millis() as f64;
+                metrics::gauge!("powdr_fill_wall_time_ms").set(elapsed_ms);
+                metrics::gauge!("powdr_replay_row_count").set(num_apc_calls as f64);
             }
-            let _ = (copy_ns, derived_ns, eval_ns, apply_ns, row_count);
         });
 
         RowMajorMatrix::new(values, width)
