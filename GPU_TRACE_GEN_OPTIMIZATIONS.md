@@ -1,5 +1,35 @@
 # GPU Trace Gen Optimizations
 
+## Results
+
+```
+                                Baseline    +G4
+trace_gen                       1,203ms    1,159ms
+gpu_powdr_create_dummy_chips       32ms       ~0ms   ← cached
+gpu_powdr_dummy_traces            770ms      779ms   ← unchanged, needs OpenVM changes
+CUDA kernels                        2ms        2ms
+```
+
+G4 (cache dummy chip complex): 32ms saved. Committed.
+G1-G3 require modifying OpenVM's GPU chip trace generation infrastructure.
+
+### Detailed dummy_traces analysis
+
+Only 3 invocations (one dominant APC per segment), not 90:
+- Per invocation: ~260ms, ~2.3B cells
+- Individual chips are <1ms each but produce large traces (up to 524K rows)
+- The cost is real GPU compute + memory allocation for full trace matrices
+- Each invocation generates full traces for ~4 instruction chips, then only
+  a subset of columns are read by the APC substitution kernel
+
+### What's needed for G1-G3
+
+These require changes INSIDE OpenVM's GPU chip infrastructure (not powdr):
+- Modify `Chip::generate_proving_ctx()` to accept a column mask
+- Or create a new API for partial trace extraction
+- Or fuse substitution into the trace generation kernel
+All are multi-week efforts requiring OpenVM repo changes.
+
 ## Baseline (keccak 10K hashes, APC=30, mock prove, CUDA build)
 
 ```
