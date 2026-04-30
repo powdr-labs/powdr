@@ -22,13 +22,33 @@ Only 3 invocations (one dominant APC per segment), not 90:
 - Each invocation generates full traces for ~4 instruction chips, then only
   a subset of columns are read by the APC substitution kernel
 
+### Detailed dummy_traces profiling (per-chip)
+
+The cost is concentrated in 1 dominant APC per segment (95%+ of time):
+
+```
+Segment 1 dominant APC (381ms):
+  BaseAluCoreAir:     33,554,432 rows x 36 cols = 1.2B cells  (177ms)
+  LoadStoreCoreAir:   16,777,216 rows x 41 cols = 688M cells  ( 46ms)
+  ShiftCoreAir:       16,777,216 rows x 53 cols = 889M cells  ( 81ms)
+  BranchEqualCoreAir:    131,072 rows x 26 cols = 3.4M cells  ( 12ms)
+  Total: ~2.8B cells
+
+All other APCs: <6ms each (tiny traces, 4K-32K rows)
+```
+
+The 33M rows are real: 98K APC calls × ~340 instructions per call.
+The APC substitution only reads ~10-15 of 36-53 columns per chip.
+
 ### What's needed for G1-G3
 
-These require changes INSIDE OpenVM's GPU chip infrastructure (not powdr):
+These require changes INSIDE OpenVM's GPU chip infrastructure (~/openvm):
 - Modify `Chip::generate_proving_ctx()` to accept a column mask
 - Or create a new API for partial trace extraction
 - Or fuse substitution into the trace generation kernel
-All are multi-week efforts requiring OpenVM repo changes.
+
+Estimated savings from G1: 796ms -> ~318ms (2.5x on dummy_traces).
+For reth (larger workload), proportionally larger absolute savings.
 
 ## Baseline (keccak 10K hashes, APC=30, mock prove, CUDA build)
 
