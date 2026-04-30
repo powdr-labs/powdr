@@ -131,7 +131,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
                 let record_arena = {
                     match original_arenas.take_real_arena(&air_name) {
                         Some(ra) => ra,
-                        None => return None,
+                        None => return None, // skip this iteration, because we only have record arena for chips that are used
                     }
                 };
 
