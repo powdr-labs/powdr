@@ -33,7 +33,8 @@ run_bench() {
     input="$2"
     apcs="$3"
     run_name="$4"
-    apcs_cache_dir="$5"
+    # Optional: shared APC cache dir (skip for runs with apcs=0, where the cache is unused).
+    apcs_cache_dir="${5:-}"
 
     echo ""
     echo "==== ${run_name} ===="
@@ -41,16 +42,21 @@ run_bench() {
 
     mkdir -p "${run_name}"
 
+    cache_arg=""
+    if [ -n "${apcs_cache_dir}" ]; then
+        cache_arg=" --apc-candidates-dir \"${apcs_cache_dir}\""
+    fi
+
     psrecord --include-children --interval 1 \
         --log "${run_name}"/psrecord.csv \
         --log-format csv \
         --plot "${run_name}"/psrecord.png \
-        "cargo run --bin powdr_openvm_riscv -r --features metrics prove \"$guest\" --input \"$input\" --autoprecompiles \"$apcs\" --metrics \"${run_name}/metrics.json\" --recursion --apc-candidates-dir \"${apcs_cache_dir}\""
+        "cargo run --bin powdr_openvm_riscv -r --features metrics prove \"$guest\" --input \"$input\" --autoprecompiles \"$apcs\" --metrics \"${run_name}/metrics.json\" --recursion${cache_arg}"
 
     python3 "$SCRIPTS_DIR"/plot_trace_cells.py -o "${run_name}"/trace_cells.png "${run_name}"/metrics.json > "${run_name}"/trace_cells.txt
 
     # apc_candidates.json is shared across runs of the same guest (lives in the cache dir).
-    if [ "${apcs:-0}" -ne 0 ] && [ -f "${apcs_cache_dir}/apc_candidates.json" ]; then
+    if [ "${apcs:-0}" -ne 0 ] && [ -n "${apcs_cache_dir}" ] && [ -f "${apcs_cache_dir}/apc_candidates.json" ]; then
         python3 "$SCRIPTS_DIR"/../../autoprecompiles/scripts/plot_effectiveness.py "${apcs_cache_dir}/apc_candidates.json" --output "${run_name}"/effectiveness.png
     fi
 }
@@ -73,8 +79,8 @@ pushd "$dir"
 cache="$(pwd)/apcs_cache_keccak"
 generate_apcs guest-keccak "$cache"
 
-run_bench guest-keccak-manual-precompile "$input" 0 manual "$cache"
-run_bench guest-keccak "$input" 0 apc000 "$cache"
+run_bench guest-keccak-manual-precompile "$input" 0 manual
+run_bench guest-keccak "$input" 0 apc000
 # run_bench guest-keccak "$input" 3 apc003 "$cache"  # Save ~6mins
 # run_bench guest-keccak "$input" 10 apc010 "$cache"  # Save ~3mins
 run_bench guest-keccak "$input" 30 apc030 "$cache"
@@ -96,8 +102,8 @@ pushd "$dir"
 cache="$(pwd)/apcs_cache_sha256"
 generate_apcs guest-sha256 "$cache"
 
-run_bench guest-sha256-manual-precompile "$input" 0 manual "$cache"
-run_bench guest-sha256 "$input" 0 apc000 "$cache"
+run_bench guest-sha256-manual-precompile "$input" 0 manual
+run_bench guest-sha256 "$input" 0 apc000
 # run_bench guest-sha256 "$input" 3 apc003 "$cache"  # Save ~4mins
 # run_bench guest-sha256 "$input" 10 apc010 "$cache"  # Save ~5mins
 run_bench guest-sha256 "$input" 30 apc030 "$cache"
@@ -119,8 +125,8 @@ pushd "$dir"
 cache="$(pwd)/apcs_cache_pairing"
 generate_apcs guest-pairing "$cache"
 
-run_bench guest-pairing-manual-precompile "$input" 0 manual "$cache"
-run_bench guest-pairing "$input" 0 apc000 "$cache"
+run_bench guest-pairing-manual-precompile "$input" 0 manual
+run_bench guest-pairing "$input" 0 apc000
 # run_bench guest-pairing "$input" 3 apc003 "$cache"  # Save ~6mins
 # run_bench guest-pairing "$input" 10 apc010 "$cache"  # Save ~4mins
 run_bench guest-pairing "$input" 30 apc030 "$cache"
@@ -143,8 +149,8 @@ pushd "$dir"
 cache="$(pwd)/apcs_cache_u256"
 generate_apcs guest-u256 "$cache"
 
-run_bench guest-u256-manual-precompile "$input" 0 manual "$cache"
-run_bench guest-u256 "$input" 0 apc000 "$cache"
+run_bench guest-u256-manual-precompile "$input" 0 manual
+run_bench guest-u256 "$input" 0 apc000
 # run_bench guest-u256 "$input" 3 apc003 "$cache"  # Save ~10mins
 # run_bench guest-u256 "$input" 10 apc010 "$cache"  # Save ~4mins
 run_bench guest-u256 "$input" 30 apc030 "$cache"
@@ -165,7 +171,7 @@ pushd "$dir"
 cache="$(pwd)/apcs_cache_matmul"
 generate_apcs guest-matmul "$cache"
 
-run_bench guest-matmul 0 0 apc000 "$cache"
+run_bench guest-matmul 0 0 apc000
 run_bench guest-matmul 0 3 apc003 "$cache"
 # run_bench guest-matmul 0 10 apc010 "$cache"  # Save ~1min
 run_bench guest-matmul 0 30 apc030 "$cache"
@@ -189,13 +195,13 @@ cache_aff="$(pwd)/apcs_cache_ecc_affine_hint"
 generate_apcs guest-ecc-projective "$cache_proj"
 generate_apcs guest-ecc-powdr-affine-hint "$cache_aff"
 
-run_bench guest-ecc-manual $input 0 manual "$cache_proj"
-run_bench guest-ecc-projective $input 0 projective-apc000 "$cache_proj"
+run_bench guest-ecc-manual $input 0 manual
+run_bench guest-ecc-projective $input 0 projective-apc000
 # run_bench guest-ecc-projective $input 3 projective-apc003 "$cache_proj"  # Save ~17mins
 # run_bench guest-ecc-projective $input 10 projective-apc010 "$cache_proj"  # Save ~12mins
 run_bench guest-ecc-projective $input 30 projective-apc030 "$cache_proj"
 # run_bench guest-ecc-projective $input 100 projective-apc100 "$cache_proj"  # Save ~12mins
-run_bench guest-ecc-powdr-affine-hint $input 0 affine-hint-apc000 "$cache_aff"
+run_bench guest-ecc-powdr-affine-hint $input 0 affine-hint-apc000
 # run_bench guest-ecc-powdr-affine-hint $input 3 affine-hint-apc003 "$cache_aff"  # Save ~10mins
 # run_bench guest-ecc-powdr-affine-hint $input 10 affine-hint-apc010 "$cache_aff"  # Save ~7mins
 run_bench guest-ecc-powdr-affine-hint $input 30 affine-hint-apc030 "$cache_aff"
@@ -219,8 +225,8 @@ pushd "$dir"
 cache="$(pwd)/apcs_cache_ecrecover"
 generate_apcs guest-ecrecover "$cache"
 
-run_bench guest-ecrecover-manual $input 0 manual "$cache"
-run_bench guest-ecrecover $input 0 apc000 "$cache"
+run_bench guest-ecrecover-manual $input 0 manual
+run_bench guest-ecrecover $input 0 apc000
 # run_bench guest-ecrecover $input 3 apc003 "$cache"  # Save ~9mins
 # run_bench guest-ecrecover $input 10 apc010 "$cache"  # Save ~6mins
 run_bench guest-ecrecover $input 30 apc030 "$cache"
