@@ -403,7 +403,7 @@ function selectTab(name){
  if(name==='flame'&&!window._flameDrawn){drawFlame();window._flameDrawn=true}
 }
 // ── Flame chart (icicle grouped by `::` module path) ────────────────────
-// FLAME_DATA is injected after </script> as a JSON variable.
+// FLAME_DATA is injected as a JSON variable in a separate script block.
 function buildFlameTree(funcs){
  var root={n:'<all>',v:0,c:{},id:null};
  funcs.forEach(function(f){
