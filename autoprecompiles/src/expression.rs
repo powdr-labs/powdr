@@ -258,20 +258,31 @@ use powdr_expression::{AlgebraicBinaryOperation, AlgebraicBinaryOperator, Algebr
 /// Pre-compiled expression for fast per-row evaluation without recursive AST walking.
 ///
 /// At build time, each `AlgebraicExpression` is analyzed once and compiled into the most
-/// efficient variant. The specialized variants (`Constant`, `DirectLoad`, `LinearCombination`)
-/// avoid the recursive enum-matching, closure dispatch, and trait-object overhead of
-/// `AlgebraicExpression::to_expression()`. `General` is the fallback for degree-2+
-/// expressions that can't be decomposed into a linear combination.
+/// efficient variant. The specialized variants avoid the recursive enum-matching, closure
+/// dispatch, and trait-object overhead of `AlgebraicExpression::to_expression()`.
 pub enum CompiledExpr<F> {
     /// Expression is a compile-time constant. Zero cost per row.
     Constant(F),
     /// Expression is a single column read: `row[col_idx]`. One array access per row.
     DirectLoad(usize),
-    /// Expression is `constant + sum(coeff * row[col_idx])`. Tight multiply-accumulate loop.
-    LinearCombination { constant: F, terms: Vec<(usize, F)> },
-    /// Degree-2+ expression that can't be linearized. Falls back to recursive AST walk,
-    /// but with references pre-resolved to column indices (no BTreeMap lookup needed).
-    General(AlgebraicExpression<F>),
+    /// Expression is `constant + sum(coeff * row[col_idx]) + sum(coeff * row[a] * row[b])`.
+    /// Covers both linear (degree-1) and quadratic (degree-2) expressions.
+    /// Linear expressions have an empty `products` vec.
+    Polynomial {
+        constant: F,
+        /// Linear terms: (col_idx, coefficient).
+        linear: Vec<(usize, F)>,
+        /// Quadratic terms: (col_idx_a, col_idx_b, coefficient).
+        products: Vec<(usize, usize, F)>,
+    },
+}
+
+/// Intermediate decomposition: constant + linear terms + quadratic products.
+/// Used during compilation; converted to `CompiledExpr` afterwards.
+struct Decomposition<F> {
+    constant: F,
+    linear: Vec<(usize, F)>,
+    products: Vec<(usize, usize, F)>,
 }
 
 impl<F> CompiledExpr<F>
@@ -281,15 +292,20 @@ where
     /// Compile an expression at build time into a fast-eval form.
     /// `zero` and `one` are the field's additive and multiplicative identities.
     pub fn compile(expr: &AlgebraicExpression<F>, id_to_idx: &[usize], zero: F, one: F) -> Self {
-        match Self::try_linearize(expr, id_to_idx, zero, one) {
-            Some((c, terms)) if terms.is_empty() => CompiledExpr::Constant(c),
-            Some((c, terms)) if terms.len() == 1 && c == zero && terms[0].1 == one => {
-                CompiledExpr::DirectLoad(terms[0].0)
-            }
-            Some((constant, terms)) => CompiledExpr::LinearCombination { constant, terms },
-            None => {
-                // Degree >= 2: pre-resolve references so eval_var can index row directly.
-                CompiledExpr::General(Self::resolve_refs(expr, id_to_idx))
+        let d = Self::decompose(expr, id_to_idx, zero, one);
+        if d.linear.is_empty() && d.products.is_empty() {
+            CompiledExpr::Constant(d.constant)
+        } else if d.linear.len() == 1
+            && d.products.is_empty()
+            && d.constant == zero
+            && d.linear[0].1 == one
+        {
+            CompiledExpr::DirectLoad(d.linear[0].0)
+        } else {
+            CompiledExpr::Polynomial {
+                constant: d.constant,
+                linear: d.linear,
+                products: d.products,
             }
         }
     }
@@ -300,95 +316,147 @@ where
         match self {
             CompiledExpr::Constant(c) => *c,
             CompiledExpr::DirectLoad(idx) => row[*idx],
-            CompiledExpr::LinearCombination { constant, terms } => {
+            CompiledExpr::Polynomial {
+                constant,
+                linear,
+                products,
+            } => {
                 let mut acc = *constant;
-                for &(idx, coeff) in terms {
+                for &(idx, coeff) in linear {
                     acc = acc + coeff * row[idx];
+                }
+                for &(a, b, coeff) in products {
+                    acc = acc + coeff * row[a] * row[b];
                 }
                 acc
             }
-            CompiledExpr::General(expr) => {
-                // References already pre-resolved: id stores column index directly.
-                expr.to_expression(&|n| *n, &|var| row[var.id as usize])
-            }
         }
     }
 
-    /// Pre-resolve all references in an expression: replace each reference's id
-    /// with its column index so eval can do `row[id]` directly.
-    fn resolve_refs(expr: &AlgebraicExpression<F>, id_to_idx: &[usize]) -> AlgebraicExpression<F> {
-        use powdr_expression::AlgebraicExpression as AE;
-        match expr {
-            AE::Number(c) => AE::Number(*c),
-            AE::Reference(r) => {
-                let mut resolved = r.clone();
-                resolved.id = id_to_idx[r.id as usize] as u64;
-                AE::Reference(resolved)
-            }
-            AE::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => AE::new_binary(
-                Self::resolve_refs(left, id_to_idx),
-                *op,
-                Self::resolve_refs(right, id_to_idx),
-            ),
-            AE::UnaryOperation(powdr_expression::AlgebraicUnaryOperation { op, expr }) => {
-                AE::new_unary(*op, Self::resolve_refs(expr, id_to_idx))
-            }
-        }
-    }
-
-    /// Try to decompose expr into (constant, Vec<(col_idx, coeff)>).
-    /// Returns None if expression contains col*col (degree >= 2).
-    fn try_linearize(
+    /// Decompose an expression into constant + linear + quadratic components.
+    /// Panics if the expression is degree > 2.
+    fn decompose(
         expr: &AlgebraicExpression<F>,
         id_to_idx: &[usize],
         zero: F,
         one: F,
-    ) -> Option<(F, Vec<(usize, F)>)> {
+    ) -> Decomposition<F> {
         use powdr_expression::AlgebraicExpression as AE;
         match expr {
-            AE::Number(c) => Some((*c, vec![])),
-            AE::Reference(r) => {
-                let idx = id_to_idx[r.id as usize];
-                Some((zero, vec![(idx, one)]))
-            }
-            AE::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => match op {
-                AlgebraicBinaryOperator::Add => {
-                    let (c_l, mut t_l) = Self::try_linearize(left, id_to_idx, zero, one)?;
-                    let (c_r, t_r) = Self::try_linearize(right, id_to_idx, zero, one)?;
-                    t_l.extend(t_r);
-                    Some((c_l + c_r, t_l))
-                }
-                AlgebraicBinaryOperator::Sub => {
-                    let (c_l, mut t_l) = Self::try_linearize(left, id_to_idx, zero, one)?;
-                    let (c_r, t_r) = Self::try_linearize(right, id_to_idx, zero, one)?;
-                    for (idx, coeff) in t_r {
-                        t_l.push((idx, -coeff));
-                    }
-                    Some((c_l - c_r, t_l))
-                }
-                AlgebraicBinaryOperator::Mul => {
-                    let (c_l, t_l) = Self::try_linearize(left, id_to_idx, zero, one)?;
-                    let (c_r, t_r) = Self::try_linearize(right, id_to_idx, zero, one)?;
-                    if t_r.is_empty() {
-                        let terms = t_l.into_iter().map(|(i, c)| (i, c * c_r)).collect();
-                        Some((c_l * c_r, terms))
-                    } else if t_l.is_empty() {
-                        let terms = t_r.into_iter().map(|(i, c)| (i, c * c_l)).collect();
-                        Some((c_l * c_r, terms))
-                    } else {
-                        None
-                    }
-                }
+            AE::Number(c) => Decomposition {
+                constant: *c,
+                linear: vec![],
+                products: vec![],
             },
+            AE::Reference(r) => Decomposition {
+                constant: zero,
+                linear: vec![(id_to_idx[r.id as usize], one)],
+                products: vec![],
+            },
+            AE::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+                let l = Self::decompose(left, id_to_idx, zero, one);
+                let r = Self::decompose(right, id_to_idx, zero, one);
+                match op {
+                    AlgebraicBinaryOperator::Add => Decomposition {
+                        constant: l.constant + r.constant,
+                        linear: l.linear.into_iter().chain(r.linear).collect(),
+                        products: l.products.into_iter().chain(r.products).collect(),
+                    },
+                    AlgebraicBinaryOperator::Sub => Decomposition {
+                        constant: l.constant - r.constant,
+                        linear: l
+                            .linear
+                            .into_iter()
+                            .chain(r.linear.into_iter().map(|(i, c)| (i, -c)))
+                            .collect(),
+                        products: l
+                            .products
+                            .into_iter()
+                            .chain(r.products.into_iter().map(|(a, b, c)| (a, b, -c)))
+                            .collect(),
+                    },
+                    AlgebraicBinaryOperator::Mul => Self::mul_decompositions(l, r, zero),
+                }
+            }
             AE::UnaryOperation(powdr_expression::AlgebraicUnaryOperation { op, expr }) => {
                 match op {
                     AlgebraicUnaryOperator::Minus => {
-                        let (c, terms) = Self::try_linearize(expr, id_to_idx, zero, one)?;
-                        let neg_terms = terms.into_iter().map(|(i, c)| (i, -c)).collect();
-                        Some((-c, neg_terms))
+                        let d = Self::decompose(expr, id_to_idx, zero, one);
+                        Decomposition {
+                            constant: -d.constant,
+                            linear: d.linear.into_iter().map(|(i, c)| (i, -c)).collect(),
+                            products: d.products.into_iter().map(|(a, b, c)| (a, b, -c)).collect(),
+                        }
                     }
                 }
             }
+        }
+    }
+
+    /// Multiply two decompositions. Supports constant * anything and
+    /// linear * linear (producing quadratic products).
+    /// Panics if the result would be degree > 2.
+    fn mul_decompositions(l: Decomposition<F>, r: Decomposition<F>, zero: F) -> Decomposition<F> {
+        // If either side is purely constant, scale the other.
+        if l.linear.is_empty() && l.products.is_empty() {
+            return Decomposition {
+                constant: l.constant * r.constant,
+                linear: r
+                    .linear
+                    .into_iter()
+                    .map(|(i, c)| (i, c * l.constant))
+                    .collect(),
+                products: r
+                    .products
+                    .into_iter()
+                    .map(|(a, b, c)| (a, b, c * l.constant))
+                    .collect(),
+            };
+        }
+        if r.linear.is_empty() && r.products.is_empty() {
+            return Decomposition {
+                constant: l.constant * r.constant,
+                linear: l
+                    .linear
+                    .into_iter()
+                    .map(|(i, c)| (i, c * r.constant))
+                    .collect(),
+                products: l
+                    .products
+                    .into_iter()
+                    .map(|(a, b, c)| (a, b, c * r.constant))
+                    .collect(),
+            };
+        }
+        // Both sides have variable terms. Products of quadratic with anything → degree > 2.
+        assert!(
+            l.products.is_empty() && r.products.is_empty(),
+            "Bus interaction expression is degree > 2. This is unexpected."
+        );
+        // (c_l + sum(a_i * x_i)) * (c_r + sum(b_j * y_j))
+        // = c_l*c_r + c_l*sum(b_j*y_j) + c_r*sum(a_i*x_i) + sum(a_i*b_j * x_i*y_j)
+        let mut linear = Vec::new();
+        let mut products = Vec::new();
+
+        // c_l * linear_r
+        if l.constant != zero {
+            linear.extend(r.linear.iter().map(|&(i, c)| (i, c * l.constant)));
+        }
+        // c_r * linear_l
+        if r.constant != zero {
+            linear.extend(l.linear.iter().map(|&(i, c)| (i, c * r.constant)));
+        }
+        // linear_l * linear_r → quadratic products
+        for &(i, ci) in &l.linear {
+            for &(j, cj) in &r.linear {
+                products.push((i, j, ci * cj));
+            }
+        }
+
+        Decomposition {
+            constant: l.constant * r.constant,
+            linear,
+            products,
         }
     }
 }
