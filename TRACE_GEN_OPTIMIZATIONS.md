@@ -12,8 +12,17 @@ powdr_dummy_traces      9,833ms    8,001ms   8,038ms   1.22x
 
 O1 (BTreeMap→Vec): **1.41x** overall
 O2 (LinearCombination): **3.36x** overall (cumulative)
+O5 (Parallel replay): **4.45x** overall (cumulative)
 
-Post-O1+O2, the new bottleneck is `powdr_dummy_traces` at 46.2% (8.0s).
+Post-O1+O2+O5 breakdown:
+```
+trace_gen                        13,144ms  100%
+  powdr_dummy_traces              8,043ms   61.2%  <<<< new bottleneck
+  powdr_fill_rows_and_replay      1,931ms   14.7%
+  powdr_generate_trace_data         ~500ms    3.8%
+  memory_tracegen                   ~380ms    2.9%
+  other                           ~2,290ms   17.4%
+```
 
 ## Baseline (keccak 10K hashes, APC=30, mock prove)
 
