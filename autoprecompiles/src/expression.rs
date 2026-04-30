@@ -321,14 +321,12 @@ where
                 linear,
                 products,
             } => {
-                let mut acc = *constant;
-                for &(idx, coeff) in linear {
-                    acc = acc + coeff * row[idx];
-                }
-                for &(a, b, coeff) in products {
-                    acc = acc + coeff * row[a] * row[b];
-                }
-                acc
+                let lin = linear.iter().fold(*constant, |acc, &(idx, coeff)| {
+                    acc + coeff * row[idx]
+                });
+                products
+                    .iter()
+                    .fold(lin, |acc, &(a, b, coeff)| acc + coeff * row[a] * row[b])
             }
         }
     }
