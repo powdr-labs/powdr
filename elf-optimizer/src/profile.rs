@@ -339,6 +339,23 @@ details>summary .fn-meta{color:#8b949e;font-size:11px;font-variant-numeric:tabul
 .sym{color:#ffa657;font-weight:600;display:block;padding:0 12px;margin-top:4px}
 a.jt{color:#58a6ff;text-decoration:none}a.jt:hover{text-decoration:underline}
 .muted{color:#8b949e}
+.tabnav{display:flex;gap:4px;border-bottom:1px solid #30363d;margin-bottom:16px}
+.tabnav button{background:transparent;color:#8b949e;border:none;border-bottom:2px solid transparent;padding:8px 16px;font-size:13px;cursor:pointer;font-family:inherit}
+.tabnav button:hover{color:#c9d1d9}
+.tabnav button.active{color:#f0f6fc;border-bottom-color:#f78166}
+.tabpane{display:none}
+.tabpane.active{display:block}
+#flameWrap{background:#161b22;border:1px solid #30363d;border-radius:6px;padding:8px;overflow:auto;max-height:90vh}
+#flameWrap svg{display:block;font-family:'SFMono-Regular',Consolas,monospace;font-size:11px}
+#flameWrap rect{stroke:#0d1117;stroke-width:1;cursor:pointer}
+#flameWrap rect:hover{stroke:#f0f6fc;stroke-width:2}
+#flameWrap text{fill:#0d1117;pointer-events:none;dominant-baseline:central}
+.flame-toolbar{display:flex;gap:8px;padding:8px 12px;background:#21262d;border:1px solid #30363d;border-radius:6px;margin-bottom:8px;align-items:center;flex-wrap:wrap}
+.flame-toolbar input{background:#0d1117;color:#c9d1d9;border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:12px;font-family:inherit;flex:1;min-width:200px}
+.flame-toolbar button{background:#30363d;color:#c9d1d9;border:1px solid #484f58;border-radius:4px;padding:4px 12px;font-size:12px;cursor:pointer;font-family:inherit}
+.flame-toolbar button:hover{background:#484f58}
+.flame-toolbar .info{color:#8b949e;font-size:11px;margin-left:auto;font-variant-numeric:tabular-nums}
+#tip{position:fixed;background:#0d1117;color:#c9d1d9;border:1px solid #30363d;border-radius:4px;padding:6px 10px;font-size:11px;font-family:'SFMono-Regular',Consolas,monospace;pointer-events:none;display:none;z-index:1000;max-width:600px;word-wrap:break-word;white-space:normal;box-shadow:0 4px 12px rgba(0,0,0,.4)}
 </style>
 <script>
 function filterRows(){
@@ -378,6 +395,149 @@ function jumpTo(id){
 }
 function expandAllFns(){document.querySelectorAll('#detList details').forEach(function(d){d.open=true})}
 function collapseAllFns(){document.querySelectorAll('#detList details').forEach(function(d){d.open=false})}
+function selectTab(name){
+ document.querySelectorAll('.tabpane').forEach(function(e){e.classList.remove('active')});
+ document.querySelectorAll('.tabnav button').forEach(function(e){e.classList.remove('active')});
+ var p=document.getElementById('tab-'+name);if(p)p.classList.add('active');
+ var b=document.getElementById('btn-'+name);if(b)b.classList.add('active');
+ if(name==='flame'&&!window._flameDrawn){drawFlame();window._flameDrawn=true}
+}
+// ── Flame chart (icicle grouped by `::` module path) ────────────────────
+// FLAME_DATA is injected after </script> as a JSON variable.
+function buildFlameTree(funcs){
+ var root={n:'<all>',v:0,c:{},id:null};
+ funcs.forEach(function(f){
+  // Demangled names use `::` as the segment separator. Drop generic args
+  // (`<...>`) when splitting so e.g. `foo::bar::<T as U>::baz` groups by foo,bar,baz.
+  var s=f.n,segs=[],depth=0,buf='';
+  for(var i=0;i<s.length;i++){
+   var ch=s[i];
+   if(ch==='<'||ch==='(')depth++;
+   else if(ch==='>'||ch===')')depth=Math.max(0,depth-1);
+   if(depth===0&&ch===':'&&s[i+1]===':'){segs.push(buf);buf='';i++;continue}
+   buf+=ch;
+  }
+  if(buf.length)segs.push(buf);
+  if(!segs.length)segs=[s];
+  var node=root;node.v+=f.v;
+  for(var k=0;k<segs.length;k++){
+   var seg=segs[k]||'?';
+   if(!node.c[seg])node.c[seg]={n:seg,v:0,c:{},id:null};
+   node=node.c[seg];
+   node.v+=f.v;
+   if(k===segs.length-1)node.id=f.id;
+  }
+ });
+ // Convert children maps to sorted arrays.
+ function finalize(n){
+  var arr=Object.values(n.c).sort(function(a,b){return b.v-a.v});
+  arr.forEach(finalize);
+  n.children=arr;
+  delete n.c;
+ }
+ finalize(root);
+ return root;
+}
+function colorFor(name,depth){
+ var h=0;for(var i=0;i<name.length;i++){h=((h<<5)-h+name.charCodeAt(i))|0}
+ var hue=Math.abs(h)%50+15;        // warm range 15-65 (red→yellow)
+ var sat=55+(Math.abs(h>>8)%20);
+ var lit=42+(Math.abs(h>>16)%18)-Math.min(depth,4);
+ return 'hsl('+hue+','+sat+'%,'+lit+'%)';
+}
+function drawFlame(){
+ var data=window.FLAME_DATA;
+ if(!data){return}
+ var tree=buildFlameTree(data.funcs);
+ window._flameTree=tree;
+ window._flameRoot=tree;
+ renderFlame(tree);
+}
+function renderFlame(root){
+ var container=document.getElementById('flameWrap');
+ container.innerHTML='';
+ var W=container.clientWidth-16;if(W<400)W=1200;
+ var rowH=18;
+ // Determine max depth.
+ var maxD=0;
+ (function walk(n,d){if(d>maxD)maxD=d;if(n.children)n.children.forEach(function(c){walk(c,d+1)})})(root,0);
+ var H=(maxD+1)*rowH+8;
+ var ns='http://www.w3.org/2000/svg';
+ var svg=document.createElementNS(ns,'svg');
+ svg.setAttribute('width',W);svg.setAttribute('height',H);
+ var totalV=root.v||1;
+ var minPx=0.4;
+ var rendered=0;
+ (function place(n,d,x0,w){
+  if(w<minPx)return;
+  rendered++;
+  var r=document.createElementNS(ns,'rect');
+  r.setAttribute('x',x0);r.setAttribute('y',d*rowH);
+  r.setAttribute('width',Math.max(w-1,0.5));r.setAttribute('height',rowH-1);
+  r.setAttribute('fill',colorFor(n.n,d));
+  r.dataset.name=n.n;r.dataset.value=n.v;
+  if(n.id)r.dataset.id=n.id;
+  r.addEventListener('mouseenter',showTip);
+  r.addEventListener('mousemove',moveTip);
+  r.addEventListener('mouseleave',hideTip);
+  r.addEventListener('click',function(ev){
+   if(ev.shiftKey&&n.id){jumpToFromFlame(n.id);return}
+   // zoom into this node
+   zoomTo(n);
+  });
+  svg.appendChild(r);
+  if(w>=30){
+   var lbl=document.createElementNS(ns,'text');
+   lbl.setAttribute('x',x0+4);lbl.setAttribute('y',d*rowH+rowH/2);
+   var name=n.n;
+   var maxChars=Math.max(2,Math.floor((w-8)/6.5));
+   if(name.length>maxChars)name=name.slice(0,maxChars-1)+'…';
+   lbl.textContent=name;
+   svg.appendChild(lbl);
+  }
+  if(n.children){
+   var cx=x0;
+   n.children.forEach(function(c){
+    var cw=(c.v/n.v)*w;
+    place(c,d+1,cx,cw);
+    cx+=cw;
+   });
+  }
+ })(root,0,0,W);
+ container.appendChild(svg);
+ document.getElementById('flameInfo').textContent=
+  rendered+' boxes · '+root.v.toLocaleString()+' samples ('+
+  ((root.v/(window._flameTree.v||1))*100).toFixed(2)+'% of attributed)';
+}
+function zoomTo(node){window._flameRoot=node;renderFlame(node)}
+function flameReset(){if(window._flameTree){window._flameRoot=window._flameTree;renderFlame(window._flameTree)}}
+function flameSearch(){
+ var q=document.getElementById('flameFlt').value.toLowerCase();
+ if(!q){flameReset();return}
+ if(!window._flameTree)return;
+ // Find subtree(s) whose path contains q; render their lowest common ancestor.
+ var matches=[];
+ (function walk(n,path){
+  var p=path?path+'::'+n.n:n.n;
+  if(p.toLowerCase().indexOf(q)!==-1)matches.push(n);
+  if(n.children)n.children.forEach(function(c){walk(c,p)})
+ })(window._flameTree,'');
+ if(!matches.length){renderFlame(window._flameTree);document.getElementById('flameInfo').textContent='no matches';return}
+ // Render starting at the heaviest match.
+ matches.sort(function(a,b){return b.v-a.v});
+ renderFlame(matches[0]);
+}
+function jumpToFromFlame(id){selectTab('funcs');setTimeout(function(){jumpTo(id)},50)}
+function showTip(e){
+ var t=document.getElementById('tip'),r=e.target,total=window._flameTree?window._flameTree.v:1;
+ var v=parseInt(r.dataset.value,10);
+ t.innerHTML='<b>'+r.dataset.name.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</b><br>'+
+   v.toLocaleString()+' samples · '+((v/total)*100).toFixed(3)+'% of attributed'+
+   (r.dataset.id?'<br><span style="color:#8b949e">click to zoom · shift+click to jump to function</span>':'<br><span style="color:#8b949e">click to zoom</span>');
+ t.style.display='block';moveTip(e);
+}
+function moveTip(e){var t=document.getElementById('tip');t.style.left=(e.clientX+12)+'px';t.style.top=(e.clientY+12)+'px'}
+function hideTip(){document.getElementById('tip').style.display='none'}
 </script>
 </head><body>
 <div class="ctr">
@@ -406,6 +566,15 @@ function collapseAllFns(){document.querySelectorAll('#detList details').forEach(
         fmt_count(attributed),
         fmt_pct(attributed, total_samples),
     );
+
+    // Tab navigation + open Functions pane
+    h.push_str(r##"<div class="tabnav">
+ <button id="btn-funcs" class="active" onclick="selectTab('funcs')">Functions</button>
+ <button id="btn-flame" onclick="selectTab('flame')">Flame chart</button>
+</div>
+<div id="tip"></div>
+<div id="tab-funcs" class="tabpane active">
+"##);
 
     // Function table
     h.push_str(r##"<h2>Functions (sorted by samples)</h2>
@@ -518,7 +687,47 @@ function collapseAllFns(){document.querySelectorAll('#detList details').forEach(
     if details_count == 0 {
         h.push_str("<p class=\"muted\">No function received any samples.</p>\n");
     }
-    h.push_str("</div></div>\n<script>filterRows()</script>\n</body></html>\n");
+    h.push_str("</div>\n"); // close #detList
+    h.push_str("</div>\n"); // close #tab-funcs
+
+    // ── Flame chart pane ─────────────────────────────────────────────────
+    h.push_str(r##"<div id="tab-flame" class="tabpane">
+<h2>Flame chart (icicle, grouped by `::` module path)</h2>
+<p class="muted" style="margin-bottom:8px;font-size:12px">Each row is one module-path level. Width is proportional to samples. Click a box to zoom in; <b>shift+click</b> a leaf to jump to its function detail. The profile has no call-stack info, so this is a flat icicle by symbol path — not a true call-stack flame graph.</p>
+<div class="flame-toolbar">
+ <input id="flameFlt" type="text" placeholder="Filter (substring of module path, e.g. revm_interpreter)…" oninput="flameSearch()">
+ <button onclick="flameReset()">Reset zoom</button>
+ <span class="info" id="flameInfo"></span>
+</div>
+<div id="flameWrap"></div>
+</div>
+"##);
+
+    // Embed the per-function data for the flame chart. We only ship functions
+    // with samples > 0 — these dominate the visualisation anyway.
+    h.push_str("<script>window.FLAME_DATA={funcs:[");
+    let mut first = true;
+    for r in &rows {
+        if r.total == 0 {
+            continue;
+        }
+        if !first {
+            h.push(',');
+        }
+        first = false;
+        // Escape backslashes and quotes for JS string literal.
+        let esc = r.name.replace('\\', "\\\\").replace('"', "\\\"");
+        let _ = write!(
+            h,
+            "{{n:\"{name}\",v:{v},id:\"{id:08x}\"}}",
+            name = esc,
+            v = r.total,
+            id = r.addr,
+        );
+    }
+    h.push_str("]};</script>\n");
+
+    h.push_str("</div>\n<script>filterRows()</script>\n</body></html>\n");
 
     fs::write(output_path, h.as_bytes()).unwrap_or_else(|e| {
         eprintln!("Error writing {output_path}: {e}");
