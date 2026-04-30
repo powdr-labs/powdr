@@ -252,3 +252,175 @@ where
         (*self.witness.get(&algebraic_var.id).unwrap()).into()
     }
 }
+
+// ---- Compiled expression evaluation (O2 optimization) ----
+
+use powdr_expression::{AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperator};
+
+/// Pre-compiled expression for fast per-row evaluation without recursive AST walking.
+pub enum CompiledExpr<F> {
+    /// Compile-time constant.
+    Constant(F),
+    /// Single column load: row[col_idx].
+    DirectLoad(usize),
+    /// constant + sum(coeff * row[col_idx]).
+    LinearCombination { constant: F, terms: Vec<(usize, F)> },
+    /// Pre-resolved general expression (references already mapped to column indices).
+    /// Used for degree-2+ expressions. The AlgebraicReference.id stores the column index directly.
+    General(AlgebraicExpression<F>),
+}
+
+impl<F> CompiledExpr<F>
+where
+    F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy + PartialEq,
+{
+    /// Compile an expression at build time into a fast-eval form.
+    /// `zero` and `one` are the field's additive and multiplicative identities.
+    pub fn compile(expr: &AlgebraicExpression<F>, id_to_idx: &[usize], zero: F, one: F) -> Self {
+        match Self::try_linearize(expr, id_to_idx, zero, one) {
+            Some((c, terms)) if terms.is_empty() => CompiledExpr::Constant(c),
+            Some((c, terms)) if terms.len() == 1 && c == zero && terms[0].1 == one => {
+                CompiledExpr::DirectLoad(terms[0].0)
+            }
+            Some((constant, terms)) => CompiledExpr::LinearCombination { constant, terms },
+            None => {
+                // Degree >= 2: pre-resolve references so eval_var can index row directly.
+                CompiledExpr::General(Self::resolve_refs(expr, id_to_idx))
+            }
+        }
+    }
+
+    /// Evaluate the compiled expression against a row slice.
+    #[inline(always)]
+    pub fn eval(&self, row: &[F]) -> F {
+        match self {
+            CompiledExpr::Constant(c) => *c,
+            CompiledExpr::DirectLoad(idx) => row[*idx],
+            CompiledExpr::LinearCombination { constant, terms } => {
+                let mut acc = *constant;
+                for &(idx, coeff) in terms {
+                    acc = acc + coeff * row[idx];
+                }
+                acc
+            }
+            CompiledExpr::General(expr) => {
+                // References already pre-resolved: id stores column index directly.
+                expr.to_expression(&|n| *n, &|var| row[var.id as usize])
+            }
+        }
+    }
+
+    /// Pre-resolve all references in an expression: replace each reference's id
+    /// with its column index so eval can do `row[id]` directly.
+    fn resolve_refs(expr: &AlgebraicExpression<F>, id_to_idx: &[usize]) -> AlgebraicExpression<F> {
+        use powdr_expression::AlgebraicExpression as AE;
+        match expr {
+            AE::Number(c) => AE::Number(*c),
+            AE::Reference(r) => {
+                let mut resolved = r.clone();
+                resolved.id = id_to_idx[r.id as usize] as u64;
+                AE::Reference(resolved)
+            }
+            AE::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+                AE::new_binary(
+                    Self::resolve_refs(left, id_to_idx),
+                    *op,
+                    Self::resolve_refs(right, id_to_idx),
+                )
+            }
+            AE::UnaryOperation(powdr_expression::AlgebraicUnaryOperation { op, expr }) => {
+                AE::new_unary(*op, Self::resolve_refs(expr, id_to_idx))
+            }
+        }
+    }
+
+    /// Try to decompose expr into (constant, Vec<(col_idx, coeff)>).
+    /// Returns None if expression contains col*col (degree >= 2).
+    fn try_linearize(
+        expr: &AlgebraicExpression<F>,
+        id_to_idx: &[usize],
+        zero: F,
+        one: F,
+    ) -> Option<(F, Vec<(usize, F)>)> {
+        use powdr_expression::AlgebraicExpression as AE;
+        match expr {
+            AE::Number(c) => Some((*c, vec![])),
+            AE::Reference(r) => {
+                let idx = id_to_idx[r.id as usize];
+                Some((zero, vec![(idx, one)]))
+            }
+            AE::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => match op {
+                AlgebraicBinaryOperator::Add => {
+                    let (c_l, mut t_l) = Self::try_linearize(left, id_to_idx, zero, one)?;
+                    let (c_r, t_r) = Self::try_linearize(right, id_to_idx, zero, one)?;
+                    t_l.extend(t_r);
+                    Some((c_l + c_r, t_l))
+                }
+                AlgebraicBinaryOperator::Sub => {
+                    let (c_l, mut t_l) = Self::try_linearize(left, id_to_idx, zero, one)?;
+                    let (c_r, t_r) = Self::try_linearize(right, id_to_idx, zero, one)?;
+                    for (idx, coeff) in t_r {
+                        t_l.push((idx, -coeff));
+                    }
+                    Some((c_l - c_r, t_l))
+                }
+                AlgebraicBinaryOperator::Mul => {
+                    let (c_l, t_l) = Self::try_linearize(left, id_to_idx, zero, one)?;
+                    let (c_r, t_r) = Self::try_linearize(right, id_to_idx, zero, one)?;
+                    if t_r.is_empty() {
+                        let terms = t_l.into_iter().map(|(i, c)| (i, c * c_r)).collect();
+                        Some((c_l * c_r, terms))
+                    } else if t_l.is_empty() {
+                        let terms = t_r.into_iter().map(|(i, c)| (i, c * c_l)).collect();
+                        Some((c_l * c_r, terms))
+                    } else {
+                        None
+                    }
+                }
+            },
+            AE::UnaryOperation(powdr_expression::AlgebraicUnaryOperation { op, expr }) => {
+                match op {
+                    AlgebraicUnaryOperator::Minus => {
+                        let (c, terms) = Self::try_linearize(expr, id_to_idx, zero, one)?;
+                        let neg_terms = terms.into_iter().map(|(i, c)| (i, -c)).collect();
+                        Some((-c, neg_terms))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Pre-compiled bus interaction for fast per-row evaluation.
+pub struct CompiledBusInteraction<F> {
+    pub id: u64,
+    pub mult: CompiledExpr<F>,
+    pub args: Vec<CompiledExpr<F>>,
+}
+
+impl<F> CompiledBusInteraction<F>
+where
+    F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy + PartialEq,
+{
+    /// Compile all bus interactions from symbolic form.
+    /// `zero` and `one` are the field's additive and multiplicative identities.
+    pub fn compile_all(
+        interactions: &[SymbolicBusInteraction<F>],
+        id_to_idx: &[usize],
+        zero: F,
+        one: F,
+    ) -> Vec<Self> {
+        interactions
+            .iter()
+            .map(|bi| CompiledBusInteraction {
+                id: bi.id,
+                mult: CompiledExpr::compile(&bi.mult, id_to_idx, zero, one),
+                args: bi
+                    .args
+                    .iter()
+                    .map(|a| CompiledExpr::compile(a, id_to_idx, zero, one))
+                    .collect(),
+            })
+            .collect()
+    }
+}

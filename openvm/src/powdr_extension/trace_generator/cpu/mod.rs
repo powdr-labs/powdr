@@ -173,6 +173,17 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
             vec
         };
 
+        // Compile bus interactions once before the hot loop
+        let compiled_interactions = {
+            use powdr_autoprecompiles::expression::CompiledBusInteraction;
+            CompiledBusInteraction::compile_all(
+                &self.apc.machine().bus_interactions,
+                &id_to_idx,
+                BabyBear::ZERO,
+                BabyBear::ONE,
+            )
+        };
+
         // allocate for apc trace
         let height = next_power_of_two_or_zero(num_apc_calls);
         #[cfg(feature = "metrics")]
@@ -242,27 +253,16 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
                     let t2 = Instant::now();
                     derived_ns += (t2 - t1).as_nanos() as u64;
 
-                    // Phase 3: evaluate bus interaction expressions
-                    let evaluator = MappingRowEvaluator::new(row_slice, &id_to_idx);
-                    self.apc
-                        .machine()
-                        .bus_interactions
-                        .iter()
-                        .for_each(|interaction| {
-                            use powdr_autoprecompiles::expression::{
-                                AlgebraicEvaluator, ConcreteBusInteraction,
-                            };
-
-                            let ConcreteBusInteraction { id, mult, args } =
-                                evaluator.eval_bus_interaction(interaction);
-                            // Phase 4: apply to periphery
-                            self.periphery.real.apply(
-                                id as u16,
-                                mult.as_canonical_u32(),
-                                args.map(|arg| arg.as_canonical_u32()),
-                                &self.periphery.bus_ids,
-                            );
-                        });
+                    // Phase 3: evaluate bus interactions using compiled expressions
+                    for ci in &compiled_interactions {
+                        let mult = ci.mult.eval(row_slice);
+                        self.periphery.real.apply(
+                            ci.id as u16,
+                            mult.as_canonical_u32(),
+                            ci.args.iter().map(|a| a.eval(row_slice).as_canonical_u32()),
+                            &self.periphery.bus_ids,
+                        );
+                    }
                     let t3 = Instant::now();
                     // eval+apply combined since they're interleaved per interaction
                     eval_ns += (t3 - t2).as_nanos() as u64;
