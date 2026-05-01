@@ -166,6 +166,13 @@ impl<A: Arena> InitializedOriginalArenas<A> {
         let index = *self.air_name_to_arena_index.get(air_name)?;
         self.arenas[index].take().map(|arena_pair| arena_pair.real)
     }
+
+    /// Borrow a real arena without consuming it. Returns None if the air_name
+    /// is not found or the arena has already been taken.
+    pub fn peek_real_arena(&self, air_name: &str) -> Option<&A> {
+        let index = *self.air_name_to_arena_index.get(air_name)?;
+        self.arenas[index].as_ref().map(|pair| &pair.real)
+    }
 }
 
 pub struct ArenaPair<A> {
