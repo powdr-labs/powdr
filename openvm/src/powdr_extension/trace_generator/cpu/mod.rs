@@ -3,6 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use itertools::Itertools;
 use openvm_circuit::{arch::MatrixRecordArena, utils::next_power_of_two_or_zero};
 use openvm_circuit_primitives::Chip;
+use openvm_stark_backend::p3_maybe_rayon::prelude::*;
 use openvm_stark_backend::{
     p3_field::{Field, PrimeCharacteristicRing, PrimeField32},
     p3_matrix::dense::{DenseMatrix, RowMajorMatrix},
@@ -152,21 +153,42 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
             &self.apc,
         );
 
-        // allocate for apc trace
+        // Build dense Vec indexed by poly ID for O(1) column lookups in the hot loop.
+        // Poly IDs may be sparse (gaps between IDs), so the Vec is sized to max_id + 1.
         let width = apc_poly_id_to_index.len();
+        let max_poly_id = apc_poly_id_to_index.keys().last().copied().unwrap_or(0) as usize;
+        let apc_poly_id_to_index: Vec<usize> = (0..=max_poly_id)
+            .map(|id| apc_poly_id_to_index.get(&(id as u64)).copied().unwrap_or(0))
+            .collect();
+
+        // Compile bus interactions once before the hot loop
+        let compiled_interactions = {
+            use powdr_autoprecompiles::expression::CompiledBusInteraction;
+            CompiledBusInteraction::compile_all(
+                &self.apc.machine().bus_interactions,
+                &apc_poly_id_to_index,
+                BabyBear::ZERO,
+                BabyBear::ONE,
+            )
+        };
+
+        // allocate for apc trace
         let height = next_power_of_two_or_zero(num_apc_calls);
         let mut values = <BabyBear as PrimeCharacteristicRing>::zero_vec(height * width);
 
-        // go through the final table and fill in the values
-        values
-            // a record is `width` values
-            // TODO: optimize by parallelizing on chunks of rows, currently fails because `dyn AnyChip<MatrixRecordArena<Val<SC>>>` is not `Send`
-            .chunks_mut(width)
-            .zip(dummy_values)
-            .for_each(|(row_slice, dummy_values)| {
-                // map the dummy rows to the autoprecompile row
+        // Go through the final table and fill in the values.
+        // Parallelized: the original code used chunks_mut (serial) because the
+        // periphery.apply() calls were not thread-safe. Now that periphery chips
+        // use AtomicU32 counters, we can use par_chunks_mut safely.
+        // Extract references to avoid capturing `self` (ISA::Config is not Sync).
+        let periphery_real = &self.periphery.real;
+        let periphery_bus_ids = &self.periphery.bus_ids;
 
-                use powdr_autoprecompiles::expression::MappingRowEvaluator;
+        values
+            .par_chunks_mut(width)
+            .zip(dummy_values.into_par_iter())
+            .for_each(|(row_slice, dummy_values)| {
+                // Copy dummy rows to APC row
                 for (dummy_row, dummy_trace_index_to_apc_index) in dummy_values
                     .iter()
                     .map(|r| &r.data[r.start..r.start + r.length])
@@ -177,51 +199,40 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
                     }
                 }
 
-                // Fill in the columns we have to compute from other columns
-                // (these are either new columns or for example the "is_valid" column).
+                // Compute derived columns
                 for derived_column in columns_to_compute {
-                    let col_index = apc_poly_id_to_index[&derived_column.variable.id];
+                    let col_index = apc_poly_id_to_index[derived_column.variable.id as usize];
                     row_slice[col_index] = match &derived_column.computation_method {
                         ComputationMethod::Constant(c) => *c,
                         ComputationMethod::QuotientOrZero(e1, e2) => {
                             use powdr_number::ExpressionConvertible;
 
                             let divisor_val = e2.to_expression(&|n| *n, &|column_ref| {
-                                row_slice[apc_poly_id_to_index[&column_ref.id]]
+                                row_slice[apc_poly_id_to_index[column_ref.id as usize]]
                             });
                             if divisor_val.is_zero() {
                                 BabyBear::ZERO
                             } else {
                                 divisor_val.inverse()
                                     * e1.to_expression(&|n| *n, &|column_ref| {
-                                        row_slice[apc_poly_id_to_index[&column_ref.id]]
+                                        row_slice[apc_poly_id_to_index[column_ref.id as usize]]
                                     })
                             }
                         }
                     };
                 }
 
-                let evaluator = MappingRowEvaluator::new(row_slice, &apc_poly_id_to_index);
-
-                // replay the side effects of this row on the main periphery
-                self.apc
-                    .machine()
-                    .bus_interactions
-                    .iter()
-                    .for_each(|interaction| {
-                        use powdr_autoprecompiles::expression::{
-                            AlgebraicEvaluator, ConcreteBusInteraction,
-                        };
-
-                        let ConcreteBusInteraction { id, mult, args } =
-                            evaluator.eval_bus_interaction(interaction);
-                        self.periphery.real.apply(
-                            id as u16,
-                            mult.as_canonical_u32(),
-                            args.map(|arg| arg.as_canonical_u32()),
-                            &self.periphery.bus_ids,
-                        );
-                    });
+                // Evaluate bus interactions using compiled expressions.
+                // Periphery chips use AtomicU32 counters — thread-safe.
+                for ci in &compiled_interactions {
+                    let mult = ci.mult.eval(row_slice);
+                    periphery_real.apply(
+                        ci.id as u16,
+                        mult.as_canonical_u32(),
+                        ci.args.iter().map(|a| a.eval(row_slice).as_canonical_u32()),
+                        periphery_bus_ids,
+                    );
+                }
             });
 
         RowMajorMatrix::new(values, width)
