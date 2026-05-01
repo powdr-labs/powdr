@@ -57,6 +57,56 @@ pub enum ColumnComputation {
         then_comp: Box<ColumnComputation>,
     },
 
+    /// Read a u16 field at the given byte offset in the record.
+    DirectU16 { record_byte_offset: usize },
+
+    /// Pointer limb: computes `uint16_t limb of (val + sign_extend(imm, imm_sign))`.
+    PointerLimb {
+        val_byte_offset: usize,
+        imm_byte_offset: usize,
+        imm_sign_byte_offset: usize,
+        limb_index: usize,
+    },
+
+    /// LoadStore: rd_rs2_ptr (0 if UINT32_MAX, otherwise the value)
+    LoadStoreRdRs2Ptr { rd_rs2_ptr_byte_offset: usize },
+
+    /// LoadStore: needs_write (rd_rs2_ptr != UINT32_MAX)
+    LoadStoreNeedsWrite { rd_rs2_ptr_byte_offset: usize },
+
+    /// LoadStore: write_base_aux.prev_timestamp (conditional on needs_write)
+    LoadStoreWriteAuxPrevTs {
+        write_prev_ts_byte_offset: usize,
+        rd_rs2_ptr_byte_offset: usize,
+    },
+
+    /// LoadStore: write_base_aux timestamp decomposition (conditional on needs_write)
+    LoadStoreWriteAuxDecomp {
+        from_ts_byte_offset: usize,
+        write_prev_ts_byte_offset: usize,
+        rd_rs2_ptr_byte_offset: usize,
+        limb_index: usize,
+    },
+
+    /// LoadStore: is_load flag
+    LoadStoreIsLoad { opcode_byte_offset: usize },
+
+    /// LoadStore: flags[4] based on opcode and shift
+    LoadStoreFlag {
+        opcode_byte_offset: usize,
+        shift_byte_offset: usize,
+        flag_index: usize,
+    },
+
+    /// LoadStore: write_data computed from opcode, shift, read_data, prev_data
+    LoadStoreWriteData {
+        opcode_byte_offset: usize,
+        shift_byte_offset: usize,
+        read_data_byte_offset: usize,
+        prev_data_byte_offset: usize,
+        limb_index: usize,
+    },
+
     /// Constant value.
     Constant(u32),
 }
@@ -141,8 +191,185 @@ pub fn eval_column<F: PrimeField32>(comp: &ColumnComputation, record: &[u8], ran
                 F::ZERO
             }
         }
+        ColumnComputation::DirectU16 { record_byte_offset } => {
+            let bytes = &record[*record_byte_offset..*record_byte_offset + 2];
+            let val = u16::from_le_bytes(bytes.try_into().unwrap());
+            F::from_u32(val as u32)
+        }
+        ColumnComputation::PointerLimb {
+            val_byte_offset,
+            imm_byte_offset,
+            imm_sign_byte_offset,
+            limb_index,
+        } => {
+            let val = u32::from_le_bytes(
+                record[*val_byte_offset..*val_byte_offset + 4].try_into().unwrap(),
+            );
+            let imm = u16::from_le_bytes(
+                record[*imm_byte_offset..*imm_byte_offset + 2].try_into().unwrap(),
+            ) as u32;
+            let sign = record[*imm_sign_byte_offset];
+            let imm_ext = imm + if sign != 0 { 0xFFFF0000u32 } else { 0 };
+            let ptr = val.wrapping_add(imm_ext);
+            let limb = ((ptr >> (16 * *limb_index as u32)) & 0xFFFF) as u32;
+            F::from_u32(limb)
+        }
+        ColumnComputation::LoadStoreRdRs2Ptr { rd_rs2_ptr_byte_offset } => {
+            let val = u32::from_le_bytes(
+                record[*rd_rs2_ptr_byte_offset..*rd_rs2_ptr_byte_offset + 4]
+                    .try_into().unwrap(),
+            );
+            if val == u32::MAX { F::ZERO } else { F::from_u32(val) }
+        }
+        ColumnComputation::LoadStoreNeedsWrite { rd_rs2_ptr_byte_offset } => {
+            let val = u32::from_le_bytes(
+                record[*rd_rs2_ptr_byte_offset..*rd_rs2_ptr_byte_offset + 4]
+                    .try_into().unwrap(),
+            );
+            F::from_bool(val != u32::MAX)
+        }
+        ColumnComputation::LoadStoreWriteAuxPrevTs {
+            write_prev_ts_byte_offset,
+            rd_rs2_ptr_byte_offset,
+        } => {
+            let rd_rs2 = u32::from_le_bytes(
+                record[*rd_rs2_ptr_byte_offset..*rd_rs2_ptr_byte_offset + 4]
+                    .try_into().unwrap(),
+            );
+            if rd_rs2 == u32::MAX {
+                F::ZERO
+            } else {
+                let val = u32::from_le_bytes(
+                    record[*write_prev_ts_byte_offset..*write_prev_ts_byte_offset + 4]
+                        .try_into().unwrap(),
+                );
+                F::from_u32(val)
+            }
+        }
+        ColumnComputation::LoadStoreWriteAuxDecomp {
+            from_ts_byte_offset,
+            write_prev_ts_byte_offset,
+            rd_rs2_ptr_byte_offset,
+            limb_index,
+        } => {
+            let rd_rs2 = u32::from_le_bytes(
+                record[*rd_rs2_ptr_byte_offset..*rd_rs2_ptr_byte_offset + 4]
+                    .try_into().unwrap(),
+            );
+            if rd_rs2 == u32::MAX {
+                F::ZERO
+            } else {
+                let curr = u32::from_le_bytes(
+                    record[*from_ts_byte_offset..*from_ts_byte_offset + 4]
+                        .try_into().unwrap(),
+                );
+                let prev = u32::from_le_bytes(
+                    record[*write_prev_ts_byte_offset..*write_prev_ts_byte_offset + 4]
+                        .try_into().unwrap(),
+                );
+                let diff = (curr + 2).wrapping_sub(prev).wrapping_sub(1);
+                let mask = (1u32 << range_max_bits) - 1;
+                let limb = (diff >> (range_max_bits * *limb_index as u32)) & mask;
+                F::from_u32(limb)
+            }
+        }
+        ColumnComputation::LoadStoreIsLoad { opcode_byte_offset } => {
+            let opcode = record[*opcode_byte_offset];
+            // LOADW=0, LOADBU=1, LOADHU=2 are loads
+            F::from_bool(opcode <= 2)
+        }
+        ColumnComputation::LoadStoreFlag {
+            opcode_byte_offset,
+            shift_byte_offset,
+            flag_index,
+        } => {
+            let opcode = record[*opcode_byte_offset];
+            let shift = record[*shift_byte_offset];
+            let flags = compute_loadstore_flags(opcode, shift);
+            F::from_u32(flags[*flag_index] as u32)
+        }
+        ColumnComputation::LoadStoreWriteData {
+            opcode_byte_offset,
+            shift_byte_offset,
+            read_data_byte_offset,
+            prev_data_byte_offset,
+            limb_index,
+        } => {
+            let opcode = record[*opcode_byte_offset];
+            let shift = record[*shift_byte_offset] as usize;
+            let rd = &record[*read_data_byte_offset..*read_data_byte_offset + 4];
+            let prev = [
+                u32::from_le_bytes(record[*prev_data_byte_offset..*prev_data_byte_offset + 4].try_into().unwrap()),
+                u32::from_le_bytes(record[*prev_data_byte_offset + 4..*prev_data_byte_offset + 8].try_into().unwrap()),
+                u32::from_le_bytes(record[*prev_data_byte_offset + 8..*prev_data_byte_offset + 12].try_into().unwrap()),
+                u32::from_le_bytes(record[*prev_data_byte_offset + 12..*prev_data_byte_offset + 16].try_into().unwrap()),
+            ];
+            let wd = compute_loadstore_write_data(opcode, shift, rd, &prev);
+            F::from_u32(wd[*limb_index])
+        }
         ColumnComputation::Constant(val) => F::from_u32(*val),
     }
+}
+
+/// Compute LoadStore flags[4] based on opcode and shift.
+fn compute_loadstore_flags(opcode: u8, shift: u8) -> [u8; 4] {
+    let mut flags = [0u8; 4];
+    match opcode {
+        0 => flags[0] = 2,                                      // LOADW
+        2 => match shift { 0 => flags[1] = 2, 2 => flags[2] = 2, _ => {} } // LOADHU
+        1 => match shift {                                       // LOADBU
+            0 => flags[3] = 2, 1 => flags[0] = 1, 2 => flags[1] = 1, 3 => flags[2] = 1, _ => {}
+        }
+        3 => flags[3] = 1,                                      // STOREW
+        4 => match shift {                                       // STOREH
+            0 => { flags[0] = 1; flags[1] = 1; }
+            2 => { flags[0] = 1; flags[2] = 1; }
+            _ => {}
+        }
+        5 => match shift {                                       // STOREB
+            0 => { flags[0] = 1; flags[3] = 1; }
+            1 => { flags[1] = 1; flags[2] = 1; }
+            2 => { flags[1] = 1; flags[3] = 1; }
+            3 => { flags[2] = 1; flags[3] = 1; }
+            _ => {}
+        }
+        _ => {} // LOADB=6, LOADH=7 (sign extension variants)
+    }
+    flags
+}
+
+/// Compute LoadStore write_data[4] based on opcode, shift, read_data, prev_data.
+fn compute_loadstore_write_data(opcode: u8, shift: usize, rd: &[u8], prev: &[u32; 4]) -> [u32; 4] {
+    let mut wd = [0u32; 4];
+    match opcode {
+        0 => { // LOADW
+            for i in 0..4 { wd[i] = rd[i] as u32; }
+        }
+        2 => { // LOADHU
+            for i in 0..2 { wd[i] = rd[i + shift] as u32; }
+        }
+        1 => { // LOADBU
+            wd[0] = rd[shift] as u32;
+        }
+        3 => { // STOREW
+            for i in 0..4 { wd[i] = rd[i] as u32; }
+        }
+        4 => { // STOREH
+            for i in 0..4 {
+                if i >= shift && i < 2 + shift {
+                    wd[i] = rd[i - shift] as u32;
+                } else {
+                    wd[i] = prev[i];
+                }
+            }
+        }
+        5 => { // STOREB
+            for i in 0..4 { wd[i] = prev[i]; }
+            wd[shift] = rd[0] as u32;
+        }
+        _ => {} // LOADB, LOADH (sign extension) — TODO
+    }
+    wd
 }
 
 /// Run ALU operation on 4-byte limbs, returning the result.
@@ -339,6 +566,223 @@ pub fn base_alu_mapping() -> AirColumnMapping {
         air_name: "BaseAlu",
         width: 36,
         record_byte_size: 40 + 12, // adapter(40) + core(12), but need to check padding
+        columns,
+    }
+}
+
+// ============================================================================
+// Mapping table for LoadStore (width=41)
+// ============================================================================
+
+/// Byte offset of the core record start within the arena row for LoadStore.
+/// The adapter cols have width 23, so the core bytes start at byte offset 23 * 4 = 92.
+const LOADSTORE_CORE_BYTE_OFFSET: usize = 23 * 4;
+
+/// Build the mapping table for Rv32LoadStore (adapter width=23, core width=18, total=41).
+pub fn loadstore_mapping() -> AirColumnMapping {
+    use ColumnComputation::*;
+
+    // Adapter record byte offsets
+    let from_pc: usize = 0;
+    let from_timestamp: usize = 4;
+    let rs1_ptr: usize = 8;
+    let rs1_val: usize = 12; // u32 — decomposed into 4 byte limbs for rs1_data
+    let rs1_aux_prev_ts: usize = 16;
+    let rd_rs2_ptr: usize = 20;
+    let read_data_aux_prev_ts: usize = 24;
+    let imm: usize = 28; // u16
+    let imm_sign: usize = 30; // bool/u8
+    let mem_as: usize = 31; // u8
+    let write_prev_ts: usize = 32; // u32
+
+    // Core record byte offsets
+    let core = LOADSTORE_CORE_BYTE_OFFSET;
+    let local_opcode: usize = core;
+    let shift_amount: usize = core + 1;
+    let read_data: usize = core + 2; // u8[4]
+    let prev_data: usize = core + 8; // u32[4] (after 2 bytes padding at core+6)
+
+    let columns = vec![
+        // Adapter columns (0-22)
+        ColumnMapping { col_index: 0, computation: DirectU32 { record_byte_offset: from_pc } },
+        ColumnMapping { col_index: 1, computation: DirectU32 { record_byte_offset: from_timestamp } },
+        ColumnMapping { col_index: 2, computation: DirectU32 { record_byte_offset: rs1_ptr } },
+        // rs1_data[0..3]: byte decomposition of rs1_val
+        ColumnMapping { col_index: 3, computation: DirectU8 { record_byte_offset: rs1_val } },
+        ColumnMapping { col_index: 4, computation: DirectU8 { record_byte_offset: rs1_val + 1 } },
+        ColumnMapping { col_index: 5, computation: DirectU8 { record_byte_offset: rs1_val + 2 } },
+        ColumnMapping { col_index: 6, computation: DirectU8 { record_byte_offset: rs1_val + 3 } },
+        // rs1_aux_cols
+        ColumnMapping { col_index: 7, computation: DirectU32 { record_byte_offset: rs1_aux_prev_ts } },
+        ColumnMapping {
+            col_index: 8,
+            computation: TimestampDecomp {
+                curr_ts_byte_offset: from_timestamp,
+                curr_ts_delta: 0,
+                prev_ts_byte_offset: rs1_aux_prev_ts,
+                limb_index: 0,
+            },
+        },
+        ColumnMapping {
+            col_index: 9,
+            computation: TimestampDecomp {
+                curr_ts_byte_offset: from_timestamp,
+                curr_ts_delta: 0,
+                prev_ts_byte_offset: rs1_aux_prev_ts,
+                limb_index: 1,
+            },
+        },
+        // rd_rs2_ptr: conditional (UINT32_MAX means no write => 0)
+        ColumnMapping {
+            col_index: 10,
+            computation: LoadStoreRdRs2Ptr { rd_rs2_ptr_byte_offset: rd_rs2_ptr },
+        },
+        // read_data_aux
+        ColumnMapping { col_index: 11, computation: DirectU32 { record_byte_offset: read_data_aux_prev_ts } },
+        ColumnMapping {
+            col_index: 12,
+            computation: TimestampDecomp {
+                curr_ts_byte_offset: from_timestamp,
+                curr_ts_delta: 1,
+                prev_ts_byte_offset: read_data_aux_prev_ts,
+                limb_index: 0,
+            },
+        },
+        ColumnMapping {
+            col_index: 13,
+            computation: TimestampDecomp {
+                curr_ts_byte_offset: from_timestamp,
+                curr_ts_delta: 1,
+                prev_ts_byte_offset: read_data_aux_prev_ts,
+                limb_index: 1,
+            },
+        },
+        // imm (u16)
+        ColumnMapping { col_index: 14, computation: DirectU16 { record_byte_offset: imm } },
+        // imm_sign
+        ColumnMapping { col_index: 15, computation: DirectU8 { record_byte_offset: imm_sign } },
+        // mem_ptr_limbs: computed from rs1_val + sign_extend(imm, imm_sign)
+        ColumnMapping {
+            col_index: 16,
+            computation: PointerLimb {
+                val_byte_offset: rs1_val,
+                imm_byte_offset: imm,
+                imm_sign_byte_offset: imm_sign,
+                limb_index: 0,
+            },
+        },
+        ColumnMapping {
+            col_index: 17,
+            computation: PointerLimb {
+                val_byte_offset: rs1_val,
+                imm_byte_offset: imm,
+                imm_sign_byte_offset: imm_sign,
+                limb_index: 1,
+            },
+        },
+        // mem_as
+        ColumnMapping { col_index: 18, computation: DirectU8 { record_byte_offset: mem_as } },
+        // write_base_aux: conditional on needs_write
+        ColumnMapping {
+            col_index: 19,
+            computation: LoadStoreWriteAuxPrevTs {
+                write_prev_ts_byte_offset: write_prev_ts,
+                rd_rs2_ptr_byte_offset: rd_rs2_ptr,
+            },
+        },
+        ColumnMapping {
+            col_index: 20,
+            computation: LoadStoreWriteAuxDecomp {
+                from_ts_byte_offset: from_timestamp,
+                write_prev_ts_byte_offset: write_prev_ts,
+                rd_rs2_ptr_byte_offset: rd_rs2_ptr,
+                limb_index: 0,
+            },
+        },
+        ColumnMapping {
+            col_index: 21,
+            computation: LoadStoreWriteAuxDecomp {
+                from_ts_byte_offset: from_timestamp,
+                write_prev_ts_byte_offset: write_prev_ts,
+                rd_rs2_ptr_byte_offset: rd_rs2_ptr,
+                limb_index: 1,
+            },
+        },
+        // needs_write
+        ColumnMapping {
+            col_index: 22,
+            computation: LoadStoreNeedsWrite { rd_rs2_ptr_byte_offset: rd_rs2_ptr },
+        },
+        // Core columns (23-40)
+        // flags[0..3]: opcode-dependent
+        ColumnMapping { col_index: 23, computation: LoadStoreFlag { opcode_byte_offset: local_opcode, shift_byte_offset: shift_amount, flag_index: 0 } },
+        ColumnMapping { col_index: 24, computation: LoadStoreFlag { opcode_byte_offset: local_opcode, shift_byte_offset: shift_amount, flag_index: 1 } },
+        ColumnMapping { col_index: 25, computation: LoadStoreFlag { opcode_byte_offset: local_opcode, shift_byte_offset: shift_amount, flag_index: 2 } },
+        ColumnMapping { col_index: 26, computation: LoadStoreFlag { opcode_byte_offset: local_opcode, shift_byte_offset: shift_amount, flag_index: 3 } },
+        // is_valid
+        ColumnMapping { col_index: 27, computation: Constant(1) },
+        // is_load
+        ColumnMapping {
+            col_index: 28,
+            computation: LoadStoreIsLoad { opcode_byte_offset: local_opcode },
+        },
+        // read_data[0..3]
+        ColumnMapping { col_index: 29, computation: DirectU8 { record_byte_offset: read_data } },
+        ColumnMapping { col_index: 30, computation: DirectU8 { record_byte_offset: read_data + 1 } },
+        ColumnMapping { col_index: 31, computation: DirectU8 { record_byte_offset: read_data + 2 } },
+        ColumnMapping { col_index: 32, computation: DirectU8 { record_byte_offset: read_data + 3 } },
+        // prev_data[0..3]: u32 values from record
+        ColumnMapping { col_index: 33, computation: DirectU32 { record_byte_offset: prev_data } },
+        ColumnMapping { col_index: 34, computation: DirectU32 { record_byte_offset: prev_data + 4 } },
+        ColumnMapping { col_index: 35, computation: DirectU32 { record_byte_offset: prev_data + 8 } },
+        ColumnMapping { col_index: 36, computation: DirectU32 { record_byte_offset: prev_data + 12 } },
+        // write_data[0..3]: computed from opcode, shift, read_data, prev_data
+        ColumnMapping {
+            col_index: 37,
+            computation: LoadStoreWriteData {
+                opcode_byte_offset: local_opcode,
+                shift_byte_offset: shift_amount,
+                read_data_byte_offset: read_data,
+                prev_data_byte_offset: prev_data,
+                limb_index: 0,
+            },
+        },
+        ColumnMapping {
+            col_index: 38,
+            computation: LoadStoreWriteData {
+                opcode_byte_offset: local_opcode,
+                shift_byte_offset: shift_amount,
+                read_data_byte_offset: read_data,
+                prev_data_byte_offset: prev_data,
+                limb_index: 1,
+            },
+        },
+        ColumnMapping {
+            col_index: 39,
+            computation: LoadStoreWriteData {
+                opcode_byte_offset: local_opcode,
+                shift_byte_offset: shift_amount,
+                read_data_byte_offset: read_data,
+                prev_data_byte_offset: prev_data,
+                limb_index: 2,
+            },
+        },
+        ColumnMapping {
+            col_index: 40,
+            computation: LoadStoreWriteData {
+                opcode_byte_offset: local_opcode,
+                shift_byte_offset: shift_amount,
+                read_data_byte_offset: read_data,
+                prev_data_byte_offset: prev_data,
+                limb_index: 3,
+            },
+        },
+    ];
+
+    AirColumnMapping {
+        air_name: "LoadStore",
+        width: 41,
+        record_byte_size: 36 + 24, // adapter(36) + core(24)
         columns,
     }
 }

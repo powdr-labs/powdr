@@ -407,10 +407,14 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
         // Look up the column mapping for each AIR type
         let mappings_by_air: HashMap<&str, AirColumnMapping> = {
             let mut m = HashMap::new();
-            // Register known AIR mappings
-            // For now, only BaseAlu is supported
-            let base_alu = jit_mapping::base_alu_mapping();
-            m.insert("VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>", base_alu);
+            m.insert(
+                "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>",
+                jit_mapping::base_alu_mapping(),
+            );
+            m.insert(
+                "VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>",
+                jit_mapping::loadstore_mapping(),
+            );
             m
         };
 
@@ -669,10 +673,13 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
 
         let mappings_by_air: HashMap<&str, jit_mapping::AirColumnMapping> = {
             let mut m = HashMap::new();
-            let base_alu = jit_mapping::base_alu_mapping();
             m.insert(
                 "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>",
-                base_alu,
+                jit_mapping::base_alu_mapping(),
+            );
+            m.insert(
+                "VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>",
+                jit_mapping::loadstore_mapping(),
             );
             m
         };
