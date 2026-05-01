@@ -565,6 +565,20 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         let d_instructions = jit_instructions.to_device().unwrap();
         let d_col_descs = jit_col_descs.to_device().unwrap();
 
+        if std::env::var("POWDR_JIT_DEBUG").is_ok() {
+            let mut type_counts = std::collections::HashMap::<u16, usize>::new();
+            for desc in &jit_col_descs {
+                *type_counts.entry(desc.comp_type & 0x7F).or_default() += 1;
+            }
+            let mut sorted: Vec<_> = type_counts.into_iter().collect();
+            sorted.sort_by(|a, b| b.1.cmp(&a.1));
+            tracing::info!(
+                "GPU JIT: {} instructions, {} col descs, {} APC calls, types: {:?}",
+                jit_instructions.len(), jit_col_descs.len(), num_apc_calls,
+                sorted
+            );
+        }
+
         // Allocate output (pre-zeroed)
         let mut output = DeviceMatrix::<BabyBear>::with_capacity(height, width);
         output.buffer().fill_zero().unwrap();
