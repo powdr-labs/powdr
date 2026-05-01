@@ -120,6 +120,8 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
             .inventory
         };
 
+        let jit_debug = std::env::var("POWDR_JIT_DEBUG").is_ok();
+
         let dummy_trace_by_air_name: HashMap<String, SharedCpuTrace<BabyBear>> = chip_inventory
             .chips()
             .iter()
@@ -135,7 +137,60 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
                     }
                 };
 
+                if jit_debug {
+                    // Dump arena layout before fill_trace_row consumes it
+                    let arena_width = record_arena.width;
+                    let arena_offset = record_arena.trace_offset;
+                    let rows_used = arena_offset / arena_width;
+
+                    tracing::info!(
+                        "JIT_DEBUG: AIR '{}' arena: width={}, rows_used={}, total_values={}",
+                        air_name, arena_width, rows_used, record_arena.trace_buffer.len()
+                    );
+
+                    // Dump first row's raw record bytes
+                    if rows_used > 0 {
+                        let row0 = &record_arena.trace_buffer[..arena_width];
+                        // Print raw u32 values (NOT Montgomery-decoded) — these are record struct bytes
+                        let row0_raw: Vec<u32> = row0
+                            .iter()
+                            .map(|v| {
+                                let bytes: [u8; 4] = unsafe { std::mem::transmute_copy(v) };
+                                u32::from_le_bytes(bytes)
+                            })
+                            .collect();
+                        tracing::info!(
+                            "JIT_DEBUG:   row0 raw bytes (as u32 LE): {:?}",
+                            row0_raw
+                        );
+                        // Also print as hex for easier struct field reading
+                        let row0_hex: Vec<String> = row0_raw.iter().map(|v| format!("{:#010x}", v)).collect();
+                        tracing::info!(
+                            "JIT_DEBUG:   row0 raw bytes (hex): {:?}",
+                            row0_hex
+                        );
+                    }
+                }
+
                 let row_major_trace = chip.generate_proving_ctx(record_arena).common_main;
+
+                if jit_debug {
+                    // Dump first row after fill_trace_row
+                    let trace_width = row_major_trace.width;
+                    let trace_height = row_major_trace.values.len() / trace_width;
+                    tracing::info!(
+                        "JIT_DEBUG: AIR '{}' trace: width={}, height={}",
+                        air_name, trace_width, trace_height
+                    );
+                    if trace_height > 0 {
+                        let row0 = &row_major_trace.values[..trace_width];
+                        let row0_u32: Vec<u32> = row0.iter().map(|v| v.as_canonical_u32()).collect();
+                        tracing::info!(
+                            "JIT_DEBUG:   row0 after fill_trace (as u32): {:?}",
+                            row0_u32
+                        );
+                    }
+                }
 
                 Some((air_name, SharedCpuTrace::from(Arc::new(row_major_trace))))
             })
