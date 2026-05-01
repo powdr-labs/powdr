@@ -154,9 +154,17 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
         );
 
         // Build dense Vec indexed by poly ID for O(1) column lookups in the hot loop.
-        // IDs are contiguous from 0, so the Vec is indexed directly by poly ID.
+        // Bus interaction expressions may reference poly IDs outside the APC column range,
+        // so the Vec must be large enough to hold the max ID.
         let width = apc_poly_id_to_index.len();
-        let apc_poly_id_to_index: Vec<usize> = apc_poly_id_to_index.values().copied().collect();
+        let apc_poly_id_to_index: Vec<usize> = {
+            let max_id = apc_poly_id_to_index.keys().last().copied().unwrap_or(0) as usize;
+            let mut vec = vec![0usize; max_id + 1];
+            for (&id, &index) in &apc_poly_id_to_index {
+                vec[id as usize] = index;
+            }
+            vec
+        };
 
         // Compile bus interactions once before the hot loop
         let compiled_interactions = {

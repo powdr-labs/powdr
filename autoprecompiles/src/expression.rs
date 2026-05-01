@@ -290,6 +290,7 @@ where
     F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy + PartialEq,
 {
     /// Compile an expression at build time into a fast-eval form.
+    /// `id_to_idx` is a dense Vec indexed directly by poly ID.
     /// `zero` and `one` are the field's additive and multiplicative identities.
     pub fn compile(expr: &AlgebraicExpression<F>, id_to_idx: &[usize], zero: F, one: F) -> Self {
         let d = Self::decompose(expr, id_to_idx, zero, one);
