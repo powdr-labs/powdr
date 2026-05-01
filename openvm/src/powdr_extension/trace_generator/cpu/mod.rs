@@ -415,6 +415,14 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
                 "VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>",
                 jit_mapping::loadstore_mapping(),
             );
+            m.insert(
+                "VmAirWrapper<Rv32BaseAluAdapterAir, ShiftCoreAir<4, 8>",
+                jit_mapping::shift_mapping(),
+            );
+            m.insert(
+                "VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>",
+                jit_mapping::branch_equal_mapping(),
+            );
             m
         };
 
@@ -680,6 +688,14 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
             m.insert(
                 "VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>",
                 jit_mapping::loadstore_mapping(),
+            );
+            m.insert(
+                "VmAirWrapper<Rv32BaseAluAdapterAir, ShiftCoreAir<4, 8>",
+                jit_mapping::shift_mapping(),
+            );
+            m.insert(
+                "VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>",
+                jit_mapping::branch_equal_mapping(),
             );
             m
         };

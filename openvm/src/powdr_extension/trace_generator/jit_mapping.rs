@@ -107,6 +107,26 @@ pub enum ColumnComputation {
         limb_index: usize,
     },
 
+    /// Shift result: a[limb_index] from shift operation
+    ShiftResult { opcode_byte_offset: usize, b_byte_offset: usize, c_byte_offset: usize, limb_index: usize },
+    /// Shift: bit_multiplier_left = is_sll ? (1 << bit_shift) : 0
+    ShiftBitMulLeft { opcode_byte_offset: usize, c_byte_offset: usize },
+    /// Shift: bit_multiplier_right = !is_sll ? (1 << bit_shift) : 0
+    ShiftBitMulRight { opcode_byte_offset: usize, c_byte_offset: usize },
+    /// Shift: b_sign = is_sra ? (b[3] >> 7) : 0
+    ShiftBSign { opcode_byte_offset: usize, b_byte_offset: usize },
+    /// Shift: bit_shift_marker[marker_index] = (bit_shift == marker_index)
+    ShiftBitMarker { c_byte_offset: usize, marker_index: usize },
+    /// Shift: limb_shift_marker[marker_index] = (limb_shift == marker_index)
+    ShiftLimbMarker { c_byte_offset: usize, marker_index: usize },
+    /// Shift: bit_shift_carry[limb_index]
+    ShiftBitCarry { opcode_byte_offset: usize, b_byte_offset: usize, c_byte_offset: usize, limb_index: usize },
+
+    /// BranchEqual: cmp_result
+    BranchEqualCmpResult { a_byte_offset: usize, b_byte_offset: usize, opcode_byte_offset: usize },
+    /// BranchEqual: diff_inv_marker[marker_index]
+    BranchEqualDiffInvMarker { a_byte_offset: usize, b_byte_offset: usize, opcode_byte_offset: usize, marker_index: usize },
+
     /// Constant value.
     Constant(u32),
 }
@@ -307,8 +327,117 @@ pub fn eval_column<F: PrimeField32>(comp: &ColumnComputation, record: &[u8], ran
             let wd = compute_loadstore_write_data(opcode, shift, rd, &prev);
             F::from_u32(wd[*limb_index])
         }
+        ColumnComputation::ShiftResult { opcode_byte_offset, b_byte_offset, c_byte_offset, limb_index } => {
+            let opcode = record[*opcode_byte_offset];
+            let b: [u8; 4] = record[*b_byte_offset..*b_byte_offset + 4].try_into().unwrap();
+            let c: [u8; 4] = record[*c_byte_offset..*c_byte_offset + 4].try_into().unwrap();
+            let a = run_shift(opcode, &b, &c);
+            F::from_u8(a[*limb_index])
+        }
+        ColumnComputation::ShiftBitMulLeft { opcode_byte_offset, c_byte_offset } => {
+            let is_sll = record[*opcode_byte_offset] == 0;
+            let (_, bit_shift) = get_shift_amounts(record[*c_byte_offset]);
+            if is_sll { F::from_u32(1u32 << bit_shift) } else { F::ZERO }
+        }
+        ColumnComputation::ShiftBitMulRight { opcode_byte_offset, c_byte_offset } => {
+            let is_sll = record[*opcode_byte_offset] == 0;
+            let (_, bit_shift) = get_shift_amounts(record[*c_byte_offset]);
+            if !is_sll { F::from_u32(1u32 << bit_shift) } else { F::ZERO }
+        }
+        ColumnComputation::ShiftBSign { opcode_byte_offset, b_byte_offset } => {
+            let is_sra = record[*opcode_byte_offset] == 2;
+            if is_sra { F::from_u32((record[*b_byte_offset + 3] >> 7) as u32) } else { F::ZERO }
+        }
+        ColumnComputation::ShiftBitMarker { c_byte_offset, marker_index } => {
+            let (_, bit_shift) = get_shift_amounts(record[*c_byte_offset]);
+            F::from_bool(bit_shift == *marker_index)
+        }
+        ColumnComputation::ShiftLimbMarker { c_byte_offset, marker_index } => {
+            let (limb_shift, _) = get_shift_amounts(record[*c_byte_offset]);
+            F::from_bool(limb_shift == *marker_index)
+        }
+        ColumnComputation::ShiftBitCarry { opcode_byte_offset, b_byte_offset, c_byte_offset, limb_index } => {
+            let is_sll = record[*opcode_byte_offset] == 0;
+            let (_, bit_shift) = get_shift_amounts(record[*c_byte_offset]);
+            if bit_shift == 0 {
+                F::ZERO
+            } else {
+                let b_val = record[*b_byte_offset + *limb_index];
+                let carry = if is_sll {
+                    b_val >> (8 - bit_shift as u8)
+                } else {
+                    b_val & ((1u8 << bit_shift as u8) - 1)
+                };
+                F::from_u8(carry)
+            }
+        }
+        ColumnComputation::BranchEqualCmpResult { a_byte_offset, b_byte_offset, opcode_byte_offset } => {
+            let a = &record[*a_byte_offset..*a_byte_offset + 4];
+            let b = &record[*b_byte_offset..*b_byte_offset + 4];
+            let is_beq = record[*opcode_byte_offset] == 0;
+            let are_equal = a == b;
+            F::from_bool(if is_beq { are_equal } else { !are_equal })
+        }
+        ColumnComputation::BranchEqualDiffInvMarker { a_byte_offset, b_byte_offset, opcode_byte_offset, marker_index } => {
+            let a = &record[*a_byte_offset..*a_byte_offset + 4];
+            let b = &record[*b_byte_offset..*b_byte_offset + 4];
+            // Find first differing limb
+            let mut diff_idx = 4usize; // = NUM_LIMBS means equal
+            for i in 0..4 {
+                if a[i] != b[i] { diff_idx = i; break; }
+            }
+            if diff_idx == 4 { diff_idx = 0; } // when equal, marker at index 0
+            if *marker_index == diff_idx && a != b {
+                // diff_inv = inv(a[diff_idx] - b[diff_idx]) in the field
+                let a_val = F::from_u8(a[diff_idx]);
+                let b_val = F::from_u8(b[diff_idx]);
+                (a_val - b_val).inverse()
+            } else {
+                F::ZERO
+            }
+        }
         ColumnComputation::Constant(val) => F::from_u32(*val),
     }
+}
+
+/// Get shift amounts from c[0]: (limb_shift, bit_shift)
+fn get_shift_amounts(c0: u8) -> (usize, usize) {
+    let max_bits = 4 * 8; // NUM_LIMBS * CELL_BITS = 32
+    let shift = (c0 as usize) % max_bits;
+    (shift / 8, shift % 8)
+}
+
+/// Run shift operation, returning result a[4]
+fn run_shift(opcode: u8, b: &[u8; 4], c: &[u8; 4]) -> [u8; 4] {
+    let (limb_shift, bit_shift) = get_shift_amounts(c[0]);
+    let mut a = [0u8; 4];
+
+    if opcode == 0 {
+        // SLL
+        for i in limb_shift..4 {
+            if i > limb_shift {
+                let high = (b[i - limb_shift] as u16) << bit_shift as u16;
+                let low = (b[i - limb_shift - 1] as u16) >> (8 - bit_shift) as u16;
+                a[i] = ((high | low) & 0xFF) as u8;
+            } else {
+                a[i] = (((b[i - limb_shift] as u16) << bit_shift as u16) & 0xFF) as u8;
+            }
+        }
+    } else {
+        // SRL or SRA
+        let is_logical = opcode == 1;
+        let msb = b[3] >> 7;
+        let fill: u8 = if is_logical { 0 } else { 0xFF * msb };
+        for i in 0..4 { a[i] = fill; }
+        let limit = 4 - limb_shift;
+        for i in 0..limit {
+            let part1 = (b[i + limb_shift] >> bit_shift as u8) as u16;
+            let part2_val = if i + limb_shift + 1 < 4 { b[i + limb_shift + 1] } else { fill };
+            let part2 = (part2_val as u16) << (8 - bit_shift) as u16;
+            a[i] = ((part1 | part2) & 0xFF) as u8;
+        }
+    }
+    a
 }
 
 /// Compute LoadStore flags[4] based on opcode and shift.
@@ -783,6 +912,172 @@ pub fn loadstore_mapping() -> AirColumnMapping {
         air_name: "LoadStore",
         width: 41,
         record_byte_size: 36 + 24, // adapter(36) + core(24)
+        columns,
+    }
+}
+
+// ============================================================================
+// Mapping table for Shift (width=53) — uses BaseAlu adapter (width=19)
+// ============================================================================
+
+/// Build the mapping table for Rv32Shift (adapter=BaseAlu width=19, core=ShiftCore width=34, total=53).
+pub fn shift_mapping() -> AirColumnMapping {
+    use ColumnComputation::*;
+
+    // Adapter record byte offsets — same as BaseAlu adapter
+    let from_pc: usize = 0;
+    let from_timestamp: usize = 4;
+    let rd_ptr: usize = 8;
+    let rs1_ptr: usize = 12;
+    let rs2: usize = 16;
+    let rs2_as: usize = 20;
+    let reads_aux_0_prev_ts: usize = 24;
+    let reads_aux_1_prev_ts: usize = 28;
+    let writes_aux_prev_ts: usize = 32;
+    let writes_aux_prev_data_0: usize = 36;
+
+    // Core record byte offsets (at core offset = 19*4 = 76)
+    let core = 19 * 4; // same adapter width as BaseAlu
+    let b_0: usize = core; // b[4] at core+0
+    let c_0: usize = core + 4; // c[4] at core+4
+    let local_opcode: usize = core + 8; // opcode at core+8
+
+    // ShiftCoreCols layout (starting at col 19):
+    // a[4], b[4], c[4], sll_flag, srl_flag, sra_flag,
+    // bit_mul_left, bit_mul_right, b_sign,
+    // bit_shift_marker[8], limb_shift_marker[4], bit_shift_carry[4]
+
+    let mut columns = Vec::with_capacity(53);
+
+    // Adapter columns (0-18) — identical to BaseAlu
+    columns.push(ColumnMapping { col_index: 0, computation: DirectU32 { record_byte_offset: from_pc } });
+    columns.push(ColumnMapping { col_index: 1, computation: DirectU32 { record_byte_offset: from_timestamp } });
+    columns.push(ColumnMapping { col_index: 2, computation: DirectU32 { record_byte_offset: rd_ptr } });
+    columns.push(ColumnMapping { col_index: 3, computation: DirectU32 { record_byte_offset: rs1_ptr } });
+    columns.push(ColumnMapping { col_index: 4, computation: DirectU32 { record_byte_offset: rs2 } });
+    columns.push(ColumnMapping { col_index: 5, computation: DirectU8 { record_byte_offset: rs2_as } });
+    columns.push(ColumnMapping { col_index: 6, computation: DirectU32 { record_byte_offset: reads_aux_0_prev_ts } });
+    columns.push(ColumnMapping { col_index: 7, computation: TimestampDecomp { curr_ts_byte_offset: from_timestamp, curr_ts_delta: 0, prev_ts_byte_offset: reads_aux_0_prev_ts, limb_index: 0 } });
+    columns.push(ColumnMapping { col_index: 8, computation: TimestampDecomp { curr_ts_byte_offset: from_timestamp, curr_ts_delta: 0, prev_ts_byte_offset: reads_aux_0_prev_ts, limb_index: 1 } });
+    columns.push(ColumnMapping { col_index: 9, computation: Conditional { condition_byte_offset: rs2_as, then_comp: Box::new(DirectU32 { record_byte_offset: reads_aux_1_prev_ts }) } });
+    columns.push(ColumnMapping { col_index: 10, computation: Conditional { condition_byte_offset: rs2_as, then_comp: Box::new(TimestampDecomp { curr_ts_byte_offset: from_timestamp, curr_ts_delta: 1, prev_ts_byte_offset: reads_aux_1_prev_ts, limb_index: 0 }) } });
+    columns.push(ColumnMapping { col_index: 11, computation: Conditional { condition_byte_offset: rs2_as, then_comp: Box::new(TimestampDecomp { curr_ts_byte_offset: from_timestamp, curr_ts_delta: 1, prev_ts_byte_offset: reads_aux_1_prev_ts, limb_index: 1 }) } });
+    columns.push(ColumnMapping { col_index: 12, computation: DirectU32 { record_byte_offset: writes_aux_prev_ts } });
+    columns.push(ColumnMapping { col_index: 13, computation: TimestampDecomp { curr_ts_byte_offset: from_timestamp, curr_ts_delta: 2, prev_ts_byte_offset: writes_aux_prev_ts, limb_index: 0 } });
+    columns.push(ColumnMapping { col_index: 14, computation: TimestampDecomp { curr_ts_byte_offset: from_timestamp, curr_ts_delta: 2, prev_ts_byte_offset: writes_aux_prev_ts, limb_index: 1 } });
+    columns.push(ColumnMapping { col_index: 15, computation: DirectU8 { record_byte_offset: writes_aux_prev_data_0 } });
+    columns.push(ColumnMapping { col_index: 16, computation: DirectU8 { record_byte_offset: writes_aux_prev_data_0 + 1 } });
+    columns.push(ColumnMapping { col_index: 17, computation: DirectU8 { record_byte_offset: writes_aux_prev_data_0 + 2 } });
+    columns.push(ColumnMapping { col_index: 18, computation: DirectU8 { record_byte_offset: writes_aux_prev_data_0 + 3 } });
+
+    // Core columns (19-52): shift-specific
+    for i in 0..4 {
+        columns.push(ColumnMapping { col_index: 19 + i, computation: ShiftResult { opcode_byte_offset: local_opcode, b_byte_offset: b_0, c_byte_offset: c_0, limb_index: i } });
+    }
+    for i in 0..4 {
+        columns.push(ColumnMapping { col_index: 23 + i, computation: DirectU8 { record_byte_offset: b_0 + i } });
+    }
+    for i in 0..4 {
+        columns.push(ColumnMapping { col_index: 27 + i, computation: DirectU8 { record_byte_offset: c_0 + i } });
+    }
+    columns.push(ColumnMapping { col_index: 31, computation: BoolFromOpcode { opcode_byte_offset: local_opcode, expected_opcode: 0 } }); // sll
+    columns.push(ColumnMapping { col_index: 32, computation: BoolFromOpcode { opcode_byte_offset: local_opcode, expected_opcode: 1 } }); // srl
+    columns.push(ColumnMapping { col_index: 33, computation: BoolFromOpcode { opcode_byte_offset: local_opcode, expected_opcode: 2 } }); // sra
+    // bit_multiplier_left, bit_multiplier_right, b_sign
+    columns.push(ColumnMapping { col_index: 34, computation: ShiftBitMulLeft { opcode_byte_offset: local_opcode, c_byte_offset: c_0 } });
+    columns.push(ColumnMapping { col_index: 35, computation: ShiftBitMulRight { opcode_byte_offset: local_opcode, c_byte_offset: c_0 } });
+    columns.push(ColumnMapping { col_index: 36, computation: ShiftBSign { opcode_byte_offset: local_opcode, b_byte_offset: b_0 } });
+    // bit_shift_marker[8]
+    for i in 0..8 {
+        columns.push(ColumnMapping { col_index: 37 + i, computation: ShiftBitMarker { c_byte_offset: c_0, marker_index: i } });
+    }
+    // limb_shift_marker[4]
+    for i in 0..4 {
+        columns.push(ColumnMapping { col_index: 45 + i, computation: ShiftLimbMarker { c_byte_offset: c_0, marker_index: i } });
+    }
+    // bit_shift_carry[4]
+    for i in 0..4 {
+        columns.push(ColumnMapping { col_index: 49 + i, computation: ShiftBitCarry { opcode_byte_offset: local_opcode, b_byte_offset: b_0, c_byte_offset: c_0, limb_index: i } });
+    }
+
+    AirColumnMapping {
+        air_name: "Shift",
+        width: 53,
+        record_byte_size: 40 + 12,
+        columns,
+    }
+}
+
+// ============================================================================
+// Mapping table for BranchEqual (width=26)
+// ============================================================================
+
+/// Build the mapping table for BranchEqual (adapter=BranchAdapter width=10, core=BranchEqualCore width=16, total=26).
+pub fn branch_equal_mapping() -> AirColumnMapping {
+    use ColumnComputation::*;
+
+    // BranchAdapter record byte offsets
+    let from_pc: usize = 0;
+    let from_timestamp: usize = 4;
+    let rs1_ptr: usize = 8;
+    let rs2_ptr: usize = 12;
+    let reads_aux_0_prev_ts: usize = 16;
+    let reads_aux_1_prev_ts: usize = 20;
+    // adapter record = 24 bytes = 6 u32s
+
+    // BranchAdapterCols layout:
+    // col 0: from_state.pc, col 1: from_state.timestamp
+    // col 2: rs1_ptr, col 3: rs2_ptr
+    // col 4: reads_aux_0.prev_timestamp
+    // col 5-6: reads_aux_0.lt_decomp[0..1]
+    // col 7: reads_aux_1.prev_timestamp
+    // col 8-9: reads_aux_1.lt_decomp[0..1]
+    // adapter width = 10
+
+    // Core record byte offsets (at core offset = 10*4 = 40)
+    let core = 10 * 4;
+    let a_0: usize = core;       // a[4] at core+0
+    let b_0: usize = core + 4;   // b[4] at core+4
+    let core_imm: usize = core + 8; // imm (u32) at core+8
+    let core_opcode: usize = core + 12; // local_opcode (u8) at core+12
+
+    // BranchEqualCoreCols layout (starting at col 10):
+    // a[4], b[4], cmp_result, imm, opcode_beq_flag, opcode_bne_flag, diff_inv_marker[4]
+    // core width = 4+4+1+1+1+1+4 = 16. Total = 10+16 = 26
+
+    let mut columns = Vec::with_capacity(26);
+
+    // Adapter columns (0-9)
+    columns.push(ColumnMapping { col_index: 0, computation: DirectU32 { record_byte_offset: from_pc } });
+    columns.push(ColumnMapping { col_index: 1, computation: DirectU32 { record_byte_offset: from_timestamp } });
+    columns.push(ColumnMapping { col_index: 2, computation: DirectU32 { record_byte_offset: rs1_ptr } });
+    columns.push(ColumnMapping { col_index: 3, computation: DirectU32 { record_byte_offset: rs2_ptr } });
+    columns.push(ColumnMapping { col_index: 4, computation: DirectU32 { record_byte_offset: reads_aux_0_prev_ts } });
+    columns.push(ColumnMapping { col_index: 5, computation: TimestampDecomp { curr_ts_byte_offset: from_timestamp, curr_ts_delta: 0, prev_ts_byte_offset: reads_aux_0_prev_ts, limb_index: 0 } });
+    columns.push(ColumnMapping { col_index: 6, computation: TimestampDecomp { curr_ts_byte_offset: from_timestamp, curr_ts_delta: 0, prev_ts_byte_offset: reads_aux_0_prev_ts, limb_index: 1 } });
+    columns.push(ColumnMapping { col_index: 7, computation: DirectU32 { record_byte_offset: reads_aux_1_prev_ts } });
+    columns.push(ColumnMapping { col_index: 8, computation: TimestampDecomp { curr_ts_byte_offset: from_timestamp, curr_ts_delta: 1, prev_ts_byte_offset: reads_aux_1_prev_ts, limb_index: 0 } });
+    columns.push(ColumnMapping { col_index: 9, computation: TimestampDecomp { curr_ts_byte_offset: from_timestamp, curr_ts_delta: 1, prev_ts_byte_offset: reads_aux_1_prev_ts, limb_index: 1 } });
+
+    // Core columns (10-25)
+    for i in 0..4 {
+        columns.push(ColumnMapping { col_index: 10 + i, computation: DirectU8 { record_byte_offset: a_0 + i } });
+    }
+    for i in 0..4 {
+        columns.push(ColumnMapping { col_index: 14 + i, computation: DirectU8 { record_byte_offset: b_0 + i } });
+    }
+    columns.push(ColumnMapping { col_index: 18, computation: BranchEqualCmpResult { a_byte_offset: a_0, b_byte_offset: b_0, opcode_byte_offset: core_opcode } });
+    columns.push(ColumnMapping { col_index: 19, computation: DirectU32 { record_byte_offset: core_imm } });
+    columns.push(ColumnMapping { col_index: 20, computation: BoolFromOpcode { opcode_byte_offset: core_opcode, expected_opcode: 0 } }); // beq
+    columns.push(ColumnMapping { col_index: 21, computation: BoolFromOpcode { opcode_byte_offset: core_opcode, expected_opcode: 1 } }); // bne
+    for i in 0..4 {
+        columns.push(ColumnMapping { col_index: 22 + i, computation: BranchEqualDiffInvMarker { a_byte_offset: a_0, b_byte_offset: b_0, opcode_byte_offset: core_opcode, marker_index: i } });
+    }
+
+    AirColumnMapping {
+        air_name: "BranchEqual",
+        width: 26,
+        record_byte_size: 24 + 16, // adapter(24) + core(16 incl padding)
         columns,
     }
 }
