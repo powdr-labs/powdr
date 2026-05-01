@@ -551,16 +551,52 @@ fn run_alu_byte(opcode: u8, b: &[u8], c: &[u8]) -> [u8; 4] {
     a
 }
 
+/// Arena type determines how records are laid out in memory.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArenaType {
+    /// CPU arena: core starts at `adapter_cols_width * sizeof(F)`.
+    Matrix,
+    /// GPU arena: core starts at `aligned_adapter_record_size`.
+    Dense,
+}
+
+/// Core byte offsets per AIR type per arena type.
+fn core_byte_offset(air: &str, arena: ArenaType) -> usize {
+    match (air, arena) {
+        ("BaseAlu", ArenaType::Matrix) => 19 * 4,  // adapter_cols=19
+        ("BaseAlu", ArenaType::Dense) => 40,        // aligned_adapter_size=40
+        ("Shift", ArenaType::Matrix) => 19 * 4,     // same adapter as BaseAlu
+        ("Shift", ArenaType::Dense) => 40,
+        ("LoadStore", ArenaType::Matrix) => 23 * 4,  // adapter_cols=23
+        ("LoadStore", ArenaType::Dense) => 36,       // aligned_adapter_size=36
+        ("BranchEqual", ArenaType::Matrix) => 10 * 4, // adapter_cols=10
+        ("BranchEqual", ArenaType::Dense) => 24,      // aligned_adapter_size=24
+        _ => panic!("Unknown AIR type: {air}"),
+    }
+}
+
+/// Record stride for DenseRecordArena (= aligned_adapter_size + aligned_core_size).
+pub fn dense_record_stride(air: &str) -> usize {
+    match air {
+        "BaseAlu" | "Shift" => 52,
+        "LoadStore" => 60,
+        "BranchEqual" => 40,
+        _ => panic!("Unknown AIR type: {air}"),
+    }
+}
+
 // ============================================================================
 // Mapping table for BaseAlu (width=36)
 // ============================================================================
 
-/// Byte offset of the core record start within the arena row.
-/// The adapter cols have width 19, so the core bytes start at byte offset 19 * 4 = 76.
-const BASE_ALU_CORE_BYTE_OFFSET: usize = 19 * 4;
-
 /// Build the mapping table for Rv32BaseAlu (adapter width=19, core width=17, total=36).
+/// Uses MatrixRecordArena layout by default (for CPU path).
 pub fn base_alu_mapping() -> AirColumnMapping {
+    base_alu_mapping_for(ArenaType::Matrix)
+}
+
+/// Build BaseAlu mapping for a specific arena type.
+pub fn base_alu_mapping_for(arena: ArenaType) -> AirColumnMapping {
     use ColumnComputation::*;
 
     // Adapter record byte offsets (within the adapter section, starting at byte 0)
@@ -576,7 +612,7 @@ pub fn base_alu_mapping() -> AirColumnMapping {
     let writes_aux_prev_data_0: usize = 36;
 
     // Core record byte offsets (within the arena row, starting at core offset)
-    let core = BASE_ALU_CORE_BYTE_OFFSET;
+    let core = core_byte_offset("BaseAlu", arena);
     let b_0: usize = core;
     let c_0: usize = core + 4;
     let local_opcode: usize = core + 8;
@@ -707,8 +743,12 @@ pub fn base_alu_mapping() -> AirColumnMapping {
 /// The adapter cols have width 23, so the core bytes start at byte offset 23 * 4 = 92.
 const LOADSTORE_CORE_BYTE_OFFSET: usize = 23 * 4;
 
-/// Build the mapping table for Rv32LoadStore (adapter width=23, core width=18, total=41).
+/// Build the mapping table for Rv32LoadStore.
 pub fn loadstore_mapping() -> AirColumnMapping {
+    loadstore_mapping_for(ArenaType::Matrix)
+}
+
+pub fn loadstore_mapping_for(arena: ArenaType) -> AirColumnMapping {
     use ColumnComputation::*;
 
     // Adapter record byte offsets
@@ -725,7 +765,7 @@ pub fn loadstore_mapping() -> AirColumnMapping {
     let write_prev_ts: usize = 32; // u32
 
     // Core record byte offsets
-    let core = LOADSTORE_CORE_BYTE_OFFSET;
+    let core = core_byte_offset("LoadStore", arena);
     let local_opcode: usize = core;
     let shift_amount: usize = core + 1;
     let read_data: usize = core + 2; // u8[4]
@@ -922,6 +962,10 @@ pub fn loadstore_mapping() -> AirColumnMapping {
 
 /// Build the mapping table for Rv32Shift (adapter=BaseAlu width=19, core=ShiftCore width=34, total=53).
 pub fn shift_mapping() -> AirColumnMapping {
+    shift_mapping_for(ArenaType::Matrix)
+}
+
+pub fn shift_mapping_for(arena: ArenaType) -> AirColumnMapping {
     use ColumnComputation::*;
 
     // Adapter record byte offsets — same as BaseAlu adapter
@@ -937,7 +981,7 @@ pub fn shift_mapping() -> AirColumnMapping {
     let writes_aux_prev_data_0: usize = 36;
 
     // Core record byte offsets (at core offset = 19*4 = 76)
-    let core = 19 * 4; // same adapter width as BaseAlu
+    let core = core_byte_offset("Shift", arena);
     let b_0: usize = core; // b[4] at core+0
     let c_0: usize = core + 4; // c[4] at core+4
     let local_opcode: usize = core + 8; // opcode at core+8
@@ -1014,6 +1058,10 @@ pub fn shift_mapping() -> AirColumnMapping {
 
 /// Build the mapping table for BranchEqual (adapter=BranchAdapter width=10, core=BranchEqualCore width=16, total=26).
 pub fn branch_equal_mapping() -> AirColumnMapping {
+    branch_equal_mapping_for(ArenaType::Matrix)
+}
+
+pub fn branch_equal_mapping_for(arena: ArenaType) -> AirColumnMapping {
     use ColumnComputation::*;
 
     // BranchAdapter record byte offsets
@@ -1034,8 +1082,8 @@ pub fn branch_equal_mapping() -> AirColumnMapping {
     // col 8-9: reads_aux_1.lt_decomp[0..1]
     // adapter width = 10
 
-    // Core record byte offsets (at core offset = 10*4 = 40)
-    let core = 10 * 4;
+    // Core record byte offsets
+    let core = core_byte_offset("BranchEqual", arena);
     let a_0: usize = core;       // a[4] at core+0
     let b_0: usize = core + 4;   // b[4] at core+4
     let core_imm: usize = core + 8; // imm (u32) at core+8
