@@ -320,21 +320,7 @@ __global__ void apc_jit_tracegen_kernel(
 
             for (uint32_t c = 0; c < instr.col_desc_count; c++) {
                 const JitColumnDesc desc = d_col_descs[instr.col_desc_start + c];
-                // Fast path for the ~88% of columns that are direct copies.
-                // Avoids the full switch for the most common cases.
-                uint16_t ct = desc.comp_type;
-                Fp value;
-                if (ct == JIT_DIRECT_U32) {
-                    uint32_t v; memcpy(&v, record + desc.p[0], 4);
-                    value = Fp(v);
-                } else if (ct == JIT_DIRECT_U8) {
-                    value = Fp((uint32_t)record[desc.p[0]]);
-                } else if (ct == JIT_DIRECT_U16) {
-                    uint16_t v; memcpy(&v, record + desc.p[0], 2);
-                    value = Fp((uint32_t)v);
-                } else {
-                    value = eval_jit_column(desc, record, range_max_bits);
-                }
+                Fp value = eval_jit_column(desc, record, range_max_bits);
                 d_output[(size_t)desc.apc_col * H + r] = value;
             }
         }
