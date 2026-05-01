@@ -61,6 +61,39 @@ extern "C" {
         bitwise_bus_id: u32,      // bus id for the bitwise lookup
         d_bitwise_hist: *mut u32, // device histogram for bitwise lookup
     ) -> i32;
+
+    /// JIT trace generation: reads record bytes directly from arenas,
+    /// computes only surviving APC columns via descriptor arrays.
+    pub fn _apc_jit_tracegen(
+        d_output: *mut BabyBear,
+        output_height: usize,
+        num_apc_calls: i32,
+        d_arena: *const u8,                         // concatenated arena bytes
+        d_instructions: *const JitInstructionDesc,   // instruction descriptors
+        n_instructions: i32,
+        d_col_descs: *const JitColumnDesc,           // column descriptors
+        range_max_bits: u32,
+    ) -> i32;
+}
+
+/// JIT column computation descriptor — matches CUDA JitColumnDesc struct.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct JitColumnDesc {
+    pub comp_type: u16,
+    pub apc_col: u16,
+    pub p: [u16; 6],
+}
+
+/// JIT instruction descriptor — matches CUDA JitInstructionDesc struct.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct JitInstructionDesc {
+    pub arena_offset: u32,
+    pub record_stride: u32,
+    pub record_offset: u32,
+    pub col_desc_start: u32,
+    pub col_desc_count: u32,
 }
 
 #[repr(C)]
@@ -218,6 +251,30 @@ pub fn apc_apply_bus(
             // Bitwise related
             bitwise_bus_id,
             bitwise_count.as_mut_ptr() as *mut u32,
+        ))
+    }
+}
+
+/// Safe wrapper for the JIT trace generation kernel.
+pub fn apc_jit_tracegen(
+    output: &mut DeviceMatrix<BabyBear>,
+    arena: &DeviceBuffer<u8>,
+    instructions: &DeviceBuffer<JitInstructionDesc>,
+    col_descs: &DeviceBuffer<JitColumnDesc>,
+    num_apc_calls: usize,
+    range_max_bits: u32,
+) -> Result<(), CudaError> {
+    let output_height = output.height();
+    unsafe {
+        CudaError::from_result(_apc_jit_tracegen(
+            output.buffer().as_mut_ptr(),
+            output_height,
+            num_apc_calls as i32,
+            arena.as_ptr(),
+            instructions.as_ptr(),
+            instructions.len() as i32,
+            col_descs.as_ptr(),
+            range_max_bits,
         ))
     }
 }
