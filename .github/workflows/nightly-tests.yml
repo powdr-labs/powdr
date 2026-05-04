@@ -144,9 +144,6 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-release-apc-ghhosted-${{ hashFiles('**/Cargo.toml') }}
 
-      - name: Build
-        run: cargo build --release -p powdr-openvm
-
       - name: Install cargo openvm
         # Rust 1.91.1 is needed by fresher versions of dependencies of cargo-openvm.
         run: |
