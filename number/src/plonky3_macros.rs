@@ -35,12 +35,22 @@ macro_rules! powdr_field_plonky3 {
             Deserialize,
             derive_more::Display,
         )]
+        // Serialize/deserialize through canonical u32 so the on-disk format
+        // does not depend on the inner plonky3 type's internal representation
+        // (which is Montgomery form for BabyBear/KoalaBear).
+        #[serde(into = "u32", from = "u32")]
         pub struct $name($p3_type);
+
+        impl From<$name> for u32 {
+            fn from(n: $name) -> u32 {
+                n.to_canonical_u32()
+            }
+        }
 
         impl $name {
             #[inline(always)]
             fn from_canonical_u32(n: u32) -> Self {
-                Self(<$p3_type>::from_int(n))
+                Self(<$p3_type>::from_canonical_checked(n).unwrap())
             }
 
             #[inline]
