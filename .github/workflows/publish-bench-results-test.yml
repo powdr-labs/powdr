@@ -6,13 +6,18 @@
 
 name: Test publish_bench_results
 
+# `workflow_dispatch` requires the workflow file to be on the default
+# branch — which it isn't yet. Trigger on push to this file instead, on
+# any branch. Editing the SOURCE_RUN_ID below and pushing re-runs it.
 on:
-  workflow_dispatch:
-    inputs:
-      run_id:
-        description: 'Run id to pull bench-results-{guest,reth} artifacts from'
-        required: true
-        default: '25311063752'
+  push:
+    paths:
+      - .github/workflows/publish-bench-results-test.yml
+
+env:
+  # Run id of a previous nightly whose `bench-results-{guest,reth}` artifacts
+  # we want to re-publish. Bump to re-test against a different run.
+  SOURCE_RUN_ID: '25311063752'
 
 jobs:
   publish:
@@ -26,7 +31,7 @@ jobs:
         with:
           name: bench-results-guest
           path: results
-          run-id: ${{ inputs.run_id }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download reth artifact
@@ -34,7 +39,7 @@ jobs:
         with:
           name: bench-results-reth
           path: results
-          run-id: ${{ inputs.run_id }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Save revisions and run info
@@ -43,7 +48,7 @@ jobs:
           echo "openvm-eth: $OPENVM_ETH_REF" > results/run.txt
           echo "powdr: $GITHUB_SHA" >> results/run.txt
           echo "run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" >> results/run.txt
-          echo "source-run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${{ inputs.run_id }}" >> results/run.txt
+          echo "source-run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}" >> results/run.txt
 
       - name: Setup python venv
         run: |
