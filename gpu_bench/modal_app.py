@@ -1,0 +1,177 @@
+"""Modal app for the GPU portion of powdr's nightly reth benchmark.
+
+The GitHub Actions CI job does CPU work locally — running
+`./run.sh --apc N --mode compile` for each non-zero APC count, tarring
+the resulting `apc-cache/`, and uploading the tars to a Modal Volume
+under `/<run_id>/apc-cache-<apc>.tgz`. It then invokes `prove_block`
+on a Modal L4 once per APC count. The function:
+
+  - clones powdr at the requested SHA and openvm-eth at the pinned ref
+  - applies the same `.cargo/config.toml` patch as
+    `.github/actions/patch-openvm-eth`
+  - restores the matching apc-cache from the Volume
+  - runs `./run.sh --cuda --apc N --block B --mode prove-stark`
+  - writes `metrics.json` to `/<run_id>/out-<apc>/` on the Volume
+
+CI then `modal volume get`s the outputs and runs the existing
+post-processing scripts (plot_trace_cells.py, basic_metrics.py) locally.
+"""
+
+from __future__ import annotations
+
+import os
+
+import modal
+
+# Versions match .github/workflows/nightly-tests.yml.
+HOST_RUST = "1.91.1"
+GUEST_RUST = "nightly-2026-01-18"
+OPENVM_TAG = "v2.0.0-beta.2-powdr"
+CUDA_IMAGE = "nvidia/cuda:12.4.1-devel-ubuntu22.04"
+
+# Mirrors `.github/actions/patch-openvm-eth/action.yml`.
+PATCH_CONFIG = """[patch."https://github.com/powdr-labs/powdr.git"]
+powdr-openvm-riscv = { path = "../openvm-riscv" }
+powdr-openvm = { path = "../openvm" }
+powdr-riscv-elf = { path = "../riscv-elf" }
+powdr-number = { path = "../number" }
+powdr-autoprecompiles = { path = "../autoprecompiles" }
+powdr-openvm-riscv-hints-circuit = { path = "../openvm-riscv/extensions/hints-circuit" }
+"""
+
+
+image = (
+    modal.Image.from_registry(CUDA_IMAGE, add_python="3.11")
+    .apt_install(
+        "git",
+        "curl",
+        "build-essential",
+        "pkg-config",
+        "libssl-dev",
+        "ca-certificates",
+        "clang",
+        "lld",
+    )
+    .run_commands(
+        "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs "
+        "| sh -s -- -y --default-toolchain none --no-modify-path",
+    )
+    .env(
+        {
+            "PATH": (
+                "/root/.cargo/bin:/usr/local/cuda/bin:/usr/local/sbin:"
+                "/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            ),
+        }
+    )
+    .run_commands(
+        f"rustup toolchain install {HOST_RUST}",
+        f"rustup toolchain install {GUEST_RUST} --component rust-src",
+        (
+            f"cargo +{HOST_RUST} install --git https://github.com/powdr-labs/openvm.git "
+            f"--tag {OPENVM_TAG} cargo-openvm"
+        ),
+    )
+)
+
+
+app = modal.App("powdr-nightly-gpu", image=image)
+vol = modal.Volume.from_name("powdr-nightly-gpu-cache", create_if_missing=True)
+
+# RPC_1 is forwarded from the calling environment (GitHub Actions secret) at
+# `modal run` invocation time. The CI step exports RPC_1 before the call;
+# Modal captures it here and re-injects it into the function's container.
+rpc_secret = modal.Secret.from_dict({"RPC_1": os.environ.get("RPC_1", "")})
+
+
+@app.function(
+    gpu="L4",
+    volumes={"/cache": vol},
+    secrets=[rpc_secret],
+    timeout=3 * 3600,
+)
+def prove_block(
+    apc: int,
+    block: int,
+    run_id: str,
+    powdr_sha: str,
+    openvm_eth_ref: str,
+) -> None:
+    import shutil
+    import subprocess
+
+    work = f"/tmp/work-{run_id}-{apc}"
+    if os.path.exists(work):
+        shutil.rmtree(work)
+    os.makedirs(work, exist_ok=True)
+
+    powdr = f"{work}/powdr"
+    eth = f"{powdr}/openvm-eth"
+
+    subprocess.run(
+        ["git", "clone", "https://github.com/powdr-labs/powdr.git", powdr],
+        check=True,
+    )
+    subprocess.run(["git", "checkout", powdr_sha], cwd=powdr, check=True)
+    subprocess.run(
+        ["git", "submodule", "update", "--init", "--recursive"],
+        cwd=powdr,
+        check=True,
+    )
+
+    subprocess.run(
+        ["git", "clone", "https://github.com/powdr-labs/openvm-eth.git", eth],
+        check=True,
+    )
+    subprocess.run(["git", "checkout", openvm_eth_ref], cwd=eth, check=True)
+
+    cargo_dir = f"{eth}/.cargo"
+    os.makedirs(cargo_dir, exist_ok=True)
+    with open(f"{cargo_dir}/config.toml", "w") as f:
+        f.write(PATCH_CONFIG)
+
+    cache_tgz = f"/cache/{run_id}/apc-cache-{apc}.tgz"
+    if os.path.exists(cache_tgz):
+        subprocess.run(["tar", "-xzf", cache_tgz, "-C", eth], check=True)
+        print(f"[modal] restored apc-cache from {cache_tgz}")
+    else:
+        # apc=0 has no cache; non-zero apc with no cache is a CI bug.
+        print(f"[modal] no apc-cache for apc={apc}")
+
+    with open(f"{eth}/.env", "a") as f:
+        f.write(f"export RPC_1={os.environ['RPC_1']}\n")
+
+    # Re-use the cargo target dir across invocations on this Volume so the
+    # second/third APC run skips the binary rebuild (sequential invocations
+    # only — guarded by the GH workflow looping serially over apc counts).
+    target_dir = f"/cache/cargo-target-{powdr_sha}"
+    os.makedirs(target_dir, exist_ok=True)
+    env = os.environ.copy()
+    env["CARGO_TARGET_DIR"] = target_dir
+
+    subprocess.run(
+        [
+            "bash",
+            "./run.sh",
+            "--cuda",
+            "--block",
+            str(block),
+            "--apc",
+            str(apc),
+            "--mode",
+            "prove-stark",
+        ],
+        cwd=eth,
+        env=env,
+        check=True,
+    )
+
+    out_dir = f"/cache/{run_id}/out-{apc}"
+    os.makedirs(out_dir, exist_ok=True)
+    metrics_src = f"{eth}/metrics.json"
+    if not os.path.exists(metrics_src):
+        raise FileNotFoundError(f"metrics.json not found at {metrics_src}")
+    shutil.copy(metrics_src, f"{out_dir}/metrics.json")
+
+    vol.commit()
+    print(f"[modal] saved {out_dir}/metrics.json")

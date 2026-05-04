@@ -435,3 +435,162 @@ jobs:
           destination_dir: results/${{ steps.date.outputs.value }}-gpu/
           keep_files: true
           enable_jekyll: true
+
+  # Experimental: same reth GPU bench as test_apc_gpu, but the GPU step runs on
+  # a Modal L4 instead of the self-hosted GPU box. Co-exists with test_apc_gpu
+  # so we can A/B compare. Apc-cache is precomputed on the (cheap) GH runner
+  # via `--mode compile` and shipped to Modal via a Volume; Modal only does
+  # `--mode prove-stark`.
+  test_apc_gpu_modal:
+    runs-on: ubuntu-latest
+
+    env:
+      RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+      OPENVM_ETH_REF: 7987264fe4e96b9077cdcc15e5192a69df9d8413
+      MODAL_VOLUME: powdr-nightly-gpu-cache
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: ⚡ Cache rust
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-apc-gpu-modal-${{ hashFiles('**/Cargo.toml') }}
+
+      - name: Install cargo openvm
+        run: |
+          rustup toolchain install 1.91.1
+          cargo +1.91.1 install --git 'https://github.com/powdr-labs/openvm.git' --tag "v2.0.0-beta.2-powdr" cargo-openvm
+
+      - name: Install OpenVM guest toolchain
+        run: |
+          rustup toolchain install nightly-2026-01-18
+          rustup component add rust-src --toolchain nightly-2026-01-18
+
+      - name: Setup python venv
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install -r openvm-riscv/scripts/requirements.txt
+          pip install modal
+
+      - name: Patch benchmark
+        uses: ./.github/actions/patch-openvm-eth
+
+      - name: Compile APC caches (CPU)
+        run: |
+          cd openvm-eth
+          echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
+          for apc in 10 30; do
+            ./run.sh --apc "$apc" --mode compile || exit 1
+            tar -czf "../apc-cache-${apc}.tgz" apc-cache
+            rm -rf apc-cache
+          done
+
+      - name: Upload APC caches to Modal Volume
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          source .venv/bin/activate
+          for apc in 10 30; do
+            modal volume put "$MODAL_VOLUME" "apc-cache-${apc}.tgz" "/${RUN_ID}/apc-cache-${apc}.tgz" --force
+          done
+
+      - name: Run prove-stark on Modal (L4)
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          RPC_1: ${{ secrets.RPC_1 }}
+        run: |
+          source .venv/bin/activate
+          for apc in 0 10 30; do
+            modal run gpu_bench/modal_app.py::prove_block \
+              --apc "$apc" \
+              --block 24171377 \
+              --run-id "$RUN_ID" \
+              --powdr-sha "$GITHUB_SHA" \
+              --openvm-eth-ref "$OPENVM_ETH_REF" || exit 1
+          done
+
+      - name: Download Modal outputs
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          source .venv/bin/activate
+          mkdir -p modal-out
+          modal volume get "$MODAL_VOLUME" "/${RUN_ID}/" modal-out/ --force
+
+      - name: Post-process and assemble results
+        run: |
+          source .venv/bin/activate
+          mkdir -p results/reth_gpu_modal
+          RES_DIR=results/reth_gpu_modal
+          for apc in 0 10 30; do
+            label=$(printf 'apc%03d' "$apc")
+            mv "modal-out/${RUN_ID}/out-${apc}/metrics.json" "$RES_DIR/${label}.json"
+            python ./openvm-riscv/scripts/plot_trace_cells.py \
+              -o "$RES_DIR/trace_cells_${label}.png" \
+              "$RES_DIR/${label}.json" \
+              > "$RES_DIR/trace_cells_${label}.txt"
+          done
+          python ./openvm-riscv/scripts/basic_metrics.py summary-table --csv \
+            $RES_DIR/apc000.json $RES_DIR/apc010.json $RES_DIR/apc030.json \
+            > $RES_DIR/basic_metrics.csv
+          python ./openvm-riscv/scripts/basic_metrics.py plot \
+            $RES_DIR/apc000.json $RES_DIR/apc010.json $RES_DIR/apc030.json \
+            -o $RES_DIR/proof_time_breakdown.png
+          python ./openvm-riscv/scripts/basic_metrics.py combine \
+            $RES_DIR/apc000.json $RES_DIR/apc010.json $RES_DIR/apc030.json \
+            > $RES_DIR/combined_metrics.json
+
+      - name: Save revisions and run info
+        run: |
+          echo "openvm-eth: $OPENVM_ETH_REF" > results/run.txt
+          echo "powdr: $GITHUB_SHA" >> results/run.txt
+          echo "run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" >> results/run.txt
+
+      - name: upload result artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results-reth-gpu-modal
+          path: |
+            results/*
+
+      - name: get the date/time
+        id: date
+        run: echo "value=$(date +'%Y-%m-%d-%H%M')" >> $GITHUB_OUTPUT
+
+      - name: Generate bench results README
+        run: |
+          source .venv/bin/activate
+          python3 ./openvm-riscv/scripts/generate_bench_results_readme.py \
+            ./results \
+            "${{ steps.date.outputs.value }}-gpu-modal" \
+            --output ./results/readme.md
+
+      - name: commit to bench results
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          personal_token: ${{ secrets.BENCH_RESULTS_TOKEN }}
+          external_repository: powdr-labs/bench-results
+          publish_dir: ./results
+          destination_dir: results/${{ steps.date.outputs.value }}-gpu-modal/
+          keep_files: true
+          enable_jekyll: true
+
+      - name: Cleanup Modal Volume
+        if: always()
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          source .venv/bin/activate || true
+          modal volume rm "$MODAL_VOLUME" "/${RUN_ID}" --recursive 2>&1 || true
