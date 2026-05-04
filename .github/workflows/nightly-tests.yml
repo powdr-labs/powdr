@@ -62,8 +62,8 @@ jobs:
           comment-on-alert: true
           summary-always: true
 
-  test_apc:
-    runs-on: server-dev
+  test_apc_guest:
+    runs-on: bench-cpu-128g
 
     steps:
       - uses: actions/checkout@v4
@@ -77,7 +77,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-release-apc-${{ hashFiles('**/Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-release-apc-ghhosted-${{ hashFiles('**/Cargo.toml') }}
 
       - name: Build
         run: cargo build --release -p powdr-openvm
@@ -119,6 +119,56 @@ jobs:
         run: |
           source .venv/bin/activate
           bash ./openvm-riscv/scripts/run_guest_benches.sh
+
+      - name: upload result artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results-guest
+          path: |
+            results/*
+
+  test_apc_reth:
+    runs-on: bench-cpu-128g
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: ⚡ Cache rust
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-apc-ghhosted-${{ hashFiles('**/Cargo.toml') }}
+
+      - name: Build
+        run: cargo build --release -p powdr-openvm
+
+      - name: Install cargo openvm
+        # Rust 1.91.1 is needed by fresher versions of dependencies of cargo-openvm.
+        run: |
+          rustup toolchain install 1.91.1
+          cargo +1.91.1 install --git 'https://github.com/powdr-labs/openvm.git' --tag "v2.0.0-beta.2-powdr" cargo-openvm
+
+      - name: Install OpenVM guest toolchain
+        run: |
+          rustup toolchain install nightly-2026-01-18
+          rustup component add rust-src --toolchain nightly-2026-01-18
+
+      - name: Setup python venv
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install -r openvm-riscv/scripts/requirements.txt
+          pip install -r autoprecompiles/scripts/requirements.txt
+
+      - name: Remove old results if present
+        run: |
+          rm -rf results
+          mkdir -p results
 
       - name: Patch benchmark
         uses: ./.github/actions/patch-openvm-eth
@@ -181,18 +231,44 @@ jobs:
 
           mv $RES_DIR ../results/
 
-      - name: Save revisions and run info
-        run: |
-          echo "openvm-eth: $(git -C openvm-eth rev-parse HEAD)" > results/run.txt
-          echo "powdr: $(git rev-parse HEAD)" >> results/run.txt
-          echo "run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" >> results/run.txt
-
       - name: upload result artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: bench-results
+          name: bench-results-reth
           path: |
             results/*
+
+  publish_bench_results:
+    needs: [test_apc_guest, test_apc_reth]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download guest artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: bench-results-guest
+          path: results
+
+      - name: Download reth artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: bench-results-reth
+          path: results
+
+      - name: Save revisions and run info
+        run: |
+          OPENVM_ETH_REF=$(awk '/^[[:space:]]*ref:/ {print $2; exit}' .github/actions/patch-openvm-eth/action.yml)
+          echo "openvm-eth: $OPENVM_ETH_REF" > results/run.txt
+          echo "powdr: $GITHUB_SHA" >> results/run.txt
+          echo "run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" >> results/run.txt
+
+      - name: Setup python venv
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install -r openvm-riscv/scripts/requirements.txt
 
       - name: get the date/time
         id: date
@@ -200,6 +276,7 @@ jobs:
 
       - name: Generate bench results README
         run: |
+          source .venv/bin/activate
           python3 ./openvm-riscv/scripts/generate_bench_results_readme.py \
             ./results \
             "${{ steps.date.outputs.value }}" \
