@@ -237,18 +237,23 @@ jobs:
 
   publish_bench_results:
     needs: [test_apc_guest, test_apc_reth]
+    # Publish whatever artifacts we got, even if one of the bench jobs failed,
+    # but skip if both failed or the run was cancelled.
+    if: ${{ !cancelled() && (needs.test_apc_guest.result == 'success' || needs.test_apc_reth.result == 'success') }}
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Download guest artifact
+        if: needs.test_apc_guest.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: bench-results-guest
           path: results
 
       - name: Download reth artifact
+        if: needs.test_apc_reth.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: bench-results-reth
