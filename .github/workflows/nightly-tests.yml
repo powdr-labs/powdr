@@ -284,15 +284,35 @@ jobs:
             "${{ steps.date.outputs.value }}" \
             --output ./results/readme.md
 
+      # Push via partial+sparse clone so the runner only ever holds the new
+      # dir on disk. peaceiris/actions-gh-pages does a full clone+checkout of
+      # gh-pages, which is now ~14.5 GB and busts ubuntu-latest's ~14 GB disk.
       - name: commit to bench results
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          personal_token: ${{ secrets.BENCH_RESULTS_TOKEN }}
-          external_repository: powdr-labs/bench-results
-          publish_dir: ./results
-          destination_dir: results/${{ steps.date.outputs.value }}/
-          keep_files: true
-          enable_jekyll: true
+        env:
+          BENCH_RESULTS_TOKEN: ${{ secrets.BENCH_RESULTS_TOKEN }}
+          DATE: ${{ steps.date.outputs.value }}
+        run: |
+          set -euo pipefail
+          REPO=$(mktemp -d)
+          git clone --filter=blob:none --sparse --depth=1 --branch=gh-pages \
+            "https://x-access-token:${BENCH_RESULTS_TOKEN}@github.com/powdr-labs/bench-results.git" \
+            "$REPO"
+          cd "$REPO"
+          # Restrict the worktree to the new (yet-to-exist) dir; nothing else
+          # gets fetched or written.
+          git sparse-checkout set "results/${DATE}"
+          # Author commits as the github-actions[bot] account so the GitHub
+          # UI shows the bot avatar and groups them with prior peaceiris
+          # commits. The email format is GitHub's noreply convention,
+          # `<user-id>+<login>@users.noreply.github.com`; 41898282 is the
+          # bot's user ID.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p "results/${DATE}"
+          cp -r "${GITHUB_WORKSPACE}/results/." "results/${DATE}/"
+          git add "results/${DATE}"
+          git commit -m "Add nightly results for ${DATE}"
+          git push origin gh-pages
 
   test_apc_gpu:
     runs-on: [self-hosted, gpu-shared]
