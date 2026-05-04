@@ -7,6 +7,9 @@ runs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+      - name: Use system git for cargo fetches
+        shell: bash
+        run: echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
       - name: Download build artifacts (CPU)
         uses: actions/download-artifact@v4
         with:
