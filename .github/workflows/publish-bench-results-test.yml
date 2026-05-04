@@ -1,0 +1,86 @@
+# Throwaway harness for testing the publish_bench_results step in
+# nightly-tests.yml without rerunning the 4h guest+reth jobs. Pulls
+# artifacts from a previous run id and pushes to bench-results under a
+# `<date>-test/` directory so the test commit doesn't get confused with
+# a real nightly. Delete this file before merging the PR.
+
+name: Test publish_bench_results
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Run id to pull bench-results-{guest,reth} artifacts from'
+        required: true
+        default: '25311063752'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download guest artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: bench-results-guest
+          path: results
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download reth artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: bench-results-reth
+          path: results
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Save revisions and run info
+        run: |
+          OPENVM_ETH_REF=$(awk '/^[[:space:]]*ref:/ {print $2; exit}' .github/actions/patch-openvm-eth/action.yml)
+          echo "openvm-eth: $OPENVM_ETH_REF" > results/run.txt
+          echo "powdr: $GITHUB_SHA" >> results/run.txt
+          echo "run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" >> results/run.txt
+          echo "source-run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${{ inputs.run_id }}" >> results/run.txt
+
+      - name: Setup python venv
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install -r openvm-riscv/scripts/requirements.txt
+
+      - name: get the date/time
+        id: date
+        run: echo "value=$(date +'%Y-%m-%d-%H%M')-test" >> $GITHUB_OUTPUT
+
+      - name: Generate bench results README
+        run: |
+          source .venv/bin/activate
+          python3 ./openvm-riscv/scripts/generate_bench_results_readme.py \
+            ./results \
+            "${{ steps.date.outputs.value }}" \
+            --output ./results/readme.md
+
+      # Same logic as the real publish_bench_results job — partial+sparse clone
+      # so disk stays bounded.
+      - name: commit to bench results
+        env:
+          BENCH_RESULTS_TOKEN: ${{ secrets.BENCH_RESULTS_TOKEN }}
+          DATE: ${{ steps.date.outputs.value }}
+        run: |
+          set -euo pipefail
+          REPO=$(mktemp -d)
+          git clone --filter=blob:none --sparse --depth=1 --branch=gh-pages \
+            "https://x-access-token:${BENCH_RESULTS_TOKEN}@github.com/powdr-labs/bench-results.git" \
+            "$REPO"
+          cd "$REPO"
+          git sparse-checkout set "results/${DATE}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p "results/${DATE}"
+          cp -r "${GITHUB_WORKSPACE}/results/." "results/${DATE}/"
+          git add "results/${DATE}"
+          git commit -m "Test publish_bench_results for ${DATE}"
+          git push origin gh-pages
