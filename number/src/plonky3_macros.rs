@@ -142,14 +142,14 @@ macro_rules! powdr_field_plonky3 {
 
         impl From<u32> for $name {
             fn from(n: u32) -> Self {
-                Self(<$p3_type>::from_u32(n))
+                Self(<$p3_type>::from_canonical_checked(n).unwrap())
             }
         }
 
         impl From<u64> for $name {
             #[inline]
             fn from(n: u64) -> Self {
-                Self(<$p3_type>::from_u64(n))
+                Self(<$p3_type>::from_canonical_checked(n).unwrap())
             }
         }
 
