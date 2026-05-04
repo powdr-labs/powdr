@@ -18,7 +18,8 @@ macro_rules! powdr_field_plonky3 {
         use core::fmt::{self, Debug, Formatter};
         use core::hash::Hash;
 
-        use p3_field::{AbstractField, Field, PrimeField32};
+        use p3_field::integers::QuotientMap;
+        use p3_field::{Field, PrimeCharacteristicRing, PrimeField32};
 
         #[derive(
             Debug,
@@ -39,7 +40,7 @@ macro_rules! powdr_field_plonky3 {
         impl $name {
             #[inline(always)]
             fn from_canonical_u32(n: u32) -> Self {
-                Self(<$p3_type>::from_canonical_u32(n))
+                Self(<$p3_type>::from_int(n))
             }
 
             #[inline]
@@ -76,10 +77,7 @@ macro_rules! powdr_field_plonky3 {
             }
 
             fn pow(self, exp: Self::Integer) -> Self {
-                Self(<$p3_type>::exp_u64_generic(
-                    self.0,
-                    exp.try_into_u64().unwrap(),
-                ))
+                Self(self.0.exp_u64(exp.try_into_u64().unwrap()))
             }
 
             fn to_bytes_le(&self) -> Vec<u8> {
@@ -132,6 +130,19 @@ macro_rules! powdr_field_plonky3 {
             }
         }
 
+        impl From<u32> for $name {
+            fn from(n: u32) -> Self {
+                Self(<$p3_type>::from_u32(n))
+            }
+        }
+
+        impl From<u64> for $name {
+            #[inline]
+            fn from(n: u64) -> Self {
+                Self(<$p3_type>::from_u64(n))
+            }
+        }
+
         impl From<i64> for $name {
             fn from(n: i64) -> Self {
                 Self::from(if n < 0 {
@@ -154,19 +165,6 @@ macro_rules! powdr_field_plonky3 {
             }
         }
 
-        impl From<u32> for $name {
-            fn from(n: u32) -> Self {
-                Self(<$p3_type>::from_wrapped_u32(n))
-            }
-        }
-
-        impl From<u64> for $name {
-            #[inline]
-            fn from(n: u64) -> Self {
-                Self(<$p3_type>::from_wrapped_u64(n))
-            }
-        }
-
         impl From<$crate::BigUint> for $name {
             fn from(n: $crate::BigUint) -> Self {
                 u64::try_from(n).unwrap().into()
@@ -181,12 +179,12 @@ macro_rules! powdr_field_plonky3 {
         }
 
         impl ConstZero for $name {
-            const ZERO: Self = $name(<$p3_type>::new(0));
+            const ZERO: Self = $name(<$p3_type>::ZERO);
         }
 
         impl Zero for $name {
             fn zero() -> Self {
-                Self(<$p3_type>::zero())
+                Self(<$p3_type>::ZERO)
             }
 
             fn is_zero(&self) -> bool {
@@ -195,12 +193,12 @@ macro_rules! powdr_field_plonky3 {
         }
 
         impl ConstOne for $name {
-            const ONE: Self = $name(<$p3_type>::new(1));
+            const ONE: Self = $name(<$p3_type>::ONE);
         }
 
         impl One for $name {
             fn one() -> Self {
-                Self(<$p3_type>::one())
+                Self(<$p3_type>::ONE)
             }
 
             fn is_one(&self) -> bool {
