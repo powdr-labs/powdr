@@ -1247,6 +1247,7 @@ mod tests {
                     ColumnComputation::BoolFromOpcode { .. } => "BoolFromOpcode",
                     ColumnComputation::Conditional { .. } => "Conditional",
                     ColumnComputation::Constant(_) => "Constant",
+                    _ => "Unsupported",
                 },
                 jit_val.as_canonical_u32(),
                 expected_val.as_canonical_u32()

@@ -74,6 +74,54 @@ extern "C" {
         d_col_descs: *const JitColumnDesc,           // column descriptors
         range_max_bits: u32,
     ) -> i32;
+
+    /// Phase 0 NVRTC spike: compile a trivial kernel at runtime, launch it
+    /// against the supplied device pointer, write 0x12345678 into n elements.
+    /// Returns 0 on success, nonzero on any CUDA / NVRTC error.
+    pub fn powdr_nvrtc_spike_run_noop(d_ptr: *mut u32, n: i32) -> i32;
+
+    /// Compile a CUDA source string with NVRTC. On success, *ptx_out points
+    /// to a malloc'd PTX buffer of *ptx_size_out bytes; caller must free
+    /// with powdr_nvrtc_free. On failure (return != 0), *log_out may point
+    /// to a malloc'd diagnostics string.
+    pub fn powdr_nvrtc_compile(
+        src: *const std::ffi::c_char,
+        src_name: *const std::ffi::c_char,
+        ptx_out: *mut *mut std::ffi::c_char,
+        ptx_size_out: *mut usize,
+        log_out: *mut *mut std::ffi::c_char,
+    ) -> i32;
+
+    pub fn powdr_nvrtc_free(p: *mut std::ffi::c_char);
+
+    pub fn powdr_nvrtc_load_module(
+        ptx: *const std::ffi::c_void,
+        ptx_size: usize,
+        module_out: *mut *mut std::ffi::c_void,
+    ) -> i32;
+
+    pub fn powdr_nvrtc_get_function(
+        module: *mut std::ffi::c_void,
+        name: *const std::ffi::c_char,
+        fn_out: *mut *mut std::ffi::c_void,
+    ) -> i32;
+
+    pub fn powdr_nvrtc_unload_module(module: *mut std::ffi::c_void) -> i32;
+
+    /// Launch a JIT trace-gen kernel matching the v1 signature:
+    ///   (uint32_t* d_output, size_t H, int N,
+    ///    const uint8_t* d_arena, uint32_t range_max_bits)
+    /// Synchronizes before returning.
+    pub fn powdr_nvrtc_launch_jit_v1(
+        function: *mut std::ffi::c_void,
+        d_output: *mut u32,
+        h: usize,
+        num_apc_calls: i32,
+        d_arena: *const u8,
+        range_max_bits: u32,
+        grid_x: u32,
+        block_x: u32,
+    ) -> i32;
 }
 
 /// JIT column computation descriptor — matches CUDA JitColumnDesc struct.

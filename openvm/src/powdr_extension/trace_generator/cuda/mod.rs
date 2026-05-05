@@ -29,7 +29,49 @@ use crate::{
 };
 
 mod inventory;
+pub mod nvrtc_cache;
+pub mod nvrtc_emit;
 mod periphery;
+
+/// Selects the GPU trace-generation backend for `PowdrChipGpu`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum JitBackend {
+    /// Skip JIT entirely; use the original `apc_tracegen` substitution path.
+    Off,
+    /// Data-driven `apc_jit_tracegen` interpreter (current default JIT).
+    Descriptor,
+    /// NVRTC-compiled per-APC kernel, with per-APC fall-back to `Descriptor`
+    /// when the emitter does not yet support every column computation.
+    Nvrtc,
+}
+
+/// Resolve the active JIT backend from the environment.
+///
+/// `POWDR_JIT_BACKEND` takes precedence; values are case-insensitive
+/// `off` / `descriptor` / `nvrtc`. For backwards compatibility, when
+/// `POWDR_JIT_BACKEND` is unset the legacy `POWDR_JIT_TRACEGEN` flag enables
+/// the `Descriptor` backend.
+pub fn pick_jit_backend() -> JitBackend {
+    if let Ok(v) = std::env::var("POWDR_JIT_BACKEND") {
+        return match v.to_ascii_lowercase().as_str() {
+            "off" => JitBackend::Off,
+            "descriptor" => JitBackend::Descriptor,
+            "nvrtc" => JitBackend::Nvrtc,
+            other => {
+                tracing::warn!(
+                    "Unknown POWDR_JIT_BACKEND='{}', defaulting to Descriptor",
+                    other
+                );
+                JitBackend::Descriptor
+            }
+        };
+    }
+    if std::env::var("POWDR_JIT_TRACEGEN").is_ok() {
+        JitBackend::Descriptor
+    } else {
+        JitBackend::Off
+    }
+}
 
 pub use inventory::GpuDummyChipComplex;
 pub use periphery::{
@@ -627,6 +669,535 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
 
         Ok(output)
     }
+
+    /// NVRTC trace generation for GPU. Per-APC fallback: returns `Err` with the
+    /// arenas if the emitter cannot yet handle every surviving column (Phase 1
+    /// supports `DirectU32` only). On success the output trace contains all
+    /// surviving columns plus the unchanged derived-expr / bus passes.
+    fn try_generate_witness_nvrtc(
+        &self,
+        original_arenas: OriginalArenas<DenseRecordArena>,
+    ) -> Result<DeviceMatrix<BabyBear>, OriginalArenas<DenseRecordArena>> {
+        use crate::powdr_extension::trace_generator::cuda::nvrtc_cache::NvrtcKernelCache;
+        use crate::powdr_extension::trace_generator::cuda::nvrtc_emit::{
+            emit_jit_kernel_source, EmitterColumn, EmitterInput, EmitterInstruction,
+        };
+        use crate::powdr_extension::trace_generator::jit_mapping::{
+            self as jit_mapping, ArenaType, ColumnComputation,
+        };
+
+        let mut original_arenas = match original_arenas {
+            OriginalArenas::Initialized(arenas) => arenas,
+            OriginalArenas::Uninitialized => {
+                return Ok(DeviceMatrix::dummy());
+            }
+        };
+
+        let num_apc_calls = original_arenas.number_of_calls;
+
+        let instructions_with_subs: Vec<_> = self
+            .apc
+            .instructions()
+            .zip_eq(self.apc.subs())
+            .filter(|(_, subs)| !subs.is_empty())
+            .collect();
+
+        let air_names: Vec<String> = instructions_with_subs
+            .iter()
+            .map(|(instr, _)| self.original_airs.opcode_to_air[&instr.inner.opcode].clone())
+            .collect();
+
+        let mappings_by_air: std::collections::HashMap<&str, jit_mapping::AirColumnMapping> = {
+            let mut m = std::collections::HashMap::new();
+            m.insert(
+                "VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>",
+                jit_mapping::base_alu_mapping_for(ArenaType::Dense),
+            );
+            m.insert(
+                "VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>",
+                jit_mapping::loadstore_mapping_for(ArenaType::Dense),
+            );
+            m.insert(
+                "VmAirWrapper<Rv32BaseAluAdapterAir, ShiftCoreAir<4, 8>",
+                jit_mapping::shift_mapping_for(ArenaType::Dense),
+            );
+            m.insert(
+                "VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>",
+                jit_mapping::branch_equal_mapping_for(ArenaType::Dense),
+            );
+            m
+        };
+
+        // Pre-check 1: every AIR has a Dense mapping (same as descriptor path).
+        for air_name in air_names.iter() {
+            if !mappings_by_air.contains_key(air_name.as_str()) {
+                tracing::warn!(
+                    "GPU NVRTC: no AIR mapping for '{}', falling back",
+                    air_name
+                );
+                return Err(OriginalArenas::Initialized(original_arenas));
+            }
+        }
+
+        let air_id_occurrences: std::collections::HashMap<&str, usize> =
+            air_names.iter().map(|s| s.as_str()).counts();
+
+        let instruction_offsets: Vec<usize> = air_names
+            .iter()
+            .scan(
+                std::collections::HashMap::<&str, usize>::default(),
+                |counts, air_name| {
+                    let count = counts.entry(air_name.as_str()).or_default();
+                    let current = *count;
+                    *count += 1;
+                    Some(current)
+                },
+            )
+            .collect();
+
+        let apc_poly_id_to_index: BTreeMap<u64, usize> = self
+            .apc
+            .machine
+            .main_columns()
+            .enumerate()
+            .map(|(index, c)| (c.id, index))
+            .collect();
+
+        let width = apc_poly_id_to_index.len();
+        let height = next_power_of_two_or_zero(num_apc_calls);
+
+        // Pre-check 2 (Phase 1 emitter is DirectU32-only). Walk surviving subs
+        // first to fail fast before any device work; build EmitterInstruction
+        // list as we go.
+        let mut emitter_instructions: Vec<EmitterInstruction> =
+            Vec::with_capacity(instructions_with_subs.len());
+
+        for ((air_name, offset), (_, subs)) in air_names
+            .iter()
+            .zip(instruction_offsets.iter())
+            .zip(instructions_with_subs.iter())
+        {
+            let mapping = &mappings_by_air[air_name.as_str()];
+            let occurrences = *air_id_occurrences.get(air_name.as_str()).unwrap();
+            let record_stride_bytes = jit_mapping::dense_record_stride(mapping.air_name);
+
+            let mut columns: Vec<EmitterColumn> = Vec::with_capacity(subs.len());
+            for sub in subs.iter() {
+                let col_mapping = &mapping.columns[sub.original_poly_index];
+                let apc_col = apc_poly_id_to_index[&sub.apc_poly_id] as u16;
+                match column_comp_to_emitter(&col_mapping.computation, apc_col) {
+                    Some(c) => columns.push(c),
+                    None => {
+                        tracing::debug!(
+                            "GPU NVRTC: unsupported ColumnComputation on AIR '{}', falling back",
+                            air_name
+                        );
+                        return Err(OriginalArenas::Initialized(original_arenas));
+                    }
+                }
+            }
+
+            // arena_offset is filled in below after we know the layout.
+            emitter_instructions.push(EmitterInstruction {
+                arena_offset: 0,
+                record_stride: (record_stride_bytes * occurrences) as u32,
+                record_offset: (record_stride_bytes * offset) as u32,
+                columns,
+            });
+        }
+
+        // Concat arena bytes (same layout as descriptor path).
+        let mut concat_arena_bytes: Vec<u8> = Vec::new();
+        let mut arena_offsets: std::collections::HashMap<String, u32> =
+            std::collections::HashMap::new();
+        for air_name in air_names.iter().unique() {
+            if let Some(arena) = original_arenas.take_real_arena(air_name) {
+                let bytes = arena.allocated();
+                if bytes.is_empty() {
+                    continue;
+                }
+                let offset = concat_arena_bytes.len() as u32;
+                concat_arena_bytes.extend_from_slice(bytes);
+                arena_offsets.insert(air_name.clone(), offset);
+            }
+        }
+
+        // Backfill per-instruction arena_offset.
+        for (i, air_name) in air_names.iter().enumerate() {
+            emitter_instructions[i].arena_offset =
+                *arena_offsets.get(air_name).unwrap_or(&0);
+        }
+
+        let d_arena = concat_arena_bytes.to_device().unwrap();
+
+        let range_max_bits = {
+            let num_bins = self.periphery.real.range_checker.count.len();
+            if num_bins > 1 {
+                (num_bins as f64).log2() as u32 - 1
+            } else {
+                29
+            }
+        };
+
+        let mut output = DeviceMatrix::<BabyBear>::with_capacity(height, width);
+        output.buffer().fill_zero().unwrap();
+
+        // Emit, compile (cached), launch.
+        let kernel = emit_jit_kernel_source(&EmitterInput {
+            instructions: emitter_instructions,
+        });
+        let compiled = NvrtcKernelCache::global()
+            .get_or_compile(&kernel)
+            .expect("NVRTC compile failed");
+
+        let block_x: u32 = 256;
+        let grid_x: u32 = ((num_apc_calls as u32) + block_x - 1) / block_x.max(1);
+        let rc = unsafe {
+            cuda_abi::powdr_nvrtc_launch_jit_v1(
+                compiled.function(),
+                output.buffer().as_mut_ptr() as *mut u32,
+                height,
+                num_apc_calls as i32,
+                d_arena.as_ptr(),
+                range_max_bits,
+                grid_x.max(1),
+                block_x,
+            )
+        };
+        assert_eq!(rc, 0, "NVRTC kernel launch failed: {}", rc);
+
+        // Optional A/B verifier: launch the descriptor kernel into a parallel
+        // buffer with the same arena and assert host-side equality. Fires only
+        // when POWDR_JIT_BACKEND_VERIFY is set; intended as a development
+        // guardrail while emitter coverage broadens.
+        if std::env::var("POWDR_JIT_BACKEND_VERIFY").is_ok() {
+            use crate::cuda_abi::{JitColumnDesc, JitInstructionDesc};
+            use openvm_cuda_common::copy::MemCopyD2H;
+
+            let mut jit_instructions: Vec<JitInstructionDesc> = Vec::new();
+            let mut jit_col_descs: Vec<JitColumnDesc> = Vec::new();
+            for ((air_name, offset), (_, subs)) in air_names
+                .iter()
+                .zip(instruction_offsets.iter())
+                .zip(instructions_with_subs.iter())
+            {
+                let mapping = &mappings_by_air[air_name.as_str()];
+                let occurrences = *air_id_occurrences.get(air_name.as_str()).unwrap();
+                let arena_offset_inst = *arena_offsets.get(air_name).unwrap_or(&0);
+                let record_stride_bytes = jit_mapping::dense_record_stride(mapping.air_name);
+                let col_desc_start = jit_col_descs.len() as u32;
+                for sub in subs.iter() {
+                    let apc_col_index = apc_poly_id_to_index[&sub.apc_poly_id];
+                    let col_mapping = &mapping.columns[sub.original_poly_index];
+                    jit_col_descs.push(column_comp_to_jit_desc(
+                        &col_mapping.computation,
+                        apc_col_index as u16,
+                    ));
+                }
+                let col_desc_count = jit_col_descs.len() as u32 - col_desc_start;
+                jit_instructions.push(JitInstructionDesc {
+                    arena_offset: arena_offset_inst,
+                    record_stride: (record_stride_bytes * occurrences) as u32,
+                    record_offset: (record_stride_bytes * offset) as u32,
+                    col_desc_start,
+                    col_desc_count,
+                });
+            }
+
+            let d_instructions = jit_instructions.to_device().unwrap();
+            let d_col_descs = jit_col_descs.to_device().unwrap();
+
+            let mut output_desc = DeviceMatrix::<BabyBear>::with_capacity(height, width);
+            output_desc.buffer().fill_zero().unwrap();
+            cuda_abi::apc_jit_tracegen(
+                &mut output_desc,
+                &d_arena,
+                &d_instructions,
+                &d_col_descs,
+                num_apc_calls,
+                range_max_bits,
+            )
+            .unwrap();
+
+            let host_nvrtc: Vec<BabyBear> = output.buffer().to_host().unwrap();
+            let host_desc: Vec<BabyBear> = output_desc.buffer().to_host().unwrap();
+            assert_eq!(host_nvrtc.len(), host_desc.len());
+
+            let mut mismatches = 0usize;
+            let mut first: Option<(usize, usize, u32, u32)> = None;
+            for col in 0..width {
+                for r in 0..num_apc_calls {
+                    let off = col * height + r;
+                    let n = host_nvrtc[off].as_canonical_u32();
+                    let d = host_desc[off].as_canonical_u32();
+                    if n != d {
+                        mismatches += 1;
+                        if first.is_none() {
+                            first = Some((col, r, n, d));
+                        }
+                    }
+                }
+            }
+            if mismatches > 0 {
+                let (c, r, n, d) = first.unwrap();
+                panic!(
+                    "NVRTC verifier mismatch ({}): {} cells differ. First at apc_col={} row={}: nvrtc={} descriptor={}",
+                    kernel.name, mismatches, c, r, n, d
+                );
+            }
+            tracing::info!(
+                "NVRTC verifier PASS: {} cols x {} rows match descriptor backend ({})",
+                width, num_apc_calls, kernel.name
+            );
+        }
+
+        // Stage 3 (unchanged): derived expressions + bus interactions.
+        let (derived_specs, derived_bc) = compile_derived_to_gpu(
+            &self.apc.machine.derived_columns,
+            &apc_poly_id_to_index,
+            height,
+        );
+        let d_specs = derived_specs.to_device().unwrap();
+        let d_bc = derived_bc.to_device().unwrap();
+        cuda_abi::apc_apply_derived_expr(&mut output, d_specs, d_bc, num_apc_calls).unwrap();
+
+        let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
+            &self.apc.machine.bus_interactions,
+            &apc_poly_id_to_index,
+            height,
+        );
+        let bus_interactions = bus_interactions.to_device().unwrap();
+        let arg_spans = arg_spans.to_device().unwrap();
+        let bytecode = bytecode.to_device().unwrap();
+
+        let periphery = &self.periphery.real;
+        let var_range_bus_id = self.periphery.bus_ids.range_checker as u32;
+        let var_range_count = &periphery.range_checker.count;
+        let tuple_range_checker_chip = periphery.tuple_range_checker.as_ref().unwrap();
+        let tuple2_bus_id = self.periphery.bus_ids.tuple_range_checker.unwrap() as u32;
+        let tuple2_sizes = tuple_range_checker_chip.sizes;
+        let tuple2_count_u32 = tuple_range_checker_chip.count.as_ref();
+        let bitwise_bus_id = self.periphery.bus_ids.bitwise_lookup.unwrap() as u32;
+        let bitwise_count_u32 = periphery.bitwise_lookup_8.as_ref().unwrap().count.as_ref();
+
+        cuda_abi::apc_apply_bus(
+            &output,
+            num_apc_calls,
+            bytecode,
+            bus_interactions,
+            arg_spans,
+            var_range_bus_id,
+            var_range_count,
+            tuple2_bus_id,
+            tuple2_count_u32,
+            tuple2_sizes,
+            bitwise_bus_id,
+            bitwise_count_u32,
+        )
+        .unwrap();
+
+        Ok(output)
+    }
+}
+
+/// Convert a Rust ColumnComputation into the NVRTC emitter's column variant.
+/// Returns `None` for arms the emitter does not yet support, in which case
+/// the caller falls back to the descriptor backend.
+fn column_comp_to_emitter(
+    comp: &super::jit_mapping::ColumnComputation,
+    apc_col: u16,
+) -> Option<crate::powdr_extension::trace_generator::cuda::nvrtc_emit::EmitterColumn> {
+    use crate::powdr_extension::trace_generator::cuda::nvrtc_emit::EmitterColumn;
+    use super::jit_mapping::ColumnComputation as CC;
+    match comp {
+        CC::DirectU32 { record_byte_offset } => Some(EmitterColumn::DirectU32 {
+            apc_col,
+            off: *record_byte_offset as u16,
+        }),
+        CC::DirectU8 { record_byte_offset } => Some(EmitterColumn::DirectU8 {
+            apc_col,
+            off: *record_byte_offset as u16,
+        }),
+        CC::DirectU16 { record_byte_offset } => Some(EmitterColumn::DirectU16 {
+            apc_col,
+            off: *record_byte_offset as u16,
+        }),
+        CC::Constant(v) => Some(EmitterColumn::Constant {
+            apc_col,
+            value: *v,
+        }),
+        // Without opcode folding we'd need to read the opcode byte at runtime;
+        // the host doesn't yet thread per-instruction opcode through, so
+        // BoolFromOpcode without folding is unsupported.
+        CC::BoolFromOpcode { .. } => None,
+        CC::Conditional { condition_byte_offset, then_comp } => {
+            let inner = column_comp_to_emitter(then_comp, apc_col)?;
+            Some(EmitterColumn::Conditional {
+                cond_off: *condition_byte_offset as u16,
+                inner: Box::new(inner),
+            })
+        }
+        CC::TimestampDecomp {
+            curr_ts_byte_offset,
+            curr_ts_delta,
+            prev_ts_byte_offset,
+            limb_index,
+        } => Some(EmitterColumn::TimestampDecomp {
+            apc_col,
+            curr_off: *curr_ts_byte_offset as u16,
+            prev_off: *prev_ts_byte_offset as u16,
+            delta: *curr_ts_delta as u16,
+            limb_index: *limb_index as u16,
+        }),
+        CC::PointerLimb {
+            val_byte_offset,
+            imm_byte_offset,
+            imm_sign_byte_offset,
+            limb_index,
+        } => Some(EmitterColumn::PointerLimb {
+            apc_col,
+            val_off: *val_byte_offset as u16,
+            imm_off: *imm_byte_offset as u16,
+            imm_sign_off: *imm_sign_byte_offset as u16,
+            limb_index: *limb_index as u16,
+        }),
+        CC::AluResult {
+            opcode_byte_offset,
+            b_byte_offset,
+            c_byte_offset,
+            limb_index,
+        } => Some(EmitterColumn::AluResult {
+            apc_col,
+            opcode_off: *opcode_byte_offset as u16,
+            b_off: *b_byte_offset as u16,
+            c_off: *c_byte_offset as u16,
+            limb_index: *limb_index as u16,
+        }),
+        CC::ShiftResult {
+            opcode_byte_offset,
+            b_byte_offset,
+            c_byte_offset,
+            limb_index,
+        } => Some(EmitterColumn::ShiftResult {
+            apc_col,
+            opcode_off: *opcode_byte_offset as u16,
+            b_off: *b_byte_offset as u16,
+            c_off: *c_byte_offset as u16,
+            limb_index: *limb_index as u16,
+        }),
+        CC::ShiftBitMulLeft { opcode_byte_offset, c_byte_offset } => {
+            Some(EmitterColumn::ShiftBitMulLeft {
+                apc_col,
+                opcode_off: *opcode_byte_offset as u16,
+                c_off: *c_byte_offset as u16,
+            })
+        }
+        CC::ShiftBitMulRight { opcode_byte_offset, c_byte_offset } => {
+            Some(EmitterColumn::ShiftBitMulRight {
+                apc_col,
+                opcode_off: *opcode_byte_offset as u16,
+                c_off: *c_byte_offset as u16,
+            })
+        }
+        CC::ShiftBSign { opcode_byte_offset, b_byte_offset } => {
+            Some(EmitterColumn::ShiftBSign {
+                apc_col,
+                opcode_off: *opcode_byte_offset as u16,
+                b_off: *b_byte_offset as u16,
+            })
+        }
+        CC::ShiftBitMarker { c_byte_offset, marker_index } => {
+            Some(EmitterColumn::ShiftBitMarker {
+                apc_col,
+                c_off: *c_byte_offset as u16,
+                marker_index: *marker_index as u16,
+            })
+        }
+        CC::ShiftLimbMarker { c_byte_offset, marker_index } => {
+            Some(EmitterColumn::ShiftLimbMarker {
+                apc_col,
+                c_off: *c_byte_offset as u16,
+                marker_index: *marker_index as u16,
+            })
+        }
+        CC::ShiftBitCarry { opcode_byte_offset, b_byte_offset, c_byte_offset, limb_index } => {
+            Some(EmitterColumn::ShiftBitCarry {
+                apc_col,
+                opcode_off: *opcode_byte_offset as u16,
+                b_off: *b_byte_offset as u16,
+                c_off: *c_byte_offset as u16,
+                limb_index: *limb_index as u16,
+            })
+        }
+        CC::BranchEqualCmpResult { a_byte_offset, b_byte_offset, opcode_byte_offset } => {
+            Some(EmitterColumn::BranchEqualCmpResult {
+                apc_col,
+                a_off: *a_byte_offset as u16,
+                b_off: *b_byte_offset as u16,
+                opcode_off: *opcode_byte_offset as u16,
+            })
+        }
+        CC::BranchEqualDiffInvMarker { a_byte_offset, b_byte_offset, opcode_byte_offset: _, marker_index } => {
+            Some(EmitterColumn::BranchEqualDiffInvMarker {
+                apc_col,
+                a_off: *a_byte_offset as u16,
+                b_off: *b_byte_offset as u16,
+                marker_index: *marker_index as u16,
+            })
+        }
+        CC::LoadStoreRdRs2Ptr { rd_rs2_ptr_byte_offset } => {
+            Some(EmitterColumn::LoadStoreRdRs2Ptr {
+                apc_col,
+                off: *rd_rs2_ptr_byte_offset as u16,
+            })
+        }
+        CC::LoadStoreNeedsWrite { rd_rs2_ptr_byte_offset } => {
+            Some(EmitterColumn::LoadStoreNeedsWrite {
+                apc_col,
+                off: *rd_rs2_ptr_byte_offset as u16,
+            })
+        }
+        CC::LoadStoreWriteAuxPrevTs { write_prev_ts_byte_offset, rd_rs2_ptr_byte_offset } => {
+            Some(EmitterColumn::LoadStoreWriteAuxPrevTs {
+                apc_col,
+                write_prev_ts_off: *write_prev_ts_byte_offset as u16,
+                rd_rs2_ptr_off: *rd_rs2_ptr_byte_offset as u16,
+            })
+        }
+        CC::LoadStoreWriteAuxDecomp { from_ts_byte_offset, write_prev_ts_byte_offset, rd_rs2_ptr_byte_offset, limb_index } => {
+            Some(EmitterColumn::LoadStoreWriteAuxDecomp {
+                apc_col,
+                from_ts_off: *from_ts_byte_offset as u16,
+                write_prev_ts_off: *write_prev_ts_byte_offset as u16,
+                rd_rs2_ptr_off: *rd_rs2_ptr_byte_offset as u16,
+                limb_index: *limb_index as u16,
+            })
+        }
+        CC::LoadStoreIsLoad { opcode_byte_offset } => {
+            Some(EmitterColumn::LoadStoreIsLoad {
+                apc_col,
+                opcode_off: *opcode_byte_offset as u16,
+            })
+        }
+        CC::LoadStoreFlag { opcode_byte_offset, shift_byte_offset, flag_index } => {
+            Some(EmitterColumn::LoadStoreFlag {
+                apc_col,
+                opcode_off: *opcode_byte_offset as u16,
+                shift_off: *shift_byte_offset as u16,
+                flag_index: *flag_index as u16,
+            })
+        }
+        CC::LoadStoreWriteData { opcode_byte_offset, shift_byte_offset, read_data_byte_offset, prev_data_byte_offset, limb_index } => {
+            Some(EmitterColumn::LoadStoreWriteData {
+                apc_col,
+                opcode_off: *opcode_byte_offset as u16,
+                shift_off: *shift_byte_offset as u16,
+                read_data_off: *read_data_byte_offset as u16,
+                prev_data_off: *prev_data_byte_offset as u16,
+                limb_index: *limb_index as u16,
+            })
+        }
+    }
 }
 
 /// Convert a Rust ColumnComputation to a CUDA JitColumnDesc.
@@ -795,29 +1366,60 @@ impl<R, PB: ProverBackend<Matrix = DeviceMatrix<BabyBear>>, ISA: OpenVmISA> Chip
     fn generate_proving_ctx(&self, _: R) -> AirProvingContext<PB> {
         tracing::trace!("Generating air proof input for PowdrChip {}", self.name);
 
-        let use_jit = std::env::var("POWDR_JIT_TRACEGEN").is_ok();
+        let backend = pick_jit_backend();
         let arenas = self.record_arena_by_air_name.take();
 
-        let trace = if use_jit {
-            match self.trace_generator.try_generate_witness_jit(arenas) {
+        let trace = match backend {
+            JitBackend::Off => self
+                .trace_generator
+                .try_generate_witness(arenas)
+                .unwrap_or_else(DeviceMatrix::dummy),
+            JitBackend::Descriptor => match self.trace_generator.try_generate_witness_jit(arenas) {
                 Ok(trace) => {
-                    tracing::info!("GPU JIT trace gen used for PowdrChip {}", self.name);
+                    tracing::info!(
+                        "GPU JIT (descriptor) trace gen used for PowdrChip {}",
+                        self.name
+                    );
                     trace
                 }
                 Err(arenas) => {
                     tracing::warn!(
-                        "GPU JIT not available for PowdrChip {}, falling back",
+                        "GPU JIT (descriptor) not available for PowdrChip {}, falling back",
                         self.name
                     );
                     self.trace_generator
                         .try_generate_witness(arenas)
                         .unwrap_or_else(DeviceMatrix::dummy)
                 }
-            }
-        } else {
-            self.trace_generator
-                .try_generate_witness(arenas)
-                .unwrap_or_else(DeviceMatrix::dummy)
+            },
+            JitBackend::Nvrtc => match self.trace_generator.try_generate_witness_nvrtc(arenas) {
+                Ok(trace) => {
+                    tracing::info!(
+                        "GPU JIT (nvrtc) trace gen used for PowdrChip {}",
+                        self.name
+                    );
+                    trace
+                }
+                Err(arenas) => {
+                    tracing::debug!(
+                        "GPU JIT (nvrtc) not yet supported for PowdrChip {}, trying descriptor",
+                        self.name
+                    );
+                    match self.trace_generator.try_generate_witness_jit(arenas) {
+                        Ok(trace) => {
+                            tracing::info!(
+                                "GPU JIT (descriptor) trace gen used for PowdrChip {}",
+                                self.name
+                            );
+                            trace
+                        }
+                        Err(arenas) => self
+                            .trace_generator
+                            .try_generate_witness(arenas)
+                            .unwrap_or_else(DeviceMatrix::dummy),
+                    }
+                }
+            },
         };
 
         AirProvingContext {
