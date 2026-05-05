@@ -45,6 +45,83 @@ pub enum JitBackend {
     Nvrtc,
 }
 
+/// Optional VPMM + first-H2D warm-up: pre-allocate a buffer of the requested
+/// size, do a dummy H2D into it from a small pageable buffer, and drop. This
+/// pays any first-use cost (VPMM `cuMemMap`, pinned staging pool init,
+/// pinned-driver bookkeeping) before the next timed allocation/H2D.
+fn maybe_warmup_vpmm(target_bytes: usize) {
+    if std::env::var("POWDR_VPMM_WARMUP").is_err() {
+        return;
+    }
+    let start = std::time::Instant::now();
+    {
+        // Small probe to touch the small-allocation pool (cudaMallocAsync).
+        let _small = openvm_cuda_common::d_buffer::DeviceBuffer::<u8>::with_capacity(4096);
+    }
+    if target_bytes > 0 {
+        use openvm_cuda_common::copy::cuda_memcpy;
+        use std::ffi::c_void;
+        // Large probe to touch the VPMM (cuMemMap) path at the same scale we
+        // will allocate for real.
+        let large = openvm_cuda_common::d_buffer::DeviceBuffer::<u8>::with_capacity(target_bytes);
+        // Dummy H2D from a small pageable host buffer to pay any first-use
+        // pinned-staging cost. Copy size is small so the transfer itself is
+        // cheap; what we want is the warm-up of driver internal state.
+        // Probe sized to half the target (or 1 MB minimum), bounded at 256 MB
+        // so we don't double the runtime when warming up huge arenas.
+        let probe_size = (target_bytes / 2).max(1 << 20).min(256 << 20);
+        let probe: Vec<u8> = vec![0u8; probe_size];
+        unsafe {
+            let _ = cuda_memcpy::<false, true>(
+                large.as_mut_ptr() as *mut c_void,
+                probe.as_ptr() as *const c_void,
+                probe.len(),
+            );
+        }
+        let _ = openvm_cuda_common::stream::current_stream_sync();
+        drop(large);
+    }
+    tracing::info!(
+        "[trace_profile] vpmm_warmup                       {:8.3} ms (target {} bytes; H2D'd up to 256 MB probe)",
+        start.elapsed().as_secs_f64() * 1000.0,
+        target_bytes
+    );
+}
+
+/// Measurement-only: time how long it takes to upload every arena's bytes to
+/// a single contiguous `DeviceBuffer<u8>` without consuming the arenas. The
+/// allocated buffer is dropped immediately after the sync; intended for
+/// apples-to-apples comparison against the JIT path's `arena_direct_h2d`.
+fn measure_arenas_direct_h2d_borrowed(
+    arenas: &[(String, &openvm_circuit::arch::DenseRecordArena)],
+) -> (f64, usize) {
+    use openvm_cuda_common::copy::cuda_memcpy;
+    use openvm_cuda_common::d_buffer::DeviceBuffer;
+    use std::ffi::c_void;
+
+    let total_size: usize = arenas.iter().map(|(_, a)| a.allocated().len()).sum();
+    if total_size == 0 {
+        return (0.0, 0);
+    }
+    let start = std::time::Instant::now();
+    let dst = DeviceBuffer::<u8>::with_capacity(total_size);
+    let mut cursor: usize = 0;
+    for (_, arena) in arenas {
+        let bytes = arena.allocated();
+        let len = bytes.len();
+        unsafe {
+            let dst_ptr = dst.as_mut_ptr().add(cursor) as *mut c_void;
+            let src_ptr = bytes.as_ptr() as *const c_void;
+            cuda_memcpy::<false, true>(dst_ptr, src_ptr, len).expect("measurement H2D failed");
+        }
+        cursor += len;
+    }
+    let _ = openvm_cuda_common::stream::current_stream_sync();
+    let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+    drop(dst);
+    (elapsed_ms, total_size)
+}
+
 /// Copy each arena's bytes directly to a single contiguous `DeviceBuffer<u8>`
 /// without first concatenating on the host. Returns the buffer plus the
 /// per-AIR byte offsets within it. The arenas Vec is kept alive until the
@@ -342,26 +419,93 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
             },
         );
 
+        // The set of AIR names that the APC's instructions reference. JIT paths
+        // bypass primitive `fill_trace_row` for these; baseline runs them.
+        // Tagging per-chip times with this set makes the APC-AIR sum here
+        // directly comparable to the JIT path's `arena_direct_h2d`.
+        let apc_air_names: std::collections::HashSet<String> = self
+            .apc
+            .instructions()
+            .map(|instr| self.original_airs.opcode_to_air[&instr.inner.opcode].clone())
+            .collect();
+
+        let mut apc_air_total_ms: f64 = 0.0;
+        let mut non_apc_air_total_ms: f64 = 0.0;
+        let mut apc_air_total_bytes: usize = 0;
+        let mut non_apc_air_total_bytes: usize = 0;
+        let profile_on = std::env::var("POWDR_TRACE_PROFILE").is_ok();
+
+        // Pre-take all arenas so we can do an isolated H2D-only measurement
+        // before consuming them via chip.generate_proving_ctx.
+        let chip_arena_triples: Vec<(usize, String, openvm_circuit::arch::DenseRecordArena)> =
+            chip_inventory
+                .chips()
+                .iter()
+                .enumerate()
+                .rev()
+                .filter_map(|(insertion_idx, _chip)| {
+                    let air_name = chip_inventory.airs().ext_airs()[insertion_idx].name();
+                    original_arenas
+                        .take_real_arena(&air_name)
+                        .map(|a| (insertion_idx, air_name, a))
+                })
+                .collect();
+
+        // Optional: measure pure H2D cost across all arenas the way the JIT
+        // path does it, before they're consumed by generate_proving_ctx.
+        // This double-uploads (the chip will H2D again internally), so it
+        // skews trace_gen total — only run when profiling.
+        if profile_on {
+            let borrowed: Vec<(String, &openvm_circuit::arch::DenseRecordArena)> =
+                chip_arena_triples
+                    .iter()
+                    .map(|(_, name, arena)| (name.clone(), arena))
+                    .collect();
+            let (ms, bytes) = measure_arenas_direct_h2d_borrowed(&borrowed);
+            tracing::info!(
+                "[trace_profile] baseline.measure_h2d_only        {:8.3} ms ({} bytes; for direct comparison vs JIT.arena_direct_h2d)",
+                ms,
+                bytes
+            );
+        }
+
         let dummy_trace_by_air_name: HashMap<String, DeviceMatrix<BabyBear>> = time_stage(
             "baseline.fill_dummy_traces",
             || {
-                chip_inventory
-                    .chips()
-                    .iter()
-                    .enumerate()
-                    .rev()
-                    .filter_map(|(insertion_idx, chip)| {
-                        let air_name = chip_inventory.airs().ext_airs()[insertion_idx].name();
+                let map: HashMap<_, _> = chip_arena_triples
+                    .into_iter()
+                    .filter_map(|(insertion_idx, air_name, record_arena)| {
+                        let chip = &chip_inventory.chips()[insertion_idx];
+                        let bytes_len = record_arena.allocated().len();
+                        let is_apc = apc_air_names.contains(&air_name);
 
-                        let record_arena = {
-                            match original_arenas.take_real_arena(&air_name) {
-                                Some(ra) => ra,
-                                None => return None, // skip this iteration, because we only have record arena for chips that are used
+                        // Time each chip's generate_proving_ctx individually
+                        // (covers H2D + fill_trace_row + alloc).
+                        let ctx = if profile_on {
+                            let start = std::time::Instant::now();
+                            let r = chip.generate_proving_ctx(record_arena);
+                            let _ = openvm_cuda_common::stream::current_stream_sync();
+                            let ms = start.elapsed().as_secs_f64() * 1000.0;
+                            let tag = if is_apc { "APC" } else { "non-APC" };
+                            tracing::info!(
+                                "[trace_profile]   baseline.fill_dummy_trace[{}/{:<70}] {:8.3} ms ({} bytes)",
+                                tag,
+                                air_name.chars().take(70).collect::<String>(),
+                                ms,
+                                bytes_len
+                            );
+                            if is_apc {
+                                apc_air_total_ms += ms;
+                                apc_air_total_bytes += bytes_len;
+                            } else {
+                                non_apc_air_total_ms += ms;
+                                non_apc_air_total_bytes += bytes_len;
                             }
+                            r
+                        } else {
+                            chip.generate_proving_ctx(record_arena)
                         };
 
-                        // We might have initialized an arena for an AIR which ends up having no real records. It gets filtered out here.
-                        let ctx = chip.generate_proving_ctx(record_arena);
                         let m = ctx.common_main;
                         use openvm_stark_backend::prover::MatrixDimensions;
                         if m.height() > 0 {
@@ -370,7 +514,20 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
                             None
                         }
                     })
-                    .collect()
+                    .collect();
+                if profile_on {
+                    tracing::info!(
+                        "[trace_profile] baseline.fill_dummy_trace_APC_total      {:8.3} ms ({} bytes)",
+                        apc_air_total_ms,
+                        apc_air_total_bytes
+                    );
+                    tracing::info!(
+                        "[trace_profile] baseline.fill_dummy_trace_nonAPC_total   {:8.3} ms ({} bytes)",
+                        non_apc_air_total_ms,
+                        non_apc_air_total_bytes
+                    );
+                }
+                map
             },
         );
 
@@ -633,23 +790,27 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         let width = apc_poly_id_to_index.len();
         let height = next_power_of_two_or_zero(num_apc_calls);
 
+        // Pre-take arenas so we can size the VPMM warm-up correctly without
+        // touching arena bytes inside the timed region.
+        let pre_taken: Vec<(String, openvm_circuit::arch::DenseRecordArena)> = air_names
+            .iter()
+            .unique()
+            .filter_map(|name| {
+                original_arenas
+                    .take_real_arena(name)
+                    .map(|a| (name.clone(), a))
+            })
+            .collect();
+        let arena_total: usize = pre_taken.iter().map(|(_, a)| a.allocated().len()).sum();
+        tracing::info!(
+            "[trace_profile] descriptor.arena_size           {} bytes",
+            arena_total
+        );
+        maybe_warmup_vpmm(arena_total);
+
         // Direct H2D from each arena (skip host-side concatenation).
         let (d_arena, arena_offsets) = time_stage("descriptor.arena_direct_h2d", || {
-            let pairs: Vec<(String, openvm_circuit::arch::DenseRecordArena)> = air_names
-                .iter()
-                .unique()
-                .filter_map(|name| {
-                    original_arenas
-                        .take_real_arena(name)
-                        .map(|a| (name.clone(), a))
-                })
-                .collect();
-            let total: usize = pairs.iter().map(|(_, a)| a.allocated().len()).sum();
-            tracing::info!(
-                "[trace_profile] descriptor.arena_size           {} bytes",
-                total
-            );
-            concat_arenas_direct_h2d(pairs)
+            concat_arenas_direct_h2d(pre_taken)
         });
 
         // Build JIT descriptor arrays
@@ -919,23 +1080,27 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
             });
         }
 
+        // Pre-take arenas so we can size the VPMM warm-up correctly without
+        // touching arena bytes inside the timed region.
+        let pre_taken: Vec<(String, openvm_circuit::arch::DenseRecordArena)> = air_names
+            .iter()
+            .unique()
+            .filter_map(|name| {
+                original_arenas
+                    .take_real_arena(name)
+                    .map(|a| (name.clone(), a))
+            })
+            .collect();
+        let arena_total: usize = pre_taken.iter().map(|(_, a)| a.allocated().len()).sum();
+        tracing::info!(
+            "[trace_profile] nvrtc.arena_size                {} bytes",
+            arena_total
+        );
+        maybe_warmup_vpmm(arena_total);
+
         // Direct H2D from each arena (skip host-side concatenation).
         let (d_arena, arena_offsets) = time_stage("nvrtc.arena_direct_h2d", || {
-            let pairs: Vec<(String, openvm_circuit::arch::DenseRecordArena)> = air_names
-                .iter()
-                .unique()
-                .filter_map(|name| {
-                    original_arenas
-                        .take_real_arena(name)
-                        .map(|a| (name.clone(), a))
-                })
-                .collect();
-            let total: usize = pairs.iter().map(|(_, a)| a.allocated().len()).sum();
-            tracing::info!(
-                "[trace_profile] nvrtc.arena_size                {} bytes",
-                total
-            );
-            concat_arenas_direct_h2d(pairs)
+            concat_arenas_direct_h2d(pre_taken)
         });
 
         // Backfill per-instruction arena_offset.
