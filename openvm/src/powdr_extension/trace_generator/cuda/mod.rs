@@ -103,16 +103,44 @@ fn measure_arenas_direct_h2d_borrowed(
     if total_size == 0 {
         return (0.0, 0);
     }
+    let per_call_profile = std::env::var("POWDR_PER_CALL_PROFILE").is_ok();
+
     let start = std::time::Instant::now();
+    let alloc_start = std::time::Instant::now();
     let dst = DeviceBuffer::<u8>::with_capacity(total_size);
+    if per_call_profile {
+        tracing::info!(
+            "[per_call] measure.alloc                       {:8.3} ms ({} bytes)",
+            alloc_start.elapsed().as_secs_f64() * 1000.0,
+            total_size
+        );
+    }
     let mut cursor: usize = 0;
-    for (_, arena) in arenas {
+    for (name, arena) in arenas {
         let bytes = arena.allocated();
         let len = bytes.len();
+        let call_start = std::time::Instant::now();
         unsafe {
             let dst_ptr = dst.as_mut_ptr().add(cursor) as *mut c_void;
             let src_ptr = bytes.as_ptr() as *const c_void;
             cuda_memcpy::<false, true>(dst_ptr, src_ptr, len).expect("measurement H2D failed");
+        }
+        if per_call_profile {
+            // Sync between calls to attribute time per copy.
+            let _ = openvm_cuda_common::stream::current_stream_sync();
+            let dur_ms = call_start.elapsed().as_secs_f64() * 1000.0;
+            let bw = if dur_ms > 0.0 {
+                (len as f64) / 1.0e6 / dur_ms
+            } else {
+                0.0
+            };
+            tracing::info!(
+                "[per_call] measure.memcpy[{:<60}] {:8.3} ms ({} bytes, {:.2} GB/s)",
+                name.chars().take(60).collect::<String>(),
+                dur_ms,
+                len,
+                bw
+            );
         }
         cursor += len;
     }
@@ -141,6 +169,7 @@ where
     use openvm_cuda_common::d_buffer::DeviceBuffer;
     use std::ffi::c_void;
 
+    let fn_start = std::time::Instant::now();
     let arenas: Vec<(String, openvm_circuit::arch::DenseRecordArena)> = iter
         .into_iter()
         .filter(|(_, a)| !a.allocated().is_empty())
@@ -150,21 +179,77 @@ where
     if total_size == 0 {
         return (DeviceBuffer::new(), std::collections::HashMap::new());
     }
+    let per_call_profile = std::env::var("POWDR_PER_CALL_PROFILE").is_ok();
+    if per_call_profile {
+        tracing::info!(
+            "[per_call] concat.fn_entry_to_alloc           {:8.3} ms",
+            fn_start.elapsed().as_secs_f64() * 1000.0
+        );
+    }
+
+    let alloc_start = std::time::Instant::now();
     let dst = DeviceBuffer::<u8>::with_capacity(total_size);
+    if per_call_profile {
+        tracing::info!(
+            "[per_call] concat.alloc                        {:8.3} ms ({} bytes)",
+            alloc_start.elapsed().as_secs_f64() * 1000.0,
+            total_size
+        );
+    }
 
     let mut offsets: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
     let mut cursor: usize = 0;
     for (name, arena) in &arenas {
         let bytes = arena.allocated();
         let len = bytes.len();
+        let call_start = std::time::Instant::now();
         // Safety: dst was allocated with total_size; cursor + len <= total_size by construction.
         unsafe {
             let dst_ptr = dst.as_mut_ptr().add(cursor) as *mut c_void;
             let src_ptr = bytes.as_ptr() as *const c_void;
             cuda_memcpy::<false, true>(dst_ptr, src_ptr, len).expect("arena H2D failed");
         }
+        if per_call_profile {
+            let _ = openvm_cuda_common::stream::current_stream_sync();
+            let dur_ms = call_start.elapsed().as_secs_f64() * 1000.0;
+            let bw = if dur_ms > 0.0 {
+                (len as f64) / 1.0e6 / dur_ms
+            } else {
+                0.0
+            };
+            tracing::info!(
+                "[per_call] concat.memcpy[{:<60}] {:8.3} ms ({} bytes, {:.2} GB/s)",
+                name.chars().take(60).collect::<String>(),
+                dur_ms,
+                len,
+                bw
+            );
+        }
         offsets.insert(name.clone(), cursor as u32);
         cursor += len;
+    }
+    if per_call_profile {
+        // Time the arena Vec drop separately — for keccak APC=1 with 10k
+        // input this is ~65 ms of host-side free() on 1.65 GB of pageable
+        // memory. Without this measurement the cost hides inside
+        // time_stage's wrapper as if it were H2D time.
+        let pre_drop = fn_start.elapsed().as_secs_f64() * 1000.0;
+        let drop_start = std::time::Instant::now();
+        std::mem::drop(arenas);
+        let drop_ms = drop_start.elapsed().as_secs_f64() * 1000.0;
+        tracing::info!(
+            "[per_call] concat.fn_pre_drop                 {:8.3} ms (H2D + alloc only)",
+            pre_drop
+        );
+        tracing::info!(
+            "[per_call] concat.arenas_drop                 {:8.3} ms (host free of arena bytes)",
+            drop_ms
+        );
+        tracing::info!(
+            "[per_call] concat.fn_total_to_return          {:8.3} ms",
+            fn_start.elapsed().as_secs_f64() * 1000.0
+        );
+        return (dst, offsets);
     }
     // arenas Vec stays alive until function return. cudaMemcpyAsync source
     // pointers are valid until the per-thread stream syncs, which it will at
