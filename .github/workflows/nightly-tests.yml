@@ -483,31 +483,45 @@ jobs:
       - name: Patch benchmark
         uses: ./.github/actions/patch-openvm-eth
 
-      - name: Compile APC caches (CPU)
+      - name: Prefetch RPC cache (CPU)
+        # Warm-up to populate openvm-eth/rpc-cache/ with the block data Modal
+        # will need. Otherwise every prove-stark on Modal re-downloads the
+        # block over RPC, burning GPU minutes on I/O.
         run: |
           cd openvm-eth
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
+          ./run.sh --apc 0 --block 24171377 --mode execute || exit 1
+          tar -czf ../rpc-cache.tgz rpc-cache
+
+      - name: Compile APC caches (CPU)
+        run: |
+          cd openvm-eth
           for apc in 10 30; do
-            ./run.sh --apc "$apc" --mode compile || exit 1
+            ./run.sh --apc "$apc" --block 24171377 --mode compile || exit 1
             tar -czf "../apc-cache-${apc}.tgz" apc-cache
             rm -rf apc-cache
           done
 
-      - name: Upload APC caches to Modal Volume
+      - name: Upload caches to Modal Volume
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
         run: |
           source .venv/bin/activate
+          modal volume put "$MODAL_VOLUME" rpc-cache.tgz "/${RUN_ID}/rpc-cache.tgz" --force
           for apc in 10 30; do
             modal volume put "$MODAL_VOLUME" "apc-cache-${apc}.tgz" "/${RUN_ID}/apc-cache-${apc}.tgz" --force
           done
 
       - name: Run prove-stark on Modal (L4)
+        # Deliberately do NOT pass RPC_1: the prefetch+upload steps populate
+        # rpc-cache.tgz with every block we'll prove, so Modal should be a
+        # pure cache consumer. Any live RPC attempt will hit the sentinel
+        # URL in modal_app.py and fail loudly — that's the signal that the
+        # cache is incomplete.
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-          RPC_1: ${{ secrets.RPC_1 }}
         run: |
           source .venv/bin/activate
           for apc in 0 10 30; do

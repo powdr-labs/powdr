@@ -78,16 +78,17 @@ image = (
 app = modal.App("powdr-nightly-gpu", image=image)
 vol = modal.Volume.from_name("powdr-nightly-gpu-cache", create_if_missing=True)
 
-# RPC_1 is forwarded from the calling environment (GitHub Actions secret) at
-# `modal run` invocation time. The CI step exports RPC_1 before the call;
-# Modal captures it here and re-injects it into the function's container.
-rpc_secret = modal.Secret.from_dict({"RPC_1": os.environ.get("RPC_1", "")})
+# We deliberately do NOT forward the real RPC URL. The CPU side prefetches
+# every block we'll need into rpc-cache.tgz, so prove-stark inside Modal
+# should be a pure consumer of the cache. If something tries to fetch live,
+# we want a loud connection error here instead of a silent re-download
+# burning GPU minutes.
+FAKE_RPC = "http://rpc-cache-must-be-populated.invalid"
 
 
 @app.function(
     gpu="L4",
     volumes={"/cache": vol},
-    secrets=[rpc_secret],
     timeout=3 * 3600,
 )
 def prove_block(
@@ -130,6 +131,15 @@ def prove_block(
     with open(f"{cargo_dir}/config.toml", "w") as f:
         f.write(PATCH_CONFIG)
 
+    rpc_tgz = f"/cache/{run_id}/rpc-cache.tgz"
+    if os.path.exists(rpc_tgz):
+        subprocess.run(["tar", "-xzf", rpc_tgz, "-C", eth], check=True)
+        print(f"[modal] restored rpc-cache from {rpc_tgz}")
+    else:
+        # No prefetch ⇒ the binary will hit the RPC inside Modal. Should
+        # not happen for nightly, but harmless if it does.
+        print("[modal] no rpc-cache — will fetch blocks from RPC")
+
     cache_tgz = f"/cache/{run_id}/apc-cache-{apc}.tgz"
     if os.path.exists(cache_tgz):
         subprocess.run(["tar", "-xzf", cache_tgz, "-C", eth], check=True)
@@ -138,8 +148,10 @@ def prove_block(
         # apc=0 has no cache; non-zero apc with no cache is a CI bug.
         print(f"[modal] no apc-cache for apc={apc}")
 
+    # run.sh requires RPC_1 to be set — write a sentinel that's syntactically
+    # valid but unreachable, so cache misses surface as connection errors.
     with open(f"{eth}/.env", "a") as f:
-        f.write(f"export RPC_1={os.environ['RPC_1']}\n")
+        f.write(f"export RPC_1={FAKE_RPC}\n")
 
     # Re-use the cargo target dir across invocations on this Volume so the
     # second/third APC run skips the binary rebuild (sequential invocations
