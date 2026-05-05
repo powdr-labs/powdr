@@ -8,6 +8,8 @@ use powdr_autoprecompiles::blocks::{collect_basic_blocks, BasicBlock, Program};
 use powdr_autoprecompiles::DegreeBound;
 use serde::{Deserialize, Serialize};
 
+use powdr_riscv_elf::debug_info::SymbolTable;
+
 use crate::customize_exe::Instr;
 use crate::extraction_utils::OriginalVmConfig;
 use crate::isa::OpenVmISA;
@@ -24,6 +26,8 @@ pub struct OriginalCompiledProgram<'a, ISA: OpenVmISA> {
     pub exe: Arc<VmExe<BabyBear>>,
     pub vm_config: OriginalVmConfig<ISA>,
     pub linked_program: ISA::LinkedProgram<'a>,
+    /// Extra symbols added by the optimizer (e.g. patched memcpy/memcmp routines).
+    pub extra_symbols: Option<SymbolTable>,
 }
 
 impl<'a, ISA: OpenVmISA> OriginalCompiledProgram<'a, ISA> {
@@ -36,7 +40,22 @@ impl<'a, ISA: OpenVmISA> OriginalCompiledProgram<'a, ISA> {
             exe,
             vm_config,
             linked_program,
+            extra_symbols: None,
         }
+    }
+
+    /// Returns the full symbol table, merging ELF symbols with any extra
+    /// symbols added by the optimizer.
+    pub fn get_symbol_table(&self) -> SymbolTable {
+        let mut symbols = ISA::get_symbol_table(&self.linked_program);
+        if let Some(extra) = &self.extra_symbols {
+            for (addr, names) in extra.table() {
+                for name in names {
+                    symbols.insert(*addr, name.clone());
+                }
+            }
+        }
+        symbols
     }
 
     /// Segments the program into basic blocks

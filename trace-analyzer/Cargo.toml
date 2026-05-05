@@ -1,0 +1,16 @@
+[package]
+name = "powdr-trace-analyzer"
+description = "Analyzes RISC-V execution traces and generates HTML profiling reports"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+goblin = "0.8"
+raki = "0.1.4"
+rustc-demangle = "0.1"
+
+[lints]
+workspace = true

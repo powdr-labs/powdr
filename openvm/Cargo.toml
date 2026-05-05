@@ -42,6 +42,7 @@ metrics.workspace = true
 indicatif = "0.18.3"
 cfg-if = "1.0.4"
 powdr-riscv-elf.workspace = true
+powdr-elf-optimizer.workspace = true
 pretty_assertions = { workspace = true, optional = true }
 
 [build-dependencies]

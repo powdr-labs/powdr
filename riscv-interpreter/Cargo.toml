@@ -1,0 +1,17 @@
+[package]
+name = "powdr-riscv-interpreter"
+description = "Lightweight RV32IM interpreter for profiling RISC-V ELF binaries"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+goblin = "0.8"
+
+[lints]
+workspace = true
+
+[lib]
+bench = false

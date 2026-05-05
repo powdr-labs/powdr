@@ -48,6 +48,7 @@ use std::path::{Path, PathBuf};
 
 pub use crate::isa::RiscvISA;
 pub use crate::isa::{instruction_formatter, symbolic_instruction_builder};
+use powdr_openvm::isa::OpenVmISA;
 pub use powdr_openvm::program::{CompiledProgram, OriginalCompiledProgram};
 
 pub mod isa;
@@ -125,18 +126,25 @@ pub fn compile_openvm(
         .transpiler(transpiler)
         .build_without_transpiler()?;
 
-    let elf = sdk.build(
+    let mut elf = sdk.build(
         guest_opts.clone(),
         target_path,
         &Default::default(),
         Default::default(),
     )?;
 
-    // Transpile the ELF into a VmExe.
-    let exe = sdk.convert_to_exe(elf)?;
-
+    // Load the ELF binary for symbol table and pc_base
     let elf_binary_path = build_elf_path(guest_opts.clone(), target_path, &Default::default())?;
-    let elf = powdr_riscv_elf::load_elf(&elf_binary_path);
+    let elf_program = powdr_riscv_elf::load_elf(&elf_binary_path);
+
+    // Optimize memcpy calls in the ELF before transpilation
+    let mut symbols = RiscvISA::get_symbol_table(&elf_program);
+    let pc_base = powdr_openvm::memcpy_optimizer::parse_pc_base(&elf_binary_path);
+    println!("memcpy_opt : starting");
+    powdr_openvm::memcpy_optimizer::optimize_elf(&mut elf, &mut symbols, pc_base);
+
+    // Transpile the (possibly modified) ELF into a VmExe.
+    let exe = sdk.convert_to_exe(elf)?;
 
     let vm_config = ExtendedVmConfig {
         sdk: sdk.app_config().app_vm_config.clone(),
@@ -146,7 +154,8 @@ pub fn compile_openvm(
     Ok(OriginalCompiledProgram {
         exe,
         vm_config: OriginalVmConfig::new(vm_config),
-        linked_program: elf,
+        linked_program: elf_program,
+        extra_symbols: Some(symbols),
     })
 }
 

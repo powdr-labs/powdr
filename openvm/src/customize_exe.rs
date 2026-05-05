@@ -211,7 +211,7 @@ pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAd
         bus_map: bus_map.clone(),
     };
 
-    let symbols = ISA::get_symbol_table(&original_program.linked_program);
+    let symbols = original_program.get_symbol_table();
     let blocks = original_program.collect_basic_blocks();
     tracing::info!(
         "Got {} basic blocks from `collect_basic_blocks`",
