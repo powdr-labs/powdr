@@ -446,7 +446,10 @@ jobs:
   # via `--mode compile` and shipped to Modal via a Volume; Modal only does
   # `--mode prove-stark`.
   test_apc_gpu_modal:
-    runs-on: ubuntu-latest
+    # 32-core larger runner so the cold-cache cargo build inside run.sh
+    # (host prover binary, ~revm+alloy+openvm graph) finishes in minutes
+    # instead of 30+ on ubuntu-latest's 4 vCPUs.
+    runs-on: bench-cpu-128g
 
     env:
       RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
