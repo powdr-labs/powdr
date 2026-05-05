@@ -45,6 +45,78 @@ pub enum JitBackend {
     Nvrtc,
 }
 
+/// Copy each arena's bytes directly to a single contiguous `DeviceBuffer<u8>`
+/// without first concatenating on the host. Returns the buffer plus the
+/// per-AIR byte offsets within it. The arenas Vec is kept alive until the
+/// call returns so the H2D copies (issued async on the per-thread stream)
+/// have valid source pointers — a stream sync at the next kernel launch
+/// ensures completion before the kernel reads.
+fn concat_arenas_direct_h2d<I>(
+    iter: I,
+) -> (
+    openvm_cuda_common::d_buffer::DeviceBuffer<u8>,
+    std::collections::HashMap<String, u32>,
+)
+where
+    I: IntoIterator<Item = (String, openvm_circuit::arch::DenseRecordArena)>,
+{
+    use openvm_cuda_common::copy::cuda_memcpy;
+    use openvm_cuda_common::d_buffer::DeviceBuffer;
+    use std::ffi::c_void;
+
+    let arenas: Vec<(String, openvm_circuit::arch::DenseRecordArena)> = iter
+        .into_iter()
+        .filter(|(_, a)| !a.allocated().is_empty())
+        .collect();
+
+    let total_size: usize = arenas.iter().map(|(_, a)| a.allocated().len()).sum();
+    if total_size == 0 {
+        return (DeviceBuffer::new(), std::collections::HashMap::new());
+    }
+    let dst = DeviceBuffer::<u8>::with_capacity(total_size);
+
+    let mut offsets: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+    let mut cursor: usize = 0;
+    for (name, arena) in &arenas {
+        let bytes = arena.allocated();
+        let len = bytes.len();
+        // Safety: dst was allocated with total_size; cursor + len <= total_size by construction.
+        unsafe {
+            let dst_ptr = dst.as_mut_ptr().add(cursor) as *mut c_void;
+            let src_ptr = bytes.as_ptr() as *const c_void;
+            cuda_memcpy::<false, true>(dst_ptr, src_ptr, len).expect("arena H2D failed");
+        }
+        offsets.insert(name.clone(), cursor as u32);
+        cursor += len;
+    }
+    // arenas Vec stays alive until function return. cudaMemcpyAsync source
+    // pointers are valid until the per-thread stream syncs, which it will at
+    // the next kernel launch / sync point in the caller.
+    let _ = arenas; // explicit reminder
+    (dst, offsets)
+}
+
+/// Run `f`, optionally synchronizing the GPU stream and logging the elapsed
+/// time. Active only when `POWDR_TRACE_PROFILE` is set in the environment;
+/// otherwise this is a zero-overhead pass-through.
+#[inline]
+fn time_stage<F, R>(name: &str, f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    if std::env::var("POWDR_TRACE_PROFILE").is_err() {
+        return f();
+    }
+    let start = std::time::Instant::now();
+    let r = f();
+    // Flush any GPU work this stage launched so the elapsed time reflects
+    // device-side execution rather than enqueue latency.
+    let _ = openvm_cuda_common::stream::current_stream_sync();
+    let dur = start.elapsed();
+    tracing::info!("[trace_profile] {:32} {:8.3} ms", name, dur.as_secs_f64() * 1000.0);
+    r
+}
+
 /// Resolve the active JIT backend from the environment.
 ///
 /// `POWDR_JIT_BACKEND` takes precedence; values are case-insensitive
@@ -254,45 +326,53 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
 
         let num_apc_calls = original_arenas.number_of_calls;
 
-        let chip_inventory: ChipInventory<BabyBearSC, DenseRecordArena, GpuBackend> = {
-            let airs = ISA::create_dummy_airs(self.config.config(), self.periphery.dummy.clone())
-                .expect("Failed to create dummy airs");
+        let chip_inventory: ChipInventory<BabyBearSC, DenseRecordArena, GpuBackend> = time_stage(
+            "baseline.dummy_chip_inventory",
+            || {
+                let airs = ISA::create_dummy_airs(self.config.config(), self.periphery.dummy.clone())
+                    .expect("Failed to create dummy airs");
 
-            ISA::create_dummy_chip_complex_gpu(
-                self.config.config(),
-                airs,
-                self.periphery.dummy.clone(),
-            )
-            .expect("Failed to create chip complex")
-            .inventory
-        };
+                ISA::create_dummy_chip_complex_gpu(
+                    self.config.config(),
+                    airs,
+                    self.periphery.dummy.clone(),
+                )
+                .expect("Failed to create chip complex")
+                .inventory
+            },
+        );
 
-        let dummy_trace_by_air_name: HashMap<String, DeviceMatrix<BabyBear>> = chip_inventory
-            .chips()
-            .iter()
-            .enumerate()
-            .rev()
-            .filter_map(|(insertion_idx, chip)| {
-                let air_name = chip_inventory.airs().ext_airs()[insertion_idx].name();
+        let dummy_trace_by_air_name: HashMap<String, DeviceMatrix<BabyBear>> = time_stage(
+            "baseline.fill_dummy_traces",
+            || {
+                chip_inventory
+                    .chips()
+                    .iter()
+                    .enumerate()
+                    .rev()
+                    .filter_map(|(insertion_idx, chip)| {
+                        let air_name = chip_inventory.airs().ext_airs()[insertion_idx].name();
 
-                let record_arena = {
-                    match original_arenas.take_real_arena(&air_name) {
-                        Some(ra) => ra,
-                        None => return None, // skip this iteration, because we only have record arena for chips that are used
-                    }
-                };
+                        let record_arena = {
+                            match original_arenas.take_real_arena(&air_name) {
+                                Some(ra) => ra,
+                                None => return None, // skip this iteration, because we only have record arena for chips that are used
+                            }
+                        };
 
-                // We might have initialized an arena for an AIR which ends up having no real records. It gets filtered out here.
-                let ctx = chip.generate_proving_ctx(record_arena);
-                let m = ctx.common_main;
-                use openvm_stark_backend::prover::MatrixDimensions;
-                if m.height() > 0 {
-                    Some((air_name, m))
-                } else {
-                    None
-                }
-            })
-            .collect();
+                        // We might have initialized an arena for an AIR which ends up having no real records. It gets filtered out here.
+                        let ctx = chip.generate_proving_ctx(record_arena);
+                        let m = ctx.common_main;
+                        use openvm_stark_backend::prover::MatrixDimensions;
+                        if m.height() > 0 {
+                            Some((air_name, m))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
+            },
+        );
 
         // Map from apc poly id to its index in the final apc trace
         let apc_poly_id_to_index: BTreeMap<u64, usize> = self
@@ -307,11 +387,14 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         // by substitutions or derived expressions default to zero, matching the CPU path)
         let width = apc_poly_id_to_index.len();
         let height = next_power_of_two_or_zero(num_apc_calls);
-        let mut output = DeviceMatrix::<BabyBear>::with_capacity(height, width);
-        output.buffer().fill_zero().unwrap();
+        let mut output = time_stage("baseline.allocate_zero_output", || {
+            let m = DeviceMatrix::<BabyBear>::with_capacity(height, width);
+            m.buffer().fill_zero().unwrap();
+            m
+        });
 
         // Prepare `OriginalAir` and `Subst` arrays
-        let (airs, substitutions) = {
+        let (airs, substitutions) = time_stage("baseline.build_subs", || {
             self.apc
                 // go through original instructions
                 .instructions()
@@ -367,34 +450,47 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
                         (airs, substitutions)
                     },
                 )
-        };
+        });
 
         // Send the airs and substitutions to device
-        let airs = airs.to_device().unwrap();
-        let substitutions = substitutions.to_device().unwrap();
+        let (airs, substitutions) = time_stage("baseline.subs_h2d", || {
+            let a = airs.to_device().unwrap();
+            let s = substitutions.to_device().unwrap();
+            (a, s)
+        });
 
-        cuda_abi::apc_tracegen(&mut output, airs, substitutions, num_apc_calls).unwrap();
+        time_stage("baseline.surviving_kernel", || {
+            cuda_abi::apc_tracegen(&mut output, airs, substitutions, num_apc_calls).unwrap();
+        });
 
         // Apply derived columns using the GPU expression evaluator
-        let (derived_specs, derived_bc) = compile_derived_to_gpu(
-            &self.apc.machine.derived_columns,
-            &apc_poly_id_to_index,
-            height,
-        );
-        // In practice `d_specs` is never empty, because we will always have `is_valid`
-        let d_specs = derived_specs.to_device().unwrap();
-        let d_bc = derived_bc.to_device().unwrap();
-        cuda_abi::apc_apply_derived_expr(&mut output, d_specs, d_bc, num_apc_calls).unwrap();
+        let (d_specs, d_bc) = time_stage("baseline.derived_compile_h2d", || {
+            let (derived_specs, derived_bc) = compile_derived_to_gpu(
+                &self.apc.machine.derived_columns,
+                &apc_poly_id_to_index,
+                height,
+            );
+            // In practice `d_specs` is never empty, because we will always have `is_valid`
+            let d_specs = derived_specs.to_device().unwrap();
+            let d_bc = derived_bc.to_device().unwrap();
+            (d_specs, d_bc)
+        });
+        time_stage("baseline.derived_kernel", || {
+            cuda_abi::apc_apply_derived_expr(&mut output, d_specs, d_bc, num_apc_calls).unwrap();
+        });
 
         // Encode bus interactions for GPU consumption
-        let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
-            &self.apc.machine.bus_interactions,
-            &apc_poly_id_to_index,
-            height,
-        );
-        let bus_interactions = bus_interactions.to_device().unwrap();
-        let arg_spans = arg_spans.to_device().unwrap();
-        let bytecode = bytecode.to_device().unwrap();
+        let (bus_interactions, arg_spans, bytecode) = time_stage("baseline.bus_compile_h2d", || {
+            let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
+                &self.apc.machine.bus_interactions,
+                &apc_poly_id_to_index,
+                height,
+            );
+            let bus_interactions = bus_interactions.to_device().unwrap();
+            let arg_spans = arg_spans.to_device().unwrap();
+            let bytecode = bytecode.to_device().unwrap();
+            (bus_interactions, arg_spans, bytecode)
+        });
 
         // Gather GPU inputs for periphery (bus ids, count device buffers)
         let periphery = &self.periphery.real;
@@ -418,26 +514,28 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         // because we use the default host to device stream, which only launches
         // the next kernel function after the prior (`apc_tracegen`) returns.
         // This is important because bus evaluation depends on trace results.
-        cuda_abi::apc_apply_bus(
-            // APC related
-            &output,
-            num_apc_calls,
-            // Interaction related
-            bytecode,
-            bus_interactions,
-            arg_spans,
-            // Variable range checker related
-            var_range_bus_id,
-            var_range_count,
-            // Tuple range checker related
-            tuple2_bus_id,
-            tuple2_count_u32,
-            tuple2_sizes,
-            // Bitwise related
-            bitwise_bus_id,
-            bitwise_count_u32,
-        )
-        .unwrap();
+        time_stage("baseline.bus_kernel", || {
+            cuda_abi::apc_apply_bus(
+                // APC related
+                &output,
+                num_apc_calls,
+                // Interaction related
+                bytecode,
+                bus_interactions,
+                arg_spans,
+                // Variable range checker related
+                var_range_bus_id,
+                var_range_count,
+                // Tuple range checker related
+                tuple2_bus_id,
+                tuple2_count_u32,
+                tuple2_sizes,
+                // Bitwise related
+                bitwise_bus_id,
+                bitwise_count_u32,
+            )
+            .unwrap();
+        });
 
         Some(output)
     }
@@ -535,25 +633,24 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         let width = apc_poly_id_to_index.len();
         let height = next_power_of_two_or_zero(num_apc_calls);
 
-        // Collect arena bytes: take each arena, record its byte offset in the concatenated buffer
-        let mut concat_arena_bytes: Vec<u8> = Vec::new();
-        let mut arena_offsets: std::collections::HashMap<String, u32> =
-            std::collections::HashMap::new();
-
-        for air_name in air_names.iter().unique() {
-            if let Some(arena) = original_arenas.take_real_arena(air_name) {
-                let bytes = arena.allocated();
-                if bytes.is_empty() {
-                    continue;
-                }
-                let offset = concat_arena_bytes.len() as u32;
-                concat_arena_bytes.extend_from_slice(bytes);
-                arena_offsets.insert(air_name.clone(), offset);
-            }
-        }
-
-        // Transfer concatenated arena to GPU
-        let d_arena = concat_arena_bytes.to_device().unwrap();
+        // Direct H2D from each arena (skip host-side concatenation).
+        let (d_arena, arena_offsets) = time_stage("descriptor.arena_direct_h2d", || {
+            let pairs: Vec<(String, openvm_circuit::arch::DenseRecordArena)> = air_names
+                .iter()
+                .unique()
+                .filter_map(|name| {
+                    original_arenas
+                        .take_real_arena(name)
+                        .map(|a| (name.clone(), a))
+                })
+                .collect();
+            let total: usize = pairs.iter().map(|(_, a)| a.allocated().len()).sum();
+            tracing::info!(
+                "[trace_profile] descriptor.arena_size           {} bytes",
+                total
+            );
+            concat_arenas_direct_h2d(pairs)
+        });
 
         // Build JIT descriptor arrays
         let mut jit_instructions: Vec<JitInstructionDesc> = Vec::new();
@@ -566,80 +663,94 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
             if num_bins > 1 { (num_bins as f64).log2() as u32 - 1 } else { 29 }
         };
 
-        for (idx, ((air_name, offset), (_, subs))) in air_names
-            .iter()
-            .zip(instruction_offsets.iter())
-            .zip(instructions_with_subs.iter())
-            .enumerate()
-        {
-            let mapping = &mappings_by_air[air_name.as_str()];
-            let occurrences = *air_id_occurrences.get(air_name.as_str()).unwrap();
+        time_stage("descriptor.build_descriptors", || {
+            for ((air_name, offset), (_, subs)) in air_names
+                .iter()
+                .zip(instruction_offsets.iter())
+                .zip(instructions_with_subs.iter())
+            {
+                let mapping = &mappings_by_air[air_name.as_str()];
+                let occurrences = *air_id_occurrences.get(air_name.as_str()).unwrap();
 
-            let arena_offset = *arena_offsets.get(air_name).unwrap_or(&0);
-            let record_stride_bytes = jit_mapping::dense_record_stride(mapping.air_name);
+                let arena_offset = *arena_offsets.get(air_name).unwrap_or(&0);
+                let record_stride_bytes = jit_mapping::dense_record_stride(mapping.air_name);
 
-            let col_desc_start = jit_col_descs.len() as u32;
+                let col_desc_start = jit_col_descs.len() as u32;
 
-            // For each surviving substitution, create a column descriptor
-            for sub in subs.iter() {
-                let apc_col_index = apc_poly_id_to_index[&sub.apc_poly_id];
-                let col_mapping = &mapping.columns[sub.original_poly_index];
+                for sub in subs.iter() {
+                    let apc_col_index = apc_poly_id_to_index[&sub.apc_poly_id];
+                    let col_mapping = &mapping.columns[sub.original_poly_index];
+                    jit_col_descs.push(column_comp_to_jit_desc(
+                        &col_mapping.computation,
+                        apc_col_index as u16,
+                    ));
+                }
 
-                let desc = column_comp_to_jit_desc(
-                    &col_mapping.computation,
-                    apc_col_index as u16,
-                );
-                jit_col_descs.push(desc);
+                let col_desc_count = jit_col_descs.len() as u32 - col_desc_start;
+
+                jit_instructions.push(JitInstructionDesc {
+                    arena_offset,
+                    record_stride: (record_stride_bytes * occurrences) as u32,
+                    record_offset: (record_stride_bytes * offset) as u32,
+                    col_desc_start,
+                    col_desc_count,
+                });
             }
-
-            let col_desc_count = jit_col_descs.len() as u32 - col_desc_start;
-
-            jit_instructions.push(JitInstructionDesc {
-                arena_offset,
-                record_stride: (record_stride_bytes * occurrences) as u32,
-                record_offset: (record_stride_bytes * offset) as u32,
-                col_desc_start,
-                col_desc_count,
-            });
-        }
+        });
 
         // Upload descriptors to GPU
-        let d_instructions = jit_instructions.to_device().unwrap();
-        let d_col_descs = jit_col_descs.to_device().unwrap();
+        let (d_instructions, d_col_descs) = time_stage("descriptor.descriptors_h2d", || {
+            let d_instructions = jit_instructions.to_device().unwrap();
+            let d_col_descs = jit_col_descs.to_device().unwrap();
+            (d_instructions, d_col_descs)
+        });
 
         // Allocate output (pre-zeroed)
-        let mut output = DeviceMatrix::<BabyBear>::with_capacity(height, width);
-        output.buffer().fill_zero().unwrap();
+        let mut output = time_stage("descriptor.allocate_zero_output", || {
+            let m = DeviceMatrix::<BabyBear>::with_capacity(height, width);
+            m.buffer().fill_zero().unwrap();
+            m
+        });
 
         // Launch JIT kernel (replaces Stage 1 + Stage 2)
-        cuda_abi::apc_jit_tracegen(
-            &mut output,
-            &d_arena,
-            &d_instructions,
-            &d_col_descs,
-            num_apc_calls,
-            range_max_bits,
-        )
-        .unwrap();
+        time_stage("descriptor.surviving_kernel", || {
+            cuda_abi::apc_jit_tracegen(
+                &mut output,
+                &d_arena,
+                &d_instructions,
+                &d_col_descs,
+                num_apc_calls,
+                range_max_bits,
+            )
+            .unwrap();
+        });
 
         // Stage 3: derived expressions + bus interactions (unchanged)
-        let (derived_specs, derived_bc) = compile_derived_to_gpu(
-            &self.apc.machine.derived_columns,
-            &apc_poly_id_to_index,
-            height,
-        );
-        let d_specs = derived_specs.to_device().unwrap();
-        let d_bc = derived_bc.to_device().unwrap();
-        cuda_abi::apc_apply_derived_expr(&mut output, d_specs, d_bc, num_apc_calls).unwrap();
+        let (d_specs, d_bc) = time_stage("descriptor.derived_compile_h2d", || {
+            let (derived_specs, derived_bc) = compile_derived_to_gpu(
+                &self.apc.machine.derived_columns,
+                &apc_poly_id_to_index,
+                height,
+            );
+            let d_specs = derived_specs.to_device().unwrap();
+            let d_bc = derived_bc.to_device().unwrap();
+            (d_specs, d_bc)
+        });
+        time_stage("descriptor.derived_kernel", || {
+            cuda_abi::apc_apply_derived_expr(&mut output, d_specs, d_bc, num_apc_calls).unwrap();
+        });
 
-        let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
-            &self.apc.machine.bus_interactions,
-            &apc_poly_id_to_index,
-            height,
-        );
-        let bus_interactions = bus_interactions.to_device().unwrap();
-        let arg_spans = arg_spans.to_device().unwrap();
-        let bytecode = bytecode.to_device().unwrap();
+        let (bus_interactions, arg_spans, bytecode) = time_stage("descriptor.bus_compile_h2d", || {
+            let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
+                &self.apc.machine.bus_interactions,
+                &apc_poly_id_to_index,
+                height,
+            );
+            let bus_interactions = bus_interactions.to_device().unwrap();
+            let arg_spans = arg_spans.to_device().unwrap();
+            let bytecode = bytecode.to_device().unwrap();
+            (bus_interactions, arg_spans, bytecode)
+        });
 
         let periphery = &self.periphery.real;
         let var_range_bus_id = self.periphery.bus_ids.range_checker as u32;
@@ -651,21 +762,23 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         let bitwise_bus_id = self.periphery.bus_ids.bitwise_lookup.unwrap() as u32;
         let bitwise_count_u32 = periphery.bitwise_lookup_8.as_ref().unwrap().count.as_ref();
 
-        cuda_abi::apc_apply_bus(
-            &output,
-            num_apc_calls,
-            bytecode,
-            bus_interactions,
-            arg_spans,
-            var_range_bus_id,
-            var_range_count,
-            tuple2_bus_id,
-            tuple2_count_u32,
-            tuple2_sizes,
-            bitwise_bus_id,
-            bitwise_count_u32,
-        )
-        .unwrap();
+        time_stage("descriptor.bus_kernel", || {
+            cuda_abi::apc_apply_bus(
+                &output,
+                num_apc_calls,
+                bytecode,
+                bus_interactions,
+                arg_spans,
+                var_range_bus_id,
+                var_range_count,
+                tuple2_bus_id,
+                tuple2_count_u32,
+                tuple2_sizes,
+                bitwise_bus_id,
+                bitwise_count_u32,
+            )
+            .unwrap();
+        });
 
         Ok(output)
     }
@@ -806,29 +919,30 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
             });
         }
 
-        // Concat arena bytes (same layout as descriptor path).
-        let mut concat_arena_bytes: Vec<u8> = Vec::new();
-        let mut arena_offsets: std::collections::HashMap<String, u32> =
-            std::collections::HashMap::new();
-        for air_name in air_names.iter().unique() {
-            if let Some(arena) = original_arenas.take_real_arena(air_name) {
-                let bytes = arena.allocated();
-                if bytes.is_empty() {
-                    continue;
-                }
-                let offset = concat_arena_bytes.len() as u32;
-                concat_arena_bytes.extend_from_slice(bytes);
-                arena_offsets.insert(air_name.clone(), offset);
-            }
-        }
+        // Direct H2D from each arena (skip host-side concatenation).
+        let (d_arena, arena_offsets) = time_stage("nvrtc.arena_direct_h2d", || {
+            let pairs: Vec<(String, openvm_circuit::arch::DenseRecordArena)> = air_names
+                .iter()
+                .unique()
+                .filter_map(|name| {
+                    original_arenas
+                        .take_real_arena(name)
+                        .map(|a| (name.clone(), a))
+                })
+                .collect();
+            let total: usize = pairs.iter().map(|(_, a)| a.allocated().len()).sum();
+            tracing::info!(
+                "[trace_profile] nvrtc.arena_size                {} bytes",
+                total
+            );
+            concat_arenas_direct_h2d(pairs)
+        });
 
         // Backfill per-instruction arena_offset.
         for (i, air_name) in air_names.iter().enumerate() {
             emitter_instructions[i].arena_offset =
                 *arena_offsets.get(air_name).unwrap_or(&0);
         }
-
-        let d_arena = concat_arena_bytes.to_device().unwrap();
 
         let range_max_bits = {
             let num_bins = self.periphery.real.range_checker.count.len();
@@ -839,32 +953,41 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
             }
         };
 
-        let mut output = DeviceMatrix::<BabyBear>::with_capacity(height, width);
-        output.buffer().fill_zero().unwrap();
+        let mut output = time_stage("nvrtc.allocate_zero_output", || {
+            let m = DeviceMatrix::<BabyBear>::with_capacity(height, width);
+            m.buffer().fill_zero().unwrap();
+            m
+        });
 
         // Emit, compile (cached), launch.
-        let kernel = emit_jit_kernel_source(&EmitterInput {
-            instructions: emitter_instructions,
+        let kernel = time_stage("nvrtc.emit_source", || {
+            emit_jit_kernel_source(&EmitterInput {
+                instructions: emitter_instructions,
+            })
         });
-        let compiled = NvrtcKernelCache::global()
-            .get_or_compile(&kernel)
-            .expect("NVRTC compile failed");
+        let compiled = time_stage("nvrtc.compile_or_cache_load", || {
+            NvrtcKernelCache::global()
+                .get_or_compile(&kernel)
+                .expect("NVRTC compile failed")
+        });
 
         let block_x: u32 = 256;
         let grid_x: u32 = ((num_apc_calls as u32) + block_x - 1) / block_x.max(1);
-        let rc = unsafe {
-            cuda_abi::powdr_nvrtc_launch_jit_v1(
-                compiled.function(),
-                output.buffer().as_mut_ptr() as *mut u32,
-                height,
-                num_apc_calls as i32,
-                d_arena.as_ptr(),
-                range_max_bits,
-                grid_x.max(1),
-                block_x,
-            )
-        };
-        assert_eq!(rc, 0, "NVRTC kernel launch failed: {}", rc);
+        time_stage("nvrtc.surviving_kernel", || {
+            let rc = unsafe {
+                cuda_abi::powdr_nvrtc_launch_jit_v1(
+                    compiled.function(),
+                    output.buffer().as_mut_ptr() as *mut u32,
+                    height,
+                    num_apc_calls as i32,
+                    d_arena.as_ptr(),
+                    range_max_bits,
+                    grid_x.max(1),
+                    block_x,
+                )
+            };
+            assert_eq!(rc, 0, "NVRTC kernel launch failed: {}", rc);
+        });
 
         // Optional A/B verifier: launch the descriptor kernel into a parallel
         // buffer with the same arena and assert host-side equality. Fires only
@@ -952,23 +1075,31 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         }
 
         // Stage 3 (unchanged): derived expressions + bus interactions.
-        let (derived_specs, derived_bc) = compile_derived_to_gpu(
-            &self.apc.machine.derived_columns,
-            &apc_poly_id_to_index,
-            height,
-        );
-        let d_specs = derived_specs.to_device().unwrap();
-        let d_bc = derived_bc.to_device().unwrap();
-        cuda_abi::apc_apply_derived_expr(&mut output, d_specs, d_bc, num_apc_calls).unwrap();
+        let (d_specs, d_bc) = time_stage("nvrtc.derived_compile_h2d", || {
+            let (derived_specs, derived_bc) = compile_derived_to_gpu(
+                &self.apc.machine.derived_columns,
+                &apc_poly_id_to_index,
+                height,
+            );
+            let d_specs = derived_specs.to_device().unwrap();
+            let d_bc = derived_bc.to_device().unwrap();
+            (d_specs, d_bc)
+        });
+        time_stage("nvrtc.derived_kernel", || {
+            cuda_abi::apc_apply_derived_expr(&mut output, d_specs, d_bc, num_apc_calls).unwrap();
+        });
 
-        let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
-            &self.apc.machine.bus_interactions,
-            &apc_poly_id_to_index,
-            height,
-        );
-        let bus_interactions = bus_interactions.to_device().unwrap();
-        let arg_spans = arg_spans.to_device().unwrap();
-        let bytecode = bytecode.to_device().unwrap();
+        let (bus_interactions, arg_spans, bytecode) = time_stage("nvrtc.bus_compile_h2d", || {
+            let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
+                &self.apc.machine.bus_interactions,
+                &apc_poly_id_to_index,
+                height,
+            );
+            let bus_interactions = bus_interactions.to_device().unwrap();
+            let arg_spans = arg_spans.to_device().unwrap();
+            let bytecode = bytecode.to_device().unwrap();
+            (bus_interactions, arg_spans, bytecode)
+        });
 
         let periphery = &self.periphery.real;
         let var_range_bus_id = self.periphery.bus_ids.range_checker as u32;
@@ -980,21 +1111,23 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         let bitwise_bus_id = self.periphery.bus_ids.bitwise_lookup.unwrap() as u32;
         let bitwise_count_u32 = periphery.bitwise_lookup_8.as_ref().unwrap().count.as_ref();
 
-        cuda_abi::apc_apply_bus(
-            &output,
-            num_apc_calls,
-            bytecode,
-            bus_interactions,
-            arg_spans,
-            var_range_bus_id,
-            var_range_count,
-            tuple2_bus_id,
-            tuple2_count_u32,
-            tuple2_sizes,
-            bitwise_bus_id,
-            bitwise_count_u32,
-        )
-        .unwrap();
+        time_stage("nvrtc.bus_kernel", || {
+            cuda_abi::apc_apply_bus(
+                &output,
+                num_apc_calls,
+                bytecode,
+                bus_interactions,
+                arg_spans,
+                var_range_bus_id,
+                var_range_count,
+                tuple2_bus_id,
+                tuple2_count_u32,
+                tuple2_sizes,
+                bitwise_bus_id,
+                bitwise_count_u32,
+            )
+            .unwrap();
+        });
 
         Ok(output)
     }
