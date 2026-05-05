@@ -12,7 +12,6 @@ env:
 
 jobs:
   bench:
-    if: false  # TEMP: disabled while testing test_apc_gpu_modal — revert before merge
     runs-on: warp-ubuntu-2404-x64-4x
     permissions:
       contents: write
@@ -64,7 +63,6 @@ jobs:
           summary-always: true
 
   test_apc_guest:
-    if: false  # TEMP: disabled while testing test_apc_gpu_modal — revert before merge
     runs-on: bench-cpu-128g
 
     steps:
@@ -130,7 +128,6 @@ jobs:
             results/*
 
   test_apc_reth:
-    if: false  # TEMP: disabled while testing test_apc_gpu_modal — revert before merge
     runs-on: bench-cpu-128g
 
     steps:
@@ -318,7 +315,6 @@ jobs:
           git push origin gh-pages
 
   test_apc_gpu:
-    if: false  # TEMP: disabled while testing test_apc_gpu_modal — revert before merge
     runs-on: [self-hosted, gpu-shared]
 
     steps:
