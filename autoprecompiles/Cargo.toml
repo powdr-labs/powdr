@@ -1,5 +1,6 @@
 [package]
 name = "powdr-autoprecompiles"
+description = "ISA-agnostic library to compile and optimize powdr autoprecompiles"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
