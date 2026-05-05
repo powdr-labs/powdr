@@ -140,13 +140,16 @@ def prove_block(
         # not happen for nightly, but harmless if it does.
         print("[modal] no rpc-cache — will fetch blocks from RPC")
 
-    cache_tgz = f"/cache/{run_id}/apc-cache-{apc}.tgz"
+    # One apc-cache.tgz covers every apc count: the compile step on CI ran
+    # `--mode compile` for each non-zero apc back-to-back, accumulating
+    # apc-specific bin files in the same dir. apc=0 needs nothing from it.
+    cache_tgz = f"/cache/{run_id}/apc-cache.tgz"
     if os.path.exists(cache_tgz):
         subprocess.run(["tar", "-xzf", cache_tgz, "-C", eth], check=True)
         print(f"[modal] restored apc-cache from {cache_tgz}")
-    else:
-        # apc=0 has no cache; non-zero apc with no cache is a CI bug.
-        print(f"[modal] no apc-cache for apc={apc}")
+    elif apc != 0:
+        # apc=0 doesn't need a cache; missing for non-zero apc is a CI bug.
+        raise FileNotFoundError(f"apc-cache.tgz missing for apc={apc}")
 
     # run.sh requires RPC_1 to be set — write a sentinel that's syntactically
     # valid but unreachable, so cache misses surface as connection errors.

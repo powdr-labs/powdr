@@ -494,13 +494,16 @@ jobs:
           tar -czf ../rpc-cache.tgz rpc-cache
 
       - name: Compile APC caches (CPU)
+        # Each `--mode compile --apc N` writes its bin files into apc-cache/
+        # under names that don't collide across apc counts, so the dir
+        # accumulates entries for every N we compile and a single tarball
+        # serves every prove-stark invocation on Modal.
         run: |
           cd openvm-eth
           for apc in 10 30; do
             ./run.sh --apc "$apc" --block 24171377 --mode compile || exit 1
-            tar -czf "../apc-cache-${apc}.tgz" apc-cache
-            rm -rf apc-cache
           done
+          tar -czf ../apc-cache.tgz apc-cache
 
       - name: Upload caches to Modal Volume
         env:
@@ -509,9 +512,7 @@ jobs:
         run: |
           source .venv/bin/activate
           modal volume put "$MODAL_VOLUME" rpc-cache.tgz "/${RUN_ID}/rpc-cache.tgz" --force
-          for apc in 10 30; do
-            modal volume put "$MODAL_VOLUME" "apc-cache-${apc}.tgz" "/${RUN_ID}/apc-cache-${apc}.tgz" --force
-          done
+          modal volume put "$MODAL_VOLUME" apc-cache.tgz "/${RUN_ID}/apc-cache.tgz" --force
 
       - name: Run prove-stark on Modal (L4)
         # Deliberately do NOT pass RPC_1: the prefetch+upload steps populate
