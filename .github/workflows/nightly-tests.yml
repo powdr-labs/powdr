@@ -591,15 +591,33 @@ jobs:
             "${{ steps.date.outputs.value }}-gpu-modal" \
             --output ./results/readme.md
 
+      # Same partial+sparse clone push as publish_bench_results — keeps disk
+      # bounded on ubuntu-latest regardless of how big bench-results gh-pages
+      # grows. See the comment on the publish_bench_results step.
       - name: commit to bench results
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          personal_token: ${{ secrets.BENCH_RESULTS_TOKEN }}
-          external_repository: powdr-labs/bench-results
-          publish_dir: ./results
-          destination_dir: results/${{ steps.date.outputs.value }}-gpu-modal/
-          keep_files: true
-          enable_jekyll: true
+        env:
+          BENCH_RESULTS_TOKEN: ${{ secrets.BENCH_RESULTS_TOKEN }}
+          DATE: ${{ steps.date.outputs.value }}-gpu-modal
+        run: |
+          set -euo pipefail
+          REPO=$(mktemp -d)
+          git clone --filter=blob:none --sparse --depth=1 --branch=gh-pages \
+            "https://x-access-token:${BENCH_RESULTS_TOKEN}@github.com/powdr-labs/bench-results.git" \
+            "$REPO"
+          cd "$REPO"
+          git sparse-checkout set "results/${DATE}"
+          # Author commits as the github-actions[bot] account so the GitHub
+          # UI shows the bot avatar and groups them with prior peaceiris
+          # commits. The email format is GitHub's noreply convention,
+          # `<user-id>+<login>@users.noreply.github.com`; 41898282 is the
+          # bot's user ID.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p "results/${DATE}"
+          cp -r "${GITHUB_WORKSPACE}/results/." "results/${DATE}/"
+          git add "results/${DATE}"
+          git commit -m "Add nightly results for ${DATE}"
+          git push origin gh-pages
 
       - name: Cleanup Modal Volume
         if: always()
