@@ -568,6 +568,9 @@ jobs:
               "$RES_DIR/${label}.json" \
               > "$RES_DIR/trace_cells_${label}.txt"
           done
+          # Apc candidate aggregate produced during the CPU compile step.
+          # Same set of candidates regardless of apc count, so just keep one.
+          mv openvm-eth/apcs/apc_candidates.json $RES_DIR/apc_candidates.json
           python ./openvm-riscv/scripts/basic_metrics.py summary-table --csv \
             $RES_DIR/apc000.json $RES_DIR/apc010.json $RES_DIR/apc030.json \
             > $RES_DIR/basic_metrics.csv
@@ -577,6 +580,8 @@ jobs:
           python ./openvm-riscv/scripts/basic_metrics.py combine \
             $RES_DIR/apc000.json $RES_DIR/apc010.json $RES_DIR/apc030.json \
             > $RES_DIR/combined_metrics.json
+          python ./autoprecompiles/scripts/plot_effectiveness.py \
+            $RES_DIR/apc_candidates.json --output $RES_DIR/effectiveness.png
 
       - name: Save revisions and run info
         run: |
