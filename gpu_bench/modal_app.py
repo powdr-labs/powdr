@@ -90,7 +90,10 @@ FAKE_RPC = "http://rpc-cache-must-be-populated.invalid"
 
 
 @app.function(
-    gpu="L4",
+    # L40S = datacenter 4090: same Ada Lovelace, ~864 GB/s bandwidth
+    # (vs L4's 300 GB/s and the 4090's 1008 GB/s). Best apples-to-apples
+    # match for the existing self-hosted RTX 4090 numbers.
+    gpu="L40S",
     # Memory in MiB. The default for Modal GPU containers (~32 GiB) is too
     # tight for the upfront PGO basic-block analysis, which holds ~110k
     # blocks in memory before proving even starts. 64 GiB gives headroom.
@@ -162,6 +165,23 @@ def prove_block(
     # valid but unreachable, so cache misses surface as connection errors.
     with open(f"{eth}/.env", "a") as f:
         f.write(f"export RPC_1={FAKE_RPC}\n")
+
+    # The reth-benchmark binary calls `provider.get_chain_id()` over RPC at
+    # startup unless `--chain-id` is given. run.sh only passes `--rpc-url`,
+    # so the chain-id lookup hits the sentinel URL and fails before we ever
+    # consult the cache. Inject `--chain-id 1` (mainnet) into BIN_ARGS so
+    # the binary skips that RPC call.
+    runsh = f"{eth}/run.sh"
+    with open(runsh) as f:
+        contents = f.read()
+    patched = contents.replace(
+        '--cache-dir rpc-cache"',
+        '--cache-dir rpc-cache \\\n--chain-id 1"',
+    )
+    if patched == contents:
+        raise RuntimeError("could not patch --chain-id into run.sh — has the upstream args block changed?")
+    with open(runsh, "w") as f:
+        f.write(patched)
 
     # Don't override CARGO_TARGET_DIR — run.sh hardcodes relative `target/...`
     # paths (e.g. `cp target/riscv32im-risc0-zkvm-elf/release/...` after the
