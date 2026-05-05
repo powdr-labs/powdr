@@ -455,6 +455,9 @@ jobs:
       RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
       OPENVM_ETH_REF: 7987264fe4e96b9077cdcc15e5192a69df9d8413
       MODAL_VOLUME: powdr-nightly-gpu-cache
+      # Same block flowed through prefetch, every compile invocation, and
+      # every Modal prove call so all caches and metrics agree.
+      BLOCK_NUMBER: 24171377
 
     steps:
       - uses: actions/checkout@v4
@@ -497,18 +500,20 @@ jobs:
         run: |
           cd openvm-eth
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
-          ./run.sh --apc 0 --block 24171377 --mode execute || exit 1
+          ./run.sh --apc 0 --block "$BLOCK_NUMBER" --mode execute || exit 1
           tar -czf ../rpc-cache.tgz rpc-cache
 
       - name: Compile APC caches (CPU)
-        # Each `--mode compile --apc N` writes its bin files into apc-cache/
-        # under names that don't collide across apc counts, so the dir
-        # accumulates entries for every N we compile and a single tarball
-        # serves every prove-stark invocation on Modal.
+        # Each `--mode compile --apc N` writes its bin files (including the
+        # proving + verification keys) into apc-cache/ under names that
+        # don't collide across apc counts, so the dir accumulates entries
+        # for every N we compile and a single tarball serves every
+        # prove-stark invocation on Modal. apc=0 gets compiled too so its
+        # keys are part of the same tarball.
         run: |
           cd openvm-eth
-          for apc in 10 30; do
-            ./run.sh --apc "$apc" --block 24171377 --mode compile || exit 1
+          for apc in 0 10 30; do
+            ./run.sh --apc "$apc" --block "$BLOCK_NUMBER" --mode compile || exit 1
           done
           tar -czf ../apc-cache.tgz apc-cache
 
@@ -526,12 +531,12 @@ jobs:
           modal volume put "$MODAL_VOLUME" rpc-cache.tgz "/${RUN_ID}/rpc-cache.tgz" --force
           modal volume put "$MODAL_VOLUME" apc-cache.tgz "/${RUN_ID}/apc-cache.tgz" --force
 
-      - name: Run prove-stark on Modal (L4)
+      - name: Run prove-stark on Modal
         # Deliberately do NOT pass RPC_1: the prefetch+upload steps populate
         # rpc-cache.tgz with every block we'll prove, so Modal should be a
-        # pure cache consumer. Any live RPC attempt will hit the sentinel
-        # URL in modal_app.py and fail loudly — that's the signal that the
-        # cache is incomplete.
+        # pure cache consumer. The function patches run.sh to drop --rpc-url
+        # and inject --chain-id 1, so a missing-cache scenario fails loudly
+        # at the binary's cache lookup rather than silently re-fetching.
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
@@ -540,7 +545,7 @@ jobs:
           for apc in 0 10 30; do
             modal run gpu_bench/modal_app.py::prove_block \
               --apc "$apc" \
-              --block 24171377 \
+              --block "$BLOCK_NUMBER" \
               --run-id "$RUN_ID" \
               --powdr-sha "$GITHUB_SHA" \
               --openvm-eth-ref "$OPENVM_ETH_REF" || exit 1

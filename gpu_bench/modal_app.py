@@ -81,13 +81,6 @@ image = (
 app = modal.App("powdr-nightly-gpu", image=image)
 vol = modal.Volume.from_name("powdr-nightly-gpu-cache", create_if_missing=True)
 
-# We deliberately do NOT forward the real RPC URL. The CPU side prefetches
-# every block we'll need into rpc-cache.tgz, so prove-stark inside Modal
-# should be a pure consumer of the cache. If something tries to fetch live,
-# we want a loud connection error here instead of a silent re-download
-# burning GPU minutes.
-FAKE_RPC = "http://rpc-cache-must-be-populated.invalid"
-
 
 @app.function(
     # L40S = datacenter 4090: same Ada Lovelace, ~864 GB/s bandwidth
@@ -142,44 +135,46 @@ def prove_block(
         f.write(PATCH_CONFIG)
 
     rpc_tgz = f"/cache/{run_id}/rpc-cache.tgz"
-    if os.path.exists(rpc_tgz):
-        subprocess.run(["tar", "-xzf", rpc_tgz, "-C", eth], check=True)
-        print(f"[modal] restored rpc-cache from {rpc_tgz}")
-    else:
-        # No prefetch ⇒ the binary will hit the RPC inside Modal. Should
-        # not happen for nightly, but harmless if it does.
-        print("[modal] no rpc-cache — will fetch blocks from RPC")
+    if not os.path.exists(rpc_tgz):
+        # CI prefetches the block on the CPU runner; missing here means the
+        # upload step is broken. Fail loudly rather than try to live-fetch.
+        raise FileNotFoundError(f"rpc-cache.tgz missing on the volume: {rpc_tgz}")
+    subprocess.run(["tar", "-xzf", rpc_tgz, "-C", eth], check=True)
+    print(f"[modal] restored rpc-cache from {rpc_tgz}")
 
     # One apc-cache.tgz covers every apc count: the compile step on CI ran
-    # `--mode compile` for each non-zero apc back-to-back, accumulating
-    # apc-specific bin files in the same dir. apc=0 needs nothing from it.
+    # `--mode compile` for each apc back-to-back, accumulating apc-specific
+    # bin files in the same dir.
     cache_tgz = f"/cache/{run_id}/apc-cache.tgz"
-    if os.path.exists(cache_tgz):
-        subprocess.run(["tar", "-xzf", cache_tgz, "-C", eth], check=True)
-        print(f"[modal] restored apc-cache from {cache_tgz}")
-    elif apc != 0:
-        # apc=0 doesn't need a cache; missing for non-zero apc is a CI bug.
-        raise FileNotFoundError(f"apc-cache.tgz missing for apc={apc}")
+    if not os.path.exists(cache_tgz):
+        raise FileNotFoundError(f"apc-cache.tgz missing on the volume: {cache_tgz}")
+    subprocess.run(["tar", "-xzf", cache_tgz, "-C", eth], check=True)
+    print(f"[modal] restored apc-cache from {cache_tgz}")
 
-    # run.sh requires RPC_1 to be set — write a sentinel that's syntactically
-    # valid but unreachable, so cache misses surface as connection errors.
-    with open(f"{eth}/.env", "a") as f:
-        f.write(f"export RPC_1={FAKE_RPC}\n")
-
-    # The reth-benchmark binary calls `provider.get_chain_id()` over RPC at
-    # startup unless `--chain-id` is given. run.sh only passes `--rpc-url`,
-    # so the chain-id lookup hits the sentinel URL and fails before we ever
-    # consult the cache. Inject `--chain-id 1` (mainnet) into BIN_ARGS so
-    # the binary skips that RPC call.
+    # Patch run.sh so it never reaches for the RPC, since the cache covers
+    # every block we'll ask for and the workspace has no real RPC URL set.
+    # Two changes:
+    #   1. Drop the upfront `if [[ -z "${RPC_1:-}" ]]; then exit 1` check —
+    #      we don't set RPC_1 and don't want run.sh to bail.
+    #   2. Replace `--rpc-url $RPC_1` with `--chain-id 1` in BIN_ARGS so the
+    #      binary doesn't call provider.get_chain_id() at startup
+    #      (cli.rs:45 in reth-benchmark) and doesn't get a malformed
+    #      `--rpc-url` arg from the empty $RPC_1 expansion.
     runsh = f"{eth}/run.sh"
     with open(runsh) as f:
         contents = f.read()
     patched = contents.replace(
-        '--cache-dir rpc-cache"',
+        'if [[ -z "${RPC_1:-}" ]]; then\n'
+        '    echo "Missing RPC endpoint: set RPC_1 env var or create reth-bench/.env with RPC_1=..." >&2\n'
+        '    exit 1\n'
+        'fi\n',
+        '',
+    ).replace(
+        '--rpc-url $RPC_1 \\\n--cache-dir rpc-cache"',
         '--cache-dir rpc-cache \\\n--chain-id 1"',
     )
     if patched == contents:
-        raise RuntimeError("could not patch --chain-id into run.sh — has the upstream args block changed?")
+        raise RuntimeError("could not patch run.sh — has the upstream changed?")
     with open(runsh, "w") as f:
         f.write(patched)
 
