@@ -108,6 +108,21 @@ impl NvrtcKernelCache {
     }
 }
 
+/// Disk PTX cache directory. Honors `POWDR_NVRTC_CACHE_DIR` if set; otherwise
+/// falls back to `~/.cache/powdr/nvrtc_kernels`. Returns `None` if neither
+/// can be resolved (in which case the on-disk cache is silently skipped).
+fn disk_cache_dir() -> Option<std::path::PathBuf> {
+    if let Ok(d) = std::env::var("POWDR_NVRTC_CACHE_DIR") {
+        return Some(std::path::PathBuf::from(d));
+    }
+    let home = std::env::var("HOME").ok()?;
+    Some(std::path::PathBuf::from(home).join(".cache/powdr/nvrtc_kernels"))
+}
+
+fn disk_cache_path(kernel: &EmittedKernel) -> Option<std::path::PathBuf> {
+    Some(disk_cache_dir()?.join(format!("{:016x}.ptx", kernel.source_hash)))
+}
+
 fn compile_one(kernel: &EmittedKernel) -> Result<CompiledKernel, NvrtcError> {
     if let Ok(dir) = std::env::var("POWDR_NVRTC_DUMP_DIR") {
         let path = format!("{}/{}.cu", dir, kernel.name);
@@ -122,12 +137,40 @@ fn compile_one(kernel: &EmittedKernel) -> Result<CompiledKernel, NvrtcError> {
             );
         }
     }
+
+    // Disk cache fast path: load PTX bytes and skip NVRTC entirely.
+    if std::env::var("POWDR_NVRTC_NO_DISK_CACHE").is_err() {
+        if let Some(p) = disk_cache_path(kernel) {
+            if let Ok(ptx) = std::fs::read(&p) {
+                let load_start = std::time::Instant::now();
+                match load_module_from_ptx(&ptx, &kernel.name) {
+                    Ok(handle) => {
+                        tracing::info!(
+                            "NVRTC PTX cache hit: loaded {} from {} in {:.2}ms ({} bytes)",
+                            kernel.name,
+                            p.display(),
+                            load_start.elapsed().as_secs_f64() * 1000.0,
+                            ptx.len()
+                        );
+                        return Ok(handle);
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "NVRTC PTX cache hit but load failed ({}); recompiling",
+                            e
+                        );
+                        // Fall through to NVRTC compile.
+                    }
+                }
+            }
+        }
+    }
+
     let compile_start = std::time::Instant::now();
     let src = CString::new(kernel.source.as_str()).map_err(|_| NvrtcError::InvalidSource)?;
     let src_name = CString::new("apc_kernel.cu").unwrap();
-    let kernel_name = CString::new(kernel.name.as_str()).map_err(|_| NvrtcError::InvalidSource)?;
 
-    let mut ptx: *mut std::ffi::c_char = std::ptr::null_mut();
+    let mut ptx_ptr: *mut std::ffi::c_char = std::ptr::null_mut();
     let mut ptx_size: usize = 0;
     let mut log: *mut std::ffi::c_char = std::ptr::null_mut();
 
@@ -135,7 +178,7 @@ fn compile_one(kernel: &EmittedKernel) -> Result<CompiledKernel, NvrtcError> {
         cuda_abi::powdr_nvrtc_compile(
             src.as_ptr(),
             src_name.as_ptr(),
-            &mut ptx,
+            &mut ptx_ptr,
             &mut ptx_size,
             &mut log,
         )
@@ -144,41 +187,82 @@ fn compile_one(kernel: &EmittedKernel) -> Result<CompiledKernel, NvrtcError> {
         let log_str = unsafe { take_c_str(log) };
         return Err(NvrtcError::Compile { code: rc, log: log_str });
     }
-    debug_assert!(!ptx.is_null() && ptx_size > 0, "NVRTC returned empty PTX");
-
-    let mut module: *mut c_void = std::ptr::null_mut();
-    let load_rc = unsafe {
-        cuda_abi::powdr_nvrtc_load_module(ptx as *const c_void, ptx_size, &mut module)
-    };
-    unsafe { cuda_abi::powdr_nvrtc_free(ptx) };
+    debug_assert!(!ptx_ptr.is_null() && ptx_size > 0, "NVRTC returned empty PTX");
     if !log.is_null() {
         unsafe { cuda_abi::powdr_nvrtc_free(log) };
     }
+
+    // Copy PTX bytes out of the NVRTC-allocated buffer so we can both load
+    // the module and persist to disk after the NVRTC buffer is freed.
+    let ptx_bytes: Vec<u8> = unsafe {
+        std::slice::from_raw_parts(ptx_ptr as *const u8, ptx_size).to_vec()
+    };
+    unsafe { cuda_abi::powdr_nvrtc_free(ptx_ptr) };
+
+    let elapsed = compile_start.elapsed();
+    tracing::info!(
+        "NVRTC compiled {} in {:.2}s (source {} bytes, ptx {} bytes)",
+        kernel.name,
+        elapsed.as_secs_f64(),
+        kernel.source.len(),
+        ptx_bytes.len()
+    );
+
+    let handle = load_module_from_ptx(&ptx_bytes, &kernel.name)?;
+
+    // Best-effort persist to disk for future runs.
+    if std::env::var("POWDR_NVRTC_NO_DISK_CACHE").is_err() {
+        if let Some(p) = disk_cache_path(kernel) {
+            if let Some(parent) = p.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            // Atomic write: write to a temp file in the same dir, then rename.
+            let tmp = p.with_extension("ptx.tmp");
+            if std::fs::write(&tmp, &ptx_bytes)
+                .and_then(|_| std::fs::rename(&tmp, &p))
+                .is_err()
+            {
+                let _ = std::fs::remove_file(&tmp);
+                tracing::debug!(
+                    "Failed to persist PTX to {}; future runs will recompile",
+                    p.display()
+                );
+            }
+        }
+    }
+
+    Ok(handle)
+}
+
+/// Load PTX bytes into a CUDA module and look up the kernel function.
+fn load_module_from_ptx(ptx: &[u8], kernel_name: &str) -> Result<CompiledKernel, NvrtcError> {
+    let name_c = CString::new(kernel_name).map_err(|_| NvrtcError::InvalidSource)?;
+
+    let mut module: *mut c_void = std::ptr::null_mut();
+    let load_rc = unsafe {
+        cuda_abi::powdr_nvrtc_load_module(
+            ptx.as_ptr() as *const c_void,
+            ptx.len(),
+            &mut module,
+        )
+    };
     if load_rc != 0 {
         return Err(NvrtcError::Load { code: load_rc });
     }
 
     let mut function: *mut c_void = std::ptr::null_mut();
     let fn_rc = unsafe {
-        cuda_abi::powdr_nvrtc_get_function(module, kernel_name.as_ptr(), &mut function)
+        cuda_abi::powdr_nvrtc_get_function(module, name_c.as_ptr(), &mut function)
     };
     if fn_rc != 0 {
         unsafe { cuda_abi::powdr_nvrtc_unload_module(module) };
         return Err(NvrtcError::GetFunction { code: fn_rc });
     }
 
-    let elapsed = compile_start.elapsed();
-    tracing::info!(
-        "NVRTC compiled {} in {:.2}s ({} bytes)",
-        kernel.name,
-        elapsed.as_secs_f64(),
-        kernel.source.len()
-    );
-
     Ok(CompiledKernel {
         module,
         function,
-        name: kernel.name.clone(),
+        name: kernel_name.to_string(),
     })
 }
 
