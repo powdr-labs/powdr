@@ -518,6 +518,11 @@ jobs:
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
         run: |
           source .venv/bin/activate
+          # `Volume.from_name(..., create_if_missing=True)` in modal_app.py
+          # only creates the volume when the function runs. `modal volume put`
+          # is a separate path that errors if the volume doesn't already exist,
+          # so create it idempotently here.
+          modal volume create "$MODAL_VOLUME" 2>/dev/null || true
           modal volume put "$MODAL_VOLUME" rpc-cache.tgz "/${RUN_ID}/rpc-cache.tgz" --force
           modal volume put "$MODAL_VOLUME" apc-cache.tgz "/${RUN_ID}/apc-cache.tgz" --force
 

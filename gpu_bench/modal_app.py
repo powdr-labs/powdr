@@ -27,7 +27,10 @@ import modal
 HOST_RUST = "1.91.1"
 GUEST_RUST = "nightly-2026-01-18"
 OPENVM_TAG = "v2.0.0-beta.2-powdr"
-CUDA_IMAGE = "nvidia/cuda:12.4.1-devel-ubuntu22.04"
+# CUDA 12.6+ avoids an nvcc internal compiler error in
+# openvm-rv32im-circuit's cuda/src/load_sign_extend.cu (gen_member_selector_for_builtin_offsetof
+# assertion in cp_gen_be.c) seen on 12.4.1.
+CUDA_IMAGE = "nvidia/cuda:12.6.3-devel-ubuntu22.04"
 
 # Mirrors `.github/actions/patch-openvm-eth/action.yml`.
 PATCH_CONFIG = """[patch."https://github.com/powdr-labs/powdr.git"]
@@ -88,6 +91,10 @@ FAKE_RPC = "http://rpc-cache-must-be-populated.invalid"
 
 @app.function(
     gpu="L4",
+    # Memory in MiB. The default for Modal GPU containers (~32 GiB) is too
+    # tight for the upfront PGO basic-block analysis, which holds ~110k
+    # blocks in memory before proving even starts. 64 GiB gives headroom.
+    memory=65536,
     volumes={"/cache": vol},
     timeout=3 * 3600,
 )
@@ -156,14 +163,11 @@ def prove_block(
     with open(f"{eth}/.env", "a") as f:
         f.write(f"export RPC_1={FAKE_RPC}\n")
 
-    # Re-use the cargo target dir across invocations on this Volume so the
-    # second/third APC run skips the binary rebuild (sequential invocations
-    # only — guarded by the GH workflow looping serially over apc counts).
-    target_dir = f"/cache/cargo-target-{powdr_sha}"
-    os.makedirs(target_dir, exist_ok=True)
-    env = os.environ.copy()
-    env["CARGO_TARGET_DIR"] = target_dir
-
+    # Don't override CARGO_TARGET_DIR — run.sh hardcodes relative `target/...`
+    # paths (e.g. `cp target/riscv32im-risc0-zkvm-elf/release/...` after the
+    # guest build) that break when cargo's output is redirected. Each Modal
+    # invocation does a full cargo build; the guest build is ~2 min and the
+    # host build a few more, acceptable for a nightly cadence.
     subprocess.run(
         [
             "bash",
@@ -177,7 +181,6 @@ def prove_block(
             "prove-stark",
         ],
         cwd=eth,
-        env=env,
         check=True,
     )
 
