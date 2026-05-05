@@ -1,0 +1,119 @@
+Instructions:
+    0: srl        %x1        %x2        %x3       
+
+APC advantage:
+  - Main columns: 69 -> 45 (1.53x reduction)
+  - Bus interactions: 29 -> 23 (1.26x reduction)
+  - Constraints: 78 -> 34 (2.29x reduction)
+
+Symbolic machine using 45 unique main columns:
+  state__clk_high_0
+  state__clk_16_24_0
+  state__clk_0_16_0
+  adapter__op_a_memory__prev_value__0__0_0
+  adapter__op_a_memory__prev_value__0__1_0
+  adapter__op_a_memory__prev_value__0__2_0
+  adapter__op_a_memory__prev_value__0__3_0
+  adapter__op_a_memory__access_timestamp__prev_low_0
+  adapter__op_a_memory__access_timestamp__diff_low_limb_0
+  adapter__op_b_memory__prev_value__0__0_0
+  adapter__op_b_memory__prev_value__0__1_0
+  adapter__op_b_memory__prev_value__0__2_0
+  adapter__op_b_memory__prev_value__0__3_0
+  adapter__op_b_memory__access_timestamp__prev_low_0
+  adapter__op_b_memory__access_timestamp__diff_low_limb_0
+  adapter__op_c_memory__prev_value__0__0_0
+  adapter__op_c_memory__prev_value__0__1_0
+  adapter__op_c_memory__prev_value__0__2_0
+  adapter__op_c_memory__prev_value__0__3_0
+  adapter__op_c_memory__access_timestamp__prev_low_0
+  adapter__op_c_memory__access_timestamp__diff_low_limb_0
+  a__0__0_0
+  a__0__1_0
+  a__0__2_0
+  a__0__3_0
+  c_bits__0_0
+  c_bits__1_0
+  c_bits__2_0
+  c_bits__3_0
+  c_bits__4_0
+  c_bits__5_0
+  v_0123_0
+  v_01_0
+  lower_limb__0__0_0
+  lower_limb__0__1_0
+  lower_limb__0__2_0
+  lower_limb__0__3_0
+  higher_limb__0__0_0
+  higher_limb__0__1_0
+  higher_limb__0__2_0
+  higher_limb__0__3_0
+  shift_u16__0_0
+  shift_u16__1_0
+  shift_u16__2_0
+  is_valid
+
+// Bus 1 (MEMORY):
+mult=is_valid * 1, args=[state__clk_high_0, adapter__op_c_memory__access_timestamp__prev_low_0, 3, 0, 0, adapter__op_c_memory__prev_value__0__0_0, adapter__op_c_memory__prev_value__0__1_0, adapter__op_c_memory__prev_value__0__2_0, adapter__op_c_memory__prev_value__0__3_0]
+mult=is_valid * -1, args=[state__clk_high_0, 65536 * state__clk_16_24_0 + state__clk_0_16_0 + 2, 3, 0, 0, adapter__op_c_memory__prev_value__0__0_0, adapter__op_c_memory__prev_value__0__1_0, adapter__op_c_memory__prev_value__0__2_0, adapter__op_c_memory__prev_value__0__3_0]
+mult=is_valid * 1, args=[state__clk_high_0, adapter__op_b_memory__access_timestamp__prev_low_0, 2, 0, 0, adapter__op_b_memory__prev_value__0__0_0, adapter__op_b_memory__prev_value__0__1_0, adapter__op_b_memory__prev_value__0__2_0, adapter__op_b_memory__prev_value__0__3_0]
+mult=is_valid * -1, args=[state__clk_high_0, 65536 * state__clk_16_24_0 + state__clk_0_16_0 + 3, 2, 0, 0, adapter__op_b_memory__prev_value__0__0_0, adapter__op_b_memory__prev_value__0__1_0, adapter__op_b_memory__prev_value__0__2_0, adapter__op_b_memory__prev_value__0__3_0]
+mult=is_valid * 1, args=[state__clk_high_0, adapter__op_a_memory__access_timestamp__prev_low_0, 1, 0, 0, adapter__op_a_memory__prev_value__0__0_0, adapter__op_a_memory__prev_value__0__1_0, adapter__op_a_memory__prev_value__0__2_0, adapter__op_a_memory__prev_value__0__3_0]
+mult=is_valid * -1, args=[state__clk_high_0, 65536 * state__clk_16_24_0 + state__clk_0_16_0 + 4, 1, 0, 0, a__0__0_0, a__0__1_0, a__0__2_0, a__0__3_0]
+
+// Bus 5 (BYTE):
+mult=is_valid * 1, args=[6, lower_limb__0__0_0, c_bits__0_0 + 2 * c_bits__1_0 + 4 * c_bits__2_0 + 8 * c_bits__3_0, 0]
+mult=is_valid * 1, args=[6, higher_limb__0__0_0, 16 - (c_bits__0_0 + 2 * c_bits__1_0 + 4 * c_bits__2_0 + 8 * c_bits__3_0), 0]
+mult=is_valid * 1, args=[6, lower_limb__0__1_0, c_bits__0_0 + 2 * c_bits__1_0 + 4 * c_bits__2_0 + 8 * c_bits__3_0, 0]
+mult=is_valid * 1, args=[6, higher_limb__0__1_0, 16 - (c_bits__0_0 + 2 * c_bits__1_0 + 4 * c_bits__2_0 + 8 * c_bits__3_0), 0]
+mult=is_valid * 1, args=[6, lower_limb__0__2_0, c_bits__0_0 + 2 * c_bits__1_0 + 4 * c_bits__2_0 + 8 * c_bits__3_0, 0]
+mult=is_valid * 1, args=[6, higher_limb__0__2_0, 16 - (c_bits__0_0 + 2 * c_bits__1_0 + 4 * c_bits__2_0 + 8 * c_bits__3_0), 0]
+mult=is_valid * 1, args=[6, lower_limb__0__3_0, c_bits__0_0 + 2 * c_bits__1_0 + 4 * c_bits__2_0 + 8 * c_bits__3_0, 0]
+mult=is_valid * 1, args=[6, higher_limb__0__3_0, 16 - (c_bits__0_0 + 2 * c_bits__1_0 + 4 * c_bits__2_0 + 8 * c_bits__3_0), 0]
+mult=is_valid * 1, args=[3, 0, state__clk_16_24_0, state__clk_16_24_0 + 32512 * adapter__op_a_memory__access_timestamp__prev_low_0 + 32512 * adapter__op_a_memory__access_timestamp__diff_low_limb_0 - (32512 * state__clk_0_16_0 + 97536)]
+mult=is_valid * 1, args=[3, 0, state__clk_16_24_0 + 32512 * adapter__op_b_memory__access_timestamp__prev_low_0 + 32512 * adapter__op_b_memory__access_timestamp__diff_low_limb_0 - (32512 * state__clk_0_16_0 + 65024), state__clk_16_24_0 + 32512 * adapter__op_c_memory__access_timestamp__prev_low_0 + 32512 * adapter__op_c_memory__access_timestamp__diff_low_limb_0 - (32512 * state__clk_0_16_0 + 32512)]
+mult=is_valid * 1, args=[6, 33292288 * c_bits__0_0 + 66584576 * c_bits__1_0 + 133169152 * c_bits__2_0 + 266338304 * c_bits__3_0 + 532676608 * c_bits__4_0 + 1065353216 * c_bits__5_0 - 33292288 * adapter__op_c_memory__prev_value__0__0_0, 10, 0]
+mult=is_valid * 1, args=[6, 266338304 - 266338304 * state__clk_0_16_0, 13, 0]
+mult=is_valid * 1, args=[6, adapter__op_a_memory__access_timestamp__diff_low_limb_0, 16, 0]
+mult=is_valid * 1, args=[6, adapter__op_b_memory__access_timestamp__diff_low_limb_0, 16, 0]
+mult=is_valid * 1, args=[6, adapter__op_c_memory__access_timestamp__diff_low_limb_0, 16, 0]
+
+// Bus 7 (EXECUTION_BRIDGE):
+mult=is_valid * -1, args=[state__clk_high_0, 65536 * state__clk_16_24_0 + state__clk_0_16_0, 0, 0, 0]
+mult=is_valid * 1, args=[state__clk_high_0, 65536 * state__clk_16_24_0 + state__clk_0_16_0 + 8, 4, 0, 0]
+
+// Algebraic constraints:
+c_bits__0_0 * (c_bits__0_0 - 1) = 0
+c_bits__1_0 * (c_bits__1_0 - 1) = 0
+c_bits__2_0 * (c_bits__2_0 - 1) = 0
+c_bits__3_0 * (c_bits__3_0 - 1) = 0
+c_bits__4_0 * (c_bits__4_0 - 1) = 0
+c_bits__5_0 * (c_bits__5_0 - 1) = 0
+shift_u16__0_0 * (c_bits__4_0 + 2 * c_bits__5_0) = 0
+shift_u16__0_0 * (shift_u16__0_0 - 1) = 0
+shift_u16__1_0 * (c_bits__4_0 + 2 * c_bits__5_0 - 1) = 0
+shift_u16__1_0 * (shift_u16__1_0 - 1) = 0
+shift_u16__2_0 * (c_bits__4_0 + 2 * c_bits__5_0 - 2) = 0
+shift_u16__2_0 * (shift_u16__2_0 - 1) = 0
+(1 * is_valid - (shift_u16__0_0 + shift_u16__1_0 + shift_u16__2_0)) * (c_bits__4_0 + 2 * c_bits__5_0 - 3) = 0
+(1 - (shift_u16__0_0 + shift_u16__1_0 + shift_u16__2_0)) * (shift_u16__0_0 + shift_u16__1_0 + shift_u16__2_0) = 0
+(2 * c_bits__0_0 - 4 * is_valid) * (4 - 3 * c_bits__1_0) + v_01_0 = 0
+v_0123_0 - v_01_0 * (16 - 15 * c_bits__2_0) * (256 - 255 * c_bits__3_0) = 0
+adapter__op_b_memory__prev_value__0__0_0 * v_0123_0 - (lower_limb__0__0_0 * v_0123_0 + 65536 * higher_limb__0__0_0) = 0
+adapter__op_b_memory__prev_value__0__1_0 * v_0123_0 - (lower_limb__0__1_0 * v_0123_0 + 65536 * higher_limb__0__1_0) = 0
+adapter__op_b_memory__prev_value__0__2_0 * v_0123_0 - (lower_limb__0__2_0 * v_0123_0 + 65536 * higher_limb__0__2_0) = 0
+adapter__op_b_memory__prev_value__0__3_0 * v_0123_0 - (lower_limb__0__3_0 * v_0123_0 + 65536 * higher_limb__0__3_0) = 0
+shift_u16__0_0 * (a__0__0_0 - (lower_limb__0__1_0 * v_0123_0 + higher_limb__0__0_0)) = 0
+shift_u16__0_0 * (a__0__1_0 - (lower_limb__0__2_0 * v_0123_0 + higher_limb__0__1_0)) = 0
+shift_u16__0_0 * (a__0__2_0 - (lower_limb__0__3_0 * v_0123_0 + higher_limb__0__2_0)) = 0
+shift_u16__0_0 * (a__0__3_0 - higher_limb__0__3_0) = 0
+shift_u16__1_0 * (a__0__0_0 - (lower_limb__0__2_0 * v_0123_0 + higher_limb__0__1_0)) = 0
+shift_u16__1_0 * (a__0__1_0 - (lower_limb__0__3_0 * v_0123_0 + higher_limb__0__2_0)) = 0
+shift_u16__1_0 * (a__0__2_0 - higher_limb__0__3_0) = 0
+shift_u16__2_0 * (a__0__0_0 - (lower_limb__0__3_0 * v_0123_0 + higher_limb__0__2_0)) = 0
+shift_u16__2_0 * (a__0__1_0 - higher_limb__0__3_0) = 0
+(1 - (shift_u16__0_0 + shift_u16__1_0 + shift_u16__2_0)) * (a__0__0_0 - higher_limb__0__3_0) = 0
+(1 - (shift_u16__0_0 + shift_u16__1_0 + shift_u16__2_0)) * a__0__1_0 = 0
+a__0__2_0 * (1 - (shift_u16__0_0 + shift_u16__1_0)) = 0
+a__0__3_0 * (1 - shift_u16__0_0) = 0
+is_valid * (is_valid - 1) = 0

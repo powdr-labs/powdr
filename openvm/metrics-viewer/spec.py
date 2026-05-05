@@ -82,9 +82,25 @@ def unique_metric(entries: list[Entry], metric_name: str) -> float:
 
 
 def detect_version(metrics_json: MetricsJson) -> Literal[1, 2]:
-    """Returns 2 if any metric name contains 'logup_gkr' (V2-only), else 1."""
+    """Returns 2 if metrics come from OpenVM 2 (GPU or CPU backend), else 1.
+    V2 GPU has 'logup_gkr' in metric names; V2 CPU has 'prove_zerocheck_and_logup_time_ms'."""
     names = {e["metric"] for e in metrics_json["counter"] + metrics_json["gauge"]}
-    return 2 if any("logup_gkr" in n for n in names) else 1
+    if any("logup_gkr" in n for n in names):
+        return 2
+    if "prove_zerocheck_and_logup_time_ms" in names:
+        return 2
+    return 1
+
+
+def detect_v2_backend(metrics_json: MetricsJson) -> Literal["gpu", "cpu", None]:
+    """For V2 runs, identify whether they came from the GPU or CPU prover backend.
+    Returns None for V1 runs."""
+    names = {e["metric"] for e in metrics_json["counter"] + metrics_json["gauge"]}
+    if any("logup_gkr" in n for n in names):
+        return "gpu"
+    if "prove_zerocheck_and_logup_time_ms" in names:
+        return "cpu"
+    return None
 
 
 def extract_metrics(run_name: str, metrics_json: MetricsJson) -> Metrics:
@@ -160,23 +176,50 @@ def extract_metrics(run_name: str, metrics_json: MetricsJson) -> Metrics:
     m["app_trace_gen_time_ms"] = sum_metric(app, "trace_gen_time_ms")
     m["app_set_initial_memory_time_ms"] = sum_metric(app, "set_initial_memory_time_ms")  # V2 only
 
-    # --- V2: STARK sub-components (prover.*) ---
-    m["app_trace_commit_time_ms"] = sum_metric(app, "prover.main_trace_commit_time_ms")
-    m["app_rap_constraints_time_ms"] = sum_metric(app, "prover.rap_constraints_time_ms")
-    m["app_openings_time_ms"] = sum_metric(app, "prover.openings_time_ms")
+    # --- V2: STARK sub-components ---
+    # GPU backend uses hierarchical prover.* names; CPU backend uses flat names.
+    # We check both and take whichever is nonzero.
+    gpu_trace_commit = sum_metric(app, "prover.main_trace_commit_time_ms")
+    cpu_trace_commit = sum_metric(app, "trace_commit_cpu_time_ms")
+    m["app_trace_commit_time_ms"] = gpu_trace_commit or cpu_trace_commit
+
+    gpu_constraints = sum_metric(app, "prover.rap_constraints_time_ms")
+    cpu_constraints = sum_metric(app, "prove_zerocheck_and_logup_time_ms")
+    m["app_rap_constraints_time_ms"] = gpu_constraints or cpu_constraints
+
+    gpu_openings = sum_metric(app, "prover.openings_time_ms")
+    cpu_whir = sum_metric(app, "prove_whir_opening_cpu_time_ms")
+    cpu_stacked = sum_metric(app, "prove_stacked_opening_reduction_time_ms")
+    m["app_openings_time_ms"] = gpu_openings or (cpu_whir + cpu_stacked)
+
     m["app_stark_other_ms"] = (m["app_proof_time_excluding_trace_ms"]
         - m["app_trace_commit_time_ms"] - m["app_rap_constraints_time_ms"] - m["app_openings_time_ms"])
 
     # --- V2: rap_constraints sub-components ---
-    m["app_rap_logup_gkr_time_ms"] = sum_metric(app, "prover.rap_constraints.logup_gkr_time_ms")
+    # GPU: prover.rap_constraints.logup_gkr_time_ms, .round0_time_ms, .mle_rounds_time_ms
+    # CPU: fractional_sumcheck_time_ms, (no separate round0), prover.batch_constraints.mle_rounds_time_ms
+    gpu_logup_gkr = sum_metric(app, "prover.rap_constraints.logup_gkr_time_ms")
+    cpu_logup_gkr = sum_metric(app, "fractional_sumcheck_time_ms")
+    m["app_rap_logup_gkr_time_ms"] = gpu_logup_gkr or cpu_logup_gkr
+
     m["app_rap_round0_time_ms"] = sum_metric(app, "prover.rap_constraints.round0_time_ms")
-    m["app_rap_mle_rounds_time_ms"] = sum_metric(app, "prover.rap_constraints.mle_rounds_time_ms")
+
+    gpu_mle = sum_metric(app, "prover.rap_constraints.mle_rounds_time_ms")
+    cpu_mle = sum_metric(app, "prover.batch_constraints.mle_rounds_time_ms")
+    m["app_rap_mle_rounds_time_ms"] = gpu_mle or cpu_mle
+
     m["app_rap_other_ms"] = (m["app_rap_constraints_time_ms"]
         - m["app_rap_logup_gkr_time_ms"] - m["app_rap_round0_time_ms"] - m["app_rap_mle_rounds_time_ms"])
 
     # --- V2: openings sub-components ---
-    m["app_openings_whir_time_ms"] = sum_metric(app, "prover.openings.whir_time_ms")
-    m["app_openings_stacked_reduction_time_ms"] = sum_metric(app, "prover.openings.stacked_reduction_time_ms")
+    # GPU: prover.openings.whir_time_ms, prover.openings.stacked_reduction_time_ms
+    # CPU: prove_whir_opening_cpu_time_ms, prove_stacked_opening_reduction_time_ms
+    gpu_whir = sum_metric(app, "prover.openings.whir_time_ms")
+    m["app_openings_whir_time_ms"] = gpu_whir or cpu_whir
+
+    gpu_stacked = sum_metric(app, "prover.openings.stacked_reduction_time_ms")
+    m["app_openings_stacked_reduction_time_ms"] = gpu_stacked or cpu_stacked
+
     m["app_openings_other_ms"] = (m["app_openings_time_ms"]
         - m["app_openings_whir_time_ms"] - m["app_openings_stacked_reduction_time_ms"])
 
@@ -258,7 +301,7 @@ PROOF_TIME_V2: list[ProofRow] = [
     ("app_proof_time_excluding_trace_ms",    "  STARK (excl. trace)", 1, ""),
     ("app_rap_constraints_time_ms",          "    Constraints",       2, ""),
     ("app_rap_logup_gkr_time_ms",           "      LogUp GKR",       3, ""),
-    ("app_rap_round0_time_ms",              "      Round 0",         3, ""),
+    ("app_rap_round0_time_ms",              "      Round 0",         3, "z"),
     ("app_rap_mle_rounds_time_ms",          "      MLE Rounds",      3, ""),
     ("app_rap_other_ms",                    "      Other",           3, "r"),
     ("app_openings_time_ms",                "    Openings",          2, ""),
@@ -268,7 +311,7 @@ PROOF_TIME_V2: list[ProofRow] = [
     ("app_trace_commit_time_ms",            "    Trace Commit",      2, ""),
     ("app_stark_other_ms",                  "    Other",             2, "r"),
     ("app_execute_preflight_time_ms",       "  Preflight Execution", 1, ""),
-    ("app_set_initial_memory_time_ms",      "  Set Initial Memory",  1, ""),
+    ("app_set_initial_memory_time_ms",      "  Set Initial Memory",  1, "z"),
     ("app_trace_gen_time_ms",               "  Trace Gen",           1, ""),
     ("app_other_ms",                        "  Other",               1, "r"),
     ("leaf_proof_time_ms",                  "Leaf Recursion",        0, ""),
@@ -299,10 +342,6 @@ def print_section(
         if key == "total_proof_time_ms":
             print(f"  {'─' * 58}")
 
-        if val is None:
-            print(f"  {label:<{width}}  N/A")
-            continue
-
         # Determine formatter and flags
         if len(row) == 3:
             fmt: Formatter = row[2]  # type: ignore[assignment]
@@ -310,6 +349,14 @@ def print_section(
         else:
             fmt = fmt_ms
             flags: str = row[3]  # type: ignore[no-redef]
+
+        # Hide rows flagged with 'z' when value is zero or missing
+        if "z" in flags and (val is None or val == 0):
+            continue
+
+        if val is None:
+            print(f"  {label:<{width}}  N/A")
+            continue
 
         suffix = " (residual)" if "r" in flags else ""
 
@@ -370,9 +417,13 @@ def main() -> None:
 
     for run_name, metrics_json in runs.items():
         version = detect_version(metrics_json)
+        backend = detect_v2_backend(metrics_json)
         m = extract_metrics(run_name, metrics_json)
 
-        print(f"\nExperiment: {run_name}  (OpenVM {version})")
+        version_str = f"OpenVM {version}"
+        if backend:
+            version_str += f" ({backend.upper()})"
+        print(f"\nExperiment: {run_name}  ({version_str})")
 
         basic = BASIC_STATS_V2 if version == 2 else BASIC_STATS_V1
         proof = PROOF_TIME_V2 if version == 2 else PROOF_TIME_V1

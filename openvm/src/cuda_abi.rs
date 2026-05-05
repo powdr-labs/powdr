@@ -2,7 +2,7 @@
 
 use openvm_cuda_backend::base::DeviceMatrix;
 use openvm_cuda_common::{d_buffer::DeviceBuffer, error::CudaError};
-use openvm_stark_backend::prover::hal::MatrixDimensions;
+use openvm_stark_backend::prover::MatrixDimensions;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 
 extern "C" {

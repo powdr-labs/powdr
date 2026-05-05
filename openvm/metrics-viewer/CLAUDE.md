@@ -115,7 +115,28 @@ Key differences from V1:
 
 ### Version Detection
 
-The viewer auto-detects the OpenVM version by checking for `logup_gkr` in metric names (V2-only). The detected version is displayed as a badge in the navbar.
+The viewer auto-detects the OpenVM version:
+- **V2 GPU backend**: has `logup_gkr` in metric names
+- **V2 CPU backend**: has `prove_zerocheck_and_logup_time_ms` but no `logup_gkr`
+- **V1**: neither of the above
+
+The detected version is displayed as a badge in the navbar.
+
+### V2 CPU Backend Metric Mapping
+
+The V2 CPU backend (`openvm-cpu-backend`) uses flat metric names instead of the GPU's hierarchical `prover.*` names. The viewer handles both transparently:
+
+| Computed Field | GPU Metric | CPU Metric |
+|---|---|---|
+| Trace Commit | `prover.main_trace_commit_time_ms` | `trace_commit_cpu_time_ms` |
+| Constraints | `prover.rap_constraints_time_ms` | `prove_zerocheck_and_logup_time_ms` |
+| LogUp GKR | `prover.rap_constraints.logup_gkr_time_ms` | `fractional_sumcheck_time_ms` |
+| Round 0 | `prover.rap_constraints.round0_time_ms` | *(not separately reported)* |
+| MLE Rounds | `prover.rap_constraints.mle_rounds_time_ms` | `prover.batch_constraints.mle_rounds_time_ms` |
+| Openings | `prover.openings_time_ms` | `prove_whir_opening_cpu_time_ms` + `prove_stacked_opening_reduction_time_ms` |
+| WHIR | `prover.openings.whir_time_ms` | `prove_whir_opening_cpu_time_ms` |
+| Stacked Reduction | `prover.openings.stacked_reduction_time_ms` | `prove_stacked_opening_reduction_time_ms` |
+| Set Initial Memory | `set_initial_memory_time_ms` | *(not instrumented on CPU)* |
 
 ### Proof Time Hierarchy
 

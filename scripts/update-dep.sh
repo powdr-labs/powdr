@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# Script to update openvm or stark-backend git revision hashes across the repository.
+# Script to update openvm or stark-backend git refs across the repository.
 #
 # Usage:
-#   ./scripts/update-dep.sh openvm <new-rev>
-#   ./scripts/update-dep.sh stark-backend <new-rev>
+#   ./scripts/update-dep.sh openvm <new-ref>
+#   ./scripts/update-dep.sh stark-backend <new-ref>
 #
 # Examples:
 #   ./scripts/update-dep.sh openvm v1.5.0-powdr
@@ -16,20 +16,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 DEP_TYPE="$1"
-NEW_REV="$2"
+NEW_REF="$2"
 
 usage() {
-    echo "Usage: $0 <openvm|stark-backend> <new-rev>"
+    echo "Usage: $0 <openvm|stark-backend> <new-ref>"
     echo ""
     echo "Examples:"
     echo "  $0 openvm v1.5.0-powdr"
     echo "  $0 stark-backend v1.3.0-powdr"
     echo ""
-    echo "This script updates all git revision references for the specified dependency."
+    echo "This script updates all git rev/tag references for the specified dependency."
     exit 1
 }
 
-if [[ -z "$DEP_TYPE" ]] || [[ -z "$NEW_REV" ]]; then
+if [[ -z "$DEP_TYPE" ]] || [[ -z "$NEW_REF" ]]; then
     usage
 fi
 
@@ -49,7 +49,7 @@ case "$DEP_TYPE" in
         ;;
 esac
 
-echo "Updating $DEP_TYPE dependencies to: $NEW_REV"
+echo "Updating $DEP_TYPE dependencies to: $NEW_REF"
 echo ""
 
 # Find all Cargo.toml files with the specified git dependencies
@@ -67,9 +67,9 @@ fi
 for file in "${CARGO_FILES[@]}"; do
     echo "Updating $file"
     
-    # Update revisions
-    # Match: rev = "..." after the git URL
-    sed -i -E 's|(git = "'"$GIT_URL"'", rev = ")[^"]+(")|'"\1${NEW_REV}\2|g" "$file"
+    # Update refs
+    # Match: rev = "..." or tag = "..." after the git URL
+    sed -i -E 's|(git = "'"$GIT_URL"'",[[:space:]]*(rev|tag)[[:space:]]*=[[:space:]]*")[^"]+(")|\1'"${NEW_REF}"'\3|g' "$file"
 done
 
 echo ""

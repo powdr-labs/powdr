@@ -468,7 +468,6 @@ impl<ISA: OpenVmISA> PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>>
             memory,
             streams,
             rng,
-            custom_pvs,
             ctx,
             #[cfg(feature = "metrics")]
             metrics,
@@ -507,7 +506,6 @@ impl<ISA: OpenVmISA> PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>>
                 memory,
                 streams,
                 rng,
-                custom_pvs,
                 // We execute in the context of the relevant original table
                 ctx: ctx_arena,
                 // TODO: should we pass around the same metrics object, or snapshot it at the beginning of this method and apply a single update at the end?
@@ -542,7 +540,6 @@ impl<ISA: OpenVmISA> PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExec
             memory,
             streams,
             rng,
-            custom_pvs,
             ctx,
             #[cfg(feature = "metrics")]
             metrics,
@@ -581,7 +578,6 @@ impl<ISA: OpenVmISA> PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExec
                 memory,
                 streams,
                 rng,
-                custom_pvs,
                 // We execute in the context of the relevant original table
                 ctx: ctx_arena,
                 // TODO: should we pass around the same metrics object, or snapshot it at the beginning of this method and apply a single update at the end?

@@ -24,14 +24,8 @@ pub fn create_dummy_airs<E: VmCircuitExtension<BabyBearSC>>(
     if let Some(keccak) = &config.keccak {
         VmCircuitExtension::extend_circuit(keccak, &mut inventory)?;
     }
-    if let Some(sha256) = &config.sha256 {
+    if let Some(sha256) = &config.sha2 {
         VmCircuitExtension::extend_circuit(sha256, &mut inventory)?;
-    }
-    if let Some(native) = &config.native {
-        VmCircuitExtension::extend_circuit(native, &mut inventory)?;
-    }
-    if let Some(castf) = &config.castf {
-        VmCircuitExtension::extend_circuit(castf, &mut inventory)?;
     }
     if let Some(rv32m) = &config.rv32m {
         VmCircuitExtension::extend_circuit(rv32m, &mut inventory)?;
@@ -50,6 +44,9 @@ pub fn create_dummy_airs<E: VmCircuitExtension<BabyBearSC>>(
     }
     if let Some(ecc) = &config.ecc {
         VmCircuitExtension::extend_circuit(ecc, &mut inventory)?;
+    }
+    if let Some(deferral) = &config.deferral {
+        VmCircuitExtension::extend_circuit(deferral, &mut inventory)?;
     }
     Ok(inventory)
 }

@@ -16,7 +16,7 @@ use openvm_circuit::system::memory::online::GuestMemory;
 use openvm_instructions::instruction::Instruction as OpenVmInstruction;
 use openvm_instructions::program::DEFAULT_PC_STEP;
 use openvm_instructions::VmOpcode;
-use openvm_stark_backend::p3_field::{FieldAlgebra, PrimeField32};
+use openvm_stark_backend::p3_field::{PrimeCharacteristicRing, PrimeField32};
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::adapter::{
     Adapter, AdapterApc, AdapterApcWithStats, ApcWithStats, PgoAdapter,
@@ -26,7 +26,7 @@ use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::execution::ExecutionState;
 use powdr_autoprecompiles::pgo::ApcCandidate;
 use powdr_autoprecompiles::PowdrConfig;
-use powdr_autoprecompiles::{InstructionHandler, VmConfig};
+use powdr_autoprecompiles::VmConfig;
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use powdr_openvm_bus_interaction_handler::bus_map::OpenVmBusType;
 use serde::{Deserialize, Serialize};
@@ -99,9 +99,7 @@ impl<'a, ISA: OpenVmISA> Adapter for BabyBearOpenVmApcAdapter<'a, ISA> {
     type ExecutionState = OpenVmExecutionState<'a, BabyBear, ISA>;
 
     fn into_field(e: Self::PowdrField) -> Self::Field {
-        openvm_stark_sdk::p3_baby_bear::BabyBear::from_canonical_u32(
-            e.to_integer().try_into_u32().unwrap(),
-        )
+        openvm_stark_sdk::p3_baby_bear::BabyBear::from_u32(e.to_integer().try_into_u32().unwrap())
     }
 
     fn from_field(e: Self::Field) -> Self::PowdrField {
@@ -112,11 +110,7 @@ impl<'a, ISA: OpenVmISA> Adapter for BabyBearOpenVmApcAdapter<'a, ISA> {
         apc: Arc<AdapterApc<Self>>,
         instruction_handler: &Self::InstructionHandler,
     ) -> Self::ApcStats {
-        // Get the metrics for the apc using the same degree bound as the one used for the instruction chips
-        let apc_metrics = get_air_metrics(
-            Arc::new(PowdrAir::new(apc.machine.clone())),
-            instruction_handler.degree_bound().identities,
-        );
+        let apc_metrics = get_air_metrics(Arc::new(PowdrAir::new(apc.machine.clone())));
         let width_after = apc_metrics.widths;
 
         // Sum up the metrics for each instruction
@@ -196,7 +190,7 @@ impl<F: PrimeField32, ISA: OpenVmISA> Instruction<F> for Instr<F, ISA> {
         ];
         // The PC lookup row has the format:
         // [pc, opcode, a, b, c, d, e, f, g]
-        let pc = F::from_canonical_u32(pc.try_into().unwrap());
+        let pc = F::from_u32(pc.try_into().unwrap());
         once(pc).chain(args).collect()
     }
 }
@@ -276,7 +270,7 @@ pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAd
                 .try_as_basic_block()
                 .expect("Superblocks not yet supported in OpenVM")
                 .start_pc;
-            let start_index = ((start_pc - pc_base as u64) / pc_step as u64)
+            let start_index: usize = ((start_pc - pc_base as u64) / pc_step as u64)
                 .try_into()
                 .unwrap();
 

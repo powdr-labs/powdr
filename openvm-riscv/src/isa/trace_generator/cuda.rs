@@ -2,12 +2,13 @@ use openvm_circuit::{
     arch::{AirInventory, ChipInventoryError, VmBuilder, VmProverExtension},
     system::cuda::extensions::SystemGpuBuilder,
 };
+use openvm_deferral_circuit::DeferralProverExt;
 use openvm_pairing_circuit::PairingProverExt;
 use powdr_openvm::{
     powdr_extension::trace_generator::cuda::{
         GpuDummyChipComplex, SharedPeripheryChipsGpu, SharedPeripheryChipsGpuProverExt,
     },
-    BabyBearSC, GpuBabyBearPoseidon2Engine,
+    BabyBearSC, GpuBabyBearPoseidon2CpuEngine,
 };
 
 use crate::{ExtendedVmConfig, RiscvISA};
@@ -21,11 +22,10 @@ pub fn create_dummy_chip_complex_gpu(
     use openvm_bigint_circuit::Int256GpuProverExt;
     use openvm_ecc_circuit::EccProverExt;
     use openvm_keccak256_circuit::Keccak256GpuProverExt;
-    use openvm_native_circuit::NativeGpuProverExt;
     use openvm_rv32im_circuit::Rv32ImGpuProverExt;
-    use openvm_sha256_circuit::Sha256GpuProverExt;
+    use openvm_sha2_circuit::Sha2GpuProverExt;
 
-    type E = GpuBabyBearPoseidon2Engine;
+    type E = GpuBabyBearPoseidon2CpuEngine;
 
     let config = config.sdk.to_inner();
     let mut chip_complex =
@@ -49,14 +49,8 @@ pub fn create_dummy_chip_complex_gpu(
     if let Some(keccak) = &config.keccak {
         VmProverExtension::<E, _, _>::extend_prover(&Keccak256GpuProverExt, keccak, inventory)?;
     }
-    if let Some(sha256) = &config.sha256 {
-        VmProverExtension::<E, _, _>::extend_prover(&Sha256GpuProverExt, sha256, inventory)?;
-    }
-    if let Some(native) = &config.native {
-        VmProverExtension::<E, _, _>::extend_prover(&NativeGpuProverExt, native, inventory)?;
-    }
-    if let Some(castf) = &config.castf {
-        VmProverExtension::<E, _, _>::extend_prover(&NativeGpuProverExt, castf, inventory)?;
+    if let Some(sha2) = &config.sha2 {
+        VmProverExtension::<E, _, _>::extend_prover(&Sha2GpuProverExt, sha2, inventory)?;
     }
     if let Some(rv32m) = &config.rv32m {
         VmProverExtension::<E, _, _>::extend_prover(&Rv32ImGpuProverExt, rv32m, inventory)?;
@@ -75,6 +69,9 @@ pub fn create_dummy_chip_complex_gpu(
     }
     if let Some(ecc) = &config.ecc {
         VmProverExtension::<E, _, _>::extend_prover(&EccProverExt, ecc, inventory)?;
+    }
+    if let Some(deferral) = &config.deferral {
+        VmProverExtension::<E, _, _>::extend_prover(&DeferralProverExt, deferral, inventory)?;
     }
     Ok(chip_complex)
 }

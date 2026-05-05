@@ -7,6 +7,9 @@ runs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+      - name: Use system git for cargo fetches
+        shell: bash
+        run: echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
       - name: Download build artifacts (CPU)
         uses: actions/download-artifact@v4
         with:
@@ -26,9 +29,9 @@ runs:
       - name: Install Rust deps
         shell: bash
         run: rustup install nightly-2025-02-14 --component rust-src
-      - name: Install OpenVM guest toolchain (nightly-2025-08-02)
+      - name: Install OpenVM guest toolchain (nightly-2026-01-18)
         shell: bash
         run: |
-          rustup toolchain install nightly-2025-08-02
-          rustup component add rust-src --toolchain nightly-2025-08-02
+          rustup toolchain install nightly-2026-01-18
+          rustup component add rust-src --toolchain nightly-2026-01-18
       - uses: taiki-e/install-action@nextest

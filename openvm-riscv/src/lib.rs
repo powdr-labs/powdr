@@ -5,28 +5,29 @@
 
 use eyre::Result;
 use openvm_build::{build_guest_package, find_unique_executable, get_package, TargetFilter};
+#[cfg(debug_assertions)]
+use openvm_circuit::arch::debug_proving_ctx;
 use openvm_circuit::arch::execution_mode::metered::segment_ctx::SegmentationLimits;
 #[cfg(feature = "cuda")]
 use openvm_circuit::arch::DenseRecordArena;
 use openvm_circuit::arch::{
-    debug_proving_ctx, AirInventory, ChipInventoryError, InitFileGenerator, MatrixRecordArena,
-    SystemConfig, VmBuilder, VmChipComplex, VmProverExtension,
+    AirInventory, ChipInventoryError, InitFileGenerator, MatrixRecordArena, SystemConfig,
+    VmBuilder, VmChipComplex, VmProverExtension,
 };
 #[cfg(feature = "cuda")]
 use openvm_circuit::system::cuda::SystemChipInventoryGPU;
 use openvm_circuit::system::SystemChipInventory;
-use openvm_sdk::config::SdkVmCpuBuilder;
+use openvm_sdk::prover::verify_app_proof;
+use openvm_sdk_config::{SdkVmConfig, SdkVmConfigExecutor, SdkVmCpuBuilder, TranspilerConfig};
+use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2CpuEngine as BabyBearPoseidon2Engine;
 
-use openvm_sdk::config::TranspilerConfig;
-use openvm_sdk::prover::{verify_app_proof, AggStarkProver};
+use openvm_cpu_backend::{CpuBackend, CpuDevice};
 use openvm_sdk::{
-    config::{AppConfig, SdkVmConfig, SdkVmConfigExecutor, DEFAULT_APP_LOG_BLOWUP},
-    Sdk, StdIn,
+    config::{AggregationSystemParams, AppConfig},
+    StdIn,
 };
-use openvm_stark_backend::config::Val;
-use openvm_stark_backend::engine::StarkEngine;
-use openvm_stark_backend::prover::cpu::{CpuBackend, CpuDevice};
-use openvm_stark_sdk::config::FriParameters;
+use openvm_stark_backend::{StarkEngine, Val};
+use openvm_stark_sdk::config::{app_params_with_100_bits_security, MAX_APP_LOG_STACKED_HEIGHT};
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
@@ -39,7 +40,7 @@ use powdr_openvm::BabyBearSC;
 #[cfg(not(feature = "cuda"))]
 use powdr_openvm::PowdrSdkCpu;
 #[cfg(feature = "cuda")]
-use powdr_openvm::{GpuBabyBearPoseidon2Engine, GpuBackend, PowdrSdkGpu};
+use powdr_openvm::{GpuBabyBearPoseidon2CpuEngine, GpuBackend, PowdrSdkGpu};
 use powdr_openvm_riscv_hints_circuit::{HintsExtension, HintsExtensionExecutor, HintsProverExt};
 use powdr_openvm_riscv_hints_transpiler::HintsTranspilerExtension;
 use serde::{Deserialize, Serialize};
@@ -105,23 +106,25 @@ pub fn compile_openvm(
 
     // try to load the sdk config from the openvm.toml file, otherwise use the default
     let openvm_toml_path = path.join("openvm.toml");
-    let app_config = if openvm_toml_path.exists() {
-        let toml = std::fs::read_to_string(&openvm_toml_path)?;
-        toml::from_str(&toml)?
+    let app_config: AppConfig<SdkVmConfig> = if openvm_toml_path.exists() {
+        let toml_str = std::fs::read_to_string(&openvm_toml_path)?;
+        // system_params has a serde default, so it's optional in the TOML
+        toml::from_str(&toml_str)?
     } else {
-        AppConfig::riscv32()
+        let system_params = app_params_with_100_bits_security(MAX_APP_LOG_STACKED_HEIGHT);
+        AppConfig::riscv32(system_params)
     };
 
-    let mut sdk = Sdk::new(app_config)?;
-
-    let transpiler = sdk.transpiler().unwrap();
-
-    // Add our custom transpiler extensions
-    sdk.set_transpiler(
-        transpiler
-            .clone()
-            .with_extension(HintsTranspilerExtension {}),
-    );
+    // Build SDK with our custom transpiler extension
+    let transpiler = app_config
+        .app_vm_config
+        .transpiler()
+        .with_extension(HintsTranspilerExtension {});
+    let sdk = openvm_sdk::Sdk::builder()
+        .app_config(app_config)
+        .agg_params(AggregationSystemParams::default())
+        .transpiler(transpiler)
+        .build_without_transpiler()?;
 
     let mut elf = sdk.build(
         guest_opts.clone(),
@@ -168,7 +171,7 @@ pub fn compile_exe(
                 let original_config = original_program.vm_config.clone();
 
                 let total_non_apc_columns: usize = original_config
-                    .chip_inventory_air_metrics(config.degree_bound.identities)
+                    .chip_inventory_air_metrics()
                     .values()
                     .map(|m| m.total_width())
                     .sum::<usize>();
@@ -251,7 +254,7 @@ where
 pub struct ExtendedVmConfigGpuBuilder;
 
 #[cfg(feature = "cuda")]
-impl VmBuilder<GpuBabyBearPoseidon2Engine> for ExtendedVmConfigGpuBuilder {
+impl VmBuilder<GpuBabyBearPoseidon2CpuEngine> for ExtendedVmConfigGpuBuilder {
     type VmConfig = ExtendedVmConfig;
     type SystemChipInventory = SystemChipInventoryGPU;
     type RecordArena = DenseRecordArena;
@@ -264,13 +267,13 @@ impl VmBuilder<GpuBabyBearPoseidon2Engine> for ExtendedVmConfigGpuBuilder {
         VmChipComplex<BabyBearSC, Self::RecordArena, GpuBackend, Self::SystemChipInventory>,
         ChipInventoryError,
     > {
-        let mut chip_complex = VmBuilder::<GpuBabyBearPoseidon2Engine>::create_chip_complex(
-            &openvm_sdk::config::SdkVmGpuBuilder,
+        let mut chip_complex = VmBuilder::<GpuBabyBearPoseidon2CpuEngine>::create_chip_complex(
+            &openvm_sdk_config::SdkVmGpuBuilder,
             &config.sdk,
             circuit,
         )?;
         let inventory = &mut chip_complex.inventory;
-        VmProverExtension::<GpuBabyBearPoseidon2Engine, _, _>::extend_prover(
+        VmProverExtension::<GpuBabyBearPoseidon2CpuEngine, _, _>::extend_prover(
             &HintsProverExt,
             &config.hints,
             inventory,
@@ -300,61 +303,85 @@ pub fn prove(
     inputs: StdIn,
     segment_height: Option<usize>, // uses the default height if None
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // Apply the segment-height override up-front so the mock path (which re-reads
+    // `program.vm_config` via `do_with_trace`) also benefits. Without this, only the
+    // proving path below was shrinking per-chip GPU allocations — mock runs still
+    // blew past device memory on shared GPU runners.
+    let mut program_storage;
+    let program = if let Some(segment_height) = segment_height {
+        program_storage = program.clone();
+        program_storage
+            .vm_config
+            .original
+            .config_mut()
+            .sdk
+            .system
+            .config
+            .segmentation_config
+            .limits = SegmentationLimits::default().with_max_trace_height(segment_height as u32);
+        tracing::debug!("Setting max segment len to {}", segment_height);
+        &program_storage
+    } else {
+        program
+    };
+
     if mock {
-        do_with_trace(program, inputs, |_segment_idx, vm, pk, ctx| {
-            debug_proving_ctx(vm, pk, &ctx);
+        do_with_trace(program, inputs, |_segment_idx, _vm, _pk, _ctx| {
+            #[cfg(debug_assertions)]
+            debug_proving_ctx(_vm, &_ctx);
+            #[cfg(not(debug_assertions))]
+            tracing::warn!("mock proving skips debug checks in release mode");
         })?;
     } else {
         let exe = &program.exe;
-        let mut vm_config = program.vm_config.clone();
-
-        // DefaultSegmentationStrategy { max_segment_len: 4194204, max_cells_per_chip_in_segment: 503304480 }
-        if let Some(segment_height) = segment_height {
-            vm_config
-                .original
-                .config_mut()
-                .sdk
-                .system
-                .config
-                .segmentation_limits =
-                SegmentationLimits::default().with_max_trace_height(segment_height as u32);
-            tracing::debug!("Setting max segment len to {}", segment_height);
-        }
+        let vm_config = program.vm_config.clone();
 
         // Set app configuration
-        let app_fri_params =
-            FriParameters::standard_with_100_bits_conjectured_security(DEFAULT_APP_LOG_BLOWUP);
-        let app_config = AppConfig::new(app_fri_params, vm_config.clone());
+        let system_params = app_params_with_100_bits_security(MAX_APP_LOG_STACKED_HEIGHT);
+        let app_config = AppConfig::new(vm_config.clone(), system_params);
 
         // Create the SDK
         #[cfg(feature = "cuda")]
-        let sdk = PowdrSdkGpu::new(app_config).unwrap();
+        let sdk = PowdrSdkGpu::new(app_config, AggregationSystemParams::default()).unwrap();
         #[cfg(not(feature = "cuda"))]
-        let sdk = PowdrSdkCpu::new(app_config).unwrap();
-        let mut app_prover = sdk.app_prover(exe.clone())?;
-
-        // Generate a proof
-        tracing::info!("Generating app proof...");
-        let start = std::time::Instant::now();
-        let app_proof = app_prover.prove(inputs.clone())?;
-        tracing::info!("App proof took {:?}", start.elapsed());
-
-        tracing::info!("Public values: {:?}", app_proof.user_public_values);
-
-        // Verify
-        let app_vk = sdk.app_pk().get_app_vk();
-        verify_app_proof(&app_vk, &app_proof)?;
-        tracing::info!("App proof verification done.");
+        let sdk = PowdrSdkCpu::new(app_config, AggregationSystemParams::default()).unwrap();
 
         if recursion {
-            let mut agg_prover: AggStarkProver<_, _> = sdk.prover(exe.clone())?.agg_prover;
-
-            // Note that this proof is not verified. We assume that any valid app proof
-            // (verified above) also leads to a valid aggregation proof.
-            // If this was not the case, it would be a completeness bug in OpenVM.
+            // Use StarkProver which does app proving + aggregation (recursion)
+            let mut stark_prover = sdk.prover(exe.clone())?;
+            tracing::info!("Generating STARK proof (app + aggregation)...");
             let start = std::time::Instant::now();
-            let _ = agg_prover.generate_root_verifier_input(app_proof)?;
-            tracing::info!("Agg proof (inner recursion) took {:?}", start.elapsed());
+            let (stark_proof, _) = stark_prover.prove(inputs.clone(), &[])?;
+            tracing::info!("STARK proof (with recursion) took {:?}", start.elapsed());
+
+            // Verify the recursive proof
+            tracing::info!("Verifying recursive proof...");
+            let baseline = stark_prover.generate_baseline();
+            let agg_vk = sdk.agg_vk();
+            #[cfg(feature = "cuda")]
+            PowdrSdkGpu::<RiscvISA>::verify_proof(agg_vk.as_ref().clone(), baseline, &stark_proof)?;
+            #[cfg(not(feature = "cuda"))]
+            PowdrSdkCpu::<RiscvISA>::verify_proof(agg_vk.as_ref().clone(), baseline, &stark_proof)?;
+            tracing::info!("Recursive proof verified.");
+        } else {
+            let mut app_prover = sdk.app_prover(exe.clone())?;
+
+            // Generate a proof
+            tracing::info!("Generating app proof...");
+            let start = std::time::Instant::now();
+            let app_proof = app_prover.prove(inputs.clone())?;
+            tracing::info!("App proof took {:?}", start.elapsed());
+
+            // Verify the app proof
+            tracing::info!("Verifying app proof...");
+            let _ = verify_app_proof::<BabyBearPoseidon2Engine>(
+                app_prover.app_vm_vk(),
+                app_prover.memory_dimensions(),
+                &app_proof,
+            )?;
+            tracing::info!("App proof verified.");
+
+            tracing::info!("Public values: {:?}", app_proof.user_public_values);
         }
 
         tracing::info!("All done.");
@@ -376,6 +403,13 @@ mod tests {
     use pretty_assertions::assert_eq;
     use test_log::test;
 
+    // Cap per-chip GPU trace allocations for tests that don't care about the
+    // default segment height. The OpenVM default is 2^22 rows (~4 GiB per chip),
+    // which pushes concurrent GPU tests past the memory on our shared runner.
+    // All small test inputs here fit easily in 2^20 rows and still run in a
+    // single segment.
+    const TEST_DEFAULT_SEGMENT_HEIGHT: usize = 1 << 20;
+
     #[allow(clippy::too_many_arguments)]
     fn compile_and_prove(
         guest: &str,
@@ -389,6 +423,7 @@ mod tests {
         let guest = compile_openvm(guest, GuestOptions::default()).unwrap();
         let program =
             compile_exe(guest, config, pgo_config, EmpiricalConstraints::default()).unwrap();
+        let segment_height = segment_height.or(Some(TEST_DEFAULT_SEGMENT_HEIGHT));
         prove(&program, mock, recursion, stdin, segment_height)
     }
 
@@ -592,8 +627,8 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let config = default_powdr_openvm_config(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        // should create two segments
-        prove_simple(GUEST_KECCAK, config, stdin, PgoConfig::None, Some(4_000));
+        // should create two segments (v2 requires power-of-two max_trace_height)
+        prove_simple(GUEST_KECCAK, config, stdin, PgoConfig::None, Some(4_096));
     }
 
     #[test]
@@ -1042,7 +1077,6 @@ mod tests {
         let config = default_powdr_openvm_config(guest.apc, guest.skip)
             .with_apc_candidates_dir(apc_candidates_dir_path);
         let is_cell_pgo = matches!(guest.pgo_config, PgoConfig::Cell(_, _));
-        let max_degree = config.degree_bound.identities;
         let guest_program = compile_openvm(guest.name, GuestOptions::default()).unwrap();
         let compiled_program = compile_exe(
             guest_program,
@@ -1052,7 +1086,7 @@ mod tests {
         )
         .unwrap();
 
-        let (powdr_air_metrics, non_powdr_air_metrics) = compiled_program.air_metrics(max_degree);
+        let (powdr_air_metrics, non_powdr_air_metrics) = compiled_program.air_metrics();
 
         expected_metrics.powdr_expected_sum.assert_debug_eq(
             &powdr_air_metrics
@@ -1120,11 +1154,10 @@ mod tests {
     const NON_POWDR_EXPECTED_MACHINE_COUNT: usize = 19;
     const NON_POWDR_EXPECTED_SUM: AirMetrics = AirMetrics {
         widths: AirWidths {
-            preprocessed: 7,
-            main: 798,
-            log_up: 684,
+            preprocessed: 0,
+            main: 819,
         },
-        constraints: 604,
+        constraints: 643,
         bus_interactions: 253,
     };
 
@@ -1148,7 +1181,6 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 38,
-                            log_up: 56,
                         },
                         constraints: 12,
                         bus_interactions: 26,
@@ -1176,7 +1208,6 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 38,
-                            log_up: 56,
                         },
                         constraints: 12,
                         bus_interactions: 26,
@@ -1193,12 +1224,10 @@ mod tests {
                     before: AirWidths {
                         preprocessed: 0,
                         main: 170,
-                        log_up: 236,
                     },
                     after: AirWidths {
                         preprocessed: 0,
                         main: 38,
-                        log_up: 56,
                     },
                 }
             "#]]),
@@ -1225,7 +1254,6 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 14254,
-                            log_up: 22752,
                         },
                         constraints: 4279,
                         bus_interactions: 11143,
@@ -1253,7 +1281,6 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 14226,
-                            log_up: 22720,
                         },
                         constraints: 4255,
                         bus_interactions: 11133,
@@ -1270,12 +1297,10 @@ mod tests {
                     before: AirWidths {
                         preprocessed: 0,
                         main: 183410,
-                        log_up: 227144,
                     },
                     after: AirWidths {
                         preprocessed: 0,
                         main: 14226,
-                        log_up: 22720,
                     },
                 }
             "#]]),
@@ -1301,11 +1326,10 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 18082,
-                            log_up: 29124,
+                            main: 16657,
                         },
-                        constraints: 8747,
-                        bus_interactions: 12557,
+                        constraints: 8357,
+                        bus_interactions: 11554,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1318,13 +1342,11 @@ mod tests {
                 AirWidthsDiff {
                     before: AirWidths {
                         preprocessed: 0,
-                        main: 131946,
-                        log_up: 175232,
+                        main: 125426,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 18082,
-                        log_up: 29124,
+                        main: 16657,
                     },
                 }
             "#]]),
@@ -1350,11 +1372,10 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 20837,
-                            log_up: 32304,
+                            main: 18508,
                         },
-                        constraints: 11151,
-                        bus_interactions: 14146,
+                        constraints: 10511,
+                        bus_interactions: 12483,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
@@ -1367,13 +1388,11 @@ mod tests {
                 AirWidthsDiff {
                     before: AirWidths {
                         preprocessed: 0,
-                        main: 155192,
-                        log_up: 204248,
+                        main: 142768,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 20837,
-                        log_up: 32304,
+                        main: 18508,
                     },
                 }
             "#]]),
@@ -1400,7 +1419,6 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 2022,
-                            log_up: 3472,
                         },
                         constraints: 187,
                         bus_interactions: 1734,
@@ -1428,7 +1446,6 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 2022,
-                            log_up: 3472,
                         },
                         constraints: 187,
                         bus_interactions: 1734,
@@ -1456,7 +1473,6 @@ mod tests {
                         widths: AirWidths {
                             preprocessed: 0,
                             main: 2022,
-                            log_up: 3472,
                         },
                         constraints: 187,
                         bus_interactions: 1734,
@@ -1473,12 +1489,10 @@ mod tests {
                     before: AirWidths {
                         preprocessed: 0,
                         main: 27521,
-                        log_up: 35156,
                     },
                     after: AirWidths {
                         preprocessed: 0,
                         main: 2022,
-                        log_up: 3472,
                     },
                 }
             "#]]),
@@ -1507,15 +1521,14 @@ mod tests {
                     AirMetrics {
                         widths: AirWidths {
                             preprocessed: 0,
-                            main: 3234,
-                            log_up: 5264,
+                            main: 6992,
                         },
-                        constraints: 571,
-                        bus_interactions: 2562,
+                        constraints: 1706,
+                        bus_interactions: 5180,
                     }
                 "#]],
                 powdr_expected_machine_count: expect![[r#"
-                    22
+                    61
                 "#]],
                 non_powdr_expected_sum: NON_POWDR_EXPECTED_SUM,
                 non_powdr_expected_machine_count: NON_POWDR_EXPECTED_MACHINE_COUNT,
@@ -1524,13 +1537,11 @@ mod tests {
                 AirWidthsDiff {
                     before: AirWidths {
                         preprocessed: 0,
-                        main: 32376,
-                        log_up: 41660,
+                        main: 46806,
                     },
                     after: AirWidths {
                         preprocessed: 0,
-                        main: 3234,
-                        log_up: 5264,
+                        main: 6992,
                     },
                 }
             "#]]),
@@ -1547,7 +1558,7 @@ mod tests {
     }
 
     mod extraction {
-        use crate::{ExtendedVmConfig, RiscvISA, DEFAULT_OPENVM_DEGREE_BOUND};
+        use crate::{ExtendedVmConfig, RiscvISA};
 
         use openvm_algebra_circuit::{Fp2Extension, ModularExtension};
         use openvm_bigint_circuit::Int256;
@@ -1555,7 +1566,7 @@ mod tests {
         use openvm_ecc_circuit::{WeierstrassExtension, SECP256K1_CONFIG};
         use openvm_pairing_circuit::{PairingCurve, PairingExtension};
         use openvm_rv32im_circuit::Rv32M;
-        use openvm_sdk::config::SdkVmConfig;
+        use openvm_sdk_config::SdkVmConfig;
         use powdr_openvm::extraction_utils::OriginalVmConfig;
         use powdr_openvm_riscv_hints_circuit::HintsExtension;
 
@@ -1563,10 +1574,7 @@ mod tests {
         fn test_get_bus_map() {
             let use_kzg_intrinsics = true;
 
-            let system_config = SystemConfig::default()
-                .with_continuations()
-                .with_max_constraint_degree(DEFAULT_OPENVM_DEGREE_BOUND)
-                .with_public_values(32);
+            let system_config = SystemConfig::default().with_public_values(32);
             let int256 = Int256::default();
             let bn_config = PairingCurve::Bn254.curve_config();
             let bls_config = PairingCurve::Bls12_381.curve_config();
@@ -1597,7 +1605,7 @@ mod tests {
                 .rv32m(rv32m)
                 .io(Default::default())
                 .keccak(Default::default())
-                .sha256(Default::default())
+                .sha2(Default::default())
                 .bigint(int256)
                 .modular(ModularExtension::new(supported_moduli))
                 .fp2(Fp2Extension::new(supported_complex_moduli))

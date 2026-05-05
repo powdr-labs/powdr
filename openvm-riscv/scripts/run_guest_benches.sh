@@ -52,7 +52,7 @@ pushd "$dir"
 
 run_bench guest-keccak-manual-precompile "$input" 0 manual
 run_bench guest-keccak "$input" 0 apc000
-run_bench guest-keccak "$input" 3 apc003
+# run_bench guest-keccak "$input" 3 apc003  # Save ~6mins
 # run_bench guest-keccak "$input" 10 apc010  # Save ~3mins
 run_bench guest-keccak "$input" 30 apc030
 
@@ -70,7 +70,7 @@ pushd "$dir"
 
 run_bench guest-sha256-manual-precompile "$input" 0 manual
 run_bench guest-sha256 "$input" 0 apc000
-run_bench guest-sha256 "$input" 3 apc003
+# run_bench guest-sha256 "$input" 3 apc003  # Save ~4mins
 # run_bench guest-sha256 "$input" 10 apc010  # Save ~5mins
 run_bench guest-sha256 "$input" 30 apc030
 
@@ -88,7 +88,7 @@ pushd "$dir"
 
 run_bench guest-pairing-manual-precompile "$input" 0 manual
 run_bench guest-pairing "$input" 0 apc000
-run_bench guest-pairing "$input" 3 apc003
+# run_bench guest-pairing "$input" 3 apc003  # Save ~6mins
 # run_bench guest-pairing "$input" 10 apc010  # Save ~4mins
 run_bench guest-pairing "$input" 30 apc030
 # run_bench guest-pairing "$input" 100 apc100  # Save ~7mins 
@@ -107,7 +107,7 @@ pushd "$dir"
 
 run_bench guest-u256-manual-precompile "$input" 0 manual
 run_bench guest-u256 "$input" 0 apc000
-run_bench guest-u256 "$input" 3 apc003
+# run_bench guest-u256 "$input" 3 apc003  # Save ~10mins
 # run_bench guest-u256 "$input" 10 apc010  # Save ~4mins
 run_bench guest-u256 "$input" 30 apc030
 
@@ -124,7 +124,7 @@ pushd "$dir"
 
 run_bench guest-matmul 0 0 apc000
 run_bench guest-matmul 0 3 apc003
-run_bench guest-matmul 0 10 apc010
+# run_bench guest-matmul 0 10 apc010  # Save ~1min
 run_bench guest-matmul 0 30 apc030
 
 python3 "$SCRIPTS_DIR"/basic_metrics.py summary-table --csv **/metrics.json > basic_metrics.csv
@@ -141,12 +141,12 @@ pushd "$dir"
 
 run_bench guest-ecc-manual $input 0 manual
 run_bench guest-ecc-projective $input 0 projective-apc000
-run_bench guest-ecc-projective $input 3 projective-apc003
+# run_bench guest-ecc-projective $input 3 projective-apc003  # Save ~17mins
 # run_bench guest-ecc-projective $input 10 projective-apc010  # Save ~12mins
 run_bench guest-ecc-projective $input 30 projective-apc030
 # run_bench guest-ecc-projective $input 100 projective-apc100  # Save ~12mins
 run_bench guest-ecc-powdr-affine-hint $input 0 affine-hint-apc000
-run_bench guest-ecc-powdr-affine-hint $input 3 affine-hint-apc003
+# run_bench guest-ecc-powdr-affine-hint $input 3 affine-hint-apc003  # Save ~10mins
 # run_bench guest-ecc-powdr-affine-hint $input 10 affine-hint-apc010  # Save ~7mins
 run_bench guest-ecc-powdr-affine-hint $input 30 affine-hint-apc030
 # run_bench guest-ecc-powdr-affine-hint $input 100 affine-hint-apc100  # Save ~7mins
@@ -165,7 +165,7 @@ pushd "$dir"
 
 run_bench guest-ecrecover-manual $input 0 manual
 run_bench guest-ecrecover $input 0 apc000
-run_bench guest-ecrecover $input 3 apc003
+# run_bench guest-ecrecover $input 3 apc003  # Save ~9mins
 # run_bench guest-ecrecover $input 10 apc010  # Save ~6mins
 run_bench guest-ecrecover $input 30 apc030
 # run_bench guest-ecrecover $input 100 apc100  # Save ~6mins

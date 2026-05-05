@@ -6,7 +6,6 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: "-C target-cpu=native"
   RUST_BACKTRACE: 1
   JEMALLOC_SYS_WITH_MALLOC_CONF: "retain:true,background_thread:true,metadata_thp:always,dirty_decay_ms:10000,muzzy_decay_ms:10000,abort_conf:true"
   POWDR_OPENVM_SEGMENT_DELTA: 50000
@@ -18,6 +17,12 @@ jobs:
       contents: write
       deployments: write
       pull-requests: write
+    # NOTE: RUSTFLAGS lives on the bench job only. test_apc and test_apc_gpu
+    # invoke `cargo openvm build` for the riscv32 guest, where a `target-cpu=
+    # native` from the host (e.g. `raptorlake`) is rejected by rustc-LLVM with
+    # "RV32 target requires an RV32 CPU". Keep it scoped to the host bench job.
+    env:
+      RUSTFLAGS: "-C target-cpu=native"
 
     steps:
       - uses: actions/checkout@v4
@@ -36,8 +41,8 @@ jobs:
           key: ${{ runner.os }}-cargo-pr-tests
       - name: Install Rust toolchain nightly-2025-10-01 (with clippy and rustfmt)
         run: rustup toolchain install nightly-2025-10-01 --component clippy,rustfmt,rust-src
-      - name: Install Rust toolchain 1.90
-        run: rustup toolchain install 1.90
+      - name: Install Rust toolchain 1.91.1
+        run: rustup toolchain install 1.91.1
       - name: Install riscv target
         run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2025-10-01
       - name: Install test dependencies
@@ -57,8 +62,8 @@ jobs:
           comment-on-alert: true
           summary-always: true
 
-  test_apc:
-    runs-on: server-dev
+  test_apc_guest:
+    runs-on: bench-cpu-128g
 
     steps:
       - uses: actions/checkout@v4
@@ -72,16 +77,24 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-release-apc-${{ hashFiles('**/Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-release-apc-ghhosted-${{ hashFiles('**/Cargo.toml') }}
 
       - name: Build
         run: cargo build --release -p powdr-openvm
 
       - name: Install cargo openvm
-        # Rust 1.90 is needed by fresher versions of dependencies of cargo-openvm.
+        # Rust 1.91.1 is needed by fresher versions of dependencies of cargo-openvm.
         run: |
-          rustup toolchain install 1.90
-          cargo +1.90 install --git 'http://github.com/powdr-labs/openvm.git' --rev "v1.4.2-powdr-rc.4" --locked cargo-openvm
+          rustup toolchain install 1.91.1
+          cargo +1.91.1 install --git 'https://github.com/powdr-labs/openvm.git' --tag "v2.0.0-beta.2-powdr" cargo-openvm
+
+      - name: Install OpenVM guest toolchain
+        # `cargo openvm build` invokes `cargo +nightly-2026-01-18 build --target
+        # riscv32im-risc0-zkvm-elf -Z build-std=...`, which needs both the
+        # nightly toolchain and its `rust-src` component.
+        run: |
+          rustup toolchain install nightly-2026-01-18
+          rustup component add rust-src --toolchain nightly-2026-01-18
 
       - name: Setup python venv
         run: |
@@ -96,23 +109,77 @@ jobs:
           mkdir -p results
 
       - name: Run guest benchmarks
+        # NOTE: don't set RUSTFLAGS here. This step's `cargo run --bin
+        # powdr_openvm_riscv` is a HOST build, and `cargo openvm build`
+        # is invoked from inside that binary via powdr's `compile_openvm`
+        # which already adds `-C link-arg=--emit-relocs` itself
+        # (openvm-riscv/src/lib.rs::build_elf_path). Setting the env here
+        # would forward the flag into host build-script linking, where
+        # `cc` rejects it.
         run: |
           source .venv/bin/activate
           bash ./openvm-riscv/scripts/run_guest_benches.sh
 
+      - name: upload result artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results-guest
+          path: |
+            results/*
+
+  test_apc_reth:
+    runs-on: bench-cpu-128g
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: ⚡ Cache rust
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-apc-ghhosted-${{ hashFiles('**/Cargo.toml') }}
+
+      - name: Install cargo openvm
+        # Rust 1.91.1 is needed by fresher versions of dependencies of cargo-openvm.
+        run: |
+          rustup toolchain install 1.91.1
+          cargo +1.91.1 install --git 'https://github.com/powdr-labs/openvm.git' --tag "v2.0.0-beta.2-powdr" cargo-openvm
+
+      - name: Install OpenVM guest toolchain
+        run: |
+          rustup toolchain install nightly-2026-01-18
+          rustup component add rust-src --toolchain nightly-2026-01-18
+
+      - name: Setup python venv
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install -r openvm-riscv/scripts/requirements.txt
+          pip install -r autoprecompiles/scripts/requirements.txt
+
+      - name: Remove old results if present
+        run: |
+          rm -rf results
+          mkdir -p results
+
       - name: Patch benchmark
-        uses: ./.github/actions/patch-openvm-reth-benchmark
+        uses: ./.github/actions/patch-openvm-eth
 
       - name: Run reth benchmark
         run: |
           source .venv/bin/activate
-          cd openvm-reth-benchmark
+          cd openvm-eth
           RES_DIR=reth
           mkdir -p $RES_DIR
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
 
           # prove with no APCs
-          ./run.sh --apc 0 --mode prove-stark || exit 1
+          ./run.sh --block 24171377 --apc 0 --mode prove-stark || exit 1
           # remove apc cache to not interfere with the next runs
           rm -rf apc-cache
           echo "Finished proving with no APCs"
@@ -120,7 +187,7 @@ jobs:
           python ../openvm-riscv/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc000.png $RES_DIR/apc000.json > $RES_DIR/trace_cells_apc000.txt
 
           # prove with 3 APCs
-          ./run.sh --apc 3 --mode prove-stark || exit 1
+          ./run.sh --block 24171377 --apc 3 --mode prove-stark || exit 1
           # remove apc cache to not interfere with the next runs
           rm -rf apc-cache
           echo "Finished proving with 3 APCs"
@@ -128,7 +195,7 @@ jobs:
           python ../openvm-riscv/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc003.png $RES_DIR/apc003.json > $RES_DIR/trace_cells_apc003.txt
 
           # prove with 10 APCs
-          ./run.sh --apc 10 --mode prove-stark || exit 1
+          ./run.sh --block 24171377 --apc 10 --mode prove-stark || exit 1
           # remove apc cache to not interfere with the next runs
           rm -rf apc-cache
           echo "Finished proving with 10 APCs"
@@ -136,7 +203,7 @@ jobs:
           python ../openvm-riscv/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc010.png $RES_DIR/apc010.json > $RES_DIR/trace_cells_apc010.txt
 
           # prove with 30 APCs
-          ./run.sh --apc 30 --mode prove-stark || exit 1
+          ./run.sh --block 24171377 --apc 30 --mode prove-stark || exit 1
           # remove apc cache to not interfere with the next runs
           rm -rf apc-cache
           echo "Finished proving with 30 APCs"
@@ -144,7 +211,7 @@ jobs:
           python ../openvm-riscv/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc030.png $RES_DIR/apc030.json > $RES_DIR/trace_cells_apc030.txt
 
           # prove with 100 APCs, recording mem usage
-          psrecord --include-children --interval 1 --log $RES_DIR/psrecord.csv --log-format csv --plot $RES_DIR/psrecord.png "./run.sh --apc 100 --mode prove-stark" || exit 1
+          psrecord --include-children --interval 1 --log $RES_DIR/psrecord.csv --log-format csv --plot $RES_DIR/psrecord.png "./run.sh --block 24171377 --apc 100 --mode prove-stark" || exit 1
           # remove apc cache to not interfere with the next runs
           rm -rf apc-cache
           echo "Finished proving with 100 APCs"
@@ -161,18 +228,49 @@ jobs:
 
           mv $RES_DIR ../results/
 
-      - name: Save revisions and run info
-        run: |
-          echo "openvm-reth-benchmark: $(git -C openvm-reth-benchmark rev-parse HEAD)" > results/run.txt
-          echo "powdr: $(git rev-parse HEAD)" >> results/run.txt
-          echo "run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" >> results/run.txt
-
       - name: upload result artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: bench-results
+          name: bench-results-reth
           path: |
             results/*
+
+  publish_bench_results:
+    needs: [test_apc_guest, test_apc_reth]
+    # Publish whatever artifacts we got, even if one of the bench jobs failed,
+    # but skip if both failed or the run was cancelled.
+    if: ${{ !cancelled() && (needs.test_apc_guest.result == 'success' || needs.test_apc_reth.result == 'success') }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download guest artifact
+        if: needs.test_apc_guest.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: bench-results-guest
+          path: results
+
+      - name: Download reth artifact
+        if: needs.test_apc_reth.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: bench-results-reth
+          path: results
+
+      - name: Save revisions and run info
+        run: |
+          OPENVM_ETH_REF=$(awk '/^[[:space:]]*ref:/ {print $2; exit}' .github/actions/patch-openvm-eth/action.yml)
+          echo "openvm-eth: $OPENVM_ETH_REF" > results/run.txt
+          echo "powdr: $GITHUB_SHA" >> results/run.txt
+          echo "run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" >> results/run.txt
+
+      - name: Setup python venv
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install -r openvm-riscv/scripts/requirements.txt
 
       - name: get the date/time
         id: date
@@ -180,20 +278,41 @@ jobs:
 
       - name: Generate bench results README
         run: |
+          source .venv/bin/activate
           python3 ./openvm-riscv/scripts/generate_bench_results_readme.py \
             ./results \
             "${{ steps.date.outputs.value }}" \
             --output ./results/readme.md
 
+      # Push via partial+sparse clone so the runner only ever holds the new
+      # dir on disk. peaceiris/actions-gh-pages does a full clone+checkout of
+      # gh-pages, which is now ~14.5 GB and busts ubuntu-latest's ~14 GB disk.
       - name: commit to bench results
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          personal_token: ${{ secrets.BENCH_RESULTS_TOKEN }}
-          external_repository: powdr-labs/bench-results
-          publish_dir: ./results
-          destination_dir: results/${{ steps.date.outputs.value }}/
-          keep_files: true
-          enable_jekyll: true
+        env:
+          BENCH_RESULTS_TOKEN: ${{ secrets.BENCH_RESULTS_TOKEN }}
+          DATE: ${{ steps.date.outputs.value }}
+        run: |
+          set -euo pipefail
+          REPO=$(mktemp -d)
+          git clone --filter=blob:none --sparse --depth=1 --branch=gh-pages \
+            "https://x-access-token:${BENCH_RESULTS_TOKEN}@github.com/powdr-labs/bench-results.git" \
+            "$REPO"
+          cd "$REPO"
+          # Restrict the worktree to the new (yet-to-exist) dir; nothing else
+          # gets fetched or written.
+          git sparse-checkout set "results/${DATE}"
+          # Author commits as the github-actions[bot] account so the GitHub
+          # UI shows the bot avatar and groups them with prior peaceiris
+          # commits. The email format is GitHub's noreply convention,
+          # `<user-id>+<login>@users.noreply.github.com`; 41898282 is the
+          # bot's user ID.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p "results/${DATE}"
+          cp -r "${GITHUB_WORKSPACE}/results/." "results/${DATE}/"
+          git add "results/${DATE}"
+          git commit -m "Add nightly results for ${DATE}"
+          git push origin gh-pages
 
   test_apc_gpu:
     runs-on: [self-hosted, gpu-shared]
@@ -213,10 +332,18 @@ jobs:
           key: ${{ runner.os }}-cargo-release-apc-gpu-${{ hashFiles('**/Cargo.toml') }}
 
       - name: Install cargo openvm
-        # Rust 1.90 is needed by fresher versions of dependencies of cargo-openvm.
+        # Rust 1.91.1 is needed by fresher versions of dependencies of cargo-openvm.
         run: |
-          rustup toolchain install 1.90
-          cargo +1.90 install --git 'http://github.com/powdr-labs/openvm.git' --rev "v1.4.2-powdr-rc.4" --locked cargo-openvm
+          rustup toolchain install 1.91.1
+          cargo +1.91.1 install --git 'https://github.com/powdr-labs/openvm.git' --tag "v2.0.0-beta.2-powdr" cargo-openvm
+
+      - name: Install OpenVM guest toolchain
+        # `cargo openvm build` invokes `cargo +nightly-2026-01-18 build --target
+        # riscv32im-risc0-zkvm-elf -Z build-std=...`, which needs both the
+        # nightly toolchain and its `rust-src` component.
+        run: |
+          rustup toolchain install nightly-2026-01-18
+          rustup component add rust-src --toolchain nightly-2026-01-18
 
       - name: Setup python venv
         run: |
@@ -231,18 +358,18 @@ jobs:
           mkdir -p results
 
       - name: Patch benchmark
-        uses: ./.github/actions/patch-openvm-reth-benchmark
+        uses: ./.github/actions/patch-openvm-eth
 
       - name: Run reth benchmark (GPU)
         run: |
           source .venv/bin/activate
-          cd openvm-reth-benchmark
+          cd openvm-eth
           RES_DIR=reth_gpu
           mkdir -p $RES_DIR
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
 
           # prove with no APCs
-          ./run.sh --cuda --apc 0 --mode prove-stark || exit 1
+          ./run.sh --cuda --block 24171377 --apc 0 --mode prove-stark || exit 1
           # remove apc cache to not interfere with the next runs
           rm -rf apc-cache
           echo "Finished proving with no APCs"
@@ -250,7 +377,7 @@ jobs:
           python ../openvm-riscv/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc000.png $RES_DIR/apc000.json > $RES_DIR/trace_cells_apc000.txt
 
           # prove with 10 APCs
-          ./run.sh --cuda --apc 10 --mode prove-stark || exit 1
+          ./run.sh --cuda --block 24171377 --apc 10 --mode prove-stark || exit 1
           # remove apc cache to not interfere with the next runs
           rm -rf apc-cache
           echo "Finished proving with 10 APCs"
@@ -258,7 +385,7 @@ jobs:
           python ../openvm-riscv/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc010.png $RES_DIR/apc010.json > $RES_DIR/trace_cells_apc010.txt
 
           # prove with 30 APCs
-          ./run.sh --cuda --apc 30 --mode prove-stark || exit 1
+          ./run.sh --cuda --block 24171377 --apc 30 --mode prove-stark || exit 1
           # remove apc cache to not interfere with the next runs
           rm -rf apc-cache
           echo "Finished proving with 30 APCs"
@@ -277,7 +404,7 @@ jobs:
 
       - name: Save revisions and run info
         run: |
-          echo "openvm-reth-benchmark: $(git -C openvm-reth-benchmark rev-parse HEAD)" > results/run.txt
+          echo "openvm-eth: $(git -C openvm-eth rev-parse HEAD)" > results/run.txt
           echo "powdr: $(git rev-parse HEAD)" >> results/run.txt
           echo "run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" >> results/run.txt
 
