@@ -296,6 +296,53 @@ fn emit_expr(
 }
 
 /// Given the current bytecode, appends bytecode for the expression `expr` and returns the associated span
+/// Walk an algebraic expression, inserting every `Reference.id` into `set`.
+/// Used as a diagnostic: counts the distinct columns an expression touches,
+/// which tells us if a "multi-column affine" decoder would cover it.
+fn count_refs(
+    expr: &AlgebraicExpression<BabyBear>,
+    set: &mut std::collections::HashSet<u64>,
+) {
+    match expr {
+        AlgebraicExpression::Reference(r) => {
+            set.insert(r.id);
+        }
+        AlgebraicExpression::UnaryOperation(u) => count_refs(&u.expr, set),
+        AlgebraicExpression::BinaryOperation(b) => {
+            count_refs(&b.left, set);
+            count_refs(&b.right, set);
+        }
+        AlgebraicExpression::Number(_) => {}
+    }
+}
+
+/// Structural fingerprint for an expression. Replaces specific ids and
+/// constants with placeholders so identical SHAPES (different col indices
+/// or constants) collapse to one summary string. Used to histogram the
+/// unhandled bus-interaction shapes.
+fn shape_summary(expr: &AlgebraicExpression<BabyBear>) -> String {
+    match expr {
+        AlgebraicExpression::Number(_) => "N".to_string(),
+        AlgebraicExpression::Reference(_) => "R".to_string(),
+        AlgebraicExpression::UnaryOperation(u) => {
+            format!("neg({})", shape_summary(&u.expr))
+        }
+        AlgebraicExpression::BinaryOperation(b) => {
+            let op = match b.op {
+                AlgebraicBinaryOperator::Add => "+",
+                AlgebraicBinaryOperator::Sub => "-",
+                AlgebraicBinaryOperator::Mul => "*",
+            };
+            format!(
+                "({}{}{})",
+                shape_summary(&b.left),
+                op,
+                shape_summary(&b.right)
+            )
+        }
+    }
+}
+
 fn emit_expr_span(
     bc: &mut Vec<u32>,
     expr: &AlgebraicExpression<BabyBear>,
@@ -566,35 +613,92 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
                 .unwrap_or_else(|e| panic!("NVRTC bus partition failed: {}", e))
         });
 
-        // Once-per-process diagnostic: report partition coverage. Helps spot
-        // unexpected drops to bytecode-VM fallback.
+        // Once-per-process diagnostic: report partition coverage and dump
+        // every unhandled interaction's shape + bytecode-cost proxy. The
+        // bytecode-cost weighting tells us which unhandled shapes account
+        // for most of the fallback_vm time; the shape histogram tells us
+        // whether multi-column affine support would catch them.
         {
+            use std::collections::HashMap;
             use std::sync::atomic::{AtomicBool, Ordering};
             static REPORTED: AtomicBool = AtomicBool::new(false);
             if !REPORTED.swap(true, Ordering::Relaxed) {
                 let total = self.apc.machine.bus_interactions.len();
-                let simple =
-                    p.var_ops.len() + p.tuple_ops.len() + p.bitwise_range_ops.len()
-                        + p.bitwise_xor_ops.len();
+                let simple = p.var_ops.len()
+                    + p.tuple_ops.len()
+                    + p.bitwise_range_ops.len()
+                    + p.bitwise_xor_ops.len();
                 tracing::info!(
                     "NVRTC bus partition (first APC): total={}, simple={} (var={}, tup={}, br={}, bx={}), unsupported={}, unhandled={}",
-                    total,
-                    simple,
-                    p.var_ops.len(),
-                    p.tuple_ops.len(),
-                    p.bitwise_range_ops.len(),
-                    p.bitwise_xor_ops.len(),
-                    p.n_unsupported,
-                    p.unhandled.len()
+                    total, simple,
+                    p.var_ops.len(), p.tuple_ops.len(),
+                    p.bitwise_range_ops.len(), p.bitwise_xor_ops.len(),
+                    p.n_unsupported, p.unhandled.len()
                 );
-                // Dump the first few unhandled interactions so we know what
-                // shapes are still falling through.
-                for (n, &i) in p.unhandled.iter().take(5).enumerate() {
-                    let bi = &self.apc.machine.bus_interactions[i];
+
+                // Per-unhandled stats. bytecode_size is a cost proxy: per-row
+                // VM cost is roughly proportional to bytecode_size since the
+                // VM walks each opcode in sequence.
+                let mut by_shape: HashMap<String, (usize, usize)> = HashMap::new(); // shape → (count, total_bc)
+                let mut by_max_cols: HashMap<usize, usize> = HashMap::new();
+                let mut total_unhandled_bc: usize = 0;
+
+                tracing::info!("  per-unhandled (sorted by bytecode_size desc):");
+                let mut rows: Vec<_> = p
+                    .unhandled
+                    .iter()
+                    .map(|&i| {
+                        let bi = &self.apc.machine.bus_interactions[i];
+                        let mut bc: Vec<u32> = Vec::new();
+                        let _ = emit_expr_span(&mut bc, &bi.mult, apc_poly_id_to_index, height);
+                        let mult_bc = bc.len();
+                        let mut arg_bc_total = 0usize;
+                        let mut max_cols = 0usize;
+                        let mut shape_summaries: Vec<String> = Vec::new();
+                        for a in &bi.args {
+                            bc.clear();
+                            let _ = emit_expr_span(&mut bc, a, apc_poly_id_to_index, height);
+                            arg_bc_total += bc.len();
+                            let mut col_set = std::collections::HashSet::new();
+                            count_refs(a, &mut col_set);
+                            max_cols = max_cols.max(col_set.len());
+                            shape_summaries.push(shape_summary(a));
+                        }
+                        let total_bc = mult_bc + arg_bc_total;
+                        let shape = shape_summaries.join(" | ");
+                        (i, bi.id, total_bc, max_cols, shape)
+                    })
+                    .collect();
+                rows.sort_by(|a, b| b.2.cmp(&a.2));
+
+                for (i, bus_id, total_bc, max_cols, shape) in &rows {
+                    total_unhandled_bc += total_bc;
+                    let entry = by_shape
+                        .entry(shape.clone())
+                        .or_insert((0usize, 0usize));
+                    entry.0 += 1;
+                    entry.1 += total_bc;
+                    *by_max_cols.entry(*max_cols).or_insert(0) += 1;
                     tracing::info!(
-                        "  unhandled[{}] (idx {}): bus_id={}, mult={:?}, args={:?}",
-                        n, i, bi.id, bi.mult, bi.args
+                        "    idx={:5} bus_id={} bc={:3} max_cols={} shape={}",
+                        i, bus_id, total_bc, max_cols, shape
                     );
+                }
+                tracing::info!(
+                    "  total unhandled bytecode words: {}",
+                    total_unhandled_bc
+                );
+                tracing::info!("  unhandled bucketed by max_cols_in_any_arg:");
+                let mut buckets: Vec<_> = by_max_cols.into_iter().collect();
+                buckets.sort();
+                for (cols, n) in &buckets {
+                    tracing::info!("    {} col(s): {} interactions", cols, n);
+                }
+                tracing::info!("  unhandled bucketed by structural shape (top 10 by bytecode-weight):");
+                let mut shapes: Vec<_> = by_shape.into_iter().collect();
+                shapes.sort_by(|a, b| b.1 .1.cmp(&a.1 .1));
+                for (shape, (cnt, bc)) in shapes.iter().take(10) {
+                    tracing::info!("    n={:3} bc_total={:5}  {}", cnt, bc, shape);
                 }
             }
         }
