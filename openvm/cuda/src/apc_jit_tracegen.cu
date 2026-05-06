@@ -33,6 +33,19 @@ enum JitCompType : uint16_t {
     JIT_LS_IS_LOAD        = 21,
     JIT_LS_FLAG           = 22,
     JIT_LS_WRITE_DATA     = 23,
+    // LessThan (slt/sltu) — share (opcode, b, c) signature for future fusion.
+    JIT_LT_CMP            = 24,
+    JIT_LT_DIFF_VAL       = 25,
+    JIT_LT_DIFF_MARKER    = 26,
+    JIT_LT_B_MSB_F        = 27,
+    JIT_LT_C_MSB_F        = 28,
+    // BranchLessThan (blt/bltu/bge/bgeu) — share (opcode, a, b) signature.
+    JIT_BLT_CMP           = 29,
+    JIT_BLT_CMP_LT        = 30,
+    JIT_BLT_DIFF_VAL      = 31,
+    JIT_BLT_DIFF_MARKER   = 32,
+    JIT_BLT_A_MSB_F       = 33,
+    JIT_BLT_B_MSB_F       = 34,
     // Conditional variants: high bit set
     JIT_COND_FLAG         = 0x80,
     JIT_COND_DIRECT_U32   = JIT_COND_FLAG | JIT_DIRECT_U32,
@@ -115,6 +128,49 @@ __device__ __forceinline__ void run_shift(uint8_t opcode, const uint8_t *b, cons
             a[i] = (p1 | p2) & 0xFF;
         }
     }
+}
+
+// Mirror of LessThanCoreAir::run_less_than (NUM_LIMBS=4, LIMB_BITS=8).
+// Returns cmp_result via the function value, sets out_diff_idx (0..4 with 4
+// meaning equal), out_b_sign, out_c_sign as side outputs.
+__device__ __forceinline__ bool run_less_than(
+    bool is_slt, const uint8_t *b, const uint8_t *c,
+    int *out_diff_idx, bool *out_b_sign, bool *out_c_sign
+) {
+    bool b_sign = is_slt && ((b[3] >> 7) == 1);
+    bool c_sign = is_slt && ((c[3] >> 7) == 1);
+    *out_b_sign = b_sign;
+    *out_c_sign = c_sign;
+    for (int i = 3; i >= 0; --i) {
+        if (b[i] != c[i]) {
+            *out_diff_idx = i;
+            return ((b[i] < c[i]) ^ b_sign ^ c_sign);
+        }
+    }
+    *out_diff_idx = 4;
+    return false;
+}
+
+// Mirror of BranchLessThanCoreAir::run_cmp (NUM_LIMBS=4, LIMB_BITS=8).
+// Local opcodes: BLT=0, BLTU=1, BGE=2, BGEU=3.
+__device__ __forceinline__ bool run_branch_lt(
+    uint8_t local_opcode, const uint8_t *a, const uint8_t *b,
+    int *out_diff_idx, bool *out_a_sign, bool *out_b_sign
+) {
+    bool signed_op = (local_opcode == 0) || (local_opcode == 2);
+    bool ge_op     = (local_opcode == 2) || (local_opcode == 3);
+    bool a_sign    = signed_op && ((a[3] >> 7) == 1);
+    bool b_sign    = signed_op && ((b[3] >> 7) == 1);
+    *out_a_sign = a_sign;
+    *out_b_sign = b_sign;
+    for (int i = 3; i >= 0; --i) {
+        if (a[i] != b[i]) {
+            *out_diff_idx = i;
+            return ((a[i] < b[i]) ^ a_sign ^ b_sign ^ ge_op);
+        }
+    }
+    *out_diff_idx = 4;
+    return ge_op;
 }
 
 // ============================================================================================
@@ -288,6 +344,107 @@ __device__ __forceinline__ Fp eval_jit_column(
                 case 5: wd = (idx==sh) ? rd[0] : prev; break; // STOREB
             }
             return Fp(wd);
+        }
+        // ── LessThan arms (p[0]=opcode_off, p[1]=b_off, p[2]=c_off, p[3]=marker_index) ──
+        case JIT_LT_CMP: {
+            bool is_slt = (record[desc.p[0]] == 0);
+            int diff_idx; bool b_sign, c_sign;
+            bool cmp = run_less_than(is_slt, record + desc.p[1], record + desc.p[2],
+                                     &diff_idx, &b_sign, &c_sign);
+            return Fp((uint32_t)cmp);
+        }
+        case JIT_LT_DIFF_VAL: {
+            bool is_slt = (record[desc.p[0]] == 0);
+            const uint8_t *b = record + desc.p[1];
+            const uint8_t *c = record + desc.p[2];
+            int diff_idx; bool b_sign, c_sign;
+            bool cmp = run_less_than(is_slt, b, c, &diff_idx, &b_sign, &c_sign);
+            if (diff_idx == 4) return Fp::zero();
+            if (diff_idx == 3) {
+                // Use signed-aware MSb encodings — match the field arithmetic.
+                Fp b_msb = b_sign ? -Fp((uint32_t)(256u - b[3])) : Fp((uint32_t)b[3]);
+                Fp c_msb = c_sign ? -Fp((uint32_t)(256u - c[3])) : Fp((uint32_t)c[3]);
+                return cmp ? (c_msb - b_msb) : (b_msb - c_msb);
+            }
+            uint8_t big = cmp ? c[diff_idx] : b[diff_idx];
+            uint8_t small = cmp ? b[diff_idx] : c[diff_idx];
+            return Fp((uint32_t)(big - small));
+        }
+        case JIT_LT_DIFF_MARKER: {
+            bool is_slt = (record[desc.p[0]] == 0);
+            int diff_idx; bool b_sign, c_sign;
+            run_less_than(is_slt, record + desc.p[1], record + desc.p[2],
+                          &diff_idx, &b_sign, &c_sign);
+            int marker = (int)desc.p[3];
+            return Fp((uint32_t)((diff_idx != 4) && (diff_idx == marker)));
+        }
+        case JIT_LT_B_MSB_F: {
+            bool is_slt = (record[desc.p[0]] == 0);
+            uint8_t b3 = record[desc.p[1] + 3];
+            bool b_sign = is_slt && ((b3 >> 7) == 1);
+            return b_sign ? -Fp((uint32_t)(256u - b3)) : Fp((uint32_t)b3);
+        }
+        case JIT_LT_C_MSB_F: {
+            bool is_slt = (record[desc.p[0]] == 0);
+            uint8_t c3 = record[desc.p[1] + 3];
+            bool c_sign = is_slt && ((c3 >> 7) == 1);
+            return c_sign ? -Fp((uint32_t)(256u - c3)) : Fp((uint32_t)c3);
+        }
+        // ── BranchLessThan arms (p[0]=opcode_off, p[1]=a_off, p[2]=b_off) ──
+        case JIT_BLT_CMP: {
+            uint8_t op = record[desc.p[0]];
+            int diff_idx; bool a_sign, b_sign;
+            bool cmp = run_branch_lt(op, record + desc.p[1], record + desc.p[2],
+                                     &diff_idx, &a_sign, &b_sign);
+            return Fp((uint32_t)cmp);
+        }
+        case JIT_BLT_CMP_LT: {
+            uint8_t op = record[desc.p[0]];
+            int diff_idx; bool a_sign, b_sign;
+            bool cmp = run_branch_lt(op, record + desc.p[1], record + desc.p[2],
+                                     &diff_idx, &a_sign, &b_sign);
+            bool ge_op = (op == 2) || (op == 3);
+            return Fp((uint32_t)(cmp ^ ge_op));
+        }
+        case JIT_BLT_DIFF_VAL: {
+            uint8_t op = record[desc.p[0]];
+            const uint8_t *a = record + desc.p[1];
+            const uint8_t *b = record + desc.p[2];
+            int diff_idx; bool a_sign, b_sign;
+            bool cmp = run_branch_lt(op, a, b, &diff_idx, &a_sign, &b_sign);
+            bool ge_op = (op == 2) || (op == 3);
+            bool cmp_lt = cmp ^ ge_op;
+            if (diff_idx == 4) return Fp::zero();
+            if (diff_idx == 3) {
+                Fp a_msb = a_sign ? -Fp((uint32_t)(256u - a[3])) : Fp((uint32_t)a[3]);
+                Fp b_msb = b_sign ? -Fp((uint32_t)(256u - b[3])) : Fp((uint32_t)b[3]);
+                return cmp_lt ? (b_msb - a_msb) : (a_msb - b_msb);
+            }
+            uint8_t big = cmp_lt ? b[diff_idx] : a[diff_idx];
+            uint8_t small = cmp_lt ? a[diff_idx] : b[diff_idx];
+            return Fp((uint32_t)(big - small));
+        }
+        case JIT_BLT_DIFF_MARKER: {
+            uint8_t op = record[desc.p[0]];
+            int diff_idx; bool a_sign, b_sign;
+            run_branch_lt(op, record + desc.p[1], record + desc.p[2],
+                          &diff_idx, &a_sign, &b_sign);
+            int marker = (int)desc.p[3];
+            return Fp((uint32_t)((diff_idx != 4) && (diff_idx == marker)));
+        }
+        case JIT_BLT_A_MSB_F: {
+            uint8_t op = record[desc.p[0]];
+            bool signed_op = (op == 0) || (op == 2);
+            uint8_t a3 = record[desc.p[1] + 3];
+            bool a_sign = signed_op && ((a3 >> 7) == 1);
+            return a_sign ? -Fp((uint32_t)(256u - a3)) : Fp((uint32_t)a3);
+        }
+        case JIT_BLT_B_MSB_F: {
+            uint8_t op = record[desc.p[0]];
+            bool signed_op = (op == 0) || (op == 2);
+            uint8_t b3 = record[desc.p[1] + 3];
+            bool b_sign = signed_op && ((b3 >> 7) == 1);
+            return b_sign ? -Fp((uint32_t)(256u - b3)) : Fp((uint32_t)b3);
         }
         default:
             return Fp::zero();

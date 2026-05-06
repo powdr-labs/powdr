@@ -127,6 +127,35 @@ pub enum ColumnComputation {
     /// BranchEqual: diff_inv_marker[marker_index]
     BranchEqualDiffInvMarker { a_byte_offset: usize, b_byte_offset: usize, opcode_byte_offset: usize, marker_index: usize },
 
+    // ── LessThanCoreAir<4, 8> (slt / sltu / slti / sltiu) ────────────────────
+    // All five arms share the (opcode, b, c) byte-offset signature so a future
+    // NVRTC fusion pass can recognise them as a single group and emit one
+    // run_less_than per row, indexing into its result.
+    /// LessThan: cmp_result (0 or 1).
+    LessThanCmpResult { opcode_byte_offset: usize, b_byte_offset: usize, c_byte_offset: usize },
+    /// LessThan: diff_val (canonical-form field value).
+    LessThanDiffVal { opcode_byte_offset: usize, b_byte_offset: usize, c_byte_offset: usize },
+    /// LessThan: diff_marker[marker_index].
+    LessThanDiffMarker { opcode_byte_offset: usize, b_byte_offset: usize, c_byte_offset: usize, marker_index: usize },
+    /// LessThan: b_msb_f (signed-aware MSB encoding of b[3]).
+    LessThanBMsbF { opcode_byte_offset: usize, b_byte_offset: usize },
+    /// LessThan: c_msb_f.
+    LessThanCMsbF { opcode_byte_offset: usize, c_byte_offset: usize },
+
+    // ── BranchLessThanCoreAir<4, 8> (blt / bltu / bge / bgeu) ────────────────
+    /// BranchLt: cmp_result (1 if branch taken).
+    BranchLtCmpResult { opcode_byte_offset: usize, a_byte_offset: usize, b_byte_offset: usize },
+    /// BranchLt: cmp_lt (1 if a < b irrespective of bge/blt).
+    BranchLtCmpLt { opcode_byte_offset: usize, a_byte_offset: usize, b_byte_offset: usize },
+    /// BranchLt: diff_val.
+    BranchLtDiffVal { opcode_byte_offset: usize, a_byte_offset: usize, b_byte_offset: usize },
+    /// BranchLt: diff_marker[marker_index].
+    BranchLtDiffMarker { opcode_byte_offset: usize, a_byte_offset: usize, b_byte_offset: usize, marker_index: usize },
+    /// BranchLt: a_msb_f.
+    BranchLtAMsbF { opcode_byte_offset: usize, a_byte_offset: usize },
+    /// BranchLt: b_msb_f.
+    BranchLtBMsbF { opcode_byte_offset: usize, b_byte_offset: usize },
+
     /// Constant value.
     Constant(u32),
 }
@@ -396,6 +425,104 @@ pub fn eval_column<F: PrimeField32>(comp: &ColumnComputation, record: &[u8], ran
                 F::ZERO
             }
         }
+        ColumnComputation::LessThanCmpResult { opcode_byte_offset, b_byte_offset, c_byte_offset } => {
+            let is_slt = record[*opcode_byte_offset] == 0;
+            let b: &[u8] = &record[*b_byte_offset..*b_byte_offset + 4];
+            let c: &[u8] = &record[*c_byte_offset..*c_byte_offset + 4];
+            let (cmp_result, _, _, _) = run_less_than_host(is_slt, b, c);
+            F::from_bool(cmp_result)
+        }
+        ColumnComputation::LessThanDiffVal { opcode_byte_offset, b_byte_offset, c_byte_offset } => {
+            let is_slt = record[*opcode_byte_offset] == 0;
+            let b: &[u8] = &record[*b_byte_offset..*b_byte_offset + 4];
+            let c: &[u8] = &record[*c_byte_offset..*c_byte_offset + 4];
+            let (cmp_result, diff_idx, b_sign, c_sign) = run_less_than_host(is_slt, b, c);
+            less_than_diff_val::<F>(cmp_result, diff_idx, b, c, b_sign, c_sign)
+        }
+        ColumnComputation::LessThanDiffMarker { opcode_byte_offset, b_byte_offset, c_byte_offset, marker_index } => {
+            let is_slt = record[*opcode_byte_offset] == 0;
+            let b: &[u8] = &record[*b_byte_offset..*b_byte_offset + 4];
+            let c: &[u8] = &record[*c_byte_offset..*c_byte_offset + 4];
+            let (_, diff_idx, _, _) = run_less_than_host(is_slt, b, c);
+            // marker[diff_idx] = 1 only when a != b (diff_idx != 4); else all zero.
+            if diff_idx != 4 && diff_idx == *marker_index { F::ONE } else { F::ZERO }
+        }
+        ColumnComputation::LessThanBMsbF { opcode_byte_offset, b_byte_offset } => {
+            let is_slt = record[*opcode_byte_offset] == 0;
+            let b3 = record[*b_byte_offset + 3];
+            // b_sign = signed-mode AND high bit set.
+            let b_sign = is_slt && (b3 >> 7) == 1;
+            if b_sign {
+                // -F::from_u16((1 << 8) - b3)
+                F::ZERO - F::from_u16(256 - b3 as u16)
+            } else {
+                F::from_u8(b3)
+            }
+        }
+        ColumnComputation::LessThanCMsbF { opcode_byte_offset, c_byte_offset } => {
+            let is_slt = record[*opcode_byte_offset] == 0;
+            let c3 = record[*c_byte_offset + 3];
+            let c_sign = is_slt && (c3 >> 7) == 1;
+            if c_sign {
+                F::ZERO - F::from_u16(256 - c3 as u16)
+            } else {
+                F::from_u8(c3)
+            }
+        }
+        ColumnComputation::BranchLtCmpResult { opcode_byte_offset, a_byte_offset, b_byte_offset } => {
+            let op = record[*opcode_byte_offset];
+            let a: &[u8] = &record[*a_byte_offset..*a_byte_offset + 4];
+            let b: &[u8] = &record[*b_byte_offset..*b_byte_offset + 4];
+            let (cmp_result, _, _, _) = run_branch_lt_host(op, a, b);
+            F::from_bool(cmp_result)
+        }
+        ColumnComputation::BranchLtCmpLt { opcode_byte_offset, a_byte_offset, b_byte_offset } => {
+            let op = record[*opcode_byte_offset];
+            let a: &[u8] = &record[*a_byte_offset..*a_byte_offset + 4];
+            let b: &[u8] = &record[*b_byte_offset..*b_byte_offset + 4];
+            let (cmp_result, _, _, _) = run_branch_lt_host(op, a, b);
+            // ge_op: BGE=2 or BGEU=3
+            let ge_op = op == 2 || op == 3;
+            F::from_bool(cmp_result ^ ge_op)
+        }
+        ColumnComputation::BranchLtDiffVal { opcode_byte_offset, a_byte_offset, b_byte_offset } => {
+            let op = record[*opcode_byte_offset];
+            let a: &[u8] = &record[*a_byte_offset..*a_byte_offset + 4];
+            let b: &[u8] = &record[*b_byte_offset..*b_byte_offset + 4];
+            let (cmp_result, diff_idx, a_sign, b_sign) = run_branch_lt_host(op, a, b);
+            let ge_op = op == 2 || op == 3;
+            let cmp_lt = cmp_result ^ ge_op;
+            branch_lt_diff_val::<F>(cmp_lt, diff_idx, a, b, a_sign, b_sign)
+        }
+        ColumnComputation::BranchLtDiffMarker { opcode_byte_offset, a_byte_offset, b_byte_offset, marker_index } => {
+            let op = record[*opcode_byte_offset];
+            let a: &[u8] = &record[*a_byte_offset..*a_byte_offset + 4];
+            let b: &[u8] = &record[*b_byte_offset..*b_byte_offset + 4];
+            let (_, diff_idx, _, _) = run_branch_lt_host(op, a, b);
+            if diff_idx != 4 && diff_idx == *marker_index { F::ONE } else { F::ZERO }
+        }
+        ColumnComputation::BranchLtAMsbF { opcode_byte_offset, a_byte_offset } => {
+            let op = record[*opcode_byte_offset];
+            let signed = op == 0 || op == 2; // BLT or BGE
+            let a3 = record[*a_byte_offset + 3];
+            let a_sign = signed && (a3 >> 7) == 1;
+            if a_sign {
+                F::ZERO - F::from_u16(256 - a3 as u16)
+            } else {
+                F::from_u8(a3)
+            }
+        }
+        ColumnComputation::BranchLtBMsbF { opcode_byte_offset, b_byte_offset } => {
+            let op = record[*opcode_byte_offset];
+            let signed = op == 0 || op == 2;
+            let b3 = record[*b_byte_offset + 3];
+            let b_sign = signed && (b3 >> 7) == 1;
+            if b_sign {
+                F::ZERO - F::from_u16(256 - b3 as u16)
+            } else {
+                F::from_u8(b3)
+            }
+        }
         ColumnComputation::Constant(val) => F::from_u32(*val),
     }
 }
@@ -438,6 +565,83 @@ fn run_shift(opcode: u8, b: &[u8; 4], c: &[u8; 4]) -> [u8; 4] {
         }
     }
     a
+}
+
+/// Mirror of `LessThanCoreAir::run_less_than` for `NUM_LIMBS=4, LIMB_BITS=8`.
+/// Returns `(cmp_result, diff_idx, b_sign, c_sign)`. `diff_idx` is the most
+/// significant index where `b[i] != c[i]` (walking from MSB), or 4 when equal.
+fn run_less_than_host(is_slt: bool, b: &[u8], c: &[u8]) -> (bool, usize, bool, bool) {
+    let b_sign = is_slt && (b[3] >> 7) == 1;
+    let c_sign = is_slt && (c[3] >> 7) == 1;
+    for i in (0..4).rev() {
+        if b[i] != c[i] {
+            return ((b[i] < c[i]) ^ b_sign ^ c_sign, i, b_sign, c_sign);
+        }
+    }
+    (false, 4, b_sign, c_sign)
+}
+
+/// Mirror of `BranchLessThanCoreAir::run_cmp` for `NUM_LIMBS=4, LIMB_BITS=8`.
+/// Local opcodes: BLT=0, BLTU=1, BGE=2, BGEU=3.
+fn run_branch_lt_host(local_opcode: u8, a: &[u8], b: &[u8]) -> (bool, usize, bool, bool) {
+    let signed = local_opcode == 0 /* BLT */ || local_opcode == 2 /* BGE */;
+    let ge_op  = local_opcode == 2 /* BGE */ || local_opcode == 3 /* BGEU */;
+    let a_sign = signed && (a[3] >> 7) == 1;
+    let b_sign = signed && (b[3] >> 7) == 1;
+    for i in (0..4).rev() {
+        if a[i] != b[i] {
+            return ((a[i] < b[i]) ^ a_sign ^ b_sign ^ ge_op, i, a_sign, b_sign);
+        }
+    }
+    (ge_op, 4, a_sign, b_sign)
+}
+
+/// Compute LessThan's `diff_val` field-element value given the precomputed
+/// `(cmp_result, diff_idx, b_sign, c_sign)` from `run_less_than_host`.
+fn less_than_diff_val<F: PrimeField32>(
+    cmp_result: bool,
+    diff_idx: usize,
+    b: &[u8],
+    c: &[u8],
+    b_sign: bool,
+    c_sign: bool,
+) -> F {
+    if diff_idx == 4 {
+        return F::ZERO;
+    }
+    if diff_idx == 3 {
+        // Use signed-aware MSb encodings
+        let b_msb = if b_sign { F::ZERO - F::from_u16(256 - b[3] as u16) } else { F::from_u8(b[3]) };
+        let c_msb = if c_sign { F::ZERO - F::from_u16(256 - c[3] as u16) } else { F::from_u8(c[3]) };
+        if cmp_result { c_msb - b_msb } else { b_msb - c_msb }
+    } else if cmp_result {
+        F::from_u8(c[diff_idx] - b[diff_idx])
+    } else {
+        F::from_u8(b[diff_idx] - c[diff_idx])
+    }
+}
+
+/// Compute BranchLt's `diff_val` field-element value.
+fn branch_lt_diff_val<F: PrimeField32>(
+    cmp_lt: bool,
+    diff_idx: usize,
+    a: &[u8],
+    b: &[u8],
+    a_sign: bool,
+    b_sign: bool,
+) -> F {
+    if diff_idx == 4 {
+        return F::ZERO;
+    }
+    if diff_idx == 3 {
+        let a_msb = if a_sign { F::ZERO - F::from_u16(256 - a[3] as u16) } else { F::from_u8(a[3]) };
+        let b_msb = if b_sign { F::ZERO - F::from_u16(256 - b[3] as u16) } else { F::from_u8(b[3]) };
+        if cmp_lt { b_msb - a_msb } else { a_msb - b_msb }
+    } else if cmp_lt {
+        F::from_u8(b[diff_idx] - a[diff_idx])
+    } else {
+        F::from_u8(a[diff_idx] - b[diff_idx])
+    }
 }
 
 /// Compute LoadStore flags[4] based on opcode and shift.
@@ -567,10 +771,14 @@ fn core_byte_offset(air: &str, arena: ArenaType) -> usize {
         ("BaseAlu", ArenaType::Dense) => 40,        // aligned_adapter_size=40
         ("Shift", ArenaType::Matrix) => 19 * 4,     // same adapter as BaseAlu
         ("Shift", ArenaType::Dense) => 40,
+        ("LessThan", ArenaType::Matrix) => 19 * 4,  // shares Rv32BaseAluAdapter
+        ("LessThan", ArenaType::Dense) => 40,
         ("LoadStore", ArenaType::Matrix) => 23 * 4,  // adapter_cols=23
         ("LoadStore", ArenaType::Dense) => 36,       // aligned_adapter_size=36
         ("BranchEqual", ArenaType::Matrix) => 10 * 4, // adapter_cols=10
         ("BranchEqual", ArenaType::Dense) => 24,      // aligned_adapter_size=24
+        ("BranchLt", ArenaType::Matrix) => 10 * 4,    // shares Rv32BranchAdapter
+        ("BranchLt", ArenaType::Dense) => 24,
         _ => panic!("Unknown AIR type: {air}"),
     }
 }
@@ -578,9 +786,9 @@ fn core_byte_offset(air: &str, arena: ArenaType) -> usize {
 /// Record stride for DenseRecordArena (= aligned_adapter_size + aligned_core_size).
 pub fn dense_record_stride(air: &str) -> usize {
     match air {
-        "BaseAlu" | "Shift" => 52,
+        "BaseAlu" | "Shift" | "LessThan" => 52,
         "LoadStore" => 60,
-        "BranchEqual" => 40,
+        "BranchEqual" | "BranchLt" => 40,
         _ => panic!("Unknown AIR type: {air}"),
     }
 }
@@ -1125,6 +1333,179 @@ pub fn branch_equal_mapping_for(arena: ArenaType) -> AirColumnMapping {
     AirColumnMapping {
         air_name: "BranchEqual",
         width: 26,
+        record_byte_size: 24 + 16, // adapter(24) + core(16 incl padding)
+        columns,
+    }
+}
+
+// ============================================================================
+// Mapping table for LessThan (Rv32BaseAluAdapter, width=37)
+// ============================================================================
+
+/// Build the mapping table for LessThan (slt/sltu/slti/sltiu).
+/// Adapter shared with BaseAlu/Shift (width=19); LessThanCore width=18.
+pub fn less_than_mapping() -> AirColumnMapping {
+    less_than_mapping_for(ArenaType::Matrix)
+}
+
+pub fn less_than_mapping_for(arena: ArenaType) -> AirColumnMapping {
+    use ColumnComputation::*;
+
+    // Rv32BaseAluAdapter byte offsets (identical layout to BaseAlu/Shift).
+    let from_pc: usize = 0;
+    let from_timestamp: usize = 4;
+    let rd_ptr: usize = 8;
+    let rs1_ptr: usize = 12;
+    let rs2: usize = 16;
+    let rs2_as: usize = 20;
+    let reads_aux_0_prev_ts: usize = 24;
+    let reads_aux_1_prev_ts: usize = 28;
+    let writes_aux_prev_ts: usize = 32;
+    let writes_aux_prev_data_0: usize = 36;
+
+    // LessThanCoreRecord layout: b[4] | c[4] | local_opcode (u8) — same prefix
+    // as BaseAlu/Shift, but no result limbs (cmp_result is 0/1, derived).
+    let core = core_byte_offset("LessThan", arena);
+    let b_0: usize = core;
+    let c_0: usize = core + 4;
+    let local_opcode: usize = core + 8;
+
+    // LessThanCoreCols layout (starting at adapter width = 19):
+    //   b[4], c[4], cmp_result, opcode_slt_flag, opcode_sltu_flag,
+    //   b_msb_f, c_msb_f, diff_marker[4], diff_val
+    // → core width = 4 + 4 + 1 + 2 + 2 + 4 + 1 = 18; total width = 37.
+    let mut columns = Vec::with_capacity(37);
+
+    // ── Adapter columns (0-18) — identical to BaseAlu adapter ────────────────
+    columns.push(ColumnMapping { col_index: 0, computation: DirectU32 { record_byte_offset: from_pc } });
+    columns.push(ColumnMapping { col_index: 1, computation: DirectU32 { record_byte_offset: from_timestamp } });
+    columns.push(ColumnMapping { col_index: 2, computation: DirectU32 { record_byte_offset: rd_ptr } });
+    columns.push(ColumnMapping { col_index: 3, computation: DirectU32 { record_byte_offset: rs1_ptr } });
+    columns.push(ColumnMapping { col_index: 4, computation: DirectU32 { record_byte_offset: rs2 } });
+    columns.push(ColumnMapping { col_index: 5, computation: DirectU8 { record_byte_offset: rs2_as } });
+    columns.push(ColumnMapping { col_index: 6, computation: DirectU32 { record_byte_offset: reads_aux_0_prev_ts } });
+    columns.push(ColumnMapping { col_index: 7, computation: TimestampDecomp { curr_ts_byte_offset: from_timestamp, curr_ts_delta: 0, prev_ts_byte_offset: reads_aux_0_prev_ts, limb_index: 0 } });
+    columns.push(ColumnMapping { col_index: 8, computation: TimestampDecomp { curr_ts_byte_offset: from_timestamp, curr_ts_delta: 0, prev_ts_byte_offset: reads_aux_0_prev_ts, limb_index: 1 } });
+    columns.push(ColumnMapping { col_index: 9, computation: Conditional { condition_byte_offset: rs2_as, then_comp: Box::new(DirectU32 { record_byte_offset: reads_aux_1_prev_ts }) } });
+    columns.push(ColumnMapping { col_index: 10, computation: Conditional { condition_byte_offset: rs2_as, then_comp: Box::new(TimestampDecomp { curr_ts_byte_offset: from_timestamp, curr_ts_delta: 1, prev_ts_byte_offset: reads_aux_1_prev_ts, limb_index: 0 }) } });
+    columns.push(ColumnMapping { col_index: 11, computation: Conditional { condition_byte_offset: rs2_as, then_comp: Box::new(TimestampDecomp { curr_ts_byte_offset: from_timestamp, curr_ts_delta: 1, prev_ts_byte_offset: reads_aux_1_prev_ts, limb_index: 1 }) } });
+    columns.push(ColumnMapping { col_index: 12, computation: DirectU32 { record_byte_offset: writes_aux_prev_ts } });
+    columns.push(ColumnMapping { col_index: 13, computation: TimestampDecomp { curr_ts_byte_offset: from_timestamp, curr_ts_delta: 2, prev_ts_byte_offset: writes_aux_prev_ts, limb_index: 0 } });
+    columns.push(ColumnMapping { col_index: 14, computation: TimestampDecomp { curr_ts_byte_offset: from_timestamp, curr_ts_delta: 2, prev_ts_byte_offset: writes_aux_prev_ts, limb_index: 1 } });
+    columns.push(ColumnMapping { col_index: 15, computation: DirectU8 { record_byte_offset: writes_aux_prev_data_0 } });
+    columns.push(ColumnMapping { col_index: 16, computation: DirectU8 { record_byte_offset: writes_aux_prev_data_0 + 1 } });
+    columns.push(ColumnMapping { col_index: 17, computation: DirectU8 { record_byte_offset: writes_aux_prev_data_0 + 2 } });
+    columns.push(ColumnMapping { col_index: 18, computation: DirectU8 { record_byte_offset: writes_aux_prev_data_0 + 3 } });
+
+    // ── Core columns (19-36) ────────────────────────────────────────────────
+    // b[0..3]
+    for i in 0..4 {
+        columns.push(ColumnMapping { col_index: 19 + i, computation: DirectU8 { record_byte_offset: b_0 + i } });
+    }
+    // c[0..3]
+    for i in 0..4 {
+        columns.push(ColumnMapping { col_index: 23 + i, computation: DirectU8 { record_byte_offset: c_0 + i } });
+    }
+    // cmp_result (col 27): runs run_less_than(opcode, b, c) → cmp.
+    columns.push(ColumnMapping { col_index: 27, computation: LessThanCmpResult { opcode_byte_offset: local_opcode, b_byte_offset: b_0, c_byte_offset: c_0 } });
+    // opcode flags: slt=0, sltu=1.
+    columns.push(ColumnMapping { col_index: 28, computation: BoolFromOpcode { opcode_byte_offset: local_opcode, expected_opcode: 0 } });
+    columns.push(ColumnMapping { col_index: 29, computation: BoolFromOpcode { opcode_byte_offset: local_opcode, expected_opcode: 1 } });
+    // b_msb_f, c_msb_f.
+    columns.push(ColumnMapping { col_index: 30, computation: LessThanBMsbF { opcode_byte_offset: local_opcode, b_byte_offset: b_0 } });
+    columns.push(ColumnMapping { col_index: 31, computation: LessThanCMsbF { opcode_byte_offset: local_opcode, c_byte_offset: c_0 } });
+    // diff_marker[0..3] — share signature with cmp_result/diff_val for future fusion.
+    for i in 0..4 {
+        columns.push(ColumnMapping { col_index: 32 + i, computation: LessThanDiffMarker { opcode_byte_offset: local_opcode, b_byte_offset: b_0, c_byte_offset: c_0, marker_index: i } });
+    }
+    // diff_val.
+    columns.push(ColumnMapping { col_index: 36, computation: LessThanDiffVal { opcode_byte_offset: local_opcode, b_byte_offset: b_0, c_byte_offset: c_0 } });
+
+    AirColumnMapping {
+        air_name: "LessThan",
+        width: 37,
+        record_byte_size: 40 + 12, // adapter(40) + core(12 with padding)
+        columns,
+    }
+}
+
+// ============================================================================
+// Mapping table for BranchLessThan (Rv32BranchAdapter, width=32)
+// ============================================================================
+
+/// Build the mapping table for BranchLessThan (blt/bltu/bge/bgeu).
+/// Adapter shared with BranchEqual (width=10); BranchLtCore width=22.
+pub fn branch_lt_mapping() -> AirColumnMapping {
+    branch_lt_mapping_for(ArenaType::Matrix)
+}
+
+pub fn branch_lt_mapping_for(arena: ArenaType) -> AirColumnMapping {
+    use ColumnComputation::*;
+
+    // Rv32BranchAdapter byte offsets (same as BranchEqual).
+    let from_pc: usize = 0;
+    let from_timestamp: usize = 4;
+    let rs1_ptr: usize = 8;
+    let rs2_ptr: usize = 12;
+    let reads_aux_0_prev_ts: usize = 16;
+    let reads_aux_1_prev_ts: usize = 20;
+
+    // BranchLtCoreRecord layout: a[4] | b[4] | imm (u32) | local_opcode (u8).
+    let core = core_byte_offset("BranchLt", arena);
+    let a_0: usize = core;
+    let b_0: usize = core + 4;
+    let core_imm: usize = core + 8;
+    let core_opcode: usize = core + 12;
+
+    // BranchLtCoreCols layout (starting at adapter width = 10):
+    //   a[4], b[4], cmp_result, imm, opcode_blt, opcode_bltu, opcode_bge,
+    //   opcode_bgeu, a_msb_f, b_msb_f, cmp_lt, diff_marker[4], diff_val.
+    // → core width = 22; total width = 32.
+    let mut columns = Vec::with_capacity(32);
+
+    // ── Adapter columns (0-9) — identical to BranchEqual adapter ────────────
+    columns.push(ColumnMapping { col_index: 0, computation: DirectU32 { record_byte_offset: from_pc } });
+    columns.push(ColumnMapping { col_index: 1, computation: DirectU32 { record_byte_offset: from_timestamp } });
+    columns.push(ColumnMapping { col_index: 2, computation: DirectU32 { record_byte_offset: rs1_ptr } });
+    columns.push(ColumnMapping { col_index: 3, computation: DirectU32 { record_byte_offset: rs2_ptr } });
+    columns.push(ColumnMapping { col_index: 4, computation: DirectU32 { record_byte_offset: reads_aux_0_prev_ts } });
+    columns.push(ColumnMapping { col_index: 5, computation: TimestampDecomp { curr_ts_byte_offset: from_timestamp, curr_ts_delta: 0, prev_ts_byte_offset: reads_aux_0_prev_ts, limb_index: 0 } });
+    columns.push(ColumnMapping { col_index: 6, computation: TimestampDecomp { curr_ts_byte_offset: from_timestamp, curr_ts_delta: 0, prev_ts_byte_offset: reads_aux_0_prev_ts, limb_index: 1 } });
+    columns.push(ColumnMapping { col_index: 7, computation: DirectU32 { record_byte_offset: reads_aux_1_prev_ts } });
+    columns.push(ColumnMapping { col_index: 8, computation: TimestampDecomp { curr_ts_byte_offset: from_timestamp, curr_ts_delta: 1, prev_ts_byte_offset: reads_aux_1_prev_ts, limb_index: 0 } });
+    columns.push(ColumnMapping { col_index: 9, computation: TimestampDecomp { curr_ts_byte_offset: from_timestamp, curr_ts_delta: 1, prev_ts_byte_offset: reads_aux_1_prev_ts, limb_index: 1 } });
+
+    // ── Core columns (10-31) ────────────────────────────────────────────────
+    for i in 0..4 {
+        columns.push(ColumnMapping { col_index: 10 + i, computation: DirectU8 { record_byte_offset: a_0 + i } });
+    }
+    for i in 0..4 {
+        columns.push(ColumnMapping { col_index: 14 + i, computation: DirectU8 { record_byte_offset: b_0 + i } });
+    }
+    // cmp_result (branch taken when (cmp_result_internal ^ ge_op) selects taken-side).
+    columns.push(ColumnMapping { col_index: 18, computation: BranchLtCmpResult { opcode_byte_offset: core_opcode, a_byte_offset: a_0, b_byte_offset: b_0 } });
+    // imm (already a u32 in record).
+    columns.push(ColumnMapping { col_index: 19, computation: DirectU32 { record_byte_offset: core_imm } });
+    // opcode flags: BLT=0, BLTU=1, BGE=2, BGEU=3.
+    columns.push(ColumnMapping { col_index: 20, computation: BoolFromOpcode { opcode_byte_offset: core_opcode, expected_opcode: 0 } });
+    columns.push(ColumnMapping { col_index: 21, computation: BoolFromOpcode { opcode_byte_offset: core_opcode, expected_opcode: 1 } });
+    columns.push(ColumnMapping { col_index: 22, computation: BoolFromOpcode { opcode_byte_offset: core_opcode, expected_opcode: 2 } });
+    columns.push(ColumnMapping { col_index: 23, computation: BoolFromOpcode { opcode_byte_offset: core_opcode, expected_opcode: 3 } });
+    // a_msb_f, b_msb_f.
+    columns.push(ColumnMapping { col_index: 24, computation: BranchLtAMsbF { opcode_byte_offset: core_opcode, a_byte_offset: a_0 } });
+    columns.push(ColumnMapping { col_index: 25, computation: BranchLtBMsbF { opcode_byte_offset: core_opcode, b_byte_offset: b_0 } });
+    // cmp_lt (independent of opcode direction).
+    columns.push(ColumnMapping { col_index: 26, computation: BranchLtCmpLt { opcode_byte_offset: core_opcode, a_byte_offset: a_0, b_byte_offset: b_0 } });
+    // diff_marker[0..3].
+    for i in 0..4 {
+        columns.push(ColumnMapping { col_index: 27 + i, computation: BranchLtDiffMarker { opcode_byte_offset: core_opcode, a_byte_offset: a_0, b_byte_offset: b_0, marker_index: i } });
+    }
+    // diff_val.
+    columns.push(ColumnMapping { col_index: 31, computation: BranchLtDiffVal { opcode_byte_offset: core_opcode, a_byte_offset: a_0, b_byte_offset: b_0 } });
+
+    AirColumnMapping {
+        air_name: "BranchLt",
+        width: 32,
         record_byte_size: 24 + 16, // adapter(24) + core(16 incl padding)
         columns,
     }

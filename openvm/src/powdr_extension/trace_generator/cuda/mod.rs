@@ -88,68 +88,6 @@ fn maybe_warmup_vpmm(target_bytes: usize) {
     );
 }
 
-/// Measurement-only: time how long it takes to upload every arena's bytes to
-/// a single contiguous `DeviceBuffer<u8>` without consuming the arenas. The
-/// allocated buffer is dropped immediately after the sync; intended for
-/// apples-to-apples comparison against the JIT path's `arena_direct_h2d`.
-fn measure_arenas_direct_h2d_borrowed(
-    arenas: &[(String, &openvm_circuit::arch::DenseRecordArena)],
-) -> (f64, usize) {
-    use openvm_cuda_common::copy::cuda_memcpy;
-    use openvm_cuda_common::d_buffer::DeviceBuffer;
-    use std::ffi::c_void;
-
-    let total_size: usize = arenas.iter().map(|(_, a)| a.allocated().len()).sum();
-    if total_size == 0 {
-        return (0.0, 0);
-    }
-    let per_call_profile = std::env::var("POWDR_PER_CALL_PROFILE").is_ok();
-
-    let start = std::time::Instant::now();
-    let alloc_start = std::time::Instant::now();
-    let dst = DeviceBuffer::<u8>::with_capacity(total_size);
-    if per_call_profile {
-        tracing::info!(
-            "[per_call] measure.alloc                       {:8.3} ms ({} bytes)",
-            alloc_start.elapsed().as_secs_f64() * 1000.0,
-            total_size
-        );
-    }
-    let mut cursor: usize = 0;
-    for (name, arena) in arenas {
-        let bytes = arena.allocated();
-        let len = bytes.len();
-        let call_start = std::time::Instant::now();
-        unsafe {
-            let dst_ptr = dst.as_mut_ptr().add(cursor) as *mut c_void;
-            let src_ptr = bytes.as_ptr() as *const c_void;
-            cuda_memcpy::<false, true>(dst_ptr, src_ptr, len).expect("measurement H2D failed");
-        }
-        if per_call_profile {
-            // Sync between calls to attribute time per copy.
-            let _ = openvm_cuda_common::stream::current_stream_sync();
-            let dur_ms = call_start.elapsed().as_secs_f64() * 1000.0;
-            let bw = if dur_ms > 0.0 {
-                (len as f64) / 1.0e6 / dur_ms
-            } else {
-                0.0
-            };
-            tracing::info!(
-                "[per_call] measure.memcpy[{:<60}] {:8.3} ms ({} bytes, {:.2} GB/s)",
-                name.chars().take(60).collect::<String>(),
-                dur_ms,
-                len,
-                bw
-            );
-        }
-        cursor += len;
-    }
-    let _ = openvm_cuda_common::stream::current_stream_sync();
-    let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    drop(dst);
-    (elapsed_ms, total_size)
-}
-
 /// Copy each arena's bytes directly to a single contiguous `DeviceBuffer<u8>`
 /// without first concatenating on the host. Returns the buffer plus the
 /// per-AIR byte offsets within it. The arenas Vec is kept alive until the
@@ -536,24 +474,6 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
                 })
                 .collect();
 
-        // Optional: measure pure H2D cost across all arenas the way the JIT
-        // path does it, before they're consumed by generate_proving_ctx.
-        // This double-uploads (the chip will H2D again internally), so it
-        // skews trace_gen total — only run when profiling.
-        if profile_on {
-            let borrowed: Vec<(String, &openvm_circuit::arch::DenseRecordArena)> =
-                chip_arena_triples
-                    .iter()
-                    .map(|(_, name, arena)| (name.clone(), arena))
-                    .collect();
-            let (ms, bytes) = measure_arenas_direct_h2d_borrowed(&borrowed);
-            tracing::info!(
-                "[trace_profile] baseline.measure_h2d_only        {:8.3} ms ({} bytes; for direct comparison vs JIT.arena_direct_h2d)",
-                ms,
-                bytes
-            );
-        }
-
         let dummy_trace_by_air_name: HashMap<String, DeviceMatrix<BabyBear>> = time_stage(
             "baseline.fill_dummy_traces",
             || {
@@ -834,6 +754,14 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
                 "VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>",
                 jit_mapping::branch_equal_mapping_for(ArenaType::Dense),
             );
+            m.insert(
+                "VmAirWrapper<Rv32BaseAluAdapterAir, LessThanCoreAir<4, 8>",
+                jit_mapping::less_than_mapping_for(ArenaType::Dense),
+            );
+            m.insert(
+                "VmAirWrapper<Rv32BranchAdapterAir, BranchLessThanCoreAir<4, 8>",
+                jit_mapping::branch_lt_mapping_for(ArenaType::Dense),
+            );
             m
         };
 
@@ -1083,6 +1011,14 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
             m.insert(
                 "VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>",
                 jit_mapping::branch_equal_mapping_for(ArenaType::Dense),
+            );
+            m.insert(
+                "VmAirWrapper<Rv32BaseAluAdapterAir, LessThanCoreAir<4, 8>",
+                jit_mapping::less_than_mapping_for(ArenaType::Dense),
+            );
+            m.insert(
+                "VmAirWrapper<Rv32BranchAdapterAir, BranchLessThanCoreAir<4, 8>",
+                jit_mapping::branch_lt_mapping_for(ArenaType::Dense),
             );
             m
         };
@@ -1580,6 +1516,20 @@ fn column_comp_to_emitter(
                 limb_index: *limb_index as u16,
             })
         }
+        // LessThan / BranchLessThan arms are not yet emitted by NVRTC. Returning
+        // None forces per-APC fallback to the descriptor backend, which
+        // implements them.
+        CC::LessThanCmpResult { .. }
+        | CC::LessThanDiffVal { .. }
+        | CC::LessThanDiffMarker { .. }
+        | CC::LessThanBMsbF { .. }
+        | CC::LessThanCMsbF { .. }
+        | CC::BranchLtCmpResult { .. }
+        | CC::BranchLtCmpLt { .. }
+        | CC::BranchLtDiffVal { .. }
+        | CC::BranchLtDiffMarker { .. }
+        | CC::BranchLtAMsbF { .. }
+        | CC::BranchLtBMsbF { .. } => None,
     }
 }
 
@@ -1737,6 +1687,72 @@ fn column_comp_to_jit_desc(
             desc.p[2] = *read_data_byte_offset as u16;
             desc.p[3] = *prev_data_byte_offset as u16;
             desc.p[4] = *limb_index as u16;
+        }
+        // ── LessThan arms (24-28) — share (opcode, b, c) signature ──
+        CC::LessThanCmpResult { opcode_byte_offset, b_byte_offset, c_byte_offset } => {
+            desc.comp_type = 24;
+            desc.p[0] = *opcode_byte_offset as u16;
+            desc.p[1] = *b_byte_offset as u16;
+            desc.p[2] = *c_byte_offset as u16;
+        }
+        CC::LessThanDiffVal { opcode_byte_offset, b_byte_offset, c_byte_offset } => {
+            desc.comp_type = 25;
+            desc.p[0] = *opcode_byte_offset as u16;
+            desc.p[1] = *b_byte_offset as u16;
+            desc.p[2] = *c_byte_offset as u16;
+        }
+        CC::LessThanDiffMarker { opcode_byte_offset, b_byte_offset, c_byte_offset, marker_index } => {
+            desc.comp_type = 26;
+            desc.p[0] = *opcode_byte_offset as u16;
+            desc.p[1] = *b_byte_offset as u16;
+            desc.p[2] = *c_byte_offset as u16;
+            desc.p[3] = *marker_index as u16;
+        }
+        CC::LessThanBMsbF { opcode_byte_offset, b_byte_offset } => {
+            desc.comp_type = 27;
+            desc.p[0] = *opcode_byte_offset as u16;
+            desc.p[1] = *b_byte_offset as u16;
+        }
+        CC::LessThanCMsbF { opcode_byte_offset, c_byte_offset } => {
+            desc.comp_type = 28;
+            desc.p[0] = *opcode_byte_offset as u16;
+            desc.p[1] = *c_byte_offset as u16;
+        }
+        // ── BranchLessThan arms (29-34) — share (opcode, a, b) signature ──
+        CC::BranchLtCmpResult { opcode_byte_offset, a_byte_offset, b_byte_offset } => {
+            desc.comp_type = 29;
+            desc.p[0] = *opcode_byte_offset as u16;
+            desc.p[1] = *a_byte_offset as u16;
+            desc.p[2] = *b_byte_offset as u16;
+        }
+        CC::BranchLtCmpLt { opcode_byte_offset, a_byte_offset, b_byte_offset } => {
+            desc.comp_type = 30;
+            desc.p[0] = *opcode_byte_offset as u16;
+            desc.p[1] = *a_byte_offset as u16;
+            desc.p[2] = *b_byte_offset as u16;
+        }
+        CC::BranchLtDiffVal { opcode_byte_offset, a_byte_offset, b_byte_offset } => {
+            desc.comp_type = 31;
+            desc.p[0] = *opcode_byte_offset as u16;
+            desc.p[1] = *a_byte_offset as u16;
+            desc.p[2] = *b_byte_offset as u16;
+        }
+        CC::BranchLtDiffMarker { opcode_byte_offset, a_byte_offset, b_byte_offset, marker_index } => {
+            desc.comp_type = 32;
+            desc.p[0] = *opcode_byte_offset as u16;
+            desc.p[1] = *a_byte_offset as u16;
+            desc.p[2] = *b_byte_offset as u16;
+            desc.p[3] = *marker_index as u16;
+        }
+        CC::BranchLtAMsbF { opcode_byte_offset, a_byte_offset } => {
+            desc.comp_type = 33;
+            desc.p[0] = *opcode_byte_offset as u16;
+            desc.p[1] = *a_byte_offset as u16;
+        }
+        CC::BranchLtBMsbF { opcode_byte_offset, b_byte_offset } => {
+            desc.comp_type = 34;
+            desc.p[0] = *opcode_byte_offset as u16;
+            desc.p[1] = *b_byte_offset as u16;
         }
     }
 
