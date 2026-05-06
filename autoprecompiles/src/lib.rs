@@ -351,7 +351,7 @@ pub fn build<A: Adapter>(
     metrics::counter!("before_opt_interactions", &labels)
         .absolute(machine.bus_interactions.len() as u64);
 
-    let (machine, column_allocator) = optimizer::optimize::<_, _, _, A::MemoryBusInteraction<_>>(
+    let (machine, column_allocator) = optimizer::optimize(
         machine,
         vm_config.bus_interaction_handler,
         degree_bound,

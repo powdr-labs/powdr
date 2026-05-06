@@ -7,10 +7,7 @@ use powdr_autoprecompiles::{
 };
 use powdr_number::BabyBearField;
 
-use powdr_openvm_bus_interaction_handler::{
-    bus_map::OpenVmBusType, memory_bus_interaction::OpenVmMemoryBusInteraction,
-    OpenVmBusInteractionHandler,
-};
+use powdr_openvm_bus_interaction_handler::{bus_map::OpenVmBusType, OpenVmBusInteractionHandler};
 
 type TestApc = Apc<BabyBearField, SimpleInstruction<BabyBearField>, (), ()>;
 
@@ -38,7 +35,7 @@ fn optimize_keccak_benchmark(c: &mut Criterion) {
                 )
             },
             |(machine, column_allocator)| {
-                optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
+                optimize(
                     black_box(machine),
                     OpenVmBusInteractionHandler::default(),
                     DEFAULT_DEGREE_BOUND,
