@@ -435,3 +435,213 @@ jobs:
           destination_dir: results/${{ steps.date.outputs.value }}-gpu/
           keep_files: true
           enable_jekyll: true
+
+  # Experimental: same reth GPU bench as test_apc_gpu, but the GPU step runs on
+  # a Modal L4 instead of the self-hosted GPU box. Co-exists with test_apc_gpu
+  # so we can A/B compare. Apc-cache is precomputed on the (cheap) GH runner
+  # via `--mode compile` and shipped to Modal via a Volume; Modal only does
+  # `--mode prove-stark`.
+  test_apc_gpu_modal:
+    # 32-core larger runner so the cold-cache cargo build inside run.sh
+    # (host prover binary, ~revm+alloy+openvm graph) finishes in minutes
+    # instead of 30+ on ubuntu-latest's 4 vCPUs.
+    runs-on: bench-cpu-128g
+
+    env:
+      RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+      OPENVM_ETH_REF: 7987264fe4e96b9077cdcc15e5192a69df9d8413
+      MODAL_VOLUME: powdr-nightly-gpu-cache
+      # Same block flowed through prefetch, every compile invocation, and
+      # every Modal prove call so all caches and metrics agree.
+      BLOCK_NUMBER: 24171377
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: ⚡ Cache rust
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-apc-gpu-modal-${{ hashFiles('**/Cargo.toml') }}
+
+      - name: Install cargo openvm
+        run: |
+          rustup toolchain install 1.91.1
+          cargo +1.91.1 install --git 'https://github.com/powdr-labs/openvm.git' --tag "v2.0.0-beta.2-powdr" cargo-openvm
+
+      - name: Install OpenVM guest toolchain
+        run: |
+          rustup toolchain install nightly-2026-01-18
+          rustup component add rust-src --toolchain nightly-2026-01-18
+
+      - name: Setup python venv
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install -r openvm-riscv/scripts/requirements.txt
+          pip install modal
+
+      - name: Patch benchmark
+        uses: ./.github/actions/patch-openvm-eth
+
+      - name: Prefetch RPC cache (CPU)
+        # Warm-up to populate openvm-eth/rpc-cache/ with the block data Modal
+        # will need. Otherwise every prove-stark on Modal re-downloads the
+        # block over RPC, burning GPU minutes on I/O.
+        run: |
+          cd openvm-eth
+          echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
+          ./run.sh --apc 0 --block "$BLOCK_NUMBER" --mode execute || exit 1
+          tar -czf ../rpc-cache.tgz rpc-cache
+
+      - name: Compile APC caches (CPU)
+        # Each `--mode compile --apc N` writes its bin files (including the
+        # proving + verification keys) into apc-cache/ under names that
+        # don't collide across apc counts, so the dir accumulates entries
+        # for every N we compile and a single tarball serves every
+        # prove-stark invocation on Modal. apc=0 gets compiled too so its
+        # keys are part of the same tarball.
+        run: |
+          cd openvm-eth
+          for apc in 0 10 30; do
+            ./run.sh --apc "$apc" --block "$BLOCK_NUMBER" --mode compile || exit 1
+          done
+          tar -czf ../apc-cache.tgz apc-cache
+
+      - name: Upload caches to Modal Volume
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          source .venv/bin/activate
+          # `Volume.from_name(..., create_if_missing=True)` in modal_app.py
+          # only creates the volume when the function runs. `modal volume put`
+          # is a separate path that errors if the volume doesn't already exist,
+          # so create it idempotently here.
+          modal volume create "$MODAL_VOLUME" 2>/dev/null || true
+          modal volume put "$MODAL_VOLUME" rpc-cache.tgz "/${RUN_ID}/rpc-cache.tgz" --force
+          modal volume put "$MODAL_VOLUME" apc-cache.tgz "/${RUN_ID}/apc-cache.tgz" --force
+
+      - name: Run prove-stark on Modal
+        # Deliberately do NOT pass RPC_1: the prefetch+upload steps populate
+        # rpc-cache.tgz with every block we'll prove, so Modal should be a
+        # pure cache consumer. The function patches run.sh to drop --rpc-url
+        # and inject --chain-id 1, so a missing-cache scenario fails loudly
+        # at the binary's cache lookup rather than silently re-fetching.
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          source .venv/bin/activate
+          for apc in 0 10 30; do
+            modal run gpu_bench/modal_app.py::prove_block \
+              --apc "$apc" \
+              --block "$BLOCK_NUMBER" \
+              --run-id "$RUN_ID" \
+              --powdr-sha "$GITHUB_SHA" \
+              --openvm-eth-ref "$OPENVM_ETH_REF" || exit 1
+          done
+
+      - name: Download Modal outputs
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          source .venv/bin/activate
+          mkdir -p modal-out
+          modal volume get "$MODAL_VOLUME" "/${RUN_ID}/" modal-out/ --force
+
+      - name: Post-process and assemble results
+        run: |
+          source .venv/bin/activate
+          mkdir -p results/reth_gpu_modal
+          RES_DIR=results/reth_gpu_modal
+          for apc in 0 10 30; do
+            label=$(printf 'apc%03d' "$apc")
+            mv "modal-out/${RUN_ID}/out-${apc}/metrics.json" "$RES_DIR/${label}.json"
+            python ./openvm-riscv/scripts/plot_trace_cells.py \
+              -o "$RES_DIR/trace_cells_${label}.png" \
+              "$RES_DIR/${label}.json" \
+              > "$RES_DIR/trace_cells_${label}.txt"
+          done
+          # Apc candidate aggregate produced during the CPU compile step.
+          # Same set of candidates regardless of apc count, so just keep one.
+          mv openvm-eth/apcs/apc_candidates.json $RES_DIR/apc_candidates.json
+          python ./openvm-riscv/scripts/basic_metrics.py summary-table --csv \
+            $RES_DIR/apc000.json $RES_DIR/apc010.json $RES_DIR/apc030.json \
+            > $RES_DIR/basic_metrics.csv
+          python ./openvm-riscv/scripts/basic_metrics.py plot \
+            $RES_DIR/apc000.json $RES_DIR/apc010.json $RES_DIR/apc030.json \
+            -o $RES_DIR/proof_time_breakdown.png
+          python ./openvm-riscv/scripts/basic_metrics.py combine \
+            $RES_DIR/apc000.json $RES_DIR/apc010.json $RES_DIR/apc030.json \
+            > $RES_DIR/combined_metrics.json
+          python ./autoprecompiles/scripts/plot_effectiveness.py \
+            $RES_DIR/apc_candidates.json --output $RES_DIR/effectiveness.png
+
+      - name: Save revisions and run info
+        run: |
+          echo "openvm-eth: $OPENVM_ETH_REF" > results/run.txt
+          echo "powdr: $GITHUB_SHA" >> results/run.txt
+          echo "run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" >> results/run.txt
+
+      - name: upload result artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results-reth-gpu-modal
+          path: |
+            results/*
+
+      - name: get the date/time
+        id: date
+        run: echo "value=$(date +'%Y-%m-%d-%H%M')" >> $GITHUB_OUTPUT
+
+      - name: Generate bench results README
+        run: |
+          source .venv/bin/activate
+          python3 ./openvm-riscv/scripts/generate_bench_results_readme.py \
+            ./results \
+            "${{ steps.date.outputs.value }}-gpu-modal" \
+            --output ./results/readme.md
+
+      # Same partial+sparse clone push as publish_bench_results — keeps disk
+      # bounded on ubuntu-latest regardless of how big bench-results gh-pages
+      # grows. See the comment on the publish_bench_results step.
+      - name: commit to bench results
+        env:
+          BENCH_RESULTS_TOKEN: ${{ secrets.BENCH_RESULTS_TOKEN }}
+          DATE: ${{ steps.date.outputs.value }}-gpu-modal
+        run: |
+          set -euo pipefail
+          REPO=$(mktemp -d)
+          git clone --filter=blob:none --sparse --depth=1 --branch=gh-pages \
+            "https://x-access-token:${BENCH_RESULTS_TOKEN}@github.com/powdr-labs/bench-results.git" \
+            "$REPO"
+          cd "$REPO"
+          git sparse-checkout set "results/${DATE}"
+          # Author commits as the github-actions[bot] account so the GitHub
+          # UI shows the bot avatar and groups them with prior peaceiris
+          # commits. The email format is GitHub's noreply convention,
+          # `<user-id>+<login>@users.noreply.github.com`; 41898282 is the
+          # bot's user ID.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p "results/${DATE}"
+          cp -r "${GITHUB_WORKSPACE}/results/." "results/${DATE}/"
+          git add "results/${DATE}"
+          git commit -m "Add nightly results for ${DATE}"
+          git push origin gh-pages
+
+      - name: Cleanup Modal Volume
+        if: always()
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          source .venv/bin/activate || true
+          modal volume rm "$MODAL_VOLUME" "/${RUN_ID}" --recursive 2>&1 || true
