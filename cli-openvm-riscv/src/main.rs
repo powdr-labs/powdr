@@ -46,7 +46,9 @@ struct SharedArgs {
     #[clap(long)]
     max_columns: Option<usize>,
 
-    /// When `--pgo-mode cell`, the directory to persist all APC candidates + a metrics summary
+    /// Directory used both for APC candidate snapshots and as the on-disk APC cache:
+    /// when populated by a previous `generate-apcs` run, PGO selection loads APCs
+    /// from here instead of rebuilding them.
     #[arg(long)]
     apc_candidates_dir: Option<PathBuf>,
 
@@ -71,6 +73,22 @@ struct SharedArgs {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Build APCs for every basic block of the guest and write them to a
+    /// directory. Subsequent `compile`/`execute`/`prove` runs can pass the
+    /// same directory via `--apc-candidates-dir <DIR>` to reuse the cached
+    /// APCs instead of rebuilding them.
+    GenerateApcs {
+        guest: String,
+
+        /// Directory in which to store the generated APCs.
+        #[arg(long)]
+        apc_candidates_dir: PathBuf,
+
+        /// Maximum number of instructions in an APC.
+        #[arg(long)]
+        apc_max_instructions: Option<u32>,
+    },
+
     Compile {
         guest: String,
 
@@ -138,6 +156,23 @@ fn build_powdr_config(shared: &SharedArgs) -> PowdrConfig {
 fn run_command(command: Commands) {
     let guest_opts = GuestOptions::default();
     match command {
+        Commands::GenerateApcs {
+            guest,
+            apc_candidates_dir,
+            apc_max_instructions,
+        } => {
+            // The autoprecompiles count is irrelevant here — we build an APC
+            // for every basic block. `compile`/`prove` choose how many to keep
+            // at consumption time.
+            let mut powdr_config =
+                default_powdr_openvm_config(0, 0).with_apc_candidates_dir(&apc_candidates_dir);
+            if let Some(max) = apc_max_instructions {
+                powdr_config = powdr_config.with_superblocks(1, Some(max), None);
+            }
+            let guest_program = compile_openvm(&guest, guest_opts.clone()).unwrap();
+            powdr_openvm_riscv::generate_apcs(guest_program, powdr_config);
+        }
+
         Commands::Compile { guest, shared } => {
             validate_shared_args(&shared);
             let powdr_config = build_powdr_config(&shared);

@@ -10,7 +10,7 @@ use crate::{
     blocks::{BasicBlock, BlockAndStats, SuperBlock},
     evaluation::{evaluate_apc, EvaluationResult},
     execution_profile::ExecutionProfile,
-    export::{ExportLevel, ExportOptions},
+    pgo::build_or_load_apc,
     EmpiricalConstraints, PowdrConfig,
 };
 
@@ -187,19 +187,7 @@ fn try_generate_candidate<A: Adapter, C: ApcCandidate<A>>(
     vm_config: &AdapterVmConfig<A>,
     empirical_constraints: &EmpiricalConstraints,
 ) -> Option<C> {
-    let export_options = ExportOptions::new(
-        config.apc_candidates_dir_path.clone(),
-        &block.start_pcs(),
-        ExportLevel::OnlyAPC,
-    );
-    let apc = crate::build::<A>(
-        block.clone(),
-        vm_config.clone(),
-        config.degree_bound,
-        export_options,
-        empirical_constraints,
-    )
-    .ok()?;
+    let apc = build_or_load_apc::<A>(block, config, vm_config, empirical_constraints).ok()?;
     let apc_with_stats = evaluate_apc::<A>(vm_config.instruction_handler, apc);
     Some(C::create(apc_with_stats))
 }

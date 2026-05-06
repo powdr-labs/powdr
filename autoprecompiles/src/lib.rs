@@ -33,6 +33,7 @@ use symbolic_machine_generator::statements_to_symbolic_machine;
 use powdr_number::FieldElement;
 
 pub mod adapter;
+pub mod apc_cache;
 pub mod blocks;
 pub mod bus_map;
 pub mod constraint_optimizer;
@@ -74,7 +75,9 @@ pub struct PowdrConfig {
     pub apc_exec_count_cutoff: u32,
     /// Max degree of constraints.
     pub degree_bound: DegreeBound,
-    /// The path to the APC candidates dir, if any.
+    /// Directory used both for APC candidate snapshots (JSON) and for the on-disk APC
+    /// cache (CBOR, named `apc_<start_pc>.cbor`). When set on `compile`/`prove`, PGO
+    /// selectors load APCs from this directory by start PC instead of rebuilding them.
     pub apc_candidates_dir_path: Option<PathBuf>,
     /// Whether to use optimistic precompiles.
     pub should_use_optimistic_precompiles: bool,
