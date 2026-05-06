@@ -721,50 +721,36 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
                 .collect::<Vec<_>>()
         });
 
-        // Per-kind upload + launch with explicit timers so we can break
-        // down where time goes. `upload` is the cuMemcpyHtoD to the
-        // `__constant__` symbol; `launch` is cuLaunchKernel +
-        // cuCtxSynchronize (host-side). Empty kinds skip both.
-        let do_upload = |stage: &str,
-                         k_idx: usize,
-                         sym_name: &str,
-                         ops_bytes: &[u8]|
-         -> bool {
-            if ops_bytes.is_empty() {
-                return false;
-            }
-            time_stage(stage, || {
-                let module = compiled[k_idx].module();
-                let sym_c = CString::new(sym_name).unwrap();
-                let rc = unsafe {
-                    cuda_abi::powdr_nvrtc_set_constant_symbol(
-                        module,
-                        sym_c.as_ptr(),
-                        ops_bytes.as_ptr() as *const std::ffi::c_void,
-                        ops_bytes.len(),
-                    )
-                };
-                assert_eq!(rc, 0, "set_constant_symbol({}) rc={}", sym_name, rc);
-            });
-            true
-        };
-
-        let do_launch = |stage: &str,
-                         k_idx: usize,
-                         n_ops: u32,
-                         d_hist: *mut u32,
-                         extra0: u32,
-                         extra1: Option<u32>| {
+        // Per-kind upload + launch with explicit timers. Each kind allocates
+        // a fresh DeviceBuffer<T>, H2Ds the op slice into it, then launches
+        // with bus_v3 (kernel reads ops from the d_ops pointer arg).
+        // Ownership: bufs[i] kept alive until cuCtxSynchronize at end of
+        // launch, then dropped (each Drop triggers cudaFree).
+        let do_kind = |stage_upload: &str,
+                       stage_launch: &str,
+                       k_idx: usize,
+                       ops_bytes: &[u8],
+                       n_ops: u32,
+                       d_hist: *mut u32,
+                       extra0: u32,
+                       extra1: Option<u32>|
+         -> Option<openvm_cuda_common::d_buffer::DeviceBuffer<u8>> {
             if n_ops == 0 {
-                return;
+                return None;
             }
-            time_stage(stage, || {
+            // H2D the op table.
+            let d_ops_buf = time_stage(stage_upload, || {
+                use openvm_cuda_common::copy::MemCopyH2D;
+                ops_bytes.to_device().expect("op table H2D")
+            });
+            // Launch.
+            time_stage(stage_launch, || {
                 let func = compiled[k_idx].function();
                 let warps_per_block = 8u32;
                 let grid_x = n_ops.div_ceil(warps_per_block).max(1);
                 let block_x = 256u32;
                 let rc = unsafe {
-                    cuda_abi::powdr_nvrtc_launch_bus_v2(
+                    cuda_abi::powdr_nvrtc_launch_bus_v3(
                         func,
                         output.buffer().as_ptr() as *const u32,
                         num_apc_calls as i32,
@@ -774,105 +760,85 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
                         extra1.unwrap_or(0),
                         if extra1.is_some() { 1 } else { 0 },
                         n_ops,
+                        d_ops_buf.as_ptr() as *const std::ffi::c_void,
                         grid_x,
                         block_x,
                     )
                 };
-                assert_eq!(rc, 0, "launch_bus_v2 rc={}", rc);
+                assert_eq!(rc, 0, "launch_bus_v3 rc={}", rc);
             });
+            Some(d_ops_buf)
         };
 
-        // var_range
+        // Keep buffers alive until end of scope (after all launches).
+        let _ = CString::new(""); // suppress unused-import warning if any
         let var_bytes: &[u8] = unsafe {
             std::slice::from_raw_parts(
                 p.var_ops.as_ptr() as *const u8,
                 std::mem::size_of_val(&p.var_ops[..]),
             )
         };
-        if do_upload(
+        let _b0 = do_kind(
             "bus_kernel_nvrtc.upload_var",
+            "bus_kernel_nvrtc.launch_var",
             0,
-            "k_var_ops",
             var_bytes,
-        ) {
-            do_launch(
-                "bus_kernel_nvrtc.launch_var",
-                0,
-                p.var_ops.len() as u32,
-                var_range_count.as_mut_ptr() as *mut u32,
-                var_range_count.len() as u32,
-                None,
-            );
-        }
+            p.var_ops.len() as u32,
+            var_range_count.as_mut_ptr() as *mut u32,
+            var_range_count.len() as u32,
+            None,
+        );
 
-        // tuple2
         let tup_bytes: &[u8] = unsafe {
             std::slice::from_raw_parts(
                 p.tuple_ops.as_ptr() as *const u8,
                 std::mem::size_of_val(&p.tuple_ops[..]),
             )
         };
-        if do_upload(
+        let _b1 = do_kind(
             "bus_kernel_nvrtc.upload_tup",
+            "bus_kernel_nvrtc.launch_tup",
             1,
-            "k_tup_ops",
             tup_bytes,
-        ) {
-            do_launch(
-                "bus_kernel_nvrtc.launch_tup",
-                1,
-                p.tuple_ops.len() as u32,
-                tuple2_count.as_mut_ptr() as *mut u32,
-                tuple2_sizes[0],
-                Some(tuple2_sizes[1]),
-            );
-        }
+            p.tuple_ops.len() as u32,
+            tuple2_count.as_mut_ptr() as *mut u32,
+            tuple2_sizes[0],
+            Some(tuple2_sizes[1]),
+        );
 
-        // bitwise range
         let br_bytes: &[u8] = unsafe {
             std::slice::from_raw_parts(
                 p.bitwise_range_ops.as_ptr() as *const u8,
                 std::mem::size_of_val(&p.bitwise_range_ops[..]),
             )
         };
-        if do_upload(
+        let _b2 = do_kind(
             "bus_kernel_nvrtc.upload_br",
+            "bus_kernel_nvrtc.launch_br",
             2,
-            "k_bit_range_ops",
             br_bytes,
-        ) {
-            do_launch(
-                "bus_kernel_nvrtc.launch_br",
-                2,
-                p.bitwise_range_ops.len() as u32,
-                bitwise_count.as_mut_ptr() as *mut u32,
-                0,
-                None,
-            );
-        }
+            p.bitwise_range_ops.len() as u32,
+            bitwise_count.as_mut_ptr() as *mut u32,
+            0,
+            None,
+        );
 
-        // bitwise xor
         let bx_bytes: &[u8] = unsafe {
             std::slice::from_raw_parts(
                 p.bitwise_xor_ops.as_ptr() as *const u8,
                 std::mem::size_of_val(&p.bitwise_xor_ops[..]),
             )
         };
-        if do_upload(
+        let _b3 = do_kind(
             "bus_kernel_nvrtc.upload_bx",
+            "bus_kernel_nvrtc.launch_bx",
             3,
-            "k_bit_xor_ops",
             bx_bytes,
-        ) {
-            do_launch(
-                "bus_kernel_nvrtc.launch_bx",
-                3,
-                p.bitwise_xor_ops.len() as u32,
-                bitwise_count.as_mut_ptr() as *mut u32,
-                0,
-                None,
-            );
-        }
+            p.bitwise_xor_ops.len() as u32,
+            bitwise_count.as_mut_ptr() as *mut u32,
+            0,
+            None,
+        );
 
         // Bytecode-VM fallback for the `unhandled` tail. Split into compile
         // (host-side construct + H2D) and launch (kernel + sync) so we can

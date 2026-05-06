@@ -153,6 +153,23 @@ extern "C" {
         size_bytes: usize,
     ) -> i32;
 
+    /// Launch a kind-templated bus kernel (bus_v3). Same shape as v2 plus a
+    /// `d_ops` pointer (op tables now in global memory).
+    pub fn powdr_nvrtc_launch_bus_v3(
+        function: *mut std::ffi::c_void,
+        d_output: *const u32,
+        num_apc_calls: i32,
+        h: u64,
+        d_hist: *mut u32,
+        extra0: u32,
+        extra1: u32,
+        has_extra1: u32,
+        n_ops: u32,
+        d_ops: *const std::ffi::c_void,
+        grid_x: u32,
+        block_x: u32,
+    ) -> i32;
+
     /// Launch a kind-templated bus kernel (bus_v2). `extra0`/`extra1` are
     /// the kind-specific extra kernel args (e.g., `var_num_bins` for
     /// var_range; tuple2 sizes for tuple2; nothing for bitwise — pass 0).

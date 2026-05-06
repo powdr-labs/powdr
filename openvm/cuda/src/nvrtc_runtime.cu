@@ -217,6 +217,74 @@ int powdr_nvrtc_set_constant_symbol(
     return 0;
 }
 
+// Launch a kind-templated bus kernel matching the bus_v3 signature: same
+// shape as v2 but takes a `d_ops` pointer instead of relying on a
+// __constant__ symbol upload (op tables now live in global memory so they
+// can grow past 64KB per module).
+//
+//   __global__ void <kernel>(
+//       const unsigned int* d_output, int N, unsigned long long H,
+//       unsigned int* d_hist,
+//       <up to 2 size args>,
+//       unsigned int n_ops,
+//       const void* d_ops);
+//
+// `extra1` is used only by tuple2 (second size arg); pass 0 + has_extra1=0
+// for var_range and bitwise. Synchronizes before returning.
+int powdr_nvrtc_launch_bus_v3(
+    void*               fn,
+    const unsigned int* d_output,
+    int                 num_apc_calls,
+    unsigned long long  H,
+    unsigned int*       d_hist,
+    unsigned int        extra0,
+    unsigned int        extra1,
+    unsigned int        has_extra1,
+    unsigned int        n_ops,
+    const void*         d_ops,
+    unsigned int        grid_x,
+    unsigned int        block_x
+) {
+    if (!ensure_primary_context()) return -1;
+    if (fn == nullptr) return -2;
+    if (grid_x == 0)  grid_x = 1;
+    if (block_x == 0) block_x = 256;
+
+    void* args_no_extra1[] = {
+        (void*)&d_output,
+        (void*)&num_apc_calls,
+        (void*)&H,
+        (void*)&d_hist,
+        (void*)&extra0,
+        (void*)&n_ops,
+        (void*)&d_ops,
+    };
+    void* args_with_extra1[] = {
+        (void*)&d_output,
+        (void*)&num_apc_calls,
+        (void*)&H,
+        (void*)&d_hist,
+        (void*)&extra0,
+        (void*)&extra1,
+        (void*)&n_ops,
+        (void*)&d_ops,
+    };
+
+    CUresult r = cuLaunchKernel(
+        (CUfunction)fn,
+        grid_x, 1, 1,
+        block_x, 1, 1,
+        0,
+        nullptr,
+        has_extra1 ? args_with_extra1 : args_no_extra1,
+        nullptr);
+    if (r != CUDA_SUCCESS) return -2000 - (int)r;
+
+    r = cuCtxSynchronize();
+    if (r != CUDA_SUCCESS) return -2000 - (int)r;
+    return 0;
+}
+
 // Launch a kind-templated bus kernel matching the bus_v2 signature shared
 // by var_range / tuple2 / bitwise_range / bitwise_xor:
 //
