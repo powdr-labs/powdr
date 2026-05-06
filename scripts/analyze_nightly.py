@@ -12,6 +12,7 @@ Results are fetched from: https://github.com/powdr-labs/bench-results/tree/gh-pa
 import argparse
 from datetime import date
 import json
+import os
 import re
 import sys
 from dataclasses import dataclass
@@ -92,6 +93,12 @@ def get_results_directories() -> list[str]:
     """
     url = f"{GITHUB_API_BASE}/contents/results?ref=gh-pages"
     headers = {"Accept": "application/vnd.github.v3+json"}
+    # Authenticated requests get 5000 req/hour vs 60 req/hour unauthenticated;
+    # GitHub Actions runners share IPs across the platform, so the
+    # unauthenticated budget runs out fast and the analysis fails with 403.
+    token = os.environ.get("GITHUB_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
 
     content = fetch_url(url, headers)
     entries = json.loads(content)
