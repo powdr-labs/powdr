@@ -32,28 +32,57 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
     expression::AlgebraicExpression, symbolic_machine::SymbolicBusInteraction,
 };
+use powdr_expression::AlgebraicUnaryOperator;
 
 use super::nvrtc_emit::EmittedKernel;
 
 /// Bumped whenever any kernel source string changes — forces NVRTC and disk
 /// PTX cache invalidation.
-const EMITTER_VERSION: u32 = 4;
+const EMITTER_VERSION: u32 = 5;
 
 /// Maximum simple-form ops per kind in a single APC. Determines the
-/// `__constant__` array size in each kernel. Sized to comfortably fit any
-/// observed APC (keccak peak is ~600 per kind).
-const MAX_OPS_PER_KIND: usize = 4096;
+/// `__constant__` array size in each kernel. Sized to fit comfortably in
+/// CUDA's 64KB-per-module constant memory:
+///   - var (24 B/op):  2048 × 24 =  48 KB
+///   - tup (32 B/op):  2048 × 32 =  64 KB (max)
+///   - bit (32 B/op):  2048 × 32 =  64 KB (max)
+/// Keccak peaks observed: ~700 per kind.
+const MAX_OPS_PER_KIND: usize = 2048;
+
+/// BabyBear prime.
+const P: u32 = 0x7800_0001;
+
+/// Field-modular subtract for canonical inputs. `(a - b) mod P`.
+fn p_sub(a: u32, b: u32) -> u32 {
+    if a >= b {
+        a - b
+    } else {
+        a + P - b
+    }
+}
+
+/// Field-modular negation. `-a mod P`.
+fn p_neg(a: u32) -> u32 {
+    if a == 0 {
+        0
+    } else {
+        P - a
+    }
+}
 
 /// Sentinel for "no guard column" in the op tables — no row should ever
 /// land at column `u32::MAX`, so the kernel uses this to take the
 /// constant-multiplicity path.
 pub const NO_GUARD: u32 = u32::MAX;
 
-/// One simple-form var_range interaction: takes one trace cell as `value`,
-/// asserts it fits in `max_bits` bits, with multiplicity `mult_const` gated
-/// by `guard_col` (or unconditional if `guard_col == NO_GUARD`).
+/// Each "data arg" (var_range value, tuple v0/v1, bitwise x/y) is encoded
+/// as `coef0 * d_output[col] + coef1` in the field, so affine shapes like
+/// `255 - col`, `col - c`, `c + col`, `c * col + d` flow through a single
+/// kernel formula. Coefficients are stored in Montgomery form so the
+/// kernel does `mul_monty(coef0_monty, cell) + add_monty(coef1_monty)`
+/// directly — no host-side encode at launch time.
 ///
-/// Supported mult shapes:
+/// Supported mult shapes (mult_const + guard_col):
 /// - `Number(c)` → mult_const = c, guard_col = NO_GUARD
 /// - `Reference(col)` → mult_const = 1, guard_col = col (0/1 guard)
 /// - `Number(c) * Reference(col)` (any side) → mult_const = c, guard_col = col
@@ -63,6 +92,8 @@ pub struct VarRangeOp {
     pub mult_const: u32,
     pub guard_col: u32,
     pub value_col: u32,
+    pub value_coef0_monty: u32, // monty(1) for plain Reference
+    pub value_coef1_monty: u32, // monty(0) for plain Reference
     pub max_bits: u32,
 }
 
@@ -72,7 +103,11 @@ pub struct Tuple2Op {
     pub mult_const: u32,
     pub guard_col: u32,
     pub v0_col: u32,
+    pub v0_coef0_monty: u32,
+    pub v0_coef1_monty: u32,
     pub v1_col: u32,
+    pub v1_coef0_monty: u32,
+    pub v1_coef1_monty: u32,
 }
 
 /// One simple-form bitwise interaction. Selector is folded by the host —
@@ -83,7 +118,11 @@ pub struct BitwiseOp {
     pub mult_const: u32,
     pub guard_col: u32,
     pub x_col: u32,
+    pub x_coef0_monty: u32,
+    pub x_coef1_monty: u32,
     pub y_col: u32,
+    pub y_coef0_monty: u32,
+    pub y_coef1_monty: u32,
 }
 
 /// Kind of bus interaction.
@@ -266,6 +305,118 @@ fn simplify_mult(
     std::borrow::Cow::Borrowed(expr)
 }
 
+/// Decode an arg expression into the affine form `coef0 * Reference(col) + coef1`.
+/// Returns `(col, coef0_canon, coef1_canon)` — both coefs in canonical
+/// (non-Montgomery) BabyBear, ready for `host_to_monty` at op-table build time.
+///
+/// Supported shapes (after `simplify_mult` collapses Mul-by-1/0):
+/// - `Reference(col)` → (col, 1, 0)
+/// - `Number(c) - Reference(col)` → (col, P-1, c)
+/// - `Reference(col) - Number(c)` → (col, 1, P-c)
+/// - `Number(c) + Reference(col)` (any side) → (col, 1, c)
+/// - `Number(c) * Reference(col)` (any side) → (col, c, 0)
+/// - `Number(c) * Reference(col) + Number(d)` and similar → (col, c, d)
+/// - `Number(d) + Number(c) * Reference(col)` and similar → (col, c, d)
+fn decode_arg(
+    expr: &AlgebraicExpression<BabyBear>,
+    apc_poly_id_to_index: &BTreeMap<u64, usize>,
+) -> Option<(u32, u32, u32)> {
+    let simplified = simplify_mult(expr);
+    let e: &AlgebraicExpression<BabyBear> = simplified.as_ref();
+
+    // Plain Reference.
+    if let Some(col) = as_col(e, apc_poly_id_to_index) {
+        return Some((col, 1, 0));
+    }
+
+    // Plain Number — represent as col == NO_GUARD sentinel? Not supported
+    // here since the kernel always reads d_output[col*H+r]. Reject.
+    if let AlgebraicExpression::Number(_) = e {
+        return None;
+    }
+
+    // UnaryOperation::Minus — recurse on the inner, then negate both coefs.
+    // Captures shapes like `-(c * col)` (= `(P-c) * col`).
+    if let AlgebraicExpression::UnaryOperation(u) = e {
+        if matches!(u.op, AlgebraicUnaryOperator::Minus) {
+            if let Some((col, c0, c1)) = decode_arg(&u.expr, apc_poly_id_to_index) {
+                return Some((col, p_neg(c0), p_neg(c1)));
+            }
+        }
+    }
+
+    if let AlgebraicExpression::BinaryOperation(b) = e {
+        match b.op {
+            powdr_expression::AlgebraicBinaryOperator::Sub => {
+                // Number(c) - Reference(col) → coef0 = -1, coef1 = c
+                if let (Some(c), Some(col)) = (
+                    as_const_u32(&b.left),
+                    as_col(&b.right, apc_poly_id_to_index),
+                ) {
+                    return Some((col, p_neg(1), c));
+                }
+                // Reference(col) - Number(c) → coef0 = 1, coef1 = -c
+                if let (Some(col), Some(c)) = (
+                    as_col(&b.left, apc_poly_id_to_index),
+                    as_const_u32(&b.right),
+                ) {
+                    return Some((col, 1, p_neg(c)));
+                }
+            }
+            powdr_expression::AlgebraicBinaryOperator::Add => {
+                // Number(c) + Reference(col) → coef0 = 1, coef1 = c
+                if let (Some(c), Some(col)) = (
+                    as_const_u32(&b.left),
+                    as_col(&b.right, apc_poly_id_to_index),
+                ) {
+                    return Some((col, 1, c));
+                }
+                // Reference(col) + Number(c) → coef0 = 1, coef1 = c
+                if let (Some(col), Some(c)) = (
+                    as_col(&b.left, apc_poly_id_to_index),
+                    as_const_u32(&b.right),
+                ) {
+                    return Some((col, 1, c));
+                }
+                // Number(d) + (Number(c) * Reference(col)) — affine with constant offset
+                if let Some(d) = as_const_u32(&b.left) {
+                    if let Some((col, c, c1)) = decode_arg(&b.right, apc_poly_id_to_index) {
+                        // Right child is itself an affine expression (col, c, c1).
+                        // Final: c*col + (c1 + d).
+                        let coef1 = (c1 as u64 + d as u64) % (P as u64);
+                        return Some((col, c, coef1 as u32));
+                    }
+                }
+                // (Number(c) * Reference(col)) + Number(d)
+                if let Some(d) = as_const_u32(&b.right) {
+                    if let Some((col, c, c1)) = decode_arg(&b.left, apc_poly_id_to_index) {
+                        let coef1 = (c1 as u64 + d as u64) % (P as u64);
+                        return Some((col, c, coef1 as u32));
+                    }
+                }
+            }
+            powdr_expression::AlgebraicBinaryOperator::Mul => {
+                // Number(c) * Reference(col) → coef0 = c, coef1 = 0
+                if let (Some(c), Some(col)) = (
+                    as_const_u32(&b.left),
+                    as_col(&b.right, apc_poly_id_to_index),
+                ) {
+                    return Some((col, c, 0));
+                }
+                // Reference(col) * Number(c)
+                if let (Some(col), Some(c)) = (
+                    as_col(&b.left, apc_poly_id_to_index),
+                    as_const_u32(&b.right),
+                ) {
+                    return Some((col, c, 0));
+                }
+            }
+        }
+    }
+
+    None
+}
+
 /// Decode a mult expression into `(mult_const, guard_col)` pair.
 ///
 /// - `Number(c)` → (c, NO_GUARD): unconditional multiplicity c
@@ -325,10 +476,10 @@ pub fn partition_apc_bus(input: &BusEmitterInput) -> Result<PartitionedBus, Part
                     });
                 }
                 let mult = decode_mult(&intr.mult, &input.apc_poly_id_to_index);
-                let value_col = as_col(&intr.args[0], &input.apc_poly_id_to_index);
+                let value = decode_arg(&intr.args[0], &input.apc_poly_id_to_index);
                 let max_bits = as_const_u32(&intr.args[1]);
-                if let (Some((mult_const, guard_col)), Some(value_col), Some(max_bits)) =
-                    (mult, value_col, max_bits)
+                if let (Some((mult_const, guard_col)), Some((value_col, c0, c1)), Some(max_bits)) =
+                    (mult, value, max_bits)
                 {
                     if mult_const == 0 {
                         continue;
@@ -337,6 +488,8 @@ pub fn partition_apc_bus(input: &BusEmitterInput) -> Result<PartitionedBus, Part
                         mult_const,
                         guard_col,
                         value_col,
+                        value_coef0_monty: host_to_monty(c0),
+                        value_coef1_monty: host_to_monty(c1),
                         max_bits,
                     });
                 } else {
@@ -351,10 +504,13 @@ pub fn partition_apc_bus(input: &BusEmitterInput) -> Result<PartitionedBus, Part
                     });
                 }
                 let mult = decode_mult(&intr.mult, &input.apc_poly_id_to_index);
-                let v0_col = as_col(&intr.args[0], &input.apc_poly_id_to_index);
-                let v1_col = as_col(&intr.args[1], &input.apc_poly_id_to_index);
-                if let (Some((mult_const, guard_col)), Some(v0_col), Some(v1_col)) =
-                    (mult, v0_col, v1_col)
+                let v0 = decode_arg(&intr.args[0], &input.apc_poly_id_to_index);
+                let v1 = decode_arg(&intr.args[1], &input.apc_poly_id_to_index);
+                if let (
+                    Some((mult_const, guard_col)),
+                    Some((v0_col, v0_c0, v0_c1)),
+                    Some((v1_col, v1_c0, v1_c1)),
+                ) = (mult, v0, v1)
                 {
                     if mult_const == 0 {
                         continue;
@@ -363,7 +519,11 @@ pub fn partition_apc_bus(input: &BusEmitterInput) -> Result<PartitionedBus, Part
                         mult_const,
                         guard_col,
                         v0_col,
+                        v0_coef0_monty: host_to_monty(v0_c0),
+                        v0_coef1_monty: host_to_monty(v0_c1),
                         v1_col,
+                        v1_coef0_monty: host_to_monty(v1_c0),
+                        v1_coef1_monty: host_to_monty(v1_c1),
                     });
                 } else {
                     p.unhandled.push(i);
@@ -377,13 +537,16 @@ pub fn partition_apc_bus(input: &BusEmitterInput) -> Result<PartitionedBus, Part
                     });
                 }
                 let mult = decode_mult(&intr.mult, &input.apc_poly_id_to_index);
-                let x_col = as_col(&intr.args[0], &input.apc_poly_id_to_index);
-                let y_col = as_col(&intr.args[1], &input.apc_poly_id_to_index);
+                let x = decode_arg(&intr.args[0], &input.apc_poly_id_to_index);
+                let y = decode_arg(&intr.args[1], &input.apc_poly_id_to_index);
                 let selector = as_const_u32(&intr.args[3]).ok_or_else(|| {
                     PartitionError::BitwiseSelector(format!("{:?}", intr.args[3]))
                 })?;
-                if let (Some((mult_const, guard_col)), Some(x_col), Some(y_col)) =
-                    (mult, x_col, y_col)
+                if let (
+                    Some((mult_const, guard_col)),
+                    Some((x_col, x_c0, x_c1)),
+                    Some((y_col, y_c0, y_c1)),
+                ) = (mult, x, y)
                 {
                     if mult_const == 0 {
                         continue;
@@ -392,7 +555,11 @@ pub fn partition_apc_bus(input: &BusEmitterInput) -> Result<PartitionedBus, Part
                         mult_const,
                         guard_col,
                         x_col,
+                        x_coef0_monty: host_to_monty(x_c0),
+                        x_coef1_monty: host_to_monty(x_c1),
                         y_col,
+                        y_coef0_monty: host_to_monty(y_c0),
+                        y_coef1_monty: host_to_monty(y_c1),
                     };
                     match selector {
                         0 => p.bitwise_range_ops.push(op),
@@ -560,16 +727,69 @@ __device__ __forceinline__ unsigned int monty_reduce(unsigned long long x) {
 }
 
 // Op structs match the Rust #[repr(C)] layout in nvrtc_bus_emit.rs.
-struct VarRangeOp { unsigned int mult_const; unsigned int guard_col; unsigned int value_col; unsigned int max_bits; };
-struct Tuple2Op   { unsigned int mult_const; unsigned int guard_col; unsigned int v0_col;    unsigned int v1_col; };
-struct BitwiseOp  { unsigned int mult_const; unsigned int guard_col; unsigned int x_col;     unsigned int y_col; };
+struct VarRangeOp {
+    unsigned int mult_const;
+    unsigned int guard_col;
+    unsigned int value_col;
+    unsigned int value_coef0_monty;
+    unsigned int value_coef1_monty;
+    unsigned int max_bits;
+};
+struct Tuple2Op {
+    unsigned int mult_const;
+    unsigned int guard_col;
+    unsigned int v0_col;
+    unsigned int v0_coef0_monty;
+    unsigned int v0_coef1_monty;
+    unsigned int v1_col;
+    unsigned int v1_coef0_monty;
+    unsigned int v1_coef1_monty;
+};
+struct BitwiseOp {
+    unsigned int mult_const;
+    unsigned int guard_col;
+    unsigned int x_col;
+    unsigned int x_coef0_monty;
+    unsigned int x_coef1_monty;
+    unsigned int y_col;
+    unsigned int y_coef0_monty;
+    unsigned int y_coef1_monty;
+};
 
 #define NO_GUARD 0xFFFFFFFFu
 
+// Field arithmetic in Montgomery form. Inputs/outputs are u32 monty values.
+__device__ __forceinline__ unsigned int add_monty(unsigned int a, unsigned int b) {
+    constexpr unsigned int Pp = 0x78000001u;
+    unsigned int s = a + b;
+    return s >= Pp ? s - Pp : s;
+}
+__device__ __forceinline__ unsigned int mul_monty(unsigned int a, unsigned int b) {
+    return monty_reduce((unsigned long long)a * (unsigned long long)b);
+}
+
+// Evaluates `coef0_monty * d_output[col*H + r] + coef1_monty` and returns the
+// canonical (non-Monty) result. For the simple case (coef0_monty = monty(1),
+// coef1_monty = monty(0)), this is equivalent to `monty_reduce(cell)` modulo
+// the extra mul_monty + add_monty, which ptxas folds into the load chain.
+__device__ __forceinline__ unsigned int eval_affine_arg(
+    unsigned int col,
+    unsigned int coef0_monty,
+    unsigned int coef1_monty,
+    const unsigned int* d_output,
+    unsigned long long H,
+    int r
+) {
+    unsigned int cell = d_output[(unsigned long long)col * H + (unsigned long long)r];
+    unsigned int v_monty = mul_monty(coef0_monty, cell);
+    v_monty = add_monty(v_monty, coef1_monty);
+    return monty_reduce(v_monty);
+}
+
 // Returns the canonical u32 multiplicity for this (op, row): mult_const if
 // the guard column is unset (NO_GUARD) or the guard cell at (col, r) is
-// nonzero; 0 otherwise. Per-lane value, but uniform within warp when guard
-// happens to be uniform across the rows the warp processes.
+// nonzero; 0 otherwise. mult_const is uniform within the warp; the guard
+// read may be per-lane.
 __device__ __forceinline__ unsigned int eval_mult(
     unsigned int mult_const,
     unsigned int guard_col,
@@ -591,7 +811,7 @@ __device__ __forceinline__ unsigned int eval_mult(
 /// per-lane. Lanes whose guard evaluates to 0 take `continue` and don't
 /// participate in `__match_any_sync`, keeping warp-dedup semantics correct.
 const VAR_RANGE_KERNEL_SRC: &str = r#"
-__constant__ VarRangeOp k_var_ops[4096];
+__constant__ VarRangeOp k_var_ops[2048];
 
 extern "C" __global__ void apc_bus_var_range(
     const unsigned int* __restrict__ d_output,
@@ -607,13 +827,14 @@ extern "C" __global__ void apc_bus_var_range(
 
     for (int i = blockIdx.x * wpb + warp; i < (int)n_var_ops; i += gridDim.x * wpb) {
         VarRangeOp op = k_var_ops[i];
-        unsigned long long base = (unsigned long long)op.value_col * H;
-        unsigned int       bits_one = 1u << op.max_bits;
+        unsigned int bits_one = 1u << op.max_bits;
         lookup::Histogram hist(d_var_hist, var_num_bins);
         for (int r = lane; r < N; r += 32) {
             unsigned int m = eval_mult(op.mult_const, op.guard_col, d_output, H, r);
             if (m == 0u) continue;
-            unsigned int v   = monty_reduce(d_output[base + (unsigned long long)r]);
+            unsigned int v = eval_affine_arg(
+                op.value_col, op.value_coef0_monty, op.value_coef1_monty,
+                d_output, H, r);
             unsigned int idx = bits_one + v - 1u;
             hist.add_count_n(idx, m);
         }
@@ -622,7 +843,7 @@ extern "C" __global__ void apc_bus_var_range(
 "#;
 
 const TUPLE2_KERNEL_SRC: &str = r#"
-__constant__ Tuple2Op k_tup_ops[4096];
+__constant__ Tuple2Op k_tup_ops[2048];
 
 extern "C" __global__ void apc_bus_tuple2(
     const unsigned int* __restrict__ d_output,
@@ -640,14 +861,14 @@ extern "C" __global__ void apc_bus_tuple2(
 
     for (int i = blockIdx.x * wpb + warp; i < (int)n_tup_ops; i += gridDim.x * wpb) {
         Tuple2Op op = k_tup_ops[i];
-        unsigned long long base0 = (unsigned long long)op.v0_col * H;
-        unsigned long long base1 = (unsigned long long)op.v1_col * H;
         lookup::Histogram hist(d_tuple2_hist, total_bins);
         for (int r = lane; r < N; r += 32) {
             unsigned int m = eval_mult(op.mult_const, op.guard_col, d_output, H, r);
             if (m == 0u) continue;
-            unsigned int v0 = monty_reduce(d_output[base0 + (unsigned long long)r]);
-            unsigned int v1 = monty_reduce(d_output[base1 + (unsigned long long)r]);
+            unsigned int v0 = eval_affine_arg(
+                op.v0_col, op.v0_coef0_monty, op.v0_coef1_monty, d_output, H, r);
+            unsigned int v1 = eval_affine_arg(
+                op.v1_col, op.v1_coef0_monty, op.v1_coef1_monty, d_output, H, r);
             unsigned int idx = v0 * tuple2_sz1 + v1;
             hist.add_count_n(idx, m);
         }
@@ -658,7 +879,7 @@ extern "C" __global__ void apc_bus_tuple2(
 /// Bitwise range half: idx in [0, num_rows). Shares structure with
 /// var_range/tuple but with `BITWISE_NUM_BITS = 8` baked in (matches openvm).
 const BITWISE_RANGE_KERNEL_SRC: &str = r#"
-__constant__ BitwiseOp k_bit_range_ops[4096];
+__constant__ BitwiseOp k_bit_range_ops[2048];
 
 extern "C" __global__ void apc_bus_bitwise_range(
     const unsigned int* __restrict__ d_output,
@@ -676,14 +897,14 @@ extern "C" __global__ void apc_bus_bitwise_range(
 
     for (int i = blockIdx.x * wpb + warp; i < (int)n_bit_range_ops; i += gridDim.x * wpb) {
         BitwiseOp op = k_bit_range_ops[i];
-        unsigned long long bx = (unsigned long long)op.x_col * H;
-        unsigned long long by = (unsigned long long)op.y_col * H;
         lookup::Histogram hist(d_bitwise_hist, total_bins);
         for (int r = lane; r < N; r += 32) {
             unsigned int m = eval_mult(op.mult_const, op.guard_col, d_output, H, r);
             if (m == 0u) continue;
-            unsigned int x = monty_reduce(d_output[bx + (unsigned long long)r]);
-            unsigned int y = monty_reduce(d_output[by + (unsigned long long)r]);
+            unsigned int x = eval_affine_arg(
+                op.x_col, op.x_coef0_monty, op.x_coef1_monty, d_output, H, r);
+            unsigned int y = eval_affine_arg(
+                op.y_col, op.y_coef0_monty, op.y_coef1_monty, d_output, H, r);
             unsigned int idx = (x << 8) | (y & 0xFFu);
             hist.add_count_n(idx, m);
         }
@@ -692,7 +913,7 @@ extern "C" __global__ void apc_bus_bitwise_range(
 "#;
 
 const BITWISE_XOR_KERNEL_SRC: &str = r#"
-__constant__ BitwiseOp k_bit_xor_ops[4096];
+__constant__ BitwiseOp k_bit_xor_ops[2048];
 
 extern "C" __global__ void apc_bus_bitwise_xor(
     const unsigned int* __restrict__ d_output,
@@ -710,14 +931,14 @@ extern "C" __global__ void apc_bus_bitwise_xor(
 
     for (int i = blockIdx.x * wpb + warp; i < (int)n_bit_xor_ops; i += gridDim.x * wpb) {
         BitwiseOp op = k_bit_xor_ops[i];
-        unsigned long long bx = (unsigned long long)op.x_col * H;
-        unsigned long long by = (unsigned long long)op.y_col * H;
         lookup::Histogram hist(d_bitwise_hist, total_bins);
         for (int r = lane; r < N; r += 32) {
             unsigned int m = eval_mult(op.mult_const, op.guard_col, d_output, H, r);
             if (m == 0u) continue;
-            unsigned int x = monty_reduce(d_output[bx + (unsigned long long)r]);
-            unsigned int y = monty_reduce(d_output[by + (unsigned long long)r]);
+            unsigned int x = eval_affine_arg(
+                op.x_col, op.x_coef0_monty, op.x_coef1_monty, d_output, H, r);
+            unsigned int y = eval_affine_arg(
+                op.y_col, op.y_coef0_monty, op.y_coef1_monty, d_output, H, r);
             unsigned int idx = ((x << 8) | (y & 0xFFu)) + num_rows;
             hist.add_count_n(idx, m);
         }
