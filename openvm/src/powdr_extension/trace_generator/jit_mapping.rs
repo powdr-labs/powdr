@@ -142,6 +142,39 @@ pub enum ColumnComputation {
     /// LessThan: c_msb_f.
     LessThanCMsbF { opcode_byte_offset: usize, c_byte_offset: usize },
 
+    // ── Rv32AuipcCoreAir (auipc) — Rv32RdWriteAdapter ───────────────────────
+    /// AUIPC rd_data limb: byte `limb_index` of `(pc + (imm << 8))`.
+    /// pc and imm are stored as u32 in the record.
+    AuipcRdLimb { pc_byte_offset: usize, imm_byte_offset: usize, limb_index: usize },
+
+    // ── Rv32JalrCoreAir (jalr) — Rv32JalrAdapter ────────────────────────────
+    /// JALR `to_pc_least_sig_bit`: `(rs1 + imm + (imm_sign ? 0xFFFF_0000 : 0)) & 1`.
+    JalrToPcLsb {
+        rs1_byte_offset: usize,
+        imm_byte_offset: usize,
+        imm_sign_byte_offset: usize,
+    },
+    /// JALR `to_pc_limbs[limb_index]`. Layout:
+    /// - limb 0: `(to_pc & 0xFFFF) >> 1`
+    /// - limb 1: `to_pc >> 16`
+    JalrToPcLimb {
+        rs1_byte_offset: usize,
+        imm_byte_offset: usize,
+        imm_sign_byte_offset: usize,
+        limb_index: usize,
+    },
+    /// JALR rd_data limb: byte `limb_index + 1` of `(pc + 4)` for the top 3
+    /// limbs the chip writes (`limb_index ∈ 0..3`).
+    JalrRdLimb { pc_byte_offset: usize, limb_index: usize },
+
+    /// Like [`Conditional`] but the gate is "u32 at `ptr_byte_offset`
+    /// is not `u32::MAX`" — used for adapter rd_aux fields that are only
+    /// populated when the chip actually performs a write.
+    ConditionalNotMaxU32 {
+        ptr_byte_offset: usize,
+        then_comp: Box<ColumnComputation>,
+    },
+
     // ── BranchLessThanCoreAir<4, 8> (blt / bltu / bge / bgeu) ────────────────
     /// BranchLt: cmp_result (1 if branch taken).
     BranchLtCmpResult { opcode_byte_offset: usize, a_byte_offset: usize, b_byte_offset: usize },
@@ -469,6 +502,46 @@ pub fn eval_column<F: PrimeField32>(comp: &ColumnComputation, record: &[u8], ran
                 F::from_u8(c3)
             }
         }
+        ColumnComputation::AuipcRdLimb { pc_byte_offset, imm_byte_offset, limb_index } => {
+            let pc = read_u32(record, *pc_byte_offset);
+            let imm = read_u32(record, *imm_byte_offset);
+            let rd = pc.wrapping_add(imm << 8);
+            F::from_u8(rd.to_le_bytes()[*limb_index])
+        }
+        ColumnComputation::JalrToPcLsb { rs1_byte_offset, imm_byte_offset, imm_sign_byte_offset } => {
+            let rs1 = read_u32(record, *rs1_byte_offset);
+            let imm = read_u16(record, *imm_byte_offset) as u32;
+            let sign = record[*imm_sign_byte_offset] != 0;
+            let to_pc = rs1.wrapping_add(imm + if sign { 0xFFFF_0000 } else { 0 });
+            F::from_u8((to_pc & 1) as u8)
+        }
+        ColumnComputation::JalrToPcLimb { rs1_byte_offset, imm_byte_offset, imm_sign_byte_offset, limb_index } => {
+            let rs1 = read_u32(record, *rs1_byte_offset);
+            let imm = read_u16(record, *imm_byte_offset) as u32;
+            let sign = record[*imm_sign_byte_offset] != 0;
+            let to_pc = rs1.wrapping_add(imm + if sign { 0xFFFF_0000 } else { 0 });
+            let v = match *limb_index {
+                0 => (to_pc & 0xFFFF) >> 1,
+                1 => to_pc >> 16,
+                _ => panic!("JalrToPcLimb: invalid limb_index {limb_index}"),
+            };
+            F::from_u32(v)
+        }
+        ColumnComputation::JalrRdLimb { pc_byte_offset, limb_index } => {
+            let pc = read_u32(record, *pc_byte_offset);
+            // Chip stores top 3 limbs of (pc + 4) — limb_index ∈ 0..3
+            // mapping to byte (limb_index + 1) of the little-endian encoding.
+            let rd = pc.wrapping_add(4);
+            F::from_u8(rd.to_le_bytes()[*limb_index + 1])
+        }
+        ColumnComputation::ConditionalNotMaxU32 { ptr_byte_offset, then_comp } => {
+            let v = read_u32(record, *ptr_byte_offset);
+            if v == u32::MAX {
+                F::ZERO
+            } else {
+                eval_column(then_comp, record, range_max_bits)
+            }
+        }
         ColumnComputation::BranchLtCmpResult { opcode_byte_offset, a_byte_offset, b_byte_offset } => {
             let op = record[*opcode_byte_offset];
             let a: &[u8] = &record[*a_byte_offset..*a_byte_offset + 4];
@@ -565,6 +638,18 @@ fn run_shift(opcode: u8, b: &[u8; 4], c: &[u8; 4]) -> [u8; 4] {
         }
     }
     a
+}
+
+/// Read a little-endian u32 from `record[offset..offset+4]`.
+#[inline]
+fn read_u32(record: &[u8], offset: usize) -> u32 {
+    u32::from_le_bytes(record[offset..offset + 4].try_into().unwrap())
+}
+
+/// Read a little-endian u16 from `record[offset..offset+2]`.
+#[inline]
+fn read_u16(record: &[u8], offset: usize) -> u16 {
+    u16::from_le_bytes(record[offset..offset + 2].try_into().unwrap())
 }
 
 /// Mirror of `LessThanCoreAir::run_less_than` for `NUM_LIMBS=4, LIMB_BITS=8`.
@@ -779,6 +864,10 @@ fn core_byte_offset(air: &str, arena: ArenaType) -> usize {
         ("BranchEqual", ArenaType::Dense) => 24,      // aligned_adapter_size=24
         ("BranchLt", ArenaType::Matrix) => 10 * 4,    // shares Rv32BranchAdapter
         ("BranchLt", ArenaType::Dense) => 24,
+        ("Auipc", ArenaType::Matrix) => 10 * 4,    // Rv32RdWriteAdapter (10 cols)
+        ("Auipc", ArenaType::Dense) => 20,         // 5 u32s in adapter record
+        ("Jalr", ArenaType::Matrix) => 15 * 4,     // Rv32JalrAdapter (15 cols)
+        ("Jalr", ArenaType::Dense) => 28,          // 7 u32s in adapter record
         _ => panic!("Unknown AIR type: {air}"),
     }
 }
@@ -789,6 +878,8 @@ pub fn dense_record_stride(air: &str) -> usize {
         "BaseAlu" | "Shift" | "LessThan" => 52,
         "LoadStore" => 60,
         "BranchEqual" | "BranchLt" => 40,
+        "Auipc" => 28,    // adapter(20) + core(8: from_pc + imm)
+        "Jalr"  => 44,    // adapter(28) + core(16: imm:u16 + 2 pad + from_pc:u32 + rs1_val:u32 + imm_sign:bool + 3 pad)
         _ => panic!("Unknown AIR type: {air}"),
     }
 }
@@ -1507,6 +1598,185 @@ pub fn branch_lt_mapping_for(arena: ArenaType) -> AirColumnMapping {
         air_name: "BranchLt",
         width: 32,
         record_byte_size: 24 + 16, // adapter(24) + core(16 incl padding)
+        columns,
+    }
+}
+
+// ============================================================================
+// Mapping table for AUIPC (Rv32RdWriteAdapter, width=20)
+// ============================================================================
+
+/// Build the mapping table for AUIPC.
+/// Adapter (Rv32RdWriteAdapter) width=10; Rv32AuipcCore width=10.
+pub fn auipc_mapping() -> AirColumnMapping {
+    auipc_mapping_for(ArenaType::Matrix)
+}
+
+pub fn auipc_mapping_for(arena: ArenaType) -> AirColumnMapping {
+    use ColumnComputation::*;
+
+    // Rv32RdWriteAdapter byte offsets (no reads — only one write).
+    let from_pc: usize = 0;
+    let from_timestamp: usize = 4;
+    let rd_ptr: usize = 8;
+    let rd_aux_prev_ts: usize = 12;
+    let rd_aux_prev_data_0: usize = 16; // 4 bytes (prev_data[0..4])
+
+    // Rv32AuipcCoreRecord layout: from_pc (u32) | imm (u32).
+    let core = core_byte_offset("Auipc", arena);
+    let core_pc: usize = core;
+    let core_imm: usize = core + 4;
+
+    // Adapter cols (0-9), then core cols (10-19):
+    //   is_valid, imm_limbs[0..3], pc_limbs[0..2], rd_data[0..4]
+    let mut columns = Vec::with_capacity(20);
+
+    // ── Adapter (0-9) — Rv32RdWriteAdapter ─────────────────────────────────
+    columns.push(ColumnMapping { col_index: 0, computation: DirectU32 { record_byte_offset: from_pc } });
+    columns.push(ColumnMapping { col_index: 1, computation: DirectU32 { record_byte_offset: from_timestamp } });
+    columns.push(ColumnMapping { col_index: 2, computation: DirectU32 { record_byte_offset: rd_ptr } });
+    columns.push(ColumnMapping { col_index: 3, computation: DirectU32 { record_byte_offset: rd_aux_prev_ts } });
+    columns.push(ColumnMapping { col_index: 4, computation: TimestampDecomp { curr_ts_byte_offset: from_timestamp, curr_ts_delta: 0, prev_ts_byte_offset: rd_aux_prev_ts, limb_index: 0 } });
+    columns.push(ColumnMapping { col_index: 5, computation: TimestampDecomp { curr_ts_byte_offset: from_timestamp, curr_ts_delta: 0, prev_ts_byte_offset: rd_aux_prev_ts, limb_index: 1 } });
+    for i in 0..4 {
+        columns.push(ColumnMapping { col_index: 6 + i, computation: DirectU8 { record_byte_offset: rd_aux_prev_data_0 + i } });
+    }
+
+    // ── Core (10-19) ───────────────────────────────────────────────────────
+    columns.push(ColumnMapping { col_index: 10, computation: Constant(1) }); // is_valid
+    // imm_limbs[0..3] — bytes 0..2 of imm (limb 3 is constrained to 0).
+    for i in 0..3 {
+        columns.push(ColumnMapping { col_index: 11 + i, computation: DirectU8 { record_byte_offset: core_imm + i } });
+    }
+    // pc_limbs[0..2] — bytes 1..2 of pc (the "middle" two limbs).
+    for i in 0..2 {
+        columns.push(ColumnMapping { col_index: 14 + i, computation: DirectU8 { record_byte_offset: core_pc + i + 1 } });
+    }
+    // rd_data[0..4] — (pc + (imm << 8)).to_le_bytes()[i].
+    for i in 0..4 {
+        columns.push(ColumnMapping { col_index: 16 + i, computation: AuipcRdLimb { pc_byte_offset: core_pc, imm_byte_offset: core_imm, limb_index: i } });
+    }
+
+    AirColumnMapping {
+        air_name: "Auipc",
+        width: 20,
+        record_byte_size: 20 + 8, // adapter(20) + core(8)
+        columns,
+    }
+}
+
+// ============================================================================
+// Mapping table for JALR (Rv32JalrAdapter, width=28)
+// ============================================================================
+
+/// Build the mapping table for JALR.
+/// Adapter (Rv32JalrAdapter) width=15; Rv32JalrCore width=13.
+pub fn jalr_mapping() -> AirColumnMapping {
+    jalr_mapping_for(ArenaType::Matrix)
+}
+
+pub fn jalr_mapping_for(arena: ArenaType) -> AirColumnMapping {
+    use ColumnComputation::*;
+
+    // Rv32JalrAdapter byte offsets.
+    let from_pc: usize = 0;
+    let from_timestamp: usize = 4;
+    let rs1_ptr: usize = 8;
+    let rd_ptr: usize = 12;            // u32::MAX iff no write
+    let rs1_aux_prev_ts: usize = 16;
+    let rd_aux_prev_ts: usize = 20;
+    let rd_aux_prev_data_0: usize = 24; // 4 bytes
+
+    // Rv32JalrCoreRecord layout: imm (u16) | from_pc (u32) | rs1_val (u32) | imm_sign (bool).
+    let core = core_byte_offset("Jalr", arena);
+    let core_imm: usize = core;
+    let core_from_pc: usize = core + 4;
+    let core_rs1_val: usize = core + 8;
+    let core_imm_sign: usize = core + 12;
+
+    // Trace col layout (15 adapter + 13 core = 28):
+    //   adapter:
+    //     0: from_state.pc, 1: from_state.timestamp,
+    //     2: rs1_ptr,
+    //     3: rs1_aux.prev_ts, 4-5: rs1_aux ts_decomp,
+    //     6: rd_ptr (0 if u32::MAX),
+    //     7: rd_aux.prev_ts (cond),
+    //     8-9: rd_aux ts_decomp (cond),
+    //     10-13: rd_aux.prev_data[0..3] (cond),
+    //     14: needs_write
+    //   core:
+    //     15: imm (u16), 16-19: rs1_data[0..3], 20-22: rd_data[0..2],
+    //     23: is_valid, 24: to_pc_least_sig_bit, 25-26: to_pc_limbs[0..1],
+    //     27: imm_sign
+    let mut columns = Vec::with_capacity(28);
+
+    // ── Adapter (0-14) — Rv32JalrAdapter ───────────────────────────────────
+    columns.push(ColumnMapping { col_index: 0, computation: DirectU32 { record_byte_offset: from_pc } });
+    columns.push(ColumnMapping { col_index: 1, computation: DirectU32 { record_byte_offset: from_timestamp } });
+    columns.push(ColumnMapping { col_index: 2, computation: DirectU32 { record_byte_offset: rs1_ptr } });
+    // rs1 reads_aux is unconditional.
+    columns.push(ColumnMapping { col_index: 3, computation: DirectU32 { record_byte_offset: rs1_aux_prev_ts } });
+    columns.push(ColumnMapping { col_index: 4, computation: TimestampDecomp { curr_ts_byte_offset: from_timestamp, curr_ts_delta: 0, prev_ts_byte_offset: rs1_aux_prev_ts, limb_index: 0 } });
+    columns.push(ColumnMapping { col_index: 5, computation: TimestampDecomp { curr_ts_byte_offset: from_timestamp, curr_ts_delta: 0, prev_ts_byte_offset: rs1_aux_prev_ts, limb_index: 1 } });
+    // rd_ptr — 0 when u32::MAX (matches LoadStoreRdRs2Ptr semantics).
+    columns.push(ColumnMapping { col_index: 6, computation: LoadStoreRdRs2Ptr { rd_rs2_ptr_byte_offset: rd_ptr } });
+    // rd_aux fields gated on needs_write (rd_ptr != u32::MAX). The chip uses
+    // `from_timestamp + 1` as the write curr_ts (one read happened first), so
+    // delta=1. We can't reuse LoadStoreWriteAuxDecomp because that arm
+    // hardcodes delta=2 (LoadStore's two memory accesses).
+    columns.push(ColumnMapping {
+        col_index: 7,
+        computation: ConditionalNotMaxU32 {
+            ptr_byte_offset: rd_ptr,
+            then_comp: Box::new(DirectU32 { record_byte_offset: rd_aux_prev_ts }),
+        },
+    });
+    columns.push(ColumnMapping {
+        col_index: 8,
+        computation: ConditionalNotMaxU32 {
+            ptr_byte_offset: rd_ptr,
+            then_comp: Box::new(TimestampDecomp { curr_ts_byte_offset: from_timestamp, curr_ts_delta: 1, prev_ts_byte_offset: rd_aux_prev_ts, limb_index: 0 }),
+        },
+    });
+    columns.push(ColumnMapping {
+        col_index: 9,
+        computation: ConditionalNotMaxU32 {
+            ptr_byte_offset: rd_ptr,
+            then_comp: Box::new(TimestampDecomp { curr_ts_byte_offset: from_timestamp, curr_ts_delta: 1, prev_ts_byte_offset: rd_aux_prev_ts, limb_index: 1 }),
+        },
+    });
+    for i in 0..4 {
+        columns.push(ColumnMapping {
+            col_index: 10 + i,
+            computation: ConditionalNotMaxU32 {
+                ptr_byte_offset: rd_ptr,
+                then_comp: Box::new(DirectU8 { record_byte_offset: rd_aux_prev_data_0 + i }),
+            },
+        });
+    }
+    // needs_write — 1 if rd_ptr != u32::MAX (matches LoadStoreNeedsWrite).
+    columns.push(ColumnMapping { col_index: 14, computation: LoadStoreNeedsWrite { rd_rs2_ptr_byte_offset: rd_ptr } });
+
+    // ── Core (15-27) ───────────────────────────────────────────────────────
+    columns.push(ColumnMapping { col_index: 15, computation: DirectU16 { record_byte_offset: core_imm } });
+    for i in 0..4 {
+        columns.push(ColumnMapping { col_index: 16 + i, computation: DirectU8 { record_byte_offset: core_rs1_val + i } });
+    }
+    // rd_data[0..2] = top 3 bytes of (pc + 4) → bytes 1..3.
+    for i in 0..3 {
+        columns.push(ColumnMapping { col_index: 20 + i, computation: JalrRdLimb { pc_byte_offset: core_from_pc, limb_index: i } });
+    }
+    columns.push(ColumnMapping { col_index: 23, computation: Constant(1) }); // is_valid
+    columns.push(ColumnMapping { col_index: 24, computation: JalrToPcLsb { rs1_byte_offset: core_rs1_val, imm_byte_offset: core_imm, imm_sign_byte_offset: core_imm_sign } });
+    for i in 0..2 {
+        columns.push(ColumnMapping { col_index: 25 + i, computation: JalrToPcLimb { rs1_byte_offset: core_rs1_val, imm_byte_offset: core_imm, imm_sign_byte_offset: core_imm_sign, limb_index: i } });
+    }
+    columns.push(ColumnMapping { col_index: 27, computation: DirectU8 { record_byte_offset: core_imm_sign } });
+
+    AirColumnMapping {
+        air_name: "Jalr",
+        width: 28,
+        record_byte_size: 28 + 16, // adapter(28) + core(16: u16 imm + 2 pad + 2 u32 + bool + 3 pad, aligned to u32)
         columns,
     }
 }

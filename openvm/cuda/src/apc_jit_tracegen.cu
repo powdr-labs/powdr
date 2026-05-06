@@ -46,8 +46,17 @@ enum JitCompType : uint16_t {
     JIT_BLT_DIFF_MARKER   = 32,
     JIT_BLT_A_MSB_F       = 33,
     JIT_BLT_B_MSB_F       = 34,
-    // Conditional variants: high bit set
+    // Auipc / Jalr arms.
+    JIT_AUIPC_RD_LIMB     = 35,
+    JIT_JALR_TO_PC_LSB    = 36,
+    JIT_JALR_TO_PC_LIMB   = 37,
+    JIT_JALR_RD_LIMB      = 38,
+    // Conditional flag bits — set on `comp_type` to gate the column write.
+    // p[5] holds the byte offset of the gate value within the record.
+    //   JIT_COND_FLAG          (0x80): record[p[5]] != 0          (1-byte gate)
+    //   JIT_COND_NOT_MAX_U32   (0x40): u32 at p[5] != 0xFFFFFFFF  (4-byte gate)
     JIT_COND_FLAG         = 0x80,
+    JIT_COND_NOT_MAX_U32  = 0x40,
     JIT_COND_DIRECT_U32   = JIT_COND_FLAG | JIT_DIRECT_U32,
     JIT_COND_TS_DECOMP    = JIT_COND_FLAG | JIT_TIMESTAMP_DECOMP,
 };
@@ -183,11 +192,16 @@ __device__ __forceinline__ Fp eval_jit_column(
     uint32_t range_max_bits
 ) {
     uint16_t ctype = desc.comp_type;
-    bool is_conditional = (ctype & JIT_COND_FLAG) != 0;
-    if (is_conditional) {
+    if ((ctype & JIT_COND_FLAG) != 0) {
         uint16_t cond_offset = desc.p[5]; // condition byte offset stored in p[5]
         if (record[cond_offset] == 0) return Fp::zero();
         ctype &= ~JIT_COND_FLAG;
+    }
+    if ((ctype & JIT_COND_NOT_MAX_U32) != 0) {
+        uint16_t ptr_offset = desc.p[5];
+        uint32_t v; memcpy(&v, record + ptr_offset, 4);
+        if (v == 0xFFFFFFFFu) return Fp::zero();
+        ctype &= ~JIT_COND_NOT_MAX_U32;
     }
 
     switch (ctype) {
@@ -445,6 +459,43 @@ __device__ __forceinline__ Fp eval_jit_column(
             uint8_t b3 = record[desc.p[1] + 3];
             bool b_sign = signed_op && ((b3 >> 7) == 1);
             return b_sign ? -Fp((uint32_t)(256u - b3)) : Fp((uint32_t)b3);
+        }
+        // ── Auipc rd_data limb ──
+        // p[0] = pc_byte_offset, p[1] = imm_byte_offset, p[2] = limb_index.
+        case JIT_AUIPC_RD_LIMB: {
+            uint32_t pc, imm;
+            memcpy(&pc,  record + desc.p[0], 4);
+            memcpy(&imm, record + desc.p[1], 4);
+            uint32_t rd = pc + (imm << 8);
+            return Fp((uint32_t)((rd >> (8 * desc.p[2])) & 0xFFu));
+        }
+        // ── Jalr to_pc least-significant bit ──
+        // p[0] = rs1_byte_offset (u32), p[1] = imm_byte_offset (u16),
+        // p[2] = imm_sign_byte_offset (1 byte: 0 or 1).
+        case JIT_JALR_TO_PC_LSB: {
+            uint32_t rs1; memcpy(&rs1, record + desc.p[0], 4);
+            uint16_t imm; memcpy(&imm, record + desc.p[1], 2);
+            uint8_t  sign = record[desc.p[2]];
+            uint32_t to_pc = rs1 + (uint32_t)imm + (sign ? 0xFFFF0000u : 0u);
+            return Fp((uint32_t)(to_pc & 1u));
+        }
+        // ── Jalr to_pc_limbs[limb_index] ──
+        // limb 0: (to_pc & 0xFFFF) >> 1
+        // limb 1: to_pc >> 16
+        case JIT_JALR_TO_PC_LIMB: {
+            uint32_t rs1; memcpy(&rs1, record + desc.p[0], 4);
+            uint16_t imm; memcpy(&imm, record + desc.p[1], 2);
+            uint8_t  sign = record[desc.p[2]];
+            uint32_t to_pc = rs1 + (uint32_t)imm + (sign ? 0xFFFF0000u : 0u);
+            uint32_t v = (desc.p[3] == 0u) ? ((to_pc & 0xFFFFu) >> 1) : (to_pc >> 16);
+            return Fp(v);
+        }
+        // ── Jalr rd_data limb (top 3 bytes of pc + 4) ──
+        // p[0] = pc_byte_offset, p[1] = limb_index ∈ 0..3
+        case JIT_JALR_RD_LIMB: {
+            uint32_t pc; memcpy(&pc, record + desc.p[0], 4);
+            uint32_t rd = pc + 4u;
+            return Fp((uint32_t)((rd >> (8u * (desc.p[1] + 1u))) & 0xFFu));
         }
         default:
             return Fp::zero();

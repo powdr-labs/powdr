@@ -762,6 +762,14 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
                 "VmAirWrapper<Rv32BranchAdapterAir, BranchLessThanCoreAir<4, 8>",
                 jit_mapping::branch_lt_mapping_for(ArenaType::Dense),
             );
+            m.insert(
+                "VmAirWrapper<Rv32RdWriteAdapterAir, Rv32AuipcCoreAir>",
+                jit_mapping::auipc_mapping_for(ArenaType::Dense),
+            );
+            m.insert(
+                "VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>",
+                jit_mapping::jalr_mapping_for(ArenaType::Dense),
+            );
             m
         };
 
@@ -1019,6 +1027,14 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
             m.insert(
                 "VmAirWrapper<Rv32BranchAdapterAir, BranchLessThanCoreAir<4, 8>",
                 jit_mapping::branch_lt_mapping_for(ArenaType::Dense),
+            );
+            m.insert(
+                "VmAirWrapper<Rv32RdWriteAdapterAir, Rv32AuipcCoreAir>",
+                jit_mapping::auipc_mapping_for(ArenaType::Dense),
+            );
+            m.insert(
+                "VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>",
+                jit_mapping::jalr_mapping_for(ArenaType::Dense),
             );
             m
         };
@@ -1529,7 +1545,12 @@ fn column_comp_to_emitter(
         | CC::BranchLtDiffVal { .. }
         | CC::BranchLtDiffMarker { .. }
         | CC::BranchLtAMsbF { .. }
-        | CC::BranchLtBMsbF { .. } => None,
+        | CC::BranchLtBMsbF { .. }
+        | CC::AuipcRdLimb { .. }
+        | CC::JalrToPcLsb { .. }
+        | CC::JalrToPcLimb { .. }
+        | CC::JalrRdLimb { .. }
+        | CC::ConditionalNotMaxU32 { .. } => None,
     }
 }
 
@@ -1753,6 +1774,41 @@ fn column_comp_to_jit_desc(
             desc.comp_type = 34;
             desc.p[0] = *opcode_byte_offset as u16;
             desc.p[1] = *b_byte_offset as u16;
+        }
+        // ── Auipc ──
+        CC::AuipcRdLimb { pc_byte_offset, imm_byte_offset, limb_index } => {
+            desc.comp_type = 35;
+            desc.p[0] = *pc_byte_offset as u16;
+            desc.p[1] = *imm_byte_offset as u16;
+            desc.p[2] = *limb_index as u16;
+        }
+        // ── Jalr ──
+        CC::JalrToPcLsb { rs1_byte_offset, imm_byte_offset, imm_sign_byte_offset } => {
+            desc.comp_type = 36;
+            desc.p[0] = *rs1_byte_offset as u16;
+            desc.p[1] = *imm_byte_offset as u16;
+            desc.p[2] = *imm_sign_byte_offset as u16;
+        }
+        CC::JalrToPcLimb { rs1_byte_offset, imm_byte_offset, imm_sign_byte_offset, limb_index } => {
+            desc.comp_type = 37;
+            desc.p[0] = *rs1_byte_offset as u16;
+            desc.p[1] = *imm_byte_offset as u16;
+            desc.p[2] = *imm_sign_byte_offset as u16;
+            desc.p[3] = *limb_index as u16;
+        }
+        CC::JalrRdLimb { pc_byte_offset, limb_index } => {
+            desc.comp_type = 38;
+            desc.p[0] = *pc_byte_offset as u16;
+            desc.p[1] = *limb_index as u16;
+        }
+        CC::ConditionalNotMaxU32 { ptr_byte_offset, then_comp } => {
+            // Encode like Conditional but with a different flag bit (0x40 =
+            // JIT_COND_NOT_MAX_U32). The kernel reads p[5] as the byte offset
+            // of a u32 value and compares against u32::MAX.
+            let mut inner = column_comp_to_jit_desc(then_comp, apc_col);
+            inner.comp_type |= 0x40;
+            inner.p[5] = *ptr_byte_offset as u16;
+            return inner;
         }
     }
 
