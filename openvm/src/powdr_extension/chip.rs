@@ -14,10 +14,8 @@ use crate::{
 
 use itertools::Itertools;
 use openvm_circuit::arch::MatrixRecordArena;
-use openvm_stark_backend::{
-    p3_air::{Air, BaseAir},
-    ColumnsAir,
-};
+use openvm_circuit_primitives::ColumnsAir;
+use openvm_stark_backend::p3_air::{Air, BaseAir};
 
 use openvm_stark_backend::{
     interaction::InteractionBuilder, p3_field::PrimeField32, p3_matrix::Matrix,
