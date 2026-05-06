@@ -1,5 +1,6 @@
 [package]
 name = "powdr-autoprecompiles"
+description = "ISA-agnostic library to compile and optimize powdr autoprecompiles"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -31,7 +32,7 @@ derivative.workspace = true
 expect-test = "1.5.1"
 flate2 = "1.1.2"
 pretty_assertions.workspace = true
-powdr-openvm-bus-interaction-handler.workspace = true
+powdr-openvm-bus-interaction-handler = { path = "../openvm-bus-interaction-handler" }
 test-log.workspace = true
 criterion = { version = "0.4", features = ["html_reports"] }
 
