@@ -412,6 +412,86 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         }
     }
 
+    /// Run the periphery-bus pass on a populated trace. Identical work in
+    /// all three trace-gen paths (baseline / descriptor / nvrtc) — exists
+    /// to dedupe what was a 3× copy-paste.
+    ///
+    /// `stage_prefix` controls the [trace_profile] labels for sub-stage
+    /// timing (e.g., `"baseline"`, `"descriptor"`, `"nvrtc"`).
+    ///
+    /// When the env var `POWDR_BUS_SPIKE` is set, the spike kernel runs
+    /// instead of the bytecode-VM kernel: same dispatch shape, no
+    /// expression evaluation. The resulting periphery histograms are
+    /// MEANINGLESS — the proof will fail to verify. Spike runs are for
+    /// timing comparison only.
+    fn run_bus_pass(
+        &self,
+        output: &DeviceMatrix<BabyBear>,
+        num_apc_calls: usize,
+        apc_poly_id_to_index: &BTreeMap<u64, usize>,
+        height: usize,
+        stage_prefix: &str,
+    ) {
+        let (bus_interactions, arg_spans, bytecode) =
+            time_stage(&format!("{stage_prefix}.bus_compile_h2d"), || {
+                let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
+                    &self.apc.machine.bus_interactions,
+                    apc_poly_id_to_index,
+                    height,
+                );
+                let bus_interactions = bus_interactions.to_device().unwrap();
+                let arg_spans = arg_spans.to_device().unwrap();
+                let bytecode = bytecode.to_device().unwrap();
+                (bus_interactions, arg_spans, bytecode)
+            });
+
+        let periphery = &self.periphery.real;
+        let var_range_bus_id = self.periphery.bus_ids.range_checker as u32;
+        let var_range_count = &periphery.range_checker.count;
+        let tuple_range_checker_chip = periphery.tuple_range_checker.as_ref().unwrap();
+        let tuple2_bus_id = self.periphery.bus_ids.tuple_range_checker.unwrap() as u32;
+        let tuple2_sizes = tuple_range_checker_chip.sizes;
+        let tuple2_count_u32 = tuple_range_checker_chip.count.as_ref();
+        let bitwise_bus_id = self.periphery.bus_ids.bitwise_lookup.unwrap() as u32;
+        let bitwise_count_u32 = periphery.bitwise_lookup_8.as_ref().unwrap().count.as_ref();
+
+        if std::env::var("POWDR_BUS_SPIKE").is_ok() {
+            time_stage(&format!("{stage_prefix}.bus_kernel_spike"), || {
+                cuda_abi::apc_apply_bus_spike(
+                    output,
+                    num_apc_calls,
+                    bus_interactions,
+                    var_range_bus_id,
+                    var_range_count,
+                    tuple2_bus_id,
+                    tuple2_count_u32,
+                    tuple2_sizes,
+                    bitwise_bus_id,
+                    bitwise_count_u32,
+                )
+                .unwrap();
+            });
+        } else {
+            time_stage(&format!("{stage_prefix}.bus_kernel"), || {
+                cuda_abi::apc_apply_bus(
+                    output,
+                    num_apc_calls,
+                    bytecode,
+                    bus_interactions,
+                    arg_spans,
+                    var_range_bus_id,
+                    var_range_count,
+                    tuple2_bus_id,
+                    tuple2_count_u32,
+                    tuple2_sizes,
+                    bitwise_bus_id,
+                    bitwise_count_u32,
+                )
+                .unwrap();
+            });
+        }
+    }
+
     fn try_generate_witness(
         &self,
         original_arenas: OriginalArenas<DenseRecordArena>,
@@ -641,63 +721,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
             cuda_abi::apc_apply_derived_expr(&mut output, d_specs, d_bc, num_apc_calls).unwrap();
         });
 
-        // Encode bus interactions for GPU consumption
-        let (bus_interactions, arg_spans, bytecode) = time_stage("baseline.bus_compile_h2d", || {
-            let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
-                &self.apc.machine.bus_interactions,
-                &apc_poly_id_to_index,
-                height,
-            );
-            let bus_interactions = bus_interactions.to_device().unwrap();
-            let arg_spans = arg_spans.to_device().unwrap();
-            let bytecode = bytecode.to_device().unwrap();
-            (bus_interactions, arg_spans, bytecode)
-        });
-
-        // Gather GPU inputs for periphery (bus ids, count device buffers)
-        let periphery = &self.periphery.real;
-
-        // Range checker
-        let var_range_bus_id = self.periphery.bus_ids.range_checker as u32;
-        let var_range_count = &periphery.range_checker.count;
-
-        // Tuple checker
-        let tuple_range_checker_chip = periphery.tuple_range_checker.as_ref().unwrap();
-        let tuple2_bus_id = self.periphery.bus_ids.tuple_range_checker.unwrap() as u32;
-        let tuple2_sizes = tuple_range_checker_chip.sizes;
-        let tuple2_count_u32 = tuple_range_checker_chip.count.as_ref();
-
-        // Bitwise lookup; NUM_BITS is fixed at 8 in CUDA
-        let bitwise_bus_id = self.periphery.bus_ids.bitwise_lookup.unwrap() as u32;
-        let bitwise_count_u32 = periphery.bitwise_lookup_8.as_ref().unwrap().count.as_ref();
-
-        // Launch GPU apply-bus to update periphery histograms on device
-        // Note that this is implicitly serialized after `apc_tracegen`,
-        // because we use the default host to device stream, which only launches
-        // the next kernel function after the prior (`apc_tracegen`) returns.
-        // This is important because bus evaluation depends on trace results.
-        time_stage("baseline.bus_kernel", || {
-            cuda_abi::apc_apply_bus(
-                // APC related
-                &output,
-                num_apc_calls,
-                // Interaction related
-                bytecode,
-                bus_interactions,
-                arg_spans,
-                // Variable range checker related
-                var_range_bus_id,
-                var_range_count,
-                // Tuple range checker related
-                tuple2_bus_id,
-                tuple2_count_u32,
-                tuple2_sizes,
-                // Bitwise related
-                bitwise_bus_id,
-                bitwise_count_u32,
-            )
-            .unwrap();
-        });
+        self.run_bus_pass(&output, num_apc_calls, &apc_poly_id_to_index, height, "baseline");
 
         Some(output)
     }
@@ -922,45 +946,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
             cuda_abi::apc_apply_derived_expr(&mut output, d_specs, d_bc, num_apc_calls).unwrap();
         });
 
-        let (bus_interactions, arg_spans, bytecode) = time_stage("descriptor.bus_compile_h2d", || {
-            let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
-                &self.apc.machine.bus_interactions,
-                &apc_poly_id_to_index,
-                height,
-            );
-            let bus_interactions = bus_interactions.to_device().unwrap();
-            let arg_spans = arg_spans.to_device().unwrap();
-            let bytecode = bytecode.to_device().unwrap();
-            (bus_interactions, arg_spans, bytecode)
-        });
-
-        let periphery = &self.periphery.real;
-        let var_range_bus_id = self.periphery.bus_ids.range_checker as u32;
-        let var_range_count = &periphery.range_checker.count;
-        let tuple_range_checker_chip = periphery.tuple_range_checker.as_ref().unwrap();
-        let tuple2_bus_id = self.periphery.bus_ids.tuple_range_checker.unwrap() as u32;
-        let tuple2_sizes = tuple_range_checker_chip.sizes;
-        let tuple2_count_u32 = tuple_range_checker_chip.count.as_ref();
-        let bitwise_bus_id = self.periphery.bus_ids.bitwise_lookup.unwrap() as u32;
-        let bitwise_count_u32 = periphery.bitwise_lookup_8.as_ref().unwrap().count.as_ref();
-
-        time_stage("descriptor.bus_kernel", || {
-            cuda_abi::apc_apply_bus(
-                &output,
-                num_apc_calls,
-                bytecode,
-                bus_interactions,
-                arg_spans,
-                var_range_bus_id,
-                var_range_count,
-                tuple2_bus_id,
-                tuple2_count_u32,
-                tuple2_sizes,
-                bitwise_bus_id,
-                bitwise_count_u32,
-            )
-            .unwrap();
-        });
+        self.run_bus_pass(&output, num_apc_calls, &apc_poly_id_to_index, height, "descriptor");
 
         Ok(output)
     }
@@ -1291,45 +1277,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
             cuda_abi::apc_apply_derived_expr(&mut output, d_specs, d_bc, num_apc_calls).unwrap();
         });
 
-        let (bus_interactions, arg_spans, bytecode) = time_stage("nvrtc.bus_compile_h2d", || {
-            let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
-                &self.apc.machine.bus_interactions,
-                &apc_poly_id_to_index,
-                height,
-            );
-            let bus_interactions = bus_interactions.to_device().unwrap();
-            let arg_spans = arg_spans.to_device().unwrap();
-            let bytecode = bytecode.to_device().unwrap();
-            (bus_interactions, arg_spans, bytecode)
-        });
-
-        let periphery = &self.periphery.real;
-        let var_range_bus_id = self.periphery.bus_ids.range_checker as u32;
-        let var_range_count = &periphery.range_checker.count;
-        let tuple_range_checker_chip = periphery.tuple_range_checker.as_ref().unwrap();
-        let tuple2_bus_id = self.periphery.bus_ids.tuple_range_checker.unwrap() as u32;
-        let tuple2_sizes = tuple_range_checker_chip.sizes;
-        let tuple2_count_u32 = tuple_range_checker_chip.count.as_ref();
-        let bitwise_bus_id = self.periphery.bus_ids.bitwise_lookup.unwrap() as u32;
-        let bitwise_count_u32 = periphery.bitwise_lookup_8.as_ref().unwrap().count.as_ref();
-
-        time_stage("nvrtc.bus_kernel", || {
-            cuda_abi::apc_apply_bus(
-                &output,
-                num_apc_calls,
-                bytecode,
-                bus_interactions,
-                arg_spans,
-                var_range_bus_id,
-                var_range_count,
-                tuple2_bus_id,
-                tuple2_count_u32,
-                tuple2_sizes,
-                bitwise_bus_id,
-                bitwise_count_u32,
-            )
-            .unwrap();
-        });
+        self.run_bus_pass(&output, num_apc_calls, &apc_poly_id_to_index, height, "nvrtc");
 
         Ok(output)
     }

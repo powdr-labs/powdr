@@ -62,6 +62,27 @@ extern "C" {
         d_bitwise_hist: *mut u32, // device histogram for bitwise lookup
     ) -> i32;
 
+    /// Phase 0 spike: same dispatch + atomicAdd shape as `_apc_apply_bus`
+    /// but with bytecode evaluation removed (one trace-cell load + one
+    /// histogram update per row per interaction). Used to determine whether
+    /// the bytecode VM is the bottleneck (NVRTC will help) or atomic-add
+    /// traffic is (NVRTC won't help).
+    pub fn _apc_apply_bus_spike(
+        d_output: *const BabyBear,
+        num_apc_calls: i32,
+        d_interactions: *const DevInteraction,
+        n_interactions: usize,
+        var_range_bus_id: u32,
+        d_var_hist: *mut u32,
+        var_num_bins: usize,
+        tuple2_bus_id: u32,
+        d_tuple2_hist: *mut u32,
+        tuple2_sz0: u32,
+        tuple2_sz1: u32,
+        bitwise_bus_id: u32,
+        d_bitwise_hist: *mut u32,
+    ) -> i32;
+
     /// JIT trace generation: reads record bytes directly from arenas,
     /// computes only surviving APC columns via descriptor arrays.
     pub fn _apc_jit_tracegen(
@@ -297,6 +318,42 @@ pub fn apc_apply_bus(
             tuple2_sizes[0],
             tuple2_sizes[1],
             // Bitwise related
+            bitwise_bus_id,
+            bitwise_count.as_mut_ptr() as *mut u32,
+        ))
+    }
+}
+
+/// Phase 0 spike — same dispatch shape as `apc_apply_bus` but with bytecode
+/// evaluation removed (one trace-cell load + one histogram update per row
+/// per interaction). Output histograms are MEANINGLESS — this is a timing
+/// instrument only.
+#[allow(clippy::too_many_arguments)]
+pub fn apc_apply_bus_spike(
+    output: &DeviceMatrix<BabyBear>,
+    num_apc_calls: usize,
+    interactions: DeviceBuffer<DevInteraction>,
+    var_range_bus_id: u32,
+    var_range_count: &DeviceBuffer<BabyBear>,
+    tuple2_bus_id: u32,
+    tuple2_count: &DeviceBuffer<BabyBear>,
+    tuple2_sizes: [u32; 2],
+    bitwise_bus_id: u32,
+    bitwise_count: &DeviceBuffer<BabyBear>,
+) -> Result<(), CudaError> {
+    unsafe {
+        CudaError::from_result(_apc_apply_bus_spike(
+            output.buffer().as_ptr(),
+            num_apc_calls as i32,
+            interactions.as_ptr(),
+            interactions.len(),
+            var_range_bus_id,
+            var_range_count.as_mut_ptr() as *mut u32,
+            var_range_count.len(),
+            tuple2_bus_id,
+            tuple2_count.as_mut_ptr() as *mut u32,
+            tuple2_sizes[0],
+            tuple2_sizes[1],
             bitwise_bus_id,
             bitwise_count.as_mut_ptr() as *mut u32,
         ))
