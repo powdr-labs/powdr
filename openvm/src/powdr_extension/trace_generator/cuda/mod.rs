@@ -29,6 +29,7 @@ use crate::{
 };
 
 mod inventory;
+pub mod nvrtc_bus_emit;
 pub mod nvrtc_cache;
 pub mod nvrtc_emit;
 mod periphery;

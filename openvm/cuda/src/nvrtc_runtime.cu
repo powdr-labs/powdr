@@ -187,4 +187,66 @@ int powdr_nvrtc_launch_jit_v1(
     return 0;
 }
 
+// Launch a JIT-compiled bus kernel that conforms to the bus_v1 signature:
+//
+//   __global__ void <kernel>(
+//       const unsigned int* d_output, int N, unsigned long long H,
+//       unsigned int var_range_bus_id, unsigned int* d_var_hist, unsigned int var_num_bins,
+//       unsigned int tuple2_bus_id, unsigned int* d_tuple2_hist,
+//       unsigned int tuple2_sz0, unsigned int tuple2_sz1,
+//       unsigned int bitwise_bus_id, unsigned int* d_bitwise_hist);
+//
+// Synchronizes before returning so any kernel error surfaces to the caller.
+int powdr_nvrtc_launch_bus_v1(
+    void*                  fn,
+    const unsigned int*    d_output,
+    int                    num_apc_calls,
+    unsigned long long     H,
+    unsigned int           var_range_bus_id,
+    unsigned int*          d_var_hist,
+    unsigned int           var_num_bins,
+    unsigned int           tuple2_bus_id,
+    unsigned int*          d_tuple2_hist,
+    unsigned int           tuple2_sz0,
+    unsigned int           tuple2_sz1,
+    unsigned int           bitwise_bus_id,
+    unsigned int*          d_bitwise_hist,
+    unsigned int           grid_x,
+    unsigned int           block_x
+) {
+    if (!ensure_primary_context()) return -1;
+    if (fn == nullptr) return -2;
+    if (grid_x == 0)  grid_x = 1;
+    if (block_x == 0) block_x = 256;
+
+    void* args[] = {
+        (void*)&d_output,
+        (void*)&num_apc_calls,
+        (void*)&H,
+        (void*)&var_range_bus_id,
+        (void*)&d_var_hist,
+        (void*)&var_num_bins,
+        (void*)&tuple2_bus_id,
+        (void*)&d_tuple2_hist,
+        (void*)&tuple2_sz0,
+        (void*)&tuple2_sz1,
+        (void*)&bitwise_bus_id,
+        (void*)&d_bitwise_hist,
+    };
+
+    CUresult r = cuLaunchKernel(
+        (CUfunction)fn,
+        grid_x, 1, 1,
+        block_x, 1, 1,
+        0,
+        nullptr,
+        args,
+        nullptr);
+    if (r != CUDA_SUCCESS) return -2000 - (int)r;
+
+    r = cuCtxSynchronize();
+    if (r != CUDA_SUCCESS) return -2000 - (int)r;
+    return 0;
+}
+
 }  // extern "C"

@@ -143,6 +143,30 @@ extern "C" {
         grid_x: u32,
         block_x: u32,
     ) -> i32;
+
+    /// Launch a JIT bus kernel matching the bus_v1 signature:
+    ///   (const u32* d_output, int N, u64 H,
+    ///    u32 var_range_bus_id, u32* d_var_hist, u32 var_num_bins,
+    ///    u32 tuple2_bus_id, u32* d_tuple2_hist, u32 tuple2_sz0, u32 tuple2_sz1,
+    ///    u32 bitwise_bus_id, u32* d_bitwise_hist)
+    /// Synchronizes before returning.
+    pub fn powdr_nvrtc_launch_bus_v1(
+        function: *mut std::ffi::c_void,
+        d_output: *const u32,
+        num_apc_calls: i32,
+        h: u64,
+        var_range_bus_id: u32,
+        d_var_hist: *mut u32,
+        var_num_bins: u32,
+        tuple2_bus_id: u32,
+        d_tuple2_hist: *mut u32,
+        tuple2_sz0: u32,
+        tuple2_sz1: u32,
+        bitwise_bus_id: u32,
+        d_bitwise_hist: *mut u32,
+        grid_x: u32,
+        block_x: u32,
+    ) -> i32;
 }
 
 /// JIT column computation descriptor — matches CUDA JitColumnDesc struct.
