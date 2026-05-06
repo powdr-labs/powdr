@@ -526,8 +526,11 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         });
     }
 
-    /// Compile + launch the NVRTC bus kernel for this APC. Histograms are
-    /// updated in place exactly as the bytecode-VM kernel would.
+    /// Partition + compile + launch the NVRTC bus kernels for this APC.
+    /// Four kind-templated kernels (var_range, tuple2, bitwise_range,
+    /// bitwise_xor) share a single PTX each across all APCs and runs.
+    /// Per-APC op tables flow through `__constant__` memory uploaded via
+    /// `cuMemcpyHtoD` between launches.
     #[allow(clippy::too_many_arguments)]
     fn launch_nvrtc_bus(
         &self,
@@ -544,9 +547,10 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         bitwise_count: &openvm_cuda_common::d_buffer::DeviceBuffer<BabyBear>,
     ) {
         use crate::powdr_extension::trace_generator::cuda::nvrtc_bus_emit::{
-            build_emitter_input, emit_bus_kernel_source,
+            build_emitter_input, kernel_sources, partition_apc_bus,
         };
         use crate::powdr_extension::trace_generator::cuda::nvrtc_cache::NvrtcKernelCache;
+        use std::ffi::CString;
 
         let input = build_emitter_input(
             &self.apc.machine.bus_interactions,
@@ -556,37 +560,198 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
             Some(tuple2_bus_id as u64),
             Some(bitwise_bus_id as u64),
         );
-        let kernel = emit_bus_kernel_source(&input);
-        let compiled = NvrtcKernelCache::global()
-            .get_or_compile(&kernel)
-            .expect("NVRTC bus kernel compile failed");
 
-        // Grid: one warp per interaction. Block: 256 = 8 warps.
-        let n_interactions = self.apc.machine.bus_interactions.len() as u32;
-        let warps_per_block = 8u32;
-        let grid_x = n_interactions.div_ceil(warps_per_block).max(1);
-        let block_x = 256u32;
+        let p = partition_apc_bus(&input)
+            .unwrap_or_else(|e| panic!("NVRTC bus partition failed: {}", e));
 
-        let rc = unsafe {
-            cuda_abi::powdr_nvrtc_launch_bus_v1(
-                compiled.function(),
-                output.buffer().as_ptr() as *const u32,
-                num_apc_calls as i32,
-                height as u64,
-                var_range_bus_id,
-                var_range_count.as_mut_ptr() as *mut u32,
-                var_range_count.len() as u32,
-                tuple2_bus_id,
-                tuple2_count.as_mut_ptr() as *mut u32,
-                tuple2_sizes[0],
-                tuple2_sizes[1],
-                bitwise_bus_id,
-                bitwise_count.as_mut_ptr() as *mut u32,
-                grid_x,
-                block_x,
+        // Once-per-process diagnostic: report partition coverage. Helps spot
+        // unexpected drops to bytecode-VM fallback.
+        {
+            use std::sync::atomic::{AtomicBool, Ordering};
+            static REPORTED: AtomicBool = AtomicBool::new(false);
+            if !REPORTED.swap(true, Ordering::Relaxed) {
+                let total = self.apc.machine.bus_interactions.len();
+                let simple =
+                    p.var_ops.len() + p.tuple_ops.len() + p.bitwise_range_ops.len()
+                        + p.bitwise_xor_ops.len();
+                tracing::info!(
+                    "NVRTC bus partition (first APC): total={}, simple={} (var={}, tup={}, br={}, bx={}), unsupported={}, unhandled={}",
+                    total,
+                    simple,
+                    p.var_ops.len(),
+                    p.tuple_ops.len(),
+                    p.bitwise_range_ops.len(),
+                    p.bitwise_xor_ops.len(),
+                    p.n_unsupported,
+                    p.unhandled.len()
+                );
+            }
+        }
+
+        // Get all four compiled kernels in parallel.
+        let sources = kernel_sources();
+        let kernels: Vec<_> = sources.iter().map(|(_, k)| k.clone()).collect();
+        let compiled = NvrtcKernelCache::global().get_or_compile_many(&kernels);
+        let compiled: Vec<_> = compiled
+            .into_iter()
+            .enumerate()
+            .map(|(i, r)| {
+                r.unwrap_or_else(|e| {
+                    panic!("NVRTC compile failed for kernel {}: {:?}", sources[i].0, e)
+                })
+            })
+            .collect();
+
+        let upload_and_launch =
+            |sym_name: &str,
+             ops_bytes: &[u8],
+             n_ops: u32,
+             d_hist: *mut u32,
+             extra0: u32,
+             extra1: Option<u32>,
+             k_idx: usize| {
+                if n_ops == 0 {
+                    return; // nothing to do for this kind on this APC
+                }
+                let module = compiled[k_idx].module();
+                let func = compiled[k_idx].function();
+                let sym_c = CString::new(sym_name).unwrap();
+
+                let rc = unsafe {
+                    cuda_abi::powdr_nvrtc_set_constant_symbol(
+                        module,
+                        sym_c.as_ptr(),
+                        ops_bytes.as_ptr() as *const std::ffi::c_void,
+                        ops_bytes.len(),
+                    )
+                };
+                assert_eq!(rc, 0, "set_constant_symbol({}) rc={}", sym_name, rc);
+
+                let warps_per_block = 8u32;
+                let grid_x = n_ops.div_ceil(warps_per_block).max(1);
+                let block_x = 256u32;
+
+                let rc = unsafe {
+                    cuda_abi::powdr_nvrtc_launch_bus_v2(
+                        func,
+                        output.buffer().as_ptr() as *const u32,
+                        num_apc_calls as i32,
+                        height as u64,
+                        d_hist,
+                        extra0,
+                        extra1.unwrap_or(0),
+                        if extra1.is_some() { 1 } else { 0 },
+                        n_ops,
+                        grid_x,
+                        block_x,
+                    )
+                };
+                assert_eq!(rc, 0, "launch_bus_v2({}) rc={}", sym_name, rc);
+            };
+
+        // var_range
+        let var_bytes: &[u8] = unsafe {
+            std::slice::from_raw_parts(
+                p.var_ops.as_ptr() as *const u8,
+                std::mem::size_of_val(&p.var_ops[..]),
             )
         };
-        assert_eq!(rc, 0, "NVRTC bus launch failed: {}", rc);
+        upload_and_launch(
+            "k_var_ops",
+            var_bytes,
+            p.var_ops.len() as u32,
+            var_range_count.as_mut_ptr() as *mut u32,
+            var_range_count.len() as u32,
+            None,
+            0,
+        );
+
+        // tuple2
+        let tup_bytes: &[u8] = unsafe {
+            std::slice::from_raw_parts(
+                p.tuple_ops.as_ptr() as *const u8,
+                std::mem::size_of_val(&p.tuple_ops[..]),
+            )
+        };
+        upload_and_launch(
+            "k_tup_ops",
+            tup_bytes,
+            p.tuple_ops.len() as u32,
+            tuple2_count.as_mut_ptr() as *mut u32,
+            tuple2_sizes[0],
+            Some(tuple2_sizes[1]),
+            1,
+        );
+
+        // bitwise range
+        let br_bytes: &[u8] = unsafe {
+            std::slice::from_raw_parts(
+                p.bitwise_range_ops.as_ptr() as *const u8,
+                std::mem::size_of_val(&p.bitwise_range_ops[..]),
+            )
+        };
+        upload_and_launch(
+            "k_bit_range_ops",
+            br_bytes,
+            p.bitwise_range_ops.len() as u32,
+            bitwise_count.as_mut_ptr() as *mut u32,
+            0,
+            None,
+            2,
+        );
+
+        // bitwise xor
+        let bx_bytes: &[u8] = unsafe {
+            std::slice::from_raw_parts(
+                p.bitwise_xor_ops.as_ptr() as *const u8,
+                std::mem::size_of_val(&p.bitwise_xor_ops[..]),
+            )
+        };
+        upload_and_launch(
+            "k_bit_xor_ops",
+            bx_bytes,
+            p.bitwise_xor_ops.len() as u32,
+            bitwise_count.as_mut_ptr() as *mut u32,
+            0,
+            None,
+            3,
+        );
+
+        // Bytecode-VM fallback for the `unhandled` tail (interactions whose
+        // mult or args don't fit the simple form). The existing bytecode VM
+        // handles arbitrary AlgebraicExpression — we just feed it a filtered
+        // bus_interactions list so it doesn't double-count the simple ops we
+        // already covered with NVRTC kernels.
+        if !p.unhandled.is_empty() {
+            let unhandled_interactions: Vec<_> = p
+                .unhandled
+                .iter()
+                .map(|&i| self.apc.machine.bus_interactions[i].clone())
+                .collect();
+            let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
+                &unhandled_interactions,
+                apc_poly_id_to_index,
+                height,
+            );
+            let bus_interactions = bus_interactions.to_device().unwrap();
+            let arg_spans = arg_spans.to_device().unwrap();
+            let bytecode = bytecode.to_device().unwrap();
+            cuda_abi::apc_apply_bus(
+                output,
+                num_apc_calls,
+                bytecode,
+                bus_interactions,
+                arg_spans,
+                var_range_bus_id,
+                var_range_count,
+                tuple2_bus_id,
+                tuple2_count,
+                tuple2_sizes,
+                bitwise_bus_id,
+                bitwise_count,
+            )
+            .unwrap();
+        }
     }
 
     fn try_generate_witness(

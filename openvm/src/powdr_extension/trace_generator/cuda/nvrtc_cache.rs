@@ -35,6 +35,12 @@ impl CompiledKernel {
     pub fn function(&self) -> *mut c_void {
         self.function
     }
+
+    /// Raw `CUmodule`. Used to look up `__constant__` symbols on the
+    /// kernel's module via `cuModuleGetGlobal`.
+    pub fn module(&self) -> *mut c_void {
+        self.module
+    }
 }
 
 impl Drop for CompiledKernel {

@@ -144,6 +144,33 @@ extern "C" {
         block_x: u32,
     ) -> i32;
 
+    /// Upload `host_data` of `size_bytes` into a `__constant__` symbol
+    /// in the given module. Returns 0 on success.
+    pub fn powdr_nvrtc_set_constant_symbol(
+        module: *mut std::ffi::c_void,
+        sym_name: *const std::ffi::c_char,
+        host_data: *const std::ffi::c_void,
+        size_bytes: usize,
+    ) -> i32;
+
+    /// Launch a kind-templated bus kernel (bus_v2). `extra0`/`extra1` are
+    /// the kind-specific extra kernel args (e.g., `var_num_bins` for
+    /// var_range; tuple2 sizes for tuple2; nothing for bitwise — pass 0).
+    /// Set `has_extra1 = 1` only for tuple2 (which has two size args).
+    pub fn powdr_nvrtc_launch_bus_v2(
+        function: *mut std::ffi::c_void,
+        d_output: *const u32,
+        num_apc_calls: i32,
+        h: u64,
+        d_hist: *mut u32,
+        extra0: u32,
+        extra1: u32,
+        has_extra1: u32,
+        n_ops: u32,
+        grid_x: u32,
+        block_x: u32,
+    ) -> i32;
+
     /// Launch a JIT bus kernel matching the bus_v1 signature:
     ///   (const u32* d_output, int N, u64 H,
     ///    u32 var_range_bus_id, u32* d_var_hist, u32 var_num_bins,

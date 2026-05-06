@@ -190,6 +190,96 @@ int powdr_nvrtc_launch_jit_v1(
     return 0;
 }
 
+// Upload `host_data` (size_bytes) into a `__constant__` symbol on the
+// kernel's module. Caller passes the module from cuModuleLoadData and the
+// symbol name as it appears in CUDA source. Returns 0 on success.
+//
+// Used by the kind-templated bus emitter to push per-APC op tables into
+// the kernel's `__constant__` array between launches.
+int powdr_nvrtc_set_constant_symbol(
+    void*       module,
+    const char* sym_name,
+    const void* host_data,
+    size_t      size_bytes
+) {
+    if (!ensure_primary_context()) return -1;
+    if (module == nullptr || sym_name == nullptr) return -2;
+    if (size_bytes == 0) return 0;
+
+    CUdeviceptr d_ptr = 0;
+    size_t      d_size = 0;
+    CUresult r = cuModuleGetGlobal(&d_ptr, &d_size, (CUmodule)module, sym_name);
+    if (r != CUDA_SUCCESS) return -3000 - (int)r;
+    if (size_bytes > d_size) return -2; // overflow against declared array
+
+    r = cuMemcpyHtoD(d_ptr, host_data, size_bytes);
+    if (r != CUDA_SUCCESS) return -3000 - (int)r;
+    return 0;
+}
+
+// Launch a kind-templated bus kernel matching the bus_v2 signature shared
+// by var_range / tuple2 / bitwise_range / bitwise_xor:
+//
+//   __global__ void <kernel>(
+//       const unsigned int* d_output, int N, unsigned long long H,
+//       unsigned int* d_hist,
+//       <up to 2 size args>,
+//       unsigned int n_ops);
+//
+// Synchronizes before returning. The histogram-specific extra args are
+// passed via `extra0` (always present) and `extra1` (used only by tuple2
+// for the second size; pass 0 for the others).
+int powdr_nvrtc_launch_bus_v2(
+    void*               fn,
+    const unsigned int* d_output,
+    int                 num_apc_calls,
+    unsigned long long  H,
+    unsigned int*       d_hist,
+    unsigned int        extra0,
+    unsigned int        extra1,
+    unsigned int        has_extra1,
+    unsigned int        n_ops,
+    unsigned int        grid_x,
+    unsigned int        block_x
+) {
+    if (!ensure_primary_context()) return -1;
+    if (fn == nullptr) return -2;
+    if (grid_x == 0)  grid_x = 1;
+    if (block_x == 0) block_x = 256;
+
+    void* args_no_extra1[] = {
+        (void*)&d_output,
+        (void*)&num_apc_calls,
+        (void*)&H,
+        (void*)&d_hist,
+        (void*)&extra0,
+        (void*)&n_ops,
+    };
+    void* args_with_extra1[] = {
+        (void*)&d_output,
+        (void*)&num_apc_calls,
+        (void*)&H,
+        (void*)&d_hist,
+        (void*)&extra0,
+        (void*)&extra1,
+        (void*)&n_ops,
+    };
+
+    CUresult r = cuLaunchKernel(
+        (CUfunction)fn,
+        grid_x, 1, 1,
+        block_x, 1, 1,
+        0,
+        nullptr,
+        has_extra1 ? args_with_extra1 : args_no_extra1,
+        nullptr);
+    if (r != CUDA_SUCCESS) return -2000 - (int)r;
+
+    r = cuCtxSynchronize();
+    if (r != CUDA_SUCCESS) return -2000 - (int)r;
+    return 0;
+}
+
 // Launch a JIT-compiled bus kernel that conforms to the bus_v1 signature:
 //
 //   __global__ void <kernel>(
