@@ -6,7 +6,7 @@ use std::{fmt::Display, sync::Arc};
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
-use crate::blocks::{detect_superblocks, ExecutionBlocks, SuperBlock};
+use crate::blocks::{detect_superblocks, ExecutionBlocks, StaticBlocks, SuperBlock};
 use crate::empirical_constraints::EmpiricalConstraints;
 use crate::evaluation::EvaluationResult;
 use crate::execution::{ExecutionState, OptimisticConstraint, OptimisticConstraints};
@@ -57,7 +57,7 @@ pub trait PgoAdapter {
 
     fn filter_blocks_and_create_apcs_with_pgo(
         &self,
-        blocks: Vec<AdapterBasicBlock<Self::Adapter>>,
+        blocks: AdapterStaticBlocks<Self::Adapter>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
@@ -68,9 +68,9 @@ pub trait PgoAdapter {
         } else {
             let superblocks = blocks
                 .into_iter()
-                .map(SuperBlock::from)
+                .map(|(_, b)| b)
                 // filter invalid APC candidates
-                .filter(|sb| sb.instructions().count() > 1)
+                .filter(|sb| sb.len() > 1)
                 .collect();
             ExecutionBlocks::new_without_pgo(superblocks)
         };
@@ -180,3 +180,4 @@ pub type AdapterOptimisticConstraint<A> = OptimisticConstraint<
 pub type AdapterBasicBlock<A> = BasicBlock<<A as Adapter>::Instruction>;
 pub type AdapterSuperBlock<A> = SuperBlock<<A as Adapter>::Instruction>;
 pub type AdapterExecutionBlocks<A> = ExecutionBlocks<<A as Adapter>::Instruction>;
+pub type AdapterStaticBlocks<A> = StaticBlocks<<A as Adapter>::Instruction>;

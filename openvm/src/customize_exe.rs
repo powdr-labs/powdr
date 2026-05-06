@@ -212,25 +212,23 @@ pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAd
     };
 
     let symbols = ISA::get_symbol_table(&original_program.linked_program);
-    let blocks = original_program.collect_basic_blocks();
-    tracing::info!(
-        "Got {} basic blocks from `collect_basic_blocks`",
-        blocks.len()
-    );
+    let blocks = original_program.collect_static_blocks();
     if tracing::enabled!(tracing::Level::DEBUG) {
-        tracing::debug!("Basic blocks sorted by execution count (top 10):");
-        for (count, block) in blocks
+        tracing::debug!("Static blocks sorted by execution count (top 10):");
+        for (count, (start_pc, block)) in blocks
             .iter()
-            .filter_map(|block| Some((pgo.pc_execution_count(block.start_pc)?, block)))
+            .filter_map(|(start_pc, block)| {
+                Some((pgo.pc_execution_count(*start_pc)?, (start_pc, block)))
+            })
             .sorted_by_key(|(count, _)| *count)
             .rev()
             .take(10)
         {
             let name = symbols
-                .try_get_one_or_preceding(block.start_pc)
+                .try_get_one_or_preceding(*start_pc)
                 .map(|(symbol, offset)| format!("{} + {offset}", symbol))
                 .unwrap_or_default();
-            tracing::debug!("Basic block (executed {count} times), {name}:\n{block}",);
+            tracing::debug!("Static block (executed {count} times), {name}:\n{block}",);
         }
     }
 
