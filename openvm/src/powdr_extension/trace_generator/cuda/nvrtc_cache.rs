@@ -8,6 +8,8 @@ use std::collections::HashMap;
 use std::ffi::{c_void, CString};
 use std::sync::{Arc, Mutex, OnceLock};
 
+use rayon::prelude::*;
+
 use crate::cuda_abi;
 
 use super::nvrtc_emit::EmittedKernel;
@@ -105,6 +107,82 @@ impl NvrtcKernelCache {
             .entry(kernel.source_hash)
             .or_insert_with(|| Arc::clone(&arc));
         Ok(arc)
+    }
+
+    /// Bulk parallel compile: maps `kernels[i]` → result `Arc<CompiledKernel>`,
+    /// running cache misses concurrently across the rayon thread pool. Cache
+    /// hits return the existing `Arc` without recompiling. Order is preserved.
+    /// Duplicate hashes within `kernels` compile only once and share an `Arc`.
+    ///
+    /// Both the in-memory cache (this struct's `by_hash`) and the on-disk PTX
+    /// cache (in `compile_one`) are populated as a side effect, so subsequent
+    /// `get_or_compile` calls for the same hash return immediately.
+    ///
+    /// Useful when many APCs need first-time compilation: an APC=30 prove
+    /// needs ~30 NVRTC compiles cold; serially that's seconds, in parallel
+    /// (NVRTC + nvcc are thread-safe per-program) it's near `max(per-kernel)`.
+    pub fn get_or_compile_many(
+        &self,
+        kernels: &[EmittedKernel],
+    ) -> Vec<Result<Arc<CompiledKernel>, NvrtcError>> {
+        // Collect unique kernels (by source_hash) that aren't yet cached. The
+        // first occurrence of each hash carries the source we'll compile.
+        let unique_misses: Vec<&EmittedKernel> = {
+            let by_hash = self.by_hash.lock().unwrap();
+            let mut seen: std::collections::HashSet<u64> = std::collections::HashSet::new();
+            let mut keep = Vec::new();
+            for k in kernels {
+                if by_hash.contains_key(&k.source_hash) {
+                    continue;
+                }
+                if seen.insert(k.source_hash) {
+                    keep.push(k);
+                }
+            }
+            keep
+        };
+
+        // Compile the unique misses in parallel.
+        let compiled: Vec<(u64, Result<Arc<CompiledKernel>, NvrtcError>)> = unique_misses
+            .par_iter()
+            .map(|k| (k.source_hash, compile_one(k).map(Arc::new)))
+            .collect();
+
+        // Insert successful compiles into the cache.
+        {
+            let mut by_hash = self.by_hash.lock().unwrap();
+            for (hash, result) in &compiled {
+                if let Ok(arc) = result {
+                    by_hash.entry(*hash).or_insert_with(|| Arc::clone(arc));
+                }
+            }
+        }
+
+        // Map each input kernel to its result by re-reading the (now-populated)
+        // cache, falling back to per-hash compile errors that didn't make it
+        // into the cache.
+        let by_hash = self.by_hash.lock().unwrap();
+        let mut errors: std::collections::HashMap<u64, NvrtcError> = std::collections::HashMap::new();
+        for (hash, result) in compiled {
+            if let Err(e) = result {
+                errors.insert(hash, e);
+            }
+        }
+        kernels
+            .iter()
+            .map(|k| {
+                if let Some(existing) = by_hash.get(&k.source_hash) {
+                    Ok(Arc::clone(existing))
+                } else if let Some(e) = errors.remove(&k.source_hash) {
+                    Err(e)
+                } else {
+                    // Hash missing from both cache and error map: a duplicate
+                    // entry whose error we already returned above. Reconstruct
+                    // an InvalidSource so callers see *some* error.
+                    Err(NvrtcError::InvalidSource)
+                }
+            })
+            .collect()
     }
 }
 
@@ -305,6 +383,50 @@ mod tests {
         // Same Arc => same compiled module.
         assert!(Arc::ptr_eq(&a, &b), "expected dedupe by source hash");
         assert!(!a.function().is_null());
+    }
+
+    /// `get_or_compile_many` parallel-compiles distinct sources and dedupes
+    /// duplicates, populating the cache so a subsequent `get_or_compile`
+    /// returns the same `Arc` without recompiling.
+    #[test]
+    fn cache_parallel_compile_dedupes_and_populates() {
+        // Build N distinct sources (different stride values produce different
+        // hashes). Repeat one of them to test in-batch dedupe.
+        let mut kernels: Vec<EmittedKernel> = (0..4)
+            .map(|i| {
+                emit_jit_kernel_source(&EmitterInput {
+                    instructions: vec![EmitterInstruction {
+                        arena_offset: 0,
+                        record_stride: 64 + i as u32,
+                        record_offset: 0,
+                        columns: vec![EmitterColumn::DirectU32 { apc_col: 0, off: 0 }],
+                    }],
+                })
+            })
+            .collect();
+        // Duplicate kernels[1] so the batch contains two entries with the
+        // same source hash.
+        kernels.push(kernels[1].clone());
+
+        let cache = NvrtcKernelCache::default();
+        let results = cache.get_or_compile_many(&kernels);
+        assert_eq!(results.len(), kernels.len());
+        let arcs: Vec<Arc<CompiledKernel>> = results
+            .into_iter()
+            .map(|r| r.expect("each compile must succeed"))
+            .collect();
+
+        // Duplicate kernel must dedupe to the same Arc as the original.
+        assert!(
+            Arc::ptr_eq(&arcs[1], &arcs[4]),
+            "expected duplicate kernel to dedupe within batch"
+        );
+
+        // Cache must be populated: get_or_compile returns the SAME Arc.
+        for (k, expected) in kernels.iter().zip(arcs.iter()) {
+            let got = cache.get_or_compile(k).expect("post-batch get");
+            assert!(Arc::ptr_eq(&got, expected), "expected cache hit");
+        }
     }
 
     /// End-to-end Phase 1 vertical slice: build a synthetic arena with

@@ -45,7 +45,7 @@ use super::nvrtc_emit::EmittedKernel;
 
 /// Bumped whenever the emitter's output format changes — forces cache
 /// invalidation across emitter revisions.
-const EMITTER_VERSION: u32 = 1;
+const EMITTER_VERSION: u32 = 2;
 
 /// Kind of bus interaction, in the order the host knows about it from
 /// `SymbolicBusInteraction.id` matching periphery bus ids. Determines which
@@ -221,9 +221,34 @@ fn emit_interaction(
                 writeln!(s, "{}hist.add_count(idx);", indent).unwrap();
             });
         }
-        BusKind::Tuple2 | BusKind::Bitwise | BusKind::Unsupported => {
-            // Phase 2: only var_range emits work. Other kinds are no-ops here;
-            // the companion bytecode-VM pass picks them up.
+        BusKind::Tuple2 => {
+            // Args: [v0, v1]; idx = v0 * tuple2_sz1 + v1.
+            if intr.args.len() != 2 {
+                writeln!(
+                    s,
+                    "                    /* unexpected tuple2 arity {} */ break;",
+                    intr.args.len()
+                )
+                .unwrap();
+                return;
+            }
+            let v0 = emit_canonical_expr(s, &intr.args[0], apc_poly_id_to_index, apc_height);
+            let v1 = emit_canonical_expr(s, &intr.args[1], apc_poly_id_to_index, apc_height);
+            writeln!(
+                s,
+                "                    unsigned int idx = {} * tuple2_sz1 + {};",
+                v0, v1
+            )
+            .unwrap();
+            s.push_str(
+                "                    lookup::Histogram hist(d_tuple2_hist, tuple2_sz0 * tuple2_sz1);\n",
+            );
+            emit_mult_loop(s, &intr.mult, apc_poly_id_to_index, apc_height, |s, indent| {
+                writeln!(s, "{}hist.add_count(idx);", indent).unwrap();
+            });
+        }
+        BusKind::Bitwise | BusKind::Unsupported => {
+            // Phase 5 fills bitwise; Unsupported stays deferred.
             s.push_str("                    /* deferred to bytecode-VM companion */\n");
         }
     }
@@ -492,14 +517,14 @@ mod tests {
     }
 
     #[test]
-    fn emits_skips_tuple_and_bitwise() {
+    fn emits_skips_bitwise() {
         let input = BusEmitterInput {
             apc_height: 8,
             apc_poly_id_to_index: BTreeMap::new(),
             interactions: vec![BusInteractionDesc {
-                kind: BusKind::Tuple2,
+                kind: BusKind::Bitwise,
                 mult: num_expr(1),
-                args: vec![num_expr(0), num_expr(1)],
+                args: vec![num_expr(0), num_expr(1), num_expr(2), num_expr(0)],
             }],
         };
 
@@ -611,6 +636,87 @@ mod tests {
             expected[15 + r] = 1;
         }
         assert_eq!(host_hist, expected, "histogram mismatch");
+    }
+
+    /// Tuple-range vertical slice: emit Tuple2 interaction with mult=1,
+    /// args=[col0, col1]. idx = v0 * tuple2_sz1 + v1.
+    #[test]
+    fn launch_tuple_range_kernel_updates_histogram() {
+        use openvm_cuda_common::{
+            copy::{MemCopyD2H, MemCopyH2D},
+            d_buffer::DeviceBuffer,
+        };
+
+        use crate::powdr_extension::trace_generator::cuda::nvrtc_cache::NvrtcKernelCache;
+
+        const N: usize = 6;
+        const H: usize = 8;
+        // sizes 4 x 8 → 32 bins.
+        const SZ0: u32 = 4;
+        const SZ1: u32 = 8;
+
+        let mut trace_monty = vec![0u32; H * 2];
+        for r in 0..N {
+            // v0 in 0..3, v1 in 0..7
+            trace_monty[0 * H + r] = host_to_monty((r as u32) % SZ0);
+            trace_monty[1 * H + r] = host_to_monty((r as u32) % SZ1);
+        }
+        let d_trace: DeviceBuffer<u32> = trace_monty.to_device().expect("trace H2D");
+
+        let total_bins = (SZ0 * SZ1) as usize;
+        let d_var_hist: DeviceBuffer<u32> = DeviceBuffer::with_capacity(1);
+        d_var_hist.fill_zero().expect("zero");
+        let d_tuple_hist: DeviceBuffer<u32> = DeviceBuffer::with_capacity(total_bins);
+        d_tuple_hist.fill_zero().expect("zero");
+        let d_bitwise_hist: DeviceBuffer<u32> = DeviceBuffer::with_capacity(1);
+        d_bitwise_hist.fill_zero().expect("zero");
+
+        let mut id_map = BTreeMap::new();
+        id_map.insert(200, 0);
+        id_map.insert(201, 1);
+
+        let input = BusEmitterInput {
+            apc_height: H,
+            apc_poly_id_to_index: id_map,
+            interactions: vec![BusInteractionDesc {
+                kind: BusKind::Tuple2,
+                mult: num_expr(1),
+                args: vec![ref_expr(200, "v0"), ref_expr(201, "v1")],
+            }],
+        };
+        let kernel = emit_bus_kernel_source(&input);
+        let cache = NvrtcKernelCache::default();
+        let compiled = cache.get_or_compile(&kernel).expect("compile");
+
+        let rc = unsafe {
+            crate::cuda_abi::powdr_nvrtc_launch_bus_v1(
+                compiled.function(),
+                d_trace.as_ptr(),
+                N as i32,
+                H as u64,
+                /* var_range_bus_id */ 0,
+                d_var_hist.as_mut_ptr(),
+                1,
+                /* tuple2_bus_id */ 99,
+                d_tuple_hist.as_mut_ptr(),
+                SZ0,
+                SZ1,
+                /* bitwise_bus_id */ 0,
+                d_bitwise_hist.as_mut_ptr(),
+                1,
+                32,
+            )
+        };
+        assert_eq!(rc, 0, "launch rc={}", rc);
+
+        let host_hist: Vec<u32> = d_tuple_hist.to_host().expect("tuple_hist D2H");
+        let mut expected = vec![0u32; total_bins];
+        for r in 0..N {
+            let v0 = (r as u32) % SZ0;
+            let v1 = (r as u32) % SZ1;
+            expected[(v0 * SZ1 + v1) as usize] += 1;
+        }
+        assert_eq!(host_hist, expected);
     }
 
     /// mult=3 should unroll: 3 increments per row.

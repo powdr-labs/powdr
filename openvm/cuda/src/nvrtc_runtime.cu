@@ -12,7 +12,10 @@
 namespace {
 
 bool ensure_primary_context() {
-    static bool initialized = false;
+    // cuCtxSetCurrent is per-thread, so each rayon worker thread must call
+    // it (cuInit + cuDevicePrimaryCtxRetain are process-global and idempotent).
+    // Track init per-thread to avoid the syscall on every launch.
+    static thread_local bool initialized = false;
     if (initialized) return true;
     if (cuInit(0) != CUDA_SUCCESS) return false;
     CUdevice dev = 0;
