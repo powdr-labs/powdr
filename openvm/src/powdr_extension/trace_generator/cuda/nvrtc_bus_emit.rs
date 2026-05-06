@@ -45,7 +45,7 @@ use super::nvrtc_emit::EmittedKernel;
 
 /// Bumped whenever the emitter's output format changes — forces cache
 /// invalidation across emitter revisions.
-const EMITTER_VERSION: u32 = 2;
+const EMITTER_VERSION: u32 = 3;
 
 /// Kind of bus interaction, in the order the host knows about it from
 /// `SymbolicBusInteraction.id` matching periphery bus ids. Determines which
@@ -247,8 +247,83 @@ fn emit_interaction(
                 writeln!(s, "{}hist.add_count(idx);", indent).unwrap();
             });
         }
-        BusKind::Bitwise | BusKind::Unsupported => {
-            // Phase 5 fills bitwise; Unsupported stays deferred.
+        BusKind::Bitwise => {
+            // Args: [x, y, x_xor_y, selector]. selector == 0 → add_range,
+            // selector == 1 → add_xor. The XOR result `x_xor_y` is consumed
+            // by the constraint system and not needed here.
+            //
+            // Layout: BITWISE_NUM_BITS = 8 (fixed in openvm), num_rows = 2^16,
+            // total bins = 2 * 2^16 = 131072. Lower half is range, upper half
+            // is xor (offset by num_rows).
+            if intr.args.len() != 4 {
+                writeln!(
+                    s,
+                    "                    /* unexpected bitwise arity {} */ break;",
+                    intr.args.len()
+                )
+                .unwrap();
+                return;
+            }
+            let x = emit_canonical_expr(s, &intr.args[0], apc_poly_id_to_index, apc_height);
+            let y = emit_canonical_expr(s, &intr.args[1], apc_poly_id_to_index, apc_height);
+            // Skip x_xor_y (intr.args[2]) — not needed for histogram update.
+            //
+            // Common per-row work (idx into the 2*num_rows histogram):
+            writeln!(
+                s,
+                "                    const unsigned int bw_num_rows = 65536u; \
+                     /* 2^16 for BITWISE_NUM_BITS=8 */"
+            )
+            .unwrap();
+            writeln!(
+                s,
+                "                    unsigned int bw_idx = ({} << 8) | ({} & 0xFFu);",
+                x, y
+            )
+            .unwrap();
+            s.push_str(
+                "                    lookup::Histogram hist(d_bitwise_hist, 2u * bw_num_rows);\n",
+            );
+
+            // Host-fold selector if it's a Number — most common case (each
+            // bitwise interaction is either always range or always xor).
+            if let AlgebraicExpression::Number(c) = &intr.args[3] {
+                let sel = c.as_canonical_u32();
+                let body_emit: Box<dyn Fn(&mut String, &str)> = match sel {
+                    0 => Box::new(|s: &mut String, indent: &str| {
+                        writeln!(s, "{}hist.add_count(bw_idx);", indent).unwrap();
+                    }),
+                    1 => Box::new(|s: &mut String, indent: &str| {
+                        writeln!(s, "{}hist.add_count(bw_idx + bw_num_rows);", indent).unwrap();
+                    }),
+                    other => {
+                        writeln!(
+                            s,
+                            "                    /* invalid bitwise selector {} */",
+                            other
+                        )
+                        .unwrap();
+                        return;
+                    }
+                };
+                emit_mult_loop(s, &intr.mult, apc_poly_id_to_index, apc_height, |s, indent| {
+                    body_emit(s, indent);
+                });
+            } else {
+                // Runtime selector path: branch inside the mult loop.
+                let sel = emit_canonical_expr(s, &intr.args[3], apc_poly_id_to_index, apc_height);
+                emit_mult_loop(s, &intr.mult, apc_poly_id_to_index, apc_height, |s, indent| {
+                    writeln!(s, "{}if ({} == 0u) hist.add_count(bw_idx);", indent, sel).unwrap();
+                    writeln!(
+                        s,
+                        "{}else if ({} == 1u) hist.add_count(bw_idx + bw_num_rows);",
+                        indent, sel
+                    )
+                    .unwrap();
+                });
+            }
+        }
+        BusKind::Unsupported => {
             s.push_str("                    /* deferred to bytecode-VM companion */\n");
         }
     }
@@ -517,19 +592,43 @@ mod tests {
     }
 
     #[test]
-    fn emits_skips_bitwise() {
+    fn emits_skips_unsupported_only() {
+        // Build with one Unsupported entry — not on any known bus.
         let input = BusEmitterInput {
             apc_height: 8,
             apc_poly_id_to_index: BTreeMap::new(),
             interactions: vec![BusInteractionDesc {
-                kind: BusKind::Bitwise,
+                kind: BusKind::Unsupported,
                 mult: num_expr(1),
-                args: vec![num_expr(0), num_expr(1), num_expr(2), num_expr(0)],
+                args: vec![num_expr(0)],
             }],
         };
-
         let kernel = emit_bus_kernel_source(&input);
         assert!(kernel.source.contains("deferred to bytecode-VM"));
+    }
+
+    #[test]
+    fn emits_bitwise_arms_inline() {
+        let mut id_map = BTreeMap::new();
+        id_map.insert(300, 0);
+        id_map.insert(301, 1);
+        let input = BusEmitterInput {
+            apc_height: 8,
+            apc_poly_id_to_index: id_map,
+            interactions: vec![BusInteractionDesc {
+                kind: BusKind::Bitwise,
+                mult: num_expr(1),
+                args: vec![
+                    ref_expr(300, "x"),
+                    ref_expr(301, "y"),
+                    num_expr(0), // x_xor_y unused here
+                    num_expr(0), // selector = range
+                ],
+            }],
+        };
+        let kernel = emit_bus_kernel_source(&input);
+        assert!(kernel.source.contains("hist.add_count(bw_idx)"));
+        assert!(!kernel.source.contains("deferred to bytecode-VM"));
     }
 
     #[test]
@@ -717,6 +816,124 @@ mod tests {
             expected[(v0 * SZ1 + v1) as usize] += 1;
         }
         assert_eq!(host_hist, expected);
+    }
+
+    /// Bitwise vertical slice: emit Bitwise interaction with selector=0
+    /// (range) and selector=1 (xor). Confirm both halves of the histogram
+    /// update correctly. BITWISE_NUM_BITS = 8 → 65536 bins per half.
+    #[test]
+    fn launch_bitwise_kernel_updates_both_halves() {
+        use openvm_cuda_common::{
+            copy::{MemCopyD2H, MemCopyH2D},
+            d_buffer::DeviceBuffer,
+        };
+
+        use crate::powdr_extension::trace_generator::cuda::nvrtc_cache::NvrtcKernelCache;
+
+        const N: usize = 4;
+        const H: usize = 4;
+        const NUM_ROWS: usize = 65536;
+        const TOTAL_BINS: usize = 2 * NUM_ROWS;
+
+        // Two interactions:
+        //  - interaction 0: range over (x,y), x=col0, y=col1
+        //  - interaction 1: xor   over (x,y), x=col0, y=col1
+        // Same x,y so the same low-half index appears in both halves.
+        let xs = [0u32, 1, 2, 3];
+        let ys = [0u32, 4, 8, 16];
+        let mut trace_monty = vec![0u32; H * 2];
+        for r in 0..N {
+            trace_monty[0 * H + r] = host_to_monty(xs[r]);
+            trace_monty[1 * H + r] = host_to_monty(ys[r]);
+        }
+        let d_trace: DeviceBuffer<u32> = trace_monty.to_device().expect("trace H2D");
+
+        let d_var_hist: DeviceBuffer<u32> = DeviceBuffer::with_capacity(1);
+        d_var_hist.fill_zero().expect("zero");
+        let d_tuple_hist: DeviceBuffer<u32> = DeviceBuffer::with_capacity(1);
+        d_tuple_hist.fill_zero().expect("zero");
+        let d_bitwise_hist: DeviceBuffer<u32> = DeviceBuffer::with_capacity(TOTAL_BINS);
+        d_bitwise_hist.fill_zero().expect("zero");
+
+        let mut id_map = BTreeMap::new();
+        id_map.insert(300, 0);
+        id_map.insert(301, 1);
+
+        let input = BusEmitterInput {
+            apc_height: H,
+            apc_poly_id_to_index: id_map,
+            interactions: vec![
+                BusInteractionDesc {
+                    kind: BusKind::Bitwise,
+                    mult: num_expr(1),
+                    args: vec![
+                        ref_expr(300, "x"),
+                        ref_expr(301, "y"),
+                        num_expr(0),
+                        num_expr(0), // range
+                    ],
+                },
+                BusInteractionDesc {
+                    kind: BusKind::Bitwise,
+                    mult: num_expr(1),
+                    args: vec![
+                        ref_expr(300, "x"),
+                        ref_expr(301, "y"),
+                        num_expr(0),
+                        num_expr(1), // xor
+                    ],
+                },
+            ],
+        };
+        let kernel = emit_bus_kernel_source(&input);
+        let cache = NvrtcKernelCache::default();
+        let compiled = cache.get_or_compile(&kernel).expect("compile");
+
+        // Two interactions → 2 warps' worth of work; one block of 64 = 2 warps.
+        let rc = unsafe {
+            crate::cuda_abi::powdr_nvrtc_launch_bus_v1(
+                compiled.function(),
+                d_trace.as_ptr(),
+                N as i32,
+                H as u64,
+                0,
+                d_var_hist.as_mut_ptr(),
+                1,
+                0,
+                d_tuple_hist.as_mut_ptr(),
+                1,
+                1,
+                /* bitwise_bus_id */ 99,
+                d_bitwise_hist.as_mut_ptr(),
+                1,
+                64,
+            )
+        };
+        assert_eq!(rc, 0, "launch rc={}", rc);
+
+        let host_hist: Vec<u32> = d_bitwise_hist.to_host().expect("hist D2H");
+        for r in 0..N {
+            let lo = (xs[r] << 8) | (ys[r] & 0xFF);
+            assert_eq!(
+                host_hist[lo as usize], 1,
+                "range bin {} (x={}, y={}) expected 1",
+                lo, xs[r], ys[r]
+            );
+            assert_eq!(
+                host_hist[lo as usize + NUM_ROWS],
+                1,
+                "xor bin {} expected 1",
+                lo
+            );
+        }
+        // Spot-check that other bins are zero.
+        let mut nonzero = 0;
+        for v in &host_hist {
+            if *v != 0 {
+                nonzero += 1;
+            }
+        }
+        assert_eq!(nonzero, 2 * N, "exactly {} bins should be set", 2 * N);
     }
 
     /// mult=3 should unroll: 3 increments per row.
