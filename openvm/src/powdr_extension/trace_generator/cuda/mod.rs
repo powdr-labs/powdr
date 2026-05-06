@@ -420,11 +420,11 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
     /// `stage_prefix` controls the [trace_profile] labels for sub-stage
     /// timing (e.g., `"baseline"`, `"descriptor"`, `"nvrtc"`).
     ///
-    /// When the env var `POWDR_BUS_SPIKE` is set, the spike kernel runs
-    /// instead of the bytecode-VM kernel: same dispatch shape, no
-    /// expression evaluation. The resulting periphery histograms are
-    /// MEANINGLESS — the proof will fail to verify. Spike runs are for
-    /// timing comparison only.
+    /// Backend selection (env-driven; first-match wins):
+    /// - `POWDR_BUS_SPIKE` → run the spike kernel (Phase 0 measurement; NOT
+    ///   a real proof — histograms are MEANINGLESS).
+    /// - `POWDR_JIT_BACKEND_BUS=nvrtc` → NVRTC bus kernel.
+    /// - default → existing bytecode-VM kernel.
     fn run_bus_pass(
         &self,
         output: &DeviceMatrix<BabyBear>,
@@ -433,7 +433,15 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         height: usize,
         stage_prefix: &str,
     ) {
-        let (bus_interactions, arg_spans, bytecode) =
+        let backend_nvrtc = std::env::var("POWDR_JIT_BACKEND_BUS")
+            .map(|v| v == "nvrtc")
+            .unwrap_or(false);
+
+        // The bytecode-VM kernel and the spike kernel both consume the
+        // pre-compiled bytecode. The NVRTC kernel does not — but we still
+        // pay the H2D for compatibility (cheap; ~10us). Skip when NVRTC.
+        let compile_h2d = !backend_nvrtc || std::env::var("POWDR_BUS_SPIKE").is_ok();
+        let bus_data = if compile_h2d {
             time_stage(&format!("{stage_prefix}.bus_compile_h2d"), || {
                 let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
                     &self.apc.machine.bus_interactions,
@@ -443,8 +451,11 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
                 let bus_interactions = bus_interactions.to_device().unwrap();
                 let arg_spans = arg_spans.to_device().unwrap();
                 let bytecode = bytecode.to_device().unwrap();
-                (bus_interactions, arg_spans, bytecode)
-            });
+                Some((bus_interactions, arg_spans, bytecode))
+            })
+        } else {
+            None
+        };
 
         let periphery = &self.periphery.real;
         let var_range_bus_id = self.periphery.bus_ids.range_checker as u32;
@@ -457,6 +468,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         let bitwise_count_u32 = periphery.bitwise_lookup_8.as_ref().unwrap().count.as_ref();
 
         if std::env::var("POWDR_BUS_SPIKE").is_ok() {
+            let (bus_interactions, _, _) = bus_data.expect("spike requires H2D");
             time_stage(&format!("{stage_prefix}.bus_kernel_spike"), || {
                 cuda_abi::apc_apply_bus_spike(
                     output,
@@ -472,14 +484,16 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
                 )
                 .unwrap();
             });
-        } else {
-            time_stage(&format!("{stage_prefix}.bus_kernel"), || {
-                cuda_abi::apc_apply_bus(
+            return;
+        }
+
+        if backend_nvrtc {
+            time_stage(&format!("{stage_prefix}.bus_kernel_nvrtc"), || {
+                self.launch_nvrtc_bus(
                     output,
                     num_apc_calls,
-                    bytecode,
-                    bus_interactions,
-                    arg_spans,
+                    apc_poly_id_to_index,
+                    height,
                     var_range_bus_id,
                     var_range_count,
                     tuple2_bus_id,
@@ -487,10 +501,92 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
                     tuple2_sizes,
                     bitwise_bus_id,
                     bitwise_count_u32,
-                )
-                .unwrap();
+                );
             });
+            return;
         }
+
+        let (bus_interactions, arg_spans, bytecode) = bus_data.expect("vm requires H2D");
+        time_stage(&format!("{stage_prefix}.bus_kernel"), || {
+            cuda_abi::apc_apply_bus(
+                output,
+                num_apc_calls,
+                bytecode,
+                bus_interactions,
+                arg_spans,
+                var_range_bus_id,
+                var_range_count,
+                tuple2_bus_id,
+                tuple2_count_u32,
+                tuple2_sizes,
+                bitwise_bus_id,
+                bitwise_count_u32,
+            )
+            .unwrap();
+        });
+    }
+
+    /// Compile + launch the NVRTC bus kernel for this APC. Histograms are
+    /// updated in place exactly as the bytecode-VM kernel would.
+    #[allow(clippy::too_many_arguments)]
+    fn launch_nvrtc_bus(
+        &self,
+        output: &DeviceMatrix<BabyBear>,
+        num_apc_calls: usize,
+        apc_poly_id_to_index: &BTreeMap<u64, usize>,
+        height: usize,
+        var_range_bus_id: u32,
+        var_range_count: &openvm_cuda_common::d_buffer::DeviceBuffer<BabyBear>,
+        tuple2_bus_id: u32,
+        tuple2_count: &openvm_cuda_common::d_buffer::DeviceBuffer<BabyBear>,
+        tuple2_sizes: [u32; 2],
+        bitwise_bus_id: u32,
+        bitwise_count: &openvm_cuda_common::d_buffer::DeviceBuffer<BabyBear>,
+    ) {
+        use crate::powdr_extension::trace_generator::cuda::nvrtc_bus_emit::{
+            build_emitter_input, emit_bus_kernel_source,
+        };
+        use crate::powdr_extension::trace_generator::cuda::nvrtc_cache::NvrtcKernelCache;
+
+        let input = build_emitter_input(
+            &self.apc.machine.bus_interactions,
+            apc_poly_id_to_index,
+            height,
+            var_range_bus_id as u64,
+            Some(tuple2_bus_id as u64),
+            Some(bitwise_bus_id as u64),
+        );
+        let kernel = emit_bus_kernel_source(&input);
+        let compiled = NvrtcKernelCache::global()
+            .get_or_compile(&kernel)
+            .expect("NVRTC bus kernel compile failed");
+
+        // Grid: one warp per interaction. Block: 256 = 8 warps.
+        let n_interactions = self.apc.machine.bus_interactions.len() as u32;
+        let warps_per_block = 8u32;
+        let grid_x = n_interactions.div_ceil(warps_per_block).max(1);
+        let block_x = 256u32;
+
+        let rc = unsafe {
+            cuda_abi::powdr_nvrtc_launch_bus_v1(
+                compiled.function(),
+                output.buffer().as_ptr() as *const u32,
+                num_apc_calls as i32,
+                height as u64,
+                var_range_bus_id,
+                var_range_count.as_mut_ptr() as *mut u32,
+                var_range_count.len() as u32,
+                tuple2_bus_id,
+                tuple2_count.as_mut_ptr() as *mut u32,
+                tuple2_sizes[0],
+                tuple2_sizes[1],
+                bitwise_bus_id,
+                bitwise_count.as_mut_ptr() as *mut u32,
+                grid_x,
+                block_x,
+            )
+        };
+        assert_eq!(rc, 0, "NVRTC bus launch failed: {}", rc);
     }
 
     fn try_generate_witness(
