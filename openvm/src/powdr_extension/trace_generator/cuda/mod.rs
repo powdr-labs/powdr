@@ -183,6 +183,44 @@ pub struct PowdrTraceGeneratorGpu<ISA: OpenVmISA> {
     pub periphery: PowdrPeripheryInstancesGpu<ISA>,
 }
 
+/// Run `f`, optionally synchronizing the GPU stream and recording the
+/// elapsed time. Active only when `POWDR_TRACE_PROFILE` is set in the
+/// environment; otherwise this is a zero-overhead pass-through.
+///
+/// Emits `trace_gen_substage_time_ms{stage=<name>, group=app_proof}` to
+/// the metrics system (visible in `--metrics` output) and a one-line
+/// `tracing::info` entry tagged `[trace_profile]`. The same metric name
+/// is intended to be reused by future trace-gen / bus paths (e.g. NVRTC,
+/// interpreter) — `stage` is the only label that distinguishes them, so
+/// the viewer can group all substages under Trace Gen regardless of
+/// backend.
+#[inline]
+fn time_stage<F, R>(name: &'static str, f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    if std::env::var("POWDR_TRACE_PROFILE").is_err() {
+        return f();
+    }
+    let start = std::time::Instant::now();
+    let r = f();
+    // Flush any GPU work this stage launched so the elapsed time reflects
+    // device-side execution rather than enqueue latency.
+    let _ = openvm_cuda_common::stream::current_stream_sync();
+    let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+    // increment, not set — multiple APCs/chips in the same segment all
+    // add to the same (segment, stage) gauge. The viewer reads the final
+    // accumulated value as total time spent in this stage.
+    metrics::gauge!(
+        "trace_gen_substage_time_ms",
+        "stage" => name,
+        "group" => "app_proof",
+    )
+    .increment(elapsed_ms);
+    tracing::info!("[trace_profile] {:32} {:8.3} ms", name, elapsed_ms);
+    r
+}
+
 impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
     pub fn new(
         apc: IsaApc<BabyBear, ISA>,
@@ -212,45 +250,49 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
 
         let num_apc_calls = original_arenas.number_of_calls;
 
-        let chip_inventory: ChipInventory<BabyBearSC, DenseRecordArena, GpuBackend> = {
-            let airs = ISA::create_dummy_airs(self.config.config(), self.periphery.dummy.clone())
-                .expect("Failed to create dummy airs");
+        let chip_inventory: ChipInventory<BabyBearSC, DenseRecordArena, GpuBackend> =
+            time_stage("dummy_chip_inventory", || {
+                let airs = ISA::create_dummy_airs(self.config.config(), self.periphery.dummy.clone())
+                    .expect("Failed to create dummy airs");
 
-            ISA::create_dummy_chip_complex_gpu(
-                self.config.config(),
-                airs,
-                self.periphery.dummy.clone(),
-            )
-            .expect("Failed to create chip complex")
-            .inventory
-        };
+                ISA::create_dummy_chip_complex_gpu(
+                    self.config.config(),
+                    airs,
+                    self.periphery.dummy.clone(),
+                )
+                .expect("Failed to create chip complex")
+                .inventory
+            });
 
-        let dummy_trace_by_air_name: HashMap<String, DeviceMatrix<BabyBear>> = chip_inventory
-            .chips()
-            .iter()
-            .enumerate()
-            .rev()
-            .filter_map(|(insertion_idx, chip)| {
-                let air_name = chip_inventory.airs().ext_airs()[insertion_idx].name();
+        let dummy_trace_by_air_name: HashMap<String, DeviceMatrix<BabyBear>> =
+            time_stage("dummy_trace_gen", || {
+                chip_inventory
+                    .chips()
+                    .iter()
+                    .enumerate()
+                    .rev()
+                    .filter_map(|(insertion_idx, chip)| {
+                        let air_name = chip_inventory.airs().ext_airs()[insertion_idx].name();
 
-                let record_arena = {
-                    match original_arenas.take_real_arena(&air_name) {
-                        Some(ra) => ra,
-                        None => return None, // skip this iteration, because we only have record arena for chips that are used
-                    }
-                };
+                        let record_arena = {
+                            match original_arenas.take_real_arena(&air_name) {
+                                Some(ra) => ra,
+                                None => return None, // skip this iteration, because we only have record arena for chips that are used
+                            }
+                        };
 
-                // We might have initialized an arena for an AIR which ends up having no real records. It gets filtered out here.
-                let ctx = chip.generate_proving_ctx(record_arena);
-                let m = ctx.common_main;
-                use openvm_stark_backend::prover::MatrixDimensions;
-                if m.height() > 0 {
-                    Some((air_name, m))
-                } else {
-                    None
-                }
-            })
-            .collect();
+                        // We might have initialized an arena for an AIR which ends up having no real records. It gets filtered out here.
+                        let ctx = chip.generate_proving_ctx(record_arena);
+                        let m = ctx.common_main;
+                        use openvm_stark_backend::prover::MatrixDimensions;
+                        if m.height() > 0 {
+                            Some((air_name, m))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
+            });
 
         // Map from apc poly id to its index in the final apc trace
         let apc_poly_id_to_index: BTreeMap<u64, usize> = self
@@ -328,31 +370,40 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         };
 
         // Send the airs and substitutions to device
-        let airs = airs.to_device().unwrap();
-        let substitutions = substitutions.to_device().unwrap();
+        let (airs, substitutions) = time_stage("tracegen_h2d", || {
+            (airs.to_device().unwrap(), substitutions.to_device().unwrap())
+        });
 
-        cuda_abi::apc_tracegen(&mut output, airs, substitutions, num_apc_calls).unwrap();
+        time_stage("tracegen_kernel", || {
+            cuda_abi::apc_tracegen(&mut output, airs, substitutions, num_apc_calls).unwrap();
+        });
 
         // Apply derived columns using the GPU expression evaluator
-        let (derived_specs, derived_bc) = compile_derived_to_gpu(
-            &self.apc.machine.derived_columns,
-            &apc_poly_id_to_index,
-            height,
-        );
-        // In practice `d_specs` is never empty, because we will always have `is_valid`
-        let d_specs = derived_specs.to_device().unwrap();
-        let d_bc = derived_bc.to_device().unwrap();
-        cuda_abi::apc_apply_derived_expr(&mut output, d_specs, d_bc, num_apc_calls).unwrap();
+        time_stage("derived", || {
+            let (derived_specs, derived_bc) = compile_derived_to_gpu(
+                &self.apc.machine.derived_columns,
+                &apc_poly_id_to_index,
+                height,
+            );
+            // In practice `d_specs` is never empty, because we will always have `is_valid`
+            let d_specs = derived_specs.to_device().unwrap();
+            let d_bc = derived_bc.to_device().unwrap();
+            cuda_abi::apc_apply_derived_expr(&mut output, d_specs, d_bc, num_apc_calls).unwrap();
+        });
 
         // Encode bus interactions for GPU consumption
-        let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
-            &self.apc.machine.bus_interactions,
-            &apc_poly_id_to_index,
-            height,
-        );
-        let bus_interactions = bus_interactions.to_device().unwrap();
-        let arg_spans = arg_spans.to_device().unwrap();
-        let bytecode = bytecode.to_device().unwrap();
+        let (bus_interactions, arg_spans, bytecode) = time_stage("bus_compile_h2d", || {
+            let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
+                &self.apc.machine.bus_interactions,
+                &apc_poly_id_to_index,
+                height,
+            );
+            (
+                bus_interactions.to_device().unwrap(),
+                arg_spans.to_device().unwrap(),
+                bytecode.to_device().unwrap(),
+            )
+        });
 
         // Gather GPU inputs for periphery (bus ids, count device buffers)
         let periphery = &self.periphery.real;
@@ -376,26 +427,28 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         // because we use the default host to device stream, which only launches
         // the next kernel function after the prior (`apc_tracegen`) returns.
         // This is important because bus evaluation depends on trace results.
-        cuda_abi::apc_apply_bus(
-            // APC related
-            &output,
-            num_apc_calls,
-            // Interaction related
-            bytecode,
-            bus_interactions,
-            arg_spans,
-            // Variable range checker related
-            var_range_bus_id,
-            var_range_count,
-            // Tuple range checker related
-            tuple2_bus_id,
-            tuple2_count_u32,
-            tuple2_sizes,
-            // Bitwise related
-            bitwise_bus_id,
-            bitwise_count_u32,
-        )
-        .unwrap();
+        time_stage("bus_kernel", || {
+            cuda_abi::apc_apply_bus(
+                // APC related
+                &output,
+                num_apc_calls,
+                // Interaction related
+                bytecode,
+                bus_interactions,
+                arg_spans,
+                // Variable range checker related
+                var_range_bus_id,
+                var_range_count,
+                // Tuple range checker related
+                tuple2_bus_id,
+                tuple2_count_u32,
+                tuple2_sizes,
+                // Bitwise related
+                bitwise_bus_id,
+                bitwise_count_u32,
+            )
+            .unwrap();
+        });
 
         Some(output)
     }
