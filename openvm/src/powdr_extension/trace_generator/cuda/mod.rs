@@ -326,6 +326,81 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
                 .unwrap_or_else(|e| panic!("NVRTC bus partition failed: {}", e))
         });
 
+        // Per-APC capture diagnostics. Counts every interaction in the APC's
+        // bus list as exactly one of: codegen-captured (affine or bilinear,
+        // by kind), unsupported-bus (memory/exec/program — bytecode-VM
+        // ignores them too), or fallback (mult/args don't fit either decoder
+        // — bytecode-VM picks them up via the unhandled tail). The metric
+        // names match what `reth_capture_stats.py` aggregates.
+        let captured_var = partition.var_ops.len() + partition.var_ops_bilinear.len();
+        let captured_tup = partition.tuple_ops.len() + partition.tuple_ops_bilinear.len();
+        let captured_br = partition.bitwise_range_ops.len()
+            + partition.bitwise_range_ops_bilinear.len();
+        let captured_bx = partition.bitwise_xor_ops.len()
+            + partition.bitwise_xor_ops_bilinear.len();
+        let captured = captured_var + captured_tup + captured_br + captured_bx;
+        let unhandled = partition.unhandled.len();
+        let unsupported = partition.n_unsupported;
+        let total = captured + unhandled + unsupported;
+        // increment, not absolute — each APC contributes; aggregator sums
+        // across all APCs in a run.
+        metrics::counter!("apc_bus_total").increment(total as u64);
+        metrics::counter!("apc_bus_captured").increment(captured as u64);
+        metrics::counter!("apc_bus_captured_var_range").increment(captured_var as u64);
+        metrics::counter!("apc_bus_captured_tuple2").increment(captured_tup as u64);
+        metrics::counter!("apc_bus_captured_bitwise_range").increment(captured_br as u64);
+        metrics::counter!("apc_bus_captured_bitwise_xor").increment(captured_bx as u64);
+        metrics::counter!("apc_bus_unhandled").increment(unhandled as u64);
+        metrics::counter!("apc_bus_unsupported").increment(unsupported as u64);
+        // Hash the partitioned bus shape so each APC can be distinguished
+        // in logs even though we don't have a chip name here. Two APCs
+        // with the same bus shape collide, but for our analysis purposes
+        // (counting unique fallback shapes) that's actually desirable.
+        let apc_id = {
+            use std::collections::hash_map::DefaultHasher;
+            use std::hash::{Hash, Hasher};
+            let mut h = DefaultHasher::new();
+            self.apc.machine.bus_interactions.len().hash(&mut h);
+            for bi in &self.apc.machine.bus_interactions {
+                bi.id.hash(&mut h);
+                bi.args.len().hash(&mut h);
+            }
+            format!("{:016x}", h.finish())
+        };
+        tracing::info!(
+            "[apc_bus_partition] apc={} total={} captured={} (var={} tup={} br={} bx={}) unhandled={} unsupported={}",
+            apc_id, total, captured, captured_var, captured_tup, captured_br, captured_bx,
+            unhandled, unsupported,
+        );
+        // Log each unhandled interaction's shape so we can analyze what
+        // additional capture strategies would unlock. `bus_id` distinguishes
+        // var_range / tuple2 / bitwise; `mult` and `args` shapes are what
+        // the affine + bilinear decoders couldn't simplify.
+        for &idx in &partition.unhandled {
+            let bi = &self.apc.machine.bus_interactions[idx];
+            let bus_kind = if bi.id as u32 == var_range_bus_id {
+                "var_range"
+            } else if bi.id as u32 == tuple2_bus_id {
+                "tuple2"
+            } else if bi.id as u32 == bitwise_bus_id {
+                "bitwise"
+            } else {
+                "other"
+            };
+            tracing::info!(
+                "[apc_bus_unhandled] apc={} idx={} bus={} mult={} args=[{}]",
+                apc_id,
+                idx,
+                bus_kind,
+                bi.mult,
+                bi.args
+                    .iter()
+                    .map(|a| format!("{}", a))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+
         let kernels = timed_substage!("bus_nvrtc_emit", {
             (
                 emit_codegen_var_range(&partition.var_ops, &partition.var_ops_bilinear),
