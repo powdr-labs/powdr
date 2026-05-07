@@ -38,7 +38,7 @@ use super::nvrtc_emit::EmittedKernel;
 
 /// Bumped whenever any kernel source string changes — forces NVRTC and disk
 /// PTX cache invalidation.
-const EMITTER_VERSION: u32 = 6;
+const EMITTER_VERSION: u32 = 7;
 
 /// Maximum number of column terms in a single affine arg expression. The
 /// keccak APC peak observed is 5 (timestamp-delta with 5 columns); 22/23
@@ -170,23 +170,32 @@ pub struct BusEmitterInput {
 }
 
 /// Result of partitioning an APC's bus interactions into kind-specific
-/// op tables ready to upload to `__constant__` memory. Interactions that
-/// don't reduce to the simple form are collected in `unhandled` (by index
-/// into the original bus_interactions list) so the caller can fall back
-/// to the bytecode-VM kernel for that subset.
+/// op tables. The affine-shape ops (`*_ops`) are used by both the
+/// interpreter and codegen paths. The bilinear-shape ops (`*_ops_bilinear`)
+/// are populated only when affine decode fails and bilinear succeeds; they
+/// are emitted by the codegen path but treated as `unhandled` by the
+/// interpreter path (which doesn't support bilinear in-kernel).
 #[derive(Debug, Default)]
 pub struct PartitionedBus {
     pub var_ops: Vec<VarRangeOp>,
     pub tuple_ops: Vec<Tuple2Op>,
     pub bitwise_range_ops: Vec<BitwiseOp>,
     pub bitwise_xor_ops: Vec<BitwiseOp>,
+    /// Bilinear-shape ops (codegen path only). Each `*_bilinear` entry
+    /// also carries an `unhandled` index so the interpreter path can
+    /// treat it as a fallback target without reparsing.
+    pub var_ops_bilinear: Vec<(usize, VarRangeOpBilinear)>,
+    pub tuple_ops_bilinear: Vec<(usize, Tuple2OpBilinear)>,
+    pub bitwise_range_ops_bilinear: Vec<(usize, BitwiseOpBilinear)>,
+    pub bitwise_xor_ops_bilinear: Vec<(usize, BitwiseOpBilinear)>,
     /// Number of interactions on unsupported buses (memory/exec/program).
     /// These do nothing in the existing bytecode-VM kernel either —
     /// `apc_apply_bus_kernel` only updates 3 histograms.
     pub n_unsupported: usize,
     /// Indices into the original `bus_interactions` slice for interactions
-    /// whose mult/args don't fit the simple form. The caller should run
-    /// the bytecode VM kernel filtered to these indices.
+    /// whose mult/args fit neither affine nor bilinear (or whose
+    /// `mult` shape isn't a simple guard). The caller should run the
+    /// bytecode VM kernel filtered to these indices.
     pub unhandled: Vec<usize>,
 }
 
@@ -446,6 +455,254 @@ fn decode_affine_arg(
     })
 }
 
+// ============================================================================
+// Bilinear decoder — captures degree ≤ 2 expressions that affine can't.
+//
+// Represents an expression as a polynomial in column references with degree
+// at most 2. Internally tracks (constant, [linear terms], [bilinear terms])
+// in canonical (non-Monty) form. Recursive walker reduces every Add/Sub/Mul
+// pair to a sum of monomials and rejects if any product would yield degree
+// > 2.
+//
+// Used ONLY by the codegen path (POWDR_BUS_CODEGEN=1). The interpreter
+// path keeps the simple AffineArg shape; bilinear ops fall to its
+// unhandled tail there.
+// ============================================================================
+
+/// Polynomial-of-references with degree ≤ 2. All coefs in canonical form.
+/// Linear terms keyed by single col; bilinear terms by unordered (col_a,
+/// col_b) pair (a ≤ b normalized at insertion).
+#[derive(Clone, Debug, Default, Hash)]
+pub struct BilinearMonomials {
+    pub constant: u32,
+    pub linear: Vec<(u32, u32)>,           // (col, coef_canon)
+    pub bilinear: Vec<(u32, u32, u32)>,    // (col_a, col_b, coef_canon), col_a ≤ col_b
+}
+
+impl BilinearMonomials {
+    fn from_const(c: u32) -> Self {
+        Self {
+            constant: c,
+            ..Default::default()
+        }
+    }
+
+    fn from_col(col: u32) -> Self {
+        let mut m = Self::default();
+        m.linear.push((col, 1));
+        m
+    }
+
+    fn add_const(&mut self, c: u32) {
+        self.constant = ((self.constant as u64 + c as u64) % (P as u64)) as u32;
+    }
+
+    fn add_linear(&mut self, col: u32, coef: u32) {
+        if coef == 0 {
+            return;
+        }
+        if let Some(existing) = self.linear.iter_mut().find(|(c, _)| *c == col) {
+            existing.1 = ((existing.1 as u64 + coef as u64) % (P as u64)) as u32;
+        } else {
+            self.linear.push((col, coef));
+        }
+    }
+
+    fn add_bilinear(&mut self, mut col_a: u32, mut col_b: u32, coef: u32) {
+        if coef == 0 {
+            return;
+        }
+        if col_a > col_b {
+            std::mem::swap(&mut col_a, &mut col_b);
+        }
+        if let Some(existing) = self
+            .bilinear
+            .iter_mut()
+            .find(|(a, b, _)| *a == col_a && *b == col_b)
+        {
+            existing.2 = ((existing.2 as u64 + coef as u64) % (P as u64)) as u32;
+        } else {
+            self.bilinear.push((col_a, col_b, coef));
+        }
+    }
+
+    fn add(self, other: Self) -> Self {
+        let mut out = self;
+        out.add_const(other.constant);
+        for (c, k) in other.linear {
+            out.add_linear(c, k);
+        }
+        for (a, b, k) in other.bilinear {
+            out.add_bilinear(a, b, k);
+        }
+        out
+    }
+
+    fn negate(mut self) -> Self {
+        self.constant = p_neg(self.constant);
+        for (_, k) in &mut self.linear {
+            *k = p_neg(*k);
+        }
+        for (_, _, k) in &mut self.bilinear {
+            *k = p_neg(*k);
+        }
+        self
+    }
+
+    fn scalar_mul(mut self, c: u32) -> Self {
+        if c == 0 {
+            return Self::default();
+        }
+        self.constant = ((self.constant as u64 * c as u64) % (P as u64)) as u32;
+        for (_, k) in &mut self.linear {
+            *k = ((*k as u64 * c as u64) % (P as u64)) as u32;
+        }
+        for (_, _, k) in &mut self.bilinear {
+            *k = ((*k as u64 * c as u64) % (P as u64)) as u32;
+        }
+        self
+    }
+
+    /// Multiply two polynomials. Returns None if the result would exceed
+    /// degree 2 (i.e., one side has bilinear terms AND the other has a
+    /// non-constant term).
+    fn mul(self, other: Self) -> Option<Self> {
+        // Quick paths: pure constant on either side.
+        if self.linear.is_empty() && self.bilinear.is_empty() {
+            return Some(other.scalar_mul(self.constant));
+        }
+        if other.linear.is_empty() && other.bilinear.is_empty() {
+            return Some(self.scalar_mul(other.constant));
+        }
+        // Either side has linear or bilinear. If one side has bilinear
+        // and the other has any non-constant, result is degree > 2.
+        let self_has_bilinear = !self.bilinear.is_empty();
+        let other_has_bilinear = !other.bilinear.is_empty();
+        let self_has_nonconst = !self.linear.is_empty() || self_has_bilinear;
+        let other_has_nonconst = !other.linear.is_empty() || other_has_bilinear;
+        if (self_has_bilinear && other_has_nonconst)
+            || (other_has_bilinear && self_has_nonconst)
+        {
+            return None;
+        }
+        // Safe: at most linear × linear + linear × constant + constant × constant.
+        let mut out = Self::default();
+        // const × const
+        out.add_const(((self.constant as u64 * other.constant as u64) % (P as u64)) as u32);
+        // const × linear
+        for (col, k) in &other.linear {
+            out.add_linear(
+                *col,
+                ((self.constant as u64 * *k as u64) % (P as u64)) as u32,
+            );
+        }
+        for (col, k) in &self.linear {
+            out.add_linear(
+                *col,
+                ((other.constant as u64 * *k as u64) % (P as u64)) as u32,
+            );
+        }
+        // linear × linear → bilinear (or square → linear-of-square which we
+        // store as bilinear with col_a == col_b).
+        for (col_a, k_a) in &self.linear {
+            for (col_b, k_b) in &other.linear {
+                let coef = ((*k_a as u64 * *k_b as u64) % (P as u64)) as u32;
+                out.add_bilinear(*col_a, *col_b, coef);
+            }
+        }
+        // const × bilinear (only one side has bilinear; we already
+        // verified the other has no non-const, but double-check
+        // syntactically below).
+        for (a, b, k) in &self.bilinear {
+            out.add_bilinear(
+                *a,
+                *b,
+                ((other.constant as u64 * *k as u64) % (P as u64)) as u32,
+            );
+        }
+        for (a, b, k) in &other.bilinear {
+            out.add_bilinear(
+                *a,
+                *b,
+                ((self.constant as u64 * *k as u64) % (P as u64)) as u32,
+            );
+        }
+        Some(out)
+    }
+}
+
+/// Reduce an algebraic expression to a degree-≤2 polynomial of column
+/// references. Returns None if the expression has degree > 2 anywhere
+/// (e.g., `col_a * col_b * col_c`).
+fn to_bilinear_monomials(
+    expr: &AlgebraicExpression<BabyBear>,
+    map: &BTreeMap<u64, usize>,
+) -> Option<BilinearMonomials> {
+    match expr {
+        AlgebraicExpression::Number(c) => Some(BilinearMonomials::from_const(c.as_canonical_u32())),
+        AlgebraicExpression::Reference(r) => {
+            let col = *map.get(&r.id)? as u32;
+            Some(BilinearMonomials::from_col(col))
+        }
+        AlgebraicExpression::UnaryOperation(u) => {
+            if !matches!(u.op, AlgebraicUnaryOperator::Minus) {
+                return None;
+            }
+            to_bilinear_monomials(&u.expr, map).map(|m| m.negate())
+        }
+        AlgebraicExpression::BinaryOperation(b) => {
+            let l = to_bilinear_monomials(&b.left, map)?;
+            let r = to_bilinear_monomials(&b.right, map)?;
+            match b.op {
+                powdr_expression::AlgebraicBinaryOperator::Add => Some(l.add(r)),
+                powdr_expression::AlgebraicBinaryOperator::Sub => Some(l.add(r.negate())),
+                powdr_expression::AlgebraicBinaryOperator::Mul => l.mul(r),
+            }
+        }
+    }
+}
+
+/// Decode an arg expression as a bilinear (degree ≤ 2) polynomial.
+/// Returns None if degree > 2. Returns a "trivially affine" decode (no
+/// bilinear terms) too — caller should prefer `decode_affine_arg` first
+/// for the canonical compact form.
+pub fn decode_bilinear_arg(
+    expr: &AlgebraicExpression<BabyBear>,
+    apc_poly_id_to_index: &BTreeMap<u64, usize>,
+) -> Option<BilinearMonomials> {
+    to_bilinear_monomials(expr, apc_poly_id_to_index)
+}
+
+// ============================================================================
+// Bilinear ops (codegen path only)
+// ============================================================================
+
+/// var_range op with bilinear value expression. Codegen emits the value
+/// computation as `c_const + sum (c_lin * col) + sum (c_bil * col_a * col_b)`.
+#[derive(Clone, Debug, Hash)]
+pub struct VarRangeOpBilinear {
+    pub mult_const: u32,
+    pub guard_col: u32,
+    pub value: BilinearMonomials,
+    pub max_bits: u32,
+}
+
+#[derive(Clone, Debug, Hash)]
+pub struct Tuple2OpBilinear {
+    pub mult_const: u32,
+    pub guard_col: u32,
+    pub v0: BilinearMonomials,
+    pub v1: BilinearMonomials,
+}
+
+#[derive(Clone, Debug, Hash)]
+pub struct BitwiseOpBilinear {
+    pub mult_const: u32,
+    pub guard_col: u32,
+    pub x: BilinearMonomials,
+    pub y: BilinearMonomials,
+}
+
 /// Decode a mult expression into `(mult_const, guard_col)` pair.
 ///
 /// - `Number(c)` → (c, NO_GUARD): unconditional multiplicity c
@@ -505,8 +762,9 @@ pub fn partition_apc_bus(input: &BusEmitterInput) -> Result<PartitionedBus, Part
                     });
                 }
                 let mult = decode_mult(&intr.mult, &input.apc_poly_id_to_index);
-                let value = decode_affine_arg(&intr.args[0], &input.apc_poly_id_to_index);
                 let max_bits = as_const_u32(&intr.args[1]);
+                let value = decode_affine_arg(&intr.args[0], &input.apc_poly_id_to_index);
+
                 if let (Some((mult_const, guard_col)), Some(value), Some(max_bits)) =
                     (mult, value, max_bits)
                 {
@@ -519,9 +777,29 @@ pub fn partition_apc_bus(input: &BusEmitterInput) -> Result<PartitionedBus, Part
                         value,
                         max_bits,
                     });
-                } else {
-                    p.unhandled.push(i);
+                    continue;
                 }
+                // Try bilinear before falling to unhandled.
+                if let (Some((mult_const, guard_col)), Some(max_bits)) = (mult, max_bits) {
+                    if mult_const == 0 {
+                        continue;
+                    }
+                    if let Some(value_bil) =
+                        decode_bilinear_arg(&intr.args[0], &input.apc_poly_id_to_index)
+                    {
+                        p.var_ops_bilinear.push((
+                            i,
+                            VarRangeOpBilinear {
+                                mult_const,
+                                guard_col,
+                                value: value_bil,
+                                max_bits,
+                            },
+                        ));
+                        continue;
+                    }
+                }
+                p.unhandled.push(i);
             }
             BusKind::Tuple2 => {
                 if intr.args.len() != 2 {
@@ -531,9 +809,11 @@ pub fn partition_apc_bus(input: &BusEmitterInput) -> Result<PartitionedBus, Part
                     });
                 }
                 let mult = decode_mult(&intr.mult, &input.apc_poly_id_to_index);
-                let v0 = decode_affine_arg(&intr.args[0], &input.apc_poly_id_to_index);
-                let v1 = decode_affine_arg(&intr.args[1], &input.apc_poly_id_to_index);
-                if let (Some((mult_const, guard_col)), Some(v0), Some(v1)) = (mult, v0, v1) {
+                let v0_aff = decode_affine_arg(&intr.args[0], &input.apc_poly_id_to_index);
+                let v1_aff = decode_affine_arg(&intr.args[1], &input.apc_poly_id_to_index);
+                if let (Some((mult_const, guard_col)), Some(v0), Some(v1)) =
+                    (mult, v0_aff, v1_aff)
+                {
                     if mult_const == 0 {
                         continue;
                     }
@@ -543,9 +823,30 @@ pub fn partition_apc_bus(input: &BusEmitterInput) -> Result<PartitionedBus, Part
                         v0,
                         v1,
                     });
-                } else {
-                    p.unhandled.push(i);
+                    continue;
                 }
+                if let Some((mult_const, guard_col)) = mult {
+                    if mult_const == 0 {
+                        continue;
+                    }
+                    let v0 =
+                        decode_bilinear_arg(&intr.args[0], &input.apc_poly_id_to_index);
+                    let v1 =
+                        decode_bilinear_arg(&intr.args[1], &input.apc_poly_id_to_index);
+                    if let (Some(v0), Some(v1)) = (v0, v1) {
+                        p.tuple_ops_bilinear.push((
+                            i,
+                            Tuple2OpBilinear {
+                                mult_const,
+                                guard_col,
+                                v0,
+                                v1,
+                            },
+                        ));
+                        continue;
+                    }
+                }
+                p.unhandled.push(i);
             }
             BusKind::Bitwise => {
                 if intr.args.len() != 4 {
@@ -555,12 +856,14 @@ pub fn partition_apc_bus(input: &BusEmitterInput) -> Result<PartitionedBus, Part
                     });
                 }
                 let mult = decode_mult(&intr.mult, &input.apc_poly_id_to_index);
-                let x = decode_affine_arg(&intr.args[0], &input.apc_poly_id_to_index);
-                let y = decode_affine_arg(&intr.args[1], &input.apc_poly_id_to_index);
+                let x_aff = decode_affine_arg(&intr.args[0], &input.apc_poly_id_to_index);
+                let y_aff = decode_affine_arg(&intr.args[1], &input.apc_poly_id_to_index);
                 let selector = as_const_u32(&intr.args[3]).ok_or_else(|| {
                     PartitionError::BitwiseSelector(format!("{:?}", intr.args[3]))
                 })?;
-                if let (Some((mult_const, guard_col)), Some(x), Some(y)) = (mult, x, y) {
+                if let (Some((mult_const, guard_col)), Some(x), Some(y)) =
+                    (mult, x_aff, y_aff)
+                {
                     if mult_const == 0 {
                         continue;
                     }
@@ -580,9 +883,36 @@ pub fn partition_apc_bus(input: &BusEmitterInput) -> Result<PartitionedBus, Part
                             )))
                         }
                     }
-                } else {
-                    p.unhandled.push(i);
+                    continue;
                 }
+                // Bilinear fallback for bitwise.
+                if let Some((mult_const, guard_col)) = mult {
+                    if mult_const == 0 {
+                        continue;
+                    }
+                    let x = decode_bilinear_arg(&intr.args[0], &input.apc_poly_id_to_index);
+                    let y = decode_bilinear_arg(&intr.args[1], &input.apc_poly_id_to_index);
+                    if let (Some(x), Some(y)) = (x, y) {
+                        let op_bil = BitwiseOpBilinear {
+                            mult_const,
+                            guard_col,
+                            x,
+                            y,
+                        };
+                        match selector {
+                            0 => p.bitwise_range_ops_bilinear.push((i, op_bil)),
+                            1 => p.bitwise_xor_ops_bilinear.push((i, op_bil)),
+                            other => {
+                                return Err(PartitionError::BitwiseSelector(format!(
+                                    "selector const = {}",
+                                    other
+                                )))
+                            }
+                        }
+                        continue;
+                    }
+                }
+                p.unhandled.push(i);
             }
         }
     }
@@ -672,18 +1002,29 @@ fn make_kernel(name: &str, src: &str, kind_tag: u32) -> EmittedKernel {
 
 /// Emit a per-APC `var_range` codegen kernel. Returns `None` if no ops
 /// (caller should skip the kernel entirely).
-pub fn emit_codegen_var_range(ops: &[VarRangeOp]) -> Option<EmittedKernel> {
-    if ops.is_empty() {
+pub fn emit_codegen_var_range(
+    affine_ops: &[VarRangeOp],
+    bilinear_ops: &[(usize, VarRangeOpBilinear)],
+) -> Option<EmittedKernel> {
+    if affine_ops.is_empty() && bilinear_ops.is_empty() {
         return None;
     }
-    let n_ops = ops.len();
+    let n_ops = affine_ops.len() + bilinear_ops.len();
 
     let mut s = String::new();
     s.push_str(BUS_PRELUDE);
 
-    // Source name — uniquely identifies this APC's op set so PTX disk cache
-    // works correctly (identical partitions → same hash → cache hit).
-    let source_hash = hash_codegen_kernel("VAR_RANGE_CODEGEN", ops);
+    let source_hash = {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut h = DefaultHasher::new();
+        "BUS_CODEGEN".hash(&mut h);
+        EMITTER_VERSION.hash(&mut h);
+        "VAR_RANGE_CODEGEN".hash(&mut h);
+        affine_ops.hash(&mut h);
+        bilinear_ops.hash(&mut h);
+        h.finish()
+    };
     let name = format!("apc_bus_var_range_codegen_{:016x}", source_hash);
 
     use std::fmt::Write as _;
@@ -707,10 +1048,18 @@ pub fn emit_codegen_var_range(ops: &[VarRangeOp]) -> Option<EmittedKernel> {
     )
     .unwrap();
 
-    for (idx, op) in ops.iter().enumerate() {
+    let mut idx = 0usize;
+    for op in affine_ops {
         writeln!(s, "        case {}: {{", idx).unwrap();
         emit_codegen_var_range_body(&mut s, op);
         s.push_str("            break;\n        }\n");
+        idx += 1;
+    }
+    for (_orig_i, op) in bilinear_ops {
+        writeln!(s, "        case {}: {{ /* bilinear */", idx).unwrap();
+        emit_codegen_var_range_bilinear_body(&mut s, op);
+        s.push_str("            break;\n        }\n");
+        idx += 1;
     }
     s.push_str(
         "        default: break;
@@ -725,6 +1074,38 @@ pub fn emit_codegen_var_range(ops: &[VarRangeOp]) -> Option<EmittedKernel> {
         name,
         source_hash,
     })
+}
+
+fn emit_codegen_var_range_bilinear_body(s: &mut String, op: &VarRangeOpBilinear) {
+    use std::fmt::Write as _;
+    let bits_one = 1u32 << op.max_bits;
+    s.push_str("            for (int r = lane; r < N; r += 32) {\n");
+    if op.guard_col != NO_GUARD {
+        writeln!(
+            s,
+            "                unsigned int g = monty_reduce(d_output[{}ull * H + (unsigned long long)r]);
+                if (g == 0u) continue;",
+            op.guard_col
+        )
+        .unwrap();
+    }
+    emit_bilinear_inline(s, &op.value, "                ", "v");
+    writeln!(
+        s,
+        "                unsigned int idx = {bits_one}u + v - 1u;"
+    )
+    .unwrap();
+    if op.mult_const == 1 {
+        s.push_str("                hist.add_count(idx);\n");
+    } else {
+        writeln!(
+            s,
+            "                hist.add_count_n(idx, {}u);",
+            op.mult_const
+        )
+        .unwrap();
+    }
+    s.push_str("            }\n");
 }
 
 fn emit_codegen_var_range_body(s: &mut String, op: &VarRangeOp) {
@@ -759,14 +1140,27 @@ fn emit_codegen_var_range_body(s: &mut String, op: &VarRangeOp) {
     s.push_str("            }\n");
 }
 
-pub fn emit_codegen_tuple2(ops: &[Tuple2Op]) -> Option<EmittedKernel> {
-    if ops.is_empty() {
+pub fn emit_codegen_tuple2(
+    affine_ops: &[Tuple2Op],
+    bilinear_ops: &[(usize, Tuple2OpBilinear)],
+) -> Option<EmittedKernel> {
+    if affine_ops.is_empty() && bilinear_ops.is_empty() {
         return None;
     }
-    let n_ops = ops.len();
+    let n_ops = affine_ops.len() + bilinear_ops.len();
     let mut s = String::new();
     s.push_str(BUS_PRELUDE);
-    let source_hash = hash_codegen_kernel("TUPLE2_CODEGEN", ops);
+    let source_hash = {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut h = DefaultHasher::new();
+        "BUS_CODEGEN".hash(&mut h);
+        EMITTER_VERSION.hash(&mut h);
+        "TUPLE2_CODEGEN".hash(&mut h);
+        affine_ops.hash(&mut h);
+        bilinear_ops.hash(&mut h);
+        h.finish()
+    };
     let name = format!("apc_bus_tuple2_codegen_{:016x}", source_hash);
 
     use std::fmt::Write as _;
@@ -792,7 +1186,8 @@ pub fn emit_codegen_tuple2(ops: &[Tuple2Op]) -> Option<EmittedKernel> {
     )
     .unwrap();
 
-    for (idx, op) in ops.iter().enumerate() {
+    let mut idx = 0usize;
+    for op in affine_ops {
         writeln!(s, "        case {}: {{", idx).unwrap();
         s.push_str("            for (int r = lane; r < N; r += 32) {\n");
         if op.guard_col != NO_GUARD {
@@ -818,6 +1213,35 @@ pub fn emit_codegen_tuple2(ops: &[Tuple2Op]) -> Option<EmittedKernel> {
             .unwrap();
         }
         s.push_str("            }\n            break;\n        }\n");
+        idx += 1;
+    }
+    for (_orig_i, op) in bilinear_ops {
+        writeln!(s, "        case {}: {{ /* bilinear */", idx).unwrap();
+        s.push_str("            for (int r = lane; r < N; r += 32) {\n");
+        if op.guard_col != NO_GUARD {
+            writeln!(
+                s,
+                "                unsigned int g = monty_reduce(d_output[{}ull * H + (unsigned long long)r]);
+                if (g == 0u) continue;",
+                op.guard_col
+            )
+            .unwrap();
+        }
+        emit_bilinear_inline(&mut s, &op.v0, "                ", "v0");
+        emit_bilinear_inline(&mut s, &op.v1, "                ", "v1");
+        s.push_str("                unsigned int idx = v0 * tuple2_sz1 + v1;\n");
+        if op.mult_const == 1 {
+            s.push_str("                hist.add_count(idx);\n");
+        } else {
+            writeln!(
+                s,
+                "                hist.add_count_n(idx, {}u);",
+                op.mult_const
+            )
+            .unwrap();
+        }
+        s.push_str("            }\n            break;\n        }\n");
+        idx += 1;
     }
     s.push_str("        default: break;\n        }\n    }\n}\n");
 
@@ -829,13 +1253,14 @@ pub fn emit_codegen_tuple2(ops: &[Tuple2Op]) -> Option<EmittedKernel> {
 }
 
 pub fn emit_codegen_bitwise(
-    ops: &[BitwiseOp],
+    affine_ops: &[BitwiseOp],
+    bilinear_ops: &[(usize, BitwiseOpBilinear)],
     is_xor: bool,
 ) -> Option<EmittedKernel> {
-    if ops.is_empty() {
+    if affine_ops.is_empty() && bilinear_ops.is_empty() {
         return None;
     }
-    let n_ops = ops.len();
+    let n_ops = affine_ops.len() + bilinear_ops.len();
     let mut s = String::new();
     s.push_str(BUS_PRELUDE);
     let tag = if is_xor {
@@ -843,7 +1268,17 @@ pub fn emit_codegen_bitwise(
     } else {
         "BITWISE_RANGE_CODEGEN"
     };
-    let source_hash = hash_codegen_kernel(tag, ops);
+    let source_hash = {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut h = DefaultHasher::new();
+        "BUS_CODEGEN".hash(&mut h);
+        EMITTER_VERSION.hash(&mut h);
+        tag.hash(&mut h);
+        affine_ops.hash(&mut h);
+        bilinear_ops.hash(&mut h);
+        h.finish()
+    };
     let kind_name = if is_xor { "xor" } else { "range" };
     let name = format!("apc_bus_bitwise_{}_codegen_{:016x}", kind_name, source_hash);
     let idx_offset_str = if is_xor { " + num_rows" } else { "" };
@@ -870,7 +1305,8 @@ pub fn emit_codegen_bitwise(
     )
     .unwrap();
 
-    for (idx, op) in ops.iter().enumerate() {
+    let mut idx = 0usize;
+    for op in affine_ops {
         writeln!(s, "        case {}: {{", idx).unwrap();
         s.push_str("            for (int r = lane; r < N; r += 32) {\n");
         if op.guard_col != NO_GUARD {
@@ -900,6 +1336,39 @@ pub fn emit_codegen_bitwise(
             .unwrap();
         }
         s.push_str("            }\n            break;\n        }\n");
+        idx += 1;
+    }
+    for (_orig_i, op) in bilinear_ops {
+        writeln!(s, "        case {}: {{ /* bilinear */", idx).unwrap();
+        s.push_str("            for (int r = lane; r < N; r += 32) {\n");
+        if op.guard_col != NO_GUARD {
+            writeln!(
+                s,
+                "                unsigned int g = monty_reduce(d_output[{}ull * H + (unsigned long long)r]);
+                if (g == 0u) continue;",
+                op.guard_col
+            )
+            .unwrap();
+        }
+        emit_bilinear_inline(&mut s, &op.x, "                ", "x");
+        emit_bilinear_inline(&mut s, &op.y, "                ", "y");
+        writeln!(
+            s,
+            "                unsigned int idx = ((x << 8) | (y & 0xFFu)){idx_offset_str};"
+        )
+        .unwrap();
+        if op.mult_const == 1 {
+            s.push_str("                hist.add_count(idx);\n");
+        } else {
+            writeln!(
+                s,
+                "                hist.add_count_n(idx, {}u);",
+                op.mult_const
+            )
+            .unwrap();
+        }
+        s.push_str("            }\n            break;\n        }\n");
+        idx += 1;
     }
     s.push_str("        default: break;\n        }\n    }\n}\n");
 
@@ -929,6 +1398,84 @@ fn emit_affine_inline(s: &mut String, a: &AffineArg, indent: &str, out_var: &str
             col = a.cols[t]
         )
         .unwrap();
+    }
+    writeln!(s, "{indent}unsigned int {out_var} = monty_reduce({out_var}_monty);").unwrap();
+}
+
+/// Emit straight-line C++ that computes a bilinear (degree-≤2) arg into
+/// `out_var` (canonical u32). Constant + linear terms emitted same as
+/// affine; bilinear terms add `mul_monty(c, mul_monty(cell_a, cell_b))`
+/// per cross-term. Cell loads are deduped within this single emission
+/// so a column referenced in both linear and bilinear positions only
+/// emits one LDG.
+fn emit_bilinear_inline(
+    s: &mut String,
+    m: &BilinearMonomials,
+    indent: &str,
+    out_var: &str,
+) {
+    use std::fmt::Write as _;
+    // Collect all distinct columns referenced (linear + bilinear) and emit
+    // one LDG per column up front. ptxas can hoist these out of the row
+    // loop where applicable.
+    let mut cols: Vec<u32> = Vec::new();
+    let mut add_col = |c: u32, cols: &mut Vec<u32>| {
+        if !cols.contains(&c) {
+            cols.push(c);
+        }
+    };
+    for (c, _) in &m.linear {
+        add_col(*c, &mut cols);
+    }
+    for (a, b, _) in &m.bilinear {
+        add_col(*a, &mut cols);
+        add_col(*b, &mut cols);
+    }
+    let cell_var = |col: u32| format!("{out_var}_c{col}");
+    for col in &cols {
+        writeln!(
+            s,
+            "{indent}unsigned int {cell} = d_output[{col}ull * H + (unsigned long long)r];",
+            cell = cell_var(*col)
+        )
+        .unwrap();
+    }
+    // Initialize accumulator with the constant in Monty form.
+    writeln!(
+        s,
+        "{indent}unsigned int {out_var}_monty = {const_monty}u;",
+        const_monty = host_to_monty(m.constant)
+    )
+    .unwrap();
+    // Linear terms.
+    for (col, coef) in &m.linear {
+        let coef_monty = host_to_monty(*coef);
+        writeln!(
+            s,
+            "{indent}{out_var}_monty = add_monty({out_var}_monty, mul_monty({coef_monty}u, {cell}));",
+            cell = cell_var(*col)
+        )
+        .unwrap();
+    }
+    // Bilinear terms: cross-product mul_monty followed by coef multiply.
+    for (col_a, col_b, coef) in &m.bilinear {
+        let coef_monty = host_to_monty(*coef);
+        if col_a == col_b {
+            writeln!(
+                s,
+                "{indent}{{ unsigned int p = mul_monty({cell_a}, {cell_a}); {out_var}_monty = add_monty({out_var}_monty, mul_monty({coef_monty}u, p)); }}",
+                cell_a = cell_var(*col_a)
+            )
+            .unwrap();
+        } else {
+            writeln!(
+                s,
+                "{indent}{{ unsigned int p = mul_monty({cell_a}, {cell_b}); {out_var}_monty = add_monty({out_var}_monty, mul_monty({coef_monty}u, p)); }}",
+                cell_a = cell_var(*col_a),
+                cell_b = cell_var(*col_b)
+            )
+            .unwrap();
+        }
     }
     writeln!(s, "{indent}unsigned int {out_var} = monty_reduce({out_var}_monty);").unwrap();
 }

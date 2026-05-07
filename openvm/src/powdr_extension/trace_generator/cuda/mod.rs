@@ -638,10 +638,18 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         // host-side codegen cost (string construction).
         let kernels = time_stage("bus_kernel_nvrtc_codegen.codegen", || {
             (
-                emit_codegen_var_range(&p.var_ops),
-                emit_codegen_tuple2(&p.tuple_ops),
-                emit_codegen_bitwise(&p.bitwise_range_ops, false),
-                emit_codegen_bitwise(&p.bitwise_xor_ops, true),
+                emit_codegen_var_range(&p.var_ops, &p.var_ops_bilinear),
+                emit_codegen_tuple2(&p.tuple_ops, &p.tuple_ops_bilinear),
+                emit_codegen_bitwise(
+                    &p.bitwise_range_ops,
+                    &p.bitwise_range_ops_bilinear,
+                    false,
+                ),
+                emit_codegen_bitwise(
+                    &p.bitwise_xor_ops,
+                    &p.bitwise_xor_ops_bilinear,
+                    true,
+                ),
             )
         });
 
@@ -700,7 +708,10 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         let block_x = 256u32;
         let warps_per_block = 8u32;
 
-        if let (Some(comp), n) = (var_compiled.as_ref(), p.var_ops.len() as u32) {
+        if let (Some(comp), n) = (
+            var_compiled.as_ref(),
+            (p.var_ops.len() + p.var_ops_bilinear.len()) as u32,
+        ) {
             time_stage("bus_kernel_nvrtc_codegen.launch_var", || {
                 let grid_x = n.div_ceil(warps_per_block).max(1);
                 let rc = unsafe {
@@ -721,7 +732,10 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
             });
         }
 
-        if let (Some(comp), n) = (tup_compiled.as_ref(), p.tuple_ops.len() as u32) {
+        if let (Some(comp), n) = (
+            tup_compiled.as_ref(),
+            (p.tuple_ops.len() + p.tuple_ops_bilinear.len()) as u32,
+        ) {
             time_stage("bus_kernel_nvrtc_codegen.launch_tup", || {
                 let grid_x = n.div_ceil(warps_per_block).max(1);
                 let rc = unsafe {
@@ -742,7 +756,10 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
             });
         }
 
-        if let (Some(comp), n) = (br_compiled.as_ref(), p.bitwise_range_ops.len() as u32) {
+        if let (Some(comp), n) = (
+            br_compiled.as_ref(),
+            (p.bitwise_range_ops.len() + p.bitwise_range_ops_bilinear.len()) as u32,
+        ) {
             time_stage("bus_kernel_nvrtc_codegen.launch_br", || {
                 let grid_x = n.div_ceil(warps_per_block).max(1);
                 let rc = unsafe {
@@ -760,7 +777,10 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
             });
         }
 
-        if let (Some(comp), n) = (bx_compiled.as_ref(), p.bitwise_xor_ops.len() as u32) {
+        if let (Some(comp), n) = (
+            bx_compiled.as_ref(),
+            (p.bitwise_xor_ops.len() + p.bitwise_xor_ops_bilinear.len()) as u32,
+        ) {
             time_stage("bus_kernel_nvrtc_codegen.launch_bx", || {
                 let grid_x = n.div_ceil(warps_per_block).max(1);
                 let rc = unsafe {
@@ -1084,14 +1104,18 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
             None,
         );
 
-        // Bytecode-VM fallback for the `unhandled` tail. Split into compile
-        // (host-side construct + H2D) and launch (kernel + sync) so we can
-        // see if the fallback work is dominated by setup or kernel execution.
-        if !p.unhandled.is_empty() {
+        // Bytecode-VM fallback for the `unhandled` tail. The interpreter
+        // path doesn't support bilinear arg shapes — bilinear ops from the
+        // partition fall to VM here too.
+        let mut all_unhandled: Vec<usize> = p.unhandled.clone();
+        all_unhandled.extend(p.var_ops_bilinear.iter().map(|(i, _)| *i));
+        all_unhandled.extend(p.tuple_ops_bilinear.iter().map(|(i, _)| *i));
+        all_unhandled.extend(p.bitwise_range_ops_bilinear.iter().map(|(i, _)| *i));
+        all_unhandled.extend(p.bitwise_xor_ops_bilinear.iter().map(|(i, _)| *i));
+        if !all_unhandled.is_empty() {
             let (bus_interactions, arg_spans, bytecode) =
                 time_stage("bus_kernel_nvrtc.fallback_compile_h2d", || {
-                    let unhandled_interactions: Vec<_> = p
-                        .unhandled
+                    let unhandled_interactions: Vec<_> = all_unhandled
                         .iter()
                         .map(|&i| self.apc.machine.bus_interactions[i].clone())
                         .collect();
