@@ -67,6 +67,18 @@ class ComparisonResult:
     config_changed: bool  # True if best config differs between runs
 
 
+class BenchmarkResultsError(Exception):
+    """Base error for benchmark result fetch/parsing failures."""
+
+
+class BenchmarkResultsFetchError(BenchmarkResultsError):
+    """Raised when benchmark results cannot be fetched."""
+
+
+class BenchmarkResultsParseError(BenchmarkResultsError):
+    """Raised when benchmark results cannot be parsed."""
+
+
 def fetch_url(url: str, headers: Optional[dict] = None) -> str:
     """Fetch content from a URL.
 
@@ -115,14 +127,22 @@ def get_results_directories() -> list[str]:
 
 
 def fetch_benchmark_results(run_dir: str, benchmark: str) -> Optional[BenchmarkResult]:
-    """Fetch and parse results for a specific benchmark from a run."""
+    """Fetch and parse results for a specific benchmark from a run.
+
+    Returns None only when the run has no APC results for the benchmark.
+
+    Raises:
+        BenchmarkResultsFetchError: If the CSV cannot be fetched.
+        BenchmarkResultsParseError: If the CSV cannot be parsed.
+    """
     url = f"{RAW_CONTENT_BASE}/results/{run_dir}/{benchmark}/basic_metrics.csv"
 
     try:
         content = fetch_url(url)
     except (URLError, HTTPError) as e:
-        print(f"Warning: Could not fetch {benchmark} results from {run_dir}: {e}", file=sys.stderr)
-        return None
+        raise BenchmarkResultsFetchError(
+            f"Could not fetch results from {run_dir}: {e}"
+        ) from e
 
     try:
         df = pd.read_csv(StringIO(content))
@@ -147,9 +167,10 @@ def fetch_benchmark_results(run_dir: str, benchmark: str) -> Optional[BenchmarkR
             best_time_ms=best_time,
             all_results=all_results
         )
-    except (KeyError, ValueError) as e:
-        print(f"Warning: Malformed CSV for {benchmark} in {run_dir}: {e}", file=sys.stderr)
-        return None
+    except (KeyError, ValueError, pd.errors.EmptyDataError, pd.errors.ParserError) as e:
+        raise BenchmarkResultsParseError(
+            f"Malformed CSV for {run_dir}: {e}"
+        ) from e
 
 
 def compare_results(
@@ -339,15 +360,24 @@ def main():
     for benchmark in args.benchmarks:
         print(f"Analyzing {benchmark}...", file=sys.stderr)
 
-        latest_result = fetch_benchmark_results(latest_run, benchmark)
-        previous_result = fetch_benchmark_results(previous_run, benchmark)
+        def fetch_result(run_dir: str, run_label: str) -> Optional[BenchmarkResult]:
+            try:
+                result = fetch_benchmark_results(run_dir, benchmark)
+            except BenchmarkResultsError as e:
+                errors.append(f"{benchmark}: {e} in {run_label} run")
+                return None
 
+            if result is None:
+                errors.append(f"{benchmark}: No APC results found in {run_label} run")
+
+            return result
+
+        latest_result = fetch_result(latest_run, "latest")
         if latest_result is None:
-            errors.append(f"{benchmark}: No APC results found in latest run")
             continue
 
+        previous_result = fetch_result(previous_run, "previous")
         if previous_result is None:
-            errors.append(f"{benchmark}: No APC results found in previous run")
             continue
 
         comparison = compare_results(
