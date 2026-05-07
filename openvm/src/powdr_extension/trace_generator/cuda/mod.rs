@@ -438,11 +438,29 @@ pub fn compile_bus_to_gpu(
     (interactions, arg_spans, bytecode)
 }
 
+/// Lazily-initialized per-APC codegen state. Holds the partition, the
+/// per-APC source-key, and the four compiled kernel handles. Built on
+/// first prove that uses `POWDR_BUS_CODEGEN=1`; reused for every
+/// subsequent prove of the same APC. Eliminates the per-prove cost of
+/// rebuilding source strings, hashing, and looking up the cache.
+struct CachedBusCodegenKernels {
+    partition: nvrtc_bus_emit::PartitionedBus,
+    apc_poly_id_to_index: BTreeMap<u64, usize>,
+    var_compiled: Option<std::sync::Arc<nvrtc_cache::CompiledKernel>>,
+    tup_compiled: Option<std::sync::Arc<nvrtc_cache::CompiledKernel>>,
+    br_compiled: Option<std::sync::Arc<nvrtc_cache::CompiledKernel>>,
+    bx_compiled: Option<std::sync::Arc<nvrtc_cache::CompiledKernel>>,
+}
+
 pub struct PowdrTraceGeneratorGpu<ISA: OpenVmISA> {
     pub apc: IsaApc<BabyBear, ISA>,
     pub original_airs: OriginalAirs<BabyBear, ISA>,
     pub config: OriginalVmConfig<ISA>,
     pub periphery: PowdrPeripheryInstancesGpu<ISA>,
+    /// Per-APC codegen kernel cache; initialized on first call to
+    /// `launch_nvrtc_bus_codegen`. `OnceLock` makes the prove-path
+    /// kernel-fetch a single atomic load on warm runs.
+    codegen_cache: std::sync::OnceLock<std::sync::Arc<CachedBusCodegenKernels>>,
 }
 
 impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
@@ -452,12 +470,71 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         config: OriginalVmConfig<ISA>,
         periphery: PowdrPeripheryInstancesGpu<ISA>,
     ) -> Self {
-        Self {
+        let gen = Self {
             apc,
             original_airs,
             config,
             periphery,
+            codegen_cache: std::sync::OnceLock::new(),
+        };
+
+        // When NVRTC codegen is selected via env, eagerly compile the
+        // bus kernels at construction time so the cost moves to process
+        // startup (or APC-load time) and doesn't hit any prove timer.
+        // The kernel sources are APC-deterministic and apc_height-
+        // independent, so this is safe to do once per APC.
+        if std::env::var("POWDR_JIT_BACKEND_BUS")
+            .map(|v| v == "nvrtc")
+            .unwrap_or(false)
+            && std::env::var("POWDR_BUS_CODEGEN").is_ok()
+        {
+            gen.warm_codegen_cache();
         }
+
+        gen
+    }
+
+    /// Eagerly populate `codegen_cache`. Call from APC construction or
+    /// process-startup paths to amortize NVRTC compile out of the prove
+    /// timer. Idempotent — `OnceLock::get_or_init` ensures it runs only
+    /// the first time. If NVRTC codegen isn't configured at runtime,
+    /// callers can skip this without affecting correctness.
+    pub fn warm_codegen_cache(&self) {
+        let apc_poly_id_to_index: BTreeMap<u64, usize> = self
+            .apc
+            .machine
+            .main_columns()
+            .enumerate()
+            .map(|(index, c)| (c.id, index))
+            .collect();
+
+        let var_range_bus_id = self.periphery.bus_ids.range_checker as u32;
+        let tuple2_bus_id = self
+            .periphery
+            .bus_ids
+            .tuple_range_checker
+            .map(|x| x as u32)
+            .unwrap_or(0);
+        let bitwise_bus_id = self
+            .periphery
+            .bus_ids
+            .bitwise_lookup
+            .map(|x| x as u32)
+            .unwrap_or(0);
+
+        // height parameter is unused by codegen (kernel takes H as runtime
+        // arg); pick any value that satisfies the partition's interface.
+        let _ = self.codegen_cache.get_or_init(|| {
+            time_stage("bus_kernel_nvrtc_codegen.warm_cache", || {
+                self.build_codegen_cache(
+                    &apc_poly_id_to_index,
+                    1, // dummy height — not baked into source
+                    var_range_bus_id,
+                    tuple2_bus_id,
+                    bitwise_bus_id,
+                )
+            })
+        });
     }
 
     /// Run the periphery-bus pass on a populated trace. Identical work in
@@ -600,43 +677,44 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
     /// kernel's source is unique per APC's op set; the PTX disk cache
     /// dedupes when partitions match across runs/APCs.
     #[allow(clippy::too_many_arguments)]
-    fn launch_nvrtc_bus_codegen(
+    /// Eager build of the per-APC codegen kernels: partition + codegen +
+    /// NVRTC compile + module load. Called once per APC on first prove
+    /// (lazy via `codegen_cache.get_or_init`). The result is cached for
+    /// every subsequent prove of this APC, so no source rebuild / cache
+    /// lookup happens on the hot prove path.
+    ///
+    /// Note: `height` (= `next_power_of_two_or_zero(num_apc_calls)`) is
+    /// per-prove and intentionally NOT baked into the kernel source —
+    /// the kernel takes it as the runtime arg `H`. The cache is therefore
+    /// height-independent and can be reused across proves of any size.
+    fn build_codegen_cache(
         &self,
-        output: &DeviceMatrix<BabyBear>,
-        num_apc_calls: usize,
         apc_poly_id_to_index: &BTreeMap<u64, usize>,
         height: usize,
         var_range_bus_id: u32,
-        var_range_count: &openvm_cuda_common::d_buffer::DeviceBuffer<BabyBear>,
         tuple2_bus_id: u32,
-        tuple2_count: &openvm_cuda_common::d_buffer::DeviceBuffer<BabyBear>,
-        tuple2_sizes: [u32; 2],
         bitwise_bus_id: u32,
-        bitwise_count: &openvm_cuda_common::d_buffer::DeviceBuffer<BabyBear>,
-    ) {
+    ) -> std::sync::Arc<CachedBusCodegenKernels> {
         use crate::powdr_extension::trace_generator::cuda::nvrtc_bus_emit::{
             build_emitter_input, emit_codegen_bitwise, emit_codegen_tuple2,
             emit_codegen_var_range, partition_apc_bus,
         };
         use crate::powdr_extension::trace_generator::cuda::nvrtc_cache::NvrtcKernelCache;
 
-        let input = build_emitter_input(
-            &self.apc.machine.bus_interactions,
-            apc_poly_id_to_index,
-            height,
-            var_range_bus_id as u64,
-            Some(tuple2_bus_id as u64),
-            Some(bitwise_bus_id as u64),
-        );
-
-        let p = time_stage("bus_kernel_nvrtc_codegen.partition", || {
+        let p = time_stage("bus_kernel_nvrtc_codegen.cache_build.partition", || {
+            let input = build_emitter_input(
+                &self.apc.machine.bus_interactions,
+                apc_poly_id_to_index,
+                height,
+                var_range_bus_id as u64,
+                Some(tuple2_bus_id as u64),
+                Some(bitwise_bus_id as u64),
+            );
             partition_apc_bus(&input)
                 .unwrap_or_else(|e| panic!("NVRTC bus partition failed: {}", e))
         });
 
-        // Emit per-APC source for each non-empty kind. Stage timer measures
-        // host-side codegen cost (string construction).
-        let kernels = time_stage("bus_kernel_nvrtc_codegen.codegen", || {
+        let kernels = time_stage("bus_kernel_nvrtc_codegen.cache_build.codegen", || {
             (
                 emit_codegen_var_range(&p.var_ops, &p.var_ops_bilinear),
                 emit_codegen_tuple2(&p.tuple_ops, &p.tuple_ops_bilinear),
@@ -653,33 +731,30 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
             )
         });
 
-        // Once-per-process: log emitted source sizes for size-cliff diagnosis.
+        // Once-per-process source-size diagnostic (only the first APC's).
         {
             use std::sync::atomic::{AtomicBool, Ordering};
             static REPORTED: AtomicBool = AtomicBool::new(false);
             if !REPORTED.swap(true, Ordering::Relaxed) {
-                let total =
-                    kernels.0.as_ref().map(|k| k.source.len()).unwrap_or(0)
-                        + kernels.1.as_ref().map(|k| k.source.len()).unwrap_or(0)
-                        + kernels.2.as_ref().map(|k| k.source.len()).unwrap_or(0)
-                        + kernels.3.as_ref().map(|k| k.source.len()).unwrap_or(0);
-                let bytes_for = |k: &Option<crate::powdr_extension::trace_generator::cuda::nvrtc_emit::EmittedKernel>| {
-                    k.as_ref().map(|x| x.source.len()).unwrap_or(0)
-                };
+                let bytes_for =
+                    |k: &Option<nvrtc_emit::EmittedKernel>| {
+                        k.as_ref().map(|x| x.source.len()).unwrap_or(0)
+                    };
                 tracing::info!(
-                    "NVRTC bus codegen (first APC): src bytes var={}, tup={}, br={}, bx={}, total={}",
+                    "NVRTC bus codegen (first APC, build-time): src bytes var={}, tup={}, br={}, bx={}, total={}",
                     bytes_for(&kernels.0),
                     bytes_for(&kernels.1),
                     bytes_for(&kernels.2),
                     bytes_for(&kernels.3),
-                    total
+                    bytes_for(&kernels.0)
+                        + bytes_for(&kernels.1)
+                        + bytes_for(&kernels.2)
+                        + bytes_for(&kernels.3)
                 );
             }
         }
 
-        // Compile via cache. Unique kernels (one per kind, per APC) so
-        // cache hits depend on partition equality across APCs.
-        let compiled = time_stage("bus_kernel_nvrtc_codegen.kernel_prefetch", || {
+        let compiled = time_stage("bus_kernel_nvrtc_codegen.cache_build.compile", || {
             let kernels_vec: Vec<_> = [&kernels.0, &kernels.1, &kernels.2, &kernels.3]
                 .iter()
                 .filter_map(|k| (*k).clone())
@@ -697,12 +772,58 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
                 .collect::<Vec<_>>()
         });
 
-        // Map kind index → compiled kernel index (filtered out None entries).
+        // Map filtered-compiled list back to per-kind Optional handles.
         let mut compiled_iter = compiled.into_iter();
         let var_compiled = kernels.0.as_ref().map(|_| compiled_iter.next().unwrap());
         let tup_compiled = kernels.1.as_ref().map(|_| compiled_iter.next().unwrap());
         let br_compiled = kernels.2.as_ref().map(|_| compiled_iter.next().unwrap());
         let bx_compiled = kernels.3.as_ref().map(|_| compiled_iter.next().unwrap());
+
+        std::sync::Arc::new(CachedBusCodegenKernels {
+            partition: p,
+            apc_poly_id_to_index: apc_poly_id_to_index.clone(),
+            var_compiled,
+            tup_compiled,
+            br_compiled,
+            bx_compiled,
+        })
+    }
+
+    fn launch_nvrtc_bus_codegen(
+        &self,
+        output: &DeviceMatrix<BabyBear>,
+        num_apc_calls: usize,
+        apc_poly_id_to_index: &BTreeMap<u64, usize>,
+        height: usize,
+        var_range_bus_id: u32,
+        var_range_count: &openvm_cuda_common::d_buffer::DeviceBuffer<BabyBear>,
+        tuple2_bus_id: u32,
+        tuple2_count: &openvm_cuda_common::d_buffer::DeviceBuffer<BabyBear>,
+        tuple2_sizes: [u32; 2],
+        bitwise_bus_id: u32,
+        bitwise_count: &openvm_cuda_common::d_buffer::DeviceBuffer<BabyBear>,
+    ) {
+        // Initialize the per-APC kernel cache on first prove. Subsequent
+        // proves of the same APC skip partition + codegen + compile entirely
+        // — they just clone the Arc<CompiledKernel> handles via OnceLock.
+        let cached = time_stage("bus_kernel_nvrtc_codegen.cache_get", || {
+            self.codegen_cache.get_or_init(|| {
+                self.build_codegen_cache(
+                    apc_poly_id_to_index,
+                    height,
+                    var_range_bus_id,
+                    tuple2_bus_id,
+                    bitwise_bus_id,
+                )
+            })
+            .clone()
+        });
+
+        let p = &cached.partition;
+        let var_compiled = &cached.var_compiled;
+        let tup_compiled = &cached.tup_compiled;
+        let br_compiled = &cached.br_compiled;
+        let bx_compiled = &cached.bx_compiled;
 
         // Launch each kind. Grid sized for n_ops; block 256 = 8 warps.
         let block_x = 256u32;
