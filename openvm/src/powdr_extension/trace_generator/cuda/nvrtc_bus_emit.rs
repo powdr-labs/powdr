@@ -88,7 +88,7 @@ pub const NO_GUARD: u32 = u32::MAX;
 /// are also Montgomery-form so the kernel does pure `mul_monty + add_monty`
 /// chains with no host-side per-launch transformations.
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Hash)]
 pub struct AffineArg {
     pub n_terms: u32,
     pub cols: [u32; MAX_TERMS_PER_ARG],
@@ -117,7 +117,7 @@ impl AffineArg {
 /// - `Reference(col)` → mult_const = 1, guard_col = col (0/1 guard)
 /// - `Number(c) * Reference(col)` (any side) → mult_const = c, guard_col = col
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Hash)]
 pub struct VarRangeOp {
     pub mult_const: u32,
     pub guard_col: u32,
@@ -126,7 +126,7 @@ pub struct VarRangeOp {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Hash)]
 pub struct Tuple2Op {
     pub mult_const: u32,
     pub guard_col: u32,
@@ -137,7 +137,7 @@ pub struct Tuple2Op {
 /// One simple-form bitwise interaction. Selector is folded by the host —
 /// range and xor get separate tables and separate kernels.
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Hash)]
 pub struct BitwiseOp {
     pub mult_const: u32,
     pub guard_col: u32,
@@ -654,6 +654,294 @@ fn make_kernel(name: &str, src: &str, kind_tag: u32) -> EmittedKernel {
         name: name.to_string(),
         source_hash,
     }
+}
+
+// ============================================================================
+// Per-APC codegen path
+//
+// Each op is emitted as a `case` block with constants baked as immediates.
+// ptxas can constant-fold `(1 << max_bits)`, eliminate the unused-term loop
+// of the interpreter approach, hoist `col * H` out of the row loop, and
+// fuse mul+add into FMA. Per-row SASS drops from ~50 (interpreter) to
+// ~15-20 (codegen) for the common 1-3 term affine cases.
+//
+// Source size: ~10 lines per op × N ops per kind. For keccak APCs the
+// peak is ~700 ops in a single kind, so ~7K lines per kernel. Kernel
+// source compiles in ~1-3s cold; warm via PTX disk cache is ~1ms.
+// ============================================================================
+
+/// Emit a per-APC `var_range` codegen kernel. Returns `None` if no ops
+/// (caller should skip the kernel entirely).
+pub fn emit_codegen_var_range(ops: &[VarRangeOp]) -> Option<EmittedKernel> {
+    if ops.is_empty() {
+        return None;
+    }
+    let n_ops = ops.len();
+
+    let mut s = String::new();
+    s.push_str(BUS_PRELUDE);
+
+    // Source name — uniquely identifies this APC's op set so PTX disk cache
+    // works correctly (identical partitions → same hash → cache hit).
+    let source_hash = hash_codegen_kernel("VAR_RANGE_CODEGEN", ops);
+    let name = format!("apc_bus_var_range_codegen_{:016x}", source_hash);
+
+    use std::fmt::Write as _;
+    writeln!(
+        s,
+        r#"extern "C" __global__ void {name}(
+    const unsigned int* __restrict__ d_output,
+    int                 N,
+    unsigned long long  H,
+    unsigned int*       __restrict__ d_var_hist,
+    unsigned int        var_num_bins)
+{{
+    const int warp = (threadIdx.x >> 5);
+    const int lane = (threadIdx.x & 31);
+    const int wpb  = (blockDim.x >> 5);
+    constexpr int N_OPS = {n_ops};
+    lookup::Histogram hist(d_var_hist, var_num_bins);
+
+    for (int i = blockIdx.x * wpb + warp; i < N_OPS; i += gridDim.x * wpb) {{
+        switch (i) {{"#,
+    )
+    .unwrap();
+
+    for (idx, op) in ops.iter().enumerate() {
+        writeln!(s, "        case {}: {{", idx).unwrap();
+        emit_codegen_var_range_body(&mut s, op);
+        s.push_str("            break;\n        }\n");
+    }
+    s.push_str(
+        "        default: break;
+        }
+    }
+}
+",
+    );
+
+    Some(EmittedKernel {
+        source: s,
+        name,
+        source_hash,
+    })
+}
+
+fn emit_codegen_var_range_body(s: &mut String, op: &VarRangeOp) {
+    use std::fmt::Write as _;
+    let bits_one = 1u32 << op.max_bits;
+    s.push_str("            for (int r = lane; r < N; r += 32) {\n");
+    if op.guard_col != NO_GUARD {
+        writeln!(
+            s,
+            "                unsigned int g = monty_reduce(d_output[{}ull * H + (unsigned long long)r]);
+                if (g == 0u) continue;",
+            op.guard_col
+        )
+        .unwrap();
+    }
+    emit_affine_inline(s, &op.value, "                ", "v");
+    writeln!(
+        s,
+        "                unsigned int idx = {bits_one}u + v - 1u;"
+    )
+    .unwrap();
+    if op.mult_const == 1 {
+        s.push_str("                hist.add_count(idx);\n");
+    } else {
+        writeln!(
+            s,
+            "                hist.add_count_n(idx, {}u);",
+            op.mult_const
+        )
+        .unwrap();
+    }
+    s.push_str("            }\n");
+}
+
+pub fn emit_codegen_tuple2(ops: &[Tuple2Op]) -> Option<EmittedKernel> {
+    if ops.is_empty() {
+        return None;
+    }
+    let n_ops = ops.len();
+    let mut s = String::new();
+    s.push_str(BUS_PRELUDE);
+    let source_hash = hash_codegen_kernel("TUPLE2_CODEGEN", ops);
+    let name = format!("apc_bus_tuple2_codegen_{:016x}", source_hash);
+
+    use std::fmt::Write as _;
+    writeln!(
+        s,
+        r#"extern "C" __global__ void {name}(
+    const unsigned int* __restrict__ d_output,
+    int                 N,
+    unsigned long long  H,
+    unsigned int*       __restrict__ d_tuple2_hist,
+    unsigned int        tuple2_sz0,
+    unsigned int        tuple2_sz1)
+{{
+    const int warp = (threadIdx.x >> 5);
+    const int lane = (threadIdx.x & 31);
+    const int wpb  = (blockDim.x >> 5);
+    constexpr int N_OPS = {n_ops};
+    const unsigned int total_bins = tuple2_sz0 * tuple2_sz1;
+    lookup::Histogram hist(d_tuple2_hist, total_bins);
+
+    for (int i = blockIdx.x * wpb + warp; i < N_OPS; i += gridDim.x * wpb) {{
+        switch (i) {{"#,
+    )
+    .unwrap();
+
+    for (idx, op) in ops.iter().enumerate() {
+        writeln!(s, "        case {}: {{", idx).unwrap();
+        s.push_str("            for (int r = lane; r < N; r += 32) {\n");
+        if op.guard_col != NO_GUARD {
+            writeln!(
+                s,
+                "                unsigned int g = monty_reduce(d_output[{}ull * H + (unsigned long long)r]);
+                if (g == 0u) continue;",
+                op.guard_col
+            )
+            .unwrap();
+        }
+        emit_affine_inline(&mut s, &op.v0, "                ", "v0");
+        emit_affine_inline(&mut s, &op.v1, "                ", "v1");
+        s.push_str("                unsigned int idx = v0 * tuple2_sz1 + v1;\n");
+        if op.mult_const == 1 {
+            s.push_str("                hist.add_count(idx);\n");
+        } else {
+            writeln!(
+                s,
+                "                hist.add_count_n(idx, {}u);",
+                op.mult_const
+            )
+            .unwrap();
+        }
+        s.push_str("            }\n            break;\n        }\n");
+    }
+    s.push_str("        default: break;\n        }\n    }\n}\n");
+
+    Some(EmittedKernel {
+        source: s,
+        name,
+        source_hash,
+    })
+}
+
+pub fn emit_codegen_bitwise(
+    ops: &[BitwiseOp],
+    is_xor: bool,
+) -> Option<EmittedKernel> {
+    if ops.is_empty() {
+        return None;
+    }
+    let n_ops = ops.len();
+    let mut s = String::new();
+    s.push_str(BUS_PRELUDE);
+    let tag = if is_xor {
+        "BITWISE_XOR_CODEGEN"
+    } else {
+        "BITWISE_RANGE_CODEGEN"
+    };
+    let source_hash = hash_codegen_kernel(tag, ops);
+    let kind_name = if is_xor { "xor" } else { "range" };
+    let name = format!("apc_bus_bitwise_{}_codegen_{:016x}", kind_name, source_hash);
+    let idx_offset_str = if is_xor { " + num_rows" } else { "" };
+
+    use std::fmt::Write as _;
+    writeln!(
+        s,
+        r#"extern "C" __global__ void {name}(
+    const unsigned int* __restrict__ d_output,
+    int                 N,
+    unsigned long long  H,
+    unsigned int*       __restrict__ d_bitwise_hist)
+{{
+    const int warp = (threadIdx.x >> 5);
+    const int lane = (threadIdx.x & 31);
+    const int wpb  = (blockDim.x >> 5);
+    constexpr int N_OPS = {n_ops};
+    const unsigned int num_rows = 65536u;
+    const unsigned int total_bins = 2u * num_rows;
+    lookup::Histogram hist(d_bitwise_hist, total_bins);
+
+    for (int i = blockIdx.x * wpb + warp; i < N_OPS; i += gridDim.x * wpb) {{
+        switch (i) {{"#,
+    )
+    .unwrap();
+
+    for (idx, op) in ops.iter().enumerate() {
+        writeln!(s, "        case {}: {{", idx).unwrap();
+        s.push_str("            for (int r = lane; r < N; r += 32) {\n");
+        if op.guard_col != NO_GUARD {
+            writeln!(
+                s,
+                "                unsigned int g = monty_reduce(d_output[{}ull * H + (unsigned long long)r]);
+                if (g == 0u) continue;",
+                op.guard_col
+            )
+            .unwrap();
+        }
+        emit_affine_inline(&mut s, &op.x, "                ", "x");
+        emit_affine_inline(&mut s, &op.y, "                ", "y");
+        writeln!(
+            s,
+            "                unsigned int idx = ((x << 8) | (y & 0xFFu)){idx_offset_str};"
+        )
+        .unwrap();
+        if op.mult_const == 1 {
+            s.push_str("                hist.add_count(idx);\n");
+        } else {
+            writeln!(
+                s,
+                "                hist.add_count_n(idx, {}u);",
+                op.mult_const
+            )
+            .unwrap();
+        }
+        s.push_str("            }\n            break;\n        }\n");
+    }
+    s.push_str("        default: break;\n        }\n    }\n}\n");
+
+    Some(EmittedKernel {
+        source: s,
+        name,
+        source_hash,
+    })
+}
+
+/// Emit straight-line C++ that computes the affine arg into `out_var`
+/// (canonical u32). Constants are baked as immediates; per-term work is
+/// fully unrolled at codegen time so ptxas can FMA-fuse and constant-fold.
+fn emit_affine_inline(s: &mut String, a: &AffineArg, indent: &str, out_var: &str) {
+    use std::fmt::Write as _;
+    writeln!(
+        s,
+        "{indent}unsigned int {out_var}_monty = {coef_const}u; /* monty(coef_const) */",
+        coef_const = a.coef_const_monty
+    )
+    .unwrap();
+    for t in 0..a.n_terms as usize {
+        writeln!(
+            s,
+            "{indent}{out_var}_monty = add_monty({out_var}_monty, mul_monty({coef}u, d_output[{col}ull * H + (unsigned long long)r]));",
+            coef = a.coefs_monty[t],
+            col = a.cols[t]
+        )
+        .unwrap();
+    }
+    writeln!(s, "{indent}unsigned int {out_var} = monty_reduce({out_var}_monty);").unwrap();
+}
+
+fn hash_codegen_kernel<T: std::hash::Hash>(tag: &str, ops: &[T]) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    "BUS_CODEGEN".hash(&mut hasher);
+    EMITTER_VERSION.hash(&mut hasher);
+    tag.hash(&mut hasher);
+    ops.hash(&mut hasher);
+    hasher.finish()
 }
 
 /// Host-side Montgomery encode for BabyBear: `x * R mod P`. R = 2^32, P = 0x78000001.

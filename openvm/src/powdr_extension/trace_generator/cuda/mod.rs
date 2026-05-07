@@ -535,20 +535,42 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         }
 
         if backend_nvrtc {
-            time_stage(&format!("{stage_prefix}.bus_kernel_nvrtc"), || {
-                self.launch_nvrtc_bus(
-                    output,
-                    num_apc_calls,
-                    apc_poly_id_to_index,
-                    height,
-                    var_range_bus_id,
-                    var_range_count,
-                    tuple2_bus_id,
-                    tuple2_count_u32,
-                    tuple2_sizes,
-                    bitwise_bus_id,
-                    bitwise_count_u32,
-                );
+            let codegen = std::env::var("POWDR_BUS_CODEGEN").is_ok();
+            let stage_label = if codegen {
+                format!("{stage_prefix}.bus_kernel_nvrtc_codegen")
+            } else {
+                format!("{stage_prefix}.bus_kernel_nvrtc")
+            };
+            time_stage(&stage_label, || {
+                if codegen {
+                    self.launch_nvrtc_bus_codegen(
+                        output,
+                        num_apc_calls,
+                        apc_poly_id_to_index,
+                        height,
+                        var_range_bus_id,
+                        var_range_count,
+                        tuple2_bus_id,
+                        tuple2_count_u32,
+                        tuple2_sizes,
+                        bitwise_bus_id,
+                        bitwise_count_u32,
+                    );
+                } else {
+                    self.launch_nvrtc_bus(
+                        output,
+                        num_apc_calls,
+                        apc_poly_id_to_index,
+                        height,
+                        var_range_bus_id,
+                        var_range_count,
+                        tuple2_bus_id,
+                        tuple2_count_u32,
+                        tuple2_sizes,
+                        bitwise_bus_id,
+                        bitwise_count_u32,
+                    );
+                }
             });
             return;
         }
@@ -571,6 +593,228 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
             )
             .unwrap();
         });
+    }
+
+    /// Per-APC codegen path: emit 4 kernels (one per bus-kind that has
+    /// captured ops) with op constants baked as immediates in source. Each
+    /// kernel's source is unique per APC's op set; the PTX disk cache
+    /// dedupes when partitions match across runs/APCs.
+    #[allow(clippy::too_many_arguments)]
+    fn launch_nvrtc_bus_codegen(
+        &self,
+        output: &DeviceMatrix<BabyBear>,
+        num_apc_calls: usize,
+        apc_poly_id_to_index: &BTreeMap<u64, usize>,
+        height: usize,
+        var_range_bus_id: u32,
+        var_range_count: &openvm_cuda_common::d_buffer::DeviceBuffer<BabyBear>,
+        tuple2_bus_id: u32,
+        tuple2_count: &openvm_cuda_common::d_buffer::DeviceBuffer<BabyBear>,
+        tuple2_sizes: [u32; 2],
+        bitwise_bus_id: u32,
+        bitwise_count: &openvm_cuda_common::d_buffer::DeviceBuffer<BabyBear>,
+    ) {
+        use crate::powdr_extension::trace_generator::cuda::nvrtc_bus_emit::{
+            build_emitter_input, emit_codegen_bitwise, emit_codegen_tuple2,
+            emit_codegen_var_range, partition_apc_bus,
+        };
+        use crate::powdr_extension::trace_generator::cuda::nvrtc_cache::NvrtcKernelCache;
+
+        let input = build_emitter_input(
+            &self.apc.machine.bus_interactions,
+            apc_poly_id_to_index,
+            height,
+            var_range_bus_id as u64,
+            Some(tuple2_bus_id as u64),
+            Some(bitwise_bus_id as u64),
+        );
+
+        let p = time_stage("bus_kernel_nvrtc_codegen.partition", || {
+            partition_apc_bus(&input)
+                .unwrap_or_else(|e| panic!("NVRTC bus partition failed: {}", e))
+        });
+
+        // Emit per-APC source for each non-empty kind. Stage timer measures
+        // host-side codegen cost (string construction).
+        let kernels = time_stage("bus_kernel_nvrtc_codegen.codegen", || {
+            (
+                emit_codegen_var_range(&p.var_ops),
+                emit_codegen_tuple2(&p.tuple_ops),
+                emit_codegen_bitwise(&p.bitwise_range_ops, false),
+                emit_codegen_bitwise(&p.bitwise_xor_ops, true),
+            )
+        });
+
+        // Once-per-process: log emitted source sizes for size-cliff diagnosis.
+        {
+            use std::sync::atomic::{AtomicBool, Ordering};
+            static REPORTED: AtomicBool = AtomicBool::new(false);
+            if !REPORTED.swap(true, Ordering::Relaxed) {
+                let total =
+                    kernels.0.as_ref().map(|k| k.source.len()).unwrap_or(0)
+                        + kernels.1.as_ref().map(|k| k.source.len()).unwrap_or(0)
+                        + kernels.2.as_ref().map(|k| k.source.len()).unwrap_or(0)
+                        + kernels.3.as_ref().map(|k| k.source.len()).unwrap_or(0);
+                let bytes_for = |k: &Option<crate::powdr_extension::trace_generator::cuda::nvrtc_emit::EmittedKernel>| {
+                    k.as_ref().map(|x| x.source.len()).unwrap_or(0)
+                };
+                tracing::info!(
+                    "NVRTC bus codegen (first APC): src bytes var={}, tup={}, br={}, bx={}, total={}",
+                    bytes_for(&kernels.0),
+                    bytes_for(&kernels.1),
+                    bytes_for(&kernels.2),
+                    bytes_for(&kernels.3),
+                    total
+                );
+            }
+        }
+
+        // Compile via cache. Unique kernels (one per kind, per APC) so
+        // cache hits depend on partition equality across APCs.
+        let compiled = time_stage("bus_kernel_nvrtc_codegen.kernel_prefetch", || {
+            let kernels_vec: Vec<_> = [&kernels.0, &kernels.1, &kernels.2, &kernels.3]
+                .iter()
+                .filter_map(|k| (*k).clone())
+                .collect();
+            let names: Vec<_> = kernels_vec.iter().map(|k| k.name.clone()).collect();
+            let compiled = NvrtcKernelCache::global().get_or_compile_many(&kernels_vec);
+            compiled
+                .into_iter()
+                .enumerate()
+                .map(|(i, r)| {
+                    r.unwrap_or_else(|e| {
+                        panic!("NVRTC compile failed for {}: {:?}", names[i], e)
+                    })
+                })
+                .collect::<Vec<_>>()
+        });
+
+        // Map kind index → compiled kernel index (filtered out None entries).
+        let mut compiled_iter = compiled.into_iter();
+        let var_compiled = kernels.0.as_ref().map(|_| compiled_iter.next().unwrap());
+        let tup_compiled = kernels.1.as_ref().map(|_| compiled_iter.next().unwrap());
+        let br_compiled = kernels.2.as_ref().map(|_| compiled_iter.next().unwrap());
+        let bx_compiled = kernels.3.as_ref().map(|_| compiled_iter.next().unwrap());
+
+        // Launch each kind. Grid sized for n_ops; block 256 = 8 warps.
+        let block_x = 256u32;
+        let warps_per_block = 8u32;
+
+        if let (Some(comp), n) = (var_compiled.as_ref(), p.var_ops.len() as u32) {
+            time_stage("bus_kernel_nvrtc_codegen.launch_var", || {
+                let grid_x = n.div_ceil(warps_per_block).max(1);
+                let rc = unsafe {
+                    cuda_abi::powdr_nvrtc_launch_bus_v4(
+                        comp.function(),
+                        output.buffer().as_ptr() as *const u32,
+                        num_apc_calls as i32,
+                        height as u64,
+                        var_range_count.as_mut_ptr() as *mut u32,
+                        var_range_count.len() as u32,
+                        0,
+                        0,
+                        grid_x,
+                        block_x,
+                    )
+                };
+                assert_eq!(rc, 0, "var_range codegen launch rc={}", rc);
+            });
+        }
+
+        if let (Some(comp), n) = (tup_compiled.as_ref(), p.tuple_ops.len() as u32) {
+            time_stage("bus_kernel_nvrtc_codegen.launch_tup", || {
+                let grid_x = n.div_ceil(warps_per_block).max(1);
+                let rc = unsafe {
+                    cuda_abi::powdr_nvrtc_launch_bus_v4(
+                        comp.function(),
+                        output.buffer().as_ptr() as *const u32,
+                        num_apc_calls as i32,
+                        height as u64,
+                        tuple2_count.as_mut_ptr() as *mut u32,
+                        tuple2_sizes[0],
+                        tuple2_sizes[1],
+                        1,
+                        grid_x,
+                        block_x,
+                    )
+                };
+                assert_eq!(rc, 0, "tuple2 codegen launch rc={}", rc);
+            });
+        }
+
+        if let (Some(comp), n) = (br_compiled.as_ref(), p.bitwise_range_ops.len() as u32) {
+            time_stage("bus_kernel_nvrtc_codegen.launch_br", || {
+                let grid_x = n.div_ceil(warps_per_block).max(1);
+                let rc = unsafe {
+                    cuda_abi::powdr_nvrtc_launch_bus_v4_bitwise(
+                        comp.function(),
+                        output.buffer().as_ptr() as *const u32,
+                        num_apc_calls as i32,
+                        height as u64,
+                        bitwise_count.as_mut_ptr() as *mut u32,
+                        grid_x,
+                        block_x,
+                    )
+                };
+                assert_eq!(rc, 0, "bitwise_range codegen launch rc={}", rc);
+            });
+        }
+
+        if let (Some(comp), n) = (bx_compiled.as_ref(), p.bitwise_xor_ops.len() as u32) {
+            time_stage("bus_kernel_nvrtc_codegen.launch_bx", || {
+                let grid_x = n.div_ceil(warps_per_block).max(1);
+                let rc = unsafe {
+                    cuda_abi::powdr_nvrtc_launch_bus_v4_bitwise(
+                        comp.function(),
+                        output.buffer().as_ptr() as *const u32,
+                        num_apc_calls as i32,
+                        height as u64,
+                        bitwise_count.as_mut_ptr() as *mut u32,
+                        grid_x,
+                        block_x,
+                    )
+                };
+                assert_eq!(rc, 0, "bitwise_xor codegen launch rc={}", rc);
+            });
+        }
+
+        // Bytecode-VM fallback for unhandled (same as interpreter path).
+        if !p.unhandled.is_empty() {
+            let (bus_interactions, arg_spans, bytecode) =
+                time_stage("bus_kernel_nvrtc_codegen.fallback_compile_h2d", || {
+                    let unhandled_interactions: Vec<_> = p
+                        .unhandled
+                        .iter()
+                        .map(|&i| self.apc.machine.bus_interactions[i].clone())
+                        .collect();
+                    let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
+                        &unhandled_interactions,
+                        apc_poly_id_to_index,
+                        height,
+                    );
+                    let bus_interactions = bus_interactions.to_device().unwrap();
+                    let arg_spans = arg_spans.to_device().unwrap();
+                    let bytecode = bytecode.to_device().unwrap();
+                    (bus_interactions, arg_spans, bytecode)
+                });
+            time_stage("bus_kernel_nvrtc_codegen.fallback_vm", || {
+                cuda_abi::apc_apply_bus(
+                    output,
+                    num_apc_calls,
+                    bytecode,
+                    bus_interactions,
+                    arg_spans,
+                    var_range_bus_id,
+                    var_range_count,
+                    tuple2_bus_id,
+                    tuple2_count,
+                    tuple2_sizes,
+                    bitwise_bus_id,
+                    bitwise_count,
+                )
+                .unwrap();
+            });
+        }
     }
 
     /// Partition + compile + launch the NVRTC bus kernels for this APC.

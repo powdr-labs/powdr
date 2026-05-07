@@ -153,6 +153,34 @@ extern "C" {
         size_bytes: usize,
     ) -> i32;
 
+    /// Launch a per-APC codegen bus kernel (bus_v4) for var_range or tuple2.
+    /// No d_ops pointer (constants baked into source) and no n_ops arg.
+    /// `has_extra1=1` only for tuple2.
+    pub fn powdr_nvrtc_launch_bus_v4(
+        function: *mut std::ffi::c_void,
+        d_output: *const u32,
+        num_apc_calls: i32,
+        h: u64,
+        d_hist: *mut u32,
+        extra0: u32,
+        extra1: u32,
+        has_extra1: u32,
+        grid_x: u32,
+        block_x: u32,
+    ) -> i32;
+
+    /// Launch a per-APC codegen bus kernel for bitwise (range or xor).
+    /// No d_ops, no n_ops, no extra args (size baked in).
+    pub fn powdr_nvrtc_launch_bus_v4_bitwise(
+        function: *mut std::ffi::c_void,
+        d_output: *const u32,
+        num_apc_calls: i32,
+        h: u64,
+        d_hist: *mut u32,
+        grid_x: u32,
+        block_x: u32,
+    ) -> i32;
+
     /// Launch a kind-templated bus kernel (bus_v3). Same shape as v2 plus a
     /// `d_ops` pointer (op tables now in global memory).
     pub fn powdr_nvrtc_launch_bus_v3(

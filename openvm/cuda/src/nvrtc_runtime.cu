@@ -217,6 +217,105 @@ int powdr_nvrtc_set_constant_symbol(
     return 0;
 }
 
+// Launch a per-APC codegen bus kernel matching the bus_v4 signature: no
+// d_ops pointer (constants are baked into the kernel source) and no
+// n_ops arg (constexpr inside the kernel; grid_x is sized at host time).
+//
+//   __global__ void <kernel>(
+//       const unsigned int* d_output, int N, unsigned long long H,
+//       unsigned int* d_hist,
+//       <up to 2 size args>);
+//
+// `extra1` is used only by tuple2; pass 0 + has_extra1=0 for others.
+int powdr_nvrtc_launch_bus_v4(
+    void*               fn,
+    const unsigned int* d_output,
+    int                 num_apc_calls,
+    unsigned long long  H,
+    unsigned int*       d_hist,
+    unsigned int        extra0,
+    unsigned int        extra1,
+    unsigned int        has_extra1,
+    unsigned int        grid_x,
+    unsigned int        block_x
+) {
+    if (!ensure_primary_context()) return -1;
+    if (fn == nullptr) return -2;
+    if (grid_x == 0)  grid_x = 1;
+    if (block_x == 0) block_x = 256;
+
+    void* args_no_extra1[] = {
+        (void*)&d_output,
+        (void*)&num_apc_calls,
+        (void*)&H,
+        (void*)&d_hist,
+        (void*)&extra0,
+    };
+    void* args_with_extra1[] = {
+        (void*)&d_output,
+        (void*)&num_apc_calls,
+        (void*)&H,
+        (void*)&d_hist,
+        (void*)&extra0,
+        (void*)&extra1,
+    };
+    // bitwise kernels have NO extra0 in v4 either; the extra0 field is
+    // only used by var_range (var_num_bins) and tuple2 (sz0). Caller is
+    // responsible for matching the signature.
+
+    CUresult r = cuLaunchKernel(
+        (CUfunction)fn,
+        grid_x, 1, 1,
+        block_x, 1, 1,
+        0,
+        nullptr,
+        has_extra1 ? args_with_extra1 : args_no_extra1,
+        nullptr);
+    if (r != CUDA_SUCCESS) return -2000 - (int)r;
+
+    r = cuCtxSynchronize();
+    if (r != CUDA_SUCCESS) return -2000 - (int)r;
+    return 0;
+}
+
+// Launch a per-APC codegen bus kernel for bitwise (no extra0). This is a
+// thin variant of v4 that omits the extra0 placeholder.
+int powdr_nvrtc_launch_bus_v4_bitwise(
+    void*               fn,
+    const unsigned int* d_output,
+    int                 num_apc_calls,
+    unsigned long long  H,
+    unsigned int*       d_hist,
+    unsigned int        grid_x,
+    unsigned int        block_x
+) {
+    if (!ensure_primary_context()) return -1;
+    if (fn == nullptr) return -2;
+    if (grid_x == 0)  grid_x = 1;
+    if (block_x == 0) block_x = 256;
+
+    void* args[] = {
+        (void*)&d_output,
+        (void*)&num_apc_calls,
+        (void*)&H,
+        (void*)&d_hist,
+    };
+
+    CUresult r = cuLaunchKernel(
+        (CUfunction)fn,
+        grid_x, 1, 1,
+        block_x, 1, 1,
+        0,
+        nullptr,
+        args,
+        nullptr);
+    if (r != CUDA_SUCCESS) return -2000 - (int)r;
+
+    r = cuCtxSynchronize();
+    if (r != CUDA_SUCCESS) return -2000 - (int)r;
+    return 0;
+}
+
 // Launch a kind-templated bus kernel matching the bus_v3 signature: same
 // shape as v2 but takes a `d_ops` pointer instead of relying on a
 // __constant__ symbol upload (op tables now live in global memory so they
