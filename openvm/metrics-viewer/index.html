@@ -564,6 +564,9 @@ function extractMetrics(runName, metricsJson) {
     // `<stage>_time_ms` (with `group=app_proof, air=PowdrAir_*` propagated
     // by `TracingContextLayer`). Future NVRTC trace-gen / bus paths can use
     // the same substage names and roll up under Trace Gen automatically.
+    // For accurate per-stage GPU timing, set `POWDR_TRACE_PROFILE=1` so the
+    // stream is synchronized before each span closes; otherwise pure-launch
+    // stages (tracegen_kernel, bus_kernel) report enqueue time only.
     // Hierarchy in the viewer:
     //   Trace Gen (= trace_gen_time_ms)
     //   ├── APC Trace Gen (= sum of substages, work in PowdrTraceGeneratorGpu)

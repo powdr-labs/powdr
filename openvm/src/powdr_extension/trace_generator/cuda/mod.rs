@@ -183,16 +183,27 @@ pub struct PowdrTraceGeneratorGpu<ISA: OpenVmISA> {
     pub periphery: PowdrPeripheryInstancesGpu<ISA>,
 }
 
+/// Cached `POWDR_TRACE_PROFILE` env var read. When set, `timed_substage!`
+/// synchronizes the GPU stream before each span closes so per-stage timings
+/// reflect device-side execution. Off by default to avoid serializing host
+/// work with GPU work — pure-launch stages (`tracegen_kernel`, `bus_kernel`)
+/// then show enqueue time only.
+fn trace_profile_sync_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| std::env::var("POWDR_TRACE_PROFILE").is_ok())
+}
+
 /// Wrap a substage in an INFO `tracing` span so openvm's `TimingMetricsLayer`
 /// auto-emits `<name>_time_ms`, with the `group` / `air` labels from the
 /// surrounding `app_prove` / `single_trace_gen` spans propagated by
-/// `TracingContextLayer`. Synchronizes the GPU stream before the span closes
-/// so the elapsed time reflects device-side execution, not enqueue latency.
+/// `TracingContextLayer`.
 macro_rules! timed_substage {
     ($name:literal, $body:expr) => {{
         let _span = ::tracing::info_span!($name).entered();
         let r = $body;
-        let _ = ::openvm_cuda_common::stream::current_stream_sync();
+        if crate::powdr_extension::trace_generator::cuda::trace_profile_sync_enabled() {
+            let _ = ::openvm_cuda_common::stream::current_stream_sync();
+        }
         r
     }};
 }
