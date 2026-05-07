@@ -438,7 +438,8 @@ function normalizeMetricsData(data, sourceLabel) {
 // ============================================================
 
 // Detects whether metrics come from OpenVM 1 or OpenVM 2.
-// OpenVM 2 uses LogUp GKR (metric names containing 'logup_gkr').
+// OpenVM 2 GPU uses hierarchical prover.* metrics (containing 'logup_gkr').
+// OpenVM 2 CPU uses flat metric names (e.g. 'prove_zerocheck_and_logup_time_ms').
 function detectOpenVmVersion(combinedData) {
     const firstRun = Object.values(combinedData)[0];
     if (!firstRun) return 1;
@@ -446,8 +447,25 @@ function detectOpenVmVersion(combinedData) {
         ...firstRun.counter.map(e => e.metric),
         ...firstRun.gauge.map(e => e.metric),
     ];
+    // V2 GPU backend
     if (allMetricNames.some(n => n.includes('logup_gkr'))) return 2;
+    // V2 CPU backend (has prove_zerocheck_and_logup but no logup_gkr)
+    if (allMetricNames.some(n => n === 'prove_zerocheck_and_logup_time_ms')) return 2;
     return 1;
+}
+
+// For V2 runs, identify whether they came from the GPU or CPU prover backend.
+// Returns null for V1 runs.
+function detectV2Backend(combinedData) {
+    const firstRun = Object.values(combinedData)[0];
+    if (!firstRun) return null;
+    const allMetricNames = [
+        ...firstRun.counter.map(e => e.metric),
+        ...firstRun.gauge.map(e => e.metric),
+    ];
+    if (allMetricNames.some(n => n.includes('logup_gkr'))) return 'gpu';
+    if (allMetricNames.some(n => n === 'prove_zerocheck_and_logup_time_ms')) return 'cpu';
+    return null;
 }
 
 // ============================================================
@@ -559,27 +577,55 @@ function extractMetrics(runName, metricsJson) {
     m.app_execute_preflight_time_ms = getMetric(app, 'execute_preflight_time_ms');
     m.app_trace_gen_time_ms = getMetric(app, 'trace_gen_time_ms');
 
-    // V2: STARK sub-components (prover.* metrics)
-    m.app_trace_commit_time_ms = getMetric(app, 'prover.main_trace_commit_time_ms');
-    m.app_rap_constraints_time_ms = getMetric(app, 'prover.rap_constraints_time_ms');
-    m.app_openings_time_ms = getMetric(app, 'prover.openings_time_ms');
+    // V2: STARK sub-components
+    // The GPU backend uses hierarchical prover.* metric names.
+    // The CPU backend uses flat metric names. We check both and take whichever is nonzero.
+    const gpuTraceCommit = getMetric(app, 'prover.main_trace_commit_time_ms');
+    const cpuTraceCommit = getMetric(app, 'trace_commit_cpu_time_ms');
+    m.app_trace_commit_time_ms = gpuTraceCommit || cpuTraceCommit;
+
+    const gpuConstraints = getMetric(app, 'prover.rap_constraints_time_ms');
+    const cpuConstraints = getMetric(app, 'prove_zerocheck_and_logup_time_ms');
+    m.app_rap_constraints_time_ms = gpuConstraints || cpuConstraints;
+
+    const gpuOpenings = getMetric(app, 'prover.openings_time_ms');
+    const cpuWhir = getMetric(app, 'prove_whir_opening_cpu_time_ms');
+    const cpuStacked = getMetric(app, 'prove_stacked_opening_reduction_time_ms');
+    m.app_openings_time_ms = gpuOpenings || (cpuWhir + cpuStacked);
+
     m.app_stark_other_ms = m.app_proof_time_excluding_trace_ms
         - m.app_trace_commit_time_ms - m.app_rap_constraints_time_ms - m.app_openings_time_ms;
 
     // V2: rap_constraints sub-components (additive: logup_gkr + round0 + mle_rounds = rap)
-    m.app_rap_logup_gkr_time_ms = getMetric(app, 'prover.rap_constraints.logup_gkr_time_ms');
-    m.app_rap_round0_time_ms = getMetric(app, 'prover.rap_constraints.round0_time_ms');
-    m.app_rap_mle_rounds_time_ms = getMetric(app, 'prover.rap_constraints.mle_rounds_time_ms');
+    // GPU: prover.rap_constraints.logup_gkr_time_ms, .round0_time_ms, .mle_rounds_time_ms
+    // CPU: fractional_sumcheck_time_ms, (no separate round0), prover.batch_constraints.mle_rounds_time_ms
+    const gpuLogupGkr = getMetric(app, 'prover.rap_constraints.logup_gkr_time_ms');
+    const cpuLogupGkr = getMetric(app, 'fractional_sumcheck_time_ms');
+    m.app_rap_logup_gkr_time_ms = gpuLogupGkr || cpuLogupGkr;
+
+    const gpuRound0 = getMetric(app, 'prover.rap_constraints.round0_time_ms');
+    m.app_rap_round0_time_ms = gpuRound0;  // CPU does not separate round0
+
+    const gpuMleRounds = getMetric(app, 'prover.rap_constraints.mle_rounds_time_ms');
+    const cpuMleRounds = getMetric(app, 'prover.batch_constraints.mle_rounds_time_ms');
+    m.app_rap_mle_rounds_time_ms = gpuMleRounds || cpuMleRounds;
+
     m.app_rap_other_ms = m.app_rap_constraints_time_ms
         - m.app_rap_logup_gkr_time_ms - m.app_rap_round0_time_ms - m.app_rap_mle_rounds_time_ms;
 
     // V2: openings sub-components (additive: whir + stacked_reduction = openings)
-    m.app_openings_whir_time_ms = getMetric(app, 'prover.openings.whir_time_ms');
-    m.app_openings_stacked_reduction_time_ms = getMetric(app, 'prover.openings.stacked_reduction_time_ms');
+    // GPU: prover.openings.whir_time_ms, prover.openings.stacked_reduction_time_ms
+    // CPU: prove_whir_opening_cpu_time_ms, prove_stacked_opening_reduction_time_ms
+    const gpuWhir = getMetric(app, 'prover.openings.whir_time_ms');
+    m.app_openings_whir_time_ms = gpuWhir || cpuWhir;
+
+    const gpuStacked = getMetric(app, 'prover.openings.stacked_reduction_time_ms');
+    m.app_openings_stacked_reduction_time_ms = gpuStacked || cpuStacked;
+
     m.app_openings_other_ms = m.app_openings_time_ms
         - m.app_openings_whir_time_ms - m.app_openings_stacked_reduction_time_ms;
 
-    // V2: additional per-segment sub-components
+    // V2: additional per-segment sub-components (only instrumented on GPU)
     m.app_set_initial_memory_time_ms = getMetric(app, 'set_initial_memory_time_ms');
 
     // "App other" = app proof time minus all known sub-components.
@@ -1288,7 +1334,7 @@ const PROOF_TIME_ROWS_V2 = [
     { key: 'app_proof_time_excluding_trace_ms', label: 'STARK (excl. trace)', fmt: fmtSeconds, indent: 1 },
     { key: 'app_rap_constraints_time_ms', label: 'Constraints', fmt: fmtSeconds, indent: 2 },
     { key: 'app_rap_logup_gkr_time_ms', label: 'LogUp GKR', fmt: fmtSeconds, indent: 3 },
-    { key: 'app_rap_round0_time_ms', label: 'Round 0', fmt: fmtSeconds, indent: 3 },
+    { key: 'app_rap_round0_time_ms', label: 'Round 0', fmt: fmtSeconds, indent: 3, hideIfZero: true },
     { key: 'app_rap_mle_rounds_time_ms', label: 'MLE Rounds', fmt: fmtSeconds, indent: 3 },
     { key: 'app_rap_other_ms', label: 'Other', fmt: fmtSeconds, indent: 3, muted: true },
     { key: 'app_openings_time_ms', label: 'Openings', fmt: fmtSeconds, indent: 2 },
@@ -1298,7 +1344,7 @@ const PROOF_TIME_ROWS_V2 = [
     { key: 'app_trace_commit_time_ms', label: 'Trace Commit', fmt: fmtSeconds, indent: 2 },
     { key: 'app_stark_other_ms', label: 'Other', fmt: fmtSeconds, indent: 2, muted: true },
     { key: 'app_execute_preflight_time_ms', label: 'Preflight Execution', fmt: fmtSeconds, indent: 1 },
-    { key: 'app_set_initial_memory_time_ms', label: 'Set Initial Memory', fmt: fmtSeconds, indent: 1 },
+    { key: 'app_set_initial_memory_time_ms', label: 'Set Initial Memory', fmt: fmtSeconds, indent: 1, hideIfZero: true },
     { key: 'app_trace_gen_time_ms', label: 'Trace Gen', fmt: fmtSeconds, indent: 1 },
     { key: 'app_other_ms', label: 'Other', fmt: fmtSeconds, indent: 1, muted: true },
     { key: 'leaf_proof_time_ms', label: 'Leaf Recursion', fmt: fmtSeconds, indent: 0 },
@@ -1422,10 +1468,11 @@ function renderDetailTable(title, rows, m, opts = {}) {
     const baseline = getBaselineMetrics();
     const tableId = 'detail-' + title.replace(/\s+/g, '-').toLowerCase();
 
-    // Filter out negligible "other" rows
+    // Filter out negligible "other" rows and rows hidden when zero
     const visibleRows = rows.filter(row => {
+        const val = m[row.key];
+        if (row.hideIfZero && (val == null || val === 0)) return false;
         if (row.muted) {
-            const val = m[row.key];
             return val != null && Math.abs(val) >= 1;
         }
         return true;
@@ -1728,7 +1775,10 @@ function processAndRender(data, sourceLabel = '') {
     }
 
     const badge = document.getElementById('versionBadge');
-    badge.textContent = `OpenVM ${detectedOpenVmVersion}`;
+    const backend = detectV2Backend(combinedData);
+    badge.textContent = backend
+        ? `OpenVM ${detectedOpenVmVersion} (${backend.toUpperCase()})`
+        : `OpenVM ${detectedOpenVmVersion}`;
     badge.style.display = 'inline';
 
     document.getElementById('uploadSection').style.display = 'none';

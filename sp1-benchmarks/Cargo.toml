@@ -1,0 +1,19 @@
+[package]
+name = "sp1-benchmarks"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+powdr-autoprecompiles.workspace = true
+pretty_assertions.workspace = true
+sp1-core-executor = { git = "https://github.com/succinctlabs/sp1.git", branch = "powdr-labs/v6.0.2-apc-base" }
+sp1-core-machine = { git = "https://github.com/succinctlabs/sp1.git", branch = "powdr-labs/v6.0.2-apc-base" }
+sp1-primitives = { git = "https://github.com/succinctlabs/sp1.git", branch = "powdr-labs/v6.0.2-apc-base" }
+
+[lints]
+workspace = true

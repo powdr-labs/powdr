@@ -75,7 +75,7 @@ __global__ void apc_apply_bus_kernel(
         uint32_t value = v_fp.asUInt32();
         uint32_t max_bits = b_fp.asUInt32();
         lookup::Histogram hist(d_var_hist, (uint32_t)var_num_bins);
-        uint32_t idx = (1u << max_bits) + value; // `max_bit` 
+        uint32_t idx = (1u << max_bits) + value - 1u; // matches VariableRangeChecker::add_count
 
         // apply multiplicity by looping; warp-level dedup in Histogram minimizes contention
         for (uint32_t k = 0; k < (uint32_t)mult.asUInt32(); ++k) hist.add_count(idx);

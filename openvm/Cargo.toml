@@ -19,6 +19,7 @@ itertools.workspace = true
 openvm-circuit.workspace = true
 openvm-circuit-primitives.workspace = true
 openvm-instructions.workspace = true
+openvm-cpu-backend.workspace = true
 openvm-stark-backend.workspace = true
 openvm-stark-sdk.workspace = true
 powdr-autoprecompiles.workspace = true
@@ -27,10 +28,10 @@ powdr-openvm-bus-interaction-handler.workspace = true
 openvm-circuit-derive.workspace = true
 openvm-circuit-primitives-derive.workspace = true
 openvm-sdk.workspace = true
+openvm-sdk-config.workspace = true
 openvm-cuda-backend = { workspace = true, optional = true }
 openvm-cuda-common = { workspace = true, optional = true }
 openvm-transpiler.workspace = true
-openvm-native-circuit.workspace = true
 serde.workspace = true
 powdr-number.workspace = true
 derive_more.workspace = true

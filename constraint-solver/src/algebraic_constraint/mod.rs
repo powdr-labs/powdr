@@ -11,7 +11,7 @@ use serde::Serialize;
 pub mod solve;
 
 /// An algebraic constraint
-#[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, Serialize)]
+#[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Ord, Serialize)]
 #[serde(transparent)]
 pub struct AlgebraicConstraint<V> {
     /// The expression representing the constraint, which must evaluate to 0 for the constraint to be satisfied.

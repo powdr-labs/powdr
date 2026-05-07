@@ -1,9 +1,10 @@
 use std::collections::{BTreeSet, HashSet};
 
+use openvm_circuit::arch::VmField;
 use openvm_circuit::arch::{AirInventory, ChipInventoryError, VmBuilder};
 use openvm_instructions::{instruction::Instruction, program::DEFAULT_PC_STEP, VmOpcode};
 use openvm_stark_backend::p3_field::PrimeField32;
-use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Engine;
+use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2CpuEngine;
 #[cfg(feature = "cuda")]
 use powdr_openvm::{
     isa::OriginalGpuChipComplex, powdr_extension::trace_generator::SharedPeripheryChipsGpu,
@@ -42,14 +43,14 @@ pub struct RiscvISA;
 pub struct OpenVmRegisterAddress(u8);
 
 // This seems trivial but it's tricky to put into powdr-openvm  because of some From implementation issues.
-impl<F: PrimeField32> From<ExtendedVmConfigExecutor<F>> for SpecializedExecutor<F, RiscvISA> {
+impl<F: VmField> From<ExtendedVmConfigExecutor<F>> for SpecializedExecutor<F, RiscvISA> {
     fn from(value: ExtendedVmConfigExecutor<F>) -> Self {
         Self::OriginalExecutor(value)
     }
 }
 
 impl OpenVmISA for RiscvISA {
-    type Executor<F: PrimeField32> = ExtendedVmConfigExecutor<F>;
+    type Executor<F: VmField> = ExtendedVmConfigExecutor<F>;
     type Config = ExtendedVmConfig;
     type CpuBuilder = ExtendedVmConfigCpuBuilder;
     #[cfg(feature = "cuda")]
@@ -71,7 +72,7 @@ impl OpenVmISA for RiscvISA {
         config: &Self::Config,
         airs: AirInventory<BabyBearSC>,
     ) -> Result<OriginalCpuChipComplex, ChipInventoryError> {
-        <ExtendedVmConfigCpuBuilder as VmBuilder<BabyBearPoseidon2Engine>>::create_chip_complex(
+        <ExtendedVmConfigCpuBuilder as VmBuilder<BabyBearPoseidon2CpuEngine>>::create_chip_complex(
             &ExtendedVmConfigCpuBuilder,
             config,
             airs,

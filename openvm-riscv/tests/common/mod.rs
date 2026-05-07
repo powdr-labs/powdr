@@ -1,5 +1,5 @@
 use openvm_instructions::instruction::Instruction;
-use openvm_sdk::config::SdkVmConfig;
+use openvm_sdk_config::SdkVmConfig;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::blocks::SuperBlock;
 use powdr_openvm::extraction_utils::OriginalVmConfig;

@@ -5,12 +5,12 @@ use openvm_circuit::{
     arch::{ChipInventory, DenseRecordArena},
     utils::next_power_of_two_or_zero,
 };
+use openvm_circuit_primitives::Chip;
 use openvm_cuda_backend::base::DeviceMatrix;
 use openvm_cuda_common::copy::MemCopyH2D;
 use openvm_stark_backend::{
     p3_field::PrimeField32,
-    prover::{hal::ProverBackend, types::AirProvingContext},
-    Chip,
+    prover::{AirProvingContext, ProverBackend},
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::{
@@ -241,9 +241,14 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
                 };
 
                 // We might have initialized an arena for an AIR which ends up having no real records. It gets filtered out here.
-                chip.generate_proving_ctx(record_arena)
-                    .common_main
-                    .map(|m| (air_name, m))
+                let ctx = chip.generate_proving_ctx(record_arena);
+                let m = ctx.common_main;
+                use openvm_stark_backend::prover::MatrixDimensions;
+                if m.height() > 0 {
+                    Some((air_name, m))
+                } else {
+                    None
+                }
             })
             .collect();
 
@@ -256,10 +261,12 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
             .map(|(index, c)| (c.id, index))
             .collect();
 
-        // allocate for apc trace
+        // allocate for apc trace (zero-initialized so columns not covered
+        // by substitutions or derived expressions default to zero, matching the CPU path)
         let width = apc_poly_id_to_index.len();
         let height = next_power_of_two_or_zero(num_apc_calls);
         let mut output = DeviceMatrix::<BabyBear>::with_capacity(height, width);
+        output.buffer().fill_zero().unwrap();
 
         // Prepare `OriginalAir` and `Subst` arrays
         let (airs, substitutions) = {
@@ -305,7 +312,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
                         // get the device dummy trace for this air
                         let dummy_trace = &dummy_trace_by_air_name[*air_name];
 
-                        use openvm_stark_backend::prover::hal::MatrixDimensions;
+                        use openvm_stark_backend::prover::MatrixDimensions;
                         airs.push(OriginalAir {
                             width: dummy_trace.width() as i32,
                             height: dummy_trace.height() as i32,
@@ -402,8 +409,13 @@ impl<R, PB: ProverBackend<Matrix = DeviceMatrix<BabyBear>>, ISA: OpenVmISA> Chip
 
         let trace = self
             .trace_generator
-            .try_generate_witness(self.record_arena_by_air_name.take());
+            .try_generate_witness(self.record_arena_by_air_name.take())
+            .unwrap_or_else(DeviceMatrix::dummy);
 
-        AirProvingContext::new(vec![], trace, vec![])
+        AirProvingContext {
+            cached_mains: vec![],
+            common_main: trace,
+            public_values: vec![],
+        }
     }
 }

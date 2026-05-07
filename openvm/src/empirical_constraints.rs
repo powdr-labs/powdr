@@ -6,7 +6,7 @@ use indicatif::ProgressStyle;
 use itertools::Itertools;
 use openvm_circuit::arch::VmCircuitConfig;
 use openvm_sdk::StdIn;
-use openvm_stark_backend::p3_field::FieldAlgebra;
+use openvm_stark_backend::p3_field::PrimeCharacteristicRing;
 use openvm_stark_backend::p3_maybe_rayon::prelude::IntoParallelIterator;
 use openvm_stark_backend::p3_maybe_rayon::prelude::ParallelIterator;
 use openvm_stark_sdk::openvm_stark_backend::p3_field::PrimeField32;
@@ -128,8 +128,8 @@ fn detect_empirical_constraints_from_input<ISA: OpenVmISA>(
             .enumerate()
             .collect::<HashMap<_, _>>();
 
-        for (air_id, proving_context) in &ctx.per_air {
-            let main = proving_context.common_main.as_ref().unwrap();
+        for (air_id, proving_context) in &ctx.per_trace {
+            let main = &proving_context.common_main;
             let air_name = global_airs[air_id].name();
             let Some(machine) = &airs.get_air_machine(&air_name) else {
                 // air_name_to_machine only contains instruction AIRs, and we are only

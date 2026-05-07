@@ -18,7 +18,7 @@ use std::hash::Hash;
 mod base;
 mod boolean_extractor;
 mod constraint_splitter;
-mod exhaustive_search;
+pub mod exhaustive_search;
 mod linearizer;
 mod var_transformation;
 

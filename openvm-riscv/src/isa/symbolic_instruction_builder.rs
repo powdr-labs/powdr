@@ -22,11 +22,11 @@ macro_rules! build_instr5 {
             ) -> Instruction<T> {
                 Instruction {
                     opcode: VmOpcode::from_usize($code as usize),
-                    a: T::from_canonical_u32(a),
-                    b: T::from_canonical_u32(b),
-                    c: T::from_canonical_u32(c),
-                    d: T::from_canonical_u32(d),
-                    e: T::from_canonical_u32(e),
+                    a: T::from_u32(a),
+                    b: T::from_u32(b),
+                    c: T::from_u32(c),
+                    d: T::from_u32(d),
+                    e: T::from_u32(e),
                     f: T::ZERO,
                     g: T::ZERO,
                 }
@@ -53,11 +53,11 @@ macro_rules! alu_ops {
             ) -> Instruction<T> {
                 Instruction {
                     opcode: VmOpcode::from_usize($code as usize),
-                    a: T::from_canonical_u32(rd_ptr),
-                    b: T::from_canonical_u32(rs1_ptr),
-                    c: T::from_canonical_u32(rs2),
+                    a: T::from_u32(rd_ptr),
+                    b: T::from_u32(rs1_ptr),
+                    c: T::from_u32(rs2),
                     d: T::ONE,
-                    e: T::from_canonical_u32(rs2_as),
+                    e: T::from_u32(rs2_as),
                     f: T::ZERO,
                     g: T::ZERO,
                 }
@@ -86,13 +86,13 @@ macro_rules! ls_ops {
             ) -> Instruction<T> {
                 Instruction {
                     opcode: VmOpcode::from_usize($code as usize),
-                    a: T::from_canonical_u32(rd_rs2_ptr),
-                    b: T::from_canonical_u32(rs1_ptr),
-                    c: T::from_canonical_u32(imm),
+                    a: T::from_u32(rd_rs2_ptr),
+                    b: T::from_u32(rs1_ptr),
+                    c: T::from_u32(imm),
                     d: T::ONE,
-                    e: T::from_canonical_u32(mem_as),
-                    f: T::from_canonical_u32(needs_write),
-                    g: T::from_canonical_u32(imm_sign),
+                    e: T::from_u32(mem_as),
+                    f: T::from_u32(needs_write),
+                    g: T::from_u32(imm_sign),
                 }
             }
         )+
@@ -115,14 +115,14 @@ macro_rules! branch_ops {
                 imm: i32,
             ) -> Instruction<T> {
                 let imm = if imm >= 0 {
-                    T::from_canonical_u32(imm as u32)
+                    T::from_u32(imm as u32)
                 } else {
-                    -T::from_canonical_u32((-imm) as u32)
+                    -T::from_u32((-imm) as u32)
                 };
                 Instruction {
                     opcode: VmOpcode::from_usize($code as usize),
-                    a: T::from_canonical_u32(rs1_ptr),
-                    b: T::from_canonical_u32(rs2_ptr),
+                    a: T::from_u32(rs1_ptr),
+                    b: T::from_u32(rs2_ptr),
                     c: imm,
                     d: T::ONE,
                     e: T::ONE,
