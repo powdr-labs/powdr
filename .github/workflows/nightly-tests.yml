@@ -426,15 +426,35 @@ jobs:
             "${{ steps.date.outputs.value }}-gpu" \
             --output ./results/readme.md
 
+      # Same partial+sparse clone push as publish_bench_results — completes
+      # in seconds, eliminating the race window where peaceiris's slow
+      # clone+commit+push cycle (~15 min) would let publish_bench_results
+      # land a commit in between, getting this push rejected with
+      # `(fetch first)`. See publish_bench_results for the long comment.
       - name: commit to bench results
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          personal_token: ${{ secrets.BENCH_RESULTS_TOKEN }}
-          external_repository: powdr-labs/bench-results
-          publish_dir: ./results
-          destination_dir: results/${{ steps.date.outputs.value }}-gpu/
-          keep_files: true
-          enable_jekyll: true
+        env:
+          BENCH_RESULTS_TOKEN: ${{ secrets.BENCH_RESULTS_TOKEN }}
+          DATE: ${{ steps.date.outputs.value }}-gpu
+        run: |
+          set -euo pipefail
+          REPO=$(mktemp -d)
+          git clone --filter=blob:none --sparse --depth=1 --branch=gh-pages \
+            "https://x-access-token:${BENCH_RESULTS_TOKEN}@github.com/powdr-labs/bench-results.git" \
+            "$REPO"
+          cd "$REPO"
+          git sparse-checkout set "results/${DATE}"
+          # Author commits as the github-actions[bot] account so the GitHub
+          # UI shows the bot avatar and groups them with prior peaceiris
+          # commits. The email format is GitHub's noreply convention,
+          # `<user-id>+<login>@users.noreply.github.com`; 41898282 is the
+          # bot's user ID.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p "results/${DATE}"
+          cp -r "${GITHUB_WORKSPACE}/results/." "results/${DATE}/"
+          git add "results/${DATE}"
+          git commit -m "Add nightly results for ${DATE}"
+          git push origin gh-pages
 
   # Experimental: same reth GPU bench as test_apc_gpu, but the GPU step runs on
   # a Modal L4 instead of the self-hosted GPU box. Co-exists with test_apc_gpu
@@ -442,6 +462,9 @@ jobs:
   # via `--mode compile` and shipped to Modal via a Volume; Modal only does
   # `--mode prove-stark`.
   test_apc_gpu_modal:
+    # TEMP: disabled while iterating on the CPU-runner rollback so we don't
+    # burn Modal credits on every test dispatch. Re-enable before merge.
+    if: false
     # 32-core larger runner so the cold-cache cargo build inside run.sh
     # (host prover binary, ~revm+alloy+openvm graph) finishes in minutes
     # instead of 30+ on ubuntu-latest's 4 vCPUs.
