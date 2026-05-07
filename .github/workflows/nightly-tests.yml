@@ -63,6 +63,9 @@ jobs:
           summary-always: true
 
   test_apc_guest:
+    # TEMP: disabled while iterating on the merged test_apc_reth job.
+    # Revert before merge.
+    if: false
     runs-on: server-dev
 
     steps:
