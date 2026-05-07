@@ -559,10 +559,11 @@ function extractMetrics(runName, metricsJson) {
     m.app_execute_preflight_time_ms = getMetric(app, 'execute_preflight_time_ms');
     m.app_trace_gen_time_ms = getMetric(app, 'trace_gen_time_ms');
 
-    // Powdr GPU trace-gen substages (emitted as `trace_gen_substage_time_ms`
-    // with `stage` label when POWDR_TRACE_PROFILE=1). All paths
-    // (current baseline, future NVRTC bus codegen, future NVRTC trace-gen)
-    // roll up under the same metric — distinguishing only via `stage`.
+    // Powdr GPU trace-gen substages: each substage is wrapped in an
+    // `info_span!("<stage>")` so openvm's `TimingMetricsLayer` auto-emits
+    // `<stage>_time_ms` (with `group=app_proof, air=PowdrAir_*` propagated
+    // by `TracingContextLayer`). Future NVRTC trace-gen / bus paths can use
+    // the same substage names and roll up under Trace Gen automatically.
     // Hierarchy in the viewer:
     //   Trace Gen (= trace_gen_time_ms)
     //   ├── APC Trace Gen (= sum of substages, work in PowdrTraceGeneratorGpu)
@@ -573,9 +574,7 @@ function extractMetrics(runName, metricsJson) {
     // By construction: APC + non-APC == Trace Gen (exact, no rounding gap).
     let _apcSum = 0;
     SUBSTAGE_KEYS.forEach(stage => {
-        const v = app
-            .filter(e => e.metric === 'trace_gen_substage_time_ms' && e.stage === stage)
-            .reduce((acc, e) => acc + parseFloat(e.value), 0);
+        const v = getMetric(app, stage + '_time_ms');
         m['app_substage_' + stage + '_time_ms'] = v;
         _apcSum += v;
     });
@@ -1292,11 +1291,11 @@ const BASIC_STATS_ROWS_V2 = [
     { key: 'bus_interaction_messages', label: 'Bus Interaction Messages', fmt: fmtCells },
 ];
 
-// Powdr GPU trace-gen substage names emitted as `trace_gen_substage_time_ms`
-// with `stage` label. Listed in chronological execution order. Same metric is
-// reused by future NVRTC bus codegen and NVRTC trace-gen paths — extending
-// this list (plus a row in PROOF_TIME_ROWS_*) surfaces them under Trace Gen
-// automatically.
+// Powdr GPU trace-gen substage names. Each substage is wrapped in an
+// `info_span!("<stage>")` so `TimingMetricsLayer` emits `<stage>_time_ms`.
+// Listed in chronological execution order. Future NVRTC bus codegen and
+// NVRTC trace-gen paths can reuse these names — extending this list (plus
+// a row in PROOF_TIME_ROWS_*) surfaces them under Trace Gen automatically.
 const SUBSTAGE_KEYS = [
     'dummy_chip_inventory',
     'dummy_trace_gen',

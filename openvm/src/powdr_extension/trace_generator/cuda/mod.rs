@@ -183,42 +183,18 @@ pub struct PowdrTraceGeneratorGpu<ISA: OpenVmISA> {
     pub periphery: PowdrPeripheryInstancesGpu<ISA>,
 }
 
-/// Run `f`, optionally synchronizing the GPU stream and recording the
-/// elapsed time. Active only when `POWDR_TRACE_PROFILE` is set in the
-/// environment; otherwise this is a zero-overhead pass-through.
-///
-/// Emits `trace_gen_substage_time_ms{stage=<name>, group=app_proof}` to
-/// the metrics system (visible in `--metrics` output) and a one-line
-/// `tracing::info` entry tagged `[trace_profile]`. The same metric name
-/// is intended to be reused by future trace-gen / bus paths (e.g. NVRTC,
-/// interpreter) — `stage` is the only label that distinguishes them, so
-/// the viewer can group all substages under Trace Gen regardless of
-/// backend.
-#[inline]
-fn time_stage<F, R>(name: &'static str, f: F) -> R
-where
-    F: FnOnce() -> R,
-{
-    if std::env::var("POWDR_TRACE_PROFILE").is_err() {
-        return f();
-    }
-    let start = std::time::Instant::now();
-    let r = f();
-    // Flush any GPU work this stage launched so the elapsed time reflects
-    // device-side execution rather than enqueue latency.
-    let _ = openvm_cuda_common::stream::current_stream_sync();
-    let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    // increment, not set — multiple APCs/chips in the same segment all
-    // add to the same (segment, stage) gauge. The viewer reads the final
-    // accumulated value as total time spent in this stage.
-    metrics::gauge!(
-        "trace_gen_substage_time_ms",
-        "stage" => name,
-        "group" => "app_proof",
-    )
-    .increment(elapsed_ms);
-    tracing::info!("[trace_profile] {:32} {:8.3} ms", name, elapsed_ms);
-    r
+/// Wrap a substage in an INFO `tracing` span so openvm's `TimingMetricsLayer`
+/// auto-emits `<name>_time_ms`, with the `group` / `air` labels from the
+/// surrounding `app_prove` / `single_trace_gen` spans propagated by
+/// `TracingContextLayer`. Synchronizes the GPU stream before the span closes
+/// so the elapsed time reflects device-side execution, not enqueue latency.
+macro_rules! timed_substage {
+    ($name:literal, $body:expr) => {{
+        let _span = ::tracing::info_span!($name).entered();
+        let r = $body;
+        let _ = ::openvm_cuda_common::stream::current_stream_sync();
+        r
+    }};
 }
 
 impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
@@ -251,9 +227,10 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         let num_apc_calls = original_arenas.number_of_calls;
 
         let chip_inventory: ChipInventory<BabyBearSC, DenseRecordArena, GpuBackend> =
-            time_stage("dummy_chip_inventory", || {
-                let airs = ISA::create_dummy_airs(self.config.config(), self.periphery.dummy.clone())
-                    .expect("Failed to create dummy airs");
+            timed_substage!("dummy_chip_inventory", {
+                let airs =
+                    ISA::create_dummy_airs(self.config.config(), self.periphery.dummy.clone())
+                        .expect("Failed to create dummy airs");
 
                 ISA::create_dummy_chip_complex_gpu(
                     self.config.config(),
@@ -265,7 +242,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
             });
 
         let dummy_trace_by_air_name: HashMap<String, DeviceMatrix<BabyBear>> =
-            time_stage("dummy_trace_gen", || {
+            timed_substage!("dummy_trace_gen", {
                 chip_inventory
                     .chips()
                     .iter()
@@ -370,16 +347,19 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         };
 
         // Send the airs and substitutions to device
-        let (airs, substitutions) = time_stage("tracegen_h2d", || {
-            (airs.to_device().unwrap(), substitutions.to_device().unwrap())
+        let (airs, substitutions) = timed_substage!("tracegen_h2d", {
+            (
+                airs.to_device().unwrap(),
+                substitutions.to_device().unwrap(),
+            )
         });
 
-        time_stage("tracegen_kernel", || {
+        timed_substage!("tracegen_kernel", {
             cuda_abi::apc_tracegen(&mut output, airs, substitutions, num_apc_calls).unwrap();
         });
 
         // Apply derived columns using the GPU expression evaluator
-        time_stage("derived", || {
+        timed_substage!("derived", {
             let (derived_specs, derived_bc) = compile_derived_to_gpu(
                 &self.apc.machine.derived_columns,
                 &apc_poly_id_to_index,
@@ -392,7 +372,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         });
 
         // Encode bus interactions for GPU consumption
-        let (bus_interactions, arg_spans, bytecode) = time_stage("bus_compile_h2d", || {
+        let (bus_interactions, arg_spans, bytecode) = timed_substage!("bus_compile_h2d", {
             let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
                 &self.apc.machine.bus_interactions,
                 &apc_poly_id_to_index,
@@ -427,7 +407,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         // because we use the default host to device stream, which only launches
         // the next kernel function after the prior (`apc_tracegen`) returns.
         // This is important because bus evaluation depends on trace results.
-        time_stage("bus_kernel", || {
+        timed_substage!("bus_kernel", {
             cuda_abi::apc_apply_bus(
                 // APC related
                 &output,
