@@ -1307,15 +1307,10 @@ const SUBSTAGE_KEYS = [
     'derived',
     'bus_compile_h2d',
     'bus_kernel',
-    // NVRTC bus codegen path (POWDR_BUS_CODEGEN=1). The first three are
-    // emitted at PowdrTraceGeneratorGpu construction (eager warm), so they
-    // appear inside `app_prove` but outside per-segment trace gen — the
-    // viewer surfaces them as siblings under APC Trace Gen for visibility.
-    // `bus_nvrtc_kernel` is per-prove and replaces `bus_kernel` when
-    // codegen is enabled.
-    'bus_nvrtc_codegen',
-    'bus_nvrtc_emit',
-    'bus_nvrtc_compile',
+    // NVRTC bus codegen path (POWDR_BUS_CODEGEN=1). Only `bus_nvrtc_kernel`
+    // is per-prove; the partition / emit / compile substages run at
+    // PowdrTraceGeneratorGpu construction (APC build time, before any
+    // app_prove span) and intentionally do not appear under App Proof.
     'bus_nvrtc_kernel',
 ];
 // Layered under Trace Gen:
@@ -1331,9 +1326,6 @@ const SUBSTAGE_ROWS = [
     { key: 'app_substage_derived_time_ms', label: 'Derived', fmt: fmtSeconds, indent: 3 },
     { key: 'app_substage_bus_compile_h2d_time_ms', label: 'Bus compile + H2D', fmt: fmtSeconds, indent: 3 },
     { key: 'app_substage_bus_kernel_time_ms', label: 'Bus kernel', fmt: fmtSeconds, indent: 3 },
-    { key: 'app_substage_bus_nvrtc_codegen_time_ms', label: 'Bus NVRTC partition', fmt: fmtSeconds, indent: 3 },
-    { key: 'app_substage_bus_nvrtc_emit_time_ms', label: 'Bus NVRTC emit', fmt: fmtSeconds, indent: 3 },
-    { key: 'app_substage_bus_nvrtc_compile_time_ms', label: 'Bus NVRTC compile', fmt: fmtSeconds, indent: 3 },
     { key: 'app_substage_bus_nvrtc_kernel_time_ms', label: 'Bus NVRTC kernel', fmt: fmtSeconds, indent: 3 },
     { key: 'app_non_apc_trace_gen_ms', label: 'non-APC Trace Gen', fmt: fmtSeconds, indent: 2 },
 ];
