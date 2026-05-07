@@ -2,8 +2,14 @@
 //
 // All extern "C" entry points return 0 on success and a nonzero CUDA / NVRTC
 // error code on failure. Caller-owned buffers are documented per function.
+//
+// Stream selection: we launch on `cudaStreamPerThread` (the same stream the
+// rest of the openvm cuda code uses, set by `--default-stream=per-thread`).
+// The Rust-side `current_stream_sync` syncs that stream after each launch,
+// so per-stage timing is attributed correctly.
 
 #include <cuda.h>
+#include <cuda_runtime.h>
 #include <nvrtc.h>
 #include <cstdio>
 #include <cstdlib>
@@ -190,17 +196,17 @@ int powdr_nvrtc_launch_bus_v4(
     // only used by var_range (var_num_bins) and tuple2 (sz0). Caller is
     // responsible for matching the signature.
 
+    // Launch on cudaStreamPerThread to match the rest of the openvm
+    // codebase (which is built with --default-stream=per-thread). Caller's
+    // `current_stream_sync` will sync this stream after the launch.
     CUresult r = cuLaunchKernel(
         (CUfunction)fn,
         grid_x, 1, 1,
         block_x, 1, 1,
         0,
-        nullptr,
+        (CUstream)cudaStreamPerThread,
         has_extra1 ? args_with_extra1 : args_no_extra1,
         nullptr);
-    if (r != CUDA_SUCCESS) return -2000 - (int)r;
-
-    r = cuCtxSynchronize();
     if (r != CUDA_SUCCESS) return -2000 - (int)r;
     return 0;
 }
@@ -233,12 +239,9 @@ int powdr_nvrtc_launch_bus_v4_bitwise(
         grid_x, 1, 1,
         block_x, 1, 1,
         0,
-        nullptr,
+        (CUstream)cudaStreamPerThread,
         args,
         nullptr);
-    if (r != CUDA_SUCCESS) return -2000 - (int)r;
-
-    r = cuCtxSynchronize();
     if (r != CUDA_SUCCESS) return -2000 - (int)r;
     return 0;
 }
