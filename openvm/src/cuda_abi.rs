@@ -61,6 +61,65 @@ extern "C" {
         bitwise_bus_id: u32,      // bus id for the bitwise lookup
         d_bitwise_hist: *mut u32, // device histogram for bitwise lookup
     ) -> i32;
+
+    // -----------------------------------------------------------------------
+    // NVRTC runtime — used by the per-APC bus codegen path
+    // (`POWDR_BUS_CODEGEN=1`). Defined in `cuda/src/nvrtc_runtime.cu`.
+
+    /// Compile a CUDA C++ source string with NVRTC. On success `*ptx_out`
+    /// points to a `malloc`'d PTX buffer of `*ptx_size_out` bytes; the
+    /// caller must free with [`powdr_nvrtc_free`]. On failure `*log_out`
+    /// may point to a `malloc`'d diagnostics string.
+    pub fn powdr_nvrtc_compile(
+        src: *const std::ffi::c_char,
+        src_name: *const std::ffi::c_char,
+        ptx_out: *mut *mut std::ffi::c_char,
+        ptx_size_out: *mut usize,
+        log_out: *mut *mut std::ffi::c_char,
+    ) -> i32;
+
+    pub fn powdr_nvrtc_free(p: *mut std::ffi::c_char);
+
+    pub fn powdr_nvrtc_load_module(
+        ptx: *const std::ffi::c_void,
+        ptx_size: usize,
+        module_out: *mut *mut std::ffi::c_void,
+    ) -> i32;
+
+    pub fn powdr_nvrtc_get_function(
+        module: *mut std::ffi::c_void,
+        name: *const std::ffi::c_char,
+        fn_out: *mut *mut std::ffi::c_void,
+    ) -> i32;
+
+    pub fn powdr_nvrtc_unload_module(module: *mut std::ffi::c_void) -> i32;
+
+    /// Launch a per-APC codegen bus kernel (var_range or tuple2). Constants
+    /// are baked into the kernel source so there is no `d_ops` pointer or
+    /// `n_ops` arg. `has_extra1=1` only for tuple2.
+    pub fn powdr_nvrtc_launch_bus_v4(
+        function: *mut std::ffi::c_void,
+        d_output: *const u32,
+        num_apc_calls: i32,
+        h: u64,
+        d_hist: *mut u32,
+        extra0: u32,
+        extra1: u32,
+        has_extra1: u32,
+        grid_x: u32,
+        block_x: u32,
+    ) -> i32;
+
+    /// Launch a per-APC codegen bus kernel for bitwise (range or xor).
+    pub fn powdr_nvrtc_launch_bus_v4_bitwise(
+        function: *mut std::ffi::c_void,
+        d_output: *const u32,
+        num_apc_calls: i32,
+        h: u64,
+        d_hist: *mut u32,
+        grid_x: u32,
+        block_x: u32,
+    ) -> i32;
 }
 
 #[repr(C)]

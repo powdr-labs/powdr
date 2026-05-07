@@ -14,6 +14,7 @@ fn main() {
             .include("cuda/include") // Point to header file folder of this crate
             .watch("cuda") // Watch file changes of this crate for recompilation
             .library_name("powdr_gpu") // Library name of this crate; doesn't affect import name
+            .link_lib("nvrtc") // NVRTC for runtime CUDA compilation
             .files_from_glob("cuda/src/**/*.cu"); // Import all `.cu` files with zero or more nested sub-folders under `cuda/src`of this crate
 
         builder.emit_link_directives();
