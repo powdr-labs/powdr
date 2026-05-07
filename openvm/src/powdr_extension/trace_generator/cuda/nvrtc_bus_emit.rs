@@ -52,15 +52,6 @@ const MAX_OPS_PER_KIND: usize = 16384;
 /// BabyBear prime.
 const P: u32 = 0x7800_0001;
 
-/// Field-modular subtract for canonical inputs. `(a - b) mod P`.
-fn p_sub(a: u32, b: u32) -> u32 {
-    if a >= b {
-        a - b
-    } else {
-        a + P - b
-    }
-}
-
 /// Field-modular negation. `-a mod P`.
 fn p_neg(a: u32) -> u32 {
     if a == 0 {
@@ -266,7 +257,7 @@ pub fn build_emitter_input(
     let interactions = bus_interactions
         .iter()
         .map(|bi| BusInteractionDesc {
-            kind: classify(bi.id as u64, var_range_bus_id, tuple2_bus_id, bitwise_bus_id),
+            kind: classify(bi.id, var_range_bus_id, tuple2_bus_id, bitwise_bus_id),
             mult: bi.mult.clone(),
             args: bi.args.clone(),
         })
@@ -391,32 +382,17 @@ fn collect_affine(
             }
             powdr_expression::AlgebraicBinaryOperator::Sub => {
                 collect_affine(&b.left, apc_poly_id_to_index, factor, out)
-                    && collect_affine(
-                        &b.right,
-                        apc_poly_id_to_index,
-                        p_neg(factor),
-                        out,
-                    )
+                    && collect_affine(&b.right, apc_poly_id_to_index, p_neg(factor), out)
             }
             powdr_expression::AlgebraicBinaryOperator::Mul => {
                 // One side must be Number for the result to stay affine.
                 if let Some(c) = as_const_u32(&b.left) {
                     let new_factor = (factor as u64 * c as u64) % (P as u64);
-                    return collect_affine(
-                        &b.right,
-                        apc_poly_id_to_index,
-                        new_factor as u32,
-                        out,
-                    );
+                    return collect_affine(&b.right, apc_poly_id_to_index, new_factor as u32, out);
                 }
                 if let Some(c) = as_const_u32(&b.right) {
                     let new_factor = (factor as u64 * c as u64) % (P as u64);
-                    return collect_affine(
-                        &b.left,
-                        apc_poly_id_to_index,
-                        new_factor as u32,
-                        out,
-                    );
+                    return collect_affine(&b.left, apc_poly_id_to_index, new_factor as u32, out);
                 }
                 false
             }
@@ -475,8 +451,8 @@ fn decode_affine_arg(
 #[derive(Clone, Debug, Default, Hash)]
 pub struct BilinearMonomials {
     pub constant: u32,
-    pub linear: Vec<(u32, u32)>,           // (col, coef_canon)
-    pub bilinear: Vec<(u32, u32, u32)>,    // (col_a, col_b, coef_canon), col_a ≤ col_b
+    pub linear: Vec<(u32, u32)>,        // (col, coef_canon)
+    pub bilinear: Vec<(u32, u32, u32)>, // (col_a, col_b, coef_canon), col_a ≤ col_b
 }
 
 impl BilinearMonomials {
@@ -580,9 +556,7 @@ impl BilinearMonomials {
         let other_has_bilinear = !other.bilinear.is_empty();
         let self_has_nonconst = !self.linear.is_empty() || self_has_bilinear;
         let other_has_nonconst = !other.linear.is_empty() || other_has_bilinear;
-        if (self_has_bilinear && other_has_nonconst)
-            || (other_has_bilinear && self_has_nonconst)
-        {
+        if (self_has_bilinear && other_has_nonconst) || (other_has_bilinear && self_has_nonconst) {
             return None;
         }
         // Safe: at most linear × linear + linear × constant + constant × constant.
@@ -811,8 +785,7 @@ pub fn partition_apc_bus(input: &BusEmitterInput) -> Result<PartitionedBus, Part
                 let mult = decode_mult(&intr.mult, &input.apc_poly_id_to_index);
                 let v0_aff = decode_affine_arg(&intr.args[0], &input.apc_poly_id_to_index);
                 let v1_aff = decode_affine_arg(&intr.args[1], &input.apc_poly_id_to_index);
-                if let (Some((mult_const, guard_col)), Some(v0), Some(v1)) =
-                    (mult, v0_aff, v1_aff)
+                if let (Some((mult_const, guard_col)), Some(v0), Some(v1)) = (mult, v0_aff, v1_aff)
                 {
                     if mult_const == 0 {
                         continue;
@@ -829,10 +802,8 @@ pub fn partition_apc_bus(input: &BusEmitterInput) -> Result<PartitionedBus, Part
                     if mult_const == 0 {
                         continue;
                     }
-                    let v0 =
-                        decode_bilinear_arg(&intr.args[0], &input.apc_poly_id_to_index);
-                    let v1 =
-                        decode_bilinear_arg(&intr.args[1], &input.apc_poly_id_to_index);
+                    let v0 = decode_bilinear_arg(&intr.args[0], &input.apc_poly_id_to_index);
+                    let v1 = decode_bilinear_arg(&intr.args[1], &input.apc_poly_id_to_index);
                     if let (Some(v0), Some(v1)) = (v0, v1) {
                         p.tuple_ops_bilinear.push((
                             i,
@@ -861,9 +832,7 @@ pub fn partition_apc_bus(input: &BusEmitterInput) -> Result<PartitionedBus, Part
                 let selector = as_const_u32(&intr.args[3]).ok_or_else(|| {
                     PartitionError::BitwiseSelector(format!("{:?}", intr.args[3]))
                 })?;
-                if let (Some((mult_const, guard_col)), Some(x), Some(y)) =
-                    (mult, x_aff, y_aff)
-                {
+                if let (Some((mult_const, guard_col)), Some(x), Some(y)) = (mult, x_aff, y_aff) {
                     if mult_const == 0 {
                         continue;
                     }
@@ -1357,7 +1326,11 @@ fn emit_affine_inline(s: &mut String, a: &AffineArg, indent: &str, out_var: &str
         )
         .unwrap();
     }
-    writeln!(s, "{indent}unsigned int {out_var} = monty_reduce({out_var}_monty);").unwrap();
+    writeln!(
+        s,
+        "{indent}unsigned int {out_var} = monty_reduce({out_var}_monty);"
+    )
+    .unwrap();
 }
 
 /// Emit straight-line C++ that computes a bilinear (degree-≤2) arg into
@@ -1366,18 +1339,13 @@ fn emit_affine_inline(s: &mut String, a: &AffineArg, indent: &str, out_var: &str
 /// per cross-term. Cell loads are deduped within this single emission
 /// so a column referenced in both linear and bilinear positions only
 /// emits one LDG.
-fn emit_bilinear_inline(
-    s: &mut String,
-    m: &BilinearMonomials,
-    indent: &str,
-    out_var: &str,
-) {
+fn emit_bilinear_inline(s: &mut String, m: &BilinearMonomials, indent: &str, out_var: &str) {
     use std::fmt::Write as _;
     // Collect all distinct columns referenced (linear + bilinear) and emit
     // one LDG per column up front. ptxas can hoist these out of the row
     // loop where applicable.
     let mut cols: Vec<u32> = Vec::new();
-    let mut add_col = |c: u32, cols: &mut Vec<u32>| {
+    let add_col = |c: u32, cols: &mut Vec<u32>| {
         if !cols.contains(&c) {
             cols.push(c);
         }
@@ -1435,18 +1403,11 @@ fn emit_bilinear_inline(
             .unwrap();
         }
     }
-    writeln!(s, "{indent}unsigned int {out_var} = monty_reduce({out_var}_monty);").unwrap();
-}
-
-fn hash_codegen_kernel<T: std::hash::Hash>(tag: &str, ops: &[T]) -> u64 {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    let mut hasher = DefaultHasher::new();
-    "BUS_CODEGEN".hash(&mut hasher);
-    EMITTER_VERSION.hash(&mut hasher);
-    tag.hash(&mut hasher);
-    ops.hash(&mut hasher);
-    hasher.finish()
+    writeln!(
+        s,
+        "{indent}unsigned int {out_var} = monty_reduce({out_var}_monty);"
+    )
+    .unwrap();
 }
 
 /// Host-side Montgomery encode for BabyBear: `x * R mod P`. R = 2^32, P = 0x78000001.
@@ -1713,8 +1674,8 @@ mod tests {
     #[test]
     fn partition_var_range_with_guard_column() {
         let mut id_map = BTreeMap::new();
-        id_map.insert(100, 0);  // value
-        id_map.insert(200, 7);  // is_valid
+        id_map.insert(100, 0); // value
+        id_map.insert(200, 7); // is_valid
         let input = BusEmitterInput {
             apc_height: 8,
             apc_poly_id_to_index: id_map,
@@ -1789,5 +1750,4 @@ mod tests {
         assert_eq!(p.bitwise_range_ops.len(), 2);
         assert_eq!(p.bitwise_xor_ops.len(), 1);
     }
-
 }

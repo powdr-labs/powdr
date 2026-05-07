@@ -29,6 +29,9 @@ use crate::{
 };
 
 mod inventory;
+pub mod nvrtc_bus_emit;
+pub mod nvrtc_cache;
+pub mod nvrtc_emit;
 mod periphery;
 
 pub use inventory::GpuDummyChipComplex;
@@ -176,11 +179,34 @@ pub fn compile_bus_to_gpu(
     (interactions, arg_spans, bytecode)
 }
 
+/// Lazily-initialized per-APC NVRTC bus-codegen state. Holds the bus
+/// partition, the per-APC poly-id → APC-column index map, and the four
+/// compiled kernel handles. Built once per APC at construction (eagerly,
+/// when `POWDR_BUS_CODEGEN=1`); reused for every prove of the same APC.
+struct CachedBusCodegenKernels {
+    partition: nvrtc_bus_emit::PartitionedBus,
+    apc_poly_id_to_index: BTreeMap<u64, usize>,
+    var_compiled: Option<std::sync::Arc<nvrtc_cache::CompiledKernel>>,
+    tup_compiled: Option<std::sync::Arc<nvrtc_cache::CompiledKernel>>,
+    br_compiled: Option<std::sync::Arc<nvrtc_cache::CompiledKernel>>,
+    bx_compiled: Option<std::sync::Arc<nvrtc_cache::CompiledKernel>>,
+}
+
+/// Returns true when `POWDR_BUS_CODEGEN=1` selects the per-APC NVRTC
+/// codegen path for `apc_apply_bus`. Cached env-read.
+fn bus_codegen_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| std::env::var("POWDR_BUS_CODEGEN").is_ok())
+}
+
 pub struct PowdrTraceGeneratorGpu<ISA: OpenVmISA> {
     pub apc: IsaApc<BabyBear, ISA>,
     pub original_airs: OriginalAirs<BabyBear, ISA>,
     pub config: OriginalVmConfig<ISA>,
     pub periphery: PowdrPeripheryInstancesGpu<ISA>,
+    /// Per-APC codegen kernel cache. Populated at construction when
+    /// `POWDR_BUS_CODEGEN=1`; otherwise empty and never read.
+    codegen_cache: std::sync::OnceLock<std::sync::Arc<CachedBusCodegenKernels>>,
 }
 
 /// Cached `POWDR_TRACE_PROFILE` env var read. When set, `timed_substage!`
@@ -215,11 +241,292 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         config: OriginalVmConfig<ISA>,
         periphery: PowdrPeripheryInstancesGpu<ISA>,
     ) -> Self {
-        Self {
+        let gen = Self {
             apc,
             original_airs,
             config,
             periphery,
+            codegen_cache: std::sync::OnceLock::new(),
+        };
+
+        // When NVRTC bus codegen is selected, eagerly partition + emit +
+        // compile at construction time so the cost moves to APC-load time
+        // and never hits any prove timer. The kernel sources are
+        // APC-deterministic and `H`-independent, so this is safe to do
+        // once per APC.
+        if bus_codegen_enabled() {
+            gen.warm_codegen_cache();
+        }
+
+        gen
+    }
+
+    /// Eagerly populate `codegen_cache`. Idempotent — `OnceLock::get_or_init`
+    /// makes repeated calls a no-op. Safe to skip when codegen is disabled.
+    fn warm_codegen_cache(&self) {
+        let apc_poly_id_to_index: BTreeMap<u64, usize> = self
+            .apc
+            .machine
+            .main_columns()
+            .enumerate()
+            .map(|(index, c)| (c.id, index))
+            .collect();
+
+        let var_range_bus_id = self.periphery.bus_ids.range_checker as u32;
+        let tuple2_bus_id = self
+            .periphery
+            .bus_ids
+            .tuple_range_checker
+            .map(|x| x as u32)
+            .unwrap_or(0);
+        let bitwise_bus_id = self
+            .periphery
+            .bus_ids
+            .bitwise_lookup
+            .map(|x| x as u32)
+            .unwrap_or(0);
+
+        let _ = self.codegen_cache.get_or_init(|| {
+            self.build_codegen_cache(
+                apc_poly_id_to_index,
+                var_range_bus_id,
+                tuple2_bus_id,
+                bitwise_bus_id,
+            )
+        });
+    }
+
+    /// Partition + emit + NVRTC-compile the per-APC bus kernels. Called
+    /// once per APC. `H` is intentionally NOT baked into the kernel source
+    /// (the kernel takes it as a runtime arg), so the cache is height-
+    /// independent and reusable across proves of any size.
+    fn build_codegen_cache(
+        &self,
+        apc_poly_id_to_index: BTreeMap<u64, usize>,
+        var_range_bus_id: u32,
+        tuple2_bus_id: u32,
+        bitwise_bus_id: u32,
+    ) -> std::sync::Arc<CachedBusCodegenKernels> {
+        use nvrtc_bus_emit::{
+            build_emitter_input, emit_codegen_bitwise, emit_codegen_tuple2, emit_codegen_var_range,
+            partition_apc_bus,
+        };
+        use nvrtc_cache::NvrtcKernelCache;
+
+        let partition = timed_substage!("bus_nvrtc_codegen", {
+            let input = build_emitter_input(
+                &self.apc.machine.bus_interactions,
+                &apc_poly_id_to_index,
+                /* height: not baked into source */ 1,
+                var_range_bus_id as u64,
+                Some(tuple2_bus_id as u64),
+                Some(bitwise_bus_id as u64),
+            );
+            partition_apc_bus(&input)
+                .unwrap_or_else(|e| panic!("NVRTC bus partition failed: {}", e))
+        });
+
+        let kernels = timed_substage!("bus_nvrtc_emit", {
+            (
+                emit_codegen_var_range(&partition.var_ops, &partition.var_ops_bilinear),
+                emit_codegen_tuple2(&partition.tuple_ops, &partition.tuple_ops_bilinear),
+                emit_codegen_bitwise(
+                    &partition.bitwise_range_ops,
+                    &partition.bitwise_range_ops_bilinear,
+                    false,
+                ),
+                emit_codegen_bitwise(
+                    &partition.bitwise_xor_ops,
+                    &partition.bitwise_xor_ops_bilinear,
+                    true,
+                ),
+            )
+        });
+
+        let compiled = timed_substage!("bus_nvrtc_compile", {
+            let kernels_vec: Vec<_> = [&kernels.0, &kernels.1, &kernels.2, &kernels.3]
+                .iter()
+                .filter_map(|k| (*k).clone())
+                .collect();
+            let names: Vec<_> = kernels_vec.iter().map(|k| k.name.clone()).collect();
+            let result = NvrtcKernelCache::global().get_or_compile_many(&kernels_vec);
+            result
+                .into_iter()
+                .enumerate()
+                .map(|(i, r)| {
+                    r.unwrap_or_else(|e| panic!("NVRTC compile failed for {}: {:?}", names[i], e))
+                })
+                .collect::<Vec<_>>()
+        });
+
+        // Map compiled-list back to per-kind Optional handles.
+        let mut compiled_iter = compiled.into_iter();
+        let var_compiled = kernels.0.as_ref().map(|_| compiled_iter.next().unwrap());
+        let tup_compiled = kernels.1.as_ref().map(|_| compiled_iter.next().unwrap());
+        let br_compiled = kernels.2.as_ref().map(|_| compiled_iter.next().unwrap());
+        let bx_compiled = kernels.3.as_ref().map(|_| compiled_iter.next().unwrap());
+
+        std::sync::Arc::new(CachedBusCodegenKernels {
+            partition,
+            apc_poly_id_to_index,
+            var_compiled,
+            tup_compiled,
+            br_compiled,
+            bx_compiled,
+        })
+    }
+
+    /// Per-APC codegen bus pass. Reads the pre-compiled `codegen_cache`,
+    /// launches each kind's kernel, and falls back to the bytecode-VM
+    /// path for any interactions that didn't fit the codegen-handled
+    /// shape. Substages: `bus_nvrtc_kernel` (codegen launches) +
+    /// optionally `bus_compile_h2d` / `bus_kernel` for unhandled tail.
+    #[allow(clippy::too_many_arguments)]
+    fn launch_nvrtc_bus_codegen(
+        &self,
+        output: &DeviceMatrix<BabyBear>,
+        num_apc_calls: usize,
+        height: usize,
+        var_range_bus_id: u32,
+        var_range_count: &openvm_cuda_common::d_buffer::DeviceBuffer<BabyBear>,
+        tuple2_bus_id: u32,
+        tuple2_count: &openvm_cuda_common::d_buffer::DeviceBuffer<BabyBear>,
+        tuple2_sizes: [u32; 2],
+        bitwise_bus_id: u32,
+        bitwise_count: &openvm_cuda_common::d_buffer::DeviceBuffer<BabyBear>,
+    ) {
+        let cached = self
+            .codegen_cache
+            .get()
+            .expect("codegen_cache must be warmed before launch")
+            .clone();
+        let p = &cached.partition;
+
+        let block_x = 256u32;
+        let warps_per_block = 8u32;
+
+        timed_substage!("bus_nvrtc_kernel", {
+            if let (Some(comp), n) = (
+                cached.var_compiled.as_ref(),
+                (p.var_ops.len() + p.var_ops_bilinear.len()) as u32,
+            ) {
+                let grid_x = n.div_ceil(warps_per_block).max(1);
+                let rc = unsafe {
+                    cuda_abi::powdr_nvrtc_launch_bus_v4(
+                        comp.function(),
+                        output.buffer().as_ptr() as *const u32,
+                        num_apc_calls as i32,
+                        height as u64,
+                        var_range_count.as_mut_ptr() as *mut u32,
+                        var_range_count.len() as u32,
+                        0,
+                        0,
+                        grid_x,
+                        block_x,
+                    )
+                };
+                assert_eq!(rc, 0, "var_range codegen launch rc={}", rc);
+            }
+
+            if let (Some(comp), n) = (
+                cached.tup_compiled.as_ref(),
+                (p.tuple_ops.len() + p.tuple_ops_bilinear.len()) as u32,
+            ) {
+                let grid_x = n.div_ceil(warps_per_block).max(1);
+                let rc = unsafe {
+                    cuda_abi::powdr_nvrtc_launch_bus_v4(
+                        comp.function(),
+                        output.buffer().as_ptr() as *const u32,
+                        num_apc_calls as i32,
+                        height as u64,
+                        tuple2_count.as_mut_ptr() as *mut u32,
+                        tuple2_sizes[0],
+                        tuple2_sizes[1],
+                        1,
+                        grid_x,
+                        block_x,
+                    )
+                };
+                assert_eq!(rc, 0, "tuple2 codegen launch rc={}", rc);
+            }
+
+            if let (Some(comp), n) = (
+                cached.br_compiled.as_ref(),
+                (p.bitwise_range_ops.len() + p.bitwise_range_ops_bilinear.len()) as u32,
+            ) {
+                let grid_x = n.div_ceil(warps_per_block).max(1);
+                let rc = unsafe {
+                    cuda_abi::powdr_nvrtc_launch_bus_v4_bitwise(
+                        comp.function(),
+                        output.buffer().as_ptr() as *const u32,
+                        num_apc_calls as i32,
+                        height as u64,
+                        bitwise_count.as_mut_ptr() as *mut u32,
+                        grid_x,
+                        block_x,
+                    )
+                };
+                assert_eq!(rc, 0, "bitwise_range codegen launch rc={}", rc);
+            }
+
+            if let (Some(comp), n) = (
+                cached.bx_compiled.as_ref(),
+                (p.bitwise_xor_ops.len() + p.bitwise_xor_ops_bilinear.len()) as u32,
+            ) {
+                let grid_x = n.div_ceil(warps_per_block).max(1);
+                let rc = unsafe {
+                    cuda_abi::powdr_nvrtc_launch_bus_v4_bitwise(
+                        comp.function(),
+                        output.buffer().as_ptr() as *const u32,
+                        num_apc_calls as i32,
+                        height as u64,
+                        bitwise_count.as_mut_ptr() as *mut u32,
+                        grid_x,
+                        block_x,
+                    )
+                };
+                assert_eq!(rc, 0, "bitwise_xor codegen launch rc={}", rc);
+            }
+        });
+
+        // Bytecode-VM fallback for any interactions the codegen path
+        // couldn't capture. Re-uses the existing `bus_compile_h2d` /
+        // `bus_kernel` substages.
+        if !p.unhandled.is_empty() {
+            let (bus_interactions, arg_spans, bytecode) = timed_substage!("bus_compile_h2d", {
+                let unhandled_interactions: Vec<_> = p
+                    .unhandled
+                    .iter()
+                    .map(|&i| self.apc.machine.bus_interactions[i].clone())
+                    .collect();
+                let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
+                    &unhandled_interactions,
+                    &cached.apc_poly_id_to_index,
+                    height,
+                );
+                (
+                    bus_interactions.to_device().unwrap(),
+                    arg_spans.to_device().unwrap(),
+                    bytecode.to_device().unwrap(),
+                )
+            });
+            timed_substage!("bus_kernel", {
+                cuda_abi::apc_apply_bus(
+                    output,
+                    num_apc_calls,
+                    bytecode,
+                    bus_interactions,
+                    arg_spans,
+                    var_range_bus_id,
+                    var_range_count,
+                    tuple2_bus_id,
+                    tuple2_count,
+                    tuple2_sizes,
+                    bitwise_bus_id,
+                    bitwise_count,
+                )
+                .unwrap();
+            });
         }
     }
 
@@ -382,20 +689,6 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
             cuda_abi::apc_apply_derived_expr(&mut output, d_specs, d_bc, num_apc_calls).unwrap();
         });
 
-        // Encode bus interactions for GPU consumption
-        let (bus_interactions, arg_spans, bytecode) = timed_substage!("bus_compile_h2d", {
-            let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
-                &self.apc.machine.bus_interactions,
-                &apc_poly_id_to_index,
-                height,
-            );
-            (
-                bus_interactions.to_device().unwrap(),
-                arg_spans.to_device().unwrap(),
-                bytecode.to_device().unwrap(),
-            )
-        });
-
         // Gather GPU inputs for periphery (bus ids, count device buffers)
         let periphery = &self.periphery.real;
 
@@ -413,33 +706,56 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         let bitwise_bus_id = self.periphery.bus_ids.bitwise_lookup.unwrap() as u32;
         let bitwise_count_u32 = periphery.bitwise_lookup_8.as_ref().unwrap().count.as_ref();
 
-        // Launch GPU apply-bus to update periphery histograms on device
-        // Note that this is implicitly serialized after `apc_tracegen`,
-        // because we use the default host to device stream, which only launches
-        // the next kernel function after the prior (`apc_tracegen`) returns.
-        // This is important because bus evaluation depends on trace results.
-        timed_substage!("bus_kernel", {
-            cuda_abi::apc_apply_bus(
-                // APC related
+        // Bus-application: per-APC NVRTC codegen kernels when
+        // `POWDR_BUS_CODEGEN=1`, otherwise the bytecode-VM kernel. Both
+        // are implicitly serialized after `apc_tracegen` via the default
+        // stream — bus evaluation depends on trace results.
+        if bus_codegen_enabled() {
+            self.launch_nvrtc_bus_codegen(
                 &output,
                 num_apc_calls,
-                // Interaction related
-                bytecode,
-                bus_interactions,
-                arg_spans,
-                // Variable range checker related
+                height,
                 var_range_bus_id,
                 var_range_count,
-                // Tuple range checker related
                 tuple2_bus_id,
                 tuple2_count_u32,
                 tuple2_sizes,
-                // Bitwise related
                 bitwise_bus_id,
                 bitwise_count_u32,
-            )
-            .unwrap();
-        });
+            );
+        } else {
+            // Encode bus interactions for the bytecode-VM path.
+            let (bus_interactions, arg_spans, bytecode) = timed_substage!("bus_compile_h2d", {
+                let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
+                    &self.apc.machine.bus_interactions,
+                    &apc_poly_id_to_index,
+                    height,
+                );
+                (
+                    bus_interactions.to_device().unwrap(),
+                    arg_spans.to_device().unwrap(),
+                    bytecode.to_device().unwrap(),
+                )
+            });
+
+            timed_substage!("bus_kernel", {
+                cuda_abi::apc_apply_bus(
+                    &output,
+                    num_apc_calls,
+                    bytecode,
+                    bus_interactions,
+                    arg_spans,
+                    var_range_bus_id,
+                    var_range_count,
+                    tuple2_bus_id,
+                    tuple2_count_u32,
+                    tuple2_sizes,
+                    bitwise_bus_id,
+                    bitwise_count_u32,
+                )
+                .unwrap();
+            });
+        }
 
         Some(output)
     }

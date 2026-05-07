@@ -101,7 +101,10 @@ impl NvrtcKernelCache {
     /// Compile `kernel` if not already cached and return a handle that can be
     /// launched many times. Identical sources (matched by `source_hash`) share
     /// one compiled module.
-    pub fn get_or_compile(&self, kernel: &EmittedKernel) -> Result<Arc<CompiledKernel>, NvrtcError> {
+    pub fn get_or_compile(
+        &self,
+        kernel: &EmittedKernel,
+    ) -> Result<Arc<CompiledKernel>, NvrtcError> {
         if let Some(existing) = self.by_hash.lock().unwrap().get(&kernel.source_hash) {
             return Ok(Arc::clone(existing));
         }
@@ -168,7 +171,8 @@ impl NvrtcKernelCache {
         // cache, falling back to per-hash compile errors that didn't make it
         // into the cache.
         let by_hash = self.by_hash.lock().unwrap();
-        let mut errors: std::collections::HashMap<u64, NvrtcError> = std::collections::HashMap::new();
+        let mut errors: std::collections::HashMap<u64, NvrtcError> =
+            std::collections::HashMap::new();
         for (hash, result) in compiled {
             if let Err(e) = result {
                 errors.insert(hash, e);
@@ -239,10 +243,7 @@ fn compile_one(kernel: &EmittedKernel) -> Result<CompiledKernel, NvrtcError> {
                         return Ok(handle);
                     }
                     Err(e) => {
-                        tracing::warn!(
-                            "NVRTC PTX cache hit but load failed ({}); recompiling",
-                            e
-                        );
+                        tracing::warn!("NVRTC PTX cache hit but load failed ({}); recompiling", e);
                         // Fall through to NVRTC compile.
                     }
                 }
@@ -269,18 +270,23 @@ fn compile_one(kernel: &EmittedKernel) -> Result<CompiledKernel, NvrtcError> {
     };
     if rc != 0 {
         let log_str = unsafe { take_c_str(log) };
-        return Err(NvrtcError::Compile { code: rc, log: log_str });
+        return Err(NvrtcError::Compile {
+            code: rc,
+            log: log_str,
+        });
     }
-    debug_assert!(!ptx_ptr.is_null() && ptx_size > 0, "NVRTC returned empty PTX");
+    debug_assert!(
+        !ptx_ptr.is_null() && ptx_size > 0,
+        "NVRTC returned empty PTX"
+    );
     if !log.is_null() {
         unsafe { cuda_abi::powdr_nvrtc_free(log) };
     }
 
     // Copy PTX bytes out of the NVRTC-allocated buffer so we can both load
     // the module and persist to disk after the NVRTC buffer is freed.
-    let ptx_bytes: Vec<u8> = unsafe {
-        std::slice::from_raw_parts(ptx_ptr as *const u8, ptx_size).to_vec()
-    };
+    let ptx_bytes: Vec<u8> =
+        unsafe { std::slice::from_raw_parts(ptx_ptr as *const u8, ptx_size).to_vec() };
     unsafe { cuda_abi::powdr_nvrtc_free(ptx_ptr) };
 
     let elapsed = compile_start.elapsed();
@@ -324,20 +330,15 @@ fn load_module_from_ptx(ptx: &[u8], kernel_name: &str) -> Result<CompiledKernel,
 
     let mut module: *mut c_void = std::ptr::null_mut();
     let load_rc = unsafe {
-        cuda_abi::powdr_nvrtc_load_module(
-            ptx.as_ptr() as *const c_void,
-            ptx.len(),
-            &mut module,
-        )
+        cuda_abi::powdr_nvrtc_load_module(ptx.as_ptr() as *const c_void, ptx.len(), &mut module)
     };
     if load_rc != 0 {
         return Err(NvrtcError::Load { code: load_rc });
     }
 
     let mut function: *mut c_void = std::ptr::null_mut();
-    let fn_rc = unsafe {
-        cuda_abi::powdr_nvrtc_get_function(module, name_c.as_ptr(), &mut function)
-    };
+    let fn_rc =
+        unsafe { cuda_abi::powdr_nvrtc_get_function(module, name_c.as_ptr(), &mut function) };
     if fn_rc != 0 {
         unsafe { cuda_abi::powdr_nvrtc_unload_module(module) };
         return Err(NvrtcError::GetFunction { code: fn_rc });
@@ -360,4 +361,3 @@ unsafe fn take_c_str(p: *mut std::ffi::c_char) -> Option<String> {
     cuda_abi::powdr_nvrtc_free(p);
     Some(s)
 }
-
