@@ -277,6 +277,12 @@ jobs:
             $RES_DIR/apc_candidates.json --output $RES_DIR/effectiveness.png
 
       # ---------- CPU-side reth bench ----------
+      # apc-cache is keyed by `reth-apc-<N>.bin` (run.sh line 341 sets
+      # APC_SETUP_NAME=reth-apc-${APC}), so different --apc values use
+      # different files in the same dir without colliding. The compile
+      # step above already left reth-apc-{0,10,30}.bin in apc-cache/, so
+      # the matching prove-stark calls below skip recompilation. We
+      # therefore don't `rm -rf apc-cache` between iterations.
       - name: Run reth benchmark
         run: |
           source .venv/bin/activate
@@ -286,40 +292,30 @@ jobs:
 
           # prove with no APCs
           ./run.sh --block "$BLOCK_NUMBER" --apc 0 --mode prove-stark || exit 1
-          # remove apc cache to not interfere with the next runs
-          rm -rf apc-cache
           echo "Finished proving with no APCs"
           mv metrics.json $RES_DIR/apc000.json
           python ../openvm-riscv/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc000.png $RES_DIR/apc000.json > $RES_DIR/trace_cells_apc000.txt
 
           # prove with 3 APCs
           ./run.sh --block "$BLOCK_NUMBER" --apc 3 --mode prove-stark || exit 1
-          # remove apc cache to not interfere with the next runs
-          rm -rf apc-cache
           echo "Finished proving with 3 APCs"
           mv metrics.json $RES_DIR/apc003.json
           python ../openvm-riscv/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc003.png $RES_DIR/apc003.json > $RES_DIR/trace_cells_apc003.txt
 
           # prove with 10 APCs
           ./run.sh --block "$BLOCK_NUMBER" --apc 10 --mode prove-stark || exit 1
-          # remove apc cache to not interfere with the next runs
-          rm -rf apc-cache
           echo "Finished proving with 10 APCs"
           mv metrics.json $RES_DIR/apc010.json
           python ../openvm-riscv/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc010.png $RES_DIR/apc010.json > $RES_DIR/trace_cells_apc010.txt
 
           # prove with 30 APCs
           ./run.sh --block "$BLOCK_NUMBER" --apc 30 --mode prove-stark || exit 1
-          # remove apc cache to not interfere with the next runs
-          rm -rf apc-cache
           echo "Finished proving with 30 APCs"
           mv metrics.json $RES_DIR/apc030.json
           python ../openvm-riscv/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc030.png $RES_DIR/apc030.json > $RES_DIR/trace_cells_apc030.txt
 
           # prove with 100 APCs, recording mem usage
           psrecord --include-children --interval 1 --log $RES_DIR/psrecord.csv --log-format csv --plot $RES_DIR/psrecord.png "./run.sh --block $BLOCK_NUMBER --apc 100 --mode prove-stark" || exit 1
-          # remove apc cache to not interfere with the next runs
-          rm -rf apc-cache
           echo "Finished proving with 100 APCs"
           mv metrics.json $RES_DIR/apc100.json
           python ../openvm-riscv/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc100.png $RES_DIR/apc100.json > $RES_DIR/trace_cells_apc100.txt
