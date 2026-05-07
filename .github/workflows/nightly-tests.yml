@@ -63,9 +63,6 @@ jobs:
           summary-always: true
 
   test_apc_guest:
-    # TEMP: disabled while iterating on the merged test_apc_reth job.
-    # Revert before merge.
-    if: false
     runs-on: server-dev
 
     steps:
@@ -201,12 +198,15 @@ jobs:
 
       # `--mode compile --apc N` writes apc-specific bin files (proving and
       # verification keys for that apc count) into apc-cache/ under
-      # non-colliding names, so the dir accumulates entries and one
-      # tarball serves every Modal prove-stark invocation.
-      - name: Compile APC caches for Modal (CPU)
+      # non-colliding names (`reth-apc-${N}.bin`), so the dir accumulates
+      # entries and one tarball serves every Modal + CPU prove-stark
+      # invocation. Compile for every apc count we'll prove later
+      # (Modal does {0,10,30}; CPU does {0,3,10,30,100}) so all five
+      # CPU iterations skip recompilation. Modal ignores the extra bins.
+      - name: Compile APC caches (CPU)
         run: |
           cd openvm-eth
-          for apc in 0 10 30; do
+          for apc in 0 3 10 30 100; do
             ./run.sh --apc "$apc" --block "$BLOCK_NUMBER" --mode compile || exit 1
           done
           tar -czf ../apc-cache.tgz apc-cache
