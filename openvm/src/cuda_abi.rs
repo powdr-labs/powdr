@@ -61,6 +61,204 @@ extern "C" {
         bitwise_bus_id: u32,      // bus id for the bitwise lookup
         d_bitwise_hist: *mut u32, // device histogram for bitwise lookup
     ) -> i32;
+
+    /// Phase 0 spike: same dispatch + atomicAdd shape as `_apc_apply_bus`
+    /// but with bytecode evaluation removed (one trace-cell load + one
+    /// histogram update per row per interaction). Used to determine whether
+    /// the bytecode VM is the bottleneck (NVRTC will help) or atomic-add
+    /// traffic is (NVRTC won't help).
+    pub fn _apc_apply_bus_spike(
+        d_output: *const BabyBear,
+        num_apc_calls: i32,
+        d_interactions: *const DevInteraction,
+        n_interactions: usize,
+        var_range_bus_id: u32,
+        d_var_hist: *mut u32,
+        var_num_bins: usize,
+        tuple2_bus_id: u32,
+        d_tuple2_hist: *mut u32,
+        tuple2_sz0: u32,
+        tuple2_sz1: u32,
+        bitwise_bus_id: u32,
+        d_bitwise_hist: *mut u32,
+    ) -> i32;
+
+    /// JIT trace generation: reads record bytes directly from arenas,
+    /// computes only surviving APC columns via descriptor arrays.
+    pub fn _apc_jit_tracegen(
+        d_output: *mut BabyBear,
+        output_height: usize,
+        num_apc_calls: i32,
+        d_arena: *const u8,                         // concatenated arena bytes
+        d_instructions: *const JitInstructionDesc,   // instruction descriptors
+        n_instructions: i32,
+        d_col_descs: *const JitColumnDesc,           // column descriptors
+        range_max_bits: u32,
+    ) -> i32;
+
+    /// Phase 0 NVRTC spike: compile a trivial kernel at runtime, launch it
+    /// against the supplied device pointer, write 0x12345678 into n elements.
+    /// Returns 0 on success, nonzero on any CUDA / NVRTC error.
+    pub fn powdr_nvrtc_spike_run_noop(d_ptr: *mut u32, n: i32) -> i32;
+
+    /// Compile a CUDA source string with NVRTC. On success, *ptx_out points
+    /// to a malloc'd PTX buffer of *ptx_size_out bytes; caller must free
+    /// with powdr_nvrtc_free. On failure (return != 0), *log_out may point
+    /// to a malloc'd diagnostics string.
+    pub fn powdr_nvrtc_compile(
+        src: *const std::ffi::c_char,
+        src_name: *const std::ffi::c_char,
+        ptx_out: *mut *mut std::ffi::c_char,
+        ptx_size_out: *mut usize,
+        log_out: *mut *mut std::ffi::c_char,
+    ) -> i32;
+
+    pub fn powdr_nvrtc_free(p: *mut std::ffi::c_char);
+
+    pub fn powdr_nvrtc_load_module(
+        ptx: *const std::ffi::c_void,
+        ptx_size: usize,
+        module_out: *mut *mut std::ffi::c_void,
+    ) -> i32;
+
+    pub fn powdr_nvrtc_get_function(
+        module: *mut std::ffi::c_void,
+        name: *const std::ffi::c_char,
+        fn_out: *mut *mut std::ffi::c_void,
+    ) -> i32;
+
+    pub fn powdr_nvrtc_unload_module(module: *mut std::ffi::c_void) -> i32;
+
+    /// Launch a JIT trace-gen kernel matching the v1 signature:
+    ///   (uint32_t* d_output, size_t H, int N,
+    ///    const uint8_t* d_arena, uint32_t range_max_bits)
+    /// Synchronizes before returning.
+    pub fn powdr_nvrtc_launch_jit_v1(
+        function: *mut std::ffi::c_void,
+        d_output: *mut u32,
+        h: usize,
+        num_apc_calls: i32,
+        d_arena: *const u8,
+        range_max_bits: u32,
+        grid_x: u32,
+        block_x: u32,
+    ) -> i32;
+
+    /// Upload `host_data` of `size_bytes` into a `__constant__` symbol
+    /// in the given module. Returns 0 on success.
+    pub fn powdr_nvrtc_set_constant_symbol(
+        module: *mut std::ffi::c_void,
+        sym_name: *const std::ffi::c_char,
+        host_data: *const std::ffi::c_void,
+        size_bytes: usize,
+    ) -> i32;
+
+    /// Launch a per-APC codegen bus kernel (bus_v4) for var_range or tuple2.
+    /// No d_ops pointer (constants baked into source) and no n_ops arg.
+    /// `has_extra1=1` only for tuple2.
+    pub fn powdr_nvrtc_launch_bus_v4(
+        function: *mut std::ffi::c_void,
+        d_output: *const u32,
+        num_apc_calls: i32,
+        h: u64,
+        d_hist: *mut u32,
+        extra0: u32,
+        extra1: u32,
+        has_extra1: u32,
+        grid_x: u32,
+        block_x: u32,
+    ) -> i32;
+
+    /// Launch a per-APC codegen bus kernel for bitwise (range or xor).
+    /// No d_ops, no n_ops, no extra args (size baked in).
+    pub fn powdr_nvrtc_launch_bus_v4_bitwise(
+        function: *mut std::ffi::c_void,
+        d_output: *const u32,
+        num_apc_calls: i32,
+        h: u64,
+        d_hist: *mut u32,
+        grid_x: u32,
+        block_x: u32,
+    ) -> i32;
+
+    /// Launch a kind-templated bus kernel (bus_v3). Same shape as v2 plus a
+    /// `d_ops` pointer (op tables now in global memory).
+    pub fn powdr_nvrtc_launch_bus_v3(
+        function: *mut std::ffi::c_void,
+        d_output: *const u32,
+        num_apc_calls: i32,
+        h: u64,
+        d_hist: *mut u32,
+        extra0: u32,
+        extra1: u32,
+        has_extra1: u32,
+        n_ops: u32,
+        d_ops: *const std::ffi::c_void,
+        grid_x: u32,
+        block_x: u32,
+    ) -> i32;
+
+    /// Launch a kind-templated bus kernel (bus_v2). `extra0`/`extra1` are
+    /// the kind-specific extra kernel args (e.g., `var_num_bins` for
+    /// var_range; tuple2 sizes for tuple2; nothing for bitwise — pass 0).
+    /// Set `has_extra1 = 1` only for tuple2 (which has two size args).
+    pub fn powdr_nvrtc_launch_bus_v2(
+        function: *mut std::ffi::c_void,
+        d_output: *const u32,
+        num_apc_calls: i32,
+        h: u64,
+        d_hist: *mut u32,
+        extra0: u32,
+        extra1: u32,
+        has_extra1: u32,
+        n_ops: u32,
+        grid_x: u32,
+        block_x: u32,
+    ) -> i32;
+
+    /// Launch a JIT bus kernel matching the bus_v1 signature:
+    ///   (const u32* d_output, int N, u64 H,
+    ///    u32 var_range_bus_id, u32* d_var_hist, u32 var_num_bins,
+    ///    u32 tuple2_bus_id, u32* d_tuple2_hist, u32 tuple2_sz0, u32 tuple2_sz1,
+    ///    u32 bitwise_bus_id, u32* d_bitwise_hist)
+    /// Synchronizes before returning.
+    pub fn powdr_nvrtc_launch_bus_v1(
+        function: *mut std::ffi::c_void,
+        d_output: *const u32,
+        num_apc_calls: i32,
+        h: u64,
+        var_range_bus_id: u32,
+        d_var_hist: *mut u32,
+        var_num_bins: u32,
+        tuple2_bus_id: u32,
+        d_tuple2_hist: *mut u32,
+        tuple2_sz0: u32,
+        tuple2_sz1: u32,
+        bitwise_bus_id: u32,
+        d_bitwise_hist: *mut u32,
+        grid_x: u32,
+        block_x: u32,
+    ) -> i32;
+}
+
+/// JIT column computation descriptor — matches CUDA JitColumnDesc struct.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct JitColumnDesc {
+    pub comp_type: u16,
+    pub apc_col: u16,
+    pub p: [u16; 6],
+}
+
+/// JIT instruction descriptor — matches CUDA JitInstructionDesc struct.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct JitInstructionDesc {
+    pub arena_offset: u32,
+    pub record_stride: u32,
+    pub record_offset: u32,
+    pub col_desc_start: u32,
+    pub col_desc_count: u32,
 }
 
 #[repr(C)]
@@ -218,6 +416,66 @@ pub fn apc_apply_bus(
             // Bitwise related
             bitwise_bus_id,
             bitwise_count.as_mut_ptr() as *mut u32,
+        ))
+    }
+}
+
+/// Phase 0 spike — same dispatch shape as `apc_apply_bus` but with bytecode
+/// evaluation removed (one trace-cell load + one histogram update per row
+/// per interaction). Output histograms are MEANINGLESS — this is a timing
+/// instrument only.
+#[allow(clippy::too_many_arguments)]
+pub fn apc_apply_bus_spike(
+    output: &DeviceMatrix<BabyBear>,
+    num_apc_calls: usize,
+    interactions: DeviceBuffer<DevInteraction>,
+    var_range_bus_id: u32,
+    var_range_count: &DeviceBuffer<BabyBear>,
+    tuple2_bus_id: u32,
+    tuple2_count: &DeviceBuffer<BabyBear>,
+    tuple2_sizes: [u32; 2],
+    bitwise_bus_id: u32,
+    bitwise_count: &DeviceBuffer<BabyBear>,
+) -> Result<(), CudaError> {
+    unsafe {
+        CudaError::from_result(_apc_apply_bus_spike(
+            output.buffer().as_ptr(),
+            num_apc_calls as i32,
+            interactions.as_ptr(),
+            interactions.len(),
+            var_range_bus_id,
+            var_range_count.as_mut_ptr() as *mut u32,
+            var_range_count.len(),
+            tuple2_bus_id,
+            tuple2_count.as_mut_ptr() as *mut u32,
+            tuple2_sizes[0],
+            tuple2_sizes[1],
+            bitwise_bus_id,
+            bitwise_count.as_mut_ptr() as *mut u32,
+        ))
+    }
+}
+
+/// Safe wrapper for the JIT trace generation kernel.
+pub fn apc_jit_tracegen(
+    output: &mut DeviceMatrix<BabyBear>,
+    arena: &DeviceBuffer<u8>,
+    instructions: &DeviceBuffer<JitInstructionDesc>,
+    col_descs: &DeviceBuffer<JitColumnDesc>,
+    num_apc_calls: usize,
+    range_max_bits: u32,
+) -> Result<(), CudaError> {
+    let output_height = output.height();
+    unsafe {
+        CudaError::from_result(_apc_jit_tracegen(
+            output.buffer().as_mut_ptr(),
+            output_height,
+            num_apc_calls as i32,
+            arena.as_ptr(),
+            instructions.as_ptr(),
+            instructions.len() as i32,
+            col_descs.as_ptr(),
+            range_max_bits,
         ))
     }
 }

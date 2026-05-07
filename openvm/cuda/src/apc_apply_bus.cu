@@ -122,6 +122,101 @@ __global__ void apc_apply_bus_kernel(
 }
 
 // ============================================================================================
+// Phase 0 spike kernel — same structure, no bytecode evaluation.
+// Used to determine whether the bus_kernel's ~76 ms cost is bytecode-dispatch
+// dominated (in which case NVRTC will help) or atomic-traffic dominated (in
+// which case NVRTC won't help and we should pivot).
+//
+// Each (interaction, row) pair issues ONE trace-cell load (to keep DRAM
+// traffic representative) and ONE atomicAdd to the appropriate periphery
+// histogram. Index/value derived cheaply from the trace cell so the
+// compiler can't optimize out the load. mult is treated as 1 (typical for
+// Receive interactions).
+// ============================================================================================
+__global__ void apc_apply_bus_kernel_spike(
+  const Fp* __restrict__ d_output,
+  int num_apc_calls,
+  size_t                   n_interactions,
+  const DevInteraction* __restrict__ d_interactions,
+  uint32_t var_range_bus_id,
+  uint32_t* __restrict__ d_var_hist,
+  size_t   var_num_bins,
+  uint32_t tuple2_bus_id,
+  uint32_t* __restrict__ d_tuple2_hist,
+  uint32_t tuple2_sz0,
+  uint32_t tuple2_sz1,
+  uint32_t bitwise_bus_id,
+  uint32_t* __restrict__ d_bitwise_hist
+) {
+  const int warp = (threadIdx.x >> 5);
+  const int lane = (threadIdx.x & 31);
+  const int warps_per_block = (blockDim.x >> 5);
+
+  const int H = num_apc_calls; // assume H == num_apc_calls for stride; close enough for measurement
+
+  for (int i = blockIdx.x * warps_per_block + warp; i < (int)n_interactions; i += gridDim.x * warps_per_block) {
+    DevInteraction intr = d_interactions[i];
+
+    for (int r = lane; r < num_apc_calls; r += 32) {
+      // Load ONE trace cell to mimic DRAM traffic. Cell choice: column 0 of
+      // current row (any deterministic choice; we just want a memory load).
+      Fp cell = d_output[(size_t)0 * (size_t)H + (size_t)r];
+      uint32_t cell_u = cell.asUInt32();
+
+      if (intr.bus_id == var_range_bus_id) {
+        lookup::Histogram hist(d_var_hist, (uint32_t)var_num_bins);
+        // Index derived from cell + interaction index, masked to bin count.
+        uint32_t idx = (cell_u + (uint32_t)i) % (uint32_t)var_num_bins;
+        hist.add_count(idx);
+      } else if (intr.bus_id == tuple2_bus_id) {
+        uint32_t total = tuple2_sz0 * tuple2_sz1;
+        if (total > 0) {
+          lookup::Histogram hist(d_tuple2_hist, total);
+          uint32_t idx = (cell_u + (uint32_t)i) % total;
+          hist.add_count(idx);
+        }
+      } else if (intr.bus_id == bitwise_bus_id) {
+        BitwiseOperationLookup bl(d_bitwise_hist, BITWISE_NUM_BITS);
+        // Use low byte twice; selector range path (no xor) for simplicity.
+        bl.add_range(cell_u & 0xFFu, (cell_u >> 8) & 0xFFu);
+      }
+    }
+  }
+}
+
+extern "C" int _apc_apply_bus_spike(
+  const Fp* d_output,
+  int num_apc_calls,
+  const DevInteraction* d_interactions,
+  size_t n_interactions,
+  uint32_t var_range_bus_id,
+  uint32_t* d_var_hist,
+  size_t   var_num_bins,
+  uint32_t tuple2_bus_id,
+  uint32_t* d_tuple2_hist,
+  uint32_t tuple2_sz0,
+  uint32_t tuple2_sz1,
+  uint32_t bitwise_bus_id,
+  uint32_t* d_bitwise_hist
+) {
+  const int block_x = 256;
+  const dim3 block(block_x, 1, 1);
+  const unsigned warps_per_block = (unsigned)(block_x / 32);
+  size_t g_size = (n_interactions + (size_t)warps_per_block - 1) / (size_t)warps_per_block;
+  unsigned g = (unsigned)g_size;
+  if (g == 0u) g = 1u;
+  const dim3 grid(g, 1, 1);
+
+  apc_apply_bus_kernel_spike<<<grid, block>>>(
+    d_output, num_apc_calls, n_interactions, d_interactions,
+    var_range_bus_id, d_var_hist, var_num_bins,
+    tuple2_bus_id, d_tuple2_hist, tuple2_sz0, tuple2_sz1,
+    bitwise_bus_id, d_bitwise_hist
+  );
+  return (int)cudaGetLastError();
+}
+
+// ============================================================================================
 // Host launcher wrapper — callable from Rust FFI or cudarc
 // ============================================================================================
 
