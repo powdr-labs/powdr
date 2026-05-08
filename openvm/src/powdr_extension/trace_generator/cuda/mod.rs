@@ -225,11 +225,23 @@ fn trace_profile_sync_enabled() -> bool {
 /// `TracingContextLayer`.
 macro_rules! timed_substage {
     ($name:literal, $body:expr) => {{
-        let _span = ::tracing::info_span!($name).entered();
-        let r = $body;
-        if crate::powdr_extension::trace_generator::cuda::trace_profile_sync_enabled() {
-            let _ = ::openvm_cuda_common::stream::current_stream_sync();
-        }
+        // Microsecond counter alongside the info_span!. The span goes
+        // through TimingMetricsLayer which truncates per-call elapsed via
+        // `as_millis() as f64`, so hundreds of <1ms calls (typical at high
+        // APC counts where each PowdrAir is small) all round to 0 and the
+        // total disappears. The counter accumulates without truncation; the
+        // viewer can sum `<name>_us` for an accurate per-substage total.
+        let _t0 = ::std::time::Instant::now();
+        let r = {
+            let _span = ::tracing::info_span!($name).entered();
+            let inner = $body;
+            if crate::powdr_extension::trace_generator::cuda::trace_profile_sync_enabled() {
+                let _ = ::openvm_cuda_common::stream::current_stream_sync();
+            }
+            inner
+        };
+        ::metrics::counter!(concat!($name, "_us"))
+            .increment(_t0.elapsed().as_micros() as u64);
         r
     }};
 }
@@ -335,9 +347,11 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         let captured_var = partition.var_ops.len() + partition.var_ops_bilinear.len();
         let captured_tup = partition.tuple_ops.len() + partition.tuple_ops_bilinear.len();
         let captured_br = partition.bitwise_range_ops.len()
-            + partition.bitwise_range_ops_bilinear.len();
+            + partition.bitwise_range_ops_bilinear.len()
+            + partition.bitwise_range_ops_multi.len();
         let captured_bx = partition.bitwise_xor_ops.len()
-            + partition.bitwise_xor_ops_bilinear.len();
+            + partition.bitwise_xor_ops_bilinear.len()
+            + partition.bitwise_xor_ops_multi.len();
         let captured = captured_var + captured_tup + captured_br + captured_bx;
         let unhandled = partition.unhandled.len();
         let unsupported = partition.n_unsupported;
@@ -408,11 +422,13 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
                 emit_codegen_bitwise(
                     &partition.bitwise_range_ops,
                     &partition.bitwise_range_ops_bilinear,
+                    &partition.bitwise_range_ops_multi,
                     false,
                 ),
                 emit_codegen_bitwise(
                     &partition.bitwise_xor_ops,
                     &partition.bitwise_xor_ops_bilinear,
+                    &partition.bitwise_xor_ops_multi,
                     true,
                 ),
             )
@@ -609,13 +625,32 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         &self,
         original_arenas: OriginalArenas<DenseRecordArena>,
     ) -> Option<DeviceMatrix<BabyBear>> {
+        // Accumulate total time spent in try_generate_witness across all
+        // PowdrAir chips (active + inactive) and all segments. Counters in
+        // microseconds because per-call elapsed is often sub-ms and
+        // `TimingMetricsLayer`'s gauges truncate to whole ms — at high APC
+        // counts (hundreds of chips per segment) hundreds of <1ms gauges
+        // each round to 0 and the total disappears.
+        struct WitnessTimer(std::time::Instant);
+        impl Drop for WitnessTimer {
+            fn drop(&mut self) {
+                metrics::counter!("apc_witness_total_us")
+                    .increment(self.0.elapsed().as_micros() as u64);
+            }
+        }
+        let t0 = std::time::Instant::now();
+        let _witness_timer = WitnessTimer(t0);
+
         let mut original_arenas = match original_arenas {
             OriginalArenas::Initialized(arenas) => arenas,
             OriginalArenas::Uninitialized => {
-                // if the arenas are uninitialized, the apc was not called, so we return early
+                metrics::counter!("apc_inactive_us")
+                    .increment(t0.elapsed().as_micros() as u64);
+                metrics::counter!("apc_inactive_calls").increment(1);
                 return None;
             }
         };
+        metrics::counter!("apc_active_calls").increment(1);
 
         let num_apc_calls = original_arenas.number_of_calls;
 

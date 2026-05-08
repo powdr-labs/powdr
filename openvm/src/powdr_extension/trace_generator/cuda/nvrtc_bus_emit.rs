@@ -179,6 +179,11 @@ pub struct PartitionedBus {
     pub tuple_ops_bilinear: Vec<(usize, Tuple2OpBilinear)>,
     pub bitwise_range_ops_bilinear: Vec<(usize, BitwiseOpBilinear)>,
     pub bitwise_xor_ops_bilinear: Vec<(usize, BitwiseOpBilinear)>,
+    /// Bitwise ops with a multi-term-affine `mult` (sum of column refs).
+    /// Captures the "guard sum" pattern in range-check chips that the
+    /// single-variable `decode_mult` rejects. Codegen path only.
+    pub bitwise_range_ops_multi: Vec<(usize, BitwiseOpMultiMult)>,
+    pub bitwise_xor_ops_multi: Vec<(usize, BitwiseOpMultiMult)>,
     /// Number of interactions on unsupported buses (memory/exec/program).
     /// These do nothing in the existing bytecode-VM kernel either —
     /// `apc_apply_bus_kernel` only updates 3 histograms.
@@ -677,6 +682,19 @@ pub struct BitwiseOpBilinear {
     pub y: BilinearMonomials,
 }
 
+/// Bitwise op with a multi-term-affine multiplicity. Captures shapes like
+/// `mult = c0 + c1*v1 + c2*v2 + ... + cN*vN` (e.g. range-check "guard sum"
+/// where four binary `diff_marker_i` columns are summed). The kernel
+/// evaluates `mult` per row and adds that count to the histogram bin —
+/// equivalent to an unconditional add when the per-row mult is 0/1 by
+/// construction.
+#[derive(Clone, Debug, Hash)]
+pub struct BitwiseOpMultiMult {
+    pub mult: AffineArg,
+    pub x: AffineArg,
+    pub y: AffineArg,
+}
+
 /// Decode a mult expression into `(mult_const, guard_col)` pair.
 ///
 /// - `Number(c)` → (c, NO_GUARD): unconditional multiplicity c
@@ -880,6 +898,33 @@ pub fn partition_apc_bus(input: &BusEmitterInput) -> Result<PartitionedBus, Part
                         }
                         continue;
                     }
+                }
+                // Multi-term-affine `mult` fallback. Captures shapes like
+                // `mult = sum_of_diff_markers` (range-check guard sum) that
+                // the single-variable `decode_mult` rejects. Args still need
+                // to be plain affine — bilinear+multi-mult is a separate
+                // path we don't need yet. Re-decode args because the affine
+                // branch above moves the prior bindings.
+                let mult_aff = decode_affine_arg(&intr.mult, &input.apc_poly_id_to_index);
+                let x_aff_m = decode_affine_arg(&intr.args[0], &input.apc_poly_id_to_index);
+                let y_aff_m = decode_affine_arg(&intr.args[1], &input.apc_poly_id_to_index);
+                if let (Some(mult_aff), Some(x_aff), Some(y_aff)) = (mult_aff, x_aff_m, y_aff_m) {
+                    let op_multi = BitwiseOpMultiMult {
+                        mult: mult_aff,
+                        x: x_aff,
+                        y: y_aff,
+                    };
+                    match selector {
+                        0 => p.bitwise_range_ops_multi.push((i, op_multi)),
+                        1 => p.bitwise_xor_ops_multi.push((i, op_multi)),
+                        other => {
+                            return Err(PartitionError::BitwiseSelector(format!(
+                                "selector const = {}",
+                                other
+                            )))
+                        }
+                    }
+                    continue;
                 }
                 p.unhandled.push(i);
             }
@@ -1182,12 +1227,13 @@ pub fn emit_codegen_tuple2(
 pub fn emit_codegen_bitwise(
     affine_ops: &[BitwiseOp],
     bilinear_ops: &[(usize, BitwiseOpBilinear)],
+    multi_ops: &[(usize, BitwiseOpMultiMult)],
     is_xor: bool,
 ) -> Option<EmittedKernel> {
-    if affine_ops.is_empty() && bilinear_ops.is_empty() {
+    if affine_ops.is_empty() && bilinear_ops.is_empty() && multi_ops.is_empty() {
         return None;
     }
-    let n_ops = affine_ops.len() + bilinear_ops.len();
+    let n_ops = affine_ops.len() + bilinear_ops.len() + multi_ops.len();
     let mut s = String::new();
     s.push_str(BUS_PRELUDE);
     let tag = if is_xor {
@@ -1204,6 +1250,7 @@ pub fn emit_codegen_bitwise(
         tag.hash(&mut h);
         affine_ops.hash(&mut h);
         bilinear_ops.hash(&mut h);
+        multi_ops.hash(&mut h);
         h.finish()
     };
     let kind_name = if is_xor { "xor" } else { "range" };
@@ -1294,6 +1341,26 @@ pub fn emit_codegen_bitwise(
             )
             .unwrap();
         }
+        s.push_str("            }\n            break;\n        }\n");
+        idx += 1;
+    }
+    // Multi-term-affine `mult` ops. Per row: evaluate the affine for `mult`,
+    // skip if 0, otherwise add `mult` to the histogram bin. Captures
+    // range-check "guard sum" shapes that single-variable `decode_mult`
+    // rejects.
+    for (_orig_i, op) in multi_ops {
+        writeln!(s, "        case {}: {{ /* multi-term mult */", idx).unwrap();
+        s.push_str("            for (int r = lane; r < N; r += 32) {\n");
+        emit_affine_inline(&mut s, &op.mult, "                ", "m");
+        s.push_str("                if (m == 0u) continue;\n");
+        emit_affine_inline(&mut s, &op.x, "                ", "x");
+        emit_affine_inline(&mut s, &op.y, "                ", "y");
+        writeln!(
+            s,
+            "                unsigned int idx = ((x << 8) | (y & 0xFFu)){idx_offset_str};"
+        )
+        .unwrap();
+        s.push_str("                hist.add_count_n(idx, m);\n");
         s.push_str("            }\n            break;\n        }\n");
         idx += 1;
     }
