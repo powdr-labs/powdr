@@ -1,5 +1,6 @@
 [package]
 name = "powdr-openvm"
+description = "OpenVM backend support for powdr autoprecompiles"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

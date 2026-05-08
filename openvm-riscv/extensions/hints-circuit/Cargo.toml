@@ -1,5 +1,6 @@
 [package]
 name = "powdr-openvm-riscv-hints-circuit"
+description = "OpenVM circuit extension for powdr RISC-V hint execution"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
