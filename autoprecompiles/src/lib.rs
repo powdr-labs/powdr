@@ -76,6 +76,12 @@ pub struct PowdrConfig {
     pub degree_bound: DegreeBound,
     /// The path to the APC candidates dir, if any.
     pub apc_candidates_dir_path: Option<PathBuf>,
+    /// Optional on-disk cache directory for compiled APCs. When set, the
+    /// per-block APC compilation pass will read a cached `Apc` for each
+    /// block from `<dir>/<block_start_pcs>.bin` (bincode), and write it
+    /// after a successful build. Massively speeds up re-runs at the same
+    /// `--autoprecompiles N` and VM config.
+    pub apc_cache_dir_path: Option<PathBuf>,
     /// Whether to use optimistic precompiles.
     pub should_use_optimistic_precompiles: bool,
 }
@@ -91,6 +97,7 @@ impl PowdrConfig {
             apc_exec_count_cutoff: 1,
             degree_bound,
             apc_candidates_dir_path: None,
+            apc_cache_dir_path: None,
             should_use_optimistic_precompiles: false,
         }
     }
@@ -117,6 +124,11 @@ impl PowdrConfig {
 
     pub fn with_apc_candidates_dir<P: AsRef<Path>>(mut self, path: P) -> Self {
         self.apc_candidates_dir_path = Some(path.as_ref().to_path_buf());
+        self
+    }
+
+    pub fn with_apc_cache_dir<P: AsRef<Path>>(mut self, path: P) -> Self {
+        self.apc_cache_dir_path = Some(path.as_ref().to_path_buf());
         self
     }
 
