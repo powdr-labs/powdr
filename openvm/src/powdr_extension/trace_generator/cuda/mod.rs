@@ -364,54 +364,11 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         metrics::counter!("apc_bus_captured_bitwise_xor").increment(captured_bx as u64);
         metrics::counter!("apc_bus_unhandled").increment(unhandled as u64);
         metrics::counter!("apc_bus_unsupported").increment(unsupported as u64);
-        // Hash the partitioned bus shape so each APC can be distinguished
-        // in logs even though we don't have a chip name here. Two APCs
-        // with the same bus shape collide, but for our analysis purposes
-        // (counting unique fallback shapes) that's actually desirable.
-        let apc_id = {
-            use std::collections::hash_map::DefaultHasher;
-            use std::hash::{Hash, Hasher};
-            let mut h = DefaultHasher::new();
-            self.apc.machine.bus_interactions.len().hash(&mut h);
-            for bi in &self.apc.machine.bus_interactions {
-                bi.id.hash(&mut h);
-                bi.args.len().hash(&mut h);
-            }
-            format!("{:016x}", h.finish())
-        };
-        tracing::info!(
-            "[apc_bus_partition] apc={} total={} captured={} (var={} tup={} br={} bx={}) unhandled={} unsupported={}",
-            apc_id, total, captured, captured_var, captured_tup, captured_br, captured_bx,
+        tracing::debug!(
+            "[apc_bus_partition] total={} captured={} (var={} tup={} br={} bx={}) unhandled={} unsupported={}",
+            total, captured, captured_var, captured_tup, captured_br, captured_bx,
             unhandled, unsupported,
         );
-        // Log each unhandled interaction's shape so we can analyze what
-        // additional capture strategies would unlock. `bus_id` distinguishes
-        // var_range / tuple2 / bitwise; `mult` and `args` shapes are what
-        // the affine + bilinear decoders couldn't simplify.
-        for &idx in &partition.unhandled {
-            let bi = &self.apc.machine.bus_interactions[idx];
-            let bus_kind = if bi.id as u32 == var_range_bus_id {
-                "var_range"
-            } else if bi.id as u32 == tuple2_bus_id {
-                "tuple2"
-            } else if bi.id as u32 == bitwise_bus_id {
-                "bitwise"
-            } else {
-                "other"
-            };
-            tracing::info!(
-                "[apc_bus_unhandled] apc={} idx={} bus={} mult={} args=[{}]",
-                apc_id,
-                idx,
-                bus_kind,
-                bi.mult,
-                bi.args
-                    .iter()
-                    .map(|a| format!("{}", a))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-        }
 
         // Unified kernel: handles all four lookup-bus kinds in one
         // function (one source per APC, one compile, one launch). Replaces
@@ -552,32 +509,18 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         &self,
         original_arenas: OriginalArenas<DenseRecordArena>,
     ) -> Option<DeviceMatrix<BabyBear>> {
-        // Accumulate total time spent in try_generate_witness across all
-        // PowdrAir chips (active + inactive) and all segments. Counters in
-        // microseconds because per-call elapsed is often sub-ms and
-        // `TimingMetricsLayer`'s gauges truncate to whole ms — at high APC
-        // counts (hundreds of chips per segment) hundreds of <1ms gauges
-        // each round to 0 and the total disappears.
-        struct WitnessTimer(std::time::Instant);
-        impl Drop for WitnessTimer {
-            fn drop(&mut self) {
-                metrics::counter!("apc_witness_total_us")
-                    .increment(self.0.elapsed().as_micros() as u64);
-            }
-        }
-        let t0 = std::time::Instant::now();
-        let _witness_timer = WitnessTimer(t0);
-
         let mut original_arenas = match original_arenas {
             OriginalArenas::Initialized(arenas) => arenas,
             OriginalArenas::Uninitialized => {
-                metrics::counter!("apc_inactive_us")
-                    .increment(t0.elapsed().as_micros() as u64);
-                metrics::counter!("apc_inactive_calls").increment(1);
-                return None;
+                // The APC was never called during execution. Wrap in a
+                // span so the per-call overhead (RefCell take, HashMap
+                // take, dummy matrix construction) is attributed to
+                // `apc_inactive_us` instead of leaking into the parent
+                // `trace_gen` span. `timed_substage!` emits a microsecond
+                // counter that survives across hundreds of sub-ms calls.
+                return timed_substage!("apc_inactive", { None });
             }
         };
-        metrics::counter!("apc_active_calls").increment(1);
 
         let num_apc_calls = original_arenas.number_of_calls;
 

@@ -202,53 +202,29 @@ fn try_generate_candidate<A: Adapter, C: ApcCandidate<A>>(
     let cache_path = config.apc_cache_dir_path.as_ref().map(|dir| {
         dir.join(format!(
             "{}.apc.json",
-            block.start_pcs().iter().map(|pc| pc.to_string()).collect::<Vec<_>>().join("_")
+            block.start_pcs().iter().map(u64::to_string).collect::<Vec<_>>().join("_")
         ))
     });
 
-    let apc = if let Some(path) = &cache_path {
-        if path.exists() {
-            let r: Result<crate::AdapterApc<A>, _> = std::fs::File::open(path)
-                .map_err(|e| e.to_string())
-                .and_then(|f| {
-                    serde_json::from_reader(std::io::BufReader::new(f))
-                        .map_err(|e| e.to_string())
-                });
-            match r {
-                Ok(apc) => apc,
-                Err(e) => {
-                    tracing::warn!(
-                        "Failed to load APC cache from {} ({}); rebuilding",
-                        path.display(),
-                        e
-                    );
-                    build_and_maybe_cache::<A>(
-                        block.clone(),
-                        vm_config,
-                        config,
-                        empirical_constraints,
-                        Some(path),
-                    )?
-                }
+    let apc = cache_path
+        .as_ref()
+        .filter(|p| p.exists())
+        .and_then(|p| match std::fs::File::open(p) {
+            Ok(f) => serde_json::from_reader(std::io::BufReader::new(f))
+                .inspect_err(|e| tracing::warn!("APC cache miss at {}: {e}; rebuilding", p.display()))
+                .ok(),
+            Err(e) => {
+                tracing::warn!("APC cache open failed at {}: {e}; rebuilding", p.display());
+                None
             }
-        } else {
-            build_and_maybe_cache::<A>(
-                block.clone(),
-                vm_config,
-                config,
-                empirical_constraints,
-                Some(path),
-            )?
-        }
-    } else {
-        build_and_maybe_cache::<A>(
+        })
+        .or_else(|| build_and_maybe_cache::<A>(
             block.clone(),
             vm_config,
             config,
             empirical_constraints,
-            None,
-        )?
-    };
+            cache_path.as_deref(),
+        ))?;
 
     let apc_with_stats = evaluate_apc::<A>(vm_config.instruction_handler, apc);
     Some(C::create(apc_with_stats))

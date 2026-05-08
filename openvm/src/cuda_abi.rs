@@ -94,33 +94,6 @@ extern "C" {
 
     pub fn powdr_nvrtc_unload_module(module: *mut std::ffi::c_void) -> i32;
 
-    /// Launch a per-APC codegen bus kernel (var_range or tuple2). Constants
-    /// are baked into the kernel source so there is no `d_ops` pointer or
-    /// `n_ops` arg. `has_extra1=1` only for tuple2.
-    pub fn powdr_nvrtc_launch_bus_v4(
-        function: *mut std::ffi::c_void,
-        d_output: *const u32,
-        num_apc_calls: i32,
-        h: u64,
-        d_hist: *mut u32,
-        extra0: u32,
-        extra1: u32,
-        has_extra1: u32,
-        grid_x: u32,
-        block_x: u32,
-    ) -> i32;
-
-    /// Launch a per-APC codegen bus kernel for bitwise (range or xor).
-    pub fn powdr_nvrtc_launch_bus_v4_bitwise(
-        function: *mut std::ffi::c_void,
-        d_output: *const u32,
-        num_apc_calls: i32,
-        h: u64,
-        d_hist: *mut u32,
-        grid_x: u32,
-        block_x: u32,
-    ) -> i32;
-
     /// Unified bus codegen launcher. Single launch per APC for all four
     /// lookup-bus kinds, replacing the four `_v4` / `_v4_bitwise` calls.
     /// The kernel writes to all three histogram tables internally.
