@@ -43,7 +43,12 @@ const EMITTER_VERSION: u32 = 7;
 /// Maximum number of column terms in a single affine arg expression. The
 /// keccak APC peak observed is 5 (timestamp-delta with 5 columns); 22/23
 /// of unhandled interactions fit in 3 terms.
-pub const MAX_TERMS_PER_ARG: usize = 5;
+// 8 terms covers ecrecover's 7-term `bit_shift_marker` selector
+// (`7 - 7*bm0 - 6*bm1 - ... - bm6`) plus headroom. Enlarging this grows
+// `AffineArg` (cols/coefs arrays) which lives in `__constant__` memory,
+// but at 16384 max ops × ~72 bytes per arg the total stays well under
+// the 64KB constant-memory ceiling.
+pub const MAX_TERMS_PER_ARG: usize = 8;
 
 /// Soft cap for diagnostic / safety. Op tables now live in global memory,
 /// so this limit only prevents silly inputs — keccak APCs peak around 700.
