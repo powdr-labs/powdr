@@ -230,10 +230,16 @@ jobs:
           modal volume put "$MODAL_VOLUME" rpc-cache.tgz "/${RUN_ID}/rpc-cache.tgz" --force
           modal volume put "$MODAL_VOLUME" apc-cache.tgz "/${RUN_ID}/apc-cache.tgz" --force
 
-      - name: Run prove-stark on Modal
-        # Sequential over {0,10,30}. Each Modal invocation includes its
-        # own cargo build (a few minutes) and the actual GPU prove (~1 min);
+      - name: Run prove-stark on Modal (best effort)
+        # Sequential over {0,10,30}. Each Modal invocation includes its own
+        # cargo build (a few minutes) and the actual GPU prove (~1 min);
         # total ~15-20 min, far less than the CPU reth bench that follows.
+        # Modal-side failures (transient platform issues, GPU
+        # unavailability, etc.) must NOT abort the job — the CPU reth
+        # bench is the must-have. We log a warning per failed apc and let
+        # the post-process step build whatever subset of metrics arrived
+        # on the volume.
+        continue-on-error: true
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
@@ -245,39 +251,57 @@ jobs:
               --block "$BLOCK_NUMBER" \
               --run-id "$RUN_ID" \
               --powdr-sha "$GITHUB_SHA" \
-              --openvm-eth-ref "$OPENVM_ETH_REF" || exit 1
+              --openvm-eth-ref "$OPENVM_ETH_REF" \
+              || echo "::warning::modal prove apc=${apc} failed; continuing"
           done
 
-      - name: Download Modal outputs and post-process
+      - name: Download Modal outputs and post-process (best effort)
+        # Tolerates partial Modal output: any apc whose metrics.json is
+        # missing on the volume is skipped with a warning. If no apc
+        # produced output at all, the reth_gpu_modal/ subdir is dropped
+        # so the artifact doesn't ship an empty stub.
+        continue-on-error: true
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
         run: |
           source .venv/bin/activate
           mkdir -p modal-out
-          modal volume get "$MODAL_VOLUME" "/${RUN_ID}/" modal-out/ --force
+          modal volume get "$MODAL_VOLUME" "/${RUN_ID}/" modal-out/ --force || true
+
           mkdir -p results/reth_gpu_modal
           RES_DIR=results/reth_gpu_modal
+          OK_JSONS=()
           for apc in 0 10 30; do
             label=$(printf 'apc%03d' "$apc")
-            mv "modal-out/${RUN_ID}/out-${apc}/metrics.json" "$RES_DIR/${label}.json"
+            src="modal-out/${RUN_ID}/out-${apc}/metrics.json"
+            if [ ! -f "$src" ]; then
+              echo "::warning::modal out-${apc}/metrics.json missing; skipping"
+              continue
+            fi
+            mv "$src" "$RES_DIR/${label}.json"
             python ./openvm-riscv/scripts/plot_trace_cells.py \
               -o "$RES_DIR/trace_cells_${label}.png" \
               "$RES_DIR/${label}.json" \
               > "$RES_DIR/trace_cells_${label}.txt"
+            OK_JSONS+=("$RES_DIR/${label}.json")
           done
-          mv apc_candidates_modal.json $RES_DIR/apc_candidates.json
+
+          if [ ${#OK_JSONS[@]} -eq 0 ]; then
+            echo "::warning::no Modal outputs survived; dropping results/reth_gpu_modal/"
+            rm -rf "$RES_DIR"
+            exit 0
+          fi
+
+          mv apc_candidates_modal.json "$RES_DIR/apc_candidates.json"
           python ./openvm-riscv/scripts/basic_metrics.py summary-table --csv \
-            $RES_DIR/apc000.json $RES_DIR/apc010.json $RES_DIR/apc030.json \
-            > $RES_DIR/basic_metrics.csv
+            "${OK_JSONS[@]}" > "$RES_DIR/basic_metrics.csv"
           python ./openvm-riscv/scripts/basic_metrics.py plot \
-            $RES_DIR/apc000.json $RES_DIR/apc010.json $RES_DIR/apc030.json \
-            -o $RES_DIR/proof_time_breakdown.png
+            "${OK_JSONS[@]}" -o "$RES_DIR/proof_time_breakdown.png"
           python ./openvm-riscv/scripts/basic_metrics.py combine \
-            $RES_DIR/apc000.json $RES_DIR/apc010.json $RES_DIR/apc030.json \
-            > $RES_DIR/combined_metrics.json
+            "${OK_JSONS[@]}" > "$RES_DIR/combined_metrics.json"
           python ./autoprecompiles/scripts/plot_effectiveness.py \
-            $RES_DIR/apc_candidates.json --output $RES_DIR/effectiveness.png
+            "$RES_DIR/apc_candidates.json" --output "$RES_DIR/effectiveness.png"
 
       # ---------- CPU-side reth bench ----------
       # apc-cache is keyed by `reth-apc-<N>.bin` (run.sh line 341 sets
@@ -334,11 +358,16 @@ jobs:
           mv $RES_DIR ../results/
 
       - name: upload result artifacts
+        # Run even on prior-step failure so we ship whatever results/ has
+        # for debugging. `if-no-files-found: ignore` makes an empty
+        # results/ a no-op rather than a hard error.
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: bench-results-reth
           path: |
             results/*
+          if-no-files-found: ignore
 
       - name: Cleanup Modal Volume
         if: always()
