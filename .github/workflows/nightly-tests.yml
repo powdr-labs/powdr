@@ -236,7 +236,7 @@ jobs:
         # total ~15-20 min, far less than the CPU reth bench that follows.
         # Modal-side failures (transient platform issues, GPU
         # unavailability, etc.) must NOT abort the job — the CPU reth
-        # bench is the must-have. We log a warning per failed apc and let
+        # bench is the must-have. We log a warning per failed apc count and let
         # the post-process step build whatever subset of metrics arrived
         # on the volume.
         continue-on-error: true
