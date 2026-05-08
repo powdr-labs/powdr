@@ -1,5 +1,6 @@
 [package]
 name = "powdr-openvm-riscv-hints-transpiler"
+description = "OpenVM transpiler extension for powdr RISC-V hint instructions"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

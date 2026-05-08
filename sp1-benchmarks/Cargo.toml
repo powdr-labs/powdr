@@ -1,5 +1,6 @@
 [package]
 name = "sp1-benchmarks"
+description = "SP1 benchmark fixtures for powdr autoprecompile tests"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
