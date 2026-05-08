@@ -120,6 +120,24 @@ extern "C" {
         grid_x: u32,
         block_x: u32,
     ) -> i32;
+
+    /// Unified bus codegen launcher. Single launch per APC for all four
+    /// lookup-bus kinds, replacing the four `_v4` / `_v4_bitwise` calls.
+    /// The kernel writes to all three histogram tables internally.
+    pub fn powdr_nvrtc_launch_bus_unified(
+        function: *mut std::ffi::c_void,
+        d_output: *const u32,
+        num_apc_calls: i32,
+        h: u64,
+        d_var_hist: *mut u32,
+        d_tuple2_hist: *mut u32,
+        d_bitwise_hist: *mut u32,
+        var_num_bins: u32,
+        tuple2_sz0: u32,
+        tuple2_sz1: u32,
+        grid_x: u32,
+        block_x: u32,
+    ) -> i32;
 }
 
 #[repr(C)]

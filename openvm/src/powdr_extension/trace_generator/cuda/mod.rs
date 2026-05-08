@@ -180,16 +180,15 @@ pub fn compile_bus_to_gpu(
 }
 
 /// Lazily-initialized per-APC NVRTC bus-codegen state. Holds the bus
-/// partition, the per-APC poly-id → APC-column index map, and the four
-/// compiled kernel handles. Built once per APC at construction (eagerly,
-/// when `POWDR_BUS_CODEGEN=1`); reused for every prove of the same APC.
+/// partition, the per-APC poly-id → APC-column index map, and the
+/// compiled unified kernel handle. Built once per APC at construction
+/// (eagerly, when `POWDR_BUS_CODEGEN=1`); reused for every prove of the
+/// same APC. The unified kernel handles all four lookup-bus kinds in a
+/// single launch.
 struct CachedBusCodegenKernels {
     partition: nvrtc_bus_emit::PartitionedBus,
     apc_poly_id_to_index: BTreeMap<u64, usize>,
-    var_compiled: Option<std::sync::Arc<nvrtc_cache::CompiledKernel>>,
-    tup_compiled: Option<std::sync::Arc<nvrtc_cache::CompiledKernel>>,
-    br_compiled: Option<std::sync::Arc<nvrtc_cache::CompiledKernel>>,
-    bx_compiled: Option<std::sync::Arc<nvrtc_cache::CompiledKernel>>,
+    unified_compiled: Option<std::sync::Arc<nvrtc_cache::CompiledKernel>>,
 }
 
 /// Returns true when `POWDR_BUS_CODEGEN=1` selects the per-APC NVRTC
@@ -320,8 +319,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         bitwise_bus_id: u32,
     ) -> std::sync::Arc<CachedBusCodegenKernels> {
         use nvrtc_bus_emit::{
-            build_emitter_input, emit_codegen_bitwise, emit_codegen_tuple2, emit_codegen_var_range,
-            partition_apc_bus,
+            build_emitter_input, partition_apc_bus,
         };
         use nvrtc_cache::NvrtcKernelCache;
 
@@ -415,55 +413,30 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
             );
         }
 
-        let kernels = timed_substage!("bus_nvrtc_emit", {
-            (
-                emit_codegen_var_range(&partition.var_ops, &partition.var_ops_bilinear),
-                emit_codegen_tuple2(&partition.tuple_ops, &partition.tuple_ops_bilinear),
-                emit_codegen_bitwise(
-                    &partition.bitwise_range_ops,
-                    &partition.bitwise_range_ops_bilinear,
-                    &partition.bitwise_range_ops_multi,
-                    false,
-                ),
-                emit_codegen_bitwise(
-                    &partition.bitwise_xor_ops,
-                    &partition.bitwise_xor_ops_bilinear,
-                    &partition.bitwise_xor_ops_multi,
-                    true,
-                ),
-            )
-        });
+        // Unified kernel: handles all four lookup-bus kinds in one
+        // function (one source per APC, one compile, one launch). Replaces
+        // the prior 4 per-kind kernels — each launch saves ~30-50 µs of
+        // overhead, which at high APC counts (704 active PowdrAirs ×
+        // 4 launches = ~2800 launches in pairing N500) added up to ~50% of
+        // bus_nvrtc_kernel.
+        let unified_kernel =
+            timed_substage!("bus_nvrtc_emit", { nvrtc_bus_emit::emit_codegen_unified(&partition) });
 
-        let compiled = timed_substage!("bus_nvrtc_compile", {
-            let kernels_vec: Vec<_> = [&kernels.0, &kernels.1, &kernels.2, &kernels.3]
-                .iter()
-                .filter_map(|k| (*k).clone())
-                .collect();
-            let names: Vec<_> = kernels_vec.iter().map(|k| k.name.clone()).collect();
-            let result = NvrtcKernelCache::global().get_or_compile_many(&kernels_vec);
-            result
-                .into_iter()
-                .enumerate()
-                .map(|(i, r)| {
-                    r.unwrap_or_else(|e| panic!("NVRTC compile failed for {}: {:?}", names[i], e))
-                })
-                .collect::<Vec<_>>()
+        let unified_compiled = timed_substage!("bus_nvrtc_compile", {
+            unified_kernel.as_ref().map(|k| {
+                let result = NvrtcKernelCache::global().get_or_compile_many(std::slice::from_ref(k));
+                result
+                    .into_iter()
+                    .next()
+                    .unwrap()
+                    .unwrap_or_else(|e| panic!("NVRTC compile failed for {}: {:?}", k.name, e))
+            })
         });
-
-        // Map compiled-list back to per-kind Optional handles.
-        let mut compiled_iter = compiled.into_iter();
-        let var_compiled = kernels.0.as_ref().map(|_| compiled_iter.next().unwrap());
-        let tup_compiled = kernels.1.as_ref().map(|_| compiled_iter.next().unwrap());
-        let br_compiled = kernels.2.as_ref().map(|_| compiled_iter.next().unwrap());
-        let bx_compiled = kernels.3.as_ref().map(|_| compiled_iter.next().unwrap());
 
         std::sync::Arc::new(CachedBusCodegenKernels {
             partition,
             apc_poly_id_to_index,
-            var_compiled,
-            tup_compiled,
-            br_compiled,
-            bx_compiled,
+            unified_compiled,
         })
     }
 
@@ -496,87 +469,41 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         let block_x = 256u32;
         let warps_per_block = 8u32;
 
+        // Single-launch unified kernel (replaces 4 sequential launches).
+        // Skips entirely if no captured ops in any kind.
         timed_substage!("bus_nvrtc_kernel", {
-            if let (Some(comp), n) = (
-                cached.var_compiled.as_ref(),
-                (p.var_ops.len() + p.var_ops_bilinear.len()) as u32,
-            ) {
-                let grid_x = n.div_ceil(warps_per_block).max(1);
+            if let Some(comp) = cached.unified_compiled.as_ref() {
+                let n_var = p.var_ops.len() + p.var_ops_bilinear.len();
+                let n_tup = p.tuple_ops.len() + p.tuple_ops_bilinear.len();
+                let n_br = p.bitwise_range_ops.len()
+                    + p.bitwise_range_ops_bilinear.len()
+                    + p.bitwise_range_ops_multi.len();
+                let n_bx = p.bitwise_xor_ops.len()
+                    + p.bitwise_xor_ops_bilinear.len()
+                    + p.bitwise_xor_ops_multi.len();
+                let total = (n_var + n_tup + n_br + n_bx) as u32;
+                let grid_x = total.div_ceil(warps_per_block).max(1);
+                // Suppress unused-var warnings for the deprecated bus IDs:
+                // they're still passed by callers but the unified kernel
+                // doesn't need them (each case is per-bus-typed at codegen).
+                let _ = (var_range_bus_id, tuple2_bus_id, bitwise_bus_id);
                 let rc = unsafe {
-                    cuda_abi::powdr_nvrtc_launch_bus_v4(
+                    cuda_abi::powdr_nvrtc_launch_bus_unified(
                         comp.function(),
                         output.buffer().as_ptr() as *const u32,
                         num_apc_calls as i32,
                         height as u64,
                         var_range_count.as_mut_ptr() as *mut u32,
-                        var_range_count.len() as u32,
-                        0,
-                        0,
-                        grid_x,
-                        block_x,
-                    )
-                };
-                assert_eq!(rc, 0, "var_range codegen launch rc={}", rc);
-            }
-
-            if let (Some(comp), n) = (
-                cached.tup_compiled.as_ref(),
-                (p.tuple_ops.len() + p.tuple_ops_bilinear.len()) as u32,
-            ) {
-                let grid_x = n.div_ceil(warps_per_block).max(1);
-                let rc = unsafe {
-                    cuda_abi::powdr_nvrtc_launch_bus_v4(
-                        comp.function(),
-                        output.buffer().as_ptr() as *const u32,
-                        num_apc_calls as i32,
-                        height as u64,
                         tuple2_count.as_mut_ptr() as *mut u32,
+                        bitwise_count.as_mut_ptr() as *mut u32,
+                        var_range_count.len() as u32,
                         tuple2_sizes[0],
                         tuple2_sizes[1],
-                        1,
                         grid_x,
                         block_x,
                     )
                 };
-                assert_eq!(rc, 0, "tuple2 codegen launch rc={}", rc);
-            }
-
-            if let (Some(comp), n) = (
-                cached.br_compiled.as_ref(),
-                (p.bitwise_range_ops.len() + p.bitwise_range_ops_bilinear.len()) as u32,
-            ) {
-                let grid_x = n.div_ceil(warps_per_block).max(1);
-                let rc = unsafe {
-                    cuda_abi::powdr_nvrtc_launch_bus_v4_bitwise(
-                        comp.function(),
-                        output.buffer().as_ptr() as *const u32,
-                        num_apc_calls as i32,
-                        height as u64,
-                        bitwise_count.as_mut_ptr() as *mut u32,
-                        grid_x,
-                        block_x,
-                    )
-                };
-                assert_eq!(rc, 0, "bitwise_range codegen launch rc={}", rc);
-            }
-
-            if let (Some(comp), n) = (
-                cached.bx_compiled.as_ref(),
-                (p.bitwise_xor_ops.len() + p.bitwise_xor_ops_bilinear.len()) as u32,
-            ) {
-                let grid_x = n.div_ceil(warps_per_block).max(1);
-                let rc = unsafe {
-                    cuda_abi::powdr_nvrtc_launch_bus_v4_bitwise(
-                        comp.function(),
-                        output.buffer().as_ptr() as *const u32,
-                        num_apc_calls as i32,
-                        height as u64,
-                        bitwise_count.as_mut_ptr() as *mut u32,
-                        grid_x,
-                        block_x,
-                    )
-                };
-                assert_eq!(rc, 0, "bitwise_xor codegen launch rc={}", rc);
+                assert_eq!(rc, 0, "unified codegen launch rc={}", rc);
             }
         });
 

@@ -246,5 +246,63 @@ int powdr_nvrtc_launch_bus_v4_bitwise(
     return 0;
 }
 
+// Unified bus codegen launcher — single launch per APC for all four
+// lookup-bus kinds (var_range, tuple2, bitwise_range, bitwise_xor).
+// Replaces 4 sequential launches; the kernel internally dispatches via
+// outer switch on op index. Saves ~3× per-launch overhead at high APC
+// counts where each PowdrAir's bus pass has small per-kind work.
+//
+// Kernel signature:
+//   __global__ void <kernel>(
+//       const unsigned int* d_output, int N, unsigned long long H,
+//       unsigned int* d_var_hist,
+//       unsigned int* d_tuple2_hist,
+//       unsigned int* d_bitwise_hist,
+//       unsigned int  var_num_bins,
+//       unsigned int  tuple2_sz0,
+//       unsigned int  tuple2_sz1);
+int powdr_nvrtc_launch_bus_unified(
+    void*               fn,
+    const unsigned int* d_output,
+    int                 num_apc_calls,
+    unsigned long long  H,
+    unsigned int*       d_var_hist,
+    unsigned int*       d_tuple2_hist,
+    unsigned int*       d_bitwise_hist,
+    unsigned int        var_num_bins,
+    unsigned int        tuple2_sz0,
+    unsigned int        tuple2_sz1,
+    unsigned int        grid_x,
+    unsigned int        block_x
+) {
+    if (!ensure_primary_context()) return -1;
+    if (fn == nullptr) return -2;
+    if (grid_x == 0)  grid_x = 1;
+    if (block_x == 0) block_x = 256;
+
+    void* args[] = {
+        (void*)&d_output,
+        (void*)&num_apc_calls,
+        (void*)&H,
+        (void*)&d_var_hist,
+        (void*)&d_tuple2_hist,
+        (void*)&d_bitwise_hist,
+        (void*)&var_num_bins,
+        (void*)&tuple2_sz0,
+        (void*)&tuple2_sz1,
+    };
+
+    CUresult r = cuLaunchKernel(
+        (CUfunction)fn,
+        grid_x, 1, 1,
+        block_x, 1, 1,
+        0,
+        (CUstream)cudaStreamPerThread,
+        args,
+        nullptr);
+    if (r != CUDA_SUCCESS) return -2000 - (int)r;
+    return 0;
+}
+
 
 }  // extern "C"

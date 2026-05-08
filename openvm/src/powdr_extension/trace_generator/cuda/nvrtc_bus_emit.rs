@@ -1378,6 +1378,249 @@ pub fn emit_codegen_bitwise(
     })
 }
 
+/// Emit a single per-APC kernel that handles all 4 lookup-bus kinds
+/// (var_range, tuple2, bitwise_range, bitwise_xor) in one switch. Replaces
+/// the four per-kind kernels and their four `cuLaunchKernel` calls per
+/// APC with a single launch — saves ~3× per-launch overhead at high APC
+/// counts where each PowdrAir's bus pass is small.
+///
+/// Layout: `i = 0..n_var` are var_range cases (writes to `h_var`),
+/// `n_var..n_var+n_tup` are tuple2 (writes `h_tup`), the rest are
+/// bitwise (writes `h_bw`, with `+ num_rows` offset on the xor cases).
+pub fn emit_codegen_unified(p: &PartitionedBus) -> Option<EmittedKernel> {
+    let n_var = p.var_ops.len() + p.var_ops_bilinear.len();
+    let n_tup = p.tuple_ops.len() + p.tuple_ops_bilinear.len();
+    let n_br = p.bitwise_range_ops.len()
+        + p.bitwise_range_ops_bilinear.len()
+        + p.bitwise_range_ops_multi.len();
+    let n_bx = p.bitwise_xor_ops.len()
+        + p.bitwise_xor_ops_bilinear.len()
+        + p.bitwise_xor_ops_multi.len();
+    let n_ops = n_var + n_tup + n_br + n_bx;
+    if n_ops == 0 {
+        return None;
+    }
+
+    let source_hash = {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut h = DefaultHasher::new();
+        "BUS_CODEGEN_UNIFIED".hash(&mut h);
+        EMITTER_VERSION.hash(&mut h);
+        p.var_ops.hash(&mut h);
+        p.var_ops_bilinear.hash(&mut h);
+        p.tuple_ops.hash(&mut h);
+        p.tuple_ops_bilinear.hash(&mut h);
+        p.bitwise_range_ops.hash(&mut h);
+        p.bitwise_range_ops_bilinear.hash(&mut h);
+        p.bitwise_range_ops_multi.hash(&mut h);
+        p.bitwise_xor_ops.hash(&mut h);
+        p.bitwise_xor_ops_bilinear.hash(&mut h);
+        p.bitwise_xor_ops_multi.hash(&mut h);
+        h.finish()
+    };
+    let name = format!("apc_bus_unified_codegen_{:016x}", source_hash);
+
+    let mut s = String::new();
+    s.push_str(BUS_PRELUDE);
+
+    use std::fmt::Write as _;
+    writeln!(
+        s,
+        r#"extern "C" __global__ void {name}(
+    const unsigned int* __restrict__ d_output,
+    int                 N,
+    unsigned long long  H,
+    unsigned int*       __restrict__ d_var_hist,
+    unsigned int*       __restrict__ d_tuple2_hist,
+    unsigned int*       __restrict__ d_bitwise_hist,
+    unsigned int        var_num_bins,
+    unsigned int        tuple2_sz0,
+    unsigned int        tuple2_sz1)
+{{
+    const int warp = (threadIdx.x >> 5);
+    const int lane = (threadIdx.x & 31);
+    const int wpb  = (blockDim.x >> 5);
+    constexpr int N_OPS = {n_ops};
+    const unsigned int num_rows = 65536u;
+    lookup::Histogram h_var(d_var_hist, var_num_bins);
+    lookup::Histogram h_tup(d_tuple2_hist, tuple2_sz0 * tuple2_sz1);
+    lookup::Histogram h_bw(d_bitwise_hist, 2u * num_rows);
+
+    for (int i = blockIdx.x * wpb + warp; i < N_OPS; i += gridDim.x * wpb) {{
+        switch (i) {{"#,
+    )
+    .unwrap();
+
+    let mut idx = 0usize;
+
+    // var_range: each case emits its body using `h_var` as the target hist.
+    for op in &p.var_ops {
+        writeln!(s, "        case {idx}: {{").unwrap();
+        s.push_str("            auto& hist = h_var;\n");
+        emit_codegen_var_range_body(&mut s, op);
+        s.push_str("            break;\n        }\n");
+        idx += 1;
+    }
+    for (_orig_i, op) in &p.var_ops_bilinear {
+        writeln!(s, "        case {idx}: {{ /* var bilinear */").unwrap();
+        s.push_str("            auto& hist = h_var;\n");
+        emit_codegen_var_range_bilinear_body(&mut s, op);
+        s.push_str("            break;\n        }\n");
+        idx += 1;
+    }
+
+    // tuple2: writes to h_tup; index uses tuple2_sz1 (kernel param).
+    for op in &p.tuple_ops {
+        writeln!(s, "        case {idx}: {{").unwrap();
+        s.push_str(
+            "            auto& hist = h_tup;\n            for (int r = lane; r < N; r += 32) {\n",
+        );
+        if op.guard_col != NO_GUARD {
+            writeln!(
+                s,
+                "                unsigned int g = monty_reduce(d_output[{}ull * H + (unsigned long long)r]); if (g == 0u) continue;",
+                op.guard_col
+            ).unwrap();
+        }
+        emit_affine_inline(&mut s, &op.v0, "                ", "v0");
+        emit_affine_inline(&mut s, &op.v1, "                ", "v1");
+        s.push_str("                unsigned int idx = v0 * tuple2_sz1 + v1;\n");
+        if op.mult_const == 1 {
+            s.push_str("                hist.add_count(idx);\n");
+        } else {
+            writeln!(s, "                hist.add_count_n(idx, {}u);", op.mult_const).unwrap();
+        }
+        s.push_str("            }\n            break;\n        }\n");
+        idx += 1;
+    }
+    for (_orig_i, op) in &p.tuple_ops_bilinear {
+        writeln!(s, "        case {idx}: {{ /* tuple2 bilinear */").unwrap();
+        s.push_str(
+            "            auto& hist = h_tup;\n            for (int r = lane; r < N; r += 32) {\n",
+        );
+        if op.guard_col != NO_GUARD {
+            writeln!(
+                s,
+                "                unsigned int g = monty_reduce(d_output[{}ull * H + (unsigned long long)r]); if (g == 0u) continue;",
+                op.guard_col
+            ).unwrap();
+        }
+        emit_bilinear_inline(&mut s, &op.v0, "                ", "v0");
+        emit_bilinear_inline(&mut s, &op.v1, "                ", "v1");
+        s.push_str("                unsigned int idx = v0 * tuple2_sz1 + v1;\n");
+        if op.mult_const == 1 {
+            s.push_str("                hist.add_count(idx);\n");
+        } else {
+            writeln!(s, "                hist.add_count_n(idx, {}u);", op.mult_const).unwrap();
+        }
+        s.push_str("            }\n            break;\n        }\n");
+        idx += 1;
+    }
+
+    // bitwise_range (no idx offset) and bitwise_xor (+ num_rows) share
+    // the bitwise histogram. The same body shape repeats for each.
+    let emit_bw_block = |s: &mut String, idx: &mut usize, is_xor: bool| {
+        let off = if is_xor { " + num_rows" } else { "" };
+        let (affine, bilinear, multi) = if is_xor {
+            (
+                &p.bitwise_xor_ops,
+                &p.bitwise_xor_ops_bilinear,
+                &p.bitwise_xor_ops_multi,
+            )
+        } else {
+            (
+                &p.bitwise_range_ops,
+                &p.bitwise_range_ops_bilinear,
+                &p.bitwise_range_ops_multi,
+            )
+        };
+        for op in affine {
+            writeln!(s, "        case {}: {{", *idx).unwrap();
+            s.push_str(
+                "            auto& hist = h_bw;\n            for (int r = lane; r < N; r += 32) {\n",
+            );
+            if op.guard_col != NO_GUARD {
+                writeln!(
+                    s,
+                    "                unsigned int g = monty_reduce(d_output[{}ull * H + (unsigned long long)r]); if (g == 0u) continue;",
+                    op.guard_col
+                ).unwrap();
+            }
+            emit_affine_inline(s, &op.x, "                ", "x");
+            emit_affine_inline(s, &op.y, "                ", "y");
+            writeln!(
+                s,
+                "                unsigned int idx = ((x << 8) | (y & 0xFFu)){off};"
+            )
+            .unwrap();
+            if op.mult_const == 1 {
+                s.push_str("                hist.add_count(idx);\n");
+            } else {
+                writeln!(s, "                hist.add_count_n(idx, {}u);", op.mult_const).unwrap();
+            }
+            s.push_str("            }\n            break;\n        }\n");
+            *idx += 1;
+        }
+        for (_orig_i, op) in bilinear {
+            writeln!(s, "        case {}: {{ /* bw bilinear */", *idx).unwrap();
+            s.push_str(
+                "            auto& hist = h_bw;\n            for (int r = lane; r < N; r += 32) {\n",
+            );
+            if op.guard_col != NO_GUARD {
+                writeln!(
+                    s,
+                    "                unsigned int g = monty_reduce(d_output[{}ull * H + (unsigned long long)r]); if (g == 0u) continue;",
+                    op.guard_col
+                ).unwrap();
+            }
+            emit_bilinear_inline(s, &op.x, "                ", "x");
+            emit_bilinear_inline(s, &op.y, "                ", "y");
+            writeln!(
+                s,
+                "                unsigned int idx = ((x << 8) | (y & 0xFFu)){off};"
+            )
+            .unwrap();
+            if op.mult_const == 1 {
+                s.push_str("                hist.add_count(idx);\n");
+            } else {
+                writeln!(s, "                hist.add_count_n(idx, {}u);", op.mult_const).unwrap();
+            }
+            s.push_str("            }\n            break;\n        }\n");
+            *idx += 1;
+        }
+        for (_orig_i, op) in multi {
+            writeln!(s, "        case {}: {{ /* bw multi-mult */", *idx).unwrap();
+            s.push_str(
+                "            auto& hist = h_bw;\n            for (int r = lane; r < N; r += 32) {\n",
+            );
+            emit_affine_inline(s, &op.mult, "                ", "m");
+            s.push_str("                if (m == 0u) continue;\n");
+            emit_affine_inline(s, &op.x, "                ", "x");
+            emit_affine_inline(s, &op.y, "                ", "y");
+            writeln!(
+                s,
+                "                unsigned int idx = ((x << 8) | (y & 0xFFu)){off};"
+            )
+            .unwrap();
+            s.push_str("                hist.add_count_n(idx, m);\n");
+            s.push_str("            }\n            break;\n        }\n");
+            *idx += 1;
+        }
+    };
+
+    emit_bw_block(&mut s, &mut idx, false);
+    emit_bw_block(&mut s, &mut idx, true);
+
+    s.push_str("        default: break;\n        }\n    }\n}\n");
+
+    Some(EmittedKernel {
+        source: s,
+        name,
+        source_hash,
+    })
+}
+
 /// Emit straight-line C++ that computes the affine arg into `out_var`
 /// (canonical u32). Constants are baked as immediates; per-term work is
 /// fully unrolled at codegen time so ptxas can FMA-fuse and constant-fold.
