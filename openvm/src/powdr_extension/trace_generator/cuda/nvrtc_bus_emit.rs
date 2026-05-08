@@ -92,22 +92,6 @@ pub struct AffineArg {
     pub coef_const_monty: u32,
 }
 
-impl AffineArg {
-    /// Identity: `1 * d_output[col]` — equivalent to plain Reference(col).
-    pub fn single_ref(col: u32) -> Self {
-        let mut cols = [0u32; MAX_TERMS_PER_ARG];
-        let mut coefs_monty = [0u32; MAX_TERMS_PER_ARG];
-        cols[0] = col;
-        coefs_monty[0] = host_to_monty(1);
-        Self {
-            n_terms: 1,
-            cols,
-            coefs_monty,
-            coef_const_monty: 0, // monty(0) = 0
-        }
-    }
-}
-
 /// Mult shapes (mult_const + guard_col):
 /// - `Number(c)` → mult_const = c, guard_col = NO_GUARD
 /// - `Reference(col)` → mult_const = 1, guard_col = col (0/1 guard)
@@ -335,109 +319,38 @@ fn simplify_mult(
     std::borrow::Cow::Borrowed(expr)
 }
 
-/// Result of decoding an arg into multi-term affine form. Terms are
-/// (col, coef_canon) pairs in canonical (non-Montgomery) BabyBear; the
-/// constant offset is also canonical. Caller converts to Monty when
-/// building the op table.
-#[derive(Debug, Default)]
-struct AffineDecoded {
-    /// Up to MAX_TERMS_PER_ARG distinct (col, coef) pairs. Same-column terms
-    /// are merged at decode time so we don't waste a slot.
-    terms: Vec<(u32, u32)>,
-    /// Sum of all Number leaves multiplied through the surrounding factors.
-    constant: u32,
-}
-
-/// Recursive walker that flattens a nested Add/Sub/Mul/Minus expression
-/// into AffineDecoded.terms + constant. `factor` is the canonical-field
-/// scalar multiplier from outer context (combines Number-Mul nesting and
-/// Minus negation). Returns false if the expression can't be expressed
-/// affinely (e.g., contains a Reference*Reference).
-fn collect_affine(
-    expr: &AlgebraicExpression<BabyBear>,
-    apc_poly_id_to_index: &BTreeMap<u64, usize>,
-    factor: u32,
-    out: &mut AffineDecoded,
-) -> bool {
-    match expr {
-        AlgebraicExpression::Number(c) => {
-            let v = (factor as u64) * (c.as_canonical_u32() as u64) % (P as u64);
-            out.constant = ((out.constant as u64 + v) % (P as u64)) as u32;
-            true
-        }
-        AlgebraicExpression::Reference(r) => {
-            let col = match apc_poly_id_to_index.get(&r.id) {
-                Some(c) => *c as u32,
-                None => return false,
-            };
-            // Merge with existing same-col term if present.
-            if let Some(existing) = out.terms.iter_mut().find(|(c, _)| *c == col) {
-                let new_coef = (existing.1 as u64 + factor as u64) % (P as u64);
-                existing.1 = new_coef as u32;
-            } else {
-                out.terms.push((col, factor));
-            }
-            true
-        }
-        AlgebraicExpression::UnaryOperation(u) => {
-            if !matches!(u.op, AlgebraicUnaryOperator::Minus) {
-                return false;
-            }
-            collect_affine(&u.expr, apc_poly_id_to_index, p_neg(factor), out)
-        }
-        AlgebraicExpression::BinaryOperation(b) => match b.op {
-            powdr_expression::AlgebraicBinaryOperator::Add => {
-                collect_affine(&b.left, apc_poly_id_to_index, factor, out)
-                    && collect_affine(&b.right, apc_poly_id_to_index, factor, out)
-            }
-            powdr_expression::AlgebraicBinaryOperator::Sub => {
-                collect_affine(&b.left, apc_poly_id_to_index, factor, out)
-                    && collect_affine(&b.right, apc_poly_id_to_index, p_neg(factor), out)
-            }
-            powdr_expression::AlgebraicBinaryOperator::Mul => {
-                // One side must be Number for the result to stay affine.
-                if let Some(c) = as_const_u32(&b.left) {
-                    let new_factor = (factor as u64 * c as u64) % (P as u64);
-                    return collect_affine(&b.right, apc_poly_id_to_index, new_factor as u32, out);
-                }
-                if let Some(c) = as_const_u32(&b.right) {
-                    let new_factor = (factor as u64 * c as u64) % (P as u64);
-                    return collect_affine(&b.left, apc_poly_id_to_index, new_factor as u32, out);
-                }
-                false
-            }
-        },
-    }
-}
-
 /// Decode an arg expression into multi-term affine form. Returns None if
-/// the expression isn't affine (e.g., Reference*Reference) or if the term
-/// count would exceed `MAX_TERMS_PER_ARG`. Always omits zero-coefficient
-/// terms so the op-table is dense.
+/// the expression isn't affine (e.g., contains a Reference*Reference) or
+/// if the term count would exceed `MAX_TERMS_PER_ARG`. Always omits
+/// zero-coefficient terms so the op-table is dense.
+///
+/// Implementation delegates to `decode_bilinear_arg` and rejects when any
+/// degree-2 monomial appears — `BilinearMonomials` with empty `bilinear`
+/// is exactly the affine case, with the same `linear` (col, coef) and
+/// `constant` data shape.
 fn decode_affine_arg(
     expr: &AlgebraicExpression<BabyBear>,
     apc_poly_id_to_index: &BTreeMap<u64, usize>,
 ) -> Option<AffineArg> {
-    let mut decoded = AffineDecoded::default();
-    if !collect_affine(expr, apc_poly_id_to_index, 1, &mut decoded) {
+    let m = decode_bilinear_arg(expr, apc_poly_id_to_index)?;
+    if !m.bilinear.is_empty() {
         return None;
     }
-    // Drop any zero-coef terms (rare but possible after merging).
-    decoded.terms.retain(|(_, c)| *c != 0);
-    if decoded.terms.len() > MAX_TERMS_PER_ARG {
+    let linear: Vec<_> = m.linear.into_iter().filter(|(_, c)| *c != 0).collect();
+    if linear.len() > MAX_TERMS_PER_ARG {
         return None;
     }
     let mut cols = [0u32; MAX_TERMS_PER_ARG];
     let mut coefs_monty = [0u32; MAX_TERMS_PER_ARG];
-    for (i, (col, coef)) in decoded.terms.iter().enumerate() {
+    for (i, (col, coef)) in linear.iter().enumerate() {
         cols[i] = *col;
         coefs_monty[i] = host_to_monty(*coef);
     }
     Some(AffineArg {
-        n_terms: decoded.terms.len() as u32,
+        n_terms: linear.len() as u32,
         cols,
         coefs_monty,
-        coef_const_monty: host_to_monty(decoded.constant),
+        coef_const_monty: host_to_monty(m.constant),
     })
 }
 
@@ -977,73 +890,6 @@ pub fn partition_apc_bus(input: &BusEmitterInput) -> Result<PartitionedBus, Part
 // source compiles in ~1-3s cold; warm via PTX disk cache is ~1ms.
 // ============================================================================
 
-/// Emit one var_range case body (bilinear-args variant). Used by
-/// `emit_codegen_unified` when iterating `var_ops_bilinear`.
-fn emit_codegen_var_range_bilinear_body(s: &mut String, op: &VarRangeOpBilinear) {
-    use std::fmt::Write as _;
-    let bits_one = 1u32 << op.max_bits;
-    s.push_str("            for (int r = lane; r < N; r += 32) {\n");
-    if op.guard_col != NO_GUARD {
-        writeln!(
-            s,
-            "                unsigned int g = monty_reduce(d_output[{}ull * H + (unsigned long long)r]);
-                if (g == 0u) continue;",
-            op.guard_col
-        )
-        .unwrap();
-    }
-    emit_bilinear_inline(s, &op.value, "                ", "v");
-    writeln!(
-        s,
-        "                unsigned int idx = {bits_one}u + v - 1u;"
-    )
-    .unwrap();
-    if op.mult_const == 1 {
-        s.push_str("                hist.add_count(idx);\n");
-    } else {
-        writeln!(
-            s,
-            "                hist.add_count_n(idx, {}u);",
-            op.mult_const
-        )
-        .unwrap();
-    }
-    s.push_str("            }\n");
-}
-
-fn emit_codegen_var_range_body(s: &mut String, op: &VarRangeOp) {
-    use std::fmt::Write as _;
-    let bits_one = 1u32 << op.max_bits;
-    s.push_str("            for (int r = lane; r < N; r += 32) {\n");
-    if op.guard_col != NO_GUARD {
-        writeln!(
-            s,
-            "                unsigned int g = monty_reduce(d_output[{}ull * H + (unsigned long long)r]);
-                if (g == 0u) continue;",
-            op.guard_col
-        )
-        .unwrap();
-    }
-    emit_affine_inline(s, &op.value, "                ", "v");
-    writeln!(
-        s,
-        "                unsigned int idx = {bits_one}u + v - 1u;"
-    )
-    .unwrap();
-    if op.mult_const == 1 {
-        s.push_str("                hist.add_count(idx);\n");
-    } else {
-        writeln!(
-            s,
-            "                hist.add_count_n(idx, {}u);",
-            op.mult_const
-        )
-        .unwrap();
-    }
-    s.push_str("            }\n");
-}
-
-
 /// Emit a single per-APC kernel that handles all 4 lookup-bus kinds
 /// (var_range, tuple2, bitwise_range, bitwise_xor) in one switch. Replaces
 /// the four per-kind kernels and their four `cuLaunchKernel` calls per
@@ -1120,19 +966,52 @@ pub fn emit_codegen_unified(p: &PartitionedBus) -> Option<EmittedKernel> {
 
     let mut idx = 0usize;
 
-    // var_range: each case emits its body using `h_var` as the target hist.
+    // var_range: per-case body inline (matches tuple2/bitwise blocks below).
+    // Index = (1<<max_bits) + v - 1, where v is the affine/bilinear arg.
     for op in &p.var_ops {
         writeln!(s, "        case {idx}: {{").unwrap();
-        s.push_str("            auto& hist = h_var;\n");
-        emit_codegen_var_range_body(&mut s, op);
-        s.push_str("            break;\n        }\n");
+        s.push_str(
+            "            auto& hist = h_var;\n            for (int r = lane; r < N; r += 32) {\n",
+        );
+        if op.guard_col != NO_GUARD {
+            writeln!(
+                s,
+                "                unsigned int g = monty_reduce(d_output[{}ull * H + (unsigned long long)r]); if (g == 0u) continue;",
+                op.guard_col
+            ).unwrap();
+        }
+        emit_affine_inline(&mut s, &op.value, "                ", "v");
+        let bits_one = 1u32 << op.max_bits;
+        writeln!(s, "                unsigned int idx = {bits_one}u + v - 1u;").unwrap();
+        if op.mult_const == 1 {
+            s.push_str("                hist.add_count(idx);\n");
+        } else {
+            writeln!(s, "                hist.add_count_n(idx, {}u);", op.mult_const).unwrap();
+        }
+        s.push_str("            }\n            break;\n        }\n");
         idx += 1;
     }
     for (_orig_i, op) in &p.var_ops_bilinear {
         writeln!(s, "        case {idx}: {{ /* var bilinear */").unwrap();
-        s.push_str("            auto& hist = h_var;\n");
-        emit_codegen_var_range_bilinear_body(&mut s, op);
-        s.push_str("            break;\n        }\n");
+        s.push_str(
+            "            auto& hist = h_var;\n            for (int r = lane; r < N; r += 32) {\n",
+        );
+        if op.guard_col != NO_GUARD {
+            writeln!(
+                s,
+                "                unsigned int g = monty_reduce(d_output[{}ull * H + (unsigned long long)r]); if (g == 0u) continue;",
+                op.guard_col
+            ).unwrap();
+        }
+        emit_bilinear_inline(&mut s, &op.value, "                ", "v");
+        let bits_one = 1u32 << op.max_bits;
+        writeln!(s, "                unsigned int idx = {bits_one}u + v - 1u;").unwrap();
+        if op.mult_const == 1 {
+            s.push_str("                hist.add_count(idx);\n");
+        } else {
+            writeln!(s, "                hist.add_count_n(idx, {}u);", op.mult_const).unwrap();
+        }
+        s.push_str("            }\n            break;\n        }\n");
         idx += 1;
     }
 
@@ -1470,38 +1349,9 @@ __device__ __forceinline__ unsigned int monty_reduce(unsigned long long x) {
     return hi + (overflow ? P : 0u);
 }
 
-// Op structs match the Rust #[repr(C)] layout in nvrtc_bus_emit.rs.
-// MAX_TERMS_PER_ARG = 5 here in C++, must stay in lock-step with the Rust const.
-#define MAX_TERMS_PER_ARG 5
-
-struct AffineArg {
-    unsigned int n_terms;
-    unsigned int cols[MAX_TERMS_PER_ARG];
-    unsigned int coefs_monty[MAX_TERMS_PER_ARG];
-    unsigned int coef_const_monty;
-};
-struct VarRangeOp {
-    unsigned int mult_const;
-    unsigned int guard_col;
-    AffineArg value;
-    unsigned int max_bits;
-};
-struct Tuple2Op {
-    unsigned int mult_const;
-    unsigned int guard_col;
-    AffineArg v0;
-    AffineArg v1;
-};
-struct BitwiseOp {
-    unsigned int mult_const;
-    unsigned int guard_col;
-    AffineArg x;
-    AffineArg y;
-};
-
-#define NO_GUARD 0xFFFFFFFFu
-
 // Field arithmetic in Montgomery form. Inputs/outputs are u32 monty values.
+// `monty_reduce` above takes the 64-bit product; `add_monty` / `mul_monty`
+// are the per-element helpers the emitted FMA chains call directly.
 __device__ __forceinline__ unsigned int add_monty(unsigned int a, unsigned int b) {
     constexpr unsigned int Pp = 0x78000001u;
     unsigned int s = a + b;
@@ -1509,45 +1359,6 @@ __device__ __forceinline__ unsigned int add_monty(unsigned int a, unsigned int b
 }
 __device__ __forceinline__ unsigned int mul_monty(unsigned int a, unsigned int b) {
     return monty_reduce((unsigned long long)a * (unsigned long long)b);
-}
-
-// Evaluate `coef_const + sum_{i<n_terms} coef_i * d_output[col_i*H + r]` in
-// the field, returning the canonical (non-Monty) result. n_terms is uniform
-// within the warp (all lanes process the same op), so the loop bound and
-// the LDGs at op.cols[t]*H+r are uniform-strided across the warp's row span.
-// Up to MAX_TERMS_PER_ARG terms; entries past n_terms are not read.
-__device__ __forceinline__ unsigned int eval_affine_arg(
-    const AffineArg& a,
-    const unsigned int* d_output,
-    unsigned long long H,
-    int r
-) {
-    unsigned int v_monty = a.coef_const_monty;
-    #pragma unroll
-    for (int t = 0; t < MAX_TERMS_PER_ARG; ++t) {
-        if (t < (int)a.n_terms) {
-            unsigned int cell =
-                d_output[(unsigned long long)a.cols[t] * H + (unsigned long long)r];
-            v_monty = add_monty(v_monty, mul_monty(a.coefs_monty[t], cell));
-        }
-    }
-    return monty_reduce(v_monty);
-}
-
-// Returns the canonical u32 multiplicity for this (op, row): mult_const if
-// the guard column is unset (NO_GUARD) or the guard cell at (col, r) is
-// nonzero; 0 otherwise. mult_const is uniform within the warp; the guard
-// read may be per-lane.
-__device__ __forceinline__ unsigned int eval_mult(
-    unsigned int mult_const,
-    unsigned int guard_col,
-    const unsigned int* d_output,
-    unsigned long long H,
-    int r
-) {
-    if (guard_col == NO_GUARD) return mult_const;
-    unsigned int g = monty_reduce(d_output[(unsigned long long)guard_col * H + (unsigned long long)r]);
-    return (g != 0u) ? mult_const : 0u;
 }
 
 "#;
