@@ -1,6 +1,6 @@
 use std::{
     cell::RefCell,
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap},
     hash::Hash,
 };
 
@@ -29,7 +29,7 @@ pub struct Environment<T: FieldElement> {
 
     /// Variables that only occurr once in the system
     /// (also only once in the constraint they occur in).
-    single_occurrence_variables: HashSet<Var>,
+    single_occurrence_variables: BTreeSet<Var>,
     new_var_generator: RefCell<NewVarGenerator<T>>,
 }
 
@@ -67,7 +67,7 @@ impl<T: FieldElement> Environment<T> {
     pub fn new(
         expressions: ItemDB<GroupedExpression<T, Var>, Expr>,
         var_to_string: HashMap<Var, String>,
-        single_occurrence_variables: HashSet<Var>,
+        single_occurrence_variables: BTreeSet<Var>,
         new_var_generator: NewVarGenerator<T>,
     ) -> Self {
         Self {

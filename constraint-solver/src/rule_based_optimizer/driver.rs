@@ -1,6 +1,6 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{hash_map::DefaultHasher, BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
-use std::hash::Hash;
+use std::hash::{BuildHasherDefault, Hash};
 
 use itertools::Itertools;
 use powdr_number::FieldElement;
@@ -26,6 +26,7 @@ use crate::{
 };
 
 pub type VariableAssignment<T, V> = (V, GroupedExpression<T, V>);
+type DeterministicRuleHasher = BuildHasherDefault<DefaultHasher>;
 
 /// Perform rule-based optimization on the given constraint system. Returns the modified
 /// system and a list of variable assignments that were made during the optimization.
@@ -59,7 +60,7 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
     // `env` and extract it again after the rules have run.
     let mut expr_db = Some(ItemDB::<GroupedExpression<T, Var>, Expr>::default());
 
-    let mut range_constraints_on_vars: HashMap<Var, RangeConstraint<T>> = system
+    let mut range_constraints_on_vars: BTreeMap<Var, RangeConstraint<T>> = system
         .referenced_unknown_variables()
         .map(|v| (var_mapper.id(v), range_constraints.get(v)))
         .filter(|(_, rc)| !rc.is_unconstrained())
@@ -75,14 +76,14 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
             .referenced_unknown_variables()
             .map(|v| var_mapper.id(v))
             .duplicates()
-            .collect::<HashSet<_>>();
+            .collect::<BTreeSet<_>>();
         let single_occurrence_vars = system
             .referenced_unknown_variables()
             .map(|v| var_mapper.id(v))
-            .collect::<HashSet<_>>()
+            .collect::<BTreeSet<_>>()
             .difference(&duplicate_vars)
             .copied()
-            .collect::<HashSet<_>>();
+            .collect::<BTreeSet<_>>();
 
         // Create the "environment" singleton that can be used by the rules
         // to query information from the outside world.
@@ -147,7 +148,9 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         // rules.
         // let ((actions, large_actions), profile) = rt.run_with_profiling();
         // profile.report();
-        let (actions, large_actions) = rt.run();
+        // Expression IDs are assigned as rules derive intermediate expressions. Keep the rule
+        // engine's relation iteration stable so later ID-based conflict ordering is reproducible.
+        let (actions, large_actions) = rt.run_with_hasher::<DeterministicRuleHasher>();
         let (expr_db_, new_var_generator) = env.terminate();
 
         let mut progress = false;
