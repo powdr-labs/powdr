@@ -153,37 +153,40 @@ pub struct BusEmitterInput {
 }
 
 /// Result of partitioning an APC's bus interactions into kind-specific
-/// op tables. The affine-shape ops (`*_ops`) are used by both the
-/// interpreter and codegen paths. The bilinear-shape ops (`*_ops_bilinear`)
-/// are populated only when affine decode fails and bilinear succeeds; they
-/// are emitted by the codegen path but treated as `unhandled` by the
-/// interpreter path (which doesn't support bilinear in-kernel).
+/// op vecs. Consumed entirely by `emit_codegen_unified` — the host-side
+/// codegen path is the only consumer of these op tables. The `unhandled`
+/// vec carries indices back into the original `bus_interactions` so the
+/// caller (`launch_nvrtc_bus_codegen` in `mod.rs`) can route them to the
+/// bytecode-VM `apc_apply_bus` kernel as a fallback.
 #[derive(Debug, Default)]
 pub struct PartitionedBus {
     pub var_ops: Vec<VarRangeOp>,
     pub tuple_ops: Vec<Tuple2Op>,
     pub bitwise_range_ops: Vec<BitwiseOp>,
     pub bitwise_xor_ops: Vec<BitwiseOp>,
-    /// Bilinear-shape ops (codegen path only). Each `*_bilinear` entry
-    /// also carries an `unhandled` index so the interpreter path can
-    /// treat it as a fallback target without reparsing.
+    /// Bilinear-shape ops — populated when `decode_affine_arg` returns
+    /// `None` but `decode_bilinear_arg` succeeds (e.g. an arg contains
+    /// a `col_a * col_b` term). The leading `usize` is the index into
+    /// the original `bus_interactions` slice; the codegen emitter uses
+    /// it only to keep its hash inputs stable across runs.
     pub var_ops_bilinear: Vec<(usize, VarRangeOpBilinear)>,
     pub tuple_ops_bilinear: Vec<(usize, Tuple2OpBilinear)>,
     pub bitwise_range_ops_bilinear: Vec<(usize, BitwiseOpBilinear)>,
     pub bitwise_xor_ops_bilinear: Vec<(usize, BitwiseOpBilinear)>,
     /// Bitwise ops with a multi-term-affine `mult` (sum of column refs).
     /// Captures the "guard sum" pattern in range-check chips that the
-    /// single-variable `decode_mult` rejects. Codegen path only.
+    /// single-variable `decode_mult` rejects.
     pub bitwise_range_ops_multi: Vec<(usize, BitwiseOpMultiMult)>,
     pub bitwise_xor_ops_multi: Vec<(usize, BitwiseOpMultiMult)>,
     /// Number of interactions on unsupported buses (memory/exec/program).
-    /// These do nothing in the existing bytecode-VM kernel either —
-    /// `apc_apply_bus_kernel` only updates 3 histograms.
+    /// The bytecode-VM `apc_apply_bus_kernel` only updates the three
+    /// lookup-bus histograms (var_range, tuple2, bitwise) — interactions
+    /// on memory/exec/program contribute to chips that aren't lookup
+    /// tables, so neither path emits work for them.
     pub n_unsupported: usize,
     /// Indices into the original `bus_interactions` slice for interactions
-    /// whose mult/args fit neither affine nor bilinear (or whose
-    /// `mult` shape isn't a simple guard). The caller should run the
-    /// bytecode VM kernel filtered to these indices.
+    /// whose mult/args fit none of the codegen shapes. The caller routes
+    /// these to the bytecode-VM kernel as the fallback path.
     pub unhandled: Vec<usize>,
 }
 
@@ -366,9 +369,11 @@ fn decode_affine_arg(
 // pair to a sum of monomials and rejects if any product would yield degree
 // > 2.
 //
-// Used ONLY by the codegen path (POWDR_BUS_CODEGEN=1). The interpreter
-// path keeps the simple AffineArg shape; bilinear ops fall to its
-// unhandled tail there.
+// Consumed by the codegen path (POWDR_BUS_CODEGEN=1) to emit FMA chains
+// with `mul_monty(a, b)` calls for the cross-terms. The bytecode-VM
+// fallback doesn't see these — uncodegen'd interactions land in
+// `partition.unhandled` (which the caller filters to and feeds to the
+// bytecode VM), not in the `*_ops_bilinear` vecs.
 // ============================================================================
 
 /// Polynomial-of-references with degree ≤ 2. All coefs in canonical form.
@@ -884,10 +889,10 @@ pub fn partition_apc_bus(input: &BusEmitterInput) -> Result<PartitionedBus, Part
 // Per-APC codegen path
 //
 // Each op is emitted as a `case` block with constants baked as immediates.
-// ptxas can constant-fold `(1 << max_bits)`, eliminate the unused-term loop
-// of the interpreter approach, hoist `col * H` out of the row loop, and
-// fuse mul+add into FMA. Per-row SASS drops from ~50 (interpreter) to
-// ~15-20 (codegen) for the common 1-3 term affine cases.
+// ptxas can constant-fold `(1 << max_bits)`, hoist `col * H` out of the
+// row loop, and fuse mul+add into FMA. The 1-3 term affine cases compile
+// to ~15-20 SASS instructions per row — compare to ~50 for the
+// bytecode-VM fallback (which walks a stack-machine bytecode buffer).
 //
 // Source size: ~10 lines per op × N ops per kind. For keccak APCs the
 // peak is ~700 ops in a single kind, so ~7K lines per kernel. Kernel
