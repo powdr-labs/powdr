@@ -1,29 +1,33 @@
-//! NVRTC bus emitter — kind-templated kernels with `__constant__` op tables.
+//! NVRTC bus emitter — per-APC unified kernels with constants baked into source.
 //!
 //! ## Design
 //!
-//! A keccak APC has ~1700 bus interactions. The earlier per-interaction
+//! A keccak APC has ~1700 bus interactions. An earlier per-interaction
 //! switch-arm design produced 30K-line kernels that NVRTC could not compile
 //! within 10 minutes. This emitter takes a different approach:
 //!
-//! 1. **Host classifies** each bus interaction into a "simple" form that
-//!    fits a small fixed-size struct (`VarRangeOp`, `Tuple2Op`,
-//!    `BitwiseOp`). Anything that cannot be reduced to that form errors out.
+//! 1. **Host classifies** each bus interaction into a "simple" shape that
+//!    fits a small struct (`VarRangeOp`, `Tuple2Op`, `BitwiseOp`, plus
+//!    bilinear / multi-term-mult variants). Anything that doesn't fit any
+//!    decoder falls through to `partition.unhandled` and is processed by
+//!    the bytecode-VM `apc_apply_bus` fallback in the caller.
 //!
-//! 2. **Source is fixed per kind** — never includes table values. Each kind
-//!    has a single `__global__` kernel template (`VAR_RANGE_KERNEL_SRC`,
-//!    `TUPLE2_KERNEL_SRC`, `BITWISE_RANGE_KERNEL_SRC`,
-//!    `BITWISE_XOR_KERNEL_SRC`). Tables flow through `__constant__` memory
-//!    uploaded per-APC at launch time via `cuMemcpyHtoD` to a module symbol.
+//! 2. **One CUDA source per APC**, emitted by `emit_codegen_unified`.
+//!    Per-op constants — column indices, Monty-form coefficients,
+//!    multiplicities, bit widths, kind selector — are baked into the
+//!    source as immediates inside per-op `case` blocks. ptxas constant-
+//!    folds them, FMA-fuses, and hoists invariants. No `__constant__`
+//!    memory tables; no runtime H2D for op data.
 //!
-//! 3. **One PTX per kind**, shared across all APCs and all runs. Disk cache
-//!    has 4 PTX files total. Cold first compile is one-time-per-kind, then
-//!    every subsequent APC's bus pass is cache-warm.
+//! 3. **All four lookup-bus kinds in one kernel.** A single
+//!    `cuLaunchKernel` per APC handles var_range, tuple2, bitwise_range,
+//!    and bitwise_xor. The kernel writes to three histogram pointers
+//!    passed as launch args.
 //!
-//! Phase 0 measurement (RTX 5090, APC=30 keccak): bytecode VM is 282 ms /
-//! 90 calls = 3.13 ms/call; spike floor (no eval) is 0.25 ms/call. This
-//! design targets ~0.5 ms/call by replacing the bytecode VM dispatch with
-//! straight-line code that reads constant-cached op metadata.
+//! 4. **One PTX per APC** (cached on disk by SHA of the C++ source).
+//!    Disk cache size scales with the number of distinct APC sets, not
+//!    with kinds. Cold first compile is ~1–3 s per APC at
+//!    `extend_prover` time; warm via PTX disk cache is ~1 ms.
 
 use std::collections::BTreeMap;
 
@@ -40,18 +44,17 @@ use super::nvrtc_emit::EmittedKernel;
 /// PTX cache invalidation.
 const EMITTER_VERSION: u32 = 7;
 
-/// Maximum number of column terms in a single affine arg expression. The
-/// keccak APC peak observed is 5 (timestamp-delta with 5 columns); 22/23
-/// of unhandled interactions fit in 3 terms.
-// 8 terms covers ecrecover's 7-term `bit_shift_marker` selector
-// (`7 - 7*bm0 - 6*bm1 - ... - bm6`) plus headroom. Enlarging this grows
-// `AffineArg` (cols/coefs arrays) which lives in `__constant__` memory,
-// but at 16384 max ops × ~72 bytes per arg the total stays well under
-// the 64KB constant-memory ceiling.
+/// Maximum number of column terms in a single affine arg expression.
+/// Observed peaks: keccak ~5 (timestamp-delta), ecrecover ~7
+/// (`bit_shift_marker` selector `7 - 7*bm0 - 6*bm1 - ... - bm6`). 8 gives
+/// headroom. Increasing this grows the `AffineArg` cols/coefs arrays,
+/// but since op constants are baked into the kernel source as immediates
+/// (no `__constant__` memory), the only cost is host-side struct size.
 pub const MAX_TERMS_PER_ARG: usize = 8;
 
-/// Soft cap for diagnostic / safety. Op tables now live in global memory,
-/// so this limit only prevents silly inputs — keccak APCs peak around 700.
+/// Soft cap on per-kind ops, primarily a sanity bound. Each op becomes a
+/// switch-case block in the emitted kernel source; pathological inputs
+/// would balloon NVRTC compile time. Keccak APCs peak around 700 ops.
 const MAX_OPS_PER_KIND: usize = 16384;
 
 /// BabyBear prime.
@@ -849,7 +852,8 @@ pub fn partition_apc_bus(input: &BusEmitterInput) -> Result<PartitionedBus, Part
         }
     }
 
-    // Cap each kind so callers can rely on the `__constant__` array size.
+    // Cap each kind so a pathologically large input can't blow NVRTC
+    // compile time (each op becomes a switch case in the kernel source).
     if p.var_ops.len() > MAX_OPS_PER_KIND {
         return Err(PartitionError::TooManyOps {
             kind: BusKind::VarRange,
@@ -1299,7 +1303,9 @@ pub fn host_to_monty(x: u32) -> u32 {
 const BUS_PRELUDE: &str = r#"// Auto-generated by powdr nvrtc_bus_emit. Do not edit.
 //
 // Self-contained — no external includes. Reads BabyBear Monty-form trace
-// cells and updates `__constant__` op-table-driven periphery histograms.
+// cells and updates periphery histograms. All op constants are baked into
+// the per-case switch arms below by the Rust-side codegen — no host-side
+// op tables, no `__constant__` memory, no runtime H2D for op data.
 
 namespace lookup {
 struct Histogram {
@@ -1323,8 +1329,17 @@ struct Histogram {
     /// add_count_n: increment by `mult` with warp-dedup. Required for mult >
     /// 1 because the natural `for k=0..mult: add_count(idx)` diverges on
     /// per-lane mult, corrupting the `__activemask` semantics on Volta+.
-    /// Caller must guarantee `mult` is uniform across the warp (host-side
-    /// it's a `__constant__` field, so this holds).
+    /// **Caller must guarantee `mult` is identical for any pair of lanes
+    /// in the warp that produce the same `idx`.** Today's call sites:
+    ///   - Constant-mult cases (var/tuple/bitwise affine + bilinear) bake
+    ///     `mult_const` as an immediate → trivially uniform per warp.
+    ///   - Multi-term-mult bitwise (`emit_codegen_unified` "multi-mult"
+    ///     cases) evaluates `mult` per row. Currently this is safe because
+    ///     the captured shape (`mult = sum of binary diff_markers`) is
+    ///     either 0 (filtered by `if (m == 0u) continue` before this
+    ///     call) or 1 (uniform). Any future multi-mult shape that can
+    ///     yield m > 1 with different values for same-idx lanes would
+    ///     need a different histogram-update primitive.
     __device__ __forceinline__ void add_count_n(unsigned int idx, unsigned int mult) {
         if (idx < num_bins) {
             unsigned int curr_mask = __activemask();

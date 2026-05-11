@@ -95,8 +95,9 @@ extern "C" {
     pub fn powdr_nvrtc_unload_module(module: *mut std::ffi::c_void) -> i32;
 
     /// Unified bus codegen launcher. Single launch per APC for all four
-    /// lookup-bus kinds, replacing the four `_v4` / `_v4_bitwise` calls.
-    /// The kernel writes to all three histogram tables internally.
+    /// lookup-bus kinds (var_range, tuple2, bitwise_range, bitwise_xor).
+    /// The kernel writes to all three histogram tables internally; per-op
+    /// constants are baked into the kernel source as immediates.
     pub fn powdr_nvrtc_launch_bus_unified(
         function: *mut std::ffi::c_void,
         d_output: *const u32,

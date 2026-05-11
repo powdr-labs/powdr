@@ -1,8 +1,9 @@
-//! Phase 1 NVRTC kernel cache: dedupes compilation by source hash and
-//! holds the resulting `CUmodule` / `CUfunction` for reuse across launches.
-//!
-//! No disk persistence, no warm-from-disk path — everything lives in
-//! process memory. Replace with a richer cache in a later phase.
+//! NVRTC kernel cache: dedupes compilation by source hash, holds the
+//! resulting `CUmodule` / `CUfunction` for reuse across launches, and
+//! persists PTX to disk so subsequent processes hit the cache without
+//! re-running NVRTC. In-memory layer is process-wide (`OnceLock` global);
+//! disk layer is shared across processes via a filename keyed on source
+//! hash + emitter version.
 
 use std::collections::HashMap;
 use std::ffi::{c_void, CString};
@@ -31,13 +32,15 @@ unsafe impl Send for CompiledKernel {}
 unsafe impl Sync for CompiledKernel {}
 
 impl CompiledKernel {
-    /// Raw `CUfunction` for use with `powdr_nvrtc_launch_jit_v1`.
+    /// Raw `CUfunction`, passed to `powdr_nvrtc_launch_bus_unified`
+    /// (and any future per-APC NVRTC launcher).
     pub fn function(&self) -> *mut c_void {
         self.function
     }
 
-    /// Raw `CUmodule`. Used to look up `__constant__` symbols on the
-    /// kernel's module via `cuModuleGetGlobal`.
+    /// Raw `CUmodule`. Held for ownership / unload-on-drop; the bus
+    /// codegen path doesn't currently look up symbols on it (all op
+    /// constants are baked into the kernel source as immediates).
     pub fn module(&self) -> *mut c_void {
         self.module
     }

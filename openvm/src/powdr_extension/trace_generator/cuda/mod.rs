@@ -398,10 +398,12 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
     }
 
     /// Per-APC codegen bus pass. Reads the pre-compiled `codegen_cache`,
-    /// launches each kind's kernel, and falls back to the bytecode-VM
-    /// path for any interactions that didn't fit the codegen-handled
-    /// shape. Substages: `bus_nvrtc_kernel` (codegen launches) +
-    /// optionally `bus_compile_h2d` / `bus_kernel` for unhandled tail.
+    /// launches the unified per-APC kernel (one launch covering all four
+    /// lookup-bus kinds), and falls back to the bytecode-VM path only for
+    /// interactions that didn't fit any codegen-handled shape. In the
+    /// 100%-capture case the fallback is skipped entirely. Substages:
+    /// `bus_nvrtc_kernel` (one unified launch) + optionally
+    /// `bus_compile_h2d` / `bus_kernel` for the unhandled tail.
     #[allow(clippy::too_many_arguments)]
     fn launch_nvrtc_bus_codegen(
         &self,
