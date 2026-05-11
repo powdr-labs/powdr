@@ -1822,17 +1822,24 @@ function processAndRender(data, sourceLabel = '') {
 }
 
 function handleFile(file) {
+    // Use readAsArrayBuffer + TextDecoder rather than readAsText. The
+    // FileReader.readAsText path materializes the whole file as a single
+    // JS string, which several browsers cap (Chromium ~24-32 MB depending
+    // on platform), causing "Unterminated string in JSON at position …"
+    // errors on large combined-metrics files. ArrayBuffer has no such cap
+    // and TextDecoder happily decodes 50+ MB.
     const reader = new FileReader();
     reader.onload = e => {
         try {
-            const data = JSON.parse(e.target.result);
+            const text = new TextDecoder('utf-8').decode(e.target.result);
+            const data = JSON.parse(text);
             updateDataSourceDisplay(file.name);
             processAndRender(data, file.name);
         } catch (err) {
             alert('Failed to parse JSON: ' + err.message);
         }
     };
-    reader.readAsText(file);
+    reader.readAsArrayBuffer(file);
 }
 
 async function loadFromUrl(url, updateUrlParam = true) {
