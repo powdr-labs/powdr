@@ -181,27 +181,93 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
 }
 
 // Try and build an autoprecompile candidate from a superblock.
+//
+// When `config.apc_cache_dir_path` is set, the per-block compiled APC
+// (output of `crate::build`) is cached on disk as
+// `<cache_dir>/<start_pcs_joined>.apc.json`. On subsequent runs at the
+// same `--autoprecompiles N` and VM config, the cached APC is loaded and
+// the expensive `crate::build` (constraint optimizer, machine synthesis)
+// is skipped — turning a 7+ minute compile into a sub-second deserialize.
+//
+// Cache invalidation is the caller's responsibility: the cache key is
+// only the block's start PCs, so changing the VM config / degree bound /
+// guest source without changing `apc_cache_dir` will produce stale
+// results. Use a fresh `--apc-cache-dir` per setup.
 fn try_generate_candidate<A: Adapter, C: ApcCandidate<A>>(
     block: SuperBlock<A::Instruction>,
     config: &PowdrConfig,
     vm_config: &AdapterVmConfig<A>,
     empirical_constraints: &EmpiricalConstraints,
 ) -> Option<C> {
+    let cache_path = config.apc_cache_dir_path.as_ref().map(|dir| {
+        dir.join(format!(
+            "{}.apc.json",
+            block.start_pcs().iter().map(u64::to_string).collect::<Vec<_>>().join("_")
+        ))
+    });
+
+    let apc = cache_path
+        .as_ref()
+        .filter(|p| p.exists())
+        .and_then(|p| match std::fs::File::open(p) {
+            Ok(f) => serde_json::from_reader(std::io::BufReader::new(f))
+                .inspect_err(|e| tracing::warn!("APC cache miss at {}: {e}; rebuilding", p.display()))
+                .ok(),
+            Err(e) => {
+                tracing::warn!("APC cache open failed at {}: {e}; rebuilding", p.display());
+                None
+            }
+        })
+        .or_else(|| build_and_maybe_cache::<A>(
+            block.clone(),
+            vm_config,
+            config,
+            empirical_constraints,
+            cache_path.as_deref(),
+        ))?;
+
+    let apc_with_stats = evaluate_apc::<A>(vm_config.instruction_handler, apc);
+    Some(C::create(apc_with_stats))
+}
+
+fn build_and_maybe_cache<A: Adapter>(
+    block: SuperBlock<A::Instruction>,
+    vm_config: &AdapterVmConfig<A>,
+    config: &PowdrConfig,
+    empirical_constraints: &EmpiricalConstraints,
+    cache_path: Option<&std::path::Path>,
+) -> Option<crate::AdapterApc<A>> {
     let export_options = ExportOptions::new(
         config.apc_candidates_dir_path.clone(),
         &block.start_pcs(),
         ExportLevel::OnlyAPC,
     );
     let apc = crate::build::<A>(
-        block.clone(),
+        block,
         vm_config.clone(),
         config.degree_bound,
         export_options,
         empirical_constraints,
     )
     .ok()?;
-    let apc_with_stats = evaluate_apc::<A>(vm_config.instruction_handler, apc);
-    Some(C::create(apc_with_stats))
+
+    if let Some(path) = cache_path {
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        match std::fs::File::create(path) {
+            Ok(f) => {
+                if let Err(e) = serde_json::to_writer(std::io::BufWriter::new(f), &apc) {
+                    tracing::warn!("Failed to write APC cache to {}: {}", path.display(), e);
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Failed to create APC cache file {}: {}", path.display(), e);
+            }
+        }
+    }
+
+    Some(apc)
 }
 
 fn apc_candidate_json_export<A: Adapter, C: ApcCandidate<A>>(

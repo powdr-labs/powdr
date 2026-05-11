@@ -61,6 +61,57 @@ extern "C" {
         bitwise_bus_id: u32,      // bus id for the bitwise lookup
         d_bitwise_hist: *mut u32, // device histogram for bitwise lookup
     ) -> i32;
+
+    // -----------------------------------------------------------------------
+    // NVRTC runtime — used by the per-APC bus codegen path
+    // (`POWDR_BUS_CODEGEN=1`). Defined in `cuda/src/nvrtc_runtime.cu`.
+
+    /// Compile a CUDA C++ source string with NVRTC. On success `*ptx_out`
+    /// points to a `malloc`'d PTX buffer of `*ptx_size_out` bytes; the
+    /// caller must free with [`powdr_nvrtc_free`]. On failure `*log_out`
+    /// may point to a `malloc`'d diagnostics string.
+    pub fn powdr_nvrtc_compile(
+        src: *const std::ffi::c_char,
+        src_name: *const std::ffi::c_char,
+        ptx_out: *mut *mut std::ffi::c_char,
+        ptx_size_out: *mut usize,
+        log_out: *mut *mut std::ffi::c_char,
+    ) -> i32;
+
+    pub fn powdr_nvrtc_free(p: *mut std::ffi::c_char);
+
+    pub fn powdr_nvrtc_load_module(
+        ptx: *const std::ffi::c_void,
+        ptx_size: usize,
+        module_out: *mut *mut std::ffi::c_void,
+    ) -> i32;
+
+    pub fn powdr_nvrtc_get_function(
+        module: *mut std::ffi::c_void,
+        name: *const std::ffi::c_char,
+        fn_out: *mut *mut std::ffi::c_void,
+    ) -> i32;
+
+    pub fn powdr_nvrtc_unload_module(module: *mut std::ffi::c_void) -> i32;
+
+    /// Unified bus codegen launcher. Single launch per APC for all four
+    /// lookup-bus kinds (var_range, tuple2, bitwise_range, bitwise_xor).
+    /// The kernel writes to all three histogram tables internally; per-op
+    /// constants are baked into the kernel source as immediates.
+    pub fn powdr_nvrtc_launch_bus_unified(
+        function: *mut std::ffi::c_void,
+        d_output: *const u32,
+        num_apc_calls: i32,
+        h: u64,
+        d_var_hist: *mut u32,
+        d_tuple2_hist: *mut u32,
+        d_bitwise_hist: *mut u32,
+        var_num_bins: u32,
+        tuple2_sz0: u32,
+        tuple2_sz1: u32,
+        grid_x: u32,
+        block_x: u32,
+    ) -> i32;
 }
 
 #[repr(C)]

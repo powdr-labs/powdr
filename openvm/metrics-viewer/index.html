@@ -575,12 +575,21 @@ function extractMetrics(runName, metricsJson) {
     //                           covers per-AIR baseline trace gen for non-APC AIRs
     //                           + system trace gen + small openvm overhead)
     // By construction: APC + non-APC == Trace Gen (exact, no rounding gap).
+    // Prefer `<stage>_us` counter when present (microsecond precision,
+    // `metrics::counter!`-based) over `<stage>_time_ms` gauge. The gauge
+    // goes through TimingMetricsLayer's `as_millis() as f64` truncation,
+    // so per-(air, segment) entries below 1ms all round to 0 and the sum
+    // hides 90%+ of substage time at high APC counts.
     let _apcSum = 0;
     SUBSTAGE_KEYS.forEach(stage => {
-        const v = getMetric(app, stage + '_time_ms');
-        m['app_substage_' + stage + '_time_ms'] = v;
-        _apcSum += v;
+        const us = getMetric(app, stage + '_us');
+        const ms = us > 0 ? us / 1000 : getMetric(app, stage + '_time_ms');
+        m['app_substage_' + stage + '_time_ms'] = ms;
+        _apcSum += ms;
     });
+    // Bound APC sum by trace_gen so the residual non-APC stays non-negative
+    // when sub-counters slightly overlap the parent span.
+    if (_apcSum > m.app_trace_gen_time_ms) _apcSum = m.app_trace_gen_time_ms;
     m.app_apc_trace_gen_ms = _apcSum;
     m.app_non_apc_trace_gen_ms = m.app_trace_gen_time_ms - _apcSum;
 
@@ -961,6 +970,7 @@ function updateDataSourceDisplay(source) {
 }
 
 function fmtSeconds(ms) { return (ms / 1000).toFixed(1) + 's'; }
+function fmtSeconds2(ms) { return (ms / 1000).toFixed(2) + 's'; }
 function fmtCells(n) {
     if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
     if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
@@ -1307,21 +1317,35 @@ const SUBSTAGE_KEYS = [
     'derived',
     'bus_compile_h2d',
     'bus_kernel',
+    // NVRTC bus codegen path (POWDR_BUS_CODEGEN=1). Only `bus_nvrtc_kernel`
+    // is per-prove; the partition / emit / compile substages run at
+    // PowdrTraceGeneratorGpu construction (APC build time, before any
+    // app_prove span) and intentionally do not appear under App Proof.
+    'bus_nvrtc_kernel',
+    // PowdrAir chips whose APC was never executed during preflight return
+    // early from `try_generate_witness`. Without this span their per-chip
+    // overhead (RefCell take, HashMap take, DeviceMatrix::dummy construction)
+    // leaks into "non-APC trace gen" and grows linearly with --autoprecompiles N.
+    'apc_inactive',
 ];
 // Layered under Trace Gen:
 //   APC Trace Gen (parent at indent 2)  ← sum of substages
 //     └── individual stages at indent 3 (chronological order)
 //   non-APC Trace Gen (sibling at indent 2)  ← residual
 const SUBSTAGE_ROWS = [
-    { key: 'app_apc_trace_gen_ms', label: 'APC Trace Gen', fmt: fmtSeconds, indent: 2 },
-    { key: 'app_substage_dummy_chip_inventory_time_ms', label: 'Chip inventory', fmt: fmtSeconds, indent: 3 },
-    { key: 'app_substage_dummy_trace_gen_time_ms', label: 'Dummy trace gen', fmt: fmtSeconds, indent: 3 },
-    { key: 'app_substage_tracegen_h2d_time_ms', label: 'Tracegen H2D', fmt: fmtSeconds, indent: 3 },
-    { key: 'app_substage_tracegen_kernel_time_ms', label: 'Tracegen kernel', fmt: fmtSeconds, indent: 3 },
-    { key: 'app_substage_derived_time_ms', label: 'Derived', fmt: fmtSeconds, indent: 3 },
-    { key: 'app_substage_bus_compile_h2d_time_ms', label: 'Bus compile + H2D', fmt: fmtSeconds, indent: 3 },
-    { key: 'app_substage_bus_kernel_time_ms', label: 'Bus kernel', fmt: fmtSeconds, indent: 3 },
-    { key: 'app_non_apc_trace_gen_ms', label: 'non-APC Trace Gen', fmt: fmtSeconds, indent: 2 },
+    // Trace-gen substages are typically small (sub-second), so display
+    // them at 2-decimal precision while the surrounding rows stay at 1.
+    { key: 'app_apc_trace_gen_ms', label: 'APC Trace Gen', fmt: fmtSeconds2, indent: 2 },
+    { key: 'app_substage_dummy_chip_inventory_time_ms', label: 'Chip inventory', fmt: fmtSeconds2, indent: 3 },
+    { key: 'app_substage_dummy_trace_gen_time_ms', label: 'Dummy trace gen', fmt: fmtSeconds2, indent: 3 },
+    { key: 'app_substage_tracegen_h2d_time_ms', label: 'Tracegen H2D', fmt: fmtSeconds2, indent: 3 },
+    { key: 'app_substage_tracegen_kernel_time_ms', label: 'Tracegen kernel', fmt: fmtSeconds2, indent: 3 },
+    { key: 'app_substage_derived_time_ms', label: 'Derived', fmt: fmtSeconds2, indent: 3 },
+    { key: 'app_substage_bus_compile_h2d_time_ms', label: 'Bus compile + H2D', fmt: fmtSeconds2, indent: 3 },
+    { key: 'app_substage_bus_kernel_time_ms', label: 'Bus kernel', fmt: fmtSeconds2, indent: 3 },
+    { key: 'app_substage_bus_nvrtc_kernel_time_ms', label: 'Bus NVRTC kernel', fmt: fmtSeconds2, indent: 3 },
+    { key: 'app_substage_apc_inactive_time_ms', label: 'APC inactive', fmt: fmtSeconds2, indent: 3 },
+    { key: 'app_non_apc_trace_gen_ms', label: 'non-APC Trace Gen', fmt: fmtSeconds2, indent: 2 },
 ];
 
 // Nested proof time breakdown — indent level controls visual nesting.
@@ -1798,17 +1822,24 @@ function processAndRender(data, sourceLabel = '') {
 }
 
 function handleFile(file) {
+    // Use readAsArrayBuffer + TextDecoder rather than readAsText. The
+    // FileReader.readAsText path materializes the whole file as a single
+    // JS string, which several browsers cap (Chromium ~24-32 MB depending
+    // on platform), causing "Unterminated string in JSON at position …"
+    // errors on large combined-metrics files. ArrayBuffer has no such cap
+    // and TextDecoder happily decodes 50+ MB.
     const reader = new FileReader();
     reader.onload = e => {
         try {
-            const data = JSON.parse(e.target.result);
+            const text = new TextDecoder('utf-8').decode(e.target.result);
+            const data = JSON.parse(text);
             updateDataSourceDisplay(file.name);
             processAndRender(data, file.name);
         } catch (err) {
             alert('Failed to parse JSON: ' + err.message);
         }
     };
-    reader.readAsText(file);
+    reader.readAsArrayBuffer(file);
 }
 
 async function loadFromUrl(url, updateUrlParam = true) {
