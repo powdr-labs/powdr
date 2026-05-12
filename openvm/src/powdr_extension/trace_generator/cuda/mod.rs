@@ -199,11 +199,23 @@ fn trace_profile_sync_enabled() -> bool {
 /// `TracingContextLayer`.
 macro_rules! timed_substage {
     ($name:literal, $body:expr) => {{
-        let _span = ::tracing::info_span!($name).entered();
-        let r = $body;
-        if crate::powdr_extension::trace_generator::cuda::trace_profile_sync_enabled() {
-            let _ = ::openvm_cuda_common::stream::current_stream_sync();
-        }
+        // Microsecond counter alongside the info_span!. The span goes
+        // through TimingMetricsLayer which truncates per-call elapsed via
+        // `as_millis() as f64`, so hundreds of <1ms calls (typical at high
+        // APC counts where each PowdrAir is small) all round to 0 and the
+        // total disappears. The counter accumulates without truncation; the
+        // viewer can sum `<name>_us` for an accurate per-substage total.
+        let _t0 = ::std::time::Instant::now();
+        let r = {
+            let _span = ::tracing::info_span!($name).entered();
+            let inner = $body;
+            if crate::powdr_extension::trace_generator::cuda::trace_profile_sync_enabled() {
+                let _ = ::openvm_cuda_common::stream::current_stream_sync();
+            }
+            inner
+        };
+        ::metrics::counter!(concat!($name, "_us"))
+            .increment(_t0.elapsed().as_micros() as u64);
         r
     }};
 }
