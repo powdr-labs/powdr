@@ -18,7 +18,21 @@ extern "C" {
 // Fixed number of bits for bitwise lookup
 static constexpr uint32_t BITWISE_NUM_BITS = 8u;
 
-// Applies bus interactions to periphery histograms for a batch of APC rows
+// Applies bus interactions to periphery histograms for a batch of APC rows.
+//
+// Grid shape: one thread per row (was: one warp per bus interaction).
+// The previous shape capped active warps at `n_interactions` (~30-80),
+// which on RTX 5090 (170 SMs × 64 schedulable warps) achieves <10%
+// occupancy (measured: 9.4% achieved vs 83% theoretical, grid (3,1,1) on
+// keccak APC=10). With num_apc_calls typically 10k+, the row-parallel
+// shape fills the grid with thousands of warps.
+//
+// d_interactions and d_arg_spans are hot read-only metadata; we tag the
+// kernel params `__restrict__` so the compiler can route through the
+// read-only cache (LDG). An earlier draft staged them into __shared__
+// memory once per block, but that hit the dynamic-shmem ceiling on
+// large APCs (48 KB default on sm_120 without opt-in). The LDG-cached
+// path achieves similar effective bandwidth without the size limit.
 __global__ void apc_apply_bus_kernel(
   // APC related
   const Fp* __restrict__ d_output, // APC trace (column-major)
@@ -47,75 +61,61 @@ __global__ void apc_apply_bus_kernel(
   uint32_t bitwise_bus_id, // bitwise lookup bus id
   uint32_t* __restrict__ d_bitwise_hist // bitwise lookup histogram buffer
 ) {
-  // The warp this thread belongs to, as a CUDA warp is 32 threads
-  const int warp = (threadIdx.x >> 5);
-  // The thread's position within this wrap
-  const int lane = (threadIdx.x & 31);
-  // The number of warps in a block
-  const int warps_per_block = (blockDim.x >> 5);
+  // One thread per row. Threads past num_apc_calls return early; they're
+  // dropped from __activemask() in subsequent warp-dedup atomics so they
+  // don't corrupt the histogram update.
+  const int r = blockIdx.x * blockDim.x + threadIdx.x;
+  if (r >= num_apc_calls) return;
 
-  // Each bus interaction is processed by one warp
-  for (int i = blockIdx.x * warps_per_block + warp; i < (int)n_interactions; i += gridDim.x * warps_per_block) {
+  // Sequentially process every interaction for this row. d_interactions
+  // and d_arg_spans are __restrict__ params, so the compiler routes them
+  // through the read-only cache (LDG) — repeated reads of the same i
+  // across blocks hit cache.
+  for (int i = 0; i < (int)n_interactions; ++i) {
     DevInteraction intr = d_interactions[i];
 
-    // Each row is processed by one lane
-    for (int r = lane; r < num_apc_calls; r += 32) {
-      // multiplicity is stored as the first ExprSpan for this interaction
-      ExprSpan mult_span = d_arg_spans[intr.args_index_off + 0];
-      Fp mult = eval_arg(mult_span, d_bytecode, d_output, (size_t)r);
-      // Evaluate args and apply based on bus id
-      if (intr.bus_id == var_range_bus_id) {
-        // expect [value, max_bits]
-        ExprSpan s0 = d_arg_spans[intr.args_index_off + 1];
-        ExprSpan s1 = d_arg_spans[intr.args_index_off + 2];
-        Fp v_fp = eval_arg(s0, d_bytecode, d_output, (size_t)r);
-        Fp b_fp = eval_arg(s1, d_bytecode, d_output, (size_t)r);
-        
-        // histogram `num_bins` and index calculation depend on the `VariableRangeCheckerChipGPU` implementation
-        uint32_t value = v_fp.asUInt32();
-        uint32_t max_bits = b_fp.asUInt32();
-        lookup::Histogram hist(d_var_hist, (uint32_t)var_num_bins);
-        uint32_t idx = (1u << max_bits) + value - 1u; // matches VariableRangeChecker::add_count
+    // Evaluate multiplicity first; skip the whole interaction if zero.
+    ExprSpan mult_span = d_arg_spans[intr.args_index_off + 0];
+    Fp mult = eval_arg(mult_span, d_bytecode, d_output, (size_t)r);
+    uint32_t m = mult.asUInt32();
+    if (m == 0u) continue;
 
-        // apply multiplicity by looping; warp-level dedup in Histogram minimizes contention
-        for (uint32_t k = 0; k < (uint32_t)mult.asUInt32(); ++k) hist.add_count(idx);
-      } else if (intr.bus_id == tuple2_bus_id) {
-        // expect [v0, v1]
-        ExprSpan s0 = d_arg_spans[intr.args_index_off + 1];
-        ExprSpan s1 = d_arg_spans[intr.args_index_off + 2];
-        Fp v0_fp = eval_arg(s0, d_bytecode, d_output, (size_t)r);
-        Fp v1_fp = eval_arg(s1, d_bytecode, d_output, (size_t)r);
-        
-        // histogram `num_bins` and index calculation depend on the `RangeTupleCheckerChipGpu<2>` implementation
-        uint32_t v0 = v0_fp.asUInt32();
-        uint32_t v1 = v1_fp.asUInt32();
-        lookup::Histogram hist(d_tuple2_hist, tuple2_sz0 * tuple2_sz1);
-        uint32_t idx = v0 * tuple2_sz1 + v1;
-        
-        for (uint32_t k = 0; k < (uint32_t)mult.asUInt32(); ++k) hist.add_count(idx);
-      } else if (intr.bus_id == bitwise_bus_id) {
-        // expect [x, y, x_xor_y, selector]; we only update histogram if selector==range(0) or xor(1)
-        ExprSpan s0 = d_arg_spans[intr.args_index_off + 1];
-        ExprSpan s1 = d_arg_spans[intr.args_index_off + 2];
-        ExprSpan s2 = d_arg_spans[intr.args_index_off + 3];
-        ExprSpan s3 = d_arg_spans[intr.args_index_off + 4];
-        Fp x_fp = eval_arg(s0, d_bytecode, d_output, (size_t)r);
-        Fp y_fp = eval_arg(s1, d_bytecode, d_output, (size_t)r);
-        Fp xy_fp = eval_arg(s2, d_bytecode, d_output, (size_t)r);
-        Fp sel_fp = eval_arg(s3, d_bytecode, d_output, (size_t)r);
-
-        uint32_t x = x_fp.asUInt32();
-        uint32_t y = y_fp.asUInt32();
-        uint32_t xy = xy_fp.asUInt32();
-        uint32_t selector = sel_fp.asUInt32();
-        BitwiseOperationLookup bl(d_bitwise_hist, BITWISE_NUM_BITS);
-        
-        for (uint32_t k = 0; k < (uint32_t)mult.asUInt32(); ++k) {
-          if (selector == 0u) bl.add_range(x, y);
-          else if (selector == 1u) { bl.add_xor(x, y); /* could assert xy correctness on device if needed */ }
-          else { assert(false && "Invalid selector"); }
-        }
-        (void)xy;
+    if (intr.bus_id == var_range_bus_id) {
+      // expect [value, max_bits]
+      ExprSpan s0 = d_arg_spans[intr.args_index_off + 1];
+      ExprSpan s1 = d_arg_spans[intr.args_index_off + 2];
+      uint32_t value    = eval_arg(s0, d_bytecode, d_output, (size_t)r).asUInt32();
+      uint32_t max_bits = eval_arg(s1, d_bytecode, d_output, (size_t)r).asUInt32();
+      lookup::Histogram hist(d_var_hist, (uint32_t)var_num_bins);
+      uint32_t idx = (1u << max_bits) + value - 1u; // matches VariableRangeChecker::add_count
+      // apply multiplicity by looping; warp-level dedup in Histogram minimizes contention.
+      // The mult==0 short-circuit above handles the common "guard off" case.
+      for (uint32_t k = 0; k < m; ++k) hist.add_count(idx);
+    } else if (intr.bus_id == tuple2_bus_id) {
+      // expect [v0, v1]
+      ExprSpan s0 = d_arg_spans[intr.args_index_off + 1];
+      ExprSpan s1 = d_arg_spans[intr.args_index_off + 2];
+      uint32_t v0 = eval_arg(s0, d_bytecode, d_output, (size_t)r).asUInt32();
+      uint32_t v1 = eval_arg(s1, d_bytecode, d_output, (size_t)r).asUInt32();
+      lookup::Histogram hist(d_tuple2_hist, tuple2_sz0 * tuple2_sz1);
+      uint32_t idx = v0 * tuple2_sz1 + v1;
+      for (uint32_t k = 0; k < m; ++k) hist.add_count(idx);
+    } else if (intr.bus_id == bitwise_bus_id) {
+      // expect [x, y, x_xor_y, selector]. arg[2] (x_xor_y) is computed by
+      // the prover but never used by the histogram update — the bitwise
+      // lookup re-derives xor from (x, y) — so we skip its eval entirely,
+      // saving one full bytecode walk per row per bitwise interaction.
+      ExprSpan s0 = d_arg_spans[intr.args_index_off + 1];
+      ExprSpan s1 = d_arg_spans[intr.args_index_off + 2];
+      ExprSpan s3 = d_arg_spans[intr.args_index_off + 4];
+      uint32_t x        = eval_arg(s0, d_bytecode, d_output, (size_t)r).asUInt32();
+      uint32_t y        = eval_arg(s1, d_bytecode, d_output, (size_t)r).asUInt32();
+      uint32_t selector = eval_arg(s3, d_bytecode, d_output, (size_t)r).asUInt32();
+      BitwiseOperationLookup bl(d_bitwise_hist, BITWISE_NUM_BITS);
+      for (uint32_t k = 0; k < m; ++k) {
+        if (selector == 0u)      bl.add_range(x, y);
+        else if (selector == 1u) bl.add_xor(x, y);
+        else { assert(false && "Invalid selector"); }
       }
     }
   }
@@ -153,14 +153,17 @@ extern "C" int _apc_apply_bus(
   uint32_t bitwise_bus_id, // bitwise lookup bus id
   uint32_t* d_bitwise_hist // bitwise lookup histogram (device)
 ) {
-  const int block_x = 256; // 8 warps
+  // Block size 128 (4 warps). Smaller blocks → more grids → better SM
+  // coverage on the small workloads we see (RTX 5090 has 170 SMs, so the
+  // tail effect dominates when grid count is under ~700).
+  const int block_x = 128;
   const dim3 block(block_x, 1, 1);
-  const unsigned warps_per_block = (unsigned)(block_x / 32);
-  size_t g_size = (n_interactions + (size_t)warps_per_block - 1) / (size_t)warps_per_block;
+  // One thread per row. If num_apc_calls is 0, still launch one block so
+  // shmem setup doesn't divide by zero (the early-return guards work).
+  size_t g_size = ((size_t)(num_apc_calls > 0 ? num_apc_calls : 1) + (size_t)block_x - 1) / (size_t)block_x;
   unsigned g = (unsigned)g_size;
   if (g == 0u) g = 1u;
-  const dim3 grid(g, 1, 1); // each warp processes an interaction
-
+  const dim3 grid(g, 1, 1);
   apc_apply_bus_kernel<<<grid, block>>>(
     // APC related
     d_output, num_apc_calls,
