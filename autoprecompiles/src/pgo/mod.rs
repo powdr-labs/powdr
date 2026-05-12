@@ -2,13 +2,11 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use strum::{Display, EnumString};
 
 use crate::{
-    adapter::{Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig},
+    adapter::{Adapter, AdapterApcWithStats, AdapterVmConfig},
     apc_cache,
     blocks::SuperBlock,
-    empirical_constraints::EmpiricalConstraints,
     evaluation::evaluate_apc,
     execution_profile::ExecutionProfile,
-    export::ExportOptions,
     PowdrConfig,
 };
 
@@ -73,37 +71,19 @@ pub fn pgo_config(
     }
 }
 
-/// Source of APCs for PGO selection: either a populated on-disk cache
-/// (`generate-apcs` was run first) or an inline build path used by library
-/// callers that don't need persistence.
-pub(crate) fn obtain_apc<A: Adapter>(
-    block: SuperBlock<A::Instruction>,
-    config: &PowdrConfig,
-    vm_config: &AdapterVmConfig<A>,
-) -> Option<AdapterApc<A>> {
-    if let Some(cache_dir) = &config.apc_candidates_dir_path {
-        Some(apc_cache::load_apc::<A>(cache_dir, &block.start_pcs()))
-    } else {
-        crate::build::<A>(
-            block,
-            vm_config.clone(),
-            config.degree_bound,
-            ExportOptions::default(),
-            &EmpiricalConstraints::default(),
-        )
-        .ok()
-    }
-}
-
 // Only used for PgoConfig::Instruction and PgoConfig::None,
-// because PgoConfig::Cell loads/builds APCs for all blocks during sorting.
+// because PgoConfig::Cell loads APCs for all blocks during sorting.
 fn create_apcs_for_all_blocks<A: Adapter>(
     blocks: Vec<SuperBlock<A::Instruction>>,
     config: &PowdrConfig,
     vm_config: AdapterVmConfig<A>,
 ) -> Vec<AdapterApcWithStats<A>> {
+    let cache_dir = config
+        .apc_candidates_dir_path
+        .as_deref()
+        .expect("PGO selection requires an APC cache directory — run `generate-apcs` first.");
     let n_acc = config.autoprecompiles as usize;
-    tracing::info!("Obtaining {n_acc} autoprecompiles");
+    tracing::info!("Loading {n_acc} cached autoprecompiles");
 
     blocks
         .into_iter()
@@ -111,9 +91,9 @@ fn create_apcs_for_all_blocks<A: Adapter>(
         .take(n_acc)
         .collect::<Vec<_>>()
         .into_par_iter()
-        .filter_map(|superblock| {
-            let apc = obtain_apc::<A>(superblock, config, &vm_config)?;
-            Some(evaluate_apc::<A>(vm_config.instruction_handler, apc))
+        .map(|superblock| {
+            let apc = apc_cache::load_apc::<A>(cache_dir, &superblock.start_pcs());
+            evaluate_apc::<A>(vm_config.instruction_handler, apc)
         })
         .collect()
 }

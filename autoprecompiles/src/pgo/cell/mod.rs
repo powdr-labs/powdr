@@ -7,10 +7,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     adapter::{Adapter, AdapterApcWithStats, AdapterExecutionBlocks, AdapterVmConfig, PgoAdapter},
+    apc_cache,
     blocks::{BasicBlock, BlockAndStats, SuperBlock},
     evaluation::{evaluate_apc, EvaluationResult},
     execution_profile::ExecutionProfile,
-    pgo::obtain_apc,
     PowdrConfig,
 };
 
@@ -115,28 +115,30 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
             execution_bb_runs,
         } = exec_blocks;
 
+        let cache_dir = config
+            .apc_candidates_dir_path
+            .as_deref()
+            .expect("Cell PGO requires an APC cache directory — run `generate-apcs` first.");
+
         tracing::info!(
-            "Obtaining and scoring autoprecompiles for {} blocks in parallel",
+            "Loading and scoring {} cached autoprecompiles in parallel",
             blocks.len(),
         );
 
-        // Obtain apcs in parallel.
+        // Load apcs in parallel.
         // Produces two matching vectors: one with the APCs and another with the corresponding originating block.
         let (apcs, blocks): (Vec<_>, Vec<_>) = blocks
             .into_par_iter()
-            .filter_map(|block_and_stats| {
+            .map(|block_and_stats| {
                 let start = std::time::Instant::now();
-                let res = try_generate_candidate::<A, C>(
-                    block_and_stats.block.clone(),
-                    config,
-                    &vm_config,
-                )?;
+                let res =
+                    load_candidate::<A, C>(block_and_stats.block.clone(), cache_dir, &vm_config);
                 tracing::debug!(
-                    "Obtained APC for block {:?}, (took {:?})",
+                    "Loaded APC for block {:?}, (took {:?})",
                     block_and_stats.block.start_pcs(),
                     start.elapsed()
                 );
-                Some((res, block_and_stats))
+                (res, block_and_stats)
             })
             .collect();
 
@@ -178,15 +180,15 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
     }
 }
 
-// Obtain (load or build) an autoprecompile candidate for a superblock and evaluate it.
-fn try_generate_candidate<A: Adapter, C: ApcCandidate<A>>(
+// Load a cached autoprecompile candidate for a superblock and evaluate it.
+fn load_candidate<A: Adapter, C: ApcCandidate<A>>(
     block: SuperBlock<A::Instruction>,
-    config: &PowdrConfig,
+    cache_dir: &std::path::Path,
     vm_config: &AdapterVmConfig<A>,
-) -> Option<C> {
-    let apc = obtain_apc::<A>(block, config, vm_config)?;
+) -> C {
+    let apc = apc_cache::load_apc::<A>(cache_dir, &block.start_pcs());
     let apc_with_stats = evaluate_apc::<A>(vm_config.instruction_handler, apc);
-    Some(C::create(apc_with_stats))
+    C::create(apc_with_stats)
 }
 
 fn apc_candidate_json_export<A: Adapter, C: ApcCandidate<A>>(

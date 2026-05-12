@@ -439,6 +439,11 @@ mod tests {
         segment_height: Option<usize>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let guest = compile_openvm(guest, GuestOptions::default()).unwrap();
+        let apc_cache = tempfile::tempdir().unwrap();
+        let config = config.with_apc_candidates_dir(apc_cache.path());
+        if config.autoprecompiles > 0 {
+            generate_apcs(&guest, &config, EmpiricalConstraints::default());
+        }
         let program = compile_exe(guest, config, pgo_config).unwrap();
         let segment_height = segment_height.or(Some(TEST_DEFAULT_SEGMENT_HEIGHT));
         prove(&program, mock, recursion, stdin, segment_height)
@@ -559,7 +564,10 @@ mod tests {
         let guest = compile_openvm(GUEST, GuestOptions::default()).unwrap();
         let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
-        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP_NO_APC_EXECUTED);
+        let apc_cache = tempfile::tempdir().unwrap();
+        let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP_NO_APC_EXECUTED)
+            .with_apc_candidates_dir(apc_cache.path());
+        generate_apcs(&guest, &config, EmpiricalConstraints::default());
         let program = compile_exe(guest, config, PgoConfig::None).unwrap();
 
         // Assert that all APCs aren't executed
@@ -614,7 +622,9 @@ mod tests {
     #[ignore = "Too long"]
     fn matmul_compile() {
         let guest = compile_openvm("guest-matmul", GuestOptions::default()).unwrap();
-        let config = default_powdr_openvm_config(1, 0);
+        let apc_cache = tempfile::tempdir().unwrap();
+        let config = default_powdr_openvm_config(1, 0).with_apc_candidates_dir(apc_cache.path());
+        generate_apcs(&guest, &config, EmpiricalConstraints::default());
         assert!(compile_exe(guest, config, PgoConfig::default()).is_ok());
     }
 
