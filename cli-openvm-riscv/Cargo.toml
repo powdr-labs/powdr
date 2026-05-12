@@ -10,6 +10,7 @@ repository.workspace = true
 default = ["metrics"]
 metrics = ["powdr-openvm/metrics", "openvm-sdk/metrics", "openvm-stark-backend/metrics", "openvm-stark-sdk/metrics"]
 aot = ["powdr-openvm-riscv/aot"]
+cuda = ["powdr-openvm/cuda", "powdr-openvm-riscv/cuda"]
 
 [[bin]]
 name = "powdr_openvm_riscv"
