@@ -6,7 +6,7 @@ use itertools::Itertools;
 use crate::{
     adapter::{Adapter, AdapterApcWithStats, AdapterExecutionBlocks, AdapterVmConfig, PgoAdapter},
     pgo::create_apcs_for_all_blocks,
-    EmpiricalConstraints, PowdrConfig,
+    PowdrConfig,
 };
 
 #[derive(Derivative)]
@@ -24,7 +24,6 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         _labels: BTreeMap<u64, Vec<String>>,
-        empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
         let blocks = exec_blocks
             .blocks
@@ -49,11 +48,6 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
             })
             .collect();
 
-        create_apcs_for_all_blocks::<Self::Adapter>(
-            blocks,
-            config,
-            vm_config,
-            empirical_constraints,
-        )
+        create_apcs_for_all_blocks::<Self::Adapter>(blocks, config, vm_config)
     }
 }

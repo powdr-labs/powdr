@@ -23,17 +23,19 @@ fn cache_file_path(dir: &Path, start_pcs: &[u64]) -> PathBuf {
 }
 
 /// Load a cached APC for the block with the given start PCs.
-/// Returns `None` if no cache file exists for this key.
-pub fn try_load_apc<A: Adapter>(dir: &Path, start_pcs: &[u64]) -> Option<AdapterApc<A>> {
+/// Panics if the cache entry is missing — callers are expected to have run
+/// `generate-apcs` beforehand to populate the cache.
+pub fn load_apc<A: Adapter>(dir: &Path, start_pcs: &[u64]) -> AdapterApc<A> {
     let path = cache_file_path(dir, start_pcs);
-    if !path.exists() {
-        return None;
-    }
-    let file = std::fs::File::open(&path)
-        .unwrap_or_else(|e| panic!("Failed to open APC cache file {}: {e}", path.display()));
-    let apc: AdapterApc<A> = serde_cbor::from_reader(std::io::BufReader::new(file))
-        .unwrap_or_else(|e| panic!("Failed to deserialize APC from {}: {e}", path.display()));
-    Some(apc)
+    let file = std::fs::File::open(&path).unwrap_or_else(|e| {
+        panic!(
+            "No cached APC for block {start_pcs:?} at {} ({e}). \
+             Run `generate-apcs` first to populate the cache.",
+            path.display()
+        )
+    });
+    serde_cbor::from_reader(std::io::BufReader::new(file))
+        .unwrap_or_else(|e| panic!("Failed to deserialize APC from {}: {e}", path.display()))
 }
 
 /// Persist an APC to the cache directory.

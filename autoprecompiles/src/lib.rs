@@ -76,11 +76,9 @@ pub struct PowdrConfig {
     /// Max degree of constraints.
     pub degree_bound: DegreeBound,
     /// Directory used both for APC candidate snapshots (JSON) and for the on-disk APC
-    /// cache (CBOR, named `apc_<start_pc>.cbor`). When set on `compile`/`prove`, PGO
-    /// selectors load APCs from this directory by start PC instead of rebuilding them.
+    /// cache (CBOR, named `apc_<start_pc>.cbor`). Required for `compile`/`prove`: PGO
+    /// selection loads APCs from this directory by start PC. Populated by `generate-apcs`.
     pub apc_candidates_dir_path: Option<PathBuf>,
-    /// Whether to use optimistic precompiles.
-    pub should_use_optimistic_precompiles: bool,
 }
 
 impl PowdrConfig {
@@ -94,7 +92,6 @@ impl PowdrConfig {
             apc_exec_count_cutoff: 1,
             degree_bound,
             apc_candidates_dir_path: None,
-            should_use_optimistic_precompiles: false,
         }
     }
 
@@ -120,11 +117,6 @@ impl PowdrConfig {
 
     pub fn with_apc_candidates_dir<P: AsRef<Path>>(mut self, path: P) -> Self {
         self.apc_candidates_dir_path = Some(path.as_ref().to_path_buf());
-        self
-    }
-
-    pub fn with_optimistic_precompiles(mut self, should_use_optimistic_precompiles: bool) -> Self {
-        self.should_use_optimistic_precompiles = should_use_optimistic_precompiles;
         self
     }
 }

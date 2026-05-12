@@ -10,8 +10,8 @@ use crate::{
     blocks::{BasicBlock, BlockAndStats, SuperBlock},
     evaluation::{evaluate_apc, EvaluationResult},
     execution_profile::ExecutionProfile,
-    pgo::build_or_load_apc,
-    EmpiricalConstraints, PowdrConfig,
+    pgo::obtain_apc,
+    PowdrConfig,
 };
 
 mod selection;
@@ -105,7 +105,6 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
-        empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
         if config.autoprecompiles == 0 {
             return vec![];
@@ -117,11 +116,11 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
         } = exec_blocks;
 
         tracing::info!(
-            "Generating autoprecompiles for all {} blocks in parallel",
+            "Obtaining and scoring autoprecompiles for {} blocks in parallel",
             blocks.len(),
         );
 
-        // Generate apcs in parallel.
+        // Obtain apcs in parallel.
         // Produces two matching vectors: one with the APCs and another with the corresponding originating block.
         let (apcs, blocks): (Vec<_>, Vec<_>) = blocks
             .into_par_iter()
@@ -131,10 +130,9 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
                     block_and_stats.block.clone(),
                     config,
                     &vm_config,
-                    &empirical_constraints,
                 )?;
                 tracing::debug!(
-                    "Generated APC for block {:?}, (took {:?})",
+                    "Obtained APC for block {:?}, (took {:?})",
                     block_and_stats.block.start_pcs(),
                     start.elapsed()
                 );
@@ -180,14 +178,13 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
     }
 }
 
-// Try and build an autoprecompile candidate from a superblock.
+// Obtain (load or build) an autoprecompile candidate for a superblock and evaluate it.
 fn try_generate_candidate<A: Adapter, C: ApcCandidate<A>>(
     block: SuperBlock<A::Instruction>,
     config: &PowdrConfig,
     vm_config: &AdapterVmConfig<A>,
-    empirical_constraints: &EmpiricalConstraints,
 ) -> Option<C> {
-    let apc = build_or_load_apc::<A>(block, config, vm_config, empirical_constraints).ok()?;
+    let apc = obtain_apc::<A>(block, config, vm_config)?;
     let apc_with_stats = evaluate_apc::<A>(vm_config.instruction_handler, apc);
     Some(C::create(apc_with_stats))
 }

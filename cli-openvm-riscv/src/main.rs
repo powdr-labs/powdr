@@ -46,25 +46,19 @@ struct SharedArgs {
     #[clap(long)]
     max_columns: Option<usize>,
 
-    /// Directory used both for APC candidate snapshots and as the on-disk APC cache:
-    /// when populated by a previous `generate-apcs` run, PGO selection loads APCs
-    /// from here instead of rebuilding them.
+    /// Directory containing the APC cache populated by a prior `generate-apcs` run.
+    /// Required when `--autoprecompiles > 0`; PGO selection only loads APCs from here.
     #[arg(long)]
     apc_candidates_dir: Option<PathBuf>,
 
-    /// Maximum number of instructions in an APC
+    /// Maximum number of instructions in an APC (compile-time PGO filter; must match
+    /// or be ≤ the value used at `generate-apcs` time to avoid cache misses).
     #[arg(long)]
     apc_max_instructions: Option<u32>,
 
     /// Ignore APCs executed less times than the cutoff
     #[arg(long)]
     apc_exec_count_cutoff: Option<u32>,
-
-    /// If active, generates "optimistic" precompiles. Optimistic precompiles are smaller in size
-    /// but may fail at runtime if the assumptions they make are violated.
-    #[arg(long)]
-    #[arg(default_value_t = false)]
-    optimistic_precompiles: bool,
 
     /// When larger than 1, enables superblocks with up to the given number of basic blocks.
     #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..))]
@@ -73,10 +67,9 @@ struct SharedArgs {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Build APCs for every basic block of the guest and write them to a
-    /// directory. Subsequent `compile`/`execute`/`prove` runs can pass the
-    /// same directory via `--apc-candidates-dir <DIR>` to reuse the cached
-    /// APCs instead of rebuilding them.
+    /// Build APCs for every basic block of the guest and write them to a directory.
+    /// `compile`/`execute`/`prove` only load from this cache — they do not build APCs
+    /// themselves, so this command must run first whenever `--autoprecompiles > 0`.
     GenerateApcs {
         guest: String,
 
@@ -84,9 +77,20 @@ enum Commands {
         #[arg(long)]
         apc_candidates_dir: PathBuf,
 
-        /// Maximum number of instructions in an APC.
+        /// Skip building APCs for blocks with more instructions than this.
         #[arg(long)]
         apc_max_instructions: Option<u32>,
+
+        /// If active, generates "optimistic" precompiles. Optimistic precompiles are
+        /// smaller in size but may fail at runtime if the assumptions they make are
+        /// violated. Requires `--input` to compute empirical constraints.
+        #[arg(long, default_value_t = false)]
+        optimistic_precompiles: bool,
+
+        /// Input fed to the guest when computing empirical constraints
+        /// (only used when `--optimistic-precompiles` is set).
+        #[arg(long)]
+        input: Option<u32>,
     },
 
     Compile {
@@ -144,13 +148,11 @@ fn build_powdr_config(shared: &SharedArgs) -> PowdrConfig {
     if let Some(apc_candidates_dir) = &shared.apc_candidates_dir {
         powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
     }
-    powdr_config
-        .with_optimistic_precompiles(shared.optimistic_precompiles)
-        .with_superblocks(
-            shared.superblocks,
-            shared.apc_max_instructions,
-            shared.apc_exec_count_cutoff,
-        )
+    powdr_config.with_superblocks(
+        shared.superblocks,
+        shared.apc_max_instructions,
+        shared.apc_exec_count_cutoff,
+    )
 }
 
 fn run_command(command: Commands) {
@@ -160,17 +162,21 @@ fn run_command(command: Commands) {
             guest,
             apc_candidates_dir,
             apc_max_instructions,
+            optimistic_precompiles,
+            input,
         } => {
-            // The autoprecompiles count is irrelevant here — we build an APC
-            // for every basic block. `compile`/`prove` choose how many to keep
-            // at consumption time.
             let mut powdr_config =
                 default_powdr_openvm_config(0, 0).with_apc_candidates_dir(&apc_candidates_dir);
             if let Some(max) = apc_max_instructions {
                 powdr_config = powdr_config.with_superblocks(1, Some(max), None);
             }
             let guest_program = compile_openvm(&guest, guest_opts.clone()).unwrap();
-            powdr_openvm_riscv::generate_apcs(guest_program, powdr_config);
+            let empirical_constraints = if optimistic_precompiles {
+                compute_empirical_constraints(&guest_program, &powdr_config, stdin_from(input))
+            } else {
+                EmpiricalConstraints::default()
+            };
+            powdr_openvm_riscv::generate_apcs(&guest_program, &powdr_config, empirical_constraints);
         }
 
         Commands::Compile { guest, shared } => {
@@ -181,20 +187,9 @@ fn run_command(command: Commands) {
                 &guest_program,
                 stdin_from(shared.input),
             );
-
-            let empirical_constraints = maybe_compute_empirical_constraints(
-                &guest_program,
-                &powdr_config,
-                stdin_from(shared.input),
-            );
             let pgo_config = pgo_config(shared.pgo, shared.max_columns, execution_profile);
-            let program = powdr_openvm_riscv::compile_exe(
-                guest_program,
-                powdr_config,
-                pgo_config,
-                empirical_constraints,
-            )
-            .unwrap();
+            let program =
+                powdr_openvm_riscv::compile_exe(guest_program, powdr_config, pgo_config).unwrap();
             write_program_to_file(program, &format!("{guest}_compiled.cbor")).unwrap();
         }
 
@@ -214,24 +209,15 @@ fn run_command(command: Commands) {
             }
             let powdr_config = build_powdr_config(&shared);
             let guest_program = compile_openvm(&guest, guest_opts.clone()).unwrap();
-            let empirical_constraints = maybe_compute_empirical_constraints(
-                &guest_program,
-                &powdr_config,
-                stdin_from(shared.input),
-            );
             let execution_profile = powdr_openvm::execution_profile_from_guest(
                 &guest_program,
                 stdin_from(shared.input),
             );
             let pgo_config = pgo_config(shared.pgo, shared.max_columns, execution_profile);
             let compile_and_exec = || {
-                let program = powdr_openvm_riscv::compile_exe(
-                    guest_program,
-                    powdr_config,
-                    pgo_config,
-                    empirical_constraints,
-                )
-                .unwrap();
+                let program =
+                    powdr_openvm_riscv::compile_exe(guest_program, powdr_config, pgo_config)
+                        .unwrap();
                 powdr_openvm::execute(program, stdin_from(shared.input)).unwrap();
             };
             if let Some(metrics_path) = metrics {
@@ -262,25 +248,15 @@ fn run_command(command: Commands) {
             }
             let powdr_config = build_powdr_config(&shared);
             let guest_program = compile_openvm(&guest, guest_opts).unwrap();
-            let empirical_constraints = maybe_compute_empirical_constraints(
-                &guest_program,
-                &powdr_config,
-                stdin_from(shared.input),
-            );
-
             let execution_profile = powdr_openvm::execution_profile_from_guest(
                 &guest_program,
                 stdin_from(shared.input),
             );
             let pgo_config = pgo_config(shared.pgo, shared.max_columns, execution_profile);
             let compile_and_prove = || {
-                let program = powdr_openvm_riscv::compile_exe(
-                    guest_program,
-                    powdr_config,
-                    pgo_config,
-                    empirical_constraints,
-                )
-                .unwrap();
+                let program =
+                    powdr_openvm_riscv::compile_exe(guest_program, powdr_config, pgo_config)
+                        .unwrap();
                 powdr_openvm_riscv::prove(&program, mock, recursion, stdin_from(shared.input), None)
                     .unwrap()
             };
@@ -313,6 +289,15 @@ fn validate_shared_args(args: &SharedArgs) {
             .error(
                 clap::error::ErrorKind::ArgumentConflict,
                 "superblocks are only supported with `--pgo cell`",
+            )
+            .exit();
+    }
+    if args.autoprecompiles > 0 && args.apc_candidates_dir.is_none() {
+        Cli::command()
+            .error(
+                clap::error::ErrorKind::MissingRequiredArgument,
+                "--apc-candidates-dir is required when --autoprecompiles > 0. \
+                 Run `generate-apcs` first to populate the cache.",
             )
             .exit();
     }
@@ -351,17 +336,13 @@ pub fn run_with_metric_collection_to_file<R>(file: std::fs::File, f: impl FnOnce
     res
 }
 
-/// If optimistic precompiles are enabled, compute empirical constraints from the execution
-/// of the guest program on the given stdin, and save them to disk.
-fn maybe_compute_empirical_constraints(
+/// Compute empirical constraints from execution of the guest on the given stdin
+/// and save a debug snapshot to the APC cache directory.
+fn compute_empirical_constraints(
     guest_program: &OriginalCompiledProgram<RiscvISA>,
     powdr_config: &PowdrConfig,
     stdin: StdIn,
 ) -> EmpiricalConstraints {
-    if !powdr_config.should_use_optimistic_precompiles {
-        return EmpiricalConstraints::default();
-    }
-
     tracing::warn!(
         "Optimistic precompiles are not implemented yet. Computing empirical constraints..."
     );

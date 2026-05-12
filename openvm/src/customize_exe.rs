@@ -22,7 +22,6 @@ use powdr_autoprecompiles::adapter::{
     Adapter, AdapterApc, AdapterApcWithStats, ApcWithStats, PgoAdapter,
 };
 use powdr_autoprecompiles::blocks::{Instruction, PcStep};
-use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::execution::ExecutionState;
 use powdr_autoprecompiles::pgo::ApcCandidate;
 use powdr_autoprecompiles::PowdrConfig;
@@ -199,7 +198,6 @@ pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAd
     original_program: OriginalCompiledProgram<ISA>,
     config: PowdrConfig,
     pgo: P,
-    empirical_constraints: EmpiricalConstraints,
 ) -> CompiledProgram<ISA> {
     let original_config = original_program.vm_config.clone();
     let airs = original_config.airs(config.degree_bound).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
@@ -242,13 +240,7 @@ pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAd
 
     let exe = original_program.exe;
     let start = std::time::Instant::now();
-    let apcs = pgo.filter_blocks_and_create_apcs_with_pgo(
-        blocks,
-        &config,
-        vm_config,
-        symbols,
-        empirical_constraints.apply_pc_threshold(),
-    );
+    let apcs = pgo.filter_blocks_and_create_apcs_with_pgo(blocks, &config, vm_config, symbols);
     metrics::gauge!("total_apc_gen_time_ms").set(start.elapsed().as_millis() as f64);
 
     let pc_base = exe.program.pc_base;

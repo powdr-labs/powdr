@@ -1,14 +1,15 @@
-use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use strum::{Display, EnumString};
 
 use crate::{
     adapter::{Adapter, AdapterApc, AdapterApcWithStats, AdapterVmConfig},
     apc_cache,
     blocks::SuperBlock,
+    empirical_constraints::EmpiricalConstraints,
     evaluation::evaluate_apc,
     execution_profile::ExecutionProfile,
-    export::{ExportLevel, ExportOptions},
-    EmpiricalConstraints, PowdrConfig,
+    export::ExportOptions,
+    PowdrConfig,
 };
 
 mod cell;
@@ -72,62 +73,47 @@ pub fn pgo_config(
     }
 }
 
+/// Source of APCs for PGO selection: either a populated on-disk cache
+/// (`generate-apcs` was run first) or an inline build path used by library
+/// callers that don't need persistence.
+pub(crate) fn obtain_apc<A: Adapter>(
+    block: SuperBlock<A::Instruction>,
+    config: &PowdrConfig,
+    vm_config: &AdapterVmConfig<A>,
+) -> Option<AdapterApc<A>> {
+    if let Some(cache_dir) = &config.apc_candidates_dir_path {
+        Some(apc_cache::load_apc::<A>(cache_dir, &block.start_pcs()))
+    } else {
+        crate::build::<A>(
+            block,
+            vm_config.clone(),
+            config.degree_bound,
+            ExportOptions::default(),
+            &EmpiricalConstraints::default(),
+        )
+        .ok()
+    }
+}
+
 // Only used for PgoConfig::Instruction and PgoConfig::None,
-// because PgoConfig::Cell caches all APCs in sorting stage.
+// because PgoConfig::Cell loads/builds APCs for all blocks during sorting.
 fn create_apcs_for_all_blocks<A: Adapter>(
     blocks: Vec<SuperBlock<A::Instruction>>,
     config: &PowdrConfig,
     vm_config: AdapterVmConfig<A>,
-    empirical_constraints: EmpiricalConstraints,
 ) -> Vec<AdapterApcWithStats<A>> {
     let n_acc = config.autoprecompiles as usize;
-    tracing::info!("Generating {n_acc} autoprecompiles in parallel");
+    tracing::info!("Obtaining {n_acc} autoprecompiles");
 
     blocks
-        .into_par_iter()
+        .into_iter()
         .skip(config.skip_autoprecompiles as usize)
         .take(n_acc)
-        .map(|superblock| {
-            tracing::debug!(
-                "Accelerating block of length {} and start pcs {:?}",
-                superblock.instructions().count(),
-                superblock.start_pcs(),
-            );
-
-            let apc =
-                build_or_load_apc::<A>(superblock, config, &vm_config, &empirical_constraints)
-                    .unwrap();
-
-            evaluate_apc::<A>(vm_config.instruction_handler, apc)
+        .collect::<Vec<_>>()
+        .into_par_iter()
+        .filter_map(|superblock| {
+            let apc = obtain_apc::<A>(superblock, config, &vm_config)?;
+            Some(evaluate_apc::<A>(vm_config.instruction_handler, apc))
         })
         .collect()
-}
-
-/// Build an APC for the given block, or load it from the on-disk cache if
-/// `config.apc_cache_dir_path` is set and a cache entry exists.
-pub(crate) fn build_or_load_apc<A: Adapter>(
-    block: SuperBlock<A::Instruction>,
-    config: &PowdrConfig,
-    vm_config: &AdapterVmConfig<A>,
-    empirical_constraints: &EmpiricalConstraints,
-) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
-    if let Some(cache_dir) = &config.apc_candidates_dir_path {
-        if let Some(cached) = apc_cache::try_load_apc::<A>(cache_dir, &block.start_pcs()) {
-            tracing::debug!("Loaded cached APC for block {:?}", block.start_pcs());
-            return Ok(cached);
-        }
-    }
-
-    let export_options = ExportOptions::new(
-        config.apc_candidates_dir_path.clone(),
-        &block.start_pcs(),
-        ExportLevel::OnlyAPC,
-    );
-    crate::build::<A>(
-        block,
-        vm_config.clone(),
-        config.degree_bound,
-        export_options,
-        empirical_constraints,
-    )
 }

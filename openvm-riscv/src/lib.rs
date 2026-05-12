@@ -151,10 +151,14 @@ pub fn compile_openvm(
 }
 
 /// Build APCs for every basic block in the guest and write them to
-/// `config.apc_candidates_dir_path`, keyed by start PC. Subsequent runs can pass
-/// the same directory via [`PowdrConfig::with_apc_candidates_dir`] to skip APC
-/// construction during PGO selection.
-pub fn generate_apcs(original_program: OriginalCompiledProgram<RiscvISA>, config: PowdrConfig) {
+/// `config.apc_candidates_dir_path`, keyed by start PC. `compile`/`execute`/`prove`
+/// load APCs from this directory; they no longer build APCs themselves, so
+/// `generate-apcs` must run first.
+pub fn generate_apcs(
+    original_program: &OriginalCompiledProgram<RiscvISA>,
+    config: &PowdrConfig,
+    empirical_constraints: EmpiricalConstraints,
+) {
     let original_config = original_program.vm_config.clone();
     let airs = original_config
         .airs(config.degree_bound)
@@ -178,14 +182,13 @@ pub fn generate_apcs(original_program: OriginalCompiledProgram<RiscvISA>, config
 
     powdr_autoprecompiles::apc_cache::generate_and_cache_apcs::<
         powdr_openvm::BabyBearOpenVmApcAdapter<'_, RiscvISA>,
-    >(blocks, &config, vm_config, EmpiricalConstraints::default());
+    >(blocks, config, vm_config, empirical_constraints);
 }
 
 pub fn compile_exe(
     original_program: OriginalCompiledProgram<RiscvISA>,
     config: PowdrConfig,
     pgo_config: PgoConfig,
-    empirical_constraints: EmpiricalConstraints,
 ) -> Result<CompiledProgram<RiscvISA>, Box<dyn std::error::Error>> {
     let compiled = match pgo_config {
         PgoConfig::Cell(pgo_data, max_total_columns) => {
@@ -207,21 +210,14 @@ pub fn compile_exe(
                     pgo_data,
                     max_total_apc_columns,
                 ),
-                empirical_constraints,
             )
         }
         PgoConfig::Instruction(pgo_data) => customize(
             original_program,
             config,
             InstructionPgo::with_pgo_data(pgo_data),
-            empirical_constraints,
         ),
-        PgoConfig::None => customize(
-            original_program,
-            config,
-            NonePgo::default(),
-            empirical_constraints,
-        ),
+        PgoConfig::None => customize(original_program, config, NonePgo::default()),
     };
     Ok(compiled)
 }
@@ -443,8 +439,7 @@ mod tests {
         segment_height: Option<usize>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let guest = compile_openvm(guest, GuestOptions::default()).unwrap();
-        let program =
-            compile_exe(guest, config, pgo_config, EmpiricalConstraints::default()).unwrap();
+        let program = compile_exe(guest, config, pgo_config).unwrap();
         let segment_height = segment_height.or(Some(TEST_DEFAULT_SEGMENT_HEIGHT));
         prove(&program, mock, recursion, stdin, segment_height)
     }
@@ -565,13 +560,7 @@ mod tests {
         let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
         let config = default_powdr_openvm_config(GUEST_APC, GUEST_SKIP_NO_APC_EXECUTED);
-        let program = compile_exe(
-            guest,
-            config,
-            PgoConfig::None,
-            EmpiricalConstraints::default(),
-        )
-        .unwrap();
+        let program = compile_exe(guest, config, PgoConfig::None).unwrap();
 
         // Assert that all APCs aren't executed
         program
@@ -626,13 +615,7 @@ mod tests {
     fn matmul_compile() {
         let guest = compile_openvm("guest-matmul", GuestOptions::default()).unwrap();
         let config = default_powdr_openvm_config(1, 0);
-        assert!(compile_exe(
-            guest,
-            config,
-            PgoConfig::default(),
-            EmpiricalConstraints::default()
-        )
-        .is_ok());
+        assert!(compile_exe(guest, config, PgoConfig::default()).is_ok());
     }
 
     #[test]
@@ -1100,13 +1083,8 @@ mod tests {
             .with_apc_candidates_dir(apc_candidates_dir_path);
         let is_cell_pgo = matches!(guest.pgo_config, PgoConfig::Cell(_, _));
         let guest_program = compile_openvm(guest.name, GuestOptions::default()).unwrap();
-        let compiled_program = compile_exe(
-            guest_program,
-            config,
-            guest.pgo_config,
-            EmpiricalConstraints::default(),
-        )
-        .unwrap();
+        generate_apcs(&guest_program, &config, EmpiricalConstraints::default());
+        let compiled_program = compile_exe(guest_program, config, guest.pgo_config).unwrap();
 
         let (powdr_air_metrics, non_powdr_air_metrics) = compiled_program.air_metrics();
 

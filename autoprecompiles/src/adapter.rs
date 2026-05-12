@@ -7,7 +7,6 @@ use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
 use crate::blocks::{detect_superblocks, ExecutionBlocks, SuperBlock};
-use crate::empirical_constraints::EmpiricalConstraints;
 use crate::evaluation::EvaluationResult;
 use crate::execution::{ExecutionState, OptimisticConstraint, OptimisticConstraints};
 use crate::execution_profile::ExecutionProfile;
@@ -61,7 +60,6 @@ pub trait PgoAdapter {
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
-        empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
         let blocks = if let Some(prof) = self.execution_profile() {
             detect_superblocks(config, &prof.pc_list, blocks)
@@ -75,7 +73,7 @@ pub trait PgoAdapter {
             ExecutionBlocks::new_without_pgo(superblocks)
         };
 
-        self.create_apcs_with_pgo(blocks, config, vm_config, labels, empirical_constraints)
+        self.create_apcs_with_pgo(blocks, config, vm_config, labels)
     }
 
     fn create_apcs_with_pgo(
@@ -84,7 +82,6 @@ pub trait PgoAdapter {
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
-        empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>>;
 
     fn execution_profile(&self) -> Option<&ExecutionProfile> {
