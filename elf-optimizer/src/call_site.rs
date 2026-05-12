@@ -233,6 +233,9 @@ pub(crate) fn generate_and_patch(
     }
 
     for (&length, auipc_indices) in calls_by_length {
+        if length != 32 && length != 64 {
+            continue;
+        }
         let target_addr = routine_addrs[&length];
         for &auipc_idx in auipc_indices {
             let auipc_addr = pc_base + (auipc_idx as u32) * 4;

@@ -33,7 +33,10 @@ use openvm_transpiler::transpiler::Transpiler;
 use powdr_autoprecompiles::evaluation::AirStats;
 use powdr_autoprecompiles::execution_profile::ExecutionProfile;
 use powdr_autoprecompiles::DegreeBound;
-use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
+use powdr_autoprecompiles::{
+    execution_profile::{execution_profile, flamechart_profile},
+    PowdrConfig,
+};
 use powdr_extension::PowdrExtension;
 use serde::{Deserialize, Serialize};
 use std::iter::Sum;
@@ -587,4 +590,32 @@ pub fn execution_profile_from_guest<ISA: OpenVmISA>(
         sdk.execute_interpreted(exe.clone(), inputs.clone())
             .unwrap();
     })
+}
+
+/// Run the guest under a sampling flamechart profiler and write folded-stack
+/// output to `output`.
+///
+/// `fn_bounds` maps function-start PCs (from the original ELF symbol table)
+/// to demangled function names.  `sample_rate` controls how many instructions
+/// elapse between stack samples (e.g. 10 000).
+///
+/// The output format is compatible with `flamegraph.pl`, `inferno-flamegraph`,
+/// and the speedscope drag-and-drop UI (https://speedscope.app).
+pub fn flamechart_from_guest<ISA: OpenVmISA>(
+    program: &OriginalCompiledProgram<ISA>,
+    inputs: StdIn,
+    fn_bounds: std::collections::BTreeMap<u32, String>,
+    sample_rate: u64,
+    entry_pc: u32,
+    output: &mut impl std::io::Write,
+) {
+    let OriginalCompiledProgram { exe, vm_config, .. } = program;
+    let system_params = app_params_with_100_bits_security(MAX_APP_LOG_STACKED_HEIGHT);
+    let app_config = AppConfig::new(vm_config.clone().config, system_params);
+    let sdk =
+        PowdrExecutionProfileSdkCpu::<ISA>::new(app_config, AggregationSystemParams::default())
+            .unwrap();
+    flamechart_profile(fn_bounds, sample_rate, entry_pc, || {
+        sdk.execute_interpreted(exe.clone(), inputs.clone()).unwrap();
+    }, output);
 }

@@ -283,6 +283,11 @@ impl ElfProgram {
     pub fn text_labels(&self) -> &BTreeSet<u32> {
         &self.text_labels
     }
+
+    /// The ELF entry-point address (the first PC that will be executed).
+    pub fn entry_point(&self) -> u32 {
+        self.entry_point
+    }
 }
 
 impl RiscVProgram for ElfProgram {
