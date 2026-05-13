@@ -129,7 +129,7 @@ jobs:
 
   # Combined CPU + Modal-GPU reth bench. The CPU side runs prove-stark
   # for apcs {0,3,10,30,100} into results/reth/, and the Modal side runs
-  # prove-stark on a rented L40S for apcs {0,10,30} into
+  # prove-stark on a rented L40S for apcs {0,10,30,100} into
   # results/reth_gpu_modal/. Both share the apc-cache + rpc-cache built
   # once on this runner, and publish_bench_results merges both into the
   # same dated dir on bench-results.
@@ -201,7 +201,7 @@ jobs:
       # non-colliding names (`reth-apc-${N}.bin`), so the dir accumulates
       # entries and one tarball serves every Modal + CPU prove-stark
       # invocation. Compile for every apc count we'll prove later
-      # (Modal does {0,10,30}; CPU does {0,3,10,30,100}) so all five
+      # (Modal does {0,10,30,100}; CPU does {0,3,10,30,100}) so all
       # CPU iterations skip recompilation. Modal ignores the extra bins.
       - name: Compile APC caches (CPU)
         run: |
@@ -231,10 +231,10 @@ jobs:
           modal volume put "$MODAL_VOLUME" apc-cache.tgz "/${RUN_ID}/apc-cache.tgz" --force
 
       - name: Run prove-stark on Modal (best effort)
-        # Sequential over {0,10,30}. Each Modal invocation includes its own
-        # cargo build (a few minutes) and the actual GPU prove (~1 min);
-        # total ~15-20 min, far less than the CPU reth bench that follows.
-        # Modal-side failures (transient platform issues, GPU
+        # Sequential over {0,10,30,100}. Each Modal invocation includes its
+        # own cargo build (a few minutes) and the actual GPU prove (~1 min);
+        # total ~20-30 min, still far less than the CPU reth bench that
+        # follows. Modal-side failures (transient platform issues, GPU
         # unavailability, etc.) must NOT abort the job — the CPU reth
         # bench is the must-have. We log a warning per failed apc count and let
         # the post-process step build whatever subset of metrics arrived
@@ -245,7 +245,7 @@ jobs:
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
         run: |
           source .venv/bin/activate
-          for apc in 0 10 30; do
+          for apc in 0 10 30 100; do
             modal run gpu_bench/modal_app.py::prove_block \
               --apc "$apc" \
               --block "$BLOCK_NUMBER" \
@@ -272,7 +272,7 @@ jobs:
           mkdir -p results/reth_gpu_modal
           RES_DIR=results/reth_gpu_modal
           OK_JSONS=()
-          for apc in 0 10 30; do
+          for apc in 0 10 30 100; do
             label=$(printf 'apc%03d' "$apc")
             src="modal-out/${RUN_ID}/out-${apc}/metrics.json"
             if [ ! -f "$src" ]; then
