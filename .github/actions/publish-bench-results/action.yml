@@ -1,0 +1,92 @@
+name: "Publish bench results"
+description: "Renders a README into ./results via generate_bench_results_readme.py, then commits the directory to powdr-labs/bench-results gh-pages under results/<date><dir-suffix>/. Caller is responsible for creating run.txt and any artifact uploads beforehand. Requires .venv with the powdr-riscv script requirements (use ./.github/actions/setup-bench-python)."
+
+inputs:
+  results-dir:
+    description: "Path to the local results directory to publish."
+    required: false
+    default: "./results"
+  dir-suffix:
+    description: "Suffix appended to the date in the published directory name (e.g. '-gpu' or '-modal-foo'). Empty for the plain nightly dir."
+    required: false
+    default: ""
+  bench-results-token:
+    description: "Token with push access to powdr-labs/bench-results."
+    required: true
+  commit-message-prefix:
+    description: "Leading text of the commit message; the date+suffix is appended."
+    required: false
+    default: "Add results for"
+
+outputs:
+  date:
+    description: "The date-time string used in the directory name (YYYY-MM-DD-HHMM)."
+    value: ${{ steps.date.outputs.value }}
+  dir-name:
+    description: "Full <date><dir-suffix> directory name committed to bench-results."
+    value: ${{ steps.dir.outputs.value }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Determine date/time
+      id: date
+      shell: bash
+      run: echo "value=$(date +'%Y-%m-%d-%H%M')" >> $GITHUB_OUTPUT
+
+    - name: Compose dir name
+      id: dir
+      shell: bash
+      env:
+        DATE: ${{ steps.date.outputs.value }}
+        SUFFIX: ${{ inputs.dir-suffix }}
+      run: echo "value=${DATE}${SUFFIX}" >> $GITHUB_OUTPUT
+
+    - name: Generate bench results README
+      shell: bash
+      env:
+        RESULTS_DIR: ${{ inputs.results-dir }}
+        DIR_NAME: ${{ steps.dir.outputs.value }}
+      run: |
+        source .venv/bin/activate
+        python3 ./openvm-riscv/scripts/generate_bench_results_readme.py \
+          "$RESULTS_DIR" \
+          "$DIR_NAME" \
+          --output "$RESULTS_DIR/readme.md"
+
+    # Push via partial+sparse clone so the runner only ever holds the new
+    # dir on disk. peaceiris/actions-gh-pages does a full clone+checkout of
+    # gh-pages, which is now ~14.5 GB and busts ubuntu-latest's ~14 GB
+    # disk. Sparse-checkout also completes in seconds, closing the race
+    # window where peaceiris's ~15 min clone+commit+push cycle would let a
+    # concurrent publisher land a commit and get this push rejected with
+    # `(fetch first)`.
+    - name: Commit to bench results
+      shell: bash
+      env:
+        BENCH_RESULTS_TOKEN: ${{ inputs.bench-results-token }}
+        RESULTS_DIR: ${{ inputs.results-dir }}
+        DIR_NAME: ${{ steps.dir.outputs.value }}
+        COMMIT_PREFIX: ${{ inputs.commit-message-prefix }}
+      run: |
+        set -euo pipefail
+        REPO=$(mktemp -d)
+        git clone --filter=blob:none --sparse --depth=1 --branch=gh-pages \
+          "https://x-access-token:${BENCH_RESULTS_TOKEN}@github.com/powdr-labs/bench-results.git" \
+          "$REPO"
+        cd "$REPO"
+        # Restrict the worktree to the new (yet-to-exist) dir; nothing else
+        # gets fetched or written.
+        git sparse-checkout set "results/${DIR_NAME}"
+        # Author commits as the github-actions[bot] account so the GitHub
+        # UI shows the bot avatar and groups them with prior peaceiris
+        # commits. The email format is GitHub's noreply convention,
+        # `<user-id>+<login>@users.noreply.github.com`; 41898282 is the
+        # bot's user ID.
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        mkdir -p "results/${DIR_NAME}"
+        cp -r "${GITHUB_WORKSPACE}/${RESULTS_DIR}/." "results/${DIR_NAME}/"
+        git add "results/${DIR_NAME}"
+        git commit -m "${COMMIT_PREFIX} ${DIR_NAME}"
+        git push origin gh-pages

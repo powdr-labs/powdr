@@ -1,0 +1,24 @@
+name: "Setup bench Python venv"
+description: "Creates .venv at the repo root with the powdr-riscv and autoprecompiles script requirements; optionally also installs the modal CLI. Caller must `source .venv/bin/activate` (or invoke via the absolute path) before running python scripts."
+
+inputs:
+  include-modal:
+    description: "Set to 'true' to also pip install the modal CLI."
+    required: false
+    default: "false"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup python venv
+      shell: bash
+      env:
+        INCLUDE_MODAL: ${{ inputs.include-modal }}
+      run: |
+        python3 -m venv .venv
+        source .venv/bin/activate
+        pip install -r openvm-riscv/scripts/requirements.txt
+        pip install -r autoprecompiles/scripts/requirements.txt
+        if [ "$INCLUDE_MODAL" = "true" ]; then
+          pip install modal
+        fi

@@ -1,0 +1,149 @@
+name: Manual reth Modal benchmark
+
+# Manually-triggered Modal-GPU prove-stark benchmark of openvm-eth (reth),
+# intended for ad-hoc experiments (alternative APC counts, different
+# blocks, etc.) outside the nightly cadence. Same flow as nightly's
+# test_apc_reth Modal leg — prefetch RPC + compile APC caches on the
+# runner, ship them to a Modal Volume, prove on a rented L40S, pull
+# metrics back, post-process — and publishes the result to
+# bench-results/results/<date>-modal-<run_name>/.
+on:
+  workflow_dispatch:
+    inputs:
+      run_name:
+        description: 'Short name for this run, used as the bench-results dir suffix. Allowed chars: A-Z a-z 0-9 . _ -'
+        required: true
+        type: string
+      apc_counts:
+        description: 'Space-separated APC counts to prove on Modal.'
+        required: false
+        default: "0 10 30"
+        type: string
+      block_number:
+        description: 'Ethereum block number to prove.'
+        required: false
+        default: "24171377"
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  JEMALLOC_SYS_WITH_MALLOC_CONF: "retain:true,background_thread:true,metadata_thp:always,dirty_decay_ms:10000,muzzy_decay_ms:10000,abort_conf:true"
+  POWDR_OPENVM_SEGMENT_DELTA: 50000
+
+jobs:
+  modal_bench:
+    runs-on: server-dev
+
+    env:
+      RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+      # Separate volume from the nightly so concurrent manual + nightly
+      # runs cannot stomp on each other's cache tarballs even if RUN_IDs
+      # ever collide; both volumes are created on demand and cleaned up
+      # at job end.
+      MODAL_VOLUME: powdr-manual-gpu-cache
+      BLOCK_NUMBER: ${{ inputs.block_number }}
+      APC_COUNTS: ${{ inputs.apc_counts }}
+      RUN_NAME: ${{ inputs.run_name }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Validate inputs
+        # All three values flow into shell loops and/or a git-pushed
+        # directory name, so reject anything outside a safe character
+        # class up front rather than later in the pipeline.
+        run: |
+          if ! [[ "$RUN_NAME" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "::error::run_name must match [A-Za-z0-9._-]+ (got: '$RUN_NAME')"
+            exit 1
+          fi
+          if ! [[ "$APC_COUNTS" =~ ^[0-9[:space:]]+$ ]]; then
+            echo "::error::apc_counts must be whitespace-separated non-negative integers (got: '$APC_COUNTS')"
+            exit 1
+          fi
+          if ! [[ "$BLOCK_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "::error::block_number must be a non-negative integer (got: '$BLOCK_NUMBER')"
+            exit 1
+          fi
+
+      - name: ⚡ Cache rust
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-apc-${{ hashFiles('**/Cargo.toml') }}
+
+      - name: Setup OpenVM toolchain
+        uses: ./.github/actions/setup-openvm-toolchain
+
+      - name: Setup python venv
+        uses: ./.github/actions/setup-bench-python
+        with:
+          include-modal: "true"
+
+      - name: Remove old results if present
+        run: |
+          rm -rf results
+          mkdir -p results
+
+      - name: Prepare reth Modal caches
+        id: prep
+        uses: ./.github/actions/prepare-reth-modal-caches
+        with:
+          apc-counts: ${{ inputs.apc_counts }}
+          block-number: ${{ inputs.block_number }}
+          rpc-1: ${{ secrets.RPC_1 }}
+
+      - name: Run Modal prove-stark
+        uses: ./.github/actions/run-modal-prove-stark
+        with:
+          apc-counts: ${{ inputs.apc_counts }}
+          block-number: ${{ inputs.block_number }}
+          openvm-eth-ref: ${{ steps.prep.outputs.openvm-eth-ref }}
+          modal-volume: ${{ env.MODAL_VOLUME }}
+          run-id: ${{ env.RUN_ID }}
+          powdr-sha: ${{ github.sha }}
+          modal-token-id: ${{ secrets.MODAL_TOKEN_ID }}
+          modal-token-secret: ${{ secrets.MODAL_TOKEN_SECRET }}
+          results-dir: results/reth_gpu_modal
+
+      - name: Save revisions and run info
+        env:
+          OPENVM_ETH_REF: ${{ steps.prep.outputs.openvm-eth-ref }}
+        run: |
+          echo "openvm-eth: $OPENVM_ETH_REF" > results/run.txt
+          echo "powdr: $GITHUB_SHA" >> results/run.txt
+          echo "run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" >> results/run.txt
+          echo "name: $RUN_NAME" >> results/run.txt
+          echo "block: $BLOCK_NUMBER" >> results/run.txt
+          echo "apc-counts: $APC_COUNTS" >> results/run.txt
+
+      - name: upload result artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results-modal-${{ env.RUN_NAME }}
+          path: |
+            results/*
+          if-no-files-found: ignore
+
+      - name: Publish bench results
+        uses: ./.github/actions/publish-bench-results
+        with:
+          bench-results-token: ${{ secrets.BENCH_RESULTS_TOKEN }}
+          commit-message-prefix: "Add manual modal results for"
+          dir-suffix: "-modal-${{ env.RUN_NAME }}"
+
+      - name: Cleanup Modal Volume
+        if: always()
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          source .venv/bin/activate || true
+          modal volume rm "$MODAL_VOLUME" "/${RUN_ID}" --recursive 2>&1 || true

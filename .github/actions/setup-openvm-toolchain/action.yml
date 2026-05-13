@@ -1,0 +1,21 @@
+name: "Setup OpenVM toolchain"
+description: "Installs cargo-openvm (built with Rust 1.91.1) and the nightly Rust toolchain + rust-src needed to build the OpenVM guest ELF. Required before any `cargo openvm build` or `./run.sh` invocation."
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install cargo openvm
+      # Rust 1.91.1 is needed by fresher versions of dependencies of cargo-openvm.
+      shell: bash
+      run: |
+        rustup toolchain install 1.91.1
+        cargo +1.91.1 install --git 'https://github.com/powdr-labs/openvm.git' --tag "v2.0.0-beta.2-powdr" cargo-openvm
+
+    - name: Install OpenVM guest toolchain
+      # `cargo openvm build` invokes `cargo +nightly-2026-01-18 build --target
+      # riscv32im-risc0-zkvm-elf -Z build-std=...`, which needs both the
+      # nightly toolchain and its `rust-src` component.
+      shell: bash
+      run: |
+        rustup toolchain install nightly-2026-01-18
+        rustup component add rust-src --toolchain nightly-2026-01-18

@@ -1,15 +1,24 @@
 name: "Patch openvm-eth"
-description: "Checks out powdr-labs/openvm-eth at a fixed ref and patches it to use local powdr crates"
+description: "Checks out powdr-labs/openvm-eth at the ref pinned in .github/openvm-eth.ref and patches it to use local powdr crates."
+
+outputs:
+  ref:
+    description: "The openvm-eth git ref that was checked out."
+    value: ${{ steps.ref.outputs.value }}
 
 runs:
   using: "composite"
   steps:
+    - name: Read pinned openvm-eth ref
+      id: ref
+      shell: bash
+      run: echo "value=$(cat .github/openvm-eth.ref)" >> $GITHUB_OUTPUT
+
     - name: Checkout openvm-eth
       uses: actions/checkout@v4
       with:
         repository: powdr-labs/openvm-eth
-        # Set once here — no inputs required elsewhere
-        ref: 7987264fe4e96b9077cdcc15e5192a69df9d8413
+        ref: ${{ steps.ref.outputs.value }}
         path: openvm-eth
 
     - name: Patch openvm-eth to use local powdr

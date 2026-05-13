@@ -1,0 +1,61 @@
+name: "Prepare reth Modal caches"
+description: "Checks out + patches openvm-eth at the pinned ref, prefetches the RPC cache for one block, and compiles APC caches for the given counts. Leaves rpc-cache.tgz, apc-cache.tgz, and apc_candidates_modal.json at the repo root for downstream consumers (Modal upload + CPU prove-stark)."
+
+inputs:
+  apc-counts:
+    description: "Space-separated APC counts to compile (e.g. '0 3 10 30 100')."
+    required: true
+  block-number:
+    description: "Ethereum block number to prefetch and compile against."
+    required: true
+  rpc-1:
+    description: "RPC_1 secret. Required because composite actions can't read workflow secrets directly."
+    required: true
+
+outputs:
+  openvm-eth-ref:
+    description: "The openvm-eth git ref checked out (from .github/openvm-eth.ref)."
+    value: ${{ steps.patch.outputs.ref }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Patch openvm-eth
+      id: patch
+      uses: ./.github/actions/patch-openvm-eth
+
+    # `--mode execute` populates openvm-eth/rpc-cache/ with the block data
+    # Modal needs. Without this, every prove-stark on Modal would
+    # re-download the block over RPC, burning GPU minutes on I/O.
+    - name: Prefetch RPC cache
+      shell: bash
+      env:
+        BLOCK_NUMBER: ${{ inputs.block-number }}
+        RPC_1: ${{ inputs.rpc-1 }}
+      run: |
+        cd openvm-eth
+        echo "export RPC_1=${RPC_1}" >> .env
+        ./run.sh --apc 0 --block "$BLOCK_NUMBER" --mode execute || exit 1
+        tar -czf ../rpc-cache.tgz rpc-cache
+
+    # `--mode compile --apc N` writes apc-specific bin files (proving and
+    # verification keys for that apc count) into apc-cache/ under
+    # non-colliding names (`reth-apc-${N}.bin`), so the dir accumulates
+    # entries and one tarball serves every Modal + CPU prove-stark
+    # invocation. The matching prove-stark calls later skip recompilation
+    # because the bin is already there.
+    - name: Compile APC caches
+      shell: bash
+      env:
+        BLOCK_NUMBER: ${{ inputs.block-number }}
+        APC_COUNTS: ${{ inputs.apc-counts }}
+      run: |
+        cd openvm-eth
+        for apc in $APC_COUNTS; do
+          ./run.sh --apc "$apc" --block "$BLOCK_NUMBER" --mode compile || exit 1
+        done
+        tar -czf ../apc-cache.tgz apc-cache
+        # Snapshot apc_candidates.json now (compile time) so any Modal
+        # post-process can use it; a later CPU prove-stark loop will
+        # overwrite this file with its own accumulated candidates.
+        cp apcs/apc_candidates.json ../apc_candidates_modal.json

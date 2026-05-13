@@ -82,26 +82,11 @@ jobs:
       - name: Build
         run: cargo build --release -p powdr-openvm
 
-      - name: Install cargo openvm
-        # Rust 1.91.1 is needed by fresher versions of dependencies of cargo-openvm.
-        run: |
-          rustup toolchain install 1.91.1
-          cargo +1.91.1 install --git 'https://github.com/powdr-labs/openvm.git' --tag "v2.0.0-beta.2-powdr" cargo-openvm
-
-      - name: Install OpenVM guest toolchain
-        # `cargo openvm build` invokes `cargo +nightly-2026-01-18 build --target
-        # riscv32im-risc0-zkvm-elf -Z build-std=...`, which needs both the
-        # nightly toolchain and its `rust-src` component.
-        run: |
-          rustup toolchain install nightly-2026-01-18
-          rustup component add rust-src --toolchain nightly-2026-01-18
+      - name: Setup OpenVM toolchain
+        uses: ./.github/actions/setup-openvm-toolchain
 
       - name: Setup python venv
-        run: |
-          python3 -m venv .venv
-          source .venv/bin/activate
-          pip install -r openvm-riscv/scripts/requirements.txt
-          pip install -r autoprecompiles/scripts/requirements.txt
+        uses: ./.github/actions/setup-bench-python
 
       - name: Remove old results if present
         run: |
@@ -138,7 +123,6 @@ jobs:
 
     env:
       RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
-      OPENVM_ETH_REF: 7987264fe4e96b9077cdcc15e5192a69df9d8413
       MODAL_VOLUME: powdr-nightly-gpu-cache
       # Same block flowed through prefetch, every compile invocation, every
       # Modal prove call, and the CPU prove loop so all caches + metrics agree.
@@ -158,63 +142,29 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-release-apc-${{ hashFiles('**/Cargo.toml') }}
 
-      - name: Install cargo openvm
-        # Rust 1.91.1 is needed by fresher versions of dependencies of cargo-openvm.
-        run: |
-          rustup toolchain install 1.91.1
-          cargo +1.91.1 install --git 'https://github.com/powdr-labs/openvm.git' --tag "v2.0.0-beta.2-powdr" cargo-openvm
-
-      - name: Install OpenVM guest toolchain
-        run: |
-          rustup toolchain install nightly-2026-01-18
-          rustup component add rust-src --toolchain nightly-2026-01-18
+      - name: Setup OpenVM toolchain
+        uses: ./.github/actions/setup-openvm-toolchain
 
       - name: Setup python venv
-        run: |
-          python3 -m venv .venv
-          source .venv/bin/activate
-          pip install -r openvm-riscv/scripts/requirements.txt
-          pip install -r autoprecompiles/scripts/requirements.txt
-          pip install modal
+        uses: ./.github/actions/setup-bench-python
+        with:
+          include-modal: "true"
 
       - name: Remove old results if present
         run: |
           rm -rf results
           mkdir -p results
 
-      - name: Patch benchmark
-        uses: ./.github/actions/patch-openvm-eth
-
-      # ---------- Modal-side preparation: prefetch + compile ----------
-      # `--mode execute` populates openvm-eth/rpc-cache/ with the block
-      # data Modal needs. Without this, every prove-stark on Modal would
-      # re-download the block over RPC, burning GPU minutes on I/O.
-      - name: Prefetch RPC cache (CPU)
-        run: |
-          cd openvm-eth
-          echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
-          ./run.sh --apc 0 --block "$BLOCK_NUMBER" --mode execute || exit 1
-          tar -czf ../rpc-cache.tgz rpc-cache
-
-      # `--mode compile --apc N` writes apc-specific bin files (proving and
-      # verification keys for that apc count) into apc-cache/ under
-      # non-colliding names (`reth-apc-${N}.bin`), so the dir accumulates
-      # entries and one tarball serves every Modal + CPU prove-stark
-      # invocation. Compile for every apc count we'll prove later
-      # (Modal does {0,10,30}; CPU does {0,3,10,30,100}) so all five
-      # CPU iterations skip recompilation. Modal ignores the extra bins.
-      - name: Compile APC caches (CPU)
-        run: |
-          cd openvm-eth
-          for apc in 0 3 10 30 100; do
-            ./run.sh --apc "$apc" --block "$BLOCK_NUMBER" --mode compile || exit 1
-          done
-          tar -czf ../apc-cache.tgz apc-cache
-          # Snapshot apc_candidates.json now (compile time) so the Modal
-          # post-process below can use it; the CPU prove-stark loop will
-          # overwrite this file with its own accumulated candidates later
-          # and `mv` it into results/reth/ at its own end.
-          cp apcs/apc_candidates.json ../apc_candidates_modal.json
+      # Compiles for every apc count we'll prove later (Modal does
+      # {0,10,30}; CPU does {0,3,10,30,100}) so all five CPU iterations
+      # skip recompilation. Modal ignores the extra bins.
+      - name: Prepare reth Modal caches
+        id: prep
+        uses: ./.github/actions/prepare-reth-modal-caches
+        with:
+          apc-counts: "0 3 10 30 100"
+          block-number: ${{ env.BLOCK_NUMBER }}
+          rpc-1: ${{ secrets.RPC_1 }}
 
       - name: Run Modal prove-stark
         # Sequential over {0,10,30}; total ~15-20 min, far less than the
@@ -227,7 +177,7 @@ jobs:
         with:
           apc-counts: "0 10 30"
           block-number: ${{ env.BLOCK_NUMBER }}
-          openvm-eth-ref: ${{ env.OPENVM_ETH_REF }}
+          openvm-eth-ref: ${{ steps.prep.outputs.openvm-eth-ref }}
           modal-volume: ${{ env.MODAL_VOLUME }}
           run-id: ${{ env.RUN_ID }}
           powdr-sha: ${{ github.sha }}
@@ -335,58 +285,18 @@ jobs:
 
       - name: Save revisions and run info
         run: |
-          OPENVM_ETH_REF=$(awk '/^[[:space:]]*ref:/ {print $2; exit}' .github/actions/patch-openvm-eth/action.yml)
-          echo "openvm-eth: $OPENVM_ETH_REF" > results/run.txt
+          echo "openvm-eth: $(cat .github/openvm-eth.ref)" > results/run.txt
           echo "powdr: $GITHUB_SHA" >> results/run.txt
           echo "run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" >> results/run.txt
 
       - name: Setup python venv
-        run: |
-          python3 -m venv .venv
-          source .venv/bin/activate
-          pip install -r openvm-riscv/scripts/requirements.txt
+        uses: ./.github/actions/setup-bench-python
 
-      - name: get the date/time
-        id: date
-        run: echo "value=$(date +'%Y-%m-%d-%H%M')" >> $GITHUB_OUTPUT
-
-      - name: Generate bench results README
-        run: |
-          source .venv/bin/activate
-          python3 ./openvm-riscv/scripts/generate_bench_results_readme.py \
-            ./results \
-            "${{ steps.date.outputs.value }}" \
-            --output ./results/readme.md
-
-      # Push via partial+sparse clone so the runner only ever holds the new
-      # dir on disk. peaceiris/actions-gh-pages does a full clone+checkout of
-      # gh-pages, which is now ~14.5 GB and busts ubuntu-latest's ~14 GB disk.
-      - name: commit to bench results
-        env:
-          BENCH_RESULTS_TOKEN: ${{ secrets.BENCH_RESULTS_TOKEN }}
-          DATE: ${{ steps.date.outputs.value }}
-        run: |
-          set -euo pipefail
-          REPO=$(mktemp -d)
-          git clone --filter=blob:none --sparse --depth=1 --branch=gh-pages \
-            "https://x-access-token:${BENCH_RESULTS_TOKEN}@github.com/powdr-labs/bench-results.git" \
-            "$REPO"
-          cd "$REPO"
-          # Restrict the worktree to the new (yet-to-exist) dir; nothing else
-          # gets fetched or written.
-          git sparse-checkout set "results/${DATE}"
-          # Author commits as the github-actions[bot] account so the GitHub
-          # UI shows the bot avatar and groups them with prior peaceiris
-          # commits. The email format is GitHub's noreply convention,
-          # `<user-id>+<login>@users.noreply.github.com`; 41898282 is the
-          # bot's user ID.
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          mkdir -p "results/${DATE}"
-          cp -r "${GITHUB_WORKSPACE}/results/." "results/${DATE}/"
-          git add "results/${DATE}"
-          git commit -m "Add nightly results for ${DATE}"
-          git push origin gh-pages
+      - name: Publish bench results
+        uses: ./.github/actions/publish-bench-results
+        with:
+          bench-results-token: ${{ secrets.BENCH_RESULTS_TOKEN }}
+          commit-message-prefix: "Add nightly results for"
 
   test_apc_gpu:
     runs-on: [self-hosted, gpu-shared]
@@ -405,26 +315,11 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-release-apc-gpu-${{ hashFiles('**/Cargo.toml') }}
 
-      - name: Install cargo openvm
-        # Rust 1.91.1 is needed by fresher versions of dependencies of cargo-openvm.
-        run: |
-          rustup toolchain install 1.91.1
-          cargo +1.91.1 install --git 'https://github.com/powdr-labs/openvm.git' --tag "v2.0.0-beta.2-powdr" cargo-openvm
-
-      - name: Install OpenVM guest toolchain
-        # `cargo openvm build` invokes `cargo +nightly-2026-01-18 build --target
-        # riscv32im-risc0-zkvm-elf -Z build-std=...`, which needs both the
-        # nightly toolchain and its `rust-src` component.
-        run: |
-          rustup toolchain install nightly-2026-01-18
-          rustup component add rust-src --toolchain nightly-2026-01-18
+      - name: Setup OpenVM toolchain
+        uses: ./.github/actions/setup-openvm-toolchain
 
       - name: Setup python venv
-        run: |
-          python3 -m venv .venv
-          source .venv/bin/activate
-          pip install -r openvm-riscv/scripts/requirements.txt
-          pip install -r autoprecompiles/scripts/requirements.txt
+        uses: ./.github/actions/setup-bench-python
 
       - name: Remove old results if present
         run: |
@@ -489,43 +384,9 @@ jobs:
           path: |
             results/*
 
-      - name: get the date/time
-        id: date
-        run: echo "value=$(date +'%Y-%m-%d-%H%M')" >> $GITHUB_OUTPUT
-
-      - name: Generate bench results README
-        run: |
-          python3 ./openvm-riscv/scripts/generate_bench_results_readme.py \
-            ./results \
-            "${{ steps.date.outputs.value }}-gpu" \
-            --output ./results/readme.md
-
-      # Same partial+sparse clone push as publish_bench_results — completes
-      # in seconds, eliminating the race window where peaceiris's slow
-      # clone+commit+push cycle (~15 min) would let publish_bench_results
-      # land a commit in between, getting this push rejected with
-      # `(fetch first)`. See publish_bench_results for the long comment.
-      - name: commit to bench results
-        env:
-          BENCH_RESULTS_TOKEN: ${{ secrets.BENCH_RESULTS_TOKEN }}
-          DATE: ${{ steps.date.outputs.value }}-gpu
-        run: |
-          set -euo pipefail
-          REPO=$(mktemp -d)
-          git clone --filter=blob:none --sparse --depth=1 --branch=gh-pages \
-            "https://x-access-token:${BENCH_RESULTS_TOKEN}@github.com/powdr-labs/bench-results.git" \
-            "$REPO"
-          cd "$REPO"
-          git sparse-checkout set "results/${DATE}"
-          # Author commits as the github-actions[bot] account so the GitHub
-          # UI shows the bot avatar and groups them with prior peaceiris
-          # commits. The email format is GitHub's noreply convention,
-          # `<user-id>+<login>@users.noreply.github.com`; 41898282 is the
-          # bot's user ID.
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          mkdir -p "results/${DATE}"
-          cp -r "${GITHUB_WORKSPACE}/results/." "results/${DATE}/"
-          git add "results/${DATE}"
-          git commit -m "Add nightly results for ${DATE}"
-          git push origin gh-pages
+      - name: Publish bench results
+        uses: ./.github/actions/publish-bench-results
+        with:
+          bench-results-token: ${{ secrets.BENCH_RESULTS_TOKEN }}
+          commit-message-prefix: "Add nightly results for"
+          dir-suffix: "-gpu"
