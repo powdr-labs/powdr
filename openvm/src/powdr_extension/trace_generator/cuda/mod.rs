@@ -21,7 +21,10 @@ use powdr_constraint_solver::constraint_system::{ComputationMethod, DerivedVaria
 use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 
 use crate::{
-    cuda_abi::{self, DerivedExprSpec, DevInteraction, ExprSpan, OpCode, OriginalAir, Subst},
+    cuda_abi::{
+        self, DerivedExprSpec, DevInteraction, ExprSpan, OpCode, OriginalAir, Subst,
+        INTR_FLAG_STATIC_MULT_1,
+    },
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     isa::{IsaApc, OpenVmISA},
     powdr_extension::{chip::PowdrChipGpu, executor::OriginalArenas},
@@ -335,6 +338,32 @@ fn analyze_bus_cse(bus_interactions: &[SymbolicBusInteraction<BabyBear>]) {
     });
 }
 
+/// Classify a `mult` AST as "provably 1 for every processed row":
+/// - `Number(1)` (after powdr-level constant folding).
+/// - `Reference(is_valid)` — `is_valid` is the per-row liveness column and
+///   the kernel only processes rows where `r < num_apc_calls`, so it is 1
+///   on every row the kernel touches.
+/// - `x * 1` / `1 * x` (the most common form in raw bus interactions; the
+///   `emit_expr` peephole rewrites these but we also classify them here so
+///   the flag is set even if the peephole is later removed or weakened).
+///
+/// Returns true if the mult is statically 1. The kernel will then skip the
+/// mult bytecode walk entirely (no LDG, no Mul, no `m==0` branch).
+fn is_static_mult_one(mult: &AlgebraicExpression<BabyBear>) -> bool {
+    match mult {
+        AlgebraicExpression::Number(c) => *c == BabyBear::ONE,
+        AlgebraicExpression::Reference(r) => r.name.as_str() == "is_valid",
+        AlgebraicExpression::BinaryOperation(b) if b.op == AlgebraicBinaryOperator::Mul => {
+            let is_one = |e: &AlgebraicExpression<BabyBear>| {
+                matches!(e, AlgebraicExpression::Number(c) if *c == BabyBear::ONE)
+            };
+            (is_one(&b.left) && is_static_mult_one(&b.right))
+                || (is_one(&b.right) && is_static_mult_one(&b.left))
+        }
+        _ => false,
+    }
+}
+
 pub fn compile_bus_to_gpu(
     bus_interactions: &[SymbolicBusInteraction<BabyBear>],
     apc_poly_id_to_index: &BTreeMap<u64, usize>,
@@ -347,14 +376,26 @@ pub fn compile_bus_to_gpu(
     let mut bytecode = Vec::new();
 
     for bus_interaction in bus_interactions {
-        // multiplicity as first arg span
         let args_index_off = arg_spans.len() as u32;
-        let mult_span = emit_expr_span(
-            &mut bytecode,
-            &bus_interaction.mult,
-            apc_poly_id_to_index,
-            apc_height,
-        );
+        let static_mult = is_static_mult_one(&bus_interaction.mult);
+
+        // Multiplicity slot. When statically 1 we still push a zero-length
+        // span as a placeholder so the per-interaction layout `[mult, arg0,
+        // arg1, ...]` stays consistent for any future use; the kernel won't
+        // dereference it.
+        let mult_span = if static_mult {
+            ExprSpan {
+                off: bytecode.len() as u32,
+                len: 0,
+            }
+        } else {
+            emit_expr_span(
+                &mut bytecode,
+                &bus_interaction.mult,
+                apc_poly_id_to_index,
+                apc_height,
+            )
+        };
         arg_spans.push(mult_span);
 
         // args
@@ -363,10 +404,16 @@ pub fn compile_bus_to_gpu(
             arg_spans.push(span);
         }
 
+        let flags = if static_mult {
+            INTR_FLAG_STATIC_MULT_1
+        } else {
+            0
+        };
         interactions.push(DevInteraction {
             bus_id: (bus_interaction.id as u32),
             num_args: bus_interaction.args.len() as u32,
             args_index_off,
+            flags,
         });
     }
 

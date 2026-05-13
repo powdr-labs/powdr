@@ -12,11 +12,19 @@ extern "C" {
     uint32_t bus_id; // Bus id this interaction targets (matches periphery chip bus id)
     uint32_t num_args; // Number of argument expressions for this interaction
     uint32_t args_index_off; // Starting index into the `ExprSpan` array for this interaction's args. Layout: [mult, arg0, arg1, ...]
+    uint32_t flags; // Bitfield: see INTR_FLAG_* below
   } DevInteraction;
 }
 
 // Fixed number of bits for bitwise lookup
 static constexpr uint32_t BITWISE_NUM_BITS = 8u;
+
+// Interaction flags. STATIC_MULT_1: multiplicity is provably 1 for every
+// processed row (e.g. `Number(1)` or `Reference(is_valid)` where is_valid
+// is the per-row liveness column already filtered by `r < num_apc_calls`).
+// The kernel skips the mult bytecode walk and the m==0 short-circuit, and
+// performs a single histogram add per interaction per row.
+static constexpr uint32_t INTR_FLAG_STATIC_MULT_1 = 1u;
 
 // Applies bus interactions to periphery histograms for a batch of APC rows.
 //
@@ -65,11 +73,19 @@ __global__ void apc_apply_bus_kernel(
   for (size_t i = 0; i < n_interactions; ++i) {
     DevInteraction intr = d_interactions[i];
 
-    // Evaluate multiplicity first; skip the whole interaction if zero.
-    ExprSpan mult_span = d_arg_spans[intr.args_index_off + 0];
-    Fp mult = eval_arg(mult_span, d_bytecode, d_output, r);
-    uint32_t m = mult.asUInt32();
-    if (m == 0u) continue;
+    // Evaluate multiplicity unless the host marked it as a static 1 (e.g.
+    // mult ≡ `Number(1)` or `Reference(is_valid)`). With STATIC_MULT_1 set
+    // the kernel skips the bytecode walk + the m==0 branch + the inner
+    // loop, doing a single add_count per interaction per row instead.
+    uint32_t m;
+    if (intr.flags & INTR_FLAG_STATIC_MULT_1) {
+      m = 1u;
+    } else {
+      ExprSpan mult_span = d_arg_spans[intr.args_index_off + 0];
+      Fp mult = eval_arg(mult_span, d_bytecode, d_output, r);
+      m = mult.asUInt32();
+      if (m == 0u) continue;
+    }
 
     if (intr.bus_id == var_range_bus_id) {
       // expect [value, max_bits]

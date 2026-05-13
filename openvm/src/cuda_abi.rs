@@ -155,9 +155,17 @@ pub struct DevInteraction {
     /// Number of argument expressions for this interaction
     pub num_args: u32,
     /// Starting index into the `ExprSpan` array for this interaction's args
-    /// Layout: [ multiplicity span, arg0, arg1, ... ]
+    /// Layout: [ multiplicity span, arg0, arg1, ... ]. The multiplicity span
+    /// is unused (and unallocated) when `flags & INTR_FLAG_STATIC_MULT_1`.
     pub args_index_off: u32,
+    /// Bitfield. See `INTR_FLAG_*`.
+    pub flags: u32,
 }
+
+/// Multiplicity is provably 1 for every processed row — the kernel skips the
+/// mult bytecode walk and does a single histogram add. Set by host codegen
+/// when the (peephole-folded) mult AST is `Number(1)` or `Reference(is_valid)`.
+pub const INTR_FLAG_STATIC_MULT_1: u32 = 1;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
