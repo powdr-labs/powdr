@@ -12,6 +12,8 @@ env:
 
 jobs:
   bench:
+    # TEMP: disabled while testing the Modal apc=100 addition; revert before merge.
+    if: false
     runs-on: warp-ubuntu-2404-x64-4x
     permissions:
       contents: write
@@ -63,6 +65,8 @@ jobs:
           summary-always: true
 
   test_apc_guest:
+    # TEMP: disabled while testing the Modal apc=100 addition; revert before merge.
+    if: false
     runs-on: server-dev
 
     steps:
@@ -311,6 +315,8 @@ jobs:
       # the matching prove-stark calls below skip recompilation. We
       # therefore don't `rm -rf apc-cache` between iterations.
       - name: Run reth benchmark
+        # TEMP: disabled while testing the Modal apc=100 addition; revert before merge.
+        if: false
         run: |
           source .venv/bin/activate
           cd openvm-eth
@@ -458,6 +464,8 @@ jobs:
           git push origin gh-pages
 
   test_apc_gpu:
+    # TEMP: disabled while testing the Modal apc=100 addition; revert before merge.
+    if: false
     runs-on: [self-hosted, gpu-shared]
 
     steps:
