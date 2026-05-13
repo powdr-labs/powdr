@@ -216,92 +216,23 @@ jobs:
           # and `mv` it into results/reth/ at its own end.
           cp apcs/apc_candidates.json ../apc_candidates_modal.json
 
-      - name: Upload caches to Modal Volume
-        env:
-          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
-          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-        run: |
-          source .venv/bin/activate
-          # Volume.from_name(..., create_if_missing=True) in modal_app.py
-          # only creates the volume when the function runs; `modal volume
-          # put` is a separate path that errors if the volume doesn't
-          # already exist, so create it idempotently here.
-          modal volume create "$MODAL_VOLUME" 2>/dev/null || true
-          modal volume put "$MODAL_VOLUME" rpc-cache.tgz "/${RUN_ID}/rpc-cache.tgz" --force
-          modal volume put "$MODAL_VOLUME" apc-cache.tgz "/${RUN_ID}/apc-cache.tgz" --force
-
-      - name: Run prove-stark on Modal (best effort)
-        # Sequential over {0,10,30}. Each Modal invocation includes its own
-        # cargo build (a few minutes) and the actual GPU prove (~1 min);
-        # total ~15-20 min, far less than the CPU reth bench that follows.
-        # Modal-side failures (transient platform issues, GPU
-        # unavailability, etc.) must NOT abort the job — the CPU reth
-        # bench is the must-have. We log a warning per failed apc count and let
-        # the post-process step build whatever subset of metrics arrived
-        # on the volume.
-        continue-on-error: true
-        env:
-          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
-          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-        run: |
-          source .venv/bin/activate
-          for apc in 0 10 30; do
-            modal run gpu_bench/modal_app.py::prove_block \
-              --apc "$apc" \
-              --block "$BLOCK_NUMBER" \
-              --run-id "$RUN_ID" \
-              --powdr-sha "$GITHUB_SHA" \
-              --openvm-eth-ref "$OPENVM_ETH_REF" \
-              || echo "::warning::modal prove apc=${apc} failed; continuing"
-          done
-
-      - name: Download Modal outputs and post-process (best effort)
-        # Tolerates partial Modal output: any apc whose metrics.json is
-        # missing on the volume is skipped with a warning. If no apc
-        # produced output at all, the reth_gpu_modal/ subdir is dropped
-        # so the artifact doesn't ship an empty stub.
-        continue-on-error: true
-        env:
-          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
-          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-        run: |
-          source .venv/bin/activate
-          mkdir -p modal-out
-          modal volume get "$MODAL_VOLUME" "/${RUN_ID}/" modal-out/ --force || true
-
-          mkdir -p results/reth_gpu_modal
-          RES_DIR=results/reth_gpu_modal
-          OK_JSONS=()
-          for apc in 0 10 30; do
-            label=$(printf 'apc%03d' "$apc")
-            src="modal-out/${RUN_ID}/out-${apc}/metrics.json"
-            if [ ! -f "$src" ]; then
-              echo "::warning::modal out-${apc}/metrics.json missing; skipping"
-              continue
-            fi
-            mv "$src" "$RES_DIR/${label}.json"
-            python ./openvm-riscv/scripts/plot_trace_cells.py \
-              -o "$RES_DIR/trace_cells_${label}.png" \
-              "$RES_DIR/${label}.json" \
-              > "$RES_DIR/trace_cells_${label}.txt"
-            OK_JSONS+=("$RES_DIR/${label}.json")
-          done
-
-          if [ ${#OK_JSONS[@]} -eq 0 ]; then
-            echo "::warning::no Modal outputs survived; dropping results/reth_gpu_modal/"
-            rm -rf "$RES_DIR"
-            exit 0
-          fi
-
-          mv apc_candidates_modal.json "$RES_DIR/apc_candidates.json"
-          python ./openvm-riscv/scripts/basic_metrics.py summary-table --csv \
-            "${OK_JSONS[@]}" > "$RES_DIR/basic_metrics.csv"
-          python ./openvm-riscv/scripts/basic_metrics.py plot \
-            "${OK_JSONS[@]}" -o "$RES_DIR/proof_time_breakdown.png"
-          python ./openvm-riscv/scripts/basic_metrics.py combine \
-            "${OK_JSONS[@]}" > "$RES_DIR/combined_metrics.json"
-          python ./autoprecompiles/scripts/plot_effectiveness.py \
-            "$RES_DIR/apc_candidates.json" --output "$RES_DIR/effectiveness.png"
+      - name: Run Modal prove-stark
+        # Sequential over {0,10,30}; total ~15-20 min, far less than the
+        # CPU reth bench that follows. Modal-side failures (transient
+        # platform issues, GPU unavailability, etc.) must NOT abort the
+        # job — the CPU reth bench is the must-have. The action emits a
+        # warning per failed apc count and builds whatever subset of
+        # metrics arrived on the volume.
+        uses: ./.github/actions/run-modal-prove-stark
+        with:
+          apc-counts: "0 10 30"
+          block-number: ${{ env.BLOCK_NUMBER }}
+          openvm-eth-ref: ${{ env.OPENVM_ETH_REF }}
+          modal-volume: ${{ env.MODAL_VOLUME }}
+          run-id: ${{ env.RUN_ID }}
+          powdr-sha: ${{ github.sha }}
+          modal-token-id: ${{ secrets.MODAL_TOKEN_ID }}
+          modal-token-secret: ${{ secrets.MODAL_TOKEN_SECRET }}
 
       # ---------- CPU-side reth bench ----------
       # apc-cache is keyed by `reth-apc-<N>.bin` (run.sh line 341 sets
