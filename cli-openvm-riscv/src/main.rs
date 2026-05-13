@@ -50,6 +50,13 @@ struct SharedArgs {
     #[arg(long)]
     apc_candidates_dir: Option<PathBuf>,
 
+    /// On-disk cache directory for compiled per-block APCs. When set, each
+    /// block's compiled APC is read from `<dir>/<block_start_pcs>.apc.json`
+    /// if present (skipping the constraint-optimizer pass), and written
+    /// after a successful build. Use a fresh dir per VM-config / guest.
+    #[arg(long)]
+    apc_cache_dir: Option<PathBuf>,
+
     /// Maximum number of instructions in an APC
     #[arg(long)]
     apc_max_instructions: Option<u32>,
@@ -125,6 +132,9 @@ fn build_powdr_config(shared: &SharedArgs) -> PowdrConfig {
         default_powdr_openvm_config(shared.autoprecompiles as u64, shared.skip as u64);
     if let Some(apc_candidates_dir) = &shared.apc_candidates_dir {
         powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
+    }
+    if let Some(apc_cache_dir) = &shared.apc_cache_dir {
+        powdr_config = powdr_config.with_apc_cache_dir(apc_cache_dir);
     }
     powdr_config
         .with_optimistic_precompiles(shared.optimistic_precompiles)

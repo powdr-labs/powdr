@@ -575,12 +575,21 @@ function extractMetrics(runName, metricsJson) {
     //                           covers per-AIR baseline trace gen for non-APC AIRs
     //                           + system trace gen + small openvm overhead)
     // By construction: APC + non-APC == Trace Gen (exact, no rounding gap).
+    // Prefer `<stage>_us` counter when present (microsecond precision,
+    // `metrics::counter!`-based) over `<stage>_time_ms` gauge. The gauge
+    // goes through TimingMetricsLayer's `as_millis() as f64` truncation,
+    // so per-(air, segment) entries below 1ms all round to 0 and the sum
+    // hides 90%+ of substage time at high APC counts.
     let _apcSum = 0;
     SUBSTAGE_KEYS.forEach(stage => {
-        const v = getMetric(app, stage + '_time_ms');
-        m['app_substage_' + stage + '_time_ms'] = v;
-        _apcSum += v;
+        const us = getMetric(app, stage + '_us');
+        const ms = us > 0 ? us / 1000 : getMetric(app, stage + '_time_ms');
+        m['app_substage_' + stage + '_time_ms'] = ms;
+        _apcSum += ms;
     });
+    // Bound APC sum by trace_gen so the residual non-APC stays non-negative
+    // when sub-counters slightly overlap the parent span.
+    if (_apcSum > m.app_trace_gen_time_ms) _apcSum = m.app_trace_gen_time_ms;
     m.app_apc_trace_gen_ms = _apcSum;
     m.app_non_apc_trace_gen_ms = m.app_trace_gen_time_ms - _apcSum;
 
