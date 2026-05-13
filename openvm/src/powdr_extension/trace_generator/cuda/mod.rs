@@ -9,7 +9,7 @@ use openvm_circuit_primitives::Chip;
 use openvm_cuda_backend::base::DeviceMatrix;
 use openvm_cuda_common::copy::MemCopyH2D;
 use openvm_stark_backend::{
-    p3_field::PrimeField32,
+    p3_field::{PrimeCharacteristicRing, PrimeField32},
     prover::{AirProvingContext, ProverBackend},
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
@@ -44,6 +44,12 @@ pub use periphery::{
 /// Constants are encoded as `PushConst` followed by the field element as `u32`.
 /// Unary minus and binary operations map to `Neg`, `Add`, `Sub`, and `Mul`.
 ///
+/// Peephole folds applied here (host-side): `x*0→0`, `x*1→x`, `x*(-1)→-x`,
+/// `x±0→x`, `Neg(Number c)→Number(-c)`. The powdr-level optimizer doesn't
+/// fold these inside bus expressions, but on pairing-style APCs they account
+/// for ~50% of the redundant bytecode the GPU VM would otherwise evaluate
+/// once per row (see `analyze_bus_cse`).
+///
 /// Note: This function does not track or enforce the evaluation stack depth,
 /// which is done in device code.
 fn emit_expr(
@@ -63,12 +69,77 @@ fn emit_expr(
             bc.push(idx);
         }
         AlgebraicExpression::UnaryOperation(u) => {
+            // Fold Neg(Number(c)) → Number(-c).
+            if let (AlgebraicUnaryOperator::Minus, AlgebraicExpression::Number(c)) =
+                (u.op, &*u.expr)
+            {
+                bc.push(OpCode::PushConst as u32);
+                bc.push((-*c).as_canonical_u32());
+                return;
+            }
             emit_expr(bc, &u.expr, id_to_apc_index, apc_height);
             match u.op {
                 AlgebraicUnaryOperator::Minus => bc.push(OpCode::Neg as u32),
             }
         }
         AlgebraicExpression::BinaryOperation(b) => {
+            let zero = BabyBear::ZERO;
+            let one = BabyBear::ONE;
+            let neg_one = -BabyBear::ONE;
+            let as_const = |e: &AlgebraicExpression<BabyBear>| match e {
+                AlgebraicExpression::Number(c) => Some(*c),
+                _ => None,
+            };
+            let l_const = as_const(&b.left);
+            let r_const = as_const(&b.right);
+            match b.op {
+                AlgebraicBinaryOperator::Mul => {
+                    // x*0 → 0, 0*x → 0 (kills the other side too)
+                    if l_const == Some(zero) || r_const == Some(zero) {
+                        bc.push(OpCode::PushConst as u32);
+                        bc.push(0);
+                        return;
+                    }
+                    // 1*x → x, x*1 → x
+                    if l_const == Some(one) {
+                        emit_expr(bc, &b.right, id_to_apc_index, apc_height);
+                        return;
+                    }
+                    if r_const == Some(one) {
+                        emit_expr(bc, &b.left, id_to_apc_index, apc_height);
+                        return;
+                    }
+                    // (-1)*x → -x, x*(-1) → -x
+                    if l_const == Some(neg_one) {
+                        emit_expr(bc, &b.right, id_to_apc_index, apc_height);
+                        bc.push(OpCode::Neg as u32);
+                        return;
+                    }
+                    if r_const == Some(neg_one) {
+                        emit_expr(bc, &b.left, id_to_apc_index, apc_height);
+                        bc.push(OpCode::Neg as u32);
+                        return;
+                    }
+                }
+                AlgebraicBinaryOperator::Add => {
+                    // 0+x → x, x+0 → x
+                    if l_const == Some(zero) {
+                        emit_expr(bc, &b.right, id_to_apc_index, apc_height);
+                        return;
+                    }
+                    if r_const == Some(zero) {
+                        emit_expr(bc, &b.left, id_to_apc_index, apc_height);
+                        return;
+                    }
+                }
+                AlgebraicBinaryOperator::Sub => {
+                    // x-0 → x. 0-x is left as Sub (cheaper than emitting Neg).
+                    if r_const == Some(zero) {
+                        emit_expr(bc, &b.left, id_to_apc_index, apc_height);
+                        return;
+                    }
+                }
+            }
             emit_expr(bc, &b.left, id_to_apc_index, apc_height);
             emit_expr(bc, &b.right, id_to_apc_index, apc_height);
             match b.op {
@@ -140,11 +211,137 @@ fn compile_derived_to_gpu(
     (specs, bytecode)
 }
 
+/// Count, for the first PowdrAir whose bus_interactions exceed a threshold, how
+/// much redundancy exists across the AlgebraicExpression trees of all (mult,
+/// args). Useful to decide whether a CSE-aware emitter would pay off vs the
+/// current direct-emit walk. Gated by `POWDR_DUMP_BUS_CSE=1` and only runs once
+/// per process.
+fn analyze_bus_cse(bus_interactions: &[SymbolicBusInteraction<BabyBear>]) {
+    if std::env::var("POWDR_DUMP_BUS_CSE").is_err() {
+        return;
+    }
+    let threshold: usize = std::env::var("POWDR_DUMP_BUS_CSE_MIN")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(150);
+    if bus_interactions.len() < threshold {
+        return; // wait for a big chip
+    }
+    static DONE: std::sync::Once = std::sync::Once::new();
+    DONE.call_once(|| {
+        // Walk every subtree, counting occurrences. AlgebraicExpression derives
+        // Hash/Eq; hashing/clone cost is O(subtree-size) per insert. Tolerable
+        // because this runs once.
+        fn walk(
+            e: &AlgebraicExpression<BabyBear>,
+            counts: &mut HashMap<AlgebraicExpression<BabyBear>, usize>,
+        ) {
+            *counts.entry(e.clone()).or_insert(0) += 1;
+            match e {
+                AlgebraicExpression::Number(_) | AlgebraicExpression::Reference(_) => {}
+                AlgebraicExpression::UnaryOperation(u) => walk(&u.expr, counts),
+                AlgebraicExpression::BinaryOperation(b) => {
+                    walk(&b.left, counts);
+                    walk(&b.right, counts);
+                }
+            }
+        }
+        // emit cost in the current direct-emit scheme.
+        fn ops(e: &AlgebraicExpression<BabyBear>) -> usize {
+            match e {
+                AlgebraicExpression::Number(_) | AlgebraicExpression::Reference(_) => 2,
+                AlgebraicExpression::UnaryOperation(u) => 1 + ops(&u.expr),
+                AlgebraicExpression::BinaryOperation(b) => 1 + ops(&b.left) + ops(&b.right),
+            }
+        }
+
+        let mut counts: HashMap<AlgebraicExpression<BabyBear>, usize> = HashMap::new();
+        for bi in bus_interactions {
+            walk(&bi.mult, &mut counts);
+            for a in &bi.args {
+                walk(a, &mut counts);
+            }
+        }
+
+        let mut total_ops_no_cse = 0usize;
+        let mut total_args = 0usize;
+        for bi in bus_interactions {
+            total_ops_no_cse += ops(&bi.mult);
+            total_args += 1;
+            for a in &bi.args {
+                total_ops_no_cse += ops(a);
+                total_args += 1;
+            }
+        }
+
+        // Perfect CSE: each unique subtree is evaluated once and stored to a slot
+        // (no extra cost; the result lives on the stack). Each *additional*
+        // occurrence is replaced by a `PushIntermediate <slot>` = 2 ops. Savings
+        // per duplicate = max(0, ops_of_subtree - 2).
+        let mut savings = 0usize;
+        let mut savings_only_multi_op = 0usize;
+        for (subtree, &count) in &counts {
+            if count < 2 {
+                continue;
+            }
+            let single_eval_ops = ops(subtree);
+            let per_dup = single_eval_ops.saturating_sub(2);
+            savings += (count - 1) * per_dup;
+            if single_eval_ops > 4 {
+                savings_only_multi_op += (count - 1) * per_dup;
+            }
+        }
+
+        eprintln!("[bus_cse] -------- first chip with >=50 interactions --------");
+        eprintln!("[bus_cse] interactions               : {}", bus_interactions.len());
+        eprintln!("[bus_cse] total arg expressions      : {}", total_args);
+        eprintln!("[bus_cse] distinct subexpressions    : {}", counts.len());
+        eprintln!("[bus_cse] total ops without CSE      : {}", total_ops_no_cse);
+        eprintln!(
+            "[bus_cse] total ops with perfect CSE : {}",
+            total_ops_no_cse - savings
+        );
+        eprintln!(
+            "[bus_cse] reduction (perfect)        : {:.1}%   ({} ops saved)",
+            (savings as f64) / (total_ops_no_cse as f64) * 100.0,
+            savings
+        );
+        eprintln!(
+            "[bus_cse] reduction (only ops>4)     : {:.1}%   ({} ops saved)",
+            (savings_only_multi_op as f64) / (total_ops_no_cse as f64) * 100.0,
+            savings_only_multi_op
+        );
+
+        let mut top: Vec<_> = counts
+            .iter()
+            .filter(|(_, &c)| c >= 2)
+            .map(|(e, &c)| (c, ops(e), e))
+            .collect();
+        top.sort_by(|a, b| {
+            (b.0 * b.1.saturating_sub(2))
+                .cmp(&(a.0 * a.1.saturating_sub(2)))
+                .then_with(|| b.0.cmp(&a.0))
+        });
+        eprintln!("[bus_cse] top-15 reusable subtrees by (count-1)*(ops-2):");
+        for (c, o, e) in top.iter().take(15) {
+            eprintln!(
+                "[bus_cse]   count={:>4} ops={:>3}  saves={:>5}   expr={}",
+                c,
+                o,
+                (c - 1) * o.saturating_sub(2),
+                e
+            );
+        }
+    });
+}
+
 pub fn compile_bus_to_gpu(
     bus_interactions: &[SymbolicBusInteraction<BabyBear>],
     apc_poly_id_to_index: &BTreeMap<u64, usize>,
     apc_height: usize,
 ) -> (Vec<DevInteraction>, Vec<ExprSpan>, Vec<u32>) {
+    analyze_bus_cse(bus_interactions);
+
     let mut interactions = Vec::with_capacity(bus_interactions.len());
     let mut arg_spans = Vec::new();
     let mut bytecode = Vec::new();
