@@ -59,17 +59,21 @@ __global__ void apc_apply_bus_kernel(
       Fp mult = eval_arg(mult_span, d_bytecode, d_output, (size_t)r);
       uint32_t m = mult.asUInt32();
       if (m == 0u) continue;
-
+      // Evaluate args and apply based on bus id
       if (intr.bus_id == var_range_bus_id) {
         // expect [value, max_bits]
         ExprSpan s0 = d_arg_spans[intr.args_index_off + 1];
         ExprSpan s1 = d_arg_spans[intr.args_index_off + 2];
         Fp v_fp = eval_arg(s0, d_bytecode, d_output, (size_t)r);
         Fp b_fp = eval_arg(s1, d_bytecode, d_output, (size_t)r);
+
+        // histogram `num_bins` and index calculation depend on the `VariableRangeCheckerChipGPU` implementation
         uint32_t value = v_fp.asUInt32();
         uint32_t max_bits = b_fp.asUInt32();
         lookup::Histogram hist(d_var_hist, (uint32_t)var_num_bins);
         uint32_t idx = (1u << max_bits) + value - 1u; // matches VariableRangeChecker::add_count
+
+        // apply multiplicity by looping; warp-level dedup in Histogram minimizes contention
         for (uint32_t k = 0; k < (uint32_t)mult.asUInt32(); ++k) hist.add_count(idx);
       } else if (intr.bus_id == tuple2_bus_id) {
         // expect [v0, v1]
@@ -77,10 +81,13 @@ __global__ void apc_apply_bus_kernel(
         ExprSpan s1 = d_arg_spans[intr.args_index_off + 2];
         Fp v0_fp = eval_arg(s0, d_bytecode, d_output, (size_t)r);
         Fp v1_fp = eval_arg(s1, d_bytecode, d_output, (size_t)r);
+
+        // histogram `num_bins` and index calculation depend on the `RangeTupleCheckerChipGpu<2>` implementation
         uint32_t v0 = v0_fp.asUInt32();
         uint32_t v1 = v1_fp.asUInt32();
         lookup::Histogram hist(d_tuple2_hist, tuple2_sz0 * tuple2_sz1);
         uint32_t idx = v0 * tuple2_sz1 + v1;
+
         for (uint32_t k = 0; k < (uint32_t)mult.asUInt32(); ++k) hist.add_count(idx);
       } else if (intr.bus_id == bitwise_bus_id) {
         // expect [x, y, x_xor_y, selector]; we only update histogram if selector==range(0) or xor(1)
@@ -99,6 +106,7 @@ __global__ void apc_apply_bus_kernel(
         for (uint32_t k = 0; k < (uint32_t)mult.asUInt32(); ++k) {
           if (selector == 0u) bl.add_range(x, y);
           else if (selector == 1u) { bl.add_xor(x, y); /* could assert xy correctness on device if needed */ }
+          else { assert(false && "Invalid selector"); }
         }
       }
     }
