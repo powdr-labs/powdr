@@ -422,20 +422,6 @@ fn satisfies_zero_witness<T: FieldElement>(expr: &AlgebraicExpression<T>) -> boo
 /// In the future this could be changed to minimize the number of guards added.
 /// Assumption:
 /// - `expr` is already simplified, i.e., expressions like (3 + 4) and (x * 1) do not appear.
-/// Canonicalize an `AlgebraicExpression` by roundtripping through
-/// `GroupedExpression`, which folds `x*0→0`, `x*1→x`, `x*-1→-x`, `x±0→x`,
-/// `Neg(Number c)→Number(-c)`, and combines constant operands. All
-/// `AlgebraicReference`s are treated as unknown variables (i.e. preserved).
-///
-/// This is used at the points in `add_guards` where fresh AST nodes are
-/// constructed by `AlgebraicExpression::Mul`/`Sub`/`Add`, which do **not**
-/// fold on construction. Without this, the optimizer's careful
-/// canonicalization is undone by `add_guards` (e.g. `is_valid * Number(1)`,
-/// which downstream consumers then have to peephole-fold again).
-fn canonicalize<T: FieldElement>(expr: AlgebraicExpression<T>) -> AlgebraicExpression<T> {
-    grouped_expression_to_algebraic(algebraic_to_grouped_expression(&expr))
-}
-
 fn add_guards_constraint<T: FieldElement>(
     expr: AlgebraicExpression<T>,
     is_valid: &AlgebraicExpression<T>,
@@ -462,6 +448,20 @@ fn add_guards_constraint<T: FieldElement>(
         AlgebraicExpression::Number(..) => expr * is_valid.clone(),
         _ => expr,
     }
+}
+
+/// Canonicalize an `AlgebraicExpression` by roundtripping through
+/// `GroupedExpression`, which folds `x*0→0`, `x*1→x`, `x*-1→-x`, `x±0→x`,
+/// `Neg(Number c)→Number(-c)`, and combines constant operands. All
+/// `AlgebraicReference`s are treated as unknown variables (i.e. preserved).
+///
+/// This is used at the points in `add_guards` where fresh AST nodes are
+/// constructed by `AlgebraicExpression::Mul`/`Sub`/`Add`, which do **not**
+/// fold on construction. Without this, the optimizer's careful
+/// canonicalization is undone by `add_guards` (e.g. `is_valid * Number(1)`,
+/// which downstream consumers then have to peephole-fold again).
+fn canonicalize<T: FieldElement>(expr: AlgebraicExpression<T>) -> AlgebraicExpression<T> {
+    grouped_expression_to_algebraic(algebraic_to_grouped_expression(&expr))
 }
 
 /// Adds an `is_valid` guard to all constraints and bus interactions, if needed.
