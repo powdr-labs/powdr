@@ -19,20 +19,6 @@ extern "C" {
 static constexpr uint32_t BITWISE_NUM_BITS = 8u;
 
 // Applies bus interactions to periphery histograms for a batch of APC rows.
-//
-// Grid shape: one thread per row (was: one warp per bus interaction).
-// The previous shape capped active warps at `n_interactions` (~30-80),
-// which on RTX 5090 (170 SMs × 64 schedulable warps) achieves <10%
-// occupancy (measured: 9.4% achieved vs 83% theoretical, grid (3,1,1) on
-// keccak APC=10). With num_apc_calls typically 10k+, the row-parallel
-// shape fills the grid with thousands of warps.
-//
-// d_interactions and d_arg_spans are hot read-only metadata; we tag the
-// kernel params `__restrict__` so the compiler can route through the
-// read-only cache (LDG). An earlier draft staged them into __shared__
-// memory once per block, but that hit the dynamic-shmem ceiling on
-// large APCs (48 KB default on sm_120 without opt-in). The LDG-cached
-// path achieves similar effective bandwidth without the size limit.
 __global__ void apc_apply_bus_kernel(
   // APC related
   const Fp* __restrict__ d_output, // APC trace (column-major)
