@@ -320,3 +320,115 @@ fn wasm_register_reuse() {
     "#]]
     .assert_debug_eq(&machine.constraints.len());
 }
+
+/// Integration test for the `canonicalize` fix in `add_guards` (this PR).
+///
+/// Runs the full `optimize` → `add_guards` pipeline on a real keccak APC
+/// (loaded from the gzipped pre-opt fixture), then walks every bus
+/// interaction's `mult` and every constraint expression and asserts that the
+/// trivial-fold patterns from PR3740 optimization #2 — `x*0`, `x*1`,
+/// `x*-1`, `x±0`, `Number op Number` — do **not** survive. (We don't flag
+/// `Neg(Number c)` because `field_element_to_algebraic_expression` deliberately
+/// emits upper-half negative field elements that way for readability; the
+/// consumer-side peephole keeps that one tiny rule.)
+#[test]
+fn canonicalize_eliminates_pr3740_patterns_on_keccak() {
+    use powdr_autoprecompiles::add_guards;
+    use powdr_autoprecompiles::expression::AlgebraicExpression;
+    use powdr_expression::{AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation};
+
+    let apc = import_apc_from_gzipped_json("tests/keccak_apc_pre_opt.json.gz");
+    let machine: SymbolicMachine<BabyBearField> = apc.apc.machine;
+
+    let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&machine);
+    let (machine, column_allocator) = optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
+        machine,
+        OpenVmBusInteractionHandler::default(),
+        DEFAULT_DEGREE_BOUND,
+        &apc.bus_map,
+        column_allocator,
+        &mut Default::default(),
+    )
+    .unwrap();
+
+    let (machine, _) = add_guards(machine, column_allocator);
+
+    let zero = BabyBearField::from(0u64);
+    let one = BabyBearField::from(1u64);
+    let neg_one = -one;
+    let is_eq = |e: &AlgebraicExpression<BabyBearField>, n: BabyBearField| {
+        matches!(e, AlgebraicExpression::Number(c) if *c == n)
+    };
+    let is_any_num = |e: &AlgebraicExpression<BabyBearField>| {
+        matches!(e, AlgebraicExpression::Number(_))
+    };
+
+    /// Returns the first trivial-fold pattern found in `expr`, if any.
+    fn find_pattern<F1, F2, F3, F4>(
+        expr: &AlgebraicExpression<BabyBearField>,
+        is_zero_num: &F1,
+        is_one_num: &F2,
+        is_neg_one_num: &F3,
+        is_any_num: &F4,
+    ) -> Option<&'static str>
+    where
+        F1: Fn(&AlgebraicExpression<BabyBearField>) -> bool,
+        F2: Fn(&AlgebraicExpression<BabyBearField>) -> bool,
+        F3: Fn(&AlgebraicExpression<BabyBearField>) -> bool,
+        F4: Fn(&AlgebraicExpression<BabyBearField>) -> bool,
+    {
+        match expr {
+            AlgebraicExpression::Number(_) | AlgebraicExpression::Reference(_) => None,
+            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { expr: inner, .. }) => {
+                find_pattern(inner, is_zero_num, is_one_num, is_neg_one_num, is_any_num)
+            }
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+                match op {
+                    AlgebraicBinaryOperator::Mul => {
+                        if is_zero_num(left) || is_zero_num(right) { return Some("x*0"); }
+                        if is_one_num(left) || is_one_num(right) { return Some("x*1"); }
+                        if is_neg_one_num(left) || is_neg_one_num(right) { return Some("x*-1"); }
+                        if is_any_num(left) && is_any_num(right) { return Some("Number*Number"); }
+                    }
+                    AlgebraicBinaryOperator::Add | AlgebraicBinaryOperator::Sub => {
+                        if is_zero_num(left) || is_zero_num(right) { return Some("x±0"); }
+                        if is_any_num(left) && is_any_num(right) { return Some("Number±Number"); }
+                    }
+                }
+                find_pattern(left, is_zero_num, is_one_num, is_neg_one_num, is_any_num)
+                    .or_else(|| find_pattern(right, is_zero_num, is_one_num, is_neg_one_num, is_any_num))
+            }
+        }
+    }
+    let is_zero_num = |e: &AlgebraicExpression<BabyBearField>| is_eq(e, zero);
+    let is_one_num = |e: &AlgebraicExpression<BabyBearField>| is_eq(e, one);
+    let is_neg_one_num = |e: &AlgebraicExpression<BabyBearField>| is_eq(e, neg_one);
+
+    let mut violations: Vec<String> = Vec::new();
+    for (i, b) in machine.bus_interactions.iter().enumerate() {
+        if let Some(p) = find_pattern(&b.mult, &is_zero_num, &is_one_num, &is_neg_one_num, &is_any_num) {
+            violations.push(format!("bus_interactions[{i}].mult contains {p}: {:?}", b.mult));
+        }
+        for (j, a) in b.args.iter().enumerate() {
+            if let Some(p) = find_pattern(a, &is_zero_num, &is_one_num, &is_neg_one_num, &is_any_num) {
+                violations.push(format!("bus_interactions[{i}].args[{j}] contains {p}: {a:?}"));
+            }
+        }
+    }
+    for (i, c) in machine.constraints.iter().enumerate() {
+        if let Some(p) = find_pattern(&c.expr, &is_zero_num, &is_one_num, &is_neg_one_num, &is_any_num) {
+            violations.push(format!("constraints[{i}] contains {p}: {:?}", c.expr));
+        }
+    }
+
+    if !violations.is_empty() {
+        let total = machine.bus_interactions.len() + machine.constraints.len();
+        let sample: String = violations.iter().take(5).cloned().collect::<Vec<_>>().join("\n  ");
+        panic!(
+            "canonicalize did not eliminate {} of {} expressions containing PR3740 patterns. Sample:\n  {}",
+            violations.len(),
+            total,
+            sample
+        );
+    }
+}
