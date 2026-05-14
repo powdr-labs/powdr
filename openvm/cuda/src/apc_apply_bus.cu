@@ -47,16 +47,11 @@ __global__ void apc_apply_bus_kernel(
   uint32_t bitwise_bus_id, // bitwise lookup bus id
   uint32_t* __restrict__ d_bitwise_hist // bitwise lookup histogram buffer
 ) {
-  // One thread per row. Threads past num_apc_calls return early; they're
-  // dropped from __activemask() in subsequent warp-dedup atomics so they
-  // don't corrupt the histogram update.
+  // One thread per row; threads past num_apc_calls return early.
   const int r = blockIdx.x * blockDim.x + threadIdx.x;
   if (r >= num_apc_calls) return;
 
-  // Sequentially process every interaction for this row. d_interactions
-  // and d_arg_spans are __restrict__ params, so the compiler routes them
-  // through the read-only cache (LDG) — repeated reads of the same i
-  // across blocks hit cache.
+  // Sequentially process every interaction for this row.
   for (int i = 0; i < (int)n_interactions; ++i) {
     DevInteraction intr = d_interactions[i];
 
