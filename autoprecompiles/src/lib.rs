@@ -5,7 +5,9 @@ use crate::empirical_constraints::{ConstraintGenerator, EmpiricalConstraints};
 use crate::evaluation::AirStats;
 use crate::execution::OptimisticConstraints;
 use crate::export::ExportOptions;
-use crate::expression_conversion::{algebraic_to_grouped_expression, grouped_expression_to_algebraic};
+use crate::expression_conversion::{
+    algebraic_to_grouped_expression, grouped_expression_to_algebraic,
+};
 use crate::optimistic::algebraic_references::BlockCellAlgebraicReferenceMapper;
 use crate::optimistic::config::optimistic_precompile_config;
 use crate::optimistic::execution_constraint_generator::generate_execution_constraints;
