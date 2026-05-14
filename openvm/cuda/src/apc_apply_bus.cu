@@ -51,47 +51,49 @@ __global__ void apc_apply_bus_kernel(
   const int r = blockIdx.x * blockDim.x + threadIdx.x;
   if (r >= num_apc_calls) return;
 
-  // Sequentially process every interaction for this row.
   for (int i = 0; i < (int)n_interactions; ++i) {
     DevInteraction intr = d_interactions[i];
 
-    // Evaluate multiplicity first; skip the whole interaction if zero.
-    ExprSpan mult_span = d_arg_spans[intr.args_index_off + 0];
-    Fp mult = eval_arg(mult_span, d_bytecode, d_output, (size_t)r);
-    uint32_t m = mult.asUInt32();
-    if (m == 0u) continue;
+    // Block scope preserves the body's original indentation (was inside
+    // the old `for (int r = lane; ...)` lane loop) — minimises the diff.
+    {
+      ExprSpan mult_span = d_arg_spans[intr.args_index_off + 0];
+      Fp mult = eval_arg(mult_span, d_bytecode, d_output, (size_t)r);
+      uint32_t m = mult.asUInt32();
+      if (m == 0u) continue;
 
-    if (intr.bus_id == var_range_bus_id) {
-      // expect [value, max_bits]
-      ExprSpan s0 = d_arg_spans[intr.args_index_off + 1];
-      ExprSpan s1 = d_arg_spans[intr.args_index_off + 2];
-      uint32_t value    = eval_arg(s0, d_bytecode, d_output, (size_t)r).asUInt32();
-      uint32_t max_bits = eval_arg(s1, d_bytecode, d_output, (size_t)r).asUInt32();
-      lookup::Histogram hist(d_var_hist, (uint32_t)var_num_bins);
-      uint32_t idx = (1u << max_bits) + value - 1u; // matches VariableRangeChecker::add_count
-      for (uint32_t k = 0; k < m; ++k) hist.add_count(idx);
-    } else if (intr.bus_id == tuple2_bus_id) {
-      // expect [v0, v1]
-      ExprSpan s0 = d_arg_spans[intr.args_index_off + 1];
-      ExprSpan s1 = d_arg_spans[intr.args_index_off + 2];
-      uint32_t v0 = eval_arg(s0, d_bytecode, d_output, (size_t)r).asUInt32();
-      uint32_t v1 = eval_arg(s1, d_bytecode, d_output, (size_t)r).asUInt32();
-      lookup::Histogram hist(d_tuple2_hist, tuple2_sz0 * tuple2_sz1);
-      uint32_t idx = v0 * tuple2_sz1 + v1;
-      for (uint32_t k = 0; k < m; ++k) hist.add_count(idx);
-    } else if (intr.bus_id == bitwise_bus_id) {
-      // expect [x, y, x_xor_y, selector]; arg[2] (x_xor_y) unused — re-derived from (x, y).
-      ExprSpan s0 = d_arg_spans[intr.args_index_off + 1];
-      ExprSpan s1 = d_arg_spans[intr.args_index_off + 2];
-      ExprSpan s3 = d_arg_spans[intr.args_index_off + 4];
-      uint32_t x        = eval_arg(s0, d_bytecode, d_output, (size_t)r).asUInt32();
-      uint32_t y        = eval_arg(s1, d_bytecode, d_output, (size_t)r).asUInt32();
-      uint32_t selector = eval_arg(s3, d_bytecode, d_output, (size_t)r).asUInt32();
-      BitwiseOperationLookup bl(d_bitwise_hist, BITWISE_NUM_BITS);
-      for (uint32_t k = 0; k < m; ++k) {
-        if (selector == 0u)      bl.add_range(x, y);
-        else if (selector == 1u) bl.add_xor(x, y);
-        else { assert(false && "Invalid selector"); }
+      if (intr.bus_id == var_range_bus_id) {
+        // expect [value, max_bits]
+        ExprSpan s0 = d_arg_spans[intr.args_index_off + 1];
+        ExprSpan s1 = d_arg_spans[intr.args_index_off + 2];
+        uint32_t value    = eval_arg(s0, d_bytecode, d_output, (size_t)r).asUInt32();
+        uint32_t max_bits = eval_arg(s1, d_bytecode, d_output, (size_t)r).asUInt32();
+        lookup::Histogram hist(d_var_hist, (uint32_t)var_num_bins);
+        uint32_t idx = (1u << max_bits) + value - 1u; // matches VariableRangeChecker::add_count
+        for (uint32_t k = 0; k < m; ++k) hist.add_count(idx);
+      } else if (intr.bus_id == tuple2_bus_id) {
+        // expect [v0, v1]
+        ExprSpan s0 = d_arg_spans[intr.args_index_off + 1];
+        ExprSpan s1 = d_arg_spans[intr.args_index_off + 2];
+        uint32_t v0 = eval_arg(s0, d_bytecode, d_output, (size_t)r).asUInt32();
+        uint32_t v1 = eval_arg(s1, d_bytecode, d_output, (size_t)r).asUInt32();
+        lookup::Histogram hist(d_tuple2_hist, tuple2_sz0 * tuple2_sz1);
+        uint32_t idx = v0 * tuple2_sz1 + v1;
+        for (uint32_t k = 0; k < m; ++k) hist.add_count(idx);
+      } else if (intr.bus_id == bitwise_bus_id) {
+        // expect [x, y, x_xor_y, selector]; arg[2] (x_xor_y) unused — re-derived from (x, y).
+        ExprSpan s0 = d_arg_spans[intr.args_index_off + 1];
+        ExprSpan s1 = d_arg_spans[intr.args_index_off + 2];
+        ExprSpan s3 = d_arg_spans[intr.args_index_off + 4];
+        uint32_t x        = eval_arg(s0, d_bytecode, d_output, (size_t)r).asUInt32();
+        uint32_t y        = eval_arg(s1, d_bytecode, d_output, (size_t)r).asUInt32();
+        uint32_t selector = eval_arg(s3, d_bytecode, d_output, (size_t)r).asUInt32();
+        BitwiseOperationLookup bl(d_bitwise_hist, BITWISE_NUM_BITS);
+        for (uint32_t k = 0; k < m; ++k) {
+          if (selector == 0u)      bl.add_range(x, y);
+          else if (selector == 1u) bl.add_xor(x, y);
+          else { assert(false && "Invalid selector"); }
+        }
       }
     }
   }
