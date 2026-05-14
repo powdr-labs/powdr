@@ -129,11 +129,10 @@ extern "C" int _apc_apply_bus(
   uint32_t bitwise_bus_id, // bitwise lookup bus id
   uint32_t* d_bitwise_hist // bitwise lookup histogram (device)
 ) {
+  if (num_apc_calls <= 0) return cudaSuccess;
   const int block_x = 128;
   const dim3 block(block_x, 1, 1);
-  size_t g_size = ((size_t)(num_apc_calls > 0 ? num_apc_calls : 1) + (size_t)block_x - 1) / (size_t)block_x;
-  unsigned g = (unsigned)g_size;
-  if (g == 0u) g = 1u;
+  const unsigned g = (unsigned)(((size_t)num_apc_calls + (size_t)block_x - 1) / (size_t)block_x);
   const dim3 grid(g, 1, 1);
   apc_apply_bus_kernel<<<grid, block>>>(
     // APC related
