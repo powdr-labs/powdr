@@ -54,8 +54,6 @@ __global__ void apc_apply_bus_kernel(
   for (int i = 0; i < (int)n_interactions; ++i) {
     DevInteraction intr = d_interactions[i];
 
-    // Block scope preserves the body's original indentation (was inside
-    // the old `for (int r = lane; ...)` lane loop) — minimises the diff.
     {
       ExprSpan mult_span = d_arg_spans[intr.args_index_off + 0];
       Fp mult = eval_arg(mult_span, d_bytecode, d_output, (size_t)r);
