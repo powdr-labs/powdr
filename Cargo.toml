@@ -123,6 +123,17 @@ powdr-autoprecompiles = { path = "./autoprecompiles" }
 powdr-expression = { path = "./expression" }
 powdr-constraint-solver = { path = "./constraint-solver" }
 
+# Local fork: 1-line visibility flip (`pub(crate) mod rules` → `pub mod rules`
+# in cuda-backend/src/logup_zerocheck/mod.rs) so the GKR Rule/DAG
+# infrastructure is callable from powdr for the bus_kernel DAG-eval prototype.
+[patch."https://github.com/powdr-labs/stark-backend.git"]
+openvm-stark-sdk = { path = "/home/steve/stark-backend-dag-prototype/crates/stark-sdk" }
+openvm-stark-backend = { path = "/home/steve/stark-backend-dag-prototype/crates/stark-backend" }
+openvm-cpu-backend = { path = "/home/steve/stark-backend-dag-prototype/crates/cpu-backend" }
+openvm-cuda-backend = { path = "/home/steve/stark-backend-dag-prototype/crates/cuda-backend" }
+openvm-cuda-builder = { path = "/home/steve/stark-backend-dag-prototype/crates/cuda-builder" }
+openvm-cuda-common = { path = "/home/steve/stark-backend-dag-prototype/crates/cuda-common" }
+
 [profile.pr-tests]
 inherits = "dev"
 opt-level = 3

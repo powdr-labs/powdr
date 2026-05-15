@@ -61,7 +61,71 @@ extern "C" {
         bitwise_bus_id: u32,      // bus id for the bitwise lookup
         d_bitwise_hist: *mut u32, // device histogram for bitwise lookup
     ) -> i32;
+
+    /// Launches the GKR-DAG variant of the bus kernel.
+    ///
+    /// Safety: All pointers must be valid device pointers for the specified lengths.
+    pub fn _apc_apply_bus_dag(
+        // APC trace
+        d_output: *const BabyBear,
+        num_apc_calls: i32,
+        apc_height: u32,
+
+        // Rules: encoded 128-bit `Rule { low, high }` array
+        d_rules: *const DevRule,
+        n_rules: u32,
+
+        // Interaction-output dispatch table
+        d_interactions: *const DevInteractionDag,
+        n_interactions: u32,
+        d_output_descs: *const OutputDesc,
+
+        // Histograms
+        var_range_bus_id: u32,
+        d_var_hist: *mut u32,
+        var_num_bins: u32,
+        tuple2_bus_id: u32,
+        d_tuple2_hist: *mut u32,
+        tuple2_sz0: u32,
+        tuple2_sz1: u32,
+        bitwise_bus_id: u32,
+        d_bitwise_hist: *mut u32,
+    ) -> i32;
 }
+
+/// Device-side encoded rule. Matches `Rule { uint64_t low; uint64_t high; }`
+/// in `codec.cuh` and the `u128` produced by stark-backend's
+/// `RuleWithFlag::encode()`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct DevRule {
+    pub low: u64,
+    pub high: u64,
+}
+
+/// GPU-side bus interaction descriptor for the DAG kernel.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct DevInteractionDag {
+    pub bus_id: u32,
+    pub num_args: u32,
+    pub outputs_off: u32,
+    pub flags: u32,
+}
+
+/// Per-output dispatch descriptor. The kernel reads `kind` to choose between
+/// (Inter: read inter\[value\]), (Col: read d_output\[value + r\]), or
+/// (Const: emit Fp(value)).
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct OutputDesc {
+    pub kind: u32,
+    pub value: u32,
+}
+
+pub const OUTPUT_KIND_INTER: u32 = 0;
+pub const OUTPUT_KIND_COL: u32 = 1;
+pub const OUTPUT_KIND_CONST: u32 = 2;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -224,6 +288,46 @@ pub fn apc_apply_bus(
             tuple2_sizes[0],
             tuple2_sizes[1],
             // Bitwise related
+            bitwise_bus_id,
+            bitwise_count.as_mut_ptr() as *mut u32,
+        ))
+    }
+}
+
+/// High-level safe wrapper for `_apc_apply_bus_dag`.
+#[allow(clippy::too_many_arguments)]
+pub fn apc_apply_bus_dag(
+    output: &DeviceMatrix<BabyBear>,
+    num_apc_calls: usize,
+    apc_height: usize,
+    rules: &DeviceBuffer<DevRule>,
+    interactions: &DeviceBuffer<DevInteractionDag>,
+    output_descs: &DeviceBuffer<OutputDesc>,
+    var_range_bus_id: u32,
+    var_range_count: &DeviceBuffer<BabyBear>,
+    tuple2_bus_id: u32,
+    tuple2_count: &DeviceBuffer<BabyBear>,
+    tuple2_sizes: [u32; 2],
+    bitwise_bus_id: u32,
+    bitwise_count: &DeviceBuffer<BabyBear>,
+) -> Result<(), CudaError> {
+    unsafe {
+        CudaError::from_result(_apc_apply_bus_dag(
+            output.buffer().as_ptr(),
+            num_apc_calls as i32,
+            apc_height as u32,
+            rules.as_ptr(),
+            rules.len() as u32,
+            interactions.as_ptr(),
+            interactions.len() as u32,
+            output_descs.as_ptr(),
+            var_range_bus_id,
+            var_range_count.as_mut_ptr() as *mut u32,
+            var_range_count.len() as u32,
+            tuple2_bus_id,
+            tuple2_count.as_mut_ptr() as *mut u32,
+            tuple2_sizes[0],
+            tuple2_sizes[1],
             bitwise_bus_id,
             bitwise_count.as_mut_ptr() as *mut u32,
         ))
