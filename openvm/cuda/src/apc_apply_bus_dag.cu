@@ -236,14 +236,19 @@ extern "C" int _apc_apply_bus_dag(
     uint32_t tuple2_sz0,
     uint32_t tuple2_sz1,
     uint32_t bitwise_bus_id,
-    uint32_t *d_bitwise_hist
+    uint32_t *d_bitwise_hist,
+
+    // CUDA stream to launch the kernel on. NULL = legacy default stream (effectively
+    // cudaStreamLegacy). Pass a per-chip stream from the host pool to overlap with
+    // other chips' bus_kernels on the GPU.
+    cudaStream_t stream
 ) {
     if (num_apc_calls <= 0) return cudaSuccess;
     const int block_x = 128;
     const dim3 block(block_x, 1, 1);
     const uint32_t g_size = (uint32_t)((num_apc_calls + block_x - 1) / block_x);
     const dim3 grid(g_size, 1, 1);
-    apc_apply_bus_dag_kernel<<<grid, block>>>(
+    apc_apply_bus_dag_kernel<<<grid, block, 0, stream>>>(
         d_output, num_apc_calls, apc_height,
         d_rules, n_rules,
         d_interactions, n_interactions, d_output_descs,

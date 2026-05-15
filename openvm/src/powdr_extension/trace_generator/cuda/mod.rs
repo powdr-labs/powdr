@@ -651,9 +651,43 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
             })
         }
 
+        // Round-robin stream pool. Each PowdrAir's DAG bus_kernel launches on
+        // its assigned stream so multiple chips' kernels can overlap on the
+        // GPU. After each launch we insert a `default_stream_wait` so
+        // subsequent default-stream operations (periphery chip tracegen, D2H)
+        // wait for the kernel to finish.
+        //
+        // POWDR_BUS_DAG_STREAMS sets the pool size; default 8. Set to 1 to
+        // disable concurrent execution (baseline A/B).
+        fn dag_kernel_stream() -> &'static openvm_cuda_common::stream::CudaStream {
+            use std::sync::atomic::{AtomicUsize, Ordering};
+            static POOL: std::sync::OnceLock<Vec<openvm_cuda_common::stream::CudaStream>> =
+                std::sync::OnceLock::new();
+            static CURSOR: AtomicUsize = AtomicUsize::new(0);
+            let pool = POOL.get_or_init(|| {
+                let n: usize = std::env::var("POWDR_BUS_DAG_STREAMS")
+                    .ok()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(8);
+                (0..n.max(1))
+                    .map(|_| openvm_cuda_common::stream::CudaStream::new().unwrap())
+                    .collect()
+            });
+            let idx = CURSOR.fetch_add(1, Ordering::Relaxed) % pool.len();
+            &pool[idx]
+        }
+
+        // Pick the stream once per chip — used for both H2D and kernel launch
+        // so they share ordering on the same hardware queue.
+        let dag_stream = if use_dag_kernel() {
+            Some(dag_kernel_stream())
+        } else {
+            None
+        };
+
         // Encode bus interactions. Both paths build their device buffers under
         // the same `bus_compile_h2d` substage so the two kernels A/B fairly.
-        let bus_dag_inputs: Option<(_, _, _, _)> = if use_dag_kernel() {
+        let bus_dag_inputs: Option<(_, _, _, _)> = if let Some(stream) = dag_stream {
             Some(timed_substage!("bus_compile_h2d", {
                 let (rules, interactions, output_descs, buffer_size) =
                     expr_dag::compile_bus_to_gpu_dag(
@@ -669,9 +703,9 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
                 let intermediates =
                     openvm_cuda_common::d_buffer::DeviceBuffer::<BabyBear>::with_capacity(inter_len);
                 (
-                    rules.to_device().unwrap(),
-                    interactions.to_device().unwrap(),
-                    output_descs.to_device().unwrap(),
+                    rules.to_device_on(stream.as_raw()).unwrap(),
+                    interactions.to_device_on(stream.as_raw()).unwrap(),
+                    output_descs.to_device_on(stream.as_raw()).unwrap(),
                     intermediates,
                 )
             }))
@@ -720,6 +754,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         // This is important because bus evaluation depends on trace results.
         timed_substage!("bus_kernel", {
             if let Some((rules, interactions, output_descs, intermediates)) = bus_dag_inputs {
+                let stream = dag_stream.expect("dag_stream picked when use_dag_kernel()");
                 cuda_abi::apc_apply_bus_dag(
                     &output,
                     num_apc_calls,
@@ -735,8 +770,25 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
                     tuple2_sizes,
                     bitwise_bus_id,
                     bitwise_count_u32,
+                    stream,
                 )
                 .unwrap();
+                // Sync the kernel back into cudaStreamPerThread so periphery
+                // chips (range/tuple/bitwise tracegen, downstream openvm
+                // operations on cudaStreamPerThread) see the histogram
+                // writes. Without this we get NonzeroRootSum in LOGUP GKR.
+                //
+                // CAVEAT: this re-serializes kernels — the next chip's
+                // d_malloc (via cudaMallocAsync on cudaStreamPerThread)
+                // blocks behind this wait, so subsequent kernels can't
+                // overlap with prior kernels. Streams pool size is currently
+                // a no-op for perf. To actually unlock cross-chip kernel
+                // concurrency we'd need: stream-aware d_malloc + an
+                // openvm-side "after all chips, before periphery" sync
+                // hook. Out of scope for this prototype.
+                let event = openvm_cuda_common::stream::CudaEvent::new().unwrap();
+                unsafe { event.record(stream.as_raw()) }.unwrap();
+                openvm_cuda_common::stream::default_stream_wait(&event).unwrap();
             } else if let Some((bus_interactions, arg_spans, bytecode)) = bus_vm_inputs {
                 cuda_abi::apc_apply_bus(
                     &output,
