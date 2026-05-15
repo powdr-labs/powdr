@@ -653,17 +653,26 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
 
         // Encode bus interactions. Both paths build their device buffers under
         // the same `bus_compile_h2d` substage so the two kernels A/B fairly.
-        let bus_dag_inputs: Option<(_, _, _)> = if use_dag_kernel() {
+        let bus_dag_inputs: Option<(_, _, _, _)> = if use_dag_kernel() {
             Some(timed_substage!("bus_compile_h2d", {
-                let (rules, interactions, output_descs) = expr_dag::compile_bus_to_gpu_dag(
-                    &self.apc.machine.bus_interactions,
-                    &apc_poly_id_to_index,
-                    height,
-                );
+                let (rules, interactions, output_descs, buffer_size) =
+                    expr_dag::compile_bus_to_gpu_dag(
+                        &self.apc.machine.bus_interactions,
+                        &apc_poly_id_to_index,
+                        height,
+                    );
+                // Global-mode intermediates buffer: slot-major coalesced.
+                // total_threads = grid_size * block_size = ceil(num_apc_calls / 128) * 128.
+                let block_x = 128usize;
+                let total_threads = num_apc_calls.div_ceil(block_x) * block_x;
+                let inter_len = total_threads * buffer_size.max(1);
+                let intermediates =
+                    openvm_cuda_common::d_buffer::DeviceBuffer::<BabyBear>::with_capacity(inter_len);
                 (
                     rules.to_device().unwrap(),
                     interactions.to_device().unwrap(),
                     output_descs.to_device().unwrap(),
+                    intermediates,
                 )
             }))
         } else {
@@ -710,7 +719,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         // the next kernel function after the prior (`apc_tracegen`) returns.
         // This is important because bus evaluation depends on trace results.
         timed_substage!("bus_kernel", {
-            if let Some((rules, interactions, output_descs)) = bus_dag_inputs {
+            if let Some((rules, interactions, output_descs, intermediates)) = bus_dag_inputs {
                 cuda_abi::apc_apply_bus_dag(
                     &output,
                     num_apc_calls,
@@ -718,6 +727,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
                     &rules,
                     &interactions,
                     &output_descs,
+                    &intermediates,
                     var_range_bus_id,
                     var_range_count,
                     tuple2_bus_id,

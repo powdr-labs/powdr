@@ -187,7 +187,7 @@ pub fn compile_bus_to_gpu_dag(
     bus_interactions: &[SymbolicBusInteraction<BabyBear>],
     id_to_apc_index: &std::collections::BTreeMap<u64, usize>,
     apc_height: usize,
-) -> (Vec<DevRule>, Vec<DevInteractionDag>, Vec<OutputDesc>) {
+) -> (Vec<DevRule>, Vec<DevInteractionDag>, Vec<OutputDesc>, usize) {
     let (dag, outputs) = algebraic_to_symbolic_dag(bus_interactions, id_to_apc_index);
     let rules_gpu: SymbolicRulesGpu<BabyBear> = SymbolicRulesGpu::new(&dag, /*buffer_vars=*/ true);
 
@@ -269,7 +269,7 @@ pub fn compile_bus_to_gpu_dag(
         });
     }
 
-    (dev_rules, dev_interactions, output_descs)
+    (dev_rules, dev_interactions, output_descs, rules_gpu.buffer_size)
 }
 
 fn rule_to_output_desc(rule: &Rule<BabyBear>, apc_height: usize) -> OutputDesc {

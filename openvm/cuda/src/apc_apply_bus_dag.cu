@@ -8,32 +8,30 @@
 #include "codec.cuh"   // vendored from stark-backend (see openvm/cuda/include/codec.cuh)
 
 // =============================================================================
-// GKR-style DAG evaluation kernel for bus interactions.
+// GKR-style DAG evaluation kernel for bus interactions (GLOBAL-buffer variant).
 //
 // One thread per row. Each row:
 //   1. Walks the per-chip Rule[] (CSE-deduped 128-bit encoded rules from
-//      stark-backend's SymbolicRulesBuilder), filling a per-thread Fp inter[K]
-//      register array with intermediate results. Only rules whose `z` is
-//      Source::Intermediate write to a slot.
+//      stark-backend's SymbolicRulesBuilder), filling a per-thread slice of
+//      `d_intermediates` with intermediate results. Layout is slot-major
+//      coalesced: thread `t`'s slot `s` lives at `d_intermediates[s*stride + t]`
+//      with `stride = total_threads`, so a warp's 32 threads accessing the
+//      same slot read 32 contiguous u32s → one cache line.
 //   2. For each bus interaction, reads `(mult, arg0, ..., argN)` from its
 //      pre-computed dispatch table — either from `inter[slot]` (buffered
-//      sub-expression), from `d_output[col_base + r]` (single-use bare column
-//      that the scheduler didn't buffer), or as an inline `Fp(constant)`.
+//      sub-expression in d_intermediates), from `d_output[col_base + r]`
+//      (single-use bare column that the scheduler didn't buffer), or as an
+//      inline `Fp(constant)`.
 //   3. Dispatches to range / tuple2 / bitwise histograms — identical logic
 //      to apc_apply_bus_kernel.
 //
-// Spike data on pairing APC=500 showed max `buffer_size = 15` across all
-// chips, so K = 24 local-mode slots are always sufficient. No global
-// intermediates buffer needed.
+// The earlier local-mode variant (`Fp inter[LOCAL_K]`) blew up the per-thread
+// stack frame to 8 KB on chips with buffer_size > 1024 (max observed: 1762),
+// trashing L1 with per-thread random-access local-memory traffic. This global
+// variant trades that for coalesced DRAM reads/writes through a per-launch
+// `DeviceBuffer<Fp>` allocated at `total_threads * buffer_size` Fps.
 // =============================================================================
 
-// Compile-time local buffer size. Must be >= the max `buffer_size` reported
-// by SymbolicRulesGpu across all PowdrAir chips in the workload. With the
-// scheduler patch pinning output slots, buffer_size can grow into the
-// hundreds on chips with many outputs — register-array of this size will
-// spill to local memory (DRAM-backed L1-cached), which is correct but slow.
-// First-correctness, then optimize.
-static constexpr uint32_t LOCAL_K = 2048u;
 static constexpr uint32_t BITWISE_NUM_BITS = 8u;
 
 extern "C" {
@@ -63,14 +61,15 @@ __device__ __forceinline__ Fp evaluate_dag_entry_bus(
     const SourceInfo &src,
     uint32_t row,
     const Fp *__restrict__ d_main,   // APC trace buffer (column-major)
-    const Fp *inter,                 // per-thread Fp inter[K] register array
+    const Fp *inter,                 // points at thread's slot-0 entry in d_intermediates
+    uint32_t inter_stride,           // total threads in grid (slot-major stride)
     uint32_t H                       // APC height (for column-major stride)
 ) {
     switch (src.type) {
     case ENTRY_MAIN:
         return d_main[H * src.index + row];
     case SRC_INTERMEDIATE:
-        return inter[src.index];
+        return inter[src.index * inter_stride];
     case SRC_CONSTANT:
         return Fp(src.index);  // src.index holds the constant value
     default:
@@ -93,6 +92,10 @@ __global__ void apc_apply_bus_dag_kernel(
     uint32_t n_interactions,
     const OutputDesc *__restrict__ d_output_descs,
 
+    // Global-mode intermediates buffer. Layout: slot-major coalesced.
+    // Size = total_threads * buffer_size Fps.
+    Fp *__restrict__ d_intermediates,
+
     // Periphery histograms (unchanged from stack-VM kernel)
     uint32_t var_range_bus_id,
     uint32_t *__restrict__ d_var_hist,
@@ -104,10 +107,13 @@ __global__ void apc_apply_bus_dag_kernel(
     uint32_t bitwise_bus_id,
     uint32_t *__restrict__ d_bitwise_hist
 ) {
-    const uint32_t r = blockIdx.x * blockDim.x + threadIdx.x;
+    const uint32_t total_threads = gridDim.x * blockDim.x;
+    const uint32_t thread_id = blockIdx.x * blockDim.x + threadIdx.x;
+    const uint32_t r = thread_id;
     if (r >= (uint32_t)num_apc_calls) return;
 
-    Fp inter[LOCAL_K];
+    Fp *inter = d_intermediates + thread_id;
+    const uint32_t inter_stride = total_threads;
 
     // -------- Phase 1: walk rules, fill `inter[]` --------
     for (uint32_t ri = 0; ri < n_rules; ++ri) {
@@ -117,31 +123,31 @@ __global__ void apc_apply_bus_dag_kernel(
         Fp val;
         switch (hdr.op) {
         case OP_VAR:
-            val = evaluate_dag_entry_bus(hdr.x, r, d_output, inter, apc_height);
+            val = evaluate_dag_entry_bus(hdr.x, r, d_output, inter, inter_stride, apc_height);
             break;
         case OP_ADD: {
             SourceInfo y = decode_y(rule);
-            Fp a = evaluate_dag_entry_bus(hdr.x, r, d_output, inter, apc_height);
-            Fp b = evaluate_dag_entry_bus(y, r, d_output, inter, apc_height);
+            Fp a = evaluate_dag_entry_bus(hdr.x, r, d_output, inter, inter_stride, apc_height);
+            Fp b = evaluate_dag_entry_bus(y, r, d_output, inter, inter_stride, apc_height);
             val = a + b;
             break;
         }
         case OP_SUB: {
             SourceInfo y = decode_y(rule);
-            Fp a = evaluate_dag_entry_bus(hdr.x, r, d_output, inter, apc_height);
-            Fp b = evaluate_dag_entry_bus(y, r, d_output, inter, apc_height);
+            Fp a = evaluate_dag_entry_bus(hdr.x, r, d_output, inter, inter_stride, apc_height);
+            Fp b = evaluate_dag_entry_bus(y, r, d_output, inter, inter_stride, apc_height);
             val = a - b;
             break;
         }
         case OP_MUL: {
             SourceInfo y = decode_y(rule);
-            Fp a = evaluate_dag_entry_bus(hdr.x, r, d_output, inter, apc_height);
-            Fp b = evaluate_dag_entry_bus(y, r, d_output, inter, apc_height);
+            Fp a = evaluate_dag_entry_bus(hdr.x, r, d_output, inter, inter_stride, apc_height);
+            Fp b = evaluate_dag_entry_bus(y, r, d_output, inter, inter_stride, apc_height);
             val = a * b;
             break;
         }
         case OP_NEG: {
-            Fp a = evaluate_dag_entry_bus(hdr.x, r, d_output, inter, apc_height);
+            Fp a = evaluate_dag_entry_bus(hdr.x, r, d_output, inter, inter_stride, apc_height);
             val = -a;
             break;
         }
@@ -151,14 +157,14 @@ __global__ void apc_apply_bus_dag_kernel(
 
         if (hdr.buffer_result) {
             uint32_t slot = decode_z_index(rule);
-            inter[slot] = val;
+            inter[slot * inter_stride] = val;
         }
     }
 
     // -------- Phase 2: dispatch to histograms --------
     auto read_output = [&](const OutputDesc &d) -> Fp {
         switch (d.kind) {
-        case 0: return inter[d.value];
+        case 0: return inter[d.value * inter_stride];
         case 1: return d_output[d.value + r];  // value = col_base = col_idx * H
         case 2: return Fp(d.value);
         default:
@@ -219,6 +225,9 @@ extern "C" int _apc_apply_bus_dag(
     uint32_t n_interactions,
     const OutputDesc *d_output_descs,
 
+    // d_intermediates: size = total_threads * buffer_size Fps, slot-major coalesced
+    Fp *d_intermediates,
+
     uint32_t var_range_bus_id,
     uint32_t *d_var_hist,
     uint32_t var_num_bins,
@@ -238,6 +247,7 @@ extern "C" int _apc_apply_bus_dag(
         d_output, num_apc_calls, apc_height,
         d_rules, n_rules,
         d_interactions, n_interactions, d_output_descs,
+        d_intermediates,
         var_range_bus_id, d_var_hist, var_num_bins,
         tuple2_bus_id, d_tuple2_hist, tuple2_sz0, tuple2_sz1,
         bitwise_bus_id, d_bitwise_hist

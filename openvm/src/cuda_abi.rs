@@ -80,6 +80,10 @@ extern "C" {
         n_interactions: u32,
         d_output_descs: *const OutputDesc,
 
+        // Global intermediates buffer: size = total_threads * buffer_size Fps,
+        // slot-major coalesced layout.
+        d_intermediates: *mut BabyBear,
+
         // Histograms
         var_range_bus_id: u32,
         d_var_hist: *mut u32,
@@ -303,6 +307,7 @@ pub fn apc_apply_bus_dag(
     rules: &DeviceBuffer<DevRule>,
     interactions: &DeviceBuffer<DevInteractionDag>,
     output_descs: &DeviceBuffer<OutputDesc>,
+    intermediates: &DeviceBuffer<BabyBear>,
     var_range_bus_id: u32,
     var_range_count: &DeviceBuffer<BabyBear>,
     tuple2_bus_id: u32,
@@ -321,6 +326,7 @@ pub fn apc_apply_bus_dag(
             interactions.as_ptr(),
             interactions.len() as u32,
             output_descs.as_ptr(),
+            intermediates.as_mut_ptr(),
             var_range_bus_id,
             var_range_count.as_mut_ptr() as *mut u32,
             var_range_count.len() as u32,
