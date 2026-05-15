@@ -80,9 +80,13 @@ extern "C" {
         n_interactions: u32,
         d_output_descs: *const OutputDesc,
 
-        // Global intermediates buffer: size = total_threads * buffer_size Fps,
-        // slot-major coalesced layout.
+        // Intermediates buffer. When `buffer_size > LOCAL_K` (local-mode threshold
+        // baked into the CUDA kernel), this is a slot-major coalesced device
+        // buffer of `total_threads * buffer_size` Fps. When `buffer_size <= LOCAL_K`,
+        // the kernel uses a per-thread stack array and this pointer is unused
+        // (may be null).
         d_intermediates: *mut BabyBear,
+        buffer_size: u32,
 
         // Histograms
         var_range_bus_id: u32,
@@ -299,6 +303,10 @@ pub fn apc_apply_bus(
 }
 
 /// High-level safe wrapper for `_apc_apply_bus_dag`.
+///
+/// When `intermediates` is `None`, the kernel uses its local-array specialization
+/// (the per-chip `buffer_size` must be ≤ the kernel's `LOCAL_K` constant);
+/// `d_intermediates` is then passed as null and unused.
 #[allow(clippy::too_many_arguments)]
 pub fn apc_apply_bus_dag(
     output: &DeviceMatrix<BabyBear>,
@@ -307,7 +315,8 @@ pub fn apc_apply_bus_dag(
     rules: &DeviceBuffer<DevRule>,
     interactions: &DeviceBuffer<DevInteractionDag>,
     output_descs: &DeviceBuffer<OutputDesc>,
-    intermediates: &DeviceBuffer<BabyBear>,
+    intermediates: Option<&DeviceBuffer<BabyBear>>,
+    buffer_size: u32,
     var_range_bus_id: u32,
     var_range_count: &DeviceBuffer<BabyBear>,
     tuple2_bus_id: u32,
@@ -316,6 +325,9 @@ pub fn apc_apply_bus_dag(
     bitwise_bus_id: u32,
     bitwise_count: &DeviceBuffer<BabyBear>,
 ) -> Result<(), CudaError> {
+    let d_intermediates = intermediates
+        .map(|b| b.as_mut_ptr())
+        .unwrap_or(std::ptr::null_mut());
     unsafe {
         CudaError::from_result(_apc_apply_bus_dag(
             output.buffer().as_ptr(),
@@ -326,7 +338,8 @@ pub fn apc_apply_bus_dag(
             interactions.as_ptr(),
             interactions.len() as u32,
             output_descs.as_ptr(),
-            intermediates.as_mut_ptr(),
+            d_intermediates,
+            buffer_size,
             var_range_bus_id,
             var_range_count.as_mut_ptr() as *mut u32,
             var_range_count.len() as u32,
