@@ -653,12 +653,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
 
         // Encode bus interactions. Both paths build their device buffers under
         // the same `bus_compile_h2d` substage so the two kernels A/B fairly.
-        //
-        // Kernel-side `LOCAL_K = 32` (apc_apply_bus_dag.cu): chips with
-        // buffer_size ≤ this threshold use the local-array specialization and
-        // skip the slot-major intermediates allocation entirely.
-        const BUS_DAG_LOCAL_K: usize = 32;
-        let bus_dag_inputs: Option<(_, _, _, Option<_>, u32)> = if use_dag_kernel() {
+        let bus_dag_inputs: Option<(_, _, _, _)> = if use_dag_kernel() {
             Some(timed_substage!("bus_compile_h2d", {
                 let (rules, interactions, output_descs, buffer_size) =
                     expr_dag::compile_bus_to_gpu_dag(
@@ -666,33 +661,18 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
                         &apc_poly_id_to_index,
                         height,
                     );
-                // Allocate the slot-major coalesced intermediates buffer only
-                // when the kernel's global-mode specialization will run.
+                // Global-mode intermediates buffer: slot-major coalesced.
                 // total_threads = grid_size * block_size = ceil(num_apc_calls / 128) * 128.
-                // POWDR_BUS_DAG_FORCE_GLOBAL=1 disables the local-mode path
-                // for A/B perf comparison: every chip allocates the global
-                // intermediates buffer and the kernel launcher routes to the
-                // global specialization.
-                let force_global =
-                    std::env::var("POWDR_BUS_DAG_FORCE_GLOBAL").is_ok_and(|v| v != "0");
-                let intermediates = if force_global || buffer_size > BUS_DAG_LOCAL_K {
-                    let block_x = 128usize;
-                    let total_threads = num_apc_calls.div_ceil(block_x) * block_x;
-                    let inter_len = total_threads * buffer_size;
-                    Some(
-                        openvm_cuda_common::d_buffer::DeviceBuffer::<BabyBear>::with_capacity(
-                            inter_len,
-                        ),
-                    )
-                } else {
-                    None
-                };
+                let block_x = 128usize;
+                let total_threads = num_apc_calls.div_ceil(block_x) * block_x;
+                let inter_len = total_threads * buffer_size.max(1);
+                let intermediates =
+                    openvm_cuda_common::d_buffer::DeviceBuffer::<BabyBear>::with_capacity(inter_len);
                 (
                     rules.to_device().unwrap(),
                     interactions.to_device().unwrap(),
                     output_descs.to_device().unwrap(),
                     intermediates,
-                    buffer_size as u32,
                 )
             }))
         } else {
@@ -739,9 +719,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         // the next kernel function after the prior (`apc_tracegen`) returns.
         // This is important because bus evaluation depends on trace results.
         timed_substage!("bus_kernel", {
-            if let Some((rules, interactions, output_descs, intermediates, buffer_size)) =
-                bus_dag_inputs
-            {
+            if let Some((rules, interactions, output_descs, intermediates)) = bus_dag_inputs {
                 cuda_abi::apc_apply_bus_dag(
                     &output,
                     num_apc_calls,
@@ -749,8 +727,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
                     &rules,
                     &interactions,
                     &output_descs,
-                    intermediates.as_ref(),
-                    buffer_size,
+                    &intermediates,
                     var_range_bus_id,
                     var_range_count,
                     tuple2_bus_id,

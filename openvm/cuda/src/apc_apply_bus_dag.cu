@@ -8,37 +8,31 @@
 #include "codec.cuh"   // vendored from stark-backend (see openvm/cuda/include/codec.cuh)
 
 // =============================================================================
-// GKR-style DAG evaluation kernel for bus interactions.
+// GKR-style DAG evaluation kernel for bus interactions (GLOBAL-buffer variant).
 //
-// Two specializations chosen at launch time by per-chip buffer_size:
-//   * GLOBAL = true  : slot-major coalesced device buffer (any buffer_size).
-//   * GLOBAL = false : per-thread Fp[LOCAL_K] stack array. Used when
-//                      buffer_size <= LOCAL_K. The helper is templated so
-//                      the array address never escapes scope, letting nvcc
-//                      promote it to registers (verify with -res-usage that
-//                      stack frame is 0 on the local-mode specialization).
-//
-// One thread per row. Per row:
+// One thread per row. Each row:
 //   1. Walks the per-chip Rule[] (CSE-deduped 128-bit encoded rules from
-//      stark-backend's SymbolicRulesBuilder), writing each buffered result
-//      into inter[].
-//   2. For each bus interaction, reads `(mult, arg0, ..., argN)` from the
-//      pre-computed dispatch table — from inter[], from d_output[col_base + r],
-//      or as an inline constant — and dispatches to range / tuple2 / bitwise
-//      histograms.
+//      stark-backend's SymbolicRulesBuilder), filling a per-thread slice of
+//      `d_intermediates` with intermediate results. Layout is slot-major
+//      coalesced: thread `t`'s slot `s` lives at `d_intermediates[s*stride + t]`
+//      with `stride = total_threads`, so a warp's 32 threads accessing the
+//      same slot read 32 contiguous u32s → one cache line.
+//   2. For each bus interaction, reads `(mult, arg0, ..., argN)` from its
+//      pre-computed dispatch table — either from `inter[slot]` (buffered
+//      sub-expression in d_intermediates), from `d_output[col_base + r]`
+//      (single-use bare column that the scheduler didn't buffer), or as an
+//      inline `Fp(constant)`.
+//   3. Dispatches to range / tuple2 / bitwise histograms — identical logic
+//      to apc_apply_bus_kernel.
 //
-// Borrowed from GKR (stark-backend logup_zerocheck/zerocheck_round0.cu:23,
-// :214, :692): BUFFER_THRESHOLD-gated split between local-array and global
-// device-buffer intermediates.
+// The earlier local-mode variant (`Fp inter[LOCAL_K]`) blew up the per-thread
+// stack frame to 8 KB on chips with buffer_size > 1024 (max observed: 1762),
+// trashing L1 with per-thread random-access local-memory traffic. This global
+// variant trades that for coalesced DRAM reads/writes through a per-launch
+// `DeviceBuffer<Fp>` allocated at `total_threads * buffer_size` Fps.
 // =============================================================================
 
 static constexpr uint32_t BITWISE_NUM_BITS = 8u;
-// Threshold for choosing the local-array kernel specialization. Chosen empirically
-// after measuring buffer_size distribution on guest-keccak APC=10 (chips at
-// 21/21/21/21/29/30/50/81/97/2125): K=32 covers 6/10 chips while staying small
-// enough that nvcc keeps the array in registers (verified via
-// `nvcc --ptxas-options=-v`).
-static constexpr uint32_t LOCAL_K = 32u;
 
 extern "C" {
   typedef struct {
@@ -60,33 +54,22 @@ extern "C" {
 }
 
 // Decode source for the bus DAG kernel. Bus expressions only use ENTRY_MAIN,
-// SOURCE_CONSTANT, and SRC_INTERMEDIATE.
-//
-// Templated on GLOBAL: when GLOBAL=true, SRC_INTERMEDIATE goes through
-// `global_inter[src.index * inter_stride]`; when GLOBAL=false, through
-// `local_inter[src.index]`. The two paths are mutually exclusive via
-// `if constexpr`, so the unused branch (and its corresponding parameter
-// access) is pruned at compile time — critical for keeping the local
-// array's address scope-bounded so nvcc can register-allocate it.
-template <bool GLOBAL>
+// SOURCE_CONSTANT, and SRC_INTERMEDIATE (no preprocessed / public /
+// challenge / is_first / is_last / is_transition). The fourth arm is
+// unreachable for valid host-emitted rules.
 __device__ __forceinline__ Fp evaluate_dag_entry_bus(
     const SourceInfo &src,
     uint32_t row,
-    const Fp *__restrict__ d_main,
-    const Fp *global_inter,               // unused when !GLOBAL
-    uint32_t inter_stride,                // unused when !GLOBAL
-    const Fp *local_inter,                // unused when GLOBAL
-    uint32_t H
+    const Fp *__restrict__ d_main,   // APC trace buffer (column-major)
+    const Fp *inter,                 // points at thread's slot-0 entry in d_intermediates
+    uint32_t inter_stride,           // total threads in grid (slot-major stride)
+    uint32_t H                       // APC height (for column-major stride)
 ) {
     switch (src.type) {
     case ENTRY_MAIN:
         return d_main[H * src.index + row];
     case SRC_INTERMEDIATE:
-        if constexpr (GLOBAL) {
-            return global_inter[src.index * inter_stride];
-        } else {
-            return local_inter[src.index];
-        }
+        return inter[src.index * inter_stride];
     case SRC_CONSTANT:
         return Fp(src.index);  // src.index holds the constant value
     default:
@@ -94,7 +77,6 @@ __device__ __forceinline__ Fp evaluate_dag_entry_bus(
     }
 }
 
-template <bool GLOBAL>
 __global__ void apc_apply_bus_dag_kernel(
     // APC trace
     const Fp *__restrict__ d_output,
@@ -110,11 +92,11 @@ __global__ void apc_apply_bus_dag_kernel(
     uint32_t n_interactions,
     const OutputDesc *__restrict__ d_output_descs,
 
-    // Global-mode intermediates buffer (size = total_threads * buffer_size Fps,
-    // slot-major coalesced). Ignored when !GLOBAL.
+    // Global-mode intermediates buffer. Layout: slot-major coalesced.
+    // Size = total_threads * buffer_size Fps.
     Fp *__restrict__ d_intermediates,
 
-    // Periphery histograms
+    // Periphery histograms (unchanged from stack-VM kernel)
     uint32_t var_range_bus_id,
     uint32_t *__restrict__ d_var_hist,
     uint32_t var_num_bins,
@@ -130,20 +112,10 @@ __global__ void apc_apply_bus_dag_kernel(
     const uint32_t r = thread_id;
     if (r >= (uint32_t)num_apc_calls) return;
 
-    // Intermediate buffer setup. The two arms are mutually exclusive via
-    // `if constexpr`, but the local_buf declaration must be at function scope
-    // so it stays live across the loop. In GLOBAL mode, local_buf[1] is
-    // declared but never read — nvcc elides it (verified with -res-usage).
-    Fp local_buf[GLOBAL ? 1 : LOCAL_K];
-    Fp *global_inter = nullptr;
-    uint32_t inter_stride = 1;
-    if constexpr (GLOBAL) {
-        global_inter = d_intermediates + thread_id;
-        inter_stride = total_threads;
-        (void)local_buf;
-    }
+    Fp *inter = d_intermediates + thread_id;
+    const uint32_t inter_stride = total_threads;
 
-    // -------- Phase 1: walk rules, fill inter[] --------
+    // -------- Phase 1: walk rules, fill `inter[]` --------
     for (uint32_t ri = 0; ri < n_rules; ++ri) {
         Rule rule = d_rules[ri];
         RuleHeader hdr = decode_rule_header(rule);
@@ -151,39 +123,31 @@ __global__ void apc_apply_bus_dag_kernel(
         Fp val;
         switch (hdr.op) {
         case OP_VAR:
-            val = evaluate_dag_entry_bus<GLOBAL>(
-                hdr.x, r, d_output, global_inter, inter_stride, local_buf, apc_height);
+            val = evaluate_dag_entry_bus(hdr.x, r, d_output, inter, inter_stride, apc_height);
             break;
         case OP_ADD: {
             SourceInfo y = decode_y(rule);
-            Fp a = evaluate_dag_entry_bus<GLOBAL>(
-                hdr.x, r, d_output, global_inter, inter_stride, local_buf, apc_height);
-            Fp b = evaluate_dag_entry_bus<GLOBAL>(
-                y, r, d_output, global_inter, inter_stride, local_buf, apc_height);
+            Fp a = evaluate_dag_entry_bus(hdr.x, r, d_output, inter, inter_stride, apc_height);
+            Fp b = evaluate_dag_entry_bus(y, r, d_output, inter, inter_stride, apc_height);
             val = a + b;
             break;
         }
         case OP_SUB: {
             SourceInfo y = decode_y(rule);
-            Fp a = evaluate_dag_entry_bus<GLOBAL>(
-                hdr.x, r, d_output, global_inter, inter_stride, local_buf, apc_height);
-            Fp b = evaluate_dag_entry_bus<GLOBAL>(
-                y, r, d_output, global_inter, inter_stride, local_buf, apc_height);
+            Fp a = evaluate_dag_entry_bus(hdr.x, r, d_output, inter, inter_stride, apc_height);
+            Fp b = evaluate_dag_entry_bus(y, r, d_output, inter, inter_stride, apc_height);
             val = a - b;
             break;
         }
         case OP_MUL: {
             SourceInfo y = decode_y(rule);
-            Fp a = evaluate_dag_entry_bus<GLOBAL>(
-                hdr.x, r, d_output, global_inter, inter_stride, local_buf, apc_height);
-            Fp b = evaluate_dag_entry_bus<GLOBAL>(
-                y, r, d_output, global_inter, inter_stride, local_buf, apc_height);
+            Fp a = evaluate_dag_entry_bus(hdr.x, r, d_output, inter, inter_stride, apc_height);
+            Fp b = evaluate_dag_entry_bus(y, r, d_output, inter, inter_stride, apc_height);
             val = a * b;
             break;
         }
         case OP_NEG: {
-            Fp a = evaluate_dag_entry_bus<GLOBAL>(
-                hdr.x, r, d_output, global_inter, inter_stride, local_buf, apc_height);
+            Fp a = evaluate_dag_entry_bus(hdr.x, r, d_output, inter, inter_stride, apc_height);
             val = -a;
             break;
         }
@@ -193,23 +157,14 @@ __global__ void apc_apply_bus_dag_kernel(
 
         if (hdr.buffer_result) {
             uint32_t slot = decode_z_index(rule);
-            if constexpr (GLOBAL) {
-                global_inter[slot * inter_stride] = val;
-            } else {
-                local_buf[slot] = val;
-            }
+            inter[slot * inter_stride] = val;
         }
     }
 
     // -------- Phase 2: dispatch to histograms --------
     auto read_output = [&](const OutputDesc &d) -> Fp {
         switch (d.kind) {
-        case 0:
-            if constexpr (GLOBAL) {
-                return global_inter[d.value * inter_stride];
-            } else {
-                return local_buf[d.value];
-            }
+        case 0: return inter[d.value * inter_stride];
         case 1: return d_output[d.value + r];  // value = col_base = col_idx * H
         case 2: return Fp(d.value);
         default:
@@ -270,10 +225,8 @@ extern "C" int _apc_apply_bus_dag(
     uint32_t n_interactions,
     const OutputDesc *d_output_descs,
 
-    // Either: pointer to slot-major device buffer of size total_threads * buffer_size Fps,
-    // or nullptr if local-mode applies (buffer_size <= LOCAL_K).
+    // d_intermediates: size = total_threads * buffer_size Fps, slot-major coalesced
     Fp *d_intermediates,
-    uint32_t buffer_size,  // per-chip max intermediate slot count, set by host
 
     uint32_t var_range_bus_id,
     uint32_t *d_var_hist,
@@ -290,33 +243,14 @@ extern "C" int _apc_apply_bus_dag(
     const dim3 block(block_x, 1, 1);
     const uint32_t g_size = (uint32_t)((num_apc_calls + block_x - 1) / block_x);
     const dim3 grid(g_size, 1, 1);
-
-    // POWDR_BUS_DAG_FORCE_GLOBAL=1 forces the GLOBAL=true path for A/B perf
-    // comparison; intentionally side-channel since it's a benchmark hook.
-    static const bool force_global = []() {
-        const char *e = getenv("POWDR_BUS_DAG_FORCE_GLOBAL");
-        return e && e[0] != '\0' && e[0] != '0';
-    }();
-    if (!force_global && buffer_size <= LOCAL_K) {
-        apc_apply_bus_dag_kernel<false><<<grid, block>>>(
-            d_output, num_apc_calls, apc_height,
-            d_rules, n_rules,
-            d_interactions, n_interactions, d_output_descs,
-            d_intermediates,
-            var_range_bus_id, d_var_hist, var_num_bins,
-            tuple2_bus_id, d_tuple2_hist, tuple2_sz0, tuple2_sz1,
-            bitwise_bus_id, d_bitwise_hist
-        );
-    } else {
-        apc_apply_bus_dag_kernel<true><<<grid, block>>>(
-            d_output, num_apc_calls, apc_height,
-            d_rules, n_rules,
-            d_interactions, n_interactions, d_output_descs,
-            d_intermediates,
-            var_range_bus_id, d_var_hist, var_num_bins,
-            tuple2_bus_id, d_tuple2_hist, tuple2_sz0, tuple2_sz1,
-            bitwise_bus_id, d_bitwise_hist
-        );
-    }
+    apc_apply_bus_dag_kernel<<<grid, block>>>(
+        d_output, num_apc_calls, apc_height,
+        d_rules, n_rules,
+        d_interactions, n_interactions, d_output_descs,
+        d_intermediates,
+        var_range_bus_id, d_var_hist, var_num_bins,
+        tuple2_bus_id, d_tuple2_hist, tuple2_sz0, tuple2_sz1,
+        bitwise_bus_id, d_bitwise_hist
+    );
     return (int)cudaGetLastError();
 }
