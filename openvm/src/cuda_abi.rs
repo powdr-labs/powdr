@@ -1,11 +1,7 @@
 #![cfg(feature = "cuda")]
 
 use openvm_cuda_backend::base::DeviceMatrix;
-use openvm_cuda_common::{
-    d_buffer::DeviceBuffer,
-    error::CudaError,
-    stream::{cudaStream_t, CudaStream},
-};
+use openvm_cuda_common::{d_buffer::DeviceBuffer, error::CudaError};
 use openvm_stark_backend::prover::MatrixDimensions;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 
@@ -98,10 +94,6 @@ extern "C" {
         tuple2_sz1: u32,
         bitwise_bus_id: u32,
         d_bitwise_hist: *mut u32,
-
-        // CUDA stream to launch the kernel on. Pass cudaStreamPerThread or a
-        // pool-allocated CudaStream for concurrent execution.
-        stream: cudaStream_t,
     ) -> i32;
 }
 
@@ -308,7 +300,6 @@ pub fn apc_apply_bus(
 
 /// High-level safe wrapper for `_apc_apply_bus_dag`.
 #[allow(clippy::too_many_arguments)]
-#[allow(clippy::too_many_arguments)]
 pub fn apc_apply_bus_dag(
     output: &DeviceMatrix<BabyBear>,
     num_apc_calls: usize,
@@ -324,7 +315,6 @@ pub fn apc_apply_bus_dag(
     tuple2_sizes: [u32; 2],
     bitwise_bus_id: u32,
     bitwise_count: &DeviceBuffer<BabyBear>,
-    stream: &CudaStream,
 ) -> Result<(), CudaError> {
     unsafe {
         CudaError::from_result(_apc_apply_bus_dag(
@@ -346,7 +336,6 @@ pub fn apc_apply_bus_dag(
             tuple2_sizes[1],
             bitwise_bus_id,
             bitwise_count.as_mut_ptr() as *mut u32,
-            stream.as_raw(),
         ))
     }
 }
