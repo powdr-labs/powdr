@@ -53,20 +53,29 @@ cargo nextest run --release -p powdr-openvm
 
 ## CLI Usage
 
-The main CLI is `powdr_openvm_riscv` (in `cli-openvm-riscv/`):
+The main CLI is `powdr_openvm_riscv` (in `cli-openvm-riscv/`). Subcommands map
+to pipeline stages; each command runs all stages up to its own:
+
+- `generate-apcs` — profile + empirical-constraints (stub; full build-APCs lands with the PgoAdapter split)
+- `compile` — … + build/select APCs via the chosen PGO strategy
+- `setup` — … + assemble the program with the selected APCs (writes `<guest>_compiled.cbor`)
+- `execute` — … + run the guest in interpreted mode
+- `prove` — … + STARK proof (optionally `--recursion` for compression, `--mock` for constraint-only)
+
+Each command accepts arguments of its own stage and all preceding stages.
 
 ```bash
-# Compile a guest program with autoprecompiles
-cargo run -p cli-openvm -- compile guest-keccak --autoprecompiles 10 --pgo instruction --input 100
+# Compile + select APCs via instruction-PGO
+cargo run -p cli-openvm-riscv -- compile guest-keccak --autoprecompiles 10 --pgo instruction --input 100
 
-# Execute a compiled program
-cargo run -p cli-openvm -- execute guest-keccak --autoprecompiles 10 --input 100
+# Compile + run interpreted
+cargo run -p cli-openvm-riscv -- execute guest-keccak --autoprecompiles 10 --input 100
 
-# Prove (generate ZK proof)
-cargo run -p cli-openvm -- prove guest-keccak --autoprecompiles 1 --input 10
+# Compile + prove
+cargo run -p cli-openvm-riscv -- prove guest-keccak --autoprecompiles 1 --input 10
 
-# Mock prove (debug mode, verifies constraints without full proof)
-cargo run -p cli-openvm -- prove guest-keccak --mock --autoprecompiles 1 --input 10
+# Compile + mock-prove (constraints only, no STARK)
+cargo run -p cli-openvm-riscv -- prove guest-keccak --mock --autoprecompiles 1 --input 10
 ```
 
 ## Architecture
@@ -95,7 +104,7 @@ cargo run -p cli-openvm -- prove guest-keccak --mock --autoprecompiles 1 --input
 - **expression** (`expression/`): Core algebraic expression types (`AlgebraicExpression`, operators)
 - **number** (`number/`): Field element abstractions
 - **riscv-elf** (`riscv-elf/`): ELF file parsing for RISC-V binaries
-- **cli-openvm** (`cli-openvm/`): Command-line interface
+- **cli-openvm-riscv** (`cli-openvm-riscv/`): Command-line interface
 
 ### Guest Programs
 
