@@ -3,13 +3,16 @@
 Command-line interface for the powdr OpenVM RISC-V workflow. Subcommands are
 ordered by pipeline stage; each command runs all stages up to its own.
 
-| Command         | Stages run                                                     | Output                       |
-| --------------- | -------------------------------------------------------------- | ---------------------------- |
-| `generate-apcs` | Profile + build/select APCs (alias for `compile` in this release) | `<guest>_apcs.cbor`       |
-| `compile`       | Profile + build/select APCs                                    | `<guest>_apcs.cbor`          |
-| `setup`         | … + assemble the program with selected APCs                    | `<guest>_compiled.cbor`      |
-| `execute`       | … + run the guest in interpreted mode                          | side effect only             |
-| `prove`         | … + STARK proof, optionally with `--recursion` (compression)   | side effect only             |
+| Command        | Stages run                                                     | Output                       |
+| -------------- | -------------------------------------------------------------- | ---------------------------- |
+| `select-apcs`  | Profile + build/select APCs (fused)                            | `<guest>_apcs.cbor`          |
+| `setup`        | … + assemble the program with selected APCs                    | `<guest>_compiled.cbor`      |
+| `execute`      | … + run the guest in interpreted mode                          | side effect only             |
+| `prove`        | … + STARK proof, optionally with `--recursion` (compression)   | side effect only             |
+
+A separate `generate-apcs` command (building APC candidates without selection)
+is planned for a follow-up that splits build from select in the `PgoAdapter`
+trait; once that lands it will sit before `select-apcs` in the pipeline.
 
 Each command accepts the arguments of its own stage plus all preceding stages.
 For example, `prove` takes everything `setup` takes plus `--mock`,
@@ -20,7 +23,7 @@ are deliberately separate: `--profile-input` drives the execution profile used
 to pick which basic blocks to accelerate; `--input` is the actual runtime
 stdin for the interpreted run or the proof. Splitting them lets you re-prove
 the same guest with many runtime inputs without re-running the
-profile/compile/setup pipeline when combined with `--artifacts-dir`.
+profile/select/setup pipeline when combined with `--artifacts-dir`.
 
 Pass `--artifacts-dir <DIR>` (global) to persist each stage's output and reuse
 it on matching reruns. The cache key for each stage hashes only that stage's

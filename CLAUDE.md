@@ -56,29 +56,31 @@ cargo nextest run --release -p powdr-openvm
 The main CLI is `powdr_openvm_riscv` (in `cli-openvm-riscv/`). Subcommands map
 to pipeline stages; each command runs all stages up to its own:
 
-- `generate-apcs` — profile + empirical-constraints (stub; full build-APCs lands with the PgoAdapter split)
-- `compile` — … + build/select APCs via the chosen PGO strategy
+- `select-apcs` — profile + build/select APCs (fused) via the chosen PGO strategy
 - `setup` — … + assemble the program with the selected APCs (writes `<guest>_compiled.cbor`)
 - `execute` — … + run the guest in interpreted mode
 - `prove` — … + STARK proof (optionally `--recursion` for compression, `--mock` for constraint-only)
 
+A `generate-apcs` command (build-only, before selection) is planned for the
+follow-up that splits the `PgoAdapter` trait.
+
 Each command accepts arguments of its own stage and all preceding stages.
 `--profile-input` (profile-collection stdin) and `--input` (runtime stdin for
 `execute`/`prove`) are independent so that re-running with a different
-runtime input does not invalidate the compile/setup cache.
+runtime input does not invalidate the select/setup cache.
 
 ```bash
-# Compile + select APCs via instruction-PGO
-cargo run -p cli-openvm-riscv -- compile guest-keccak --autoprecompiles 10 --pgo instruction --profile-input 100
+# Select APCs via instruction-PGO
+cargo run --bin powdr_openvm_riscv -r select-apcs guest-keccak --autoprecompiles 10 --pgo instruction --profile-input 100
 
 # Compile + run interpreted
-cargo run -p cli-openvm-riscv -- execute guest-keccak --autoprecompiles 10 --profile-input 100 --input 100
+cargo run --bin powdr_openvm_riscv -r execute guest-keccak --autoprecompiles 10 --profile-input 100 --input 100
 
 # Compile + prove
-cargo run -p cli-openvm-riscv -- prove guest-keccak --autoprecompiles 1 --profile-input 10 --input 10
+cargo run --bin powdr_openvm_riscv -r prove guest-keccak --autoprecompiles 1 --profile-input 10 --input 10
 
 # Compile + mock-prove (constraints only, no STARK)
-cargo run -p cli-openvm-riscv -- prove guest-keccak --mock --autoprecompiles 1 --profile-input 10 --input 10
+cargo run --bin powdr_openvm_riscv -r prove guest-keccak --mock --autoprecompiles 1 --profile-input 10 --input 10
 ```
 
 Pass `--artifacts-dir <DIR>` (global) to persist + reuse stage outputs across

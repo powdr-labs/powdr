@@ -46,16 +46,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Build APCs and write them to `<guest>_apcs.cbor`.
+    /// Build + select APCs (fused) and write them to `<guest>_apcs.cbor`.
     ///
-    /// In this release this is operationally identical to `compile`: the
-    /// library does not expose APC build separately from selection. When the
-    /// `PgoAdapter` trait is split, `generate-apcs`'s argument set will
-    /// narrow to the build-only knobs.
-    GenerateApcs(CompileArgs),
-
-    /// Build + select APCs and write them to `<guest>_apcs.cbor`.
-    Compile(CompileArgs),
+    /// When the `PgoAdapter` trait is split in a follow-up, a separate
+    /// `generate-apcs` command will sit before `select-apcs` in the
+    /// pipeline and produce the unfiltered set of built APC candidates.
+    SelectApcs(SelectArgs),
 
     /// Assemble the final program (selected APCs injected, prover/verifier keys).
     Setup(SetupArgs),
@@ -110,7 +106,7 @@ struct GenerateApcsArgs {
 
 /// Args added by the APC-selection stage.
 #[derive(Args, Clone, Debug)]
-struct CompileArgs {
+struct SelectArgs {
     #[command(flatten)]
     generate: GenerateApcsArgs,
 
@@ -135,7 +131,7 @@ struct CompileArgs {
 #[derive(Args, Clone, Debug)]
 struct SetupArgs {
     #[command(flatten)]
-    compile: CompileArgs,
+    select: SelectArgs,
 }
 
 /// Args added by the execute stage.
@@ -192,29 +188,29 @@ fn main() -> Result<(), io::Error> {
 
 fn run_command(command: Commands, artifacts_dir: Option<&Path>) {
     match command {
-        Commands::GenerateApcs(args) | Commands::Compile(args) => {
+        Commands::SelectApcs(args) => {
             validate(&args);
             let guest = args.generate.profile.guest.clone();
             let mut pipeline = Pipeline::new(args.generate.profile.clone());
-            let apcs = pipeline.run_compile_apcs(&args, artifacts_dir);
-            tracing::info!("Built {} autoprecompiles", apcs.len());
+            let apcs = pipeline.run_select_apcs(&args, artifacts_dir);
+            tracing::info!("Selected {} autoprecompiles", apcs.len());
             write_apcs_to_file(&apcs, &format!("{guest}_apcs.cbor")).unwrap();
         }
 
         Commands::Setup(args) => {
-            validate(&args.compile);
-            superblock_runtime_check(&args.compile);
-            let guest = args.compile.generate.profile.guest.clone();
-            let pipeline = Pipeline::new(args.compile.generate.profile.clone());
+            validate(&args.select);
+            superblock_runtime_check(&args.select);
+            let guest = args.select.generate.profile.guest.clone();
+            let pipeline = Pipeline::new(args.select.generate.profile.clone());
             let program = pipeline.run_setup(&args, artifacts_dir);
             write_program_to_file(program, &format!("{guest}_compiled.cbor")).unwrap();
         }
 
         Commands::Execute(args) => {
-            validate(&args.setup.compile);
-            superblock_runtime_check(&args.setup.compile);
+            validate(&args.setup.select);
+            superblock_runtime_check(&args.setup.select);
             let runtime_input = args.input;
-            let pipeline = Pipeline::new(args.setup.compile.generate.profile.clone());
+            let pipeline = Pipeline::new(args.setup.select.generate.profile.clone());
             let run = || {
                 let program = pipeline.run_setup(&args.setup, artifacts_dir);
                 powdr_openvm::execute(program, stdin_from(runtime_input)).unwrap();
@@ -230,12 +226,12 @@ fn run_command(command: Commands, artifacts_dir: Option<&Path>) {
         }
 
         Commands::Prove(args) => {
-            validate(&args.setup.compile);
-            superblock_runtime_check(&args.setup.compile);
+            validate(&args.setup.select);
+            superblock_runtime_check(&args.setup.select);
             let runtime_input = args.input;
             let mock = args.mock;
             let recursion = args.recursion;
-            let pipeline = Pipeline::new(args.setup.compile.generate.profile.clone());
+            let pipeline = Pipeline::new(args.setup.select.generate.profile.clone());
             let run = || {
                 let program = pipeline.run_setup(&args.setup, artifacts_dir);
                 powdr_openvm_riscv::prove(
@@ -259,7 +255,7 @@ fn run_command(command: Commands, artifacts_dir: Option<&Path>) {
     }
 }
 
-fn validate(args: &CompileArgs) {
+fn validate(args: &SelectArgs) {
     if args.generate.superblocks > 1 && !matches!(args.pgo, PgoType::Cell) {
         Cli::command()
             .error(
@@ -270,7 +266,7 @@ fn validate(args: &CompileArgs) {
     }
 }
 
-fn superblock_runtime_check(args: &CompileArgs) {
+fn superblock_runtime_check(args: &SelectArgs) {
     if args.generate.superblocks > 1 {
         Cli::command()
             .error(
@@ -281,7 +277,7 @@ fn superblock_runtime_check(args: &CompileArgs) {
     }
 }
 
-fn build_powdr_config(args: &CompileArgs) -> PowdrConfig {
+fn build_powdr_config(args: &SelectArgs) -> PowdrConfig {
     let mut powdr_config =
         default_powdr_openvm_config(args.autoprecompiles as u64, args.skip as u64);
     if let Some(apc_candidates_dir) = &args.generate.apc_candidates_dir {
@@ -328,14 +324,14 @@ impl Pipeline {
     }
 
     /// Run the profile + APC-build/select pipeline, or load it from the cache.
-    fn run_compile_apcs(
+    fn run_select_apcs(
         &mut self,
-        args: &CompileArgs,
+        args: &SelectArgs,
         artifacts_dir: Option<&Path>,
     ) -> Vec<AdapterApcWithStats<BabyBearOpenVmApcAdapter<'static, RiscvISA>>> {
         let hash = stage_hash(args);
-        if let Some(cached) = load_cached(artifacts_dir, "compile", &hash) {
-            tracing::info!("cache hit: compile/{hash}");
+        if let Some(cached) = load_cached(artifacts_dir, "select", &hash) {
+            tracing::info!("cache hit: select/{hash}");
             return cached;
         }
         let powdr_config = build_powdr_config(args);
@@ -347,7 +343,7 @@ impl Pipeline {
             powdr_openvm::execution_profile_from_guest(guest, profile_stdin.clone());
         let pgo = pgo_config(args.pgo, args.max_columns, execution_profile);
         let apcs = compile_apcs(guest, &powdr_config, pgo, empirical_constraints);
-        save_cached(artifacts_dir, "compile", &hash, &apcs);
+        save_cached(artifacts_dir, "select", &hash, &apcs);
         apcs
     }
 
@@ -364,8 +360,8 @@ impl Pipeline {
             tracing::info!("cache hit: setup/{hash}");
             return cached;
         }
-        let apcs = self.run_compile_apcs(&args.compile, artifacts_dir);
-        let powdr_config = build_powdr_config(&args.compile);
+        let apcs = self.run_select_apcs(&args.select, artifacts_dir);
+        let powdr_config = build_powdr_config(&args.select);
         let guest = self.take_guest();
         let program = setup(guest, apcs, powdr_config.degree_bound);
         save_cached(artifacts_dir, "setup", &hash, &program);
