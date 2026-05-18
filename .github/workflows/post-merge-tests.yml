@@ -43,13 +43,13 @@ jobs:
           cargo +1.91.1 install --git 'https://github.com/powdr-labs/openvm.git' --tag "v2.0.0-beta.2-powdr" cargo-openvm
 
       - name: Run keccak with 100 APCs
-        run: /usr/bin/time -v cargo run --bin powdr_openvm_riscv -r prove guest-keccak --input 10000 --autoprecompiles 100 --recursion
+        run: /usr/bin/time -v cargo run --bin powdr_openvm_riscv -r prove guest-keccak --profile-input 10000 --input 10000 --autoprecompiles 100 --recursion
 
       - name: Run ECC with 100 APCs
-        run: /usr/bin/time -v cargo run --bin powdr_openvm_riscv -r prove guest-ecc-powdr-affine-hint --input 20 --autoprecompiles 100 --recursion
+        run: /usr/bin/time -v cargo run --bin powdr_openvm_riscv -r prove guest-ecc-powdr-affine-hint --profile-input 20 --input 20 --autoprecompiles 100 --recursion
 
       - name: Run ecrecover with 100 APCs
-        run: /usr/bin/time -v cargo run --bin powdr_openvm_riscv -r prove guest-ecrecover --input 20 --autoprecompiles 100 --recursion
+        run: /usr/bin/time -v cargo run --bin powdr_openvm_riscv -r prove guest-ecrecover --profile-input 20 --input 20 --autoprecompiles 100 --recursion
 
       - name: Patch benchmark
         uses: ./.github/actions/patch-openvm-eth

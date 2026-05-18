@@ -63,20 +63,26 @@ to pipeline stages; each command runs all stages up to its own:
 - `prove` — … + STARK proof (optionally `--recursion` for compression, `--mock` for constraint-only)
 
 Each command accepts arguments of its own stage and all preceding stages.
+`--profile-input` (profile-collection stdin) and `--input` (runtime stdin for
+`execute`/`prove`) are independent so that re-running with a different
+runtime input does not invalidate the compile/setup cache.
 
 ```bash
 # Compile + select APCs via instruction-PGO
-cargo run -p cli-openvm-riscv -- compile guest-keccak --autoprecompiles 10 --pgo instruction --input 100
+cargo run -p cli-openvm-riscv -- compile guest-keccak --autoprecompiles 10 --pgo instruction --profile-input 100
 
 # Compile + run interpreted
-cargo run -p cli-openvm-riscv -- execute guest-keccak --autoprecompiles 10 --input 100
+cargo run -p cli-openvm-riscv -- execute guest-keccak --autoprecompiles 10 --profile-input 100 --input 100
 
 # Compile + prove
-cargo run -p cli-openvm-riscv -- prove guest-keccak --autoprecompiles 1 --input 10
+cargo run -p cli-openvm-riscv -- prove guest-keccak --autoprecompiles 1 --profile-input 10 --input 10
 
 # Compile + mock-prove (constraints only, no STARK)
-cargo run -p cli-openvm-riscv -- prove guest-keccak --mock --autoprecompiles 1 --input 10
+cargo run -p cli-openvm-riscv -- prove guest-keccak --mock --autoprecompiles 1 --profile-input 10 --input 10
 ```
+
+Pass `--artifacts-dir <DIR>` (global) to persist + reuse stage outputs across
+runs; only stages whose own args changed will re-run.
 
 ## Architecture
 
