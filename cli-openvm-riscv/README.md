@@ -20,7 +20,14 @@ are deliberately separate: `--profile-input` drives the execution profile used
 to pick which basic blocks to accelerate; `--input` is the actual runtime
 stdin for the interpreted run or the proof. Splitting them lets you re-prove
 the same guest with many runtime inputs without re-running the
-profile/compile/setup pipeline (see `--artifacts-dir` below).
+profile/compile/setup pipeline when combined with `--artifacts-dir`.
+
+Pass `--artifacts-dir <DIR>` (global) to persist each stage's output and reuse
+it on matching reruns. The cache key for each stage hashes only that stage's
+own argument struct, so changing a later-stage flag (`--mock`, `--recursion`,
+`--input`, `--metrics`) does not invalidate earlier-stage caches. The hash is
+intentionally unstable across Rust/dep upgrades — expect the cache to refill
+after a toolchain bump.
 
 ## Examples
 
@@ -40,31 +47,5 @@ cargo run -r --bin powdr_openvm_riscv prove guest-keccak \
 cargo run -r --bin powdr_openvm_riscv setup guest-keccak \
     --profile-input 100 --autoprecompiles 10
 ```
-
-## Caching with `--artifacts-dir`
-
-`--artifacts-dir <DIR>` (global) persists each stage's output under
-`<DIR>/<stage>/<hash>/artifact.cbor`. Reruns with matching arguments load from
-disk. The hash key is `Debug(<stage args>)`; later-stage flags are not in the
-earlier stages' hash, so changing them does not invalidate the earlier caches.
-
-For example, re-proving with a different runtime input reuses everything up to
-setup:
-
-```sh
-# First run: warm the cache.
-cargo run -r --bin powdr_openvm_riscv prove guest-keccak \
-    --profile-input 100 --input 100 --autoprecompiles 10 --pgo cell \
-    --artifacts-dir /tmp/powdr-cache
-
-# Second run: only the proof step actually runs.
-cargo run -r --bin powdr_openvm_riscv prove guest-keccak \
-    --profile-input 100 --input 101 --autoprecompiles 10 --pgo cell \
-    --artifacts-dir /tmp/powdr-cache
-```
-
-Hashes use `DefaultHasher` and `Debug` formatting, both of which are
-intentionally unstable across Rust/dep upgrades — expect the cache to refill
-after a toolchain bump.
 
 Set `RUST_LOG=info` for high-level progress, `RUST_LOG=debug` for benchmarks.
