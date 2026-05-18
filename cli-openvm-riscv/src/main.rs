@@ -32,31 +32,41 @@ struct Cli {
 struct SharedArgs {
     #[arg(long, default_value_t = 0)]
     autoprecompiles: usize,
+
     #[arg(long, default_value_t = 0)]
     skip: usize,
+
     #[arg(long)]
     input: Option<u32>,
+
     #[arg(long, default_value_t = PgoType::default())]
     pgo: PgoType,
+
     /// When `--pgo-mode cell`, the optional max columns
     #[clap(long)]
     max_columns: Option<usize>,
+
     /// When `--pgo-mode cell`, the directory to persist all APC candidates + a metrics summary
     #[arg(long)]
     apc_candidates_dir: Option<PathBuf>,
+
     /// Maximum number of instructions in an APC
     #[arg(long)]
     apc_max_instructions: Option<u32>,
+
     /// Ignore APCs executed less times than the cutoff
     #[arg(long)]
     apc_exec_count_cutoff: Option<u32>,
+
     /// If active, generates "optimistic" precompiles. Optimistic precompiles are smaller in size
     /// but may fail at runtime if the assumptions they make are violated.
     #[arg(long, default_value_t = false)]
     optimistic_precompiles: bool,
+
     /// When larger than 1, enables superblocks with up to the given number of basic blocks.
     #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..))]
     superblocks: u8,
+
     /// Optional artifact cache directory.
     ///
     /// If set, expensive step outputs are persisted under
@@ -69,29 +79,40 @@ struct SharedArgs {
 enum Commands {
     GenerateApcs {
         guest: String,
+
         #[command(flatten)]
         shared: SharedArgs,
     },
+
     Compile {
         guest: String,
+
         #[command(flatten)]
         shared: SharedArgs,
     },
+
     Execute {
         guest: String,
+
         #[command(flatten)]
         shared: SharedArgs,
+
         #[arg(long)]
         metrics: Option<PathBuf>,
     },
+
     Prove {
         guest: String,
+
         #[command(flatten)]
         shared: SharedArgs,
+
         #[arg(long, default_value_t = false)]
         mock: bool,
+
         #[arg(long, default_value_t = false)]
         recursion: bool,
+
         #[arg(long)]
         metrics: Option<PathBuf>,
     },
@@ -125,7 +146,6 @@ impl Pipeline {
         let digest = format!("{:016x}", hasher.finish());
         Some(base.join(step).join(digest).join("artifact.cbor"))
     }
-
 
     fn new(guest: String, shared: SharedArgs) -> Self {
         Self {
@@ -168,7 +188,9 @@ impl Pipeline {
 
 fn main() -> Result<(), io::Error> {
     let args = Cli::parse();
+
     setup_tracing_with_log_level(Level::INFO);
+
     if let Some(command) = args.command {
         run_command(command);
         Ok(())
@@ -201,6 +223,7 @@ fn run_command(command: Commands) {
             let program = pipeline.compiled_program();
             write_program_to_file(program, &format!("{guest}_compiled.cbor")).unwrap();
         }
+
         Commands::Execute {
             guest,
             shared,
@@ -225,6 +248,7 @@ fn run_command(command: Commands) {
                 run();
             }
         }
+
         Commands::Prove {
             guest,
             shared,
@@ -298,6 +322,7 @@ pub fn run_with_metric_collection_to_file<R>(file: std::fs::File, f: impl FnOnce
     let recorder = TracingContextLayer::all().layer(recorder);
     metrics::set_global_recorder(recorder).unwrap();
     let res = f();
+
     serde_json::to_writer_pretty(&file, &serialize_metric_snapshot(snapshotter.snapshot())).unwrap();
     res
 }
