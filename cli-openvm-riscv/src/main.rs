@@ -16,7 +16,7 @@ use openvm_stark_sdk::metrics_tracing::TimingMetricsLayer;
 
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use powdr_openvm::default_powdr_openvm_config;
-use std::{io, path::PathBuf};
+use std::{fs, io, path::PathBuf};
 use tracing::Level;
 use tracing_forest::ForestLayer;
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Registry};
@@ -28,90 +28,147 @@ struct Cli {
     command: Option<Commands>,
 }
 
-#[derive(Args)]
+#[derive(Args, Clone)]
 struct SharedArgs {
     #[arg(long, default_value_t = 0)]
     autoprecompiles: usize,
-
     #[arg(long, default_value_t = 0)]
     skip: usize,
-
     #[arg(long)]
     input: Option<u32>,
-
     #[arg(long, default_value_t = PgoType::default())]
     pgo: PgoType,
-
     /// When `--pgo-mode cell`, the optional max columns
     #[clap(long)]
     max_columns: Option<usize>,
-
     /// When `--pgo-mode cell`, the directory to persist all APC candidates + a metrics summary
     #[arg(long)]
     apc_candidates_dir: Option<PathBuf>,
-
     /// Maximum number of instructions in an APC
     #[arg(long)]
     apc_max_instructions: Option<u32>,
-
     /// Ignore APCs executed less times than the cutoff
     #[arg(long)]
     apc_exec_count_cutoff: Option<u32>,
-
     /// If active, generates "optimistic" precompiles. Optimistic precompiles are smaller in size
     /// but may fail at runtime if the assumptions they make are violated.
-    #[arg(long)]
-    #[arg(default_value_t = false)]
+    #[arg(long, default_value_t = false)]
     optimistic_precompiles: bool,
-
     /// When larger than 1, enables superblocks with up to the given number of basic blocks.
     #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..))]
     superblocks: u8,
+    /// Optional artifact cache directory.
+    ///
+    /// If set, expensive step outputs are persisted under
+    /// `<artifacts-dir>/<step>/<params-hash>/artifact.cbor` and reused on matching reruns.
+    #[arg(long)]
+    artifacts_dir: Option<PathBuf>,
 }
 
 #[derive(Subcommand)]
 enum Commands {
-    Compile {
+    GenerateApcs {
         guest: String,
-
         #[command(flatten)]
         shared: SharedArgs,
     },
-
-    Execute {
+    Compile {
         guest: String,
-
         #[command(flatten)]
         shared: SharedArgs,
-
+    },
+    Execute {
+        guest: String,
+        #[command(flatten)]
+        shared: SharedArgs,
         #[arg(long)]
         metrics: Option<PathBuf>,
     },
-
     Prove {
         guest: String,
-
         #[command(flatten)]
         shared: SharedArgs,
-
-        #[arg(long)]
-        #[arg(default_value_t = false)]
+        #[arg(long, default_value_t = false)]
         mock: bool,
-
-        #[arg(long)]
-        #[arg(default_value_t = false)]
+        #[arg(long, default_value_t = false)]
         recursion: bool,
-
         #[arg(long)]
         metrics: Option<PathBuf>,
     },
 }
 
+struct Pipeline {
+    guest: String,
+    shared: SharedArgs,
+    guest_opts: GuestOptions,
+}
+
+impl Pipeline {
+    fn cache_file(&self, step: &str) -> Option<PathBuf> {
+        let base = self.shared.artifacts_dir.as_ref()?;
+        use std::hash::{Hash, Hasher};
+        let hash_input = format!(
+            "guest={};apcs={};skip={};input={:?};pgo={:?};max_columns={:?};max_instr={:?};cutoff={:?};optimistic={};superblocks={}",
+            self.guest,
+            self.shared.autoprecompiles,
+            self.shared.skip,
+            self.shared.input,
+            self.shared.pgo,
+            self.shared.max_columns,
+            self.shared.apc_max_instructions,
+            self.shared.apc_exec_count_cutoff,
+            self.shared.optimistic_precompiles,
+            self.shared.superblocks
+        );
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        hash_input.hash(&mut hasher);
+        let digest = format!("{:016x}", hasher.finish());
+        Some(base.join(step).join(digest).join("artifact.cbor"))
+    }
+
+
+    fn new(guest: String, shared: SharedArgs) -> Self {
+        Self {
+            guest,
+            shared,
+            guest_opts: GuestOptions::default(),
+        }
+    }
+
+    fn compiled_program(&self) -> CompiledProgram<RiscvISA> {
+        validate_shared_args(&self.shared);
+        let powdr_config = build_powdr_config(&self.shared);
+        let guest_program = compile_openvm(&self.guest, self.guest_opts.clone()).unwrap();
+        let empirical_constraints = maybe_compute_empirical_constraints(
+            &guest_program,
+            &powdr_config,
+            stdin_from(self.shared.input),
+        );
+        let execution_profile =
+            powdr_openvm::execution_profile_from_guest(&guest_program, stdin_from(self.shared.input));
+        let pgo_conf = pgo_config(self.shared.pgo, self.shared.max_columns, execution_profile);
+        if let Some(cache) = self.cache_file("apc_selection") {
+            if let Ok(bytes) = fs::read(&cache) {
+                if let Ok(program) = serde_cbor::from_slice::<CompiledProgram<RiscvISA>>(&bytes) {
+                    return program;
+                }
+            }
+            let program =
+                powdr_openvm_riscv::compile_exe(guest_program, powdr_config, pgo_conf, empirical_constraints)
+                    .unwrap();
+            fs::create_dir_all(cache.parent().unwrap()).unwrap();
+            fs::write(&cache, serde_cbor::to_vec(&program).unwrap()).unwrap();
+            program
+        } else {
+            powdr_openvm_riscv::compile_exe(guest_program, powdr_config, pgo_conf, empirical_constraints)
+                .unwrap()
+        }
+    }
+}
+
 fn main() -> Result<(), io::Error> {
     let args = Cli::parse();
-
     setup_tracing_with_log_level(Level::INFO);
-
     if let Some(command) = args.command {
         run_command(command);
         Ok(())
@@ -121,13 +178,11 @@ fn main() -> Result<(), io::Error> {
 }
 
 fn build_powdr_config(shared: &SharedArgs) -> PowdrConfig {
-    let mut powdr_config =
-        default_powdr_openvm_config(shared.autoprecompiles as u64, shared.skip as u64);
-    if let Some(apc_candidates_dir) = &shared.apc_candidates_dir {
-        powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
+    let mut c = default_powdr_openvm_config(shared.autoprecompiles as u64, shared.skip as u64);
+    if let Some(d) = &shared.apc_candidates_dir {
+        c = c.with_apc_candidates_dir(d);
     }
-    powdr_config
-        .with_optimistic_precompiles(shared.optimistic_precompiles)
+    c.with_optimistic_precompiles(shared.optimistic_precompiles)
         .with_superblocks(
             shared.superblocks,
             shared.apc_max_instructions,
@@ -136,39 +191,21 @@ fn build_powdr_config(shared: &SharedArgs) -> PowdrConfig {
 }
 
 fn run_command(command: Commands) {
-    let guest_opts = GuestOptions::default();
     match command {
+        Commands::GenerateApcs { guest, shared } => {
+            let pipeline = Pipeline::new(guest, shared);
+            let _ = pipeline.compiled_program();
+        }
         Commands::Compile { guest, shared } => {
-            validate_shared_args(&shared);
-            let powdr_config = build_powdr_config(&shared);
-            let guest_program = compile_openvm(&guest, guest_opts.clone()).unwrap();
-            let execution_profile = powdr_openvm::execution_profile_from_guest(
-                &guest_program,
-                stdin_from(shared.input),
-            );
-
-            let empirical_constraints = maybe_compute_empirical_constraints(
-                &guest_program,
-                &powdr_config,
-                stdin_from(shared.input),
-            );
-            let pgo_config = pgo_config(shared.pgo, shared.max_columns, execution_profile);
-            let program = powdr_openvm_riscv::compile_exe(
-                guest_program,
-                powdr_config,
-                pgo_config,
-                empirical_constraints,
-            )
-            .unwrap();
+            let pipeline = Pipeline::new(guest.clone(), shared);
+            let program = pipeline.compiled_program();
             write_program_to_file(program, &format!("{guest}_compiled.cbor")).unwrap();
         }
-
         Commands::Execute {
             guest,
             shared,
             metrics,
         } => {
-            validate_shared_args(&shared);
             if shared.superblocks > 1 {
                 Cli::command()
                     .error(
@@ -177,38 +214,17 @@ fn run_command(command: Commands) {
                     )
                     .exit();
             }
-            let powdr_config = build_powdr_config(&shared);
-            let guest_program = compile_openvm(&guest, guest_opts.clone()).unwrap();
-            let empirical_constraints = maybe_compute_empirical_constraints(
-                &guest_program,
-                &powdr_config,
-                stdin_from(shared.input),
-            );
-            let execution_profile = powdr_openvm::execution_profile_from_guest(
-                &guest_program,
-                stdin_from(shared.input),
-            );
-            let pgo_config = pgo_config(shared.pgo, shared.max_columns, execution_profile);
-            let compile_and_exec = || {
-                let program = powdr_openvm_riscv::compile_exe(
-                    guest_program,
-                    powdr_config,
-                    pgo_config,
-                    empirical_constraints,
-                )
-                .unwrap();
+            let pipeline = Pipeline::new(guest, shared.clone());
+            let run = || {
+                let program = pipeline.compiled_program();
                 powdr_openvm::execute(program, stdin_from(shared.input)).unwrap();
             };
-            if let Some(metrics_path) = metrics {
-                run_with_metric_collection_to_file(
-                    std::fs::File::create(metrics_path).expect("Failed to create metrics file"),
-                    compile_and_exec,
-                );
+            if let Some(path) = metrics {
+                run_with_metric_collection_to_file(std::fs::File::create(path).unwrap(), run);
             } else {
-                compile_and_exec()
+                run();
             }
         }
-
         Commands::Prove {
             guest,
             shared,
@@ -216,7 +232,6 @@ fn run_command(command: Commands) {
             recursion,
             metrics,
         } => {
-            validate_shared_args(&shared);
             if shared.superblocks > 1 {
                 Cli::command()
                     .error(
@@ -225,49 +240,23 @@ fn run_command(command: Commands) {
                     )
                     .exit();
             }
-            let powdr_config = build_powdr_config(&shared);
-            let guest_program = compile_openvm(&guest, guest_opts).unwrap();
-            let empirical_constraints = maybe_compute_empirical_constraints(
-                &guest_program,
-                &powdr_config,
-                stdin_from(shared.input),
-            );
-
-            let execution_profile = powdr_openvm::execution_profile_from_guest(
-                &guest_program,
-                stdin_from(shared.input),
-            );
-            let pgo_config = pgo_config(shared.pgo, shared.max_columns, execution_profile);
-            let compile_and_prove = || {
-                let program = powdr_openvm_riscv::compile_exe(
-                    guest_program,
-                    powdr_config,
-                    pgo_config,
-                    empirical_constraints,
-                )
-                .unwrap();
+            let pipeline = Pipeline::new(guest, shared.clone());
+            let run = || {
+                let program = pipeline.compiled_program();
                 powdr_openvm_riscv::prove(&program, mock, recursion, stdin_from(shared.input), None)
-                    .unwrap()
+                    .unwrap();
             };
-            if let Some(metrics_path) = metrics {
-                run_with_metric_collection_to_file(
-                    std::fs::File::create(metrics_path).expect("Failed to create metrics file"),
-                    compile_and_prove,
-                );
+            if let Some(path) = metrics {
+                run_with_metric_collection_to_file(std::fs::File::create(path).unwrap(), run);
             } else {
-                compile_and_prove()
+                run();
             }
         }
     }
 }
 
-fn write_program_to_file(
-    program: CompiledProgram<RiscvISA>,
-    filename: &str,
-) -> Result<(), io::Error> {
-    use std::fs::File;
-
-    let mut file = File::create(filename)?;
+fn write_program_to_file(program: CompiledProgram<RiscvISA>, filename: &str) -> Result<(), io::Error> {
+    let mut file = std::fs::File::create(filename)?;
     serde_cbor::to_writer(&mut file, &program).map_err(io::Error::other)?;
     Ok(())
 }
@@ -303,21 +292,16 @@ fn setup_tracing_with_log_level(level: Level) {
     tracing::subscriber::set_global_default(subscriber).unwrap();
 }
 
-/// export stark-backend metrics to the given file
 pub fn run_with_metric_collection_to_file<R>(file: std::fs::File, f: impl FnOnce() -> R) -> R {
     let recorder = DebuggingRecorder::new();
     let snapshotter = recorder.snapshotter();
     let recorder = TracingContextLayer::all().layer(recorder);
     metrics::set_global_recorder(recorder).unwrap();
     let res = f();
-
-    serde_json::to_writer_pretty(&file, &serialize_metric_snapshot(snapshotter.snapshot()))
-        .unwrap();
+    serde_json::to_writer_pretty(&file, &serialize_metric_snapshot(snapshotter.snapshot())).unwrap();
     res
 }
 
-/// If optimistic precompiles are enabled, compute empirical constraints from the execution
-/// of the guest program on the given stdin, and save them to disk.
 fn maybe_compute_empirical_constraints(
     guest_program: &OriginalCompiledProgram<RiscvISA>,
     powdr_config: &PowdrConfig,
