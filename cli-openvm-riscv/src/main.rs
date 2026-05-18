@@ -32,16 +32,15 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Run profiling + empirical-constraint detection (stub: skips selection/setup).
+    /// Build APCs and write them to `<guest>_apcs.cbor`.
     ///
-    /// In this release the library does not expose APC build separately from
-    /// selection. With no `--autoprecompiles`, this command exercises the
-    /// profile + empirical-constraint stages and produces no APCs. The full
-    /// "build APCs without selection" workflow will appear when the library
-    /// splits the PGO adapter.
-    GenerateApcs(GenerateApcsArgs),
+    /// In this release this is operationally identical to `compile`: the
+    /// library does not expose APC build separately from selection. When the
+    /// `PgoAdapter` trait is split, `generate-apcs`'s argument set will
+    /// narrow to the build-only knobs.
+    GenerateApcs(CompileArgs),
 
-    /// Build and select APCs via the requested PGO strategy (no setup).
+    /// Build + select APCs and write them to `<guest>_apcs.cbor`.
     Compile(CompileArgs),
 
     /// Assemble the final program (selected APCs injected, prover/verifier keys).
@@ -168,20 +167,13 @@ fn main() -> Result<(), io::Error> {
 
 fn run_command(command: Commands) {
     match command {
-        Commands::GenerateApcs(args) => {
-            let pipeline = Pipeline::new(&args.profile);
-            let apcs = pipeline.compile_apcs(&promote(&args));
-            tracing::info!(
-                "generate-apcs ran the profile pipeline; produced {} APCs",
-                apcs.len()
-            );
-        }
-
-        Commands::Compile(args) => {
+        Commands::GenerateApcs(args) | Commands::Compile(args) => {
             validate(&args);
+            let guest = args.generate.profile.guest.clone();
             let pipeline = Pipeline::new(&args.generate.profile);
             let apcs = pipeline.compile_apcs(&args);
-            tracing::info!("Selected {} autoprecompiles", apcs.len());
+            tracing::info!("Built {} autoprecompiles", apcs.len());
+            write_apcs_to_file(&apcs, &format!("{guest}_apcs.cbor")).unwrap();
         }
 
         Commands::Setup(args) => {
@@ -233,18 +225,6 @@ fn run_command(command: Commands) {
                 run();
             }
         }
-    }
-}
-
-/// Used when `generate-apcs` is invoked without selection args: synthesise a
-/// `CompileArgs` with defaults so the rest of the pipeline can run.
-fn promote(args: &GenerateApcsArgs) -> CompileArgs {
-    CompileArgs {
-        generate: args.clone(),
-        autoprecompiles: 0,
-        skip: 0,
-        pgo: PgoType::default(),
-        max_columns: None,
     }
 }
 
@@ -354,6 +334,15 @@ fn write_program_to_file(
 
     let mut file = File::create(filename)?;
     serde_cbor::to_writer(&mut file, &program).map_err(io::Error::other)?;
+    Ok(())
+}
+
+fn write_apcs_to_file(
+    apcs: &Vec<AdapterApcWithStats<BabyBearOpenVmApcAdapter<'_, RiscvISA>>>,
+    filename: &str,
+) -> Result<(), io::Error> {
+    let mut file = std::fs::File::create(filename)?;
+    serde_cbor::to_writer(&mut file, apcs).map_err(io::Error::other)?;
     Ok(())
 }
 

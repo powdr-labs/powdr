@@ -3,13 +3,13 @@
 Command-line interface for the powdr OpenVM RISC-V workflow. Subcommands are
 ordered by pipeline stage; each command runs all stages up to its own.
 
-| Command         | Stages run                                                     |
-| --------------- | -------------------------------------------------------------- |
-| `generate-apcs` | Profile + empirical constraints (stub for build APCs)          |
-| `compile`       | Profile + build APCs + selection                               |
-| `setup`         | … + assemble the program with selected APCs                    |
-| `execute`       | … + run the guest in interpreted mode                          |
-| `prove`         | … + STARK proof, optionally with `--recursion` (compression)   |
+| Command         | Stages run                                                     | Output                       |
+| --------------- | -------------------------------------------------------------- | ---------------------------- |
+| `generate-apcs` | Profile + build/select APCs (alias for `compile` in this release) | `<guest>_apcs.cbor`       |
+| `compile`       | Profile + build/select APCs                                    | `<guest>_apcs.cbor`          |
+| `setup`         | … + assemble the program with selected APCs                    | `<guest>_compiled.cbor`      |
+| `execute`       | … + run the guest in interpreted mode                          | side effect only             |
+| `prove`         | … + STARK proof, optionally with `--recursion` (compression)   | side effect only             |
 
 Each command accepts the arguments of its own stage plus all preceding stages.
 For example, `prove` takes everything `setup` takes plus `--mock`, `--recursion`
