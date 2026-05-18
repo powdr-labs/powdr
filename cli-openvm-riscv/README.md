@@ -19,18 +19,18 @@ and `--metrics`.
 
 ```sh
 # Compile and run the guest in interpreted mode
-RUSTFLAGS='-C target-cpu=native' cargo run -r execute guest-keccak --input 100
+RUSTFLAGS='-C target-cpu=native' cargo run -p cli-openvm-riscv -r -- execute guest-keccak --input 100
 
 # Compile + prove a guest with 10 autoprecompiles selected via cell-PGO
-RUSTFLAGS='-C target-cpu=native' cargo run -r prove guest-keccak \
+RUSTFLAGS='-C target-cpu=native' cargo run -p cli-openvm-riscv -r -- prove guest-keccak \
     --input 100 --autoprecompiles 10 --pgo cell
 
 # Mock-prove (verifies constraints without generating a STARK proof)
-RUSTFLAGS='-C target-cpu=native' cargo run -r prove guest-keccak \
+RUSTFLAGS='-C target-cpu=native' cargo run -p cli-openvm-riscv -r -- prove guest-keccak \
     --input 100 --autoprecompiles 1 --mock
 
 # Assemble the compiled program and write it to <guest>_compiled.cbor
-RUSTFLAGS='-C target-cpu=native' cargo run -r setup guest-keccak \
+RUSTFLAGS='-C target-cpu=native' cargo run -p cli-openvm-riscv -r -- setup guest-keccak \
     --input 100 --autoprecompiles 10
 ```
 
