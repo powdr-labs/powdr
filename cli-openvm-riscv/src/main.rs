@@ -407,22 +407,9 @@ fn load_cached<T: DeserializeOwned>(
 fn save_cached<T: Serialize>(artifacts_dir: Option<&Path>, stage: &str, hash: &str, value: &T) {
     let Some(dir) = artifacts_dir else { return };
     let path = cache_path(dir, stage, hash);
-    let Some(parent) = path.parent() else { return };
-    if let Err(err) = fs::create_dir_all(parent) {
-        tracing::warn!("failed to create cache dir {}: {err}", parent.display());
-        return;
-    }
-    let tmp = parent.join(format!(".artifact.tmp.{}", std::process::id()));
-    let res = (|| -> io::Result<()> {
-        let mut file = fs::File::create(&tmp)?;
-        serde_cbor::to_writer(&mut file, value).map_err(io::Error::other)?;
-        file.sync_all()?;
-        fs::rename(&tmp, &path)
-    })();
-    if let Err(err) = res {
-        tracing::warn!("failed to write cache {}: {err}", path.display());
-        let _ = fs::remove_file(&tmp);
-    }
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let file = fs::File::create(&path).unwrap();
+    serde_cbor::to_writer(file, value).unwrap();
 }
 
 // ---------- misc helpers ----------
