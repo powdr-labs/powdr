@@ -189,22 +189,20 @@ fn main() -> Result<(), io::Error> {
 fn run_command(command: Commands, artifacts_dir: Option<&Path>) {
     match command {
         Commands::SelectApcs(args) => {
-            validate(&args);
+            validate_select_args(&args, false);
             let pipeline = Pipeline::new(args.generate.profile.clone());
             let apcs = pipeline.run_select_apcs(&args, artifacts_dir);
             tracing::info!("Selected {} autoprecompiles", apcs.len());
         }
 
         Commands::Setup(args) => {
-            validate(&args.select);
-            superblock_runtime_check(&args.select);
+            validate_select_args(&args.select, true);
             let pipeline = Pipeline::new(args.select.generate.profile.clone());
             let _ = pipeline.run_setup(&args, artifacts_dir);
         }
 
         Commands::Execute(args) => {
-            validate(&args.setup.select);
-            superblock_runtime_check(&args.setup.select);
+            validate_select_args(&args.setup.select, true);
             let runtime_input = args.input;
             let pipeline = Pipeline::new(args.setup.select.generate.profile.clone());
             let run = || {
@@ -222,8 +220,7 @@ fn run_command(command: Commands, artifacts_dir: Option<&Path>) {
         }
 
         Commands::Prove(args) => {
-            validate(&args.setup.select);
-            superblock_runtime_check(&args.setup.select);
+            validate_select_args(&args.setup.select, true);
             let runtime_input = args.input;
             let mock = args.mock;
             let recursion = args.recursion;
@@ -251,7 +248,7 @@ fn run_command(command: Commands, artifacts_dir: Option<&Path>) {
     }
 }
 
-fn validate(args: &SelectArgs) {
+fn validate_select_args(args: &SelectArgs, for_execution: bool) {
     if args.generate.superblocks > 1 && !matches!(args.pgo, PgoType::Cell) {
         Cli::command()
             .error(
@@ -260,10 +257,7 @@ fn validate(args: &SelectArgs) {
             )
             .exit();
     }
-}
-
-fn superblock_runtime_check(args: &SelectArgs) {
-    if args.generate.superblocks > 1 {
+    if for_execution && args.generate.superblocks > 1 {
         Cli::command()
             .error(
                 clap::error::ErrorKind::ArgumentConflict,
