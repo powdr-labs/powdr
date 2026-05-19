@@ -203,8 +203,9 @@ fn main() -> Result<(), io::Error> {
 
 fn run_command(command: Commands, artifacts_dir: Option<&Path>) {
     match command {
-        Commands::GenerateApcs(args) => {
+        Commands::GenerateApcs(mut args) => {
             validate_generate_args(&args, false);
+            apply_apc_candidates_autofill(&mut args, None);
             let pipeline = Pipeline::new(args.profile.clone());
             let ranked = pipeline.run_generate_apcs(&args, artifacts_dir);
             tracing::info!(
@@ -307,22 +308,50 @@ fn build_powdr_config(generate: &GenerateApcsArgs, autoprecompiles: u64, skip: u
         )
 }
 
-/// Apply the implicit `--apc-candidates = --autoprecompiles + --skip` rule for
-/// instruction/none PGO when the user didn't set it. Skipped for Cell so the
-/// density-based ranking sees every candidate.
-fn apply_apc_candidates_autofill(generate: &mut GenerateApcsArgs, autoprecompiles: u64, skip: u64) {
-    if generate.apc_candidates.is_some() {
-        return;
+/// Resolve `--apc-candidates`:
+/// - Cell always builds every eligible block (its dynamic density ranking
+///   benefits from seeing every candidate); we force `None` and warn if the
+///   user set a value. Applies in both standalone and fused contexts.
+/// - For instruction / none in a fused context (when `selection = Some(...)`),
+///   default `--apc-candidates` to `--autoprecompiles` and validate that the
+///   cap fits `--autoprecompiles + --skip`.
+/// - Standalone instruction / none (`selection = None`): leave the user's
+///   value alone (unset = build all eligible candidates).
+fn apply_apc_candidates_autofill(generate: &mut GenerateApcsArgs, selection: Option<(u64, u64)>) {
+    match generate.pgo {
+        PgoType::Cell => {
+            if let Some(n) = generate.apc_candidates.take() {
+                tracing::warn!(
+                    "ignoring --apc-candidates {n}: --pgo cell always builds every eligible candidate"
+                );
+            }
+        }
+        PgoType::Instruction | PgoType::None => {
+            let Some((autoprecompiles, skip)) = selection else {
+                return;
+            };
+            if generate.apc_candidates.is_none() {
+                tracing::info!(
+                    "--apc-candidates not set; defaulting to --autoprecompiles = {autoprecompiles} for --pgo {}",
+                    generate.pgo
+                );
+                generate.apc_candidates = Some(autoprecompiles);
+            }
+            let cap = generate.apc_candidates.unwrap();
+            let needed = autoprecompiles + skip;
+            if needed > cap {
+                Cli::command()
+                    .error(
+                        clap::error::ErrorKind::ArgumentConflict,
+                        format!(
+                            "--apc-candidates ({cap}) is smaller than --autoprecompiles + --skip ({needed}); \
+                             cannot select {autoprecompiles} APCs after skipping {skip} from {cap} candidates"
+                        ),
+                    )
+                    .exit();
+            }
+        }
     }
-    if !matches!(generate.pgo, PgoType::Instruction | PgoType::None) {
-        return;
-    }
-    let n = autoprecompiles + skip;
-    tracing::info!(
-        "--apc-candidates not set; defaulting to --autoprecompiles + --skip = {n} for --pgo {}",
-        generate.pgo
-    );
-    generate.apc_candidates = Some(n);
 }
 
 /// Pipeline runner. Eagerly loads the guest crate so that we can mix a hash
@@ -391,7 +420,10 @@ impl Pipeline {
         // Apply the auto-fill rule for instruction/none PGO before computing
         // the generate stage's hash, so the resolved value is part of the key.
         let mut generate = args.generate.clone();
-        apply_apc_candidates_autofill(&mut generate, args.autoprecompiles as u64, args.skip as u64);
+        apply_apc_candidates_autofill(
+            &mut generate,
+            Some((args.autoprecompiles as u64, args.skip as u64)),
+        );
 
         let hash = stage_hash(args, &self.guest_hash);
         if let Some(cached) = load_cached(artifacts_dir, "select", &hash) {
@@ -413,7 +445,17 @@ impl Pipeline {
         args: &SetupArgs,
         artifacts_dir: Option<&Path>,
     ) -> CompiledProgram<RiscvISA> {
-        let hash = stage_hash(args, &self.guest_hash);
+        // Resolve `apc_candidates` before hashing so that ignored-by-cell or
+        // auto-filled values land in the cache key — otherwise bumping
+        // `--apc-candidates` would invalidate setup without affecting the
+        // upstream caches.
+        let mut args = args.clone();
+        apply_apc_candidates_autofill(
+            &mut args.select.generate,
+            Some((args.select.autoprecompiles as u64, args.select.skip as u64)),
+        );
+
+        let hash = stage_hash(&args, &self.guest_hash);
         if let Some(cached) = load_cached(artifacts_dir, "setup", &hash) {
             tracing::info!("cache hit: setup/{hash}");
             return cached;

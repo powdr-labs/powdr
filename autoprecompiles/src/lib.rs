@@ -69,9 +69,9 @@ pub struct PowdrConfig {
     /// Cap on the number of candidate APCs built/ranked in the generate stage.
     /// `None` means "build all eligible candidates".
     ///
-    /// Cell PGO defaults to `None` (ranking quality benefits from seeing every candidate).
-    /// Instruction / None PGO can pass `Some(autoprecompiles + skip_autoprecompiles)` to
-    /// avoid building candidates that will never be selected.
+    /// Only honored by Instruction / None PGO (where it caps the metadata-sorted
+    /// prefix). Cell PGO ignores this field and always builds every eligible
+    /// candidate — its dynamic density ranking needs the full post-opt cost.
     pub apc_candidates: Option<u64>,
     /// Maximum number of basic blocks included in a superblock.
     /// Default of 1 means only basic blocks are considered.

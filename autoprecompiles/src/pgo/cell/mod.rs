@@ -1,4 +1,4 @@
-use std::{cmp::Reverse, collections::BTreeMap, io::BufWriter};
+use std::{collections::BTreeMap, io::BufWriter};
 
 use itertools::Itertools;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -115,18 +115,14 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
             execution_bb_runs,
         } = exec_blocks;
 
-        // Pre-filter when `--apc-candidates` is set. We don't know post-opt
-        // cost yet, so use the cheap `frequency × n_instructions` proxy.
-        // The density-based ranking still runs over whatever we build.
-        let blocks = if let Some(cap) = config.apc_candidates {
-            blocks
-                .into_iter()
-                .sorted_by_key(|b| Reverse(b.count * b.block.instructions().count() as u32))
-                .take(cap as usize)
-                .collect::<Vec<_>>()
-        } else {
-            blocks
-        };
+        // Cell always builds every eligible candidate. The dynamic density
+        // ranking needs the full post-opt cost of every candidate, so a
+        // pre-build cap would degrade ranking quality.
+        if config.apc_candidates.is_some() {
+            tracing::warn!(
+                "PowdrConfig::apc_candidates is ignored for Cell PGO; building every eligible candidate"
+            );
+        }
 
         tracing::info!(
             "Generating autoprecompiles for all {} blocks in parallel",
