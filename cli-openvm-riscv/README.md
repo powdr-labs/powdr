@@ -28,11 +28,16 @@ the same guest with many runtime inputs without re-running the
 profile/select/setup pipeline when combined with `--artifacts-dir`.
 
 Pass `--artifacts-dir <DIR>` (global) to persist each stage's output and reuse
-it on matching reruns. The cache key for each stage hashes only that stage's
-own argument struct, so changing a later-stage flag (`--mock`, `--recursion`,
-`--input`, `--metrics`) does not invalidate earlier-stage caches. The hash is
-intentionally unstable across Rust/dep upgrades — expect the cache to refill
-after a toolchain bump.
+it on matching reruns. The cache key for each stage hashes that stage's own
+argument struct plus a hash of the transpiled guest `VmExe`, so:
+
+- changing a later-stage flag (`--mock`, `--recursion`, `--input`, `--metrics`)
+  does not invalidate earlier-stage caches, but
+- editing the guest source (or anything else that changes the built ELF) does
+  invalidate every cache that depends on it.
+
+The hash is intentionally unstable across Rust/dep upgrades — expect the cache
+to refill after a toolchain bump.
 
 ## Examples
 

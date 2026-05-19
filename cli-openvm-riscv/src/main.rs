@@ -190,7 +190,7 @@ fn run_command(command: Commands, artifacts_dir: Option<&Path>) {
     match command {
         Commands::SelectApcs(args) => {
             validate(&args);
-            let mut pipeline = Pipeline::new(args.generate.profile.clone());
+            let pipeline = Pipeline::new(args.generate.profile.clone());
             let apcs = pipeline.run_select_apcs(&args, artifacts_dir);
             tracing::info!("Selected {} autoprecompiles", apcs.len());
         }
@@ -288,90 +288,98 @@ fn build_powdr_config(args: &SelectArgs) -> PowdrConfig {
         )
 }
 
-/// Pipeline runner that lazily loads the guest program: if every stage we
-/// need is served from the cache, we never compile the guest crate at all.
+/// Pipeline runner. Eagerly loads the guest crate so that we can mix a hash
+/// of the transpiled `VmExe` into every stage's cache key — otherwise a
+/// guest-source change with identical CLI args would silently return stale
+/// cached artifacts. `cargo build` is a noop when nothing changed, so the
+/// always-load cost is small (~1–2 s) on a true cache hit.
 struct Pipeline {
     profile_args: ProfileArgs,
-    guest_program: Option<OriginalCompiledProgram<'static, RiscvISA>>,
+    guest_program: OriginalCompiledProgram<'static, RiscvISA>,
+    guest_hash: String,
 }
 
 impl Pipeline {
     fn new(profile_args: ProfileArgs) -> Self {
+        let guest_program = compile_openvm(&profile_args.guest, GuestOptions::default()).unwrap();
+        let guest_hash = hash_guest_exe(&guest_program);
         Self {
             profile_args,
-            guest_program: None,
+            guest_program,
+            guest_hash,
         }
-    }
-
-    fn ensure_guest(&mut self) -> &OriginalCompiledProgram<'static, RiscvISA> {
-        if self.guest_program.is_none() {
-            self.guest_program =
-                Some(compile_openvm(&self.profile_args.guest, GuestOptions::default()).unwrap());
-        }
-        self.guest_program.as_ref().unwrap()
-    }
-
-    fn take_guest(mut self) -> OriginalCompiledProgram<'static, RiscvISA> {
-        if self.guest_program.is_none() {
-            self.guest_program =
-                Some(compile_openvm(&self.profile_args.guest, GuestOptions::default()).unwrap());
-        }
-        self.guest_program.unwrap()
     }
 
     /// Run the profile + APC-build/select pipeline, or load it from the cache.
     fn run_select_apcs(
-        &mut self,
+        &self,
         args: &SelectArgs,
         artifacts_dir: Option<&Path>,
     ) -> Vec<AdapterApcWithStats<BabyBearOpenVmApcAdapter<'static, RiscvISA>>> {
-        let hash = stage_hash(args);
+        let hash = stage_hash(args, &self.guest_hash);
         if let Some(cached) = load_cached(artifacts_dir, "select", &hash) {
             tracing::info!("cache hit: select/{hash}");
             return cached;
         }
         let powdr_config = build_powdr_config(args);
         let profile_stdin = stdin_from(self.profile_args.profile_input);
-        let guest = self.ensure_guest();
-        let empirical_constraints =
-            maybe_compute_empirical_constraints(guest, &powdr_config, profile_stdin.clone());
+        let empirical_constraints = maybe_compute_empirical_constraints(
+            &self.guest_program,
+            &powdr_config,
+            profile_stdin.clone(),
+        );
         let execution_profile =
-            powdr_openvm::execution_profile_from_guest(guest, profile_stdin.clone());
+            powdr_openvm::execution_profile_from_guest(&self.guest_program, profile_stdin.clone());
         let pgo = pgo_config(args.pgo, args.max_columns, execution_profile);
-        let apcs = compile_apcs(guest, &powdr_config, pgo, empirical_constraints);
+        let apcs = compile_apcs(
+            &self.guest_program,
+            &powdr_config,
+            pgo,
+            empirical_constraints,
+        );
         save_cached(artifacts_dir, "select", &hash, &apcs);
         apcs
     }
 
     /// Run the full pipeline up to setup (selected APCs injected, keys assembled),
-    /// or load the resulting `CompiledProgram` from the cache. On a setup cache
-    /// hit we never load the guest crate.
+    /// or load the resulting `CompiledProgram` from the cache.
     fn run_setup(
-        mut self,
+        self,
         args: &SetupArgs,
         artifacts_dir: Option<&Path>,
     ) -> CompiledProgram<RiscvISA> {
-        let hash = stage_hash(args);
+        let hash = stage_hash(args, &self.guest_hash);
         if let Some(cached) = load_cached(artifacts_dir, "setup", &hash) {
             tracing::info!("cache hit: setup/{hash}");
             return cached;
         }
         let apcs = self.run_select_apcs(&args.select, artifacts_dir);
         let powdr_config = build_powdr_config(&args.select);
-        let guest = self.take_guest();
-        let program = setup(guest, apcs, powdr_config.degree_bound);
+        let program = setup(self.guest_program, apcs, powdr_config.degree_bound);
         save_cached(artifacts_dir, "setup", &hash, &program);
         program
     }
 }
 
+/// Hash of the transpiled `VmExe` from `compile_openvm`. Captures any guest
+/// change (source, deps, toolchain) that would affect what the rest of the
+/// pipeline operates on.
+fn hash_guest_exe(guest: &OriginalCompiledProgram<'_, RiscvISA>) -> String {
+    let bytes = serde_cbor::to_vec(&*guest.exe).expect("serialize VmExe for hashing");
+    let mut hasher = DefaultHasher::new();
+    bytes.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
 // ---------- cache helpers ----------
 
-/// `DefaultHasher` over the `Debug` repr of the args struct. Unstable across
-/// Rust releases (accepted: caches re-fill on upgrade).
-fn stage_hash<A: std::fmt::Debug>(args: &A) -> String {
+/// `DefaultHasher` over the `Debug` repr of the args struct plus the guest
+/// `VmExe` hash. Unstable across Rust releases (accepted: caches re-fill on
+/// upgrade).
+fn stage_hash<A: std::fmt::Debug>(args: &A, guest_hash: &str) -> String {
     let mut hasher = DefaultHasher::new();
     format!("{args:?}").hash(&mut hasher);
+    guest_hash.hash(&mut hasher);
     format!("{:016x}", hasher.finish())
 }
 
