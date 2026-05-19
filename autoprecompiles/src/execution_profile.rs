@@ -23,7 +23,7 @@ pub struct ExecutionProfile {
 }
 
 /// Produces information about the program's execution for PGO.
-/// Used in Pgo::Cell and Pgo::Instruction to help rank basic blocks to create APCs for.
+/// Used in Pgo::Cell and Pgo::Instruction to help rank blocks to create APCs for.
 pub fn execution_profile<A: Adapter>(
     program: &A::Program,
     execute_fn: impl FnOnce(),

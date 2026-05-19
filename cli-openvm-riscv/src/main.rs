@@ -64,7 +64,7 @@ struct SharedArgs {
     #[arg(default_value_t = false)]
     optimistic_precompiles: bool,
 
-    /// When larger than 1, enables superblocks with up to the given number of basic blocks.
+    /// When larger than 1, enables superblocks with up to the given number of static blocks.
     #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..))]
     superblocks: u8,
 }

@@ -20,7 +20,7 @@ pub use {
     none::NonePgo,
 };
 
-/// Three modes for profiler guided optimization with different cost functions to sort the basic blocks by descending cost and select the most costly ones to accelerate.
+/// Three modes for profiler guided optimization with different cost functions to sort the static blocks by descending cost and select the most costly ones to accelerate.
 #[derive(Default)]
 pub enum PgoConfig {
     /// value = cells saved per apc * times executed

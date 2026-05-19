@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     adapter::Adapter,
-    blocks::{find_non_overlapping, BlockAndStats, ExecutionBasicBlockRun},
+    blocks::{find_non_overlapping, BlockAndStats, ExecutionStaticBlockRun},
 };
 
 use super::ApcCandidate;
@@ -12,9 +12,9 @@ use super::ApcCandidate;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 // A candidate block, used during block selection
 pub struct BlockCandidate {
-    // sequence of basic blocks composing this block
+    // sequence of static blocks composing this block
     pub start_pcs: Vec<u64>,
-    // cost of original basic blocks (before optimization)
+    // cost of original static blocks (before optimization)
     pub cost_before: usize,
     // cost after optimization
     pub cost_after: usize,
@@ -88,12 +88,12 @@ impl Ord for Density {
     }
 }
 
-/// Counts the occurrences of a candidate in a basic block run.
+/// Counts the occurrences of a candidate in a static block run.
 /// Returns the count and the sub-runs after the candidate is removed.
 fn count_and_update_run<'a>(
     sblock: &BlockCandidate,
-    run: &'a ExecutionBasicBlockRun,
-) -> (u32, impl Iterator<Item = ExecutionBasicBlockRun> + 'a) {
+    run: &'a ExecutionStaticBlockRun,
+) -> (u32, impl Iterator<Item = ExecutionStaticBlockRun> + 'a) {
     let sblock_len = sblock.start_pcs.len();
     let matches = find_non_overlapping(&run.0, &sblock.start_pcs);
     let count = matches.len() as u32;
@@ -104,16 +104,16 @@ fn count_and_update_run<'a>(
         .tuples()
         // skip empty sequences
         .filter(|(start, end)| start != end)
-        .map(|(start, end)| ExecutionBasicBlockRun(run.0[start..end].to_vec()));
+        .map(|(start, end)| ExecutionStaticBlockRun(run.0[start..end].to_vec()));
     (count, sub_runs)
 }
 
-/// Count the occurences of a candidate in the execution (multiple basic block runs).
+/// Count the occurences of a candidate in the execution (multiple static block runs).
 /// Returns the count and an updated execution with the candidate removed.
 fn count_and_update_execution(
     sblock: &BlockCandidate,
-    execution: &[(ExecutionBasicBlockRun, u32)],
-) -> (u32, Vec<(ExecutionBasicBlockRun, u32)>) {
+    execution: &[(ExecutionStaticBlockRun, u32)],
+) -> (u32, Vec<(ExecutionStaticBlockRun, u32)>) {
     let mut total_count = 0;
     let new_execution = execution
         .iter()
@@ -134,7 +134,7 @@ pub fn select_blocks_greedy<A: Adapter, C: ApcCandidate<A>>(
     blocks: &[BlockAndStats<A::Instruction>],
     budget: usize,
     max_selected: usize,
-    execution_bb_runs: &[(ExecutionBasicBlockRun, u32)],
+    execution_bb_runs: &[(ExecutionStaticBlockRun, u32)],
 ) -> Vec<usize> {
     let mut candidates = blocks
         .iter()
@@ -200,8 +200,8 @@ mod test {
         }
     }
 
-    fn run(pcs: Vec<u64>) -> ExecutionBasicBlockRun {
-        ExecutionBasicBlockRun(pcs)
+    fn run(pcs: Vec<u64>) -> ExecutionStaticBlockRun {
+        ExecutionStaticBlockRun(pcs)
     }
 
     #[test]
