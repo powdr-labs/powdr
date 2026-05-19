@@ -113,7 +113,7 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
 
         let AdapterExecutionBlocks::<Self::Adapter> {
             blocks,
-            execution_static_block_runs,
+            execution_bb_runs,
         } = exec_blocks;
 
         tracing::info!(
@@ -160,12 +160,15 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
         // select best candidates
         let budget = self.max_total_apc_columns.unwrap_or(usize::MAX);
         let max_selected = (config.autoprecompiles + config.skip_autoprecompiles) as usize;
+        // When optimistic superblocks are not enabled, at most one APC can be chosen per starting PC
+        let one_block_per_pc = config.optimistic_superblock_max_bb_count < 2;
         let selection = select_blocks_greedy(
             &apcs,
             &blocks,
             budget,
             max_selected,
-            &execution_static_block_runs,
+            &execution_bb_runs,
+            one_block_per_pc,
         );
 
         // skip per config

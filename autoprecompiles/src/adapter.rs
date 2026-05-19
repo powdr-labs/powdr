@@ -6,7 +6,7 @@ use std::{fmt::Display, sync::Arc};
 use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
-use crate::blocks::{detect_superblocks, ExecutionBlocks, StaticBlocks, SuperBlock};
+use crate::blocks::{detect_superblocks, BasicBlocks, ExecutionBlocks, SuperBlock};
 use crate::empirical_constraints::EmpiricalConstraints;
 use crate::evaluation::EvaluationResult;
 use crate::execution::{ExecutionState, OptimisticConstraint, OptimisticConstraints};
@@ -57,22 +57,16 @@ pub trait PgoAdapter {
 
     fn filter_blocks_and_create_apcs_with_pgo(
         &self,
-        blocks: AdapterStaticBlocks<Self::Adapter>,
+        basic_blocks: AdapterBasicBlocks<Self::Adapter>,
         config: &PowdrConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
         empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
         let blocks = if let Some(prof) = self.execution_profile() {
-            detect_superblocks(config, &prof.pc_list, blocks)
+            detect_superblocks(config, &prof.pc_list, basic_blocks)
         } else {
-            let superblocks = blocks
-                .into_iter()
-                .map(|(_, b)| b)
-                // filter invalid APC candidates
-                .filter(|sb| sb.len() > 1)
-                .collect();
-            ExecutionBlocks::new_without_pgo(superblocks)
+            ExecutionBlocks::new_without_pgo(basic_blocks)
         };
 
         self.create_apcs_with_pgo(blocks, config, vm_config, labels, empirical_constraints)
@@ -184,6 +178,6 @@ pub type AdapterOptimisticConstraint<A> = OptimisticConstraint<
     <<A as Adapter>::ExecutionState as ExecutionState>::Value,
 >;
 pub type AdapterBasicBlock<A> = BasicBlock<<A as Adapter>::Instruction>;
+pub type AdapterBasicBlocks<A> = BasicBlocks<<A as Adapter>::Instruction>;
 pub type AdapterSuperBlock<A> = SuperBlock<<A as Adapter>::Instruction>;
 pub type AdapterExecutionBlocks<A> = ExecutionBlocks<<A as Adapter>::Instruction>;
-pub type AdapterStaticBlocks<A> = StaticBlocks<<A as Adapter>::Instruction>;

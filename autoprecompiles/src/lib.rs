@@ -62,12 +62,12 @@ pub mod trace_handler;
 pub struct PowdrConfig {
     /// Number of autoprecompiles to generate.
     pub autoprecompiles: u64,
-    /// Number of static blocks to skip for autoprecompiles.
+    /// Number of basic blocks to skip for autoprecompiles.
     /// This is either the largest N if no PGO, or the costliest N with PGO.
     pub skip_autoprecompiles: u64,
-    /// Maximum number of static blocks included in a superblock.
-    /// Default of 1 means only static blocks are considered.
-    pub superblock_max_bb_count: u8,
+    /// Maximum number of basic blocks included in a superblock.
+    /// Default of 1 means only basic blocks are considered.
+    pub optimistic_superblock_max_bb_count: u8,
     /// Maximum number of instructions included in an Apc.
     pub apc_max_instructions: u32,
     /// Apcs executed less than the cutoff are ignored.
@@ -78,8 +78,8 @@ pub struct PowdrConfig {
     pub apc_candidates_dir_path: Option<PathBuf>,
     /// Whether to use optimistic precompiles.
     pub should_use_optimistic_precompiles: bool,
-    /// Whether to expand basic blocks as long as their successor is statically known
-    pub should_expand_basic_blocks: bool,
+    /// Whether to detect and use static superblocks: sequences of basic blocks linked by statically determined jumps.
+    pub should_use_static_superblocks: bool,
 }
 
 impl PowdrConfig {
@@ -87,34 +87,38 @@ impl PowdrConfig {
         Self {
             autoprecompiles,
             skip_autoprecompiles,
-            // superblocks disabled by default
-            superblock_max_bb_count: 1,
+            // optimistic superblocks disabled by default
+            optimistic_superblock_max_bb_count: 1,
             apc_max_instructions: u32::MAX,
             apc_exec_count_cutoff: 1,
             degree_bound,
             apc_candidates_dir_path: None,
             should_use_optimistic_precompiles: false,
-            should_expand_basic_blocks: true,
+            should_use_static_superblocks: true,
         }
     }
 
-    pub fn with_superblocks(
-        mut self,
-        max_bb_count: u8,
-        max_instructions: Option<u32>,
-        exec_count_cutoff: Option<u32>,
-    ) -> Self {
+    pub fn with_optimistic_superblocks(mut self, max_bb_count: u8) -> Self {
         assert!(
             max_bb_count > 0,
             "superblock_max_bb_count must be greater than 0"
         );
-        self.superblock_max_bb_count = max_bb_count;
-        if let Some(max_instructions) = max_instructions {
-            self.apc_max_instructions = max_instructions;
-        }
-        if let Some(exec_count_cutoff) = exec_count_cutoff {
-            self.apc_exec_count_cutoff = exec_count_cutoff;
-        }
+        self.optimistic_superblock_max_bb_count = max_bb_count;
+        self
+    }
+
+    pub fn with_static_superblocks(mut self, should_use_static_superblocks: bool) -> Self {
+        self.should_use_static_superblocks = should_use_static_superblocks;
+        self
+    }
+
+    pub fn with_apc_max_instructions(mut self, max_instructions: u32) -> Self {
+        self.apc_max_instructions = max_instructions;
+        self
+    }
+
+    pub fn with_apc_exec_count_cutoff(mut self, cutoff: u32) -> Self {
+        self.apc_exec_count_cutoff = cutoff;
         self
     }
 
@@ -125,11 +129,6 @@ impl PowdrConfig {
 
     pub fn with_optimistic_precompiles(mut self, should_use_optimistic_precompiles: bool) -> Self {
         self.should_use_optimistic_precompiles = should_use_optimistic_precompiles;
-        self
-    }
-
-    pub fn with_should_expand_basic_blocks(mut self, should_expand_basic_blocks: bool) -> Self {
-        self.should_expand_basic_blocks = should_expand_basic_blocks;
         self
     }
 }
@@ -214,7 +213,7 @@ impl<T, I: PcStep, A, V> Apc<T, I, A, V> {
         self.block.instructions().map(|(_, i)| i)
     }
 
-    /// The PCs of the original static blocks composing this APC. Can be used to identify the APC.
+    /// The PCs of the original basic blocks composing this APC. Can be used to uniquely identify an APC.
     pub fn start_pcs(&self) -> Vec<u64> {
         self.block.start_pcs()
     }

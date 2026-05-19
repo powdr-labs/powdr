@@ -77,13 +77,13 @@ pub fn detect_empirical_constraints<ISA: OpenVmISA>(
     program: &OriginalCompiledProgram<ISA>,
     degree_bound: DegreeBound,
     inputs: Vec<StdIn>,
-    should_expand_basic_blocks: bool,
 ) -> EmpiricalConstraints {
     tracing::info!("Collecting empirical constraints...");
-    let blocks = program.collect_static_blocks(should_expand_basic_blocks);
+    let blocks = program.collect_basic_blocks(false);
     let instruction_counts = blocks
+        .blocks
         .iter()
-        .map(|(start_pc, block)| (*start_pc, block.len()))
+        .map(|block| (block.start_pc, block.instructions.len()))
         .collect();
 
     // Collect trace, without any autoprecompiles.
@@ -228,10 +228,10 @@ fn detect_empirical_constraints_from_input<ISA: OpenVmISA>(
     constraint_detector.process_trace(trace, debug_info);
 }
 
-/// Takes as many complete static blocks from the trace as possible,
+/// Takes as many complete basic blocks from the trace as possible,
 /// returning the taken trace and the remaining trace.
-/// This is needed because ConstraintDetector::process_trace requires complete static blocks,
-/// but segmentation might happen within a static block.
+/// This is needed because ConstraintDetector::process_trace requires complete basic blocks,
+/// but segmentation might happen within a basic block.
 fn take_complete_blocks(constraint_detector: &ConstraintDetector, trace: Trace) -> (Trace, Trace) {
     // Find the latest timestamp that begins a static block
     let latest_basic_block_beginning = trace
@@ -397,7 +397,7 @@ impl ConstraintDetector {
         partition
     }
 
-    /// Segments a trace into static blocks.
+    /// Segments a trace into basic blocks.
     /// Returns a mapping from block ID to all instances of that block in the trace.
     fn get_blocks<'a>(&self, trace: &'a Trace) -> BTreeMap<u64, Vec<ConcreteBlock<'a>>> {
         trace

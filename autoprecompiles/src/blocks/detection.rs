@@ -1,16 +1,15 @@
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
     adapter::Adapter,
-    blocks::{BasicBlock, Program, StaticBlocks, SuperBlock},
+    blocks::{BasicBlock, Program},
 };
 
-/// Collects static blocks from a program
-pub fn collect_static_blocks<A: Adapter>(
+/// Collects basic blocks from a program
+pub fn collect_basic_blocks<A: Adapter>(
     program: &A::Program,
     jumpdest_set: &BTreeSet<u64>,
-    should_expand_basic_blocks: bool,
-) -> StaticBlocks<A::Instruction> {
+) -> Vec<BasicBlock<A::Instruction>> {
     let mut blocks = Vec::new();
     let mut curr_block = BasicBlock {
         start_pc: program.instruction_index_to_pc(0),
@@ -67,77 +66,72 @@ pub fn collect_static_blocks<A: Adapter>(
     }
 
     tracing::info!(
-        "Got {} static blocks from `collect_static_blocks`",
+        "Got {} basic blocks from `collect_basic_blocks`",
         blocks.len()
     );
 
-    if should_expand_basic_blocks {
-        expand_blocks::<A>(blocks)
-    } else {
-        StaticBlocks::new(blocks)
-    }
+    blocks
 }
 
-/// Expand basic blocks with their successor as long as the successor is statically know
-fn expand_blocks<A: Adapter>(
-    blocks: Vec<BasicBlock<A::Instruction>>,
-) -> StaticBlocks<A::Instruction> {
-    let mut expander = BasicBlockExpander::<A>::new(blocks.clone());
-    StaticBlocks::new(
-        blocks
-            .into_iter()
-            .map(|b| expander.expand(b.into(), &mut HashSet::default())),
-    )
-}
+/// Computes the maximal static sequences in the program: chains of basic
+/// blocks linked by statically determined jumps.
+///
+/// Input is expected to be already filtered to only valid APC basic blocks.
+pub fn compute_static_sequences<A: Adapter>(
+    basic_blocks: &[BasicBlock<A::Instruction>],
+) -> Vec<Vec<u64>> {
+    let by_start_pc: BTreeMap<u64, &BasicBlock<A::Instruction>> =
+        basic_blocks.iter().map(|bb| (bb.start_pc, bb)).collect();
 
-struct BasicBlockExpander<A: Adapter> {
-    start_pc_to_allowed_basic_block: HashMap<u64, SuperBlock<A::Instruction>>,
-}
+    let mut sequences = Vec::new();
+    // visited set to avoid emitting subsequences (e.g., BC when ABC is a sequence)
+    let mut emitted: BTreeSet<u64> = BTreeSet::new();
 
-impl<A: Adapter> BasicBlockExpander<A> {
-    fn new(basic_blocks: Vec<BasicBlock<A::Instruction>>) -> Self {
-        Self {
-            start_pc_to_allowed_basic_block: basic_blocks
-                .into_iter()
-                .filter(|b| b.instructions().all(|(_, i)| A::is_allowed(i)))
-                .map(|b| (b.start_pc, b.into()))
-                .collect(),
-        }
-    }
-
-    fn expand(
-        &mut self,
-        mut block: SuperBlock<A::Instruction>,
-        visited: &mut HashSet<Vec<u64>>,
-    ) -> SuperBlock<A::Instruction> {
-        visited.insert(block.start_pcs());
-
-        // We do not extend blocks which contain disallowed instructions
-        if !block.instructions().all(|(_, i)| A::is_allowed(i)) {
-            return block;
+    for (start_pc, bb) in &by_start_pc {
+        if emitted.contains(start_pc) {
+            // subsequence of already emitted sequence
+            continue;
         }
 
-        let (last, previous) = {
-            let mut iter = block.instructions();
-            let last = iter.next_back().unwrap();
-            let previous = iter.next_back();
-            (last, previous)
-        };
+        // visited set for cycle detection within this chain.
+        let mut visited: BTreeSet<u64> = BTreeSet::new();
+        visited.insert(*start_pc);
+        let mut current = vec![*start_pc];
+        let mut tail = bb;
 
-        if let Some(target_pc) = A::try_static_target(last, previous) {
-            if let Some(tail) = self
-                .start_pc_to_allowed_basic_block
-                .get(&target_pc)
-                .cloned()
-            {
-                if !visited.contains(&tail.start_pcs()) {
-                    block.extend(self.expand(tail, visited));
-                }
+        loop {
+            let (last, previous) = {
+                let mut iter = tail.instructions();
+                let last = iter.next_back().unwrap();
+                let previous = iter.next_back();
+                (last, previous)
+            };
+
+            let Some(target_pc) = A::try_static_target(last, previous) else {
+                // not a static jump
+                break;
+            };
+            if visited.contains(&target_pc) {
+                // cycle
+                break;
             }
+            let Some(next) = by_start_pc.get(&target_pc) else {
+                // static jump to an invalid APC target
+                break;
+            };
+
+            visited.insert(target_pc);
+            current.push(target_pc);
+            tail = next;
         }
 
-        block
+        if current.len() >= 2 {
+            emitted.extend(current.iter().copied());
+            sequences.push(current);
+        }
     }
+
+    sequences
 }
 
 #[cfg(test)]
@@ -157,10 +151,10 @@ mod tests {
     use powdr_number::GoldilocksField;
     use serde::{Deserialize, Serialize};
 
-    use super::collect_static_blocks;
+    use super::{collect_basic_blocks, compute_static_sequences};
     use crate::{
         adapter::Adapter,
-        blocks::{Instruction, PcStep, Program},
+        blocks::{BasicBlock, Instruction, PcStep, Program},
         constraint_optimizer::IsBusStateful,
         evaluation::AirStats,
         execution::ExecutionState,
@@ -173,19 +167,19 @@ mod tests {
 
     #[derive(Clone, Debug, Serialize, Deserialize)]
     enum TestInstruction {
-        Fallthrough(char),
-        Jump(char, u64),
-        Stop(char),
-        Disallowed(char),
+        Fallthrough(String),
+        Jump(String, u64),
+        Stop(String),
+        Disallowed(String),
     }
 
     impl TestInstruction {
-        fn label(&self) -> char {
+        fn label(&self) -> &str {
             match self {
                 Self::Fallthrough(label)
                 | Self::Jump(label, _)
                 | Self::Stop(label)
-                | Self::Disallowed(label) => *label,
+                | Self::Disallowed(label) => label,
             }
         }
     }
@@ -400,20 +394,20 @@ mod tests {
         }
     }
 
-    fn ft(label: char) -> TestInstruction {
-        TestInstruction::Fallthrough(label)
+    fn ft(label: &str) -> TestInstruction {
+        TestInstruction::Fallthrough(label.to_string())
     }
 
-    fn jmp(label: char, target: u64) -> TestInstruction {
-        TestInstruction::Jump(label, target)
+    fn jmp(label: &str, target: u64) -> TestInstruction {
+        TestInstruction::Jump(label.to_string(), target)
     }
 
-    fn stop(label: char) -> TestInstruction {
-        TestInstruction::Stop(label)
+    fn stop(label: &str) -> TestInstruction {
+        TestInstruction::Stop(label.to_string())
     }
 
-    fn dis(label: char) -> TestInstruction {
-        TestInstruction::Disallowed(label)
+    fn dis(label: &str) -> TestInstruction {
+        TestInstruction::Disallowed(label.to_string())
     }
 
     fn program(instructions: Vec<TestInstruction>) -> TestProgram {
@@ -424,64 +418,106 @@ mod tests {
         pcs.iter().copied().collect()
     }
 
-    fn blocks(instructions: Vec<TestInstruction>, jumpdest_pcs: &[u64]) -> Vec<String> {
-        collect_static_blocks::<TestAdapter>(&program(instructions), &jumpdests(jumpdest_pcs), true)
+    /// Helper for creating a BB label from its instruction labels
+    fn bb_label(bb: &BasicBlock<TestInstruction>) -> String {
+        bb.instructions.iter().map(|i| i.label()).collect()
+    }
+
+    /// Helper for creating the sequence of BB labels for a given superblock
+    fn sb_labels(superblock: &[u64], blocks: &[BasicBlock<TestInstruction>]) -> Vec<String> {
+        let by_pc: std::collections::HashMap<u64, &BasicBlock<TestInstruction>> =
+            blocks.iter().map(|b| (b.start_pc, b)).collect();
+        superblock.iter().map(|pc| bb_label(by_pc[pc])).collect()
+    }
+
+    /// Helper for creating expected values for static superblocks.
+    fn sb(bbs: &[&str]) -> Vec<String> {
+        bbs.iter().map(|s| (*s).to_string()).collect()
+    }
+
+    fn basic_blocks(instructions: Vec<TestInstruction>, jumpdest_pcs: &[u64]) -> Vec<String> {
+        collect_basic_blocks::<TestAdapter>(&program(instructions), &jumpdests(jumpdest_pcs))
+            .iter()
+            .map(bb_label)
+            .collect()
+    }
+
+    fn static_bb_sequences(
+        instructions: Vec<TestInstruction>,
+        jumpdest_pcs: &[u64],
+    ) -> Vec<Vec<String>> {
+        let blocks: Vec<_> =
+            collect_basic_blocks::<TestAdapter>(&program(instructions), &jumpdests(jumpdest_pcs))
+                .into_iter()
+                .filter(|bb| bb.instructions.len() > 1) // filter for valid BBs
+                .collect();
+        compute_static_sequences::<TestAdapter>(&blocks)
             .into_iter()
-            .map(|(_, block)| {
-                block
-                    .instructions()
-                    .map(|(_, instruction)| instruction.label())
-                    .collect()
-            })
+            .map(|superblock| sb_labels(&superblock, &blocks))
             .collect()
     }
 
     #[test]
-    fn expands_fallthrough_chain_from_each_basic_block() {
+    fn expands_fallthrough_superblock_from_each_basic_block() {
         assert_eq!(
-            blocks(vec![ft('A'), ft('B'), stop('C')], &[1, 2]),
-            vec!["ABC", "BC", "C"]
+            static_bb_sequences(
+                vec![ft("A1"), ft("A2"), ft("B1"), ft("B2"), ft("C1"), stop("C2"),],
+                &[2, 4],
+            ),
+            vec![sb(&["A1A2", "B1B2", "C1C2"])]
         );
     }
 
     #[test]
     fn disallowed_instruction_breaks_fallthrough() {
-        assert_eq!(
-            blocks(vec![stop('A'), dis('X'), stop('B'), jmp('C', 2)], &[2, 3]),
-            vec!["A", "X", "B", "CB"]
-        );
+        assert!(static_bb_sequences(
+            vec![ft("A1"), ft("A2"), dis("X"), ft("B1"), stop("B2")],
+            &[3],
+        )
+        .is_empty());
     }
 
     #[test]
     fn jump_target_to_allowed_block_extends() {
         assert_eq!(
-            blocks(vec![jmp('A', 2), dis('X'), stop('C')], &[2]),
-            vec!["AC", "X", "C"]
+            static_bb_sequences(
+                vec![ft("A1"), jmp("A2", 3), dis("X"), ft("C1"), stop("C2"),],
+                &[3],
+            ),
+            vec![sb(&["A1A2", "C1C2"])]
         );
     }
 
     #[test]
     fn jump_target_to_disallowed_block_does_not_extend() {
-        assert_eq!(blocks(vec![jmp('A', 1), dis('X')], &[]), vec!["A", "X"]);
+        assert!(static_bb_sequences(vec![ft("A1"), jmp("A2", 2), dis("X")], &[]).is_empty());
     }
 
     #[test]
     fn no_jumpdests_keeps_single_fallthrough_block() {
-        assert_eq!(blocks(vec![ft('A'), ft('B'), stop('C')], &[]), vec!["ABC"]);
+        assert_eq!(
+            basic_blocks(vec![ft("A"), ft("B"), stop("C")], &[]),
+            vec!["ABC"]
+        );
+        assert!(static_bb_sequences(vec![ft("A"), ft("B"), stop("C")], &[]).is_empty());
     }
 
     #[test]
     fn disallowed_instruction_is_its_own_block() {
-        assert_eq!(blocks(vec![dis('X')], &[]), vec!["X"]);
+        assert_eq!(basic_blocks(vec![dis("X")], &[]), vec!["X"]);
+        assert!(static_bb_sequences(vec![dis("X")], &[]).is_empty());
     }
 
     #[test]
     fn self_cycle() {
-        assert_eq!(blocks(vec![jmp('A', 0)], &[]), vec!["A"]);
+        assert!(static_bb_sequences(vec![ft("A1"), jmp("A2", 0)], &[]).is_empty());
     }
 
     #[test]
     fn cycle() {
-        assert_eq!(blocks(vec![ft('B'), jmp('C', 0)], &[1]), vec!["BC", "CB"]);
+        assert_eq!(
+            static_bb_sequences(vec![ft("B1"), ft("B2"), ft("C1"), jmp("C2", 0)], &[2],),
+            vec![sb(&["B1B2", "C1C2"])]
+        );
     }
 }

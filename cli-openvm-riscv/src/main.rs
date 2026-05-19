@@ -64,9 +64,10 @@ struct SharedArgs {
     #[arg(default_value_t = false)]
     optimistic_precompiles: bool,
 
-    /// When larger than 1, enables superblocks with up to the given number of static blocks.
+    /// When larger than 1, enables optimistic superblocks with up to the given number of basic blocks.
+    /// Optimistic superblocks are sequences of basic blocks which can't be statically determined at compile time.
     #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..))]
-    superblocks: u8,
+    optimistic_superblocks: u8,
 }
 
 #[derive(Subcommand)]
@@ -126,13 +127,15 @@ fn build_powdr_config(shared: &SharedArgs) -> PowdrConfig {
     if let Some(apc_candidates_dir) = &shared.apc_candidates_dir {
         powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
     }
+    if let Some(apc_max_instructions) = shared.apc_max_instructions {
+        powdr_config = powdr_config.with_apc_max_instructions(apc_max_instructions);
+    }
+    if let Some(apc_exec_count_cutoff) = shared.apc_exec_count_cutoff {
+        powdr_config = powdr_config.with_apc_exec_count_cutoff(apc_exec_count_cutoff);
+    }
     powdr_config
         .with_optimistic_precompiles(shared.optimistic_precompiles)
-        .with_superblocks(
-            shared.superblocks,
-            shared.apc_max_instructions,
-            shared.apc_exec_count_cutoff,
-        )
+        .with_optimistic_superblocks(shared.optimistic_superblocks)
 }
 
 fn run_command(command: Commands) {
@@ -169,7 +172,7 @@ fn run_command(command: Commands) {
             metrics,
         } => {
             validate_shared_args(&shared);
-            if shared.superblocks > 1 {
+            if shared.optimistic_superblocks > 1 {
                 Cli::command()
                     .error(
                         clap::error::ErrorKind::ArgumentConflict,
@@ -217,7 +220,7 @@ fn run_command(command: Commands) {
             metrics,
         } => {
             validate_shared_args(&shared);
-            if shared.superblocks > 1 {
+            if shared.optimistic_superblocks > 1 {
                 Cli::command()
                     .error(
                         clap::error::ErrorKind::ArgumentConflict,
@@ -273,7 +276,7 @@ fn write_program_to_file(
 }
 
 fn validate_shared_args(args: &SharedArgs) {
-    if args.superblocks > 1 && !matches!(args.pgo, PgoType::Cell) {
+    if args.optimistic_superblocks > 1 && !matches!(args.pgo, PgoType::Cell) {
         Cli::command()
             .error(
                 clap::error::ErrorKind::ArgumentConflict,
@@ -331,12 +334,8 @@ fn maybe_compute_empirical_constraints(
         "Optimistic precompiles are not implemented yet. Computing empirical constraints..."
     );
 
-    let empirical_constraints = detect_empirical_constraints(
-        guest_program,
-        powdr_config.degree_bound,
-        vec![stdin],
-        powdr_config.should_expand_basic_blocks,
-    );
+    let empirical_constraints =
+        detect_empirical_constraints(guest_program, powdr_config.degree_bound, vec![stdin]);
 
     if let Some(path) = &powdr_config.apc_candidates_dir_path {
         std::fs::create_dir_all(path).expect("Failed to create apc candidates directory");

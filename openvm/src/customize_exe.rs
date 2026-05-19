@@ -225,23 +225,22 @@ pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAd
     };
 
     let symbols = ISA::get_symbol_table(&original_program.linked_program);
-    let blocks = original_program.collect_static_blocks(config.should_expand_basic_blocks);
+    let basic_blocks = original_program.collect_basic_blocks(config.should_use_static_superblocks);
     if tracing::enabled!(tracing::Level::DEBUG) {
-        tracing::debug!("Static blocks sorted by execution count (top 10):");
-        for (count, (start_pc, block)) in blocks
+        tracing::debug!("Basic blocks sorted by execution count (top 10):");
+        for (count, block) in basic_blocks
+            .blocks
             .iter()
-            .filter_map(|(start_pc, block)| {
-                Some((pgo.pc_execution_count(*start_pc)?, (start_pc, block)))
-            })
+            .filter_map(|block| Some((pgo.pc_execution_count(block.start_pc)?, block)))
             .sorted_by_key(|(count, _)| *count)
             .rev()
             .take(10)
         {
             let name = symbols
-                .try_get_one_or_preceding(*start_pc)
+                .try_get_one_or_preceding(block.start_pc)
                 .map(|(symbol, offset)| format!("{} + {offset}", symbol))
                 .unwrap_or_default();
-            tracing::debug!("Static block (executed {count} times), {name}:\n{block}",);
+            tracing::debug!("Basic block (executed {count} times), {name}:\n{block}",);
         }
     }
 
@@ -254,7 +253,7 @@ pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAd
     let exe = original_program.exe;
     let start = std::time::Instant::now();
     let apcs = pgo.filter_blocks_and_create_apcs_with_pgo(
-        blocks,
+        basic_blocks,
         &config,
         vm_config,
         symbols,
@@ -271,7 +270,7 @@ pub fn customize<'a, ISA: OpenVmISA, P: PgoAdapter<Adapter = BabyBearOpenVmApcAd
     tracing::info!("Adjust the program with the autoprecompiles");
 
     assert_eq!(
-        config.superblock_max_bb_count, 1,
+        config.optimistic_superblock_max_bb_count, 1,
         "openvm does not support superblocks"
     );
 

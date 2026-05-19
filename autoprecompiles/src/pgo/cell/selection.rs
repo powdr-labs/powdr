@@ -1,10 +1,12 @@
+use std::collections::BTreeSet;
+
 use itertools::Itertools;
 use priority_queue::PriorityQueue;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     adapter::Adapter,
-    blocks::{find_non_overlapping, BlockAndStats, ExecutionStaticBlockRun},
+    blocks::{find_non_overlapping, BlockAndStats, ExecutionBasicBlockRun},
 };
 
 use super::ApcCandidate;
@@ -12,9 +14,9 @@ use super::ApcCandidate;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 // A candidate block, used during block selection
 pub struct BlockCandidate {
-    // sequence of static blocks composing this block
+    // sequence of basic blocks composing this block
     pub start_pcs: Vec<u64>,
-    // cost of original static blocks (before optimization)
+    // cost of original basic blocks (before optimization)
     pub cost_before: usize,
     // cost after optimization
     pub cost_after: usize,
@@ -88,12 +90,12 @@ impl Ord for Density {
     }
 }
 
-/// Counts the occurrences of a candidate in a static block run.
+/// Counts the occurrences of a candidate in a basic block run.
 /// Returns the count and the sub-runs after the candidate is removed.
 fn count_and_update_run<'a>(
     sblock: &BlockCandidate,
-    run: &'a ExecutionStaticBlockRun,
-) -> (u32, impl Iterator<Item = ExecutionStaticBlockRun> + 'a) {
+    run: &'a ExecutionBasicBlockRun,
+) -> (u32, impl Iterator<Item = ExecutionBasicBlockRun> + 'a) {
     let sblock_len = sblock.start_pcs.len();
     let matches = find_non_overlapping(&run.0, &sblock.start_pcs);
     let count = matches.len() as u32;
@@ -104,16 +106,16 @@ fn count_and_update_run<'a>(
         .tuples()
         // skip empty sequences
         .filter(|(start, end)| start != end)
-        .map(|(start, end)| ExecutionStaticBlockRun(run.0[start..end].to_vec()));
+        .map(|(start, end)| ExecutionBasicBlockRun(run.0[start..end].to_vec()));
     (count, sub_runs)
 }
 
-/// Count the occurences of a candidate in the execution (multiple static block runs).
+/// Count the occurences of a candidate in the execution (multiple basic block runs).
 /// Returns the count and an updated execution with the candidate removed.
 fn count_and_update_execution(
     sblock: &BlockCandidate,
-    execution: &[(ExecutionStaticBlockRun, u32)],
-) -> (u32, Vec<(ExecutionStaticBlockRun, u32)>) {
+    execution: &[(ExecutionBasicBlockRun, u32)],
+) -> (u32, Vec<(ExecutionBasicBlockRun, u32)>) {
     let mut total_count = 0;
     let new_execution = execution
         .iter()
@@ -129,19 +131,38 @@ fn count_and_update_execution(
 /// Greedily select blocks based on density.
 /// Once a candidate is selected, the value of the remaining candidates are updated to reflect the new execution (with the selection removed).
 /// Returns the indices of the selected blocks, together with how many times each would run if applied over the execution in the selected order.
+///
+/// When `enforce_one_per_pc` is true, at most one APC can be selected for a given starting PC.
 pub fn select_blocks_greedy<A: Adapter, C: ApcCandidate<A>>(
     apcs: &[C],
     blocks: &[BlockAndStats<A::Instruction>],
     budget: usize,
     max_selected: usize,
-    execution_bb_runs: &[(ExecutionStaticBlockRun, u32)],
+    execution_bb_runs: &[(ExecutionBasicBlockRun, u32)],
+    one_block_per_pc: bool,
 ) -> Vec<usize> {
-    let mut candidates = blocks
+    let candidates = blocks
         .iter()
         .zip_eq(apcs)
         .map(|(b, apc)| BlockCandidate::new(b, apc))
         .collect::<Vec<_>>();
 
+    select_candidates_greedy(
+        candidates,
+        budget,
+        max_selected,
+        execution_bb_runs,
+        one_block_per_pc,
+    )
+}
+
+fn select_candidates_greedy(
+    mut candidates: Vec<BlockCandidate>,
+    budget: usize,
+    max_selected: usize,
+    execution_bb_runs: &[(ExecutionBasicBlockRun, u32)],
+    one_block_per_pc: bool,
+) -> Vec<usize> {
     // keep candidates by priority. As a candidate is selected, remaining priorities will be (lazily) updated.
     let mut by_priority: PriorityQueue<_, _> = candidates
         .iter()
@@ -152,11 +173,17 @@ pub fn select_blocks_greedy<A: Adapter, C: ApcCandidate<A>>(
     let mut selected = vec![];
     let mut cumulative_cost = 0;
     let mut current_execution = execution_bb_runs.to_vec();
+    let mut selected_start_pcs: BTreeSet<u64> = BTreeSet::new();
 
     while let Some((idx, _prio)) = by_priority.pop() {
         let c = &mut candidates[idx];
 
-        // ignore if too costly
+        // skip if another candidate at the same starting PC was already selected
+        if one_block_per_pc && selected_start_pcs.contains(&c.start_pcs[0]) {
+            continue;
+        }
+
+        // skip if too costly
         if cumulative_cost + c.cost() > budget {
             // The item does not fit, skip it
             continue;
@@ -177,6 +204,9 @@ pub fn select_blocks_greedy<A: Adapter, C: ApcCandidate<A>>(
         // the item fits, increment the cumulative cost and update the execution by removing its occurrences
         cumulative_cost += c.cost();
         current_execution = new_execution;
+        if one_block_per_pc {
+            selected_start_pcs.insert(c.start_pcs[0]);
+        }
         selected.push(idx);
 
         if selected.len() >= max_selected {
@@ -200,8 +230,8 @@ mod test {
         }
     }
 
-    fn run(pcs: Vec<u64>) -> ExecutionStaticBlockRun {
-        ExecutionStaticBlockRun(pcs)
+    fn run(pcs: Vec<u64>) -> ExecutionBasicBlockRun {
+        ExecutionBasicBlockRun(pcs)
     }
 
     #[test]

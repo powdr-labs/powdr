@@ -1,12 +1,16 @@
 mod common;
 use openvm_instructions::instruction::Instruction;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
-use powdr_autoprecompiles::blocks::BasicBlock;
+use powdr_autoprecompiles::blocks::{BasicBlock, SuperBlock};
 use powdr_openvm_riscv::symbolic_instruction_builder::*;
 use test_log::test;
 
 fn assert_machine_output(program: Vec<BasicBlock<Instruction<BabyBear>>>, test_name: &str) {
-    common::apc_builder_utils::assert_machine_output(program.into(), "superblocks", test_name);
+    common::apc_builder_utils::assert_machine_output(
+        SuperBlock::new_static(program),
+        "superblocks",
+        test_name,
+    );
 }
 
 fn bb(
