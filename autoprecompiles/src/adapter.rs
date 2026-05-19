@@ -55,14 +55,14 @@ impl<F, I, A, V, S> ApcWithStats<F, I, A, V, S> {
 pub trait PgoAdapter {
     type Adapter: Adapter;
 
-    /// Build and rank APC candidates. Index 0 of the returned Vec is the
-    /// candidate [`select_apcs`] would pick first; the caller trims with
-    /// `select_apcs(ranked, autoprecompiles, skip)`.
+    /// Build and rank APC candidates. The returned Vec is ordered by the
+    /// PGO strategy's ranking (best candidate first); callers trim with
+    /// [`select_apcs`].
     ///
     /// `config.apc_candidates` caps how many candidates get built. `None`
     /// means "all eligible blocks". The cap is applied per-PGO:
-    /// - Cell: pre-filters blocks by a cheap `frequency × n_instructions`
-    ///   proxy (the dynamic density ranking only kicks in post-build).
+    /// - Cell: ignored (always builds every eligible candidate; a positive
+    ///   cap logs a warning, `Some(0)` short-circuits).
     /// - Instruction / None: caps the metadata-sorted prefix directly.
     fn generate_apcs(
         &self,
@@ -72,39 +72,6 @@ pub trait PgoAdapter {
         labels: BTreeMap<u64, Vec<String>>,
         empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>>;
-
-    /// One-shot entry point: superblock detection + `generate_apcs` + `select_apcs`.
-    ///
-    /// The default impl auto-fills `apc_candidates = autoprecompiles + skip`
-    /// when the user hasn't set it, so PGO modes whose ranking is a pre-build
-    /// metadata sort don't build anything they won't select. Cell PGO
-    /// overrides this default (its dynamic density ranking benefits from
-    /// seeing every candidate).
-    ///
-    /// New callers should prefer composing [`Self::generate_apcs`] +
-    /// [`select_apcs`] directly so the build cache survives changes to
-    /// `autoprecompiles` / `skip`.
-    fn filter_blocks_and_create_apcs_with_pgo(
-        &self,
-        blocks: Vec<AdapterBasicBlock<Self::Adapter>>,
-        config: &PowdrConfig,
-        vm_config: AdapterVmConfig<Self::Adapter>,
-        labels: BTreeMap<u64, Vec<String>>,
-        empirical_constraints: EmpiricalConstraints,
-    ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
-        let mut config = config.clone();
-        if config.apc_candidates.is_none() {
-            config.apc_candidates = Some(config.autoprecompiles + config.skip_autoprecompiles);
-        }
-        run_filter_generate_select(
-            self,
-            blocks,
-            &config,
-            vm_config,
-            labels,
-            empirical_constraints,
-        )
-    }
 
     fn execution_profile(&self) -> Option<&ExecutionProfile> {
         None
@@ -135,32 +102,6 @@ pub fn detect_blocks<P: PgoAdapter + ?Sized>(
             .collect();
         ExecutionBlocks::new_without_pgo(superblocks)
     }
-}
-
-/// Shared body of [`PgoAdapter::filter_blocks_and_create_apcs_with_pgo`]:
-/// detect superblocks (or skip detection without a profile), build + rank,
-/// then trim.
-pub(crate) fn run_filter_generate_select<P: PgoAdapter + ?Sized>(
-    pgo: &P,
-    blocks: Vec<AdapterBasicBlock<P::Adapter>>,
-    config: &PowdrConfig,
-    vm_config: AdapterVmConfig<P::Adapter>,
-    labels: BTreeMap<u64, Vec<String>>,
-    empirical_constraints: EmpiricalConstraints,
-) -> Vec<AdapterApcWithStats<P::Adapter>> {
-    let exec_blocks = detect_blocks(pgo, blocks, config);
-    let ranked = pgo.generate_apcs(
-        exec_blocks,
-        config,
-        vm_config,
-        labels,
-        empirical_constraints,
-    );
-    select_apcs::<P::Adapter>(
-        ranked,
-        config.autoprecompiles as usize,
-        config.skip_autoprecompiles as usize,
-    )
 }
 
 /// Trim a ranked list of APCs to the configured selection size.

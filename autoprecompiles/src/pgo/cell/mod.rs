@@ -6,10 +6,7 @@ use selection::rank_blocks_greedy;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    adapter::{
-        run_filter_generate_select, Adapter, AdapterApcWithStats, AdapterBasicBlock,
-        AdapterExecutionBlocks, AdapterVmConfig, PgoAdapter,
-    },
+    adapter::{Adapter, AdapterApcWithStats, AdapterExecutionBlocks, AdapterVmConfig, PgoAdapter},
     blocks::{BasicBlock, BlockAndStats, SuperBlock},
     evaluation::{evaluate_apc, EvaluationResult},
     execution_profile::ExecutionProfile,
@@ -182,26 +179,6 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
             .into_iter()
             .map(|position| apcs[position].take().unwrap())
             .collect()
-    }
-
-    /// Cell PGO opts out of the trait default's auto-fill of `apc_candidates`.
-    /// The dynamic density ranking benefits from seeing every candidate.
-    fn filter_blocks_and_create_apcs_with_pgo(
-        &self,
-        blocks: Vec<AdapterBasicBlock<Self::Adapter>>,
-        config: &PowdrConfig,
-        vm_config: AdapterVmConfig<Self::Adapter>,
-        labels: BTreeMap<u64, Vec<String>>,
-        empirical_constraints: EmpiricalConstraints,
-    ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
-        run_filter_generate_select(
-            self,
-            blocks,
-            config,
-            vm_config,
-            labels,
-            empirical_constraints,
-        )
     }
 
     fn execution_profile(&self) -> Option<&ExecutionProfile> {
