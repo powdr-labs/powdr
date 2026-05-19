@@ -1,6 +1,8 @@
 #include <stdint.h>
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <cuda_profiler_api.h>
 #include "primitives/buffer_view.cuh"
 #include "primitives/constants.h"
 #include "primitives/trace_access.h"
@@ -243,6 +245,20 @@ extern "C" int _apc_apply_bus_dag(
     const dim3 block(block_x, 1, 1);
     const uint32_t g_size = (uint32_t)((num_apc_calls + block_x - 1) / block_x);
     const dim3 grid(g_size, 1, 1);
+
+    // POWDR_NCU_BIG=1 wraps "big" launches in cudaProfilerStart/Stop so
+    // `ncu --profile-from-start off` captures only those, regardless of
+    // launch count or template specialization. Threshold (`n_rules` count
+    // is a cheap proxy for chip size) defaults to 1000, override via
+    // POWDR_NCU_BIG_THRESHOLD.
+    static const bool ncu_mode = getenv("POWDR_NCU_BIG") != nullptr;
+    static const uint32_t big_threshold = []() -> uint32_t {
+        const char *e = getenv("POWDR_NCU_BIG_THRESHOLD");
+        return e ? (uint32_t)atoi(e) : 1000u;
+    }();
+    const bool capture = ncu_mode && (n_rules > big_threshold);
+    if (capture) cudaProfilerStart();
+
     apc_apply_bus_dag_kernel<<<grid, block>>>(
         d_output, num_apc_calls, apc_height,
         d_rules, n_rules,
@@ -252,5 +268,10 @@ extern "C" int _apc_apply_bus_dag(
         tuple2_bus_id, d_tuple2_hist, tuple2_sz0, tuple2_sz1,
         bitwise_bus_id, d_bitwise_hist
     );
+
+    if (capture) {
+        cudaDeviceSynchronize();   // ensure ncu pages on the launch we just enqueued
+        cudaProfilerStop();
+    }
     return (int)cudaGetLastError();
 }
