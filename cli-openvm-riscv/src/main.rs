@@ -394,21 +394,13 @@ fn load_cached<T: DeserializeOwned>(
     match serde_cbor::from_reader(file) {
         Ok(v) => Some(v),
         Err(err) => {
-            tracing::warn!(
-                "ignoring corrupt cache entry {}: {err}",
-                path.display()
-            );
+            tracing::warn!("ignoring corrupt cache entry {}: {err}", path.display());
             None
         }
     }
 }
 
-fn save_cached<T: Serialize>(
-    artifacts_dir: Option<&Path>,
-    stage: &str,
-    hash: &str,
-    value: &T,
-) {
+fn save_cached<T: Serialize>(artifacts_dir: Option<&Path>, stage: &str, hash: &str, value: &T) {
     let Some(dir) = artifacts_dir else { return };
     let path = cache_path(dir, stage, hash);
     let Some(parent) = path.parent() else { return };
