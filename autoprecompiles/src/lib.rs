@@ -5,7 +5,9 @@ use crate::empirical_constraints::{ConstraintGenerator, EmpiricalConstraints};
 use crate::evaluation::AirStats;
 use crate::execution::OptimisticConstraints;
 use crate::export::ExportOptions;
-use crate::expression_conversion::algebraic_to_grouped_expression;
+use crate::expression_conversion::{
+    algebraic_to_grouped_expression, grouped_expression_to_algebraic,
+};
 use crate::optimistic::algebraic_references::BlockCellAlgebraicReferenceMapper;
 use crate::optimistic::config::optimistic_precompile_config;
 use crate::optimistic::execution_constraint_generator::generate_execution_constraints;
@@ -450,6 +452,20 @@ fn add_guards_constraint<T: FieldElement>(
     }
 }
 
+/// Canonicalize an `AlgebraicExpression` by roundtripping through
+/// `GroupedExpression`, which folds `x*0→0`, `x*1→x`, `x*-1→-x`, `x±0→x`,
+/// `Neg(Number c)→Number(-c)`, and combines constant operands. All
+/// `AlgebraicReference`s are treated as unknown variables (i.e. preserved).
+///
+/// This is used at the points in `add_guards` where fresh AST nodes are
+/// constructed by `AlgebraicExpression::Mul`/`Sub`/`Add`, which do **not**
+/// fold on construction. Without this, the optimizer's careful
+/// canonicalization is undone by `add_guards` (e.g. `is_valid * Number(1)`,
+/// which downstream consumers then have to peephole-fold again).
+fn canonicalize<T: FieldElement>(expr: AlgebraicExpression<T>) -> AlgebraicExpression<T> {
+    grouped_expression_to_algebraic(algebraic_to_grouped_expression(&expr))
+}
+
 /// Adds an `is_valid` guard to all constraints and bus interactions, if needed.
 fn add_guards<T: FieldElement>(
     mut machine: SymbolicMachine<T>,
@@ -471,20 +487,20 @@ fn add_guards<T: FieldElement>(
     machine.constraints = machine
         .constraints
         .into_iter()
-        .map(|c| add_guards_constraint(c.expr, &is_valid).into())
+        .map(|c| canonicalize(add_guards_constraint(c.expr, &is_valid)).into())
         .collect();
 
     let mut is_valid_mults: Vec<SymbolicConstraint<T>> = Vec::new();
     for b in &mut machine.bus_interactions {
         if !satisfies_zero_witness(&b.mult) {
             // guard the multiplicity by `is_valid`
-            b.mult = is_valid.clone() * b.mult.clone();
+            b.mult = canonicalize(is_valid.clone() * b.mult.clone());
             // TODO this would not have to be cloned if we had *=
             //c.expr *= guard.clone();
         } else {
             // if it's zero, then we do not have to change the multiplicity, but we need to force it to be zero on non-valid rows with a constraint
             let one = AlgebraicExpression::Number(1u64.into());
-            let e = ((one - is_valid.clone()) * b.mult.clone()).into();
+            let e = canonicalize((one - is_valid.clone()) * b.mult.clone()).into();
             is_valid_mults.push(e);
         }
     }
