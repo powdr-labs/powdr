@@ -467,7 +467,7 @@ fn canonicalize<T: FieldElement>(expr: AlgebraicExpression<T>) -> AlgebraicExpre
 }
 
 /// Adds an `is_valid` guard to all constraints and bus interactions, if needed.
-pub fn add_guards<T: FieldElement>(
+fn add_guards<T: FieldElement>(
     mut machine: SymbolicMachine<T>,
     mut column_allocator: ColumnAllocator,
 ) -> (SymbolicMachine<T>, ColumnAllocator) {
