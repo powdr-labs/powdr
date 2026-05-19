@@ -57,7 +57,7 @@ The main CLI is `powdr_openvm_riscv` (in `cli-openvm-riscv/`). Subcommands map
 to pipeline stages; each command runs all stages up to its own:
 
 - `select-apcs` — profile + build/select APCs (fused) via the chosen PGO strategy
-- `setup` — … + assemble the program with the selected APCs (writes `<guest>_compiled.cbor`)
+- `setup` — … + assemble the program with the selected APCs
 - `execute` — … + run the guest in interpreted mode
 - `prove` — … + STARK proof (optionally `--recursion` for compression, `--mock` for constraint-only)
 

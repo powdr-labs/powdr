@@ -3,12 +3,14 @@
 Command-line interface for the powdr OpenVM RISC-V workflow. Subcommands are
 ordered by pipeline stage; each command runs all stages up to its own.
 
-| Command        | Stages run                                                     | Output                       |
-| -------------- | -------------------------------------------------------------- | ---------------------------- |
-| `select-apcs`  | Profile + build/select APCs (fused)                            | `<guest>_apcs.cbor`          |
-| `setup`        | … + assemble the program with selected APCs                    | `<guest>_compiled.cbor`      |
-| `execute`      | … + run the guest in interpreted mode                          | side effect only             |
-| `prove`        | … + STARK proof, optionally with `--recursion` (compression)   | side effect only             |
+| Command        | Stages run                                                     |
+| -------------- | -------------------------------------------------------------- |
+| `select-apcs`  | Profile + build/select APCs (fused)                            |
+| `setup`        | … + assemble the program with selected APCs                    |
+| `execute`      | … + run the guest in interpreted mode                          |
+| `prove`        | … + STARK proof, optionally with `--recursion` (compression)   |
+
+Stage outputs are persisted only when `--artifacts-dir` is set (see below).
 
 A separate `generate-apcs` command (building APC candidates without selection)
 is planned for a follow-up that splits build from select in the `PgoAdapter`
@@ -46,7 +48,7 @@ cargo run -r --bin powdr_openvm_riscv prove guest-keccak \
 cargo run -r --bin powdr_openvm_riscv prove guest-keccak \
     --profile-input 100 --input 100 --autoprecompiles 1 --mock
 
-# Assemble the compiled program and write it to <guest>_compiled.cbor
+# Assemble the compiled program (cached under --artifacts-dir if set)
 cargo run -r --bin powdr_openvm_riscv setup guest-keccak \
     --profile-input 100 --autoprecompiles 10
 ```

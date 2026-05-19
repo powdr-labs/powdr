@@ -190,20 +190,16 @@ fn run_command(command: Commands, artifacts_dir: Option<&Path>) {
     match command {
         Commands::SelectApcs(args) => {
             validate(&args);
-            let guest = args.generate.profile.guest.clone();
             let mut pipeline = Pipeline::new(args.generate.profile.clone());
             let apcs = pipeline.run_select_apcs(&args, artifacts_dir);
             tracing::info!("Selected {} autoprecompiles", apcs.len());
-            write_apcs_to_file(&apcs, &format!("{guest}_apcs.cbor")).unwrap();
         }
 
         Commands::Setup(args) => {
             validate(&args.select);
             superblock_runtime_check(&args.select);
-            let guest = args.select.generate.profile.guest.clone();
             let pipeline = Pipeline::new(args.select.generate.profile.clone());
-            let program = pipeline.run_setup(&args, artifacts_dir);
-            write_program_to_file(program, &format!("{guest}_compiled.cbor")).unwrap();
+            let _ = pipeline.run_setup(&args, artifacts_dir);
         }
 
         Commands::Execute(args) => {
@@ -419,26 +415,6 @@ fn save_cached<T: Serialize>(artifacts_dir: Option<&Path>, stage: &str, hash: &s
         tracing::warn!("failed to write cache {}: {err}", path.display());
         let _ = fs::remove_file(&tmp);
     }
-}
-
-// ---------- artifact writers used by terminal subcommands ----------
-
-fn write_program_to_file(
-    program: CompiledProgram<RiscvISA>,
-    filename: &str,
-) -> Result<(), io::Error> {
-    let mut file = fs::File::create(filename)?;
-    serde_cbor::to_writer(&mut file, &program).map_err(io::Error::other)?;
-    Ok(())
-}
-
-fn write_apcs_to_file(
-    apcs: &Vec<AdapterApcWithStats<BabyBearOpenVmApcAdapter<'_, RiscvISA>>>,
-    filename: &str,
-) -> Result<(), io::Error> {
-    let mut file = fs::File::create(filename)?;
-    serde_cbor::to_writer(&mut file, apcs).map_err(io::Error::other)?;
-    Ok(())
 }
 
 // ---------- misc helpers ----------
