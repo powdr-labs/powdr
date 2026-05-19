@@ -155,7 +155,12 @@ pub fn compile_exe(
     empirical_constraints: EmpiricalConstraints,
 ) -> Result<CompiledProgram<RiscvISA>, Box<dyn std::error::Error>> {
     let degree_bound = config.degree_bound;
-    let apcs = compile_apcs(&original_program, &config, pgo_config, empirical_constraints);
+    let apcs = compile_apcs(
+        &original_program,
+        &config,
+        pgo_config,
+        empirical_constraints,
+    );
     Ok(setup(original_program, apcs, degree_bound))
 }
 

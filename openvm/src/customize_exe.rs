@@ -357,7 +357,6 @@ pub fn setup<'a, ISA: OpenVmISA>(
     }
 }
 
-
 #[derive(Clone, Serialize, Deserialize)]
 pub struct OvmApcStats {
     pub widths: AirWidthsDiff,
