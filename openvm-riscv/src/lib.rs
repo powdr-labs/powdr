@@ -155,7 +155,12 @@ pub fn compile_exe(
     empirical_constraints: EmpiricalConstraints,
 ) -> Result<CompiledProgram<RiscvISA>, Box<dyn std::error::Error>> {
     let degree_bound = config.degree_bound;
-    let ranked = generate_apcs(&original_program, &config, pgo_config, empirical_constraints);
+    let ranked = generate_apcs(
+        &original_program,
+        &config,
+        pgo_config,
+        empirical_constraints,
+    );
     let apcs = select_apcs(ranked, &config);
     Ok(setup(original_program, apcs, degree_bound))
 }

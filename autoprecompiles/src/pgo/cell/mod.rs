@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, io::BufWriter};
 
 use itertools::Itertools;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use selection::select_blocks_greedy;
+use selection::rank_blocks_greedy;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -170,11 +170,11 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
                 .expect("Failed to write APC candidates JSON to file");
         }
 
-        // Run the greedy ranking unbounded — the trim to (skip, autoprecompiles)
-        // happens in `select_apcs`. The column budget can still terminate the
-        // ranking early if it's exhausted.
+        // Rank candidates by density; the column budget can terminate the
+        // ranking early if it's exhausted. The trim to (skip, autoprecompiles)
+        // happens later in `select_apcs`.
         let budget = self.max_total_apc_columns.unwrap_or(usize::MAX);
-        let ranking = select_blocks_greedy(&apcs, &blocks, budget, usize::MAX, &execution_bb_runs);
+        let ranking = rank_blocks_greedy(&apcs, &blocks, budget, &execution_bb_runs);
 
         // Reorder the apcs by the ranking; everything outside the ranking is dropped.
         let mut apcs: Vec<_> = apcs.into_iter().map(|apc| Some(apc.into_inner())).collect();
