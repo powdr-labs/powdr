@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, io::BufWriter};
+use std::{cmp::Reverse, collections::BTreeMap, io::BufWriter};
 
 use itertools::Itertools;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -6,7 +6,10 @@ use selection::select_blocks_greedy;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    adapter::{Adapter, AdapterApcWithStats, AdapterExecutionBlocks, AdapterVmConfig, PgoAdapter},
+    adapter::{
+        run_filter_generate_select, Adapter, AdapterApcWithStats, AdapterBasicBlock,
+        AdapterExecutionBlocks, AdapterVmConfig, PgoAdapter,
+    },
     blocks::{BasicBlock, BlockAndStats, SuperBlock},
     evaluation::{evaluate_apc, EvaluationResult},
     execution_profile::ExecutionProfile,
@@ -99,7 +102,7 @@ impl JsonExport {
 impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for CellPgo<A, C> {
     type Adapter = A;
 
-    fn create_apcs_with_pgo(
+    fn generate_apcs(
         &self,
         exec_blocks: AdapterExecutionBlocks<Self::Adapter>,
         config: &PowdrConfig,
@@ -107,14 +110,23 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
         labels: BTreeMap<u64, Vec<String>>,
         empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
-        if config.autoprecompiles == 0 {
-            return vec![];
-        }
-
         let AdapterExecutionBlocks::<Self::Adapter> {
             blocks,
             execution_bb_runs,
         } = exec_blocks;
+
+        // Pre-filter when `--apc-candidates` is set. We don't know post-opt
+        // cost yet, so use the cheap `frequency × n_instructions` proxy.
+        // The density-based ranking still runs over whatever we build.
+        let blocks = if let Some(cap) = config.apc_candidates {
+            blocks
+                .into_iter()
+                .sorted_by_key(|b| Reverse(b.count * b.block.instructions().count() as u32))
+                .take(cap as usize)
+                .collect::<Vec<_>>()
+        } else {
+            blocks
+        };
 
         tracing::info!(
             "Generating autoprecompiles for all {} blocks in parallel",
@@ -157,22 +169,38 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
                 .expect("Failed to write APC candidates JSON to file");
         }
 
-        // select best candidates
+        // Run the greedy ranking unbounded — the trim to (skip, autoprecompiles)
+        // happens in `select_apcs`. The column budget can still terminate the
+        // ranking early if it's exhausted.
         let budget = self.max_total_apc_columns.unwrap_or(usize::MAX);
-        let max_selected = (config.autoprecompiles + config.skip_autoprecompiles) as usize;
-        let selection =
-            select_blocks_greedy(&apcs, &blocks, budget, max_selected, &execution_bb_runs);
+        let ranking = select_blocks_greedy(&apcs, &blocks, budget, usize::MAX, &execution_bb_runs);
 
-        // skip per config
-        let skip = (config.skip_autoprecompiles as usize).min(selection.len());
-
-        // filter and order the apcs using the selection
+        // Reorder the apcs by the ranking; everything outside the ranking is dropped.
         let mut apcs: Vec<_> = apcs.into_iter().map(|apc| Some(apc.into_inner())).collect();
-        selection
+        ranking
             .into_iter()
-            .skip(skip)
             .map(|position| apcs[position].take().unwrap())
             .collect()
+    }
+
+    /// Cell PGO opts out of the trait default's auto-fill of `apc_candidates`.
+    /// The dynamic density ranking benefits from seeing every candidate.
+    fn filter_blocks_and_create_apcs_with_pgo(
+        &self,
+        blocks: Vec<AdapterBasicBlock<Self::Adapter>>,
+        config: &PowdrConfig,
+        vm_config: AdapterVmConfig<Self::Adapter>,
+        labels: BTreeMap<u64, Vec<String>>,
+        empirical_constraints: EmpiricalConstraints,
+    ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
+        run_filter_generate_select(
+            self,
+            blocks,
+            config,
+            vm_config,
+            labels,
+            empirical_constraints,
+        )
     }
 
     fn execution_profile(&self) -> Option<&ExecutionProfile> {

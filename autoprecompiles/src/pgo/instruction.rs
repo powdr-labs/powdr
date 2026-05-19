@@ -26,7 +26,7 @@ impl<A> InstructionPgo<A> {
 impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
     type Adapter = A;
 
-    fn create_apcs_with_pgo(
+    fn generate_apcs(
         &self,
         exec_blocks: AdapterExecutionBlocks<Self::Adapter>,
         config: &PowdrConfig,
@@ -38,10 +38,6 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
             "Generating autoprecompiles with instruction PGO for {} blocks",
             exec_blocks.blocks.len()
         );
-
-        if config.autoprecompiles == 0 {
-            return vec![];
-        }
 
         let blocks = exec_blocks
             .blocks

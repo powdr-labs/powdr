@@ -62,7 +62,7 @@ pub use powdr_openvm::{
 
 pub use openvm_build::GuestOptions;
 pub use powdr_autoprecompiles::bus_map::BusType;
-pub use powdr_openvm::customize_exe::{compile_apcs, setup, Instr};
+pub use powdr_openvm::customize_exe::{compile_apcs, generate_apcs, select_apcs, setup, Instr};
 
 pub fn build_elf_path<P: AsRef<Path>>(
     guest_opts: GuestOptions,
