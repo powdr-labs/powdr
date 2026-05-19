@@ -31,15 +31,14 @@ candidates **and** ranks them. The ranking strategy depends on `--pgo`:
 `--apc-candidates N` caps how many candidates `generate-apcs` builds (and
 hence the ranking length).
 
-- `--pgo cell` **always builds every eligible candidate**. Any
-  `--apc-candidates` value is ignored (with a warning) — Cell's dynamic
-  density ranking needs the full post-opt cost of every candidate.
+- `--pgo cell` **always builds every eligible candidate**. A user-set
+  `--apc-candidates` is logged with a warning and otherwise ignored — Cell's
+  dynamic density ranking needs the full post-opt cost of every candidate.
 - `--pgo instruction|none`:
   - Standalone `generate-apcs <guest>`: unset = build all.
   - Fused pipeline (`select-apcs` and beyond): unset defaults to
-    `--autoprecompiles`. Setting it explicitly lets you over-build for
-    later selection sweeps (see the instruction-PGO example below).
-  - `--autoprecompiles + --skip > --apc-candidates` is an error.
+    `--autoprecompiles + --skip`. Setting it explicitly lets you over-build
+    for later selection sweeps.
 
 Each command accepts the arguments of its own stage plus all preceding stages.
 For example, `prove` takes everything `setup` takes plus `--mock`,

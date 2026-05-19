@@ -82,9 +82,9 @@ struct GenerateApcsArgs {
     #[command(flatten)]
     profile: ProfileArgs,
 
-    /// PGO ranking strategy. Determines both *how* candidates are ranked and,
-    /// for instruction/none, *which* candidates get built when `--apc-candidates`
-    /// is set.
+    /// PGO ranking strategy. Determines how candidates are ranked and, for
+    /// instruction/none, which candidates get built (the top `--apc-candidates`
+    /// of the metadata-sorted prefix).
     #[arg(long, default_value_t = PgoType::default())]
     pgo: PgoType,
 
@@ -92,10 +92,10 @@ struct GenerateApcsArgs {
     ///
     /// Unset = "build all eligible blocks". When `generate-apcs` runs as part
     /// of a fused pipeline (`select-apcs`/`setup`/`execute`/`prove`) under
-    /// `--pgo instruction|none`, this is auto-filled to
-    /// `--autoprecompiles + --skip`; set it explicitly to over-build for
-    /// later selection sweeps. With `--pgo cell` the default stays unset so
-    /// the density-based ranking sees every candidate.
+    /// `--pgo instruction|none`, this defaults to `--autoprecompiles + --skip`;
+    /// set it explicitly to over-build for later selection sweeps. With
+    /// `--pgo cell` the default stays unset because Cell always builds every
+    /// eligible candidate anyway.
     #[arg(long)]
     apc_candidates: Option<u64>,
 
@@ -203,9 +203,8 @@ fn main() -> Result<(), io::Error> {
 
 fn run_command(command: Commands, artifacts_dir: Option<&Path>) {
     match command {
-        Commands::GenerateApcs(mut args) => {
+        Commands::GenerateApcs(args) => {
             validate_generate_args(&args, false);
-            apply_apc_candidates_autofill(&mut args, None);
             let pipeline = Pipeline::new(args.profile.clone());
             let ranked = pipeline.run_generate_apcs(&args, artifacts_dir);
             tracing::info!(
@@ -217,14 +216,14 @@ fn run_command(command: Commands, artifacts_dir: Option<&Path>) {
         Commands::SelectApcs(args) => {
             validate_generate_args(&args.generate, false);
             let pipeline = Pipeline::new(args.generate.profile.clone());
-            let apcs = pipeline.run_select_apcs(&args, artifacts_dir);
+            let apcs = pipeline.run_select_apcs(args, artifacts_dir);
             tracing::info!("Selected {} autoprecompiles", apcs.len());
         }
 
         Commands::Setup(args) => {
             validate_generate_args(&args.select.generate, true);
             let pipeline = Pipeline::new(args.select.generate.profile.clone());
-            let _ = pipeline.run_setup(&args, artifacts_dir);
+            let _ = pipeline.run_setup(args, artifacts_dir);
         }
 
         Commands::Execute(args) => {
@@ -232,7 +231,7 @@ fn run_command(command: Commands, artifacts_dir: Option<&Path>) {
             let runtime_input = args.input;
             let pipeline = Pipeline::new(args.setup.select.generate.profile.clone());
             let run = || {
-                let program = pipeline.run_setup(&args.setup, artifacts_dir);
+                let program = pipeline.run_setup(args.setup, artifacts_dir);
                 powdr_openvm::execute(program, stdin_from(runtime_input)).unwrap();
             };
             if let Some(metrics_path) = args.metrics {
@@ -252,7 +251,7 @@ fn run_command(command: Commands, artifacts_dir: Option<&Path>) {
             let recursion = args.recursion;
             let pipeline = Pipeline::new(args.setup.select.generate.profile.clone());
             let run = || {
-                let program = pipeline.run_setup(&args.setup, artifacts_dir);
+                let program = pipeline.run_setup(args.setup, artifacts_dir);
                 powdr_openvm_riscv::prove(
                     &program,
                     mock,
@@ -308,54 +307,48 @@ fn build_powdr_config(generate: &GenerateApcsArgs, autoprecompiles: u64, skip: u
         )
 }
 
-/// Resolve `--apc-candidates`:
-/// - Cell always builds every eligible block (its dynamic density ranking
-///   benefits from seeing every candidate); we force `None` and warn if the
-///   user set a positive value. Exception: when the downstream selection is
-///   zero we set `Some(0)` so the library short-circuits without building
-///   anything. Applies in both standalone and fused contexts.
-/// - For instruction / none in a fused context (when `selection = Some(...)`),
-///   default `--apc-candidates` to `--autoprecompiles` and validate that the
-///   cap fits `--autoprecompiles + --skip`.
-/// - Standalone instruction / none (`selection = None`): leave the user's
-///   value alone (unset = build all eligible candidates).
-fn apply_apc_candidates_autofill(generate: &mut GenerateApcsArgs, selection: Option<(u64, u64)>) {
-    match generate.pgo {
+/// Pick a default for `--apc-candidates` based on the PGO mode and the
+/// downstream selection size, so it doesn't have to be passed explicitly in
+/// the common case. No-op if the user already set `--apc-candidates`.
+///
+/// - Cell: leaves the cap unset (Cell always builds every eligible candidate
+///   anyway), except when `--autoprecompiles == 0` — then we set `Some(0)` so
+///   the library short-circuits without building anything.
+/// - Instruction / None: caps the build at `--autoprecompiles + --skip`
+///   (or 0 when `--autoprecompiles == 0`) so candidates the trim would
+///   discard don't get built.
+///
+/// Called before each stage's cache hash, so the resolved value lives in
+/// the cache key.
+fn set_apc_candidates_default(select_args: &mut SelectArgs) {
+    if select_args.generate.apc_candidates.is_some() {
+        // If explicitly set, don't change it.
+        return;
+    }
+
+    match select_args.generate.pgo {
         PgoType::Cell => {
-            if let Some(n) = generate.apc_candidates.take() {
-                tracing::warn!(
-                    "ignoring --apc-candidates {n}: --pgo cell always builds every eligible candidate"
-                );
-            }
-            // Signal "skip the build" to the library when there's nothing to select.
-            if selection.map(|(a, _)| a == 0).unwrap_or(false) {
-                generate.apc_candidates = Some(0);
+            if select_args.autoprecompiles == 0 {
+                // No need to generate any APCs.
+                select_args.generate.apc_candidates = Some(0);
+            } else {
+                // The Cell PGO builds all eligible candidates anyway, so we leave
+                // `apc_candidates` unset to signal "build all".
             }
         }
         PgoType::Instruction | PgoType::None => {
-            let Some((autoprecompiles, skip)) = selection else {
-                return;
+            let autoprecompiles = select_args.autoprecompiles;
+            let skip = select_args.skip;
+            let default_candidates = if autoprecompiles == 0 {
+                0
+            } else {
+                autoprecompiles as u64 + skip as u64
             };
-            if generate.apc_candidates.is_none() {
-                tracing::info!(
-                    "--apc-candidates not set; defaulting to --autoprecompiles = {autoprecompiles} for --pgo {}",
-                    generate.pgo
-                );
-                generate.apc_candidates = Some(autoprecompiles);
-            }
-            let cap = generate.apc_candidates.unwrap();
-            let needed = autoprecompiles + skip;
-            if needed > cap {
-                Cli::command()
-                    .error(
-                        clap::error::ErrorKind::ArgumentConflict,
-                        format!(
-                            "--apc-candidates ({cap}) is smaller than --autoprecompiles + --skip ({needed}); \
-                             cannot select {autoprecompiles} APCs after skipping {skip} from {cap} candidates"
-                        ),
-                    )
-                    .exit();
-            }
+            tracing::info!(
+                "--apc-candidates not set; defaulting to {default_candidates} for --pgo {}",
+                select_args.generate.pgo
+            );
+            select_args.generate.apc_candidates = Some(default_candidates);
         }
     }
 }
@@ -420,25 +413,24 @@ impl Pipeline {
     /// or load it from the cache.
     fn run_select_apcs(
         &self,
-        args: &SelectArgs,
+        mut args: SelectArgs,
         artifacts_dir: Option<&Path>,
     ) -> Vec<AdapterApcWithStats<BabyBearOpenVmApcAdapter<'static, RiscvISA>>> {
         // Apply the auto-fill rule for instruction/none PGO before computing
         // the generate stage's hash, so the resolved value is part of the key.
-        let mut generate = args.generate.clone();
-        apply_apc_candidates_autofill(
-            &mut generate,
-            Some((args.autoprecompiles as u64, args.skip as u64)),
-        );
+        set_apc_candidates_default(&mut args);
 
-        let hash = stage_hash(args, &self.guest_hash);
+        let hash = stage_hash(&args, &self.guest_hash);
         if let Some(cached) = load_cached(artifacts_dir, "select", &hash) {
             tracing::info!("cache hit: select/{hash}");
             return cached;
         }
-        let ranked = self.run_generate_apcs(&generate, artifacts_dir);
-        let powdr_config =
-            build_powdr_config(&generate, args.autoprecompiles as u64, args.skip as u64);
+        let ranked = self.run_generate_apcs(&args.generate, artifacts_dir);
+        let powdr_config = build_powdr_config(
+            &args.generate,
+            args.autoprecompiles as u64,
+            args.skip as u64,
+        );
         let apcs = select_apcs(ranked, &powdr_config);
         save_cached(artifacts_dir, "select", &hash, &apcs);
         apcs
@@ -448,25 +440,21 @@ impl Pipeline {
     /// or load the resulting `CompiledProgram` from the cache.
     fn run_setup(
         self,
-        args: &SetupArgs,
+        mut args: SetupArgs,
         artifacts_dir: Option<&Path>,
     ) -> CompiledProgram<RiscvISA> {
         // Resolve `apc_candidates` before hashing so that ignored-by-cell or
         // auto-filled values land in the cache key — otherwise bumping
         // `--apc-candidates` would invalidate setup without affecting the
         // upstream caches.
-        let mut args = args.clone();
-        apply_apc_candidates_autofill(
-            &mut args.select.generate,
-            Some((args.select.autoprecompiles as u64, args.select.skip as u64)),
-        );
+        set_apc_candidates_default(&mut args.select);
 
         let hash = stage_hash(&args, &self.guest_hash);
         if let Some(cached) = load_cached(artifacts_dir, "setup", &hash) {
             tracing::info!("cache hit: setup/{hash}");
             return cached;
         }
-        let apcs = self.run_select_apcs(&args.select, artifacts_dir);
+        let apcs = self.run_select_apcs(args.select.clone(), artifacts_dir);
         let powdr_config = build_powdr_config(
             &args.select.generate,
             args.select.autoprecompiles as u64,
