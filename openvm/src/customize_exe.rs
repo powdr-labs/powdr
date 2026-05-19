@@ -357,21 +357,6 @@ pub fn setup<'a, ISA: OpenVmISA>(
     }
 }
 
-/// Convenience composition of [`compile_apcs`] + [`setup`].
-pub fn customize<'a, ISA: OpenVmISA>(
-    original_program: OriginalCompiledProgram<'a, ISA>,
-    config: PowdrConfig,
-    pgo_config: PgoConfig,
-    empirical_constraints: EmpiricalConstraints,
-) -> CompiledProgram<ISA> {
-    let apcs = compile_apcs(
-        &original_program,
-        &config,
-        pgo_config,
-        empirical_constraints,
-    );
-    setup(original_program, apcs, config.degree_bound)
-}
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct OvmApcStats {

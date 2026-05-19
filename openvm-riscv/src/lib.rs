@@ -62,7 +62,7 @@ pub use powdr_openvm::{
 
 pub use openvm_build::GuestOptions;
 pub use powdr_autoprecompiles::bus_map::BusType;
-pub use powdr_openvm::customize_exe::{compile_apcs, customize, setup, Instr};
+pub use powdr_openvm::customize_exe::{compile_apcs, setup, Instr};
 
 pub fn build_elf_path<P: AsRef<Path>>(
     guest_opts: GuestOptions,
@@ -154,12 +154,9 @@ pub fn compile_exe(
     pgo_config: PgoConfig,
     empirical_constraints: EmpiricalConstraints,
 ) -> Result<CompiledProgram<RiscvISA>, Box<dyn std::error::Error>> {
-    Ok(customize(
-        original_program,
-        config,
-        pgo_config,
-        empirical_constraints,
-    ))
+    let degree_bound = config.degree_bound;
+    let apcs = compile_apcs(&original_program, &config, pgo_config, empirical_constraints);
+    Ok(setup(original_program, apcs, degree_bound))
 }
 
 use openvm_circuit_derive::VmConfig;
