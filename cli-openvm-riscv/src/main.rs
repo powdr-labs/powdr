@@ -311,7 +311,9 @@ fn build_powdr_config(generate: &GenerateApcsArgs, autoprecompiles: u64, skip: u
 /// Resolve `--apc-candidates`:
 /// - Cell always builds every eligible block (its dynamic density ranking
 ///   benefits from seeing every candidate); we force `None` and warn if the
-///   user set a value. Applies in both standalone and fused contexts.
+///   user set a positive value. Exception: when the downstream selection is
+///   zero we set `Some(0)` so the library short-circuits without building
+///   anything. Applies in both standalone and fused contexts.
 /// - For instruction / none in a fused context (when `selection = Some(...)`),
 ///   default `--apc-candidates` to `--autoprecompiles` and validate that the
 ///   cap fits `--autoprecompiles + --skip`.
@@ -324,6 +326,10 @@ fn apply_apc_candidates_autofill(generate: &mut GenerateApcsArgs, selection: Opt
                 tracing::warn!(
                     "ignoring --apc-candidates {n}: --pgo cell always builds every eligible candidate"
                 );
+            }
+            // Signal "skip the build" to the library when there's nothing to select.
+            if selection.map(|(a, _)| a == 0).unwrap_or(false) {
+                generate.apc_candidates = Some(0);
             }
         }
         PgoType::Instruction | PgoType::None => {
