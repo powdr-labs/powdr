@@ -49,55 +49,55 @@ powdr-openvm-riscv-hints-transpiler = { path = "./openvm-riscv/extensions/hints-
 powdr-openvm-riscv-hints-circuit = { path = "./openvm-riscv/extensions/hints-circuit", version = "0.1.4" }
 
 # openvm
-openvm = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr" }
-openvm-build = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr" }
-openvm-rv32im-circuit = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr" }
-openvm-rv32im-transpiler = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr" }
-openvm-rv32im-guest = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr", default-features = false }
-openvm-transpiler = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr" }
-openvm-circuit = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr" }
-openvm-circuit-derive = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr" }
-openvm-circuit-primitives = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr" }
-openvm-circuit-primitives-derive = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr" }
-openvm-instructions = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr" }
-openvm-instructions-derive = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr" }
-openvm-sdk = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr", default-features = false, features = [
+openvm = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait" }
+openvm-build = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait" }
+openvm-rv32im-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait" }
+openvm-rv32im-transpiler = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait" }
+openvm-rv32im-guest = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait", default-features = false }
+openvm-transpiler = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait" }
+openvm-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait" }
+openvm-circuit-derive = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait" }
+openvm-circuit-primitives = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait" }
+openvm-circuit-primitives-derive = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait" }
+openvm-instructions = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait" }
+openvm-instructions-derive = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait" }
+openvm-sdk = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait", default-features = false, features = [
   "parallel",
   "jemalloc",
 ] }
-openvm-sdk-config = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr" }
-openvm-ecc-circuit = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr" }
-openvm-ecc-transpiler = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr" }
-openvm-keccak256-circuit = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr" }
-openvm-keccak256-transpiler = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr" }
-openvm-sha2-circuit = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr" }
-openvm-sha2-transpiler = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr" }
-openvm-algebra-circuit = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr" }
-openvm-algebra-transpiler = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr" }
-openvm-bigint-circuit = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr" }
-openvm-bigint-transpiler = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr" }
-openvm-pairing-circuit = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr" }
-openvm-pairing-transpiler = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr" }
-openvm-native-circuit = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr", default-features = false }
-openvm-native-recursion = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr", default-features = false }
-openvm-platform = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr" }
-openvm-custom-insn = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr" }
-openvm-poseidon2-air = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr" }
-openvm-deferral-circuit = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr" }
+openvm-sdk-config = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait" }
+openvm-ecc-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait" }
+openvm-ecc-transpiler = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait" }
+openvm-keccak256-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait" }
+openvm-keccak256-transpiler = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait" }
+openvm-sha2-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait" }
+openvm-sha2-transpiler = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait" }
+openvm-algebra-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait" }
+openvm-algebra-transpiler = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait" }
+openvm-bigint-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait" }
+openvm-bigint-transpiler = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait" }
+openvm-pairing-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait" }
+openvm-pairing-transpiler = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait" }
+openvm-native-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait", default-features = false }
+openvm-native-recursion = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait", default-features = false }
+openvm-platform = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait" }
+openvm-custom-insn = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait" }
+openvm-poseidon2-air = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait" }
+openvm-deferral-circuit = { git = "https://github.com/powdr-labs/openvm.git", branch = "georgwiese/columns-air-trait" }
 
 # stark-backend
-openvm-stark-sdk = { git = "https://github.com/powdr-labs/stark-backend.git", tag = "v2.0.0-beta.2-powdr", default-features = false, features = [
+openvm-stark-sdk = { git = "https://github.com/powdr-labs/stark-backend.git", branch = "v2-powdr-beta.2-remove-columns-air", default-features = false, features = [
   "parallel",
   "jemalloc",
 ] }
-openvm-stark-backend = { git = "https://github.com/powdr-labs/stark-backend.git", tag = "v2.0.0-beta.2-powdr", default-features = false, features = [
+openvm-stark-backend = { git = "https://github.com/powdr-labs/stark-backend.git", branch = "v2-powdr-beta.2-remove-columns-air", default-features = false, features = [
   "parallel",
   "jemalloc",
 ] }
-openvm-cpu-backend = { git = "https://github.com/powdr-labs/stark-backend.git", tag = "v2.0.0-beta.2-powdr", default-features = false }
-openvm-cuda-backend = { git = "https://github.com/powdr-labs/stark-backend.git", tag = "v2.0.0-beta.2-powdr", default-features = false }
-openvm-cuda-builder = { git = "https://github.com/powdr-labs/stark-backend.git", tag = "v2.0.0-beta.2-powdr", default-features = false }
-openvm-cuda-common = { git = "https://github.com/powdr-labs/stark-backend.git", tag = "v2.0.0-beta.2-powdr", default-features = false }
+openvm-cpu-backend = { git = "https://github.com/powdr-labs/stark-backend.git", branch = "v2-powdr-beta.2-remove-columns-air", default-features = false }
+openvm-cuda-backend = { git = "https://github.com/powdr-labs/stark-backend.git", branch = "v2-powdr-beta.2-remove-columns-air", default-features = false }
+openvm-cuda-builder = { git = "https://github.com/powdr-labs/stark-backend.git", branch = "v2-powdr-beta.2-remove-columns-air", default-features = false }
+openvm-cuda-common = { git = "https://github.com/powdr-labs/stark-backend.git", branch = "v2-powdr-beta.2-remove-columns-air", default-features = false }
 
 # external dependencies
 num-traits = "0.2.19"
