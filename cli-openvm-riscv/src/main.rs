@@ -46,7 +46,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Build + select APCs (fused) and write them to `<guest>_apcs.cbor`.
+    /// Build + select APCs (fused).
     ///
     /// When the `PgoAdapter` trait is split in a follow-up, a separate
     /// `generate-apcs` command will sit before `select-apcs` in the
