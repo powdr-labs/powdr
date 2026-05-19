@@ -31,6 +31,7 @@ use crate::{
     BabyBearSC, GpuBackend,
 };
 
+mod expr_dag;
 mod inventory;
 mod periphery;
 
@@ -370,6 +371,7 @@ pub fn compile_bus_to_gpu(
     apc_height: usize,
 ) -> (Vec<DevInteraction>, Vec<ExprSpan>, Vec<u32>) {
     analyze_bus_cse(bus_interactions);
+    expr_dag::dump_bus_dag_stats(bus_interactions, apc_poly_id_to_index);
 
     let mut interactions = Vec::with_capacity(bus_interactions.len());
     let mut arg_spans = Vec::new();
@@ -638,19 +640,61 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
             cuda_abi::apc_apply_derived_expr(&mut output, d_specs, d_bc, num_apc_calls).unwrap();
         });
 
-        // Encode bus interactions for GPU consumption
-        let (bus_interactions, arg_spans, bytecode) = timed_substage!("bus_compile_h2d", {
-            let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
-                &self.apc.machine.bus_interactions,
-                &apc_poly_id_to_index,
-                height,
-            );
-            (
-                bus_interactions.to_device().unwrap(),
-                arg_spans.to_device().unwrap(),
-                bytecode.to_device().unwrap(),
-            )
-        });
+        // Read kernel selector once per process. `POWDR_BUS_KERNEL=dag` uses
+        // the GKR-DAG kernel; anything else (including unset) uses the stack-VM.
+        fn use_dag_kernel() -> bool {
+            static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+            *ENABLED.get_or_init(|| {
+                std::env::var("POWDR_BUS_KERNEL")
+                    .map(|v| v == "dag")
+                    .unwrap_or(false)
+            })
+        }
+
+        // Encode bus interactions. Both paths build their device buffers under
+        // the same `bus_compile_h2d` substage so the two kernels A/B fairly.
+        let bus_dag_inputs: Option<(_, _, _, _)> = if use_dag_kernel() {
+            Some(timed_substage!("bus_compile_h2d", {
+                let (rules, interactions, output_descs, buffer_size) =
+                    expr_dag::compile_bus_to_gpu_dag(
+                        &self.apc.machine.bus_interactions,
+                        &apc_poly_id_to_index,
+                        height,
+                    );
+                // Global-mode intermediates buffer: slot-major coalesced.
+                // total_threads = grid_size * block_size = ceil(num_apc_calls / 128) * 128.
+                let block_x = 128usize;
+                let total_threads = num_apc_calls.div_ceil(block_x) * block_x;
+                let inter_len = total_threads * buffer_size.max(1);
+                let intermediates =
+                    openvm_cuda_common::d_buffer::DeviceBuffer::<BabyBear>::with_capacity(inter_len);
+                (
+                    rules.to_device().unwrap(),
+                    interactions.to_device().unwrap(),
+                    output_descs.to_device().unwrap(),
+                    intermediates,
+                )
+            }))
+        } else {
+            None
+        };
+
+        let bus_vm_inputs: Option<(_, _, _)> = if !use_dag_kernel() {
+            Some(timed_substage!("bus_compile_h2d", {
+                let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
+                    &self.apc.machine.bus_interactions,
+                    &apc_poly_id_to_index,
+                    height,
+                );
+                (
+                    bus_interactions.to_device().unwrap(),
+                    arg_spans.to_device().unwrap(),
+                    bytecode.to_device().unwrap(),
+                )
+            }))
+        } else {
+            None
+        };
 
         // Gather GPU inputs for periphery (bus ids, count device buffers)
         let periphery = &self.periphery.real;
@@ -675,26 +719,41 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         // the next kernel function after the prior (`apc_tracegen`) returns.
         // This is important because bus evaluation depends on trace results.
         timed_substage!("bus_kernel", {
-            cuda_abi::apc_apply_bus(
-                // APC related
-                &output,
-                num_apc_calls,
-                // Interaction related
-                bytecode,
-                bus_interactions,
-                arg_spans,
-                // Variable range checker related
-                var_range_bus_id,
-                var_range_count,
-                // Tuple range checker related
-                tuple2_bus_id,
-                tuple2_count_u32,
-                tuple2_sizes,
-                // Bitwise related
-                bitwise_bus_id,
-                bitwise_count_u32,
-            )
-            .unwrap();
+            if let Some((rules, interactions, output_descs, intermediates)) = bus_dag_inputs {
+                cuda_abi::apc_apply_bus_dag(
+                    &output,
+                    num_apc_calls,
+                    height,
+                    &rules,
+                    &interactions,
+                    &output_descs,
+                    &intermediates,
+                    var_range_bus_id,
+                    var_range_count,
+                    tuple2_bus_id,
+                    tuple2_count_u32,
+                    tuple2_sizes,
+                    bitwise_bus_id,
+                    bitwise_count_u32,
+                )
+                .unwrap();
+            } else if let Some((bus_interactions, arg_spans, bytecode)) = bus_vm_inputs {
+                cuda_abi::apc_apply_bus(
+                    &output,
+                    num_apc_calls,
+                    bytecode,
+                    bus_interactions,
+                    arg_spans,
+                    var_range_bus_id,
+                    var_range_count,
+                    tuple2_bus_id,
+                    tuple2_count_u32,
+                    tuple2_sizes,
+                    bitwise_bus_id,
+                    bitwise_count_u32,
+                )
+                .unwrap();
+            }
         });
 
         Some(output)
