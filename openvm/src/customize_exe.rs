@@ -254,18 +254,6 @@ pub fn select_apcs<'a, ISA: OpenVmISA>(
     )
 }
 
-/// Convenience wrapper: build + rank + trim. Equivalent to
-/// `select_apcs(generate_apcs(...), ...)`.
-pub fn compile_apcs<'a, ISA: OpenVmISA>(
-    original_program: &OriginalCompiledProgram<'a, ISA>,
-    config: &PowdrConfig,
-    pgo_config: PgoConfig,
-    empirical_constraints: EmpiricalConstraints,
-) -> Vec<AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a, ISA>>> {
-    let ranked = generate_apcs(original_program, config, pgo_config, empirical_constraints);
-    select_apcs(ranked, config)
-}
-
 fn generate_apcs_with_adapter<
     'a,
     ISA: OpenVmISA,
@@ -330,7 +318,7 @@ fn generate_apcs_with_adapter<
 
 /// Inject the selected APCs into `original_program` and assemble the final [`CompiledProgram`].
 ///
-/// `apcs` is the output of [`compile_apcs`].
+/// `apcs` is the output of [`select_apcs`].
 pub fn setup<'a, ISA: OpenVmISA>(
     original_program: OriginalCompiledProgram<'a, ISA>,
     apcs: Vec<AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a, ISA>>>,
