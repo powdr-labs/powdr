@@ -2,7 +2,8 @@ use openvm_circuit::{
     arch::{MatrixRecordArena, VmChipComplex},
     system::SystemChipInventory,
 };
-use openvm_stark_backend::{config::Val, prover::cpu::CpuBackend};
+use openvm_cpu_backend::CpuBackend;
+use openvm_stark_backend::Val;
 
 /// A dummy inventory used for execution of autoprecompiles
 /// It extends the `SdkVmConfigExecutor` and `SdkVmConfigPeriphery`, providing them with shared, pre-loaded periphery chips to avoid memory allocations by each SDK chip

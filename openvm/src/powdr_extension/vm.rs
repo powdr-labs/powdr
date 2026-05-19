@@ -23,8 +23,8 @@ use openvm_circuit::{
     circuit_derive::Chip,
 };
 use openvm_stark_backend::{
-    config::{StarkGenericConfig, Val},
     p3_field::{Field, PrimeField32},
+    StarkProtocolConfig, Val,
 };
 use serde::{Deserialize, Serialize};
 
@@ -119,7 +119,7 @@ impl<ISA: OpenVmISA> VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear,
 
 impl<SC, ISA: OpenVmISA> VmCircuitExtension<SC> for PowdrExtension<Val<SC>, ISA>
 where
-    SC: StarkGenericConfig,
+    SC: StarkProtocolConfig,
     Val<SC>: PrimeField32,
 {
     fn extend_circuit(&self, inventory: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {

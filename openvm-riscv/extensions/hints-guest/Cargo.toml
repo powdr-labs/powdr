@@ -1,5 +1,6 @@
 [package]
 name = "powdr-openvm-riscv-hints-guest"
+description = "Guest-side hint functions for powdr OpenVM RISC-V programs"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

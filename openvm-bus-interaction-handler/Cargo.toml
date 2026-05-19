@@ -1,5 +1,6 @@
 [package]
 name = "powdr-openvm-bus-interaction-handler"
+description = "Bus interaction handler implementation for OpenVM to be used with autoprecompiles"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

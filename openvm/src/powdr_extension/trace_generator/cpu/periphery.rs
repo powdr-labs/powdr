@@ -12,13 +12,13 @@ use openvm_circuit_primitives::{
     range_tuple::{RangeTupleCheckerAir, RangeTupleCheckerChip, SharedRangeTupleCheckerChip},
     var_range::{SharedVariableRangeCheckerChip, VariableRangeCheckerAir},
 };
-use openvm_stark_backend::{config::StarkGenericConfig, p3_field::PrimeField32};
+use openvm_stark_backend::{p3_field::PrimeField32, StarkProtocolConfig};
 
 use itertools::Itertools;
 use openvm_circuit::arch::RowMajorMatrixArena;
-use openvm_stark_backend::config::Val;
-use openvm_stark_backend::engine::StarkEngine;
-use openvm_stark_backend::prover::cpu::{CpuBackend, CpuDevice};
+use openvm_cpu_backend::{CpuBackend, CpuDevice};
+use openvm_stark_backend::StarkEngine;
+use openvm_stark_backend::Val;
 
 use crate::{isa::OpenVmISA, PeripheryBusIds};
 
@@ -77,7 +77,9 @@ impl<ISA> PowdrPeripheryInstancesCpu<ISA> {
     }
 }
 
-impl<F: PrimeField32, ISA: OpenVmISA> VmExecutionExtension<F> for SharedPeripheryChipsCpu<ISA> {
+impl<F: PrimeField32 + openvm_stark_backend::p3_field::InjectiveMonomial<7>, ISA: OpenVmISA>
+    VmExecutionExtension<F> for SharedPeripheryChipsCpu<ISA>
+{
     type Executor = DummyExecutor<F, ISA>;
 
     fn extend_execution(
@@ -89,7 +91,7 @@ impl<F: PrimeField32, ISA: OpenVmISA> VmExecutionExtension<F> for SharedPeripher
     }
 }
 
-impl<SC: StarkGenericConfig, ISA: OpenVmISA> VmCircuitExtension<SC>
+impl<SC: StarkProtocolConfig, ISA: OpenVmISA> VmCircuitExtension<SC>
     for SharedPeripheryChipsCpu<ISA>
 {
     fn extend_circuit(&self, inventory: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {
@@ -132,7 +134,9 @@ pub struct SharedPeripheryChipsCpuProverExt;
 impl<E, SC, RA, ISA: OpenVmISA> VmProverExtension<E, RA, SharedPeripheryChipsCpu<ISA>>
     for SharedPeripheryChipsCpuProverExt
 where
-    SC: StarkGenericConfig,
+    SC: StarkProtocolConfig,
+    SC::F: Ord + openvm_stark_backend::p3_field::InjectiveMonomial<7>,
+    SC::EF: Ord,
     E: StarkEngine<SC = SC, PB = CpuBackend<SC>, PD = CpuDevice<SC>>,
     RA: RowMajorMatrixArena<Val<SC>>,
     Val<SC>: PrimeField32,

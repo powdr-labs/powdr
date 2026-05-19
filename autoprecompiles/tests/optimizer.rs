@@ -1,3 +1,6 @@
+use std::fs;
+use std::path::Path;
+
 use expect_test::expect;
 use itertools::Itertools;
 use powdr_autoprecompiles::bus_map::BusMap;
@@ -24,6 +27,40 @@ fn import_apc_from_gzipped_json(file: &str) -> ApcWithBusMap<TestApc, BusMap<Ope
     let file = std::fs::File::open(file).unwrap();
     let reader = flate2::read::GzDecoder::new(file);
     serde_json::from_reader(reader).unwrap()
+}
+
+#[allow(clippy::print_stdout)]
+fn expect_file_contents(file_path: &Path, actual: &str, test_name: &str) {
+    let should_update_expectation = std::env::var("UPDATE_EXPECT")
+        .map(|v| v.as_str() == "1")
+        .unwrap_or(false);
+
+    let expected = file_path
+        .exists()
+        .then(|| fs::read_to_string(file_path).unwrap());
+
+    match (expected, should_update_expectation) {
+        (Some(expected), _) if expected == actual => {
+            // Test succeeded.
+        }
+        (Some(expected), false) => {
+            // The expectation file exists, is different from "actual" and we are
+            // not allowed to update it.
+            pretty_assertions::assert_eq!(
+                expected.trim(),
+                actual.trim(),
+                "The output of `{test_name}` does not match the expected output. \
+                 To overwrite the expected output with the currently generated one, \
+                 re-run the test with the environment variable `UPDATE_EXPECT=1`.",
+            );
+        }
+        _ => {
+            // Expectation file does not exist or is different from "actual" and we are allowed to update it.
+            fs::create_dir_all(file_path.parent().unwrap()).unwrap();
+            fs::write(file_path, actual).unwrap();
+            println!("Expected output for `{test_name}` was created. Re-run the test to confirm.");
+        }
+    }
 }
 
 #[test]
@@ -239,6 +276,47 @@ fn test_optimize_reth_op() {
     .assert_debug_eq(&machine.bus_interactions.len());
     expect![[r#"
         313
+    "#]]
+    .assert_debug_eq(&machine.constraints.len());
+}
+
+#[test]
+fn wasm_register_reuse() {
+    let apc = import_apc_from_gzipped_json("tests/wasm_register_reuse.json.gz");
+
+    let machine: SymbolicMachine<BabyBearField> = apc.apc.machine;
+    assert!(machine.derived_columns.is_empty());
+    let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&machine);
+
+    let machine = optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
+        machine,
+        OpenVmBusInteractionHandler::default(),
+        DEFAULT_DEGREE_BOUND,
+        &default_openvm_bus_map(),
+        column_allocator,
+        &mut Default::default(),
+    )
+    .unwrap()
+    .0;
+
+    expect_file_contents(
+        &Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("wasm_register_reuse.txt"),
+        &machine.to_string(),
+        "wasm_register_reuse",
+    );
+
+    expect![[r#"
+        32
+    "#]]
+    .assert_debug_eq(&machine.main_columns().count());
+    expect![[r#"
+        20
+    "#]]
+    .assert_debug_eq(&machine.bus_interactions.len());
+    expect![[r#"
+        14
     "#]]
     .assert_debug_eq(&machine.constraints.len());
 }

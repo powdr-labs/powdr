@@ -115,20 +115,43 @@ Key differences from V1:
 
 ### Version Detection
 
-The viewer auto-detects the OpenVM version by checking for `logup_gkr` in metric names (V2-only). The detected version is displayed as a badge in the navbar.
+The viewer auto-detects the OpenVM version:
+- **V2 GPU backend**: has `logup_gkr` in metric names
+- **V2 CPU backend**: has `prove_zerocheck_and_logup_time_ms` but no `logup_gkr`
+- **V1**: neither of the above
+
+The detected version is displayed as a badge in the navbar.
+
+### V2 CPU Backend Metric Mapping
+
+The V2 CPU backend (`openvm-cpu-backend`) uses flat metric names instead of the GPU's hierarchical `prover.*` names. The viewer handles both transparently:
+
+| Computed Field | GPU Metric | CPU Metric |
+|---|---|---|
+| Trace Commit | `prover.main_trace_commit_time_ms` | `trace_commit_cpu_time_ms` |
+| Constraints | `prover.rap_constraints_time_ms` | `prove_zerocheck_and_logup_time_ms` |
+| LogUp GKR | `prover.rap_constraints.logup_gkr_time_ms` | `fractional_sumcheck_time_ms` |
+| Round 0 | `prover.rap_constraints.round0_time_ms` | *(not separately reported)* |
+| MLE Rounds | `prover.rap_constraints.mle_rounds_time_ms` | `prover.batch_constraints.mle_rounds_time_ms` |
+| Openings | `prover.openings_time_ms` | `prove_whir_opening_cpu_time_ms` + `prove_stacked_opening_reduction_time_ms` |
+| WHIR | `prover.openings.whir_time_ms` | `prove_whir_opening_cpu_time_ms` |
+| Stacked Reduction | `prover.openings.stacked_reduction_time_ms` | `prove_stacked_opening_reduction_time_ms` |
+| Set Initial Memory | `set_initial_memory_time_ms` | *(not instrumented on CPU)* |
 
 ### Proof Time Hierarchy
 
-**V1**: `total_proof_time_ms` (per group) is the top-level time. `execute_metered_time_ms` is inside it.
+In both V1 and V2, `execute_metered_time_ms` runs *before* segment proving and sits *outside* per-segment `total_proof_time_ms`. The viewer reports metered execution as a separate top-level phase and uses `sum(total_proof_time_ms)` for the app phase.
+
+**V1**:
 ```
-total = app.total_proof_time_ms + leaf.total_proof_time_ms + internal.total_proof_time_ms
-app.total_proof_time_ms ≈ stark_prove_excluding_trace + trace_gen + preflight + metered + other
+total = metered + sum(app.total_proof_time_ms) + leaf.total_proof_time_ms + internal.total_proof_time_ms
+app.total_proof_time_ms ≈ sum_per_segment(preflight + trace_gen + stark_excl) + small overhead
 ```
 
-**V2**: `app_prove_time_ms` is the wall-clock app time. `execute_metered_time_ms` sits *outside* `total_proof_time_ms` (which is per-segment) but inside `app_prove_time_ms`. The viewer uses `app_prove_time_ms` for app and `total_proof_time_ms` for other groups.
+**V2**:
 ```
-total = app.app_prove_time_ms + leaf.total_proof_time_ms + internal.total_proof_time_ms + compression.total_proof_time_ms
-app.app_prove_time_ms ≈ metered + sum_per_segment(preflight + set_initial_memory + trace_gen + stark_excl) + overhead
+total = metered + sum(app.total_proof_time_ms) + leaf.total_proof_time_ms + internal.total_proof_time_ms + compression.total_proof_time_ms
+app.total_proof_time_ms ≈ sum_per_segment(preflight + set_initial_memory + trace_gen + stark_excl) + small overhead
 stark_excl ≈ prover.main_trace_commit + prover.rap_constraints + prover.openings
 ```
 
@@ -140,9 +163,9 @@ python3 openvm-riscv/scripts/basic_metrics.py combine **/metrics.json > combined
 ```
 
 Example input files:
-- OpenVM 1 — Keccak: https://github.com/powdr-labs/bench-results/blob/gh-pages/results/2026-03-19-0538/keccak/combined_metrics.json
-- OpenVM 1 — Reth (older format, no constraints/interactions): https://github.com/powdr-labs/bench-results/blob/gh-pages/results/2026-03-19-0538/reth/combined_metrics.json
-- OpenVM 2 — Pairing: https://gist.githubusercontent.com/georgwiese/8cc98b7ed75953c76deae1e54a734370/raw/003b4ba1291ac15875cfac09163bb9fac7feffbc/metrics_pairing_openvm2_combined.json
+- OpenVM 1 — Keccak: https://github.com/powdr-labs/bench-results/blob/gh-pages/results/2026-03-23-0535/keccak/combined_metrics.json
+- OpenVM 1 — Reth (older format, no constraints/interactions): https://github.com/powdr-labs/bench-results/blob/gh-pages/results/2026-03-23-0535/reth/combined_metrics.json
+- OpenVM 2 — Pairing: https://gist.githubusercontent.com/leonardoalt/3074cb729c03470b1116674618b97267/raw/eec5e5a086bf07a57e2215843f0a3f1ada9d0d5c/metrics_v2_pairing_combined.json
 
 ## Testing
 

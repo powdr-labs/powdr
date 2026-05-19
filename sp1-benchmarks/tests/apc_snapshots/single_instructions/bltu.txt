@@ -1,0 +1,81 @@
+Instructions:
+    0: bltu       %x1        %x2        100       
+
+APC advantage:
+  - Main columns: 45 -> 27 (1.67x reduction)
+  - Bus interactions: 19 -> 15 (1.27x reduction)
+  - Constraints: 50 -> 22 (2.27x reduction)
+
+Symbolic machine using 27 unique main columns:
+  state__clk_high_0
+  state__clk_16_24_0
+  state__clk_0_16_0
+  adapter__op_a_memory__prev_value__0__0_0
+  adapter__op_a_memory__prev_value__0__1_0
+  adapter__op_a_memory__prev_value__0__2_0
+  adapter__op_a_memory__prev_value__0__3_0
+  adapter__op_a_memory__access_timestamp__prev_low_0
+  adapter__op_a_memory__access_timestamp__diff_low_limb_0
+  adapter__op_b_memory__prev_value__0__0_0
+  adapter__op_b_memory__prev_value__0__1_0
+  adapter__op_b_memory__prev_value__0__2_0
+  adapter__op_b_memory__prev_value__0__3_0
+  adapter__op_b_memory__access_timestamp__prev_low_0
+  adapter__op_b_memory__access_timestamp__diff_low_limb_0
+  next_pc__0_0
+  next_pc__1_0
+  next_pc__2_0
+  is_branching_0
+  compare_operation__result__u16_flags__0_0
+  compare_operation__result__u16_flags__1_0
+  compare_operation__result__u16_flags__2_0
+  compare_operation__result__u16_flags__3_0
+  compare_operation__result__not_eq_inv_0
+  compare_operation__result__comparison_limbs__0_0
+  compare_operation__result__comparison_limbs__1_0
+  is_valid
+
+// Bus 1 (MEMORY):
+mult=is_valid * 1, args=[state__clk_high_0, adapter__op_b_memory__access_timestamp__prev_low_0, 2, 0, 0, adapter__op_b_memory__prev_value__0__0_0, adapter__op_b_memory__prev_value__0__1_0, adapter__op_b_memory__prev_value__0__2_0, adapter__op_b_memory__prev_value__0__3_0]
+mult=is_valid * -1, args=[state__clk_high_0, 65536 * state__clk_16_24_0 + state__clk_0_16_0 + 3, 2, 0, 0, adapter__op_b_memory__prev_value__0__0_0, adapter__op_b_memory__prev_value__0__1_0, adapter__op_b_memory__prev_value__0__2_0, adapter__op_b_memory__prev_value__0__3_0]
+mult=is_valid * 1, args=[state__clk_high_0, adapter__op_a_memory__access_timestamp__prev_low_0, 1, 0, 0, adapter__op_a_memory__prev_value__0__0_0, adapter__op_a_memory__prev_value__0__1_0, adapter__op_a_memory__prev_value__0__2_0, adapter__op_a_memory__prev_value__0__3_0]
+mult=is_valid * -1, args=[state__clk_high_0, 65536 * state__clk_16_24_0 + state__clk_0_16_0 + 4, 1, 0, 0, adapter__op_a_memory__prev_value__0__0_0, adapter__op_a_memory__prev_value__0__1_0, adapter__op_a_memory__prev_value__0__2_0, adapter__op_a_memory__prev_value__0__3_0]
+
+// Bus 5 (BYTE):
+mult=is_valid * 1, args=[3, 0, state__clk_16_24_0, state__clk_16_24_0 + 32512 * adapter__op_a_memory__access_timestamp__prev_low_0 + 32512 * adapter__op_a_memory__access_timestamp__diff_low_limb_0 - (32512 * state__clk_0_16_0 + 97536)]
+mult=is_valid * 1, args=[3, 0, state__clk_16_24_0 + 32512 * adapter__op_b_memory__access_timestamp__prev_low_0 + 32512 * adapter__op_b_memory__access_timestamp__diff_low_limb_0 - (32512 * state__clk_0_16_0 + 65024), 0]
+mult=is_valid * 1, args=[6, 266338304 - 266338304 * state__clk_0_16_0, 13, 0]
+mult=is_valid * 1, args=[6, adapter__op_a_memory__access_timestamp__diff_low_limb_0, 16, 0]
+mult=is_valid * 1, args=[6, adapter__op_b_memory__access_timestamp__diff_low_limb_0, 16, 0]
+mult=is_valid * 1, args=[6, 65536 * is_branching_0 + compare_operation__result__comparison_limbs__0_0 - compare_operation__result__comparison_limbs__1_0, 16, 0]
+mult=is_valid * 1, args=[6, -(532676608 * next_pc__0_0), 14, 0]
+mult=is_valid * 1, args=[6, next_pc__1_0, 16, 0]
+mult=is_valid * 1, args=[6, next_pc__2_0, 16, 0]
+
+// Bus 7 (EXECUTION_BRIDGE):
+mult=is_valid * -1, args=[state__clk_high_0, 65536 * state__clk_16_24_0 + state__clk_0_16_0, 0, 0, 0]
+mult=is_valid * 1, args=[state__clk_high_0, 65536 * state__clk_16_24_0 + state__clk_0_16_0 + 8, next_pc__0_0, next_pc__1_0, next_pc__2_0]
+
+// Algebraic constraints:
+compare_operation__result__u16_flags__0_0 * (compare_operation__result__u16_flags__0_0 - 1) = 0
+compare_operation__result__u16_flags__1_0 * (compare_operation__result__u16_flags__1_0 - 1) = 0
+compare_operation__result__u16_flags__2_0 * (compare_operation__result__u16_flags__2_0 - 1) = 0
+compare_operation__result__u16_flags__3_0 * (compare_operation__result__u16_flags__3_0 - 1) = 0
+(compare_operation__result__u16_flags__0_0 + compare_operation__result__u16_flags__1_0 + compare_operation__result__u16_flags__2_0 + compare_operation__result__u16_flags__3_0) * (compare_operation__result__u16_flags__0_0 + compare_operation__result__u16_flags__1_0 + compare_operation__result__u16_flags__2_0 + compare_operation__result__u16_flags__3_0 - 1) = 0
+(1 - compare_operation__result__u16_flags__3_0) * (adapter__op_a_memory__prev_value__0__3_0 - adapter__op_b_memory__prev_value__0__3_0) = 0
+(1 - (compare_operation__result__u16_flags__2_0 + compare_operation__result__u16_flags__3_0)) * (adapter__op_a_memory__prev_value__0__2_0 - adapter__op_b_memory__prev_value__0__2_0) = 0
+(1 - (compare_operation__result__u16_flags__1_0 + compare_operation__result__u16_flags__2_0 + compare_operation__result__u16_flags__3_0)) * (adapter__op_a_memory__prev_value__0__1_0 - adapter__op_b_memory__prev_value__0__1_0) = 0
+(1 - (compare_operation__result__u16_flags__0_0 + compare_operation__result__u16_flags__1_0 + compare_operation__result__u16_flags__2_0 + compare_operation__result__u16_flags__3_0)) * (adapter__op_a_memory__prev_value__0__0_0 - adapter__op_b_memory__prev_value__0__0_0) = 0
+adapter__op_a_memory__prev_value__0__3_0 * compare_operation__result__u16_flags__3_0 + adapter__op_a_memory__prev_value__0__2_0 * compare_operation__result__u16_flags__2_0 + adapter__op_a_memory__prev_value__0__1_0 * compare_operation__result__u16_flags__1_0 + adapter__op_a_memory__prev_value__0__0_0 * compare_operation__result__u16_flags__0_0 - compare_operation__result__comparison_limbs__0_0 = 0
+adapter__op_b_memory__prev_value__0__3_0 * compare_operation__result__u16_flags__3_0 + adapter__op_b_memory__prev_value__0__2_0 * compare_operation__result__u16_flags__2_0 + adapter__op_b_memory__prev_value__0__1_0 * compare_operation__result__u16_flags__1_0 + adapter__op_b_memory__prev_value__0__0_0 * compare_operation__result__u16_flags__0_0 - compare_operation__result__comparison_limbs__1_0 = 0
+(compare_operation__result__u16_flags__0_0 + compare_operation__result__u16_flags__1_0 + compare_operation__result__u16_flags__2_0 + compare_operation__result__u16_flags__3_0) * (compare_operation__result__not_eq_inv_0 * (compare_operation__result__comparison_limbs__0_0 - compare_operation__result__comparison_limbs__1_0) - 1) = 0
+is_branching_0 * (is_branching_0 - 1) = 0
+is_branching_0 * ((32512 * next_pc__0_0 - 3251200) * (32512 * next_pc__0_0 - 3251201)) = 0
+is_branching_0 * ((32512 * next_pc__1_0 - (1057030144 * next_pc__0_0 + 832307250)) * (32512 * next_pc__1_0 - (1057030144 * next_pc__0_0 + 832307251))) = 0
+is_branching_0 * ((32512 * next_pc__2_0 + 1612900 - (16129 * next_pc__0_0 + 1057030144 * next_pc__1_0)) * (32512 * next_pc__2_0 + 1612899 - (16129 * next_pc__0_0 + 1057030144 * next_pc__1_0))) = 0
+is_branching_0 * ((524386048 * next_pc__0_0 + 829056025 - (16129 * next_pc__1_0 + 1057030144 * next_pc__2_0)) * (524386048 * next_pc__0_0 + 829056024 - (16129 * next_pc__1_0 + 1057030144 * next_pc__2_0))) = 0
+(1 * is_valid - is_branching_0) * ((32512 * next_pc__0_0 - 130048) * (32512 * next_pc__0_0 - 130049)) = 0
+(1 * is_valid - is_branching_0) * ((32512 * next_pc__1_0 - (1057030144 * next_pc__0_0 + 33292290)) * (32512 * next_pc__1_0 - (1057030144 * next_pc__0_0 + 33292291))) = 0
+(1 * is_valid - is_branching_0) * ((32512 * next_pc__2_0 + 64516 - (16129 * next_pc__0_0 + 1057030144 * next_pc__1_0)) * (32512 * next_pc__2_0 + 64515 - (16129 * next_pc__0_0 + 1057030144 * next_pc__1_0))) = 0
+(1 * is_valid - is_branching_0) * ((524386048 * next_pc__0_0 + 33162241 - (16129 * next_pc__1_0 + 1057030144 * next_pc__2_0)) * (524386048 * next_pc__0_0 + 33162240 - (16129 * next_pc__1_0 + 1057030144 * next_pc__2_0))) = 0
+is_valid * (is_valid - 1) = 0

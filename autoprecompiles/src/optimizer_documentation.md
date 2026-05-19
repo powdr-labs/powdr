@@ -519,7 +519,7 @@ Currently, we know of one unformalized requirement:
   requirements could also prevent overflow. And, powdr might be able to be
   changed to respect it.
 
-  We expect that it will be easy to very a requirement like this one once we
+  We expect that it will be easy to verify a requirement like this one once we
   figure out exactly what we need to verify. It is also possible that this
   requirement will end up being something that is not the responsibility of the
   optimizer and is instead the responsibility of a different part of the

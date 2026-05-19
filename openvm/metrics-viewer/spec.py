@@ -23,7 +23,7 @@ import sys
 import urllib.request
 from typing import Any, Callable, Literal
 
-# A single flattened metric entry: {"group": ..., "air_name": ..., "metric": ..., "value": ..., ...}
+# A single flattened metric entry: {"group": ..., "air_name": ..., "air_id": ..., "metric": ..., "value": ..., ...}
 Entry = dict[str, str]
 # Raw metrics JSON with "counter" and "gauge" arrays
 MetricsJson = dict[str, Any]
@@ -74,10 +74,33 @@ def sum_metric(entries: list[Entry], metric_name: str) -> float:
     return sum(float(e["value"]) for e in entries if e["metric"] == metric_name)
 
 
+def unique_metric(entries: list[Entry], metric_name: str) -> float:
+    """Get the value of a metric that must appear exactly once."""
+    matches = [e for e in entries if e["metric"] == metric_name]
+    assert len(matches) == 1, f"Expected exactly 1 entry for '{metric_name}', found {len(matches)}"
+    return float(matches[0]["value"])
+
+
 def detect_version(metrics_json: MetricsJson) -> Literal[1, 2]:
-    """Returns 2 if any metric name contains 'logup_gkr' (V2-only), else 1."""
+    """Returns 2 if metrics come from OpenVM 2 (GPU or CPU backend), else 1.
+    V2 GPU has 'logup_gkr' in metric names; V2 CPU has 'prove_zerocheck_and_logup_time_ms'."""
     names = {e["metric"] for e in metrics_json["counter"] + metrics_json["gauge"]}
-    return 2 if any("logup_gkr" in n for n in names) else 1
+    if any("logup_gkr" in n for n in names):
+        return 2
+    if "prove_zerocheck_and_logup_time_ms" in names:
+        return 2
+    return 1
+
+
+def detect_v2_backend(metrics_json: MetricsJson) -> Literal["gpu", "cpu", None]:
+    """For V2 runs, identify whether they came from the GPU or CPU prover backend.
+    Returns None for V1 runs."""
+    names = {e["metric"] for e in metrics_json["counter"] + metrics_json["gauge"]}
+    if any("logup_gkr" in n for n in names):
+        return "gpu"
+    if "prove_zerocheck_and_logup_time_ms" in names:
+        return "cpu"
+    return None
 
 
 def extract_metrics(run_name: str, metrics_json: MetricsJson) -> Metrics:
@@ -92,85 +115,39 @@ def extract_metrics(run_name: str, metrics_json: MetricsJson) -> Metrics:
     normal_air = [e for e in non_powdr if is_normal_instruction_air(e.get("air_name", ""))]
     precompile_air = [e for e in non_powdr if not is_normal_instruction_air(e.get("air_name", ""))]
 
-    # --- Proof times by phase ---
-    # V2 uses app_prove_time_ms (includes metered exec); V1 uses total_proof_time_ms
-    app_prove = sum_metric(app, "app_prove_time_ms")
-    m["app_proof_time_ms"] = app_prove if app_prove > 0 else sum_metric(app, "total_proof_time_ms")
-    m["leaf_proof_time_ms"] = sum_metric(leaf, "total_proof_time_ms")
-    m["inner_recursion_proof_time_ms"] = sum_metric(internal, "total_proof_time_ms")
-    m["compression_proof_time_ms"] = sum_metric(compression, "total_proof_time_ms")
-    m["total_proof_time_ms"] = (m["app_proof_time_ms"] + m["leaf_proof_time_ms"]
-        + m["inner_recursion_proof_time_ms"] + m["compression_proof_time_ms"])
-
-    # --- STARK time excluding trace ---
-    m["app_proof_time_excluding_trace_ms"] = sum_metric(app, "stark_prove_excluding_trace_time_ms")
-
     # --- Basic stats ---
     m["app_proof_cols"] = sum_metric(app, "main_cols") + sum_metric(app, "prep_cols") + sum_metric(app, "perm_cols")
     segments = [int(e["segment"]) for e in app if "segment" in e]
     m["num_segments"] = max(segments, default=-1) + 1
+    m["num_air_instances"] = len([e for e in app if e["metric"] == "rows"])
     m["app_proof_cells"] = sum_metric(app, "total_cells")
     m["app_proof_cells_used"] = sum_metric(app, "total_cells_used")  # V1 only
 
-    # --- App time sub-components ---
-    m["app_execute_preflight_time_ms"] = sum_metric(app, "execute_preflight_time_ms")
-    m["app_execute_metered_time_ms"] = sum_metric(app, "execute_metered_time_ms")
-    m["app_trace_gen_time_ms"] = sum_metric(app, "trace_gen_time_ms")
-    m["app_set_initial_memory_time_ms"] = sum_metric(app, "set_initial_memory_time_ms")  # V2 only
-
-    # --- V2: STARK sub-components (prover.*) ---
-    m["app_trace_commit_time_ms"] = sum_metric(app, "prover.main_trace_commit_time_ms")
-    m["app_rap_constraints_time_ms"] = sum_metric(app, "prover.rap_constraints_time_ms")
-    m["app_openings_time_ms"] = sum_metric(app, "prover.openings_time_ms")
-    m["app_stark_other_ms"] = max(0, m["app_proof_time_excluding_trace_ms"]
-        - m["app_trace_commit_time_ms"] - m["app_rap_constraints_time_ms"] - m["app_openings_time_ms"])
-
-    # --- V2: rap_constraints sub-components ---
-    m["app_rap_logup_gkr_time_ms"] = sum_metric(app, "prover.rap_constraints.logup_gkr_time_ms")
-    m["app_rap_round0_time_ms"] = sum_metric(app, "prover.rap_constraints.round0_time_ms")
-    m["app_rap_mle_rounds_time_ms"] = sum_metric(app, "prover.rap_constraints.mle_rounds_time_ms")
-    m["app_rap_other_ms"] = (m["app_rap_constraints_time_ms"]
-        - m["app_rap_logup_gkr_time_ms"] - m["app_rap_round0_time_ms"] - m["app_rap_mle_rounds_time_ms"])
-
-    # --- V2: openings sub-components ---
-    m["app_openings_whir_time_ms"] = sum_metric(app, "prover.openings.whir_time_ms")
-    m["app_openings_stacked_reduction_time_ms"] = sum_metric(app, "prover.openings.stacked_reduction_time_ms")
-    m["app_openings_other_ms"] = (m["app_openings_time_ms"]
-        - m["app_openings_whir_time_ms"] - m["app_openings_stacked_reduction_time_ms"])
-
-    # --- App other (residual) ---
-    m["app_other_ms"] = (m["app_proof_time_ms"]
-        - m["app_proof_time_excluding_trace_ms"]
-        - m["app_execute_preflight_time_ms"] - m["app_execute_metered_time_ms"]
-        - m["app_trace_gen_time_ms"] - m["app_set_initial_memory_time_ms"])
-
-    # --- Cell ratios ---
-    total = m["app_proof_cells"]
-    m["powdr_ratio"] = sum_metric(powdr_air, "cells") / total if total > 0 else 0
-    m["normal_instruction_ratio"] = sum_metric(normal_air, "cells") / total if total > 0 else 0
-    m["openvm_precompile_ratio"] = sum_metric(precompile_air, "cells") / total if total > 0 else 0
-
-    # --- Constraints & bus interactions (per-AIR, filtered to app proof AIRs) ---
+    # --- Constraints & bus interactions ---
     has_constraints = any(e["metric"] == "constraints" for e in all_entries)
     has_interactions = any(e["metric"] == "interactions" for e in all_entries)
 
     # Rows & segments by AIR, summed over all segments.
-    # TODO: This is incorrect, because the AIR name might not be unique.
-    # This needs to be fixed once the AIR ID is also available in the metrics, see:
-    # https://github.com/powdr-labs/stark-backend/pull/20
-    segments_by_app_air = {}
-    rows_by_app_air = {}
+    # We key by (air_id, air_name) because air_id alone is only unique within a proving
+    # phase — different phases (app, leaf, compression) reuse the same air_id for
+    # unrelated AIRs. Keying by the pair is a pragmatic fix: it would break if the same
+    # (air_id, air_name) tuple appeared in two different phases, but that is unlikely
+    # since each phase uses a distinct AIR set.
+    segments_by_app_air: dict[str, float] = {}
+    rows_by_app_air: dict[str, float] = {}
     for e in app:
+        # Rows are indicated per segment and AIR
         if e["metric"] == "rows":
-            segments_by_app_air[e["air_name"]] = segments_by_app_air.get(e["air_name"], 0) + 1
-            rows_by_app_air[e["air_name"]] = rows_by_app_air.get(e["air_name"], 0) + float(e["value"])
+            key = f"{e['air_id']}:{e.get('air_name', '')}"
+            segments_by_app_air[key] = segments_by_app_air.get(key, 0) + 1
+            rows_by_app_air[key] = rows_by_app_air.get(key, 0) + float(e["value"])
 
     # Constraints and interactions are listed per AIR.
     # For the number of constraints and interactions, we weight by the number of segments for that AIR;
     # for the number of instances and messages, we weight by the number of rows (across all segments).
     def weighted_sum(metric_name: str, weights: dict[str, float]) -> float:
         return sum(
-            float(e["value"]) * weights.get(e["air_name"], 0)
+            float(e["value"]) * weights.get(f"{e['air_id']}:{e.get('air_name', '')}", 0)
             for e in all_entries if e["metric"] == metric_name
         )
 
@@ -178,6 +155,86 @@ def extract_metrics(run_name: str, metrics_json: MetricsJson) -> Metrics:
     m["bus_interactions"] = weighted_sum("interactions", segments_by_app_air) if has_interactions else None
     m["constraint_instances"] = weighted_sum("constraints", rows_by_app_air) if has_constraints else None
     m["bus_interaction_messages"] = weighted_sum("interactions", rows_by_app_air) if has_interactions else None
+
+    # --- Proof times by phase ---
+    # execute_metered runs *before* segment proving and is outside per-segment
+    # total_proof_time_ms. We report it as a separate top-level phase.
+    m["execute_metered_time_ms"] = sum_metric(app, "execute_metered_time_ms")
+    m["app_proof_time_ms"] = sum_metric(app, "total_proof_time_ms")
+    m["leaf_proof_time_ms"] = sum_metric(leaf, "total_proof_time_ms")
+    m["inner_recursion_proof_time_ms"] = sum_metric(internal, "total_proof_time_ms")
+    m["compression_proof_time_ms"] = sum_metric(compression, "total_proof_time_ms")
+    m["total_proof_time_ms"] = (m["execute_metered_time_ms"] + m["app_proof_time_ms"]
+        + m["leaf_proof_time_ms"] + m["inner_recursion_proof_time_ms"]
+        + m["compression_proof_time_ms"])
+
+    # --- STARK time excluding trace ---
+    m["app_proof_time_excluding_trace_ms"] = sum_metric(app, "stark_prove_excluding_trace_time_ms")
+
+    # --- App time sub-components ---
+    m["app_execute_preflight_time_ms"] = sum_metric(app, "execute_preflight_time_ms")
+    m["app_trace_gen_time_ms"] = sum_metric(app, "trace_gen_time_ms")
+    m["app_set_initial_memory_time_ms"] = sum_metric(app, "set_initial_memory_time_ms")  # V2 only
+
+    # --- V2: STARK sub-components ---
+    # GPU backend uses hierarchical prover.* names; CPU backend uses flat names.
+    # We check both and take whichever is nonzero.
+    gpu_trace_commit = sum_metric(app, "prover.main_trace_commit_time_ms")
+    cpu_trace_commit = sum_metric(app, "trace_commit_cpu_time_ms")
+    m["app_trace_commit_time_ms"] = gpu_trace_commit or cpu_trace_commit
+
+    gpu_constraints = sum_metric(app, "prover.rap_constraints_time_ms")
+    cpu_constraints = sum_metric(app, "prove_zerocheck_and_logup_time_ms")
+    m["app_rap_constraints_time_ms"] = gpu_constraints or cpu_constraints
+
+    gpu_openings = sum_metric(app, "prover.openings_time_ms")
+    cpu_whir = sum_metric(app, "prove_whir_opening_cpu_time_ms")
+    cpu_stacked = sum_metric(app, "prove_stacked_opening_reduction_time_ms")
+    m["app_openings_time_ms"] = gpu_openings or (cpu_whir + cpu_stacked)
+
+    m["app_stark_other_ms"] = (m["app_proof_time_excluding_trace_ms"]
+        - m["app_trace_commit_time_ms"] - m["app_rap_constraints_time_ms"] - m["app_openings_time_ms"])
+
+    # --- V2: rap_constraints sub-components ---
+    # GPU: prover.rap_constraints.logup_gkr_time_ms, .round0_time_ms, .mle_rounds_time_ms
+    # CPU: fractional_sumcheck_time_ms, (no separate round0), prover.batch_constraints.mle_rounds_time_ms
+    gpu_logup_gkr = sum_metric(app, "prover.rap_constraints.logup_gkr_time_ms")
+    cpu_logup_gkr = sum_metric(app, "fractional_sumcheck_time_ms")
+    m["app_rap_logup_gkr_time_ms"] = gpu_logup_gkr or cpu_logup_gkr
+
+    m["app_rap_round0_time_ms"] = sum_metric(app, "prover.rap_constraints.round0_time_ms")
+
+    gpu_mle = sum_metric(app, "prover.rap_constraints.mle_rounds_time_ms")
+    cpu_mle = sum_metric(app, "prover.batch_constraints.mle_rounds_time_ms")
+    m["app_rap_mle_rounds_time_ms"] = gpu_mle or cpu_mle
+
+    m["app_rap_other_ms"] = (m["app_rap_constraints_time_ms"]
+        - m["app_rap_logup_gkr_time_ms"] - m["app_rap_round0_time_ms"] - m["app_rap_mle_rounds_time_ms"])
+
+    # --- V2: openings sub-components ---
+    # GPU: prover.openings.whir_time_ms, prover.openings.stacked_reduction_time_ms
+    # CPU: prove_whir_opening_cpu_time_ms, prove_stacked_opening_reduction_time_ms
+    gpu_whir = sum_metric(app, "prover.openings.whir_time_ms")
+    m["app_openings_whir_time_ms"] = gpu_whir or cpu_whir
+
+    gpu_stacked = sum_metric(app, "prover.openings.stacked_reduction_time_ms")
+    m["app_openings_stacked_reduction_time_ms"] = gpu_stacked or cpu_stacked
+
+    m["app_openings_other_ms"] = (m["app_openings_time_ms"]
+        - m["app_openings_whir_time_ms"] - m["app_openings_stacked_reduction_time_ms"])
+
+    # --- App other (residual) ---
+    # execute_metered is a separate top-level phase, not inside app_proof_time_ms.
+    m["app_other_ms"] = (m["app_proof_time_ms"]
+        - m["app_proof_time_excluding_trace_ms"]
+        - m["app_execute_preflight_time_ms"]
+        - m["app_trace_gen_time_ms"] - m["app_set_initial_memory_time_ms"])
+
+    # --- Cell ratios ---
+    total = m["app_proof_cells"]
+    m["powdr_ratio"] = sum_metric(powdr_air, "cells") / total if total > 0 else 0
+    m["normal_instruction_ratio"] = sum_metric(normal_air, "cells") / total if total > 0 else 0
+    m["openvm_precompile_ratio"] = sum_metric(precompile_air, "cells") / total if total > 0 else 0
 
     return m
 
@@ -214,6 +271,7 @@ def fmt_pct(v: float) -> str:
 
 BASIC_STATS_V1: list[BasicRow] = [
     ("num_segments",            "Segments",                     lambda v: str(int(v))),
+    ("num_air_instances",       "AIR Instances",                fmt_int),
     ("app_proof_cols",          "Columns",                  fmt_int),
     ("app_proof_cells",         "Cells",                    fmt_cells),
     ("app_proof_cells_used",    "Cells (without padding)",  fmt_cells),
@@ -226,23 +284,24 @@ BASIC_STATS_V1: list[BasicRow] = [
 BASIC_STATS_V2: list[BasicRow] = [r for r in BASIC_STATS_V1 if r[0] != "app_proof_cells_used"]
 
 PROOF_TIME_V1: list[ProofRow] = [
-    ("app_proof_time_ms",                "App Proof Time",    0, ""),
+    ("execute_metered_time_ms",          "Metered Execution",     0, ""),
+    ("app_proof_time_ms",                "App Proof Time",        0, ""),
     ("app_proof_time_excluding_trace_ms","  STARK (excl. trace)", 1, ""),
-    ("app_execute_metered_time_ms",      "  Metered Execution",   1, ""),
     ("app_execute_preflight_time_ms",    "  Preflight Execution", 1, ""),
     ("app_trace_gen_time_ms",            "  Trace Gen",           1, ""),
     ("app_other_ms",                     "  Other / Overlap",     1, "r"),
     ("leaf_proof_time_ms",               "Leaf Recursion",        0, ""),
     ("inner_recursion_proof_time_ms",    "Inner Recursion",       0, ""),
-    ("total_proof_time_ms",              "Total",                 0, "b"),
+    ("total_proof_time_ms",              "Total",                 0, ""),
 ]
 
 PROOF_TIME_V2: list[ProofRow] = [
+    ("execute_metered_time_ms",              "Metered Execution",     0, ""),
     ("app_proof_time_ms",                    "App Proof Time",        0, ""),
     ("app_proof_time_excluding_trace_ms",    "  STARK (excl. trace)", 1, ""),
     ("app_rap_constraints_time_ms",          "    Constraints",       2, ""),
     ("app_rap_logup_gkr_time_ms",           "      LogUp GKR",       3, ""),
-    ("app_rap_round0_time_ms",              "      Round 0",         3, ""),
+    ("app_rap_round0_time_ms",              "      Round 0",         3, "z"),
     ("app_rap_mle_rounds_time_ms",          "      MLE Rounds",      3, ""),
     ("app_rap_other_ms",                    "      Other",           3, "r"),
     ("app_openings_time_ms",                "    Openings",          2, ""),
@@ -252,14 +311,13 @@ PROOF_TIME_V2: list[ProofRow] = [
     ("app_trace_commit_time_ms",            "    Trace Commit",      2, ""),
     ("app_stark_other_ms",                  "    Other",             2, "r"),
     ("app_execute_preflight_time_ms",       "  Preflight Execution", 1, ""),
-    ("app_set_initial_memory_time_ms",      "  Set Initial Memory",  1, ""),
+    ("app_set_initial_memory_time_ms",      "  Set Initial Memory",  1, "z"),
     ("app_trace_gen_time_ms",               "  Trace Gen",           1, ""),
-    ("app_execute_metered_time_ms",         "  Metered Execution",   1, ""),
     ("app_other_ms",                        "  Other",               1, "r"),
     ("leaf_proof_time_ms",                  "Leaf Recursion",        0, ""),
     ("inner_recursion_proof_time_ms",       "Inner Recursion",       0, ""),
     ("compression_proof_time_ms",           "Compression",           0, ""),
-    ("total_proof_time_ms",                 "Total",                 0, "b"),
+    ("total_proof_time_ms",                 "Total",                 0, ""),
 ]
 
 CELL_DISTRIBUTION: list[BasicRow] = [
@@ -281,9 +339,8 @@ def print_section(
         key, label = row[0], row[1]
         val: float | None = m.get(key)
 
-        if val is None:
-            print(f"  {label:<{width}}  N/A")
-            continue
+        if key == "total_proof_time_ms":
+            print(f"  {'─' * 58}")
 
         # Determine formatter and flags
         if len(row) == 3:
@@ -293,11 +350,15 @@ def print_section(
             fmt = fmt_ms
             flags: str = row[3]  # type: ignore[no-redef]
 
-        suffix = ""
-        if "r" in flags:
-            suffix = " (residual)"
-        if "b" in flags:
-            suffix = " ***"
+        # Hide rows flagged with 'z' when value is zero or missing
+        if "z" in flags and (val is None or val == 0):
+            continue
+
+        if val is None:
+            print(f"  {label:<{width}}  N/A")
+            continue
+
+        suffix = " (residual)" if "r" in flags else ""
 
         pct = f"  ({val / total * 100:5.1f}%)" if total > 0 else ""
         print(f"  {label:<{width}}  {fmt(val)}{pct}{suffix}")
@@ -356,9 +417,13 @@ def main() -> None:
 
     for run_name, metrics_json in runs.items():
         version = detect_version(metrics_json)
+        backend = detect_v2_backend(metrics_json)
         m = extract_metrics(run_name, metrics_json)
 
-        print(f"\nExperiment: {run_name}  (OpenVM {version})")
+        version_str = f"OpenVM {version}"
+        if backend:
+            version_str += f" ({backend.upper()})"
+        print(f"\nExperiment: {run_name}  ({version_str})")
 
         basic = BASIC_STATS_V2 if version == 2 else BASIC_STATS_V1
         proof = PROOF_TIME_V2 if version == 2 else PROOF_TIME_V1

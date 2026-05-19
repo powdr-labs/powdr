@@ -1,5 +1,6 @@
 [package]
 name = "cli-openvm-riscv"
+description = "Command-line interface for running powdr OpenVM RISC-V workflows"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,6 +10,7 @@ repository.workspace = true
 [features]
 default = ["metrics"]
 metrics = ["powdr-openvm/metrics", "openvm-sdk/metrics", "openvm-stark-backend/metrics", "openvm-stark-sdk/metrics"]
+aot = ["powdr-openvm-riscv/aot"]
 
 [[bin]]
 name = "powdr_openvm_riscv"
