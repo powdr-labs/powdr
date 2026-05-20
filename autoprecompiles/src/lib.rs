@@ -62,21 +62,12 @@ pub mod staged_cache;
 pub mod trace_handler;
 
 /// Inputs to the build-and-rank stage of the autoprecompile pipeline.
-///
-/// Holds only fields the generate stage reads. The select stage is configured
-/// via [`SelectConfig`] separately; `setup` takes [`DegreeBound`] plain. This
-/// split is what lets [`crate::staged_cache`] hash this struct directly as a
-/// generate-stage cache key without leaking select-stage flags into the hash.
 #[derive(Clone, Debug, Hash)]
 pub struct GenerateConfig {
     /// Cap on the number of candidate APCs built/ranked.
     /// `None` means "build all eligible candidates".
-    ///
-    /// Only honored by Instruction / None PGO (where it caps the metadata-sorted
-    /// prefix). Cell PGO ignores this field and always builds every eligible
-    /// candidate — its dynamic density ranking needs the full post-opt cost —
-    /// except that `Some(0)` is a uniform short-circuit signal across all
-    /// PGO strategies.
+    /// Depending on the PGO strategy, the cap may be ignored
+    /// (meaning that more APCs are computed).
     pub apc_candidates: Option<u64>,
     /// Maximum number of basic blocks included in a superblock.
     /// Default of 1 means only basic blocks are considered.

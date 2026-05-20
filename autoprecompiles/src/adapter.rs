@@ -60,11 +60,8 @@ pub trait PgoAdapter {
     /// [`select_apcs`].
     ///
     /// `generate.apc_candidates` caps how many candidates get built. `None`
-    /// means "all eligible blocks". The cap is applied per-PGO:
-    /// - Cell: ignored for positive values (always builds every eligible
-    ///   candidate); `Some(0)` short-circuits to an empty result.
-    /// - Instruction / None: caps the metadata-sorted prefix directly;
-    ///   `Some(0)` short-circuits.
+    /// means "all eligible blocks". The PGO strategy might ignore the cap
+    /// (and produce more APCs).
     fn create_apcs_with_pgo(
         &self,
         exec_blocks: AdapterExecutionBlocks<Self::Adapter>,
