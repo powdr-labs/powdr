@@ -99,22 +99,12 @@ impl StagedPipeline {
         // fields exist today). Distinguishing under a different stage name is
         // enough to keep the blobs on disk separate.
         let hash = self.select_hash(generate, pgo_config, select);
-        if let Some(program) = powdr_autoprecompiles::staged_cache::load_cached::<
-            CompiledProgram<RiscvISA>,
-        >(self.artifacts_dir.as_deref(), "setup", &hash)
-        {
-            tracing::info!("cache hit: setup/{hash}");
-            return program;
-        }
-        let apcs = compute_apcs(&self);
-        let program = setup(self.guest, apcs, generate.degree_bound);
-        powdr_autoprecompiles::staged_cache::save_cached(
-            self.artifacts_dir.as_deref(),
-            "setup",
-            &hash,
-            &program,
-        );
-        program
+        let artifacts_dir = self.artifacts_dir.clone();
+        let degree_bound = generate.degree_bound;
+        cached(artifacts_dir.as_deref(), "setup", &hash, move || {
+            let apcs = compute_apcs(&self);
+            setup(self.guest, apcs, degree_bound)
+        })
     }
 
     fn generate_hash(&self, generate: &GenerateConfig, pgo_config: &PgoConfig) -> String {
