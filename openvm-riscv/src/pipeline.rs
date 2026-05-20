@@ -25,6 +25,33 @@ use crate::{
 /// Output of the generate / select stages.
 pub type RankedApcs = Vec<AdapterApcWithStats<BabyBearOpenVmApcAdapter<'static, RiscvISA>>>;
 
+/// Trait alias for the closure that materializes the [`ExecutionProfile`]
+/// from the guest + `PgoConfig::inputs`. Kept as a trait so the
+/// `StagedPipeline` method signatures aren't dominated by the closure type.
+pub trait MakePgoProfile:
+    FnOnce(&OriginalCompiledProgram<'static, RiscvISA>, &[u8]) -> ExecutionProfile
+{
+}
+impl<F> MakePgoProfile for F where
+    F: FnOnce(&OriginalCompiledProgram<'static, RiscvISA>, &[u8]) -> ExecutionProfile
+{
+}
+
+/// Trait alias for the closure that materializes [`EmpiricalConstraints`]
+/// from the guest + `GenerateConfig` + `PgoConfig::inputs`.
+pub trait MakeEmpiricalConstraints:
+    FnOnce(&OriginalCompiledProgram<'static, RiscvISA>, &GenerateConfig, &[u8]) -> EmpiricalConstraints
+{
+}
+impl<F> MakeEmpiricalConstraints for F where
+    F: FnOnce(
+        &OriginalCompiledProgram<'static, RiscvISA>,
+        &GenerateConfig,
+        &[u8],
+    ) -> EmpiricalConstraints
+{
+}
+
 pub struct StagedPipeline {
     guest: OriginalCompiledProgram<'static, RiscvISA>,
     guest_hash: String,
@@ -53,15 +80,8 @@ impl StagedPipeline {
         &self,
         generate: &GenerateConfig,
         pgo_config: &PgoConfig,
-        make_pgo_profile: impl FnOnce(
-            &OriginalCompiledProgram<'static, RiscvISA>,
-            &[u8],
-        ) -> ExecutionProfile,
-        make_empirical_constraints: impl FnOnce(
-            &OriginalCompiledProgram<'static, RiscvISA>,
-            &GenerateConfig,
-            &[u8],
-        ) -> EmpiricalConstraints,
+        make_pgo_profile: impl MakePgoProfile,
+        make_empirical_constraints: impl MakeEmpiricalConstraints,
     ) -> RankedApcs {
         let hash = self.generate_hash(generate, pgo_config);
         cached(self.artifacts_dir.as_deref(), "generate", &hash, || {
@@ -80,37 +100,55 @@ impl StagedPipeline {
     }
 
     /// Trim a generate-stage ranking to `select.autoprecompiles`, after
-    /// `select.skip` (cached).
+    /// `select.skip` (cached). On a select-stage cache hit, the upstream
+    /// generate call is skipped entirely — the recursive
+    /// [`Self::generate_apcs`] lives inside the cached closure.
     pub fn select_apcs(
         &self,
         generate: &GenerateConfig,
         pgo_config: &PgoConfig,
         select: SelectConfig,
-        compute_ranked: impl FnOnce() -> RankedApcs,
+        make_pgo_profile: impl MakePgoProfile,
+        make_empirical_constraints: impl MakeEmpiricalConstraints,
     ) -> RankedApcs {
         let hash = self.select_hash(generate, pgo_config, select);
-        cached(self.artifacts_dir.as_deref(), "select", &hash, || {
-            select_apcs(compute_ranked(), select)
+        cached(self.artifacts_dir.as_deref(), "select", &hash, move || {
+            let ranked = self.generate_apcs(
+                generate,
+                pgo_config,
+                make_pgo_profile,
+                make_empirical_constraints,
+            );
+            select_apcs(ranked, select)
         })
     }
 
-    /// Inject the selected APCs and assemble the final [`CompiledProgram`] (cached).
-    /// Consumes the pipeline (the guest is moved into `setup`).
+    /// Inject the selected APCs and assemble the final [`CompiledProgram`]
+    /// (cached). Consumes the pipeline (the guest is moved into `setup`).
+    /// On a setup-stage cache hit, neither select nor generate is consulted.
     pub fn setup(
         self,
         generate: &GenerateConfig,
         pgo_config: &PgoConfig,
         select: SelectConfig,
-        compute_apcs: impl FnOnce(&Self) -> RankedApcs,
+        make_pgo_profile: impl MakePgoProfile,
+        make_empirical_constraints: impl MakeEmpiricalConstraints,
     ) -> CompiledProgram<RiscvISA> {
         // Setup's hash uses the same inputs as select (no extra "setup-only"
         // fields exist today). Distinguishing under a different stage name is
         // enough to keep the blobs on disk separate.
         let hash = self.select_hash(generate, pgo_config, select);
         let artifacts_dir = self.artifacts_dir.clone();
+        let degree_bound = generate.degree_bound;
         cached(artifacts_dir.as_deref(), "setup", &hash, move || {
-            let apcs = compute_apcs(&self);
-            setup(self.guest, apcs, generate.degree_bound)
+            let selected_apcs = self.select_apcs(
+                generate,
+                pgo_config,
+                select,
+                make_pgo_profile,
+                make_empirical_constraints,
+            );
+            setup(self.guest, selected_apcs, degree_bound)
         })
     }
 

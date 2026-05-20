@@ -380,20 +380,17 @@ mod tests {
         // No caching; `inputs` is irrelevant.
         let pgo_config = PgoConfig::new(pgo_type, max_columns, Vec::new());
         let pipeline = StagedPipeline::new(original_program, None);
-        pipeline.setup(&generate, &pgo_config, select, |p| {
-            p.select_apcs(&generate, &pgo_config, select, || {
-                p.generate_apcs(
-                    &generate,
-                    &pgo_config,
-                    move |_guest, _inputs| {
-                        profile
-                            .take()
-                            .expect("non-None PgoData must carry an ExecutionProfile")
-                    },
-                    |_guest, _generate, _inputs| EmpiricalConstraints::default(),
-                )
-            })
-        })
+        pipeline.setup(
+            &generate,
+            &pgo_config,
+            select,
+            move |_guest, _inputs| {
+                profile
+                    .take()
+                    .expect("non-None PgoData must carry an ExecutionProfile")
+            },
+            move |_guest, _generate, _inputs| EmpiricalConstraints::default(),
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
