@@ -176,11 +176,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
         let height = next_power_of_two_or_zero(num_apc_calls);
         let mut values = <BabyBear as PrimeCharacteristicRing>::zero_vec(height * width);
 
-        // Go through the final table and fill in the values.
-        // Parallelized: the original code used chunks_mut (serial) because the
-        // periphery.apply() calls were not thread-safe. Now that periphery chips
-        // use AtomicU32 counters, we can use par_chunks_mut safely.
-        // Extract references to avoid capturing `self` (ISA::Config is not Sync).
+        // go through the final table and fill in the values
         let periphery_real = &self.periphery.real;
         let periphery_bus_ids = &self.periphery.bus_ids;
 
@@ -188,7 +184,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
             .par_chunks_mut(width)
             .zip(dummy_values.into_par_iter())
             .for_each(|(row_slice, dummy_values)| {
-                // Copy dummy rows to APC row
+                // map the dummy rows to the autoprecompile row
                 for (dummy_row, dummy_trace_index_to_apc_index) in dummy_values
                     .iter()
                     .map(|r| &r.data[r.start..r.start + r.length])
@@ -199,7 +195,8 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
                     }
                 }
 
-                // Compute derived columns
+                // Fill in the columns we have to compute from other columns
+                // (these are either new columns or for example the "is_valid" column).
                 for derived_column in columns_to_compute {
                     let col_index = apc_poly_id_to_index[derived_column.variable.id as usize];
                     row_slice[col_index] = match &derived_column.computation_method {
