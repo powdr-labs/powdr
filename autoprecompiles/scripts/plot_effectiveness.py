@@ -6,10 +6,51 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import argparse
 
+def normalize_apc_item(apc):
+    """Normalize APC item shape to include original_blocks[*].instructions."""
+    if "original_blocks" in apc:
+        return apc
+
+    if "original_block" not in apc:
+        raise ValueError("APC item missing both 'original_blocks' and 'original_block'")
+
+    original_block = dict(apc["original_block"])
+    if "instructions" not in original_block:
+        if "statements" not in original_block:
+            raise ValueError(
+                "Legacy APC original_block missing both 'instructions' and 'statements'"
+            )
+        original_block["instructions"] = original_block.pop("statements")
+
+    normalized = dict(apc)
+    normalized["original_blocks"] = [original_block]
+    return normalized
+
+def load_apcs(json_path):
+    """Load APC list and normalize legacy JSON export versions."""
+    with open(json_path, 'r') as f:
+        payload = json.load(f)
+
+    if isinstance(payload, list):
+        # v0: direct APC list
+        apcs = payload
+    elif isinstance(payload, dict):
+        version = payload.get("version")
+        if version is None:
+            # v1: {"apcs": [...], "labels": {...}}
+            apcs = payload["apcs"]
+        elif version in {2, 3, 4}:
+            apcs = payload["apcs"]
+        else:
+            raise ValueError(f"Unsupported APC JSON version: {version}")
+    else:
+        raise ValueError("Unsupported APC JSON payload type")
+
+    return [normalize_apc_item(apc) for apc in apcs]
+
 def load_apc_data(json_path, effectiveness_type='cost'):
     """Load APC candidates and compute effectiveness."""
-    with open(json_path, 'r') as f:
-        data = json.load(f)["apcs"]
+    data = load_apcs(json_path)
     
     def get_before_after_cost(item, eff_type):
         if eff_type == 'cost':
