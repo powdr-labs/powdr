@@ -12,7 +12,7 @@ runs:
         # NOTE: not on main while powdr-labs/openvm-eth#8 is open; the
         # "Verify openvm-eth ref is on main" check in pr-tests-with-secrets.yml
         # will (intentionally) fail until that PR merges.
-        ref: 4456480bc8de1769bd5c9bd9f6e90014e3625cd2
+        ref: 44564802f942d15c6dd782979d280f28065179b5
         path: openvm-eth
 
     - name: Patch openvm-eth to use local powdr
