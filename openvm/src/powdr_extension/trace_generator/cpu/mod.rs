@@ -181,6 +181,8 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
         let periphery_bus_ids = &self.periphery.bus_ids;
 
         values
+            // a record is `width` values
+            // TODO: optimize by parallelizing on chunks of rows, currently fails because `dyn AnyChip<MatrixRecordArena<Val<SC>>>` is not `Send`
             .par_chunks_mut(width)
             .zip(dummy_values.into_par_iter())
             .for_each(|(row_slice, dummy_values)| {
