@@ -5,17 +5,16 @@ use openvm_sdk::StdIn;
 use openvm_stark_sdk::bench::serialize_metric_snapshot;
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::pgo::PgoType;
-use powdr_autoprecompiles::PowdrConfig;
+use powdr_autoprecompiles::{GenerateConfig, SelectConfig};
 use powdr_openvm_riscv::{
     compile_openvm, detect_empirical_constraints, CompiledProgram, GuestOptions,
-    OriginalCompiledProgram, RankedApcs, RiscvISA, StagedPipeline,
+    OriginalCompiledProgram, RankedApcs, RiscvISA, StagedPipeline, DEFAULT_DEGREE_BOUND,
 };
 
 #[cfg(feature = "metrics")]
 use openvm_stark_sdk::metrics_tracing::TimingMetricsLayer;
 
 use clap::{Args, CommandFactory, Parser, Subcommand};
-use powdr_openvm::default_powdr_openvm_config;
 use std::path::PathBuf;
 use std::{fs, io};
 use tracing::Level;
@@ -286,24 +285,32 @@ fn validate_generate_args(args: &GenerateApcsArgs, for_execution: bool) {
     }
 }
 
-fn build_powdr_config(generate: &GenerateApcsArgs, autoprecompiles: u64, skip: u64) -> PowdrConfig {
-    let mut powdr_config = default_powdr_openvm_config(autoprecompiles, skip)
-        .with_apc_candidates(generate.apc_candidates);
-    if let Some(apc_candidates_dir) = &generate.apc_candidates_dir {
-        powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
+impl From<&GenerateApcsArgs> for GenerateConfig {
+    fn from(args: &GenerateApcsArgs) -> Self {
+        let mut gen = GenerateConfig::new(DEFAULT_DEGREE_BOUND)
+            .with_apc_candidates(args.apc_candidates)
+            .with_optimistic_precompiles(args.optimistic_precompiles)
+            .with_superblocks(
+                args.superblocks,
+                args.apc_max_instructions,
+                args.apc_exec_count_cutoff,
+            );
+        if let Some(path) = &args.apc_candidates_dir {
+            gen = gen.with_apc_candidates_dir(path);
+        }
+        gen
     }
-    powdr_config
-        .with_optimistic_precompiles(generate.optimistic_precompiles)
-        .with_superblocks(
-            generate.superblocks,
-            generate.apc_max_instructions,
-            generate.apc_exec_count_cutoff,
-        )
+}
+
+impl From<&SelectArgs> for SelectConfig {
+    fn from(args: &SelectArgs) -> Self {
+        SelectConfig::new(args.autoprecompiles as u64, args.skip as u64)
+    }
 }
 
 /// Thin shim wiring the CLI's clap args to [`StagedPipeline`]. The pipeline
-/// itself (cache plumbing, stage chaining, `apc_candidates` defaulting) lives
-/// in `powdr-openvm-riscv`.
+/// itself (cache plumbing, stage chaining, on-disk hashing) lives in
+/// `powdr-openvm-riscv`.
 struct Pipeline {
     profile_args: ProfileArgs,
     inner: StagedPipeline,
@@ -320,23 +327,24 @@ impl Pipeline {
     }
 
     fn run_generate_apcs(&self, args: &GenerateApcsArgs) -> RankedApcs {
-        // Standalone generate: no selection size known, so leave autoprecompiles
-        // at 0. `default_apc_candidates` short-circuits on 0 and lets the build
-        // loop run uncapped — the user can still pass `--apc-candidates` to
-        // bound it explicitly.
-        self.gen_stage(args, 0, 0)
+        // Standalone generate: no select context, so feed in a zero
+        // `SelectConfig` and let `with_select_defaults` no-op. The user can
+        // still pass `--apc-candidates` to bound the build explicitly.
+        gen_stage(
+            &self.inner,
+            args,
+            SelectConfig::default(),
+            self.profile_args.profile_input,
+        )
     }
 
     fn run_select_apcs(&self, args: SelectArgs) -> RankedApcs {
-        let SelectArgs {
-            generate,
-            autoprecompiles,
-            skip,
-        } = args;
-        let select_config = build_powdr_config(&generate, autoprecompiles as u64, skip as u64);
-        let select_key = format!("sel|{generate:?}|ap={autoprecompiles}|sk={skip}");
-        self.inner.select_apcs(&select_key, &select_config, || {
-            self.gen_stage(&generate, autoprecompiles as u64, skip as u64)
+        let select = SelectConfig::from(&args);
+        let gen =
+            GenerateConfig::from(&args.generate).with_select_defaults(args.generate.pgo, select);
+        let input_fp = self.profile_args.profile_input;
+        self.inner.select_apcs(&gen, select, &input_fp, || {
+            gen_stage(&self.inner, &args.generate, select, input_fp)
         })
     }
 
@@ -346,64 +354,39 @@ impl Pipeline {
             inner,
         } = self;
         let profile_input = profile_args.profile_input;
+        let SetupArgs { select: args } = args;
+        let select = SelectConfig::from(&args);
+        let gen =
+            GenerateConfig::from(&args.generate).with_select_defaults(args.generate.pgo, select);
         let SelectArgs {
-            generate,
-            autoprecompiles,
-            skip,
-        } = args.select;
-        let select_config = build_powdr_config(&generate, autoprecompiles as u64, skip as u64);
-        let select_key = format!("sel|{generate:?}|ap={autoprecompiles}|sk={skip}");
-        let setup_key = format!("setup|{select_key}");
-        inner.setup(&setup_key, &select_config, |p| {
-            p.select_apcs(&select_key, &select_config, || {
-                gen_stage_with(
-                    p,
-                    &generate,
-                    autoprecompiles as u64,
-                    skip as u64,
-                    profile_input,
-                )
+            generate: generate_args,
+            ..
+        } = args;
+        inner.setup(&gen, select, &profile_input, |p| {
+            p.select_apcs(&gen, select, &profile_input, || {
+                gen_stage(p, &generate_args, select, profile_input)
             })
         })
     }
-
-    fn gen_stage(&self, args: &GenerateApcsArgs, autoprecompiles: u64, skip: u64) -> RankedApcs {
-        gen_stage_with(
-            &self.inner,
-            args,
-            autoprecompiles,
-            skip,
-            self.profile_args.profile_input,
-        )
-    }
 }
 
-/// Free function so `run_setup` can call it from inside a closure that has
-/// already consumed `self` into `inner`.
-fn gen_stage_with(
+/// Drive a generate stage on `pipeline`. Defined as a free function (not a
+/// method) so [`Pipeline::run_setup`] can call it from inside a closure that
+/// has already moved `self` into `inner`.
+fn gen_stage(
     pipeline: &StagedPipeline,
     args: &GenerateApcsArgs,
-    autoprecompiles: u64,
-    skip: u64,
+    select: SelectConfig,
     profile_input: Option<u32>,
 ) -> RankedApcs {
-    let powdr_config = build_powdr_config(args, autoprecompiles, skip);
-    // Cache key intentionally excludes `autoprecompiles` / `skip` so that
-    // sweeping selection sizes reuses the generate-stage blob.
-    let key = format!("gen|{args:?}");
+    let gen = GenerateConfig::from(args).with_select_defaults(args.pgo, select);
     pipeline.generate_apcs(
-        &key,
-        &powdr_config,
+        &gen,
         args.pgo,
         args.max_columns,
+        &profile_input,
         |guest| powdr_openvm::execution_profile_from_guest(guest, stdin_from(profile_input)),
-        || {
-            maybe_compute_empirical_constraints(
-                pipeline.guest(),
-                &powdr_config,
-                stdin_from(profile_input),
-            )
-        },
+        || maybe_compute_empirical_constraints(pipeline.guest(), &gen, stdin_from(profile_input)),
     )
 }
 
@@ -446,10 +429,10 @@ pub fn run_with_metric_collection_to_file<R>(file: fs::File, f: impl FnOnce() ->
 /// of the guest program on the given stdin, and save them to disk.
 fn maybe_compute_empirical_constraints(
     guest_program: &OriginalCompiledProgram<RiscvISA>,
-    powdr_config: &PowdrConfig,
+    gen: &GenerateConfig,
     stdin: StdIn,
 ) -> EmpiricalConstraints {
-    if !powdr_config.should_use_optimistic_precompiles {
+    if !gen.should_use_optimistic_precompiles {
         return EmpiricalConstraints::default();
     }
 
@@ -458,9 +441,9 @@ fn maybe_compute_empirical_constraints(
     );
 
     let empirical_constraints =
-        detect_empirical_constraints(guest_program, powdr_config.degree_bound, vec![stdin]);
+        detect_empirical_constraints(guest_program, gen.degree_bound, vec![stdin]);
 
-    if let Some(path) = &powdr_config.apc_candidates_dir_path {
+    if let Some(path) = &gen.apc_candidates_dir_path {
         fs::create_dir_all(path).expect("Failed to create apc candidates directory");
         tracing::info!(
             "Saving empirical constraints debug info to {}/empirical_constraints.json",

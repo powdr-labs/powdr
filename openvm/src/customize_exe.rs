@@ -26,8 +26,8 @@ use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::execution::ExecutionState;
 use powdr_autoprecompiles::pgo::{ApcCandidate, CellPgo, InstructionPgo, NonePgo, PgoConfig};
 use powdr_autoprecompiles::DegreeBound;
-use powdr_autoprecompiles::PowdrConfig;
 use powdr_autoprecompiles::VmConfig;
+use powdr_autoprecompiles::{GenerateConfig, SelectConfig};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use powdr_openvm_bus_interaction_handler::bus_map::OpenVmBusType;
 use serde::{Deserialize, Serialize};
@@ -199,10 +199,10 @@ impl<F: PrimeField32, ISA: OpenVmISA> Instruction<F> for Instr<F, ISA> {
 /// Build and rank candidate autoprecompiles for `original_program` under `pgo_config`.
 ///
 /// The returned `Vec` is ordered by the PGO strategy's ranking (best candidate first),
-/// and capped by `config.apc_candidates` (`None` = no cap).
+/// and capped by `gen.apc_candidates` (`None` = no cap).
 pub fn generate_apcs<'a, ISA: OpenVmISA>(
     original_program: &OriginalCompiledProgram<'a, ISA>,
-    config: &PowdrConfig,
+    gen: &GenerateConfig,
     pgo_config: PgoConfig,
     empirical_constraints: EmpiricalConstraints,
 ) -> Vec<AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a, ISA>>> {
@@ -219,7 +219,7 @@ pub fn generate_apcs<'a, ISA: OpenVmISA>(
             });
             generate_apcs_with_adapter(
                 original_program,
-                config,
+                gen,
                 CellPgo::<_, OpenVmApcCandidate<ISA>>::with_pgo_data_and_max_columns(
                     pgo_data,
                     max_total_apc_columns,
@@ -229,13 +229,13 @@ pub fn generate_apcs<'a, ISA: OpenVmISA>(
         }
         PgoConfig::Instruction(pgo_data) => generate_apcs_with_adapter(
             original_program,
-            config,
+            gen,
             InstructionPgo::with_pgo_data(pgo_data),
             empirical_constraints,
         ),
         PgoConfig::None => generate_apcs_with_adapter(
             original_program,
-            config,
+            gen,
             NonePgo::default(),
             empirical_constraints,
         ),
@@ -245,13 +245,9 @@ pub fn generate_apcs<'a, ISA: OpenVmISA>(
 /// Trim a ranked list (output of [`generate_apcs`]) to the configured selection size.
 pub fn select_apcs<'a, ISA: OpenVmISA>(
     ranked: Vec<AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a, ISA>>>,
-    config: &PowdrConfig,
+    select: SelectConfig,
 ) -> Vec<AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a, ISA>>> {
-    powdr_autoprecompiles::adapter::select_apcs::<BabyBearOpenVmApcAdapter<'a, ISA>>(
-        ranked,
-        config.autoprecompiles as usize,
-        config.skip_autoprecompiles as usize,
-    )
+    powdr_autoprecompiles::adapter::select_apcs::<BabyBearOpenVmApcAdapter<'a, ISA>>(ranked, select)
 }
 
 fn generate_apcs_with_adapter<
@@ -260,12 +256,12 @@ fn generate_apcs_with_adapter<
     P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a, ISA>>,
 >(
     original_program: &OriginalCompiledProgram<'a, ISA>,
-    config: &PowdrConfig,
+    gen: &GenerateConfig,
     pgo: P,
     empirical_constraints: EmpiricalConstraints,
 ) -> Vec<AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a, ISA>>> {
     let original_config = &original_program.vm_config;
-    let airs = original_config.airs(config.degree_bound).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
+    let airs = original_config.airs(gen.degree_bound).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
     let bus_map = original_config.bus_map();
 
     let vm_config = VmConfig {
@@ -304,10 +300,10 @@ fn generate_apcs_with_adapter<
         .collect();
 
     let start = std::time::Instant::now();
-    let exec_blocks = powdr_autoprecompiles::adapter::detect_blocks(&pgo, blocks, config);
+    let exec_blocks = powdr_autoprecompiles::adapter::detect_blocks(&pgo, blocks, gen);
     let apcs = pgo.create_apcs_with_pgo(
         exec_blocks,
-        config,
+        gen,
         vm_config,
         symbols,
         empirical_constraints.apply_pc_threshold(),

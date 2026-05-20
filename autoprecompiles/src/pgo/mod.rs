@@ -7,7 +7,7 @@ use crate::{
     evaluation::evaluate_apc,
     execution_profile::ExecutionProfile,
     export::{ExportLevel, ExportOptions},
-    EmpiricalConstraints, PowdrConfig,
+    EmpiricalConstraints, GenerateConfig,
 };
 
 mod cell;
@@ -55,7 +55,7 @@ impl PgoConfig {
 }
 
 /// CLI enum for PGO mode
-#[derive(Copy, Clone, Debug, EnumString, Display, Default)]
+#[derive(Copy, Clone, Debug, Hash, EnumString, Display, Default)]
 #[strum(serialize_all = "lowercase")]
 pub enum PgoType {
     /// cost = cells saved per apc * times executed
@@ -79,43 +79,18 @@ pub fn pgo_config(
     }
 }
 
-/// Default `PowdrConfig::apc_candidates` to use when the caller hasn't set one.
-///
-/// `autoprecompiles == 0` is treated as "caller doesn't know the selection
-/// size" (e.g. standalone `generate-apcs`) — we return `None` so the build
-/// loop uses every eligible block; the caller can still set
-/// `apc_candidates` explicitly if it wants a cap.
-///
-/// Otherwise:
-/// - Cell ignores the cap (builds every eligible candidate), so `None`.
-/// - Instruction / None: cap at `autoprecompiles + skip` so the build loop
-///   doesn't fan out to every eligible block only for `select_apcs` to throw
-///   most of the result away.
-pub fn default_apc_candidates(pgo: PgoType, autoprecompiles: u64, skip: u64) -> Option<u64> {
-    if autoprecompiles == 0 {
-        return None;
-    }
-    match pgo {
-        PgoType::Cell => None,
-        PgoType::Instruction | PgoType::None => Some(autoprecompiles + skip),
-    }
-}
-
 // Used by Instruction and None PGO. Builds APCs for the (pre-sorted) blocks,
-// capped by `config.apc_candidates` (defaults to "all").
+// capped by `gen.apc_candidates` (defaults to "all").
 //
 // The Cell PGO has its own build loop because it needs to retain
 // `BlockAndStats` for the density-based ranking; this helper drops it.
 fn create_apcs_for_all_blocks<A: Adapter>(
     blocks: Vec<SuperBlock<A::Instruction>>,
-    config: &PowdrConfig,
+    gen: &GenerateConfig,
     vm_config: AdapterVmConfig<A>,
     empirical_constraints: EmpiricalConstraints,
 ) -> Vec<AdapterApcWithStats<A>> {
-    let cap = config
-        .apc_candidates
-        .map(|n| n as usize)
-        .unwrap_or(usize::MAX);
+    let cap = gen.apc_candidates.map(|n| n as usize).unwrap_or(usize::MAX);
     tracing::info!("Generating up to {cap} autoprecompiles in parallel");
 
     blocks
@@ -129,14 +104,14 @@ fn create_apcs_for_all_blocks<A: Adapter>(
             );
 
             let export_options = ExportOptions::new(
-                config.apc_candidates_dir_path.clone(),
+                gen.apc_candidates_dir_path.clone(),
                 &superblock.start_pcs(),
                 ExportLevel::OnlyAPC,
             );
             let apc = crate::build::<A>(
                 superblock.clone(),
                 vm_config.clone(),
-                config.degree_bound,
+                gen.degree_bound,
                 export_options,
                 &empirical_constraints,
             )

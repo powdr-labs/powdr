@@ -4,6 +4,20 @@
 //! callers (sp1, openvm-eth). Each stage transparently reuses a prior
 //! `artifacts_dir` blob; `artifacts_dir = None` disables caching and runs
 //! every stage inline.
+//!
+//! ## Cache-key model
+//!
+//! The library hashes everything it can see — the guest fingerprint, the
+//! per-stage config struct, the PGO type, `max_columns`. The caller supplies
+//! `input_fp: &impl Hash`, an opaque fingerprint of anything hidden behind
+//! the closures (PGO stdin bytes, block numbers, RPC chain id, ...). Passing
+//! `&()` is valid when nothing is hidden.
+//!
+//! Generate's hash deliberately excludes the [`SelectConfig`]; select/setup
+//! include it. As long as `gen.apc_candidates` doesn't itself depend on the
+//! selection size (the [`GenerateConfig::with_select_defaults`] policy for
+//! Cell ensures this), an `--apc N` sweep under `--pgo cell` automatically
+//! reuses the generate-stage blob.
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -12,9 +26,9 @@ use std::path::PathBuf;
 use powdr_autoprecompiles::adapter::AdapterApcWithStats;
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::execution_profile::ExecutionProfile;
-use powdr_autoprecompiles::pgo::{default_apc_candidates, pgo_config, PgoType};
+use powdr_autoprecompiles::pgo::{pgo_config, PgoType};
 use powdr_autoprecompiles::staged_cache::{cached, stage_hash};
-use powdr_autoprecompiles::PowdrConfig;
+use powdr_autoprecompiles::{GenerateConfig, SelectConfig};
 use powdr_openvm::BabyBearOpenVmApcAdapter;
 
 use crate::{
@@ -57,67 +71,71 @@ impl StagedPipeline {
 
     /// Build + rank APC candidates, or load the result from the cache.
     ///
-    /// `cache_key` is the caller's fingerprint of everything that should
-    /// invalidate the cache (config, pgo, max_columns, profile inputs, ...);
-    /// it gets mixed with the guest hash. `make_pgo_profile` and
-    /// `make_empirical_constraints` only run on a cache miss, so callers may
-    /// hide expensive work (RPC fetches, guest execution) behind them. The
-    /// `make_pgo_profile` callback owns the policy for how to produce the
-    /// profile — typically [`powdr_openvm::execution_profile_from_guest`] for
-    /// single-stdin guests, or a custom loop for multi-stdin PGO.
+    /// The library hashes `(guest, gen, pgo, max_columns, input_fp)` — the
+    /// caller never sees the hash. `input_fp` is the only piece the caller
+    /// fingerprints: it covers anything hidden behind the `make_*` closures
+    /// (PGO stdin contents, RPC chain id, block numbers). Pass `&()` if
+    /// nothing is hidden.
     ///
-    /// Applies [`default_apc_candidates`] when `config.apc_candidates` is
-    /// unset so the Instruction/None build loop stays bounded.
-    pub fn generate_apcs<H: Hash + ?Sized>(
+    /// `make_pgo_profile` and `make_empirical_constraints` only run on a
+    /// cache miss, so callers may hide expensive work (RPC fetches, guest
+    /// execution) behind them. `make_pgo_profile` owns the policy for how to
+    /// produce the profile — typically
+    /// [`powdr_openvm::execution_profile_from_guest`] for single-stdin
+    /// guests, or a custom loop for multi-stdin PGO.
+    pub fn generate_apcs<I: Hash + ?Sized>(
         &self,
-        cache_key: &H,
-        config: &PowdrConfig,
+        gen: &GenerateConfig,
         pgo: PgoType,
         max_columns: Option<usize>,
+        input_fp: &I,
         make_pgo_profile: impl FnOnce(&OriginalCompiledProgram<'static, RiscvISA>) -> ExecutionProfile,
         make_empirical_constraints: impl FnOnce() -> EmpiricalConstraints,
     ) -> RankedApcs {
-        let hash = self.stage_hash(cache_key);
+        let hash = self.generate_hash(gen, pgo, max_columns, input_fp);
         cached(self.artifacts_dir.as_deref(), "generate", &hash, || {
             let pgo_cfg = pgo_config(pgo, max_columns, make_pgo_profile(&self.guest));
-            let mut config = config.clone();
-            if config.apc_candidates.is_none() {
-                config.apc_candidates = default_apc_candidates(
-                    pgo,
-                    config.autoprecompiles,
-                    config.skip_autoprecompiles,
-                );
-            }
-            generate_apcs(&self.guest, &config, pgo_cfg, make_empirical_constraints())
+            generate_apcs(&self.guest, gen, pgo_cfg, make_empirical_constraints())
         })
     }
 
-    /// Trim a generate-stage ranking to (skip, autoprecompiles), or load
-    /// from the cache. `compute_ranked` only runs on a cache miss.
-    pub fn select_apcs<H: Hash + ?Sized>(
+    /// Trim a generate-stage ranking to `select.autoprecompiles` (after
+    /// `select.skip`), or load from the cache.
+    ///
+    /// The library hashes `(guest, gen, select, input_fp)`. `compute_ranked`
+    /// only runs on a cache miss; pass it a closure that invokes
+    /// [`Self::generate_apcs`] if the upstream blob might also need rebuilding.
+    pub fn select_apcs<I: Hash + ?Sized>(
         &self,
-        cache_key: &H,
-        config: &PowdrConfig,
+        gen: &GenerateConfig,
+        select: SelectConfig,
+        input_fp: &I,
         compute_ranked: impl FnOnce() -> RankedApcs,
     ) -> RankedApcs {
-        let hash = self.stage_hash(cache_key);
+        let hash = self.select_hash(gen, select, input_fp);
         cached(self.artifacts_dir.as_deref(), "select", &hash, || {
-            select_apcs(compute_ranked(), config)
+            select_apcs(compute_ranked(), select)
         })
     }
 
     /// Inject the selected APCs and assemble the final [`CompiledProgram`].
     /// Consumes the pipeline (the guest is moved into `setup`).
     ///
-    /// `compute_apcs` receives a borrow of `self` so it can recursively
-    /// invoke `select_apcs` / `generate_apcs`, and only runs on a cache miss.
-    pub fn setup<H: Hash + ?Sized>(
+    /// The library hashes `(guest, gen, select, input_fp)`. `compute_apcs`
+    /// receives a borrow of `self` so it can recursively invoke
+    /// [`Self::select_apcs`] / [`Self::generate_apcs`]; only runs on a cache
+    /// miss.
+    pub fn setup<I: Hash + ?Sized>(
         self,
-        cache_key: &H,
-        config: &PowdrConfig,
+        gen: &GenerateConfig,
+        select: SelectConfig,
+        input_fp: &I,
         compute_apcs: impl FnOnce(&Self) -> RankedApcs,
     ) -> CompiledProgram<RiscvISA> {
-        let hash = self.stage_hash(cache_key);
+        // Setup's hash uses the same inputs as select (no extra "setup-only"
+        // fields exist today). Distinguishing under a different stage name is
+        // enough to keep the blobs on disk separate.
+        let hash = self.select_hash(gen, select, input_fp);
         if let Some(program) = powdr_autoprecompiles::staged_cache::load_cached::<
             CompiledProgram<RiscvISA>,
         >(self.artifacts_dir.as_deref(), "setup", &hash)
@@ -126,7 +144,7 @@ impl StagedPipeline {
             return program;
         }
         let apcs = compute_apcs(&self);
-        let program = setup(self.guest, apcs, config.degree_bound);
+        let program = setup(self.guest, apcs, gen.degree_bound);
         powdr_autoprecompiles::staged_cache::save_cached(
             self.artifacts_dir.as_deref(),
             "setup",
@@ -136,8 +154,23 @@ impl StagedPipeline {
         program
     }
 
-    fn stage_hash<H: Hash + ?Sized>(&self, args: &H) -> String {
-        stage_hash(args, &self.guest_hash)
+    fn generate_hash<I: Hash + ?Sized>(
+        &self,
+        gen: &GenerateConfig,
+        pgo: PgoType,
+        max_columns: Option<usize>,
+        input_fp: &I,
+    ) -> String {
+        stage_hash(&(gen, pgo, max_columns, input_fp), &self.guest_hash)
+    }
+
+    fn select_hash<I: Hash + ?Sized>(
+        &self,
+        gen: &GenerateConfig,
+        select: SelectConfig,
+        input_fp: &I,
+    ) -> String {
+        stage_hash(&(gen, select, input_fp), &self.guest_hash)
     }
 }
 

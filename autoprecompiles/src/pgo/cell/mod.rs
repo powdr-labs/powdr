@@ -11,7 +11,7 @@ use crate::{
     evaluation::{evaluate_apc, EvaluationResult},
     execution_profile::ExecutionProfile,
     export::{ExportLevel, ExportOptions},
-    EmpiricalConstraints, PowdrConfig,
+    EmpiricalConstraints, GenerateConfig,
 };
 
 mod selection;
@@ -102,7 +102,7 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
     fn create_apcs_with_pgo(
         &self,
         exec_blocks: AdapterExecutionBlocks<Self::Adapter>,
-        config: &PowdrConfig,
+        gen: &GenerateConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
         empirical_constraints: EmpiricalConstraints,
@@ -111,11 +111,11 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
         // `apc_candidates = Some(0)` is the agreed signal for this; positive
         // caps are ignored (Cell's density ranking needs every candidate's
         // post-opt cost and a pre-build cap would degrade ranking quality).
-        match config.apc_candidates {
+        match gen.apc_candidates {
             Some(0) => return vec![],
             Some(_) => {
                 tracing::warn!(
-                    "PowdrConfig::apc_candidates is ignored for Cell PGO; building every eligible candidate"
+                    "GenerateConfig::apc_candidates is ignored for Cell PGO; building every eligible candidate"
                 );
             }
             None => {}
@@ -139,7 +139,7 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
                 let start = std::time::Instant::now();
                 let res = try_generate_candidate::<A, C>(
                     block_and_stats.block.clone(),
-                    config,
+                    gen,
                     &vm_config,
                     &empirical_constraints,
                 )?;
@@ -153,7 +153,7 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
             .collect();
 
         // write the APC candidates JSON to disk if the directory is specified.
-        if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
+        if let Some(apc_candidates_dir_path) = &gen.apc_candidates_dir_path {
             let apcs = apcs
                 .iter()
                 .zip_eq(&blocks)
@@ -189,19 +189,19 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
 // Try and build an autoprecompile candidate from a superblock.
 fn try_generate_candidate<A: Adapter, C: ApcCandidate<A>>(
     block: SuperBlock<A::Instruction>,
-    config: &PowdrConfig,
+    gen: &GenerateConfig,
     vm_config: &AdapterVmConfig<A>,
     empirical_constraints: &EmpiricalConstraints,
 ) -> Option<C> {
     let export_options = ExportOptions::new(
-        config.apc_candidates_dir_path.clone(),
+        gen.apc_candidates_dir_path.clone(),
         &block.start_pcs(),
         ExportLevel::OnlyAPC,
     );
     let apc = crate::build::<A>(
         block.clone(),
         vm_config.clone(),
-        config.degree_bound,
+        gen.degree_bound,
         export_options,
         empirical_constraints,
     )

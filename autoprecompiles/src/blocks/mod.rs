@@ -14,7 +14,7 @@ mod detection;
 
 pub use detection::collect_basic_blocks;
 
-use crate::PowdrConfig;
+use crate::GenerateConfig;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 /// A sequence of instructions starting at a given PC.
@@ -337,7 +337,7 @@ fn count_superblocks_in_execution(
 /// Returns the detected blocks, together with their execution information.
 /// Does not return invalid APC blocks (i.e., single instruction) and blocks that are never executed.
 pub fn detect_superblocks<I: Clone + PcStep>(
-    cfg: &PowdrConfig,
+    cfg: &GenerateConfig,
     // program execution as a sequence of PCs
     execution_pc_list: &[u64],
     // all program basic blocks (including single instruction ones), in no particular order
@@ -425,7 +425,7 @@ pub fn detect_superblocks<I: Clone + PcStep>(
 mod test {
     use std::collections::BTreeMap;
 
-    use crate::{DegreeBound, PowdrConfig};
+    use crate::{DegreeBound, GenerateConfig};
 
     use super::*;
 
@@ -473,14 +473,10 @@ mod test {
             instructions: vec![TestInstruction; len],
         };
 
-        let cfg = PowdrConfig::new(
-            10,
-            0,
-            DegreeBound {
-                identities: 2,
-                bus_interactions: 2,
-            },
-        )
+        let cfg = GenerateConfig::new(DegreeBound {
+            identities: 2,
+            bus_interactions: 2,
+        })
         .with_superblocks(2, None, None);
 
         let basic_blocks = vec![bb(100, 2), bb(200, 2), bb(300, 1), bb(400, 3), bb(500, 2)];

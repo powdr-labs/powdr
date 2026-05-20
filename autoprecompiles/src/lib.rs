@@ -61,18 +61,22 @@ pub mod optimistic;
 pub mod staged_cache;
 pub mod trace_handler;
 
-#[derive(Clone)]
-pub struct PowdrConfig {
-    /// Number of autoprecompiles to select (top of the ranking, after `skip_autoprecompiles`).
-    pub autoprecompiles: u64,
-    /// Number of top-ranked APCs to skip during selection.
-    pub skip_autoprecompiles: u64,
-    /// Cap on the number of candidate APCs built/ranked in the generate stage.
+/// Inputs to the build-and-rank stage of the autoprecompile pipeline.
+///
+/// Holds only fields the generate stage reads. The select stage is configured
+/// via [`SelectConfig`] separately; `setup` takes [`DegreeBound`] plain. This
+/// split is what lets [`crate::staged_cache`] hash this struct directly as a
+/// generate-stage cache key without leaking select-stage flags into the hash.
+#[derive(Clone, Debug, Hash)]
+pub struct GenerateConfig {
+    /// Cap on the number of candidate APCs built/ranked.
     /// `None` means "build all eligible candidates".
     ///
     /// Only honored by Instruction / None PGO (where it caps the metadata-sorted
     /// prefix). Cell PGO ignores this field and always builds every eligible
-    /// candidate — its dynamic density ranking needs the full post-opt cost.
+    /// candidate — its dynamic density ranking needs the full post-opt cost —
+    /// except that `Some(0)` is a uniform short-circuit signal across all
+    /// PGO strategies.
     pub apc_candidates: Option<u64>,
     /// Maximum number of basic blocks included in a superblock.
     /// Default of 1 means only basic blocks are considered.
@@ -89,13 +93,10 @@ pub struct PowdrConfig {
     pub should_use_optimistic_precompiles: bool,
 }
 
-impl PowdrConfig {
-    pub fn new(autoprecompiles: u64, skip_autoprecompiles: u64, degree_bound: DegreeBound) -> Self {
+impl GenerateConfig {
+    pub fn new(degree_bound: DegreeBound) -> Self {
         Self {
-            autoprecompiles,
-            skip_autoprecompiles,
             apc_candidates: None,
-            // superblocks disabled by default
             superblock_max_bb_count: 1,
             apc_max_instructions: u32::MAX,
             apc_exec_count_cutoff: 1,
@@ -135,9 +136,59 @@ impl PowdrConfig {
         self
     }
 
+    pub fn with_apc_max_instructions(mut self, max_instructions: u32) -> Self {
+        self.apc_max_instructions = max_instructions;
+        self
+    }
+
     pub fn with_optimistic_precompiles(mut self, should_use_optimistic_precompiles: bool) -> Self {
         self.should_use_optimistic_precompiles = should_use_optimistic_precompiles;
         self
+    }
+
+    /// Single source of truth for the `apc_candidates` default policy.
+    ///
+    /// When `self.apc_candidates` is already set, this is a no-op. Otherwise:
+    /// - Cell: `Some(0)` iff `select.autoprecompiles == 0` (short-circuit
+    ///   signal — Cell ignores positive caps); else `None` (build all).
+    /// - Instruction / None: `Some(select.autoprecompiles + select.skip)` —
+    ///   the build loop is the cap, and `Some(0)` short-circuits.
+    ///
+    /// Callers should invoke this when both `gen` and `select` are known
+    /// (e.g. inside `compile_exe` / `run_setup`). For standalone
+    /// `generate-apcs` (no select known), pass `SelectConfig::default()`.
+    pub fn with_select_defaults(mut self, pgo: pgo::PgoType, select: SelectConfig) -> Self {
+        if self.apc_candidates.is_some() {
+            return self;
+        }
+        self.apc_candidates = match pgo {
+            pgo::PgoType::Cell => (select.autoprecompiles == 0).then_some(0),
+            pgo::PgoType::Instruction | pgo::PgoType::None => {
+                Some(select.autoprecompiles + select.skip)
+            }
+        };
+        self
+    }
+}
+
+/// Inputs to the selection stage — trimming a generate-stage ranking down to
+/// `autoprecompiles` items after skipping `skip` from the top.
+///
+/// Kept separate from [`GenerateConfig`] so generate-stage cache keys don't
+/// invalidate when only the selection size changes (the central guarantee that
+/// makes `--apc N` sweeps under `--pgo cell` reuse the candidate ranking).
+#[derive(Clone, Copy, Debug, Default, Hash)]
+pub struct SelectConfig {
+    pub autoprecompiles: u64,
+    pub skip: u64,
+}
+
+impl SelectConfig {
+    pub fn new(autoprecompiles: u64, skip: u64) -> Self {
+        Self {
+            autoprecompiles,
+            skip,
+        }
     }
 }
 

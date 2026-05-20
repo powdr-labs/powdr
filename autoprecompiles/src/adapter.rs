@@ -16,7 +16,7 @@ use crate::{
     constraint_optimizer::IsBusStateful,
     memory_optimizer::MemoryBusInteraction,
     range_constraint_optimizer::RangeConstraintHandler,
-    Apc, InstructionHandler, PowdrConfig, VmConfig,
+    Apc, GenerateConfig, InstructionHandler, SelectConfig, VmConfig,
 };
 
 #[derive(Serialize, Deserialize)]
@@ -59,15 +59,16 @@ pub trait PgoAdapter {
     /// PGO strategy's ranking (best candidate first); callers trim with
     /// [`select_apcs`].
     ///
-    /// `config.apc_candidates` caps how many candidates get built. `None`
+    /// `gen.apc_candidates` caps how many candidates get built. `None`
     /// means "all eligible blocks". The cap is applied per-PGO:
-    /// - Cell: ignored (always builds every eligible candidate; a positive
-    ///   cap logs a warning, `Some(0)` short-circuits).
-    /// - Instruction / None: caps the metadata-sorted prefix directly.
+    /// - Cell: ignored for positive values (always builds every eligible
+    ///   candidate); `Some(0)` short-circuits to an empty result.
+    /// - Instruction / None: caps the metadata-sorted prefix directly;
+    ///   `Some(0)` short-circuits.
     fn create_apcs_with_pgo(
         &self,
         exec_blocks: AdapterExecutionBlocks<Self::Adapter>,
-        config: &PowdrConfig,
+        gen: &GenerateConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
         empirical_constraints: EmpiricalConstraints,
@@ -85,14 +86,14 @@ pub trait PgoAdapter {
 
 /// Run superblock detection over `blocks` using the adapter's profile (or
 /// fall back to a profile-less wrapping for the no-PGO case). The result is
-/// the input shape expected by [`PgoAdapter::generate_apcs`].
+/// the input shape expected by [`PgoAdapter::create_apcs_with_pgo`].
 pub fn detect_blocks<P: PgoAdapter + ?Sized>(
     pgo: &P,
     blocks: Vec<AdapterBasicBlock<P::Adapter>>,
-    config: &PowdrConfig,
+    gen: &GenerateConfig,
 ) -> AdapterExecutionBlocks<P::Adapter> {
     if let Some(prof) = pgo.execution_profile() {
-        detect_superblocks(config, &prof.pc_list, blocks)
+        detect_superblocks(gen, &prof.pc_list, blocks)
     } else {
         let superblocks = blocks
             .into_iter()
@@ -111,13 +112,12 @@ pub fn detect_blocks<P: PgoAdapter + ?Sized>(
 /// method) because the operation is PGO-agnostic.
 pub fn select_apcs<A: Adapter>(
     ranked: Vec<AdapterApcWithStats<A>>,
-    autoprecompiles: usize,
-    skip: usize,
+    select: SelectConfig,
 ) -> Vec<AdapterApcWithStats<A>> {
     ranked
         .into_iter()
-        .skip(skip)
-        .take(autoprecompiles)
+        .skip(select.skip as usize)
+        .take(select.autoprecompiles as usize)
         .collect()
 }
 
