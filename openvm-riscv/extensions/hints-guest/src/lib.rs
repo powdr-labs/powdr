@@ -1,5 +1,7 @@
 #![no_std]
 #[cfg(target_os = "zkvm")]
+use core::mem::MaybeUninit;
+#[cfg(target_os = "zkvm")]
 use openvm_custom_insn; // needed for the hint_store_u32 macro
 use strum_macros::FromRepr;
 
@@ -68,16 +70,32 @@ fn insn_k256_sqrt_field_10x26(bytes: *const u8) {
     );
 }
 
+#[cfg(target_os = "zkvm")]
+#[inline(always)]
+fn read_hint_u32() -> u32 {
+    let mut result = MaybeUninit::<u32>::uninit();
+    unsafe {
+        openvm_rv32im_guest::hint_store_u32!(result.as_mut_ptr());
+        result.assume_init()
+    }
+}
+
+#[cfg(target_os = "zkvm")]
+#[inline(always)]
+fn read_hint_buffer<T, const WORDS: usize>() -> T {
+    let mut result = MaybeUninit::<T>::uninit();
+    unsafe {
+        openvm_rv32im_guest::hint_buffer_u32!(result.as_mut_ptr() as *mut u8, WORDS);
+        result.assume_init()
+    }
+}
+
 /// Just an example hint that reverses the bytes of a u32 value.
 pub fn hint_reverse_bytes(val: u32) -> u32 {
     #[cfg(target_os = "zkvm")]
     {
-        let result = core::mem::MaybeUninit::<u32>::uninit();
         insn_reverse_bytes(&val as *const u32 as *const u8);
-        unsafe {
-            openvm_rv32im_guest::hint_store_u32!(result.as_ptr() as *const u32);
-            result.assume_init()
-        }
+        read_hint_u32()
     }
     #[cfg(not(target_os = "zkvm"))]
     {
@@ -93,11 +111,7 @@ pub fn hint_reverse_bytes(val: u32) -> u32 {
 #[cfg(target_os = "zkvm")]
 pub fn hint_k256_inverse_field(sec1_bytes: &[u8]) -> [u8; 32] {
     insn_k256_inverse_field(sec1_bytes.as_ptr() as *const u8);
-    let inverse = core::mem::MaybeUninit::<[u8; 32]>::uninit();
-    unsafe {
-        openvm_rv32im_guest::hint_buffer_u32!(inverse.as_ptr() as *const u8, 8);
-        inverse.assume_init()
-    }
+    read_hint_buffer::<[u8; 32], 8>()
 }
 
 /// Ensures that the 10 limbs are weakly normalized (i.e., the most significant limb is 22 bits and the others are 26 bits).
@@ -126,11 +140,7 @@ fn ensure_weakly_normalized_10x26(limbs: [u32; 10]) -> [u32; 10] {
 #[cfg(target_os = "zkvm")]
 pub fn hint_k256_inverse_field_10x26(elem: [u32; 10]) -> [u32; 10] {
     insn_k256_inverse_field_10x26(elem.as_ptr() as *const u8);
-    let inverse = core::mem::MaybeUninit::<[u32; 10]>::uninit();
-    let inverse = unsafe {
-        openvm_rv32im_guest::hint_buffer_u32!(inverse.as_ptr() as *const u8, 10);
-        inverse.assume_init()
-    };
+    let inverse = read_hint_buffer::<[u32; 10], 10>();
     ensure_weakly_normalized_10x26(inverse)
 }
 
@@ -146,17 +156,9 @@ pub const K256_NON_QUADRATIC_RESIDUE: [u32; 10] = [3, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 pub fn hint_k256_sqrt_field_10x26(elem: [u32; 10]) -> (bool, [u32; 10]) {
     insn_k256_sqrt_field_10x26(elem.as_ptr() as *const u8);
     // read the "boolean" result
-    let has_sqrt = unsafe {
-        let has_sqrt = core::mem::MaybeUninit::<u32>::uninit();
-        openvm_rv32im_guest::hint_store_u32!(has_sqrt.as_ptr() as *const u32);
-        has_sqrt.assume_init() != 0
-    };
+    let has_sqrt = read_hint_u32() != 0;
     // read the square root value
-    let sqrt = unsafe {
-        let sqrt = core::mem::MaybeUninit::<[u32; 10]>::uninit();
-        openvm_rv32im_guest::hint_buffer_u32!(sqrt.as_ptr() as *const u8, 10);
-        sqrt.assume_init()
-    };
+    let sqrt = read_hint_buffer::<[u32; 10], 10>();
     let sqrt = ensure_weakly_normalized_10x26(sqrt);
     (has_sqrt, sqrt)
 }
