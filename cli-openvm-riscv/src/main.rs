@@ -383,9 +383,9 @@ fn gen_stage(
             let profile_input = deserialize_profile_input(inputs);
             powdr_openvm::execution_profile_from_guest(guest, stdin_from(profile_input))
         },
-        move |guest, generate, inputs| {
+        |guest, generate, inputs| {
             let profile_input = deserialize_profile_input(inputs);
-            maybe_compute_empirical_constraints(guest, &generate, stdin_from(profile_input))
+            maybe_compute_empirical_constraints(guest, generate, stdin_from(profile_input))
         },
     )
 }

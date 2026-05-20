@@ -12,8 +12,9 @@ use std::path::PathBuf;
 use powdr_autoprecompiles::adapter::AdapterApcWithStats;
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::execution_profile::ExecutionProfile;
-use powdr_autoprecompiles::pgo::pgo_data;
+use powdr_autoprecompiles::pgo::{pgo_data, PgoType};
 use powdr_autoprecompiles::staged_cache::{cached, stage_hash};
+use powdr_autoprecompiles::PgoData;
 use powdr_autoprecompiles::{GenerateConfig, PgoConfig, SelectConfig};
 use powdr_openvm::BabyBearOpenVmApcAdapter;
 
@@ -64,8 +65,15 @@ impl StagedPipeline {
     ) -> RankedApcs {
         let hash = self.generate_hash(generate, pgo_config);
         cached(self.artifacts_dir.as_deref(), "generate", &hash, || {
-            let profile = make_pgo_profile(&self.guest, &pgo_config.inputs);
-            let pgo = pgo_data(pgo_config.pgo_type, pgo_config.max_columns, profile);
+            // PgoType::None ignores the profile entirely; skip the closure
+            // (and any expensive work it'd do, like running the guest) for it.
+            let pgo = match pgo_config.pgo_type {
+                PgoType::None => PgoData::None,
+                pgo_type => {
+                    let profile = make_pgo_profile(&self.guest, &pgo_config.inputs);
+                    pgo_data(pgo_type, pgo_config.max_columns, profile)
+                }
+            };
             let empirical = make_empirical_constraints(&self.guest, generate, &pgo_config.inputs);
             generate_apcs(&self.guest, generate, pgo, empirical)
         })

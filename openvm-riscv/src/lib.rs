@@ -30,8 +30,6 @@ use openvm_stark_backend::{StarkEngine, Val};
 use openvm_stark_sdk::config::{app_params_with_100_bits_security, MAX_APP_LOG_STACKED_HEIGHT};
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
-use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
-use powdr_autoprecompiles::{GenerateConfig, SelectConfig};
 use powdr_openvm::extraction_utils::OriginalVmConfig;
 use powdr_openvm::trace_generation::do_with_trace;
 use powdr_openvm::BabyBearSC;
@@ -53,7 +51,7 @@ pub mod pipeline;
 pub use pipeline::{RankedApcs, StagedPipeline};
 
 pub use powdr_autoprecompiles::DegreeBound;
-pub use powdr_autoprecompiles::PgoData;
+pub use powdr_autoprecompiles::{PgoConfig, PgoData};
 
 pub use powdr_openvm_bus_interaction_handler::bus_map;
 
@@ -147,31 +145,6 @@ pub fn compile_openvm(
         vm_config: OriginalVmConfig::new(vm_config),
         linked_program: elf,
     })
-}
-
-/// Convenience composition of [`generate_apcs`] + [`select_apcs`] + [`setup`]
-/// with no on-disk cache. Callers that want staged caching construct a
-/// [`StagedPipeline`] themselves.
-///
-/// Applies [`GenerateConfig::with_select_defaults`] so the
-/// Instruction/None `apc_candidates` cap fires automatically.
-pub fn compile_exe(
-    original_program: OriginalCompiledProgram<RiscvISA>,
-    generate: GenerateConfig,
-    select: SelectConfig,
-    pgo_data: PgoData,
-    empirical_constraints: EmpiricalConstraints,
-) -> Result<CompiledProgram<RiscvISA>, Box<dyn std::error::Error>> {
-    let generate = generate.with_select_defaults(pgo_data.pgo_type(), select);
-    let degree_bound = generate.degree_bound;
-    let ranked = generate_apcs(
-        &original_program,
-        &generate,
-        pgo_data,
-        empirical_constraints,
-    );
-    let apcs = select_apcs(ranked, select);
-    Ok(setup(original_program, apcs, degree_bound))
 }
 
 use openvm_circuit_derive::VmConfig;
@@ -365,6 +338,8 @@ mod tests {
     use super::*;
     use expect_test::{expect, Expect};
     use itertools::Itertools;
+    use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
+    use powdr_autoprecompiles::{GenerateConfig, SelectConfig};
     use powdr_openvm::{
         execution_profile_from_guest,
         extraction_utils::{AirWidths, AirWidthsDiff},
@@ -380,6 +355,47 @@ mod tests {
     // single segment.
     const TEST_DEFAULT_SEGMENT_HEIGHT: usize = 1 << 20;
 
+    /// Test-only convenience: generate + select + setup with no on-disk
+    /// cache. Routes through [`StagedPipeline`] with `artifacts_dir = None`.
+    /// Production callers either construct a [`StagedPipeline`] themselves
+    /// (CLI, openvm-eth) or stay on the lower-level
+    /// [`powdr_autoprecompiles`] API (sp1).
+    fn compile_exe(
+        original_program: OriginalCompiledProgram<'static, RiscvISA>,
+        generate: GenerateConfig,
+        select: SelectConfig,
+        pgo_data: PgoData,
+    ) -> CompiledProgram<RiscvISA> {
+        let pgo_type = pgo_data.pgo_type();
+        let max_columns = match &pgo_data {
+            PgoData::Cell(_, m) => *m,
+            _ => None,
+        };
+        // PgoType::None never asks for the profile, so a `None` here is OK.
+        let mut profile = match pgo_data {
+            PgoData::Cell(p, _) | PgoData::Instruction(p) => Some(p),
+            PgoData::None => None,
+        };
+        let generate = generate.with_select_defaults(pgo_type, select);
+        // No caching; `inputs` is irrelevant.
+        let pgo_config = PgoConfig::new(pgo_type, max_columns, Vec::new());
+        let pipeline = StagedPipeline::new(original_program, None);
+        pipeline.setup(&generate, &pgo_config, select, |p| {
+            p.select_apcs(&generate, &pgo_config, select, || {
+                p.generate_apcs(
+                    &generate,
+                    &pgo_config,
+                    move |_guest, _inputs| {
+                        profile
+                            .take()
+                            .expect("non-None PgoData must carry an ExecutionProfile")
+                    },
+                    |_guest, _generate, _inputs| EmpiricalConstraints::default(),
+                )
+            })
+        })
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn compile_and_prove(
         guest: &str,
@@ -392,14 +408,7 @@ mod tests {
         segment_height: Option<usize>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let guest = compile_openvm(guest, GuestOptions::default()).unwrap();
-        let program = compile_exe(
-            guest,
-            generate,
-            select,
-            pgo_data,
-            EmpiricalConstraints::default(),
-        )
-        .unwrap();
+        let program = compile_exe(guest, generate, select, pgo_data);
         let segment_height = segment_height.or(Some(TEST_DEFAULT_SEGMENT_HEIGHT));
         prove(&program, mock, recursion, stdin, segment_height)
     }
@@ -527,14 +536,7 @@ mod tests {
 
         let generate = default_generate_config();
         let select = SelectConfig::new(GUEST_APC, GUEST_SKIP_NO_APC_EXECUTED);
-        let program = compile_exe(
-            guest,
-            generate,
-            select,
-            PgoData::None,
-            EmpiricalConstraints::default(),
-        )
-        .unwrap();
+        let program = compile_exe(guest, generate, select, PgoData::None);
 
         // Assert that all APCs aren't executed
         program
@@ -614,14 +616,7 @@ mod tests {
         let guest = compile_openvm("guest-matmul", GuestOptions::default()).unwrap();
         let generate = default_generate_config();
         let select = SelectConfig::new(1, 0);
-        assert!(compile_exe(
-            guest,
-            generate,
-            select,
-            PgoData::default(),
-            EmpiricalConstraints::default()
-        )
-        .is_ok());
+        let _ = compile_exe(guest, generate, select, PgoData::default());
     }
 
     #[test]
@@ -1141,14 +1136,7 @@ mod tests {
         let generate = generate.with_apc_candidates_dir(apc_candidates_dir_path);
         let is_cell_pgo = matches!(guest.pgo_data, PgoData::Cell(_, _));
         let guest_program = compile_openvm(guest.name, GuestOptions::default()).unwrap();
-        let compiled_program = compile_exe(
-            guest_program,
-            generate,
-            select,
-            guest.pgo_data,
-            EmpiricalConstraints::default(),
-        )
-        .unwrap();
+        let compiled_program = compile_exe(guest_program, generate, select, guest.pgo_data);
 
         let (powdr_air_metrics, non_powdr_air_metrics) = compiled_program.air_metrics();
 
