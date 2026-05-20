@@ -24,7 +24,7 @@ use powdr_autoprecompiles::adapter::{
 use powdr_autoprecompiles::blocks::{Instruction, PcStep};
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::execution::ExecutionState;
-use powdr_autoprecompiles::pgo::{ApcCandidate, CellPgo, InstructionPgo, NonePgo, PgoConfig};
+use powdr_autoprecompiles::pgo::{ApcCandidate, CellPgo, InstructionPgo, NonePgo, PgoData};
 use powdr_autoprecompiles::DegreeBound;
 use powdr_autoprecompiles::VmConfig;
 use powdr_autoprecompiles::{GenerateConfig, SelectConfig};
@@ -196,18 +196,18 @@ impl<F: PrimeField32, ISA: OpenVmISA> Instruction<F> for Instr<F, ISA> {
     }
 }
 
-/// Build and rank candidate autoprecompiles for `original_program` under `pgo_config`.
+/// Build and rank candidate autoprecompiles for `original_program` under `pgo_data`.
 ///
 /// The returned `Vec` is ordered by the PGO strategy's ranking (best candidate first),
 /// and capped by `generate.apc_candidates` (`None` = no cap).
 pub fn generate_apcs<'a, ISA: OpenVmISA>(
     original_program: &OriginalCompiledProgram<'a, ISA>,
     generate: &GenerateConfig,
-    pgo_config: PgoConfig,
+    pgo_data: PgoData,
     empirical_constraints: EmpiricalConstraints,
 ) -> Vec<AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a, ISA>>> {
-    match pgo_config {
-        PgoConfig::Cell(pgo_data, max_total_columns) => {
+    match pgo_data {
+        PgoData::Cell(pgo_data, max_total_columns) => {
             let max_total_apc_columns = max_total_columns.map(|max_total_columns| {
                 let total_non_apc_columns: usize = original_program
                     .vm_config
@@ -227,13 +227,13 @@ pub fn generate_apcs<'a, ISA: OpenVmISA>(
                 empirical_constraints,
             )
         }
-        PgoConfig::Instruction(pgo_data) => generate_apcs_with_adapter(
+        PgoData::Instruction(pgo_data) => generate_apcs_with_adapter(
             original_program,
             generate,
             InstructionPgo::with_pgo_data(pgo_data),
             empirical_constraints,
         ),
-        PgoConfig::None => generate_apcs_with_adapter(
+        PgoData::None => generate_apcs_with_adapter(
             original_program,
             generate,
             NonePgo::default(),

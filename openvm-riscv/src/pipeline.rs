@@ -26,7 +26,7 @@ use std::path::PathBuf;
 use powdr_autoprecompiles::adapter::AdapterApcWithStats;
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::execution_profile::ExecutionProfile;
-use powdr_autoprecompiles::pgo::{pgo_config, PgoType};
+use powdr_autoprecompiles::pgo::{pgo_data, PgoType};
 use powdr_autoprecompiles::staged_cache::{cached, stage_hash};
 use powdr_autoprecompiles::{GenerateConfig, SelectConfig};
 use powdr_openvm::BabyBearOpenVmApcAdapter;
@@ -86,7 +86,7 @@ impl StagedPipeline {
     ) -> RankedApcs {
         let hash = self.generate_hash(generate, pgo, max_columns, input_fp);
         cached(self.artifacts_dir.as_deref(), "generate", &hash, || {
-            let pgo_cfg = pgo_config(pgo, max_columns, make_pgo_profile(&self.guest));
+            let pgo_cfg = pgo_data(pgo, max_columns, make_pgo_profile(&self.guest));
             generate_apcs(&self.guest, generate, pgo_cfg, make_empirical_constraints())
         })
     }

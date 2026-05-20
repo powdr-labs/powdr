@@ -53,7 +53,7 @@ pub mod pipeline;
 pub use pipeline::{RankedApcs, StagedPipeline};
 
 pub use powdr_autoprecompiles::DegreeBound;
-pub use powdr_autoprecompiles::PgoConfig;
+pub use powdr_autoprecompiles::PgoData;
 
 pub use powdr_openvm_bus_interaction_handler::bus_map;
 
@@ -159,15 +159,15 @@ pub fn compile_exe(
     original_program: OriginalCompiledProgram<RiscvISA>,
     generate: GenerateConfig,
     select: SelectConfig,
-    pgo_config: PgoConfig,
+    pgo_data: PgoData,
     empirical_constraints: EmpiricalConstraints,
 ) -> Result<CompiledProgram<RiscvISA>, Box<dyn std::error::Error>> {
-    let generate = generate.with_select_defaults(pgo_config.pgo_type(), select);
+    let generate = generate.with_select_defaults(pgo_data.pgo_type(), select);
     let degree_bound = generate.degree_bound;
     let ranked = generate_apcs(
         &original_program,
         &generate,
-        pgo_config,
+        pgo_data,
         empirical_constraints,
     );
     let apcs = select_apcs(ranked, select);
@@ -388,7 +388,7 @@ mod tests {
         mock: bool,
         recursion: bool,
         stdin: StdIn,
-        pgo_config: PgoConfig,
+        pgo_data: PgoData,
         segment_height: Option<usize>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let guest = compile_openvm(guest, GuestOptions::default()).unwrap();
@@ -396,7 +396,7 @@ mod tests {
             guest,
             generate,
             select,
-            pgo_config,
+            pgo_data,
             EmpiricalConstraints::default(),
         )
         .unwrap();
@@ -409,7 +409,7 @@ mod tests {
         generate: GenerateConfig,
         select: SelectConfig,
         stdin: StdIn,
-        pgo_config: PgoConfig,
+        pgo_data: PgoData,
         segment_height: Option<usize>,
     ) {
         compile_and_prove(
@@ -419,7 +419,7 @@ mod tests {
             false,
             false,
             stdin,
-            pgo_config,
+            pgo_data,
             segment_height,
         )
         .unwrap()
@@ -430,7 +430,7 @@ mod tests {
         generate: GenerateConfig,
         select: SelectConfig,
         stdin: StdIn,
-        pgo_config: PgoConfig,
+        pgo_data: PgoData,
         segment_height: Option<usize>,
     ) {
         compile_and_prove(
@@ -440,7 +440,7 @@ mod tests {
             true,
             false,
             stdin,
-            pgo_config,
+            pgo_data,
             segment_height,
         )
         .unwrap()
@@ -451,7 +451,7 @@ mod tests {
         generate: GenerateConfig,
         select: SelectConfig,
         stdin: StdIn,
-        pgo_config: PgoConfig,
+        pgo_data: PgoData,
         segment_height: Option<usize>,
     ) {
         compile_and_prove(
@@ -461,7 +461,7 @@ mod tests {
             false,
             true,
             stdin,
-            pgo_config,
+            pgo_data,
             segment_height,
         )
         .unwrap()
@@ -531,7 +531,7 @@ mod tests {
             guest,
             generate,
             select,
-            PgoConfig::None,
+            PgoData::None,
             EmpiricalConstraints::default(),
         )
         .unwrap();
@@ -566,7 +566,7 @@ mod tests {
             generate,
             select,
             stdin,
-            PgoConfig::Instruction(pgo_data),
+            PgoData::Instruction(pgo_data),
             None,
         );
     }
@@ -584,7 +584,7 @@ mod tests {
             generate,
             select,
             stdin,
-            PgoConfig::Instruction(pgo_data),
+            PgoData::Instruction(pgo_data),
             None,
         );
     }
@@ -603,7 +603,7 @@ mod tests {
             generate,
             select,
             stdin,
-            PgoConfig::Instruction(pgo_data),
+            PgoData::Instruction(pgo_data),
             None,
         );
     }
@@ -618,7 +618,7 @@ mod tests {
             guest,
             generate,
             select,
-            PgoConfig::default(),
+            PgoData::default(),
             EmpiricalConstraints::default()
         )
         .is_ok());
@@ -630,7 +630,7 @@ mod tests {
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let generate = default_generate_config();
         let select = SelectConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_simple(GUEST_KECCAK, generate, select, stdin, PgoConfig::None, None);
+        prove_simple(GUEST_KECCAK, generate, select, stdin, PgoData::None, None);
     }
 
     #[test]
@@ -646,7 +646,7 @@ mod tests {
             generate,
             select,
             stdin,
-            PgoConfig::None,
+            PgoData::None,
             Some(4_096),
         );
     }
@@ -658,7 +658,7 @@ mod tests {
         stdin.write(&GUEST_KECCAK_ITER);
         let generate = default_generate_config();
         let select = SelectConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_simple(GUEST_KECCAK, generate, select, stdin, PgoConfig::None, None);
+        prove_simple(GUEST_KECCAK, generate, select, stdin, PgoData::None, None);
     }
 
     #[test]
@@ -676,7 +676,7 @@ mod tests {
             generate.clone(),
             select,
             stdin.clone(),
-            PgoConfig::Instruction(pgo_data.clone()),
+            PgoData::Instruction(pgo_data.clone()),
             None,
         );
 
@@ -685,7 +685,7 @@ mod tests {
             generate.clone(),
             select,
             stdin,
-            PgoConfig::Cell(pgo_data, None),
+            PgoData::Cell(pgo_data, None),
             None,
         );
     }
@@ -705,7 +705,7 @@ mod tests {
             generate,
             select,
             stdin,
-            PgoConfig::Instruction(pgo_data),
+            PgoData::Instruction(pgo_data),
             None,
         );
     }
@@ -717,7 +717,7 @@ mod tests {
 
         let generate = default_generate_config();
         let select = SelectConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_mock(GUEST_KECCAK, generate, select, stdin, PgoConfig::None, None);
+        prove_mock(GUEST_KECCAK, generate, select, stdin, PgoData::None, None);
     }
 
     #[test]
@@ -727,7 +727,7 @@ mod tests {
         stdin.write(&GUEST_KECCAK_ITER);
         let generate = default_generate_config();
         let select = SelectConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_mock(GUEST_KECCAK, generate, select, stdin, PgoConfig::None, None);
+        prove_mock(GUEST_KECCAK, generate, select, stdin, PgoData::None, None);
     }
 
     // Create multiple APC for 10 Keccak iterations to test different PGO modes
@@ -751,11 +751,11 @@ mod tests {
             generate.clone(),
             select,
             stdin.clone(),
-            PgoConfig::Cell(pgo_data.clone(), None),
+            PgoData::Cell(pgo_data.clone(), None),
             None,
         );
         let elapsed = start.elapsed();
-        tracing::debug!("Proving keccak with PgoConfig::Cell took {:?}", elapsed);
+        tracing::debug!("Proving keccak with PgoData::Cell took {:?}", elapsed);
 
         // Pgo Instruction mode
         let start = Instant::now();
@@ -764,12 +764,12 @@ mod tests {
             generate.clone(),
             select,
             stdin.clone(),
-            PgoConfig::Instruction(pgo_data),
+            PgoData::Instruction(pgo_data),
             None,
         );
         let elapsed = start.elapsed();
         tracing::debug!(
-            "Proving keccak with PgoConfig::Instruction took {:?}",
+            "Proving keccak with PgoData::Instruction took {:?}",
             elapsed
         );
     }
@@ -790,7 +790,7 @@ mod tests {
             generate,
             select,
             stdin,
-            PgoConfig::Instruction(pgo_data),
+            PgoData::Instruction(pgo_data),
             None,
         );
     }
@@ -811,7 +811,7 @@ mod tests {
             generate,
             select,
             stdin,
-            PgoConfig::Instruction(pgo_data),
+            PgoData::Instruction(pgo_data),
             None,
         );
     }
@@ -831,7 +831,7 @@ mod tests {
             generate.clone(),
             select,
             stdin.clone(),
-            PgoConfig::Instruction(pgo_data.clone()),
+            PgoData::Instruction(pgo_data.clone()),
             None,
         );
 
@@ -840,7 +840,7 @@ mod tests {
             generate.clone(),
             select,
             stdin,
-            PgoConfig::Cell(pgo_data, None),
+            PgoData::Cell(pgo_data, None),
             None,
         );
     }
@@ -860,7 +860,7 @@ mod tests {
             generate,
             select,
             stdin,
-            PgoConfig::Instruction(pgo_data),
+            PgoData::Instruction(pgo_data),
             None,
         );
     }
@@ -880,7 +880,7 @@ mod tests {
             generate,
             select,
             stdin,
-            PgoConfig::Instruction(pgo_data),
+            PgoData::Instruction(pgo_data),
             None,
         );
     }
@@ -900,7 +900,7 @@ mod tests {
             generate,
             select,
             stdin,
-            PgoConfig::Instruction(pgo_data),
+            PgoData::Instruction(pgo_data),
             None,
         );
     }
@@ -923,11 +923,11 @@ mod tests {
             generate.clone(),
             select,
             stdin.clone(),
-            PgoConfig::Cell(pgo_data.clone(), None),
+            PgoData::Cell(pgo_data.clone(), None),
             None,
         );
         let elapsed = start.elapsed();
-        tracing::debug!("Proving sha256 with PgoConfig::Cell took {:?}", elapsed);
+        tracing::debug!("Proving sha256 with PgoData::Cell took {:?}", elapsed);
 
         let start = Instant::now();
         prove_simple(
@@ -935,12 +935,12 @@ mod tests {
             generate.clone(),
             select,
             stdin.clone(),
-            PgoConfig::Instruction(pgo_data),
+            PgoData::Instruction(pgo_data),
             None,
         );
         let elapsed = start.elapsed();
         tracing::debug!(
-            "Proving sha256 with PgoConfig::Instruction took {:?}",
+            "Proving sha256 with PgoData::Instruction took {:?}",
             elapsed
         );
     }
@@ -963,11 +963,11 @@ mod tests {
             generate.clone(),
             select,
             stdin.clone(),
-            PgoConfig::Cell(pgo_data.clone(), None),
+            PgoData::Cell(pgo_data.clone(), None),
             None,
         );
         let elapsed = start.elapsed();
-        tracing::debug!("Proving U256 with PgoConfig::Cell took {:?}", elapsed);
+        tracing::debug!("Proving U256 with PgoData::Cell took {:?}", elapsed);
     }
 
     #[test]
@@ -988,12 +988,12 @@ mod tests {
             generate.clone(),
             select,
             stdin.clone(),
-            PgoConfig::Cell(pgo_data.clone(), None),
+            PgoData::Cell(pgo_data.clone(), None),
             None,
         );
         let elapsed = start.elapsed();
         tracing::debug!(
-            "Proving pairing guest with PgoConfig::Cell took {:?}",
+            "Proving pairing guest with PgoData::Cell took {:?}",
             elapsed
         );
     }
@@ -1006,7 +1006,7 @@ mod tests {
         let generate = default_generate_config();
         let select = SelectConfig::new(0, 0);
 
-        prove_simple(GUEST_SHA256, generate, select, stdin, PgoConfig::None, None);
+        prove_simple(GUEST_SHA256, generate, select, stdin, PgoData::None, None);
     }
 
     #[test]
@@ -1022,7 +1022,7 @@ mod tests {
             generate.clone(),
             select,
             stdin.clone(),
-            PgoConfig::Cell(pgo_data.clone(), None),
+            PgoData::Cell(pgo_data.clone(), None),
             None,
         );
     }
@@ -1040,7 +1040,7 @@ mod tests {
             generate.clone(),
             select,
             stdin.clone(),
-            PgoConfig::Cell(pgo_data.clone(), None),
+            PgoData::Cell(pgo_data.clone(), None),
             None,
         );
     }
@@ -1059,7 +1059,7 @@ mod tests {
             generate,
             select,
             stdin,
-            PgoConfig::Cell(pgo_data, None),
+            PgoData::Cell(pgo_data, None),
             None,
         );
     }
@@ -1078,7 +1078,7 @@ mod tests {
             generate,
             select,
             stdin,
-            PgoConfig::Cell(pgo_data, None),
+            PgoData::Cell(pgo_data, None),
             None,
         );
     }
@@ -1098,7 +1098,7 @@ mod tests {
             generate,
             select,
             stdin,
-            PgoConfig::Cell(pgo_data, None),
+            PgoData::Cell(pgo_data, None),
             None,
         );
     }
@@ -1110,13 +1110,13 @@ mod tests {
         stdin.write(&GUEST_KECCAK_ITER);
         let generate = default_generate_config();
         let select = SelectConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_recursion(GUEST_KECCAK, generate, select, stdin, PgoConfig::None, None);
+        prove_recursion(GUEST_KECCAK, generate, select, stdin, PgoData::None, None);
     }
 
     // The following are compilation tests only
 
     struct GuestTestConfig {
-        pgo_config: PgoConfig,
+        pgo_data: PgoData,
         name: &'static str,
         apc: u64,
         skip: u64,
@@ -1139,13 +1139,13 @@ mod tests {
         let generate = default_generate_config();
         let select = SelectConfig::new(guest.apc, guest.skip);
         let generate = generate.with_apc_candidates_dir(apc_candidates_dir_path);
-        let is_cell_pgo = matches!(guest.pgo_config, PgoConfig::Cell(_, _));
+        let is_cell_pgo = matches!(guest.pgo_data, PgoData::Cell(_, _));
         let guest_program = compile_openvm(guest.name, GuestOptions::default()).unwrap();
         let compiled_program = compile_exe(
             guest_program,
             generate,
             select,
-            guest.pgo_config,
+            guest.pgo_data,
             EmpiricalConstraints::default(),
         )
         .unwrap();
@@ -1234,7 +1234,7 @@ mod tests {
 
         test_machine_compilation(
             GuestTestConfig {
-                pgo_config: PgoConfig::Instruction(pgo_data.clone()),
+                pgo_data: PgoData::Instruction(pgo_data.clone()),
                 name: GUEST,
                 apc: GUEST_APC,
                 skip: GUEST_SKIP_PGO,
@@ -1261,7 +1261,7 @@ mod tests {
 
         test_machine_compilation(
             GuestTestConfig {
-                pgo_config: PgoConfig::Cell(pgo_data, None),
+                pgo_data: PgoData::Cell(pgo_data, None),
                 name: GUEST,
                 apc: GUEST_APC,
                 skip: GUEST_SKIP_PGO,
@@ -1307,7 +1307,7 @@ mod tests {
 
         test_machine_compilation(
             GuestTestConfig {
-                pgo_config: PgoConfig::Instruction(pgo_data.clone()),
+                pgo_data: PgoData::Instruction(pgo_data.clone()),
                 name: GUEST_SHA256,
                 apc: GUEST_SHA256_APC_PGO,
                 skip: GUEST_SHA256_SKIP,
@@ -1334,7 +1334,7 @@ mod tests {
 
         test_machine_compilation(
             GuestTestConfig {
-                pgo_config: PgoConfig::Cell(pgo_data, None),
+                pgo_data: PgoData::Cell(pgo_data, None),
                 name: GUEST_SHA256,
                 apc: GUEST_SHA256_APC_PGO,
                 skip: GUEST_SHA256_SKIP,
@@ -1380,7 +1380,7 @@ mod tests {
 
         test_machine_compilation(
             GuestTestConfig {
-                pgo_config: PgoConfig::Cell(pgo_data, None),
+                pgo_data: PgoData::Cell(pgo_data, None),
                 name: GUEST_ECC_HINTS,
                 apc: GUEST_ECC_APC_PGO,
                 skip: GUEST_ECC_SKIP,
@@ -1426,7 +1426,7 @@ mod tests {
 
         test_machine_compilation(
             GuestTestConfig {
-                pgo_config: PgoConfig::Cell(pgo_data, None),
+                pgo_data: PgoData::Cell(pgo_data, None),
                 name: GUEST_ECRECOVER_HINTS,
                 apc: GUEST_ECRECOVER_APC_PGO,
                 skip: GUEST_ECRECOVER_SKIP,
@@ -1472,7 +1472,7 @@ mod tests {
 
         test_machine_compilation(
             GuestTestConfig {
-                pgo_config: PgoConfig::None,
+                pgo_data: PgoData::None,
                 name: GUEST_KECCAK,
                 apc: GUEST_KECCAK_APC,
                 skip: GUEST_KECCAK_SKIP,
@@ -1499,7 +1499,7 @@ mod tests {
 
         test_machine_compilation(
             GuestTestConfig {
-                pgo_config: PgoConfig::Instruction(pgo_data.clone()),
+                pgo_data: PgoData::Instruction(pgo_data.clone()),
                 name: GUEST_KECCAK,
                 apc: GUEST_KECCAK_APC,
                 skip: GUEST_KECCAK_SKIP,
@@ -1526,7 +1526,7 @@ mod tests {
 
         test_machine_compilation(
             GuestTestConfig {
-                pgo_config: PgoConfig::Cell(pgo_data, None),
+                pgo_data: PgoData::Cell(pgo_data, None),
                 name: GUEST_KECCAK,
                 apc: GUEST_KECCAK_APC,
                 skip: GUEST_KECCAK_SKIP,
@@ -1575,7 +1575,7 @@ mod tests {
 
         test_machine_compilation(
             GuestTestConfig {
-                pgo_config: PgoConfig::Cell(pgo_data, Some(MAX_TOTAL_COLUMNS)),
+                pgo_data: PgoData::Cell(pgo_data, Some(MAX_TOTAL_COLUMNS)),
                 name: GUEST_KECCAK,
                 apc: GUEST_KECCAK_APC_PGO_LARGE,
                 skip: GUEST_KECCAK_SKIP,

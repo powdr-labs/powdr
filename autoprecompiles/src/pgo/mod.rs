@@ -22,7 +22,7 @@ pub use {
 
 /// Three modes for profiler guided optimization with different cost functions to sort the basic blocks by descending cost and select the most costly ones to accelerate.
 #[derive(Default)]
-pub enum PgoConfig {
+pub enum PgoData {
     /// value = cells saved per apc * times executed
     /// cost = number of columns in the apc
     /// constraint of max total columns
@@ -34,22 +34,20 @@ pub enum PgoConfig {
     None,
 }
 
-impl PgoConfig {
+impl PgoData {
     /// Returns the number of times a certain pc was executed in the profile.
     pub fn pc_execution_count(&self, pc: u64) -> Option<u32> {
         match self {
-            PgoConfig::Cell(prof, _) | PgoConfig::Instruction(prof) => {
-                prof.pc_count.get(&pc).copied()
-            }
-            PgoConfig::None => None,
+            PgoData::Cell(prof, _) | PgoData::Instruction(prof) => prof.pc_count.get(&pc).copied(),
+            PgoData::None => None,
         }
     }
 
     pub fn pgo_type(&self) -> PgoType {
         match self {
-            PgoConfig::Cell(_, _) => PgoType::Cell,
-            PgoConfig::Instruction(_) => PgoType::Instruction,
-            PgoConfig::None => PgoType::None,
+            PgoData::Cell(_, _) => PgoType::Cell,
+            PgoData::Instruction(_) => PgoType::Instruction,
+            PgoData::None => PgoType::None,
         }
     }
 }
@@ -67,15 +65,15 @@ pub enum PgoType {
     None,
 }
 
-pub fn pgo_config(
+pub fn pgo_data(
     pgo: PgoType,
     max_columns: Option<usize>,
     execution_profile: ExecutionProfile,
-) -> PgoConfig {
+) -> PgoData {
     match pgo {
-        PgoType::Cell => PgoConfig::Cell(execution_profile, max_columns),
-        PgoType::Instruction => PgoConfig::Instruction(execution_profile),
-        PgoType::None => PgoConfig::None,
+        PgoType::Cell => PgoData::Cell(execution_profile, max_columns),
+        PgoType::Instruction => PgoData::Instruction(execution_profile),
+        PgoType::None => PgoData::None,
     }
 }
 
