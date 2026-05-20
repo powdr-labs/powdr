@@ -5,7 +5,7 @@ use openvm_sdk::StdIn;
 use openvm_stark_sdk::bench::serialize_metric_snapshot;
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::pgo::PgoType;
-use powdr_autoprecompiles::{GenerateConfig, SelectConfig};
+use powdr_autoprecompiles::{GenerateConfig, PgoConfig, SelectConfig};
 use powdr_openvm_riscv::{
     compile_openvm, detect_empirical_constraints, CompiledProgram, GuestOptions,
     OriginalCompiledProgram, RankedApcs, RiscvISA, StagedPipeline, DEFAULT_DEGREE_BOUND,
@@ -330,21 +330,16 @@ impl Pipeline {
         // Standalone generate: no select context, so feed in a zero
         // `SelectConfig` and let `with_select_defaults` no-op. The user can
         // still pass `--apc-candidates` to bound the build explicitly.
-        gen_stage(
-            &self.inner,
-            args,
-            SelectConfig::default(),
-            self.profile_args.profile_input,
-        )
+        gen_stage(&self.inner, args, SelectConfig::default())
     }
 
     fn run_select_apcs(&self, args: SelectArgs) -> RankedApcs {
         let select = SelectConfig::from(&args);
         let generate =
             GenerateConfig::from(&args.generate).with_select_defaults(args.generate.pgo, select);
-        let input_fp = self.profile_args.profile_input;
-        self.inner.select_apcs(&generate, select, &input_fp, || {
-            gen_stage(&self.inner, &args.generate, select, input_fp)
+        let pgo_config = pgo_config_from_args(&args.generate, self.profile_args.profile_input);
+        self.inner.select_apcs(&generate, &pgo_config, select, || {
+            gen_stage(&self.inner, &args.generate, select)
         })
     }
 
@@ -362,9 +357,10 @@ impl Pipeline {
             generate: generate_args,
             ..
         } = args;
-        inner.setup(&generate, select, &profile_input, |p| {
-            p.select_apcs(&generate, select, &profile_input, || {
-                gen_stage(p, &generate_args, select, profile_input)
+        let pgo_config = pgo_config_from_args(&generate_args, profile_input);
+        inner.setup(&generate, &pgo_config, select, |p| {
+            p.select_apcs(&generate, &pgo_config, select, || {
+                gen_stage(p, &generate_args, select)
             })
         })
     }
@@ -377,23 +373,47 @@ fn gen_stage(
     pipeline: &StagedPipeline,
     args: &GenerateApcsArgs,
     select: SelectConfig,
-    profile_input: Option<u32>,
 ) -> RankedApcs {
     let generate = GenerateConfig::from(args).with_select_defaults(args.pgo, select);
+    let pgo_config = pgo_config_from_args(args, args.profile.profile_input);
+    // Empirical-constraints closure needs `generate` by value (the call
+    // forwards it to `detect_empirical_constraints`); the surrounding call
+    // also needs `&generate` for the hash. One clone covers both.
+    let generate_for_closure = generate.clone();
     pipeline.generate_apcs(
         &generate,
-        args.pgo,
-        args.max_columns,
-        &profile_input,
-        |guest| powdr_openvm::execution_profile_from_guest(guest, stdin_from(profile_input)),
-        || {
+        &pgo_config,
+        |guest, inputs| {
+            let profile_input = deserialize_profile_input(inputs);
+            powdr_openvm::execution_profile_from_guest(guest, stdin_from(profile_input))
+        },
+        move |guest, inputs| {
+            let profile_input = deserialize_profile_input(inputs);
             maybe_compute_empirical_constraints(
-                pipeline.guest(),
-                &generate,
+                guest,
+                &generate_for_closure,
                 stdin_from(profile_input),
             )
         },
     )
+}
+
+/// Build a `PgoConfig` from the CLI args; `inputs` is the serialized
+/// `profile_input` (an `Option<u32>` round-tripped through serde_cbor).
+fn pgo_config_from_args(args: &GenerateApcsArgs, profile_input: Option<u32>) -> PgoConfig {
+    PgoConfig::new(
+        args.pgo,
+        args.max_columns,
+        serialize_profile_input(profile_input),
+    )
+}
+
+fn serialize_profile_input(profile_input: Option<u32>) -> Vec<u8> {
+    serde_cbor::to_vec(&profile_input).expect("serialize profile_input")
+}
+
+fn deserialize_profile_input(bytes: &[u8]) -> Option<u32> {
+    serde_cbor::from_slice(bytes).expect("deserialize profile_input")
 }
 
 // ---------- misc helpers ----------

@@ -52,7 +52,7 @@ pub mod range_constraint_optimizer;
 mod stats_logger;
 pub mod symbolic_machine;
 pub mod symbolic_machine_generator;
-pub use pgo::{PgoData, PgoType};
+pub use pgo::{PgoConfig, PgoData, PgoType};
 pub use powdr_constraint_solver::inliner::DegreeBound;
 pub mod equivalence_classes;
 pub mod execution;
