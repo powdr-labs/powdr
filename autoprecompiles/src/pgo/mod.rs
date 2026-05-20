@@ -44,6 +44,14 @@ impl PgoConfig {
             PgoConfig::None => None,
         }
     }
+
+    pub fn pgo_type(&self) -> PgoType {
+        match self {
+            PgoConfig::Cell(_, _) => PgoType::Cell,
+            PgoConfig::Instruction(_) => PgoType::Instruction,
+            PgoConfig::None => PgoType::None,
+        }
+    }
 }
 
 /// CLI enum for PGO mode
@@ -68,6 +76,22 @@ pub fn pgo_config(
         PgoType::Cell => PgoConfig::Cell(execution_profile, max_columns),
         PgoType::Instruction => PgoConfig::Instruction(execution_profile),
         PgoType::None => PgoConfig::None,
+    }
+}
+
+/// Default `PowdrConfig::apc_candidates` to use when the caller hasn't set one.
+///
+/// - Cell ignores the cap (builds every eligible candidate), so `None` here
+///   means "don't constrain"; `Some(0)` is the agreed signal to short-circuit
+///   without producing any candidates.
+/// - Instruction / None must be capped: the build loop iterates the
+///   metadata-sorted prefix, so an unset cap would build an APC for every
+///   eligible block and `select_apcs` would throw all but the top
+///   `autoprecompiles + skip` away.
+pub fn default_apc_candidates(pgo: PgoType, autoprecompiles: u64, skip: u64) -> Option<u64> {
+    match pgo {
+        PgoType::Cell => (autoprecompiles == 0).then_some(0),
+        PgoType::Instruction | PgoType::None => Some(autoprecompiles + skip),
     }
 }
 

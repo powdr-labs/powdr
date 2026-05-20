@@ -5,7 +5,7 @@ use openvm_sdk::StdIn;
 use openvm_stark_sdk::bench::serialize_metric_snapshot;
 use powdr_autoprecompiles::adapter::AdapterApcWithStats;
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
-use powdr_autoprecompiles::pgo::{pgo_config, PgoType};
+use powdr_autoprecompiles::pgo::{default_apc_candidates, pgo_config, PgoType};
 use powdr_autoprecompiles::PowdrConfig;
 use powdr_openvm::BabyBearOpenVmApcAdapter;
 use powdr_openvm_riscv::{
@@ -312,30 +312,16 @@ impl SelectArgs {
     /// `autoprecompiles`/`skip` values, if not explicitly set.
     fn set_apc_candidates_default(mut self) -> Self {
         if self.generate.apc_candidates.is_none() {
-            match self.generate.pgo {
-                PgoType::Cell => {
-                    if self.autoprecompiles == 0 {
-                        // No need to generate any APCs.
-                        self.generate.apc_candidates = Some(0);
-                    } else {
-                        // The Cell PGO builds all eligible candidates anyway, so we leave
-                        // `apc_candidates` unset to signal "build all".
-                    }
-                }
-                PgoType::Instruction | PgoType::None => {
-                    let autoprecompiles = self.autoprecompiles;
-                    let skip = self.skip;
-                    let default_candidates = if autoprecompiles == 0 {
-                        0
-                    } else {
-                        autoprecompiles as u64 + skip as u64
-                    };
-                    tracing::info!(
-                        "--apc-candidates not set; defaulting to {default_candidates} for --pgo {}",
-                        self.generate.pgo
-                    );
-                    self.generate.apc_candidates = Some(default_candidates);
-                }
+            self.generate.apc_candidates = default_apc_candidates(
+                self.generate.pgo,
+                self.autoprecompiles as u64,
+                self.skip as u64,
+            );
+            if let Some(n) = self.generate.apc_candidates {
+                tracing::info!(
+                    "--apc-candidates not set; defaulting to {n} for --pgo {}",
+                    self.generate.pgo
+                );
             }
         }
         self
