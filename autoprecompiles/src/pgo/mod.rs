@@ -81,16 +81,22 @@ pub fn pgo_config(
 
 /// Default `PowdrConfig::apc_candidates` to use when the caller hasn't set one.
 ///
-/// - Cell ignores the cap (builds every eligible candidate), so `None` here
-///   means "don't constrain"; `Some(0)` is the agreed signal to short-circuit
-///   without producing any candidates.
-/// - Instruction / None must be capped: the build loop iterates the
-///   metadata-sorted prefix, so an unset cap would build an APC for every
-///   eligible block and `select_apcs` would throw all but the top
-///   `autoprecompiles + skip` away.
+/// `autoprecompiles == 0` is treated as "caller doesn't know the selection
+/// size" (e.g. standalone `generate-apcs`) — we return `None` so the build
+/// loop uses every eligible block; the caller can still set
+/// `apc_candidates` explicitly if it wants a cap.
+///
+/// Otherwise:
+/// - Cell ignores the cap (builds every eligible candidate), so `None`.
+/// - Instruction / None: cap at `autoprecompiles + skip` so the build loop
+///   doesn't fan out to every eligible block only for `select_apcs` to throw
+///   most of the result away.
 pub fn default_apc_candidates(pgo: PgoType, autoprecompiles: u64, skip: u64) -> Option<u64> {
+    if autoprecompiles == 0 {
+        return None;
+    }
     match pgo {
-        PgoType::Cell => (autoprecompiles == 0).then_some(0),
+        PgoType::Cell => None,
         PgoType::Instruction | PgoType::None => Some(autoprecompiles + skip),
     }
 }

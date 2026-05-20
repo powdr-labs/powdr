@@ -4,7 +4,7 @@ use metrics_util::{debugging::DebuggingRecorder, layers::Layer};
 use openvm_sdk::StdIn;
 use openvm_stark_sdk::bench::serialize_metric_snapshot;
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
-use powdr_autoprecompiles::pgo::{default_apc_candidates, PgoType};
+use powdr_autoprecompiles::pgo::PgoType;
 use powdr_autoprecompiles::PowdrConfig;
 use powdr_openvm_riscv::{
     compile_openvm, detect_empirical_constraints, CompiledProgram, GuestOptions,
@@ -301,29 +301,9 @@ fn build_powdr_config(generate: &GenerateApcsArgs, autoprecompiles: u64, skip: u
         )
 }
 
-impl SelectArgs {
-    /// Pick a default for `generate.apc_candidates` based on the PGO strategy and
-    /// `autoprecompiles`/`skip` values, if not explicitly set.
-    fn set_apc_candidates_default(mut self) -> Self {
-        if self.generate.apc_candidates.is_none() {
-            self.generate.apc_candidates = default_apc_candidates(
-                self.generate.pgo,
-                self.autoprecompiles as u64,
-                self.skip as u64,
-            );
-            if let Some(n) = self.generate.apc_candidates {
-                tracing::info!(
-                    "--apc-candidates not set; defaulting to {n} for --pgo {}",
-                    self.generate.pgo
-                );
-            }
-        }
-        self
-    }
-}
-
 /// Thin shim wiring the CLI's clap args to [`StagedPipeline`]. The pipeline
-/// itself (cache plumbing, stage chaining) lives in `powdr-openvm-riscv`.
+/// itself (cache plumbing, stage chaining, `apc_candidates` defaulting) lives
+/// in `powdr-openvm-riscv`.
 struct Pipeline {
     profile_args: ProfileArgs,
     inner: StagedPipeline,
@@ -340,35 +320,24 @@ impl Pipeline {
     }
 
     fn run_generate_apcs(&self, args: &GenerateApcsArgs) -> RankedApcs {
-        let powdr_config = build_powdr_config(args, 0, 0);
-        let profile_input = self.profile_args.profile_input;
-        self.inner.generate_apcs(
-            &format!("{args:?}"),
-            &powdr_config,
-            args.pgo,
-            args.max_columns,
-            |guest| powdr_openvm::execution_profile_from_guest(guest, stdin_from(profile_input)),
-            || {
-                maybe_compute_empirical_constraints(
-                    self.inner.guest(),
-                    &powdr_config,
-                    stdin_from(profile_input),
-                )
-            },
-        )
+        // Standalone generate: no selection size known, so leave autoprecompiles
+        // at 0. `default_apc_candidates` short-circuits on 0 and lets the build
+        // loop run uncapped — the user can still pass `--apc-candidates` to
+        // bound it explicitly.
+        self.gen_stage(args, 0, 0)
     }
 
     fn run_select_apcs(&self, args: SelectArgs) -> RankedApcs {
-        let args = args.set_apc_candidates_default();
-        let powdr_config = build_powdr_config(
-            &args.generate,
-            args.autoprecompiles as u64,
-            args.skip as u64,
-        );
-        self.inner
-            .select_apcs(&format!("{args:?}"), &powdr_config, || {
-                self.run_generate_apcs(&args.generate)
-            })
+        let SelectArgs {
+            generate,
+            autoprecompiles,
+            skip,
+        } = args;
+        let select_config = build_powdr_config(&generate, autoprecompiles as u64, skip as u64);
+        let select_key = format!("sel|{generate:?}|ap={autoprecompiles}|sk={skip}");
+        self.inner.select_apcs(&select_key, &select_config, || {
+            self.gen_stage(&generate, autoprecompiles as u64, skip as u64)
+        })
     }
 
     fn run_setup(self, args: SetupArgs) -> CompiledProgram<RiscvISA> {
@@ -377,40 +346,65 @@ impl Pipeline {
             inner,
         } = self;
         let profile_input = profile_args.profile_input;
-        let setup_config = build_powdr_config(
-            &args.select.generate,
-            args.select.autoprecompiles as u64,
-            args.select.skip as u64,
-        );
-        let setup_key = format!("{args:?}");
-        inner.setup(&setup_key, &setup_config, |p| {
-            let select = args.select.set_apc_candidates_default();
-            let sel_config = build_powdr_config(
-                &select.generate,
-                select.autoprecompiles as u64,
-                select.skip as u64,
-            );
-            p.select_apcs(&format!("{select:?}"), &sel_config, || {
-                let gen_config = build_powdr_config(&select.generate, 0, 0);
-                p.generate_apcs(
-                    &format!("{:?}", select.generate),
-                    &gen_config,
-                    select.generate.pgo,
-                    select.generate.max_columns,
-                    |guest| {
-                        powdr_openvm::execution_profile_from_guest(guest, stdin_from(profile_input))
-                    },
-                    || {
-                        maybe_compute_empirical_constraints(
-                            p.guest(),
-                            &gen_config,
-                            stdin_from(profile_input),
-                        )
-                    },
+        let SelectArgs {
+            generate,
+            autoprecompiles,
+            skip,
+        } = args.select;
+        let select_config = build_powdr_config(&generate, autoprecompiles as u64, skip as u64);
+        let select_key = format!("sel|{generate:?}|ap={autoprecompiles}|sk={skip}");
+        let setup_key = format!("setup|{select_key}");
+        inner.setup(&setup_key, &select_config, |p| {
+            p.select_apcs(&select_key, &select_config, || {
+                gen_stage_with(
+                    p,
+                    &generate,
+                    autoprecompiles as u64,
+                    skip as u64,
+                    profile_input,
                 )
             })
         })
     }
+
+    fn gen_stage(&self, args: &GenerateApcsArgs, autoprecompiles: u64, skip: u64) -> RankedApcs {
+        gen_stage_with(
+            &self.inner,
+            args,
+            autoprecompiles,
+            skip,
+            self.profile_args.profile_input,
+        )
+    }
+}
+
+/// Free function so `run_setup` can call it from inside a closure that has
+/// already consumed `self` into `inner`.
+fn gen_stage_with(
+    pipeline: &StagedPipeline,
+    args: &GenerateApcsArgs,
+    autoprecompiles: u64,
+    skip: u64,
+    profile_input: Option<u32>,
+) -> RankedApcs {
+    let powdr_config = build_powdr_config(args, autoprecompiles, skip);
+    // Cache key intentionally excludes `autoprecompiles` / `skip` so that
+    // sweeping selection sizes reuses the generate-stage blob.
+    let key = format!("gen|{args:?}");
+    pipeline.generate_apcs(
+        &key,
+        &powdr_config,
+        args.pgo,
+        args.max_columns,
+        |guest| powdr_openvm::execution_profile_from_guest(guest, stdin_from(profile_input)),
+        || {
+            maybe_compute_empirical_constraints(
+                pipeline.guest(),
+                &powdr_config,
+                stdin_from(profile_input),
+            )
+        },
+    )
 }
 
 // ---------- misc helpers ----------

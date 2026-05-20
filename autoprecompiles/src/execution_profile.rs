@@ -13,7 +13,7 @@ use tracing_subscriber::{
     Layer,
 };
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 /// Program execution information for PGO
 pub struct ExecutionProfile {
     /// execution count of each pc

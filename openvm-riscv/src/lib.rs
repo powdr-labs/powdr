@@ -31,7 +31,6 @@ use openvm_stark_sdk::config::{app_params_with_100_bits_security, MAX_APP_LOG_ST
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
-use powdr_autoprecompiles::pgo::default_apc_candidates;
 use powdr_autoprecompiles::PowdrConfig;
 use powdr_openvm::extraction_utils::OriginalVmConfig;
 use powdr_openvm::trace_generation::do_with_trace;
@@ -150,34 +149,39 @@ pub fn compile_openvm(
     })
 }
 
-/// Convenience composition of [`generate_apcs`] + [`select_apcs`] + [`setup`].
+/// Convenience composition of generate + select + setup with no on-disk cache.
 ///
-/// Applies [`default_apc_candidates`] when `config.apc_candidates` is unset so
-/// that external callers (sp1, openvm-eth, ...) inherit the same cap default
-/// as the CLI — otherwise the Instruction/None build loop fans out to every
-/// eligible block before `select_apcs` trims the result.
+/// Thin wrapper over [`StagedPipeline`] (which owns the `apc_candidates`
+/// default policy). External callers that don't need staged caching land here;
+/// callers that do (CLI, openvm-eth) construct a `StagedPipeline` themselves.
 pub fn compile_exe(
-    original_program: OriginalCompiledProgram<RiscvISA>,
-    mut config: PowdrConfig,
+    original_program: OriginalCompiledProgram<'static, RiscvISA>,
+    config: PowdrConfig,
     pgo_config: PgoConfig,
     empirical_constraints: EmpiricalConstraints,
 ) -> Result<CompiledProgram<RiscvISA>, Box<dyn std::error::Error>> {
-    if config.apc_candidates.is_none() {
-        config.apc_candidates = default_apc_candidates(
-            pgo_config.pgo_type(),
-            config.autoprecompiles,
-            config.skip_autoprecompiles,
-        );
-    }
-    let degree_bound = config.degree_bound;
-    let ranked = generate_apcs(
-        &original_program,
-        &config,
-        pgo_config,
-        empirical_constraints,
-    );
-    let apcs = select_apcs(ranked, &config);
-    Ok(setup(original_program, apcs, degree_bound))
+    let pgo_type = pgo_config.pgo_type();
+    let (exec_profile, max_columns) = match pgo_config {
+        PgoConfig::Cell(profile, max) => (Some(profile), max),
+        PgoConfig::Instruction(profile) => (Some(profile), None),
+        PgoConfig::None => (None, None),
+    };
+
+    let pipeline = pipeline::StagedPipeline::new(original_program, None);
+    // No caching, so the per-stage cache_key value is irrelevant.
+    let key = "";
+    Ok(pipeline.setup(&key, &config, |p| {
+        p.select_apcs(&key, &config, || {
+            p.generate_apcs(
+                &key,
+                &config,
+                pgo_type,
+                max_columns,
+                move |_guest| exec_profile.unwrap_or_default(),
+                move || empirical_constraints,
+            )
+        })
+    }))
 }
 
 use openvm_circuit_derive::VmConfig;
