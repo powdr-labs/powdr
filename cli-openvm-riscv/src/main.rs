@@ -198,8 +198,11 @@ fn run_command(command: Commands, artifacts_dir: Option<PathBuf>) {
     match command {
         Commands::GenerateApcs(args) => {
             validate_generate_args(&args, false);
-            let pipeline = Pipeline::new(args.profile.clone(), artifacts_dir);
-            let ranked = pipeline.run_generate_apcs(&args);
+            let pipeline = build_pipeline(&args.profile, artifacts_dir);
+            // Standalone generate: no select context, so feed in a zero
+            // `SelectConfig` and let `with_select_defaults` no-op. The user
+            // can still pass `--apc-candidates` to bound the build explicitly.
+            let ranked = run_generate_stage(&pipeline, &args, SelectConfig::default());
             tracing::info!(
                 "Built and ranked {} autoprecompile candidates",
                 ranked.len()
@@ -208,23 +211,23 @@ fn run_command(command: Commands, artifacts_dir: Option<PathBuf>) {
 
         Commands::SelectApcs(args) => {
             validate_generate_args(&args.generate, false);
-            let pipeline = Pipeline::new(args.generate.profile.clone(), artifacts_dir);
-            let apcs = pipeline.run_select_apcs(args);
+            let pipeline = build_pipeline(&args.generate.profile, artifacts_dir);
+            let apcs = run_select_stage(&pipeline, &args);
             tracing::info!("Selected {} autoprecompiles", apcs.len());
         }
 
         Commands::Setup(args) => {
             validate_generate_args(&args.select.generate, true);
-            let pipeline = Pipeline::new(args.select.generate.profile.clone(), artifacts_dir);
-            let _ = pipeline.run_setup(args);
+            let pipeline = build_pipeline(&args.select.generate.profile, artifacts_dir);
+            let _ = run_setup_stage(pipeline, args);
         }
 
         Commands::Execute(args) => {
             validate_generate_args(&args.setup.select.generate, true);
             let runtime_input = args.input;
-            let pipeline = Pipeline::new(args.setup.select.generate.profile.clone(), artifacts_dir);
+            let pipeline = build_pipeline(&args.setup.select.generate.profile, artifacts_dir);
             let run = || {
-                let program = pipeline.run_setup(args.setup);
+                let program = run_setup_stage(pipeline, args.setup);
                 powdr_openvm::execute(program, stdin_from(runtime_input)).unwrap();
             };
             if let Some(metrics_path) = args.metrics {
@@ -242,9 +245,9 @@ fn run_command(command: Commands, artifacts_dir: Option<PathBuf>) {
             let runtime_input = args.input;
             let mock = args.mock;
             let recursion = args.recursion;
-            let pipeline = Pipeline::new(args.setup.select.generate.profile.clone(), artifacts_dir);
+            let pipeline = build_pipeline(&args.setup.select.generate.profile, artifacts_dir);
             let run = || {
-                let program = pipeline.run_setup(args.setup);
+                let program = run_setup_stage(pipeline, args.setup);
                 powdr_openvm_riscv::prove(
                     &program,
                     mock,
@@ -308,74 +311,23 @@ impl From<&SelectArgs> for SelectConfig {
     }
 }
 
-/// Thin shim wiring the CLI's clap args to [`StagedPipeline`]. The pipeline
-/// itself (cache plumbing, stage chaining, on-disk hashing) lives in
-/// `powdr-openvm-riscv`.
-struct Pipeline {
-    profile_args: ProfileArgs,
-    inner: StagedPipeline,
+/// Compile the guest crate referenced by `profile` and wrap it in a
+/// [`StagedPipeline`] keyed at `artifacts_dir`.
+fn build_pipeline(profile: &ProfileArgs, artifacts_dir: Option<PathBuf>) -> StagedPipeline {
+    let guest = compile_openvm(&profile.guest, GuestOptions::default()).unwrap();
+    StagedPipeline::new(guest, artifacts_dir)
 }
 
-impl Pipeline {
-    fn new(profile_args: ProfileArgs, artifacts_dir: Option<PathBuf>) -> Self {
-        let guest_program = compile_openvm(&profile_args.guest, GuestOptions::default()).unwrap();
-        let inner = StagedPipeline::new(guest_program, artifacts_dir);
-        Self {
-            profile_args,
-            inner,
-        }
-    }
-
-    fn run_generate_apcs(&self, args: &GenerateApcsArgs) -> RankedApcs {
-        // Standalone generate: no select context, so feed in a zero
-        // `SelectConfig` and let `with_select_defaults` no-op. The user can
-        // still pass `--apc-candidates` to bound the build explicitly.
-        gen_stage(&self.inner, args, SelectConfig::default())
-    }
-
-    fn run_select_apcs(&self, args: SelectArgs) -> RankedApcs {
-        let select = SelectConfig::from(&args);
-        let generate =
-            GenerateConfig::from(&args.generate).with_select_defaults(args.generate.pgo, select);
-        let pgo_config = pgo_config_from_args(&args.generate, self.profile_args.profile_input);
-        self.inner.select_apcs(&generate, &pgo_config, select, || {
-            gen_stage(&self.inner, &args.generate, select)
-        })
-    }
-
-    fn run_setup(self, args: SetupArgs) -> CompiledProgram<RiscvISA> {
-        let Self {
-            profile_args,
-            inner,
-        } = self;
-        let profile_input = profile_args.profile_input;
-        let SetupArgs { select: args } = args;
-        let select = SelectConfig::from(&args);
-        let generate =
-            GenerateConfig::from(&args.generate).with_select_defaults(args.generate.pgo, select);
-        let SelectArgs {
-            generate: generate_args,
-            ..
-        } = args;
-        let pgo_config = pgo_config_from_args(&generate_args, profile_input);
-        inner.setup(&generate, &pgo_config, select, |p| {
-            p.select_apcs(&generate, &pgo_config, select, || {
-                gen_stage(p, &generate_args, select)
-            })
-        })
-    }
-}
-
-/// Drive a generate stage on `pipeline`. Defined as a free function (not a
-/// method) so [`Pipeline::run_setup`] can call it from inside a closure that
-/// has already moved `self` into `inner`.
-fn gen_stage(
+/// Drive a generate stage on `pipeline`. The closures are pure functions of
+/// their `(guest, [generate,] inputs)` arguments — `inputs` is the serialized
+/// `profile_input` packed into [`PgoConfig::inputs`].
+fn run_generate_stage(
     pipeline: &StagedPipeline,
     args: &GenerateApcsArgs,
     select: SelectConfig,
 ) -> RankedApcs {
     let generate = GenerateConfig::from(args).with_select_defaults(args.pgo, select);
-    let pgo_config = pgo_config_from_args(args, args.profile.profile_input);
+    let pgo_config = pgo_config_from_args(args);
     pipeline.generate_apcs(
         &generate,
         &pgo_config,
@@ -390,13 +342,39 @@ fn gen_stage(
     )
 }
 
+/// Drive select on top of generate.
+fn run_select_stage(pipeline: &StagedPipeline, args: &SelectArgs) -> RankedApcs {
+    let select = SelectConfig::from(args);
+    let generate =
+        GenerateConfig::from(&args.generate).with_select_defaults(args.generate.pgo, select);
+    let pgo_config = pgo_config_from_args(&args.generate);
+    pipeline.select_apcs(&generate, &pgo_config, select, || {
+        run_generate_stage(pipeline, &args.generate, select)
+    })
+}
+
+/// Drive setup on top of select+generate. Consumes the pipeline (the guest
+/// is moved into `customize_exe::setup` inside [`StagedPipeline::setup`]).
+fn run_setup_stage(pipeline: StagedPipeline, args: SetupArgs) -> CompiledProgram<RiscvISA> {
+    let SetupArgs { select: args } = args;
+    let select = SelectConfig::from(&args);
+    let generate =
+        GenerateConfig::from(&args.generate).with_select_defaults(args.generate.pgo, select);
+    let pgo_config = pgo_config_from_args(&args.generate);
+    pipeline.setup(&generate, &pgo_config, select, |p| {
+        p.select_apcs(&generate, &pgo_config, select, || {
+            run_generate_stage(p, &args.generate, select)
+        })
+    })
+}
+
 /// Build a `PgoConfig` from the CLI args; `inputs` is the serialized
 /// `profile_input` (an `Option<u32>` round-tripped through serde_cbor).
-fn pgo_config_from_args(args: &GenerateApcsArgs, profile_input: Option<u32>) -> PgoConfig {
+fn pgo_config_from_args(args: &GenerateApcsArgs) -> PgoConfig {
     PgoConfig::new(
         args.pgo,
         args.max_columns,
-        serialize_profile_input(profile_input),
+        serialize_profile_input(args.profile.profile_input),
     )
 }
 
