@@ -53,21 +53,9 @@ cargo nextest run --release -p powdr-openvm
 
 ## CLI Usage
 
-The main CLI is `powdr_openvm_riscv` (in `cli-openvm-riscv/`):
-
-```bash
-# Compile a guest program with autoprecompiles
-cargo run -p cli-openvm -- compile guest-keccak --autoprecompiles 10 --pgo instruction --input 100
-
-# Execute a compiled program
-cargo run -p cli-openvm -- execute guest-keccak --autoprecompiles 10 --input 100
-
-# Prove (generate ZK proof)
-cargo run -p cli-openvm -- prove guest-keccak --autoprecompiles 1 --input 10
-
-# Mock prove (debug mode, verifies constraints without full proof)
-cargo run -p cli-openvm -- prove guest-keccak --mock --autoprecompiles 1 --input 10
-```
+See [cli-openvm-riscv/README.md](cli-openvm-riscv/README.md) for the
+subcommand surface, `--profile-input` vs. `--input` semantics, and
+`--artifacts-dir` caching.
 
 ## Architecture
 
@@ -95,7 +83,7 @@ cargo run -p cli-openvm -- prove guest-keccak --mock --autoprecompiles 1 --input
 - **expression** (`expression/`): Core algebraic expression types (`AlgebraicExpression`, operators)
 - **number** (`number/`): Field element abstractions
 - **riscv-elf** (`riscv-elf/`): ELF file parsing for RISC-V binaries
-- **cli-openvm** (`cli-openvm/`): Command-line interface
+- **cli-openvm-riscv** (`cli-openvm-riscv/`): Command-line interface
 
 ### Guest Programs
 
