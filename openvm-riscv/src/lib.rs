@@ -339,9 +339,9 @@ mod tests {
     use expect_test::{expect, Expect};
     use itertools::Itertools;
     use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
+    use powdr_autoprecompiles::pgo::PgoType;
     use powdr_autoprecompiles::{GenerateConfig, SelectConfig};
     use powdr_openvm::{
-        execution_profile_from_guest,
         extraction_utils::{AirWidths, AirWidthsDiff},
         AirMetrics,
     };
@@ -355,48 +355,16 @@ mod tests {
     // single segment.
     const TEST_DEFAULT_SEGMENT_HEIGHT: usize = 1 << 20;
 
-    /// Test-only convenience: generate + select + setup with no on-disk
-    /// cache. Routes through [`StagedPipeline`] with `artifacts_dir = None`.
-    /// Production callers either construct a [`StagedPipeline`] themselves
-    /// (CLI, openvm-eth) or stay on the lower-level
-    /// [`powdr_autoprecompiles`] API (sp1).
-    fn compile_exe(
-        original_program: OriginalCompiledProgram<'static, RiscvISA>,
-        generate: GenerateConfig,
-        select: SelectConfig,
-        pgo_data: PgoData,
-    ) -> CompiledProgram<RiscvISA> {
-        let pgo_type = pgo_data.pgo_type();
-        let max_columns = match &pgo_data {
-            PgoData::Cell(_, m) => *m,
-            _ => None,
-        };
-        // PgoType::None never asks for the profile, so a `None` here is OK.
-        let profile = match pgo_data {
-            PgoData::Cell(p, _) | PgoData::Instruction(p) => Some(p),
-            PgoData::None => None,
-        };
-        let generate = generate.with_select_defaults(pgo_type, select);
-        // No caching; `inputs` is irrelevant.
-        let pgo_config = PgoConfig::new(pgo_type, max_columns, Vec::new());
-        let make_pgo_profile = |_guest: &OriginalCompiledProgram<'static, RiscvISA>,
-                                _inputs: &[u8]| {
-            profile
-                .clone()
-                .take()
-                .expect("non-None PgoData must carry an ExecutionProfile")
-        };
-        let pipeline = StagedPipeline::new(
-            original_program,
-            None,
-            &make_pgo_profile,
-            &make_empirical_constraints,
-        );
-        pipeline.setup(
-            &generate,
-            &pgo_config,
-            select,
-        )
+    /// Deserialize a [`StdIn`] from `PgoConfig::inputs` and run the guest to
+    /// produce an `ExecutionProfile`. Mirrors the CLI's
+    /// [`crate::pipeline::MakeExecutionProfile`] contract.
+    fn make_pgo_profile(
+        guest: &OriginalCompiledProgram<'static, RiscvISA>,
+        inputs: &[u8],
+    ) -> powdr_autoprecompiles::execution_profile::ExecutionProfile {
+        let stdin: StdIn =
+            serde_cbor::from_slice(inputs).expect("deserialize StdIn from PgoConfig::inputs");
+        powdr_openvm::execution_profile_from_guest(guest, stdin)
     }
 
     fn make_empirical_constraints(
@@ -407,6 +375,47 @@ mod tests {
         EmpiricalConstraints::default()
     }
 
+    /// Build a [`PgoConfig`] whose `inputs` byte string is the CBOR-encoded
+    /// `stdin`. The static [`make_pgo_profile`] decodes it on the way back.
+    fn pgo_config_from_stdin(
+        pgo_type: PgoType,
+        max_columns: Option<usize>,
+        stdin: &StdIn,
+    ) -> PgoConfig {
+        PgoConfig::new(
+            pgo_type,
+            max_columns,
+            serde_cbor::to_vec(stdin).expect("serialize StdIn for PgoConfig::inputs"),
+        )
+    }
+
+    /// `PgoConfig` placeholder for tests that don't run PGO. Empty `inputs`
+    /// is fine because `PgoType::None` skips deserialization entirely.
+    fn none_pgo_config() -> PgoConfig {
+        PgoConfig::new(PgoType::None, None, Vec::new())
+    }
+
+    /// Test-only convenience: generate + select + setup with no on-disk
+    /// cache. Routes through [`StagedPipeline`] with `artifacts_dir = None`.
+    /// Production callers either construct a [`StagedPipeline`] themselves
+    /// (CLI, openvm-eth) or stay on the lower-level
+    /// [`powdr_autoprecompiles`] API (sp1).
+    fn compile_exe(
+        original_program: OriginalCompiledProgram<'static, RiscvISA>,
+        generate: GenerateConfig,
+        select: SelectConfig,
+        pgo_config: PgoConfig,
+    ) -> CompiledProgram<RiscvISA> {
+        let generate = generate.with_select_defaults(pgo_config.pgo_type, select);
+        let pipeline = StagedPipeline::new(
+            original_program,
+            None,
+            &make_pgo_profile,
+            &make_empirical_constraints,
+        );
+        pipeline.setup(&generate, &pgo_config, select)
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn compile_and_prove(
         guest: &str,
@@ -415,11 +424,11 @@ mod tests {
         mock: bool,
         recursion: bool,
         stdin: StdIn,
-        pgo_data: PgoData,
+        pgo_config: PgoConfig,
         segment_height: Option<usize>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let guest = compile_openvm(guest, GuestOptions::default()).unwrap();
-        let program = compile_exe(guest, generate, select, pgo_data);
+        let program = compile_exe(guest, generate, select, pgo_config);
         let segment_height = segment_height.or(Some(TEST_DEFAULT_SEGMENT_HEIGHT));
         prove(&program, mock, recursion, stdin, segment_height)
     }
@@ -429,7 +438,7 @@ mod tests {
         generate: GenerateConfig,
         select: SelectConfig,
         stdin: StdIn,
-        pgo_data: PgoData,
+        pgo_config: PgoConfig,
         segment_height: Option<usize>,
     ) {
         compile_and_prove(
@@ -439,7 +448,7 @@ mod tests {
             false,
             false,
             stdin,
-            pgo_data,
+            pgo_config,
             segment_height,
         )
         .unwrap()
@@ -450,7 +459,7 @@ mod tests {
         generate: GenerateConfig,
         select: SelectConfig,
         stdin: StdIn,
-        pgo_data: PgoData,
+        pgo_config: PgoConfig,
         segment_height: Option<usize>,
     ) {
         compile_and_prove(
@@ -460,7 +469,7 @@ mod tests {
             true,
             false,
             stdin,
-            pgo_data,
+            pgo_config,
             segment_height,
         )
         .unwrap()
@@ -471,7 +480,7 @@ mod tests {
         generate: GenerateConfig,
         select: SelectConfig,
         stdin: StdIn,
-        pgo_data: PgoData,
+        pgo_config: PgoConfig,
         segment_height: Option<usize>,
     ) {
         compile_and_prove(
@@ -481,7 +490,7 @@ mod tests {
             false,
             true,
             stdin,
-            pgo_data,
+            pgo_config,
             segment_height,
         )
         .unwrap()
@@ -543,11 +552,11 @@ mod tests {
 
         // Create execution profile but don't prove with it, just to assert that the APC we select isn't executed
         let guest = compile_openvm(GUEST, GuestOptions::default()).unwrap();
-        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
+        let pgo_data = powdr_openvm::execution_profile_from_guest(&guest, stdin.clone());
 
         let generate = default_generate_config();
         let select = SelectConfig::new(GUEST_APC, GUEST_SKIP_NO_APC_EXECUTED);
-        let program = compile_exe(guest, generate, select, PgoData::None);
+        let program = compile_exe(guest, generate, select, none_pgo_config());
 
         // Assert that all APCs aren't executed
         program
@@ -572,14 +581,12 @@ mod tests {
         stdin.write(&GUEST_ITER);
         let generate = default_generate_config();
         let select = SelectConfig::new(GUEST_APC, GUEST_SKIP_PGO);
-        let guest = compile_openvm(GUEST, GuestOptions::default()).unwrap();
-        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
         prove_simple(
             GUEST,
             generate,
             select,
-            stdin,
-            PgoData::Instruction(pgo_data),
+            stdin.clone(),
+            pgo_config_from_stdin(PgoType::Instruction, None, &stdin),
             None,
         );
     }
@@ -590,14 +597,12 @@ mod tests {
         stdin.write(&GUEST_ITER);
         let generate = default_generate_config();
         let select = SelectConfig::new(GUEST_APC, GUEST_SKIP_PGO);
-        let guest = compile_openvm(GUEST, GuestOptions::default()).unwrap();
-        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
         prove_mock(
             GUEST,
             generate,
             select,
-            stdin,
-            PgoData::Instruction(pgo_data),
+            stdin.clone(),
+            pgo_config_from_stdin(PgoType::Instruction, None, &stdin),
             None,
         );
     }
@@ -609,14 +614,12 @@ mod tests {
         stdin.write(&GUEST_ITER);
         let generate = default_generate_config();
         let select = SelectConfig::new(GUEST_APC, GUEST_SKIP_PGO);
-        let guest = compile_openvm(GUEST, GuestOptions::default()).unwrap();
-        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
         prove_recursion(
             GUEST,
             generate,
             select,
-            stdin,
-            PgoData::Instruction(pgo_data),
+            stdin.clone(),
+            pgo_config_from_stdin(PgoType::Instruction, None, &stdin),
             None,
         );
     }
@@ -627,7 +630,7 @@ mod tests {
         let guest = compile_openvm("guest-matmul", GuestOptions::default()).unwrap();
         let generate = default_generate_config();
         let select = SelectConfig::new(1, 0);
-        let _ = compile_exe(guest, generate, select, PgoData::default());
+        let _ = compile_exe(guest, generate, select, none_pgo_config());
     }
 
     #[test]
@@ -636,7 +639,14 @@ mod tests {
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
         let generate = default_generate_config();
         let select = SelectConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_simple(GUEST_KECCAK, generate, select, stdin, PgoData::None, None);
+        prove_simple(
+            GUEST_KECCAK,
+            generate,
+            select,
+            stdin,
+            none_pgo_config(),
+            None,
+        );
     }
 
     #[test]
@@ -652,7 +662,7 @@ mod tests {
             generate,
             select,
             stdin,
-            PgoData::None,
+            none_pgo_config(),
             Some(4_096),
         );
     }
@@ -664,7 +674,14 @@ mod tests {
         stdin.write(&GUEST_KECCAK_ITER);
         let generate = default_generate_config();
         let select = SelectConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_simple(GUEST_KECCAK, generate, select, stdin, PgoData::None, None);
+        prove_simple(
+            GUEST_KECCAK,
+            generate,
+            select,
+            stdin,
+            none_pgo_config(),
+            None,
+        );
     }
 
     #[test]
@@ -672,8 +689,6 @@ mod tests {
     fn keccak_prove_many_apcs() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER);
-        let guest = compile_openvm(GUEST_KECCAK, GuestOptions::default()).unwrap();
-        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
         let generate = default_generate_config();
         let select = SelectConfig::new(GUEST_KECCAK_APC_PGO_LARGE, GUEST_KECCAK_SKIP);
@@ -682,7 +697,7 @@ mod tests {
             generate.clone(),
             select,
             stdin.clone(),
-            PgoData::Instruction(pgo_data.clone()),
+            pgo_config_from_stdin(PgoType::Instruction, None, &stdin),
             None,
         );
 
@@ -690,8 +705,8 @@ mod tests {
             GUEST_KECCAK,
             generate.clone(),
             select,
-            stdin,
-            PgoData::Cell(pgo_data, None),
+            stdin.clone(),
+            pgo_config_from_stdin(PgoType::Cell, None, &stdin),
             None,
         );
     }
@@ -701,8 +716,6 @@ mod tests {
     fn keccak_prove_large() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_LARGE);
-        let guest = compile_openvm(GUEST_KECCAK, GuestOptions::default()).unwrap();
-        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
         let generate = default_generate_config();
         let select = SelectConfig::new(GUEST_KECCAK_APC_PGO, GUEST_KECCAK_SKIP);
@@ -710,8 +723,8 @@ mod tests {
             GUEST_KECCAK,
             generate,
             select,
-            stdin,
-            PgoData::Instruction(pgo_data),
+            stdin.clone(),
+            pgo_config_from_stdin(PgoType::Instruction, None, &stdin),
             None,
         );
     }
@@ -723,7 +736,14 @@ mod tests {
 
         let generate = default_generate_config();
         let select = SelectConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_mock(GUEST_KECCAK, generate, select, stdin, PgoData::None, None);
+        prove_mock(
+            GUEST_KECCAK,
+            generate,
+            select,
+            stdin,
+            none_pgo_config(),
+            None,
+        );
     }
 
     #[test]
@@ -733,7 +753,14 @@ mod tests {
         stdin.write(&GUEST_KECCAK_ITER);
         let generate = default_generate_config();
         let select = SelectConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_mock(GUEST_KECCAK, generate, select, stdin, PgoData::None, None);
+        prove_mock(
+            GUEST_KECCAK,
+            generate,
+            select,
+            stdin,
+            none_pgo_config(),
+            None,
+        );
     }
 
     // Create multiple APC for 10 Keccak iterations to test different PGO modes
@@ -747,8 +774,6 @@ mod tests {
         let select = SelectConfig::new(GUEST_KECCAK_APC_PGO, GUEST_KECCAK_SKIP);
 
         // Pgo data
-        let guest = compile_openvm(GUEST_KECCAK, GuestOptions::default()).unwrap();
-        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
         // Pgo Cell mode
         let start = Instant::now();
@@ -757,11 +782,11 @@ mod tests {
             generate.clone(),
             select,
             stdin.clone(),
-            PgoData::Cell(pgo_data.clone(), None),
+            pgo_config_from_stdin(PgoType::Cell, None, &stdin),
             None,
         );
         let elapsed = start.elapsed();
-        tracing::debug!("Proving keccak with PgoData::Cell took {:?}", elapsed);
+        tracing::debug!("Proving keccak with PgoType::Cell took {:?}", elapsed);
 
         // Pgo Instruction mode
         let start = Instant::now();
@@ -770,12 +795,12 @@ mod tests {
             generate.clone(),
             select,
             stdin.clone(),
-            PgoData::Instruction(pgo_data),
+            pgo_config_from_stdin(PgoType::Instruction, None, &stdin),
             None,
         );
         let elapsed = start.elapsed();
         tracing::debug!(
-            "Proving keccak with PgoData::Instruction took {:?}",
+            "Proving keccak with PgoType::Instruction took {:?}",
             elapsed
         );
     }
@@ -788,15 +813,12 @@ mod tests {
         let generate = default_generate_config();
         let select = SelectConfig::new(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
 
-        let guest = compile_openvm(GUEST_SHA256, GuestOptions::default()).unwrap();
-        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
-
         prove_simple(
             GUEST_SHA256,
             generate,
             select,
-            stdin,
-            PgoData::Instruction(pgo_data),
+            stdin.clone(),
+            pgo_config_from_stdin(PgoType::Instruction, None, &stdin),
             None,
         );
     }
@@ -809,15 +831,12 @@ mod tests {
         let generate = default_generate_config();
         let select = SelectConfig::new(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
 
-        let guest = compile_openvm(GUEST_SHA256, GuestOptions::default()).unwrap();
-        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
-
         prove_mock(
             GUEST_SHA256,
             generate,
             select,
-            stdin,
-            PgoData::Instruction(pgo_data),
+            stdin.clone(),
+            pgo_config_from_stdin(PgoType::Instruction, None, &stdin),
             None,
         );
     }
@@ -827,8 +846,6 @@ mod tests {
     fn sha256_prove_many_apcs() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_SHA256_ITER);
-        let guest = compile_openvm(GUEST_SHA256, GuestOptions::default()).unwrap();
-        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
         let generate = default_generate_config();
         let select = SelectConfig::new(GUEST_SHA256_APC_PGO_LARGE, GUEST_SHA256_SKIP);
@@ -837,7 +854,7 @@ mod tests {
             generate.clone(),
             select,
             stdin.clone(),
-            PgoData::Instruction(pgo_data.clone()),
+            pgo_config_from_stdin(PgoType::Instruction, None, &stdin),
             None,
         );
 
@@ -845,8 +862,8 @@ mod tests {
             GUEST_SHA256,
             generate.clone(),
             select,
-            stdin,
-            PgoData::Cell(pgo_data, None),
+            stdin.clone(),
+            pgo_config_from_stdin(PgoType::Cell, None, &stdin),
             None,
         );
     }
@@ -856,8 +873,6 @@ mod tests {
     fn sha256_prove_large() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_SHA256_ITER_LARGE);
-        let guest = compile_openvm(GUEST_SHA256, GuestOptions::default()).unwrap();
-        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
         let generate = default_generate_config();
         let select = SelectConfig::new(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
@@ -865,8 +880,8 @@ mod tests {
             GUEST_SHA256,
             generate,
             select,
-            stdin,
-            PgoData::Instruction(pgo_data),
+            stdin.clone(),
+            pgo_config_from_stdin(PgoType::Instruction, None, &stdin),
             None,
         );
     }
@@ -878,15 +893,12 @@ mod tests {
         let generate = default_generate_config();
         let select = SelectConfig::new(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
 
-        let guest = compile_openvm(GUEST_SHA256, GuestOptions::default()).unwrap();
-        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
-
         prove_simple(
             GUEST_SHA256,
             generate,
             select,
-            stdin,
-            PgoData::Instruction(pgo_data),
+            stdin.clone(),
+            pgo_config_from_stdin(PgoType::Instruction, None, &stdin),
             None,
         );
     }
@@ -898,15 +910,12 @@ mod tests {
         let generate = default_generate_config();
         let select = SelectConfig::new(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
 
-        let guest = compile_openvm(GUEST_SHA256, GuestOptions::default()).unwrap();
-        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
-
         prove_mock(
             GUEST_SHA256,
             generate,
             select,
-            stdin,
-            PgoData::Instruction(pgo_data),
+            stdin.clone(),
+            pgo_config_from_stdin(PgoType::Instruction, None, &stdin),
             None,
         );
     }
@@ -920,20 +929,17 @@ mod tests {
         let generate = default_generate_config();
         let select = SelectConfig::new(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
 
-        let guest = compile_openvm(GUEST_SHA256, GuestOptions::default()).unwrap();
-        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
-
         let start = Instant::now();
         prove_simple(
             GUEST_SHA256,
             generate.clone(),
             select,
             stdin.clone(),
-            PgoData::Cell(pgo_data.clone(), None),
+            pgo_config_from_stdin(PgoType::Cell, None, &stdin),
             None,
         );
         let elapsed = start.elapsed();
-        tracing::debug!("Proving sha256 with PgoData::Cell took {:?}", elapsed);
+        tracing::debug!("Proving sha256 with PgoType::Cell took {:?}", elapsed);
 
         let start = Instant::now();
         prove_simple(
@@ -941,12 +947,12 @@ mod tests {
             generate.clone(),
             select,
             stdin.clone(),
-            PgoData::Instruction(pgo_data),
+            pgo_config_from_stdin(PgoType::Instruction, None, &stdin),
             None,
         );
         let elapsed = start.elapsed();
         tracing::debug!(
-            "Proving sha256 with PgoData::Instruction took {:?}",
+            "Proving sha256 with PgoType::Instruction took {:?}",
             elapsed
         );
     }
@@ -960,20 +966,17 @@ mod tests {
         let generate = default_generate_config();
         let select = SelectConfig::new(GUEST_U256_APC_PGO, GUEST_U256_SKIP);
 
-        let guest = compile_openvm(GUEST_U256, GuestOptions::default()).unwrap();
-        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
-
         let start = Instant::now();
         prove_simple(
             GUEST_U256,
             generate.clone(),
             select,
             stdin.clone(),
-            PgoData::Cell(pgo_data.clone(), None),
+            pgo_config_from_stdin(PgoType::Cell, None, &stdin),
             None,
         );
         let elapsed = start.elapsed();
-        tracing::debug!("Proving U256 with PgoData::Cell took {:?}", elapsed);
+        tracing::debug!("Proving U256 with PgoType::Cell took {:?}", elapsed);
     }
 
     #[test]
@@ -985,21 +988,18 @@ mod tests {
         let generate = default_generate_config();
         let select = SelectConfig::new(GUEST_PAIRING_APC_PGO, GUEST_PAIRING_SKIP);
 
-        let guest = compile_openvm(GUEST_PAIRING, GuestOptions::default()).unwrap();
-        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
-
         let start = Instant::now();
         prove_simple(
             GUEST_PAIRING,
             generate.clone(),
             select,
             stdin.clone(),
-            PgoData::Cell(pgo_data.clone(), None),
+            pgo_config_from_stdin(PgoType::Cell, None, &stdin),
             None,
         );
         let elapsed = start.elapsed();
         tracing::debug!(
-            "Proving pairing guest with PgoData::Cell took {:?}",
+            "Proving pairing guest with PgoType::Cell took {:?}",
             elapsed
         );
     }
@@ -1012,15 +1012,20 @@ mod tests {
         let generate = default_generate_config();
         let select = SelectConfig::new(0, 0);
 
-        prove_simple(GUEST_SHA256, generate, select, stdin, PgoData::None, None);
+        prove_simple(
+            GUEST_SHA256,
+            generate,
+            select,
+            stdin,
+            none_pgo_config(),
+            None,
+        );
     }
 
     #[test]
     fn ecc_hint_prove() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ECC_ITER);
-        let guest = compile_openvm(GUEST_ECC_HINTS, GuestOptions::default()).unwrap();
-        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
         let generate = default_generate_config();
         let select = SelectConfig::new(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
         prove_simple(
@@ -1028,7 +1033,7 @@ mod tests {
             generate.clone(),
             select,
             stdin.clone(),
-            PgoData::Cell(pgo_data.clone(), None),
+            pgo_config_from_stdin(PgoType::Cell, None, &stdin),
             None,
         );
     }
@@ -1037,8 +1042,6 @@ mod tests {
     fn ecrecover_prove() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ECRECOVER_ITER);
-        let guest = compile_openvm(GUEST_ECRECOVER_HINTS, GuestOptions::default()).unwrap();
-        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
         let generate = default_generate_config();
         let select = SelectConfig::new(GUEST_ECRECOVER_APC_PGO, GUEST_ECRECOVER_SKIP);
         prove_simple(
@@ -1046,7 +1049,7 @@ mod tests {
             generate.clone(),
             select,
             stdin.clone(),
-            PgoData::Cell(pgo_data.clone(), None),
+            pgo_config_from_stdin(PgoType::Cell, None, &stdin),
             None,
         );
     }
@@ -1056,16 +1059,14 @@ mod tests {
     fn ecc_hint_prove_recursion_large() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ECC_ITER);
-        let guest = compile_openvm(GUEST_ECC_HINTS, GuestOptions::default()).unwrap();
-        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
         let generate = default_generate_config();
         let select = SelectConfig::new(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
         prove_recursion(
             GUEST_ECC_HINTS,
             generate,
             select,
-            stdin,
-            PgoData::Cell(pgo_data, None),
+            stdin.clone(),
+            pgo_config_from_stdin(PgoType::Cell, None, &stdin),
             None,
         );
     }
@@ -1075,16 +1076,14 @@ mod tests {
     fn ecrecover_prove_recursion_large() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ECRECOVER_ITER);
-        let guest = compile_openvm(GUEST_ECRECOVER_HINTS, GuestOptions::default()).unwrap();
-        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
         let generate = default_generate_config();
         let select = SelectConfig::new(GUEST_ECRECOVER_APC_PGO, GUEST_ECRECOVER_SKIP);
         prove_recursion(
             GUEST_ECRECOVER_HINTS,
             generate,
             select,
-            stdin,
-            PgoData::Cell(pgo_data, None),
+            stdin.clone(),
+            pgo_config_from_stdin(PgoType::Cell, None, &stdin),
             None,
         );
     }
@@ -1096,15 +1095,12 @@ mod tests {
         let generate = default_generate_config();
         let select = SelectConfig::new(GUEST_ECC_PROJECTIVE_APC_PGO, GUEST_ECC_PROJECTIVE_SKIP);
 
-        let guest = compile_openvm(GUEST_ECC_PROJECTIVE, GuestOptions::default()).unwrap();
-        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
-
         prove_simple(
             GUEST_ECC_PROJECTIVE,
             generate,
             select,
-            stdin,
-            PgoData::Cell(pgo_data, None),
+            stdin.clone(),
+            pgo_config_from_stdin(PgoType::Cell, None, &stdin),
             None,
         );
     }
@@ -1116,13 +1112,20 @@ mod tests {
         stdin.write(&GUEST_KECCAK_ITER);
         let generate = default_generate_config();
         let select = SelectConfig::new(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_recursion(GUEST_KECCAK, generate, select, stdin, PgoData::None, None);
+        prove_recursion(
+            GUEST_KECCAK,
+            generate,
+            select,
+            stdin,
+            none_pgo_config(),
+            None,
+        );
     }
 
     // The following are compilation tests only
 
     struct GuestTestConfig {
-        pgo_data: PgoData,
+        pgo_config: PgoConfig,
         name: &'static str,
         apc: u64,
         skip: u64,
@@ -1145,9 +1148,9 @@ mod tests {
         let generate = default_generate_config();
         let select = SelectConfig::new(guest.apc, guest.skip);
         let generate = generate.with_apc_candidates_dir(apc_candidates_dir_path);
-        let is_cell_pgo = matches!(guest.pgo_data, PgoData::Cell(_, _));
+        let is_cell_pgo = matches!(guest.pgo_config.pgo_type, PgoType::Cell);
         let guest_program = compile_openvm(guest.name, GuestOptions::default()).unwrap();
-        let compiled_program = compile_exe(guest_program, generate, select, guest.pgo_data);
+        let compiled_program = compile_exe(guest_program, generate, select, guest.pgo_config);
 
         let (powdr_air_metrics, non_powdr_air_metrics) = compiled_program.air_metrics();
 
@@ -1228,12 +1231,10 @@ mod tests {
     fn guest_machine_pgo_modes() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        let guest = compile_openvm(GUEST, GuestOptions::default()).unwrap();
-        let pgo_data = execution_profile_from_guest(&guest, stdin);
 
         test_machine_compilation(
             GuestTestConfig {
-                pgo_data: PgoData::Instruction(pgo_data.clone()),
+                pgo_config: pgo_config_from_stdin(PgoType::Instruction, None, &stdin),
                 name: GUEST,
                 apc: GUEST_APC,
                 skip: GUEST_SKIP_PGO,
@@ -1260,7 +1261,7 @@ mod tests {
 
         test_machine_compilation(
             GuestTestConfig {
-                pgo_data: PgoData::Cell(pgo_data, None),
+                pgo_config: pgo_config_from_stdin(PgoType::Cell, None, &stdin),
                 name: GUEST,
                 apc: GUEST_APC,
                 skip: GUEST_SKIP_PGO,
@@ -1301,12 +1302,10 @@ mod tests {
     fn sha256_machine_pgo() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_SHA256_ITER_SMALL);
-        let guest = compile_openvm(GUEST_SHA256, GuestOptions::default()).unwrap();
-        let pgo_data = execution_profile_from_guest(&guest, stdin);
 
         test_machine_compilation(
             GuestTestConfig {
-                pgo_data: PgoData::Instruction(pgo_data.clone()),
+                pgo_config: pgo_config_from_stdin(PgoType::Instruction, None, &stdin),
                 name: GUEST_SHA256,
                 apc: GUEST_SHA256_APC_PGO,
                 skip: GUEST_SHA256_SKIP,
@@ -1333,7 +1332,7 @@ mod tests {
 
         test_machine_compilation(
             GuestTestConfig {
-                pgo_data: PgoData::Cell(pgo_data, None),
+                pgo_config: pgo_config_from_stdin(PgoType::Cell, None, &stdin),
                 name: GUEST_SHA256,
                 apc: GUEST_SHA256_APC_PGO,
                 skip: GUEST_SHA256_SKIP,
@@ -1374,12 +1373,10 @@ mod tests {
     fn ecc_hint_machine_pgo_cell() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ECC_ITER);
-        let guest = compile_openvm(GUEST_ECC_HINTS, GuestOptions::default()).unwrap();
-        let pgo_data = execution_profile_from_guest(&guest, stdin);
 
         test_machine_compilation(
             GuestTestConfig {
-                pgo_data: PgoData::Cell(pgo_data, None),
+                pgo_config: pgo_config_from_stdin(PgoType::Cell, None, &stdin),
                 name: GUEST_ECC_HINTS,
                 apc: GUEST_ECC_APC_PGO,
                 skip: GUEST_ECC_SKIP,
@@ -1420,12 +1417,10 @@ mod tests {
     fn ecrecover_machine_pgo_cell() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ECRECOVER_ITER);
-        let guest = compile_openvm(GUEST_ECRECOVER_HINTS, GuestOptions::default()).unwrap();
-        let pgo_data = execution_profile_from_guest(&guest, stdin);
 
         test_machine_compilation(
             GuestTestConfig {
-                pgo_data: PgoData::Cell(pgo_data, None),
+                pgo_config: pgo_config_from_stdin(PgoType::Cell, None, &stdin),
                 name: GUEST_ECRECOVER_HINTS,
                 apc: GUEST_ECRECOVER_APC_PGO,
                 skip: GUEST_ECRECOVER_SKIP,
@@ -1466,12 +1461,10 @@ mod tests {
     fn keccak_machine_pgo_modes() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
-        let guest = compile_openvm(GUEST_KECCAK, GuestOptions::default()).unwrap();
-        let pgo_data = execution_profile_from_guest(&guest, stdin);
 
         test_machine_compilation(
             GuestTestConfig {
-                pgo_data: PgoData::None,
+                pgo_config: none_pgo_config(),
                 name: GUEST_KECCAK,
                 apc: GUEST_KECCAK_APC,
                 skip: GUEST_KECCAK_SKIP,
@@ -1498,7 +1491,7 @@ mod tests {
 
         test_machine_compilation(
             GuestTestConfig {
-                pgo_data: PgoData::Instruction(pgo_data.clone()),
+                pgo_config: pgo_config_from_stdin(PgoType::Instruction, None, &stdin),
                 name: GUEST_KECCAK,
                 apc: GUEST_KECCAK_APC,
                 skip: GUEST_KECCAK_SKIP,
@@ -1525,7 +1518,7 @@ mod tests {
 
         test_machine_compilation(
             GuestTestConfig {
-                pgo_data: PgoData::Cell(pgo_data, None),
+                pgo_config: pgo_config_from_stdin(PgoType::Cell, None, &stdin),
                 name: GUEST_KECCAK,
                 apc: GUEST_KECCAK_APC,
                 skip: GUEST_KECCAK_SKIP,
@@ -1569,12 +1562,9 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
 
-        let guest = compile_openvm(GUEST_KECCAK, GuestOptions::default()).unwrap();
-        let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
-
         test_machine_compilation(
             GuestTestConfig {
-                pgo_data: PgoData::Cell(pgo_data, Some(MAX_TOTAL_COLUMNS)),
+                pgo_config: pgo_config_from_stdin(PgoType::Cell, Some(MAX_TOTAL_COLUMNS), &stdin),
                 name: GUEST_KECCAK,
                 apc: GUEST_KECCAK_APC_PGO_LARGE,
                 skip: GUEST_KECCAK_SKIP,
