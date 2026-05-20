@@ -459,6 +459,86 @@ where
     }
 }
 
+// =============================================================================
+// PROTOTYPE: GroupedExpression-based compilation (PR #3723 feedback).
+// Uses powdr_constraint_solver::GroupedExpression to decompose the AST instead
+// of our hand-rolled `decompose` + `mul_decompositions`. The runtime form
+// (CompiledExpr::Polynomial) is unchanged.
+//
+// Constraint: GroupedExpression / algebraic_to_grouped_expression require
+// `T: FieldElement`. BabyBear isn't a FieldElement, so this entry point takes
+// AlgebraicExpression<FE> where FE: FieldElement. The caller (in cpu/mod.rs)
+// would wrap each raw BabyBear leaf via BabyBearField::from_inner before
+// calling this.
+// =============================================================================
+impl<F> CompiledExpr<F>
+where
+    F: powdr_number::FieldElement,
+{
+    /// Prototype: compile via GroupedExpression instead of recursive AST walk.
+    pub fn compile_via_grouped(expr: &AlgebraicExpression<F>, id_to_idx: &[usize]) -> Self {
+        use crate::expression_conversion::algebraic_to_grouped_expression;
+        use powdr_constraint_solver::grouped_expression::GroupedExpression;
+
+        let g: GroupedExpression<F, AlgebraicReference> = algebraic_to_grouped_expression(expr);
+        let mut constant = *g.constant_offset();
+        let mut linear: Vec<(usize, F)> = g
+            .linear_components()
+            .map(|(v, c)| (id_to_idx[v.id as usize], *c))
+            .collect();
+        let mut products: Vec<(usize, usize, F)> = Vec::new();
+
+        // Expand each top-level quadratic pair (g1, g2). Both sides must be at
+        // most linear (constant + sum of coefficient*var) for the overall
+        // expression to be degree <= 2.
+        for (g1, g2) in g.quadratic_components() {
+            assert!(
+                g1.quadratic_components().is_empty() && g2.quadratic_components().is_empty(),
+                "Bus interaction expression is degree > 2. This is unexpected."
+            );
+            let c1 = *g1.constant_offset();
+            let c2 = *g2.constant_offset();
+            // c1 * c2 -> constant
+            constant += c1 * c2;
+            // c1 * linear_2 -> linear
+            for (v, c) in g2.linear_components() {
+                linear.push((id_to_idx[v.id as usize], c1 * *c));
+            }
+            // c2 * linear_1 -> linear
+            for (v, c) in g1.linear_components() {
+                linear.push((id_to_idx[v.id as usize], c2 * *c));
+            }
+            // linear_1 * linear_2 -> quadratic products
+            for (v1, c1) in g1.linear_components() {
+                for (v2, c2) in g2.linear_components() {
+                    products.push((
+                        id_to_idx[v1.id as usize],
+                        id_to_idx[v2.id as usize],
+                        *c1 * *c2,
+                    ));
+                }
+            }
+        }
+
+        // Variant dispatch.
+        if linear.is_empty() && products.is_empty() {
+            CompiledExpr::Constant(constant)
+        } else if linear.len() == 1
+            && products.is_empty()
+            && constant.is_zero()
+            && linear[0].1.is_one()
+        {
+            CompiledExpr::DirectLoad(linear[0].0)
+        } else {
+            CompiledExpr::Polynomial {
+                constant,
+                linear,
+                products,
+            }
+        }
+    }
+}
+
 /// Pre-compiled bus interaction for fast per-row evaluation.
 pub struct CompiledBusInteraction<F> {
     pub id: u64,
