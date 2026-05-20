@@ -1,6 +1,7 @@
 //! In this module, we instantiate `powdr_expression::AlgebraicExpression` using a
 //! custom `AlgebraicReference` type.
 use core::ops::{Add, Mul, Neg, Sub};
+use powdr_expression::{AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 use powdr_number::ExpressionConvertible;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, hash::Hash, marker::PhantomData, sync::Arc};
@@ -252,8 +253,6 @@ where
         (*self.witness.get(&algebraic_var.id).unwrap()).into()
     }
 }
-
-use powdr_expression::{AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 
 /// Pre-compiled expression for fast per-row evaluation without recursive AST walking.
 ///
