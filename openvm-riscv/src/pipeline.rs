@@ -61,14 +61,6 @@ impl StagedPipeline {
         &self.guest
     }
 
-    pub fn guest_hash(&self) -> &str {
-        &self.guest_hash
-    }
-
-    pub fn artifacts_dir(&self) -> Option<&std::path::Path> {
-        self.artifacts_dir.as_deref()
-    }
-
     /// Build + rank APC candidates, or load the result from the cache.
     ///
     /// The library hashes `(guest, gen, pgo, max_columns, input_fp)` — the

@@ -149,44 +149,24 @@ pub fn compile_openvm(
     })
 }
 
-/// Convenience composition of generate + select + setup with no on-disk cache.
-///
-/// Thin wrapper over [`StagedPipeline`]. External callers that don't need
-/// staged caching land here; callers that do (CLI, openvm-eth) construct a
-/// `StagedPipeline` themselves.
+/// Convenience composition of [`generate_apcs`] + [`select_apcs`] + [`setup`]
+/// with no on-disk cache. Callers that want staged caching construct a
+/// [`StagedPipeline`] themselves.
 ///
 /// Applies [`GenerateConfig::with_select_defaults`] so the
 /// Instruction/None `apc_candidates` cap fires automatically.
 pub fn compile_exe(
-    original_program: OriginalCompiledProgram<'static, RiscvISA>,
+    original_program: OriginalCompiledProgram<RiscvISA>,
     gen: GenerateConfig,
     select: SelectConfig,
     pgo_config: PgoConfig,
     empirical_constraints: EmpiricalConstraints,
 ) -> Result<CompiledProgram<RiscvISA>, Box<dyn std::error::Error>> {
-    let pgo_type = pgo_config.pgo_type();
-    let (exec_profile, max_columns) = match pgo_config {
-        PgoConfig::Cell(profile, max) => (Some(profile), max),
-        PgoConfig::Instruction(profile) => (Some(profile), None),
-        PgoConfig::None => (None, None),
-    };
-    let gen = gen.with_select_defaults(pgo_type, select);
-
-    let pipeline = pipeline::StagedPipeline::new(original_program, None);
-    // No caching, so the `input_fp` value is irrelevant.
-    let input_fp = &();
-    Ok(pipeline.setup(&gen, select, input_fp, |p| {
-        p.select_apcs(&gen, select, input_fp, || {
-            p.generate_apcs(
-                &gen,
-                pgo_type,
-                max_columns,
-                input_fp,
-                move |_guest| exec_profile.unwrap_or_default(),
-                move || empirical_constraints,
-            )
-        })
-    }))
+    let gen = gen.with_select_defaults(pgo_config.pgo_type(), select);
+    let degree_bound = gen.degree_bound;
+    let ranked = generate_apcs(&original_program, &gen, pgo_config, empirical_constraints);
+    let apcs = select_apcs(ranked, select);
+    Ok(setup(original_program, apcs, degree_bound))
 }
 
 use openvm_circuit_derive::VmConfig;
