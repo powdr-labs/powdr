@@ -33,7 +33,7 @@ use openvm_transpiler::transpiler::Transpiler;
 use powdr_autoprecompiles::evaluation::AirStats;
 use powdr_autoprecompiles::execution_profile::ExecutionProfile;
 use powdr_autoprecompiles::DegreeBound;
-use powdr_autoprecompiles::{execution_profile::execution_profile, GenerateConfig, SelectConfig};
+use powdr_autoprecompiles::{execution_profile::execution_profile, GenerateConfig};
 use powdr_extension::PowdrExtension;
 use serde::{Deserialize, Serialize};
 use std::iter::Sum;
@@ -100,11 +100,8 @@ pub const DEFAULT_DEGREE_BOUND: DegreeBound = DegreeBound {
     bus_interactions: DEFAULT_OPENVM_DEGREE_BOUND - 1,
 };
 
-pub fn default_powdr_openvm_configs(apc: u64, skip: u64) -> (GenerateConfig, SelectConfig) {
-    (
-        GenerateConfig::new(DEFAULT_DEGREE_BOUND),
-        SelectConfig::new(apc, skip),
-    )
+pub fn default_generate_config() -> GenerateConfig {
+    GenerateConfig::new(DEFAULT_DEGREE_BOUND)
 }
 
 pub fn format_fe<F: PrimeField32>(v: F) -> String {
