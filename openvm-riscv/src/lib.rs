@@ -50,6 +50,8 @@ pub use crate::isa::{instruction_formatter, symbolic_instruction_builder};
 pub use powdr_openvm::program::{CompiledProgram, OriginalCompiledProgram};
 
 pub mod isa;
+pub mod pipeline;
+pub use pipeline::{RankedApcs, StagedPipeline};
 
 pub use powdr_autoprecompiles::DegreeBound;
 pub use powdr_autoprecompiles::PgoConfig;

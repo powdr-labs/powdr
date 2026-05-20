@@ -58,6 +58,7 @@ pub mod equivalence_classes;
 pub mod execution;
 pub mod export;
 pub mod optimistic;
+pub mod staged_cache;
 pub mod trace_handler;
 
 #[derive(Clone)]

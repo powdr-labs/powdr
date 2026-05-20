@@ -3,14 +3,12 @@ use metrics_tracing_context::{MetricsLayer, TracingContextLayer};
 use metrics_util::{debugging::DebuggingRecorder, layers::Layer};
 use openvm_sdk::StdIn;
 use openvm_stark_sdk::bench::serialize_metric_snapshot;
-use powdr_autoprecompiles::adapter::AdapterApcWithStats;
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
-use powdr_autoprecompiles::pgo::{default_apc_candidates, pgo_config, PgoType};
+use powdr_autoprecompiles::pgo::{default_apc_candidates, PgoType};
 use powdr_autoprecompiles::PowdrConfig;
-use powdr_openvm::BabyBearOpenVmApcAdapter;
 use powdr_openvm_riscv::{
-    compile_openvm, detect_empirical_constraints, generate_apcs, select_apcs, setup,
-    CompiledProgram, GuestOptions, OriginalCompiledProgram, RiscvISA,
+    compile_openvm, detect_empirical_constraints, CompiledProgram, GuestOptions,
+    OriginalCompiledProgram, RankedApcs, RiscvISA, StagedPipeline,
 };
 
 #[cfg(feature = "metrics")]
@@ -18,11 +16,7 @@ use openvm_stark_sdk::metrics_tracing::TimingMetricsLayer;
 
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use powdr_openvm::default_powdr_openvm_config;
-use serde::de::DeserializeOwned;
-use serde::Serialize;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::{fs, io};
 use tracing::Level;
 use tracing_forest::ForestLayer;
@@ -194,19 +188,19 @@ fn main() -> Result<(), io::Error> {
     setup_tracing_with_log_level(Level::INFO);
 
     if let Some(command) = cli.command {
-        run_command(command, artifacts_dir.as_deref());
+        run_command(command, artifacts_dir);
         Ok(())
     } else {
         Cli::command().print_help()
     }
 }
 
-fn run_command(command: Commands, artifacts_dir: Option<&Path>) {
+fn run_command(command: Commands, artifacts_dir: Option<PathBuf>) {
     match command {
         Commands::GenerateApcs(args) => {
             validate_generate_args(&args, false);
-            let pipeline = Pipeline::new(args.profile.clone());
-            let ranked = pipeline.run_generate_apcs(&args, artifacts_dir);
+            let pipeline = Pipeline::new(args.profile.clone(), artifacts_dir);
+            let ranked = pipeline.run_generate_apcs(&args);
             tracing::info!(
                 "Built and ranked {} autoprecompile candidates",
                 ranked.len()
@@ -215,23 +209,23 @@ fn run_command(command: Commands, artifacts_dir: Option<&Path>) {
 
         Commands::SelectApcs(args) => {
             validate_generate_args(&args.generate, false);
-            let pipeline = Pipeline::new(args.generate.profile.clone());
-            let apcs = pipeline.run_select_apcs(args, artifacts_dir);
+            let pipeline = Pipeline::new(args.generate.profile.clone(), artifacts_dir);
+            let apcs = pipeline.run_select_apcs(args);
             tracing::info!("Selected {} autoprecompiles", apcs.len());
         }
 
         Commands::Setup(args) => {
             validate_generate_args(&args.select.generate, true);
-            let pipeline = Pipeline::new(args.select.generate.profile.clone());
-            let _ = pipeline.run_setup(args, artifacts_dir);
+            let pipeline = Pipeline::new(args.select.generate.profile.clone(), artifacts_dir);
+            let _ = pipeline.run_setup(args);
         }
 
         Commands::Execute(args) => {
             validate_generate_args(&args.setup.select.generate, true);
             let runtime_input = args.input;
-            let pipeline = Pipeline::new(args.setup.select.generate.profile.clone());
+            let pipeline = Pipeline::new(args.setup.select.generate.profile.clone(), artifacts_dir);
             let run = || {
-                let program = pipeline.run_setup(args.setup, artifacts_dir);
+                let program = pipeline.run_setup(args.setup);
                 powdr_openvm::execute(program, stdin_from(runtime_input)).unwrap();
             };
             if let Some(metrics_path) = args.metrics {
@@ -249,9 +243,9 @@ fn run_command(command: Commands, artifacts_dir: Option<&Path>) {
             let runtime_input = args.input;
             let mock = args.mock;
             let recursion = args.recursion;
-            let pipeline = Pipeline::new(args.setup.select.generate.profile.clone());
+            let pipeline = Pipeline::new(args.setup.select.generate.profile.clone(), artifacts_dir);
             let run = || {
-                let program = pipeline.run_setup(args.setup, artifacts_dir);
+                let program = pipeline.run_setup(args.setup);
                 powdr_openvm_riscv::prove(
                     &program,
                     mock,
@@ -328,155 +322,98 @@ impl SelectArgs {
     }
 }
 
-/// Pipeline runner. Eagerly loads the guest crate so that we can mix a hash
-/// of the transpiled `VmExe` into every stage's cache key — otherwise a
-/// guest-source change with identical CLI args would silently return stale
-/// cached artifacts. `cargo build` is a noop when nothing changed, so the
-/// always-load cost is small (~1–2 s) on a true cache hit.
+/// Thin shim wiring the CLI's clap args to [`StagedPipeline`]. The pipeline
+/// itself (cache plumbing, stage chaining) lives in `powdr-openvm-riscv`.
 struct Pipeline {
     profile_args: ProfileArgs,
-    guest_program: OriginalCompiledProgram<'static, RiscvISA>,
-    guest_hash: String,
+    inner: StagedPipeline,
 }
 
 impl Pipeline {
-    fn new(profile_args: ProfileArgs) -> Self {
+    fn new(profile_args: ProfileArgs, artifacts_dir: Option<PathBuf>) -> Self {
         let guest_program = compile_openvm(&profile_args.guest, GuestOptions::default()).unwrap();
-        let guest_hash = hash_guest_exe(&guest_program);
+        let inner = StagedPipeline::new(guest_program, artifacts_dir);
         Self {
             profile_args,
-            guest_program,
-            guest_hash,
+            inner,
         }
     }
 
-    /// Build + rank APC candidates, or load them from the cache.
-    fn run_generate_apcs(
-        &self,
-        args: &GenerateApcsArgs,
-        artifacts_dir: Option<&Path>,
-    ) -> Vec<AdapterApcWithStats<BabyBearOpenVmApcAdapter<'static, RiscvISA>>> {
-        let hash = stage_hash(args, &self.guest_hash);
-        if let Some(cached) = load_cached(artifacts_dir, "generate", &hash) {
-            tracing::info!("cache hit: generate/{hash}");
-            return cached;
-        }
-        // autoprecompiles / skip are irrelevant to the ranking — they live on
-        // SelectArgs. Pass 0 here; the apc_candidates field is the only
-        // selection-adjacent input the build stage cares about.
+    fn run_generate_apcs(&self, args: &GenerateApcsArgs) -> RankedApcs {
         let powdr_config = build_powdr_config(args, 0, 0);
-        let profile_stdin = stdin_from(self.profile_args.profile_input);
-        let empirical_constraints = maybe_compute_empirical_constraints(
-            &self.guest_program,
+        let profile_input = self.profile_args.profile_input;
+        self.inner.generate_apcs(
+            &format!("{args:?}"),
             &powdr_config,
-            profile_stdin.clone(),
-        );
-        let execution_profile =
-            powdr_openvm::execution_profile_from_guest(&self.guest_program, profile_stdin.clone());
-        let pgo = pgo_config(args.pgo, args.max_columns, execution_profile);
-        let ranked = generate_apcs(
-            &self.guest_program,
-            &powdr_config,
-            pgo,
-            empirical_constraints,
-        );
-        save_cached(artifacts_dir, "generate", &hash, &ranked);
-        ranked
+            args.pgo,
+            args.max_columns,
+            |guest| powdr_openvm::execution_profile_from_guest(guest, stdin_from(profile_input)),
+            || {
+                maybe_compute_empirical_constraints(
+                    self.inner.guest(),
+                    &powdr_config,
+                    stdin_from(profile_input),
+                )
+            },
+        )
     }
 
-    /// Trim the ranking from `generate-apcs` to the configured selection,
-    /// or load it from the cache.
-    fn run_select_apcs(
-        &self,
-        args: SelectArgs,
-        artifacts_dir: Option<&Path>,
-    ) -> Vec<AdapterApcWithStats<BabyBearOpenVmApcAdapter<'static, RiscvISA>>> {
+    fn run_select_apcs(&self, args: SelectArgs) -> RankedApcs {
         let args = args.set_apc_candidates_default();
-        let hash = stage_hash(&args, &self.guest_hash);
-        if let Some(cached) = load_cached(artifacts_dir, "select", &hash) {
-            tracing::info!("cache hit: select/{hash}");
-            return cached;
-        }
-        let ranked = self.run_generate_apcs(&args.generate, artifacts_dir);
         let powdr_config = build_powdr_config(
             &args.generate,
             args.autoprecompiles as u64,
             args.skip as u64,
         );
-        let apcs = select_apcs(ranked, &powdr_config);
-        save_cached(artifacts_dir, "select", &hash, &apcs);
-        apcs
+        self.inner
+            .select_apcs(&format!("{args:?}"), &powdr_config, || {
+                self.run_generate_apcs(&args.generate)
+            })
     }
 
-    /// Run the full pipeline up to setup (selected APCs injected, keys assembled),
-    /// or load the resulting `CompiledProgram` from the cache.
-    fn run_setup(self, args: SetupArgs, artifacts_dir: Option<&Path>) -> CompiledProgram<RiscvISA> {
-        let hash = stage_hash(&args, &self.guest_hash);
-        if let Some(cached) = load_cached(artifacts_dir, "setup", &hash) {
-            tracing::info!("cache hit: setup/{hash}");
-            return cached;
-        }
-        let apcs = self.run_select_apcs(args.select.clone(), artifacts_dir);
-        let powdr_config = build_powdr_config(
+    fn run_setup(self, args: SetupArgs) -> CompiledProgram<RiscvISA> {
+        let Self {
+            profile_args,
+            inner,
+        } = self;
+        let profile_input = profile_args.profile_input;
+        let setup_config = build_powdr_config(
             &args.select.generate,
             args.select.autoprecompiles as u64,
             args.select.skip as u64,
         );
-        let program = setup(self.guest_program, apcs, powdr_config.degree_bound);
-        save_cached(artifacts_dir, "setup", &hash, &program);
-        program
+        let setup_key = format!("{args:?}");
+        inner.setup(&setup_key, &setup_config, |p| {
+            let select = args.select.set_apc_candidates_default();
+            let sel_config = build_powdr_config(
+                &select.generate,
+                select.autoprecompiles as u64,
+                select.skip as u64,
+            );
+            p.select_apcs(&format!("{select:?}"), &sel_config, || {
+                let gen_config = build_powdr_config(&select.generate, 0, 0);
+                p.generate_apcs(
+                    &format!("{:?}", select.generate),
+                    &gen_config,
+                    select.generate.pgo,
+                    select.generate.max_columns,
+                    |guest| {
+                        powdr_openvm::execution_profile_from_guest(
+                            guest,
+                            stdin_from(profile_input),
+                        )
+                    },
+                    || {
+                        maybe_compute_empirical_constraints(
+                            p.guest(),
+                            &gen_config,
+                            stdin_from(profile_input),
+                        )
+                    },
+                )
+            })
+        })
     }
-}
-
-/// Hash of the transpiled `VmExe` from `compile_openvm`. Captures any guest
-/// change (source, deps, toolchain) that would affect what the rest of the
-/// pipeline operates on.
-fn hash_guest_exe(guest: &OriginalCompiledProgram<'_, RiscvISA>) -> String {
-    let bytes = serde_cbor::to_vec(&*guest.exe).expect("serialize VmExe for hashing");
-    let mut hasher = DefaultHasher::new();
-    bytes.hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
-}
-
-// ---------- cache helpers ----------
-
-/// `DefaultHasher` over the `Debug` repr of the args struct plus the guest
-/// `VmExe` hash. Unstable across Rust releases (accepted: caches re-fill on
-/// upgrade).
-fn stage_hash<A: std::fmt::Debug>(args: &A, guest_hash: &str) -> String {
-    let mut hasher = DefaultHasher::new();
-    format!("{args:?}").hash(&mut hasher);
-    guest_hash.hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
-}
-
-fn cache_path(dir: &Path, stage: &str, hash: &str) -> PathBuf {
-    dir.join(stage).join(hash).join("artifact.cbor")
-}
-
-fn load_cached<T: DeserializeOwned>(
-    artifacts_dir: Option<&Path>,
-    stage: &str,
-    hash: &str,
-) -> Option<T> {
-    let dir = artifacts_dir?;
-    let path = cache_path(dir, stage, hash);
-    let file = fs::File::open(&path).ok()?;
-    match serde_cbor::from_reader(file) {
-        Ok(v) => Some(v),
-        Err(err) => {
-            tracing::warn!("ignoring corrupt cache entry {}: {err}", path.display());
-            None
-        }
-    }
-}
-
-fn save_cached<T: Serialize>(artifacts_dir: Option<&Path>, stage: &str, hash: &str, value: &T) {
-    let Some(dir) = artifacts_dir else { return };
-    let path = cache_path(dir, stage, hash);
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    let file = fs::File::create(&path).unwrap();
-    serde_cbor::to_writer(file, value).unwrap();
 }
 
 // ---------- misc helpers ----------

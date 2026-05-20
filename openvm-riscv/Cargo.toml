@@ -60,6 +60,7 @@ powdr-openvm-riscv-hints-circuit.workspace = true
 
 eyre.workspace = true
 serde.workspace = true
+serde_cbor.workspace = true
 derive_more.workspace = true
 itertools.workspace = true
 
