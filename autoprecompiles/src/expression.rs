@@ -255,10 +255,6 @@ where
 }
 
 /// Pre-compiled expression for fast per-row evaluation without recursive AST walking.
-///
-/// At build time, each `AlgebraicExpression` is analyzed once and compiled into the most
-/// efficient variant. The specialized variants avoid the recursive enum-matching, closure
-/// dispatch, and trait-object overhead of `AlgebraicExpression::to_expression()`.
 pub enum CompiledExpr<F> {
     /// Expression is a compile-time constant. Zero cost per row.
     Constant(F),
@@ -267,21 +263,17 @@ pub enum CompiledExpr<F> {
     /// Expression is `constant + sum(coeff * row[col_idx]) + sum(coeff * row[a] * row[b])`.
     /// Covers both linear (degree-1) and quadratic (degree-2) expressions.
     /// Linear expressions have an empty `products` vec.
-    Polynomial {
-        constant: F,
-        /// Linear terms: (col_idx, coefficient).
-        linear: Vec<(usize, F)>,
-        /// Quadratic terms: (col_idx_a, col_idx_b, coefficient).
-        products: Vec<(usize, usize, F)>,
-    },
+    Polynomial(Polynomial<F>),
 }
 
-/// Intermediate decomposition: constant + linear terms + quadratic products.
-/// Used during compilation; converted to `CompiledExpr` afterwards.
-struct Decomposition<F> {
-    constant: F,
-    linear: Vec<(usize, F)>,
-    products: Vec<(usize, usize, F)>,
+/// Flat polynomial form: `constant + Σ coeff·row[col] + Σ coeff·row[a]·row[b]`.
+/// Used both during decomposition and as the `CompiledExpr::Polynomial` payload.
+pub struct Polynomial<F> {
+    pub constant: F,
+    /// Linear terms: (col_idx, coefficient).
+    pub linear: Vec<(usize, F)>,
+    /// Quadratic terms: (col_idx_a, col_idx_b, coefficient).
+    pub products: Vec<(usize, usize, F)>,
 }
 
 impl<F> CompiledExpr<F>
@@ -302,11 +294,7 @@ where
         {
             CompiledExpr::DirectLoad(d.linear[0].0)
         } else {
-            CompiledExpr::Polynomial {
-                constant: d.constant,
-                linear: d.linear,
-                products: d.products,
-            }
+            CompiledExpr::Polynomial(d)
         }
     }
 
@@ -316,11 +304,11 @@ where
         match self {
             CompiledExpr::Constant(c) => *c,
             CompiledExpr::DirectLoad(idx) => row[*idx],
-            CompiledExpr::Polynomial {
+            CompiledExpr::Polynomial(Polynomial {
                 constant,
                 linear,
                 products,
-            } => {
+            }) => {
                 let lin = linear
                     .iter()
                     .fold(*constant, |acc, &(idx, coeff)| acc + coeff * row[idx]);
@@ -338,15 +326,15 @@ where
         id_to_idx: &[usize],
         zero: F,
         one: F,
-    ) -> Decomposition<F> {
+    ) -> Polynomial<F> {
         use powdr_expression::AlgebraicExpression as AE;
         match expr {
-            AE::Number(c) => Decomposition {
+            AE::Number(c) => Polynomial {
                 constant: *c,
                 linear: vec![],
                 products: vec![],
             },
-            AE::Reference(r) => Decomposition {
+            AE::Reference(r) => Polynomial {
                 constant: zero,
                 linear: vec![(id_to_idx[r.id as usize], one)],
                 products: vec![],
@@ -355,12 +343,12 @@ where
                 let l = Self::decompose(left, id_to_idx, zero, one);
                 let r = Self::decompose(right, id_to_idx, zero, one);
                 match op {
-                    AlgebraicBinaryOperator::Add => Decomposition {
+                    AlgebraicBinaryOperator::Add => Polynomial {
                         constant: l.constant + r.constant,
                         linear: l.linear.into_iter().chain(r.linear).collect(),
                         products: l.products.into_iter().chain(r.products).collect(),
                     },
-                    AlgebraicBinaryOperator::Sub => Decomposition {
+                    AlgebraicBinaryOperator::Sub => Polynomial {
                         constant: l.constant - r.constant,
                         linear: l
                             .linear
@@ -380,7 +368,7 @@ where
                 match op {
                     AlgebraicUnaryOperator::Minus => {
                         let d = Self::decompose(expr, id_to_idx, zero, one);
-                        Decomposition {
+                        Polynomial {
                             constant: -d.constant,
                             linear: d.linear.into_iter().map(|(i, c)| (i, -c)).collect(),
                             products: d.products.into_iter().map(|(a, b, c)| (a, b, -c)).collect(),
@@ -394,10 +382,10 @@ where
     /// Multiply two decompositions. Supports constant * anything and
     /// linear * linear (producing quadratic products).
     /// Panics if the result would be degree > 2.
-    fn mul_decompositions(l: Decomposition<F>, r: Decomposition<F>, zero: F) -> Decomposition<F> {
+    fn mul_decompositions(l: Polynomial<F>, r: Polynomial<F>, zero: F) -> Polynomial<F> {
         // If either side is purely constant, scale the other.
         if l.linear.is_empty() && l.products.is_empty() {
-            return Decomposition {
+            return Polynomial {
                 constant: l.constant * r.constant,
                 linear: r
                     .linear
@@ -412,7 +400,7 @@ where
             };
         }
         if r.linear.is_empty() && r.products.is_empty() {
-            return Decomposition {
+            return Polynomial {
                 constant: l.constant * r.constant,
                 linear: l
                     .linear
@@ -451,7 +439,7 @@ where
             }
         }
 
-        Decomposition {
+        Polynomial {
             constant: l.constant * r.constant,
             linear,
             products,
