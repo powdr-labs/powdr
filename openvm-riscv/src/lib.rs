@@ -914,7 +914,7 @@ mod tests {
         stdin.write(&GUEST_HINTS_TEST);
         let config = default_powdr_openvm_config(0, 0);
 
-        prove_simple(GUEST_SHA256, config, stdin, PgoConfig::None, None);
+        prove_simple(GUEST_HINTS_TEST, config, stdin, PgoConfig::None, None);
     }
 
     #[test]
