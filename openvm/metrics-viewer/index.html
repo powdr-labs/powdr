@@ -577,6 +577,30 @@ function extractMetrics(runName, metricsJson) {
     m.app_execute_preflight_time_ms = getMetric(app, 'execute_preflight_time_ms');
     m.app_trace_gen_time_ms = getMetric(app, 'trace_gen_time_ms');
 
+    // Powdr GPU trace-gen substages: each substage is wrapped in an
+    // `info_span!("<stage>")` so openvm's `TimingMetricsLayer` auto-emits
+    // `<stage>_time_ms` (with `group=app_proof, air=PowdrAir_*` propagated
+    // by `TracingContextLayer`). When `--metrics <path>` is passed to the
+    // CLI, the GPU stream is synchronized before each span closes so
+    // per-stage timings reflect device-side execution rather than enqueue
+    // latency.
+    // Hierarchy in the viewer:
+    //   Trace Gen (= trace_gen_time_ms)
+    //   ├── APC Trace Gen (= sum of substages, work in PowdrTraceGeneratorGpu)
+    //   │   └── individual substage rows
+    //   └── non-APC Trace Gen (= residual = trace_gen - APC sum;
+    //                           covers per-AIR baseline trace gen for non-APC AIRs
+    //                           + system trace gen + small openvm overhead)
+    // By construction: APC + non-APC == Trace Gen (exact, no rounding gap).
+    let _apcSum = 0;
+    SUBSTAGE_KEYS.forEach(stage => {
+        const v = getMetric(app, stage + '_time_ms');
+        m['app_substage_' + stage + '_time_ms'] = v;
+        _apcSum += v;
+    });
+    m.app_apc_trace_gen_ms = _apcSum;
+    m.app_non_apc_trace_gen_ms = m.app_trace_gen_time_ms - _apcSum;
+
     // V2: STARK sub-components
     // The GPU backend uses hierarchical prover.* metric names.
     // The CPU backend uses flat metric names. We check both and take whichever is nonzero.
@@ -1315,6 +1339,34 @@ const BASIC_STATS_ROWS_V2 = [
     { key: 'bus_interaction_messages', label: 'Bus Interaction Messages', fmt: fmtCells },
 ];
 
+// Powdr GPU trace-gen substage names. Each substage is wrapped in an
+// `info_span!("<stage>")` so `TimingMetricsLayer` emits `<stage>_time_ms`.
+// Listed in chronological execution order.
+const SUBSTAGE_KEYS = [
+    'dummy_chip_inventory',
+    'dummy_trace_gen',
+    'tracegen_h2d',
+    'tracegen_kernel',
+    'derived',
+    'bus_compile_h2d',
+    'bus_kernel',
+];
+// Layered under Trace Gen:
+//   APC Trace Gen (parent at indent 2)  ← sum of substages
+//     └── individual stages at indent 3 (chronological order)
+//   non-APC Trace Gen (sibling at indent 2)  ← residual
+const SUBSTAGE_ROWS = [
+    { key: 'app_apc_trace_gen_ms', label: 'APC Trace Gen', fmt: fmtSeconds, indent: 2 },
+    { key: 'app_substage_dummy_chip_inventory_time_ms', label: 'Chip inventory', fmt: fmtSeconds, indent: 3 },
+    { key: 'app_substage_dummy_trace_gen_time_ms', label: 'Dummy trace gen', fmt: fmtSeconds, indent: 3 },
+    { key: 'app_substage_tracegen_h2d_time_ms', label: 'Tracegen H2D', fmt: fmtSeconds, indent: 3 },
+    { key: 'app_substage_tracegen_kernel_time_ms', label: 'Tracegen kernel', fmt: fmtSeconds, indent: 3 },
+    { key: 'app_substage_derived_time_ms', label: 'Derived', fmt: fmtSeconds, indent: 3 },
+    { key: 'app_substage_bus_compile_h2d_time_ms', label: 'Bus compile + H2D', fmt: fmtSeconds, indent: 3 },
+    { key: 'app_substage_bus_kernel_time_ms', label: 'Bus kernel', fmt: fmtSeconds, indent: 3 },
+    { key: 'app_non_apc_trace_gen_ms', label: 'non-APC Trace Gen', fmt: fmtSeconds, indent: 2 },
+];
+
 // Nested proof time breakdown — indent level controls visual nesting.
 const PROOF_TIME_ROWS_V1 = [
     { key: 'execute_metered_time_ms', label: 'Metered Execution', fmt: fmtSeconds, indent: 0 },
@@ -1322,6 +1374,7 @@ const PROOF_TIME_ROWS_V1 = [
     { key: 'app_proof_time_excluding_trace_ms', label: 'STARK (excl. trace)', fmt: fmtSeconds, indent: 1 },
     { key: 'app_execute_preflight_time_ms', label: 'Preflight Execution', fmt: fmtSeconds, indent: 1 },
     { key: 'app_trace_gen_time_ms', label: 'Trace Gen', fmt: fmtSeconds, indent: 1 },
+    ...SUBSTAGE_ROWS,
     { key: 'app_other_ms', label: 'Other / Overlap', fmt: fmtSeconds, indent: 1, muted: true },
     { key: 'leaf_proof_time_ms', label: 'Leaf Recursion', fmt: fmtSeconds, indent: 0 },
     { key: 'inner_recursion_proof_time_ms', label: 'Inner Recursion', fmt: fmtSeconds, indent: 0 },
@@ -1346,6 +1399,7 @@ const PROOF_TIME_ROWS_V2 = [
     { key: 'app_execute_preflight_time_ms', label: 'Preflight Execution', fmt: fmtSeconds, indent: 1 },
     { key: 'app_set_initial_memory_time_ms', label: 'Set Initial Memory', fmt: fmtSeconds, indent: 1, hideIfZero: true },
     { key: 'app_trace_gen_time_ms', label: 'Trace Gen', fmt: fmtSeconds, indent: 1 },
+    ...SUBSTAGE_ROWS,
     { key: 'app_other_ms', label: 'Other', fmt: fmtSeconds, indent: 1, muted: true },
     { key: 'leaf_proof_time_ms', label: 'Leaf Recursion', fmt: fmtSeconds, indent: 0 },
     { key: 'inner_recursion_proof_time_ms', label: 'Inner Recursion', fmt: fmtSeconds, indent: 0 },

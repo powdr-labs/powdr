@@ -59,6 +59,20 @@ pub mod trace_generation;
 pub mod utils;
 pub use powdr_openvm_bus_interaction_handler::bus_map;
 
+/// Set when the CLI is asked to write a metrics snapshot. Read by GPU trace-gen
+/// substage instrumentation to decide whether to sync the CUDA stream after each
+/// substage (for accurate per-stage timings) — without a metrics consumer the
+/// sync would just serialize host/GPU work for no benefit.
+static METRICS_RECORDING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn enable_metrics_recording() {
+    METRICS_RECORDING.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn is_metrics_recording() -> bool {
+    METRICS_RECORDING.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 #[cfg(feature = "test-utils")]
 pub mod test_utils;
 

@@ -210,6 +210,7 @@ fn run_command(command: Commands, artifacts_dir: Option<&Path>) {
                 powdr_openvm::execute(program, stdin_from(runtime_input)).unwrap();
             };
             if let Some(metrics_path) = args.metrics {
+                powdr_openvm::enable_metrics_recording();
                 run_with_metric_collection_to_file(
                     fs::File::create(metrics_path).expect("Failed to create metrics file"),
                     run,
@@ -237,6 +238,7 @@ fn run_command(command: Commands, artifacts_dir: Option<&Path>) {
                 .unwrap();
             };
             if let Some(metrics_path) = args.metrics {
+                powdr_openvm::enable_metrics_recording();
                 run_with_metric_collection_to_file(
                     fs::File::create(metrics_path).expect("Failed to create metrics file"),
                     run,
