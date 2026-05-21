@@ -266,8 +266,6 @@ pub enum CompiledExpr<F> {
     Polynomial(Polynomial<F>),
 }
 
-/// Flat polynomial form: `constant + Σ coeff·row[col] + Σ coeff·row[a]·row[b]`.
-/// Used both during decomposition and as the `CompiledExpr::Polynomial` payload.
 pub struct Polynomial<F> {
     pub constant: F,
     /// Linear terms: (col_idx, coefficient).
