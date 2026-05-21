@@ -266,6 +266,10 @@ pub enum CompiledExpr<F> {
     Polynomial(Polynomial<F>),
 }
 
+/// Degree ≤ 2 is sufficient under the default powdr-openvm config:
+/// `DEFAULT_DEGREE_BOUND.bus_interactions = 2` (see `powdr_openvm::DEFAULT_DEGREE_BOUND`,
+/// derived from `openvm-stark-sdk::DEFAULT_APP_LOG_BLOWUP`). The cli-openvm-riscv
+/// binary never overrides it.
 pub struct Polynomial<F> {
     pub constant: F,
     /// Linear terms: (col_idx, coefficient).
