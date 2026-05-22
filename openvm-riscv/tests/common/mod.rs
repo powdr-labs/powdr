@@ -23,18 +23,15 @@ pub fn original_vm_config() -> OriginalVmConfig<RiscvISA> {
     OriginalVmConfig::new(ext_vm_config)
 }
 
+#[allow(dead_code)]
 pub mod apc_builder_utils {
     use super::*;
 
-    // This code is not dead, but somehow the compiler thinks so.
-    #[allow(dead_code)]
     pub fn compile(superblock: SuperBlock<Instruction<BabyBear>>) -> String {
         let original_config = original_vm_config();
         test_utils::compile_apc::<RiscvISA>(&original_config, superblock)
     }
 
-    // This code is not dead, but somehow the compiler thinks so.
-    #[allow(dead_code)]
     pub fn assert_machine_output(
         program: SuperBlock<Instruction<BabyBear>>,
         module_name: &str,
