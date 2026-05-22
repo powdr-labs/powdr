@@ -21,7 +21,8 @@ use powdr_constraint_solver::constraint_system::{ComputationMethod, DerivedVaria
 use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 
 use crate::{
-    cuda_abi::{self, DerivedExprSpec, DevInteraction, ExprSpan, OpCode, OriginalAir, Subst},
+    bytecode::{compile_bus_to_bytecode, emit_expr, ExprSpan, OpCode},
+    cuda_abi::{self, DerivedExprSpec, OriginalAir, Subst},
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     isa::{IsaApc, OpenVmISA},
     powdr_extension::{chip::PowdrChipGpu, executor::OriginalArenas},
@@ -35,66 +36,6 @@ pub use inventory::GpuDummyChipComplex;
 pub use periphery::{
     PowdrPeripheryInstancesGpu, SharedPeripheryChipsGpu, SharedPeripheryChipsGpuProverExt,
 };
-
-/// Encodes an algebraic expression into GPU stack-machine bytecode.
-///
-/// Appends instructions to `bc` representing `expr` using the opcodes in `OpCode`.
-/// References are encoded as `PushApc` with a column-major offset computed from
-/// `id_to_apc_index` and `apc_height` (offset = apc_col_index * apc_height).
-/// Constants are encoded as `PushConst` followed by the field element as `u32`.
-/// Unary minus and binary operations map to `Neg`, `Add`, `Sub`, and `Mul`.
-///
-/// Note: This function does not track or enforce the evaluation stack depth,
-/// which is done in device code.
-fn emit_expr(
-    bc: &mut Vec<u32>,
-    expr: &AlgebraicExpression<BabyBear>,
-    id_to_apc_index: &BTreeMap<u64, usize>,
-    apc_height: usize,
-) {
-    match expr {
-        AlgebraicExpression::Number(c) => {
-            bc.push(OpCode::PushConst as u32);
-            bc.push(c.as_canonical_u32());
-        }
-        AlgebraicExpression::Reference(r) => {
-            let idx = (id_to_apc_index[&r.id] * apc_height) as u32;
-            bc.push(OpCode::PushApc as u32);
-            bc.push(idx);
-        }
-        AlgebraicExpression::UnaryOperation(u) => {
-            emit_expr(bc, &u.expr, id_to_apc_index, apc_height);
-            match u.op {
-                AlgebraicUnaryOperator::Minus => bc.push(OpCode::Neg as u32),
-            }
-        }
-        AlgebraicExpression::BinaryOperation(b) => {
-            emit_expr(bc, &b.left, id_to_apc_index, apc_height);
-            emit_expr(bc, &b.right, id_to_apc_index, apc_height);
-            match b.op {
-                AlgebraicBinaryOperator::Add => bc.push(OpCode::Add as u32),
-                AlgebraicBinaryOperator::Sub => bc.push(OpCode::Sub as u32),
-                AlgebraicBinaryOperator::Mul => bc.push(OpCode::Mul as u32),
-            }
-        }
-    }
-}
-
-/// Given the current bytecode, appends bytecode for the expression `expr` and returns the associated span
-fn emit_expr_span(
-    bc: &mut Vec<u32>,
-    expr: &AlgebraicExpression<BabyBear>,
-    id_to_apc_index: &BTreeMap<u64, usize>,
-    apc_height: usize,
-) -> ExprSpan {
-    // The span starts where the bytecode currently ends
-    let off = bc.len() as u32;
-    // Append the bytecode for `expr`
-    emit_expr(bc, expr, id_to_apc_index, apc_height);
-    // Calculate the length of the span
-    let len = (bc.len() as u32) - off;
-    ExprSpan { off, len }
-}
 
 /// Compile derived columns to GPU bytecode according to input order.
 fn compile_derived_to_gpu(
@@ -140,41 +81,8 @@ fn compile_derived_to_gpu(
     (specs, bytecode)
 }
 
-pub fn compile_bus_to_gpu(
-    bus_interactions: &[SymbolicBusInteraction<BabyBear>],
-    apc_poly_id_to_index: &BTreeMap<u64, usize>,
-    apc_height: usize,
-) -> (Vec<DevInteraction>, Vec<ExprSpan>, Vec<u32>) {
-    let mut interactions = Vec::with_capacity(bus_interactions.len());
-    let mut arg_spans = Vec::new();
-    let mut bytecode = Vec::new();
-
-    for bus_interaction in bus_interactions {
-        // multiplicity as first arg span
-        let args_index_off = arg_spans.len() as u32;
-        let mult_span = emit_expr_span(
-            &mut bytecode,
-            &bus_interaction.mult,
-            apc_poly_id_to_index,
-            apc_height,
-        );
-        arg_spans.push(mult_span);
-
-        // args
-        for arg in &bus_interaction.args {
-            let span = emit_expr_span(&mut bytecode, arg, apc_poly_id_to_index, apc_height);
-            arg_spans.push(span);
-        }
-
-        interactions.push(DevInteraction {
-            bus_id: (bus_interaction.id as u32),
-            num_args: bus_interaction.args.len() as u32,
-            args_index_off,
-        });
-    }
-
-    (interactions, arg_spans, bytecode)
-}
+/// Compile bus interactions to GPU bytecode (column-major encoding of refs).
+pub use crate::bytecode::compile_bus_to_bytecode as compile_bus_to_gpu;
 
 pub struct PowdrTraceGeneratorGpu<ISA: OpenVmISA> {
     pub apc: IsaApc<BabyBear, ISA>,
