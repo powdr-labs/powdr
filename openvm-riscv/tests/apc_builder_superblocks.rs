@@ -1,5 +1,3 @@
-#[path = "common/apc_builder_utils.rs"]
-mod apc_builder_utils;
 mod common;
 
 use openvm_instructions::instruction::Instruction;
@@ -9,7 +7,7 @@ use powdr_openvm_riscv::symbolic_instruction_builder::*;
 use test_log::test;
 
 fn assert_machine_output(program: Vec<BasicBlock<Instruction<BabyBear>>>, test_name: &str) {
-    apc_builder_utils::assert_machine_output(program.into(), "superblocks", test_name);
+    common::apc_builder_utils::assert_machine_output(program.into(), "superblocks", test_name);
 }
 
 fn bb(

@@ -13,7 +13,7 @@ pub fn assert_machine_output(
     let snapshot_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
         .join("apc_snapshots");
-    let original_config = crate::common::original_vm_config();
+    let original_config = super::original_vm_config();
     test_utils::assert_apc_machine_output::<RiscvISA>(
         &original_config,
         program,

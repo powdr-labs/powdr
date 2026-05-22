@@ -1,5 +1,3 @@
-#[path = "common/apc_builder_utils.rs"]
-mod apc_builder_utils;
 mod common;
 
 use openvm_instructions::instruction::Instruction;
@@ -13,7 +11,7 @@ fn assert_machine_output(program: Vec<Instruction<BabyBear>>, test_name: &str) {
         start_pc: 0,
         instructions: program,
     };
-    apc_builder_utils::assert_machine_output(bb.into(), "single_instructions", test_name);
+    common::apc_builder_utils::assert_machine_output(bb.into(), "single_instructions", test_name);
 }
 
 // ALU Chip instructions

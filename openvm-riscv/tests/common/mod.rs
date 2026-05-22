@@ -1,3 +1,8 @@
+// Not all test binaries use this submodule, so allow dead_code to avoid
+// warnings in binaries that only use `original_vm_config()`.
+#[allow(dead_code)]
+pub mod apc_builder_utils;
+
 use openvm_sdk_config::SdkVmConfig;
 use powdr_openvm::extraction_utils::OriginalVmConfig;
 use powdr_openvm_riscv::{ExtendedVmConfig, RiscvISA};
