@@ -51,6 +51,7 @@ use crate::extraction_utils::{get_air_metrics, AirWidths, OriginalVmConfig};
 use crate::powdr_extension::{PowdrExtensionExecutor, PowdrPrecompile};
 
 mod air_builder;
+pub mod bytecode;
 pub mod cuda_abi;
 pub mod empirical_constraints;
 pub mod extraction_utils;

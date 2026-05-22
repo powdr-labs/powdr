@@ -134,39 +134,8 @@ pub fn apc_apply_derived_expr(
     }
 }
 
-/// OpCode enum for the GPU stack machine bus evaluator.
-#[repr(u32)]
-pub enum OpCode {
-    PushApc = 0, // Push the APC value onto the stack. Must be followed by the index of the value in the APC device buffer.
-    PushConst = 1, // Push a constant value onto the stack. Must be followed by the constant value.
-    Add = 2,     // Add the top two values on the stack.
-    Sub = 3,     // Subtract the top two values on the stack.
-    Mul = 4,     // Multiply the top two values on the stack.
-    Neg = 5,     // Negate the top value on the stack.
-    InvOrZero = 6, // Invert the top value on the stack if it is not zero, otherwise pop and push zero.
-}
-
-/// GPU device representation of a bus interaction.
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct DevInteraction {
-    /// Bus id this interaction targets (matches periphery chip bus id)
-    pub bus_id: u32,
-    /// Number of argument expressions for this interaction
-    pub num_args: u32,
-    /// Starting index into the `ExprSpan` array for this interaction's args
-    /// Layout: [ multiplicity span, arg0, arg1, ... ]
-    pub args_index_off: u32,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct ExprSpan {
-    /// Offset (in u32 words) into `bytecode` where this arg expression starts
-    pub off: u32,
-    /// Length (instruction count) of this arg expression
-    pub len: u32,
-}
+// Bytecode IR shared with the CPU evaluator; see `crate::bytecode`.
+pub use crate::bytecode::{BusMeta as DevInteraction, ExprSpan, OpCode};
 
 /// High-level safe wrapper for `_apc_apply_bus`. Applies bus interactions on the GPU,
 /// updating periphery histograms in-place.
