@@ -4,13 +4,7 @@ Sweep of `guest-pairing` proven on GPU with the powdr OpenVM RISC-V CLI for
 **0, 30, 100, 300** autoprecompiles, with a matching Nsight Systems profile
 per run.
 
-> The original ask was Nsight **Compute** (`ncu`) profiles, but this host has
-> `RmProfilingAdminOnly=1` in the NVIDIA driver and the user that ran the
-> benchmark has no `sudo`, so `ncu` fails with `ERR_NVGPUCTRPERM` (counters
-> require admin). `nsys` works for the CUDA + NVTX trace, so the profiles
-> below are `.nsys-rep` instead. Per-kernel hardware counters are not
-> captured for the same reason (`nsys --gpu-metrics-devices=all` is also
-> admin-gated).
+=> [Metrics viewer](https://powdr-labs.github.io/powdr/openvm/metrics-viewer/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fpowdr%2Fblob%2Fbench%2Fpairing-gpu-apc-sweep%2Fresults%2Fpairing-gpu-bench%2Fcombined_metrics.json&baseline=apc000)
 
 ## Files
 
