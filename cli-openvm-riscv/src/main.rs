@@ -310,7 +310,7 @@ fn build_powdr_config(generate: &GenerateApcsArgs, autoprecompiles: u64, skip: u
 impl SelectArgs {
     /// Pick a default for `generate.apc_candidates` based on the PGO strategy and
     /// `autoprecompiles`/`skip` values, if not explicitly set.
-    fn set_apc_candidates_default(&mut self) {
+    fn set_apc_candidates_default(mut self) -> Self {
         if self.generate.apc_candidates.is_none() {
             match self.generate.pgo {
                 PgoType::Cell => {
@@ -338,6 +338,7 @@ impl SelectArgs {
                 }
             }
         }
+        self
     }
 }
 
@@ -401,10 +402,10 @@ impl Pipeline {
     /// or load it from the cache.
     fn run_select_apcs(
         &self,
-        mut args: SelectArgs,
+        args: SelectArgs,
         artifacts_dir: Option<&Path>,
     ) -> Vec<AdapterApcWithStats<BabyBearOpenVmApcAdapter<'static, RiscvISA>>> {
-        args.set_apc_candidates_default();
+        let args = args.set_apc_candidates_default();
         let hash = stage_hash(&args, &self.guest_hash);
         if let Some(cached) = load_cached(artifacts_dir, "select", &hash) {
             tracing::info!("cache hit: select/{hash}");
