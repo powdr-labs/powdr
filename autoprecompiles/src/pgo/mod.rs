@@ -71,21 +71,26 @@ pub fn pgo_config(
     }
 }
 
-// Only used for PgoConfig::Instruction and PgoConfig::None,
-// because PgoConfig::Cell caches all APCs in sorting stage.
+// Used by Instruction and None PGO. Builds APCs for the (pre-sorted) blocks,
+// capped by `config.apc_candidates` (defaults to "all").
+//
+// The Cell PGO has its own build loop because it needs to retain
+// `BlockAndStats` for the density-based ranking; this helper drops it.
 fn create_apcs_for_all_blocks<A: Adapter>(
     blocks: Vec<SuperBlock<A::Instruction>>,
     config: &PowdrConfig,
     vm_config: AdapterVmConfig<A>,
     empirical_constraints: EmpiricalConstraints,
 ) -> Vec<AdapterApcWithStats<A>> {
-    let n_acc = config.autoprecompiles as usize;
-    tracing::info!("Generating {n_acc} autoprecompiles in parallel");
+    let cap = config
+        .apc_candidates
+        .map(|n| n as usize)
+        .unwrap_or(usize::MAX);
+    tracing::info!("Generating up to {cap} autoprecompiles in parallel");
 
     blocks
         .into_par_iter()
-        .skip(config.skip_autoprecompiles as usize)
-        .take(n_acc)
+        .take(cap)
         .map(|superblock| {
             tracing::debug!(
                 "Accelerating block of length {} and start pcs {:?}",

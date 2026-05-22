@@ -62,11 +62,17 @@ pub mod trace_handler;
 
 #[derive(Clone)]
 pub struct PowdrConfig {
-    /// Number of autoprecompiles to generate.
+    /// Number of autoprecompiles to select (top of the ranking, after `skip_autoprecompiles`).
     pub autoprecompiles: u64,
-    /// Number of basic blocks to skip for autoprecompiles.
-    /// This is either the largest N if no PGO, or the costliest N with PGO.
+    /// Number of top-ranked APCs to skip during selection.
     pub skip_autoprecompiles: u64,
+    /// Cap on the number of candidate APCs built/ranked in the generate stage.
+    /// `None` means "build all eligible candidates".
+    ///
+    /// Only honored by Instruction / None PGO (where it caps the metadata-sorted
+    /// prefix). Cell PGO ignores this field and always builds every eligible
+    /// candidate — its dynamic density ranking needs the full post-opt cost.
+    pub apc_candidates: Option<u64>,
     /// Maximum number of basic blocks included in a superblock.
     /// Default of 1 means only basic blocks are considered.
     pub superblock_max_bb_count: u8,
@@ -87,6 +93,7 @@ impl PowdrConfig {
         Self {
             autoprecompiles,
             skip_autoprecompiles,
+            apc_candidates: None,
             // superblocks disabled by default
             superblock_max_bb_count: 1,
             apc_max_instructions: u32::MAX,
@@ -95,6 +102,11 @@ impl PowdrConfig {
             apc_candidates_dir_path: None,
             should_use_optimistic_precompiles: false,
         }
+    }
+
+    pub fn with_apc_candidates(mut self, apc_candidates: Option<u64>) -> Self {
+        self.apc_candidates = apc_candidates;
+        self
     }
 
     pub fn with_superblocks(

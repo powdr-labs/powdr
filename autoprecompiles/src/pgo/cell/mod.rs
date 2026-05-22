@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, io::BufWriter};
 
 use itertools::Itertools;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use selection::select_blocks_greedy;
+use selection::rank_blocks_greedy;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -99,7 +99,7 @@ impl JsonExport {
 impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for CellPgo<A, C> {
     type Adapter = A;
 
-    fn create_apcs_with_pgo(
+    fn generate_apcs(
         &self,
         exec_blocks: AdapterExecutionBlocks<Self::Adapter>,
         config: &PowdrConfig,
@@ -107,8 +107,18 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
         labels: BTreeMap<u64, Vec<String>>,
         empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
-        if config.autoprecompiles == 0 {
-            return vec![];
+        // Short-circuit when the caller signals "no candidates wanted".
+        // `apc_candidates = Some(0)` is the agreed signal for this; positive
+        // caps are ignored (Cell's density ranking needs every candidate's
+        // post-opt cost and a pre-build cap would degrade ranking quality).
+        match config.apc_candidates {
+            Some(0) => return vec![],
+            Some(_) => {
+                tracing::warn!(
+                    "PowdrConfig::apc_candidates is ignored for Cell PGO; building every eligible candidate"
+                );
+            }
+            None => {}
         }
 
         let AdapterExecutionBlocks::<Self::Adapter> {
@@ -157,20 +167,16 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
                 .expect("Failed to write APC candidates JSON to file");
         }
 
-        // select best candidates
+        // Rank candidates by density; the column budget can terminate the
+        // ranking early if it's exhausted. The trim to (skip, autoprecompiles)
+        // happens later in `select_apcs`.
         let budget = self.max_total_apc_columns.unwrap_or(usize::MAX);
-        let max_selected = (config.autoprecompiles + config.skip_autoprecompiles) as usize;
-        let selection =
-            select_blocks_greedy(&apcs, &blocks, budget, max_selected, &execution_bb_runs);
+        let ranking = rank_blocks_greedy(&apcs, &blocks, budget, &execution_bb_runs);
 
-        // skip per config
-        let skip = (config.skip_autoprecompiles as usize).min(selection.len());
-
-        // filter and order the apcs using the selection
+        // Reorder the apcs by the ranking; everything outside the ranking is dropped.
         let mut apcs: Vec<_> = apcs.into_iter().map(|apc| Some(apc.into_inner())).collect();
-        selection
+        ranking
             .into_iter()
-            .skip(skip)
             .map(|position| apcs[position].take().unwrap())
             .collect()
     }

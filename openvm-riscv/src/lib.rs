@@ -62,7 +62,7 @@ pub use powdr_openvm::{
 
 pub use openvm_build::GuestOptions;
 pub use powdr_autoprecompiles::bus_map::BusType;
-pub use powdr_openvm::customize_exe::{compile_apcs, setup, Instr};
+pub use powdr_openvm::customize_exe::{generate_apcs, select_apcs, setup, Instr};
 
 pub fn build_elf_path<P: AsRef<Path>>(
     guest_opts: GuestOptions,
@@ -147,7 +147,7 @@ pub fn compile_openvm(
     })
 }
 
-/// Convenience composition of [`compile_apcs`] + [`setup`].
+/// Convenience composition of [`generate_apcs`] + [`select_apcs`] + [`setup`].
 pub fn compile_exe(
     original_program: OriginalCompiledProgram<RiscvISA>,
     config: PowdrConfig,
@@ -155,12 +155,13 @@ pub fn compile_exe(
     empirical_constraints: EmpiricalConstraints,
 ) -> Result<CompiledProgram<RiscvISA>, Box<dyn std::error::Error>> {
     let degree_bound = config.degree_bound;
-    let apcs = compile_apcs(
+    let ranked = generate_apcs(
         &original_program,
         &config,
         pgo_config,
         empirical_constraints,
     );
+    let apcs = select_apcs(ranked, &config);
     Ok(setup(original_program, apcs, degree_bound))
 }
 

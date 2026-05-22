@@ -9,8 +9,8 @@ use powdr_autoprecompiles::pgo::{pgo_config, PgoType};
 use powdr_autoprecompiles::PowdrConfig;
 use powdr_openvm::BabyBearOpenVmApcAdapter;
 use powdr_openvm_riscv::{
-    compile_apcs, compile_openvm, detect_empirical_constraints, setup, CompiledProgram,
-    GuestOptions, OriginalCompiledProgram, RiscvISA,
+    compile_openvm, detect_empirical_constraints, generate_apcs, select_apcs, setup,
+    CompiledProgram, GuestOptions, OriginalCompiledProgram, RiscvISA,
 };
 
 #[cfg(feature = "metrics")]
@@ -46,11 +46,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Build + select APCs (fused).
-    ///
-    /// When the `PgoAdapter` trait is split in a follow-up, a separate
-    /// `generate-apcs` command will sit before `select-apcs` in the
-    /// pipeline and produce the unfiltered set of built APC candidates.
+    /// Build APC candidates and rank them. The ranking is what `select-apcs`
+    /// trims to `--autoprecompiles` (after `--skip`).
+    GenerateApcs(GenerateApcsArgs),
+
+    /// Trim the ranking from `generate-apcs` to `--autoprecompiles` (after `--skip`).
     SelectApcs(SelectArgs),
 
     /// Assemble the final program (selected APCs injected, prover/verifier keys).
@@ -76,11 +76,34 @@ struct ProfileArgs {
     profile_input: Option<u32>,
 }
 
-/// Args added by the APC-build stage.
+/// Args added by the APC build-and-rank stage.
 #[derive(Args, Clone, Debug)]
 struct GenerateApcsArgs {
     #[command(flatten)]
     profile: ProfileArgs,
+
+    /// PGO ranking strategy. Determines how candidates are ranked and, for
+    /// instruction/none, which candidates get built (the top `--apc-candidates`
+    /// of the metadata-sorted prefix).
+    #[arg(long, default_value_t = PgoType::default())]
+    pgo: PgoType,
+
+    /// Cap on the number of APC candidates to build (and rank).
+    ///
+    /// Unset = "build all eligible blocks". When `generate-apcs` runs as part
+    /// of a fused pipeline (`select-apcs`/`setup`/`execute`/`prove`) under
+    /// `--pgo instruction|none`, this defaults to `--autoprecompiles + --skip`;
+    /// set it explicitly to over-build for later selection sweeps. With
+    /// `--pgo cell` the default stays unset because Cell always builds every
+    /// eligible candidate anyway.
+    #[arg(long)]
+    apc_candidates: Option<u64>,
+
+    /// When `--pgo cell`, the optional max columns budget for the whole VM.
+    /// Influences the ranking — blocks that don't fit at their turn are
+    /// dropped from the ranking.
+    #[arg(long)]
+    max_columns: Option<usize>,
 
     /// Directory to persist all APC candidates + a metrics summary.
     #[arg(long)]
@@ -110,21 +133,13 @@ struct SelectArgs {
     #[command(flatten)]
     generate: GenerateApcsArgs,
 
-    /// Number of APCs to embed after selection.
+    /// Number of APCs to embed (taken from the top of the ranking after `--skip`).
     #[arg(long, default_value_t = 0)]
     autoprecompiles: usize,
 
     /// Number of top-ranked APCs to skip during selection.
     #[arg(long, default_value_t = 0)]
     skip: usize,
-
-    /// PGO ranking strategy.
-    #[arg(long, default_value_t = PgoType::default())]
-    pgo: PgoType,
-
-    /// When `--pgo cell`, the optional max columns budget for the whole VM.
-    #[arg(long)]
-    max_columns: Option<usize>,
 }
 
 /// Args added by the setup stage (currently none — kept for future args + cache hierarchy).
@@ -188,25 +203,35 @@ fn main() -> Result<(), io::Error> {
 
 fn run_command(command: Commands, artifacts_dir: Option<&Path>) {
     match command {
+        Commands::GenerateApcs(args) => {
+            validate_generate_args(&args, false);
+            let pipeline = Pipeline::new(args.profile.clone());
+            let ranked = pipeline.run_generate_apcs(&args, artifacts_dir);
+            tracing::info!(
+                "Built and ranked {} autoprecompile candidates",
+                ranked.len()
+            );
+        }
+
         Commands::SelectApcs(args) => {
-            validate_select_args(&args, false);
+            validate_generate_args(&args.generate, false);
             let pipeline = Pipeline::new(args.generate.profile.clone());
-            let apcs = pipeline.run_select_apcs(&args, artifacts_dir);
+            let apcs = pipeline.run_select_apcs(args, artifacts_dir);
             tracing::info!("Selected {} autoprecompiles", apcs.len());
         }
 
         Commands::Setup(args) => {
-            validate_select_args(&args.select, true);
+            validate_generate_args(&args.select.generate, true);
             let pipeline = Pipeline::new(args.select.generate.profile.clone());
-            let _ = pipeline.run_setup(&args, artifacts_dir);
+            let _ = pipeline.run_setup(args, artifacts_dir);
         }
 
         Commands::Execute(args) => {
-            validate_select_args(&args.setup.select, true);
+            validate_generate_args(&args.setup.select.generate, true);
             let runtime_input = args.input;
             let pipeline = Pipeline::new(args.setup.select.generate.profile.clone());
             let run = || {
-                let program = pipeline.run_setup(&args.setup, artifacts_dir);
+                let program = pipeline.run_setup(args.setup, artifacts_dir);
                 powdr_openvm::execute(program, stdin_from(runtime_input)).unwrap();
             };
             if let Some(metrics_path) = args.metrics {
@@ -220,13 +245,13 @@ fn run_command(command: Commands, artifacts_dir: Option<&Path>) {
         }
 
         Commands::Prove(args) => {
-            validate_select_args(&args.setup.select, true);
+            validate_generate_args(&args.setup.select.generate, true);
             let runtime_input = args.input;
             let mock = args.mock;
             let recursion = args.recursion;
             let pipeline = Pipeline::new(args.setup.select.generate.profile.clone());
             let run = || {
-                let program = pipeline.run_setup(&args.setup, artifacts_dir);
+                let program = pipeline.run_setup(args.setup, artifacts_dir);
                 powdr_openvm_riscv::prove(
                     &program,
                     mock,
@@ -248,8 +273,8 @@ fn run_command(command: Commands, artifacts_dir: Option<&Path>) {
     }
 }
 
-fn validate_select_args(args: &SelectArgs, for_execution: bool) {
-    if args.generate.superblocks > 1 && !matches!(args.pgo, PgoType::Cell) {
+fn validate_generate_args(args: &GenerateApcsArgs, for_execution: bool) {
+    if args.superblocks > 1 && !matches!(args.pgo, PgoType::Cell) {
         Cli::command()
             .error(
                 clap::error::ErrorKind::ArgumentConflict,
@@ -257,7 +282,7 @@ fn validate_select_args(args: &SelectArgs, for_execution: bool) {
             )
             .exit();
     }
-    if for_execution && args.generate.superblocks > 1 {
+    if for_execution && args.superblocks > 1 {
         Cli::command()
             .error(
                 clap::error::ErrorKind::ArgumentConflict,
@@ -267,19 +292,54 @@ fn validate_select_args(args: &SelectArgs, for_execution: bool) {
     }
 }
 
-fn build_powdr_config(args: &SelectArgs) -> PowdrConfig {
-    let mut powdr_config =
-        default_powdr_openvm_config(args.autoprecompiles as u64, args.skip as u64);
-    if let Some(apc_candidates_dir) = &args.generate.apc_candidates_dir {
+fn build_powdr_config(generate: &GenerateApcsArgs, autoprecompiles: u64, skip: u64) -> PowdrConfig {
+    let mut powdr_config = default_powdr_openvm_config(autoprecompiles, skip)
+        .with_apc_candidates(generate.apc_candidates);
+    if let Some(apc_candidates_dir) = &generate.apc_candidates_dir {
         powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
     }
     powdr_config
-        .with_optimistic_precompiles(args.generate.optimistic_precompiles)
+        .with_optimistic_precompiles(generate.optimistic_precompiles)
         .with_superblocks(
-            args.generate.superblocks,
-            args.generate.apc_max_instructions,
-            args.generate.apc_exec_count_cutoff,
+            generate.superblocks,
+            generate.apc_max_instructions,
+            generate.apc_exec_count_cutoff,
         )
+}
+
+impl SelectArgs {
+    /// Pick a default for `generate.apc_candidates` based on the PGO strategy and
+    /// `autoprecompiles`/`skip` values, if not explicitly set.
+    fn set_apc_candidates_default(mut self) -> Self {
+        if self.generate.apc_candidates.is_none() {
+            match self.generate.pgo {
+                PgoType::Cell => {
+                    if self.autoprecompiles == 0 {
+                        // No need to generate any APCs.
+                        self.generate.apc_candidates = Some(0);
+                    } else {
+                        // The Cell PGO builds all eligible candidates anyway, so we leave
+                        // `apc_candidates` unset to signal "build all".
+                    }
+                }
+                PgoType::Instruction | PgoType::None => {
+                    let autoprecompiles = self.autoprecompiles;
+                    let skip = self.skip;
+                    let default_candidates = if autoprecompiles == 0 {
+                        0
+                    } else {
+                        autoprecompiles as u64 + skip as u64
+                    };
+                    tracing::info!(
+                        "--apc-candidates not set; defaulting to {default_candidates} for --pgo {}",
+                        self.generate.pgo
+                    );
+                    self.generate.apc_candidates = Some(default_candidates);
+                }
+            }
+        }
+        self
+    }
 }
 
 /// Pipeline runner. Eagerly loads the guest crate so that we can mix a hash
@@ -304,18 +364,21 @@ impl Pipeline {
         }
     }
 
-    /// Run the profile + APC-build/select pipeline, or load it from the cache.
-    fn run_select_apcs(
+    /// Build + rank APC candidates, or load them from the cache.
+    fn run_generate_apcs(
         &self,
-        args: &SelectArgs,
+        args: &GenerateApcsArgs,
         artifacts_dir: Option<&Path>,
     ) -> Vec<AdapterApcWithStats<BabyBearOpenVmApcAdapter<'static, RiscvISA>>> {
         let hash = stage_hash(args, &self.guest_hash);
-        if let Some(cached) = load_cached(artifacts_dir, "select", &hash) {
-            tracing::info!("cache hit: select/{hash}");
+        if let Some(cached) = load_cached(artifacts_dir, "generate", &hash) {
+            tracing::info!("cache hit: generate/{hash}");
             return cached;
         }
-        let powdr_config = build_powdr_config(args);
+        // autoprecompiles / skip are irrelevant to the ranking — they live on
+        // SelectArgs. Pass 0 here; the apc_candidates field is the only
+        // selection-adjacent input the build stage cares about.
+        let powdr_config = build_powdr_config(args, 0, 0);
         let profile_stdin = stdin_from(self.profile_args.profile_input);
         let empirical_constraints = maybe_compute_empirical_constraints(
             &self.guest_program,
@@ -325,30 +388,54 @@ impl Pipeline {
         let execution_profile =
             powdr_openvm::execution_profile_from_guest(&self.guest_program, profile_stdin.clone());
         let pgo = pgo_config(args.pgo, args.max_columns, execution_profile);
-        let apcs = compile_apcs(
+        let ranked = generate_apcs(
             &self.guest_program,
             &powdr_config,
             pgo,
             empirical_constraints,
         );
+        save_cached(artifacts_dir, "generate", &hash, &ranked);
+        ranked
+    }
+
+    /// Trim the ranking from `generate-apcs` to the configured selection,
+    /// or load it from the cache.
+    fn run_select_apcs(
+        &self,
+        args: SelectArgs,
+        artifacts_dir: Option<&Path>,
+    ) -> Vec<AdapterApcWithStats<BabyBearOpenVmApcAdapter<'static, RiscvISA>>> {
+        let args = args.set_apc_candidates_default();
+        let hash = stage_hash(&args, &self.guest_hash);
+        if let Some(cached) = load_cached(artifacts_dir, "select", &hash) {
+            tracing::info!("cache hit: select/{hash}");
+            return cached;
+        }
+        let ranked = self.run_generate_apcs(&args.generate, artifacts_dir);
+        let powdr_config = build_powdr_config(
+            &args.generate,
+            args.autoprecompiles as u64,
+            args.skip as u64,
+        );
+        let apcs = select_apcs(ranked, &powdr_config);
         save_cached(artifacts_dir, "select", &hash, &apcs);
         apcs
     }
 
     /// Run the full pipeline up to setup (selected APCs injected, keys assembled),
     /// or load the resulting `CompiledProgram` from the cache.
-    fn run_setup(
-        self,
-        args: &SetupArgs,
-        artifacts_dir: Option<&Path>,
-    ) -> CompiledProgram<RiscvISA> {
-        let hash = stage_hash(args, &self.guest_hash);
+    fn run_setup(self, args: SetupArgs, artifacts_dir: Option<&Path>) -> CompiledProgram<RiscvISA> {
+        let hash = stage_hash(&args, &self.guest_hash);
         if let Some(cached) = load_cached(artifacts_dir, "setup", &hash) {
             tracing::info!("cache hit: setup/{hash}");
             return cached;
         }
-        let apcs = self.run_select_apcs(&args.select, artifacts_dir);
-        let powdr_config = build_powdr_config(&args.select);
+        let apcs = self.run_select_apcs(args.select.clone(), artifacts_dir);
+        let powdr_config = build_powdr_config(
+            &args.select.generate,
+            args.select.autoprecompiles as u64,
+            args.select.skip as u64,
+        );
         let program = setup(self.guest_program, apcs, powdr_config.degree_bound);
         save_cached(artifacts_dir, "setup", &hash, &program);
         program
