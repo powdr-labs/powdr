@@ -1,4 +1,7 @@
+#[path = "common/apc_builder_utils.rs"]
+mod apc_builder_utils;
 mod common;
+
 use openvm_instructions::instruction::Instruction;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::blocks::BasicBlock;
@@ -10,7 +13,7 @@ fn assert_machine_output(program: Vec<Instruction<BabyBear>>, test_name: &str) {
         start_pc: 0,
         instructions: program,
     };
-    common::apc_builder_utils::assert_machine_output(bb.into(), "complex", test_name);
+    apc_builder_utils::assert_machine_output(bb.into(), "complex", test_name);
 }
 
 #[test]
