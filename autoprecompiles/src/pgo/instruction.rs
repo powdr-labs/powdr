@@ -38,7 +38,7 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
             "Generating autoprecompiles with instruction PGO for {} blocks",
             exec_blocks.blocks.len()
         );
-        
+
         if config.autoprecompiles == 0 {
             return vec![];
         }

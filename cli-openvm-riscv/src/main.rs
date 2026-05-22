@@ -307,48 +307,36 @@ fn build_powdr_config(generate: &GenerateApcsArgs, autoprecompiles: u64, skip: u
         )
 }
 
-/// Pick a default for `--apc-candidates` based on the PGO mode and the
-/// downstream selection size, so it doesn't have to be passed explicitly in
-/// the common case. No-op if the user already set `--apc-candidates`.
-///
-/// - Cell: leaves the cap unset (Cell always builds every eligible candidate
-///   anyway), except when `--autoprecompiles == 0` — then we set `Some(0)` so
-///   the library short-circuits without building anything.
-/// - Instruction / None: caps the build at `--autoprecompiles + --skip`
-///   (or 0 when `--autoprecompiles == 0`) so candidates the trim would
-///   discard don't get built.
-///
-/// Called before each stage's cache hash, so the resolved value lives in
-/// the cache key.
-fn set_apc_candidates_default(select_args: &mut SelectArgs) {
-    if select_args.generate.apc_candidates.is_some() {
-        // If explicitly set, don't change it.
-        return;
-    }
-
-    match select_args.generate.pgo {
-        PgoType::Cell => {
-            if select_args.autoprecompiles == 0 {
-                // No need to generate any APCs.
-                select_args.generate.apc_candidates = Some(0);
-            } else {
-                // The Cell PGO builds all eligible candidates anyway, so we leave
-                // `apc_candidates` unset to signal "build all".
+impl SelectArgs {
+    /// Pick a default for `generate.apc_candidates` based on the PGO strategy and
+    /// `autoprecompiles`/`skip` values, if not explicitly set.
+    fn set_apc_candidates_default(&mut self) {
+        if self.generate.apc_candidates.is_none() {
+            match self.generate.pgo {
+                PgoType::Cell => {
+                    if self.autoprecompiles == 0 {
+                        // No need to generate any APCs.
+                        self.generate.apc_candidates = Some(0);
+                    } else {
+                        // The Cell PGO builds all eligible candidates anyway, so we leave
+                        // `apc_candidates` unset to signal "build all".
+                    }
+                }
+                PgoType::Instruction | PgoType::None => {
+                    let autoprecompiles = self.autoprecompiles;
+                    let skip = self.skip;
+                    let default_candidates = if autoprecompiles == 0 {
+                        0
+                    } else {
+                        autoprecompiles as u64 + skip as u64
+                    };
+                    tracing::info!(
+                        "--apc-candidates not set; defaulting to {default_candidates} for --pgo {}",
+                        self.generate.pgo
+                    );
+                    self.generate.apc_candidates = Some(default_candidates);
+                }
             }
-        }
-        PgoType::Instruction | PgoType::None => {
-            let autoprecompiles = select_args.autoprecompiles;
-            let skip = select_args.skip;
-            let default_candidates = if autoprecompiles == 0 {
-                0
-            } else {
-                autoprecompiles as u64 + skip as u64
-            };
-            tracing::info!(
-                "--apc-candidates not set; defaulting to {default_candidates} for --pgo {}",
-                select_args.generate.pgo
-            );
-            select_args.generate.apc_candidates = Some(default_candidates);
         }
     }
 }
@@ -416,10 +404,7 @@ impl Pipeline {
         mut args: SelectArgs,
         artifacts_dir: Option<&Path>,
     ) -> Vec<AdapterApcWithStats<BabyBearOpenVmApcAdapter<'static, RiscvISA>>> {
-        // Apply the auto-fill rule for instruction/none PGO before computing
-        // the generate stage's hash, so the resolved value is part of the key.
-        set_apc_candidates_default(&mut args);
-
+        args.set_apc_candidates_default();
         let hash = stage_hash(&args, &self.guest_hash);
         if let Some(cached) = load_cached(artifacts_dir, "select", &hash) {
             tracing::info!("cache hit: select/{hash}");
@@ -438,17 +423,7 @@ impl Pipeline {
 
     /// Run the full pipeline up to setup (selected APCs injected, keys assembled),
     /// or load the resulting `CompiledProgram` from the cache.
-    fn run_setup(
-        self,
-        mut args: SetupArgs,
-        artifacts_dir: Option<&Path>,
-    ) -> CompiledProgram<RiscvISA> {
-        // Resolve `apc_candidates` before hashing so that ignored-by-cell or
-        // auto-filled values land in the cache key — otherwise bumping
-        // `--apc-candidates` would invalidate setup without affecting the
-        // upstream caches.
-        set_apc_candidates_default(&mut args.select);
-
+    fn run_setup(self, args: SetupArgs, artifacts_dir: Option<&Path>) -> CompiledProgram<RiscvISA> {
         let hash = stage_hash(&args, &self.guest_hash);
         if let Some(cached) = load_cached(artifacts_dir, "setup", &hash) {
             tracing::info!("cache hit: setup/{hash}");
