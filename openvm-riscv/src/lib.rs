@@ -910,8 +910,7 @@ mod tests {
     #[test]
     /// check that the hints test guest compiles and proves successfully
     fn hints_test_prove() {
-        let mut stdin = StdIn::default();
-        stdin.write(&GUEST_HINTS_TEST);
+        let stdin = StdIn::default();
         let config = default_powdr_openvm_config(0, 0);
 
         prove_simple(GUEST_HINTS_TEST, config, stdin, PgoConfig::None, None);
