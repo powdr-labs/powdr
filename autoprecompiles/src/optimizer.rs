@@ -128,6 +128,7 @@ where
         "remove_disconnected",
     );
 
+    println!("Running rule-based optimization:\n{}", constraint_system);
     let (constraint_system, _) = rule_based_optimization(
         constraint_system,
         &solver,

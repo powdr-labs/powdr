@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+};
 
 use itertools::Itertools;
 use openvm_circuit::{arch::MatrixRecordArena, utils::next_power_of_two_or_zero};
@@ -9,8 +12,9 @@ use openvm_stark_backend::{
     prover::{AirProvingContext, ProverBackend},
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
-use powdr_autoprecompiles::trace_handler::TraceTrait;
+use powdr_autoprecompiles::{expression::AlgebraicExpression, trace_handler::TraceTrait};
 use powdr_constraint_solver::constraint_system::ComputationMethod;
+use powdr_number::ExpressionConvertible;
 
 use crate::{
     extraction_utils::{OriginalAirs, OriginalVmConfig},
@@ -181,24 +185,11 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
                 // (these are either new columns or for example the "is_valid" column).
                 for derived_column in columns_to_compute {
                     let col_index = apc_poly_id_to_index[&derived_column.variable.id];
-                    row_slice[col_index] = match &derived_column.computation_method {
-                        ComputationMethod::Constant(c) => *c,
-                        ComputationMethod::QuotientOrZero(e1, e2) => {
-                            use powdr_number::ExpressionConvertible;
-
-                            let divisor_val = e2.to_expression(&|n| *n, &|column_ref| {
-                                row_slice[apc_poly_id_to_index[&column_ref.id]]
-                            });
-                            if divisor_val.is_zero() {
-                                BabyBear::ZERO
-                            } else {
-                                divisor_val.inverse()
-                                    * e1.to_expression(&|n| *n, &|column_ref| {
-                                        row_slice[apc_poly_id_to_index[&column_ref.id]]
-                                    })
-                            }
-                        }
-                    };
+                    row_slice[col_index] = evaluate_computation_method(
+                        &derived_column.computation_method,
+                        row_slice,
+                        &apc_poly_id_to_index,
+                    );
                 }
 
                 let evaluator = MappingRowEvaluator::new(row_slice, &apc_poly_id_to_index);
@@ -225,5 +216,35 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
             });
 
         RowMajorMatrix::new(values, width)
+    }
+}
+
+fn evaluate_computation_method(
+    method: &ComputationMethod<BabyBear, AlgebraicExpression<BabyBear>>,
+    row_slice: &[BabyBear],
+    apc_poly_id_to_index: &BTreeMap<u64, usize>,
+) -> BabyBear {
+    let eval = |e: &AlgebraicExpression<BabyBear>| {
+        e.to_expression(&|n| *n, &|column_ref| {
+            row_slice[apc_poly_id_to_index[&column_ref.id]]
+        })
+    };
+    match method {
+        ComputationMethod::Constant(c) => *c,
+        ComputationMethod::QuotientOrZero(e1, e2) => {
+            let divisor_val = eval(e2);
+            if divisor_val.is_zero() {
+                BabyBear::ZERO
+            } else {
+                divisor_val.inverse() * eval(e1)
+            }
+        }
+        ComputationMethod::IfEqZero(condition, then, else_) => {
+            if eval(condition).is_zero() {
+                evaluate_computation_method(then, row_slice, apc_poly_id_to_index)
+            } else {
+                evaluate_computation_method(else_, row_slice, apc_poly_id_to_index)
+            }
+        }
     }
 }

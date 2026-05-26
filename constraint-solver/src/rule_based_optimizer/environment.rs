@@ -31,7 +31,9 @@ pub struct Environment<T: FieldElement> {
     /// (also only once in the constraint they occur in).
     single_occurrence_variables: HashSet<Var>,
     new_var_generator: RefCell<NewVarGenerator<T>>,
-    hints: HashMap<Var, ComputationMethod<T, GroupedExpression<T, Var>>>,
+    /// Hints to compute variables whose constraints that define them are removed
+    /// during optimization.
+    hints: RefCell<HashMap<Var, ComputationMethod<T, GroupedExpression<T, Var>>>>,
 }
 
 impl<T: FieldElement> PartialEq for Environment<T> {
@@ -119,8 +121,8 @@ impl<T: FieldElement> Environment<T> {
 
     /// Adds a hint about how to compute a variable. This is used if constraints are replaced by
     /// other constraints that might make it difficult to recover the way to compute certain variables.
-    pub fn add_hint(&mut self, var: Var, method: ComputationMethod<T, GroupedExpression<T, Var>>) {
-        self.hints.insert(var, method);
+    pub fn add_hint(&self, var: Var, method: ComputationMethod<T, GroupedExpression<T, Var>>) {
+        self.hints.borrow_mut().insert(var, method);
     }
 
     pub fn single_occurrence_variables(&self) -> impl Iterator<Item = &Var> {

@@ -476,7 +476,7 @@ crepe! {
     //   result = 1 if all vars are zero, and result = 0 otherwise.
     //   diff_markers and diff_vars are variables where we add hints because they might be removed.
     struct EqualZeroCheck([Expr; 10], Var, [Var; 4], [Var; 4], [Var; 4]);
-    EqualZeroCheck(constrs, result, vars, diff_morkers, diff_vars) <-
+    EqualZeroCheck(constrs, result, vars, diff_markers, diff_vals) <-
       // (1 - diff_marker__3_0) * (a__3_0 * (2 * cmp_result_0 - 1)) = 0
       NegatedDiffMarkerConstraint(constr_0, diff_marker_3, _, a_3, result, 0),
       // (1 - (diff_marker__2_0 + diff_marker__3_0)) * (a__2_0 * (2 * cmp_result_0 - 1)) = 0
@@ -555,6 +555,45 @@ crepe! {
           ComputationMethod::IfEqZero(
             vars[3].clone(),
             Box::new(ComputationMethod::IfEqZero(vars[2].clone(), zero.clone(), one.clone())), zero.clone()));
+        env.add_hint(
+          diff_markers[1],
+          ComputationMethod::IfEqZero(
+            vars[3].clone(),
+            Box::new(ComputationMethod::IfEqZero(
+              vars[2].clone(),
+              Box::new(ComputationMethod::IfEqZero(vars[1].clone(), zero.clone(), one.clone())),
+              zero.clone())),
+            zero.clone()));
+        env.add_hint(
+          diff_markers[0],
+          ComputationMethod::IfEqZero(
+            vars[3].clone(),
+            Box::new(ComputationMethod::IfEqZero(
+              vars[2].clone(),
+              Box::new(ComputationMethod::IfEqZero(
+                vars[1].clone(),
+                Box::new(ComputationMethod::IfEqZero(
+                  vars[0].clone() - One::one(),
+                  zero.clone(),
+                  one.clone())),
+                zero.clone())),
+              zero.clone())),
+            zero.clone()));
+        env.add_hint(
+          diff_vals[3],
+          ComputationMethod::QuotientOrZero(vars[3].clone(), One::one()));
+        env.add_hint(
+          diff_vals[2],
+          ComputationMethod::QuotientOrZero(vars[2].clone(), One::one()));
+        env.add_hint(
+          diff_vals[1],
+          ComputationMethod::QuotientOrZero(vars[1].clone(), One::one()));
+        env.add_hint(
+          diff_vals[0],
+          ComputationMethod::IfEqZero(
+            vars[0].clone(),
+            Box::new(ComputationMethod::Constant(One::one())),
+            Box::new(ComputationMethod::QuotientOrZero(vars[0].clone() - One::one(), One::one()))));
 
 
         [

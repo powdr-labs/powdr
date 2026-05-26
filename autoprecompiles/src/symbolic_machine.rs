@@ -242,20 +242,33 @@ pub fn symbolic_machine_to_constraint_system<P: FieldElement>(
             .derived_columns
             .iter()
             .map(|derived_variable| {
-                let method = match &derived_variable.computation_method {
-                    ComputationMethod::Constant(c) => {
-                        constraint_system::ComputationMethod::Constant(*c)
-                    }
-                    ComputationMethod::QuotientOrZero(e1, e2) => {
-                        constraint_system::ComputationMethod::QuotientOrZero(
-                            algebraic_to_grouped_expression(e1),
-                            algebraic_to_grouped_expression(e2),
-                        )
-                    }
-                };
+                let method = convert_computation_method_to_grouped_expression(
+                    &derived_variable.computation_method,
+                );
                 DerivedVariable::new(derived_variable.variable.clone(), method)
             })
             .collect(),
+    }
+}
+
+fn convert_computation_method_to_grouped_expression<T: FieldElement>(
+    method: &constraint_system::ComputationMethod<T, AlgebraicExpression<T>>,
+) -> constraint_system::ComputationMethod<T, GroupedExpression<T, AlgebraicReference>> {
+    match method {
+        ComputationMethod::Constant(c) => constraint_system::ComputationMethod::Constant(*c),
+        ComputationMethod::QuotientOrZero(e1, e2) => {
+            constraint_system::ComputationMethod::QuotientOrZero(
+                algebraic_to_grouped_expression(e1),
+                algebraic_to_grouped_expression(e2),
+            )
+        }
+        ComputationMethod::IfEqZero(condition, then, else_) => {
+            constraint_system::ComputationMethod::IfEqZero(
+                algebraic_to_grouped_expression(condition),
+                Box::new(convert_computation_method_to_grouped_expression(then)),
+                Box::new(convert_computation_method_to_grouped_expression(else_)),
+            )
+        }
     }
 }
 
@@ -277,20 +290,35 @@ pub fn constraint_system_to_symbolic_machine<P: FieldElement>(
             .derived_variables
             .into_iter()
             .map(|derived_var| {
-                let method = match derived_var.computation_method {
-                    constraint_system::ComputationMethod::Constant(c) => {
-                        constraint_system::ComputationMethod::Constant(c)
-                    }
-                    constraint_system::ComputationMethod::QuotientOrZero(e1, e2) => {
-                        constraint_system::ComputationMethod::QuotientOrZero(
-                            grouped_expression_to_algebraic(e1),
-                            grouped_expression_to_algebraic(e2),
-                        )
-                    }
-                };
+                let method = convert_computation_method_to_algebraic_expression(
+                    derived_var.computation_method,
+                );
                 DerivedVariable::new(derived_var.variable, method)
             })
             .collect(),
+    }
+}
+
+fn convert_computation_method_to_algebraic_expression<T: FieldElement>(
+    method: constraint_system::ComputationMethod<T, GroupedExpression<T, AlgebraicReference>>,
+) -> constraint_system::ComputationMethod<T, AlgebraicExpression<T>> {
+    match method {
+        constraint_system::ComputationMethod::Constant(c) => {
+            constraint_system::ComputationMethod::Constant(c)
+        }
+        constraint_system::ComputationMethod::QuotientOrZero(e1, e2) => {
+            constraint_system::ComputationMethod::QuotientOrZero(
+                grouped_expression_to_algebraic(e1),
+                grouped_expression_to_algebraic(e2),
+            )
+        }
+        constraint_system::ComputationMethod::IfEqZero(condition, then, else_) => {
+            constraint_system::ComputationMethod::IfEqZero(
+                grouped_expression_to_algebraic(condition.clone()),
+                Box::new(convert_computation_method_to_algebraic_expression(*then)),
+                Box::new(convert_computation_method_to_algebraic_expression(*else_)),
+            )
+        }
     }
 }
 

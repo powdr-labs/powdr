@@ -428,6 +428,11 @@ pub(crate) fn batch_replace_algebraic_constraints<
             );
         } else {
             // No conflict, this replacement can proceed
+            println!(
+                "Replacing:\n{}\nby:\n{}",
+                replacement.replace.iter().format("\n  -"),
+                replacement.replace_by.iter().format("\n  +")
+            );
             constraints_to_remove.extend(replacement.replace.iter());
             replacement_constraints.extend(replacement.replace_by.iter().cloned());
         }
@@ -508,6 +513,19 @@ fn undo_variable_transform_in_computation_method<
             ComputationMethod::QuotientOrZero(
                 undo_variable_transform(numerator, var_mapper),
                 undo_variable_transform(denominator, var_mapper),
+            )
+        }
+        ComputationMethod::IfEqZero(condition, then_branch, else_branch) => {
+            ComputationMethod::IfEqZero(
+                undo_variable_transform(condition, var_mapper),
+                Box::new(undo_variable_transform_in_computation_method(
+                    then_branch,
+                    var_mapper,
+                )),
+                Box::new(undo_variable_transform_in_computation_method(
+                    else_branch,
+                    var_mapper,
+                )),
             )
         }
     }
