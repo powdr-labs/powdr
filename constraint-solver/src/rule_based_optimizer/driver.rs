@@ -470,11 +470,6 @@ pub(crate) fn batch_replace_algebraic_constraints<
             );
         } else {
             // No conflict, this replacement can proceed
-            println!(
-                "Replacing:\n{}\nby:\n{}",
-                replacement.replace.iter().format("\n  -"),
-                replacement.replace_by.iter().format("\n  +")
-            );
             constraints_to_remove.extend(replacement.replace.iter());
             replacement_constraints.extend(replacement.replace_by.iter().cloned());
         }

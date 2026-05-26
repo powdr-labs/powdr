@@ -80,20 +80,12 @@ pub fn optimize_constraints<
     export_options
         .export_optimizer_inner_constraint_system(constraint_system.system(), "remove_free");
 
-    println!(
-        "Before disconnected:\n{}",
-        constraint_system.variables().format(", ")
-    );
     let constraint_system =
         remove_disconnected_columns(constraint_system, solver, bus_interaction_handler.clone());
     stats_logger.log("removing disconnected columns", &constraint_system);
     export_options.export_optimizer_inner_constraint_system(
         constraint_system.system(),
         "remove_disconnected",
-    );
-    println!(
-        "After disconnected:\n{}",
-        constraint_system.variables().format(", ")
     );
 
     let constraint_system = simplify_constraints_using_exhaustive_search(constraint_system, solver);
@@ -111,11 +103,6 @@ pub fn optimize_constraints<
     export_options
         .export_optimizer_inner_constraint_system(constraint_system.system(), "trivial_simp");
 
-    println!(
-        "Running rule-based opt:\n{}",
-        constraint_system.variables().format(", ")
-    );
-
     let (constraint_system, assignments) = rule_based_optimization(
         constraint_system,
         &*solver,
@@ -131,7 +118,6 @@ pub fn optimize_constraints<
             val.clone(),
         )
     }));
-    println!("After:\n{}", constraint_system.variables().format(", "));
     stats_logger.log("rule-based optimization", &constraint_system);
     export_options.register_substituted_variables(assignments);
     export_options
