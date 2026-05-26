@@ -7,8 +7,12 @@ pub struct Register {
 }
 
 impl Register {
-    pub fn new(value: u8) -> Self {
-        Self { value }
+    pub fn new(value: u8) -> Option<Self> {
+        if (value as usize) < REGISTER_MEMORY_NAMES.len() {
+            Some(Self { value })
+        } else {
+            None
+        }
     }
 
     pub fn is_zero(&self) -> bool {
@@ -67,7 +71,10 @@ pub const REGISTER_MEMORY_NAMES: [&str; 37] = [
 
 impl fmt::Display for Register {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", REGISTER_MEMORY_NAMES[self.value as usize])
+        match REGISTER_MEMORY_NAMES.get(self.value as usize) {
+            Some(name) => write!(f, "{}", name),
+            None => write!(f, "<invalid register {}>", self.value),
+        }
     }
 }
 
@@ -76,7 +83,7 @@ impl From<&str> for Register {
         REGISTER_MEMORY_NAMES
             .iter()
             .position(|&name| name == s)
-            .map(|value| Self::new(value as u8))
+            .map(|value| Self::new(value as u8).unwrap())
             .unwrap_or_else(|| panic!("Invalid register"))
     }
 }
