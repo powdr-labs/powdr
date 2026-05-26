@@ -7,12 +7,9 @@ pub struct Register {
 }
 
 impl Register {
-    pub fn new(value: u8) -> Option<Self> {
-        if (value as usize) < REGISTER_MEMORY_NAMES.len() {
-            Some(Self { value })
-        } else {
-            None
-        }
+    pub(crate) fn new_unchecked(value: u8) -> Self {
+        debug_assert!((value as usize) < REGISTER_MEMORY_NAMES.len());
+        Self { value }
     }
 
     pub fn is_zero(&self) -> bool {
@@ -21,6 +18,28 @@ impl Register {
 
     pub fn addr(&self) -> u8 {
         self.value
+    }
+}
+
+/// Error returned when a u8 value does not correspond to a valid register index.
+#[derive(Debug, Clone, Copy)]
+pub struct InvalidRegister(pub u8);
+
+impl fmt::Display for InvalidRegister {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "invalid register index: {}", self.0)
+    }
+}
+
+impl TryFrom<u8> for Register {
+    type Error = InvalidRegister;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        if (value as usize) < REGISTER_MEMORY_NAMES.len() {
+            Ok(Self { value })
+        } else {
+            Err(InvalidRegister(value))
+        }
     }
 }
 
@@ -83,7 +102,7 @@ impl From<&str> for Register {
         REGISTER_MEMORY_NAMES
             .iter()
             .position(|&name| name == s)
-            .map(|value| Self::new(value as u8).unwrap())
+            .map(|value| Self::new_unchecked(value as u8))
             .unwrap_or_else(|| panic!("Invalid register"))
     }
 }

@@ -428,7 +428,7 @@ impl InstructionArgs for WrappedArgs<'_> {
                 rd: None,
                 rs1: Some(rs1),
                 rs2: None,
-            } => Ok(Register::new(*rs1 as u8)),
+            } => Ok(Register::try_from(*rs1 as u8).map_err(|e| e.to_string())?),
             _ => Err(format!("Expected: rs1, got {:?}", self.args)),
         }
     }
@@ -441,8 +441,8 @@ impl InstructionArgs for WrappedArgs<'_> {
                 rs1: Some(rs1),
                 rs2: None,
             } => Ok((
-                Register::new(*rd as u8),
-                Register::new(*rs1 as u8),
+                Register::try_from(*rd as u8).map_err(|e| e.to_string())?,
+                Register::try_from(*rs1 as u8).map_err(|e| e.to_string())?,
                 *imm as u32,
             )),
             _ => Err(format!("Expected: rd, rs1, imm, got {:?}", self.args)),
@@ -457,9 +457,9 @@ impl InstructionArgs for WrappedArgs<'_> {
                 rs1: Some(rs1),
                 rs2: Some(rs2),
             } => Ok((
-                Register::new(*rd as u8),
-                Register::new(*rs1 as u8),
-                Register::new(*rs2 as u8),
+                Register::try_from(*rd as u8).map_err(|e| e.to_string())?,
+                Register::try_from(*rs1 as u8).map_err(|e| e.to_string())?,
+                Register::try_from(*rs2 as u8).map_err(|e| e.to_string())?,
             )),
             _ => Err(format!("Expected: rd, rs1, rs2, got {:?}", self.args)),
         }
@@ -473,9 +473,9 @@ impl InstructionArgs for WrappedArgs<'_> {
                 rs1: Some(rs1),
                 rs2: Some(rs2),
             } => Ok((
-                Register::new(*rd as u8),
-                Register::new(*rs2 as u8),
-                Register::new(*rs1 as u8),
+                Register::try_from(*rd as u8).map_err(|e| e.to_string())?,
+                Register::try_from(*rs2 as u8).map_err(|e| e.to_string())?,
+                Register::try_from(*rs1 as u8).map_err(|e| e.to_string())?,
             )),
             _ => Err(format!("Expected: rd, rs2, rs1, got {:?}", self.args)),
         }
@@ -488,7 +488,7 @@ impl InstructionArgs for WrappedArgs<'_> {
                 rd: Some(rd),
                 rs1: None,
                 rs2: None,
-            } => Ok((Register::new(*rd as u8), *imm as u32)),
+            } => Ok((Register::try_from(*rd as u8).map_err(|e| e.to_string())?, *imm as u32)),
             _ => Err(format!("Expected: rd, imm, got {:?}", self.args)),
         }
     }
@@ -500,7 +500,7 @@ impl InstructionArgs for WrappedArgs<'_> {
                 rd: Some(rd),
                 rs1: Some(rs1),
                 rs2: None,
-            } => Ok((Register::new(*rd as u8), Register::new(*rs1 as u8))),
+            } => Ok((Register::try_from(*rd as u8).map_err(|e| e.to_string())?, Register::try_from(*rs1 as u8).map_err(|e| e.to_string())?)),
             _ => Err(format!("Expected: rd, rs1, got {:?}", self.args)),
         }
     }
@@ -515,8 +515,8 @@ impl InstructionArgs for WrappedArgs<'_> {
                 rs1: Some(rs1),
                 rs2: Some(rs2),
             } => Ok((
-                Register::new(*rs1 as u8),
-                Register::new(*rs2 as u8),
+                Register::try_from(*rs1 as u8).map_err(|e| e.to_string())?,
+                Register::try_from(*rs2 as u8).map_err(|e| e.to_string())?,
                 self.symbol_table.get_one(*addr).to_string(),
             )),
             _ => Err(format!("Expected: rs1, rs2, label, got {:?}", self.args)),
@@ -531,7 +531,7 @@ impl InstructionArgs for WrappedArgs<'_> {
                 rs1: Some(rs1),
                 rs2: None,
             } => Ok((
-                Register::new(*rs1 as u8),
+                Register::try_from(*rs1 as u8).map_err(|e| e.to_string())?,
                 self.symbol_table.get_one(*addr).to_string(),
             )),
             HighLevelArgs {
@@ -540,7 +540,7 @@ impl InstructionArgs for WrappedArgs<'_> {
                 rs1: None,
                 rs2: None,
             } => Ok((
-                Register::new(*rd as u8),
+                Register::try_from(*rd as u8).map_err(|e| e.to_string())?,
                 self.symbol_table.get_one(*addr).into(),
             )),
             _ => Err(format!("Expected: {{rs1|rd}}, label, got {:?}", self.args)),
@@ -555,8 +555,8 @@ impl InstructionArgs for WrappedArgs<'_> {
                 rs1: Some(rs1),
                 rs2: None,
             } => Ok((
-                Register::new(*rd as u8),
-                Register::new(*rs1 as u8),
+                Register::try_from(*rd as u8).map_err(|e| e.to_string())?,
+                Register::try_from(*rs1 as u8).map_err(|e| e.to_string())?,
                 *imm as u32,
             )),
             HighLevelArgs {
@@ -565,8 +565,8 @@ impl InstructionArgs for WrappedArgs<'_> {
                 rs1: Some(rs1),
                 rs2: Some(rs2),
             } => Ok((
-                Register::new(*rs2 as u8),
-                Register::new(*rs1 as u8),
+                Register::try_from(*rs2 as u8).map_err(|e| e.to_string())?,
+                Register::try_from(*rs1 as u8).map_err(|e| e.to_string())?,
                 *imm as u32,
             )),
             _ => Err(format!(
