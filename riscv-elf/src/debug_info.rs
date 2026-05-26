@@ -499,6 +499,11 @@ impl SymbolTable {
         self.0
     }
 
+    /// Insert a symbol at the given address.
+    pub fn insert(&mut self, addr: u32, name: String) {
+        self.0.entry(addr).or_default().push(name);
+    }
+
     pub fn from_table(table: BTreeMap<u32, Vec<String>>) -> Self {
         Self(table)
     }

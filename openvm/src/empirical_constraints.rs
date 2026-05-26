@@ -23,6 +23,7 @@ use powdr_openvm_bus_interaction_handler::bus_map::default_openvm_bus_map;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::io::Write;
 use std::iter::once;
 
 use crate::OriginalCompiledProgram;
@@ -71,6 +72,23 @@ impl Trace {
             rows: std::mem::take(&mut self.rows),
         }
     }
+
+    /// Dump pc and timestamp to a CSV file, sorted by timestamp.
+    fn dump_to_csv(&self, path: &std::path::Path) -> std::io::Result<()> {
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)?;
+        let mut writer = std::io::BufWriter::new(file);
+        for row in self.rows_sorted_by_time() {
+            writeln!(
+                writer,
+                "{},{},{}",
+                row.timestamp.segment_idx, row.timestamp.value, row.pc
+            )?;
+        }
+        Ok(())
+    }
 }
 
 pub fn detect_empirical_constraints<ISA: OpenVmISA>(
@@ -90,6 +108,14 @@ pub fn detect_empirical_constraints<ISA: OpenVmISA>(
 
     let mut constraint_detector = ConstraintDetector::new(instruction_counts);
 
+    // Prepare trace dump file: write CSV header
+    let trace_dump_path = std::path::PathBuf::from("trace_dump.csv");
+    if let Err(e) = std::fs::write(&trace_dump_path, "segment_idx,timestamp,pc\n") {
+        tracing::warn!("Failed to create trace dump file: {e}");
+    } else {
+        tracing::info!("Trace dump file: {}", trace_dump_path.display());
+    }
+
     let num_inputs = inputs.len();
     for (i, input) in inputs.into_iter().enumerate() {
         tracing::info!("  Processing input {} / {}", i + 1, num_inputs);
@@ -99,6 +125,7 @@ pub fn detect_empirical_constraints<ISA: OpenVmISA>(
             input,
             degree_bound,
             &mut constraint_detector,
+            &trace_dump_path,
         );
     }
     tracing::info!("Done collecting empirical constraints.");
@@ -112,6 +139,7 @@ fn detect_empirical_constraints_from_input<ISA: OpenVmISA>(
     inputs: StdIn,
     degree_bound: DegreeBound,
     constraint_detector: &mut ConstraintDetector,
+    trace_dump_path: &std::path::Path,
 ) {
     let mut trace = Trace::default();
     let mut debug_info = DebugInfo::default();
@@ -216,6 +244,9 @@ fn detect_empirical_constraints_from_input<ISA: OpenVmISA>(
             let (trace_to_process, remaining_trace) =
                 take_complete_blocks(constraint_detector, trace.take());
             trace = remaining_trace;
+            if let Err(e) = trace_to_process.dump_to_csv(trace_dump_path) {
+                tracing::warn!("Failed to dump trace: {e}");
+            }
             constraint_detector.process_trace(trace_to_process, debug_info.take());
         }
     })
@@ -224,6 +255,9 @@ fn detect_empirical_constraints_from_input<ISA: OpenVmISA>(
         "    Finished execution of input {}, processing (remaining) trace...",
         input_index + 1
     );
+    if let Err(e) = trace.dump_to_csv(trace_dump_path) {
+        tracing::warn!("Failed to dump trace: {e}");
+    }
     constraint_detector.process_trace(trace, debug_info);
 }
 

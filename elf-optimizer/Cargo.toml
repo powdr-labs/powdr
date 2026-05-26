@@ -1,0 +1,17 @@
+[package]
+name = "powdr-elf-optimizer"
+description = "ELF-level RISC-V optimizer: memcpy/memmove/memcmp specialization and byte-copy to word-copy transformation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+powdr-riscv-elf.workspace = true
+rustc-demangle = "0.1.25"
+goblin = "0.8"
+
+[[bin]]
+name = "elf-optimizer"
+path = "src/main.rs"

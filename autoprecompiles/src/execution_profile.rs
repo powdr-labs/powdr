@@ -1,6 +1,7 @@
 use crate::adapter::Adapter;
 use crate::blocks::Program;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+use std::io::Write;
 use std::sync::Arc;
 use std::sync::Mutex;
 use tracing::dispatcher::Dispatch;
@@ -120,5 +121,147 @@ where
         if let Some(pc) = visitor.pc {
             self.increment(pc);
         }
+    }
+}
+
+// ─── Flamechart profiler ────────────────────────────────────────────────────
+
+/// State maintained by the flamechart collector during execution.
+struct FlamechartState {
+    /// Total instruction count (monotonic clock).
+    insn_count: u64,
+    /// Start PC of the function that owns the most-recently-seen PC.
+    current_fn_start: Option<u32>,
+    /// Simulated call stack: (fn_start_pc, fn_name).
+    call_stack: Vec<(u32, String)>,
+    /// Accumulated folded-stack samples: "fn1;fn2;fn3" → count.
+    samples: HashMap<String, u64>,
+}
+
+impl Default for FlamechartState {
+    fn default() -> Self {
+        Self {
+            insn_count: 0,
+            current_fn_start: None,
+            call_stack: Vec::new(),
+            samples: HashMap::new(),
+        }
+    }
+}
+
+/// A tracing `Layer` that samples the simulated call stack every `sample_rate`
+/// instructions and accumulates folded-stack counts.
+#[derive(Clone)]
+pub struct FlamechartCollector {
+    fn_bounds: Arc<BTreeMap<u32, String>>,
+    sample_rate: u64,
+    state: Arc<Mutex<FlamechartState>>,
+}
+
+impl FlamechartCollector {
+    /// Create a new collector.
+    ///
+    /// `entry_pc` is the ELF entry-point address.  The corresponding symbol is
+    /// pushed as the initial (root) frame so that any function called before it
+    /// returns (e.g. `memcpy` during early init) appears as a *child*, not as a
+    /// root.
+    pub fn new(fn_bounds: BTreeMap<u32, String>, sample_rate: u64, entry_pc: u32) -> Self {
+        // Seed the call stack with the entry-point function.
+        let initial_state = if let Some((fn_start, fn_name)) =
+            fn_bounds.range(..=entry_pc).next_back()
+        {
+            FlamechartState {
+                call_stack: vec![(*fn_start, fn_name.clone())],
+                current_fn_start: Some(*fn_start),
+                ..Default::default()
+            }
+        } else {
+            FlamechartState::default()
+        };
+        Self {
+            fn_bounds: Arc::new(fn_bounds),
+            sample_rate,
+            state: Arc::new(Mutex::new(initial_state)),
+        }
+    }
+
+    fn on_pc(&self, pc: u64) {
+        let pc32 = pc as u32;
+        let mut state = self.state.lock().unwrap();
+        state.insn_count += 1;
+
+        // Look up the function that owns this PC.
+        if let Some((fn_start, fn_name)) = self.fn_bounds.range(..=pc32).next_back() {
+            let fn_start = *fn_start;
+            if state.current_fn_start != Some(fn_start) {
+                // Function boundary crossed.
+                if let Some(pos) =
+                    state.call_stack.iter().rposition(|(s, _)| *s == fn_start)
+                {
+                    // Function already in stack → return / tail call: pop up to it.
+                    state.call_stack.truncate(pos + 1);
+                } else {
+                    // New function → call: push it.
+                    state.call_stack.push((fn_start, fn_name.clone()));
+                }
+                state.current_fn_start = Some(fn_start);
+            }
+        }
+
+        // Take a sample every `sample_rate` instructions.
+        if state.insn_count % self.sample_rate == 0 {
+            let folded: String = state
+                .call_stack
+                .iter()
+                .map(|(_, name)| name.as_str())
+                .collect::<Vec<_>>()
+                .join(";");
+            *state.samples.entry(folded).or_insert(0) += 1;
+        }
+    }
+
+    /// Take ownership of the accumulated samples (drains the internal map).
+    pub fn take_samples(&self) -> HashMap<String, u64> {
+        std::mem::take(&mut self.state.lock().unwrap().samples)
+    }
+}
+
+impl<S> Layer<S> for FlamechartCollector
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+{
+    fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+        let mut visitor = PgoData::default();
+        event.record(&mut visitor);
+        if let Some(pc) = visitor.pc {
+            self.on_pc(pc);
+        }
+    }
+}
+
+/// Run `execute_fn` under a sampling flamechart profiler and write the result
+/// in **folded stacks** format to `output`.
+///
+/// `fn_bounds` maps function-start PCs to demangled function names (built from
+/// the guest ELF symbol table).  `sample_rate` is the number of instructions
+/// between samples (e.g. 10 000).
+///
+/// The output is compatible with `flamegraph.pl`, `inferno-flamegraph`, and
+/// the speedscope web UI (drag-and-drop, "Import > Custom" → "Stacks").
+pub fn flamechart_profile(
+    fn_bounds: BTreeMap<u32, String>,
+    sample_rate: u64,
+    entry_pc: u32,
+    execute_fn: impl FnOnce(),
+    output: &mut impl Write,
+) {
+    let collector = FlamechartCollector::new(fn_bounds, sample_rate, entry_pc);
+    let subscriber = Registry::default().with(collector.clone());
+    let dispatch = Dispatch::new(subscriber);
+    tracing::dispatcher::with_default(&dispatch, execute_fn);
+
+    let samples = collector.take_samples();
+    for (stack, count) in &samples {
+        writeln!(output, "{stack} {count}").expect("failed to write flamechart output");
     }
 }
