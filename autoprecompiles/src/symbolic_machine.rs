@@ -188,6 +188,19 @@ impl<T: Display + Ord + Clone> SymbolicMachine<T> {
             output.push_str(&format!("{constraint} = 0\n"));
         }
 
+        if !self.derived_columns.is_empty() {
+            output.push_str("\n// Derived columns:\n");
+        }
+
+        for derived_column in &self.derived_columns {
+            output.push_str(&format!(
+                "{} ({}) = {}\n",
+                derived_column.variable,
+                if derived_column.is_new { "new" } else { "old" },
+                &derived_column.computation_method
+            ));
+        }
+
         output.trim().to_string()
     }
 }
@@ -245,7 +258,11 @@ pub fn symbolic_machine_to_constraint_system<P: FieldElement>(
                 let method = convert_computation_method_to_grouped_expression(
                     &derived_variable.computation_method,
                 );
-                DerivedVariable::new(derived_variable.variable.clone(), method)
+                DerivedVariable::new(
+                    derived_variable.is_new,
+                    derived_variable.variable.clone(),
+                    method,
+                )
             })
             .collect(),
     }
@@ -293,7 +310,7 @@ pub fn constraint_system_to_symbolic_machine<P: FieldElement>(
                 let method = convert_computation_method_to_algebraic_expression(
                     derived_var.computation_method,
                 );
-                DerivedVariable::new(derived_var.variable, method)
+                DerivedVariable::new(derived_var.is_new, derived_var.variable, method)
             })
             .collect(),
     }

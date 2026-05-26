@@ -83,10 +83,17 @@ impl<T: FieldElement> Environment<T> {
     }
 
     /// Re-extract re-usable components after the rules have run.
-    pub fn terminate(self) -> (ItemDB<GroupedExpression<T, Var>, Expr>, NewVarGenerator<T>) {
+    pub fn terminate(
+        self,
+    ) -> (
+        ItemDB<GroupedExpression<T, Var>, Expr>,
+        NewVarGenerator<T>,
+        HashMap<Var, ComputationMethod<T, GroupedExpression<T, Var>>>,
+    ) {
         (
             self.expressions.into_inner(),
             self.new_var_generator.into_inner(),
+            self.hints.into_inner(),
         )
     }
 

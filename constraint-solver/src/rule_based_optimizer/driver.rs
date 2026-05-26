@@ -1,6 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::Hash;
+use std::ops::Index;
 
 use itertools::Itertools;
 use powdr_number::FieldElement;
@@ -148,7 +149,10 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         // let ((actions, large_actions), profile) = rt.run_with_profiling();
         // profile.report();
         let (actions, large_actions) = rt.run();
-        let (expr_db_, new_var_generator) = env.terminate();
+        let (expr_db_, new_var_generator, hints) = env.terminate();
+
+        // Insert new hints about variables.
+        insert_new_hints(&mut system, hints, &var_mapper);
 
         let mut progress = false;
         // Try to execute the actions that were determined by the rules.
@@ -248,6 +252,43 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
     (system, assignments)
 }
 
+fn insert_new_hints<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
+    system: &mut IndexedConstraintSystem<T, V>,
+    hints: HashMap<Var, ComputationMethod<T, GroupedExpression<T, Var>>>,
+    var_mapper: &ItemDB<V, Var>,
+) {
+    let existing_hints = system
+        .system()
+        .derived_variables
+        .iter()
+        .map(|dv| dv.variable.clone())
+        .collect::<HashSet<_>>();
+    let new_hints = hints
+        .into_iter()
+        .filter_map(|(var, method)| {
+            let var = &var_mapper[var];
+            if existing_hints.contains(&var) {
+                None
+            } else {
+                Some((var.clone(), method))
+            }
+        })
+        .collect::<BTreeMap<_, _>>();
+    system.extend(ConstraintSystem {
+        derived_variables: new_hints
+            .into_iter()
+            .map(|(var, method)| DerivedVariable {
+                is_new: false,
+                variable: var,
+                computation_method: undo_variable_transform_in_computation_method(
+                    &method, var_mapper,
+                ),
+            })
+            .collect_vec(),
+        ..Default::default()
+    });
+}
+
 /// Mainly transforms a `GroupedExpression<T, Var>` back into a `GroupedExpression<T, V>`, but also re-creates
 /// any variables that were newly generated inside the expression and adds potential computation methods
 /// to the constraint system.
@@ -275,6 +316,7 @@ fn undo_variable_transform_and_recreate_new_variables<
                 );
                 system.extend(ConstraintSystem {
                     derived_variables: vec![DerivedVariable {
+                        is_new: true,
                         variable: v.clone(),
                         computation_method,
                     }],

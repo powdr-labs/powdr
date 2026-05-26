@@ -45,9 +45,15 @@ impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display for Constra
                 )
                 .chain(self.derived_variables.iter().map(
                     |DerivedVariable {
+                         is_new,
                          variable,
                          computation_method,
-                     }| { format!("{variable} := {computation_method}") }
+                     }| {
+                        format!(
+                            "{variable} ({}) := {computation_method}",
+                            if *is_new { "new" } else { "old" }
+                        )
+                    }
                 ))
                 .format("\n")
         )
@@ -81,13 +87,17 @@ impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
 
 #[derive(Clone, Debug)]
 pub struct DerivedVariable<T, V, E> {
+    /// If true, this variable has been newly created.
+    /// If false, it is just a hint how to compute a pre-existing variable.
+    pub is_new: bool,
     pub variable: V,
     pub computation_method: ComputationMethod<T, E>,
 }
 
 impl<T, V, E> DerivedVariable<T, V, E> {
-    pub fn new(variable: V, computation_method: ComputationMethod<T, E>) -> Self {
+    pub fn new(is_new: bool, variable: V, computation_method: ComputationMethod<T, E>) -> Self {
         Self {
+            is_new,
             variable,
             computation_method,
         }
@@ -103,7 +113,7 @@ where
     where
         S: Serializer,
     {
-        (&self.variable, &self.computation_method).serialize(serializer)
+        (self.is_new, &self.variable, &self.computation_method).serialize(serializer)
     }
 }
 
@@ -116,9 +126,10 @@ where
     where
         D: Deserializer<'de>,
     {
-        let (variable, computation_method) =
-            <(V, ComputationMethod<T, E>)>::deserialize(deserializer)?;
+        let (is_new, variable, computation_method) =
+            <(bool, V, ComputationMethod<T, E>)>::deserialize(deserializer)?;
         Ok(Self {
+            is_new,
             variable,
             computation_method,
         })

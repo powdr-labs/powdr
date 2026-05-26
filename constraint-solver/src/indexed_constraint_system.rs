@@ -816,6 +816,7 @@ mod tests {
             bus_interactions: vec![],
             derived_variables: vec![
                 DerivedVariable::new(
+                    true,
                     "d1",
                     ComputationMethod::QuotientOrZero(
                         GroupedExpression::from_unknown_variable("x1"),
@@ -823,6 +824,7 @@ mod tests {
                     ),
                 ),
                 DerivedVariable::new(
+                    true,
                     "d2",
                     ComputationMethod::QuotientOrZero(
                         GroupedExpression::from_unknown_variable("y1"),

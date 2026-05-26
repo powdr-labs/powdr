@@ -480,6 +480,7 @@ fn add_guards<T: FieldElement>(
     let is_valid = AlgebraicExpression::Reference(is_valid_ref.clone());
 
     machine.derived_columns.push(DerivedVariable::new(
+        true,
         is_valid_ref,
         ComputationMethod::Constant(T::one()),
     ));

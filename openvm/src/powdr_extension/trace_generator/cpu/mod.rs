@@ -184,12 +184,14 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
                 // Fill in the columns we have to compute from other columns
                 // (these are either new columns or for example the "is_valid" column).
                 for derived_column in columns_to_compute {
-                    let col_index = apc_poly_id_to_index[&derived_column.variable.id];
-                    row_slice[col_index] = evaluate_computation_method(
-                        &derived_column.computation_method,
-                        row_slice,
-                        &apc_poly_id_to_index,
-                    );
+                    if derived_column.is_new {
+                        let col_index = apc_poly_id_to_index[&derived_column.variable.id];
+                        row_slice[col_index] = evaluate_computation_method(
+                            &derived_column.computation_method,
+                            row_slice,
+                            &apc_poly_id_to_index,
+                        );
+                    }
                 }
 
                 let evaluator = MappingRowEvaluator::new(row_slice, &apc_poly_id_to_index);

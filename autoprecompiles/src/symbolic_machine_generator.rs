@@ -46,6 +46,7 @@ pub fn convert_machine_field_type<T, U>(
             .into_iter()
             .map(|derived_variable| {
                 DerivedVariable::new(
+                    derived_variable.is_new,
                     derived_variable.variable,
                     convert_computation_method(
                         derived_variable.computation_method,
