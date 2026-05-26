@@ -134,6 +134,13 @@ pub enum ComputationMethod<T, E> {
     /// The quotiont (using inversion in the field) of the first argument
     /// by the second argument, or zero if the latter is zero.
     QuotientOrZero(E, E),
+    /// If the first argument is zero, the variable is computed using the second argument,
+    /// otherwise it is computed using the third argument.
+    IfEqZero(
+        E,
+        Box<ComputationMethod<T, E>>,
+        Box<ComputationMethod<T, E>>,
+    ),
 }
 
 impl<T: Display, E: Display> Display for ComputationMethod<T, E> {
@@ -141,6 +148,9 @@ impl<T: Display, E: Display> Display for ComputationMethod<T, E> {
         match self {
             ComputationMethod::Constant(c) => write!(f, "{c}"),
             ComputationMethod::QuotientOrZero(e1, e2) => write!(f, "QuotientOrZero({e1}, {e2})"),
+            ComputationMethod::IfEqZero(e, then_method, else_method) => {
+                write!(f, "IfEqZero({e}, {then_method}, {else_method})")
+            }
         }
     }
 }
@@ -153,6 +163,11 @@ impl<T, F> ComputationMethod<T, GroupedExpression<T, F>> {
             ComputationMethod::QuotientOrZero(e1, e2) => Box::new(
                 e1.referenced_unknown_variables()
                     .chain(e2.referenced_unknown_variables()),
+            ),
+            ComputationMethod::IfEqZero(e, then_method, else_method) => Box::new(
+                e.referenced_unknown_variables()
+                    .chain(then_method.referenced_unknown_variables())
+                    .chain(else_method.referenced_unknown_variables()),
             ),
         }
     }
@@ -170,6 +185,11 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq>
                 e1.substitute_by_known(variable, substitution);
                 e2.substitute_by_known(variable, substitution);
             }
+            ComputationMethod::IfEqZero(e, then_method, else_method) => {
+                e.substitute_by_known(variable, substitution);
+                then_method.substitute_by_known(variable, substitution);
+                else_method.substitute_by_known(variable, substitution);
+            }
         }
     }
 
@@ -183,6 +203,11 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq>
             ComputationMethod::QuotientOrZero(e1, e2) => {
                 e1.substitute_by_unknown(variable, substitution);
                 e2.substitute_by_unknown(variable, substitution);
+            }
+            ComputationMethod::IfEqZero(e, then_method, else_method) => {
+                e.substitute_by_unknown(variable, substitution);
+                then_method.substitute_by_unknown(variable, substitution);
+                else_method.substitute_by_unknown(variable, substitution);
             }
         }
     }
