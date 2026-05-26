@@ -57,7 +57,9 @@ pub fn parse_pc_base_data(data: &[u8]) -> u32 {
 ///
 /// Takes raw ELF bytes, applies all optimizations (memcpy/memmove/memcmp
 /// specialization and inline byte-copy → word-copy), and returns the patched
-/// ELF binary. The returned binary can be written directly to a file.
+/// ELF binary with optimizer-generated symbols embedded in `.symtab`/`.strtab`.
+/// The returned binary can be written directly to a file or passed to
+/// `powdr_riscv_elf::load_elf_from_buffer` to obtain the full symbol table.
 pub fn optimize_elf(data: &[u8]) -> Vec<u8> {
     let (pc_base, mut instructions, text_offsets) = extract_instructions(data);
     let original_count = instructions.len();
@@ -66,7 +68,9 @@ pub fn optimize_elf(data: &[u8]) -> Vec<u8> {
     optimize_instructions(&mut instructions, &mut symbols, pc_base);
 
     let appended = instructions.len() - original_count;
-    patch_elf(data, &instructions, original_count, appended, &text_offsets)
+    let patched = patch_elf(data, &instructions, original_count, appended, &text_offsets);
+    let new_sym_min_addr = pc_base + (original_count as u32) * 4;
+    embed_extra_symbols(patched, &symbols, new_sym_min_addr)
 }
 
 /// Result of optimizing ELF instructions, providing access to both the
@@ -92,14 +96,19 @@ impl OptimizedElf {
     }
 
     /// Produce a patched ELF binary from the optimization result.
+    ///
+    /// Optimizer-generated symbols are embedded in the ELF's `.symtab`/`.strtab`
+    /// so that any subsequent `load_elf_from_buffer` call sees the full symbol table.
     pub fn to_patched_elf(&self, original_data: &[u8]) -> Vec<u8> {
-        patch_elf(
+        let patched = patch_elf(
             original_data,
             &self.instructions,
             self.original_instructions.len(),
             self.appended_count(),
             &self.text_offsets,
-        )
+        );
+        let new_sym_min_addr = self.pc_base + (self.original_instructions.len() as u32) * 4;
+        embed_extra_symbols(patched, &self.symbols, new_sym_min_addr)
     }
 }
 
@@ -336,7 +345,195 @@ fn patch_elf(
     patched
 }
 
-/// Optimize a raw instruction stream (independent of the transpiler `Elf` type).
+/// Shift all file offsets stored inside the ELF that are >= `threshold` by `delta`.
+///
+/// Updates: `e_shoff` in the ELF header, `p_offset` in every program header,
+/// and `sh_offset` in every section header.  Does NOT update `sh_size` or
+/// segment size fields — those must be handled separately by the caller.
+fn shift_elf_offsets(patched: &mut Vec<u8>, threshold: usize, delta: usize) {
+    let e_phoff = u32::from_le_bytes(patched[28..32].try_into().unwrap()) as usize;
+    let e_phentsize = u16::from_le_bytes(patched[42..44].try_into().unwrap()) as usize;
+    let e_phnum = u16::from_le_bytes(patched[44..46].try_into().unwrap()) as usize;
+
+    // ELF header: e_shoff
+    let e_shoff = u32::from_le_bytes(patched[32..36].try_into().unwrap()) as usize;
+    if e_shoff >= threshold {
+        patched[32..36].copy_from_slice(&((e_shoff + delta) as u32).to_le_bytes());
+    }
+
+    // Program headers: p_offset
+    for i in 0..e_phnum {
+        let off = e_phoff + i * e_phentsize;
+        let p_offset = u32::from_le_bytes(patched[off + 4..off + 8].try_into().unwrap()) as usize;
+        if p_offset >= threshold {
+            patched[off + 4..off + 8].copy_from_slice(&((p_offset + delta) as u32).to_le_bytes());
+        }
+    }
+
+    // Section headers: sh_offset  (re-read e_shoff — it may have been updated above)
+    let e_shoff2 = u32::from_le_bytes(patched[32..36].try_into().unwrap()) as usize;
+    let e_shentsize = u16::from_le_bytes(patched[46..48].try_into().unwrap()) as usize;
+    let e_shnum = u16::from_le_bytes(patched[48..50].try_into().unwrap()) as usize;
+    if e_shoff2 > 0 && e_shentsize >= 40 {
+        for i in 0..e_shnum {
+            let sh_off = e_shoff2 + i * e_shentsize;
+            if sh_off + 20 > patched.len() {
+                break;
+            }
+            let sh_file_offset =
+                u32::from_le_bytes(patched[sh_off + 16..sh_off + 20].try_into().unwrap())
+                    as usize;
+            if sh_file_offset >= threshold {
+                patched[sh_off + 16..sh_off + 20]
+                    .copy_from_slice(&((sh_file_offset + delta) as u32).to_le_bytes());
+            }
+        }
+    }
+}
+
+/// Append optimizer-generated symbols (those with address >= `new_sym_min_addr`)
+/// directly into the ELF's `.symtab` and `.strtab` sections.
+///
+/// After this call, `powdr_riscv_elf::load_elf_from_buffer` will find the
+/// generated routines in the symbol table without any separate side-channel.
+fn embed_extra_symbols(mut patched: Vec<u8>, symbols: &SymbolTable, new_sym_min_addr: u32) -> Vec<u8> {
+    // Collect new symbols in address order (BTreeMap guarantees this).
+    let new_symbols: Vec<(u32, String)> = symbols
+        .table()
+        .range(new_sym_min_addr..)
+        .flat_map(|(addr, names)| names.iter().map(move |n| (*addr, n.clone())))
+        .collect();
+
+    if new_symbols.is_empty() {
+        return patched;
+    }
+
+    // Read section header table metadata.
+    let e_shoff = u32::from_le_bytes(patched[32..36].try_into().unwrap()) as usize;
+    let e_shentsize = u16::from_le_bytes(patched[46..48].try_into().unwrap()) as usize;
+    let e_shnum = u16::from_le_bytes(patched[48..50].try_into().unwrap()) as usize;
+    if e_shoff == 0 || e_shentsize < 40 || e_shnum == 0 {
+        return patched;
+    }
+
+    // Find .symtab (SHT_SYMTAB = 2) and the .text section (SHT_PROGBITS=1 + SHF_EXECINSTR=4).
+    let mut symtab_idx: Option<usize> = None;
+    let mut text_section_idx: u16 = 1;
+    for i in 0..e_shnum {
+        let sh_off = e_shoff + i * e_shentsize;
+        if sh_off + 40 > patched.len() {
+            break;
+        }
+        let sh_type = u32::from_le_bytes(patched[sh_off + 4..sh_off + 8].try_into().unwrap());
+        let sh_flags = u32::from_le_bytes(patched[sh_off + 8..sh_off + 12].try_into().unwrap());
+        if sh_type == 2 {
+            symtab_idx = Some(i);
+        }
+        // SHT_PROGBITS with SHF_EXECINSTR → .text
+        if sh_type == 1 && (sh_flags & 4) != 0 {
+            text_section_idx = i as u16;
+        }
+    }
+    let symtab_idx = match symtab_idx {
+        Some(i) => i,
+        None => return patched,
+    };
+
+    // Read symtab section fields.
+    let symtab_sh_off = e_shoff + symtab_idx * e_shentsize;
+    let strtab_idx =
+        u32::from_le_bytes(patched[symtab_sh_off + 24..symtab_sh_off + 28].try_into().unwrap())
+            as usize;
+    let symtab_file_offset =
+        u32::from_le_bytes(patched[symtab_sh_off + 16..symtab_sh_off + 20].try_into().unwrap())
+            as usize;
+    let symtab_size =
+        u32::from_le_bytes(patched[symtab_sh_off + 20..symtab_sh_off + 24].try_into().unwrap())
+            as usize;
+
+    // Read strtab section fields.
+    let strtab_sh_off = e_shoff + strtab_idx * e_shentsize;
+    let strtab_file_offset =
+        u32::from_le_bytes(patched[strtab_sh_off + 16..strtab_sh_off + 20].try_into().unwrap())
+            as usize;
+    let strtab_size =
+        u32::from_le_bytes(patched[strtab_sh_off + 20..strtab_sh_off + 24].try_into().unwrap())
+            as usize;
+
+    // ── Step 1: extend .strtab ────────────────────────────────────────────────
+    // Build new string-table bytes: each name followed by a null terminator.
+    let mut new_strtab: Vec<u8> = Vec::new();
+    let mut name_offsets: Vec<u32> = Vec::new();
+    for (_, name) in &new_symbols {
+        name_offsets.push((strtab_size + new_strtab.len()) as u32);
+        new_strtab.extend_from_slice(name.as_bytes());
+        new_strtab.push(0);
+    }
+    let strtab_delta = new_strtab.len();
+
+    // Insert new strtab bytes immediately after the existing strtab data.
+    let strtab_insert_pos = strtab_file_offset + strtab_size;
+    patched.splice(strtab_insert_pos..strtab_insert_pos, new_strtab);
+
+    // Shift all ELF offsets that land at or after the insertion point.
+    shift_elf_offsets(&mut patched, strtab_insert_pos, strtab_delta);
+
+    // Update sh_size of the strtab section (offset may have been shifted; re-read e_shoff).
+    {
+        let e_shoff2 = u32::from_le_bytes(patched[32..36].try_into().unwrap()) as usize;
+        let sh_off = e_shoff2 + strtab_idx * e_shentsize;
+        let old_size =
+            u32::from_le_bytes(patched[sh_off + 20..sh_off + 24].try_into().unwrap());
+        patched[sh_off + 20..sh_off + 24]
+            .copy_from_slice(&(old_size + strtab_delta as u32).to_le_bytes());
+    }
+
+    // ── Step 2: extend .symtab ────────────────────────────────────────────────
+    // Build new Elf32_Sym entries (16 bytes each).
+    // st_info = 0x12 → STB_GLOBAL (1) << 4 | STT_FUNC (2)
+    let mut new_symtab: Vec<u8> = Vec::with_capacity(new_symbols.len() * 16);
+    for (i, (addr, _)) in new_symbols.iter().enumerate() {
+        let next_addr = new_symbols.get(i + 1).map(|(a, _)| *a).unwrap_or(*addr);
+        let size: u32 = if next_addr > *addr { next_addr - addr } else { 0 };
+        new_symtab.extend_from_slice(&name_offsets[i].to_le_bytes()); // st_name
+        new_symtab.extend_from_slice(&addr.to_le_bytes()); // st_value
+        new_symtab.extend_from_slice(&size.to_le_bytes()); // st_size
+        new_symtab.push(0x12); // st_info: STB_GLOBAL | STT_FUNC
+        new_symtab.push(0x00); // st_other: default visibility
+        new_symtab.extend_from_slice(&text_section_idx.to_le_bytes()); // st_shndx
+    }
+    let symtab_delta = new_symtab.len();
+
+    // Locate the (possibly shifted) end of the symtab section.
+    let e_shoff3 = u32::from_le_bytes(patched[32..36].try_into().unwrap()) as usize;
+    let symtab_sh_off2 = e_shoff3 + symtab_idx * e_shentsize;
+    let symtab_file_offset2 =
+        u32::from_le_bytes(patched[symtab_sh_off2 + 16..symtab_sh_off2 + 20].try_into().unwrap())
+            as usize;
+    let symtab_size2 =
+        u32::from_le_bytes(patched[symtab_sh_off2 + 20..symtab_sh_off2 + 24].try_into().unwrap())
+            as usize;
+
+    let symtab_insert_pos = symtab_file_offset2 + symtab_size2;
+    patched.splice(symtab_insert_pos..symtab_insert_pos, new_symtab);
+
+    shift_elf_offsets(&mut patched, symtab_insert_pos, symtab_delta);
+
+    // Update sh_size of the symtab section.
+    {
+        let e_shoff4 = u32::from_le_bytes(patched[32..36].try_into().unwrap()) as usize;
+        let sh_off = e_shoff4 + symtab_idx * e_shentsize;
+        let old_size =
+            u32::from_le_bytes(patched[sh_off + 20..sh_off + 24].try_into().unwrap());
+        patched[sh_off + 20..sh_off + 24]
+            .copy_from_slice(&(old_size + symtab_delta as u32).to_le_bytes());
+    }
+
+    // Suppress unused-variable warnings for fields read before the splices.
+    let _ = (symtab_file_offset, symtab_size, strtab_file_offset);
+
+    patched
+}
 /// This is the core optimizer that replaces memcpy/memmove/memcmp calls and inline
 /// byte-copy sequences with specialized routines.
 pub fn optimize_instructions(instructions: &mut Vec<u32>, symbols: &mut SymbolTable, pc_base: u32) {
