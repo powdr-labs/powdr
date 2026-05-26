@@ -31,6 +31,9 @@ pub struct Environment<T: FieldElement> {
     /// (also only once in the constraint they occur in).
     single_occurrence_variables: HashSet<Var>,
     new_var_generator: RefCell<NewVarGenerator<T>>,
+    /// Hints to compute variables whose constraints that define them are removed
+    /// during optimization.
+    hints: RefCell<HashMap<Var, ComputationMethod<T, GroupedExpression<T, Var>>>>,
 }
 
 impl<T: FieldElement> PartialEq for Environment<T> {
@@ -75,14 +78,22 @@ impl<T: FieldElement> Environment<T> {
             var_to_string,
             single_occurrence_variables,
             new_var_generator: RefCell::new(new_var_generator),
+            hints: Default::default(),
         }
     }
 
     /// Re-extract re-usable components after the rules have run.
-    pub fn terminate(self) -> (ItemDB<GroupedExpression<T, Var>, Expr>, NewVarGenerator<T>) {
+    pub fn terminate(
+        self,
+    ) -> (
+        ItemDB<GroupedExpression<T, Var>, Expr>,
+        NewVarGenerator<T>,
+        HashMap<Var, ComputationMethod<T, GroupedExpression<T, Var>>>,
+    ) {
         (
             self.expressions.into_inner(),
             self.new_var_generator.into_inner(),
+            self.hints.into_inner(),
         )
     }
 
@@ -113,6 +124,12 @@ impl<T: FieldElement> Environment<T> {
         method: ComputationMethod<T, GroupedExpression<T, Var>>,
     ) -> Var {
         self.new_var_generator.borrow_mut().generate(prefix, method)
+    }
+
+    /// Adds a hint about how to compute a variable. This is used if constraints are replaced by
+    /// other constraints that might make it difficult to recover the way to compute certain variables.
+    pub fn add_hint(&self, var: Var, method: ComputationMethod<T, GroupedExpression<T, Var>>) {
+        self.hints.borrow_mut().insert(var, method);
     }
 
     pub fn single_occurrence_variables(&self) -> impl Iterator<Item = &Var> {

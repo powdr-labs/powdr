@@ -45,18 +45,34 @@ pub fn convert_machine_field_type<T, U>(
             .derived_columns
             .into_iter()
             .map(|derived_variable| {
-                let method = match derived_variable.computation_method {
-                    ComputationMethod::Constant(c) => {
-                        ComputationMethod::Constant(convert_field_element(c))
-                    }
-                    ComputationMethod::QuotientOrZero(e1, e2) => ComputationMethod::QuotientOrZero(
-                        convert_expression(e1, convert_field_element),
-                        convert_expression(e2, convert_field_element),
+                DerivedVariable::new(
+                    derived_variable.is_new,
+                    derived_variable.variable,
+                    convert_computation_method(
+                        derived_variable.computation_method,
+                        convert_field_element,
                     ),
-                };
-                DerivedVariable::new(derived_variable.variable, method)
+                )
             })
             .collect(),
+    }
+}
+
+fn convert_computation_method<T, U>(
+    method: ComputationMethod<T, AlgebraicExpression<T>>,
+    convert_field_element: &impl Fn(T) -> U,
+) -> ComputationMethod<U, AlgebraicExpression<U>> {
+    match method {
+        ComputationMethod::Constant(c) => ComputationMethod::Constant(convert_field_element(c)),
+        ComputationMethod::QuotientOrZero(e1, e2) => ComputationMethod::QuotientOrZero(
+            convert_expression(e1, convert_field_element),
+            convert_expression(e2, convert_field_element),
+        ),
+        ComputationMethod::IfEqZero(condition, then, else_) => ComputationMethod::IfEqZero(
+            convert_expression(condition, convert_field_element),
+            Box::new(convert_computation_method(*then, convert_field_element)),
+            Box::new(convert_computation_method(*else_, convert_field_element)),
+        ),
     }
 }
 
