@@ -65,6 +65,9 @@ pub fn optimize_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + 
     // the range constraints as much as possible.
     let mut to_constrain = Vec::new();
     let mut range_constraints = BTreeMap::new();
+    // Tracks whether two unconditional pure range constraints for the same expression turn out
+    // to be mutually exclusive, which makes the whole system unsatisfiable (handled below).
+    let mut has_contradiction = false;
     system.bus_interactions.retain(|bus_int| {
         if bus_int.multiplicity != GroupedExpression::from_number(T::one()) {
             // Most range constraints are unconditional in practice, it's probably not
@@ -79,6 +82,9 @@ pub fn optimize_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + 
                     let existing_rc = range_constraints
                         .entry(expr)
                         .or_insert_with(RangeConstraint::default);
+                    if existing_rc.is_disjoint(&rc) {
+                        has_contradiction = true;
+                    }
                     *existing_rc = existing_rc.conjunction(&rc);
                 }
                 false
@@ -86,6 +92,20 @@ pub fn optimize_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + 
             None => true,
         }
     });
+
+    if has_contradiction {
+        // Two unconditional pure range constraints for the same expression are mutually
+        // exclusive, so the original system is unsatisfiable. `RangeConstraint::conjunction`
+        // cannot represent an empty range and would relax such a contradiction into a
+        // satisfiable constraint (e.g. {1} and {2} merge to {0}), so we instead record the
+        // contradiction explicitly to keep the system unsatisfiable.
+        system
+            .algebraic_constraints
+            .push(AlgebraicConstraint::assert_zero(
+                GroupedExpression::from_number(T::one()),
+            ));
+        return system;
+    }
 
     // Filter range constraints that are already implied by existing constraints.
     // TODO: They could also be implied by each other.
@@ -172,5 +192,120 @@ pub mod utils {
             _ => true,
         });
         byte_constraints.into_iter().unique().collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use num_traits::One;
+    use powdr_constraint_solver::inliner::DegreeBound;
+    use powdr_number::GoldilocksField;
+
+    type T = GoldilocksField;
+    type Var = &'static str;
+
+    /// Test handler that treats each bus interaction as the pure range constraint
+    /// `payload[0] == payload[1]` (a single value).
+    #[derive(Clone)]
+    struct SingleValueHandler;
+
+    impl BusInteractionHandler<T> for SingleValueHandler {
+        fn handle_bus_interaction(
+            &self,
+            bus_interaction: BusInteraction<RangeConstraint<T>>,
+        ) -> BusInteraction<RangeConstraint<T>> {
+            bus_interaction
+        }
+    }
+
+    impl RangeConstraintHandler<T> for SingleValueHandler {
+        fn pure_range_constraints<V: Ord + Clone + Eq + Display + Hash>(
+            &self,
+            bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
+        ) -> Option<RangeConstraints<T, V>> {
+            let expr = bus_interaction.payload.first()?.clone();
+            let value = bus_interaction.payload.get(1)?.try_to_number()?;
+            Some(vec![(expr, RangeConstraint::from_value(value))])
+        }
+
+        fn batch_make_range_constraints<V: Ord + Clone + Eq + Display + Hash>(
+            &self,
+            range_constraints: RangeConstraints<T, V>,
+        ) -> Result<Vec<BusInteraction<GroupedExpression<T, V>>>, MakeRangeConstraintsError>
+        {
+            Ok(range_constraints
+                .into_iter()
+                .map(|(expr, _)| BusInteraction {
+                    bus_id: GroupedExpression::from_number(T::from(0u64)),
+                    multiplicity: GroupedExpression::from_number(T::one()),
+                    payload: vec![expr],
+                })
+                .collect())
+        }
+    }
+
+    fn single_value_bus_interaction(
+        var: Var,
+        value: u64,
+    ) -> BusInteraction<GroupedExpression<T, Var>> {
+        BusInteraction {
+            bus_id: GroupedExpression::from_number(T::from(0u64)),
+            multiplicity: GroupedExpression::from_number(T::one()),
+            payload: vec![
+                GroupedExpression::from_unknown_variable(var),
+                GroupedExpression::from_number(T::from(value)),
+            ],
+        }
+    }
+
+    fn always_false() -> AlgebraicConstraint<GroupedExpression<T, Var>> {
+        AlgebraicConstraint::assert_zero(GroupedExpression::from_number(T::one()))
+    }
+
+    fn run(system: ConstraintSystem<T, Var>) -> ConstraintSystem<T, Var> {
+        optimize_range_constraints(
+            system,
+            SingleValueHandler,
+            DegreeBound {
+                identities: 100,
+                bus_interactions: 100,
+            },
+        )
+    }
+
+    /// Two unconditional pure range constraints force `x` to be both 1 and 2, so the system is
+    /// unsatisfiable. The optimizer must not relax this into a satisfiable `x = 0`.
+    #[test]
+    fn contradictory_pure_range_constraints_stay_unsatisfiable() {
+        let system = ConstraintSystem::<T, Var> {
+            bus_interactions: vec![
+                single_value_bus_interaction("x", 1),
+                single_value_bus_interaction("x", 2),
+            ],
+            ..Default::default()
+        };
+        let optimized = run(system);
+        assert!(
+            optimized.algebraic_constraints.contains(&always_false()),
+            "contradiction must be preserved as an unsatisfiable constraint, not relaxed"
+        );
+    }
+
+    /// Two compatible constraints (`x == 1` twice) must not be flagged as a contradiction.
+    #[test]
+    fn compatible_pure_range_constraints_are_not_flagged() {
+        let system = ConstraintSystem::<T, Var> {
+            bus_interactions: vec![
+                single_value_bus_interaction("x", 1),
+                single_value_bus_interaction("x", 1),
+            ],
+            ..Default::default()
+        };
+        let optimized = run(system);
+        assert!(
+            !optimized.algebraic_constraints.contains(&always_false()),
+            "compatible constraints must not be treated as a contradiction"
+        );
     }
 }
