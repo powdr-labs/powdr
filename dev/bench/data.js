@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1780357532938,
+  "lastUpdate": 1780392698530,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -415117,6 +415117,34 @@ window.BENCHMARK_DATA = {
             "name": "optimize-keccak/optimize",
             "value": 21211609991,
             "range": "± 1418447945",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Georg Wiese",
+            "username": "georgwiese",
+            "email": "georgwiese@gmail.com"
+          },
+          "committer": {
+            "name": "Georg Wiese",
+            "username": "georgwiese",
+            "email": "georgwiese@gmail.com"
+          },
+          "id": "9d4f6d31d6a59a085e18c0a323143695624f5ae8",
+          "message": "Merge branch 'main' of github.com:powdr-labs/powdr into generate-apcs-stage",
+          "timestamp": "2026-06-02T09:17:41Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/9d4f6d31d6a59a085e18c0a323143695624f5ae8"
+        },
+        "date": 1780392690128,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 23380881356,
+            "range": "± 1075942010",
             "unit": "ns/iter"
           }
         ]
