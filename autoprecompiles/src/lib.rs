@@ -138,16 +138,8 @@ impl GenerateConfig {
     }
 
     /// Single source of truth for the `apc_candidates` default policy.
-    ///
-    /// When `self.apc_candidates` is already set, this is a no-op. Otherwise:
-    /// - Cell: `Some(0)` iff `select.autoprecompiles == 0` (short-circuit
-    ///   signal — Cell ignores positive caps); else `None` (build all).
-    /// - Instruction / None: `Some(select.autoprecompiles + select.skip)` —
-    ///   the build loop is the cap, and `Some(0)` short-circuits.
-    ///
-    /// Callers should invoke this when both `generate` and `select` are known
-    /// (e.g. inside `compile_exe` / `run_setup`). For standalone
-    /// `generate-apcs` (no select known), pass `SelectConfig::default()`.
+    /// Callers should invoke this when both `generate` and `select`
+    /// configs are known.
     pub fn with_select_defaults(mut self, pgo: pgo::PgoType, select: SelectConfig) -> Self {
         if self.apc_candidates.is_some() {
             return self;

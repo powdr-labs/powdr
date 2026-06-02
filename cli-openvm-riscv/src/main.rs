@@ -370,7 +370,7 @@ fn make_pgo_profile(
     guest: &OriginalCompiledProgram<'static, RiscvISA>,
     inputs: &[u8],
 ) -> ExecutionProfile {
-    let profile_input = deserialize_profile_input(inputs);
+    let profile_input = serde_cbor::from_slice(inputs).unwrap();
     powdr_openvm::execution_profile_from_guest(guest, stdin_from(profile_input))
 }
 
@@ -379,7 +379,7 @@ fn make_empirical_constraints(
     generate: &GenerateConfig,
     inputs: &[u8],
 ) -> EmpiricalConstraints {
-    let profile_input = deserialize_profile_input(inputs);
+    let profile_input = serde_cbor::from_slice(inputs).unwrap();
     maybe_compute_empirical_constraints(guest, generate, stdin_from(profile_input))
 }
 
@@ -391,10 +391,6 @@ fn pgo_config_from_args(args: &GenerateApcsArgs) -> PgoConfig {
         args.max_columns,
         serde_cbor::to_vec(&args.profile.profile_input).unwrap(),
     )
-}
-
-fn deserialize_profile_input(bytes: &[u8]) -> Option<u32> {
-    serde_cbor::from_slice(bytes).expect("deserialize profile_input")
 }
 
 // ---------- misc helpers ----------

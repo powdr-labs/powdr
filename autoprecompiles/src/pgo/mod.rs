@@ -65,29 +65,18 @@ pub enum PgoType {
     None,
 }
 
-/// Inputs the profile-guided optimization stage needs but the library
-/// can't see inside its own closures.
+/// Inputs to the profile-guided optimization stage.
 ///
 /// `inputs` is an opaque byte string the caller produces (typically a
 /// serialized stdin) and the `make_pgo_profile` / `make_empirical_constraints`
-/// closures consume — this is what makes those closures pure functions of
-/// their arguments, instead of relying on captured state, and what lets
-/// [`StagedPipeline`] include the full PGO surface in its on-disk cache keys.
-///
-/// Distinct from [`PgoData`], which carries the *output* of running PGO
-/// (the [`ExecutionProfile`]).
-///
-/// [`StagedPipeline`]: ../../../openvm_riscv/pipeline/struct.StagedPipeline.html
+/// closures consume.
 #[derive(Clone, Debug, Hash)]
 pub struct PgoConfig {
     pub pgo_type: PgoType,
     /// Only consulted by `PgoType::Cell` (where it caps total APC columns
-    /// across the whole VM); the other variants ignore it. Kept on the
-    /// shared struct so the cache hash sees it uniformly.
+    /// across the whole VM); the other variants ignore it.
     pub max_columns: Option<usize>,
-    /// Serialized form of whatever the `make_*` closures need (typically
-    /// the guest stdin). Hashed verbatim by the staged cache; the closure
-    /// is responsible for the encoding round-trip.
+    /// Serialized inputs to the guest program, to be used for PGO.
     pub inputs: Vec<u8>,
 }
 
