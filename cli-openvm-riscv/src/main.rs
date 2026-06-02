@@ -287,7 +287,7 @@ fn validate_generate_args(args: &GenerateApcsArgs, for_execution: bool) {
 
 impl From<&GenerateApcsArgs> for GenerateConfig {
     fn from(args: &GenerateApcsArgs) -> Self {
-        let mut gen = GenerateConfig::new(DEFAULT_DEGREE_BOUND)
+        let mut generate = GenerateConfig::new(DEFAULT_DEGREE_BOUND)
             .with_apc_candidates(args.apc_candidates)
             .with_optimistic_precompiles(args.optimistic_precompiles)
             .with_superblocks(
@@ -296,9 +296,9 @@ impl From<&GenerateApcsArgs> for GenerateConfig {
                 args.apc_exec_count_cutoff,
             );
         if let Some(path) = &args.apc_candidates_dir {
-            gen = gen.with_apc_candidates_dir(path);
+            generate = generate.with_apc_candidates_dir(path);
         }
-        gen
+        generate
     }
 }
 
@@ -340,10 +340,10 @@ impl Pipeline {
 
     fn run_select_apcs(&self, args: SelectArgs) -> RankedApcs {
         let select = SelectConfig::from(&args);
-        let gen =
+        let generate =
             GenerateConfig::from(&args.generate).with_select_defaults(args.generate.pgo, select);
         let input_fp = self.profile_args.profile_input;
-        self.inner.select_apcs(&gen, select, &input_fp, || {
+        self.inner.select_apcs(&generate, select, &input_fp, || {
             gen_stage(&self.inner, &args.generate, select, input_fp)
         })
     }
@@ -356,14 +356,14 @@ impl Pipeline {
         let profile_input = profile_args.profile_input;
         let SetupArgs { select: args } = args;
         let select = SelectConfig::from(&args);
-        let gen =
+        let generate =
             GenerateConfig::from(&args.generate).with_select_defaults(args.generate.pgo, select);
         let SelectArgs {
             generate: generate_args,
             ..
         } = args;
-        inner.setup(&gen, select, &profile_input, |p| {
-            p.select_apcs(&gen, select, &profile_input, || {
+        inner.setup(&generate, select, &profile_input, |p| {
+            p.select_apcs(&generate, select, &profile_input, || {
                 gen_stage(p, &generate_args, select, profile_input)
             })
         })
@@ -379,14 +379,20 @@ fn gen_stage(
     select: SelectConfig,
     profile_input: Option<u32>,
 ) -> RankedApcs {
-    let gen = GenerateConfig::from(args).with_select_defaults(args.pgo, select);
+    let generate = GenerateConfig::from(args).with_select_defaults(args.pgo, select);
     pipeline.generate_apcs(
-        &gen,
+        &generate,
         args.pgo,
         args.max_columns,
         &profile_input,
         |guest| powdr_openvm::execution_profile_from_guest(guest, stdin_from(profile_input)),
-        || maybe_compute_empirical_constraints(pipeline.guest(), &gen, stdin_from(profile_input)),
+        || {
+            maybe_compute_empirical_constraints(
+                pipeline.guest(),
+                &generate,
+                stdin_from(profile_input),
+            )
+        },
     )
 }
 
@@ -429,10 +435,10 @@ pub fn run_with_metric_collection_to_file<R>(file: fs::File, f: impl FnOnce() ->
 /// of the guest program on the given stdin, and save them to disk.
 fn maybe_compute_empirical_constraints(
     guest_program: &OriginalCompiledProgram<RiscvISA>,
-    gen: &GenerateConfig,
+    generate: &GenerateConfig,
     stdin: StdIn,
 ) -> EmpiricalConstraints {
-    if !gen.should_use_optimistic_precompiles {
+    if !generate.should_use_optimistic_precompiles {
         return EmpiricalConstraints::default();
     }
 
@@ -441,9 +447,9 @@ fn maybe_compute_empirical_constraints(
     );
 
     let empirical_constraints =
-        detect_empirical_constraints(guest_program, gen.degree_bound, vec![stdin]);
+        detect_empirical_constraints(guest_program, generate.degree_bound, vec![stdin]);
 
-    if let Some(path) = &gen.apc_candidates_dir_path {
+    if let Some(path) = &generate.apc_candidates_dir_path {
         fs::create_dir_all(path).expect("Failed to create apc candidates directory");
         tracing::info!(
             "Saving empirical constraints debug info to {}/empirical_constraints.json",

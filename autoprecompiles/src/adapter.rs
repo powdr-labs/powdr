@@ -59,7 +59,7 @@ pub trait PgoAdapter {
     /// PGO strategy's ranking (best candidate first); callers trim with
     /// [`select_apcs`].
     ///
-    /// `gen.apc_candidates` caps how many candidates get built. `None`
+    /// `generate.apc_candidates` caps how many candidates get built. `None`
     /// means "all eligible blocks". The cap is applied per-PGO:
     /// - Cell: ignored for positive values (always builds every eligible
     ///   candidate); `Some(0)` short-circuits to an empty result.
@@ -68,7 +68,7 @@ pub trait PgoAdapter {
     fn create_apcs_with_pgo(
         &self,
         exec_blocks: AdapterExecutionBlocks<Self::Adapter>,
-        gen: &GenerateConfig,
+        generate: &GenerateConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
         empirical_constraints: EmpiricalConstraints,
@@ -90,10 +90,10 @@ pub trait PgoAdapter {
 pub fn detect_blocks<P: PgoAdapter + ?Sized>(
     pgo: &P,
     blocks: Vec<AdapterBasicBlock<P::Adapter>>,
-    gen: &GenerateConfig,
+    generate: &GenerateConfig,
 ) -> AdapterExecutionBlocks<P::Adapter> {
     if let Some(prof) = pgo.execution_profile() {
-        detect_superblocks(gen, &prof.pc_list, blocks)
+        detect_superblocks(generate, &prof.pc_list, blocks)
     } else {
         let superblocks = blocks
             .into_iter()

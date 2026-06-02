@@ -14,7 +14,7 @@
 //! `&()` is valid when nothing is hidden.
 //!
 //! Generate's hash deliberately excludes the [`SelectConfig`]; select/setup
-//! include it. As long as `gen.apc_candidates` doesn't itself depend on the
+//! include it. As long as `generate.apc_candidates` doesn't itself depend on the
 //! selection size (the [`GenerateConfig::with_select_defaults`] policy for
 //! Cell ensures this), an `--apc N` sweep under `--pgo cell` automatically
 //! reuses the generate-stage blob.
@@ -63,7 +63,7 @@ impl StagedPipeline {
 
     /// Build + rank APC candidates, or load the result from the cache.
     ///
-    /// The library hashes `(guest, gen, pgo, max_columns, input_fp)` — the
+    /// The library hashes `(guest, generate, pgo, max_columns, input_fp)` — the
     /// caller never sees the hash. `input_fp` is the only piece the caller
     /// fingerprints: it covers anything hidden behind the `make_*` closures
     /// (PGO stdin contents, RPC chain id, block numbers). Pass `&()` if
@@ -77,34 +77,34 @@ impl StagedPipeline {
     /// guests, or a custom loop for multi-stdin PGO.
     pub fn generate_apcs<I: Hash + ?Sized>(
         &self,
-        gen: &GenerateConfig,
+        generate: &GenerateConfig,
         pgo: PgoType,
         max_columns: Option<usize>,
         input_fp: &I,
         make_pgo_profile: impl FnOnce(&OriginalCompiledProgram<'static, RiscvISA>) -> ExecutionProfile,
         make_empirical_constraints: impl FnOnce() -> EmpiricalConstraints,
     ) -> RankedApcs {
-        let hash = self.generate_hash(gen, pgo, max_columns, input_fp);
+        let hash = self.generate_hash(generate, pgo, max_columns, input_fp);
         cached(self.artifacts_dir.as_deref(), "generate", &hash, || {
             let pgo_cfg = pgo_config(pgo, max_columns, make_pgo_profile(&self.guest));
-            generate_apcs(&self.guest, gen, pgo_cfg, make_empirical_constraints())
+            generate_apcs(&self.guest, generate, pgo_cfg, make_empirical_constraints())
         })
     }
 
     /// Trim a generate-stage ranking to `select.autoprecompiles` (after
     /// `select.skip`), or load from the cache.
     ///
-    /// The library hashes `(guest, gen, select, input_fp)`. `compute_ranked`
+    /// The library hashes `(guest, generate, select, input_fp)`. `compute_ranked`
     /// only runs on a cache miss; pass it a closure that invokes
     /// [`Self::generate_apcs`] if the upstream blob might also need rebuilding.
     pub fn select_apcs<I: Hash + ?Sized>(
         &self,
-        gen: &GenerateConfig,
+        generate: &GenerateConfig,
         select: SelectConfig,
         input_fp: &I,
         compute_ranked: impl FnOnce() -> RankedApcs,
     ) -> RankedApcs {
-        let hash = self.select_hash(gen, select, input_fp);
+        let hash = self.select_hash(generate, select, input_fp);
         cached(self.artifacts_dir.as_deref(), "select", &hash, || {
             select_apcs(compute_ranked(), select)
         })
@@ -113,13 +113,13 @@ impl StagedPipeline {
     /// Inject the selected APCs and assemble the final [`CompiledProgram`].
     /// Consumes the pipeline (the guest is moved into `setup`).
     ///
-    /// The library hashes `(guest, gen, select, input_fp)`. `compute_apcs`
+    /// The library hashes `(guest, generate, select, input_fp)`. `compute_apcs`
     /// receives a borrow of `self` so it can recursively invoke
     /// [`Self::select_apcs`] / [`Self::generate_apcs`]; only runs on a cache
     /// miss.
     pub fn setup<I: Hash + ?Sized>(
         self,
-        gen: &GenerateConfig,
+        generate: &GenerateConfig,
         select: SelectConfig,
         input_fp: &I,
         compute_apcs: impl FnOnce(&Self) -> RankedApcs,
@@ -127,7 +127,7 @@ impl StagedPipeline {
         // Setup's hash uses the same inputs as select (no extra "setup-only"
         // fields exist today). Distinguishing under a different stage name is
         // enough to keep the blobs on disk separate.
-        let hash = self.select_hash(gen, select, input_fp);
+        let hash = self.select_hash(generate, select, input_fp);
         if let Some(program) = powdr_autoprecompiles::staged_cache::load_cached::<
             CompiledProgram<RiscvISA>,
         >(self.artifacts_dir.as_deref(), "setup", &hash)
@@ -136,7 +136,7 @@ impl StagedPipeline {
             return program;
         }
         let apcs = compute_apcs(&self);
-        let program = setup(self.guest, apcs, gen.degree_bound);
+        let program = setup(self.guest, apcs, generate.degree_bound);
         powdr_autoprecompiles::staged_cache::save_cached(
             self.artifacts_dir.as_deref(),
             "setup",
@@ -148,21 +148,21 @@ impl StagedPipeline {
 
     fn generate_hash<I: Hash + ?Sized>(
         &self,
-        gen: &GenerateConfig,
+        generate: &GenerateConfig,
         pgo: PgoType,
         max_columns: Option<usize>,
         input_fp: &I,
     ) -> String {
-        stage_hash(&(gen, pgo, max_columns, input_fp), &self.guest_hash)
+        stage_hash(&(generate, pgo, max_columns, input_fp), &self.guest_hash)
     }
 
     fn select_hash<I: Hash + ?Sized>(
         &self,
-        gen: &GenerateConfig,
+        generate: &GenerateConfig,
         select: SelectConfig,
         input_fp: &I,
     ) -> String {
-        stage_hash(&(gen, select, input_fp), &self.guest_hash)
+        stage_hash(&(generate, select, input_fp), &self.guest_hash)
     }
 }
 

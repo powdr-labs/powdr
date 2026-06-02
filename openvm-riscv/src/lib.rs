@@ -157,14 +157,19 @@ pub fn compile_openvm(
 /// Instruction/None `apc_candidates` cap fires automatically.
 pub fn compile_exe(
     original_program: OriginalCompiledProgram<RiscvISA>,
-    gen: GenerateConfig,
+    generate: GenerateConfig,
     select: SelectConfig,
     pgo_config: PgoConfig,
     empirical_constraints: EmpiricalConstraints,
 ) -> Result<CompiledProgram<RiscvISA>, Box<dyn std::error::Error>> {
-    let gen = gen.with_select_defaults(pgo_config.pgo_type(), select);
-    let degree_bound = gen.degree_bound;
-    let ranked = generate_apcs(&original_program, &gen, pgo_config, empirical_constraints);
+    let generate = generate.with_select_defaults(pgo_config.pgo_type(), select);
+    let degree_bound = generate.degree_bound;
+    let ranked = generate_apcs(
+        &original_program,
+        &generate,
+        pgo_config,
+        empirical_constraints,
+    );
     let apcs = select_apcs(ranked, select);
     Ok(setup(original_program, apcs, degree_bound))
 }
@@ -378,7 +383,7 @@ mod tests {
     #[allow(clippy::too_many_arguments)]
     fn compile_and_prove(
         guest: &str,
-        gen: GenerateConfig,
+        generate: GenerateConfig,
         select: SelectConfig,
         mock: bool,
         recursion: bool,
@@ -389,7 +394,7 @@ mod tests {
         let guest = compile_openvm(guest, GuestOptions::default()).unwrap();
         let program = compile_exe(
             guest,
-            gen,
+            generate,
             select,
             pgo_config,
             EmpiricalConstraints::default(),
@@ -401,7 +406,7 @@ mod tests {
 
     fn prove_simple(
         guest: &str,
-        gen: GenerateConfig,
+        generate: GenerateConfig,
         select: SelectConfig,
         stdin: StdIn,
         pgo_config: PgoConfig,
@@ -409,7 +414,7 @@ mod tests {
     ) {
         compile_and_prove(
             guest,
-            gen,
+            generate,
             select,
             false,
             false,
@@ -422,7 +427,7 @@ mod tests {
 
     fn prove_mock(
         guest: &str,
-        gen: GenerateConfig,
+        generate: GenerateConfig,
         select: SelectConfig,
         stdin: StdIn,
         pgo_config: PgoConfig,
@@ -430,7 +435,7 @@ mod tests {
     ) {
         compile_and_prove(
             guest,
-            gen,
+            generate,
             select,
             true,
             false,
@@ -443,7 +448,7 @@ mod tests {
 
     fn prove_recursion(
         guest: &str,
-        gen: GenerateConfig,
+        generate: GenerateConfig,
         select: SelectConfig,
         stdin: StdIn,
         pgo_config: PgoConfig,
@@ -451,7 +456,7 @@ mod tests {
     ) {
         compile_and_prove(
             guest,
-            gen,
+            generate,
             select,
             false,
             true,
@@ -520,10 +525,11 @@ mod tests {
         let guest = compile_openvm(GUEST, GuestOptions::default()).unwrap();
         let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
-        let (gen, select) = default_powdr_openvm_configs(GUEST_APC, GUEST_SKIP_NO_APC_EXECUTED);
+        let (generate, select) =
+            default_powdr_openvm_configs(GUEST_APC, GUEST_SKIP_NO_APC_EXECUTED);
         let program = compile_exe(
             guest,
-            gen,
+            generate,
             select,
             PgoConfig::None,
             EmpiricalConstraints::default(),
@@ -551,12 +557,12 @@ mod tests {
     fn guest_prove_simple() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        let (gen, select) = default_powdr_openvm_configs(GUEST_APC, GUEST_SKIP_PGO);
+        let (generate, select) = default_powdr_openvm_configs(GUEST_APC, GUEST_SKIP_PGO);
         let guest = compile_openvm(GUEST, GuestOptions::default()).unwrap();
         let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
         prove_simple(
             GUEST,
-            gen,
+            generate,
             select,
             stdin,
             PgoConfig::Instruction(pgo_data),
@@ -568,12 +574,12 @@ mod tests {
     fn guest_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        let (gen, select) = default_powdr_openvm_configs(GUEST_APC, GUEST_SKIP_PGO);
+        let (generate, select) = default_powdr_openvm_configs(GUEST_APC, GUEST_SKIP_PGO);
         let guest = compile_openvm(GUEST, GuestOptions::default()).unwrap();
         let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
         prove_mock(
             GUEST,
-            gen,
+            generate,
             select,
             stdin,
             PgoConfig::Instruction(pgo_data),
@@ -586,12 +592,12 @@ mod tests {
     fn guest_prove_recursion() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ITER);
-        let (gen, select) = default_powdr_openvm_configs(GUEST_APC, GUEST_SKIP_PGO);
+        let (generate, select) = default_powdr_openvm_configs(GUEST_APC, GUEST_SKIP_PGO);
         let guest = compile_openvm(GUEST, GuestOptions::default()).unwrap();
         let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
         prove_recursion(
             GUEST,
-            gen,
+            generate,
             select,
             stdin,
             PgoConfig::Instruction(pgo_data),
@@ -603,10 +609,10 @@ mod tests {
     #[ignore = "Too long"]
     fn matmul_compile() {
         let guest = compile_openvm("guest-matmul", GuestOptions::default()).unwrap();
-        let (gen, select) = default_powdr_openvm_configs(1, 0);
+        let (generate, select) = default_powdr_openvm_configs(1, 0);
         assert!(compile_exe(
             guest,
-            gen,
+            generate,
             select,
             PgoConfig::default(),
             EmpiricalConstraints::default()
@@ -618,8 +624,8 @@ mod tests {
     fn keccak_small_prove_simple() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
-        let (gen, select) = default_powdr_openvm_configs(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_simple(GUEST_KECCAK, gen, select, stdin, PgoConfig::None, None);
+        let (generate, select) = default_powdr_openvm_configs(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
+        prove_simple(GUEST_KECCAK, generate, select, stdin, PgoConfig::None, None);
     }
 
     #[test]
@@ -627,11 +633,11 @@ mod tests {
         // Set the default segmentation height to a small value to test multi-segment proving
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
-        let (gen, select) = default_powdr_openvm_configs(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
+        let (generate, select) = default_powdr_openvm_configs(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
         // should create two segments (v2 requires power-of-two max_trace_height)
         prove_simple(
             GUEST_KECCAK,
-            gen,
+            generate,
             select,
             stdin,
             PgoConfig::None,
@@ -644,8 +650,8 @@ mod tests {
     fn keccak_prove_simple() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER);
-        let (gen, select) = default_powdr_openvm_configs(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_simple(GUEST_KECCAK, gen, select, stdin, PgoConfig::None, None);
+        let (generate, select) = default_powdr_openvm_configs(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
+        prove_simple(GUEST_KECCAK, generate, select, stdin, PgoConfig::None, None);
     }
 
     #[test]
@@ -656,11 +662,11 @@ mod tests {
         let guest = compile_openvm(GUEST_KECCAK, GuestOptions::default()).unwrap();
         let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
-        let (gen, select) =
+        let (generate, select) =
             default_powdr_openvm_configs(GUEST_KECCAK_APC_PGO_LARGE, GUEST_KECCAK_SKIP);
         prove_recursion(
             GUEST_KECCAK,
-            gen.clone(),
+            generate.clone(),
             select,
             stdin.clone(),
             PgoConfig::Instruction(pgo_data.clone()),
@@ -669,7 +675,7 @@ mod tests {
 
         prove_recursion(
             GUEST_KECCAK,
-            gen.clone(),
+            generate.clone(),
             select,
             stdin,
             PgoConfig::Cell(pgo_data, None),
@@ -685,10 +691,11 @@ mod tests {
         let guest = compile_openvm(GUEST_KECCAK, GuestOptions::default()).unwrap();
         let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
-        let (gen, select) = default_powdr_openvm_configs(GUEST_KECCAK_APC_PGO, GUEST_KECCAK_SKIP);
+        let (generate, select) =
+            default_powdr_openvm_configs(GUEST_KECCAK_APC_PGO, GUEST_KECCAK_SKIP);
         prove_recursion(
             GUEST_KECCAK,
-            gen,
+            generate,
             select,
             stdin,
             PgoConfig::Instruction(pgo_data),
@@ -701,8 +708,8 @@ mod tests {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
 
-        let (gen, select) = default_powdr_openvm_configs(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_mock(GUEST_KECCAK, gen, select, stdin, PgoConfig::None, None);
+        let (generate, select) = default_powdr_openvm_configs(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
+        prove_mock(GUEST_KECCAK, generate, select, stdin, PgoConfig::None, None);
     }
 
     #[test]
@@ -710,8 +717,8 @@ mod tests {
     fn keccak_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER);
-        let (gen, select) = default_powdr_openvm_configs(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_mock(GUEST_KECCAK, gen, select, stdin, PgoConfig::None, None);
+        let (generate, select) = default_powdr_openvm_configs(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
+        prove_mock(GUEST_KECCAK, generate, select, stdin, PgoConfig::None, None);
     }
 
     // Create multiple APC for 10 Keccak iterations to test different PGO modes
@@ -721,7 +728,8 @@ mod tests {
         // Config
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER_SMALL);
-        let (gen, select) = default_powdr_openvm_configs(GUEST_KECCAK_APC_PGO, GUEST_KECCAK_SKIP);
+        let (generate, select) =
+            default_powdr_openvm_configs(GUEST_KECCAK_APC_PGO, GUEST_KECCAK_SKIP);
 
         // Pgo data
         let guest = compile_openvm(GUEST_KECCAK, GuestOptions::default()).unwrap();
@@ -731,7 +739,7 @@ mod tests {
         let start = Instant::now();
         prove_simple(
             GUEST_KECCAK,
-            gen.clone(),
+            generate.clone(),
             select,
             stdin.clone(),
             PgoConfig::Cell(pgo_data.clone(), None),
@@ -744,7 +752,7 @@ mod tests {
         let start = Instant::now();
         prove_simple(
             GUEST_KECCAK,
-            gen.clone(),
+            generate.clone(),
             select,
             stdin.clone(),
             PgoConfig::Instruction(pgo_data),
@@ -762,14 +770,15 @@ mod tests {
     fn sha256_prove_simple() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_SHA256_ITER);
-        let (gen, select) = default_powdr_openvm_configs(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
+        let (generate, select) =
+            default_powdr_openvm_configs(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
 
         let guest = compile_openvm(GUEST_SHA256, GuestOptions::default()).unwrap();
         let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
         prove_simple(
             GUEST_SHA256,
-            gen,
+            generate,
             select,
             stdin,
             PgoConfig::Instruction(pgo_data),
@@ -782,14 +791,15 @@ mod tests {
     fn sha256_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_SHA256_ITER);
-        let (gen, select) = default_powdr_openvm_configs(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
+        let (generate, select) =
+            default_powdr_openvm_configs(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
 
         let guest = compile_openvm(GUEST_SHA256, GuestOptions::default()).unwrap();
         let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
         prove_mock(
             GUEST_SHA256,
-            gen,
+            generate,
             select,
             stdin,
             PgoConfig::Instruction(pgo_data),
@@ -805,11 +815,11 @@ mod tests {
         let guest = compile_openvm(GUEST_SHA256, GuestOptions::default()).unwrap();
         let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
-        let (gen, select) =
+        let (generate, select) =
             default_powdr_openvm_configs(GUEST_SHA256_APC_PGO_LARGE, GUEST_SHA256_SKIP);
         prove_recursion(
             GUEST_SHA256,
-            gen.clone(),
+            generate.clone(),
             select,
             stdin.clone(),
             PgoConfig::Instruction(pgo_data.clone()),
@@ -818,7 +828,7 @@ mod tests {
 
         prove_recursion(
             GUEST_SHA256,
-            gen.clone(),
+            generate.clone(),
             select,
             stdin,
             PgoConfig::Cell(pgo_data, None),
@@ -834,10 +844,11 @@ mod tests {
         let guest = compile_openvm(GUEST_SHA256, GuestOptions::default()).unwrap();
         let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
-        let (gen, select) = default_powdr_openvm_configs(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
+        let (generate, select) =
+            default_powdr_openvm_configs(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
         prove_recursion(
             GUEST_SHA256,
-            gen,
+            generate,
             select,
             stdin,
             PgoConfig::Instruction(pgo_data),
@@ -849,14 +860,15 @@ mod tests {
     fn sha256_small_prove_simple() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_SHA256_ITER_SMALL);
-        let (gen, select) = default_powdr_openvm_configs(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
+        let (generate, select) =
+            default_powdr_openvm_configs(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
 
         let guest = compile_openvm(GUEST_SHA256, GuestOptions::default()).unwrap();
         let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
         prove_simple(
             GUEST_SHA256,
-            gen,
+            generate,
             select,
             stdin,
             PgoConfig::Instruction(pgo_data),
@@ -868,14 +880,15 @@ mod tests {
     fn sha256_small_prove_mock() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_SHA256_ITER_SMALL);
-        let (gen, select) = default_powdr_openvm_configs(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
+        let (generate, select) =
+            default_powdr_openvm_configs(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
 
         let guest = compile_openvm(GUEST_SHA256, GuestOptions::default()).unwrap();
         let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
 
         prove_mock(
             GUEST_SHA256,
-            gen,
+            generate,
             select,
             stdin,
             PgoConfig::Instruction(pgo_data),
@@ -889,7 +902,8 @@ mod tests {
 
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_SHA256_ITER_SMALL);
-        let (gen, select) = default_powdr_openvm_configs(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
+        let (generate, select) =
+            default_powdr_openvm_configs(GUEST_SHA256_APC_PGO, GUEST_SHA256_SKIP);
 
         let guest = compile_openvm(GUEST_SHA256, GuestOptions::default()).unwrap();
         let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
@@ -897,7 +911,7 @@ mod tests {
         let start = Instant::now();
         prove_simple(
             GUEST_SHA256,
-            gen.clone(),
+            generate.clone(),
             select,
             stdin.clone(),
             PgoConfig::Cell(pgo_data.clone(), None),
@@ -909,7 +923,7 @@ mod tests {
         let start = Instant::now();
         prove_simple(
             GUEST_SHA256,
-            gen.clone(),
+            generate.clone(),
             select,
             stdin.clone(),
             PgoConfig::Instruction(pgo_data),
@@ -928,7 +942,7 @@ mod tests {
         use std::time::Instant;
 
         let stdin = StdIn::default();
-        let (gen, select) = default_powdr_openvm_configs(GUEST_U256_APC_PGO, GUEST_U256_SKIP);
+        let (generate, select) = default_powdr_openvm_configs(GUEST_U256_APC_PGO, GUEST_U256_SKIP);
 
         let guest = compile_openvm(GUEST_U256, GuestOptions::default()).unwrap();
         let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
@@ -936,7 +950,7 @@ mod tests {
         let start = Instant::now();
         prove_simple(
             GUEST_U256,
-            gen.clone(),
+            generate.clone(),
             select,
             stdin.clone(),
             PgoConfig::Cell(pgo_data.clone(), None),
@@ -952,7 +966,8 @@ mod tests {
         use std::time::Instant;
 
         let stdin = StdIn::default();
-        let (gen, select) = default_powdr_openvm_configs(GUEST_PAIRING_APC_PGO, GUEST_PAIRING_SKIP);
+        let (generate, select) =
+            default_powdr_openvm_configs(GUEST_PAIRING_APC_PGO, GUEST_PAIRING_SKIP);
 
         let guest = compile_openvm(GUEST_PAIRING, GuestOptions::default()).unwrap();
         let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
@@ -960,7 +975,7 @@ mod tests {
         let start = Instant::now();
         prove_simple(
             GUEST_PAIRING,
-            gen.clone(),
+            generate.clone(),
             select,
             stdin.clone(),
             PgoConfig::Cell(pgo_data.clone(), None),
@@ -978,9 +993,9 @@ mod tests {
     fn hints_test_prove() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_HINTS_TEST);
-        let (gen, select) = default_powdr_openvm_configs(0, 0);
+        let (generate, select) = default_powdr_openvm_configs(0, 0);
 
-        prove_simple(GUEST_SHA256, gen, select, stdin, PgoConfig::None, None);
+        prove_simple(GUEST_SHA256, generate, select, stdin, PgoConfig::None, None);
     }
 
     #[test]
@@ -989,10 +1004,10 @@ mod tests {
         stdin.write(&GUEST_ECC_ITER);
         let guest = compile_openvm(GUEST_ECC_HINTS, GuestOptions::default()).unwrap();
         let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
-        let (gen, select) = default_powdr_openvm_configs(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
+        let (generate, select) = default_powdr_openvm_configs(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
         prove_simple(
             GUEST_ECC_HINTS,
-            gen.clone(),
+            generate.clone(),
             select,
             stdin.clone(),
             PgoConfig::Cell(pgo_data.clone(), None),
@@ -1006,11 +1021,11 @@ mod tests {
         stdin.write(&GUEST_ECRECOVER_ITER);
         let guest = compile_openvm(GUEST_ECRECOVER_HINTS, GuestOptions::default()).unwrap();
         let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
-        let (gen, select) =
+        let (generate, select) =
             default_powdr_openvm_configs(GUEST_ECRECOVER_APC_PGO, GUEST_ECRECOVER_SKIP);
         prove_simple(
             GUEST_ECRECOVER_HINTS,
-            gen.clone(),
+            generate.clone(),
             select,
             stdin.clone(),
             PgoConfig::Cell(pgo_data.clone(), None),
@@ -1025,10 +1040,10 @@ mod tests {
         stdin.write(&GUEST_ECC_ITER);
         let guest = compile_openvm(GUEST_ECC_HINTS, GuestOptions::default()).unwrap();
         let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
-        let (gen, select) = default_powdr_openvm_configs(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
+        let (generate, select) = default_powdr_openvm_configs(GUEST_ECC_APC_PGO, GUEST_ECC_SKIP);
         prove_recursion(
             GUEST_ECC_HINTS,
-            gen,
+            generate,
             select,
             stdin,
             PgoConfig::Cell(pgo_data, None),
@@ -1043,11 +1058,11 @@ mod tests {
         stdin.write(&GUEST_ECRECOVER_ITER);
         let guest = compile_openvm(GUEST_ECRECOVER_HINTS, GuestOptions::default()).unwrap();
         let pgo_data = execution_profile_from_guest(&guest, stdin.clone());
-        let (gen, select) =
+        let (generate, select) =
             default_powdr_openvm_configs(GUEST_ECRECOVER_APC_PGO, GUEST_ECRECOVER_SKIP);
         prove_recursion(
             GUEST_ECRECOVER_HINTS,
-            gen,
+            generate,
             select,
             stdin,
             PgoConfig::Cell(pgo_data, None),
@@ -1059,7 +1074,7 @@ mod tests {
     fn ecc_projective_prove() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_ECC_ITER);
-        let (gen, select) =
+        let (generate, select) =
             default_powdr_openvm_configs(GUEST_ECC_PROJECTIVE_APC_PGO, GUEST_ECC_PROJECTIVE_SKIP);
 
         let guest = compile_openvm(GUEST_ECC_PROJECTIVE, GuestOptions::default()).unwrap();
@@ -1067,7 +1082,7 @@ mod tests {
 
         prove_simple(
             GUEST_ECC_PROJECTIVE,
-            gen,
+            generate,
             select,
             stdin,
             PgoConfig::Cell(pgo_data, None),
@@ -1080,8 +1095,8 @@ mod tests {
     fn keccak_prove_recursion() {
         let mut stdin = StdIn::default();
         stdin.write(&GUEST_KECCAK_ITER);
-        let (gen, select) = default_powdr_openvm_configs(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
-        prove_recursion(GUEST_KECCAK, gen, select, stdin, PgoConfig::None, None);
+        let (generate, select) = default_powdr_openvm_configs(GUEST_KECCAK_APC, GUEST_KECCAK_SKIP);
+        prove_recursion(GUEST_KECCAK, generate, select, stdin, PgoConfig::None, None);
     }
 
     // The following are compilation tests only
@@ -1107,13 +1122,13 @@ mod tests {
     ) {
         let apc_candidates_dir = tempfile::tempdir().unwrap();
         let apc_candidates_dir_path = apc_candidates_dir.path();
-        let (gen, select) = default_powdr_openvm_configs(guest.apc, guest.skip);
-        let gen = gen.with_apc_candidates_dir(apc_candidates_dir_path);
+        let (generate, select) = default_powdr_openvm_configs(guest.apc, guest.skip);
+        let generate = generate.with_apc_candidates_dir(apc_candidates_dir_path);
         let is_cell_pgo = matches!(guest.pgo_config, PgoConfig::Cell(_, _));
         let guest_program = compile_openvm(guest.name, GuestOptions::default()).unwrap();
         let compiled_program = compile_exe(
             guest_program,
-            gen,
+            generate,
             select,
             guest.pgo_config,
             EmpiricalConstraints::default(),

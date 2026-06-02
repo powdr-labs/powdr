@@ -154,7 +154,7 @@ impl GenerateConfig {
     /// - Instruction / None: `Some(select.autoprecompiles + select.skip)` —
     ///   the build loop is the cap, and `Some(0)` short-circuits.
     ///
-    /// Callers should invoke this when both `gen` and `select` are known
+    /// Callers should invoke this when both `generate` and `select` are known
     /// (e.g. inside `compile_exe` / `run_setup`). For standalone
     /// `generate-apcs` (no select known), pass `SelectConfig::default()`.
     pub fn with_select_defaults(mut self, pgo: pgo::PgoType, select: SelectConfig) -> Self {
