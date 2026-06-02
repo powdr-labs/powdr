@@ -39,6 +39,10 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
             exec_blocks.blocks.len()
         );
 
+        if config.autoprecompiles == 0 {
+            return vec![];
+        }
+
         let blocks = exec_blocks
             .blocks
             .into_iter()
