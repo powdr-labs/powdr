@@ -376,10 +376,6 @@ fn gen_stage(
 ) -> RankedApcs {
     let generate = GenerateConfig::from(args).with_select_defaults(args.pgo, select);
     let pgo_config = pgo_config_from_args(args, args.profile.profile_input);
-    // Empirical-constraints closure needs `generate` by value (the call
-    // forwards it to `detect_empirical_constraints`); the surrounding call
-    // also needs `&generate` for the hash. One clone covers both.
-    let generate_for_closure = generate.clone();
     pipeline.generate_apcs(
         &generate,
         &pgo_config,
@@ -387,13 +383,9 @@ fn gen_stage(
             let profile_input = deserialize_profile_input(inputs);
             powdr_openvm::execution_profile_from_guest(guest, stdin_from(profile_input))
         },
-        move |guest, inputs| {
+        move |guest, generate, inputs| {
             let profile_input = deserialize_profile_input(inputs);
-            maybe_compute_empirical_constraints(
-                guest,
-                &generate_for_closure,
-                stdin_from(profile_input),
-            )
+            maybe_compute_empirical_constraints(guest, &generate, stdin_from(profile_input))
         },
     )
 }
