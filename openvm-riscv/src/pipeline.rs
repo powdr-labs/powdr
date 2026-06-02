@@ -28,23 +28,23 @@ pub type RankedApcs = Vec<AdapterApcWithStats<BabyBearOpenVmApcAdapter<'static, 
 /// Trait alias for the closure that materializes the [`ExecutionProfile`]
 /// from the guest + `PgoConfig::inputs`. Kept as a trait so the
 /// `StagedPipeline` method signatures aren't dominated by the closure type.
-pub trait MakePgoProfile:
-    FnOnce(&OriginalCompiledProgram<'static, RiscvISA>, &[u8]) -> ExecutionProfile
+pub trait MakeExecutionProfile:
+    Fn(&OriginalCompiledProgram<'static, RiscvISA>, &[u8]) -> ExecutionProfile
 {
 }
-impl<F> MakePgoProfile for F where
-    F: FnOnce(&OriginalCompiledProgram<'static, RiscvISA>, &[u8]) -> ExecutionProfile
+impl<F> MakeExecutionProfile for F where
+    F: Fn(&OriginalCompiledProgram<'static, RiscvISA>, &[u8]) -> ExecutionProfile
 {
 }
 
 /// Trait alias for the closure that materializes [`EmpiricalConstraints`]
 /// from the guest + `GenerateConfig` + `PgoConfig::inputs`.
 pub trait MakeEmpiricalConstraints:
-    FnOnce(&OriginalCompiledProgram<'static, RiscvISA>, &GenerateConfig, &[u8]) -> EmpiricalConstraints
+    Fn(&OriginalCompiledProgram<'static, RiscvISA>, &GenerateConfig, &[u8]) -> EmpiricalConstraints
 {
 }
 impl<F> MakeEmpiricalConstraints for F where
-    F: FnOnce(
+    F: Fn(
         &OriginalCompiledProgram<'static, RiscvISA>,
         &GenerateConfig,
         &[u8],
@@ -52,22 +52,28 @@ impl<F> MakeEmpiricalConstraints for F where
 {
 }
 
-pub struct StagedPipeline {
+pub struct StagedPipeline<'a> {
     guest: OriginalCompiledProgram<'static, RiscvISA>,
     guest_hash: String,
     artifacts_dir: Option<PathBuf>,
+    make_execution_profile: &'a dyn MakeExecutionProfile,
+    make_empirical_constraints: &'a dyn MakeEmpiricalConstraints,
 }
 
-impl StagedPipeline {
+impl<'a> StagedPipeline<'a> {
     pub fn new(
         guest: OriginalCompiledProgram<'static, RiscvISA>,
         artifacts_dir: Option<PathBuf>,
+        make_execution_profile: &'a impl MakeExecutionProfile,
+        make_empirical_constraints: &'a impl MakeEmpiricalConstraints,
     ) -> Self {
         let guest_hash = hash_guest_exe(&guest);
         Self {
             guest,
             guest_hash,
             artifacts_dir,
+            make_execution_profile,
+            make_empirical_constraints,
         }
     }
 
@@ -76,13 +82,7 @@ impl StagedPipeline {
     }
 
     /// Build + rank APC candidates (cached).
-    pub fn generate_apcs(
-        &self,
-        generate: &GenerateConfig,
-        pgo_config: &PgoConfig,
-        make_pgo_profile: impl MakePgoProfile,
-        make_empirical_constraints: impl MakeEmpiricalConstraints,
-    ) -> RankedApcs {
+    pub fn generate_apcs(&self, generate: &GenerateConfig, pgo_config: &PgoConfig) -> RankedApcs {
         let hash = self.generate_hash(generate, pgo_config);
         cached(self.artifacts_dir.as_deref(), "generate", &hash, || {
             // PgoType::None ignores the profile entirely; skip the closure
@@ -90,11 +90,12 @@ impl StagedPipeline {
             let pgo = match pgo_config.pgo_type {
                 PgoType::None => PgoData::None,
                 pgo_type => {
-                    let profile = make_pgo_profile(&self.guest, &pgo_config.inputs);
+                    let profile = (self.make_execution_profile)(&self.guest, &pgo_config.inputs);
                     pgo_data(pgo_type, pgo_config.max_columns, profile)
                 }
             };
-            let empirical = make_empirical_constraints(&self.guest, generate, &pgo_config.inputs);
+            let empirical =
+                (self.make_empirical_constraints)(&self.guest, generate, &pgo_config.inputs);
             generate_apcs(&self.guest, generate, pgo, empirical)
         })
     }
@@ -108,17 +109,10 @@ impl StagedPipeline {
         generate: &GenerateConfig,
         pgo_config: &PgoConfig,
         select: SelectConfig,
-        make_pgo_profile: impl MakePgoProfile,
-        make_empirical_constraints: impl MakeEmpiricalConstraints,
     ) -> RankedApcs {
         let hash = self.select_hash(generate, pgo_config, select);
         cached(self.artifacts_dir.as_deref(), "select", &hash, move || {
-            let ranked = self.generate_apcs(
-                generate,
-                pgo_config,
-                make_pgo_profile,
-                make_empirical_constraints,
-            );
+            let ranked = self.generate_apcs(generate, pgo_config);
             select_apcs(ranked, select)
         })
     }
@@ -131,8 +125,6 @@ impl StagedPipeline {
         generate: &GenerateConfig,
         pgo_config: &PgoConfig,
         select: SelectConfig,
-        make_pgo_profile: impl MakePgoProfile,
-        make_empirical_constraints: impl MakeEmpiricalConstraints,
     ) -> CompiledProgram<RiscvISA> {
         // Setup's hash uses the same inputs as select (no extra "setup-only"
         // fields exist today). Distinguishing under a different stage name is
@@ -141,13 +133,7 @@ impl StagedPipeline {
         let artifacts_dir = self.artifacts_dir.clone();
         let degree_bound = generate.degree_bound;
         cached(artifacts_dir.as_deref(), "setup", &hash, move || {
-            let selected_apcs = self.select_apcs(
-                generate,
-                pgo_config,
-                select,
-                make_pgo_profile,
-                make_empirical_constraints,
-            );
+            let selected_apcs = self.select_apcs(generate, pgo_config, select);
             setup(self.guest, selected_apcs, degree_bound)
         })
     }

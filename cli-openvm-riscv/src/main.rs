@@ -202,12 +202,7 @@ fn run_command(command: Commands, artifacts_dir: Option<PathBuf>) {
             let pipeline = build_pipeline(&args.profile, artifacts_dir);
             let generate = GenerateConfig::from(&args);
             let pgo_config = pgo_config_from_args(&args);
-            let ranked = pipeline.generate_apcs(
-                &generate,
-                &pgo_config,
-                make_pgo_profile,
-                make_empirical_constraints,
-            );
+            let ranked = pipeline.generate_apcs(&generate, &pgo_config);
             tracing::info!(
                 "Built and ranked {} autoprecompile candidates",
                 ranked.len()
@@ -218,13 +213,7 @@ fn run_command(command: Commands, artifacts_dir: Option<PathBuf>) {
             validate_generate_args(&args.generate, false);
             let pipeline = build_pipeline(&args.generate.profile, artifacts_dir);
             let (generate, select, pgo_config) = args.pipeline_inputs();
-            let apcs = pipeline.select_apcs(
-                &generate,
-                &pgo_config,
-                select,
-                make_pgo_profile,
-                make_empirical_constraints,
-            );
+            let apcs = pipeline.select_apcs(&generate, &pgo_config, select);
             tracing::info!("Selected {} autoprecompiles", apcs.len());
         }
 
@@ -232,13 +221,7 @@ fn run_command(command: Commands, artifacts_dir: Option<PathBuf>) {
             validate_generate_args(&args.select.generate, true);
             let pipeline = build_pipeline(&args.select.generate.profile, artifacts_dir);
             let (generate, select, pgo_config) = args.select.pipeline_inputs();
-            let _ = pipeline.setup(
-                &generate,
-                &pgo_config,
-                select,
-                make_pgo_profile,
-                make_empirical_constraints,
-            );
+            let _ = pipeline.setup(&generate, &pgo_config, select);
             tracing::info!("Setup completed.");
         }
 
@@ -248,13 +231,7 @@ fn run_command(command: Commands, artifacts_dir: Option<PathBuf>) {
             let pipeline = build_pipeline(&args.setup.select.generate.profile, artifacts_dir);
             let run = || {
                 let (generate, select, pgo_config) = args.setup.select.pipeline_inputs();
-                let program = pipeline.setup(
-                    &generate,
-                    &pgo_config,
-                    select,
-                    make_pgo_profile,
-                    make_empirical_constraints,
-                );
+                let program = pipeline.setup(&generate, &pgo_config, select);
                 powdr_openvm::execute(program, stdin_from(runtime_input)).unwrap();
             };
             if let Some(metrics_path) = args.metrics {
@@ -275,13 +252,7 @@ fn run_command(command: Commands, artifacts_dir: Option<PathBuf>) {
             let pipeline = build_pipeline(&args.setup.select.generate.profile, artifacts_dir);
             let run = || {
                 let (generate, select, pgo_config) = args.setup.select.pipeline_inputs();
-                let program = pipeline.setup(
-                    &generate,
-                    &pgo_config,
-                    select,
-                    make_pgo_profile,
-                    make_empirical_constraints,
-                );
+                let program = pipeline.setup(&generate, &pgo_config, select);
                 powdr_openvm_riscv::prove(
                     &program,
                     mock,
@@ -361,9 +332,14 @@ impl SelectArgs {
 
 /// Compile the guest crate referenced by `profile` and wrap it in a
 /// [`StagedPipeline`] keyed at `artifacts_dir`.
-fn build_pipeline(profile: &ProfileArgs, artifacts_dir: Option<PathBuf>) -> StagedPipeline {
+fn build_pipeline(profile: &ProfileArgs, artifacts_dir: Option<PathBuf>) -> StagedPipeline<'_> {
     let guest = compile_openvm(&profile.guest, GuestOptions::default()).unwrap();
-    StagedPipeline::new(guest, artifacts_dir)
+    StagedPipeline::new(
+        guest,
+        artifacts_dir,
+        &make_pgo_profile,
+        &make_empirical_constraints,
+    )
 }
 
 fn make_pgo_profile(

@@ -372,25 +372,39 @@ mod tests {
             _ => None,
         };
         // PgoType::None never asks for the profile, so a `None` here is OK.
-        let mut profile = match pgo_data {
+        let profile = match pgo_data {
             PgoData::Cell(p, _) | PgoData::Instruction(p) => Some(p),
             PgoData::None => None,
         };
         let generate = generate.with_select_defaults(pgo_type, select);
         // No caching; `inputs` is irrelevant.
         let pgo_config = PgoConfig::new(pgo_type, max_columns, Vec::new());
-        let pipeline = StagedPipeline::new(original_program, None);
+        let make_pgo_profile = |_guest: &OriginalCompiledProgram<'static, RiscvISA>,
+                                _inputs: &[u8]| {
+            profile
+                .clone()
+                .take()
+                .expect("non-None PgoData must carry an ExecutionProfile")
+        };
+        let pipeline = StagedPipeline::new(
+            original_program,
+            None,
+            &make_pgo_profile,
+            &make_empirical_constraints,
+        );
         pipeline.setup(
             &generate,
             &pgo_config,
             select,
-            move |_guest, _inputs| {
-                profile
-                    .take()
-                    .expect("non-None PgoData must carry an ExecutionProfile")
-            },
-            move |_guest, _generate, _inputs| EmpiricalConstraints::default(),
         )
+    }
+
+    fn make_empirical_constraints(
+        _guest: &OriginalCompiledProgram<'static, RiscvISA>,
+        _generate: &GenerateConfig,
+        _inputs: &[u8],
+    ) -> EmpiricalConstraints {
+        EmpiricalConstraints::default()
     }
 
     #[allow(clippy::too_many_arguments)]
