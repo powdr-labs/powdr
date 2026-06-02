@@ -69,7 +69,7 @@ for file in "${CARGO_FILES[@]}"; do
     
     # Update refs
     # Match: rev = "..." or tag = "..." after the git URL
-    sed -i -E 's|(git = "'"$GIT_URL"'",[[:space:]]*(rev|tag)[[:space:]]*=[[:space:]]*")[^"]+(")|\1'"${NEW_REF}"'\3|g' "$file"
+    sed -i -E 's#(git = "'"$GIT_URL"'",[[:space:]]*(rev|tag)[[:space:]]*=[[:space:]]*")[^"]+(")#\1'"${NEW_REF}"'\3#g' "$file"
 done
 
 echo ""
