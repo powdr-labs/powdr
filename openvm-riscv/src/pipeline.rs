@@ -100,10 +100,9 @@ impl StagedPipeline {
         // enough to keep the blobs on disk separate.
         let hash = self.select_hash(generate, pgo_config, select);
         let artifacts_dir = self.artifacts_dir.clone();
-        let degree_bound = generate.degree_bound;
         cached(artifacts_dir.as_deref(), "setup", &hash, move || {
             let apcs = compute_apcs(&self);
-            setup(self.guest, apcs, degree_bound)
+            setup(self.guest, apcs, generate.degree_bound)
         })
     }
 
