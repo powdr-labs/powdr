@@ -398,10 +398,7 @@ impl Pipeline {
                     select.generate.pgo,
                     select.generate.max_columns,
                     |guest| {
-                        powdr_openvm::execution_profile_from_guest(
-                            guest,
-                            stdin_from(profile_input),
-                        )
+                        powdr_openvm::execution_profile_from_guest(guest, stdin_from(profile_input))
                     },
                     || {
                         maybe_compute_empirical_constraints(
