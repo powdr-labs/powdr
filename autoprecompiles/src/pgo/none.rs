@@ -5,7 +5,7 @@ use itertools::Itertools;
 
 use crate::{
     adapter::{Adapter, AdapterApcWithStats, AdapterExecutionBlocks, AdapterVmConfig, PgoAdapter},
-    pgo::create_apcs_for_all_blocks,
+    pgo::create_apcs,
     EmpiricalConstraints, GenerateConfig,
 };
 
@@ -21,13 +21,12 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
     fn create_apcs_with_pgo(
         &self,
         exec_blocks: AdapterExecutionBlocks<Self::Adapter>,
-        gen: &GenerateConfig,
+        generate_config: &GenerateConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         _labels: BTreeMap<u64, Vec<String>>,
         empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
-        // Mirror Cell's `Some(0)` short-circuit. See InstructionPgo.
-        if matches!(gen.apc_candidates, Some(0)) {
+        if matches!(generate_config.apc_candidates, Some(0)) {
             return vec![];
         }
 
@@ -54,6 +53,6 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
             })
             .collect();
 
-        create_apcs_for_all_blocks::<Self::Adapter>(blocks, gen, vm_config, empirical_constraints)
+        create_apcs::<Self::Adapter>(blocks, generate_config, vm_config, empirical_constraints)
     }
 }
