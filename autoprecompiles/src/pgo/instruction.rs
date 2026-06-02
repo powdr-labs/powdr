@@ -29,7 +29,7 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
     fn create_apcs_with_pgo(
         &self,
         exec_blocks: AdapterExecutionBlocks<Self::Adapter>,
-        gen: &GenerateConfig,
+        generate_config: &GenerateConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         _labels: BTreeMap<u64, Vec<String>>,
         empirical_constraints: EmpiricalConstraints,
@@ -39,11 +39,7 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
             exec_blocks.blocks.len()
         );
 
-        // Mirror Cell's `Some(0)` short-circuit so callers have one uniform
-        // "skip generation entirely" signal across PGO strategies. The
-        // policy of when to set `Some(0)` lives in
-        // [`GenerateConfig::with_select_defaults`].
-        if matches!(gen.apc_candidates, Some(0)) {
+        if matches!(generate_config.apc_candidates, Some(0)) {
             return vec![];
         }
 
@@ -73,7 +69,12 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
             })
             .collect();
 
-        create_apcs_for_all_blocks::<Self::Adapter>(blocks, gen, vm_config, empirical_constraints)
+        create_apcs_for_all_blocks::<Self::Adapter>(
+            blocks,
+            generate_config,
+            vm_config,
+            empirical_constraints,
+        )
     }
 
     fn execution_profile(&self) -> Option<&ExecutionProfile> {
