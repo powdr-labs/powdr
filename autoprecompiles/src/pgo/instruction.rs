@@ -26,7 +26,7 @@ impl<A> InstructionPgo<A> {
 impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
     type Adapter = A;
 
-    fn generate_apcs(
+    fn create_apcs_with_pgo(
         &self,
         exec_blocks: AdapterExecutionBlocks<Self::Adapter>,
         config: &PowdrConfig,

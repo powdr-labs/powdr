@@ -64,7 +64,7 @@ pub trait PgoAdapter {
     /// - Cell: ignored (always builds every eligible candidate; a positive
     ///   cap logs a warning, `Some(0)` short-circuits).
     /// - Instruction / None: caps the metadata-sorted prefix directly.
-    fn generate_apcs(
+    fn create_apcs_with_pgo(
         &self,
         exec_blocks: AdapterExecutionBlocks<Self::Adapter>,
         config: &PowdrConfig,

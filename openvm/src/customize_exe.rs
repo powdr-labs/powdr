@@ -305,7 +305,7 @@ fn generate_apcs_with_adapter<
 
     let start = std::time::Instant::now();
     let exec_blocks = powdr_autoprecompiles::adapter::detect_blocks(&pgo, blocks, config);
-    let apcs = pgo.generate_apcs(
+    let apcs = pgo.create_apcs_with_pgo(
         exec_blocks,
         config,
         vm_config,

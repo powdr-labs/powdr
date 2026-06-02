@@ -18,7 +18,7 @@ pub struct NonePgo<A> {
 impl<A: Adapter> PgoAdapter for NonePgo<A> {
     type Adapter = A;
 
-    fn generate_apcs(
+    fn create_apcs_with_pgo(
         &self,
         exec_blocks: AdapterExecutionBlocks<Self::Adapter>,
         config: &PowdrConfig,
