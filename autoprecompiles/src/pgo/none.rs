@@ -5,7 +5,7 @@ use itertools::Itertools;
 
 use crate::{
     adapter::{Adapter, AdapterApcWithStats, AdapterExecutionBlocks, AdapterVmConfig, PgoAdapter},
-    pgo::create_apcs_for_all_blocks,
+    pgo::create_apcs,
     EmpiricalConstraints, GenerateConfig,
 };
 
@@ -54,6 +54,6 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
             })
             .collect();
 
-        create_apcs_for_all_blocks::<Self::Adapter>(blocks, gen, vm_config, empirical_constraints)
+        create_apcs::<Self::Adapter>(blocks, gen, vm_config, empirical_constraints)
     }
 }

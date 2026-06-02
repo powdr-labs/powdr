@@ -84,13 +84,16 @@ pub fn pgo_config(
 //
 // The Cell PGO has its own build loop because it needs to retain
 // `BlockAndStats` for the density-based ranking; this helper drops it.
-fn create_apcs_for_all_blocks<A: Adapter>(
+fn create_apcs<A: Adapter>(
     blocks: Vec<SuperBlock<A::Instruction>>,
-    gen: &GenerateConfig,
+    generate_config: &GenerateConfig,
     vm_config: AdapterVmConfig<A>,
     empirical_constraints: EmpiricalConstraints,
 ) -> Vec<AdapterApcWithStats<A>> {
-    let cap = gen.apc_candidates.map(|n| n as usize).unwrap_or(usize::MAX);
+    let cap = generate_config
+        .apc_candidates
+        .map(|n| n as usize)
+        .unwrap_or(usize::MAX);
     tracing::info!("Generating up to {cap} autoprecompiles in parallel");
 
     blocks
@@ -104,14 +107,14 @@ fn create_apcs_for_all_blocks<A: Adapter>(
             );
 
             let export_options = ExportOptions::new(
-                gen.apc_candidates_dir_path.clone(),
+                generate_config.apc_candidates_dir_path.clone(),
                 &superblock.start_pcs(),
                 ExportLevel::OnlyAPC,
             );
             let apc = crate::build::<A>(
                 superblock.clone(),
                 vm_config.clone(),
-                gen.degree_bound,
+                generate_config.degree_bound,
                 export_options,
                 &empirical_constraints,
             )
