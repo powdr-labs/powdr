@@ -31,9 +31,7 @@ use openvm_stark_sdk::config::{app_params_with_100_bits_security, MAX_APP_LOG_ST
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::transpiler::Transpiler;
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
-use powdr_autoprecompiles::pgo::{CellPgo, InstructionPgo, NonePgo};
 use powdr_autoprecompiles::PowdrConfig;
-use powdr_openvm::customize_exe::OpenVmApcCandidate;
 use powdr_openvm::extraction_utils::OriginalVmConfig;
 use powdr_openvm::trace_generation::do_with_trace;
 use powdr_openvm::BabyBearSC;
@@ -64,8 +62,7 @@ pub use powdr_openvm::{
 
 pub use openvm_build::GuestOptions;
 pub use powdr_autoprecompiles::bus_map::BusType;
-pub use powdr_openvm::customize_exe::customize;
-pub use powdr_openvm::customize_exe::Instr;
+pub use powdr_openvm::customize_exe::{compile_apcs, setup, Instr};
 
 pub fn build_elf_path<P: AsRef<Path>>(
     guest_opts: GuestOptions,
@@ -150,49 +147,21 @@ pub fn compile_openvm(
     })
 }
 
+/// Convenience composition of [`compile_apcs`] + [`setup`].
 pub fn compile_exe(
     original_program: OriginalCompiledProgram<RiscvISA>,
     config: PowdrConfig,
     pgo_config: PgoConfig,
     empirical_constraints: EmpiricalConstraints,
 ) -> Result<CompiledProgram<RiscvISA>, Box<dyn std::error::Error>> {
-    let compiled = match pgo_config {
-        PgoConfig::Cell(pgo_data, max_total_columns) => {
-            let max_total_apc_columns: Option<usize> = max_total_columns.map(|max_total_columns| {
-                let original_config = original_program.vm_config.clone();
-
-                let total_non_apc_columns: usize = original_config
-                    .chip_inventory_air_metrics()
-                    .values()
-                    .map(|m| m.total_width())
-                    .sum::<usize>();
-                max_total_columns - total_non_apc_columns
-            });
-
-            customize(
-                original_program,
-                config,
-                CellPgo::<_, OpenVmApcCandidate<RiscvISA>>::with_pgo_data_and_max_columns(
-                    pgo_data,
-                    max_total_apc_columns,
-                ),
-                empirical_constraints,
-            )
-        }
-        PgoConfig::Instruction(pgo_data) => customize(
-            original_program,
-            config,
-            InstructionPgo::with_pgo_data(pgo_data),
-            empirical_constraints,
-        ),
-        PgoConfig::None => customize(
-            original_program,
-            config,
-            NonePgo::default(),
-            empirical_constraints,
-        ),
-    };
-    Ok(compiled)
+    let degree_bound = config.degree_bound;
+    let apcs = compile_apcs(
+        &original_program,
+        &config,
+        pgo_config,
+        empirical_constraints,
+    );
+    Ok(setup(original_program, apcs, degree_bound))
 }
 
 use openvm_circuit_derive::VmConfig;

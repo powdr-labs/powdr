@@ -116,7 +116,7 @@ pub fn format_fe<F: PrimeField32>(v: F) -> String {
 /// We do not use the transpiler, instead we customize an already transpiled program
 pub mod customize_exe;
 
-pub use customize_exe::{customize, BabyBearOpenVmApcAdapter, Instr, POWDR_OPCODE};
+pub use customize_exe::{BabyBearOpenVmApcAdapter, Instr, POWDR_OPCODE};
 
 // A module for our extension
 pub mod isa;

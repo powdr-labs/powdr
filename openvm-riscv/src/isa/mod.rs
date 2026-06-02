@@ -230,7 +230,7 @@ fn add_extra_targets(
 mod tests {
     use openvm_instructions::instruction::Instruction;
     use openvm_instructions::{program::DEFAULT_PC_STEP, VmOpcode};
-    use openvm_stark_backend::p3_field::FieldAlgebra;
+    use openvm_stark_backend::p3_field::PrimeCharacteristicRing;
     use openvm_stark_sdk::p3_baby_bear::BabyBear;
     use powdr_openvm::isa::OpenVmISA;
 
@@ -267,7 +267,7 @@ mod tests {
         let instruction = (
             100u64,
             powdr_openvm::Instr::<BabyBear, RiscvISA>::from(Instruction {
-                c: -BabyBear::from_canonical_u32(8),
+                c: -BabyBear::from_u32(8),
                 ..jal::<BabyBear>(0, 0, 0, 1, 0)
             }),
         );
