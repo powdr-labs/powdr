@@ -164,10 +164,6 @@ impl GenerateConfig {
 
 /// Inputs to the selection stage — trimming a generate-stage ranking down to
 /// `autoprecompiles` items after skipping `skip` from the top.
-///
-/// Kept separate from [`GenerateConfig`] so generate-stage cache keys don't
-/// invalidate when only the selection size changes (the central guarantee that
-/// makes `--apc N` sweeps under `--pgo cell` reuse the candidate ranking).
 #[derive(Clone, Copy, Debug, Default, Hash)]
 pub struct SelectConfig {
     pub autoprecompiles: u64,
