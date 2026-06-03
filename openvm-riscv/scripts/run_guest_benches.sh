@@ -12,6 +12,21 @@ set -e
 SCRIPT_PATH=$(realpath "${BASH_SOURCE[0]}")
 SCRIPTS_DIR=$(dirname "$SCRIPT_PATH")
 
+# Cargo features for the powdr CLI build. Override to e.g. "metrics,cuda" to
+# prove on GPU: BENCH_FEATURES=metrics,cuda ./openvm-riscv/scripts/run_guest_benches.sh
+BENCH_FEATURES="${BENCH_FEATURES:-metrics}"
+
+# APC counts swept for every guest (manual-precompile baselines always run
+# with 0). With the default cell PGO the expensive generate stage is cached
+# per (guest, profile-input), so each additional count only re-runs the cheap
+# select+setup stages plus the prove itself.
+APC_COUNTS=(0 3 10 30 100 300)
+
+# With BENCH_KEEP_GOING=1 a failed prove (e.g. OOM at a high APC count) is
+# recorded in the experiment's failed_runs.txt instead of aborting the whole
+# sweep. CI keeps the strict default.
+BENCH_KEEP_GOING="${BENCH_KEEP_GOING:-0}"
+
 run_bench() {
     guest="$1"
     input="$2"
@@ -41,7 +56,20 @@ run_bench() {
         --log "${run_name}"/psrecord.csv \
         --log-format csv \
         --plot "${run_name}"/psrecord.png \
-        "cargo run --bin powdr_openvm_riscv -r --features metrics -- --artifacts-dir \"${artifacts_dir}\" prove \"$guest\" --profile-input \"$input\" --input \"$input\" --autoprecompiles \"$apcs\" --metrics \"${run_name}/metrics.json\" --recursion --apc-candidates-dir \"${candidates_dir}\""
+        "cargo run --bin powdr_openvm_riscv -r --features ${BENCH_FEATURES} -- --artifacts-dir \"${artifacts_dir}\" prove \"$guest\" --profile-input \"$input\" --input \"$input\" --autoprecompiles \"$apcs\" --metrics \"${run_name}/metrics.json\" --recursion --apc-candidates-dir \"${candidates_dir}\"" || true
+
+    # psrecord does not reliably propagate the wrapped command's exit code,
+    # so judge success by the metrics file the prove must write (the CLI
+    # creates it empty up front; non-empty means the run completed).
+    if [ ! -s "${run_name}/metrics.json" ]; then
+        echo "PROVE FAILED for ${run_name} (no metrics produced)"
+        rm -f "${run_name}/metrics.json"
+        if [ "$BENCH_KEEP_GOING" = "1" ]; then
+            echo "${guest} input=${input} apcs=${apcs} run=${run_name}" >> failed_runs.txt
+            return 0
+        fi
+        return 1
+    fi
 
     python3 "$SCRIPTS_DIR"/plot_trace_cells.py -o "${run_name}"/trace_cells.png "${run_name}"/metrics.json > "${run_name}"/trace_cells.txt
 
@@ -55,11 +83,10 @@ run_bench() {
     # Clean up per-block snapshot files we don't want to push. They are
     # written into the shared candidates_dir on the first cache-miss run
     # and not re-created on cache hits, so this is effectively a one-time
-    # cleanup per (guest, profile-input).
-    rm -f "${candidates_dir}"/apc_candidate_*
+    # cleanup per (guest, profile-input). Use find: for guests with many
+    # basic blocks the glob expansion exceeds ARG_MAX.
+    find "${candidates_dir}" -maxdepth 1 -name 'apc_candidate_*' -delete
 }
-
-# TODO: Some benchmarks are currently disabled to keep the nightly run below 6h.
 
 ### Keccak
 dir="results/keccak"
@@ -69,10 +96,9 @@ mkdir -p "$dir"
 pushd "$dir"
 
 run_bench guest-keccak-manual-precompile "$input" 0 manual
-run_bench guest-keccak "$input" 0 apc000
-# run_bench guest-keccak "$input" 3 apc003  # Save ~6mins
-# run_bench guest-keccak "$input" 10 apc010  # Save ~3mins
-run_bench guest-keccak "$input" 30 apc030
+for apcs in "${APC_COUNTS[@]}"; do
+    run_bench guest-keccak "$input" "$apcs" "$(printf 'apc%03d' "$apcs")"
+done
 
 python3 $SCRIPTS_DIR/basic_metrics.py summary-table --csv **/metrics.json > basic_metrics.csv
 python3 $SCRIPTS_DIR/basic_metrics.py plot **/metrics.json -o proof_time_breakdown.png
@@ -87,10 +113,9 @@ mkdir -p "$dir"
 pushd "$dir"
 
 run_bench guest-sha256-manual-precompile "$input" 0 manual
-run_bench guest-sha256 "$input" 0 apc000
-# run_bench guest-sha256 "$input" 3 apc003  # Save ~4mins
-# run_bench guest-sha256 "$input" 10 apc010  # Save ~5mins
-run_bench guest-sha256 "$input" 30 apc030
+for apcs in "${APC_COUNTS[@]}"; do
+    run_bench guest-sha256 "$input" "$apcs" "$(printf 'apc%03d' "$apcs")"
+done
 
 python3 $SCRIPTS_DIR/basic_metrics.py summary-table --csv **/metrics.json > basic_metrics.csv
 python3 $SCRIPTS_DIR/basic_metrics.py plot **/metrics.json -o proof_time_breakdown.png
@@ -105,11 +130,9 @@ mkdir -p "$dir"
 pushd "$dir"
 
 run_bench guest-pairing-manual-precompile "$input" 0 manual
-run_bench guest-pairing "$input" 0 apc000
-# run_bench guest-pairing "$input" 3 apc003  # Save ~6mins
-# run_bench guest-pairing "$input" 10 apc010  # Save ~4mins
-run_bench guest-pairing "$input" 30 apc030
-# run_bench guest-pairing "$input" 100 apc100  # Save ~7mins 
+for apcs in "${APC_COUNTS[@]}"; do
+    run_bench guest-pairing "$input" "$apcs" "$(printf 'apc%03d' "$apcs")"
+done
 
 python3 $SCRIPTS_DIR/basic_metrics.py summary-table --csv **/metrics.json > basic_metrics.csv
 python3 $SCRIPTS_DIR/basic_metrics.py plot **/metrics.json -o proof_time_breakdown.png
@@ -124,10 +147,9 @@ mkdir -p "$dir"
 pushd "$dir"
 
 run_bench guest-u256-manual-precompile "$input" 0 manual
-run_bench guest-u256 "$input" 0 apc000
-# run_bench guest-u256 "$input" 3 apc003  # Save ~10mins
-# run_bench guest-u256 "$input" 10 apc010  # Save ~4mins
-run_bench guest-u256 "$input" 30 apc030
+for apcs in "${APC_COUNTS[@]}"; do
+    run_bench guest-u256 "$input" "$apcs" "$(printf 'apc%03d' "$apcs")"
+done
 
 python3 $SCRIPTS_DIR/basic_metrics.py summary-table --csv **/metrics.json > basic_metrics.csv
 python3 $SCRIPTS_DIR/basic_metrics.py plot **/metrics.json -o proof_time_breakdown.png
@@ -140,10 +162,9 @@ dir="results/matmul"
 mkdir -p "$dir"
 pushd "$dir"
 
-run_bench guest-matmul 0 0 apc000
-run_bench guest-matmul 0 3 apc003
-# run_bench guest-matmul 0 10 apc010  # Save ~1min
-run_bench guest-matmul 0 30 apc030
+for apcs in "${APC_COUNTS[@]}"; do
+    run_bench guest-matmul 0 "$apcs" "$(printf 'apc%03d' "$apcs")"
+done
 
 python3 "$SCRIPTS_DIR"/basic_metrics.py summary-table --csv **/metrics.json > basic_metrics.csv
 python3 "$SCRIPTS_DIR"/basic_metrics.py plot **/metrics.json -o proof_time_breakdown.png
@@ -158,16 +179,12 @@ mkdir -p "$dir"
 pushd "$dir"
 
 run_bench guest-ecc-manual $input 0 manual
-run_bench guest-ecc-projective $input 0 projective-apc000
-# run_bench guest-ecc-projective $input 3 projective-apc003  # Save ~17mins
-# run_bench guest-ecc-projective $input 10 projective-apc010  # Save ~12mins
-run_bench guest-ecc-projective $input 30 projective-apc030
-# run_bench guest-ecc-projective $input 100 projective-apc100  # Save ~12mins
-run_bench guest-ecc-powdr-affine-hint $input 0 affine-hint-apc000
-# run_bench guest-ecc-powdr-affine-hint $input 3 affine-hint-apc003  # Save ~10mins
-# run_bench guest-ecc-powdr-affine-hint $input 10 affine-hint-apc010  # Save ~7mins
-run_bench guest-ecc-powdr-affine-hint $input 30 affine-hint-apc030
-# run_bench guest-ecc-powdr-affine-hint $input 100 affine-hint-apc100  # Save ~7mins
+for apcs in "${APC_COUNTS[@]}"; do
+    run_bench guest-ecc-projective "$input" "$apcs" "$(printf 'projective-apc%03d' "$apcs")"
+done
+for apcs in "${APC_COUNTS[@]}"; do
+    run_bench guest-ecc-powdr-affine-hint "$input" "$apcs" "$(printf 'affine-hint-apc%03d' "$apcs")"
+done
 
 python3 $SCRIPTS_DIR/basic_metrics.py summary-table --csv **/metrics.json > basic_metrics.csv
 python3 $SCRIPTS_DIR/basic_metrics.py plot **/metrics.json -o proof_time_breakdown.png
@@ -182,11 +199,9 @@ mkdir -p "$dir"
 pushd "$dir"
 
 run_bench guest-ecrecover-manual $input 0 manual
-run_bench guest-ecrecover $input 0 apc000
-# run_bench guest-ecrecover $input 3 apc003  # Save ~9mins
-# run_bench guest-ecrecover $input 10 apc010  # Save ~6mins
-run_bench guest-ecrecover $input 30 apc030
-# run_bench guest-ecrecover $input 100 apc100  # Save ~6mins
+for apcs in "${APC_COUNTS[@]}"; do
+    run_bench guest-ecrecover "$input" "$apcs" "$(printf 'apc%03d' "$apcs")"
+done
 
 python3 $SCRIPTS_DIR/basic_metrics.py summary-table --csv **/metrics.json > basic_metrics.csv
 python3 $SCRIPTS_DIR/basic_metrics.py plot **/metrics.json -o proof_time_breakdown.png

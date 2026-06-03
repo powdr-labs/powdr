@@ -1,0 +1,69 @@
+diff --git a/bin/reth-benchmark/src/lib.rs b/bin/reth-benchmark/src/lib.rs
+index 0c22494..08c7a4b 100644
+--- a/bin/reth-benchmark/src/lib.rs
++++ b/bin/reth-benchmark/src/lib.rs
+@@ -6,7 +6,7 @@ use powdr_openvm_riscv::StagedPipeline;
+ 
+ use alloy_provider::RootProvider;
+ use alloy_rpc_client::RpcClient;
+-use alloy_transport::layers::RetryBackoffLayer;
++use alloy_transport::layers::{RateLimitRetryPolicy, RetryBackoffLayer};
+ use clap::Parser;
+ use openvm_circuit::arch::*;
+ use openvm_rpc_proxy::{RpcExecutor, DEFAULT_PREIMAGE_CACHE_NIBBLES};
+@@ -414,7 +414,14 @@ pub async fn precompute_prover_data(
+     // Build `PgoConfig.inputs` as serialized stdins so the make_pgo_profile
+     // closure can be a pure function of `(guest, inputs)` — and so the
+     // staged cache key sees them.
+-    let generate = default_generate_config();
++    let mut generate = default_generate_config();
++    // Dump the APC candidates ranking (consumed by powdr's
++    // autoprecompile-analyzer) when run.sh's POWDR_APC_CANDIDATES_DIR is
++    // set. NOTE: the dir participates in the generate-stage cache hash, so
++    // setting/unsetting it invalidates cached generate artifacts.
++    if let Ok(dir) = std::env::var("POWDR_APC_CANDIDATES_DIR") {
++        generate = generate.with_apc_candidates_dir(dir);
++    }
+     let select = SelectConfig::new(args.apc as u64, args.apc_skip as u64);
+     let generate = generate.with_select_defaults(pgo_type, select);
+     let pgo_inputs = bincode::serde::encode_to_vec(&pgo_stdins, bincode::config::standard())
+@@ -480,7 +487,18 @@ async fn load_stateless_input(
+         .as_ref()
+         .ok_or_else(|| eyre::eyre!("cache not found and RPC URL not provided"))?;
+     let client =
+-        RpcClient::builder().layer(RetryBackoffLayer::new(5, 1000, 100)).http(rpc_url.clone());
++        // Retry every transport error (these are all read-only calls), not
++        // just rate limits: free-tier RPC endpoints intermittently fail with
++        // timeouts/5xx during the long witness fetch, and a single dropped
++        // call would otherwise abort the whole (uncached) fetch.
++        RpcClient::builder()
++            .layer(RetryBackoffLayer::new_with_policy(
++                10,
++                1000,
++                100,
++                RateLimitRetryPolicy::default().or(|_| true),
++            ))
++            .http(rpc_url.clone());
+     let provider = RootProvider::new(client);
+     let rpc_executor = RpcExecutor::new(provider, preimage_cache_nibbles);
+     let stateless_input = rpc_executor.execute(block_number).await.expect("failed to execute host");
+diff --git a/crates/rpc-proxy/src/db/provider.rs b/crates/rpc-proxy/src/db/provider.rs
+index f606242..4c197e8 100644
+--- a/crates/rpc-proxy/src/db/provider.rs
++++ b/crates/rpc-proxy/src/db/provider.rs
+@@ -61,7 +61,14 @@ pub(crate) struct ProviderConfig {
+ 
+ impl Default for ProviderConfig {
+     fn default() -> Self {
+-        Self { eip1186_proof_chunk_size: 1000 }
++        // Free-tier RPC providers enforce per-request execution deadlines that
++        // heavy 1000-key eth_getProof calls exceed (HTTP 408). Allow shrinking
++        // the chunk size via env without touching the default behavior.
++        let chunk_size = std::env::var("RPC_PROOF_CHUNK_SIZE")
++            .ok()
++            .and_then(|s| s.parse().ok())
++            .unwrap_or(1000);
++        Self { eip1186_proof_chunk_size: chunk_size }
+     }
+ }
+ 

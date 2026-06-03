@@ -9,17 +9,30 @@ BENCH_RESULTS_TREE_BASE = "https://github.com/powdr-labs/bench-results/tree/gh-p
 APC_ANALYZER_BASE = "https://powdr-labs.github.io/powdr/autoprecompile-analyzer/"
 METRICS_VIEWER_BASE = "https://powdr-labs.github.io/powdr/openvm/metrics-viewer/"
 
+# Overridable so the same script can generate readmes for results committed
+# elsewhere (e.g. a branch of the powdr repo instead of the bench-results
+# repo); see main().
+blob_base = BENCH_RESULTS_BLOB_BASE
+tree_base = BENCH_RESULTS_TREE_BASE
+path_prefix: str | None = None
+
+
+def _prefix(run_id: str) -> Path:
+    if path_prefix is not None:
+        return Path(path_prefix)
+    return Path("results") / run_id
+
 
 def github_blob_url(relative_path: Path, run_id: str) -> str:
-    path = Path("results") / run_id / relative_path
-    return f"{BENCH_RESULTS_BLOB_BASE}/{path.as_posix()}"
+    path = _prefix(run_id) / relative_path
+    return f"{blob_base}/{path.as_posix()}"
 
 
 def github_tree_url(run_id: str, subdir: str | None = None) -> str:
-    path = Path("results") / run_id
+    path = _prefix(run_id)
     if subdir:
         path = path / subdir
-    return f"{BENCH_RESULTS_TREE_BASE}/{path.as_posix()}"
+    return f"{tree_base}/{path.as_posix()}"
 
 
 def viewer_url(viewer_base: str, data_url: str) -> str:
@@ -88,7 +101,27 @@ def main() -> None:
     parser.add_argument("results_dir", type=Path)
     parser.add_argument("run_id")
     parser.add_argument("--output", type=Path, default=None)
+    parser.add_argument(
+        "--blob-base",
+        default=BENCH_RESULTS_BLOB_BASE,
+        help="GitHub blob URL base the data files will be reachable under.",
+    )
+    parser.add_argument(
+        "--tree-base",
+        default=BENCH_RESULTS_TREE_BASE,
+        help="GitHub tree URL base the result dirs will be reachable under.",
+    )
+    parser.add_argument(
+        "--path-prefix",
+        default=None,
+        help="Path of the results dir relative to the URL bases (default: results/<run_id>).",
+    )
     args = parser.parse_args()
+
+    global blob_base, tree_base, path_prefix
+    blob_base = args.blob_base
+    tree_base = args.tree_base
+    path_prefix = args.path_prefix
 
     readme = generate_readme(args.results_dir, args.run_id)
 
