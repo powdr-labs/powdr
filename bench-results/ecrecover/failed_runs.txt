@@ -1,0 +1,1 @@
+guest-ecrecover input=125 apcs=300 run=apc300 (panic in GPU leaf aggregation: LayoutHeightExceeded { log_height: 22, log_stacked_height: 21 }; passed at the previous input=20, so segment count feeds the leaf trace too)

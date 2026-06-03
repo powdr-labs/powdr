@@ -5,16 +5,20 @@ benchmarks on the `bench-cuda-apc-sweep-2026-06` branch of powdr — powdr
 `main` after the OpenVM 2.0 update plus
 [powdr-labs/powdr#3763](https://github.com/powdr-labs/powdr/pull/3763)
 (staged `generate → select → setup` pipeline with `--artifacts-dir` caching;
-benched at `be183c60e`, scripts committed on top as `c2342ae6e` — the Rust
-code is identical). Every guest is swept over {0, 3, 10, 30, 100, 300}
+benched at `be183c60e`, scripts committed on top — the Rust code is
+identical). Every guest is swept over {0, 3, 10, 30, 100, 300}
 autoprecompiles; reth (openvm-eth, mainnet block 24171377) over
-{0, 3, 10, 30, 100, 300, 500, 750, 1000}.
+{0, 3, 10, 30, 100, 300, 500, 750, 1000}. Guest workloads are sized to
+~50 segments in the software (0 APCs) version, matching the blog post's
+inputs (25 000 keccaks, 80 000 sha256 hashes; 100 ecc scalar mults and
+125 ecrecovers hit the same segment target). pairing, u256 and matmul run
+fixed workloads baked into the guest (input is ignored).
 
-**ecc**: 📂 [Raw data](https://github.com/powdr-labs/powdr/tree/bench-cuda-apc-sweep-2026-06/bench-results/ecc) &nbsp;|&nbsp; 📊 [Metrics Viewer](https://powdr-labs.github.io/powdr/openvm/metrics-viewer/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fpowdr%2Fblob%2Fbench-cuda-apc-sweep-2026-06%2Fbench-results%2Fecc%2Fcombined_metrics.json) &nbsp;|&nbsp; 🔍 [APC Analyzer](https://powdr-labs.github.io/powdr/autoprecompile-analyzer/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fpowdr%2Fblob%2Fbench-cuda-apc-sweep-2026-06%2Fbench-results%2Fecc%2Fcandidates%2Fguest-ecc-powdr-affine-hint-input50%2Fapc_candidates.json)
+**ecc**: 📂 [Raw data](https://github.com/powdr-labs/powdr/tree/bench-cuda-apc-sweep-2026-06/bench-results/ecc) &nbsp;|&nbsp; 📊 [Metrics Viewer](https://powdr-labs.github.io/powdr/openvm/metrics-viewer/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fpowdr%2Fblob%2Fbench-cuda-apc-sweep-2026-06%2Fbench-results%2Fecc%2Fcombined_metrics.json) &nbsp;|&nbsp; 🔍 [APC Analyzer](https://powdr-labs.github.io/powdr/autoprecompile-analyzer/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fpowdr%2Fblob%2Fbench-cuda-apc-sweep-2026-06%2Fbench-results%2Fecc%2Fcandidates%2Fguest-ecc-powdr-affine-hint-input100%2Fapc_candidates.json)
 
-**ecrecover**: 📂 [Raw data](https://github.com/powdr-labs/powdr/tree/bench-cuda-apc-sweep-2026-06/bench-results/ecrecover) &nbsp;|&nbsp; 📊 [Metrics Viewer](https://powdr-labs.github.io/powdr/openvm/metrics-viewer/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fpowdr%2Fblob%2Fbench-cuda-apc-sweep-2026-06%2Fbench-results%2Fecrecover%2Fcombined_metrics.json) &nbsp;|&nbsp; 🔍 [APC Analyzer](https://powdr-labs.github.io/powdr/autoprecompile-analyzer/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fpowdr%2Fblob%2Fbench-cuda-apc-sweep-2026-06%2Fbench-results%2Fecrecover%2Fcandidates%2Fguest-ecrecover-input20%2Fapc_candidates.json)
+**ecrecover**: 📂 [Raw data](https://github.com/powdr-labs/powdr/tree/bench-cuda-apc-sweep-2026-06/bench-results/ecrecover) &nbsp;|&nbsp; 📊 [Metrics Viewer](https://powdr-labs.github.io/powdr/openvm/metrics-viewer/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fpowdr%2Fblob%2Fbench-cuda-apc-sweep-2026-06%2Fbench-results%2Fecrecover%2Fcombined_metrics.json) &nbsp;|&nbsp; 🔍 [APC Analyzer](https://powdr-labs.github.io/powdr/autoprecompile-analyzer/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fpowdr%2Fblob%2Fbench-cuda-apc-sweep-2026-06%2Fbench-results%2Fecrecover%2Fcandidates%2Fguest-ecrecover-input125%2Fapc_candidates.json)
 
-**keccak**: 📂 [Raw data](https://github.com/powdr-labs/powdr/tree/bench-cuda-apc-sweep-2026-06/bench-results/keccak) &nbsp;|&nbsp; 📊 [Metrics Viewer](https://powdr-labs.github.io/powdr/openvm/metrics-viewer/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fpowdr%2Fblob%2Fbench-cuda-apc-sweep-2026-06%2Fbench-results%2Fkeccak%2Fcombined_metrics.json) &nbsp;|&nbsp; 🔍 [APC Analyzer](https://powdr-labs.github.io/powdr/autoprecompile-analyzer/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fpowdr%2Fblob%2Fbench-cuda-apc-sweep-2026-06%2Fbench-results%2Fkeccak%2Fcandidates%2Fguest-keccak-input10000%2Fapc_candidates.json)
+**keccak**: 📂 [Raw data](https://github.com/powdr-labs/powdr/tree/bench-cuda-apc-sweep-2026-06/bench-results/keccak) &nbsp;|&nbsp; 📊 [Metrics Viewer](https://powdr-labs.github.io/powdr/openvm/metrics-viewer/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fpowdr%2Fblob%2Fbench-cuda-apc-sweep-2026-06%2Fbench-results%2Fkeccak%2Fcombined_metrics.json) &nbsp;|&nbsp; 🔍 [APC Analyzer](https://powdr-labs.github.io/powdr/autoprecompile-analyzer/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fpowdr%2Fblob%2Fbench-cuda-apc-sweep-2026-06%2Fbench-results%2Fkeccak%2Fcandidates%2Fguest-keccak-input25000%2Fapc_candidates.json)
 
 **matmul**: 📂 [Raw data](https://github.com/powdr-labs/powdr/tree/bench-cuda-apc-sweep-2026-06/bench-results/matmul) &nbsp;|&nbsp; 📊 [Metrics Viewer](https://powdr-labs.github.io/powdr/openvm/metrics-viewer/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fpowdr%2Fblob%2Fbench-cuda-apc-sweep-2026-06%2Fbench-results%2Fmatmul%2Fcombined_metrics.json) &nbsp;|&nbsp; 🔍 [APC Analyzer](https://powdr-labs.github.io/powdr/autoprecompile-analyzer/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fpowdr%2Fblob%2Fbench-cuda-apc-sweep-2026-06%2Fbench-results%2Fmatmul%2Fcandidates%2Fguest-matmul-input0%2Fapc_candidates.json)
 
@@ -22,7 +26,7 @@ autoprecompiles; reth (openvm-eth, mainnet block 24171377) over
 
 **reth_gpu**: 📂 [Raw data](https://github.com/powdr-labs/powdr/tree/bench-cuda-apc-sweep-2026-06/bench-results/reth_gpu) &nbsp;|&nbsp; 📊 [Metrics Viewer](https://powdr-labs.github.io/powdr/openvm/metrics-viewer/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fpowdr%2Fblob%2Fbench-cuda-apc-sweep-2026-06%2Fbench-results%2Freth_gpu%2Fcombined_metrics.json) &nbsp;|&nbsp; 🔍 [APC Analyzer](https://powdr-labs.github.io/powdr/autoprecompile-analyzer/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fpowdr%2Fblob%2Fbench-cuda-apc-sweep-2026-06%2Fbench-results%2Freth_gpu%2Fapc_candidates.json)
 
-**sha256**: 📂 [Raw data](https://github.com/powdr-labs/powdr/tree/bench-cuda-apc-sweep-2026-06/bench-results/sha256) &nbsp;|&nbsp; 📊 [Metrics Viewer](https://powdr-labs.github.io/powdr/openvm/metrics-viewer/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fpowdr%2Fblob%2Fbench-cuda-apc-sweep-2026-06%2Fbench-results%2Fsha256%2Fcombined_metrics.json) &nbsp;|&nbsp; 🔍 [APC Analyzer](https://powdr-labs.github.io/powdr/autoprecompile-analyzer/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fpowdr%2Fblob%2Fbench-cuda-apc-sweep-2026-06%2Fbench-results%2Fsha256%2Fcandidates%2Fguest-sha256-input30000%2Fapc_candidates.json)
+**sha256**: 📂 [Raw data](https://github.com/powdr-labs/powdr/tree/bench-cuda-apc-sweep-2026-06/bench-results/sha256) &nbsp;|&nbsp; 📊 [Metrics Viewer](https://powdr-labs.github.io/powdr/openvm/metrics-viewer/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fpowdr%2Fblob%2Fbench-cuda-apc-sweep-2026-06%2Fbench-results%2Fsha256%2Fcombined_metrics.json) &nbsp;|&nbsp; 🔍 [APC Analyzer](https://powdr-labs.github.io/powdr/autoprecompile-analyzer/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fpowdr%2Fblob%2Fbench-cuda-apc-sweep-2026-06%2Fbench-results%2Fsha256%2Fcandidates%2Fguest-sha256-input80000%2Fapc_candidates.json)
 
 **u256**: 📂 [Raw data](https://github.com/powdr-labs/powdr/tree/bench-cuda-apc-sweep-2026-06/bench-results/u256) &nbsp;|&nbsp; 📊 [Metrics Viewer](https://powdr-labs.github.io/powdr/openvm/metrics-viewer/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fpowdr%2Fblob%2Fbench-cuda-apc-sweep-2026-06%2Fbench-results%2Fu256%2Fcombined_metrics.json) &nbsp;|&nbsp; 🔍 [APC Analyzer](https://powdr-labs.github.io/powdr/autoprecompile-analyzer/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fpowdr%2Fblob%2Fbench-cuda-apc-sweep-2026-06%2Fbench-results%2Fu256%2Fcandidates%2Fguest-u256-input0%2Fapc_candidates.json)
 
@@ -128,34 +132,38 @@ at this block's profile.
 
 ## Guests (GPU, prove with `--recursion`)
 
-| guest | apc000 | best APC count | best | manual precompile |
+| guest | input | software (0 APCs) | best | manual precompile |
 |---|---|---|---|---|
-| keccak | 17.6 s | 10 | 9.2 s | 2.2 s |
-| sha256 | 15.5 s | 300 ² | 6.9 s | 3.3 s |
-| u256 | 12.4 s | 10 | 7.2 s | 5.9 s |
-| matmul | 1.8 s | 30 ² | 1.3 s | — |
-| pairing | 5.0 s | 30 | 4.9 s | 0.9 s |
-| ecc (projective) | 25.3 s | 30 | 16.4 s | 1.0 s |
-| ecc (affine-hint) | 9.6 s | 30 | 7.1 s | 1.0 s |
-| ecrecover | 8.4 s | 30 | 5.8 s | 1.0 s |
+| keccak | 25000 | 42.8 s (48 seg) | 21.8 s @ 10 APCs | 4.6 s |
+| sha256 | 80000 | 37.3 s (44 seg) | 17.9 s @ 10 APCs | 7.2 s |
+| u256 | fixed 70×70 | 12.4 s (12 seg) | 7.2 s @ 10 APCs | 5.9 s |
+| matmul | fixed | 1.8 s (2 seg) | 1.3 s @ 30 APCs ² | — |
+| pairing | fixed | 5.0 s (5 seg) | 4.9 s @ 30 APCs | 0.9 s |
+| ecc (projective) | 100 | 49.6 s (52 seg) | 31.7 s @ 30 APCs | 1.4 s |
+| ecc (affine-hint) | 100 | 18.2 s (17 seg) | 13.4 s @ 30 APCs | 1.4 s |
+| ecrecover | 125 | 47.5 s (45 seg) | 33.7 s @ 30 APCs | 2.9 s |
 
 ² Differences between the top counts are noise once the candidate ranking
 saturates: keccak has only 61 eligible candidates, sha256 30, u256 78,
 matmul 11 — sweep points beyond those sizes select the same APC set
-(identical cells/columns in the metrics). ecc (425/643), ecrecover (493)
+(identical cells/columns in the metrics). ecc (643/425), ecrecover (493)
 and pairing (7275) are genuine selections at every swept count.
 
-Reading the totals: on GPU the interpreted PGO/preflight execution dominates
-(e.g. keccak apc010: 5.3 s of the 9.2 s total). On pure proving time
-(`total_proof_time_excluding_trace_ms`) APCs get much closer to the manual
-precompiles and beat them for sha256 (0.9 s vs 1.6 s at 30 APCs) and u256
-(2.1 s vs 3.3 s at 10 APCs) — consistent with the blog's CPU findings.
+Reading the totals: on GPU the interpreted PGO/preflight execution and trace
+generation dominate (e.g. keccak @ 10 APCs: 4.2 s of the 21.8 s total is
+proving). On pure proving time (`total_proof_time_excluding_trace_ms`) APCs
+improve the software version by 2–7× (keccak 21.9 → 4.2 s, sha256
+20.4 → 2.9 s, ecrecover 21.8 → 10.4 s) and beat the manual precompiles for
+sha256 (2.9 s vs 4.2 s at 10 APCs) and u256 (2.1 s vs 3.3 s at 10 APCs) —
+consistent with the blog's CPU findings.
 
-**Failures** (`ecc/failed_runs.txt`): `guest-ecc-projective` and
-`guest-ecc-powdr-affine-hint` at **300 APCs** panic in GPU leaf aggregation
-with `LayoutHeightExceeded { log_height: 22, log_stacked_height: 21 }` —
-the same recursion ceiling as reth-at-500, but the powdr CLI does not expose
-the leaf/internal stacked-height knobs, so those two points are absent.
+**Failures** (`ecc/failed_runs.txt`, `ecrecover/failed_runs.txt`):
+`guest-ecc-projective`, `guest-ecc-powdr-affine-hint` and `guest-ecrecover`
+at **300 APCs** panic in GPU leaf aggregation with
+`LayoutHeightExceeded { log_height: 22, log_stacked_height: 21 }` — the same
+recursion ceiling as reth-at-500. (ecrecover passed 300 APCs at the previous
+smaller input, so segment count feeds the leaf trace too.) The powdr CLI does
+not expose the leaf/internal stacked-height knobs, so those points are absent.
 
 ## Files
 

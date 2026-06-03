@@ -1,2 +1,2 @@
-guest-ecc-projective input=50 apcs=300 run=projective-apc300 (panic in leaf aggregation: LayoutHeightExceeded { log_height: 22, log_stacked_height: 21 }, stark-backend cuda stacked_pcs.rs:114)
-guest-ecc-powdr-affine-hint input=50 apcs=300 run=affine-hint-apc300
+guest-ecc-projective input=100 apcs=300 run=projective-apc300 (panic in GPU leaf aggregation: LayoutHeightExceeded { log_height: 22, log_stacked_height: 21 }, stark-backend cuda stacked_pcs.rs:114)
+guest-ecc-powdr-affine-hint input=100 apcs=300 run=affine-hint-apc300 (same panic: LayoutHeightExceeded { log_height: 22, log_stacked_height: 21 })

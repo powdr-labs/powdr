@@ -90,7 +90,7 @@ run_bench() {
 
 ### Keccak
 dir="results/keccak"
-input="10000"
+input="25000" # ~50 segments at apc000 (same workload as the autoprecompiles blog post)
 
 mkdir -p "$dir"
 pushd "$dir"
@@ -107,7 +107,7 @@ popd
 
 ### SHA256
 dir="results/sha256"
-input="30000"
+input="80000" # ~50 segments at apc000 (same workload as the autoprecompiles blog post)
 
 mkdir -p "$dir"
 pushd "$dir"
@@ -124,7 +124,7 @@ popd
 
 ### Pairing
 dir="results/pairing"
-input="0" # No input
+input="0" # No input: the guest runs one fixed pairing check (~5 segments at apc000)
 
 mkdir -p "$dir"
 pushd "$dir"
@@ -141,7 +141,7 @@ popd
 
 ### U256
 dir="results/u256"
-input="0" # No input
+input="0" # No input: the guest runs a fixed 70x70 U256 matmul (~12 segments at apc000)
 
 mkdir -p "$dir"
 pushd "$dir"
@@ -173,7 +173,7 @@ popd
 
 ### ECC
 dir="results/ecc"
-input="50"
+input="100" # ~50 segments at apc000 for guest-ecc-projective
 
 mkdir -p "$dir"
 pushd "$dir"
@@ -193,7 +193,7 @@ popd
 
 ### ECRECOVER
 dir="results/ecrecover"
-input="20"
+input="125" # ~50 segments at apc000
 
 mkdir -p "$dir"
 pushd "$dir"

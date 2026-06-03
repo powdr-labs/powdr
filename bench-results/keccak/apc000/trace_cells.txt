@@ -1,24 +1,24 @@
-Total cells: 8.40B
+Total cells: 20.97B
 Cells by AIR:
 air_name
-VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>         3267362816
-VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>          2868903936
-VmAirWrapper<Rv32BaseAluAdapterAir, ShiftCoreAir<4, 8>            2111832064
-VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>            32374784
-RangeTupleCheckerAir<2>                                             29884416
-BitwiseOperationLookupAir<8>                                        22413312
-VariableRangeCheckerAir                                             19922944
-VmAirWrapper<Rv32BranchAdapterAir, BranchLessThanCoreAir<4, 8>      19922944
-VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>                    8486912
-VmAirWrapper<Rv32CondRdWriteAdapterAir, Rv32JalLuiCoreAir>           5603328
-VmAirWrapper<Rv32RdWriteAdapterAir, Rv32AuipcCoreAir>                3031040
-Poseidon2PeripheryAir<BabyBearParameters>, 1>                        2918400
-VmAirWrapper<Rv32BaseAluAdapterAir, LessThanCoreAir<4, 8>            2879488
-ProgramAir                                                           1556480
-VmAirWrapper<Rv32MultAdapterAir, MultiplicationCoreAir<4, 8>          587264
-MemoryMerkleAir<8>                                                    311296
-PersistentBoundaryAir<8>                                              204288
-VmConnectorAir                                                           228
+VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>         8168407040
+VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>          7172259840
+VmAirWrapper<Rv32BaseAluAdapterAir, ShiftCoreAir<4, 8>            5251792896
+VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>            80510976
+RangeTupleCheckerAir<2>                                             75497472
+BitwiseOperationLookupAir<8>                                        56623104
+VariableRangeCheckerAir                                             50331648
+VmAirWrapper<Rv32BranchAdapterAir, BranchLessThanCoreAir<4, 8>      49807360
+VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>                   21676032
+VmAirWrapper<Rv32CondRdWriteAdapterAir, Rv32JalLuiCoreAir>          14008320
+VmAirWrapper<Rv32RdWriteAdapterAir, Rv32AuipcCoreAir>                7741440
+Poseidon2PeripheryAir<BabyBearParameters>, 1>                        7372800
+VmAirWrapper<Rv32BaseAluAdapterAir, LessThanCoreAir<4, 8>            7198720
+ProgramAir                                                           3932160
+VmAirWrapper<Rv32MultAdapterAir, MultiplicationCoreAir<4, 8>         1499904
+MemoryMerkleAir<8>                                                    786432
+PersistentBoundaryAir<8>                                              516096
+VmConnectorAir                                                           576
 Rv32HintStoreAir                                                          64
 PhantomAir                                                                 6
 Name: cells, dtype: int64

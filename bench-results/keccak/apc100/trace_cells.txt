@@ -1,20 +1,20 @@
-Total cells: 0.81B
+Total cells: 1.97B
 Cells by AIR:
 air_name
-PowdrAir<BabyBearParameters>                                      788623971
-RangeTupleCheckerAir<2>                                             4718592
-BitwiseOperationLookupAir<8>                                        3538944
-VariableRangeCheckerAir                                             3145728
-VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>            1474560
-VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>                   1146880
-VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>            1064960
-VmAirWrapper<Rv32BranchAdapterAir, BranchLessThanCoreAir<4, 8>       655360
-Poseidon2PeripheryAir<BabyBearParameters>, 1>                        614400
-ProgramAir                                                           245760
-MemoryMerkleAir<8>                                                    49152
-PersistentBoundaryAir<8>                                              32256
-Rv32HintStoreAir                                                         64
-VmConnectorAir                                                           36
-PhantomAir                                                                6
+PowdrAir<BabyBearParameters>                                      1932127843
+RangeTupleCheckerAir<2>                                             11010048
+BitwiseOperationLookupAir<8>                                         8257536
+VariableRangeCheckerAir                                              7340032
+VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>             3612672
+VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>                    2809856
+VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>             2609152
+VmAirWrapper<Rv32BranchAdapterAir, BranchLessThanCoreAir<4, 8>       1605632
+Poseidon2PeripheryAir<BabyBearParameters>, 1>                        1228800
+ProgramAir                                                            573440
+MemoryMerkleAir<8>                                                    114688
+PersistentBoundaryAir<8>                                               75264
+VmConnectorAir                                                            84
+Rv32HintStoreAir                                                          64
+PhantomAir                                                                 6
 Name: cells, dtype: int64
 Saving plot to apc100/trace_cells.png
