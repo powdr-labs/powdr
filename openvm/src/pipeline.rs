@@ -4,9 +4,6 @@
 //! callers (e.g. openvm-eth). Each stage transparently reuses a prior
 //! `artifacts_dir` blob; `artifacts_dir = None` disables caching and runs
 //! every stage inline.
-//!
-//! The pipeline is generic over [`OpenVmISA`], so it works for any OpenVM
-//! target; `powdr-openvm-riscv` instantiates it at its `RiscvISA`.
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
