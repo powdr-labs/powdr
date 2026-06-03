@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1780479433588,
+  "lastUpdate": 1780488908766,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -415201,6 +415201,34 @@ window.BENCHMARK_DATA = {
             "name": "optimize-keccak/optimize",
             "value": 20433922667,
             "range": "± 1000706081",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Georg Wiese",
+            "username": "georgwiese",
+            "email": "georgwiese@gmail.com"
+          },
+          "committer": {
+            "name": "Georg Wiese",
+            "username": "georgwiese",
+            "email": "georgwiese@gmail.com"
+          },
+          "id": "0dab735e865e2cecfb2f8313d0456dfab309072c",
+          "message": "patch-openvm-eth: bump ref to openvm-eth#8 tip with apc_candidates.json fix\n\nopenvm-eth split-powdr-config-adopt @ 9e1b613 restores the\n`POWDR_APC_CANDIDATES_DIR` wiring the StagedPipeline refactor had dropped,\nso the reth bench writes `apc_candidates.json` again (the previous nightly\nfailed its `mv apcs/apc_candidates.json` step).\n\nCo-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-06-03T10:54:40Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/0dab735e865e2cecfb2f8313d0456dfab309072c"
+        },
+        "date": 1780488900038,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 21386116647,
+            "range": "± 4240339996",
             "unit": "ns/iter"
           }
         ]
