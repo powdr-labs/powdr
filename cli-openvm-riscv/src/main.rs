@@ -378,15 +378,6 @@ fn make_pgo_profile(
     powdr_openvm::execution_profile_from_guest(guest, stdin_from(profile_input))
 }
 
-fn make_empirical_constraints(
-    guest: &OriginalCompiledProgram<'static, RiscvISA>,
-    generate: &GenerateConfig,
-    inputs: &[u8],
-) -> EmpiricalConstraints {
-    let profile_input = serde_cbor::from_slice(inputs).unwrap();
-    maybe_compute_empirical_constraints(guest, generate, stdin_from(profile_input))
-}
-
 /// Build a `PgoConfig` from the CLI args; `inputs` is the serialized
 /// `profile_input` (an `Option<u32>` round-tripped through serde_cbor).
 fn pgo_config_from_args(args: &GenerateApcsArgs) -> PgoConfig {
@@ -432,23 +423,21 @@ pub fn run_with_metric_collection_to_file<R>(file: fs::File, f: impl FnOnce() ->
     res
 }
 
-/// If optimistic precompiles are enabled, compute empirical constraints from the execution
-/// of the guest program on the given stdin, and save them to disk.
-fn maybe_compute_empirical_constraints(
-    guest_program: &OriginalCompiledProgram<RiscvISA>,
+/// Compute empirical constraints from the execution of the guest program on the given stdin, and save them to disk.
+fn make_empirical_constraints(
+    guest: &OriginalCompiledProgram<'static, RiscvISA>,
     generate: &GenerateConfig,
-    stdin: StdIn,
+    inputs: &[u8],
 ) -> EmpiricalConstraints {
-    if !generate.should_use_optimistic_precompiles {
-        return EmpiricalConstraints::default();
-    }
-
     tracing::warn!(
         "Optimistic precompiles are not implemented yet. Computing empirical constraints..."
     );
 
+    let profile_input = serde_cbor::from_slice(inputs).unwrap();
+    let stdin = stdin_from(profile_input);
+
     let empirical_constraints =
-        detect_empirical_constraints(guest_program, generate.degree_bound, vec![stdin]);
+        detect_empirical_constraints(guest, generate.degree_bound, vec![stdin]);
 
     if let Some(path) = &generate.apc_candidates_dir_path {
         fs::create_dir_all(path).expect("Failed to create apc candidates directory");

@@ -54,7 +54,7 @@ impl<ISA: OpenVmISA, F> MakeEmpiricalConstraints<ISA> for F where
 }
 
 /// A [`MakeEmpiricalConstraints`] that always returns the empty set. Use this
-/// when you don't care about optimistic precompiles — most callers, and tests.
+/// when you don't care about optimistic precompiles.
 pub fn make_default_empirical_constraints<ISA: OpenVmISA>(
     _guest: &OriginalCompiledProgram<'static, ISA>,
     _generate: &GenerateConfig,
@@ -105,7 +105,11 @@ impl<ISA: OpenVmISA> StagedPipeline<ISA> {
                     pgo_data(pgo_type, pgo_config.max_columns, profile)
                 }
             };
-            let empirical = make_empirical_constraints(&self.guest, generate, &pgo_config.inputs);
+            let empirical = if generate.should_use_optimistic_precompiles {
+                make_empirical_constraints(&self.guest, generate, &pgo_config.inputs)
+            } else {
+                EmpiricalConstraints::default()
+            };
             generate_apcs(&self.guest, generate, pgo, empirical)
         })
     }
