@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1780444085208,
+  "lastUpdate": 1780479433588,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -415173,6 +415173,34 @@ window.BENCHMARK_DATA = {
             "name": "optimize-keccak/optimize",
             "value": 17690471275,
             "range": "± 539707241",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Georg Wiese",
+            "username": "georgwiese",
+            "email": "georgwiese@gmail.com"
+          },
+          "committer": {
+            "name": "Georg Wiese",
+            "username": "georgwiese",
+            "email": "georgwiese@gmail.com"
+          },
+          "id": "be183c60e1c1aa9b96aac3dc6d624d9884667269",
+          "message": "Fix caching",
+          "timestamp": "2026-06-03T09:27:00Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/be183c60e1c1aa9b96aac3dc6d624d9884667269"
+        },
+        "date": 1780479425000,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 20433922667,
+            "range": "± 1000706081",
             "unit": "ns/iter"
           }
         ]
