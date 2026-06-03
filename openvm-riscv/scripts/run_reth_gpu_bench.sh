@@ -47,8 +47,11 @@ if [ ! -d openvm-eth ]; then
     git clone https://github.com/powdr-labs/openvm-eth.git openvm-eth
 fi
 git -C openvm-eth checkout "$OPENVM_ETH_REF"
-mkdir -p openvm-eth/.cargo
-cat > openvm-eth/.cargo/config.toml <<'EOF'
+# Append the local-powdr patch only when absent so reruns don't clobber
+# extra [patch] sections a user may have added (e.g. a local stark-backend).
+if ! grep -q 'patch."https://github.com/powdr-labs/powdr.git"' openvm-eth/.cargo/config.toml 2>/dev/null; then
+    mkdir -p openvm-eth/.cargo
+    cat >> openvm-eth/.cargo/config.toml <<'EOF'
 [patch."https://github.com/powdr-labs/powdr.git"]
 powdr-openvm-riscv = { path = "../openvm-riscv" }
 powdr-openvm = { path = "../openvm" }
@@ -57,6 +60,7 @@ powdr-number = { path = "../number" }
 powdr-autoprecompiles = { path = "../autoprecompiles" }
 powdr-openvm-riscv-hints-circuit = { path = "../openvm-riscv/extensions/hints-circuit" }
 EOF
+fi
 
 cd openvm-eth
 RES_DIR=reth_gpu

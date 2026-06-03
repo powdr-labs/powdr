@@ -1,0 +1,1 @@
+guest-ecrecover input=125 apcs=300 run=apc300 (panic in GPU leaf aggregation: LayoutHeightExceeded { log_height: 22, log_stacked_height: 21 } — same recursion ceiling as the baseline run)

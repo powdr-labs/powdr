@@ -1,0 +1,4 @@
+openvm-eth: 44564802f942d15c6dd782979d280f28065179b5 (+ openvm-eth-bench.patch + openvm-eth-stark-backend-autoopt.patch)
+stark-backend: 4f3755ce7ea5e2940c313b3053c0de44feaf7847 (autoopt-beta2-compat = autoopt-2026-04-12-clean + ColumnsAir revert)
+powdr: be183c60e1c1aa9b96aac3dc6d624d9884667269 (benched working tree + powdr-stark-backend-autoopt.patch; bench scripts committed on this branch)
+run: local CUDA run on RTX 4090, 2026-06-03 — see readme.md for exact commands

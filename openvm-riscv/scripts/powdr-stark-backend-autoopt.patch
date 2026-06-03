@@ -1,0 +1,21 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index cd7d28e44..464f4029c 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -188,3 +188,16 @@ iter_over_hash_type = "deny"
+ # continuations-v2 = { path = "../openvm/crates/continuations-v2" }
+ # recursion-circuit = { path = "../openvm/crates/recursion" }
+ # openvm-deferral-circuit = { path = "../openvm/extensions/deferral/circuit" }
++
++# autoopt GPU prover (bench-cuda-apc-sweep branch): powdr-labs/stark-backend
++# branch autoopt-2026-04-12-clean + a revert of its "Remove ColumnsAir" commit
++# so the pinned openvm fork still compiles (checkout: ../stark-backend-autoopt,
++# branch autoopt-beta2-compat).
++[patch."https://github.com/powdr-labs/stark-backend.git"]
++openvm-stark-sdk = { path = "../stark-backend-autoopt/crates/stark-sdk", default-features = false }
++openvm-stark-backend = { path = "../stark-backend-autoopt/crates/stark-backend", default-features = false }
++openvm-codec-derive = { path = "../stark-backend-autoopt/crates/stark-backend/codec-derive", default-features = false }
++openvm-cuda-backend = { path = "../stark-backend-autoopt/crates/cuda-backend", default-features = false }
++openvm-cuda-builder = { path = "../stark-backend-autoopt/crates/cuda-builder", default-features = false }
++openvm-cuda-common = { path = "../stark-backend-autoopt/crates/cuda-common", default-features = false }
++openvm-cpu-backend = { path = "../stark-backend-autoopt/crates/cpu-backend", default-features = false }
