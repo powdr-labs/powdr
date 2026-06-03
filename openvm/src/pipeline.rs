@@ -4,6 +4,9 @@
 //! callers (e.g. openvm-eth). Each stage transparently reuses a prior
 //! `artifacts_dir` blob; `artifacts_dir = None` disables caching and runs
 //! every stage inline.
+//!
+//! The pipeline is generic over [`OpenVmISA`], so it works for any OpenVM
+//! target; `powdr-openvm-riscv` instantiates it at its `RiscvISA`.
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -16,51 +19,62 @@ use powdr_autoprecompiles::pgo::{pgo_data, PgoType};
 use powdr_autoprecompiles::staged_cache::{cached, stage_hash};
 use powdr_autoprecompiles::PgoData;
 use powdr_autoprecompiles::{GenerateConfig, PgoConfig, SelectConfig};
-use powdr_openvm::BabyBearOpenVmApcAdapter;
 
-use crate::{
-    generate_apcs, select_apcs, setup, CompiledProgram, OriginalCompiledProgram, RiscvISA,
-};
+use crate::customize_exe::{generate_apcs, select_apcs, setup, BabyBearOpenVmApcAdapter};
+use crate::isa::OpenVmISA;
+use crate::program::{CompiledProgram, OriginalCompiledProgram};
 
 /// Output of the generate / select stages.
-pub type RankedApcs = Vec<AdapterApcWithStats<BabyBearOpenVmApcAdapter<'static, RiscvISA>>>;
+pub type RankedApcs<ISA> = Vec<AdapterApcWithStats<BabyBearOpenVmApcAdapter<'static, ISA>>>;
 
 /// Trait alias for the closure that materializes the [`ExecutionProfile`]
 /// from the guest + `PgoConfig::inputs`. Kept as a trait so the
 /// `StagedPipeline` method signatures aren't dominated by the closure type.
-pub trait MakePgoProfile:
-    FnOnce(&OriginalCompiledProgram<'static, RiscvISA>, &[u8]) -> ExecutionProfile
+pub trait MakePgoProfile<ISA: OpenVmISA>:
+    FnOnce(&OriginalCompiledProgram<'static, ISA>, &[u8]) -> ExecutionProfile
 {
 }
-impl<F> MakePgoProfile for F where
-    F: FnOnce(&OriginalCompiledProgram<'static, RiscvISA>, &[u8]) -> ExecutionProfile
+impl<ISA: OpenVmISA, F> MakePgoProfile<ISA> for F where
+    F: FnOnce(&OriginalCompiledProgram<'static, ISA>, &[u8]) -> ExecutionProfile
 {
 }
 
 /// Trait alias for the closure that materializes [`EmpiricalConstraints`]
-/// from the guest + `GenerateConfig` + `PgoConfig::inputs`.
-pub trait MakeEmpiricalConstraints:
-    FnOnce(&OriginalCompiledProgram<'static, RiscvISA>, &GenerateConfig, &[u8]) -> EmpiricalConstraints
+/// from the guest + `GenerateConfig` + `PgoConfig::inputs`. Callers that
+/// don't use optimistic precompiles can pass
+/// [`make_default_empirical_constraints`].
+pub trait MakeEmpiricalConstraints<ISA: OpenVmISA>:
+    FnOnce(&OriginalCompiledProgram<'static, ISA>, &GenerateConfig, &[u8]) -> EmpiricalConstraints
 {
 }
-impl<F> MakeEmpiricalConstraints for F where
+impl<ISA: OpenVmISA, F> MakeEmpiricalConstraints<ISA> for F where
     F: FnOnce(
-        &OriginalCompiledProgram<'static, RiscvISA>,
+        &OriginalCompiledProgram<'static, ISA>,
         &GenerateConfig,
         &[u8],
     ) -> EmpiricalConstraints
 {
 }
 
-pub struct StagedPipeline {
-    guest: OriginalCompiledProgram<'static, RiscvISA>,
+/// A [`MakeEmpiricalConstraints`] that always returns the empty set. Use this
+/// when you don't care about optimistic precompiles — most callers, and tests.
+pub fn make_default_empirical_constraints<ISA: OpenVmISA>(
+    _guest: &OriginalCompiledProgram<'static, ISA>,
+    _generate: &GenerateConfig,
+    _inputs: &[u8],
+) -> EmpiricalConstraints {
+    EmpiricalConstraints::default()
+}
+
+pub struct StagedPipeline<ISA: OpenVmISA> {
+    guest: OriginalCompiledProgram<'static, ISA>,
     guest_hash: String,
     artifacts_dir: Option<PathBuf>,
 }
 
-impl StagedPipeline {
+impl<ISA: OpenVmISA> StagedPipeline<ISA> {
     pub fn new(
-        guest: OriginalCompiledProgram<'static, RiscvISA>,
+        guest: OriginalCompiledProgram<'static, ISA>,
         artifacts_dir: Option<PathBuf>,
     ) -> Self {
         let guest_hash = hash_guest_exe(&guest);
@@ -71,7 +85,7 @@ impl StagedPipeline {
         }
     }
 
-    pub fn guest(&self) -> &OriginalCompiledProgram<'static, RiscvISA> {
+    pub fn guest(&self) -> &OriginalCompiledProgram<'static, ISA> {
         &self.guest
     }
 
@@ -80,9 +94,9 @@ impl StagedPipeline {
         &self,
         generate: &GenerateConfig,
         pgo_config: &PgoConfig,
-        make_pgo_profile: impl MakePgoProfile,
-        make_empirical_constraints: impl MakeEmpiricalConstraints,
-    ) -> RankedApcs {
+        make_pgo_profile: impl MakePgoProfile<ISA>,
+        make_empirical_constraints: impl MakeEmpiricalConstraints<ISA>,
+    ) -> RankedApcs<ISA> {
         let hash = self.generate_hash(generate, pgo_config);
         cached(self.artifacts_dir.as_deref(), "generate", &hash, || {
             // PgoType::None ignores the profile entirely; skip the closure
@@ -108,9 +122,9 @@ impl StagedPipeline {
         generate: &GenerateConfig,
         pgo_config: &PgoConfig,
         select: SelectConfig,
-        make_pgo_profile: impl MakePgoProfile,
-        make_empirical_constraints: impl MakeEmpiricalConstraints,
-    ) -> RankedApcs {
+        make_pgo_profile: impl MakePgoProfile<ISA>,
+        make_empirical_constraints: impl MakeEmpiricalConstraints<ISA>,
+    ) -> RankedApcs<ISA> {
         let hash = self.select_hash(generate, pgo_config, select);
         cached(self.artifacts_dir.as_deref(), "select", &hash, move || {
             let ranked = self.generate_apcs(
@@ -131,9 +145,9 @@ impl StagedPipeline {
         generate: &GenerateConfig,
         pgo_config: &PgoConfig,
         select: SelectConfig,
-        make_pgo_profile: impl MakePgoProfile,
-        make_empirical_constraints: impl MakeEmpiricalConstraints,
-    ) -> CompiledProgram<RiscvISA> {
+        make_pgo_profile: impl MakePgoProfile<ISA>,
+        make_empirical_constraints: impl MakeEmpiricalConstraints<ISA>,
+    ) -> CompiledProgram<ISA> {
         // Setup's hash uses the same inputs as select (no extra "setup-only"
         // fields exist today). Distinguishing under a different stage name is
         // enough to keep the blobs on disk separate.
@@ -169,7 +183,7 @@ impl StagedPipeline {
 /// Stable-within-build fingerprint of the transpiled `VmExe`. Captures any
 /// guest change (source, deps, toolchain) that would affect downstream
 /// stages.
-fn hash_guest_exe(guest: &OriginalCompiledProgram<'_, RiscvISA>) -> String {
+fn hash_guest_exe<ISA: OpenVmISA>(guest: &OriginalCompiledProgram<'_, ISA>) -> String {
     let bytes = serde_cbor::to_vec(&*guest.exe).expect("serialize VmExe for hashing");
     let mut hasher = DefaultHasher::new();
     bytes.hash(&mut hasher);

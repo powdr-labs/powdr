@@ -122,6 +122,10 @@ pub use customize_exe::{BabyBearOpenVmApcAdapter, Instr, POWDR_OPCODE};
 pub mod isa;
 pub mod powdr_extension;
 
+/// Cached `generate → select → setup` pipeline shared by the CLI and external callers.
+pub mod pipeline;
+pub use pipeline::{make_default_empirical_constraints, RankedApcs, StagedPipeline};
+
 /// A custom VmConfig that wraps the SdkVmConfig, adding our custom extension.
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(bound = "")]

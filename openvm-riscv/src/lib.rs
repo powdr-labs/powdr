@@ -47,8 +47,6 @@ pub use crate::isa::{instruction_formatter, symbolic_instruction_builder};
 pub use powdr_openvm::program::{CompiledProgram, OriginalCompiledProgram};
 
 pub mod isa;
-pub mod pipeline;
-pub use pipeline::{RankedApcs, StagedPipeline};
 
 pub use powdr_autoprecompiles::DegreeBound;
 pub use powdr_autoprecompiles::{PgoConfig, PgoData};
@@ -338,12 +336,11 @@ mod tests {
     use super::*;
     use expect_test::{expect, Expect};
     use itertools::Itertools;
-    use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
     use powdr_autoprecompiles::{GenerateConfig, SelectConfig};
     use powdr_openvm::{
         execution_profile_from_guest,
         extraction_utils::{AirWidths, AirWidthsDiff},
-        AirMetrics,
+        make_default_empirical_constraints, AirMetrics, StagedPipeline,
     };
     use pretty_assertions::assert_eq;
     use test_log::test;
@@ -389,7 +386,7 @@ mod tests {
                     .take()
                     .expect("non-None PgoData must carry an ExecutionProfile")
             },
-            move |_guest, _generate, _inputs| EmpiricalConstraints::default(),
+            make_default_empirical_constraints,
         )
     }
 

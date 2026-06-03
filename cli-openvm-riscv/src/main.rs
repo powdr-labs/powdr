@@ -7,9 +7,10 @@ use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::execution_profile::ExecutionProfile;
 use powdr_autoprecompiles::pgo::PgoType;
 use powdr_autoprecompiles::{GenerateConfig, PgoConfig, SelectConfig};
+use powdr_openvm::StagedPipeline;
 use powdr_openvm_riscv::{
     compile_openvm, detect_empirical_constraints, GuestOptions, OriginalCompiledProgram, RiscvISA,
-    StagedPipeline, DEFAULT_DEGREE_BOUND,
+    DEFAULT_DEGREE_BOUND,
 };
 
 #[cfg(feature = "metrics")]
@@ -361,7 +362,10 @@ impl SelectArgs {
 
 /// Compile the guest crate referenced by `profile` and wrap it in a
 /// [`StagedPipeline`] keyed at `artifacts_dir`.
-fn build_pipeline(profile: &ProfileArgs, artifacts_dir: Option<PathBuf>) -> StagedPipeline {
+fn build_pipeline(
+    profile: &ProfileArgs,
+    artifacts_dir: Option<PathBuf>,
+) -> StagedPipeline<RiscvISA> {
     let guest = compile_openvm(&profile.guest, GuestOptions::default()).unwrap();
     StagedPipeline::new(guest, artifacts_dir)
 }

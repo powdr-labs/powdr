@@ -34,6 +34,7 @@ openvm-cuda-backend = { workspace = true, optional = true }
 openvm-cuda-common = { workspace = true, optional = true }
 openvm-transpiler.workspace = true
 serde.workspace = true
+serde_cbor.workspace = true
 powdr-number.workspace = true
 derive_more.workspace = true
 powdr-constraint-solver.workspace = true
