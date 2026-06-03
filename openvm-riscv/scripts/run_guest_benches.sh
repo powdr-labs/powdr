@@ -56,7 +56,12 @@ run_bench() {
     # written into the shared candidates_dir on the first cache-miss run
     # and not re-created on cache hits, so this is effectively a one-time
     # cleanup per (guest, profile-input).
-    rm -f "${candidates_dir}"/apc_candidate_*
+    #
+    # Use `find -delete` rather than `rm glob`: large guests emit thousands of
+    # `apc_candidate_*` files (e.g. ~7k blocks), and the expanded glob blows
+    # past ARG_MAX ("Argument list too long"). `apc_candidates.json` doesn't
+    # match `apc_candidate_*` (no `_` after `candidate`), so it's preserved.
+    find "${candidates_dir}" -maxdepth 1 -name 'apc_candidate_*' -delete
 }
 
 # TODO: Some benchmarks are currently disabled to keep the nightly run below 6h.
