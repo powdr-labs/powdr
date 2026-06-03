@@ -1,0 +1,28 @@
+Total cells: 1.05B
+Cells by AIR:
+air_name
+PowdrAir<BabyBearParameters>                                         752752640
+VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>            107479040
+VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>              94371840
+VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>                     18350080
+VmAirWrapper<Rv32BaseAluAdapterAir, ShiftCoreAir<4, 8>                17367040
+VmAirWrapper<Rv32RdWriteAdapterAir, Rv32AuipcCoreAir>                 13107200
+VmAirWrapper<Rv32BaseAluAdapterAir, LessThanCoreAir<4, 8>             12124160
+Rv32HintStoreAir                                                       5242880
+RangeTupleCheckerAir<2>                                                4718592
+BitwiseOperationLookupAir<8>                                           3538944
+VmAirWrapper<Rv32MultAdapterAir, MulHCoreAir<4, 8>                     3194880
+VariableRangeCheckerAir                                                3145728
+Poseidon2PeripheryAir<BabyBearParameters>, 1>                          3072000
+VmAirWrapper<Rv32CondRdWriteAdapterAir, Rv32JalLuiCoreAir>             2949120
+VmAirWrapper<Rv32MultAdapterAir, MultiplicationCoreAir<4, 8>           2539520
+VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>               2129920
+ProgramAir                                                              983040
+VmAirWrapper<Rv32BranchAdapterAir, BranchLessThanCoreAir<4, 8>          655360
+MemoryMerkleAir<8>                                                      393216
+PersistentBoundaryAir<8>                                                258048
+VmAirWrapper<Rv32LoadStoreAdapterAir, LoadSignExtendCoreAir<4, 8>       184320
+PhantomAir                                                              122880
+VmConnectorAir                                                              36
+Name: cells, dtype: int64
+Saving plot to affine-hint-apc030/trace_cells.png
