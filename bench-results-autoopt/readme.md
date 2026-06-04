@@ -82,20 +82,45 @@ and `guest-ecrecover` at 300 APCs, `LayoutHeightExceeded { 22 > 21 }`).
 
 ## STARK proving-time charts — autoopt vs. baseline
 
-Two bars per experiment (baseline vs. autoopt), y-axis = STARK proving time
-**excluding trace generation** (`total_proof_time_excluding_trace_ms`), in
-seconds. One panel per APC count shared by all nine experiments; the green/red
-label over the autoopt bar is its % delta vs. baseline (green = faster). Bars
-are value-annotated because the experiments span ~0.5 s (matmul) to ~21 s
-(reth) on a linear axis.
+One chart per experiment (matching the metrics-viewer links above): x-axis =
+number of autoprecompiles, two bars per count — baseline (gray) vs. autoopt
+(blue) — y-axis = STARK proving time **excluding trace generation**
+(`total_proof_time_excluding_trace_ms`), in seconds. The green/red label over
+the autoopt bar is its % delta vs. baseline (green = faster). ecc carries both
+its variants (projective, affine-hint) under one metrics link, so its chart has
+one subplot per variant.
 
-![STARK proving time, baseline vs autoopt, per experiment and APC count](charts/stark_compare_by_apc.png)
+**reth** — baseline climbs with APC count, autoopt stays flat (−14 % at 300, −22 % at 500):
 
-reth's largest wins land at 300 and 500 APCs, which the guests don't reach, so
-its full sweep gets a dedicated panel on the same metric — the baseline (gray)
-climbs with APC count while autoopt (blue) stays flat:
+![reth STARK proving time vs APC count, baseline vs autoopt](charts/stark_reth.png)
 
-![reth STARK proving time across the APC sweep, baseline vs autoopt](charts/stark_compare_reth_sweep.png)
+**ecc**
+
+![ecc STARK proving time vs APC count, baseline vs autoopt](charts/stark_ecc.png)
+
+**ecrecover**
+
+![ecrecover STARK proving time vs APC count, baseline vs autoopt](charts/stark_ecrecover.png)
+
+**keccak**
+
+![keccak STARK proving time vs APC count, baseline vs autoopt](charts/stark_keccak.png)
+
+**matmul**
+
+![matmul STARK proving time vs APC count, baseline vs autoopt](charts/stark_matmul.png)
+
+**pairing**
+
+![pairing STARK proving time vs APC count, baseline vs autoopt](charts/stark_pairing.png)
+
+**sha256**
+
+![sha256 STARK proving time vs APC count, baseline vs autoopt](charts/stark_sha256.png)
+
+**u256**
+
+![u256 STARK proving time vs APC count, baseline vs autoopt](charts/stark_u256.png)
 
 Regenerate with
 `python openvm-riscv/scripts/plot_autoopt_comparison.py bench-results bench-results-autoopt bench-results-autoopt/charts`.

@@ -2,9 +2,10 @@
 """Bar charts comparing STARK proving time (excl. trace generation) between the
 baseline and autoopt GPU provers.
 
-Reads the `total_proof_time_excluding_trace_ms` column from each experiment's
-`basic_metrics.csv` in two result trees (baseline + autoopt) and emits grouped
-bar charts (two bars — baseline vs autoopt — per experiment).
+Emits one chart per experiment (one per metrics-viewer link): x-axis = number of
+autoprecompiles, two bars per count (baseline vs autoopt), y = STARK proving
+time excluding trace generation. ecc has two variants (projective, affine-hint)
+under a single experiment dir, so its chart gets one subplot per variant.
 
 Usage:
     plot_autoopt_comparison.py <baseline-dir> <autoopt-dir> <output-dir>
@@ -12,6 +13,7 @@ Usage:
 from __future__ import annotations
 
 import csv
+import re
 import sys
 from pathlib import Path
 
@@ -20,24 +22,18 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-# (label, experiment subdir, run-name prefix). The run file is
-# "<prefix>apcNNN/metrics.json" for guests, "<prefix>apcNNN.json" for reth.
+# (output-file label, experiment subdir, [(variant label, run-name prefix), ...]).
+# Order mirrors the readme's metrics-viewer links (reth first, then alphabetical).
 EXPERIMENTS = [
-    ("keccak", "keccak", ""),
-    ("sha256", "sha256", ""),
-    ("u256", "u256", ""),
-    ("matmul", "matmul", ""),
-    ("pairing", "pairing", ""),
-    ("ecc-proj", "ecc", "projective-"),
-    ("ecc-affine", "ecc", "affine-hint-"),
-    ("ecrecover", "ecrecover", ""),
-    ("reth", "reth_gpu", ""),
+    ("reth", "reth_gpu", [("", "")]),
+    ("ecc", "ecc", [("projective", "projective-"), ("affine-hint", "affine-hint-")]),
+    ("ecrecover", "ecrecover", [("", "")]),
+    ("keccak", "keccak", [("", "")]),
+    ("matmul", "matmul", [("", "")]),
+    ("pairing", "pairing", [("", "")]),
+    ("sha256", "sha256", [("", "")]),
+    ("u256", "u256", [("", "")]),
 ]
-
-# APC counts present for every experiment (guests fail >100 in some cases; reth
-# goes higher but those counts aren't shared, so the reth sweep gets its own chart).
-SHARED_APCS = [0, 3, 10, 30, 100]
-RETH_APCS = [0, 3, 10, 30, 100, 300, 500]
 
 BASELINE_COLOR = "#9e9e9e"
 AUTOOPT_COLOR = "#1f77b4"
@@ -70,8 +66,9 @@ def load_proof_secs(root: Path, subdir: str) -> dict[str, float]:
     return out
 
 
-def run_key(subdir: str, prefix: str, apc: int) -> str:
-    return f"{prefix}apc{apc:03d}"
+def apc_counts(d: dict[str, float], prefix: str) -> set[int]:
+    pat = re.compile(rf"^{re.escape(prefix)}apc(\d+)$")
+    return {int(m.group(1)) for k in d if (m := pat.match(k))}
 
 
 def grouped_bars(ax, labels, baseline, autoopt, title):
@@ -87,21 +84,21 @@ def grouped_bars(ax, labels, baseline, autoopt, title):
     top = max([v for v in baseline + autoopt if v is not None], default=1.0)
     for x, b, a in zip(xs, baseline, autoopt):
         if b is not None:
-            ax.text(x - w / 2, b + top * 0.01, f"{b:.1f}", ha="center", va="bottom", fontsize=7)
+            ax.text(x - w / 2, b + top * 0.01, f"{b:.1f}", ha="center", va="bottom", fontsize=8)
         if a is not None:
-            label = f"{a:.1f}"
             if b:
                 delta = (a / b - 1) * 100
                 color = "#2e7d32" if delta < 0 else "#c62828"
                 ax.text(x + w / 2, a + top * 0.07, f"{delta:+.0f}%", ha="center",
-                        va="bottom", fontsize=7, color=color, fontweight="bold")
-            ax.text(x + w / 2, a + top * 0.01, label, ha="center", va="bottom", fontsize=7)
+                        va="bottom", fontsize=8, color=color, fontweight="bold")
+            ax.text(x + w / 2, a + top * 0.01, f"{a:.1f}", ha="center", va="bottom", fontsize=8)
 
     ax.set_xticks(list(xs))
-    ax.set_xticklabels(labels, rotation=30, ha="right", fontsize=8)
-    ax.set_ylabel("STARK proving time\n(excl. trace gen) [s]", fontsize=8)
-    ax.set_ylim(0, top * 1.2)
-    ax.set_title(title, fontsize=10)
+    ax.set_xticklabels(labels, fontsize=9)
+    ax.set_xlabel("autoprecompiles", fontsize=9)
+    ax.set_ylabel("STARK proving time\n(excl. trace gen) [s]", fontsize=9)
+    ax.set_ylim(0, top * 1.22)
+    ax.set_title(title, fontsize=11)
     ax.grid(axis="y", linestyle=":", alpha=0.4)
 
 
@@ -109,43 +106,31 @@ def main() -> None:
     baseline_dir, autoopt_dir, out_dir = (Path(p) for p in sys.argv[1:4])
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    base = {label: load_proof_secs(baseline_dir, sub) for label, sub, _ in EXPERIMENTS}
-    auto = {label: load_proof_secs(autoopt_dir, sub) for label, sub, _ in EXPERIMENTS}
+    for label, subdir, variants in EXPERIMENTS:
+        base = load_proof_secs(baseline_dir, subdir)
+        auto = load_proof_secs(autoopt_dir, subdir)
 
-    # Chart 1: one subplot per shared APC count, x = experiment, two bars each.
-    fig, axes = plt.subplots(len(SHARED_APCS), 1, figsize=(11, 3.1 * len(SHARED_APCS)))
-    for ax, apc in zip(axes, SHARED_APCS):
-        labels, b_vals, a_vals = [], [], []
-        for label, sub, prefix in EXPERIMENTS:
-            key = run_key(sub, prefix, apc)
-            labels.append(label)
-            b_vals.append(base[label].get(key))
-            a_vals.append(auto[label].get(key))
-        grouped_bars(ax, labels, b_vals, a_vals,
-                     f"STARK proving time excl. trace — {apc} autoprecompiles")
-    axes[0].legend(loc="upper right", fontsize=8)
-    fig.suptitle("Baseline vs. autoopt GPU prover (per experiment, per APC count)", fontsize=12)
-    fig.tight_layout(rect=(0, 0, 1, 0.99))
-    fig.savefig(out_dir / "stark_compare_by_apc.png", dpi=130)
-    plt.close(fig)
+        fig, axes = plt.subplots(1, len(variants), squeeze=False)
+        for ax, (vlabel, prefix) in zip(axes[0], variants):
+            counts = sorted(apc_counts(base, prefix) | apc_counts(auto, prefix))
+            keys = [f"{prefix}apc{c:03d}" for c in counts]
+            b_vals = [base.get(k) for k in keys]
+            a_vals = [auto.get(k) for k in keys]
+            title = label if not vlabel else f"{label} ({vlabel})"
+            grouped_bars(ax, [str(c) for c in counts], b_vals, a_vals,
+                         f"{title} — STARK proving time excl. trace")
+            ax.legend(loc="upper left", fontsize=8)
+        # ~3.7 in per APC count per subplot column, clamped to a sane range.
+        ncols = len(variants)
+        width = sum(max(5.0, 0.9 * len(apc_counts(base, p) | apc_counts(auto, p)) + 2.0)
+                    for _, p in variants)
+        fig.set_size_inches(width, 4.6)
+        fig.tight_layout()
+        fig.savefig(out_dir / f"stark_{label}.png", dpi=130)
+        plt.close(fig)
 
-    # Chart 2: reth across its full sweep (its autoopt win lives at 300/500,
-    # which aren't shared with the guests, so it gets a dedicated chart).
-    rb = base["reth"]
-    ra = auto["reth"]
-    labels = [str(apc) for apc in RETH_APCS]
-    b_vals = [rb.get(run_key("reth_gpu", "", apc)) for apc in RETH_APCS]
-    a_vals = [ra.get(run_key("reth_gpu", "", apc)) for apc in RETH_APCS]
-    fig, ax = plt.subplots(figsize=(9, 4.5))
-    grouped_bars(ax, labels, b_vals, a_vals,
-                 "reth — STARK proving time excl. trace, baseline vs. autoopt")
-    ax.set_xlabel("autoprecompiles")
-    ax.legend(loc="upper left", fontsize=8)
-    fig.tight_layout()
-    fig.savefig(out_dir / "stark_compare_reth_sweep.png", dpi=130)
-    plt.close(fig)
-
-    print(f"wrote {out_dir}/stark_compare_by_apc.png and stark_compare_reth_sweep.png")
+    labels = ", ".join(e[0] for e in EXPERIMENTS)
+    print(f"wrote {out_dir}/stark_<experiment>.png for: {labels}")
 
 
 if __name__ == "__main__":
