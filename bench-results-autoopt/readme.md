@@ -80,6 +80,26 @@ count ≥3), matching the per-AIR-overhead explanation. The same three runs
 fail as in the baseline (`guest-ecc-projective`, `guest-ecc-powdr-affine-hint`
 and `guest-ecrecover` at 300 APCs, `LayoutHeightExceeded { 22 > 21 }`).
 
+## STARK proving-time charts — autoopt vs. baseline
+
+Two bars per experiment (baseline vs. autoopt), y-axis = STARK proving time
+**excluding trace generation** (`total_proof_time_excluding_trace_ms`), in
+seconds. One panel per APC count shared by all nine experiments; the green/red
+label over the autoopt bar is its % delta vs. baseline (green = faster). Bars
+are value-annotated because the experiments span ~0.5 s (matmul) to ~21 s
+(reth) on a linear axis.
+
+![STARK proving time, baseline vs autoopt, per experiment and APC count](charts/stark_compare_by_apc.png)
+
+reth's largest wins land at 300 and 500 APCs, which the guests don't reach, so
+its full sweep gets a dedicated panel on the same metric — the baseline (gray)
+climbs with APC count while autoopt (blue) stays flat:
+
+![reth STARK proving time across the APC sweep, baseline vs autoopt](charts/stark_compare_reth_sweep.png)
+
+Regenerate with
+`python openvm-riscv/scripts/plot_autoopt_comparison.py bench-results bench-results-autoopt bench-results-autoopt/charts`.
+
 ## How to reproduce
 
 On top of the [`bench-results/` setup](../bench-results/readme.md) (same
