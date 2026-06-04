@@ -157,13 +157,24 @@ improve the software version by 2–7× (keccak 21.9 → 4.2 s, sha256
 sha256 (2.9 s vs 4.2 s at 10 APCs) and u256 (2.1 s vs 3.3 s at 10 APCs) —
 consistent with the blog's CPU findings.
 
-**Failures** (`ecc/failed_runs.txt`, `ecrecover/failed_runs.txt`):
-`guest-ecc-projective`, `guest-ecc-powdr-affine-hint` and `guest-ecrecover`
-at **300 APCs** panic in GPU leaf aggregation with
-`LayoutHeightExceeded { log_height: 22, log_stacked_height: 21 }` — the same
-recursion ceiling as reth-at-500. (ecrecover passed 300 APCs at the previous
-smaller input, so segment count feeds the leaf trace too.) The powdr CLI does
-not expose the leaf/internal stacked-height knobs, so those points are absent.
+**Why there is no 300-APC point for ecc / ecrecover**
+(`ecc/failed_runs.txt`, `ecrecover/failed_runs.txt`): 300 APCs *was* part of
+the sweep for every guest, but `guest-ecc-projective`,
+`guest-ecc-powdr-affine-hint` and `guest-ecrecover` **crash** at 300 in GPU
+leaf aggregation with
+`LayoutHeightExceeded { log_height: 22, log_stacked_height: 21 }`, so no
+metrics are produced and the point is dropped from the tables/charts. At 300
+APCs these three select large enough precompile AIRs that the leaf-verifier
+trace needs a 2²² stacked layout, above the prover's default leaf cap of
+2²¹ (`log_stacked_height = 21`); the other guests stay under it at 300, which
+is why only these are missing. This is the **same recursion ceiling as
+reth-at-500** — which was rescued by passing
+`--leaf-log-stacked-height 22 --internal-log-stacked-height 20` to openvm-eth's
+`run.sh`. The powdr CLI used for the guests (`powdr_openvm_riscv prove`) does
+**not** expose those leaf/internal stacked-height knobs, so the cap can't be
+raised here and the 300-APC guest runs cannot be completed. (Not an APC-validity
+problem: the APCs are fine, the prover's recursion layout is the limit; it is
+identical between the baseline and autoopt provers.)
 
 ## Files
 

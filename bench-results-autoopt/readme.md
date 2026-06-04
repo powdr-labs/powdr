@@ -76,9 +76,23 @@ completes (`reth_gpu/failed_runs.txt`).
 
 Across the full guest sweeps the proving-time delta grows with APC count
 (e.g. pairing@300 −37 %, ecc-projective@100 −23 %, sha256 −11 % at every
-count ≥3), matching the per-AIR-overhead explanation. The same three runs
-fail as in the baseline (`guest-ecc-projective`, `guest-ecc-powdr-affine-hint`
-and `guest-ecrecover` at 300 APCs, `LayoutHeightExceeded { 22 > 21 }`).
+count ≥3), matching the per-AIR-overhead explanation.
+
+**Why there is no 300-APC point for ecc / ecrecover** (`ecc/failed_runs.txt`,
+`ecrecover/failed_runs.txt`): 300 APCs *was* swept for every guest, but
+`guest-ecc-projective`, `guest-ecc-powdr-affine-hint` and `guest-ecrecover`
+**crash** at 300 in GPU leaf aggregation with
+`LayoutHeightExceeded { log_height: 22, log_stacked_height: 21 }`, so no metrics
+are produced and the point is dropped from the tables/charts. At 300 these three
+select large enough precompile AIRs that the leaf-verifier trace needs a 2²²
+stacked layout, above the prover's default leaf cap of 2²¹; the other guests
+stay under it at 300. It is the **same recursion ceiling as reth-at-500**, which
+was rescued with `--leaf-log-stacked-height 22 --internal-log-stacked-height 20`
+on openvm-eth's `run.sh`; the powdr CLI used for the guests
+(`powdr_openvm_riscv prove`) does not expose those knobs, so the cap can't be
+raised and the 300-APC guest runs cannot complete. The limit is in the prover's
+recursion layout, not the APCs, and is **identical between the baseline and
+autoopt provers** (same panic, same values).
 
 ## STARK proving-time charts — autoopt vs. baseline
 
