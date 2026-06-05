@@ -1,4 +1,4 @@
-use crate::adapter::{Adapter, AdapterApc, AdapterVmConfig};
+use crate::adapter::{Adapter, AdapterApc, AdapterUnoptimizedApc, AdapterVmConfig};
 use crate::blocks::{PcStep, SuperBlock};
 use crate::bus_map::{BusMap, BusType};
 use crate::empirical_constraints::{ConstraintGenerator, EmpiricalConstraints};
@@ -261,6 +261,7 @@ impl<T, I: PcStep, A, V> Apc<T, I, A, V> {
 }
 
 /// Allocates global poly_ids and keeps track of substitutions
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ColumnAllocator {
     /// For each original air, for each original column index, the associated poly_id in the APC air
     subs: Vec<Vec<u64>>,
@@ -288,15 +289,40 @@ impl ColumnAllocator {
     }
 }
 
-pub fn build<A: Adapter>(
+/// A self-contained, serializable snapshot of an APC taken *before* optimization.
+///
+/// Produced by [`build_unoptimized`] and consumed by [`optimize_apc`]. It carries
+/// everything the (expensive) optimization step needs — the bus-interaction handler is
+/// reconstructed from `bus_map` by the caller — so optimization can be run in isolation
+/// on a deserialized snapshot, without the guest program.
+///
+/// It is parameterized by concrete types (not `A: Adapter`) so the derived serde bounds
+/// are correct; use [`AdapterUnoptimizedApc`] for the adapter-keyed form. It holds no
+/// optimistic constraints (those are produced from `block` during optimization), hence
+/// three type params instead of [`Apc`]'s four.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct UnoptimizedApc<F, I, C> {
+    /// The block this APC is based on.
+    pub block: SuperBlock<I>,
+    /// The unoptimized symbolic machine, with empirical constraints already folded in.
+    pub machine: SymbolicMachine<F>,
+    /// The column allocator, with the original-to-APC column substitutions populated.
+    pub column_allocator: ColumnAllocator,
+    /// The degree bound the optimizer must respect.
+    pub degree_bound: DegreeBound,
+    /// The bus map, used by the optimizer and to reconstruct the bus-interaction handler.
+    pub bus_map: BusMap<C>,
+}
+
+/// Build the unoptimized APC for `block`: generate the symbolic machine and fold in the
+/// empirical/optimistic constraints. This is the cheap phase of [`build`].
+pub fn build_unoptimized<A: Adapter>(
     block: SuperBlock<A::Instruction>,
     vm_config: AdapterVmConfig<A>,
     degree_bound: DegreeBound,
-    mut export_options: ExportOptions,
+    export_options: &mut ExportOptions,
     empirical_constraints: &EmpiricalConstraints,
-) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
-    let start = std::time::Instant::now();
-
+) -> AdapterUnoptimizedApc<A> {
     let (mut machine, column_allocator) = statements_to_symbolic_machine::<A>(
         &block,
         vm_config.instruction_handler,
@@ -360,13 +386,40 @@ pub fn build<A: Adapter>(
     metrics::counter!("before_opt_interactions", &labels)
         .absolute(machine.bus_interactions.len() as u64);
 
+    UnoptimizedApc {
+        block,
+        machine,
+        column_allocator,
+        degree_bound,
+        bus_map: vm_config.bus_map,
+    }
+}
+
+/// Optimize an [`UnoptimizedApc`] into the final APC. This is the expensive phase of
+/// [`build`], and depends only on the snapshot plus a bus-interaction handler — never on
+/// the guest — so it can be run in isolation on a deserialized [`UnoptimizedApc`].
+pub fn optimize_apc<A: Adapter>(
+    unopt: AdapterUnoptimizedApc<A>,
+    bus_interaction_handler: A::BusInteractionHandler,
+    export_options: &mut ExportOptions,
+) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
+    let UnoptimizedApc {
+        block,
+        machine,
+        column_allocator,
+        degree_bound,
+        bus_map,
+    } = unopt;
+
+    let labels = [("apc_start_pc", block.start_pcs().into_iter().join("_"))];
+
     let (machine, column_allocator) = optimizer::optimize::<_, _, _, A::MemoryBusInteraction<_>>(
         machine,
-        vm_config.bus_interaction_handler,
+        bus_interaction_handler,
         degree_bound,
-        &vm_config.bus_map,
+        &bus_map,
         column_allocator,
-        &mut export_options,
+        export_options,
     )?;
 
     // add guards to constraints that are not satisfied by zeroes
@@ -386,10 +439,36 @@ pub fn build<A: Adapter>(
     let apc = Apc::new(block, machine, optimistic_constraints, &column_allocator);
 
     if export_options.export_requested() {
-        export_options.export_apc::<A>(&apc, None, &vm_config.bus_map);
+        export_options.export_apc::<A>(&apc, None, &bus_map);
     }
 
     let apc = convert_apc_field_type(apc, &A::into_field);
+
+    Ok(apc)
+}
+
+/// Build the optimized APC for `block`. Thin composition of [`build_unoptimized`] (cheap)
+/// and [`optimize_apc`] (expensive).
+pub fn build<A: Adapter>(
+    block: SuperBlock<A::Instruction>,
+    vm_config: AdapterVmConfig<A>,
+    degree_bound: DegreeBound,
+    mut export_options: ExportOptions,
+    empirical_constraints: &EmpiricalConstraints,
+) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
+    let start = std::time::Instant::now();
+
+    let labels = [("apc_start_pc", block.start_pcs().into_iter().join("_"))];
+    let bus_interaction_handler = vm_config.bus_interaction_handler.clone();
+
+    let unopt = build_unoptimized::<A>(
+        block,
+        vm_config,
+        degree_bound,
+        &mut export_options,
+        empirical_constraints,
+    );
+    let apc = optimize_apc::<A>(unopt, bus_interaction_handler, &mut export_options)?;
 
     metrics::gauge!("apc_gen_time_ms", &labels).set(start.elapsed().as_millis() as f64);
 

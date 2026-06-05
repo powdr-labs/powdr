@@ -16,7 +16,7 @@ use crate::{
     constraint_optimizer::IsBusStateful,
     memory_optimizer::MemoryBusInteraction,
     range_constraint_optimizer::RangeConstraintHandler,
-    Apc, InstructionHandler, PowdrConfig, VmConfig,
+    Apc, InstructionHandler, PowdrConfig, UnoptimizedApc, VmConfig,
 };
 
 #[derive(Serialize, Deserialize)]
@@ -155,6 +155,11 @@ pub type AdapterApc<A> = Apc<
     <A as Adapter>::Instruction,
     <<A as Adapter>::ExecutionState as ExecutionState>::RegisterAddress,
     <<A as Adapter>::ExecutionState as ExecutionState>::Value,
+>;
+pub type AdapterUnoptimizedApc<A> = UnoptimizedApc<
+    <A as Adapter>::PowdrField,
+    <A as Adapter>::Instruction,
+    <A as Adapter>::CustomBusTypes,
 >;
 pub type AdapterApcOverPowdrField<A> = Apc<
     <A as Adapter>::PowdrField,

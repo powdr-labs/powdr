@@ -3,14 +3,15 @@ use metrics_tracing_context::{MetricsLayer, TracingContextLayer};
 use metrics_util::{debugging::DebuggingRecorder, layers::Layer};
 use openvm_sdk::StdIn;
 use openvm_stark_sdk::bench::serialize_metric_snapshot;
-use powdr_autoprecompiles::adapter::AdapterApcWithStats;
+use powdr_autoprecompiles::adapter::{AdapterApcWithStats, AdapterUnoptimizedApc};
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::pgo::{pgo_config, PgoType};
 use powdr_autoprecompiles::PowdrConfig;
 use powdr_openvm::BabyBearOpenVmApcAdapter;
 use powdr_openvm_riscv::{
-    compile_apcs, compile_openvm, detect_empirical_constraints, setup, CompiledProgram,
-    GuestOptions, OriginalCompiledProgram, RiscvISA,
+    build_all_unoptimized_apcs, compile_apcs, compile_openvm, detect_empirical_constraints,
+    optimize_unoptimized_apc, setup, CompiledProgram, GuestOptions, OriginalCompiledProgram,
+    RiscvISA,
 };
 
 #[cfg(feature = "metrics")]
@@ -61,6 +62,15 @@ enum Commands {
 
     /// Generate a STARK proof for the guest, optionally with recursion.
     Prove(ProveArgs),
+
+    /// Build the unoptimized APC for every candidate block and dump each as a
+    /// self-contained `unopt_apc_*.cbor` (plus an `unopt_apcs.json`), without optimizing
+    /// or selecting.
+    DumpApcs(DumpApcsArgs),
+
+    /// Optimize one or more dumped unoptimized APCs in isolation (no guest needed). Reports
+    /// per-APC timing and machine-size deltas; useful for tuning the optimizer.
+    OptimizeApc(OptimizeApcArgs),
 }
 
 /// Args for the profiling stage.
@@ -178,6 +188,35 @@ struct ProveArgs {
     metrics: Option<PathBuf>,
 }
 
+/// Args for the `dump-apcs` stage.
+///
+/// Output goes to `--apc-candidates-dir` (required here): the unoptimized APCs as
+/// `unopt_apc_<start_pcs>.cbor` plus an `unopt_apcs.json` summary.
+#[derive(Args, Clone, Debug)]
+struct DumpApcsArgs {
+    #[command(flatten)]
+    generate: GenerateApcsArgs,
+}
+
+/// Args for the `optimize-apc` stage.
+#[derive(Args, Clone, Debug)]
+struct OptimizeApcArgs {
+    /// Unoptimized APC files (`*.cbor`) and/or directories produced by `dump-apcs`.
+    apcs: Vec<PathBuf>,
+
+    /// Restrict to unoptimized APCs whose first start PC matches (repeatable).
+    #[arg(long)]
+    start_pc: Vec<u64>,
+
+    /// Re-run optimization this many times for stable timing.
+    #[arg(long, default_value_t = 1)]
+    repeat: usize,
+
+    /// Optionally write the optimized APC (CBOR) per input into this directory.
+    #[arg(long)]
+    out: Option<PathBuf>,
+}
+
 fn main() -> Result<(), io::Error> {
     let cli = Cli::parse();
     let artifacts_dir = cli.artifacts_dir.clone();
@@ -251,6 +290,14 @@ fn run_command(command: Commands, artifacts_dir: Option<&Path>) {
                 run();
             }
         }
+
+        Commands::DumpApcs(args) => {
+            run_dump_apcs(&args);
+        }
+
+        Commands::OptimizeApc(args) => {
+            run_optimize_apc(&args);
+        }
     }
 }
 
@@ -273,22 +320,33 @@ fn validate_select_args(args: &SelectArgs, for_execution: bool) {
     }
 }
 
-fn build_powdr_config(args: &SelectArgs) -> PowdrConfig {
-    let mut powdr_config =
-        default_powdr_openvm_config(args.autoprecompiles as u64, args.skip as u64);
-    if let Some(apc_candidates_dir) = &args.generate.apc_candidates_dir {
+fn build_powdr_config_from_generate(
+    g: &GenerateApcsArgs,
+    autoprecompiles: u64,
+    skip: u64,
+) -> PowdrConfig {
+    let mut powdr_config = default_powdr_openvm_config(autoprecompiles, skip);
+    if let Some(apc_candidates_dir) = &g.apc_candidates_dir {
         powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
     }
-    if let Some(apc_max_instructions) = args.generate.apc_max_instructions {
+    if let Some(apc_max_instructions) = g.apc_max_instructions {
         powdr_config = powdr_config.with_apc_max_instructions(apc_max_instructions);
     }
-    if let Some(apc_exec_count_cutoff) = args.generate.apc_exec_count_cutoff {
+    if let Some(apc_exec_count_cutoff) = g.apc_exec_count_cutoff {
         powdr_config = powdr_config.with_apc_exec_count_cutoff(apc_exec_count_cutoff);
     }
     powdr_config
-        .with_optimistic_precompiles(args.generate.optimistic_precompiles)
-        .with_optimistic_superblocks(args.generate.optimistic_superblocks)
-        .with_static_superblocks(!args.generate.no_static_superblocks)
+        .with_optimistic_precompiles(g.optimistic_precompiles)
+        .with_optimistic_superblocks(g.optimistic_superblocks)
+        .with_static_superblocks(!g.no_static_superblocks)
+}
+
+fn build_powdr_config(args: &SelectArgs) -> PowdrConfig {
+    build_powdr_config_from_generate(
+        &args.generate,
+        args.autoprecompiles as u64,
+        args.skip as u64,
+    )
 }
 
 /// Pipeline runner. Eagerly loads the guest crate so that we can mix a hash
@@ -478,4 +536,192 @@ fn maybe_compute_empirical_constraints(
         fs::write(path.join("empirical_constraints.json"), json).unwrap();
     }
     empirical_constraints
+}
+
+/// One row of the `dump-apcs` `unopt_apcs.json`, summarizing a candidate before optimization.
+#[derive(Serialize)]
+struct ApcInfoRow {
+    start_pcs: Vec<u64>,
+    file: String,
+    instr_count: usize,
+    exec_count: u32,
+    before_opt_cols: usize,
+    before_opt_constraints: usize,
+    before_opt_interactions: usize,
+}
+
+/// Prefix for the unoptimized APC files written by `dump-apcs` — distinct from the
+/// `apc_*.cbor` files `optimize-apc --out` writes for *optimized* APCs, so the two can
+/// coexist in one directory without clashing.
+const UNOPT_APC_PREFIX: &str = "unopt_apc_";
+
+/// The start PCs joined by '_'. The full vector is joined so distinct (static
+/// superblock) candidates that share a first basic block don't collide.
+fn join_pcs(start_pcs: &[u64]) -> String {
+    start_pcs
+        .iter()
+        .map(|pc| pc.to_string())
+        .collect::<Vec<_>>()
+        .join("_")
+}
+
+/// Build the unoptimized APC for every candidate block and dump each as a self-contained
+/// `unopt_apc_<pcs>.cbor`, plus an `unopt_apcs.json` for triage. Stops before
+/// optimization/selection.
+fn run_dump_apcs(args: &DumpApcsArgs) {
+    if args.generate.optimistic_superblocks > 1 {
+        Cli::command()
+            .error(
+                clap::error::ErrorKind::ArgumentConflict,
+                "dumping optimistic superblocks is not supported (openvm requires one APC per start PC)",
+            )
+            .exit();
+    }
+
+    let Some(out) = args.generate.apc_candidates_dir.clone() else {
+        Cli::command()
+            .error(
+                clap::error::ErrorKind::MissingRequiredArgument,
+                "dump-apcs requires --apc-candidates-dir: the directory to write the unoptimized APCs and unopt_apcs.json into",
+            )
+            .exit();
+    };
+
+    let pipeline = Pipeline::new(args.generate.profile.clone());
+    // `autoprecompiles`/`skip` are irrelevant here: dump does not select or build the final set.
+    let powdr_config = build_powdr_config_from_generate(&args.generate, 0, 0);
+    let profile_stdin = stdin_from(args.generate.profile.profile_input);
+    let empirical_constraints = maybe_compute_empirical_constraints(
+        &pipeline.guest_program,
+        &powdr_config,
+        profile_stdin.clone(),
+    );
+    let execution_profile =
+        powdr_openvm::execution_profile_from_guest(&pipeline.guest_program, profile_stdin);
+
+    let candidates = build_all_unoptimized_apcs(
+        &pipeline.guest_program,
+        &powdr_config,
+        &execution_profile,
+        empirical_constraints,
+    );
+
+    fs::create_dir_all(&out).expect("Failed to create output directory");
+    let apc_info: Vec<ApcInfoRow> = candidates
+        .iter()
+        .map(|candidate| {
+            let start_pcs = candidate.unoptimized_apc.block.start_pcs();
+            let file = format!("{UNOPT_APC_PREFIX}{}.cbor", join_pcs(&start_pcs));
+            let f =
+                fs::File::create(out.join(&file)).expect("Failed to create unoptimized APC file");
+            serde_cbor::to_writer(f, &candidate.unoptimized_apc)
+                .expect("Failed to serialize unoptimized APC");
+            ApcInfoRow {
+                start_pcs,
+                file,
+                instr_count: candidate.instr_count,
+                exec_count: candidate.exec_count,
+                before_opt_cols: candidate.before_cols,
+                before_opt_constraints: candidate.before_constraints,
+                before_opt_interactions: candidate.before_interactions,
+            }
+        })
+        .collect();
+
+    let json =
+        serde_json::to_string_pretty(&apc_info).expect("Failed to serialize unopt_apcs.json");
+    fs::write(out.join("unopt_apcs.json"), json).expect("Failed to write unopt_apcs.json");
+    tracing::info!(
+        "Dumped {} unoptimized APCs to {}",
+        apc_info.len(),
+        out.display()
+    );
+}
+
+/// Optimize one or more dumped unoptimized APCs in isolation (no guest), reporting
+/// per-APC timing and machine-size deltas.
+fn run_optimize_apc(args: &OptimizeApcArgs) {
+    let mut files: Vec<PathBuf> = Vec::new();
+    for p in &args.apcs {
+        if p.is_dir() {
+            // Only pick up the unoptimized APCs `dump-apcs` wrote, so an optimized
+            // `apc_*.cbor` left in the same dir isn't mistaken for an input.
+            for entry in fs::read_dir(p).expect("Failed to read input directory") {
+                let path = entry.expect("Failed to read directory entry").path();
+                let name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or_default();
+                if name.starts_with(UNOPT_APC_PREFIX) && name.ends_with(".cbor") {
+                    files.push(path);
+                }
+            }
+        } else {
+            // Explicit file argument: take it as given.
+            files.push(p.clone());
+        }
+    }
+    files.sort();
+    if files.is_empty() {
+        Cli::command()
+            .error(
+                clap::error::ErrorKind::ValueValidation,
+                "no unoptimized APCs found (pass `unopt_apc_*.cbor` files or a directory produced by `dump-apcs`)",
+            )
+            .exit();
+    }
+    if let Some(out) = &args.out {
+        fs::create_dir_all(out).expect("Failed to create output directory");
+    }
+
+    let repeat = args.repeat.max(1);
+    let mut optimized = 0usize;
+    for path in &files {
+        let unoptimized_apc: AdapterUnoptimizedApc<BabyBearOpenVmApcAdapter<'static, RiscvISA>> = {
+            let file = fs::File::open(path).expect("Failed to open unoptimized APC");
+            serde_cbor::from_reader(file).expect("Failed to deserialize unoptimized APC")
+        };
+        let start_pcs = unoptimized_apc.block.start_pcs();
+        if !args.start_pc.is_empty()
+            && !start_pcs
+                .first()
+                .is_some_and(|pc| args.start_pc.contains(pc))
+        {
+            continue;
+        }
+        optimized += 1;
+
+        let mut last = None;
+        for run in 0..repeat {
+            let input = unoptimized_apc.clone();
+            let start = std::time::Instant::now();
+            let result = optimize_unoptimized_apc(input).expect("Optimization failed");
+            let elapsed = start.elapsed();
+            tracing::info!(
+                "optimize {start_pcs:?} (run {}/{repeat}): {elapsed:?}; cols {}->{}, constraints {}->{}, interactions {}->{}",
+                run + 1,
+                result.before.0,
+                result.after.0,
+                result.before.1,
+                result.after.1,
+                result.before.2,
+                result.after.2,
+            );
+            last = Some(result);
+        }
+
+        if let (Some(out), Some(result)) = (&args.out, last) {
+            let f = fs::File::create(out.join(format!("apc_{}.cbor", join_pcs(&start_pcs))))
+                .expect("Failed to create output file");
+            serde_cbor::to_writer(f, &result.apc).expect("Failed to serialize optimized APC");
+        }
+    }
+
+    if optimized == 0 {
+        tracing::warn!(
+            "optimized 0 of {} input(s): --start-pc {:?} matched no unoptimized APC",
+            files.len(),
+            args.start_pc,
+        );
+    }
 }

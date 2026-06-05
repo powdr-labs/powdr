@@ -17,17 +17,22 @@ use openvm_instructions::instruction::Instruction as OpenVmInstruction;
 use openvm_instructions::program::DEFAULT_PC_STEP;
 use openvm_instructions::VmOpcode;
 use openvm_stark_backend::p3_field::{PrimeCharacteristicRing, PrimeField32};
+use openvm_stark_backend::p3_maybe_rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::adapter::{
-    Adapter, AdapterApc, AdapterApcWithStats, ApcWithStats, PgoAdapter,
+    Adapter, AdapterApc, AdapterApcWithStats, AdapterUnoptimizedApc, ApcWithStats, PgoAdapter,
 };
-use powdr_autoprecompiles::blocks::{Instruction, PcStep};
+use powdr_autoprecompiles::blocks::{detect_superblocks, BlockAndStats, Instruction, PcStep};
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::execution::ExecutionState;
+use powdr_autoprecompiles::execution_profile::ExecutionProfile;
+use powdr_autoprecompiles::export::ExportOptions;
 use powdr_autoprecompiles::pgo::{ApcCandidate, CellPgo, InstructionPgo, NonePgo, PgoConfig};
+use powdr_autoprecompiles::powdr::UniqueReferences;
 use powdr_autoprecompiles::DegreeBound;
 use powdr_autoprecompiles::PowdrConfig;
 use powdr_autoprecompiles::VmConfig;
+use powdr_autoprecompiles::{build_unoptimized, optimize_apc};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use powdr_openvm_bus_interaction_handler::bus_map::OpenVmBusType;
 use serde::{Deserialize, Serialize};
@@ -405,4 +410,120 @@ impl<'a, ISA: OpenVmISA> ApcCandidate<BabyBearOpenVmApcAdapter<'a, ISA>>
     fn value_per_use(&self) -> usize {
         self.cost_before_opt() - self.cost_after_opt()
     }
+}
+
+/// A candidate APC built up to (but not including) optimization, together with the
+/// statistics needed to triage it. Produced by [`build_all_unoptimized_apcs`].
+///
+/// `unoptimized_apc` is the self-contained, serializable snapshot that
+/// [`optimize_unoptimized_apc`] consumes; the remaining fields are pre-optimization stats
+/// for triage.
+pub struct UnoptimizedApcCandidate<ISA: OpenVmISA> {
+    pub unoptimized_apc: AdapterUnoptimizedApc<BabyBearOpenVmApcAdapter<'static, ISA>>,
+    /// Number of times the block was executed in the profile.
+    pub exec_count: u32,
+    /// Number of instructions in the block.
+    pub instr_count: usize,
+    /// Unique column references before optimization.
+    pub before_cols: usize,
+    /// Number of constraints before optimization.
+    pub before_constraints: usize,
+    /// Number of bus interactions before optimization.
+    pub before_interactions: usize,
+}
+
+/// Build the unoptimized APC snapshot for every candidate block (the cheap phase of APC
+/// generation), without optimizing or selecting. Each returned [`UnoptimizedApcCandidate`]
+/// carries a self-contained [`AdapterUnoptimizedApc`] that [`optimize_unoptimized_apc`]
+/// can later optimize in isolation, without the guest.
+///
+/// Requires a profile: candidate detection and execution counts come from
+/// `execution_profile`.
+pub fn build_all_unoptimized_apcs<'a, ISA: OpenVmISA>(
+    original_program: &OriginalCompiledProgram<'a, ISA>,
+    config: &PowdrConfig,
+    execution_profile: &ExecutionProfile,
+    empirical_constraints: EmpiricalConstraints,
+) -> Vec<UnoptimizedApcCandidate<ISA>> {
+    assert_eq!(
+        config.optimistic_superblock_max_bb_count, 1,
+        "openvm does not support optimistic superblocks"
+    );
+
+    let original_config = &original_program.vm_config;
+    let airs = original_config.airs(config.degree_bound).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
+    let bus_map = original_config.bus_map();
+
+    let vm_config = VmConfig {
+        instruction_handler: &airs,
+        bus_interaction_handler: OpenVmBusInteractionHandler::new(bus_map.clone()),
+        bus_map: bus_map.clone(),
+    };
+
+    let basic_blocks = original_program.collect_basic_blocks(config.should_use_static_superblocks);
+    let exec_blocks = detect_superblocks(config, &execution_profile.pc_list, basic_blocks);
+    let empirical_constraints = empirical_constraints.apply_pc_threshold();
+
+    exec_blocks
+        .blocks
+        .into_par_iter()
+        .map(|BlockAndStats { block, count }| {
+            let instr_count = block.instructions().count();
+            let unoptimized_apc = build_unoptimized::<BabyBearOpenVmApcAdapter<'a, ISA>>(
+                block,
+                vm_config.clone(),
+                config.degree_bound,
+                &mut ExportOptions::default(),
+                &empirical_constraints,
+            );
+            let before_cols = unoptimized_apc.machine.unique_references().count();
+            let before_constraints = unoptimized_apc.machine.constraints.len();
+            let before_interactions = unoptimized_apc.machine.bus_interactions.len();
+            UnoptimizedApcCandidate {
+                unoptimized_apc,
+                exec_count: count,
+                instr_count,
+                before_cols,
+                before_constraints,
+                before_interactions,
+            }
+        })
+        .collect()
+}
+
+/// The result of optimizing a single [`AdapterUnoptimizedApc`].
+pub struct OptimizeApcResult<ISA: OpenVmISA> {
+    /// The optimized autoprecompile.
+    pub apc: AdapterApc<BabyBearOpenVmApcAdapter<'static, ISA>>,
+    /// (unique columns, constraints, bus interactions) before optimization.
+    pub before: (usize, usize, usize),
+    /// (unique columns, constraints, bus interactions) after optimization.
+    pub after: (usize, usize, usize),
+}
+
+/// Optimize a single unoptimized APC (the expensive phase of APC generation) in isolation.
+///
+/// Reconstructs the bus-interaction handler from the unoptimized APC's bus map, so it needs
+/// neither the guest program nor the instruction AIRs. Does not compute the full APC
+/// stats (those require the guest's instruction handler); reports machine-size deltas.
+pub fn optimize_unoptimized_apc<ISA: OpenVmISA>(
+    unoptimized_apc: AdapterUnoptimizedApc<BabyBearOpenVmApcAdapter<'static, ISA>>,
+) -> Result<OptimizeApcResult<ISA>, powdr_autoprecompiles::constraint_optimizer::Error> {
+    let before = (
+        unoptimized_apc.machine.unique_references().count(),
+        unoptimized_apc.machine.constraints.len(),
+        unoptimized_apc.machine.bus_interactions.len(),
+    );
+    let bus_interaction_handler = OpenVmBusInteractionHandler::new(unoptimized_apc.bus_map.clone());
+    let apc = optimize_apc::<BabyBearOpenVmApcAdapter<'static, ISA>>(
+        unoptimized_apc,
+        bus_interaction_handler,
+        &mut ExportOptions::default(),
+    )?;
+    let after = (
+        apc.machine.unique_references().count(),
+        apc.machine.constraints.len(),
+        apc.machine.bus_interactions.len(),
+    );
+    Ok(OptimizeApcResult { apc, before, after })
 }
