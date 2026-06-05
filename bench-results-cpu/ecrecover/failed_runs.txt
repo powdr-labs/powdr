@@ -1,0 +1,4 @@
+guest-ecrecover input=125 apcs=0 run=apc000  # OOM: host RAM exhausted (~230 GiB peak, shared 251 GiB box) generating the wide k256 software trace
+guest-ecrecover input=125 apcs=3 run=apc003  # OOM: same, too few APCs to shrink the footprint
+guest-ecrecover input=125 apcs=10 run=apc010  # OOM: same (mmap failure in vm memory online)
+guest-ecrecover input=125 apcs=300 run=apc300  # LayoutHeightExceeded in leaf aggregation (recursion cap; CLI can't raise it) — same as the GPU run

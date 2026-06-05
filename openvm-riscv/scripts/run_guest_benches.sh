@@ -27,6 +27,18 @@ APC_COUNTS=(0 3 10 30 100 300)
 # sweep. CI keeps the strict default.
 BENCH_KEEP_GOING="${BENCH_KEEP_GOING:-0}"
 
+# The largest (software / 0-APC) guest proofs hold tens of GiB of trace in host
+# RAM; without jemalloc's background purging, freed pages accumulate and the
+# big workloads OOM even on a 256 GiB box. Match the nightly workflow, which
+# exports this for all jobs, so the sweep doesn't silently depend on the
+# caller's environment.
+export JEMALLOC_SYS_WITH_MALLOC_CONF="${JEMALLOC_SYS_WITH_MALLOC_CONF:-retain:true,background_thread:true,metadata_thp:always,dirty_decay_ms:10000,muzzy_decay_ms:10000,abort_conf:true}"
+
+# With BENCH_SKIP_EXISTING=1 a run whose metrics.json already exists (non-empty)
+# is skipped, making the sweep resumable after an interrupted run. Default off
+# so CI (which starts from an empty results/) always runs fresh.
+BENCH_SKIP_EXISTING="${BENCH_SKIP_EXISTING:-0}"
+
 run_bench() {
     guest="$1"
     input="$2"
@@ -36,6 +48,11 @@ run_bench() {
     echo ""
     echo "==== ${run_name} ===="
     echo ""
+
+    if [ "$BENCH_SKIP_EXISTING" = "1" ] && [ -s "${run_name}/metrics.json" ]; then
+        echo "SKIP ${run_name}: metrics.json already present"
+        return 0
+    fi
 
     # `--artifacts-dir` and `--apc-candidates-dir` are shared across all
     # `run_bench` calls with the same (guest, profile-input). For cell PGO

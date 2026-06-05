@@ -1,0 +1,3 @@
+openvm-eth: 44564802f942d15c6dd782979d280f28065179b5 (+ openvm-riscv/scripts/openvm-eth-bench.patch)
+powdr: be183c60e1c1aa9b96aac3dc6d624d9884667269 (benched working tree; Rust identical to the GPU bench-results run) — CPU bench scripts committed on this branch
+run: local CPU run on Intel Xeon Gold 5412U (24C/48T, 251 GiB), no GPU, 2026-06-05/06 — see readme.md for exact commands

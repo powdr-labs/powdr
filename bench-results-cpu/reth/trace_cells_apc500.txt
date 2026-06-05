@@ -1,0 +1,38 @@
+Total cells: 14.01B
+Cells by AIR:
+air_name
+KeccakfPermAir                                                                         5395106304
+Poseidon2PeripheryAir<BabyBearParameters>, 1>                                          2718105600
+PowdrAir<BabyBearParameters>                                                           2661277936
+VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>                               687529984
+VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>                                492208128
+MemoryMerkleAir<8>                                                                      403177472
+ProgramAir                                                                              367001600
+RangeTupleCheckerAir<2>                                                                 220200960
+PersistentBoundaryAir<8>                                                                206782464
+VmAirWrapper<Rv32BaseAluAdapterAir, ShiftCoreAir<4, 8>                                  127267840
+XorinVmAir                                                                               87517328
+Rv32HintStoreAir                                                                         84024832
+VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>                                 80324608
+VmAirWrapper<Rv32IsEqualModAdapterAir<2, 8, 4, 32>, ModularIsEqualCoreAir<32, 4, 8>      58911424
+KeccakfOpAir                                                                             53716872
+VmAirWrapper<Rv32VecHeapAdapterAir<2, 16, 16, 4, 4>, FieldExpressionCoreAir>             52101376
+VmAirWrapper<Rv32BaseAluAdapterAir, LessThanCoreAir<4, 8>                                48797931
+VmAirWrapper<Rv32VecHeapAdapterAir<1, 16, 16, 4, 4>, FieldExpressionCoreAir>             45068544
+BitwiseOperationLookupAir<8>                                                             41287680
+VmAirWrapper<Rv32BranchAdapterAir, BranchLessThanCoreAir<4, 8>                           38010880
+VariableRangeCheckerAir                                                                  36700160
+VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>                                        30177280
+VmAirWrapper<Rv32MultAdapterAir, MultiplicationCoreAir<4, 8>                             23252480
+VmAirWrapper<Rv32CondRdWriteAdapterAir, Rv32JalLuiCoreAir>                               20422656
+VmAirWrapper<Rv32MultAdapterAir, MulHCoreAir<4, 8>                                       18491694
+VmAirWrapper<Rv32RdWriteAdapterAir, Rv32AuipcCoreAir>                                     9692160
+VmAirWrapper<Rv32LoadStoreAdapterAir, LoadSignExtendCoreAir<4, 8>                         2689200
+VmAirWrapper<Rv32VecHeapAdapterAir<2, 8, 8, 4, 4>, FieldExpressionCoreAir>                1186210
+Sha2BlockHasherVmAir<Sha256Config>                                                         175104
+VmAirWrapper<Rv32MultAdapterAir, DivRemCoreAir<4, 8>                                        66080
+Sha2MainAir<Sha256Config>                                                                    6816
+PhantomAir                                                                                   2454
+VmConnectorAir                                                                                420
+Name: cells, dtype: int64
+Saving plot to /home/georg/powdr/results/reth/trace_cells_apc500.png

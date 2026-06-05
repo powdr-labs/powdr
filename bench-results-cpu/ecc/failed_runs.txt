@@ -1,0 +1,4 @@
+guest-ecc-projective input=100 apcs=300 run=projective-apc300  # LayoutHeightExceeded in leaf aggregation (recursion cap; CLI can't raise it) — same as the GPU run
+guest-ecc-powdr-affine-hint input=100 apcs=0 run=affine-hint-apc000  # OOM: host RAM exhausted (~230 GiB peak, shared 251 GiB box) generating the wide k256 software trace
+guest-ecc-powdr-affine-hint input=100 apcs=3 run=affine-hint-apc003  # OOM: same, too few APCs to shrink the footprint
+guest-ecc-powdr-affine-hint input=100 apcs=300 run=affine-hint-apc300  # LayoutHeightExceeded in leaf aggregation (recursion cap; CLI can't raise it) — same as the GPU run
