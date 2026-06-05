@@ -192,6 +192,8 @@ jobs:
       - name: Prefetch RPC cache (CPU)
         run: |
           cd openvm-eth
+          # Start every nightly from a fresh APC cache.
+          rm -rf apc-cache
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
           ./run.sh --apc 0 --block "$BLOCK_NUMBER" --mode execute || exit 1
           tar -czf ../rpc-cache.tgz rpc-cache
@@ -308,9 +310,9 @@ jobs:
       # The compile step above already populated the shared --artifacts-dir
       # (apc-cache/) with generate/select/setup blobs for every apc count, so
       # these prove-stark calls hit the setup cache and skip straight to
-      # proving. Never `rm -rf apc-cache` between iterations — the cache is
-      # content-hash keyed (no collisions) and wiping it would force a full
-      # candidate rebuild per apc.
+      # proving. The cache was wiped once at job start (Prefetch step), so it
+      # only holds blobs from THIS run — don't wipe it again between iterations
+      # here, or each apc would force a full candidate rebuild.
       - name: Run reth benchmark
         run: |
           source .venv/bin/activate
@@ -512,10 +514,9 @@ jobs:
           mkdir -p $RES_DIR
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
 
-          # Sweep apc {0,10,30} sharing the --artifacts-dir (apc-cache/): under
-          # the default cell PGO the `generate` blob is built once and reused,
-          # so only the per-N select+setup re-run. The cache is content-hash
-          # keyed, so we never wipe it between runs.
+          # For each run, start with a fresh APC cache
+          rm -rf apc-cache
+
           # prove with no APCs
           ./run.sh --cuda --block 24171377 --apc 0 --mode prove-stark || exit 1
           echo "Finished proving with no APCs"

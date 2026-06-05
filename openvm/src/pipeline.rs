@@ -96,8 +96,6 @@ impl<ISA: OpenVmISA> StagedPipeline<ISA> {
     ) -> RankedApcs<ISA> {
         let hash = self.generate_hash(generate, pgo_config);
         cached(self.artifacts_dir.as_deref(), "generate", &hash, || {
-            // PgoType::None ignores the profile entirely; skip the closure
-            // (and any expensive work it'd do, like running the guest) for it.
             let pgo = match pgo_config.pgo_type {
                 PgoType::None => PgoData::None,
                 pgo_type => {

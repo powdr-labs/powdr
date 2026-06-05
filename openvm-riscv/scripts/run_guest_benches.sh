@@ -52,11 +52,7 @@ run_bench() {
         python3 "$SCRIPTS_DIR"/../../autoprecompiles/scripts/plot_effectiveness.py "${candidates_dir}"/apc_candidates.json --output "${run_name}"/effectiveness.png
     fi
 
-    # Clean up per-block snapshot files we don't want to push. They are
-    # written into the shared candidates_dir on the first cache-miss run
-    # and not re-created on cache hits, so this is effectively a one-time
-    # cleanup per (guest, profile-input).
-    #
+    # Clean up per-block snapshot files we don't want to push.
     # Use `find -delete` rather than `rm glob`: large guests emit thousands of
     # `apc_candidate_*` files (e.g. ~7k blocks), and the expanded glob blows
     # past ARG_MAX ("Argument list too long"). `apc_candidates.json` doesn't
