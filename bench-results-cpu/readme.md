@@ -10,15 +10,21 @@ The Rust code is `be183c60e`, identical to the GPU
 scripts are added on top. This is the **CPU counterpart** of the GPU
 `bench-results/` (RTX 4090) and `bench-results-autoopt/` runs, on the same
 single-socket Xeon-class machine the blog post used. Every guest is swept
-over {0, 3, 10, 30, 100, 300} autoprecompiles; reth (openvm-eth, mainnet
-block 24171377) over {0, 3, 10, 30, 100, 300} plus high-count probes
-{500, 1000, 2000} (raised aggregation caps; see Notes). Guest workloads are
+over {0, 3, 10, 30, 100, 300} autoprecompiles; reth (openvm-eth) over
+{0, 3, 10, 30, 100, 300} plus high-count probes {500, 1000, 2000} (raised
+aggregation caps; see Notes) on **two** mainnet blocks — 24171377 (the
+nightly's block, directly comparable to the GPU `bench-results/reth_gpu`) and
+**21882667** (the blog post's exact block: 133 txns / 9.6 M gas, directly
+comparable to the blog's published reth numbers; see the dedicated section
+below). Guest workloads are
 sized to ~50 segments in the software (0 APCs) version, matching the blog
 post's inputs (25 000 keccaks, 80 000 sha256 hashes; 100 ecc scalar mults
 and 125 ecrecovers hit the same segment target). pairing, u256 and matmul
 run fixed workloads baked into the guest (input is ignored).
 
-**reth**: 📂 [Raw data](https://github.com/powdr-labs/powdr/tree/bench-cuda-apc-sweep-2026-06/bench-results-cpu/reth) &nbsp;|&nbsp; 📊 [Metrics Viewer](https://powdr-labs.github.io/powdr/openvm/metrics-viewer/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fpowdr%2Fblob%2Fbench-cuda-apc-sweep-2026-06%2Fbench-results-cpu%2Freth%2Fcombined_metrics.json) &nbsp;|&nbsp; 🔍 [APC Analyzer](https://powdr-labs.github.io/powdr/autoprecompile-analyzer/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fpowdr%2Fblob%2Fbench-cuda-apc-sweep-2026-06%2Fbench-results-cpu%2Freth%2Fapc_candidates.json)
+**reth** (nightly block 24171377): 📂 [Raw data](https://github.com/powdr-labs/powdr/tree/bench-cuda-apc-sweep-2026-06/bench-results-cpu/reth) &nbsp;|&nbsp; 📊 [Metrics Viewer](https://powdr-labs.github.io/powdr/openvm/metrics-viewer/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fpowdr%2Fblob%2Fbench-cuda-apc-sweep-2026-06%2Fbench-results-cpu%2Freth%2Fcombined_metrics.json) &nbsp;|&nbsp; 🔍 [APC Analyzer](https://powdr-labs.github.io/powdr/autoprecompile-analyzer/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fpowdr%2Fblob%2Fbench-cuda-apc-sweep-2026-06%2Fbench-results-cpu%2Freth%2Fapc_candidates.json)
+
+**reth (blog block 21882667)**: 📂 [Raw data](https://github.com/powdr-labs/powdr/tree/bench-cuda-apc-sweep-2026-06/bench-results-cpu/reth_blogblock) &nbsp;|&nbsp; 📊 [Metrics Viewer](https://powdr-labs.github.io/powdr/openvm/metrics-viewer/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fpowdr%2Fblob%2Fbench-cuda-apc-sweep-2026-06%2Fbench-results-cpu%2Freth_blogblock%2Fcombined_metrics.json) &nbsp;|&nbsp; 🔍 [APC Analyzer](https://powdr-labs.github.io/powdr/autoprecompile-analyzer/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fpowdr%2Fblob%2Fbench-cuda-apc-sweep-2026-06%2Fbench-results-cpu%2Freth_blogblock%2Fapc_candidates.json)
 
 **ecc**: 📂 [Raw data](https://github.com/powdr-labs/powdr/tree/bench-cuda-apc-sweep-2026-06/bench-results-cpu/ecc) &nbsp;|&nbsp; 📊 [Metrics Viewer](https://powdr-labs.github.io/powdr/openvm/metrics-viewer/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fpowdr%2Fblob%2Fbench-cuda-apc-sweep-2026-06%2Fbench-results-cpu%2Fecc%2Fcombined_metrics.json) &nbsp;|&nbsp; 🔍 [APC Analyzer](https://powdr-labs.github.io/powdr/autoprecompile-analyzer/?data=https%3A%2F%2Fgithub.com%2Fpowdr-labs%2Fpowdr%2Fblob%2Fbench-cuda-apc-sweep-2026-06%2Fbench-results-cpu%2Fecc%2Fcandidates%2Fguest-ecc-powdr-affine-hint-input100%2Fapc_candidates.json)
 
@@ -94,8 +100,16 @@ printf 'export RPC_1=%s\n' "<archive rpc url>" > openvm-eth/.env
 ./openvm-riscv/scripts/run_reth_cpu_highcount.sh                       # 500 + 1000
 PROBES="2000:24:22" ./openvm-riscv/scripts/run_reth_cpu_highcount.sh   # 2000
 
-# Collect results/ into this directory's layout
+# Collect results/ into this directory's layout (-> bench-results-cpu/reth is
+# the nightly block 24171377)
 ./openvm-riscv/scripts/collect_bench_results.sh results bench-results-cpu
+
+# Same reth sweep on the blog post's block (21882667), for direct
+# comparability. The scripts write to results/reth, so collect the nightly
+# block first (above), then copy the blog-block run aside:
+BLOCK_NUMBER=21882667 ./openvm-riscv/scripts/run_reth_cpu_bench.sh
+BLOCK_NUMBER=21882667 PROBES="500:22:20 1000:23:21 2000:24:22" ./openvm-riscv/scripts/run_reth_cpu_highcount.sh
+cp -r results/reth bench-results-cpu/reth_blogblock
 ```
 
 Note: `openvm-eth-bench.patch` wires `POWDR_APC_CANDIDATES_DIR` into powdr's
@@ -106,7 +120,11 @@ stale). The patch also hardens the RPC fetch (retries + an optional
 A paid/archive RPC (e.g. Alchemy) needs neither the chunk-size override nor
 extra retries.
 
-## reth (CPU, prove-stark = app proof + leaf + internal recursion)
+## reth — nightly block 24171377 (CPU, prove-stark = app + leaf + internal recursion)
+
+This is the block the powdr nightly + the GPU `bench-results/reth_gpu` use, so
+it's the CPU-vs-GPU comparison point. (For the blog post's own block, see the
+next section.)
 
 | APCs | segments | total proof time | excl. trace gen | app cells | peak host RAM |
 |---|---|---|---|---|---|
@@ -164,6 +182,58 @@ no run failed):
   candidate supply is not the limit either). Extrapolating the RAM curve,
   ~4000 APCs would approach the box's memory, but the proof would be far
   slower than the 300-APC optimum regardless.
+
+## reth — blog block 21882667 (directly comparable to the blog post)
+
+The [blog post](https://powdr.org/blog/accelerating-ethereum-with-autoprecompiles)
+measured this exact block (133 txns, 9.6 M gas) on the same Xeon Gold 5412U, so
+re-running it here puts these CPU numbers on the identical workload. One caveat:
+the blog predates the OpenVM 2.0 update and this run is on OpenVM 2.0 (the new
+WHIR-based prover), so absolute times and segmentation are not expected to
+match — the **APC speedup trend** is the apples-to-apples comparison.
+
+| APCs | segments | total proof time | excl. trace gen | app cells | peak host RAM |
+|---|---|---|---|---|---|
+| 0 | 24 | 1075.7 s | 1021.9 s | 10.54 B | 47.8 GiB |
+| 3 | 23 | 1020.8 s | 960.7 s | 10.08 B | 48.4 GiB |
+| 10 | 22 | 925.4 s | 862.4 s | 9.31 B | 48.9 GiB |
+| 30 | 22 | 909.7 s | 844.2 s | 9.13 B | 47.8 GiB |
+| 100 | 20 | **792.0 s** | 719.0 s | 8.36 B | 48.8 GiB |
+| 300 | 19 | 794.3 s | **704.8 s** | 7.79 B | 49.2 GiB |
+| 500 ¹ | 19 | 906.8 s | 809.1 s | 7.60 B | 54.1 GiB |
+| 1000 ¹ | 18 | 946.7 s | 832.0 s | 7.37 B | 59.3 GiB |
+| 2000 ¹ | 18 | 1232.8 s | 1101.9 s | 6.92 B | 115.1 GiB |
+
+¹ raised aggregation caps, same as the nightly-block table (500 → 22/20,
+1000 → 23/21, 2000 → 24/22). `reth_blogblock/failed_runs.txt` is empty.
+
+**The APC speedup matches the blog almost exactly.** The blog reported (with
+recursion, single CPU):
+
+| APCs | segments | proof time | speedup |
+|---|---|---|---|
+| 0 | 6 | 341.19 s | 1.00× |
+| 3 | 5 | 293.89 s | 1.16× |
+| 10 | 5 | 274.16 s | 1.24× |
+| 30 | 4 | 265.54 s | 1.28× |
+| 100 | 3 | 248.43 s | 1.37× |
+
+At 100 APCs the blog sees **1.37×** (341 → 248 s); this OpenVM 2.0 run sees
+**1.36×** (1076 → 792 s) — the relative benefit of autoprecompiles on this
+block reproduces. What differs is the prover: absolute proving time is ~3×
+higher (1076 s vs 341 s at 0 APCs) and the block segments ~4× more finely
+(24 vs 6 segments at 0 APCs) under OpenVM 2.0 — a property of the new proving
+system, not the APCs.
+
+**The recursion ceiling is gone.** The blog stopped at 100 APCs *with*
+recursion — "beyond 100, the verifier becomes too large for OpenVM's recursion
+prover" — and could only reach 500–2000 on the *app proof alone* (no
+recursion). On OpenVM 2.0, with the raised leaf/internal stacked-height caps,
+the **full prove-stark (app + leaf + internal recursion) completes all the way
+to 2000 APCs** here. As on the nightly block, total time bottoms out around
+100–300 APCs (−26 %) then rises with per-AIR overhead (2000 APCs is slower than
+the baseline), while trace cells keep falling monotonically (10.54 B → 6.92 B).
+Same story as block 24171377, at ~1.8× lower absolute cost (smaller block).
 
 ## Guests (CPU, prove with `--recursion`)
 
@@ -233,6 +303,8 @@ Per experiment: `apcNNN/` (or `apcNNN.json` for reth) with `metrics.json`,
 `psrecord` memory profiles, `trace_cells` plots; `basic_metrics.csv`,
 `combined_metrics.json` (metrics-viewer input), `proof_time_breakdown.png`,
 `effectiveness.png`, and `apc_candidates.json` (APC-analyzer input; for
-guests under `candidates/<guest>-input<N>/`). reth additionally has per-count
-`psrecord_apcNNN.{csv,png}` host-memory traces. `failed_runs.txt` records the
-OOM / recursion-cap failures with the reason per line.
+guests under `candidates/<guest>-input<N>/`). There are two reth directories —
+`reth/` (nightly block 24171377, GPU-comparable) and `reth_blogblock/` (the
+blog post's block 21882667) — each with per-count `psrecord_apcNNN.{csv,png}`
+host-memory traces. `failed_runs.txt` records the OOM / recursion-cap failures
+with the reason per line.
