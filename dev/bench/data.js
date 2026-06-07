@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1780789081718,
+  "lastUpdate": 1780875487244,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -415369,6 +415369,34 @@ window.BENCHMARK_DATA = {
             "name": "optimize-keccak/optimize",
             "value": 19348139705,
             "range": "± 564414980",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Leandro Pacheco",
+            "username": "pacheco",
+            "email": "contact@leandropacheco.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "5e2bb4c53be34cd0b464026e2848b44972857a6a",
+          "message": "update openvm to v2.0.0-beta.2-powdr.1 (#3760)\n\nalso includes a small fix to the `update-dep.sh` script",
+          "timestamp": "2026-05-28T10:42:07Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/5e2bb4c53be34cd0b464026e2848b44972857a6a"
+        },
+        "date": 1780875479162,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 19279498781,
+            "range": "± 967982985",
             "unit": "ns/iter"
           }
         ]
