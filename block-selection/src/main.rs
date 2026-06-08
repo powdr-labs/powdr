@@ -4,7 +4,9 @@ use std::path::PathBuf;
 
 use clap::{Parser, ValueEnum};
 use powdr_autoprecompiles::blocks::ExecutionBasicBlockRun;
-use powdr_autoprecompiles::pgo::cell::selection::{select_candidates_greedy, BlockCandidate};
+use powdr_autoprecompiles::pgo::cell::selection::{
+    select_candidates_by_saved_cells, select_candidates_greedy, BlockCandidate,
+};
 use powdr_autoprecompiles::pgo::cell::JsonExport;
 
 /// Prototype APC block-selection algorithms over already-generated candidates.
@@ -39,8 +41,8 @@ struct Cli {
     #[arg(long)]
     one_block_per_pc: bool,
 
-    /// Selection algorithm (only `greedy` for now).
-    #[arg(long, default_value = "greedy")]
+    /// Selection mode.
+    #[arg(long, default_value = "greedy-density")]
     algorithm: Algorithm,
 
     /// Output path for the selection JSON.
@@ -50,7 +52,10 @@ struct Cli {
 
 #[derive(Clone, Copy, ValueEnum)]
 enum Algorithm {
-    Greedy,
+    /// Greedy by density (value / cost) — the default, matches the production pipeline.
+    GreedyDensity,
+    /// Greedy by saved cells only (total cells saved), ignoring cost.
+    GreedySaved,
 }
 
 fn main() {
@@ -78,7 +83,14 @@ fn main() {
 
     // Run the selection: returns (candidate index, effective post-selection count).
     let selection = match cli.algorithm {
-        Algorithm::Greedy => select_candidates_greedy(
+        Algorithm::GreedyDensity => select_candidates_greedy(
+            candidates,
+            cli.budget,
+            cli.max_selected,
+            &execution_bb_runs,
+            cli.one_block_per_pc,
+        ),
+        Algorithm::GreedySaved => select_candidates_by_saved_cells(
             candidates,
             cli.budget,
             cli.max_selected,

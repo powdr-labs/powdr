@@ -73,6 +73,12 @@ impl BlockCandidate {
             tie: self.start_pcs[0],
         }
     }
+
+    /// Priority for the "saved cells" selection mode: total cells saved (`value()`),
+    /// ignoring cost. Ties are broken deterministically by the first start PC.
+    pub fn saved_cells_priority(&self) -> (usize, u64) {
+        (self.value(), self.start_pcs[0])
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -174,19 +180,31 @@ pub fn select_blocks_greedy<A: Adapter, C: ApcCandidate<A>>(
     )
 }
 
-pub fn select_candidates_greedy(
+/// Greedily select candidates, highest-priority first, respecting the column `budget`,
+/// `max_selected`, and (optionally) at most one APC per starting PC. As a candidate is
+/// selected, the remaining candidates' priorities are (lazily) recomputed over the
+/// execution with the selection's occurrences removed.
+///
+/// `priority` maps a candidate to its ordering key (higher = selected sooner); different
+/// selection modes differ only in this function.
+///
+/// Returns, for each selected block (in selection order), its index together with its
+/// effective execution count over the execution remaining at selection time.
+fn select_candidates_greedy_with<P, F>(
     mut candidates: Vec<BlockCandidate>,
     budget: usize,
     max_selected: usize,
     execution_bb_runs: &[(ExecutionBasicBlockRun, u32)],
     one_block_per_pc: bool,
-) -> Vec<(usize, u32)> {
+    priority: F,
+) -> Vec<(usize, u32)>
+where
+    P: Ord,
+    F: Fn(&BlockCandidate) -> P,
+{
     // keep candidates by priority. As a candidate is selected, remaining priorities will be (lazily) updated.
-    let mut by_priority: PriorityQueue<_, _> = candidates
-        .iter()
-        .map(BlockCandidate::density)
-        .enumerate()
-        .collect();
+    let mut by_priority: PriorityQueue<usize, P> =
+        candidates.iter().map(&priority).enumerate().collect();
 
     let mut selected = vec![];
     let mut cumulative_cost = 0;
@@ -215,7 +233,7 @@ pub fn select_candidates_greedy(
         } else if count < c.execution_count {
             // re-insert with updated priority
             c.execution_count = count;
-            by_priority.push(idx, c.density());
+            by_priority.push(idx, priority(c));
             continue;
         }
 
@@ -233,6 +251,45 @@ pub fn select_candidates_greedy(
         }
     }
     selected
+}
+
+/// Select candidates greedily by **density** (value / cost). This is the default mode and
+/// the one the production pipeline uses.
+pub fn select_candidates_greedy(
+    candidates: Vec<BlockCandidate>,
+    budget: usize,
+    max_selected: usize,
+    execution_bb_runs: &[(ExecutionBasicBlockRun, u32)],
+    one_block_per_pc: bool,
+) -> Vec<(usize, u32)> {
+    select_candidates_greedy_with(
+        candidates,
+        budget,
+        max_selected,
+        execution_bb_runs,
+        one_block_per_pc,
+        BlockCandidate::density,
+    )
+}
+
+/// Select candidates greedily by **saved cells** only — i.e. by total cells saved
+/// (`value()`), ignoring each candidate's cost. Same greedy loop as
+/// [`select_candidates_greedy`]; only the ordering metric differs.
+pub fn select_candidates_by_saved_cells(
+    candidates: Vec<BlockCandidate>,
+    budget: usize,
+    max_selected: usize,
+    execution_bb_runs: &[(ExecutionBasicBlockRun, u32)],
+    one_block_per_pc: bool,
+) -> Vec<(usize, u32)> {
+    select_candidates_greedy_with(
+        candidates,
+        budget,
+        max_selected,
+        execution_bb_runs,
+        one_block_per_pc,
+        BlockCandidate::saved_cells_priority,
+    )
 }
 
 #[cfg(test)]
