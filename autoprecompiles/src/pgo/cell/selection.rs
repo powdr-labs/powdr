@@ -130,7 +130,9 @@ fn count_and_update_execution(
 
 /// Greedily select blocks based on density.
 /// Once a candidate is selected, the value of the remaining candidates are updated to reflect the new execution (with the selection removed).
-/// Returns the indices of the selected blocks, together with how many times each would run if applied over the execution in the selected order.
+/// Returns, for each selected block (in selection order), its index together with its
+/// effective execution count: how many times it runs over the execution remaining after
+/// the previously-selected blocks' occurrences have been removed.
 ///
 /// When `enforce_one_per_pc` is true, at most one APC can be selected for a given starting PC.
 pub fn select_blocks_greedy<A: Adapter, C: ApcCandidate<A>>(
@@ -140,7 +142,7 @@ pub fn select_blocks_greedy<A: Adapter, C: ApcCandidate<A>>(
     max_selected: usize,
     execution_bb_runs: &[(ExecutionBasicBlockRun, u32)],
     one_block_per_pc: bool,
-) -> Vec<usize> {
+) -> Vec<(usize, u32)> {
     let candidates = blocks
         .iter()
         .zip_eq(apcs)
@@ -162,7 +164,7 @@ fn select_candidates_greedy(
     max_selected: usize,
     execution_bb_runs: &[(ExecutionBasicBlockRun, u32)],
     one_block_per_pc: bool,
-) -> Vec<usize> {
+) -> Vec<(usize, u32)> {
     // keep candidates by priority. As a candidate is selected, remaining priorities will be (lazily) updated.
     let mut by_priority: PriorityQueue<_, _> = candidates
         .iter()
@@ -207,7 +209,8 @@ fn select_candidates_greedy(
         if one_block_per_pc {
             selected_start_pcs.insert(c.start_pcs[0]);
         }
-        selected.push(idx);
+        // `count` is the effective frequency over the remaining execution at selection time.
+        selected.push((idx, count));
 
         if selected.len() >= max_selected {
             break;

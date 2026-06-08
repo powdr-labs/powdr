@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     adapter::{Adapter, AdapterApcWithStats, AdapterExecutionBlocks, AdapterVmConfig, PgoAdapter},
-    blocks::{BasicBlock, BlockAndStats, SuperBlock},
+    blocks::{BasicBlock, SuperBlock},
     evaluation::{evaluate_apc, EvaluationResult},
     execution_profile::ExecutionProfile,
     export::{ExportLevel, ExportOptions},
@@ -143,13 +143,14 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
             .collect();
 
         // write the APC candidates JSON to disk if the directory is specified.
+        // (`labels` is cloned so it remains available for the selection JSON below.)
         if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
-            let apcs = apcs
+            let candidate_json = apcs
                 .iter()
                 .zip_eq(&blocks)
-                .map(|(apc, candidate)| apc_candidate_json_export::<A, _>(apc, candidate))
+                .map(|(apc, candidate)| apc_candidate_json_export::<A, _>(apc, candidate.count))
                 .collect();
-            let json = JsonExport::new(apcs, labels);
+            let json = JsonExport::new(candidate_json, labels.clone());
             let json_path = apc_candidates_dir_path.join("apc_candidates.json");
             let file = std::fs::File::create(&json_path)
                 .expect("Failed to create file for APC candidates JSON");
@@ -162,6 +163,7 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
         let max_selected = (config.autoprecompiles + config.skip_autoprecompiles) as usize;
         // When optimistic superblocks are not enabled, at most one APC can be chosen per starting PC
         let one_block_per_pc = config.optimistic_superblock_max_bb_count < 2;
+        // Pairs of (candidate index, effective execution count) in selection order.
         let selection = select_blocks_greedy(
             &apcs,
             &blocks,
@@ -174,12 +176,28 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
         // skip per config
         let skip = (config.skip_autoprecompiles as usize).min(selection.len());
 
+        // Write the post-selection JSON (same dir, same format as apc_candidates.json) for
+        // the embedded set, using each APC's effective post-selection execution count.
+        if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
+            let selection_json = selection
+                .iter()
+                .skip(skip)
+                .map(|&(idx, count)| apc_candidate_json_export::<A, _>(&apcs[idx], count))
+                .collect();
+            let json = JsonExport::new(selection_json, labels);
+            let json_path = apc_candidates_dir_path.join("apc_selection.json");
+            let file = std::fs::File::create(&json_path)
+                .expect("Failed to create file for APC selection JSON");
+            serde_json::to_writer(BufWriter::new(file), &json)
+                .expect("Failed to write APC selection JSON to file");
+        }
+
         // filter and order the apcs using the selection
         let mut apcs: Vec<_> = apcs.into_iter().map(|apc| Some(apc.into_inner())).collect();
         selection
             .into_iter()
             .skip(skip)
-            .map(|position| apcs[position].take().unwrap())
+            .map(|(idx, _count)| apcs[idx].take().unwrap())
             .collect()
     }
 
@@ -214,7 +232,7 @@ fn try_generate_candidate<A: Adapter, C: ApcCandidate<A>>(
 
 fn apc_candidate_json_export<A: Adapter, C: ApcCandidate<A>>(
     apc: &C,
-    block: &BlockAndStats<A::Instruction>,
+    execution_frequency: u32,
 ) -> ApcCandidateJsonExport {
     let original_blocks: Vec<_> = apc
         .inner()
@@ -227,14 +245,15 @@ fn apc_candidate_json_export<A: Adapter, C: ApcCandidate<A>>(
         })
         .collect();
 
+    let execution_frequency = execution_frequency as usize;
     ApcCandidateJsonExport {
-        execution_frequency: block.count as usize,
+        execution_frequency,
         original_blocks,
         stats: apc.inner().evaluation_result(),
         width_before: apc.cost_before_opt(),
         value: apc
             .value_per_use()
-            .checked_mul(block.count as usize)
+            .checked_mul(execution_frequency)
             .unwrap(),
         cost_before: apc.cost_before_opt() as f64,
         cost_after: apc.cost_after_opt() as f64,
