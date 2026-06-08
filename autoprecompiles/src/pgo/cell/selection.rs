@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use itertools::Itertools;
 use priority_queue::PriorityQueue;
@@ -78,6 +78,18 @@ impl BlockCandidate {
     /// ignoring cost. Ties are broken deterministically by the first start PC.
     pub fn saved_cells_priority(&self) -> (usize, u64) {
         (self.value(), self.start_pcs[0])
+    }
+
+    /// Priority for the "effectiveness" selection mode: the cost-reduction ratio
+    /// `cost_before / cost_after`, independent of execution count and absolute size.
+    /// Reuses the [`Density`] cross-multiplication ordering with `cost_before` as the
+    /// numerator and `cost_after` as the denominator.
+    pub fn effectiveness_priority(&self) -> Density {
+        Density {
+            value: self.cost_before,
+            cost: self.cost_after,
+            tie: self.start_pcs[0],
+        }
     }
 }
 
@@ -290,6 +302,50 @@ pub fn select_candidates_by_saved_cells(
         one_block_per_pc,
         BlockCandidate::saved_cells_priority,
     )
+}
+
+/// Select candidates greedily by **effectiveness** — the cost-reduction ratio
+/// `cost_before / cost_after` — ignoring execution frequency and absolute size. Same
+/// greedy loop as [`select_candidates_greedy`]; only the ordering metric differs.
+pub fn select_candidates_by_effectiveness(
+    candidates: Vec<BlockCandidate>,
+    budget: usize,
+    max_selected: usize,
+    execution_bb_runs: &[(ExecutionBasicBlockRun, u32)],
+    one_block_per_pc: bool,
+) -> Vec<(usize, u32)> {
+    select_candidates_greedy_with(
+        candidates,
+        budget,
+        max_selected,
+        execution_bb_runs,
+        one_block_per_pc,
+        BlockCandidate::effectiveness_priority,
+    )
+}
+
+/// Pre-selection filter: keep only the longest superblock candidate for each starting PC.
+///
+/// Candidates are grouped by their first start PC (`start_pcs[0]`); within each group the
+/// candidate spanning the most basic blocks (largest `start_pcs.len()`) is kept, with ties
+/// broken deterministically by the full `start_pcs` sequence. Intended to be called on the
+/// candidate set before one of the `select_candidates_*` functions.
+pub fn keep_longest_per_pc(candidates: Vec<BlockCandidate>) -> Vec<BlockCandidate> {
+    let mut longest: BTreeMap<u64, BlockCandidate> = BTreeMap::new();
+    for candidate in candidates {
+        let pc = candidate.start_pcs[0];
+        let replace = match longest.get(&pc) {
+            None => true,
+            Some(current) => {
+                (candidate.start_pcs.len(), &candidate.start_pcs)
+                    > (current.start_pcs.len(), &current.start_pcs)
+            }
+        };
+        if replace {
+            longest.insert(pc, candidate);
+        }
+    }
+    longest.into_values().collect()
 }
 
 #[cfg(test)]
