@@ -9,7 +9,7 @@ use crate::{
     blocks::{find_non_overlapping, BlockAndStats, ExecutionBasicBlockRun},
 };
 
-use super::ApcCandidate;
+use super::{ApcCandidate, ApcCandidateJsonExport};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 // A candidate block, used during block selection
@@ -37,6 +37,22 @@ impl BlockCandidate {
             cost_after: apc.cost_after_opt(),
             value_per_use: apc.value_per_use(),
             execution_count: block.count,
+        }
+    }
+
+    /// Reconstruct a candidate from an exported [`ApcCandidateJsonExport`] row (as found
+    /// in `apc_candidates.json`). `value_per_use` is recovered as
+    /// `value / execution_frequency`, which is exact because the export stores
+    /// `value == value_per_use * execution_frequency` and candidates always have
+    /// `execution_frequency >= 1` (the `freq == 0` guard is purely defensive).
+    pub fn from_candidate_json(row: &ApcCandidateJsonExport) -> Self {
+        let freq = row.execution_frequency;
+        Self {
+            start_pcs: row.original_blocks.iter().map(|b| b.start_pc).collect(),
+            cost_before: row.cost_before as usize,
+            cost_after: row.cost_after as usize,
+            value_per_use: if freq == 0 { 0 } else { row.value / freq },
+            execution_count: freq as u32,
         }
     }
 
@@ -158,7 +174,7 @@ pub fn select_blocks_greedy<A: Adapter, C: ApcCandidate<A>>(
     )
 }
 
-fn select_candidates_greedy(
+pub fn select_candidates_greedy(
     mut candidates: Vec<BlockCandidate>,
     budget: usize,
     max_selected: usize,

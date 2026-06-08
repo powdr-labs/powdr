@@ -22,7 +22,9 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::adapter::{
     Adapter, AdapterApc, AdapterApcWithStats, AdapterUnoptimizedApc, ApcWithStats, PgoAdapter,
 };
-use powdr_autoprecompiles::blocks::{detect_superblocks, BlockAndStats, Instruction, PcStep};
+use powdr_autoprecompiles::blocks::{
+    detect_superblocks, BlockAndStats, ExecutionBasicBlockRun, Instruction, PcStep,
+};
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::execution::ExecutionState;
 use powdr_autoprecompiles::execution_profile::ExecutionProfile;
@@ -439,12 +441,18 @@ pub struct UnoptimizedApcCandidate<ISA: OpenVmISA> {
 ///
 /// Requires a profile: candidate detection and execution counts come from
 /// `execution_profile`.
+///
+/// Also returns the execution basic-block runs (used by the `block_selection` tool to
+/// replay selection over the same execution).
 pub fn build_all_unoptimized_apcs<'a, ISA: OpenVmISA>(
     original_program: &OriginalCompiledProgram<'a, ISA>,
     config: &PowdrConfig,
     execution_profile: &ExecutionProfile,
     empirical_constraints: EmpiricalConstraints,
-) -> Vec<UnoptimizedApcCandidate<ISA>> {
+) -> (
+    Vec<UnoptimizedApcCandidate<ISA>>,
+    Vec<(ExecutionBasicBlockRun, u32)>,
+) {
     assert_eq!(
         config.optimistic_superblock_max_bb_count, 1,
         "openvm does not support optimistic superblocks"
@@ -464,7 +472,7 @@ pub fn build_all_unoptimized_apcs<'a, ISA: OpenVmISA>(
     let exec_blocks = detect_superblocks(config, &execution_profile.pc_list, basic_blocks);
     let empirical_constraints = empirical_constraints.apply_pc_threshold();
 
-    exec_blocks
+    let candidates = exec_blocks
         .blocks
         .into_par_iter()
         .map(|BlockAndStats { block, count }| {
@@ -488,7 +496,9 @@ pub fn build_all_unoptimized_apcs<'a, ISA: OpenVmISA>(
                 before_interactions,
             }
         })
-        .collect()
+        .collect();
+
+    (candidates, exec_blocks.execution_bb_runs)
 }
 
 /// The result of optimizing a single [`AdapterUnoptimizedApc`].

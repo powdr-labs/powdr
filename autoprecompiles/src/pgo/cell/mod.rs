@@ -14,7 +14,7 @@ use crate::{
     EmpiricalConstraints, PowdrConfig,
 };
 
-mod selection;
+pub mod selection;
 
 /// Trait for autoprecompile candidates.
 /// Provides ApcWithStats with logic for evaluating a candidate.
@@ -30,7 +30,7 @@ pub trait ApcCandidate<A: Adapter>: Sized {
     fn value_per_use(&self) -> usize;
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 /// NOTE: When making changes to this field or any of the contained types,
 /// JSON_EXPORT_VERSION must be updated
 pub struct ApcCandidateJsonExport {
@@ -80,10 +80,10 @@ impl<A, C> CellPgo<A, C> {
 const JSON_EXPORT_VERSION: usize = 4;
 
 #[derive(Serialize, Deserialize)]
-struct JsonExport {
-    version: usize,
-    apcs: Vec<ApcCandidateJsonExport>,
-    labels: BTreeMap<u64, Vec<String>>,
+pub struct JsonExport {
+    pub version: usize,
+    pub apcs: Vec<ApcCandidateJsonExport>,
+    pub labels: BTreeMap<u64, Vec<String>>,
 }
 
 impl JsonExport {
@@ -156,6 +156,14 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
                 .expect("Failed to create file for APC candidates JSON");
             serde_json::to_writer(BufWriter::new(file), &json)
                 .expect("Failed to write APC candidates JSON to file");
+
+            // Export the execution basic-block runs alongside the candidates, so the
+            // `block_selection` tool can replay selection without re-running the pipeline.
+            let runs_path = apc_candidates_dir_path.join("execution_bb_runs.cbor");
+            let runs_file = std::fs::File::create(&runs_path)
+                .expect("Failed to create file for execution basic-block runs");
+            serde_cbor::to_writer(BufWriter::new(runs_file), &execution_bb_runs)
+                .expect("Failed to write execution basic-block runs to file");
         }
 
         // select best candidates

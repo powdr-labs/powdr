@@ -15,6 +15,7 @@ members = [
   "openvm-bus-interaction-handler",
   "openvm-riscv",
   "cli-openvm-riscv",
+  "block-selection",
   "openvm-riscv/extensions/hints-guest",
   "openvm-riscv/extensions/hints-transpiler",
   "openvm-riscv/extensions/hints-circuit",

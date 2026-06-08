@@ -599,7 +599,7 @@ fn run_dump_apcs(args: &DumpApcsArgs) {
     let execution_profile =
         powdr_openvm::execution_profile_from_guest(&pipeline.guest_program, profile_stdin);
 
-    let candidates = build_all_unoptimized_apcs(
+    let (candidates, execution_bb_runs) = build_all_unoptimized_apcs(
         &pipeline.guest_program,
         &powdr_config,
         &execution_profile,
@@ -607,6 +607,12 @@ fn run_dump_apcs(args: &DumpApcsArgs) {
     );
 
     fs::create_dir_all(&out).expect("Failed to create output directory");
+
+    // Export the execution basic-block runs so `block_selection` can replay selection.
+    let runs_file = fs::File::create(out.join("execution_bb_runs.cbor"))
+        .expect("Failed to create execution_bb_runs.cbor");
+    serde_cbor::to_writer(runs_file, &execution_bb_runs)
+        .expect("Failed to write execution_bb_runs.cbor");
     let apc_info: Vec<ApcInfoRow> = candidates
         .iter()
         .map(|candidate| {

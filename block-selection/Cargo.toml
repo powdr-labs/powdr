@@ -1,0 +1,22 @@
+[package]
+name = "block-selection"
+description = "Standalone tool to prototype APC block-selection algorithms over exported candidates"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "block_selection"
+path = "src/main.rs"
+
+[dependencies]
+powdr-autoprecompiles.workspace = true
+clap = { version = "^4.3", features = ["derive"] }
+serde.workspace = true
+serde_json.workspace = true
+serde_cbor.workspace = true
+
+[lints]
+workspace = true
