@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::BufWriter;
 use std::path::PathBuf;
+use std::time::Instant;
 
 use clap::{Parser, ValueEnum};
 use powdr_autoprecompiles::blocks::ExecutionBasicBlockRun;
@@ -8,6 +9,8 @@ use powdr_autoprecompiles::pgo::cell::selection::{
     select_candidates_by_saved_cells, select_candidates_greedy, BlockCandidate,
 };
 use powdr_autoprecompiles::pgo::cell::JsonExport;
+use tracing::info;
+use tracing_subscriber::EnvFilter;
 
 /// Prototype APC block-selection algorithms over already-generated candidates.
 ///
@@ -50,7 +53,7 @@ struct Cli {
     out: PathBuf,
 }
 
-#[derive(Clone, Copy, ValueEnum)]
+#[derive(Clone, Copy, Debug, ValueEnum)]
 enum Algorithm {
     /// Greedy by density (value / cost) — the default, matches the production pipeline.
     GreedyDensity,
@@ -59,13 +62,27 @@ enum Algorithm {
 }
 
 fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .with_target(false)
+        .init();
+
     let cli = Cli::parse();
+    let start = Instant::now();
 
     // Read the candidate export.
     let input: JsonExport = {
         let file = File::open(&cli.apc_candidates).expect("Failed to open apc_candidates.json");
         serde_json::from_reader(file).expect("Failed to parse apc_candidates.json")
     };
+    let n_candidates = input.apcs.len();
+    info!(
+        "Read {n_candidates} candidates (v{}) from {}",
+        input.version,
+        cli.apc_candidates.display()
+    );
 
     // Read the execution basic-block runs.
     let execution_bb_runs: Vec<(ExecutionBasicBlockRun, u32)> = {
@@ -73,6 +90,15 @@ fn main() {
             File::open(&cli.execution_bb_runs).expect("Failed to open execution_bb_runs.cbor");
         serde_cbor::from_reader(file).expect("Failed to parse execution_bb_runs.cbor")
     };
+    let total_run_instances: u64 = execution_bb_runs
+        .iter()
+        .map(|(run, count)| run.0.len() as u64 * *count as u64)
+        .sum();
+    info!(
+        "Read {} execution basic-block runs ({total_run_instances} total block instances) from {}",
+        execution_bb_runs.len(),
+        cli.execution_bb_runs.display()
+    );
 
     // Rebuild the candidates the selection algorithm operates on.
     let candidates: Vec<BlockCandidate> = input
@@ -82,6 +108,11 @@ fn main() {
         .collect();
 
     // Run the selection: returns (candidate index, effective post-selection count).
+    info!(
+        "Selecting with {:?} (budget={}, max_selected={}, one_block_per_pc={})",
+        cli.algorithm, cli.budget, cli.max_selected, cli.one_block_per_pc
+    );
+    let select_start = Instant::now();
     let selection = match cli.algorithm {
         Algorithm::GreedyDensity => select_candidates_greedy(
             candidates,
@@ -98,11 +129,16 @@ fn main() {
             cli.one_block_per_pc,
         ),
     };
+    info!(
+        "Selected {} of {n_candidates} candidates in {:?}",
+        selection.len(),
+        select_start.elapsed()
+    );
 
     // Re-emit the selected rows in the same format as `apc_selection.json`, taking the
     // per-APC data from the original candidate rows and updating the execution
     // count/value to their post-selection values.
-    let apcs = selection
+    let apcs: Vec<_> = selection
         .iter()
         .map(|&(idx, count)| {
             let mut row = input.apcs[idx].clone();
@@ -117,6 +153,12 @@ fn main() {
         })
         .collect();
 
+    let total_saved_cells: usize = apcs.iter().map(|r| r.value).sum();
+    let total_columns: usize = apcs.iter().map(|r| r.cost_after as usize).sum();
+    info!(
+        "Selected APCs: {total_saved_cells} cells saved, {total_columns} columns used (sum of cost_after)"
+    );
+
     let output = JsonExport {
         version: input.version,
         apcs,
@@ -127,10 +169,10 @@ fn main() {
     serde_json::to_writer(BufWriter::new(out_file), &output)
         .expect("Failed to write selection JSON");
 
-    eprintln!(
-        "Selected {} of {} candidates -> {}",
+    info!(
+        "Wrote {} selected APCs to {} ({:?} total)",
         output.apcs.len(),
-        input.apcs.len(),
-        cli.out.display()
+        cli.out.display(),
+        start.elapsed()
     );
 }
