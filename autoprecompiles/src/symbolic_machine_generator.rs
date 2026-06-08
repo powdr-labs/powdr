@@ -113,7 +113,7 @@ fn convert_expression<T, U>(
     }
 }
 
-/// Converts a basic block into a symbolic machines (all instruction circuits
+/// Converts a superblock into a symbolic machine (all instruction circuits
 /// concatenated) and a column allocator.
 pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
     block: &SuperBlock<A::Instruction>,
@@ -129,7 +129,7 @@ pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
     (machine, column_allocator)
 }
 
-/// Converts a basic block into a list of symbolic machines (one per instruction)
+/// Converts a static block into a list of symbolic machines (one per instruction)
 /// and a column allocator. All columns are globally unique across all instructions.
 pub(crate) fn statements_to_symbolic_machines<A: Adapter>(
     block: &SuperBlock<A::Instruction>,

@@ -79,10 +79,10 @@ pub fn detect_empirical_constraints<ISA: OpenVmISA>(
     inputs: Vec<StdIn>,
 ) -> EmpiricalConstraints {
     tracing::info!("Collecting empirical constraints...");
-    let blocks = program.collect_basic_blocks();
+    let blocks = program.collect_static_blocks();
     let instruction_counts = blocks
         .iter()
-        .map(|block| (block.start_pc, block.instructions.len()))
+        .map(|(start_pc, block)| (*start_pc, block.len()))
         .collect();
 
     // Collect trace, without any autoprecompiles.
@@ -227,12 +227,12 @@ fn detect_empirical_constraints_from_input<ISA: OpenVmISA>(
     constraint_detector.process_trace(trace, debug_info);
 }
 
-/// Takes as many complete basic blocks from the trace as possible,
+/// Takes as many complete static blocks from the trace as possible,
 /// returning the taken trace and the remaining trace.
-/// This is needed because ConstraintDetector::process_trace requires complete basic blocks,
-/// but segmentation might happen within a basic block.
+/// This is needed because ConstraintDetector::process_trace requires complete static blocks,
+/// but segmentation might happen within a static block.
 fn take_complete_blocks(constraint_detector: &ConstraintDetector, trace: Trace) -> (Trace, Trace) {
-    // Find the latest timestamp that begins a basic block
+    // Find the latest timestamp that begins a static block
     let latest_basic_block_beginning = trace
         .rows
         .iter()
@@ -258,13 +258,13 @@ fn take_complete_blocks(constraint_detector: &ConstraintDetector, trace: Trace) 
 }
 
 struct ConstraintDetector {
-    /// Mapping from a basic block ID (= PC of the first instruction) to number
+    /// Mapping from a static block ID (= PC of the first instruction) to number
     /// of instructions in that block
     block_instruction_counts: HashMap<u64, usize>,
     empirical_constraints: EmpiricalConstraints,
 }
 
-/// An instance of a basic block in the trace
+/// An instance of a static block in the trace
 struct ConcreteBlock<'a> {
     rows: Vec<&'a Row>,
 }
@@ -396,7 +396,7 @@ impl ConstraintDetector {
         partition
     }
 
-    /// Segments a trace into basic blocks.
+    /// Segments a trace into static blocks.
     /// Returns a mapping from block ID to all instances of that block in the trace.
     fn get_blocks<'a>(&self, trace: &'a Trace) -> BTreeMap<u64, Vec<ConcreteBlock<'a>>> {
         trace

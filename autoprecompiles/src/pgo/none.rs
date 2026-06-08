@@ -40,7 +40,7 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
                     "None PGO does not support superblocks"
                 );
                 tracing::debug!(
-                    "Basic block start_pc: {}, number_of_instructions: {}",
+                    "Static block start_pc: {}, number_of_instructions: {}",
                     block.pcs().next().unwrap(),
                     block.instructions().count(),
                 );
