@@ -63,8 +63,8 @@ pub use powdr_openvm::{
 pub use openvm_build::GuestOptions;
 pub use powdr_autoprecompiles::bus_map::BusType;
 pub use powdr_openvm::customize_exe::{
-    build_all_unoptimized_apcs, compile_apcs, optimize_unoptimized_apc, setup, Instr,
-    OptimizeApcResult, UnoptimizedApcCandidate,
+    compile_apcs, dump_apcs, optimize_unoptimized_apc, setup, Instr, OptimizeApcResult,
+    UNOPT_APC_PREFIX,
 };
 
 pub fn build_elf_path<P: AsRef<Path>>(

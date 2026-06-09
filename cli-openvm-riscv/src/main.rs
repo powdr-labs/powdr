@@ -9,9 +9,9 @@ use powdr_autoprecompiles::pgo::{pgo_config, PgoType};
 use powdr_autoprecompiles::PowdrConfig;
 use powdr_openvm::BabyBearOpenVmApcAdapter;
 use powdr_openvm_riscv::{
-    build_all_unoptimized_apcs, compile_apcs, compile_openvm, detect_empirical_constraints,
+    compile_apcs, compile_openvm, detect_empirical_constraints, dump_apcs,
     optimize_unoptimized_apc, setup, CompiledProgram, GuestOptions, OriginalCompiledProgram,
-    RiscvISA,
+    RiscvISA, UNOPT_APC_PREFIX,
 };
 
 #[cfg(feature = "metrics")]
@@ -538,25 +538,7 @@ fn maybe_compute_empirical_constraints(
     empirical_constraints
 }
 
-/// One row of the `dump-apcs` `unopt_apcs.json`, summarizing a candidate before optimization.
-#[derive(Serialize)]
-struct ApcInfoRow {
-    start_pcs: Vec<u64>,
-    file: String,
-    instr_count: usize,
-    exec_count: u32,
-    before_opt_cols: usize,
-    before_opt_constraints: usize,
-    before_opt_interactions: usize,
-}
-
-/// Prefix for the unoptimized APC files written by `dump-apcs` — distinct from the
-/// `apc_*.cbor` files `optimize-apc --out` writes for *optimized* APCs, so the two can
-/// coexist in one directory without clashing.
-const UNOPT_APC_PREFIX: &str = "unopt_apc_";
-
-/// The start PCs joined by '_'. The full vector is joined so distinct (static
-/// superblock) candidates that share a first basic block don't collide.
+/// The start PCs joined by '_' — used to name `optimize-apc`'s optimized output files.
 fn join_pcs(start_pcs: &[u64]) -> String {
     start_pcs
         .iter()
@@ -565,9 +547,9 @@ fn join_pcs(start_pcs: &[u64]) -> String {
         .join("_")
 }
 
-/// Build the unoptimized APC for every candidate block and dump each as a self-contained
-/// `unopt_apc_<pcs>.cbor`, plus an `unopt_apcs.json` for triage. Stops before
-/// optimization/selection.
+/// Dump the unoptimized APC for every candidate block (plus `execution_bb_runs.cbor` and an
+/// `unopt_apcs.json` index) into `--apc-candidates-dir`. Stops before optimization/selection.
+/// Thin wrapper over [`dump_apcs`], which does the build + serialization.
 fn run_dump_apcs(args: &DumpApcsArgs) {
     if args.generate.optimistic_superblocks > 1 {
         Cli::command()
@@ -599,49 +581,15 @@ fn run_dump_apcs(args: &DumpApcsArgs) {
     let execution_profile =
         powdr_openvm::execution_profile_from_guest(&pipeline.guest_program, profile_stdin);
 
-    let (candidates, execution_bb_runs) = build_all_unoptimized_apcs(
+    let n = dump_apcs(
         &pipeline.guest_program,
         &powdr_config,
         &execution_profile,
         empirical_constraints,
-    );
-
-    fs::create_dir_all(&out).expect("Failed to create output directory");
-
-    // Export the execution basic-block runs so `block_selection` can replay selection.
-    let runs_file = fs::File::create(out.join("execution_bb_runs.cbor"))
-        .expect("Failed to create execution_bb_runs.cbor");
-    serde_cbor::to_writer(runs_file, &execution_bb_runs)
-        .expect("Failed to write execution_bb_runs.cbor");
-    let apc_info: Vec<ApcInfoRow> = candidates
-        .iter()
-        .map(|candidate| {
-            let start_pcs = candidate.unoptimized_apc.block.start_pcs();
-            let file = format!("{UNOPT_APC_PREFIX}{}.cbor", join_pcs(&start_pcs));
-            let f =
-                fs::File::create(out.join(&file)).expect("Failed to create unoptimized APC file");
-            serde_cbor::to_writer(f, &candidate.unoptimized_apc)
-                .expect("Failed to serialize unoptimized APC");
-            ApcInfoRow {
-                start_pcs,
-                file,
-                instr_count: candidate.instr_count,
-                exec_count: candidate.exec_count,
-                before_opt_cols: candidate.before_cols,
-                before_opt_constraints: candidate.before_constraints,
-                before_opt_interactions: candidate.before_interactions,
-            }
-        })
-        .collect();
-
-    let json =
-        serde_json::to_string_pretty(&apc_info).expect("Failed to serialize unopt_apcs.json");
-    fs::write(out.join("unopt_apcs.json"), json).expect("Failed to write unopt_apcs.json");
-    tracing::info!(
-        "Dumped {} unoptimized APCs to {}",
-        apc_info.len(),
-        out.display()
-    );
+        &out,
+    )
+    .expect("Failed to dump APCs");
+    tracing::info!("Dumped {n} unoptimized APCs to {}", out.display());
 }
 
 /// Optimize one or more dumped unoptimized APCs in isolation (no guest), reporting

@@ -22,9 +22,7 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::adapter::{
     Adapter, AdapterApc, AdapterApcWithStats, AdapterUnoptimizedApc, ApcWithStats, PgoAdapter,
 };
-use powdr_autoprecompiles::blocks::{
-    detect_superblocks, BlockAndStats, ExecutionBasicBlockRun, Instruction, PcStep,
-};
+use powdr_autoprecompiles::blocks::{detect_superblocks, BlockAndStats, Instruction, PcStep};
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::execution::ExecutionState;
 use powdr_autoprecompiles::execution_profile::ExecutionProfile;
@@ -38,6 +36,8 @@ use powdr_autoprecompiles::{build_unoptimized, optimize_apc};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use powdr_openvm_bus_interaction_handler::bus_map::OpenVmBusType;
 use serde::{Deserialize, Serialize};
+use std::io::BufWriter;
+use std::path::Path;
 
 use crate::powdr_extension::{PowdrOpcode, PowdrPrecompile};
 
@@ -414,45 +414,58 @@ impl<'a, ISA: OpenVmISA> ApcCandidate<BabyBearOpenVmApcAdapter<'a, ISA>>
     }
 }
 
-/// A candidate APC built up to (but not including) optimization, together with the
-/// statistics needed to triage it. Produced by [`build_all_unoptimized_apcs`].
-///
-/// `unoptimized_apc` is the self-contained, serializable snapshot that
-/// [`optimize_unoptimized_apc`] consumes; the remaining fields are pre-optimization stats
-/// for triage.
-pub struct UnoptimizedApcCandidate<ISA: OpenVmISA> {
-    pub unoptimized_apc: AdapterUnoptimizedApc<BabyBearOpenVmApcAdapter<'static, ISA>>,
-    /// Number of times the block was executed in the profile.
-    pub exec_count: u32,
-    /// Number of instructions in the block.
-    pub instr_count: usize,
-    /// Unique column references before optimization.
-    pub before_cols: usize,
-    /// Number of constraints before optimization.
-    pub before_constraints: usize,
-    /// Number of bus interactions before optimization.
-    pub before_interactions: usize,
+/// Filename prefix for the per-candidate unoptimized-APC fixtures written by [`dump_apcs`].
+/// Exposed so consumers can recognize fixture files in a dump directory.
+pub const UNOPT_APC_PREFIX: &str = "unopt_apc_";
+
+fn join_pcs(start_pcs: &[u64]) -> String {
+    start_pcs
+        .iter()
+        .map(|pc| pc.to_string())
+        .collect::<Vec<_>>()
+        .join("_")
 }
 
-/// Build the unoptimized APC snapshot for every candidate block (the cheap phase of APC
-/// generation), without optimizing or selecting. Each returned [`UnoptimizedApcCandidate`]
-/// carries a self-contained [`AdapterUnoptimizedApc`] that [`optimize_unoptimized_apc`]
-/// can later optimize in isolation, without the guest.
+fn unopt_apc_file_name(start_pcs: &[u64]) -> String {
+    format!("{UNOPT_APC_PREFIX}{}.cbor", join_pcs(start_pcs))
+}
+
+/// One row of the `unopt_apcs.json` triage summary.
+#[derive(Serialize)]
+struct ApcInfoRow {
+    start_pcs: Vec<u64>,
+    file: String,
+    instr_count: usize,
+    exec_count: u32,
+    before_opt_cols: usize,
+    before_opt_constraints: usize,
+    before_opt_interactions: usize,
+}
+
+fn to_io<E: std::error::Error + Send + Sync + 'static>(e: E) -> std::io::Error {
+    std::io::Error::other(e)
+}
+
+/// Dump the unoptimized APC for every candidate block into `out_dir`, for offline tooling
+/// (e.g. the `block_selection` binary). Self-contained: builds the candidates, serializes
+/// them, and writes the index — so external programs don't have to re-implement the
+/// generation pipeline. Writes:
+/// - `unopt_apc_<start_pcs>.cbor` per candidate — a self-contained [`AdapterUnoptimizedApc`]
+///   that [`optimize_unoptimized_apc`] can optimize in isolation, without the guest;
+/// - `execution_bb_runs.cbor` — the execution basic-block runs, for replaying selection;
+/// - `unopt_apcs.json` — a triage summary (start PCs, exec/instr counts, pre-opt sizes).
 ///
-/// Requires a profile: candidate detection and execution counts come from
-/// `execution_profile`.
-///
-/// Also returns the execution basic-block runs (used by the `block_selection` tool to
-/// replay selection over the same execution).
-pub fn build_all_unoptimized_apcs<'a, ISA: OpenVmISA>(
+/// Snapshots are **streamed** to disk as they are built (in parallel), so the large
+/// pre-optimization machines don't all sit in memory at once. Requires a profile (candidate
+/// detection and execution counts come from `execution_profile`). Returns the number of
+/// candidates dumped.
+pub fn dump_apcs<'a, ISA: OpenVmISA>(
     original_program: &OriginalCompiledProgram<'a, ISA>,
     config: &PowdrConfig,
     execution_profile: &ExecutionProfile,
     empirical_constraints: EmpiricalConstraints,
-) -> (
-    Vec<UnoptimizedApcCandidate<ISA>>,
-    Vec<(ExecutionBasicBlockRun, u32)>,
-) {
+    out_dir: &Path,
+) -> std::io::Result<usize> {
     assert_eq!(
         config.optimistic_superblock_max_bb_count, 1,
         "openvm does not support optimistic superblocks"
@@ -472,33 +485,51 @@ pub fn build_all_unoptimized_apcs<'a, ISA: OpenVmISA>(
     let exec_blocks = detect_superblocks(config, &execution_profile.pc_list, basic_blocks);
     let empirical_constraints = empirical_constraints.apply_pc_threshold();
 
-    let candidates = exec_blocks
+    std::fs::create_dir_all(out_dir)?;
+
+    // Build + serialize each unoptimized APC in parallel, streaming to disk and dropping the
+    // large snapshot immediately; collect only the small triage rows.
+    let rows = exec_blocks
         .blocks
         .into_par_iter()
-        .map(|BlockAndStats { block, count }| {
-            let instr_count = block.instructions().count();
-            let unoptimized_apc = build_unoptimized::<BabyBearOpenVmApcAdapter<'a, ISA>>(
-                block,
-                vm_config.clone(),
-                config.degree_bound,
-                &mut ExportOptions::default(),
-                &empirical_constraints,
-            );
-            let before_cols = unoptimized_apc.machine.unique_references().count();
-            let before_constraints = unoptimized_apc.machine.constraints.len();
-            let before_interactions = unoptimized_apc.machine.bus_interactions.len();
-            UnoptimizedApcCandidate {
-                unoptimized_apc,
-                exec_count: count,
-                instr_count,
-                before_cols,
-                before_constraints,
-                before_interactions,
-            }
-        })
-        .collect();
+        .map(
+            |BlockAndStats { block, count }| -> std::io::Result<ApcInfoRow> {
+                let instr_count = block.instructions().count();
+                let unoptimized_apc = build_unoptimized::<BabyBearOpenVmApcAdapter<'a, ISA>>(
+                    block,
+                    vm_config.clone(),
+                    config.degree_bound,
+                    &mut ExportOptions::default(),
+                    &empirical_constraints,
+                );
+                let start_pcs = unoptimized_apc.block.start_pcs();
+                let file = unopt_apc_file_name(&start_pcs);
+                let writer = BufWriter::new(std::fs::File::create(out_dir.join(&file))?);
+                serde_cbor::to_writer(writer, &unoptimized_apc).map_err(to_io)?;
+                Ok(ApcInfoRow {
+                    start_pcs,
+                    file,
+                    instr_count,
+                    exec_count: count,
+                    before_opt_cols: unoptimized_apc.machine.unique_references().count(),
+                    before_opt_constraints: unoptimized_apc.machine.constraints.len(),
+                    before_opt_interactions: unoptimized_apc.machine.bus_interactions.len(),
+                })
+            },
+        )
+        .collect::<std::io::Result<Vec<_>>>()?;
 
-    (candidates, exec_blocks.execution_bb_runs)
+    // Execution basic-block runs, for replaying selection (`block_selection`).
+    let runs_writer = BufWriter::new(std::fs::File::create(
+        out_dir.join("execution_bb_runs.cbor"),
+    )?);
+    serde_cbor::to_writer(runs_writer, &exec_blocks.execution_bb_runs).map_err(to_io)?;
+
+    // Triage summary.
+    let json = serde_json::to_string_pretty(&rows).map_err(to_io)?;
+    std::fs::write(out_dir.join("unopt_apcs.json"), json)?;
+
+    Ok(rows.len())
 }
 
 /// The result of optimizing a single [`AdapterUnoptimizedApc`].
