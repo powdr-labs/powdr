@@ -1,7 +1,6 @@
 use std::{collections::BTreeMap, io::BufWriter};
 
 use itertools::Itertools;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use selection::select_blocks_greedy;
 use serde::{Deserialize, Serialize};
 
@@ -121,11 +120,14 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
             blocks.len(),
         );
 
-        // Generate apcs in parallel.
+        // Generate apcs in parallel, largest blocks first.
         // Produces two matching vectors: one with the APCs and another with the corresponding originating block.
-        let (apcs, blocks): (Vec<_>, Vec<_>) = blocks
-            .into_par_iter()
-            .filter_map(|block_and_stats| {
+        let (apcs, blocks): (Vec<_>, Vec<_>) = crate::parallel::filter_map_largest_first(
+            blocks,
+            // The instruction count is a good predictor of the APC build and
+            // optimization time.
+            |block_and_stats| block_and_stats.block.instructions().count(),
+            |block_and_stats| {
                 let start = std::time::Instant::now();
                 let res = try_generate_candidate::<A, C>(
                     block_and_stats.block.clone(),
@@ -139,8 +141,10 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
                     start.elapsed()
                 );
                 Some((res, block_and_stats))
-            })
-            .collect();
+            },
+        )
+        .into_iter()
+        .unzip();
 
         // write the APC candidates JSON to disk if the directory is specified.
         // (`labels` is cloned so it remains available for the selection JSON below.)

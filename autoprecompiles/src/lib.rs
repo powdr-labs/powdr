@@ -46,6 +46,7 @@ pub mod expression_conversion;
 pub mod low_degree_bus_interaction_optimizer;
 pub mod memory_optimizer;
 pub mod optimizer;
+pub mod parallel;
 pub mod pgo;
 pub mod powdr;
 pub mod range_constraint_optimizer;

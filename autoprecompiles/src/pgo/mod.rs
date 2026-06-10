@@ -1,4 +1,3 @@
-use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use strum::{Display, EnumString};
 
 use crate::{
@@ -82,11 +81,17 @@ fn create_apcs_for_all_blocks<A: Adapter>(
     let n_acc = config.autoprecompiles as usize;
     tracing::info!("Generating {n_acc} autoprecompiles in parallel");
 
-    blocks
-        .into_par_iter()
+    let blocks: Vec<_> = blocks
+        .into_iter()
         .skip(config.skip_autoprecompiles as usize)
         .take(n_acc)
-        .map(|superblock| {
+        .collect();
+    crate::parallel::filter_map_largest_first(
+        blocks,
+        // The instruction count is a good predictor of the APC build and
+        // optimization time.
+        |superblock| superblock.instructions().count(),
+        |superblock| {
             tracing::debug!(
                 "Accelerating block of length {} and start pcs {:?}",
                 superblock.instructions().count(),
@@ -107,7 +112,7 @@ fn create_apcs_for_all_blocks<A: Adapter>(
             )
             .unwrap();
 
-            evaluate_apc::<A>(vm_config.instruction_handler, apc)
-        })
-        .collect()
+            Some(evaluate_apc::<A>(vm_config.instruction_handler, apc))
+        },
+    )
 }
