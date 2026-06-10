@@ -1,7 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fmt::Display,
-    hash::Hash,
+    hash::{Hash, Hasher},
     iter::once,
 };
 
@@ -65,6 +65,7 @@ pub fn optimize_constraints<
     degree_bound: DegreeBound,
     new_var: &mut impl FnMut(&str) -> V,
     export_options: &mut ExportOptions,
+    simplification_cache: &mut ExhaustiveSearchSimplificationCache<V>,
 ) -> Result<ConstraintSystem<P, V>, Error> {
     let constraint_system = solver_based_optimization(constraint_system, solver, export_options)?;
     stats_logger.log("solver-based optimization", &constraint_system);
@@ -89,7 +90,11 @@ pub fn optimize_constraints<
         "remove_disconnected",
     );
 
-    let constraint_system = simplify_constraints_using_exhaustive_search(constraint_system, solver);
+    let constraint_system = simplify_constraints_using_exhaustive_search(
+        constraint_system,
+        solver,
+        simplification_cache,
+    );
     stats_logger.log("simplifying using exhaustive search", &constraint_system);
     export_options.export_optimizer_inner_constraint_system(
         constraint_system.system(),
@@ -743,6 +748,50 @@ fn simplifications_for_variable_set<T: FieldElement, V: Clone + Ord + Eq + Hash 
         .collect()
 }
 
+/// Cross-pass cache for [`simplify_constraints_using_exhaustive_search`]:
+/// remembers variable sets whose search yielded no simplification, together
+/// with a digest of the state the search depends on. As long as the digest is
+/// unchanged, re-running the search would yield no simplification either, so
+/// the set can be skipped.
+pub struct ExhaustiveSearchSimplificationCache<V> {
+    unsuccessful_variable_sets: HashMap<BTreeSet<V>, u64>,
+}
+
+impl<V> Default for ExhaustiveSearchSimplificationCache<V> {
+    fn default() -> Self {
+        Self {
+            unsuccessful_variable_sets: Default::default(),
+        }
+    }
+}
+
+/// Returns a digest of everything the exhaustive-search simplification of
+/// `variable_set` depends on: the constraints referencing the set and the
+/// range constraints of the set's variables.
+fn simplification_state_digest<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
+    constraint_system: &IndexedConstraintSystem<T, V>,
+    variable_set: &BTreeSet<V>,
+    range_constraints: &impl RangeConstraintProvider<T, V>,
+) -> u64 {
+    let mut hasher = rustc_hash::FxHasher::default();
+    for constraint in constraint_system.constraints_referencing_variables(variable_set) {
+        match constraint {
+            ConstraintRef::AlgebraicConstraint(identity) => {
+                0u8.hash(&mut hasher);
+                identity.expression.hash(&mut hasher);
+            }
+            ConstraintRef::BusInteraction(bus_interaction) => {
+                1u8.hash(&mut hasher);
+                bus_interaction.hash(&mut hasher);
+            }
+        }
+    }
+    for variable in variable_set {
+        range_constraints.get(variable).hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
 /// Tries to simplify algebraic constraints and bus interaction fields by performing exhaustive
 /// search over variables with few possible values. If all assignments (that do not lead to a
 /// violated algebraic constraints) turn the expression into the same, simpler expression,
@@ -755,19 +804,44 @@ pub fn simplify_constraints_using_exhaustive_search<
 >(
     constraint_system: IndexedConstraintSystem<T, V>,
     range_constraints: &(impl RangeConstraintProvider<T, V> + Sync),
+    cache: &mut ExhaustiveSearchSimplificationCache<V>,
 ) -> IndexedConstraintSystem<T, V> {
     // The variable sets can be processed in parallel: each of them only reads
     // the constraint system and the range constraints, and the resulting
     // substitutions are combined in order below.
-    let variable_sets =
+    let sets_with_digests =
         exhaustive_search::get_brute_force_candidates(&constraint_system, range_constraints)
+            .map(|variable_set| {
+                let digest = simplification_state_digest(
+                    &constraint_system,
+                    &variable_set,
+                    range_constraints,
+                );
+                (variable_set, digest)
+            })
+            // Skip sets that yielded no simplification before, as long as
+            // nothing they depend on has changed since.
+            .filter(|(variable_set, digest)| {
+                cache.unsuccessful_variable_sets.get(variable_set) != Some(digest)
+            })
             .collect_vec();
-    let substitutions_per_set = variable_sets
+    let substitutions_per_set = sets_with_digests
         .par_iter()
-        .map(|variable_set| {
+        .map(|(variable_set, _)| {
             simplifications_for_variable_set(&constraint_system, variable_set, range_constraints)
         })
         .collect::<Vec<_>>();
+    for ((variable_set, digest), substitutions) in
+        sets_with_digests.iter().zip(&substitutions_per_set)
+    {
+        if substitutions.is_empty() {
+            cache
+                .unsuccessful_variable_sets
+                .insert(variable_set.clone(), *digest);
+        } else {
+            cache.unsuccessful_variable_sets.remove(variable_set);
+        }
+    }
     let substitutions: BTreeMap<GroupedExpression<T, V>, GroupedExpression<T, V>> =
         substitutions_per_set.into_iter().flatten().collect();
 
@@ -991,7 +1065,11 @@ mod tests {
         // compute and propagate constraints
         solver.solve().unwrap();
 
-        let out = simplify_constraints_using_exhaustive_search(constraint_system, &solver);
+        let out = simplify_constraints_using_exhaustive_search(
+            constraint_system,
+            &solver,
+            &mut Default::default(),
+        );
         expect![[r#"
             T + X + 8 = 0
             (Y - 2) * (Z + 1) = 0
