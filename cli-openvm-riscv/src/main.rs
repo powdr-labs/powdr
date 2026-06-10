@@ -484,6 +484,12 @@ fn stdin_from(input: Option<u32>) -> StdIn {
 }
 
 fn setup_tracing_with_log_level(level: Level) {
+    // Forward `log` records (e.g. the optimizer's stats logger) to `tracing`,
+    // so that they are subject to the same filter below. Capped at debug level
+    // so that trace-level records in hot loops are skipped cheaply.
+    let _ = tracing_log::LogTracer::builder()
+        .with_max_level(tracing_log::log::LevelFilter::Debug)
+        .init();
     let env_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new(format!("{level},p3_=warn")));
     let subscriber = Registry::default()
