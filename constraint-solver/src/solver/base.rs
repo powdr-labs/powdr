@@ -46,12 +46,28 @@ pub struct BaseSolver<T: FieldElement, V, BusInterHandler, VarDisp> {
     assignments_to_return: Vec<VariableAssignment<T, V>>,
     /// A cache of expressions that are equivalent to a given expression.
     equivalent_expressions_cache: HashMap<GroupedExpression<T, V>, Vec<GroupedExpression<T, V>>>,
+    /// A cache of the results of `are_expressions_known_to_be_different`.
+    /// It is invalidated together with `equivalent_expressions_cache`.
+    known_to_be_different_cache:
+        HashMap<GroupedExpression<T, V>, HashMap<GroupedExpression<T, V>, bool>>,
     /// A dispenser for fresh variables.
     var_dispenser: VarDisp,
     /// The boolean extraction component.
     boolean_extractor: BooleanExtractor<T, V>,
     /// The linearizing component.
     linearizer: Linearizer<T, V>,
+    /// Variable sets for which exhaustive search did not yield any new information.
+    /// A cached set can be skipped as long as no variable of the set or of a
+    /// constraint referencing the set has been updated since
+    /// (see `variables_updated_since_exhaustive_search`).
+    unsuccessful_exhaustive_search_sets: HashSet<BTreeSet<V>>,
+    /// Variables that were updated (tighter range constraint, substitution or
+    /// new/modified constraints referencing them) since the last exhaustive
+    /// search pass. Used to invalidate `unsuccessful_exhaustive_search_sets`.
+    /// Note that the removal of constraints does not need to be tracked:
+    /// it can only remove derivable information, so an unsuccessful search
+    /// stays unsuccessful.
+    variables_updated_since_exhaustive_search: HashSet<V>,
 }
 
 pub trait VarDispenser<V> {
@@ -97,9 +113,12 @@ impl<T: FieldElement, V, B, VD: Default> BaseSolver<T, V, B, VD> {
             range_constraints: Default::default(),
             assignments_to_return: Default::default(),
             equivalent_expressions_cache: Default::default(),
+            known_to_be_different_cache: Default::default(),
             var_dispenser: Default::default(),
             boolean_extractor: Default::default(),
             linearizer: Default::default(),
+            unsuccessful_exhaustive_search_sets: Default::default(),
+            variables_updated_since_exhaustive_search: Default::default(),
             bus_interaction_handler,
         }
     }
@@ -131,6 +150,7 @@ where
 {
     fn solve(&mut self) -> Result<Vec<VariableAssignment<T, V>>, Error> {
         self.equivalent_expressions_cache.clear();
+        self.known_to_be_different_cache.clear();
         self.loop_until_no_progress()?;
         let assignments = std::mem::take(&mut self.assignments_to_return);
         // Apply the deduced assignments to the substitutions we performed
@@ -149,6 +169,7 @@ where
         constraints: impl IntoIterator<Item = AlgebraicConstraint<GroupedExpression<T, V>>>,
     ) {
         self.equivalent_expressions_cache.clear();
+        self.known_to_be_different_cache.clear();
 
         let constraints = constraints
             .into_iter()
@@ -164,6 +185,11 @@ where
             .flat_map(|constr| self.linearize_constraint(constr))
             .collect_vec();
 
+        for constr in &constraints {
+            self.variables_updated_since_exhaustive_search
+                .extend(constr.referenced_unknown_variables().cloned());
+        }
+
         self.constraint_system
             .add_algebraic_constraints(constraints.into_iter().filter(|c| !c.is_redundant()));
     }
@@ -173,6 +199,7 @@ where
         bus_interactions: impl IntoIterator<Item = BusInteraction<GroupedExpression<T, V>>>,
     ) {
         self.equivalent_expressions_cache.clear();
+        self.known_to_be_different_cache.clear();
         let mut constraints_to_add = vec![];
         let bus_interactions = bus_interactions
             .into_iter()
@@ -182,17 +209,23 @@ where
             .collect_vec();
         // We only substituted by a variable, but the substitution was not yet linearized.
         self.add_algebraic_constraints(constraints_to_add);
+        for bus_interaction in &bus_interactions {
+            self.variables_updated_since_exhaustive_search
+                .extend(bus_interaction.referenced_unknown_variables().cloned());
+        }
         self.constraint_system
             .add_bus_interactions(bus_interactions);
     }
 
     fn add_range_constraint(&mut self, variable: &V, constraint: RangeConstraint<T>) {
         self.equivalent_expressions_cache.clear();
+        self.known_to_be_different_cache.clear();
         self.apply_range_constraint_update(variable, constraint);
     }
 
     fn retain_variables(&mut self, variables_to_keep: &HashSet<V>) {
         self.equivalent_expressions_cache.clear();
+        self.known_to_be_different_cache.clear();
         assert!(self.assignments_to_return.is_empty());
 
         // There are constraints that only contain `Variable::Linearized` that
@@ -247,15 +280,29 @@ where
         if let (Some(a), Some(b)) = (a.try_to_known(), b.try_to_known()) {
             return a != b;
         }
-        let equivalent_to_a = self.equivalent_expressions(a);
-        let equivalent_to_b = self.equivalent_expressions(b);
-        equivalent_to_a
+        if let Some(result) = self
+            .known_to_be_different_cache
+            .get(a)
+            .and_then(|cache| cache.get(b))
+        {
+            return *result;
+        }
+        self.ensure_equivalent_expressions_cached(a);
+        self.ensure_equivalent_expressions_cached(b);
+        let equivalent_to_a = self.cached_equivalent_expressions(a);
+        let equivalent_to_b = self.cached_equivalent_expressions(b);
+        let result = equivalent_to_a
             .iter()
-            .cartesian_product(&equivalent_to_b)
+            .cartesian_product(equivalent_to_b)
             .any(|(a_eq, b_eq)| {
-                possible_concrete_values(&(a_eq - b_eq), self, 20)
+                possible_concrete_values(&(a_eq - b_eq), &self.range_constraints, 20)
                     .is_some_and(|mut values| values.all(|value| !value.is_zero()))
-            })
+            });
+        self.known_to_be_different_cache
+            .entry(a.clone())
+            .or_default()
+            .insert(b.clone(), result);
+        result
     }
 }
 
@@ -395,8 +442,11 @@ where
             variable_sets.len()
         );
 
+        // Sets that were unsuccessful in a previous pass only need to be
+        // re-checked if something relevant to them changed since.
+        let updated_variables = std::mem::take(&mut self.variables_updated_since_exhaustive_search);
+
         let mut progress = false;
-        let mut unsuccessful_variable_sets = BTreeSet::new();
 
         for mut variable_set in variable_sets {
             variable_set.retain(|v| {
@@ -405,14 +455,18 @@ where
                     .try_to_single_value()
                     .is_none()
             });
-            if unsuccessful_variable_sets.contains(&variable_set) {
-                // It can happen that we process the same variable set twice because
-                // assignments can make previously different sets equal.
-                // We have processed this variable set before, and it did not
-                // yield new information.
-                // It could be that other assignments created in the meantime
-                // lead to progress but this is rare and we will catch it in the
-                // next loop iteration.
+            if self
+                .unsuccessful_exhaustive_search_sets
+                .contains(&variable_set)
+                && !self.is_affected_by_variable_updates(&variable_set, &updated_variables)
+            {
+                // We have processed this variable set before, it did not
+                // yield new information and nothing it depends on (the range
+                // constraints of its variables and the constraints referencing
+                // them) has changed since, so it would not yield new
+                // information now either.
+                // Updates that happen during this pass are recorded and
+                // checked in the next pass.
                 continue;
             }
             match exhaustive_search::exhaustive_search_on_variable_set(
@@ -423,9 +477,12 @@ where
             ) {
                 Ok(assignments) if assignments.is_empty() => {
                     // No new information was found.
-                    unsuccessful_variable_sets.insert(variable_set);
+                    self.unsuccessful_exhaustive_search_sets
+                        .insert(variable_set);
                 }
                 Ok(assignments) => {
+                    self.unsuccessful_exhaustive_search_sets
+                        .remove(&variable_set);
                     for (var, rc) in assignments {
                         progress |= self.apply_range_constraint_update(&var, rc);
                     }
@@ -437,18 +494,36 @@ where
         Ok(progress)
     }
 
-    /// Returns a vector of expressions that are equivalent to `expression`.
-    /// The vector is always non-empty, it returns at least `expression` itself.
-    fn equivalent_expressions(
-        &mut self,
-        expression: &GroupedExpression<T, V>,
-    ) -> Vec<GroupedExpression<T, V>> {
-        if expression.is_quadratic() {
-            // This case is too complicated.
-            return vec![expression.clone()];
+    /// Returns true if the exhaustive search outcome for `variable_set` may
+    /// have changed due to updates to `updated_variables`: that is the case if
+    /// any variable of the set or of a constraint referencing the set was
+    /// updated.
+    fn is_affected_by_variable_updates(
+        &self,
+        variable_set: &BTreeSet<V>,
+        updated_variables: &HashSet<V>,
+    ) -> bool {
+        if updated_variables.is_empty() {
+            return false;
         }
-        if let Some(equiv) = self.equivalent_expressions_cache.get(expression) {
-            return equiv.clone();
+        variable_set.iter().any(|v| updated_variables.contains(v))
+            || self
+                .constraint_system
+                .system()
+                .constraints_referencing_variables(variable_set.iter())
+                .any(|constraint| {
+                    constraint
+                        .referenced_unknown_variables()
+                        .any(|v| updated_variables.contains(v))
+                })
+    }
+
+    /// Makes sure that the set of expressions equivalent to `expression` is
+    /// present in `equivalent_expressions_cache`, unless the expression is
+    /// quadratic (that case is too complicated).
+    fn ensure_equivalent_expressions_cached(&mut self, expression: &GroupedExpression<T, V>) {
+        if expression.is_quadratic() || self.equivalent_expressions_cache.contains_key(expression) {
+            return;
         }
 
         // Go through the constraints related to this expression
@@ -468,8 +543,19 @@ where
             exprs.push(expression.clone());
         }
         self.equivalent_expressions_cache
-            .insert(expression.clone(), exprs.clone());
-        exprs
+            .insert(expression.clone(), exprs);
+    }
+
+    /// Returns the cached expressions equivalent to `expression`, or just
+    /// `expression` itself if nothing is cached (e.g. for quadratic expressions).
+    fn cached_equivalent_expressions<'b>(
+        &'b self,
+        expression: &'b GroupedExpression<T, V>,
+    ) -> &'b [GroupedExpression<T, V>] {
+        self.equivalent_expressions_cache
+            .get(expression)
+            .map(|exprs| exprs.as_slice())
+            .unwrap_or(std::slice::from_ref(expression))
     }
 
     fn apply_effect(&mut self, effect: Effect<T, V>) -> bool {
@@ -493,6 +579,8 @@ where
         range_constraint: RangeConstraint<T>,
     ) -> bool {
         if self.range_constraints.update(variable, &range_constraint) {
+            self.variables_updated_since_exhaustive_search
+                .insert(variable.clone());
             let new_rc = self.range_constraints.get(variable);
             if let Some(value) = new_rc.try_to_single_value() {
                 self.apply_assignment(variable, &GroupedExpression::from_number(value));
@@ -510,6 +598,24 @@ where
     fn apply_assignment(&mut self, variable: &V, expr: &GroupedExpression<T, V>) -> bool {
         log::debug!("({variable} := {expr})");
         self.constraint_system.substitute_by_unknown(variable, expr);
+
+        // All constraints referencing the variable have been modified, so the
+        // exhaustive search outcome of any variable set whose constraints
+        // overlap with them may change.
+        self.variables_updated_since_exhaustive_search
+            .insert(variable.clone());
+        let Self {
+            constraint_system,
+            variables_updated_since_exhaustive_search,
+            ..
+        } = self;
+        for constraint in constraint_system
+            .system()
+            .constraints_referencing_variables(once(variable))
+        {
+            variables_updated_since_exhaustive_search
+                .extend(constraint.referenced_unknown_variables().cloned());
+        }
 
         let mut vars_to_boolean_constrain = vec![];
         let new_constraints = self

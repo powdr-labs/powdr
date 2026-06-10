@@ -91,14 +91,21 @@ impl<T: FieldElement> RangeConstraint<T> {
 
     /// Returns a constraint that allows any value.
     pub fn unconstrained() -> Self {
-        Self::from_range(T::from(0), T::from(-1))
+        // Equivalent to `Self::from_range(T::from(0), T::from(-1))`, but
+        // avoids the field comparisons in `from_range`.
+        Self {
+            mask: mask_from_bits::<T>((T::modulus() - T::Integer::one()).num_bits()),
+            min: T::zero(),
+            max: T::from(-1),
+        }
     }
 
     /// Returns true if the range constraint does not impose any
     /// restrictions on the values.
     pub fn is_unconstrained(&self) -> bool {
         let un = Self::unconstrained();
-        self.range_width() == un.range_width() && (self.mask & un.mask) == un.mask
+        // The range width of the unconstrained constraint is exactly the modulus.
+        self.range_width() == T::modulus() && (self.mask & un.mask) == un.mask
     }
 
     /// Returns a bit mask. This might be drastically under-fitted in case
@@ -142,25 +149,21 @@ impl<T: FieldElement> RangeConstraint<T> {
     /// If `r1` is a valid RangeConstraint for `e1` and `r2` is a valid RangeConstraint for `e2`,
     /// then `r1.combine_sum(r2)` is a valid RangeConstraint for `e1 + e2`.
     pub fn combine_sum(&self, other: &Self) -> Self {
-        let unconstrained = Self::unconstrained();
         // TODO we could use "add_with_carry" to see if this created an overflow.
         // it might even be enough to check if certain bits are set in the masks.
-        let mut mask = if self.mask.to_arbitrary_integer() + other.mask.to_arbitrary_integer()
-            >= T::modulus().to_arbitrary_integer()
-        {
-            unconstrained.mask
+        let mut mask = if sum_at_least(self.mask, other.mask, T::modulus()) {
+            Self::unconstrained().mask
         } else {
             // This could be made stricter.
             (self.mask + other.mask) | self.mask | other.mask
         };
 
-        let (min, max) = if self.range_width().to_arbitrary_integer()
-            + other.range_width().to_arbitrary_integer()
-            <= unconstrained.range_width().to_arbitrary_integer()
-        {
+        // Note that the range width of the unconstrained range constraint
+        // is exactly the modulus.
+        let (min, max) = if sum_at_most(self.range_width(), other.range_width(), T::modulus()) {
             (self.min + other.min, self.max + other.max)
         } else {
-            unconstrained.range()
+            Self::unconstrained().range()
         };
         if min <= max {
             mask &= Self::from_range(min, max).mask;
@@ -178,8 +181,7 @@ impl<T: FieldElement> RangeConstraint<T> {
             other.multiple(v)
         } else if self.min <= self.max
             && other.min <= other.max
-            && self.max.to_arbitrary_integer() * other.max.to_arbitrary_integer()
-                < T::modulus().to_arbitrary_integer()
+            && product_less_than(self.max.to_integer(), other.max.to_integer(), T::modulus())
         {
             Self::from_range(self.min * other.min, self.max * other.max)
         } else {
@@ -194,9 +196,7 @@ impl<T: FieldElement> RangeConstraint<T> {
             // If we have "negative" values, make sure that the square
             // is non-negative.
             let max_abs = std::cmp::max(-self.min, self.max);
-            if max_abs.to_arbitrary_integer() * max_abs.to_arbitrary_integer()
-                < T::modulus().to_arbitrary_integer()
-            {
+            if product_less_than(max_abs.to_integer(), max_abs.to_integer(), T::modulus()) {
                 return Self::from_range(T::zero(), max_abs * max_abs);
             }
         }
@@ -278,9 +278,8 @@ impl<T: FieldElement> RangeConstraint<T> {
     /// If `r` is a valid RangeConstraint for `e`, then `r.multiple(factor)`
     /// is a valid RangeConstraint for `factor * e`.
     pub fn multiple(&self, factor: T) -> Self {
-        let mask = log2_exact(factor.to_arbitrary_integer()).and_then(|exponent| {
-            (self.mask.to_arbitrary_integer() << exponent < T::modulus().to_arbitrary_integer())
-                .then(|| self.mask << exponent)
+        let mask = log2_exact_int(factor.to_integer()).and_then(|exponent| {
+            shifted_less_than(self.mask, exponent, T::modulus()).then(|| self.mask << exponent)
         });
         let (min, max) = if factor.is_in_lower_half() {
             range_multiple(self.min, self.max, factor)
@@ -360,13 +359,65 @@ fn mask_from_bits<T: FieldElement>(bits: usize) -> T::Integer {
 /// Inverted ranges are possible for both the input and the output.
 fn range_multiple<T: FieldElement>(min: T, max: T, factor: T) -> (T, T) {
     // This is correct by iterated addition.
-    if range_width(min, max).to_arbitrary_integer() * factor.to_arbitrary_integer()
-        <= T::modulus().to_arbitrary_integer()
-    {
+    if product_at_most(range_width(min, max), factor.to_integer(), T::modulus()) {
         (min * factor, max * factor)
     } else {
         // The range that allows all values
         (T::one(), T::zero())
+    }
+}
+
+/// Computes `a + b >= c` without overflowing, using primitive integer arithmetic
+/// where possible and falling back to arbitrary-precision integers for larger types.
+fn sum_at_least<I: LargeInt>(a: I, b: I, c: I) -> bool {
+    match (a.try_into_u64(), b.try_into_u64(), c.try_into_u64()) {
+        (Some(a), Some(b), Some(c)) => a as u128 + b as u128 >= c as u128,
+        _ => a.to_arbitrary_integer() + b.to_arbitrary_integer() >= c.to_arbitrary_integer(),
+    }
+}
+
+/// Computes `a + b <= c` without overflowing, using primitive integer arithmetic
+/// where possible and falling back to arbitrary-precision integers for larger types.
+fn sum_at_most<I: LargeInt>(a: I, b: I, c: I) -> bool {
+    match (a.try_into_u64(), b.try_into_u64(), c.try_into_u64()) {
+        (Some(a), Some(b), Some(c)) => a as u128 + b as u128 <= c as u128,
+        _ => a.to_arbitrary_integer() + b.to_arbitrary_integer() <= c.to_arbitrary_integer(),
+    }
+}
+
+/// Computes `a * b < c` without overflowing, using primitive integer arithmetic
+/// where possible and falling back to arbitrary-precision integers for larger types.
+fn product_less_than<I: LargeInt>(a: I, b: I, c: I) -> bool {
+    match (a.try_into_u64(), b.try_into_u64(), c.try_into_u64()) {
+        (Some(a), Some(b), Some(c)) => (a as u128) * (b as u128) < (c as u128),
+        _ => a.to_arbitrary_integer() * b.to_arbitrary_integer() < c.to_arbitrary_integer(),
+    }
+}
+
+/// Computes `a * b <= c` without overflowing, using primitive integer arithmetic
+/// where possible and falling back to arbitrary-precision integers for larger types.
+fn product_at_most<I: LargeInt>(a: I, b: I, c: I) -> bool {
+    match (a.try_into_u64(), b.try_into_u64(), c.try_into_u64()) {
+        (Some(a), Some(b), Some(c)) => a as u128 * b as u128 <= c as u128,
+        _ => a.to_arbitrary_integer() * b.to_arbitrary_integer() <= c.to_arbitrary_integer(),
+    }
+}
+
+/// Computes `a << exponent < c` without overflowing, using primitive integer arithmetic
+/// where possible and falling back to arbitrary-precision integers for larger types.
+fn shifted_less_than<I: LargeInt>(a: I, exponent: usize, c: I) -> bool {
+    match (a.try_into_u64(), c.try_into_u64()) {
+        (Some(a), Some(c)) if exponent < 64 => ((a as u128) << exponent) < c as u128,
+        _ => a.to_arbitrary_integer() << exponent < c.to_arbitrary_integer(),
+    }
+}
+
+/// Returns `Some(k)` if `n == 2^k`, like [`log2_exact`], but without
+/// converting to arbitrary-precision integers for small types.
+fn log2_exact_int<I: LargeInt>(n: I) -> Option<usize> {
+    match n.try_into_u64() {
+        Some(n) => n.is_power_of_two().then(|| n.trailing_zeros() as usize),
+        None => log2_exact(n.to_arbitrary_integer()),
     }
 }
 

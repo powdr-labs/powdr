@@ -18,6 +18,14 @@ use crate::{
     runtime_constant::VarTransformable,
 };
 
+/// The components handed back by [`Environment::terminate`] so that they can
+/// be re-used in the next optimization round.
+pub type TerminatedEnvironment<T> = (
+    ItemDB<GroupedExpression<T, Var>, Expr>,
+    NewVarGenerator<T>,
+    HashMap<Var, String>,
+);
+
 /// The Environment in the main method to access information about
 /// the constraint system. It allows rules to translate
 /// the opaque Expr identifiers into GroupedExpressions and perform
@@ -79,10 +87,11 @@ impl<T: FieldElement> Environment<T> {
     }
 
     /// Re-extract re-usable components after the rules have run.
-    pub fn terminate(self) -> (ItemDB<GroupedExpression<T, Var>, Expr>, NewVarGenerator<T>) {
+    pub fn terminate(self) -> TerminatedEnvironment<T> {
         (
             self.expressions.into_inner(),
             self.new_var_generator.into_inner(),
+            self.var_to_string,
         )
     }
 

@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::hash::Hash;
 
-use itertools::Itertools;
+use itertools::{Either, Itertools};
 use powdr_number::{FieldElement, LargeInt};
 
 use crate::grouped_expression::{GroupedExpression, RangeConstraintProvider};
@@ -56,8 +56,35 @@ pub fn possible_concrete_values<
     max_elements: u64,
 ) -> Option<impl Iterator<Item = T> + 'a> {
     let variables = expr.referenced_unknown_variables().cloned().collect_vec();
-    if has_few_possible_assignments(variables.iter().cloned(), rc, max_elements) {
-        Some(
+    if !has_few_possible_assignments(variables.iter().cloned(), rc, max_elements) {
+        // If there are too many possible assignments, we do not try to perform exhaustive search.
+        return None;
+    }
+    Some(if expr.is_affine() {
+        // For affine expressions, the value can be computed directly from the
+        // assignment without materializing the substituted expression.
+        // The variables (and thus the assignment values) are in linear component order.
+        let coefficients = expr
+            .linear_components()
+            .map(|(_, coeff)| coeff.clone())
+            .collect_vec();
+        let constant = expr.constant_offset().clone();
+        Either::Left(
+            variables
+                .into_iter()
+                .map(|v| rc.get(&v).allowed_values().collect_vec().into_iter())
+                .multi_cartesian_product()
+                .map(move |values| {
+                    coefficients
+                        .iter()
+                        .zip(values)
+                        .fold(constant.clone(), |acc, (coeff, value)| {
+                            acc + coeff.clone() * T::from(value)
+                        })
+                }),
+        )
+    } else {
+        Either::Right(
             get_all_possible_assignments(variables, rc).map(|assignment| {
                 let mut expr = expr.clone();
                 for (variable, value) in assignment.iter() {
@@ -67,8 +94,5 @@ pub fn possible_concrete_values<
                 expr.try_to_known().unwrap().clone()
             }),
         )
-    } else {
-        // If there are too many possible assignments, we do not try to perform exhaustive search.
-        None
-    }
+    })
 }

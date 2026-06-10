@@ -58,9 +58,10 @@ where
     ) -> Result<ProcessResult<T, V>, Error> {
         let expression = self.expression;
 
-        if !expression
-            .range_constraint(range_constraints)
-            .allows_value(Zero::zero())
+        if (expression.is_quadratic() || expression.try_to_known().is_some())
+            && !expression
+                .range_constraint(range_constraints)
+                .allows_value(Zero::zero())
         {
             return Err(Error::ConstraintUnsatisfiable(self.to_string()));
         }
@@ -75,7 +76,26 @@ where
             // and reach "unsatisfiable" here.
             Ok(ProcessResult::complete(vec![]))
         } else {
-            self.solve_affine(range_constraints)
+            // Affine case: query the range constraints of the variables only once
+            // and re-use them both for the satisfiability check and for
+            // transferring constraints.
+            let variable_rcs = expression
+                .linear_components()
+                .map(|(var, _)| range_constraints.get(var))
+                .collect::<Vec<_>>();
+            let full_rc = expression
+                .linear_components()
+                .zip(&variable_rcs)
+                .map(|((_, coeff), rc)| rc.combine_product(&coeff.range_constraint()))
+                .chain(std::iter::once(
+                    expression.constant_offset().range_constraint(),
+                ))
+                .reduce(|rc1, rc2| rc1.combine_sum(&rc2))
+                .unwrap();
+            if !full_rc.allows_value(Zero::zero()) {
+                return Err(Error::ConstraintUnsatisfiable(self.to_string()));
+            }
+            self.solve_affine(&variable_rcs, range_constraints)
         }
     }
 
@@ -160,6 +180,7 @@ where
 
     fn solve_affine(
         &self,
+        variable_rcs: &[RangeConstraint<T>],
         range_constraints: &impl RangeConstraintProvider<T, V>,
     ) -> Result<ProcessResult<T, V>, Error> {
         Ok(
@@ -197,7 +218,7 @@ where
                 }
             } else {
                 ProcessResult {
-                    effects: self.transfer_constraints(range_constraints),
+                    effects: self.transfer_constraints(variable_rcs),
                     complete: false,
                 }
             },
@@ -205,20 +226,36 @@ where
     }
 
     /// Extract the range constraints from the expression.
+    /// `variable_rcs` are the range constraints of the variables in the linear
+    /// component, in linear component order.
     /// Assumptions:
     /// - The expression is linear
-    fn transfer_constraints(
-        &self,
-        range_constraints: &impl RangeConstraintProvider<T, V>,
-    ) -> Vec<Effect<T, V>> {
+    fn transfer_constraints(&self, variable_rcs: &[RangeConstraint<T>]) -> Vec<Effect<T, V>> {
         // Solve for each of the variables in the linear component and
-        // compute the range constraints.
+        // compute the range constraints. For variable `x_j` in the constraint
+        // `c_j * x_j + sum_{i != j} c_i * x_i + c = 0`, the result of solving for it
+        // is `(sum_{i != j} c_i * x_i + c) * (-1 / c_j)`, and we compute the range
+        // constraint of that expression without materializing it.
         assert!(!self.expression.is_quadratic());
+        let constant = self.expression.constant_offset();
         self.expression
             .linear_components()
-            .filter_map(|(var, _)| {
-                let rc = self.try_solve_for(var)?.range_constraint(range_constraints);
-                Some((var, rc))
+            .enumerate()
+            .map(|(j, (var, coeff))| {
+                let factor = -coeff.field_inverse();
+                let rc = self
+                    .expression
+                    .linear_components()
+                    .zip(variable_rcs)
+                    .enumerate()
+                    .filter(|(i, _)| *i != j)
+                    .map(|(_, ((_, c), var_rc))| {
+                        var_rc.combine_product(&(*c * factor).range_constraint())
+                    })
+                    .chain(std::iter::once((*constant * factor).range_constraint()))
+                    .reduce(|rc1, rc2| rc1.combine_sum(&rc2))
+                    .unwrap();
+                (var, rc)
             })
             .filter(|(_, constraint)| !constraint.is_unconstrained())
             .map(|(var, constraint)| Effect::RangeConstraint(var.clone(), constraint))

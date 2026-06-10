@@ -369,6 +369,20 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
 }
 
 impl<T: FieldElement, V: Ord + Clone + Eq> GroupedExpression<T, V> {
+    /// Evaluates the expression, assuming that `value_of` assigns a value to
+    /// all unknown variables. The result is the same value that substituting
+    /// all variables by their values would produce.
+    pub fn evaluate_concrete(&self, value_of: &mut impl FnMut(&V) -> T) -> T {
+        let mut result = self.constant;
+        for (l, r) in &self.quadratic {
+            result += l.evaluate_concrete(value_of) * r.evaluate_concrete(value_of);
+        }
+        for (var, coeff) in &self.linear {
+            result += *coeff * value_of(var);
+        }
+        result
+    }
+
     pub fn substitute_simple(&mut self, variable: &V, substitution: T) {
         if self.linear.contains_key(variable) {
             let coeff = self.linear.remove(variable).unwrap();
@@ -410,16 +424,17 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq> GroupedExpressi
     /// Substitute a variable by a symbolically known expression. The variable can be known or unknown.
     /// If it was already known, it will be substituted in the known expressions.
     pub fn substitute_by_known(&mut self, variable: &V, substitution: &T) {
-        self.constant.substitute(variable, substitution);
+        if T::CAN_CONTAIN_VARIABLES {
+            self.constant.substitute(variable, substitution);
+        }
 
-        if self.linear.contains_key(variable) {
+        if let Some(coeff) = self.linear.remove(variable) {
             // If the variable is a key in `linear`, it must be unknown
             // and thus can only occur there. Otherwise, it can be in
             // any symbolic expression.
             // We replace the variable by a symbolic expression, so it goes into the constant part.
-            let coeff = self.linear.remove(variable).unwrap();
             self.constant += coeff * substitution.clone();
-        } else {
+        } else if T::CAN_CONTAIN_VARIABLES {
             for coeff in self.linear.values_mut() {
                 coeff.substitute(variable, substitution);
             }

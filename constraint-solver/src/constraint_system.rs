@@ -281,20 +281,36 @@ impl<T: FieldElement, V: Clone + Hash + Ord + Eq + Display>
             .zip_eq(range_constraints.fields())
             .filter(|(expr, _)| expr.is_affine())
             .flat_map(|(expr, rc)| {
-                expr.referenced_unknown_variables().filter_map(move |var| {
-                    // `k * var + e` is in range rc <=>
-                    // `var` is in range `(rc - RC[e]) / k` = `rc / k + RC[-e / k]`
-                    // If we solve `expr` for `var`, we get `-e / k`.
-                    let k = expr
-                        .coefficient_of_variable_in_affine_part(var)
-                        .unwrap()
-                        .try_to_number()?;
-                    let expr = AlgebraicConstraint::assert_zero(expr).try_solve_for(var)?;
-                    let rc = rc
-                        .multiple(T::from(1) / k)
-                        .combine_sum(&expr.range_constraint(range_constraint_provider));
-                    (!rc.is_unconstrained()).then(|| Effect::RangeConstraint(var.clone(), rc))
-                })
+                // Query the range constraints of the variables only once per field.
+                let variable_rcs = expr
+                    .linear_components()
+                    .map(|(var, _)| range_constraint_provider.get(var))
+                    .collect::<Vec<_>>();
+                let constant = expr.constant_offset();
+                expr.linear_components()
+                    .enumerate()
+                    .filter_map(move |(j, (var, coeff))| {
+                        // `k * var + e` is in range rc <=>
+                        // `var` is in range `(rc - RC[e]) / k` = `rc / k + RC[-e / k]`
+                        // Solving `expr = 0` for `var` gives `-e / k`. We compute the
+                        // range constraint of that expression directly from the range
+                        // constraints of the other variables, without materializing it.
+                        let k = coeff.try_to_number()?;
+                        let factor = -coeff.field_inverse();
+                        let solved_rc = expr
+                            .linear_components()
+                            .zip(&variable_rcs)
+                            .enumerate()
+                            .filter(|(i, _)| *i != j)
+                            .map(|(_, ((_, c), var_rc))| {
+                                var_rc.combine_product(&(*c * factor).range_constraint())
+                            })
+                            .chain(std::iter::once((*constant * factor).range_constraint()))
+                            .reduce(|rc1, rc2| rc1.combine_sum(&rc2))
+                            .unwrap();
+                        let rc = rc.multiple(T::from(1) / k).combine_sum(&solved_rc);
+                        (!rc.is_unconstrained()).then(|| Effect::RangeConstraint(var.clone(), rc))
+                    })
             })
             .collect())
     }

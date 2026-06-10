@@ -435,6 +435,8 @@ impl<T: FieldElement, V: Clone + Eq> One for SymbolicExpression<T, V> {
 impl<T: FieldElement, V: Clone + Eq> RuntimeConstant for SymbolicExpression<T, V> {
     type FieldType = T;
 
+    const CAN_CONTAIN_VARIABLES: bool = true;
+
     fn try_to_number(&self) -> Option<Self::FieldType> {
         match self {
             SymbolicExpression::Concrete(n) => Some(*n),

@@ -450,27 +450,190 @@ fn variables_in_stateful_bus_interactions<'a, P: FieldElement, V: Ord + Clone + 
         .flat_map(|bus_interaction| bus_interaction.referenced_unknown_variables())
 }
 
-struct SimplifiedExpression<T, V> {
+/// Tracks the simplification candidate of a single expression during
+/// exhaustive search.
+struct SimplifiedExpression<'a, T, V> {
+    expression: &'a GroupedExpression<T, V>,
     is_algebraic_constraint: bool,
-    /// The current best candidate for the simplified version of the expression.
-    /// - None means we have no candidate yet
-    /// - Some(Ok(expr)) means that all valid assignments so far result in expr
-    /// - Some(Err(())) means that we have found two valid assignments that result in different expressions.
-    simplified: Option<Result<GroupedExpression<T, V>, ()>>,
+    kind: SimplificationKind<T, V>,
 }
 
-impl<T, V> SimplifiedExpression<T, V>
+enum SimplificationKind<T, V> {
+    /// The expression is affine, so substituting the search variables only
+    /// changes its constant offset. Instead of materializing the substituted
+    /// expression for every assignment, we only track its constant offset.
+    Affine {
+        /// The search variables occurring in the expression with their coefficients.
+        set_coefficients: Vec<(V, T)>,
+        /// Whether any variables that are not search variables remain
+        /// in the expression after substitution.
+        has_remaining_variables: bool,
+        /// The current best candidate for the constant offset of the
+        /// simplified version of the expression.
+        /// - None means we have no candidate yet
+        /// - Some(Ok(c)) means that all valid assignments so far result in the
+        ///   same expression, with constant offset c
+        /// - Some(Err(())) means that we have found two valid assignments that
+        ///   result in different expressions.
+        simplified: Option<Result<T, ()>>,
+    },
+    /// All variables of the expression are search variables, so substituting
+    /// an assignment makes it fully known: we evaluate it and track the value.
+    FullyDetermined {
+        /// Like `Affine::simplified`, the candidate value of the expression.
+        simplified: Option<Result<T, ()>>,
+    },
+    /// The current best candidate for the simplified version of the expression,
+    /// with the same semantics as `Affine::simplified` but tracking the full
+    /// substituted expression.
+    Generic {
+        simplified: Option<Result<GroupedExpression<T, V>, ()>>,
+    },
+}
+
+impl<'a, T, V> SimplifiedExpression<'a, T, V>
 where
     T: FieldElement,
-    V: Clone + Ord + Eq,
+    V: Clone + Ord + Eq + Hash + Display,
 {
-    fn update(&mut self, new_expr: GroupedExpression<T, V>) {
-        match &self.simplified {
-            None => self.simplified = Some(Ok(new_expr)),
-            Some(Ok(existing)) if *existing != new_expr => {
-                self.simplified = Some(Err(()));
+    fn new(
+        expression: &'a GroupedExpression<T, V>,
+        is_algebraic_constraint: bool,
+        variable_set: &BTreeSet<V>,
+    ) -> Self {
+        let kind = if expression.is_affine() {
+            SimplificationKind::Affine {
+                set_coefficients: expression
+                    .linear_components()
+                    .filter(|(v, _)| variable_set.contains(v))
+                    .map(|(v, coeff)| (v.clone(), *coeff))
+                    .collect(),
+                has_remaining_variables: expression
+                    .linear_components()
+                    .any(|(v, _)| !variable_set.contains(v)),
+                simplified: None,
             }
-            _ => {}
+        } else if expression
+            .referenced_unknown_variables()
+            .all(|v| variable_set.contains(v))
+        {
+            SimplificationKind::FullyDetermined { simplified: None }
+        } else {
+            SimplificationKind::Generic { simplified: None }
+        };
+        Self {
+            expression,
+            is_algebraic_constraint,
+            kind,
+        }
+    }
+
+    /// Returns the result of substituting the assignment in the expression:
+    /// either just the constant offset (for affine expressions) or the full
+    /// substituted expression.
+    fn substitute(&self, assignment: &BTreeMap<V, T>) -> Result<T, GroupedExpression<T, V>> {
+        match &self.kind {
+            SimplificationKind::Affine {
+                set_coefficients, ..
+            } => Ok(set_coefficients
+                .iter()
+                .fold(*self.expression.constant_offset(), |acc, (v, coeff)| {
+                    acc + *coeff * assignment[v]
+                })),
+            SimplificationKind::FullyDetermined { .. } => {
+                Ok(self.expression.evaluate_concrete(&mut |v| assignment[v]))
+            }
+            SimplificationKind::Generic { .. } => Err(self
+                .expression
+                .clone()
+                .substitute_by_known_multi(assignment)),
+        }
+    }
+
+    /// Returns true if the given substitution result (see [`Self::substitute`])
+    /// is a number different from zero.
+    fn is_known_nonzero(&self, substituted: &Result<T, GroupedExpression<T, V>>) -> bool {
+        match (&self.kind, substituted) {
+            (
+                SimplificationKind::Affine {
+                    has_remaining_variables,
+                    ..
+                },
+                Ok(constant),
+            ) => !has_remaining_variables && !constant.is_zero(),
+            (SimplificationKind::FullyDetermined { .. }, Ok(value)) => !value.is_zero(),
+            (SimplificationKind::Generic { .. }, Err(expr)) => {
+                expr.try_to_number().is_some_and(|n| !n.is_zero())
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    fn update(&mut self, new_value: Result<T, GroupedExpression<T, V>>) {
+        match (&mut self.kind, new_value) {
+            (
+                SimplificationKind::Affine { simplified, .. }
+                | SimplificationKind::FullyDetermined { simplified },
+                Ok(constant),
+            ) => match simplified {
+                None => *simplified = Some(Ok(constant)),
+                Some(Ok(existing)) if *existing != constant => {
+                    *simplified = Some(Err(()));
+                }
+                _ => {}
+            },
+            (SimplificationKind::Generic { simplified }, Err(new_expr)) => match simplified {
+                None => *simplified = Some(Ok(new_expr)),
+                Some(Ok(existing)) if *existing != new_expr => {
+                    *simplified = Some(Err(()));
+                }
+                _ => {}
+            },
+            _ => unreachable!(),
+        }
+    }
+
+    /// Returns true if two valid assignments resulted in different simplified
+    /// expressions, i.e. there is no simplification.
+    fn has_conflicting_simplifications(&self) -> bool {
+        matches!(
+            &self.kind,
+            SimplificationKind::Affine {
+                simplified: Some(Err(())),
+                ..
+            } | SimplificationKind::FullyDetermined {
+                simplified: Some(Err(())),
+            } | SimplificationKind::Generic {
+                simplified: Some(Err(())),
+            }
+        )
+    }
+
+    /// Returns the simplified version of the expression, if all valid
+    /// assignments resulted in the same expression.
+    fn into_simplification(self) -> Option<GroupedExpression<T, V>> {
+        match self.kind {
+            SimplificationKind::Affine {
+                set_coefficients,
+                simplified,
+                ..
+            } => {
+                let constant = simplified?.ok()?;
+                // Materialize the substituted expression by removing the terms
+                // of the search variables and adjusting the constant offset.
+                // This is identical to substituting the winning assignment.
+                let base_constant = *self.expression.constant_offset();
+                let mut result = self.expression.clone();
+                for (v, coeff) in set_coefficients {
+                    result += GroupedExpression::from_unknown_variable(v) * (-coeff);
+                }
+                result += GroupedExpression::from_number(constant - base_constant);
+                Some(result)
+            }
+            SimplificationKind::FullyDetermined { simplified } => {
+                Some(GroupedExpression::from_number(simplified?.ok()?))
+            }
+            SimplificationKind::Generic { simplified } => simplified?.ok(),
         }
     }
 }
@@ -488,46 +651,49 @@ pub fn simplify_constraints_using_exhaustive_search<
     constraint_system: IndexedConstraintSystem<T, V>,
     range_constraints: &impl RangeConstraintProvider<T, V>,
 ) -> IndexedConstraintSystem<T, V> {
-    let mut substitutions = BTreeMap::default();
+    let mut substitutions: BTreeMap<GroupedExpression<T, V>, GroupedExpression<T, V>> =
+        BTreeMap::default();
     for variable_set in
         exhaustive_search::get_brute_force_candidates(&constraint_system, range_constraints)
     {
-        let mut exprs: BTreeMap<&GroupedExpression<T, V>, SimplifiedExpression<T, V>> =
-            constraint_system
-                .constraints_referencing_variables(&variable_set)
-                .flat_map(|constraint| match constraint {
-                    ConstraintRef::AlgebraicConstraint(identity) => {
-                        vec![(identity.expression, true)]
-                    }
-                    ConstraintRef::BusInteraction(bus_interaction) => bus_interaction
-                        .fields()
-                        .map(|field| (field, false))
-                        .collect_vec(),
-                })
-                .fold(Default::default(), |mut acc, (expr, is_alg)| {
-                    // Make sure that for the same expression as bus field and
-                    // algebraic constraint, the algebraic constraint "wins"
-                    acc.entry(expr)
-                        .or_insert_with(|| SimplifiedExpression {
-                            is_algebraic_constraint: is_alg,
-                            simplified: None,
-                        })
-                        .is_algebraic_constraint |= is_alg;
-                    acc
-                });
+        // Collect the unique expressions to track. Make sure that for the same
+        // expression as bus field and algebraic constraint, the algebraic
+        // constraint "wins".
+        let mut expr_indices: BTreeMap<&GroupedExpression<T, V>, usize> = Default::default();
+        let mut exprs: Vec<SimplifiedExpression<T, V>> = Default::default();
+        for (expr, is_alg) in constraint_system
+            .constraints_referencing_variables(&variable_set)
+            .flat_map(|constraint| match constraint {
+                ConstraintRef::AlgebraicConstraint(identity) => {
+                    vec![(identity.expression, true)]
+                }
+                ConstraintRef::BusInteraction(bus_interaction) => bus_interaction
+                    .fields()
+                    .map(|field| (field, false))
+                    .collect_vec(),
+            })
+        {
+            let index = *expr_indices.entry(expr).or_insert_with(|| {
+                exprs.push(SimplifiedExpression::new(expr, is_alg, &variable_set));
+                exprs.len() - 1
+            });
+            exprs[index].is_algebraic_constraint |= is_alg;
+        }
 
         for assignment in
             get_all_possible_assignments(variable_set.iter().cloned(), range_constraints)
         {
             // First check all algebraic constraints if this is a conflict.
-            let alg_substituted: BTreeMap<_, _> = exprs
+            let alg_substituted = exprs
                 .iter()
-                .filter(|(_, simp)| simp.is_algebraic_constraint)
-                .map(|(&e, _)| (e, e.clone().substitute_by_known_multi(&assignment)))
-                .collect();
-            if alg_substituted
+                .filter(|simp| simp.is_algebraic_constraint)
+                .map(|simp| simp.substitute(&assignment))
+                .collect_vec();
+            if exprs
                 .iter()
-                .any(|(_, s)| s.try_to_number().is_some_and(|n| !n.is_zero()))
+                .filter(|simp| simp.is_algebraic_constraint)
+                .zip(&alg_substituted)
+                .any(|(simp, s)| simp.is_known_nonzero(s))
             {
                 // Assignment leads to a conflict. This means that there is
                 // an algebraic constraints that rules out this assignment, so
@@ -536,27 +702,32 @@ pub fn simplify_constraints_using_exhaustive_search<
             }
             // No conflict. First, update the algebraic constraints where
             // we already computed the simplified version.
-            for (e, s) in alg_substituted {
-                exprs.get_mut(e).unwrap().update(s);
+            for (simp, s) in exprs
+                .iter_mut()
+                .filter(|simp| simp.is_algebraic_constraint)
+                .zip(alg_substituted)
+            {
+                simp.update(s);
             }
             // Now update the bus interaction fields.
-            for (&e, existing) in exprs
+            for simp in exprs
                 .iter_mut()
-                .filter(|(_, simp)| !simp.is_algebraic_constraint)
+                .filter(|simp| !simp.is_algebraic_constraint)
             {
-                existing.update(e.clone().substitute_by_known_multi(&assignment));
+                let s = simp.substitute(&assignment);
+                simp.update(s);
             }
             // Remove bus interaction fields with conflicting simplifications
             // This is a performance optimization, saving us time in the loop
             // above for the next assignment candidate.
-            exprs.retain(|_, simp| {
-                simp.is_algebraic_constraint || !matches!(&simp.simplified, Some(Err(())))
+            exprs.retain(|simp| {
+                simp.is_algebraic_constraint || !simp.has_conflicting_simplifications()
             });
         }
 
-        substitutions.extend(exprs.into_iter().filter_map(|(e, simp)| {
-            simp.simplified
-                .and_then(|res| res.ok())
+        substitutions.extend(exprs.into_iter().filter_map(|simp| {
+            let e = simp.expression;
+            simp.into_simplification()
                 .and_then(|s| (s != *e).then(|| (e.clone(), s)))
         }));
     }

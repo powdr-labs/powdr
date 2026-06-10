@@ -59,6 +59,11 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
     // `env` and extract it again after the rules have run.
     let mut expr_db = Some(ItemDB::<GroupedExpression<T, Var>, Expr>::default());
 
+    // Maps variable IDs to their names, for debugging purposes. Variable IDs
+    // are consecutive, so we only format the names of newly added variables
+    // in each loop iteration.
+    let mut var_to_string: HashMap<Var, String> = HashMap::new();
+
     let mut range_constraints_on_vars: HashMap<Var, RangeConstraint<T>> = system
         .referenced_unknown_variables()
         .map(|v| (var_mapper.id(v), range_constraints.get(v)))
@@ -84,14 +89,15 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
             .copied()
             .collect::<HashSet<_>>();
 
+        for (id, var) in var_mapper.iter().skip(var_to_string.len()) {
+            var_to_string.insert(id, var.to_string());
+        }
+
         // Create the "environment" singleton that can be used by the rules
         // to query information from the outside world.
         let env = Environment::<T>::new(
             expr_db.take().unwrap(),
-            var_mapper
-                .iter()
-                .map(|(id, var)| (id, var.to_string()))
-                .collect(),
+            std::mem::take(&mut var_to_string),
             single_occurrence_vars,
             // The NewVarGenerator will be used to generate fresh variables.
             // because of lifetime and determinism issues, we pass the next ID that
@@ -147,8 +153,12 @@ pub fn rule_based_optimization<T: FieldElement, V: Hash + Eq + Ord + Clone + Dis
         // rules.
         // let ((actions, large_actions), profile) = rt.run_with_profiling();
         // profile.report();
-        let (actions, large_actions) = rt.run();
-        let (expr_db_, new_var_generator) = env.terminate();
+        // Run with a fast, deterministic hasher - the rule engine spends a
+        // significant amount of time hashing facts. The derived fact set is
+        // a fixpoint and thus independent of the hasher.
+        let (actions, large_actions) = rt.run_with_hasher::<rustc_hash::FxBuildHasher>();
+        let (expr_db_, new_var_generator, var_to_string_) = env.terminate();
+        var_to_string = var_to_string_;
 
         let mut progress = false;
         // Try to execute the actions that were determined by the rules.

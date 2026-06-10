@@ -20,6 +20,7 @@ serde.workspace = true
 
 crepe = "0.2.0"
 derivative.workspace = true
+rustc-hash = "2"
 
 [dev-dependencies]
 pretty_assertions.workspace = true

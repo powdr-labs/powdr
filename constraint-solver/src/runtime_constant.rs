@@ -27,6 +27,11 @@ pub trait RuntimeConstant:
 {
     type FieldType: FieldElement;
 
+    /// Whether values of this type can symbolically contain variables.
+    /// If this is `false`, [`Substitutable::substitute`] is always a no-op
+    /// and substitution walks over known values can be skipped.
+    const CAN_CONTAIN_VARIABLES: bool;
+
     /// Tries to convert the constant to a single number. This always works for compile-time constants.
     fn try_to_number(&self) -> Option<Self::FieldType>;
 
@@ -99,6 +104,8 @@ pub trait VarTransformable<V1, V2> {
 impl<T: FieldElement> RuntimeConstant for T {
     type FieldType = T;
 
+    const CAN_CONTAIN_VARIABLES: bool = false;
+
     fn try_to_number(&self) -> Option<Self> {
         Some(*self)
     }
@@ -113,6 +120,10 @@ impl<T: FieldElement> RuntimeConstant for T {
 
     fn field_inverse(&self) -> Self {
         T::from(1) / *self
+    }
+
+    fn is_known_nonzero(&self) -> bool {
+        !self.is_zero()
     }
 }
 
